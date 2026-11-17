@@ -19,16 +19,16 @@ import (
 // flag quoted in the row's source comment.
 type probeIdentityCase struct {
 	name      string
-	probeArgs []string
 	match     string
 	clashHelp string
 	ownHelp   string
+	probeArgs []string
 }
 
 var probeIdentityCases = []probeIdentityCase{
 	{
 		name: "bob", probeArgs: []string{"run", "--help"}, match: "--disable-tool-groups",
-		clashHelp: "Usage: bob run <version>\n  list        list installed versions",
+		clashHelp: "Usage: bob run <version>\n  list        show installed versions",
 		ownHelp:   "Usage: bob run [options]\n  --disable-tool-groups <groups>  Disable specific tool groups",
 	},
 	{
@@ -62,46 +62,53 @@ var probeIdentityCases = []probeIdentityCase{
 // probe: a same-named tool that prints its own help, even with the subcommand
 // the probe asks for, refuses before launch, and the documented flag passes.
 func TestClashingBinaryNeedsDocumentedFlag(t *testing.T) {
-	for _, tc := range probeIdentityCases {
-		t.Run(tc.name+"/clash", func(t *testing.T) {
-			root := fixtureRoot(t)
-			bin := plantStub(t, tc.name, "#!/bin/sh\nprintf '%s\\n' "+shellLiteral(tc.clashHelp)+"\n")
-			_, ref := runWithStub(t, root, tc.name, bin)
-			if ref == nil || ref.Code != "agent-mismatch" {
-				t.Fatalf("ref = %+v, want agent-mismatch", ref)
-			}
-			if !strings.Contains(ref.Message, tc.match) {
-				t.Errorf("message = %q, want the missing match %q", ref.Message, tc.match)
-			}
-			if _, err := os.Stat(filepath.Join(bundleDir(root), reviewFile)); !os.IsNotExist(err) {
-				t.Errorf("review file exists after refusal (err = %v); want no launch", err)
-			}
-		})
-		t.Run(tc.name+"/own-help", func(t *testing.T) {
-			root := fixtureRoot(t)
-			dir := bundleDir(root)
-			bin := plantStub(t, tc.name, "#!/bin/sh\n"+
-				"case \" $* \" in\n"+
-				"  *' --help '*) printf '%s\\n' "+shellLiteral(tc.ownHelp)+"; exit 0 ;;\n"+
-				"esac\n"+
-				"printf '%s' "+shellLiteral(reviewDoc)+" > .verdict/state/42/review.json\n")
-			_, ref := runWithStub(t, root, tc.name, bin)
-			if ref != nil {
-				t.Fatalf("launch refused: %v", ref)
-			}
-			if _, err := os.Stat(filepath.Join(dir, reviewFile)); err != nil {
-				t.Fatalf("review file missing after a passing probe: %v", err)
-			}
-			rec := readLauncher(t, dir)
-			probe, ok := jq.AsMap(rec["probe"])
-			if !ok || probe["ok"] != true {
-				t.Fatalf("launcher probe = %v, want ok=true", rec["probe"])
-			}
-			args, ok := probe["args"].([]any)
-			if !ok || !slices.Equal(args, stringsToAny(tc.probeArgs)) {
-				t.Errorf("launcher probe args = %v, want %q", probe["args"], tc.probeArgs)
-			}
-		})
+	for i := range probeIdentityCases {
+		tc := &probeIdentityCases[i]
+		t.Run(tc.name+"/clash", func(t *testing.T) { assertClashRefused(t, tc) })
+		t.Run(tc.name+"/own-help", func(t *testing.T) { assertDocumentedFlagPasses(t, tc) })
+	}
+}
+
+func assertClashRefused(t *testing.T, tc *probeIdentityCase) {
+	t.Helper()
+	root := fixtureRoot(t)
+	bin := plantStub(t, tc.name, "#!/bin/sh\nprintf '%s\\n' "+shellLiteral(tc.clashHelp)+"\n")
+	_, ref := runWithStub(t, root, tc.name, bin)
+	if ref == nil || ref.Code != "agent-mismatch" {
+		t.Fatalf("ref = %+v, want agent-mismatch", ref)
+	}
+	if !strings.Contains(ref.Message, tc.match) {
+		t.Errorf("message = %q, want the missing match %q", ref.Message, tc.match)
+	}
+	if _, err := os.Stat(filepath.Join(bundleDir(root), reviewFile)); !os.IsNotExist(err) {
+		t.Errorf("review file exists after refusal (err = %v); want no launch", err)
+	}
+}
+
+func assertDocumentedFlagPasses(t *testing.T, tc *probeIdentityCase) {
+	t.Helper()
+	root := fixtureRoot(t)
+	dir := bundleDir(root)
+	bin := plantStub(t, tc.name, "#!/bin/sh\n"+
+		"case \" $* \" in\n"+
+		"  *' --help '*) printf '%s\\n' "+shellLiteral(tc.ownHelp)+"; exit 0 ;;\n"+
+		"esac\n"+
+		"printf '%s' "+shellLiteral(reviewDoc)+" > .verdict/state/42/review.json\n")
+	_, ref := runWithStub(t, root, tc.name, bin)
+	if ref != nil {
+		t.Fatalf("launch refused: %v", ref)
+	}
+	if _, err := os.Stat(filepath.Join(dir, reviewFile)); err != nil {
+		t.Fatalf("review file missing after a passing probe: %v", err)
+	}
+	rec := readLauncher(t, dir)
+	probe, ok := jq.AsMap(rec["probe"])
+	if !ok || probe["ok"] != true {
+		t.Fatalf("launcher probe = %v, want ok=true", rec["probe"])
+	}
+	args, ok := probe["args"].([]any)
+	if !ok || !slices.Equal(args, stringsToAny(tc.probeArgs)) {
+		t.Errorf("launcher probe args = %v, want %q", probe["args"], tc.probeArgs)
 	}
 }
 
