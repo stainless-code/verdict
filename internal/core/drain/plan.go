@@ -3,7 +3,6 @@ package drain
 import (
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"strings"
 
@@ -173,20 +172,4 @@ func WritePlan(path string, f *File) error {
 		f.SchemaVersion = SchemaVersion
 	}
 	return atomic.WriteFile(path, []byte(jq.PrettyOrdered(f.Wire())))
-}
-
-// ReadPlan reads the plan a draft was written against.
-func ReadPlan(path string) (*File, error) {
-	raw, err := jq.CappedFile(path, jq.MaxPRBytes)
-	if err != nil {
-		return nil, jq.NewErrf("read plan: %v", err)
-	}
-	var f File
-	if err := json.Unmarshal(raw, &f); err != nil {
-		return nil, jq.NewErrf("decode plan: %v", err)
-	}
-	if f.SchemaVersion != SchemaVersion {
-		return nil, jq.NewErrf("plan schema_version %q, want %q", f.SchemaVersion, SchemaVersion)
-	}
-	return &f, nil
 }
