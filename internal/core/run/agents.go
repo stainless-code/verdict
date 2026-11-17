@@ -5,10 +5,10 @@ import (
 	"strings"
 )
 
-// agentDef is one launch definition: the --agent name an operator types, the
-// binary it spawns, the flag that binary takes a model on, the flag that takes
-// its prompt as a value (empty for a positional prompt), and the non-interactive
-// argument shape that binary uses to answer once and exit.
+// agentDef is one launch definition: the --agent name an operator types,
+// the binary it spawns, the flag that binary takes a model on, the flag
+// that takes its prompt as a value (empty for a positional prompt), and the
+// non-interactive argument shape that binary uses to answer once and exit.
 //
 // The launcher reads every field and branches on none, so adding an agent is
 // adding a row to [agentDefs] — data, not a code path. The one convention every
@@ -32,12 +32,27 @@ type agentDef struct {
 	Install    string
 	ModelFlag  string
 	PromptFlag string
+	Source     string
 	Args       []string
 }
 
 // modelFlag is the argument every shipped row takes a model name on; a row
 // whose binary spells it differently carries its own value.
 const modelFlag = "--model"
+
+// agentSourcePrefs marks a definition read from the operator's prefs file in
+// the provenance record. A shipped row leaves Source empty.
+const agentSourcePrefs = "prefs"
+
+// The four names whose prefix stays first in discovery messages, and the
+// subcommand shared by the rows that launch one prompt through a run verb.
+const (
+	nameClaude   = "claude"
+	nameCodex    = "codex"
+	nameCursor   = "cursor"
+	nameOpenCode = "opencode"
+	argsRun      = "run"
+)
 
 // agentDefs is the shipped agent table, sorted by name. Every row is data: a
 // new agent is a new entry here, and nothing else in the launcher changes.
@@ -55,12 +70,12 @@ var agentDefs = []agentDef{
 	},
 	// https://code.claude.com/docs/en/cli-reference.md — read 2026-11-17
 	{
-		Name: "claude", Binary: "claude", ModelFlag: modelFlag, Args: []string{"-p"},
+		Name: nameClaude, Binary: nameClaude, ModelFlag: modelFlag, Args: []string{"-p"},
 		Install: "curl -fsSL https://claude.ai/install.sh | bash",
 	},
 	// https://github.com/openai/codex/blob/main/README.md — read 2026-11-17
 	{
-		Name: "codex", Binary: "codex", ModelFlag: modelFlag, Args: []string{"exec"},
+		Name: nameCodex, Binary: nameCodex, ModelFlag: modelFlag, Args: []string{"exec"},
 		Install: "npm install -g @openai/codex",
 	},
 	// https://docs.github.com/en/copilot/how-tos/copilot-cli/automate-copilot-cli/run-cli-programmatically — read 2026-11-17
@@ -70,7 +85,7 @@ var agentDefs = []agentDef{
 	},
 	// https://github.com/charmbracelet/crush/blob/main/internal/cmd/run.go — read 2026-11-17
 	{
-		Name: "crush", Binary: "crush", ModelFlag: modelFlag, Args: []string{"run"},
+		Name: "crush", Binary: "crush", ModelFlag: modelFlag, Args: []string{argsRun},
 		Install: "brew install charmbracelet/tap/crush",
 	},
 	// https://cursor.com/docs/cli/headless — read 2026-11-17
@@ -90,7 +105,7 @@ var agentDefs = []agentDef{
 	},
 	// https://github.com/aaif-goose/goose/blob/main/documentation/docs/guides/running-tasks.md — read 2026-11-17
 	{
-		Name: "goose", Binary: "goose", ModelFlag: modelFlag, PromptFlag: "-t", Args: []string{"run"},
+		Name: "goose", Binary: "goose", ModelFlag: modelFlag, PromptFlag: "-t", Args: []string{argsRun},
 		Install: "brew install block-goose-cli",
 	},
 	// https://kiro.dev/docs/cli/headless.md — read 2026-11-17
@@ -101,7 +116,7 @@ var agentDefs = []agentDef{
 	},
 	// https://opencode.ai/docs/cli/ — read 2026-11-17
 	{
-		Name: "opencode", Binary: "opencode", ModelFlag: modelFlag, Args: []string{"run"},
+		Name: nameOpenCode, Binary: nameOpenCode, ModelFlag: modelFlag, Args: []string{argsRun},
 		Install: "npm install -g @opencode/cli",
 	},
 	// https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/quickstart.md — read 2026-11-17
@@ -131,7 +146,7 @@ func lookupAgent(name string) (agentDef, bool) {
 // their prefix, so a caller that matched that fragment still finds it; the rest
 // follow in table order.
 func AgentNames() []string {
-	first := []string{"claude", "codex", "cursor", "opencode"}
+	first := []string{nameClaude, nameCodex, nameCursor, nameOpenCode}
 	names := make([]string, 0, len(agentDefs))
 	for _, name := range first {
 		if _, ok := lookupAgent(name); ok {
@@ -146,15 +161,16 @@ func AgentNames() []string {
 	return names
 }
 
-// argvFor builds the exact argv the launcher spawns, and the same argv --print
-// renders: the binary, the definition's non-interactive flags, the model hint a
-// --print --stage render declares (empty for everything else), the operator's
-// pass-through arguments unchanged, an optional prompt flag, then the directive.
+// argvFor builds the exact argv the launcher spawns, and the same argv
+// --print renders: the binary, the definition's non-interactive flags, the
+// model hint a --print --stage render declares (empty for everything else),
+// the operator's pass-through arguments unchanged, an optional prompt flag,
+// then the directive.
 func argvFor(def *agentDef, model string, passthrough []string, prompt string) []string {
 	var argv []string
 	argv = append(argv, def.Binary)
 	argv = append(argv, def.Args...)
-	if model != "" {
+	if model != "" && def.ModelFlag != "" {
 		argv = append(argv, def.ModelFlag, model)
 	}
 	argv = append(argv, passthrough...)

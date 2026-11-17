@@ -21,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	runcore "github.com/stainless-code/verdict/internal/core/run"
@@ -69,7 +70,11 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if code, done := r.Canceled(ctx, "run"); done {
 		return code
 	}
-	resp, ref := runcore.Run(ctx, runRequest(r, req, &flags))
+	agents, ref := personalAgents(req.Env)
+	if ref != nil {
+		return refuse(r, nil, &core.RefusalError{Code: ref.Code, Message: ref.Message})
+	}
+	resp, ref := runcore.WithAgents(ctx, runRequest(r, req, &flags), agents)
 	if ref != nil {
 		return refuse(r, resp, ref)
 	}
@@ -83,6 +88,17 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 			resp.Next, resp.Warnings, resp.Data.Wire(), nil)))
 	}
 	return cli.ExitOK
+}
+
+// personalAgents reads operator-defined agents from the prefs file only. A
+// repository config can never define one: the typed repo parser refuses the
+// key, and this read addresses only the XDG/HOME settings path.
+func personalAgents(env map[string]string) ([]config.PersonalAgent, *core.RefusalError) {
+	prefs, ref := config.LoadPersonal(config.SettingsPath(env["HOME"], env["XDG_CONFIG_HOME"]))
+	if ref != nil {
+		return nil, ref
+	}
+	return prefs.Agents, nil
 }
 
 // refuse renders a run refusal, preserving the agent's own exit code when the

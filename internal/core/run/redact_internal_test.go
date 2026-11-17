@@ -249,21 +249,14 @@ func TestDirectiveKeepsAPercentPathLiteral(t *testing.T) {
 // TestAgentTableIsSortedAndUnique keeps the data table honest: duplicate or
 // unsorted rows would make the known-name list a lie.
 func TestAgentTableIsSortedAndUnique(t *testing.T) {
-	table := make([]string, 0, len(agentDefs))
-	for _, def := range agentDefs {
-		table = append(table, def.Name)
-	}
+	table := tableNames()
 	if !slices.IsSorted(table) {
 		t.Errorf("agent table is not sorted: %v", table)
 	}
 	if len(slices.Compact(slices.Clone(table))) != len(table) {
 		t.Errorf("agent table repeats a name: %v", table)
 	}
-	known := AgentNames()
-	slices.Sort(known)
-	if !slices.Equal(known, table) {
-		t.Errorf("known names %v do not enumerate the table %v", known, table)
-	}
+	assertKnownNamesEnumerateTable(t, table)
 	for _, name := range table {
 		def, ok := lookupAgent(name)
 		if !ok || def.Binary == "" || def.ModelFlag == "" || def.Install == "" {
@@ -272,5 +265,22 @@ func TestAgentTableIsSortedAndUnique(t *testing.T) {
 	}
 	if _, ok := lookupAgent("gpt"); ok {
 		t.Error("lookupAgent resolved an agent that is not in the table")
+	}
+}
+
+func tableNames() []string {
+	names := make([]string, 0, len(agentDefs))
+	for _, def := range agentDefs {
+		names = append(names, def.Name)
+	}
+	return names
+}
+
+func assertKnownNamesEnumerateTable(t *testing.T, table []string) {
+	t.Helper()
+	known := AgentNames()
+	slices.Sort(known)
+	if !slices.Equal(known, table) {
+		t.Errorf("known names %v do not enumerate the table %v", known, table)
 	}
 }

@@ -39,10 +39,11 @@ var (
 	// the resolver.
 	personalTopFields = []string{
 		"$schema", personalSectionReview, personalSectionSpend, personalSectionPrivacy,
-		"packs", "output", "layout", "color", "publish",
+		"packs", personalSectionAgents, "output", "layout", "color", "publish",
 	}
 	personalSpendFields   = []string{"budget_usd", "require_known_estimate", "enforce_cap"}
 	personalPrivacyFields = []string{"exclusions"}
+	personalAgentFields   = []string{"binary", "args", "prompt_flag", "model_flag", "install"}
 )
 
 // The typed operator-settings sections: named once so the field contract,
@@ -52,6 +53,7 @@ const (
 	personalSectionSpend   = "spend"
 	personalSectionPrivacy = "privacy"
 	personalSectionPacks   = "packs"
+	personalSectionAgents  = "agents"
 )
 
 // checkUnknownFields refuses any key outside the contract on fixed-shape

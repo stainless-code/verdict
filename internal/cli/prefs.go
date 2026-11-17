@@ -129,7 +129,7 @@ func resolveSettingsFile(r *Runner, path string, obj map[string]any, doc any, ef
 func checkTopKeys(path string, obj map[string]any) error {
 	for _, k := range SortedKeys(obj) {
 		switch k {
-		case "$schema", "output", "layout", "color", "publish", "review", "spend", "privacy", "packs":
+		case "$schema", "output", "layout", "color", "publish", "review", "spend", "privacy", "packs", "agents":
 		default:
 			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgTopKey, path, k)}
 		}

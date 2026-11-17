@@ -5,20 +5,22 @@ import (
 	"testing"
 )
 
+type builtinRow struct {
+	name       string
+	binary     string
+	args       []string
+	promptFlag string
+	install    string
+	wantArgv   []string
+}
+
 // TestBuiltinAgentRows pins every shipped row: its binary, its non-interactive
 // flags, its official install hint, and the exact argv a model hint and a
 // pass-through flag produce. Prompt-bearing rows put their flag immediately
 // before the directive; the others keep the positional shape. The name set is
 // literal, so a new row cannot join the table without a reviewed expectation.
 func TestBuiltinAgentRows(t *testing.T) {
-	tests := []struct {
-		name       string
-		binary     string
-		args       []string
-		promptFlag string
-		install    string
-		wantArgv   []string
-	}{
+	tests := []builtinRow{
 		{
 			name: "agy", binary: "agy", promptFlag: "-p",
 			install:  "curl -fsSL https://antigravity.google/cli/install.sh | bash",
@@ -93,26 +95,7 @@ func TestBuiltinAgentRows(t *testing.T) {
 	wantNames := make([]string, 0, len(tests))
 	for _, tc := range tests {
 		wantNames = append(wantNames, tc.name)
-		t.Run(tc.name, func(t *testing.T) {
-			def, ok := lookupAgent(tc.name)
-			if !ok {
-				t.Fatalf("lookupAgent(%q) found no row", tc.name)
-			}
-			if def.Binary != tc.binary || def.PromptFlag != tc.promptFlag || def.Install != tc.install {
-				t.Errorf("row = %+v, want binary %q, prompt flag %q, install %q",
-					def, tc.binary, tc.promptFlag, tc.install)
-			}
-			if !slices.Equal(def.Args, tc.args) {
-				t.Errorf("args = %q, want %q", def.Args, tc.args)
-			}
-			if def.ModelFlag != modelFlag {
-				t.Errorf("model flag = %q, want %q", def.ModelFlag, modelFlag)
-			}
-			got := argvFor(&def, "M", []string{"--x"}, "PROMPT")
-			if !slices.Equal(got, tc.wantArgv) {
-				t.Errorf("argv = %q, want %q", got, tc.wantArgv)
-			}
-		})
+		t.Run(tc.name, func(t *testing.T) { assertBuiltinRow(t, &tc) })
 	}
 	names := make([]string, 0, len(agentDefs))
 	for _, def := range agentDefs {
@@ -120,6 +103,28 @@ func TestBuiltinAgentRows(t *testing.T) {
 	}
 	if !slices.Equal(names, wantNames) {
 		t.Errorf("table names = %q, want %q", names, wantNames)
+	}
+}
+
+func assertBuiltinRow(t *testing.T, tc *builtinRow) {
+	t.Helper()
+	def, ok := lookupAgent(tc.name)
+	if !ok {
+		t.Fatalf("lookupAgent(%q) found no row", tc.name)
+	}
+	if def.Binary != tc.binary || def.PromptFlag != tc.promptFlag || def.Install != tc.install {
+		t.Errorf("row = %+v, want binary %q, prompt flag %q, install %q",
+			def, tc.binary, tc.promptFlag, tc.install)
+	}
+	if !slices.Equal(def.Args, tc.args) {
+		t.Errorf("args = %q, want %q", def.Args, tc.args)
+	}
+	if def.ModelFlag != modelFlag {
+		t.Errorf("model flag = %q, want %q", def.ModelFlag, modelFlag)
+	}
+	got := argvFor(&def, "M", []string{"--x"}, "PROMPT")
+	if !slices.Equal(got, tc.wantArgv) {
+		t.Errorf("argv = %q, want %q", got, tc.wantArgv)
 	}
 }
 

@@ -77,6 +77,7 @@ func (st *state) repairLoop(ctx context.Context, args *launchArgs, n int) (*core
 	rec := &launcher{
 		SchemaVersion: launcherSchema,
 		Agent:         args.def.Name,
+		AgentSource:   args.def.Source,
 		Binary:        bin,
 		Bundle:        args.bundle,
 		Artifact:      args.artifact,

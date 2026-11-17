@@ -68,6 +68,7 @@ type launcherRepair struct {
 type launcher struct { //nolint:govet // field order is the published property order
 	SchemaVersion string            `json:"schema_version"`
 	Agent         string            `json:"agent"`
+	AgentSource   string            `json:"agent_source,omitempty"`
 	Binary        string            `json:"binary"`
 	Argv          []string          `json:"argv"`
 	Bundle        string            `json:"bundle"`
