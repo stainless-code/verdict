@@ -28,7 +28,7 @@ import (
 
 const (
 	verbDrain  = "drain"
-	wantFlags  = "--provider <name>, --max-threads <1-100>, --agent <name>, --timeout <secs>, -- <agent args>, --json"
+	wantFlags  = "--provider <name>, --max-threads <1-100>, --agent <name>, --timeout <secs>, --post, -- <agent args>, --json"
 	defaultMax = "20"
 	pathSep    = "/"
 )
@@ -42,12 +42,13 @@ type flags struct {
 	agent    string
 	timeout  string
 	pass     []string
+	post     bool
 }
 
 // Run executes `drain <owner/repo> <pr> [--provider <p>] [--max-threads <n>]
-// [--agent <name> [--timeout <s>] [-- <agent args>]] [--json]`. It refreshes
-// threads through the same service the threads verb uses, then writes one
-// plan; there is no host write and no --post in this build.
+// [--agent <name> [--timeout <s>] [-- <agent args>]] [--post] [--json]`. Plan
+// and draft modes never write to the host; --post validates the drafts first
+// and then follows the ordered write path.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	fl, code, done := parseFlags(r, args)
@@ -60,6 +61,9 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	}
 	if ref := preflight(req); ref != nil {
 		return r.Refuse(ref)
+	}
+	if fl.post {
+		return postMode(ctx, r, req, fl)
 	}
 	resp, ref := fetchcore.RunThreads(ctx, refreshRequest(r, req, fl))
 	if ref != nil {
@@ -208,6 +212,9 @@ func parseFlags(r *cli.Runner, args []string) (*flags, int, bool) {
 func consumeFlag(r *cli.Runner, fl *flags, args []string, i int) (int, int, bool) {
 	a := args[i]
 	switch {
+	case a == "--post":
+		fl.post = true
+		return i, 0, false
 	case a == "--provider" || a == "--max-threads" || a == "--agent" || a == "--timeout":
 		v, nextIndex, u := cli.FlagValue(args, i, a, "<value>")
 		if u != nil {

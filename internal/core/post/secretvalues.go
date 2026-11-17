@@ -15,6 +15,15 @@ import (
 // instead of offering a repair.
 const codeSecretShaped = "post-secret-shaped"
 
+// CodeSecretShaped is the code drain reports for a reply body carrying a
+// credential. Both verbs read the same scan and the same refusal code.
+const CodeSecretShaped = codeSecretShaped
+
+// BodySecretShapes runs the post secret scan over one outbound reply body.
+func BodySecretShapes(body string) []string {
+	return envsecret.SecretValueShapes(body)
+}
+
 // AllowSecretValuesFlag is the override the refusal, the dry-run warning, the
 // re-entry line, and the usage text name. It lives here because the refusal
 // spells it, and a second spelling in the adapter would let the two drift.

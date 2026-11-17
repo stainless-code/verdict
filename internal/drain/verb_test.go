@@ -25,6 +25,17 @@ func TestNextAfterAgentDoesNotRecommendPost(t *testing.T) {
 	}
 }
 
+func TestParseFlagsAcceptsPost(t *testing.T) {
+	t.Parallel()
+	fl, code, done := parseFlags(&cli.Runner{}, []string{"--agent", "claude", "--post"})
+	if done || code != 0 || !fl.post || fl.agent != "claude" {
+		t.Fatalf("parse = %+v, %d, %v", fl, code, done)
+	}
+	if !strings.Contains(wantFlags, "--post") {
+		t.Errorf("usage %q does not offer --post", wantFlags)
+	}
+}
+
 func TestRefreshRequestKeepsInjectedCommander(t *testing.T) {
 	t.Parallel()
 	cmdr := &stubCommander{}
