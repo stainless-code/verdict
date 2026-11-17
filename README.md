@@ -55,7 +55,7 @@ Check it with `verdict --version`.
 
 ### 2. Add the skill
 
-The skill is the review prompt. It ships inside the binary.
+The installed skill is a small Bootstrap skill: it names when to use Verdict and how to reach the binary. The binary serves the full Procedure through `verdict skill`, so the instructions always match the version that checks your work.
 
 ```bash
 verdict skill install --detect

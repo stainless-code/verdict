@@ -7,7 +7,7 @@ import (
 )
 
 // TestReadTrustedPromptLayouts pins where the prompt dump finds a trusted
-// prompt: flat in a skill directory, else under a checkout's skills/verdict,
+// prompt: flat in a bundle, else under a checkout's procedure directory,
 // the flat copy winning, and a typed miss when neither exists.
 func TestReadTrustedPromptLayouts(t *testing.T) {
 	const name = "prompts/system.md"
@@ -18,8 +18,8 @@ func TestReadTrustedPromptLayouts(t *testing.T) {
 		found bool
 	}{
 		{name: "flat skill dir", files: map[string]string{name: "flat\n"}, want: "flat\n", found: true},
-		{name: "checkout skills/verdict", files: map[string]string{"skills/verdict/" + name: "nested\n"}, want: "nested\n", found: true},
-		{name: "flat wins over the checkout copy", files: map[string]string{name: "flat\n", "skills/verdict/" + name: "nested\n"}, want: "flat\n", found: true},
+		{name: "checkout procedure", files: map[string]string{"procedure/" + name: "nested\n"}, want: "nested\n", found: true},
+		{name: "flat wins over the checkout copy", files: map[string]string{name: "flat\n", "procedure/" + name: "nested\n"}, want: "flat\n", found: true},
 		{name: "neither", files: map[string]string{"prompts/review.md": "other\n"}, found: false},
 	}
 	for _, tc := range tests {

@@ -417,7 +417,7 @@ list); the other providers contribute the title, body, and head ref.
 
 A lens pack is data, not a verb: `pack.json` names each lens and
 `lenses/<id>.md` carries its body. The built-in pack ships at
-`skills/verdict/packs/builtin/` (`name` `verdict/builtin`, `version` `1.0.0`)
+`procedure/packs/builtin/` (`name` `verdict/builtin`, `version` `1.0.0`)
 and `fetch`/`fetch-local` load it from the embedded skill payload. The format
 is strict JSON (unknown fields refuse), versioned by `schema_version: "1"`,
 and published as `schemas/pack.schema.json`. The fixed layout is `pack.json`,
@@ -1340,7 +1340,7 @@ writes — the bundle is byte-identical after the run, and the bare text path
 never a warning.
 
 `fetch`/`fetch-local` take `--show-prompts`: after the normal bundle write,
-the script renders the assembled agent reading list — `SKILL.md`,
+the script renders the assembled agent reading list — `PROCEDURE.md`,
 `prompts/system.md`, `prompts/review.md`, `prompts/diagrams.md`, the bundle
 meta (`PR.json` or `source.json`), `toc.txt`, `roles.txt`, `full.diff`, plus
 `kb.txt`, `lenses.txt`, `reverts.txt`, `sensitive.txt`, and `panel` when
@@ -1350,11 +1350,11 @@ per bundle file — to stdout (human mode; progress moves to stderr) or
 `data.prompt_dump` (`--json`). No agent runs, no network beyond the fetch
 itself, no store writes beyond the bundle: without the flag both verbs are
 byte-identical. It reads the trusted prompts from the current directory, so
-run it from an installed skill dir or a checkout (it falls back to the checkout's `skills/verdict/`) carrying `SKILL.md` and `prompts/`. Missing
+run it from a bundle or a checkout (it falls back to the checkout's `procedure/`) carrying `PROCEDURE.md` and `prompts/`. Missing
 bundle files skip silently, but missing trusted
 prompt files fail loudly: no `prompts/system.md` refuses typed
 (`prompt-dump-failed` — the untrusted-data preamble lives there, so a dump
-without it is unsafe), while a missing `SKILL.md`, `prompts/review.md`, or
+without it is unsafe), while a missing `PROCEDURE.md`, `prompts/review.md`, or
 `prompts/diagrams.md` warns (stderr plus envelope `warnings[]`) and the dump
 proceeds without it. Trusted prompts print verbatim first, then a
 tool-generated trust-boundary prologue naming the run's nonce, then every

@@ -2,7 +2,7 @@
 
 ## Adapted review prompts
 
-The review prompts under `skills/verdict/prompts/` are adapted from
+The review prompts under `procedure/prompts/` are adapted from
 [Pullfrog](https://github.com/pullfrog/pullfrog), an MIT-licensed open-source GitHub Action. The
 skill's review discipline additionally borrows from clawpatch and pstack, as described in
 `docs/vision.md`. All lineage is credited, not hidden.
@@ -10,11 +10,12 @@ skill's review discipline additionally borrows from clawpatch and pstack, as des
 - Upstream repository: <https://github.com/pullfrog/pullfrog>
 - Pinned upstream commit: `bef4f79cef8c9793608ef50179bae9e925231e38`
 
-The skill directory ships its own copy of this notice, `skills/verdict/NOTICE.md`, because
-`npx skills add` copies that directory alone: the adapted prompts have to carry the upstream
-license with them, not leave it behind in this repository-root file. The two copies hold the same
-license block, and `TestNoticeCoversAdaptedPaths` fails when they drift or when a prompt is
-missing from the payload copy.
+The Bootstrap skill ships its own copy of this notice, `skills/verdict/NOTICE.md`, because
+`npx skills add` copies that directory alone. The adapted Procedure is embedded in the binary and
+served from `procedure/`, but the notice travels with the installed copy so the upstream license
+is never left behind in this repository-root file. The two copies hold the same license block,
+and `TestNoticeCoversAdaptedPaths` fails when they drift or when a prompt is missing from the
+payload copy.
 
 <!-- upstream-license:start -->
 

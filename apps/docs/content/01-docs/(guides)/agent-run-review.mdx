@@ -73,8 +73,9 @@ verdict skill install --dir <skills-dir> --json
 verdict skill status --dir <skills-dir> --json
 ```
 
-Install reports `create` with the payload files (`SKILL.md`, `prompts/`,
-`schemas/`, `scripts/verdict`); `status` reads `keep` once in sync.
+Install reports `create` with the three Bootstrap skill files (`SKILL.md`,
+`NOTICE.md`, `scripts/verdict`); `status` reads `keep` once in sync. The binary
+serves the Procedure and the schemas through `verdict skill`.
 
 ## Refusals
 

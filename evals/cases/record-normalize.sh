@@ -63,12 +63,12 @@ STRICT_BUNDLE="$EVAL_SANDBOX/.verdict/state/local-strictfetch"
   git config user.email "record-normalize@example.com"
   git config user.name "record normalize"
   printf 'top\nold line\nbottom\n' > notes.txt
-  printf '# verdict skill (eval fixture)\n' > SKILL.md
+  printf '# verdict procedure (eval fixture)\n' > PROCEDURE.md
   mkdir -p prompts
   printf '# system (eval fixture)\n' > prompts/system.md
   printf '# review mode (eval fixture)\n' > prompts/review.md
   printf '# diagrams (eval fixture)\n' > prompts/diagrams.md
-  git add notes.txt SKILL.md prompts/system.md prompts/review.md prompts/diagrams.md
+  git add notes.txt PROCEDURE.md prompts/system.md prompts/review.md prompts/diagrams.md
   git commit -qm norm-base 2>/dev/null || true
   printf 'top\nnew line\nbottom\n' > notes.txt
 )

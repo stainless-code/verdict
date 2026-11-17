@@ -21,7 +21,7 @@ var infoWord = regexp.MustCompile(`^[A-Za-z0-9_+.-]*$`)
 // byte-identical; a move here is a deliberate prompt edit, never a side effect.
 func TestPromptsHashUnchanged(t *testing.T) {
 	t.Parallel()
-	const want = "57708e26c0828084fa5ffc651af76a5f7b6d8c5dc404408c1806f4046a635cc9"
+	const want = "3c57d8f39a074b67f54d2cdb6b7d15408334b5f0f410a36b79f3f2f473ec8516"
 	if got := PromptsHash(filepath.Join("..", "..")); got != want {
 		t.Fatalf("PromptsHash = %s, want %s", got, want)
 	}
@@ -44,7 +44,7 @@ func TestPromptBlocksBalanced(t *testing.T) {
 // promptLines reads one served prompt and splits it into lines.
 func promptLines(t *testing.T, name string) []string {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("..", "..", checkoutSkillDir, name))
+	raw, err := os.ReadFile(filepath.Join("..", "..", checkoutProcedureDir, name))
 	if err != nil {
 		t.Fatalf("read %s: %v", name, err)
 	}

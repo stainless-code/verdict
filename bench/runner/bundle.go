@@ -192,7 +192,7 @@ func repoState(ctx context.Context, root string) (string, bool) {
 	}
 	published := []string{
 		filepath.Join("bench", "corpus"),
-		filepath.Join(prefixPrompts, "SKILL.md"),
+		filepath.Join(prefixPrompts, "PROCEDURE.md"),
 		filepath.Join(prefixPrompts, "prompts"),
 	}
 	status, err := gitOut(ctx, root, append([]string{"status", "--porcelain", "--"}, published...)...)

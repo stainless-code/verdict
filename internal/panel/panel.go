@@ -99,7 +99,7 @@ func readPrompt(root string) ([]byte, error) {
 	if err == nil {
 		return raw, nil
 	}
-	raw, err = os.ReadFile(filepath.Join(root, "skills/verdict/prompts/verifier.md"))
+	raw, err = os.ReadFile(filepath.Join(root, "procedure/prompts/verifier.md"))
 	if err != nil {
 		return nil, &core.RefusalError{Code: codeFailed, Message: fmt.Sprintf("could not read verifier prompt under %s: %v", root, err)}
 	}

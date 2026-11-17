@@ -44,7 +44,7 @@ func usageText() string {
 		"    downstream verbs address it as local-<name>; post and live calibrate refuse it, while\n" +
 		"    calibrate --probe grades it offline.\n" +
 		"    --show-prompts (fetch and fetch-local) renders the assembled agent prompt —\n" +
-		"    SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md (verbatim) + trust-boundary\n" +
+		"    PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md (verbatim) + trust-boundary\n" +
 		"    prologue + nonce-fenced bundle meta + toc.txt + roles.txt + full.diff +\n" +
 		"    kb.txt/sensitive.txt/panel when present (one fence per file, in that order) —\n" +
 		"    to stdout (human; progress moves to stderr) or data.prompt_dump (--json).\n" +

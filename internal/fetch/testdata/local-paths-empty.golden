@@ -25,8 +25,8 @@ Use '--' to separate paths from revisions, like this:
 {
   "schema_version": "1",
   "policy": "base",
-  "base_sha": "e379897b82c6a9586a0c8f13b612a022eb952230",
-  "sha": "e379897b82c6a9586a0c8f13b612a022eb952230",
+  "base_sha": "a29319f2304ececb53f2a3a681dd77dee49adc6a",
+  "sha": "a29319f2304ececb53f2a3a681dd77dee49adc6a",
   "files": [
     {
       "path": ".verdict/ignore",

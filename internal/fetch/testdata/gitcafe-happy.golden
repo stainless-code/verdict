@@ -6,7 +6,7 @@ exit: 0
   "repo": "acme/app",
   "pr": 4707,
   "at": "0000-00-00T00:00:00Z",
-  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4707/PR.json + full.diff to any agent; ask it to write .verdict/state/4707/review.json; prior threads are in .verdict/state/4707/threads.json (run verdict threads to refresh)",
+  "next": "feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4707/PR.json + full.diff to any agent; ask it to write .verdict/state/4707/review.json; prior threads are in .verdict/state/4707/threads.json (run verdict threads to refresh)",
   "warnings": [],
   "data": {
     "dir": ".verdict/state/4707",
@@ -74,7 +74,7 @@ exit: 0
 » roles -> .verdict/state/4707/roles.txt (heuristic file roles for triage)
 » panel: none pinned (set REVIEW_PANEL or the typed defaults.panel for comparable, cost-capped runs)
 done: .verdict/state/4707/PR.json .verdict/state/4707/full.diff .verdict/state/4707/toc.txt .verdict/state/4707/roles.txt (1 files)
-next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4707/PR.json + .verdict/state/4707/full.diff (+ .verdict/state/4707/roles.txt) to any agent; ask it to write .verdict/state/4707/review.json; prior threads are in .verdict/state/4707/threads.json (run verdict threads to refresh)
+next: feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4707/PR.json + .verdict/state/4707/full.diff (+ .verdict/state/4707/roles.txt) to any agent; ask it to write .verdict/state/4707/review.json; prior threads are in .verdict/state/4707/threads.json (run verdict threads to refresh)
 --- files ---
 --- file C/.cafe-calls.log ---
 CALL: pr view 4707 -R acme/app --json
@@ -319,12 +319,12 @@ rather than becoming ground truth.
 --- file C/.verdict/state/4707/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "d239480a0331f63a9f075eea0d2d6b32f6d065c53f6d5bc8e7a5979b78f39830",
-  "prompts_hash": "57708e26c0828084fa5ffc651af76a5f7b6d8c5dc404408c1806f4046a635cc9",
+  "run_id": "c32235c7a85a1bec6cb82bd74a14d239563aeedad3b571a0d440f1ff79520ad8",
+  "prompts_hash": "3c57d8f39a074b67f54d2cdb6b7d15408334b5f0f410a36b79f3f2f473ec8516",
   "inputs": [
     {
       "kind": "prompt",
-      "name": "SKILL.md",
+      "name": "PROCEDURE.md",
       "status": "included",
       "sha256": "6e55c5ebee9a13a25b8e95e9249ec909d7e92b6bfbcf6e3a2fb7a5c6236be01c",
       "bytes": 13427

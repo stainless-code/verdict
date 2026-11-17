@@ -56,9 +56,10 @@ this flow touches the network.
     verdict skill status --dir <skills-dir> --json
     ```
 
-    Install atomically writes `SKILL.md`, `prompts/`, `schemas/`, and
-    `scripts/verdict` plus a `.verdict-managed` receipt (status `create`);
-    `status` reads `keep` once every target is in sync. Prefer
+    Install atomically writes the three Bootstrap skill files (`SKILL.md`,
+    `NOTICE.md`, `scripts/verdict`) plus a `.verdict-managed` receipt (status
+    `create`); `status` reads `keep` once every target is in sync. The binary
+    serves the Procedure and the schemas through `verdict skill`. Prefer
     `--agent claude --agent codex` to target agents, or `--detect` for every
     agent whose skills dir already exists and is non-empty. The skill is
     embedded in the binary, so the served copy can never skew.

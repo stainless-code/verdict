@@ -130,17 +130,16 @@ func buildBinary(repoRoot, dir string) error {
 // binary resolves the repo root from its own directory; planted copies let
 // the harness run from worktrees and MAIN alike).
 func copyProvenance(repoRoot, tmp string) error {
-	skill := filepath.Join(repoRoot, "skills", "verdict")
-	for _, f := range []string{"package.json", "SKILL.md"} {
-		src := filepath.Join(repoRoot, f)
-		if f == "SKILL.md" {
-			src = filepath.Join(skill, f) // the payload lives in skills/verdict
-		}
-		if err := copyFile(src, filepath.Join(tmp, f)); err != nil {
-			return jq.Sealed("provenance "+f, err)
-		}
+	procedure := filepath.Join(repoRoot, "procedure")
+	src := filepath.Join(repoRoot, "package.json")
+	if err := copyFile(src, filepath.Join(tmp, "package.json")); err != nil {
+		return jq.Sealed("provenance package.json", err)
 	}
-	if err := copyProvenanceDir(skill, tmp, "prompts"); err != nil {
+	src = filepath.Join(procedure, "PROCEDURE.md")
+	if err := copyFile(src, filepath.Join(tmp, "PROCEDURE.md")); err != nil {
+		return jq.Sealed("provenance PROCEDURE.md", err)
+	}
+	if err := copyProvenanceDir(procedure, tmp, "prompts"); err != nil {
 		return err
 	}
 	return copyProvenanceDir(repoRoot, tmp, "scripts")

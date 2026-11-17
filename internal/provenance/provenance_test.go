@@ -183,8 +183,8 @@ func TestToolVersionDegrade(t *testing.T) {
 	}
 }
 
-// TestPromptsHashLayouts proves the prompt-set hash reads a flat skill
-// directory and a checkout's skills/verdict alike, prefers the flat copy, and
+// TestPromptsHashLayouts proves the prompt-set hash reads a flat bundle
+// directory and a checkout's procedure/ alike, prefers the flat copy, and
 // hashes the empty set when neither exists. The expected digests are SHA-256
 // of the documented "== <path> ==\n<bytes>\n" text, written out literally.
 func TestPromptsHashLayouts(t *testing.T) {
@@ -198,24 +198,24 @@ func TestPromptsHashLayouts(t *testing.T) {
 		want  string
 	}{
 		{
-			name:  "flat skill dir",
-			files: map[string]string{"SKILL.md": "S", "prompts/review.md": "R"},
-			want:  sum("== SKILL.md ==\nS\n== prompts/review.md ==\nR\n"),
+			name:  "flat bundle dir",
+			files: map[string]string{"PROCEDURE.md": "P", "prompts/review.md": "R"},
+			want:  sum("== PROCEDURE.md ==\nP\n== prompts/review.md ==\nR\n"),
 		},
 		{
-			name:  "checkout skills/verdict",
-			files: map[string]string{"skills/verdict/SKILL.md": "S", "skills/verdict/prompts/review.md": "R"},
-			want:  sum("== SKILL.md ==\nS\n== prompts/review.md ==\nR\n"),
+			name:  "checkout procedure",
+			files: map[string]string{"procedure/PROCEDURE.md": "P", "procedure/prompts/review.md": "R"},
+			want:  sum("== PROCEDURE.md ==\nP\n== prompts/review.md ==\nR\n"),
 		},
 		{
 			name:  "flat file wins over the checkout copy",
-			files: map[string]string{"SKILL.md": "flat", "skills/verdict/SKILL.md": "nested"},
-			want:  sum("== SKILL.md ==\nflat\n"),
+			files: map[string]string{"PROCEDURE.md": "flat", "procedure/PROCEDURE.md": "nested"},
+			want:  sum("== PROCEDURE.md ==\nflat\n"),
 		},
 		{
 			name:  "a missing flat file falls back per file",
-			files: map[string]string{"SKILL.md": "flat", "skills/verdict/prompts/system.md": "Y"},
-			want:  sum("== SKILL.md ==\nflat\n== prompts/system.md ==\nY\n"),
+			files: map[string]string{"PROCEDURE.md": "flat", "procedure/prompts/system.md": "Y"},
+			want:  sum("== PROCEDURE.md ==\nflat\n== prompts/system.md ==\nY\n"),
 		},
 		{name: "no prompt files", files: map[string]string{"notes.txt": "x"}, want: sum("")},
 	}

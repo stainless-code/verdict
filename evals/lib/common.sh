@@ -9,6 +9,7 @@ set -euo pipefail
 : "${EVAL_STUBLOG:?run via evals/run.sh}"
 
 EVAL_SKILL="$EVAL_ROOT/skills/verdict"
+EVAL_PROCEDURE="$EVAL_ROOT/procedure"
 
 EVAL_OUT="$EVAL_SANDBOX/eval-out.bin"
 EVAL_ERR="$EVAL_SANDBOX/eval-err.txt"

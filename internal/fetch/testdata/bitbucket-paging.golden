@@ -6,7 +6,7 @@ exit: 0
   "repo": "acme/app",
   "pr": 4717,
   "at": "0000-00-00T00:00:00Z",
-  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4717/PR.json + full.diff to any agent; ask it to write .verdict/state/4717/review.json",
+  "next": "feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4717/PR.json + full.diff to any agent; ask it to write .verdict/state/4717/review.json",
   "warnings": [],
   "data": {
     "dir": ".verdict/state/4717",
@@ -75,7 +75,7 @@ exit: 0
 » roles -> .verdict/state/4717/roles.txt (heuristic file roles for triage)
 » panel: none pinned (set REVIEW_PANEL or the typed defaults.panel for comparable, cost-capped runs)
 done: .verdict/state/4717/PR.json .verdict/state/4717/full.diff .verdict/state/4717/toc.txt .verdict/state/4717/roles.txt (2 files)
-next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4717/PR.json + .verdict/state/4717/full.diff (+ .verdict/state/4717/roles.txt) to any agent; ask it to write .verdict/state/4717/review.json
+next: feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4717/PR.json + .verdict/state/4717/full.diff (+ .verdict/state/4717/roles.txt) to any agent; ask it to write .verdict/state/4717/review.json
 --- files ---
 --- file C/.curl-calls.log ---
 CALL: --config - -sf https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717
@@ -333,12 +333,12 @@ rather than becoming ground truth.
 --- file C/.verdict/state/4717/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "2ab4bd8d49a1d7bc14d8609a030bca10edb77393fb2ab2a5cf0cc0740d9d9801",
-  "prompts_hash": "57708e26c0828084fa5ffc651af76a5f7b6d8c5dc404408c1806f4046a635cc9",
+  "run_id": "6784a1d50ca34f7f6a5fae9faf17b919877a990cc6be139bdae21c02a71967f8",
+  "prompts_hash": "3c57d8f39a074b67f54d2cdb6b7d15408334b5f0f410a36b79f3f2f473ec8516",
   "inputs": [
     {
       "kind": "prompt",
-      "name": "SKILL.md",
+      "name": "PROCEDURE.md",
       "status": "included",
       "sha256": "6e55c5ebee9a13a25b8e95e9249ec909d7e92b6bfbcf6e3a2fb7a5c6236be01c",
       "bytes": 13427

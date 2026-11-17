@@ -24,7 +24,7 @@ into your repo as `.github/workflows/verdict-review.yml`.
    `cursor`, `opencode` — the shipped `run --agent` table) and the `--agent`
    argument that reads it. Install that CLI on the runner in an earlier step;
    the recipe never downloads it. The agent reads `full.diff` via `toc.txt`
-   (plus `PR.json`, `roles.txt`, `SKILL.md` + `prompts/`) and writes exactly
+   (plus `PR.json`, `roles.txt`, `PROCEDURE.md` + `prompts/`) and writes exactly
    one `.verdict/state/<pr>/review.json` (`schema_version: 1`, `body`,
    `approved`, `comments[]`, optional `resolved[]`/`triage[]`). The step fails
    unless that file is fresh: `run` refuses `no-review-artifact` when the agent

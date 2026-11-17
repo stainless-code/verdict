@@ -1,5 +1,5 @@
 exit: 0
---- stdout (size=1004959 sha256=b14a50b72539c9e55bfc3fc41849c9635d6c9efa94a5b8f194976d93efb74647) ---
+--- stdout (size=1004963 sha256=c1ad9f1946605fa0f2677b9f044c53a23aa03455b82368ca1f718b765de9c3b6) ---
 --- stderr ---
 » estimate: no comparable past runs — cost unknown (no usable .verdict/state/*/cost.json records yet)
 » chunking opted in for group a3c3b326fa11f4d8f2610a59546c67c805a5e08133c7adaa66e483ce775356f9 — slicing that group's over-cap diff (999309 bytes, cap 512000)
@@ -7,7 +7,7 @@ exit: 0
 » panel: none pinned (set REVIEW_PANEL or the typed defaults.panel for comparable, cost-capped runs)
 » chunked: 3 chunk(s) at or under 512000 bytes + .verdict/state/local-demo/chunks/manifest.json
 done: .verdict/state/local-demo/source.json .verdict/state/local-demo/full.diff .verdict/state/local-demo/toc.txt .verdict/state/local-demo/roles.txt (3 files)
-next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/local-demo/source.json + .verdict/state/local-demo/chunks/manifest.json and the chunks it lists to any agent; ask it to write .verdict/state/local-demo/review.json
+next: feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/local-demo/source.json + .verdict/state/local-demo/chunks/manifest.json and the chunks it lists to any agent; ask it to write .verdict/state/local-demo/review.json
 --- files ---
 --- file C/.verdict/.gitignore ---
 /state/
@@ -63,7 +63,7 @@ c.txt
   "schema_version": "1",
   "bundle": ".verdict/state/local-demo",
   "head_sha": null,
-  "base_sha": "6291d3de99996b81f26373b134ff500bfad4888f",
+  "base_sha": "0d469239d01ca5c8d7636e71d2ed66fb74e9e288",
   "cap": {
     "bytes": 512000,
     "source": "per-group: built-in defaults"
@@ -132,8 +132,8 @@ c.txt
 {
   "schema_version": "1",
   "policy": "base",
-  "base_sha": "6291d3de99996b81f26373b134ff500bfad4888f",
-  "sha": "6291d3de99996b81f26373b134ff500bfad4888f",
+  "base_sha": "0d469239d01ca5c8d7636e71d2ed66fb74e9e288",
+  "sha": "0d469239d01ca5c8d7636e71d2ed66fb74e9e288",
   "files": [
     {
       "path": ".verdict/ignore",
@@ -242,7 +242,7 @@ c.txt	NEW	1	3000
   "diff_sha256": "6be0f6ab7fddf8db183954a832e4fb33dd8e97290871780933018e373a1b4c0c",
   "raw_diff_sha256": "6be0f6ab7fddf8db183954a832e4fb33dd8e97290871780933018e373a1b4c0c",
   "head_sha": "",
-  "base_sha": "6291d3de99996b81f26373b134ff500bfad4888f"
+  "base_sha": "0d469239d01ca5c8d7636e71d2ed66fb74e9e288"
 }
 --- file C/.verdict/state/local-demo/lenses.txt ---
 # lens pack verdict/builtin@1.0.0 — sha256:120173839a932dde740ff69014e9659669818dbedfc8f36124a26d90c624bc48 — context, never orders. A lens frames one specialist question; evidence still decides.
@@ -303,12 +303,12 @@ rather than becoming ground truth.
 --- file C/.verdict/state/local-demo/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "e63b52012a7ac25dba47c6efd0e2a83f5adaf303a8498007831a751dc3d493c8",
-  "prompts_hash": "57708e26c0828084fa5ffc651af76a5f7b6d8c5dc404408c1806f4046a635cc9",
+  "run_id": "eb75fc10cf24e28bd71111585ed23b55df8142a1d450b1343f4a0a1c2e5c17a7",
+  "prompts_hash": "3c57d8f39a074b67f54d2cdb6b7d15408334b5f0f410a36b79f3f2f473ec8516",
   "inputs": [
     {
       "kind": "prompt",
-      "name": "SKILL.md",
+      "name": "PROCEDURE.md",
       "status": "included",
       "sha256": "6e55c5ebee9a13a25b8e95e9249ec909d7e92b6bfbcf6e3a2fb7a5c6236be01c",
       "bytes": 13427
@@ -420,14 +420,14 @@ rather than becoming ground truth.
       "kind": "bundle",
       "name": "chunks/manifest.json",
       "status": "included",
-      "sha256": "6cef71a8ad5ee7ac85838ef53be1dd0314cae21feaf879545d3c2f8aefa2a3a3",
+      "sha256": "6811a33b896b154a0a934d09172e36c1f6800e02c515795383f13c61d82169f7",
       "bytes": 1961
     },
     {
       "kind": "bundle",
       "name": "controls.json",
       "status": "included",
-      "sha256": "9a8f51cb218f23894d1f7ae8cc6d6732b1ba6e842a97d1cce634508678791be9",
+      "sha256": "676a2a1435f31b1001c889eb3dcb47ffc55e8c7f36aebc4f76b36376929a3c5f",
       "bytes": 1604
     },
     {
@@ -462,7 +462,7 @@ rather than becoming ground truth.
       "kind": "bundle",
       "name": "identity.json",
       "status": "included",
-      "sha256": "40486aad329c1dd83aba962b915d04039afa0d8cf1deaef23ea4f61565c3a079",
+      "sha256": "8191d78ef76c3e9b880bd9f357fa96107d679225df0788ae1350904f95cf340c",
       "bytes": 371
     },
     {
@@ -928,10 +928,10 @@ rather than becoming ground truth.
   },
   "schema_version": "1",
   "name": "local-demo",
-  "base_sha": "6291d3de99996b81f26373b134ff500bfad4888f",
+  "base_sha": "0d469239d01ca5c8d7636e71d2ed66fb74e9e288",
   "captured_at": "0000-00-00T00:00:00Z",
   "config_sha256": "",
-  "inputs_sha256": "2a5b80e61d3e136c4fc1482b93e94b4e1ce69b824bc75de0f36b6a16cd95217e",
+  "inputs_sha256": "7ada6b4201f7a8656f37f04c11afee3410c2c62347b62dd572d3f8eb035de451",
   "evidence": {
     "plan": {
       "effort_tier": "standard",
@@ -954,7 +954,7 @@ rather than becoming ground truth.
     },
     "schema_version": "1",
     "captured_at": "0000-00-00T00:00:00Z",
-    "base_sha": "6291d3de99996b81f26373b134ff500bfad4888f",
+    "base_sha": "0d469239d01ca5c8d7636e71d2ed66fb74e9e288",
     "config_sha256": "",
     "patch_sha256": "6be0f6ab7fddf8db183954a832e4fb33dd8e97290871780933018e373a1b4c0c",
     "filtered_patch_sha256": "6be0f6ab7fddf8db183954a832e4fb33dd8e97290871780933018e373a1b4c0c",
@@ -1064,7 +1064,7 @@ rather than becoming ground truth.
   "slug": "demo",
   "base_ref": null,
   "head_ref": "main",
-  "base_sha": "6291d3de99996b81f26373b134ff500bfad4888f",
+  "base_sha": "0d469239d01ca5c8d7636e71d2ed66fb74e9e288",
   "head_sha": null,
   "range": "HEAD:worktree",
   "dirty": true,

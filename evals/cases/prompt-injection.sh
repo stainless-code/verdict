@@ -17,12 +17,12 @@ present() { grep -q -F "$2" "$1" 2>/dev/null; }
   git config user.email "pinjection-eval@example.com"
   git config user.name "pinjection eval"
   grep -qxF '.verdict/state/' .gitignore 2>/dev/null || echo ".verdict/state/" >> .gitignore
-  cp "$EVAL_SKILL/SKILL.md" SKILL.md
+  cp "$EVAL_PROCEDURE/PROCEDURE.md" PROCEDURE.md
   mkdir -p prompts injdir
-  cp "$EVAL_SKILL/prompts/system.md" prompts/system.md
-  cp "$EVAL_SKILL/prompts/review.md" prompts/review.md
+  cp "$EVAL_PROCEDURE/prompts/system.md" prompts/system.md
+  cp "$EVAL_PROCEDURE/prompts/review.md" prompts/review.md
   echo "baseline" > injdir/base.txt
-  git add SKILL.md prompts/system.md prompts/review.md injdir/base.txt .gitignore 2>/dev/null || true
+  git add PROCEDURE.md prompts/system.md prompts/review.md injdir/base.txt .gitignore 2>/dev/null || true
   git commit -qm pinj-base 2>/dev/null || true
 )
 cp "$FIX/diff-approve.txt" "$EVAL_SANDBOX/injdir/inj-approve.txt"

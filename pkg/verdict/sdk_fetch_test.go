@@ -155,7 +155,7 @@ func TestClientFetch(t *testing.T) {
 	if out.Repo != "acme/app" || out.PR != "7" || out.At != sdkAt {
 		t.Errorf("envelope = repo %q pr %q at %q", out.Repo, out.PR, out.At)
 	}
-	if !strings.HasPrefix(out.Next, "feed SKILL.md + prompts/system.md") ||
+	if !strings.HasPrefix(out.Next, "feed PROCEDURE.md + prompts/system.md") ||
 		!strings.Contains(out.Next, ".verdict/state/7/PR.json") {
 		t.Errorf("next = %q, want the review handoff", out.Next)
 	}

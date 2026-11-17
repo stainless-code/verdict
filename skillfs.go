@@ -1,12 +1,14 @@
-// Package skillfs embeds the shipped skill payload from skills/verdict/ and
-// the published schemas from schemas/. Go embed cannot reach parent
-// directories, so this root package embeds both in place instead of generating
-// copies. The binary serves both under the paths an installed skill uses:
-// "prompts/review.md" and "schemas/review.schema.json".
+// Package skillfs embeds the Bootstrap skill from skills/verdict/, the
+// Procedure from procedure/, and the published schemas from schemas/. Go embed
+// cannot reach parent directories, so this root package embeds each tree in
+// place and serves them through one read-only multi-root fs. Inventory paths
+// keep their pre-split names: "prompts/review.md", "packs/…", "references/…",
+// and "schemas/review.schema.json".
 package skillfs
 
 import (
 	"embed"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -14,35 +16,51 @@ import (
 	"strings"
 )
 
-// SkillMD is the skill entry point, relative to the payload root.
+// SkillMD is the stub entry point, relative to the payload root.
 const SkillMD = "SKILL.md"
 
-// Dir is the checkout directory that holds the skill payload: the one
-// directory the skills CLI discovers and copies, so it carries nothing but
-// that payload.
+// ProcedureMD is the Procedure index, served as the default `verdict skill`
+// body. It lives in the embedded payload, not in the installed stub.
+const ProcedureMD = "PROCEDURE.md"
+
+// StubVersion is the stub contract version served by this binary. The
+// Bootstrap skill's frontmatter carries the same integer and `skill status`
+// compares the installed value against it.
+const StubVersion = "1"
+
+// Dir is the checkout directory the skills CLI discovers and copies, so it
+// carries only the three Bootstrap skill files.
 const Dir = "skills/verdict"
+
+// ProcedureDir is the checkout directory that holds the Procedure payload.
+// Its files are served at the same inventory paths the skill used before the
+// split, with PROCEDURE.md added.
+const ProcedureDir = "procedure"
 
 // SchemasDir is the checkout directory that holds the published schemas. It
 // is embedded separately but served under the same name in the payload.
 const SchemasDir = "schemas"
 
-// payload is the embedded skill directory: SKILL.md, NOTICE.md (the
-// upstream license the adapted prompts travel with), prompts/, packs/ (the
-// built-in lens pack), references/, and the POSIX shim that resolves the
-// binary from a skill copy. Patterns name files and subtrees, never the bare
-// directory, so a stray file beside them is not embedded (and
-// TestEmbedMatchesRepo fails on it).
+// stub is the installed Bootstrap skill: the shim, its notice, and the entry
+// point. Patterns name files explicitly, so a stray file beside them is not
+// embedded (and TestEmbedMatchesRepo fails on it).
 //
-//go:embed skills/verdict/SKILL.md skills/verdict/NOTICE.md skills/verdict/prompts
-//go:embed skills/verdict/packs skills/verdict/scripts/verdict skills/verdict/references
-var payload embed.FS
+//go:embed skills/verdict/SKILL.md skills/verdict/NOTICE.md skills/verdict/scripts/verdict
+var stub embed.FS
+
+// procedure is the task instruction payload: the Procedure index, prompts,
+// built-in lens pack, and references. All of it is served by the binary and
+// none of it is copied into an installed skill.
+//
+//go:embed procedure
+var procedure embed.FS
 
 // published is the repository's published schemas, served at "schemas/...".
 //
 //go:embed schemas
 var published embed.FS
 
-// FS serves the skill payload and the published schemas under one root.
+// FS serves the stub, the Procedure, and the published schemas under one root.
 var FS = newFS()
 
 const rootPath = "."
@@ -67,81 +85,90 @@ func wrapEmbedded(verb, name string, cause error) error {
 	return &embeddedError{verb: verb, name: name, cause: cause}
 }
 
-type embeddedFS struct {
-	skill   fs.FS
-	schemas fs.FS
+// multiFS resolves one inventory path against each root in order. A missing
+// file in one root is a normal miss; any other error is preserved.
+type multiFS struct {
+	roots []fs.FS
 }
 
 func newFS() fs.FS {
-	sub, err := fs.Sub(payload, Dir)
+	stubRoot, err := fs.Sub(stub, Dir)
 	if err != nil {
 		panic("skillfs: " + err.Error())
 	}
-	return embeddedFS{skill: sub, schemas: published}
+	procedureRoot, err := fs.Sub(procedure, ProcedureDir)
+	if err != nil {
+		panic("skillfs: " + err.Error())
+	}
+	return multiFS{roots: []fs.FS{stubRoot, procedureRoot, published}}
 }
 
-func (f embeddedFS) Open(name string) (fs.File, error) {
+func (m multiFS) Open(name string) (fs.File, error) {
 	if name == rootPath {
-		return openRoot(f)
+		return openRoot(m)
 	}
-	if name == SchemasDir || strings.HasPrefix(name, SchemasDir+"/") {
-		file, err := f.schemas.Open(name)
-		if err != nil {
+	for _, root := range m.roots {
+		file, err := root.Open(name)
+		if err == nil {
+			return file, nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
 			return nil, wrapEmbedded(verbOpen, name, err)
 		}
-		return file, nil
 	}
-	file, err := f.skill.Open(name)
-	if err != nil {
-		return nil, wrapEmbedded(verbOpen, name, err)
-	}
-	return file, nil
+	return nil, wrapEmbedded(verbOpen, name, fs.ErrNotExist)
 }
 
-func openRoot(f embeddedFS) (fs.File, error) {
-	skillRoot, err := f.skill.Open(rootPath)
-	if err != nil {
-		return nil, wrapEmbedded(verbOpen, Dir, err)
+// openRoot merges the roots' top-level entries into one sorted directory. The
+// first root supplies the directory metadata; every root supplies entries.
+func openRoot(m multiFS) (fs.File, error) {
+	var info fs.FileInfo
+	var entries []fs.DirEntry
+	for i, root := range m.roots {
+		dir, err := root.Open(rootPath)
+		if err != nil {
+			return nil, wrapEmbedded(verbOpen, rootName(i), err)
+		}
+		rootInfo, err := dir.Stat()
+		if err != nil {
+			_ = dir.Close()
+			return nil, wrapEmbedded(verbStat, rootName(i), err)
+		}
+		if i == 0 {
+			info = rootInfo
+		}
+		readDir, ok := dir.(fs.ReadDirFile)
+		if !ok {
+			_ = dir.Close()
+			return nil, wrapEmbedded(verbOpen, rootName(i)+" is not a directory", fs.ErrInvalid)
+		}
+		got, err := readDir.ReadDir(-1)
+		_ = dir.Close()
+		if err != nil && !errors.Is(err, io.EOF) {
+			return nil, wrapEmbedded(verbRead, rootName(i), err)
+		}
+		entries = append(entries, got...)
 	}
-	defer skillRoot.Close()
-	info, err := skillRoot.Stat()
-	if err != nil {
-		return nil, wrapEmbedded(verbStat, Dir, err)
-	}
-	skillDir, ok := skillRoot.(fs.ReadDirFile)
-	if !ok {
-		return nil, wrapEmbedded(verbOpen, Dir+" is not a directory", fs.ErrInvalid)
-	}
-	skillEntries, err := skillDir.ReadDir(-1)
-	if err != nil {
-		return nil, wrapEmbedded(verbRead, Dir, err)
-	}
-	schemaRoot, err := f.schemas.Open(rootPath)
-	if err != nil {
-		return nil, wrapEmbedded(verbOpen, SchemasDir, err)
-	}
-	defer schemaRoot.Close()
-	schemaDir, ok := schemaRoot.(fs.ReadDirFile)
-	if !ok {
-		return nil, wrapEmbedded(verbOpen, SchemasDir+" is not a directory", fs.ErrInvalid)
-	}
-	schemaEntries, err := schemaDir.ReadDir(-1)
-	if err != nil {
-		return nil, wrapEmbedded(verbRead, SchemasDir, err)
-	}
-	entries := make([]fs.DirEntry, 0, len(skillEntries)+len(schemaEntries))
-	entries = append(entries, skillEntries...)
-	entries = append(entries, schemaEntries...)
 	slices.SortFunc(entries, func(a, b fs.DirEntry) int {
 		return strings.Compare(a.Name(), b.Name())
 	})
 	return &rootDir{info: info, entries: entries}, nil
 }
 
+func rootName(i int) string {
+	switch i {
+	case 0:
+		return Dir
+	case 1:
+		return ProcedureDir
+	default:
+		return SchemasDir
+	}
+}
+
 type rootDir struct {
 	info    fs.FileInfo
 	entries []fs.DirEntry
-	read    bool
 }
 
 func (d *rootDir) Stat() (fs.FileInfo, error) { return d.info, nil }
@@ -151,16 +178,20 @@ func (d *rootDir) Read([]byte) (int, error) { return 0, io.EOF }
 func (d *rootDir) Close() error { return nil }
 
 func (d *rootDir) ReadDir(n int) ([]fs.DirEntry, error) {
-	if d.read {
+	if len(d.entries) == 0 {
+		if n <= 0 {
+			return nil, nil
+		}
 		return nil, io.EOF
 	}
-	if n > 0 && n < len(d.entries) {
-		out := d.entries[:n]
-		d.entries = d.entries[n:]
+	if n <= 0 || n >= len(d.entries) {
+		out := d.entries
+		d.entries = nil
 		return out, nil
 	}
-	d.read = true
-	return d.entries, nil
+	out := d.entries[:n]
+	d.entries = d.entries[n:]
+	return out, nil
 }
 
 const (
@@ -187,7 +218,7 @@ func Paths() ([]string, error) {
 	})
 	if err != nil {
 		//nolint:wrapcheck,errorlint // %v seals the boundary by design (GO-ERRORS-03)
-		return nil, fmt.Errorf("walk embedded skill: %v", err)
+		return nil, fmt.Errorf("walk embedded payload: %v", err)
 	}
 	slices.Sort(out)
 	return out, nil

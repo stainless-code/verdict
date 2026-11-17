@@ -19,7 +19,7 @@ verdict skill install --agent claude             # write it
 verdict skill status --dir <skills-dir>          # keep, or drift with an update list
 ```
 
-The install writes 28 files atomically — `SKILL.md`, ten review prompts, the JSON schemas, `scripts/verdict` — plus a `.verdict-managed` receipt, and refuses a directory it did not create unless you pass `--force`. It never prompts and makes no network call. Re-run it after upgrading the binary so the copy never skews from the CLI.
+The install writes three files atomically — `SKILL.md`, `NOTICE.md`, `scripts/verdict` — plus a `.verdict-managed` receipt, and refuses a directory it did not create unless you pass `--force`. It never prompts and makes no network call. The binary serves the Procedure and the schemas through `verdict skill`. Re-run the install after a breaking stub change.
 
 ## The MCP server meets the host where it is
 

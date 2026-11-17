@@ -29,6 +29,7 @@ First-party, no upstream text:
 
 - `prompts/rule-packs.md`
 
+- `PROCEDURE.md`
 - `SKILL.md`
 - `prompts/validate.md`
 - `prompts/verifier.md`

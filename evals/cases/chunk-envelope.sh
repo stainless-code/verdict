@@ -33,12 +33,12 @@ EOF
     awk -v f="$i" 'BEGIN{for(j=0;j<1500;j++) printf "base line %06d file%d padding padding padding padding\n", j, f}' > "cenv-f$i.txt"
   done
   printf 'tiny alpha\n' > cenv-small.txt
-  printf '# verdict skill (eval fixture)\n' > SKILL.md
+  printf '# verdict procedure (eval fixture)\n' > PROCEDURE.md
   mkdir -p prompts
   printf '# system (eval fixture)\n' > prompts/system.md
   printf '# review mode (eval fixture)\n' > prompts/review.md
   printf '# diagrams (eval fixture)\n' > prompts/diagrams.md
-  git add cenv-f1.txt cenv-f2.txt cenv-f3.txt cenv-f4.txt cenv-f5.txt cenv-f6.txt cenv-small.txt SKILL.md prompts/system.md prompts/review.md prompts/diagrams.md .gitignore
+  git add cenv-f1.txt cenv-f2.txt cenv-f3.txt cenv-f4.txt cenv-f5.txt cenv-f6.txt cenv-small.txt PROCEDURE.md prompts/system.md prompts/review.md prompts/diagrams.md .gitignore
   git commit -qm cenv-base 2>/dev/null || true
 )
 (
@@ -68,7 +68,7 @@ dump_expected_chunks() {
     [ -f "$1/PR.json" ] && meta="$1/PR.json"
     [ -f "$1/source.json" ] && meta="$1/source.json"
     : > "$out"
-    for f in SKILL.md prompts/system.md prompts/review.md prompts/diagrams.md; do
+    for f in PROCEDURE.md prompts/system.md prompts/review.md prompts/diagrams.md; do
       [ -f "$f" ] || continue
       cat -- "$f" >> "$out"
     done
@@ -132,7 +132,7 @@ dump_expected_full() {
     [ -f "$1/PR.json" ] && meta="$1/PR.json"
     [ -f "$1/source.json" ] && meta="$1/source.json"
     : > "$out"
-    for f in SKILL.md prompts/system.md prompts/review.md prompts/diagrams.md; do
+    for f in PROCEDURE.md prompts/system.md prompts/review.md prompts/diagrams.md; do
       [ -f "$f" ] || continue
       cat -- "$f" >> "$out"
     done

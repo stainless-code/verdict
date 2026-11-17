@@ -13,8 +13,8 @@ import (
 )
 
 var agentsPromptRule = regexp.MustCompile(
-	"Exactly ([a-z]+) skill files are hashed into goldens:\\*\\* " +
-		"`skills/verdict/SKILL\\.md` and `prompts/\\{([a-z,]+)\\}\\.md`")
+	"Exactly ([a-z]+) Procedure files are hashed into goldens:\\*\\* " +
+		"`procedure/PROCEDURE\\.md` and `procedure/prompts/\\{([a-z,]+)\\}\\.md`")
 
 var countWords = map[string]int{
 	"one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
@@ -26,9 +26,9 @@ func TestAgentsHashedPromptSetMatchesProvenance(t *testing.T) {
 	root := moduleRoot(t)
 	match := agentsPromptRule.FindStringSubmatch(flattenDoc(t, filepath.Join(root, "AGENTS.md")))
 	if match == nil {
-		t.Fatal("AGENTS.md no longer states the hashed skill files in the sentence this guard reads")
+		t.Fatal("AGENTS.md no longer states the hashed Procedure files in the sentence this guard reads")
 	}
-	documented := []string{"SKILL.md"}
+	documented := []string{"PROCEDURE.md"}
 	for name := range strings.SplitSeq(match[2], ",") {
 		documented = append(documented, "prompts/"+name+".md")
 	}

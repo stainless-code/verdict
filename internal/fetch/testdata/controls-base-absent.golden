@@ -6,7 +6,7 @@ exit: 0
   "repo": "acme/app",
   "pr": 4701,
   "at": "0000-00-00T00:00:00Z",
-  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4701/PR.json + full.diff to any agent; ask it to write .verdict/state/4701/review.json; prior threads are in .verdict/state/4701/threads.json (run verdict threads to refresh)",
+  "next": "feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4701/PR.json + full.diff to any agent; ask it to write .verdict/state/4701/review.json; prior threads are in .verdict/state/4701/threads.json (run verdict threads to refresh)",
   "warnings": [],
   "data": {
     "dir": ".verdict/state/4701",
@@ -73,7 +73,7 @@ exit: 0
 » panel (1 from .verdict/config.json)
 » reviews + inline comments
 done: .verdict/state/4701/PR.json .verdict/state/4701/full.diff .verdict/state/4701/toc.txt .verdict/state/4701/roles.txt (1 files)
-next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4701/PR.json + .verdict/state/4701/full.diff (+ .verdict/state/4701/roles.txt) to any agent; ask it to write .verdict/state/4701/review.json; prior threads are in .verdict/state/4701/threads.json (run verdict threads to refresh)
+next: feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4701/PR.json + .verdict/state/4701/full.diff (+ .verdict/state/4701/roles.txt) to any agent; ask it to write .verdict/state/4701/review.json; prior threads are in .verdict/state/4701/threads.json (run verdict threads to refresh)
 --- files ---
 --- file C/.gh-calls.log ---
 CALL: pr view 4701 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits,files,additions,deletions,isDraft,reviewDecision,state
@@ -345,15 +345,15 @@ api-base-panel
 --- file C/.verdict/state/4701/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "dfa3b141ee2ca4c6163c4b03f00cea0e03aeb0c25e960a99d1bf45ae63a6aa14",
-  "prompts_hash": "57708e26c0828084fa5ffc651af76a5f7b6d8c5dc404408c1806f4046a635cc9",
+  "run_id": "646afc7f9a82cb69b98192c316806fa253d4cd9d93e10f83e16f73312ee2e75b",
+  "prompts_hash": "3c57d8f39a074b67f54d2cdb6b7d15408334b5f0f410a36b79f3f2f473ec8516",
   "panel": [
     "api-base-panel"
   ],
   "inputs": [
     {
       "kind": "prompt",
-      "name": "SKILL.md",
+      "name": "PROCEDURE.md",
       "status": "included",
       "sha256": "6e55c5ebee9a13a25b8e95e9249ec909d7e92b6bfbcf6e3a2fb7a5c6236be01c",
       "bytes": 13427

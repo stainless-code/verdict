@@ -1090,7 +1090,7 @@ Fix: re-fetch a bundle with file sections (or drop the exclusions), then re-run.
 
 Cause: the prompt dump needs the skill and prompts sources.
 
-Fix: run from a checkout carrying `SKILL.md`/`prompts`, then re-run.
+Fix: run from a checkout carrying `PROCEDURE.md`/`prompts`, then re-run.
 
 ## `provider-unimplemented`
 

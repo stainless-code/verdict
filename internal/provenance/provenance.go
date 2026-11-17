@@ -21,13 +21,13 @@ import (
 )
 
 var promptFiles = []string{
-	"SKILL.md", "prompts/diagrams.md", "prompts/review.md",
+	"PROCEDURE.md", "prompts/diagrams.md", "prompts/review.md",
 	"prompts/system.md", "prompts/validate.md", "prompts/verifier.md",
 }
 
-// checkoutSkillDir is where a source checkout keeps the skill payload (the
-// directory `npx skills add` installs); skillfs.Dir names the same path.
-const checkoutSkillDir = "skills/verdict"
+// checkoutProcedureDir is where a source checkout keeps the Procedure payload;
+// skillfs.ProcedureDir names the same path.
+const checkoutProcedureDir = "procedure"
 
 // buildVersion is the release version injected at link time (GoReleaser
 // -X main.version); empty for source builds, which read package.json.
@@ -90,7 +90,7 @@ func readPromptFile(root, name string) ([]byte, error) {
 	if err == nil {
 		return raw, nil
 	}
-	if alt, altErr := os.ReadFile(filepath.Join(root, filepath.FromSlash(checkoutSkillDir), name)); altErr == nil {
+	if alt, altErr := os.ReadFile(filepath.Join(root, filepath.FromSlash(checkoutProcedureDir), name)); altErr == nil {
 		return alt, nil
 	}
 	return nil, err //nolint:wrapcheck // the caller only tests for failure
