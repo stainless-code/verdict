@@ -32,7 +32,7 @@ if [ -f "$PKG/skills/verdict/SKILL.md" ] && [ -f "$PKG/skills/verdict/NOTICE.md"
   && [ -f "$PKG/skills/verdict/scripts/verdict" ] && [ -f "$PKG/scripts/verdict-complete.sh" ] \
   && [ ! -e "$PKG/skills/verdict/prompts" ] && [ ! -e "$PKG/procedure" ] \
   && [ ! -e "$PKG/scripts/review.sh" ]; then
-  good "registry copy carries only the Bootstrap stub (no Procedure, no review.sh)"
+  good "registry copy carries only the Bootstrap skill (no Procedure, no review.sh)"
 else
   bad "unpacked registry copy is not stub-only"
 fi

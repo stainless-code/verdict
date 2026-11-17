@@ -1,28 +1,19 @@
-# Glossary
+# Verdict
 
-## Bootstrap stub
+Verdict is a local, agent-driven pull-request review toolkit: it hands a review agent the change, validates what the agent returns, and keeps an auditable trail.
 
-The installed `verdict/` skill: `SKILL.md`, `NOTICE.md`, and `scripts/verdict`.
-It names when to use Verdict and how to reach the binary. It carries no
-Procedure, prompts, packs, references, or schemas, so a skill install writes
-three files and a receipt. `stub_version` in `SKILL.md` frontmatter pins the
-stub contract; `verdict skill status` compares that value with the running
-binary, not the file's other bytes.
+## Guidance
 
-## Procedure
+**Procedure**:
+The review instructions Verdict gives an agent: what to read, how to judge, how to tag severity and rigor, and how to self-check before recording. Only the Verdict binary serves it, from its own embedded copy, so it always matches the binary in use.
+_Avoid_: skill content, prompts, instructions
 
-The review instructions served by the binary: `procedure/PROCEDURE.md` and
-everything under `procedure/` (prompts, lens packs, and references), plus the
-published `schemas/`. `verdict skill` prints the Procedure index,
-`verdict skill files` lists the served paths, and `verdict skill show <path>`
-prints one of them byte-identically. The checkout and the npm tarball do not
-ship the Procedure; the Go binary embeds it at build time, so the instructions
-are the same version as the checker.
+**Bootstrap skill**:
+The small skill file installed into an agent harness. It names when to use Verdict and how to reach the Procedure through the binary, and carries no Procedure itself.
+_Avoid_: skill copy, installed skill (when it means the Procedure)
 
-## Shim resolution
+## Review
 
-`scripts/verdict` resolves the binary in a fixed order: `VERDICT_BIN`, the
-enclosing checkout's `./node_modules/.bin/verdict`, the skill's own
-`bin/verdict`, then `verdict` on `PATH`. A miss is a typed `missing-go-binary`
-refusal naming `scripts/verdict bootstrap`; bootstrap is explicit and no review
-path downloads a binary.
+**Bundle**:
+Everything a single review reads, written under `.verdict/state/<target>/`: the change, its metadata, the handed context, the controls, and the Procedure for that review.
+_Avoid_: workspace, state dir, snapshot

@@ -2782,7 +2782,7 @@ platform package. A plain `verdict` call consults neither variable.
   `--detect`/`--all`, doctor-gated). Updates via `git pull`;
   `install-skill.sh` refuses outside a git checkout. `hooks/pre-commit`
   wiring applies to the checkout only.
-- **Embedded skill** (`verdict skill`): the binary carries the Bootstrap stub
+- **Embedded skill** (`verdict skill`): the binary carries the Bootstrap skill
   from `skills/verdict/` and the Procedure from `procedure/` (prompts, packs,
   references, and `PROCEDURE.md`) plus `schemas/` from the repository root, so
   every served file matches the binary that grades the review. The skills CLI
