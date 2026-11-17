@@ -63,6 +63,15 @@ assert_file_grep "the receipt records the failing predicate" "$PR/run.json" '"re
 assert_file_grep "the receipt records run false" "$PR/run.json" '"run": false'
 
 mark="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
+run_review ready acme/app 42 --filter --check --json
+if [ "$EVAL_STATUS" -eq 1 ] && [ "$(jq -r '.error.code' "$EVAL_OUT")" = "filtered-out" ]; then
+  good "--check keeps the typed miss at exit 1"
+else
+  bad "--check recoded the miss: exit $EVAL_STATUS $(head -c 200 "$EVAL_OUT")"
+fi
+assert_eq "the --check leg still pays zero host calls" 0 "$(( $(wc -l <"$EVAL_STUBLOG" | tr -d ' ') - mark ))"
+
+mark="$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')"
 run_review ready acme/app 42 --json
 assert_exit "without --filter the same PR is unchanged" 0
 if [ "$(wc -l <"$EVAL_STUBLOG" | tr -d ' ')" -gt "$mark" ]; then

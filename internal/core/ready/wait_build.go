@@ -10,6 +10,14 @@ import (
 
 // Run executes readiness, optionally waiting for CI under one hard deadline.
 func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
+	if err := ctx.Err(); err != nil {
+		return nil, &core.RefusalError{Code: codeCanceled, Message: "canceled before ready completed"}
+	}
+	// The gate precedes the wait: a filtered-out PR must never spend a live
+	// poll, and a wait that times out must not skip the decision receipt.
+	if ref := filterGate(req); ref != nil {
+		return nil, ref
+	}
 	if req.WaitFor == "" && req.Timeout == "" {
 		return runNow(ctx, req)
 	}
@@ -95,7 +103,7 @@ func readyWaitBundle(req *Request) *core.RefusalError {
 		return &core.RefusalError{Code: codeNoPRTarget, Message: "ready build waits require a PR bundle"}
 	}
 	if !isRegular(dir + "/PR.json") {
-		return &core.RefusalError{Code: "missing-bundle", Message: "ready build waits require a fetched PR bundle"}
+		return &core.RefusalError{Code: codeMissingBundle, Message: "ready build waits require a fetched PR bundle"}
 	}
 	return nil
 }

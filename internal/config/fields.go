@@ -1,6 +1,8 @@
 package config
 
 import (
+	"strings"
+
 	"github.com/stainless-code/verdict/internal/core"
 )
 
@@ -238,6 +240,15 @@ func checkProfileUnknown(raw any, path string) *core.RefusalError {
 	return checkKeys(path, prof, profileFields)
 }
 
+const unknownFieldSuffix = ": unknown field"
+
+// IsUnknownField reports whether ref is the strict parser's unknown-key
+// refusal. The trigger gate keeps that code verbatim and wraps every other
+// parse failure as a trigger failure.
+func IsUnknownField(ref *core.RefusalError) bool {
+	return ref != nil && ref.Code == CodeBadConfig && strings.HasSuffix(ref.Message, unknownFieldSuffix)
+}
+
 // checkKeys refuses the first key outside the allowed set, naming its path.
 func checkKeys(path string, obj map[string]any, allowed []string) *core.RefusalError {
 	keep := make(map[string]bool, len(allowed))
@@ -246,7 +257,7 @@ func checkKeys(path string, obj map[string]any, allowed []string) *core.RefusalE
 	}
 	for _, key := range sortedObjectKeys(obj) {
 		if !keep[key] {
-			return refuse(CodeBadConfig, "%s.%s: unknown field", path, key)
+			return refuse(CodeBadConfig, "%s.%s%s", path, key, unknownFieldSuffix)
 		}
 	}
 	return nil

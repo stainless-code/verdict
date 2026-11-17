@@ -236,7 +236,7 @@ func usageText() string {
 		"    exit 1 with wait-timeout or condition-unmet data; no local writes.\n" +
 		"\n" +
 		"  ready <owner/repo> <pr> [--json] [--check] [--filter] [--wait-for build --timeout D]\n" +
-		"    advisory only (exit 0, never a gate): CI state, open threads, draft/conflict,\n" +
+		"    advisory by default (exit 0): CI state, open threads, draft/conflict,\n" +
 		"    description completeness. Prints blockers with actions + recommendation\n" +
 		"    (review/wait/nudge-author). GitHub and GitLab PR bundles; local bundles refuse\n" +
 		"    (no-pr-target) and other providers refuse typed (provider-unimplemented).\n" +

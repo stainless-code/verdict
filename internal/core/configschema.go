@@ -18,7 +18,7 @@ type Config struct { //nolint:govet // field order is the published property ord
 	SchemaVersion   string                   `const:"1"                         json:"schema_version"`
 	Defaults        *ConfigDefaults          `json:"defaults,omitempty"         nonnull:"true"`
 	Requirements    *ConfigRequirements      `json:"requirements,omitempty"     nonnull:"true"`
-	Trigger         *ConfigTrigger           `json:"trigger,omitempty"           nonnull:"true"`
+	Trigger         *ConfigTrigger           `json:"trigger,omitempty"          nonnull:"true"`
 	Scopes          []ConfigScope            `json:"scopes,omitempty"`
 	Profiles        map[string]ConfigProfile `json:"profiles,omitempty"`
 	DefaultProfile  string                   `json:"default_profile,omitempty"  nonnull:"true"`
@@ -81,13 +81,13 @@ type ConfigRequirements struct { //nolint:govet // field order is the published 
 // within a predicate and AND across predicates; an absent section runs every
 // PR. All values come from the trusted base configuration, never the PR head.
 type ConfigTrigger struct {
-	Authors      []string `json:"authors,omitempty"       minItems:"1" nonnull:"true"`
-	PathsInclude []string `json:"paths_include,omitempty" minItems:"1" nonnull:"true"`
-	PathsExclude []string `json:"paths_exclude,omitempty" minItems:"1" nonnull:"true"`
-	Labels       []string `json:"labels,omitempty"        minItems:"1" nonnull:"true"`
-	TitleMatches string   `json:"title_matches,omitempty"              nonnull:"true"`
-	BaseBranches []string `json:"base_branches,omitempty" minItems:"1" nonnull:"true"`
-	Draft        *bool    `json:"draft,omitempty"                      nonnull:"true"`
+	Draft        *bool    `json:"draft,omitempty"         nonnull:"true"`
+	TitleMatches string   `json:"title_matches,omitempty" nonnull:"true"`
+	Authors      []string `json:"authors,omitempty"       minItems:"1"   nonnull:"true"`
+	PathsInclude []string `json:"paths_include,omitempty" minItems:"1"   nonnull:"true"`
+	PathsExclude []string `json:"paths_exclude,omitempty" minItems:"1"   nonnull:"true"`
+	Labels       []string `json:"labels,omitempty"        minItems:"1"   nonnull:"true"`
+	BaseBranches []string `json:"base_branches,omitempty" minItems:"1"   nonnull:"true"`
 }
 
 // BlockClause is one per-source, per-path blocking predicate: an open

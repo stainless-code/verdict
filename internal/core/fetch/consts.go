@@ -29,6 +29,7 @@ const (
 	keyKind        = "kind"
 	keyLabels      = "labels"
 	keyLogin       = "login"
+	keyName        = "name"
 	keyNumber      = "number"
 	keyPath        = "path"
 	keyPR          = "pr"

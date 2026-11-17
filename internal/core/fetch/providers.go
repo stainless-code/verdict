@@ -1936,17 +1936,22 @@ func buildPR(spec *prSpec) *jq.Obj {
 func prLabels(raw any) []any {
 	var out []any
 	for _, entry := range jq.Elements(raw) {
-		if name, ok := entry.(string); ok && name != "" {
+		if name, ok := hostLabel(entry); ok {
 			out = append(out, name)
-			continue
-		}
-		if m, ok := jq.AsMap(entry); ok {
-			if name := normStr(m, "name"); name != "" {
-				out = append(out, name)
-			}
 		}
 	}
 	return out
+}
+
+func hostLabel(entry any) (string, bool) {
+	if name, ok := entry.(string); ok {
+		return name, name != ""
+	}
+	if m, ok := jq.AsMap(entry); ok {
+		name := normStr(m, keyName)
+		return name, name != ""
+	}
+	return "", false
 }
 
 func prFileRow(path string, status, additions, deletions any) *jq.Obj {
@@ -2011,7 +2016,7 @@ func normalizeGitLab(metaRaw, changesRaw string, ns map[string]map[string]int64)
 		Title: normStr(meta, keyTitle), Body: normStr(meta, keyDescription),
 		BaseRef: normStr(meta, "target_branch"), HeadRef: normStr(meta, "source_branch"),
 		BaseSHA: normStr(diffRefs, keyBaseSHA, "start_sha"), HeadSHA: headSHA,
-		Author: normStr(nestedMap(meta, keyAuthor), "username", "name"),
+		Author: normStr(nestedMap(meta, keyAuthor), "username", keyName),
 		Labels: prLabels(meta[keyLabels]), URL: normStr(meta, "web_url"),
 		State: providerState(providerGitLab, normStr(meta, keyState)), Draft: meta[keyDraft],
 		Files: gitlabFileRows(changesRaw, ns),
@@ -2215,7 +2220,7 @@ func normalizeBitbucket(metaRaw string, ds []any) (*jq.Obj, error) {
 	return buildPR(&prSpec{
 		Provider: providerBitbucket, Number: meta[keyID],
 		Title: normStr(meta, keyTitle), Body: body,
-		BaseRef: normStr(nestedMap(dest, modeBranch), "name"), HeadRef: normStr(nestedMap(src, modeBranch), "name"),
+		BaseRef: normStr(nestedMap(dest, modeBranch), keyName), HeadRef: normStr(nestedMap(src, modeBranch), keyName),
 		BaseSHA: normStr(nestedMap(dest, "commit"), "hash"), HeadSHA: normStr(nestedMap(src, "commit"), "hash"),
 		// The key chain stops at the first string (even ""), so nickname is
 		// authoritative and display_name never wins.

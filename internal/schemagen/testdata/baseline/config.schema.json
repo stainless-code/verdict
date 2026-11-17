@@ -120,6 +120,8 @@
       "description": "One trigger predicate set: authors, changed-path globs, labels, a title regular expression, base branches, and draft state. title_matches compiles when the configuration is parsed.",
       "type": "object",
       "properties": {
+        "draft": { "type": "boolean" },
+        "title_matches": { "type": "string" },
         "authors": {
           "type": "array",
           "items": { "type": "string" },
@@ -140,13 +142,11 @@
           "items": { "type": "string" },
           "minItems": 1
         },
-        "title_matches": { "type": "string" },
         "base_branches": {
           "type": "array",
           "items": { "type": "string" },
           "minItems": 1
-        },
-        "draft": { "type": "boolean" }
+        }
       },
       "required": [],
       "additionalProperties": false

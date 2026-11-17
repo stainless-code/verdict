@@ -243,14 +243,9 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 	}
 	if !isRegular(dir + "/PR.json") {
 		return st.withWarnings(&core.RefusalError{
-			Code:    "missing-bundle",
+			Code:    codeMissingBundle,
 			Message: "missing " + dir + "/PR.json (run fetch " + st.repo + " " + st.pr + " first)",
 		})
-	}
-	if st.req.Filter {
-		if ref := st.filterTrigger(dir); ref != nil {
-			return ref
-		}
 	}
 	if ref := host.live(ctx, st, dir); ref != nil {
 		return ref

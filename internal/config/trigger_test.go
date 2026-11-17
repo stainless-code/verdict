@@ -44,6 +44,7 @@ func TestParseTriggerRefusals(t *testing.T) {
 		{"unknown key", `{"schema_version":"1","trigger":{"bogus":1}}`, "$.trigger.bogus: unknown field"},
 		{"bad regexp", `{"schema_version":"1","trigger":{"title_matches":"("}}`, "$.trigger.title_matches"},
 		{"absolute glob", `{"schema_version":"1","trigger":{"paths_include":["/etc/**"]}}`, "absolute"},
+		{"absolute base glob", `{"schema_version":"1","trigger":{"base_branches":["/main"]}}`, "absolute"},
 		{"wrong draft type", `{"schema_version":"1","trigger":{"draft":"yes"}}`, "$.trigger.draft"},
 		{"empty authors", `{"schema_version":"1","trigger":{"authors":[]}}`, "$.trigger.authors"},
 		{"null trigger", `{"schema_version":"1","trigger":null}`, "$.trigger"},
