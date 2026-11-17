@@ -27,3 +27,8 @@ __pycache__/
 skills/verdict/bin
 skills/verdict/.verdict-managed
 .scratch/
+
+# This repo commits its review controls; generated state stays ignored.
+!.verdict/config.json
+!.verdict/kb.jsonl
+!.verdict/recipes.json
