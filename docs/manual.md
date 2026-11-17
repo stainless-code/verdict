@@ -2180,8 +2180,10 @@ auto-commits by default. An operator can still define it below.
 #### Operator-defined agents
 
 Names can also come from your own settings file,
-`${XDG_CONFIG_HOME:-$HOME/.config}/verdict/settings.json`, under a ninth
-top-level key `agents`:
+`${XDG_CONFIG_HOME:-$HOME/.config}/verdict/settings.json`, under `agents`.
+The file accepts ten top-level keys in total (including `$schema`): `$schema`,
+`output`, `layout`, `color`, `publish`, `review`, `spend`, `privacy`, `packs`,
+and `agents`:
 
 ```json
 {
@@ -2561,9 +2563,9 @@ respected, `$schema` key carries a schema hint that is never fetched).
 The file carries the four presentation namespaces below plus the typed personal
 layer (`review`, `spend`, `privacy`) described under "Typed repository
 configuration" above, operator-defined agents under `agents`, and the org pack
-list under `packs`, so it accepts ten top-level keys in total: `$schema`,
-`output`, `layout`, `color`, `publish`, `review`, `spend`, `privacy`, `packs`,
-`agents`. Anything else —
+list under `packs`, so it accepts ten top-level keys in total (including
+`$schema`): `$schema`, `output`, `layout`, `color`, `publish`, `review`,
+`spend`, `privacy`, `packs`, `agents`. Anything else —
 server-shaped or `org.*` keys included — refuses typed `bad-settings`. The
 presentation sample:
 

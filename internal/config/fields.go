@@ -37,10 +37,7 @@ var (
 	// typed personal sections plus the CLI prefs keys the prefs layer
 	// owns (output, layout, color, publish), which parse but never feed
 	// the resolver.
-	personalTopFields = []string{
-		"$schema", personalSectionReview, personalSectionSpend, personalSectionPrivacy,
-		"packs", personalSectionAgents, "output", "layout", "color", "publish",
-	}
+	personalTopFields     = core.SettingsTopKeys()
 	personalSpendFields   = []string{"budget_usd", "require_known_estimate", "enforce_cap"}
 	personalPrivacyFields = []string{"exclusions"}
 	personalAgentFields   = []string{"binary", "args", "prompt_flag", "model_flag", "install"}

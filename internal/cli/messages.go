@@ -3,8 +3,8 @@ package cli
 const (
 	msgCredKey = "settings file %s names a credential key " +
 		"(token/key/auth/secret/password/pat/credential/bearer) — credentials never live in the settings file (export them as env instead)"
-	msgTopKey = "settings file %s carries unknown top-level key '%s' (want only " +
-		"$schema, output, layout, color, publish; no server-shaped or org.* namespaces)"
+	msgTopKey = "settings file %s carries unknown top-level key '%s' (want only %s; " +
+		"no server-shaped or org.* namespaces)"
 	msgSchemaType   = "settings file %s: $schema must be a string (schema hint only, never fetched)"
 	msgOutputObj    = "settings file %s: output must be an object (want {\"format\": \"text\"|\"json\"})"
 	msgOutputKey    = "settings file %s: unknown output key '%s' (want only format)"
@@ -35,6 +35,5 @@ const (
 
 const (
 	msgNotJSON   = "settings file %s is not valid JSON (fix it or delete it)"
-	msgNotObject = "settings file %s must hold a JSON object " +
-		"(want only $schema, output, layout, color, publish)"
+	msgNotObject = "settings file %s must hold a JSON object (want only %s)"
 )

@@ -3,8 +3,11 @@ package cli
 import (
 	"fmt"
 	"regexp"
+	"slices"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -46,7 +49,8 @@ func ResolvePrefs(r *Runner, env map[string]string, readFile func(string) ([]byt
 	}
 	obj, ok := jq.AsMap(doc)
 	if !ok {
-		return nil, &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgNotObject, path)}
+		return nil, &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgNotObject, path,
+			strings.Join(core.SettingsTopKeys(), ", "))}
 	}
 	return resolveSettingsFile(r, path, obj, doc, &eff)
 }
@@ -127,11 +131,11 @@ func resolveSettingsFile(r *Runner, path string, obj map[string]any, doc any, ef
 }
 
 func checkTopKeys(path string, obj map[string]any) error {
+	accepted := core.SettingsTopKeys()
 	for _, k := range SortedKeys(obj) {
-		switch k {
-		case "$schema", "output", "layout", "color", "publish", "review", "spend", "privacy", "packs", "agents":
-		default:
-			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgTopKey, path, k)}
+		if !slices.Contains(accepted, k) {
+			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgTopKey, path, k,
+				strings.Join(accepted, ", "))}
 		}
 	}
 	return nil

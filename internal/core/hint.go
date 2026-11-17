@@ -156,8 +156,8 @@ var hintRules = []HintRule{
 	{codes: []string{"needs-confirm"}, hint: "try: re-run with --yes after reviewing the preview, then re-run"},
 	{codes: []string{"bad-settings-credentials"}, hint: "try: remove the credential key from the settings file " +
 		"(credentials never live there), then re-run"},
-	{codes: []string{"bad-settings"}, hint: "try: keep only output/layout/color/publish/review/spend/privacy keys " +
-		"(see docs/manual.md), then re-run"},
+	{codes: []string{"bad-settings"}, hint: "try: keep only " +
+		strings.Join(SettingsTopKeys(), "/") + " keys (see docs/manual.md), then re-run"},
 	{codes: []string{"controls-unavailable"}, hint: "try: check out the PR base (actions/checkout fetch-depth: 0, " +
 		"or git fetch --depth=1 origin <base>), then re-fetch; fetch --allow-head-controls is the explicit opt-out"},
 	{codes: []string{"controls-stale"}, hint: "try: re-fetch the bundle (controls changed under it), then re-run"},
