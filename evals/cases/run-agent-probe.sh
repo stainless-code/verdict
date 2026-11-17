@@ -28,6 +28,9 @@ if [ "${1:-}" != "ask" ]; then
 fi
 if [ "${2:-}" = "--help" ]; then
   echo "fx ask: runs one noninteractive request and exits"
+  echo "  --model <model>       choose the model"
+  echo "  --effort <level>      set the reasoning effort"
+  echo "  --fast, --ultrafast   request a faster answer"
   exit 0
 fi
 directive="${!#}"
@@ -89,6 +92,8 @@ rm -f "$DIR/review.json" "$DIR/launcher.json"
 run_review run acme/app "$LOCAL" --agent fx --json -- --model M
 assert_exit "a clashing binary refuses" 1
 assert_refusal "clash" "agent-mismatch"
+assert_json_field "the refusal names the documented flag" "true" \
+  '.error.message | contains("--ultrafast")'
 assert_json_field "the refusal names the resolved path" "true" \
   '.error.message | contains("probe")'
 assert_json_field "the refusal hint names settings.json" "true" \
