@@ -78,7 +78,10 @@ const spendPath = "$.spend"
 const packsPath = "$.packs"
 
 // agentsPath addresses the operator-defined run agents: prefs only.
-const agentsPath = "$.agents"
+const (
+	agentsPath = "$.agents"
+	pathDot    = "."
+)
 
 // Shared diagnostics for the closed agents shape.
 const (
@@ -163,8 +166,9 @@ func checkAgentKeys(raw any) *core.RefusalError {
 	if !ok {
 		return agentRefuse(agentsPath, wantObjectMsg, jsonKind(raw))
 	}
-	for name, value := range obj {
-		path := agentsPath + "." + name
+	for _, name := range sortedObjectKeys(obj) {
+		value := obj[name]
+		path := agentsPath + pathDot + name
 		entry, ok := value.(map[string]any)
 		if !ok {
 			return agentRefuse(path, wantObjectMsg, jsonKind(value))
@@ -342,7 +346,7 @@ func buildPersonalAgents(raw any) ([]PersonalAgent, *core.RefusalError) {
 
 // buildAgentRow validates one named row and fills its defaults.
 func buildAgentRow(name string, raw any, builtins []string) (PersonalAgent, *core.RefusalError) {
-	path := agentsPath + "." + name
+	path := agentsPath + pathDot + name
 	if !agentNamePattern.MatchString(name) {
 		return PersonalAgent{}, agentRefuse(path, "want a name matching [a-z0-9][a-z0-9-]*")
 	}
@@ -513,14 +517,53 @@ func ValidatePersonalSections(doc map[string]any) *core.RefusalError {
 	return ref
 }
 
-// credentialScanPersonal runs the credential scan over a personal
-// document with no exemptions: settings carry no user-defined map keys.
+// credentialScanPersonal runs the credential scan over a personal document.
+// Agent names are user-defined keys: their direct keys are exempt, but each
+// definition still scans as a fixed-shape object.
 func credentialScanPersonal(root map[string]any) *core.RefusalError {
 	creds := make(map[string]bool, len(CredentialKeys))
 	for _, k := range CredentialKeys {
 		creds[k] = true
 	}
-	return scanCredentialObject(root, "$", creds, false)
+	for _, key := range sortedObjectKeys(root) {
+		if ref := scanPersonalCredentialKey(key, root[key], creds); ref != nil {
+			return ref
+		}
+	}
+	return nil
+}
+
+func scanPersonalCredentialKey(key string, value any, creds map[string]bool) *core.RefusalError {
+	path := "$" + pathDot + key
+	if creds[key] {
+		return refuse(CodeBadCredentials, "%s: credential key %q is never stored in configuration", path, key)
+	}
+	if key == personalSectionAgents {
+		return scanAgentCredentialDefinitions(value, path, creds)
+	}
+	return scanCredentialValue(value, path, creds, false)
+}
+
+func scanAgentCredentialDefinitions(raw any, path string, creds map[string]bool) *core.RefusalError {
+	defs, ok := raw.(map[string]any)
+	if !ok {
+		return scanCredentialValue(raw, path, creds, false)
+	}
+	for _, name := range sortedObjectKeys(defs) {
+		if ref := scanAgentDefinitionCredentials(name, defs[name], path, creds); ref != nil {
+			return ref
+		}
+	}
+	return nil
+}
+
+func scanAgentDefinitionCredentials(name string, raw any, path string, creds map[string]bool) *core.RefusalError {
+	childPath := path + pathDot + name
+	def, ok := raw.(map[string]any)
+	if !ok {
+		return scanCredentialValue(raw, childPath, creds, false)
+	}
+	return scanCredentialObject(def, childPath, creds, false)
 }
 
 // RegistryPath returns the derived discovery registry path.

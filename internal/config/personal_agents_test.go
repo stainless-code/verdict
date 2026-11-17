@@ -162,3 +162,53 @@ func TestAgentsArePrefsOnly(t *testing.T) {
 		t.Errorf("message = %q, want it to name the agents key", ref.Message)
 	}
 }
+
+// TestAgentDiagnosticsPreferLexicalName pins the first refusal when more than
+// one agent row is malformed. Map iteration order must never decide the path.
+func TestAgentDiagnosticsPreferLexicalName(t *testing.T) {
+	give := settingsJSON(t, map[string]any{"agents": map[string]any{
+		"z": []any{}, "a": []any{},
+	}})
+	_, ref := ParsePersonal(give)
+	if ref == nil || ref.Code != CodeBadSettings {
+		t.Fatalf("refusal = %+v, want bad-settings", ref)
+	}
+	if !strings.Contains(ref.Message, "$.agents.a") {
+		t.Errorf("message = %q, want the lexically first agent a", ref.Message)
+	}
+}
+
+// TestAgentNamesAreNotCredentialKeys pins the boundary between a user-defined
+// agent name and a field name. The name is data; fields still scan.
+func TestAgentNamesAreNotCredentialKeys(t *testing.T) {
+	for _, name := range []string{"token", "patchbot"} {
+		t.Run(name, func(t *testing.T) { assertAgentNameAccepted(t, name) })
+	}
+}
+
+func assertAgentNameAccepted(t *testing.T, name string) {
+	t.Helper()
+	give := settingsJSON(t, map[string]any{"agents": map[string]any{
+		name: map[string]any{"binary": "local-agent"},
+	}})
+	got, ref := ParsePersonal(give)
+	if ref != nil {
+		t.Fatalf("ParsePersonal refused agent name %q: %v", name, ref)
+	}
+	if len(got.Agents) != 1 || got.Agents[0].Name != name {
+		t.Errorf("agents = %+v, want the %q definition", got.Agents, name)
+	}
+}
+
+func TestCredentialFieldInsideAgentStillRefuses(t *testing.T) {
+	give := settingsJSON(t, map[string]any{"agents": map[string]any{
+		"local": map[string]any{"binary": "local-agent", "token": "abc"},
+	}})
+	_, ref := ParsePersonal(give)
+	if ref == nil || ref.Code != CodeBadCredentials {
+		t.Fatalf("refusal = %+v, want bad-config-credentials", ref)
+	}
+	if !strings.Contains(ref.Message, "$.agents.local.token") {
+		t.Errorf("message = %q, want the field inside the agent", ref.Message)
+	}
+}

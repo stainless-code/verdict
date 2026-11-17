@@ -276,21 +276,41 @@ type credWalker struct {
 }
 
 func (w *credWalker) walk(v any) {
+	w.walkAt(v, true)
+}
+
+func (w *credWalker) walkAt(v any, root bool) {
 	switch t := v.(type) {
 	case map[string]any:
-		w.walkMap(t)
+		w.walkMap(t, root)
 	case []any:
 		for _, child := range t {
-			w.walk(child)
+			w.walkAt(child, false)
 		}
 	}
 }
 
-func (w *credWalker) walkMap(t map[string]any) {
+func (w *credWalker) walkMap(t map[string]any, root bool) {
 	for k, child := range t {
-		if credRe.MatchString(readcommon.ASCIILower(k)) {
-			w.n++
-		}
-		w.walk(child)
+		w.countCredentialKey(k)
+		w.walkChild(k, child, root)
 	}
+}
+
+func (w *credWalker) countCredentialKey(key string) {
+	if credRe.MatchString(readcommon.ASCIILower(key)) {
+		w.n++
+	}
+}
+
+func (w *credWalker) walkChild(key string, child any, root bool) {
+	if root && key == "agents" {
+		if defs, ok := child.(map[string]any); ok {
+			for _, def := range defs {
+				w.walkAt(def, false)
+			}
+			return
+		}
+	}
+	w.walkAt(child, false)
 }
