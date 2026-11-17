@@ -96,11 +96,12 @@ var agentDefs = []agentDef{
 		Install: "curl -fsSL https://autohand.ai/install.sh | bash",
 	},
 	// brew info bob: neovim version manager; brew search --formula /^bob$/ -> bob (clash).
+	// `--disable-tool-groups <groups>` "Disable specific tool groups (comma-separated, for example execute,mcp)"
 	// https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive — read 2026-11-17
 	{
 		Name: "bob", Binary: "bob",
 		Args:      []string{argsRun},
-		ProbeArgs: []string{argsRun, argsHelp}, ProbeMatch: argsRun,
+		ProbeArgs: []string{argsRun, argsHelp}, ProbeMatch: "--disable-tool-groups",
 		Install: "curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash",
 	},
 	// https://code.claude.com/docs/en/cli-reference.md — read 2026-11-17
@@ -153,10 +154,11 @@ var agentDefs = []agentDef{
 		Install: "npm install -g @github/copilot",
 	},
 	// brew info cortex: Prometheus long-term storage; brew search --formula /^cortex$/ -> cortex (clash).
+	// `--bypass, --dangerously-allow-all-tool-calls` "Enable bypass mode, automatically approving all tool calls"
 	// https://docs.snowflake.com/en/user-guide/cortex-code/cli-reference — read 2026-11-17
 	{
 		Name: "cortex", Binary: "cortex", ModelFlag: modelFlag, PromptFlag: "-p",
-		ProbeArgs: []string{argsHelp}, ProbeMatch: "--print",
+		ProbeArgs: []string{argsHelp}, ProbeMatch: "--dangerously-allow-all-tool-calls",
 		Install: "curl -qLsS https://ai.snowflake.com/static/cc-scripts/install.sh | sh",
 	},
 	// https://github.com/charmbracelet/crush/blob/main/internal/cmd/run.go — read 2026-11-17
@@ -196,18 +198,20 @@ var agentDefs = []agentDef{
 		Install: "curl -fsSL https://app.factory.ai/cli | sh",
 	},
 	// brew info forge: ArrayFire visualization; brew search --formula /^forge$/ -> forge (clash).
+	// `#[arg(long, alias = "cid")] pub conversation_id: Option<ConversationId>,`
 	// https://github.com/tailcallhq/forgecode/blob/main/crates/forge_main/src/cli.rs — read 2026-11-17
 	{
 		Name: "forge", Binary: "forge", PromptFlag: "-p",
-		ProbeArgs: []string{argsHelp}, ProbeMatch: "--prompt",
+		ProbeArgs: []string{argsHelp}, ProbeMatch: "--conversation-id",
 		Install: "curl -fsSL https://forgecode.dev/cli | sh",
 	},
 	// brew info fx: terminal JSON viewer; brew search --formula /^fx$/ -> fx (clash).
+	// `fx ask` documents `--model`, `--effort`, `--fast`, `--ultrafast` per request
 	// https://fx.sh/docs/using-fx/fx-ask — read 2026-11-17
 	{
 		Name: "fx", Binary: "fx", ModelFlag: modelFlag,
 		Args:      []string{argsAsk},
-		ProbeArgs: []string{argsAsk, argsHelp}, ProbeMatch: argsAsk,
+		ProbeArgs: []string{argsAsk, argsHelp}, ProbeMatch: "--ultrafast",
 		Install: "curl -fsSL https://fx.sh/setup.sh | bash",
 	},
 	// https://github.com/google-gemini/gemini-cli/blob/main/README.md — read 2026-11-17
@@ -222,10 +226,11 @@ var agentDefs = []agentDef{
 		Install: "brew install block-goose-cli",
 	},
 	// brew info grok: regex tool; brew search --formula /^grok$/ -> grok (clash).
+	// headless flags list `--prompt-json <JSON>`
 	// https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md — read 2026-11-17
 	{
 		Name: "grok", Binary: "grok", ModelFlag: modelFlag, PromptFlag: "-p",
-		ProbeArgs: []string{argsHelp}, ProbeMatch: "--single",
+		ProbeArgs: []string{argsHelp}, ProbeMatch: "--prompt-json",
 		Install: "curl -fsSL https://x.ai/cli/install.sh | bash",
 	},
 	// --agent 'hermes' is the CLI name for Hermes Agent.
@@ -249,11 +254,12 @@ var agentDefs = []agentDef{
 		Install: "curl -fsSL https://junie.jetbrains.com/install.sh | bash",
 	},
 	// brew info kilo: no formula; brew search --formula /^kilo$/ -> none; antirez/kilo is a text editor (clash).
+	// `.option("cloud-fork", { … describe: "fetch session from cloud and continue locally (use with --session)"`
 	// https://github.com/Kilo-Org/kilocode/blob/main/packages/opencode/src/cli/cmd/run.ts — read 2026-11-17
 	{
 		Name: "kilo", Binary: "kilo", ModelFlag: modelFlag,
 		Args:      []string{argsRun},
-		ProbeArgs: []string{argsRun, argsHelp}, ProbeMatch: argsRun,
+		ProbeArgs: []string{argsRun, argsHelp}, ProbeMatch: "--cloud-fork",
 		Install: "npm install -g @kilocode/cli",
 	},
 	// --agent 'kimchi' is the product slug.
