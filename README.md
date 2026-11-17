@@ -194,7 +194,7 @@ never proxies your key; the agent contacts its model provider directly.
 
 `version` is required and accepts only pinned stable releases. Set the repository
 variable `VERDICT_VERSION` to a release containing `run --agent` before enabling
-the workflow — the `v0.6.1` tag predates that command. The Action
+the workflow — the `v0.7.0` tag is the first release with that command. The Action
 reuses `setup-verdict` for checksum and signature verification and exports the
 installed `version`. Pin the Action to a full commit SHA, as the example does.
 The Action owns fetch → ready → run → post → report → gate; `run` makes no
