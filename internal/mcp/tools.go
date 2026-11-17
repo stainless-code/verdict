@@ -56,6 +56,10 @@ var (
 	omitPositionals = map[string]bool{fieldRepo: true, fieldPr: true}
 )
 
+var cliOnlyVerbs = map[string]string{
+	"drain": "the verdict CLI (verdict drain)",
+}
+
 type mutationClass uint8
 
 const (

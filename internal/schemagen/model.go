@@ -3,6 +3,7 @@ package schemagen
 import (
 	"github.com/stainless-code/verdict/internal/core"
 	backtestcore "github.com/stainless-code/verdict/internal/core/backtest"
+	draincore "github.com/stainless-code/verdict/internal/core/drain"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	handoffcore "github.com/stainless-code/verdict/internal/core/handoff"
 	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
@@ -972,6 +973,34 @@ type UsageTokens struct { //nolint:govet // field order is the published propert
 // schemas/selected.schema.json: the finding sigs whose posted root review
 // comment carries a human 👍, written by fetch and read by fix --selected.
 type SelectedFile = core.SelectedFile
+
+// DrainRepliesFile is the single artifact the drafting agent writes.
+type DrainRepliesFile = draincore.RepliesFile
+
+// DrainReply is one draft answer to a waiting comment.
+type DrainReply = draincore.Reply
+
+// DrainFile is the drain plan and, after posting, its receipt, published as
+// schemas/drain.schema.json.
+type DrainFile = draincore.File
+
+// DrainPending is one thread waiting on a verdict reply.
+type DrainPending = draincore.Pending
+
+// DrainSkip is one verdict-authored thread the plan did not draft.
+type DrainSkip = draincore.Skip
+
+// DrainDrafts is the validated draft summary recorded in the plan.
+type DrainDrafts = draincore.Drafts
+
+// DrainDispositions counts the draft verdicts the agent chose.
+type DrainDispositions = draincore.Dispositions
+
+// DrainPosted is one successful host reply.
+type DrainPosted = draincore.Posted
+
+// DrainFailed is one host reply that did not land.
+type DrainFailed = draincore.Failed
 
 // ThreadsFile is one provider bundle's normalized PR-conversation feed,
 // published as schemas/threads.schema.json. It is additive beside the raw

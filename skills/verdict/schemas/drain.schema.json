@@ -1,0 +1,171 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/drain.schema.json",
+  "title": "drain.json — drain plan and receipt",
+  "description": "The plan a drain run writes before drafting and the receipt it updates after posting. The plan pins one canonical pending list with a digest, typed skips for threads verdict authored but did not draft, and a count of other people's threads. The agent writes drain.replies.json against that digest; no host write happens in this build.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "description": "Plan format version; only \"1\" is published.",
+      "const": "1"
+    },
+    "provider": {
+      "description": "The host whose thread feed was read.",
+      "enum": ["github", "gitlab", "gitcafe", "forgejo", "bitbucket", "azure"]
+    },
+    "pr": {
+      "description": "Pull-request number the plan belongs to.",
+      "type": "integer"
+    },
+    "head_sha": {
+      "description": "The bundle head the feed was read at.",
+      "type": "string"
+    },
+    "planned_at": {
+      "description": "UTC time the plan was written, RFC 3339.",
+      "type": "string",
+      "format": "date-time"
+    },
+    "self": {
+      "description": "The authenticated login the feed's verdict-authored roots must match.",
+      "type": "string"
+    },
+    "plan_digest": {
+      "description": "sha256 over the canonical pending list; drafts name it to prove they answer this plan.",
+      "type": "string"
+    },
+    "pending": {
+      "description": "Threads waiting on a verdict reply, oldest waiting comment first, capped by --max-threads.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/pending" }
+    },
+    "skipped": {
+      "description": "Verdict-authored threads the plan did not draft, each with a machine-readable reason.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/skip" }
+    },
+    "other_threads": {
+      "description": "Threads verdict did not author; counted but never listed as skips.",
+      "type": "integer"
+    },
+    "drafts": {
+      "description": "The validated draft summary, or null before an agent drafts.",
+      "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/drafts" }]
+    },
+    "posted": {
+      "description": "Successful host writes (PR B).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/posted" }
+    },
+    "failed": {
+      "description": "Host writes that failed (PR B).",
+      "type": "array",
+      "items": { "$ref": "#/$defs/failed" }
+    },
+    "posted_at": {
+      "description": "UTC time posting finished, or null before post mode.",
+      "type": ["string", "null"],
+      "format": "date-time"
+    }
+  },
+  "required": [
+    "schema_version",
+    "provider",
+    "pr",
+    "head_sha",
+    "planned_at",
+    "self",
+    "plan_digest",
+    "pending",
+    "skipped",
+    "other_threads",
+    "drafts",
+    "posted",
+    "failed",
+    "posted_at"
+  ],
+  "additionalProperties": false,
+  "$defs": {
+    "pending": {
+      "description": "One waiting thread joined to its finding anchor and the comment that needs an answer.",
+      "type": "object",
+      "properties": {
+        "thread_id": { "type": "string" },
+        "root_comment_id": { "type": "string" },
+        "waiting_comment_id": { "type": "string" },
+        "waiting_author": { "type": "string" },
+        "waiting_at": { "type": "string" },
+        "path": { "type": "string" },
+        "line": { "type": ["integer", "null"] },
+        "outdated": { "type": "boolean" },
+        "finding_sig": { "type": ["string", "null"] }
+      },
+      "required": [
+        "thread_id",
+        "root_comment_id",
+        "waiting_comment_id",
+        "waiting_author",
+        "waiting_at",
+        "path",
+        "line",
+        "outdated",
+        "finding_sig"
+      ],
+      "additionalProperties": false
+    },
+    "skip": {
+      "description": "One thread left open and why: resolved, answered, bot-reply, already-replied, not-review-comment, or deferred.",
+      "type": "object",
+      "properties": {
+        "thread_id": { "type": "string" },
+        "reason": { "type": "string" }
+      },
+      "required": ["thread_id", "reason"],
+      "additionalProperties": false
+    },
+    "drafts": {
+      "description": "What the agent wrote: the file name, entry count, and disposition tally.",
+      "type": "object",
+      "properties": {
+        "file": { "type": "string" },
+        "count": { "type": "integer" },
+        "dispositions": { "$ref": "#/$defs/dispositions" }
+      },
+      "required": ["file", "count", "dispositions"],
+      "additionalProperties": false
+    },
+    "dispositions": {
+      "description": "Counts of answer, withdraw, and defer drafts.",
+      "type": "object",
+      "properties": {
+        "answer": { "type": "integer" },
+        "withdraw": { "type": "integer" },
+        "defer": { "type": "integer" }
+      },
+      "required": ["answer", "withdraw", "defer"],
+      "additionalProperties": false
+    },
+    "posted": {
+      "description": "One reply the host accepted and whether its thread was resolved.",
+      "type": "object",
+      "properties": {
+        "thread_id": { "type": "string" },
+        "reply_id": { "type": "string" },
+        "disposition": { "type": "string" },
+        "resolved": { "type": "boolean" }
+      },
+      "required": ["thread_id", "reply_id", "disposition", "resolved"],
+      "additionalProperties": false
+    },
+    "failed": {
+      "description": "One thread whose write failed and why.",
+      "type": "object",
+      "properties": {
+        "thread_id": { "type": "string" },
+        "reason": { "type": "string" }
+      },
+      "required": ["thread_id", "reason"],
+      "additionalProperties": false
+    }
+  }
+}

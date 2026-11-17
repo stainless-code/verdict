@@ -232,15 +232,15 @@ func TestDocumentsCarryStableIdentity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	if len(files) != 25 {
-		t.Fatalf("generated %d schemas, want 25", len(files))
+	if len(files) != 27 {
+		t.Fatalf("generated %d schemas, want 27", len(files))
 	}
 	seen := map[string]bool{}
 	for _, file := range files {
 		seen[file.Name] = true
 		assertIdentity(t, file)
 	}
-	for _, name := range []string{"author.schema.json", "panel.schema.json", "panel-plan.schema.json", "calibration.schema.json", "backtest.schema.json", "config.schema.json", "corpus.schema.json", "cost.schema.json", "envelope.schema.json", "findings.schema.json", "identity.schema.json", "index.schema.json", "lock.schema.json", "pack.schema.json", "post.schema.json", "recipes.schema.json", "record.schema.json", "review.schema.json", "selected.schema.json", "threads.schema.json", "threads-resolve.schema.json", "usage.schema.json", "validation.schema.json"} {
+	for _, name := range []string{"author.schema.json", "panel.schema.json", "panel-plan.schema.json", "calibration.schema.json", "backtest.schema.json", "config.schema.json", "corpus.schema.json", "cost.schema.json", "drain-replies.schema.json", "drain.schema.json", "envelope.schema.json", "findings.schema.json", "identity.schema.json", "index.schema.json", "lock.schema.json", "pack.schema.json", "post.schema.json", "recipes.schema.json", "record.schema.json", "review.schema.json", "selected.schema.json", "threads.schema.json", "threads-resolve.schema.json", "usage.schema.json", "validation.schema.json"} {
 		if !seen[name] {
 			t.Errorf("missing generated schema %s", name)
 		}

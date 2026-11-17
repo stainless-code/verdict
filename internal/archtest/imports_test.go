@@ -27,6 +27,7 @@ const modulePath = "github.com/stainless-code/verdict/"
 // subpackage prefix.
 var forbiddenDeps = []string{
 	"internal/cli",
+	"internal/drain",
 	"internal/mcp",
 	"internal/schemagen",
 	"internal/golden",
@@ -135,7 +136,7 @@ var leafHelpers = []string{"internal/exclude", "internal/shellquote", "internal/
 // must be added here deliberately, so the core boundary is never widened
 // unnoticed.
 var coreSubpackages = []string{
-	"adopt", "backtest", "calibrate", "checktree", "corpus", "corpus/corpustest", "coverage", "doctor", "exec", "fetch", "fix",
+	"adopt", "backtest", "calibrate", "checktree", "corpus", "corpus/corpustest", "coverage", "doctor", "drain", "exec", "fetch", "fix",
 	"handoff", "index", "ingest", "init", "learn", "pack", "panel", "post", "query", "ready", "recipe", "record", "repair",
 	"report", "risk",
 	"run", "skill",

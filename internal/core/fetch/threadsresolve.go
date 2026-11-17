@@ -236,6 +236,13 @@ func (st *threadsRun) selectThreads(feed *threadscore.File, dir, self string) (r
 	return defaultSelection(feed, store, self), nil
 }
 
+// SelfAuthored reports whether one thread's root was written by verdict's
+// own login. Resolve and drain share this test so the two verbs agree on what
+// verdict authored.
+func SelfAuthored(thread *threadscore.Thread, self string) bool {
+	return thread.AuthorKind == threadscore.AuthorVerdict && thread.Author == self
+}
+
 // defaultSelection walks the feed in order, recording why each self-authored
 // candidate stayed open. Human and bot threads are not candidates, so they
 // never appear in the receipt.
@@ -246,7 +253,7 @@ func defaultSelection(feed *threadscore.File, store map[string]string, self stri
 		if thread.AuthorKind != threadscore.AuthorVerdict {
 			continue
 		}
-		if thread.Author != self {
+		if !SelfAuthored(thread, self) {
 			sel.skip(thread.ID, "not-self-authored")
 			continue
 		}

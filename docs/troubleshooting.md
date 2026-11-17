@@ -585,6 +585,24 @@ Cause: the release download failed (bad version, no download directory, or a fet
 
 Fix: pass a concrete `X.Y.Z` (or `vX.Y.Z`) version with a writable download dir, then re-run `upgrade`.
 
+## `drafts-invalid`
+
+Cause: `drain.replies.json` names an unknown thread or comment, repeats a thread, carries a bad disposition or body, or has an unknown key; the message names the site.
+
+Fix: edit the named site to match the plan, then re-run `drain --agent <name>`. With no drafts file at all, run the agent first.
+
+## `drafts-stale`
+
+Cause: the drafts `plan_digest` differs from the plan's; the feed or the pending list moved after drafting.
+
+Fix: re-run `drain` for a fresh plan, then draft replies against its digest.
+
+## `drain-failed`
+
+Cause: the bundle, `threads.json`, the login, or the reply ledger could not be read, or the refreshed feed is truncated.
+
+Fix: refresh threads and confirm host auth, then re-run `drain`.
+
 ## `duplicate-payload`
 
 Cause: every rendered summary part and comment is present in the live remote lists for this reviewed head.

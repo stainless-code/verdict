@@ -1,0 +1,51 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/skills/verdict/schemas/drain-replies.schema.json",
+  "title": "drain.replies.json — drafted thread replies",
+  "description": "The single artifact the drafting agent writes: one answer per pending thread, pinned to the plan digest. Verdict validates every site before any later step reads it; there is no host write in this build.",
+  "type": "object",
+  "properties": {
+    "schema_version": {
+      "description": "Draft format version; only \"1\" is published.",
+      "const": "1"
+    },
+    "plan_digest": {
+      "description": "The digest from drain.json the drafts were written against; a mismatch refuses drafts-stale.",
+      "type": "string"
+    },
+    "replies": {
+      "description": "One draft per thread the agent chose to answer; pending threads with no entry are skipped no-draft.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/reply" }
+    }
+  },
+  "required": ["schema_version", "plan_digest", "replies"],
+  "additionalProperties": false,
+  "$defs": {
+    "reply": {
+      "description": "One disposition for one waiting comment, with the body that would be posted.",
+      "type": "object",
+      "properties": {
+        "thread_id": {
+          "description": "Host thread id from the plan.",
+          "type": "string"
+        },
+        "waiting_comment_id": {
+          "description": "The plan's waiting comment id; a changed comment refuses drafts-invalid.",
+          "type": "string"
+        },
+        "disposition": {
+          "description": "answer posts the body, withdraw posts then resolves, defer posts nothing.",
+          "enum": ["answer", "withdraw", "defer"]
+        },
+        "body": {
+          "description": "Reply text, required and non-empty for answer and withdraw; at most 4000 characters and never carrying verdict's markers.",
+          "type": "string",
+          "maxLength": 4000
+        }
+      },
+      "required": ["thread_id", "waiting_comment_id", "disposition", "body"],
+      "additionalProperties": false
+    }
+  }
+}

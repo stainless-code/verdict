@@ -123,6 +123,7 @@ func New(cfg *Config) *Server {
 
 type hiddenTool struct {
 	requires string
+	cliOnly  bool
 }
 
 func hiddenTools(readOnly, operator bool) map[string]hiddenTool {
@@ -132,6 +133,9 @@ func hiddenTools(readOnly, operator bool) map[string]hiddenTool {
 			continue
 		}
 		out[t.name] = hiddenTool{requires: toolRequires(t, readOnly)}
+	}
+	for name, requires := range cliOnlyVerbs {
+		out[name] = hiddenTool{requires: requires, cliOnly: true}
 	}
 	return out
 }
@@ -365,6 +369,12 @@ func (s *Server) writeHiddenToolError(id json.RawMessage, name string) {
 	hidden, known := s.hidden[name]
 	if !known {
 		s.writeError(id, codeInvalidParams, "unknown tool: "+name)
+		return
+	}
+	if hidden.cliOnly {
+		s.writeErrorData(id, codeInvalidParams,
+			"tool \""+name+"\" is hidden: it requires "+hidden.requires,
+			hiddenToolContent{Tool: name, Hidden: true, Requires: hidden.requires})
 		return
 	}
 	if s.cfg.ReadOnly {

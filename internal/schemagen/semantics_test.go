@@ -267,7 +267,16 @@ var publishedSemantics = map[string]string{
 	// Reaction-scoped fix: additive optional fixData.selection (the
 	// fetch-written selected.json a --selected batch reads). No existing
 	// property, required key, enum, or type changed.
-	"envelope.schema.json": "27103488dcbcb9966b36d5f4f78241832b63f304d4710cb7d745afbbc20cc255",
+	// additive drain.schema.json (new bundle document; no existing schema
+	// property, required key, enum, or type changed). It pins the plan the
+	// drain verb writes: pending threads, typed skips, the plan digest, and
+	// the later draft/post receipts.
+	// additive drain-replies.schema.json (new bundle document; no existing
+	// schema property, required key, enum, or type changed). It pins the
+	// agent's single output: the plan digest and one disposition per reply.
+	"drain-replies.schema.json": "d9e8cc9410edc85da2d1380d67dfbcb415563a1c30f8b3901f2516a3a98135c5",
+	"drain.schema.json":         "189c041aab4f4d6f261dd62ceb9a225d36079874d9d0c521d189713d063173f4",
+	"envelope.schema.json":      "27103488dcbcb9966b36d5f4f78241832b63f304d4710cb7d745afbbc20cc255",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

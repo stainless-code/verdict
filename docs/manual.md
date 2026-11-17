@@ -314,6 +314,19 @@ write per thread, marks them resolved in `threads.json`, and writes
 `threads-resolve.json` (provider, repo, PR, head, timestamp, `resolved[]`,
 `skipped[]` with reasons). GitHub and GitLab carry the mutation; Forgejo
 refuses typed because its API has no documented resolve endpoint.
+
+`verdict drain owner/repo N [--provider p] [--max-threads 1-100] [--agent name]
+[--timeout s] [-- args...] [--json]` plans one pass over the threads waiting on
+verdict. It refreshes the feed, reads the login once, joins findings, and writes
+`drain.json`: `pending[]`, typed `skipped[]` reasons, `other_threads`, and a
+`plan_digest` over the pending list. A thread is pending when it is a review
+comment verdict authored, unresolved, and its last comment is a human question
+with no ledger entry answering it; the oldest questions come first and the rest
+are `deferred`. `--max-threads` defaults to 20. Zero pending is success and
+launches no agent. `--agent` drafts one `drain.replies.json` through the `run`
+launcher; `drafts-invalid` and `drafts-stale` name a bad site or a moved plan.
+This build makes no host writes and has no `--post`.
+
 `post.json` and `record.json` carry `schema_version: "1"`.
 
 ### Bundle namespace (core files vs `x-*`)

@@ -25,6 +25,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/upgrade"
 	"github.com/stainless-code/verdict/internal/doctor"
+	drainverb "github.com/stainless-code/verdict/internal/drain"
 	"github.com/stainless-code/verdict/internal/fetch"
 	"github.com/stainless-code/verdict/internal/fix"
 	"github.com/stainless-code/verdict/internal/gate"
@@ -65,7 +66,7 @@ const (
 
 const verbsHint = "fetch|fetch-local|run|panel|record|adopt|ingest|fix|post|triage|report|next|show|" +
 	"check-tree|verify|doctor|calibrate|ready|pr-wait|gate|threads|trend|risk|handoff|index|backtest|" +
-	"learn|pack|init|skill|upgrade|uninstall|mcp|serve|config"
+	"learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain"
 
 func main() {
 	//nolint:forbidigo // GO-LAYOUT-02: main is the only os.Exit caller by design
@@ -182,6 +183,7 @@ var readVerbs = map[string]readHandler{
 	"pr-wait":    prwait.Run,
 	"gate":       gate.Run,
 	"threads":    threads.Run,
+	"drain":      drainverb.Run,
 	cmdTrend:     trend.Run,
 	cmdRisk:      risk.Run,
 	"calibrate":  calibrate.Run,
