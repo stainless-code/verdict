@@ -316,7 +316,7 @@ write per thread, marks them resolved in `threads.json`, and writes
 refuses typed because its API has no documented resolve endpoint.
 
 `verdict drain owner/repo N [--provider p] [--max-threads 1-100] [--agent name]
-[--timeout s] [-- args...] [--post] [--json]` plans one pass over the threads
+[--timeout s] [-- args...] [--post] [--dry-run] [--json]` plans one pass over the threads
 waiting on verdict. It refreshes the feed, reads the login once, joins findings,
 and writes `drain.json`: `pending[]`, typed `skipped[]` reasons, `other_threads`,
 and a `plan_digest` over the pending list. A thread is pending when it is a
@@ -338,8 +338,22 @@ also resolves through the host's existing resolve call. One ledger entry is
 appended under `storelock` after each successful write, so a re-run skips replies
 already posted. A failed write is recorded in `failed[]`, the remaining drafts
 are attempted, and the run refuses `drain-incomplete`. Forgejo and fetch-only
-hosts refuse `provider-unimplemented` before any read. There is no `--dry-run`
-for post and no `--allow-secret-values` override.
+hosts refuse `provider-unimplemented` before any read. There is no
+`--allow-secret-values` override.
+
+`--post --dry-run` requires `--post` and runs every §6 step: the local draft
+gates and secret scan, the live thread refresh and self login, the
+stale/answered/resolved skips, mention neutralization, and the marker. It holds
+the post lock and composes with `--agent` (plan → draft → preview). It calls no
+reply or resolve endpoint and leaves `replies.json`, `drain.json`, and
+`threads.json` byte-identical. The live read happens in a scratch bundle so
+the stored feed is not touched. Instead it writes `<bundle>/drain.dryrun.json`
+with `planned[]` entries (`thread_id`, `root_comment_id`, `disposition`, and
+the final `body` with its marker) and `skipped[]` reasons; the `--json` envelope
+`data` carries that same document. Human output reads `» N planned, M skipped
+(dry run; nothing posted) -> <path>`, and `next` is the same command without
+`--dry-run`. A secret-shaped body still refuses `post-secret-shaped` with zero
+writes, and a dry-run preview is never a receipt.
 
 `post.json` and `record.json` carry `schema_version: "1"`.
 
@@ -348,7 +362,7 @@ for post and no `--allow-secret-values` override.
 A bundle dir holds these core/script artifacts (`PR.json`/`source.json`,
 `full.diff`, `toc.txt`, `roles.txt`, `review.json`, `findings.json`, `findings.dryrun.json`, `record.json`,
 `post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `threads.json`,
-`threads-resolve.json`, `selected.json`,
+`threads-resolve.json`, `drain.json`, `drain.dryrun.json`, `drain.replies.json`, `selected.json`,
 `panel`, `patch.json`, `verification.json`, `incremental.diff`, `kb.txt`,
 `lenses.txt`, `reverts.txt`, `sensitive.txt`, `kb-recall.json`, `cost.json`, `budget.json`, `fix.json`,
 `author.json`,

@@ -287,7 +287,7 @@ func usageText() string {
 		"    makes one host write per thread and writes threads-resolve.json. GitHub and\n" +
 		"    GitLab carry it; Forgejo refuses typed (no documented resolve endpoint).\n" +
 		"  drain <owner/repo> <pr> [--provider <p>] [--max-threads <1-100>] [--json]\n" +
-		"        [--agent <name> [--timeout <secs>] [-- <agent args>...]] [--post]\n" +
+		"        [--agent <name> [--timeout <secs>] [-- <agent args>...]] [--post] [--dry-run]\n" +
 		"    answer every review thread waiting on verdict: refresh threads, then write\n" +
 		"    .verdict/state/<pr>/drain.json with the pending list, typed skips, and a plan digest.\n" +
 		"    Zero pending is success and launches no agent. --max-threads defaults to 20;\n" +
@@ -298,6 +298,11 @@ func usageText() string {
 		"    replies; other hosts refuse provider-unimplemented. A failed write records\n" +
 		"    failed[] and refuses drain-incomplete so a re-run finishes the rest. A\n" +
 		"    truncated feed or unreadable login refuses drain-failed before any write.\n" +
+		"    --dry-run requires --post: it runs every post gate and live read, writes\n" +
+		"    drain.dryrun.json with planned[] (final marked bodies) and skipped[], and\n" +
+		"    posts nothing. replies.json, drain.json and threads.json keep their bytes.\n" +
+		"    --agent --post --dry-run plans, drafts, then previews. Human output reads\n" +
+		"    `» N planned, M skipped (dry run; nothing posted) -> <path>`.\n" +
 		"  trend <owner/repo> [--rules] [--overlap] [--incidents] [--resolution] [--json]\n" +
 		"    portfolio rollup over existing bundle stores (no network, writes nothing):\n" +
 		"    findings opened/addressed/closed over time, broken down by severity tier\n" +

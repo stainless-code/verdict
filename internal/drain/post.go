@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
+	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
@@ -19,6 +21,15 @@ import (
 	"github.com/stainless-code/verdict/internal/storelock"
 )
 
+const (
+	scratchDirMode  = 0o755
+	scratchFileMode = 0o600
+)
+
+type dryRunWriteError struct{}
+
+func (dryRunWriteError) Error() string { return "dry run attempted a write" }
+
 func postMode(ctx context.Context, r *cli.Runner, req Request, fl *flags) int {
 	dir, plan, drafts, ref := postPreflight(req, fl)
 	if ref != nil {
@@ -29,7 +40,33 @@ func postMode(ctx context.Context, r *cli.Runner, req Request, fl *flags) int {
 		return r.Refuse(drainFailed(fmt.Sprintf("could not lock %s: %v", dir, err)))
 	}
 	defer unlock()
+	if fl.dryRun {
+		return runDryRunPost(ctx, r, req, fl, dir, plan, drafts)
+	}
+	return runRealPost(ctx, r, req, fl, dir, plan, drafts)
+}
 
+func runDryRunPost(ctx context.Context, r *cli.Runner, req Request, fl *flags, dir string,
+	plan *draincore.File, drafts []byte,
+) int {
+	resp, feed, ref := dryRunRefresh(ctx, r, req, fl, dir)
+	if ref != nil {
+		return r.Refuse(ref)
+	}
+	in, ref := dryRunInputs(ctx, req, resp, dir, feed)
+	if ref != nil {
+		return r.Refuse(ref)
+	}
+	result, ref := postWrites(ctx, req, dir, plan, drafts, in, true)
+	if ref != nil {
+		return r.Refuse(ref)
+	}
+	return postDryRunFinish(r, req, dir, plan, fl, resp, result)
+}
+
+func runRealPost(ctx context.Context, r *cli.Runner, req Request, fl *flags, dir string,
+	plan *draincore.File, drafts []byte,
+) int {
 	resp, ref := fetchcore.RunThreads(ctx, refreshRequest(r, req, fl))
 	if ref != nil {
 		return r.Refuse(drainFailed(ref.Message))
@@ -38,7 +75,7 @@ func postMode(ctx context.Context, r *cli.Runner, req Request, fl *flags) int {
 	if ref != nil {
 		return r.Refuse(ref)
 	}
-	result, ref := postWrites(ctx, req, dir, plan, drafts, in)
+	result, ref := postWrites(ctx, req, dir, plan, drafts, in, false)
 	if ref != nil {
 		return r.Refuse(ref)
 	}
@@ -108,26 +145,41 @@ func postDraftsFile(dir string) ([]byte, *core.RefusalError) {
 }
 
 func postWrites(ctx context.Context, req Request, dir string, plan *draincore.File,
-	drafts []byte, in *planInputs,
+	drafts []byte, in *planInputs, dryRun bool,
 ) (*draincore.PostResult, *core.RefusalError) {
 	provider := plan.Provider
 	cmdr := commander(req)
 	draftsReq := &draincore.PostRequest{
 		Plan: plan, DraftsRaw: drafts, Feed: in.feed, Ledger: in.ledger,
 		Provider: provider, Repo: req.Repo, PR: req.Pr, At: req.TimeUTC(),
+		DryRun:   dryRun,
 		Reply:    replyWriter(ctx, cmdr, req, provider),
 		Resolve:  resolveWriter(ctx, cmdr, req, provider),
 		Append:   appendLedgerWriter(dir),
 		SaveFeed: saveFeedWriter(dir),
 	}
+	if dryRun {
+		blockDryRunWrites(draftsReq)
+	}
 	result, ref := draincore.Post(draftsReq)
 	if ref != nil {
 		return nil, ref
+	}
+	if dryRun {
+		return result, nil
 	}
 	if err := draincore.WritePlan(dir+pathSep+draincore.KeyPlanJSON, plan); err != nil {
 		return nil, drainFailed(err.Error())
 	}
 	return result, nil
+}
+
+func blockDryRunWrites(req *draincore.PostRequest) {
+	blocked := dryRunWriteError{}
+	req.Reply = func(string, string, string) (string, error) { return "", blocked }
+	req.Resolve = func(string) error { return blocked }
+	req.Append = func(*draincore.LedgerEntry) error { return blocked }
+	req.SaveFeed = func(*threadscore.File) error { return blocked }
 }
 
 func replyWriter(ctx context.Context, cmdr core.Commander, req Request, provider string,
@@ -162,8 +214,116 @@ func saveFeedWriter(dir string) func(*threadscore.File) error {
 	}
 }
 
+type quietProgress struct{ r *cli.Runner }
+
+func (q quietProgress) Human(string) {}
+
+func (q quietProgress) Warn(msg string) { q.r.Warn(msg) }
+
+func (q quietProgress) Diag(string) {}
+
+// dryRunRefresh performs the live thread read into a scratch bundle, so the
+// real threads.json keeps its bytes while the preview sees the current feed.
+func dryRunRefresh(ctx context.Context, r *cli.Runner, req Request, fl *flags, dir string,
+) (*fetchcore.ThreadsResponse, *threadscore.File, *core.RefusalError) {
+	scratchRoot, scratchDir, ref := prepareDryRunBundle(dir, req.Pr)
+	if ref != nil {
+		return nil, nil, ref
+	}
+	defer os.RemoveAll(scratchRoot)
+	read := req
+	read.RepoRoot = scratchRoot
+	rt := refreshRequest(r, read, fl)
+	rt.Progress = quietProgress{r: r}
+	resp, ref := fetchcore.RunThreads(ctx, rt)
+	if ref != nil {
+		return nil, nil, drainFailed(ref.Message)
+	}
+	feed, err := threadscore.ReadFile(filepath.Join(scratchDir, threadscore.KeyThreadsJSON))
+	if err != nil {
+		return nil, nil, drainFailed(fmt.Sprintf("unreadable dry-run feed: %v", err))
+	}
+	return resp, feed, nil
+}
+
+func prepareDryRunBundle(dir, pr string) (string, string, *core.RefusalError) {
+	scratchRoot, err := os.MkdirTemp("", "verdict-drain-dryrun-")
+	if err != nil {
+		return "", "", drainFailed(fmt.Sprintf("could not prepare dry-run read: %v", err))
+	}
+	scratchDir, ref := readcommon.ResolveBundleDir(scratchRoot, pr)
+	if ref != nil {
+		return "", "", drainFailed(ref.Message)
+	}
+	if err := os.MkdirAll(scratchDir, scratchDirMode); err != nil {
+		return "", "", drainFailed(fmt.Sprintf("could not prepare dry-run read: %v", err))
+	}
+	for _, name := range []string{"PR.json", threadscore.KeyThreadsJSON} {
+		if err := copyBundleFile(filepath.Join(dir, name), filepath.Join(scratchDir, name)); err != nil {
+			return "", "", drainFailed(err.Error())
+		}
+	}
+	return scratchRoot, scratchDir, nil
+}
+
+func copyBundleFile(src, dst string) error {
+	raw, err := jq.CappedFile(src, jq.MaxPRBytes)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return jq.NewErrf("unreadable %s: %v", src, err)
+	}
+	if err := os.WriteFile(dst, raw, scratchFileMode); err != nil {
+		return jq.NewErrf("could not prepare dry-run read: %v", err)
+	}
+	return nil
+}
+
+func dryRunInputs(ctx context.Context, req Request, resp *fetchcore.ThreadsResponse,
+	dir string, feed *threadscore.File,
+) (*planInputs, *core.RefusalError) {
+	return inputsFrom(ctx, req, resp, dir, feed)
+}
+
+func dryRunNext(req Request, fl *flags) string {
+	parts := []string{"verdict", verbDrain, req.Repo, req.Pr}
+	passed := false
+	for _, a := range fl.args {
+		if a == "--" {
+			passed = true
+		}
+		if !passed && a == "--dry-run" {
+			continue
+		}
+		parts = append(parts, a)
+	}
+	return strings.Join(parts, " ")
+}
+
 func postSuccessNext(req Request) string {
 	return "refresh threads with verdict threads " + req.Repo + " " + req.Pr
+}
+
+func postDryRunFinish(r *cli.Runner, req Request, dir string, plan *draincore.File, fl *flags,
+	resp *fetchcore.ThreadsResponse, result *draincore.PostResult,
+) int {
+	r.Warnings = resp.Warnings
+	preview := &draincore.DryRunFile{
+		Provider: plan.Provider, PR: plan.PR, HeadSHA: plan.HeadSHA,
+		PlannedAt: cli.NowUTC(r.Now()), Planned: result.Planned, Skipped: plan.Skipped,
+	}
+	if err := draincore.WriteDryRun(filepath.Join(dir, draincore.KeyDryRunJSON), preview); err != nil {
+		return r.Refuse(drainFailed(err.Error()))
+	}
+	fmt.Fprintf(r.Human, "» %d planned, %d skipped (dry run; nothing posted) -> %s/%s\n",
+		len(preview.Planned), len(preview.Skipped), dir, draincore.KeyDryRunJSON)
+	if r.JSONMode {
+		env := core.RenderEnvelope(verbDrain, req.Repo, req.Pr, cli.NowUTC(r.Now()), dryRunNext(req, fl),
+			r.Warnings, preview.Wire(), nil)
+		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+	}
+	return cli.ExitOK
 }
 
 func postFinish(r *cli.Runner, req Request, dir string, plan *draincore.File,

@@ -28,6 +28,7 @@ const (
 	keyTruncated            = "truncated"
 	defsReportData          = "reportData"
 	defsPostData            = "postData"
+	defsSkip                = "skip"
 	keyDefs                 = "$defs"
 	keyConst                = "const"
 	keyEnum                 = "enum"
@@ -260,11 +261,21 @@ func documents() []document {
 			root:  reflect.TypeFor[DrainFile](),
 			defs: []definition{
 				{typ: reflect.TypeFor[DrainPending](), name: "pending", closed: true},
-				{typ: reflect.TypeFor[DrainSkip](), name: "skip", closed: true},
+				{typ: reflect.TypeFor[DrainSkip](), name: defsSkip, closed: true},
 				{typ: reflect.TypeFor[DrainDrafts](), name: "drafts", closed: true},
 				{typ: reflect.TypeFor[DrainDispositions](), name: "dispositions", closed: true},
 				{typ: reflect.TypeFor[DrainPosted](), name: "posted", closed: true},
 				{typ: reflect.TypeFor[DrainFailed](), name: "failed", closed: true},
+			},
+			additionalProperties: false,
+		},
+		{
+			name:  "drain-dryrun",
+			title: "drain.dryrun.json — drain post preview",
+			root:  reflect.TypeFor[DrainDryRunFile](),
+			defs: []definition{
+				{typ: reflect.TypeFor[DrainPlanned](), name: "planned", closed: true},
+				{typ: reflect.TypeFor[DrainSkip](), name: defsSkip, closed: true},
 			},
 			additionalProperties: false,
 		},
@@ -444,7 +455,7 @@ func documents() []document {
 			title: "threads-resolve.json — thread-resolve receipt",
 			root:  reflect.TypeFor[ThreadsResolveReceipt](),
 			defs: []definition{
-				{typ: reflect.TypeFor[ThreadsResolveSkip](), name: "skip"},
+				{typ: reflect.TypeFor[ThreadsResolveSkip](), name: defsSkip},
 			},
 			additionalProperties: false,
 		},

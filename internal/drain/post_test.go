@@ -19,18 +19,24 @@ import (
 )
 
 type drainHostStub struct {
-	postedCount map[string]int
-	pageJSON    string
-	self        string
-	failRootID  string
-	calls       []string
-	postDelay   time.Duration
-	mu          sync.Mutex
+	postedCount  map[string]int
+	forbidWrites func([]string)
+	pageJSON     string
+	self         string
+	failRootID   string
+	calls        []string
+	postDelay    time.Duration
+	mu           sync.Mutex
 }
 
 func (s *drainHostStub) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	joined := strings.Join(cmd.Argv, " ")
 	s.recordCall(joined)
+	if isPostReply(cmd.Argv) || strings.Contains(joined, "resolveReviewThread") {
+		if s.forbidWrites != nil {
+			s.forbidWrites(cmd.Argv)
+		}
+	}
 	if isPostReply(cmd.Argv) {
 		s.maybeDelay()
 		return s.handlePostReply(cmd.Argv[4], joined)

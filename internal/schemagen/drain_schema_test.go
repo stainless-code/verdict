@@ -5,20 +5,32 @@ import (
 	"testing"
 )
 
-const drainSchema = "drain.schema.json"
+const (
+	drainSchema       = "drain.schema.json"
+	drainDryRunSchema = "drain-dryrun.schema.json"
+)
 
 func TestDrainDefsAreClosed(t *testing.T) {
+	assertGeneratedDefsClosed(t, drainSchema)
+}
+
+func TestDrainDryRunDefsAreClosed(t *testing.T) {
+	assertGeneratedDefsClosed(t, drainDryRunSchema)
+}
+
+func assertGeneratedDefsClosed(t *testing.T, name string) {
+	t.Helper()
 	files, err := Generate()
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, file := range files {
-		if file.Name == drainSchema {
-			assertClosedDefs(t, file.Data)
+		if file.Name == name {
+			assertClosedDefs(t, file.Data, name)
 			return
 		}
 	}
-	t.Fatal(drainSchema + " was not generated")
+	t.Fatal(name + " was not generated")
 }
 
 func schemaDefs(t *testing.T, data []byte, name string) map[string]any {
@@ -34,11 +46,11 @@ func schemaDefs(t *testing.T, data []byte, name string) map[string]any {
 	return defs
 }
 
-func assertClosedDefs(t *testing.T, data []byte) {
+func assertClosedDefs(t *testing.T, data []byte, name string) {
 	t.Helper()
-	defs := schemaDefs(t, data, drainSchema)
+	defs := schemaDefs(t, data, name)
 	if len(defs) == 0 {
-		t.Fatal(drainSchema + " has no $defs")
+		t.Fatal(name + " has no $defs")
 	}
 	for name, raw := range defs {
 		def, ok := raw.(map[string]any)

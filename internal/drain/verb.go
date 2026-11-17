@@ -27,8 +27,9 @@ import (
 )
 
 const (
-	verbDrain  = "drain"
-	wantFlags  = "--provider <name>, --max-threads <1-100>, --agent <name>, --timeout <secs>, --post, -- <agent args>, --json"
+	verbDrain = "drain"
+	wantFlags = "--provider <name>, --max-threads <1-100>, --agent <name>, --timeout <secs>, " +
+		"--post, --dry-run (with --post), -- <agent args>, --json"
 	defaultMax = "20"
 	pathSep    = "/"
 )
@@ -42,14 +43,17 @@ type flags struct {
 	agent    string
 	timeout  string
 	pass     []string
+	args     []string
 	post     bool
+	dryRun   bool
 }
 
 // Run executes `drain <owner/repo> <pr> [--provider <p>] [--max-threads <n>]
-// [--agent <name> [--timeout <s>] [-- <agent args>]] [--post] [--json]`. Plan
-// and draft modes never write to the host; --agent --post plans, drafts,
-// validates, and posts in one run; --post alone validates existing drafts
-// locally before any host read.
+// [--agent <name> [--timeout <s>] [-- <agent args>]] [--post] [--dry-run]
+// [--json]`. Plan and draft modes never write to the host; --agent --post
+// plans, drafts, validates, and posts in one run; --post alone validates
+// existing drafts locally before any host read. --post --dry-run runs the
+// same gates and reads and writes a preview instead of posting.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Cmd, r.Repo, r.Pr = verbDrain, req.Repo, req.Pr
 	fl, limit, code, done := parseRunArgs(ctx, r, args, req)
@@ -66,6 +70,9 @@ func parseRunArgs(ctx context.Context, r *cli.Runner, args []string, req Request
 	fl, code, done := parseFlags(r, args)
 	if done {
 		return nil, 0, code, true
+	}
+	if fl.dryRun && !fl.post {
+		return nil, 0, r.ReportUsage(&cli.UsageError{Message: "--dry-run requires --post"}), true
 	}
 	r.RouteHuman()
 	if code, done := r.Canceled(ctx, verbDrain); done {
@@ -160,6 +167,12 @@ func readInputs(ctx context.Context, req Request, resp *fetchcore.ThreadsRespons
 	if err != nil {
 		return nil, drainFailed(fmt.Sprintf("unreadable %s/threads.json: %v", dir, err))
 	}
+	return inputsFrom(ctx, req, resp, dir, feed)
+}
+
+func inputsFrom(ctx context.Context, req Request, resp *fetchcore.ThreadsResponse,
+	dir string, feed *threadscore.File,
+) (*planInputs, *core.RefusalError) {
 	if resp.Data.Truncated || feed.Truncated {
 		return nil, drainFailed(dir + "/threads.json is truncated — refresh threads before draining")
 	}
@@ -235,7 +248,7 @@ func refreshRequest(r *cli.Runner, req Request, fl *flags) *fetchcore.ThreadsReq
 }
 
 func parseFlags(r *cli.Runner, args []string) (*flags, int, bool) {
-	fl := &flags{max: defaultMax}
+	fl := &flags{max: defaultMax, args: append([]string{}, args...)}
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--" {
 			fl.pass = append(fl.pass, args[i+1:]...)
@@ -255,6 +268,9 @@ func consumeFlag(r *cli.Runner, fl *flags, args []string, i int) (int, int, bool
 	switch {
 	case a == "--post":
 		fl.post = true
+		return i, 0, false
+	case a == "--dry-run":
+		fl.dryRun = true
 		return i, 0, false
 	case a == "--provider" || a == "--max-threads" || a == "--agent" || a == "--timeout":
 		v, nextIndex, u := cli.FlagValue(args, i, a, "<value>")
