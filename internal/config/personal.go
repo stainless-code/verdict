@@ -428,12 +428,9 @@ func agentArgs(entry map[string]any, path string) ([]string, *core.RefusalError)
 func agentProbeFields(entry map[string]any, path string) (args []string, match string, ref *core.RefusalError) {
 	_, present := entry["probe_args"]
 	if present {
-		args, ref = agentStringArray(entry, "probe_args", path)
+		args, ref = agentProbeArgs(entry, path)
 		if ref != nil {
 			return nil, "", ref
-		}
-		if len(args) == 0 {
-			return nil, "", agentRefuse(path+".probe_args", "want at least one argument")
 		}
 	}
 	match, ref = agentOptionalString(entry, "probe_match", path)
@@ -444,6 +441,19 @@ func agentProbeFields(entry map[string]any, path string) (args []string, match s
 		return nil, "", agentRefuse(path+".probe_match", "is required when probe_args is set")
 	}
 	return args, match, nil
+}
+
+// agentProbeArgs reads a configured probe's argument list; a present but
+// empty list would silently disable the identity check at launch.
+func agentProbeArgs(entry map[string]any, path string) ([]string, *core.RefusalError) {
+	args, ref := agentStringArray(entry, "probe_args", path)
+	if ref != nil {
+		return nil, ref
+	}
+	if len(args) == 0 {
+		return nil, agentRefuse(path+".probe_args", "want at least one argument")
+	}
+	return args, nil
 }
 
 // agentStringArray reads one optional array of strings, defaulting to empty.
