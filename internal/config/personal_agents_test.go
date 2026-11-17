@@ -70,9 +70,10 @@ func assertFullAgent(t *testing.T, row *PersonalAgent) {
 // renders it with the settings remediation.
 func TestPersonalAgentsRefusals(t *testing.T) {
 	tests := []struct {
-		name string
-		want string
-		give []byte
+		name   string
+		want   string
+		detail string
+		give   []byte
 	}{
 		{
 			name: "unknown agent key",
@@ -142,6 +143,12 @@ func TestPersonalAgentsRefusals(t *testing.T) {
 			want: "$.agents.local.probe_args",
 		},
 		{
+			name:   "empty probe args",
+			give:   []byte(`{"agents":{"local":{"binary":"local","probe_args":[],"probe_match":"ask"}}}`),
+			want:   "$.agents.local.probe_args",
+			detail: "want at least one argument",
+		},
+		{
 			name: "probe args element is a string",
 			give: []byte(`{"agents":{"local":{"binary":"local","probe_args":[3]}}}`),
 			want: "$.agents.local.probe_args[0]",
@@ -158,11 +165,11 @@ func TestPersonalAgentsRefusals(t *testing.T) {
 		},
 	}
 	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) { assertAgentRefusal(t, tc.give, tc.want) })
+		t.Run(tc.name, func(t *testing.T) { assertAgentRefusal(t, tc.give, tc.want, tc.detail) })
 	}
 }
 
-func assertAgentRefusal(t *testing.T, give []byte, want string) {
+func assertAgentRefusal(t *testing.T, give []byte, want, detail string) {
 	t.Helper()
 	_, ref := ParsePersonal(give)
 	if ref == nil || ref.Code != "bad-settings" {
@@ -170,6 +177,9 @@ func assertAgentRefusal(t *testing.T, give []byte, want string) {
 	}
 	if !strings.Contains(ref.Message, want) {
 		t.Errorf("message = %q, want it to name %q", ref.Message, want)
+	}
+	if detail != "" && !strings.Contains(ref.Message, detail) {
+		t.Errorf("message = %q, want it to say %q", ref.Message, detail)
 	}
 }
 

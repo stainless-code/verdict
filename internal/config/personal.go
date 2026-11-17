@@ -432,6 +432,9 @@ func agentProbeFields(entry map[string]any, path string) (args []string, match s
 		if ref != nil {
 			return nil, "", ref
 		}
+		if len(args) == 0 {
+			return nil, "", agentRefuse(path+".probe_args", "want at least one argument")
+		}
 	}
 	match, ref = agentOptionalString(entry, "probe_match", path)
 	if ref != nil {
