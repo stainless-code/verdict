@@ -55,8 +55,7 @@ const (
 	// reviewFile is the single artifact contract: record and post read this
 	// exact file from the bundle, and the launcher asserts nothing else.
 	reviewFile = "review.json"
-	// drainFile is the single artifact a drain draft writes.
-	drainFile = "drain.replies.json"
+	drainFile  = "drain.replies.json"
 	// msgCanceled is the frozen cancel text, matching every other verb.
 	msgCanceled = "canceled before run completed"
 	// runStateFile is the bundle's typed run record, which run reads only to
@@ -74,9 +73,6 @@ func Run(ctx context.Context, req *core.RunRequest) (resp *core.RunResponse, ref
 	return execute(ctx, st)
 }
 
-// execute carries one resolved launch from its context check through the
-// artifact assertion. Both run and drain use it; only the state's artifact and
-// directive differ.
 func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.RefusalError) {
 	defer func() { st.carry(resp, ref) }()
 	if err := ctx.Err(); err != nil {
@@ -261,13 +257,11 @@ func (st *state) invoke(ctx context.Context, args *launchArgs, rounds int) (*cor
 	return st.launch(ctx, args)
 }
 
-// state carries the accumulated warnings, the credential values the recorded
-// argv hid, and the request every step reads.
-type state struct { //nolint:govet // the request leads; every launch step reads it
+type state struct {
 	req         *core.RunRequest
 	argSecrets  []string
-	warnings    []string
 	drainDigest string
+	warnings    []string
 }
 
 // launchArgs is the resolved invocation one launch works from: the definition,
@@ -297,8 +291,6 @@ func (st *state) carry(resp *core.RunResponse, ref *core.RefusalError) {
 	}
 }
 
-// artifactName is the one file this launch asserts: a drain draft writes its
-// replies file, every other launch writes the review.
 func (st *state) artifactName() string {
 	if st.drainDigest != "" {
 		return drainFile

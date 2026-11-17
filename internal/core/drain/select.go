@@ -84,8 +84,6 @@ func Select(feed *threadscore.File, self string, ledger []LedgerEntry, limit int
 	return pending, skipped, deferred
 }
 
-// classify splits the feed into pending drafts and typed skips. Sorting and
-// capping are the caller's work, so this stays one pass over the threads.
 func classify(feed *threadscore.File, self string, ledger []LedgerEntry) ([]Pending, []Skip) {
 	if feed == nil {
 		return []Pending{}, []Skip{}
@@ -122,8 +120,6 @@ func OtherThreads(feed *threadscore.File, self string) int {
 	return n
 }
 
-// skipReason returns the typed reason one verdict-authored thread is not
-// pending, or empty when a draft is due.
 func skipReason(thread *threadscore.Thread, ledger []LedgerEntry) string {
 	if thread.Kind != threadscore.KindReview {
 		return ReasonNotReview
@@ -144,8 +140,6 @@ func skipReason(thread *threadscore.Thread, ledger []LedgerEntry) string {
 	return ""
 }
 
-// lastComment is the reply awaiting an answer. A thread with no replies has
-// its verdict-authored root as its last comment, so it needs no draft.
 func lastComment(thread *threadscore.Thread) threadscore.Comment {
 	if len(thread.Comments) == 0 {
 		return threadscore.Comment{Author: thread.Author, AuthorKind: thread.AuthorKind}
@@ -153,9 +147,6 @@ func lastComment(thread *threadscore.Thread) threadscore.Comment {
 	return thread.Comments[len(thread.Comments)-1]
 }
 
-// answered reports whether the ledger already covers one waiting comment. An
-// explicit in_reply_to answers only that comment; a legacy entry answers every
-// earlier comment in the thread.
 func answered(ledger []LedgerEntry, threadID string, last *threadscore.Comment) bool {
 	for i := range ledger {
 		entry := &ledger[i]
@@ -166,7 +157,6 @@ func answered(ledger []LedgerEntry, threadID string, last *threadscore.Comment) 
 	return false
 }
 
-// entryAnswers resolves one ledger entry against the last waiting comment.
 func entryAnswers(entry *LedgerEntry, last *threadscore.Comment) bool {
 	if entry.InReplyTo != "" {
 		return entry.InReplyTo == last.ID
@@ -174,8 +164,6 @@ func entryAnswers(entry *LedgerEntry, last *threadscore.Comment) bool {
 	return notAfter(last.CreatedAt, entry.At)
 }
 
-// notAfter compares two host timestamps, falling back to their string order
-// for hosts that publish no parseable time.
 func notAfter(when, at string) bool {
 	left, lerr := time.Parse(time.RFC3339, when)
 	right, rerr := time.Parse(time.RFC3339, at)
@@ -185,7 +173,6 @@ func notAfter(when, at string) bool {
 	return !left.After(right)
 }
 
-// toPending joins one thread with its waiting reply and finding anchor.
 func toPending(thread *threadscore.Thread) Pending {
 	last := lastComment(thread)
 	root := ""
@@ -205,10 +192,17 @@ func toPending(thread *threadscore.Thread) Pending {
 	}
 }
 
-// byWaitingAt orders the oldest question first, with the thread id breaking
-// ties so one feed always yields the same plan.
 func byWaitingAt(a, b *Pending) int {
-	if c := strings.Compare(a.WaitingAt, b.WaitingAt); c != 0 {
+	left, leftErr := time.Parse(time.RFC3339, a.WaitingAt)
+	right, rightErr := time.Parse(time.RFC3339, b.WaitingAt)
+	if leftErr == nil && rightErr == nil {
+		if left.Before(right) {
+			return -1
+		}
+		if left.After(right) {
+			return 1
+		}
+	} else if c := strings.Compare(a.WaitingAt, b.WaitingAt); c != 0 {
 		return c
 	}
 	return strings.Compare(a.ThreadID, b.ThreadID)

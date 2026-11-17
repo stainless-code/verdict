@@ -56,9 +56,6 @@ var (
 	omitPositionals = map[string]bool{fieldRepo: true, fieldPr: true}
 )
 
-// cliOnlyVerbs are CLI verbs the MCP surface deliberately does not serve.
-// drain writes a local plan and may launch the operator's own agent, so a
-// tool call would start unpriced local work inside a model's turn.
 var cliOnlyVerbs = map[string]string{
 	"drain": "the verdict CLI (verdict drain)",
 }

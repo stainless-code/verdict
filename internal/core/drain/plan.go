@@ -27,8 +27,7 @@ const (
 	CodeDraftsInvalid = "drafts-invalid"
 	// CodeDraftsStale refuses a draft written against another plan.
 	CodeDraftsStale = "drafts-stale"
-	// keyThreadID is the repeated wire key in the plan's ordered rows.
-	keyThreadID = "thread_id"
+	keyThreadID     = "thread_id"
 )
 
 // Dispositions counts the draft verdicts the agent chose.
@@ -124,8 +123,6 @@ func (f *File) Wire() *jq.Obj {
 	)
 }
 
-// toObj renders one pending row, with a null line or finding sig where the
-// host published none.
 func toObj(p *Pending) *jq.Obj {
 	var line, finding any
 	if p.Line != nil {
@@ -182,15 +179,14 @@ func WritePlan(path string, f *File) error {
 func ReadPlan(path string) (*File, error) {
 	raw, err := jq.CappedFile(path, jq.MaxPRBytes)
 	if err != nil {
-		return nil, fmt.Errorf("read plan: %w", err) //nolint:wrapcheck // names the local plan path
+		return nil, jq.NewErrf("read plan: %v", err)
 	}
 	var f File
 	if err := json.Unmarshal(raw, &f); err != nil {
-		return nil, fmt.Errorf("decode plan: %w", err) //nolint:wrapcheck // names the local plan path
+		return nil, jq.NewErrf("decode plan: %v", err)
 	}
 	if f.SchemaVersion != SchemaVersion {
-		//nolint:wrapcheck // local version rejection
-		return nil, fmt.Errorf("plan schema_version %q, want %q", f.SchemaVersion, SchemaVersion)
+		return nil, jq.NewErrf("plan schema_version %q, want %q", f.SchemaVersion, SchemaVersion)
 	}
 	return &f, nil
 }

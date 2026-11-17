@@ -227,8 +227,6 @@ func assertMutationDeclaration(t *testing.T, tool *tool, want mutationClass) {
 	}
 }
 
-// TestDrainIsHiddenFromMCP proves the drain verb is declared hidden in every
-// server mode: it writes a local plan and can launch the operator's agent.
 func TestDrainIsHiddenFromMCP(t *testing.T) {
 	t.Parallel()
 	for _, cfg := range []struct{ readOnly, operator bool }{{}, {true, false}, {false, true}, {true, true}} {

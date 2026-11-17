@@ -45,7 +45,7 @@
         }
       },
       "required": ["thread_id", "waiting_comment_id", "disposition", "body"],
-      "additionalProperties": true
+      "additionalProperties": false
     }
   }
 }

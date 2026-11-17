@@ -274,7 +274,7 @@ var publishedSemantics = map[string]string{
 	// additive drain-replies.schema.json (new bundle document; no existing
 	// schema property, required key, enum, or type changed). It pins the
 	// agent's single output: the plan digest and one disposition per reply.
-	"drain-replies.schema.json": "f069941a08031af498dc0798e423ae64be38e43a60572f34fbe82ca69a67a257",
+	"drain-replies.schema.json": "d9e8cc9410edc85da2d1380d67dfbcb415563a1c30f8b3901f2516a3a98135c5",
 	"drain.schema.json":         "c9df47b4a58acdd239601629bdbd0b4158f7985e5147be55b318fc0966cabd18",
 	"envelope.schema.json":      "27103488dcbcb9966b36d5f4f78241832b63f304d4710cb7d745afbbc20cc255",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable

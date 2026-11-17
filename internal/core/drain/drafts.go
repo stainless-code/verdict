@@ -3,13 +3,13 @@ package drain
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"slices"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // Disposition is one action the agent may take for a pending thread.
@@ -25,12 +25,12 @@ const (
 	// MaxBodyRunes caps one reply body. The limit is characters, not bytes,
 	// so a multi-byte language does not lose half a sentence.
 	MaxBodyRunes = 4000
-	// markerPrefix is verdict's own comment marker, which a draft may never carry.
 	markerPrefix = "<!-- verdict-"
+	keyReplies   = "replies"
 )
 
 // Reply is one draft answer to a waiting comment.
-type Reply struct { // field order is the published property order
+type Reply struct {
 	ThreadID         string      `json:"thread_id"`
 	WaitingCommentID string      `json:"waiting_comment_id"`
 	Disposition      Disposition `enum:"answer|withdraw|defer" json:"disposition"`
@@ -38,7 +38,7 @@ type Reply struct { // field order is the published property order
 }
 
 // RepliesFile is the single artifact the drafting agent writes.
-type RepliesFile struct { // field order is the published property order
+type RepliesFile struct {
 	SchemaVersion string  `const:"1"          json:"schema_version"`
 	PlanDigest    string  `json:"plan_digest"`
 	Replies       []Reply `json:"replies"`
@@ -59,7 +59,7 @@ func CheckDrafts(raw []byte, plan *File) (*Drafts, []Skip, *core.RefusalError) {
 		pending[p.ThreadID] = p
 	}
 	summary := &Drafts{File: KeyDraftsJSON}
-	seen, ref := checkReplies(doc.Replies, root["replies"], pending, summary)
+	seen, ref := checkReplies(doc.Replies, root[keyReplies], pending, summary)
 	if ref != nil {
 		return nil, nil, ref
 	}
@@ -67,7 +67,6 @@ func CheckDrafts(raw []byte, plan *File) (*Drafts, []Skip, *core.RefusalError) {
 	return summary, noDrafts(plan.Pending, seen), nil
 }
 
-// checkReplies validates every entry once and returns the threads covered.
 func checkReplies(replies []Reply, raw json.RawMessage, pending map[string]Pending, summary *Drafts) (map[string]bool, *core.RefusalError) {
 	seen := make(map[string]bool, len(replies))
 	for i, reply := range replies {
@@ -82,7 +81,6 @@ func checkReplies(replies []Reply, raw json.RawMessage, pending map[string]Pendi
 	return seen, nil
 }
 
-// noDrafts lists pending threads the agent left unanswered.
 func noDrafts(pending []Pending, seen map[string]bool) []Skip {
 	skipped := []Skip{}
 	for _, p := range pending {
@@ -93,21 +91,23 @@ func noDrafts(pending []Pending, seen map[string]bool) []Skip {
 	return skipped
 }
 
-// parseDrafts checks the envelope before any reply is read.
 func parseDrafts(raw []byte, plan *File) (*RepliesFile, map[string]json.RawMessage, *core.RefusalError) {
 	var root map[string]json.RawMessage
 	if err := decodeStrict(raw, &root); err != nil {
 		return nil, nil, invalid("root", err.Error())
 	}
-	for key := range root {
-		if !slices.Contains([]string{"schema_version", "plan_digest", "replies"}, key) {
-			return nil, nil, invalid("root."+key, "unknown key")
-		}
+	if ref := checkRootKeys(root); ref != nil {
+		return nil, nil, ref
+	}
+	replies, ref := parseReplies(root)
+	if ref != nil {
+		return nil, nil, ref
 	}
 	var doc RepliesFile
 	if err := json.Unmarshal(raw, &doc); err != nil {
 		return nil, nil, invalid("root", err.Error())
 	}
+	doc.Replies = replies
 	if doc.SchemaVersion != SchemaVersion {
 		return nil, nil, invalid("schema_version", fmt.Sprintf("got %q, want %q", doc.SchemaVersion, SchemaVersion))
 	}
@@ -119,7 +119,27 @@ func parseDrafts(raw []byte, plan *File) (*RepliesFile, map[string]json.RawMessa
 	return &doc, root, nil
 }
 
-// checkReply validates one draft against its pending row and counts it.
+func checkRootKeys(root map[string]json.RawMessage) *core.RefusalError {
+	for key := range root {
+		if !slices.Contains([]string{"schema_version", "plan_digest", keyReplies}, key) {
+			return invalid("root."+key, "unknown key")
+		}
+	}
+	return nil
+}
+
+func parseReplies(root map[string]json.RawMessage) ([]Reply, *core.RefusalError) {
+	raw, ok := root[keyReplies]
+	if !ok || bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, invalid(keyReplies, "must be an array")
+	}
+	var replies []Reply
+	if err := json.Unmarshal(raw, &replies); err != nil {
+		return nil, invalid(keyReplies, err.Error())
+	}
+	return replies, nil
+}
+
 func checkReply(reply Reply, pending map[string]Pending, seen map[string]bool, site string, summary *Drafts) *core.RefusalError {
 	if seen[reply.ThreadID] {
 		return invalid(site+".thread_id", "duplicate thread "+reply.ThreadID)
@@ -138,26 +158,19 @@ func checkReply(reply Reply, pending map[string]Pending, seen map[string]bool, s
 	return countDisposition(reply.Disposition, summary, site)
 }
 
-// checkBody refuses verdict markers and caps every disposition's body. Only
-// answer and withdraw need non-empty text: defer records the decision itself.
 func checkBody(reply Reply, site string) *core.RefusalError {
 	if strings.Contains(reply.Body, markerPrefix) {
 		return invalid(site+".body", "a draft must not carry verdict's marker")
 	}
-	if reply.Disposition == DispositionDefer {
-		return nil
-	}
-	if reply.Body == "" {
-		return invalid(site+".body", "answer and withdraw need a non-empty body")
-	}
 	if n := utf8.RuneCountInString(reply.Body); n > MaxBodyRunes {
 		return invalid(site+".body", fmt.Sprintf("body is %d characters, max %d", n, MaxBodyRunes))
+	}
+	if reply.Disposition != DispositionDefer && strings.TrimSpace(reply.Body) == "" {
+		return invalid(site+".body", "answer and withdraw need a non-empty body")
 	}
 	return nil
 }
 
-// countDisposition is exhaustive over the published enum, so adding a
-// disposition fails compilation instead of silently dropping a draft.
 func countDisposition(d Disposition, summary *Drafts, site string) *core.RefusalError {
 	switch d {
 	case DispositionAnswer:
@@ -172,7 +185,6 @@ func countDisposition(d Disposition, summary *Drafts, site string) *core.Refusal
 	return nil
 }
 
-// validateFields rejects unknown keys in one draft entry, naming the field.
 func validateFields(raw json.RawMessage, index int, site string) *core.RefusalError {
 	var replies []map[string]json.RawMessage
 	if err := json.Unmarshal(raw, &replies); err != nil {
@@ -189,20 +201,18 @@ func validateFields(raw json.RawMessage, index int, site string) *core.RefusalEr
 	return nil
 }
 
-// decodeStrict decodes one capped JSON document with unknown keys refused.
 func decodeStrict(raw []byte, into any) error {
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(into); err != nil {
-		return fmt.Errorf("decode JSON: %w", err) //nolint:wrapcheck // decoded here from the capped local artifact
+		return jq.NewErrf("decode JSON: %v", err)
 	}
 	if dec.More() {
-		return errors.New("more than one JSON value") //nolint:wrapcheck // local JSON shape rejection
+		return jq.NewErr("more than one JSON value")
 	}
 	return nil
 }
 
-// invalid names the site under drafts-invalid, so an agent can edit one field.
 func invalid(site, reason string) *core.RefusalError {
 	return &core.RefusalError{Code: "drafts-invalid", Message: "drain.replies.json " + site + ": " + reason}
 }

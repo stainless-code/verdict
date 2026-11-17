@@ -123,6 +123,25 @@ func TestSelectOrderingCapAndDeferred(t *testing.T) {
 	}
 }
 
+func TestSelectOrdersParsedTimestamps(t *testing.T) {
+	t.Parallel()
+	feed := &threadscore.File{Threads: []threadscore.Thread{
+		thread("offset", threadscore.KindReview, "verdict-bot", threadscore.AuthorVerdict, false, false,
+			comment("r1", "verdict-bot", threadscore.AuthorVerdict, "2026-11-01T00:00:00Z"),
+			comment("w1", "alice", threadscore.AuthorHuman, "2026-11-02T00:00:00-05:00")),
+		thread("utc", threadscore.KindReview, "verdict-bot", threadscore.AuthorVerdict, false, false,
+			comment("r2", "verdict-bot", threadscore.AuthorVerdict, "2026-11-01T00:00:00Z"),
+			comment("w2", "alice", threadscore.AuthorHuman, "2026-11-02T02:00:00+00:00")),
+	}}
+	pending, _, deferred := Select(feed, "verdict-bot", nil, 1)
+	if got, want := ids(pending), []string{"utc"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("pending = %v, want %v", got, want)
+	}
+	if got, want := deferred, []string{"offset"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("deferred = %v, want %v", got, want)
+	}
+}
+
 func TestSelectLegacyLedgerCoversEarlierComments(t *testing.T) {
 	t.Parallel()
 	feed := &threadscore.File{Threads: []threadscore.Thread{

@@ -68,8 +68,6 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	return finish(ctx, r, req, fl, resp)
 }
 
-// preflight refuses a bundle that cannot supply the plan inputs before any
-// host read or local write.
 func preflight(req Request) *core.RefusalError {
 	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
 	if ref != nil {
@@ -81,14 +79,10 @@ func preflight(req Request) *core.RefusalError {
 	return nil
 }
 
-// drainFailed restates a failed input in the drain family, so one code names
-// every input that can keep a plan from being honest.
 func drainFailed(msg string) *core.RefusalError {
 	return &core.RefusalError{Code: "drain-failed", Message: msg}
 }
 
-// finish reads the refreshed feed, the login, and the ledger, then writes the
-// plan. Every refusal here precedes the plan write.
 func finish(ctx context.Context, r *cli.Runner, req Request, fl *flags, resp *fetchcore.ThreadsResponse) int {
 	in, code, done := readInputs(ctx, r, req, fl, resp)
 	if done {
@@ -115,7 +109,6 @@ func finish(ctx context.Context, r *cli.Runner, req Request, fl *flags, resp *fe
 	return cli.ExitOK
 }
 
-// planInputs are the bundle facts every plan is built from.
 type planInputs struct {
 	dir    string
 	feed   *threadscore.File
@@ -124,7 +117,6 @@ type planInputs struct {
 	limit  int
 }
 
-// readInputs resolves the plan inputs before the plan file is touched.
 func readInputs(ctx context.Context, r *cli.Runner, req Request, fl *flags, resp *fetchcore.ThreadsResponse) (*planInputs, int, bool) {
 	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
 	if ref != nil {
@@ -152,7 +144,6 @@ func readInputs(ctx context.Context, r *cli.Runner, req Request, fl *flags, resp
 	return &planInputs{dir: dir, feed: feed, self: self, ledger: ledger, limit: limit}, 0, false
 }
 
-// parseLimit turns the flag text into the plan's cap before any plan is built.
 func parseLimit(r *cli.Runner, text string) (int, int, bool) {
 	limit, err := strconv.Atoi(text)
 	if err != nil || limit < 1 || limit > draincore.MaxMaxThreads {
@@ -162,7 +153,6 @@ func parseLimit(r *cli.Runner, text string) (int, int, bool) {
 	return limit, 0, false
 }
 
-// selfLogin reads verdict's own login once, as threads resolve does.
 func selfLogin(ctx context.Context, req Request, provider string) (string, *core.RefusalError) {
 	var cmdr core.Commander = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
 	if req.Commander != nil {
@@ -175,7 +165,6 @@ func selfLogin(ctx context.Context, req Request, provider string) (string, *core
 	return self, nil
 }
 
-// next names the command this run did not do.
 func next(req Request, fl *flags) string {
 	if fl.agent != "" {
 		return "post the drafts with verdict drain " + req.Repo + " " + req.Pr + " --post"
@@ -183,8 +172,6 @@ func next(req Request, fl *flags) string {
 	return "draft replies with verdict drain " + req.Repo + " " + req.Pr + " --agent <name>"
 }
 
-// refreshRequest reuses the threads verb's refresh path and commander, with
-// the drain warnings carried through to its envelope.
 func refreshRequest(r *cli.Runner, req Request, fl *flags) *fetchcore.ThreadsRequest {
 	read := req
 	if read.Runtime == nil {
@@ -192,7 +179,9 @@ func refreshRequest(r *cli.Runner, req Request, fl *flags) *fetchcore.ThreadsReq
 	}
 	read.Now = r.Now
 	read.Progress = cli.Progress{R: r}
-	read.Commander = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
+	if read.Commander == nil {
+		read.Commander = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
+	}
 	return &fetchcore.ThreadsRequest{
 		ReadRequest: read,
 		Provider:    fl.provider,
@@ -200,8 +189,6 @@ func refreshRequest(r *cli.Runner, req Request, fl *flags) *fetchcore.ThreadsReq
 	}
 }
 
-// parseFlags accepts the PR A flag set. --post is deliberately unknown here:
-// host writes belong to the later PR.
 func parseFlags(r *cli.Runner, args []string) (*flags, int, bool) {
 	fl := &flags{max: defaultMax}
 	for i := 0; i < len(args); i++ {
@@ -218,7 +205,6 @@ func parseFlags(r *cli.Runner, args []string) (*flags, int, bool) {
 	return fl, 0, false
 }
 
-// consumeFlag parses one flag and returns the index of its last operand.
 func consumeFlag(r *cli.Runner, fl *flags, args []string, i int) (int, int, bool) {
 	a := args[i]
 	switch {
@@ -237,7 +223,6 @@ func consumeFlag(r *cli.Runner, fl *flags, args []string, i int) (int, int, bool
 	}
 }
 
-// setEqualsFlag handles --name=value forms and reports whether one matched.
 func setEqualsFlag(fl *flags, a string) bool {
 	for name, target := range map[string]*string{
 		"--provider=": &fl.provider, "--max-threads=": &fl.max,
@@ -251,7 +236,6 @@ func setEqualsFlag(fl *flags, a string) bool {
 	return false
 }
 
-// setFlag stores one value flag's operand.
 func setFlag(fl *flags, name, value string) {
 	switch name {
 	case "--provider":
@@ -274,17 +258,15 @@ func ReadLedger(path string) ([]draincore.LedgerEntry, error) {
 		if errors.Is(err, fs.ErrNotExist) {
 			return []draincore.LedgerEntry{}, nil
 		}
-		return nil, fmt.Errorf("unreadable %s: %w", path, err) //nolint:wrapcheck // names the local ledger path
+		return nil, jq.NewErrf("unreadable %s: %v", path, err)
 	}
 	var entries []draincore.LedgerEntry
 	if err := json.Unmarshal(raw, &entries); err != nil {
-		return nil, fmt.Errorf("unreadable %s: %w", path, err) //nolint:wrapcheck // names the local ledger path
+		return nil, jq.NewErrf("unreadable %s: %v", path, err)
 	}
 	return entries, nil
 }
 
-// draft launches one agent through the run service against the plan just
-// written, then validates the single artifact it must leave behind.
 func draft(ctx context.Context, r *cli.Runner, req Request, fl *flags, dir string, plan *draincore.File) (int, bool) {
 	launch := &core.RunRequest{
 		Runtime: &core.Runtime{
@@ -299,7 +281,6 @@ func draft(ctx context.Context, r *cli.Runner, req Request, fl *flags, dir strin
 		TimeoutRaw:  fl.timeout,
 		Warnings:    append([]string{}, r.Warnings...),
 	}
-	launch.TimeoutRaw = fl.timeout
 	if launch.TimeoutRaw == "" {
 		launch.TimeoutRaw = runverb.DefaultTimeoutS
 	}

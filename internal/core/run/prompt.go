@@ -171,9 +171,6 @@ func lensRow(lens recipe.LensUse) string {
 	return lens.ID + " (" + strings.Join(hints, ", ") + ")"
 }
 
-// drainDirective is the tool-generated prompt for one drafting agent. It names
-// paths and the trusted plan digest only: human reply text stays in the bundle
-// the agent reads with its own tools, never in the directive.
 func drainDirective(repo, pr, bundle, artifact, digest string) string {
 	head := fmt.Sprintf("Answer the review threads waiting on verdict in %s PR %s.", repo, pr)
 	read := fmt.Sprintf("Read the installed verdict review skill first, then %s: drain.json for the pending list, "+

@@ -273,7 +273,7 @@ func documents() []document {
 			title: "drain.replies.json — drafted thread replies",
 			root:  reflect.TypeFor[DrainRepliesFile](),
 			defs: []definition{
-				{typ: reflect.TypeFor[DrainReply](), name: "reply"},
+				{typ: reflect.TypeFor[DrainReply](), name: "reply", closed: true},
 			},
 			additionalProperties: false,
 		},

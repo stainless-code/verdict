@@ -14,13 +14,14 @@ func draftPlan() *File {
 	}
 }
 
-// validDraft is one complete draft document with the plan's digest.
 func validDraft() string {
-	return `{"schema_version":"1","plan_digest":"` + draftPlan().PlanDigest +
-		`","replies":[{"thread_id":"t1","waiting_comment_id":"w1","disposition":"answer","body":"a real answer"}]}`
+	return draftEnvelope(`,"replies":[{"thread_id":"t1","waiting_comment_id":"w1","disposition":"answer","body":"a real answer"}]`)
 }
 
-// replace swaps one exact JSON fragment, so each case changes one site only.
+func draftEnvelope(replies string) string {
+	return `{"schema_version":"1","plan_digest":"` + draftPlan().PlanDigest + `"` + replies + `}`
+}
+
 func replace(raw, from, to string) string {
 	if !strings.Contains(raw, from) {
 		return raw + "/* missing target */"
@@ -35,6 +36,14 @@ func TestCheckDraftsSites(t *testing.T) {
 	tests := []struct {
 		name, site, code, raw string
 	}{
+		{
+			name: "missing replies", site: "replies", code: "drafts-invalid",
+			raw: draftEnvelope(""),
+		},
+		{
+			name: "null replies", site: "replies", code: "drafts-invalid",
+			raw: draftEnvelope(`,"replies":null`),
+		},
 		{
 			name: "unknown root key", site: "root.extra", code: "drafts-invalid",
 			raw: replace(validDraft(), `{"schema_version"`, `{"extra":true,"schema_version"`),
@@ -62,6 +71,14 @@ func TestCheckDraftsSites(t *testing.T) {
 		{
 			name: "over-cap body", site: "replies[0].body", code: "drafts-invalid",
 			raw: replace(validDraft(), `a real answer`, strings.Repeat("é", MaxBodyRunes+1)),
+		},
+		{
+			name: "over-cap defer body", site: "replies[0].body", code: "drafts-invalid",
+			raw: replace(replace(validDraft(), `"disposition":"answer"`, `"disposition":"defer"`), `a real answer`, strings.Repeat("x", MaxBodyRunes+1)),
+		},
+		{
+			name: "whitespace body", site: "replies[0].body", code: "drafts-invalid",
+			raw: replace(validDraft(), `a real answer`, ` \t\n`),
 		},
 		{
 			name: "marker body", site: "replies[0].body", code: "drafts-invalid",
