@@ -186,6 +186,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[ConfigSeverityWeights](), name: "configSeverityWeights", closed: true},
 				{typ: reflect.TypeFor[ConfigIndex](), name: "configIndex", closed: true},
 				{typ: reflect.TypeFor[ConfigRequirements](), name: "requirements", closed: true},
+				{typ: reflect.TypeFor[ConfigTrigger](), name: "trigger", closed: true},
 				{typ: reflect.TypeFor[ConfigRigorPolicy](), name: "rigorPolicy", closed: true},
 				{typ: reflect.TypeFor[BlockClause](), name: "blockClause", closed: true},
 				{typ: reflect.TypeFor[ConfigScope](), name: "scope", closed: true, constraints: []member{

@@ -16,7 +16,7 @@ const requirementsKey = "requirements"
 
 var (
 	topFields = []string{
-		"$schema", "schema_version", "defaults", "requirements", "scopes", "profiles", "default_profile",
+		"$schema", "schema_version", "defaults", "requirements", "trigger", "scopes", "profiles", "default_profile",
 		"index", "severity_weights", "rigor_policy",
 	}
 	defaultsFields = []string{
@@ -26,6 +26,7 @@ var (
 	kbPolicyFields     = []string{"min_judged", "max_fp_rate", "max_chars"}
 	rigorPolicyFields  = append([]string{"mode"}, severityEnum...)
 	requirementsFields = []string{"block_clauses", "require_checks", "require_bind"}
+	triggerFields      = []string{"authors", "paths_include", "paths_exclude", "labels", "title_matches", "base_branches", "draft"}
 	clauseFields       = []string{"name", "threshold", "categories", "paths"}
 	scopeFields        = []string{"name", "include", "exclude", "profile", "defaults", "requirements"}
 	profileFields      = []string{"depth", "checks", "max_lenses"}
@@ -69,6 +70,7 @@ func checkUnknownFields(root map[string]any) *core.RefusalError {
 	}{
 		{key: defaultsKey, check: checkDefaultsKeys},
 		{key: requirementsKey, check: checkRequirementsKeys},
+		{key: "trigger", check: checkKeysSection(triggerFields)},
 		{key: "scopes", check: checkScopeListKeys},
 		{key: "profiles", check: checkProfilesKeys},
 		{key: "severity_weights", check: checkKeysSection(severityEnum)},

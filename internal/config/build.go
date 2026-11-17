@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"regexp"
 
 	"github.com/stainless-code/verdict/internal/core"
 )
@@ -32,6 +33,9 @@ func buildConfig(root map[string]any) (*core.Config, *core.RefusalError) {
 		return nil, ref
 	}
 	if cfg.Requirements, ref = presentNested(root, requirementsKey, rootLocation, buildRequirements); ref != nil {
+		return nil, ref
+	}
+	if cfg.Trigger, ref = presentNested(root, "trigger", rootLocation, buildTrigger); ref != nil {
 		return nil, ref
 	}
 	if cfg.Index, ref = presentNested(root, "index", rootLocation, buildIndex); ref != nil {
@@ -310,6 +314,58 @@ func buildRequirements(raw any, path string) (*core.ConfigRequirements, *core.Re
 	}
 	if out.RequireBind, ref = presentValue(obj, "require_bind", path, asBool); ref != nil {
 		return nil, remap(obj["require_bind"], path+".require_bind", ref, CodeBadRequirement)
+	}
+	return out, nil
+}
+
+// triggerStrings reads one non-empty list of single-line predicate values.
+func triggerStrings(raw any, path string) ([]string, *core.RefusalError) {
+	return panelMembers(raw, path, 1)
+}
+
+// buildTrigger validates the closed trigger predicate set. Every list is
+// non-empty when present, globs stay portable, and title_matches compiles
+// here so a bad expression never reaches evaluation.
+func buildTrigger(raw any, path string) (*core.ConfigTrigger, *core.RefusalError) {
+	obj, ref := asObject(raw, path)
+	if ref != nil {
+		return nil, ref
+	}
+	out := &core.ConfigTrigger{}
+	if out.Authors, ref = presentStrings(obj, "authors", path, triggerStrings); ref != nil {
+		return nil, ref
+	}
+	if out.PathsInclude, ref = presentStrings(obj, "paths_include", path, func(v any, at string) ([]string, *core.RefusalError) {
+		return globArray(v, at, 1)
+	}); ref != nil {
+		return nil, ref
+	}
+	if out.PathsExclude, ref = presentStrings(obj, "paths_exclude", path, func(v any, at string) ([]string, *core.RefusalError) {
+		return globArray(v, at, 1)
+	}); ref != nil {
+		return nil, ref
+	}
+	if out.Labels, ref = presentStrings(obj, "labels", path, triggerStrings); ref != nil {
+		return nil, ref
+	}
+	if out.BaseBranches, ref = presentStrings(obj, "base_branches", path, triggerStrings); ref != nil {
+		return nil, ref
+	}
+	title, ref := presentValue(obj, "title_matches", path, nonEmptyString)
+	if ref != nil {
+		return nil, ref
+	}
+	if title != nil {
+		if ref := checkSingleLine(*title, path+".title_matches"); ref != nil {
+			return nil, ref
+		}
+		if _, err := regexp.Compile(*title); err != nil {
+			return nil, refuse(CodeBadConfig, "%s.title_matches: invalid regexp: %v", path, err)
+		}
+		out.TitleMatches = *title
+	}
+	if out.Draft, ref = presentValue(obj, "draft", path, asBool); ref != nil {
+		return nil, ref
 	}
 	return out, nil
 }

@@ -44,7 +44,9 @@ var publishedSemantics = map[string]string{
 	// index a code index rather than a Go one.
 	// kb_policy.max_chars: additive optional non-null integer >= 1 controlling KB
 	// recall character budget.
-	"config.schema.json": "e7bca2256eaa3417f675cd3428f9a9bcfc84ccefc7bf23ed68ff2102ab58a716",
+	// trigger: additive optional top-level predicate object with seven closed
+	// optional keys; no existing property, required key, or type changed.
+	"config.schema.json": "cb41b8b05baa14d1236da1d8a3d69a06913dfac560c17a95b71e71b21a65af38",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets

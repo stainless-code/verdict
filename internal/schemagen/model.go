@@ -110,6 +110,9 @@ type ConfigRigorPolicy = core.ConfigRigorPolicy
 // ConfigRequirements is the configuration's conjunctive requirements.
 type ConfigRequirements = core.ConfigRequirements
 
+// ConfigTrigger is the closed local trigger predicate set.
+type ConfigTrigger = core.ConfigTrigger
+
 // BlockClause is one per-source, per-path blocking predicate.
 type BlockClause = core.BlockClause
 

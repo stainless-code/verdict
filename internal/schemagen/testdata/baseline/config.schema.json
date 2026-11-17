@@ -15,6 +15,10 @@
       "description": "Conjunctive review requirements: every applicable clause must hold for compliance, and required checks accumulate across matching scopes.",
       "$ref": "#/$defs/requirements"
     },
+    "trigger": {
+      "description": "Closed local trigger predicates read from the trusted base configuration: lists OR within one predicate and AND across predicates; an absent section runs every PR.",
+      "$ref": "#/$defs/trigger"
+    },
     "scopes": {
       "type": "array",
       "items": { "$ref": "#/$defs/scope" }
@@ -108,6 +112,41 @@
           "minItems": 1
         },
         "require_bind": { "type": "boolean" }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "trigger": {
+      "description": "One trigger predicate set: authors, changed-path globs, labels, a title regular expression, base branches, and draft state. title_matches compiles when the configuration is parsed.",
+      "type": "object",
+      "properties": {
+        "authors": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "paths_include": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "paths_exclude": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "labels": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "title_matches": { "type": "string" },
+        "base_branches": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "draft": { "type": "boolean" }
       },
       "required": [],
       "additionalProperties": false
