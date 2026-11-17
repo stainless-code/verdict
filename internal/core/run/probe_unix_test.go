@@ -145,3 +145,53 @@ func stringsToAny(values []string) []any {
 func shellLiteral(value string) string {
 	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }
+
+// TestProbeSearchesHeadOfCombinedOutput pins the capture window: help text
+// leads, so a match inside the first 64 KiB passes even if the child floods
+// afterwards, while a match past that window refuses.
+func TestProbeSearchesHeadOfCombinedOutput(t *testing.T) {
+	const flag = "--ultrafast"
+	tests := []struct {
+		name       string
+		flood      int
+		matchLeads bool
+		wantRefuse bool
+	}{
+		{name: "match leads a flood", flood: probeOutputCap + 4096, matchLeads: true},
+		{name: "match fits after 60 KiB", flood: 60 * 1024},
+		{name: "match trails a flood", flood: probeOutputCap + 4096, wantRefuse: true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			root := fixtureRoot(t)
+			help := "printf '%s' " + shellLiteral(strings.Repeat("x", tc.flood)) + "\n" +
+				"printf '%s\\n' " + shellLiteral(flag) + "\n"
+			if tc.matchLeads {
+				help = "printf '%s\\n' " + shellLiteral(flag) + "\n" +
+					"printf '%s' " + shellLiteral(strings.Repeat("x", tc.flood)) + "\n"
+			}
+			bin := plantStub(t, "fx", "#!/bin/sh\n"+
+				"case \" $* \" in\n"+
+				"  *' --help '*) "+help+"exit 0 ;;\n"+
+				"esac\n"+
+				"printf '%s' "+shellLiteral(reviewDoc)+" > .verdict/state/42/review.json\n")
+			_, ref := runWithStub(t, root, "fx", bin)
+			_, err := os.Stat(filepath.Join(bundleDir(root), reviewFile))
+			if tc.wantRefuse {
+				if ref == nil || ref.Code != "agent-mismatch" {
+					t.Fatalf("ref = %+v, want agent-mismatch", ref)
+				}
+				if !os.IsNotExist(err) {
+					t.Errorf("review file exists after refusal (err = %v); want no launch", err)
+				}
+				return
+			}
+			if ref != nil {
+				t.Fatalf("launch refused: %v", ref)
+			}
+			if err != nil {
+				t.Errorf("review file missing after a passing probe: %v", err)
+			}
+		})
+	}
+}

@@ -49,7 +49,8 @@ const (
 	// probeTimeout bounds the identity probe, separately from the agent's own
 	// --timeout budget: a wrong binary must never hold a launch for minutes.
 	probeTimeout = 5 * time.Second
-	// probeOutputCap caps the probe's combined capture at 64 KiB.
+	// probeOutputCap is the window searched for the identity match. The child
+	// gets a wider capture so the head of a noisy help survives to this slice.
 	probeOutputCap = 64 * 1024
 )
 
@@ -324,7 +325,7 @@ func (st *state) probe(ctx context.Context, args *launchArgs) *core.RefusalError
 		Env:       st.childEnv(),
 		Dir:       st.workDir(),
 		Stdin:     strings.NewReader(""),
-		OutputCap: probeOutputCap,
+		OutputCap: coreexec.VerifyOutputCap,
 	})
 	out := res.Stdout + res.Stderr
 	if len(out) > probeOutputCap {

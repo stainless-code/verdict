@@ -2257,7 +2257,8 @@ from.
 Six shipped binaries share their name with another tool: `bob`, `cortex`,
 `forge`, `fx`, `grok`, and `kilo`. Before a launch, verdict runs the row's
 harmless help command with the launch's environment, no stdin, a five-second
-budget, and a 64 KiB capture that keeps the tail of the output. The combined output must contain the row's match
+budget, and a capture of the combined stdout and stderr whose first 64 KiB is searched for the match.
+The output must contain the row's match
 text; a non-zero exit, a timeout, or a missing match refuses `agent-mismatch`
 and starts no agent. `--print` spawns nothing, so it never probes. A passing
 check is recorded as `probe: {"args": [...], "ok": true}` in `launcher.json`.

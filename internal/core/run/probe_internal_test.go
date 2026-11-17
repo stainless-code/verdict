@@ -103,8 +103,8 @@ func assertProbeCommand(t *testing.T, root string, cmd *core.Command) {
 	if want := []string{"/opt/agents/local-agent", "ask", "--help"}; !slices.Equal(cmd.Argv, want) {
 		t.Errorf("probe argv = %q, want %q", cmd.Argv, want)
 	}
-	if cmd.OutputCap != 64*1024 {
-		t.Errorf("probe capture cap = %d, want 65536", cmd.OutputCap)
+	if cmd.OutputCap != 1024*1024 {
+		t.Errorf("probe capture cap = %d, want 1048576", cmd.OutputCap)
 	}
 	if cmd.Dir != root || !slices.Equal(cmd.Env, []string{"ANTHROPIC_API_KEY=sk-ant-0123456789abcdef"}) {
 		t.Errorf("probe child = dir %q env %q; want the launch's dir and env", cmd.Dir, cmd.Env)
