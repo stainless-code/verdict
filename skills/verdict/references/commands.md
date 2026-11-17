@@ -69,14 +69,26 @@ the exact argv without spawning or writing. Everything after `--` reaches the
 agent first; a flag that takes the prompt as its value sits immediately before
 the directive, so your flags cannot be swallowed as that value.
 
-Names come from the shipped table (`agy`, `amp`, `claude`, `codex`, `copilot`,
-`crush`, `cursor`, `droid`, `gemini`, `goose`, `kiro`, `opencode`, `pi`, `qwen`)
+Names come from the shipped table (`adal`, `agy`, `amp`, `auggie`, `autohand`,
+`bob`, `claude`, `cline`, `codearts`, `codebuddy`, `codex`, `commandcode`,
+`continue`, `copilot`, `cortex`, `crush`, `cursor`, `dcode`, `devin`, `dexto`,
+`droid`, `forge`, `fx`, `gemini`, `goose`, `grok`, `hermes`, `jazz`, `junie`,
+`kilo`, `kimchi`, `kimi`, `kiro`, `kode`, `mcode`, `neovate`, `openclaw`,
+`opencode`, `pa`, `pi`, `qoder`, `qodercn`, `qwen`, `rovodev`, `vibe`, `zcode`)
 or from the `agents` key of your own `${XDG_CONFIG_HOME:-$HOME/.config}/verdict/settings.json`.
 The prefs shape is `{"agents": {"<name>": {"binary": "...", "args": [],
-"prompt_flag": "...", "model_flag": "...", "install": "..."}}}`; `binary` is
-required, `args` defaults to `[]`, and names cannot collide with a shipped row.
-A repository config cannot define one. `unknown-agent` lists both groups, and
-`launcher.json` marks prefs-defined rows with `agent_source: "prefs"`.
+"prompt_flag": "...", "model_flag": "...", "install": "...",
+"probe_args": [], "probe_match": "..."}}}`; `binary` is required, `args` defaults
+to `[]`, `probe_match` is required when `probe_args` is set, and names cannot
+collide with a shipped row. A repository config cannot define one. `unknown-agent`
+lists both groups, and `launcher.json` marks prefs-defined rows with
+`agent_source: "prefs"`.
+
+A row whose binary name clashes with another tool probes it first: a harmless
+help command must exit zero and contain the row's match text within five seconds.
+A mismatch refuses `agent-mismatch` before any agent starts; `--print` spawns
+nothing and does not probe. `launcher.json` records `probe: {"args": [...],
+"ok": true}` for a launch that passed.
 
 ## Suppression receipts
 

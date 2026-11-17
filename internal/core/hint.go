@@ -215,6 +215,8 @@ var hintRules = []HintRule{
 		"$VAR, then re-run"},
 	{codes: []string{"sandbox-unavailable"}, hint: "try: on Linux install bubblewrap and allow unprivileged " +
 		"user namespaces; on macOS sandbox-exec ships with the OS — or re-run without --sandbox on a command you trust"},
+	{codes: []string{"agent-mismatch"}, hint: "try: define it in settings.json agents with an absolute binary path, " +
+		"or pass --agent for the one you meant"},
 	{codes: []string{"agent-missing"}, hint: "try: install the agent CLI (or put it on PATH), or re-run with " +
 		"--agent <name> for one you have"},
 	{codes: []string{"agent-spawn-failed"}, hint: "try: check the binary runs from your shell " +

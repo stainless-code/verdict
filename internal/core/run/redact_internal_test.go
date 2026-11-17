@@ -246,6 +246,22 @@ func TestDirectiveKeepsAPercentPathLiteral(t *testing.T) {
 	}
 }
 
+// assertAgentTableFields checks the fields every row must carry. Five vendors
+// configure a model in their own settings, not on the CLI.
+func assertAgentTableFields(t *testing.T, table []string) {
+	t.Helper()
+	noModel := map[string]bool{"bob": true, "forge": true, "jazz": true, "rovodev": true, "zcode": true}
+	for _, name := range table {
+		def, ok := lookupAgent(name)
+		if !ok || def.Binary == "" || def.Install == "" {
+			t.Errorf("agent %q has no binary or install hint: %+v", name, def)
+		}
+		if def.ModelFlag == "" && !noModel[name] {
+			t.Errorf("agent %q has no model flag: %+v", name, def)
+		}
+	}
+}
+
 // TestAgentTableIsSortedAndUnique keeps the data table honest: duplicate or
 // unsorted rows would make the known-name list a lie.
 func TestAgentTableIsSortedAndUnique(t *testing.T) {
@@ -257,12 +273,7 @@ func TestAgentTableIsSortedAndUnique(t *testing.T) {
 		t.Errorf("agent table repeats a name: %v", table)
 	}
 	assertKnownNamesEnumerateTable(t, table)
-	for _, name := range table {
-		def, ok := lookupAgent(name)
-		if !ok || def.Binary == "" || def.ModelFlag == "" || def.Install == "" {
-			t.Errorf("agent %q has no binary, model flag, or install hint: %+v", name, def)
-		}
-	}
+	assertAgentTableFields(t, table)
 	if _, ok := lookupAgent("gpt"); ok {
 		t.Error("lookupAgent resolved an agent that is not in the table")
 	}
@@ -270,8 +281,8 @@ func TestAgentTableIsSortedAndUnique(t *testing.T) {
 
 func tableNames() []string {
 	names := make([]string, 0, len(agentDefs))
-	for _, def := range agentDefs {
-		names = append(names, def.Name)
+	for i := range agentDefs {
+		names = append(names, agentDefs[i].Name)
 	}
 	return names
 }

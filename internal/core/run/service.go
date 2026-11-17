@@ -45,6 +45,15 @@ const (
 	codeBadSettings = "bad-settings"
 )
 
+const (
+	// probeTimeout bounds the identity probe, separately from the agent's own
+	// --timeout budget: a wrong binary must never hold a launch for minutes.
+	probeTimeout = 5 * time.Second
+	// probeOutputCap is the window searched for the identity match. The child
+	// gets a wider capture so the head of a noisy help survives to this slice.
+	probeOutputCap = 64 * 1024
+)
+
 // Reused refusal codes: the shared vocabulary for "you canceled", "there is no
 // such bundle", "this flag combination is wrong", and "that timeout is not a
 // number". Reusing them keeps one meaning per code across verbs.
@@ -83,7 +92,8 @@ func WithAgents(
 	ctx context.Context, req *core.RunRequest, agents []config.PersonalAgent,
 ) (resp *core.RunResponse, ref *core.RefusalError) {
 	seen := make(map[string]bool, len(agents))
-	for _, def := range agents {
+	for i := range agents {
+		def := &agents[i]
 		path := "$.agents." + def.Name
 		if _, ok := lookupAgent(def.Name); ok {
 			return nil, &core.RefusalError{
@@ -153,9 +163,11 @@ func (st *state) argsFor(def *agentDef, dir string, timeout int) (*launchArgs, *
 		abs:      filepath.Join(dir, st.artifactName()),
 		timeout:  timeout,
 	}
-	if _, ref := st.resolve(&args.def); ref != nil {
+	bin, ref := st.resolve(&args.def)
+	if ref != nil {
 		return nil, ref
 	}
+	args.bin = bin
 	st.compose(args, st.req, st.promptBundle(dir), st.promptArtifact(dir), readcommon.IsLocalBundleDir(dir))
 	return args, nil
 }
@@ -281,10 +293,79 @@ func (st *state) invoke(ctx context.Context, args *launchArgs, rounds int) (*cor
 		}
 		return st.printed(args), nil
 	}
+	if ref := st.probe(ctx, args); ref != nil {
+		return nil, ref
+	}
 	if rounds > 1 {
 		return st.repairLoop(ctx, args, rounds)
 	}
 	return st.launch(ctx, args)
+}
+
+// probe confirms a binary is the agent the row claims before any launch. It
+// runs the declared harmless command with the launch's environment and working
+// directory, no stdin, a five-second budget, and a capped capture. A wrong,
+// silent, or hanging binary refuses agent-mismatch without spawning the agent.
+func (st *state) probe(ctx context.Context, args *launchArgs) *core.RefusalError {
+	if len(args.def.ProbeArgs) == 0 {
+		return nil
+	}
+	if ctx.Err() != nil {
+		return st.refuse(codeCanceled, msgCanceled)
+	}
+	commander := st.commander()
+	if commander == nil {
+		return st.refuse("agent-mismatch", fmt.Sprintf(
+			"agent '%s' at %s could not be probed: no commander in runtime", args.def.Name, args.bin))
+	}
+	pctx, cancel := context.WithTimeout(ctx, st.probeBudget())
+	defer cancel()
+	res, err := commander.Run(pctx, &core.Command{
+		Argv:      append([]string{args.bin}, args.def.ProbeArgs...),
+		Env:       st.childEnv(),
+		Dir:       st.workDir(),
+		Stdin:     strings.NewReader(""),
+		OutputCap: coreexec.VerifyOutputCap,
+	})
+	if ctx.Err() != nil {
+		return st.refuse(codeCanceled, msgCanceled)
+	}
+	out := res.Stdout + res.Stderr
+	if len(out) > probeOutputCap {
+		out = out[:probeOutputCap]
+	}
+	if result := probeFailure(pctx, out, res, err, args.def.ProbeMatch); result != "" {
+		return st.refuse("agent-mismatch", fmt.Sprintf(
+			"agent '%s' at %s failed its identity probe: %s", args.def.Name, args.bin, result))
+	}
+	args.probe = &launcherProbe{Args: slices.Clone(args.def.ProbeArgs), OK: true}
+	return nil
+}
+
+// probeBudget returns the shipped probe deadline unless a caller supplied its
+// own, so process fixtures never race the five-second product constant.
+func (st *state) probeBudget() time.Duration {
+	if st.req.ProbeTimeout > 0 {
+		return st.req.ProbeTimeout
+	}
+	return probeTimeout
+}
+
+// probeFailure names why an identity probe cannot vouch for the binary, and
+// stays empty when the match is present in the captured window.
+func probeFailure(pctx context.Context, out string, res core.Result, err error, match string) string {
+	switch {
+	case pctx.Err() != nil || res.TimedOut:
+		return "timed out"
+	case err != nil:
+		return fmt.Sprintf("could not run the probe: %v", err)
+	case res.ExitCode != 0:
+		return fmt.Sprintf("exited %d", res.ExitCode)
+	case !strings.Contains(out, match):
+		return fmt.Sprintf("probe output did not contain '%s'", match)
+	default:
+		return ""
+	}
 }
 
 type state struct {
@@ -300,6 +381,8 @@ type state struct {
 // bundle and its review path, the timeout, and the exact argv.
 type launchArgs struct {
 	def      agentDef
+	bin      string
+	probe    *launcherProbe
 	plan     *recipe.Plan
 	staged   *staged
 	dir      string
@@ -426,9 +509,9 @@ func (st *state) lookupAgent(name string) (agentDef, bool) {
 	if def, ok := lookupAgent(name); ok {
 		return def, true
 	}
-	for _, def := range st.defs {
-		if def.Name == name {
-			return operatorAgent(&def), true
+	for i := range st.defs {
+		if st.defs[i].Name == name {
+			return operatorAgent(&st.defs[i]), true
 		}
 	}
 	return agentDef{}, false
@@ -441,7 +524,8 @@ func operatorAgent(def *config.PersonalAgent) agentDef {
 	return agentDef{
 		Name: def.Name, Binary: def.Binary, Install: def.Install,
 		ModelFlag: def.ModelFlag, PromptFlag: def.PromptFlag,
-		Args: slices.Clone(def.Args), Source: agentSourcePrefs,
+		ProbeMatch: def.ProbeMatch, Args: slices.Clone(def.Args),
+		ProbeArgs: slices.Clone(def.ProbeArgs), Source: agentSourcePrefs,
 	}
 }
 
@@ -452,8 +536,8 @@ func (st *state) knownAgents() string {
 		return message + "none"
 	}
 	names := make([]string, 0, len(st.defs))
-	for _, def := range st.defs {
-		names = append(names, def.Name)
+	for i := range st.defs {
+		names = append(names, st.defs[i].Name)
 	}
 	return message + strings.Join(names, ", ")
 }
@@ -542,10 +626,7 @@ func (st *state) stageNext(at *staged, stages int, dir string) string {
 // launch runs the one process of a one-shot run: resolve, record the launch,
 // spawn with the watchdog, then assert the artifact and hand off.
 func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunResponse, *core.RefusalError) {
-	bin, ref := st.resolve(&args.def)
-	if ref != nil {
-		return nil, ref
-	}
+	bin := args.bin
 	started := st.now()
 	rec := &launcher{
 		SchemaVersion: launcherSchema,
@@ -557,6 +638,7 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 		Artifact:      args.artifact,
 		StartedAt:     core.NowUTC(started),
 		Timeout:       args.timeout,
+		Probe:         args.probe,
 	}
 	rec.Argv, st.argSecrets = st.displayArgv(args)
 	launched, ref := writeLauncher(filepath.Join(args.dir, launcherFile), rec)

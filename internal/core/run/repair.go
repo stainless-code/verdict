@@ -83,6 +83,7 @@ func (st *state) repairLoop(ctx context.Context, args *launchArgs, n int) (*core
 		Artifact:      args.artifact,
 		StartedAt:     core.NowUTC(started),
 		Timeout:       args.timeout,
+		Probe:         args.probe,
 	}
 	rec.Argv, st.argSecrets = st.displayArgv(args)
 	if ref := st.clearRoundFiles(args); ref != nil {

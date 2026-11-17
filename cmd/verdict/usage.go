@@ -50,7 +50,11 @@ func usageText() string {
 		"    to stdout (human; progress moves to stderr) or data.prompt_dump (--json).\n" +
 		"    No agent runs, no network beyond the fetch, no store writes beyond the bundle.\n" +
 		"  run <owner/repo> <pr|local-name>\n" +
-		"      --agent <agy|amp|claude|codex|copilot|crush|cursor|droid|gemini|goose|kiro|opencode|pi|qwen>\n" +
+		"      --agent <adal|agy|amp|auggie|autohand|bob|claude|cline|codearts|codebuddy|\n" +
+		"        codex|commandcode|continue|copilot|cortex|crush|cursor|dcode|devin|dexto|\n" +
+		"        droid|forge|fx|gemini|goose|grok|hermes|jazz|junie|kilo|kimchi|kimi|kiro|\n" +
+		"        kode|mcode|neovate|openclaw|opencode|pa|pi|qoder|qodercn|qwen|rovodev|\n" +
+		"        vibe|zcode>\n" +
 		"      [--recipe <slug>] [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 1>]\n" +
 		"      [--print] [-- <agent args>...] [--json]\n" +
 		"    launch YOUR agent against an existing bundle: one process per round, one shot by default.\n" +
@@ -63,6 +67,8 @@ func usageText() string {
 		"    Operators can define more names under the 'agents' key of their own settings\n" +
 		"    file (XDG_CONFIG_HOME/verdict/settings.json); a repository config cannot.\n" +
 		"    A flag that takes the prompt places it immediately before the directive.\n" +
+		"    A binary whose name clashes with another tool answers a harmless help probe\n" +
+		"    before launch; a mismatch refuses agent-mismatch without starting an agent.\n" +
 		"    A non-zero agent exit is the process exit code (agent-failed); the watchdog\n" +
 		"    timeout (agent-timeout), a missing binary (agent-missing), and a spawn failure\n" +
 		"    (agent-spawn-failed) refuse typed with a hint. Provenance lands in\n" +

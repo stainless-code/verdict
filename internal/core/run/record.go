@@ -59,6 +59,14 @@ type launcherRepair struct {
 	FinalValid    bool `json:"final_valid"`
 }
 
+// launcherProbe records the identity check a binary-name clash required
+// before the launch. Only a passing probe reaches the record: a mismatch
+// refuses first.
+type launcherProbe struct {
+	Args []string `json:"args"`
+	OK   bool     `json:"ok"`
+}
+
 // launcher is the provenance record. The launch write fills everything down to
 // Timeout; the outcome write adds the fields from DurationMS on, so a record
 // left behind by a launcher that never came back still says what started and
@@ -77,6 +85,7 @@ type launcher struct { //nolint:govet // field order is the published property o
 	StartedAt     string            `json:"started_at"`
 	Timeout       int               `json:"timeout"`
 	DurationMS    *int              `json:"duration_ms,omitempty"`
+	Probe         *launcherProbe    `json:"probe,omitempty"`
 	EndedAt       string            `json:"ended_at,omitempty"`
 	Exit          *int              `json:"exit,omitempty"`
 	TimedOut      *bool             `json:"timed_out,omitempty"`

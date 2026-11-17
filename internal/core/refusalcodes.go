@@ -27,6 +27,7 @@ const CodeBadFlags = "bad-flags"
 var refusalCodes = []string{
 	"adopt-failed",
 	"agent-failed",
+	"agent-mismatch",
 	"agent-missing",
 	"agent-record-failed",
 	"agent-spawn-failed",

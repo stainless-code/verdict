@@ -1,5 +1,6 @@
 adopt-failed	try: address the cause above, then re-run the same command
 agent-failed	try: read the recorded tail in launcher.json, fix the invocation (the agent's own flags go after '--'), then re-run
+agent-mismatch	try: define it in settings.json agents with an absolute binary path, or pass --agent for the one you meant
 agent-missing	try: install the agent CLI (or put it on PATH), or re-run with --agent <name> for one you have
 agent-record-failed	try: make the bundle directory writable (or re-fetch the bundle), then re-run
 agent-spawn-failed	try: check the binary runs from your shell (permissions, shebang), then re-run

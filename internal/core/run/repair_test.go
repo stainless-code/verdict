@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -157,6 +158,76 @@ func assertRoundFiles(t *testing.T, dir, reviewName, want string, names ...strin
 	}
 	if string(raw) != want {
 		t.Errorf("%s = %q, want %q", reviewName, raw, want)
+	}
+}
+
+// probeRecordingRepair answers the identity probe and snapshots the launcher
+// record each round writes before its agent spawn.
+type probeRecordingRepair struct {
+	t    *testing.T
+	root string
+	dir  string
+	seen []map[string]any
+}
+
+func (c *probeRecordingRepair) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
+	if slices.Contains(cmd.Argv, "--help") {
+		return core.Result{Stdout: "--ultrafast"}, nil
+	}
+	raw, err := os.ReadFile(filepath.Join(c.dir, launcherFile))
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	doc, err := jq.Decode(raw)
+	if err != nil {
+		c.t.Fatal(err)
+	}
+	rec, ok := jq.AsMap(doc)
+	if !ok {
+		c.t.Fatalf("launcher.json = %v, want an object", doc)
+	}
+	c.seen = append(c.seen, rec)
+	if len(c.seen) == 1 {
+		writeDoc(c.t, c.root, invalidDoc)
+	} else {
+		writeDoc(c.t, c.root, validDoc)
+	}
+	return core.Result{}, nil
+}
+
+// TestRepairRecordsProbeInEveryRound pins the provenance of a probed repair:
+// each round's launcher.json carries the passing identity check, like the
+// one-shot record does.
+func TestRepairRecordsProbeInEveryRound(t *testing.T) {
+	root := repairFixture(t)
+	dir := bundleDir(root)
+	var lines collector
+	req := repairRequest(root, nil, "2", &lines)
+	req.Agent = "fx"
+	req.LookPath = func(string) (string, error) { return "/opt/agents/fx", nil }
+	cmdr := &probeRecordingRepair{t: t, root: root, dir: dir}
+	req.Commander = cmdr
+	if _, ref := WithAgents(t.Context(), req, nil); ref != nil {
+		t.Fatalf("Run refused: %v", ref)
+	}
+	if len(cmdr.seen) != 2 {
+		t.Fatalf("launcher snapshots = %d, want two rounds", len(cmdr.seen))
+	}
+	assertRepairRoundProbes(t, cmdr.seen)
+}
+
+func assertRepairRoundProbes(t *testing.T, records []map[string]any) {
+	t.Helper()
+	for i, rec := range records {
+		probe, ok := jq.AsMap(rec["probe"])
+		if !ok || probe["ok"] != true {
+			t.Errorf("round %d probe = %v, want ok=true", i+1, rec["probe"])
+			continue
+		}
+		args, ok := probe["args"].([]any)
+		if !ok || !slices.Equal(args, []any{"ask", "--help"}) {
+			t.Errorf("round %d probe args = %v, want [ask --help]", i+1, probe["args"])
+		}
 	}
 }
 

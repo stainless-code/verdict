@@ -2,6 +2,7 @@ package core
 
 import (
 	"reflect"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -44,9 +45,12 @@ type RunRequest struct { //nolint:govet // field grouping documents the request 
 	Checkout    string
 	TimeoutRaw  string
 	RoundsRaw   string
-	Print       bool
-	JSONMode    bool
-	Warnings    []string
+	// ProbeTimeout overrides the identity probe's test-owned budget; zero keeps
+	// the shipped default.
+	ProbeTimeout time.Duration
+	Print        bool
+	JSONMode     bool
+	Warnings     []string
 }
 
 // RunResponse carries the run outcome: the envelope data, the warnings, the

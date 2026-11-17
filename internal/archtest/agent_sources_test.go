@@ -31,6 +31,63 @@ func TestBuiltinAgentsCarrySourceComments(t *testing.T) {
 	}
 }
 
+// TestAgentNamesMatchTheirSurfaces pins the two human lists of --agent names
+// against the shipped table. A row that exists in code but not in usage or the
+// docs is undiscoverable; a name in the docs that no row answers is a lie.
+func TestAgentNamesMatchTheirSurfaces(t *testing.T) {
+	t.Parallel()
+	root := moduleRoot(t)
+	names := shippedAgentNames(t, filepath.Join(root, "internal", "core", "run", "agents.go"))
+	for _, surface := range []struct {
+		path   string
+		quoted bool
+	}{
+		{path: filepath.Join(root, "cmd", "verdict", "usage.go")},
+		{path: filepath.Join(root, "docs", "manual.md"), quoted: true},
+		{path: filepath.Join(root, "skills", "verdict", "references", "commands.md"), quoted: true},
+	} {
+		assertSurfaceNames(t, surface.path, surface.quoted, names)
+	}
+}
+
+func shippedAgentNames(t *testing.T, path string) []string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matches := agentNameLiteral.FindAllStringSubmatch(string(raw), -1)
+	if len(matches) == 0 {
+		t.Fatal("agent table scan found no names; the guard would pass vacuously")
+	}
+	names := make([]string, 0, len(matches))
+	for _, match := range matches {
+		names = append(names, match[1])
+	}
+	return names
+}
+
+func assertSurfaceNames(t *testing.T, path string, quoted bool, names []string) {
+	t.Helper()
+	doc, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range names {
+		want := surfaceWant(name, quoted)
+		if !strings.Contains(string(doc), want) {
+			t.Errorf("%s does not name agent %q (want %q)", path, name, want)
+		}
+	}
+}
+
+func surfaceWant(name string, quoted bool) string {
+	if quoted {
+		return "`" + name + "`"
+	}
+	return name
+}
+
 func checkAgentSourceComments(t *testing.T, path string, lines []string) int {
 	t.Helper()
 	seen := 0
