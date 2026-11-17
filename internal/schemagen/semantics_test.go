@@ -271,8 +271,12 @@ var publishedSemantics = map[string]string{
 	// property, required key, enum, or type changed). It pins the plan the
 	// drain verb writes: pending threads, typed skips, the plan digest, and
 	// the later draft/post receipts.
-	"drain.schema.json":    "c9df47b4a58acdd239601629bdbd0b4158f7985e5147be55b318fc0966cabd18",
-	"envelope.schema.json": "27103488dcbcb9966b36d5f4f78241832b63f304d4710cb7d745afbbc20cc255",
+	// additive drain-replies.schema.json (new bundle document; no existing
+	// schema property, required key, enum, or type changed). It pins the
+	// agent's single output: the plan digest and one disposition per reply.
+	"drain-replies.schema.json": "f069941a08031af498dc0798e423ae64be38e43a60572f34fbe82ca69a67a257",
+	"drain.schema.json":         "c9df47b4a58acdd239601629bdbd0b4158f7985e5147be55b318fc0966cabd18",
+	"envelope.schema.json":      "27103488dcbcb9966b36d5f4f78241832b63f304d4710cb7d745afbbc20cc255",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

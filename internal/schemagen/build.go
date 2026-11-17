@@ -269,6 +269,15 @@ func documents() []document {
 			additionalProperties: false,
 		},
 		{
+			name:  "drain-replies",
+			title: "drain.replies.json — drafted thread replies",
+			root:  reflect.TypeFor[DrainRepliesFile](),
+			defs: []definition{
+				{typ: reflect.TypeFor[DrainReply](), name: "reply"},
+			},
+			additionalProperties: false,
+		},
+		{
 			name:  "findings",
 			title: "findings.json — merged findings store",
 			root:  reflect.TypeFor[[]FindingEntry](),

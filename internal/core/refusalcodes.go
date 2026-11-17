@@ -120,6 +120,8 @@ var refusalCodes = []string{
 	"diff-failed",
 	"diff-too-large",
 	"download-failed",
+	"drafts-invalid",
+	"drafts-stale",
 	"drain-failed",
 	"duplicate-payload",
 	"fetch-failed",

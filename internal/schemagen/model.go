@@ -974,6 +974,12 @@ type UsageTokens struct { //nolint:govet // field order is the published propert
 // comment carries a human 👍, written by fetch and read by fix --selected.
 type SelectedFile = core.SelectedFile
 
+// DrainRepliesFile is the single artifact the drafting agent writes.
+type DrainRepliesFile = draincore.RepliesFile
+
+// DrainReply is one draft answer to a waiting comment.
+type DrainReply = draincore.Reply
+
 // DrainFile is the drain plan and, after posting, its receipt, published as
 // schemas/drain.schema.json.
 type DrainFile = draincore.File
