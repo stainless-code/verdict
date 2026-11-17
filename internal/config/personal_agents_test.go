@@ -1,6 +1,8 @@
 package config
 
 import (
+	"encoding/json"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -10,27 +12,44 @@ import (
 // required, args defaults to empty, the other fields are optional strings, and
 // the definitions are returned in name order for stable discovery.
 func TestParsePersonalAgents(t *testing.T) {
-	give := `{"agents":{
-		"z-local":{"binary":"local-agent","args":["exec","-q"],"prompt_flag":"-p",
-			"model_flag":"-m","install":"brew install local-agent"},
-		"a-min":{"binary":"/usr/local/bin/min"}
-	}}`
-	got, ref := ParsePersonal([]byte(give))
+	binary := filepath.Join(t.TempDir(), "min")
+	give := settingsJSON(t, map[string]any{
+		"agents": map[string]any{
+			"z-local": map[string]any{
+				"binary": "local-agent", "args": []string{"exec", "-q"},
+				"prompt_flag": "-p", "model_flag": "-m",
+				"install": "brew install local-agent",
+			},
+			"a-min": map[string]any{"binary": binary},
+		},
+	})
+	got, ref := ParsePersonal(give)
 	if ref != nil {
 		t.Fatalf("ParsePersonal: %v", ref)
 	}
 	if len(got.Agents) != 2 {
 		t.Fatalf("agents = %+v, want two rows", got.Agents)
 	}
-	assertMinimalAgent(t, &got.Agents[0])
+	assertMinimalAgent(t, &got.Agents[0], binary)
 	assertFullAgent(t, &got.Agents[1])
 }
 
-func assertMinimalAgent(t *testing.T, row *PersonalAgent) {
+// settingsJSON marshals a fixture so absolute paths carry the OS separator
+// without hand-escaping backslashes in a JSON literal.
+func settingsJSON(t *testing.T, doc any) []byte {
 	t.Helper()
-	if row.Name != "a-min" || row.Binary != "/usr/local/bin/min" ||
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return raw
+}
+
+func assertMinimalAgent(t *testing.T, row *PersonalAgent, binary string) {
+	t.Helper()
+	if row.Name != "a-min" || row.Binary != binary ||
 		len(row.Args) != 0 || row.PromptFlag != "" || row.ModelFlag != "" {
-		t.Errorf("row = %+v, want the defaults-filled minimal row", row)
+		t.Errorf("row = %+v, want the defaults-filled minimal row with binary %q", row, binary)
 	}
 }
 
@@ -50,67 +69,69 @@ func assertFullAgent(t *testing.T, row *PersonalAgent) {
 func TestPersonalAgentsRefusals(t *testing.T) {
 	tests := []struct {
 		name string
-		give string
 		want string
+		give []byte
 	}{
 		{
 			name: "unknown agent key",
-			give: `{"agents":{"local":{"binary":"local","promt_flag":"-p"}}}`,
+			give: []byte(`{"agents":{"local":{"binary":"local","promt_flag":"-p"}}}`),
 			want: "$.agents.local.promt_flag",
 		},
 		{
 			name: "empty binary",
-			give: `{"agents":{"local":{"binary":"  "}}}`,
+			give: []byte(`{"agents":{"local":{"binary":"  "}}}`),
 			want: "$.agents.local.binary",
 		},
 		{
 			name: "missing binary",
-			give: `{"agents":{"local":{"install":"brew install local"}}}`,
+			give: []byte(`{"agents":{"local":{"install":"brew install local"}}}`),
 			want: "$.agents.local.binary",
 		},
 		{
 			name: "relative binary with a separator",
-			give: `{"agents":{"local":{"binary":"./local"}}}`,
+			give: settingsJSON(t, map[string]any{"agents": map[string]any{
+				"local": map[string]any{"binary": filepath.Join("bin", "x")},
+			}}),
 			want: "$.agents.local.binary",
 		},
 		{
 			name: "built-in collision",
-			give: `{"agents":{"claude":{"binary":"other"}}}`,
+			give: []byte(`{"agents":{"claude":{"binary":"other"}}}`),
 			want: "$.agents.claude",
 		},
 		{
 			name: "uppercase name",
-			give: `{"agents":{"Local":{"binary":"local"}}}`,
+			give: []byte(`{"agents":{"Local":{"binary":"local"}}}`),
 			want: "$.agents.Local",
 		},
 		{
 			name: "leading dash name",
-			give: `{"agents":{"-local":{"binary":"local"}}}`,
+			give: []byte(`{"agents":{"-local":{"binary":"local"}}}`),
 			want: "$.agents.-local",
 		},
 		{
 			name: "empty name",
-			give: `{"agents":{"":{"binary":"local"}}}`,
+			give: []byte(`{"agents":{"":{"binary":"local"}}}`),
 			want: "$.agents.",
 		},
 		{
 			name: "wrong agents shape",
-			give: `{"agents":[]}`,
+			give: []byte(`{"agents":[]}`),
 			want: "$.agents",
 		},
 		{
 			name: "wrong binary type",
-			give: `{"agents":{"local":{"binary":3}}}`,
+			give: []byte(`{"agents":{"local":{"binary":3}}}`),
 			want: "$.agents.local.binary",
 		},
 		{
 			name: "wrong args type",
-			give: `{"agents":{"local":{"binary":"local","args":"exec"}}}`,
+			give: []byte(`{"agents":{"local":{"binary":"local","args":"exec"}}}`),
 			want: "$.agents.local.args",
 		},
 		{
 			name: "wrong optional string type",
-			give: `{"agents":{"local":{"binary":"local","prompt_flag":true}}}`,
+			give: []byte(`{"agents":{"local":{"binary":"local","prompt_flag":true}}}`),
 			want: "$.agents.local.prompt_flag",
 		},
 	}
@@ -119,9 +140,9 @@ func TestPersonalAgentsRefusals(t *testing.T) {
 	}
 }
 
-func assertAgentRefusal(t *testing.T, give, want string) {
+func assertAgentRefusal(t *testing.T, give []byte, want string) {
 	t.Helper()
-	_, ref := ParsePersonal([]byte(give))
+	_, ref := ParsePersonal(give)
 	if ref == nil || ref.Code != "bad-settings" {
 		t.Fatalf("refusal = %+v, want bad-settings", ref)
 	}

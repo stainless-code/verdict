@@ -25,7 +25,7 @@ func TestSettingsKeySurfacesListEveryAcceptedKey(t *testing.T) {
 
 func settingsRefusal(t *testing.T, body string) *cli.RefusalError {
 	t.Helper()
-	_, err := cli.ResolvePrefs(&cli.Runner{}, map[string]string{"HOME": "/home/operator"},
+	_, err := cli.ResolvePrefs(&cli.Runner{}, map[string]string{"HOME": t.TempDir()},
 		func(string) ([]byte, error) { return []byte(body), nil })
 	var ref *cli.RefusalError
 	if !errors.As(err, &ref) {
