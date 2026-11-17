@@ -52,25 +52,9 @@ type flags struct {
 // locally before any host read.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Cmd, r.Repo, r.Pr = verbDrain, req.Repo, req.Pr
-	fl, code, done := parseFlags(r, args)
+	fl, limit, code, done := parseRunArgs(ctx, r, args, req)
 	if done {
 		return code
-	}
-	r.RouteHuman()
-	if code, done := r.Canceled(ctx, verbDrain); done {
-		return code
-	}
-	if ref := preflight(req); ref != nil {
-		return r.Refuse(ref)
-	}
-	limit, code, done := parseLimit(r, fl.max)
-	if done {
-		return code
-	}
-	if fl.post && fl.provider != "" {
-		if ref := checkThreadReplyCap(fl.provider); ref != nil {
-			return r.Refuse(ref)
-		}
 	}
 	if fl.agent != "" || !fl.post {
 		return runPlanAndMaybePost(ctx, r, req, fl, limit)
@@ -78,35 +62,72 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	return postMode(ctx, r, req, fl)
 }
 
+func parseRunArgs(ctx context.Context, r *cli.Runner, args []string, req Request) (*flags, int, int, bool) {
+	fl, code, done := parseFlags(r, args)
+	if done {
+		return nil, 0, code, true
+	}
+	r.RouteHuman()
+	if code, done := r.Canceled(ctx, verbDrain); done {
+		return nil, 0, code, true
+	}
+	if ref := preflight(req); ref != nil {
+		return nil, 0, r.Refuse(ref), true
+	}
+	limit, code, done := parseLimit(r, fl.max)
+	if done {
+		return nil, 0, code, true
+	}
+	if ref := checkPostProviderCap(fl); ref != nil {
+		return nil, 0, r.Refuse(ref), true
+	}
+	return fl, limit, 0, false
+}
+
+func checkPostProviderCap(fl *flags) *core.RefusalError {
+	if fl.post && fl.provider != "" {
+		return checkThreadReplyCap(fl.provider)
+	}
+	return nil
+}
+
 func runPlanAndMaybePost(ctx context.Context, r *cli.Runner, req Request, fl *flags, limit int) int {
-	resp, ref := fetchcore.RunThreads(ctx, refreshRequest(r, req, fl))
-	if ref != nil {
-		return r.Refuse(drainFailed(ref.Message))
-	}
-	r.Warnings = resp.Warnings
-	if fl.post {
-		if ref := checkThreadReplyCap(resp.Data.Provider); ref != nil {
-			return r.Refuse(ref)
-		}
-	}
-	in, ref := readInputs(ctx, req, resp)
-	if ref != nil {
-		return r.Refuse(ref)
-	}
-	plan, _ := draincore.NewPlan(resp.Data.Provider, threadscore.PRNumber(req.Pr), resp.Data.HeadSHA,
-		req.TimeUTC(), in.self, in.feed, in.ledger, limit)
-	if err := draincore.WritePlan(in.dir+pathSep+draincore.KeyPlanJSON, plan); err != nil {
-		return r.Refuse(drainFailed(fmt.Sprintf("could not write %s/%s: %v", in.dir, draincore.KeyPlanJSON, err)))
+	dir, plan, code, done := buildPlan(ctx, r, req, fl, limit)
+	if done {
+		return code
 	}
 	if fl.agent != "" && len(plan.Pending) > 0 {
-		if code, done := draft(ctx, r, req, fl, in.dir, plan); done {
+		if code, done := draft(ctx, r, req, fl, dir, plan); done {
 			return code
 		}
 	}
 	if fl.post && len(plan.Pending) > 0 {
 		return postMode(ctx, r, req, fl)
 	}
-	return finishPlan(r, req, fl, in.dir, plan)
+	return finishPlan(r, req, fl, dir, plan)
+}
+
+func buildPlan(ctx context.Context, r *cli.Runner, req Request, fl *flags, limit int) (string, *draincore.File, int, bool) {
+	resp, ref := fetchcore.RunThreads(ctx, refreshRequest(r, req, fl))
+	if ref != nil {
+		return "", nil, r.Refuse(drainFailed(ref.Message)), true
+	}
+	r.Warnings = resp.Warnings
+	if fl.post {
+		if ref := checkThreadReplyCap(resp.Data.Provider); ref != nil {
+			return "", nil, r.Refuse(ref), true
+		}
+	}
+	in, ref := readInputs(ctx, req, resp)
+	if ref != nil {
+		return "", nil, r.Refuse(ref), true
+	}
+	plan, _ := draincore.NewPlan(resp.Data.Provider, threadscore.PRNumber(req.Pr), resp.Data.HeadSHA,
+		req.TimeUTC(), in.self, in.feed, in.ledger, limit)
+	if err := draincore.WritePlan(in.dir+pathSep+draincore.KeyPlanJSON, plan); err != nil {
+		return "", nil, r.Refuse(drainFailed(fmt.Sprintf("could not write %s/%s: %v", in.dir, draincore.KeyPlanJSON, err))), true
+	}
+	return in.dir, plan, 0, false
 }
 
 func finishPlan(r *cli.Runner, req Request, fl *flags, dir string, plan *draincore.File) int {

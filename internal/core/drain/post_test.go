@@ -279,22 +279,24 @@ func TestPostAppendFailureRecordsFailedWithoutEmptyPosted(t *testing.T) {
 		return nil
 	}
 	res, ref := Post(req)
-	if ref != nil {
-		t.Fatalf("Post refused: %+v", ref)
+	if ref != nil || !res.Incomplete || len(res.Posted) != 2 || len(res.Failed) != 1 {
+		t.Fatalf("Post = (%+v, %+v), want 2 posted, 1 failed, incomplete", res, ref)
 	}
-	if !res.Incomplete || len(res.Posted) != 2 || len(res.Failed) != 1 {
-		t.Fatalf("result = %+v, want 2 posted, 1 failed, incomplete", res)
-	}
-	for _, p := range res.Posted {
-		if p.ThreadID == "" {
-			t.Errorf("empty Posted entry recorded on append failure: %+v", res.Posted)
-		}
-	}
+	assertNoEmptyPosted(t, res.Posted)
 	if res.Failed[0].ThreadID != "PRRT_2" || !strings.Contains(res.Failed[0].Reason, "disk full") {
 		t.Errorf("failed = %+v, want PRRT_2 disk full", res.Failed)
 	}
 	if len(*calls) != 3 {
 		t.Errorf("calls = %d, want 3", len(*calls))
+	}
+}
+
+func assertNoEmptyPosted(t *testing.T, posted []Posted) {
+	t.Helper()
+	for _, p := range posted {
+		if p.ThreadID == "" {
+			t.Errorf("empty Posted entry recorded on append failure: %+v", posted)
+		}
 	}
 }
 
@@ -323,13 +325,18 @@ func TestValidatePostDraftsDoesNotMutatePlanOrDuplicateSkips(t *testing.T) {
 	if ref != nil || len(res.Posted) != 1 {
 		t.Fatalf("Post = (%+v, %+v)", res, ref)
 	}
-	noDraftCount := 0
-	for _, s := range req.Plan.Skipped {
+	assertNoDraftCount(t, req.Plan.Skipped, 2)
+}
+
+func assertNoDraftCount(t *testing.T, skipped []Skip, want int) {
+	t.Helper()
+	got := 0
+	for _, s := range skipped {
 		if s.Reason == ReasonNoDraft {
-			noDraftCount++
+			got++
 		}
 	}
-	if noDraftCount != 2 {
-		t.Errorf("no-draft skips = %d, want 2 (no duplicates): %+v", noDraftCount, req.Plan.Skipped)
+	if got != want {
+		t.Errorf("no-draft skips = %d, want %d: %+v", got, want, skipped)
 	}
 }

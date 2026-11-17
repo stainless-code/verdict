@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -104,14 +105,7 @@ func postDrafts(req *PostRequest) (*RepliesFile, *core.RefusalError) {
 
 func appendUniqueSkips(existing, extra []Skip) []Skip {
 	for _, s := range extra {
-		dup := false
-		for _, prev := range existing {
-			if prev.ThreadID == s.ThreadID && prev.Reason == s.Reason {
-				dup = true
-				break
-			}
-		}
-		if !dup {
+		if !slices.Contains(existing, s) {
 			existing = append(existing, s)
 		}
 	}

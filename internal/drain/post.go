@@ -20,20 +20,8 @@ import (
 )
 
 func postMode(ctx context.Context, r *cli.Runner, req Request, fl *flags) int {
-	if fl.provider != "" {
-		if ref := checkThreadReplyCap(fl.provider); ref != nil {
-			return r.Refuse(ref)
-		}
-	}
-	dir, plan, ref := postPlan(req, fl)
+	dir, plan, drafts, ref := postPreflight(req, fl)
 	if ref != nil {
-		return r.Refuse(ref)
-	}
-	drafts, ref := postDraftsFile(dir)
-	if ref != nil {
-		return r.Refuse(ref)
-	}
-	if _, _, _, ref := draincore.ValidatePostDrafts(plan, drafts, plan.Provider); ref != nil {
 		return r.Refuse(ref)
 	}
 	unlock, err := storelock.Acquire(filepath.Join(dir, verbDrain), storelock.DefaultWait)
@@ -55,6 +43,26 @@ func postMode(ctx context.Context, r *cli.Runner, req Request, fl *flags) int {
 		return r.Refuse(ref)
 	}
 	return postFinish(r, req, dir, plan, resp, result)
+}
+
+func postPreflight(req Request, fl *flags) (string, *draincore.File, []byte, *core.RefusalError) {
+	if fl.provider != "" {
+		if ref := checkThreadReplyCap(fl.provider); ref != nil {
+			return "", nil, nil, ref
+		}
+	}
+	dir, plan, ref := postPlan(req, fl)
+	if ref != nil {
+		return "", nil, nil, ref
+	}
+	drafts, ref := postDraftsFile(dir)
+	if ref != nil {
+		return "", nil, nil, ref
+	}
+	if _, _, _, ref := draincore.ValidatePostDrafts(plan, drafts, plan.Provider); ref != nil {
+		return "", nil, nil, ref
+	}
+	return dir, plan, drafts, nil
 }
 
 func checkThreadReplyCap(provider string) *core.RefusalError {
