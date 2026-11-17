@@ -40,7 +40,7 @@ var (
 	personalTopFields     = core.SettingsTopKeys()
 	personalSpendFields   = []string{"budget_usd", "require_known_estimate", "enforce_cap"}
 	personalPrivacyFields = []string{"exclusions"}
-	personalAgentFields   = []string{"binary", "args", "prompt_flag", "model_flag", "install"}
+	personalAgentFields   = []string{"binary", "args", "prompt_flag", "model_flag", "install", "probe_args", "probe_match"}
 )
 
 // The typed operator-settings sections: named once so the field contract,

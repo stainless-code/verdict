@@ -88,7 +88,7 @@ func missingLookPath(string) (string, error) {
 }
 
 // request builds a service request whose PATH probe resolves the agent.
-func request(root string, cmdr *scripted) *core.RunRequest {
+func request(root string, cmdr core.Commander) *core.RunRequest {
 	rt := &core.Runtime{Env: map[string]string{}, Now: time.Now, Commander: cmdr}
 	return &core.RunRequest{
 		Runtime: rt, Repo: "acme/app", Pr: "42", RepoRoot: root,

@@ -54,7 +54,9 @@ type PersonalAgent struct {
 	PromptFlag string
 	ModelFlag  string
 	Install    string
+	ProbeMatch string
 	Args       []string
+	ProbeArgs  []string
 }
 
 // PersonalSettings is the parsed personal layer: review defaults (every
@@ -87,7 +89,6 @@ const (
 const (
 	wantObjectMsg = "want an object, got %s"
 	binaryField   = ".binary"
-	argsField     = ".args"
 )
 
 // agentNamePattern is the published name vocabulary: a lowercase slug that
@@ -369,9 +370,14 @@ func buildAgentRow(name string, raw any, builtins []string) (PersonalAgent, *cor
 	if ref != nil {
 		return PersonalAgent{}, ref
 	}
+	probeArgs, probeMatch, ref := agentProbeFields(entry, path)
+	if ref != nil {
+		return PersonalAgent{}, ref
+	}
 	return PersonalAgent{
 		Name: name, Binary: binary, Args: args, PromptFlag: prompt,
-		ModelFlag: model, Install: install,
+		ModelFlag: model, Install: install, ProbeArgs: probeArgs,
+		ProbeMatch: probeMatch,
 	}, nil
 }
 
@@ -409,19 +415,44 @@ func agentBinary(entry map[string]any, path string) (string, *core.RefusalError)
 
 // agentArgs reads the optional argument list, defaulting to an empty one.
 func agentArgs(entry map[string]any, path string) ([]string, *core.RefusalError) {
-	raw, ok := entry["args"]
+	return agentStringArray(entry, "args", path)
+}
+
+// agentProbeFields reads the optional identity check. A probe without a match
+// cannot identify anything, so the pair is validated at the prefs boundary.
+func agentProbeFields(entry map[string]any, path string) (args []string, match string, ref *core.RefusalError) {
+	_, present := entry["probe_args"]
+	if present {
+		args, ref = agentStringArray(entry, "probe_args", path)
+		if ref != nil {
+			return nil, "", ref
+		}
+	}
+	match, ref = agentOptionalString(entry, "probe_match", path)
+	if ref != nil {
+		return nil, "", ref
+	}
+	if present && match == "" {
+		return nil, "", agentRefuse(path+".probe_match", "is required when probe_args is set")
+	}
+	return args, match, nil
+}
+
+// agentStringArray reads one optional array of strings, defaulting to empty.
+func agentStringArray(entry map[string]any, key, path string) ([]string, *core.RefusalError) {
+	raw, ok := entry[key]
 	if !ok {
 		return []string{}, nil
 	}
 	items, ok := raw.([]any)
 	if !ok {
-		return nil, agentRefuse(path+argsField, "want an array of strings, got %s", jsonKind(raw))
+		return nil, agentRefuse(path+"."+key, "want an array of strings, got %s", jsonKind(raw))
 	}
 	out := make([]string, 0, len(items))
 	for i, item := range items {
 		arg, ok := item.(string)
 		if !ok {
-			return nil, agentRefuse(arrayPath(path+argsField, i), "want a string, got %s", jsonKind(item))
+			return nil, agentRefuse(arrayPath(path+"."+key, i), "want a string, got %s", jsonKind(item))
 		}
 		out = append(out, arg)
 	}

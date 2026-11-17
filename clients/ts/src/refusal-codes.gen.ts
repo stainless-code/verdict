@@ -4,6 +4,7 @@
 export type RefusalCode =
   | "adopt-failed"
   | "agent-failed"
+  | "agent-mismatch"
   | "agent-missing"
   | "agent-record-failed"
   | "agent-spawn-failed"

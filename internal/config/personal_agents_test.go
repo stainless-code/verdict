@@ -18,7 +18,8 @@ func TestParsePersonalAgents(t *testing.T) {
 			"z-local": map[string]any{
 				"binary": "local-agent", "args": []string{"exec", "-q"},
 				"prompt_flag": "-p", "model_flag": "-m",
-				"install": "brew install local-agent",
+				"install":    "brew install local-agent",
+				"probe_args": []string{"ask", "--help"}, "probe_match": "ask",
 			},
 			"a-min": map[string]any{"binary": binary},
 		},
@@ -58,7 +59,8 @@ func assertFullAgent(t *testing.T, row *PersonalAgent) {
 	if row.Name != "z-local" || row.Binary != "local-agent" ||
 		!slices.Equal(row.Args, []string{"exec", "-q"}) ||
 		row.PromptFlag != "-p" || row.ModelFlag != "-m" ||
-		row.Install != "brew install local-agent" {
+		row.Install != "brew install local-agent" ||
+		!slices.Equal(row.ProbeArgs, []string{"ask", "--help"}) || row.ProbeMatch != "ask" {
 		t.Errorf("row = %+v, want every field read verbatim", row)
 	}
 }
@@ -133,6 +135,26 @@ func TestPersonalAgentsRefusals(t *testing.T) {
 			name: "wrong optional string type",
 			give: []byte(`{"agents":{"local":{"binary":"local","prompt_flag":true}}}`),
 			want: "$.agents.local.prompt_flag",
+		},
+		{
+			name: "probe args need an array of strings",
+			give: []byte(`{"agents":{"local":{"binary":"local","probe_args":"ask"}}}`),
+			want: "$.agents.local.probe_args",
+		},
+		{
+			name: "probe args element is a string",
+			give: []byte(`{"agents":{"local":{"binary":"local","probe_args":[3]}}}`),
+			want: "$.agents.local.probe_args[0]",
+		},
+		{
+			name: "probe args need a match",
+			give: []byte(`{"agents":{"local":{"binary":"local","probe_args":["ask"]}}}`),
+			want: "$.agents.local.probe_match",
+		},
+		{
+			name: "wrong probe match type",
+			give: []byte(`{"agents":{"local":{"binary":"local","probe_match":true}}}`),
+			want: "$.agents.local.probe_match",
 		},
 	}
 	for _, tc := range tests {

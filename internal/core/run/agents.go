@@ -33,7 +33,12 @@ type agentDef struct {
 	ModelFlag  string
 	PromptFlag string
 	Source     string
+	// ProbeMatch is the substring the launcher expects from the identity probe.
+	ProbeMatch string
 	Args       []string
+	// ProbeArgs runs the binary's harmless one-shot help before a launch; a
+	// row declares it only when another tool shares the binary name.
+	ProbeArgs []string
 }
 
 // modelFlag is the argument every shipped row takes a model name on; a row
@@ -133,9 +138,10 @@ var agentDefs = []agentDef{
 
 // lookupAgent resolves one --agent name against the table.
 func lookupAgent(name string) (agentDef, bool) {
-	for _, def := range agentDefs {
+	for i := range agentDefs {
+		def := &agentDefs[i]
 		if def.Name == name {
-			return def, true
+			return *def, true
 		}
 	}
 	return agentDef{}, false
@@ -153,9 +159,10 @@ func AgentNames() []string {
 			names = append(names, name)
 		}
 	}
-	for _, def := range agentDefs {
-		if !slices.Contains(first, def.Name) {
-			names = append(names, def.Name)
+	for i := range agentDefs {
+		name := agentDefs[i].Name
+		if !slices.Contains(first, name) {
+			names = append(names, name)
 		}
 	}
 	return names

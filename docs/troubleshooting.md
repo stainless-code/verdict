@@ -18,6 +18,12 @@ Cause: the launched agent exited non-zero.
 
 Fix: read the recorded tail in `.verdict/state/<bundle>/launcher.json`, fix the invocation (the agent's own flags go after `--`), then re-run `verdict run`.
 
+## `agent-mismatch`
+
+Cause: the binary resolved for a row with a binary-name clash failed its identity probe (non-zero exit, timeout, or missing match text).
+
+Fix: define the agent in settings.json `agents` with an absolute `binary` path, or re-run `verdict run` with `--agent` for the one you meant.
+
 ## `agent-missing`
 
 Cause: the named agent binary is not on `PATH`.

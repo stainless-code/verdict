@@ -270,8 +270,8 @@ func TestAgentTableIsSortedAndUnique(t *testing.T) {
 
 func tableNames() []string {
 	names := make([]string, 0, len(agentDefs))
-	for _, def := range agentDefs {
-		names = append(names, def.Name)
+	for i := range agentDefs {
+		names = append(names, agentDefs[i].Name)
 	}
 	return names
 }
