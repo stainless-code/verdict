@@ -105,7 +105,8 @@ func TestPostDryRunWritesPreviewWithoutHostOrStoreWrites(t *testing.T) {
 	preview := readDryRunPreview(t, dir)
 	assertDryRunEnvelope(t, env, preview)
 	assertDryRunPlanned(t, preview)
-	wantHuman := "» 2 planned, 0 skipped (dry run; nothing posted) -> " + dir + "/" + draincore.KeyDryRunJSON + "\n"
+	wantPath := filepath.ToSlash(dir) + "/" + draincore.KeyDryRunJSON
+	wantHuman := "» 2 planned, 0 skipped (dry run; nothing posted) -> " + wantPath + "\n"
 	if !strings.Contains(diag, wantHuman) {
 		t.Errorf("human output missing %q:\n%s", wantHuman, diag)
 	}
