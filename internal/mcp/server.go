@@ -297,6 +297,7 @@ func (s *Server) handleInitialize(req *rpcRequest) {
 func (s *Server) instructions() string {
 	lines := []string{
 		"Review one pull request at a time: fetch, read .verdict/state/<pr>, write exactly one review.json, then post.",
+		"For the Procedure, use the review prompt or read verdict://skill/PROCEDURE.md.",
 		"Use report, next, or show to rank and inspect findings; refusals carry a hint, so follow it.",
 		"post is the only terminal write and never writes a review note; dryRun previews it.",
 		"Never call triage while reviewing a PR: propose status changes through triage[] in review.json.",

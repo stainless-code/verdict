@@ -142,6 +142,8 @@ func TestInitializeCapabilitiesSnapshot(t *testing.T) {
 	}
 }
 
+const procedureInstruction = "For the Procedure, use the review prompt or read verdict://skill/PROCEDURE.md."
+
 // TestInitializeInstructions proves every client receives the short doctrine
 // block, and that the operator boundary matches the surface.
 //
@@ -157,12 +159,12 @@ func TestInitializeInstructions(t *testing.T) {
 	}{
 		{
 			name: "agent",
-			want: []string{"fetch", "review.json", "post", "triage[]", "hint", "not on this surface"},
+			want: []string{"fetch", "review.json", "post", "triage[]", "hint", "not on this surface", procedureInstruction},
 		},
 		{
 			name:     "operator",
 			operator: true,
-			want:     []string{"fetch", "post", "triage", "runs with --operator"},
+			want:     []string{"fetch", "post", "triage", "runs with --operator", procedureInstruction},
 			absent:   []string{"not on this surface"},
 		},
 	}
