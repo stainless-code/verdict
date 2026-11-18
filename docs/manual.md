@@ -1678,8 +1678,8 @@ context. A malformed call is a JSON-RPC `-32602` error, not a refusal. Human
 progress and warnings go to stderr (or MCP notifications), never stdout:
 stdout is the protocol channel.
 
-`prompts/list` offers one prompt per Procedure task (`review`, `validate`,
-`address-reviews`, `incremental-review`, `fix-ci`). `prompts/get` takes the
+`prompts/list` offers five task prompts (`address-reviews`, `fix-ci`,
+`incremental-review`, `review`, `validate`). `prompts/get` takes the
 prompt name and no arguments, and returns that task's Procedure assembled by
 the binary from its embedded payload. `resources/list` serves every payload
 file at `verdict://skill/<path>` —
