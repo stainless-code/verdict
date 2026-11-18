@@ -16,6 +16,7 @@ import (
 	"strings"
 	"unicode/utf8"
 
+	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 )
@@ -112,7 +113,6 @@ type ReceiptBuildInput struct {
 	Learnings    *ControlInput
 	KB           *KBRecallInput
 	BundleTrunc  *core.Truncation
-	Root         string
 	Dir          string
 	HeadSHA      string
 	BaseSHA      string
@@ -128,8 +128,8 @@ type ReceiptBuildInput struct {
 
 // BuildReceipt builds the deterministic ProvenanceReceipt for a bundle.
 func BuildReceipt(in *ReceiptBuildInput) *core.ProvenanceReceipt {
-	promptsHash := PromptsHash(in.Root)
-	prompts := promptInputEntries(in.Root)
+	promptsHash := PromptsHash()
+	prompts := promptInputEntries()
 	bundles := bundleInputEntries(in.Dir)
 	kbEntries, kbTruncRows := kbInputsAndTruncated(in.Dir, in.KB)
 	learnEntry := learningsInputEntry(in.Learnings)
@@ -256,10 +256,10 @@ func EmptyReceipt() *core.ProvenanceReceipt {
 	}
 }
 
-func promptInputEntries(root string) []core.ProvenanceInput {
+func promptInputEntries() []core.ProvenanceInput {
 	out := make([]core.ProvenanceInput, 0, len(promptFiles))
 	for _, f := range promptFiles {
-		raw, err := readPromptFile(root, f)
+		raw, err := skillfs.Read(f)
 		if err != nil {
 			n := int64(0)
 			out = append(out, core.ProvenanceInput{

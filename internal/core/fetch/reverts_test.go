@@ -446,7 +446,6 @@ func TestRevertsTxtJoinsThePromptDump(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "reverts.txt"), []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Chdir(trustedPromptDir(t))
 	dump, err := renderPromptDump(&fetchRunCtx{
 		runner: &session{Human: io.Discard, Diag: io.Discard},
 		dir:    dir,

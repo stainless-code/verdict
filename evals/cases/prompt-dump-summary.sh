@@ -37,8 +37,7 @@ dump_expected() {
     [ -f "$1/source.json" ] && meta="$1/source.json"
     : > "$out"
     for f in PROCEDURE.md prompts/system.md prompts/review.md prompts/diagrams.md; do
-      [ -f "$f" ] || continue
-      cat -- "$f" >> "$out"
+      "$EVAL_CLI" skill show "$f" >> "$out"
     done
     cat >> "$out" <<EOF
 --- verdict trust boundary (tool-generated, trusted) ---
@@ -224,54 +223,39 @@ else
   bad "plain --json leaks prompt_dump"
 fi
 
-mv "$EVAL_SANDBOX/prompts/system.md" "$EVAL_SANDBOX/prompts/system.md.f7hide"
+for f in PROCEDURE.md prompts/system.md prompts/review.md prompts/diagrams.md; do
+  cp "$EVAL_SANDBOX/$f" "$EVAL_SANDBOX/$f.f7orig"
+  printf '# disk decoy %s\n' "$f" > "$EVAL_SANDBOX/$f"
+done
 eval_commit_controls
 run_review fetch-local acme/app dump-f7a --show-prompts
-mv "$EVAL_SANDBOX/prompts/system.md.f7hide" "$EVAL_SANDBOX/prompts/system.md"
-assert_exit "F7: missing preamble refuses" 1
-assert_file_grep "F7: refusal names the missing file" "$EVAL_ERR" "prompts/system.md"
-assert_stream_nogrep "F7: no prompt dump reaches stdout" "$EVAL_OUT" "system (eval fixture)"
-mv "$EVAL_SANDBOX/prompts/system.md" "$EVAL_SANDBOX/prompts/system.md.f7hide"
-eval_commit_controls
+assert_exit "F7: installed user (no procedure/ checkout) still dumps" 0
+if awk '/^--- verdict trust boundary/{exit} {print}' "$EVAL_OUT" | matches "disk decoy"; then
+  bad "F7: disk decoys entered the trusted part of the dump"
+else
+  good "F7: disk decoys never enter the trusted part of the dump"
+fi
+assert_file_nogrep "F7: no warning about disk prompt files" "$EVAL_ERR" "prompt file"
+bundle="$EVAL_SANDBOX/.verdict/state/local-dump-f7a/procedure.md"
+if head -c "$(wc -c <"$bundle" | tr -d ' ')" "$EVAL_OUT" | cmp -s - "$bundle"; then
+  good "F7: dump starts with the Procedure written into the bundle"
+else
+  bad "F7: dump prefix differs from the bundle Procedure"
+fi
 run_review fetch-local acme/app dump-f7b --show-prompts --json
 f7b_status="$EVAL_STATUS"
-mv "$EVAL_SANDBOX/prompts/system.md.f7hide" "$EVAL_SANDBOX/prompts/system.md"
-if [ "$f7b_status" -ne 0 ] \
-  && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)" = "prompt-dump-failed" ] \
-  && [ "$(jq -r '.data | tostring' <"$EVAL_OUT" 2>/dev/null)" = "null" ]; then
-  good "F7: missing preamble refuses typed in the envelope (prompt-dump-failed, data null)"
+jq -j '.data.prompt_dump // empty' <"$EVAL_OUT" > "$EVAL_SANDBOX/f7b-dump.txt"
+if [ "$f7b_status" -eq 0 ] \
+  && ! jq -r '.warnings | join(" ")' <"$EVAL_OUT" | matches "prompt file" \
+  && head -c "$(wc -c <"$bundle" | tr -d ' ')" "$EVAL_SANDBOX/f7b-dump.txt" | cmp -s - "$bundle" \
+  && ! awk '/^--- verdict trust boundary/{exit} {print}' "$EVAL_SANDBOX/f7b-dump.txt" | matches "disk decoy"; then
+  good "F7: JSON dump carries the embedded Procedure with no warnings"
 else
-  bad "F7: missing preamble refusal not typed (exit $f7b_status)"
+  bad "F7: JSON dump drifted without disk prompts (exit $f7b_status)"
 fi
-mv "$EVAL_SANDBOX/prompts/review.md" "$EVAL_SANDBOX/prompts/review.md.f7hide"
-eval_commit_controls
-run_review fetch-local acme/app dump-f7c --show-prompts
-f7c_status="$EVAL_STATUS"
-mv "$EVAL_SANDBOX/prompts/review.md.f7hide" "$EVAL_SANDBOX/prompts/review.md"
-f7c_omitted="$(grep -c '^# review mode (eval fixture)' "$EVAL_OUT" || true)"
-if [ "$f7c_status" -eq 0 ] \
-  && grep -q "prompts/review.md" "$EVAL_ERR" \
-  && [ "$f7c_omitted" = "0" ] \
-  && grep -q "review mode (eval fixture)" "$EVAL_OUT" \
-  && grep -q "system (eval fixture)" "$EVAL_OUT"; then
-  good "F7: missing sibling warns on stderr, dump proceeds with the preamble intact"
-else
-  bad "F7: missing sibling did not warn-and-proceed (exit $f7c_status)"
-fi
-mv "$EVAL_SANDBOX/prompts/review.md" "$EVAL_SANDBOX/prompts/review.md.f7hide"
-eval_commit_controls
-run_review fetch-local acme/app dump-f7d --show-prompts --json
-f7d_status="$EVAL_STATUS"
-mv "$EVAL_SANDBOX/prompts/review.md.f7hide" "$EVAL_SANDBOX/prompts/review.md"
-f7d_omitted="$(jq -j '.data.prompt_dump // empty' <"$EVAL_OUT" | grep -c '^# review mode (eval fixture)' || true)"
-if [ "$f7d_status" -eq 0 ] \
-  && jq -e '.warnings | join(" ") | contains("prompts/review.md")' <"$EVAL_OUT" >/dev/null 2>&1 \
-  && [ "$f7d_omitted" = "0" ] \
-  && jq -j '.data.prompt_dump // empty' <"$EVAL_OUT" | matches "review mode (eval fixture)"; then
-  good "F7: missing sibling rides warnings[] while data.prompt_dump stays complete otherwise"
-else
-  bad "F7: missing sibling warning missing from warnings[] (exit $f7d_status)"
-fi
+for f in PROCEDURE.md prompts/system.md prompts/review.md prompts/diagrams.md; do
+  mv "$EVAL_SANDBOX/$f.f7orig" "$EVAL_SANDBOX/$f"
+done
 
 PR=4301
 eval_mk_bundle "$PR"

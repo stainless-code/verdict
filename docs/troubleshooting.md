@@ -1088,9 +1088,12 @@ Fix: re-fetch a bundle with file sections (or drop the exclusions), then re-run.
 
 ## `prompt-dump-failed`
 
-Cause: the prompt dump needs the skill and prompts sources.
+Cause: an embedded review Procedure file is missing from the binary. The
+message names the path (`PROCEDURE.md`, `prompts/system.md`,
+`prompts/review.md`, or `prompts/diagrams.md`); the working directory cannot
+supply a replacement, so no partial Procedure is written or printed.
 
-Fix: run from a checkout carrying `PROCEDURE.md`/`prompts`, then re-run.
+Fix: reinstall verdict from a signed release, then re-run.
 
 ## `provider-unimplemented`
 

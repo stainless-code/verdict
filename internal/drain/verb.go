@@ -131,10 +131,61 @@ func buildPlan(ctx context.Context, r *cli.Runner, req Request, fl *flags, limit
 	}
 	plan, _ := draincore.NewPlan(resp.Data.Provider, threadscore.PRNumber(req.Pr), resp.Data.HeadSHA,
 		req.TimeUTC(), in.self, in.feed, in.ledger, limit)
-	if err := draincore.WritePlan(in.dir+pathSep+draincore.KeyPlanJSON, plan); err != nil {
-		return "", nil, r.Refuse(drainFailed(fmt.Sprintf("could not write %s/%s: %v", in.dir, draincore.KeyPlanJSON, err))), true
+	if err := writePlanArtifacts(in.dir, plan, fl.dryRun, fl.agent != "" && len(plan.Pending) > 0); err != nil {
+		return "", nil, r.Refuse(drainFailed(err.Error())), true
 	}
 	return in.dir, plan, 0, false
+}
+
+// A dry run leaves the real bundle's host state, threads, plan, and any
+// existing drain.procedure.md untouched; its live read uses a scratch copy
+// that is removed when the refresh returns. A draft agent still reads its
+// directive from the real bundle, so a missing Procedure is created there
+// only when drafting will run — never overwritten.
+func writePlanArtifacts(dir string, plan *draincore.File, dryRun, drafting bool) error {
+	if err := draincore.WritePlan(dir+pathSep+draincore.KeyPlanJSON, plan); err != nil {
+		return jq.Sealed("could not write "+dir+"/"+draincore.KeyPlanJSON, err)
+	}
+	if dryRun && !drafting {
+		return nil
+	}
+	if dryRun {
+		return ensureDraftProcedure(dir)
+	}
+	if err := draincore.WriteProcedure(dir); err != nil {
+		return jq.Sealed("could not write "+dir+pathSep+draincore.KeyProcedureMD, err)
+	}
+	return nil
+}
+
+// ensureDraftProcedure creates the draft agent's Procedure only when the real
+// bundle lacks it; an existing file is left byte-identical.
+func ensureDraftProcedure(dir string) error {
+	exists, err := procedureFileExists(dir)
+	if err != nil {
+		return jq.Sealed("could not stat "+dir+pathSep+draincore.KeyProcedureMD, err)
+	}
+	if exists {
+		return nil
+	}
+	if err := draincore.WriteProcedure(dir); err != nil {
+		return jq.Sealed("could not write "+dir+pathSep+draincore.KeyProcedureMD, err)
+	}
+	return nil
+}
+
+// procedureFileExists reports whether the draft agent's Procedure is already
+// present in the real bundle.
+func procedureFileExists(dir string) (bool, error) {
+	path := dir + pathSep + draincore.KeyProcedureMD
+	_, err := os.Stat(path)
+	if err == nil {
+		return true, nil
+	}
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	return false, jq.Sealed("stat "+path, err)
 }
 
 func finishPlan(r *cli.Runner, req Request, fl *flags, dir string, plan *draincore.File) int {

@@ -7,11 +7,12 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 
+	skillfs "github.com/stainless-code/verdict"
+	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
@@ -115,21 +116,16 @@ func sortedManifestChunks(m map[string]any) []map[string]any {
 	return out
 }
 
-// renderPromptDump assembles the trusted prompt files,
-// the trust-boundary prologue naming this run's nonce, then every bundle
+// renderPromptDump writes the embedded review Procedure, the
+// trust-boundary prologue naming this run's nonce, then every bundle
 // file in its own per-run nonce fence. Missing bundle files stay silent;
-// a missing sibling prompt warns and the dump proceeds without it; a
-// missing preamble refuses typed.
+// any missing embedded Procedure file refuses the whole dump typed.
 func renderPromptDump(ctx *fetchRunCtx) (string, error) {
 	var sb strings.Builder
 	meta, metaLabel := dumpMeta(ctx.dir)
-	// Trusted prompt files fail loudly, never silently: without the
-	// preamble a dump is unsafe, so its absence refuses typed
-	// (prompt-dump-failed); a missing sibling warns and proceeds. The
-	// dump reads the checkout-relative prompt inputs from the working
-	// directory (never the binary root —
-	// provenance hashing alone uses the root).
-	if ref := dumpPrompts(ctx, &sb); ref != nil {
+	// The Procedure comes from this binary, never the working directory:
+	// a broken embed refuses typed instead of printing a partial Procedure.
+	if ref := dumpPrompts(&sb); ref != nil {
 		return "", ref
 	}
 	nonce := promptNonce()
@@ -159,42 +155,50 @@ func dumpMeta(dir string) (meta, label string) {
 	return meta, label
 }
 
-// dumpPrompts owns the trusted preamble: the prompt files concatenate,
-// failing typed without the system preamble.
-func dumpPrompts(ctx *fetchRunCtx, sb *strings.Builder) *core.RefusalError {
-	for _, f := range []string{"PROCEDURE.md", "prompts/system.md", "prompts/review.md", "prompts/diagrams.md"} {
-		raw, err := readTrustedPrompt(f)
-		if err != nil {
-			if f == "prompts/system.md" {
-				return &core.RefusalError{
-					Code: "prompt-dump-failed",
-					Message: "prompts/system.md is missing — prompt dump refused: the untrusted-data preamble " +
-						"lives there, so a dump without it is unsafe",
-				}
-			}
-			ctx.runner.Warn(fmt.Sprintf("prompt file '%s' is missing — prompt dump omits it", f))
-			continue
+// reviewProcedure is the embedded review assembly. Tests swap this var to
+// simulate a broken embed; production always uses skillfs.ReviewProcedure.
+var reviewProcedure = skillfs.ReviewProcedure
+
+// procedureRefusal is the one prompt-dump-failed emission site. The bundle
+// writer and the dump both use it, so any missing embedded Procedure file
+// refuses typed, names the path, and publishes no partial assembly.
+func procedureRefusal(err error) *core.RefusalError {
+	path := "an embedded Procedure file"
+	if missing, ok := errors.AsType[*skillfs.ProcedureFileError](err); ok {
+		path = missing.Path
+	}
+	return &core.RefusalError{
+		Code: "prompt-dump-failed",
+		Message: fmt.Sprintf("%s is missing — Procedure refused: no partial Procedure is written or "+
+			"printed; reinstall verdict from a signed release", path),
+	}
+}
+
+// writeBundleProcedure persists the binary's review Procedure as the bundle's
+// trusted instruction file, using the same atomic writer as its other inputs.
+func writeBundleProcedure(dir string) error {
+	raw, err := reviewProcedure()
+	if err != nil {
+		return procedureRefusal(err)
+	}
+	if werr := atomic.WriteFile(dir+suffixProcedureMD, raw); werr != nil {
+		return &core.RefusalError{
+			Code:    CodeFetchFailed,
+			Message: fmt.Sprintf("could not write %s%s: %v", dir, suffixProcedureMD, werr),
 		}
-		sb.Write(raw)
 	}
 	return nil
 }
 
-// checkoutProcedureDir is where a source checkout keeps the Procedure payload;
-// skillfs.ProcedureDir names the same path.
-const checkoutProcedureDir = "procedure"
-
-// readTrustedPrompt reads one prompt file relative to the current directory:
-// flat in a bundle, else under the checkout's procedure directory.
-func readTrustedPrompt(name string) ([]byte, error) {
-	raw, err := os.ReadFile(name)
-	if err == nil {
-		return raw, nil
+// dumpPrompts writes the embedded assembly, refusing typed on any missing
+// embedded Procedure file instead of printing a partial Procedure.
+func dumpPrompts(sb *strings.Builder) *core.RefusalError {
+	raw, err := reviewProcedure()
+	if err != nil {
+		return procedureRefusal(err)
 	}
-	if alt, altErr := os.ReadFile(filepath.Join(filepath.FromSlash(checkoutProcedureDir), name)); altErr == nil {
-		return alt, nil
-	}
-	return nil, err //nolint:wrapcheck // the caller only reports the file as missing
+	sb.Write(raw)
+	return nil
 }
 
 // trustPreamble renders the trusted tool-generated boundary: the

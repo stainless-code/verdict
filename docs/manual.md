@@ -16,10 +16,10 @@ verdict init --preset standard --yes
 # 1. fetch
 verdict fetch owner/repo 123
 
-# 2. review with ANY agent (the installed skill is the prompt; add it with
-#    `verdict skill install --detect` if it is missing):
-#    Point the agent at .verdict/state/123/. It reads .verdict/state/123/full.diff fully via
-#    .verdict/state/123/toc.txt, loads prompts/review.md from its skill dir, and fans out
+# 2. review with ANY agent (read .verdict/state/123/procedure.md first; it is
+#    the binary's authoritative Procedure for this review — an installed skill may be older):
+#    Point the agent at .verdict/state/123/. It reads .verdict/state/123/procedure.md first,
+#    then .verdict/state/123/full.diff fully via .verdict/state/123/toc.txt, and fans out
 #    0-N lenses per prompts/reviewer-subagent.md for disposition-changing questions only.
 #    Write exactly one .verdict/state/123/review.json {schema_version: 1, body, approved, comments[], resolved?, triage?, sections?}.
 
@@ -319,7 +319,10 @@ refuses typed because its API has no documented resolve endpoint.
 [--timeout s] [-- args...] [--post] [--dry-run] [--json]` plans one pass over the threads
 waiting on verdict. It refreshes the feed, reads the login once, joins findings,
 and writes `drain.json`: `pending[]`, typed `skipped[]` reasons, `other_threads`,
-and a `plan_digest` over the pending list. A thread is pending when it is a
+and a `plan_digest` over the pending list. The plan also writes
+`drain.procedure.md`, the binary's task-scoped Procedure (the index, the
+system preamble, and `prompts/address-reviews.md`), which the drain directive
+names as authoritative. A thread is pending when it is a
 review comment verdict authored, unresolved, and its last comment is a human
 question with no ledger entry answering it; the oldest questions come first and
 the rest are `deferred`. `--max-threads` defaults to 20. Zero pending is success
@@ -345,8 +348,10 @@ hosts refuse `provider-unimplemented` before any read. There is no
 gates and secret scan, the live thread refresh and self login, the
 stale/answered/resolved skips, mention neutralization, and the marker. It holds
 the post lock and composes with `--agent` (plan → draft → preview). It calls no
-reply or resolve endpoint and leaves `replies.json`, `drain.json`, and
-`threads.json` byte-identical. The live read happens in a scratch bundle so
+reply or resolve endpoint and leaves `replies.json`, `drain.json`, and `threads.json`
+byte-identical, and an existing `drain.procedure.md` too; with `--agent`, a missing
+`drain.procedure.md` is created for the drafting agent. The live read happens in a
+scratch bundle so
 the stored feed is not touched. Instead it writes `<bundle>/drain.dryrun.json`
 with `planned[]` entries (`thread_id`, `root_comment_id`, `disposition`, and
 the final `body` with its marker) and `skipped[]` reasons; the `--json` envelope
@@ -360,6 +365,7 @@ writes, and a dry-run preview is never a receipt.
 ### Bundle namespace (core files vs `x-*`)
 
 A bundle dir holds these core/script artifacts (`PR.json`/`source.json`,
+`procedure.md` (the binary's review Procedure; `drain.procedure.md` for a drain bundle),
 `full.diff`, `toc.txt`, `roles.txt`, `review.json`, `findings.json`, `findings.dryrun.json`, `record.json`,
 `post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `threads.json`,
 `threads-resolve.json`, `drain.json`, `drain.dryrun.json`, `drain.replies.json`, `selected.json`,
@@ -1340,23 +1346,24 @@ writes — the bundle is byte-identical after the run, and the bare text path
 never a warning.
 
 `fetch`/`fetch-local` take `--show-prompts`: after the normal bundle write,
-the script renders the assembled agent reading list — `PROCEDURE.md`,
-`prompts/system.md`, `prompts/review.md`, `prompts/diagrams.md`, the bundle
+the script renders the assembled agent reading list — the binary's embedded review
+Procedure (`PROCEDURE.md`, `prompts/system.md`, `prompts/review.md`,
+`prompts/diagrams.md`), the bundle
 meta (`PR.json` or `source.json`), `toc.txt`, `roles.txt`, `full.diff`, plus
 `kb.txt`, `lenses.txt`, `reverts.txt`, `sensitive.txt`, and `panel` when
 present, in that order — trusted
 prompts verbatim, then the trust-boundary prologue, then one nonce fence
 per bundle file — to stdout (human mode; progress moves to stderr) or
 `data.prompt_dump` (`--json`). No agent runs, no network beyond the fetch
-itself, no store writes beyond the bundle: without the flag both verbs are
-byte-identical. It reads the trusted prompts from the current directory, so
-run it from a bundle or a checkout (it falls back to the checkout's `procedure/`) carrying `PROCEDURE.md` and `prompts/`. Missing
-bundle files skip silently, but missing trusted
-prompt files fail loudly: no `prompts/system.md` refuses typed
-(`prompt-dump-failed` — the untrusted-data preamble lives there, so a dump
-without it is unsafe), while a missing `PROCEDURE.md`, `prompts/review.md`, or
-`prompts/diagrams.md` warns (stderr plus envelope `warnings[]`) and the dump
-proceeds without it. Trusted prompts print verbatim first, then a
+itself, no store writes beyond the bundle: the flag changes only the printed
+dump, so the bundle is byte-identical with or without it. The trusted assembly
+comes from the binary's embedded payload, never the working directory or a
+`procedure/` checkout, so the dump starts with exactly the bytes written to
+`<bundle>/procedure.md`. Missing bundle files skip silently, but a missing
+embedded Procedure file fails loudly: any of `PROCEDURE.md`,
+`prompts/system.md`, `prompts/review.md`, or `prompts/diagrams.md` refuses
+typed `prompt-dump-failed`, names the path, and writes no partial
+`procedure.md`. Trusted prompts print verbatim first, then a
 tool-generated trust-boundary prologue naming the run's nonce, then every
 present bundle file inside its own fence — the bundle meta (`PR.json` or
 `source.json`), `toc.txt`, `roles.txt`, the diff (`full.diff`, or the

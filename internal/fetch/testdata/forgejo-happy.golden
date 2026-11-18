@@ -6,7 +6,7 @@ exit: 0
   "repo": "acme/app",
   "pr": 4708,
   "at": "0000-00-00T00:00:00Z",
-  "next": "feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4708/PR.json + full.diff to any agent; ask it to write .verdict/state/4708/review.json; prior threads are in .verdict/state/4708/threads.json (run verdict threads to refresh)",
+  "next": "feed .verdict/state/4708/procedure.md + .verdict/state/4708/PR.json + full.diff to any agent; ask it to write .verdict/state/4708/review.json; prior threads are in .verdict/state/4708/threads.json (run verdict threads to refresh)",
   "warnings": [],
   "data": {
     "dir": ".verdict/state/4708",
@@ -71,7 +71,7 @@ exit: 0
 » roles -> .verdict/state/4708/roles.txt (heuristic file roles for triage)
 » panel: none pinned (set REVIEW_PANEL or the typed defaults.panel for comparable, cost-capped runs)
 done: .verdict/state/4708/PR.json .verdict/state/4708/full.diff .verdict/state/4708/toc.txt .verdict/state/4708/roles.txt (1 files)
-next: feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4708/PR.json + .verdict/state/4708/full.diff (+ .verdict/state/4708/roles.txt) to any agent; ask it to write .verdict/state/4708/review.json; prior threads are in .verdict/state/4708/threads.json (run verdict threads to refresh)
+next: feed .verdict/state/4708/procedure.md + .verdict/state/4708/PR.json + .verdict/state/4708/full.diff (+ .verdict/state/4708/roles.txt) to any agent; ask it to write .verdict/state/4708/review.json; prior threads are in .verdict/state/4708/threads.json (run verdict threads to refresh)
 --- files ---
 --- file C/.curl-calls.log ---
 CALL: --config - -sf https://example.invalid/api/v1/repos/acme/app/pulls/4708
@@ -334,6 +334,8 @@ and evidence for or against. Verify third-party contract claims by web search
 and quote the source URLs; an unverified load-bearing claim stays `unproven`
 rather than becoming ground truth.
 # end lens test
+--- file C/.verdict/state/4708/procedure.md ---
+<embedded review Procedure>
 --- file C/.verdict/state/4708/provenance.json ---
 {
   "schema_version": "1",
@@ -449,6 +451,13 @@ rather than becoming ground truth.
       "status": "included",
       "sha256": "049872b07df3c5a48766b81f056ab5e59b18766fcbbc4d4c782bf5b985cf53db",
       "bytes": 2956
+    },
+    {
+      "kind": "bundle",
+      "name": "procedure.md",
+      "status": "included",
+      "sha256": "d239f23d66b77cbb79dcb120082044ee74cb353c175d616f01fe0e2e500cb041",
+      "bytes": 51082
     },
     {
       "kind": "bundle",

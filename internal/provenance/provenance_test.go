@@ -1,8 +1,6 @@
 package provenance_test
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"os"
 	"path/filepath"
 	"strings"
@@ -183,48 +181,23 @@ func TestToolVersionDegrade(t *testing.T) {
 	}
 }
 
-// TestPromptsHashLayouts proves the prompt-set hash reads a flat bundle
-// directory and a checkout's procedure/ alike, prefers the flat copy, and
-// hashes the empty set when neither exists. The expected digests are SHA-256
-// of the documented "== <path> ==\n<bytes>\n" text, written out literally.
-func TestPromptsHashLayouts(t *testing.T) {
-	sum := func(text string) string {
-		h := sha256.Sum256([]byte(text))
-		return hex.EncodeToString(h[:])
-	}
-	tests := []struct {
-		name  string
-		files map[string]string
-		want  string
-	}{
-		{
-			name:  "flat bundle dir",
-			files: map[string]string{"PROCEDURE.md": "P", "prompts/review.md": "R"},
-			want:  sum("== PROCEDURE.md ==\nP\n== prompts/review.md ==\nR\n"),
-		},
-		{
-			name:  "checkout procedure",
-			files: map[string]string{"procedure/PROCEDURE.md": "P", "procedure/prompts/review.md": "R"},
-			want:  sum("== PROCEDURE.md ==\nP\n== prompts/review.md ==\nR\n"),
-		},
-		{
-			name:  "flat file wins over the checkout copy",
-			files: map[string]string{"PROCEDURE.md": "flat", "procedure/PROCEDURE.md": "nested"},
-			want:  sum("== PROCEDURE.md ==\nflat\n"),
-		},
-		{
-			name:  "a missing flat file falls back per file",
-			files: map[string]string{"PROCEDURE.md": "flat", "procedure/prompts/system.md": "Y"},
-			want:  sum("== PROCEDURE.md ==\nflat\n== prompts/system.md ==\nY\n"),
-		},
-		{name: "no prompt files", files: map[string]string{"notes.txt": "x"}, want: sum("")},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := provenance.PromptsHash(writeBundle(t, tc.files)); got != tc.want {
-				t.Errorf("PromptsHash = %s, want %s", got, tc.want)
-			}
-		})
+// TestPromptsHashIgnoresDiskLayouts proves the installed-user case: neither
+// a flat prompt tree nor a procedure/ checkout can replace the embedded set.
+func TestPromptsHashIgnoresDiskLayouts(t *testing.T) {
+	dir := writeBundle(t, map[string]string{
+		"PROCEDURE.md":                  "flat decoy",
+		"prompts/system.md":             "flat system decoy",
+		"procedure/PROCEDURE.md":        "nested decoy",
+		"procedure/prompts/system.md":   "nested system decoy",
+		"procedure/prompts/review.md":   "nested review decoy",
+		"procedure/prompts/diagrams.md": "nested diagrams decoy",
+		"procedure/prompts/verifier.md": "nested verifier decoy",
+		"procedure/prompts/validate.md": "nested validate decoy",
+	})
+	t.Chdir(dir)
+	const want = "3c57d8f39a074b67f54d2cdb6b7d15408334b5f0f410a36b79f3f2f473ec8516"
+	if got := provenance.PromptsHash(); got != want {
+		t.Errorf("PromptsHash = %s, want the embedded set %s", got, want)
 	}
 }
 
@@ -337,5 +310,37 @@ func TestPlainBasisBelowConfidence(t *testing.T) {
 	got, problem := provenance.ApplyBasisLine("0 0 0 1 0 0 0", body)
 	if got != body || problem != nil {
 		t.Fatalf("plain Basis = %q, %v; want unchanged body without warning", got, problem)
+	}
+}
+
+const recordedBundlePromptsHash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+// TestBundleProvenancePrefersRecordedPromptsHash pins the single source of
+// truth: the triple names the Procedure the agent got when the bundle recorded
+// it, and only a legacy bundle falls back to the running binary's digest.
+func TestBundleProvenancePrefersRecordedPromptsHash(t *testing.T) {
+	dir := writeBundle(t, nil)
+	assertBundlePromptsHash(t, dir, provenance.PromptsHash(), "bundle without provenance.json")
+
+	if err := os.WriteFile(filepath.Join(dir, provenance.ReceiptFile),
+		[]byte(`{"schema_version":"1","prompts_hash":"`+recordedBundlePromptsHash+`"}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	assertBundlePromptsHash(t, dir, recordedBundlePromptsHash, "bundle with a recorded prompts_hash")
+}
+
+func assertBundlePromptsHash(t *testing.T, dir, want, label string) {
+	t.Helper()
+	doc, err := jq.DecodeOrdered([]byte(provenance.BundleProvenance(t.TempDir(), dir)))
+	if err != nil {
+		t.Fatalf("%s: decode triple: %v", label, err)
+	}
+	obj, ok := doc.(*jq.Obj)
+	if !ok || obj == nil {
+		t.Fatalf("%s: triple is not an object", label)
+	}
+	v, _ := obj.Get("prompts_hash")
+	if got := jq.StrOf(v); got != want {
+		t.Fatalf("%s: prompts_hash = %q, want %q", label, got, want)
 	}
 }

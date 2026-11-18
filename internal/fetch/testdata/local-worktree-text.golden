@@ -4,7 +4,7 @@ exit: 0
 » roles -> .verdict/state/local-demo/roles.txt (heuristic file roles for triage)
 » panel: none pinned (set REVIEW_PANEL or the typed defaults.panel for comparable, cost-capped runs)
 done: .verdict/state/local-demo/source.json .verdict/state/local-demo/full.diff .verdict/state/local-demo/toc.txt .verdict/state/local-demo/roles.txt (1 files)
-next: feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/local-demo/source.json + full.diff to any agent; ask it to write .verdict/state/local-demo/review.json
+next: feed .verdict/state/local-demo/procedure.md + .verdict/state/local-demo/source.json + full.diff to any agent; ask it to write .verdict/state/local-demo/review.json
 --- stderr ---
 
 --- files ---
@@ -208,6 +208,8 @@ and evidence for or against. Verify third-party contract claims by web search
 and quote the source URLs; an unverified load-bearing claim stays `unproven`
 rather than becoming ground truth.
 # end lens test
+--- file C/.verdict/state/local-demo/procedure.md ---
+<embedded review Procedure>
 --- file C/.verdict/state/local-demo/provenance.json ---
 {
   "schema_version": "1",
@@ -309,6 +311,13 @@ rather than becoming ground truth.
       "status": "included",
       "sha256": "049872b07df3c5a48766b81f056ab5e59b18766fcbbc4d4c782bf5b985cf53db",
       "bytes": 2956
+    },
+    {
+      "kind": "bundle",
+      "name": "procedure.md",
+      "status": "included",
+      "sha256": "d239f23d66b77cbb79dcb120082044ee74cb353c175d616f01fe0e2e500cb041",
+      "bytes": 51082
     },
     {
       "kind": "bundle",

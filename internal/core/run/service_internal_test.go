@@ -1276,7 +1276,8 @@ func TestRunPrintWithoutAStageRendersThePipeline(t *testing.T) {
 // literal: the stage-render tests pin the stage text, and this pins what a
 // plain --print still renders.
 const quickPipelineDirective = "Review acme/app PR 42 and write exactly one review file.\n\n" +
-	"Read the installed verdict review skill first, then the bundle at .verdict/state/42: PR.json, " +
+	"Read `.verdict/state/42/procedure.md` first; it is the authoritative Procedure for this review " +
+	"(an installed skill may be older). Then the bundle at .verdict/state/42: PR.json, " +
 	"roles.txt, and toc.txt indexing full.diff, plus kb.txt, sensitive.txt, and panel when the run " +
 	"carries them.\n\n" +
 	"Write .verdict/state/42/review.json with {\"schema_version\": \"1\", \"body\": ..., " +

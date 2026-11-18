@@ -588,8 +588,10 @@ func stampSecretOverride(st *state, receipt *core.Post) {
 	}
 }
 
-// stampProvenance copies the recorded tool version, prompts hash, and model
-// onto the receipt; a decode failure is sealed, never silently dropped.
+// stampProvenance copies the bundle triple onto the receipt: tool_version stays
+// the posting binary's version, prompts_hash prefers the bundle's recorded
+// Procedure hash, and model comes from the bundle's latest cost record. A
+// decode failure is sealed, never silently dropped.
 func stampProvenance(st *state, receipt *core.Post) error {
 	prov, err := jq.DecodeOrdered([]byte(provenance.BundleProvenance(st.req.RootPath(), st.dir)))
 	if err != nil {

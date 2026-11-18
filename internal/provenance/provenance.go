@@ -15,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 
+	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -24,10 +25,6 @@ var promptFiles = []string{
 	"PROCEDURE.md", "prompts/diagrams.md", "prompts/review.md",
 	"prompts/system.md", "prompts/validate.md", "prompts/verifier.md",
 }
-
-// checkoutProcedureDir is where a source checkout keeps the Procedure payload;
-// skillfs.ProcedureDir names the same path.
-const checkoutProcedureDir = "procedure"
 
 // buildVersion is the release version injected at link time (GoReleaser
 // -X main.version); empty for source builds, which read package.json.
@@ -67,14 +64,15 @@ func ToolVersion(root string) string {
 	return v
 }
 
-// PromptsHash hashes the prompt set behind a review: each present file feeds
+// PromptsHash hashes the prompt set behind a review: each embedded file feeds
 // "== <path> ==\n" plus its bytes plus "\n" into sha256, in sorted path
 // order. Missing files contribute nothing; the empty set hashes as the
-// sha256 of nothing.
-func PromptsHash(root string) string {
+// sha256 of nothing. The binary serves every file, so the working directory
+// cannot change the digest.
+func PromptsHash() string {
 	h := sha256.New()
 	for _, f := range promptFiles {
-		raw, err := readPromptFile(root, f)
+		raw, err := skillfs.Read(f)
 		if err != nil {
 			continue
 		}
@@ -83,17 +81,6 @@ func PromptsHash(root string) string {
 		h.Write([]byte("\n"))
 	}
 	return hex.EncodeToString(h.Sum(nil))
-}
-
-func readPromptFile(root, name string) ([]byte, error) {
-	raw, err := os.ReadFile(filepath.Join(root, name))
-	if err == nil {
-		return raw, nil
-	}
-	if alt, altErr := os.ReadFile(filepath.Join(root, filepath.FromSlash(checkoutProcedureDir), name)); altErr == nil {
-		return alt, nil
-	}
-	return nil, err //nolint:wrapcheck // the caller only tests for failure
 }
 
 // CostModel returns the first model of the latest cost record, or "" when
@@ -107,8 +94,16 @@ func CostModel(dir string) string {
 }
 
 // BundleProvenance emits the compact provenance triple for a bundle dir.
+// tool_version comes from the posting binary (a linked release version, else
+// root/package.json); prompts_hash prefers the bundle's recorded
+// provenance.json value — the Procedure the agent got — and falls back to the
+// running binary's embedded digest only when the file or field is absent;
+// model comes from the bundle's latest cost record.
 func BundleProvenance(root, dir string) string {
 	ver, hash, model := Triple(root, dir)
+	if recorded := readcommon.JSONRaw(dir+"/"+ReceiptFile, "prompts_hash"); recorded != "" {
+		hash = recorded
+	}
 	var m any
 	if model != "" {
 		m = model
@@ -123,7 +118,7 @@ func BundleProvenance(root, dir string) string {
 // Triple returns the provenance triple as separate values for embedding in
 // larger stores.
 func Triple(root, dir string) (toolVersion, promptsHash, model string) {
-	return ToolVersion(root), PromptsHash(root), CostModel(dir)
+	return ToolVersion(root), PromptsHash(), CostModel(dir)
 }
 
 // Spend rolls the latest cost record into the footer tier and spend words,

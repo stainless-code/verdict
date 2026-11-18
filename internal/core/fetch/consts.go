@@ -60,6 +60,7 @@ const (
 	suffixLensesTxt     = "/lenses.txt"
 	suffixRevertsTxt    = "/reverts.txt"
 	suffixMetaErr       = "/.meta.err"
+	suffixProcedureMD   = "/procedure.md"
 	suffixPRJSON        = "/PR.json"
 	suffixReviewsJSON   = "/reviews.json"
 	suffixThreadsJSON   = "/threads.json"

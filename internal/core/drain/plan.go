@@ -5,8 +5,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
+	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/atomic"
 	threadscore "github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -17,6 +19,8 @@ const (
 	SchemaVersion = "1"
 	// KeyPlanJSON is the plan and receipt written into the bundle.
 	KeyPlanJSON = "drain.json"
+	// KeyProcedureMD is the binary's task-scoped drain Procedure in the bundle.
+	KeyProcedureMD = "drain.procedure.md"
 	// KeyDraftsJSON is the single artifact the drafting agent writes.
 	KeyDraftsJSON = "drain.replies.json"
 	// KeyLedgerJSON is the older replies ledger drain joins.
@@ -165,6 +169,20 @@ func Digest(pending []Pending) string {
 	}
 	sum := sha256.Sum256([]byte(sb.String()))
 	return hex.EncodeToString(sum[:])
+}
+
+// WriteProcedure writes the binary's drain Procedure into the bundle
+// atomically. It reads only the embedded payload; a missing file refuses.
+func WriteProcedure(dir string) error {
+	out, err := skillfs.DrainProcedure()
+	if err != nil {
+		return jq.Sealed("read drain Procedure", err)
+	}
+	path := filepath.Join(dir, KeyProcedureMD)
+	if err := atomic.WriteFile(path, out); err != nil {
+		return jq.Sealed("write "+filepath.ToSlash(path), err)
+	}
+	return nil
 }
 
 // WritePlan writes one plan atomically.

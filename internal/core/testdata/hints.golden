@@ -171,7 +171,7 @@ post-secret-shaped	try: remove the value from the draft and re-run; post can pas
 pr-not-open	try: re-fetch the PR (bundle may be stale)
 pr-read-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
 privacy-unavailable	try: address the cause above, then re-run the same command
-prompt-dump-failed	try: run from a checkout carrying SKILL.md/prompts, then re-run
+prompt-dump-failed	try: reinstall verdict; an embedded Procedure file is missing
 provider-unimplemented	try: use the verb named above for this bundle kind
 provider-unknown	try: pass --provider github|gitlab|gitcafe|forgejo|bitbucket|azure
 rationale-required	try: add --rationale with 30+ chars, or --force

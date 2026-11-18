@@ -252,7 +252,7 @@ func TestRunGitHubHappyPath(t *testing.T) {
 	}
 	assertScriptCalls(t, cmdr, fetchHappyArgv())
 	assertBundleFiles(t, filepath.Join(".verdict", "state", "7"), []string{
-		"PR.json", "full.diff", "identity.json",
+		"PR.json", "procedure.md", "full.diff", "identity.json",
 		"toc.txt", "roles.txt", "hunks.tsv", "store.json", "reviews.json", "inline.json",
 		"threads.json", ".difffiles",
 	})
@@ -352,8 +352,11 @@ func assertFetchEnvelope(t *testing.T, resp *core.FetchResponse, human *bytes.Bu
 		t.Errorf("envelope missing identity:\n%s", raw)
 	}
 	if got := human.String(); !strings.Contains(got, "done: .verdict/state/7/PR.json") ||
-		!strings.Contains(got, "next: feed PROCEDURE.md") {
+		!strings.Contains(got, "next: feed .verdict/state/7/procedure.md + .verdict/state/7/PR.json") {
 		t.Errorf("human lines:\n%s", got)
+	}
+	if want := "feed .verdict/state/7/procedure.md + .verdict/state/7/PR.json"; !strings.HasPrefix(resp.Next, want) {
+		t.Errorf("next = %q, want prefix %q", resp.Next, want)
 	}
 }
 

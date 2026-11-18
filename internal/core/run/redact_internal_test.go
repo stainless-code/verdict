@@ -188,7 +188,8 @@ func TestDirectiveNamesTheArtifact(t *testing.T) {
 // Sprintf argument degrades a sentence into nonsense and every substring pin
 // below survives it.
 const pipelineDirective = "Review acme/app PR 42 and write exactly one review file.\n\n" +
-	"Read the installed verdict review skill first, then the bundle at .verdict/state/42: PR.json, " +
+	"Read `.verdict/state/42/procedure.md` first; it is the authoritative Procedure for this review " +
+	"(an installed skill may be older). Then the bundle at .verdict/state/42: PR.json, " +
 	"roles.txt, and toc.txt indexing full.diff, plus kb.txt, sensitive.txt, and panel when the run " +
 	"carries them.\n\n" +
 	"Write .verdict/state/42/review.json with {\"schema_version\": \"1\", \"body\": ..., " +
@@ -223,7 +224,7 @@ func TestDirectiveKeepsAPercentPathLiteral(t *testing.T) {
 	plan := builtinPlan(t)
 
 	whole := directive("acme/app", "42", bundle, artifact, false, plan)
-	if want := "then the bundle at " + bundle + ": PR.json"; !strings.Contains(whole, want) {
+	if want := "Then the bundle at " + bundle + ": PR.json"; !strings.Contains(whole, want) {
 		t.Errorf("directive does not keep the path literally, want %q in:\n%s", want, whole)
 	}
 	if want := "Write " + artifact + " with {\"schema_version\": \"1\""; !strings.Contains(whole, want) {

@@ -155,13 +155,12 @@ func TestClientFetch(t *testing.T) {
 	if out.Repo != "acme/app" || out.PR != "7" || out.At != sdkAt {
 		t.Errorf("envelope = repo %q pr %q at %q", out.Repo, out.PR, out.At)
 	}
-	if !strings.HasPrefix(out.Next, "feed PROCEDURE.md + prompts/system.md") ||
-		!strings.Contains(out.Next, ".verdict/state/7/PR.json") {
+	if !strings.HasPrefix(out.Next, "feed .verdict/state/7/procedure.md + .verdict/state/7/PR.json") {
 		t.Errorf("next = %q, want the review handoff", out.Next)
 	}
 	assertFetchedBundle(t, decodeData(t, out.Data))
 	assertFetchedFiles(t, ".verdict/state/7", []string{
-		"PR.json", "full.diff", "toc.txt", "roles.txt", "reviews.json", "inline.json", "threads.json",
+		"PR.json", "procedure.md", "full.diff", "toc.txt", "roles.txt", "reviews.json", "inline.json", "threads.json",
 	})
 	for _, want := range []string{"» gh pr view acme/app#7", "» gh pr diff -> .verdict/state/7/full.diff"} {
 		if !strings.Contains(progress.joinedHuman(), want) {
