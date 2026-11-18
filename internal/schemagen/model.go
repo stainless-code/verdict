@@ -8,6 +8,7 @@ import (
 	handoffcore "github.com/stainless-code/verdict/internal/core/handoff"
 	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 	"github.com/stainless-code/verdict/internal/core/pack"
+	qualitycore "github.com/stainless-code/verdict/internal/core/quality"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
 	"github.com/stainless-code/verdict/internal/core/recipe"
 	riskcore "github.com/stainless-code/verdict/internal/core/risk"
@@ -43,6 +44,32 @@ type BacktestSpend = backtestcore.ScoreSpend
 
 // BacktestSignal is one row of the score's fix/revert catch table.
 type BacktestSignal = backtestcore.ScoreSignal
+
+// FixturesData is the backtest fixtures report: report.json and the
+// `backtest fixtures` envelope's data object, generated as
+// schemas/fixtures.schema.json.
+type FixturesData = qualitycore.Report
+
+// FixturesFixture is one fixture's recorded-review metrics.
+type FixturesFixture = qualitycore.FixtureReport
+
+// FixturesRecall is the fixture's per-run, mean and union recall.
+type FixturesRecall = qualitycore.RecallReport
+
+// FixturesBonus is the separate bonus defect union.
+type FixturesBonus = qualitycore.BonusReport
+
+// FixturesFalseGreen is the measured gate-pass rate over known gate outcomes.
+type FixturesFalseGreen = qualitycore.FalseGreenReport
+
+// FixturesHallucination is the S4-seamed quote-verification rate.
+type FixturesHallucination = qualitycore.HallucinationReport
+
+// FixturesCalibration is the hand-score reproduction summary.
+type FixturesCalibration = qualitycore.CalibrationReport
+
+// FixturesDiagnostic is one recording's matcher diagnostics.
+type FixturesDiagnostic = qualitycore.Diagnostic
 
 // AuthorFile is the bundle's advisory author fingerprint, generated as
 // schemas/author.schema.json.

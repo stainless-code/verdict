@@ -132,6 +132,7 @@ var refusalCodes = []string{
 	"fix-ceiling",
 	"fix-failed",
 	"fix-patch-secret",
+	"fixtures-failed",
 	"fixtures-invalid",
 	"fixtures-recording-invalid",
 	"head-mismatch",

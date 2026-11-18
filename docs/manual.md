@@ -4721,7 +4721,8 @@ The shapes agents write and operators parse are pinned in `schemas/`
 declared review pipelines `run --recipe` resolves, plus the resolved
 `$defs/plan` shape a run records as `data.recipe`), `usage.schema.json` (the
 explicit usage handoff), `corpus.schema.json` (benchmark case manifests),
-`backtest.schema.json` (the backtest score report), `post.schema.json` and
+`backtest.schema.json` (the backtest score report), `fixtures.schema.json`
+(the backtest fixtures report), `post.schema.json` and
 `record.schema.json` (completed post/record captures),
 `author.schema.json` (the advisory author fingerprint a fetch detects),
 `selected.schema.json` (the reaction-scoped fix selection a GitHub fetch

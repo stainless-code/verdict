@@ -669,6 +669,15 @@ Fix: remove the value from the worktree and rotate it if it was real, then
 re-run `fix`. The pass was not recorded and `fix.patch` was not written, so no
 pass was spent.
 
+## `fixtures-failed`
+
+Cause: `backtest fixtures` could not create or atomically replace
+`.verdict/backtest/fixtures/report.json`, usually because the state directory
+is not writable.
+
+Fix: make `.verdict/` writable, then re-run `backtest fixtures`. The scores
+are recomputed; nothing is sent to a host.
+
 ## `fixtures-invalid`
 
 Cause: `backtest fixtures` could not read `bench/quality/fixtures.json`, or the
