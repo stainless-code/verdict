@@ -87,7 +87,8 @@ func TestPostDryRunWritesPreviewWithoutHostOrStoreWrites(t *testing.T) {
 	root, dir := setupDrainBundle(t)
 	writePlanAndDrafts(t, dir, "github", twoDryRunReplies(), "")
 	writeFeedSentinel(t, dir)
-	before := snapshotFiles(t, dir, draincore.KeyLedgerJSON, draincore.KeyPlanJSON, threadscore.KeyThreadsJSON)
+	before := snapshotFiles(t, dir, draincore.KeyLedgerJSON, draincore.KeyPlanJSON,
+		draincore.KeyProcedureMD, threadscore.KeyThreadsJSON)
 	cmdr := &drainHostStub{pageJSON: twoPendingPageJSON(), self: "verdict-bot", forbidWrites: forbidHostWrites(t)}
 	out, diag, code := runDrainTest(t, root, cmdr, []string{"--post", "--dry-run"})
 	if code != cli.ExitOK {
@@ -216,7 +217,7 @@ func TestPostDryRunSecretRefusesWithZeroWrites(t *testing.T) {
 	}
 	writePlanAndDrafts(t, dir, "github", secret, "")
 	before := snapshotFiles(t, dir, draincore.KeyLedgerJSON, draincore.KeyPlanJSON,
-		threadscore.KeyThreadsJSON, draincore.KeyDryRunJSON)
+		draincore.KeyProcedureMD, threadscore.KeyThreadsJSON, draincore.KeyDryRunJSON)
 	cmdr := &drainHostStub{pageJSON: twoPendingPageJSON(), self: "verdict-bot", forbidWrites: forbidHostWrites(t)}
 	out, diag, code := runDrainTest(t, root, cmdr, []string{"--post", "--dry-run"})
 	if code != cli.ExitRefused {
@@ -239,5 +240,25 @@ func TestPostDryRunNextKeepsAgentArgs(t *testing.T) {
 	want := "verdict drain acme/app 7 --agent claude --post --timeout 7 -- --model x"
 	if got != want {
 		t.Errorf("next = %q, want %q", got, want)
+	}
+}
+
+// TestDryRunWithAgentLeavesBundleProcedureAbsent proves the plan's embedded
+// Procedure is not written to the real bundle when dry-run writers are blocked.
+func TestDryRunWithAgentLeavesBundleProcedureAbsent(t *testing.T) {
+	t.Parallel()
+	root, dir := setupDrainBundle(t)
+	cmdr := &drainHostStub{
+		pageJSON:     `{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}`,
+		self:         "verdict-bot",
+		forbidWrites: forbidHostWrites(t),
+	}
+	out, diag, code := runDrainTest(t, root, cmdr, []string{"--agent", "nonexistent-agent", "--post", "--dry-run"})
+	if code != cli.ExitOK {
+		t.Fatalf("exit = %d, out=%s diag=%s", code, out, diag)
+	}
+	path := filepath.Join(dir, draincore.KeyProcedureMD)
+	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("dry run wrote %s: %v", filepath.ToSlash(path), err)
 	}
 }

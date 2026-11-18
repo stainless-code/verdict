@@ -4,10 +4,13 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
 	draincore "github.com/stainless-code/verdict/internal/core/drain"
@@ -95,4 +98,29 @@ func TestRunAgentAndPostZeroPendingSkipsLaunchAndPost(t *testing.T) {
 	if env.Error != nil || env.Data == nil || len(env.Data.Pending) != 0 || len(env.Data.Posted) != 0 {
 		t.Errorf("envelope = %+v, want 0 pending, 0 posted, nil error", env)
 	}
+	dir := filepath.Join(root, ".verdict", "state", "7")
+	got, err := os.ReadFile(filepath.Join(dir, draincore.KeyProcedureMD))
+	if err != nil {
+		t.Fatalf("read %s: %v", draincore.KeyProcedureMD, err)
+	}
+	if !bytes.Equal(got, drainProcedureBytes(t)) {
+		t.Fatalf("%s is not the embedded drain assembly", draincore.KeyProcedureMD)
+	}
+}
+
+// drainProcedureBytes builds the expected drain Procedure from the embedded
+// payload paths, not from the function under test.
+func drainProcedureBytes(t *testing.T) []byte {
+	t.Helper()
+	var out []byte
+	for _, name := range []string{
+		skillfs.ProcedureMD, "prompts/system.md", "prompts/address-reviews.md",
+	} {
+		raw, err := skillfs.Read(name)
+		if err != nil {
+			t.Fatalf("read embedded %s: %v", name, err)
+		}
+		out = append(out, raw...)
+	}
+	return out
 }

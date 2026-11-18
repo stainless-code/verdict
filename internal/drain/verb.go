@@ -134,6 +134,13 @@ func buildPlan(ctx context.Context, r *cli.Runner, req Request, fl *flags, limit
 	if err := draincore.WritePlan(in.dir+pathSep+draincore.KeyPlanJSON, plan); err != nil {
 		return "", nil, r.Refuse(drainFailed(fmt.Sprintf("could not write %s/%s: %v", in.dir, draincore.KeyPlanJSON, err))), true
 	}
+	// A dry run leaves the real bundle untouched; its live read uses a scratch
+	// copy that is removed when the refresh returns.
+	if !fl.dryRun {
+		if err := draincore.WriteProcedure(in.dir); err != nil {
+			return "", nil, r.Refuse(drainFailed(fmt.Sprintf("could not write %s/%s: %v", in.dir, draincore.KeyProcedureMD, err))), true
+		}
+	}
 	return in.dir, plan, 0, false
 }
 

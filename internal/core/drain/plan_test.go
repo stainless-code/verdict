@@ -1,8 +1,12 @@
 package drain
 
 import (
+	"bytes"
+	"os"
+	"path/filepath"
 	"testing"
 
+	skillfs "github.com/stainless-code/verdict"
 	threadscore "github.com/stainless-code/verdict/internal/core/threads"
 )
 
@@ -46,5 +50,42 @@ func TestNewPlanDigestPinsWaitingComment(t *testing.T) {
 	changed, _ := NewPlan("github", 7, "head", "2026-11-03T00:00:00Z", "verdict-bot", feed, nil, 20)
 	if changed.PlanDigest == first.PlanDigest {
 		t.Error("a new waiting comment kept the same plan_digest")
+	}
+}
+
+// TestWriteProcedureUsesEmbeddedPayload pins the drain assembly against the
+// three embedded files and proves disk copies cannot replace any of them.
+func TestWriteProcedureUsesEmbeddedPayload(t *testing.T) {
+	dir := t.TempDir()
+	for _, name := range []string{"PROCEDURE.md", "prompts/system.md", "prompts/address-reviews.md"} {
+		path := filepath.Join(dir, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(path, []byte("disk decoy "+name+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Chdir(dir)
+
+	var want []byte
+	for _, name := range []string{
+		skillfs.ProcedureMD, "prompts/system.md", "prompts/address-reviews.md",
+	} {
+		raw, err := skillfs.Read(name)
+		if err != nil {
+			t.Fatalf("read embedded %s: %v", name, err)
+		}
+		want = append(want, raw...)
+	}
+	if err := WriteProcedure(dir); err != nil {
+		t.Fatalf("WriteProcedure: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, KeyProcedureMD))
+	if err != nil {
+		t.Fatalf("read %s: %v", KeyProcedureMD, err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("%s is not the embedded drain assembly", KeyProcedureMD)
 	}
 }

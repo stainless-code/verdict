@@ -5,8 +5,10 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 	"strings"
 
+	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/atomic"
 	threadscore "github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -17,6 +19,8 @@ const (
 	SchemaVersion = "1"
 	// KeyPlanJSON is the plan and receipt written into the bundle.
 	KeyPlanJSON = "drain.json"
+	// KeyProcedureMD is the binary's task-scoped drain Procedure in the bundle.
+	KeyProcedureMD = "drain.procedure.md"
 	// KeyDraftsJSON is the single artifact the drafting agent writes.
 	KeyDraftsJSON = "drain.replies.json"
 	// KeyLedgerJSON is the older replies ledger drain joins.
@@ -165,6 +169,25 @@ func Digest(pending []Pending) string {
 	}
 	sum := sha256.Sum256([]byte(sb.String()))
 	return hex.EncodeToString(sum[:])
+}
+
+// WriteProcedure writes the binary's drain Procedure into the bundle
+// atomically: the Procedure index, the system preamble, and the address-reviews
+// instructions, in that order. It reads only the embedded payload.
+func WriteProcedure(dir string) error {
+	var out []byte
+	for _, name := range []string{skillfs.ProcedureMD, "prompts/system.md", "prompts/address-reviews.md"} {
+		raw, err := skillfs.Read(name)
+		if err != nil {
+			return err
+		}
+		out = append(out, raw...)
+	}
+	path := filepath.Join(dir, KeyProcedureMD)
+	if err := atomic.WriteFile(path, out); err != nil {
+		return fmt.Errorf("write %s: %v", filepath.ToSlash(path), err)
+	}
+	return nil
 }
 
 // WritePlan writes one plan atomically.

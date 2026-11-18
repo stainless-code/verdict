@@ -319,7 +319,10 @@ refuses typed because its API has no documented resolve endpoint.
 [--timeout s] [-- args...] [--post] [--dry-run] [--json]` plans one pass over the threads
 waiting on verdict. It refreshes the feed, reads the login once, joins findings,
 and writes `drain.json`: `pending[]`, typed `skipped[]` reasons, `other_threads`,
-and a `plan_digest` over the pending list. A thread is pending when it is a
+and a `plan_digest` over the pending list. The plan also writes
+`drain.procedure.md`, the binary's task-scoped Procedure (the index, the
+system preamble, and `prompts/address-reviews.md`), which the drain directive
+names as authoritative. A thread is pending when it is a
 review comment verdict authored, unresolved, and its last comment is a human
 question with no ledger entry answering it; the oldest questions come first and
 the rest are `deferred`. `--max-threads` defaults to 20. Zero pending is success
@@ -345,8 +348,8 @@ hosts refuse `provider-unimplemented` before any read. There is no
 gates and secret scan, the live thread refresh and self login, the
 stale/answered/resolved skips, mention neutralization, and the marker. It holds
 the post lock and composes with `--agent` (plan → draft → preview). It calls no
-reply or resolve endpoint and leaves `replies.json`, `drain.json`, and
-`threads.json` byte-identical. The live read happens in a scratch bundle so
+reply or resolve endpoint and leaves `replies.json`, `drain.json`,
+`drain.procedure.md`, and `threads.json` byte-identical. The live read happens in a scratch bundle so
 the stored feed is not touched. Instead it writes `<bundle>/drain.dryrun.json`
 with `planned[]` entries (`thread_id`, `root_comment_id`, `disposition`, and
 the final `body` with its marker) and `skipped[]` reasons; the `--json` envelope
