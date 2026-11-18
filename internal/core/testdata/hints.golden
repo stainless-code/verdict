@@ -78,6 +78,7 @@ chunk-write-failed	try: address the cause above, then re-run the same command
 config-no-bundle	try: run the fetch/record step named above first, then re-run
 config-too-large	try: address the cause above, then re-run the same command
 conflicted-tree	try: resolve the conflicts (or abort the merge), then re-run
+context-invalid	try: check each --context path (relative paths resolve against the current directory), then re-run
 controls-stale	try: re-fetch the bundle (controls changed under it), then re-run
 controls-too-large	try: trim the named control file under its cap, commit it at base, then re-fetch
 controls-unavailable	try: check out the PR base (actions/checkout fetch-depth: 0, or git fetch --depth=1 origin <base>), then re-fetch; fetch --allow-head-controls is the explicit opt-out

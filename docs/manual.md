@@ -4915,9 +4915,15 @@ review is posted to GitHub before the merge gate runs.
 `fetch` and `fetch-local` accept repeatable `--context <file|dir>` operands.
 Only the named files or directory trees are read — there is no ambient discovery
 or connector access. Markdown (`.md`, `.markdown`), JSON and `.txt` files are
-accepted, up to 64 files, 1 MiB total and eight path levels. Symlinks and special
-files are refused with `fetch-failed`. Reduce the hand-off or copy the evidence
-into regular supported files before retrying.
+accepted, up to 64 files, 1 MiB total and eight path levels. An unreadable or
+refused `--context` INPUT — a missing, symlinked, special, unsupported or
+over-limit input — refuses `context-invalid`, never the provider-flavored
+`fetch-failed`: the message names the operand as typed and, for a relative path,
+its absolute resolution (relative paths resolve against the current directory),
+and the hint tells you to check each `--context` path. A failure to write the
+bundle's `context*` artifacts keeps `fetch-failed` and its provider hint.
+Reduce the hand-off or copy the evidence into regular supported files before
+retrying.
 
 The bundle stores original bytes under `context/`, a `context.json` manifest with
 source, retrieval timestamp, SHA-256 and `trust: "untrusted"`, and `context.txt`.
