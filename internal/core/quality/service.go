@@ -59,12 +59,26 @@ type recordingFile struct {
 // report under .verdict/backtest/fixtures/report.json. It never launches an
 // agent or calls a host.
 func RunFixtures(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
-	if err := ctx.Err(); err != nil {
-		return nil, canceled(err)
+	if ref := canceledRefusal(ctx); ref != nil {
+		return nil, ref
 	}
-	inputs, ref := loadInputs(req)
+	report, root, ref := prepareReport(ctx, req)
 	if ref != nil {
 		return nil, ref
+	}
+	if ref := canceledRefusal(ctx); ref != nil {
+		return nil, ref
+	}
+	if ref := writeReport(root, report); ref != nil {
+		return nil, ref
+	}
+	return response(req, report), nil
+}
+
+func prepareReport(ctx context.Context, req *Request) (*Report, string, *core.RefusalError) {
+	inputs, ref := loadInputs(req)
+	if ref != nil {
+		return nil, "", ref
 	}
 	byID := map[string]*Fixture{}
 	for i := range inputs.catalog.Fixtures {
@@ -73,20 +87,24 @@ func RunFixtures(ctx context.Context, req *Request) (*Response, *core.RefusalErr
 	matcher := NewMatcher(inputs.catalog)
 	runs, findings, ref := loadRuns(ctx, inputs.scoring, byID, matcher)
 	if ref != nil {
-		return nil, ref
+		return nil, "", ref
 	}
 	calibration, _, ref := loadRuns(ctx, inputs.calibration, byID, matcher)
 	if ref != nil {
-		return nil, ref
+		return nil, "", ref
 	}
 	report, ref := buildReport(ctx, req, inputs.catalog, inputs.heads, runs, calibration, findings)
 	if ref != nil {
-		return nil, ref
+		return nil, "", ref
 	}
-	if ref := writeReport(inputs.root, report); ref != nil {
-		return nil, ref
+	return report, inputs.root, nil
+}
+
+func canceledRefusal(ctx context.Context) *core.RefusalError {
+	if err := ctx.Err(); err != nil {
+		return canceled(err)
 	}
-	return response(req, report), nil
+	return nil
 }
 
 func loadInputs(req *Request) (*fixtureInputs, *core.RefusalError) {

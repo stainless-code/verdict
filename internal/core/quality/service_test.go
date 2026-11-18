@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/golden"
@@ -449,6 +450,57 @@ func TestMetaTrailingDataRefused(t *testing.T) {
 	}
 	if !strings.Contains(ref.Message, "trailing data") {
 		t.Errorf("refusal message = %q", ref.Message)
+	}
+}
+
+// cancelAfterErrCalls is deterministic: RunFixtures consults Err once at
+// entry and once per recording. One override recording plus the seven shipped
+// calibration recordings makes the tenth check the one just before writeReport.
+type cancelAfterErrCalls struct {
+	remaining int
+	calls     int
+}
+
+func (*cancelAfterErrCalls) Deadline() (time.Time, bool) { return time.Time{}, false }
+
+func (*cancelAfterErrCalls) Done() <-chan struct{} { return nil }
+
+func (*cancelAfterErrCalls) Value(any) any { return nil }
+
+func (c *cancelAfterErrCalls) Err() error {
+	c.calls++
+	if c.calls > c.remaining {
+		return context.Canceled
+	}
+	return nil
+}
+
+func TestCanceledWithoutGatingFindingDoesNotWrite(t *testing.T) {
+	recordings := copyOnlyRecordings(t, "fx1", "vr-sta440b-bench")
+	root := qualityRepoRoot(t)
+	normal, ref := RunFixtures(context.Background(), &Request{RepoRoot: root, RecordingsRoot: recordings})
+	if ref != nil {
+		t.Fatalf("baseline run: %s: %s", ref.Code, ref.Message)
+	}
+	if gating := normal.Data.Fixtures[0].Hallucination.GatingFindings; gating != 0 {
+		t.Fatalf("baseline gating findings = %d, want 0", gating)
+	}
+	path := filepath.Join(root, ".verdict", "backtest", fixturesDir, reportName)
+	writeTestFile(t, path, "sentinel\n")
+	ctx := &cancelAfterErrCalls{remaining: 9}
+	resp, ref := RunFixtures(ctx, &Request{RepoRoot: root, RecordingsRoot: recordings})
+	if ref == nil || ref.Code != "canceled" {
+		t.Errorf("refusal = %+v, want canceled", ref)
+	}
+	if resp != nil {
+		t.Errorf("response = %+v, want no report", resp)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != "sentinel\n" {
+		t.Errorf("report.json = %q, want untouched sentinel", raw)
 	}
 }
 
