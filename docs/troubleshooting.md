@@ -486,6 +486,17 @@ Cause: the checkout carries unresolved merge conflicts.
 
 Fix: resolve the conflicts (or abort the merge), then re-run.
 
+## `context-invalid`
+
+Cause: a `fetch` or `fetch-local` `--context` INPUT could not be read or was
+refused: the path is missing, a symlink or special file, too deeply nested, or
+past the 64-file or 1 MiB limit, or the named file is not Markdown, JSON or
+`.txt`. Bundle write failures never carry this code. The message names the
+operand as typed and, for a relative path, its absolute resolution.
+
+Fix: check each `--context` path — relative paths resolve against the current
+directory — then hand over regular supported files under the caps and re-run.
+
 ## `controls-stale`
 
 Cause: the review controls changed under the bundle.
@@ -623,12 +634,11 @@ Fix: re-fetch to refresh remote evidence, or use `--force` to deliberately repub
 
 ## `fetch-failed`
 
-Cause: the provider CLI call failed, or an explicit context input was unreadable,
-unsupported, a symlink, or over its file, byte or depth limit.
+Cause: the provider CLI call failed, or verdict could not write a bundle
+context artifact.
 
-Fix: for provider failures, run `gh auth status` and confirm the repo/PR spelling.
-For context failures, hand over regular Markdown, JSON or `.txt` files — at most
-64 files, 1 MiB total and eight path levels — then re-run.
+Fix: run `gh auth status` and confirm the repo/PR spelling for provider failures.
+For a context write failure, make the bundle directory writable and re-run.
 
 ## `filtered-out`
 

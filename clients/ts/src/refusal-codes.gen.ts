@@ -82,6 +82,7 @@ export type RefusalCode =
   | "config-no-bundle"
   | "config-too-large"
   | "conflicted-tree"
+  | "context-invalid"
   | "controls-stale"
   | "controls-too-large"
   | "controls-unavailable"
