@@ -8,6 +8,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	skillfs "github.com/stainless-code/verdict"
 )
 
 // TestScrubRootsSlashForm pins the golden scrub to both path spellings: a
@@ -229,5 +231,40 @@ func TestDivergenceBounded(t *testing.T) {
 	}
 	if !strings.Contains(report, "more lines") {
 		t.Fatalf("report does not truncate:\n%s", report)
+	}
+}
+
+func mustEmbedded(t *testing.T, label string, load func() ([]byte, error)) string {
+	t.Helper()
+	raw, err := load()
+	if err != nil {
+		t.Fatalf("%s: %v", label, err)
+	}
+	return string(raw)
+}
+
+// TestScrubNormalizesEmbeddedProcedures proves a golden renders one marker for
+// each embedded assembly instead of pasting the Procedure into every case,
+// including the escaped prompt_dump string in a JSON envelope.
+func TestScrubNormalizesEmbeddedProcedures(t *testing.T) {
+	review := mustEmbedded(t, "ReviewProcedure", skillfs.ReviewProcedure)
+	drain := mustEmbedded(t, "DrainProcedure", skillfs.DrainProcedure)
+	rendered := "--- file C/procedure.md ---\n" + review + "tail\n" +
+		"--- file C/drain.procedure.md ---\n" + drain + "tail\n" +
+		`{"prompt_dump":"` + jsonStringBody(review) + `rest"}` + newline
+
+	out := Scrub(rendered)
+	if strings.Contains(out, "name: verdict") {
+		t.Fatal("golden still carries the Procedure frontmatter")
+	}
+	wants := []string{
+		embeddedReviewMarker + newline + "tail",
+		embeddedDrainMarker + newline + "tail",
+		`"prompt_dump":"` + embeddedReviewMarker + `\n`,
+	}
+	for _, want := range wants {
+		if !strings.Contains(out, want) {
+			t.Errorf("golden lacks %q:\n%s", want, out)
+		}
 	}
 }

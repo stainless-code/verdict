@@ -172,16 +172,11 @@ func Digest(pending []Pending) string {
 }
 
 // WriteProcedure writes the binary's drain Procedure into the bundle
-// atomically: the Procedure index, the system preamble, and the address-reviews
-// instructions, in that order. It reads only the embedded payload.
+// atomically. It reads only the embedded payload; a missing file refuses.
 func WriteProcedure(dir string) error {
-	var out []byte
-	for _, name := range []string{skillfs.ProcedureMD, "prompts/system.md", "prompts/address-reviews.md"} {
-		raw, err := skillfs.Read(name)
-		if err != nil {
-			return jq.Sealed("read embedded "+name, err)
-		}
-		out = append(out, raw...)
+	out, err := skillfs.DrainProcedure()
+	if err != nil {
+		return jq.Sealed("read drain Procedure", err)
 	}
 	path := filepath.Join(dir, KeyProcedureMD)
 	if err := atomic.WriteFile(path, out); err != nil {

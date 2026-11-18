@@ -4,10 +4,12 @@
 // written anywhere (bundle, .verdict/ stores, kb files, HOME skill trees),
 // plus artifact presence — against checked-in golden files. A normalizer
 // that hides real diffs is a defect, so the only scrubs are timestamps, the
-// prompt nonce, and curl's connection timing.
+// prompt nonce, curl's connection timing, and the two embedded Procedure
+// bodies, which are pinned once by the payload package's content tests.
 package golden
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -24,6 +26,7 @@ import (
 	"sync"
 	"testing"
 
+	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
@@ -361,16 +364,86 @@ func repoRoot() string {
 	return "."
 }
 
-// Scrub normalizes timestamps, prompt nonces, the manifest version, and
-// curl's connection timing: the sanctioned scrub, extended only for
-// tool-runtime metadata that differs by construction. Everything else
-// compares byte-exact, and a suite that needs to compare two runs of its own
-// shares this scrub instead of forking a weaker one.
+const (
+	embeddedReviewMarker = "<embedded review Procedure>"
+	embeddedDrainMarker  = "<embedded drain Procedure>"
+)
+
+// procedureScrubs holds the raw and JSON-string forms of both embedded
+// assemblies. The JSON form uses jq's no-HTML-escape encoder, so an escaped
+// prompt_dump string normalizes exactly like a bundle file's bytes.
+type procedureScrubs struct {
+	reviewRaw, reviewJSON string
+	drainRaw, drainJSON   string
+}
+
+var embeddedProcedureScrubs = sync.OnceValue(func() procedureScrubs {
+	review, err := skillfs.ReviewProcedure()
+	if err != nil {
+		return procedureScrubs{}
+	}
+	drain, err := skillfs.DrainProcedure()
+	if err != nil {
+		return procedureScrubs{}
+	}
+	return procedureScrubs{
+		reviewRaw:  string(review),
+		reviewJSON: jsonStringBody(string(review)),
+		drainRaw:   string(drain),
+		drainJSON:  jsonStringBody(string(drain)),
+	}
+})
+
+// jsonStringBody renders s the way jq renders a JSON string value, without
+// the surrounding quotes: control characters escape, HTML characters do not.
+func jsonStringBody(s string) string {
+	var buf bytes.Buffer
+	enc := json.NewEncoder(&buf)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(s); err != nil {
+		return ""
+	}
+	raw := strings.TrimSuffix(buf.String(), newline)
+	return strings.TrimSuffix(strings.TrimPrefix(raw, `"`), `"`)
+}
+
+// procedureMarkerReplacements keeps the assembly's trailing newline so the
+// marker occupies a single line in both file bodies and JSON strings.
+func procedureMarkerReplacements(raw, marker string) (string, string) {
+	if strings.HasSuffix(raw, newline) {
+		return marker + newline, marker + `\n`
+	}
+	return marker, marker
+}
+
+// scrubEmbeddedProcedures replaces each exact assembly with one marker in
+// file bodies, plain dumps, and escaped JSON strings. A dedicated content test
+// in the payload package pins the bytes the marker stands for.
+func scrubEmbeddedProcedures(s string) string {
+	p := embeddedProcedureScrubs()
+	if p.reviewRaw == "" {
+		return s
+	}
+	reviewRawMark, reviewJSONMark := procedureMarkerReplacements(p.reviewRaw, embeddedReviewMarker)
+	drainRawMark, drainJSONMark := procedureMarkerReplacements(p.drainRaw, embeddedDrainMarker)
+	s = strings.ReplaceAll(s, p.reviewJSON, reviewJSONMark)
+	s = strings.ReplaceAll(s, p.drainJSON, drainJSONMark)
+	s = strings.ReplaceAll(s, p.reviewRaw, reviewRawMark)
+	return strings.ReplaceAll(s, p.drainRaw, drainRawMark)
+}
+
+// Scrub normalizes timestamps, prompt nonces, the manifest version, curl's
+// connection timing, and the two embedded Procedure bodies: the sanctioned
+// scrub, extended only for tool-runtime metadata and payload bytes that differ
+// by construction. Everything else compares byte-exact, and a suite that needs
+// to compare two runs of its own shares this scrub instead of forking a weaker
+// one.
 func Scrub(s string) string {
 	s = tsRe.ReplaceAllString(s, "0000-00-00T00:00:00Z")
 	s = scrubNonce(s)
 	s = versionScrub()(s)
-	return curlMsRe.ReplaceAllString(s, "${1}0${2}")
+	s = curlMsRe.ReplaceAllString(s, "${1}0${2}")
+	return scrubEmbeddedProcedures(s)
 }
 
 // nonceRe matches the trust-boundary nonce line; the same nonce fences

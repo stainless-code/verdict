@@ -234,6 +234,65 @@ func Paths() ([]string, error) {
 	return out, nil
 }
 
+// ProcedureFileError names the embedded payload file whose read failed. A
+// caller that must refuse on a missing preamble inspects Path with [errors.As].
+type ProcedureFileError struct {
+	Cause error
+	Path  string
+}
+
+// Error reports the embedded path and its read failure.
+func (e *ProcedureFileError) Error() string {
+	return "read embedded " + e.Path + ": " + e.Cause.Error()
+}
+
+// Unwrap exposes the underlying read failure.
+func (e *ProcedureFileError) Unwrap() error { return e.Cause }
+
+// reviewProcedureFiles is the review assembly's trust order, in one place.
+func reviewProcedureFiles() []string {
+	return []string{ProcedureMD, "prompts/system.md", "prompts/review.md", "prompts/diagrams.md"}
+}
+
+// drainProcedureFiles is the drain assembly's trust order, in one place.
+func drainProcedureFiles() []string {
+	return []string{ProcedureMD, "prompts/system.md", "prompts/address-reviews.md"}
+}
+
+// assembleProcedure concatenates the named embedded files in order. A missing
+// file yields the bytes assembled so far and a ProcedureFileError naming the
+// path, so a caller can refuse on a preamble or warn and continue on a sibling.
+func assembleProcedure(files []string) ([]byte, error) {
+	var out []byte
+	for _, name := range files {
+		raw, err := Read(name)
+		if err != nil {
+			return out, &ProcedureFileError{Path: name, Cause: err}
+		}
+		out = append(out, raw...)
+	}
+	return out, nil
+}
+
+// ReviewProcedure returns the review Procedure served by this binary:
+// PROCEDURE.md, prompts/system.md, prompts/review.md, and prompts/diagrams.md,
+// concatenated in that trust order. It never reads the filesystem. A missing
+// file returns the bytes assembled so far and a ProcedureFileError, so the
+// dump caller can refuse on the preamble but warn and continue on a sibling.
+// PR 3's MCP prompts reuse this public contract.
+func ReviewProcedure() ([]byte, error) {
+	return assembleProcedure(reviewProcedureFiles())
+}
+
+// DrainProcedure returns the drain Procedure served by this binary:
+// PROCEDURE.md, prompts/system.md, and prompts/address-reviews.md, concatenated
+// in that trust order. It never reads the filesystem; a missing embedded file
+// returns a ProcedureFileError and the bundle writer refuses. PR 3's MCP
+// prompts reuse this public contract.
+func DrainProcedure() ([]byte, error) {
+	return assembleProcedure(drainProcedureFiles())
+}
+
 // Read returns one embedded payload file by its slash path.
 func Read(name string) ([]byte, error) {
 	raw, err := fs.ReadFile(FS, name)

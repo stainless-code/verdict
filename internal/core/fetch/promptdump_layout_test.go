@@ -33,12 +33,12 @@ func TestReviewProcedureFromEmbeddedPayload(t *testing.T) {
 		}
 		want.Write(raw)
 	}
-	got, err := reviewProcedure()
+	got, err := skillfs.ReviewProcedure()
 	if err != nil {
-		t.Fatalf("reviewProcedure: %v", err)
+		t.Fatalf("ReviewProcedure: %v", err)
 	}
 	if string(got) != want.String() {
-		t.Fatalf("reviewProcedure = %q, want the embedded assembly %q", got, want.String())
+		t.Fatalf("ReviewProcedure = %q, want the embedded assembly %q", got, want.String())
 	}
 }
 
@@ -59,45 +59,21 @@ func plantProcedureDecoys(t *testing.T, dir string) {
 	}
 }
 
-// TestPromptDumpRefusesMissingEmbeddedPreamble pins the typed refusal for a
-// binary whose embedded preamble is missing, whatever the working directory.
+// TestPromptDumpRefusesMissingEmbeddedPreamble pins the typed refusal at its
+// emission site: only the preamble's path can produce prompt-dump-failed.
 func TestPromptDumpRefusesMissingEmbeddedPreamble(t *testing.T) {
-	var warnings []string
-	ctx := &fetchRunCtx{runner: &session{warnings: &warnings}}
-	var sb strings.Builder
-	ref := dumpPrompts(ctx, &sb, func(name string) ([]byte, error) {
-		if name == "prompts/system.md" {
-			return nil, errors.New("read embedded prompts/system.md: not found")
-		}
-		return []byte("trusted\n"), nil
-	})
+	err := &skillfs.ProcedureFileError{Path: "prompts/system.md", Cause: errors.New("not embedded")}
+	ref := procedureDumpRefusal(err)
 	if ref == nil || ref.Code != "prompt-dump-failed" {
 		t.Fatalf("refusal = %+v, want prompt-dump-failed", ref)
 	}
-	if sb.Len() != 0 {
-		t.Errorf("dump wrote %q before refusing", sb.String())
-	}
 }
 
-// TestPromptDumpWarnsForMissingEmbeddedSibling pins the degrade path: a
-// missing non-preamble file is named on stderr and the rest is still trusted.
-func TestPromptDumpWarnsForMissingEmbeddedSibling(t *testing.T) {
-	var warnings []string
-	ctx := &fetchRunCtx{runner: &session{warnings: &warnings}}
-	var sb strings.Builder
-	ref := dumpPrompts(ctx, &sb, func(name string) ([]byte, error) {
-		if name == "prompts/diagrams.md" {
-			return nil, errors.New("read embedded prompts/diagrams.md: not found")
-		}
-		return []byte(name + "\n"), nil
-	})
-	if ref != nil {
-		t.Fatalf("refusal = %+v, want none", ref)
-	}
-	if len(warnings) != 1 || !strings.Contains(warnings[0], "prompts/diagrams.md") {
-		t.Errorf("warnings = %q, want the missing payload file named", warnings)
-	}
-	if strings.Contains(sb.String(), "prompts/diagrams.md\n") || !strings.Contains(sb.String(), "prompts/system.md\n") {
-		t.Errorf("dump = %q, want the siblings kept and the missing file omitted", sb.String())
+// TestPromptDumpSparesMissingEmbeddedSibling pins the degrade path: a missing
+// non-preamble file warns and lets the assembled bytes through.
+func TestPromptDumpSparesMissingEmbeddedSibling(t *testing.T) {
+	err := &skillfs.ProcedureFileError{Path: "prompts/diagrams.md", Cause: errors.New("not embedded")}
+	if ref := procedureDumpRefusal(err); ref != nil {
+		t.Fatalf("sibling refusal = %+v, want none", ref)
 	}
 }

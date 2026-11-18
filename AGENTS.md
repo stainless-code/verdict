@@ -44,8 +44,10 @@ skip-token ban and test determinism. Read both before writing or reviewing Go.
 - **No `/tmp` test dirs.** Use `t.TempDir()` for files and `internal/testenv`
   for child processes; a hardcoded path leaks across parallel runs.
 - **Exactly six Procedure files are hashed into goldens:** `procedure/PROCEDURE.md`
-  and `procedure/prompts/{system,review,diagrams,verifier,validate}.md`; a change moves
-  only `prompts_hash` lines and the literal pin in `internal/provenance/prompts_test.go`.
+  and `procedure/prompts/{system,review,diagrams,verifier,validate}.md`; the embedded
+  assemblies are normalized in goldens, so a change moves only `prompts_hash` lines,
+  the literal pin in `internal/provenance/prompts_test.go`, and the `procedure.md` /
+  `drain.procedure.md` receipt `sha256` and `bytes` lines.
 
 ## Git and commits
 
