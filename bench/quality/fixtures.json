@@ -177,11 +177,13 @@
             [
               "internal/backtest/backtest\\.go",
               "--recordings",
-              "rerun|reentry|rentry|command|hint"
+              "rerun|reentry|rentry|command|hint",
+              "quot|escape|shell|spaces?|metachar"
             ],
             [
               "--recordings",
-              "unquoted|not quoted|shellquote|shell quote|quoting|word splitting|space|whitespace|inject"
+              "unquoted|not quoted|shellquote|shell quote|quoting|word splitting|space|whitespace|inject",
+              "quot|escape|shell|spaces?|metachar"
             ]
           ]
         },
@@ -324,6 +326,11 @@
           "path": "bench/quality/context/fx5/PR-2.md",
           "sha256": "79cc1e93bb97024b9b18a92831ad21df176ace42701e8b5f919118e60ce30c63",
           "bytes": 8356
+        },
+        {
+          "path": "bench/quality/context/fx5/SPEC-PR2.md",
+          "sha256": "8c9e1b67460f0c5b37d9d9d9f68c524c8f58a30a25354c664af384fa0b20b112",
+          "bytes": 1707
         }
       ],
       "known": [
