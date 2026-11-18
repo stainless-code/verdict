@@ -1088,9 +1088,10 @@ Fix: re-fetch a bundle with file sections (or drop the exclusions), then re-run.
 
 ## `prompt-dump-failed`
 
-Cause: the binary's embedded `prompts/system.md` is missing. That file carries
-the untrusted-data preamble, so a dump without it is unsafe; the working
-directory cannot supply a replacement.
+Cause: an embedded review Procedure file is missing from the binary. The
+message names the path (`PROCEDURE.md`, `prompts/system.md`,
+`prompts/review.md`, or `prompts/diagrams.md`); the working directory cannot
+supply a replacement, so no partial Procedure is written or printed.
 
 Fix: reinstall verdict from a signed release, then re-run.
 

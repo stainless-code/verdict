@@ -119,15 +119,13 @@ func sortedManifestChunks(m map[string]any) []map[string]any {
 // renderPromptDump writes the embedded review Procedure, the
 // trust-boundary prologue naming this run's nonce, then every bundle
 // file in its own per-run nonce fence. Missing bundle files stay silent;
-// a missing embedded sibling warns and the dump proceeds without it; a
-// missing preamble refuses typed.
+// any missing embedded Procedure file refuses the whole dump typed.
 func renderPromptDump(ctx *fetchRunCtx) (string, error) {
 	var sb strings.Builder
 	meta, metaLabel := dumpMeta(ctx.dir)
 	// The Procedure comes from this binary, never the working directory:
-	// without its preamble a dump is unsafe, so a missing preamble refuses
-	// typed (prompt-dump-failed), while a missing sibling warns and proceeds.
-	if ref := dumpPrompts(ctx, &sb); ref != nil {
+	// a broken embed refuses typed instead of printing a partial Procedure.
+	if ref := dumpPrompts(&sb); ref != nil {
 		return "", ref
 	}
 	nonce := promptNonce()
@@ -157,12 +155,31 @@ func dumpMeta(dir string) (meta, label string) {
 	return meta, label
 }
 
+// reviewProcedure is the embedded review assembly. Tests swap this var to
+// simulate a broken embed; production always uses skillfs.ReviewProcedure.
+var reviewProcedure = skillfs.ReviewProcedure
+
+// procedureRefusal is the one prompt-dump-failed emission site. The bundle
+// writer and the dump both use it, so any missing embedded Procedure file
+// refuses typed, names the path, and publishes no partial assembly.
+func procedureRefusal(err error) *core.RefusalError {
+	path := "an embedded Procedure file"
+	if missing, ok := errors.AsType[*skillfs.ProcedureFileError](err); ok {
+		path = missing.Path
+	}
+	return &core.RefusalError{
+		Code: "prompt-dump-failed",
+		Message: fmt.Sprintf("%s is missing — Procedure refused: no partial Procedure is written or "+
+			"printed; reinstall verdict from a signed release", path),
+	}
+}
+
 // writeBundleProcedure persists the binary's review Procedure as the bundle's
 // trusted instruction file, using the same atomic writer as its other inputs.
 func writeBundleProcedure(dir string) error {
-	raw, err := skillfs.ReviewProcedure()
+	raw, err := reviewProcedure()
 	if err != nil {
-		return jq.Sealed("read review Procedure", err)
+		return procedureRefusal(err)
 	}
 	if werr := atomic.WriteFile(dir+suffixProcedureMD, raw); werr != nil {
 		return &core.RefusalError{
@@ -173,33 +190,12 @@ func writeBundleProcedure(dir string) error {
 	return nil
 }
 
-// procedureDumpRefusal refuses a dump whose untrusted-data preamble is absent.
-// Other missing payload files only warn and leave the assembled bytes intact.
-func procedureDumpRefusal(err error) *core.RefusalError {
-	missing, ok := errors.AsType[*skillfs.ProcedureFileError](err)
-	if !ok || missing.Path != "prompts/system.md" {
-		return nil
-	}
-	return &core.RefusalError{
-		Code: "prompt-dump-failed",
-		Message: "prompts/system.md is missing — prompt dump refused: the untrusted-data preamble " +
-			"lives there, so a dump without it is unsafe",
-	}
-}
-
-// dumpPrompts writes the embedded assembly, refusing typed without the
-// system preamble and warning when a sibling payload file is missing.
-func dumpPrompts(ctx *fetchRunCtx, sb *strings.Builder) *core.RefusalError {
-	raw, err := skillfs.ReviewProcedure()
+// dumpPrompts writes the embedded assembly, refusing typed on any missing
+// embedded Procedure file instead of printing a partial Procedure.
+func dumpPrompts(sb *strings.Builder) *core.RefusalError {
+	raw, err := reviewProcedure()
 	if err != nil {
-		if ref := procedureDumpRefusal(err); ref != nil {
-			return ref
-		}
-		if missing, ok := errors.AsType[*skillfs.ProcedureFileError](err); ok {
-			ctx.runner.Warn(fmt.Sprintf("prompt file '%s' is missing — prompt dump omits it", missing.Path))
-		} else {
-			ctx.runner.Warn(fmt.Sprintf("prompt dump omits the unreadable Procedure: %v", err))
-		}
+		return procedureRefusal(err)
 	}
 	sb.Write(raw)
 	return nil

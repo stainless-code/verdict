@@ -1358,11 +1358,10 @@ dump, so the bundle is byte-identical with or without it. The trusted assembly
 comes from the binary's embedded payload, never the working directory or a
 `procedure/` checkout, so the dump starts with exactly the bytes written to
 `<bundle>/procedure.md`. Missing bundle files skip silently, but a missing
-embedded prompt file fails loudly: no `prompts/system.md` refuses typed
-(`prompt-dump-failed` — the untrusted-data preamble lives there, so a dump
-without it is unsafe), while a missing `PROCEDURE.md`, `prompts/review.md`, or
-`prompts/diagrams.md` warns (stderr plus envelope `warnings[]`) and the dump
-proceeds without it. Trusted prompts print verbatim first, then a
+embedded Procedure file fails loudly: any of `PROCEDURE.md`,
+`prompts/system.md`, `prompts/review.md`, or `prompts/diagrams.md` refuses
+typed `prompt-dump-failed`, names the path, and writes no partial
+`procedure.md`. Trusted prompts print verbatim first, then a
 tool-generated trust-boundary prologue naming the run's nonce, then every
 present bundle file inside its own fence — the bundle meta (`PR.json` or
 `source.json`), `toc.txt`, `roles.txt`, the diff (`full.diff`, or the

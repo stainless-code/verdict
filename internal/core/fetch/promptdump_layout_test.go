@@ -1,7 +1,6 @@
 package fetchcore
 
 import (
-	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -56,24 +55,5 @@ func plantProcedureDecoys(t *testing.T, dir string) {
 		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
-	}
-}
-
-// TestPromptDumpRefusesMissingEmbeddedPreamble pins the typed refusal at its
-// emission site: only the preamble's path can produce prompt-dump-failed.
-func TestPromptDumpRefusesMissingEmbeddedPreamble(t *testing.T) {
-	err := &skillfs.ProcedureFileError{Path: "prompts/system.md", Cause: errors.New("not embedded")}
-	ref := procedureDumpRefusal(err)
-	if ref == nil || ref.Code != "prompt-dump-failed" {
-		t.Fatalf("refusal = %+v, want prompt-dump-failed", ref)
-	}
-}
-
-// TestPromptDumpSparesMissingEmbeddedSibling pins the degrade path: a missing
-// non-preamble file warns and lets the assembled bytes through.
-func TestPromptDumpSparesMissingEmbeddedSibling(t *testing.T) {
-	err := &skillfs.ProcedureFileError{Path: "prompts/diagrams.md", Cause: errors.New("not embedded")}
-	if ref := procedureDumpRefusal(err); ref != nil {
-		t.Fatalf("sibling refusal = %+v, want none", ref)
 	}
 }

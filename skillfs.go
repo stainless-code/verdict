@@ -260,14 +260,14 @@ func drainProcedureFiles() []string {
 }
 
 // assembleProcedure concatenates the named embedded files in order. A missing
-// file yields the bytes assembled so far and a ProcedureFileError naming the
-// path, so a caller can refuse on a preamble or warn and continue on a sibling.
+// file yields no bytes and a ProcedureFileError naming the path: the whole
+// assembly is refused, never published partially.
 func assembleProcedure(files []string) ([]byte, error) {
 	var out []byte
 	for _, name := range files {
 		raw, err := Read(name)
 		if err != nil {
-			return out, &ProcedureFileError{Path: name, Cause: err}
+			return nil, &ProcedureFileError{Path: name, Cause: err}
 		}
 		out = append(out, raw...)
 	}
@@ -277,18 +277,19 @@ func assembleProcedure(files []string) ([]byte, error) {
 // ReviewProcedure returns the review Procedure served by this binary:
 // PROCEDURE.md, prompts/system.md, prompts/review.md, and prompts/diagrams.md,
 // concatenated in that trust order. It never reads the filesystem. A missing
-// file returns the bytes assembled so far and a ProcedureFileError, so the
-// dump caller can refuse on the preamble but warn and continue on a sibling.
-// PR 3's MCP prompts reuse this public contract.
+// file returns no bytes and a ProcedureFileError; fetch and --show-prompts
+// refuse the whole run as prompt-dump-failed. PR 3's MCP prompts reuse this
+// public contract.
 func ReviewProcedure() ([]byte, error) {
 	return assembleProcedure(reviewProcedureFiles())
 }
 
 // DrainProcedure returns the drain Procedure served by this binary:
 // PROCEDURE.md, prompts/system.md, and prompts/address-reviews.md, concatenated
-// in that trust order. It never reads the filesystem; a missing embedded file
-// returns a ProcedureFileError and the bundle writer refuses. PR 3's MCP
-// prompts reuse this public contract.
+// in that trust order. It never reads the filesystem. A missing file returns
+// no bytes and a ProcedureFileError; the drain bundle writer refuses rather
+// than publishing a partial Procedure. PR 3's MCP prompts reuse this public
+// contract.
 func DrainProcedure() ([]byte, error) {
 	return assembleProcedure(drainProcedureFiles())
 }

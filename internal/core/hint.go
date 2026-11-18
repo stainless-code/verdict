@@ -46,7 +46,7 @@ var hintRules = []HintRule{
 	{codes: []string{"drafts-stale"}, hint: "try: re-run drain for a fresh plan, then draft against its new plan_digest"},
 	{codes: []string{"drain-failed"}, hint: "try: refresh threads, confirm host auth, then re-run drain"},
 	{codes: []string{"drain-incomplete"}, hint: "try: re-run the same drain --post command; the ledger skips replies already posted"},
-	{codes: []string{"prompt-dump-failed"}, hint: "try: reinstall verdict; the embedded untrusted-data preamble is missing"},
+	{codes: []string{"prompt-dump-failed"}, hint: "try: reinstall verdict; an embedded Procedure file is missing"},
 	{codes: []string{"post-failed"}, hint: "try: narrow anchor drift or body size (see above), then re-run"},
 	{codes: []string{"post-secret-shaped"}, hint: "try: remove the value from the draft and re-run; " +
 		"post can pass --allow-secret-values to publish it anyway"},

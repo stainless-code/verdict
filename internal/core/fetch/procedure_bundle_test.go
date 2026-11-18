@@ -2,6 +2,8 @@ package fetchcore
 
 import (
 	"bytes"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -100,5 +102,48 @@ func TestShowPromptsDumpStartsWithBundleProcedure(t *testing.T) {
 			resp, dir := fetchWithProcedure(t, kind, true)
 			assertDumpStartsWithProcedure(t, kind, dir, resp, want)
 		})
+	}
+}
+
+// withMissingReviewProcedure swaps the smallest seam in fetch: a package-level
+// func var that tests set to simulate a broken embedded payload. Production
+// always calls skillfs.ReviewProcedure through the same var.
+func withMissingReviewProcedure(t *testing.T, path string) {
+	t.Helper()
+	saved := reviewProcedure
+	t.Cleanup(func() { reviewProcedure = saved })
+	reviewProcedure = func() ([]byte, error) {
+		return nil, &skillfs.ProcedureFileError{Cause: fs.ErrNotExist, Path: path}
+	}
+}
+
+// TestMissingEmbeddedReviewProcedureRefusesFetchLocal proves both the preamble
+// and a sibling payload file refuse typed through the real fetch-local path,
+// and that a partial Procedure never lands in the bundle.
+func TestMissingEmbeddedReviewProcedureRefusesFetchLocal(t *testing.T) {
+	for _, path := range []string{"prompts/system.md", "prompts/diagrams.md"} {
+		t.Run(path, func(t *testing.T) { assertMissingReviewProcedureRefusal(t, path) })
+	}
+}
+
+func assertMissingReviewProcedureRefusal(t *testing.T, path string) {
+	t.Helper()
+	withMissingReviewProcedure(t, path)
+	t.Chdir(t.TempDir())
+	var human, diag bytes.Buffer
+	var warnings []string
+	req := localScriptReq(stagedLocalCommander(t, cleanStagedDiff), &human, &diag, &warnings,
+		nil, core.FetchLocalFlags{Staged: true, ShowPrompts: true})
+	_, err := RunLocal(t.Context(), req)
+	ref, ok := errors.AsType[*core.RefusalError](err)
+	if !ok || ref.Code != "prompt-dump-failed" {
+		t.Fatalf("refusal = %+v (%v), want prompt-dump-failed", ref, err)
+	}
+	if !strings.Contains(ref.Message, path) {
+		t.Errorf("message = %q, want it to name %s", ref.Message, path)
+	}
+	procedure := filepath.Join(".verdict", "state", "local-mine", "procedure.md")
+	if _, statErr := os.Stat(procedure); !errors.Is(statErr, fs.ErrNotExist) {
+		t.Errorf("partial procedure.md exists after refusal: %v", statErr)
 	}
 }
