@@ -130,6 +130,26 @@ Two rules no ladder rung covers live in
 ban and test determinism (poll with `testenv.Until`; a timed-out test has a
 race to fix, never a timeout to raise).
 
+## Reviewing this repo with verdict
+
+This repo commits three review controls: `.verdict/config.json` (the
+`important` block clause), `.verdict/kb.jsonl` (the MUST rules from
+[`docs/go-rules.md`](docs/go-rules.md)), and `.verdict/recipes.json` (the
+`default` lens pipeline). Fetch and run read them from the PR base, so a
+change to a control takes effect on the next review after it lands. For a
+local bundle, run `make build`, then with local changes in the tree
+`bin/verdict fetch-local stainless-code/verdict self` (add `--staged` to
+review the index). Both read the controls from `HEAD`;
+`bin/verdict run stainless-code/verdict local-self --agent claude --recipe default --print`
+shows the declared pipeline without launching an agent.
+
+Refresh the KB with the verb, never by editing the JSONL. After the MUST
+rules change, append each new rule with
+`bin/verdict learn --rule "<statement>" --scope "**/*.go" --provenance "docs/go-rules.md <GO-ID>" --id <lowercase-id> --rigor said`,
+check it with `bin/verdict learn --status`, retire an obsolete rule with
+`bin/verdict learn --retire <id> --reason "<30+ chars>"`, and commit
+`.verdict/kb.jsonl` with the rules change so the next base carries it.
+
 ## Golden tests
 
 Golden files under `testdata/` are the contract: if your change
