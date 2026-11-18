@@ -251,3 +251,24 @@ func contextFeed(dir string, inputs []string) string {
 	}
 	return " + " + dir + "/context.txt"
 }
+
+// contextTOCSection indexes the manifest's source names in toc.txt. Each name
+// is escaped so a source cannot start a section or forge a fence.
+func contextTOCSection(sources []string) string {
+	var sb strings.Builder
+	sb.WriteString("## context\n")
+	for _, source := range sources {
+		fmt.Fprintf(&sb, "- %s\n", impactSafe(source))
+	}
+	return sb.String()
+}
+
+// appendContextSection adds the context index to a bundle that carries the
+// manifest. A bundle without context writes no section.
+func appendContextSection(dir string) error {
+	sources := readcommon.ContextSources(dir)
+	if len(sources) == 0 {
+		return nil
+	}
+	return appendTOCSection(dir, contextTOCSection(sources))
+}

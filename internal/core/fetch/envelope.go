@@ -513,7 +513,10 @@ func writeEvidence(ctx context.Context, ctx2 *fetchRunCtx, in impactInput, input
 	if err := writeImpact(ctx, ctx2, in); err != nil {
 		return err
 	}
-	return writeContext(ctx2.dir, inputs, at)
+	if err := writeContext(ctx2.dir, inputs, at); err != nil {
+		return err
+	}
+	return appendContextSection(ctx2.dir)
 }
 
 func contextArtifacts(artifacts *jq.Obj, dir string) {

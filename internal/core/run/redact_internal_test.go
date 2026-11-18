@@ -162,7 +162,7 @@ func TestScrubSecretsKeepsItsPolicy(t *testing.T) {
 // bundle, the exact review file, and the boundary. The local variant names
 // source.json instead of PR.json.
 func TestDirectiveNamesTheArtifact(t *testing.T) {
-	pr := directive("acme/app", "42", ".verdict/state/42", ".verdict/state/42/review.json", false,
+	pr := directive("acme/app", "42", ".verdict/state/42", ".verdict/state/42/review.json", false, false,
 		builtinPlan(t))
 	for _, want := range []string{
 		"acme/app PR 42", ".verdict/state/42", "review.json", "PR.json",
@@ -173,7 +173,7 @@ func TestDirectiveNamesTheArtifact(t *testing.T) {
 		}
 	}
 	local := directive("acme/app", "local-work", ".verdict/state/local-work",
-		".verdict/state/local-work/review.json", true, builtinPlan(t))
+		".verdict/state/local-work/review.json", true, false, builtinPlan(t))
 	if !strings.Contains(local, "source.json") || strings.Contains(local, "PR.json") {
 		t.Errorf("local directive names the wrong metadata file:\n%s", local)
 	}
@@ -205,7 +205,7 @@ const pipelineDirective = "Review acme/app PR 42 and write exactly one review fi
 // metadata file swapped in the argument list reads as "the bundle at PR.json:
 // .verdict/state/42" while all of them still pass.
 func TestDirectiveIsByteExact(t *testing.T) {
-	got := directive("acme/app", "42", ".verdict/state/42", ".verdict/state/42/review.json", false,
+	got := directive("acme/app", "42", ".verdict/state/42", ".verdict/state/42/review.json", false, false,
 		builtinPlan(t))
 	if got != pipelineDirective {
 		t.Fatalf("directive =\n%q\nwant\n%q", got, pipelineDirective)
@@ -223,7 +223,7 @@ func TestDirectiveKeepsAPercentPathLiteral(t *testing.T) {
 	artifact := bundle + "/review.json"
 	plan := builtinPlan(t)
 
-	whole := directive("acme/app", "42", bundle, artifact, false, plan)
+	whole := directive("acme/app", "42", bundle, artifact, false, false, plan)
 	if want := "Then the bundle at " + bundle + ": PR.json"; !strings.Contains(whole, want) {
 		t.Errorf("directive does not keep the path literally, want %q in:\n%s", want, whole)
 	}
@@ -235,7 +235,7 @@ func TestDirectiveKeepsAPercentPathLiteral(t *testing.T) {
 	}
 
 	at := staged{index: 2, stage: plan.Stages[1]}
-	stage := stageDirective("acme/app", "42", bundle, artifact, false, plan, &at)
+	stage := stageDirective("acme/app", "42", bundle, artifact, false, false, plan, &at)
 	if want := "Read " + artifact + ", the review the previous stage wrote."; !strings.Contains(stage, want) {
 		t.Errorf("stage directive does not keep the path literally, want %q in:\n%s", want, stage)
 	}
