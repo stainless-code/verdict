@@ -28,23 +28,24 @@ const (
 	maxFrameBytes  = 16 << 20
 	// maxResultTextBytes caps the text block of one tool result. The data stays
 	// whole in structuredContent; only the text an agent reads is budgeted.
-	maxResultTextBytes  = 256 << 10
-	methodInitialize    = "initialize"
-	methodInitialized   = "notifications/initialized"
-	methodPing          = "ping"
-	methodToolsList     = "tools/list"
-	methodToolsCall     = "tools/call"
-	methodCancelled     = "notifications/cancelled" //nolint:misspell // MCP spells the method "cancelled"
-	codeParse           = -32700
-	codeInvalidRequest  = -32600
-	codeMethodNotFound  = -32601
-	codeInvalidParams   = -32602
-	codeInternalError   = -32603
-	contentTypeText     = "text"
-	refusalTextLines    = 3
-	lineBreak           = "\n"
-	serverName          = "verdict"
-	scannerInitialBytes = 64 * 1024
+	maxResultTextBytes    = 256 << 10
+	methodInitialize      = "initialize"
+	methodInitialized     = "notifications/initialized"
+	methodPing            = "ping"
+	methodToolsList       = "tools/list"
+	methodToolsCall       = "tools/call"
+	methodCancelled       = "notifications/cancelled" //nolint:misspell // MCP spells the method "cancelled"
+	capabilityListChanged = "listChanged"
+	codeParse             = -32700
+	codeInvalidRequest    = -32600
+	codeMethodNotFound    = -32601
+	codeInvalidParams     = -32602
+	codeInternalError     = -32603
+	contentTypeText       = "text"
+	refusalTextLines      = 3
+	lineBreak             = "\n"
+	serverName            = "verdict"
+	scannerInitialBytes   = 64 * 1024
 )
 
 // supportedProtocols are the MCP revisions the server can speak.
@@ -252,6 +253,20 @@ func (s *Server) dispatch(ctx context.Context, req *rpcRequest) {
 		s.writeResult(req.ID, s.listTools())
 	case methodToolsCall:
 		s.handleToolsCall(ctx, req)
+	case methodPromptsList, methodPromptsGet, methodResourcesList, methodResourcesRead:
+		s.handleProcedure(ctx, req)
+	case methodCancelled:
+		s.handleCancelled(req)
+	default:
+		if len(req.ID) > 0 {
+			s.writeError(req.ID, codeMethodNotFound, "method not found: "+req.Method)
+		}
+	}
+}
+
+// handleProcedure routes the read-only prompt and resource methods.
+func (s *Server) handleProcedure(ctx context.Context, req *rpcRequest) {
+	switch req.Method {
 	case methodPromptsList:
 		s.handlePromptsList(req)
 	case methodPromptsGet:
@@ -260,12 +275,6 @@ func (s *Server) dispatch(ctx context.Context, req *rpcRequest) {
 		s.handleResourcesList(ctx, req)
 	case methodResourcesRead:
 		s.handleResourcesRead(ctx, req)
-	case methodCancelled:
-		s.handleCancelled(req)
-	default:
-		if len(req.ID) > 0 {
-			s.writeError(req.ID, codeMethodNotFound, "method not found: "+req.Method)
-		}
 	}
 }
 
@@ -281,9 +290,9 @@ func (s *Server) handleInitialize(req *rpcRequest) {
 	s.writeResult(req.ID, initializeResult{
 		ProtocolVersion: negotiate(params.ProtocolVersion),
 		Capabilities: map[string]any{
-			"prompts":   map[string]any{"listChanged": false},
-			"resources": map[string]any{"listChanged": false, "subscribe": false},
-			"tools":     map[string]any{"listChanged": false},
+			"prompts":   map[string]any{capabilityListChanged: false},
+			"resources": map[string]any{capabilityListChanged: false, "subscribe": false},
+			"tools":     map[string]any{capabilityListChanged: false},
 		},
 		ServerInfo: serverInfo{
 			Name:         serverName,

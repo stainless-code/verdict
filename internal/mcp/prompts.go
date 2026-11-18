@@ -48,8 +48,7 @@ func (s *Server) handlePromptsGet(req *rpcRequest) {
 	}
 	body, err := skillfs.TaskProcedure(params.Name)
 	if err != nil {
-		var unknown *skillfs.UnknownTaskError
-		if errors.As(err, &unknown) {
+		if _, ok := errors.AsType[*skillfs.UnknownTaskError](err); ok {
 			s.writeInvalidPrompt(req.ID, params.Name)
 			return
 		}

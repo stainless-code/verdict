@@ -49,21 +49,26 @@ func TestPromptsListSnapshot(t *testing.T) {
 		t.Fatalf("prompts = %d, want %d", len(result.Prompts), len(promptCopy))
 	}
 	for _, prompt := range result.Prompts {
-		if len(prompt) != 2 {
-			t.Errorf("prompt fields = %v, want only name and description", prompt)
-		}
-		name, ok := prompt["name"].(string)
-		if !ok {
-			t.Fatalf("prompt has no name: %v", prompt)
-		}
-		want, known := promptCopy[name]
-		if !known {
-			t.Errorf("prompts/list advertises unknown task %q", name)
-			continue
-		}
-		if prompt["description"] != want {
-			t.Errorf("%s description = %v, want %q", name, prompt["description"], want)
-		}
+		checkPromptDescriptor(t, prompt)
+	}
+}
+
+func checkPromptDescriptor(t *testing.T, prompt map[string]any) {
+	t.Helper()
+	if len(prompt) != 2 {
+		t.Errorf("prompt fields = %v, want only name and description", prompt)
+	}
+	name, ok := prompt["name"].(string)
+	if !ok {
+		t.Fatalf("prompt has no name: %v", prompt)
+	}
+	want, known := promptCopy[name]
+	if !known {
+		t.Errorf("prompts/list advertises unknown task %q", name)
+		return
+	}
+	if prompt["description"] != want {
+		t.Errorf("%s description = %v, want %q", name, prompt["description"], want)
 	}
 }
 
@@ -71,7 +76,20 @@ func TestPromptsListSnapshot(t *testing.T) {
 // The expected bodies come from literal file lists, never from TaskProcedure.
 func TestPromptsGetBodies(t *testing.T) {
 	t.Parallel()
-	expected := map[string][]byte{
+	expected := expectedPromptBodies(t)
+	tasks := skillfs.Tasks()
+	frames := servePromptGets(t, tasks)
+	for i, task := range tasks {
+		checkPromptBody(t, frames[strconv.Itoa(i+1)], task, expected[task])
+	}
+	assertNamedProcedure(t, frames[taskFrameID(tasks, "review")].Result, "review", skillfs.ReviewProcedure)
+	assertNamedProcedure(t, frames[taskFrameID(tasks, "address-reviews")].Result,
+		"address-reviews", skillfs.DrainProcedure)
+}
+
+func expectedPromptBodies(t *testing.T) map[string][]byte {
+	t.Helper()
+	return map[string][]byte{
 		"address-reviews": literalProcedure(t,
 			"PROCEDURE.md", "prompts/system.md", "prompts/address-reviews.md"),
 		"fix-ci": literalProcedure(t,
@@ -83,64 +101,67 @@ func TestPromptsGetBodies(t *testing.T) {
 		"validate": literalProcedure(t,
 			"PROCEDURE.md", "prompts/system.md", "prompts/validate.md"),
 	}
-	tasks := skillfs.Tasks()
+}
+
+func servePromptGets(t *testing.T, tasks []string) map[string]frame {
+	t.Helper()
 	lines := make([]string, 0, len(tasks))
 	for i, task := range tasks {
 		lines = append(lines, fmt.Sprintf(
 			`{"jsonrpc":"2.0","id":%d,"method":"prompts/get","params":{"name":%q}}`, i+1, task))
 	}
 	cfg := testConfig()
-	frames := serve(t, &cfg, lines...)
-	for i, task := range tasks {
-		frame := frames[strconv.Itoa(i+1)]
-		if frame.Error != nil {
-			t.Fatalf("prompts/get %s error = %+v", task, frame.Error)
-		}
-		var result promptResult
-		if err := json.Unmarshal(frame.Result, &result); err != nil {
-			t.Fatal(err)
-		}
-		if result.Description != promptCopy[task] {
-			t.Errorf("%s result description = %q, want %q", task, result.Description, promptCopy[task])
-		}
-		if len(result.Messages) != 1 {
-			t.Fatalf("%s messages = %d, want one", task, len(result.Messages))
-		}
-		message := result.Messages[0]
-		if message.Role != "user" || message.Content.Type != contentTypeText {
-			t.Errorf("%s message = %+v, want one user text block", task, message)
-		}
-		if want := expected[task]; !bytes.Equal([]byte(message.Content.Text), want) {
-			t.Errorf("%s text differs from the literal %d-byte Procedure", task, len(want))
-		}
+	return serve(t, &cfg, lines...)
+}
+
+func checkPromptBody(t *testing.T, got frame, task string, want []byte) {
+	t.Helper()
+	if got.Error != nil {
+		t.Fatalf("prompts/get %s error = %+v", task, got.Error)
 	}
-	assertNamedProcedure(t, frames[strconv.Itoa(indexOf(tasks, "review")+1)].Result, "review", skillfs.ReviewProcedure)
-	assertNamedProcedure(t, frames[strconv.Itoa(indexOf(tasks, "address-reviews")+1)].Result, "address-reviews", skillfs.DrainProcedure)
+	var result promptResult
+	if err := json.Unmarshal(got.Result, &result); err != nil {
+		t.Fatal(err)
+	}
+	if result.Description != promptCopy[task] {
+		t.Errorf("%s result description = %q, want %q", task, result.Description, promptCopy[task])
+	}
+	if len(result.Messages) != 1 {
+		t.Fatalf("%s messages = %d, want one", task, len(result.Messages))
+	}
+	message := result.Messages[0]
+	if message.Role != "user" || message.Content.Type != contentTypeText {
+		t.Errorf("%s message = %+v, want one user text block", task, message)
+	}
+	if !bytes.Equal([]byte(message.Content.Text), want) {
+		t.Errorf("%s text differs from the literal %d-byte Procedure", task, len(want))
+	}
 }
 
 // TestPromptUnknownName pins the spec's invalid-params refusal and its list of
 // valid task names for both an unknown and a missing name.
 func TestPromptUnknownName(t *testing.T) {
 	t.Parallel()
-	lines := []string{
-		`{"jsonrpc":"2.0","id":1,"method":"prompts/get","params":{"name":"nope"}}`,
-		`{"jsonrpc":"2.0","id":2,"method":"prompts/get","params":{}}`,
-	}
 	cfg := testConfig()
-	frames := serve(t, &cfg, lines...)
-	for _, id := range []string{"1", "2"} {
-		got := frames[id].Error
-		if got == nil || got.Code != codeInvalidParams {
-			t.Fatalf("prompts/get id %s = %+v, want -32602", id, got)
-		}
-		for _, task := range skillfs.Tasks() {
-			if !strings.Contains(got.Message, task) {
-				t.Errorf("prompts/get id %s message %q omits %q", id, got.Message, task)
-			}
+	frames := serve(t, &cfg,
+		`{"jsonrpc":"2.0","id":1,"method":"prompts/get","params":{"name":"nope"}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"prompts/get","params":{}}`)
+	checkInvalidPrompt(t, frames["1"], "nope")
+	checkInvalidPrompt(t, frames["2"], "")
+}
+
+func checkInvalidPrompt(t *testing.T, got frame, name string) {
+	t.Helper()
+	if got.Error == nil || got.Error.Code != codeInvalidParams {
+		t.Fatalf("prompts/get %q = %+v, want -32602", name, got.Error)
+	}
+	for _, task := range skillfs.Tasks() {
+		if !strings.Contains(got.Error.Message, task) {
+			t.Errorf("prompts/get %q message %q omits %q", name, got.Error.Message, task)
 		}
 	}
-	if !strings.Contains(frames["1"].Error.Message, "nope") {
-		t.Errorf("unknown prompt message = %q, want the bad name", frames["1"].Error.Message)
+	if name != "" && !strings.Contains(got.Error.Message, name) {
+		t.Errorf("unknown prompt message = %q, want the bad name", got.Error.Message)
 	}
 }
 
@@ -157,13 +178,13 @@ func literalProcedure(t *testing.T, files ...string) []byte {
 	return want
 }
 
-func indexOf(names []string, want string) int {
-	for i, name := range names {
+func taskFrameID(tasks []string, want string) string {
+	for i, name := range tasks {
 		if name == want {
-			return i
+			return strconv.Itoa(i + 1)
 		}
 	}
-	return -1
+	return "0"
 }
 
 func assertNamedProcedure(t *testing.T, raw json.RawMessage, task string, named func() ([]byte, error)) {

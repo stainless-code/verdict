@@ -21,12 +21,14 @@ var literalMIME = map[string]string{
 	"scripts/verdict":            "text/plain",
 }
 
+type resourceDescriptorFrame struct {
+	URI      string `json:"uri"`
+	Name     string `json:"name"`
+	MIMEType string `json:"mimeType"`
+}
+
 type resourceListResult struct {
-	Resources []struct {
-		URI      string `json:"uri"`
-		Name     string `json:"name"`
-		MIMEType string `json:"mimeType"`
-	} `json:"resources"`
+	Resources []resourceDescriptorFrame `json:"resources"`
 }
 
 type resourceReadResult struct {
@@ -57,31 +59,45 @@ func TestResourcesListInventory(t *testing.T) {
 		t.Fatalf("resources = %d, want the %d served paths", len(result.Resources), len(paths))
 	}
 	for i, path := range paths {
-		resource := result.Resources[i]
-		if want := resourcePrefix + path; resource.URI != want {
-			t.Errorf("resource %d uri = %q, want %q", i, resource.URI, want)
-		}
-		if resource.Name != path {
-			t.Errorf("resource %d name = %q, want %q", i, resource.Name, path)
-		}
-		if want := literalMIMEFor(path); resource.MIMEType != want {
-			t.Errorf("%s mimeType = %q, want %q", path, resource.MIMEType, want)
-		}
+		checkResourceDescriptor(t, i, path, result.Resources[i])
 	}
+	checkLiteralMIMEs(t, result.Resources)
+}
+
+func checkResourceDescriptor(t *testing.T, i int, path string, got resourceDescriptorFrame) {
+	t.Helper()
+	if want := resourcePrefix + path; got.URI != want {
+		t.Errorf("resource %d uri = %q, want %q", i, got.URI, want)
+	}
+	if got.Name != path {
+		t.Errorf("resource %d name = %q, want %q", i, got.Name, path)
+	}
+	if want := literalMIMEFor(path); got.MIMEType != want {
+		t.Errorf("%s mimeType = %q, want %q", path, got.MIMEType, want)
+	}
+}
+
+func checkLiteralMIMEs(t *testing.T, resources []resourceDescriptorFrame) {
+	t.Helper()
 	for path, want := range literalMIME {
-		found := false
-		for _, resource := range result.Resources {
-			if resource.Name == path {
-				found = true
-				if resource.MIMEType != want {
-					t.Errorf("%s mimeType = %q, want literal %q", path, resource.MIMEType, want)
-				}
-			}
-		}
+		got, found := resourceNamed(resources, path)
 		if !found {
 			t.Errorf("resources/list misses literal MIME case %q", path)
+			continue
+		}
+		if got.MIMEType != want {
+			t.Errorf("%s mimeType = %q, want literal %q", path, got.MIMEType, want)
 		}
 	}
+}
+
+func resourceNamed(resources []resourceDescriptorFrame, path string) (resourceDescriptorFrame, bool) {
+	for _, resource := range resources {
+		if resource.Name == path {
+			return resource, true
+		}
+	}
+	return resourceDescriptorFrame{}, false
 }
 
 // TestResourcesReadMatchesSkillShow proves every served path reads back the
@@ -92,6 +108,14 @@ func TestResourcesReadMatchesSkillShow(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	frames := serveResourceReads(t, paths)
+	for i, path := range paths {
+		checkResourceRead(t, path, frames[strconv.Itoa(i+1)])
+	}
+}
+
+func serveResourceReads(t *testing.T, paths []string) map[string]frame {
+	t.Helper()
 	lines := make([]string, 0, len(paths))
 	for i, path := range paths {
 		lines = append(lines, fmt.Sprintf(
@@ -99,31 +123,31 @@ func TestResourcesReadMatchesSkillShow(t *testing.T) {
 			i+1, resourcePrefix+path))
 	}
 	cfg := testConfig()
-	frames := serve(t, &cfg, lines...)
-	for i, path := range paths {
-		frame := frames[strconv.Itoa(i+1)]
-		if frame.Error != nil {
-			t.Fatalf("resources/read %s error = %+v", path, frame.Error)
-		}
-		var result resourceReadResult
-		if err := json.Unmarshal(frame.Result, &result); err != nil {
-			t.Fatal(err)
-		}
-		if len(result.Contents) != 1 {
-			t.Fatalf("%s contents = %d, want one", path, len(result.Contents))
-		}
-		content := result.Contents[0]
-		wantURI := resourcePrefix + path
-		if content.URI != wantURI || content.MIMEType != literalMIMEFor(path) {
-			t.Errorf("%s content = %+v, want uri %q with the path's mime type", path, content, wantURI)
-		}
-		want, ref := skill.ShowFile(context.Background(), &skill.Request{}, path)
-		if ref != nil {
-			t.Fatalf("skill show %s: %v", path, ref)
-		}
-		if !bytes.Equal([]byte(content.Text), want) {
-			t.Errorf("resources/read %s differs from skill show bytes", path)
-		}
+	return serve(t, &cfg, lines...)
+}
+
+func checkResourceRead(t *testing.T, path string, got frame) {
+	t.Helper()
+	if got.Error != nil {
+		t.Fatalf("resources/read %s error = %+v", path, got.Error)
+	}
+	var result resourceReadResult
+	if err := json.Unmarshal(got.Result, &result); err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Contents) != 1 {
+		t.Fatalf("%s contents = %d, want one", path, len(result.Contents))
+	}
+	content := result.Contents[0]
+	if content.URI != resourcePrefix+path || content.MIMEType != literalMIMEFor(path) {
+		t.Errorf("%s content = %+v, want its URI and mime type", path, content)
+	}
+	want, ref := skill.ShowFile(context.Background(), &skill.Request{}, path)
+	if ref != nil {
+		t.Fatalf("skill show %s: %v", path, ref)
+	}
+	if !bytes.Equal([]byte(content.Text), want) {
+		t.Errorf("resources/read %s differs from skill show bytes", path)
 	}
 }
 
@@ -148,13 +172,17 @@ func TestResourcesReadRefusesBadURIs(t *testing.T) {
 	cfg := testConfig()
 	frames := serve(t, &cfg, lines...)
 	for i, uri := range uris {
-		got := frames[strconv.Itoa(i+1)].Error
-		if got == nil || got.Code != codeResourceNotFound {
-			t.Fatalf("resources/read %q = %+v, want -32002", uri, got)
-		}
-		if !strings.Contains(got.Message, uri) {
-			t.Errorf("resources/read %q message = %q, want the URI", uri, got.Message)
-		}
+		checkResourceRefusal(t, uri, frames[strconv.Itoa(i+1)])
+	}
+}
+
+func checkResourceRefusal(t *testing.T, uri string, got frame) {
+	t.Helper()
+	if got.Error == nil || got.Error.Code != codeResourceNotFound {
+		t.Fatalf("resources/read %q = %+v, want -32002", uri, got.Error)
+	}
+	if !strings.Contains(got.Error.Message, uri) {
+		t.Errorf("resources/read %q message = %q, want the URI", uri, got.Error.Message)
 	}
 }
 

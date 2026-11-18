@@ -5,27 +5,52 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"testing"
 
 	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/core/skill"
 )
 
-// TestProcedureSurfacesIgnoreModes proves prompts and resources are byte-for-byte
-// the same on every tool surface. The tool counts pin that the three configs
-// really are different surfaces.
+type procedureModeCase struct {
+	name     string
+	tools    int
+	readOnly bool
+	operator bool
+}
+
+// TestProcedureSurfacesIgnoreModes proves prompts and resources are
+// byte-for-byte the same on every tool surface. The tool counts pin that the
+// three configs really are different surfaces.
 func TestProcedureSurfacesIgnoreModes(t *testing.T) {
 	t.Parallel()
-	cases := []struct {
-		name     string
-		readOnly bool
-		operator bool
-		tools    int
-	}{
+	cases := []procedureModeCase{
 		{name: "default", tools: 25},
-		{name: "read-only", readOnly: true, tools: 14},
-		{name: "operator", operator: true, tools: 26},
+		{name: "read-only", tools: 14, readOnly: true},
+		{name: "operator", tools: 26, operator: true},
 	}
+	paths, wantPrompt, wantResource := procedureFixtures(t)
+
+	var baseline procedureWire
+	for i, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := testConfig()
+			cfg.ReadOnly = tc.readOnly
+			cfg.Operator = tc.operator
+			frames := procedureFrames(t, &cfg)
+			checkProcedureSurface(t, tc, frames, len(paths), len(skillfs.Tasks()), wantPrompt, wantResource)
+			wire := procedureWireFrom(frames)
+			if i == 0 {
+				baseline = wire
+				return
+			}
+			checkProcedureWire(t, tc.name, &wire, &baseline)
+		})
+	}
+}
+
+func procedureFixtures(t *testing.T) ([]string, []byte, []byte) {
+	t.Helper()
 	paths, err := skillfs.Paths()
 	if err != nil {
 		t.Fatal(err)
@@ -38,86 +63,82 @@ func TestProcedureSurfacesIgnoreModes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return paths, wantPrompt, wantResource
+}
 
-	var baseline procedureWire
-	for i, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			cfg := testConfig()
-			cfg.ReadOnly = tc.readOnly
-			cfg.Operator = tc.operator
-			lines := []string{
-				`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`,
-				`{"jsonrpc":"2.0","id":2,"method":"prompts/list"}`,
-				`{"jsonrpc":"2.0","id":3,"method":"prompts/get","params":{"name":"review"}}`,
-				`{"jsonrpc":"2.0","id":4,"method":"resources/list"}`,
-				fmt.Sprintf(`{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":%q}}`,
-					resourceURIPrefix+"PROCEDURE.md"),
-			}
-			frames := serve(t, &cfg, lines...)
-			for id := range lines {
-				if frame := frames[fmt.Sprint(id+1)]; frame.Error != nil {
-					t.Fatalf("request %d error = %+v", id+1, frame.Error)
-				}
-			}
-			var tools toolsListResult
-			if err := json.Unmarshal(frames["1"].Result, &tools); err != nil {
-				t.Fatal(err)
-			}
-			if len(tools.Tools) != tc.tools {
-				t.Fatalf("%s tools = %d, want %d", tc.name, len(tools.Tools), tc.tools)
-			}
-			var prompts promptsListResult
-			if err := json.Unmarshal(frames["2"].Result, &prompts); err != nil {
-				t.Fatal(err)
-			}
-			if len(prompts.Prompts) != len(skillfs.Tasks()) {
-				t.Fatalf("%s prompts = %d, want %d", tc.name, len(prompts.Prompts), len(skillfs.Tasks()))
-			}
-			var prompt promptResult
-			if err := json.Unmarshal(frames["3"].Result, &prompt); err != nil {
-				t.Fatal(err)
-			}
-			if len(prompt.Messages) != 1 || !bytes.Equal([]byte(prompt.Messages[0].Content.Text), wantPrompt) {
-				t.Fatalf("%s review prompt does not carry the binary's Procedure", tc.name)
-			}
-			var resources resourceListResult
-			if err := json.Unmarshal(frames["4"].Result, &resources); err != nil {
-				t.Fatal(err)
-			}
-			if len(resources.Resources) != len(paths) {
-				t.Fatalf("%s resources = %d, want %d", tc.name, len(resources.Resources), len(paths))
-			}
-			var content resourceReadResult
-			if err := json.Unmarshal(frames["5"].Result, &content); err != nil {
-				t.Fatal(err)
-			}
-			if len(content.Contents) != 1 || !bytes.Equal([]byte(content.Contents[0].Text), wantResource) {
-				t.Fatalf("%s PROCEDURE.md resource is not byte-identical to skill show", tc.name)
-			}
+func procedureFrames(t *testing.T, cfg *Config) map[string]frame {
+	t.Helper()
+	lines := []string{
+		`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`,
+		`{"jsonrpc":"2.0","id":2,"method":"prompts/list"}`,
+		`{"jsonrpc":"2.0","id":3,"method":"prompts/get","params":{"name":"review"}}`,
+		`{"jsonrpc":"2.0","id":4,"method":"resources/list"}`,
+		fmt.Sprintf(`{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":%q}}`,
+			resourceURIPrefix+"PROCEDURE.md"),
+	}
+	frames := serve(t, cfg, lines...)
+	for i := range lines {
+		id := strconv.Itoa(i + 1)
+		if frame := frames[id]; frame.Error != nil {
+			t.Fatalf("request %s error = %+v", id, frame.Error)
+		}
+	}
+	return frames
+}
 
-			wire := procedureWire{
-				promptsList:   frames["2"].Result,
-				promptGet:     frames["3"].Result,
-				resourcesList: frames["4"].Result,
-				resourceRead:  frames["5"].Result,
-			}
-			if i == 0 {
-				baseline = wire
-				return
-			}
-			if !bytes.Equal(wire.promptsList, baseline.promptsList) {
-				t.Errorf("%s prompts/list differs from the default surface", tc.name)
-			}
-			if !bytes.Equal(wire.promptGet, baseline.promptGet) {
-				t.Errorf("%s prompts/get differs from the default surface", tc.name)
-			}
-			if !bytes.Equal(wire.resourcesList, baseline.resourcesList) {
-				t.Errorf("%s resources/list differs from the default surface", tc.name)
-			}
-			if !bytes.Equal(wire.resourceRead, baseline.resourceRead) {
-				t.Errorf("%s resources/read differs from the default surface", tc.name)
-			}
-		})
+func checkProcedureSurface(t *testing.T, tc procedureModeCase, frames map[string]frame,
+	pathCount, taskCount int, wantPrompt, wantResource []byte,
+) {
+	t.Helper()
+	checkToolCount(t, tc, frames)
+	checkPromptSurface(t, tc.name, frames, taskCount, wantPrompt)
+	checkResourceSurface(t, tc.name, frames, pathCount, wantResource)
+}
+
+func checkToolCount(t *testing.T, tc procedureModeCase, frames map[string]frame) {
+	t.Helper()
+	var tools toolsListResult
+	if err := json.Unmarshal(frames["1"].Result, &tools); err != nil {
+		t.Fatal(err)
+	}
+	if len(tools.Tools) != tc.tools {
+		t.Fatalf("%s tools = %d, want %d", tc.name, len(tools.Tools), tc.tools)
+	}
+}
+
+func checkPromptSurface(t *testing.T, name string, frames map[string]frame, taskCount int, want []byte) {
+	t.Helper()
+	var prompts promptsListResult
+	if err := json.Unmarshal(frames["2"].Result, &prompts); err != nil {
+		t.Fatal(err)
+	}
+	if len(prompts.Prompts) != taskCount {
+		t.Fatalf("%s prompts = %d, want %d", name, len(prompts.Prompts), taskCount)
+	}
+	var prompt promptResult
+	if err := json.Unmarshal(frames["3"].Result, &prompt); err != nil {
+		t.Fatal(err)
+	}
+	if len(prompt.Messages) != 1 || !bytes.Equal([]byte(prompt.Messages[0].Content.Text), want) {
+		t.Fatalf("%s review prompt does not carry the binary's Procedure", name)
+	}
+}
+
+func checkResourceSurface(t *testing.T, name string, frames map[string]frame, pathCount int, want []byte) {
+	t.Helper()
+	var resources resourceListResult
+	if err := json.Unmarshal(frames["4"].Result, &resources); err != nil {
+		t.Fatal(err)
+	}
+	if len(resources.Resources) != pathCount {
+		t.Fatalf("%s resources = %d, want %d", name, len(resources.Resources), pathCount)
+	}
+	var content resourceReadResult
+	if err := json.Unmarshal(frames["5"].Result, &content); err != nil {
+		t.Fatal(err)
+	}
+	if len(content.Contents) != 1 || !bytes.Equal([]byte(content.Contents[0].Text), want) {
+		t.Fatalf("%s PROCEDURE.md resource is not byte-identical to skill show", name)
 	}
 }
 
@@ -126,4 +147,29 @@ type procedureWire struct {
 	promptGet     json.RawMessage
 	resourcesList json.RawMessage
 	resourceRead  json.RawMessage
+}
+
+func procedureWireFrom(frames map[string]frame) procedureWire {
+	return procedureWire{
+		promptsList:   frames["2"].Result,
+		promptGet:     frames["3"].Result,
+		resourcesList: frames["4"].Result,
+		resourceRead:  frames["5"].Result,
+	}
+}
+
+func checkProcedureWire(t *testing.T, name string, got, want *procedureWire) {
+	t.Helper()
+	if !bytes.Equal(got.promptsList, want.promptsList) {
+		t.Errorf("%s prompts/list differs from the default surface", name)
+	}
+	if !bytes.Equal(got.promptGet, want.promptGet) {
+		t.Errorf("%s prompts/get differs from the default surface", name)
+	}
+	if !bytes.Equal(got.resourcesList, want.resourcesList) {
+		t.Errorf("%s resources/list differs from the default surface", name)
+	}
+	if !bytes.Equal(got.resourceRead, want.resourceRead) {
+		t.Errorf("%s resources/read differs from the default surface", name)
+	}
 }
