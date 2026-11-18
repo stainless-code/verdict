@@ -20,7 +20,7 @@ const (
 	prefixName       = "prefix"
 	prefixDir        = "prompt-prefix"
 	prefixScaffold   = "scaffold.txt"
-	prefixPrompts    = "skills/verdict"
+	prefixPrompts    = "procedure"
 	fenceHeader      = "<<<UNTRUSTED nonce=%s source=%s>>>\n"
 	fenceFooter      = "<<<END UNTRUSTED nonce=%s>>>\n"
 	trustBoundary    = "--- verdict trust boundary (tool-generated, trusted) ---"
@@ -44,7 +44,7 @@ const (
 
 // promptFiles are the four trusted files every agent prompt opens with, in
 // the order the tool concatenates them.
-var promptFiles = []string{"SKILL.md", "prompts/system.md", "prompts/review.md", "prompts/diagrams.md"}
+var promptFiles = []string{"PROCEDURE.md", "prompts/system.md", "prompts/review.md", "prompts/diagrams.md"}
 
 // fenceLine matches the tool's untrusted-region header. The prompt files quote
 // the marker shape in prose with `nonce=<hex>` placeholders, so the match

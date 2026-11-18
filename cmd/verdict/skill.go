@@ -42,8 +42,7 @@ func runSkill(ctx context.Context, r *cli.Runner, args []string, env map[string]
 	}
 }
 
-//
-//nolint:revive // the show route nests the path, inventory, and SKILL.md arms
+// runSkillShow routes one show request to the path, inventory, or index arm.
 func runSkillShow(ctx context.Context, r *cli.Runner, args []string, env map[string]string, root string) int {
 	flags, code, done := parseSkillShowFlags(r, args)
 	if done {
@@ -51,25 +50,40 @@ func runSkillShow(ctx context.Context, r *cli.Runner, args []string, env map[str
 	}
 	req := &skill.Request{Runtime: skillRuntime(r, env), Version: skillVersion(root)}
 	if flags.path != "" {
-		body, ref := skill.ShowFile(ctx, req, flags.path)
-		if ref != nil {
-			return r.Refuse(ref)
-		}
-		if flags.format == formatJSONName {
-			writeSkillEnvelope(r, skillFileData(flags.path, body))
-			return cli.ExitOK
-		}
-		fmt.Fprint(r.Out, string(body))
-		return cli.ExitOK
+		return writeSkillPath(ctx, r, req, flags)
 	}
 	if flags.format == formatJSONName {
-		inv, ref := skill.List(ctx, req)
-		if ref != nil {
-			return r.Refuse(ref)
-		}
-		writeSkillEnvelope(r, skillInventoryData(&inv))
+		return writeSkillInventory(ctx, r, req)
+	}
+	return writeSkillIndex(ctx, r, req)
+}
+
+// writeSkillPath serves one inventory file as bytes or as a JSON envelope.
+func writeSkillPath(ctx context.Context, r *cli.Runner, req *skill.Request, flags skillShowFlags) int {
+	body, ref := skill.ShowFile(ctx, req, flags.path)
+	if ref != nil {
+		return r.Refuse(ref)
+	}
+	if flags.format == formatJSONName {
+		writeSkillEnvelope(r, skillFileData(flags.path, body))
 		return cli.ExitOK
 	}
+	fmt.Fprint(r.Out, string(body))
+	return cli.ExitOK
+}
+
+// writeSkillInventory serves the full served-path inventory as one envelope.
+func writeSkillInventory(ctx context.Context, r *cli.Runner, req *skill.Request) int {
+	inv, ref := skill.List(ctx, req)
+	if ref != nil {
+		return r.Refuse(ref)
+	}
+	writeSkillEnvelope(r, skillInventoryData(&inv))
+	return cli.ExitOK
+}
+
+// writeSkillIndex serves the Procedure index as the default show body.
+func writeSkillIndex(ctx context.Context, r *cli.Runner, req *skill.Request) int {
 	body, ref := skill.Show(ctx, req)
 	if ref != nil {
 		return r.Refuse(ref)
@@ -441,24 +455,28 @@ func writeSkillEnvelope(r *cli.Runner, data *jq.Obj) {
 
 func skillUsageText() string {
 	return "usage: verdict skill [show [<path>]|files|status|install|uninstall] [opts]\n" +
-		"  skill [show]              print SKILL.md (default --format md)\n" +
+		"  skill [show]              print PROCEDURE.md, the Procedure index\n" +
 		"  skill show <path>         print one embedded payload file byte-identical\n" +
 		"                            (paths come from `skill files`)\n" +
 		"  skill --format json       one envelope: {name, version, files}\n" +
 		"  skill files               list every embedded payload path\n" +
 		"  skill status [--dir <skills-dir>|--agent <name>...|--detect] [--diff] [--json]\n" +
 		"      read-only drift report per target: create/update/keep/blocked, the\n" +
-		"      receipt versus embedded version, and the changed files. Exit 0 when\n" +
-		"      every target is in sync, 1 when drifted. --diff adds one capped\n" +
-		"      unified diff per changed file (a truncated diff says so).\n" +
+		"      installed stub_version versus the embedded one, the receipt versus\n" +
+		"      embedded version, and the changed files. A matching stub_version\n" +
+		"      forgives SKILL.md byte edits only; NOTICE.md and scripts/verdict\n" +
+		"      drift when missing or changed, and a missing or different version\n" +
+		"      reports SKILL.md. Exit 0 when every target is in sync, 1 when drifted.\n" +
+		"      --diff adds one capped unified diff per changed file (truncated says so).\n" +
 		"  skill install [--dir <skills-dir>|--agent <name>...|--detect] [--force] [--dry-run] [--json]\n" +
-		"      atomically write SKILL.md, prompts/, schemas/, and scripts/verdict plus\n" +
-		"      a .verdict-managed receipt. Previews create/update/keep/blocked;\n" +
-		"      --agent repeats and installs each agent in argv order (deduped);\n" +
-		"      --detect targets every agent below whose skills dir already exists and\n" +
-		"      is non-empty, and lists each target's result (nothing detected refuses\n" +
-		"      typed: name one with --agent). --detect cannot be combined with\n" +
-		"      --dir or --agent.\n" +
+		"      atomically write the Bootstrap skill: SKILL.md, NOTICE.md, and\n" +
+		"      scripts/verdict, plus a .verdict-managed receipt. The Procedure and\n" +
+		"      schemas stay in this binary; read them with `skill` and `skill show`.\n" +
+		"      Previews create/update/keep/blocked; --agent repeats and installs each\n" +
+		"      agent in argv order (deduped); --detect targets every agent below whose\n" +
+		"      skills dir already exists and is non-empty, and lists each target's\n" +
+		"      result (nothing detected refuses typed: name one with --agent).\n" +
+		"      --detect cannot be combined with --dir or --agent.\n" +
 		"      only --json is guaranteed non-interactive (this command never prompts).\n" +
 		"      A target without a verdict receipt refuses typed unless --force;\n" +
 		"      foreign files are never touched.\n" +
@@ -468,8 +486,10 @@ func skillUsageText() string {
 		"      refuses unless --force, and even then only inventory paths go;\n" +
 		"      --dry-run lists the plan and deletes nothing.\n" +
 		"  agents: agents, claude, codex, cursor, opencode, copilot, gemini, goose, qwen, windsurf\n" +
-		"  The skill is embedded in this binary, so the served copy can never skew.\n" +
-		"  In a skill copy, scripts/verdict resolves VERDICT_BIN, then <skill>/bin/verdict,\n" +
-		"  then verdict on PATH; otherwise run <skill>/scripts/verdict bootstrap once\n" +
-		"  (verified; never a review-time fetch).\n"
+		"  The Procedure and the stub are embedded in this binary, so served bytes\n" +
+		"  cannot skew.\n" +
+		"  In a skill copy, scripts/verdict resolves VERDICT_BIN, then\n" +
+		"  <skill>/bin/verdict, then verdict on PATH; otherwise run\n" +
+		"  <skill>/scripts/verdict bootstrap once (verified; never a\n" +
+		"  review-time fetch).\n"
 }

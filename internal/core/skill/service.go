@@ -110,9 +110,9 @@ type Plan struct {
 	TargetFile     bool
 }
 
-// Show returns the embedded SKILL.md bytes.
+// Show returns the embedded Procedure index bytes.
 func Show(_ context.Context, _ *Request) ([]byte, *core.RefusalError) {
-	body, err := skillfs.Read(skillfs.SkillMD)
+	body, err := skillfs.Read(skillfs.ProcedureMD)
 	if err != nil {
 		return nil, refuse(codeRead, err.Error())
 	}
@@ -145,7 +145,17 @@ func inventoryPath(path string) bool {
 	return clean == path && clean != "." && clean != ".." && !strings.HasPrefix(clean, "../")
 }
 
-// List returns the embedded payload inventory (paths sorted).
+// stubFiles is the whole install inventory: the Bootstrap skill, never the
+// Procedure payload. The literal is the install contract an uninstall owns.
+var stubFiles = []string{"NOTICE.md", skillfs.SkillMD, "scripts/verdict"}
+
+// InstallInventory returns the installable three-file inventory with the
+// served name and version. List is wider: it also serves the Procedure.
+func InstallInventory(req *Request) Inventory {
+	return Inventory{Name: Name, Version: req.version(), Files: slices.Clone(stubFiles)}
+}
+
+// List returns the full served inventory (paths sorted).
 func List(_ context.Context, req *Request) (Inventory, *core.RefusalError) {
 	files, err := skillfs.Paths()
 	if err != nil {
@@ -291,10 +301,10 @@ func existingAncestor(root *os.Root, name string) string {
 }
 
 func planInstall(ctx context.Context, req *Request) (Plan, *core.RefusalError) {
-	files, ref := List(ctx, req)
-	if ref != nil {
-		return Plan{}, ref
+	if err := ctx.Err(); err != nil {
+		return Plan{}, refuse(codeCanceled, "canceled before skill install completed")
 	}
+	files := InstallInventory(req)
 	target, ref := req.target()
 	if ref != nil {
 		return Plan{}, ref

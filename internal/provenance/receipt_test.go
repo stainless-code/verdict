@@ -16,12 +16,12 @@ import (
 func seedReceiptFixture(t *testing.T, controlContent string) (root, dir string) {
 	t.Helper()
 	root = t.TempDir()
-	skillDir := filepath.Join(root, "skills", "verdict")
-	if err := os.MkdirAll(filepath.Join(skillDir, "prompts"), 0o755); err != nil {
+	procedureDir := filepath.Join(root, "procedure")
+	if err := os.MkdirAll(filepath.Join(procedureDir, "prompts"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	for _, f := range promptFiles {
-		if err := os.WriteFile(filepath.Join(skillDir, f), []byte("prompt:"+f), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(procedureDir, f), []byte("prompt:"+f), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -136,7 +136,7 @@ func checkReceiptInputItem(t *testing.T, item *core.ProvenanceInput, ctrlSHA str
 }
 
 func checkPromptInputItem(item *core.ProvenanceInput, seen map[string]bool) {
-	if item.Name == "SKILL.md" && item.Status == "included" &&
+	if item.Name == "PROCEDURE.md" && item.Status == "included" &&
 		item.SHA256 != "" && item.Bytes != nil && *item.Bytes > 0 {
 		seen["prompt"] = true
 	}

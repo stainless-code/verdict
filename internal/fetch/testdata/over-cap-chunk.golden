@@ -6,7 +6,7 @@ exit: 0
   "repo": "acme/app",
   "pr": 4703,
   "at": "0000-00-00T00:00:00Z",
-  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4703/PR.json + .verdict/state/4703/chunks/manifest.json and the chunks it lists to any agent; ask it to write .verdict/state/4703/review.json",
+  "next": "feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4703/PR.json + .verdict/state/4703/chunks/manifest.json and the chunks it lists to any agent; ask it to write .verdict/state/4703/review.json",
   "warnings": [],
   "data": {
     "dir": ".verdict/state/4703",
@@ -83,7 +83,7 @@ exit: 0
 » reviews + inline comments
 » chunked: 2 chunk(s) at or under 512000 bytes + .verdict/state/4703/chunks/manifest.json
 done: .verdict/state/4703/PR.json .verdict/state/4703/full.diff .verdict/state/4703/toc.txt .verdict/state/4703/roles.txt (1 files)
-next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4703/PR.json + .verdict/state/4703/chunks/manifest.json and the chunks it lists (+ .verdict/state/4703/roles.txt) to any agent; ask it to write .verdict/state/4703/review.json
+next: feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4703/PR.json + .verdict/state/4703/chunks/manifest.json and the chunks it lists (+ .verdict/state/4703/roles.txt) to any agent; ask it to write .verdict/state/4703/review.json
 --- files ---
 --- file C/.gh-calls.log ---
 CALL: pr view 4703 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits,files,additions,deletions,isDraft,reviewDecision,state
@@ -480,12 +480,12 @@ rather than becoming ground truth.
 --- file C/.verdict/state/4703/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "5d848d2413108117ae2b1c3d82359ee153cc2137a76283ccfa651f79fbdb7b49",
-  "prompts_hash": "57708e26c0828084fa5ffc651af76a5f7b6d8c5dc404408c1806f4046a635cc9",
+  "run_id": "d0a1c8910b82823abe74af25700c5b4f49a7863301cb48c87f883066f38ba59f",
+  "prompts_hash": "3c57d8f39a074b67f54d2cdb6b7d15408334b5f0f410a36b79f3f2f473ec8516",
   "inputs": [
     {
       "kind": "prompt",
-      "name": "SKILL.md",
+      "name": "PROCEDURE.md",
       "status": "included",
       "sha256": "6e55c5ebee9a13a25b8e95e9249ec909d7e92b6bfbcf6e3a2fb7a5c6236be01c",
       "bytes": 13427

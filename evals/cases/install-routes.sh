@@ -28,11 +28,13 @@ fi
 mkdir -p "$EVAL_SANDBOX/regunpack"
 tar -xzf "$TARBALL" -C "$EVAL_SANDBOX/regunpack"
 PKG="$EVAL_SANDBOX/regunpack/package"
-if [ -f "$PKG/skills/verdict/SKILL.md" ] && [ -f "$PKG/scripts/verdict-complete.sh" ] \
+if [ -f "$PKG/skills/verdict/SKILL.md" ] && [ -f "$PKG/skills/verdict/NOTICE.md" ] \
+  && [ -f "$PKG/skills/verdict/scripts/verdict" ] && [ -f "$PKG/scripts/verdict-complete.sh" ] \
+  && [ ! -e "$PKG/skills/verdict/prompts" ] && [ ! -e "$PKG/procedure" ] \
   && [ ! -e "$PKG/scripts/review.sh" ]; then
-  good "registry copy carries the payload (SKILL.md + remaining scripts, no review.sh)"
+  good "registry copy carries only the Bootstrap skill (no Procedure, no review.sh)"
 else
-  bad "unpacked registry copy payload wrong (want SKILL.md + scripts, no review.sh)"
+  bad "unpacked registry copy is not stub-only"
 fi
 
 OLD_HOME="$HOME"
@@ -59,7 +61,7 @@ if [ "$inventory_status" -ne 0 ] || [ -z "$inventory" ]; then
   copy_ok="false"
   bad "skill files exits $inventory_status with an empty payload inventory"
 fi
-for want in SKILL.md scripts/verdict schemas/validate.sh prompts/review.md; do
+for want in NOTICE.md SKILL.md scripts/verdict; do
   if grep -qxF "$want" <<<"$inventory"; then
     good "payload inventory lists $want"
   else
@@ -68,19 +70,15 @@ for want in SKILL.md scripts/verdict schemas/validate.sh prompts/review.md; do
   fi
 done
 for root in "$TARGET/.agents/skills" "$HOME/.agents/skills"; do
-  while IFS= read -r rel; do
-    [ -n "$rel" ] || continue
-    case "$rel" in
-      schemas/*) src="$PKG/$rel" ;;
-      *) src="$PKG/skills/verdict/$rel" ;;
-    esac
+  for rel in NOTICE.md SKILL.md scripts/verdict; do
+    src="$PKG/skills/verdict/$rel"
     cmp -s "$src" "$root/verdict/$rel" || copy_ok="false"
-  done <<<"$inventory"
+  done
   [ "$(jq -r '.tool // empty' "$root/verdict/.verdict-managed" 2>/dev/null)" = "verdict" ] || copy_ok="false"
   [ "$(jq -r '.version // empty' "$root/verdict/.verdict-managed" 2>/dev/null)" = "$(jq -r .version "$EVAL_ROOT/package.json")" ] || copy_ok="false"
 done
 if [ "$copy_ok" = "true" ]; then
-  good "embedded payload (SKILL.md + prompts/ + schemas/ + scripts/verdict) byte-identical with receipts"
+  good "embedded stub (SKILL.md + NOTICE.md + scripts/verdict) byte-identical with receipts"
 else
   bad "installed payload differs from the registry copy"
 fi
@@ -113,8 +111,8 @@ else
 fi
 assert_stream_nogrep "README never offers ./install.sh to registry users" "$REG_RANGE" "./install.sh" "-F"
 
-if grep -q "never beside the tool" "$EVAL_SKILL/SKILL.md" \
-  && grep -q 'installed `verdict/` skill dir' "$EVAL_SKILL/SKILL.md"; then
+if grep -q "Procedure" "$EVAL_SKILL/SKILL.md" \
+  && grep -q "verdict skill show" "$EVAL_SKILL/SKILL.md"; then
   good "SKILL.md states the command-resolution rule"
 else
   bad "SKILL.md lost the where-commands-run block"

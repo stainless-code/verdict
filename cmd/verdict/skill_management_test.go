@@ -40,6 +40,21 @@ func skillTreeHash(t *testing.T, root string) string {
 	return hex.EncodeToString(hash.Sum(nil))
 }
 
+// TestSkillShowServesProcedurePayload pins the on-disk source of a served
+// prompt: the checkout's procedure file, not an installed skill copy.
+func TestSkillShowServesProcedurePayload(t *testing.T) {
+	hermeticEnv(t)
+	setTestVersion(t)
+	want, err := os.ReadFile(filepath.Join("..", "..", "procedure", "prompts", "review.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	code, out, derr := runCapture(t, []string{"skill", "show", "prompts/review.md"})
+	if code != 0 || derr != "" || out != string(want) {
+		t.Fatalf("skill show prompts/review.md = exit %d stderr %q (%d bytes), want the checkout file", code, derr, len(out))
+	}
+}
+
 // TestSkillShowPath pins the byte-identical path read and its one refusal.
 //
 //nolint:cyclop,revive // the test walks the path matrix
@@ -54,9 +69,13 @@ func TestSkillShowPath(t *testing.T) {
 	if code != 0 || out != string(want) || derr != "" {
 		t.Fatalf("skill show prompts/review.md = exit %d stderr %q (stdout %d bytes)", code, derr, len(out))
 	}
+	procedure, err := skillfs.Read(skillfs.ProcedureMD)
+	if err != nil {
+		t.Fatal(err)
+	}
 	code, out, _ = runCapture(t, []string{"skill", "show"})
-	if code != 0 || out == "" {
-		t.Fatalf("bare skill show = exit %d (%d bytes)", code, len(out))
+	if code != 0 || out != string(procedure) {
+		t.Fatalf("bare skill show = exit %d (%d bytes), want PROCEDURE.md", code, len(out))
 	}
 	for _, path := range []string{"../SKILL.md", "/etc/passwd", "prompts/../SKILL.md", "nope.md"} {
 		code, out, _ := runCapture(t, []string{"skill", "show", path, "--json"})
@@ -110,7 +129,30 @@ func TestSkillStatusCommand(t *testing.T) {
 		t.Fatalf("fresh status = exit %d data %v", code, data)
 	}
 
-	if err := os.WriteFile(filepath.Join(target, "SKILL.md"), []byte("hand edited\n"), 0o644); err != nil {
+	stubPath := filepath.Join(target, skillfs.SkillMD)
+	stubBody, err := os.ReadFile(stubPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stubPath, append(stubBody, []byte("\nhand edited\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	code, out, _ = runCapture(t, []string{"skill", "status", "--dir", dir, "--json"})
+	doc = decodeSkillEnvelope(t, out)
+	data = skillData(t, doc)
+	if code != 0 || data["in_sync"] != true {
+		t.Fatalf("SKILL.md body edit status = exit %d data %v", code, data)
+	}
+
+	stub, err := os.ReadFile(stubPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited := strings.Replace(string(stub), "stub_version: "+skillfs.StubVersion, "stub_version: 2", 1)
+	if edited == string(stub) {
+		t.Fatal("installed stub has no stub_version to edit")
+	}
+	if err := os.WriteFile(filepath.Join(target, "SKILL.md"), []byte(edited), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	before := skillTreeHash(t, target)
@@ -118,7 +160,7 @@ func TestSkillStatusCommand(t *testing.T) {
 	doc = decodeSkillEnvelope(t, out)
 	data = skillData(t, doc)
 	if code != 1 || data["in_sync"] != false || data["status"] != "update" {
-		t.Fatalf("edited status = exit %d data %v", code, data)
+		t.Fatalf("version edit status = exit %d data %v", code, data)
 	}
 	diffs, ok := data["diff"].([]any)
 	if !ok || len(diffs) != 1 {
@@ -128,7 +170,7 @@ func TestSkillStatusCommand(t *testing.T) {
 	if !ok || entry["path"] != "SKILL.md" || entry["truncated"] != false {
 		t.Fatalf("diff entry = %v", diffs[0])
 	}
-	if body, ok := entry["diff"].(string); !ok || !strings.Contains(body, "-hand edited") {
+	if body, ok := entry["diff"].(string); !ok || !strings.Contains(body, "-stub_version: 2") {
 		t.Fatalf("diff body = %v", entry["diff"])
 	}
 	if after := skillTreeHash(t, target); after != before {
@@ -136,7 +178,7 @@ func TestSkillStatusCommand(t *testing.T) {
 	}
 
 	code, out, _ = runCapture(t, []string{"skill", "status", "--dir", dir, "--diff"})
-	if code != 1 || !strings.Contains(out, "status: drift") || !strings.Contains(out, "-hand edited") {
+	if code != 1 || !strings.Contains(out, "status: drift") || !strings.Contains(out, "-stub_version: 2") {
 		t.Fatalf("human status = exit %d\n%s", code, out)
 	}
 

@@ -17,7 +17,7 @@ import (
 // differently.
 func TestPromptNamesReviewKeys(t *testing.T) {
 	t.Parallel()
-	prompt := string(readSkillFile(t, "prompts/review.md"))
+	prompt := string(readProcedureFile(t, "prompts/review.md"))
 	for _, row := range promptkeys.Review {
 		if !strings.Contains(prompt, row.Text) {
 			t.Errorf("prompts/review.md never writes %s for key %q", row.Text, row.Key)
@@ -35,7 +35,7 @@ func TestPromptRigorValuesMatchSchema(t *testing.T) {
 	t.Parallel()
 	want := promptkeys.RigorValues
 	published := "`" + strings.Join(want, "|") + "`"
-	if prompt := string(readSkillFile(t, "prompts/review.md")); !strings.Contains(prompt, published) {
+	if prompt := string(readProcedureFile(t, "prompts/review.md")); !strings.Contains(prompt, published) {
 		t.Errorf("prompts/review.md does not publish the rigor values as %s", published)
 	}
 	enum, ok := schemaBranch(t, "$defs", "comment", "properties", "rigor")["enum"].([]any)
@@ -53,12 +53,12 @@ func TestPromptRigorValuesMatchSchema(t *testing.T) {
 	}
 }
 
-// readSkillFile reads one shipped skill file.
-func readSkillFile(t *testing.T, name string) []byte {
+// readProcedureFile reads one shipped Procedure file.
+func readProcedureFile(t *testing.T, name string) []byte {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(moduleRoot(t), "skills", "verdict", filepath.FromSlash(name)))
+	raw, err := os.ReadFile(filepath.Join(moduleRoot(t), "procedure", filepath.FromSlash(name)))
 	if err != nil {
-		t.Fatalf("read skills/verdict/%s: %v", name, err)
+		t.Fatalf("read procedure/%s: %v", name, err)
 	}
 	return raw
 }

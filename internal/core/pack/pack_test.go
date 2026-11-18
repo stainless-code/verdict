@@ -44,7 +44,7 @@ func loadFixture(t *testing.T, fsys fstest.MapFS) *Pack {
 //nolint:revive // the test loads both the on-disk and payload layouts
 func TestPackBuiltinParses(t *testing.T) {
 	t.Parallel()
-	p, ref := LoadDir(filepath.Join("..", "..", "..", "skills", "verdict", "packs", "builtin"))
+	p, ref := LoadDir(filepath.Join("..", "..", "..", "procedure", "packs", "builtin"))
 	if ref != nil {
 		t.Fatalf("LoadDir: %s: %s", ref.Code, ref.Message)
 	}
@@ -54,7 +54,7 @@ func TestPackBuiltinParses(t *testing.T) {
 	if p.Name != "verdict/builtin" || p.Version != "1.0.0" {
 		t.Fatalf("pack = %s@%s, want verdict/builtin@1.0.0", p.Name, p.Version)
 	}
-	payload, ref := Load(os.DirFS(filepath.Join("..", "..", "..", "skills", "verdict")), BuiltinRoot)
+	payload, ref := Load(os.DirFS(filepath.Join("..", "..", "..", "procedure")), BuiltinRoot)
 	if ref != nil {
 		t.Fatalf("Load(%s): %s: %s", BuiltinRoot, ref.Code, ref.Message)
 	}

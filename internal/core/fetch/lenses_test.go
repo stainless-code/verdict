@@ -246,7 +246,7 @@ func trustedPromptDir(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
 	for name, body := range map[string]string{
-		"SKILL.md":            "# skill\n",
+		"PROCEDURE.md":        "# procedure\n",
 		"prompts/system.md":   "# system\n",
 		"prompts/review.md":   "# review\n",
 		"prompts/diagrams.md": "# diagrams\n",

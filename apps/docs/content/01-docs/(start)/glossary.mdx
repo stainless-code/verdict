@@ -46,9 +46,10 @@ tools. Commands accept a unique short prefix.
 
 ## Surfaces
 
-**Skill.** The instructions an agent loads to run a review: `SKILL.md` and
-`prompts/`. The binary carries its own copy and the published `schemas/`;
-`verdict skill install` writes them into an agent's skills directory.
+**Bootstrap skill.** The small `SKILL.md` installed into an agent harness: it
+names when to use Verdict and how to reach the binary. The binary carries the
+Procedure (`PROCEDURE.md`, `prompts/`, `packs/`, `references/`) and the published
+`schemas/`; `verdict skill install` writes only the Bootstrap skill.
 
 **Envelope.** The one JSON object a `--json` run prints to stdout. It has nine
 fixed keys and `schema_version: "1"`. New information goes inside `data`. See

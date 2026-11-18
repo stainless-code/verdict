@@ -44,7 +44,7 @@ func usageText() string {
 		"    downstream verbs address it as local-<name>; post and live calibrate refuse it, while\n" +
 		"    calibrate --probe grades it offline.\n" +
 		"    --show-prompts (fetch and fetch-local) renders the assembled agent prompt —\n" +
-		"    SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md (verbatim) + trust-boundary\n" +
+		"    PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md (verbatim) + trust-boundary\n" +
 		"    prologue + nonce-fenced bundle meta + toc.txt + roles.txt + full.diff +\n" +
 		"    kb.txt/sensitive.txt/panel when present (one fence per file, in that order) —\n" +
 		"    to stdout (human; progress moves to stderr) or data.prompt_dump (--json).\n" +
@@ -469,16 +469,19 @@ func usageText() string {
 		"  skill [show [<path>]|files|status|install|uninstall] [--format md|json] [--dir <skills-dir>|--agent <name>...]\n" +
 		"        [--detect] [--diff] [--force] [--dry-run] [--json]\n" +
 		"    serve, inspect, or remove the skill embedded in this binary (never a skew):\n" +
-		"    show prints SKILL.md (default --format md), show <path> prints one\n" +
+		"    show prints PROCEDURE.md (default --format md), show <path> prints one\n" +
 		"    embedded file byte-identical, --format json emits one envelope with\n" +
 		"    name/version/files, files lists every embedded path.\n" +
 		"    status is a read-only drift report per target (create/update/keep/\n" +
-		"    blocked) with receipt vs embedded version; it exits 0 in sync and 1\n" +
-		"    when drifted. --diff adds a capped unified diff per changed file.\n" +
-		"    install atomically writes SKILL.md, prompts/, schemas/, and\n" +
-		"    scripts/verdict plus a .verdict-managed receipt; it previews\n" +
-		"    create/update/keep/blocked, never prompts, and refuses a foreign\n" +
-		"    target unless --force (foreign files are never touched).\n" +
+		"    blocked) comparing the installed stub_version and the receipt against\n" +
+		"    this binary; it exits 0 in sync and 1 when drifted. A matching\n" +
+		"    stub_version forgives SKILL.md byte edits only; NOTICE.md and\n" +
+		"    scripts/verdict still drift when missing or changed. A missing or\n" +
+		"    different version reports SKILL.md. --diff adds a capped unified diff.\n" +
+		"    install atomically writes SKILL.md, NOTICE.md, and scripts/verdict\n" +
+		"    plus a .verdict-managed receipt; the Procedure and schemas stay in the\n" +
+		"    binary. It previews create/update/keep/blocked, never prompts, and\n" +
+		"    refuses a foreign target unless --force (foreign files are untouched).\n" +
 		"    uninstall removes only the payload paths the receipt owns, then the\n" +
 		"    receipt; foreign files survive, a target without a receipt refuses\n" +
 		"    unless --force, and --dry-run deletes nothing.\n" +
@@ -487,8 +490,9 @@ func usageText() string {
 		"    agent whose skills dir already exists and is non-empty; with none\n" +
 		"    present it refuses typed and asks for --agent <name>.\n" +
 		"    In a skill copy, scripts/verdict resolves VERDICT_BIN, then\n" +
-		"    <skill>/bin/verdict, then verdict on PATH; otherwise run the one-time\n" +
-		"    verified <skill>/scripts/verdict bootstrap (no review-time fetch).\n" +
+		"    <skill>/bin/verdict, then verdict on PATH; otherwise run the\n" +
+		"    one-time verified\n" +
+		"    <skill>/scripts/verdict bootstrap (no review-time fetch).\n" +
 		"  pack <list|add|test> [--json]\n" +
 		"    list: read-only lens-pack inventory in precedence order: built-in, org\n" +
 		"    (explicit packs[] paths in personal settings), and repo\n" +

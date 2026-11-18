@@ -2,6 +2,8 @@ package skillfs_test
 
 import (
 	"bytes"
+	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -61,11 +63,12 @@ func diskFiles(t *testing.T, dir string) []string {
 	return files
 }
 
-// servedFiles is the checkout files served under payload paths: the skill
-// directory plus the repository's published schemas.
+// servedFiles is the checkout files served under payload paths: the stub, the
+// Procedure, and the repository's published schemas.
 func servedFiles(t *testing.T) []string {
 	t.Helper()
 	files := repoFiles(t, skillfs.Dir)
+	files = append(files, repoFiles(t, skillfs.ProcedureDir)...)
 	for _, name := range repoFiles(t, skillfs.SchemasDir) {
 		files = append(files, skillfs.SchemasDir+"/"+name)
 	}
@@ -77,6 +80,10 @@ func servedFiles(t *testing.T) []string {
 func onDisk(path string) string {
 	if path == skillfs.SchemasDir || strings.HasPrefix(path, skillfs.SchemasDir+"/") {
 		return filepath.FromSlash(path)
+	}
+	if path == skillfs.ProcedureMD || strings.HasPrefix(path, "prompts/") ||
+		strings.HasPrefix(path, "packs/") || strings.HasPrefix(path, "references/") {
+		return filepath.Join(filepath.FromSlash(skillfs.ProcedureDir), filepath.FromSlash(path))
 	}
 	return filepath.Join(filepath.FromSlash(skillfs.Dir), filepath.FromSlash(path))
 }
@@ -125,6 +132,171 @@ func assertEmbeddedFile(t *testing.T, path string) {
 	if gotExec := skillfs.Mode(path)&0o111 != 0; gotExec != wantExec {
 		t.Errorf("%s executable = %v, want %v", path, gotExec, wantExec)
 	}
+}
+
+// TestProcedureLivesOutsideTheStub pins the payload split: the Procedure
+// moves to procedure/ at the inventory paths, and the installable skill keeps
+// only the bootstrap files.
+func TestProcedureLivesOutsideTheStub(t *testing.T) {
+	t.Parallel()
+	for _, path := range []string{
+		"PROCEDURE.md", filepath.Join("prompts", "review.md"),
+		filepath.Join("packs", "builtin", "pack.json"), filepath.Join("references", "commands.md"),
+	} {
+		if _, err := os.Stat(filepath.Join(skillfs.ProcedureDir, path)); err != nil {
+			t.Errorf("procedure/%s: %v", path, err)
+		}
+	}
+	for _, path := range []string{"PROCEDURE.md", "prompts", "packs", "references"} {
+		if _, err := os.Stat(filepath.Join(skillfs.Dir, path)); !os.IsNotExist(err) {
+			t.Errorf("stub still holds %s: stat err = %v", path, err)
+		}
+	}
+}
+
+// TestRootReadDirReportsEOF pins ReadDir's end-of-listing contract: reading
+// one entry at a time must end with [io.EOF], never an empty successful read.
+func TestRootReadDirReportsEOF(t *testing.T) {
+	t.Parallel()
+	want := rootTopNames(t)
+	got := readRootOneByOne(t, openPayloadRootDir(t))
+	if len(got) != len(want) {
+		t.Fatalf("root entries = %v, want the top-level names of %v", got, want)
+	}
+	for name := range want {
+		if !got[name] {
+			t.Errorf("root ReadDir never returned %q", name)
+		}
+	}
+}
+
+// TestRootReadDirContract pins both halves of [fs.ReadDirFile]: a non-positive
+// n drains the directory without an end error, while a positive n that finds
+// no entries reports [io.EOF].
+func TestRootReadDirContract(t *testing.T) {
+	t.Parallel()
+	top := rootTopNamesSorted(t)
+	for _, tc := range rootReadDirCases(len(top)) {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			seen := runReadDirSteps(t, openPayloadRootDir(t), tc.steps)
+			slices.Sort(seen)
+			if !slices.Equal(seen, top) {
+				t.Errorf("root entries = %v, want %v", seen, top)
+			}
+		})
+	}
+}
+
+func rootTopNames(t *testing.T) map[string]bool {
+	t.Helper()
+	paths, err := skillfs.Paths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	names := make(map[string]bool)
+	for _, path := range paths {
+		name, _, _ := strings.Cut(path, "/")
+		names[name] = true
+	}
+	return names
+}
+
+func rootTopNamesSorted(t *testing.T) []string {
+	t.Helper()
+	var names []string
+	for name := range rootTopNames(t) {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return names
+}
+
+func openPayloadRootDir(t *testing.T) fs.ReadDirFile {
+	t.Helper()
+	f, err := skillfs.FS.Open(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = f.Close() })
+	dir, ok := f.(fs.ReadDirFile)
+	if !ok {
+		t.Fatal("payload root is not a ReadDirFile")
+	}
+	return dir
+}
+
+func readRootOneByOne(t *testing.T, dir fs.ReadDirFile) map[string]bool {
+	t.Helper()
+	got := make(map[string]bool)
+	for {
+		entries, err := dir.ReadDir(1)
+		if errors.Is(err, io.EOF) {
+			return got
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 1 {
+			t.Fatalf("ReadDir(1) returned %d entries and err %v, want one or io.EOF", len(entries), err)
+		}
+		got[entries[0].Name()] = true
+	}
+}
+
+type readDirStep struct {
+	n    int
+	want int
+	eof  bool
+}
+
+func rootReadDirCases(total int) []struct {
+	name  string
+	steps []readDirStep
+} {
+	return []struct {
+		name  string
+		steps []readDirStep
+	}{
+		{name: "drain twice", steps: []readDirStep{{n: -1, want: total}, {n: -1, want: 0}}},
+		{name: "zero after exhaustion", steps: []readDirStep{{n: -1, want: total}, {n: 0, want: 0}}},
+		{name: "page to end", steps: pagedReadDirSteps(total)},
+		{name: "mixed", steps: []readDirStep{{n: 1, want: 1}, {n: -1, want: total - 1}, {n: 1, want: 0, eof: true}, {n: 0, want: 0}}},
+	}
+}
+
+func pagedReadDirSteps(total int) []readDirStep {
+	steps := make([]readDirStep, 0, total+1)
+	for range total {
+		steps = append(steps, readDirStep{n: 1, want: 1})
+	}
+	return append(steps, readDirStep{n: 1, want: 0, eof: true})
+}
+
+func runReadDirSteps(t *testing.T, dir fs.ReadDirFile, steps []readDirStep) []string {
+	t.Helper()
+	var seen []string
+	for i, call := range steps {
+		for _, entry := range checkReadDirStep(t, dir, call, i) {
+			seen = append(seen, entry.Name())
+		}
+	}
+	return seen
+}
+
+func checkReadDirStep(t *testing.T, dir fs.ReadDirFile, call readDirStep, i int) []fs.DirEntry {
+	t.Helper()
+	entries, err := dir.ReadDir(call.n)
+	if call.eof != errors.Is(err, io.EOF) {
+		t.Fatalf("step %d ReadDir(%d) err = %v, want eof=%v", i, call.n, err, call.eof)
+	}
+	if !call.eof && err != nil {
+		t.Fatalf("step %d ReadDir(%d) = %v", i, call.n, err)
+	}
+	if len(entries) != call.want {
+		t.Fatalf("step %d ReadDir(%d) returned %d entries, want %d", i, call.n, len(entries), call.want)
+	}
+	return entries
 }
 
 // TestRegistryDiscovery pins the layout the skills CLI relies on. Its
@@ -186,7 +358,7 @@ func TestPayloadProsePathsResolve(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, path := range paths {
-		if path == skillfs.SkillMD || strings.HasPrefix(path, "prompts/") {
+		if path == skillfs.ProcedureMD || strings.HasPrefix(path, "prompts/") {
 			checkProsePaths(t, path)
 		}
 	}

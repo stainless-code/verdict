@@ -44,7 +44,7 @@ func fetchTailAfterSource(ctx context.Context, ctx2 *fetchRunCtx, req *core.Fetc
 	writeTailReceipt(ctx2, budget)
 	s, dir := ctx2.runner, ctx2.dir
 	hint := authorRoutingHint(dir)
-	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
+	next := "feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
 		dir + "/PR.json + " + diffFeed(dir, chunkJSON != nil, fullDiffFile) + impactFeed(dir, f.Index) + contextFeed(dir, f.Context) +
 		" to any agent; ask it to write " + dir + "/review.json" +
 		threadsHint(dir) + hint
@@ -106,7 +106,7 @@ func stageDump(ctx2 *fetchRunCtx, show bool) (string, bool, error) {
 func writeFetchDone(r *session, dir, filesStr string, chunked bool, index string, hint string) {
 	shown := r.display(dir)
 	fmt.Fprintf(r.Human, "done: %s/PR.json %s/full.diff %s/toc.txt %s/roles.txt (%s files)\n", shown, shown, shown, shown, filesStr)
-	fmt.Fprintf(r.Human, "next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
+	fmt.Fprintf(r.Human, "next: feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + "+
 		"%s/PR.json + %s%s (+ %s/roles.txt) to any agent; ask it to write %s/review.json%s%s\n",
 		dir, diffFeed(dir, chunked, dir+"/full.diff"), impactFeed(dir, index), dir, dir, threadsHint(dir), hint)
 }
@@ -459,7 +459,7 @@ func fetchTailLocal(
 		return nil, "", err
 	}
 	writeTailReceipt(ctx2, budget)
-	next := "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
+	next := "feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + " +
 		ctx2.dir + "/source.json + " + diffFeed(ctx2.dir, chunkJSON != nil, fullDiffFile) + impactFeed(ctx2.dir, f.Index) +
 		contextFeed(ctx2.dir, f.Context) +
 		" to any agent; ask it to write " + ctx2.dir + "/review.json"

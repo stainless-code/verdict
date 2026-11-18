@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/core/skill"
 )
 
@@ -32,9 +33,167 @@ func TestStatusFreshInstallInSync(t *testing.T) {
 	}
 }
 
-// TestStatusReportsDriftWritesNothing pins the read-only contract: a hand edit
-// reads update with the edit in its unified diff, and the tree is unchanged.
-// TestStatusReportsDriftWritesNothing pins the read-only drift report.
+type statusLeg struct {
+	mutate     func(*testing.T, string)
+	name       string
+	wantInSync bool
+}
+
+// TestStatusComparesStubVersion pins the stub contract through StatusAgents:
+// a matching stub_version forgives SKILL.md bytes only, while every other
+// payload file still has to match this binary byte for byte.
+func TestStatusComparesStubVersion(t *testing.T) {
+	t.Parallel()
+	skillMD := filepath.ToSlash(skillfs.SkillMD)
+	noticeMD := filepath.ToSlash("NOTICE.md")
+	shim := filepath.ToSlash(filepath.Join("scripts", "verdict"))
+	tests := []statusLeg{
+		{name: "fresh install is in sync", wantInSync: true},
+		{name: "SKILL.md body edit stays in sync", mutate: editSkillBody, wantInSync: true},
+		{name: "stub_version edit drifts", mutate: bumpStubVersion},
+		{name: "shim deletion drifts", mutate: deleteShim},
+		{name: "shim byte edit drifts", mutate: editShim},
+		{name: "NOTICE.md deletion drifts", mutate: deleteNotice},
+	}
+	wantChanged := map[string][]string{
+		"stub_version edit drifts":  {skillMD},
+		"shim deletion drifts":      {shim},
+		"shim byte edit drifts":     {shim},
+		"NOTICE.md deletion drifts": {noticeMD},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertStatusLeg(t, tc, wantChanged[tc.name])
+		})
+	}
+}
+
+func assertStatusLeg(t *testing.T, tc statusLeg, wantChanged []string) {
+	t.Helper()
+	set := statusForInstalledAgent(t, tc.mutate)
+	if len(set.Targets) != 1 {
+		t.Fatalf("targets = %d, want 1", len(set.Targets))
+	}
+	st := set.Targets[0]
+	wantStatus := skill.StatusUpdate
+	if tc.wantInSync {
+		wantStatus = skill.StatusKeep
+	}
+	if set.InSync != tc.wantInSync || st.InSync != tc.wantInSync {
+		t.Fatalf("in_sync = set %v target %v, want %v", set.InSync, st.InSync, tc.wantInSync)
+	}
+	if st.Plan.Status != wantStatus {
+		t.Fatalf("status = %q, want %q", st.Plan.Status, wantStatus)
+	}
+	if got := slashPaths(st.Plan.Changed); !slices.Equal(got, wantChanged) {
+		t.Fatalf("changed = %v, want %v", got, wantChanged)
+	}
+	if got := diffPaths(st.Diffs); !slices.Equal(got, wantChanged) {
+		t.Fatalf("diff paths = %v, want %v", got, wantChanged)
+	}
+}
+
+func slashPaths(paths []string) []string {
+	var out []string
+	for _, path := range paths {
+		out = append(out, filepath.ToSlash(path))
+	}
+	return out
+}
+
+func diffPaths(diffs []skill.Diff) []string {
+	var out []string
+	for _, diff := range diffs {
+		out = append(out, filepath.ToSlash(diff.Path))
+	}
+	return out
+}
+
+// statusForInstalledAgent seeds an agent install, applies one mutation, and
+// reads the report through the exported multi-agent status route.
+func statusForInstalledAgent(t *testing.T, mutate func(*testing.T, string)) skill.StatusSet {
+	t.Helper()
+	req := newRequest(t)
+	req.Agent = "claude"
+	ctx := context.Background()
+	if _, ref := skill.Install(ctx, req); ref != nil {
+		t.Fatalf("seed install: %v", ref)
+	}
+	before, ref := skill.StatusAgents(ctx, req, []string{"claude"}, false)
+	if ref != nil {
+		t.Fatalf("StatusAgents before mutation: %v", ref)
+	}
+	if len(before.Targets) != 1 {
+		t.Fatalf("targets before mutation = %d, want 1", len(before.Targets))
+	}
+	if mutate != nil {
+		mutate(t, before.Targets[0].Plan.Target)
+	}
+	set, ref := skill.StatusAgents(ctx, req, []string{"claude"}, true)
+	if ref != nil {
+		t.Fatalf("StatusAgents after mutation: %v", ref)
+	}
+	return set
+}
+
+// editSkillBody appends prose without touching the installed stub_version.
+func editSkillBody(t *testing.T, target string) {
+	t.Helper()
+	path := filepath.Join(target, skillfs.SkillMD)
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(body, []byte("\nhand edited\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// bumpStubVersion changes the installed stub_version to a different integer.
+func bumpStubVersion(t *testing.T, target string) {
+	t.Helper()
+	path := filepath.Join(target, skillfs.SkillMD)
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited := strings.Replace(string(body), "stub_version: "+skillfs.StubVersion, "stub_version: 2", 1)
+	if edited == string(body) {
+		t.Fatal("installed stub has no stub_version to edit")
+	}
+	if err := os.WriteFile(path, []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// deleteShim removes the executable that resolves the judge binary.
+func deleteShim(t *testing.T, target string) {
+	t.Helper()
+	if err := os.Remove(filepath.Join(target, "scripts", "verdict")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// editShim replaces the shim with different executable bytes.
+func editShim(t *testing.T, target string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(target, "scripts", "verdict"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// deleteNotice removes the other non-SKILL.md payload file.
+func deleteNotice(t *testing.T, target string) {
+	t.Helper()
+	if err := os.Remove(filepath.Join(target, "NOTICE.md")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestStatusReportsDriftWritesNothing pins the read-only contract: a changed
+// stub_version reads update with the edit in its unified diff, and the tree is
+// unchanged.
 //
 //nolint:cyclop,revive // the test walks the drift arm
 func TestStatusReportsDriftWritesNothing(t *testing.T) {
@@ -46,7 +205,15 @@ func TestStatusReportsDriftWritesNothing(t *testing.T) {
 	if _, ref := skill.Install(context.Background(), req); ref != nil {
 		t.Fatalf("seed install: %v", ref)
 	}
-	if err := os.WriteFile(filepath.Join(target, "SKILL.md"), []byte("hand edited\n"), 0o644); err != nil {
+	stub, err := os.ReadFile(filepath.Join(target, "SKILL.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	edited := strings.Replace(string(stub), "stub_version: "+skillfs.StubVersion, "stub_version: 2", 1)
+	if edited == string(stub) {
+		t.Fatal("installed stub has no stub_version to edit")
+	}
+	if err := os.WriteFile(filepath.Join(target, "SKILL.md"), []byte(edited), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	before := treeSnapshot(t, target)
@@ -67,11 +234,11 @@ func TestStatusReportsDriftWritesNothing(t *testing.T) {
 	if len(st.Diffs) != 1 || st.Diffs[0].Path != "SKILL.md" {
 		t.Fatalf("diffs = %+v, want one for SKILL.md", st.Diffs)
 	}
-	if !strings.Contains(st.Diffs[0].Body, "-hand edited\n") {
-		t.Fatalf("diff does not show the removed hand edit:\n%s", st.Diffs[0].Body)
+	if !strings.Contains(st.Diffs[0].Body, "-stub_version: 2") {
+		t.Fatalf("diff does not show the installed stub_version:\n%s", st.Diffs[0].Body)
 	}
-	if !strings.Contains(st.Diffs[0].Body, "+---\n") {
-		t.Fatalf("diff does not show the embedded first line as an addition:\n%s", st.Diffs[0].Body)
+	if !strings.Contains(st.Diffs[0].Body, "+stub_version: "+skillfs.StubVersion) {
+		t.Fatalf("diff does not show the embedded stub_version as an addition:\n%s", st.Diffs[0].Body)
 	}
 	if st.Diffs[0].Truncated {
 		t.Fatal("small edit reported truncated")

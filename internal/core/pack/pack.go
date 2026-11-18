@@ -1,6 +1,6 @@
 // Package pack loads a lens pack: a strict JSON manifest plus one markdown
 // body per lens and rule, hashed as one canonical tree. The built-in pack
-// ships in skills/verdict/packs/builtin; org and repo packs layer above it.
+// ships in procedure/packs/builtin; org and repo packs layer above it.
 package pack
 
 import (

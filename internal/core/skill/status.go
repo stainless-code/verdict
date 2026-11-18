@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	skillfs "github.com/stainless-code/verdict"
@@ -12,7 +13,9 @@ import (
 )
 
 // TargetStatus is one target's read-only drift report. InSync means the
-// installed bytes and the receipt version both match the embedded payload.
+// installed stub_version and receipt version match this binary and no file
+// besides SKILL.md drifted; a matching stub_version forgives SKILL.md byte
+// edits only.
 type TargetStatus struct {
 	Diffs  []Diff
 	Plan   Plan
@@ -46,10 +49,7 @@ func StatusAgents(ctx context.Context, req *Request, agents []string, includeDif
 	if err := ctx.Err(); err != nil {
 		return StatusSet{}, refuse(codeCanceled, "canceled before skill status completed")
 	}
-	files, ref := List(ctx, req)
-	if ref != nil {
-		return StatusSet{}, ref
-	}
+	files := InstallInventory(req)
 	plans, agents, ref := planAgents(req, files, agents)
 	if ref != nil {
 		return StatusSet{}, ref
@@ -78,6 +78,9 @@ func StatusDetected(ctx context.Context, req *Request, includeDiff bool) (Status
 }
 
 func buildStatus(plan *Plan, includeDiff bool) (TargetStatus, *core.RefusalError) {
+	if ref := applyStubVersion(plan); ref != nil {
+		return TargetStatus{}, ref
+	}
 	st := TargetStatus{Plan: *plan, InSync: inSync(plan)}
 	if includeDiff {
 		diffs, ref := diffPlan(plan)
@@ -107,6 +110,82 @@ func buildStatusSet(files Inventory, agents []string, plans []Plan, includeDiff 
 
 func inSync(plan *Plan) bool {
 	return plan.Status == StatusKeep && plan.ReceiptVersion == plan.Version
+}
+
+// applyStubVersion applies the stub contract to an install plan. A matching
+// stub_version forgives SKILL.md byte differences only, so every other changed
+// file stays in plan.Changed; a missing or different version adds SKILL.md to
+// the changed list. Status derives from what remains: keep when nothing is
+// left, update otherwise.
+func applyStubVersion(plan *Plan) *core.RefusalError {
+	if plan.Status != StatusKeep && plan.Status != StatusUpdate {
+		return nil
+	}
+	root, err := os.OpenRoot(plan.Target)
+	if err != nil {
+		return refuse(codeRead, fmt.Sprintf("cannot read %s: %s", plan.Target, err))
+	}
+	defer func() { _ = root.Close() }()
+	if stubVersionMatches(root) {
+		plan.Changed = forgiveStubFile(plan.Changed)
+	} else {
+		plan.Changed = markStubFile(plan.Changed)
+	}
+	if len(plan.Changed) == 0 {
+		plan.Status = StatusKeep
+	} else {
+		plan.Status = StatusUpdate
+	}
+	return nil
+}
+
+// stubVersionMatches reports whether the installed stub is the one served by
+// this binary.
+func stubVersionMatches(root *os.Root) bool {
+	installed, ok := installedStubVersion(root)
+	return ok && installed == skillfs.StubVersion
+}
+
+// forgiveStubFile drops only SKILL.md from the drift list; other files still
+// have to match this binary byte for byte.
+func forgiveStubFile(changed []string) []string {
+	return slices.DeleteFunc(changed, func(path string) bool {
+		return path == skillfs.SkillMD
+	})
+}
+
+// markStubFile adds SKILL.md to the drift list once, without hiding anything
+// else the install plan already found.
+func markStubFile(changed []string) []string {
+	if slices.Contains(changed, skillfs.SkillMD) {
+		return changed
+	}
+	return append(changed, skillfs.SkillMD)
+}
+
+// installedStubVersion reads stub_version from an installed SKILL.md's YAML
+// frontmatter. A missing, unquoted, or quoted value is still a literal match
+// against the version this binary serves.
+func installedStubVersion(root *os.Root) (string, bool) {
+	raw, err := root.ReadFile(filepath.FromSlash(skillfs.SkillMD))
+	if err != nil {
+		return "", false
+	}
+	body := string(raw)
+	if !strings.HasPrefix(body, "---\n") {
+		return "", false
+	}
+	frontmatter, _, ok := strings.Cut(body[len("---\n"):], "\n---")
+	if !ok {
+		return "", false
+	}
+	for line := range strings.SplitSeq(frontmatter, "\n") {
+		key, value, found := strings.Cut(line, ":")
+		if found && strings.TrimSpace(key) == "stub_version" {
+			return strings.Trim(strings.TrimSpace(value), "\"'"), true
+		}
+	}
+	return "", false
 }
 
 func diffPlan(plan *Plan) ([]Diff, *core.RefusalError) {

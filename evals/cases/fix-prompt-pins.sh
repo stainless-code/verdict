@@ -5,8 +5,8 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
 
-ADDR="$EVAL_SKILL/prompts/address-reviews.md"
-FIXCI="$EVAL_SKILL/prompts/fix-ci.md"
+ADDR="$EVAL_PROCEDURE/prompts/address-reviews.md"
+FIXCI="$EVAL_PROCEDURE/prompts/fix-ci.md"
 
 if grep -Fq 'untrusted review data' "$ADDR"; then
   good "address-reviews names finding content as untrusted review data"

@@ -319,7 +319,7 @@ var publishedSemantics = map[string]string{
 	"identity.schema.json": "993b01b4c6891f2dc2e78454aac8bd2abaa8740c073bd5fc8124d4b47f7e68c9",
 	// additive pack.schema.json (new document; no existing schema property,
 	// required key, or type changed). The lens-pack manifest fetch resolves
-	// from skills/verdict/packs/builtin: a closed object plus one closed lens
+	// from procedure/packs/builtin: a closed object plus one closed lens
 	// row (id, optional globs, and the dispatch caps).
 	// lens count prose: the description now names the loader as the enforcer
 	// of the 64-lens cap (pack-too-large) instead of promising a maxItems the
@@ -374,7 +374,7 @@ var publishedSemantics = map[string]string{
 	// pack declares none, so a shipped lens states no return cap and returns
 	// what its evidence supports. Prose only; no property, required key, enum,
 	// or type changed.
-	"pack.schema.json": "48ce9ee6123e74aa3dd2eab0a92b3998ecfb519d79b60b87827321735df75314",
+	"pack.schema.json": "835b63fcb81fb9b27932f178c505d4e219504972d5bc8582ff8f94eb44085dec",
 	// additive recipes.schema.json (new control document: the declared review
 	// pipelines a run resolves by name at the PR base). No existing schema
 	// property, required key, enum, or type changed.

@@ -57,10 +57,7 @@ func InstallAgents(ctx context.Context, req *Request, agents []string) (Detectio
 	if err := ctx.Err(); err != nil {
 		return Detection{}, refuse(codeCanceled, "canceled before skill install completed")
 	}
-	files, ref := List(ctx, req)
-	if ref != nil {
-		return Detection{}, ref
-	}
+	files := InstallInventory(req)
 	plans, agents, ref := planAgents(req, files, agents)
 	if ref != nil {
 		return Detection{}, ref
@@ -131,10 +128,10 @@ func applyDetected(req *Request, plans []Plan) *core.RefusalError {
 }
 
 func planDetected(ctx context.Context, req *Request) (Detection, *core.RefusalError) {
-	files, ref := List(ctx, req)
-	if ref != nil {
-		return Detection{}, ref
+	if err := ctx.Err(); err != nil {
+		return Detection{}, refuse(codeCanceled, "canceled before skill install completed")
 	}
+	files := InstallInventory(req)
 	agents, plans, resolvable, ref := detectAll(files, req)
 	if ref != nil {
 		return Detection{}, ref

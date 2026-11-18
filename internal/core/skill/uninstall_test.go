@@ -170,7 +170,7 @@ func TestUninstallRefusesConflictBeforeDeleting(t *testing.T) {
 	if ref == nil || ref.Code != "skill-foreign-conflict" {
 		t.Fatalf("conflict refusal = %v, want skill-foreign-conflict", ref)
 	}
-	if _, err := os.Stat(filepath.Join(target, "prompts", "review.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(target, "scripts", "verdict")); err != nil {
 		t.Fatal("conflict refusal deleted an earlier payload file")
 	}
 }
@@ -188,12 +188,12 @@ func TestUninstallRefusesPayloadDirEscapingTheTarget(t *testing.T) {
 		t.Fatalf("seed install: %v", ref)
 	}
 	outside := filepath.Join(dir, "outside")
-	outsideFile := filepath.Join(outside, "review.md")
+	outsideFile := filepath.Join(outside, "verdict")
 	writeTestFile(t, outsideFile, "outside bytes\n")
-	if err := os.RemoveAll(filepath.Join(target, "prompts")); err != nil {
+	if err := os.RemoveAll(filepath.Join(target, "scripts")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outside, filepath.Join(target, "prompts")); err != nil {
+	if err := os.Symlink(outside, filepath.Join(target, "scripts")); err != nil {
 		t.Skipf("this platform cannot create symlinks here: %v", err)
 	}
 	modes := []struct {

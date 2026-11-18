@@ -7,7 +7,7 @@ exit: 0
 » panel: none pinned (set REVIEW_PANEL or the typed defaults.panel for comparable, cost-capped runs)
 » reviews + inline comments
 done: .verdict/state/4703/PR.json .verdict/state/4703/full.diff .verdict/state/4703/toc.txt .verdict/state/4703/roles.txt (1 files)
-next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4703/PR.json + .verdict/state/4703/chunks/manifest.json and the chunks it lists (+ .verdict/state/4703/roles.txt) to any agent; ask it to write .verdict/state/4703/review.json
+next: feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4703/PR.json + .verdict/state/4703/chunks/manifest.json and the chunks it lists (+ .verdict/state/4703/roles.txt) to any agent; ask it to write .verdict/state/4703/review.json
 --- stderr ---
 » chunking opted in for group 3bcde6bab8c1780c97d71b2714e76faef660e00614765a899e347ee893b4c6a4 — slicing that group's over-cap diff (832678 bytes, cap 512000)
 » chunked: 2 chunk(s) at or under 512000 bytes + .verdict/state/4703/chunks/manifest.json
@@ -407,12 +407,12 @@ rather than becoming ground truth.
 --- file C/.verdict/state/4703/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "5d848d2413108117ae2b1c3d82359ee153cc2137a76283ccfa651f79fbdb7b49",
-  "prompts_hash": "57708e26c0828084fa5ffc651af76a5f7b6d8c5dc404408c1806f4046a635cc9",
+  "run_id": "d0a1c8910b82823abe74af25700c5b4f49a7863301cb48c87f883066f38ba59f",
+  "prompts_hash": "3c57d8f39a074b67f54d2cdb6b7d15408334b5f0f410a36b79f3f2f473ec8516",
   "inputs": [
     {
       "kind": "prompt",
-      "name": "SKILL.md",
+      "name": "PROCEDURE.md",
       "status": "included",
       "sha256": "6e55c5ebee9a13a25b8e95e9249ec909d7e92b6bfbcf6e3a2fb7a5c6236be01c",
       "bytes": 13427

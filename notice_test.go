@@ -67,7 +67,7 @@ func readRootNotice(t *testing.T) string {
 // prompts live and where the payload copy that travels with the skill lives.
 func assertRootNoticeNamesPrompts(t *testing.T, root string) {
 	t.Helper()
-	if !strings.Contains(root, "`skills/verdict/prompts/`") {
+	if !strings.Contains(root, "`procedure/prompts/`") {
 		t.Errorf("%s does not name the adapted prompts directory", noticeRoot)
 	}
 	if !strings.Contains(root, "`skills/verdict/NOTICE.md`") {

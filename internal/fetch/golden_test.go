@@ -293,7 +293,7 @@ func seedBase(t *testing.T, dir string, controls map[string]string) string {
 // writePrompts plants the trusted prompt inputs beside the sandbox root.
 func writePrompts(t *testing.T, dir string) {
 	t.Helper()
-	writeFile(t, dir, "SKILL.md", "# verdict skill (parity fixture)\n")
+	writeFile(t, dir, "PROCEDURE.md", "# verdict procedure (parity fixture)\n")
 	writeFile(t, dir, "prompts/system.md", "# system (parity fixture)\n")
 	writeFile(t, dir, "prompts/review.md", "# review (parity fixture)\n")
 	writeFile(t, dir, "prompts/diagrams.md", "# diagrams (parity fixture)\n")

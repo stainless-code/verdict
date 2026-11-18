@@ -6,7 +6,7 @@ exit: 0
   "repo": "acme/app",
   "pr": 4712,
   "at": "0000-00-00T00:00:00Z",
-  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4712/PR.json + full.diff to any agent; ask it to write .verdict/state/4712/review.json",
+  "next": "feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4712/PR.json + full.diff to any agent; ask it to write .verdict/state/4712/review.json",
   "warnings": [],
   "data": {
     "dir": ".verdict/state/4712",
@@ -74,7 +74,7 @@ exit: 0
 » panel: none pinned (set REVIEW_PANEL or the typed defaults.panel for comparable, cost-capped runs)
 » reviews + inline comments
 done: .verdict/state/4712/PR.json .verdict/state/4712/full.diff .verdict/state/4712/toc.txt .verdict/state/4712/roles.txt (2 files)
-next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4712/PR.json + .verdict/state/4712/full.diff (+ .verdict/state/4712/roles.txt) to any agent; ask it to write .verdict/state/4712/review.json
+next: feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4712/PR.json + .verdict/state/4712/full.diff (+ .verdict/state/4712/roles.txt) to any agent; ask it to write .verdict/state/4712/review.json
 --- files ---
 --- file C/.gh-calls.log ---
 CALL: pr view 4712 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits,files,additions,deletions,isDraft,reviewDecision,state
@@ -334,12 +334,12 @@ rather than becoming ground truth.
 --- file C/.verdict/state/4712/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "67a25e325f88bf10adc34a50df0713066ed568fda46ae7621bc2fdd6308c5e4c",
-  "prompts_hash": "57708e26c0828084fa5ffc651af76a5f7b6d8c5dc404408c1806f4046a635cc9",
+  "run_id": "4772292f39e0115a082ff60ce38a7efc1f6228d972c65470bc9560fd26708dd2",
+  "prompts_hash": "3c57d8f39a074b67f54d2cdb6b7d15408334b5f0f410a36b79f3f2f473ec8516",
   "inputs": [
     {
       "kind": "prompt",
-      "name": "SKILL.md",
+      "name": "PROCEDURE.md",
       "status": "included",
       "sha256": "6e55c5ebee9a13a25b8e95e9249ec909d7e92b6bfbcf6e3a2fb7a5c6236be01c",
       "bytes": 13427

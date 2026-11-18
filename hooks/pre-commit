@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Check-only: never rewrites a file. A rewrite would reflow the prompt examples
-# under skills/verdict/prompts/ (CONTRIBUTING ## Formatting).
+# under procedure/prompts/ (CONTRIBUTING ## Formatting).
 set -euo pipefail
 
 # git exports GIT_DIR for its hooks; the archtest and go vet child processes
@@ -13,7 +13,7 @@ actionlint_pin=github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
 fmt_files=() shell_files=() go_files=() wf_files=() mod_files=()
 while IFS= read -r f; do
   [ -n "$f" ] || continue
-  case "$f" in skills/verdict/prompts/*) continue ;; esac
+  case "$f" in procedure/prompts/*) continue ;; esac
   case "$f" in
     *.md|*.mdx|*.json|*.ts|*.js|*.mjs|*.cjs|*.css|*.html|*.yml|*.yaml|*.webmanifest) fmt_files+=("$f") ;;
   esac

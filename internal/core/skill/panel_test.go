@@ -18,9 +18,9 @@ func TestPanelSkillLifecycle(t *testing.T) {
 		t.Fatal(ref)
 	}
 	target := filepath.Join(req.Dir, "verdict")
-	raw, err := os.ReadFile(filepath.Join(target, "references/panel.md"))
-	if err != nil || len(raw) == 0 {
-		t.Fatalf("installed panel reference=%q, %v", raw, err)
+	raw, ref := skill.ShowFile(context.Background(), req, "references/panel.md")
+	if ref != nil || len(raw) == 0 {
+		t.Fatalf("served panel reference=%q, %v", raw, ref)
 	}
 	if _, ref := skill.Uninstall(context.Background(), req); ref != nil {
 		t.Fatal(ref)

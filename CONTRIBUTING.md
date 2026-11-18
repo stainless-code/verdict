@@ -70,10 +70,15 @@ rename in the tree. The binary installs its own embedded skill copy with
 
 ```
 verdict/
-  skills/verdict/     # the skill payload copied by `npx skills add`:
-    SKILL.md          #   skill entry point (feed to any agent)
+  skills/verdict/     # the Bootstrap skill copied by `npx skills add`:
+    SKILL.md          #   entry point: where the Procedure lives, how to reach the binary
+    NOTICE.md         #   upstream license notice
+    scripts/verdict   #   POSIX shim: VERDICT_BIN, skill bin, PATH
+  procedure/          # the Procedure served only by the binary:
+    PROCEDURE.md      #   index of the task-scoped instructions
     prompts/          #   system, review, incremental, address, fix-ci, build, ci, grade, diagrams, subagent
-    scripts/verdict   #   POSIX skill shim: VERDICT_BIN, bundled bin, PATH, then bootstrap
+    packs/            #   built-in lens pack
+    references/       #   shared review references
   schemas/            # published JSON Schemas, served by `verdict skill files` at schemas/
   install.sh          # verified binary installer (macOS/Linux release asset)
   install.ps1         # verified binary installer (Windows release asset)
@@ -110,7 +115,7 @@ Every PR must clear all of these; CI enforces each one:
    `.golangci.yml` (CI runs the pinned action; zero issues, no new
    `//nolint`).
 4. **Formatted.** `bun fmt --check .` before pushing; fix only what it
-   flags, and never reflow `skills/verdict/prompts/` examples.
+   flags, and never reflow `procedure/prompts/` examples.
 5. **A changeset when the repo's practice requires one.** See
    [Versioning](#versioning).
 

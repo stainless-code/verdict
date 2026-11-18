@@ -352,7 +352,7 @@ func assertFetchEnvelope(t *testing.T, resp *core.FetchResponse, human *bytes.Bu
 		t.Errorf("envelope missing identity:\n%s", raw)
 	}
 	if got := human.String(); !strings.Contains(got, "done: .verdict/state/7/PR.json") ||
-		!strings.Contains(got, "next: feed SKILL.md") {
+		!strings.Contains(got, "next: feed PROCEDURE.md") {
 		t.Errorf("human lines:\n%s", got)
 	}
 }

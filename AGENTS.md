@@ -43,9 +43,9 @@ skip-token ban and test determinism. Read both before writing or reviewing Go.
   argv a case did not register (`evals/README.md`, `evals/lib/hoststub.sh`).
 - **No `/tmp` test dirs.** Use `t.TempDir()` for files and `internal/testenv`
   for child processes; a hardcoded path leaks across parallel runs.
-- **Exactly six skill files are hashed into goldens:** `skills/verdict/SKILL.md`
-  and `prompts/{system,review,diagrams,verifier,validate}.md`; a change moves
-  only `prompts_hash` lines and the literal pin in `provenance/prompts_test.go`.
+- **Exactly six Procedure files are hashed into goldens:** `procedure/PROCEDURE.md`
+  and `procedure/prompts/{system,review,diagrams,verifier,validate}.md`; a change moves
+  only `prompts_hash` lines and the literal pin in `internal/provenance/prompts_test.go`.
 
 ## Git and commits
 
@@ -73,7 +73,7 @@ skip-token ban and test determinism. Read both before writing or reviewing Go.
 
 - Before commit or push, run `bun fmt --check` on changed files when Bun is
   available; fix only non-example hunks.
-- Never reflow `skills/verdict/prompts/` examples — see `CONTRIBUTING.md` § Formatting.
+- Never reflow `procedure/prompts/` examples — see `CONTRIBUTING.md` § Formatting.
 - `gofmt -l .` must be empty, and shell files gate on `shellcheck -S warning`
   (see `hooks/pre-commit`).
 - `golangci-lint run ./...` must report 0 issues under `.golangci.yml`; no new

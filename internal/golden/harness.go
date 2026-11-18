@@ -38,6 +38,8 @@ const (
 	filePerm = 0o600
 	// maxRootDepth bounds the walk-up search for the checkout root.
 	maxRootDepth = 10
+	// packageJSON names the manifest that marks a checkout root.
+	packageJSON = "package.json"
 	// stubPerm marks the gh stub executable; the stub must run first on
 	// PATH for the network-dead hermetic runs.
 	stubPerm = 0o755
@@ -130,17 +132,16 @@ func buildBinary(repoRoot, dir string) error {
 // binary resolves the repo root from its own directory; planted copies let
 // the harness run from worktrees and MAIN alike).
 func copyProvenance(repoRoot, tmp string) error {
-	skill := filepath.Join(repoRoot, "skills", "verdict")
-	for _, f := range []string{"package.json", "SKILL.md"} {
-		src := filepath.Join(repoRoot, f)
-		if f == "SKILL.md" {
-			src = filepath.Join(skill, f) // the payload lives in skills/verdict
-		}
-		if err := copyFile(src, filepath.Join(tmp, f)); err != nil {
-			return jq.Sealed("provenance "+f, err)
-		}
+	procedure := filepath.Join(repoRoot, "procedure")
+	src := filepath.Join(repoRoot, packageJSON)
+	if err := copyFile(src, filepath.Join(tmp, packageJSON)); err != nil {
+		return jq.Sealed("provenance package.json", err)
 	}
-	if err := copyProvenanceDir(skill, tmp, "prompts"); err != nil {
+	src = filepath.Join(procedure, "PROCEDURE.md")
+	if err := copyFile(src, filepath.Join(tmp, "PROCEDURE.md")); err != nil {
+		return jq.Sealed("provenance PROCEDURE.md", err)
+	}
+	if err := copyProvenanceDir(procedure, tmp, "prompts"); err != nil {
 		return err
 	}
 	return copyProvenanceDir(repoRoot, tmp, "scripts")
@@ -286,7 +287,7 @@ func findRepoRoot() (string, error) {
 	}
 	dir := filepath.Dir(file)
 	for range maxRootDepth {
-		if _, err := os.Stat(filepath.Join(dir, "package.json")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, packageJSON)); err == nil {
 			return dir, nil
 		}
 		dir = filepath.Dir(dir)
@@ -323,7 +324,7 @@ var curlMsRe = regexp.MustCompile(`(Failed to connect to \S+ port \d+ after )\d+
 // the version-source eval pins the real rendering through the binary).
 var versionScrub = sync.OnceValue(func() func(string) string {
 	version := ""
-	if raw, err := os.ReadFile(filepath.Join(repoRoot(), "package.json")); err == nil {
+	if raw, err := os.ReadFile(filepath.Join(repoRoot(), packageJSON)); err == nil {
 		var doc struct {
 			Version string `json:"version"`
 		}
@@ -348,7 +349,7 @@ func repoRoot() string {
 	}
 	dir := filepath.Dir(file)
 	for range maxRootDepth {
-		if _, err := os.Stat(filepath.Join(dir, "package.json")); err == nil {
+		if _, err := os.Stat(filepath.Join(dir, packageJSON)); err == nil {
 			return dir
 		}
 		parent := filepath.Dir(dir)

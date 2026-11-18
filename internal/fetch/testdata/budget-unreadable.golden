@@ -6,7 +6,7 @@ exit: 0
   "repo": "acme/app",
   "pr": 4705,
   "at": "0000-00-00T00:00:00Z",
-  "next": "feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4705/PR.json + full.diff to any agent; ask it to write .verdict/state/4705/review.json; prior threads are in .verdict/state/4705/threads.json (run verdict threads to refresh)",
+  "next": "feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4705/PR.json + full.diff to any agent; ask it to write .verdict/state/4705/review.json; prior threads are in .verdict/state/4705/threads.json (run verdict threads to refresh)",
   "warnings": [
     "cost history unreadable — skipped from estimate: .verdict/state/2/cost.json "
   ],
@@ -79,7 +79,7 @@ warn: cost history unreadable — skipped from estimate: .verdict/state/2/cost.j
 » panel: none pinned (set REVIEW_PANEL or the typed defaults.panel for comparable, cost-capped runs)
 » reviews + inline comments
 done: .verdict/state/4705/PR.json .verdict/state/4705/full.diff .verdict/state/4705/toc.txt .verdict/state/4705/roles.txt (1 files)
-next: feed SKILL.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4705/PR.json + .verdict/state/4705/full.diff (+ .verdict/state/4705/roles.txt) to any agent; ask it to write .verdict/state/4705/review.json; prior threads are in .verdict/state/4705/threads.json (run verdict threads to refresh)
+next: feed PROCEDURE.md + prompts/system.md + prompts/review.md + prompts/diagrams.md + .verdict/state/4705/PR.json + .verdict/state/4705/full.diff (+ .verdict/state/4705/roles.txt) to any agent; ask it to write .verdict/state/4705/review.json; prior threads are in .verdict/state/4705/threads.json (run verdict threads to refresh)
 --- files ---
 --- file C/.gh-calls.log ---
 CALL: pr view 4705 --repo acme/app --json number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits,files,additions,deletions,isDraft,reviewDecision,state
@@ -332,12 +332,12 @@ rather than becoming ground truth.
 --- file C/.verdict/state/4705/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "b52de828f9ea0c89804103e85d5d0cc541294a69467ef2774ac3a9836edb7d30",
-  "prompts_hash": "57708e26c0828084fa5ffc651af76a5f7b6d8c5dc404408c1806f4046a635cc9",
+  "run_id": "899b901c163366f069250f41d268f0749d2fac24300af0c355f5cdd9563761f3",
+  "prompts_hash": "3c57d8f39a074b67f54d2cdb6b7d15408334b5f0f410a36b79f3f2f473ec8516",
   "inputs": [
     {
       "kind": "prompt",
-      "name": "SKILL.md",
+      "name": "PROCEDURE.md",
       "status": "included",
       "sha256": "6e55c5ebee9a13a25b8e95e9249ec909d7e92b6bfbcf6e3a2fb7a5c6236be01c",
       "bytes": 13427

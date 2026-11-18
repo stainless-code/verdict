@@ -44,7 +44,7 @@ func TestAgentNamesMatchTheirSurfaces(t *testing.T) {
 	}{
 		{path: filepath.Join(root, "cmd", "verdict", "usage.go")},
 		{path: filepath.Join(root, "docs", "manual.md"), quoted: true},
-		{path: filepath.Join(root, "skills", "verdict", "references", "commands.md"), quoted: true},
+		{path: filepath.Join(root, "procedure", "references", "commands.md"), quoted: true},
 	} {
 		assertSurfaceNames(t, surface.path, surface.quoted, names)
 	}

@@ -838,7 +838,7 @@ func checkPromptProvenance(t *testing.T, cfg *Config, rep *Report) {
 	if got, want := rep.PromptSHA["off-by-one"], hex.EncodeToString(sum[:]); got != want {
 		t.Errorf("prompt sha256 = %q, want the shipped plus derived bytes (%q)", got, want)
 	}
-	if _, err := os.Stat(filepath.Join(cfg.WorkDir, prefixPrompts, "SKILL.md")); err != nil {
+	if _, err := os.Stat(filepath.Join(cfg.WorkDir, prefixPrompts, "PROCEDURE.md")); err != nil {
 		t.Errorf("the run dir has no prompt set: %v", err)
 	}
 }

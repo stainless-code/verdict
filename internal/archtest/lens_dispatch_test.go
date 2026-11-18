@@ -56,7 +56,7 @@ func TestBuiltinLensBodiesCapFilesNotFindings(t *testing.T) {
 
 func TestReviewerDispatchLeadsWithDomain(t *testing.T) {
 	t.Parallel()
-	prompt := string(readSkillFile(t, "prompts/reviewer-subagent.md"))
+	prompt := string(readProcedureFile(t, "prompts/reviewer-subagent.md"))
 	domain := strings.Index(prompt, "\nDomain: ")
 	if domain < 0 {
 		t.Fatalf("prompts/reviewer-subagent.md dispatch template carries no domain line")
@@ -74,5 +74,5 @@ func TestReviewerDispatchLeadsWithDomain(t *testing.T) {
 
 func builtinPackDir(t *testing.T) string {
 	t.Helper()
-	return filepath.Join(moduleRoot(t), "skills", "verdict", "packs", "builtin")
+	return filepath.Join(moduleRoot(t), "procedure", "packs", "builtin")
 }

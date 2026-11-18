@@ -48,12 +48,12 @@ func TestShowAndList(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Show: %v", ref)
 	}
-	want, err := skillfs.Read(skillfs.SkillMD)
+	want, err := skillfs.Read(skillfs.ProcedureMD)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(body, want) {
-		t.Fatal("Show did not return the embedded SKILL.md")
+		t.Fatal("Show did not return the embedded PROCEDURE.md")
 	}
 	inv := listFiles(t)
 	if inv.Name != "verdict" || inv.Version != "1.2.3" {
@@ -67,6 +67,49 @@ func TestShowAndList(t *testing.T) {
 			t.Errorf("inventory misses %s", path)
 		}
 	}
+}
+
+// TestInstallWritesOnlyTheStub pins the split: an install carries the three
+// Bootstrap skill files and the receipt, never the Procedure payload.
+func TestInstallWritesOnlyTheStub(t *testing.T) {
+	t.Parallel()
+	req := newRequest(t)
+	req.Dir = t.TempDir()
+	plan, ref := skill.Install(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("install: %v", ref)
+	}
+	wantFiles := []string{"NOTICE.md", "SKILL.md", "scripts/verdict"}
+	if !slices.Equal(plan.Files, wantFiles) {
+		t.Fatalf("install files = %v, want %v", plan.Files, wantFiles)
+	}
+	wantTree := []string{".verdict-managed", "NOTICE.md", "SKILL.md", "scripts/verdict"}
+	if got := installedTree(t, filepath.Join(req.Dir, "verdict")); !slices.Equal(got, wantTree) {
+		t.Fatalf("installed tree = %v, want %v", got, wantTree)
+	}
+}
+
+// installedTree lists every regular file under an installed skill, relative to
+// its root, so a test compares against a literal inventory.
+func installedTree(t *testing.T, root string) []string {
+	t.Helper()
+	var files []string
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil || entry.IsDir() {
+			return err
+		}
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			return err
+		}
+		files = append(files, filepath.ToSlash(rel))
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	slices.Sort(files)
+	return files
 }
 
 // TestInstallCreateDryRunApply covers the happy path: dry-run touches
@@ -383,7 +426,7 @@ func TestInstallRefusesUnwritablePayloadDir(t *testing.T) {
 	if err := os.WriteFile(drifted, []byte("stale"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	readOnly(t, filepath.Join(target, "prompts"))
+	readOnly(t, filepath.Join(target, "scripts"))
 
 	_, ref := skill.Install(context.Background(), req)
 	if ref == nil || ref.Code != "skill-install-failed" {
