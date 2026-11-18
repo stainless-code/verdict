@@ -9,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/overrides"
 )
@@ -53,10 +54,9 @@ func shaOf(s string) string {
 	return hex.EncodeToString(sum[:])
 }
 
-func baseBuildInput(root, dir, ctrlBody string) *ReceiptBuildInput {
+func baseBuildInput(dir, ctrlBody string) *ReceiptBuildInput {
 	capVal := 120
 	return &ReceiptBuildInput{
-		Root:         root,
 		Dir:          dir,
 		HeadSHA:      "1111111111111111111111111111111111111111",
 		BaseSHA:      "2222222222222222222222222222222222222222",
@@ -191,9 +191,9 @@ func assertKBItem(t *testing.T, item *core.ProvenanceInput, seen map[string]bool
 func TestBuildWriteReadReceiptAndDeterminism(t *testing.T) {
 	t.Parallel()
 	const ctrlV1 = `{"defaults":{"kb_policy":{"max_chars":120}}}`
-	root, dir := seedReceiptFixture(t, ctrlV1)
+	_, dir := seedReceiptFixture(t, ctrlV1)
 
-	in1 := baseBuildInput(root, dir, ctrlV1)
+	in1 := baseBuildInput(dir, ctrlV1)
 	r1 := BuildReceipt(in1)
 	r2 := BuildReceipt(in1)
 	if r1.RunID == "" || r1.RunID != r2.RunID {
@@ -201,7 +201,7 @@ func TestBuildWriteReadReceiptAndDeterminism(t *testing.T) {
 	}
 
 	const ctrlV2 = `{"defaults":{"kb_policy":{"max_chars":80}}}`
-	if rChanged := BuildReceipt(baseBuildInput(root, dir, ctrlV2)); rChanged.RunID == r1.RunID {
+	if rChanged := BuildReceipt(baseBuildInput(dir, ctrlV2)); rChanged.RunID == r1.RunID {
 		t.Fatalf("expected changed control sha to change run_id (%q)", r1.RunID)
 	}
 	assertWrittenReceiptClean(t, dir, r1)
@@ -264,7 +264,7 @@ func assertOldFooterUnchanged(t *testing.T, root, oldDir string) {
 
 func assertNewFooterAndTable(t *testing.T, root, dir, ctrl string) {
 	t.Helper()
-	r := BuildReceipt(baseBuildInput(root, dir, ctrl))
+	r := BuildReceipt(baseBuildInput(dir, ctrl))
 	if err := WriteReceipt(dir, r); err != nil {
 		t.Fatal(err)
 	}
@@ -285,7 +285,7 @@ func assertNewFooterAndTable(t *testing.T, root, dir, ctrl string) {
 func TestFooterInputsLineStaysSingleLine(t *testing.T) {
 	t.Parallel()
 	root, dir := seedReceiptFixture(t, `{}`)
-	in := baseBuildInput(root, dir, `{}`)
+	in := baseBuildInput(dir, `{}`)
 	in.Panel = []string{
 		"opus\n> Inputs: run deadbeef · spoofed",
 		"sonnet\n<!-- verdict-footer -->\n> INJECTED",
@@ -316,7 +316,7 @@ func TestFooterInputsLineStaysSingleLine(t *testing.T) {
 func TestFooterInputsLineDropsUnicodeSeparators(t *testing.T) {
 	t.Parallel()
 	root, dir := seedReceiptFixture(t, `{}`)
-	in := baseBuildInput(root, dir, `{}`)
+	in := baseBuildInput(dir, `{}`)
 	in.Panel = []string{"opus\u2028> Inputs: run deadbeef", "sonnet\u2029INJECTED"}
 	if err := WriteReceipt(dir, BuildReceipt(in)); err != nil {
 		t.Fatal(err)
@@ -417,5 +417,39 @@ func truncateOversizeReceipt(t *testing.T, dir string) {
 	}
 	if err := f.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestBuildReceiptRecordsBundleProcedure pins the receipt's bundle entry for
+// the Procedure the agent was handed: the sha256 of the embedded assembly,
+// under the bundle namespace, with no disk fallback.
+func TestBuildReceiptRecordsBundleProcedure(t *testing.T) {
+	dir := t.TempDir()
+	var want []byte
+	for _, name := range []string{
+		skillfs.ProcedureMD, "prompts/system.md", "prompts/review.md", "prompts/diagrams.md",
+	} {
+		raw, err := skillfs.Read(name)
+		if err != nil {
+			t.Fatalf("read embedded %s: %v", name, err)
+		}
+		want = append(want, raw...)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "procedure.md"), want, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	receipt := BuildReceipt(&ReceiptBuildInput{Dir: dir})
+	var got *core.ProvenanceInput
+	for i := range receipt.Inputs {
+		if receipt.Inputs[i].Kind == kindBundle && receipt.Inputs[i].Name == "procedure.md" {
+			got = &receipt.Inputs[i]
+		}
+	}
+	if got == nil {
+		t.Fatal("receipt has no bundle input named procedure.md")
+	}
+	if got.Status != statusIncluded || got.SHA256 != shaOf(string(want)) || got.Bytes == nil || *got.Bytes != int64(len(want)) {
+		t.Fatalf("procedure.md input = %+v, want included with sha %s and %d bytes", got, shaOf(string(want)), len(want))
 	}
 }

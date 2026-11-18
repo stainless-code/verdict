@@ -31,8 +31,8 @@ func TestRunWithTheShippedBinary(t *testing.T) {
 	if rep.Samples != 1 || len(rep.Failures) != 0 {
 		t.Fatalf("samples=%d failures=%v, want one clean sample", rep.Samples, rep.Failures)
 	}
-	if want := provenance.PromptsHash(cfg.Root); rep.PromptsHash != want {
-		t.Errorf("prompts_hash = %q, want the checkout's prompt set (%q): the run dir hash the binary sees must match what the agent read", rep.PromptsHash, want)
+	if want := provenance.PromptsHash(); rep.PromptsHash != want {
+		t.Errorf("prompts_hash = %q, want the binary's prompt set (%q): the run dir hash the binary sees must match what the agent read", rep.PromptsHash, want)
 	}
 	if rep.Cost.Measured {
 		t.Error("cost is measured for a fixture agent that reports no spend")

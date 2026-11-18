@@ -50,7 +50,6 @@ func buildProvenanceInput(ctx2 *fetchRunCtx, data *core.FetchData, dir string) *
 		bundleTrunc = data.Receipt
 	}
 	return &provenance.ReceiptBuildInput{
-		Root:         ctx2.root,
 		Dir:          dir,
 		HeadSHA:      headSHA,
 		BaseSHA:      baseSHA,

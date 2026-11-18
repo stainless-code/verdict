@@ -7,6 +7,8 @@ import (
 	"regexp"
 	"strings"
 	"testing"
+
+	skillfs "github.com/stainless-code/verdict"
 )
 
 // fenceLine matches a line that is exactly a backtick fence, optionally
@@ -16,14 +18,15 @@ var fenceLine = regexp.MustCompile("^ {0,3}(`{3,})(.*)$")
 // infoWord accepts the info strings these prompts use: a bare language tag.
 var infoWord = regexp.MustCompile(`^[A-Za-z0-9_+.-]*$`)
 
-// TestPromptsHashUnchanged pins the shipped prompt-set hash. The built-in
-// lens pack is not part of promptFiles, so shipping it must leave this value
-// byte-identical; a move here is a deliberate prompt edit, never a side effect.
+// TestPromptsHashUnchanged pins the shipped prompt-set hash from an
+// installed user's CWD: no procedure/ checkout, no prompt files on disk. The
+// built-in lens pack is not part of promptFiles, so shipping it must leave
+// this value byte-identical; a move here is a deliberate prompt edit.
 func TestPromptsHashUnchanged(t *testing.T) {
-	t.Parallel()
+	t.Chdir(t.TempDir())
 	const want = "3c57d8f39a074b67f54d2cdb6b7d15408334b5f0f410a36b79f3f2f473ec8516"
-	if got := PromptsHash(filepath.Join("..", "..")); got != want {
-		t.Fatalf("PromptsHash = %s, want %s", got, want)
+	if got := PromptsHash(); got != want {
+		t.Fatalf("PromptsHash = %s, want %s from the embedded payload", got, want)
 	}
 }
 
@@ -44,7 +47,7 @@ func TestPromptBlocksBalanced(t *testing.T) {
 // promptLines reads one served prompt and splits it into lines.
 func promptLines(t *testing.T, name string) []string {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join("..", "..", checkoutProcedureDir, name))
+	raw, err := os.ReadFile(filepath.Join("..", "..", skillfs.ProcedureDir, name))
 	if err != nil {
 		t.Fatalf("read %s: %v", name, err)
 	}
