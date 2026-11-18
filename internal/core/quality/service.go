@@ -47,7 +47,7 @@ func RunFixtures(ctx context.Context, req *Request) (*Response, *core.RefusalErr
 	if err := ctx.Err(); err != nil {
 		return nil, canceled(err)
 	}
-	catalog, dirs, root, ref := loadInputs(req)
+	catalog, files, root, ref := loadInputs(req)
 	if ref != nil {
 		return nil, ref
 	}
@@ -55,7 +55,7 @@ func RunFixtures(ctx context.Context, req *Request) (*Response, *core.RefusalErr
 	for i := range catalog.Fixtures {
 		byID[catalog.Fixtures[i].ID] = &catalog.Fixtures[i]
 	}
-	runs, findings, ref := loadRuns(ctx, dirs, byID, NewMatcher(catalog))
+	runs, findings, ref := loadRuns(ctx, files, byID, NewMatcher(catalog))
 	if ref != nil {
 		return nil, ref
 	}
@@ -75,14 +75,28 @@ func loadInputs(req *Request) (*Catalog, []string, string, *core.RefusalError) {
 	if ref != nil {
 		return nil, nil, "", ref
 	}
-	dirs, ref := RecordingDirs(recordingsRoot(root, req.RecordingsRoot))
+	base := recordingsRoot(root, req.RecordingsRoot)
+	files, ref := fixtureFiles(base, catalog)
 	if ref != nil {
 		return nil, nil, "", ref
 	}
-	if len(dirs) == 0 {
-		return nil, nil, "", invalidRecording(root, "no recordings under the recordings root")
+	if len(files) == 0 {
+		return nil, nil, "", invalidRecording(base, "no fixture recordings under the recordings root")
 	}
-	return catalog, dirs, root, nil
+	return catalog, files, root, nil
+}
+
+func fixtureFiles(base string, catalog *Catalog) ([]string, *core.RefusalError) {
+	var files []string
+	for i := range catalog.Fixtures {
+		dir := filepath.Join(base, catalog.Fixtures[i].ID, "recordings")
+		found, ref := RecordingFiles(dir)
+		if ref != nil {
+			return nil, ref
+		}
+		files = append(files, found...)
+	}
+	return files, nil
 }
 
 func buildReport(ctx context.Context, req *Request, catalog *Catalog, runs []RunScore,
@@ -120,7 +134,7 @@ func canceled(err error) *core.RefusalError {
 
 func recordingsRoot(root, override string) string {
 	if override == "" {
-		return filepath.Join(root, "bench", "quality", "recordings")
+		return filepath.Join(root, "bench", "quality")
 	}
 	if filepath.IsAbs(override) {
 		return override
@@ -128,16 +142,16 @@ func recordingsRoot(root, override string) string {
 	return filepath.Join(root, override)
 }
 
-func loadRuns(ctx context.Context, dirs []string, byID map[string]*Fixture,
+func loadRuns(ctx context.Context, files []string, byID map[string]*Fixture,
 	matcher *Matcher,
 ) ([]RunScore, map[string][]Finding, *core.RefusalError) {
-	runs := make([]RunScore, 0, len(dirs))
+	runs := make([]RunScore, 0, len(files))
 	findingsByRecording := map[string][]Finding{}
-	for _, dir := range dirs {
+	for _, file := range files {
 		if err := ctx.Err(); err != nil {
 			return nil, nil, canceled(err)
 		}
-		run, findings, ref := scoreOne(dir, byID, matcher)
+		run, findings, ref := scoreOne(file, byID, matcher)
 		if ref != nil {
 			return nil, nil, ref
 		}
@@ -147,34 +161,27 @@ func loadRuns(ctx context.Context, dirs []string, byID map[string]*Fixture,
 	return runs, findingsByRecording, nil
 }
 
-func scoreOne(dir string, byID map[string]*Fixture,
+func scoreOne(path string, byID map[string]*Fixture,
 	matcher *Matcher,
 ) (*RunScore, []Finding, *core.RefusalError) {
-	name := filepath.Base(dir)
-	meta, ref := LoadRecordingMeta(dir)
+	name := strings.TrimSuffix(filepath.Base(path), recordingExt)
+	meta, ref := LoadRecordingMeta(MetaPath(path))
+	if ref != nil {
+		return nil, nil, ref
+	}
+	recording, ref := LoadFixtureRecording(path)
 	if ref != nil {
 		return nil, nil, ref
 	}
 	fixture := byID[meta.Fixture]
 	if fixture == nil {
-		return nil, nil, invalidRecording(name, "names unknown fixture "+meta.Fixture)
+		return nil, nil, invalidRecording(path, "names unknown fixture "+meta.Fixture)
 	}
-	findings, ref := loadFindings(dir, meta.Source)
-	if ref != nil {
-		return nil, nil, ref
+	findings := make([]Finding, 0, len(recording.Findings))
+	for i := range recording.Findings {
+		findings = append(findings, recording.Findings[i].Canonical())
 	}
-	return Score(matcher, fixture, findings, meta, name), findings, nil
-}
-
-func loadFindings(dir, source string) ([]Finding, *core.RefusalError) {
-	switch source {
-	case reviewName:
-		return LoadArchivedReview(filepath.Join(dir, reviewName))
-	case findingsName:
-		return LoadRecordedFindings(dir)
-	default:
-		return nil, invalidRecording(dir, "unsupported source "+source)
-	}
+	return Score(matcher, fixture, findings, meta, recording.GatePassed, name), findings, nil
 }
 
 func calibrationSummary(calibration *CalibrationResult) CalibrationReport {

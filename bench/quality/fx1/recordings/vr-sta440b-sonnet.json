@@ -1,0 +1,30 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 103,
+      "severity": null,
+      "text": "`ProbeMatch: argsRun` can't tell this binary from the one it clashes with. The comment on this row says Homebrew's `bob` is the neovim version manager, and that tool also has a `run` subcommand. A clap-style `bob run --help` prints `Usage: bob run ...`, so the substring `run` matches and the probe passes against the wrong tool. The same weakness applies to `kilo` (line 256) and `fx` (`ask`). The match is the same token as the probe subcommand, which any usage line echoes back. Match on a string only the intended CLI prints (a flag or phrase from its help, as `cortex` does with `--print` and `forge` with `--prompt`). Otherwise the identity check gives false assurance."
+    },
+    {
+      "path": "internal/archtest/agent_sources_test.go",
+      "line": 84,
+      "severity": null,
+      "text": "For `usage.go` (`quoted=false`) the guard is `strings.Contains(doc, name)`, so short names pass without being listed. `pi`, `pa`, `fx` and `bob` appear inside other words anywhere in the file (`copilot`, `droid`, and so on). Dropping `pi` from the `--agent <...>` list would still pass, so the test can't fail for those rows. Match the name with delimiters (`|name|`, `<name|`, `|name>`), or parse the `--agent <...>` line and compare sets. Compare the sets in both directions, since the docstring also claims that names the table doesn't answer are caught, and this check doesn't do that."
+    },
+    {
+      "path": "internal/core/run/service.go",
+      "line": 336,
+      "severity": null,
+      "text": "If the parent context is cancelled while the probe runs, `pctx.Err() != nil` is true and the refusal reads `agent-mismatch ... timed out`. The earlier `ctx.Err()` check only covers cancellation before the probe starts. That mislabels an operator cancel as a wrong binary. Check `ctx.Err()` first and return the canceled refusal, and leave `timed out` for the probe's own deadline."
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 540,
+      "severity": null,
+      "text": "Nit: the `Install` fields for `zcode` (`build @zcode/cli from ...`) and `rovodev` (`install Atlassian CLI (acli)`) are prose, not commands. If the missing-binary hint prints `Install` as something to run, these two read differently from the other rows. Confirm the hint wording tolerates that, or mark them clearly as instructions."
+    }
+  ],
+  "gate_passed": true
+}

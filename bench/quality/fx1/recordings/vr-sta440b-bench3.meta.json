@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "fixture": "fx1",
+  "driver": "pi / Hy4 Flash Free",
+  "source_bundle": "vr-sta440b-bench3/bundle",
+  "source_sha256": "becd825b480e69f3a618502983f60fe456b27b9b340a549c3b9b97fc8444dfae",
+  "infra_error": null,
+  "refusal_code": null,
+  "note": "Converted once from review.json at authoring time. archived run; gate outcome captured at extraction time"
+}

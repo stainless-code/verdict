@@ -4698,7 +4698,7 @@ line per signal, and the `not citable — SZZ-derived` line.
 ### Fixtures
 
 `backtest fixtures [--fixture <id>] [--recordings <dir>] [--json]` grades the
-recorded reviews in `bench/quality/recordings/` against the known defects in
+converted recordings under `bench/quality/<fixture>/recordings/` against the known defects in
 `bench/quality/fixtures.json`. It is a pure read: no agent launch, no host call,
 no SZZ mine, and no corpus store. `--fixture <id>` limits the report to one
 fixture while calibration still checks all seven archived runs; `--recordings
@@ -4719,12 +4719,13 @@ recording is an unknown gate outcome, not a pass. Hallucination is `null` with
 `review_insufficient` counts only the literal `review-insufficient` refusal.
 Rates are rounded to four decimals and a zero denominator renders `null`.
 
-The seven archived reviews are the immutable calibration. `calibration.rows`
+The seven converted recordings are the immutable calibration. `calibration.rows`
 and `calibration.reproduced` compare each scorer hit set with the hand score
 transcribed from the original runs; CI asserts `reproduced == true`, not the
-rates. The archived reviews predate the findings-only input shape and are read
-through a loader isolated in `internal/core/quality` as calibration-input
-compatibility, not a product shim. Live recordings use `findings.json`. The
+rates. The conversion to the fixture recording shape was a one-time authoring
+step: each meta sidecar pins the source bundle and its sha256, and no product
+code reads the older review format. Later recordings use the same fixture shape
+(or the findings store when that seam lands). The
 fixture corpus format and provenance are documented in
 [`docs/benchmark.md`](benchmark.md#known-defect-fixtures-backtest-fixtures).
 

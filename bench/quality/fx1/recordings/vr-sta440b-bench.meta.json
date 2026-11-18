@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "fixture": "fx1",
+  "driver": "agy / gemini-4-hydrogen (invalid schema)",
+  "source_bundle": "vr-sta440b-bench/bundle",
+  "source_sha256": "4d61d57f32da6190ef8e54f41b40da56ab7e34f2ac96eee1c1964ff46fe250bf",
+  "infra_error": null,
+  "refusal_code": null,
+  "note": "Converted once from review.json at authoring time. gate returned data: null with error missing-findings"
+}

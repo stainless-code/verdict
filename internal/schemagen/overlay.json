@@ -332,7 +332,7 @@
   },
   "fixtures": {
     "descriptions": {
-      "": "The backtest fixtures report, written to .verdict/backtest/fixtures/report.json and echoed as the `backtest fixtures` envelope's data object: one shape, one schema. It scores recorded reviews against hand-known defects in bench/quality/fixtures.json. Recall is a per-defect hit rate over path + claim, with a mean and a union over N recordings; a union is coverage across runs, not an expected single-run score. Bonus defects are reported separately and never enter recall. Rates describe recorded reviews, not a model claim.",
+      "": "The backtest fixtures report, written to .verdict/backtest/fixtures/report.json and echoed as the `backtest fixtures` envelope's data object: one shape, one schema. It scores converted fixture recordings against hand-known defects in bench/quality/fixtures.json. Recall is a per-defect hit rate over path + claim, with a mean and a union over N recordings; a union is coverage across runs, not an expected single-run score. Bonus defects are reported separately and never enter recall. Rates describe recorded reviews, not a model claim.",
       "/properties/scored": "Recordings with no infra error, which are the only runs in the recall and false-green denominators.",
       "/properties/fixtures": "One row per fixture, or just the --fixture selection; calibration still covers every archived recording.",
       "/properties/calibration": "The seven archived hand scores, compared as hit-id sets against this build's matcher. reproduced is true only when every row passes; CI checks it, not the rates.",

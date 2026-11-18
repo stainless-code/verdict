@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "fixture": "fx1",
+  "driver": "claude / haiku-5-5",
+  "source_bundle": "vr-sta440b-haiku/bundle",
+  "source_sha256": "fe3dd23d98f8cb2d75a41c549440909831dd587703a1e9f5bb61721e026f24a6",
+  "infra_error": null,
+  "refusal_code": null,
+  "note": "Converted once from review.json at authoring time. archived run; gate outcome captured at extraction time"
+}

@@ -187,16 +187,10 @@ func TestZeroDenominatorRendersNull(t *testing.T) {
 
 func copyRecordings(t *testing.T) string {
 	t.Helper()
-	source := repoPath("bench", "quality", "recordings")
-	entries, err := os.ReadDir(source)
-	if err != nil {
-		t.Fatal(err)
-	}
 	dst := t.TempDir()
-	for _, entry := range entries {
-		if entry.IsDir() {
-			copyRecordingDir(t, filepath.Join(source, entry.Name()), filepath.Join(dst, entry.Name()))
-		}
+	for _, fixture := range []string{"fx1", "fx2"} {
+		source := repoPath("bench", "quality", fixture, "recordings")
+		copyRecordingDir(t, source, filepath.Join(dst, fixture, "recordings"))
 	}
 	return dst
 }
@@ -221,9 +215,9 @@ func copyRecordingDir(t *testing.T, source, dst string) {
 	}
 }
 
-func rewriteMeta(t *testing.T, root, recording, field, value string) {
+func rewriteMeta(t *testing.T, root, fixture, recording, field, value string) {
 	t.Helper()
-	path := filepath.Join(root, recording, metaName)
+	path := MetaPath(filepath.Join(root, fixture, "recordings", recording+recordingExt))
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -244,7 +238,7 @@ func rewriteMeta(t *testing.T, root, recording, field, value string) {
 
 func TestInfraErrorExcludedFromDenominators(t *testing.T) {
 	root := copyRecordings(t)
-	rewriteMeta(t, root, "vr-sta440b-haiku", "infra_error", `"agent failed to start"`)
+	rewriteMeta(t, root, "fx1", "vr-sta440b-haiku", "infra_error", `"agent failed to start"`)
 	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: repoPath(), RecordingsRoot: root})
 	if ref != nil {
 		t.Fatalf("run: %s: %s", ref.Code, ref.Message)
@@ -276,9 +270,9 @@ func assertInfraRates(t *testing.T, f *FixtureReport) {
 
 func TestReviewInsufficientExactCount(t *testing.T) {
 	root := copyRecordings(t)
-	rewriteMeta(t, root, "vr-sta440b-bench", "refusal_code", `"review-insufficient"`)
-	rewriteMeta(t, root, "vr-sta440b-haiku2", "refusal_code", `"review-insufficient"`)
-	rewriteMeta(t, root, "vr-sta351a-haiku", "refusal_code", `"missing-findings"`)
+	rewriteMeta(t, root, "fx1", "vr-sta440b-bench", "refusal_code", `"review-insufficient"`)
+	rewriteMeta(t, root, "fx1", "vr-sta440b-haiku2", "refusal_code", `"review-insufficient"`)
+	rewriteMeta(t, root, "fx2", "vr-sta351a-haiku", "refusal_code", `"missing-findings"`)
 	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: repoPath(), RecordingsRoot: root})
 	if ref != nil {
 		t.Fatalf("run: %s: %s", ref.Code, ref.Message)

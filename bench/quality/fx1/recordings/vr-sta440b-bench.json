@@ -1,0 +1,24 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "cmd/verdict/usage.go",
+      "line": 33,
+      "severity": null,
+      "text": "The usage text now correctly includes the expanded agent list and explains the new binary clash probe mechanism."
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 575,
+      "severity": null,
+      "text": "The logic for the identity probe correctly handles non-zero exits, timeouts, and missing match text, ensuring safety before agent launch."
+    },
+    {
+      "path": "evals/cases/run-agent-probe.sh",
+      "line": 1,
+      "severity": null,
+      "text": "This new test case provides excellent coverage of the probe behavior, validating both successful launches and proper refusal (`agent-mismatch`) in the face of name clashes."
+    }
+  ],
+  "gate_passed": null
+}

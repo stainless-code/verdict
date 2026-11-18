@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/fixtures.schema.json",
   "title": "report.json — backtest fixtures report",
-  "description": "The backtest fixtures report, written to .verdict/backtest/fixtures/report.json and echoed as the `backtest fixtures` envelope's data object: one shape, one schema. It scores recorded reviews against hand-known defects in bench/quality/fixtures.json. Recall is a per-defect hit rate over path + claim, with a mean and a union over N recordings; a union is coverage across runs, not an expected single-run score. Bonus defects are reported separately and never enter recall. Rates describe recorded reviews, not a model claim.",
+  "description": "The backtest fixtures report, written to .verdict/backtest/fixtures/report.json and echoed as the `backtest fixtures` envelope's data object: one shape, one schema. It scores converted fixture recordings against hand-known defects in bench/quality/fixtures.json. Recall is a per-defect hit rate over path + claim, with a mean and a union over N recordings; a union is coverage across runs, not an expected single-run score. Bonus defects are reported separately and never enter recall. Rates describe recorded reviews, not a model claim.",
   "type": "object",
   "properties": {
     "schema_version": { "type": "string" },

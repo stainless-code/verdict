@@ -1,0 +1,30 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "internal/core/run/service.go",
+      "line": 336,
+      "severity": null,
+      "text": "pctx.Err() is non-nil when the parent context was canceled as well as when the probe budget ran out, so a Ctrl-C during the probe is reported as \"timed out\" and refused as agent-mismatch rather than as canceled. Check ctx.Err() first, or compare against context.DeadlineExceeded on pctx, so the two cases stay separate."
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 103,
+      "severity": null,
+      "text": "The match text \"run\" is a common word and is checked as a substring of the combined help output, so any clashing tool whose help mentions \"run\" passes the identity check. The same applies to fx at line 210 with \"ask\". Consider a more specific match such as the exact subcommand usage line, or document that the probe only rules out tools that fail the help command."
+    },
+    {
+      "path": "internal/core/run/service.go",
+      "line": 309,
+      "severity": null,
+      "text": "A personal row with probe_args set to [] passes validation because agentProbeFields only requires probe_match, but this guard returns early on an empty ProbeArgs, so the row launches with no probe at all. Either reject an empty probe_args in config or document that an empty list disables the probe."
+    },
+    {
+      "path": "internal/core/hint.go",
+      "line": 218,
+      "severity": null,
+      "text": "The hint says to define the agent in settings.json with an absolute binary path. A shipped name cannot be redefined (bad-settings), so the operator has to choose a new name and then run --agent with that name. The manual says the same thing. Say that the new name must differ from the shipped one."
+    }
+  ],
+  "gate_passed": true
+}

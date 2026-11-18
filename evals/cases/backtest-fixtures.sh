@@ -69,10 +69,10 @@ assert_json_field "calibration still covers all runs" "7" '.data.calibration.row
 
 # An infra error makes a recording unscored: it leaves every rate denominator.
 jq '.infra_error = "agent failed to start"' \
-  "$EVAL_SANDBOX/bench/quality/recordings/vr-sta440b-haiku/meta.json" \
+  "$EVAL_SANDBOX/bench/quality/fx1/recordings/vr-sta440b-haiku.meta.json" \
   >"$EVAL_SANDBOX/infra-meta.json"
 cp "$EVAL_SANDBOX/infra-meta.json" \
-  "$EVAL_SANDBOX/bench/quality/recordings/vr-sta440b-haiku/meta.json"
+  "$EVAL_SANDBOX/bench/quality/fx1/recordings/vr-sta440b-haiku.meta.json"
 run_review backtest fixtures --json
 assert_exit "infra-error run exits 0" 0
 assert_json_field "one run unscored" "6" '.data.scored'

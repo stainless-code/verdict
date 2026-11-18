@@ -80,19 +80,33 @@ func calibrationRuns(t *testing.T, catalog *Catalog) []RunScore {
 	runs := make([]RunScore, 0, len(catalog.Calibration))
 	for i := range catalog.Calibration {
 		row := &catalog.Calibration[i]
-		dir := repoPath("bench", "quality", "recordings", row.Recording)
-		meta, ref := LoadRecordingMeta(dir)
+		path := recordingPath(t, row.Fixture, row.Recording)
+		meta, ref := LoadRecordingMeta(MetaPath(path))
 		if ref != nil {
 			t.Fatalf("load meta %s: %s: %s", row.Recording, ref.Code, ref.Message)
 		}
-		findings, ref := LoadArchivedReview(filepath.Join(dir, reviewName))
+		recording, ref := LoadFixtureRecording(path)
 		if ref != nil {
-			t.Fatalf("load review %s: %s: %s", row.Recording, ref.Code, ref.Message)
+			t.Fatalf("load recording %s: %s: %s", row.Recording, ref.Code, ref.Message)
 		}
 		fixture := fixtureFor(t, catalog, row.Fixture)
-		runs = append(runs, *Score(matcher, fixture, findings, meta, row.Recording))
+		runs = append(runs, *Score(matcher, fixture, canonicalFindings(recording), meta,
+			recording.GatePassed, row.Recording))
 	}
 	return runs
+}
+
+func recordingPath(t *testing.T, fixture, name string) string {
+	t.Helper()
+	return repoPath("bench", "quality", fixture, "recordings", name+recordingExt)
+}
+
+func canonicalFindings(rec *FixtureRecording) []Finding {
+	out := make([]Finding, 0, len(rec.Findings))
+	for i := range rec.Findings {
+		out = append(out, rec.Findings[i].Canonical())
+	}
+	return out
 }
 
 func fixtureFor(t *testing.T, catalog *Catalog, id string) *Fixture {
@@ -315,47 +329,53 @@ func assertCrossHits(t *testing.T, m *Matcher, defects *map[string]Defect, tc *c
 	}
 }
 
-func TestArchivedReviewAliases(t *testing.T) {
+func TestFixtureRecordingLoader(t *testing.T) {
 	dir := t.TempDir()
-	writeTestFile(t, filepath.Join(dir, reviewName), `{
+	path := filepath.Join(dir, "literal"+recordingExt)
+	writeTestFile(t, path, `{
   "schema_version": "1",
-  "comments": [
-    {"path": "chosen.go", "body": "chosen claim", "severity": "important"},
-    {"file": "fallback.go", "text": "fallback claim"},
-    {"path": "preferred.go", "file": "ignored.go", "body": "preferred claim", "text": "ignored claim"}
-  ]
+  "findings": [
+    {"path": "chosen.go", "line": 7, "severity": "important", "text": "chosen claim"},
+    {"path": "plain.go", "line": null, "severity": null, "text": "plain claim"}
+  ],
+  "gate_passed": null
 }`)
-	findings, ref := LoadArchivedReview(filepath.Join(dir, reviewName))
+	rec, ref := LoadFixtureRecording(path)
 	if ref != nil {
 		t.Fatalf("load: %s: %s", ref.Code, ref.Message)
 	}
-	if len(findings) != 3 {
-		t.Fatalf("findings = %d, want 3", len(findings))
+	if rec.GatePassed != nil {
+		t.Errorf("gate_passed = %v, want nil", *rec.GatePassed)
 	}
 	want := []Finding{
 		{Path: "chosen.go", Claim: "chosen claim", Severity: "important"},
-		{Path: "fallback.go", Claim: "fallback claim"},
-		{Path: "preferred.go", Claim: "preferred claim"},
+		{Path: "plain.go", Claim: "plain claim"},
 	}
 	for i, w := range want {
-		if findings[i] != w {
-			t.Errorf("finding %d = %+v, want %+v", i, findings[i], w)
+		if got := rec.Findings[i].Canonical(); got != w {
+			t.Errorf("finding %d = %+v, want %+v", i, got, w)
 		}
+	}
+	broken := filepath.Join(dir, "broken"+recordingExt)
+	writeTestFile(t, broken, `{"schema_version":"1","findings":[{"file":"x","body":"y"}]}`)
+	if _, ref := LoadFixtureRecording(broken); ref == nil || ref.Code != "fixtures-recording-invalid" {
+		t.Fatalf("refusal = %+v, want fixtures-recording-invalid", ref)
 	}
 }
 
-func TestRecordingMetaGateUnknownIsNotPass(t *testing.T) {
-	dir := repoPath("bench", "quality", "recordings", "vr-sta440b-bench")
-	meta, ref := LoadRecordingMeta(dir)
+func TestRecordingMetaProvenance(t *testing.T) {
+	path := MetaPath(recordingPath(t, "fx1", "vr-sta440b-bench"))
+	meta, ref := LoadRecordingMeta(path)
 	if ref != nil {
 		t.Fatalf("load meta: %s: %s", ref.Code, ref.Message)
 	}
-	if meta.GatePassed != nil {
-		t.Errorf("gate_passed = %v, want nil", *meta.GatePassed)
+	want := "4d61d57f32da6190ef8e54f41b40da56ab7e34f2ac96eee1c1964ff46fe250bf"
+	if meta.SourceSHA256 != want || meta.SourceBundle != "vr-sta440b-bench/bundle" {
+		t.Errorf("provenance = %s / %s", meta.SourceBundle, meta.SourceSHA256)
 	}
-	bad := filepath.Join(t.TempDir(), metaName)
-	writeTestFile(t, bad, `{"schema_version":"1","fixture":"fx1","source":"elsewhere.json"}`)
-	if _, ref := LoadRecordingMeta(filepath.Dir(bad)); ref == nil || ref.Code != "fixtures-recording-invalid" {
+	bad := filepath.Join(t.TempDir(), "bad.meta.json")
+	writeTestFile(t, bad, `{"schema_version":"1","fixture":"fx1","source_bundle":"x","source_sha256":"not-a-digest"}`)
+	if _, ref := LoadRecordingMeta(bad); ref == nil || ref.Code != "fixtures-recording-invalid" {
 		t.Fatalf("refusal = %+v, want fixtures-recording-invalid", ref)
 	}
 }

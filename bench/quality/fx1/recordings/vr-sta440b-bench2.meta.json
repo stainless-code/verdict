@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "fixture": "fx1",
+  "driver": "agy / gemini-4-hydrogen",
+  "source_bundle": "vr-sta440b-bench2/bundle",
+  "source_sha256": "d009a6856e51bdfd0b8bd11450ff91944c5a96db30ac59cd6becce89ccd98889",
+  "infra_error": null,
+  "refusal_code": null,
+  "note": "Converted once from review.json at authoring time. archived run; gate outcome captured at extraction time"
+}

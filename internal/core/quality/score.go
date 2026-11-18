@@ -103,14 +103,16 @@ type RunScore struct {
 }
 
 // Score grades one recording against one fixture's defects.
-func Score(m *Matcher, f *Fixture, findings []Finding, meta *RecordingMeta, recording string) *RunScore {
+func Score(m *Matcher, f *Fixture, findings []Finding, meta *RecordingMeta,
+	gate *bool, recording string,
+) *RunScore {
 	run := &RunScore{
 		Recording:   recording,
 		Fixture:     f.ID,
 		Driver:      meta.Driver,
 		Hits:        map[string]bool{},
 		BonusHits:   map[string]bool{},
-		GatePassed:  meta.GatePassed,
+		GatePassed:  gate,
 		InfraError:  meta.InfraError,
 		RefusalCode: meta.RefusalCode,
 		Scored:      meta.InfraError == "",

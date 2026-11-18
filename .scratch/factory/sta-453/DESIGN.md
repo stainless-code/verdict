@@ -57,11 +57,16 @@ bench/quality/
     fx1/SPEC-2.md                       # 5,442 B
     fx1/RESEARCH-2.md                   # 46,568 B (one absolute file:// link sanitized before shipping)
     fx2/SPEC.md                         # 11,966 B
-  recordings/
-    vr-sta440b-bench/review.json         # raw recorded review, legacy shape
-    vr-sta440b-bench/meta.json           # fixture, driver, hand hits, gate outcome, source file
-    ... six more ...
+  fx1/recordings/
+    vr-sta440b-bench.json                # minimal fixture recording: findings + gate_passed
+    vr-sta440b-bench.meta.json           # driver, source bundle, source sha256, refusal, note
+    ... five more ...
+  fx2/recordings/
+    vr-sta351a-haiku.json
+    vr-sta351a-haiku.meta.json
 ```
+
+Operator correction (post-approval): the seven archived reviews were converted once at authoring time into the fixture recording shape above. Each meta sidecar pins its source bundle and the sha256 of the source `review.json`. No product code reads the old `comments`/`file`/`text` shape and no conversion script ships. This replaces the earlier decision to keep a calibration-input compatibility loader.
 
 `context/` is vendored as part of the corpus: live runs need the same spec/research bytes, and a `sha256` + byte count in the manifest detects drift. All four fixture SHAs resolve in `origin/main` history (checked), so `fetch-local --range` works offline from a normal clone.
 
@@ -401,7 +406,7 @@ Live runs are an explicit operator action; the scorer mode never launches an age
      --recordings .scratch/factory/sta-453/runs --json
    ```
 
-   `--recordings` is opt-in and never globbed by default; with no flag the mode reads only tracked `bench/quality/recordings/`. CI step 1 is just `verdict backtest quality --json` and asserts `data.calibration.reproduced == true`. Nothing writes into `bench/quality/`; the only write is the ignored `.verdict/backtest/quality/report.json`.
+   `--recordings` is opt-in and never globbed by default; with no flag the mode reads only tracked `bench/quality/<fixture>/recordings/`. CI step 1 is just `verdict backtest quality --json` and asserts `data.calibration.reproduced == true`. Nothing writes into `bench/quality/`; the only write is the ignored `.verdict/backtest/quality/report.json`.
 
 `backtest replay` is deliberately **not** reused: it mines SZZ candidates and spends on agents, while fixtures are fixed base/head ranges with hand-known defects. The two remain separate lanes under the same verb.
 
@@ -429,7 +434,7 @@ No changes to `bench/corpus/`, `internal/core/backtest/`, `schemas/backtest.sche
 4. **Hallucination threshold.** "Gating finding" is defined here as `critical|important`, inline/anchored, not already `unverified`. Confirm with the S4 owner that this matches the gate's own threshold after S1, including the default `post_min_severity`.
 5. **`review-insufficient` before S4.** The field is a literal count of that code and is `0` today. If the operator wants a visible "not yet produced" state, add `status: "awaiting-s4"` beside the count; the design currently does not, to keep the count exact.
 6. **Rate precision.** Go publishes four decimals repo-wide; Python's `score.py` rounds to three. PASS is defined on hit sets and exact `n/m` strings, so the tables agree. Confirm that no consumer depends on Python's 3-decimal `recall` number itself.
-7. **Calibration data freshness.** The seven recordings are from 2026-11-17 and use the pre-S1 `review.json` shape. After S1/S4 lands, should the same fixture set gain new S1-format recordings (a follow-up commit), or should the old shape remain the pinned calibration forever as a backwards-compatibility test? Recommendation: keep the seven as the immutable calibration and add new recordings separately.
+7. **Calibration data freshness — resolved.** The seven recordings are converted once at authoring time into the fixture recording shape; the old shape is not a runtime input and there is no migration/compat code. Later recordings use the same shape (or the findings store when S1 lands). The seven stay the immutable calibration.
 8. **Bonus defects.** Design keeps them out of recall and reports `bonus_union` only. Confirm that matches the operator's meaning of "bonus".
 9. **Size ratchet.** Adding a schema description and regex scorer may cross a 10 kB line in `scripts/size-baseline.txt`. Measure in commit 3; raise only the crossed line.
 10. **Audit corpus.** `ablate/matcher-audit.md` cites 39 runs/136 findings that are not among the 7 shipped recordings. If the six-cross-hit regression test must be data-driven rather than a small in-test table, decide whether to ship a redacted audit corpus too; recommendation is a compact literal test table, not 39 more reviews.

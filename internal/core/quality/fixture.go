@@ -8,10 +8,8 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"os"
 	"path/filepath"
 	"regexp"
-	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -19,9 +17,6 @@ import (
 
 const (
 	catalogName     = "fixtures.json"
-	metaName        = "meta.json"
-	reviewName      = "review.json"
-	findingsName    = "findings.json"
 	schemaVersion   = "1"
 	maxCatalogBytes = 1 << 20
 	maxReviewBytes  = 1 << 20
@@ -91,9 +86,8 @@ type RecordingMeta struct {
 	SchemaVersion string `json:"schema_version"`
 	Fixture       string `json:"fixture"`
 	Driver        string `json:"driver"`
-	Source        string `json:"source"`
-	GateSource    string `json:"gate_source"`
-	GatePassed    *bool  `json:"gate_passed"`
+	SourceBundle  string `json:"source_bundle"`
+	SourceSHA256  string `json:"source_sha256"`
 	InfraError    string `json:"infra_error"`
 	RefusalCode   string `json:"refusal_code"`
 	Note          string `json:"note"`
@@ -261,45 +255,27 @@ func hexID(s string, length int) bool {
 	return true
 }
 
-// LoadRecordingMeta reads one recording's outcome beside its review.
-func LoadRecordingMeta(dir string) (*RecordingMeta, *core.RefusalError) {
-	raw, err := jq.CappedFile(filepath.Join(dir, metaName), maxReviewBytes)
+// LoadRecordingMeta reads the provenance sidecar beside one fixture recording.
+func LoadRecordingMeta(path string) (*RecordingMeta, *core.RefusalError) {
+	raw, err := jq.CappedFile(path, maxReviewBytes)
 	if err != nil {
-		return nil, invalidRecording(dir, "unreadable meta.json")
+		return nil, invalidRecording(path, "unreadable meta sidecar")
 	}
 	var m RecordingMeta
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.DisallowUnknownFields()
 	if err := dec.Decode(&m); err != nil {
-		return nil, invalidRecording(dir, "unreadable meta.json: "+err.Error())
+		return nil, invalidRecording(path, "unreadable meta sidecar: "+err.Error())
 	}
 	if m.SchemaVersion != schemaVersion || m.Fixture == "" {
-		return nil, invalidRecording(dir, "missing schema_version or fixture")
+		return nil, invalidRecording(path, "missing schema_version or fixture")
 	}
-	if m.Source != reviewName && m.Source != findingsName {
-		return nil, invalidRecording(dir, "source must be review.json or findings.json")
+	if filepath.IsAbs(m.SourceBundle) || !digestID(m.SourceSHA256) {
+		return nil, invalidRecording(path, "invalid source provenance")
 	}
 	return &m, nil
 }
 
 func invalidRecording(dir, reason string) *core.RefusalError {
 	return &core.RefusalError{Code: "fixtures-recording-invalid", Message: "recording " + dir + " is " + reason}
-}
-
-// RecordingDirs lists one recording per directory under root. A path is one
-// directory element, so an operator-supplied recordings root cannot escape by
-// naming another tree through a recording id.
-func RecordingDirs(root string) ([]string, *core.RefusalError) {
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return nil, invalidRecording(root, "cannot read recordings root")
-	}
-	var dirs []string
-	for _, entry := range entries {
-		if !entry.IsDir() || entry.Name() != filepath.Base(entry.Name()) || strings.HasPrefix(entry.Name(), ".") {
-			continue
-		}
-		dirs = append(dirs, filepath.Join(root, entry.Name()))
-	}
-	return dirs, nil
 }

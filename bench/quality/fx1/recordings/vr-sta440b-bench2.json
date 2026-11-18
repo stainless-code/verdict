@@ -1,0 +1,24 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "internal/core/run/service.go",
+      "line": null,
+      "severity": null,
+      "text": "The probe mechanism implementation in `probe` is clear and appropriately handles timeouts, exit codes, and output matching."
+    },
+    {
+      "path": "cmd/verdict/usage.go",
+      "line": null,
+      "severity": null,
+      "text": "Documentation for the probe mechanism and the new `agent-mismatch` refusal is well-integrated and informative."
+    },
+    {
+      "path": "internal/core/run/agents_internal_test.go",
+      "line": null,
+      "severity": null,
+      "text": "The test coverage for the probe logic and various refusal scenarios (timeout, exit code, mismatch) is comprehensive and correctly exercises the new functionality."
+    }
+  ],
+  "gate_passed": true
+}

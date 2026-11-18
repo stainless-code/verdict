@@ -1,0 +1,24 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 292,
+      "severity": "important",
+      "text": "Neovate is interactive unless `-q` is present: its own parser sends a prompt to `runInteractive` when `argv.quiet` is false, so `--agent neovate` opens a TUI instead of completing one headless turn. Add the boolean `-q` to this row's args and update `internal/core/run/agents_internal_test.go:247` and `docs/manual.md:2190`, which currently pin the interactive argv as the contract.\n\n<details>\n<summary>Technical details</summary>\n\n```markdown\n## Affected sites\n- `internal/core/run/agents.go:292-294` \u2014 row composes `neovate --model M --x PROMPT`, with no `-q`.\n- `internal/core/run/agents_internal_test.go:247-250` \u2014 literal expectation pins that argv for launch and `--print`.\n- `docs/manual.md:2190` \u2014 table lists only a positional prompt for `neovate`.\n- Upstream https://github.com/neovateai/neovate-code/blob/master/src/index.ts \u2014 help says \"interactive by default, use -q/--quiet for non-interactive mode\"; `argv.quiet` selects `runQuiet` versus `runInteractive`.\n## Required outcome\n- The shipped row must invoke a one-shot non-interactive turn, and its argv test and manual row must agree on the flag.\n## Suggested approach\n- Set `Args: []string{\"-q\"}` (boolean flag, positional prompt stays last), then update the two literals.\n```\n\n</details>"
+    },
+    {
+      "path": "internal/core/run/service.go",
+      "line": 351,
+      "severity": "important",
+      "text": "A passing probe is stored on `args.probe` here, but the `--rounds` record in `internal/core/run/repair.go:77-87` builds a separate `launcher` literal with no `Probe` field, so a repair run never writes the `probe: {args, ok}` receipt promised at `docs/manual.md:2261`. Copy the field into that record (or share one constructor) and cover a `--rounds` probe launch in the receipt assertion.\n\n<details>\n<summary>Technical details</summary>\n\n```markdown\n## Affected sites\n- `internal/core/run/service.go:351` \u2014 the only place `args.probe` is assigned.\n- `internal/core/run/service.go:622` \u2014 one-shot `launch` carries it into the record.\n- `internal/core/run/repair.go:77-87` \u2014 repair record omits it; `invoke` probes once before entering that loop.\n- `internal/core/run/probe_internal_test.go:67-85` \u2014 receipt assertion exercises only the one-shot path.\n## Required outcome\n- Every launch record produced after a passing probe carries `probe.args` and `probe.ok`, regardless of round count.\n```\n\n</details>"
+    },
+    {
+      "path": "internal/archtest/agent_sources_test.go",
+      "line": 36,
+      "severity": "informational",
+      "text": "This comment promises that a name in usage or the docs that no row answers fails the test, but `assertSurfaceNames` only checks that each shipped name appears in each surface; an invented or stale name passes. Compare the parsed name sets in both directions using the `names` already extracted, or narrow the comment to the one-direction check the test actually performs.\n\n<details>\n<summary>Technical details</summary>\n\n```markdown\n## Affected sites\n- `internal/archtest/agent_sources_test.go:36-37` \u2014 the two-way claim.\n- `internal/archtest/agent_sources_test.go:65-72` \u2014 one-way `strings.Contains` assertion over shipped names.\n## Required outcome\n- Either the guard detects a documented name with no shipped row, or the comment stops claiming it does.\n```\n\n</details>"
+    }
+  ],
+  "gate_passed": false
+}
