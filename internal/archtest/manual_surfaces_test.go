@@ -75,6 +75,15 @@ var manualSurfaces = []manualSurface{
 		},
 	},
 	{
+		section: "MCP prompts and resources",
+		heading: "### MCP server (stdio, experimental until 1.0)",
+		terms: []string{
+			"prompts/list", "prompts/get", "resources/list", "resources/read",
+			"verdict://skill/<path>", "byte-identical to `verdict skill show`",
+			"every server mode", "verdict://skill/PROCEDURE.md",
+		},
+	},
+	{
 		section: "serve local HTTP surface",
 		heading: "## Serve (local HTTP surface)",
 		terms: []string{
