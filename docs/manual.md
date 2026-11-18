@@ -348,8 +348,10 @@ hosts refuse `provider-unimplemented` before any read. There is no
 gates and secret scan, the live thread refresh and self login, the
 stale/answered/resolved skips, mention neutralization, and the marker. It holds
 the post lock and composes with `--agent` (plan → draft → preview). It calls no
-reply or resolve endpoint and leaves `replies.json`, `drain.json`,
-`drain.procedure.md`, and `threads.json` byte-identical. The live read happens in a scratch bundle so
+reply or resolve endpoint and leaves `replies.json`, `drain.json`, and `threads.json`
+byte-identical, and an existing `drain.procedure.md` too; with `--agent`, a missing
+`drain.procedure.md` is created for the drafting agent. The live read happens in a
+scratch bundle so
 the stored feed is not touched. Instead it writes `<bundle>/drain.dryrun.json`
 with `planned[]` entries (`thread_id`, `root_comment_id`, `disposition`, and
 the final `body` with its marker) and `skipped[]` reasons; the `--json` envelope
