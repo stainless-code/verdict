@@ -360,6 +360,7 @@ writes, and a dry-run preview is never a receipt.
 ### Bundle namespace (core files vs `x-*`)
 
 A bundle dir holds these core/script artifacts (`PR.json`/`source.json`,
+`procedure.md` (the binary's review Procedure; `drain.procedure.md` for a drain bundle),
 `full.diff`, `toc.txt`, `roles.txt`, `review.json`, `findings.json`, `findings.dryrun.json`, `record.json`,
 `post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `threads.json`,
 `threads-resolve.json`, `drain.json`, `drain.dryrun.json`, `drain.replies.json`, `selected.json`,

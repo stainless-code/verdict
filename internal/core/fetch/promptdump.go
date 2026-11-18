@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	skillfs "github.com/stainless-code/verdict"
+	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
@@ -181,6 +182,22 @@ func assembleReviewProcedure(read func(string) ([]byte, error), files []string) 
 
 func reviewProcedureFiles() []string {
 	return []string{skillfs.ProcedureMD, "prompts/system.md", "prompts/review.md", "prompts/diagrams.md"}
+}
+
+// writeBundleProcedure persists the binary's review Procedure as the bundle's
+// trusted instruction file, using the same atomic writer as its other inputs.
+func writeBundleProcedure(dir string) error {
+	raw, err := reviewProcedure()
+	if err != nil {
+		return err
+	}
+	if werr := atomic.WriteFile(dir+suffixProcedureMD, raw); werr != nil {
+		return &core.RefusalError{
+			Code:    CodeFetchFailed,
+			Message: fmt.Sprintf("could not write %s%s: %v", dir, suffixProcedureMD, werr),
+		}
+	}
+	return nil
 }
 
 // dumpPrompts writes the embedded assembly, refusing typed without the
