@@ -159,6 +159,36 @@ func TestCatalogRejectsBrokenPin(t *testing.T) {
 	}
 }
 
+func TestCatalogRejectsWindowsTraversal(t *testing.T) {
+	for _, name := range []string{`..\outside.txt`, `C:\outside.txt`, `\\server\share\outside.txt`} {
+		assertCatalogRejectsPath(t, name)
+	}
+}
+
+func assertCatalogRejectsPath(t *testing.T, name string) {
+	t.Helper()
+	doc := catalogDoc(t)
+	first, ok := doc["fixtures"].([]any)[0].(map[string]any)
+	if !ok {
+		t.Fatal("first fixture is not an object")
+	}
+	contexts, ok := first["context"].([]any)
+	if !ok || len(contexts) == 0 {
+		t.Fatal("first fixture has no context array")
+	}
+	firstContextEntry(t, contexts)["path"] = name
+	raw, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(t.TempDir(), catalogName)
+	writeTestFile(t, path, string(raw))
+	_, ref := LoadCatalog(path)
+	if ref == nil || ref.Code != "fixtures-invalid" {
+		t.Errorf("path %q: refusal = %+v, want fixtures-invalid", name, ref)
+	}
+}
+
 func brokenCatalog(t *testing.T) []byte {
 	t.Helper()
 	doc := catalogDoc(t)
@@ -521,7 +551,7 @@ func TestCalibrateRequiresScoredRun(t *testing.T) {
 func TestHumanRecallDenominatorMatchesRates(t *testing.T) {
 	root := copyRecordings(t)
 	rewriteMeta(t, root, "fx1", "vr-sta440b-haiku", "infra_error", `"agent failed to start"`)
-	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: repoPath(), RecordingsRoot: root})
+	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: qualityRepoRoot(t), RecordingsRoot: root})
 	if ref != nil {
 		t.Fatalf("run: %s: %s", ref.Code, ref.Message)
 	}

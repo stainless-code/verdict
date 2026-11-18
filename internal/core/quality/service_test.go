@@ -15,7 +15,8 @@ import (
 )
 
 func TestRunFixturesLiterals(t *testing.T) {
-	root := repoPath()
+	root := qualityRepoRoot(t)
+	assertTempRepoRoot(t, root)
 	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: root})
 	if ref != nil {
 		t.Fatalf("run: %s: %s", ref.Code, ref.Message)
@@ -192,6 +193,53 @@ func TestZeroDenominatorRendersNull(t *testing.T) {
 	}
 }
 
+// qualityRepoRoot copies the shipped corpus into a temp dir so no test can
+// write report.json into the source checkout.
+func qualityRepoRoot(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	copyTree(t, repoPath("bench", "quality"), filepath.Join(root, "bench", "quality"))
+	return root
+}
+
+func copyTree(t *testing.T, source, dst string) {
+	t.Helper()
+	if err := os.MkdirAll(dst, dirPermissions); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		src := filepath.Join(source, entry.Name())
+		out := filepath.Join(dst, entry.Name())
+		if entry.IsDir() {
+			copyTree(t, src, out)
+			continue
+		}
+		copyFile(t, src, out)
+	}
+}
+
+func copyFile(t *testing.T, src, dst string) {
+	t.Helper()
+	raw, err := os.ReadFile(src)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(dst, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertTempRepoRoot(t *testing.T, root string) {
+	t.Helper()
+	if root == repoPath() {
+		t.Fatal("qualityRepoRoot must be a temp root, not the source checkout")
+	}
+}
+
 func copyRecordings(t *testing.T) string {
 	t.Helper()
 	dst := t.TempDir()
@@ -246,7 +294,7 @@ func rewriteMeta(t *testing.T, root, fixture, recording, field, value string) {
 func TestInfraErrorExcludedFromDenominators(t *testing.T) {
 	root := copyRecordings(t)
 	rewriteMeta(t, root, "fx1", "vr-sta440b-haiku", "infra_error", `"agent failed to start"`)
-	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: repoPath(), RecordingsRoot: root})
+	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: qualityRepoRoot(t), RecordingsRoot: root})
 	if ref != nil {
 		t.Fatalf("run: %s: %s", ref.Code, ref.Message)
 	}
@@ -280,7 +328,7 @@ func TestReviewInsufficientExactCount(t *testing.T) {
 	rewriteMeta(t, root, "fx1", "vr-sta440b-bench", "refusal_code", `"review-insufficient"`)
 	rewriteMeta(t, root, "fx1", "vr-sta440b-haiku2", "refusal_code", `"review-insufficient"`)
 	rewriteMeta(t, root, "fx2", "vr-sta351a-haiku", "refusal_code", `"missing-findings"`)
-	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: repoPath(), RecordingsRoot: root})
+	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: qualityRepoRoot(t), RecordingsRoot: root})
 	if ref != nil {
 		t.Fatalf("run: %s: %s", ref.Code, ref.Message)
 	}
@@ -294,7 +342,7 @@ func TestReviewInsufficientExactCount(t *testing.T) {
 }
 
 func TestFixtureFilterKeepsCalibration(t *testing.T) {
-	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: repoPath(), FixtureID: "fx2"})
+	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: qualityRepoRoot(t), FixtureID: "fx2"})
 	if ref != nil {
 		t.Fatalf("run: %s: %s", ref.Code, ref.Message)
 	}
@@ -307,7 +355,7 @@ func TestFixtureFilterKeepsCalibration(t *testing.T) {
 }
 
 func TestUnknownFixtureRefusesBeforeWrite(t *testing.T) {
-	root := repoPath()
+	root := qualityRepoRoot(t)
 	if _, ref := RunFixtures(context.Background(), &Request{RepoRoot: root}); ref != nil {
 		t.Fatalf("valid run: %s: %s", ref.Code, ref.Message)
 	}
@@ -363,7 +411,7 @@ func copyOnlyRecordings(t *testing.T, fixture, name string) string {
 
 func TestRecordingsOverrideKeepsShippedCalibration(t *testing.T) {
 	root := copyOnlyRecordings(t, "fx1", "vr-sta440b-bench")
-	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: repoPath(), RecordingsRoot: root})
+	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: qualityRepoRoot(t), RecordingsRoot: root})
 	if ref != nil {
 		t.Fatalf("run: %s: %s", ref.Code, ref.Message)
 	}
@@ -382,10 +430,58 @@ func TestRecordingsOverrideKeepsShippedCalibration(t *testing.T) {
 	}
 }
 
+func TestMetaTrailingDataRefused(t *testing.T) {
+	root := copyRecordings(t)
+	path := MetaPath(filepath.Join(root, "fx1", "recordings", "vr-sta440b-bench"+recordingExt))
+	file, err := os.OpenFile(path, os.O_APPEND|os.O_WRONLY, 0o600)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := file.WriteString("\n{}"); err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	_, ref := RunFixtures(context.Background(), &Request{RepoRoot: qualityRepoRoot(t), RecordingsRoot: root})
+	if ref == nil || ref.Code != "fixtures-recording-invalid" {
+		t.Fatalf("refusal = %+v, want fixtures-recording-invalid", ref)
+	}
+	if !strings.Contains(ref.Message, "trailing data") {
+		t.Errorf("refusal message = %q", ref.Message)
+	}
+}
+
+func TestCanceledDuringVerificationDoesNotWrite(t *testing.T) {
+	root := qualityRepoRoot(t)
+	path := filepath.Join(root, ".verdict", "backtest", fixturesDir, reportName)
+	writeTestFile(t, path, "sentinel\n")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	verifier := quoteVerifierFunc(func(_ context.Context, _ *Finding, _ []byte) QuoteResult {
+		cancel()
+		return QuoteResult{Status: "matched"}
+	})
+	resp, ref := RunFixtures(ctx, &Request{RepoRoot: root, Verifier: verifier})
+	if ref == nil || ref.Code != "canceled" {
+		t.Errorf("refusal = %+v, want canceled", ref)
+	}
+	if resp != nil {
+		t.Errorf("response = %+v, want no report", resp)
+	}
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != "sentinel\n" {
+		t.Errorf("report.json = %q, want untouched sentinel", raw)
+	}
+}
+
 func TestSidecarFixtureMustMatchDirectory(t *testing.T) {
 	root := copyRecordings(t)
 	rewriteMeta(t, root, "fx1", "vr-sta440b-bench", "fixture", `"fx2"`)
-	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: repoPath(), RecordingsRoot: root})
+	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: qualityRepoRoot(t), RecordingsRoot: root})
 	if ref == nil || ref.Code != "fixtures-recording-invalid" {
 		t.Fatalf("refusal = %+v, want fixtures-recording-invalid", ref)
 	}
@@ -401,7 +497,7 @@ func TestDuplicateRecordingNameRefused(t *testing.T) {
 	root := copyOnlyRecordings(t, "fx1", "vr-sta440b-bench")
 	copyNamedRecording(t, "fx1", "vr-sta440b-bench", root, "fx2")
 	rewriteMeta(t, root, "fx2", "vr-sta440b-bench", "fixture", `"fx2"`)
-	_, ref := RunFixtures(context.Background(), &Request{RepoRoot: repoPath(), RecordingsRoot: root})
+	_, ref := RunFixtures(context.Background(), &Request{RepoRoot: qualityRepoRoot(t), RecordingsRoot: root})
 	if ref == nil || ref.Code != "fixtures-recording-invalid" {
 		t.Fatalf("refusal = %+v, want fixtures-recording-invalid", ref)
 	}
@@ -440,7 +536,7 @@ func TestNoQuoteIsUnverifiableAndGetsRealHead(t *testing.T) {
 		heads = append(heads, append([]byte(nil), head...))
 		return QuoteResult{Status: "no-quote"}
 	})
-	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: repoPath(), Verifier: verifier})
+	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: qualityRepoRoot(t), Verifier: verifier})
 	if ref != nil {
 		t.Fatalf("run: %s: %s", ref.Code, ref.Message)
 	}
@@ -474,7 +570,7 @@ func TestOnlyExplicitMismatchCountsInRate(t *testing.T) {
 		}
 		return QuoteResult{Status: "matched"}
 	})
-	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: repoPath(), Verifier: verifier})
+	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: qualityRepoRoot(t), Verifier: verifier})
 	if ref != nil {
 		t.Fatalf("run: %s: %s", ref.Code, ref.Message)
 	}

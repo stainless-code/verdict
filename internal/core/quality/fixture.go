@@ -10,7 +10,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	pathpkg "path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -206,10 +205,21 @@ func validateContext(entries []ContextFile, id, path string) *core.RefusalError 
 }
 
 func relativePath(name string) bool {
-	if name == "" || pathpkg.Clean(name) != name || name == ".." || strings.HasPrefix(name, "../") {
+	if name == "" || strings.ContainsRune(name, '\\') || windowsDrive(name) {
 		return false
 	}
-	return !strings.HasPrefix(name, "/")
+	local := filepath.FromSlash(name)
+	return filepath.IsLocal(local) && filepath.Clean(local) == local
+}
+
+// windowsDrive catches `C:...` on POSIX hosts, where filepath treats the
+// colon as ordinary text and IsLocal would otherwise accept the path.
+func windowsDrive(name string) bool {
+	if len(name) < 2 || name[1] != ':' {
+		return false
+	}
+	c := name[0]
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }
 
 // loadFixtureHeads reads the catalog's pinned context files into the bytes
@@ -346,17 +356,33 @@ func LoadRecordingMeta(path string) (*RecordingMeta, *core.RefusalError) {
 	if err != nil {
 		return nil, invalidRecording(path, "unreadable meta sidecar")
 	}
-	var m RecordingMeta
-	dec := json.NewDecoder(bytes.NewReader(raw))
-	dec.DisallowUnknownFields()
-	if err := dec.Decode(&m); err != nil {
-		return nil, invalidRecording(path, "unreadable meta sidecar: "+err.Error())
+	m, ref := decodeRecordingMeta(path, raw)
+	if ref != nil {
+		return nil, ref
 	}
 	if m.SchemaVersion != schemaVersion || m.Fixture == "" {
 		return nil, invalidRecording(path, "missing schema_version or fixture")
 	}
 	if filepath.IsAbs(m.SourceBundle) || !digestID(m.SourceSHA256) {
 		return nil, invalidRecording(path, "invalid source provenance")
+	}
+	return m, nil
+}
+
+func decodeRecordingMeta(path string, raw []byte) (*RecordingMeta, *core.RefusalError) {
+	var m RecordingMeta
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&m); err != nil {
+		return nil, invalidRecording(path, "unreadable meta sidecar: "+err.Error())
+	}
+	var extra any
+	if err := dec.Decode(&extra); !errors.Is(err, io.EOF) {
+		reason := "trailing data after the meta sidecar object"
+		if err != nil {
+			reason += ": " + err.Error()
+		}
+		return nil, invalidRecording(path, reason)
 	}
 	return &m, nil
 }

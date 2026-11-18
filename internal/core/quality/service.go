@@ -79,7 +79,10 @@ func RunFixtures(ctx context.Context, req *Request) (*Response, *core.RefusalErr
 	if ref != nil {
 		return nil, ref
 	}
-	report := buildReport(ctx, req, inputs.catalog, inputs.heads, runs, calibration, findings)
+	report, ref := buildReport(ctx, req, inputs.catalog, inputs.heads, runs, calibration, findings)
+	if ref != nil {
+		return nil, ref
+	}
 	if ref := writeReport(inputs.root, report); ref != nil {
 		return nil, ref
 	}
@@ -197,7 +200,7 @@ func recordingName(path string) string {
 
 func buildReport(ctx context.Context, req *Request, catalog *Catalog, heads map[string][]byte,
 	runs []RunScore, calibration []RunScore, findings map[string][]Finding,
-) *Report {
+) (*Report, *core.RefusalError) {
 	report := &Report{
 		SchemaVersion: "1",
 		Mode:          "fixtures",
@@ -211,9 +214,13 @@ func buildReport(ctx context.Context, req *Request, catalog *Catalog, heads map[
 		if req.FixtureID != "" && f.ID != req.FixtureID {
 			continue
 		}
-		report.Fixtures = append(report.Fixtures, fixtureReport(ctx, req, f, heads[f.ID], runs, findings))
+		fixture, ref := fixtureReport(ctx, req, f, heads[f.ID], runs, findings)
+		if ref != nil {
+			return nil, ref
+		}
+		report.Fixtures = append(report.Fixtures, fixture)
 	}
-	return report
+	return report, nil
 }
 
 func response(req *Request, report *Report) *Response {
@@ -321,7 +328,7 @@ func diagnostics(runs []RunScore) []Diagnostic {
 
 func fixtureReport(ctx context.Context, req *Request, f *Fixture, head []byte, runs []RunScore,
 	findings map[string][]Finding,
-) FixtureReport {
+) (FixtureReport, *core.RefusalError) {
 	out := FixtureReport{
 		ID: f.ID, Label: f.Label, Known: len(f.Known), Bonus: len(f.Bonus),
 		Recall:     RecallReport{PerRun: []float64{}, UnionHits: []string{}},
@@ -350,8 +357,18 @@ func fixtureReport(ctx context.Context, req *Request, f *Fixture, head []byte, r
 	out.Recall.UnionHits = sortedHits(union)
 	out.BonusUnion = BonusReport{Count: countTrue(bonus), Hits: sortedHits(bonus)}
 	out.FalseGreen.Rate = ratePtr(out.FalseGreen.Passes, out.FalseGreen.Measured)
-	out.Hallucination = measureHallucination(ctx, req.Verifier, f.ID, head, runs, findings)
-	return out
+	return completeFixtureReport(ctx, &out, req, f, head, runs, findings)
+}
+
+func completeFixtureReport(ctx context.Context, out *FixtureReport, req *Request, f *Fixture, head []byte,
+	runs []RunScore, findings map[string][]Finding,
+) (FixtureReport, *core.RefusalError) {
+	hallucination, ref := measureHallucination(ctx, req.Verifier, f.ID, head, runs, findings)
+	if ref != nil {
+		return FixtureReport{}, ref
+	}
+	out.Hallucination = hallucination
+	return *out, nil
 }
 
 func tallyRun(out *FixtureReport, run *RunScore, known int, union, bonus map[string]bool) {
@@ -403,19 +420,37 @@ func sortedHits(values map[string]bool) []string {
 
 func measureHallucination(ctx context.Context, verifier QuoteVerifier, fixtureID string, head []byte,
 	runs []RunScore, findings map[string][]Finding,
-) HallucinationReport {
+) (HallucinationReport, *core.RefusalError) {
 	out := HallucinationReport{Status: hallucStubbed}
 	if verifier == nil {
 		verifier = StubVerifier{}
 	}
 	var mismatches int
+	var ref *core.RefusalError
 	for i := range runs {
 		run := &runs[i]
 		if run.Fixture != fixtureID || !run.Scored {
 			continue
 		}
-		mismatches += verifyRun(ctx, verifier, &out, head, findings[run.Recording])
+		mismatches, ref = addRunMismatches(ctx, mismatches, verifier, &out, head, findings[run.Recording])
+		if ref != nil {
+			return HallucinationReport{}, ref
+		}
 	}
+	return finishHallucination(out, mismatches), nil
+}
+
+func addRunMismatches(ctx context.Context, mismatches int, verifier QuoteVerifier, out *HallucinationReport,
+	head []byte, findings []Finding,
+) (int, *core.RefusalError) {
+	runMismatches, ref := verifyRun(ctx, verifier, out, head, findings)
+	if ref != nil {
+		return 0, ref
+	}
+	return mismatches + runMismatches, nil
+}
+
+func finishHallucination(out HallucinationReport, mismatches int) HallucinationReport {
 	if out.Checked > 0 {
 		out.Rate = ratePtr(mismatches, out.Checked)
 	}
@@ -424,7 +459,7 @@ func measureHallucination(ctx context.Context, verifier QuoteVerifier, fixtureID
 
 func verifyRun(ctx context.Context, verifier QuoteVerifier, out *HallucinationReport, head []byte,
 	findings []Finding,
-) int {
+) (int, *core.RefusalError) {
 	mismatches := 0
 	for j := range findings {
 		f := &findings[j]
@@ -433,11 +468,14 @@ func verifyRun(ctx context.Context, verifier QuoteVerifier, out *HallucinationRe
 		}
 		out.GatingFindings++
 		if err := ctx.Err(); err != nil {
-			return mismatches
+			return mismatches, canceled(err)
 		}
 		mismatches += verifyOne(ctx, verifier, out, head, f)
+		if err := ctx.Err(); err != nil {
+			return mismatches, canceled(err)
+		}
 	}
-	return mismatches
+	return mismatches, nil
 }
 
 func verifyOne(ctx context.Context, verifier QuoteVerifier, out *HallucinationReport, head []byte,

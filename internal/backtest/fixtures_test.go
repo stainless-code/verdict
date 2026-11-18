@@ -1,6 +1,9 @@
 package backtest
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestParseFlagsFixturesSurface proves the mode reads only its own two flags
 // and never claims to launch an agent.
@@ -34,5 +37,44 @@ func TestParseFlagsFixturesRejectsReplayFlags(t *testing.T) {
 		if _, uerr := parseFlags(args); uerr == nil {
 			t.Errorf("parsed %q, want a usage error", args)
 		}
+	}
+}
+
+// TestParseFlagsRejectsFixtureFlagsOutsideFixtures pins both the explicit
+// modes and the bare --since form: a fixture operand never silently resolves
+// into a composed run.
+func TestParseFlagsRejectsFixtureFlagsOutsideFixtures(t *testing.T) {
+	for _, flag := range []string{"--fixture", "--recordings"} {
+		for _, args := range [][]string{
+			{"--since", "90d", flag, "x"},
+			{"mine", "--since", "90d", flag, "x"},
+			{"reverts", flag, "x"},
+			{"replay", flag, "x"},
+			{"score", flag, "x"},
+		} {
+			assertFixtureFlagRefused(t, args, flag)
+		}
+	}
+}
+
+func assertFixtureFlagRefused(t *testing.T, args []string, flag string) {
+	t.Helper()
+	_, uerr := parseFlags(args)
+	if uerr == nil {
+		t.Errorf("parsed %q, want a usage error", args)
+		return
+	}
+	if !strings.Contains(uerr.Message, flag) {
+		t.Errorf("usage for %q = %q, want it to name %s", args, uerr.Message, flag)
+	}
+}
+
+func TestFixturesRentryQuotesRecordings(t *testing.T) {
+	f, uerr := parseFlags([]string{"fixtures", "--recordings", "recorded runs"})
+	if uerr != nil {
+		t.Fatalf("parse: %v", uerr)
+	}
+	if got, want := rentry(f, false), "verdict backtest fixtures --recordings 'recorded runs'"; got != want {
+		t.Errorf("rentry = %q, want %q", got, want)
 	}
 }

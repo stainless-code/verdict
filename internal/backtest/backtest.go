@@ -20,6 +20,7 @@ import (
 	runcore "github.com/stainless-code/verdict/internal/core/run"
 	"github.com/stainless-code/verdict/internal/jq"
 	runverb "github.com/stainless-code/verdict/internal/run"
+	"github.com/stainless-code/verdict/internal/shellquote"
 )
 
 // The shipped modes. `mine` is free and local; `reverts` records what git
@@ -296,6 +297,12 @@ func resolveMode(f *flags) *cli.UsageError {
 		return usage("backtest needs a mode ('mine', 'reverts', 'replay', 'score', or 'fixtures'), " +
 			"or --since to mine, replay, and score in one run")
 	}
+	if f.fixture != "" {
+		return usage("--fixture is only valid for backtest fixtures")
+	}
+	if f.recordings != "" {
+		return usage("--recordings is only valid for backtest fixtures")
+	}
 	f.mode = modeComposed
 	return nil
 }
@@ -448,7 +455,7 @@ func fixturesRentry(f *flags) string {
 		s += " --fixture " + f.fixture
 	}
 	if f.recordings != "" {
-		s += " --recordings " + f.recordings
+		s += " --recordings " + shellquote.Arg(f.recordings)
 	}
 	return s
 }
