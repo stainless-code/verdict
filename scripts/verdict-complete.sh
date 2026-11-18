@@ -25,7 +25,7 @@ _verdict_flags() { # $1 = verb
     risk) printf '%s\n' --status --limit --json;;
     handoff) printf '%s\n' --min-severity --paths --format --json;;
     index) printf '%s\n' build status prune callers tests-for co-changed owners blast-radius --from --at --depth --limit --commits --since --min-count --symbol --pr --paths --json;;
-    backtest) printf '%s\n' mine replay score --since --until --run --agent --max-reviews --budget-usd --timeout --rounds --json;;
+    backtest) printf '%s\n' mine replay score fixtures --since --until --run --agent --max-reviews --budget-usd --timeout --rounds --fixture --recordings --json;;
     threads) printf '%s\n' --provider --thread --dry-run --json;;
     drain) printf '%s\n' --provider --max-threads --agent --timeout --post --dry-run --json --;;
     fetch-local) printf '%s\n' --staged --range --base --stash --worktree --context --ignore --no-default-excludes --index --consent-over-budget --show-prompts --chunk --json;;

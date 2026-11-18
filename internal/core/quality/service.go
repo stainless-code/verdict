@@ -15,21 +15,20 @@ import (
 )
 
 const (
-	fixturesDir   = "fixtures"
-	reportName    = "report.json"
-	nextText      = "inspect .verdict/backtest/fixtures/report.json; rates describe recorded reviews and fixture defects"
-	reportTimeFmt = "2006-01-02T15:04:05Z"
+	fixturesDir = "fixtures"
+	reportName  = "report.json"
+	nextText    = "inspect .verdict/backtest/fixtures/report.json; rates describe recorded reviews and fixture defects"
 )
 
 // Request is one `backtest fixtures` run. RepoRoot is the checkout that owns
 // bench/quality; RecordingsRoot is an opt-in override for live recordings,
 // resolved against RepoRoot when relative.
 type Request struct {
+	Verifier       QuoteVerifier
+	Now            func() time.Time
 	RepoRoot       string
 	FixtureID      string
 	RecordingsRoot string
-	Verifier       QuoteVerifier
-	Now            func() time.Time
 }
 
 // Response is the envelope data plus the frozen human block.
@@ -37,8 +36,8 @@ type Response struct {
 	Data     *Report
 	At       string
 	Next     string
-	Warnings []string
 	Human    string
+	Warnings []string
 }
 
 // RunFixtures loads the catalog and recordings, scores them, and writes the
@@ -46,70 +45,55 @@ type Response struct {
 // agent or calls a host.
 func RunFixtures(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if err := ctx.Err(); err != nil {
-		return nil, &core.RefusalError{Code: "canceled", Message: "backtest fixtures canceled: " + err.Error()}
+		return nil, canceled(err)
 	}
+	catalog, dirs, root, ref := loadInputs(req)
+	if ref != nil {
+		return nil, ref
+	}
+	byID := map[string]*Fixture{}
+	for i := range catalog.Fixtures {
+		byID[catalog.Fixtures[i].ID] = &catalog.Fixtures[i]
+	}
+	runs, findings, ref := loadRuns(ctx, dirs, byID, NewMatcher(catalog))
+	if ref != nil {
+		return nil, ref
+	}
+	report := buildReport(ctx, req, catalog, runs, findings)
+	if ref := writeReport(root, report); ref != nil {
+		return nil, ref
+	}
+	return response(req, report), nil
+}
+
+func loadInputs(req *Request) (*Catalog, []string, string, *core.RefusalError) {
 	root := req.RepoRoot
 	if root == "" {
 		root = "."
 	}
 	catalog, ref := LoadCatalog(filepath.Join(root, "bench", "quality", catalogName))
 	if ref != nil {
-		return nil, ref
+		return nil, nil, "", ref
 	}
-	fixturesDirPath := filepath.Join(root, "bench", "quality", "recordings")
-	if req.RecordingsRoot != "" {
-		fixturesDirPath = req.RecordingsRoot
-		if !filepath.IsAbs(fixturesDirPath) {
-			fixturesDirPath = filepath.Join(root, fixturesDirPath)
-		}
-	}
-	dirs, ref := RecordingDirs(fixturesDirPath)
+	dirs, ref := RecordingDirs(recordingsRoot(root, req.RecordingsRoot))
 	if ref != nil {
-		return nil, ref
+		return nil, nil, "", ref
 	}
 	if len(dirs) == 0 {
-		return nil, &core.RefusalError{Code: "fixtures-recording-invalid", Message: "no recordings under " + fixturesDirPath}
+		return nil, nil, "", invalidRecording(root, "no recordings under the recordings root")
 	}
-	matcher := NewMatcher(catalog)
-	byID := map[string]*Fixture{}
-	for i := range catalog.Fixtures {
-		byID[catalog.Fixtures[i].ID] = &catalog.Fixtures[i]
-	}
-	runs := make([]RunScore, 0, len(dirs))
-	findingsByRecording := map[string][]Finding{}
-	for _, dir := range dirs {
-		if err := ctx.Err(); err != nil {
-			return nil, &core.RefusalError{Code: "canceled", Message: "backtest fixtures canceled: " + err.Error()}
-		}
-		name := filepath.Base(dir)
-		meta, ref := LoadRecordingMeta(dir)
-		if ref != nil {
-			return nil, ref
-		}
-		fixture := byID[meta.Fixture]
-		if fixture == nil {
-			return nil, &core.RefusalError{Code: "fixtures-recording-invalid", Message: "recording " + name + " names unknown fixture " + meta.Fixture}
-		}
-		findings, ref := loadFindings(dir, meta.Source)
-		if ref != nil {
-			return nil, ref
-		}
-		findingsByRecording[name] = findings
-		runs = append(runs, *Score(matcher, fixture, findings, *meta, name))
-	}
-	calibration := Calibrate(catalog, runs)
-	calibrationReport := CalibrationReport{Rows: len(calibration.Rows), Reproduced: calibration.Reproduced, Mismatches: []string{}}
-	for _, row := range calibration.Rows {
-		if row.Status != "PASS" {
-			calibrationReport.Mismatches = append(calibrationReport.Mismatches, row.Recording)
-		}
-	}
+	return catalog, dirs, root, nil
+}
+
+func buildReport(ctx context.Context, req *Request, catalog *Catalog, runs []RunScore,
+	findings map[string][]Finding,
+) *Report {
 	report := &Report{
 		SchemaVersion: "1",
 		Mode:          "fixtures",
 		Recordings:    len(runs),
 		Scored:        scoredRuns(runs),
-		Calibration:   calibrationReport,
+		Calibration:   calibrationSummary(Calibrate(catalog, runs)),
 		Diagnostics:   diagnostics(runs),
 	}
 	for i := range catalog.Fixtures {
@@ -117,16 +101,69 @@ func RunFixtures(ctx context.Context, req *Request) (*Response, *core.RefusalErr
 		if req.FixtureID != "" && f.ID != req.FixtureID {
 			continue
 		}
-		report.Fixtures = append(report.Fixtures, fixtureReport(ctx, req, f, runs, findingsByRecording))
+		report.Fixtures = append(report.Fixtures, fixtureReport(ctx, req, f, runs, findings))
 	}
-	if ref := writeReport(root, report); ref != nil {
-		return nil, ref
-	}
+	return report
+}
+
+func response(req *Request, report *Report) *Response {
 	now := time.Now
 	if req.Now != nil {
 		now = req.Now
 	}
-	return &Response{Data: report, At: core.NowUTC(now()), Next: nextText, Human: Human(report)}, nil
+	return &Response{Data: report, At: core.NowUTC(now()), Next: nextText, Human: Human(report)}
+}
+
+func canceled(err error) *core.RefusalError {
+	return &core.RefusalError{Code: "canceled", Message: "backtest fixtures canceled: " + err.Error()}
+}
+
+func recordingsRoot(root, override string) string {
+	if override == "" {
+		return filepath.Join(root, "bench", "quality", "recordings")
+	}
+	if filepath.IsAbs(override) {
+		return override
+	}
+	return filepath.Join(root, override)
+}
+
+func loadRuns(ctx context.Context, dirs []string, byID map[string]*Fixture,
+	matcher *Matcher,
+) ([]RunScore, map[string][]Finding, *core.RefusalError) {
+	runs := make([]RunScore, 0, len(dirs))
+	findingsByRecording := map[string][]Finding{}
+	for _, dir := range dirs {
+		if err := ctx.Err(); err != nil {
+			return nil, nil, canceled(err)
+		}
+		run, findings, ref := scoreOne(dir, byID, matcher)
+		if ref != nil {
+			return nil, nil, ref
+		}
+		findingsByRecording[run.Recording] = findings
+		runs = append(runs, *run)
+	}
+	return runs, findingsByRecording, nil
+}
+
+func scoreOne(dir string, byID map[string]*Fixture,
+	matcher *Matcher,
+) (*RunScore, []Finding, *core.RefusalError) {
+	name := filepath.Base(dir)
+	meta, ref := LoadRecordingMeta(dir)
+	if ref != nil {
+		return nil, nil, ref
+	}
+	fixture := byID[meta.Fixture]
+	if fixture == nil {
+		return nil, nil, invalidRecording(name, "names unknown fixture "+meta.Fixture)
+	}
+	findings, ref := loadFindings(dir, meta.Source)
+	if ref != nil {
+		return nil, nil, ref
+	}
+	return Score(matcher, fixture, findings, meta, name), findings, nil
 }
 
 func loadFindings(dir, source string) ([]Finding, *core.RefusalError) {
@@ -136,14 +173,24 @@ func loadFindings(dir, source string) ([]Finding, *core.RefusalError) {
 	case findingsName:
 		return LoadRecordedFindings(dir)
 	default:
-		return nil, &core.RefusalError{Code: "fixtures-recording-invalid", Message: "unsupported source " + source}
+		return nil, invalidRecording(dir, "unsupported source "+source)
 	}
+}
+
+func calibrationSummary(calibration *CalibrationResult) CalibrationReport {
+	out := CalibrationReport{Rows: len(calibration.Rows), Reproduced: calibration.Reproduced, Mismatches: []string{}}
+	for i := range calibration.Rows {
+		if calibration.Rows[i].Status != statusPass {
+			out.Mismatches = append(out.Mismatches, calibration.Rows[i].Recording)
+		}
+	}
+	return out
 }
 
 func scoredRuns(runs []RunScore) int {
 	n := 0
-	for _, run := range runs {
-		if run.Scored {
+	for i := range runs {
+		if runs[i].Scored {
 			n++
 		}
 	}
@@ -152,14 +199,9 @@ func scoredRuns(runs []RunScore) int {
 
 func diagnostics(runs []RunScore) []Diagnostic {
 	out := make([]Diagnostic, 0, len(runs))
-	for _, run := range runs {
-		hits := make([]string, 0, len(run.Hits))
-		for id, hit := range run.Hits {
-			if hit {
-				hits = append(hits, id)
-			}
-		}
-		slices.Sort(hits)
+	for i := range runs {
+		run := &runs[i]
+		hits := sortedHits(run.Hits)
 		out = append(out, Diagnostic{
 			Recording: run.Recording, Fixture: run.Fixture, Hits: hits,
 			Praise: run.Praise, NullSeverity: run.NullSeverity, OtherFindings: run.OtherFindings,
@@ -169,52 +211,67 @@ func diagnostics(runs []RunScore) []Diagnostic {
 	return out
 }
 
-func fixtureReport(ctx context.Context, req *Request, f *Fixture, runs []RunScore, findings map[string][]Finding) FixtureReport {
-	out := FixtureReport{ID: f.ID, Label: f.Label, Known: len(f.Known), Bonus: len(f.Bonus),
+func fixtureReport(ctx context.Context, req *Request, f *Fixture, runs []RunScore,
+	findings map[string][]Finding,
+) FixtureReport {
+	out := FixtureReport{
+		ID: f.ID, Label: f.Label, Known: len(f.Known), Bonus: len(f.Bonus),
 		Recall:     RecallReport{PerRun: []float64{}, UnionHits: []string{}},
 		BonusUnion: BonusReport{Hits: []string{}}, FalseGreen: FalseGreenReport{},
-		Hallucination: HallucinationReport{Status: hallucStubbed}}
+		Hallucination: HallucinationReport{Status: hallucStubbed},
+	}
 	union := map[string]bool{}
 	bonus := map[string]bool{}
-	sum := 0.0
-	for _, run := range runs {
+	for i := range runs {
+		run := &runs[i]
 		if run.Fixture != f.ID {
 			continue
 		}
 		out.Runs++
-		if run.RefusalCode == "review-insufficient" {
+		if run.RefusalCode == refusalInsufficient {
 			out.ReviewInsufficient++
 		}
 		if !run.Scored {
 			continue
 		}
-		if run.GatePassed == nil {
-			out.FalseGreen.Unknown++
-		} else {
-			out.FalseGreen.Measured++
-			if *run.GatePassed {
-				out.FalseGreen.Passes++
-			}
-		}
 		out.Scored++
-		rate, ok := corpuscore.Rate(countTrue(run.Hits), len(f.Known))
-		if ok {
-			out.Recall.PerRun = append(out.Recall.PerRun, rate)
-			sum += rate
-		}
-		mergeHits(union, run.Hits)
-		mergeHits(bonus, run.BonusHits)
+		tallyRun(&out, run, len(f.Known), union, bonus)
 	}
-	if out.Scored > 0 {
-		mean := roundRate(sum / float64(out.Scored))
-		out.Recall.Mean = &mean
-	}
+	out.Recall.Mean = meanRate(out.Recall.PerRun, out.Scored)
 	out.Recall.Union = ratePtr(countTrue(union), len(f.Known))
 	out.Recall.UnionHits = sortedHits(union)
 	out.BonusUnion = BonusReport{Count: countTrue(bonus), Hits: sortedHits(bonus)}
 	out.FalseGreen.Rate = ratePtr(out.FalseGreen.Passes, out.FalseGreen.Measured)
 	out.Hallucination = measureHallucination(ctx, req.Verifier, f.ID, runs, findings)
 	return out
+}
+
+func tallyRun(out *FixtureReport, run *RunScore, known int, union, bonus map[string]bool) {
+	if run.GatePassed == nil {
+		out.FalseGreen.Unknown++
+	} else {
+		out.FalseGreen.Measured++
+		if *run.GatePassed {
+			out.FalseGreen.Passes++
+		}
+	}
+	if rate, ok := corpuscore.Rate(countTrue(run.Hits), known); ok {
+		out.Recall.PerRun = append(out.Recall.PerRun, rate)
+	}
+	mergeHits(union, run.Hits)
+	mergeHits(bonus, run.BonusHits)
+}
+
+func meanRate(perRun []float64, scored int) *float64 {
+	if scored == 0 {
+		return nil
+	}
+	sum := 0.0
+	for _, rate := range perRun {
+		sum += rate
+	}
+	mean := roundRate(sum / float64(scored))
+	return &mean
 }
 
 func mergeHits(dst map[string]bool, src map[string]bool) {
@@ -236,34 +293,20 @@ func sortedHits(values map[string]bool) []string {
 	return ids
 }
 
-func measureHallucination(ctx context.Context, verifier QuoteVerifier, fixtureID string, runs []RunScore, findings map[string][]Finding) HallucinationReport {
+func measureHallucination(ctx context.Context, verifier QuoteVerifier, fixtureID string,
+	runs []RunScore, findings map[string][]Finding,
+) HallucinationReport {
 	out := HallucinationReport{Status: hallucStubbed}
 	if verifier == nil {
 		verifier = StubVerifier{}
 	}
 	var mismatches int
-	for _, run := range runs {
+	for i := range runs {
+		run := &runs[i]
 		if run.Fixture != fixtureID || !run.Scored {
 			continue
 		}
-		for _, f := range findings[run.Recording] {
-			if !IsGatingFinding(f) {
-				continue
-			}
-			out.GatingFindings++
-			if err := ctx.Err(); err != nil {
-				return out
-			}
-			result := verifier.Verify(ctx, f, nil)
-			if result.Status == quoteUnsupported {
-				continue
-			}
-			out.Checked++
-			out.Status = hallucMeasured
-			if result.Status == quoteMismatch {
-				mismatches++
-			}
-		}
+		mismatches += verifyRun(ctx, verifier, &out, findings[run.Recording])
 	}
 	if out.Checked > 0 {
 		out.Rate = ratePtr(mismatches, out.Checked)
@@ -271,9 +314,40 @@ func measureHallucination(ctx context.Context, verifier QuoteVerifier, fixtureID
 	return out
 }
 
+func verifyRun(ctx context.Context, verifier QuoteVerifier, out *HallucinationReport,
+	findings []Finding,
+) int {
+	mismatches := 0
+	for j := range findings {
+		f := &findings[j]
+		if !IsGatingFinding(f) {
+			continue
+		}
+		out.GatingFindings++
+		if err := ctx.Err(); err != nil {
+			return mismatches
+		}
+		mismatches += verifyOne(ctx, verifier, out, f)
+	}
+	return mismatches
+}
+
+func verifyOne(ctx context.Context, verifier QuoteVerifier, out *HallucinationReport, f *Finding) int {
+	verdict := verifier.Verify(ctx, f, nil)
+	if verdict.Status == quoteUnsupported {
+		return 0
+	}
+	out.Checked++
+	out.Status = hallucMeasured
+	if verdict.Status == quoteMismatch {
+		return 1
+	}
+	return 0
+}
+
 func writeReport(root string, report *Report) *core.RefusalError {
 	path := filepath.Join(root, ".verdict", "backtest", fixturesDir, reportName)
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), dirPermissions); err != nil {
 		return &core.RefusalError{Code: "fixtures-failed", Message: "cannot create fixtures report directory: " + err.Error()}
 	}
 	if err := atomic.WriteFile(path, []byte(jq.PrettyOrdered(report.Wire()))); err != nil {

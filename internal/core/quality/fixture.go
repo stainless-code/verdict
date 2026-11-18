@@ -25,16 +25,20 @@ const (
 	schemaVersion   = "1"
 	maxCatalogBytes = 1 << 20
 	maxReviewBytes  = 1 << 20
+	fixturePrefix   = "fixture "
+	sha256HexLen    = 64
+	commitHexLen    = 40
+	dirPermissions  = 0o755
 )
 
 // Catalog is the fixtures.json manifest: the two reviewed ranges, their
 // known and bonus defects, the hand scores, and the praise/defect-verb
 // patterns the calibration table prints.
 type Catalog struct {
+	ReviewSignals ReviewSignals    `json:"review_signals"`
 	SchemaVersion string           `json:"schema_version"`
 	Fixtures      []Fixture        `json:"fixtures"`
 	Calibration   []CalibrationRow `json:"calibration"`
-	ReviewSignals ReviewSignals    `json:"review_signals"`
 }
 
 // Fixture is one reviewed range with hand-known defects.
@@ -70,8 +74,8 @@ type CalibrationRow struct {
 	Recording string   `json:"recording"`
 	Fixture   string   `json:"fixture"`
 	Driver    string   `json:"driver"`
-	Hand      []string `json:"hand"`
 	HandLabel string   `json:"hand_label"`
+	Hand      []string `json:"hand"`
 }
 
 // ReviewSignals carries the two regexes the calibration table uses to count
@@ -98,12 +102,12 @@ type RecordingMeta struct {
 // Finding is the canonical input to a matcher. Legacy calibration reviews
 // fill Claim from body/text; S1-format findings fill it from claim/body.
 type Finding struct {
+	Anchored *bool
 	Path     string
 	Claim    string
 	Severity string
 	Quote    string
 	Refusal  string
-	Anchored *bool
 }
 
 // LoadCatalog reads and validates the shipped catalog at path.
@@ -133,14 +137,8 @@ func invalidCatalog(path, reason string) *core.RefusalError {
 }
 
 func validateCatalog(c *Catalog, path string) *core.RefusalError {
-	if c.SchemaVersion != schemaVersion {
-		return invalidCatalog(path, `missing schema_version "1"`)
-	}
-	if len(c.Fixtures) == 0 {
-		return invalidCatalog(path, "missing fixtures")
-	}
-	if len(c.Calibration) == 0 {
-		return invalidCatalog(path, "missing calibration rows")
+	if c.SchemaVersion != schemaVersion || len(c.Fixtures) == 0 || len(c.Calibration) == 0 {
+		return invalidCatalog(path, "missing schema_version, fixtures, or calibration rows")
 	}
 	seen := map[string]bool{}
 	for i := range c.Fixtures {
@@ -148,18 +146,29 @@ func validateCatalog(c *Catalog, path string) *core.RefusalError {
 			return ref
 		}
 	}
-	recording := map[string]bool{}
-	for _, row := range c.Calibration {
-		if row.Recording == "" || recording[row.Recording] {
+	if ref := validateCalibration(c.Calibration, seen, path); ref != nil {
+		return ref
+	}
+	return validateSignals(c.ReviewSignals, path)
+}
+
+func validateSignals(s ReviewSignals, path string) *core.RefusalError {
+	if !validRegex(s.PraiseRE) || !validRegex(s.DefectVerbRE) {
+		return invalidCatalog(path, "review_signals carries an invalid pattern")
+	}
+	return nil
+}
+
+func validateCalibration(rows []CalibrationRow, fixtures map[string]bool, path string) *core.RefusalError {
+	seen := map[string]bool{}
+	for _, row := range rows {
+		if row.Recording == "" || seen[row.Recording] {
 			return invalidCatalog(path, "calibration repeats recording "+row.Recording)
 		}
-		recording[row.Recording] = true
-		if !seen[row.Fixture] {
+		seen[row.Recording] = true
+		if !fixtures[row.Fixture] {
 			return invalidCatalog(path, "calibration names unknown fixture "+row.Fixture)
 		}
-	}
-	if !validRegex(c.ReviewSignals.PraiseRE) || !validRegex(c.ReviewSignals.DefectVerbRE) {
-		return invalidCatalog(path, "review_signals carries an invalid pattern")
 	}
 	return nil
 }
@@ -170,15 +179,13 @@ func validateFixture(f *Fixture, seen map[string]bool, path string) *core.Refusa
 	}
 	seen[f.ID] = true
 	if f.Repo == "" || !commitID(f.Base) || !commitID(f.Head) {
-		return invalidCatalog(path, "fixture "+f.ID+" needs repo and 40-hex base and head")
+		return invalidCatalog(path, fixturePrefix+f.ID+" needs repo and 40-hex base and head")
 	}
-	for _, c := range f.Context {
-		if filepath.IsAbs(c.Path) || !digestID(c.SHA256) || c.Bytes <= 0 {
-			return invalidCatalog(path, "fixture "+f.ID+" has an invalid context pin")
-		}
+	if ref := validateContext(f.Context, f.ID, path); ref != nil {
+		return ref
 	}
 	if len(f.Known) == 0 {
-		return invalidCatalog(path, "fixture "+f.ID+" has no known defects")
+		return invalidCatalog(path, fixturePrefix+f.ID+" has no known defects")
 	}
 	if ref := validateDefects(f.Known, f.ID, path); ref != nil {
 		return ref
@@ -186,31 +193,51 @@ func validateFixture(f *Fixture, seen map[string]bool, path string) *core.Refusa
 	return validateDefects(f.Bonus, f.ID, path)
 }
 
-func validateDefects(defects []Defect, id, path string) *core.RefusalError {
-	if len(defects) == 0 {
-		return nil
-	}
-	seen := map[string]bool{}
-	for _, d := range defects {
-		if d.ID == "" || d.Description == "" || seen[d.ID] {
-			return invalidCatalog(path, "fixture "+id+" has a missing or repeated defect id")
-		}
-		seen[d.ID] = true
-		if len(d.Matchers) == 0 {
-			return invalidCatalog(path, "defect "+d.ID+" has no matchers")
-		}
-		for _, rule := range d.Matchers {
-			if len(rule) == 0 {
-				return invalidCatalog(path, "defect "+d.ID+" has an empty rule")
-			}
-			for _, pattern := range rule {
-				if !validRegex(pattern) {
-					return invalidCatalog(path, "defect "+d.ID+" has invalid pattern "+pattern)
-				}
-			}
+func validateContext(entries []ContextFile, id, path string) *core.RefusalError {
+	for _, c := range entries {
+		if filepath.IsAbs(c.Path) || !digestID(c.SHA256) || c.Bytes <= 0 {
+			return invalidCatalog(path, fixturePrefix+id+" has an invalid context pin")
 		}
 	}
 	return nil
+}
+
+func validateDefects(defects []Defect, id, path string) *core.RefusalError {
+	seen := map[string]bool{}
+	for _, d := range defects {
+		if d.ID == "" || d.Description == "" || seen[d.ID] {
+			return invalidCatalog(path, fixturePrefix+id+" has a missing or repeated defect id")
+		}
+		seen[d.ID] = true
+		if ref := validateRules(d, path); ref != nil {
+			return ref
+		}
+	}
+	return nil
+}
+
+func validateRules(d Defect, path string) *core.RefusalError {
+	if len(d.Matchers) == 0 {
+		return invalidCatalog(path, "defect "+d.ID+" has no matchers")
+	}
+	for _, rule := range d.Matchers {
+		if len(rule) == 0 {
+			return invalidCatalog(path, "defect "+d.ID+" has an empty rule")
+		}
+		if !validPatterns(rule) {
+			return invalidCatalog(path, "defect "+d.ID+" has invalid pattern")
+		}
+	}
+	return nil
+}
+
+func validPatterns(rule []string) bool {
+	for _, pattern := range rule {
+		if !validRegex(pattern) {
+			return false
+		}
+	}
+	return true
 }
 
 func validRegex(pattern string) bool {
@@ -218,9 +245,9 @@ func validRegex(pattern string) bool {
 	return err == nil
 }
 
-func digestID(s string) bool { return hexID(s, 64) }
+func digestID(s string) bool { return hexID(s, sha256HexLen) }
 
-func commitID(s string) bool { return hexID(s, 40) }
+func commitID(s string) bool { return hexID(s, commitHexLen) }
 
 func hexID(s string, length int) bool {
 	if len(s) != length {
@@ -232,19 +259,6 @@ func hexID(s string, length int) bool {
 		}
 	}
 	return true
-}
-
-// FixtureByID finds one fixture, or refuses with a literal code.
-func FixtureByID(c *Catalog, id string) (*Fixture, *core.RefusalError) {
-	if id == "" {
-		return nil, nil
-	}
-	for i := range c.Fixtures {
-		if c.Fixtures[i].ID == id {
-			return &c.Fixtures[i], nil
-		}
-	}
-	return nil, &core.RefusalError{Code: "fixtures-invalid", Message: "unknown fixture '" + id + "'"}
 }
 
 // LoadRecordingMeta reads one recording's outcome beside its review.
@@ -278,7 +292,7 @@ func invalidRecording(dir, reason string) *core.RefusalError {
 func RecordingDirs(root string) ([]string, *core.RefusalError) {
 	entries, err := os.ReadDir(root)
 	if err != nil {
-		return nil, &core.RefusalError{Code: "fixtures-recording-invalid", Message: "cannot read recordings root " + root}
+		return nil, invalidRecording(root, "cannot read recordings root")
 	}
 	var dirs []string
 	for _, entry := range entries {

@@ -17,12 +17,13 @@ const (
 	hallucStubbed       = "stubbed"
 	hallucMeasured      = "measured"
 	refusalInsufficient = "review-insufficient"
+	rateBits            = 64
 )
 
 // IsGatingFinding is the one predicate S4 retargets: a gating finding is
 // critical or important, anchored, and not marked unverified. No other call
 // site decides which findings a quote verifier sees.
-func IsGatingFinding(f Finding) bool {
+func IsGatingFinding(f *Finding) bool {
 	switch strings.ToLower(f.Severity) {
 	case "critical", "important":
 	default:
@@ -43,7 +44,7 @@ type QuoteResult struct {
 
 // QuoteVerifier checks one finding's quote against the reviewed head.
 type QuoteVerifier interface {
-	Verify(ctx context.Context, f Finding, head []byte) QuoteResult
+	Verify(ctx context.Context, f *Finding, head []byte) QuoteResult
 }
 
 // StubVerifier reports that S4's quote verification has not shipped. S6
@@ -51,7 +52,7 @@ type QuoteVerifier interface {
 type StubVerifier struct{}
 
 // Verify implements QuoteVerifier.
-func (StubVerifier) Verify(_ context.Context, _ Finding, _ []byte) QuoteResult {
+func (StubVerifier) Verify(_ context.Context, _ *Finding, _ []byte) QuoteResult {
 	return QuoteResult{Status: quoteUnsupported, Reason: "S4 quote verification has not shipped"}
 }
 
@@ -66,17 +67,17 @@ type RecallReport struct {
 
 // BonusReport reports bonus defects separately; they never enter recall.
 type BonusReport struct {
-	Count int      `json:"count"`
 	Hits  []string `json:"hits"`
+	Count int      `json:"count"`
 }
 
 // FalseGreenReport is the measured gate-pass rate. Unknown gate outcomes are
 // listed but excluded from the denominator.
 type FalseGreenReport struct {
+	Rate     *float64 `json:"rate"`
 	Passes   int      `json:"passes"`
 	Measured int      `json:"measured"`
 	Unknown  int      `json:"unknown"`
-	Rate     *float64 `json:"rate"`
 }
 
 // HallucinationReport is null while quote verification is stubbed.
@@ -89,37 +90,37 @@ type HallucinationReport struct {
 
 // CalibrationReport summarizes the hand-score rows.
 type CalibrationReport struct {
+	Mismatches []string `json:"mismatches"`
 	Rows       int      `json:"rows"`
 	Reproduced bool     `json:"reproduced"`
-	Mismatches []string `json:"mismatches"`
 }
 
 // FixtureReport is one fixture's published metrics.
 type FixtureReport struct {
+	FalseGreen         FalseGreenReport    `json:"false_green"`
 	ID                 string              `json:"id"`
 	Label              string              `json:"label"`
+	Recall             RecallReport        `json:"recall"`
+	BonusUnion         BonusReport         `json:"bonus_union"`
+	Hallucination      HallucinationReport `json:"hallucination"`
 	Runs               int                 `json:"runs"`
 	Scored             int                 `json:"scored"`
 	Known              int                 `json:"known"`
 	Bonus              int                 `json:"bonus"`
-	Recall             RecallReport        `json:"recall"`
-	BonusUnion         BonusReport         `json:"bonus_union"`
-	FalseGreen         FalseGreenReport    `json:"false_green"`
-	Hallucination      HallucinationReport `json:"hallucination"`
 	ReviewInsufficient int                 `json:"review_insufficient"`
 }
 
 // Diagnostic is one run's matcher output, kept beside the rates so a reader
 // can audit a surprising hit without opening the recording.
 type Diagnostic struct {
+	GatePassed    *bool    `json:"gate_passed"`
 	Recording     string   `json:"recording"`
 	Fixture       string   `json:"fixture"`
+	InfraError    string   `json:"infra_error"`
 	Hits          []string `json:"hits"`
 	Praise        int      `json:"praise"`
 	NullSeverity  int      `json:"null_severity"`
 	OtherFindings int      `json:"other_findings"`
-	GatePassed    *bool    `json:"gate_passed"`
-	InfraError    string   `json:"infra_error"`
 	Scored        bool     `json:"scored"`
 }
 
@@ -128,11 +129,11 @@ type Diagnostic struct {
 type Report struct {
 	SchemaVersion string            `json:"schema_version"`
 	Mode          string            `json:"mode"`
+	Fixtures      []FixtureReport   `json:"fixtures"`
+	Diagnostics   []Diagnostic      `json:"diagnostics"`
+	Calibration   CalibrationReport `json:"calibration"`
 	Recordings    int               `json:"recordings"`
 	Scored        int               `json:"scored"`
-	Fixtures      []FixtureReport   `json:"fixtures"`
-	Calibration   CalibrationReport `json:"calibration"`
-	Diagnostics   []Diagnostic      `json:"diagnostics"`
 }
 
 // Wire renders the report in the published key order.
@@ -258,7 +259,7 @@ func rateText(v *float64) string {
 	if v == nil {
 		return "n/a"
 	}
-	return strconv.FormatFloat(*v, 'f', corpuscore.RateDecimals, 64)
+	return strconv.FormatFloat(*v, 'f', corpuscore.RateDecimals, rateBits)
 }
 
 func countNoun(n int, noun string) string {
@@ -280,7 +281,8 @@ func Human(r *Report) string {
 	var sb strings.Builder
 	fmt.Fprintf(&sb, "backtest fixtures  (%d fixtures, %d recorded reviews, %d scored)\n",
 		len(r.Fixtures), r.Recordings, r.Scored)
-	for _, f := range r.Fixtures {
+	for i := range r.Fixtures {
+		f := &r.Fixtures[i]
 		fmt.Fprintf(&sb, "%s  %s  (%s, %d scored)\n", f.ID, f.Label, countNoun(f.Runs, "recording"), f.Scored)
 		perRun := make([]string, 0, len(f.Recall.PerRun))
 		for _, rate := range f.Recall.PerRun {

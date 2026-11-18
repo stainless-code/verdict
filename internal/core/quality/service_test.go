@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/golden"
@@ -24,19 +25,35 @@ func TestRunFixturesLiterals(t *testing.T) {
 	if len(data.Fixtures) != 2 {
 		t.Fatalf("fixtures = %d, want 2", len(data.Fixtures))
 	}
-	fx1 := data.Fixtures[0]
+	assertFx1Report(t, &data.Fixtures[0])
+	assertFx2Report(t, &data.Fixtures[1])
+	if data.Calibration.Rows != 7 || !data.Calibration.Reproduced || len(data.Calibration.Mismatches) != 0 {
+		t.Errorf("calibration = %+v", data.Calibration)
+	}
+	if len(data.Diagnostics) != 7 {
+		t.Errorf("diagnostics = %d, want 7", len(data.Diagnostics))
+	}
+	golden.Check(t, "fixtures-human", Human(data))
+	assertReportFile(t, root, data)
+}
+
+func assertFx1Report(t *testing.T, fx1 *FixtureReport) {
+	t.Helper()
 	if fx1.ID != "fx1" || fx1.Runs != 6 || fx1.Scored != 6 || fx1.Known != 5 || fx1.Bonus != 2 {
 		t.Errorf("fx1 header = %+v", fx1)
 	}
+	assertFx1Recall(t, fx1)
+	assertFx1Bonuses(t, fx1)
+	assertFx1Metrics(t, fx1)
+}
+
+func assertFx1Recall(t *testing.T, fx1 *FixtureReport) {
+	t.Helper()
 	wantPerRun := []float64{0, 0, 0.2, 1, 0.2, 0.2}
 	if len(fx1.Recall.PerRun) != len(wantPerRun) {
 		t.Fatalf("fx1 per_run = %v", fx1.Recall.PerRun)
 	}
-	for i, want := range wantPerRun {
-		if fx1.Recall.PerRun[i] != want {
-			t.Errorf("fx1 per_run[%d] = %v, want %v", i, fx1.Recall.PerRun[i], want)
-		}
-	}
+	assertPerRunRates(t, fx1.Recall.PerRun, wantPerRun)
 	if fx1.Recall.Mean == nil || *fx1.Recall.Mean != 0.2667 {
 		t.Errorf("fx1 mean = %v, want 0.2667", fx1.Recall.Mean)
 	}
@@ -46,12 +63,21 @@ func TestRunFixturesLiterals(t *testing.T) {
 	if got := joinLiteral(fx1.Recall.UnionHits); got != "K1,K2,K3,K4,K5" {
 		t.Errorf("fx1 union_hits = %s", got)
 	}
+}
+
+func assertPerRunRates(t *testing.T, got, want []float64) {
+	t.Helper()
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("fx1 per_run[%d] = %v, want %v", i, got[i], want[i])
+		}
+	}
+}
+
+func assertFx1Bonuses(t *testing.T, fx1 *FixtureReport) {
+	t.Helper()
 	if fx1.BonusUnion.Count != 2 || joinLiteral(fx1.BonusUnion.Hits) != "B1,B2" {
 		t.Errorf("fx1 bonus_union = %+v", fx1.BonusUnion)
-	}
-	if fx1.FalseGreen.Passes != 3 || fx1.FalseGreen.Measured != 5 || fx1.FalseGreen.Unknown != 1 ||
-		fx1.FalseGreen.Rate == nil || *fx1.FalseGreen.Rate != 0.6 {
-		t.Errorf("fx1 false_green = %+v", fx1.FalseGreen)
 	}
 	if fx1.Hallucination.Rate != nil || fx1.Hallucination.Status != "stubbed" ||
 		fx1.Hallucination.GatingFindings != 0 || fx1.Hallucination.Checked != 0 {
@@ -60,28 +86,48 @@ func TestRunFixturesLiterals(t *testing.T) {
 	if fx1.ReviewInsufficient != 0 {
 		t.Errorf("fx1 review_insufficient = %d, want 0", fx1.ReviewInsufficient)
 	}
-	fx2 := data.Fixtures[1]
+}
+
+func assertFx1Metrics(t *testing.T, fx1 *FixtureReport) {
+	t.Helper()
+	if fx1.FalseGreen.Passes != 3 || fx1.FalseGreen.Measured != 5 || fx1.FalseGreen.Unknown != 1 ||
+		fx1.FalseGreen.Rate == nil || *fx1.FalseGreen.Rate != 0.6 {
+		t.Errorf("fx1 false_green = %+v", fx1.FalseGreen)
+	}
+}
+
+func assertFx2Report(t *testing.T, fx2 *FixtureReport) {
+	t.Helper()
 	if fx2.ID != "fx2" || fx2.Runs != 1 || fx2.Known != 6 || fx2.Bonus != 0 {
 		t.Errorf("fx2 header = %+v", fx2)
 	}
-	if len(fx2.Recall.PerRun) != 1 || fx2.Recall.PerRun[0] != 0.1667 ||
-		fx2.Recall.Mean == nil || *fx2.Recall.Mean != 0.1667 ||
+	assertFx2Recall(t, fx2)
+	assertFx2FalseGreen(t, fx2)
+}
+
+func assertFx2Recall(t *testing.T, fx2 *FixtureReport) {
+	t.Helper()
+	if len(fx2.Recall.PerRun) != 1 || fx2.Recall.PerRun[0] != 0.1667 {
+		t.Errorf("fx2 per_run = %v", fx2.Recall.PerRun)
+	}
+	if fx2.Recall.Mean == nil || *fx2.Recall.Mean != 0.1667 ||
 		fx2.Recall.Union == nil || *fx2.Recall.Union != 0.1667 {
 		t.Errorf("fx2 recall = %+v", fx2.Recall)
 	}
+}
+
+func assertFx2FalseGreen(t *testing.T, fx2 *FixtureReport) {
+	t.Helper()
 	if fx2.FalseGreen.Passes != 0 || fx2.FalseGreen.Measured != 1 || fx2.FalseGreen.Unknown != 0 ||
 		fx2.FalseGreen.Rate == nil || *fx2.FalseGreen.Rate != 0 {
 		t.Errorf("fx2 false_green = %+v", fx2.FalseGreen)
 	}
-	if data.Calibration.Rows != 7 || !data.Calibration.Reproduced || len(data.Calibration.Mismatches) != 0 {
-		t.Errorf("calibration = %+v", data.Calibration)
-	}
-	if len(data.Diagnostics) != 7 {
-		t.Errorf("diagnostics = %d, want 7", len(data.Diagnostics))
-	}
-	golden.Check(t, "fixtures-human", Human(data))
+}
 
-	rel, err := filepath.Rel(root, filepath.Join(root, ".verdict", "backtest", fixturesDir, reportName))
+func assertReportFile(t *testing.T, root string, data *Report) {
+	t.Helper()
+	path := filepath.Join(root, ".verdict", "backtest", fixturesDir, reportName)
+	rel, err := filepath.Rel(root, path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +135,7 @@ func TestRunFixturesLiterals(t *testing.T) {
 	if filepath.ToSlash(rel) != filepath.ToSlash(wantPath) {
 		t.Errorf("report path = %s, want %s", rel, wantPath)
 	}
-	raw, err := os.ReadFile(filepath.Join(root, ".verdict", "backtest", fixturesDir, reportName))
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,34 +148,25 @@ func TestRunFixturesLiterals(t *testing.T) {
 	}
 }
 
-func joinLiteral(values []string) string {
-	out := ""
-	for i, v := range values {
-		if i > 0 {
-			out += ","
-		}
-		out += v
-	}
-	return out
-}
+func joinLiteral(values []string) string { return strings.Join(values, ",") }
 
 func TestGatingFindingPredicate(t *testing.T) {
 	trueValue, falseValue := true, false
 	cases := []struct {
-		name string
 		f    Finding
+		name string
 		want bool
 	}{
-		{"important anchored", Finding{Severity: "important", Anchored: &trueValue}, true},
-		{"critical anchored", Finding{Severity: "CRITICAL", Anchored: &trueValue}, true},
-		{"important unanchored", Finding{Severity: "important", Anchored: &falseValue}, false},
-		{"important missing anchor", Finding{Severity: "important"}, false},
-		{"important unverified", Finding{Severity: "important", Anchored: &trueValue, Refusal: "unverified"}, false},
-		{"minor anchored", Finding{Severity: "minor", Anchored: &trueValue}, false},
+		{name: "important anchored", f: Finding{Severity: "important", Anchored: &trueValue}, want: true},
+		{name: "critical anchored", f: Finding{Severity: "CRITICAL", Anchored: &trueValue}, want: true},
+		{name: "important unanchored", f: Finding{Severity: "important", Anchored: &falseValue}, want: false},
+		{name: "important missing anchor", f: Finding{Severity: "important"}, want: false},
+		{name: "important unverified", f: Finding{Severity: "important", Anchored: &trueValue, Refusal: "unverified"}, want: false},
+		{name: "minor anchored", f: Finding{Severity: "minor", Anchored: &trueValue}, want: false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := IsGatingFinding(tc.f); got != tc.want {
+			if got := IsGatingFinding(&tc.f); got != tc.want {
 				t.Errorf("gating = %v, want %v", got, tc.want)
 			}
 		})
@@ -157,28 +194,31 @@ func copyRecordings(t *testing.T) string {
 	}
 	dst := t.TempDir()
 	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		dir := filepath.Join(dst, entry.Name())
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		files, err := os.ReadDir(filepath.Join(source, entry.Name()))
-		if err != nil {
-			t.Fatal(err)
-		}
-		for _, file := range files {
-			raw, err := os.ReadFile(filepath.Join(source, entry.Name(), file.Name()))
-			if err != nil {
-				t.Fatal(err)
-			}
-			if err := os.WriteFile(filepath.Join(dir, file.Name()), raw, 0o600); err != nil {
-				t.Fatal(err)
-			}
+		if entry.IsDir() {
+			copyRecordingDir(t, filepath.Join(source, entry.Name()), filepath.Join(dst, entry.Name()))
 		}
 	}
 	return dst
+}
+
+func copyRecordingDir(t *testing.T, source, dst string) {
+	t.Helper()
+	if err := os.MkdirAll(dst, dirPermissions); err != nil {
+		t.Fatal(err)
+	}
+	files, err := os.ReadDir(source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, file := range files {
+		raw, err := os.ReadFile(filepath.Join(source, file.Name()))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dst, file.Name()), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func rewriteMeta(t *testing.T, root, recording, field, value string) {
@@ -209,13 +249,23 @@ func TestInfraErrorExcludedFromDenominators(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("run: %s: %s", ref.Code, ref.Message)
 	}
-	if resp.Data.Recordings != 7 || resp.Data.Scored != 6 {
-		t.Errorf("header = %d recordings/%d scored, want 7/6", resp.Data.Recordings, resp.Data.Scored)
+	assertInfraReport(t, resp.Data)
+}
+
+func assertInfraReport(t *testing.T, data *Report) {
+	t.Helper()
+	if data.Recordings != 7 || data.Scored != 6 {
+		t.Errorf("header = %d recordings/%d scored, want 7/6", data.Recordings, data.Scored)
 	}
-	f := resp.Data.Fixtures[0]
+	f := &data.Fixtures[0]
 	if f.Runs != 6 || f.Scored != 5 || len(f.Recall.PerRun) != 5 {
 		t.Errorf("fx1 = %d runs/%d scored/%d per_run", f.Runs, f.Scored, len(f.Recall.PerRun))
 	}
+	assertInfraRates(t, f)
+}
+
+func assertInfraRates(t *testing.T, f *FixtureReport) {
+	t.Helper()
 	if f.Recall.Union == nil || *f.Recall.Union != 0.4 || joinLiteral(f.Recall.UnionHits) != "K2,K5" {
 		t.Errorf("fx1 union = %v hits %v, want 0.4 K2,K5", f.Recall.Union, f.Recall.UnionHits)
 	}

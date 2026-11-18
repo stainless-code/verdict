@@ -45,8 +45,8 @@ func TestRuntimeFixturesEnvelopeValidates(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read report.json: %v", err)
 	}
-	if string(raw) != jq.Pretty(resp.Data) {
-		t.Errorf("report.json differs from the envelope data:\n%s\n---\n%s", raw, jq.Pretty(resp.Data))
+	if string(raw) != jq.PrettyOrdered(resp.Data.Wire()) {
+		t.Errorf("report.json differs from the envelope data:\n%s\n---\n%s", raw, jq.PrettyOrdered(resp.Data.Wire()))
 	}
 }
 
@@ -64,13 +64,17 @@ func copyQualityTree(t *testing.T, source, root string) {
 		if entry.IsDir() {
 			return os.MkdirAll(target, 0o755)
 		}
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		return os.WriteFile(target, raw, 0o600)
+		return copyOneFile(path, target)
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func copyOneFile(source, target string) error {
+	raw, err := os.ReadFile(source)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(target, raw, 0o600)
 }

@@ -54,11 +54,12 @@ func LoadArchivedReview(path string) ([]Finding, *core.RefusalError) {
 		return nil, invalidRecording(filepath.Dir(path), "trailing data after review.json")
 	}
 	findings := make([]Finding, 0, len(review.Comments))
-	for _, comment := range review.Comments {
+	for i := range review.Comments {
+		c := &review.Comments[i]
 		findings = append(findings, Finding{
-			Path:     firstString(comment.Path, comment.File),
-			Claim:    firstString(comment.Body, comment.Text),
-			Severity: stringOf(comment.Severity),
+			Path:     firstString(c.Path, c.File),
+			Claim:    firstString(c.Body, c.Text),
+			Severity: stringOf(c.Severity),
 		})
 	}
 	return findings, nil
@@ -94,20 +95,26 @@ func LoadRecordedFindings(dir string) ([]Finding, *core.RefusalError) {
 		if !ok || obj == nil {
 			continue
 		}
-		f := Finding{Path: objectString(obj, "path"), Claim: objectString(obj, "claim"),
-			Severity: objectString(obj, "severity"), Quote: objectString(obj, "quote"),
-			Refusal: objectString(obj, "refusal")}
-		if f.Claim == "" {
-			f.Claim = objectString(obj, "body")
-		}
-		if anchored, ok := obj.Get("anchored"); ok {
-			if v, ok := anchored.(bool); ok {
-				f.Anchored = &v
-			}
-		}
-		findings = append(findings, f)
+		findings = append(findings, findingFromObj(obj))
 	}
 	return findings, nil
+}
+
+func findingFromObj(obj *jq.Obj) Finding {
+	f := Finding{
+		Path: objectString(obj, "path"), Claim: objectString(obj, "claim"),
+		Severity: objectString(obj, "severity"), Quote: objectString(obj, "quote"),
+		Refusal: objectString(obj, "refusal"),
+	}
+	if f.Claim == "" {
+		f.Claim = objectString(obj, "body")
+	}
+	if anchored, ok := obj.Get("anchored"); ok {
+		if v, ok := anchored.(bool); ok {
+			f.Anchored = &v
+		}
+	}
+	return f
 }
 
 func objectString(obj *jq.Obj, key string) string {
@@ -115,18 +122,20 @@ func objectString(obj *jq.Obj, key string) string {
 	if !ok || v == nil {
 		return ""
 	}
-	s, _ := v.(string)
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
 	return s
 }
 
 func readFindings(dir string) ([]any, *core.RefusalError) {
 	entries, err := readcommon.LoadFindings(dir)
 	if err != nil {
-		var ref *core.RefusalError
-		if errors.As(err, &ref) {
+		if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 			return nil, ref
 		}
-		return nil, &core.RefusalError{Code: "fixtures-recording-invalid", Message: "unreadable findings.json in " + dir}
+		return nil, invalidRecording(dir, "unreadable findings.json")
 	}
 	return entries, nil
 }

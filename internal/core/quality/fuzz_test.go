@@ -11,13 +11,13 @@ import (
 func FuzzMatchFixtureRule(f *testing.F) {
 	f.Add("alpha", "ALPHA here")
 	f.Add(`\bnext\b`, "run the next command")
-	f.Fuzz(func(t *testing.T, pattern, text string) {
+	f.Fuzz(func(_ *testing.T, pattern, text string) {
 		m := &Matcher{compiled: map[string]*regexp.Regexp{}}
 		re, err := regexp.Compile("(?i)" + pattern)
 		if err != nil {
 			return
 		}
 		m.compiled[pattern] = re
-		_ = m.Matches(Finding{Path: "x.go", Claim: text}, [][]string{{pattern}})
+		_ = m.Matches(&Finding{Path: "x.go", Claim: text}, [][]string{{pattern}})
 	})
 }

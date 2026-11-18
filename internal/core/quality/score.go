@@ -8,6 +8,8 @@ import (
 	"strings"
 )
 
+const statusPass = "PASS"
+
 // Matcher is the compiled, deterministic scorer. Every pattern is
 // case-insensitive and applied to lowercased path + "\n" + claim with no
 // whitespace folding, matching the harness the hand scores came from.
@@ -21,53 +23,64 @@ type Matcher struct {
 // has already refused invalid patterns.
 func NewMatcher(c *Catalog) *Matcher {
 	m := &Matcher{compiled: map[string]*regexp.Regexp{}}
-	for _, f := range c.Fixtures {
-		for _, d := range append(append([]Defect{}, f.Known...), f.Bonus...) {
-			for _, rule := range d.Matchers {
-				for _, pattern := range rule {
-					if _, ok := m.compiled[pattern]; !ok {
-						m.compiled[pattern] = regexp.MustCompile("(?i)" + pattern)
-					}
-				}
-			}
-		}
+	for i := range c.Fixtures {
+		compileDefects(m, c.Fixtures[i].Known)
+		compileDefects(m, c.Fixtures[i].Bonus)
 	}
 	m.praise = regexp.MustCompile("(?i)" + c.ReviewSignals.PraiseRE)
 	m.defectVerb = regexp.MustCompile("(?i)" + c.ReviewSignals.DefectVerbRE)
 	return m
 }
 
+func compileDefects(m *Matcher, defects []Defect) {
+	for i := range defects {
+		for _, rule := range defects[i].Matchers {
+			compileRule(m, rule)
+		}
+	}
+}
+
+func compileRule(m *Matcher, rule []string) {
+	for _, pattern := range rule {
+		if _, ok := m.compiled[pattern]; !ok {
+			m.compiled[pattern] = regexp.MustCompile("(?i)" + pattern)
+		}
+	}
+}
+
 // Matches applies one defect's rules to one finding: all patterns in a rule
 // must match, and any rule may match.
-func (m *Matcher) Matches(f Finding, rules [][]string) bool {
+func (m *Matcher) Matches(f *Finding, rules [][]string) bool {
 	text := strings.ToLower(f.Path + "\n" + f.Claim)
 	for _, rule := range rules {
-		all := true
-		for _, pattern := range rule {
-			if !m.compiled[pattern].MatchString(text) {
-				all = false
-				break
-			}
-		}
-		if all {
+		if m.ruleMatches(rule, text) {
 			return true
 		}
 	}
 	return false
+}
+
+func (m *Matcher) ruleMatches(rule []string, text string) bool {
+	for _, pattern := range rule {
+		if !m.compiled[pattern].MatchString(text) {
+			return false
+		}
+	}
+	return true
 }
 
 // Hit reports whether any finding satisfies a defect's rules. Findings are
 // not consumed: one finding may hit several related defects.
 func (m *Matcher) Hit(findings []Finding, d Defect) bool {
-	for _, f := range findings {
-		if m.Matches(f, d.Matchers) {
+	for i := range findings {
+		if m.Matches(&findings[i], d.Matchers) {
 			return true
 		}
 	}
 	return false
 }
 
-func (m *Matcher) isPraise(f Finding) bool {
+func (m *Matcher) isPraise(f *Finding) bool {
 	text := strings.ToLower(f.Claim)
 	return m.praise.MatchString(text) && !m.defectVerb.MatchString(text)
 }
@@ -75,22 +88,22 @@ func (m *Matcher) isPraise(f Finding) bool {
 // RunScore is one scored recording: per-defect hits plus the diagnostic
 // columns the calibration table prints.
 type RunScore struct {
+	Hits          map[string]bool
+	BonusHits     map[string]bool
+	GatePassed    *bool
 	Recording     string
 	Fixture       string
 	Driver        string
-	Hits          map[string]bool
-	BonusHits     map[string]bool
+	InfraError    string
+	RefusalCode   string
 	Praise        int
 	NullSeverity  int
 	OtherFindings int
-	GatePassed    *bool
-	InfraError    string
-	RefusalCode   string
 	Scored        bool
 }
 
 // Score grades one recording against one fixture's defects.
-func Score(m *Matcher, f *Fixture, findings []Finding, meta RecordingMeta, recording string) *RunScore {
+func Score(m *Matcher, f *Fixture, findings []Finding, meta *RecordingMeta, recording string) *RunScore {
 	run := &RunScore{
 		Recording:   recording,
 		Fixture:     f.ID,
@@ -106,38 +119,47 @@ func Score(m *Matcher, f *Fixture, findings []Finding, meta RecordingMeta, recor
 		return run
 	}
 	matched := map[string][][]string{}
-	for _, d := range f.Known {
-		run.Hits[d.ID] = m.Hit(findings, d)
-		if run.Hits[d.ID] {
+	collectHits(m, f.Known, findings, run.Hits, matched)
+	collectHits(m, f.Bonus, findings, run.BonusHits, matched)
+	scoreDiagnostics(m, run, findings, matched)
+	return run
+}
+
+func collectHits(m *Matcher, defects []Defect, findings []Finding,
+	hits map[string]bool, matched map[string][][]string,
+) {
+	for i := range defects {
+		d := &defects[i]
+		hits[d.ID] = m.Hit(findings, *d)
+		if hits[d.ID] {
 			matched[d.ID] = d.Matchers
 		}
 	}
-	for _, d := range f.Bonus {
-		run.BonusHits[d.ID] = m.Hit(findings, d)
-		if run.BonusHits[d.ID] {
-			matched[d.ID] = d.Matchers
-		}
-	}
-	for _, finding := range findings {
-		if finding.Severity == "" {
+}
+
+func scoreDiagnostics(m *Matcher, run *RunScore, findings []Finding, matched map[string][][]string) {
+	for i := range findings {
+		f := &findings[i]
+		if f.Severity == "" {
 			run.NullSeverity++
 		}
-		if m.isPraise(finding) {
+		if m.isPraise(f) {
 			run.Praise++
 			continue
 		}
-		other := true
-		for _, rules := range matched {
-			if m.Matches(finding, rules) {
-				other = false
-				break
-			}
-		}
-		if other {
+		if !anyMatch(m, f, matched) {
 			run.OtherFindings++
 		}
 	}
-	return run
+}
+
+func anyMatch(m *Matcher, f *Finding, matched map[string][][]string) bool {
+	for _, rules := range matched {
+		if m.Matches(f, rules) {
+			return true
+		}
+	}
+	return false
 }
 
 // RecallHits renders one run's exact hit count, as the harness table does.
@@ -168,9 +190,9 @@ type CalibrationRowResult struct {
 	Harness      string
 	HandHits     string
 	HarnessHits  string
+	Status       string
 	Praise       int
 	NullSeverity int
-	Status       string
 }
 
 // CalibrationResult holds every row and the single reproduced verdict.
@@ -183,48 +205,52 @@ type CalibrationResult struct {
 // catalog. The hand scores are literals from the archived RUN.md; the scorer
 // never supplies its own expectation.
 func Calibrate(c *Catalog, runs []RunScore) *CalibrationResult {
-	byName := make(map[string]RunScore, len(runs))
-	for _, run := range runs {
-		byName[run.Recording] = run
+	byName := make(map[string]*RunScore, len(runs))
+	for i := range runs {
+		byName[runs[i].Recording] = &runs[i]
 	}
 	result := &CalibrationResult{Reproduced: true}
 	fixtures := map[string]*Fixture{}
 	for i := range c.Fixtures {
 		fixtures[c.Fixtures[i].ID] = &c.Fixtures[i]
 	}
-	for _, row := range c.Calibration {
-		run, ok := byName[row.Recording]
+	for i := range c.Calibration {
+		row, ok := calibrationRow(byName, fixtures, &c.Calibration[i])
 		if !ok {
 			result.Reproduced = false
 			continue
 		}
-		hand := set(row.Hand)
-		harness := hits(run.Hits)
-		fixture := fixtures[row.Fixture]
-		if fixture == nil {
-			result.Reproduced = false
-			continue
-		}
-		status := "FAIL"
-		if sameSet(hand, harness) {
-			status = "PASS"
-		} else {
-			result.Reproduced = false
-		}
-		result.Rows = append(result.Rows, CalibrationRowResult{
-			Recording:    row.Recording,
-			Fixture:      row.Fixture,
-			Driver:       row.Driver,
-			Hand:         row.HandLabel,
-			Harness:      RecallHits(&run, len(fixture.Known)),
-			HandHits:     orDash(joinSet(hand)),
-			HarnessHits:  orDash(joinSet(harness)),
-			Praise:       run.Praise,
-			NullSeverity: run.NullSeverity,
-			Status:       status,
-		})
+		result.Rows = append(result.Rows, *row)
 	}
 	return result
+}
+
+func calibrationRow(byName map[string]*RunScore, fixtures map[string]*Fixture,
+	row *CalibrationRow,
+) (*CalibrationRowResult, bool) {
+	run := byName[row.Recording]
+	fixture := fixtures[row.Fixture]
+	if run == nil || fixture == nil {
+		return nil, false
+	}
+	hand := set(row.Hand)
+	harness := hits(run.Hits)
+	status := "FAIL"
+	if sameSet(hand, harness) {
+		status = "PASS"
+	}
+	return &CalibrationRowResult{
+		Recording:    row.Recording,
+		Fixture:      row.Fixture,
+		Driver:       row.Driver,
+		Hand:         row.HandLabel,
+		Harness:      RecallHits(run, len(fixture.Known)),
+		HandHits:     orDash(joinSet(hand)),
+		HarnessHits:  orDash(joinSet(harness)),
+		Praise:       run.Praise,
+		NullSeverity: run.NullSeverity,
+		Status:       status,
+	}, status == statusPass
 }
 
 func set(ids []string) map[string]bool {
@@ -271,7 +297,8 @@ func CalibrationTable(result *CalibrationResult) string {
 	var sb strings.Builder
 	sb.WriteString("| bundle | fixture | driver | hand | harness | hand hits | harness hits | praise | null sev | status |\n")
 	sb.WriteString("| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | --- |\n")
-	for _, row := range result.Rows {
+	for i := range result.Rows {
+		row := &result.Rows[i]
 		fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s | %s | %s | %d | %d | %s |\n",
 			row.Recording, row.Fixture, row.Driver, row.Hand, row.Harness,
 			orDash(row.HandHits), orDash(row.HarnessHits), row.Praise, row.NullSeverity, row.Status)

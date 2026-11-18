@@ -293,7 +293,8 @@ func resolveMode(f *flags) *cli.UsageError {
 		return nil
 	}
 	if f.since == "" {
-		return usage("backtest needs a mode ('mine', 'reverts', 'replay', 'score', or 'fixtures'), or --since to mine, replay, and score in one run")
+		return usage("backtest needs a mode ('mine', 'reverts', 'replay', 'score', or 'fixtures'), " +
+			"or --since to mine, replay, and score in one run")
 	}
 	f.mode = modeComposed
 	return nil

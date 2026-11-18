@@ -21,6 +21,11 @@ func TestParseFlagsFixturesSurface(t *testing.T) {
 	if got, want := rentry(f, false), "verdict backtest fixtures --fixture fx2 --recordings run-dir"; got != want {
 		t.Errorf("rentry = %q, want %q", got, want)
 	}
+}
+
+// TestParseFlagsFixturesRejectsReplayFlags keeps --run, --agent and the
+// pass-through tail out of a read-only mode.
+func TestParseFlagsFixturesRejectsReplayFlags(t *testing.T) {
 	for _, args := range [][]string{
 		{"fixtures", "--run", "x"},
 		{"fixtures", "--agent", "claude"},

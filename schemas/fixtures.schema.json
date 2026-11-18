@@ -7,46 +7,46 @@
   "properties": {
     "schema_version": { "type": "string" },
     "mode": { "type": "string" },
-    "recordings": { "type": "integer" },
-    "scored": {
-      "description": "Recordings with no infra error, which are the only runs in the recall and false-green denominators.",
-      "type": "integer"
-    },
     "fixtures": {
       "description": "One row per fixture, or just the --fixture selection; calibration still covers every archived recording.",
       "type": "array",
       "items": { "$ref": "#/$defs/fixture" }
     },
-    "calibration": {
-      "description": "The seven archived hand scores, compared as hit-id sets against this build's matcher. reproduced is true only when every row passes; CI checks it, not the rates.",
-      "$ref": "#/$defs/calibration"
-    },
     "diagnostics": {
       "description": "Per-recording matcher output: hit ids, praise-only comments, findings with no severity, other findings, the gate outcome and any infra error.",
       "type": "array",
       "items": { "$ref": "#/$defs/diagnostic" }
+    },
+    "calibration": {
+      "description": "The seven archived hand scores, compared as hit-id sets against this build's matcher. reproduced is true only when every row passes; CI checks it, not the rates.",
+      "$ref": "#/$defs/calibration"
+    },
+    "recordings": { "type": "integer" },
+    "scored": {
+      "description": "Recordings with no infra error, which are the only runs in the recall and false-green denominators.",
+      "type": "integer"
     }
   },
   "required": [
     "schema_version",
     "mode",
-    "recordings",
-    "scored",
     "fixtures",
+    "diagnostics",
     "calibration",
-    "diagnostics"
+    "recordings",
+    "scored"
   ],
   "additionalProperties": false,
   "$defs": {
     "fixture": {
       "type": "object",
       "properties": {
+        "false_green": {
+          "description": "passes / measured over recordings that reported a gate outcome. gate_passed null is counted in unknown and excluded from measured; a fixture with no measured outcome publishes a null rate.",
+          "$ref": "#/$defs/falseGreen"
+        },
         "id": { "type": "string" },
         "label": { "type": "string" },
-        "runs": { "type": "integer" },
-        "scored": { "type": "integer" },
-        "known": { "type": "integer" },
-        "bonus": { "type": "integer" },
         "recall": {
           "description": "per_run is one rate per scored recording; mean is their rounded arithmetic mean; union is the share of known defects any recording hit, with union_hits listing them. A null rate means a zero denominator, never zero recall.",
           "$ref": "#/$defs/recall"
@@ -55,30 +55,30 @@
           "description": "Defects listed under bonus that any recording hit. Bonus defects have their own denominator and are never folded into recall.",
           "$ref": "#/$defs/bonus"
         },
-        "false_green": {
-          "description": "passes / measured over recordings that reported a gate outcome. gate_passed null is counted in unknown and excluded from measured; a fixture with no measured outcome publishes a null rate.",
-          "$ref": "#/$defs/falseGreen"
-        },
         "hallucination": {
           "description": "S4's quote-verification rate. S6 ships a stub: rate is null, status is stubbed, gating_findings counts the findings the named predicate selects, and checked stays zero. It never reads as a zero hallucination rate.",
           "$ref": "#/$defs/hallucination"
         },
+        "runs": { "type": "integer" },
+        "scored": { "type": "integer" },
+        "known": { "type": "integer" },
+        "bonus": { "type": "integer" },
         "review_insufficient": {
           "description": "Exact count of recordings carrying the literal review-insufficient refusal. Other refusal codes, including missing-findings, are not mapped here.",
           "type": "integer"
         }
       },
       "required": [
+        "false_green",
         "id",
         "label",
+        "recall",
+        "bonus_union",
+        "hallucination",
         "runs",
         "scored",
         "known",
         "bonus",
-        "recall",
-        "bonus_union",
-        "false_green",
-        "hallucination",
         "review_insufficient"
       ],
       "additionalProperties": true
@@ -103,24 +103,24 @@
     "bonus": {
       "type": "object",
       "properties": {
-        "count": { "type": "integer" },
         "hits": {
           "type": "array",
           "items": { "type": "string" }
-        }
+        },
+        "count": { "type": "integer" }
       },
-      "required": ["count", "hits"],
+      "required": ["hits", "count"],
       "additionalProperties": true
     },
     "falseGreen": {
       "type": "object",
       "properties": {
+        "rate": { "type": ["number", "null"] },
         "passes": { "type": "integer" },
         "measured": { "type": "integer" },
-        "unknown": { "type": "integer" },
-        "rate": { "type": ["number", "null"] }
+        "unknown": { "type": "integer" }
       },
-      "required": ["passes", "measured", "unknown", "rate"],
+      "required": ["rate", "passes", "measured", "unknown"],
       "additionalProperties": true
     },
     "hallucination": {
@@ -137,21 +137,23 @@
     "calibration": {
       "type": "object",
       "properties": {
-        "rows": { "type": "integer" },
-        "reproduced": { "type": "boolean" },
         "mismatches": {
           "type": "array",
           "items": { "type": "string" }
-        }
+        },
+        "rows": { "type": "integer" },
+        "reproduced": { "type": "boolean" }
       },
-      "required": ["rows", "reproduced", "mismatches"],
+      "required": ["mismatches", "rows", "reproduced"],
       "additionalProperties": true
     },
     "diagnostic": {
       "type": "object",
       "properties": {
+        "gate_passed": { "type": ["boolean", "null"] },
         "recording": { "type": "string" },
         "fixture": { "type": "string" },
+        "infra_error": { "type": "string" },
         "hits": {
           "type": "array",
           "items": { "type": "string" }
@@ -159,22 +161,20 @@
         "praise": { "type": "integer" },
         "null_severity": { "type": "integer" },
         "other_findings": { "type": "integer" },
-        "gate_passed": { "type": ["boolean", "null"] },
-        "infra_error": { "type": "string" },
         "scored": {
           "description": "False when the recording carries an infra error: its hits are unknown and it is excluded from every rate denominator.",
           "type": "boolean"
         }
       },
       "required": [
+        "gate_passed",
         "recording",
         "fixture",
+        "infra_error",
         "hits",
         "praise",
         "null_severity",
         "other_findings",
-        "gate_passed",
-        "infra_error",
         "scored"
       ],
       "additionalProperties": true
