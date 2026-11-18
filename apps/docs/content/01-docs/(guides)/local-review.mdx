@@ -30,9 +30,10 @@ Use this when there is no pull request yet: a branch you are shaping, a spike, o
   </Step>
 
 <Step title="Have an agent review it">
-  Point any agent at the bundle: it reads `full.diff` through `toc.txt` (plus
-  the Procedure from the binary: `verdict skill`, then `verdict skill show <path>`)
-  and writes exactly one
+  Point any agent at the bundle: it reads
+  `.verdict/state/local-mywork/procedure.md` first (the binary's authoritative
+  Procedure for this review — an installed skill may be older), then `full.diff`
+  through `toc.txt`, and writes exactly one
   `.verdict/state/local-mywork/review.json` with `schema_version` 1, `body`,
   `approved`, and `comments[]`. This is the agent's turn; there is no command to
   run until the file lands.

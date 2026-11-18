@@ -23,9 +23,10 @@ into your repo as `.github/workflows/verdict-review.yml`.
    agent: it sets `VERDICT_AGENT` in the step's `env:` (one of `claude`, `codex`,
    `cursor`, `opencode` — the shipped `run --agent` table) and the `--agent`
    argument that reads it. Install that CLI on the runner in an earlier step;
-   the recipe never downloads it. The agent reads `full.diff` via `toc.txt`
-   (plus `PR.json` and `roles.txt`; it reads the Procedure from the binary with
-   `verdict skill`, then `verdict skill show <path>`) and writes exactly
+   the recipe never downloads it. The agent reads `.verdict/state/<pr>/procedure.md`
+   first — the binary's authoritative Procedure for this review (an installed
+   skill may be older) — then `full.diff` via `toc.txt` (plus `PR.json` and
+   `roles.txt`), and writes exactly
    one `.verdict/state/<pr>/review.json` (`schema_version: 1`, `body`,
    `approved`, `comments[]`, optional `resolved[]`/`triage[]`). The step fails
    unless that file is fresh: `run` refuses `no-review-artifact` when the agent

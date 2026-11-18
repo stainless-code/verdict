@@ -1088,9 +1088,11 @@ Fix: re-fetch a bundle with file sections (or drop the exclusions), then re-run.
 
 ## `prompt-dump-failed`
 
-Cause: the prompt dump needs the skill and prompts sources.
+Cause: the binary's embedded `prompts/system.md` is missing. That file carries
+the untrusted-data preamble, so a dump without it is unsafe; the working
+directory cannot supply a replacement.
 
-Fix: run from a checkout carrying `PROCEDURE.md`/`prompts`, then re-run.
+Fix: reinstall verdict from a signed release, then re-run.
 
 ## `provider-unimplemented`
 

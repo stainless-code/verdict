@@ -16,10 +16,10 @@ verdict init --preset standard --yes
 # 1. fetch
 verdict fetch owner/repo 123
 
-# 2. review with ANY agent (the installed skill is the prompt; add it with
-#    `verdict skill install --detect` if it is missing):
-#    Point the agent at .verdict/state/123/. It reads .verdict/state/123/full.diff fully via
-#    .verdict/state/123/toc.txt, loads prompts/review.md from its skill dir, and fans out
+# 2. review with ANY agent (read .verdict/state/123/procedure.md first; it is
+#    the binary's authoritative Procedure for this review — an installed skill may be older):
+#    Point the agent at .verdict/state/123/. It reads .verdict/state/123/procedure.md first,
+#    then .verdict/state/123/full.diff fully via .verdict/state/123/toc.txt, and fans out
 #    0-N lenses per prompts/reviewer-subagent.md for disposition-changing questions only.
 #    Write exactly one .verdict/state/123/review.json {schema_version: 1, body, approved, comments[], resolved?, triage?, sections?}.
 
@@ -1344,19 +1344,21 @@ writes — the bundle is byte-identical after the run, and the bare text path
 never a warning.
 
 `fetch`/`fetch-local` take `--show-prompts`: after the normal bundle write,
-the script renders the assembled agent reading list — `PROCEDURE.md`,
-`prompts/system.md`, `prompts/review.md`, `prompts/diagrams.md`, the bundle
+the script renders the assembled agent reading list — the binary's embedded review
+Procedure (`PROCEDURE.md`, `prompts/system.md`, `prompts/review.md`,
+`prompts/diagrams.md`), the bundle
 meta (`PR.json` or `source.json`), `toc.txt`, `roles.txt`, `full.diff`, plus
 `kb.txt`, `lenses.txt`, `reverts.txt`, `sensitive.txt`, and `panel` when
 present, in that order — trusted
 prompts verbatim, then the trust-boundary prologue, then one nonce fence
 per bundle file — to stdout (human mode; progress moves to stderr) or
 `data.prompt_dump` (`--json`). No agent runs, no network beyond the fetch
-itself, no store writes beyond the bundle: without the flag both verbs are
-byte-identical. It reads the trusted prompts from the current directory, so
-run it from a bundle or a checkout (it falls back to the checkout's `procedure/`) carrying `PROCEDURE.md` and `prompts/`. Missing
-bundle files skip silently, but missing trusted
-prompt files fail loudly: no `prompts/system.md` refuses typed
+itself, no store writes beyond the bundle: the flag changes only the printed
+dump, so the bundle is byte-identical with or without it. The trusted assembly
+comes from the binary's embedded payload, never the working directory or a
+`procedure/` checkout, so the dump starts with exactly the bytes written to
+`<bundle>/procedure.md`. Missing bundle files skip silently, but a missing
+embedded prompt file fails loudly: no `prompts/system.md` refuses typed
 (`prompt-dump-failed` — the untrusted-data preamble lives there, so a dump
 without it is unsafe), while a missing `PROCEDURE.md`, `prompts/review.md`, or
 `prompts/diagrams.md` warns (stderr plus envelope `warnings[]`) and the dump
