@@ -28,25 +28,26 @@ const (
 	maxFrameBytes  = 16 << 20
 	// maxResultTextBytes caps the text block of one tool result. The data stays
 	// whole in structuredContent; only the text an agent reads is budgeted.
-	maxResultTextBytes    = 256 << 10
-	methodInitialize      = "initialize"
-	methodInitialized     = "notifications/initialized"
-	methodPing            = "ping"
-	methodToolsList       = "tools/list"
-	methodToolsCall       = "tools/call"
-	methodCancelled       = "notifications/cancelled" //nolint:misspell // MCP spells the method "cancelled"
-	capabilityListChanged = "listChanged"
-	codeParse             = -32700
-	codeInvalidRequest    = -32600
-	codeMethodNotFound    = -32601
-	codeInvalidParams     = -32602
-	codeInternalError     = -32603
-	contentTypeText       = "text"
-	refusalTextLines      = 3
-	lineBreak             = "\n"
-	serverName            = "verdict"
-	scannerInitialBytes   = 64 * 1024
+	maxResultTextBytes  = 256 << 10
+	methodInitialize    = "initialize"
+	methodInitialized   = "notifications/initialized"
+	methodPing          = "ping"
+	methodToolsList     = "tools/list"
+	methodToolsCall     = "tools/call"
+	methodCancelled     = "notifications/cancelled" //nolint:misspell // MCP spells the method "cancelled"
+	codeParse           = -32700
+	codeInvalidRequest  = -32600
+	codeMethodNotFound  = -32601
+	codeInvalidParams   = -32602
+	codeInternalError   = -32603
+	contentTypeText     = "text"
+	refusalTextLines    = 3
+	lineBreak           = "\n"
+	serverName          = "verdict"
+	scannerInitialBytes = 64 * 1024
 )
+
+const capabilityListChanged = "listChanged"
 
 // supportedProtocols are the MCP revisions the server can speak.
 var supportedProtocols = []string{"2024-11-05", "2025-03-26", latestProtocol}
