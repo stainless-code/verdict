@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strconv"
 	"strings"
@@ -272,11 +273,15 @@ func impactSafe(s string) string {
 	return fence.Safe(sb.String())
 }
 
-// appendTOCSection appends one section to the bundle's toc.txt.
+// appendTOCSection appends one section to the bundle's toc.txt. An absent
+// file starts empty; any other read failure refuses before the write.
 func appendTOCSection(dir, section string) error {
 	path := dir + "/toc.txt"
-	raw := readOptional(path)
-	body := raw
+	raw, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not read %s: %v", path, err)}
+	}
+	body := string(raw)
 	if body != "" && !strings.HasSuffix(body, "\n") {
 		body += newline
 	}
