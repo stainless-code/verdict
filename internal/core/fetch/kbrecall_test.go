@@ -186,7 +186,6 @@ func TestPackRuleStaysInsideKBFence(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "kb.txt"), []byte(rule), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Chdir(trustedPromptDir(t))
 	dump, err := renderPromptDump(&fetchRunCtx{
 		runner: &session{Human: io.Discard, Diag: io.Discard},
 		dir:    dir,

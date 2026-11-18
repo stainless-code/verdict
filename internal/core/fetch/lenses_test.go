@@ -202,7 +202,6 @@ func TestLensTxtFencedAndNonceBound(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "lenses.txt"), []byte(forged), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	t.Chdir(trustedPromptDir(t))
 	dump, err := renderPromptDump(&fetchRunCtx{
 		runner: &session{Human: io.Discard, Diag: io.Discard},
 		dir:    dir,
@@ -238,26 +237,4 @@ func TestLensTxtFencedAndNonceBound(t *testing.T) {
 	if !strings.Contains(body, forged) {
 		t.Fatalf("forged closer escaped the lenses.txt fence:\n%s", body)
 	}
-}
-
-// trustedPromptDir plants the trusted preamble the dump requires and returns
-// the directory to chdir into.
-func trustedPromptDir(t *testing.T) string {
-	t.Helper()
-	dir := t.TempDir()
-	for name, body := range map[string]string{
-		"PROCEDURE.md":        "# procedure\n",
-		"prompts/system.md":   "# system\n",
-		"prompts/review.md":   "# review\n",
-		"prompts/diagrams.md": "# diagrams\n",
-	} {
-		path := filepath.Join(dir, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	return dir
 }
