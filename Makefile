@@ -60,6 +60,7 @@ test-race:
 FUZZTIME ?= 30s
 FUZZ_TARGETS := \
 	./internal/core/backtest:FuzzParseFixHunks \
+	./internal/core/quality:FuzzMatchFixtureRule \
 	./internal/core/index:FuzzScanPython \
 	./internal/core/index:FuzzScanTypeScript \
 	./internal/core/record:FuzzCheckReview \

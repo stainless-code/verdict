@@ -109,6 +109,8 @@ export type RefusalCode =
   | "fix-ceiling"
   | "fix-failed"
   | "fix-patch-secret"
+  | "fixtures-invalid"
+  | "fixtures-recording-invalid"
   | "head-mismatch"
   | "html-not-export"
   | "html-symlink"
