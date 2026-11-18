@@ -1,0 +1,25 @@
+{
+  "schema_version": "1",
+  "body": "The selection and drafts paths match STA-351 sections 3 to 5 on everything I traced: the pending rules, the legacy ledger, the oldest-first cap, the drafts sites, and the plan digest gate all line up with the spec and the eval fixtures. Two text-level fixes before this lands. The envelope's `next` names a `--post` flag this build refuses, and it also says to post drafts on a run that drafted nothing. The drain schema's skip description leaves out `no-draft`, which the plan writes.",
+  "approved": false,
+  "comments": [
+    {
+      "path": "internal/drain/verb.go",
+      "line": 170,
+      "side": "RIGHT",
+      "body": "`next` tells the operator to run `verdict drain <repo> <pr> --post`, but this build has no `--post`. The R4 leg of `evals/cases/drain-refusals.sh` asserts that flag is refused as unknown. The same branch also fires when `--agent` is given with zero pending threads, where no agent launched and nothing was drafted, so the envelope says \"post the drafts\" for a run that drafted nothing. The spec's draft-to-`--post` rule only makes sense once PR B ships. Gate the hint on the draft having happened, and name only commands that exist in this build until PR B.",
+      "severity": "important",
+      "rigor": "walked",
+      "category": "logic"
+    },
+    {
+      "path": "internal/schemagen/overlay.json",
+      "line": 515,
+      "side": "RIGHT",
+      "body": "The `skip` description lists six reasons, but the plan also writes `no-draft`: `noDrafts` in `internal/core/drain/drafts.go` appends it, and `draft` in `internal/drain/verb.go` keeps it. An operator reading `drain.json` against this schema sees a reason the description never names. Add `no-draft` to the list here, then regenerate the schema and the TS outputs.",
+      "severity": "informational",
+      "rigor": "pointed",
+      "category": "docs"
+    }
+  ]
+}

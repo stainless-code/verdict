@@ -4304,6 +4304,8 @@ then grades the replayed findings against the lines the miner blamed, and
 `backtest --since … --agent <name>` runs all three in one invocation.
 `backtest reverts` is the fourth mode and the only one that reads neither a
 model nor a bundle: it records the window's revert commits as memory (below).
+`backtest fixtures` grades recorded reviews against hand-known defects in a separate
+fixture corpus; its format is documented in [`docs/benchmark.md`](benchmark.md#known-defect-fixtures-backtest-fixtures).
 
 Every mining git call runs with the system and user config nulled — the artifact
 never depends on a formatting knob — with one exception: the user's

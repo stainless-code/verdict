@@ -1,0 +1,22 @@
+{
+  "schema_version": "1",
+  "body": "The addition of an identity probe for agents with clashing binary names is a sound and well-implemented safety enhancement. It correctly mitigates the risk of launching the wrong binary by running a help-probe (`--help`) before the actual agent launch. The implementation covers all required surfaces, including documentation (`manual.md`, `troubleshooting.md`), refusal codes, usage instructions, and rigorous evals, including a dedicated new case `run-agent-probe.sh`.",
+  "approved": true,
+  "comments": [
+    {
+      "file": "cmd/verdict/usage.go",
+      "line": 33,
+      "text": "The usage text now correctly includes the expanded agent list and explains the new binary clash probe mechanism."
+    },
+    {
+      "file": "internal/core/run/agents.go",
+      "line": 575,
+      "text": "The logic for the identity probe correctly handles non-zero exits, timeouts, and missing match text, ensuring safety before agent launch."
+    },
+    {
+      "file": "evals/cases/run-agent-probe.sh",
+      "line": 1,
+      "text": "This new test case provides excellent coverage of the probe behavior, validating both successful launches and proper refusal (`agent-mismatch`) in the face of name clashes."
+    }
+  ]
+}

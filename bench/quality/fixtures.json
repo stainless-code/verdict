@@ -1,0 +1,198 @@
+{
+  "schema_version": "1",
+  "fixtures": [
+    {
+      "id": "fx1",
+      "label": "STA-440 part 2, first build (291c83ae5..98d8becd9)",
+      "repo": "stainless-code/verdict",
+      "base": "291c83ae55db44863af842d69619428f1834721a",
+      "head": "98d8becd9ebafceadee307eaa88e491db6fb4fd2",
+      "context": [
+        {
+          "path": "bench/quality/context/fx1/SPEC-2.md",
+          "sha256": "0589584f6e1057af735c43cadd8cb69168095c47ecef9955d79705e8d4dab215",
+          "bytes": 5443
+        },
+        {
+          "path": "bench/quality/context/fx1/RESEARCH-2.md",
+          "sha256": "2387ea85f0037a427a0e7ac9d082ab68c76b830378c766c4723032e226034958",
+          "bytes": 97748
+        }
+      ],
+      "known": [
+        {
+          "id": "K1",
+          "description": "internal/core/run/agents.go kode row at head has no Args; docs use kode -p",
+          "matchers": [
+            ["\\bkode\\b", "-p\\b|headless|print flag|non-interactive"]
+          ]
+        },
+        {
+          "id": "K2",
+          "description": "internal/core/run/agents.go neovate row at head has no Args; docs use neovate -q",
+          "matchers": [["\\bneovate\\b", "-q\\b|\\bquiet\\b|non-interactive"]]
+        },
+        {
+          "id": "K3",
+          "description": "internal/core/run/agents.go qoder row at head has no Args; docs use qoder -p",
+          "matchers": [["\\bqoder\\b", "-p\\b|headless|print flag"]]
+        },
+        {
+          "id": "K4",
+          "description": "internal/core/run/agents.go qodercn row at head has no Args; docs use qodercn -p",
+          "matchers": [["\\bqodercn\\b", "-p\\b|headless|print flag"]]
+        },
+        {
+          "id": "K5",
+          "description": "agents.go probe matches are generic: argsRun=run, argsAsk=ask, --print, --prompt, --single",
+          "matchers": [
+            [
+              "ProbeMatch|probe match|match string|match text|argsRun|argsAsk|\"run\"|\"ask\"",
+              "generic|common word|too broad|bare|substring|any help|any usage|unrelated|false match|matches .* other"
+            ]
+          ]
+        }
+      ],
+      "bonus": [
+        {
+          "id": "B1",
+          "description": "internal/core/run/repair.go repairLoop launcher literal has no Probe field",
+          "matchers": [
+            ["repair", "probe|launcher"],
+            ["launcher", "probe"]
+          ]
+        },
+        {
+          "id": "B2",
+          "description": "internal/core/run/service.go parent pctx.Err() is reported as agent-mismatch",
+          "matchers": [
+            [
+              "cancel|parent context",
+              "agent-mismatch|wrong binary|timed out|canceled"
+            ]
+          ]
+        }
+      ]
+    },
+    {
+      "id": "fx2",
+      "label": "STA-351 PR A (d69957f9c..475310826)",
+      "repo": "stainless-code/verdict",
+      "base": "d69957f9c4c530fc0821aae4e132b0ab4a0d7320",
+      "head": "475310826fca66ee69be389789154a8cd5214915",
+      "context": [
+        {
+          "path": "bench/quality/context/fx2/SPEC.md",
+          "sha256": "4a3410e9a2ba0cbe243670a46928961535b324a521832331c418fe1d55446bf6",
+          "bytes": 13058
+        }
+      ],
+      "known": [
+        {
+          "id": "D1",
+          "description": "internal/core/run/service.go promptArtifact joins reviewFile, not drainFile",
+          "matchers": [
+            [
+              "drain\\.replies\\.json|promptartifact|artifactname",
+              "review\\.json|wrong artifact|reviewfile"
+            ]
+          ]
+        },
+        {
+          "id": "D2",
+          "description": "internal/drain/verb.go next and internal/core/run/service.go suggest --post",
+          "matchers": [
+            ["\\bnext\\b", "--post|post the drafts"],
+            ["drain .*--post"]
+          ]
+        },
+        {
+          "id": "D3",
+          "description": "internal/core/drain/drafts.go validateFields only rejects unknown keys, not missing required keys",
+          "matchers": [
+            [
+              "validatefields",
+              "required|missing|refuse|reject|unchecked|absent"
+            ]
+          ]
+        },
+        {
+          "id": "D4",
+          "description": "skills/verdict/schemas/drain.schema.json $defs entries set additionalProperties: true",
+          "matchers": [
+            [
+              "drain\\.schema\\.json|\\$defs",
+              "additionalproperties|closed|open"
+            ]
+          ]
+        },
+        {
+          "id": "D5",
+          "description": "evals/cases/drain-plan.sh gh stub matches *api graphql* instead of exact argv",
+          "matchers": [["drain-plan\\.sh", "argv|stub|any argv|accept"]]
+        },
+        {
+          "id": "D6",
+          "description": "evals/cases/drain-refusals.sh gh stub matches *api graphql* instead of exact argv",
+          "matchers": [["drain-refusals\\.sh", "argv|stub|any argv|accept"]]
+        }
+      ],
+      "bonus": []
+    }
+  ],
+  "calibration": [
+    {
+      "recording": "vr-sta440b-bench",
+      "fixture": "fx1",
+      "driver": "agy / gemini-4-hydrogen (invalid schema)",
+      "hand": [],
+      "hand_label": "0/5"
+    },
+    {
+      "recording": "vr-sta440b-bench2",
+      "fixture": "fx1",
+      "driver": "agy / gemini-4-hydrogen",
+      "hand": [],
+      "hand_label": "0/5"
+    },
+    {
+      "recording": "vr-sta440b-bench3",
+      "fixture": "fx1",
+      "driver": "pi / Hy4 Flash Free",
+      "hand": ["K2"],
+      "hand_label": "1/5"
+    },
+    {
+      "recording": "vr-sta440b-haiku",
+      "fixture": "fx1",
+      "driver": "claude / haiku-5-5",
+      "hand": ["K1", "K2", "K3", "K4", "K5"],
+      "hand_label": "5/5"
+    },
+    {
+      "recording": "vr-sta440b-haiku2",
+      "fixture": "fx1",
+      "driver": "claude / haiku-5-5 repeat",
+      "hand": ["K5"],
+      "hand_label": "1/5"
+    },
+    {
+      "recording": "vr-sta440b-sonnet",
+      "fixture": "fx1",
+      "driver": "claude / sonnet-5-5",
+      "hand": ["K5"],
+      "hand_label": "1/5"
+    },
+    {
+      "recording": "vr-sta351a-haiku",
+      "fixture": "fx2",
+      "driver": "claude / haiku-5-5",
+      "hand": ["D2"],
+      "hand_label": "1/6"
+    }
+  ],
+  "review_signals": {
+    "praise_re": "correctly|excellent|well[ -](done|integrated|documented|written)|comprehensive|informative|appropriately|nice|good job|looks good",
+    "defect_verb_re": "\\b(lacks?|wrong|incorrect|fails?|breaks?|refuses?|returns?|drops?|over-?promises?|cannot|can't|does not|doesn't|unproven|weakness|omits?|bug|defect|mislabels|incomplete|unchecked|generic|bare|should|must|need[s]?|false green)\\b"
+  }
+}

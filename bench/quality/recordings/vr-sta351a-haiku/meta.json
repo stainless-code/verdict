@@ -1,0 +1,11 @@
+{
+  "schema_version": "1",
+  "fixture": "fx2",
+  "driver": "claude / haiku-5-5",
+  "source": "review.json",
+  "gate_passed": false,
+  "gate_source": "gate.json",
+  "infra_error": null,
+  "refusal_code": null,
+  "note": "archived run; gate outcome captured at extraction time"
+}
