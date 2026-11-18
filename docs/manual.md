@@ -4302,6 +4302,8 @@ reviews those candidates with the operator's own agent, one launch per
 candidate; it is the backtest step that spends. `backtest score --run <id>`
 then grades the replayed findings against the lines the miner blamed, and
 `backtest --since … --agent <name>` runs all three in one invocation.
+`backtest fixtures` is an additional, read-only mode that grades recorded
+reviews against hand-known defects; it launches nothing.
 `backtest reverts` is the fourth mode and the only one that reads neither a
 model nor a bundle: it records the window's revert commits as memory (below).
 `backtest fixtures` grades recorded reviews against hand-known defects in a separate
@@ -4692,6 +4694,39 @@ describes both. `spend` is `{usd, priced_reviews, unpriced_reviews}`; a signal
 row is `{signal, bugs, matched, catch_rate}`. Human output is the scope header,
 the catch rate, the off-target rate, the cost line, the unclassified count, one
 line per signal, and the `not citable — SZZ-derived` line.
+
+### Fixtures
+
+`backtest fixtures [--fixture <id>] [--recordings <dir>] [--json]` grades the
+recorded reviews in `bench/quality/recordings/` against the known defects in
+`bench/quality/fixtures.json`. It is a pure read: no agent launch, no host call,
+no SZZ mine, and no corpus store. `--fixture <id>` limits the report to one
+fixture while calibration still checks all seven archived runs; `--recordings
+<dir>` is an opt-in root of live recordings, resolved against the checkout when
+relative. The data object is also written to
+`.verdict/backtest/fixtures/report.json`; the same shape is published as
+[`schemas/fixtures.schema.json`](../schemas/fixtures.schema.json).
+
+A defect's matchers are RE2 rules: all patterns in a rule must match and any
+rule may match. Scoring is per defect over lowercased `path` + `\n` + `claim`,
+with no line window and no one-to-one binding — one finding can hit several
+defects. Each fixture publishes `recall` (`per_run`, `mean` and `union` over N
+recordings, plus `union_hits`), `bonus_union`, `false_green`, `hallucination`,
+and `review_insufficient`. Bonus defects never enter recall. An infra-error
+recording is excluded from every rate denominator; a `gate_passed: null`
+recording is an unknown gate outcome, not a pass. Hallucination is `null` with
+`status: "stubbed"` until S4 ships quote verification, and
+`review_insufficient` counts only the literal `review-insufficient` refusal.
+Rates are rounded to four decimals and a zero denominator renders `null`.
+
+The seven archived reviews are the immutable calibration. `calibration.rows`
+and `calibration.reproduced` compare each scorer hit set with the hand score
+transcribed from the original runs; CI asserts `reproduced == true`, not the
+rates. The archived reviews predate the findings-only input shape and are read
+through a loader isolated in `internal/core/quality` as calibration-input
+compatibility, not a product shim. Live recordings use `findings.json`. The
+fixture corpus format and provenance are documented in
+[`docs/benchmark.md`](benchmark.md#known-defect-fixtures-backtest-fixtures).
 
 ### Composed run
 

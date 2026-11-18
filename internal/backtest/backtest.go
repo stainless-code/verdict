@@ -32,6 +32,7 @@ const (
 	modeReverts  = "reverts"
 	modeReplay   = "replay"
 	modeScore    = "score"
+	modeFixtures = "fixtures"
 	modeComposed = "composed"
 )
 
@@ -58,7 +59,8 @@ var wanted = map[string]string{
 	modeReverts: "--since <90d|12w|18mo|2y|ref>, --until <ref>, --json",
 	modeReplay: "--run <id>, --agent <name>, --max-reviews <n>, --budget-usd <usd>, " +
 		"--timeout <secs>, --rounds <n>, -- <agent args>, --json",
-	modeScore: "--run <id>, --json",
+	modeScore:    "--run <id>, --json",
+	modeFixtures: "--fixture <id>, --recordings <dir>, --json",
 	modeComposed: "--since <90d|12w|18mo|2y|ref>, --until <ref>, --run <slug>, --agent <name>, " +
 		"--max-reviews <n>, --budget-usd <usd>, --timeout <secs>, --rounds <n>, -- <agent args>, --json",
 }
@@ -80,6 +82,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		return runReplay(ctx, r, req, f)
 	case modeScore:
 		return runScore(ctx, r, req, f)
+	case modeFixtures:
+		return runFixtures(ctx, r, req, f)
 	case modeComposed:
 		return runComposed(ctx, r, req, f)
 	default:
@@ -241,6 +245,8 @@ type flags struct {
 	rounds     string
 	maxReviews string
 	budgetUSD  string
+	fixture    string
+	recordings string
 	pass       []string
 }
 
@@ -273,10 +279,10 @@ func parseFlags(args []string) (*flags, *cli.UsageError) {
 // checkMode accepts the shipped modes and the undecided no-mode form.
 func checkMode(mode string) *cli.UsageError {
 	switch mode {
-	case "", modeMine, modeReverts, modeReplay, modeScore:
+	case "", modeMine, modeReverts, modeReplay, modeScore, modeFixtures:
 		return nil
 	default:
-		return usage("unknown mode '" + mode + "' for backtest (want mine, reverts, replay, or score)")
+		return usage("unknown mode '" + mode + "' for backtest (want mine, reverts, replay, score, or fixtures)")
 	}
 }
 
@@ -287,7 +293,7 @@ func resolveMode(f *flags) *cli.UsageError {
 		return nil
 	}
 	if f.since == "" {
-		return usage("backtest needs a mode ('mine', 'reverts', 'replay', or 'score'), or --since to mine, replay, and score in one run")
+		return usage("backtest needs a mode ('mine', 'reverts', 'replay', 'score', or 'fixtures'), or --since to mine, replay, and score in one run")
 	}
 	f.mode = modeComposed
 	return nil
@@ -320,7 +326,7 @@ func parseToken(f *flags, args []string, i int) (int, *cli.UsageError) {
 // after `--` are accepted, and --print is run's escape hatch rather than a
 // silently accepted no-op.
 func (f *flags) launches() bool {
-	return f.mode != modeMine && f.mode != modeReverts && f.mode != modeScore
+	return f.mode == "" || f.mode == modeReplay || f.mode == modeComposed
 }
 
 // label names the invocation in a usage error.
@@ -351,6 +357,8 @@ func (f *flags) valueFlags() []valueFlag {
 		{&f.budgetUSD, "--budget-usd", "<usd>", []string{modeReplay, modeComposed}},
 		{&f.timeout, "--timeout", "<secs>", []string{modeReplay, modeComposed}},
 		{&f.rounds, "--rounds", "<n>", []string{modeReplay, modeComposed}},
+		{&f.fixture, "--fixture", "<id>", []string{modeFixtures}},
+		{&f.recordings, "--recordings", "<dir>", []string{modeFixtures}},
 	}
 }
 
@@ -408,7 +416,7 @@ func rentry(f *flags, jsonMode bool) string {
 	if jsonMode {
 		s += " --json"
 	}
-	if f.mode != modeMine && f.mode != modeScore && f.mode != modeReverts && len(f.pass) > 0 {
+	if (f.mode == modeReplay || f.mode == modeComposed) && len(f.pass) > 0 {
 		s += " -- " + runverb.RenderCommand(f.pass)
 	}
 	return s
@@ -423,11 +431,25 @@ func modeRentry(f *flags) string {
 		return windowRentry(f)
 	case modeScore:
 		return scoreRentry(f)
+	case modeFixtures:
+		return fixturesRentry(f)
 	case modeComposed:
 		return composedRentry(f)
 	default:
 		return replayRentry(f)
 	}
+}
+
+// fixturesRentry renders the fixture selector and the opt-in recordings root.
+func fixturesRentry(f *flags) string {
+	s := ""
+	if f.fixture != "" {
+		s += " --fixture " + f.fixture
+	}
+	if f.recordings != "" {
+		s += " --recordings " + f.recordings
+	}
+	return s
 }
 
 // mineRentry renders the mining flags, skipping the ones left at their

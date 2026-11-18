@@ -177,6 +177,9 @@ func validateFixture(f *Fixture, seen map[string]bool, path string) *core.Refusa
 			return invalidCatalog(path, "fixture "+f.ID+" has an invalid context pin")
 		}
 	}
+	if len(f.Known) == 0 {
+		return invalidCatalog(path, "fixture "+f.ID+" has no known defects")
+	}
 	if ref := validateDefects(f.Known, f.ID, path); ref != nil {
 		return ref
 	}
