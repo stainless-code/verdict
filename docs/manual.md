@@ -4715,10 +4715,14 @@ defects. Each fixture publishes `recall` (`per_run`, `mean` and `union` over N
 recordings, plus `union_hits`), `bonus_union`, `false_green`, `hallucination`,
 and `review_insufficient`. Bonus defects never enter recall. An infra-error
 recording is excluded from every rate denominator; a `gate_passed: null`
-recording is an unknown gate outcome, not a pass. Hallucination is `null` with
-`status: "stubbed"` until S4 ships quote verification, and
-`review_insufficient` counts only the literal `review-insufficient` refusal.
-Rates are rounded to four decimals and a zero denominator renders `null`.
+recording is an unknown gate outcome, not a pass. Hallucination is
+`mismatched / checked` over gating findings with an explicit `matched` or
+`mismatch` verifier result; `no-quote`, `unsupported` and unknown results are
+counted as `unverifiable`, never as a clean check. Its rate is `null` when
+checked is zero. S6's stub therefore reports 5 and 1 gating findings with
+0 checked and all of them unverifiable. `review_insufficient` counts only the
+literal `review-insufficient` refusal. Rates are rounded to four decimals and
+a zero denominator renders `null`.
 
 The seven shipped recordings are the immutable calibration. `calibration.rows`
 and `calibration.reproduced` compare each scorer hit set with the hand score

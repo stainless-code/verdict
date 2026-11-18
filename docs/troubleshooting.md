@@ -684,8 +684,9 @@ Cause: `backtest fixtures` could not read `bench/quality/fixtures.json`, or the
 catalog is malformed — a missing id, a broken base/head or context pin, an
 empty rule, or a pattern that does not compile.
 
-Fix: repair the catalog in the repository and re-run `backtest fixtures`. The
-recordings were not scored.
+Fix: check the `--fixture` id against the catalog, or repair
+`bench/quality/fixtures.json`, then re-run `backtest fixtures`. The recordings
+were not scored.
 
 ## `fixtures-recording-invalid`
 

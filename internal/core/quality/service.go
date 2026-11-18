@@ -45,6 +45,7 @@ type Response struct {
 type fixtureInputs struct {
 	catalog     *Catalog
 	root        string
+	heads       map[string][]byte
 	scoring     []recordingFile
 	calibration []recordingFile
 }
@@ -78,7 +79,7 @@ func RunFixtures(ctx context.Context, req *Request) (*Response, *core.RefusalErr
 	if ref != nil {
 		return nil, ref
 	}
-	report := buildReport(ctx, req, inputs.catalog, runs, calibration, findings)
+	report := buildReport(ctx, req, inputs.catalog, inputs.heads, runs, calibration, findings)
 	if ref := writeReport(inputs.root, report); ref != nil {
 		return nil, ref
 	}
@@ -97,22 +98,37 @@ func loadInputs(req *Request) (*fixtureInputs, *core.RefusalError) {
 	if ref := validateFixtureID(catalog, req.FixtureID); ref != nil {
 		return nil, ref
 	}
-	base := recordingsRoot(root, req.RecordingsRoot)
-	scoring, ref := fixtureFiles(base, catalog)
+	scoring, ref := loadScoringFiles(root, req.RecordingsRoot, catalog)
 	if ref != nil {
-		return nil, ref
-	}
-	if len(scoring) == 0 {
-		return nil, invalidRecording(base, "no fixture recordings under the recordings root")
-	}
-	if ref := validateUniqueNames(scoring); ref != nil {
 		return nil, ref
 	}
 	calibration, ref := loadCalibrationFiles(root, catalog)
 	if ref != nil {
 		return nil, ref
 	}
-	return &fixtureInputs{catalog: catalog, root: root, scoring: scoring, calibration: calibration}, nil
+	heads, ref := loadFixtureHeads(root, catalog)
+	if ref != nil {
+		return nil, ref
+	}
+	return &fixtureInputs{
+		catalog: catalog, root: root, heads: heads, scoring: scoring,
+		calibration: calibration,
+	}, nil
+}
+
+func loadScoringFiles(root, override string, catalog *Catalog) ([]recordingFile, *core.RefusalError) {
+	base := recordingsRoot(root, override)
+	files, ref := fixtureFiles(base, catalog)
+	if ref != nil {
+		return nil, ref
+	}
+	if len(files) == 0 {
+		return nil, invalidRecording(base, "no fixture recordings under the recordings root")
+	}
+	if ref := validateUniqueNames(files); ref != nil {
+		return nil, ref
+	}
+	return files, nil
 }
 
 func loadCalibrationFiles(root string, catalog *Catalog) ([]recordingFile, *core.RefusalError) {
@@ -179,8 +195,8 @@ func recordingName(path string) string {
 	return strings.TrimSuffix(filepath.Base(path), recordingExt)
 }
 
-func buildReport(ctx context.Context, req *Request, catalog *Catalog, runs []RunScore,
-	calibration []RunScore, findings map[string][]Finding,
+func buildReport(ctx context.Context, req *Request, catalog *Catalog, heads map[string][]byte,
+	runs []RunScore, calibration []RunScore, findings map[string][]Finding,
 ) *Report {
 	report := &Report{
 		SchemaVersion: "1",
@@ -195,7 +211,7 @@ func buildReport(ctx context.Context, req *Request, catalog *Catalog, runs []Run
 		if req.FixtureID != "" && f.ID != req.FixtureID {
 			continue
 		}
-		report.Fixtures = append(report.Fixtures, fixtureReport(ctx, req, f, runs, findings))
+		report.Fixtures = append(report.Fixtures, fixtureReport(ctx, req, f, heads[f.ID], runs, findings))
 	}
 	return report
 }
@@ -303,7 +319,7 @@ func diagnostics(runs []RunScore) []Diagnostic {
 	return out
 }
 
-func fixtureReport(ctx context.Context, req *Request, f *Fixture, runs []RunScore,
+func fixtureReport(ctx context.Context, req *Request, f *Fixture, head []byte, runs []RunScore,
 	findings map[string][]Finding,
 ) FixtureReport {
 	out := FixtureReport{
@@ -334,7 +350,7 @@ func fixtureReport(ctx context.Context, req *Request, f *Fixture, runs []RunScor
 	out.Recall.UnionHits = sortedHits(union)
 	out.BonusUnion = BonusReport{Count: countTrue(bonus), Hits: sortedHits(bonus)}
 	out.FalseGreen.Rate = ratePtr(out.FalseGreen.Passes, out.FalseGreen.Measured)
-	out.Hallucination = measureHallucination(ctx, req.Verifier, f.ID, runs, findings)
+	out.Hallucination = measureHallucination(ctx, req.Verifier, f.ID, head, runs, findings)
 	return out
 }
 
@@ -385,7 +401,7 @@ func sortedHits(values map[string]bool) []string {
 	return ids
 }
 
-func measureHallucination(ctx context.Context, verifier QuoteVerifier, fixtureID string,
+func measureHallucination(ctx context.Context, verifier QuoteVerifier, fixtureID string, head []byte,
 	runs []RunScore, findings map[string][]Finding,
 ) HallucinationReport {
 	out := HallucinationReport{Status: hallucStubbed}
@@ -398,7 +414,7 @@ func measureHallucination(ctx context.Context, verifier QuoteVerifier, fixtureID
 		if run.Fixture != fixtureID || !run.Scored {
 			continue
 		}
-		mismatches += verifyRun(ctx, verifier, &out, findings[run.Recording])
+		mismatches += verifyRun(ctx, verifier, &out, head, findings[run.Recording])
 	}
 	if out.Checked > 0 {
 		out.Rate = ratePtr(mismatches, out.Checked)
@@ -406,7 +422,7 @@ func measureHallucination(ctx context.Context, verifier QuoteVerifier, fixtureID
 	return out
 }
 
-func verifyRun(ctx context.Context, verifier QuoteVerifier, out *HallucinationReport,
+func verifyRun(ctx context.Context, verifier QuoteVerifier, out *HallucinationReport, head []byte,
 	findings []Finding,
 ) int {
 	mismatches := 0
@@ -419,14 +435,17 @@ func verifyRun(ctx context.Context, verifier QuoteVerifier, out *HallucinationRe
 		if err := ctx.Err(); err != nil {
 			return mismatches
 		}
-		mismatches += verifyOne(ctx, verifier, out, f)
+		mismatches += verifyOne(ctx, verifier, out, head, f)
 	}
 	return mismatches
 }
 
-func verifyOne(ctx context.Context, verifier QuoteVerifier, out *HallucinationReport, f *Finding) int {
-	verdict := verifier.Verify(ctx, f, nil)
-	if verdict.Status == quoteUnsupported {
+func verifyOne(ctx context.Context, verifier QuoteVerifier, out *HallucinationReport, head []byte,
+	f *Finding,
+) int {
+	verdict := verifier.Verify(ctx, f, head)
+	if verdict.Status != quoteMatched && verdict.Status != quoteMismatch {
+		out.Unverifiable++
 		return 0
 	}
 	out.Checked++

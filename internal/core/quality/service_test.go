@@ -82,7 +82,8 @@ func assertFx1Bonuses(t *testing.T, fx1 *FixtureReport) {
 		t.Errorf("fx1 bonus_union = %+v", fx1.BonusUnion)
 	}
 	if fx1.Hallucination.Rate != nil || fx1.Hallucination.Status != "stubbed" ||
-		fx1.Hallucination.GatingFindings != 5 || fx1.Hallucination.Checked != 0 {
+		fx1.Hallucination.GatingFindings != 5 || fx1.Hallucination.Checked != 0 ||
+		fx1.Hallucination.Unverifiable != 5 {
 		t.Errorf("fx1 hallucination = %+v", fx1.Hallucination)
 	}
 	if fx1.ReviewInsufficient != 0 {
@@ -106,7 +107,7 @@ func assertFx2Report(t *testing.T, fx2 *FixtureReport) {
 	assertFx2Recall(t, fx2)
 	assertFx2FalseGreen(t, fx2)
 	if fx2.Hallucination.GatingFindings != 1 || fx2.Hallucination.Checked != 0 ||
-		fx2.Hallucination.Rate != nil {
+		fx2.Hallucination.Unverifiable != 1 || fx2.Hallucination.Rate != nil {
 		t.Errorf("fx2 hallucination = %+v", fx2.Hallucination)
 	}
 }
@@ -425,4 +426,100 @@ func copyNamedRecording(t *testing.T, srcFixture, name, dstRoot, dstFixture stri
 			t.Fatal(err)
 		}
 	}
+}
+
+type quoteVerifierFunc func(context.Context, *Finding, []byte) QuoteResult
+
+func (fn quoteVerifierFunc) Verify(ctx context.Context, f *Finding, head []byte) QuoteResult {
+	return fn(ctx, f, head)
+}
+
+func TestNoQuoteIsUnverifiableAndGetsRealHead(t *testing.T) {
+	var heads [][]byte
+	verifier := quoteVerifierFunc(func(_ context.Context, _ *Finding, head []byte) QuoteResult {
+		heads = append(heads, append([]byte(nil), head...))
+		return QuoteResult{Status: "no-quote"}
+	})
+	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: repoPath(), Verifier: verifier})
+	if ref != nil {
+		t.Fatalf("run: %s: %s", ref.Code, ref.Message)
+	}
+	h := resp.Data.Fixtures[0].Hallucination
+	if h.Checked != 0 || h.Unverifiable != 5 || h.Rate != nil {
+		t.Errorf("fx1 hallucination = %+v, want 0 checked / 5 unverifiable / n/a", h)
+	}
+	if !strings.Contains(resp.Human, "0 checked, 5 unverifiable") {
+		t.Errorf("human hallucination line = %q", resp.Human)
+	}
+	assertFixtureHead(t, heads)
+}
+
+func assertFixtureHead(t *testing.T, heads [][]byte) {
+	t.Helper()
+	if len(heads) == 0 || len(heads[0]) == 0 {
+		t.Fatalf("verifier got %d heads, first length %d; want non-empty fixture head", len(heads), len(heads[0]))
+	}
+	if !bytes.Contains(heads[0], []byte("# STA-440 part 2 spec")) ||
+		!bytes.Contains(heads[0], []byte("# STA-440 Research Round 2")) {
+		t.Errorf("head does not carry both pinned fx1 context files: %.80q", heads[0])
+	}
+}
+
+func TestOnlyExplicitMismatchCountsInRate(t *testing.T) {
+	calls := 0
+	verifier := quoteVerifierFunc(func(_ context.Context, _ *Finding, _ []byte) QuoteResult {
+		calls++
+		if calls == 1 {
+			return QuoteResult{Status: "mismatch"}
+		}
+		return QuoteResult{Status: "matched"}
+	})
+	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: repoPath(), Verifier: verifier})
+	if ref != nil {
+		t.Fatalf("run: %s: %s", ref.Code, ref.Message)
+	}
+	h := resp.Data.Fixtures[0].Hallucination
+	if h.Checked != 5 || h.Unverifiable != 0 || h.Rate == nil || *h.Rate != 0.2 {
+		t.Errorf("fx1 hallucination = %+v, want 5 checked / 0 unverifiable / 0.2", h)
+	}
+	if h.Status != "measured" || rateText(h.Rate) != "0.2000" {
+		t.Errorf("fx1 hallucination status/rate = %q/%s", h.Status, rateText(h.Rate))
+	}
+}
+
+func TestContextPinMismatchRefusesBeforeScoring(t *testing.T) {
+	root := catalogTreeWithRecordings(t)
+	contextDir := filepath.Join(root, "bench", "quality", "context", "fx1")
+	if err := os.MkdirAll(contextDir, dirPermissions); err != nil {
+		t.Fatal(err)
+	}
+	writeTestFile(t, filepath.Join(contextDir, "SPEC-2.md"), "changed head\n")
+	_, ref := RunFixtures(context.Background(), &Request{RepoRoot: root})
+	if ref == nil || ref.Code != "fixtures-invalid" {
+		t.Fatalf("refusal = %+v, want fixtures-invalid", ref)
+	}
+	if !strings.Contains(ref.Message, "context byte count") || !strings.Contains(ref.Message, "fx1") {
+		t.Errorf("refusal message = %q", ref.Message)
+	}
+}
+
+func catalogTreeWithRecordings(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	catalogDir := filepath.Join(root, "bench", "quality")
+	if err := os.MkdirAll(catalogDir, dirPermissions); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(repoPath("bench", "quality", "fixtures.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(catalogDir, "fixtures.json"), raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, fixture := range []string{"fx1", "fx2"} {
+		copyRecordingDir(t, repoPath("bench", "quality", fixture, "recordings"),
+			filepath.Join(catalogDir, fixture, "recordings"))
+	}
+	return root
 }

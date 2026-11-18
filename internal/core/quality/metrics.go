@@ -13,7 +13,9 @@ import (
 
 const (
 	quoteUnsupported    = "unsupported"
+	quoteMatched        = "matched"
 	quoteMismatch       = "mismatch"
+	quoteNoQuote        = "no-quote"
 	hallucStubbed       = "stubbed"
 	hallucMeasured      = "measured"
 	refusalInsufficient = "review-insufficient"
@@ -43,7 +45,9 @@ type QuoteResult struct {
 	Reason string
 }
 
-// QuoteVerifier checks one finding's quote against the reviewed head.
+// QuoteVerifier checks one finding's quote against the pinned fixture head
+// material. Only explicit "matched" and "mismatch" results are verified;
+// "no-quote", "unsupported" and unknown results are unverifiable.
 type QuoteVerifier interface {
 	Verify(ctx context.Context, f *Finding, head []byte) QuoteResult
 }
@@ -81,12 +85,14 @@ type FalseGreenReport struct {
 	Unknown  int      `json:"unknown"`
 }
 
-// HallucinationReport is null while quote verification is stubbed.
+// HallucinationReport counts explicitly verified quotes only. A finding whose
+// quote cannot be checked is unverifiable, never a clean check.
 type HallucinationReport struct {
 	Rate           *float64 `json:"rate"`
 	Status         string   `json:"status"`
 	GatingFindings int      `json:"gating_findings"`
 	Checked        int      `json:"checked"`
+	Unverifiable   int      `json:"unverifiable"`
 }
 
 // CalibrationReport summarizes the hand-score rows.
@@ -189,6 +195,7 @@ func (r *FixtureReport) Wire() *jq.Obj {
 			"status", r.Hallucination.Status,
 			"gating_findings", r.Hallucination.GatingFindings,
 			"checked", r.Hallucination.Checked,
+			"unverifiable", r.Hallucination.Unverifiable,
 		),
 		"review_insufficient", r.ReviewInsufficient,
 	)
@@ -294,9 +301,9 @@ func Human(r *Report) string {
 			strings.Join(perRun, " "), rateText(f.Recall.Mean), rateText(f.Recall.Union), len(perRun), f.Known)
 		fmt.Fprintf(&sb, "  bonus union: %d/%d  false green: %d/%d (%s)\n",
 			f.BonusUnion.Count, f.Bonus, f.FalseGreen.Passes, f.FalseGreen.Measured, unknownText(f.FalseGreen.Unknown))
-		fmt.Fprintf(&sb, "  hallucination: %s (%s; %d gating findings, %d checked)  review-insufficient: %d\n",
+		fmt.Fprintf(&sb, "  hallucination: %s (%s; %d gating findings, %d checked, %d unverifiable)  review-insufficient: %d\n",
 			rateText(f.Hallucination.Rate), f.Hallucination.Status, f.Hallucination.GatingFindings,
-			f.Hallucination.Checked, f.ReviewInsufficient)
+			f.Hallucination.Checked, f.Hallucination.Unverifiable, f.ReviewInsufficient)
 	}
 	fmt.Fprintf(&sb, "calibration: %d/%d rows reproduced\n", r.Calibration.Rows-len(r.Calibration.Mismatches), r.Calibration.Rows)
 	sb.WriteString("known defects from fixture manifests; rates describe recorded reviews, not a model claim\n")

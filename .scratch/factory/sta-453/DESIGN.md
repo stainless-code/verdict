@@ -273,7 +273,7 @@ For a fixture with known defects `K` (count `n`) and scored runs `r ∈ R` (infr
 * `recall.union = |⋃_r hits(r,K)| / n` — coverage over N runs, **not** an expected single-run score; it grows with N and is labelled as such in human output.
 * `hits`, when a single run is selected, is the per-defect boolean map; `union_hits` is the OR over runs. Bonus defects use the same three shapes but a separate `bonus_union` count and are never in `recall`.
 * `false_green.rate = |{r : gate_passed(r) == true}| / |{r : gate_passed(r) != null}|` on a fixture with at least one known blocker (both fixtures qualify). Runs with no gate result are counted in `unknown`, never as passes. Calibration yields `3/5` on fx1 (bench2, haiku2, sonnet) and `0/1` on fx2; `bench` is `unknown`. These numbers are historical measurements printed for context, **not** a CI acceptance gate — CI asserts only `calibration.reproduced`.
-* `hallucination.rate` = gating findings whose quote fails verification / gating findings with a verifier result. A finding gates when its severity is `critical` or `important`, it is inline/anchored, and S4 has not marked it `unverified`. `quote_verifier: null` (stub) ⇒ rate `null`, `status: "stubbed"`, `gating_findings` still counted. Never print `0` for an unimplemented check.
+* `hallucination.rate` = gating findings whose quote fails verification / gating findings with an explicit `matched` or `mismatch` result. A finding gates when its severity is `critical` or `important`, it is inline/anchored, and S4 has not marked it `unverified`. `no-quote`, `unsupported` and unknown results are `unverifiable`: never checked, never clean. `quote_verifier: null` (stub) ⇒ rate `null`, `status: "stubbed"`, all gating findings unverifiable. Never print `0` for an unimplemented check.
 * `review_insufficient` = number of runs whose recorded outcome is a typed `review-insufficient` refusal (code matched literally). No remapping from `missing-findings`, invalid schema, or agent timeout. It is `0` for all current recordings because S4 has not landed; the field is exact, not a projection.
 
 S4 seam:
@@ -288,7 +288,7 @@ type QuoteResult struct {
 }
 ```
 
-S6 ships `StubVerifier` returning `unsupported` and reports `null`. S4 implements the same interface over its whitespace-normalized `path:line` quote check and one repair round; when it lands, flip the default to that implementation and the rate starts measuring without changing the schema. The verifier is called only for gating findings; no model is in this path.
+S6 ships `StubVerifier` returning `unsupported` and reports `null` with every gating finding counted as `unverifiable`. The verifier receives the fixture's pinned context bytes, not a nil head. S4 implements the same interface over its whitespace-normalized `path:line` quote check and one repair round; when it lands, flip the default to that implementation and the rate starts measuring without changing the schema. The verifier is called only for gating findings; no model is in this path.
 
 ### 4.2 JSON envelope
 
@@ -352,13 +352,13 @@ backtest quality  (2 fixtures, 7 recorded reviews, 7 scored)
     recall: per-run 0.0000 0.0000 0.2000 1.0000 0.2000 0.2000, mean 0.2667, union 1.0000 (N=6, 5 known)
     bonus: 0/2 union
     false-green: 3/5 passes (1 run without a gate result)
-    hallucination: n/a — quote verification stubbed until S4 (5 gating findings, 0 checked)
+    hallucination: n/a — quote verification stubbed until S4 (5 gating findings, 0 checked, 5 unverifiable)
     review-insufficient: 0
   fx2  STA-351 PR A (d69957f9c..475310826)
     recall: per-run 0.1667, mean 0.1667, union 0.1667 (N=1, 6 known)
     bonus: 0/0
     false-green: 0/1 passes
-    hallucination: n/a — quote verification stubbed until S4 (1 gating finding, 0 checked)
+    hallucination: n/a — quote verification stubbed until S4 (1 gating finding, 0 checked, 1 unverifiable)
     review-insufficient: 0
   calibration: 7/7 rows reproduced
 known defects from fixture manifests; rates describe recorded reviews, not a model claim

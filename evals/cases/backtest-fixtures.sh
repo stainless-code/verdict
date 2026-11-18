@@ -21,11 +21,11 @@ backtest fixtures  (2 fixtures, 7 recorded reviews, 7 scored)
 fx1  STA-440 part 2, first build (291c83ae5..98d8becd9)  (6 recordings, 6 scored)
   recall per run: 0.0000 0.0000 0.2000 1.0000 0.2000 0.2000  mean: 0.2667  union: 1.0000 (N=6, 5 known defects)
   bonus union: 2/2  false green: 3/5 (1 unknown gate outcome)
-  hallucination: n/a (stubbed; 5 gating findings, 0 checked)  review-insufficient: 0
+  hallucination: n/a (stubbed; 5 gating findings, 0 checked, 5 unverifiable)  review-insufficient: 0
 fx2  STA-351 PR A (d69957f9c..475310826)  (1 recording, 1 scored)
   recall per run: 0.1667  mean: 0.1667  union: 0.1667 (N=1, 6 known defects)
   bonus union: 0/0  false green: 0/1 (0 unknown gate outcomes)
-  hallucination: n/a (stubbed; 1 gating findings, 0 checked)  review-insufficient: 0
+  hallucination: n/a (stubbed; 1 gating findings, 0 checked, 1 unverifiable)  review-insufficient: 0
 calibration: 7/7 rows reproduced
 known defects from fixture manifests; rates describe recorded reviews, not a model claim
 EOF
@@ -48,6 +48,7 @@ assert_json_field "fx1 bonus union" "2" '.data.fixtures[0].bonus_union.count'
 assert_json_field "fx2 recall" "0.1667" '.data.fixtures[1].recall.per_run[0]'
 assert_json_field "hallucination stays null" "null" '.data.fixtures[0].hallucination.rate'
 assert_json_field "hallucination status" "stubbed" '.data.fixtures[0].hallucination.status'
+assert_json_field "hallucination unverifiable" "5" '.data.fixtures[0].hallucination.unverifiable'
 assert_json_field "review-insufficient" "0" '.data.fixtures[0].review_insufficient'
 
 REPORT="$EVAL_SANDBOX/.verdict/backtest/fixtures/report.json"

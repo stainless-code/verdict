@@ -5,9 +5,12 @@ package quality
 
 import (
 	"bytes"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
+	pathpkg "path"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -27,6 +30,7 @@ const (
 	sha256HexLen    = 64
 	commitHexLen    = 40
 	dirPermissions  = 0o755
+	isText          = " is "
 )
 
 // Catalog is the fixtures.json manifest: the two reviewed ranges, their
@@ -131,7 +135,7 @@ func LoadCatalog(path string) (*Catalog, *core.RefusalError) {
 }
 
 func invalidCatalog(path, reason string) *core.RefusalError {
-	return &core.RefusalError{Code: "fixtures-invalid", Message: "fixtures catalog " + path + " is " + reason}
+	return &core.RefusalError{Code: "fixtures-invalid", Message: "fixtures catalog " + path + isText + reason}
 }
 
 func validateCatalog(c *Catalog, path string) *core.RefusalError {
@@ -194,11 +198,65 @@ func validateFixture(f *Fixture, seen map[string]bool, path string) *core.Refusa
 
 func validateContext(entries []ContextFile, id, path string) *core.RefusalError {
 	for _, c := range entries {
-		if filepath.IsAbs(c.Path) || !digestID(c.SHA256) || c.Bytes <= 0 {
+		if !relativePath(c.Path) || !digestID(c.SHA256) || c.Bytes <= 0 {
 			return invalidCatalog(path, fixturePrefix+id+" has an invalid context pin")
 		}
 	}
 	return nil
+}
+
+func relativePath(name string) bool {
+	if name == "" || pathpkg.Clean(name) != name || name == ".." || strings.HasPrefix(name, "../") {
+		return false
+	}
+	return !strings.HasPrefix(name, "/")
+}
+
+// loadFixtureHeads reads the catalog's pinned context files into the bytes
+// handed to a quote verifier. A changed or unreadable pin is a catalog error:
+// the verifier must never inspect material the corpus did not ship.
+func loadFixtureHeads(root string, catalog *Catalog) (map[string][]byte, *core.RefusalError) {
+	heads := make(map[string][]byte, len(catalog.Fixtures))
+	for i := range catalog.Fixtures {
+		f := &catalog.Fixtures[i]
+		head, ref := loadContextHead(root, f)
+		if ref != nil {
+			return nil, ref
+		}
+		heads[f.ID] = head
+	}
+	return heads, nil
+}
+
+func loadContextHead(root string, f *Fixture) ([]byte, *core.RefusalError) {
+	var head []byte
+	for j := range f.Context {
+		raw, ref := loadPinnedContext(root, f, &f.Context[j])
+		if ref != nil {
+			return nil, ref
+		}
+		head = append(head, raw...)
+		head = append(head, '\n')
+	}
+	return head, nil
+}
+
+func loadPinnedContext(root string, f *Fixture, c *ContextFile) ([]byte, *core.RefusalError) {
+	full := filepath.Join(root, filepath.FromSlash(c.Path))
+	raw, err := jq.CappedFile(full, maxReviewBytes)
+	if err != nil {
+		return nil, invalidCatalog(full, "unreadable context file for fixture "+f.ID)
+	}
+	if len(raw) != c.Bytes {
+		return nil, invalidCatalog(full, "context byte count for fixture "+f.ID+isText+
+			strconv.Itoa(len(raw))+", pin says "+strconv.Itoa(c.Bytes))
+	}
+	sum := sha256.Sum256(raw)
+	if got := hex.EncodeToString(sum[:]); got != c.SHA256 {
+		return nil, invalidCatalog(full, "context sha256 for fixture "+f.ID+isText+got+
+			", pin says "+c.SHA256)
+	}
+	return raw, nil
 }
 
 func validateDefects(defects []Defect, id, path string, seen map[string]bool) *core.RefusalError {
@@ -304,5 +362,5 @@ func LoadRecordingMeta(path string) (*RecordingMeta, *core.RefusalError) {
 }
 
 func invalidRecording(dir, reason string) *core.RefusalError {
-	return &core.RefusalError{Code: "fixtures-recording-invalid", Message: "recording " + dir + " is " + reason}
+	return &core.RefusalError{Code: "fixtures-recording-invalid", Message: "recording " + dir + isText + reason}
 }

@@ -56,7 +56,7 @@
           "$ref": "#/$defs/bonus"
         },
         "hallucination": {
-          "description": "S4's quote-verification rate. S6 ships a stub: rate is null, status is stubbed, gating_findings counts the findings the named predicate selects, and checked stays zero. It never reads as a zero hallucination rate.",
+          "description": "S4's quote-verification count. Only explicit matched and mismatch results enter checked and the mismatched/checked rate; no-quote, unsupported and unknown results are unverifiable, never a clean check. rate is null when checked is zero. S6 ships a stub with status stubbed and all gating findings unverifiable.",
           "$ref": "#/$defs/hallucination"
         },
         "runs": { "type": "integer" },
@@ -129,9 +129,16 @@
         "rate": { "type": ["number", "null"] },
         "status": { "type": "string" },
         "gating_findings": { "type": "integer" },
-        "checked": { "type": "integer" }
+        "checked": { "type": "integer" },
+        "unverifiable": { "type": "integer" }
       },
-      "required": ["rate", "status", "gating_findings", "checked"],
+      "required": [
+        "rate",
+        "status",
+        "gating_findings",
+        "checked",
+        "unverifiable"
+      ],
       "additionalProperties": true
     },
     "calibration": {

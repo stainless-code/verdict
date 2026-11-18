@@ -340,7 +340,7 @@
       "/$defs/fixture/properties/recall": "per_run is one rate per scored recording; mean is their rounded arithmetic mean; union is the share of known defects any recording hit, with union_hits listing them. A null rate means a zero denominator, never zero recall.",
       "/$defs/fixture/properties/bonus_union": "Defects listed under bonus that any recording hit. Bonus defects have their own denominator and are never folded into recall.",
       "/$defs/fixture/properties/false_green": "passes / measured over recordings that reported a gate outcome. gate_passed null is counted in unknown and excluded from measured; a fixture with no measured outcome publishes a null rate.",
-      "/$defs/fixture/properties/hallucination": "S4's quote-verification rate. S6 ships a stub: rate is null, status is stubbed, gating_findings counts the findings the named predicate selects, and checked stays zero. It never reads as a zero hallucination rate.",
+      "/$defs/fixture/properties/hallucination": "S4's quote-verification count. Only explicit matched and mismatch results enter checked and the mismatched/checked rate; no-quote, unsupported and unknown results are unverifiable, never a clean check. rate is null when checked is zero. S6 ships a stub with status stubbed and all gating findings unverifiable.",
       "/$defs/fixture/properties/review_insufficient": "Exact count of recordings carrying the literal review-insufficient refusal. Other refusal codes, including missing-findings, are not mapped here.",
       "/$defs/diagnostic/properties/scored": "False when the recording carries an infra error: its hits are unknown and it is excluded from every rate denominator."
     }
