@@ -339,3 +339,90 @@ func assertUnknownFixtureMessage(t *testing.T, ref *core.RefusalError) {
 		t.Errorf("refusal message = %q, want the valid ids", ref.Message)
 	}
 }
+
+func copyOnlyRecordings(t *testing.T, fixture, name string) string {
+	t.Helper()
+	root := t.TempDir()
+	source := repoPath("bench", "quality", fixture, "recordings")
+	dst := filepath.Join(root, fixture, "recordings")
+	if err := os.MkdirAll(dst, dirPermissions); err != nil {
+		t.Fatal(err)
+	}
+	for _, suffix := range []string{recordingExt, metaSuffix} {
+		raw, err := os.ReadFile(filepath.Join(source, name+suffix))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dst, name+suffix), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+func TestRecordingsOverrideKeepsShippedCalibration(t *testing.T) {
+	root := copyOnlyRecordings(t, "fx1", "vr-sta440b-bench")
+	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: repoPath(), RecordingsRoot: root})
+	if ref != nil {
+		t.Fatalf("run: %s: %s", ref.Code, ref.Message)
+	}
+	data := resp.Data
+	if data.Recordings != 1 || data.Scored != 1 {
+		t.Errorf("header = %d recordings/%d scored, want 1/1", data.Recordings, data.Scored)
+	}
+	if data.Calibration.Rows != 7 || !data.Calibration.Reproduced {
+		t.Errorf("calibration = %+v, want 7 reproduced rows", data.Calibration)
+	}
+	if !strings.Contains(resp.Human, "calibration: 7/7 rows reproduced") {
+		t.Errorf("human calibration line = %q", resp.Human)
+	}
+	if data.Fixtures[1].Runs != 0 {
+		t.Errorf("fx2 runs = %d, want 0 with the override", data.Fixtures[1].Runs)
+	}
+}
+
+func TestSidecarFixtureMustMatchDirectory(t *testing.T) {
+	root := copyRecordings(t)
+	rewriteMeta(t, root, "fx1", "vr-sta440b-bench", "fixture", `"fx2"`)
+	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: repoPath(), RecordingsRoot: root})
+	if ref == nil || ref.Code != "fixtures-recording-invalid" {
+		t.Fatalf("refusal = %+v, want fixtures-recording-invalid", ref)
+	}
+	if resp != nil {
+		t.Errorf("response = %+v, want no report", resp)
+	}
+	if !strings.Contains(ref.Message, "fx1") || !strings.Contains(ref.Message, "fx2") {
+		t.Errorf("refusal message = %q, want both fixture ids", ref.Message)
+	}
+}
+
+func TestDuplicateRecordingNameRefused(t *testing.T) {
+	root := copyOnlyRecordings(t, "fx1", "vr-sta440b-bench")
+	copyNamedRecording(t, "fx1", "vr-sta440b-bench", root, "fx2")
+	rewriteMeta(t, root, "fx2", "vr-sta440b-bench", "fixture", `"fx2"`)
+	_, ref := RunFixtures(context.Background(), &Request{RepoRoot: repoPath(), RecordingsRoot: root})
+	if ref == nil || ref.Code != "fixtures-recording-invalid" {
+		t.Fatalf("refusal = %+v, want fixtures-recording-invalid", ref)
+	}
+	if !strings.Contains(ref.Message, "repeated recording name vr-sta440b-bench") {
+		t.Errorf("refusal message = %q", ref.Message)
+	}
+}
+
+func copyNamedRecording(t *testing.T, srcFixture, name, dstRoot, dstFixture string) {
+	t.Helper()
+	source := repoPath("bench", "quality", srcFixture, "recordings")
+	dst := filepath.Join(dstRoot, dstFixture, "recordings")
+	if err := os.MkdirAll(dst, dirPermissions); err != nil {
+		t.Fatal(err)
+	}
+	for _, suffix := range []string{recordingExt, metaSuffix} {
+		raw, err := os.ReadFile(filepath.Join(source, name+suffix))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dst, name+suffix), raw, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

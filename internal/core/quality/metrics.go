@@ -284,13 +284,14 @@ func Human(r *Report) string {
 		len(r.Fixtures), r.Recordings, r.Scored)
 	for i := range r.Fixtures {
 		f := &r.Fixtures[i]
-		fmt.Fprintf(&sb, "%s  %s  (%s, %d scored)\n", f.ID, f.Label, countNoun(f.Runs, "recording"), f.Scored)
+		fmt.Fprintf(&sb, "%s  %s  (%s, %d scored)\n", f.ID, f.Label,
+			countNoun(f.Runs, "recording"), f.Scored)
 		perRun := make([]string, 0, len(f.Recall.PerRun))
 		for _, rate := range f.Recall.PerRun {
 			perRun = append(perRun, rateText(&rate))
 		}
 		fmt.Fprintf(&sb, "  recall per run: %s  mean: %s  union: %s (N=%d, %d known defects)\n",
-			strings.Join(perRun, " "), rateText(f.Recall.Mean), rateText(f.Recall.Union), f.Runs, f.Known)
+			strings.Join(perRun, " "), rateText(f.Recall.Mean), rateText(f.Recall.Union), len(perRun), f.Known)
 		fmt.Fprintf(&sb, "  bonus union: %d/%d  false green: %d/%d (%s)\n",
 			f.BonusUnion.Count, f.Bonus, f.FalseGreen.Passes, f.FalseGreen.Measured, unknownText(f.FalseGreen.Unknown))
 		fmt.Fprintf(&sb, "  hallucination: %s (%s; %d gating findings, %d checked)  review-insufficient: %d\n",

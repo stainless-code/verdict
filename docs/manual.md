@@ -4701,9 +4701,10 @@ line per signal, and the `not citable — SZZ-derived` line.
 converted recordings under `bench/quality/<fixture>/recordings/` against the known defects in
 `bench/quality/fixtures.json`. It is a pure read: no agent launch, no host call,
 no SZZ mine, and no corpus store. `--fixture <id>` limits the report to one
-fixture while calibration still checks all seven archived runs; `--recordings
-<dir>` is an opt-in root of live recordings, resolved against the checkout when
-relative. The data object is also written to
+fixture while calibration still checks all seven shipped runs; `--recordings
+<dir>` is an opt-in root of live recordings to score, resolved against the
+checkout when relative. It never replaces the shipped calibration set. The
+data object is also written to
 `.verdict/backtest/fixtures/report.json`; the same shape is published as
 [`schemas/fixtures.schema.json`](../schemas/fixtures.schema.json).
 
@@ -4719,11 +4720,13 @@ recording is an unknown gate outcome, not a pass. Hallucination is `null` with
 `review_insufficient` counts only the literal `review-insufficient` refusal.
 Rates are rounded to four decimals and a zero denominator renders `null`.
 
-The seven converted recordings are the immutable calibration. `calibration.rows`
+The seven shipped recordings are the immutable calibration. `calibration.rows`
 and `calibration.reproduced` compare each scorer hit set with the hand score
-transcribed from the original runs; CI asserts `reproduced == true`, not the
-rates. The conversion to the fixture recording shape was a one-time authoring
-step: each meta sidecar pins the source bundle and its sha256, and no product
+transcribed from the original runs. Calibration always reads
+`bench/quality/<fixture>/recordings/`, even when `--recordings` supplies live
+runs for recall, false greens and hallucination; CI asserts
+`reproduced == true`, not the rates. The conversion to the fixture recording
+shape was a one-time authoring step: each meta sidecar pins the source bundle and its sha256, and no product
 code reads the older review format. Later recordings use the same fixture shape
 (or the findings store when that seam lands). The
 fixture corpus format and provenance are documented in

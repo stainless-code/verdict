@@ -434,10 +434,11 @@ func usageText() string {
 		"    mean and union over N, bonus union, false-green rate, hallucination rate\n" +
 		"    and review-insufficient count. Read-only: no agent, no host, no corpus\n" +
 		"    store. --fixture limits the report to one catalog id; --recordings is an\n" +
-		"    opt-in root of live recordings, relative to the checkout by default.\n" +
-		"    Writes .verdict/backtest/fixtures/report.json. The seven archived reviews\n" +
-		"    are the immutable calibration: 7/7 rows must reproduce. Rates describe\n" +
-		"    recorded reviews, not a model claim.\n" +
+		"    opt-in root of live recordings to score, relative to the checkout by\n" +
+		"    default. The seven shipped recordings are always the calibration, even\n" +
+		"    with --recordings: 7/7 rows must reproduce. Writes\n" +
+		"    .verdict/backtest/fixtures/report.json. Rates describe recorded reviews,\n" +
+		"    not a model claim.\n" +
 		"  backtest --since <90d|12w|18mo|2y|<ref>> --agent <name> [replay flags] [--json]\n" +
 		"    mine, replay, and score in one run: the miner resolves --run (or derives it),\n" +
 		"    then the replay and the score read that id. --agent is required because the\n" +

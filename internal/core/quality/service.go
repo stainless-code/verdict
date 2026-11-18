@@ -40,6 +40,20 @@ type Response struct {
 	Warnings []string
 }
 
+// fixtureInputs separates the runs being scored from the shipped calibration
+// set. An override changes the former, never the latter.
+type fixtureInputs struct {
+	catalog     *Catalog
+	root        string
+	scoring     []recordingFile
+	calibration []recordingFile
+}
+
+type recordingFile struct {
+	path    string
+	fixture string
+}
+
 // RunFixtures loads the catalog and recordings, scores them, and writes the
 // report under .verdict/backtest/fixtures/report.json. It never launches an
 // agent or calls a host.
@@ -47,46 +61,73 @@ func RunFixtures(ctx context.Context, req *Request) (*Response, *core.RefusalErr
 	if err := ctx.Err(); err != nil {
 		return nil, canceled(err)
 	}
-	catalog, files, root, ref := loadInputs(req)
+	inputs, ref := loadInputs(req)
 	if ref != nil {
 		return nil, ref
 	}
 	byID := map[string]*Fixture{}
-	for i := range catalog.Fixtures {
-		byID[catalog.Fixtures[i].ID] = &catalog.Fixtures[i]
+	for i := range inputs.catalog.Fixtures {
+		byID[inputs.catalog.Fixtures[i].ID] = &inputs.catalog.Fixtures[i]
 	}
-	runs, findings, ref := loadRuns(ctx, files, byID, NewMatcher(catalog))
+	matcher := NewMatcher(inputs.catalog)
+	runs, findings, ref := loadRuns(ctx, inputs.scoring, byID, matcher)
 	if ref != nil {
 		return nil, ref
 	}
-	report := buildReport(ctx, req, catalog, runs, findings)
-	if ref := writeReport(root, report); ref != nil {
+	calibration, _, ref := loadRuns(ctx, inputs.calibration, byID, matcher)
+	if ref != nil {
+		return nil, ref
+	}
+	report := buildReport(ctx, req, inputs.catalog, runs, calibration, findings)
+	if ref := writeReport(inputs.root, report); ref != nil {
 		return nil, ref
 	}
 	return response(req, report), nil
 }
 
-func loadInputs(req *Request) (*Catalog, []string, string, *core.RefusalError) {
+func loadInputs(req *Request) (*fixtureInputs, *core.RefusalError) {
 	root := req.RepoRoot
 	if root == "" {
 		root = "."
 	}
 	catalog, ref := LoadCatalog(filepath.Join(root, "bench", "quality", catalogName))
 	if ref != nil {
-		return nil, nil, "", ref
+		return nil, ref
 	}
 	if ref := validateFixtureID(catalog, req.FixtureID); ref != nil {
-		return nil, nil, "", ref
+		return nil, ref
 	}
 	base := recordingsRoot(root, req.RecordingsRoot)
-	files, ref := fixtureFiles(base, catalog)
+	scoring, ref := fixtureFiles(base, catalog)
 	if ref != nil {
-		return nil, nil, "", ref
+		return nil, ref
+	}
+	if len(scoring) == 0 {
+		return nil, invalidRecording(base, "no fixture recordings under the recordings root")
+	}
+	if ref := validateUniqueNames(scoring); ref != nil {
+		return nil, ref
+	}
+	calibration, ref := loadCalibrationFiles(root, catalog)
+	if ref != nil {
+		return nil, ref
+	}
+	return &fixtureInputs{catalog: catalog, root: root, scoring: scoring, calibration: calibration}, nil
+}
+
+func loadCalibrationFiles(root string, catalog *Catalog) ([]recordingFile, *core.RefusalError) {
+	shipped := filepath.Join(root, "bench", "quality")
+	files, ref := fixtureFiles(shipped, catalog)
+	if ref != nil {
+		return nil, ref
 	}
 	if len(files) == 0 {
-		return nil, nil, "", invalidRecording(base, "no fixture recordings under the recordings root")
+		return nil, invalidRecording(shipped, "no shipped calibration recordings")
 	}
-	return catalog, files, root, nil
+	if ref := validateUniqueNames(files); ref != nil {
+		return nil, ref
+	}
+	return files, nil
 }
 
 func validateFixtureID(catalog *Catalog, id string) *core.RefusalError {
@@ -107,28 +148,46 @@ func validateFixtureID(catalog *Catalog, id string) *core.RefusalError {
 	}
 }
 
-func fixtureFiles(base string, catalog *Catalog) ([]string, *core.RefusalError) {
-	var files []string
+func fixtureFiles(base string, catalog *Catalog) ([]recordingFile, *core.RefusalError) {
+	var files []recordingFile
 	for i := range catalog.Fixtures {
 		dir := filepath.Join(base, catalog.Fixtures[i].ID, "recordings")
 		found, ref := RecordingFiles(dir)
 		if ref != nil {
 			return nil, ref
 		}
-		files = append(files, found...)
+		for _, path := range found {
+			files = append(files, recordingFile{path: path, fixture: catalog.Fixtures[i].ID})
+		}
 	}
 	return files, nil
 }
 
+func validateUniqueNames(files []recordingFile) *core.RefusalError {
+	seen := map[string]bool{}
+	for _, file := range files {
+		name := recordingName(file.path)
+		if seen[name] {
+			return invalidRecording(file.path, "repeated recording name "+name)
+		}
+		seen[name] = true
+	}
+	return nil
+}
+
+func recordingName(path string) string {
+	return strings.TrimSuffix(filepath.Base(path), recordingExt)
+}
+
 func buildReport(ctx context.Context, req *Request, catalog *Catalog, runs []RunScore,
-	findings map[string][]Finding,
+	calibration []RunScore, findings map[string][]Finding,
 ) *Report {
 	report := &Report{
 		SchemaVersion: "1",
 		Mode:          "fixtures",
 		Recordings:    len(runs),
 		Scored:        scoredRuns(runs),
-		Calibration:   calibrationSummary(Calibrate(catalog, runs)),
+		Calibration:   calibrationSummary(Calibrate(catalog, calibration)),
 		Diagnostics:   diagnostics(runs),
 	}
 	for i := range catalog.Fixtures {
@@ -163,7 +222,7 @@ func recordingsRoot(root, override string) string {
 	return filepath.Join(root, override)
 }
 
-func loadRuns(ctx context.Context, files []string, byID map[string]*Fixture,
+func loadRuns(ctx context.Context, files []recordingFile, byID map[string]*Fixture,
 	matcher *Matcher,
 ) ([]RunScore, map[string][]Finding, *core.RefusalError) {
 	runs := make([]RunScore, 0, len(files))
@@ -182,10 +241,11 @@ func loadRuns(ctx context.Context, files []string, byID map[string]*Fixture,
 	return runs, findingsByRecording, nil
 }
 
-func scoreOne(path string, byID map[string]*Fixture,
+func scoreOne(file recordingFile, byID map[string]*Fixture,
 	matcher *Matcher,
 ) (*RunScore, []Finding, *core.RefusalError) {
-	name := strings.TrimSuffix(filepath.Base(path), recordingExt)
+	path := file.path
+	name := recordingName(path)
 	meta, ref := LoadRecordingMeta(MetaPath(path))
 	if ref != nil {
 		return nil, nil, ref
@@ -193,6 +253,10 @@ func scoreOne(path string, byID map[string]*Fixture,
 	recording, ref := LoadFixtureRecording(path)
 	if ref != nil {
 		return nil, nil, ref
+	}
+	if meta.Fixture != file.fixture {
+		return nil, nil, invalidRecording(path, "sidecar names fixture "+meta.Fixture+
+			", expected "+file.fixture)
 	}
 	fixture := byID[meta.Fixture]
 	if fixture == nil {

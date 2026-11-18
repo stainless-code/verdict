@@ -8,7 +8,7 @@
     "schema_version": { "type": "string" },
     "mode": { "type": "string" },
     "fixtures": {
-      "description": "One row per fixture, or just the --fixture selection; calibration still covers every archived recording.",
+      "description": "One row per fixture, or just the --fixture selection; calibration still covers every shipped recording.",
       "type": "array",
       "items": { "$ref": "#/$defs/fixture" }
     },
@@ -18,7 +18,7 @@
       "items": { "$ref": "#/$defs/diagnostic" }
     },
     "calibration": {
-      "description": "The seven archived hand scores, compared as hit-id sets against this build's matcher. reproduced is true only when every row passes; CI checks it, not the rates.",
+      "description": "The seven shipped hand scores, always loaded from bench/quality/<fixture>/recordings even when --recordings supplies live runs. reproduced is true only when every row passes; CI checks it, not the rates.",
       "$ref": "#/$defs/calibration"
     },
     "recordings": { "type": "integer" },

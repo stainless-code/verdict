@@ -1,11 +1,13 @@
 package quality
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -514,4 +516,58 @@ func TestCalibrateRequiresScoredRun(t *testing.T) {
 	if !result.Reproduced || result.Rows[0].Status != "PASS" {
 		t.Errorf("scored empty-hand row = %+v, reproduced = %v", result.Rows[0], result.Reproduced)
 	}
+}
+
+func TestHumanRecallDenominatorMatchesRates(t *testing.T) {
+	root := copyRecordings(t)
+	rewriteMeta(t, root, "fx1", "vr-sta440b-haiku", "infra_error", `"agent failed to start"`)
+	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: repoPath(), RecordingsRoot: root})
+	if ref != nil {
+		t.Fatalf("run: %s: %s", ref.Code, ref.Message)
+	}
+	data := resp.Data
+	if data.Scored != 6 || data.Fixtures[0].Scored != 5 {
+		t.Fatalf("header scored = %d, fx1 scored = %d, want 6/5", data.Scored, data.Fixtures[0].Scored)
+	}
+	line := recallLine(t, Human(data))
+	rates := recallRates(line)
+	if len(rates) != data.Fixtures[0].Scored {
+		t.Errorf("human lists %d rates (%v), JSON scored %d", len(rates), rates, data.Fixtures[0].Scored)
+	}
+	wantN := "(N=" + strconv.Itoa(data.Fixtures[0].Scored) + ", "
+	if !strings.Contains(line, wantN) {
+		t.Errorf("human line %q does not say %q", line, wantN)
+	}
+}
+
+func TestCalibrationRejectsWrongFixtureRun(t *testing.T) {
+	catalog := &Catalog{
+		Fixtures:    []Fixture{{ID: "fx1", Known: []Defect{{ID: "K1"}}}},
+		Calibration: []CalibrationRow{{Recording: "r1", Fixture: "fx1", Hand: []string{}}},
+	}
+	run := RunScore{Recording: "r1", Fixture: "fx2", Scored: true}
+	result := Calibrate(catalog, []RunScore{run})
+	if result.Reproduced || len(result.Rows) != 1 {
+		t.Fatalf("reproduced = %v, rows = %d, want false/1", result.Reproduced, len(result.Rows))
+	}
+	row := result.Rows[0]
+	if row.Status != "FAIL" || !strings.Contains(row.Reason, "fx2") || !strings.Contains(row.Reason, "fx1") {
+		t.Errorf("wrong-fixture row = %+v", row)
+	}
+}
+
+func recallLine(t *testing.T, human string) string {
+	t.Helper()
+	for line := range strings.SplitSeq(human, "\n") {
+		if strings.Contains(line, "recall per run:") {
+			return line
+		}
+	}
+	t.Fatal("human report has no recall line")
+	return ""
+}
+
+func recallRates(line string) []string {
+	rest := strings.SplitN(line, "recall per run: ", 2)[1]
+	return strings.Fields(strings.SplitN(rest, "  mean:", 2)[0])
 }

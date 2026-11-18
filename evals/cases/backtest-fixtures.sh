@@ -73,6 +73,34 @@ assert_refusal "unknown fixture" fixtures-invalid
 assert_file_grep "unknown fixture names valid ids" "$EVAL_OUT" "valid ids: fx1, fx2"
 assert_file_eq "unknown fixture leaves report untouched" "$EVAL_SANDBOX/report.filtered.json" "$REPORT"
 
+# --recordings scores live runs without replacing the shipped calibration set.
+mkdir -p "$EVAL_SANDBOX/live/fx1/recordings"
+cp "$EVAL_SANDBOX/bench/quality/fx1/recordings/vr-sta440b-bench.json" \
+  "$EVAL_SANDBOX/bench/quality/fx1/recordings/vr-sta440b-bench.meta.json" \
+  "$EVAL_SANDBOX/live/fx1/recordings/"
+run_review backtest fixtures --recordings live --json
+assert_exit "--recordings exits 0" 0
+assert_json_field "override scores one run" "1" '.data.recordings'
+assert_json_field "override fx1 runs" "1" '.data.fixtures[0].runs'
+assert_json_field "override calibration rows" "7" '.data.calibration.rows'
+assert_json_field "override calibration reproduced" "true" '.data.calibration.reproduced'
+run_review backtest fixtures --recordings live
+assert_file_grep "human calibration still 7/7" "$EVAL_OUT" "calibration: 7/7 rows reproduced"
+cp "$REPORT" "$EVAL_SANDBOX/report.live.json"
+
+# A sidecar that names another fixture is refused, not silently rescored.
+mkdir -p "$EVAL_SANDBOX/bad-meta/fx1/recordings"
+cp "$EVAL_SANDBOX/live/fx1/recordings/vr-sta440b-bench.json" \
+  "$EVAL_SANDBOX/bad-meta/fx1/recordings/"
+jq '.fixture = "fx2"' "$EVAL_SANDBOX/live/fx1/recordings/vr-sta440b-bench.meta.json" \
+  >"$EVAL_SANDBOX/bad-meta/fx1/recordings/vr-sta440b-bench.meta.json"
+run_review backtest fixtures --recordings bad-meta --json
+assert_refusal "mismatched sidecar" fixtures-recording-invalid
+assert_file_grep "sidecar mismatch names both ids" "$EVAL_OUT" \
+  "sidecar names fixture fx2, expected fx1"
+assert_file_eq "mismatched sidecar leaves report untouched" \
+  "$EVAL_SANDBOX/report.live.json" "$REPORT"
+
 # An infra error makes a recording unscored: it leaves every rate denominator.
 jq '.infra_error = "agent failed to start"' \
   "$EVAL_SANDBOX/bench/quality/fx1/recordings/vr-sta440b-haiku.meta.json" \
@@ -89,6 +117,11 @@ assert_json_field "calibration names the unscored run" "vr-sta440b-haiku" \
 assert_json_field "fx1 scored" "5" '.data.fixtures[0].scored'
 assert_json_field "fx1 union excludes the run" "0.4" '.data.fixtures[0].recall.union'
 assert_json_field "fx1 measured gates" "4" '.data.fixtures[0].false_green.measured'
+
+run_review backtest fixtures
+assert_exit "infra-error human exits 0" 0
+assert_file_grep "human N is the scored count" "$EVAL_OUT" \
+  "mean: 0.1200  union: 0.4000 (N=5, 5 known defects)"
 
 # A zero-hit hand score still needs a scored run before it can pass.
 jq '.infra_error = "agent failed to start"' \

@@ -244,9 +244,12 @@ func calibrationRow(byName map[string]*RunScore, fixtures map[string]*Fixture,
 	harness := hits(run.Hits)
 	status := "FAIL"
 	reason := ""
-	if !run.Scored {
+	switch {
+	case !run.Scored:
 		reason = "unscored (infra error: " + run.InfraError + ")"
-	} else if sameSet(hand, harness) {
+	case run.Fixture != row.Fixture:
+		reason = "recording names fixture " + run.Fixture + ", calibration row names " + row.Fixture
+	case sameSet(hand, harness):
 		status = "PASS"
 	}
 	return &CalibrationRowResult{

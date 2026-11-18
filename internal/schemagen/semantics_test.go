@@ -316,7 +316,7 @@ var publishedSemantics = map[string]string{
 	"post.schema.json": "33a2d4cb9ada3c553df93cf70df10fc85eac62811c223fc133135cd71e55ac1d",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
-	"fixtures.schema.json": "bf2453bddf86941cc7ab56d377d641059e2c976c9357edccb6944f6eb0d122b1",
+	"fixtures.schema.json": "69b35bf661296a726c13177f3b95e240490c02908c3700443588113169f8a079",
 	"identity.schema.json": "993b01b4c6891f2dc2e78454aac8bd2abaa8740c073bd5fc8124d4b47f7e68c9",
 	// additive pack.schema.json (new document; no existing schema property,
 	// required key, or type changed). The lens-pack manifest fetch resolves
