@@ -355,6 +355,9 @@ func assertFetchEnvelope(t *testing.T, resp *core.FetchResponse, human *bytes.Bu
 		!strings.Contains(got, "next: feed .verdict/state/7/procedure.md + .verdict/state/7/PR.json") {
 		t.Errorf("human lines:\n%s", got)
 	}
+	if want := "feed .verdict/state/7/procedure.md + .verdict/state/7/PR.json"; !strings.HasPrefix(resp.Next, want) {
+		t.Errorf("next = %q, want prefix %q", resp.Next, want)
+	}
 }
 
 // TestRunMissingTool proves a missing binary surfaces as the distinct
