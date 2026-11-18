@@ -176,15 +176,22 @@ func (st *state) argsFor(def *agentDef, dir string, timeout int) (*launchArgs, *
 // whole-pipeline directive, or the one stage --stage asked to render, whose
 // declared model hint becomes the agent's model argument.
 func (st *state) compose(a *launchArgs, req *core.RunRequest, bundle, artifact string, local bool) {
+	hasContext := contextInBundle(a.dir)
 	switch {
 	case st.drainDigest != "":
 		a.prompt = drainDirective(req.Repo, req.Pr, bundle, artifact, st.drainDigest)
 	case a.staged == nil:
-		a.prompt = directive(req.Repo, req.Pr, bundle, artifact, local, a.plan)
+		a.prompt = directive(req.Repo, req.Pr, bundle, artifact, local, hasContext, a.plan)
 	default:
-		a.prompt = stageDirective(req.Repo, req.Pr, bundle, artifact, local, a.plan, a.staged)
+		a.prompt = stageDirective(req.Repo, req.Pr, bundle, artifact, local, hasContext, a.plan, a.staged)
 	}
 	a.argv = argvFor(&a.def, a.model(), req.PassThrough, a.prompt)
+}
+
+// contextInBundle reports whether the bundle carries the handed context text.
+func contextInBundle(dir string) bool {
+	info, err := os.Stat(filepath.Join(dir, "context.txt"))
+	return err == nil && info.Mode().IsRegular()
 }
 
 // model is the model argument the argv composes: the rendered stage's declared

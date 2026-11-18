@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"strconv"
 	"strings"
@@ -97,7 +98,7 @@ func writeImpactFiles(ctx2 *fetchRunCtx, impact *indexcore.Impact) error {
 	if werr := atomic.WriteFile(ctx2.dir+suffixImpact, []byte(jq.PrettyOrdered(impactJSON(impact)))); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not write %s/impact.json: %v", ctx2.dir, werr)}
 	}
-	return appendImpactSection(ctx2.dir, impactSection(impact))
+	return appendTOCSection(ctx2.dir, impactSection(impact))
 }
 
 // impactLine names the hand-off on the human surface.
@@ -272,11 +273,15 @@ func impactSafe(s string) string {
 	return fence.Safe(sb.String())
 }
 
-// appendImpactSection appends the section to the bundle's toc.txt.
-func appendImpactSection(dir, section string) error {
+// appendTOCSection appends one section to the bundle's toc.txt. An absent
+// file starts empty; any other read failure refuses before the write.
+func appendTOCSection(dir, section string) error {
 	path := dir + "/toc.txt"
-	raw := readOptional(path)
-	body := raw
+	raw, err := os.ReadFile(path)
+	if err != nil && !errors.Is(err, fs.ErrNotExist) {
+		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not read %s: %v", path, err)}
+	}
+	body := string(raw)
 	if body != "" && !strings.HasSuffix(body, "\n") {
 		body += newline
 	}

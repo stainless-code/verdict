@@ -225,6 +225,54 @@ func TestWriteImpactWithoutIndexRemovesArtifact(t *testing.T) {
 	}
 }
 
+// assertUnreadableTOCRefusal checks the typed refusal names the path it could
+// not read, in display form.
+func assertUnreadableTOCRefusal(t *testing.T, err error, dir string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("appendTOCSection accepted an unreadable toc.txt")
+	}
+	var refusal *core.RefusalError
+	if !errors.As(err, &refusal) {
+		t.Fatalf("appendTOCSection error = %v, want a typed refusal", err)
+	}
+	if refusal.Code != CodeFetchFailed {
+		t.Errorf("refusal code = %q, want %q", refusal.Code, CodeFetchFailed)
+	}
+	want := "could not read " + filepath.ToSlash(dir) + "/toc.txt"
+	if !strings.Contains(filepath.ToSlash(refusal.Message), want) {
+		t.Errorf("refusal = %q, want it to name %q", refusal.Message, want)
+	}
+}
+
+// assertTOCDirUntouched checks neither the directory nor its kept content was
+// replaced by the failed append.
+func assertTOCDirUntouched(t *testing.T, toc, marker string) {
+	t.Helper()
+	if info, err := os.Stat(toc); err != nil || !info.IsDir() {
+		t.Errorf("toc.txt was replaced: stat = %v, %v", info, err)
+	}
+	if raw, err := os.ReadFile(marker); err != nil || string(raw) != "keep\n" {
+		t.Errorf("existing toc.txt content changed: raw = %q, err = %v", raw, err)
+	}
+}
+
+// TestAppendTOCSectionRefusesUnreadableTOC proves a read error on an existing
+// toc.txt refuses before the write and leaves the old content in place.
+func TestAppendTOCSectionRefusesUnreadableTOC(t *testing.T) {
+	dir := t.TempDir()
+	toc := filepath.Join(dir, "toc.txt")
+	if err := os.Mkdir(toc, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	marker := filepath.Join(toc, "keep.txt")
+	writeTestFile(t, marker, "keep\n")
+
+	err := appendTOCSection(dir, "## impact\nrow\n")
+	assertUnreadableTOCRefusal(t, err, dir)
+	assertTOCDirUntouched(t, toc, marker)
+}
+
 // impactRepo builds a real repository whose a.Save has a cross-package caller
 // and a test, committed as HEAD, so the index can be built and read.
 func impactRepo(t *testing.T) (dir string) {
