@@ -81,7 +81,7 @@ func TestBodyOnlyAnchorsMoveEveryFinding(t *testing.T) {
 	t.Parallel()
 	st := anchorTestState()
 	st.bodyOnlyAnchors = true
-	st.review = jq.NewObj(fieldComments, []any{
+	st.review = jq.NewObj("findings", []any{
 		anchorComment("notes.txt", "2", "", "RIGHT"),
 		anchorComment("missing.txt", "99", "", "RIGHT"),
 	})

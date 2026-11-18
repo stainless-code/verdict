@@ -3,16 +3,17 @@
   "panel": ["panel-alpha"],
   "review": {
     "schema_version": "1",
-    "body": "> 🤖 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
-    "approved": false,
-    "comments": [
+    "summary": "> \ud83e\udd16 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
+    "findings": [
       {
         "path": "session.go",
         "line": 53,
         "side": "RIGHT",
-        "body": "Check the lookup error before dereferencing session.",
         "rigor": "walked",
-        "severity": "critical"
+        "severity": "critical",
+        "claim": "Check the lookup error before dereferencing session.",
+        "quote": "Check the lookup error before dereferencing session.",
+        "confidence": "high"
       }
     ]
   }

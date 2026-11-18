@@ -3,16 +3,17 @@
   "panel": ["panel-beta"],
   "review": {
     "schema_version": "1",
-    "body": "> 🤖 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
-    "approved": false,
-    "comments": [
+    "summary": "> \ud83e\udd16 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
+    "findings": [
       {
         "path": "parse.go",
         "line": 23,
         "side": "RIGHT",
-        "body": "Check len(parts) before indexing parts[1].",
         "rigor": "pointed",
-        "severity": "important"
+        "severity": "important",
+        "claim": "Check len(parts) before indexing parts[1].",
+        "quote": "Check len(parts) before indexing parts[1].",
+        "confidence": "high"
       }
     ]
   }

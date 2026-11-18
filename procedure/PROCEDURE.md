@@ -62,14 +62,13 @@ verdict fetch owner/repo 123
 # 2. Review with any agent. Load `prompts/system.md`, then the one mode file
 #    from the router below, plus the bundle.
 #    Write exactly one `.verdict/state/N/review.json`; the mode file defines its shape
-#    (`body` and `comments[]` at minimum, plus optional `resolved` sigs and
+#    (`schema_version: "1"` and `findings[]` at minimum, plus optional `resolved` sigs and
 #    `triage[]` claims). Attest what you read in `coverage[]` (`chunks[]` on a
 #    chunked bundle): the default `gate` fails without it, and `next --coverage`
-#    lists the gaps. Verdict repairs a fenced or prose-wrapped document,
-#    scalar-for-array values, the aliases `inBounds`/`in_bounds`/`rung`/`file`,
-#    enum synonyms and case, and null optional keys, and reports every repair —
-#    but write clean JSON anyway: repairs are a safety net, and strict CI
-#    refuses them.
+#    lists the gaps. Verdict validates the published findings shape, renders the
+#    body from it, and refuses any other key: `body`, `approved` and `comments[]`
+#    are gone, not deprecated. Write clean JSON anyway — repairs are a safety net,
+#    and strict CI refuses them.
 #    Before posting or recording, run `verdict record owner/repo <slug>
 #    --dry-run` on the bundle (local or PR), fix every problem it lists, and
 #    repeat at most 3 rounds.

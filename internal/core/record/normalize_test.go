@@ -43,7 +43,7 @@ type repairCase struct {
 // repairCases pins every repair code: the input bytes, the normalized bytes,
 // and the warning the caller receives.
 func repairCases() []repairCase {
-	base := `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[]}`
+	base := `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[]}`
 	return []repairCase{
 		{
 			name:  "fence",
@@ -65,59 +65,43 @@ func repairCases() []repairCase {
 		},
 		{
 			name: "scalar-to-array",
-			in: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[],` +
+			in: `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[],` +
 				`"resolved":"a1b2","chunks":"a"}`,
-			want: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[],` +
+			want: `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[],` +
 				`"resolved":["a1b2"],"chunks":["a"]}`,
 			codes: []string{core.ProblemCodeScalarToArray, core.ProblemCodeScalarToArray},
 		},
 		{
 			name: "key-alias",
-			in: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
-				`{"file":"notes.txt","line":2,"body":"A finding with enough substance.","rung":"walked","inBounds":true}]}`,
-			want: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
-				`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","rigor":"walked","in-bounds":true}]}`,
-			codes: []string{core.ProblemCodeKeyAlias, core.ProblemCodeKeyAlias, core.ProblemCodeKeyAlias},
-		},
-		{
-			name: "in-bounds-snake-alias",
-			in: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
-				`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","in_bounds":false}]}`,
-			want: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
-				`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","in-bounds":false}]}`,
-			codes: []string{core.ProblemCodeKeyAlias},
+			in: `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[` +
+				`{"file":"notes.txt","line":2,"claim":"A finding with enough substance." ,"rung":"walked"}]}`,
+			want: `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[` +
+				`{"path":"notes.txt","line":2,"claim":"A finding with enough substance.","rigor":"walked"}]}`,
+			codes: []string{core.ProblemCodeKeyAlias, core.ProblemCodeKeyAlias},
 		},
 		{
 			name: "enum-synonym",
-			in: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
-				`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","rigor":"traced","severity":"Critical"}]}`,
-			want: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
-				`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","rigor":"walked","severity":"critical"}]}`,
+			in: `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[` +
+				`{"path":"notes.txt","line":2,"claim":"A finding with enough substance.","rigor":"traced","severity":"Critical"}]}`,
+			want: `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[` +
+				`{"path":"notes.txt","line":2,"claim":"A finding with enough substance.","rigor":"walked","severity":"critical"}]}`,
 			codes: []string{core.ProblemCodeEnumSynonym, core.ProblemCodeEnumSynonym},
 		},
 		{
 			name: "alias-null",
-			in: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
-				`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","rung":null,"inBounds":null}]}`,
-			want: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
-				`{"path":"notes.txt","line":2,"body":"A finding with enough substance."}]}`,
-			codes: []string{core.ProblemCodeNormalizedTrivia, core.ProblemCodeNormalizedTrivia},
-		},
-		{
-			name: "in-bounds-snake-null-alias",
-			in: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
-				`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","in_bounds":null}]}`,
-			want: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
-				`{"path":"notes.txt","line":2,"body":"A finding with enough substance."}]}`,
+			in: `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[` +
+				`{"path":"notes.txt","line":2,"claim":"A finding with enough substance.","rung":null}]}`,
+			want: `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[` +
+				`{"path":"notes.txt","line":2,"claim":"A finding with enough substance."}]}`,
 			codes: []string{core.ProblemCodeNormalizedTrivia},
 		},
 		{
 			name: "trivia",
-			in: "\ufeff" + `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
-				`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","severity":null},` +
-				`{"path":"notes.txt","line":2,"body":"A finding with enough substance."}]}`,
-			want: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
-				`{"path":"notes.txt","line":2,"body":"A finding with enough substance."}]}`,
+			in: "\ufeff" + `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[` +
+				`{"path":"notes.txt","line":2,"claim":"A finding with enough substance.","severity":null},` +
+				`{"path":"notes.txt","line":2,"claim":"A finding with enough substance."}]}`,
+			want: `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[` +
+				`{"path":"notes.txt","line":2,"claim":"A finding with enough substance."}]}`,
 			codes: []string{core.ProblemCodeNormalizedTrivia, core.ProblemCodeNormalizedTrivia, core.ProblemCodeNormalizedTrivia},
 		},
 	}
@@ -180,9 +164,9 @@ func neverCases() []neverCase {
 	return []neverCase{
 		{name: "unparsable", in: `{broken`, code: core.ProblemCodeInvalidJSON},
 		{name: "non-object", in: `[1,2]`, code: core.ProblemCodeWrongType},
-		{name: "numeric-path", in: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[{"path":7,"line":2,"body":"A finding with enough substance."}]}`, code: core.ProblemCodeWrongType},
-		{name: "missing-body", in: `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[{"path":"notes.txt","line":2}]}`, code: core.ProblemCodeMissingField},
-		{name: "unknown-schema", in: `{"schema_version":"2","body":"` + normalizeBody + `","approved":false,"comments":[]}`, code: core.ProblemCodeBadEnum},
+		{name: "numeric-path", in: `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[{"path":7,"line":2,"claim":"A finding with enough substance."}]}`, code: core.ProblemCodeWrongType},
+		{name: "missing-body", in: `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[{"path":"notes.txt","line":2}]}`, code: core.ProblemCodeMissingField},
+		{name: "unknown-schema", in: `{"schema_version":"2","summary":"` + normalizeBody + `","findings":[]}`, code: core.ProblemCodeBadEnum},
 	}
 }
 
@@ -242,7 +226,7 @@ func TestNormalizeReviewIdempotentProperty(t *testing.T) {
 		"```json\n" + checkReview("") + "\n```",
 		"prose\n" + checkReview("") + "\nmore prose",
 		"\ufeff" + checkReview(""),
-		`{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[{"file":"notes.txt","line":2,"body":"A finding with enough substance.","rung":"traced","severity":"Critical","suggestion":null}]}`,
+		`{"schema_version":"1","summary":"` + normalizeBody + `","findings":[{"file":"notes.txt","line":2,"claim":"A finding with enough substance.","rung":"traced","severity":"Critical","suggestion":null}]}`,
 		`{broken`,
 		`[1,2]`,
 	}
@@ -258,9 +242,9 @@ func TestNormalizeReviewIdempotentProperty(t *testing.T) {
 // TestRecordNormalizesWeakModelShapes proves the record path applies the
 // repairs, reports them, and records the default rigor provenance.
 func TestRecordNormalizesWeakModelShapes(t *testing.T) {
-	review := "```json\n" + `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,` +
-		`"resolved":"a1b2","comments":[{"file":"notes.txt","line":2,"body":"A finding with enough substance.",` +
-		`"rung":"traced","severity":"Critical","brief":{"outcome":"Reject duplicate deliveries before anything is enqueued.","questions":"Why is this safe?"}}]}` + "\n```"
+	review := "```json\n" + `{"schema_version":"1","summary":"` + normalizeBody + `",` +
+		`"resolved":"a1b2","findings":[{"file":"notes.txt","line":2,"claim":"A finding with enough substance.",` +
+		`"quote":"new line","confidence":"high","rung":"traced","severity":"Critical","brief":{"outcome":"Reject duplicate deliveries before anything is enqueued.","questions":"Why is this safe?"}}]}` + "\n```"
 	bundle(t, "local-norm", review)
 	c := &collector{}
 	req := recordRequest(t, c, "local-norm")
@@ -318,8 +302,8 @@ func checkRecordedRepairs(t *testing.T) {
 // TestRecordStrictRefusesRepairs proves strict input promotes every repair to
 // an error and refuses before writing.
 func TestRecordStrictRefusesRepairs(t *testing.T) {
-	review := "```json\n" + `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,` +
-		`"comments":[{"file":"notes.txt","line":2,"body":"A finding with enough substance.","rung":"traced"}]}` + "\n```"
+	review := "```json\n" + `{"schema_version":"1","summary":"` + normalizeBody + `",` +
+		`"findings":[{"file":"notes.txt","line":2,"claim":"A finding with enough substance.","quote":"new line","confidence":"high","severity":"important","rung":"traced"}]}` + "\n```"
 	bundle(t, "local-norm-strict", review)
 	c := &collector{}
 	req := recordRequest(t, c, "local-norm-strict")
@@ -350,18 +334,18 @@ type strictCase struct {
 
 // strictCases covers every repair family with a strict refusal.
 func strictCases() []strictCase {
-	base := `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[]}`
-	comment := func(frag string) string {
-		return `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` + frag + `]}`
+	base := `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[]}`
+	comment := func(fields string) string {
+		return `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[` +
+			strings.TrimSuffix(fields, "}") + `,"quote":"new line","confidence":"high","severity":"important"}]}`
 	}
 	return []strictCase{
 		{"fence", "```json\n" + base + "\n```", core.ProblemCodeNormalizedFence},
 		{"extracted", "Here is the review:\n" + base + "\nThanks", core.ProblemCodeNormalizedExtracted},
-		{"scalar-to-array", `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[],"resolved":"a1b2"}`, core.ProblemCodeScalarToArray},
-		{"key-alias", comment(`{"file":"notes.txt","line":2,"body":"A finding with enough substance.","rung":"walked"}`), core.ProblemCodeKeyAlias},
-		{"in-bounds-alias", comment(`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","in_bounds":false}`), core.ProblemCodeKeyAlias},
-		{"enum-synonym", comment(`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","rigor":"traced"}`), core.ProblemCodeEnumSynonym},
-		{"trivia", "\ufeff" + comment(`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","rigor":"walked","severity":null}`), core.ProblemCodeNormalizedTrivia},
+		{"scalar-to-array", `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[],"resolved":"a1b2"}`, core.ProblemCodeScalarToArray},
+		{"key-alias", comment(`{"file":"notes.txt","line":2,"claim":"A finding with enough substance.","rung":"walked"}`), core.ProblemCodeKeyAlias},
+		{"enum-synonym", comment(`{"path":"notes.txt","line":2,"claim":"A finding with enough substance.","rigor":"traced"}`), core.ProblemCodeEnumSynonym},
+		{"trivia", "\ufeff" + comment(`{"path":"notes.txt","line":2,"claim":"A finding with enough substance.","rigor":"walked","suggestion":null}`), core.ProblemCodeNormalizedTrivia},
 	}
 }
 
@@ -385,7 +369,7 @@ func checkStrictCase(t *testing.T, tc strictCase) {
 	req := recordRequest(t, c, slug)
 	req.DryRun = true
 	if _, ref := recordcore.Run(context.Background(), req); ref != nil {
-		t.Fatalf("default run refused: %v", ref)
+		t.Fatalf("default run refused: %v %+v", ref, ref.Problems)
 	}
 	cs := &collector{}
 	sreq := recordRequest(t, cs, slug)
@@ -415,14 +399,14 @@ func strictPromoted(problems []recordcore.Problem, code string) bool {
 // bundle was fetched without it: the same review records by default and
 // refuses once the env is set.
 func TestRecordStrictEnvAtRecordTime(t *testing.T) {
-	review := "```json\n" + `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,` +
-		`"comments":[{"path":"notes.txt","line":2,"body":"A finding with enough substance.","rung":"traced"}]}` + "\n```"
+	review := "```json\n" + `{"schema_version":"1","summary":"` + normalizeBody + `",` +
+		`"findings":[{"path":"notes.txt","line":2,"claim":"A finding with enough substance.","quote":"new line","confidence":"high","severity":"important","rung":"traced"}]}` + "\n```"
 	bundle(t, "local-norm-env", review)
 	c := &collector{}
 	req := recordRequest(t, c, "local-norm-env")
 	req.DryRun = true
 	if _, ref := recordcore.Run(context.Background(), req); ref != nil {
-		t.Fatalf("default run refused: %v", ref)
+		t.Fatalf("default run refused: %v %+v", ref, ref.Problems)
 	}
 	ce := &collector{}
 	ereq := recordRequest(t, ce, "local-norm-env")
@@ -448,10 +432,10 @@ func readFile(path string) (string, error) {
 // paths resolve in the normalized review.
 func TestNormalizeReviewRepairsUseFinalIndexes(t *testing.T) {
 	t.Parallel()
-	in := `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
-		`{"path":"notes.txt","line":2,"body":"Same text here."},` +
-		`{"path":"notes.txt","line":2,"body":"Same text here."},` +
-		`{"path":"notes.txt","line":2,"body":"Other text here.","rung":"traced"}]}`
+	in := `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[` +
+		`{"path":"notes.txt","line":2,"claim":"Same text here."},` +
+		`{"path":"notes.txt","line":2,"claim":"Same text here."},` +
+		`{"path":"notes.txt","line":2,"claim":"Other text here.","rung":"traced"}]}`
 	got, repairs := recordcore.NormalizeReview([]byte(in))
 	doc, err := jq.DecodeOrdered(got)
 	if err != nil {
@@ -461,7 +445,7 @@ func TestNormalizeReviewRepairsUseFinalIndexes(t *testing.T) {
 	if !ok {
 		t.Fatalf("normalized is not an object:\n%s", got)
 	}
-	comments, _ := obj.Get("comments")
+	comments, _ := obj.Get("findings")
 	if items, ok := comments.([]any); !ok || len(items) != 2 {
 		t.Fatalf("normalized comments = %v, want 2 survivors", comments)
 	}
@@ -476,7 +460,7 @@ func TestNormalizeReviewRepairsUseFinalIndexes(t *testing.T) {
 	if strings.Join(codes, ",") != strings.Join(wantCodes, ",") {
 		t.Errorf("repair codes = %v, want %v", codes, wantCodes)
 	}
-	wantPaths := []string{"$.comments[1]", "$.comments[1].rigor", "$.comments[1].rigor"}
+	wantPaths := []string{"$.findings[1]", "$.findings[1].rigor", "$.findings[1].rigor"}
 	if strings.Join(paths, ",") != strings.Join(wantPaths, ",") {
 		t.Errorf("repair paths = %v, want %v", paths, wantPaths)
 	}
@@ -488,9 +472,9 @@ func TestNormalizeReviewRepairsUseFinalIndexes(t *testing.T) {
 // the dropped comment reports one trivia repair.
 func TestNormalizeReviewDroppedCommentReportsOnlyDedupe(t *testing.T) {
 	t.Parallel()
-	in := `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
-		`{"file":"notes.txt","line":2,"body":"A finding with enough substance.","rung":"traced"},` +
-		`{"path":"notes.txt","line":2,"body":"A finding with enough substance.","rigor":"walked"}]}`
+	in := `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[` +
+		`{"file":"notes.txt","line":2,"claim":"A finding with enough substance.","rung":"traced"},` +
+		`{"path":"notes.txt","line":2,"claim":"A finding with enough substance.","rigor":"walked"}]}`
 	got, repairs := recordcore.NormalizeReview([]byte(in))
 	doc, err := jq.DecodeOrdered(got)
 	if err != nil {
@@ -500,7 +484,7 @@ func TestNormalizeReviewDroppedCommentReportsOnlyDedupe(t *testing.T) {
 	if !ok {
 		t.Fatalf("normalized does not decode to an object:\n%s", got)
 	}
-	comments, _ := obj.Get("comments")
+	comments, _ := obj.Get("findings")
 	if items, ok := comments.([]any); !ok || len(items) != 1 {
 		t.Fatalf("normalized comments = %v, want 1 survivor", comments)
 	}
@@ -509,10 +493,10 @@ func TestNormalizeReviewDroppedCommentReportsOnlyDedupe(t *testing.T) {
 		codes = append(codes, p.Code+":"+p.Path)
 	}
 	want := []string{
-		core.ProblemCodeKeyAlias + ":$.comments[0].path",
-		core.ProblemCodeKeyAlias + ":$.comments[0].rigor",
-		core.ProblemCodeEnumSynonym + ":$.comments[0].rigor",
-		core.ProblemCodeNormalizedTrivia + ":$.comments[1]",
+		core.ProblemCodeKeyAlias + ":$.findings[0].path",
+		core.ProblemCodeKeyAlias + ":$.findings[0].rigor",
+		core.ProblemCodeEnumSynonym + ":$.findings[0].rigor",
+		core.ProblemCodeNormalizedTrivia + ":$.findings[1]",
 	}
 	if strings.Join(codes, ",") != strings.Join(want, ",") {
 		t.Errorf("repairs = %v, want %v", codes, want)
@@ -524,18 +508,18 @@ func TestNormalizeReviewDroppedCommentReportsOnlyDedupe(t *testing.T) {
 // later keys, instead of grouping alias rewrites first.
 func TestNormalizeReviewCommentRepairsInKeyOrder(t *testing.T) {
 	t.Parallel()
-	in := `{"schema_version":"1","body":"` + normalizeBody + `","approved":false,"comments":[` +
-		`{"severity":"Critical","line":2,"file":"notes.txt","body":"A finding with enough substance.","rung":"traced"}]}`
+	in := `{"schema_version":"1","summary":"` + normalizeBody + `","findings":[` +
+		`{"severity":"Critical","line":2,"file":"notes.txt","claim":"A finding with enough substance.","rung":"traced"}]}`
 	_, repairs := recordcore.NormalizeReview([]byte(in))
 	var codes []string
 	for _, p := range repairs {
 		codes = append(codes, p.Code+":"+p.Path)
 	}
 	want := []string{
-		core.ProblemCodeEnumSynonym + ":$.comments[0].severity",
-		core.ProblemCodeKeyAlias + ":$.comments[0].path",
-		core.ProblemCodeKeyAlias + ":$.comments[0].rigor",
-		core.ProblemCodeEnumSynonym + ":$.comments[0].rigor",
+		core.ProblemCodeEnumSynonym + ":$.findings[0].severity",
+		core.ProblemCodeKeyAlias + ":$.findings[0].path",
+		core.ProblemCodeKeyAlias + ":$.findings[0].rigor",
+		core.ProblemCodeEnumSynonym + ":$.findings[0].rigor",
 	}
 	if strings.Join(codes, ",") != strings.Join(want, ",") {
 		t.Errorf("repairs = %v, want %v", codes, want)

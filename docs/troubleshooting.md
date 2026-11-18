@@ -304,7 +304,7 @@ Fix: fix the clause named above and re-run.
 
 Cause: the agent input is malformed (the message names the field).
 
-Fix: fix the malformed agent input named above (`review.json` wants `{body, approved, comments[]}`; claims want string sigs), then re-run.
+Fix: fix the malformed agent input named above; v2 `review.json` wants `{schema_version: "1", findings: [...]}`.
 
 ## `bad-review-schema`
 
@@ -895,7 +895,7 @@ Fix: `post` for real first, then re-run `calibrate`.
 
 Cause: the review file is absent.
 
-Fix: have the agent write `{body, approved, comments[]}` to the review file first, then re-run.
+Fix: have the agent write `{schema_version: "1", findings: [...]}` to the review file first, then re-run.
 
 ## `missing-sarif`
 
@@ -1163,6 +1163,12 @@ Fix: restart the server without `--read-only`; operator-only tools also require 
 Cause: `record` could not write its capture (the message names the file and the error).
 
 Fix: make the bundle directory writable (or re-fetch the bundle), then re-run.
+
+## `record-stale`
+
+Cause: the bundle's `record.json` no longer matches the review post is publishing — `review.json`, `full.diff`, or the bundle head moved after `record` wrote its decision, so the stored approval receipt describes a different review.
+
+Fix: run `verdict record <repo> <slug>` again on the current review (then `post`), so the published body and approval are the decision verdict stored.
 
 ## `repair-exhausted`
 

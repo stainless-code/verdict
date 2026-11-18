@@ -266,7 +266,7 @@ eval_mk_bundle "$SLUG"
 jq -n '{schema_version:"1", body:"> Review receipt for the truncation eval.", approved:false,
   comments:[{path:"notes.txt", line:2, side:"RIGHT", rigor:"walked",
     body:("A bounded response must retain the whole finding. " + ("x" * 300000))}]}' \
-  >"$EVAL_SANDBOX/.verdict/state/$SLUG/review.json"
+ | eval_write_review_at "$EVAL_SANDBOX/.verdict/state/$SLUG/review.json"
 run_review record acme/app "$SLUG" --json
 assert_exit "large review records through the real producer" 0
 cat >"$FRAMES" <<EOF

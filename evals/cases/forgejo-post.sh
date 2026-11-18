@@ -106,7 +106,7 @@ assert_json_field "a non-binding review stays a comment" COMMENT '.data.event'
 assert_json_field "the dry run covers the fetched head" "$HEAD" '.data.commit_id'
 assert_json_field "the dry run keeps the inline anchor" 1 '.data.anchors.kept'
 assert_json_field "the dry run renders the anchor locator" notes.txt:2 '.data.items[0].locator'
-assert_json_field "the dry run warns about nothing" 0 '.warnings | length'
+assert_json_field "the dry run names the derived COMMENT downgrade" 1 '.warnings | length'
 if [ ! -e "$DIR/post.json" ]; then
   good "the dry run writes no post.json"
 else

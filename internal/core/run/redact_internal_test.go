@@ -192,8 +192,8 @@ const pipelineDirective = "Review acme/app PR 42 and write exactly one review fi
 	"(an installed skill may be older). Then the bundle at .verdict/state/42: PR.json, " +
 	"roles.txt, and toc.txt indexing full.diff, plus kb.txt, sensitive.txt, and panel when the run " +
 	"carries them.\n\n" +
-	"Write .verdict/state/42/review.json with {\"schema_version\": \"1\", \"body\": ..., " +
-	"\"approved\": ..., \"comments\": [...]} (optional \"resolved\" and \"triage\"). Write nothing " +
+	"Write .verdict/state/42/review.json with {\"schema_version\": \"1\", \"findings\": [{\"path\": ..., \"line\": 2, \"severity\": ..., \"claim\": ..., \"quote\": ..., \"confidence\": ...}], " +
+	"\"spec_checks\": [], \"receipts\": [], \"summary\": ...} (optional \"resolved\" and \"triage\"). Write nothing " +
 	"else in the bundle.\n\n" +
 	"verdict launched this one process and validates that file; it does not read your prose, retry " +
 	"you, or post. Do not post, merge, or push: publishing is an explicit verdict post.\n\n" +

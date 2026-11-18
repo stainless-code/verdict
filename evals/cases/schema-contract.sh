@@ -37,21 +37,22 @@ must_fail() { # $1 = label, $2 = schema[#ptr], $3 = doc, $4 = expected stderr ru
 }
 
 cat > "$EVAL_SANDBOX/s1-review.json" <<'EOF'
-{"schema_version":"1","body":"> ✅ Looks good overall — one nit below.\n\n**Reviewed changes**\n\n- Touched notes.\n\n### ⚠️ Watch the wording\n\nBody section.","approved":false,
-"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Consider clarifying this line.","rigor":"walked","severity":"informational","in-bounds":true,"kb":["rule-one"]},
-{"path":"notes.txt","start_line":1,"line":3,"side":"RIGHT","body":"Range nit.","suggestion":"fixed\n"}],
+{"schema_version":"1","summary":"Looks good overall — one nit below.",
+"findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"Consider clarifying this line.","quote":"the changed line","confidence":"high","rigor":"walked","severity":"informational","kb":["rule-one"]},
+{"path":"notes.txt","start_line":1,"line":3,"side":"RIGHT","claim":"Range nit.","quote":"the changed range","confidence":"medium","severity":"informational","suggestion":"fixed\n"}],
 "resolved":[],"triage":[{"sig":"0123456789abcdef0123456789abcdef01234567","status":"wont-fix","rationale":"By design: the wording matches the house style guide here"}],
-"sections":[{"heading":"### ⚠️ Watch the wording","severity":"important"}],
-"confidence":4,"security_summary":"No networked reads; nothing executable.","chunks":[]}
+"spec_checks":[{"item":"The handed spec requires bounded retries.","status":"n/a","evidence":{"path":"notes.txt","line":2,"quote":"the changed line"}}],
+"receipts":[{"hunk":"@@ -1 +1 @@","quote":"the changed line"}],
+"security_summary":"No networked reads; nothing executable.","chunks":[]}
 EOF
 check "S1 review.json (full)" "$SCH/review.schema.json" "$EVAL_SANDBOX/s1-review.json"
 
 LB="$EVAL_SANDBOX/.verdict/state/local-schematest"
 eval_mk_bundle local-schematest
 cat > "$LB/review.json" <<'EOF'
-{"schema_version":"1","body":"> ✅ Looks good overall — one nit below.\n\n**Reviewed changes**\n\n- Touched notes.\n\n### ⚠️ Watch the wording\n\nBody section.","approved":false,
-"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Consider clarifying this line.","rigor":"walked","severity":"informational"}],
-"confidence":4,"security_summary":"No networked reads; nothing executable."}
+{"schema_version":"1","summary":"Looks good overall — one nit below.",
+"findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"Consider clarifying this line.","quote":"the changed line","confidence":"high","rigor":"walked","severity":"informational"}],
+"security_summary":"No networked reads; nothing executable."}
 EOF
 cat > "$LB/cost.json" <<'EOF'
 {"schema_version":"2","effort":"standard","models":[{"name":"synth","input_tokens":100,"output_tokens":50,"cache_read_input_tokens":30,"cache_creation_input_tokens":10}],"wall_seconds":12,"diff_bytes":200,"lenses":[{"group":"b703173f532ebdf36d9eef44d8d3b5c3f3a4314591c039e6e84d6df2771c8663","labels":["scope"]}],"group_costs":[{"group":"b703173f532ebdf36d9eef44d8d3b5c3f3a4314591c039e6e84d6df2771c8663","effort":"standard","est_usd":0.05}],"est_usd":0.05}
@@ -64,7 +65,7 @@ else
 fi
 SIG="$(jq -r '.[0].sig' "$LB/findings.json" 2>/dev/null || true)"
 cat > "$LB/review.json" <<EOF
-{"schema_version":"1","body":"> ✅ Looks good overall — one nit below.","approved":false,"comments":[],
+{"schema_version":"1","summary":"Looks good overall — one nit below.","findings":[],
 "triage":[{"sig":"$SIG","status":"wont-fix","rationale":"By design: the wording matches the pinned style guide verbatim"}]}
 EOF
 cat > "$LB/verification.json" <<EOF
@@ -191,8 +192,8 @@ EOF
 check "S5 post.json (representative)" "$SCH/post.schema.json" "$EVAL_SANDBOX/s5-post.json"
 check "S5 cost.json (prompts shape)" "$SCH/cost.schema.json" "$LB/cost.json"
 
-printf '{"schema_version":"1","comments":[]}' > "$EVAL_SANDBOX/s6-nobody.json"
-must_fail "S6 review without body" "$SCH/review.schema.json" "$EVAL_SANDBOX/s6-nobody.json" "missing required key(s): body"
+printf '{"schema_version":"1"}' > "$EVAL_SANDBOX/s6-nobody.json"
+must_fail "S6 review without findings" "$SCH/review.schema.json" "$EVAL_SANDBOX/s6-nobody.json" "missing required key(s): findings"
 printf '[{"sig":"x","sig_version":"1","kind":"inline","status":"maybe","firstSeen":"a","lastSeen":"b","history":[]}]' > "$EVAL_SANDBOX/s6-badstatus.json"
 must_fail "S6 findings off-enum status" "$SCH/findings.schema.json" "$EVAL_SANDBOX/s6-badstatus.json" "not one of"
 jq '. + {ninth_key: 1}' <"$EVAL_OUT" > "$EVAL_SANDBOX/s6-extrakey.json" 2>/dev/null
@@ -233,9 +234,9 @@ jq -n '{"schema_version":"1","body":"> ✅ Category coverage with enough substan
 {"path":"notes.txt","line":2,"side":"RIGHT","body":"Docs gap here with enough substance.","rigor":"pointed","severity":"informational","category":"docs"},
 {"path":"notes.txt","line":2,"side":"RIGHT","body":"Odd finding here with enough substance.","rigor":"pointed","severity":"informational","category":"other"},
 {"path":"notes.txt","line":2,"side":"RIGHT","body":"Untagged here with enough substance.","rigor":"pointed","severity":"informational","category":null}
-]}' > "$EVAL_SANDBOX/s8-review.json"
+]}' | eval_write_review_at "$EVAL_SANDBOX/s8-review.json"
 check "S8 review.json with every category and null" "$SCH/review.schema.json" "$EVAL_SANDBOX/s8-review.json"
-jq '.comments[0].category = "nope"' "$EVAL_SANDBOX/s8-review.json" > "$EVAL_SANDBOX/s8-badreview.json"
+jq '.findings[0].category = "nope"' "$EVAL_SANDBOX/s8-review.json" | eval_write_review_at "$EVAL_SANDBOX/s8-badreview.json"
 must_fail "S8 review unknown category" "$SCH/review.schema.json" "$EVAL_SANDBOX/s8-badreview.json" "not one of"
 run_review report acme/app "$PR" --json
 if [ "$EVAL_STATUS" -eq 0 ]; then

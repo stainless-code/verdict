@@ -239,11 +239,11 @@ type agentOutput struct {
 	Model  string   `json:"model"`
 	Panel  []string `json:"panel"`
 	Review struct {
-		Comments []struct {
-			Path string `json:"path"`
-			Line int    `json:"line"`
-			Body string `json:"body"`
-		} `json:"comments"`
+		Findings []struct {
+			Path  string `json:"path"`
+			Line  int    `json:"line"`
+			Claim string `json:"claim"`
+		} `json:"findings"`
 	} `json:"review"`
 }
 
@@ -261,14 +261,14 @@ func checkAgent(t *testing.T, path string, index []hunks.Hunk, control bool) []a
 	if a.Model == "" || len(a.Panel) == 0 {
 		t.Errorf("%s: needs model and panel", path)
 	}
-	if len(a.Review.Comments) == 0 && !control {
-		t.Errorf("%s: no comments", path)
+	if len(a.Review.Findings) == 0 && !control {
+		t.Errorf("%s: no findings", path)
 	}
 	bodies := map[string]bool{}
 	var entries []any
-	for _, c := range a.Review.Comments {
-		checkComment(t, path, c.Path, c.Line, c.Body, bodies, index)
-		entries = append(entries, jq.NewObj("path", c.Path, "line", c.Line, "body", c.Body))
+	for _, c := range a.Review.Findings {
+		checkComment(t, path, c.Path, c.Line, c.Claim, bodies, index)
+		entries = append(entries, jq.NewObj("path", c.Path, "line", c.Line, "body", c.Claim))
 	}
 	return entries
 }

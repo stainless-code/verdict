@@ -89,7 +89,7 @@ index 0000000..1111111
 +new
 +file
 EOF
-cat > "$LB/review.json" <<'EOF'
+eval_write_review_at "$LB/review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ Re-review after the push with enough length to pass the guard.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Still about notes.txt with enough substance.","rigor":"pointed","severity":"informational"}]}
 EOF
 snap "$LB" "$EVAL_SANDBOX/s1.base"
@@ -97,7 +97,7 @@ m0="$(mark)"
 run_review record acme/app chaos-stale --json
 assert_refusal "record after the diff moved" "bad-review-input"
 assert_json_field "moved anchor refuses as an unknown path" "path-not-in-diff" '.error.problems[0].code'
-assert_json_field "refusal carries the exact fix" "anchor the comment on a changed file or move it into the body" '.error.problems[0].fix'
+assert_json_field "refusal carries the exact fix" "anchor the finding on a changed file or move it into the body" '.error.problems[0].fix'
 way_forward "record after the diff moved"
 if cmp -s "$LB/full.diff" "$EVAL_SANDBOX/full-fetched.diff"; then
   bad "record repaired the rewritten full.diff (must keep the drift visible)"
@@ -124,7 +124,7 @@ fi
 matrix_row "record" "restored-diff" "$EVAL_STATUS" "none" "yes" "no" "merged" "$(reviews_since "$m0")"
 
 echo "evil edit under the snapshot" >> "$LB/controls/kb.jsonl"
-cat > "$LB/review.json" <<'EOF'
+eval_write_review_at "$LB/review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ Another round with enough length to pass the guard here.","approved":false,"comments":[]}
 EOF
 snap "$LB" "$EVAL_SANDBOX/s2.before"
@@ -167,7 +167,7 @@ else
 fi
 matrix_row "record" "restored-controls" "$EVAL_STATUS" "none" "yes" "no" "same" "$(reviews_since "$m0")"
 
-cat > "$LB/review.json" <<'EOF'
+eval_write_review_at "$LB/review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ Off-hunk line below with enough length to pass the guard.","approved":false,"comments":[{"path":"notes.txt","line":99,"side":"RIGHT","body":"Off-hunk line with enough substance here.","rigor":"walked","severity":"important"}]}
 EOF
 m0="$(mark)"
@@ -185,7 +185,7 @@ else
 fi
 matrix_row "record" "off-hunk" "$EVAL_STATUS" "none" "yes" "no" "merged" "$(reviews_since "$m0")"
 
-cat > "$LB/review.json" <<'EOF'
+eval_write_review_at "$LB/review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ Hallucinated finding below with enough length to pass the guard.","approved":false,"comments":[{"path":"nope/ghost.ts","line":999,"side":"RIGHT","body":"Hallucinated finding with enough substance here.","rigor":"walked","severity":"critical"}]}
 EOF
 snap "$LB" "$EVAL_SANDBOX/s3h.before"
@@ -204,7 +204,7 @@ snap_same "hallucinated path" "$EVAL_SANDBOX/s3h.before" "$EVAL_SANDBOX/s3h.afte
 way_forward "hallucinated path"
 matrix_row "record" "hallucinated" "$EVAL_STATUS" "bad-review-input" "no" "yes" "same" "$(reviews_since "$m0")"
 
-cat > "$LB/review.json" <<'EOF'
+eval_write_review_at "$LB/review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[5]}
 EOF
 snap "$LB" "$EVAL_SANDBOX/s3.before"
@@ -254,8 +254,8 @@ snap "$LB" "$EVAL_SANDBOX/s3d.after"
 snap_same "identical invalid dry run x3" "$EVAL_SANDBOX/s3d.before" "$EVAL_SANDBOX/s3d.after"
 matrix_row "record" "repeat-invalid-dry-run" "$EVAL_STATUS" "bad-review-input" "no" "yes" "same" "0"
 
-cat > "$LB/review.json" <<'EOF'
-{"schema_version":"1","body":"> ✅ Warning-only review with enough length to pass the guard.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"A finding with enough substance here."}]}
+eval_write_review_at "$LB/review.json" <<'EOF'
+{"schema_version":"1","summary":"> ✅ Warning-only review with enough length to pass the guard.","findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"A finding with enough substance here.","quote":"new line","confidence":"high","severity":"important"}]}
 EOF
 snap "$LB" "$EVAL_SANDBOX/s3s.before"
 m0="$(mark)"
@@ -263,7 +263,7 @@ run_review record acme/app chaos-stale --dry-run --json
 assert_exit "warning-only dry run exits 0" 0
 assert_envelope "warning-only dry run"
 assert_json_field "warning-only dry run flags itself" "true" '.data.dry_run'
-assert_json_field "warning-only dry run counts the comment" "1" '.data.check.comments'
+assert_json_field "warning-only dry run counts the finding" "1" '.data.check.findings'
 if jq -e '.warnings | join(" ") | contains("rigor is unset")' "$EVAL_OUT" >/dev/null; then
   good "rigor-unset rides the envelope as a warning"
 else
@@ -284,7 +284,7 @@ snap "$LB" "$EVAL_SANDBOX/s3s.after"
 snap_same "strict dry run" "$EVAL_SANDBOX/s3s.before" "$EVAL_SANDBOX/s3s.after"
 matrix_row "record" "strict-dry-run" "$EVAL_STATUS" "bad-review-input" "no" "yes" "same" "0"
 
-cat > "$LB/review.json" <<'EOF'
+eval_write_review_at "$LB/review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ Clean review with enough length to pass the guard here.","approved":false,"comments":[]}
 EOF
 MCP_OUT="$EVAL_SANDBOX/mcp-out.jsonl"

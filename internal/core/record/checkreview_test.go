@@ -1,14 +1,13 @@
 package recordcore_test
 
 import (
-	"context"
-	"fmt"
-	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/core/reviewdoc"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 const checkDiff = "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n" +
@@ -17,474 +16,228 @@ const checkDiff = "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 10
 const checkBody = "> ✅ marker plus enough length to pass the guard ok."
 
 func checkReview(extra string) string {
-	comments := `,"comments":[]`
-	if strings.Contains(extra, `"comments"`) {
-		comments = ""
+	findings := `,"findings":[]`
+	if strings.Contains(extra, `"findings"`) {
+		findings = ""
 	}
-	return `{"schema_version":"1","body":"` + checkBody + `","approved":false` + comments + extra + `}`
+	return `{"schema_version":"1"` + findings + extra + `}`
 }
 
 func checkComment(extra string) string {
-	return `{"path":"notes.txt","line":2,"side":"RIGHT","body":"A finding with enough substance."` + extra + `}`
+	return `{"path":"notes.txt","line":2,"severity":"important",` +
+		`"claim":"A finding with enough substance.","quote":"new line","confidence":"high"` + extra + `}`
 }
 
-func checkProblems(t *testing.T, result recordcore.CheckResult, want int) {
+const findingsReview = `{"schema_version":"1","findings":[` +
+	`{"path":"notes.txt","line":2,"severity":"important","claim":"A real defect in the changed line.","quote":"new line","confidence":"high","rigor":"pointed"}` +
+	`]}`
+
+func TestCheckReviewAcceptsFindingsDocument(t *testing.T) {
+	res := recordcore.CheckReview([]byte(findingsReview), checkDiff)
+	if res.Errors != 0 || res.Warnings != 0 {
+		t.Fatalf("CheckReview = %+v, want a clean findings review", res.Problems)
+	}
+	if res.Summary.Findings != 1 {
+		t.Fatalf("finding count = %d, want 1", res.Summary.Findings)
+	}
+}
+
+// TestFindingsContractMapping pins the five places the findings-only contract
+// differs from the old review document: the closed-schema refusal, claim to
+// store body, finder confidence, strict anchors, and the stored spec/receipt
+// arrays.
+
+// TestOldShapeFailsTheClosedSchema is the only old-shape test in the tree: an
+// approved/body/comments[] document refuses through the ordinary
+// closed-schema problems, with no dedicated detector and no repair hint.
+func TestOldShapeFailsTheClosedSchema(t *testing.T) {
+	review := `{"schema_version":"1","body":"A long enough v1 review body.","approved":false,"comments":[]}`
+	res := recordcore.CheckReview([]byte(review), checkDiff)
+	for _, path := range []string{"$.approved", "$.body", "$.comments"} {
+		if !hasProblem(res, path, core.ProblemCodeUnknownField) {
+			t.Fatalf("problems = %+v, want an unknown-field error at %s", res.Problems, path)
+		}
+	}
+	if !hasProblem(res, "$.findings", core.ProblemCodeMissingField) {
+		t.Fatalf("problems = %+v, want a missing findings error", res.Problems)
+	}
+	if res.Errors == 0 {
+		t.Fatalf("problems = %+v, want errors so bad-review-input refuses", res.Problems)
+	}
+}
+
+// TestClaimBecomesStoreBody proves the claim is the stored body byte for byte.
+func TestClaimBecomesStoreBody(t *testing.T) {
+	finding := storedFinding(t, findingsReview)
+	body, _ := finding.Get("body")
+	if body != "A real defect in the changed line." {
+		t.Fatalf("stored body = %v, want the claim", body)
+	}
+}
+
+// TestFinderConfidenceAndVerification proves the input confidence is stored
+// as finder_confidence and that a fresh finding starts quote-unchecked.
+func TestFinderConfidenceAndVerification(t *testing.T) {
+	finding := storedFinding(t, findingsReview)
+	confidence, _ := finding.Get("finder_confidence")
+	if confidence != "high" {
+		t.Fatalf("finder_confidence = %v, want high", confidence)
+	}
+	verification, _ := finding.Get("verification")
+	quote, _ := mustObj(t, verification).Get("quote")
+	if quote != "unchecked" {
+		t.Fatalf("verification quote = %v, want unchecked", quote)
+	}
+}
+
+// TestFindingLineIsStrictInteger proves a quoted line refuses: the anchor is a
+// number or it is a problem.
+func TestFindingLineIsStrictInteger(t *testing.T) {
+	review := strings.Replace(findingsReview, `"line":2`, `"line":"2"`, 1)
+	res := recordcore.CheckReview([]byte(review), checkDiff)
+	if !hasProblem(res, "$.findings[0].line", core.ProblemCodeWrongType) {
+		t.Fatalf("problems = %+v, want a wrong-type line problem", res.Problems)
+	}
+}
+
+// TestSpecChecksAndReceiptsSurvive proves the two evidence arrays reach the
+// store typed, not as loose JSON.
+func TestSpecChecksAndReceiptsSurvive(t *testing.T) {
+	review := `{"schema_version":"1","findings":[],"spec_checks":[` +
+		`{"item":"quoted item","status":"n/a","evidence":{"path":"notes.txt","line":2,"quote":"new line"}}],` +
+		`"receipts":[{"hunk":"@@ -1 +1 @@","quote":"new line"}]}`
+	obj, err := recordcore.LoadReviewBytes([]byte(review))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reviewdoc.SpecChecksTyped(obj); len(got) != 1 || got[0].Status != "n/a" {
+		t.Fatalf("spec_checks = %+v, want one stored n/a check", got)
+	}
+	if got := reviewdoc.ReceiptsTyped(obj); len(got) != 1 || got[0].Quote != "new line" {
+		t.Fatalf("receipts = %+v, want one stored quote", got)
+	}
+}
+
+// storedFinding loads one review document and returns its first finding.
+func storedFinding(t *testing.T, review string) *jq.Obj {
 	t.Helper()
-	if len(result.Problems) != want {
-		t.Fatalf("problems = %d, want %d: %+v", len(result.Problems), want, result.Problems)
+	obj, err := recordcore.LoadReviewBytes([]byte(review))
+	if err != nil {
+		t.Fatal(err)
 	}
-	for _, p := range result.Problems {
-		if p.Path == "" || p.Code == "" || p.Level == "" || p.Message == "" || p.Fix == "" {
-			t.Errorf("problem is missing a published field: %+v", p)
-		}
-	}
+	return mustObj(t, mustFindings(t, obj)[0])
 }
 
-// TestCheckReviewCodeTable pins every published code, its path and level.
-//
-//nolint:revive // the code table reads as one block
-func TestCheckReviewCodeTable(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name  string
-		code  string
-		level string
-		path  string
-		json  string
-	}{
-		{
-			name: "invalid-json", code: core.ProblemCodeInvalidJSON, level: core.ProblemLevelError, path: "$",
-			json: "```json\n{\"body\":\"x\"}\n```",
-		},
-		{
-			name: "wrong-type", code: core.ProblemCodeWrongType, level: core.ProblemLevelError,
-			path: "$.comments[0].brief.questions",
-			json: checkReview(`,"comments":[` + checkComment(`,"rigor":"walked","brief":{"outcome":"Reject duplicate deliveries before anything is enqueued.","questions":"why"}`) + `]`),
-		},
-		{
-			name: "missing-field", code: core.ProblemCodeMissingField, level: core.ProblemLevelError,
-			path: "$.comments[0].path",
-			json: checkReview(`,"comments":[{"line":2,"body":"A finding with enough substance.","rigor":"walked"}]`),
-		},
-		{
-			name: "bad-enum", code: core.ProblemCodeBadEnum, level: core.ProblemLevelError,
-			path: "$.comments[0].rigor",
-			json: checkReview(`,"comments":[` + checkComment(`,"rigor":"swam"`) + `]`),
-		},
-		{
-			name: "path-not-in-diff", code: core.ProblemCodePathNotInDiff, level: core.ProblemLevelError,
-			path: "$.comments[0].path",
-			json: checkReview(`,"comments":[{"path":"gone.txt","line":2,"body":"A finding with enough substance.","rigor":"walked"}]`),
-		},
-		{
-			name: "unknown-field", code: core.ProblemCodeUnknownField, level: core.ProblemLevelWarning,
-			path: "$.fyel",
-			json: checkReview(`,"fyel":true`),
-		},
-		{
-			name: "anchor-outside-hunk", code: core.ProblemCodeAnchorOutsideHunk, level: core.ProblemLevelWarning,
-			path: "$.comments[0].line",
-			json: checkReview(`,"comments":[{"path":"notes.txt","line":99,"body":"A finding with enough substance.","rigor":"walked"}]`),
-		},
-		{
-			name: "rigor-unset", code: core.ProblemCodeRigorUnset, level: core.ProblemLevelWarning,
-			path: "$.comments[0].rigor",
-			json: checkReview(`,"comments":[` + checkComment("") + `]`),
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			result := recordcore.CheckReview([]byte(tc.json), checkDiff)
-			checkProblems(t, result, 1)
-			p := result.Problems[0]
-			if p.Code != tc.code || p.Level != tc.level || p.Path != tc.path {
-				t.Errorf("problem = %+v, want code %s level %s path %s", p, tc.code, tc.level, tc.path)
-			}
-			if tc.code == core.ProblemCodeInvalidJSON && !strings.Contains(p.Message, "invalid JSON at 1:") {
-				t.Errorf("invalid-json message lacks line:col: %q", p.Message)
+func TestCheckReviewRequiredFindingFields(t *testing.T) {
+	for _, field := range []string{"line", "severity", "claim", "quote", "confidence"} {
+		t.Run(field, func(t *testing.T) {
+			review := strings.Replace(findingsReview, `,"`+field+`":`, `,"removed":`, 1)
+			res := recordcore.CheckReview([]byte(review), checkDiff)
+			if !hasProblem(res, "$.findings[0]."+field, core.ProblemCodeMissingField) {
+				t.Fatalf("problems = %+v, want missing %s", res.Problems, field)
 			}
 		})
 	}
 }
 
-// TestCheckReviewBriefQuestionsString is the acceptance fixture: a string
-// where questions[] belongs reports exactly one problem with a fix and an
-// example at that JSONPath.
-func TestCheckReviewBriefQuestionsString(t *testing.T) {
-	t.Parallel()
-	review := checkReview(`,"comments":[` + checkComment(`,"rigor":"walked","brief":{"outcome":"Reject duplicate deliveries before anything is enqueued.","questions":"why"}`) + `]`)
-	result := recordcore.CheckReview([]byte(review), checkDiff)
-	checkProblems(t, result, 1)
-	p := result.Problems[0]
-	if p.Path != "$.comments[0].brief.questions" || p.Code != core.ProblemCodeWrongType {
-		t.Errorf("problem = %+v, want wrong-type at the questions path", p)
-	}
-	if p.Fix == "" || p.Example == nil {
-		t.Errorf("problem needs a fix and an example: %+v", p)
+func TestCheckReviewRefusesBadSpecStatus(t *testing.T) {
+	review := `{"schema_version":"1","findings":[],"spec_checks":[` +
+		`{"item":"item","status":"na","evidence":{"path":"notes.txt","line":2,"quote":"new line"}}]}`
+	res := recordcore.CheckReview([]byte(review), checkDiff)
+	if !hasProblem(res, "$.spec_checks[0].status", core.ProblemCodeBadEnum) {
+		t.Fatalf("problems = %+v, want the n/a enum refusal", res.Problems)
 	}
 }
 
-// TestCheckReviewCollectsEveryProblem proves independent errors all arrive in
-// one pass, in document order.
-func TestCheckReviewCollectsEveryProblem(t *testing.T) {
-	t.Parallel()
-	review := `{"schema_version":"1","body":"` + checkBody + `","approved":false,` +
-		`"comments":[{"path":7,"line":2,"body":"A finding.","rigor":"walked"},` +
-		`{"path":"notes.txt","line":2,"rigor":"walked"}],` +
-		`"resolved":[3],"sections":[5]}`
-	result := recordcore.CheckReview([]byte(review), checkDiff)
-	checkProblems(t, result, 4)
-	want := []string{"$.comments[0].path", "$.comments[1].body", "$.resolved[0]", "$.sections[0]"}
-	for i, path := range want {
-		if result.Problems[i].Path != path {
-			t.Errorf("problem %d path = %s, want %s", i, result.Problems[i].Path, path)
-		}
+func TestCheckReviewSummaryCap(t *testing.T) {
+	review := `{"schema_version":"1","findings":[],"summary":"` + strings.Repeat("x", 2001) + `"}`
+	res := recordcore.CheckReview([]byte(review), checkDiff)
+	if !hasProblem(res, "$.summary", core.ProblemCodeOutOfRange) {
+		t.Fatalf("problems = %+v, want a summary cap refusal", res.Problems)
 	}
 }
 
-// TestCheckReviewCapsProblems proves 50 problems survive and the overflow is
-// counted, not silently dropped.
-func TestCheckReviewCapsProblems(t *testing.T) {
-	t.Parallel()
-	comments := make([]string, 0, 60)
-	for i := range 60 {
-		comments = append(comments, fmt.Sprintf(
-			`{"path":"notes.txt","line":2,"body":"Finding %d.","rigor":"walked","zzz":%d}`, i, i))
+// TestCheckReviewSummaryCapCountsRunes proves the cap matches the schema's
+// maxLength, which counts characters: 2000 two-byte runes are 4000 bytes and
+// must pass.
+func TestCheckReviewSummaryCapCountsRunes(t *testing.T) {
+	runes := strings.Repeat("é", 2000)
+	res := recordcore.CheckReview([]byte(checkReview(`,"summary":"`+runes+`"`)), checkDiff)
+	if hasProblem(res, "$.summary", core.ProblemCodeOutOfRange) {
+		t.Fatalf("problems = %+v, want 2000 characters accepted", res.Problems)
 	}
-	result := recordcore.CheckReview([]byte(checkReview(`,"comments":[`+strings.Join(comments, ",")+`]`)), checkDiff)
-	if len(result.Problems) != 50 {
-		t.Fatalf("problems = %d, want 50", len(result.Problems))
-	}
-	if result.Truncated != 10 {
-		t.Errorf("truncated = %d, want 10", result.Truncated)
+	long := recordcore.CheckReview([]byte(checkReview(`,"summary":"`+runes+"é"+`"`)), checkDiff)
+	if !hasProblem(long, "$.summary", core.ProblemCodeOutOfRange) {
+		t.Fatalf("problems = %+v, want the 2001st character refused", long.Problems)
 	}
 }
 
-// TestCheckReviewSummary proves a clean input reports what a dry run would do.
-func TestCheckReviewSummary(t *testing.T) {
-	t.Parallel()
-	review := checkReview(`,"comments":[` + checkComment(`,"rigor":"walked"`) +
-		`,{"path":"notes.txt","line":99,"body":"Moves to the body.","rigor":"walked"}],` +
-		`"sections":[{"heading":"### Security","severity":"important"}]`)
-	result := recordcore.CheckReview([]byte(review), checkDiff)
-	checkProblems(t, result, 1)
-	if result.Problems[0].Code != core.ProblemCodeAnchorOutsideHunk {
-		t.Fatalf("problem = %+v", result.Problems[0])
+// TestCheckReviewRefusesEmptyStrings proves the minLength: 1 fields refuse an
+// empty value, not only a missing one.
+func TestCheckReviewRefusesEmptyStrings(t *testing.T) {
+	finding := func(claim, quote string) string {
+		return `{"path":"notes.txt","line":2,"severity":"important","confidence":"high","rigor":"pointed",` +
+			`"claim":"` + claim + `","quote":"` + quote + `"}`
 	}
-	if result.Summary.Comments != 2 || result.Summary.Sections != 1 || result.Summary.AnchorsMovedToBody != 1 {
-		t.Errorf("summary = %+v", result.Summary)
-	}
-}
-
-// TestCheckReviewCoversBundleInputs pins one problem for every input family
-// record would otherwise validate only while merging: brief parts, anchors and
-// sides, kb ids, chunk attestation, confidence, claims, triage, sections, and
-// verification claims.
-//
-//nolint:revive // the bundle-input matrix reads as one block
-func TestCheckReviewCoversBundleInputs(t *testing.T) {
-	t.Parallel()
-	comment := func(extra string) string {
-		return checkReview(`,"comments":[` + checkComment(`,"rigor":"walked"`+extra) + `]`)
-	}
-	briefOutcome := `"outcome":"Reject duplicate deliveries before anything is enqueued."`
-	//nolint:govet // table grouping keeps the case fields readable
-	tests := []struct {
-		name  string
-		json  string
-		input recordcore.CheckInput
-		code  string
-		level string
-		path  string
+	cases := []struct {
+		name   string
+		review string
+		path   string
 	}{
+		{"empty claim", checkReview(`,"findings":[` + finding("", "new line") + `]`), "$.findings[0].claim"},
+		{"empty quote", checkReview(`,"findings":[` + finding("a real defect", "") + `]`), "$.findings[0].quote"},
 		{
-			name: "schema-version-wrong-type",
-			json: `{"schema_version":false,"body":"` + checkBody + `","approved":false,"comments":[]}`,
-			code: core.ProblemCodeWrongType, level: core.ProblemLevelError, path: "$.schema_version",
+			"empty spec item and quote",
+			checkReview(`,"findings":[],"spec_checks":[{"item":"","status":"met","evidence":{"path":"notes.txt","line":2,"quote":""}}]`),
+			"$.spec_checks[0].item",
 		},
 		{
-			name: "schema-version-wrong-value",
-			json: `{"schema_version":"2","body":"` + checkBody + `","approved":false,"comments":[]}`,
-			code: core.ProblemCodeBadEnum, level: core.ProblemLevelError, path: "$.schema_version",
-		},
-		{
-			name: "brief-outcome-missing", json: comment(`,"brief":{"sites":[]}`),
-			code: core.ProblemCodeMissingField, level: core.ProblemLevelError, path: "$.comments[0].brief.outcome",
-		},
-		{
-			name: "brief-site-outside-diff", json: comment(`,"brief":{` + briefOutcome + `,"sites":[{"path":"gone.txt","line":2}]}`),
-			code: core.ProblemCodePathNotInDiff, level: core.ProblemLevelWarning, path: "$.comments[0].brief.sites[0].path",
-		},
-		{
-			name: "brief-approach-short", json: comment(`,"brief":{` + briefOutcome + `,"approach":"tiny"}`),
-			code: core.ProblemCodeOutOfRange, level: core.ProblemLevelError, path: "$.comments[0].brief.approach",
-		},
-		{
-			name: "brief-question-type", json: comment(`,"brief":{` + briefOutcome + `,"questions":[42]}`),
-			code: core.ProblemCodeWrongType, level: core.ProblemLevelError, path: "$.comments[0].brief.questions[0]",
-		},
-		{
-			name: "non-numeric-anchor", json: checkReview(`,"comments":[{"path":"notes.txt","line":"two","body":"A finding with enough substance.","rigor":"walked"}]`),
-			code: core.ProblemCodeWrongType, level: core.ProblemLevelWarning, path: "$.comments[0].line",
-		},
-		{
-			name: "side-enum", json: checkReview(`,"comments":[{"path":"notes.txt","line":2,"side":"MIDDLE","body":"A finding with enough substance.","rigor":"walked"}]`),
-			code: core.ProblemCodeBadEnum, level: core.ProblemLevelError, path: "$.comments[0].side",
-		},
-		{
-			name: "kb-id-shape", json: comment(`,"kb":["BAD ID!"]`),
-			code: core.ProblemCodeBadEnum, level: core.ProblemLevelWarning, path: "$.comments[0].kb[0]",
-		},
-		{
-			name: "kb-id-type", json: comment(`,"kb":[42]`),
-			code: core.ProblemCodeWrongType, level: core.ProblemLevelError, path: "$.comments[0].kb[0]",
-		},
-		{
-			name: "suggestion-fence", json: comment(",\"suggestion\":\"```suggestion\\nx\\n```\""),
-			code: core.ProblemCodeWrongType, level: core.ProblemLevelWarning, path: "$.comments[0].suggestion",
-		},
-		{
-			name: "confidence-range", json: checkReview(`,"confidence":6`),
-			code: core.ProblemCodeOutOfRange, level: core.ProblemLevelError, path: "$.confidence",
-		},
-		{
-			name: "security-summary-type", json: checkReview(`,"security_summary":5`),
-			code: core.ProblemCodeWrongType, level: core.ProblemLevelError, path: "$.security_summary",
-		},
-		{
-			name: "resolved-type", json: checkReview(`,"resolved":[3]`),
-			code: core.ProblemCodeWrongType, level: core.ProblemLevelError, path: "$.resolved[0]",
-		},
-		{
-			name: "triage-status", json: checkReview(`,"triage":[{"sig":"...","status":"bogus"}]`),
-			code: core.ProblemCodeBadEnum, level: core.ProblemLevelError, path: "$.triage[0].status",
-		},
-		{
-			name: "sections-type", json: checkReview(`,"sections":[5]`),
-			code: core.ProblemCodeWrongType, level: core.ProblemLevelError, path: "$.sections[0]",
-		},
-		{
-			name: "chunks-type", json: checkReview(`,"chunks":"a"`),
-			code: core.ProblemCodeWrongType, level: core.ProblemLevelError, path: "$.chunks",
-		},
-		{
-			name: "chunks-unknown", json: checkReview(`,"chunks":["a","zzz"]`),
-			input: recordcore.CheckInput{ChunkNames: []string{"a"}, ChunkManifest: "manifest.json"},
-			code:  core.ProblemCodeBadEnum, level: core.ProblemLevelWarning, path: "$.chunks[1]",
-		},
-		{
-			name: "verification-shape", json: checkReview(""),
-			input: recordcore.CheckInput{Verification: []byte(`{"sig":"x"}`), HasVerification: true},
-			code:  core.ProblemCodeWrongType, level: core.ProblemLevelError, path: "verification.json",
-		},
-		{
-			name: "verification-item-shape", json: checkReview(""),
-			input: recordcore.CheckInput{Verification: []byte(`[42]`), HasVerification: true},
-			code:  core.ProblemCodeWrongType, level: core.ProblemLevelError, path: "verification.json[0]",
+			"empty receipt hunk and quote",
+			checkReview(`,"findings":[],"receipts":[{"hunk":"","quote":""}]`),
+			"$.receipts[0].hunk",
 		},
 	}
-	for _, tc := range tests {
+	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			in := tc.input
-			in.Diff = checkDiff
-			result := recordcore.CheckReviewInput([]byte(tc.json), in)
-			var found *recordcore.Problem
-			for i := range result.Problems {
-				if result.Problems[i].Path == tc.path && result.Problems[i].Code == tc.code {
-					found = &result.Problems[i]
-					break
-				}
-			}
-			if found == nil {
-				t.Fatalf("no %s at %s in %+v", tc.code, tc.path, result.Problems)
-			}
-			if found.Level != tc.level {
-				t.Errorf("level = %s, want %s: %+v", found.Level, tc.level, found)
+			res := recordcore.CheckReview([]byte(tc.review), checkDiff)
+			if !hasProblem(res, tc.path, core.ProblemCodeOutOfRange) {
+				t.Fatalf("problems = %+v, want an empty-value refusal at %s", res.Problems, tc.path)
 			}
 		})
 	}
 }
 
-// TestCheckReviewCountsTruncatedLevels proves the level tally covers problems
-// past the 50-problem cap, so a truncated error can never be accepted.
-func TestCheckReviewCountsTruncatedLevels(t *testing.T) {
-	t.Parallel()
-	var sb strings.Builder
-	sb.WriteString(`{"schema_version":"1","body":"` + checkBody + `","approved":false`)
-	for i := range 50 {
-		fmt.Fprintf(&sb, `,"zz%02d":%d`, i, i)
-	}
-	sb.WriteString(`,"comments":[{"path":7,"line":2,"body":"A finding with enough substance.","rigor":"walked"}]}`)
-	res := recordcore.CheckReview([]byte(sb.String()), checkDiff)
-	if len(res.Problems) != 50 || res.Truncated != 1 {
-		t.Fatalf("problems=%d truncated=%d, want 50/1", len(res.Problems), res.Truncated)
-	}
-	if res.Warnings != 50 || res.Errors != 1 {
-		t.Errorf("levels errors=%d warnings=%d, want 1/50", res.Errors, res.Warnings)
-	}
-}
-
-func TestCheckReviewAcceptsMissingSchemaVersion(t *testing.T) {
-	t.Parallel()
-	res := recordcore.CheckReview([]byte(`{"body":"`+checkBody+`","approved":false,"comments":[]}`), checkDiff)
-	if len(res.Problems) != 0 || res.Warnings != 0 {
-		t.Fatalf("problems = %+v (warnings %d), want none for an omitted optional key", res.Problems, res.Warnings)
-	}
-}
-
-// TestCheckReviewMissingComments proves the schema-required comments key is
-// reported instead of silently accepted.
-func TestCheckReviewMissingComments(t *testing.T) {
-	t.Parallel()
-	res := recordcore.CheckReview([]byte(`{"schema_version":"1","body":"`+checkBody+`","approved":false}`), checkDiff)
-	checkProblems(t, res, 1)
-	if p := res.Problems[0]; p.Path != "$.comments" || p.Code != core.ProblemCodeMissingField || p.Level != core.ProblemLevelWarning {
-		t.Errorf("problem = %+v, want missing-field warning at $.comments", p)
-	}
-}
-
-// TestCheckReviewMissingAnchor proves a comment with no line or start_line is
-// reported and counted as moved, matching the merge's body placement.
-func TestCheckReviewMissingAnchor(t *testing.T) {
-	t.Parallel()
-	res := recordcore.CheckReview([]byte(checkReview(`,"comments":[{"path":"notes.txt","body":"A finding with enough substance.","rigor":"walked"}]`)), checkDiff)
-	checkProblems(t, res, 1)
-	if p := res.Problems[0]; p.Path != "$.comments[0].line" || p.Code != core.ProblemCodeMissingField || p.Level != core.ProblemLevelWarning {
-		t.Errorf("problem = %+v, want missing-field warning at $.comments[0].line", p)
-	}
-	if res.Summary.AnchorsMovedToBody != 1 {
-		t.Errorf("moved = %d, want 1", res.Summary.AnchorsMovedToBody)
-	}
-}
-
-// TestCheckReviewDegenerateBody proves the body-quality bar is a review-input
-// problem, not a merge-only refusal.
-func TestCheckReviewDegenerateBody(t *testing.T) {
-	t.Parallel()
-	for _, body := range []string{"short", "this is a placeholder sample text here ok"} {
-		res := recordcore.CheckReview([]byte(`{"schema_version":"1","body":`+fmt.Sprintf("%q", body)+`,"approved":false,"comments":[]}`), checkDiff)
-		checkProblems(t, res, 1)
-		if p := res.Problems[0]; p.Path != "$.body" || p.Code != core.ProblemCodeMissingField || p.Level != core.ProblemLevelError {
-			t.Errorf("body %q problem = %+v, want missing-field error at $.body", body, p)
-		}
-	}
-}
-
-// TestCheckReviewPartialChunks proves chunk coverage completeness is a
-// review-input problem before the merge.
-func TestCheckReviewPartialChunks(t *testing.T) {
-	t.Parallel()
-	in := recordcore.CheckInput{Diff: checkDiff, ChunkNames: []string{"a", "b"}, ChunkManifest: "manifest.json"}
-	res := recordcore.CheckReviewInput([]byte(checkReview(`,"chunks":["a"]`)), in)
-	var found *recordcore.Problem
-	for i := range res.Problems {
-		if res.Problems[i].Path == "$.chunks" && res.Problems[i].Code == core.ProblemCodeMissingField {
-			found = &res.Problems[i]
-		}
-	}
-	if found == nil || found.Level != core.ProblemLevelError || !strings.Contains(found.Message, "b") {
-		t.Fatalf("partial chunks problems = %+v, want missing-field error naming b", res.Problems)
-	}
-}
-
-// TestCheckReviewLongUnknownKey proves hostile key names skip the nearest-key
-// suggestion instead of paying edit distance over the whole string.
-func TestCheckReviewLongUnknownKey(t *testing.T) {
-	t.Parallel()
-	key := strings.Repeat("z", 4096)
-	res := recordcore.CheckReview([]byte(`{"schema_version":"1","body":"`+checkBody+`","approved":false,"comments":[],`+fmt.Sprintf("%q", key)+`:true}`), checkDiff)
-	checkProblems(t, res, 1)
-	if got := res.Problems[0].Fix; got != "remove it" {
-		t.Errorf("fix = %q, want remove it for the long key", got)
-	}
-}
-
-// TestCheckReviewGeneratedFileAnchorStaysInline proves generated paths are
-// exempt from coverage, not from anchoring: a comment inside a hunk keeps its
-// inline anchor and the finding survives instead of the exemption silently
-// dropping it. The coverage receipt proves the path really sat on the exempt
-// side, so the anchor assertion is about a generated file and not any file.
-// That validation still runs on generated paths is proved by the outside-hunk
-// case below.
-func TestCheckReviewGeneratedFileAnchorStaysInline(t *testing.T) {
-	coverageBundle(t, generatedDiff, coverageReview("dist/app.min.js",
-		`"coverage":[{"file":"dist/app.min.js","ranges":"all"}],`))
-	c := &collector{}
-	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, coverageSlug))
-	if ref != nil {
-		t.Fatalf("generated-file anchor refused: %s: %s", ref.Code, ref.Message)
-	}
-	if got := resp.Data.Anchors; got.Kept != 1 || got.Moved != 0 {
-		t.Errorf("anchors = %+v, want 1 kept and 0 moved", got)
-	}
-	checkGeneratedFileExempt(t)
-}
-
-// TestCheckReviewGeneratedFileAnchorOutsideHunkMoves proves the exemption is
-// about coverage only: an anchor outside every hunk moves to the body on a
-// generated path exactly as it does on a hand-written one, so validation is not
-// skipped for generated files.
-func TestCheckReviewGeneratedFileAnchorOutsideHunkMoves(t *testing.T) {
-	coverageBundle(t, generatedDiff, `{"schema_version":"1","body":"> [!IMPORTANT]\n> Gate fixture body with enough length to pass.","approved":false,`+
-		`"coverage":[{"file":"dist/app.min.js","ranges":"all"}],`+
-		`"comments":[{"path":"dist/app.min.js","line":99,"side":"RIGHT",`+
-		`"body":"Cited finding here with enough substance.","rigor":"walked","severity":"important"}]}`)
-	resp, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, coverageSlug))
-	if ref != nil {
-		t.Fatalf("generated-file anchor refused: %s: %s", ref.Code, ref.Message)
-	}
-	if got := resp.Data.Anchors; got.Kept != 0 || got.Moved != 1 {
-		t.Errorf("anchors = %+v, want 0 kept and 1 moved", got)
-	}
-	if !warnedAbout("outside every reviewed hunk", resp.Warnings) {
-		t.Errorf("no warning moved the out-of-hunk anchor: %v", resp.Warnings)
-	}
-}
-
-// warnedAbout reports whether any warning carries the phrase.
-func warnedAbout(phrase string, warnings []string) bool {
-	for _, w := range warnings {
-		if strings.Contains(w, phrase) {
+func hasProblem(res recordcore.CheckResult, path, code string) bool {
+	for _, p := range res.Problems {
+		if p.Path == path && p.Code == code {
 			return true
 		}
 	}
 	return false
 }
 
-// checkGeneratedFileExempt asserts the generated path was measured exempt from
-// coverage and its finding stored inline, so the exemption did not drop it.
-func checkGeneratedFileExempt(t *testing.T) {
+func mustFindings(t *testing.T, obj *jq.Obj) []any {
 	t.Helper()
-	wantCoverage := map[string]any{
-		"percent": nil, "attested": float64(0), "total": float64(0),
-		"files": float64(0), "exempt": float64(1), "gaps": float64(0),
+	value, _ := obj.Get("findings")
+	items := jq.Elements(value)
+	if len(items) == 0 {
+		t.Fatal("review has no findings")
 	}
-	if got := decodeObject(t, ".verdict/state/"+coverageSlug+"/record.json")["coverage"]; !reflect.DeepEqual(got, wantCoverage) {
-		t.Errorf("record coverage = %v, want %v", got, wantCoverage)
-	}
-	entries := storeEntries(t, coverageSlug)
-	if len(entries) != 1 {
-		t.Fatalf("findings = %d, want the generated-file finding kept: %v", len(entries), entries)
-	}
-	for key, want := range map[string]any{
-		"path": "dist/app.min.js", "line": float64(2), "side": "RIGHT", "kind": "inline", "status": "open",
-	} {
-		if got := entries[0][key]; got != want {
-			t.Errorf("findings[0].%s = %v, want %v", key, got, want)
-		}
-	}
+	return items
 }
 
-// TestCheckReviewFenceCountsAsMoved proves a fenced suggestion contributes to
-// the same moved count the merge reports.
-func TestCheckReviewFenceCountsAsMoved(t *testing.T) {
-	t.Parallel()
-	suggestion := ",\"suggestion\":\"```\\nx\\n```\""
-	res := recordcore.CheckReview([]byte(checkReview(`,"comments":[`+checkComment(`,"rigor":"walked"`+suggestion)+`]`)), checkDiff)
-	checkProblems(t, res, 1)
-	if res.Summary.AnchorsMovedToBody != 1 {
-		t.Errorf("moved = %d, want 1 for the demoted suggestion", res.Summary.AnchorsMovedToBody)
+func mustObj(t *testing.T, value any) *jq.Obj {
+	t.Helper()
+	obj, ok := value.(*jq.Obj)
+	if !ok {
+		t.Fatalf("value %T is not an object", value)
+	}
+	return obj
+}
+
+func checkProblems(t *testing.T, res recordcore.CheckResult, want int) {
+	t.Helper()
+	if len(res.Problems) != want {
+		t.Fatalf("problems = %+v, want %d", res.Problems, want)
 	}
 }

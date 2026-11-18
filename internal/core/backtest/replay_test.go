@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // replayTestRun is the mined run the replay tests replay.
@@ -88,7 +89,7 @@ func runReplayRefusal(t *testing.T, req *ReplayRequest) *core.RefusalError {
 // writeTestFile plants one fixture file.
 func writeTestFile(t *testing.T, path, body string) {
 	t.Helper()
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(testenv.MaybeFindingsReview(path, body)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

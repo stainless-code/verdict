@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "bad-review-input",
-    "message": "review.json has 1 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run",
+    "message": "review.json has 1 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants findings[]; each finding wants path, line, severity, claim, quote and confidence), then re-run",
     "problems": [{"path":"$.schema_version","code":"bad-enum","level":"error","message":"unknown schema_version \"2\"","fix":"write the only supported version","example":"1"}],
     "problems_truncated": 0
   }

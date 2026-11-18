@@ -48,7 +48,7 @@ func assertOneJSONValue(t *testing.T, verb, out string) {
 
 func writeReviewJSON(t *testing.T, path string) {
 	t.Helper()
-	body := `{"schema_version":"1","body":"## Summary\nA clean review body with enough text and no quote lead.","approved":false,"comments":[]}`
+	body := `{"schema_version":"1","summary":"A clean review with enough text.","findings":[]}`
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}

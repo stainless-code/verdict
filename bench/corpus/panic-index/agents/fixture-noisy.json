@@ -3,16 +3,17 @@
   "panel": ["panel-beta"],
   "review": {
     "schema_version": "1",
-    "body": "> 🤖 Noisy fixture review for the benchmark corpus: some seeded defects missed, some false positives.",
-    "approved": false,
-    "comments": [
+    "summary": "> \ud83e\udd16 Noisy fixture review for the benchmark corpus: some seeded defects missed, some false positives.",
+    "findings": [
       {
         "path": "parse.go",
         "line": 23,
         "side": "RIGHT",
-        "body": "Check len(parts) before indexing parts[1].",
         "rigor": "pointed",
-        "severity": "important"
+        "severity": "important",
+        "claim": "Check len(parts) before indexing parts[1].",
+        "quote": "Check len(parts) before indexing parts[1].",
+        "confidence": "high"
       }
     ]
   }

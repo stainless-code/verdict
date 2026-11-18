@@ -279,7 +279,11 @@ var publishedSemantics = map[string]string{
 	"drain-dryrun.schema.json":  "1718a109cbe9f1e1f6401810ba90886655f8842194c496986d34fb6973a28032",
 	"drain-replies.schema.json": "601cfd36687dab68e858aed5484fa2f654c5d2265da944fc1428753029eb8362",
 	"drain.schema.json":         "1fcf8437ef91b1b130923e3600f489559be29ce9f3a5b1d2de52641db945af80",
-	"envelope.schema.json":      "b5f49f876d3f600ce6ced697b27a4bb343c516bbbaf21b698995cf8e3ac87cd7",
+	// findings-only review contract: additive $defs approvalReceipt, specCheck,
+	// specEvidence and receipt, plus approval/spec_checks/receipts on the
+	// record data. No existing envelope property, required key, enum, or type
+	// changed.
+	"envelope.schema.json": "dbd133509d416c3972e7557ab71ed9253dc8fda02344335ecf3d1c6c0a121027",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -291,7 +295,7 @@ var publishedSemantics = map[string]string{
 	// sarif ingest: additive optional entry.source enum (model|tool) and
 	// optional tool, rule_id, and fingerprint strings on findings entries. No
 	// existing property, required key, or type changed.
-	"findings.schema.json": "6cbc56ac84b2e3b957259589e512ab2acb2d515e6eb6814df49daeddf830a4f0",
+	"findings.schema.json": "1ea91e5684755f4e2045e74781e016d258b0703e689d15632c6abf48f7d20513",
 	// post_floor_scoped: additive optional per-path posting floor list with its
 	// $defs/floorScope entry (required path, enum floor). No existing
 	// property, required key, or type changed.
@@ -313,7 +317,7 @@ var publishedSemantics = map[string]string{
 	// comment. No existing property, required key, enum, or type changed.
 	// risk score: additive optional nullable risk claim ($defs/riskClaim). No
 	// existing property, required key, enum, or type changed.
-	"post.schema.json": "33a2d4cb9ada3c553df93cf70df10fc85eac62811c223fc133135cd71e55ac1d",
+	"post.schema.json": "3a8ec3c2c82baa3c0f31a1b80f70de2e27132e4f2472ce04bacbf8c34d262efd",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	// fixtures.schema.json gained hallucination.unverifiable for findings whose
@@ -422,8 +426,11 @@ var publishedSemantics = map[string]string{
 	// ($defs/author) and required review_models string array. No existing
 	// property, enum, or type changed; older stores simply carry neither key.
 	// The validation pass adds required-nullable validation_hash and required
-	// validation_counts/validation_mode/rigor_floors after chunk_coverage.
-	"record.schema.json": "f9465a6e4607e2189c9344beeae95d9c99c274c6d1d4a6ff01855a95fb1b67a8",
+	// validation_counts/validation_mode/rigor_floors after chunk_coverage. The
+	// findings-only pass adds optional review_sha256 after diff_sha256: the
+	// review bytes record decided on, so post can refuse a review that moved
+	// since the decision. Additive only.
+	"record.schema.json": "84161920cfda7c97e31612464b47382978d664dee909b9a8ebdeae5b4ca7b56a",
 
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
@@ -440,7 +447,17 @@ var publishedSemantics = map[string]string{
 	// existing property, required key, enum, or type changed.
 	// schema_version optional: descriptions drop the missing-key warning. No
 	// property, required key, enum, or type changed.
-	"review.schema.json": "6768f8c558f9f587cfdf82d75c10f6a463d2b10be6769b6ebc952878802cd004",
+	// field order: approvalReceipt, specCheck, specEvidence and finding keep the
+	// property order the field-alignment analyzer requires of their Go structs,
+	// so the same properties, types, enums, and required keys print in a
+	// different order. No published value, type, or required key changed.
+	// findings-only review contract: the root required keys become
+	// schema_version + findings, body/approved/comments[] and the sectionTag
+	// definition are removed, and the document is closed (a root key the
+	// schema does not publish refuses). finding, specCheck, specEvidence and
+	// receipt are new definitions. This is the deliberate pre-v1 break: there
+	// is no compatibility shape.
+	"review.schema.json": "ea3a754b399738e371f30be23dd2eb5099a0d06e7052eabe7c89f4dcc015f134",
 	// additive selected.schema.json (new bundle document: the reaction-scoped
 	// fix selection fetch writes and fix --selected reads). A new document
 	// only: no existing schema property, required key, enum, or type changed.

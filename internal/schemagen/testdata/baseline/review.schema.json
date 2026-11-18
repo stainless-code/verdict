@@ -2,25 +2,32 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/review.schema.json",
   "title": "review.json — agent-written review input",
-  "description": "What the agent writes and post/record validate. One checker reports every problem: error refuses; warning lets record proceed and is promoted by --strict/strict_input. An absent schema_version reads as 1; any other value refuses. Errors: schema_version other than 1, missing/non-string/degenerate body, non-boolean approved, non-array comments or non-object items, comment path missing/non-string/not in diff, line/start_line wrong type, side wrong type or not RIGHT/LEFT, missing body, non-string suggestion, brief outcome/site/approach/question shape or range failures, rigor/severity wrong type or unknown, non-boolean in-bounds, kb non-array/non-string, resolved/triage/sections shape and enums, confidence non-integer or outside 1-5, non-string security_summary, malformed or partial chunks, and malformed verification claims. Warnings: missing comments, no line/start_line, anchor outside hunks, unknown fields, unset rigor, an unknown or non-string category (warns once, stores null), brief site outside hunks, fenced suggestion, malformed kb id, and unknown or unattested chunks. Unknown top-level keys are allowed by the schema but still warn.",
+  "description": "What the agent writes: findings with code evidence, optional spec checks and receipts, and an optional summary. verdict derives approval from stored findings. The document is closed: an approved, body or comments[] key is not published, and a document without findings[] refuses. Errors: wrong schema_version, missing findings, finding path/line/severity/claim/quote/confidence shape or enum failures, malformed spec_checks or receipts, shape failures in the retained claim arrays, and any root key the schema does not publish. Warnings: an anchor outside the reviewed hunks (record moves the finding to the body), an unknown finding key, unset rigor, an unknown or non-string category, brief parts that fail validation, a malformed kb id, and unattested chunks; --strict/strict_input promotes every warning to a refusal.",
   "type": "object",
   "properties": {
     "schema_version": {
-      "description": "Agents stamp \"1\"; an absent key reads as 1, any other value refuses.",
+      "description": "Required literal \"1\". Any other value refuses; there is no shim.",
       "const": "1"
     },
-    "body": {
-      "description": "Full review text, verdict marker first line. Missing, non-string, or degenerate text (<20 chars with no verdict marker, or a short placeholder) refuses.",
-      "type": "string"
-    },
-    "approved": {
-      "description": "Binding ask; the CLI --bind/--request-changes flags win over this. A non-boolean refuses.",
-      "type": "boolean"
-    },
-    "comments": {
-      "description": "Inline findings; one per anchor. Missing warns as an empty list; a non-array or non-object item refuses.",
+    "findings": {
+      "description": "Required array of findings. Each finding carries a path, strict integer line, severity, claim, quoted code, and finder confidence; the claim is stored as the finding body.",
       "type": "array",
-      "items": { "$ref": "#/$defs/comment" }
+      "items": { "$ref": "#/$defs/finding" }
+    },
+    "spec_checks": {
+      "description": "Optional spec items with status met, violated or n/a and one quoted evidence location. S4 enforces coverage and quote matching; S1 stores them.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/specCheck" }
+    },
+    "receipts": {
+      "description": "Optional changed-hunk receipts: a hunk and a quote. S4 matches them against the pinned diff; S1 stores them.",
+      "type": "array",
+      "items": { "$ref": "#/$defs/receipt" }
+    },
+    "summary": {
+      "description": "Optional root-only prose summary, at most 2000 characters. It is not a body: verdict renders the body.",
+      "type": "string",
+      "maxLength": 2000
     },
     "resolved": {
       "description": "Finding sigs (full or unambiguous prefix) the run addresses. Bare claims only record history; addressed needs verification.json evidence. A non-array or non-string item refuses.",
@@ -32,22 +39,10 @@
       "type": "array",
       "items": { "$ref": "#/$defs/triageClaim" }
     },
-    "sections": {
-      "description": "Severity tags for ### body sections; exact heading string, unmatched tags ignored. Shape and enum failures refuse.",
+    "coverage": {
       "type": "array",
-      "items": { "$ref": "#/$defs/sectionTag" }
+      "items": { "$ref": "#/$defs/coverageClaim" }
     },
-    "confidence": {
-      "description": "Review-level certainty, integer 1-5; a non-integer or out-of-range value refuses.",
-      "type": ["integer", "null"],
-      "minimum": 1,
-      "maximum": 5
-    },
-    "security_summary": {
-      "description": "One-paragraph security read; a non-string value refuses.",
-      "type": ["string", "null"]
-    },
-    "risk": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/riskClaim" }] },
     "chunks": {
       "description": "Coverage attestation on chunked bundles: every manifest chunk name the synthesis covers. Missing warns; non-array/non-string entries and attested-but-partial coverage refuse.",
       "type": "array",
@@ -57,34 +52,26 @@
       "type": "array",
       "items": { "$ref": "#/$defs/suppression" }
     },
-    "coverage": {
-      "type": "array",
-      "items": { "$ref": "#/$defs/coverageClaim" }
+    "risk": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/riskClaim" }] },
+    "security_summary": {
+      "description": "One-paragraph security read; a non-string value refuses.",
+      "type": ["string", "null"]
     }
   },
-  "required": ["body", "comments"],
-  "additionalProperties": true,
+  "required": ["schema_version", "findings"],
+  "additionalProperties": false,
   "$defs": {
-    "comment": {
+    "finding": {
       "type": "object",
       "properties": {
         "path": {
           "description": "Diff-relative path required; a path not in the fetched diff refuses.",
           "type": "string"
         },
-        "line": {
-          "description": "NEW-side line; numeric strings anchor like integers. An absent line/start_line warns and moves the comment to the body; a present non-numeric line warns and keeps it; other types refuse.",
-          "type": ["integer", "string", "null"]
-        },
         "start_line": {
-          "description": "Multi-line range start with the same tolerance as line: absent warns and moves, non-numeric warns and keeps, other types refuse.",
-          "type": ["integer", "string", "null"]
+          "description": "Optional strict integer multi-line range start; absent or null means the finding occupies one line.",
+          "type": ["integer", "null"]
         },
-        "side": {
-          "description": "Defaults to RIGHT; LEFT for deleted lines. Any other value refuses.",
-          "type": "string"
-        },
-        "body": { "type": "string" },
         "suggestion": {
           "description": "A fenced suggestion warns and demotes to the body (a fence inside would break rendering); a non-string value refuses.",
           "type": ["string", "null"]
@@ -92,32 +79,6 @@
         "brief": {
           "description": "Optional machine brief. Shape, type, required-field, and range failures refuse; a site outside every hunk, past a cap, or a short approach/question warns and drops only that part.",
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/brief" }]
-        },
-        "rigor": {
-          "description": "Evidence rung; absent warns (rigor-unset) and records as said with rigor_source default, unknown or non-string values refuse.",
-          "enum": ["said", "pointed", "walked", "ran", "reproduced", null]
-        },
-        "severity": {
-          "description": "Stored at write time; unknown or non-string values refuse.",
-          "enum": ["critical", "important", "informational", null]
-        },
-        "category": {
-          "description": "Optional closed taxonomy: logic|edge-case|security|performance|accidental-commit|style|docs|other. Unknown or non-string values warn once and store null; never inferred from prose, path, severity, or rule. Explicit null clears a stored label on re-post; absent preserves it.",
-          "enum": [
-            "logic",
-            "edge-case",
-            "security",
-            "performance",
-            "accidental-commit",
-            "style",
-            "docs",
-            "other",
-            null
-          ]
-        },
-        "in-bounds": {
-          "description": "Hyphenated in agent input; absent reads true, a non-boolean refuses.",
-          "type": ["boolean", "null"]
         },
         "sources": {
           "type": ["array", "null"],
@@ -127,10 +88,96 @@
           "description": "Cited knowledge-base rule ids; a non-array or non-string entry refuses, and a malformed id warns and drops.",
           "type": ["array", "null"],
           "items": { "type": "string" }
+        },
+        "side": {
+          "description": "RIGHT or LEFT; defaults to RIGHT.",
+          "enum": ["RIGHT", "LEFT"]
+        },
+        "severity": {
+          "description": "Required severity: critical, important or informational. The verdict-owned approval gate reads this field.",
+          "enum": ["critical", "important", "informational"]
+        },
+        "claim": {
+          "description": "Required one-sentence defect claim, stored as the finding body so existing signatures stay stable.",
+          "type": "string",
+          "minLength": 1
+        },
+        "quote": {
+          "description": "Required code excerpt at path:line; S4 verifies it against the pinned diff.",
+          "type": "string",
+          "minLength": 1
+        },
+        "confidence": {
+          "description": "Required finder confidence: high, medium or low. Stored as finder_confidence, separate from panel confidence.",
+          "enum": ["high", "medium", "low"]
+        },
+        "rigor": {
+          "description": "Optional evidence rung: said, pointed, walked, ran or reproduced. Gates already published for rigor are unchanged in S1.",
+          "enum": ["said", "pointed", "walked", "ran", "reproduced"]
+        },
+        "category": {
+          "description": "Optional closed taxonomy: logic|edge-case|security|performance|accidental-commit|style|docs|other. Unknown or non-string values warn once and store null; never inferred from prose, path, severity, or rule.",
+          "enum": [
+            "logic",
+            "edge-case",
+            "security",
+            "performance",
+            "accidental-commit",
+            "style",
+            "docs",
+            "other"
+          ]
+        },
+        "line": {
+          "description": "Required strict integer NEW-side line; a string, null, boolean or absent line refuses. An anchor outside the reviewed hunks warns and moves the finding to the body.",
+          "type": "integer"
         }
       },
-      "required": ["path", "body"],
+      "required": ["path", "severity", "claim", "quote", "confidence", "line"],
       "additionalProperties": true
+    },
+    "specCheck": {
+      "type": "object",
+      "properties": {
+        "item": { "type": "string", "minLength": 1 },
+        "status": {
+          "description": "met, violated or n/a; only violated withholds approval in S1.",
+          "enum": ["met", "violated", "n/a"]
+        },
+        "evidence": {
+          "description": "One quoted code location: path, strict integer line, and quote.",
+          "$ref": "#/$defs/specEvidence"
+        }
+      },
+      "required": ["item", "status", "evidence"],
+      "additionalProperties": false
+    },
+    "specEvidence": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "quote": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer" }
+      },
+      "required": ["path", "quote", "line"],
+      "additionalProperties": false
+    },
+    "receipt": {
+      "type": "object",
+      "properties": {
+        "hunk": {
+          "description": "The pinned diff hunk header this receipt proves was read.",
+          "type": "string",
+          "minLength": 1
+        },
+        "quote": {
+          "description": "The quoted line from that hunk; S4 matches it to the pinned diff.",
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "required": ["hunk", "quote"],
+      "additionalProperties": false
     },
     "suppression": {
       "type": "object",
@@ -200,15 +247,6 @@
         "rationale": { "type": "string" }
       },
       "required": ["sig", "status", "rationale"],
-      "additionalProperties": true
-    },
-    "sectionTag": {
-      "type": "object",
-      "properties": {
-        "heading": { "type": "string" },
-        "severity": { "enum": ["critical", "important", "informational", null] }
-      },
-      "required": ["heading"],
       "additionalProperties": true
     },
     "coverageClaim": {

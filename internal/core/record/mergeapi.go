@@ -16,8 +16,10 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/approval"
 	"github.com/stainless-code/verdict/internal/core/coverage"
 	panelcore "github.com/stainless-code/verdict/internal/core/panel"
+	"github.com/stainless-code/verdict/internal/core/reviewdoc"
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -68,7 +70,10 @@ type MergeParams struct { //nolint:govet // field grouping documents the merge c
 
 // MergeResult carries the shared merge outputs both verbs need.
 type MergeResult struct { //nolint:govet // field order is the published property order
+	Approval     *core.ApprovalReceipt
 	Verification *core.PanelSummary
+	SpecChecks   []core.SpecCheck
+	Receipts     []core.Receipt
 	Validation   *ValidationResult
 	Body         string
 	Diagram      diagram.Status
@@ -148,8 +153,21 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	if st.hunkN == 0 {
 		st.warn("no hunks indexed — anchors unchecked, everything kept")
 	}
+	var compliance *config.ReadCompliance
+	if st.run != nil && st.run.Resolved != nil {
+		captured := config.EvaluateReadCompliance(st.run, in.HeadFull, approval.Views(st.entries))
+		compliance = &captured
+	}
+	decision := approval.Evaluate(st.entries, "", "", compliance, reviewdoc.HasSpecViolation(in.Review))
+	// The body is rendered before the merge exists, so its lead can only be
+	// settled now: record stores this decision and post publishes this body,
+	// and the two may never disagree.
+	curated = reviewdoc.AlignLead(curated, decision)
 	return MergeResult{
 		Body:         curated,
+		Approval:     decision,
+		SpecChecks:   reviewdoc.SpecChecksTyped(in.Review),
+		Receipts:     reviewdoc.ReceiptsTyped(in.Review),
 		Verification: verification,
 		Validation:   st.validation,
 		Diagram:      dstat,
@@ -226,12 +244,16 @@ func LoadReviewBytes(reviewRaw []byte) (*jq.Obj, error) {
 	if !ok {
 		return nil, &core.RefusalError{Code: codeBadReviewSchema, Message: msgReviewNotObject}
 	}
+	reviewdoc.Prepare(review)
 	return review, nil
 }
 
 func reviewBodyOf(review *jq.Obj) string {
-	bodyRaw, _ := review.Get("body")
-	return jq.R(jq.Alt(bodyRaw, ""))
+	// S1's minimal renderer owns body text; S3 replaces this seam with the
+	// full body contract. The provisional decision only selects the marker.
+	provisional := approval.Evaluate(reviewdoc.Findings(review), "", "", nil,
+		reviewdoc.HasSpecViolation(review))
+	return reviewdoc.Render(review, provisional)
 }
 
 // EnsureStore backfills the store marker when absent.

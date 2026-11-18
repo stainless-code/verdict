@@ -91,13 +91,13 @@ func writeDoc(t *testing.T, root, doc string) {
 
 const (
 	// invalidDoc anchors its comment on a file the diff never touched.
-	invalidDoc = `{"schema_version":"1","body":"> ✅ first attempt\n\n### Notes\n\nReview text here.",` +
-		`"approved":false,"comments":[{"path":"elsewhere.txt","line":1,"side":"RIGHT","body":"note","rigor":"walked"}]}`
+	invalidDoc = `{"schema_version":"1","summary":"> ✅ first attempt Review text here.",` +
+		`"findings":[{"path":"elsewhere.txt","line":1,"side":"RIGHT","claim":"note","quote":"note","severity":"important","confidence":"high","rigor":"walked"}]}`
 	// validDoc is the same review re-anchored on the changed file.
-	validDoc = `{"schema_version":"1","body":"> ✅ second attempt\n\n### Notes\n\nReview text here.",` +
-		`"approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"note","rigor":"walked"}]}`
+	validDoc = `{"schema_version":"1","summary":"> ✅ second attempt Review text here.",` +
+		`"findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"note","quote":"note","severity":"important","confidence":"high","rigor":"walked"}]}`
 	// warningsDoc misses schema_version: warnings only, so leniently valid.
-	warningsDoc = `{"body":"> ✅ warnings only\n\n### Notes\n\nReview text here.","approved":false,"comments":[]}`
+	warningsDoc = `{"schema_version":"1","summary":"> ✅ warnings only Review text here.","findings":[]}`
 )
 
 // repairRecord reads the launcher record's repair profile back.

@@ -8,6 +8,8 @@ package core
 // through these structs.
 
 import (
+	"encoding/json"
+
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -20,21 +22,61 @@ const (
 	keyBody     = "body"
 )
 
-// Review is schemas/review.schema.json: the agent-written review input.
+// Review is schemas/review.schema.json: the agent-written findings-only
+// review input. Verdict renders the body and derives approval.
 type Review struct { //nolint:govet // field order is the published property order
-	SchemaVersion   string          `const:"1"                         json:"schema_version,omitempty"`
-	Body            string          `json:"body"`
-	Approved        bool            `json:"approved,omitempty"`
-	Comments        []Comment       `json:"comments"`
+	SchemaVersion   string          `const:"1"                         json:"schema_version"`
+	Findings        []Finding       `json:"findings"`
+	SpecChecks      []SpecCheck     `json:"spec_checks,omitempty"`
+	Receipts        []Receipt       `json:"receipts,omitempty"`
+	Summary         string          `json:"summary,omitempty"          maxLength:"2000"`
 	Resolved        []string        `json:"resolved,omitempty"`
 	Triage          []TriageClaim   `json:"triage,omitempty"`
-	Sections        []SectionTag    `json:"sections,omitempty"`
-	Confidence      *int            `json:"confidence,omitempty"       max:"5"                         min:"1"`
-	SecuritySummary *string         `json:"security_summary,omitempty"`
-	Risk            *RiskClaim      `anyOf:"null"                      json:"risk,omitempty"           optional:"true"`
+	Coverage        []CoverageClaim `json:"coverage,omitempty"`
 	Chunks          []string        `json:"chunks,omitempty"`
 	Suppressed      []Suppression   `json:"suppressed,omitempty"`
-	Coverage        []CoverageClaim `json:"coverage,omitempty"`
+	Risk            *RiskClaim      `anyOf:"null"                      json:"risk,omitempty" optional:"true"`
+	SecuritySummary *string         `json:"security_summary,omitempty"`
+}
+
+// Finding is one agent claim with the code evidence verdict can check. The
+// optional fields sit before the core ones and Line closes the struct so no
+// pointer sits behind a bare int: field alignment is what fixes this order.
+type Finding struct {
+	Path       string    `json:"path"`
+	StartLine  *int      `json:"start_line,omitempty"`
+	Suggestion *string   `json:"suggestion,omitempty"`
+	Brief      *Brief    `anyOf:"null"                                                                   json:"brief,omitempty"`
+	Sources    *[]string `json:"sources,omitempty"`
+	KB         *[]string `json:"kb,omitempty"`
+	Side       string    `enum:"RIGHT|LEFT"                                                              json:"side,omitempty"`
+	Severity   string    `enum:"critical|important|informational"                                        json:"severity"`
+	Claim      string    `json:"claim"                                                                   minLength:"1"`
+	Quote      string    `json:"quote"                                                                   minLength:"1"`
+	Confidence string    `enum:"high|medium|low"                                                         json:"confidence"`
+	Rigor      string    `enum:"said|pointed|walked|ran|reproduced"                                      json:"rigor,omitempty"`
+	Category   string    `enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other" json:"category,omitempty"`
+	Line       int       `json:"line"`
+}
+
+// SpecCheck is one quoted specification item and its code evidence.
+type SpecCheck struct {
+	Item     string       `json:"item"             minLength:"1"`
+	Status   string       `enum:"met|violated|n/a" json:"status"`
+	Evidence SpecEvidence `json:"evidence"`
+}
+
+// SpecEvidence is the code location quoted for one spec check.
+type SpecEvidence struct {
+	Path  string `json:"path"`
+	Quote string `json:"quote" minLength:"1"`
+	Line  int    `json:"line"`
+}
+
+// Receipt is one quoted line proving a changed hunk was read.
+type Receipt struct {
+	Hunk  string `json:"hunk"  minLength:"1"`
+	Quote string `json:"quote" minLength:"1"`
 }
 
 // RiskClaim is the agent-assessed risk summary carried by review.json,
@@ -47,29 +89,20 @@ type RiskClaim struct {
 	Stale        bool   `json:"stale,omitempty"          optional:"true"`
 }
 
+// Wire names and literals the finding decode reads.
+const (
+	fieldVerification = "verification"
+	fieldQuote        = "quote"
+	fieldPanel        = "panel"
+	quoteUnchecked    = "unchecked"
+)
+
 // CoverageClaim is one diff-coverage attestation entry: the file and the
 // changed-line ranges the agent says it read. Absent or "all" ranges attest the
 // whole file.
 type CoverageClaim struct {
 	File   string `json:"file"`
 	Ranges string `json:"ranges,omitempty"`
-}
-
-// Comment is one inline finding in review.json input.
-type Comment struct { //nolint:govet // field order is the published property order
-	Path       string    `json:"path"`
-	Line       any       `json:"line,omitempty"                                                               type:"integer|string|null"`
-	StartLine  any       `json:"start_line,omitempty"                                                         type:"integer|string|null"`
-	Side       string    `json:"side,omitempty"`
-	Body       string    `json:"body"`
-	Suggestion *string   `json:"suggestion,omitempty"`
-	Brief      *Brief    `anyOf:"null"                                                                        json:"brief,omitempty"`
-	Rigor      any       `enum:"said|pointed|walked|ran|reproduced|null"                                      json:"rigor,omitempty"`
-	Severity   any       `enum:"critical|important|informational|null"                                        json:"severity,omitempty"`
-	Category   any       `enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other|null" json:"category,omitempty"`
-	InBounds   *bool     `json:"in-bounds,omitempty"`
-	Sources    *[]string `json:"sources,omitempty"`
-	KB         *[]string `json:"kb,omitempty"`
 }
 
 // TriageClaim is one status claim in review.json input.
@@ -79,51 +112,65 @@ type TriageClaim struct {
 	Rationale string `json:"rationale"`
 }
 
-// SectionTag is one severity tag for a review body section.
-type SectionTag struct { //nolint:govet // field order is the published property order
-	Heading  string `json:"heading"`
-	Severity any    `enum:"critical|important|informational|null" json:"severity,omitempty"`
-}
-
 // FindingEntry is one merged finding in findings.json. The ordered Extra
 // carries unknown store keys past the typed decode so a re-emit keeps their
 // bytes and positions; the merge itself preserves prior order through the
 // ordered clone-and-overlay path.
 type FindingEntry struct { //nolint:govet // field order is the published property order
-	Sig          string         `json:"sig"`
-	SigVersion   string         `const:"1"                                                                           json:"sig_version"`
-	Kind         string         `enum:"inline|section"                                                               json:"kind"`
-	Path         any            `json:"path,omitempty"                                                               type:"string|null"`
-	Heading      any            `json:"heading,omitempty"                                                            type:"string|null"`
-	Line         any            `json:"line,omitempty"                                                               type:"integer|null"`
-	Side         any            `json:"side,omitempty"                                                               type:"string|null"`
-	Anchored     any            `json:"anchored,omitempty"                                                           type:"boolean|string|null"` //nolint:revive // tag column widened by the published category enum
-	Body         string         `json:"body,omitempty"`
-	Suggestion   *string        `json:"suggestion,omitempty"`
-	Brief        *Brief         `anyOf:"null"                                                                        json:"brief,omitempty"`
-	Sources      *[]string      `json:"sources,omitempty"`
-	KB           *[]string      `json:"kb,omitempty"`
-	InBounds     any            `json:"inBounds,omitempty"                                                           type:"boolean|null"`
-	Rigor        any            `enum:"said|pointed|walked|ran|reproduced|null"                                      json:"rigor,omitempty"`
-	RigorSource  string         `enum:"model|default|verified"                                                       json:"rigor_source,omitempty"` //nolint:revive // tag column widened by the published category enum
-	Severity     any            `enum:"critical|important|informational|null"                                        json:"severity,omitempty"`     //nolint:revive // tag column widened by the published category enum
-	Category     any            `enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other|null" json:"category,omitempty"`     //nolint:revive // published enum tag exceeds the line limit
-	Withheld     *Withheld      `anyOf:"null"                                                                        json:"withheld,omitempty"`     //nolint:revive // published tag alignment exceeds line limit
-	CategorySet  bool           `json:"-"`
-	Status       string         `enum:"open|addressed|wont-fix|false-positive|deferred"                              json:"status"`
-	FirstSeen    string         `json:"firstSeen"`
-	LastSeen     string         `json:"lastSeen"`
-	Rationale    string         `json:"rationale,omitempty"`
-	Verification []Verification `json:"verification,omitempty"`
-	Confidence   string         `enum:"single|confirmed|contested"                                                   json:"confidence,omitempty"` //nolint:revive // confidence enum aligns with the published finding tags
-	TriagedAt    string         `json:"triagedAt,omitempty"`
-	TriagedBy    string         `json:"triagedBy,omitempty"`
-	Source       string         `enum:"model|tool"                                                                   json:"source,omitempty"       optional:"true"` //nolint:revive // tag column aligns with FindingEntry schema tags
-	Tool         string         `json:"tool,omitempty"                                                               optional:"true"`                               //nolint:revive // tag column aligns with FindingEntry schema tags
-	RuleID       string         `json:"rule_id,omitempty"                                                            optional:"true"`                               //nolint:revive // tag column aligns with FindingEntry schema tags
-	Fingerprint  string         `json:"fingerprint,omitempty"                                                        optional:"true"`                               //nolint:revive // tag column aligns with FindingEntry schema tags
-	History      []HistoryEvent `json:"history"`
-	Extra        *jq.Obj        `json:"-"`
+	Sig              string         `json:"sig"`
+	SigVersion       string         `const:"1"                                      json:"sig_version"`
+	Kind             string         `enum:"inline|section"                          json:"kind"`
+	Path             any            `json:"path,omitempty"                          type:"string|null"`
+	Heading          any            `json:"heading,omitempty"                       type:"string|null"`
+	Line             any            `json:"line,omitempty"                          type:"integer|null"`
+	Side             any            `json:"side,omitempty"                          type:"string|null"`
+	Anchored         any            `json:"anchored,omitempty"                      type:"boolean|string|null"`
+	Body             string         `json:"body,omitempty"`
+	Suggestion       *string        `json:"suggestion,omitempty"`
+	Brief            *Brief         `anyOf:"null"                                   json:"brief,omitempty"`
+	Sources          *[]string      `json:"sources,omitempty"`
+	KB               *[]string      `json:"kb,omitempty"`
+	InBounds         any            `json:"inBounds,omitempty"                      type:"boolean|null"`
+	Rigor            any            `enum:"said|pointed|walked|ran|reproduced|null" json:"rigor,omitempty"`
+	RigorSource      string         `enum:"model|default|verified"                  json:"rigor_source,omitempty"`
+	Severity         any            `enum:"critical|important|informational|null"   json:"severity,omitempty"`
+	Category         any            `json:"category,omitempty"`
+	Withheld         *Withheld      `anyOf:"null"                                   json:"withheld,omitempty"`
+	CategorySet      bool           `json:"-"`
+	Quote            string         `json:"quote,omitempty"`
+	FinderConfidence string         `enum:"high|medium|low"                         json:"finder_confidence,omitempty"`
+	Status           string         `json:"status"`
+	FirstSeen        string         `json:"firstSeen"`
+	LastSeen         string         `json:"lastSeen"`
+	Rationale        string         `json:"rationale,omitempty"`
+	Verification     *Verify        `anyOf:"null"                                   json:"verification,omitempty"`
+	Confidence       string         `enum:"single|confirmed|contested"              json:"confidence,omitempty"`
+	TriagedAt        string         `json:"triagedAt,omitempty"`
+	TriagedBy        string         `json:"triagedBy,omitempty"`
+	Source           string         `json:"source,omitempty"                        optional:"true"`
+	Tool             string         `json:"tool,omitempty"                          optional:"true"`
+	RuleID           string         `json:"rule_id,omitempty"                       optional:"true"`
+	Fingerprint      string         `json:"fingerprint,omitempty"                   optional:"true"`
+	History          []HistoryEvent `json:"history"`
+	Extra            *jq.Obj        `json:"-"`
+}
+
+// Verify is the evidence standing of one finding. Quote is
+// filled by S4; S1 always writes unchecked. Panel keeps model verification.
+type Verify struct {
+	Quote string         `enum:"unchecked|verified|unverified" json:"quote"`
+	Panel []Verification `json:"panel,omitempty"`
+}
+
+// ApprovalReceipt is the verdict-computed approval decision recorded by
+// approvalReceipt is the verdict-computed approval decision recorded by
+// record and consumed by post and report.
+type ApprovalReceipt struct {
+	Reason     string   `json:"reason"`
+	Tier       string   `enum:"critical|important|informational" json:"tier"`
+	GatingSigs []string `json:"gating_sigs"`
+	Clauses    []string `json:"clauses,omitempty"`
+	Approved   bool     `json:"approved"`
 }
 
 // Brief is the per-finding repair brief: the affected sites plus the outcome,
@@ -174,16 +221,19 @@ type Repair struct {
 type RecordData struct { //nolint:govet // field order is the published property order
 	Dir             string           `json:"dir"`
 	Anchors         AnchorsSummary   `json:"anchors"`
-	Findings        RecordFindings   `inline:"true"               json:"findings"`
-	Confidence      *int             `json:"confidence"           max:"5"                       min:"1"`
+	Findings        RecordFindings   `inline:"true"                json:"findings"`
+	Confidence      *int             `json:"confidence"            max:"5"                       min:"1"`
 	SecuritySummary *string          `json:"security_summary"`
-	Risk            *RiskClaim       `anyOf:"null"                json:"risk,omitempty"         optional:"true"`
-	Verification    *PanelSummary    `anyOf:"null"                json:"verification,omitempty" optional:"true"`
+	Risk            *RiskClaim       `anyOf:"null"                 json:"risk,omitempty"         optional:"true"`
+	Verification    *PanelSummary    `anyOf:"null"                 json:"verification,omitempty" optional:"true"`
 	Items           []FindingItem    `json:"items"`
 	DryRun          bool             `json:"dry_run,omitempty"`
-	Check           *CheckSummary    `anyOf:"null"                json:"check,omitempty"`
-	Coverage        *CoverageSummary `anyOf:"null"                json:"coverage,omitempty"     optional:"true"`
-	Normalized      any              `json:"normalized,omitempty" type:"object"`
+	Check           *CheckSummary    `anyOf:"null"                 json:"check,omitempty"`
+	Coverage        *CoverageSummary `anyOf:"null"                 json:"coverage,omitempty"     optional:"true"`
+	Approval        *ApprovalReceipt `anyOf:"null"                 json:"approval,omitempty"     optional:"true"`
+	SpecChecks      []SpecCheck      `json:"spec_checks,omitempty"`
+	Receipts        []Receipt        `json:"receipts,omitempty"`
+	Normalized      any              `json:"normalized,omitempty"  type:"object"`
 	Repairs         []Repair         `json:"repairs,omitempty"`
 	ConfidenceRaw   any              `json:"-"`
 	ItemsRaw        []any            `json:"-"`
@@ -225,6 +275,7 @@ type Record struct { //nolint:govet // field order is the published property ord
 	Status           string           `json:"status"`
 	Head             string           `json:"head"`
 	DiffSHA256       string           `json:"diff_sha256"`
+	ReviewSHA256     string           `json:"review_sha256,omitempty"`
 	RecordedAt       string           `format:"date-time"                json:"recorded_at"`
 	Findings         int              `json:"findings"                   min:"0"`
 	Open             int              `json:"open"                       min:"0"`
@@ -246,6 +297,9 @@ type Record struct { //nolint:govet // field order is the published property ord
 	ValidationCounts ValidationCounts `json:"validation_counts"`
 	ValidationMode   string           `enum:"warn|gate"                  json:"validation_mode"`
 	RigorFloors      RigorFloors      `json:"rigor_floors"`
+	Approval         *ApprovalReceipt `anyOf:"null"                      json:"approval,omitempty"       optional:"true"`
+	SpecChecks       []SpecCheck      `json:"spec_checks,omitempty"`
+	Receipts         []Receipt        `json:"receipts,omitempty"`
 	ConfidenceRaw    any              `json:"-"`
 }
 
@@ -286,7 +340,7 @@ func wireVerificationAndTriage(e *FindingEntry, o *jq.Obj) {
 	if e.Sources != nil {
 		o.Set("sources", kbWire(e.Sources))
 	}
-	if len(e.Verification) > 0 {
+	if e.Verification != nil {
 		o.Set("verification", e.Verification)
 	}
 	if e.Confidence != "" {
@@ -509,6 +563,7 @@ func (r *Record) Wire() *jq.Obj {
 		"status", r.Status,
 		"head", r.Head,
 		"diff_sha256", r.DiffSHA256,
+		"review_sha256", r.ReviewSHA256,
 		"recorded_at", r.RecordedAt,
 		"findings", r.Findings,
 		"open", r.Open,
@@ -520,6 +575,15 @@ func (r *Record) Wire() *jq.Obj {
 	)
 	o.Set("author", authorWire(r.Author))
 	o.Set("review_models", StringValues(r.ReviewModels))
+	wireRecordEdits(r, o)
+	wireRecordEvidence(r, o)
+	wireRecordDecision(r, o)
+	return o
+}
+
+// wireRecordEdits appends the claim and repair block, each key only when the
+// record carries it.
+func wireRecordEdits(r *Record, o *jq.Obj) {
 	if r.Risk != nil {
 		o.Set("risk", r.Risk)
 	}
@@ -532,6 +596,11 @@ func (r *Record) Wire() *jq.Obj {
 	if len(r.Repairs) > 0 {
 		o.Set("repairs", r.Repairs)
 	}
+}
+
+// wireRecordEvidence appends the observed evidence block: panel verification
+// and the coverage attestations.
+func wireRecordEvidence(r *Record, o *jq.Obj) {
 	if r.Verification != nil {
 		o.Set("verification", r.Verification)
 	}
@@ -541,11 +610,25 @@ func (r *Record) Wire() *jq.Obj {
 	if r.ChunkCoverage != nil {
 		o.Set("chunk_coverage", r.ChunkCoverage)
 	}
+}
+
+// wireRecordDecision appends the validation receipt and the decision verdict
+// derived from the stored findings and spec checks: post reads it instead of
+// deciding again.
+func wireRecordDecision(r *Record, o *jq.Obj) {
 	o.Set("validation_hash", r.ValidationHash)
 	o.Set("validation_counts", r.ValidationCounts)
 	o.Set("validation_mode", r.ValidationMode)
 	o.Set("rigor_floors", r.RigorFloors)
-	return o
+	if r.Approval != nil {
+		o.Set("approval", r.Approval)
+	}
+	if len(r.SpecChecks) > 0 {
+		o.Set("spec_checks", r.SpecChecks)
+	}
+	if len(r.Receipts) > 0 {
+		o.Set("receipts", r.Receipts)
+	}
 }
 
 func authorWire(a *AuthorRef) any {
@@ -600,6 +683,7 @@ var findingKeys = map[string]bool{
 	"sig": true, "sig_version": true, "kind": true, "path": true,
 	"heading": true, "line": true, "side": true, keyAnchored: true,
 	keyBody: true, "suggestion": true, "kb": true, "sources": true, "inBounds": true,
+	"quote": true, "finder_confidence": true, "verification": true,
 	"rigor": true, "rigor_source": true, "severity": true, keyCategory: true, keyStatus: true, "firstSeen": true,
 	"lastSeen": true, "rationale": true, "triagedAt": true, "triagedBy": true,
 	"source": true, "tool": true, "rule_id": true, "fingerprint": true,
@@ -647,6 +731,9 @@ func entryOptions(e *FindingEntry, obj *jq.Obj) {
 	e.Severity, _ = obj.Get("severity")
 	e.Category, _ = obj.Get(keyCategory)
 	e.CategorySet = obj.Has(keyCategory)
+	e.Quote, _ = fieldString(obj, "quote")
+	e.FinderConfidence, _ = fieldString(obj, "finder_confidence")
+	e.Verification = verifyOf(obj)
 	e.Source, _ = fieldString(obj, "source")
 	e.Tool, _ = fieldString(obj, "tool")
 	e.RuleID, _ = fieldString(obj, "rule_id")
@@ -685,6 +772,43 @@ func entryExtra(e *FindingEntry, obj *jq.Obj) {
 			e.Extra.Set(k, v)
 		}
 	}
+}
+
+// verifyOf decodes the quote standing and retains model
+// verifications under their panel key.
+func verifyOf(obj *jq.Obj) *Verify {
+	v, ok := obj.Get(fieldVerification)
+	if !ok || v == nil {
+		return nil
+	}
+	m, isObj := v.(*jq.Obj)
+	if !isObj {
+		return nil
+	}
+	out := &Verify{}
+	out.Quote, _ = fieldString(m, fieldQuote)
+	if out.Quote == "" {
+		out.Quote = quoteUnchecked
+	}
+	panel, _ := m.Get(fieldPanel)
+	out.Panel = decodePanel(panel)
+	return out
+}
+
+// decodePanel decodes the stored model panel, skipping undecodable entries.
+func decodePanel(panel any) []Verification {
+	var out []Verification
+	for _, item := range jq.Elements(panel) {
+		raw, err := json.Marshal(item)
+		if err != nil {
+			continue
+		}
+		var result Verification
+		if json.Unmarshal(raw, &result) == nil {
+			out = append(out, result)
+		}
+	}
+	return out
 }
 
 // fieldString reads one required string field.

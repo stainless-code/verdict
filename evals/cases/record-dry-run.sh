@@ -10,7 +10,7 @@ LB="$EVAL_SANDBOX/.verdict/state/$SLUG"
 
 mk_local() { # stdin becomes review.json
   eval_mk_bundle "$SLUG"
-  cat > "$LB/review.json"
+  eval_write_review_at "$LB/review.json"
 }
 
 snapshot() {
@@ -45,7 +45,7 @@ run_review record acme/app "$SLUG" --dry-run --json
 assert_exit "brief.questions number refuses the dry run" 1
 assert_refusal "brief.questions number" "bad-review-input"
 assert_json_field "one problem reported" "1" '.error.problems | length'
-assert_json_field "problem path" '$.comments[0].brief.questions' '.error.problems[0].path'
+assert_json_field "problem path" '$.findings[0].brief.questions' '.error.problems[0].path'
 assert_json_field "problem code" "wrong-type" '.error.problems[0].code'
 if [ -n "$(jq -r '.error.problems[0].fix // empty' <"$EVAL_OUT")" ] \
   && [ -n "$(jq -r '.error.problems[0].example // empty' <"$EVAL_OUT")" ]; then
@@ -61,25 +61,23 @@ mk_local <<'JSON'
 JSON
 BEFORE="$(snapshot)"
 run_review record acme/app "$SLUG" --dry-run --json
-assert_exit "three errors refuse once" 1
-assert_json_field "three problems in one run" "3" '.error.problems | length'
-assert_json_field "document order first path" '$.comments[0].path' '.error.problems[0].path'
-assert_json_field "document order second path" '$.comments[1].body' '.error.problems[1].path'
-assert_json_field "document order third path" '$.resolved[0]' '.error.problems[2].path'
+assert_exit "two errors refuse once" 1
+assert_json_field "two problems in one run" "2" '.error.problems | length'
+assert_json_field "document order first path" '$.findings[0].path' '.error.problems[0].path'
+assert_json_field "document order second path" '$.resolved[0]' '.error.problems[1].path'
 check_untouched "multi-error dry run" "$BEFORE"
 
 mk_local <<'JSON'
-{"schema_version":"1","body":"> ✅ Warning-only dry run.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"A finding with enough substance."}]}
+{"schema_version":"1","body":"> ✅ Warning-only dry run.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"A finding with enough substance.","category":"nope"}]}
 JSON
 BEFORE="$(snapshot)"
 run_review record acme/app "$SLUG" --dry-run --json
 assert_exit "warning-only dry run exits 0" 0
 assert_envelope "warning-only dry run"
 assert_json_field "dry run flag" "true" '.data.dry_run'
-assert_json_field "comment count" "1" '.data.check.comments'
-assert_json_field "section count" "0" '.data.check.sections'
+assert_json_field "finding count" "1" '.data.check.findings'
 assert_json_field "moved anchors" "0" '.data.check.anchors_moved_to_body'
-if jq -e '.warnings | join(" ") | contains("rigor is unset")' <"$EVAL_OUT" >/dev/null; then
+if jq -e '.warnings | join(" ") | contains("nope")' <"$EVAL_OUT" >/dev/null; then
   good "warning rides the envelope"
 else
   bad "warning missing from envelope"
@@ -100,15 +98,14 @@ jq 'del(.strict_input)' "$LB/controls.json" >"$LB/controls.tmp"
 mv "$LB/controls.tmp" "$LB/controls.json"
 
 mk_local <<'JSON'
-{"schema_version":"1","body":"> ✅ Summary counts.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Inline finding with substance.","rigor":"walked"},{"path":"notes.txt","line":99,"side":"RIGHT","body":"Outside hunk finding.","rigor":"walked"}],"sections":[{"heading":"### Security","severity":"important"}]}
+{"schema_version":"1","body":"> ✅ Summary counts.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Inline finding with substance.","rigor":"walked"},{"path":"notes.txt","line":99,"side":"RIGHT","body":"Outside hunk finding.","rigor":"walked"}]}
 JSON
 BEFORE="$(snapshot)"
 run_review record acme/app "$SLUG" --dry-run --json
 assert_exit "clean dry run exits 0" 0
-assert_json_field "summary comments" "2" '.data.check.comments'
-assert_json_field "summary sections" "1" '.data.check.sections'
+assert_json_field "summary findings" "2" '.data.check.findings'
 assert_json_field "summary moved anchors" "1" '.data.check.anchors_moved_to_body'
-assert_json_field "would record both comments plus the moved body section" "3" '.data.findings.open'
+assert_json_field "would record both findings plus the moved anchor" "3" '.data.findings.open'
 check_untouched "summary dry run" "$BEFORE"
 
 # --cost-names repairs attribution without touching a number: the dry run has

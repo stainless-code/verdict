@@ -72,9 +72,6 @@ func TestRecordArtifactValidates(t *testing.T) {
 	if modeled.Findings != 1 || modeled.Open != 1 {
 		t.Errorf("record tallies = %+v", modeled)
 	}
-	if modeled.Confidence == nil || *modeled.Confidence != 5 {
-		t.Errorf("record confidence = %+v", modeled.Confidence)
-	}
 }
 
 // TestFindingsUnknownKeysConform proves a findings entry with unknown keys
@@ -130,10 +127,11 @@ func runRecordFixture(t *testing.T) *core.RecordResponse {
 		"diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n"+
 			"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n")
 	writeFixture(t, ".verdict/state/local-rr/review.json",
-		`{"schema_version":"1","body":"> ✅ Record conformance check with enough length.",`+
-			`"approved":false,"confidence":5,"security_summary":"short summary",`+
-			`"comments":[{"path":"notes.txt","line":2,"side":"RIGHT",`+
-			`"body":"Usable body with enough substance.","rigor":"walked","severity":"critical"}]}`)
+		`{"schema_version":"1","summary":"> ✅ Record conformance check with enough length.",`+
+			`"security_summary":"short summary",`+
+			`"findings":[{"path":"notes.txt","line":2,"side":"RIGHT",`+
+			`"claim":"Usable finding with enough substance.","quote":"new line","confidence":"high",`+
+			`"rigor":"walked","severity":"critical"}]}`)
 	seedControls(t, ".verdict/state/local-rr")
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 	runtime := &core.Runtime{Now: func() time.Time { return now }}

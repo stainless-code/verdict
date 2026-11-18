@@ -42,9 +42,9 @@ if grep -Fq 'one document total across all chunks, never one per chunk' "$PROMPT
 else
   bad "prompt misses the exactly-one-document synthesis rule"
 fi
-if grep -Fq 'sum every rung count across all chunks into the single Basis' "$PROMPT" \
-  && grep -Fq 'replaces a disagreeing line' "$PROMPT"; then
-  good "prompt sums Basis rungs across chunks and names CLI replacement"
+if grep -Fq 'sums every rung' "$PROMPT" \
+  && grep -Fq 'computed from your `review.json`' "$PROMPT"; then
+  good "prompt sums Basis rungs across chunks and names the CLI as the writer"
 else
   bad "prompt Basis-sum rule is missing"
 fi
@@ -166,11 +166,11 @@ eval_write_review "$PR" <<'EOF'
 EOF
 run_review post acme/app "$PR" --dry-run --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "basis line counts (9 9 9 9 9 9 9) differ from the computed counts (0 1 1 0 0 2 0) — replaced it (basis-replaced)" "$EVAL_ERR" \
   && grep -Fq -- 'Reviewed with' <<<"$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null)"; then
-  good "wrong Basis exits 0, warns with review counts, keeps the footer"
+  assert_stream_nogrep "no Basis rewrite on the stderr" "$EVAL_ERR" "basis line counts"
+  good "v2 body is verdict-owned: no Basis rewrite, footer intact"
 else
-  bad "mismatch path gave exit $EVAL_STATUS"
+  bad "v2 body path gave exit $EVAL_STATUS"
 fi
 
 eval_write_review "$PR" <<'EOF'

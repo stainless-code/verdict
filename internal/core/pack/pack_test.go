@@ -12,6 +12,7 @@ import (
 	"testing/fstest"
 
 	"github.com/stainless-code/verdict/internal/schemacheck"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 const fixtureManifest = `{"schema_version":"1","name":"acme/lenses","version":"1.2.3","lenses":[{"id":"beta"},{"id":"alpha"}]}`
@@ -701,7 +702,7 @@ func writeFile(t *testing.T, path, body string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(testenv.MaybeFindingsReview(path, body)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

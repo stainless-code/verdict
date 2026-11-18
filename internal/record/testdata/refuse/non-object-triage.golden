@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "bad-review-input",
-    "message": "review.json has 1 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run",
+    "message": "review.json has 1 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants findings[]; each finding wants path, line, severity, claim, quote and confidence), then re-run",
     "problems": [{"path":"$.triage[0]","code":"wrong-type","level":"error","message":"triage entry must be an object","fix":"use {sig, status, rationale}","example":{"rationale":"...","sig":"...","status":"wont-fix"}}],
     "problems_truncated": 0
   }

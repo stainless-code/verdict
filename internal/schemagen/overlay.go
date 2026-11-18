@@ -8,17 +8,18 @@ import (
 	"strings"
 )
 
-// overlayJSON carries the prose descriptions and any future patterns that do
-// not belong in a Go struct tag. Keys are schema names; values map a JSON
-// pointer inside that schema to the annotation keywords to merge.
+// overlayJSON carries the prose descriptions, patterns, and closed value lists
+// that do not belong in a Go struct tag. Keys are schema names; values map a
+// JSON pointer inside that schema to the annotation keywords to merge.
 //
 //go:embed overlay.json
 var overlayJSON []byte
 
-// schemaOverlay carries one schema's prose and pattern overlays.
+// schemaOverlay carries one schema's prose, pattern, and enum overlays.
 type schemaOverlay struct {
-	Descriptions map[string]string `json:"descriptions,omitempty"`
-	Patterns     map[string]string `json:"patterns,omitempty"`
+	Descriptions map[string]string   `json:"descriptions,omitempty"`
+	Patterns     map[string]string   `json:"patterns,omitempty"`
+	Enums        map[string][]string `json:"enums,omitempty"`
 }
 
 // overlay is the parsed overlay document: schema name to its annotations.
@@ -44,7 +45,10 @@ func applyOverlay(name string, root *node, o overlay) error {
 	if err := mergeDescriptions(name, root, entry.Descriptions); err != nil {
 		return err
 	}
-	return mergePatterns(name, root, entry.Patterns)
+	if err := mergePatterns(name, root, entry.Patterns); err != nil {
+		return err
+	}
+	return mergeEnums(name, root, entry.Enums)
 }
 
 // mergeDescriptions applies one schema's description overlay.
@@ -83,6 +87,77 @@ func mergePatterns(name string, root *node, patterns map[string]string) error {
 		target.members = append(target.members, member{keyPattern, stringNode(patterns[pointer])})
 	}
 	return nil
+}
+
+// mergeEnums applies one schema's enum overlay. A closed value list is schema,
+// not prose, but the widest one widens its struct's tag column far enough to
+// push every neighbor past the line limit, so it is modeled here instead.
+func mergeEnums(name string, root *node, enums map[string][]string) error {
+	for _, pointer := range sortedKeys(enums) {
+		target, err := overlayTarget(name, root, pointer)
+		if err != nil {
+			return err
+		}
+		if err := addEnum(name, pointer, target, enums[pointer]); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// addEnum inserts one closed value list, refusing to overwrite a tagged enum.
+// The values read exactly like the tag form, including "null" for the null
+// type, and replace the Go type the way a tag does: a closed list is the type.
+func addEnum(name, pointer string, target *node, values []string) error {
+	if len(values) == 0 {
+		return errorf("overlay %s %q: empty enum", name, pointer)
+	}
+	if err := clearEnumTarget(name, pointer, target); err != nil {
+		return err
+	}
+	target.members = slices.Insert(target.members, enumIndex(target), member{keyEnum, enumValues(values)})
+	return nil
+}
+
+// clearEnumTarget refuses an enum already set and drops the Go type the list
+// replaces.
+func clearEnumTarget(name, pointer string, target *node) error {
+	kept := target.members[:0]
+	for _, m := range target.members {
+		switch m.key {
+		case keyEnum:
+			return errorf("overlay %s %q: enum already set", name, pointer)
+		case keyType:
+			continue
+		}
+		kept = append(kept, m)
+	}
+	target.members = kept
+	return nil
+}
+
+// enumValues builds one closed value list; "null" means the null type.
+func enumValues(values []string) *node {
+	elems := make([]*node, 0, len(values))
+	for _, value := range values {
+		if value == typeNull {
+			elems = append(elems, nullNode())
+			continue
+		}
+		elems = append(elems, stringNode(value))
+	}
+	return array(elems...)
+}
+
+// enumIndex places an enum straight after the description, the order a struct
+// tag produces.
+func enumIndex(n *node) int {
+	for i, m := range n.members {
+		if m.key == keyDescription {
+			return i + 1
+		}
+	}
+	return 0
 }
 
 // overlayTarget resolves a pointer and requires an object schema target.

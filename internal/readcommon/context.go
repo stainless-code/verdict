@@ -56,7 +56,7 @@ func SourcesLine(value any) string {
 // WarnContextSources keeps unrecognized citations advisory.
 func WarnContextSources(dir string, review *jq.Obj, warn func(string)) {
 	known := ContextSources(dir)
-	raw, _ := review.Get("comments")
+	raw, _ := review.Get("findings")
 	comments := contextArray(raw)
 	for _, comment := range comments {
 		obj, ok := comment.(*jq.Obj)

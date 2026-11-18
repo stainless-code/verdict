@@ -154,18 +154,18 @@ func TestReviewSecretSitesLocations(t *testing.T) {
 		review string
 		want   []string
 	}{
-		{"clean", `{"body":"all good","comments":[{"body":"nice"}]}`, nil},
+		{"clean", `{"summary":"all good","findings":[{"claim":"nice"}]}`, nil},
 		{
 			name:   "summary and suggestion",
-			review: `{"body":"see sk-ant-api03-abcdefghij0123","comments":[{"body":"ok","suggestion":"K = \"AKIAIOSFODNN7EXAMPLE\""}]}`,
+			review: `{"summary":"see sk-ant-api03-abcdefghij0123","findings":[{"claim":"ok","suggestion":"K = \"AKIAIOSFODNN7EXAMPLE\""}]}`,
 			want:   []string{"summary body (anthropic-api-key)", "finding 1 (aws-access-key-id)"},
 		},
 		{
 			name:   "two findings",
-			review: `{"body":"x","comments":[{"body":"AKIAIOSFODNN7EXAMPLE"},{"body":"ghp_0123456789abcdefghijABCDEFGHIJ012345"}]}`,
+			review: `{"summary":"x","findings":[{"claim":"AKIAIOSFODNN7EXAMPLE"},{"claim":"ghp_0123456789abcdefghijABCDEFGHIJ012345"}]}`,
 			want:   []string{"finding 1 (aws-access-key-id)", "finding 2 (github-token)"},
 		},
-		{"non-object comment", `{"body":"x","comments":[7,{"body":"AKIAIOSFODNN7EXAMPLE"}]}`, []string{"finding 2 (aws-access-key-id)"}},
+		{"non-object comment", `{"summary":"x","findings":[7,{"claim":"AKIAIOSFODNN7EXAMPLE"}]}`, []string{"finding 2 (aws-access-key-id)"}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -179,7 +179,7 @@ func TestReviewSecretSitesLocations(t *testing.T) {
 				t.Fatalf("review decoded as %T", doc)
 			}
 			st := &state{review: obj}
-			if body, has := obj.Get("body"); has {
+			if body, has := obj.Get("summary"); has {
 				st.body = jq.R(body)
 			}
 			var got []string

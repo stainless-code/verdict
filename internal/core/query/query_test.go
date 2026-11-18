@@ -19,6 +19,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 const (
@@ -92,7 +93,7 @@ func writeFiles(t *testing.T, dir string, files map[string]string) {
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(p, []byte(testenv.MaybeFindingsReview(rel, content)), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -374,7 +375,7 @@ func rewriteKeepingStat(t *testing.T, path, content string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(testenv.MaybeFindingsReview(path, content)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.Chtimes(path, info.ModTime(), info.ModTime()); err != nil {
@@ -599,7 +600,7 @@ func symlinkOrSkip(t *testing.T, target, link string) {
 func writeCostTokens(t *testing.T, path string, tokens int) {
 	t.Helper()
 	body := fmt.Sprintf(`[{"models":[{"input_tokens":%d,"output_tokens":1}]}]`, tokens)
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(testenv.MaybeFindingsReview(path, body)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

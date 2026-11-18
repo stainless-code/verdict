@@ -694,7 +694,7 @@ func parseRawSlots(raw []byte) []rawSlot {
 	if !ok {
 		return nil
 	}
-	v, ok := obj.Get("comments")
+	v, ok := obj.Get("findings")
 	if !ok {
 		return nil
 	}
@@ -786,7 +786,7 @@ func slotLine(m *jq.Obj) (int, bool, string) {
 }
 
 func slotBody(m *jq.Obj) (string, string, bool) {
-	v, ok := m.Get("body")
+	v, ok := m.Get("claim")
 	if !ok || v == nil {
 		return "", "", false
 	}
@@ -1108,7 +1108,7 @@ func repairPathSet(repairs []core.Repair) map[string]bool {
 
 // problemCommentIndex reads the comment index a problem path names.
 func problemCommentIndex(path string) (int, bool) {
-	const prefix = "$.comments["
+	const prefix = "$.findings["
 	rest, ok := strings.CutPrefix(path, prefix)
 	if !ok {
 		return 0, false

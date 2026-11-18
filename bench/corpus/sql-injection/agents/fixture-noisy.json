@@ -3,16 +3,17 @@
   "panel": ["panel-alpha"],
   "review": {
     "schema_version": "1",
-    "body": "> 🤖 Noisy fixture review for the benchmark corpus: some seeded defects missed, some false positives.",
-    "approved": false,
-    "comments": [
+    "summary": "> \ud83e\udd16 Noisy fixture review for the benchmark corpus: some seeded defects missed, some false positives.",
+    "findings": [
       {
         "path": "query.go",
         "line": 56,
         "side": "RIGHT",
-        "body": "The rename to stmt reads better than q.",
         "rigor": "walked",
-        "severity": "informational"
+        "severity": "informational",
+        "claim": "The rename to stmt reads better than q.",
+        "quote": "The rename to stmt reads better than q.",
+        "confidence": "high"
       }
     ]
   }

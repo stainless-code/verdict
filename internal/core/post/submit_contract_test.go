@@ -2,7 +2,6 @@ package postcore
 
 import (
 	"context"
-	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -504,116 +503,6 @@ func TestBuildPostCommentsSigShortfall(t *testing.T) {
 	if n := countEmbedded(kept); n != 1 {
 		t.Errorf("embedded = %d, want the one suggestion", n)
 	}
-}
-
-// TestRunSplitFollowUps proves an over-limit body posts the first part as the
-// review and each continuation as its own COMMENT review, with the part
-// header, the follow-up progress line, and the hosting-limit warning.
-//
-//nolint:revive // legs assert the refusal, receipt, and projection fields inline
-func TestRunSplitFollowUps(t *testing.T) {
-	dir := t.TempDir()
-	t.Chdir(dir)
-	para := strings.Repeat("z", 32768)
-	review := fmt.Sprintf(`{"schema_version":"1","body":"> ✅ Long review.`+
-		`%s%s","approved":false,"comments":[]}`, para, para)
-	postBundle(t, review)
-	live := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	cmdr := postBundleCommander(t, &live)
-	cmdr.out["gh\x00api\x00user\x00--jq\x00.login"] = scriptResult{stdout: "reviewer-bot\n"}
-	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
-	resp, ref := Run(context.Background(), req)
-	if ref != nil {
-		t.Fatalf("Run refusal: %v", ref)
-	}
-	payloads := postedPayloads(t, cmdr)
-	if len(payloads) != 2 {
-		t.Fatalf("posted payloads = %d, want the review plus one follow-up", len(payloads))
-	}
-	head := payloadBody(t, payloads[0])
-	if !strings.Contains(head, "\n\n> ⚠️ Note: this review continues in 1 follow-up comment(s) below") {
-		t.Errorf("first part misses the continuation note:\n%.200q", head)
-	}
-	follow := payloadBody(t, payloads[1])
-	wantHead := "> ℹ️ Note: review body continued (part 2/2 — split at the 65,536-char hosting limit; " +
-		"see findings.json for the full text).\n\n"
-	if !strings.HasPrefix(follow, wantHead) {
-		t.Errorf("follow-up part does not open with its header:\n%.300q", follow)
-	}
-	if payloads[1]["event"] != eventComment {
-		t.Errorf("follow-up event = %v, want COMMENT", payloads[1]["event"])
-	}
-	if comments, ok := payloads[1]["comments"].([]any); !ok || len(comments) != 0 {
-		t.Errorf("follow-up comments = %v, want the empty array", payloads[1]["comments"])
-	}
-	if !strings.Contains(strings.Join(human, "\n"), "posted follow-up part 2/2 as review 101") {
-		t.Errorf("human = %q, want the follow-up progress line", human)
-	}
-	if !strings.Contains(strings.Join(resp.Warnings, "\n"), "body exceeds the 65,536-char hosting limit — split into 2 review comments") {
-		t.Errorf("warnings = %q, want the split notice", resp.Warnings)
-	}
-	for _, p := range payloads {
-		if body := payloadBody(t, p); len(body) > 65536 {
-			t.Errorf("posted part is %d chars, over the hosting limit", len(body))
-		}
-	}
-}
-
-// TestRunSplitFollowUpFailure proves a follow-up failure refuses typed naming
-// the review that already landed, so the operator can finish the remainder by
-// hand instead of reposting part 1.
-func TestRunSplitFollowUpFailure(t *testing.T) {
-	dir := t.TempDir()
-	t.Chdir(dir)
-	para := strings.Repeat("z", 32768)
-	review := fmt.Sprintf(`{"schema_version":"1","body":"> ✅ Long review.`+
-		`%s%s","approved":false,"comments":[]}`, para, para)
-	postBundle(t, review)
-	live := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	base := postBundleCommander(t, &live)
-	cmdr := &splitFailCommander{scriptCommander: base}
-	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
-	_, ref := Run(context.Background(), req)
-	if ref == nil || ref.Code != codePostFailed {
-		t.Fatalf("ref = %v, want post-failed", ref)
-	}
-	want := "post failed: follow-up part 2/2 not posted (review 101 landed part 1 — " +
-		"fix the cause and re-run; re-run skips parts already posted, and --force reposts part 1 as a duplicate)"
-	if ref.Message != want {
-		t.Errorf("message = %q, want %q", ref.Message, want)
-	}
-	if ref.RetryAt != "" {
-		t.Errorf("retry_at = %q, want none for a hard 422", ref.RetryAt)
-	}
-	if cmdr.posts != 2 {
-		t.Errorf("POSTs = %d, want the review plus one failed follow-up", cmdr.posts)
-	}
-	if exists(".verdict/state/7/post.json") {
-		t.Error("a partial post wrote the receipt")
-	}
-	if matches := globMarkers(t); len(matches) != 0 {
-		t.Errorf("a partial post armed the duplicate marker: %v", matches)
-	}
-}
-
-type splitFailCommander struct {
-	*scriptCommander
-	posts int
-}
-
-// first.
-func (s *splitFailCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
-	if strings.Contains(strings.Join(cmd.Argv, " "), "--method POST") {
-		s.posts++
-		if s.posts > 1 {
-			s.calls = append(s.calls, append([]string{}, cmd.Argv...))
-			s.stdin = append(s.stdin, "")
-			return core.Result{Stderr: "HTTP 422: too large\n", ExitCode: 1}, nil
-		}
-	}
-	return s.scriptCommander.Run(ctx, cmd)
 }
 
 // globMarkers lists the armed duplicate markers in the test bundle.

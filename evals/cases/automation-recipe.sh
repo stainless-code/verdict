@@ -329,7 +329,7 @@ gh_before="$(gh_calls)"
 export STUB_AGENT_MODE=write
 run_recipe_step
 assert_exit "the shipped agent step exits 0 when the agent writes a review" 0
-assert_json_field "the step's agent wrote the one review artifact" "1" \
+assert_json_field "the step's agent wrote the findings review artifact" "1" \
   '.schema_version' "$PR_DIR/review.json"
 assert_json_field "the step's launcher recorded the configured agent" "$VERDICT_AGENT" \
   '.agent' "$PR_DIR/launcher.json"
@@ -356,10 +356,10 @@ assert_eq "the shipped agent step made zero host calls" "$gh_before" "$(gh_calls
 unset STUB_AGENT_MODE ANTHROPIC_API_KEY VERDICT_AGENT
 
 # --- the promised mechanics still work in a scratch repo --------------------
-gate_body='{"schema_version":"1","body":"> ✅ Recipe gate review, one note.\\n> Basis: 0 reproduced · 0 ran · 1 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"RECIPEBODY","rigor":"walked","severity":"RECIPESEV"}]}'
+gate_body='{"schema_version":"1","summary":"Recipe gate review, one note.","findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"RECIPEBODY","quote":"another line","confidence":"high","rigor":"walked","severity":"RECIPESEV"}]}'
 run_review fetch-local acme/app gatecrit
 printf '%s' "$gate_body" | sed 's/RECIPEBODY/Critical: verify this line./; s/RECIPESEV/critical/' \
-  > "$EVAL_SANDBOX/.verdict/state/local-gatecrit/review.json"
+ | eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-gatecrit/review.json"
 run_review record acme/app local-gatecrit --json
 if [ "$EVAL_STATUS" -ne 0 ]; then
   bad "record exits $EVAL_STATUS on the critical review"
@@ -380,7 +380,7 @@ fi
 )
 run_review fetch-local acme/app gateok
 printf '%s' "$gate_body" | sed 's/RECIPEBODY/Nit: clarify this line./; s/RECIPESEV/informational/' \
-  > "$EVAL_SANDBOX/.verdict/state/local-gateok/review.json"
+ | eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-gateok/review.json"
 run_review record acme/app local-gateok --json
 if [ "$EVAL_STATUS" -ne 0 ]; then
   bad "record exits $EVAL_STATUS on the informational review"

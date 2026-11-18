@@ -377,6 +377,7 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 		Status:          prov,
 		Head:            headFull,
 		DiffSHA256:      diffSHA,
+		ReviewSHA256:    sha256File(dir + reviewSuffix),
 		RecordedAt:      now,
 		Findings:        len(res.Entries),
 		Open:            nOpen,
@@ -393,6 +394,9 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 		Repairs:         repairList(st.repairs),
 		Coverage:        res.Coverage.Receipt(),
 		ChunkCoverage:   res.Coverage.ChunkReceipt(),
+		Approval:        res.Approval,
+		SpecChecks:      res.SpecChecks,
+		Receipts:        res.Receipts,
 	}
 	if res.Validation != nil {
 		record.ValidationHash = res.Validation.Hash
@@ -425,6 +429,9 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 			ConfidenceRaw:   res.Confidence,
 			SecuritySummary: strOrNil(res.Security),
 			Risk:            res.Risk,
+			Approval:        res.Approval,
+			SpecChecks:      res.SpecChecks,
+			Receipts:        res.Receipts,
 			Items:           typedItems(res.Entries),
 			ItemsRaw:        EnvelopeItems(res.Entries),
 		},
@@ -450,6 +457,9 @@ func (st *svc) dryRun(dir, now string, res *MergeResult) *core.RecordResponse {
 		ItemsRaw:        EnvelopeItems(res.Entries),
 		DryRun:          true,
 		Check:           st.check,
+		Approval:        res.Approval,
+		SpecChecks:      res.SpecChecks,
+		Receipts:        res.Receipts,
 		Normalized:      normalizedObject(st.normalized),
 		Repairs:         repairList(st.repairs),
 	}
@@ -556,7 +566,7 @@ func checkBundleFiles(dir, prov string) *core.RefusalError {
 		code string
 		hint string
 	}{
-		{dir + reviewSuffix, codeMissingReviewFile, "agent must write {body, approved, comments[]}"},
+		{dir + reviewSuffix, codeMissingReviewFile, "agent must write " + msgReviewShape},
 		{dir + diffSuffix, "missing-diff", "run fetch-local / fetch --provider first"},
 	}
 	for _, f := range files {

@@ -8,7 +8,9 @@ exit: 0
   "at": "0000-00-00T00:00:00Z",
   "next": "report or triage the local bundle; post stays refused (no PR target)",
   "warnings": [
-    "no fetch-time hunk snapshot (.verdict/state/local-dg/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)"
+    "$.findings[0].rigor: rigor is unset",
+    "no fetch-time hunk snapshot (.verdict/state/local-dg/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)",
+    "rigor said below important floor pointed on 8794860 (advisory)"
   ],
   "data": {
     "dir": ".verdict/state/local-dg",
@@ -23,10 +25,10 @@ exit: 0
       "file": ".verdict/state/local-dg/findings.json"
     },
     "confidence": null,
-    "security_summary": null,
+    "security_summary": "nothing alarming",
     "items": [
       {
-        "sig": "f8ddf82ae3c452048c73528016bc8e940ae09eca",
+        "sig": "8794860ee02249a39986fe6f9d23549d9b34ac67",
         "status": "open",
         "anchored": true,
         "locator": "notes.txt:2"
@@ -36,10 +38,12 @@ exit: 0
   "error": null
 }
 --- stderr ---
+warn: $.findings[0].rigor: rigor is unset
 warn: no fetch-time hunk snapshot (.verdict/state/local-dg/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
 » anchors: 1 inline, 0 moved to body
+warn: rigor said below important floor pointed on 8794860 (advisory)
 » findings: 1 sigs -> .verdict/state/local-dg/findings.json
-  f8ddf82a  open  true  notes.txt
+  8794860e  open  true  notes.txt
 recorded: .verdict/state/local-dg/findings.json (1 open) + .verdict/state/local-dg/record.json — report/triage read it; post stays refused (no PR target)
 --- files ---
 --- file C/.verdict/state/local-dg/findings.json ---
@@ -50,19 +54,20 @@ recorded: .verdict/state/local-dg/findings.json (1 open) + .verdict/state/local-
     "side": "RIGHT",
     "line": 2,
     "anchored": true,
-    "body": "One pointed.",
+    "body": "A quoted defect with a medium finder confidence.",
     "suggestion": null,
     "kb": [],
     "inBounds": true,
-    "rigor": "pointed",
-    "rigor_source": "model",
-    "severity": null,
-    "sig": "f8ddf82ae3c452048c73528016bc8e940ae09eca",
+    "rigor": "said",
+    "rigor_source": "default",
+    "severity": "important",
+    "sig": "8794860ee02249a39986fe6f9d23549d9b34ac67",
     "sig_version": "1",
     "firstSeen": "aaaaaaa",
     "lastSeen": "aaaaaaa",
     "status": "open",
     "rationale": "",
+    "verification": {"quote":"unchecked"},
     "history": [
       {
         "at": "0000-00-00T00:00:00Z",
@@ -88,20 +93,22 @@ other.txt	NEW	1	3
   "status": "local",
   "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "diff_sha256": "a9823d4d377b7fd0c9dc0d92370323d29898489f9de88b6c3d32296dab229282",
+  "review_sha256": "4f850aa91e5f4b5d8f5368371fab1ed19c4298ff4f75a33afe7b8ab2f956fa1d",
   "recorded_at": "0000-00-00T00:00:00Z",
   "findings": 1,
   "open": 1,
   "confidence": null,
-  "security_summary": null,
+  "security_summary": "nothing alarming",
   "tool_version": "VERSION",
-  "prompts_hash": "3c57d8f39a074b67f54d2cdb6b7d15408334b5f0f410a36b79f3f2f473ec8516",
+  "prompts_hash": "3245adba3e38e496b08361aff47e2eb8fda8337c4c0575ad0148e1e0b291ce26",
   "model": null,
   "author": null,
   "review_models": [],
   "validation_hash": null,
   "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":1},
   "validation_mode": "warn",
-  "rigor_floors": {"critical":"walked","important":"pointed","informational":"said"}
+  "rigor_floors": {"critical":"walked","important":"pointed","informational":"said"},
+  "approval": {"reason":"open findings at-or-above important","tier":"important","gating_sigs":["8794860ee02249a39986fe6f9d23549d9b34ac67"],"approved":false}
 }
 --- file C/.verdict/state/local-dg/store.json ---
 {

@@ -29,13 +29,16 @@ const (
 // Findings derives inline identities from the normalized review input.
 func Findings(review *jq.Obj) []any {
 	out := make([]any, 0)
-	raw, _ := review.Get("comments")
+	raw, _ := review.Get("findings")
 	for _, item := range jq.Elements(raw) {
 		c, ok := object(item)
 		if !ok {
 			continue
 		}
 		path, body := jq.StrOf(c[fieldPath]), jq.StrOf(c[fieldBody])
+		if body == "" {
+			body = jq.StrOf(c["claim"])
+		}
 		out = append(out, jq.NewObj(fieldSig, sig.Of(path+"\n\n"+body), fieldPath, path,
 			fieldLine, c[fieldLine], fieldSeverity, c[fieldSeverity], "kind", "inline", fieldBody, body))
 	}

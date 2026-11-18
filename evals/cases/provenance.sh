@@ -83,7 +83,7 @@ else
 fi
 
 # Record a review on local-prov1 so report has findings.json.
-cat > "$EVAL_SANDBOX/.verdict/state/local-prov1/review.json" <<'EOF'
+eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-prov1/review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks fine.","approved":false,"comments":[]}
 EOF
 run_review record acme/app local-prov1 --json >/dev/null

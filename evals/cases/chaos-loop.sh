@@ -60,7 +60,7 @@ else
 fi
 matrix_row "fetch-local" "clean-tree" "$EVAL_STATUS" "none" "yes" "no" "created" "0"
 
-cat > "$LB/review.json" <<'EOF'
+eval_write_review_at "$LB/review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ Three nits below with enough length to pass the guard.","approved":false,"comments":[
 {"path":"notes.txt","line":2,"side":"RIGHT","body":"First nit with enough substance here.","rigor":"pointed","severity":"informational"},
 {"path":"notes.txt","line":3,"side":"RIGHT","body":"Second nit with enough substance here.","rigor":"pointed","severity":"informational"},
@@ -93,7 +93,7 @@ if [ -n "$SIG1" ] && [ "$SIG1" != "null" ]; then
 else
   bad "round 1 sig missing"
 fi
-cat > "$LB/review.json" <<EOF
+eval_write_review_at "$LB/review.json" <<EOF
 {"schema_version":"1","body":"> ✅ Two nits remain with enough length to pass the guard.","approved":false,"comments":[
 {"path":"notes.txt","line":3,"side":"RIGHT","body":"Second nit with enough substance here.","rigor":"pointed","severity":"informational"},
 {"path":"notes.txt","line":4,"side":"RIGHT","body":"Third nit with enough substance here.","rigor":"pointed","severity":"informational"}],
@@ -190,7 +190,7 @@ run_review report acme/app loop1 --json
 SIGS="$(jq -r '.data.items[] | select(.status == "open") | .sig' "$EVAL_OUT" 2>/dev/null || true)"
 R2A="$(printf '%s' "$SIGS" | sed -n '1p')"
 R2B="$(printf '%s' "$SIGS" | sed -n '2p')"
-cat > "$LB/review.json" <<EOF
+eval_write_review_at "$LB/review.json" <<EOF
 {"schema_version":"1","body":"> ✅ Final round with enough length to pass the guard here.","approved":false,"comments":[],
 "triage":[{"sig":"$R2A","status":"wont-fix","rationale":"By design: this hunk is intentionally terse for log brevity."},{"sig":"$R2B","status":"wont-fix","rationale":"By design: this hunk is intentionally terse for log brevity."}]}
 EOF

@@ -26,30 +26,28 @@ const (
 // launch, never the stub.
 const fakeSleep = 5 * time.Second
 
-// fakeReviewBody is a body the record path accepts unchanged: its Basis line
-// carries the counts the record path computes for one walked comment, so the
-// recorded review warns about nothing.
-func fakeReviewBody(walked int) string {
-	return fmt.Sprintf("> Basis: 0 0 %d 0 0 0 0\n\n### One note\n\n"+
-		"This line is worth a second look in the historical diff.", walked)
-}
+// fakeSummary is the optional prose the review document carries. The record
+// path renders the body from the findings, so the summary never has to carry a
+// Basis line or a section heading.
+const fakeSummary = "This line is worth a second look in the historical diff."
 
 // fakeComment is one inline comment, anchored on the bundle's own diff.
 type fakeComment struct {
-	Path     string `json:"path"`
-	Side     string `json:"side"`
-	Body     string `json:"body"`
-	Severity string `json:"severity"`
-	Rigor    string `json:"rigor"`
-	Line     int    `json:"line"`
+	Path       string `json:"path"`
+	Side       string `json:"side"`
+	Body       string `json:"claim"`
+	Quote      string `json:"quote"`
+	Confidence string `json:"confidence"`
+	Severity   string `json:"severity"`
+	Rigor      string `json:"rigor"`
+	Line       int    `json:"line"`
 }
 
 // fakeReviewDoc is the review the fake agent writes.
 type fakeReviewDoc struct {
 	SchemaVersion string        `json:"schema_version"`
-	Body          string        `json:"body"`
-	Comments      []fakeComment `json:"comments"`
-	Approved      bool          `json:"approved"`
+	Summary       string        `json:"summary"`
+	Findings      []fakeComment `json:"findings"`
 }
 
 // fakeAgentMain is the child's side of the contract: it appends one line naming
@@ -190,8 +188,8 @@ func fakeWrite(artifact string, launch int) int {
 	comments := fakeComments(filepath.Dir(artifact))
 	review, err := json.Marshal(fakeReviewDoc{
 		SchemaVersion: "1",
-		Body:          fakeReviewBody(len(comments)),
-		Comments:      comments,
+		Findings:      fakeFindingComments(comments),
+		Summary:       fakeSummary,
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "fake agent: render review:", err)
@@ -211,4 +209,16 @@ func fakeWrite(artifact string, launch int) int {
 		return 97
 	}
 	return 0
+}
+
+func fakeFindingComments(comments []fakeComment) []fakeComment {
+	for i := range comments {
+		if comments[i].Quote == "" {
+			comments[i].Quote = comments[i].Body
+		}
+		if comments[i].Confidence == "" {
+			comments[i].Confidence = "high"
+		}
+	}
+	return comments
 }

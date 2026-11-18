@@ -152,7 +152,7 @@ else
 fi
 
 mkcovlocal covrec
-cat > "$EVAL_SANDBOX/.verdict/state/local-covrec/review.json" <<'EOF'
+eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-covrec/review.json" <<'EOF'
 {"schema_version":"1","chunks":["chunk-02"],"body":"> ✅ Chunk-02 reviewed, one note.\n> Basis: 0 reproduced · 0 ran · 1 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"b.txt","line":2,"side":"RIGHT","body":"Chunk-02 note: clarify this line.","rigor":"walked","severity":"informational"}]}
 EOF
 run_review record acme/app local-covrec --json

@@ -15,7 +15,7 @@ func TestContextCitations(t *testing.T) {
 		t.Fatal(err)
 	}
 	comment := jq.NewObj("sources", []any{"docs/auth.md", "jira:UNKNOWN"})
-	review := jq.NewObj("comments", []any{comment})
+	review := jq.NewObj("findings", []any{comment})
 	var warnings []string
 	WarnContextSources(dir, review, func(s string) { warnings = append(warnings, s) })
 	if strings.Join(warnings, "\n") != "unknown context source: jira:UNKNOWN" {

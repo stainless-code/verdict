@@ -27,8 +27,8 @@ into your repo as `.github/workflows/verdict-review.yml`.
    first — the binary's authoritative Procedure for this review (an installed
    skill may be older) — then `full.diff` via `toc.txt` (plus `PR.json` and
    `roles.txt`), and writes exactly
-   one `.verdict/state/<pr>/review.json` (`schema_version: 1`, `body`,
-   `approved`, `comments[]`, optional `resolved[]`/`triage[]`). The step fails
+   one `.verdict/state/<pr>/review.json` (`schema_version: "1"`, `findings[]`,
+   optional `spec_checks[]`, `receipts[]`, `summary`, `resolved[]`/`triage[]`). The step fails
    unless that file is fresh: `run` refuses `no-review-artifact` when the agent
    wrote nothing and `stale-review-artifact` when it left an earlier run's
    file, so a silent agent cannot reach `post`.

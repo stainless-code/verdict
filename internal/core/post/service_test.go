@@ -17,6 +17,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/sig"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // scriptCommander is a hermetic Commander: canned stdout/stderr per exact
@@ -139,7 +140,7 @@ func writeTestFile(path, content string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, []byte(content), 0o644)
+	return os.WriteFile(path, []byte(testenv.MaybeFindingsReview(path, content)), 0o644)
 }
 
 // postTestState builds a minimal state for guard unit tests.

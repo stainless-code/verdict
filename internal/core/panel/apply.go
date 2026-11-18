@@ -37,7 +37,7 @@ func applyEntry(item any, file *File, applied, models map[string]bool) {
 	}
 	id, _ := entry.Get(fieldSig)
 	prior, _ := entry.Get("verification")
-	results := append([]any(nil), jq.Elements(prior)...)
+	results := append([]any(nil), storedPanel(prior)...)
 	for _, r := range file.Results {
 		if r.Sig != id {
 			continue
@@ -45,10 +45,24 @@ func applyEntry(item any, file *File, applied, models map[string]bool) {
 		applied[r.Sig], models[r.Model] = true, true
 		results = mergeResult(results, &r)
 	}
-	if len(results) > 0 {
-		entry.Set("verification", results)
-	}
+	applyVerification(entry, prior, results)
 	entry.Set("confidence", confidence(results))
+}
+
+// applyVerification writes the merged panel back, keeping the quote standing
+// a prior verification recorded and never inventing one.
+func applyVerification(entry *jq.Obj, prior any, results []any) {
+	if len(results) == 0 {
+		return
+	}
+	record := jq.NewObj("quote", "unchecked")
+	if old, ok := prior.(*jq.Obj); ok {
+		if quote, _ := old.Get("quote"); quote != nil {
+			record.Set("quote", quote)
+		}
+	}
+	record.Set("panel", results)
+	entry.Set("verification", record)
 }
 
 func mergeResult(results []any, r *Result) []any {
@@ -98,6 +112,15 @@ func confidence(results []any) string {
 
 func live(m map[string]any) bool { return m["status"] == "open" || m["status"] == "deferred" }
 
+// storedPanel reads model results from the v2 verification object, while
+// still accepting a legacy array of results.
+func storedPanel(value any) []any {
+	if obj, ok := object(value); ok {
+		return jq.Elements(obj["panel"])
+	}
+	return jq.Elements(value)
+}
+
 // Summarize returns live confidence counts, or nil for a legacy store.
 func Summarize(entries []any) *core.PanelSummary {
 	out := &core.PanelSummary{}
@@ -138,7 +161,7 @@ func verifierModels(entries []any) map[string]bool {
 }
 
 func collectModels(m map[string]any, models map[string]bool) {
-	for _, value := range jq.Elements(m["verification"]) {
+	for _, value := range storedPanel(m["verification"]) {
 		result, _ := object(value)
 		if model, ok := result["model"].(string); ok && model != "" {
 			models[model] = true

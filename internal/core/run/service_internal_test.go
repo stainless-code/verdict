@@ -70,7 +70,7 @@ func bundleDir(root string) string {
 }
 
 // reviewDoc is a minimal review the shared record path accepts unchanged.
-const reviewDoc = `{"schema_version":"1","body":"> ✅ no findings\n\n### Nothing to flag\n\nReviewed the diff.","approved":false,"comments":[]}`
+const reviewDoc = `{"schema_version":"1","summary":"> ✅ no findings Reviewed the diff.","findings":[]}`
 
 // writeReview plants the review artifact at the contract path.
 func writeReview(t *testing.T, dir string) string {
@@ -1192,7 +1192,7 @@ func TestRunPrintStageStatesItsOwnJob(t *testing.T) {
 		{
 			stage: "2",
 			want: "Synthesize one review from those findings: a single body whose first line " +
-				"carries the verdict marker, the combined approved flag, and every comment kept " +
+				"carries the verdict marker, quoted evidence on every finding, and every finding kept " +
 				"on its anchor (model hint opus).",
 		},
 		{
@@ -1280,8 +1280,8 @@ const quickPipelineDirective = "Review acme/app PR 42 and write exactly one revi
 	"(an installed skill may be older). Then the bundle at .verdict/state/42: PR.json, " +
 	"roles.txt, and toc.txt indexing full.diff, plus kb.txt, sensitive.txt, and panel when the run " +
 	"carries them.\n\n" +
-	"Write .verdict/state/42/review.json with {\"schema_version\": \"1\", \"body\": ..., " +
-	"\"approved\": ..., \"comments\": [...]} (optional \"resolved\" and \"triage\"). Write nothing " +
+	"Write .verdict/state/42/review.json with {\"schema_version\": \"1\", \"findings\": [{\"path\": ..., \"line\": 2, \"severity\": ..., \"claim\": ..., \"quote\": ..., \"confidence\": ...}], " +
+	"\"spec_checks\": [], \"receipts\": [], \"summary\": ...} (optional \"resolved\" and \"triage\"). Write nothing " +
 	"else in the bundle.\n\n" +
 	"verdict launched this one process and validates that file; it does not read your prose, retry " +
 	"you, or post. Do not post, merge, or push: publishing is an explicit verdict post.\n\n" +

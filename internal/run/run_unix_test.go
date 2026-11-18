@@ -18,6 +18,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/record"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // These tests spawn a real fake agent through the production watchdog. No real
@@ -86,8 +87,7 @@ const bundleSlug = "local-work"
 
 // validReview is a review the shared record path accepts unchanged: a verdict
 // marker, a section, and no comments to anchor.
-const validReview = `{"schema_version":"1","body":"> ✅ no findings\n\n### Nothing to flag\n\n` +
-	`Reviewed the diff and found nothing worth flagging.","approved":false,"comments":[]}`
+const validReview = `{"schema_version":"1","summary":"> ✅ no findings Reviewed the diff and found nothing worth flagging.","findings":[]}`
 
 // fixtureDiff is the bundle's diff: one small change, so the review has a
 // patch to attest against.
@@ -189,7 +189,7 @@ func (f *fixture) writeReviewSrc(t *testing.T) {
 // writeFile plants one fixture file with the default mode.
 func writeFile(t *testing.T, path, content string) {
 	t.Helper()
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(testenv.MaybeFindingsReview(path, content)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

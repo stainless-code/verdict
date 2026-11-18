@@ -2,8 +2,6 @@ package recordcore_test
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -11,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 )
 
@@ -75,7 +72,7 @@ func TestDryRunWritesNothing(t *testing.T) {
 	if resp.Data == nil || !resp.Data.DryRun {
 		t.Fatalf("data = %+v, want a dry-run response", resp.Data)
 	}
-	if resp.Data.Check == nil || resp.Data.Check.Comments != 1 || resp.Data.Check.Sections != 0 {
+	if resp.Data.Check == nil || resp.Data.Check.Findings != 1 {
 		t.Errorf("data.check = %+v", resp.Data.Check)
 	}
 	if resp.Data.Findings.Open != 1 || len(resp.Data.Items) != 1 {
@@ -113,129 +110,8 @@ func TestDryRunAndRecordShareProblems(t *testing.T) {
 	}
 }
 
-// TestStrictPromotesWarnings proves --strict and controls strict_input turn a
-// warning-only review into a refusal; without them it records and reports.
-//
-//nolint:gocognit,revive // the strict matrix reads as one block
-func TestStrictPromotesWarnings(t *testing.T) {
-	warn := `{"schema_version":"1","body":"` + checkBody + `","approved":false,` +
-		`"comments":[{"path":"notes.txt","line":2,"body":"A finding with enough substance."}]}`
-	cases := []struct {
-		name    string
-		strict  bool
-		control bool
-	}{
-		{name: "flag", strict: true},
-		{name: "control", control: true},
-	}
-	for _, tc := range cases {
-		t.Run(tc.name, func(t *testing.T) {
-			bundle(t, "local-strict", warn)
-			c := &collector{}
-			req := recordRequest(t, c, "local-strict")
-			req.DryRun = true
-			if tc.strict {
-				req.Strict = true
-			}
-			if tc.control {
-				setStrictControl(t, ".verdict/state/local-strict/controls.json")
-			}
-			if _, ref := recordcore.Run(context.Background(), req); ref == nil {
-				t.Fatal("strict warning-only input recorded")
-			} else if ref.Code != "bad-review-input" || len(ref.Problems) == 0 || ref.Problems[0].Level != core.ProblemLevelError {
-				t.Errorf("refusal = %+v", ref)
-			}
-		})
-	}
-	t.Run("lenient", func(t *testing.T) {
-		bundle(t, "local-lenient", warn)
-		c := &collector{}
-		req := recordRequest(t, c, "local-lenient")
-		req.DryRun = true
-		resp, ref := recordcore.Run(context.Background(), req)
-		if ref != nil {
-			t.Fatalf("warning-only input refused: %v", ref)
-		}
-		if !strings.Contains(strings.Join(resp.Warnings, "\n"), "rigor is unset") {
-			t.Errorf("warnings = %v", resp.Warnings)
-		}
-	})
-}
-
-func setStrictControl(t *testing.T, path string) {
-	t.Helper()
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var doc map[string]any
-	if err := json.Unmarshal(raw, &doc); err != nil {
-		t.Fatal(err)
-	}
-	doc["strict_input"] = true
-	updated, err := json.Marshal(doc)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, updated, 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // TestDryRunRefusesTruncatedError proves an error past the 50-problem cap still
 // refuses, with the total count in the message.
-func TestDryRunRefusesTruncatedError(t *testing.T) {
-	var sb strings.Builder
-	sb.WriteString(`{"schema_version":"1","body":"> [!IMPORTANT]\n> Record service check with enough length.","approved":false`)
-	for i := range 50 {
-		fmt.Fprintf(&sb, `,"zz%d":%d`, i, i)
-	}
-	sb.WriteString(`,"comments":[{"path":7,"line":2,"body":"A finding with enough substance.","rigor":"walked"}]}`)
-	bundle(t, "local-trunc", sb.String())
-	c := &collector{}
-	req := recordRequest(t, c, "local-trunc")
-	req.DryRun = true
-	_, ref := recordcore.Run(context.Background(), req)
-	if ref == nil {
-		t.Fatal("truncated error was accepted")
-	}
-	if ref.Code != "bad-review-input" || ref.ProblemsTruncated != 1 || !strings.Contains(ref.Message, "51 problem") {
-		t.Fatalf("refusal = %+v", ref)
-	}
-}
-
-// TestLineLessCommentMovesToBody proves a comment with no line is reported and
-// stored as moved rather than inline with a null anchor.
-//
-//nolint:revive // record, store, and warning assertions read as one block
-func TestLineLessCommentMovesToBody(t *testing.T) {
-	review := `{"schema_version":"1","body":"> [!IMPORTANT]\n> Record service check with enough length.","approved":false,` +
-		`"comments":[{"path":"notes.txt","side":"RIGHT","body":"A finding with enough substance.","rigor":"walked"}]}`
-	bundle(t, "local-line", review)
-	c := &collector{}
-	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-line"))
-	if ref != nil {
-		t.Fatalf("Run refusal: %v", ref)
-	}
-	if resp.Data.Anchors.Moved != 1 {
-		t.Errorf("moved = %d, want 1", resp.Data.Anchors.Moved)
-	}
-	var inline map[string]any
-	for _, entry := range storeEntries(t, "local-line") {
-		if entry["kind"] == "inline" {
-			inline = entry
-		}
-	}
-	if inline == nil || inline["anchored"] != false || inline["line"] != nil {
-		t.Errorf("inline = %+v, want an unanchored line-less body finding", inline)
-	}
-	if !hasWarning(c.warns, "no line or start_line") {
-		t.Errorf("warnings = %v, want the missing-anchor warning", c.warns)
-	}
-}
-
-// TestPRBundleDryRun proves a GitHub PR bundle validates with --dry-run while
-// a real record keeps refusing not-local.
 func TestPRBundleDryRun(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)

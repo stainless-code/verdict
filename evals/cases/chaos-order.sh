@@ -144,7 +144,7 @@ matrix_row "record" "empty-dir" "$EVAL_STATUS" "missing-review-file" "no" "yes" 
 rm -rf "$EVAL_SANDBOX/.verdict/state/local-empty"
 
 eval_mk_bundle local-chaos-order
-cat > "$LB/review.json" <<'EOF'
+eval_write_review_at "$LB/review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good — minor note below with enough length.","approved":false,"comments":[]}
 EOF
 snap "$LB" "$EVAL_SANDBOX/s2.before"
@@ -153,7 +153,7 @@ run_review record acme/app local-chaos-order --dry-run --json
 assert_exit "clean record --dry-run exits 0" 0
 assert_envelope "clean record --dry-run"
 assert_json_field "dry run flags itself" "true" '.data.dry_run'
-assert_json_field "dry run counts zero comments" "0" '.data.check.comments'
+assert_json_field "dry run counts zero findings" "0" '.data.check.findings'
 if [ -e "$LB/findings.json" ] || [ -e "$LB/record.json" ]; then
   bad "clean dry run minted store artifacts"
 else
@@ -168,7 +168,7 @@ else
 fi
 matrix_row "record" "dry-run-clean" "$EVAL_STATUS" "none" "yes" "no" "same" "$(reviews_since "$m0")"
 
-cat > "$LB/review.json" <<'EOF'
+eval_write_review_at "$LB/review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good — minor note below with enough length.","approved":false,"comments":[{"path":"nope/ghost.ts","line":1,"side":"RIGHT","body":"Hallucinated finding with enough substance here.","rigor":"walked","severity":"critical"}]}
 EOF
 snap "$LB" "$EVAL_SANDBOX/s2b.before"
@@ -191,7 +191,7 @@ assert_file_grep "human dry run prints the problem code" "$EVAL_ERR" "path-not-i
 assert_file_grep "human dry run prints the fix" "$EVAL_ERR" "fix:"
 assert_file_grep "human dry run names a re-enter" "$EVAL_ERR" "^re-enter: verdict record"
 matrix_row "record" "dry-run-refused" "$EVAL_STATUS" "bad-review-input" "no" "yes" "same" "$(reviews_since "$m0")"
-cat > "$LB/review.json" <<'EOF'
+eval_write_review_at "$LB/review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good — minor note below with enough length.","approved":false,"comments":[]}
 EOF
 

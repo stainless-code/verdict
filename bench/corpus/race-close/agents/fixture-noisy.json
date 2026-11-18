@@ -3,24 +3,27 @@
   "panel": ["panel-beta"],
   "review": {
     "schema_version": "1",
-    "body": "> 🤖 Noisy fixture review for the benchmark corpus: some seeded defects missed, some false positives.",
-    "approved": false,
-    "comments": [
+    "summary": "> \ud83e\udd16 Noisy fixture review for the benchmark corpus: some seeded defects missed, some false positives.",
+    "findings": [
       {
         "path": "pool.go",
         "line": 48,
         "side": "RIGHT",
-        "body": "Wait for the close before returning the conn to the pool.",
         "rigor": "reproduced",
-        "severity": "important"
+        "severity": "important",
+        "claim": "Wait for the close before returning the conn to the pool.",
+        "quote": "Wait for the close before returning the conn to the pool.",
+        "confidence": "high"
       },
       {
         "path": "pool.go",
         "line": 37,
         "side": "RIGHT",
-        "body": "Debug logging on every borrow will be noisy in production.",
         "rigor": "walked",
-        "severity": "informational"
+        "severity": "informational",
+        "claim": "Debug logging on every borrow will be noisy in production.",
+        "quote": "Debug logging on every borrow will be noisy in production.",
+        "confidence": "high"
       }
     ]
   }

@@ -7,9 +7,7 @@ exit: 0
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
   "next": "report or triage the local bundle; post stays refused (no PR target)",
-  "warnings": [
-    "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)"
-  ],
+  "warnings": [],
   "data": {
     "dir": ".verdict/state/local-kb",
     "anchors": {
@@ -37,8 +35,64 @@ exit: 0
 }
 --- stderr ---
 » anchors: 1 inline, 0 moved to body
-warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
 » findings: 1 sigs -> .verdict/state/local-kb/findings.json
   bfd750df  open  true  notes.txt
 recorded: .verdict/state/local-kb/findings.json (1 open) + .verdict/state/local-kb/record.json — report/triage read it; post stays refused (no PR target)
 --- files ---
+--- file C/.verdict/state/local-kb/findings.json ---
+[
+  {
+    "kind": "inline",
+    "path": "notes.txt",
+    "side": "RIGHT",
+    "line": 2,
+    "anchored": true,
+    "body": "Cited finding here.",
+    "suggestion": null,
+    "kb": [
+      "uncite-r"
+    ],
+    "inBounds": true,
+    "rigor": "walked",
+    "rigor_source": "model",
+    "severity": "important",
+    "sig": "bfd750dfd6a62efb7a91db702664395618b7f845",
+    "sig_version": "1",
+    "firstSeen": "aaaaaaa",
+    "lastSeen": "aaaaaaa",
+    "status": "open",
+    "rationale": "",
+    "verification": {
+      "quote": "unchecked"
+    },
+    "history": [
+      {
+        "at": "0000-00-00T00:00:00Z",
+        "event": "reported"
+      }
+    ]
+  }
+]
+--- file C/.verdict/state/local-kb/record.json ---
+{
+  "schema_version": "1",
+  "status": "local",
+  "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "diff_sha256": "a9823d4d377b7fd0c9dc0d92370323d29898489f9de88b6c3d32296dab229282",
+  "review_sha256": "3624b243f3063dc3365e3c4156aa73b892c5e5cd7d494b6b6c6b578cf7695f3f",
+  "recorded_at": "0000-00-00T00:00:00Z",
+  "findings": 1,
+  "open": 1,
+  "confidence": null,
+  "security_summary": null,
+  "tool_version": "VERSION",
+  "prompts_hash": "3245adba3e38e496b08361aff47e2eb8fda8337c4c0575ad0148e1e0b291ce26",
+  "model": null,
+  "author": null,
+  "review_models": [],
+  "validation_hash": null,
+  "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":1},
+  "validation_mode": "warn",
+  "rigor_floors": {"critical":"walked","important":"pointed","informational":"said"},
+  "approval": {"reason":"open findings at-or-above important","tier":"important","gating_sigs":["bfd750dfd6a62efb7a91db702664395618b7f845"],"approved":false}
+}

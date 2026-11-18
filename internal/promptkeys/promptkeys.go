@@ -17,8 +17,11 @@ type ReviewKey struct {
 // the in-bounds flag without naming their keys, and record repaired both
 // instead of the review landing clean.
 var Review = []ReviewKey{
-	{"rigor", "`rigor`", commentBranch("rigor")},
-	{"in-bounds", "`in-bounds`", commentBranch("in-bounds")},
+	{"rigor", "`rigor`", findingBranch("rigor")},
+	{"severity", "`severity`", findingBranch("severity")},
+	{"claim", "`claim`", findingBranch("claim")},
+	{"quote", "`quote`", findingBranch("quote")},
+	{"confidence", "`confidence`", findingBranch("confidence")},
 	{"file", `{"file": …, "ranges": …}`, coverageBranch("file")},
 	{"ranges", `{"file": …, "ranges": …}`, coverageBranch("ranges")},
 }
@@ -29,8 +32,8 @@ var Review = []ReviewKey{
 var RigorValues = []string{"said", "pointed", "walked", "ran", "reproduced"}
 
 // commentBranch is review.schema.json's path to one comment key.
-func commentBranch(key string) []string {
-	return []string{"$defs", "comment", "properties", key}
+func findingBranch(key string) []string {
+	return []string{"$defs", "finding", "properties", key}
 }
 
 // coverageBranch is review.schema.json's path to one coverage entry key.

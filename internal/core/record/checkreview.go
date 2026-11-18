@@ -45,8 +45,12 @@ const (
 	problemCap           = 50
 	nearestKeyMax        = 64
 	problemRoot          = "$"
-	problemSchemaVersion = "$.schema_version"
-	problemApproved      = "approved"
+	fieldSchemaVersion   = "schema_version"
+	problemSchemaVersion = "$." + fieldSchemaVersion
+	problemFindings      = "findings"
+	problemSpecChecks    = "spec_checks"
+	problemReceipts      = "receipts"
+	problemSummary       = "summary"
 	problemRationale     = "rationale"
 	problemPathSuffix    = ".path"
 	exampleFile          = "file.go"
@@ -55,30 +59,32 @@ const (
 	exampleImportant     = "important"
 	exampleWontFix       = "wont-fix"
 	exampleFalsePositive = "false-positive"
-	exampleConfidence    = 3
-	minConfidence        = 1
-	maxConfidence        = 5
+	maxSummaryRunes      = 2000
+	prefixMissing        = "missing "
+	prefixWrite          = "write "
 )
 
 var (
-	//nolint:goconst // published schema literals
 	knownReviewKeys = []string{
-		"schema_version", fieldBody, problemApproved, fieldComments, suppressedKey,
-		fieldResolved, fieldTriage, fieldSections, fieldChunks, fieldCoverage, fieldConfidence, fieldSecuritySummary, fieldRisk,
+		fieldSchemaVersion, problemFindings, problemSpecChecks, problemReceipts, problemSummary, suppressedKey,
+		fieldResolved, fieldTriage, fieldChunks, fieldCoverage, fieldSecuritySummary, fieldRisk,
 	}
-	//nolint:goconst // schema keys are published literals
-	knownCommentKeys = []string{
-		fieldPath, fieldLine, "start_line", fieldSide, "body",
-		fieldSources, "suggestion", fieldBrief, fieldRigor, fieldSeverity, fieldCategory, fieldInBoundsInput, "kb",
+	knownFindingKeys = []string{
+		fieldPath, fieldLine, fieldStartLine, fieldSide, fieldClaim, fieldQuote, fieldConfidenceInput,
+		fieldRigor, fieldSeverity, fieldCategory, fieldSources, fieldSuggestion, fieldBrief, fieldKB,
 	}
-	knownTriageKeys   = []string{fieldSig, fieldStatus, problemRationale}
-	knownSectionKeys  = []string{"heading", fieldSeverity}
-	knownCoverageKeys = []string{fieldFile, fieldRanges}
-	knownRiskKeys     = []string{fieldLevel, problemRationale, fieldAssessedHead}
-	reviewKeys        = []string{tierCritical, exampleImportant, "informational"}
-	riskLevels        = []string{"low", "medium", "high", "critical"}
-	rigorKeys         = []string{rungSaid, rungPointed, rungWalked, rungRan, rungReproduced}
-	triageStatuses    = []string{"open", "addressed", exampleWontFix, exampleFalsePositive, "deferred"}
+	knownSpecCheckKeys = []string{fieldItem, fieldStatus, fieldEvidence}
+	knownEvidenceKeys  = []string{fieldPath, fieldLine, fieldQuote}
+	knownReceiptKeys   = []string{"hunk", fieldQuote}
+	knownTriageKeys    = []string{fieldSig, fieldStatus, problemRationale}
+	knownCoverageKeys  = []string{fieldFile, fieldRanges}
+	knownRiskKeys      = []string{fieldLevel, problemRationale, fieldAssessedHead}
+	reviewKeys         = []string{tierCritical, exampleImportant, "informational"}
+	finderConfidence   = []string{confidenceHigh, "medium", "low"}
+	specStatuses       = []string{"met", "violated", "n/a"}
+	riskLevels         = []string{"low", "medium", "high", "critical"}
+	rigorKeys          = []string{rungSaid, rungPointed, rungWalked, rungRan, rungReproduced}
+	triageStatuses     = []string{"open", "addressed", exampleWontFix, exampleFalsePositive, "deferred"}
 )
 
 // CheckReview validates a review.json against a unified diff. It is pure: it
@@ -117,7 +123,7 @@ func CheckReviewInput(review []byte, in CheckInput) CheckResult {
 	if !ok {
 		c.add(c.problem(problemRoot, core.ProblemCodeWrongType, core.ProblemLevelError,
 			"review.json must hold a JSON object",
-			"write one JSON object with body and comments[]", reviewObjectExample()))
+			"write one JSON object with schema_version and findings[]", reviewObjectExample()))
 		return *c.result()
 	}
 	c.checkReview(obj)
@@ -135,7 +141,6 @@ type checker struct {
 	chunkManifest   string
 	verification    []byte
 	comments        int
-	sections        int
 	moved           int
 	hasChunks       bool
 	hasVerification bool
@@ -143,8 +148,7 @@ type checker struct {
 
 func (c *checker) result() *CheckResult {
 	c.res.Summary = core.CheckSummary{
-		Comments:           c.comments,
-		Sections:           c.sections,
+		Findings:           c.comments,
 		AnchorsMovedToBody: c.moved,
 	}
 	if c.res.Problems == nil {
@@ -192,6 +196,18 @@ func (c *checker) outOfRange(path, message, fix string, example any) {
 	c.add(c.problem(path, core.ProblemCodeOutOfRange, core.ProblemLevelError, message, fix, example))
 }
 
+// unknownRoot refuses a root key review.schema.json does not publish. The
+// document is closed, so an old-shape key such as approved, body or comments
+// has no reader and must be rewritten, not ignored.
+func (c *checker) unknownRoot(key string) {
+	fix := "remove it"
+	if near := nearest(key, knownReviewKeys); near != "" {
+		fix = fmt.Sprintf("remove it or rename it to the nearest known key %q", near)
+	}
+	c.add(c.problem(problemRoot+"."+key, core.ProblemCodeUnknownField, core.ProblemLevelError,
+		fmt.Sprintf("unknown field %q", key), fix))
+}
+
 func (c *checker) unknown(path, key string, known []string) {
 	fix := "remove it"
 	if near := nearest(key, known); near != "" {
@@ -208,25 +224,21 @@ func (c *checker) checkReview(obj *jq.Obj) {
 	for _, key := range obj.Keys {
 		v, _ := obj.Get(key)
 		switch key {
-		case "schema_version":
+		case fieldSchemaVersion:
 			c.checkSchemaVersion(v)
-		case "body":
-			c.checkString("$."+fieldBody, v, true, "write the full review text")
-		case problemApproved:
-			if _, ok := v.(bool); !ok {
-				c.wrongType("$."+problemApproved, "approved must be a boolean", "use true or false", false)
-			}
+		case problemFindings:
+			c.checkFindings(v)
+		case problemSpecChecks:
+			c.checkSpecChecks(v)
+		case problemReceipts:
+			c.checkReceipts(v)
+		case problemSummary:
+			c.checkSummary(v)
 		case suppressedKey:
-		case fieldComments:
-			c.checkComments(v)
 		case fieldResolved:
 			c.checkStringArray("$.resolved", v, "list finding sigs as strings")
 		case fieldTriage:
 			c.checkTriage(v)
-		case fieldSections:
-			c.checkSections(v)
-		case fieldConfidence:
-			c.checkConfidence(v)
 		case fieldSecuritySummary:
 			c.checkSecuritySummary(v)
 		case fieldRisk:
@@ -236,18 +248,15 @@ func (c *checker) checkReview(obj *jq.Obj) {
 		case fieldCoverage:
 			c.checkCoverage(v)
 		default:
-			c.unknown("$", key, knownReviewKeys)
+			c.unknownRoot(key)
 		}
 	}
-	if _, ok := obj.Get(fieldBody); !ok {
-		c.missing("$."+fieldBody, "missing body", "write the full review text", exampleEllipsis)
+	if _, ok := obj.Get(fieldSchemaVersion); !ok {
+		c.missing(problemSchemaVersion, "missing schema_version", "set \"schema_version\": \"1\"", schemaVersion1)
 	}
-	if _, ok := obj.Get(fieldComments); !ok {
-		c.add(c.problem("$.comments", core.ProblemCodeMissingField, core.ProblemLevelWarning,
-			"comments is missing; treating it as an empty list",
-			"write \"comments\": []", []any{}))
+	if _, ok := obj.Get(problemFindings); !ok {
+		c.missing("$.findings", "missing findings", "write \"findings\": []", []any{})
 	}
-	c.checkBodyQuality(obj)
 	if c.hasChunks {
 		if _, ok := obj.Get(fieldChunks); !ok {
 			c.unattestedChunks()
@@ -256,9 +265,6 @@ func (c *checker) checkReview(obj *jq.Obj) {
 }
 
 func (c *checker) checkSchemaVersion(v any) {
-	if v == nil {
-		return
-	}
 	s, ok := v.(string)
 	if !ok {
 		c.wrongType(problemSchemaVersion, "schema_version must be the string \"1\"", "set \"schema_version\": \"1\"", schemaVersion1)
@@ -283,6 +289,24 @@ func (c *checker) checkString(path string, v any, required bool, fix string) {
 	}
 }
 
+// checkFilled checks a string review.schema.json closes with minLength 1: an
+// empty value is as useless as an absent one, so it refuses the same way.
+func (c *checker) checkFilled(path string, v any, fix string) {
+	str, isString := v.(string)
+	if isString && str != "" {
+		return
+	}
+	if v == nil {
+		c.missing(path, "missing required string", fix, exampleEllipsis)
+		return
+	}
+	if !isString {
+		c.wrongType(path, "value must be a string", fix, exampleEllipsis)
+		return
+	}
+	c.outOfRange(path, "value must not be empty", fix, exampleEllipsis)
+}
+
 func (c *checker) checkStringArray(path string, v any, fix string) {
 	if v == nil || v == false {
 		return
@@ -299,81 +323,227 @@ func (c *checker) checkStringArray(path string, v any, fix string) {
 	}
 }
 
-func (c *checker) checkComments(v any) {
-	if v == nil || v == false {
-		return
-	}
+func (c *checker) checkFindings(v any) {
 	items, ok := v.([]any)
 	if !ok {
-		c.wrongType("$.comments", "comments must be an array",
-			"write an array of {path, line, body} objects", []any{commentExample()})
+		c.wrongType("$.findings", "findings must be an array",
+			"write an array of {path, line, severity, claim, quote, confidence} objects", []any{findingExample()})
 		return
 	}
 	c.comments = len(items)
 	for i, item := range items {
-		c.checkComment(i, item)
+		c.checkFinding(i, item)
 	}
 }
 
-//nolint:cyclop,revive // one branch per published comment key
-func (c *checker) checkComment(i int, item any) {
-	base := fmt.Sprintf("$.comments[%d]", i)
+func (c *checker) checkSpecChecks(v any) {
+	items, ok := v.([]any)
+	if !ok {
+		c.wrongType("$.spec_checks", "spec_checks must be an array", "write an array of spec check objects", []any{})
+		return
+	}
+	for i, item := range items {
+		base := fmt.Sprintf("$.spec_checks[%d]", i)
+		m, ok := item.(*jq.Obj)
+		if !ok {
+			c.wrongType(base, "spec check must be an object", "write {item, status, evidence}",
+				specCheckExample())
+			continue
+		}
+		c.checkSpecCheckFields(base, m)
+		c.requireKeys(base, m, knownSpecCheckKeys)
+	}
+}
+
+// checkSpecCheckFields dispatches every published spec-check key.
+func (c *checker) checkSpecCheckFields(base string, m *jq.Obj) {
+	for _, key := range m.Keys {
+		value, _ := m.Get(key)
+		switch key {
+		case fieldItem:
+			c.checkFilled(base+pathDot+fieldItem, value, "quote the spec item")
+		case fieldStatus:
+			c.checkEnum(base+pathDot+fieldStatus, value, specStatuses, "use met, violated or n/a")
+		case fieldEvidence:
+			c.checkEvidence(base+pathDot+fieldEvidence, value)
+		default:
+			c.unknown(base, key, knownSpecCheckKeys)
+		}
+	}
+}
+
+func (c *checker) checkEvidence(base string, v any) {
+	m, ok := v.(*jq.Obj)
+	if !ok {
+		c.wrongType(base, "evidence must be an object", "write {path, line, quote}", evidenceExample())
+		return
+	}
+	for _, key := range m.Keys {
+		value, _ := m.Get(key)
+		switch key {
+		case fieldPath:
+			c.checkString(base+".path", value, true, "name the code path")
+		case fieldLine:
+			if _, ok := jq.IntOf(value); !ok {
+				c.wrongType(base+".line", "line must be an integer", "use the code line number", exampleLine)
+			}
+		case fieldQuote:
+			c.checkFilled(base+pathDot+fieldQuote, value, "quote the code line")
+		default:
+			c.unknown(base, key, knownEvidenceKeys)
+		}
+	}
+	c.requireKeys(base, m, knownEvidenceKeys)
+}
+
+func (c *checker) checkReceipts(v any) {
+	items, ok := v.([]any)
+	if !ok {
+		c.wrongType("$.receipts", "receipts must be an array", "write an array of {hunk, quote} objects", []any{})
+		return
+	}
+	for i, item := range items {
+		base := fmt.Sprintf("$.receipts[%d]", i)
+		m, ok := item.(*jq.Obj)
+		if !ok {
+			c.wrongType(base, "receipt must be an object", "write {hunk, quote}",
+				map[string]any{"hunk": "@@ -1 +1 @@", fieldQuote: exampleEllipsis})
+			continue
+		}
+		c.checkReceiptFields(base, m)
+		c.requireKeys(base, m, knownReceiptKeys)
+	}
+}
+
+// checkReceiptFields dispatches every published receipt key.
+func (c *checker) checkReceiptFields(base string, m *jq.Obj) {
+	for _, key := range m.Keys {
+		value, _ := m.Get(key)
+		switch key {
+		case fieldHunk, fieldQuote:
+			c.checkFilled(base+pathDot+key, value, prefixWrite+key)
+		default:
+			c.unknown(base, key, knownReceiptKeys)
+		}
+	}
+}
+
+// requireKeys reports every published key the object omits.
+func (c *checker) requireKeys(base string, m *jq.Obj, keys []string) {
+	for _, key := range keys {
+		if _, has := m.Get(key); !has {
+			c.missing(base+pathDot+key, prefixMissing+key, prefixWrite+key, exampleEllipsis)
+		}
+	}
+}
+
+func (c *checker) checkSummary(v any) {
+	s, ok := v.(string)
+	if !ok {
+		c.wrongType("$.summary", "summary must be a string", "write a short summary", exampleEllipsis)
+		return
+	}
+	if runes := utf8.RuneCountInString(s); runes > maxSummaryRunes {
+		c.outOfRange("$.summary", fmt.Sprintf("summary must be at most %d characters (got %d)", maxSummaryRunes, runes),
+			"shorten the summary", exampleEllipsis)
+	}
+}
+
+func (c *checker) checkFinding(i int, item any) {
+	base := fmt.Sprintf("$.findings[%d]", i)
 	m, ok := item.(*jq.Obj)
 	if !ok {
-		c.wrongType(base, "comment must be an object",
-			"write one {path, line, body, side} object per finding", commentExample())
+		c.wrongType(base, "finding must be an object",
+			"write one {path, line, severity, claim, quote, confidence} object", findingExample())
 		return
 	}
 	pathValue, hasPath := m.Get(fieldPath)
 	path, pathOK := pathValue.(string)
-	for _, key := range m.Keys {
-		v, _ := m.Get(key)
-		switch key {
-		case fieldPath:
-			if !pathOK {
-				c.wrongType(base+problemPathSuffix, "path must be a string", "use a changed file path", exampleFile)
-			}
-		case fieldLine, fieldStartLine:
-			c.checkAnchorValue(base+"."+key, key, v)
-		case fieldSide:
-			c.checkSide(base+".side", v)
-		case fieldBody:
-			c.checkString(base+".body", v, true, "write the finding text")
-		case fieldSuggestion:
-			c.checkSuggestion(base+".suggestion", v)
-		case fieldBrief:
-			c.checkBrief(base, v)
-		case fieldRigor:
-			c.checkRigor(base, v)
-		case fieldSeverity:
-			c.checkSeverity(base+".severity", v)
-		case fieldCategory:
-			c.checkCategory(base+".category", v)
-		case fieldInBoundsInput:
-			if _, ok := v.(bool); !ok {
-				c.wrongType(base+".in-bounds", "in-bounds must be a boolean", "use true or false", true)
-			}
-		case fieldSources:
-			c.checkSources(base, v)
-		case fieldKB:
-			c.checkKB(base+".kb", v)
-		default:
-			c.unknown(base, key, knownCommentKeys)
+	if !pathOK {
+		if hasPath {
+			c.wrongType(base+problemPathSuffix, "path must be a string", "use a changed file path", exampleFile)
+		} else {
+			c.missing(base+problemPathSuffix, "missing path", "add the changed file path", exampleFile)
 		}
 	}
-	if !hasPath {
-		c.missing(base+problemPathSuffix, "missing path", "add the changed file path", exampleFile)
-	}
-	if _, hasBody := m.Get(fieldBody); !hasBody {
-		c.missing(base+".body", "missing body", "add the finding text", exampleEllipsis)
-	}
-	if _, hasRigor := m.Get(fieldRigor); !hasRigor {
-		c.checkRigor(base, nil)
-	}
+	c.checkFindingFields(base, m)
+	c.requireKeys(base, m, []string{fieldLine, fieldSeverity, fieldClaim, fieldQuote, fieldConfidenceInput})
 	moved := c.moved
 	c.checkAnchor(base, m, path, pathOK)
 	if hasSuggestionFence(m) && c.moved == moved {
 		c.moved++
+	}
+}
+
+// checkFindingFields dispatches every published finding key. The path is
+// checked by the caller so its wrong-type and missing cases stay distinct.
+func (c *checker) checkFindingFields(base string, m *jq.Obj) {
+	for _, key := range m.Keys {
+		v, _ := m.Get(key)
+		if !c.checkFindingText(base, key, v) && !c.checkFindingShape(base, key, v) {
+			c.unknown(base, key, knownFindingKeys)
+		}
+	}
+	if _, hasRigor := m.Get(fieldRigor); !hasRigor {
+		c.checkRigor(base, nil)
+	}
+}
+
+// checkFindingText checks the keys whose value is one scalar in place, and
+// reports whether it knew the key.
+func (c *checker) checkFindingText(base, key string, v any) bool {
+	switch key {
+	case fieldPath:
+	case fieldLine, fieldStartLine:
+		if _, ok := jq.IntOf(v); !ok {
+			c.wrongType(base+pathDot+key, key+" must be an integer", "use the code line number", exampleLine)
+		}
+	case fieldSide:
+		c.checkSide(base+pathDot+fieldSide, v)
+	case fieldClaim:
+		c.checkFilled(base+pathDot+fieldClaim, v, "state the defect")
+	case fieldQuote:
+		c.checkFilled(base+pathDot+fieldQuote, v, "quote the code at path:line")
+	case fieldConfidenceInput:
+		c.checkEnum(base+pathDot+fieldConfidenceInput, v, finderConfidence, "use high, medium or low")
+	case fieldSeverity:
+		c.checkSeverity(base+pathDot+fieldSeverity, v)
+	case fieldCategory:
+		c.checkCategory(base+pathDot+fieldCategory, v)
+	default:
+		return false
+	}
+	return true
+}
+
+// checkFindingShape checks the keys that carry a nested shape, and reports
+// whether it knew the key.
+func (c *checker) checkFindingShape(base, key string, v any) bool {
+	switch key {
+	case fieldSuggestion:
+		c.checkSuggestion(base+pathDot+fieldSuggestion, v)
+	case fieldBrief:
+		c.checkBrief(base, v)
+	case fieldRigor:
+		c.checkRigor(base, v)
+	case fieldSources:
+		c.checkSources(base, v)
+	case fieldKB:
+		c.checkKB(base+pathDot+fieldKB, v)
+	default:
+		return false
+	}
+	return true
+}
+
+func (c *checker) checkEnum(path string, v any, values []string, fix string) {
+	s, ok := v.(string)
+	if !ok {
+		c.wrongType(path, "value must be a string", fix, values[0])
+		return
+	}
+	if !slices.Contains(values, s) {
+		c.badEnum(path, fmt.Sprintf("unknown value %q", s), fix, values[0])
 	}
 }
 
@@ -508,32 +678,6 @@ func (c *checker) checkVerification() {
 	}
 }
 
-//nolint:revive // the anchor type gates read as one block
-func (c *checker) checkAnchorValue(path, key string, v any) {
-	if v == nil || v == false {
-		if v == false {
-			c.wrongType(path, key+" must be an integer or numeric string", "use a line number inside a hunk", exampleLine)
-		}
-		return
-	}
-	switch t := v.(type) {
-	case string:
-		if !jq.Digits(t) {
-			c.add(c.problem(path, core.ProblemCodeWrongType, core.ProblemLevelWarning,
-				"kept despite non-numeric anchor: "+t,
-				"use a whole line number inside a hunk", exampleLine))
-		}
-		return
-	case json.Number:
-		if strings.ContainsAny(t.String(), ".eE") {
-			c.wrongType(path, key+" must be an integer or numeric string", "use a whole line number", exampleLine)
-		}
-	default:
-		c.wrongType(path, "anchor must be a string or integer", "use a line number inside a hunk", exampleLine)
-	}
-}
-
-//nolint:revive // path, missing-line, and in-hunk gates read as one check
 func (c *checker) checkAnchor(base string, m *jq.Obj, path string, pathOK bool) {
 	if !pathOK {
 		return
@@ -545,19 +689,10 @@ func (c *checker) checkAnchor(base string, m *jq.Obj, path string, pathOK bool) 
 	if !hunks.Indexed(c.hunks, key) {
 		c.add(c.problem(base+problemPathSuffix, core.ProblemCodePathNotInDiff, core.ProblemLevelError,
 			fmt.Sprintf("path %q is not in the fetched diff", path),
-			"anchor the comment on a changed file or move it into the body"))
+			"anchor the finding on a changed file or move it into the body"))
 		return
 	}
 	lo, hi, side := anchorRange(m)
-	if lo < 0 {
-		if anchorAbsent(m) {
-			c.moved++
-			c.add(c.problem(base+".line", core.ProblemCodeMissingField, core.ProblemLevelWarning,
-				"comment has no line or start_line; record moves it to the body",
-				"set line or start_line inside a reviewed hunk", exampleLine))
-		}
-		return
-	}
 	want := "NEW"
 	if side == sideLeft {
 		want = "OLD"
@@ -568,60 +703,7 @@ func (c *checker) checkAnchor(base string, m *jq.Obj, path string, pathOK bool) 
 	c.moved++
 	c.add(c.problem(base+".line", core.ProblemCodeAnchorOutsideHunk, core.ProblemLevelWarning,
 		fmt.Sprintf("anchor %d-%d (%s) is outside every reviewed hunk; record moves it to the body", lo, hi, side),
-		"move the comment to the body or set line/start_line inside a reviewed hunk"))
-}
-
-func anchorAbsent(m *jq.Obj) bool {
-	hasFalse := false
-	for _, key := range []string{fieldLine, fieldStartLine} {
-		v, has := m.Get(key)
-		if !has {
-			continue
-		}
-		if v == false {
-			hasFalse = true
-			continue
-		}
-		if v != nil {
-			return false
-		}
-	}
-	return !hasFalse
-}
-
-func (c *checker) checkDegenerateBody(body string) *core.Problem {
-	if markerRe.MatchString(body) {
-		return nil
-	}
-	switch {
-	case len(body) < degenerateFloor:
-		p := Problem{
-			Path: "$.body", Code: core.ProblemCodeMissingField, Level: core.ProblemLevelError,
-			Message: "body is degenerate (<20 chars, no verdict marker)",
-			Fix:     "open with a verdict marker (see prompts/review.md) and write the review",
-		}
-		return &p
-	case len(body) < placeholderFloor && asciiContainsLower(body, placeholderRe):
-		p := Problem{
-			Path: "$.body", Code: core.ProblemCodeMissingField, Level: core.ProblemLevelError,
-			Message: "body looks like a short placeholder",
-			Fix:     "write the real review, or open with a verdict marker",
-		}
-		return &p
-	default:
-		return nil
-	}
-}
-
-func (c *checker) checkBodyQuality(obj *jq.Obj) {
-	body, _ := obj.Get(fieldBody)
-	text, ok := body.(string)
-	if !ok {
-		return
-	}
-	if p := c.checkDegenerateBody(text); p != nil {
-		c.add(*p)
-	}
+		"set line/start_line inside a reviewed hunk and keep the finding inline"))
 }
 
 func (c *checker) checkRigor(base string, v any) {
@@ -799,61 +881,6 @@ func (c *checker) checkCoverageClaim(i int, item any) {
 	}
 }
 
-func (c *checker) checkSections(v any) {
-	if v == nil || v == false {
-		return
-	}
-	items, ok := v.([]any)
-	if !ok {
-		c.wrongType("$.sections", "sections must be an array",
-			"write an array of {heading, severity}", []any{sectionExample()})
-		return
-	}
-	c.sections = len(items)
-	for i, item := range items {
-		c.checkSection(i, item)
-	}
-}
-
-func (c *checker) checkSection(i int, item any) {
-	base := fmt.Sprintf("$.sections[%d]", i)
-	m, ok := item.(*jq.Obj)
-	if !ok {
-		c.wrongType(base, "section must be an object", "use {heading, severity}", sectionExample())
-		return
-	}
-	for _, key := range m.Keys {
-		v, _ := m.Get(key)
-		switch key {
-		case fieldHeading:
-			c.checkString(base+".heading", v, true, "use the exact ### heading string")
-		case fieldSeverity:
-			c.checkSeverity(base+".severity", v)
-		default:
-			c.unknown(base, key, knownSectionKeys)
-		}
-	}
-	if _, ok := m.Get(fieldHeading); !ok {
-		c.missing(base+".heading", "missing heading", "use the exact ### heading string", "### Security")
-	}
-}
-
-func (c *checker) checkConfidence(v any) {
-	if v == nil {
-		return
-	}
-	n, ok := v.(json.Number)
-	if !ok || strings.ContainsAny(n.String(), ".eE") {
-		c.wrongType("$.confidence", "confidence must be an integer 1-5", "use an integer 1-5", exampleConfidence)
-		return
-	}
-	level, err := n.Int64()
-	if err != nil || level < minConfidence || level > maxConfidence {
-		c.outOfRange("$.confidence", fmt.Sprintf("confidence %s is outside 1-5", n.String()),
-			"use an integer 1-5", exampleConfidence)
-	}
-}
-
 func (c *checker) checkSecuritySummary(v any) {
 	if v == nil {
 		return
@@ -1009,19 +1036,24 @@ func jsonLineCol(raw []byte, err error) (int, int) {
 
 func reviewObjectExample() map[string]any {
 	return map[string]any{
-		"schema_version": "1",
-		fieldBody:        "> ✅ Review text.",
-		problemApproved:  false,
-		fieldComments:    []any{},
+		fieldSchemaVersion: schemaVersion1,
+		problemFindings:    []any{},
 	}
 }
 
-func commentExample() map[string]any {
-	return map[string]any{fieldPath: exampleFile, fieldLine: exampleLine, fieldSide: sideRight, "body": exampleEllipsis}
+func findingExample() map[string]any {
+	return map[string]any{
+		fieldPath: exampleFile, fieldLine: exampleLine, fieldSide: sideRight,
+		fieldSeverity: exampleImportant, "claim": exampleEllipsis, "quote": exampleEllipsis, "confidence": "high",
+	}
 }
 
-func sectionExample() map[string]any {
-	return map[string]any{"heading": "### Security", fieldSeverity: exampleImportant}
+func specCheckExample() map[string]any {
+	return map[string]any{"item": exampleEllipsis, "status": "met", "evidence": evidenceExample()}
+}
+
+func evidenceExample() map[string]any {
+	return map[string]any{fieldPath: exampleFile, fieldLine: exampleLine, "quote": exampleEllipsis}
 }
 
 func nearest(s string, keys []string) string {

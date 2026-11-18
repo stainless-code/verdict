@@ -12,6 +12,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 const builtinListManifest = `{"schema_version":"1","name":"verdict/builtin","version":"1.0.0","lenses":[{"id":"perf"},{"id":"test"}]}`
@@ -538,7 +539,7 @@ func writeFixture(t *testing.T, dir string, files map[string]string) {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		if err := os.WriteFile(path, []byte(testenv.MaybeFindingsReview(path, body)), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -550,7 +551,7 @@ func writeJSON(t *testing.T, path, body string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(testenv.MaybeFindingsReview(path, body)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -296,6 +296,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[FindingEntry](), name: "entry"},
 				{typ: reflect.TypeFor[core.Withheld](), name: "withheld"},
 				{typ: reflect.TypeFor[core.Verification](), name: "panelVerification"},
+				{typ: reflect.TypeFor[Verify](), name: "findingVerification"},
 				{typ: reflect.TypeFor[Brief](), name: defsBrief},
 				{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
 				{typ: reflect.TypeFor[HistoryEvent](), name: "historyEvent"},
@@ -387,6 +388,10 @@ func documents() []document {
 				{typ: reflect.TypeFor[ChunkCoverage](), name: chunkCoverageType},
 				{typ: reflect.TypeFor[core.PostSummary](), name: "postSummary"},
 				{typ: reflect.TypeFor[core.RiskClaim](), name: defsRiskClaim},
+				{typ: reflect.TypeFor[ApprovalReceipt](), name: defsApprovalReceipt},
+				{typ: reflect.TypeFor[SpecCheck](), name: defsSpecCheck},
+				{typ: reflect.TypeFor[SpecEvidence](), name: defsSpecEvidence},
+				{typ: reflect.TypeFor[Receipt](), name: defsReceipt},
 				{typ: reflect.TypeFor[ValidationCounts](), name: defsValidationCounts},
 				{typ: reflect.TypeFor[RigorFloors](), name: defsRigorFloors},
 			},
@@ -413,6 +418,10 @@ func documents() []document {
 				{typ: reflect.TypeFor[core.PanelSummary](), name: verificationSummaryType},
 				{typ: reflect.TypeFor[ChunkCoverage](), name: chunkCoverageType},
 				{typ: reflect.TypeFor[core.RiskClaim](), name: "riskClaim"},
+				{typ: reflect.TypeFor[ApprovalReceipt](), name: defsApprovalReceipt},
+				{typ: reflect.TypeFor[SpecCheck](), name: defsSpecCheck},
+				{typ: reflect.TypeFor[SpecEvidence](), name: defsSpecEvidence},
+				{typ: reflect.TypeFor[Receipt](), name: defsReceipt},
 				{typ: reflect.TypeFor[ValidationCounts](), name: defsValidationCounts},
 				{typ: reflect.TypeFor[RigorFloors](), name: defsRigorFloors},
 			},
@@ -446,7 +455,7 @@ func documents() []document {
 			title:                "review.json — agent-written review input",
 			root:                 reflect.TypeFor[Review](),
 			defs:                 reviewDefs(),
-			additionalProperties: true,
+			additionalProperties: false,
 		},
 		{
 			name:                 "selected",
@@ -533,6 +542,10 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[RigorFloors](), name: defsRigorFloors},
 		{typ: reflect.TypeFor[core.PostSummary](), name: "postSummary"},
 		{typ: reflect.TypeFor[RecordData](), name: "recordData"},
+		{typ: reflect.TypeFor[ApprovalReceipt](), name: defsApprovalReceipt},
+		{typ: reflect.TypeFor[SpecCheck](), name: defsSpecCheck},
+		{typ: reflect.TypeFor[SpecEvidence](), name: defsSpecEvidence},
+		{typ: reflect.TypeFor[Receipt](), name: defsReceipt},
 		{typ: reflect.TypeFor[Repair](), name: "repair"},
 		{typ: reflect.TypeFor[ShowData](), name: "showData"},
 		{typ: reflect.TypeFor[ServeData](), name: "serveData"},
@@ -652,16 +665,27 @@ func envelopeDefs() []definition {
 
 const defsRiskClaim = "riskClaim"
 
+// The three evidence definitions are named once: they are published in
+// several documents and must keep one name everywhere.
+const (
+	defsApprovalReceipt = "approvalReceipt"
+	defsSpecCheck       = "specCheck"
+	defsSpecEvidence    = "specEvidence"
+	defsReceipt         = "receipt"
+)
+
 const defsValidationData = "validationData"
 
 func reviewDefs() []definition {
 	return []definition{
-		{typ: reflect.TypeFor[Comment](), name: "comment"},
+		{typ: reflect.TypeFor[Finding](), name: "finding"},
+		{typ: reflect.TypeFor[SpecCheck](), name: defsSpecCheck, closed: true},
+		{typ: reflect.TypeFor[SpecEvidence](), name: defsSpecEvidence, closed: true},
+		{typ: reflect.TypeFor[Receipt](), name: defsReceipt, closed: true},
 		{typ: reflect.TypeFor[core.Suppression](), name: "suppression"},
 		{typ: reflect.TypeFor[Brief](), name: defsBrief},
 		{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
 		{typ: reflect.TypeFor[TriageClaim](), name: "triageClaim"},
-		{typ: reflect.TypeFor[SectionTag](), name: "sectionTag"},
 		{typ: reflect.TypeFor[CoverageClaim](), name: "coverageClaim"},
 		{typ: reflect.TypeFor[core.RiskClaim](), name: defsRiskClaim},
 	}

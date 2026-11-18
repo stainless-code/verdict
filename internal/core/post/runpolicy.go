@@ -72,7 +72,7 @@ func (st *state) complianceGate() *core.RefusalError {
 	}
 	first := blocked[0]
 	return &core.RefusalError{Code: CodeRequirementBlocked, Message: fmt.Sprintf(
-		msgRequirementBlocked, findingLabel(first.Finding), first.Clause,
+		msgRequirementBlocked, findingLabel(&first.Finding), first.Clause,
 		strings.Join(first.Sources, ", "), blockingGroup(&first))}
 }
 
@@ -100,7 +100,9 @@ func policyFindings(entries []any) []config.FindingView {
 		category, _ := m.Get("category")
 		severity, _ := m.Get("severity")
 		status, _ := m.Get("status")
+		sig, _ := m.Get("sig")
 		out = append(out, config.FindingView{
+			Sig:      jq.StrOf(sig),
 			Path:     jq.StrOf(path),
 			Category: jq.StrOf(category),
 			Severity: jq.StrOf(severity),
@@ -111,7 +113,7 @@ func policyFindings(entries []any) []config.FindingView {
 }
 
 // findingLabel names a blocking finding for the refusal.
-func findingLabel(finding config.FindingView) string {
+func findingLabel(finding *config.FindingView) string {
 	if finding.Path != "" {
 		return finding.Path + " [" + finding.Category + "/" + finding.Severity + "]"
 	}

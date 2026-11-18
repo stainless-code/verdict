@@ -47,7 +47,7 @@ bad-range	try: re-run with one of the valid values named above
 bad-reason	try: re-run with one of the valid values named above
 bad-recipe	try: fix the key named above in .verdict/recipes.json, commit it at the base, then re-fetch
 bad-requirement	try: re-run with one of the valid values named above
-bad-review-input	try: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run
+bad-review-input	try: fix the malformed agent input named above (review.json wants findings[]; each finding wants path, line, severity, claim, quote and confidence), then re-run
 bad-review-schema	try: set "schema_version": "1" in review.json
 bad-rigor	try: re-run with one of the valid values named above
 bad-rigor-policy	try: pass --require-rigor <tier>=<said|pointed|walked|ran|reproduced>, or fix rigor_policy in the trusted-base .verdict/config.json
@@ -181,6 +181,7 @@ provider-unknown	try: pass --provider github|gitlab|gitcafe|forgejo|bitbucket|az
 rationale-required	try: add --rationale with 30+ chars, or --force
 read-only-tool	try: restart the MCP server without --read-only; use --operator for operator-only tools
 record-failed	try: address the cause above, then re-run the same command
+record-stale	try: run 'verdict record <repo> <slug>' again on the current review, then post — record.json's decision predates the review or the bundle
 repair-exhausted	try: fix every error named in error.problems, then re-run (when the cap was hit, raise --rounds up to 5; for no progress check the round files)
 report-failed	try: run the fetch/record step named above first, then re-run
 requirement-blocked	try: address the cause above, then re-run the same command

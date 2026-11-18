@@ -202,6 +202,53 @@
       "required": ["level", "rationale", "assessed_head"],
       "additionalProperties": true
     },
+    "approvalReceipt": {
+      "type": "object",
+      "properties": {
+        "reason": { "type": "string" },
+        "tier": { "enum": ["critical", "important", "informational"] },
+        "gating_sigs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "clauses": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "approved": { "type": "boolean" }
+      },
+      "required": ["reason", "tier", "gating_sigs", "approved"],
+      "additionalProperties": true
+    },
+    "specCheck": {
+      "type": "object",
+      "properties": {
+        "item": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["met", "violated", "n/a"] },
+        "evidence": { "$ref": "#/$defs/specEvidence" }
+      },
+      "required": ["item", "status", "evidence"],
+      "additionalProperties": true
+    },
+    "specEvidence": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "quote": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer" }
+      },
+      "required": ["path", "quote", "line"],
+      "additionalProperties": true
+    },
+    "receipt": {
+      "type": "object",
+      "properties": {
+        "hunk": { "type": "string", "minLength": 1 },
+        "quote": { "type": "string", "minLength": 1 }
+      },
+      "required": ["hunk", "quote"],
+      "additionalProperties": true
+    },
     "validationCounts": {
       "type": "object",
       "properties": {

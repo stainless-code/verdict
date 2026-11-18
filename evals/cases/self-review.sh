@@ -39,6 +39,7 @@ for agent in claude codex opencode; do
     if [ "$mode" = fix ]; then
       assert_exit "$agent fixes and passes round 2" 0
       assert_json_field "pass on last gate" true '.rounds[-1].gate' "$output/summary.json"
+      assert_json_field "the stale round hands its findings to the retry" true '.rounds[0].stale' "$output/summary.json"
     else
       assert_exit "$agent exhausts without a false pass" 1
       assert_json_field "max rounds" max-rounds '.stop' "$output/summary.json"

@@ -21,7 +21,7 @@ verdict fetch owner/repo 123
 #    Point the agent at .verdict/state/123/. It reads .verdict/state/123/procedure.md first,
 #    then .verdict/state/123/full.diff fully via .verdict/state/123/toc.txt, and fans out
 #    0-N lenses per prompts/reviewer-subagent.md for disposition-changing questions only.
-#    Write exactly one .verdict/state/123/review.json {schema_version: 1, body, approved, comments[], resolved?, triage?, sections?}.
+#    Write exactly one .verdict/state/123/review.json {schema_version: "1", findings[], spec_checks?, receipts?, summary?, resolved?, triage?}.
 
 # 3. post (exactly once — validates anchors, merges findings, submits)
 verdict post owner/repo 123
@@ -38,24 +38,26 @@ evidence rungs, keep-biased, and its sibling doctrines.
 ```json
 {
   "schema_version": "1",
-  "body": "> [!IMPORTANT]\n> ...\n\n**Reviewed changes**\n...\n<!-- metadata -->",
-  "approved": false,
-  "comments": [
+  "summary": "A short prose summary; verdict renders the body.",
+  "findings": [
     {
       "path": "src/api.ts",
       "line": 42,
       "side": "RIGHT",
-      "body": "2-3 sentences, actionable.",
+      "claim": "2-3 sentences, actionable.",
+      "quote": "the exact changed line this claim rests on",
+      "confidence": "high",
       "rigor": "walked",
-      "severity": "important",
-      "in-bounds": true
+      "severity": "important"
     },
     {
       "path": "src/api.ts",
       "start_line": 42,
       "line": 44,
       "side": "RIGHT",
-      "body": "…",
+      "claim": "…",
+      "quote": "…",
+      "confidence": "medium",
       "suggestion": "    fixed code…\n",
       "brief": {
         "sites": [
@@ -76,21 +78,24 @@ evidence rungs, keep-biased, and its sibling doctrines.
       "rationale": "By design: … (≥30 chars)"
     }
   ],
-  "sections": [
+  "spec_checks": [
     {
-      "heading": "### ⚠️ Rollout needs a migration window",
-      "severity": "important"
+      "item": "The handed spec requires bounded retries.",
+      "status": "met",
+      "evidence": { "path": "src/api.ts", "line": 42, "quote": "retry(3)" }
     }
-  ]
+  ],
+  "receipts": [{ "hunk": "@@ -40,6 +40,8 @@", "quote": "retry(3)" }]
 }
 ```
 
-Inline rules: `path` must be in the fetched diff (a comment on any other path
-refuses), `line` = NEW-side line inside an `@@` hunk (`side` RIGHT default,
-LEFT for deleted lines; any other side refuses), multi-line needs `start_line`
-in the same hunk, `suggestion` must preserve exact indentation. An absent
-`line`/`start_line` warns and moves the comment to the body; a present
-non-numeric anchor warns and keeps it inline. A fenced `suggestion` warns and
+Inline rules: `path` must be in the fetched diff (a finding on any other path
+refuses), `line` is a strict integer NEW-side line inside an `@@` hunk (`side`
+RIGHT default, LEFT for deleted lines; any other side refuses), and multi-line
+needs an integer `start_line` in the same hunk. `claim` is stored as the
+finding body so signatures stay stable; `quote` is the code evidence S4
+verifies against the pinned diff. A missing `line`, `severity`, `claim`, `quote`
+or `confidence` refuses the review. A fenced `suggestion` warns and
 posts as plain body text. Suggestions render as fenced blocks in `body` (raw
 keys never hit the API). `brief` is the optional machine form of the same
 finding: `outcome` (required, 10–500 chars) plus `sites` (≤10 `{path, line?}`,
@@ -101,7 +106,6 @@ hunk, a site/question past its cap, or a short approach/question warns and
 drops only that part. `brief` is outside the sig, so editing it never creates
 a finding.
 `resolved` lists finding sigs (short ids from the prior `findings.json` table) the run addresses.
-`sections` carries severity tags `{heading, severity}` for `###` body sections — exact heading string, unmatched tags ignored.
 
 The commentable set is pinned at fetch time: `fetch`/`fetch-local` writes
 `.verdict/state/<bundle>/hunks.tsv` (per-file, side-aware `NEW`/`OLD` ranges from
@@ -116,8 +120,8 @@ re-fetch to pin it.
 
 ## Findings store + triage authority
 
-`post` writes `.verdict/state/N/findings.json`: one record per inline comment and body `###`
-section with a stable line-number-free signature, `status` (`open`/`addressed`/`wont-fix`/
+`post` writes `.verdict/state/N/findings.json`: one record per finding with a stable
+line-number-free signature, `status` (`open`/`addressed`/`wont-fix`/
 `false-positive`/`deferred`), first/last seen SHAs, evidence rung (`said`/`pointed`/`walked`/
 `ran`/`reproduced`, default `pointed`), the optional `brief` (`sites`/`outcome`/`approach`/
 `questions`, stored additively — a finding without one is written without the
@@ -208,13 +212,15 @@ path instead (`record.json` head reads `"dirty"`).
 
 `record` and `record --dry-run` run the same pure checker over `review.json`
 and `full.diff` (`pkg/verdict.CheckReview`). The record path also hands it the
-chunk manifest names and `verification.json` claims, so comment/brief parts,
-anchors and sides, kb ids, chunk attestation, confidence, security summaries,
-claims, triage, sections, and verification shapes all reach one list. It walks
+chunk manifest names and `verification.json` claims, so finding/brief parts,
+anchors and sides, kb ids, chunk attestation, finder confidence, security
+summaries, claims, triage, spec checks, receipts, and verification shapes all
+reach one list. It walks
 the document in order, collects every problem with its JSONPath and exact fix,
 caps the list at 50 (`error.problems_truncated` counts the overflow), and
 refuses once as `bad-review-input`. A clean dry run exits 0, writes nothing,
-and reports `data.check` — comment, section, and moved-anchor counts. Human
+and reports `data.check` — the finding count and the anchors that leave the inline set
+for the rendered body. Human
 mode prints every problem before the `try:`/`re-enter:` lines; JSON mode
 carries the same list in `error.problems[]`. A warning alone exits 0 and rides
 `warnings`; `--strict`, or `"strict_input": true` in the bundle's
@@ -228,41 +234,39 @@ PR bundle still refuses `not-local` (use `post`).
 Before checking, `record` runs `NormalizeReview` over the agent's bytes: one
 whole-document code fence is unwrapped, prose around exactly one balanced JSON
 object is dropped, a scalar where a string array belongs becomes a one-element
-array, the aliases `inBounds` and `in_bounds` become `in-bounds` while
-`rung`/`file` become `rigor`/`path`, rigor synonyms and enum case are
-folded, and a BOM, an explicit null on an
-optional key, or an exact-duplicate comment is removed. Every rewrite is a
+array, the aliases `file` and `rung` become `path` and `rigor`, rigor synonyms
+and enum case fold to the published value, and a BOM, an explicit null on an
+optional key, or an exact-duplicate finding is removed. Every rewrite is a
 warning with its own code and is listed in `record.json`'s `repairs[]`; strict
 input turns each into an error. A repair never invents or rewrites prose, and
-an unparsable or non-object document, a comment with no recoverable string
-`path`/`body`, an unknown `schema_version`, a corrupt store, or partial chunk
+an unparsable or non-object document, a finding with no recoverable
+string `path`/`claim`, an unknown `schema_version`, a corrupt store, or partial chunk
 coverage still refuses. `record --dry-run` adds `data.normalized` (the exact
 object the checker read) and `data.repairs`; verdict never rewrites
-`review.json` on disk. The CLI also owns the body's `> Basis:` line: it
-replaces a disagreeing line, or inserts a missing one under the leading quote
-block's confidence lead, with the counts computed from the review and reports
-`basis-replaced`. A body with no leading quote block has no lead to insert
-under, so it stays byte-identical and reports nothing.
+`review.json` on disk. Because the agent writes no body, the CLI also renders
+one: the verdict marker, the optional `summary` paragraph, then one numbered
+line per finding. It owns the `> Basis:` line outright — the counts come from
+the stored review, and a line the agent never wrote is never reported back as a
+repair.
 
-| Code                   | Level   | Meaning                                                                                                                                       |
-| ---------------------- | ------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `invalid-json`         | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object.                                      |
-| `wrong-type`           | mixed   | Error for a wrong type; warning for a non-numeric line/start_line or a fenced suggestion.                                                     |
-| `missing-field`        | mixed   | Error for a required field; warning for missing comments or line/start_line.                                                                  |
-| `bad-enum`             | mixed   | Error for an unknown closed-set value; warning for a malformed KB id or unknown chunk name.                                                   |
-| `out-of-range`         | error   | A length or numeric bound is outside its published range (confidence, brief approach/question, caps).                                         |
-| `path-not-in-diff`     | mixed   | Error for a comment path; warning for a brief site outside the diff.                                                                          |
-| `unknown-field`        | warning | A key is not in the published shape; the fix names the nearest known key.                                                                     |
-| `risk-stale-head`      | warning | `review.json.risk.assessed_head` disagrees with the bundle's current HEAD SHA; the stored claim is marked `stale: true`.                      |
-| `anchor-outside-hunk`  | warning | The line is provably outside every hunk; `record` moves the comment into the body.                                                            |
-| `rigor-unset`          | warning | A comment carries no evidence rung; it records as `said` with `rigor_source: default`.                                                        |
-| `normalized-fence`     | warning | One whole-document code fence was unwrapped.                                                                                                  |
-| `normalized-extracted` | warning | Prose around exactly one balanced JSON object was dropped.                                                                                    |
-| `scalar-to-array`      | warning | A scalar where a string array belongs was wrapped in a one-element array.                                                                     |
-| `key-alias`            | warning | A known alias (`inBounds`, `in_bounds`, `rung`, `file`) was renamed to its canonical key.                                                     |
-| `enum-synonym`         | warning | A rigor synonym or a case-folded enum value was rewritten to the published value.                                                             |
-| `normalized-trivia`    | warning | A BOM, an explicit null on an optional key, or an exact-duplicate comment was removed.                                                        |
-| `basis-replaced`       | warning | The body's `> Basis:` line disagreed with the computed counts and was replaced, or was missing from the leading quote block and was inserted. |
+| Code                   | Level   | Meaning                                                                                                                  |
+| ---------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `invalid-json`         | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object.                 |
+| `wrong-type`           | mixed   | Error for a wrong type, including a non-integer anchor; warning for a fenced suggestion.                                 |
+| `missing-field`        | error   | A required key is absent.                                                                                                |
+| `bad-enum`             | mixed   | Error for an unknown closed-set value; warning for a malformed KB id or unknown chunk name.                              |
+| `out-of-range`         | error   | A length or numeric bound is outside its published range (summary length, brief approach/question, caps).                |
+| `path-not-in-diff`     | mixed   | Error for a finding path; warning for a brief site outside the diff.                                                     |
+| `unknown-field`        | mixed   | Error at the document root, where the shape is closed; warning inside a finding. The fix names the nearest known key.    |
+| `risk-stale-head`      | warning | `review.json.risk.assessed_head` disagrees with the bundle's current HEAD SHA; the stored claim is marked `stale: true`. |
+| `anchor-outside-hunk`  | warning | The line is provably outside every hunk; `record` moves the finding out of the inline set into the body.                 |
+| `rigor-unset`          | warning | A finding carries no evidence rung; it records as `said` with `rigor_source: default`.                                   |
+| `normalized-fence`     | warning | One whole-document code fence was unwrapped.                                                                             |
+| `normalized-extracted` | warning | Prose around exactly one balanced JSON object was dropped.                                                               |
+| `scalar-to-array`      | warning | A scalar where a string array belongs was wrapped in a one-element array.                                                |
+| `key-alias`            | warning | A known alias (`rung`, `file`) was renamed to its canonical key.                                                         |
+| `enum-synonym`         | warning | A rigor synonym or a case-folded enum value was rewritten to the published value.                                        |
+| `normalized-trivia`    | warning | A BOM, an explicit null on an optional key, or an exact-duplicate finding was removed.                                   |
 
 ### Sig contract (sig_version 1)
 
@@ -279,8 +283,9 @@ previous merge filled a missing rung with `pointed`, and every other recognized 
 reads as `model`. A review that explicitly wrote `pointed` is indistinguishable from
 a default-filled one, so those entries read as `default` either way. Changing the normalization orphans
 history — that ships as a new `sig_version`, never silently.
-`review.json` inputs stamp `schema_version: "1"` (`post`/`record` refuse a
-present value other than `"1"`; an absent key reads as 1 without a warning);
+`review.json` inputs stamp `schema_version: "1"` (`post`/`record` refuse an
+absent or different value with `bad-enum`; there is no shim for another
+version);
 every bundle carries
 `.verdict/state/N/store.json` (`{"schema_version":"1"}`) marking the generation of the
 whole store — plugins read it instead of sniffing shapes. GitHub bundles keep
@@ -529,7 +534,7 @@ the same built-in, org, and repo layering used by review. Use
 is a pre-v1 design and may change before pack format v1. Each `evals/<case>/`
 directory contains `diff.patch`, `findings.json`, and `expect.json`.
 `findings.json` is an array in the
-`review.json` `comments[]` shape, including `kb` rule ids. `expect.json` has a
+`review.json` `findings[]` shape, including `kb` rule ids. `expect.json` has a
 required `rules` array and an optional `not_rules` array. Rule selection uses
 the changed paths and the pack's `globs`; the format has no separate language
 field. Each finding must validate and anchor inside the diff, cite a rule in
@@ -1310,7 +1315,7 @@ most seven bundle files (plus an overflow pointer to `toc.txt`). Under the
 lead, `--output` renders a `> Basis: …` line computed exactly from the
 findings store (rigor rung counts in evidence order, distinct cited kb rule
 ids, addressed findings as verified fixes — covering the whole store
-regardless of display filters; the agent-authored `> Basis:` line in `review.json` is replaced with the counts computed from the review's own comments, so carried-over findings never warn). Every `--output` file and every posted body
+regardless of display filters; v2 verdict-owned body, so no agent-authored `> Basis:` line is rewritten). Every `--output` file and every posted body
 ends with one merged footer block (tier, cost or unrecorded, files
 reviewed, review link when known, plus a leveled attribution line with
 logo) — see
@@ -1819,9 +1824,18 @@ policy gates, and the severity floors. A missing path refuses
 `missing-review-file`; `--dry-run` prints the validation and payload summary,
 writes `findings.dryrun.json`, and posts nothing.
 
-Approval intent comes from the review body, not from `--approve=false`: a
-review file with `approved: true` can approve even though `--approve=false` is
-the default. A binding verdict (`APPROVE`/`REQUEST_CHANGES`) still needs
+Approval is derived by verdict, not asked for by the agent. With no
+repository policy, `important_default` is the named threshold: any open,
+visible finding whose quote standing is not `unverified` at `important` or
+above withholds approval. `block_clauses` and `report --check` refine that
+default when configured, and a violated `spec_checks[]` entry also withholds
+approval. The decision is recorded once, in `record.json` and `data.approval`,
+with the `review_sha256`, `diff_sha256` and head it was decided on; `post` reads
+that stored decision and publishes it even with `--approve=false`, and a
+`record.json` whose review, diff, or head moved since it was written refuses
+`record-stale` rather than re-deciding over a review nobody recorded. The
+rendered body follows the same decision, so a withheld approval never publishes
+the clean lead. A binding verdict (`APPROVE`/`REQUEST_CHANGES`) still needs
 `--bind`; without it, `post` downgrades to `COMMENT`. A binding verdict on your
 own PR is also downgraded to `COMMENT`, and `--force` does not override that
 guard. A bundle whose stored PR state is not `OPEN` refuses `pr-not-open`; an

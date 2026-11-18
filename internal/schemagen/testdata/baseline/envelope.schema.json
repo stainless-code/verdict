@@ -124,7 +124,7 @@
       "type": "object",
       "properties": {
         "path": {
-          "description": "JSONPath into review.json, for example $.comments[3].brief.questions.",
+          "description": "JSONPath into review.json, for example $.findings[3].brief.questions.",
           "type": "string"
         },
         "code": {
@@ -132,7 +132,6 @@
           "enum": [
             "anchor-outside-hunk",
             "bad-enum",
-            "basis-replaced",
             "enum-synonym",
             "invalid-json",
             "key-alias",
@@ -166,14 +165,13 @@
       "additionalProperties": true
     },
     "checkSummary": {
-      "description": "What a clean dry run would record: comment and section counts plus anchors that would move to the body.",
+      "description": "What a clean dry run would record: the finding count plus the anchors that would leave the inline set for the rendered body.",
       "type": "object",
       "properties": {
-        "comments": { "type": "integer", "minimum": 0 },
-        "sections": { "type": "integer", "minimum": 0 },
+        "findings": { "type": "integer", "minimum": 0 },
         "anchors_moved_to_body": { "type": "integer", "minimum": 0 }
       },
-      "required": ["comments", "sections", "anchors_moved_to_body"],
+      "required": ["findings", "anchors_moved_to_body"],
       "additionalProperties": true
     },
     "anchorsSummary": {
@@ -1071,6 +1069,17 @@
         "coverage": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/coverageSummary" }]
         },
+        "approval": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/approvalReceipt" }]
+        },
+        "spec_checks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/specCheck" }
+        },
+        "receipts": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/receipt" }
+        },
         "normalized": {
           "description": "Present on record --dry-run: the exact review object the checker read after safe repairs, as an object.",
           "type": "object"
@@ -1089,6 +1098,53 @@
         "security_summary",
         "items"
       ],
+      "additionalProperties": true
+    },
+    "approvalReceipt": {
+      "type": "object",
+      "properties": {
+        "reason": { "type": "string" },
+        "tier": { "enum": ["critical", "important", "informational"] },
+        "gating_sigs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "clauses": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "approved": { "type": "boolean" }
+      },
+      "required": ["reason", "tier", "gating_sigs", "approved"],
+      "additionalProperties": true
+    },
+    "specCheck": {
+      "type": "object",
+      "properties": {
+        "item": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["met", "violated", "n/a"] },
+        "evidence": { "$ref": "#/$defs/specEvidence" }
+      },
+      "required": ["item", "status", "evidence"],
+      "additionalProperties": true
+    },
+    "specEvidence": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "quote": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer" }
+      },
+      "required": ["path", "quote", "line"],
+      "additionalProperties": true
+    },
+    "receipt": {
+      "type": "object",
+      "properties": {
+        "hunk": { "type": "string", "minLength": 1 },
+        "quote": { "type": "string", "minLength": 1 }
+      },
+      "required": ["hunk", "quote"],
       "additionalProperties": true
     },
     "repair": {

@@ -23,7 +23,7 @@ mklocal() { # $1 = slug (without the local- prefix)
   jq --arg h "$HEADA" '.head_sha = $h | .head_ref = "feature"' \
     "$dir/source.json" >"$dir/source.json.tmp"
   mv "$dir/source.json.tmp" "$dir/source.json"
-  cat > "$dir/review.json" <<'EOF'
+  eval_write_review_at "$dir/review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks good overall — one nit below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Consider clarifying this line.","rigor":"pointed","severity":"informational"}]}
 EOF
 }

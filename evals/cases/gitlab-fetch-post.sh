@@ -66,7 +66,7 @@ assert_json_field "the dry run covers the fetched head" "$HEAD" '.data.commit_id
 assert_json_field "the dry run keeps the inline anchor" 1 '.data.anchors.kept'
 assert_json_field "the dry run renders one discussion" notes.txt:2 '.data.items[0].locator'
 assert_json_field "the discussion keeps its finding sig" "$SIG" '.data.items[0].sig'
-assert_json_field "the dry run warns about nothing" 0 '.warnings | length'
+assert_json_field "the dry run names the derived COMMENT downgrade" 1 '.warnings | length'
 assert_json_field "the rendered discussion lands on the changed line" 2 '.[0].line' "$DIR/findings.dryrun.json"
 assert_json_field "the rendered discussion takes the right side" RIGHT '.[0].side' "$DIR/findings.dryrun.json"
 assert_json_field "the rendered discussion is anchored" true '.[0].anchored' "$DIR/findings.dryrun.json"

@@ -3,16 +3,17 @@
   "panel": ["panel-alpha"],
   "review": {
     "schema_version": "1",
-    "body": "> \ud83e\udd16 Seeded clean control \u2014 not a model-quality claim.",
-    "approved": false,
-    "comments": [
+    "summary": "> \ud83e\udd16 Seeded clean control \u2014 not a model-quality claim.",
+    "findings": [
       {
         "path": "sample.go",
         "line": 3,
         "side": "RIGHT",
-        "body": "Unnecessary rename could cause a regression.",
         "rigor": "walked",
-        "severity": "informational"
+        "severity": "informational",
+        "claim": "Unnecessary rename could cause a regression.",
+        "quote": "Unnecessary rename could cause a regression.",
+        "confidence": "high"
       }
     ]
   }

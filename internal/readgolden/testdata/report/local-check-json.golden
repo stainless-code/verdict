@@ -82,6 +82,12 @@ exit: 0
         "rank": 1
       }
     ],
+    "approval": {
+      "reason": "no gating findings",
+      "tier": "critical",
+      "gating_sigs": [],
+      "approved": true
+    },
     "gate": {
       "passed": true,
       "dimensions": [

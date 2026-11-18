@@ -13,9 +13,14 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
+// loopFinding is one published finding; extra appends optional keys.
+func loopFinding(extra string) string {
+	return `{"path":"pagination.go","line":42,"severity":"important","claim":"off by one",` +
+		`"quote":"for i := range xs {","confidence":"high"` + extra + `}`
+}
+
 func loopGoodReview() string {
-	return `{"schema_version":"1","body":"ok","approved":false,` +
-		`"comments":[{"path":"pagination.go","line":42,"body":"off by one","rigor":"walked"}]}`
+	return `{"schema_version":"1","findings":[` + loopFinding(`,"rigor":"walked"`) + `]}`
 }
 
 func dryInvalidMissingField() DryRunResult {
@@ -31,8 +36,7 @@ func dryInvalidMissingField() DryRunResult {
 }
 
 func dryValidEmpty() DryRunResult {
-	norm := []byte(`{"schema_version":"1","body":"ok","approved":false,` +
-		`"comments":[{"path":"pagination.go","line":42,"body":"off by one","rigor":"walked"}]}`)
+	norm := []byte(loopGoodReview())
 	return DryRunResult{
 		Envelope:   []byte(`{"data":{}}`),
 		Normalized: norm,
@@ -40,8 +44,7 @@ func dryValidEmpty() DryRunResult {
 }
 
 func dryWarningOnly() DryRunResult {
-	norm := []byte(`{"schema_version":"1","body":"ok","approved":false,` +
-		`"comments":[{"path":"pagination.go","line":42,"body":"off by one"}]}`)
+	norm := []byte(`{"schema_version":"1","findings":[` + loopFinding("") + `]}`)
 	return DryRunResult{
 		Envelope:   []byte(`{"data":{}}`),
 		Normalized: norm,
@@ -72,7 +75,7 @@ func checkRoundOneBytes(t *testing.T, cfg *Config, slug, want string) {
 func TestLoopBadThenFixedEndsValid(t *testing.T) {
 	needPOSIX(t)
 	restoreWD(t)
-	bad := `{"schema_version":"1","body":"ok","approved":false,"comments":[{"path":"x","line":1}]}`
+	bad := `{"schema_version":"1","claim":"ok","approved":false,"findings":[{"path":"x","line":1}]}`
 	runBadThenFixed(t, bad, loopGoodReview())
 }
 
@@ -143,7 +146,7 @@ func TestLoopSingleShotOmitsLoopBlocks(t *testing.T) {
 
 // TestFixRateRepairOnlyNotModelFix separates repairs.
 func TestFixRateRepairOnlyNotModelFix(t *testing.T) {
-	badBytes := []byte(`{"comments":[{"path":"a","line":1,"body":"one"}]}`)
+	badBytes := []byte(`{"findings":[{"path":"a","line":1,"claim":"one"}]}`)
 	bad := makeRepairAttempt(badBytes, "aaa", false)
 	good := makeRepairAttempt(badBytes, "aaa", true)
 	rates := fixRatesFromOutcomes([]*LoopOutcome{{Attempts: []RoundAttempt{bad, good}}})
@@ -176,12 +179,12 @@ func makeRepairAttempt(raw []byte, sha string, fixed bool) RoundAttempt {
 
 // TestFixRateDropIsLossNotFix keeps deletion as loss.
 func TestFixRateDropIsLossNotFix(t *testing.T) {
-	before := []byte(`{"comments":[{"path":"a","line":1}]}`)
-	after := []byte(`{"comments":[]}`)
+	before := []byte(`{"findings":[{"path":"a","line":1}]}`)
+	after := []byte(`{"findings":[]}`)
 	cur := RoundAttempt{Round: 1, ReviewSHA: "aaa", ReviewBytes: before}
 	cur.Dry = DryRunResult{Exit: 1, Normalized: before}
 	cur.Dry.Problems = []core.Problem{{
-		Path: "$.comments[0].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f",
+		Path: "$.findings[0].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f",
 	}}
 	next := RoundAttempt{Round: 2, ReviewSHA: "bbb", ReviewBytes: after}
 	next.Dry = DryRunResult{Exit: 0, Normalized: after}
@@ -214,13 +217,13 @@ func dropPair(curRaw, nextRaw []byte, problems []core.Problem) (RoundAttempt, Ro
 // the missing-drop repro at the unit seam: two missing-body findings are
 // deleted while one valid finding survives, so both problems are drops.
 func TestFixRateDeletesMultipleInvalidFindingsWhileUnrelatedSurvives(t *testing.T) {
-	kept := `{"path":"pagination.go","line":11,"body":"looks good"}`
-	before := []byte(`{"comments":[` + kept +
+	kept := `{"path":"pagination.go","line":11,"claim":"looks good"}`
+	before := []byte(`{"findings":[` + kept +
 		`,{"path":"pagination.go","line":42},{"path":"pagination.go","line":51}]}`)
-	after := []byte(`{"comments":[` + kept + `]}`)
+	after := []byte(`{"findings":[` + kept + `]}`)
 	problems := []core.Problem{
-		{Path: "$.comments[1].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f"},
-		{Path: "$.comments[2].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f"},
+		{Path: "$.findings[1].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f"},
+		{Path: "$.findings[2].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f"},
 	}
 	cur, next := dropPair(before, after, problems)
 	rates := fixRatesFromOutcomes([]*LoopOutcome{{Attempts: []RoundAttempt{cur, next}}})
@@ -253,12 +256,12 @@ func dropRateOK(fr *FixRate) bool {
 // TestFixRateBodyEditCountsAsFix keeps an edited finding from reading as a
 // deletion: the anchor survives with new text, so the problem is fixed.
 func TestFixRateBodyEditCountsAsFix(t *testing.T) {
-	before := []byte(`{"comments":[{"path":"a","line":1}]}`)
-	after := []byte(`{"comments":[{"path":"a","line":1,"body":"found it"}]}`)
+	before := []byte(`{"findings":[{"path":"a","line":1}]}`)
+	after := []byte(`{"findings":[{"path":"a","line":1,"claim":"found it"}]}`)
 	cur := RoundAttempt{Round: 1, ReviewSHA: "aaa", ReviewBytes: before}
 	cur.Dry = DryRunResult{Exit: 1}
 	cur.Dry.Problems = []core.Problem{{
-		Path: "$.comments[0].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f",
+		Path: "$.findings[0].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f",
 	}}
 	next := RoundAttempt{Round: 2, ReviewSHA: "bbb", ReviewBytes: after}
 	next.Dry = DryRunResult{Exit: 0, Normalized: after}
@@ -278,13 +281,13 @@ func TestFixRateBodyEditCountsAsFix(t *testing.T) {
 // TestFixRateSplitsLevelsPerCode keeps one code's error and warning rows
 // apart.
 func TestFixRateSplitsLevelsPerCode(t *testing.T) {
-	before := []byte(`{"comments":[{"path":"a","line":1},{"path":"b","line":2}]}`)
-	after := []byte(`{"comments":[{"path":"a","line":1,"body":"x"},{"path":"b","line":2,"body":"y"}]}`)
+	before := []byte(`{"findings":[{"path":"a","line":1},{"path":"b","line":2}]}`)
+	after := []byte(`{"findings":[{"path":"a","line":1,"claim":"x"},{"path":"b","line":2,"claim":"y"}]}`)
 	cur := RoundAttempt{Round: 1, ReviewSHA: "aaa", ReviewBytes: before}
 	cur.Dry = DryRunResult{Exit: 1}
 	cur.Dry.Problems = []core.Problem{
-		{Path: "$.comments[0].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f"},
-		{Path: "$.comments[1].body", Code: "missing-field", Level: "warning", Message: "m", Fix: "f"},
+		{Path: "$.findings[0].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f"},
+		{Path: "$.findings[1].body", Code: "missing-field", Level: "warning", Message: "m", Fix: "f"},
 	}
 	next := RoundAttempt{Round: 2, ReviewSHA: "bbb", ReviewBytes: after}
 	next.Dry = DryRunResult{Exit: 0, Normalized: after}
@@ -319,9 +322,9 @@ func levelRateOK(fr *FixRate, shown, fixed, dropped int) bool {
 // TestFixRateRepairNeedsSamePath keeps a repair on another path from
 // excusing a model fix.
 func TestFixRateRepairNeedsSamePath(t *testing.T) {
-	raw := []byte(`{"comments":[{"path":"a","line":1,"body":"one"}]}`)
+	raw := []byte(`{"findings":[{"path":"a","line":1,"claim":"one"}]}`)
 	problem := []core.Problem{{
-		Path: "$.comments[0].rigor", Code: "key-alias", Level: "warning", Message: "m", Fix: "f",
+		Path: "$.findings[0].rigor", Code: "key-alias", Level: "warning", Message: "m", Fix: "f",
 	}}
 	for _, tc := range []struct {
 		name       string
@@ -329,8 +332,8 @@ func TestFixRateRepairNeedsSamePath(t *testing.T) {
 		wantRepair int
 		wantFixed  int
 	}{
-		{name: "same path", repairPath: "$.comments[0].rigor", wantRepair: 1, wantFixed: 0},
-		{name: "other path", repairPath: "$.comments[0].path", wantRepair: 0, wantFixed: 1},
+		{name: "same path", repairPath: "$.findings[0].rigor", wantRepair: 1, wantFixed: 0},
+		{name: "other path", repairPath: "$.findings[0].path", wantRepair: 0, wantFixed: 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			checkRepairPath(t, raw, problem, tc.repairPath, tc.wantRepair, tc.wantFixed)
@@ -387,7 +390,7 @@ func checkWrongTypeSlot(t *testing.T, got []rawSlot) {
 // index survives with its alias-resolved path, even with empty or wrong-typed
 // fields, so later matching sees the true owner.
 func TestLoopRawSlotsPreserveEveryIndex(t *testing.T) {
-	raw := []byte(`{"comments":[{},{"path":"a","line":1,"body":"raw"},{"file":"a","line":1,"body":"raw"},{"path":"a","line":1,"body":42}]}`)
+	raw := []byte(`{"findings":[{},{"path":"a","line":1,"claim":"raw"},{"file":"a","line":1,"claim":"raw"},{"path":"a","line":1,"claim":42}]}`)
 	got := loopCommentList(raw)
 	if len(got) != 4 {
 		t.Fatalf("slots = %+v, want four preserved indexes", got)
@@ -410,7 +413,7 @@ func checkDropDiff(t *testing.T, cur, next *RoundAttempt) {
 
 // TestReplayLoopTwiceByteIdentical replays without agent.
 func TestReplayLoopTwiceByteIdentical(t *testing.T) {
-	bad := []byte(`{"comments":[{"path":"a","body":"x"}]}`)
+	bad := []byte(`{"findings":[{"path":"a","claim":"x"}]}`)
 	good := []byte(loopGoodReview())
 	reviews := [][]byte{bad, good}
 	dry := func(round int, _ []byte) (DryRunResult, error) {
@@ -436,7 +439,7 @@ func TestReplayLoopTwiceByteIdentical(t *testing.T) {
 func TestLoopGiveUpAfterMaxRounds(t *testing.T) {
 	needPOSIX(t)
 	restoreWD(t)
-	t.Setenv("BENCH_TEST_REVIEW", `{"body":"ok"}`)
+	t.Setenv("BENCH_TEST_REVIEW", `{"claim":"ok"}`)
 	cfg := loopTwoRoundConfig(t, fakeCorpus(t), agentCopiesReview)
 	fake := &fakeGrader{model: cfg.Model, panel: cfg.Panel, prefix: fakePrefix}
 	fake.dry = func(string) (DryRunResult, error) { return dryInvalidMissingField(), nil }
@@ -462,7 +465,7 @@ func TestLoopWarningIsNotRefusal(t *testing.T) {
 		t.Errorf("rigor-unset = %q, want warning", got)
 	}
 	attempt := RoundAttempt{Round: 1, ReviewSHA: "a"}
-	attempt.ReviewBytes = []byte(`{"comments":[]}`)
+	attempt.ReviewBytes = []byte(`{"findings":[]}`)
 	attempt.Dry = DryRunResult{Exit: 0, Warnings: []string{"r"}}
 	rates := fixRatesFromOutcomes([]*LoopOutcome{{Attempts: []RoundAttempt{attempt}}})
 	if len(rates) != 0 {
@@ -542,7 +545,7 @@ func TestLoopFeedbackFenceUsesRunNonce(t *testing.T) {
 // TestAssemblePromptCarriesPriorResponse pins the history an adapter that
 // only reads the prompt sees: the exact prior review plus its feedback.
 func TestAssemblePromptCarriesPriorResponse(t *testing.T) {
-	prev := []byte(`{"comments":[{"path":"a","line":1,"body":"PRIOR_MARKER_8c3f02"}]}`)
+	prev := []byte(`{"findings":[{"path":"a","line":1,"claim":"PRIOR_MARKER_8c3f02"}]}`)
 	dry := dryInvalidMissingField()
 	attempts := []RoundAttempt{{Dry: dry, ReviewBytes: prev}}
 	prompt := assembleLoopPrompt(fakePrefix, testNonce, fakePrefix,
@@ -570,10 +573,10 @@ func TestAssemblePromptCarriesPriorResponse(t *testing.T) {
 func TestLoopDropThroughShellAgentCountsLoss(t *testing.T) {
 	needPOSIX(t)
 	restoreWD(t)
-	kept := `{"path":"pagination.go","line":11,"body":"looks good"}`
-	t.Setenv("BENCH_TEST_BAD", `{"comments":[`+kept+
+	kept := `{"path":"pagination.go","line":11,"claim":"looks good"}`
+	t.Setenv("BENCH_TEST_BAD", `{"findings":[`+kept+
 		`,{"path":"pagination.go","line":42},{"path":"pagination.go","line":51}]}`)
-	t.Setenv("BENCH_TEST_FIXED", `{"comments":[`+kept+`]}`)
+	t.Setenv("BENCH_TEST_FIXED", `{"findings":[`+kept+`]}`)
 	agent := `if [ "${VERDICT_BENCH_ROUND:-1}" = "1" ]; then printf '%s' "$BENCH_TEST_BAD" > "$VERDICT_BENCH_OUT"; ` +
 		`else printf '%s' "$BENCH_TEST_FIXED" > "$VERDICT_BENCH_OUT"; fi`
 	cfg := loopTwoRoundConfig(t, fakeCorpus(t), agent)
@@ -584,8 +587,8 @@ func TestLoopDropThroughShellAgentCountsLoss(t *testing.T) {
 		if calls == 1 {
 			out := DryRunResult{Exit: 1, Envelope: []byte(`{"error":{"code":"bad-review-input"}}`)}
 			out.Problems = []core.Problem{
-				{Path: "$.comments[1].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f"},
-				{Path: "$.comments[2].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f"},
+				{Path: "$.findings[1].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f"},
+				{Path: "$.findings[2].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f"},
 			}
 			return out, nil
 		}
@@ -619,7 +622,7 @@ func TestLoopPromptCarriesHistoryThroughShellAgent(t *testing.T) {
 	needPOSIX(t)
 	restoreWD(t)
 	t.Setenv("BENCH_TEST_MARKER", "HISTORYMARKER42")
-	t.Setenv("BENCH_TEST_BAD", `{"body":"HISTORYMARKER42 needs more than twenty chars of verdict text","comments":[{"path":"x","line":1}]}`)
+	t.Setenv("BENCH_TEST_BAD", `{"claim":"HISTORYMARKER42 needs more than twenty chars of verdict text","findings":[{"path":"x","line":1}]}`)
 	t.Setenv("BENCH_TEST_FIXED", loopGoodReview())
 	agent := `if [ "${VERDICT_BENCH_ROUND:-1}" = "1" ]; then printf '%s' "$BENCH_TEST_BAD" > "$VERDICT_BENCH_OUT"; ` +
 		`else grep -q "$BENCH_TEST_MARKER" "$VERDICT_BENCH_PROMPT" || { echo "history absent" >&2; exit 7; }; ` +
@@ -720,11 +723,11 @@ func checkRate(t *testing.T, rates []FixRate, code, level string, shown, fixed, 
 
 // TestFixRateSameAnchorDeletionIsDrop keeps a deletion from borrowing.
 func TestFixRateSameAnchorDeletionIsDrop(t *testing.T) {
-	before := []byte(`{"comments":[{"path":"a","line":11,"body":"keep"},{"path":"a","line":11}]}`)
-	after := []byte(`{"comments":[{"path":"a","line":11,"body":"keep"}]}`)
+	before := []byte(`{"findings":[{"path":"a","line":11,"claim":"keep"},{"path":"a","line":11}]}`)
+	after := []byte(`{"findings":[{"path":"a","line":11,"claim":"keep"}]}`)
 	cur := RoundAttempt{Round: 1, ReviewSHA: "aaa", ReviewBytes: before}
 	cur.Dry = DryRunResult{Exit: 1}
-	cur.Dry.Problems = missingAt("$.comments[1].body")
+	cur.Dry.Problems = missingAt("$.findings[1].body")
 	next := RoundAttempt{Round: 2, ReviewSHA: "bbb", ReviewBytes: after}
 	next.Dry = DryRunResult{Exit: 0, Normalized: after}
 	rates := fixRatesFromOutcomes([]*LoopOutcome{{Attempts: []RoundAttempt{cur, next}}})
@@ -737,11 +740,11 @@ func TestFixRateSameAnchorDeletionIsDrop(t *testing.T) {
 
 // TestFixRateWrongTypeKeepsSiblings keeps siblings on wrong type.
 func TestFixRateWrongTypeKeepsSiblings(t *testing.T) {
-	before := []byte(`{"comments":[{"path":"a","line":11,"body":"keep"},{"path":"a","line":42,"body":42},{"path":"a","line":51,"body":"keep2"}]}`)
-	after := []byte(`{"comments":[{"path":"a","line":11,"body":"keep"},{"path":"a","line":51,"body":"keep2"}]}`)
+	before := []byte(`{"findings":[{"path":"a","line":11,"claim":"keep"},{"path":"a","line":42,"claim":42},{"path":"a","line":51,"claim":"keep2"}]}`)
+	after := []byte(`{"findings":[{"path":"a","line":11,"claim":"keep"},{"path":"a","line":51,"claim":"keep2"}]}`)
 	cur := RoundAttempt{Round: 1, ReviewSHA: "aaa", ReviewBytes: before}
 	cur.Dry = DryRunResult{Exit: 1}
-	cur.Dry.Problems = wrongAt("$.comments[1].body")
+	cur.Dry.Problems = wrongAt("$.findings[1].body")
 	next := RoundAttempt{Round: 2, ReviewSHA: "bbb", ReviewBytes: after}
 	next.Dry = DryRunResult{Exit: 0, Normalized: after}
 	rates := fixRatesFromOutcomes([]*LoopOutcome{{Attempts: []RoundAttempt{cur, next}}})
@@ -754,12 +757,12 @@ func TestFixRateWrongTypeKeepsSiblings(t *testing.T) {
 
 // TestFixRateEmptyEntryKeepsIndex keeps an empty entry indexed.
 func TestFixRateEmptyEntryKeepsIndex(t *testing.T) {
-	before := []byte(`{"comments":[{},{"path":"a","line":11,"body":"keep"}]}`)
-	after := []byte(`{"comments":[{"path":"a","line":11,"body":"keep"}]}`)
+	before := []byte(`{"findings":[{},{"path":"a","line":11,"claim":"keep"}]}`)
+	after := []byte(`{"findings":[{"path":"a","line":11,"claim":"keep"}]}`)
 	cur := RoundAttempt{Round: 1, ReviewSHA: "aaa", ReviewBytes: before}
 	cur.Dry = DryRunResult{Exit: 1}
-	cur.Dry.Problems = append(missingAt("$.comments[0].body"),
-		core.Problem{Path: "$.comments[0].rigor", Code: "rigor-unset", Level: "warning", Message: "m", Fix: "f"})
+	cur.Dry.Problems = append(missingAt("$.findings[0].body"),
+		core.Problem{Path: "$.findings[0].rigor", Code: "rigor-unset", Level: "warning", Message: "m", Fix: "f"})
 	next := RoundAttempt{Round: 2, ReviewSHA: "bbb", ReviewBytes: after}
 	next.Dry = DryRunResult{Exit: 0, Normalized: after}
 	rates := fixRatesFromOutcomes([]*LoopOutcome{{Attempts: []RoundAttempt{cur, next}}})
@@ -773,11 +776,11 @@ func TestFixRateEmptyEntryKeepsIndex(t *testing.T) {
 
 // TestFixRateAliasDeleteIsDrop treats a deleted alias as a loss.
 func TestFixRateAliasDeleteIsDrop(t *testing.T) {
-	before := []byte(`{"comments":[{"path":"a","line":11,"body":"keep"},{"file":"a","line":42},{"path":"a","line":51,"body":"keep2"}]}`)
-	after := []byte(`{"comments":[{"path":"a","line":11,"body":"keep"},{"path":"a","line":51,"body":"keep2"}]}`)
+	before := []byte(`{"findings":[{"path":"a","line":11,"claim":"keep"},{"file":"a","line":42},{"path":"a","line":51,"claim":"keep2"}]}`)
+	after := []byte(`{"findings":[{"path":"a","line":11,"claim":"keep"},{"path":"a","line":51,"claim":"keep2"}]}`)
 	cur := RoundAttempt{Round: 1, ReviewSHA: "aaa", ReviewBytes: before}
 	cur.Dry = DryRunResult{Exit: 1}
-	cur.Dry.Problems = missingAt("$.comments[1].body")
+	cur.Dry.Problems = missingAt("$.findings[1].body")
 	next := RoundAttempt{Round: 2, ReviewSHA: "bbb", ReviewBytes: after}
 	next.Dry = DryRunResult{Exit: 0, Normalized: after}
 	rates := fixRatesFromOutcomes([]*LoopOutcome{{Attempts: []RoundAttempt{cur, next}}})
@@ -790,11 +793,11 @@ func TestFixRateAliasDeleteIsDrop(t *testing.T) {
 
 // TestFixRateBodyRepairCountsFix keeps a repaired body as a fix.
 func TestFixRateBodyRepairCountsFix(t *testing.T) {
-	before := []byte(`{"comments":[{"path":"a","line":11}]}`)
-	after := []byte(`{"comments":[{"path":"a","line":11,"body":"found"}]}`)
+	before := []byte(`{"findings":[{"path":"a","line":11}]}`)
+	after := []byte(`{"findings":[{"path":"a","line":11,"claim":"found"}]}`)
 	cur := RoundAttempt{Round: 1, ReviewSHA: "aaa", ReviewBytes: before}
 	cur.Dry = DryRunResult{Exit: 1}
-	cur.Dry.Problems = missingAt("$.comments[0].body")
+	cur.Dry.Problems = missingAt("$.findings[0].body")
 	next := RoundAttempt{Round: 2, ReviewSHA: "bbb", ReviewBytes: after}
 	next.Dry = DryRunResult{Exit: 0, Normalized: after}
 	rates := fixRatesFromOutcomes([]*LoopOutcome{{Attempts: []RoundAttempt{cur, next}}})
@@ -803,13 +806,13 @@ func TestFixRateBodyRepairCountsFix(t *testing.T) {
 
 // TestFixRateTwoDeletionsAreDrops counts two losses.
 func TestFixRateTwoDeletionsAreDrops(t *testing.T) {
-	before := []byte(`{"comments":[{"path":"a","line":11,"body":"keep"},{"path":"a","line":42},{"path":"a","line":51}]}`)
-	after := []byte(`{"comments":[{"path":"a","line":11,"body":"keep"}]}`)
+	before := []byte(`{"findings":[{"path":"a","line":11,"claim":"keep"},{"path":"a","line":42},{"path":"a","line":51}]}`)
+	after := []byte(`{"findings":[{"path":"a","line":11,"claim":"keep"}]}`)
 	cur := RoundAttempt{Round: 1, ReviewSHA: "aaa", ReviewBytes: before}
 	cur.Dry = DryRunResult{Exit: 1}
 	cur.Dry.Problems = []core.Problem{
-		{Path: "$.comments[1].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f"},
-		{Path: "$.comments[2].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f"},
+		{Path: "$.findings[1].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f"},
+		{Path: "$.findings[2].body", Code: "missing-field", Level: "error", Message: "m", Fix: "f"},
 	}
 	next := RoundAttempt{Round: 2, ReviewSHA: "bbb", ReviewBytes: after}
 	next.Dry = DryRunResult{Exit: 0, Normalized: after}
@@ -819,11 +822,11 @@ func TestFixRateTwoDeletionsAreDrops(t *testing.T) {
 
 // TestFixRateUnattributedWhenOwnerMissing marks a missing owner unattributed.
 func TestFixRateUnattributedWhenOwnerMissing(t *testing.T) {
-	before := []byte(`{"comments":[]}`)
-	after := []byte(`{"comments":[{"path":"a","line":1,"body":"x"}]}`)
+	before := []byte(`{"findings":[]}`)
+	after := []byte(`{"findings":[{"path":"a","line":1,"claim":"x"}]}`)
 	cur := RoundAttempt{Round: 1, ReviewSHA: "aaa", ReviewBytes: before}
 	cur.Dry = DryRunResult{Exit: 1}
-	cur.Dry.Problems = missingAt("$.comments[0].body")
+	cur.Dry.Problems = missingAt("$.findings[0].body")
 	next := RoundAttempt{Round: 2, ReviewSHA: "bbb", ReviewBytes: after}
 	next.Dry = DryRunResult{Exit: 0, Normalized: after}
 	rates := fixRatesFromOutcomes([]*LoopOutcome{{Attempts: []RoundAttempt{cur, next}}})

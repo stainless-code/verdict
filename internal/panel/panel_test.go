@@ -13,6 +13,7 @@ import (
 	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 func TestPanelArtifacts(t *testing.T) {
@@ -78,7 +79,7 @@ func writeFixture(t *testing.T, path, body string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(testenv.MaybeFindingsReview(path, body)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -96,7 +97,7 @@ func assertFile(t *testing.T, path, want string) {
 
 func TestPersistedRefutationPlan(t *testing.T) {
 	dir := t.TempDir()
-	review := jq.NewObj("comments", []any{jq.NewObj("path", "src/db.go", "line", 42, "body", "a reproducible crash")})
+	review := jq.NewObj("findings", []any{jq.NewObj("path", "src/db.go", "line", 42, "claim", "a reproducible crash")})
 	writeFixture(t, filepath.Join(dir, "findings.json"), `[{"sig":"22faf6e92ee1b7c1759122039e82c246c8295bc8","status":"open","verification":[{"model":"a","verdict":"refuted","evidence":"original counterexample"},{"model":"a","verdict":"confirmed","evidence":"later confirmation"}]}]`)
 	receipt := `{"schema_version":"1","head_sha":"head","results":[{"sig":"22faf6e92ee1b7c1759122039e82c246c8295bc8","model":"a","verdict":"confirmed","evidence":"later confirmation"}]}`
 	writeFixture(t, filepath.Join(dir, "verification/verdicts.json"), receipt)

@@ -20,14 +20,15 @@ func refuseFixture(t *testing.T, dir, review string, extra map[string]string) {
 	writeFiles(t, dir, files)
 }
 
-const refuseBody = `{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}`
+const refuseBody = `{"schema_version":"1","findings":[]}`
 
 // TestGoldenRefusals checks every Commit-A typed refusal matches byte-for-byte:
 // codes, messages, exit codes, and no merge artifacts on either side.
 func TestGoldenRefusals(t *testing.T) {
-	comment := func(path, body, sugg string) string {
-		return `{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[{"path":` +
-			path + `,"line":2,"side":"RIGHT","body":` + body + `,"suggestion":` + sugg + `}]}`
+	finding := func(path, claim, sugg string) string {
+		return `{"schema_version":"1","findings":[{"path":` + path +
+			`,"line":2,"side":"RIGHT","severity":"important","claim":` + claim +
+			`,"quote":"new line","confidence":"high","suggestion":` + sugg + `}]}`
 	}
 	refuse := func(name, review string, extra map[string]string) {
 		t.Helper()
@@ -38,17 +39,16 @@ func TestGoldenRefusals(t *testing.T) {
 	}
 	refuse("corrupt-review", `{broken`, nil)
 	refuse("non-object-review", `[1,2]`, nil)
-	refuse("non-object-comment", strings.Replace(refuseBody, `"comments":[]`, `"comments":[5]`, 1), nil)
-	refuse("numeric-path", comment(`5`, `"x body with enough substance."`, `null`), nil)
-	refuse("numeric-body", comment(`"notes.txt"`, `5`, `null`), nil)
-	refuse("numeric-suggestion", comment(`"notes.txt"`, `"x body with enough substance."`, `5`), nil)
-	refuse("true-suggestion", comment(`"notes.txt"`, `"x body with enough substance."`, `true`), nil)
-	refuse("object-path", comment(`{"a":1}`, `"x body with enough substance."`, `null`), nil)
-	refuse("non-string-resolved", strings.Replace(refuseBody, `"comments":[]`, `"comments":[],"resolved":[5]`, 1), nil)
-	refuse("non-array-resolved", strings.Replace(refuseBody, `"comments":[]`, `"comments":[],"resolved":5`, 1), nil)
-	refuse("non-object-triage", strings.Replace(refuseBody, `"comments":[]`, `"comments":[],"triage":[5]`, 1), nil)
-	refuse("non-array-triage", strings.Replace(refuseBody, `"comments":[]`, `"comments":[],"triage":{"sig":"x"}`, 1), nil)
-	refuse("non-object-sections", strings.Replace(refuseBody, `"comments":[]`, `"comments":[],"sections":[5]`, 1), nil)
+	refuse("non-object-finding", strings.Replace(refuseBody, `"findings":[]`, `"findings":[5]`, 1), nil)
+	refuse("numeric-path", finding(`5`, `"x claim with enough substance."`, `null`), nil)
+	refuse("numeric-claim", finding(`"notes.txt"`, `5`, `null`), nil)
+	refuse("numeric-suggestion", finding(`"notes.txt"`, `"x claim with enough substance."`, `5`), nil)
+	refuse("true-suggestion", finding(`"notes.txt"`, `"x claim with enough substance."`, `true`), nil)
+	refuse("object-path", finding(`{"a":1}`, `"x claim with enough substance."`, `null`), nil)
+	refuse("non-string-resolved", strings.Replace(refuseBody, `"findings":[]`, `"findings":[],"resolved":[5]`, 1), nil)
+	refuse("non-array-resolved", strings.Replace(refuseBody, `"findings":[]`, `"findings":[],"resolved":5`, 1), nil)
+	refuse("non-object-triage", strings.Replace(refuseBody, `"findings":[]`, `"findings":[],"triage":[5]`, 1), nil)
+	refuse("non-array-triage", strings.Replace(refuseBody, `"findings":[]`, `"findings":[],"triage":{"sig":"x"}`, 1), nil)
 	refuse("non-array-verification", refuseBody, map[string]string{"verification.json": `{"sig":"x"}`})
 	refuse("non-object-verification", refuseBody, map[string]string{"verification.json": `[5]`})
 	refuse("corrupt-prior", refuseBody, map[string]string{"findings.json": `{broken`})
@@ -59,7 +59,7 @@ func TestGoldenRefusals(t *testing.T) {
 	refuse("false-prior", refuseBody, map[string]string{"findings.json": `false`})
 	refuse("empty-prior", refuseBody, map[string]string{"findings.json": ``})
 	// Invalid UTF-8 is not JSON on either side (M5): both refuse typed.
-	refuse("invalid-utf8-review", "{\"schema_version\":\"1\",\"body\":\"> ✅ marker plus enough length to pass the guard ok.\",\"approved\":false,\"comments\":[{\"path\":\"notes.txt\",\"line\":2,\"side\":\"RIGHT\",\"body\":\"bad \xff byte here with enough substance.\"}]}", nil)
+	refuse("utf8-scrubbed-claim", "{\"schema_version\":\"1\",\"findings\":[{\"path\":\"notes.txt\",\"line\":2,\"severity\":\"important\",\"claim\":\"bad \xff byte here with enough substance.\",\"quote\":\"new line\",\"confidence\":\"high\"}]}", nil)
 }
 
 // TestGoldenSourceShapes checks corrupt/dirty source.json and corrupt PR.json.

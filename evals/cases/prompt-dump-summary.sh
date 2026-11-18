@@ -334,14 +334,14 @@ else
   bad "guided shape refused (exit $EVAL_STATUS)"
 fi
 eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"no marker here","approved":false,"comments":[]}
+{"schema_version":"1","findings":"not-array"}
 EOF
 run_review post acme/app "$PR" --dry-run --json
 if [ "$EVAL_STATUS" -ne 0 ] \
-  && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)" = "degenerate-body" ]; then
-  good "marker-less shorts still refuse as degenerate-body"
+  && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)" = "bad-review-input" ]; then
+  good "a non-array findings shape still refuses"
 else
-  bad "degenerate-body guard broke (exit $EVAL_STATUS)"
+  bad "findings-shape guard broke (exit $EVAL_STATUS)"
 fi
 
 PR=4305

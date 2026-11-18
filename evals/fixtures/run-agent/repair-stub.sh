@@ -74,6 +74,5 @@ case "$mode" in
 esac
 
 cat >"$artifact" <<'JSON'
-{"schema_version":"1","body":"> ✅ Reviewed the change; one inline note.","approved":false,
- "comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Nit: rename this line.","severity":"informational","rigor":"walked"}]}
+{"schema_version":"1","summary":"> ✅ Reviewed the change; one inline note.","findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"Nit: rename this line.","quote":"new line","confidence":"high","severity":"informational","rigor":"walked"}]}
 JSON

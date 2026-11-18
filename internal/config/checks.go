@@ -51,11 +51,12 @@ func AtOrAboveThreshold(severity, threshold string) bool {
 	return rank >= severityRank(threshold)
 }
 
-// FindingView is the minimal finding shape compliance evaluates: the
-// repository-relative path, the category, the severity, and the status.
-// Verbs adapt their stored entries to this view so compliance never
-// imports a verb package.
+// FindingView is the minimal finding shape compliance evaluates: the sig
+// naming it, the repository-relative path, the category, the severity, and
+// the status. Verbs adapt their stored entries to this view so compliance
+// never imports a verb package.
 type FindingView struct {
+	Sig      string
 	Path     string
 	Category string
 	Severity string
@@ -64,7 +65,7 @@ type FindingView struct {
 
 // Open reports whether the finding still blocks: only open findings
 // count; deferred findings already carry an explicit deferral decision.
-func (f FindingView) Open() bool { return f.Status == "open" }
+func (f *FindingView) Open() bool { return f.Status == "open" }
 
 // BlockingFinding pairs one open finding with the clause that blocks on
 // it, naming the group the finding's file resolved into. Group is the
@@ -89,7 +90,8 @@ func CheckCompliance(res *Resolved, root []ClauseProvenance, findings []FindingV
 		return nil
 	}
 	var blocked []BlockingFinding
-	for _, finding := range findings {
+	for i := range findings {
+		finding := &findings[i]
 		if !finding.Open() {
 			continue
 		}
@@ -99,7 +101,7 @@ func CheckCompliance(res *Resolved, root []ClauseProvenance, findings []FindingV
 }
 
 // findingBlockers names every applicable clause one open finding violates.
-func findingBlockers(res *Resolved, root []ClauseProvenance, finding FindingView) []BlockingFinding {
+func findingBlockers(res *Resolved, root []ClauseProvenance, finding *FindingView) []BlockingFinding {
 	clauses, group := applicableClauses(res, root, finding.Path)
 	var blocked []BlockingFinding
 	for i := range clauses {
@@ -114,9 +116,9 @@ func findingBlockers(res *Resolved, root []ClauseProvenance, finding FindingView
 
 // blockingFinding builds one blocker, carrying the group identity when the
 // finding's file resolved into a plan group.
-func blockingFinding(finding FindingView, provenance *ClauseProvenance, group *PlanGroup) BlockingFinding {
+func blockingFinding(finding *FindingView, provenance *ClauseProvenance, group *PlanGroup) BlockingFinding {
 	blocker := BlockingFinding{
-		Finding: finding,
+		Finding: *finding,
 		Clause:  provenance.Clause.Name,
 		Sources: append([]string{}, provenance.Sources...),
 	}
@@ -156,7 +158,7 @@ func groupForPath(plan Plan, path string) *PlanGroup {
 // finding path must fall under a clause path (or the clause names no
 // paths), the category must match (or the clause names none), and the
 // severity must meet the threshold rank.
-func clauseMatches(clause *core.BlockClause, finding FindingView) bool {
+func clauseMatches(clause *core.BlockClause, finding *FindingView) bool {
 	if len(clause.Paths) > 0 && !pathCovered(clause.Paths, finding.Path) {
 		return false
 	}

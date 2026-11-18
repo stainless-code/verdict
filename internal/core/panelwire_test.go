@@ -66,8 +66,9 @@ func TestRecordPanelOrderGolden(t *testing.T) {
 	security, model, patch := "reviewed", "verifier", "patch"
 	authorModel := "Opus 4.5"
 	record := &Record{
-		SchemaVersion: "1", Status: "local", Head: "head", DiffSHA256: "diff", RecordedAt: "2026-11-13T12:00:00Z",
-		Findings: 1, Open: 1, Confidence: &confidence, ConfidenceRaw: 3, SecuritySummary: &security,
+		SchemaVersion: "1", Status: "local", Head: "head", DiffSHA256: "diff", ReviewSHA256: "review",
+		RecordedAt: "2026-11-13T12:00:00Z",
+		Findings:   1, Open: 1, Confidence: &confidence, ConfidenceRaw: 3, SecuritySummary: &security,
 		ToolVersion: "version", PromptsHash: "hash", Model: &model, PatchID: &patch, PatchIDKind: "git",
 		Author:       &AuthorRef{Agent: "claude", Model: &authorModel},
 		ReviewModels: []string{"gpt-5.1-codex", "opus-4.5"},

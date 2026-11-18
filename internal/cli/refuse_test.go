@@ -338,8 +338,8 @@ func TestRefuseHumanProblems(t *testing.T) {
 		Code:    "bad-review-input",
 		Message: "review.json has 2 problem(s); fix every one, then re-run",
 		Problems: []core.Problem{
-			{Path: "$.comments[0].path", Code: "wrong-type", Level: "error", Message: "path must be a string", Fix: "use a changed file path", Example: "file.go"},
-			{Path: "$.comments[1].rigor", Code: "rigor-unset", Level: "warning", Message: "rigor is unset", Fix: "set rigor to said|pointed|walked|ran|reproduced"},
+			{Path: "$.findings[0].path", Code: "wrong-type", Level: "error", Message: "path must be a string", Fix: "use a changed file path", Example: "file.go"},
+			{Path: "$.findings[1].rigor", Code: "rigor-unset", Level: "warning", Message: "rigor is unset", Fix: "set rigor to said|pointed|walked|ran|reproduced"},
 		},
 		ProblemsTruncated: 3,
 	})
@@ -347,13 +347,13 @@ func TestRefuseHumanProblems(t *testing.T) {
 		t.Fatalf("exit = %d, want %d", code, cli.ExitRefused)
 	}
 	want := "error: review.json has 2 problem(s); fix every one, then re-run\n" +
-		"$.comments[0].path  wrong-type  path must be a string\n" +
+		"$.findings[0].path  wrong-type  path must be a string\n" +
 		"  fix: use a changed file path\n" +
 		"  example: \"file.go\"\n" +
-		"$.comments[1].rigor  rigor-unset  rigor is unset\n" +
+		"$.findings[1].rigor  rigor-unset  rigor is unset\n" +
 		"  fix: set rigor to said|pointed|walked|ran|reproduced\n" +
 		"  ... 3 more problem(s) not shown\n" +
-		"try: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run\n" +
+		"try: fix the malformed agent input named above (review.json wants findings[]; each finding wants path, line, severity, claim, quote and confidence), then re-run\n" +
 		"re-enter: verdict record acme/app local-x --json\n"
 	if got := diag.String(); got != want {
 		t.Errorf("stderr =\n%q\nwant\n%q", got, want)

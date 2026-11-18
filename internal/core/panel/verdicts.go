@@ -230,7 +230,7 @@ func WithStored(file *File, entries, findings []any) *File {
 
 func storedRefutations(entry map[string]any) []Result {
 	var results []Result
-	for _, item := range jq.Elements(entry["verification"]) {
+	for _, item := range storedPanel(entry["verification"]) {
 		m, _ := object(item)
 		if m[fieldVerdict] == refuted {
 			results = append(results, Result{

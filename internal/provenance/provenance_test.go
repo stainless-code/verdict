@@ -31,7 +31,7 @@ func writeBundle(t *testing.T, files map[string]string) string {
 // for rigors and from this run's stored entries for cites: a dropped cite
 // never reaches the line, and a carried-over finding stays silent.
 func TestReviewBasisCounts(t *testing.T) {
-	review := jq.NewObj("comments", []any{
+	review := jq.NewObj("findings", []any{
 		jq.NewObj("rigor", "walked", "kb", []any{"r1"}),
 		jq.NewObj("rigor", "said", "kb", []any{"r1", "r2"}),
 		jq.NewObj("rigor", "bogus"),
@@ -195,7 +195,7 @@ func TestPromptsHashIgnoresDiskLayouts(t *testing.T) {
 		"procedure/prompts/validate.md": "nested validate decoy",
 	})
 	t.Chdir(dir)
-	const want = "3c57d8f39a074b67f54d2cdb6b7d15408334b5f0f410a36b79f3f2f473ec8516"
+	const want = "3245adba3e38e496b08361aff47e2eb8fda8337c4c0575ad0148e1e0b291ce26"
 	if got := provenance.PromptsHash(); got != want {
 		t.Errorf("PromptsHash = %s, want the embedded set %s", got, want)
 	}
@@ -203,7 +203,7 @@ func TestPromptsHashIgnoresDiskLayouts(t *testing.T) {
 
 // TestApplyBasisLine proves the CLI owns the line: a matching line is left
 // alone, a disagreeing line is replaced, and a missing line is inserted under
-// the leading blockquote lead.
+// the leading blockquote lead. It reports nothing either way.
 func TestApplyBasisLine(t *testing.T) {
 	const expected = "0 0 0 1 0 0 0"
 	checkMatchingBasis(t, expected)
@@ -215,34 +215,25 @@ func TestApplyBasisLine(t *testing.T) {
 func checkMatchingBasis(t *testing.T, expected string) {
 	t.Helper()
 	body := "> Basis: " + expected + "\n> body"
-	if got, p := provenance.ApplyBasisLine(expected, body); p != nil || got != body {
-		t.Errorf("matching line changed: %q (%+v)", got, p)
+	if got := provenance.ApplyBasisLine(expected, body); got != body {
+		t.Errorf("matching line changed: %q", got)
 	}
 }
 
 // checkReplacedBasis proves a disagreeing Basis line is replaced with the
-// computed counts and reported.
+// computed counts, silently: the agent wrote no line to correct.
 func checkReplacedBasis(t *testing.T, expected string) {
 	t.Helper()
-	got, p := provenance.ApplyBasisLine(expected, "> Confidence: 3/5\n> Basis: 9 9 9 9 9 9 9\n> body")
-	if p == nil || p.Code != core.ProblemCodeBasisReplaced || p.Example != "> Basis: "+expected {
-		t.Fatalf("mismatch problem = %+v", p)
-	}
+	got := provenance.ApplyBasisLine(expected, "> Confidence: 3/5\n> Basis: 9 9 9 9 9 9 9\n> body")
 	if got != "> Confidence: 3/5\n> Basis: "+expected+"\n> body" {
 		t.Errorf("mismatch body = %q", got)
 	}
 }
 
-// checkInsertedBasis proves a missing Basis line is inserted with a warning.
+// checkInsertedBasis proves a missing Basis line is inserted under the lead.
 func checkInsertedBasis(t *testing.T, expected string) {
 	t.Helper()
-	got, p := provenance.ApplyBasisLine(expected, "> ✅ body")
-	if p == nil || p.Code != core.ProblemCodeBasisReplaced {
-		t.Fatalf("missing problem = %+v", p)
-	}
-	if p.Message != "no Basis line in the leading quote block — inserted the computed counts (basis-replaced)" {
-		t.Errorf("missing Basis message = %q", p.Message)
-	}
+	got := provenance.ApplyBasisLine(expected, "> ✅ body")
 	if got != "> ✅ body\n> Basis: "+expected {
 		t.Errorf("missing body = %q", got)
 	}
@@ -269,10 +260,7 @@ func TestApplyBasisLineSkipsFencedBasis(t *testing.T) {
 // under the lead while the fenced example stays byte-identical.
 func checkInsertedFencedBasis(t *testing.T, expected, body string) {
 	t.Helper()
-	got, p := provenance.ApplyBasisLine(expected, body)
-	if p == nil || p.Code != core.ProblemCodeBasisReplaced {
-		t.Fatalf("missing problem = %+v", p)
-	}
+	got := provenance.ApplyBasisLine(expected, body)
 	if !strings.Contains(got, "> Basis: "+expected) {
 		t.Errorf("computed line missing:\n%s", got)
 	}
@@ -287,10 +275,7 @@ func checkInsertedFencedBasis(t *testing.T, expected, body string) {
 func TestApplyBasisLineInsertsBlankBeforeHeading(t *testing.T) {
 	t.Parallel()
 	const expected = "0 0 0 1 0 0 0"
-	got, p := provenance.ApplyBasisLine(expected, "> ✅ Reviewed.\n## Summary")
-	if p == nil || p.Code != core.ProblemCodeBasisReplaced {
-		t.Fatalf("missing problem = %+v", p)
-	}
+	got := provenance.ApplyBasisLine(expected, "> ✅ Reviewed.\n## Summary")
 	if want := "> ✅ Reviewed.\n> Basis: " + expected + "\n\n## Summary"; got != want {
 		t.Errorf("body = %q, want %q", got, want)
 	}
@@ -299,17 +284,16 @@ func TestApplyBasisLineInsertsBlankBeforeHeading(t *testing.T) {
 func TestApplyBasisLineSkipsPlainBody(t *testing.T) {
 	t.Parallel()
 	const body = "A plain review body with no quote lead.\n\n## Summary\nReviewed."
-	if got, p := provenance.ApplyBasisLine("0 0 0 1 0 0 0", body); got != body || p != nil {
-		t.Fatalf("plain body = %q, %+v; want unchanged without a warning", got, p)
+	if got := provenance.ApplyBasisLine("0 0 0 1 0 0 0", body); got != body {
+		t.Fatalf("plain body = %q; want unchanged", got)
 	}
 }
 
 // TestPlainBasisBelowConfidence accepts matching plain Basis text.
 func TestPlainBasisBelowConfidence(t *testing.T) {
 	const body = "> Confidence: 3/5\nBasis: 0 0 0 1 0 0 0\n\n## Summary\nReviewed."
-	got, problem := provenance.ApplyBasisLine("0 0 0 1 0 0 0", body)
-	if got != body || problem != nil {
-		t.Fatalf("plain Basis = %q, %v; want unchanged body without warning", got, problem)
+	if got := provenance.ApplyBasisLine("0 0 0 1 0 0 0", body); got != body {
+		t.Fatalf("plain Basis = %q; want unchanged body", got)
 	}
 }
 

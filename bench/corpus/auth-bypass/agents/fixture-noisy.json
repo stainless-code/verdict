@@ -3,16 +3,17 @@
   "panel": ["panel-beta"],
   "review": {
     "schema_version": "1",
-    "body": "> 🤖 Noisy fixture review for the benchmark corpus: some seeded defects missed, some false positives.",
-    "approved": false,
-    "comments": [
+    "summary": "> \ud83e\udd16 Noisy fixture review for the benchmark corpus: some seeded defects missed, some false positives.",
+    "findings": [
       {
         "path": "middleware.go",
         "line": 23,
         "side": "RIGHT",
-        "body": "The role comparison is inverted; reject when role != \"admin\".",
         "rigor": "walked",
-        "severity": "critical"
+        "severity": "critical",
+        "claim": "The role comparison is inverted; reject when role != \"admin\".",
+        "quote": "The role comparison is inverted; reject when role != \"admin\".",
+        "confidence": "high"
       }
     ]
   }

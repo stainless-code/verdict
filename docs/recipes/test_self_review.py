@@ -1,5 +1,6 @@
 import importlib.util
 import json
+import os
 from pathlib import Path
 import tempfile
 import sys
@@ -56,6 +57,43 @@ class LoopTest(unittest.TestCase):
                          {"round": 1, "findings": 2, "gate": False, "cost": None})
         self.assertEqual(len([c for c in calls if c[0] == "claude"]), 2)
         self.assertIn("round-1.record.json", calls[7][-1])
+
+    def test_stale_retry_reads_findings(self):
+        temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(temporary.cleanup)
+        root = Path(temporary.name)
+        output = root / "receipts"
+        bundle = root / ".verdict" / "state" / "local-sr-receipts-1"
+        bundle.mkdir(parents=True)
+        (bundle / "review.json").write_text(json.dumps(
+            {"schema_version": "1", "findings": [{"path": "notes.txt", "line": 2}]}))
+        records = []
+
+        def call(argv, seconds, agent):
+            if agent:
+                return None
+            verb = argv[1]
+            if verb == "run":
+                return {"argv": ["claude", "-p", "review"], "binary": "claude"}
+            if verb == "record":
+                records.append(argv)
+                if len(records) == 1:
+                    raise recipe.Stop("coverage-stale")
+                return {"findings": {"open": 0}}
+            if verb == "gate":
+                return {"passed": True}
+            return {}
+
+        previous = Path.cwd()
+        os.chdir(root)
+        self.addCleanup(os.chdir, previous)
+        result = recipe.loop("acme/app", "claude", 2, 10, output, call=call, clock=lambda: 0)
+
+        self.assertEqual(result["stop"], "pass")
+        stale = result["rounds"][0]
+        self.assertTrue(stale["stale"])
+        self.assertEqual(stale["findings"], 1)
+        self.assertTrue((output / "round-1.findings.json").exists())
 
     def test_max_rounds(self):
         result, _, _ = self.scenario([False, False])
