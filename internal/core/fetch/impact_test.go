@@ -226,8 +226,8 @@ func TestWriteImpactWithoutIndexRemovesArtifact(t *testing.T) {
 }
 
 // assertUnreadableTOCRefusal checks the typed refusal names the path it could
-// not read.
-func assertUnreadableTOCRefusal(t *testing.T, err error, toc string) {
+// not read, in display form.
+func assertUnreadableTOCRefusal(t *testing.T, err error, dir string) {
 	t.Helper()
 	if err == nil {
 		t.Fatal("appendTOCSection accepted an unreadable toc.txt")
@@ -239,7 +239,8 @@ func assertUnreadableTOCRefusal(t *testing.T, err error, toc string) {
 	if refusal.Code != CodeFetchFailed {
 		t.Errorf("refusal code = %q, want %q", refusal.Code, CodeFetchFailed)
 	}
-	if want := "could not read " + toc; !strings.Contains(refusal.Message, want) {
+	want := "could not read " + filepath.ToSlash(dir) + "/toc.txt"
+	if !strings.Contains(filepath.ToSlash(refusal.Message), want) {
 		t.Errorf("refusal = %q, want it to name %q", refusal.Message, want)
 	}
 }
@@ -268,7 +269,7 @@ func TestAppendTOCSectionRefusesUnreadableTOC(t *testing.T) {
 	writeTestFile(t, marker, "keep\n")
 
 	err := appendTOCSection(dir, "## impact\nrow\n")
-	assertUnreadableTOCRefusal(t, err, toc)
+	assertUnreadableTOCRefusal(t, err, dir)
 	assertTOCDirUntouched(t, toc, marker)
 }
 
