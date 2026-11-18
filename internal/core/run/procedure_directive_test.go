@@ -35,21 +35,6 @@ func bundleDisplay(t *testing.T, root, dir string) string {
 	return filepath.ToSlash(rel)
 }
 
-func embeddedReviewProcedure(t *testing.T) []byte {
-	t.Helper()
-	var out []byte
-	for _, name := range []string{
-		skillfs.ProcedureMD, "prompts/system.md", "prompts/review.md", "prompts/diagrams.md",
-	} {
-		raw, err := skillfs.Read(name)
-		if err != nil {
-			t.Fatalf("read embedded %s: %v", name, err)
-		}
-		out = append(out, raw...)
-	}
-	return out
-}
-
 func embeddedDrainProcedure(t *testing.T) []byte {
 	t.Helper()
 	var out []byte
@@ -63,44 +48,6 @@ func embeddedDrainProcedure(t *testing.T) []byte {
 		out = append(out, raw...)
 	}
 	return out
-}
-
-// TestRunPrintDirectiveNamesBundleProcedureFile is the F1-class check for the
-// launch prompt: the name comes from the rendered text, and the named file in
-// the fetched bundle must hold the binary's review Procedure.
-func TestRunPrintDirectiveNamesBundleProcedureFile(t *testing.T) {
-	root := fixtureRoot(t)
-	dir := bundleDir(root)
-	want := embeddedReviewProcedure(t)
-
-	// Plant the bytes at the path the directive itself names, so a change of
-	// file name in the prompt is observed rather than anticipated here.
-	probe := directive("acme/app", "42", filepath.ToSlash(dir),
-		filepath.ToSlash(filepath.Join(dir, "review.json")), false, builtinPlan(t))
-	planted := parseFirstReadPath(t, probe)
-	if err := os.WriteFile(filepath.Join(dir, filepath.Base(planted)), want, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	req := request(root, &scripted{})
-	req.Print = true
-	resp, ref := Run(t.Context(), req)
-	if ref != nil {
-		t.Fatalf("Run refused: %v", ref)
-	}
-	printed := resp.Data.Argv[len(resp.Data.Argv)-1]
-	named := parseFirstReadPath(t, printed)
-	wantDisplay := filepath.ToSlash(filepath.Join(bundleDisplay(t, root, dir), filepath.Base(named)))
-	if got := filepath.ToSlash(filepath.Clean(named)); got != wantDisplay {
-		t.Fatalf("directive names %q, want the bundle file %q", got, wantDisplay)
-	}
-	raw, err := os.ReadFile(filepath.Join(dir, filepath.Base(named)))
-	if err != nil {
-		t.Fatalf("read named Procedure file: %v", err)
-	}
-	if !bytes.Equal(raw, want) {
-		t.Fatalf("named Procedure file holds %d bytes, want the embedded assembly (%d)", len(raw), len(want))
-	}
 }
 
 // TestDrainDirectiveNamesBundleProcedureFile applies the same F1-class check

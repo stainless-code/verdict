@@ -97,6 +97,30 @@ for dir in "$LOCAL_DIR" "$PR_DIR"; do
   fi
 done
 
+# --- the directive's Procedure is the one the fetch producer wrote -----------
+# The expectation comes from the shipped skill (`skill show`), and the file
+# under test comes from `fetch-local` (`eval_mk_bundle`). Parsing the path out
+# of the rendered directive means a renamed read line names a file that is
+# not there; nothing plants bytes at the parsed path.
+EXPECTED_PROCEDURE="$SANDBOX/review-procedure.expected"
+: > "$EXPECTED_PROCEDURE"
+for payload in PROCEDURE.md prompts/system.md prompts/review.md prompts/diagrams.md; do
+  run_review skill show "$payload"
+  assert_exit "skill show $payload builds the procedure expectation" 0
+  cat "$EVAL_OUT" >> "$EXPECTED_PROCEDURE"
+done
+
+run_review run acme/app "$LOCAL" --agent claude --print --json -- --model opus
+assert_exit "--print renders a directive for the produced-procedure check" 0
+named_procedure="$(jq -r '.data.argv[-1] | capture("Read `(?<p>[^`]+)` first;").p' <"$EVAL_OUT")"
+if [ -n "$named_procedure" ] \
+  && [ -f "$EVAL_SANDBOX/$named_procedure" ] \
+  && cmp -s "$EVAL_SANDBOX/$named_procedure" "$EXPECTED_PROCEDURE"; then
+  good "--print directive names the fetched Procedure byte-identically"
+else
+  bad "--print directive named '$named_procedure', not the fetched embedded Procedure"
+fi
+
 # --- --print: the escape hatch renders the command and does nothing else -----
 before_spawns="$(spawns)"
 run_review run acme/app "$LOCAL" --agent claude --print --json -- --model opus
