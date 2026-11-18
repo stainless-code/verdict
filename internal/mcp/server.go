@@ -39,6 +39,7 @@ const (
 	codeInvalidRequest  = -32600
 	codeMethodNotFound  = -32601
 	codeInvalidParams   = -32602
+	codeInternalError   = -32603
 	contentTypeText     = "text"
 	refusalTextLines    = 3
 	lineBreak           = "\n"
@@ -251,6 +252,10 @@ func (s *Server) dispatch(ctx context.Context, req *rpcRequest) {
 		s.writeResult(req.ID, s.listTools())
 	case methodToolsCall:
 		s.handleToolsCall(ctx, req)
+	case methodPromptsList:
+		s.handlePromptsList(req)
+	case methodPromptsGet:
+		s.handlePromptsGet(req)
 	case methodCancelled:
 		s.handleCancelled(req)
 	default:
