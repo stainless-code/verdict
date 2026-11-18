@@ -69,8 +69,7 @@ dump_expected_chunks() {
     [ -f "$1/source.json" ] && meta="$1/source.json"
     : > "$out"
     for f in PROCEDURE.md prompts/system.md prompts/review.md prompts/diagrams.md; do
-      [ -f "$f" ] || continue
-      cat -- "$f" >> "$out"
+      "$EVAL_CLI" skill show "$f" >> "$out"
     done
 cat >> "$out" <<EOF
 --- verdict trust boundary (tool-generated, trusted) ---
@@ -133,8 +132,7 @@ dump_expected_full() {
     [ -f "$1/source.json" ] && meta="$1/source.json"
     : > "$out"
     for f in PROCEDURE.md prompts/system.md prompts/review.md prompts/diagrams.md; do
-      [ -f "$f" ] || continue
-      cat -- "$f" >> "$out"
+      "$EVAL_CLI" skill show "$f" >> "$out"
     done
 cat >> "$out" <<EOF
 --- verdict trust boundary (tool-generated, trusted) ---

@@ -420,11 +420,8 @@ func truncateOversizeReceipt(t *testing.T, dir string) {
 	}
 }
 
-// TestBuildReceiptRecordsBundleProcedure pins the receipt's bundle entry for
-// the Procedure the agent was handed: the sha256 of the embedded assembly,
-// under the bundle namespace, with no disk fallback.
-func TestBuildReceiptRecordsBundleProcedure(t *testing.T) {
-	dir := t.TempDir()
+func embeddedReviewForReceipt(t *testing.T) []byte {
+	t.Helper()
 	var want []byte
 	for _, name := range []string{
 		skillfs.ProcedureMD, "prompts/system.md", "prompts/review.md", "prompts/diagrams.md",
@@ -435,11 +432,23 @@ func TestBuildReceiptRecordsBundleProcedure(t *testing.T) {
 		}
 		want = append(want, raw...)
 	}
+	return want
+}
+
+// TestBuildReceiptRecordsBundleProcedure pins the receipt's bundle entry for
+// the Procedure the agent was handed: the sha256 of the embedded assembly,
+// under the bundle namespace, with no disk fallback.
+func TestBuildReceiptRecordsBundleProcedure(t *testing.T) {
+	dir := t.TempDir()
+	want := embeddedReviewForReceipt(t)
 	if err := os.WriteFile(filepath.Join(dir, "procedure.md"), want, 0o644); err != nil {
 		t.Fatal(err)
 	}
+	assertBundleProcedureReceipt(t, BuildReceipt(&ReceiptBuildInput{Dir: dir}), want)
+}
 
-	receipt := BuildReceipt(&ReceiptBuildInput{Dir: dir})
+func assertBundleProcedureReceipt(t *testing.T, receipt *core.ProvenanceReceipt, want []byte) {
+	t.Helper()
 	var got *core.ProvenanceInput
 	for i := range receipt.Inputs {
 		if receipt.Inputs[i].Kind == kindBundle && receipt.Inputs[i].Name == "procedure.md" {

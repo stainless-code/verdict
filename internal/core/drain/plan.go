@@ -179,13 +179,13 @@ func WriteProcedure(dir string) error {
 	for _, name := range []string{skillfs.ProcedureMD, "prompts/system.md", "prompts/address-reviews.md"} {
 		raw, err := skillfs.Read(name)
 		if err != nil {
-			return err
+			return jq.Sealed("read embedded "+name, err)
 		}
 		out = append(out, raw...)
 	}
 	path := filepath.Join(dir, KeyProcedureMD)
 	if err := atomic.WriteFile(path, out); err != nil {
-		return fmt.Errorf("write %s: %v", filepath.ToSlash(path), err)
+		return jq.Sealed("write "+filepath.ToSlash(path), err)
 	}
 	return nil
 }

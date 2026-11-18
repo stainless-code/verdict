@@ -131,17 +131,25 @@ func buildPlan(ctx context.Context, r *cli.Runner, req Request, fl *flags, limit
 	}
 	plan, _ := draincore.NewPlan(resp.Data.Provider, threadscore.PRNumber(req.Pr), resp.Data.HeadSHA,
 		req.TimeUTC(), in.self, in.feed, in.ledger, limit)
-	if err := draincore.WritePlan(in.dir+pathSep+draincore.KeyPlanJSON, plan); err != nil {
-		return "", nil, r.Refuse(drainFailed(fmt.Sprintf("could not write %s/%s: %v", in.dir, draincore.KeyPlanJSON, err))), true
-	}
-	// A dry run leaves the real bundle untouched; its live read uses a scratch
-	// copy that is removed when the refresh returns.
-	if !fl.dryRun {
-		if err := draincore.WriteProcedure(in.dir); err != nil {
-			return "", nil, r.Refuse(drainFailed(fmt.Sprintf("could not write %s/%s: %v", in.dir, draincore.KeyProcedureMD, err))), true
-		}
+	if err := writePlanArtifacts(in.dir, plan, fl.dryRun); err != nil {
+		return "", nil, r.Refuse(drainFailed(err.Error())), true
 	}
 	return in.dir, plan, 0, false
+}
+
+// A dry run leaves the real bundle untouched; its live read uses a scratch
+// copy that is removed when the refresh returns.
+func writePlanArtifacts(dir string, plan *draincore.File, dryRun bool) error {
+	if err := draincore.WritePlan(dir+pathSep+draincore.KeyPlanJSON, plan); err != nil {
+		return jq.Sealed("could not write "+dir+"/"+draincore.KeyPlanJSON, err)
+	}
+	if dryRun {
+		return nil
+	}
+	if err := draincore.WriteProcedure(dir); err != nil {
+		return jq.Sealed("could not write "+dir+"/"+draincore.KeyProcedureMD, err)
+	}
+	return nil
 }
 
 func finishPlan(r *cli.Runner, req Request, fl *flags, dir string, plan *draincore.File) int {

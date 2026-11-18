@@ -235,11 +235,7 @@ if awk '/^--- verdict trust boundary/{exit} {print}' "$EVAL_OUT" | matches "disk
 else
   good "F7: disk decoys never enter the trusted part of the dump"
 fi
-if grep -q 'prompt file' "$EVAL_ERR"; then
-  bad "F7: disk prompt files produced a missing-prompt warning"
-else
-  good "F7: no warning about disk prompt files"
-fi
+assert_file_nogrep "F7: no warning about disk prompt files" "$EVAL_ERR" "prompt file"
 bundle="$EVAL_SANDBOX/.verdict/state/local-dump-f7a/procedure.md"
 if head -c "$(wc -c <"$bundle" | tr -d ' ')" "$EVAL_OUT" | cmp -s - "$bundle"; then
   good "F7: dump starts with the Procedure written into the bundle"

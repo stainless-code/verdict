@@ -57,6 +57,27 @@ func fetchWithProcedure(t *testing.T, kind string, show bool) (*core.FetchRespon
 	return resp, dir
 }
 
+func assertBundleProcedure(t *testing.T, dir string, want []byte) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(filepath.FromSlash(dir), "procedure.md"))
+	if err != nil {
+		t.Fatalf("read %s: %v", filepath.ToSlash(filepath.Join(dir, "procedure.md")), err)
+	}
+	if !bytes.Equal(raw, want) {
+		t.Fatalf("%s/procedure.md is not the embedded assembly", dir)
+	}
+}
+
+func assertDumpStartsWithProcedure(t *testing.T, kind, dir string, resp *core.FetchResponse, want []byte) {
+	t.Helper()
+	if resp.Data == nil || resp.Data.PromptDump == nil {
+		t.Fatalf("%s returned no prompt dump", kind)
+	}
+	if !strings.HasPrefix(*resp.Data.PromptDump, string(want)) {
+		t.Fatalf("%s dump does not start with %s bytes", kind, dir)
+	}
+}
+
 // TestFetchBundlesCarryProcedureFromBinary proves both fetch kinds persist the
 // binary's review Procedure under the same atomic writer as their other files.
 func TestFetchBundlesCarryProcedureFromBinary(t *testing.T) {
@@ -64,13 +85,7 @@ func TestFetchBundlesCarryProcedureFromBinary(t *testing.T) {
 	for _, kind := range []string{"fetch", "fetch-local"} {
 		t.Run(kind, func(t *testing.T) {
 			_, dir := fetchWithProcedure(t, kind, false)
-			raw, err := os.ReadFile(filepath.Join(filepath.FromSlash(dir), "procedure.md"))
-			if err != nil {
-				t.Fatalf("read %s: %v", filepath.ToSlash(filepath.Join(dir, "procedure.md")), err)
-			}
-			if !bytes.Equal(raw, want) {
-				t.Fatalf("%s/procedure.md is not the embedded assembly", dir)
-			}
+			assertBundleProcedure(t, dir, want)
 		})
 	}
 }
@@ -83,12 +98,7 @@ func TestShowPromptsDumpStartsWithBundleProcedure(t *testing.T) {
 	for _, kind := range []string{"fetch", "fetch-local"} {
 		t.Run(kind, func(t *testing.T) {
 			resp, dir := fetchWithProcedure(t, kind, true)
-			if resp.Data == nil || resp.Data.PromptDump == nil {
-				t.Fatalf("%s returned no prompt dump", kind)
-			}
-			if !strings.HasPrefix(*resp.Data.PromptDump, string(want)) {
-				t.Fatalf("%s dump does not start with %s bytes", kind, dir)
-			}
+			assertDumpStartsWithProcedure(t, kind, dir, resp, want)
 		})
 	}
 }

@@ -31,6 +31,15 @@ func fetchTail(
 	return fetchTailAfterSource(ctx, ctx2, req, f, budget, fcap, chunkJSON, incBase)
 }
 
+func writeEvidenceAndProcedure(
+	ctx context.Context, ctx2 *fetchRunCtx, in impactInput, inputs []string, at string,
+) error {
+	if err := writeEvidence(ctx, ctx2, in, inputs, at); err != nil {
+		return err
+	}
+	return writeBundleProcedure(ctx2.dir)
+}
+
 func fetchTailAfterSource(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f *core.FetchFlags, budget *budgetState,
 	fcap *fetchCap, chunkJSON any, incBase string,
 ) (*core.FetchData, string, error) {
@@ -38,10 +47,7 @@ func fetchTailAfterSource(ctx context.Context, ctx2 *fetchRunCtx, req *core.Fetc
 		return nil, "", ref
 	}
 	in := impactInput{index: f.Index, head: readcommon.PrField(ctx2.dir, keyHeadSHA)}
-	if err := writeEvidence(ctx, ctx2, in, f.Context, req.TimeUTC()); err != nil {
-		return nil, "", err
-	}
-	if err := writeBundleProcedure(ctx2.dir); err != nil {
+	if err := writeEvidenceAndProcedure(ctx, ctx2, in, f.Context, req.TimeUTC()); err != nil {
 		return nil, "", err
 	}
 	writeTailReceipt(ctx2, budget)

@@ -53,10 +53,8 @@ func TestNewPlanDigestPinsWaitingComment(t *testing.T) {
 	}
 }
 
-// TestWriteProcedureUsesEmbeddedPayload pins the drain assembly against the
-// three embedded files and proves disk copies cannot replace any of them.
-func TestWriteProcedureUsesEmbeddedPayload(t *testing.T) {
-	dir := t.TempDir()
+func writeDrainProcedureDecoys(t *testing.T, dir string) {
+	t.Helper()
 	for _, name := range []string{"PROCEDURE.md", "prompts/system.md", "prompts/address-reviews.md"} {
 		path := filepath.Join(dir, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
@@ -66,8 +64,10 @@ func TestWriteProcedureUsesEmbeddedPayload(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	t.Chdir(dir)
+}
 
+func embeddedDrainProcedure(t *testing.T) []byte {
+	t.Helper()
 	var want []byte
 	for _, name := range []string{
 		skillfs.ProcedureMD, "prompts/system.md", "prompts/address-reviews.md",
@@ -78,6 +78,17 @@ func TestWriteProcedureUsesEmbeddedPayload(t *testing.T) {
 		}
 		want = append(want, raw...)
 	}
+	return want
+}
+
+// TestWriteProcedureUsesEmbeddedPayload pins the drain assembly against the
+// three embedded files and proves disk copies cannot replace any of them.
+func TestWriteProcedureUsesEmbeddedPayload(t *testing.T) {
+	dir := t.TempDir()
+	writeDrainProcedureDecoys(t, dir)
+	t.Chdir(dir)
+
+	want := embeddedDrainProcedure(t)
 	if err := WriteProcedure(dir); err != nil {
 		t.Fatalf("WriteProcedure: %v", err)
 	}
