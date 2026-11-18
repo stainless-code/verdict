@@ -689,7 +689,7 @@ recordings were not scored.
 
 ## `fixtures-recording-invalid`
 
-Cause: a recording under `bench/quality/recordings/` or an explicit
+Cause: a recording under `bench/quality/<fixture>/recordings/` or an explicit
 `--recordings` root has no readable `meta.json`, names another fixture or an
 unknown source file, or names a fixture the catalog does not carry.
 

@@ -82,9 +82,24 @@ cp "$EVAL_SANDBOX/infra-meta.json" \
 run_review backtest fixtures --json
 assert_exit "infra-error run exits 0" 0
 assert_json_field "one run unscored" "6" '.data.scored'
+assert_json_field "calibration rows stay fixed" "7" '.data.calibration.rows'
+assert_json_field "calibration fails on unscored run" "false" '.data.calibration.reproduced'
+assert_json_field "calibration names the unscored run" "vr-sta440b-haiku" \
+  '.data.calibration.mismatches[0]'
 assert_json_field "fx1 scored" "5" '.data.fixtures[0].scored'
 assert_json_field "fx1 union excludes the run" "0.4" '.data.fixtures[0].recall.union'
 assert_json_field "fx1 measured gates" "4" '.data.fixtures[0].false_green.measured'
+
+# A zero-hit hand score still needs a scored run before it can pass.
+jq '.infra_error = "agent failed to start"' \
+  "$EVAL_SANDBOX/bench/quality/fx1/recordings/vr-sta440b-bench.meta.json" \
+  >"$EVAL_SANDBOX/infra-empty-meta.json"
+cp "$EVAL_SANDBOX/infra-empty-meta.json" \
+  "$EVAL_SANDBOX/bench/quality/fx1/recordings/vr-sta440b-bench.meta.json"
+run_review backtest fixtures --json
+assert_exit "empty-hand infra-error run exits 0" 0
+assert_json_field "empty-hand row fails calibration" "false" '.data.calibration.reproduced'
+assert_json_field "empty-hand row is named" "vr-sta440b-bench" '.data.calibration.mismatches[0]'
 
 run_review backtest fixtures --run x --json
 assert_exit "--run is a usage error" 2

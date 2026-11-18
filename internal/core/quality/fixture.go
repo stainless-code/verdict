@@ -10,6 +10,8 @@ import (
 	"io"
 	"path/filepath"
 	"regexp"
+	"strconv"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -21,6 +23,7 @@ const (
 	maxCatalogBytes = 1 << 20
 	maxReviewBytes  = 1 << 20
 	fixturePrefix   = "fixture "
+	defectPrefix    = "defect "
 	sha256HexLen    = 64
 	commitHexLen    = 40
 	dirPermissions  = 0o755
@@ -182,10 +185,11 @@ func validateFixture(f *Fixture, seen map[string]bool, path string) *core.Refusa
 	if len(f.Known) == 0 {
 		return invalidCatalog(path, fixturePrefix+f.ID+" has no known defects")
 	}
-	if ref := validateDefects(f.Known, f.ID, path); ref != nil {
+	defectIDs := map[string]bool{}
+	if ref := validateDefects(f.Known, f.ID, path, defectIDs); ref != nil {
 		return ref
 	}
-	return validateDefects(f.Bonus, f.ID, path)
+	return validateDefects(f.Bonus, f.ID, path, defectIDs)
 }
 
 func validateContext(entries []ContextFile, id, path string) *core.RefusalError {
@@ -197,13 +201,11 @@ func validateContext(entries []ContextFile, id, path string) *core.RefusalError 
 	return nil
 }
 
-func validateDefects(defects []Defect, id, path string) *core.RefusalError {
-	seen := map[string]bool{}
+func validateDefects(defects []Defect, id, path string, seen map[string]bool) *core.RefusalError {
 	for _, d := range defects {
-		if d.ID == "" || d.Description == "" || seen[d.ID] {
-			return invalidCatalog(path, fixturePrefix+id+" has a missing or repeated defect id")
+		if ref := checkDefectID(&d, id, path, seen); ref != nil {
+			return ref
 		}
-		seen[d.ID] = true
 		if ref := validateRules(d, path); ref != nil {
 			return ref
 		}
@@ -211,17 +213,41 @@ func validateDefects(defects []Defect, id, path string) *core.RefusalError {
 	return nil
 }
 
+func checkDefectID(d *Defect, id, path string, seen map[string]bool) *core.RefusalError {
+	if d.ID == "" || d.Description == "" {
+		return invalidCatalog(path, fixturePrefix+id+" has a missing defect id or description")
+	}
+	if seen[d.ID] {
+		return invalidCatalog(path, defectPrefix+d.ID+" in fixture "+id+" is repeated across known and bonus")
+	}
+	seen[d.ID] = true
+	return nil
+}
+
 func validateRules(d Defect, path string) *core.RefusalError {
 	if len(d.Matchers) == 0 {
-		return invalidCatalog(path, "defect "+d.ID+" has no matchers")
+		return invalidCatalog(path, defectPrefix+d.ID+" has no matchers")
 	}
-	for _, rule := range d.Matchers {
-		if len(rule) == 0 {
-			return invalidCatalog(path, "defect "+d.ID+" has an empty rule")
+	for i, rule := range d.Matchers {
+		if ref := validateRule(&d, rule, i, path); ref != nil {
+			return ref
 		}
-		if !validPatterns(rule) {
-			return invalidCatalog(path, "defect "+d.ID+" has invalid pattern")
+	}
+	return nil
+}
+
+func validateRule(d *Defect, rule []string, i int, path string) *core.RefusalError {
+	label := defectPrefix + d.ID + " rule " + strconv.Itoa(i)
+	if len(rule) == 0 {
+		return invalidCatalog(path, label+" has an empty rule")
+	}
+	for j, pattern := range rule {
+		if strings.TrimSpace(pattern) == "" {
+			return invalidCatalog(path, label+" pattern "+strconv.Itoa(j)+" is blank")
 		}
+	}
+	if !validPatterns(rule) {
+		return invalidCatalog(path, label+" has invalid pattern")
 	}
 	return nil
 }

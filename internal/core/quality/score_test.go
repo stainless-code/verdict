@@ -436,3 +436,82 @@ func TestCalibrateMissingRecordingKeepsRow(t *testing.T) {
 		t.Errorf("human line disagrees with JSON: %s", human)
 	}
 }
+
+const minimalCatalog = `{
+  "schema_version": "1",
+  "review_signals": {"praise_re": "x", "defect_verb_re": "y"},
+  "fixtures": [
+    {
+      "id": "fx-min",
+      "label": "minimal",
+      "repo": "r/r",
+      "base": "0000000000000000000000000000000000000000",
+      "head": "1111111111111111111111111111111111111111",
+      "context": [],
+      "known": [{"id": "K1", "description": "known defect", "matchers": [["x"]]}],
+      "bonus": []
+    }
+  ],
+  "calibration": [
+    {"recording": "r1", "fixture": "fx-min", "driver": "d", "hand_label": "0/1", "hand": []}
+  ]
+}`
+
+func TestCatalogRejectsBlankPatternAndSharedDefectID(t *testing.T) {
+	cases := []struct {
+		name, wantText, catalog string
+	}{
+		{
+			name:     "blank pattern",
+			wantText: "rule 0",
+			catalog:  strings.Replace(minimalCatalog, `"matchers": [["x"]]`, `"matchers": [["   "]]`, 1),
+		},
+		{
+			name:     "shared defect id",
+			wantText: "known and bonus",
+			catalog: strings.Replace(minimalCatalog, `"bonus": []`,
+				`"bonus": [{"id": "K1", "description": "bonus defect", "matchers": [["y"]]}]`, 1),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) { assertCatalogRefused(t, tc.catalog, tc.wantText) })
+	}
+}
+
+func assertCatalogRefused(t *testing.T, catalog, wantText string) {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), catalogName)
+	writeTestFile(t, path, catalog)
+	_, ref := LoadCatalog(path)
+	if ref == nil || ref.Code != "fixtures-invalid" {
+		t.Fatalf("refusal = %+v, want fixtures-invalid", ref)
+	}
+	if !strings.Contains(ref.Message, "K1") || !strings.Contains(ref.Message, wantText) {
+		t.Errorf("refusal message = %q, want K1 and %q", ref.Message, wantText)
+	}
+}
+
+func TestCalibrateRequiresScoredRun(t *testing.T) {
+	catalog := &Catalog{
+		Fixtures:    []Fixture{{ID: "fx", Known: []Defect{{ID: "K1"}}}},
+		Calibration: []CalibrationRow{{Recording: "r1", Fixture: "fx", Hand: []string{}}},
+	}
+	unscored := RunScore{Recording: "r1", Fixture: "fx", InfraError: "agent failed to start"}
+	result := Calibrate(catalog, []RunScore{unscored})
+	if result.Reproduced || len(result.Rows) != 1 {
+		t.Fatalf("unscored reproduced = %v, rows = %d, want false/1", result.Reproduced, len(result.Rows))
+	}
+	row := result.Rows[0]
+	if row.Status != "FAIL" || !strings.Contains(row.Reason, "agent failed to start") {
+		t.Errorf("unscored row = %+v", row)
+	}
+	if !strings.Contains(CalibrationTable(result), "agent failed to start") {
+		t.Error("calibration table does not name the reason")
+	}
+
+	scored := RunScore{Recording: "r1", Fixture: "fx", Scored: true}
+	result = Calibrate(catalog, []RunScore{scored})
+	if !result.Reproduced || result.Rows[0].Status != "PASS" {
+		t.Errorf("scored empty-hand row = %+v, reproduced = %v", result.Rows[0], result.Reproduced)
+	}
+}

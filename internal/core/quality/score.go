@@ -193,6 +193,7 @@ type CalibrationRowResult struct {
 	HandHits     string
 	HarnessHits  string
 	Status       string
+	Reason       string
 	Praise       int
 	NullSeverity int
 }
@@ -242,7 +243,10 @@ func calibrationRow(byName map[string]*RunScore, fixtures map[string]*Fixture,
 	}
 	harness := hits(run.Hits)
 	status := "FAIL"
-	if sameSet(hand, harness) {
+	reason := ""
+	if !run.Scored {
+		reason = "unscored (infra error: " + run.InfraError + ")"
+	} else if sameSet(hand, harness) {
 		status = "PASS"
 	}
 	return &CalibrationRowResult{
@@ -256,6 +260,7 @@ func calibrationRow(byName map[string]*RunScore, fixtures map[string]*Fixture,
 		Praise:       run.Praise,
 		NullSeverity: run.NullSeverity,
 		Status:       status,
+		Reason:       reason,
 	}
 }
 
@@ -301,13 +306,14 @@ func joinSet(values map[string]bool) string {
 // CalibrationTable renders the seven-row table the harness published.
 func CalibrationTable(result *CalibrationResult) string {
 	var sb strings.Builder
-	sb.WriteString("| bundle | fixture | driver | hand | harness | hand hits | harness hits | praise | null sev | status |\n")
-	sb.WriteString("| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | --- |\n")
+	sb.WriteString("| bundle | fixture | driver | hand | harness | hand hits | harness hits | praise | null sev | status | reason |\n")
+	sb.WriteString("| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | --- | --- |\n")
 	for i := range result.Rows {
 		row := &result.Rows[i]
-		fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s | %s | %s | %d | %d | %s |\n",
+		fmt.Fprintf(&sb, "| %s | %s | %s | %s | %s | %s | %s | %d | %d | %s | %s |\n",
 			row.Recording, row.Fixture, row.Driver, row.Hand, row.Harness,
-			orDash(row.HandHits), orDash(row.HarnessHits), row.Praise, row.NullSeverity, row.Status)
+			orDash(row.HandHits), orDash(row.HarnessHits), row.Praise, row.NullSeverity,
+			row.Status, orDash(row.Reason))
 	}
 	return sb.String()
 }
