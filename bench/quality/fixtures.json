@@ -138,6 +138,229 @@
         }
       ],
       "bonus": []
+    },
+    {
+      "id": "fx3",
+      "label": "PR #187 backtest fixtures, pre-CodeRabbit (05f131e3d..0c725614b)",
+      "repo": "stainless-code/verdict",
+      "base": "05f131e3d88848dd61d3232280f47b2031633a50",
+      "head": "0c725614bde072abade74e0daae39cca97257b5c",
+      "context": [
+        {
+          "path": "bench/quality/context/fx3/DESIGN.md",
+          "sha256": "8535a77d3a08243631ec74ef970f87346a514e339b7f65f54bfba7dd6b2355d4",
+          "bytes": 39201
+        }
+      ],
+      "known": [
+        {
+          "id": "C1",
+          "description": "internal/backtest/backtest.go --fixture and --recordings are accepted in the composed --since mode",
+          "matchers": [
+            [
+              "internal/backtest/backtest\\.go",
+              "--fixture|--recordings",
+              "--since|composed",
+              "accept|valid|refus|unknown flag|only valid|leak|allowed|mode"
+            ],
+            [
+              "valueFlags|accepts\\(",
+              "--fixture|--recordings",
+              "--since|composed mode|composed"
+            ]
+          ]
+        },
+        {
+          "id": "C2",
+          "description": "internal/backtest/backtest.go fixturesRentry interpolates --recordings without shell quoting",
+          "matchers": [
+            [
+              "internal/backtest/backtest\\.go",
+              "--recordings",
+              "rerun|reentry|rentry|command|hint"
+            ],
+            [
+              "--recordings",
+              "unquoted|not quoted|shellquote|shell quote|quoting|word splitting|space|whitespace|inject"
+            ]
+          ]
+        },
+        {
+          "id": "C3",
+          "description": "internal/core/quality/fixture.go relativePath accepts Windows traversal, drive letters and UNC context paths",
+          "matchers": [
+            [
+              "internal/core/quality/fixture\\.go",
+              "context|relativepath|context pin",
+              "windows|drive letter|unc|backslash|traversal|filepath\\.IsLocal|pathpkg"
+            ],
+            [
+              "relativePath|filepath\\.IsLocal|pathpkg\\.Clean",
+              "windows|drive letter|unc|backslash|traversal"
+            ]
+          ]
+        },
+        {
+          "id": "C4",
+          "description": "internal/core/quality/fixture.go LoadRecordingMeta accepts a meta sidecar with trailing data",
+          "matchers": [
+            [
+              "internal/core/quality/fixture\\.go",
+              "meta sidecar|loadrecordingmeta|recording meta|meta\\.json",
+              "trailing data|trailing json|trailing object|after the .* object|second json|decode\\(&extra\\)|io\\.EOF"
+            ],
+            [
+              "loadrecordingmeta|recording meta|meta sidecar",
+              "trailing data|trailing json|extra json|after the .* object"
+            ]
+          ]
+        },
+        {
+          "id": "C5",
+          "description": "internal/core/quality/service_test.go tests write report.json into the source checkout",
+          "matchers": [
+            [
+              "internal/core/quality/service_test\\.go|quality tests?",
+              "report\\.json|report file|writeReport",
+              "source checkout|source tree|repoPath\\(\\)|t\\.TempDir|temp (root|dir)"
+            ],
+            [
+              "repoPath\\(\\)",
+              "report\\.json|writeReport",
+              "source checkout|source tree|temp (root|dir)"
+            ]
+          ]
+        },
+        {
+          "id": "C6",
+          "description": "internal/core/quality/service.go cancellation during or after verification still writes report.json",
+          "matchers": [
+            [
+              "internal/core/quality/service\\.go",
+              "cancel|ctx\\.Err",
+              "writeReport|report\\.json|report",
+              "verif|after|during"
+            ],
+            [
+              "RunFixtures|writeReport",
+              "canceled|cancel|ctx\\.Err",
+              "verification|verifyRun|verifier|check before"
+            ]
+          ]
+        }
+      ],
+      "bonus": []
+    },
+    {
+      "id": "fx4",
+      "label": "PR #186 directive names context.txt, pre-CodeRabbit (852ce808b..154107e75)",
+      "repo": "stainless-code/verdict",
+      "base": "852ce808bd5c21f06f0e7cea953e34fadea3faec",
+      "head": "154107e75343ae25b202d47e2cda392487560708",
+      "context": [
+        {
+          "path": "bench/quality/context/fx4/brief-directive-context.md",
+          "sha256": "3aa876c6ee2d8e635f7d3c0f12f507c0705441f0568b19196882c99b720acf4e",
+          "bytes": 4244
+        }
+      ],
+      "known": [
+        {
+          "id": "D1",
+          "description": "internal/core/fetch/impact.go appendTOCSection treats any toc read error as empty and overwrites toc.txt",
+          "matchers": [
+            [
+              "internal/core/fetch/impact\\.go|appendTOCSection",
+              "toc\\.txt|toc section|table of contents",
+              "readOptional|read error|unreadable|missing|empty|overwrit"
+            ],
+            [
+              "readOptional",
+              "toc|table of contents",
+              "unreadable|read error|empty|overwrit"
+            ]
+          ]
+        },
+        {
+          "id": "D2",
+          "description": "internal/core/run/prompt_context_test.go accepts a context clause that omits handed spec and check-the-change framing",
+          "matchers": [
+            [
+              "internal/core/run/prompt_context_test\\.go",
+              "context\\.txt|context clause|handed context|directive",
+              "handed spec|check the change against it|framing|evidence, never instructions"
+            ],
+            [
+              "prompt_context_test|assertNamesHandedContext",
+              "clause|phrase|wording|framing",
+              "handed spec|check the change against it|as evidence"
+            ]
+          ]
+        },
+        {
+          "id": "D3",
+          "description": "evals/cases/context-sources.sh checks the source row anywhere in toc.txt, not inside the ## context section",
+          "matchers": [
+            [
+              "evals/cases/context-sources\\.sh",
+              "## context|context section|toc",
+              "source row|manifest source|^- |source listing",
+              "inside|section|scope|awk"
+            ],
+            ["context-sources", "toc|source", "inside|section|scope|awk"]
+          ]
+        }
+      ],
+      "bonus": []
+    },
+    {
+      "id": "fx5",
+      "label": "PR #183 Procedure in the Bundle, pre-CodeRabbit (5407576f1..e13240d9b)",
+      "repo": "stainless-code/verdict",
+      "base": "5407576f1fa72433fa7f54777fd48222a0471ef6",
+      "head": "e13240d9b31acd395de0ca6ff4414cb36bb751fc",
+      "context": [
+        {
+          "path": "bench/quality/context/fx5/PR-2.md",
+          "sha256": "79cc1e93bb97024b9b18a92831ad21df176ace42701e8b5f919118e60ce30c63",
+          "bytes": 8356
+        }
+      ],
+      "known": [
+        {
+          "id": "E1",
+          "description": "internal/core/run/procedure_directive_test.go plants the Procedure at the path parsed from the directive, so the F1 test is tautological",
+          "matchers": [
+            [
+              "internal/core/run/procedure_directive_test\\.go",
+              "procedure|directive",
+              "plant|tautolog|parsed path|path the directive|fetch-produced|writeFile"
+            ],
+            [
+              "parseFirstReadPath|planted|directive itself names",
+              "procedure|bundle file",
+              "plant|tautolog|write"
+            ]
+          ]
+        },
+        {
+          "id": "E2",
+          "description": "internal/core/post/submit.go stamps prompts_hash from the running binary instead of the bundle's recorded provenance",
+          "matchers": [
+            [
+              "internal/core/post/submit\\.go|internal/provenance/provenance\\.go",
+              "prompts_hash",
+              "bundle|recorded|provenance\\.json|running binary|embedded|stamp"
+            ],
+            [
+              "stampProvenance|Triple\\(",
+              "prompts_hash",
+              "embedded|bundle|recorded|binary"
+            ]
+          ]
+        }
+      ],
+      "bonus": []
     }
   ],
   "calibration": [
