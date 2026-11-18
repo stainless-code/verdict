@@ -256,6 +256,10 @@ func (s *Server) dispatch(ctx context.Context, req *rpcRequest) {
 		s.handlePromptsList(req)
 	case methodPromptsGet:
 		s.handlePromptsGet(req)
+	case methodResourcesList:
+		s.handleResourcesList(ctx, req)
+	case methodResourcesRead:
+		s.handleResourcesRead(ctx, req)
 	case methodCancelled:
 		s.handleCancelled(req)
 	default:
