@@ -1,0 +1,11 @@
+{
+  "schema_version": "1",
+  "requirements": {
+    "block_clauses": [
+      {
+        "name": "open-important-or-above",
+        "threshold": "important"
+      }
+    ]
+  }
+}
