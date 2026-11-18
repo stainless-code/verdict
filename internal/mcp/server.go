@@ -271,7 +271,11 @@ func (s *Server) handleInitialize(req *rpcRequest) {
 	}
 	s.writeResult(req.ID, initializeResult{
 		ProtocolVersion: negotiate(params.ProtocolVersion),
-		Capabilities:    map[string]any{"tools": map[string]any{"listChanged": false}},
+		Capabilities: map[string]any{
+			"prompts":   map[string]any{"listChanged": false},
+			"resources": map[string]any{"listChanged": false, "subscribe": false},
+			"tools":     map[string]any{"listChanged": false},
+		},
 		ServerInfo: serverInfo{
 			Name:         serverName,
 			Version:      s.cfg.Version,
