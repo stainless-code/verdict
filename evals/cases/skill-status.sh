@@ -27,10 +27,10 @@ assert_eq "empty diff list" "0" "$(jq -r '.data.diff // [] | length' <"$EVAL_OUT
 after="$(tree_hash "$TARGET")"
 assert_eq "status wrote nothing (tree hash unchanged)" "$before" "$after"
 
-printf 'hand edited\n' >"$TARGET/NOTICE.md"
+printf '\nhand edited\n' >>"$TARGET/SKILL.md"
 run_review skill status --dir "$SKILLS" --json
-assert_exit "a byte-only edit stays in sync" 0
-assert_json_field "byte-only edit status" "keep" '.data.status'
+assert_exit "a SKILL.md body edit with a matching stub_version stays in sync" 0
+assert_json_field "SKILL.md body edit status" "keep" '.data.status'
 
 stub_version="$(sed -n 's/^stub_version: //p' "$EVAL_SKILL/SKILL.md" | head -n 1)"
 sed "s/^stub_version: $stub_version$/stub_version: 2/" "$EVAL_SKILL/SKILL.md" >"$TARGET/SKILL.md"

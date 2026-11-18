@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	skillfs "github.com/stainless-code/verdict"
@@ -12,7 +13,9 @@ import (
 )
 
 // TargetStatus is one target's read-only drift report. InSync means the
-// installed stub_version and the receipt version both match this binary.
+// installed stub_version and receipt version match this binary and no file
+// besides SKILL.md drifted; a matching stub_version forgives SKILL.md byte
+// edits only.
 type TargetStatus struct {
 	Diffs  []Diff
 	Plan   Plan
@@ -109,10 +112,11 @@ func inSync(plan *Plan) bool {
 	return plan.Status == StatusKeep && plan.ReceiptVersion == plan.Version
 }
 
-// applyStubVersion replaces the install plan's byte comparison with the stub
-// contract: an installed SKILL.md is current when its frontmatter carries the
-// embedded stub_version, whatever else its bytes say. A missing or different
-// version reports the entry point as the changed file, so --diff shows it.
+// applyStubVersion applies the stub contract to an install plan. A matching
+// stub_version forgives SKILL.md byte differences only, so every other changed
+// file stays in plan.Changed; a missing or different version adds SKILL.md to
+// the changed list. Status derives from what remains: keep when nothing is
+// left, update otherwise.
 func applyStubVersion(plan *Plan) *core.RefusalError {
 	if plan.Status != StatusKeep && plan.Status != StatusUpdate {
 		return nil
@@ -122,15 +126,41 @@ func applyStubVersion(plan *Plan) *core.RefusalError {
 		return refuse(codeRead, fmt.Sprintf("cannot read %s: %s", plan.Target, err))
 	}
 	defer func() { _ = root.Close() }()
-	installed, ok := installedStubVersion(root)
-	if ok && installed == skillfs.StubVersion {
-		plan.Status = StatusKeep
-		plan.Changed = nil
-		return nil
+	if stubVersionMatches(root) {
+		plan.Changed = forgiveStubFile(plan.Changed)
+	} else {
+		plan.Changed = markStubFile(plan.Changed)
 	}
-	plan.Status = StatusUpdate
-	plan.Changed = []string{skillfs.SkillMD}
+	if len(plan.Changed) == 0 {
+		plan.Status = StatusKeep
+	} else {
+		plan.Status = StatusUpdate
+	}
 	return nil
+}
+
+// stubVersionMatches reports whether the installed stub is the one served by
+// this binary.
+func stubVersionMatches(root *os.Root) bool {
+	installed, ok := installedStubVersion(root)
+	return ok && installed == skillfs.StubVersion
+}
+
+// forgiveStubFile drops only SKILL.md from the drift list; other files still
+// have to match this binary byte for byte.
+func forgiveStubFile(changed []string) []string {
+	return slices.DeleteFunc(changed, func(path string) bool {
+		return path == skillfs.SkillMD
+	})
+}
+
+// markStubFile adds SKILL.md to the drift list once, without hiding anything
+// else the install plan already found.
+func markStubFile(changed []string) []string {
+	if slices.Contains(changed, skillfs.SkillMD) {
+		return changed
+	}
+	return append(changed, skillfs.SkillMD)
 }
 
 // installedStubVersion reads stub_version from an installed SKILL.md's YAML

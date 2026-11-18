@@ -463,9 +463,11 @@ func skillUsageText() string {
 		"  skill status [--dir <skills-dir>|--agent <name>...|--detect] [--diff] [--json]\n" +
 		"      read-only drift report per target: create/update/keep/blocked, the\n" +
 		"      installed stub_version versus the embedded one, the receipt versus\n" +
-		"      embedded version, and the changed files. Exit 0 when every target is\n" +
-		"      in sync, 1 when drifted. --diff adds one capped unified diff per\n" +
-		"      changed file (a truncated diff says so).\n" +
+		"      embedded version, and the changed files. A matching stub_version\n" +
+		"      forgives SKILL.md byte edits only; NOTICE.md and scripts/verdict\n" +
+		"      drift when missing or changed, and a missing or different version\n" +
+		"      reports SKILL.md. Exit 0 when every target is in sync, 1 when drifted.\n" +
+		"      --diff adds one capped unified diff per changed file (truncated says so).\n" +
 		"  skill install [--dir <skills-dir>|--agent <name>...|--detect] [--force] [--dry-run] [--json]\n" +
 		"      atomically write the Bootstrap skill: SKILL.md, NOTICE.md, and\n" +
 		"      scripts/verdict, plus a .verdict-managed receipt. The Procedure and\n" +

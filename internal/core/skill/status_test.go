@@ -33,63 +33,127 @@ func TestStatusFreshInstallInSync(t *testing.T) {
 	}
 }
 
-// TestStatusComparesStubVersion pins the version-based report: an unrelated
-// byte edit stays in sync, while a changed stub_version drifts with a diff.
+type statusLeg struct {
+	mutate     func(*testing.T, string)
+	name       string
+	wantInSync bool
+}
+
+// TestStatusComparesStubVersion pins the stub contract through StatusAgents:
+// a matching stub_version forgives SKILL.md bytes only, while every other
+// payload file still has to match this binary byte for byte.
 func TestStatusComparesStubVersion(t *testing.T) {
 	t.Parallel()
-	t.Run("byte edit stays in sync", checkStatusByteEditInSync)
-	t.Run("version edit drifts", checkStatusVersionEditDrifts)
-}
-
-func checkStatusByteEditInSync(t *testing.T) {
-	t.Parallel()
-	req, target := seedStatusTarget(t)
-	if err := os.WriteFile(filepath.Join(target, "NOTICE.md"), []byte("hand edited\n"), 0o644); err != nil {
-		t.Fatal(err)
+	skillMD := filepath.ToSlash(skillfs.SkillMD)
+	noticeMD := filepath.ToSlash("NOTICE.md")
+	shim := filepath.ToSlash(filepath.Join("scripts", "verdict"))
+	tests := []statusLeg{
+		{name: "fresh install is in sync", wantInSync: true},
+		{name: "SKILL.md body edit stays in sync", mutate: editSkillBody, wantInSync: true},
+		{name: "stub_version edit drifts", mutate: bumpStubVersion},
+		{name: "shim deletion drifts", mutate: deleteShim},
+		{name: "shim byte edit drifts", mutate: editShim},
+		{name: "NOTICE.md deletion drifts", mutate: deleteNotice},
 	}
-	st, ref := skill.Status(context.Background(), req, true)
-	if ref != nil {
-		t.Fatalf("Status after byte edit: %v", ref)
+	wantChanged := map[string][]string{
+		"stub_version edit drifts":  {skillMD},
+		"shim deletion drifts":      {shim},
+		"shim byte edit drifts":     {shim},
+		"NOTICE.md deletion drifts": {noticeMD},
 	}
-	if !st.InSync || st.Plan.Status != skill.StatusKeep {
-		t.Fatalf("byte-only edit status = %+v, want an in-sync keep", st)
-	}
-}
-
-func checkStatusVersionEditDrifts(t *testing.T) {
-	t.Parallel()
-	req, target := seedStatusTarget(t)
-	bumpStubVersion(t, target)
-	st, ref := skill.Status(context.Background(), req, true)
-	if ref != nil {
-		t.Fatalf("Status after version edit: %v", ref)
-	}
-	if st.InSync || st.Plan.Status != skill.StatusUpdate {
-		t.Fatalf("version edit status = %+v, want drift", st)
-	}
-	if !slices.Equal(st.Plan.Changed, []string{"SKILL.md"}) {
-		t.Fatalf("changed = %v, want [SKILL.md]", st.Plan.Changed)
-	}
-	if len(st.Diffs) != 1 || !strings.Contains(st.Diffs[0].Body, "-stub_version: 2") {
-		t.Fatalf("version diff = %+v, want the installed value removed", st.Diffs)
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertStatusLeg(t, tc, wantChanged[tc.name])
+		})
 	}
 }
 
-// seedStatusTarget installs a fresh skill copy for one status leg.
-func seedStatusTarget(t *testing.T) (*skill.Request, string) {
+func assertStatusLeg(t *testing.T, tc statusLeg, wantChanged []string) {
+	t.Helper()
+	set := statusForInstalledAgent(t, tc.mutate)
+	if len(set.Targets) != 1 {
+		t.Fatalf("targets = %d, want 1", len(set.Targets))
+	}
+	st := set.Targets[0]
+	wantStatus := skill.StatusUpdate
+	if tc.wantInSync {
+		wantStatus = skill.StatusKeep
+	}
+	if set.InSync != tc.wantInSync || st.InSync != tc.wantInSync {
+		t.Fatalf("in_sync = set %v target %v, want %v", set.InSync, st.InSync, tc.wantInSync)
+	}
+	if st.Plan.Status != wantStatus {
+		t.Fatalf("status = %q, want %q", st.Plan.Status, wantStatus)
+	}
+	if got := slashPaths(st.Plan.Changed); !slices.Equal(got, wantChanged) {
+		t.Fatalf("changed = %v, want %v", got, wantChanged)
+	}
+	if got := diffPaths(st.Diffs); !slices.Equal(got, wantChanged) {
+		t.Fatalf("diff paths = %v, want %v", got, wantChanged)
+	}
+}
+
+func slashPaths(paths []string) []string {
+	var out []string
+	for _, path := range paths {
+		out = append(out, filepath.ToSlash(path))
+	}
+	return out
+}
+
+func diffPaths(diffs []skill.Diff) []string {
+	var out []string
+	for _, diff := range diffs {
+		out = append(out, filepath.ToSlash(diff.Path))
+	}
+	return out
+}
+
+// statusForInstalledAgent seeds an agent install, applies one mutation, and
+// reads the report through the exported multi-agent status route.
+func statusForInstalledAgent(t *testing.T, mutate func(*testing.T, string)) skill.StatusSet {
 	t.Helper()
 	req := newRequest(t)
-	req.Dir = t.TempDir()
-	if _, ref := skill.Install(context.Background(), req); ref != nil {
+	req.Agent = "claude"
+	ctx := context.Background()
+	if _, ref := skill.Install(ctx, req); ref != nil {
 		t.Fatalf("seed install: %v", ref)
 	}
-	return req, filepath.Join(req.Dir, "verdict")
+	before, ref := skill.StatusAgents(ctx, req, []string{"claude"}, false)
+	if ref != nil {
+		t.Fatalf("StatusAgents before mutation: %v", ref)
+	}
+	if len(before.Targets) != 1 {
+		t.Fatalf("targets before mutation = %d, want 1", len(before.Targets))
+	}
+	if mutate != nil {
+		mutate(t, before.Targets[0].Plan.Target)
+	}
+	set, ref := skill.StatusAgents(ctx, req, []string{"claude"}, true)
+	if ref != nil {
+		t.Fatalf("StatusAgents after mutation: %v", ref)
+	}
+	return set
+}
+
+// editSkillBody appends prose without touching the installed stub_version.
+func editSkillBody(t *testing.T, target string) {
+	t.Helper()
+	path := filepath.Join(target, skillfs.SkillMD)
+	body, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(body, []byte("\nhand edited\n")...), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // bumpStubVersion changes the installed stub_version to a different integer.
 func bumpStubVersion(t *testing.T, target string) {
 	t.Helper()
-	path := filepath.Join(target, "SKILL.md")
+	path := filepath.Join(target, skillfs.SkillMD)
 	body, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -99,6 +163,30 @@ func bumpStubVersion(t *testing.T, target string) {
 		t.Fatal("installed stub has no stub_version to edit")
 	}
 	if err := os.WriteFile(path, []byte(edited), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// deleteShim removes the executable that resolves the judge binary.
+func deleteShim(t *testing.T, target string) {
+	t.Helper()
+	if err := os.Remove(filepath.Join(target, "scripts", "verdict")); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// editShim replaces the shim with different executable bytes.
+func editShim(t *testing.T, target string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(target, "scripts", "verdict"), []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// deleteNotice removes the other non-SKILL.md payload file.
+func deleteNotice(t *testing.T, target string) {
+	t.Helper()
+	if err := os.Remove(filepath.Join(target, "NOTICE.md")); err != nil {
 		t.Fatal(err)
 	}
 }

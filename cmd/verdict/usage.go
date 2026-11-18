@@ -474,8 +474,10 @@ func usageText() string {
 		"    name/version/files, files lists every embedded path.\n" +
 		"    status is a read-only drift report per target (create/update/keep/\n" +
 		"    blocked) comparing the installed stub_version and the receipt against\n" +
-		"    this binary; it exits 0 in sync and 1 when drifted. --diff adds a\n" +
-		"    capped unified diff per changed file.\n" +
+		"    this binary; it exits 0 in sync and 1 when drifted. A matching\n" +
+		"    stub_version forgives SKILL.md byte edits only; NOTICE.md and\n" +
+		"    scripts/verdict still drift when missing or changed. A missing or\n" +
+		"    different version reports SKILL.md. --diff adds a capped unified diff.\n" +
 		"    install atomically writes SKILL.md, NOTICE.md, and scripts/verdict\n" +
 		"    plus a .verdict-managed receipt; the Procedure and schemas stay in the\n" +
 		"    binary. It previews create/update/keep/blocked, never prompts, and\n" +

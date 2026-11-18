@@ -2801,8 +2801,11 @@ variable.
   is the read-only drift check: it writes nothing and
   reports each target's create/update/keep/blocked result, comparing the
   installed `stub_version` with the one served by this binary and the receipt
-  with the embedded version. An unrelated byte edit therefore stays in sync;
-  a changed `stub_version` is drift with a diff. It exits 0 when every
+  with the embedded version. A matching `stub_version` forgives `SKILL.md`
+  byte edits only: `NOTICE.md` and `scripts/verdict` still drift when missing
+  or changed, and a missing or different `stub_version` reports `SKILL.md`.
+  Every drifted file appears in `Changed`, so `--diff` shows the shim too.
+  It exits 0 when every
   target is in sync and 1 when drifted (a typed refusal still exits 1), so CI
   can gate on it without `install --dry-run`. `--diff` adds one unified diff
   per changed file, capped at 64 KiB overall with an explicit truncation

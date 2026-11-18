@@ -129,17 +129,22 @@ func TestSkillStatusCommand(t *testing.T) {
 		t.Fatalf("fresh status = exit %d data %v", code, data)
 	}
 
-	if err := os.WriteFile(filepath.Join(target, "NOTICE.md"), []byte("hand edited\n"), 0o644); err != nil {
+	stubPath := filepath.Join(target, skillfs.SkillMD)
+	stubBody, err := os.ReadFile(stubPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stubPath, append(stubBody, []byte("\nhand edited\n")...), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	code, out, _ = runCapture(t, []string{"skill", "status", "--dir", dir, "--json"})
 	doc = decodeSkillEnvelope(t, out)
 	data = skillData(t, doc)
 	if code != 0 || data["in_sync"] != true {
-		t.Fatalf("byte-only edit status = exit %d data %v", code, data)
+		t.Fatalf("SKILL.md body edit status = exit %d data %v", code, data)
 	}
 
-	stub, err := os.ReadFile(filepath.Join(target, "SKILL.md"))
+	stub, err := os.ReadFile(stubPath)
 	if err != nil {
 		t.Fatal(err)
 	}
