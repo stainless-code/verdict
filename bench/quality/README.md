@@ -1,6 +1,6 @@
 # Known-defect fixtures
 
-This directory is the `backtest fixtures` corpus: two reviewed ranges with hand-known defects, their context files, and seven converted recordings that pin the scorer. It is a sibling of [`../corpus/`](../corpus/), not a set of `case.json` manifests: the ground truth here is a defect description plus regex matchers, and scoring is per defect over `path` + `claim`, with no line window.
+This directory is the `backtest fixtures` corpus: five reviewed ranges with hand-known defects, their context files, and seven converted recordings on the first two ranges that pin the scorer. The three CodeRabbit-known-defect ranges ship no recordings; they are for live runs. It is a sibling of [`../corpus/`](../corpus/), not a set of `case.json` manifests: the ground truth here is a defect description plus regex matchers, and scoring is per defect over `path` + `claim`, with no line window.
 
 ## Files
 
@@ -15,6 +15,6 @@ A defect's `matchers` is a list of rules. Each rule is a list of RE2 patterns; a
 
 ## Provenance and regeneration
 
-The fixtures come from STA-440 part 2 and STA-351 PR A. The four reviewed commits are in this repository's history, so an operator can rebuild either range offline with `verdict fetch-local … --range <base>..<head> --context <fixture context> --worktree`. The A/B/C arm scripts, drivers, judge and all raw run logs stay in the operator's `.scratch`, outside the shipped corpus.
+The fx1 and fx2 fixtures come from STA-440 part 2 and STA-351 PR A. fx3, fx4 and fx5 encode the defects CodeRabbit caught on PRs #187, #186 and #183 before their fix commits; their matchers are scored only when a live recording is supplied. The four reviewed commits are in this repository's history, so an operator can rebuild either range offline with `verdict fetch-local … --range <base>..<head> --context <fixture context> --worktree`. The A/B/C arm scripts, drivers, judge and all raw run logs stay in the operator's `.scratch`, outside the shipped corpus.
 
 The source reviews were checked for secret-shaped tokens, email addresses and absolute host paths before shipping; none was found. `RESEARCH-2.md` carried two absolute `file:///` links to sibling research notes, rewritten here to relative names, and the catalog pins the sha256 of the sanitized bytes. The gate outcome was transcribed into each converted recording; no other run artifact ships.
