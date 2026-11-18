@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/golden"
@@ -229,8 +230,8 @@ func smallCatalog(t *testing.T) *Catalog {
 }
 
 type matcherCase struct {
-	finding Finding
 	name    string
+	finding Finding
 	wantA   bool
 	wantB   bool
 }
@@ -240,13 +241,13 @@ func TestMatcherAllOfWithinRuleAnyOfAcrossRules(t *testing.T) {
 	m := NewMatcher(c)
 	a, b := c.Fixtures[0].Known[0], c.Fixtures[0].Known[1]
 	cases := []matcherCase{
-		{Finding{Path: "a.go", Claim: "alpha BETA here"}, "both words in one rule", true, false},
-		{Finding{Path: "a.go", Claim: "alpha alone"}, "first half only", false, false},
-		{Finding{Path: "b.go", Claim: "beta alone"}, "second half only", false, false},
-		{Finding{Path: "gamma.go", Claim: "unrelated"}, "path participates", false, true},
-		{Finding{Path: "x.go", Claim: "DELTA epsilon"}, "second single rule", false, true},
-		{Finding{Path: "x.go", Claim: "delta only"}, "second compound half", false, false},
-		{Finding{Path: "x.go", Claim: "plain text"}, "neither", false, false},
+		{"both words in one rule", Finding{Path: "a.go", Claim: "alpha BETA here"}, true, false},
+		{"first half only", Finding{Path: "a.go", Claim: "alpha alone"}, false, false},
+		{"second half only", Finding{Path: "b.go", Claim: "beta alone"}, false, false},
+		{"path participates", Finding{Path: "gamma.go", Claim: "unrelated"}, false, true},
+		{"second single rule", Finding{Path: "x.go", Claim: "DELTA epsilon"}, false, true},
+		{"second compound half", Finding{Path: "x.go", Claim: "delta only"}, false, false},
+		{"neither", Finding{Path: "x.go", Claim: "plain text"}, false, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) { checkMatcherCase(t, m, &a, &b, &tc) })
@@ -347,19 +348,29 @@ func TestFixtureRecordingLoader(t *testing.T) {
 	if rec.GatePassed != nil {
 		t.Errorf("gate_passed = %v, want nil", *rec.GatePassed)
 	}
-	want := []Finding{
-		{Path: "chosen.go", Claim: "chosen claim", Severity: "important"},
-		{Path: "plain.go", Claim: "plain claim"},
-	}
-	for i, w := range want {
-		if got := rec.Findings[i].Canonical(); got != w {
-			t.Errorf("finding %d = %+v, want %+v", i, got, w)
-		}
-	}
+	assertFixtureCanonical(t, rec)
 	broken := filepath.Join(dir, "broken"+recordingExt)
 	writeTestFile(t, broken, `{"schema_version":"1","findings":[{"file":"x","body":"y"}]}`)
 	if _, ref := LoadFixtureRecording(broken); ref == nil || ref.Code != "fixtures-recording-invalid" {
 		t.Fatalf("refusal = %+v, want fixtures-recording-invalid", ref)
+	}
+}
+
+func assertFixtureCanonical(t *testing.T, rec *FixtureRecording) {
+	t.Helper()
+	want := []Finding{
+		{Path: "chosen.go", Claim: "chosen claim", Severity: "important", Line: 7},
+		{Path: "plain.go", Claim: "plain claim"},
+	}
+	wantAnchored := []bool{true, false}
+	for i, w := range want {
+		got := rec.Findings[i].Canonical()
+		if got.Path != w.Path || got.Claim != w.Claim || got.Severity != w.Severity || got.Line != w.Line {
+			t.Errorf("finding %d = %+v, want %+v", i, got, w)
+		}
+		if got.Anchored == nil || *got.Anchored != wantAnchored[i] {
+			t.Errorf("finding %d anchored = %v, want %v", i, got.Anchored, wantAnchored[i])
+		}
 	}
 }
 
@@ -377,5 +388,51 @@ func TestRecordingMetaProvenance(t *testing.T) {
 	writeTestFile(t, bad, `{"schema_version":"1","fixture":"fx1","source_bundle":"x","source_sha256":"not-a-digest"}`)
 	if _, ref := LoadRecordingMeta(bad); ref == nil || ref.Code != "fixtures-recording-invalid" {
 		t.Fatalf("refusal = %+v, want fixtures-recording-invalid", ref)
+	}
+}
+
+func TestGatingFromFixtureRecording(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "gating"+recordingExt)
+	writeTestFile(t, path, `{
+  "schema_version": "1",
+  "findings": [
+    {"path": "a.go", "line": 42, "severity": "important", "text": "anchored claim"},
+    {"path": "b.go", "line": 0, "severity": "important", "text": "zero line claim"},
+    {"path": "c.go", "line": null, "severity": "important", "text": "no line claim"},
+    {"path": "d.go", "line": 9, "severity": "informational", "text": "low severity claim"}
+  ],
+  "gate_passed": true
+}`)
+	rec, ref := LoadFixtureRecording(path)
+	if ref != nil {
+		t.Fatalf("load: %s: %s", ref.Code, ref.Message)
+	}
+	want := []bool{true, false, false, false}
+	for i := range rec.Findings {
+		f := rec.Findings[i].Canonical()
+		if got := IsGatingFinding(&f); got != want[i] {
+			t.Errorf("finding %d (%s) gating = %v, want %v", i, f.Path, got, want[i])
+		}
+	}
+}
+
+func TestCalibrateMissingRecordingKeepsRow(t *testing.T) {
+	catalog, ref := LoadCatalog(repoPath("bench", "quality", catalogName))
+	if ref != nil {
+		t.Fatalf("load catalog: %s: %s", ref.Code, ref.Message)
+	}
+	catalog.Calibration = catalog.Calibration[:1]
+	result := Calibrate(catalog, nil)
+	if result.Reproduced || len(result.Rows) != 1 {
+		t.Fatalf("reproduced = %v, rows = %d, want false/1", result.Reproduced, len(result.Rows))
+	}
+	row := result.Rows[0]
+	if row.Recording != catalog.Calibration[0].Recording || row.Status != "FAIL" || row.Harness != "n/a" {
+		t.Errorf("missing row = %+v", row)
+	}
+	human := Human(&Report{Calibration: calibrationSummary(result)})
+	if !strings.Contains(human, "calibration: 0/1 rows reproduced") {
+		t.Errorf("human line disagrees with JSON: %s", human)
 	}
 }

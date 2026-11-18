@@ -18,6 +18,7 @@ const (
 	hallucMeasured      = "measured"
 	refusalInsufficient = "review-insufficient"
 	rateBits            = 64
+	notApplicable       = "n/a"
 )
 
 // IsGatingFinding is the one predicate S4 retargets: a gating finding is
@@ -257,7 +258,7 @@ func roundRate(v float64) float64 {
 
 func rateText(v *float64) string {
 	if v == nil {
-		return "n/a"
+		return notApplicable
 	}
 	return strconv.FormatFloat(*v, 'f', corpuscore.RateDecimals, rateBits)
 }

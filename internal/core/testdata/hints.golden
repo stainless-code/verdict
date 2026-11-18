@@ -106,7 +106,7 @@ fix-ceiling	try: triage the sig or split the fix — the 3-pass ceiling is hard-
 fix-failed	try: address the cause above, then re-run the same command
 fix-patch-secret	try: remove the value from the worktree (rotate it if it was real), then re-run fix
 fixtures-failed	try: make .verdict writable, then re-run backtest fixtures
-fixtures-invalid	try: fix bench/quality/fixtures.json, then re-run backtest fixtures
+fixtures-invalid	try: choose one of the fixture ids in bench/quality/fixtures.json, then re-run backtest fixtures
 fixtures-recording-invalid	try: fix the named recording, then re-run backtest fixtures
 head-mismatch	try: address the cause above, then re-run the same command
 html-not-export	try: choose a new, empty, or previous HTML export directory

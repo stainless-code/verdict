@@ -93,8 +93,8 @@ type RecordingMeta struct {
 	Note          string `json:"note"`
 }
 
-// Finding is the canonical input to a matcher. Legacy calibration reviews
-// fill Claim from body/text; S1-format findings fill it from claim/body.
+// Finding is the canonical input to a matcher. Claim comes from the fixture
+// recording's text field; Line and Anchored come from its line field.
 type Finding struct {
 	Anchored *bool
 	Path     string
@@ -102,6 +102,7 @@ type Finding struct {
 	Severity string
 	Quote    string
 	Refusal  string
+	Line     int
 }
 
 // LoadCatalog reads and validates the shipped catalog at path.

@@ -4302,12 +4302,12 @@ reviews those candidates with the operator's own agent, one launch per
 candidate; it is the backtest step that spends. `backtest score --run <id>`
 then grades the replayed findings against the lines the miner blamed, and
 `backtest --since … --agent <name>` runs all three in one invocation.
-`backtest fixtures` is an additional, read-only mode that grades recorded
-reviews against hand-known defects; it launches nothing.
-`backtest reverts` is the fourth mode and the only one that reads neither a
-model nor a bundle: it records the window's revert commits as memory (below).
-`backtest fixtures` grades recorded reviews against hand-known defects in a separate
-fixture corpus; its format is documented in [`docs/benchmark.md`](benchmark.md#known-defect-fixtures-backtest-fixtures).
+`backtest fixtures` is an additional, read-only mode that grades the corpus's
+converted recordings against hand-known defects; it launches nothing. Its
+format is documented in [`docs/benchmark.md`](benchmark.md#known-defect-fixtures-backtest-fixtures).
+`backtest reverts` is the fourth mode and, like `fixtures`, reads neither a
+model nor a review bundle: it records the window's revert commits as memory
+(below).
 
 Every mining git call runs with the system and user config nulled — the artifact
 never depends on a formatting knob — with one exception: the user's

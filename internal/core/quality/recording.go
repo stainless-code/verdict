@@ -71,9 +71,22 @@ func validateRecording(rec *FixtureRecording, path string) *core.RefusalError {
 	return nil
 }
 
-// Canonical converts one fixture finding into the scorer's input shape.
+// Canonical converts one fixture finding into the scorer's input shape. A
+// positive line makes the finding anchored, which is what the gating
+// predicate and the S4 quote verifier see.
 func (f *FixtureFinding) Canonical() Finding {
-	return Finding{Path: f.Path, Claim: f.Text, Severity: stringOf(f.Severity)}
+	anchored := f.Line != nil && *f.Line > 0
+	return Finding{
+		Path: f.Path, Claim: f.Text, Severity: stringOf(f.Severity),
+		Line: intOf(f.Line), Anchored: &anchored,
+	}
+}
+
+func intOf(v *int) int {
+	if v == nil {
+		return 0
+	}
+	return *v
 }
 
 // RecordingFiles lists the fixture recordings under one fixture's directory.

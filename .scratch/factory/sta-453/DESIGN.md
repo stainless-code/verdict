@@ -36,7 +36,7 @@ The known-defect fixtures do **not** fit the existing case shape:
 * The scorer is **per defect: any finding matches**. `evaluate` (`corpus.go:533`) consumes one finding per bug and counts repeats as false positives. In the factory audit, six findings legitimately hit two defects after the K5 fix (`ablate/matcher-audit.md`); those must remain hits for both defects, not false positives.
 * `score.py` matches over `path` + `body` (`score.py:24-36`), with no line window at all. Findings with no line are scoreable there; in the corpus matcher they are `unanchored` false positives (`corpus.go:617`).
 * These fixtures are hand-curated known defects, not SZZ candidates. Their base/head are the reviewed range, not a merge-bug hypothesis; the "not citable — SZZ-derived" caveat does not apply.
-* Their recorded inputs are `review.json` files (including the legacy `file`/`text` aliases), not `findings.json` in a `corpus-*` bundle.
+* Their recorded inputs are the corpus's own minimal `findings` recordings, not `findings.json` in a `corpus-*` bundle.
 
 **Ship a sibling**: `bench/quality/` for fixture data and recordings; `internal/core/quality/` for a pure scorer; a new `backtest quality` mode in the CLI adapter. `schemas/backtest.schema.json` and `bench/corpus/` stay untouched. Shared code is limited to the envelope (`core.RenderEnvelope`), typed refusals, `internal/jq` ordered output, `corpuscore.Rate`/`RateText` (`internal/core/corpus/corpus.go:915,933`) and `readcommon.LoadFindings` for S1-format inputs. A future `STA-325` public benchmark can choose whether to project these fixtures into `CorpusCase`, but that projection would lose the regex semantics, so it is not a prerequisite.
 
@@ -174,22 +174,23 @@ Validation refuses a malformed catalog with `quality-fixture-invalid` naming the
 }
 ```
 
-`gate_passed: null` means "no gate result" (the invalid-schema `bench` recording has `gate.json` with `data: null` and error `missing-findings`), not "pass". `source` pins which file the scorer reads; calibration recordings all use `review.json`, so a later `findings.json` in the same archive cannot silently change the scored input.
+`gate_passed: null` means "no gate result" (the invalid-schema `bench` recording had `gate.json` with `data: null` and error `missing-findings`), not "pass". Each `meta.json` pins `source_bundle` and `source_sha256`, so a later file in the same archive cannot silently change the scored input.
 
-### 2.4 Canonical finding and the two input shapes
+### 2.4 Canonical finding and its one input shape
 
 ```go
 type Finding struct {
-    Path       string  // path || file (legacy), path (S1 findings-only)
-    Claim      string  // body || text (legacy), claim || body (S1)
-    Severity   string  // nil/"" is reported as null_severity
-    Quote      string  // S1+ only; empty on legacy recordings
-    Confidence *int    // S1+ only
-    Refusal    string  // "review-insufficient" when S4 emits it
+    Anchored *bool   // line > 0 in the fixture recording
+    Path     string  // recording's path
+    Claim    string  // recording's text
+    Severity string  // nil/"" is reported as null_severity
+    Quote    string  // S4 seam; empty today
+    Refusal  string  // "review-insufficient" when S4 emits it
+    Line     int     // recording's line, 0 when absent
 }
 ```
 
-Legacy `review.json` is `{comments: [{path|file, body|text, severity}]}` (the `bench` recording uses `file`/`text`, proving both aliases are required). S1's findings-only contract is `findings[]` with `path`, `line`, `severity`, `claim`, `quote`, `confidence` (`review.schema.json` is the pre-S1 shape); `readcommon.LoadFindings` (`internal/readcommon/findings.go:25`) reads that store. Free-text arm-A extraction (`score.py extract-a`) stays in `.scratch` — no free-text parser ships.
+A fixture recording is `{"schema_version":"1","findings":[{"path":…,"line":…,"severity":…,"text":…}],"gate_passed":…}`. The seven calibration recordings were converted from their archived bundles once at authoring time; no product code reads the older shape, and the conversion script does not ship. A positive `line` sets `Anchored = true`, which is what `IsGatingFinding` and the S4 quote-verifier seam see. Free-text arm-A extraction (`score.py extract-a`) stays in `.scratch` — no free-text parser ships.
 
 ---
 

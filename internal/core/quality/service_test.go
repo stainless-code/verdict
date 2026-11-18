@@ -1,6 +1,7 @@
 package quality
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -8,6 +9,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/golden"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -80,7 +82,7 @@ func assertFx1Bonuses(t *testing.T, fx1 *FixtureReport) {
 		t.Errorf("fx1 bonus_union = %+v", fx1.BonusUnion)
 	}
 	if fx1.Hallucination.Rate != nil || fx1.Hallucination.Status != "stubbed" ||
-		fx1.Hallucination.GatingFindings != 0 || fx1.Hallucination.Checked != 0 {
+		fx1.Hallucination.GatingFindings != 5 || fx1.Hallucination.Checked != 0 {
 		t.Errorf("fx1 hallucination = %+v", fx1.Hallucination)
 	}
 	if fx1.ReviewInsufficient != 0 {
@@ -103,6 +105,10 @@ func assertFx2Report(t *testing.T, fx2 *FixtureReport) {
 	}
 	assertFx2Recall(t, fx2)
 	assertFx2FalseGreen(t, fx2)
+	if fx2.Hallucination.GatingFindings != 1 || fx2.Hallucination.Checked != 0 ||
+		fx2.Hallucination.Rate != nil {
+		t.Errorf("fx2 hallucination = %+v", fx2.Hallucination)
+	}
 }
 
 func assertFx2Recall(t *testing.T, fx2 *FixtureReport) {
@@ -153,8 +159,8 @@ func joinLiteral(values []string) string { return strings.Join(values, ",") }
 func TestGatingFindingPredicate(t *testing.T) {
 	trueValue, falseValue := true, false
 	cases := []struct {
-		f    Finding
 		name string
+		f    Finding
 		want bool
 	}{
 		{name: "important anchored", f: Finding{Severity: "important", Anchored: &trueValue}, want: true},
@@ -296,5 +302,40 @@ func TestFixtureFilterKeepsCalibration(t *testing.T) {
 	}
 	if resp.Data.Calibration.Rows != 7 || !resp.Data.Calibration.Reproduced {
 		t.Errorf("calibration = %+v, want 7 rows still reproduced", resp.Data.Calibration)
+	}
+}
+
+func TestUnknownFixtureRefusesBeforeWrite(t *testing.T) {
+	root := repoPath()
+	if _, ref := RunFixtures(context.Background(), &Request{RepoRoot: root}); ref != nil {
+		t.Fatalf("valid run: %s: %s", ref.Code, ref.Message)
+	}
+	path := filepath.Join(root, ".verdict", "backtest", fixturesDir, reportName)
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: root, FixtureID: "fx1-typo"})
+	if ref == nil || ref.Code != "fixtures-invalid" {
+		t.Fatalf("refusal = %+v, want fixtures-invalid", ref)
+	}
+	if resp != nil {
+		t.Errorf("response = %+v, want nil", resp)
+	}
+	assertUnknownFixtureMessage(t, ref)
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(before, after) {
+		t.Error("report.json changed on a refused run")
+	}
+}
+
+func assertUnknownFixtureMessage(t *testing.T, ref *core.RefusalError) {
+	t.Helper()
+	if !strings.Contains(ref.Message, "fx1-typo") || !strings.Contains(ref.Message, "fx1") ||
+		!strings.Contains(ref.Message, "fx2") {
+		t.Errorf("refusal message = %q, want the valid ids", ref.Message)
 	}
 }

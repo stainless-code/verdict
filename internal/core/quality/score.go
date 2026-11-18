@@ -217,25 +217,29 @@ func Calibrate(c *Catalog, runs []RunScore) *CalibrationResult {
 		fixtures[c.Fixtures[i].ID] = &c.Fixtures[i]
 	}
 	for i := range c.Calibration {
-		row, ok := calibrationRow(byName, fixtures, &c.Calibration[i])
-		if !ok {
-			result.Reproduced = false
-			continue
-		}
+		row := calibrationRow(byName, fixtures, &c.Calibration[i])
 		result.Rows = append(result.Rows, *row)
+		if row.Status != statusPass {
+			result.Reproduced = false
+		}
 	}
 	return result
 }
 
 func calibrationRow(byName map[string]*RunScore, fixtures map[string]*Fixture,
 	row *CalibrationRow,
-) (*CalibrationRowResult, bool) {
+) *CalibrationRowResult {
+	hand := set(row.Hand)
+	missing := &CalibrationRowResult{
+		Recording: row.Recording, Fixture: row.Fixture, Driver: row.Driver,
+		Hand: row.HandLabel, Harness: notApplicable, HandHits: orDash(joinSet(hand)),
+		HarnessHits: "-", Status: "FAIL",
+	}
 	run := byName[row.Recording]
 	fixture := fixtures[row.Fixture]
 	if run == nil || fixture == nil {
-		return nil, false
+		return missing
 	}
-	hand := set(row.Hand)
 	harness := hits(run.Hits)
 	status := "FAIL"
 	if sameSet(hand, harness) {
@@ -252,7 +256,7 @@ func calibrationRow(byName map[string]*RunScore, fixtures map[string]*Fixture,
 		Praise:       run.Praise,
 		NullSeverity: run.NullSeverity,
 		Status:       status,
-	}, status == statusPass
+	}
 }
 
 func set(ids []string) map[string]bool {

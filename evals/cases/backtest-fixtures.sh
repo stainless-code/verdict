@@ -21,11 +21,11 @@ backtest fixtures  (2 fixtures, 7 recorded reviews, 7 scored)
 fx1  STA-440 part 2, first build (291c83ae5..98d8becd9)  (6 recordings, 6 scored)
   recall per run: 0.0000 0.0000 0.2000 1.0000 0.2000 0.2000  mean: 0.2667  union: 1.0000 (N=6, 5 known defects)
   bonus union: 2/2  false green: 3/5 (1 unknown gate outcome)
-  hallucination: n/a (stubbed; 0 gating findings, 0 checked)  review-insufficient: 0
+  hallucination: n/a (stubbed; 5 gating findings, 0 checked)  review-insufficient: 0
 fx2  STA-351 PR A (d69957f9c..475310826)  (1 recording, 1 scored)
   recall per run: 0.1667  mean: 0.1667  union: 0.1667 (N=1, 6 known defects)
   bonus union: 0/0  false green: 0/1 (0 unknown gate outcomes)
-  hallucination: n/a (stubbed; 0 gating findings, 0 checked)  review-insufficient: 0
+  hallucination: n/a (stubbed; 1 gating findings, 0 checked)  review-insufficient: 0
 calibration: 7/7 rows reproduced
 known defects from fixture manifests; rates describe recorded reviews, not a model claim
 EOF
@@ -66,6 +66,12 @@ assert_exit "filtered fixtures exits 0" 0
 assert_json_field "one fixture" "1" '.data.fixtures | length'
 assert_json_field "selected id" "fx2" '.data.fixtures[0].id'
 assert_json_field "calibration still covers all runs" "7" '.data.calibration.rows'
+cp "$REPORT" "$EVAL_SANDBOX/report.filtered.json"
+
+run_review backtest fixtures --fixture fx1-typo --json
+assert_refusal "unknown fixture" fixtures-invalid
+assert_file_grep "unknown fixture names valid ids" "$EVAL_OUT" "valid ids: fx1, fx2"
+assert_file_eq "unknown fixture leaves report untouched" "$EVAL_SANDBOX/report.filtered.json" "$REPORT"
 
 # An infra error makes a recording unscored: it leaves every rate denominator.
 jq '.infra_error = "agent failed to start"' \

@@ -75,6 +75,9 @@ func loadInputs(req *Request) (*Catalog, []string, string, *core.RefusalError) {
 	if ref != nil {
 		return nil, nil, "", ref
 	}
+	if ref := validateFixtureID(catalog, req.FixtureID); ref != nil {
+		return nil, nil, "", ref
+	}
 	base := recordingsRoot(root, req.RecordingsRoot)
 	files, ref := fixtureFiles(base, catalog)
 	if ref != nil {
@@ -84,6 +87,24 @@ func loadInputs(req *Request) (*Catalog, []string, string, *core.RefusalError) {
 		return nil, nil, "", invalidRecording(base, "no fixture recordings under the recordings root")
 	}
 	return catalog, files, root, nil
+}
+
+func validateFixtureID(catalog *Catalog, id string) *core.RefusalError {
+	if id == "" {
+		return nil
+	}
+	ids := make([]string, 0, len(catalog.Fixtures))
+	for i := range catalog.Fixtures {
+		if catalog.Fixtures[i].ID == id {
+			return nil
+		}
+		ids = append(ids, catalog.Fixtures[i].ID)
+	}
+	slices.Sort(ids)
+	return &core.RefusalError{
+		Code:    "fixtures-invalid",
+		Message: "unknown fixture '" + id + "' (valid ids: " + strings.Join(ids, ", ") + ")",
+	}
 }
 
 func fixtureFiles(base string, catalog *Catalog) ([]string, *core.RefusalError) {
