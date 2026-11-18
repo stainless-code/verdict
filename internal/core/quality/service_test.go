@@ -23,22 +23,50 @@ func TestRunFixturesLiterals(t *testing.T) {
 		t.Fatalf("run: %s: %s", ref.Code, ref.Message)
 	}
 	data := resp.Data
+	assertFixturesCatalog(t, data)
+	assertCalibrationAndDiagnostics(t, data)
+	golden.Check(t, "fixtures-human", Human(data))
+	assertReportFile(t, root, data)
+}
+
+func assertFixturesCatalog(t *testing.T, data *Report) {
+	t.Helper()
 	if data.SchemaVersion != "1" || data.Mode != "fixtures" || data.Recordings != 7 || data.Scored != 7 {
 		t.Errorf("header = %s/%s/%d/%d", data.SchemaVersion, data.Mode, data.Recordings, data.Scored)
 	}
-	if len(data.Fixtures) != 2 {
-		t.Fatalf("fixtures = %d, want 2", len(data.Fixtures))
+	if len(data.Fixtures) != 5 {
+		t.Fatalf("fixtures = %d, want 5", len(data.Fixtures))
 	}
 	assertFx1Report(t, &data.Fixtures[0])
 	assertFx2Report(t, &data.Fixtures[1])
+	assertLiveOnlyFixtures(t, data.Fixtures[2:])
+}
+
+func assertLiveOnlyFixtures(t *testing.T, fixtures []FixtureReport) {
+	t.Helper()
+	for i, want := range []struct {
+		id    string
+		known int
+	}{
+		{id: "fx3", known: 6},
+		{id: "fx4", known: 3},
+		{id: "fx5", known: 2},
+	} {
+		f := &fixtures[i]
+		if f.ID != want.id || f.Known != want.known || f.Runs != 0 || f.Scored != 0 {
+			t.Errorf("fixture %d = %+v, want %s with %d known defects and no runs", i+3, f, want.id, want.known)
+		}
+	}
+}
+
+func assertCalibrationAndDiagnostics(t *testing.T, data *Report) {
+	t.Helper()
 	if data.Calibration.Rows != 7 || !data.Calibration.Reproduced || len(data.Calibration.Mismatches) != 0 {
 		t.Errorf("calibration = %+v", data.Calibration)
 	}
 	if len(data.Diagnostics) != 7 {
 		t.Errorf("diagnostics = %d, want 7", len(data.Diagnostics))
 	}
-	golden.Check(t, "fixtures-human", Human(data))
-	assertReportFile(t, root, data)
 }
 
 func assertFx1Report(t *testing.T, fx1 *FixtureReport) {
