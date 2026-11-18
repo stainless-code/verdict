@@ -304,6 +304,21 @@ func documents() []document {
 			additionalProperties: true,
 		},
 		{
+			name:  "fixtures",
+			title: "report.json — backtest fixtures report",
+			root:  reflect.TypeFor[FixturesData](),
+			defs: []definition{
+				{typ: reflect.TypeFor[FixturesFixture](), name: "fixture"},
+				{typ: reflect.TypeFor[FixturesRecall](), name: "recall"},
+				{typ: reflect.TypeFor[FixturesBonus](), name: "bonus"},
+				{typ: reflect.TypeFor[FixturesFalseGreen](), name: "falseGreen"},
+				{typ: reflect.TypeFor[FixturesHallucination](), name: "hallucination"},
+				{typ: reflect.TypeFor[FixturesCalibration](), name: "calibration"},
+				{typ: reflect.TypeFor[FixturesDiagnostic](), name: "diagnostic"},
+			},
+			additionalProperties: false,
+		},
+		{
 			name:                 "identity",
 			title:                "identity.json — bundle patch identity",
 			root:                 reflect.TypeFor[Identity](),

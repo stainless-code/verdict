@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "fixture": "fx1",
+  "driver": "claude / sonnet-5-5",
+  "source_bundle": "vr-sta440b-sonnet/bundle",
+  "source_sha256": "1b2a9d06ee2d8789758a6f43c3192e1a705c7ae86f94d8e8dbbfa1ad37aab6c4",
+  "infra_error": null,
+  "refusal_code": null,
+  "note": "Converted once from review.json at authoring time. archived run; gate outcome captured at extraction time"
+}

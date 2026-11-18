@@ -54,6 +54,10 @@ var hintRules = []HintRule{
 		"post can pass --allow-secret-values to publish it anyway"},
 	{codes: []string{"fix-patch-secret"}, hint: "try: remove the value from the worktree (rotate it " +
 		"if it was real), then re-run fix"},
+	{codes: []string{"fixtures-failed"}, hint: "try: make .verdict writable, then re-run backtest fixtures"},
+	{codes: []string{"fixtures-invalid"}, hint: "try: check the --fixture id against the catalog, " +
+		"or repair bench/quality/fixtures.json, then re-run"},
+	{codes: []string{"fixtures-recording-invalid"}, hint: "try: fix the named recording, then re-run backtest fixtures"},
 	{codes: []string{"filtered-out"}, hint: "try: remove --filter to review every PR, or change the trigger at the PR base and re-fetch"},
 	{codes: []string{"trigger-failed"}, hint: "try: re-fetch the bundle so its base-snapshot policy is complete, then re-run"},
 	{

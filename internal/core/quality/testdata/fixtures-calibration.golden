@@ -1,0 +1,9 @@
+| bundle | fixture | driver | hand | harness | hand hits | harness hits | praise | null sev | status | reason |
+| --- | --- | --- | --- | --- | --- | --- | ---: | ---: | --- | --- |
+| vr-sta440b-bench | fx1 | agy / gemini-4-hydrogen (invalid schema) | 0/5 | 0/5 | - | - | 3 | 3 | PASS | - |
+| vr-sta440b-bench2 | fx1 | agy / gemini-4-hydrogen | 0/5 | 0/5 | - | - | 3 | 3 | PASS | - |
+| vr-sta440b-bench3 | fx1 | pi / Hy4 Flash Free | 1/5 | 1/5 | K2 | K2 | 0 | 0 | PASS | - |
+| vr-sta440b-haiku | fx1 | claude / haiku-5-5 | 5/5 | 5/5 | K1,K2,K3,K4,K5 | K1,K2,K3,K4,K5 | 0 | 0 | PASS | - |
+| vr-sta440b-haiku2 | fx1 | claude / haiku-5-5 repeat | 1/5 | 1/5 | K5 | K5 | 0 | 4 | PASS | - |
+| vr-sta440b-sonnet | fx1 | claude / sonnet-5-5 | 1/5 | 1/5 | K5 | K5 | 0 | 4 | PASS | - |
+| vr-sta351a-haiku | fx2 | claude / haiku-5-5 | 1/6 | 1/6 | D2 | D2 | 0 | 0 | PASS | - |

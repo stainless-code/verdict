@@ -429,6 +429,16 @@ func usageText() string {
 		"    a deleted cleanup line beside the real bug is a candidate that was never\n" +
 		"    defective, and an unmatched finding is not proven false. Scores are not\n" +
 		"    citable.\n" +
+		"  backtest fixtures [--fixture <id>] [--recordings <dir>] [--json]\n" +
+		"    grade the shipped recordings against hand-known defects: recall per run,\n" +
+		"    mean and union over N, bonus union, false-green rate, hallucination rate\n" +
+		"    and review-insufficient count. Read-only: no agent, no host, no corpus\n" +
+		"    store. --fixture limits the report to one catalog id; --recordings is an\n" +
+		"    opt-in root of live recordings to score, relative to the checkout by\n" +
+		"    default. The seven shipped recordings are always the calibration, even\n" +
+		"    with --recordings: 7/7 rows must reproduce. Writes\n" +
+		"    .verdict/backtest/fixtures/report.json. Rates describe recorded reviews,\n" +
+		"    not a model claim.\n" +
 		"  backtest --since <90d|12w|18mo|2y|<ref>> --agent <name> [replay flags] [--json]\n" +
 		"    mine, replay, and score in one run: the miner resolves --run (or derives it),\n" +
 		"    then the replay and the score read that id. --agent is required because the\n" +

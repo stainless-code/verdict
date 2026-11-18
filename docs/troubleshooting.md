@@ -669,6 +669,35 @@ Fix: remove the value from the worktree and rotate it if it was real, then
 re-run `fix`. The pass was not recorded and `fix.patch` was not written, so no
 pass was spent.
 
+## `fixtures-failed`
+
+Cause: `backtest fixtures` could not create or atomically replace
+`.verdict/backtest/fixtures/report.json`, usually because the state directory
+is not writable.
+
+Fix: make `.verdict/` writable, then re-run `backtest fixtures`. The scores
+are recomputed; nothing is sent to a host.
+
+## `fixtures-invalid`
+
+Cause: `backtest fixtures` could not read `bench/quality/fixtures.json`, or the
+catalog is malformed — a missing id, a broken base/head or context pin, an
+empty rule, or a pattern that does not compile.
+
+Fix: check the `--fixture` id against the catalog, or repair
+`bench/quality/fixtures.json`, then re-run `backtest fixtures`. The recordings
+were not scored.
+
+## `fixtures-recording-invalid`
+
+Cause: a recording under `bench/quality/<fixture>/recordings/` or an explicit
+`--recordings` root has no readable `meta.json`, names another fixture or an
+unknown source file, or names a fixture the catalog does not carry.
+
+Fix: repair or remove that recording directory, then re-run `backtest fixtures`.
+A recording with `gate_passed: null` is valid: it is counted as an unknown gate
+outcome, not a pass.
+
 ## `head-mismatch`
 
 Cause: the bundle carries no reviewed head, or the checked-out head is not the reviewed head.

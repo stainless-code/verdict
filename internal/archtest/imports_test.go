@@ -137,7 +137,7 @@ var leafHelpers = []string{"internal/exclude", "internal/shellquote", "internal/
 // unnoticed.
 var coreSubpackages = []string{
 	"adopt", "backtest", "calibrate", "checktree", "corpus", "corpus/corpustest", "coverage", "doctor", "drain", "exec", "fetch", "fix",
-	"handoff", "index", "ingest", "init", "learn", "pack", "panel", "post", "query", "ready", "recipe", "record", "repair",
+	"handoff", "index", "ingest", "init", "learn", "pack", "panel", "post", "quality", "query", "ready", "recipe", "record", "repair",
 	"report", "risk",
 	"run", "skill",
 	"threads", "trend", "triage", "upgrade", "verify",
