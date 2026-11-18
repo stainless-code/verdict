@@ -12,111 +12,61 @@ mk_local() { # $1 = slug dir; stdin becomes review.json
   local lb
   eval_mk_bundle "$1"
   lb="$EVAL_SANDBOX/.verdict/state/$1"
-  cat > "$lb/review.json"
+  eval_write_review_at "$lb/review.json"
 }
 
-WEAK_REVIEW='```json
-{"schema_version":"1","body":"> ✅ Weak-model review with enough length to pass the guard.","approved":false,"resolved":"a1b2","comments":[{"file":"notes.txt","line":2,"body":"A finding with enough substance.","rung":"traced","severity":"Critical","in_bounds":false,"brief":{"outcome":"Reject duplicate deliveries before anything is enqueued.","questions":"Why is this safe?"}}]}
-```'
-
-printf '%s' "$WEAK_REVIEW" | mk_local "$SLUG"
+V1_REVIEW='{"schema_version":"1","body":"> ✅ v1 review is refused with no shim.","approved":false,"comments":[]}'
+eval_mk_bundle "$SLUG"
+printf '%s' "$V1_REVIEW" >"$LB/review.json"
+BEFORE="$(cat "$LB/review.json")"
 run_review record acme/app "$SLUG" --dry-run --json
-assert_exit "fenced aliased dry run warns and exits 0" 0
-assert_envelope "normalized dry run"
-assert_json_field "normalized path alias" "notes.txt" '.data.normalized.comments[0].path'
-assert_json_field "normalized in_bounds alias" "false" '.data.normalized.comments[0]["in-bounds"]'
-assert_json_field "normalized rigor synonym" "walked" '.data.normalized.comments[0].rigor'
-assert_json_field "normalized severity case" "critical" '.data.normalized.comments[0].severity'
-assert_json_field "normalized scalar resolved" "a1b2" '.data.normalized.resolved[0]'
-assert_json_field "normalized scalar questions" "Why is this safe?" '.data.normalized.comments[0].brief.questions[0]'
-for code in normalized-fence scalar-to-array key-alias enum-synonym; do
-  if jq -e --arg c "$code" 'any(.data.repairs[]; .code == $c)' <"$EVAL_OUT" >/dev/null; then
-    good "repair $code reported"
-  else
-    bad "repair $code missing from .data.repairs"
-  fi
-done
-if grep -Fq '```' "$LB/review.json"; then
-  good "dry run leaves review.json fenced on disk"
+assert_exit "the old shape refuses the dry run" 1
+assert_refusal "old shape" "bad-review-input"
+assert_json_field "old shape problem code" "unknown-field" '.error.problems[0].code'
+assert_json_field "old shape problem path" '$.body' '.error.problems[0].path'
+assert_json_field "old shape problem level" "error" '.error.problems[0].level'
+if [ "$(cat "$LB/review.json")" = "$BEFORE" ]; then
+  good "the dry run never rewrites review.json"
 else
-  bad "dry run rewrote review.json"
+  bad "the dry run rewrote review.json"
 fi
+
+FINDINGS_REVIEW='{"schema_version":"1","summary":"A clean v2 review.","findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"A finding with enough substance.","quote":"new line","severity":"important","confidence":"high","rigor":"walked","brief":{"outcome":"Reject duplicate deliveries before anything is enqueued.","questions":["Why is this safe?"]}}]}'
+printf '%s' "$FINDINGS_REVIEW" | mk_local "$SLUG"
+run_review record acme/app "$SLUG" --dry-run --json
+assert_exit "a clean findings review passes the dry run" 0
+assert_envelope "findings dry run"
+assert_json_field "claim is stored as the finding body" "A finding with enough substance." '.data.normalized.findings[0].claim'
+assert_json_field "finder confidence keeps its store name" "high" '.data.normalized.findings[0].confidence'
+assert_json_field "finding carries the quoted code" "new line" '.data.normalized.findings[0].quote'
+assert_json_field "brief questions stay an array" "Why is this safe?" '.data.normalized.findings[0].brief.questions[0]'
 
 run_review record acme/app "$SLUG" --json
-assert_exit "fenced aliased record succeeds" 0
-if jq -e 'any(.repairs[]; .code == "normalized-fence")' "$LB/record.json" >/dev/null; then
-  good "record.json carries the fence repair"
+assert_exit "a clean findings review records" 0
+if [ "$(jq -r '.[0].verification.quote' "$LB/findings.json" 2>/dev/null)" = "unchecked" ]; then
+  good "findings.json reserves the quote verification field"
 else
-  bad "record.json misses repairs: $(cat "$LB/record.json" 2>/dev/null || echo MISSING)"
+  bad "findings.json verification: $(cat "$LB/findings.json" 2>/dev/null || echo MISSING)"
 fi
-if [ "$(jq -r '.[] | select(.path == "notes.txt") | .rigor_source' "$LB/findings.json" 2>/dev/null)" = "model" ] \
-  && [ "$(jq -r '.[] | select(.path == "notes.txt") | .rigor' "$LB/findings.json" 2>/dev/null)" = "walked" ]; then
-  good "finding records the walked rung with model provenance"
+if [ "$(jq -r '.[0].rigor' "$LB/findings.json" 2>/dev/null)" = "walked" ]; then
+  good "finding records the walked rung"
 else
-  bad "finding misses rigor provenance"
-fi
-
-STRICT_BUNDLE="$EVAL_SANDBOX/.verdict/state/local-strictfetch"
-(
-  cd "$EVAL_SANDBOX" || exit 99
-  git init -q 2>/dev/null || true
-  git config user.email "record-normalize@example.com"
-  git config user.name "record normalize"
-  printf 'top\nold line\nbottom\n' > notes.txt
-  printf '# verdict procedure (eval fixture)\n' > PROCEDURE.md
-  mkdir -p prompts
-  printf '# system (eval fixture)\n' > prompts/system.md
-  printf '# review mode (eval fixture)\n' > prompts/review.md
-  printf '# diagrams (eval fixture)\n' > prompts/diagrams.md
-  git add notes.txt PROCEDURE.md prompts/system.md prompts/review.md prompts/diagrams.md
-  git commit -qm norm-base 2>/dev/null || true
-  printf 'top\nnew line\nbottom\n' > notes.txt
-)
-export REVIEW_STRICT_INPUT=1
-run_review fetch-local acme/app strictfetch -- notes.txt
-unset REVIEW_STRICT_INPUT
-assert_exit "strict fetch resolves" 0
-if [ "$(jq -r '.strict_input // empty' "$STRICT_BUNDLE/controls.json" 2>/dev/null)" = "true" ]; then
-  good "REVIEW_STRICT_INPUT=1 baked into controls.json"
-else
-  bad "fetch dropped REVIEW_STRICT_INPUT=1"
-fi
-printf '%s' "$WEAK_REVIEW" > "$STRICT_BUNDLE/review.json"
-run_review record acme/app local-strictfetch --json
-assert_exit "strict snapshot refuses the repaired review" 1
-assert_refusal "strict repaired review" "bad-review-input"
-if jq -e 'any(.error.problems[]; .code == "normalized-fence" and .level == "error")' <"$EVAL_OUT" >/dev/null; then
-  good "strict promotes the fence repair to an error"
-else
-  bad "strict refusal misses the promoted fence repair"
-fi
-if [ ! -e "$STRICT_BUNDLE/findings.json" ] && [ ! -e "$STRICT_BUNDLE/record.json" ]; then
-  good "strict refusal writes no findings or record"
-else
-  bad "strict refusal wrote store files"
+  bad "finding misses rigor"
 fi
 
-ENV_SLUG="local-recordenv"
-ENV_BUNDLE="$EVAL_SANDBOX/.verdict/state/$ENV_SLUG"
-printf '%s' "$WEAK_REVIEW" | mk_local "$ENV_SLUG"
-if [ "$(jq -r '.strict_input // empty' "$ENV_BUNDLE/controls.json" 2>/dev/null)" != "" ]; then
-  bad "record-env bundle baked strict_input at seed time"
+eval_mk_bundle local-strictfetch
+WARN_REVIEW='{"schema_version":"1","summary":"A warning-only findings review.","findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"A finding with enough substance.","quote":"new line","severity":"important","confidence":"high","category":"nope"}]}'
+printf '%s' "$WARN_REVIEW" | eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-strictfetch/review.json"
+run_review record acme/app local-strictfetch --dry-run --json
+assert_exit "a bad category only warns" 0
+if jq -e '.warnings | join(" ") | contains("nope")' <"$EVAL_OUT" >/dev/null; then
+  good "the category warning rides the envelope"
 else
-  good "record-env bundle carries no fetch-time strict_input"
+  bad "the category warning is missing"
 fi
-REVIEW_STRICT_INPUT=1 run_review record acme/app "$ENV_SLUG" --dry-run --json
-assert_exit "env-at-record strict dry run refuses" 1
-assert_refusal "env-at-record strict review" "bad-review-input"
-if jq -e 'any(.error.problems[]; .code == "normalized-fence" and .level == "error")' <"$EVAL_OUT" >/dev/null; then
-  good "env-at-record promotes the fence repair to an error"
-else
-  bad "env-at-record refusal misses the promoted fence repair"
-fi
-if [ ! -e "$ENV_BUNDLE/findings.json" ] && [ ! -e "$ENV_BUNDLE/record.json" ]; then
-  good "env-at-record refusal writes no findings or record"
-else
-  bad "env-at-record refusal wrote store files"
-fi
+run_review record acme/app local-strictfetch --dry-run --strict --json
+assert_exit "--strict promotes the warning" 1
+assert_json_field "strict problem level" "error" '.error.problems[0].level'
 
-rm -rf "$LB" "$STRICT_BUNDLE" "$ENV_BUNDLE"
+
 eval_end

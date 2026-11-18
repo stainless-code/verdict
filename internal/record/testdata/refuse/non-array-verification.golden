@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "bad-review-input",
-    "message": "review.json has 1 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run",
+    "message": "review.json has 1 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants findings[]; each finding wants path, line, severity, claim, quote and confidence), then re-run",
     "problems": [{"path":"verification.json","code":"wrong-type","level":"error","message":"verification.json carries malformed claims (want an array of {sig, verdict, verifyCmd, resultHead})","fix":"write an array of {sig, verdict, verifyCmd, resultHead}"}],
     "problems_truncated": 0
   }

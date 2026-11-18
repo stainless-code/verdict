@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "bad-review-input",
-    "message": "review.json has 1 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run",
+    "message": "review.json has 1 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants findings[]; each finding wants path, line, severity, claim, quote and confidence), then re-run",
     "problems": [{"path":"$.resolved","code":"wrong-type","level":"error","message":"value must be an array of strings","fix":"list finding sigs as strings","example":["..."]}],
     "problems_truncated": 0
   }

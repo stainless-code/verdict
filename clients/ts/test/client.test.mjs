@@ -653,16 +653,16 @@ describe("integration: real binary", () => {
         join(bundle, "review.json"),
         JSON.stringify({
           schema_version: "1",
-          body: "this body is long enough to pass the degenerate guard without any marker at all yes",
-          approved: false,
-          comments: [
+          findings: [
             {
               path: "notes.txt",
               line: 2,
               side: "RIGHT",
-              body: "Consider clarifying this line.",
-              rigor: "pointed",
               severity: "informational",
+              claim: "Consider clarifying this line.",
+              quote: "new line",
+              confidence: "high",
+              rigor: "pointed",
             },
           ],
         }),
@@ -680,16 +680,17 @@ describe("integration: real binary", () => {
       join(dir, ".verdict", "state", "4244", "review.json"),
       JSON.stringify({
         schema_version: "1",
-        body: "> Looks good overall — one nit below.",
-        approved: false,
-        comments: [
+        summary: "Looks good overall — one nit below.",
+        findings: [
           {
             path: "notes.txt",
             line: 2,
             side: "RIGHT",
-            body: "Consider clarifying this line.",
-            rigor: "pointed",
             severity: "informational",
+            claim: "Consider clarifying this line.",
+            quote: "new line",
+            confidence: "high",
+            rigor: "pointed",
           },
         ],
       }),

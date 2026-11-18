@@ -54,6 +54,5 @@ if [ -z "$artifact" ] || [ "$artifact" = "$directive" ]; then
 fi
 mkdir -p "$(dirname "$artifact")"
 cat >"$artifact" <<'JSON'
-{"schema_version":"1","body":"Nit: one note, nothing blocking.","approved":false,
- "comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Nit: rename this line.","severity":"informational","rigor":"walked"}]}
+{"schema_version":"1","summary":"Nit: one note, nothing blocking.","findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"Nit: rename this line.","quote":"new line","confidence":"high","severity":"informational","rigor":"walked"}]}
 JSON

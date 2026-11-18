@@ -37,6 +37,10 @@ const (
 	msgDriftNote = "> ⚠️ Note: commits landed after this review's fetch (fetched `%s`, live `%s`); " +
 		"treat line anchors as potentially stale. Run `verdict fetch %s %s --base-sha %s` and review the delta."
 
+	msgRecordStale = "refusing post: the bundle's record.json no longer matches the review " +
+		"(the review, diff, or head moved since record) — run 'verdict record <repo> <pr>' again " +
+		"on the current review, then post"
+
 	msgApproveBlocked = "refusing APPROVE with %d open + %d deferred findings (triage or pass --force)"
 
 	msgRequirementBlocked = "finding %s violates block clause %q from %s in %s — " +
@@ -106,7 +110,8 @@ const (
 	msgBadSummary             = "unknown --summary %q (want comment|off)"
 )
 
-const msgReviewMissing = "missing %s (agent must write {body, approved, comments[]})"
+const msgReviewMissing = "missing %s (agent must write `{schema_version: \"1\", findings: " +
+	"[{path, line, severity, claim, quote, confidence}]}`)"
 
 const codeAlreadyPosted = "already-posted"
 

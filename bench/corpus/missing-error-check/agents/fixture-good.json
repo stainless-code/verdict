@@ -3,16 +3,17 @@
   "panel": ["panel-alpha"],
   "review": {
     "schema_version": "1",
-    "body": "> 🤖 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
-    "approved": false,
-    "comments": [
+    "summary": "> \ud83e\udd16 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
+    "findings": [
       {
         "path": "upload.go",
         "line": 31,
         "side": "RIGHT",
-        "body": "Check the io.Copy error; a short write currently returns nil.",
         "rigor": "pointed",
-        "severity": "important"
+        "severity": "important",
+        "claim": "Check the io.Copy error; a short write currently returns nil.",
+        "quote": "Check the io.Copy error; a short write currently returns nil.",
+        "confidence": "high"
       }
     ]
   }

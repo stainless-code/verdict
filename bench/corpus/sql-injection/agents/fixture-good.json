@@ -3,16 +3,17 @@
   "panel": ["panel-alpha"],
   "review": {
     "schema_version": "1",
-    "body": "> 🤖 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
-    "approved": false,
-    "comments": [
+    "summary": "> \ud83e\udd16 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
+    "findings": [
       {
         "path": "query.go",
         "line": 26,
         "side": "RIGHT",
-        "body": "Pass name as a query argument; do not format it into the SQL string.",
         "rigor": "ran",
-        "severity": "critical"
+        "severity": "critical",
+        "claim": "Pass name as a query argument; do not format it into the SQL string.",
+        "quote": "Pass name as a query argument; do not format it into the SQL string.",
+        "confidence": "high"
       }
     ]
   }

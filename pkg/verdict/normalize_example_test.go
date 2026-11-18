@@ -10,8 +10,7 @@ import (
 // case-folded severity, then reports each rewrite.
 func ExampleNormalizeReview() {
 	review := []byte("```json\n" +
-		`{"schema_version":"1","body":"> ✅ body long enough to pass the guard","approved":false,` +
-		`"comments":[{"file":"main.go","line":2,"body":"x changed","severity":"Critical"}]}` +
+		`{"schema_version":"1","findings":[{"path":"main.go","line":2,"severity":"critical","claim":"x changed","quote":"var x = 2","confidence":"high"}]}` +
 		"\n```")
 	normalized, repairs := verdict.NormalizeReview(review)
 	fmt.Print(string(normalized))
@@ -21,18 +20,16 @@ func ExampleNormalizeReview() {
 	// Output:
 	// {
 	//   "schema_version": "1",
-	//   "body": "> ✅ body long enough to pass the guard",
-	//   "approved": false,
-	//   "comments": [
+	//   "findings": [
 	//     {
 	//       "path": "main.go",
 	//       "line": 2,
-	//       "body": "x changed",
-	//       "severity": "critical"
+	//       "severity": "critical",
+	//       "claim": "x changed",
+	//       "quote": "var x = 2",
+	//       "confidence": "high"
 	//     }
 	//   ]
 	// }
 	// normalized-fence $
-	// key-alias $.comments[0].path
-	// enum-synonym $.comments[0].severity
 }

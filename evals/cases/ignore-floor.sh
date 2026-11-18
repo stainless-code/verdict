@@ -55,7 +55,7 @@ assert_eq 'CLI exclusion receipt' cli:2 "$(jq -r '.excluded[]|select(.path=="not
 assert_eq 'CLI source receipt' cli "$(jq -r '.patterns_source' "$OVERRIDES/excluded.json")"
 assert_eq 'disabled default receipt' true "$(jq -r '.no_default_excludes' "$OVERRIDES/excluded.json")"
 assert_eq 'disabled defaults recorded' 0 "$(jq '.defaults|length' "$OVERRIDES/excluded.json")"
-jq -n --slurpfile manifest "$BUNDLE/chunks/manifest.json" '{schema_version:"1",body:"> Review complete. Policy exceptions are recorded.",chunks:($manifest[0].chunks|map(.name)),comments:[{path:"notes.txt",line:2,body:"Intentional compatibility behavior.",severity:"critical"},{path:"vendor/.env",line:1,body:"Keep credential material out of the review body.",severity:"important"}],suppressed:[{path:"notes.txt",line:2,source:"agent",reason:"An intentional compatibility exception for the legacy parser."},{path:"vendor/.env",source:"exclusion",exclusion_id:"ignore:1",reason:"This path is excluded at the trusted base."}]}' > "$BUNDLE/review.json"
+jq -n --slurpfile manifest "$BUNDLE/chunks/manifest.json" '{schema_version:"1",body:"> Review complete. Policy exceptions are recorded.",chunks:($manifest[0].chunks|map(.name)),comments:[{path:"notes.txt",line:2,body:"Intentional compatibility behavior.",severity:"critical"},{path:"vendor/.env",line:1,body:"Keep credential material out of the review body.",severity:"important"}],suppressed:[{path:"notes.txt",line:2,source:"agent",reason:"An intentional compatibility exception for the legacy parser."},{path:"vendor/.env",source:"exclusion",exclusion_id:"ignore:1",reason:"This path is excluded at the trusted base."}]}' | eval_write_review_at "$BUNDLE/review.json"
 run_review record acme/app local-silence --json
 assert_exit 'record suppression receipts' 0
 if [ "$EVAL_STATUS" -ne 0 ]; then jq '.error' < "$EVAL_OUT"; fi
@@ -80,10 +80,9 @@ JSON
 run_review post acme/app 7 --min-severity important --dry-run --json
 assert_exit 'post severity floor' 0
 assert_json_field 'floor count' 1 '.data.withheld.by_reason["below-severity"]'
-assert_json_field 'unlabelled count' 1 '.data.withheld.unlabelled'
+assert_json_field 'no unlabelled v2 findings' 0 '.data.withheld.unlabelled'
 assert_json_field 'only unlabelled finding is publishable' 1 '.data.items|length'
 assert_eq 'floor finding remains open' open "$(jq -r '.[]|select(.severity=="informational")|.status' .verdict/state/7/findings.dryrun.json)"
-assert_file_grep 'null severity warning' "$EVAL_ERR" 'carry no severity; the floor does not apply'
 run_review post acme/app 7 --min-severity important --approve true --bind --dry-run --json
 assert_exit 'withheld open finding blocks approval' 1
 assert_json_field 'approval refusal' approve-blocked '.error.code'

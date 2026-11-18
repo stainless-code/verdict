@@ -3,16 +3,17 @@
   "panel": ["panel-beta"],
   "review": {
     "schema_version": "1",
-    "body": "> 🤖 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
-    "approved": false,
-    "comments": [
+    "summary": "> \ud83e\udd16 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
+    "findings": [
       {
         "path": "pool.go",
         "line": 48,
         "side": "RIGHT",
-        "body": "Wait for the close before returning the conn to the pool.",
         "rigor": "reproduced",
-        "severity": "important"
+        "severity": "important",
+        "claim": "Wait for the close before returning the conn to the pool.",
+        "quote": "Wait for the close before returning the conn to the pool.",
+        "confidence": "high"
       }
     ]
   }

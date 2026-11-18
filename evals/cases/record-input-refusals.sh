@@ -10,7 +10,7 @@ LB="$EVAL_SANDBOX/.verdict/state/$SLUG"
 
 mk_local() { # stdin review.json becomes the bundle input
   eval_mk_bundle "$SLUG"
-  cat > "$LB/review.json"
+  eval_write_review_at "$LB/review.json"
 }
 
 kb_snapshot() {
@@ -98,45 +98,45 @@ EOF
 expect_refusal "R2 non-object review.json" "bad-review-input"
 
 mk_local <<'EOF'
-{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[5]}
+{"schema_version":"1","findings":[5]}
 EOF
-expect_refusal "R3 non-object comments[] entry" "bad-review-input"
+expect_refusal "R3 non-object findings[] entry" "bad-review-input"
 
 mk_local <<'EOF'
-{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[{"path":5,"line":2,"side":"RIGHT","body":"x body with enough substance."}]}
+{"schema_version":"1","findings":[{"path":5,"line":2,"side":"RIGHT","claim":"x body with enough substance.","quote":"x body with enough substance.","confidence":"high","severity":"important"}]}
 EOF
 expect_refusal "R4 numeric path" "bad-review-input"
 mk_local <<'EOF'
-{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":5}]}
+{"schema_version":"1","findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":5,"quote":"x","confidence":"high","severity":"important"}]}
 EOF
-expect_refusal "R4 numeric body" "bad-review-input"
+expect_refusal "R4 numeric claim" "bad-review-input"
 mk_local <<'EOF'
-{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"x body with enough substance.","suggestion":5}]}
+{"schema_version":"1","findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"x body with enough substance.","quote":"x","confidence":"high","severity":"important","suggestion":5}]}
 EOF
 expect_refusal "R4 numeric suggestion" "bad-review-input"
 
 mk_local <<'EOF'
-{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[],"resolved":[5]}
+{"schema_version":"1","findings":[],"resolved":[5]}
 EOF
 expect_refusal "R5 numeric resolved[] entry" "bad-review-input"
 
 mk_local <<'EOF'
-{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[],"triage":[5]}
+{"schema_version":"1","findings":[],"triage":[5]}
 EOF
 expect_refusal "R6 non-object triage[] entry" "bad-review-input"
 
 mk_local <<'EOF'
-{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}
+{"schema_version":"1","findings":[]}
 EOF
 echo '{"sig":"x"}' > "$LB/verification.json"
 expect_refusal "R7 non-array verification.json" "bad-review-input"
 mk_local <<'EOF'
-{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}
+{"schema_version":"1","findings":[]}
 EOF
 echo '[5]' > "$LB/verification.json"
 expect_refusal "R7 non-object verification.json claim" "bad-review-input"
 mk_local <<'EOF'
-{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}
+{"schema_version":"1","findings":[]}
 EOF
 echo '{oops' > "$LB/verification.json"
 run_review record acme/app "$SLUG" --json
@@ -147,20 +147,20 @@ else
 fi
 
 mk_local <<'EOF'
-{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}
+{"schema_version":"1","findings":[]}
 EOF
 printf '%s' '{broken' > "$LB/findings.json"
 before="$(shasum -a 256 "$LB/findings.json" | cut -d' ' -f1)"
 expect_refusal_keep "R8 corrupt prior findings.json" "corrupt-store" "$before"
 mk_local <<'EOF'
-{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}
+{"schema_version":"1","findings":[]}
 EOF
 printf '%s' '{"sig":"x"}' > "$LB/findings.json"
 before="$(shasum -a 256 "$LB/findings.json" | cut -d' ' -f1)"
 expect_refusal_keep "R8 non-list prior findings.json" "corrupt-store" "$before"
 
 mk_local <<'EOF'
-{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}
+{"schema_version":"1","findings":[]}
 EOF
 echo '{oops' > "$LB/source.json"
 run_review record acme/app "$SLUG" --json
@@ -183,7 +183,7 @@ fi
 rm -rf "$EVAL_SANDBOX/.verdict/state/$PR"
 
 mk_local <<'EOF'
-{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"x body with enough substance.","rigor":"pointed"}]}
+{"schema_version":"1","findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"x body with enough substance.","quote":"x body with enough substance.","confidence":"high","severity":"important","rigor":"pointed"}]}
 EOF
 run_review record acme/app "$SLUG" --json
 if [ "$EVAL_STATUS" -eq 0 ] && [ -f "$LB/findings.json" ] && [ -f "$LB/record.json" ]; then

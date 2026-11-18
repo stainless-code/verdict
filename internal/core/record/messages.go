@@ -1,5 +1,9 @@
 package recordcore
 
+// msgReviewShape names the document every missing or malformed review message
+// asks for, so the four sites that quote it cannot drift apart.
+const msgReviewShape = `{schema_version: "1", findings: [{path, line, severity, claim, quote, confidence}]}`
+
 const (
 	msgChunkDrifted = "chunk snapshots drifted from %s/full.diff (commits landed mid-review?) — " +
 		"validating anchors against the pinned chunk snapshots; re-fetch with --chunk to re-pin"
@@ -13,7 +17,7 @@ const (
 	msgChunkSnapMissing = "refusing record: chunk snapshot(s) missing: %s (pinned chunk diff unreadable) — " +
 		"re-fetch with '%s' to restore the chunk snapshots, then re-run (partial results never post)"
 
-	msgReviewMissing = "missing %s (agent must write {body, approved, comments[]})"
+	msgReviewMissing = "missing %s (agent must write " + msgReviewShape + ")"
 
 	msgUnattested = "chunked bundle %s lists %d chunk(s) but the review carries no chunks attestation — " +
 		"validating as unattested (exit 0); an unattested partial synthesis posts as complete, so " +
@@ -47,9 +51,9 @@ const (
 
 	msgMissingDiff = "missing %s/full.diff (run fetch-local / fetch --provider first)"
 
-	msgBadReviewJSON = "review.json is not valid JSON (agent must write {body, approved, comments[]})"
+	msgBadReviewJSON = "review.json is not valid JSON (agent must write " + msgReviewShape + ")"
 
-	msgReviewNotObject = "review.json must hold a JSON object (agent must write {body, approved, comments[]})"
+	msgReviewNotObject = "review.json must hold a JSON object (agent must write " + msgReviewShape + ")"
 
 	msgMalformedVerifyClaims = "verification.json carries malformed claims (want an array of {sig, verdict, verifyCmd, resultHead})"
 

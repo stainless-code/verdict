@@ -153,14 +153,26 @@ type ConfigProfile = core.ConfigProfile
 // Review is core's agent-written review input.
 type Review = core.Review
 
-// Comment is core's inline review input.
-type Comment = core.Comment
+// Finding is core's agent-written finding.
+type Finding = core.Finding
+
+// SpecCheck is core's quoted spec item and evidence.
+type SpecCheck = core.SpecCheck
+
+// SpecEvidence is core's code evidence for one spec check.
+type SpecEvidence = core.SpecEvidence
+
+// Receipt is core's proof-of-reading receipt.
+type Receipt = core.Receipt
+
+// ApprovalReceipt is core's derived approval decision.
+type ApprovalReceipt = core.ApprovalReceipt
+
+// Verify is core's finding evidence standing.
+type Verify = core.Verify
 
 // TriageClaim is core's review status claim.
 type TriageClaim = core.TriageClaim
-
-// SectionTag is core's review body section tag.
-type SectionTag = core.SectionTag
 
 // FindingEntry is core's merged finding.
 type FindingEntry = core.FindingEntry

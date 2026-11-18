@@ -623,7 +623,7 @@ func (f *fakeGrader) trend(context.Context) (json.RawMessage, error) {
 	return json.RawMessage(`{"cases":1,"bundles":1,"ground_truth":2,"reported":3,"matched":2,"false_positives":1,"missed":0,"precision":0.6667,"recall":1,"false_discovery_rate":0.3333,"by_model":[{"model":"fixture-good"}]}`), nil
 }
 
-const reviewBody = `{"schema_version":"1","body":"ok","approved":false,"comments":[{"path":"pagination.go","line":42,"body":"off by one"}]}`
+const reviewBody = `{"schema_version":"1","findings":[{"path":"pagination.go","line":42,"claim":"off by one","quote":"off by one","confidence":"high","severity":"important"}]}`
 
 // fakeCorpus writes a one-case corpus plus the shipped prompt set the runner
 // copies into every run dir.

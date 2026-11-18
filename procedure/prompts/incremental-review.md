@@ -48,7 +48,7 @@ Same body format + callout ladder as `review.md`, scoped to the delta.
    Drop praise/style/speculative/pre-existing-unrelated/re-stated-prior-feedback/not-actionable/
    bloat-shaped (same sound+correct+elegant bar). Tag survivors with the evidence-rung scale
    from `review.md` (unchanged on chunked bundles: chunking moves evidence, never manufactures
-   it; calibration grades the same scale). Tag inline `in-bounds` per `review.md`. Dedup against `.verdict/state/N/findings.json` by
+   it; calibration grades the same scale). Dedup against `.verdict/state/N/findings.json` by
    sig — an already-recorded open finding is not re-reported unless the delta changes it.
    "New lines": `incremental.diff` directly,
    else `git diff <prior-review-sha>..HEAD`. Draft inline with NEW numbers from full diff.
@@ -60,15 +60,15 @@ Same body format + callout ladder as `review.md`, scoped to the delta.
    - No new issues + non-substantive delta → NO review. Write `.verdict/state/N/noreview.md` (1–2 sentences,
      e.g. "No new issues. Changes since last review are formatting-only.") and post as a plain
      issue comment (or stdout if local-only). Do NOT submit an empty review.
-   - New critical → `approved:false` + `> [!CAUTION]` + summary.
-   - New must-address non-critical → `approved:false` + `> [!IMPORTANT]` + summary (never for nits).
-   - New minor only → `approved:false` + `> ℹ️ …` + summary.
-   - Informational (mergeable, worth surfacing) → `approved:true`, NO inline, `> ✅ …` + summary.
+   - New critical → a `critical` finding + `> [!CAUTION]` + summary.
+   - New must-address non-critical → an `important` finding + `> [!IMPORTANT]` + summary (never for nits).
+   - New minor only → an `informational` finding + `> ℹ️ …` + summary.
+   - Informational (mergeable, worth surfacing) → no gating findings, NO inline, `> ✅ …` + summary.
      Anchorable point → downgrade to minor instead.
-   - No new issues + substantive delta (new behavior/fixes) → review, `approved:true` when prior
+   - No new issues + substantive delta (new behavior/fixes) → review, no gating findings when prior
      feedback is addressed, body `> ✅ No new issues found.` + summary.
 
-Every review branch above ends the same way: Write exactly one `.verdict/state/N/review.json` with `{schema_version: "1", body, approved, comments[]}` (plus optional `resolved` sigs); `post` validates anchors, merges the findings store, and submits — the same path as an unchunked delta, no extra machinery. On chunked bundles the cross-chunk coverage gate applies unchanged: stamp every manifest chunk in top-level `"chunks"` — the affected chunks re-read for this delta, plus the unaffected chunks carried from the prior completed review (prior `findings.json`, step 2; when no prior review exists, read the unaffected chunks too) — and a synthesis missing one is refused, never posted partial. Top-level `confidence` (1–5) and `security_summary` are optional, as in `review.md` — absent stays absent. List prior-run sigs the delta addresses in `resolved`. Triage and verification work exactly as in `review.md` step 7.
+Every review branch above ends the same way: Write exactly one `.verdict/state/N/review.json` with `{schema_version: "1", findings[], spec_checks[], receipts[], summary?}` (plus optional `resolved` sigs); `post` validates anchors, merges the findings store, and submits — the same path as an unchunked delta, no extra machinery. On chunked bundles the cross-chunk coverage gate applies unchanged: stamp every manifest chunk in top-level `"chunks"` — the affected chunks re-read for this delta, plus the unaffected chunks carried from the prior completed review (prior `findings.json`, step 2; when no prior review exists, read the unaffected chunks too) — and a synthesis missing one is refused, never posted partial. Every finding carries its `confidence` (`high|medium|low`); only `security_summary` is optional, as in `review.md` — absent stays absent. List prior-run sigs the delta addresses in `resolved`. Triage and verification work exactly as in `review.md` step 7.
 
 Coverage is yours to track against the TOC; `gate` reads the stored receipt by default, so a delta
 review still attests the full diff. Carry the prior review's `coverage[]` forward (the bundle's

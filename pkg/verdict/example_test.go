@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/testenv"
 	"github.com/stainless-code/verdict/pkg/verdict"
 )
 
@@ -24,7 +25,7 @@ func writeFile(path, content string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		panic(err)
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(testenv.MaybeFindingsReview(path, content)), 0o644); err != nil {
 		panic(err)
 	}
 }

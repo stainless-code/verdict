@@ -11,8 +11,8 @@ exit: 1
   "data": null,
   "error": {
     "code": "bad-review-input",
-    "message": "review.json has 1 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run",
-    "problems": [{"path":"$.comments[0].brief.outcome","code":"wrong-type","level":"error","message":"brief outcome is 9 chars (want 10-500)","fix":"write one sentence of 10-500 chars naming what the fix must achieve"}],
+    "message": "review.json has 1 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants findings[]; each finding wants path, line, severity, claim, quote and confidence), then re-run",
+    "problems": [{"path":"$.findings[0].brief.outcome","code":"wrong-type","level":"error","message":"brief outcome is 9 chars (want 10-500)","fix":"write one sentence of 10-500 chars naming what the fix must achieve"}],
     "problems_truncated": 0
   }
 }

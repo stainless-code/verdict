@@ -153,7 +153,7 @@ jq -n --arg s1 "$SIG1" --arg b1 "$F1B" --argjson l1 "$F1L" \
       status:"addressed",rationale:"fixed earlier",history:[{at:"2026-01-01T00:00:00Z",event:"reported"}]}]' \
   > "$BUNDLE/findings.json"
 
-cat > "$BUNDLE/review.json" <<EOF
+eval_write_review_at "$BUNDLE/review.json" <<EOF
 {"schema_version":"1","body":"> \u2139\ufe0f One minor delta note; prior open finding restated.\n\n- Reworked the file six helper.\n\n> Basis: 0 reproduced \u00b7 0 ran \u00b7 0 walked \u00b7 2 pointed \u00b7 0 said \u00b7 0 rules cited \u00b7 0 verified fixes","approved":false,"comments":[{"path":"cinc-f1.txt","line":$F1L,"side":"RIGHT","body":"$F1B","rigor":"pointed","severity":"informational"},{"path":"cinc-f6.txt","line":$F6L,"side":"RIGHT","body":"$NEWB","rigor":"pointed","severity":"informational"}]}
 EOF
 run_review record acme/app local-cinc --json
@@ -210,7 +210,7 @@ else
   bad "gate bundle fetch exits $EVAL_STATUS"
 fi
 GATEB="Gate probe: anchor outside every reviewed hunk."
-cat > "$GBUNDLE/review.json" <<EOF
+eval_write_review_at "$GBUNDLE/review.json" <<EOF
 {"schema_version":"1","body":"> \u2139\ufe0f Gate probe on the chunked incremental path.\n\n- Checked the file six delta.\n\n> Basis: 0 reproduced \u00b7 0 ran \u00b7 0 walked \u00b7 1 pointed \u00b7 0 said \u00b7 0 rules cited \u00b7 0 verified fixes","approved":false,"comments":[{"path":"cinc-f6.txt","line":999999,"side":"RIGHT","body":"$GATEB","rigor":"pointed","severity":"informational"}]}
 EOF
 run_review record acme/app local-cincgate --json

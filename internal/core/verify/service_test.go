@@ -12,6 +12,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 var fixedNow = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
@@ -44,7 +45,7 @@ func writeFile(t *testing.T, path, content string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(testenv.MaybeFindingsReview(path, content)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

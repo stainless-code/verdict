@@ -9,8 +9,7 @@ exit: 0
   "next": "report or triage the local bundle; post stays refused (no PR target)",
   "warnings": [
     "rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important",
-    "rigor said below important floor pointed on 99cd29f (advisory)",
-    "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)"
+    "rigor said below important floor pointed on daea615 (advisory)"
   ],
   "data": {
     "dir": ".verdict/state/local-mx",
@@ -106,8 +105,7 @@ exit: 0
 --- stderr ---
 » anchors: 0 inline, 0 moved to body
 warn: rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important
-warn: rigor said below important floor pointed on 99cd29f (advisory)
-warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
+warn: rigor said below important floor pointed on daea615 (advisory)
 » findings: 12 sigs -> .verdict/state/local-mx/findings.json
   c7bc06e4  deferred  true  notes.txt
   63b8aa5b  open  true  notes.txt
@@ -144,6 +142,9 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "lastSeen": "aaaaaaa",
     "status": "deferred",
     "rationale": "deferring this finding with a rationale long enough to pass",
+    "verification": {
+      "quote": "unchecked"
+    },
     "history": [
       {
         "at": "0000-00-00T00:00:00Z",
@@ -179,13 +180,16 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "inBounds": true,
     "rigor": "pointed",
     "rigor_source": "model",
-    "severity": null,
+    "severity": "important",
     "sig": "63b8aa5b62b12a5f047a118ba744c095f7cdfe2c",
     "sig_version": "1",
     "firstSeen": "aaaaaaa",
     "lastSeen": "aaaaaaa",
     "status": "open",
     "rationale": "",
+    "verification": {
+      "quote": "unchecked"
+    },
     "history": [
       {
         "at": "0000-00-00T00:00:00Z",
@@ -205,13 +209,16 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "inBounds": true,
     "rigor": "walked",
     "rigor_source": "model",
-    "severity": null,
+    "severity": "important",
     "sig": "748484cb3c12e2fa35a083abdd367a5b336bf76e",
     "sig_version": "1",
     "firstSeen": "aaaaaaa",
     "lastSeen": "aaaaaaa",
     "status": "open",
     "rationale": "",
+    "verification": {
+      "quote": "unchecked"
+    },
     "history": [
       {
         "at": "0000-00-00T00:00:00Z",
@@ -238,6 +245,9 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "lastSeen": "aaaaaaa",
     "status": "open",
     "rationale": "",
+    "verification": {
+      "quote": "unchecked"
+    },
     "history": [
       {
         "at": "0000-00-00T00:00:00Z",
@@ -257,13 +267,16 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "inBounds": true,
     "rigor": "reproduced",
     "rigor_source": "model",
-    "severity": null,
+    "severity": "important",
     "sig": "e8e306834f388a5f07f0042bf9d10155c20bc0cc",
     "sig_version": "1",
     "firstSeen": "aaaaaaa",
     "lastSeen": "aaaaaaa",
     "status": "open",
     "rationale": "",
+    "verification": {
+      "quote": "unchecked"
+    },
     "history": [
       {
         "at": "0000-00-00T00:00:00Z",
@@ -283,13 +296,16 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "inBounds": true,
     "rigor": "said",
     "rigor_source": "model",
-    "severity": null,
+    "severity": "important",
     "sig": "daea61531f5880722d293dae40483e2173a536c0",
     "sig_version": "1",
     "firstSeen": "aaaaaaa",
     "lastSeen": "aaaaaaa",
     "status": "open",
     "rationale": "",
+    "verification": {
+      "quote": "unchecked"
+    },
     "history": [
       {
         "at": "0000-00-00T00:00:00Z",
@@ -316,6 +332,9 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "lastSeen": "aaaaaaa",
     "status": "open",
     "rationale": "",
+    "verification": {
+      "quote": "unchecked"
+    },
     "history": [
       {
         "at": "0000-00-00T00:00:00Z",
@@ -335,13 +354,16 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "inBounds": true,
     "rigor": "walked",
     "rigor_source": "model",
-    "severity": null,
+    "severity": "important",
     "sig": "5ae0170615a426fef7188f44a49defeac0a3af6d",
     "sig_version": "1",
     "firstSeen": "aaaaaaa",
     "lastSeen": "aaaaaaa",
     "status": "open",
     "rationale": "",
+    "verification": {
+      "quote": "unchecked"
+    },
     "history": [
       {
         "at": "0000-00-00T00:00:00Z",
@@ -361,13 +383,16 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "inBounds": true,
     "rigor": "ran",
     "rigor_source": "model",
-    "severity": null,
+    "severity": "important",
     "sig": "c2009016d7998b2ab22b2b0fbd745322e289cec9",
     "sig_version": "1",
     "firstSeen": "aaaaaaa",
     "lastSeen": "aaaaaaa",
     "status": "open",
     "rationale": "",
+    "verification": {
+      "quote": "unchecked"
+    },
     "history": [
       {
         "at": "0000-00-00T00:00:00Z",
@@ -394,6 +419,9 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "lastSeen": "aaaaaaa",
     "status": "open",
     "rationale": "",
+    "verification": {
+      "quote": "unchecked"
+    },
     "history": [
       {
         "at": "0000-00-00T00:00:00Z",
@@ -407,7 +435,7 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "anchored": "body",
     "body": "### Watch the loop",
     "rigor_source": "default",
-    "severity": "important",
+    "severity": null,
     "category": null,
     "sig": "99cd29f4506a07a6e5afe278e095cef33f4798b3",
     "sig_version": "1",
@@ -429,7 +457,7 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "anchored": "body",
     "body": "### Check the edges",
     "rigor_source": "default",
-    "severity": "informational",
+    "severity": null,
     "category": null,
     "sig": "e5ae2abbcc127fe8d3594517ddb1cc52a9d5a0fb",
     "sig_version": "1",
@@ -452,18 +480,20 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
   "status": "local",
   "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "diff_sha256": "94c13c09a41c7b60eb7ad434d0022a7886cd82666cb464b623d9bc7d372b66de",
+  "review_sha256": "c3d374aacd1b401841298fe2567cf882ce6b1307bead623eef6e8e325eebba9b",
   "recorded_at": "0000-00-00T00:00:00Z",
   "findings": 12,
   "open": 11,
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "3c57d8f39a074b67f54d2cdb6b7d15408334b5f0f410a36b79f3f2f473ec8516",
+  "prompts_hash": "3245adba3e38e496b08361aff47e2eb8fda8337c4c0575ad0148e1e0b291ce26",
   "model": null,
   "author": null,
   "review_models": [],
   "validation_hash": null,
   "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":11},
   "validation_mode": "warn",
-  "rigor_floors": {"critical":"walked","important":"pointed","informational":"said"}
+  "rigor_floors": {"critical":"walked","important":"pointed","informational":"said"},
+  "approval": {"reason":"open findings at-or-above important","tier":"important","gating_sigs":["63b8aa5b62b12a5f047a118ba744c095f7cdfe2c","748484cb3c12e2fa35a083abdd367a5b336bf76e","71eb69f49cb65794b78d63f73b2daa15839457f0","e8e306834f388a5f07f0042bf9d10155c20bc0cc","daea61531f5880722d293dae40483e2173a536c0","c84ffef906aab45b3a73fc7dfc8d511f07747b33","5ae0170615a426fef7188f44a49defeac0a3af6d","c2009016d7998b2ab22b2b0fbd745322e289cec9","65c5e5ce7a39de7e90426bb1b07a7de7087d3ab6"],"approved":false}
 }

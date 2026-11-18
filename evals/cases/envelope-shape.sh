@@ -39,7 +39,7 @@ else
 fi
 
 eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"placeholder","approved":false,"comments":[]}
+{"schema_version":"1","findings":"not-array"}
 EOF
 run_review post acme/app "$PR" --dry-run --json
 if [ "$EVAL_STATUS" -ne 0 ]; then

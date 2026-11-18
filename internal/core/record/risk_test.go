@@ -9,6 +9,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 type riskCheckCase struct {
@@ -98,7 +99,7 @@ func TestCheckReviewRiskTable(t *testing.T) {
 
 func assertRiskCheckCase(t *testing.T, tc *riskCheckCase) {
 	t.Helper()
-	res := recordcore.CheckReview([]byte(checkReview(tc.extra)), checkDiff)
+	res := recordcore.CheckReview(testenv.FindingsBytes([]byte(checkReview(tc.extra))), checkDiff)
 	checkProblems(t, res, tc.wantCount)
 	if tc.wantCount == 0 {
 		return
@@ -116,7 +117,7 @@ func TestNormalizeRiskCaseFoldsLevel(t *testing.T) {
 	if len(repairs) != 1 || repairs[0].Code != core.ProblemCodeEnumSynonym {
 		t.Fatalf("NormalizeReview repairs = %+v, want 1 enum-synonym", repairs)
 	}
-	res := recordcore.CheckReview(norm, checkDiff)
+	res := recordcore.CheckReview(testenv.FindingsBytes(norm), checkDiff)
 	checkProblems(t, res, 0)
 	if !strings.Contains(string(norm), `"level": "high"`) {
 		t.Errorf("normalized output did not lowercase level: %s", string(norm))

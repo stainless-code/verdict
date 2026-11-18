@@ -21,10 +21,9 @@ const sdkRecordReview = `{"schema_version":"1","body":"✅ Looks good — one mi
 	`"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Consider clarifying this line.",` +
 	`"rigor":"pointed","severity":"informational"}]}`
 
-// sdkWarnReview is warning-only input: the comment carries no rigor, so a
+// sdkWarnReview is warning-only input: the finding carries no rigor, so a
 // lenient record reports the warning and a strict one refuses.
-const sdkWarnReview = `{"schema_version":"1","body":"✅ marker plus enough length to pass the guard ok.","approved":false,` +
-	`"comments":[{"path":"notes.txt","line":2,"body":"A finding with enough substance."}]}`
+const sdkWarnReview = `{"schema_version":"1","findings":[{"path":"notes.txt","line":2,"severity":"important","claim":"A finding with enough substance.","quote":"new line","confidence":"high"}]}`
 
 // sdkCostRecord is a two-entry cost panel with no names yet: the cost-name
 // repair adds them in panel order and leaves every count alone.
@@ -137,8 +136,8 @@ func TestClientRecordStrict(t *testing.T) {
 		Strict:     true,
 	})
 	requireRefusal(t, err, "bad-review-input",
-		"try: fix the malformed agent input named above "+
-			"(review.json wants {body, approved, comments[]}; claims want string sigs), then re-run")
+		"try: fix the malformed agent input named above (review.json wants findings[]; "+
+			"each finding wants path, line, severity, claim, quote and confidence), then re-run")
 	requireAbsent(t, ".verdict/state/local-strict/findings.json", ".verdict/state/local-strict/record.json")
 }
 

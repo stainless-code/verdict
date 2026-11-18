@@ -89,6 +89,12 @@ exit: 1
       "fetched_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "posted_head": null
     },
+    "approval": {
+      "reason": "no gating findings",
+      "tier": "important",
+      "gating_sigs": [],
+      "approved": true
+    },
     "gate": {
       "passed": false,
       "dimensions": [

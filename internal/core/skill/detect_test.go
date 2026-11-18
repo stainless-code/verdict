@@ -11,6 +11,7 @@ import (
 
 	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/core/skill"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // seedSkillsDir creates one agent's skills dir and puts a file in it, the
@@ -31,7 +32,7 @@ func writeTestFile(t *testing.T, path, body string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(testenv.MaybeFindingsReview(path, body)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }

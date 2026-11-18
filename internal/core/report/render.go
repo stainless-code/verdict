@@ -8,6 +8,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/approval"
 	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -65,6 +66,7 @@ func buildData(st *state) *core.ReportData {
 	data := &core.ReportData{
 		Verification: panelcore.Summarize(st.entries),
 		Validation:   st.validation,
+		Approval:     st.approval,
 		GeneratedAt:  st.now,
 		Dir:          st.dir,
 		Head: core.ReportHead{
@@ -821,6 +823,9 @@ func tierHit(e any, threshold int, category string) bool {
 		return false
 	}
 	if core.TierRank(readcommon.FieldOf(e, "severity")) > threshold {
+		return false
+	}
+	if approval.QuoteStatus(e) == "unverified" {
 		return false
 	}
 	return category == "" || gateEligible(e)

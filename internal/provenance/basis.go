@@ -95,7 +95,7 @@ func reviewComments(review *jq.Obj) []any {
 	if review == nil {
 		return nil
 	}
-	if c, ok := review.Get("comments"); ok {
+	if c, ok := review.Get("findings"); ok {
 		return jq.Elements(c)
 	}
 	return nil
@@ -178,10 +178,11 @@ var (
 	digitRunRe  = regexp.MustCompile(`[0-9]+`)
 )
 
-// ApplyBasisLine replaces the body's first "> Basis:" line with the computed
-// counts, inserting one under the confidence lead when the body carries none.
-// It is the only prose byte the CLI writes; a matching line is left untouched.
-func ApplyBasisLine(expected, body string) (string, *core.Problem) {
+// ApplyBasisLine writes the computed counts into the body's leading quote
+// block: it replaces a disagreeing "> Basis:" line and inserts one when the
+// body carries none. It is the only prose byte the CLI writes, and it reports
+// nothing: the review document carries no body, so no agent byte is involved.
+func ApplyBasisLine(expected, body string) string {
 	lines := strings.Split(body, newline)
 	computed := "> Basis: " + expected
 	if i, found := basisLineIndex(lines); found {
@@ -257,26 +258,20 @@ func basisFenceLine(trimmed string) bool {
 
 // replaceBasisLine swaps a disagreeing Basis line for the computed counts;
 // a matching line leaves the body untouched.
-func replaceBasisLine(body string, lines []string, i int, computed, expected string) (string, *core.Problem) {
+func replaceBasisLine(body string, lines []string, i int, computed, expected string) string {
 	nums := strings.Join(digitRunRe.FindAllString(lines[i], -1), " ")
 	if nums == expected {
-		return body, nil
+		return body
 	}
 	lines[i] = computed
-	return strings.Join(lines, newline), &core.Problem{
-		Path: "$.body", Code: core.ProblemCodeBasisReplaced, Level: core.ProblemLevelWarning,
-		Message: fmt.Sprintf(
-			"basis line counts (%s) differ from the computed counts (%s) — replaced it (basis-replaced)",
-			nums, expected),
-		Fix:     "write the computed Basis line, or leave the line to the CLI",
-		Example: computed,
-	}
+	return strings.Join(lines, newline)
 }
 
-func insertBasisLine(lines []string, computed string) (string, *core.Problem) {
+// insertBasisLine inserts the computed line under the leading quote block.
+func insertBasisLine(lines []string, computed string) string {
 	at := leadEnd(lines)
 	if at == 0 {
-		return strings.Join(lines, newline), nil
+		return strings.Join(lines, newline)
 	}
 	insert := []string{computed}
 	if at < len(lines) {
@@ -285,12 +280,7 @@ func insertBasisLine(lines []string, computed string) (string, *core.Problem) {
 		}
 	}
 	lines = append(lines[:at], append(insert, lines[at:]...)...)
-	return strings.Join(lines, newline), &core.Problem{
-		Path: "$.body", Code: core.ProblemCodeBasisReplaced, Level: core.ProblemLevelWarning,
-		Message: "no Basis line in the leading quote block — inserted the computed counts (basis-replaced)",
-		Fix:     "write the computed Basis line, or leave the line to the CLI",
-		Example: computed,
-	}
+	return strings.Join(lines, newline)
 }
 
 // EvidenceBaseURL returns the blob base for GitHub bundles,

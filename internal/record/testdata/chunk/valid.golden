@@ -6,7 +6,6 @@ exit: 0
 recorded: .verdict/state/local-ch/findings.json (1 open) + .verdict/state/local-ch/record.json — report/triage read it; post stays refused (no PR target)
 --- stderr ---
 warn: no fetch-time hunk snapshot (.verdict/state/local-ch/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
-warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
 --- files ---
 --- file C/.verdict/state/local-ch/findings.json ---
 [
@@ -22,13 +21,14 @@ warn: $.body: no Basis line in the leading quote block — inserted the computed
     "inBounds": true,
     "rigor": "walked",
     "rigor_source": "model",
-    "severity": null,
+    "severity": "important",
     "sig": "b9ae64f9ec7f647658ee6729c69c5254836e5e5e",
     "sig_version": "1",
     "firstSeen": "aaaaaaa",
     "lastSeen": "aaaaaaa",
     "status": "open",
     "rationale": "",
+    "verification": {"quote":"unchecked"},
     "history": [
       {
         "at": "0000-00-00T00:00:00Z",
@@ -48,13 +48,14 @@ c1.txt	NEW	1	2
   "status": "local",
   "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "diff_sha256": "c882e2ef91a0d2833e8d25cf0b03b201379101677b35bd78838609132fdd2a1f",
+  "review_sha256": "34fd6db1f9a7a281091d2b7f210cdebc7842cf8e2ddadb3339634f89d292e42d",
   "recorded_at": "0000-00-00T00:00:00Z",
   "findings": 1,
   "open": 1,
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "3c57d8f39a074b67f54d2cdb6b7d15408334b5f0f410a36b79f3f2f473ec8516",
+  "prompts_hash": "3245adba3e38e496b08361aff47e2eb8fda8337c4c0575ad0148e1e0b291ce26",
   "model": null,
   "author": null,
   "review_models": [],
@@ -62,7 +63,8 @@ c1.txt	NEW	1	2
   "validation_hash": null,
   "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":1},
   "validation_mode": "warn",
-  "rigor_floors": {"critical":"walked","important":"pointed","informational":"said"}
+  "rigor_floors": {"critical":"walked","important":"pointed","informational":"said"},
+  "approval": {"reason":"open findings at-or-above important","tier":"important","gating_sigs":["b9ae64f9ec7f647658ee6729c69c5254836e5e5e"],"approved":false}
 }
 --- file C/.verdict/state/local-ch/store.json ---
 {

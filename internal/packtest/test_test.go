@@ -91,7 +91,7 @@ func TestPackTestRejectsNonnumericAnchor(t *testing.T) {
 	if got.Status != failStatus {
 		t.Fatalf("status = %q, want %q: %+v", got.Status, failStatus, got)
 	}
-	if !strings.Contains(got.Reason, "$.comments[0].line") {
+	if !strings.Contains(got.Reason, "$.findings[0].line") {
 		t.Fatalf("reason = %q, want the invalid anchor field", got.Reason)
 	}
 }

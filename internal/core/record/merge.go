@@ -149,6 +149,7 @@ func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 		return "", diagram.Status{}, err
 	}
 	body = st.hideWithheldSections(st.hideWithheldMoved(body))
+	body = st.hideWithheldInlineClaims(body)
 	curated, dstat, err := st.garnishChecks(body)
 	if err != nil {
 		return "", diagram.Status{}, err
@@ -234,11 +235,11 @@ func (st *state) reportMoves() {
 }
 
 func (st *state) garnishChecks(body string) (string, diagram.Status, error) {
-	body, basisProblem := provenance.ApplyBasisLine(
+	// The review document carries no body: this renderer owns every body
+	// byte, so the CLI writes the Basis line and never reports it back as an
+	// agent repair.
+	body = provenance.ApplyBasisLine(
 		provenance.ReviewBasisCounts(st.review, st.entries, st.now), body)
-	if basisProblem != nil {
-		st.warn(basisProblem.Path + ": " + basisProblem.Message)
-	}
 	for _, w := range provenance.ValidateEvidenceLinks(
 		body, st.headFull, provenance.EvidenceLinkable(st.dir, st.headFull)) {
 		st.warn(w)
@@ -296,25 +297,40 @@ func validJSON(raw []byte) bool {
 	return err == nil
 }
 
+func (st *state) hideWithheldInlineClaims(body string) string {
+	for _, item := range st.entries {
+		obj, ok := item.(*jq.Obj)
+		if !ok || !obj.Has("withheld") {
+			continue
+		}
+		claim, _ := obj.Get("body")
+		text := jq.R(claim)
+		if text != "" {
+			body = strings.ReplaceAll(body, text, "[withheld]")
+		}
+	}
+	return body
+}
+
 func checkReviewSchema(review *jq.Obj) error {
 	if review == nil {
 		return nil
 	}
 	rv, has := review.Get("schema_version")
-	if !has || rv == nil {
-		return nil
+	if !has || rv == nil || jq.R(rv) != schemaVersion1 {
+		return &core.RefusalError{Code: codeBadReviewSchema, Message: fmt.Sprintf(msgBadSchema, jq.R(rv))}
 	}
-	if s := jq.R(rv); s == schemaVersion1 {
-		return nil
+	findings, has := review.Get("findings")
+	if _, ok := findings.([]any); !has || !ok {
+		return &core.RefusalError{Code: codeBadReviewInput, Message: "findings must be an array"}
 	}
-	return &core.RefusalError{Code: codeBadReviewSchema, Message: fmt.Sprintf(msgBadSchema, jq.R(rv))}
+	return nil
 }
 
 func (st *state) parseConfidence() error {
 	st.confidence = nil
 	st.security = nil
 	st.risk = nil
-	st.parseConfidenceLevel()
 	if err := st.parseSecuritySummary(); err != nil {
 		return err
 	}
@@ -369,27 +385,6 @@ func parseRiskClaimObj(obj *jq.Obj) (*core.RiskClaim, bool) {
 	}, true
 }
 
-func (st *state) parseConfidenceLevel() {
-	conf, ok := st.review.Get(fieldConfidence)
-	if !ok || conf == nil || conf == false {
-		return
-	}
-	if s := jq.R(conf); isConfidenceLevel(s) {
-		st.confidence = conf
-	} else {
-		st.warnInput(fmt.Sprintf("ignoring confidence '%s' (want integer 1-5)", s))
-	}
-}
-
-func isConfidenceLevel(s string) bool {
-	switch s {
-	case "1", "2", "3", "4", "5":
-		return true
-	default:
-		return false
-	}
-}
-
 func (st *state) parseSecuritySummary() error {
 	sec, has := st.review.Get(fieldSecuritySummary)
 	if !has || sec == nil {
@@ -410,7 +405,7 @@ func (st *state) validateAnchors(body string) string {
 	st.kept = []any{}
 	st.moved = []any{}
 	var comments []any
-	if c, ok := st.review.Get(fieldComments); ok {
+	if c, ok := st.review.Get("findings"); ok {
 		comments = jq.Elements(c)
 	}
 	if st.bodyOnlyAnchors {
@@ -479,6 +474,17 @@ func (st *state) classifyComment(m *jq.Obj, hs []hunks.Hunk) {
 	moved := m.Clone()
 	moved.Set(fieldDropReason, fmt.Sprintf("anchor %d-%d (%s) outside reviewed hunks", lo, hi, side))
 	st.moved = append(st.moved, moved)
+}
+
+// anchorAbsent reports a finding that carries no usable line: only a
+// document that skipped the checker can reach it.
+func anchorAbsent(m *jq.Obj) bool {
+	for _, key := range []string{fieldLine, fieldStartLine} {
+		if v, has := m.Get(key); has && v != nil && v != false {
+			return false
+		}
+	}
+	return true
 }
 
 func (st *state) moveUnknownPath(m *jq.Obj, path string) {
@@ -631,13 +637,9 @@ func runeSlice(s string, n int) string {
 }
 
 func (st *state) buildEntries(body string) {
-	var secs []any
-	if s, ok := st.review.Get(fieldSections); ok {
-		secs = jq.Elements(s)
-	}
 	var fresh []freshEntry
 	fresh = append(fresh, freshInline(st)...)
-	fresh = append(fresh, freshSections(body, secs)...)
+	fresh = append(fresh, freshSections(body)...)
 	kbExists := st.controls.Has(kb.File)
 	for _, fe := range fresh {
 		st.entries = append(st.entries, stampEntry(st, fe.entry, fe.kbRaw, kbExists).Wire())
@@ -677,27 +679,25 @@ func freshInline(st *state) []freshEntry {
 	return fresh
 }
 
-func freshSections(body string, secs []any) []freshEntry {
+func freshSections(body string) []freshEntry {
 	var fresh []freshEntry
 	for h := range strings.SplitSeq(body, newline) {
 		if !strings.HasPrefix(h, "### ") {
 			continue
 		}
-		fresh = append(fresh, freshEntry{entry: buildSection(h, sectionSeverity(secs, h))})
+		fresh = append(fresh, freshEntry{entry: buildSection(h)})
 	}
 	return fresh
 }
 
 func buildInline(st *state, m *jq.Obj) freshEntry {
-	inBounds, ok := m.Get(fieldInBoundsInput)
-	if !ok || inBounds == nil {
-		inBounds = true
-	}
 	drop, _ := m.Get(fieldDropReason)
 	path, _ := m.Get(fieldPath)
 	side, _ := m.Get(fieldSide)
 	line, _ := m.Get(fieldLine)
 	bd, _ := m.Get(fieldBody)
+	quote, _ := m.Get("quote")
+	finderConfidence, _ := m.Get("finder_confidence")
 	sugg, _ := m.Get(fieldSuggestion)
 	kbc, _ := m.Get(fieldKB)
 	rigor, _ := m.Get(fieldRigor)
@@ -707,19 +707,22 @@ func buildInline(st *state, m *jq.Obj) freshEntry {
 	rigorValue, rigorSource := pickRigor(rigor)
 	category := pickCategory(st, m, cat, hasCat)
 	entry := &core.FindingEntry{
-		Kind:        "inline",
-		Path:        path,
-		Side:        jq.Alt(side, sideRight),
-		Line:        line,
-		Anchored:    drop == nil,
-		Body:        body,
-		Suggestion:  optString(jq.Alt(sugg, nil)),
-		InBounds:    inBounds,
-		Rigor:       rigorValue,
-		RigorSource: rigorSource,
-		Severity:    pick(sev, sevAllow, nil),
-		Category:    category,
-		CategorySet: hasCat,
+		Kind:             "inline",
+		Path:             path,
+		Side:             jq.Alt(side, sideRight),
+		Line:             line,
+		Anchored:         drop == nil,
+		Body:             body,
+		Quote:            jq.R(quote),
+		FinderConfidence: jq.R(finderConfidence),
+		Verification:     &core.Verify{Quote: "unchecked"},
+		Suggestion:       optString(jq.Alt(sugg, nil)),
+		InBounds:         drop == nil,
+		Rigor:            rigorValue,
+		RigorSource:      rigorSource,
+		Severity:         pick(sev, sevAllow, nil),
+		Category:         category,
+		CategorySet:      hasCat,
 	}
 	entry.Brief = briefOf(st, m)
 	if v, ok := m.Get(fieldSources); ok {
@@ -742,28 +745,13 @@ func briefOf(st *state, m *jq.Obj) *core.Brief {
 	return b
 }
 
-func sectionSeverity(secs []any, h string) any {
-	for _, s := range secs {
-		sm, ok := s.(*jq.Obj)
-		if !ok {
-			continue
-		}
-		if hd, _ := sm.Get(fieldHeading); hd == h {
-			sev, _ := sm.Get(fieldSeverity)
-			return sev
-		}
-	}
-	return nil
-}
-
-func buildSection(h string, sev any) *core.FindingEntry {
+func buildSection(h string) *core.FindingEntry {
 	return &core.FindingEntry{
 		Kind:        "section",
 		Heading:     h,
 		Anchored:    fieldBody,
 		Body:        h,
 		RigorSource: rigorSourceDefault,
-		Severity:    pick(sev, sevAllow, nil),
 	}
 }
 

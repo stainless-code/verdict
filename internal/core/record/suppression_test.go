@@ -9,6 +9,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 func TestSuppressionAgentReceiptLifecycle(t *testing.T) {
@@ -121,7 +122,7 @@ func TestExcludedPathCommentGetsImplicitReceipt(t *testing.T) {
 
 func TestCheckerAllowsReceiptedExclusion(t *testing.T) {
 	raw := []byte(`{"schema_version":"1","body":"> Review complete. Policy exceptions recorded.","comments":[{"path":"vendor/.env","line":1,"body":"Credential policy exception.","rigor":"pointed"}]}`)
-	result := CheckReviewInput(raw, CheckInput{Diff: "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1 +1 @@\n-a\n+b\n", ExcludedPaths: map[string]bool{"vendor/.env": true}})
+	result := CheckReviewInput(testenv.FindingsBytes(raw), CheckInput{Diff: "diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1 +1 @@\n-a\n+b\n", ExcludedPaths: map[string]bool{"vendor/.env": true}})
 	if result.Errors != 0 {
 		t.Fatalf("receipted path refused: %+v", result.Problems)
 	}

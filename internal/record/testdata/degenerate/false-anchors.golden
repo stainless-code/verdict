@@ -7,16 +7,19 @@ exit: 1
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
   "next": "",
-  "warnings": [],
+  "warnings": [
+    "$.findings[0].line: anchor -1--1 () is outside every reviewed hunk; record moves it to the body"
+  ],
   "data": null,
   "error": {
     "code": "bad-review-input",
-    "message": "review.json has 5 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run",
-    "problems": [{"path":"$.comments[0].line","code":"wrong-type","level":"error","message":"line must be an integer or numeric string","fix":"use a line number inside a hunk","example":10},{"path":"$.comments[0].start_line","code":"wrong-type","level":"error","message":"start_line must be an integer or numeric string","fix":"use a line number inside a hunk","example":10},{"path":"$.comments[0].side","code":"wrong-type","level":"error","message":"side must be a string","fix":"use RIGHT or LEFT","example":"RIGHT"},{"path":"$.comments[0].rigor","code":"wrong-type","level":"error","message":"rigor must be a string","fix":"use said|pointed|walked|ran|reproduced","example":"walked"},{"path":"$.comments[0].severity","code":"wrong-type","level":"error","message":"severity must be a string or null","fix":"use critical|important|informational","example":"important"}],
+    "message": "review.json has 6 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants findings[]; each finding wants path, line, severity, claim, quote and confidence), then re-run",
+    "problems": [{"path":"$.findings[0].line","code":"wrong-type","level":"error","message":"line must be an integer","fix":"use the code line number","example":10},{"path":"$.findings[0].start_line","code":"wrong-type","level":"error","message":"start_line must be an integer","fix":"use the code line number","example":10},{"path":"$.findings[0].side","code":"wrong-type","level":"error","message":"side must be a string","fix":"use RIGHT or LEFT","example":"RIGHT"},{"path":"$.findings[0].severity","code":"wrong-type","level":"error","message":"severity must be a string or null","fix":"use critical|important|informational","example":"important"},{"path":"$.findings[0].rigor","code":"wrong-type","level":"error","message":"rigor must be a string","fix":"use said|pointed|walked|ran|reproduced","example":"walked"},{"path":"$.findings[0].line","code":"anchor-outside-hunk","level":"warning","message":"anchor -1--1 () is outside every reviewed hunk; record moves it to the body","fix":"set line/start_line inside a reviewed hunk and keep the finding inline"}],
     "problems_truncated": 0
   }
 }
 --- stderr ---
+warn: $.findings[0].line: anchor -1--1 () is outside every reviewed hunk; record moves it to the body
 re-enter: verdict record acme/app local-dg --json
 --- files ---
 --- file C/.verdict/state/local-dg/store.json ---

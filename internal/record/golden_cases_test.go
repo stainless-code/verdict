@@ -11,6 +11,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/golden"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 func writeFiles(t *testing.T, dir string, files map[string]string) {
@@ -20,7 +21,7 @@ func writeFiles(t *testing.T, dir string, files map[string]string) {
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(p, []byte(testenv.MaybeFindingsReview(rel, content)), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -135,9 +136,19 @@ func matrixSetup(n int) func(t *testing.T, dir string) {
 	}
 }
 
-func fencedBodyReview() string {
-	raw := `{"schema_version":"1","body":"> ✅ ok\n\n### T\n\n<FENCE>\ncode fence longer than three lines here yes\nline2\nline3\nline4\n<FENCE>\n","approved":false,"comments":[]}`
-	return strings.ReplaceAll(raw, "<FENCE>", "```")
+// emptyFindings is a review document with no findings: the smallest document
+// record accepts, used where the case is about a flag or a garnish rule.
+const emptyFindings = `{"schema_version":"1","findings":[]}`
+
+// fencedSuggestionFinding carries a suggestion fence, which a raw Go string
+// cannot hold.
+const fencedSuggestionFinding = `{"path":"notes.txt","line":3,"severity":"important",` +
+	`"claim":"A fenced suggestion demotes to the body.","quote":"new line","confidence":"high",` +
+	`"suggestion":"` + "```suggestion\\ncode\\n```" + `"}`
+
+// findingReview wraps one finding object in a review document.
+func findingReview(finding string) string {
+	return `{"schema_version":"1","findings":[` + finding + `]}`
 }
 
 func mutateSecondPass(t *testing.T, dir string) {
@@ -228,7 +239,7 @@ func matrixRereview(t *testing.T, n int) {
 	compareRuns(t, fmt.Sprintf("matrix/n%d/rereview", n), dirA, dirB, "local-mx", []string{"--json"})
 }
 
-// TestGoldenDegenerateInputs checks degenerate bodies refuse identically.
+// TestGoldenDegenerateInputs checks degenerate documents refuse identically.
 func TestGoldenDegenerateInputs(t *testing.T) {
 	base := map[string]string{
 		".verdict/state/local-dg/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
@@ -238,30 +249,27 @@ func TestGoldenDegenerateInputs(t *testing.T) {
 		name   string
 		review string
 	}{
-		{"short-body", `{"schema_version":"1","body":"too short","approved":false,"comments":[]}`},
-		{"placeholder-body", `{"schema_version":"1","body":"this is a temp placeholder sample text here ok","approved":false,"comments":[]}`},
-		{"bad-schema", `{"schema_version":"2","body":"> ✅ marker fine and long enough body here.","approved":false,"comments":[]}`},
-		{"missing-marker-ok", `{"schema_version":"1","body":"this body is long enough to pass the degenerate guard without any marker at all yes","approved":false,"comments":[]}`},
-		{"empty-diff-body", `{"schema_version":"1","body":"> ℹ️ note with marker and enough length to pass.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Anchors unchecked.","rigor":"pointed"}]}`},
-		{"null-path", `{"schema_version":"1","body":"> [!IMPORTANT]\n> Body with length to pass the guard.","approved":false,"comments":[{"path":null,"line":2,"side":"RIGHT","body":"Null path.","rigor":"pointed"}]}`},
-		{"false-anchors", `{"schema_version":"1","body":"> [!IMPORTANT]\n> Body with length to pass the guard.","approved":false,"comments":[{"path":"notes.txt","line":false,"start_line":false,"side":5,"body":"False anchors.","rigor":5,"severity":true,"in-bounds":false}]}`},
-		{"false-side", `{"schema_version":"1","body":"> [!IMPORTANT]\n> Body with length to pass the guard.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":false,"body":"False side.","rigor":false}]}`},
-		{"fenced-body-section", fencedBodyReview()},
-		{"normalized-fenced", "```json\n" + `{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}` + "\n```"},
-		{"normalized-prose", "Here is the review you asked for:\n\n" + `{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}` + "\n\nThanks."},
-		{"normalized-weak-shapes", `{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"resolved":"x","comments":[{"file":"notes.txt","line":2,"side":"RIGHT","body":"Weak-model finding with enough substance.","rung":"Pointed","severity":"Important","inBounds":true,"suggestion":null}]}`},
+		{"bad-schema", `{"schema_version":"2","findings":[]}`},
+		{"missing-findings", `{"schema_version":"1","summary":"A summary is not a body, and a document without findings refuses."}`},
+		{"string-line", findingReview(`{"path":"notes.txt","line":"2","severity":"important","claim":"A string line no longer anchors.","quote":"new line","confidence":"high"}`)},
+		{"empty-diff-finding", findingReview(`{"path":"notes.txt","line":2,"side":"RIGHT","severity":"important","claim":"Anchors unchecked.","quote":"new line","confidence":"high","rigor":"pointed"}`)},
+		{"null-path", findingReview(`{"path":null,"line":2,"side":"RIGHT","severity":"important","claim":"Null path.","quote":"new line","confidence":"high","rigor":"pointed"}`)},
+		{"false-anchors", findingReview(`{"path":"notes.txt","line":false,"start_line":false,"side":5,"severity":true,"claim":"False anchors.","quote":"new line","confidence":"high","rigor":5}`)},
+		{"false-side", findingReview(`{"path":"notes.txt","line":2,"side":false,"severity":"important","claim":"False side.","quote":"new line","confidence":"high","rigor":false}`)},
+		{"fenced-suggestion", findingReview(fencedSuggestionFinding)},
+		{"normalized-fenced", "```json\n" + emptyFindings + "\n```"},
+		{"normalized-prose", "Here is the review you asked for:\n\n" + emptyFindings + "\n\nThanks."},
+		{"normalized-weak-shapes", `{"schema_version":"1","findings":[{"file":"notes.txt","line":2,"side":"RIGHT","severity":"Important","claim":"Weak-model finding with enough substance.","quote":"new line","confidence":"high","rung":"Pointed","suggestion":null}],"resolved":"x"}`},
 		{"brief-valid", `{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[{"path":"notes.txt","line":3,"side":"RIGHT","body":"Brief-carrying finding.","rigor":"walked","severity":"important","brief":{"sites":[{"path":"notes.txt","line":4},{"path":"other.txt"}],"outcome":"Reject duplicate deliveries before anything is enqueued.","approach":"Track delivery ids in a bounded LRU checked at the top of the handler.","questions":["Should the dedupe window be 24 hours or 7 days?"]}}]}`},
 		{"brief-invalid", `{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[{"path":"notes.txt","line":3,"side":"RIGHT","body":"Brief with bad parts.","rigor":"pointed","brief":{"sites":[{"path":"unknown/file.txt","line":2},{"path":"notes.txt","line":99},{"path":"other.txt"}],"outcome":"Keep the valid outcome and drop everything else.","approach":"tiny","questions":["A question long enough to keep",42],"outcome_typo":"x"}}]}`},
 		{"brief-bad-outcome", `{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[{"path":"notes.txt","line":3,"side":"RIGHT","body":"Brief with a short outcome.","rigor":"pointed","brief":{"sites":[{"path":"other.txt"}],"outcome":"too short"}}]}`},
-		{"blob-link-local", `{"schema_version":"1","body":"> ✅ ok with a blob link https://x/blob/aaaaaaa/p#L1 here yes sir.","approved":false,"comments":[]}`},
-		{"basis-ok", `{"schema_version":"1","body":"> Confidence: 3/5\n> Basis: 0 0 0 1 0 0 0\n> Some content here to pass length.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"One pointed.","rigor":"pointed"}]}`},
-		{"basis-bad", `{"schema_version":"1","body":"> Confidence: 3/5\n> Basis: 9 9 9 9 9 9 9\n> Some content here to pass length.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"One pointed.","rigor":"pointed"}]}`},
-		{"carried-footer", `{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.\n\n---\n\n<!-- verdict-footer -->\n> old receipt\n","approved":false,"comments":[]}`},
-		{"confidence-valid", `{"schema_version":"1","confidence":4,"security_summary":"nothing alarming","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}`},
-		{"confidence-invalid", `{"schema_version":"1","confidence":"high","security_summary":5,"body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}`},
-		{"unknown-flag", `{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}`},
-		{"cost-names-empty-seat", `{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}`},
-		{"cost-names-no-panel", `{"schema_version":"1","body":"> ✅ marker plus enough length to pass the guard ok.","approved":false,"comments":[]}`},
+		{"blob-link-local", `{"schema_version":"1","findings":[],"summary":"ok with a blob link https://x/blob/aaaaaaa/p#L1 here yes sir."}`},
+		{"carried-footer", `{"schema_version":"1","findings":[],"summary":"marker plus enough length to pass the guard ok.\n\n---\n\n<!-- verdict-footer -->\n> old receipt\n"}`},
+		{"finding-confidence-valid", `{"schema_version":"1","security_summary":"nothing alarming","findings":[{"path":"notes.txt","line":2,"severity":"important","claim":"A quoted defect with a medium finder confidence.","quote":"new line","confidence":"medium"}]}`},
+		{"finding-confidence-invalid", `{"schema_version":"1","security_summary":"nothing alarming","findings":[{"path":"notes.txt","line":2,"severity":"important","claim":"An unpublishable finder confidence refuses.","quote":"new line","confidence":"certain"}]}`},
+		{"unknown-flag", emptyFindings},
+		{"cost-names-empty-seat", emptyFindings},
+		{"cost-names-no-panel", emptyFindings},
 	}
 	for _, tc := range cases {
 		extraArgs := []string{"--json"}
@@ -274,7 +282,7 @@ func TestGoldenDegenerateInputs(t *testing.T) {
 			extraArgs = []string{"--cost-names"}
 		}
 		diff := base[".verdict/state/local-dg/full.diff"]
-		if tc.name == "empty-diff-body" {
+		if tc.name == "empty-diff-finding" {
 			diff = ""
 		}
 		files := map[string]string{
@@ -357,7 +365,7 @@ func TestGoldenChunked(t *testing.T) {
 	})
 	goldenBoth(t, "chunk/bad-schema", "local-ch", func(t *testing.T, dir string) {
 		t.Helper()
-		setup(t, dir, `{"schema_version":"2","chunks":[]}`, goodReview, c1, c2)
+		setup(t, dir, `{"schema_version":"1","chunks":[]}`, goodReview, c1, c2)
 	})
 	goldenBoth(t, "chunk/unknown-chunk-claim", "local-ch", func(t *testing.T, dir string) {
 		t.Helper()

@@ -30,13 +30,12 @@ export interface Candidate {
 
 /** One review-input problem: its JSONPath in review.json, the published code, the level, the message, the exact fix, and an optional example of the accepted shape. --strict and controls strict_input promote warnings to errors. */
 export interface Problem {
-  /** JSONPath into review.json, for example $.comments[3].brief.questions. */
+  /** JSONPath into review.json, for example $.findings[3].brief.questions. */
   path: string;
   /** Published problem-code enum; the envelope error.code stays bad-review-input. */
   code:
     | "anchor-outside-hunk"
     | "bad-enum"
-    | "basis-replaced"
     | "enum-synonym"
     | "invalid-json"
     | "key-alias"
@@ -61,10 +60,9 @@ export interface Problem {
   [key: string]: unknown;
 }
 
-/** What a clean dry run would record: comment and section counts plus anchors that would move to the body. */
+/** What a clean dry run would record: the finding count plus the anchors that would leave the inline set for the rendered body. */
 export interface CheckSummary {
-  comments: number;
-  sections: number;
+  findings: number;
   anchors_moved_to_body: number;
   [key: string]: unknown;
 }
@@ -538,10 +536,42 @@ export interface RecordData {
   /** Present only on a clean dry run: the review-input summary. */
   check?: CheckSummary | null;
   coverage?: CoverageSummary | null;
+  approval?: ApprovalReceipt | null;
+  spec_checks?: Array<SpecCheck>;
+  receipts?: Array<Receipt>;
   /** Present on record --dry-run: the exact review object the checker read after safe repairs, as an object. */
   normalized?: unknown;
   /** Present on record --dry-run: every safe review.json rewrite applied, in document order. */
   repairs?: Array<Repair>;
+  [key: string]: unknown;
+}
+
+export interface ApprovalReceipt {
+  reason: string;
+  tier: "critical" | "important" | "informational";
+  gating_sigs: Array<string>;
+  clauses?: Array<string>;
+  approved: boolean;
+  [key: string]: unknown;
+}
+
+export interface SpecCheck {
+  item: string;
+  status: "met" | "violated" | "n/a";
+  evidence: SpecEvidence;
+  [key: string]: unknown;
+}
+
+export interface SpecEvidence {
+  path: string;
+  quote: string;
+  line: number;
+  [key: string]: unknown;
+}
+
+export interface Receipt {
+  hunk: string;
+  quote: string;
   [key: string]: unknown;
 }
 

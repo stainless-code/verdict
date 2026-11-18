@@ -105,11 +105,11 @@ EOF
 # optional coverage[] attestation ("absent" writes no coverage key at all).
 review_with() { # $1 = pr, $2 = coverage json or "absent"
   local pr="$1" cov="$2" dir="$EVAL_SANDBOX/.verdict/state/$1" body=""
-  body='{"schema_version":"1","body":"> ✅ Coverage case review.","approved":false,"comments":[{"path":"src/db.ts","line":12,"side":"RIGHT","body":"Anchored note inside the changed range.","rigor":"pointed","severity":"informational"}]'
+  body='{"schema_version":"1","summary":"> ✅ Coverage case review.","findings":[{"path":"src/db.ts","line":12,"side":"RIGHT","claim":"Anchored note inside the changed range.","quote":"db line","confidence":"high","rigor":"pointed","severity":"informational"}]'
   if [ "$cov" = "absent" ]; then
-    printf '%s}\n' "$body" >"$dir/review.json"
+    printf '%s}\n' "$body" | eval_write_review_at "$dir/review.json"
   else
-    printf '%s,"coverage":%s}\n' "$body" "$cov" >"$dir/review.json"
+    printf '%s,"coverage":%s}\n' "$body" "$cov" | eval_write_review_at "$dir/review.json"
   fi
 }
 

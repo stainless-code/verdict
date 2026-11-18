@@ -177,12 +177,10 @@ func normalizeReviewObject(obj *jq.Obj) []Problem {
 	for _, key := range slices.Clone(obj.Keys) {
 		v, _ := obj.Get(key)
 		switch key {
-		case fieldComments:
+		case "findings":
 			repairs = append(repairs, normalizeComments(obj, v)...)
 		case fieldResolved, fieldChunks:
 			repairs = append(repairs, scalarToStringArray(obj, key, "$."+key)...)
-		case fieldSections:
-			repairs = append(repairs, normalizeSections(v, "$.sections")...)
 		case fieldTriage:
 			repairs = append(repairs, normalizeTriage(v, "$.triage")...)
 		case fieldRisk:
@@ -209,9 +207,9 @@ func normalizeComments(parent *jq.Obj, v any) []Problem {
 		}
 		if dropped[i] {
 			repairs = append(repairs, repairProblem(core.ProblemCodeNormalizedTrivia,
-				fmt.Sprintf(commentBaseFmt, w.orig),
-				"comment is an exact duplicate of an earlier comment",
-				"remove the duplicate comment"))
+				fmt.Sprintf(findingBaseFmt, w.orig),
+				"finding duplicates an earlier finding",
+				"remove the duplicate finding"))
 			continue
 		}
 		final := len(kept)
@@ -219,15 +217,15 @@ func normalizeComments(parent *jq.Obj, v any) []Problem {
 		kept = append(kept, w.clone)
 	}
 	if len(repairs) > 0 {
-		parent.Set(fieldComments, kept)
+		parent.Set("findings", kept)
 	}
 	return repairs
 }
 
-// commentBaseFmt points a repair at one comment by index.
-const commentBaseFmt = "$.comments[%d]"
+// findingBaseFmt points a repair at one finding by index.
+const findingBaseFmt = "$.findings[%d]"
 
-// markDropped reports which normalized comments duplicate an earlier one,
+// markDropped reports which normalized findings duplicate an earlier one,
 // in first-seen order.
 func markDropped(works []commentWork) []bool {
 	seen := map[string]bool{}
@@ -269,7 +267,7 @@ func normalizeCommentClones(items []any) []commentWork {
 			continue
 		}
 		clone := m.Clone()
-		base := fmt.Sprintf(commentBaseFmt, i)
+		base := fmt.Sprintf(findingBaseFmt, i)
 		works = append(works, commentWork{
 			clone:   clone,
 			orig:    i,
@@ -299,15 +297,15 @@ func commentKeyOrder(m *jq.Obj) []string {
 // and sorts them in key order, so every path resolves in the normalized
 // review and repairs read in document order.
 func finalCommentRepairs(w *commentWork, final int) []Problem {
-	origBase := fmt.Sprintf(commentBaseFmt, w.orig)
-	finalBase := fmt.Sprintf(commentBaseFmt, final)
+	origBase := fmt.Sprintf(findingBaseFmt, w.orig)
+	finalBase := fmt.Sprintf(findingBaseFmt, final)
 	repairs := rebaseRepairs(w.repairs, origBase, finalBase)
 	sortCommentRepairs(repairs, finalBase, w.order)
 	return repairs
 }
 
-// rebaseRepairs moves repair paths from one comment index to another. The
-// bracketed prefix keeps $.comments[1] from matching $.comments[10].
+// rebaseRepairs moves repair paths from one finding index to another. The
+// bracketed prefix keeps $.findings[1] from matching $.findings[10].
 func rebaseRepairs(repairs []Problem, origBase, finalBase string) []Problem {
 	if origBase == finalBase {
 		return repairs
@@ -414,25 +412,6 @@ func normalizeSites(v any, base string) []Problem {
 		siteBase := fmt.Sprintf("%s[%d]", base, i)
 		repairs = append(repairs, renameAliases(m, siteBase, siteAliases)...)
 		repairs = append(repairs, dropNulls(m, siteBase, siteOptionalKeys)...)
-	}
-	return repairs
-}
-
-func normalizeSections(v any, base string) []Problem {
-	items, ok := v.([]any)
-	if !ok {
-		return nil
-	}
-	var repairs []Problem
-	for i, item := range items {
-		m, ok := item.(*jq.Obj)
-		if !ok {
-			continue
-		}
-		sectionBase := fmt.Sprintf("%s[%d]", base, i)
-		repairs = append(repairs, dropNulls(m, sectionBase, sectionOptionalKeys)...)
-		sev, _ := m.Get(fieldSeverity)
-		repairs = append(repairs, normalizeEnum(m, fieldSeverity, sev, sectionBase, reviewKeys)...)
 	}
 	return repairs
 }
@@ -635,28 +614,27 @@ var (
 		"read":   rungPointed,
 	}
 	commentAliases = map[string]string{
-		"inBounds":  fieldInBoundsInput,
-		"in_bounds": fieldInBoundsInput,
-		"rung":      fieldRigor,
-		fieldFile:   fieldPath,
+		"rung":    fieldRigor,
+		fieldFile: fieldPath,
 	}
 	siteAliases = map[string]string{fieldFile: fieldPath}
 
 	topOptionalKeys = map[string]bool{
-		fieldResolved: true, fieldTriage: true, fieldSections: true,
-		fieldConfidence: true, fieldSecuritySummary: true, fieldRisk: true, fieldChunks: true,
+		fieldResolved: true, fieldTriage: true, fieldCoverage: true, suppressedKey: true,
+		"spec_checks": true, "receipts": true, problemSummary: true,
+		fieldSecuritySummary: true, fieldRisk: true, fieldChunks: true,
 	}
 	commentOptionalKeys = map[string]bool{
 		fieldLine: true, "start_line": true, fieldSide: true, "suggestion": true,
-		fieldBrief: true, fieldRigor: true, fieldSeverity: true, fieldInBoundsInput: true, "kb": true, fieldSources: true,
+		fieldBrief: true, fieldRigor: true, fieldSeverity: true,
+		"kb": true, fieldSources: true,
 	}
-	commentNullAliases = map[string]bool{"rung": true, "inBounds": true, "in_bounds": true}
+	commentNullAliases = map[string]bool{"rung": true}
 	briefOptionalKeys  = map[string]bool{
 		"sites": true, "approach": true, "questions": true,
 	}
-	siteOptionalKeys    = map[string]bool{fieldLine: true}
-	sectionOptionalKeys = map[string]bool{fieldSeverity: true}
-	triageOptionalKeys  = map[string]bool{"rationale": true}
+	siteOptionalKeys   = map[string]bool{fieldLine: true}
+	triageOptionalKeys = map[string]bool{"rationale": true}
 )
 
 // MergeRepairs folds the repairs NormalizeReview reported into the checker's

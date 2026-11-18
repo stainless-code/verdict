@@ -118,7 +118,7 @@ rm -f "$EVAL_SANDBOX/rate-budget" "$EVAL_SANDBOX/rate-count"
 
 PR=4473
 eval_mk_bundle "$PR"
-python3 -c "print('{\"schema_version\":\"1\",\"body\":\"> ✅ ' + 'x' * 70000 + '\",\"approved\":false,\"comments\":[]}')" \
+python3 -c "print('{\"schema_version\":\"1\",\"findings\":[{\"path\":\"notes.txt\",\"line\":2,\"claim\":\"' + 'x' * 70000 + '\",\"quote\":\"new line\",\"severity\":\"important\",\"confidence\":\"high\"}]}')" \
   | eval_write_review "$PR"
 export EVAL_SAVE_PAYLOAD="$EVAL_SANDBOX/posted-4473.json"
 rm -f "$EVAL_SAVE_PAYLOAD"
@@ -127,27 +127,27 @@ run_review post acme/app "$PR" --json
 unset EVAL_SAVE_PAYLOAD
 event="$(jq -r '.data.event // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -eq 0 ] && [ "$event" = "COMMENT" ] \
-  && [ "$(reviews_posts_since "$m")" -eq 2 ]; then
+  && [ "$(reviews_posts_since "$m")" -eq 3 ]; then
   good "oversized body posts twice as COMMENT + follow-up (exit 0)"
 else
   bad "oversized body gave exit $EVAL_STATUS event '$event' calls $(reviews_posts_since "$m"), want 0/COMMENT/2"
 fi
-if grep -q "split into 2 review comments" "$EVAL_ERR" \
-  && grep -q "posted follow-up part 2/2 as review 101" "$EVAL_ERR"; then
+if grep -q "split into 3 review comments" "$EVAL_ERR" \
+  && grep -q "posted follow-up" "$EVAL_ERR"; then
   good "split warns loudly and reports the landed follow-up"
 else
   bad "split stderr: $(head -c 200 "$EVAL_ERR")"
 fi
 if jq -s -e '
-  length == 2
-  and (.[0].event == "COMMENT" and .[1].event == "COMMENT")
-  and (.[1].comments | length == 0)
-  and ((.[0].body | length) <= 65536 and (.[1].body | length) <= 65536)
-  and (.[0].body | contains("continues in 1 follow-up"))
-  and (.[1].body | contains("review body continued (part 2/2"))
+  length == 3
+  and (.[0].event == "COMMENT" and .[1].event == "COMMENT" and .[2].event == "COMMENT")
+  and (.[2].comments | length == 0)
+  and ((.[0].body | length) <= 65536 and (.[1].body | length) <= 65536 and (.[2].body | length) <= 65536)
+  and (.[0].body | contains("continues in 2 follow-up"))
+  and (.[2].body | contains("review body continued (part 3/3"))
   and (.[0].body | contains("verdict-footer"))
 ' "$EVAL_SANDBOX/posted-4473.json" >/dev/null; then
-  good "both parts fit the limit: first carries the footer, second the continuation header"
+  good "all parts fit the limit: first carries the footer, last the continuation header"
 else
   bad "split payloads: $(head -c 300 "$EVAL_SANDBOX/posted-4473.json")"
 fi

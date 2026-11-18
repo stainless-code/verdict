@@ -7,9 +7,7 @@ exit: 0
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
   "next": "report or triage the local bundle; post stays refused (no PR target)",
-  "warnings": [
-    "$.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)"
-  ],
+  "warnings": [],
   "data": {
     "dir": ".verdict/state/local-kb",
     "anchors": {
@@ -37,7 +35,6 @@ exit: 0
 }
 --- stderr ---
 » anchors: 1 inline, 0 moved to body
-warn: $.body: no Basis line in the leading quote block — inserted the computed counts (basis-replaced)
 » findings: 1 sigs -> .verdict/state/local-kb/findings.json
   bfd750df  open  true  notes.txt
 recorded: .verdict/state/local-kb/findings.json (1 open) + .verdict/state/local-kb/record.json — report/triage read it; post stays refused (no PR target)
@@ -63,6 +60,9 @@ recorded: .verdict/state/local-kb/findings.json (1 open) + .verdict/state/local-
     "lastSeen": "aaaaaaa",
     "status": "open",
     "rationale": "",
+    "verification": {
+      "quote": "unchecked"
+    },
     "history": [
       {
         "at": "0000-00-00T00:00:00Z",
@@ -71,3 +71,26 @@ recorded: .verdict/state/local-kb/findings.json (1 open) + .verdict/state/local-
     ]
   }
 ]
+--- file C/.verdict/state/local-kb/record.json ---
+{
+  "schema_version": "1",
+  "status": "local",
+  "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "diff_sha256": "a9823d4d377b7fd0c9dc0d92370323d29898489f9de88b6c3d32296dab229282",
+  "review_sha256": "bd605edf74e8b87e2f47d73ef478fc86d3cddd3e6e25ea856b037aed036e879e",
+  "recorded_at": "0000-00-00T00:00:00Z",
+  "findings": 1,
+  "open": 1,
+  "confidence": null,
+  "security_summary": null,
+  "tool_version": "VERSION",
+  "prompts_hash": "3245adba3e38e496b08361aff47e2eb8fda8337c4c0575ad0148e1e0b291ce26",
+  "model": null,
+  "author": null,
+  "review_models": [],
+  "validation_hash": null,
+  "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":1},
+  "validation_mode": "warn",
+  "rigor_floors": {"critical":"walked","important":"pointed","informational":"said"},
+  "approval": {"reason":"open findings at-or-above important","tier":"important","gating_sigs":["bfd750dfd6a62efb7a91db702664395618b7f845"],"approved":false}
+}

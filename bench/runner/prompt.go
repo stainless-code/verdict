@@ -110,7 +110,7 @@ const (
 		"fenced bundle. Dispatch nothing.\n" +
 		"5. **No dispatch.** There is no second turn and no tool to call — decide alone and move to step 6.\n"
 	toolFreeSubmit = "7. **Submit.** Your final message must be exactly one review.json document " +
-		"(`{schema_version: \"1\", body, approved, comments[]}` plus optional `coverage`, `confidence`, " +
+		"(`{schema_version: \"1\", findings[], spec_checks[], receipts[], summary?}` plus optional `coverage`, " +
 		"`security_summary`): one JSON document, no prose, no code fence, no tool call. Do not run " +
 		"`verdict record`, `verdict post`, or any other command — the harness scores your document itself.\n"
 	toolFreeCost = "8. **No cost record.** Do not write any file: the harness measures spend itself.\n"

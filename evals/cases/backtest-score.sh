@@ -60,10 +60,9 @@ artifact="${rest%% with \{*}"
 mkdir -p "$(dirname "$artifact")"
 cat >"$artifact" <<'JSON'
 {"schema_version":"1",
- "body":"> Basis: 0 0 1 0 0 0 0",
- "approved":false,
- "comments":[{"path":"main.go","line":6,"side":"RIGHT",
-              "body":"The removal is unchecked; the error is dropped.","severity":"important","rigor":"walked"}]}
+ "summary":"> Basis: 0 0 1 0 0 0 0",
+ "findings":[{"path":"main.go","line":6,"side":"RIGHT",
+              "claim":"The removal is unchecked; the error is dropped.","quote":"defer os.RemoveAll(tmp)","confidence":"high","severity":"important","rigor":"walked"}]}
 JSON
 if [ -n "${EVAL_AGENT_PRICE:-}" ]; then
   printf '{"schema_version":"2","est_usd":%s,"models":[{"name":"stub","input_tokens":10,"output_tokens":5}]}\n' \

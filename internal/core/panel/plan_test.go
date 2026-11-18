@@ -10,7 +10,7 @@ import (
 )
 
 func TestPlanDispatch(t *testing.T) {
-	review := jq.NewObj("comments", []any{jq.NewObj("path", "src/db.go", "line", 42, "body", "claim\n## hostile")}, "body", "## section only")
+	review := jq.NewObj("findings", []any{jq.NewObj("path", "src/db.go", "line", 42, "claim", "claim\n## hostile")}, "claim", "## section only")
 	plan, dispatch, warnings, err := Plan("bundle", "head", "now", "synth\na\nb", "trusted", review)
 	if err != nil {
 		t.Fatal(err)
@@ -40,7 +40,7 @@ func TestPlanBounds(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cs := planComments(tt.n)
-			_, _, _, err := Plan("bundle", tt.head, "now", tt.roster, "prompt", jq.NewObj("comments", cs))
+			_, _, _, err := Plan("bundle", tt.head, "now", tt.roster, "prompt", jq.NewObj("findings", cs))
 			var ref *core.RefusalError
 			if !errors.As(err, &ref) || ref.Code != tt.code {
 				t.Fatalf("refusal = %v, want %s", err, tt.code)
@@ -50,7 +50,7 @@ func TestPlanBounds(t *testing.T) {
 }
 
 func TestPlanEmptyAndOneVerifier(t *testing.T) {
-	plan, dispatch, warnings, err := Plan("bundle", "head", "now", "synth a", "prompt", jq.NewObj("comments", []any{}))
+	plan, dispatch, warnings, err := Plan("bundle", "head", "now", "synth a", "prompt", jq.NewObj("findings", []any{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,13 +62,13 @@ func TestPlanEmptyAndOneVerifier(t *testing.T) {
 func planComments(n int) []any {
 	cs := make([]any, n)
 	for i := range cs {
-		cs[i] = jq.NewObj("path", "x", "body", "finding")
+		cs[i] = jq.NewObj("path", "x", "claim", "finding")
 	}
 	return cs
 }
 
 func TestPlanWireOrder(t *testing.T) {
-	plan, _, _, err := Plan("bundle", "head", "now", "synth a", "prompt", jq.NewObj("comments", []any{jq.NewObj("path", "src/db.go", "line", 42, "severity", "important", "body", "a reproducible crash")}))
+	plan, _, _, err := Plan("bundle", "head", "now", "synth a", "prompt", jq.NewObj("findings", []any{jq.NewObj("path", "src/db.go", "line", 42, "severity", "important", "claim", "a reproducible crash")}))
 	if err != nil {
 		t.Fatal(err)
 	}

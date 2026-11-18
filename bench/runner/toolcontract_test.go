@@ -221,7 +221,7 @@ func TestPiAdapterRefusesDSMLMarkup(t *testing.T) {
 // bytes.
 func TestPiAdapterAcceptsFencedReviewWithToolMarkup(t *testing.T) {
 	needPOSIX(t)
-	inner := `{"schema_version":"1","body":"mentions tool_call and <function> in review","approved":false,"comments":[]}`
+	inner := `{"schema_version":"1","findings":[],"summary":"mentions tool_call and <function> in review"}`
 	text := "```json\\n" + strings.ReplaceAll(inner, `"`, `\"`) + "\\n```"
 	out, stderr, err := runPiAdapter(t, "#!/bin/sh\nprintf '%s\\n' '{\"type\":\"message_end\",\"message\":{\"role\":\"assistant\",\"content\":[{\"type\":\"text\",\"text\":\""+text+"\"}]}}'\n")
 	if err != nil {
@@ -231,7 +231,7 @@ func TestPiAdapterAcceptsFencedReviewWithToolMarkup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read %s: %v", out, err)
 	}
-	want := "{\"schema_version\":\"1\",\"body\":\"mentions tool_call and <function> in review\",\"approved\":false,\"comments\":[]}\n\n"
+	want := "{\"schema_version\":\"1\",\"findings\":[],\"summary\":\"mentions tool_call and <function> in review\"}\n\n"
 	if string(got) != want {
 		t.Errorf("review.json = %q, want %q", got, want)
 	}

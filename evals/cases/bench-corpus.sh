@@ -68,7 +68,7 @@ for case_dir in "$EVAL_ROOT"/bench/corpus/*/; do
     cp "$case_dir/full.diff" "$dir/full.diff"
     # The generic producer's hunk cache describes notes.txt, not this corpus patch.
     rm -f "$dir/hunks.tsv"
-    jq '.review' "$agent" >"$dir/review.json"
+    jq '.review' "$agent" | eval_write_review_at "$dir/review.json"
     jq -r '.panel[]' "$agent" >"$dir/panel"
     jq -n --arg m "$model" '{schema_version:"1",effort:"standard",models:[{name:$m,input_tokens:100,output_tokens:50}],est_usd:0.01}' >"$dir/cost.json"
     run_review record acme/bench "$slug" --json
@@ -197,7 +197,7 @@ for case_id in control-comment control-rename; do
   cp "$EVAL_ROOT/bench/corpus/$case_id/case.json" "$dir/corpus.json"
   cp "$EVAL_ROOT/bench/corpus/$case_id/full.diff" "$dir/full.diff"
   rm -f "$dir/hunks.tsv"
-  jq '.review' "$EVAL_ROOT/bench/corpus/$case_id/agents/fixture-good.json" >"$dir/review.json"
+  jq '.review' "$EVAL_ROOT/bench/corpus/$case_id/agents/fixture-good.json" | eval_write_review_at "$dir/review.json"
   run_review record acme/bench "$slug" --json
   if [ "$EVAL_STATUS" -eq 0 ]; then
     run_review calibrate acme/bench "$slug" --json

@@ -11,8 +11,10 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/approval"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/core/reviewdoc"
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -282,7 +284,6 @@ func (st *state) prepare(ctx context.Context) *core.RefusalError {
 	if err := recordcore.EnsureHunksSnapshot(st.mergeRuntime(), st.dir); err != nil {
 		return refusalOrFailed(err)
 	}
-	st.applyApprovedFlag()
 	st.now = st.req.TimeUTC()
 	st.findingsFile = st.dir + "/findings.json"
 	if st.flags.DryRun {
@@ -355,8 +356,10 @@ func (st *state) loadReview() *core.RefusalError {
 	if err != nil {
 		return refusalOrFailed(err)
 	}
-	bodyRaw, _ := review.Get("body")
-	st.review, st.body = review, jq.R(jq.Alt(bodyRaw, ""))
+	st.review = review
+	provisional := approval.Evaluate(reviewdoc.Findings(review), "", "", nil,
+		reviewdoc.HasSpecViolation(review))
+	st.body = reviewdoc.Render(review, provisional)
 	readcommon.WarnContextSources(st.dir, review, st.warn)
 	if err := recordcore.CheckDegenerate(st.body); err != nil {
 		return refusalOrFailed(err)
@@ -436,8 +439,7 @@ func (st *state) env() map[string]string {
 }
 
 func (st *state) applyApprovedFlag() {
-	approvedRaw, _ := st.review.Get("approved")
-	if st.flags.Approve == approveFalse && jq.R(jq.Alt(approvedRaw, false)) == approveTrue {
+	if st.flags.Approve == approveFalse && st.merged.Approval != nil && st.merged.Approval.Approved {
 		st.flags.Approve = approveTrue
 	}
 }
@@ -470,6 +472,10 @@ func (st *state) merge() *core.RefusalError {
 	}
 	st.merged, st.body, st.diagram = res, panelBody(res.Body, res.Verification), res.Diagram
 	st.recordAnchorGap(caps, res.NMoved)
+	if ref := st.adoptStoredApproval(); ref != nil {
+		return ref
+	}
+	st.applyApprovedFlag()
 	return st.rigorGate()
 }
 

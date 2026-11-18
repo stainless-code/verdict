@@ -75,7 +75,6 @@ const (
 	ProblemCodeKeyAlias            = "key-alias"
 	ProblemCodeEnumSynonym         = "enum-synonym"
 	ProblemCodeNormalizedTrivia    = "normalized-trivia"
-	ProblemCodeBasisReplaced       = "basis-replaced"
 	ProblemCodeRiskStaleHead       = "risk-stale-head"
 
 	ProblemLevelError   = "error"
@@ -88,8 +87,8 @@ const (
 type Problem struct { //nolint:govet // field order is the published property order
 	Path string `json:"path"`
 	//nolint:revive // published enum tag exceeds the line limit
-	Code    string `enum:"anchor-outside-hunk|bad-enum|basis-replaced|enum-synonym|invalid-json|key-alias|missing-field|normalized-extracted|normalized-fence|normalized-trivia|out-of-range|path-not-in-diff|rigor-unset|risk-stale-head|scalar-to-array|unknown-field|wrong-type" json:"code"`
-	Level   string `enum:"error|warning"                                                                                                                                                                                                                                            json:"level"` //nolint:revive // published enum tag exceeds the line limit
+	Code    string `enum:"anchor-outside-hunk|bad-enum|enum-synonym|invalid-json|key-alias|missing-field|normalized-extracted|normalized-fence|normalized-trivia|out-of-range|path-not-in-diff|rigor-unset|risk-stale-head|scalar-to-array|unknown-field|wrong-type" json:"code"`
+	Level   string `enum:"error|warning"                                                                                                                                                                                                                             json:"level"` //nolint:revive // published enum tag exceeds the line limit
 	Message string `json:"message"`
 	Fix     string `json:"fix"`
 	Example any    `json:"example,omitempty"`
@@ -113,7 +112,6 @@ var problemCodeLevels = map[string]string{
 	ProblemCodeKeyAlias:            ProblemLevelWarning,
 	ProblemCodeEnumSynonym:         ProblemLevelWarning,
 	ProblemCodeNormalizedTrivia:    ProblemLevelWarning,
-	ProblemCodeBasisReplaced:       ProblemLevelWarning,
 	ProblemCodeRiskStaleHead:       ProblemLevelWarning,
 }
 
@@ -126,9 +124,10 @@ func ProblemCodes() []string {
 // or "" for an unknown code.
 func ProblemCodeLevel(code string) string { return problemCodeLevels[code] }
 
-// CheckSummary describes what a clean dry run would record.
+// CheckSummary describes what a clean dry run would record: how many findings
+// the document carries and how many anchors would leave the inline set for the
+// rendered body.
 type CheckSummary struct {
-	Comments           int `json:"comments"              min:"0"`
-	Sections           int `json:"sections"              min:"0"`
+	Findings           int `json:"findings"              min:"0"`
 	AnchorsMovedToBody int `json:"anchors_moved_to_body" min:"0"`
 }

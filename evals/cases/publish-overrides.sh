@@ -39,7 +39,7 @@ EOF
   jq -n --arg h "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" \
     '{schema_version:"1",review:{id:101,html_url:"https://example.invalid/r/101"},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:4,security_summary:"None."}' \
     > "$dir/post.json"
-  printf '{"schema_version":"1","body":"> ✅ Looks fine.","approved":false,"comments":[]}' > "$dir/review.json"
+  printf '{"schema_version":"1","body":"> ✅ Looks fine.","approved":false,"comments":[]}' | eval_write_review_at "$dir/review.json"
   eval_fixture_rebase "$pr"
 }
 

@@ -3,16 +3,17 @@
   "panel": ["panel-alpha"],
   "review": {
     "schema_version": "1",
-    "body": "> 🤖 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
-    "approved": false,
-    "comments": [
+    "summary": "> \ud83e\udd16 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
+    "findings": [
       {
         "path": "files.go",
         "line": 28,
         "side": "RIGHT",
-        "body": "Resolve must confine name under root, or reject .. segments before joining.",
         "rigor": "walked",
-        "severity": "critical"
+        "severity": "critical",
+        "claim": "Resolve must confine name under root, or reject .. segments before joining.",
+        "quote": "Resolve must confine name under root, or reject .. segments before joining.",
+        "confidence": "high"
       }
     ]
   }

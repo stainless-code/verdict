@@ -81,15 +81,6 @@ func historyOf(t *testing.T, entry map[string]any) []any {
 	return events
 }
 
-func anchoredFlag(t *testing.T, entry map[string]any) bool {
-	t.Helper()
-	anchored, ok := entry["anchored"].(bool)
-	if !ok {
-		t.Fatalf("anchored = %v, want a boolean", entry["anchored"])
-	}
-	return anchored
-}
-
 func hasWarning(warns []string, want string) bool {
 	for _, w := range warns {
 		if strings.Contains(w, want) {
@@ -107,28 +98,26 @@ func hasWarning(warns []string, want string) bool {
 //
 //nolint:revive // the table is the refusal matrix; each row names its gate
 func TestRunRecordInputShapeRefusals(t *testing.T) {
-	comment := func(extra string) string {
-		return `{"path":"notes.txt","line":2,"body":"Cited finding here with enough substance."` + extra + `}`
+	finding := func(extra string) string {
+		return `{"path":"notes.txt","line":2,"severity":"important","claim":"Cited finding here with enough substance.","quote":"new line","confidence":"high"` + extra + `}`
 	}
-	valid := `{"schema_version":"1","body":"` + storeBody + `","approved":false`
+	valid := `{"schema_version":"1"`
 	tests := []struct {
 		name    string
 		extra   string
 		code    string
 		wantErr string
 	}{
-		{"comments-not-array", `,"comments":{}`, "bad-review-input", "comments must be an array"},
-		{"comment-not-object", `,"comments":[42]`, "bad-review-input", "comment must be an object"},
+		{"findings-not-array", `,"findings":{}`, "bad-review-input", "findings must be an array"},
+		{"finding-not-object", `,"findings":[42]`, "bad-review-input", "finding must be an object"},
 		{
-			"comment-scalar-not-string", `,"comments":[` + comment("") + `,` + comment(`,"path":7`) + `]`,
+			"finding-path-not-string", `,"findings":[` + finding("") + `,` + finding(`,"path":7`) + `]`,
 			"bad-review-input", "path must be a string",
 		},
 		{"resolved-not-array", `,"resolved":{}`, "bad-review-input", "value must be an array of strings"},
 		{"resolved-not-string", `,"resolved":[42]`, "bad-review-input", "array entry must be a string"},
 		{"triage-not-array", `,"triage":"x"`, "bad-review-input", "triage must be an array"},
 		{"triage-not-object", `,"triage":[42]`, "bad-review-input", "triage entry must be an object"},
-		{"sections-not-array", `,"sections":1`, "bad-review-input", "sections must be an array"},
-		{"section-not-object", `,"sections":[42]`, "bad-review-input", "section must be an object"},
 		{"coverage-ranges-array", `,"coverage":[{"file":"notes.txt","ranges":["1-2"]}]`, "bad-review-input", "value must be a string"},
 	}
 	for _, tc := range tests {
@@ -154,7 +143,7 @@ func TestRunRecordInputShapeRefusals(t *testing.T) {
 	}
 	for _, tc := range fileTests {
 		t.Run(tc.name, func(t *testing.T) {
-			writeStoreBundle(t, "local-shape", valid+`}`)
+			writeStoreBundle(t, "local-shape", valid+`,"findings":[]}`)
 			writeFile(t, ".verdict/state/local-shape/"+tc.path, tc.content)
 			checkShapeRefusal(t, "local-shape", tc.code, tc.wantErr, tc.path == "findings.json")
 			kept, err := os.ReadFile(".verdict/state/local-shape/" + tc.path)
@@ -223,7 +212,7 @@ func TestRunRecordRefusesOversizeVerification(t *testing.T) {
 // every scalar comes from the bundle, never from an empty default. The oracle
 // for diff_sha256 is the shasum literal above.
 //
-//nolint:cyclop,revive // every record.json field asserts inline against its oracle
+//nolint:revive // every record.json field asserts inline against its oracle
 func TestRunRecordArtifactValues(t *testing.T) {
 	review := `{"schema_version":"1","body":"` + storeBody + `","approved":false,` +
 		`"confidence":3,"security_summary":"No new attack surface.",` +
@@ -246,7 +235,6 @@ func TestRunRecordArtifactValues(t *testing.T) {
 		"recorded_at":      "2026-11-02T12:00:00Z",
 		"findings":         float64(1),
 		"open":             float64(1),
-		"confidence":       float64(3),
 		"security_summary": "No new attack surface.",
 		"model":            "claude-sonnet-4",
 	}
@@ -262,9 +250,6 @@ func TestRunRecordArtifactValues(t *testing.T) {
 		}
 	}
 
-	if resp.Data.Confidence == nil || *resp.Data.Confidence != 3 {
-		t.Errorf("data.confidence = %v, want 3", resp.Data.Confidence)
-	}
 	if len(resp.Data.ItemsRaw) != 1 {
 		t.Fatalf("data items = %d, want 1", len(resp.Data.ItemsRaw))
 	}
@@ -848,56 +833,3 @@ func TestRunRecordVerifiedContradiction(t *testing.T) {
 // (kept comments, then the moved ones) is not the input order: a merge that
 // keeps input order fails below.
 //
-//nolint:revive // the four anchors assert inline
-func TestRunRecordAnchorNormalization(t *testing.T) {
-	const (
-		// sha1("notes.txt Non-numeric anchor comment body.")
-		nonNumericSig = "a7089a67896760d13c62e7c38c7c82c85179b56c"
-		// sha1("notes.txt Cited finding here with enough substance.")
-		insideSig = "101d0761051f365731b9b857810c9b3603c50208"
-		// sha1("notes.txt Reversed span comment body here.")
-		reversedSig = "c3498668801439426ef7e8dfbed5167c5daa2f9f"
-		// sha1("notes.txt Zero line anchor comment body.")
-		zeroSig = "7e1495a27c07d64aedff0f413b5002dbc13bd174"
-	)
-	review := `{"schema_version":"1","body":"` + storeBody + `","approved":false,"comments":[` +
-		`{"path":"notes.txt","line":3,"start_line":5,"body":"Reversed span comment body here."},` +
-		`{"path":"notes.txt","line":0,"body":"Zero line anchor comment body."},` +
-		`{"path":"notes.txt","line":"abc","body":"Non-numeric anchor comment body."},` +
-		`{"path":"notes.txt","line":2,"body":"Cited finding here with enough substance."}]}`
-	writeStoreBundle(t, "local-an", review)
-	c := &collector{}
-	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-an")); ref != nil {
-		t.Fatalf("Run refusal: %v", ref)
-	}
-	entries := storeEntries(t, "local-an")
-	var order []string
-	for _, e := range entries {
-		if e["kind"] == "inline" {
-			order = append(order, entrySig(t, e))
-		}
-	}
-	want := []string{nonNumericSig, insideSig, reversedSig, zeroSig}
-	if strings.Join(order, ",") != strings.Join(want, ",") {
-		t.Errorf("comment order = %v, want kept-then-moved %v", order, want)
-	}
-	got := bySig(t, entries)
-	for _, sig := range []string{nonNumericSig, insideSig} {
-		if !anchoredFlag(t, got[sig]) {
-			t.Errorf("%s anchored = %v, want true", sig, got[sig]["anchored"])
-		}
-	}
-	if !hasWarning(c.warns, "kept despite non-numeric anchor") {
-		t.Errorf("warnings = %v, want the non-numeric anchor warning", c.warns)
-	}
-	for _, sig := range []string{reversedSig, zeroSig} {
-		if anchoredFlag(t, got[sig]) {
-			t.Errorf("%s anchored = %v, want false (outside the reviewed hunks)", sig, got[sig]["anchored"])
-		}
-	}
-	for _, banned := range []string{"kept despite non-numeric anchor: notes.txt 3-5", "kept despite non-numeric anchor: notes.txt 0-0"} {
-		if hasWarning(c.warns, banned) {
-			t.Errorf("warnings = %v; %q must not warn", c.warns, banned)
-		}
-	}
-}

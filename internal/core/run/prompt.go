@@ -12,6 +12,12 @@ import (
 // as its own instruction block for the agent.
 const paragraphGap = "\n\n"
 
+// reviewDocument is the exact review.json shape every directive asks for: the
+// published findings document, spelled once so no stage drifts from it.
+const reviewDocument = `{"schema_version": "1", "findings": ` +
+	`[{"path": ..., "line": 2, "severity": ..., "claim": ..., "quote": ..., "confidence": ...}], ` +
+	`"spec_checks": [], "receipts": [], "summary": ...}`
+
 // directive is the tool-generated prompt the launched agent receives: the
 // subject, the bundle it reads, the single review file it must write, the
 // boundary (verdict validates that file; it never reads prose, retries, or
@@ -32,9 +38,8 @@ func directive(repo, pr, bundle, artifact string, local, hasContext bool, plan *
 	subject, meta := subjectAndMeta(repo, pr, local)
 	head := fmt.Sprintf("Review %s and write exactly one review file.", subject)
 	read := readLine(bundle, meta, "kb.txt, sensitive.txt, and panel when the run carries them", hasContext)
-	write := fmt.Sprintf("Write %s with {\"schema_version\": \"1\", \"body\": ..., "+
-		"\"approved\": ..., \"comments\": [...]} (optional \"resolved\" and "+
-		"\"triage\"). Write nothing else in the bundle.", artifact)
+	write := fmt.Sprintf("Write %s with %s (optional \"resolved\" and "+
+		"\"triage\"). Write nothing else in the bundle.", artifact, reviewDocument)
 	boundary := "verdict launched this one process and validates that file; it does "
 	boundary += "not read your prose, retry you, or post. Do not post, merge, or "
 	boundary += "push: publishing is an explicit verdict post."
@@ -78,8 +83,7 @@ func stageDirective(repo, pr, bundle, artifact string, local, hasContext bool, p
 	if at.index > 1 {
 		read += fmt.Sprintf(" Read %s, the review the previous stage wrote.", artifact)
 	}
-	write := fmt.Sprintf("Write %s with {\"schema_version\": \"1\", \"body\": ..., "+
-		"\"approved\": ..., \"comments\": [...]}. Write nothing else in the bundle.", artifact)
+	write := fmt.Sprintf("Write %s with %s. Write nothing else in the bundle.", artifact, reviewDocument)
 	boundary := "verdict rendered this one command and launches nothing for you: it does " +
 		"not read your prose, retry you, post, or chain the stages. The later stages " +
 		"read the file you write, so keep every value the earlier stages declared."
@@ -101,7 +105,7 @@ func stageTask(at *staged) string {
 			hint = " (model hint " + at.stage.Model + ")"
 		}
 		return "Synthesize one review from those findings: a single body whose first line " +
-			"carries the verdict marker, the combined approved flag, and every comment kept " +
+			"carries the verdict marker, quoted evidence on every finding, and every finding kept " +
 			"on its anchor" + hint + "."
 	case recipe.StageDedupe:
 		return "Merge duplicate findings: keep the strongest wording and one anchor per " +

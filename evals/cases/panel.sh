@@ -21,7 +21,7 @@ index 1111111..2222222 100644
 +unguarded call
 +duplicate write
 DIFF
-cat > "$dir/review.json" <<'JSON'
+eval_write_review_at "$dir/review.json" <<'JSON'
 {"schema_version":"1","body":"> [!IMPORTANT]\n> Independent review with two anchored findings.","approved":false,"comments":[{"path":"src/db.ts","line":10,"side":"RIGHT","body":"The caller passes nil and the removed guard causes a crash.","severity":"important","rigor":"walked"},{"path":"src/db.ts","line":11,"side":"RIGHT","body":"The retry path repeats the write without its previous deduplication guard.","severity":"important","rigor":"walked"}]}
 JSON
 cp "$dir/review.json" "$EVAL_SANDBOX/review-before.json"

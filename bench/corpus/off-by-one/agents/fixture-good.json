@@ -3,32 +3,37 @@
   "panel": ["panel-alpha"],
   "review": {
     "schema_version": "1",
-    "body": "> 🤖 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
-    "approved": false,
-    "comments": [
+    "summary": "> \ud83e\udd16 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
+    "findings": [
       {
         "path": "pagination.go",
         "line": 11,
         "side": "RIGHT",
-        "body": "The rename to renderRows reads well; buildHeader could move next to it.",
         "rigor": "walked",
-        "severity": "informational"
+        "severity": "informational",
+        "claim": "The rename to renderRows reads well; buildHeader could move next to it.",
+        "quote": "The rename to renderRows reads well; buildHeader could move next to it.",
+        "confidence": "high"
       },
       {
         "path": "pagination.go",
         "line": 42,
         "side": "RIGHT",
-        "body": "Loop bound runs one past the slice; use i < len(xs).",
         "rigor": "walked",
-        "severity": "critical"
+        "severity": "critical",
+        "claim": "Loop bound runs one past the slice; use i < len(xs).",
+        "quote": "Loop bound runs one past the slice; use i < len(xs).",
+        "confidence": "high"
       },
       {
         "path": "pagination.go",
         "line": 51,
         "side": "RIGHT",
-        "body": "The fetchPage error is discarded; propagate it instead of breaking on next == \"\".",
         "rigor": "pointed",
-        "severity": "important"
+        "severity": "important",
+        "claim": "The fetchPage error is discarded; propagate it instead of breaking on next == \"\".",
+        "quote": "The fetchPage error is discarded; propagate it instead of breaking on next == \"\".",
+        "confidence": "high"
       }
     ]
   }

@@ -79,6 +79,8 @@
         "withheld": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/withheld" }]
         },
+        "quote": { "type": "string" },
+        "finder_confidence": { "enum": ["high", "medium", "low"] },
         "status": {
           "enum": [
             "open",
@@ -92,8 +94,10 @@
         "lastSeen": { "type": "string" },
         "rationale": { "type": "string" },
         "verification": {
-          "type": "array",
-          "items": { "$ref": "#/$defs/panelVerification" }
+          "anyOf": [
+            { "type": "null" },
+            { "$ref": "#/$defs/findingVerification" }
+          ]
         },
         "confidence": { "enum": ["single", "confirmed", "contested"] },
         "triagedAt": { "type": "string" },
@@ -154,6 +158,18 @@
         "at": { "type": "string" }
       },
       "required": ["model", "verdict", "evidence"],
+      "additionalProperties": true
+    },
+    "findingVerification": {
+      "type": "object",
+      "properties": {
+        "quote": { "enum": ["unchecked", "verified", "unverified"] },
+        "panel": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/panelVerification" }
+        }
+      },
+      "required": ["quote"],
       "additionalProperties": true
     },
     "brief": {

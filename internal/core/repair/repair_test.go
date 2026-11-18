@@ -439,7 +439,7 @@ func assertCheckErrors(t *testing.T, dir string, review []byte) {
 
 func assertWarningsOnlyValid(t *testing.T, dir string) {
 	t.Helper()
-	warningsOnly := []byte(`{"body":"> ✅ Looks good overall with one note.","approved":false,"comments":[]}`)
+	warningsOnly := []byte(`{"schema_version":"1","findings":[],"summary":"> ✅ Looks good overall with one note."}`)
 	if res, ref := Check(dir, warningsOnly); ref != nil || !Valid(res) {
 		t.Errorf("Check(warnings-only) is invalid: %+v %v", res.Problems, ref)
 	}
@@ -447,8 +447,8 @@ func assertWarningsOnlyValid(t *testing.T, dir string) {
 
 func assertOffAnchorInvalid(t *testing.T, dir string) {
 	t.Helper()
-	offAnchor := []byte(`{"schema_version":"1","body":"> ✅ Anchored note on the change.",` +
-		`"approved":false,"comments":[{"path":"elsewhere.txt","line":1,"side":"RIGHT","body":"note","rigor":"walked"}]}`)
+	offAnchor := []byte(`{"schema_version":"1","summary":"> ✅ Anchored note on the change.",` +
+		`"findings":[{"path":"elsewhere.txt","line":1,"side":"RIGHT","claim":"note","quote":"note","severity":"important","confidence":"high","rigor":"walked"}]}`)
 	if res, ref := Check(dir, offAnchor); ref != nil || Valid(res) {
 		t.Errorf("Check(off-diff anchor) is valid, want the path error: %+v %v", res, ref)
 	}
@@ -466,7 +466,7 @@ func assertOffAnchorInvalid(t *testing.T, dir string) {
 func TestCheckRefusesMissingDiff(t *testing.T) {
 	t.Parallel()
 	dir := t.TempDir()
-	_, ref := Check(dir, []byte(`{"body":"x","approved":false,"comments":[]}`))
+	_, ref := Check(dir, []byte(`{"schema_version":"1","findings":[]}`))
 	if ref == nil || ref.Code != "missing-diff" {
 		t.Errorf("Check without diff = %v, want the missing-diff refusal", ref)
 	}
@@ -488,7 +488,7 @@ func TestCheckParityChunked(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "chunks", "manifest.json"), []byte(manifest), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	review := []byte(`{"schema_version":"1","body":"> ✅ Chunked review with enough text here.","approved":false,"comments":[],"chunks":["a"]}`)
+	review := []byte(`{"schema_version":"1","findings":[],"summary":"> ✅ Chunked review with enough text here.","chunks":["a"]}`)
 	res, ref := Check(dir, review)
 	if ref != nil {
 		t.Fatal(ref)

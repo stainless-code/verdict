@@ -73,7 +73,7 @@ type reviewComment struct {
 func commentSecretSites(index int, c *jq.Obj) []secretSite {
 	where := fmt.Sprintf("finding %d", index)
 	var sites []secretSite
-	for _, field := range []string{fieldBody, fieldSuggestion} {
+	for _, field := range []string{fieldBody, "claim", fieldSuggestion} {
 		raw, ok := c.Get(field)
 		if !ok {
 			continue
@@ -93,7 +93,7 @@ func reviewComments(review *jq.Obj) []reviewComment {
 	if review == nil {
 		return nil
 	}
-	raw, _ := review.Get(fieldComments)
+	raw, _ := review.Get("findings")
 	var out []reviewComment
 	for i, c := range jq.Elements(raw) {
 		if obj, ok := c.(*jq.Obj); ok && obj != nil {

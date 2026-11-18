@@ -310,9 +310,53 @@ eval_fixture_rebase() {
   mv "$dir/PR.json.tmp" "$dir/PR.json"
 }
 
+eval_write_review_at() {
+  local path="$1"
+  local raw tmp
+  raw=$(cat)
+  tmp="$path.tmp"
+  if printf '%s\n' "$raw" | jq -e . >/dev/null 2>&1; then
+    printf '%s\n' "$raw" | jq '
+      if type != "object" or has("findings") then . else (
+      def anchor: (.line // 1 | if type == "number" then . else tonumber? // 1 end);
+      {
+        schema_version: "1",
+        findings: ((.comments // []) | map(if type == "object" then {
+          path: (.path // "a.txt"),
+          line: anchor,
+          start_line: (if .start_line != null and (.start_line|type) == "number" then .start_line else null end),
+          side: (.side // "RIGHT"),
+          severity: (.severity // "important"),
+          claim: (.body // "converted finding"),
+          quote: (.quote // .body // "converted finding"),
+          confidence: "high",
+          rigor: (.rigor // "said"),
+          category: (.category // null),
+          suggestion: (.suggestion // null),
+          brief: (.brief // null),
+          sources: (.sources // null),
+          kb: (.kb // null)
+        } | with_entries(select(.value != null)) else . end)),
+        summary: ((.body // "") | if type == "string" then .[0:2000] else "" end)
+      }
+      + (if has("spec_checks") then {spec_checks: .spec_checks} else {} end)
+      + (if has("receipts") then {receipts: .receipts} else {} end)
+      + (if has("resolved") then {resolved: .resolved} else {} end)
+      + (if has("triage") then {triage: .triage} else {} end)
+      + (if has("coverage") then {coverage: .coverage} else {} end)
+      + (if has("chunks") then {chunks: .chunks} else {} end)
+      + (if has("suppressed") then {suppressed: .suppressed} else {} end)
+      + (if has("risk") then {risk: .risk} else {} end)
+      + (if has("security_summary") then {security_summary: .security_summary} else {} end)
+      ) end' > "$tmp"
+  else
+    printf '%s\n' "$raw" > "$tmp"
+  fi
+  mv "$tmp" "$path"
+}
+
 eval_write_review() {
-  local pr="$1"
-  cat > "$EVAL_SANDBOX/.verdict/state/$pr/review.json"
+  eval_write_review_at "$EVAL_SANDBOX/.verdict/state/$1/review.json"
 }
 
 eval_write_findings() {

@@ -318,7 +318,7 @@ mv "$EVAL_SANDBOX/.verdict/kb.jsonl.hold" "$EVAL_SANDBOX/.verdict/kb.jsonl"
 # The rule has to be in the base the capture pins, not learned after it.
 run_review learn --rule "Record path rule" --scope "notes.txt" --id rec-rule --json >/dev/null
 eval_mk_bundle local-k6
-cat > "$EVAL_SANDBOX/.verdict/state/local-k6/review.json" <<'EOF'
+eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-k6/review.json" <<'EOF'
 {"schema_version":"1","body":"> [!IMPORTANT]\n> Real record-path issue below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Rec verify me.","rigor":"walked","severity":"important","kb":["rec-rule"]},{"path":"notes.txt","line":3,"side":"RIGHT","body":"Rec triage me.","rigor":"pointed","severity":"informational","kb":["rec-rule"]}]}
 EOF
 run_review record acme/local-k6 local-k6 --json
@@ -334,7 +334,7 @@ else
 fi
 sigA="$(jq -r '.[0].sig' "$EVAL_SANDBOX/.verdict/state/local-k6/findings.json")"
 sigB="$(jq -r '.[1].sig' "$EVAL_SANDBOX/.verdict/state/local-k6/findings.json")"
-cat > "$EVAL_SANDBOX/.verdict/state/local-k6/review.json" <<EOF
+eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-k6/review.json" <<EOF
 {"schema_version":"1","body":"> [!IMPORTANT]\n> Second pass with evidence.","approved":false,"comments":[],"triage":[{"sig":"$sigB","status":"addressed","rationale":"agent triage with a long enough rationale here for sure"}]}
 EOF
 cat > "$EVAL_SANDBOX/.verdict/state/local-k6/verification.json" <<EOF
@@ -362,12 +362,12 @@ fi
 # borrow thresholds from the ambient environment.
 run_review learn --rule "Record threshold probe rule" --scope "notes.txt" --id rec-thresh --json >/dev/null
 eval_mk_bundle local-k7
-cat > "$EVAL_SANDBOX/.verdict/state/local-k7/review.json" <<'EOF'
+eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-k7/review.json" <<'EOF'
 {"schema_version":"1","body":"> [!IMPORTANT]\n> Record threshold probe below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Record threshold me.","rigor":"walked","severity":"informational","kb":["rec-thresh"]}]}
 EOF
 run_review record acme/local-k7 local-k7 --json >/dev/null
 tsig="$(jq -r '.[0].sig' "$EVAL_SANDBOX/.verdict/state/local-k7/findings.json")"
-cat > "$EVAL_SANDBOX/.verdict/state/local-k7/review.json" <<EOF
+eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-k7/review.json" <<EOF
 {"schema_version":"1","body":"> [!IMPORTANT]\n> Record threshold probe below.","approved":false,"comments":[],"triage":[{"sig":"$tsig","status":"false-positive","rationale":"record path must keep the captured threshold here"}]}
 EOF
 REVIEW_KB_MIN_JUDGED=1 REVIEW_KB_MAX_FP_RATE=0 run_review record acme/local-k7 local-k7 --json >/dev/null
@@ -466,7 +466,7 @@ run_review learn --rule "Uncite probe rule" --scope "notes.txt" --id uncite-r --
 # The bundle comes from the real producer: a hand-written one carries no
 # controls snapshot, so record refuses it as controls-unavailable.
 eval_mk_bundle local-uncite
-cat > "$EVAL_SANDBOX/.verdict/state/local-uncite/review.json" <<'EOF'
+eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-uncite/review.json" <<'EOF'
 {"schema_version":"1","body":"> [!IMPORTANT]\n> Uncite probe issue below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Uncite cited finding here.","rigor":"walked","severity":"important","kb":["uncite-r"]}]}
 EOF
 run_review record acme/local-uncite local-uncite --json
@@ -477,7 +477,7 @@ if [ "$EVAL_STATUS" -eq 0 ] \
 else
   bad "cited record exit $EVAL_STATUS kb: $(jq -c '.[0].kb' "$EVAL_SANDBOX/.verdict/state/local-uncite/findings.json" 2>/dev/null)"
 fi
-cat > "$EVAL_SANDBOX/.verdict/state/local-uncite/review.json" <<'EOF'
+eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-uncite/review.json" <<'EOF'
 {"schema_version":"1","body":"> [!IMPORTANT]\n> Uncite probe issue below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Uncite cited finding here.","rigor":"walked","severity":"important"}]}
 EOF
 run_review record acme/local-uncite local-uncite --json
@@ -487,7 +487,7 @@ if [ "$EVAL_STATUS" -eq 0 ] \
 else
   bad "absent kb cleared the cite: $(jq -c '.[0].kb' "$EVAL_SANDBOX/.verdict/state/local-uncite/findings.json" 2>/dev/null)"
 fi
-cat > "$EVAL_SANDBOX/.verdict/state/local-uncite/review.json" <<'EOF'
+eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-uncite/review.json" <<'EOF'
 {"schema_version":"1","body":"> [!IMPORTANT]\n> Uncite probe issue below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Uncite cited finding here.","rigor":"walked","severity":"important","kb":null}]}
 EOF
 run_review record acme/local-uncite local-uncite --json
@@ -497,7 +497,7 @@ if [ "$EVAL_STATUS" -eq 0 ] \
 else
   bad "null kb cleared the cite: $(jq -c '.[0].kb' "$EVAL_SANDBOX/.verdict/state/local-uncite/findings.json" 2>/dev/null)"
 fi
-cat > "$EVAL_SANDBOX/.verdict/state/local-uncite/review.json" <<'EOF'
+eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-uncite/review.json" <<'EOF'
 {"schema_version":"1","body":"> [!IMPORTANT]\n> Uncite probe issue below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Uncite cited finding here.","rigor":"walked","severity":"important","kb":[]}]}
 EOF
 run_review record acme/local-uncite local-uncite --json
@@ -507,11 +507,11 @@ if [ "$EVAL_STATUS" -eq 0 ] \
 else
   bad "explicit [] kept the cite: $(jq -c '.[0].kb' "$EVAL_SANDBOX/.verdict/state/local-uncite/findings.json" 2>/dev/null)"
 fi
-cat > "$EVAL_SANDBOX/.verdict/state/local-uncite/review.json" <<'EOF'
+eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-uncite/review.json" <<'EOF'
 {"schema_version":"1","body":"> [!IMPORTANT]\n> Uncite probe issue below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Uncite cited finding here.","rigor":"walked","severity":"important","kb":["uncite-r"]}]}
 EOF
 run_review record acme/local-uncite local-uncite --json >/dev/null
-cat > "$EVAL_SANDBOX/.verdict/state/local-uncite/review.json" <<'EOF'
+eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-uncite/review.json" <<'EOF'
 {"schema_version":"1","body":"> [!IMPORTANT]\n> Uncite probe issue below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Uncite cited finding here.","rigor":"walked","severity":"important","kb":["nope-missing"]}]}
 EOF
 run_review record acme/local-uncite local-uncite --json
@@ -523,7 +523,7 @@ else
   bad "malformed re-post: $(jq -c '.[0].kb' "$EVAL_SANDBOX/.verdict/state/local-uncite/findings.json" 2>/dev/null)"
 fi
 
-cat > "$EVAL_SANDBOX/.verdict/state/local-uncite/review.json" <<'EOF'
+eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-uncite/review.json" <<'EOF'
 {"schema_version":"1","body":"> [!IMPORTANT]\n> Uncite probe issue below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Uncite cited finding here.","rigor":"walked","severity":"important","kb":["uncite-r"]}]}
 EOF
 run_review record acme/local-uncite local-uncite --json >/dev/null

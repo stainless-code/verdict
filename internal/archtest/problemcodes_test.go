@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -99,8 +100,6 @@ func checkProblemManualTable(t *testing.T, root string, codes []string) {
 // scanProblemCodes returns every published problem code the tree references
 // outside its own registry, by file:line. The code constants are the emission
 // sites: CheckReview never spells the strings inline.
-//
-//nolint:revive // one AST walk over every package
 func scanProblemCodes(t *testing.T, root string) map[string][]string {
 	t.Helper()
 	fset := token.NewFileSet()
@@ -111,24 +110,50 @@ func scanProblemCodes(t *testing.T, root string) map[string][]string {
 	}
 	sighted := map[string][]string{}
 	for _, dir := range slices.Sorted(maps.Keys(packages)) {
-		files := packages[dir]
-		for _, file := range files {
-			if strings.HasSuffix(fset.Position(file.Pos()).Filename, filepath.Join("internal", "core", "refusal.go")) {
+		for _, file := range packages[dir] {
+			if problemRegistry(fset, file) {
 				continue
 			}
-			ast.Inspect(file, func(n ast.Node) bool {
-				name, ok := problemCodeIdent(n)
-				if !ok {
-					return true
-				}
-				if code, ok := consts[name]; ok {
-					sighted[code] = append(sighted[code], fset.Position(n.Pos()).String())
-				}
-				return true
-			})
+			sightProblemCodes(fset, consts, file, sighted)
 		}
 	}
 	return sighted
+}
+
+// problemRegistry reports whether file is the registry that defines the codes.
+func problemRegistry(fset *token.FileSet, file *ast.File) bool {
+	return strings.HasSuffix(fset.Position(file.Pos()).Filename, filepath.Join("internal", "core", "refusal.go"))
+}
+
+// sightProblemCodes records every published code one file names, by file:line.
+func sightProblemCodes(fset *token.FileSet, consts map[string]string, file *ast.File, sighted map[string][]string) {
+	ast.Inspect(file, func(n ast.Node) bool {
+		if lit, ok := n.(*ast.BasicLit); ok && lit.Kind == token.STRING {
+			sightLiteral(fset, lit, sighted)
+		}
+		if name, ok := problemCodeIdent(n); ok {
+			sightConst(fset, consts, name, n.Pos(), sighted)
+		}
+		return true
+	})
+}
+
+// sightLiteral records a string literal that spells a published code.
+func sightLiteral(fset *token.FileSet, lit *ast.BasicLit, sighted map[string][]string) {
+	code, err := strconv.Unquote(lit.Value)
+	if err != nil || !slices.Contains(core.ProblemCodes(), code) {
+		return
+	}
+	sighted[code] = append(sighted[code], fset.Position(lit.Pos()).String())
+}
+
+// sightConst records a constant reference that names a published code.
+func sightConst(fset *token.FileSet, consts map[string]string, name string, pos token.Pos, sighted map[string][]string) {
+	code, ok := consts[name]
+	if !ok {
+		return
+	}
+	sighted[code] = append(sighted[code], fset.Position(pos).String())
 }
 
 // problemCodeIdent returns the identifier a ProblemCode* reference names.

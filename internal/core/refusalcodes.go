@@ -208,6 +208,7 @@ var refusalCodes = []string{
 	"rationale-required",
 	"read-only-tool",
 	"record-failed",
+	"record-stale",
 	"repair-exhausted",
 	"report-failed",
 	"requirement-blocked",

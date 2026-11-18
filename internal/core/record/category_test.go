@@ -8,6 +8,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // categoryComment renders one store-contract comment carrying raw category
@@ -301,9 +302,9 @@ func TestSectionCategoryNull(t *testing.T) {
 // unknown or non-string category as a warning, so strict-off record proceeds
 // and strict-on promotes it like every other warning.
 func TestCategoryCheckerWarnsNeverRefuses(t *testing.T) {
-	review := checkReview(`,"comments":[` + checkComment(`,"category":"sec"`) + `,` +
+	review := checkReview(`,"findings":[` + checkComment(`,"category":"sec"`) + `,` +
 		checkComment(`,"category":3`) + `]`)
-	result := recordcore.CheckReview([]byte(review), checkDiff)
+	result := recordcore.CheckReview(testenv.FindingsBytes([]byte(review)), checkDiff)
 	if result.Errors != 0 {
 		t.Fatalf("errors = %d, want none: %+v", result.Errors, result.Problems)
 	}

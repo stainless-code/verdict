@@ -7,6 +7,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // nestedRefusalCase is one malformed document extraction must never recover
@@ -56,7 +57,7 @@ func TestNormalizeReviewNeverExtractsNested(t *testing.T) {
 // with an invalid-json error.
 func checkInvalidJSONRefusal(t *testing.T, in string, got []byte) {
 	t.Helper()
-	res := recordcore.CheckReview(got, checkDiff)
+	res := recordcore.CheckReview(testenv.FindingsBytes(got), checkDiff)
 	if res.Errors == 0 {
 		t.Fatalf("problems = %+v, want an invalid-json refusal", res.Problems)
 	}

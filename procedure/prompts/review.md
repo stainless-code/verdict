@@ -116,18 +116,19 @@
    a profile, not a guess) plus run count and spread, or are marked `unproven`. Count errors
    and confirm the timed code actually ran; one honest ballpark run, stated as one run, beats
    five-figure theater. Tag severity `critical` / `important` / `informational` mirroring the
-   finding's tier (unknown values refuse the review). Tag each
-   inline comment's `in-bounds` boolean — `false` means redesign or out-of-diff: address mode
-   reports it, never redesigns it. Every inline comment may carry one `category` from the
-   closed taxonomy `logic|edge-case|security|performance|accidental-commit|style|docs|other`
+   finding's tier — unknown values refuse the review. Every inline finding may carry one
+   `category` from the closed taxonomy `logic|edge-case|security|performance|accidental-commit|style|docs|other`
    — label the kind the evidence supports, never infer it from the file path; omit it when
    the finding genuinely spans kinds (untagged is honest).
+   Each finding names `path`, a strict integer `line`, `severity`, `claim`, `quote` and `confidence`; optional `rigor`,
+   `category`, `suggestion`, `brief`, `sources` and `kb` stay as published. Verdict renders the body and derives approval,
+   so never write `approved`, `body` or `comments[]` — those are the refused v1 shape.
    Draft inline comments with NEW line numbers. Every comment: actionable, 2–3 sentences max
    visible, one per root cause, name other sites in that comment. Attach `<details>Technical
 details</details>` when the fix is non-trivial or cross-file. For the top-severity finding,
    state the one load-bearing fact it stands on plus its rung — if that fact never got past
    `pointed`, say so.
-7. **Submit.** Write exactly one `.verdict/state/N/review.json` with `{schema_version: "1", body, approved, comments[]}` — one document total across all chunks, never one per chunk — (plus optional `resolved` sigs and `sections[]` severity tags `{heading, severity}` — exact heading string, unmatched tags ignored — and per-comment `category?` from the taxonomy below); on chunked bundles also stamp top-level `"chunks": [...]` naming every manifest chunk the synthesis covers (the coverage attestation `post`/`record` gate on — an attested claim that omits a chunk is refused, so attested partial coverage can never post as complete; unattested reviews validate as today with a loud warning naming the manifest). Verdict repairs a fenced or prose-wrapped document, a scalar where a string array belongs, the aliases `inBounds`/`in_bounds`/`rung`/`file`, enum synonyms and case, and null optional keys, and reports every repair — but write clean JSON anyway: repairs are a safety net, and strict CI refuses them. `post` validates anchors, merges the findings store, and submits. Run one `prompts/validate.md` pass when the review is worth it and write its `validation.json` beside `review.json`; `post` applies its verdicts and the per-tier `rigor_policy` floors, and records which file it applied. You may state top-level `confidence` (integer 1–5, your overall certainty) and `security_summary` (one-paragraph security read); both optional — absent stays absent; an out-of-range confidence or non-string `security_summary` refuses the review. Before `post` or `record`, run `verdict record <repo> <slug> --dry-run`, fix every problem it lists, repeat at most 3 rounds, and if problems remain STOP and report them to the user instead of recording a partial review. Then run `verdict post owner/repo N` — done when it returns a review URL. A secret-shaped value in the body or a finding refuses `post-secret-shaped` before any host call (name the path, never the value; `--allow-secret-values` publishes it anyway). Record addressed sigs (short ids from the prior `findings.json` table) in `resolved`; the flip to `addressed` needs `verification.json` evidence (below). `post` prints the fresh sig table for the next run. Binding verdicts (`APPROVE` / `REQUEST_CHANGES`) need `--bind`, else `post` downgrades to `COMMENT`; `APPROVE` is refused while `open` + `deferred` findings remain (`--force` overrides). A binding `APPROVE` on a stale fetch (commits landed after your fetch) posts as `COMMENT`, never `APPROVE` — `--force` does not override that; re-fetch the delta per `prompts/incremental-review.md` step 2 and review it to bind. Claim other states via `triage[]` entries `{sig, status, rationale}` — `wont-fix` / `false-positive` / `deferred` need rationale ≥30 chars citing a re-read or the intent anchor, else ignored; bare `resolved[]` sigs are proposals only and flip to `addressed` solely on a `.verdict/state/N/verification.json` entry `{sig, verdict: VERIFIED, verifyCmd, resultHead}` with `resultHead` matching HEAD (`NOT VERIFIED` reopens, `INCONCLUSIVE` only logs).
+7. **Submit.** Write exactly one `.verdict/state/N/review.json` with `{schema_version: "1", findings[], spec_checks[], receipts[], summary?}` — one document total across all chunks, never one per chunk — (plus optional `resolved` sigs and per-finding `category?` from the taxonomy below); on chunked bundles also stamp top-level `"chunks": [...]` naming every manifest chunk the synthesis covers (the coverage attestation `post`/`record` gate on — an attested claim that omits a chunk is refused, so attested partial coverage can never post as complete; unattested reviews validate as today with a loud warning naming the manifest). Verdict refuses the v1 shape and reports every v2 contract problem; write clean JSON. `post` validates anchors, merges the findings store, and submits. Run one `prompts/validate.md` pass when the review is worth it and write its `validation.json` beside `review.json`; `post` applies its verdicts and the per-tier `rigor_policy` floors, and records which file it applied. Optional `security_summary` carries one paragraph; a non-string value refuses the review. Before `post` or `record`, run `verdict record <repo> <slug> --dry-run`, fix every problem it lists, repeat at most 3 rounds, and if problems remain STOP and report them to the user instead of recording a partial review. Then run `verdict post owner/repo N` — done when it returns a review URL. A secret-shaped value in the body or a finding refuses `post-secret-shaped` before any host call (name the path, never the value; `--allow-secret-values` publishes it anyway). Record addressed sigs (short ids from the prior `findings.json` table) in `resolved`; the flip to `addressed` needs `verification.json` evidence (below). `post` prints the fresh sig table for the next run. Binding verdicts (`APPROVE` / `REQUEST_CHANGES`) need `--bind`, else `post` downgrades to `COMMENT`; `APPROVE` is refused while `open` + `deferred` findings remain (`--force` overrides). A binding `APPROVE` on a stale fetch (commits landed after your fetch) posts as `COMMENT`, never `APPROVE` — `--force` does not override that; re-fetch the delta per `prompts/incremental-review.md` step 2 and review it to bind. Claim other states via `triage[]` entries `{sig, status, rationale}` — `wont-fix` / `false-positive` / `deferred` need rationale ≥30 chars citing a re-read or the intent anchor, else ignored; bare `resolved[]` sigs are proposals only and flip to `addressed` solely on a `.verdict/state/N/verification.json` entry `{sig, verdict: VERIFIED, verifyCmd, resultHead}` with `resultHead` matching HEAD (`NOT VERIFIED` reopens, `INCONCLUSIVE` only logs).
    Attest coverage — the default `gate` requires it. Stamp top-level `coverage` entries of
    `{"file": …, "ranges": …}`: one entry per changed source file, with `ranges` as
    `"1-240,300-320"` of changed source lines, or
@@ -330,16 +331,15 @@ machine-verifiable inputs exist, with kb-measure X2/X3 outputs as the named
 trigger). Full reasoning stays in the inline comments and the findings store
 (the machine envelope) — the posted body stays tight.
 
-The third lead line is deterministic from your `review.json`:
+Verdict renders the body from your findings, and with it the third lead line:
 
 > Basis: 0 reproduced · 0 ran · 0 walked · 2 pointed · 0 said · 1 rules cited · 0 verified fixes
 
-Count rigor across your comments (every comment carries one rung, default
-`pointed`), distinct `kb` rule ids cited, and verified fixes (findings you
-would mark addressed on verification evidence — 0 on an initial review). On
-chunked bundles sum every rung count across all chunks into the single Basis
-line. The script replaces a disagreeing line with the counts computed from the review's own
-comments and reports `basis-replaced`, so count honestly and never reshape findings to fit the line.
+Every count is computed from your `review.json` — rigor across your findings
+(every finding carries one rung, default `pointed`), distinct `kb` rule ids
+cited, and verified fixes (0 on an initial review) — so you never write it and
+never reshape findings to fit it. On chunked bundles the line sums every rung
+count across all chunks. Stamp the rungs honestly and the line follows.
 
 Clean reviews (nothing actionable) close the summary with a bounded
 **What we checked** list — at most seven bullets drawn from `toc.txt`
@@ -359,22 +359,22 @@ inline) with receipt fields (tier, cost or unrecorded, files reviewed,
 review link when known). Pre-post the review
 link is unknown — never invent a review id or URL.
 
-## Opening callout ladder (pick by author's next action)
+## Verdict ladder (the CLI derives it, you never claim it)
 
-- **Critical** (blocks merge — bugs/security/data loss/broken core):
-  `approved:false`. Body opens `> [!CAUTION]\n> This PR introduces …` + summary + all inline.
+- **Critical** (blocks merge — bugs/security/data loss/broken core): at least one open
+  `critical` finding. The verdict withholds approval.
 - **Must-address non-critical** (real consequences if shipped — wrong behavior, missing validation,
-  regressions): `approved:false`. Opens `> [!IMPORTANT]\n> …` + summary. Never for nits/style/consider-also.
-- **Minor only**: `approved:false`. Opens `> ℹ️ No critical issues — minor suggestions inline.\n\n`
-  - summary + inline. Vary wording after `ℹ️`, keep prefix short.
-- **Informational** (mergeable, nothing actionable): `approved:true`. Opens
-  `> ✅ No new issues found.\n\n` + summary. NO inline comments (✅ contradicts anchors —
-  if anchorable, downgrade to minor).
-- **No actionable issues**: `approved:true`. `> ✅ No new issues found.` + summary.
+  regressions): an open `important` finding withholds approval. Never spend this tier on
+  nits/style/consider-also.
+- **Minor only**: open findings below `important` approve; a violated `spec_checks[]` entry still
+  withholds.
+- **Informational** (mergeable, nothing actionable): no open findings at-or-above `important`, so the
+  body opens `> ✅ No new issues found.` NO inline findings (✅ contradicts anchors —
+  if anchorable, record it).
 
-Two levers: callout intensity + `approved` (non-approving renders a Fix affordance;
-`approved:true` suppresses it). Wrapping mergeable feedback in `IMPORTANT` trains
-authors to click Fix unnecessarily.
+Two levers: finding severity + the `block_clauses` policy a repository configures. Wrapping
+mergeable feedback in `important` trains authors to ignore the gate, so grade the consequence,
+not the effort.
 
 After writing the review, run `verdict panel` when a verifier roster is pinned.
 Dispatch each section independently — do not self-certify verification.

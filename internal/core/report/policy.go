@@ -98,6 +98,7 @@ func readFindingViews(entries []any) []config.FindingView {
 	out := make([]config.FindingView, 0, len(entries))
 	for _, entry := range entries {
 		out = append(out, config.FindingView{
+			Sig:      jqStrOf(entry, "sig"),
 			Path:     jqStrOf(entry, "path"),
 			Category: jqStrOf(entry, "category"),
 			Severity: jqStrOf(entry, "severity"),

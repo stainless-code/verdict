@@ -75,6 +75,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/exclude":        true,
 	"internal/core":           true,
 	"internal/core/adopt":     true,
+	"internal/core/approval":  true,
 	"internal/core/calibrate": true,
 	"internal/core/checktree": true,
 	"internal/core/corpus":    true,
@@ -94,6 +95,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/core/ready":     true,
 	"internal/core/record":    true,
 	"internal/core/report":    true,
+	"internal/core/reviewdoc": true,
 	"internal/core/risk":      true,
 	"internal/core/threads":   true,
 	"internal/core/trend":     true,
@@ -136,11 +138,9 @@ var leafHelpers = []string{"internal/exclude", "internal/shellquote", "internal/
 // must be added here deliberately, so the core boundary is never widened
 // unnoticed.
 var coreSubpackages = []string{
-	"adopt", "backtest", "calibrate", "checktree", "corpus", "corpus/corpustest", "coverage", "doctor", "drain", "exec", "fetch", "fix",
-	"handoff", "index", "ingest", "init", "learn", "pack", "panel", "post", "quality", "query", "ready", "recipe", "record", "repair",
-	"report", "risk",
-	"run", "skill",
-	"threads", "trend", "triage", "upgrade", "verify",
+	"adopt", "approval", "backtest", "calibrate", "checktree", "corpus", "corpus/corpustest", "coverage", "doctor", "drain", "exec",
+	"fetch", "fix", "handoff", "index", "ingest", "init", "learn", "pack", "panel", "post", "quality", "query", "ready", "recipe",
+	"record", "repair", "report", "reviewdoc", "risk", "run", "skill", "threads", "trend", "triage", "upgrade", "verify",
 }
 
 // readcommonDeniedCoreDeps names every core service package the shared store

@@ -21,6 +21,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/golden"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 var harness *golden.Harness
@@ -154,7 +155,7 @@ func writeFiles(t *testing.T, dir string, files map[string]string) {
 		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(p, []byte(testenv.MaybeFindingsReview(rel, content)), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}

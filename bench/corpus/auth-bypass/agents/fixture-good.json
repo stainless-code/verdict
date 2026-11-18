@@ -3,16 +3,17 @@
   "panel": ["panel-beta"],
   "review": {
     "schema_version": "1",
-    "body": "> 🤖 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
-    "approved": false,
-    "comments": [
+    "summary": "> \ud83e\udd16 Fixture review for the benchmark corpus: seeded defects reported, one deliberate false positive.",
+    "findings": [
       {
         "path": "middleware.go",
         "line": 23,
         "side": "RIGHT",
-        "body": "The role comparison is inverted; reject when role != \"admin\".",
         "rigor": "walked",
-        "severity": "critical"
+        "severity": "critical",
+        "claim": "The role comparison is inverted; reject when role != \"admin\".",
+        "quote": "The role comparison is inverted; reject when role != \"admin\".",
+        "confidence": "high"
       }
     ]
   }

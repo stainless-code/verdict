@@ -14,6 +14,8 @@ import (
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/approval"
+	"github.com/stainless-code/verdict/internal/core/reviewdoc"
 	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -76,6 +78,7 @@ type state struct { // field grouping documents the loaded dimensions; alignment
 	view         []readcommon.Ranked
 	policy       *config.RunState
 	compliance   *config.ReadCompliance
+	approval     *core.ApprovalReceipt
 	requiredGaps []string
 	panel        []any
 	patch        any
@@ -140,6 +143,7 @@ func Run(ctx context.Context, req *core.ReportRequest) (*core.ReportResponse, *c
 	}
 
 	evaluateCompliance(st)
+	st.approval = approval.Evaluate(st.entries, flags.Check, flags.Category, st.compliance, reviewdoc.SpecViolationOfBundle(st.dir))
 	applyDisplayFloor(st)
 	warnLensUsage(st)
 	warnDeepValidation(st)

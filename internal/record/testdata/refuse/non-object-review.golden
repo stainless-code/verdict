@@ -11,8 +11,8 @@ exit: 1
   "data": null,
   "error": {
     "code": "bad-review-input",
-    "message": "review.json has 1 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants {body, approved, comments[]}; claims want string sigs), then re-run",
-    "problems": [{"path":"$","code":"wrong-type","level":"error","message":"review.json must hold a JSON object","fix":"write one JSON object with body and comments[]","example":{"approved":false,"body":"> ✅ Review text.","comments":[],"schema_version":"1"}}],
+    "message": "review.json has 1 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants findings[]; each finding wants path, line, severity, claim, quote and confidence), then re-run",
+    "problems": [{"path":"$","code":"wrong-type","level":"error","message":"review.json must hold a JSON object","fix":"write one JSON object with schema_version and findings[]","example":{"findings":[],"schema_version":"1"}}],
     "problems_truncated": 0
   }
 }

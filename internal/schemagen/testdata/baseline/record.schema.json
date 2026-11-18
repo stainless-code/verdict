@@ -18,6 +18,7 @@
       "description": "SHA-256 of full.diff at record time.",
       "type": "string"
     },
+    "review_sha256": { "type": "string" },
     "recorded_at": {
       "description": "UTC timestamp of the record run.",
       "type": "string",
@@ -82,7 +83,18 @@
     "validation_hash": { "type": ["string", "null"] },
     "validation_counts": { "$ref": "#/$defs/validationCounts" },
     "validation_mode": { "enum": ["warn", "gate"] },
-    "rigor_floors": { "$ref": "#/$defs/rigorFloors" }
+    "rigor_floors": { "$ref": "#/$defs/rigorFloors" },
+    "approval": {
+      "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/approvalReceipt" }]
+    },
+    "spec_checks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/specCheck" }
+    },
+    "receipts": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/receipt" }
+    }
   },
   "required": [
     "schema_version",
@@ -176,6 +188,53 @@
         "stale": { "type": "boolean" }
       },
       "required": ["level", "rationale", "assessed_head"],
+      "additionalProperties": true
+    },
+    "approvalReceipt": {
+      "type": "object",
+      "properties": {
+        "reason": { "type": "string" },
+        "tier": { "enum": ["critical", "important", "informational"] },
+        "gating_sigs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "clauses": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "approved": { "type": "boolean" }
+      },
+      "required": ["reason", "tier", "gating_sigs", "approved"],
+      "additionalProperties": true
+    },
+    "specCheck": {
+      "type": "object",
+      "properties": {
+        "item": { "type": "string", "minLength": 1 },
+        "status": { "enum": ["met", "violated", "n/a"] },
+        "evidence": { "$ref": "#/$defs/specEvidence" }
+      },
+      "required": ["item", "status", "evidence"],
+      "additionalProperties": true
+    },
+    "specEvidence": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "quote": { "type": "string", "minLength": 1 },
+        "line": { "type": "integer" }
+      },
+      "required": ["path", "quote", "line"],
+      "additionalProperties": true
+    },
+    "receipt": {
+      "type": "object",
+      "properties": {
+        "hunk": { "type": "string", "minLength": 1 },
+        "quote": { "type": "string", "minLength": 1 }
+      },
+      "required": ["hunk", "quote"],
       "additionalProperties": true
     },
     "validationCounts": {

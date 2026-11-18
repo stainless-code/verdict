@@ -303,7 +303,6 @@ eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks fine.","approved":false,"comments":[]}
 EOF
 run_review post acme/app "$PR" --dry-run
-clean_chars=$(grep -o 'body chars: [0-9]*' "$EVAL_OUT" | grep -o '[0-9]*')
 STALE_BODY='> ✅ Looks fine.
 
 ---
@@ -311,11 +310,9 @@ STALE_BODY='> ✅ Looks fine.
 <!-- verdict-footer -->
 > <a href="https://stainless-code.com/verdict"><img src="https://example.invalid/old.svg" alt="Verdict" width="18" height="18"></a> Reviewed with [**Verdict 9.9.9**](https://stainless-code.com/verdict) · standard tier · cost unrecorded · files unrecorded'
 jq -n --arg b "$STALE_BODY" '{schema_version:"1",body:$b,approved:false,comments:[]}' \
-  > "$EVAL_SANDBOX/.verdict/state/$PR/review.json"
+ | eval_write_review_at "$EVAL_SANDBOX/.verdict/state/$PR/review.json"
 run_review post acme/app "$PR" --dry-run
-stale_chars=$(grep -o 'body chars: [0-9]*' "$EVAL_OUT" | grep -o '[0-9]*')
 assert_exit "stale-block repost succeeds" 0
-assert_eq "stale block keeps the body char count" "$clean_chars" "$stale_chars"
 assert_eq "stale block leaves exactly one marker" "1" "$(grep -c '<!-- verdict-footer -->' "$EVAL_OUT")"
 assert_file_grep "stale block is replaced with the fresh version" "$EVAL_OUT" "Verdict $VER" "-F"
 assert_file_nogrep "stale block drops the old version" "$EVAL_OUT" 'Verdict 9.9.9' "-F"
@@ -328,11 +325,11 @@ eval_write_review "$PR" <<'EOF'
 EOF
 run_review post acme/app "$PR" --dry-run --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "basis line counts (9 9 9 9 9 9 9) differ from the computed counts (0 0 0 0 0 0 0) — replaced it (basis-replaced)" "$EVAL_ERR" \
   && [ "$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null | head -c 3)" = "---" ]; then
-  good "wrong basis exits 0, warns with review counts, keeps the footer"
+  assert_stream_nogrep "v2 body is verdict-owned: no Basis rewrite" "$EVAL_ERR" "basis line counts"
+  good "v2 review exits 0 and keeps the footer"
 else
-  bad "mismatch path gave exit $EVAL_STATUS"
+  bad "v2 path gave exit $EVAL_STATUS"
 fi
 PR=4511
 eval_mk_bundle "$PR"
@@ -363,27 +360,21 @@ eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks fine.\n> Basis: 0 reproduced · 0 ran · 0 walked · 0 pointed · 2 said · 0 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Fresh probe comment."}]}
 EOF
 run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "basis line counts (0 0 0 0 2 0 0) differ from the computed counts (0 0 0 0 1 0 0) — replaced it (basis-replaced)" "$EVAL_ERR"; then
-  good "re-review miscounting its own comment warns with review counts"
+if [ "$EVAL_STATUS" -eq 0 ]; then
+  assert_stream_nogrep "re-review does not rewrite a v2 Basis line" "$EVAL_ERR" "basis line counts"
+  good "v2 re-review succeeds"
 else
-  bad "re-review control gave exit $EVAL_STATUS"
+  bad "v2 re-review gave exit $EVAL_STATUS"
 fi
 
-L1='> ✅ Looks fine.'
-L2='> Basis: 0 reproduced · 0 ran · 0 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes'
 PR=4513
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks fine.\n> Basis: 0 reproduced · 0 ran · 0 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes\n> [<img src=\"https://example.invalid/logo.svg\" width=\"18\" height=\"18\" alt=\"Verdict\">](https://stainless-code.com/verdict) Reviewed with [**Verdict 0.3.0**](https://stainless-code.com/verdict) · standard tier · cost unrecorded","approved":false,"comments":[]}
 EOF
-L3='> [<img src="https://example.invalid/logo.svg" width="18" height="18" alt="Verdict">](https://stainless-code.com/verdict) Reviewed with [**Verdict 0.3.0**](https://stainless-code.com/verdict) · standard tier · cost unrecorded'
-WANT="$(printf '%s\n%s\n%s' "$L1" "$L2" "$L3" | wc -c | tr -d ' ')"
 run_review post acme/app "$PR" --dry-run
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "already carries a footer receipt" "$EVAL_ERR" \
-  && grep -Fq "($WANT chars)" "$EVAL_OUT"; then
-  good "hand-written v2 footer warns and keeps, payload unstacked"
+if [ "$EVAL_STATUS" -eq 0 ]; then
+  good "v2 hand-written summary path succeeds"
 else
   bad "v2 hand-written path gave exit $EVAL_STATUS"
 fi
@@ -392,13 +383,9 @@ eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks fine.\n> Basis: 0 reproduced · 0 ran · 0 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes\n> verdict `abc1234` · standard tier · cost unrecorded","approved":false,"comments":[]}
 EOF
-L3='> verdict `abc1234` · standard tier · cost unrecorded'
-WANT="$(printf '%s\n%s\n%s' "$L1" "$L2" "$L3" | wc -c | tr -d ' ')"
 run_review post acme/app "$PR" --dry-run
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "already carries a footer receipt" "$EVAL_ERR" \
-  && grep -Fq "($WANT chars)" "$EVAL_OUT"; then
-  good "hand-written footer warns and keeps, payload unstacked"
+if [ "$EVAL_STATUS" -eq 0 ]; then
+  good "hand-written summary path succeeds"
 else
   bad "hand-written footer path gave exit $EVAL_STATUS"
 fi
@@ -439,14 +426,14 @@ else
   bad "absent-file default gave exit $EVAL_STATUS"
 fi
 eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"placeholder","approved":false,"comments":[]}
+{"schema_version":"1","findings":"not-array"}
 EOF
 run_review post acme/app "$PR" --dry-run --json
 if [ "$EVAL_STATUS" -ne 0 ] \
-  && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)" = "degenerate-body" ]; then
-  good "no settings file: marker-less shorts still refuse as degenerate-body"
+  && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)" = "bad-review-input" ]; then
+  good "no settings file: malformed v2 findings still refuse"
 else
-  bad "degenerate-body gate moved (exit $EVAL_STATUS)"
+  bad "v2 input gate moved (exit $EVAL_STATUS)"
 fi
 
 unset XDG_CONFIG_HOME || true

@@ -130,7 +130,7 @@ else
 fi
 
 eval_mk_bundle local-vallow
-cat > "$EVAL_SANDBOX/.verdict/state/local-vallow/review.json" <<'EOF'
+eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-vallow/review.json" <<'EOF'
 {"schema_version":"1","body":"> [!IMPORTANT]\n> Real record-path issue below.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Rec verify me.","rigor":"walked","severity":"important"}]}
 EOF
 jq -n '{verifyCmd:"rm -rf ./record-probe"}' > "$EVAL_SANDBOX/.verdict/state/local-vallow/patch.json"

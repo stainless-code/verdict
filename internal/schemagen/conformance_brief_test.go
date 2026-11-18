@@ -27,11 +27,11 @@ func fixtureBrief() map[string]any {
 func fixtureReviewDoc(brief any) map[string]any {
 	return map[string]any{
 		"schema_version": "1",
-		"body":           "> ✅ Brief conformance review with enough length.",
-		"approved":       false,
-		"comments": []any{map[string]any{
-			"path": "notes.txt", "line": 2, "side": "RIGHT",
-			"body": "Brief-carrying finding.", "rigor": "walked", "brief": brief,
+		"summary":        "> ✅ Brief conformance review with enough length.",
+		"findings": []any{map[string]any{
+			"path": "notes.txt", "line": 2, "side": "RIGHT", "severity": "important",
+			"claim": "Brief-carrying finding.", "quote": "new line", "confidence": "high",
+			"rigor": "walked", "brief": brief,
 		}},
 	}
 }

@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 var fixedNow = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
@@ -34,7 +35,7 @@ func writeFile(t *testing.T, path, content string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(testenv.MaybeFindingsReview(path, content)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -122,10 +123,11 @@ func checkRecordStores(t *testing.T) {
 		}
 	}
 	wantOrder := []string{
-		"schema_version", "status", "head", "diff_sha256", "recorded_at",
+		"schema_version", "status", "head", "diff_sha256", "review_sha256", "recorded_at",
 		"findings", "open", "confidence", "security_summary", "tool_version", "prompts_hash", "model",
 		"author", "review_models",
 		"validation_hash", "validation_counts", "validation_mode", "rigor_floors",
+		"approval",
 	}
 	if strings.Join(order, ",") != strings.Join(wantOrder, ",") {
 		t.Errorf("record.json keys = %v, want %v", order, wantOrder)
@@ -162,7 +164,7 @@ func TestRunRecordRefusals(t *testing.T) {
 		}, "local-rf", "bad-review-input"},
 		{"degenerate", func(t *testing.T) {
 			t.Helper()
-			writeFile(t, ".verdict/state/local-rf/review.json", `{"body":"short"}`)
+			writeFile(t, ".verdict/state/local-rf/review.json", `{"schema_version":"1","findings":"not-array"}`)
 		}, "local-rf", "bad-review-input"},
 	}
 	for _, tc := range cases {

@@ -237,6 +237,15 @@ exit: 1
       "fetched_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "posted_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
     },
+    "approval": {
+      "reason": "open findings at-or-above important",
+      "tier": "important",
+      "gating_sigs": [
+        "c111111111111111111111111111111111111111",
+        "b222222222222222222222222222222222222222"
+      ],
+      "approved": false
+    },
     "gate": {
       "passed": false,
       "dimensions": [

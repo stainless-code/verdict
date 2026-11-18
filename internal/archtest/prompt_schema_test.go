@@ -38,7 +38,7 @@ func TestPromptRigorValuesMatchSchema(t *testing.T) {
 	if prompt := string(readProcedureFile(t, "prompts/review.md")); !strings.Contains(prompt, published) {
 		t.Errorf("prompts/review.md does not publish the rigor values as %s", published)
 	}
-	enum, ok := schemaBranch(t, "$defs", "comment", "properties", "rigor")["enum"].([]any)
+	enum, ok := schemaBranch(t, "$defs", "finding", "properties", "rigor")["enum"].([]any)
 	if !ok {
 		t.Fatal("review.schema.json rigor enum is not an array")
 	}

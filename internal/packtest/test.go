@@ -405,9 +405,13 @@ func decodeFindings(raw []byte) ([]map[string]any, string) {
 }
 
 func validateFindings(findings []map[string]any, diff string) string {
+	converted := make([]any, 0, len(findings))
+	for _, finding := range findings {
+		converted = append(converted, findingDocument(finding))
+	}
 	review, err := json.Marshal(map[string]any{
-		"schema_version": "1", "body": "The fixture exercises this pack rule against a changed file.",
-		"approved": false, "comments": findings,
+		"schema_version": "1", "findings": converted,
+		"summary": "The fixture exercises this pack rule against a changed file.",
 	})
 	if err != nil {
 		return "findings.json cannot be encoded"
@@ -420,6 +424,28 @@ func validateFindings(findings []map[string]any, diff string) string {
 		return "finding anchor is outside the diff"
 	}
 	return ""
+}
+
+// findingDocument fills the published finding fields a fixture may omit: the
+// pack author writes a finding body, and the document carries it as the claim
+// and its quote, with a middle severity and high confidence.
+func findingDocument(finding map[string]any) map[string]any {
+	item := map[string]any{}
+	for key, value := range finding {
+		if key == "body" {
+			item["claim"] = value
+			item["quote"] = value
+			continue
+		}
+		item[key] = value
+	}
+	if _, has := item["severity"]; !has {
+		item["severity"] = "important"
+	}
+	if _, has := item["confidence"]; !has {
+		item["confidence"] = "high"
+	}
+	return item
 }
 
 func reviewFindingProblem(checked recordcore.CheckResult) string {

@@ -223,6 +223,15 @@ exit: 0
           "budget_usd": 10
         }
       ]
+    },
+    "approval": {
+      "reason": "open findings at-or-above important",
+      "tier": "important",
+      "gating_sigs": [
+        "c111111111111111111111111111111111111111",
+        "b222222222222222222222222222222222222222"
+      ],
+      "approved": false
     }
   },
   "error": null

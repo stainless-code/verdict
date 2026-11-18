@@ -26,19 +26,19 @@ PR=4241
 eval_mk_bundle "$PR"
 
 eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"hi","approved":false,"comments":[]}
+{"schema_version":"1","findings":"not-array"}
 EOF
 run_review post acme/app "$PR" --dry-run --json
 if [ "$EVAL_STATUS" -ne 0 ]; then
   good "degenerate body refused (exit $EVAL_STATUS)"
 else
-  bad "degenerate body accepted (exit 0)"
+  bad "malformed findings accepted (exit 0)"
 fi
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
-if [ "$code" = "degenerate-body" ]; then
-  good "refusal names degenerate-body"
+if [ "$code" = "bad-review-input" ]; then
+  good "refusal names bad-review-input"
 else
-  bad "refusal names '$code', want degenerate-body"
+  bad "refusal names '$code', want bad-review-input"
 fi
 if [ ! -f "$EVAL_SANDBOX/.verdict/state/$PR/findings.dryrun.json" ]; then
   good "refused review wrote no findings file"

@@ -63,10 +63,9 @@ mkdir -p "$(dirname "$artifact")"
 # pass computes, so the recorded review warns about nothing.
 cat >"$artifact" <<'JSON'
 {"schema_version":"1",
- "body":"> Basis: 0 0 1 0 0 0 0\n\n### One note\n\nThis line deserves a second look.",
- "approved":false,
- "comments":[{"path":"main.go","line":6,"side":"RIGHT",
-              "body":"Nit: the removal can fail here.","severity":"informational","rigor":"walked"}]}
+ "summary":"> Basis: 0 0 1 0 0 0 0 This line deserves a second look.",
+ "findings":[{"path":"main.go","line":6,"side":"RIGHT",
+              "claim":"Nit: the removal can fail here.","quote":"defer os.RemoveAll(tmp)","confidence":"high","severity":"informational","rigor":"walked"}]}
 JSON
 if [ -n "${EVAL_AGENT_PRICE:-}" ]; then
   printf '{"schema_version":"2","est_usd":%s,"models":[{"name":"stub","input_tokens":10,"output_tokens":5}]}\n' \

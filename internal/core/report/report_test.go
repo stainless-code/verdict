@@ -11,6 +11,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 var fixedNow = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
@@ -39,7 +40,7 @@ func writeFile(t *testing.T, path, content string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+	if err := os.WriteFile(path, []byte(testenv.MaybeFindingsReview(path, content)), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -79,7 +80,7 @@ func TestRunReportData(t *testing.T) {
 	data := resp.Data.Wire()
 	wantKeys := []string{
 		"generated_at", "dir", "head", "verdict", "counts", "panel",
-		"patch", "output", "filters", "items",
+		"patch", "output", "filters", "items", "approval",
 	}
 	if strings.Join(data.Keys, ",") != strings.Join(wantKeys, ",") {
 		t.Errorf("data keys = %v, want %v", data.Keys, wantKeys)
