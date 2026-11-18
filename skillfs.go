@@ -12,6 +12,7 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"maps"
 	"slices"
 	"strings"
 )
@@ -249,14 +250,53 @@ func (e *ProcedureFileError) Error() string {
 // Unwrap exposes the underlying read failure.
 func (e *ProcedureFileError) Unwrap() error { return e.Cause }
 
+const systemPromptMD = "prompts/system.md"
+
 // reviewProcedureFiles is the review assembly's trust order, in one place.
 func reviewProcedureFiles() []string {
-	return []string{ProcedureMD, "prompts/system.md", "prompts/review.md", "prompts/diagrams.md"}
+	return []string{ProcedureMD, systemPromptMD, "prompts/review.md", "prompts/diagrams.md"}
 }
 
 // drainProcedureFiles is the drain assembly's trust order, in one place.
 func drainProcedureFiles() []string {
-	return []string{ProcedureMD, "prompts/system.md", "prompts/address-reviews.md"}
+	return []string{ProcedureMD, systemPromptMD, "prompts/address-reviews.md"}
+}
+
+// taskFiles is the single task vocabulary: each name maps to its assembly in
+// the order the Procedure's mode router trusts the files.
+var taskFiles = map[string]func() []string{
+	"address-reviews":    drainProcedureFiles,
+	"fix-ci":             func() []string { return genericTaskFiles("fix-ci") },
+	"incremental-review": func() []string { return genericTaskFiles("incremental-review") },
+	"review":             reviewProcedureFiles,
+	"validate":           func() []string { return genericTaskFiles("validate") },
+}
+
+func genericTaskFiles(task string) []string {
+	return []string{ProcedureMD, systemPromptMD, "prompts/" + task + ".md"}
+}
+
+// Tasks lists the Procedure tasks this binary serves, sorted by name.
+func Tasks() []string { return slices.Sorted(maps.Keys(taskFiles)) }
+
+// UnknownTaskError names a task this binary does not serve. Callers inspect it
+// with [errors.As].
+type UnknownTaskError struct {
+	Task string
+}
+
+// Error reports the unknown task name.
+func (e *UnknownTaskError) Error() string { return "unknown task: " + e.Task }
+
+// TaskProcedure returns one task's Procedure, assembled from the embedded
+// payload in the same trust order the bundle uses. It never reads the
+// filesystem. An unknown task returns no bytes and an [UnknownTaskError].
+func TaskProcedure(task string) ([]byte, error) {
+	files, ok := taskFiles[task]
+	if !ok {
+		return nil, &UnknownTaskError{Task: task}
+	}
+	return assembleProcedure(files())
 }
 
 // assembleProcedure concatenates the named embedded files in order. A missing
@@ -278,8 +318,8 @@ func assembleProcedure(files []string) ([]byte, error) {
 // PROCEDURE.md, prompts/system.md, prompts/review.md, and prompts/diagrams.md,
 // concatenated in that trust order. It never reads the filesystem. A missing
 // file returns no bytes and a ProcedureFileError; fetch and --show-prompts
-// refuse the whole run as prompt-dump-failed. PR 3's MCP prompts reuse this
-// public contract.
+// refuse the whole run as prompt-dump-failed. MCP prompts reuse this public
+// contract.
 func ReviewProcedure() ([]byte, error) {
 	return assembleProcedure(reviewProcedureFiles())
 }
@@ -288,8 +328,7 @@ func ReviewProcedure() ([]byte, error) {
 // PROCEDURE.md, prompts/system.md, and prompts/address-reviews.md, concatenated
 // in that trust order. It never reads the filesystem. A missing file returns
 // no bytes and a ProcedureFileError; the drain bundle writer refuses rather
-// than publishing a partial Procedure. PR 3's MCP prompts reuse this public
-// contract.
+// than publishing a partial Procedure. MCP prompts reuse this public contract.
 func DrainProcedure() ([]byte, error) {
 	return assembleProcedure(drainProcedureFiles())
 }

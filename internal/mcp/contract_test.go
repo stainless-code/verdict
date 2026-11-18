@@ -122,6 +122,28 @@ func TestSurfaceSets(t *testing.T) {
 	}
 }
 
+// TestInitializeCapabilitiesSnapshot pins the three advertised surfaces.
+func TestInitializeCapabilitiesSnapshot(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	frames := serve(t, &cfg,
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`)
+	var init initializeResult
+	if err := json.Unmarshal(frames["1"].Result, &init); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := json.Marshal(init.Capabilities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const want = `{"prompts":{"listChanged":false},"resources":{"listChanged":false,"subscribe":false},"tools":{"listChanged":false}}`
+	if string(raw) != want {
+		t.Fatalf("capabilities = %s, want %s", raw, want)
+	}
+}
+
+const procedureInstruction = "For the Procedure, use the review prompt or read verdict://skill/PROCEDURE.md."
+
 // TestInitializeInstructions proves every client receives the short doctrine
 // block, and that the operator boundary matches the surface.
 //
@@ -137,12 +159,12 @@ func TestInitializeInstructions(t *testing.T) {
 	}{
 		{
 			name: "agent",
-			want: []string{"fetch", "review.json", "post", "triage[]", "hint", "not on this surface"},
+			want: []string{"fetch", "review.json", "post", "triage[]", "hint", "not on this surface", procedureInstruction},
 		},
 		{
 			name:     "operator",
 			operator: true,
-			want:     []string{"fetch", "post", "triage", "runs with --operator"},
+			want:     []string{"fetch", "post", "triage", "runs with --operator", procedureInstruction},
 			absent:   []string{"not on this surface"},
 		},
 	}

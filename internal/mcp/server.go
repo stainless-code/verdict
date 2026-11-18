@@ -39,12 +39,15 @@ const (
 	codeInvalidRequest  = -32600
 	codeMethodNotFound  = -32601
 	codeInvalidParams   = -32602
+	codeInternalError   = -32603
 	contentTypeText     = "text"
 	refusalTextLines    = 3
 	lineBreak           = "\n"
 	serverName          = "verdict"
 	scannerInitialBytes = 64 * 1024
 )
+
+const capabilityListChanged = "listChanged"
 
 // supportedProtocols are the MCP revisions the server can speak.
 var supportedProtocols = []string{"2024-11-05", "2025-03-26", latestProtocol}
@@ -251,12 +254,28 @@ func (s *Server) dispatch(ctx context.Context, req *rpcRequest) {
 		s.writeResult(req.ID, s.listTools())
 	case methodToolsCall:
 		s.handleToolsCall(ctx, req)
+	case methodPromptsList, methodPromptsGet, methodResourcesList, methodResourcesRead:
+		s.handleProcedure(ctx, req)
 	case methodCancelled:
 		s.handleCancelled(req)
 	default:
 		if len(req.ID) > 0 {
 			s.writeError(req.ID, codeMethodNotFound, "method not found: "+req.Method)
 		}
+	}
+}
+
+// handleProcedure routes the read-only prompt and resource methods.
+func (s *Server) handleProcedure(ctx context.Context, req *rpcRequest) {
+	switch req.Method {
+	case methodPromptsList:
+		s.handlePromptsList(req)
+	case methodPromptsGet:
+		s.handlePromptsGet(req)
+	case methodResourcesList:
+		s.handleResourcesList(ctx, req)
+	case methodResourcesRead:
+		s.handleResourcesRead(ctx, req)
 	}
 }
 
@@ -271,7 +290,11 @@ func (s *Server) handleInitialize(req *rpcRequest) {
 	}
 	s.writeResult(req.ID, initializeResult{
 		ProtocolVersion: negotiate(params.ProtocolVersion),
-		Capabilities:    map[string]any{"tools": map[string]any{"listChanged": false}},
+		Capabilities: map[string]any{
+			"prompts":   map[string]any{capabilityListChanged: false},
+			"resources": map[string]any{capabilityListChanged: false, "subscribe": false},
+			"tools":     map[string]any{capabilityListChanged: false},
+		},
 		ServerInfo: serverInfo{
 			Name:         serverName,
 			Version:      s.cfg.Version,
@@ -284,6 +307,7 @@ func (s *Server) handleInitialize(req *rpcRequest) {
 func (s *Server) instructions() string {
 	lines := []string{
 		"Review one pull request at a time: fetch, read .verdict/state/<pr>, write exactly one review.json, then post.",
+		"For the Procedure, use the review prompt or read verdict://skill/PROCEDURE.md.",
 		"Use report, next, or show to rank and inspect findings; refusals carry a hint, so follow it.",
 		"post is the only terminal write and never writes a review note; dryRun previews it.",
 		"Never call triage while reviewing a PR: propose status changes through triage[] in review.json.",

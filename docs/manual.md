@@ -1678,6 +1678,17 @@ context. A malformed call is a JSON-RPC `-32602` error, not a refusal. Human
 progress and warnings go to stderr (or MCP notifications), never stdout:
 stdout is the protocol channel.
 
+`prompts/list` offers five task prompts (`address-reviews`, `fix-ci`,
+`incremental-review`, `review`, `validate`). `prompts/get` takes the
+prompt name and no arguments, and returns that task's Procedure assembled by
+the binary from its embedded payload. `resources/list` serves every payload
+file at `verdict://skill/<path>` —
+`resources/read` returns text byte-identical to `verdict skill show`.
+Prompts and resources are read-only in every server mode, including
+`--read-only` and `--operator`, and `skill` remains a distribution surface,
+never a tool. `initialize` advertises both capabilities
+and points hosts at the `review` prompt or `verdict://skill/PROCEDURE.md`.
+
 #### Host config
 
 `verdict mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>`
