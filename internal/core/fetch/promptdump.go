@@ -7,11 +7,11 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
 
+	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
@@ -115,21 +115,18 @@ func sortedManifestChunks(m map[string]any) []map[string]any {
 	return out
 }
 
-// renderPromptDump assembles the trusted prompt files,
-// the trust-boundary prologue naming this run's nonce, then every bundle
+// renderPromptDump writes the embedded review Procedure, the
+// trust-boundary prologue naming this run's nonce, then every bundle
 // file in its own per-run nonce fence. Missing bundle files stay silent;
-// a missing sibling prompt warns and the dump proceeds without it; a
+// a missing embedded sibling warns and the dump proceeds without it; a
 // missing preamble refuses typed.
 func renderPromptDump(ctx *fetchRunCtx) (string, error) {
 	var sb strings.Builder
 	meta, metaLabel := dumpMeta(ctx.dir)
-	// Trusted prompt files fail loudly, never silently: without the
-	// preamble a dump is unsafe, so its absence refuses typed
-	// (prompt-dump-failed); a missing sibling warns and proceeds. The
-	// dump reads the checkout-relative prompt inputs from the working
-	// directory (never the binary root —
-	// provenance hashing alone uses the root).
-	if ref := dumpPrompts(ctx, &sb); ref != nil {
+	// The Procedure comes from this binary, never the working directory:
+	// without its preamble a dump is unsafe, so a missing preamble refuses
+	// typed (prompt-dump-failed), while a missing sibling warns and proceeds.
+	if ref := dumpPrompts(ctx, &sb, skillfs.Read); ref != nil {
 		return "", ref
 	}
 	nonce := promptNonce()
@@ -159,42 +156,49 @@ func dumpMeta(dir string) (meta, label string) {
 	return meta, label
 }
 
-// dumpPrompts owns the trusted preamble: the prompt files concatenate,
-// failing typed without the system preamble.
-func dumpPrompts(ctx *fetchRunCtx, sb *strings.Builder) *core.RefusalError {
-	for _, f := range []string{"PROCEDURE.md", "prompts/system.md", "prompts/review.md", "prompts/diagrams.md"} {
-		raw, err := readTrustedPrompt(f)
-		if err != nil {
-			if f == "prompts/system.md" {
-				return &core.RefusalError{
-					Code: "prompt-dump-failed",
-					Message: "prompts/system.md is missing — prompt dump refused: the untrusted-data preamble " +
-						"lives there, so a dump without it is unsafe",
-				}
-			}
-			ctx.runner.Warn(fmt.Sprintf("prompt file '%s' is missing — prompt dump omits it", f))
-			continue
-		}
-		sb.Write(raw)
-	}
-	return nil
+// reviewProcedure returns the task-scoped review Procedure served by this
+// binary: the Procedure index, the system preamble, the review instructions,
+// and the diagram instructions, concatenated in that trust order.
+func reviewProcedure() ([]byte, error) {
+	raw, _, err := assembleReviewProcedure(skillfs.Read, reviewProcedureFiles())
+	return raw, err
 }
 
-// checkoutProcedureDir is where a source checkout keeps the Procedure payload;
-// skillfs.ProcedureDir names the same path.
-const checkoutProcedureDir = "procedure"
+// assembleReviewProcedure concatenates the named embedded files in order and
+// names the file whose read failed, so the caller can refuse on a missing
+// preamble. The reader is a seam for the missing-preamble refusal.
+func assembleReviewProcedure(read func(string) ([]byte, error), files []string) ([]byte, string, error) {
+	var out []byte
+	for _, name := range files {
+		raw, err := read(name)
+		if err != nil {
+			return out, name, err
+		}
+		out = append(out, raw...)
+	}
+	return out, "", nil
+}
 
-// readTrustedPrompt reads one prompt file relative to the current directory:
-// flat in a bundle, else under the checkout's procedure directory.
-func readTrustedPrompt(name string) ([]byte, error) {
-	raw, err := os.ReadFile(name)
-	if err == nil {
-		return raw, nil
+func reviewProcedureFiles() []string {
+	return []string{skillfs.ProcedureMD, "prompts/system.md", "prompts/review.md", "prompts/diagrams.md"}
+}
+
+// dumpPrompts writes the embedded assembly, refusing typed without the
+// system preamble and warning when a sibling payload file is missing.
+func dumpPrompts(ctx *fetchRunCtx, sb *strings.Builder, read func(string) ([]byte, error)) *core.RefusalError {
+	raw, failed, err := assembleReviewProcedure(read, reviewProcedureFiles())
+	if err != nil {
+		if failed == "prompts/system.md" {
+			return &core.RefusalError{
+				Code: "prompt-dump-failed",
+				Message: "prompts/system.md is missing — prompt dump refused: the untrusted-data preamble " +
+					"lives there, so a dump without it is unsafe",
+			}
+		}
+		ctx.runner.Warn(fmt.Sprintf("prompt file '%s' is missing — prompt dump omits it", failed))
 	}
-	if alt, altErr := os.ReadFile(filepath.Join(filepath.FromSlash(checkoutProcedureDir), name)); altErr == nil {
-		return alt, nil
-	}
-	return nil, err //nolint:wrapcheck // the caller only reports the file as missing
+	sb.Write(raw)
+	return nil
 }
 
 // trustPreamble renders the trusted tool-generated boundary: the
