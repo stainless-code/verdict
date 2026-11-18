@@ -94,8 +94,16 @@ func CostModel(dir string) string {
 }
 
 // BundleProvenance emits the compact provenance triple for a bundle dir.
+// tool_version comes from the posting binary (a linked release version, else
+// root/package.json); prompts_hash prefers the bundle's recorded
+// provenance.json value — the Procedure the agent got — and falls back to the
+// running binary's embedded digest only when the file or field is absent;
+// model comes from the bundle's latest cost record.
 func BundleProvenance(root, dir string) string {
 	ver, hash, model := Triple(root, dir)
+	if recorded := readcommon.JSONRaw(dir+"/"+ReceiptFile, "prompts_hash"); recorded != "" {
+		hash = recorded
+	}
 	var m any
 	if model != "" {
 		m = model

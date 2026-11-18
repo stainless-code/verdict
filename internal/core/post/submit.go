@@ -14,7 +14,6 @@ import (
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
-	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/retry"
 )
 
@@ -589,11 +588,10 @@ func stampSecretOverride(st *state, receipt *core.Post) {
 	}
 }
 
-// stampProvenance keeps tool_version from the posting binary, takes
-// prompts_hash from the bundle's recorded provenance.json — the Procedure the
-// agent actually got — and falls back to the embedded digest only when that
-// file or field is absent. The model comes from the posting binary's triple.
-// A decode failure is sealed, never silently dropped.
+// stampProvenance copies the bundle triple onto the receipt: tool_version stays
+// the posting binary's version, prompts_hash prefers the bundle's recorded
+// Procedure hash, and model comes from the bundle's latest cost record. A
+// decode failure is sealed, never silently dropped.
 func stampProvenance(st *state, receipt *core.Post) error {
 	prov, err := jq.DecodeOrdered([]byte(provenance.BundleProvenance(st.req.RootPath(), st.dir)))
 	if err != nil {
@@ -606,9 +604,6 @@ func stampProvenance(st *state, receipt *core.Post) error {
 	receipt.ToolVersion, receipt.PromptsHash = orderedString(provObj, "tool_version"), orderedString(provObj, "prompts_hash")
 	if model := orderedStringPtr(provObj, "model"); model != nil {
 		receipt.Model = model
-	}
-	if recorded := readcommon.JSONRaw(st.dir+"/"+provenance.ReceiptFile, "prompts_hash"); recorded != "" {
-		receipt.PromptsHash = recorded
 	}
 	return nil
 }

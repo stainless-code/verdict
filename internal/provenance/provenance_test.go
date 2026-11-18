@@ -312,3 +312,35 @@ func TestPlainBasisBelowConfidence(t *testing.T) {
 		t.Fatalf("plain Basis = %q, %v; want unchanged body without warning", got, problem)
 	}
 }
+
+const recordedBundlePromptsHash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+// TestBundleProvenancePrefersRecordedPromptsHash pins the single source of
+// truth: the triple names the Procedure the agent got when the bundle recorded
+// it, and only a legacy bundle falls back to the running binary's digest.
+func TestBundleProvenancePrefersRecordedPromptsHash(t *testing.T) {
+	dir := writeBundle(t, nil)
+	assertBundlePromptsHash(t, dir, provenance.PromptsHash(), "bundle without provenance.json")
+
+	if err := os.WriteFile(filepath.Join(dir, provenance.ReceiptFile),
+		[]byte(`{"schema_version":"1","prompts_hash":"`+recordedBundlePromptsHash+`"}`+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	assertBundlePromptsHash(t, dir, recordedBundlePromptsHash, "bundle with a recorded prompts_hash")
+}
+
+func assertBundlePromptsHash(t *testing.T, dir, want, label string) {
+	t.Helper()
+	doc, err := jq.DecodeOrdered([]byte(provenance.BundleProvenance(t.TempDir(), dir)))
+	if err != nil {
+		t.Fatalf("%s: decode triple: %v", label, err)
+	}
+	obj, ok := doc.(*jq.Obj)
+	if !ok || obj == nil {
+		t.Fatalf("%s: triple is not an object", label)
+	}
+	v, _ := obj.Get("prompts_hash")
+	if got := jq.StrOf(v); got != want {
+		t.Fatalf("%s: prompts_hash = %q, want %q", label, got, want)
+	}
+}
