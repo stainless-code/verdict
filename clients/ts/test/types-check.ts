@@ -15,6 +15,7 @@ import {
   type HandoffData,
   type HandoffRow,
   type InitData,
+  type JournalData,
   type LearnData,
   type NextData,
   type PostData,
@@ -78,6 +79,7 @@ type Verb =
   | "learn"
   | "pack"
   | "init"
+  | "journal"
   | "config"
   | "gate";
 
@@ -92,6 +94,12 @@ export async function typeChecks(): Promise<void> {
     "acme/app",
     "4243",
   ]);
+  const journal: Envelope<JournalData> = await client.journal([
+    "acme/app",
+    "4243",
+  ]);
+  const journalBundle: string = journal.data.bundle;
+  void journalBundle;
   const open: number = report.data.verdict.open;
   const sig: string = report.data.items[0]?.sig ?? "";
   void open;

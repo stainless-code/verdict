@@ -1170,8 +1170,8 @@ type JournalResponse struct {
 	Human []string
 }
 
-// Journal reads a bundle's journal.jsonl without taking a lock or writing any
-// files.
+// Journal reads a bundle's external invocation journal without taking a lock
+// or writing any files.
 func (c *Client) Journal(ctx context.Context, req *JournalRequest) (*JournalResponse, error) {
 	rr, err := c.request(ctx, req.Repo, req.PR)
 	if err != nil {

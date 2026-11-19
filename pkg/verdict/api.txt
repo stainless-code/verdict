@@ -139,8 +139,8 @@ func (c *Client) Init(ctx context.Context, req *InitRequest) (*InitResponse, err
     Init scaffolds .verdict control files from a style preset.
 
 func (c *Client) Journal(ctx context.Context, req *JournalRequest) (*JournalResponse, error)
-    Journal reads a bundle's journal.jsonl without taking a lock or writing any
-    files.
+    Journal reads a bundle's external invocation journal without taking a lock
+    or writing any files.
 
 func (c *Client) Learn(ctx context.Context, req *LearnRequest) (*Outcome, error)
     Learn reads or updates the local structured knowledge base.
