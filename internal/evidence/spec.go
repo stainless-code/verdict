@@ -22,7 +22,6 @@ const (
 	ReasonSpecEvidenceMismatch = "spec-evidence-mismatch"
 
 	minCodeFenceLen = 3
-	minTablePipes   = 2
 	tablePipe       = "|"
 	tableJoinSep    = " | "
 	idSeparator     = ":"
@@ -221,13 +220,18 @@ func verifyOneSpecCheck(idx *DiffIndex, byText map[string]SpecItem, index int, c
 		base.Valid = true
 		return base
 	}
-	if IsTestOutputPath(chk.EvidencePath) {
+	df, pathReason := idx.File(chk.EvidencePath)
+	if pathReason != "" {
 		base.Reason = ReasonSpecEvidenceNotCode
+		base.QuoteReason = pathReason
 		return base
 	}
-	if !idx.HasPath(chk.EvidencePath) {
+	// A8 reads the path the bundle resolves, not just the one the check
+	// spells: a rename onto test code is test output even when the cited
+	// (OLD) name looks like source.
+	if IsTestOutputPath(chk.EvidencePath) || IsTestOutputPath(df.Canonical) || IsTestOutputPath(df.OldPath) {
 		base.Reason = ReasonSpecEvidenceNotCode
-		base.QuoteReason = ReasonPathNotInBundle
+		base.QuoteReason = ReasonSpecEvidenceNotCode
 		return base
 	}
 	qr := MatchQuote(idx, QuoteRequest{
@@ -281,38 +285,80 @@ func enumerateSpecBlock(blk SpecBlock, seen map[string]struct{}, items []SpecIte
 		return items
 	}
 	lines := strings.Split(strings.TrimSuffix(cleaned, diffNewline), diffNewline)
-	var fence specFence
+	var scan specScan
 	for i := 0; i < len(lines); {
-		text, nextIdx := nextSpecItem(lines, i, &fence)
+		text, nextIdx := scan.item(lines, i)
 		items = appendSpecItem(items, seen, blk.Index, i+1, text)
 		i = nextIdx
 	}
 	return items
 }
 
-// nextSpecItem parses the item beginning at lines[i], if any, and returns the
-// normalized text together with the next line index to scan.
-func nextSpecItem(lines []string, i int, fence *specFence) (string, int) {
+// specScan carries the block's Markdown state across lines: the open code
+// fence and whether a GFM table started by a header plus separator row is
+// still collecting body rows.
+type specScan struct {
+	fence   specFence
+	inTable bool
+}
+
+// item parses the item beginning at lines[i], if any, and returns the
+// normalized text together with the next line index to scan. A blockquote line
+// is never an item — not a bullet, a table row, or a fence boundary — because
+// quoted text is the agent quoting someone else's specification.
+func (s *specScan) item(lines []string, i int) (string, int) {
 	ln := lines[i]
-	if fence.step(ln) {
+	if isBlockquoteLine(ln) {
 		return "", i + 1
+	}
+	if text, next, done := s.table(lines, i); done {
+		return text, next
 	}
 	if isBulletItem(ln) || isNumberedItem(ln) {
 		return collectListItem(lines, i)
 	}
-	if isTableBodyRow(lines, i) {
-		return formatTableRow(ln), i + 1
-	}
 	return "", i + 1
 }
 
-// isTableBodyRow reports whether lines[i] is a table row that is neither a
-// separator nor a header row followed by a separator.
-func isTableBodyRow(lines []string, i int) bool {
-	if !isTableRow(lines[i]) {
+// table advances the GFM table state for lines[i]: a body row inside a table,
+// the header plus separator that opens one, or the line that closes it. done
+// reports whether the line belonged to the table machinery at all.
+func (s *specScan) table(lines []string, i int) (string, int, bool) {
+	ln := lines[i]
+	if s.fence.step(ln) {
+		s.inTable = false
+		return "", i + 1, true
+	}
+	if s.inTable && isTableBodyRow(ln) {
+		return formatTableRow(ln), i + 1, true
+	}
+	s.inTable = isTableHeader(lines, i)
+	if s.inTable {
+		return "", i + 2, true
+	}
+	return "", i, false
+}
+
+// isBlockquoteLine reports whether ln belongs to a blockquote: `>` after up to
+// three spaces of indentation, which is where Markdown allows it.
+func isBlockquoteLine(ln string) bool {
+	return strings.HasPrefix(strings.TrimLeft(ln, asciiSpace), ">")
+}
+
+// isTableHeader reports whether lines[i] opens a GFM table: a row carrying a
+// pipe, immediately followed by the separator row. Without that separator the
+// pipes are prose, and a bare `a|b|c` line is not a table row.
+func isTableHeader(lines []string, i int) bool {
+	if !strings.Contains(lines[i], tablePipe) {
 		return false
 	}
-	return i+1 >= len(lines) || !isTableSeparator(lines[i+1])
+	return i+1 < len(lines) && isTableSeparator(lines[i+1])
+}
+
+// isTableBodyRow reports whether ln can be a GFM table body row: it carries a
+// pipe and is not the separator row itself.
+func isTableBodyRow(ln string) bool {
+	return strings.Contains(ln, tablePipe) && !isTableSeparator(ln)
 }
 
 // step updates fence state for ln and reports whether ln is a fence boundary
@@ -375,7 +421,7 @@ func isContinuationLine(ln string) bool {
 	if _, _, ok := openingFence(ln); ok {
 		return false
 	}
-	return !isBulletItem(ln) && !isNumberedItem(ln) && !isTableRow(ln) && !isTableSeparator(ln)
+	return !isBulletItem(ln) && !isNumberedItem(ln) && !isTableSeparator(ln)
 }
 
 // openingFence parses a Markdown fenced-code opening line (3+ backticks or
@@ -456,12 +502,6 @@ func hasSpaceThenContent(s string) bool {
 	}
 	afterSpace := strings.TrimLeftFunc(s, unicode.IsSpace)
 	return len(afterSpace) < len(s) && afterSpace != ""
-}
-
-// isTableRow reports whether ln has at least two pipes and is not a separator
-// row.
-func isTableRow(ln string) bool {
-	return strings.Count(ln, tablePipe) >= minTablePipes && !isTableSeparator(ln)
 }
 
 // isTableSeparator matches a Markdown table alignment separator row

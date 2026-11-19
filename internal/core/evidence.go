@@ -13,6 +13,7 @@ const CodeReviewInsufficient = "review-insufficient"
 // other non-empty quote failure reason maps to ProblemCodeQuoteNotCheckable.
 const (
 	quoteReasonTextDiffers       = "text-differs"
+	quoteReasonRangeInvalid      = "range-invalid"
 	quoteReasonDeletedLine       = "deleted-line"
 	quoteReasonRangeCrossesHunks = "range-crosses-hunks"
 )
@@ -76,7 +77,7 @@ func QuoteProblemCode(reason string) string {
 	switch reason {
 	case "":
 		return ""
-	case quoteReasonTextDiffers, quoteReasonDeletedLine, quoteReasonRangeCrossesHunks:
+	case quoteReasonTextDiffers, quoteReasonDeletedLine, quoteReasonRangeCrossesHunks, quoteReasonRangeInvalid:
 		return ProblemCodeQuoteMismatch
 	default:
 		return ProblemCodeQuoteNotCheckable

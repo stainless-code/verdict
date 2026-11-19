@@ -264,11 +264,13 @@ func usageText() string {
 		"    findings at-or-above a tier (--max-severity), a completed post for the fetched\n" +
 		"    HEAD (--require-head), the stored diff-coverage receipt for that HEAD\n" +
 		"    (--coverage, default require), live unresolved threads (--live, default auto),\n" +
-		"    and the captured compliance verdict when the bundle carries a typed policy.\n" +
+		"    the captured compliance verdict when the bundle carries a typed policy, and\n" +
+		"    the evidence receipt for the gated HEAD (always on: no gate passes without it).\n" +
 		"    At least one dimension is required; --live and --coverage alone are not.\n" +
 		"    Exits 0 pass, 1 gate failed or unknown, 2 usage, 3 tool error; a gate failure\n" +
 		"    carries data.passed false with error null. data.dimensions[] lists findings,\n" +
-		"    head, coverage, live_threads, compliance with id, status, detail, count.\n" +
+		"    head, coverage, live_threads, compliance, risk, evidence with id, status,\n" +
+		"    detail, count.\n" +
 		"    --coverage require fails on an absent or partial attestation for the gated\n" +
 		"    HEAD; --coverage warn reports the same and never fails the gate. --live skip\n" +
 		"    makes zero network calls; auto keeps the fail-open skip. Never posts,\n" +

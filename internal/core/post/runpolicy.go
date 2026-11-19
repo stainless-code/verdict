@@ -7,6 +7,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/approval"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -86,14 +87,16 @@ func blockingGroup(blocker *config.BlockingFinding) string {
 	return "no plan group (root clauses)"
 }
 
-// policyFindings adapts the stored merge entries to the compliance
-// view: only entries carrying the finding shape participate, and the
-// gate reads status exactly as stored.
+// policyFindings adapts the stored merge entries to the compliance view: only
+// entries carrying the finding shape whose quote verifies participate, and the
+// gate reads status exactly as stored. A finding the evidence pass could not
+// verify never blocks a post; the approval decision is where an unverified
+// blocker is refused, as an insufficient decision.
 func policyFindings(entries []any) []config.FindingView {
 	var out []config.FindingView
 	for _, entry := range entries {
 		m, ok := entry.(*jq.Obj)
-		if !ok || m == nil {
+		if !ok || m == nil || !approval.Verified(m) {
 			continue
 		}
 		path, _ := m.Get("path")
@@ -181,6 +184,23 @@ func conflictGroups(conflicts []config.PrivacyConflict) (map[string]bool, bool) 
 		failed[conflicts[i].Group] = true
 	}
 	return failed, root
+}
+
+// evidenceGate refuses a binding approval the evidence decision withheld. An
+// insufficient decision means the evidence that would justify the approval is
+// missing, and --force cannot supply evidence, so the refusal is a trusted one
+// rather than one the operator can waive.
+func (st *state) evidenceGate() *core.RefusalError {
+	if st.merged.Approval == nil || !st.merged.Approval.Insufficient {
+		return nil
+	}
+	// The decision's reason carries the code it was recorded under, and the
+	// envelope prints that code again: trim it here so the refusal names
+	// review-insufficient once.
+	return &core.RefusalError{
+		Code:    core.CodeReviewInsufficient,
+		Message: strings.TrimPrefix(st.merged.Approval.Reason, core.CodeReviewInsufficient+": "),
+	}
 }
 
 // privacyConflictGate refuses a binding positive approval whose required

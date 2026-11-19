@@ -183,7 +183,7 @@ func warnEvidence(st *state) {
 	}
 }
 
-// gateEvidenceCheck evaluates the always-on evidence dimension under --check.
+// gateEvidenceCheck evaluates the evidence dimension every gate mode carries.
 // Pass requires a current-head receipt with insufficient=false; insufficient
 // fails; missing, stale, or unreadable reads unknown (which fails the gate).
 func gateEvidenceCheck(st *state) gateCheck {

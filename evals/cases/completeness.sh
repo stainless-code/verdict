@@ -209,6 +209,10 @@ printf '[]' > "$EVAL_SANDBOX/.verdict/state/local-compwork/findings.json"
 jq -n --arg h "$HEAD_D" \
   '{schema_version:"1",review:{id:7},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
   > "$EVAL_SANDBOX/.verdict/state/local-compwork/post.json"
+# The bundle carries no diff, so its receipt attests the empty change it
+# reviews; a gate mode that graded the head without one would be grading a
+# review nobody evidenced.
+eval_write_record_evidence local-compwork
 run_review report acme/app local-compwork --completeness
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "local bundle matches on source.json head_sha"

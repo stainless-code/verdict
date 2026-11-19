@@ -2,6 +2,7 @@ package evidence_test
 
 import (
 	"slices"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/evidence"
@@ -144,6 +145,11 @@ func TestIndexDiffAmbiguousPathAndDrift(t *testing.T) {
 	if !evidence.HasHunkIndexDrift([]byte(diff), staleSnapshot) {
 		t.Fatal("HasHunkIndexDrift = false for stale snapshot, want true")
 	}
+	// The same diff written CRLF is the same diff: its snapshot compares
+	// equal once the line endings are normalized.
+	if evidence.HasHunkIndexDrift([]byte(crlfDiff(diff)), matchingSnapshot) {
+		t.Fatal("HasHunkIndexDrift = true for a CRLF diff with a matching snapshot, want false")
+	}
 }
 
 func requireFile(t *testing.T, idx *evidence.DiffIndex, path string) *evidence.DiffFile {
@@ -183,4 +189,61 @@ func assertLineMap(t *testing.T, label string, got, want map[int]string) {
 			t.Fatalf("%s[%d] = (%q, %v), want %q", label, k, gotV, ok, wantV)
 		}
 	}
+}
+
+// crlfDiff is the LF fixture above with every line ending written CRLF, the
+// way a Windows checkout hands the bytes to full.diff.
+func crlfDiff(lf string) string {
+	return strings.ReplaceAll(lf, "\n", "\r\n")
+}
+
+// TestIndexDiffCRLFMatchesLF proves R2: normalizing at the index entry keeps
+// the receipt keys and the quotable line text identical to the LF diff, so a
+// CRLF bundle is neither unkeyable nor quoted differently.
+func TestIndexDiffCRLFMatchesLF(t *testing.T) {
+	t.Parallel()
+	lf := "diff --git a/pkg/calc.go b/pkg/calc.go\n" +
+		"--- a/pkg/calc.go\n" +
+		"+++ b/pkg/calc.go\n" +
+		"@@ -10,3 +10,3 @@\n" +
+		" \t// context\n" +
+		"-\treturn a - b\n" +
+		"+\treturn a + b\n" +
+		" }\n" +
+		"diff --git a/notes.txt b/notes.txt\n" +
+		"--- a/notes.txt\n" +
+		"+++ b/notes.txt\n" +
+		"@@ -1,1 +1,1 @@\n" +
+		"-old line\n" +
+		"+new line\n"
+
+	for _, tc := range []struct{ name, diff string }{
+		{name: "lf", diff: lf},
+		{name: "crlf", diff: crlfDiff(lf)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertCRLFIndexMatches(t, evidence.IndexDiff([]byte(tc.diff)))
+		})
+	}
+}
+
+// assertCRLFIndexMatches pins one index against the literals the LF diff
+// produces, so a CRLF bundle is graded by the same keys and line text.
+func assertCRLFIndexMatches(t *testing.T, idx *evidence.DiffIndex) {
+	t.Helper()
+	want := []string{"notes.txt\tNEW\t1\t1", "pkg/calc.go\tNEW\t10\t12"}
+	if got := idx.ReceiptKeys(nil); !slices.Equal(got, want) {
+		t.Fatalf("ReceiptKeys = %q, want %q", got, want)
+	}
+	df, reason := idx.File("pkg/calc.go")
+	if reason != "" {
+		t.Fatalf("File(pkg/calc.go) reason = %q, want a match", reason)
+	}
+	if got := df.NewLines[11]; got != "\treturn a + b" {
+		t.Fatalf("NewLines[11] = %q, want the unquoted line text", got)
+	}
+	assertQuoteOutcome(t, idx, evidence.QuoteRequest{
+		Path: "pkg/calc.go", Line: 11, Quote: "\treturn a + b",
+	}, "verified", "")
 }

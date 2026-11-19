@@ -227,3 +227,51 @@ func TestStoredInsufficientDecisionRelandsBody(t *testing.T) {
 		t.Errorf("event = %q, want a comment while the stored decision is insufficient", resp.Data.Event)
 	}
 }
+
+// TestBindingApprovalRefusesInsufficientDecision proves R8: a decision the
+// evidence checks withheld refuses a bound approval with review-insufficient,
+// and --force cannot waive it because force never supplies evidence.
+func TestBindingApprovalRefusesInsufficientDecision(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	postBundle(t, receiptlessReview)
+	cmdr := postCommander(t)
+	var warnings, human []string
+	req := postTestReq(cmdr, core.PostFlags{
+		Approve: "true", Bind: true, Force: true, ReviewFile: ".verdict/state/7/review.json",
+	}, &warnings, &human)
+	_, ref := Run(context.Background(), req)
+	if ref == nil || ref.Code != core.CodeReviewInsufficient {
+		t.Fatalf("refusal = %+v, want review-insufficient", ref)
+	}
+	if strings.Count(ref.Error(), core.CodeReviewInsufficient) != 1 {
+		t.Errorf("refusal = %q, want the code to appear once", ref.Error())
+	}
+	if !strings.Contains(ref.Message, "has no matched receipt") {
+		t.Errorf("message = %q, want the gap that withheld the decision", ref.Message)
+	}
+	if posted := postedPayloads(t, cmdr); len(posted) != 0 {
+		t.Errorf("posted %d review(s), want none for a refused approval", len(posted))
+	}
+}
+
+// TestStoredInsufficientDecisionRefusesBindingApproval proves the stored
+// decision wins over a merge that would approve: a record whose evidence was
+// insufficient refuses the bound approval it never granted.
+func TestStoredInsufficientDecisionRefusesBindingApproval(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	writeRecordedBundle(t, ".verdict/state/7", insufficientDecision)
+	cmdr := postCommander(t)
+	var warnings, human []string
+	req := postTestReq(cmdr, core.PostFlags{
+		Approve: "true", Bind: true, Force: true, ReviewFile: ".verdict/state/7/review.json",
+	}, &warnings, &human)
+	_, ref := Run(context.Background(), req)
+	if ref == nil || ref.Code != core.CodeReviewInsufficient {
+		t.Fatalf("refusal = %+v, want review-insufficient for the stored decision", ref)
+	}
+	if posted := postedPayloads(t, cmdr); len(posted) != 0 {
+		t.Errorf("posted %d review(s), want none for a refused approval", len(posted))
+	}
+}

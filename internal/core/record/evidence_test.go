@@ -525,3 +525,62 @@ func readStore(t *testing.T, path string) string {
 	}
 	return string(raw)
 }
+
+// unkeyableDiff changes one file whose path carries a tab, the byte a
+// hunks.tsv row cannot hold: the diff has hunks, and none of them can be keyed.
+const unkeyableDiff = "diff --git \"a/odd\\tname.txt\" \"b/odd\\tname.txt\"\n" +
+	"--- \"a/odd\\tname.txt\"\n+++ \"b/odd\\tname.txt\"\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n"
+
+// TestRecordEvidenceUnkeyableDiffIsGap proves R2: a diff whose hunks cannot be
+// keyed is an evidence gap, never vacuously complete coverage of zero hunks.
+func TestRecordEvidenceUnkeyableDiffIsGap(t *testing.T) {
+	review := cleanEvidenceReview
+	dir := evidenceBundle(t, review, nil)
+	writeFile(t, dir+"/full.diff", unkeyableDiff)
+
+	resp, ref := recordEvidence(t, false)
+	if resp == nil {
+		t.Fatalf("record refusal = %+v, want a stored receipt", ref)
+	}
+	ev := evidenceOf(t, resp)
+	requireGaps(t, ev,
+		`receipt hunk "notes.txt\tNEW\t1\t3" is not a changed hunk in hunks.tsv`,
+		"full.diff carries changed hunks but none of their paths can be keyed (a path holds a tab or newline)")
+	if ev.Receipts.Total != 0 || ev.Receipts.Complete {
+		t.Errorf("receipts = %+v, want zero hunks and complete false", ev.Receipts)
+	}
+	rec := storedRecord(t, dir)
+	requireApproval(t, rec, false, true)
+}
+
+// TestRecordEvidenceSpecCheckNamesAmbiguousPath proves R12: a spec citation
+// that matches two diff sections says so, instead of claiming the path is
+// absent from full.diff.
+func TestRecordEvidenceSpecCheckNamesAmbiguousPath(t *testing.T) {
+	ambiguousDiff := "diff --git a/docs/spec.md b/docs/spec.md\n" +
+		"index 1111111..2222222 100644\n--- a/docs/spec.md\n+++ b/docs/spec.md\n" +
+		"@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n" +
+		"diff --git a/docs/other.md b/docs/spec.md\n" +
+		"index 3333333..4444444 100644\n--- a/docs/other.md\n+++ b/docs/spec.md\n" +
+		"@@ -5,3 +5,3 @@\n top\n-old second\n+new second\n bottom\n"
+	check := `"spec_checks":[{"item":"- the record must verify quotes","status":"met",` +
+		`"evidence":{"path":"docs/spec.md","line":2,"quote":"new line"}}],`
+	review := evidenceReview(nil, check)
+	dir := evidenceBundle(t, review, map[string]string{
+		"full.diff":    ambiguousDiff,
+		"context.txt":  specContext("SPEC.md"),
+		"context.json": specManifest("SPEC.md", "spec"),
+	})
+	resp, ref := recordEvidence(t, false)
+	if ref != nil {
+		t.Fatalf("record refusal: %v", ref)
+	}
+	ev := evidenceOf(t, resp)
+	wantGap := `spec check for "- the record must verify quotes" cites docs/spec.md, which matches more than one path in full.diff`
+	if !slices.Contains(ev.Gaps, wantGap) {
+		t.Fatalf("gaps = %q, want %q", ev.Gaps, wantGap)
+	}
+	if approval := storedRecord(t, dir).Approval; approval == nil || approval.Approved {
+		t.Fatalf("approval = %+v, want withheld", approval)
+	}
+}

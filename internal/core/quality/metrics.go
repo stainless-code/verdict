@@ -87,12 +87,14 @@ func verifyQuote(f *Finding, idx *evidence.DiffIndex) QuoteResult {
 	}
 }
 
-// resolveVerifier returns the verifier for one run and the status that verifier
-// justifies. Only the pinned verifier measures; an injected double is reported
-// stubbed so the report never claims a stand-in checked a quote.
+// resolveVerifier returns the verifier for one run and the status that
+// verifier justifies. Only the pinned verifier measures — by value or by
+// pointer, because both answer from the fixture's pinned bytes — while an
+// injected double is reported stubbed so the report never claims a stand-in
+// checked a quote.
 func resolveVerifier(verifier QuoteVerifier) (QuoteVerifier, string) {
 	switch verifier.(type) {
-	case nil, PinnedQuoteVerifier:
+	case nil, PinnedQuoteVerifier, *PinnedQuoteVerifier:
 		return PinnedQuoteVerifier{}, hallucMeasured
 	default:
 		return verifier, hallucStubbed

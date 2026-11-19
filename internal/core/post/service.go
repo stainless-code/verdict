@@ -604,11 +604,13 @@ func (st *state) approveGate() *core.RefusalError {
 	return nil
 }
 
-// approvalBlockers runs the four gates an approval must clear after the status
-// count: privacy, deep validation, lens coverage, and head freshness. Each
-// returns a typed refusal or nil, and the first refusal wins.
+// approvalBlockers runs the gates an approval must clear after the status
+// count: the evidence decision, privacy, deep validation, lens coverage, and
+// head freshness. Each returns a typed refusal or nil, and the first refusal
+// wins.
 func (st *state) approvalBlockers() *core.RefusalError {
 	for _, gate := range []func() *core.RefusalError{
+		st.evidenceGate,
 		st.privacyConflictGate, st.deepValidationGate, st.lensApprovalGate, st.headGate,
 	} {
 		if ref := gate(); ref != nil {

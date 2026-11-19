@@ -1202,7 +1202,8 @@ whose quote is unverified (including a block clause naming one), a missing or
 mismatched changed-hunk receipt, or an unknown, uncovered, or non-code
 specification check. `record` writes the receipt without approval; `run`
 refuses once its repair rounds finish; `report --check` and `gate` fail the
-`evidence` dimension; `report` withholds `data.approval`.
+`evidence` dimension; `report` withholds `data.approval`; and `post` refuses a
+binding approval with it, even under `--force`.
 
 Fix: fix the named gaps (quote at `path:line`, receipt hunk key, or spec item and code evidence), rewrite `review.json`, then re-run `record` or `run --rounds`.
 

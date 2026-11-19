@@ -17,6 +17,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/approval"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -581,9 +582,15 @@ func requiredProfileGaps(st *state, dir string) []string {
 }
 
 // policyFindings adapts stored entries to the compliance view.
+// policyFindings adapts the stored findings to the compliance view, skipping
+// entries whose quote standing is not verified: an unverified finding never
+// blocks readiness, the same way it never blocks a post.
 func policyFindings(entries []any) []config.FindingView {
 	out := make([]config.FindingView, 0, len(entries))
 	for _, entry := range entries {
+		if !approval.Verified(entry) {
+			continue
+		}
 		out = append(out, config.FindingView{
 			Path:     jq.StrOf(readcommon.FieldOf(entry, "path")),
 			Category: jq.StrOf(readcommon.FieldOf(entry, "category")),

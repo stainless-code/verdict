@@ -77,12 +77,13 @@ func gateRun(t *testing.T, args []string, req Request, jsonMode bool) (int, stri
 // unknown, 2 for usage with no envelope, 3 for a tool error.
 func TestGateExitTable(t *testing.T) {
 	tests := []struct {
-		name   string
-		store  string
-		args   []string
-		subs   []string
-		banned []string
-		want   int
+		name     string
+		store    string
+		args     []string
+		subs     []string
+		banned   []string
+		noRecord bool
+		want     int
 	}{
 		{
 			name: "pass", store: "[" + openFinding(gateSigInf, "informational") + "]",
@@ -118,6 +119,17 @@ func TestGateExitTable(t *testing.T) {
 			subs: []string{
 				"gate: head         unknown  no completed post record for HEAD aaaaaaa",
 				"try: review + post the fetched HEAD, then re-run gate",
+			},
+		},
+		{
+			// R11: the evidence dimension rides every gate mode, so a head
+			// that matches with no receipt still fails the gate.
+			name: "head-pass-without-receipt", store: "[]", noRecord: true,
+			args: []string{"--require-head", "--live", "skip", "--coverage", "warn"},
+			want: cli.ExitRefused,
+			subs: []string{
+				"gate: evidence     unknown  evidence receipt missing for head aaaaaaa [review-insufficient]",
+				"gate: FAIL (2 unknown, 2 skip)",
 			},
 		},
 		{
@@ -162,25 +174,56 @@ func TestGateExitTable(t *testing.T) {
 		},
 	}
 	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) { assertGateCase(t, tc.name, tc.store, tc.args, tc.subs, tc.banned, tc.want) })
+		t.Run(tc.name, func(t *testing.T) {
+			assertGateCase(t, &gateCase{
+				name: tc.name, store: tc.store, args: tc.args,
+				subs: tc.subs, banned: tc.banned, noRecord: tc.noRecord, want: tc.want,
+			})
+		})
 	}
 }
 
+// gateCase is one exit-table leg: the fixture store, the argv, the substrings
+// the streams must carry (and must not), and the expected exit code.
+type gateCase struct {
+	name     string
+	store    string
+	args     []string
+	subs     []string
+	banned   []string
+	noRecord bool
+	want     int
+}
+
 // assertGateCase runs one exit-table leg and grades its exit code and streams.
-func assertGateCase(t *testing.T, name, store string, args, subs, banned []string, want int) {
+func assertGateCase(t *testing.T, tc *gateCase) {
 	t.Helper()
-	code, stdout, stderr := gateRun(t, args, gateBundle(t, store), false)
-	if code != want {
-		t.Fatalf("%s: exit = %d, want %d\nstdout: %s\nstderr: %s", name, code, want, stdout, stderr)
-	}
-	assertCarries(t, name, stdout+stderr, subs)
-	for _, cut := range banned {
-		if strings.Contains(stdout+stderr, cut) {
-			t.Errorf("%s: output must not carry %q", name, cut)
+	req := gateBundle(t, tc.store)
+	if tc.noRecord {
+		// A bundle that never recorded a review carries no receipt at all.
+		if err := os.Remove(".verdict/state/5101/record.json"); err != nil {
+			t.Fatalf("%s: remove record.json: %v", tc.name, err)
 		}
 	}
-	if want == cli.ExitUsage && strings.Contains(stdout, "schema_version") {
-		t.Errorf("%s: usage error printed an envelope: %q", name, stdout)
+	code, stdout, stderr := gateRun(t, tc.args, req, false)
+	if code != tc.want {
+		t.Fatalf("%s: exit = %d, want %d\nstdout: %s\nstderr: %s", tc.name, code, tc.want, stdout, stderr)
+	}
+	assertGateStreams(t, tc, stdout, stderr)
+}
+
+// assertGateStreams grades what one leg printed: every wanted substring, no
+// banned one, and no envelope behind a usage error.
+func assertGateStreams(t *testing.T, tc *gateCase, stdout, stderr string) {
+	t.Helper()
+	assertCarries(t, tc.name, stdout+stderr, tc.subs)
+	for _, cut := range tc.banned {
+		if strings.Contains(stdout+stderr, cut) {
+			t.Errorf("%s: output must not carry %q", tc.name, cut)
+		}
+	}
+	if tc.want == cli.ExitUsage && strings.Contains(stdout, "schema_version") {
+		t.Errorf("%s: usage error printed an envelope: %q", tc.name, stdout)
 	}
 }
 

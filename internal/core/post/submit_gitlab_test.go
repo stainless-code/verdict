@@ -520,7 +520,8 @@ func TestRunPostGitLabSubmits(t *testing.T) {
 // run on glab, and the approval names the reviewed head.
 func TestRunPostGitLabApprovesWhenBound(t *testing.T) {
 	t.Chdir(t.TempDir())
-	writeGitLabBundle(t, "gitlab", `{"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[]}`)
+	writeGitLabBundle(t, "gitlab", `{"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[],`+
+		`"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new line"}]}`)
 	cmdr := gitlabCommander(t)
 	var warnings, human []string
 	req := postTestReq(cmdr, core.PostFlags{

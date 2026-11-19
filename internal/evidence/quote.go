@@ -74,6 +74,9 @@ func MatchQuote(idx *DiffIndex, req QuoteRequest) QuoteResult {
 	if len(quoteLines) > MaxQuoteLines || len(normText) > MaxQuoteBytes {
 		return unverified(ReasonQuoteTooLarge)
 	}
+	if !validRange(req.StartLine, req.Line) {
+		return unverified(ReasonRangeInvalid)
+	}
 	df, side, reason := resolveQuoteTarget(idx, req)
 	if reason != "" {
 		return unverified(reason)
@@ -102,6 +105,17 @@ func resolveQuoteTarget(idx *DiffIndex, req QuoteRequest) (*DiffFile, string, st
 		return nil, "", ReasonLineNotInBundle
 	}
 	return df, side, ""
+}
+
+// validRange reports whether the cited range is one a review can mean: a
+// start_line is optional, but it is never negative and never follows the line
+// it starts the quote from. An invalid range is reported, never silently
+// repaired into the line it was meant to bound.
+func validRange(startLine, line int) bool {
+	if startLine < 0 {
+		return false
+	}
+	return startLine == 0 || startLine <= line
 }
 
 // quoteWindow computes the effective start line and the [start-3, line+3]
@@ -162,6 +176,11 @@ func diagnoseQuoteMismatch(
 	quoteLines []string,
 	startLine, line, winStart, winEnd int,
 ) QuoteResult {
+	// A cited line between two hunks is not in the bundle; only a range that
+	// really spans two hunks can cross them.
+	if !lineInsideHunk(df, side, line) {
+		return unverified(ReasonLineNotInBundle)
+	}
 	if crossesHunks(df, side, quoteLines, startLine, line, winStart, winEnd) {
 		return unverified(ReasonRangeCrossesHunks)
 	}
@@ -174,9 +193,22 @@ func diagnoseQuoteMismatch(
 	return unverified(ReasonTextDiffers)
 }
 
+// lineInsideHunk reports whether the cited line falls inside one hunk's span
+// on side. A line in the gap between two hunks is not in the bundle at all.
+func lineInsideHunk(df *DiffFile, side string, line int) bool {
+	for i := range df.Hunks {
+		lines, hStart, hEnd := hunkSideLines(&df.Hunks[i], side)
+		if len(lines) > 0 && line >= hStart && line <= hEnd {
+			return true
+		}
+	}
+	return false
+}
+
 // crossesHunks reports whether the cited range [startLine, line] touches two or
 // more hunks on side, or a multi-line quote matches across a hunk boundary in
-// the window.
+// the window. A quote of fewer than two lines crosses nothing: an empty one
+// falls through to text-differs.
 func crossesHunks(df *DiffFile, side string, quoteLines []string, startLine, line, winStart, winEnd int) bool {
 	if startLine < line && countOverlappingHunks(df, side, startLine, line) >= 2 {
 		return true

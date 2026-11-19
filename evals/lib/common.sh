@@ -353,13 +353,46 @@ eval_hunk_receipts() {
       | map({hunk: (.[0:(length - 1)] | join("\t")), quote: .[-1]})'
 }
 
+# eval_diff_lines <bundle dir> prints a JSON object mapping "<path>\t<line>" to
+# the text full.diff carries at that NEW-side line. A fixture finding that names
+# a line without quoting it quotes that line, so the review states the evidence
+# the evidence pass checks instead of quoting its own prose.
+eval_diff_lines() {
+  local dir="$1"
+  if [ ! -f "$dir/full.diff" ]; then
+    printf '{}'
+    return
+  fi
+  awk '
+    /^\+\+\+ b\// { path = substr($0, 7); next }
+    /^@@ / {
+      if (!match($0, /\+[0-9]+(,[0-9]+)?/)) next
+      split(substr($0, RSTART + 1, RLENGTH - 1), span, ",")
+      newline = span[1] + 0
+      next
+    }
+    path == "" || newline == 0 { next }
+    {
+      mark = substr($0, 1, 1)
+      if (mark == "-") next
+      if (mark != "+" && mark != " ") next
+      text = substr($0, 2)
+      gsub(/\t/, " ", text)
+      printf "%s\t%d\t%s\n", path, newline, text
+      newline++
+    }
+  ' "$dir/full.diff" |
+    jq -R -s 'split("\n") | map(select(length > 0)) | map(split("\t"))
+      | map({key: (.[0:-1] | join("\t")), value: .[-1]}) | from_entries'
+}
+
 eval_write_review_at() {
   local path="$1"
   local raw tmp
   raw=$(cat)
   tmp="$path.tmp"
   if printf '%s\n' "$raw" | jq -e . >/dev/null 2>&1; then
-    printf '%s\n' "$raw" | jq '
+    printf '%s\n' "$raw" | jq --argjson lines "$(eval_diff_lines "$(dirname "$path")")" '
       if type != "object" or has("findings") then . else (
       def anchor: (.line // 1 | if type == "number" then . else tonumber? // 1 end);
       {
@@ -371,7 +404,8 @@ eval_write_review_at() {
           side: (.side // "RIGHT"),
           severity: (.severity // "important"),
           claim: (.body // "converted finding"),
-          quote: (.quote // .body // "converted finding"),
+          quote: (.quote // $lines[((.path // "a.txt") | tostring) + "\t"
+            + ((.line // 1) | tostring)] // .body // "converted finding"),
           confidence: "high",
           rigor: (.rigor // "said"),
           category: (.category // null),

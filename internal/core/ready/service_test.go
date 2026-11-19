@@ -154,9 +154,53 @@ func TestReadySatisfiedCaptureStaysReady(t *testing.T) {
 	}
 }
 
+// TestReadyUnverifiedFindingIsNoComplianceBlocker proves R4: a stored finding
+// whose quote does not verify never becomes a readiness blocker, the same rule
+// that keeps it out of a post's compliance gate.
+func TestReadyUnverifiedFindingIsNoComplianceBlocker(t *testing.T) {
+	resolved, rs := complianceResolved(t)
+	rs.Outcomes = []config.CheckObservation{{
+		Check: "head-current", Group: resolved.Plan.Groups[0].ID,
+		Head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Passed: true,
+	}}
+	bundle := writeReadyBundle(t, rs)
+	write(t, filepath.Join(bundle, "findings.json"), `[`+unverifiedSecurityFinding+`]`)
+	req := &readycore.Request{Check: true}
+	req.ReadRequest = core.ReadRequest{
+		Runtime: &core.Runtime{Commander: &readyCommander{head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}},
+		Repo:    "acme/app", Pr: "5201",
+	}
+	resp, ref := readycore.Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("ready refusal: %v", ref)
+	}
+	if !resp.Ready || resp.GateFailed {
+		t.Fatalf("ready = %v gateFailed = %v blockers = %+v, want ready for an unverified finding",
+			resp.Ready, resp.GateFailed, resp.Data.Blockers)
+	}
+	for _, blocker := range resp.Data.Blockers {
+		if blocker.Kind == "compliance" {
+			t.Fatalf("blockers = %+v, want no compliance blocker", resp.Data.Blockers)
+		}
+	}
+}
+
+// unverifiedSecurityFinding is the same finding with the standing the evidence
+// pass stamps when it cannot verify the quote.
+const unverifiedSecurityFinding = `{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,` +
+	`"anchored":true,"body":"Body.","suggestion":null,"inBounds":true,"rigor":"walked",` +
+	`"severity":"critical","category":"security","sig":"d111111111111111111111111111111111111111","sig_version":"1",` +
+	`"verification":{"quote":"unverified"},` +
+	`"firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}`
+
+// securityFinding is the open critical finding the captured clauses block. It
+// carries the verified quote standing record stamps, because readiness reads
+// the same verified view a post does: an unverified finding is refused at the
+// approval decision, never as a compliance blocker.
 const securityFinding = `{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,` +
 	`"anchored":true,"body":"Body.","suggestion":null,"inBounds":true,"rigor":"walked",` +
 	`"severity":"critical","category":"security","sig":"c111111111111111111111111111111111111111","sig_version":"1",` +
+	`"verification":{"quote":"verified"},` +
 	`"firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}`
 
 // resolveReadyCapture resolves one repository configuration over notes.txt.

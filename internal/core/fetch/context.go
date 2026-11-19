@@ -4,6 +4,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -46,6 +47,7 @@ type contextFile struct {
 
 type contextReader struct {
 	root      *os.Root
+	counted   map[string]struct{}
 	flag      string
 	role      string
 	input     string
@@ -183,9 +185,19 @@ func (r *contextReader) read(input string) error {
 	}
 	r.root, r.directory = root, info.IsDir()
 	if err := fs.WalkDir(root.FS(), name, r.visit); err != nil {
-		return r.inputFailure("context collection: %s", err.Error())
+		return r.walkFailure(err)
 	}
 	return nil
+}
+
+// walkFailure keeps a refusal one collected file already built. Wrapping it
+// again would print the context-invalid code a second time inside the message
+// the envelope already prefixes with that code.
+func (r *contextReader) walkFailure(err error) error {
+	if _, ok := errors.AsType[*core.RefusalError](err); ok {
+		return err
+	}
+	return r.inputFailure("context collection: %s", err.Error())
 }
 
 func (r *contextReader) visit(p string, d fs.DirEntry, walkErr error) error {
@@ -205,35 +217,80 @@ func (r *contextReader) visit(p string, d fs.DirEntry, walkErr error) error {
 }
 
 func (r *contextReader) readFile(p string, d fs.DirEntry) error {
-	if err := r.checkFile(p, d); err != nil {
+	newFile := r.markFile(p)
+	if err := r.checkFile(p, d, newFile); err != nil {
 		return err
 	}
+	body, err := r.readBody(p)
+	if err != nil {
+		return err
+	}
+	if newFile {
+		r.total += len(body)
+		if r.total > contextMaxBytes {
+			return r.inputFailure("context exceeds %d bytes", contextMaxBytes)
+		}
+	}
+	r.files = append(r.files, contextFile{source: r.sourceOf(p), role: r.effectiveRole(), body: body})
+	return nil
+}
+
+// readBody reads one collected file, capped at the bytes the run may still
+// spend so an oversized document cannot be pulled into memory whole.
+func (r *contextReader) readBody(p string) ([]byte, error) {
 	f, err := readcommon.OpenRegularNoSymlinkIn(r.root, p)
 	if err != nil {
-		return r.inputFailure("context open: %s", err.Error())
+		return nil, r.inputFailure("context open: %s", err.Error())
 	}
 	defer f.Close()
 	body, err := io.ReadAll(io.LimitReader(f, int64(contextMaxBytes-r.total+1)))
 	if err != nil {
-		return r.inputFailure("context read: %s", err.Error())
+		return nil, r.inputFailure("context read: %s", err.Error())
 	}
-	r.total += len(body)
-	if r.total > contextMaxBytes {
-		return r.inputFailure("context exceeds %d bytes", contextMaxBytes)
-	}
+	return body, nil
+}
+
+// sourceOf renders the source path one collected file is attributed to: the
+// input itself, or the file's path under a walked directory.
+func (r *contextReader) sourceOf(p string) string {
 	source := r.input
 	if r.directory {
 		source = filepath.Join(r.input, filepath.FromSlash(p))
 	}
-	role := r.role
-	if role == "" {
-		role = contextRoleContext
-	}
-	r.files = append(r.files, contextFile{source: filepath.ToSlash(source), role: role, body: body})
-	return nil
+	return filepath.ToSlash(source)
 }
 
-func (r *contextReader) checkFile(p string, d fs.DirEntry) error {
+// effectiveRole is the role the manifest publishes for this reader's files.
+func (r *contextReader) effectiveRole() string {
+	if r.role == "" {
+		return contextRoleContext
+	}
+	return r.role
+}
+
+// markFile records one collected file path and reports whether it is new to
+// this run. The same document passed to --context and --spec is one document:
+// it counts once against the byte and file caps, so a duplicate operand can
+// never refuse a bundle on its own size.
+func (r *contextReader) markFile(p string) bool {
+	source := r.resolved
+	if r.directory {
+		source = filepath.Join(r.resolved, p)
+	}
+	key := filepath.ToSlash(source)
+	if r.counted == nil {
+		r.counted = make(map[string]struct{})
+	}
+	if _, seen := r.counted[key]; seen {
+		return false
+	}
+	r.counted[key] = struct{}{}
+	return true
+}
+
+// checkFile validates one collected file. The file cap reads only the paths
+// this run has not counted yet, so a duplicate never trips it.
+func (r *contextReader) checkFile(p string, d fs.DirEntry, newFile bool) error {
 	if !d.Type().IsRegular() {
 		return r.inputFailure("context requires regular files")
 	}
@@ -242,7 +299,7 @@ func (r *contextReader) checkFile(p string, d fs.DirEntry) error {
 	default:
 		return r.inputFailure("context requires Markdown, JSON or text")
 	}
-	if len(r.files) >= contextMaxFiles {
+	if newFile && len(r.files) >= contextMaxFiles {
 		return r.inputFailure("context exceeds %d files", contextMaxFiles)
 	}
 	return nil

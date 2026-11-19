@@ -2,6 +2,7 @@ package reportcore_test
 
 import (
 	"context"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -803,6 +804,7 @@ func TestRunReportGateData(t *testing.T) {
 		wantStat  []string
 		wantCount []int
 		complete  bool
+		noRecord  bool
 		wantFail  bool
 	}{
 		{
@@ -818,21 +820,31 @@ func TestRunReportGateData(t *testing.T) {
 			wantCount: []int{1, -1, 0}, wantFail: true,
 		},
 		{
+			// R11: --require-head without --max-severity still carries the
+			// evidence dimension, which passes only on a receipt for the head.
 			name: "head-only-missing", findings: "[]", live: "skip", complete: true,
-			wantIDs: []string{"head", "live_threads"}, wantStat: []string{"unknown", "skip"},
-			wantCount: []int{-1, -1}, wantFail: true,
+			wantIDs: []string{"head", "live_threads", "evidence"}, wantStat: []string{"unknown", "skip", "pass"},
+			wantCount: []int{-1, -1, 0}, wantFail: true,
 		},
 		{
 			name: "head-stale", findings: "[]", post: `{"head":"` + strings.Repeat("c", 40) + `"}`,
 			live: "skip", complete: true,
-			wantIDs: []string{"head", "live_threads"}, wantStat: []string{"fail", "skip"},
-			wantCount: []int{-1, -1}, wantFail: true,
+			wantIDs: []string{"head", "live_threads", "evidence"}, wantStat: []string{"fail", "skip", "pass"},
+			wantCount: []int{-1, -1, 0}, wantFail: true,
 		},
 		{
 			name: "head-pass", findings: "[]", post: `{"head":"` + storeHeadSHA + `"}`,
 			live: "skip", complete: true,
-			wantIDs: []string{"head", "live_threads"}, wantStat: []string{"pass", "skip"},
-			wantCount: []int{-1, -1}, wantFail: false,
+			wantIDs: []string{"head", "live_threads", "evidence"}, wantStat: []string{"pass", "skip", "pass"},
+			wantCount: []int{-1, -1, 0}, wantFail: false,
+		},
+		{
+			// R11: no receipt means no passing gate, whatever dimension the
+			// operator asked for.
+			name: "head-pass-without-receipt", findings: "[]", post: `{"head":"` + storeHeadSHA + `"}`,
+			live: "skip", complete: true, noRecord: true,
+			wantIDs: []string{"head", "live_threads", "evidence"}, wantStat: []string{"pass", "skip", "unknown"},
+			wantCount: []int{-1, -1, -1}, wantFail: true,
 		},
 	}
 	for _, tc := range tests {
@@ -840,6 +852,11 @@ func TestRunReportGateData(t *testing.T) {
 			req := fixture(t, tc.findings)
 			if tc.post != "" {
 				writeFile(t, ".verdict/state/5101/post.json", tc.post)
+			}
+			if tc.noRecord {
+				if err := os.Remove(".verdict/state/5101/record.json"); err != nil {
+					t.Fatalf("remove record.json: %v", err)
+				}
 			}
 			flags := core.ReportFlags{Check: tc.check, Completeness: tc.complete, Live: tc.live}
 			resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req, Flags: flags})

@@ -453,3 +453,112 @@ func assertQuoteOutcome(t *testing.T, idx *evidence.DiffIndex, req evidence.Quot
 			got.Status, got.Reason, wantStatus, wantReason)
 	}
 }
+
+// spacedDiff has two hunks with a gap between them: lines 10-12 and 20-22.
+const spacedDiff = "" +
+	"diff --git a/pkg/spaced.go b/pkg/spaced.go\n" +
+	"--- a/pkg/spaced.go\n" +
+	"+++ b/pkg/spaced.go\n" +
+	"@@ -10,3 +10,3 @@\n" +
+	" \tfirstContext := alpha()\n" +
+	"+\tsecondAdded := beta()\n" +
+	" \tthirdContext := gamma()\n" +
+	"@@ -20,3 +20,3 @@\n" +
+	" \tfourthContext := delta()\n" +
+	"+\tfifthAdded := epsilon()\n" +
+	" \tsixthContext := zeta()\n"
+
+// TestMatchQuoteInvalidRange proves R9: a start_line before the line it starts
+// from, or a negative start_line, is reported as range-invalid instead of
+// being repaired into a window the agent never asked for.
+func TestMatchQuoteInvalidRange(t *testing.T) {
+	t.Parallel()
+	idx := evidence.IndexDiff([]byte(spacedDiff))
+	tests := []struct {
+		name string
+		req  evidence.QuoteRequest
+	}{
+		{
+			name: "start after line",
+			req: evidence.QuoteRequest{
+				Path: "pkg/spaced.go", StartLine: 12, Line: 11,
+				Quote: "secondAdded := beta()",
+			},
+		},
+		{
+			name: "negative start",
+			req: evidence.QuoteRequest{
+				Path: "pkg/spaced.go", StartLine: -1, Line: 11,
+				Quote: "secondAdded := beta()",
+			},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertQuoteOutcome(t, idx, tc.req, "unverified", "range-invalid")
+		})
+	}
+	// The same quote with no start_line, or with start at the line, verifies:
+	// the guard rejects impossible ranges, not ordinary ones.
+	assertQuoteOutcome(t, idx, evidence.QuoteRequest{
+		Path: "pkg/spaced.go", Line: 11,
+		Quote: "secondAdded := beta()",
+	}, "verified", "")
+	assertQuoteOutcome(t, idx, evidence.QuoteRequest{
+		Path: "pkg/spaced.go", StartLine: 11, Line: 11,
+		Quote: "secondAdded := beta()",
+	}, "verified", "")
+}
+
+// TestMatchQuoteEmptyAndGapReasons proves R10: an empty quote differs, and a
+// cited line that falls between two hunks is not in the bundle — neither is
+// reported as a range crossing hunks.
+func TestMatchQuoteEmptyAndGapReasons(t *testing.T) {
+	t.Parallel()
+	idx := evidence.IndexDiff([]byte(spacedDiff))
+	tests := []struct {
+		name       string
+		wantReason string
+		req        evidence.QuoteRequest
+	}{
+		{
+			name:       "empty quote",
+			req:        evidence.QuoteRequest{Path: "pkg/spaced.go", Line: 11, Quote: ""},
+			wantReason: "text-differs",
+		},
+		{
+			name: "line in the gap between hunks",
+			req: evidence.QuoteRequest{
+				Path: "pkg/spaced.go", Line: 16,
+				Quote: "secondAdded := beta()",
+			},
+			wantReason: "line-not-in-bundle",
+		},
+		{
+			// The stitched quote matches lines 12 and 20, which really do span
+			// two hunks; the cited line 16 is in neither, so it is absent from
+			// the bundle rather than a crossing range.
+			name: "gap line with a quote that stitches two hunks",
+			req: evidence.QuoteRequest{
+				Path: "pkg/spaced.go", Line: 16,
+				Quote: "thirdContext := gamma()\nfourthContext := delta()",
+			},
+			wantReason: "line-not-in-bundle",
+		},
+		{
+			name: "range spanning two hunks still crosses them",
+			req: evidence.QuoteRequest{
+				Path: "pkg/spaced.go", StartLine: 12, Line: 20,
+				Quote: "thirdContext := gamma()\nfourthContext := delta()",
+			},
+			wantReason: "range-crosses-hunks",
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertQuoteOutcome(t, idx, tc.req, "unverified", tc.wantReason)
+		})
+	}
+}

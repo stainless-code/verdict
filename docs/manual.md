@@ -1582,8 +1582,13 @@ same record `report --completeness` reads), and `--live auto|strict|skip`
 asked for it, and `--live` alone is a usage error rather than a silent pass).
 A dimension is `pass`, `fail`, `unknown` (unreadable and failing closed), or
 `skip` (not requested, or unreachable under `auto`); only `fail` and `unknown`
-fail the gate, so a skip never turns a green run red. Exit codes mirror
-`report --check`: 0 pass, 1 fail-or-unknown, 2 usage, 3 tool error.
+fail the gate, so a skip never turns a green run red. The `evidence` dimension
+rides every gate mode, whichever dimension the operator asked for: `pass`
+needs the current head's evidence receipt with `insufficient: false`, an
+insufficient receipt fails, and a missing, stale, or unreadable one reads
+`unknown` — so no gate passes without a receipt for the head it certifies.
+Exit codes mirror `report --check`: 0 pass, 1 fail-or-unknown, 2 usage, 3 tool
+error.
 
 `--coverage require|warn` sets the posture of the coverage dimension, which
 runs on every gate and defaults to `require`. `require` reads the stored
@@ -1620,7 +1625,8 @@ threads, then re-run gate
 ```
 
 `--json` publishes the same verdict as `data.passed` plus `data.dimensions[]`
-in `findings, head, coverage, live_threads, compliance` order (`id`, `status`,
+in `findings, head, coverage, live_threads, compliance, risk, evidence` order
+(only the dimensions a run composes; `id`, `status`,
 `detail`, `count` —
 null where a dimension has no tally). A failed gate is a verdict, not a
 refusal: the envelope keeps `error: null` and the exit code carries the
@@ -1862,7 +1868,10 @@ an unverified finding is refused rather than dropped; the `compliance` gate
 dimension keeps reading the verified view, where such a finding never blocks.
 The decision also needs the evidence receipt for the head it decides on: a
 missing, stale, or unreadable receipt is `review-insufficient`, never an
-approval, so a bundle that never recorded evidence cannot read as green. The decision is recorded once,
+approval, so a bundle that never recorded evidence cannot read as green. A
+binding approval the decision withheld refuses `review-insufficient` before any
+host call, and `--force` cannot waive it: force overrides a count of findings,
+never the absence of evidence. The decision is recorded once,
 in `record.json` and `data.approval`,
 with the `review_sha256`, `diff_sha256` and head it was decided on; `post` reads
 that stored decision and publishes it even with `--approve=false`, and a

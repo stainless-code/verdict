@@ -29,6 +29,7 @@ const (
 	ReasonDeletedLine       = "deleted-line"
 	ReasonQuoteTooLarge     = "quote-too-large"
 	ReasonTextDiffers       = "text-differs"
+	ReasonRangeInvalid      = "range-invalid"
 )
 
 // Diff line markers and header prefixes.
@@ -109,6 +110,8 @@ type DiffIndex struct {
 
 // IndexDiff parses full.diff bytes into per-file OLD and NEW line maps and
 // per-hunk boundaries, using internal/hunks for C-quoted and renamed paths.
+// CRLF line endings are normalized once here: a carriage return that reached a
+// path would make every hunk row unsafe and the diff unverifiable.
 func IndexDiff(diff []byte) *DiffIndex {
 	idx := &DiffIndex{
 		byPath:    make(map[string][]*DiffFile),
@@ -117,7 +120,7 @@ func IndexDiff(diff []byte) *DiffIndex {
 	if len(diff) == 0 {
 		return idx
 	}
-	text := string(diff)
+	text := normalizeDiffText(diff)
 	sections := hunks.Files(text)
 	if len(sections) == 0 {
 		return idx
@@ -154,6 +157,20 @@ func (d *DiffIndex) HasPath(path string) bool {
 	return reason == ""
 }
 
+// HunkCount returns how many hunks the index parsed, exempt or not. A bundle
+// carrying hunks whose paths cannot be keyed still reports them, so coverage
+// can tell an empty diff from an unkeyable one.
+func (d *DiffIndex) HunkCount() int {
+	if d == nil {
+		return 0
+	}
+	n := 0
+	for _, f := range d.files {
+		n += len(f.Hunks)
+	}
+	return n
+}
+
 // HunkByKey looks up a hunk by its A3 canonical receipt key.
 func (d *DiffIndex) HunkByKey(key string) (*DiffHunk, bool) {
 	if d == nil {
@@ -171,9 +188,16 @@ func (d *DiffIndex) ReceiptKeys(exempt func(string) bool) []string {
 }
 
 // HasHunkIndexDrift reports whether a bundle's hunks.tsv snapshot disagrees
-// with hunks.Parse(full.diff).
+// with hunks.Parse(full.diff). The diff is normalized first, so a CRLF bundle
+// whose snapshot was taken from LF bytes does not read as drift.
 func HasHunkIndexDrift(diff []byte, snapshot []hunks.Hunk) bool {
-	return !slices.Equal(hunks.Parse(string(diff)), snapshot)
+	return !slices.Equal(hunks.Parse(normalizeDiffText(diff)), snapshot)
+}
+
+// normalizeDiffText converts one diff's CRLF line endings to LF, the only
+// normalization every derivation (paths, hunk rows, line text) needs.
+func normalizeDiffText(diff []byte) string {
+	return strings.ReplaceAll(string(diff), crlfSeq, diffNewline)
 }
 
 // addFile registers df under all of its distinct paths and indexes its hunks

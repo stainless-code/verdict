@@ -33,6 +33,45 @@ func TestContextExplicitAndFenced(t *testing.T) {
 	}
 }
 
+// TestSameSourceUnderBothFlagsCountsOnce proves R12: one document passed to
+// --context and --spec is one collected source, so it counts once against the
+// byte cap and lands with the spec role.
+func TestSameSourceUnderBothFlagsCountsOnce(t *testing.T) {
+	dir := contextTempDir(t)
+	input := filepath.Join(dir, "spec.md")
+	// 700,000 bytes is under the cap once and over it twice.
+	writeContextFixture(t, input, strings.Repeat("x", 700000))
+	files, err := collectContextInputs([]string{input}, []string{input})
+	if err != nil {
+		t.Fatalf("collect = %v, want the shared source counted once", err)
+	}
+	if len(files) != 1 {
+		t.Fatalf("files = %d, want 1", len(files))
+	}
+	if files[0].role != contextRoleSpec {
+		t.Fatalf("role = %q, want the spec role to win a shared source", files[0].role)
+	}
+}
+
+// TestContextRefusalNamesItsCodeOnce proves R12: a nested collection failure
+// keeps the refusal it was built with, so the envelope's own context-invalid
+// code is not repeated inside the message.
+func TestContextRefusalNamesItsCodeOnce(t *testing.T) {
+	dir := contextTempDir(t)
+	writeContextFixture(t, filepath.Join(dir, "notes.go"), "package notes")
+	_, err := collectContext([]string{dir})
+	if err == nil {
+		t.Fatal("accepted a directory holding a Go source file")
+	}
+	ref := requireRefusal(t, err, "context-invalid")
+	if strings.Contains(ref.Message, "context-invalid") {
+		t.Fatalf("message = %q, want the code to appear once, as the refusal code", ref.Message)
+	}
+	if strings.Count(ref.Error(), "context-invalid") != 1 {
+		t.Fatalf("error = %q, want one context-invalid occurrence", ref.Error())
+	}
+}
+
 func TestContextBounds(t *testing.T) {
 	for _, tc := range []struct {
 		name string

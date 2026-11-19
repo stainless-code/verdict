@@ -44,15 +44,18 @@ const (
 	msgReceiptUnknown    = "receipt hunk %q is not a changed hunk in hunks.tsv"
 	msgReceiptMismatch   = "receipt for %s quotes text that hunk does not carry (%s)"
 	msgReceiptLarge      = "receipt for %s quotes more than %d lines"
+	msgReceiptsUnkeyable = "full.diff carries changed hunks but none of their paths can be keyed (a path holds a tab or newline)"
 	msgSpecItemUnknown   = "spec check item %q is not an item in context.txt"
 	msgSpecNotCode       = "spec check for %q cites %s, which is test output rather than code"
 	msgSpecNotInDiff     = "spec check for %q cites %s, which is not a path in full.diff"
+	msgSpecAmbiguous     = "spec check for %q cites %s, which matches more than one path in full.diff"
 	msgSpecMismatch      = "spec check for %q cites %s:%d, but the quote does not match full.diff"
 
 	fixQuoteMismatch  = "copy an exact line from that hunk of full.diff, or delete the finding"
 	fixQuoteAnchor    = "anchor the finding to the changed line in full.diff that introduces the defect, and quote that line"
 	fixReceiptUnknown = "copy one row from hunks.tsv verbatim"
 	fixReceiptQuote   = "quote one exact line from that hunk"
+	fixReceiptKeys    = "re-fetch the bundle so full.diff carries keyable paths"
 	fixSpecItem       = "quote one bullet, numbered line or table row from the spec verbatim"
 	fixSpecEvidence   = "cite a path changed in full.diff and quote the exact line from it"
 )
@@ -90,19 +93,20 @@ func reviewEvidenceOf(dir string, normalized []byte) *core.EvidenceReceipt {
 // evidencePass carries one pass: the parsed bundle bytes, the review document,
 // and the outcomes the receipt and problem list are built from.
 type evidencePass struct {
-	review   *jq.Obj
-	idx      *evidence.DiffIndex
-	run      *config.RunState
-	spec     *evidence.SpecCoverage
-	gating   []bool
-	quotes   []core.EvidenceQuote
-	problems []Problem
-	gaps     []string
-	dir      string
-	head     string
-	sha      string
-	receipts evidence.ReceiptCoverage
-	drift    bool
+	review    *jq.Obj
+	idx       *evidence.DiffIndex
+	run       *config.RunState
+	spec      *evidence.SpecCoverage
+	gating    []bool
+	quotes    []core.EvidenceQuote
+	problems  []Problem
+	gaps      []string
+	dir       string
+	head      string
+	sha       string
+	receipts  evidence.ReceiptCoverage
+	drift     bool
+	unkeyable bool
 }
 
 // newEvidencePass reads the bundle bytes: full.diff parsed once into the A2
@@ -316,6 +320,18 @@ func (p *evidencePass) checkReceipts() {
 	}
 	p.receipts = evidence.VerifyReceipts(p.idx, inputs, readcommon.Generated)
 	p.receiptProblems()
+	p.unkeyableDiffProblem()
+}
+
+// unkeyableDiffProblem reports a diff whose hunks carry no receipt key at all:
+// a path with a tab or newline cannot be written as a hunks.tsv row, so full
+// coverage of zero keys would certify a bundle nobody could read.
+func (p *evidencePass) unkeyableDiffProblem() {
+	if p.idx.HunkCount() == 0 || p.receipts.Total > 0 || p.receipts.Exempt > 0 {
+		return
+	}
+	p.unkeyable = true
+	p.add(receiptsPath, core.ProblemCodeReceiptMissing, core.ProblemLevelError, msgReceiptsUnkeyable, fixReceiptKeys)
 }
 
 // receiptProblems reports the receipt shortfall and every receipt that does not
@@ -437,14 +453,18 @@ func (p *evidencePass) specProblem(check *evidence.SpecCheckResult) {
 }
 
 // specNotCodeMessage names the cited path and says which way it fails A8: a
-// test-output path is named as such, and a path the diff does not carry is
-// named as absent.
+// test-output path is named as such, a path the diff does not carry is named as
+// absent, and an ambiguous one is named as matching several diff sections.
 func (p *evidencePass) specNotCodeMessage(check *evidence.SpecCheckResult) string {
 	path := p.specEvidencePath(check.Index)
-	if check.QuoteReason != "" {
+	switch check.QuoteReason {
+	case evidence.ReasonPathNotInBundle:
 		return fmt.Sprintf(msgSpecNotInDiff, check.Item, path)
+	case evidence.ReasonAmbiguousPath:
+		return fmt.Sprintf(msgSpecAmbiguous, check.Item, path)
+	default:
+		return fmt.Sprintf(msgSpecNotCode, check.Item, path)
 	}
-	return fmt.Sprintf(msgSpecNotCode, check.Item, path)
 }
 
 // specEvidencePath is the path one spec check cites, empty when the review
@@ -582,7 +602,7 @@ func (p *evidencePass) receiptSummary() core.EvidenceReceipts {
 		Total:    p.receipts.Total,
 		Covered:  p.receipts.Covered,
 		Exempt:   p.receipts.Exempt,
-		Complete: p.receipts.Complete,
+		Complete: p.receipts.Complete && !p.unkeyable,
 	}
 }
 

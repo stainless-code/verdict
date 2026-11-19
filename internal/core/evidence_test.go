@@ -183,6 +183,7 @@ func TestQuoteProblemCodeMapping(t *testing.T) {
 		{"text-differs", "quote-mismatch"},
 		{"deleted-line", "quote-mismatch"},
 		{"range-crosses-hunks", "quote-mismatch"},
+		{"range-invalid", "quote-mismatch"},
 		{"path-not-in-bundle", "quote-not-checkable"},
 		{"line-not-in-bundle", "quote-not-checkable"},
 		{"file-absent-at-head", "quote-not-checkable"},

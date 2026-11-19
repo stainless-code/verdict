@@ -212,7 +212,7 @@ func TestVerifySpecChecksAndCoverage(t *testing.T) {
 		}
 		got := evidence.VerifySpecChecks(idx, items, checks, 80)
 		assertSpecCoverage(t, &got, 5, 0, false, false)
-		assertSpecCheckReason(t, &got.Checks[0], "spec-evidence-not-code", "")
+		assertSpecCheckReason(t, &got.Checks[0], "spec-evidence-not-code", "spec-evidence-not-code")
 		assertSpecCheckReason(t, &got.Checks[1], "spec-evidence-mismatch", "text-differs")
 		assertSpecCheckReason(t, &got.Checks[2], "spec-item-unknown", "")
 	})
@@ -237,4 +237,112 @@ func assertSpecCheckReason(t *testing.T, got *evidence.SpecCheckResult, wantReas
 	if got.Valid || got.Reason != wantReason || got.QuoteReason != wantQuoteReason {
 		t.Fatalf("SpecCheckResult = %+v, want Valid=false Reason=%q QuoteReason=%q", got, wantReason, wantQuoteReason)
 	}
+}
+
+// TestEnumerateSpecItemsTableAndQuoteRules proves R6: a GFM table needs its
+// header plus separator row, pipes in prose and bullets are text, and quoted
+// lines are someone else's specification rather than this one's.
+func TestEnumerateSpecItemsTableAndQuoteRules(t *testing.T) {
+	t.Parallel()
+	text := "" +
+		"Prose naming a|b and c||d stays prose.\n" +
+		"| Requirement | Owner |\n" +
+		"| --- | --- |\n" +
+		"|  Return 401  on expired token  |  auth  |\n" +
+		"| Log request ID | api |\n" +
+		"\n" +
+		"> - Quoted bullet is not an item\n" +
+		"> | Quoted | Table |\n" +
+		"> | --- | --- |\n" +
+		"> | Quoted | Row |\n" +
+		"> ```md\n" +
+		"> - Quoted fence content is not an item\n" +
+		"- The real item | with a pipe\n" +
+		"  continues | here\n" +
+		"- After the quote and the table\n"
+
+	got := evidence.EnumerateSpecItems([]evidence.SpecBlock{{Index: 0, Text: text}})
+	want := []evidence.SpecItem{
+		{ID: "0:4", Text: "Return 401 on expired token | auth", BlockIndex: 0, Line: 4},
+		{ID: "0:5", Text: "Log request ID | api", BlockIndex: 0, Line: 5},
+		{ID: "0:13", Text: "- The real item | with a pipe continues | here", BlockIndex: 0, Line: 13},
+		{ID: "0:15", Text: "- After the quote and the table", BlockIndex: 0, Line: 15},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("EnumerateSpecItems:\ngot  = %+v\nwant = %+v", got, want)
+	}
+}
+
+// renamedToTestDiff renames source to test code: the NEW path is the one the
+// bundle resolves, the OLD one still reads as production source.
+const renamedToTestDiff = "" +
+	"diff --git a/pkg/helper.go b/pkg/helper_test.go\n" +
+	"similarity index 80%\n" +
+	"rename from pkg/helper.go\n" +
+	"rename to pkg/helper_test.go\n" +
+	"--- a/pkg/helper.go\n" +
+	"+++ b/pkg/helper_test.go\n" +
+	"@@ -1,2 +1,2 @@\n" +
+	" package helper\n" +
+	"-\tfunc Probe() {}\n" +
+	"+\tfunc TestProbe() {}\n"
+
+// TestVerifySpecChecksRenamedTestCodeIsNotCode proves R5: a citation of the
+// OLD name of a rename onto test code is refused, because the bundle resolves
+// the path to a test file.
+func TestVerifySpecChecksRenamedTestCodeIsNotCode(t *testing.T) {
+	t.Parallel()
+	idx := evidence.IndexDiff([]byte(renamedToTestDiff))
+	items := evidence.EnumerateSpecItems([]evidence.SpecBlock{
+		{Index: 0, Text: "- Prove the probe\n"},
+	})
+	checks := []evidence.SpecCheckInput{{
+		Item:         "- Prove the probe",
+		Status:       "met",
+		EvidencePath: "pkg/helper.go",
+		Line:         2,
+		Quote:        "func Probe() {}",
+	}}
+	got := evidence.VerifySpecChecks(idx, items, checks, 80)
+	if len(got.Checks) != 1 {
+		t.Fatalf("checks = %+v, want one", got.Checks)
+	}
+	assertSpecCheckReason(t, &got.Checks[0], "spec-evidence-not-code", "spec-evidence-not-code")
+}
+
+// TestVerifySpecChecksAmbiguousPathReason proves R12: a citation that matches
+// more than one diff section reports the ambiguous path rather than claiming
+// the path is absent.
+func TestVerifySpecChecksAmbiguousPathReason(t *testing.T) {
+	t.Parallel()
+	// Two sections land on the same NEW path: a bundle that repeated a file.
+	diff := "" +
+		"diff --git a/docs/spec.md b/docs/spec.md\n" +
+		"--- a/docs/spec.md\n" +
+		"+++ b/docs/spec.md\n" +
+		"@@ -1,1 +1,1 @@\n" +
+		"-first\n" +
+		"+first addition\n" +
+		"diff --git a/docs/other.md b/docs/spec.md\n" +
+		"--- a/docs/other.md\n" +
+		"+++ b/docs/spec.md\n" +
+		"@@ -5,1 +5,1 @@\n" +
+		"-second\n" +
+		"+second addition\n"
+	idx := evidence.IndexDiff([]byte(diff))
+	items := evidence.EnumerateSpecItems([]evidence.SpecBlock{
+		{Index: 0, Text: "- Document the addition\n"},
+	})
+	checks := []evidence.SpecCheckInput{{
+		Item:         "- Document the addition",
+		Status:       "met",
+		EvidencePath: "docs/spec.md",
+		Line:         1,
+		Quote:        "first addition",
+	}}
+	got := evidence.VerifySpecChecks(idx, items, checks, 80)
+	if len(got.Checks) != 1 {
+		t.Fatalf("checks = %+v, want one", got.Checks)
+	}
+	assertSpecCheckReason(t, &got.Checks[0], "spec-evidence-not-code", "ambiguous-path")
 }

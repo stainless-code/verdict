@@ -692,6 +692,32 @@ func TestOnlyExplicitMismatchCountsInRate(t *testing.T) {
 	}
 }
 
+// TestPinnedVerifierPointerMeasures proves R12: the pinned verifier measures by
+// pointer exactly as it does by value, because both answer from the fixture's
+// pinned bytes rather than from a stand-in.
+func TestPinnedVerifierPointerMeasures(t *testing.T) {
+	byValue, ref := RunFixtures(context.Background(), &Request{
+		RepoRoot: qualityRepoRoot(t), FixtureID: "fx4", Verifier: PinnedQuoteVerifier{},
+	})
+	if ref != nil {
+		t.Fatalf("value run: %s: %s", ref.Code, ref.Message)
+	}
+	byPointer, ref := RunFixtures(context.Background(), &Request{
+		RepoRoot: qualityRepoRoot(t), FixtureID: "fx4", Verifier: &PinnedQuoteVerifier{},
+	})
+	if ref != nil {
+		t.Fatalf("pointer run: %s: %s", ref.Code, ref.Message)
+	}
+	want, got := byValue.Data.Fixtures[0].Hallucination, byPointer.Data.Fixtures[0].Hallucination
+	if want.Status != "measured" || got.Status != "measured" {
+		t.Fatalf("status = %q by value, %q by pointer, want measured for both", want.Status, got.Status)
+	}
+	if rateText(want.Rate) != "0.5000" || rateText(got.Rate) != "0.5000" {
+		t.Fatalf("rate = %s by value, %s by pointer, want 0.5000 for both",
+			rateText(want.Rate), rateText(got.Rate))
+	}
+}
+
 func TestSyntheticQuoteProbeMeasuresHalf(t *testing.T) {
 	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: qualityRepoRoot(t), FixtureID: "fx4"})
 	if ref != nil {

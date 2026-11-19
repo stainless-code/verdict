@@ -75,6 +75,12 @@ func setupRiskCLIBundle(t *testing.T, postJSON string) {
 	for name, body := range map[string]string{
 		"source.json":   `{"head_sha":"` + testRiskHeadSHA + `","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
 		"findings.json": "[]",
+		// Every gate mode carries the evidence dimension, so the fixture ships
+		// the receipt that backs the head it grades.
+		"record.json": `{"schema_version":"1","status":"local","head":"` + testRiskHeadSHA + `",` +
+			`"evidence":{"head":"` + testRiskHeadSHA + `","diff_sha256":"` + strings.Repeat("0", 64) + `",` +
+			`"receipts":{"total":0,"covered":0,"exempt":0,"complete":true},` +
+			`"spec":{"total":0,"covered":0,"min":80,"met":true},"insufficient":false}}`,
 	} {
 		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
 			t.Fatal(err)
