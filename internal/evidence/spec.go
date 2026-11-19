@@ -9,7 +9,7 @@ import (
 
 // Specification checklist limits, statuses, and failure reasons.
 const (
-	MaxSpecItems           = 60
+	MaxSpecItems           = 150
 	DefaultSpecCoverageMin = 80
 	percentScale           = 100
 

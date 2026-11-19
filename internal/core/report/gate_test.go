@@ -85,8 +85,8 @@ func TestRunReportCheckTierGate(t *testing.T) {
 			if resp.GateFailed != tc.wantFail {
 				t.Errorf("GateFailed = %v, want %v", resp.GateFailed, tc.wantFail)
 			}
-			if len(resp.CheckLines) != 2 || resp.CheckLines[0] != tc.wantLine {
-				t.Errorf("CheckLines = %q, want tier line %q plus evidence line", resp.CheckLines, tc.wantLine)
+			if len(resp.CheckLines) != 3 || resp.CheckLines[0] != tc.wantLine {
+				t.Errorf("CheckLines = %q, want tier line %q plus spec and evidence lines", resp.CheckLines, tc.wantLine)
 			}
 		})
 	}
@@ -219,8 +219,8 @@ func TestRunReportCompletenessGate(t *testing.T) {
 		if !resp.GateFailed {
 			t.Error("GateFailed = false; a missing post must fail the combined gate")
 		}
-		if len(resp.CheckLines) != 3 {
-			t.Fatalf("CheckLines = %q, want one line per dimension (tier, completeness, evidence)", resp.CheckLines)
+		if len(resp.CheckLines) != 4 {
+			t.Fatalf("CheckLines = %q, want one line per dimension (tier, completeness, spec, evidence)", resp.CheckLines)
 		}
 		if !strings.HasPrefix(resp.CheckLines[0], "check: no open findings at-or-above critical — gate passes") {
 			t.Errorf("CheckLines[0] = %q, want the tier line first", resp.CheckLines[0])
@@ -809,42 +809,42 @@ func TestRunReportGateData(t *testing.T) {
 	}{
 		{
 			name: "tier-only-pass", findings: "[]", live: "skip", check: "critical",
-			wantIDs: []string{"findings", "live_threads", "evidence"}, wantStat: []string{"pass", "skip", "pass"},
-			wantCount: []int{0, -1, 0}, wantFail: false,
+			wantIDs: []string{"findings", "live_threads", "spec", "evidence"}, wantStat: []string{"pass", "skip", "pass", "pass"},
+			wantCount: []int{0, -1, 0, 0}, wantFail: false,
 		},
 		{
 			name:     "tier-only-fail",
 			findings: "[" + entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"critical"`, "true") + "]",
 			live:     "skip", check: "critical",
-			wantIDs: []string{"findings", "live_threads", "evidence"}, wantStat: []string{"fail", "skip", "pass"},
-			wantCount: []int{1, -1, 0}, wantFail: true,
+			wantIDs: []string{"findings", "live_threads", "spec", "evidence"}, wantStat: []string{"fail", "skip", "pass", "pass"},
+			wantCount: []int{1, -1, 0, 0}, wantFail: true,
 		},
 		{
 			// R11: --require-head without --max-severity still carries the
 			// evidence dimension, which passes only on a receipt for the head.
 			name: "head-only-missing", findings: "[]", live: "skip", complete: true,
-			wantIDs: []string{"head", "live_threads", "evidence"}, wantStat: []string{"unknown", "skip", "pass"},
-			wantCount: []int{-1, -1, 0}, wantFail: true,
+			wantIDs: []string{"head", "live_threads", "spec", "evidence"}, wantStat: []string{"unknown", "skip", "pass", "pass"},
+			wantCount: []int{-1, -1, 0, 0}, wantFail: true,
 		},
 		{
 			name: "head-stale", findings: "[]", post: `{"head":"` + strings.Repeat("c", 40) + `"}`,
 			live: "skip", complete: true,
-			wantIDs: []string{"head", "live_threads", "evidence"}, wantStat: []string{"fail", "skip", "pass"},
-			wantCount: []int{-1, -1, 0}, wantFail: true,
+			wantIDs: []string{"head", "live_threads", "spec", "evidence"}, wantStat: []string{"fail", "skip", "pass", "pass"},
+			wantCount: []int{-1, -1, 0, 0}, wantFail: true,
 		},
 		{
 			name: "head-pass", findings: "[]", post: `{"head":"` + storeHeadSHA + `"}`,
 			live: "skip", complete: true,
-			wantIDs: []string{"head", "live_threads", "evidence"}, wantStat: []string{"pass", "skip", "pass"},
-			wantCount: []int{-1, -1, 0}, wantFail: false,
+			wantIDs: []string{"head", "live_threads", "spec", "evidence"}, wantStat: []string{"pass", "skip", "pass", "pass"},
+			wantCount: []int{-1, -1, 0, 0}, wantFail: false,
 		},
 		{
 			// R11: no receipt means no passing gate, whatever dimension the
 			// operator asked for.
 			name: "head-pass-without-receipt", findings: "[]", post: `{"head":"` + storeHeadSHA + `"}`,
 			live: "skip", complete: true, noRecord: true,
-			wantIDs: []string{"head", "live_threads", "evidence"}, wantStat: []string{"pass", "skip", "unknown"},
-			wantCount: []int{-1, -1, -1}, wantFail: true,
+			wantIDs: []string{"head", "live_threads", "spec", "evidence"}, wantStat: []string{"pass", "skip", "pass", "unknown"},
+			wantCount: []int{-1, -1, 0, -1}, wantFail: true,
 		},
 	}
 	for _, tc := range tests {

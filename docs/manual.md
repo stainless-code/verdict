@@ -317,13 +317,13 @@ everywhere. A bundle stores the outcome as the evidence receipt in `record.json`
 — one entry per finding quote, the hunk coverage, the spec coverage, the gap
 sentences, and a single `insufficient` flag.
 
-| Verb                      | What it does with the evidence verdict                                                                                                                   |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `record`                  | writes `record.json` with the receipt and, when anything is insufficient, a withheld approval whose reason is the first gap. Exit 0.                     |
-| `run`                     | feeds the gaps into its repair rounds and refuses `review-insufficient` when they survive them.                                                          |
-| `report`                  | withholds `data.approval` and warns once; the advisory read never fails.                                                                                 |
-| `report --check` / `gate` | fails the always-on `evidence` dimension and names `review-insufficient`.                                                                                |
-| `post`                    | publishes the findings with the insufficient lead and never approves; a binding approval refuses `review-insufficient`, and `--force` does not waive it. |
+| Verb                      | What it does with the evidence verdict                                                                                                                                                                                      |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `record`                  | writes `record.json` with the receipt and, when anything is insufficient, a withheld approval whose reason is the first gap. Exit 0.                                                                                        |
+| `run`                     | feeds the gaps into its repair rounds and refuses `review-insufficient` when they survive them.                                                                                                                             |
+| `report`                  | withholds `data.approval` and warns once; the advisory read never fails.                                                                                                                                                    |
+| `report --check` / `gate` | fails the always-on `spec` dimension on a violated spec check, sufficient receipt or not; fails the always-on `evidence` dimension, naming `review-insufficient`, only when the receipt is missing, stale, or insufficient. |
+| `post`                    | publishes the findings with the insufficient lead and never approves; a binding approval refuses `review-insufficient`, and `--force` does not waive it.                                                                    |
 
 ### Sig contract (sig_version 1)
 
@@ -700,7 +700,7 @@ the artifact, who writes it, and whether a verb gates on it.
 | `incremental.diff.note`                   | One `incrementalUnavailable: <host stderr head>` line explaining why the GitHub or GitLab compare read produced no delta.                                                                                                                                                                                                               | GitHub/GitLab `fetch --base-sha/--since` on a failed compare, or any other provider on the flag (naming the unsupported host) | No. No verb reads it; it explains the absent `incremental.diff` beside it while the full-diff review proceeds.                                                                                                                                                                                                                         |
 | `impact.json`                             | The index hand-off: the answered tree and commit, the diff's `paths`, `coverage`, the row `limit`, and the measured `symbols`, `callers`, and `tests` lists with their truncation counts (null where unanswered), plus `sources: ["index:<tree>"]`. `stale` is true when the named index answers for another tree than the bundle head. | `fetch`/`fetch-local --index <ref                                                                                             | dir>`                                                                                                                                                                                                                                                                                                                                  | No. It is review context, not a gate: the same `## impact` section lands on `toc.txt`, capped at 8 KiB, and `--show-prompts` fences it with the rest of `toc.txt`. |
 | `plan.txt`                                | The combined plan as the `--show-prompts` dump renders it, fenced under this label: one line per group with its stable id, profile, depth, `max_lenses`, checks, files, scopes, panel, panel source, effort, per-group cap, lens pack, and offered lenses.                                                                              | `fetch`/`fetch-local --show-prompts`                                                                                          | No. It is a rendered view for the agent; `run.json` holds the captured plan every gate reads.                                                                                                                                                                                                                                          |
-| `context.json`, `context.txt`, `context/` | Explicitly handed reference context (`--context`) and specification files (`--spec`). Each `context.json` entry records `source`, `role` (`"context"` or `"spec"`), `retrieved_at`, `sha256`, and `trust: "untrusted"`; `context.txt` fences the same bytes; `context/` keeps raw copies.                                               | `fetch`/`fetch-local` with `--context` or `--spec`                                                                            | Spec entries (`role: "spec"`) cap at 60 enumerated checklist items at fetch time (refusing `spec-too-large` with no bundle written); plain `role: "context"` entries stay reference material.                                                                                                                                          |
+| `context.json`, `context.txt`, `context/` | Explicitly handed reference context (`--context`) and specification files (`--spec`). Each `context.json` entry records `source`, `role` (`"context"` or `"spec"`), `retrieved_at`, `sha256`, and `trust: "untrusted"`; `context.txt` fences the same bytes; `context/` keeps raw copies.                                               | `fetch`/`fetch-local` with `--context` or `--spec`                                                                            | Spec entries (`role: "spec"`) cap at 150 enumerated checklist items at fetch time (refusing `spec-too-large` with no bundle written); plain `role: "context"` entries stay reference material.                                                                                                                                         |
 
 `config --preview` is the exception: when `run.json` is absent it can fall back
 to its file list, though it still verifies `controls.json` and may lose
@@ -1628,9 +1628,14 @@ same record `report --completeness` reads), and `--live auto|strict|skip`
 asked for it, and `--live` alone is a usage error rather than a silent pass).
 A dimension is `pass`, `fail`, `unknown` (unreadable and failing closed), or
 `skip` (not requested, or unreachable under `auto`); only `fail` and `unknown`
-fail the gate, so a skip never turns a green run red. The `evidence` dimension
-rides every gate mode, whichever dimension the operator asked for: `pass`
-needs the current head's evidence receipt with `insufficient: false`, an
+fail the gate, so a skip never turns a green run red. Two dimensions ride
+every gate mode, whichever dimension the operator asked for. `spec` fails on
+any spec check the stored record graded `violated`
+(`check: violated spec check: <item> — gate fails`, the count tallying every
+violated item) and passes on `met`, `n/a`, or no spec checks at all: the
+derived approval withholds on a violation, so a gate passing over one would
+certify a review the decision refuses. `evidence` `pass`
+needs the current head's evidence receipt with `insufficient: false`: an
 insufficient receipt fails, and a missing, stale, or unreadable one reads
 `unknown` — so no gate passes without a receipt for the head it certifies.
 Exit codes mirror `report --check`: 0 pass, 1 fail-or-unknown, 2 usage, 3 tool
@@ -1671,7 +1676,7 @@ threads, then re-run gate
 ```
 
 `--json` publishes the same verdict as `data.passed` plus `data.dimensions[]`
-in `findings, head, coverage, live_threads, compliance, risk, evidence` order
+in `findings, head, coverage, live_threads, compliance, risk, spec, evidence` order
 (only the dimensions a run composes; `id`, `status`,
 `detail`, `count` —
 null where a dimension has no tally). A failed gate is a verdict, not a
@@ -5124,7 +5129,7 @@ missing, symlinked, special, unsupported or over-limit input — refuses
 names the operand as typed and, for a relative path, its absolute resolution
 (relative paths resolve against the current directory), and the hint tells you
 to check each `--context` path. Across all `--spec` sources, deterministic
-checklist enumeration caps at 60 items; more than 60 items refuses
+checklist enumeration caps at 150 items; more than 150 items refuses
 `spec-too-large` before any bundle files are written, with a hint to narrow the
 spec file or split the PR. A failure to write the bundle's `context*` artifacts
 keeps `fetch-failed` and its provider hint. Reduce the hand-off or copy the

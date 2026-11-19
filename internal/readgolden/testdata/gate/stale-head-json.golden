@@ -40,6 +40,12 @@ exit: 1
         "count": null
       },
       {
+        "id": "spec",
+        "status": "pass",
+        "detail": "no violated spec check",
+        "count": 0
+      },
+      {
         "id": "evidence",
         "status": "unknown",
         "detail": "evidence receipt missing for head aaaaaaa [review-insufficient]",
@@ -57,7 +63,8 @@ gate: findings     pass  no open findings at-or-above critical
 gate: head         fail  posted HEAD ccccccc != fetched HEAD aaaaaaa
 gate: coverage     unknown  stored coverage is for HEAD ccccccc, not HEAD aaaaaaa
 gate: live_threads skip  live recheck skipped (--live skip)
+gate: spec         pass  no violated spec check
 gate: evidence     unknown  evidence receipt missing for head aaaaaaa [review-insufficient]
-gate: FAIL (1 fail, 2 unknown, 1 pass, 1 skip)
+gate: FAIL (1 fail, 2 unknown, 2 pass, 1 skip)
 gate: skipped live_threads
 --- files ---

@@ -98,7 +98,7 @@ func collectContext(inputs []string) ([]contextFile, error) {
 
 // collectContextInputs reads and validates --context and --spec inputs,
 // deduplicates sources (with spec winning when a source is passed to both),
-// and enforces A1's 60-item cap across spec blocks before any bundle write.
+// and enforces A1's 150-item cap across spec blocks before any bundle write.
 func collectContextInputs(contextInputs, specInputs []string) ([]contextFile, error) {
 	reader := new(contextReader)
 	if err := reader.readInputs(contextInputs, contextFlagName, contextRoleContext); err != nil {
@@ -139,7 +139,7 @@ func dedupeContextFiles(files []contextFile) []contextFile {
 	return slices.CompactFunc(files, func(a, b contextFile) bool { return a.source == b.source })
 }
 
-// checkSpecItemCap enforces A1's hard cap of 60 checklist items across all
+// checkSpecItemCap enforces A1's hard cap of 150 checklist items across all
 // spec sources, refusing spec-too-large before fetch writes anything.
 func checkSpecItemCap(files []contextFile) error {
 	var blocks []evidence.SpecBlock

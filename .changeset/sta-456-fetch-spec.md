@@ -11,5 +11,5 @@ reference material.
   `context.txt`, while `context.json` records `"role": "spec"` or
   `"role": "context"` per entry in place and `toc.txt`'s `## context` section
   marks spec rows with `[spec]`.
-- Combined spec sources are capped at 60 enumerated checklist items; exceeding
+- Combined spec sources are capped at 150 enumerated checklist items; exceeding
   the cap refuses `spec-too-large` with no bundle files written.

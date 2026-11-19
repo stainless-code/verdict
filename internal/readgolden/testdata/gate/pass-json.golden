@@ -33,6 +33,12 @@ exit: 0
         "count": null
       },
       {
+        "id": "spec",
+        "status": "pass",
+        "detail": "no violated spec check",
+        "count": 0
+      },
+      {
         "id": "evidence",
         "status": "pass",
         "detail": "evidence checks satisfied (0 quotes verified, 0/0 hunks receipted, 0/0 spec items checked)",
@@ -48,6 +54,7 @@ warn: live recheck skipped (--live skip requested — gating on local dimensions
 gate: findings     pass  no open findings at-or-above critical
 gate: coverage     pass  100% of full hunk spans, both sides and context attested (24/24 lines)
 gate: live_threads skip  live recheck skipped (--live skip)
+gate: spec         pass  no violated spec check
 gate: evidence     pass  evidence checks satisfied (0 quotes verified, 0/0 hunks receipted, 0/0 spec items checked)
 gate: PASS
 gate: skipped live_threads

@@ -75,31 +75,41 @@ func TestFetchLocalContextAloneHasNoSpecRole(t *testing.T) {
 	}
 }
 
-func TestFetchLocalSpecCap60Passes(t *testing.T) {
+// TestFetchLocalSpecCap150Passes proves the cap's passing edge: exactly 150
+// enumerated items across the spec sources still fetch, so a cap that refused
+// its own limit cannot pass this.
+func TestFetchLocalSpecCap150Passes(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeContextFixture(t, "spec60.md", numberedSpecItems(60))
+	writeContextFixture(t, "spec75a.md", numberedSpecItems(75))
+	writeContextFixture(t, "spec75b.md", numberedSpecItemsFrom(76, 75))
 
 	cmdr := stagedLocalCommander(t, cleanStagedDiff)
 	var human, diag bytes.Buffer
 	var streamed []string
 	resp, err := RunLocal(t.Context(), localScriptReq(cmdr, &human, &diag, &streamed, nil,
-		core.FetchLocalFlags{Staged: true, Spec: []string{"spec60.md"}}))
+		core.FetchLocalFlags{Staged: true, Spec: []string{"spec75a.md", "spec75b.md"}}))
 	if err != nil {
-		t.Fatalf("RunLocal with 60 spec items failed: %v", err)
+		t.Fatalf("RunLocal with 150 spec items failed: %v", err)
 	}
 	if !strings.Contains(resp.Next, "context.txt") {
 		t.Fatalf("Next = %q, want context.txt for --spec-only fetch", resp.Next)
 	}
 	bundleDir := filepath.Join(".verdict", "state", "local-mine")
-	assertContextRoles(t, readContextJSON(t, bundleDir), map[string]string{"spec60.md": "spec"})
+	assertContextRoles(t, readContextJSON(t, bundleDir), map[string]string{
+		"spec75a.md": "spec",
+		"spec75b.md": "spec",
+	})
 }
 
-func TestFetchLocalSpecCap61RefusesWithoutWrites(t *testing.T) {
+// TestFetchLocalSpecCap151RefusesWithoutWrites proves the refusing edge: one
+// item past the cap names both counts and the new limit in its hint, and the
+// refusal happens before any bundle file exists.
+func TestFetchLocalSpecCap151RefusesWithoutWrites(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeContextFixture(t, "spec-a.md", numberedSpecItems(40))
-	writeContextFixture(t, "spec-b.md", numberedSpecItemsFrom(41, 21))
+	writeContextFixture(t, "spec-a.md", numberedSpecItems(150))
+	writeContextFixture(t, "spec-b.md", numberedSpecItemsFrom(151, 1))
 
 	cmdr := stagedLocalCommander(t, cleanStagedDiff)
 	var human, diag bytes.Buffer
@@ -107,10 +117,10 @@ func TestFetchLocalSpecCap61RefusesWithoutWrites(t *testing.T) {
 	_, err := RunLocal(t.Context(), localScriptReq(cmdr, &human, &diag, &streamed, nil,
 		core.FetchLocalFlags{Staged: true, Spec: []string{"spec-a.md", "spec-b.md"}}))
 	ref := requireRefusal(t, err, "spec-too-large")
-	if !strings.Contains(ref.Message, "61") || !strings.Contains(ref.Message, "60") {
-		t.Fatalf("refusal message = %q, want item count 61 and cap 60", ref.Message)
+	if !strings.Contains(ref.Message, "151") || !strings.Contains(ref.Message, "150") {
+		t.Fatalf("refusal message = %q, want item count 151 and cap 150", ref.Message)
 	}
-	const wantHint = "try: narrow the --spec file under 60 checklist items or split the PR, then re-fetch"
+	const wantHint = "try: narrow the --spec file under 150 checklist items or split the PR, then re-fetch"
 	if got := core.HintFor(ref.Code); got != wantHint {
 		t.Fatalf("HintFor(spec-too-large) = %q, want %q", got, wantHint)
 	}
