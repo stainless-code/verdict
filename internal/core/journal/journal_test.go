@@ -296,6 +296,38 @@ func assertAuditHumanOutput(t *testing.T, sum *Summary) {
 	}
 }
 
+func TestAppendAfterTornTailKeepsTheNewRecordReadable(t *testing.T) {
+	t.Parallel()
+	jpath := filepath.Join(t.TempDir(), "torn", "local-torn.jsonl")
+	mustWriteFile(t, jpath, []byte(`{"schema_version":"1","phase":"start","step":"2026-11-19T10:0`), journalFileMode)
+	t0 := time.Date(2026, 11, 19, 10, 0, 0, 0, time.UTC)
+	step := stepID(t0)
+	mustAppendEnd(t, jpath, &EndLine{
+		SchemaVersion: SchemaVersion, Phase: PhaseEnd, Repo: "/repo/app", Step: step,
+		Verb: "record", Channel: ChannelCLI, PID: 1,
+		StartedAt: step, EndedAt: t0.Format(time.RFC3339Nano),
+		Bundle: BundleDigests{After: "aaaa"}, Wrote: []FileRecord{}, Removed: []string{}, Next: "report",
+	}, t0)
+
+	raw, err := os.ReadFile(jpath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if lines := splitWholeLines(raw); len(lines) != 2 {
+		t.Fatalf("journal has %d whole lines, want the torn fragment and the new record: %q", len(lines), raw)
+	}
+	sum, err := Read(jpath, "local-torn")
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if len(sum.Steps) != 1 || sum.Steps[0].Verb != "record" {
+		t.Fatalf("Steps = %+v, want the appended record folded", sum.Steps)
+	}
+	if sum.UnreadableLines != 1 {
+		t.Fatalf("UnreadableLines = %d, want only the torn fragment", sum.UnreadableLines)
+	}
+}
+
 func TestAppendTruncationPreservesWholeLines(t *testing.T) {
 	t.Parallel()
 	path := filepath.Join(t.TempDir(), "journal", "local-cap.jsonl")

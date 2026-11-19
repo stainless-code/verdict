@@ -138,9 +138,13 @@ func refuseSymlink(path string) error {
 }
 
 func appendRawLocked(path string, raw []byte) (int64, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, journalFileMode)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_RDWR|os.O_APPEND, journalFileMode)
 	if err != nil {
 		return 0, wrapErr("open "+path, err)
+	}
+	if err := terminateTornTail(f); err != nil {
+		_ = f.Close()
+		return 0, wrapErr("repair torn tail of "+path, err)
 	}
 	if _, err := f.Write(raw); err != nil {
 		_ = f.Close()
@@ -155,6 +159,29 @@ func appendRawLocked(path string, raw []byte) (int64, error) {
 		return 0, wrapErr("close "+path, closeErr)
 	}
 	return info.Size(), nil
+}
+
+// terminateTornTail writes a newline when the file is non-empty and its last
+// byte is not one. A process crash can leave a fragment without its terminator;
+// without this, the next record would be appended onto that fragment and both
+// lines would become unreadable instead of only the torn one.
+func terminateTornTail(f *os.File) error {
+	info, err := f.Stat()
+	if err != nil {
+		return err
+	}
+	if info.Size() == 0 {
+		return nil
+	}
+	var last [1]byte
+	if _, err := f.ReadAt(last[:], info.Size()-1); err != nil {
+		return err
+	}
+	if last[0] == '\n' {
+		return nil
+	}
+	_, err = f.Write([]byte{'\n'})
+	return err
 }
 
 func truncateLocked(path, repo string, now time.Time, keepBytes int64) error {
