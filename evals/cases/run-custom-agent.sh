@@ -59,14 +59,26 @@ if [ "$prompt_at" -ne "$(( $# - 1 ))" ]; then
   exit 2
 fi
 directive="${!#}"
-rest="${directive#*Write }"
-artifact="${rest%% with \{*}"
-if [ -z "$artifact" ] || [ "$artifact" = "$directive" ]; then
+case "$directive" in
+  *" FIRST with {"*)
+    rest="${directive#*Write }"
+    artifact="${rest%% FIRST with \{*}"
+    ;;
+  *" in place:"*)
+    rest="${directive#*Update }"
+    artifact="${rest%% in place:*}"
+    ;;
+  *)
+    rest=""
+    artifact=""
+    ;;
+esac
+if [ -z "$artifact" ] || [ "$artifact" = "$rest" ]; then
   echo "custom-agent: the directive named no review path" >&2
   exit 2
 fi
 cat >"$artifact" <<'JSON'
-{"schema_version":"1","body":"Nit: one note.","approved":false,"comments":[]}
+{"schema_version":"1","summary":"Nit: one note, nothing blocking.","findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"Nit: rename this line.","quote":"new line","confidence":"high","severity":"informational","rigor":"walked"}]}
 JSON
 STUB
 chmod +x "$AGENTBIN/custom-agent"

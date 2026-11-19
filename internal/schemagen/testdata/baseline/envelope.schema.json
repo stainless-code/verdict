@@ -132,6 +132,7 @@
           "enum": [
             "anchor-outside-hunk",
             "bad-enum",
+            "empty-findings-needs-summary",
             "enum-synonym",
             "invalid-json",
             "key-alias",

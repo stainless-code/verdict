@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -125,7 +126,7 @@ func renderPromptDump(ctx *fetchRunCtx) (string, error) {
 	meta, metaLabel := dumpMeta(ctx.dir)
 	// The Procedure comes from this binary, never the working directory:
 	// a broken embed refuses typed instead of printing a partial Procedure.
-	if ref := dumpPrompts(&sb); ref != nil {
+	if ref := dumpPrompts(&sb, bundleFacts(ctx.dir)); ref != nil {
 		return "", ref
 	}
 	nonce := promptNonce()
@@ -155,9 +156,9 @@ func dumpMeta(dir string) (meta, label string) {
 	return meta, label
 }
 
-// reviewProcedure is the embedded review assembly. Tests swap this var to
-// simulate a broken embed; production always uses skillfs.ReviewProcedure.
-var reviewProcedure = skillfs.ReviewProcedure
+// reviewProcedure is the fact-aware embedded review assembly. Tests swap this
+// var to simulate a broken embed; production always uses the same seam.
+var reviewProcedure = skillfs.ReviewProcedureFor
 
 // procedureRefusal is the one prompt-dump-failed emission site. The bundle
 // writer and the dump both use it, so any missing embedded Procedure file
@@ -177,9 +178,18 @@ func procedureRefusal(err error) *core.RefusalError {
 // writeBundleProcedure persists the binary's review Procedure as the bundle's
 // trusted instruction file, using the same atomic writer as its other inputs.
 func writeBundleProcedure(dir string) error {
-	raw, err := reviewProcedure()
+	raw, err := reviewProcedure(bundleFacts(dir))
 	if err != nil {
 		return procedureRefusal(err)
+	}
+	if err := skillfs.WriteBundleRefs(dir); err != nil {
+		if missing, ok := errors.AsType[*skillfs.ProcedureFileError](err); ok {
+			return procedureRefusal(missing)
+		}
+		return &core.RefusalError{
+			Code:    CodeFetchFailed,
+			Message: fmt.Sprintf("could not write %s: %v", filepath.ToSlash(filepath.Join(dir, "refs")), err),
+		}
 	}
 	if werr := atomic.WriteFile(dir+suffixProcedureMD, raw); werr != nil {
 		return &core.RefusalError{
@@ -190,14 +200,20 @@ func writeBundleProcedure(dir string) error {
 	return nil
 }
 
-// dumpPrompts writes the embedded assembly, refusing typed on any missing
-// embedded Procedure file instead of printing a partial Procedure.
-func dumpPrompts(sb *strings.Builder) *core.RefusalError {
-	raw, err := reviewProcedure()
+// dumpPrompts writes the assembled handoff followed by one trusted line
+// naming the pull refs in <bundle>/refs/. Their bodies stay in the bundle:
+// the dump is the assembled reading list, not a second copy of the refs.
+func dumpPrompts(sb *strings.Builder, facts skillfs.HandoffFacts) *core.RefusalError {
+	raw, err := reviewProcedure(facts)
 	if err != nil {
 		return procedureRefusal(err)
 	}
 	sb.Write(raw)
+	paths := make([]string, 0, len(skillfs.HandoffRefs()))
+	for _, ref := range skillfs.HandoffRefs() {
+		paths = append(paths, ref.Path)
+	}
+	sb.WriteString("Trusted refs in <bundle>/refs/: " + strings.Join(paths, ", ") + "\n\n")
 	return nil
 }
 

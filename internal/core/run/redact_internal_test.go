@@ -192,9 +192,10 @@ const pipelineDirective = "Review acme/app PR 42 and write exactly one review fi
 	"(an installed skill may be older). Then the bundle at .verdict/state/42: PR.json, " +
 	"roles.txt, and toc.txt indexing full.diff, plus kb.txt, sensitive.txt, and panel when the run " +
 	"carries them.\n\n" +
-	"Write .verdict/state/42/review.json with {\"schema_version\": \"1\", \"findings\": [{\"path\": ..., \"line\": 2, \"severity\": ..., \"claim\": ..., \"quote\": ..., \"confidence\": ...}], " +
-	"\"spec_checks\": [], \"receipts\": [], \"summary\": ...} (optional \"resolved\" and \"triage\"). Write nothing " +
-	"else in the bundle.\n\n" +
+	"Write .verdict/state/42/review.json FIRST with {\"schema_version\": \"1\", \"findings\": []}, then " +
+	"update that same file with {\"schema_version\": \"1\", \"findings\": [{\"path\": ..., \"line\": 2, " +
+	"\"severity\": ..., \"claim\": ..., \"quote\": ..., \"confidence\": ...}], \"spec_checks\": [], " +
+	"\"receipts\": [], \"summary\": ...} (optional \"resolved\" and \"triage\"). Write nothing else in the bundle.\n\n" +
 	"verdict launched this one process and validates that file; it does not read your prose, retry " +
 	"you, or post. Do not post, merge, or push: publishing is an explicit verdict post.\n\n" +
 	"The review pipeline is recipe default@1.0.0 (builtin): lenses none; synthesize; dedupe; rank. " +
@@ -227,11 +228,25 @@ func TestDirectiveKeepsAPercentPathLiteral(t *testing.T) {
 	if want := "Then the bundle at " + bundle + ": PR.json"; !strings.Contains(whole, want) {
 		t.Errorf("directive does not keep the path literally, want %q in:\n%s", want, whole)
 	}
-	if want := "Write " + artifact + " with {\"schema_version\": \"1\""; !strings.Contains(whole, want) {
+	if want := "Write " + artifact + " FIRST with {\"schema_version\": \"1\", \"findings\": []}"; !strings.Contains(whole, want) {
 		t.Errorf("directive mangles the write instruction, want %q in:\n%s", want, whole)
 	}
 	if strings.Contains(whole, "%!") {
 		t.Errorf("directive rendered a format operand as data:\n%s", whole)
+	}
+}
+
+// TestStageDirectivesKeepThePercentPathLiteral pins the two write instructions:
+// stage 1 creates the placeholder, and stage 2 preserves what it replaced.
+func TestStageDirectivesKeepThePercentPathLiteral(t *testing.T) {
+	bundle := "/checkouts/%s/%d/100%%/42"
+	artifact := bundle + "/review.json"
+	plan := builtinPlan(t)
+
+	first := staged{index: 1, stage: plan.Stages[0]}
+	stageOne := stageDirective("acme/app", "42", bundle, artifact, false, false, plan, &first)
+	if want := "Write " + artifact + " FIRST with {\"schema_version\": \"1\", \"findings\": []}"; !strings.Contains(stageOne, want) {
+		t.Errorf("stage 1 lost its first-write instruction, want %q in:\n%s", want, stageOne)
 	}
 
 	at := staged{index: 2, stage: plan.Stages[1]}
@@ -239,8 +254,16 @@ func TestDirectiveKeepsAPercentPathLiteral(t *testing.T) {
 	if want := "Read " + artifact + ", the review the previous stage wrote."; !strings.Contains(stage, want) {
 		t.Errorf("stage directive does not keep the path literally, want %q in:\n%s", want, stage)
 	}
-	if want := "Write " + artifact + " with {\"schema_version\": \"1\""; !strings.Contains(stage, want) {
-		t.Errorf("stage directive mangles the write instruction, want %q in:\n%s", want, stage)
+	want := "Update " + artifact + " in place: never reset it to the empty document; keep " +
+		"every earlier finding and value unless this stage's task says to merge, drop or reorder it"
+	if !strings.Contains(stage, want) {
+		t.Errorf("stage 2 mangles the update instruction, want %q in:\n%s", want, stage)
+	}
+	if !strings.Contains(stage, "never reset it to the empty document") {
+		t.Errorf("stage 2 lost the never-reset guard:\n%s", stage)
+	}
+	if strings.Contains(stage, "FIRST with") {
+		t.Errorf("stage 2 still tells the agent to overwrite the earlier review:\n%s", stage)
 	}
 	if strings.Contains(stage, "%!") {
 		t.Errorf("stage directive rendered a format operand as data:\n%s", stage)

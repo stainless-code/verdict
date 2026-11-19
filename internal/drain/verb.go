@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 
+	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
 	draincore "github.com/stainless-code/verdict/internal/core/drain"
@@ -159,13 +160,17 @@ func writePlanArtifacts(dir string, plan *draincore.File, dryRun, drafting bool)
 }
 
 // ensureDraftProcedure creates the draft agent's Procedure only when the real
-// bundle lacks it; an existing file is left byte-identical.
+// bundle lacks it, and always repairs missing refs. An existing procedure is
+// left byte-identical: only its pull resources may need restoring.
 func ensureDraftProcedure(dir string) error {
 	exists, err := procedureFileExists(dir)
 	if err != nil {
 		return jq.Sealed("could not stat "+dir+pathSep+draincore.KeyProcedureMD, err)
 	}
 	if exists {
+		if err := skillfs.WriteBundleRefs(dir); err != nil {
+			return jq.Sealed("could not write drain bundle refs", err)
+		}
 		return nil
 	}
 	if err := draincore.WriteProcedure(dir); err != nil {

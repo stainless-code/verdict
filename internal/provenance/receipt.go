@@ -257,8 +257,9 @@ func EmptyReceipt() *core.ProvenanceReceipt {
 }
 
 func promptInputEntries() []core.ProvenanceInput {
-	out := make([]core.ProvenanceInput, 0, len(promptFiles))
-	for _, f := range promptFiles {
+	files := hashedFiles()
+	out := make([]core.ProvenanceInput, 0, len(files))
+	for _, f := range files {
 		raw, err := skillfs.Read(f)
 		if err != nil {
 			n := int64(0)

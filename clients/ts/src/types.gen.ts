@@ -36,6 +36,7 @@ export interface Problem {
   code:
     | "anchor-outside-hunk"
     | "bad-enum"
+    | "empty-findings-needs-summary"
     | "enum-synonym"
     | "invalid-json"
     | "key-alias"

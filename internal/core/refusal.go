@@ -76,6 +76,9 @@ const (
 	ProblemCodeEnumSynonym         = "enum-synonym"
 	ProblemCodeNormalizedTrivia    = "normalized-trivia"
 	ProblemCodeRiskStaleHead       = "risk-stale-head"
+	// ProblemCodeEmptyFindingsNeedsSummary refuses a finished clean review
+	// that never replaced the directive's empty placeholder.
+	ProblemCodeEmptyFindingsNeedsSummary = "empty-findings-needs-summary"
 
 	ProblemLevelError   = "error"
 	ProblemLevelWarning = "warning"
@@ -87,8 +90,8 @@ const (
 type Problem struct { //nolint:govet // field order is the published property order
 	Path string `json:"path"`
 	//nolint:revive // published enum tag exceeds the line limit
-	Code    string `enum:"anchor-outside-hunk|bad-enum|enum-synonym|invalid-json|key-alias|missing-field|normalized-extracted|normalized-fence|normalized-trivia|out-of-range|path-not-in-diff|rigor-unset|risk-stale-head|scalar-to-array|unknown-field|wrong-type" json:"code"`
-	Level   string `enum:"error|warning"                                                                                                                                                                                                                             json:"level"` //nolint:revive // published enum tag exceeds the line limit
+	Code    string `enum:"anchor-outside-hunk|bad-enum|empty-findings-needs-summary|enum-synonym|invalid-json|key-alias|missing-field|normalized-extracted|normalized-fence|normalized-trivia|out-of-range|path-not-in-diff|rigor-unset|risk-stale-head|scalar-to-array|unknown-field|wrong-type" json:"code"`
+	Level   string `enum:"error|warning"                                                                                                                                                                                                                                                          json:"level"` //nolint:revive // published enum tag exceeds the line limit
 	Message string `json:"message"`
 	Fix     string `json:"fix"`
 	Example any    `json:"example,omitempty"`
@@ -97,22 +100,23 @@ type Problem struct { //nolint:govet // field order is the published property or
 // problemCodeLevels is the closed code set with the level each code normally
 // carries. --strict and controls strict_input promote every warning.
 var problemCodeLevels = map[string]string{
-	ProblemCodeInvalidJSON:         ProblemLevelError,
-	ProblemCodeWrongType:           ProblemLevelError,
-	ProblemCodeMissingField:        ProblemLevelError,
-	ProblemCodeBadEnum:             ProblemLevelError,
-	ProblemCodeOutOfRange:          ProblemLevelError,
-	ProblemCodePathNotInDiff:       ProblemLevelError,
-	ProblemCodeUnknownField:        ProblemLevelWarning,
-	ProblemCodeAnchorOutsideHunk:   ProblemLevelWarning,
-	ProblemCodeRigorUnset:          ProblemLevelWarning,
-	ProblemCodeNormalizedFence:     ProblemLevelWarning,
-	ProblemCodeNormalizedExtracted: ProblemLevelWarning,
-	ProblemCodeScalarToArray:       ProblemLevelWarning,
-	ProblemCodeKeyAlias:            ProblemLevelWarning,
-	ProblemCodeEnumSynonym:         ProblemLevelWarning,
-	ProblemCodeNormalizedTrivia:    ProblemLevelWarning,
-	ProblemCodeRiskStaleHead:       ProblemLevelWarning,
+	ProblemCodeInvalidJSON:               ProblemLevelError,
+	ProblemCodeWrongType:                 ProblemLevelError,
+	ProblemCodeMissingField:              ProblemLevelError,
+	ProblemCodeBadEnum:                   ProblemLevelError,
+	ProblemCodeOutOfRange:                ProblemLevelError,
+	ProblemCodePathNotInDiff:             ProblemLevelError,
+	ProblemCodeUnknownField:              ProblemLevelWarning,
+	ProblemCodeAnchorOutsideHunk:         ProblemLevelWarning,
+	ProblemCodeRigorUnset:                ProblemLevelWarning,
+	ProblemCodeNormalizedFence:           ProblemLevelWarning,
+	ProblemCodeNormalizedExtracted:       ProblemLevelWarning,
+	ProblemCodeScalarToArray:             ProblemLevelWarning,
+	ProblemCodeKeyAlias:                  ProblemLevelWarning,
+	ProblemCodeEnumSynonym:               ProblemLevelWarning,
+	ProblemCodeNormalizedTrivia:          ProblemLevelWarning,
+	ProblemCodeRiskStaleHead:             ProblemLevelWarning,
+	ProblemCodeEmptyFindingsNeedsSummary: ProblemLevelError,
 }
 
 // ProblemCodes returns the published problem-code enum in lexical order.

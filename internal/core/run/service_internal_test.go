@@ -48,6 +48,79 @@ func (s *scripted) Run(_ context.Context, cmd *core.Command) (core.Result, error
 // prNumber is the bundle directory and PR number every run fixture uses.
 const prNumber = "42"
 
+// fixtureDiff covers every path a run test's review cites, with a hunk wide
+// enough for the line numbers those tests use. Run now validates the artifact
+// with record's checker, which needs the same full.diff a fetched bundle has.
+const fixtureDiff = `diff --git a/a.go b/a.go
+--- a/a.go
++++ b/a.go
+@@ -1,12 +1,12 @@
+-old line 1
++new line 1
+ old line 2
+ old line 3
+ old line 4
+ old line 5
+ old line 6
+ old line 7
+ old line 8
+ old line 9
+ old line 10
+ old line 11
+ old line 12
+diff --git a/old.go b/old.go
+--- a/old.go
++++ b/old.go
+@@ -1,12 +1,12 @@
+-old line 1
++new line 1
+ old line 2
+ old line 3
+ old line 4
+ old line 5
+ old line 6
+ old line 7
+ old line 8
+ old line 9
+ old line 10
+ old line 11
+ old line 12
+diff --git a/notes.txt b/notes.txt
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,12 +1,12 @@
+-old line 1
++new line 1
+ old line 2
+ old line 3
+ old line 4
+ old line 5
+ old line 6
+ old line 7
+ old line 8
+ old line 9
+ old line 10
+ old line 11
+ old line 12
+diff --git a/elsewhere.txt b/elsewhere.txt
+--- a/elsewhere.txt
++++ b/elsewhere.txt
+@@ -1,12 +1,12 @@
+-old line 1
++new line 1
+ old line 2
+ old line 3
+ old line 4
+ old line 5
+ old line 6
+ old line 7
+ old line 8
+ old line 9
+ old line 10
+ old line 11
+ old line 12
+`
+
 // fixtureRoot builds the fixture bundle and returns the reviewed repository
 // root. PR.json is written so the bundle resolves as a PR bundle, not a local
 // one.
@@ -58,8 +131,13 @@ func fixtureRoot(t *testing.T) string {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "PR.json"), []byte(`{"number":42,"state":"OPEN"}`), 0o644); err != nil {
-		t.Fatal(err)
+	for name, body := range map[string]string{
+		"PR.json":   `{"number":42,"state":"OPEN"}`,
+		"full.diff": fixtureDiff,
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return root
 }
@@ -1280,9 +1358,10 @@ const quickPipelineDirective = "Review acme/app PR 42 and write exactly one revi
 	"(an installed skill may be older). Then the bundle at .verdict/state/42: PR.json, " +
 	"roles.txt, and toc.txt indexing full.diff, plus kb.txt, sensitive.txt, and panel when the run " +
 	"carries them.\n\n" +
-	"Write .verdict/state/42/review.json with {\"schema_version\": \"1\", \"findings\": [{\"path\": ..., \"line\": 2, \"severity\": ..., \"claim\": ..., \"quote\": ..., \"confidence\": ...}], " +
-	"\"spec_checks\": [], \"receipts\": [], \"summary\": ...} (optional \"resolved\" and \"triage\"). Write nothing " +
-	"else in the bundle.\n\n" +
+	"Write .verdict/state/42/review.json FIRST with {\"schema_version\": \"1\", \"findings\": []}, then " +
+	"update that same file with {\"schema_version\": \"1\", \"findings\": [{\"path\": ..., \"line\": 2, " +
+	"\"severity\": ..., \"claim\": ..., \"quote\": ..., \"confidence\": ...}], \"spec_checks\": [], " +
+	"\"receipts\": [], \"summary\": ...} (optional \"resolved\" and \"triage\"). Write nothing else in the bundle.\n\n" +
 	"verdict launched this one process and validates that file; it does not read your prose, retry " +
 	"you, or post. Do not post, merge, or push: publishing is an explicit verdict post.\n\n" +
 	"The review pipeline is recipe quick@1.2.3 (repo): lenses logic (model sonnet, max_files 8, " +

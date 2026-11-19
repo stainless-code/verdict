@@ -6,10 +6,10 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/../lib/common.sh"
 
 FIX="$EVAL_ROOT/evals/fixtures/prompt-injection"
-PRE="attacker-controlled"
+PRE="--- verdict trust boundary (tool-generated, trusted) ---"
 
-offset() { grep -b -o -F -m1 "$2" "$1" 2>/dev/null | cut -d: -f1 || true; }
-present() { grep -q -F "$2" "$1" 2>/dev/null; }
+offset() { grep -b -o -F -m1 -- "$2" "$1" 2>/dev/null | cut -d: -f1 || true; }
+present() { grep -q -F -- "$2" "$1" 2>/dev/null; }
 
 (
   cd "$EVAL_SANDBOX" || exit 99
@@ -42,9 +42,15 @@ else
 fi
 cp "$EVAL_OUT" "$EVAL_SANDBOX/pinj-diff.txt"
 if present "$EVAL_SANDBOX/pinj-diff.txt" "$PRE"; then
-  good "I1: untrusted-data preamble present in the dump"
+  good "I1: trust-boundary preamble present in the dump"
 else
   bad "I1: preamble '$PRE' missing from the dump"
+fi
+REF_BUNDLE="$(find "$EVAL_SANDBOX/.verdict/state" -path '*/refs/system-boundaries.md' -type f -print -quit 2>/dev/null)"
+if [ -n "$REF_BUNDLE" ] && present "$REF_BUNDLE" "attacker-controlled"; then
+  good "I1: untrusted-data rules stay available as a pull ref"
+else
+  bad "I1: untrusted-data rules missing from refs/system-boundaries.md"
 fi
 pre_off="$(offset "$EVAL_SANDBOX/pinj-diff.txt" "$PRE")"
 for tok in $DIFF_TOKENS; do

@@ -138,7 +138,7 @@ func matrixSetup(n int) func(t *testing.T, dir string) {
 
 // emptyFindings is a review document with no findings: the smallest document
 // record accepts, used where the case is about a flag or a garnish rule.
-const emptyFindings = `{"schema_version":"1","findings":[]}`
+const emptyFindings = `{"schema_version":"1","summary":"A short summary of the clean review.","findings":[]}`
 
 // fencedSuggestionFinding carries a suggestion fence, which a raw Go string
 // cannot hold.
@@ -249,7 +249,7 @@ func TestGoldenDegenerateInputs(t *testing.T) {
 		name   string
 		review string
 	}{
-		{"bad-schema", `{"schema_version":"2","findings":[]}`},
+		{"bad-schema", `{"schema_version":"2","summary":"A short summary of the clean review.","findings":[]}`},
 		{"missing-findings", `{"schema_version":"1","summary":"A summary is not a body, and a document without findings refuses."}`},
 		{"string-line", findingReview(`{"path":"notes.txt","line":"2","severity":"important","claim":"A string line no longer anchors.","quote":"new line","confidence":"high"}`)},
 		{"empty-diff-finding", findingReview(`{"path":"notes.txt","line":2,"side":"RIGHT","severity":"important","claim":"Anchors unchecked.","quote":"new line","confidence":"high","rigor":"pointed"}`)},

@@ -334,7 +334,7 @@ assert_json_field "the step's agent wrote the findings review artifact" "1" \
 assert_json_field "the step's launcher recorded the configured agent" "$VERDICT_AGENT" \
   '.agent' "$PR_DIR/launcher.json"
 assert_file_grep "the directive named the artifact the agent wrote" "$STUB_AGENT_LOG" \
-  "^arg\\[[0-9]+\\]=.*Write .verdict/state/$PR_BUNDLE/review.json with " "-E"
+  "^arg\\[[0-9]+\\]=.*Write .verdict/state/$PR_BUNDLE/review.json FIRST with " "-E"
 assert_file_grep "the agent ran in the repository root" "$STUB_AGENT_LOG" "cwd=$SANDBOX" "-Fx"
 
 # An earlier run's artifact is not a fresh review: the step must fail.

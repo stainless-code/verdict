@@ -257,6 +257,17 @@ func (c *checker) checkReview(obj *jq.Obj) {
 	if _, ok := obj.Get(problemFindings); !ok {
 		c.missing("$.findings", "missing findings", "write \"findings\": []", []any{})
 	}
+	if findings, ok := obj.Get(problemFindings); ok {
+		if items, ok := findings.([]any); ok && len(items) == 0 {
+			summary, _ := obj.Get(problemSummary)
+			if jq.StrOf(summary) == "" {
+				c.add(c.problem(problemRoot+"."+problemSummary, core.ProblemCodeEmptyFindingsNeedsSummary,
+					core.ProblemLevelError, "a review with no findings needs a non-empty summary",
+					"set summary to a short explanation of the clean review",
+					"Reviewed the diff; no defects found."))
+			}
+		}
+	}
 	if c.hasChunks {
 		if _, ok := obj.Get(fieldChunks); !ok {
 			c.unattestedChunks()
@@ -1038,6 +1049,7 @@ func reviewObjectExample() map[string]any {
 	return map[string]any{
 		fieldSchemaVersion: schemaVersion1,
 		problemFindings:    []any{},
+		problemSummary:     "Reviewed the diff; no defects found.",
 	}
 }
 

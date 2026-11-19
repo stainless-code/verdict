@@ -365,16 +365,29 @@ func repoRoot() string {
 }
 
 const (
-	embeddedReviewMarker = "<embedded review Procedure>"
-	embeddedDrainMarker  = "<embedded drain Procedure>"
+	embeddedReviewMarker  = "<embedded review Procedure>"
+	embeddedDrainMarker   = "<embedded drain Procedure>"
+	embeddedChunkedMarker = "<embedded chunked section>"
+	embeddedThreadsMarker = "<embedded threads section>"
+	embeddedKBMarker      = "<embedded kb section>"
+	embeddedLensesMarker  = "<embedded lenses section>"
+	embeddedContextMarker = "<embedded context section>"
+	embeddedRefMarker     = "<embedded ref "
 )
 
 // procedureScrubs holds the raw and JSON-string forms of both embedded
-// assemblies. The JSON form uses jq's no-HTML-escape encoder, so an escaped
-// prompt_dump string normalizes exactly like a bundle file's bytes.
+// assemblies and of each conditional section. The JSON form uses jq's
+// no-HTML-escape encoder, so an escaped prompt_dump string normalizes exactly
+// like a bundle file's bytes.
 type procedureScrubs struct {
 	reviewRaw, reviewJSON string
 	drainRaw, drainJSON   string
+	sections              []scrubPair
+	refs                  []scrubPair
+}
+
+type scrubPair struct {
+	raw, json, marker string
 }
 
 var embeddedProcedureScrubs = sync.OnceValue(func() procedureScrubs {
@@ -386,12 +399,39 @@ var embeddedProcedureScrubs = sync.OnceValue(func() procedureScrubs {
 	if err != nil {
 		return procedureScrubs{}
 	}
-	return procedureScrubs{
+	p := procedureScrubs{
 		reviewRaw:  string(review),
 		reviewJSON: jsonStringBody(string(review)),
 		drainRaw:   string(drain),
 		drainJSON:  jsonStringBody(string(drain)),
 	}
+	for _, ref := range skillfs.HandoffRefs() {
+		raw, err := skillfs.ReadRef(ref)
+		if err != nil {
+			continue
+		}
+		p.refs = append(p.refs, scrubPair{
+			raw: string(raw), json: jsonStringBody(string(raw)), marker: embeddedRefMarker + ref.Path + ">",
+		})
+	}
+	for _, section := range []struct {
+		path, marker string
+	}{
+		{path: "prompts/handoff/chunked.md", marker: embeddedChunkedMarker},
+		{path: "prompts/handoff/threads.md", marker: embeddedThreadsMarker},
+		{path: "prompts/handoff/kb.md", marker: embeddedKBMarker},
+		{path: "prompts/handoff/lenses.md", marker: embeddedLensesMarker},
+		{path: "prompts/handoff/context.md", marker: embeddedContextMarker},
+	} {
+		raw, err := skillfs.Read(section.path)
+		if err != nil {
+			continue
+		}
+		p.sections = append(p.sections, scrubPair{
+			raw: string(raw), json: jsonStringBody(string(raw)), marker: section.marker,
+		})
+	}
+	return p
 })
 
 // jsonStringBody renders s the way jq renders a JSON string value, without
@@ -428,6 +468,16 @@ func scrubEmbeddedProcedures(s string) string {
 	drainRawMark, drainJSONMark := procedureMarkerReplacements(p.drainRaw, embeddedDrainMarker)
 	s = strings.ReplaceAll(s, p.reviewJSON, reviewJSONMark)
 	s = strings.ReplaceAll(s, p.drainJSON, drainJSONMark)
+	for _, section := range p.sections {
+		rawMark, jsonMark := procedureMarkerReplacements(section.raw, section.marker)
+		s = strings.ReplaceAll(s, section.json, jsonMark)
+		s = strings.ReplaceAll(s, section.raw, rawMark)
+	}
+	for _, ref := range p.refs {
+		rawMark, jsonMark := procedureMarkerReplacements(ref.raw, ref.marker)
+		s = strings.ReplaceAll(s, ref.json, jsonMark)
+		s = strings.ReplaceAll(s, ref.raw, rawMark)
+	}
 	s = strings.ReplaceAll(s, p.reviewRaw, reviewRawMark)
 	return strings.ReplaceAll(s, p.drainRaw, drainRawMark)
 }

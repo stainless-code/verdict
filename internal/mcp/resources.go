@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
 
+	skillfs "github.com/stainless-code/verdict"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/skill"
 )
 
@@ -26,8 +29,9 @@ func (s *Server) handleResourcesList(ctx context.Context, req *rpcRequest) {
 		s.writeError(req.ID, codeInternalError, "resource list unavailable: "+ref.Message)
 		return
 	}
-	resources := make([]resourceDescriptor, 0, len(inv.Files))
-	for _, name := range inv.Files {
+	refs := handoffRefPaths()
+	resources := make([]resourceDescriptor, 0, len(inv.Files)+len(refs))
+	for _, name := range append(slices.Clone(inv.Files), refs...) {
 		resources = append(resources, resourceDescriptor{
 			URI:      resourceURIPrefix + name,
 			Name:     name,
@@ -51,16 +55,45 @@ func (s *Server) handleResourcesRead(ctx context.Context, req *rpcRequest) {
 		s.writeResourceNotFound(req.ID, params.URI)
 		return
 	}
-	body, ref := skill.ShowFile(ctx, &skill.Request{}, name)
-	if ref != nil {
-		s.writeResourceNotFound(req.ID, params.URI)
-		return
+	body, ok := readHandoffRef(name)
+	if !ok {
+		var ref *core.RefusalError
+		body, ref = skill.ShowFile(ctx, &skill.Request{}, name)
+		if ref != nil {
+			s.writeResourceNotFound(req.ID, params.URI)
+			return
+		}
 	}
 	s.writeResult(req.ID, readResourceResult{Contents: []resourceContent{{
 		URI:      params.URI,
 		MIMEType: resourceMIMEType(name),
 		Text:     string(body),
 	}}})
+}
+
+// handoffRefPaths publishes the same pull refs a fetched bundle writes, at
+// the same URIs the MCP-served handoff names. An MCP client has no bundle and
+// therefore no refs/ directory on disk; without these resources the lean
+// core's capability map would point at files the client cannot open.
+func handoffRefPaths() []string {
+	refs := skillfs.HandoffRefs()
+	paths := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		paths = append(paths, ref.Path)
+	}
+	slices.Sort(paths)
+	return paths
+}
+
+func readHandoffRef(name string) ([]byte, bool) {
+	for _, ref := range skillfs.HandoffRefs() {
+		if ref.Path != name {
+			continue
+		}
+		body, err := skillfs.ReadRef(ref)
+		return body, err == nil
+	}
+	return nil, false
 }
 
 // payloadPath accepts exactly one embedded payload path after the served URI

@@ -174,9 +174,13 @@ func Digest(pending []Pending) string {
 // WriteProcedure writes the binary's drain Procedure into the bundle
 // atomically. It reads only the embedded payload; a missing file refuses.
 func WriteProcedure(dir string) error {
-	out, err := skillfs.DrainProcedure()
+	facts := skillfs.HandoffFacts{PriorThreads: threadscore.CountFile(filepath.Join(dir, "threads.json")) > 0}
+	out, err := skillfs.DrainProcedureFor(facts)
 	if err != nil {
 		return jq.Sealed("read drain Procedure", err)
+	}
+	if err := skillfs.WriteBundleRefs(dir); err != nil {
+		return jq.Sealed("write drain bundle refs", err)
 	}
 	path := filepath.Join(dir, KeyProcedureMD)
 	if err := atomic.WriteFile(path, out); err != nil {

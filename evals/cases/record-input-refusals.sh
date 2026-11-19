@@ -116,27 +116,27 @@ EOF
 expect_refusal "R4 numeric suggestion" "bad-review-input"
 
 mk_local <<'EOF'
-{"schema_version":"1","findings":[],"resolved":[5]}
+{"schema_version":"1","summary":"A short summary of the clean review.","findings":[],"resolved":[5]}
 EOF
 expect_refusal "R5 numeric resolved[] entry" "bad-review-input"
 
 mk_local <<'EOF'
-{"schema_version":"1","findings":[],"triage":[5]}
+{"schema_version":"1","summary":"A short summary of the clean review.","findings":[],"triage":[5]}
 EOF
 expect_refusal "R6 non-object triage[] entry" "bad-review-input"
 
 mk_local <<'EOF'
-{"schema_version":"1","findings":[]}
+{"schema_version":"1","summary":"A short summary of the clean review.","findings":[]}
 EOF
 echo '{"sig":"x"}' > "$LB/verification.json"
 expect_refusal "R7 non-array verification.json" "bad-review-input"
 mk_local <<'EOF'
-{"schema_version":"1","findings":[]}
+{"schema_version":"1","summary":"A short summary of the clean review.","findings":[]}
 EOF
 echo '[5]' > "$LB/verification.json"
 expect_refusal "R7 non-object verification.json claim" "bad-review-input"
 mk_local <<'EOF'
-{"schema_version":"1","findings":[]}
+{"schema_version":"1","summary":"A short summary of the clean review.","findings":[]}
 EOF
 echo '{oops' > "$LB/verification.json"
 run_review record acme/app "$SLUG" --json
@@ -147,20 +147,20 @@ else
 fi
 
 mk_local <<'EOF'
-{"schema_version":"1","findings":[]}
+{"schema_version":"1","summary":"A short summary of the clean review.","findings":[]}
 EOF
 printf '%s' '{broken' > "$LB/findings.json"
 before="$(shasum -a 256 "$LB/findings.json" | cut -d' ' -f1)"
 expect_refusal_keep "R8 corrupt prior findings.json" "corrupt-store" "$before"
 mk_local <<'EOF'
-{"schema_version":"1","findings":[]}
+{"schema_version":"1","summary":"A short summary of the clean review.","findings":[]}
 EOF
 printf '%s' '{"sig":"x"}' > "$LB/findings.json"
 before="$(shasum -a 256 "$LB/findings.json" | cut -d' ' -f1)"
 expect_refusal_keep "R8 non-list prior findings.json" "corrupt-store" "$before"
 
 mk_local <<'EOF'
-{"schema_version":"1","findings":[]}
+{"schema_version":"1","summary":"A short summary of the clean review.","findings":[]}
 EOF
 echo '{oops' > "$LB/source.json"
 run_review record acme/app "$SLUG" --json

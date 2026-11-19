@@ -19,7 +19,10 @@ import (
 func embeddedReviewBytes(t *testing.T) []byte {
 	t.Helper()
 	var out []byte
-	for _, name := range reviewPayloadPaths {
+	for i, name := range reviewPayloadPaths {
+		if i > 0 {
+			out = append(out, '\n')
+		}
 		raw, err := skillfs.Read(name)
 		if err != nil {
 			t.Fatalf("read embedded %s: %v", name, err)
@@ -59,6 +62,22 @@ func fetchWithProcedure(t *testing.T, kind string, show bool) (*core.FetchRespon
 	return resp, dir
 }
 
+func assertBundleRef(t *testing.T, dir string, ref skillfs.HandoffRef) {
+	t.Helper()
+	path := filepath.Join(filepath.FromSlash(dir), filepath.FromSlash(ref.Path))
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", filepath.ToSlash(path), err)
+	}
+	want, err := skillfs.ReadRef(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Errorf("%s is not a byte-identical copy of %s", filepath.ToSlash(path), ref.Source)
+	}
+}
+
 func assertBundleProcedure(t *testing.T, dir string, want []byte) {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(filepath.FromSlash(dir), "procedure.md"))
@@ -67,6 +86,9 @@ func assertBundleProcedure(t *testing.T, dir string, want []byte) {
 	}
 	if !bytes.Equal(raw, want) {
 		t.Fatalf("%s/procedure.md is not the embedded assembly", dir)
+	}
+	for _, ref := range skillfs.HandoffRefs() {
+		assertBundleRef(t, dir, ref)
 	}
 }
 
@@ -105,6 +127,31 @@ func TestShowPromptsDumpStartsWithBundleProcedure(t *testing.T) {
 	}
 }
 
+// TestWriteBundleRefsFilesystemErrorIsFetchFailed keeps a disk error out of
+// the embedded-payload refusal: a blocked refs/ path is an operator filesystem
+// problem, not a missing Procedure file from a bad install.
+func TestWriteBundleRefsFilesystemErrorIsFetchFailed(t *testing.T) {
+	dir := t.TempDir()
+	refs := filepath.Join(dir, "refs")
+	if err := os.WriteFile(refs, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := writeBundleProcedure(dir)
+	ref, ok := errors.AsType[*core.RefusalError](err)
+	if !ok {
+		t.Fatalf("writeBundleProcedure error = %v, want a typed refusal", err)
+	}
+	if ref.Code != CodeFetchFailed {
+		t.Fatalf("refusal = %+v, want %s", ref, CodeFetchFailed)
+	}
+	if !strings.Contains(ref.Message, filepath.ToSlash(refs)) {
+		t.Errorf("message = %q, want the blocked refs path", ref.Message)
+	}
+	if strings.Contains(ref.Message, "prompt-dump-failed") {
+		t.Errorf("filesystem error was reported as a missing embed: %q", ref.Message)
+	}
+}
+
 // withMissingReviewProcedure swaps the smallest seam in fetch: a package-level
 // func var that tests set to simulate a broken embedded payload. Production
 // always calls skillfs.ReviewProcedure through the same var.
@@ -112,7 +159,7 @@ func withMissingReviewProcedure(t *testing.T, path string) {
 	t.Helper()
 	saved := reviewProcedure
 	t.Cleanup(func() { reviewProcedure = saved })
-	reviewProcedure = func() ([]byte, error) {
+	reviewProcedure = func(skillfs.HandoffFacts) ([]byte, error) {
 		return nil, &skillfs.ProcedureFileError{Cause: fs.ErrNotExist, Path: path}
 	}
 }
@@ -121,7 +168,7 @@ func withMissingReviewProcedure(t *testing.T, path string) {
 // and a sibling payload file refuse typed through the real fetch-local path,
 // and that a partial Procedure never lands in the bundle.
 func TestMissingEmbeddedReviewProcedureRefusesFetchLocal(t *testing.T) {
-	for _, path := range []string{"prompts/system.md", "prompts/diagrams.md"} {
+	for _, path := range []string{"prompts/handoff/role-method.md", "prompts/handoff/capability-map.md"} {
 		t.Run(path, func(t *testing.T) { assertMissingReviewProcedureRefusal(t, path) })
 	}
 }

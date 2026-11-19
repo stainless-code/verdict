@@ -336,11 +336,15 @@ rather than becoming ground truth.
 # end lens test
 --- file C/.verdict/state/4708/procedure.md ---
 <embedded review Procedure>
+
+<embedded threads section>
+
+<embedded lenses section>
 --- file C/.verdict/state/4708/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "4f7cc8c480b6aead97afcb211eef5bb15667938385a46be08866ae9a555d672a",
-  "prompts_hash": "3245adba3e38e496b08361aff47e2eb8fda8337c4c0575ad0148e1e0b291ce26",
+  "run_id": "129e52b775af098ee9940e9868b1aab19857427104bd1c0f3e8b9cb5c9607321",
+  "prompts_hash": "083563d7a259e7198be7760bae6da25d1d2a837ccaa7483b29bc0e3b54b6b82e",
   "inputs": [
     {
       "kind": "prompt",
@@ -351,6 +355,13 @@ rather than becoming ground truth.
     },
     {
       "kind": "prompt",
+      "name": "packs/builtin/pack.json",
+      "status": "included",
+      "sha256": "81a17dd63bcbc7a7019f8850deeb82f5a43a629c8a3d05c983fd6753656a973d",
+      "bytes": 270
+    },
+    {
+      "kind": "prompt",
       "name": "prompts/diagrams.md",
       "status": "included",
       "sha256": "d19183a969b0e131d7520f0d2fa82889b903c4878e5fcea5ca9f2f0901eacd2d",
@@ -358,10 +369,87 @@ rather than becoming ground truth.
     },
     {
       "kind": "prompt",
+      "name": "prompts/handoff/capability-map.md",
+      "status": "included",
+      "sha256": "b42b390543f4d6acdfdc47ef754a636c4b33f71d4da42de0545a856171ce28c3",
+      "bytes": 870
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/handoff/chunked.md",
+      "status": "included",
+      "sha256": "62b72f0048cec09349e09f55526f8a8ab9e460b915be79cbc4059acc71e55127",
+      "bytes": 290
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/handoff/context.md",
+      "status": "included",
+      "sha256": "3039d9d583bcb8bb5f06bc753fbd883bda4d656fe4d314bf90f6a943be3d1943",
+      "bytes": 266
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/handoff/findings-contract.md",
+      "status": "included",
+      "sha256": "0e94822971e89050edc563461fe11f92c284037d0dcaaff7086d6300e4749596",
+      "bytes": 872
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/handoff/kb.md",
+      "status": "included",
+      "sha256": "c3219d9a21a0c5f4cd64daf5d6541f5da6ece85743cc58de4d46601101ddfd80",
+      "bytes": 219
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/handoff/lenses.md",
+      "status": "included",
+      "sha256": "ab784070818a3b04cdc6baf7172bbe84320f11815a06223eeb019cb5cc1a17dc",
+      "bytes": 175
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/handoff/replies-contract.md",
+      "status": "included",
+      "sha256": "a690180c9633497c93c33628c4c056548eeac7ef61ec63c1967749c853db6ddc",
+      "bytes": 615
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/handoff/role-method.md",
+      "status": "included",
+      "sha256": "ea03c65abe5e11096d956c7fc661579fa1f3a3b51554f946e6c74e227e039fc2",
+      "bytes": 424
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/handoff/threads.md",
+      "status": "included",
+      "sha256": "eb06fc4427e6a3ab36bdb866f9db6754a9f63c80434e3966c67c3e22ccffb202",
+      "bytes": 297
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/incremental-review.md",
+      "status": "included",
+      "sha256": "6d303ee871969968fbd3cabb17966cf04fbecf19d5faa91ede1b8858023e2690",
+      "bytes": 6980
+    },
+    {
+      "kind": "prompt",
       "name": "prompts/review.md",
       "status": "included",
       "sha256": "8eff61b07ffd06c9f31e12597781f9b31e6fb43e142ee3ffa2e69122fbafc911",
       "bytes": 27389
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/reviewer-subagent.md",
+      "status": "included",
+      "sha256": "47e761b19c547f465a3926df8dc6039a05662347d7241ee7bf4fa3589a068e86",
+      "bytes": 4063
     },
     {
       "kind": "prompt",
@@ -383,6 +471,20 @@ rather than becoming ground truth.
       "status": "included",
       "sha256": "0f6e0c6f0fa613588824da7e19055439d1c428bcf6abb416b8ed4ce3d32b2697",
       "bytes": 918
+    },
+    {
+      "kind": "prompt",
+      "name": "references/commands.md",
+      "status": "included",
+      "sha256": "4962622ce502f51407f7f0dcbab5220163b12796bbcd7a78d4e523f0664e6bf4",
+      "bytes": 7654
+    },
+    {
+      "kind": "prompt",
+      "name": "references/panel.md",
+      "status": "included",
+      "sha256": "0d95ef63c292a24db97c54d47fda80032aeb78cbc6802661fbf085de11129972",
+      "bytes": 770
     },
     {
       "kind": "panel",
@@ -456,8 +558,64 @@ rather than becoming ground truth.
       "kind": "bundle",
       "name": "procedure.md",
       "status": "included",
-      "sha256": "8e5cbfdccb47fbda2bc4de84c380b7e7b31ce6a8ea62080f469c9fd2a6e463aa",
-      "bytes": 50537
+      "sha256": "0cef22215220d10f156b18bb255fb47a3a3a4a12bd13f4a3821765d61c747514",
+      "bytes": 2642
+    },
+    {
+      "kind": "bundle",
+      "name": "refs/commands.md",
+      "status": "included",
+      "sha256": "4962622ce502f51407f7f0dcbab5220163b12796bbcd7a78d4e523f0664e6bf4",
+      "bytes": 7654
+    },
+    {
+      "kind": "bundle",
+      "name": "refs/diagrams.md",
+      "status": "included",
+      "sha256": "d19183a969b0e131d7520f0d2fa82889b903c4878e5fcea5ca9f2f0901eacd2d",
+      "bytes": 3780
+    },
+    {
+      "kind": "bundle",
+      "name": "refs/incremental-review.md",
+      "status": "included",
+      "sha256": "6d303ee871969968fbd3cabb17966cf04fbecf19d5faa91ede1b8858023e2690",
+      "bytes": 6980
+    },
+    {
+      "kind": "bundle",
+      "name": "refs/lens-pack.md",
+      "status": "included",
+      "sha256": "81a17dd63bcbc7a7019f8850deeb82f5a43a629c8a3d05c983fd6753656a973d",
+      "bytes": 270
+    },
+    {
+      "kind": "bundle",
+      "name": "refs/panel.md",
+      "status": "included",
+      "sha256": "0d95ef63c292a24db97c54d47fda80032aeb78cbc6802661fbf085de11129972",
+      "bytes": 770
+    },
+    {
+      "kind": "bundle",
+      "name": "refs/review-checklist.md",
+      "status": "included",
+      "sha256": "680b17cdbc3abe90d754d5aa0da68da4faf7810e755d0abffb6da469aa450059",
+      "bytes": 17173
+    },
+    {
+      "kind": "bundle",
+      "name": "refs/reviewer-subagent.md",
+      "status": "included",
+      "sha256": "47e761b19c547f465a3926df8dc6039a05662347d7241ee7bf4fa3589a068e86",
+      "bytes": 4063
+    },
+    {
+      "kind": "bundle",
+      "name": "refs/system-boundaries.md",
+      "status": "included",
+      "sha256": "cc86e2bc7dd027b2081ca5109c04af728108332f579dae6f6a6242489bf076b3",
+      "bytes": 5973
     },
     {
       "kind": "bundle",
@@ -600,6 +758,22 @@ rather than becoming ground truth.
   ],
   "truncated": []
 }
+--- file C/.verdict/state/4708/refs/commands.md ---
+<embedded ref refs/commands.md>
+--- file C/.verdict/state/4708/refs/diagrams.md ---
+<embedded ref refs/diagrams.md>
+--- file C/.verdict/state/4708/refs/incremental-review.md ---
+<embedded ref refs/incremental-review.md>
+--- file C/.verdict/state/4708/refs/lens-pack.md ---
+<embedded ref refs/lens-pack.md>
+--- file C/.verdict/state/4708/refs/panel.md ---
+<embedded ref refs/panel.md>
+--- file C/.verdict/state/4708/refs/review-checklist.md ---
+<embedded ref refs/review-checklist.md>
+--- file C/.verdict/state/4708/refs/reviewer-subagent.md ---
+<embedded ref refs/reviewer-subagent.md>
+--- file C/.verdict/state/4708/refs/system-boundaries.md ---
+<embedded ref refs/system-boundaries.md>
 --- file C/.verdict/state/4708/reviews.json ---
 [{"id":7,"user":{"login":"rev"},"body":"Summary note","submitted_at":"0000-00-00T00:00:00Z","html_url":"https://example.invalid/r/7"}]
 --- file C/.verdict/state/4708/roles.txt ---

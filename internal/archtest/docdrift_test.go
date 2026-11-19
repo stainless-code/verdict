@@ -13,7 +13,7 @@ import (
 )
 
 var agentsPromptRule = regexp.MustCompile(
-	"Exactly ([a-z]+) Procedure files are hashed into goldens:\\*\\* " +
+	"Exactly ([a-z]+) Procedure files are in `promptFiles`:\\*\\* " +
 		"`procedure/PROCEDURE\\.md` and `procedure/prompts/\\{([a-z,]+)\\}\\.md`")
 
 var countWords = map[string]int{

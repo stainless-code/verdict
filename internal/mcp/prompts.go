@@ -1,6 +1,7 @@
 package mcp
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"strconv"
@@ -55,6 +56,7 @@ func (s *Server) handlePromptsGet(req *rpcRequest) {
 		s.writeError(req.ID, codeInternalError, "prompt unavailable: "+err.Error())
 		return
 	}
+	body = servedRefPaths(body, params.Name)
 	s.writeResult(req.ID, getPromptResult{
 		Description: promptDescriptions[params.Name],
 		Messages: []promptMessage{{
@@ -73,6 +75,16 @@ func (s *Server) writeInvalidPrompt(id json.RawMessage, name string) {
 		message = "unknown prompt " + strconv.Quote(name) + "; valid tasks: " + strings.Join(skillfs.Tasks(), ", ")
 	}
 	s.writeError(id, codeInvalidParams, message)
+}
+
+// servedRefPaths rewrites only the lean handoff's pull paths. An MCP client
+// has no bundle refs/ directory, so review and address-reviews name the
+// resources this server publishes instead of a path that cannot resolve.
+func servedRefPaths(body []byte, name string) []byte {
+	if name != "review" && name != "address-reviews" {
+		return body
+	}
+	return bytes.ReplaceAll(body, []byte("`refs/"), []byte("`verdict://skill/refs/"))
 }
 
 type promptNameParams struct {

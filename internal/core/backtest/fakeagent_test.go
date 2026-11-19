@@ -140,18 +140,22 @@ func fakePrice(raw string, launch int) string {
 }
 
 // fakeArtifact extracts the review path from the launcher's directive: the
-// launcher always names it between "Write " and " with {".
+// first write names it before " FIRST with {", and a later stage names it
+// between "Update " and " in place:".
 func fakeArtifact(directive string) string {
-	const openMark, closeMark = "Write ", " with {"
-	_, rest, ok := strings.Cut(directive, openMark)
-	if !ok {
-		return ""
+	const firstOpen, firstClose = "Write ", " FIRST with {"
+	if _, rest, ok := strings.Cut(directive, firstOpen); ok {
+		if artifact, _, found := strings.Cut(rest, firstClose); found {
+			return artifact
+		}
 	}
-	artifact, _, ok := strings.Cut(rest, closeMark)
-	if !ok {
-		return ""
+	const updateOpen, updateClose = "Update ", " in place:"
+	if _, rest, ok := strings.Cut(directive, updateOpen); ok {
+		if artifact, _, found := strings.Cut(rest, updateClose); found {
+			return artifact
+		}
 	}
-	return artifact
+	return ""
 }
 
 // fakeComments anchors one inline comment on the first added file of the

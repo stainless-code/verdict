@@ -1,8 +1,20 @@
 #!/usr/bin/env bash
 set -euo pipefail
 prompt="${!#}"
-rest="${prompt#*Write }"
-artifact="${rest%% with \{*}"
+case "$prompt" in
+  *" FIRST with {"*)
+    rest="${prompt#*Write }"
+    artifact="${rest%% FIRST with \{*}"
+    ;;
+  *" in place:"*)
+    rest="${prompt#*Update }"
+    artifact="${rest%% in place:*}"
+    ;;
+  *)
+    rest=""
+    artifact=""
+    ;;
+esac
 printf '%s\n' "$0" >>"$LOOP_LOG"
 if [ "$LOOP_MODE" = empty ]; then
   printf '{"schema_version":"1","summary":"No review performed on this change.","findings":[],"coverage":[]}\n' >"$artifact"

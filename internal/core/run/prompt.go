@@ -18,6 +18,10 @@ const reviewDocument = `{"schema_version": "1", "findings": ` +
 	`[{"path": ..., "line": 2, "severity": ..., "claim": ..., "quote": ..., "confidence": ...}], ` +
 	`"spec_checks": [], "receipts": [], "summary": ...}`
 
+// emptyReviewDocument is the first write the directive demands. The agent
+// creates the artifact before it reviews, then updates the same file.
+const emptyReviewDocument = `{"schema_version": "1", "findings": []}`
+
 // directive is the tool-generated prompt the launched agent receives: the
 // subject, the bundle it reads, the single review file it must write, the
 // boundary (verdict validates that file; it never reads prose, retries, or
@@ -38,8 +42,9 @@ func directive(repo, pr, bundle, artifact string, local, hasContext bool, plan *
 	subject, meta := subjectAndMeta(repo, pr, local)
 	head := fmt.Sprintf("Review %s and write exactly one review file.", subject)
 	read := readLine(bundle, meta, "kb.txt, sensitive.txt, and panel when the run carries them", hasContext)
-	write := fmt.Sprintf("Write %s with %s (optional \"resolved\" and "+
-		"\"triage\"). Write nothing else in the bundle.", artifact, reviewDocument)
+	write := fmt.Sprintf("Write %s FIRST with %s, then update that same file with %s (optional "+
+		"\"resolved\" and \"triage\"). Write nothing else in the bundle.",
+		artifact, emptyReviewDocument, reviewDocument)
 	boundary := "verdict launched this one process and validates that file; it does "
 	boundary += "not read your prose, retry you, or post. Do not post, merge, or "
 	boundary += "push: publishing is an explicit verdict post."
@@ -83,11 +88,24 @@ func stageDirective(repo, pr, bundle, artifact string, local, hasContext bool, p
 	if at.index > 1 {
 		read += fmt.Sprintf(" Read %s, the review the previous stage wrote.", artifact)
 	}
-	write := fmt.Sprintf("Write %s with %s. Write nothing else in the bundle.", artifact, reviewDocument)
+	write := stageWriteLine(artifact, at.index)
 	boundary := "verdict rendered this one command and launches nothing for you: it does " +
 		"not read your prose, retry you, post, or chain the stages. The later stages " +
 		"read the file you write, so keep every value the earlier stages declared."
 	return head + paragraphGap + read + paragraphGap + stageTask(at) + paragraphGap + write + paragraphGap + boundary + "\n"
+}
+
+// stageWriteLine keeps the first stage's placeholder contract, then switches
+// to an in-place update: a later stage that rewrote the file with the empty
+// document would erase the findings and values earlier stages already wrote.
+func stageWriteLine(artifact string, index int) string {
+	if index == 1 {
+		return fmt.Sprintf("Write %s FIRST with %s, then update that same file with %s. "+
+			"Write nothing else in the bundle.", artifact, emptyReviewDocument, reviewDocument)
+	}
+	return fmt.Sprintf("Update %s in place: never reset it to the empty document; keep "+
+		"every earlier finding and value unless this stage's task says to merge, drop or "+
+		"reorder it. Write nothing else in the bundle.", artifact)
 }
 
 // stageTask states the one job the rendered stage owns, with the hints and caps

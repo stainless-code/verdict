@@ -27,6 +27,15 @@ Adapted from Pullfrog:
 
 First-party, no upstream text:
 
+- `prompts/handoff/capability-map.md`
+- `prompts/handoff/chunked.md`
+- `prompts/handoff/context.md`
+- `prompts/handoff/findings-contract.md`
+- `prompts/handoff/kb.md`
+- `prompts/handoff/lenses.md`
+- `prompts/handoff/replies-contract.md`
+- `prompts/handoff/role-method.md`
+- `prompts/handoff/threads.md`
 - `prompts/rule-packs.md`
 
 - `PROCEDURE.md`

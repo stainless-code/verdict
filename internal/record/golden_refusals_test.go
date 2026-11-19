@@ -20,7 +20,7 @@ func refuseFixture(t *testing.T, dir, review string, extra map[string]string) {
 	writeFiles(t, dir, files)
 }
 
-const refuseBody = `{"schema_version":"1","findings":[]}`
+const refuseBody = `{"schema_version":"1","summary":"A short summary of the clean review.","findings":[]}`
 
 // TestGoldenRefusals checks every Commit-A typed refusal matches byte-for-byte:
 // codes, messages, exit codes, and no merge artifacts on either side.

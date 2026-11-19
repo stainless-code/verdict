@@ -82,22 +82,55 @@ func TestPromptsGetBodies(t *testing.T) {
 	for i, task := range tasks {
 		checkPromptBody(t, frames[strconv.Itoa(i+1)], task, expected[task])
 	}
-	assertNamedProcedure(t, frames[taskFrameID(tasks, "review")].Result, "review", skillfs.ReviewProcedure)
+	assertNamedProcedure(t, frames[taskFrameID(tasks, "review")].Result, "review", func() ([]byte, error) {
+		body, err := skillfs.TaskProcedure("review")
+		return servedRefPaths(body, "review"), err
+	})
 	assertNamedProcedure(t, frames[taskFrameID(tasks, "address-reviews")].Result,
-		"address-reviews", skillfs.DrainProcedure)
+		"address-reviews", func() ([]byte, error) {
+			body, err := skillfs.TaskProcedure("address-reviews")
+			return servedRefPaths(body, "address-reviews"), err
+		})
+}
+
+// TestMCPPromptsNameServedRefs proves the MCP handoff points at resources the
+// same server publishes, not at a bundle-relative path an MCP client lacks.
+func TestMCPPromptsNameServedRefs(t *testing.T) {
+	t.Parallel()
+	tasks := []string{"review", "address-reviews"}
+	frames := servePromptGets(t, tasks)
+	for i, task := range tasks {
+		var result promptResult
+		if err := json.Unmarshal(frames[strconv.Itoa(i+1)].Result, &result); err != nil {
+			t.Fatal(err)
+		}
+		assertPromptNamesRefs(t, task, result.Messages[0].Content.Text)
+	}
+}
+
+func assertPromptNamesRefs(t *testing.T, task, text string) {
+	t.Helper()
+	for _, ref := range handoffRefPaths() {
+		want := "`verdict://skill/" + ref + "`"
+		if !strings.Contains(text, want) {
+			t.Errorf("%s prompt does not name %q", task, want)
+		}
+	}
 }
 
 func expectedPromptBodies(t *testing.T) map[string][]byte {
 	t.Helper()
 	return map[string][]byte{
 		"address-reviews": literalProcedure(t,
-			"PROCEDURE.md", "prompts/system.md", "prompts/address-reviews.md"),
+			"prompts/handoff/role-method.md", "prompts/handoff/replies-contract.md",
+			"prompts/handoff/capability-map.md"),
 		"fix-ci": literalProcedure(t,
 			"PROCEDURE.md", "prompts/system.md", "prompts/fix-ci.md"),
 		"incremental-review": literalProcedure(t,
 			"PROCEDURE.md", "prompts/system.md", "prompts/incremental-review.md"),
 		"review": literalProcedure(t,
-			"PROCEDURE.md", "prompts/system.md", "prompts/review.md", "prompts/diagrams.md"),
+			"prompts/handoff/role-method.md", "prompts/handoff/findings-contract.md",
+			"prompts/handoff/capability-map.md"),
 		"validate": literalProcedure(t,
 			"PROCEDURE.md", "prompts/system.md", "prompts/validate.md"),
 	}
@@ -168,14 +201,17 @@ func checkInvalidPrompt(t *testing.T, got frame, name string) {
 func literalProcedure(t *testing.T, files ...string) []byte {
 	t.Helper()
 	var want []byte
-	for _, name := range files {
+	for i, name := range files {
+		if i > 0 && strings.HasPrefix(name, "prompts/handoff/") {
+			want = append(want, '\n')
+		}
 		part, err := skillfs.Read(name)
 		if err != nil {
 			t.Fatal(err)
 		}
 		want = append(want, part...)
 	}
-	return want
+	return bytes.ReplaceAll(want, []byte("`refs/"), []byte("`verdict://skill/refs/"))
 }
 
 func taskFrameID(tasks []string, want string) string {

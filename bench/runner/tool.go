@@ -69,11 +69,24 @@ func (t tool) promptPrefix(ctx context.Context) (string, string, error) {
 	if err != nil {
 		return "", "", err
 	}
-	return splitTrustedPrefix(dump)
+	prefix, nonce, err := splitTrustedPrefix(dump)
+	if err != nil {
+		return "", "", err
+	}
+	workflow, err := os.ReadFile(filepath.Join(t.root, prefixPrompts, "prompts", "review.md"))
+	if err != nil {
+		return "", "", jq.NewErrf("bench review workflow: %s", err)
+	}
+	boundary := strings.Index(prefix, trustBoundary)
+	if boundary < 0 {
+		return "", "", jq.NewErr("prompt dump: trust boundary missing from the trusted half")
+	}
+	return prefix[:boundary] + string(workflow) + prefix[boundary:], nonce, nil
 }
 
-// renderDump asks the binary for the prompt it would send: the four prompt
-// files verbatim, then the trust boundary naming a fresh nonce.
+// renderDump asks the binary for the prompt it would send: the assembled
+// handoff and the trust boundary naming a fresh nonce. The four operator
+// prompt files are pull-only, so promptPrefix adds the review workflow below.
 func (t tool) renderDump(ctx context.Context) (string, error) {
 	env, err := t.json(ctx, "fetch-local", t.repo, prefixName, "--show-prompts")
 	if err != nil {
