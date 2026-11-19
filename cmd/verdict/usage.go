@@ -558,7 +558,7 @@ func usageText() string {
 		"    also remove the marked PATH line. npm/brew/project-local/skill copies refuse\n" +
 		"    with the owning removal command.\n" +
 		"  journal <owner/repo> <pr|local-name> [--json]\n" +
-		"    read the bundle's append-only invocation journal (<bundle>/journal.jsonl), folding\n" +
+		"    read the bundle's append-only invocation journal (<state>/verdict/journal/<repo-key>/<pr>.jsonl), folding\n" +
 		"    start/end lines into ordered steps, listing unfinished (crashed or in-flight) calls\n" +
 		"    and content-digest chain breaks between steps. Read-only: takes no lock, writes nothing;\n" +
 		"    an absent journal on an existing bundle exits 0 with zero steps.\n" +

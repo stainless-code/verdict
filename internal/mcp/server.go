@@ -375,12 +375,25 @@ type jqObjResult struct {
 	data *jq.Obj
 }
 
-func (s *Server) call(ctx context.Context, t *tool, request any, rawArgs json.RawMessage) any {
+func (s *Server) modeRefusal(t *tool, request any) *core.RefusalError {
 	if t.operatorWrite != nil && t.operatorWrite(request) && !s.cfg.Operator {
-		return refusalResult(&core.RefusalError{
+		return &core.RefusalError{
 			Code:    codeBadFlags,
 			Message: "threads resolve requires a server started with --operator",
-		})
+		}
+	}
+	if t.requireDryRun && !requestDryRun(request) {
+		return &core.RefusalError{
+			Code:    codeBadFlags,
+			Message: "record writes on a read-only server; re-run with dry_run=true",
+		}
+	}
+	return nil
+}
+
+func (s *Server) call(ctx context.Context, t *tool, request any, rawArgs json.RawMessage) any {
+	if ref := s.modeRefusal(t, request); ref != nil {
+		return refusalResult(ref)
 	}
 	b := s.bindings(t)
 	counter := &journalcore.CountingProgress{Inner: b.progress}

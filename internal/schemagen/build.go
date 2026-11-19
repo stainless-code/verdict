@@ -344,7 +344,7 @@ func documents() []document {
 		},
 		{
 			name:  "journal",
-			title: "journal.jsonl — append-only bundle invocation journal",
+			title: "<pr>.jsonl — append-only bundle invocation journal",
 			anyOf: []reflect.Type{
 				reflect.TypeFor[JournalStartLine](),
 				reflect.TypeFor[JournalEndLine](),
@@ -899,12 +899,12 @@ func (b *builder) envelopeData() (*node, error) {
 }
 
 // provenanceWireMembers declares the two keys applyProvenanceWire sets when
-// --provenance is active: the receipt object, and the row array that widens the
-// plain boolean on data.truncated.
+// --provenance is active: the receipt object, and the row array widening
+// data.truncated (which journalData also carries as a summary object).
 func provenanceWireMembers() (receipt, truncated member) {
 	receipt = member{keyReceipt, object(false, member{keyRef, stringNode(defsPrefix + "provenanceReceipt")})}
 	truncated = member{keyTruncated, object(false,
-		member{keyType, array(stringNode(typeBoolean), stringNode(typeArray))},
+		member{keyType, array(stringNode(typeBoolean), stringNode(typeArray), stringNode(typeObject))},
 		member{keyItems, object(false, member{keyRef, stringNode(defsPrefix + "provenanceTruncatedRow")})},
 	)}
 	return receipt, truncated

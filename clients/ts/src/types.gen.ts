@@ -200,7 +200,7 @@ export interface ReportData {
   validation?: ValidationData | null;
   gate?: ReportGate | null;
   receipt?: ProvenanceReceipt;
-  truncated?: boolean | Array<ProvenanceTruncatedRow>;
+  truncated?: boolean | Array<ProvenanceTruncatedRow> | unknown;
   [key: string]: unknown;
 }
 
@@ -501,7 +501,7 @@ export interface PostData {
   summary?: PostSummary | null;
   validation?: ValidationData | null;
   receipt?: ProvenanceReceipt;
-  truncated?: boolean | Array<ProvenanceTruncatedRow>;
+  truncated?: boolean | Array<ProvenanceTruncatedRow> | unknown;
   [key: string]: unknown;
 }
 

@@ -114,7 +114,7 @@ run_case() {
   local c="$1" name dir st
   name="$(basename "$c" .sh)"
   dir="$CASES_DIR/$name"
-  mkdir -p "$dir/work" "$dir/stubbin"
+  mkdir -p "$dir/work" "$dir/stubbin" "$dir/state"
   cp "$STUB_TEMPLATE" "$dir/stubbin/gh"
   chmod +x "$dir/stubbin/gh"
   : > "$dir/gh-stub.log"
@@ -122,6 +122,7 @@ run_case() {
   EVAL_SANDBOX="$dir/work" \
     EVAL_STUBBIN="$dir/stubbin" \
     EVAL_STUBLOG="$dir/gh-stub.log" \
+    XDG_STATE_HOME="$dir/state" \
     bash "$c" >"$dir/output.log" 2>&1
   st=$?
   set -e

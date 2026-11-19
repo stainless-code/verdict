@@ -230,7 +230,7 @@ func allTools(readOnly, operator bool) []*tool {
 			name: "journal",
 			description: "Read a bundle's append-only invocation journal (steps, unfinished calls, " +
 				"and content-digest chain breaks). Call to audit what ran against a bundle. " +
-				"Reads journal.jsonl only; writes nothing.",
+				"Reads the external state journal only; writes nothing.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Read bundle journal", mutates: noLocalWrites, readOnly: true, idempotent: true},
 		}, toolDeps{}, decodeJournal, wireJournal, journalcore.Run,
@@ -462,9 +462,6 @@ func newTool[Req any](
 		req, ok := raw.(*Req)
 		if !ok {
 			return nil, internalRefusal()
-		}
-		if t.requireDryRun && !requestDryRun(raw) {
-			return nil, &core.RefusalError{Code: codeBadFlags, Message: "record writes on a read-only server; re-run with dry_run=true"}
 		}
 		return run(ctx, req)
 	}

@@ -1,7 +1,8 @@
 // Package journal owns the per-bundle append-only audit trail
-// (<bundle>/journal.jsonl): start/end invocation records, content-digest bundle
-// sweeps and write diffs, lock-guarded appends with whole-line truncation at
-// the size cap, and the lock-free streaming fold reader.
+// (<state>/verdict/journal/<repo-key>/<pr>.jsonl): start/end invocation
+// records, content-digest bundle sweeps and write diffs, lock-guarded appends
+// with whole-line truncation at the size cap, and the lock-free streaming fold
+// reader.
 package journal
 
 import (
@@ -13,7 +14,6 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
-	"strings"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
@@ -21,10 +21,6 @@ import (
 )
 
 const (
-	// JournalFile is the bundle-relative filename of the append-only journal.
-	JournalFile = "journal.jsonl"
-	// JournalLockFile is the advisory lock file beside [JournalFile].
-	JournalLockFile = JournalFile + storelock.LockSuffix
 	// SchemaVersion is the wire schema version every journal line carries.
 	SchemaVersion = "1"
 
@@ -46,39 +42,35 @@ const (
 	// KeepBytes is the target tail size (512 KiB) retained on truncation.
 	KeepBytes int64 = 512 << 10
 
-	// journalFileMode is the owner-only permission mode for journal.jsonl.
+	// journalFileMode is the owner-only permission mode for journal files.
 	journalFileMode os.FileMode = 0o600
+	// journalDirMode is the owner-only permission mode for state directories.
+	journalDirMode os.FileMode = 0o700
 )
-
-// IsJournalArtifact reports whether a bundle entry is the journal itself or an
-// advisory lock file that sweeps and receipts must exclude.
-func IsJournalArtifact(relSlash, base string) bool {
-	return relSlash == JournalFile || relSlash == JournalLockFile || strings.HasSuffix(base, storelock.LockSuffix)
-}
 
 // WarningMessage formats the frozen diagnostic warning for an append failure.
 func WarningMessage(path string, err error) string {
 	return fmt.Sprintf("journal: could not append to %s: %v", path, err)
 }
 
-// AppendStart marshals and appends a start line to <dir>/journal.jsonl under
-// the bundle's advisory store lock.
-func AppendStart(dir string, line *StartLine, now time.Time) error {
+// AppendStart marshals and appends a start line to path under the advisory
+// store lock sitting beside it.
+func AppendStart(path string, line *StartLine, now time.Time) error {
 	raw, err := marshalLine(line)
 	if err != nil {
 		return err
 	}
-	return appendLineWithLimits(filepath.Join(dir, JournalFile), raw, now, storelock.DefaultWait, MaxBytes, KeepBytes)
+	return appendLineWithLimits(path, line.Repo, raw, now, storelock.DefaultWait, MaxBytes, KeepBytes)
 }
 
-// AppendEnd marshals and appends an end line to <dir>/journal.jsonl under the
-// bundle's advisory store lock.
-func AppendEnd(dir string, line *EndLine, now time.Time) error {
+// AppendEnd marshals and appends an end line to path under the advisory store
+// lock sitting beside it.
+func AppendEnd(path string, line *EndLine, now time.Time) error {
 	raw, err := marshalLine(line)
 	if err != nil {
 		return err
 	}
-	return appendLineWithLimits(filepath.Join(dir, JournalFile), raw, now, storelock.DefaultWait, MaxBytes, KeepBytes)
+	return appendLineWithLimits(path, line.Repo, raw, now, storelock.DefaultWait, MaxBytes, KeepBytes)
 }
 
 type opError struct {
@@ -103,9 +95,13 @@ func marshalLine(v any) ([]byte, error) {
 }
 
 // appendLineWithLimits appends one newline-terminated JSON line under
-// [storelock.Acquire], refusing a symlinked journal path and truncating whole
-// lines atomically when the file exceeds maxBytes.
-func appendLineWithLimits(path string, raw []byte, now time.Time, wait time.Duration, maxBytes, keepBytes int64) error {
+// [storelock.Acquire], creating parent state directories, refusing a symlinked
+// journal path, and truncating whole lines atomically when the file exceeds
+// maxBytes.
+func appendLineWithLimits(path, repo string, raw []byte, now time.Time, wait time.Duration, maxBytes, keepBytes int64) error {
+	if err := os.MkdirAll(filepath.Dir(path), journalDirMode); err != nil {
+		return wrapErr("create journal dir for "+path, err)
+	}
 	if err := refuseSymlink(path); err != nil {
 		return err
 	}
@@ -122,7 +118,7 @@ func appendLineWithLimits(path string, raw []byte, now time.Time, wait time.Dura
 		return err
 	}
 	if maxBytes > 0 && size > maxBytes {
-		return truncateLocked(path, now, keepBytes)
+		return truncateLocked(path, repo, now, keepBytes)
 	}
 	return nil
 }
@@ -161,7 +157,7 @@ func appendRawLocked(path string, raw []byte) (int64, error) {
 	return info.Size(), nil
 }
 
-func truncateLocked(path string, now time.Time, keepBytes int64) error {
+func truncateLocked(path, repo string, now time.Time, keepBytes int64) error {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return wrapErr("read "+path+" for truncation", err)
@@ -177,6 +173,7 @@ func truncateLocked(path string, now time.Time, keepBytes int64) error {
 	notice := TruncatedLine{
 		SchemaVersion: SchemaVersion,
 		Phase:         PhaseTruncated,
+		Repo:          repo,
 		At:            at,
 		KeptFrom:      firstLineTimestamp(kept[0], at),
 		Dropped:       dropped,

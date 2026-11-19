@@ -267,7 +267,7 @@
       "/$defs/provenanceInput": "One resolved input, bundle artifact, KB candidate, override, control, config, or exclusion entry without rule bodies or secret values.",
       "/$defs/provenanceTruncatedRow": "One bounded or omitted input row in data.truncated[] when --provenance is active.",
       "/properties/data/properties/receipt": "Fetched bundle receipt (run_id, prompts_hash, inputs, truncations) exposed by report and post under --provenance; absent without the flag.",
-      "/properties/data/properties/truncated": "Bounded-input rows when --provenance is active; elsewhere the boolean truncation flag every verb's data already carries.",
+      "/properties/data/properties/truncated": "Bounded-input rows when --provenance is active, a truncation summary object on journal, or the boolean truncation flag other verbs carry.",
       "/$defs/prWaitData": "Bounded foreground PR wait outcome; timeout is data with error null.",
       "/$defs/prWaitData/properties/observations": "Snapshots that differed from the previous observation; repeated identical reads do not count.",
       "/$defs/prWaitData/properties/inconsistent_observations": "Reads a bounded wait retried because the host disagreed with itself, such as a GraphQL head that is not yet the REST head right after a push. --once never retries, and a wait still inconsistent at its timeout refuses pr-read-failed instead of claiming an outcome.",
@@ -729,10 +729,10 @@
   },
   "journal": {
     "descriptions": {
-      "": "One JSONL line in <bundle>/journal.jsonl. Every bundle-writing invocation appends a start line before executing and an end line on return; whole-line truncation at the 1 MiB cap prepends a truncated notice. Pre- and post-call bundle digests hash the canonical content manifest (path\\0size\\0sha256(content)\\n, sorted by path, skipping journal.jsonl, journal.jsonl.lock, and *.lock).",
-      "/$defs/startLine": "Opening record written before a bundle-writing invocation runs (or paired on creation for a new bundle).",
-      "/$defs/endLine": "Closing record written when a bundle-writing invocation returns, carrying exit code, refusal, warnings, bundle digests, written/removed paths, and the printed next hint.",
-      "/$defs/truncatedLine": "Notice prepended when journal.jsonl exceeds the 1 MiB cap and is atomically rewritten to the trailing 512 KiB of whole lines.",
+      "": "One JSONL line in the external bundle journal (<state>/verdict/journal/<repo-key>/<pr>.jsonl). Every bundle-writing invocation appends a start line before executing and an end line on return; whole-line truncation at the 1 MiB cap prepends a truncated notice. Pre- and post-call bundle digests hash the canonical content manifest (path\\0size\\0sha256(content)\\n, sorted by path, skipping *.lock).",
+      "/$defs/startLine": "Opening record written before a bundle-writing invocation runs, naming the canonical repository root.",
+      "/$defs/endLine": "Closing record written when a bundle-writing invocation returns, carrying repo, exit code, refusal, warnings, bundle digests, written/removed paths, and the printed next hint.",
+      "/$defs/truncatedLine": "Notice prepended when the journal file exceeds the 1 MiB cap and is atomically rewritten to the trailing 512 KiB of whole lines.",
       "/$defs/bundleDigests": "Canonical content-manifest sha256 digests before (null when the bundle did not exist) and after the call.",
       "/$defs/fileRecord": "One bundle-relative file created or whose content changed during the call, with its sha256 and byte length."
     }

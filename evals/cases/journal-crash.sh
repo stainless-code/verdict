@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# STA-447: crash vs cancellation semantics in <bundle>/journal.jsonl.
+# STA-447: crash vs cancellation semantics in the external bundle journal.
 # - Leg 1 (SIGKILL mid-record): leaves an unpaired start in unfinished[] naming
 #   `record` with started_at and no ended_at, while the last completed step is
 #   `run` and chain_breaks is empty.
@@ -38,6 +38,17 @@ fi
 exec cat "\$VERDICT_TEST_FIFO"
 EOF
 chmod +x "$BLOCKBIN/git"
+
+journal_path_for() {
+  local repo="$1" bundle="$2" canon key
+  canon="$(cd "$repo" && pwd -P)"
+  if command -v sha256sum >/dev/null 2>&1; then
+    key="$(printf '%s' "$canon" | sha256sum | cut -c1-16)"
+  else
+    key="$(printf '%s' "$canon" | shasum -a 256 | cut -c1-16)"
+  fi
+  printf '%s/verdict/journal/%s/%s.jsonl' "$XDG_STATE_HOME" "$key" "$bundle"
+}
 
 run_in() {
   local dir="$1"
@@ -78,15 +89,13 @@ seed_bundle() {
 REPO_KILL="$SANDBOX/repo-kill"
 SLUG_KILL="crash"
 BUNDLE_KILL="local-$SLUG_KILL"
-JOURNAL_KILL="$REPO_KILL/.verdict/state/$BUNDLE_KILL/journal.jsonl"
 FIFO_KILL="$SANDBOX/kill.fifo"
 READY_KILL="$SANDBOX/kill.ready"
 mkfifo "$FIFO_KILL"
 
 seed_bundle "$REPO_KILL" "$SLUG_KILL"
+JOURNAL_KILL="$(journal_path_for "$REPO_KILL" "$BUNDLE_KILL")"
 
-# Hold the FIFO open for writing in a subshell? No: reader blocks until writer opens;
-# unblocking simply opens the write end briefly during cleanup.
 (
   cd "$REPO_KILL" || exit 99
   VERDICT_TEST_FIFO="$FIFO_KILL" VERDICT_TEST_READY="$READY_KILL" \
@@ -128,12 +137,12 @@ assert_json_field "SIGKILL leaves zero chain breaks" "0" '.data.chain_breaks | l
 REPO_INT="$SANDBOX/repo-int"
 SLUG_INT="cancel"
 BUNDLE_INT="local-$SLUG_INT"
-JOURNAL_INT="$REPO_INT/.verdict/state/$BUNDLE_INT/journal.jsonl"
 FIFO_INT="$SANDBOX/int.fifo"
 READY_INT="$SANDBOX/int.ready"
 mkfifo "$FIFO_INT"
 
 seed_bundle "$REPO_INT" "$SLUG_INT"
+JOURNAL_INT="$(journal_path_for "$REPO_INT" "$BUNDLE_INT")"
 
 (
   cd "$REPO_INT" || exit 99

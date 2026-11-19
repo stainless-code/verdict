@@ -546,7 +546,7 @@ type Outputs struct {
 // pins git's configuration, then the isolated HOME and the network-dead gh
 // stub go first on PATH. extraEnv overlays test variables (and can override
 // the pinned git config).
-func childEnv(home string, extraEnv map[string]string, stubBin string) []string {
+func childEnv(home, state string, extraEnv map[string]string, stubBin string) []string {
 	merged := maps.Clone(extraEnv)
 	if merged == nil {
 		merged = map[string]string{}
@@ -555,6 +555,9 @@ func childEnv(home string, extraEnv map[string]string, stubBin string) []string 
 	// must win, exactly as when extraEnv was appended last.
 	if _, ok := merged["HOME"]; !ok {
 		merged["HOME"] = home
+	}
+	if _, ok := merged["XDG_STATE_HOME"]; !ok {
+		merged["XDG_STATE_HOME"] = state
 	}
 	if _, ok := merged["PATH"]; !ok {
 		merged["PATH"] = stubBin + string(os.PathListSeparator) + os.Getenv("PATH")
@@ -572,7 +575,7 @@ func (h *Harness) Run(t *testing.T, dir, home string, extraEnv map[string]string
 	}
 	cmd := exec.CommandContext(t.Context(), bin, args...)
 	cmd.Dir = dir
-	cmd.Env = childEnv(home, extraEnv, h.StubBin)
+	cmd.Env = childEnv(home, t.TempDir(), extraEnv, h.StubBin)
 	var stdout, stderr strings.Builder
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr

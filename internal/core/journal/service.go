@@ -11,7 +11,7 @@ import (
 const (
 	codeCanceled      = "canceled"
 	codeMissingBundle = "missing-bundle"
-	codeBadStore      = "bad-store"
+	codeCorruptStore  = "corrupt-store"
 )
 
 // Request carries a resolved `verdict journal` invocation.
@@ -31,7 +31,7 @@ type Response struct {
 	Human    []string
 }
 
-// Run reads and folds a bundle's journal.jsonl without taking a lock or
+// Run reads and folds a bundle's external journal without taking a lock or
 // writing any file.
 func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if err := ctx.Err(); err != nil {
@@ -47,11 +47,17 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 			Message: "no bundle at " + readcommon.DisplayPath(req.RepoRootPath(), dir),
 		}
 	}
-	sum, err := Read(dir, readcommon.BundleName(dir))
+	bundleName := readcommon.BundleName(dir)
+	var env map[string]string
+	if req.Runtime != nil {
+		env = req.Env
+	}
+	journalPath, _, _ := Path(req.RepoRootPath(), bundleName, env)
+	sum, err := Read(journalPath, bundleName)
 	if err != nil {
 		return nil, &core.RefusalError{
-			Code:    codeBadStore,
-			Message: fmt.Sprintf("could not read %s: %v", readcommon.DisplayPath(req.RepoRootPath(), dir+"/"+JournalFile), err),
+			Code:    codeCorruptStore,
+			Message: fmt.Sprintf("could not read %s: %v", journalPath, err),
 		}
 	}
 	warnings := append([]string{}, req.Warnings...)

@@ -3,6 +3,7 @@ package mcp
 import (
 	"bytes"
 	"encoding/json"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -12,6 +13,23 @@ import (
 	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 )
 
+func journalTestConfig(t *testing.T) (Config, string) {
+	t.Helper()
+	stateDir := t.TempDir()
+	cfg := testConfig()
+	cfg.Env = map[string]string{"XDG_STATE_HOME": stateDir}
+	return cfg, stateDir
+}
+
+func mustMCPJournalPath(t *testing.T, stateDir, bundleName string) string {
+	t.Helper()
+	jpath, _, ok := journalcore.Path(".", bundleName, map[string]string{"XDG_STATE_HOME": stateDir})
+	if !ok {
+		t.Fatalf("journal.Path(., %q) returned ok=false", bundleName)
+	}
+	return jpath
+}
+
 func TestMCPJournalsWritingToolsAndSkipsReadOnly(t *testing.T) {
 	fixture(t)
 	bundleDir := filepath.Join(".verdict", "state", "5101")
@@ -20,7 +38,7 @@ func TestMCPJournalsWritingToolsAndSkipsReadOnly(t *testing.T) {
 	writeFile(t, filepath.Join(bundleDir, "review.json"),
 		`{"schema_version":"1","findings":[],"spec_checks":[],"receipts":[],"summary":"clean"}`)
 
-	cfg := testConfig()
+	cfg, stateDir := journalTestConfig(t)
 	frames := serve(t, &cfg,
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"report","arguments":{"repo":"acme/app","pr":"5101"}}}`,
 	)
@@ -31,13 +49,19 @@ func TestMCPJournalsWritingToolsAndSkipsReadOnly(t *testing.T) {
 	if res.IsError {
 		t.Fatalf("report returned error: %+v", res)
 	}
-	assertMCPStepRecorded(t, bundleDir)
-	assertReadOnlyMCPUnchanged(t, &cfg, bundleDir)
+	jpath := mustMCPJournalPath(t, stateDir, "5101")
+	assertMCPStepRecorded(t, jpath, bundleDir)
+	assertReadOnlyMCPUnchanged(t, &cfg, jpath)
 }
 
-func assertMCPStepRecorded(t *testing.T, bundleDir string) {
+func assertMCPStepRecorded(t *testing.T, jpath, bundleDir string) {
 	t.Helper()
-	sum, err := journalcore.Read(bundleDir, "5101")
+	for _, name := range []string{"journal.jsonl", "journal.jsonl.lock"} {
+		if _, err := os.Stat(filepath.Join(bundleDir, name)); err == nil {
+			t.Fatalf("found unexpected %s inside bundle dir", name)
+		}
+	}
+	sum, err := journalcore.Read(jpath, "5101")
 	if err != nil {
 		t.Fatalf("journal.Read: %v", err)
 	}
@@ -50,9 +74,8 @@ func assertMCPStepRecorded(t *testing.T, bundleDir string) {
 	}
 }
 
-func assertReadOnlyMCPUnchanged(t *testing.T, cfg *Config, bundleDir string) {
+func assertReadOnlyMCPUnchanged(t *testing.T, cfg *Config, jpath string) {
 	t.Helper()
-	jpath := filepath.Join(bundleDir, journalcore.JournalFile)
 	before, err := os.ReadFile(jpath)
 	if err != nil {
 		t.Fatal(err)
@@ -65,22 +88,25 @@ func assertReadOnlyMCPUnchanged(t *testing.T, cfg *Config, bundleDir string) {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(before, after) {
-		t.Fatal("read-only MCP tool `show` mutated journal.jsonl")
+		t.Fatal("read-only MCP tool `show` mutated external journal")
 	}
 }
 
 func TestMCPJournalAppendFailureWarnsAndSucceeds(t *testing.T) {
 	fixture(t)
-	bundleDir := filepath.Join(".verdict", "state", "5101")
+	cfg, stateDir := journalTestConfig(t)
+	jpath := mustMCPJournalPath(t, stateDir, "5101")
+	if err := os.MkdirAll(filepath.Dir(jpath), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	outside := filepath.Join(t.TempDir(), "outside.txt")
 	if err := os.WriteFile(outside, []byte("keep"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Symlink(outside, filepath.Join(bundleDir, journalcore.JournalFile)); err != nil {
+	if err := os.Symlink(outside, jpath); err != nil {
 		t.Fatal(err)
 	}
 	var stderr bytes.Buffer
-	cfg := testConfig()
 	cfg.Stderr = &stderr
 	frames := serve(t, &cfg,
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"report","arguments":{"repo":"acme/app","pr":"5101"}}}`,
@@ -107,17 +133,16 @@ func TestReqArgvFormatsFlagsDeterministically(t *testing.T) {
 }
 
 // TestMCPJournalToolIsReadOnly proves the `journal` MCP tool is exposed under
-// --read-only with ReadOnlyHint=true, reads journal.jsonl cleanly, and writes
-// no journal lines of its own.
+// --read-only with ReadOnlyHint=true, reads the external journal cleanly, and
+// writes no journal lines of its own.
 func TestMCPJournalToolIsReadOnly(t *testing.T) {
 	fixture(t)
-	bundleDir := filepath.Join(".verdict", "state", "5101")
 	list := readOnlyList(t)
 	desc := toolNamed(t, list, "journal")
 	if !desc.Annotations.ReadOnlyHint || !desc.Annotations.IdempotentHint {
 		t.Fatalf("journal annotations = %+v, want readOnly+idempotent", desc.Annotations)
 	}
-	cfg := testConfig()
+	cfg, stateDir := journalTestConfig(t)
 	cfg.ReadOnly = true
 	frames := serve(t, &cfg,
 		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"journal","arguments":{"repo":"acme/app","pr":"5101"}}}`,
@@ -129,7 +154,46 @@ func TestMCPJournalToolIsReadOnly(t *testing.T) {
 	if res.IsError {
 		t.Fatalf("journal returned error: %+v", res)
 	}
-	if _, err := os.Stat(filepath.Join(bundleDir, journalcore.JournalFile)); err == nil {
-		t.Fatal("MCP journal tool created journal.jsonl; read-only tool must never write")
+	assertNoFilesUnder(t, stateDir)
+}
+
+// TestMCPReadOnlyRefusedCallWritesNoJournal pins Amendment J4: a --read-only
+// MCP server refuses a non-dry record (and hidden tools) before journaling,
+// writing no journal anywhere in stateDir or the repository.
+func TestMCPReadOnlyRefusedCallWritesNoJournal(t *testing.T) {
+	fixture(t)
+	cfg, stateDir := journalTestConfig(t)
+	cfg.ReadOnly = true
+	frames := serve(t, &cfg,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"record","arguments":{"repo":"acme/app","pr":"5101"}}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"triage","arguments":{"repo":"acme/app","pr":"5101","sig":"deadbeef","status":"wont-fix","rationale":"nope"}}}`,
+	)
+	var res callToolResult
+	if err := json.Unmarshal(frames["1"].Result, &res); err != nil {
+		t.Fatalf("decode record result: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("read-only non-dry record succeeded, want refusal: %+v", res)
+	}
+	assertNoFilesUnder(t, stateDir)
+}
+
+func assertNoFilesUnder(t *testing.T, root string) {
+	t.Helper()
+	var found []string
+	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !d.IsDir() {
+			found = append(found, filepath.ToSlash(p))
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk %s: %v", root, err)
+	}
+	if len(found) != 0 {
+		t.Fatalf("unexpected files written under stateDir: %v", found)
 	}
 }

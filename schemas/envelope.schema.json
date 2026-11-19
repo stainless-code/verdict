@@ -22,8 +22,8 @@
       "type": ["object", "null"],
       "properties": {
         "truncated": {
-          "description": "Bounded-input rows when --provenance is active; elsewhere the boolean truncation flag every verb's data already carries.",
-          "type": ["boolean", "array"],
+          "description": "Bounded-input rows when --provenance is active, a truncation summary object on journal, or the boolean truncation flag other verbs carry.",
+          "type": ["boolean", "array", "object"],
           "items": { "$ref": "#/$defs/provenanceTruncatedRow" }
         },
         "truncation_reason": {
@@ -395,7 +395,7 @@
         },
         "receipt": { "$ref": "#/$defs/provenanceReceipt" },
         "truncated": {
-          "type": ["boolean", "array"],
+          "type": ["boolean", "array", "object"],
           "items": { "$ref": "#/$defs/provenanceTruncatedRow" }
         }
       },
@@ -963,7 +963,7 @@
         },
         "receipt": { "$ref": "#/$defs/provenanceReceipt" },
         "truncated": {
-          "type": ["boolean", "array"],
+          "type": ["boolean", "array", "object"],
           "items": { "$ref": "#/$defs/provenanceTruncatedRow" }
         }
       },

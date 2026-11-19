@@ -12,6 +12,7 @@ import (
 type StartLine struct {
 	SchemaVersion string   `const:"1"          json:"schema_version"`
 	Phase         string   `const:"start"      json:"phase"`
+	Repo          string   `json:"repo"`
 	Step          string   `format:"date-time" json:"step"`
 	Verb          string   `json:"verb"`
 	Channel       string   `enum:"cli|mcp"     json:"channel"`
@@ -40,6 +41,7 @@ type FileRecord struct {
 type EndLine struct {
 	SchemaVersion string        `const:"1"          json:"schema_version"`
 	Phase         string        `const:"end"        json:"phase"`
+	Repo          string        `json:"repo"`
 	Step          string        `format:"date-time" json:"step"`
 	Verb          string        `json:"verb"`
 	Channel       string        `enum:"cli|mcp"     json:"channel"`
@@ -55,11 +57,12 @@ type EndLine struct {
 	Warnings      int           `json:"warnings"    min:"0"`
 }
 
-// TruncatedLine records a whole-line truncation rewrite when journal.jsonl
+// TruncatedLine records a whole-line truncation rewrite when the journal file
 // exceeded [MaxBytes].
 type TruncatedLine struct {
 	SchemaVersion string `const:"1"          json:"schema_version"`
 	Phase         string `const:"truncated"  json:"phase"`
+	Repo          string `json:"repo"`
 	At            string `format:"date-time" json:"at"`
 	KeptFrom      string `format:"date-time" json:"kept_from"`
 	Dropped       int    `json:"dropped"     min:"0"`
@@ -112,7 +115,7 @@ type TruncatedInfo struct {
 	Dropped  int     `json:"dropped"     min:"0"`
 }
 
-// Summary is the folded read view of a bundle's journal.jsonl.
+// Summary is the folded read view of a bundle's journal.
 type Summary struct {
 	Bundle          string           `json:"bundle"`
 	Truncated       TruncatedInfo    `json:"truncated"`

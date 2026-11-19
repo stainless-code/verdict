@@ -293,7 +293,10 @@ var publishedSemantics = map[string]string{
 	// $defs/gateDimension.id with updated reportGate and gateDimension prose.
 	// Spec gate dimension: additive `spec` member on $defs/gateDimension.id
 	// with updated reportGate and gateDimension prose. Additions only.
-	"envelope.schema.json": "e857fce228612e9c96ecd6f3fdeeab3a65d560402a4f2dbbdde0409fd1b6924d",
+	// Bundle journal: additive $defs/journalData (and its helper defs), plus
+	// additive object widening on envelope data.truncated for journalData's
+	// truncation summary object. Additions only.
+	"envelope.schema.json": "e2be7f9d05aa529733d8e7a64fb1f4b60d8c7dd1476148a5954414c2a078f72f",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -495,10 +498,10 @@ var publishedSemantics = map[string]string{
 	// property, required key, or type changed — the envelope fetchEstimate entry
 	// from f3a22047 is untouched).
 	"usage.schema.json": "95da162703b04193308f8c55cef95affefb4ecd278cc09e5ea3801e061be999e",
-	// additive journal.schema.json (new bundle document: <bundle>/journal.jsonl
-	// start/end/truncated line records; no existing schema property, required
-	// key, or type changed).
-	"journal.schema.json": "2861d2d2ed2b5d7e197f23dc47b9f4dc35174c5f45d39b09657f2986b89cfdb0",
+	// additive journal.schema.json (external per-bundle journal line records
+	// carrying canonical repo root; no existing schema property, required key,
+	// or type changed).
+	"journal.schema.json": "42c5f57a7d50ece7eb2d8e513c3f40e23d869a83c7012695497cac76d22004c6",
 	// additive validation.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed). It pins the trusted pass: one
 	// result per finding sig with its verdict, reason, optional one-rank

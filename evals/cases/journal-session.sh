@@ -2,14 +2,16 @@
 #
 # STA-447: end-to-end bundle journal session.
 # Reconstructs fetch-local -> run -> record --dry-run -> record -> report
-# from <bundle>/journal.jsonl, verifying:
+# from the external journal (<XDG_STATE_HOME>/verdict/journal/<repo-key>/<pr>.jsonl), verifying:
+# - nothing journal-related is written under the repo or .verdict/;
+# - every line carries the canonical repo root in `repo`;
 # - exact 5-step sequence with zero unfinished calls and zero chain breaks;
 # - dry-run-first derivability from argv and exit codes;
 # - real content sha256 on written bundle paths;
 # - secret redaction for both --token operands and secret-named env values;
 # - report's recorded next hint matches the --json envelope's .next;
-# - provenance.json excludes journal.jsonl and consecutive record --dry-run
-#   calls leave provenance.json byte-identical and run.json inputs_sha256 fixed.
+# - consecutive record --dry-run calls leave provenance.json byte-identical and
+#   run.json inputs_sha256 fixed.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -23,6 +25,7 @@ fi
 SANDBOX="$(cd "$EVAL_SANDBOX" && pwd)"
 REPO="$SANDBOX/repo"
 eval_fixture_repo "$REPO"
+REPO_CANON="$(cd "$REPO" && pwd -P)"
 
 AGENTBIN="$SANDBOX/agentbin"
 mkdir -p "$AGENTBIN"
@@ -34,7 +37,14 @@ ENV_SECRET="sk-ant-env-secret-value-8882"
 BUNDLE_SLUG="session"
 BUNDLE_NAME="local-$BUNDLE_SLUG"
 BUNDLE_DIR="$REPO/.verdict/state/$BUNDLE_NAME"
-JOURNAL="$BUNDLE_DIR/journal.jsonl"
+
+str_sha256_prefix() {
+  if command -v sha256sum >/dev/null 2>&1; then
+    printf '%s' "$1" | sha256sum | cut -c1-16
+  else
+    printf '%s' "$1" | shasum -a 256 | cut -c1-16
+  fi
+}
 
 file_sha256() {
   if command -v sha256sum >/dev/null 2>&1; then
@@ -43,6 +53,9 @@ file_sha256() {
     shasum -a 256 "$1" | awk '{print $1}'
   fi
 }
+
+REPO_KEY="$(str_sha256_prefix "$REPO_CANON")"
+JOURNAL="$XDG_STATE_HOME/verdict/journal/$REPO_KEY/$BUNDLE_NAME.jsonl"
 
 run_in_repo() {
   set +e
@@ -79,6 +92,23 @@ run_in_repo report acme/app "$BUNDLE_NAME" --check critical --json
 assert_exit "report --check critical succeeds" 0
 REPORT_NEXT="$(jq -r '.next' "$EVAL_OUT")"
 
+# External location (J4): journal lives under XDG_STATE_HOME, never under the repo or .verdict/.
+if [ -f "$JOURNAL" ]; then
+  good "journal written at external state path"
+else
+  bad "external journal missing at $JOURNAL"
+fi
+if [ ! -e "$BUNDLE_DIR/journal.jsonl" ] && [ ! -e "$BUNDLE_DIR/journal.jsonl.lock" ]; then
+  good "no journal files written inside bundle dir"
+else
+  bad "found unexpected journal artifact inside $BUNDLE_DIR"
+fi
+if jq -s --arg repo "$REPO_CANON" 'length > 0 and all(.[]; .repo == $repo)' "$JOURNAL" >/dev/null; then
+  good "every journal line carries the canonical repo root"
+else
+  bad "a journal line is missing or mismatched repo"
+fi
+
 # Read the journal (read-only: must not append a 6th step).
 run_in_repo journal acme/app "$BUNDLE_NAME" --json
 assert_exit "verdict journal --json succeeds" 0
@@ -98,9 +128,9 @@ assert_json_field "dry-run step carries --dry-run in argv" "true" '.data.steps[2
 assert_json_field "real record exited 0" "0" '.data.steps[3].exit' "$SANDBOX/journal.json"
 assert_json_field "real record omits --dry-run in argv" "true" '.data.steps[3].argv | index("--dry-run") == null' "$SANDBOX/journal.json"
 
-# Redaction: neither secret appears anywhere in journal.jsonl, and run argv holds ***REDACTED***.
-assert_file_nogrep "CLI --token secret never reaches journal.jsonl" "$JOURNAL" "$CLI_SECRET"
-assert_file_nogrep "secret-named env value never reaches journal.jsonl" "$JOURNAL" "$ENV_SECRET"
+# Redaction: neither secret appears anywhere in the journal, and run argv holds ***REDACTED***.
+assert_file_nogrep "CLI --token secret never reaches journal" "$JOURNAL" "$CLI_SECRET"
+assert_file_nogrep "secret-named env value never reaches journal" "$JOURNAL" "$ENV_SECRET"
 assert_json_field "run argv redacted both secrets" "2" '.data.steps[1].argv | map(select(. == "***REDACTED***")) | length' "$SANDBOX/journal.json"
 
 # Tee honesty: report's journal next equals the report envelope's .next.
@@ -131,13 +161,8 @@ else
   bad "expected at least 5 written bundle files verified, got $WROTE_CHECKED"
 fi
 
-# Determinism (§4): provenance.json carries no journal row; two consecutive
-# record --dry-run runs keep provenance.json byte-identical and run.json
-# inputs_sha256 unchanged.
-assert_json_field "provenance.json carries no journal row" "0" \
-  '[.inputs[] | select(.name == "journal.jsonl" or .name == "journal.jsonl.lock")] | length' \
-  "$BUNDLE_DIR/provenance.json"
-
+# Determinism (§4): consecutive record --dry-run runs keep provenance.json
+# byte-identical and run.json inputs_sha256 unchanged.
 cp "$BUNDLE_DIR/provenance.json" "$SANDBOX/prov.1.json"
 RUN_SHA_1="$(jq -r '.inputs_sha256' "$BUNDLE_DIR/run.json")"
 run_in_repo record acme/app "$BUNDLE_NAME" --dry-run --json

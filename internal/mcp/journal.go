@@ -33,6 +33,7 @@ func (s *Server) invokeJournaled(
 		Channel:  journalcore.ChannelMCP,
 		RepoRoot: repoRoot,
 		Pr:       pr,
+		Env:      b.env,
 		Argv:     reqArgv(t.name, rawArgs),
 		Environ:  s.cfg.Environ,
 		Version:  s.cfg.Version,

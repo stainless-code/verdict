@@ -8,11 +8,10 @@ import (
 	"io"
 	"io/fs"
 	"os"
-	"path/filepath"
 	"time"
 )
 
-// maxReadBytes caps one streaming read of journal.jsonl so a corrupt or
+// maxReadBytes caps one streaming read of a journal file so a corrupt or
 // hand-grown file cannot exhaust memory.
 const maxReadBytes int64 = 4 * MaxBytes
 
@@ -40,13 +39,15 @@ type rawRecord struct {
 	Dropped   int           `json:"dropped"`
 }
 
-// Read streams <bundleDir>/journal.jsonl without taking a lock, folds paired
-// start/end records by step ID, collects unpaired starts as unfinished, and
-// detects bundle-manifest chain breaks between consecutive completed steps.
-// A missing journal.jsonl returns an empty Summary and a nil error.
-func Read(bundleDir, bundleName string) (*Summary, error) {
+// Read streams path without taking a lock, folds paired start/end records by
+// step ID, collects unpaired starts as unfinished, and detects bundle-manifest
+// chain breaks between consecutive completed steps. An empty path or missing
+// file returns an empty Summary and a nil error.
+func Read(path, bundleName string) (*Summary, error) {
 	summary := emptySummary(bundleName)
-	path := filepath.Join(bundleDir, JournalFile)
+	if path == "" {
+		return summary, nil
+	}
 	f, err := os.Open(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {

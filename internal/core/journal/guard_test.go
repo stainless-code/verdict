@@ -2,6 +2,7 @@ package journal
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -23,6 +24,8 @@ func (p *stubProgress) Diag(string)   {}
 func TestGuardWritesStartEndRedactsArgvAndSkipsReadOnly(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
+	stateDir := t.TempDir()
+	env := map[string]string{"XDG_STATE_HOME": stateDir}
 	bundleDir := filepath.Join(root, ".verdict", "state", "local-9")
 	mustWriteFile(t, filepath.Join(bundleDir, "source.json"), []byte(`{"repo":"acme/app"}`), 0o644)
 
@@ -38,6 +41,7 @@ func TestGuardWritesStartEndRedactsArgvAndSkipsReadOnly(t *testing.T) {
 		Channel:  ChannelCLI,
 		RepoRoot: root,
 		Pr:       "local-9",
+		Env:      env,
 		Argv:     []string{"record", "acme/app", "local-9", "--token", "secret-cli-val", "--dry-run", "env-secret-12345"},
 		Environ:  []string{"ANTHROPIC_API_KEY=env-secret-12345"},
 		Version:  "0.14.2",
@@ -52,24 +56,54 @@ func TestGuardWritesStartEndRedactsArgvAndSkipsReadOnly(t *testing.T) {
 	if code != 0 || len(warns) != 0 {
 		t.Fatalf("Guard code=%d warns=%v, want 0 and none", code, warns)
 	}
-	assertGuardRecordResult(t, bundleDir)
-	assertReadOnlySkipsJournal(t, root, bundleDir)
+	jpath, absRepo, ok := Path(root, "local-9", env)
+	if !ok {
+		t.Fatal("Path returned ok=false")
+	}
+	assertNoRepoJournalFiles(t, bundleDir)
+	assertGuardRecordResult(t, jpath, absRepo)
+	assertReadOnlySkipsJournal(t, root, jpath, env)
 }
 
-func assertGuardRecordResult(t *testing.T, bundleDir string) {
+func assertNoRepoJournalFiles(t *testing.T, bundleDir string) {
 	t.Helper()
-	raw, err := os.ReadFile(filepath.Join(bundleDir, JournalFile))
+	for _, name := range []string{"journal.jsonl", "journal.jsonl.lock"} {
+		if _, err := os.Stat(filepath.Join(bundleDir, name)); err == nil {
+			t.Fatalf("found unexpected %s inside bundle dir %s", name, bundleDir)
+		}
+	}
+}
+
+func assertGuardRecordResult(t *testing.T, jpath, absRepo string) {
+	t.Helper()
+	raw, err := os.ReadFile(jpath)
 	if err != nil {
 		t.Fatalf("read journal: %v", err)
 	}
 	if strings.Contains(string(raw), "secret-cli-val") || strings.Contains(string(raw), "env-secret-12345") {
 		t.Fatalf("journal leaked secret in raw file:\n%s", raw)
 	}
-	sum, err := Read(bundleDir, "local-9")
+	assertEveryLineHasRepo(t, raw, absRepo)
+	sum, err := Read(jpath, "local-9")
 	if err != nil || len(sum.Steps) != 1 {
 		t.Fatalf("Read err=%v steps=%d, want 1", err, len(sum.Steps))
 	}
 	assertRecordedStepFields(t, &sum.Steps[0])
+}
+
+func assertEveryLineHasRepo(t *testing.T, raw []byte, wantRepo string) {
+	t.Helper()
+	for i, line := range splitWholeLines(raw) {
+		var probe struct {
+			Repo string `json:"repo"`
+		}
+		if err := json.Unmarshal(line, &probe); err != nil {
+			t.Fatalf("line %d json: %v", i, err)
+		}
+		if probe.Repo != wantRepo {
+			t.Fatalf("line %d repo = %q, want %q", i, probe.Repo, wantRepo)
+		}
+	}
 }
 
 func assertRecordedStepFields(t *testing.T, st *Step) {
@@ -83,9 +117,9 @@ func assertRecordedStepFields(t *testing.T, st *Step) {
 	}
 }
 
-func assertReadOnlySkipsJournal(t *testing.T, root, bundleDir string) {
+func assertReadOnlySkipsJournal(t *testing.T, root, jpath string, env map[string]string) {
 	t.Helper()
-	before, err := os.ReadFile(filepath.Join(bundleDir, JournalFile))
+	before, err := os.ReadFile(jpath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,29 +129,39 @@ func assertReadOnlySkipsJournal(t *testing.T, root, bundleDir string) {
 			Channel:  ChannelCLI,
 			RepoRoot: root,
 			Pr:       "local-9",
+			Env:      env,
 			Argv:     []string{verb, "acme/app", "local-9"},
 		}, func() int { return 0 })
 		if code != 0 {
 			t.Fatalf("%s returned %d, want 0", verb, code)
 		}
 	}
-	after, err := os.ReadFile(filepath.Join(bundleDir, JournalFile))
+	after, err := os.ReadFile(jpath)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !bytes.Equal(before, after) {
-		t.Fatalf("read-only verbs modified journal.jsonl")
+		t.Fatalf("read-only verbs modified external journal")
 	}
 }
 
 func TestGuardAppendFailureWarnsAndSucceeds(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
+	stateDir := t.TempDir()
+	env := map[string]string{"XDG_STATE_HOME": stateDir}
 	bundleDir := filepath.Join(root, ".verdict", "state", "local-warn")
 	mustWriteFile(t, filepath.Join(bundleDir, "source.json"), []byte(`{}`), 0o644)
+	jpath, _, ok := Path(root, "local-warn", env)
+	if !ok {
+		t.Fatal("Path returned ok=false")
+	}
+	if err := os.MkdirAll(filepath.Dir(jpath), 0o700); err != nil {
+		t.Fatal(err)
+	}
 	outside := filepath.Join(t.TempDir(), "target.txt")
 	mustWriteFile(t, outside, []byte("untouched"), 0o600)
-	if err := os.Symlink(outside, filepath.Join(bundleDir, JournalFile)); err != nil {
+	if err := os.Symlink(outside, jpath); err != nil {
 		t.Fatal(err)
 	}
 	var warns []string
@@ -126,6 +170,7 @@ func TestGuardAppendFailureWarnsAndSucceeds(t *testing.T) {
 		Channel:  ChannelCLI,
 		RepoRoot: root,
 		Pr:       "local-warn",
+		Env:      env,
 		Argv:     []string{"report", "acme/app", "local-warn"},
 		Warn:     func(m string) { warns = append(warns, m) },
 	}, func() int { return 0 })
@@ -138,31 +183,46 @@ func TestGuardAppendFailureWarnsAndSucceeds(t *testing.T) {
 	}
 }
 
-func TestGuardCreatingVerbAndAbsentRefusal(t *testing.T) {
+func TestGuardAbsentRefusalWritesNoRepoDir(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
-	// Absent bundle that refuses leaves no journal and creates no directory.
+	stateDir := t.TempDir()
+	env := map[string]string{"XDG_STATE_HOME": stateDir}
+
 	code := Guard(&Invocation{
 		Verb:     "record",
 		Channel:  ChannelCLI,
 		RepoRoot: root,
 		Pr:       "local-missing",
+		Env:      env,
 		Argv:     []string{"record", "acme/app", "local-missing"},
 		Refusal:  func() string { return "missing-bundle" },
 	}, func() int { return 1 })
 	if code != 1 {
 		t.Fatalf("absent refusal code = %d, want 1", code)
 	}
-	if _, err := os.Stat(filepath.Join(root, ".verdict", "state", "local-missing")); err == nil {
-		t.Fatal("Guard created bundle directory on refusal")
+	if _, err := os.Stat(filepath.Join(root, ".verdict")); err == nil {
+		t.Fatal("Guard created .verdict directory on refusal")
 	}
+	missingPath, _, _ := Path(root, "local-missing", env)
+	refSum, err := Read(missingPath, "local-missing")
+	if err != nil || len(refSum.Steps) != 1 || refSum.Steps[0].Refusal == nil || *refSum.Steps[0].Refusal != "missing-bundle" {
+		t.Fatalf("absent refusal journal = (%+v, %v), want 1 step with missing-bundle refusal", refSum, err)
+	}
+}
 
-	// Creating verb (fetch-local) starts absent and creates local-fresh -> before: null.
-	code = Guard(&Invocation{
+func TestGuardCreatingVerbStartsWithNilBefore(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	stateDir := t.TempDir()
+	env := map[string]string{"XDG_STATE_HOME": stateDir}
+
+	code := Guard(&Invocation{
 		Verb:     "fetch-local",
 		Channel:  ChannelCLI,
 		RepoRoot: root,
 		Pr:       "fresh",
+		Env:      env,
 		Argv:     []string{"fetch-local", "acme/app", "fresh"},
 	}, func() int {
 		mustWriteFile(t, filepath.Join(root, ".verdict", "state", "local-fresh", "source.json"), []byte(`{"repo":"acme/app"}`), 0o644)
@@ -171,7 +231,8 @@ func TestGuardCreatingVerbAndAbsentRefusal(t *testing.T) {
 	if code != 0 {
 		t.Fatalf("fetch-local code = %d, want 0", code)
 	}
-	sum, err := Read(filepath.Join(root, ".verdict", "state", "local-fresh"), "local-fresh")
+	freshPath, _, _ := Path(root, "local-fresh", env)
+	sum, err := Read(freshPath, "local-fresh")
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}

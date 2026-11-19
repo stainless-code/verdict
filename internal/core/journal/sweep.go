@@ -11,27 +11,31 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
+	"syscall"
+
+	"github.com/stainless-code/verdict/internal/storelock"
 )
 
 // Snapshot is the canonical content-digest manifest of one bundle directory
-// (J3: `path\0size\0sha256(content)\n`, sorted by path, excluding journal and
-// lock files).
+// (J3: `path\0size\0sha256(content)\n`, sorted by path, excluding advisory
+// *.lock files).
 type Snapshot struct {
 	Digest string
 	Files  []FileRecord
 	Exists bool
 }
 
-// Sweep walks dir and hashes every regular file (excluding journal.jsonl,
-// journal.jsonl.lock, and *.lock) to produce the canonical content-digest
-// manifest. A missing directory yields Snapshot{Exists: false} and a nil error.
+// Sweep walks dir and hashes every regular file (excluding *.lock) to produce
+// the canonical content-digest manifest. A missing directory yields
+// Snapshot{Exists: false} and a nil error.
 func Sweep(dir string) (Snapshot, error) {
 	if dir == "" {
 		return Snapshot{}, nil
 	}
 	fi, err := os.Stat(dir)
 	if err != nil {
-		if errors.Is(err, fs.ErrNotExist) {
+		if errors.Is(err, fs.ErrNotExist) || errors.Is(err, syscall.ENOTDIR) {
 			return Snapshot{}, nil
 		}
 		return Snapshot{}, wrapErr("stat bundle "+dir, err)
@@ -106,7 +110,7 @@ func regularBundleRelPath(dir, path string, d fs.DirEntry) (string, bool, error)
 		return "", false, nil
 	}
 	relSlash := filepath.ToSlash(rel)
-	if IsJournalArtifact(relSlash, d.Name()) {
+	if strings.HasSuffix(d.Name(), storelock.LockSuffix) {
 		return "", false, nil
 	}
 	return relSlash, true, nil

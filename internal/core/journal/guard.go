@@ -2,13 +2,18 @@ package journal
 
 import (
 	"os"
-	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/argvshape"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/readcommon"
+)
+
+const (
+	verbFetchLocal = "fetch-local"
+	localPrefix    = "local-"
 )
 
 // Invocation describes one verb execution entering either front door (CLI or
@@ -19,6 +24,7 @@ type Invocation struct {
 	Refusal  func() string
 	Warnings func() int
 	Next     func() string
+	Env      map[string]string
 	Verb     string
 	Channel  string
 	RepoRoot string
@@ -45,13 +51,6 @@ func TargetFromRequest(request any) (repoRoot, pr string) {
 	return repoRoot, pr
 }
 
-// BundleFromRequest resolves the bundle directory for a decoded request that
-// embeds [core.ReadRequest].
-func BundleFromRequest(request any) string {
-	repoRoot, pr := TargetFromRequest(request)
-	return BundleFor(repoRoot, pr)
-}
-
 // BundleFor resolves the bundle directory for (repoRoot, pr) using
 // [readcommon.ResolveBundleDir], returning "" when pr is empty or unresolvable.
 func BundleFor(repoRoot, pr string) string {
@@ -63,6 +62,23 @@ func BundleFor(repoRoot, pr string) string {
 		return ""
 	}
 	return dir
+}
+
+func bundleForVerb(repoRoot, verb, pr string) string {
+	if pr == "" {
+		return ""
+	}
+	if verb == verbFetchLocal && !strings.HasPrefix(pr, localPrefix) {
+		pr = localPrefix + pr
+	}
+	return BundleFor(repoRoot, pr)
+}
+
+func journalPathFor(repoRoot, bundleDir string, env map[string]string) (path, absRepo string, ok bool) {
+	if bundleDir == "" {
+		return "", "", false
+	}
+	return Path(repoRoot, readcommon.BundleName(bundleDir), env)
 }
 
 // Guard wraps one verb invocation with start/end bundle-journal appends and
@@ -82,62 +98,59 @@ func Guard(inv *Invocation, fn func() int) int {
 
 type guardState struct {
 	now          func() time.Time
-	preDir       string
+	journalPath  string
 	start        StartLine
 	preSnap      Snapshot
 	startWritten bool
 }
 
 func beginGuard(inv *Invocation, verb string) *guardState {
-	nowFn := inv.Now
-	if nowFn == nil {
-		nowFn = time.Now
-	}
+	nowFn := resolveNow(inv.Now)
 	startedAt := nowFn().UTC()
 	step := startedAt.Format(time.RFC3339Nano)
-	ver := inv.Version
-	if ver == "" {
-		ver = core.VersionUnknown
-	}
 	redactedArgv, _ := argvshape.Record(inv.Argv, "", inv.Environ)
-	preDir := BundleFor(inv.RepoRoot, inv.Pr)
-	preSnap := sweepBestEffort(preDir, inv.Warn)
+	preDir := bundleForVerb(inv.RepoRoot, verb, inv.Pr)
+	journalPath, absRepo, hasPath := journalPathFor(inv.RepoRoot, preDir, inv.Env)
+	preSnap := sweepBestEffort(preDir, journalPath, inv.Warn)
 	st := &guardState{
-		now:    nowFn,
-		preDir: preDir,
+		now:         nowFn,
+		journalPath: journalPath,
 		start: StartLine{
 			SchemaVersion: SchemaVersion,
 			Phase:         PhaseStart,
+			Repo:          absRepo,
 			Step:          step,
 			Verb:          verb,
 			Channel:       inv.Channel,
 			PID:           os.Getpid(),
 			Argv:          redactedArgv,
-			Version:       ver,
+			Version:       resolveVersion(inv.Version),
 			StartedAt:     step,
 		},
 		preSnap: preSnap,
 	}
-	if preSnap.Exists {
+	if hasPath {
 		st.startWritten = true
-		if err := AppendStart(preDir, &st.start, startedAt); err != nil {
-			emitWarn(inv.Warn, preDir, err)
+		if err := AppendStart(journalPath, &st.start, startedAt); err != nil {
+			emitWarn(inv.Warn, journalPath, err)
 		}
 	}
 	return st
 }
 
 func finishGuard(inv *Invocation, st *guardState, code int) {
-	postDir := BundleFor(inv.RepoRoot, inv.Pr)
-	postSnap := sweepBestEffort(postDir, inv.Warn)
-	if !postSnap.Exists {
+	postDir := bundleForVerb(inv.RepoRoot, st.start.Verb, inv.Pr)
+	postPath, absRepo, hasPath := journalPathFor(inv.RepoRoot, postDir, inv.Env)
+	if !hasPath {
 		return
 	}
+	postSnap := sweepBestEffort(postDir, postPath, inv.Warn)
 	preSnap := st.preSnap
-	if !st.startWritten || postDir != st.preDir {
+	if !st.startWritten || postPath != st.journalPath {
 		preSnap = Snapshot{}
-		if err := AppendStart(postDir, &st.start, st.now().UTC()); err != nil {
-			emitWarn(inv.Warn, postDir, err)
+		st.start.Repo = absRepo
+		if err := AppendStart(postPath, &st.start, st.now().UTC()); err != nil {
+			emitWarn(inv.Warn, postPath, err)
 		}
 	}
 	endedAt := st.now().UTC()
@@ -145,6 +158,7 @@ func finishGuard(inv *Invocation, st *guardState, code int) {
 	endLine := EndLine{
 		SchemaVersion: SchemaVersion,
 		Phase:         PhaseEnd,
+		Repo:          absRepo,
 		Step:          st.start.Step,
 		Verb:          st.start.Verb,
 		Channel:       st.start.Channel,
@@ -159,9 +173,23 @@ func finishGuard(inv *Invocation, st *guardState, code int) {
 		Removed:       removed,
 		Next:          callString(inv.Next),
 	}
-	if err := AppendEnd(postDir, &endLine, endedAt); err != nil {
-		emitWarn(inv.Warn, postDir, err)
+	if err := AppendEnd(postPath, &endLine, endedAt); err != nil {
+		emitWarn(inv.Warn, postPath, err)
 	}
+}
+
+func resolveNow(fn func() time.Time) func() time.Time {
+	if fn != nil {
+		return fn
+	}
+	return time.Now
+}
+
+func resolveVersion(ver string) string {
+	if ver != "" {
+		return ver
+	}
+	return core.VersionUnknown
 }
 
 func bundleDigestsOf(pre, post Snapshot) BundleDigests {
@@ -173,17 +201,17 @@ func bundleDigestsOf(pre, post Snapshot) BundleDigests {
 	return BundleDigests{Before: before, After: post.Digest}
 }
 
-func emitWarn(warn func(string), dir string, err error) {
+func emitWarn(warn func(string), path string, err error) {
 	if warn == nil {
 		return
 	}
-	warn(WarningMessage(filepath.Join(dir, JournalFile), err))
+	warn(WarningMessage(path, err))
 }
 
-func sweepBestEffort(dir string, warn func(string)) Snapshot {
+func sweepBestEffort(dir, warnPath string, warn func(string)) Snapshot {
 	snap, err := Sweep(dir)
 	if err != nil {
-		emitWarn(warn, dir, err)
+		emitWarn(warn, warnPath, err)
 		return Snapshot{}
 	}
 	return snap

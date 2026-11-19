@@ -1,7 +1,6 @@
 package provenance
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -461,43 +460,5 @@ func assertBundleProcedureReceipt(t *testing.T, receipt *core.ProvenanceReceipt,
 	}
 	if got.Status != statusIncluded || got.SHA256 != shaOf(string(want)) || got.Bytes == nil || *got.Bytes != int64(len(want)) {
 		t.Fatalf("procedure.md input = %+v, want included with sha %s and %d bytes", got, shaOf(string(want)), len(want))
-	}
-}
-
-// TestBuildReceiptExcludesJournalArtifacts pins the determinism contract (§4):
-// appending to journal.jsonl or creating journal.jsonl.lock must leave
-// provenance.json byte-identical and carry no journal input row.
-func TestBuildReceiptExcludesJournalArtifacts(t *testing.T) {
-	t.Parallel()
-	_, dir := seedReceiptFixture(t, `{"schema_version":"1"}`)
-	in := baseBuildInput(dir, `{"schema_version":"1"}`)
-	beforeBytes := marshalReceiptForTest(t, BuildReceipt(in))
-	writeFixtureBundleFiles(t, dir, map[string]string{
-		"journal.jsonl":      "{\"schema_version\":\"1\",\"phase\":\"start\",\"step\":\"2026-11-19T10:00:00Z\"}\n",
-		"journal.jsonl.lock": "",
-	})
-	after := BuildReceipt(in)
-	afterBytes := marshalReceiptForTest(t, after)
-	if !bytes.Equal(beforeBytes, afterBytes) {
-		t.Fatalf("provenance receipt changed after journal files were added:\nbefore=%s\nafter=%s", beforeBytes, afterBytes)
-	}
-	assertNoJournalInputs(t, after)
-}
-
-func marshalReceiptForTest(t *testing.T, r *core.ProvenanceReceipt) []byte {
-	t.Helper()
-	raw, err := json.Marshal(r)
-	if err != nil {
-		t.Fatalf("marshal receipt: %v", err)
-	}
-	return raw
-}
-
-func assertNoJournalInputs(t *testing.T, r *core.ProvenanceReceipt) {
-	t.Helper()
-	for i := range r.Inputs {
-		if r.Inputs[i].Name == "journal.jsonl" || r.Inputs[i].Name == "journal.jsonl.lock" {
-			t.Fatalf("receipt included excluded journal artifact %q", r.Inputs[i].Name)
-		}
 	}
 }

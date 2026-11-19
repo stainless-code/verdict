@@ -53,6 +53,49 @@ func rewritePreservingMtime(t *testing.T, path string, data []byte) {
 	}
 }
 
+func TestExternalPathResolutionAndRepoKey(t *testing.T) {
+	t.Parallel()
+	stateDir := t.TempDir()
+	repoDir := t.TempDir()
+	wantRepo, err := CanonicalRepoRoot(repoDir)
+	if err != nil {
+		t.Fatalf("CanonicalRepoRoot: %v", err)
+	}
+	wantKey := sha256Hex([]byte(wantRepo))[:16]
+	if got := RepoKey(wantRepo); got != wantKey {
+		t.Fatalf("RepoKey = %q, want %q", got, wantKey)
+	}
+
+	gotPath, gotRepo, ok := Path(repoDir, "local-7", map[string]string{"XDG_STATE_HOME": stateDir})
+	if !ok || gotRepo != wantRepo {
+		t.Fatalf("Path ok=%v repo=%q, want true and %q", ok, gotRepo, wantRepo)
+	}
+	wantPath := filepath.Join(stateDir, "verdict", "journal", wantKey, "local-7.jsonl")
+	if filepath.ToSlash(gotPath) != filepath.ToSlash(wantPath) {
+		t.Fatalf("Path = %q, want %q", gotPath, wantPath)
+	}
+
+	homeDir := t.TempDir()
+	gotHomePath, _, ok := Path(repoDir, "5101", map[string]string{"HOME": homeDir})
+	wantHomePath := filepath.Join(homeDir, ".local", "state", "verdict", "journal", wantKey, "5101.jsonl")
+	if !ok || filepath.ToSlash(gotHomePath) != filepath.ToSlash(wantHomePath) {
+		t.Fatalf("HOME fallback Path = (%q, %v), want (%q, true)", gotHomePath, ok, wantHomePath)
+	}
+	assertRejectedPaths(t, repoDir, stateDir)
+}
+
+func assertRejectedPaths(t *testing.T, repoDir, stateDir string) {
+	t.Helper()
+	if _, _, ok := Path(repoDir, "5101", map[string]string{}); ok {
+		t.Fatal("Path with empty env returned ok=true, want false")
+	}
+	for _, bad := range []string{"", ".", "..", "a/b", `a\b`} {
+		if _, _, ok := Path(repoDir, bad, map[string]string{"XDG_STATE_HOME": stateDir}); ok {
+			t.Fatalf("Path(%q) returned ok=true, want false", bad)
+		}
+	}
+}
+
 func TestSweepAndDiffJ3ContentDigest(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "local-7")
@@ -65,9 +108,7 @@ func TestSweepAndDiffJ3ContentDigest(t *testing.T) {
 	findingsPath := filepath.Join(dir, "findings.json")
 	mustWriteFile(t, findingsPath, origBytes, 0o644)
 	mustWriteFile(t, filepath.Join(dir, "sub", "note.txt"), subBytes, 0o644)
-	for _, skip := range []string{"journal.jsonl", "journal.jsonl.lock", "findings.json.lock"} {
-		mustWriteFile(t, filepath.Join(dir, skip), []byte("ignored"), 0o600)
-	}
+	mustWriteFile(t, filepath.Join(dir, "findings.json.lock"), []byte("ignored"), 0o600)
 	snap1 := mustSweep(t, dir)
 	assertInitialSnapshot(t, snap1, origBytes, subBytes)
 
@@ -116,16 +157,16 @@ func assertSameSizeRewriteDetected(t *testing.T, snap1, snap2 Snapshot, rewritte
 	}
 }
 
-func mustAppendStart(t *testing.T, dir string, line *StartLine, now time.Time) {
+func mustAppendStart(t *testing.T, path string, line *StartLine, now time.Time) {
 	t.Helper()
-	if err := AppendStart(dir, line, now); err != nil {
+	if err := AppendStart(path, line, now); err != nil {
 		t.Fatalf("AppendStart: %v", err)
 	}
 }
 
-func mustAppendEnd(t *testing.T, dir string, line *EndLine, now time.Time) {
+func mustAppendEnd(t *testing.T, path string, line *EndLine, now time.Time) {
 	t.Helper()
-	if err := AppendEnd(dir, line, now); err != nil {
+	if err := AppendEnd(path, line, now); err != nil {
 		t.Fatalf("AppendEnd: %v", err)
 	}
 }
@@ -146,6 +187,7 @@ func appendRawBytes(t *testing.T, path, content string) {
 func TestAppendReadChainBreakCrashAndTornTail(t *testing.T) {
 	t.Parallel()
 	dir := filepath.Join(t.TempDir(), "local-7")
+	jpath := filepath.Join(t.TempDir(), "state", "local-7.jsonl")
 	target := filepath.Join(dir, "findings.json")
 	mustWriteFile(t, target, []byte(`{"state":"one"}`), 0o644)
 	s1 := mustSweep(t, dir)
@@ -153,13 +195,13 @@ func TestAppendReadChainBreakCrashAndTornTail(t *testing.T) {
 	t0 := time.Date(2026, 11, 19, 10, 0, 0, 0, time.UTC)
 	step1 := t0.Format(time.RFC3339Nano)
 	t1 := t0.Add(250 * time.Millisecond)
-	mustAppendStart(t, dir, &StartLine{
-		SchemaVersion: SchemaVersion, Phase: PhaseStart, Step: step1,
+	mustAppendStart(t, jpath, &StartLine{
+		SchemaVersion: SchemaVersion, Phase: PhaseStart, Repo: "/repo/app", Step: step1,
 		Verb: "fetch-local", Channel: ChannelCLI, PID: 1001,
 		Argv: []string{"fetch-local", "acme/app", "local-7"}, Version: "0.14.2", StartedAt: step1,
 	}, t0)
-	mustAppendEnd(t, dir, &EndLine{
-		SchemaVersion: SchemaVersion, Phase: PhaseEnd, Step: step1,
+	mustAppendEnd(t, jpath, &EndLine{
+		SchemaVersion: SchemaVersion, Phase: PhaseEnd, Repo: "/repo/app", Step: step1,
 		Verb: "fetch-local", Channel: ChannelCLI, PID: 1001,
 		StartedAt: step1, EndedAt: t1.Format(time.RFC3339Nano),
 		Bundle: BundleDigests{Before: nil, After: s1.Digest},
@@ -173,13 +215,13 @@ func TestAppendReadChainBreakCrashAndTornTail(t *testing.T) {
 	step2 := t2.Format(time.RFC3339Nano)
 	t3 := t2.Add(500 * time.Millisecond)
 	before2 := s2.Digest
-	mustAppendStart(t, dir, &StartLine{
-		SchemaVersion: SchemaVersion, Phase: PhaseStart, Step: step2,
+	mustAppendStart(t, jpath, &StartLine{
+		SchemaVersion: SchemaVersion, Phase: PhaseStart, Repo: "/repo/app", Step: step2,
 		Verb: "record", Channel: ChannelCLI, PID: 1002,
 		Argv: []string{"record", "acme/app", "local-7"}, Version: "0.14.2", StartedAt: step2,
 	}, t2)
-	mustAppendEnd(t, dir, &EndLine{
-		SchemaVersion: SchemaVersion, Phase: PhaseEnd, Step: step2,
+	mustAppendEnd(t, jpath, &EndLine{
+		SchemaVersion: SchemaVersion, Phase: PhaseEnd, Repo: "/repo/app", Step: step2,
 		Verb: "record", Channel: ChannelCLI, PID: 1002,
 		StartedAt: step2, EndedAt: t3.Format(time.RFC3339Nano),
 		Warnings: 1, Bundle: BundleDigests{Before: &before2, After: s2.Digest},
@@ -189,14 +231,14 @@ func TestAppendReadChainBreakCrashAndTornTail(t *testing.T) {
 	// Simulated crash (unpaired start) + torn tail line.
 	t4 := t3.Add(time.Second)
 	step3 := t4.Format(time.RFC3339Nano)
-	mustAppendStart(t, dir, &StartLine{
-		SchemaVersion: SchemaVersion, Phase: PhaseStart, Step: step3,
+	mustAppendStart(t, jpath, &StartLine{
+		SchemaVersion: SchemaVersion, Phase: PhaseStart, Repo: "/repo/app", Step: step3,
 		Verb: "report", Channel: ChannelCLI, PID: 1003,
 		Argv: []string{"report", "acme/app", "local-7"}, Version: "0.14.2", StartedAt: step3,
 	}, t4)
-	appendRawBytes(t, filepath.Join(dir, JournalFile), `{"schema_version":"1","phase":"end","step":"truncated`)
+	appendRawBytes(t, jpath, `{"schema_version":"1","phase":"end","step":"truncated`)
 
-	sum, err := Read(dir, "local-7")
+	sum, err := Read(jpath, "local-7")
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
@@ -256,11 +298,7 @@ func assertAuditHumanOutput(t *testing.T, sum *Summary) {
 
 func TestAppendTruncationPreservesWholeLines(t *testing.T) {
 	t.Parallel()
-	dir := filepath.Join(t.TempDir(), "local-cap")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	path := filepath.Join(dir, JournalFile)
+	path := filepath.Join(t.TempDir(), "journal", "local-cap.jsonl")
 	baseTime := time.Date(2026, 11, 19, 12, 0, 0, 0, time.UTC)
 	const (
 		testMaxBytes  int64 = 1200
@@ -270,7 +308,10 @@ func TestAppendTruncationPreservesWholeLines(t *testing.T) {
 		appendSyntheticEnd(t, path, baseTime, i, testMaxBytes, testKeepBytes)
 	}
 	header := assertAllWholeJSONLines(t, path)
-	sum, err := Read(dir, "local-cap")
+	if header.Repo != "/repo/cap" {
+		t.Fatalf("truncated header repo = %q, want /repo/cap", header.Repo)
+	}
+	sum, err := Read(path, "local-cap")
 	if err != nil {
 		t.Fatalf("Read after truncation: %v", err)
 	}
@@ -287,7 +328,7 @@ func appendSyntheticEnd(t *testing.T, path string, base time.Time, idx int, maxB
 	ts := base.Add(time.Duration(idx) * time.Second)
 	step := ts.Format(time.RFC3339Nano)
 	raw, err := marshalLine(&EndLine{
-		SchemaVersion: SchemaVersion, Phase: PhaseEnd, Step: step,
+		SchemaVersion: SchemaVersion, Phase: PhaseEnd, Repo: "/repo/cap", Step: step,
 		Verb: "record", Channel: ChannelCLI, PID: 2000 + idx,
 		StartedAt: step, EndedAt: ts.Add(10 * time.Millisecond).Format(time.RFC3339Nano),
 		Bundle: BundleDigests{After: "aaaa"}, Wrote: []FileRecord{}, Removed: []string{}, Next: "report",
@@ -295,7 +336,7 @@ func appendSyntheticEnd(t *testing.T, path string, base time.Time, idx int, maxB
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := appendLineWithLimits(path, raw, ts, storelock.DefaultWait, maxBytes, keepBytes); err != nil {
+	if err := appendLineWithLimits(path, "/repo/cap", raw, ts, storelock.DefaultWait, maxBytes, keepBytes); err != nil {
 		t.Fatalf("append %d: %v", idx, err)
 	}
 }
@@ -334,15 +375,15 @@ func decodeTruncatedHeader(t *testing.T, line []byte) TruncatedLine {
 
 func TestAppendRefusesSymlinkAndBusyLock(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
+	jpath := filepath.Join(t.TempDir(), "local-7.jsonl")
 	outside := filepath.Join(t.TempDir(), "outside.txt")
 	mustWriteFile(t, outside, []byte("keep"), 0o600)
-	if err := os.Symlink(outside, filepath.Join(dir, JournalFile)); err != nil {
+	if err := os.Symlink(outside, jpath); err != nil {
 		t.Fatalf("symlink: %v", err)
 	}
 	t0 := time.Date(2026, 11, 19, 10, 0, 0, 0, time.UTC)
-	err := AppendStart(dir, &StartLine{
-		SchemaVersion: SchemaVersion, Phase: PhaseStart, Step: t0.Format(time.RFC3339Nano),
+	err := AppendStart(jpath, &StartLine{
+		SchemaVersion: SchemaVersion, Phase: PhaseStart, Repo: "/repo/app", Step: t0.Format(time.RFC3339Nano),
 		Verb: "record", Channel: ChannelCLI, PID: 1, Argv: []string{"record"}, Version: "1.0.0",
 		StartedAt: t0.Format(time.RFC3339Nano),
 	}, t0)
@@ -353,14 +394,13 @@ func TestAppendRefusesSymlinkAndBusyLock(t *testing.T) {
 		t.Fatalf("symlink target mutated: %q err=%v", string(gotOutside), rerr)
 	}
 
-	lockDir := t.TempDir()
-	jpath := filepath.Join(lockDir, JournalFile)
-	unlock, err := storelock.Acquire(jpath, storelock.DefaultWait)
+	lockPath := filepath.Join(t.TempDir(), "busy.jsonl")
+	unlock, err := storelock.Acquire(lockPath, storelock.DefaultWait)
 	if err != nil {
 		t.Fatalf("Acquire: %v", err)
 	}
 	defer unlock()
-	err = appendLineWithLimits(jpath, []byte(`{"phase":"start"}`+"\n"), t0, 20*time.Millisecond, MaxBytes, KeepBytes)
+	err = appendLineWithLimits(lockPath, "/repo/app", []byte(`{"phase":"start"}`+"\n"), t0, 20*time.Millisecond, MaxBytes, KeepBytes)
 	if !errors.Is(err, storelock.ErrBusy) {
 		t.Fatalf("append under held lock err = %v, want storelock.ErrBusy", err)
 	}
@@ -368,8 +408,8 @@ func TestAppendRefusesSymlinkAndBusyLock(t *testing.T) {
 
 func TestReadMissingJournalAndWireShape(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	sum, err := Read(dir, "local-empty")
+	missingPath := filepath.Join(t.TempDir(), "local-empty.jsonl")
+	sum, err := Read(missingPath, "local-empty")
 	if err != nil {
 		t.Fatalf("Read(missing): %v", err)
 	}

@@ -11,9 +11,11 @@ import (
 	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 )
 
-func seedCLIBundleRepo(t *testing.T) string {
+func seedCLIBundleRepo(t *testing.T) (repoDir, bundleDir, stateDir string) {
 	t.Helper()
-	repoDir := t.TempDir()
+	repoDir = t.TempDir()
+	stateDir = t.TempDir()
+	t.Setenv("XDG_STATE_HOME", stateDir)
 	gitIn(t, repoDir, "init", "-q", "-b", "main")
 	writeIn(t, filepath.Join(repoDir, "a.go"), "package a\n\nfunc f() int { return 1 }\n")
 	gitIn(t, repoDir, "add", "-A")
@@ -24,10 +26,10 @@ func seedCLIBundleRepo(t *testing.T) string {
 	if code != 0 {
 		t.Fatalf("fetch-local exit=%d stderr=%s", code, stderr)
 	}
-	bundleDir := filepath.Join(repoDir, ".verdict", "state", "local-cli-test")
+	bundleDir = filepath.Join(repoDir, ".verdict", "state", "local-cli-test")
 	writeIn(t, filepath.Join(bundleDir, "review.json"),
 		`{"schema_version":"1","findings":[],"spec_checks":[],"receipts":[],"summary":"clean review"}`+"\n")
-	return bundleDir
+	return repoDir, bundleDir, stateDir
 }
 
 func runCLIForJournalTest(t *testing.T, args []string) (code int, stdout, stderr string) {
@@ -56,7 +58,7 @@ func runCLIForJournalTest(t *testing.T, args []string) (code int, stdout, stderr
 }
 
 func TestCLIRecordDryRunDeterminismAndReadOnlySilence(t *testing.T) {
-	bundleDir := seedCLIBundleRepo(t)
+	repoDir, bundleDir, stateDir := seedCLIBundleRepo(t)
 	provBefore := mustReadBytes(t, filepath.Join(bundleDir, "provenance.json"))
 	runBefore := mustReadBytes(t, filepath.Join(bundleDir, "run.json"))
 
@@ -78,13 +80,33 @@ func TestCLIRecordDryRunDeterminismAndReadOnlySilence(t *testing.T) {
 	assertBytesEqual(t, "provenance.json (after1 vs after2)", provAfter1, provAfter2)
 	assertBytesEqual(t, "run.json (before vs after1)", runBefore, runAfter1)
 	assertBytesEqual(t, "run.json (after1 vs after2)", runAfter1, runAfter2)
-	assertCLIStepsRecorded(t, bundleDir, out2)
-	assertGateAndShowWriteNoJournal(t, bundleDir)
+	assertNoBundleJournalArtifacts(t, bundleDir)
+	jpath := mustExternalJournalPath(t, repoDir, stateDir, "local-cli-test")
+	assertCLIStepsRecorded(t, jpath, out2)
+	assertGateAndShowWriteNoJournal(t, jpath)
 }
 
-func assertCLIStepsRecorded(t *testing.T, bundleDir, recordOut string) {
+func assertNoBundleJournalArtifacts(t *testing.T, bundleDir string) {
 	t.Helper()
-	sum, err := journalcore.Read(bundleDir, "local-cli-test")
+	for _, name := range []string{"journal.jsonl", "journal.jsonl.lock"} {
+		if _, err := os.Stat(filepath.Join(bundleDir, name)); err == nil {
+			t.Fatalf("found unexpected %s in bundle dir %s", name, bundleDir)
+		}
+	}
+}
+
+func mustExternalJournalPath(t *testing.T, repoDir, stateDir, bundleName string) string {
+	t.Helper()
+	jpath, _, ok := journalcore.Path(repoDir, bundleName, map[string]string{"XDG_STATE_HOME": stateDir})
+	if !ok {
+		t.Fatalf("journal.Path(%q, %q) returned ok=false", repoDir, bundleName)
+	}
+	return jpath
+}
+
+func assertCLIStepsRecorded(t *testing.T, jpath, recordOut string) {
+	t.Helper()
+	sum, err := journalcore.Read(jpath, "local-cli-test")
 	if err != nil {
 		t.Fatalf("journal.Read: %v", err)
 	}
@@ -117,12 +139,11 @@ func assertCLIVerbsAndChain(t *testing.T, sum *journalcore.Summary) {
 	}
 }
 
-func assertGateAndShowWriteNoJournal(t *testing.T, bundleDir string) {
+func assertGateAndShowWriteNoJournal(t *testing.T, jpath string) {
 	t.Helper()
 	if code, _, stderr := runCLIForJournalTest(t, []string{"record", "acme/app", "local-cli-test", "--json"}); code != 0 {
 		t.Fatalf("record exit=%d stderr=%s", code, stderr)
 	}
-	jpath := filepath.Join(bundleDir, journalcore.JournalFile)
 	if err := os.Remove(jpath); err != nil {
 		t.Fatal(err)
 	}
@@ -130,17 +151,17 @@ func assertGateAndShowWriteNoJournal(t *testing.T, bundleDir string) {
 		t.Fatalf("gate exit=%d stderr=%s, want 0 or 1", code, stderr)
 	}
 	if _, err := os.Stat(jpath); err == nil {
-		t.Fatal("gate wrote journal.jsonl; read-only verbs must never write a journal")
+		t.Fatal("gate wrote journal; read-only verbs must never write a journal")
 	}
 	_, _, _ = runCLIForJournalTest(t, []string{"show", "acme/app", "local-cli-test", "deadbeef", "--json"})
 	if _, err := os.Stat(jpath); err == nil {
-		t.Fatal("show wrote journal.jsonl; read-only verbs must never write a journal")
+		t.Fatal("show wrote journal; read-only verbs must never write a journal")
 	}
 }
 
 func TestCLIJournalAppendFailureWarnsAndSucceeds(t *testing.T) {
-	bundleDir := seedCLIBundleRepo(t)
-	jpath := filepath.Join(bundleDir, journalcore.JournalFile)
+	repoDir, _, stateDir := seedCLIBundleRepo(t)
+	jpath := mustExternalJournalPath(t, repoDir, stateDir, "local-cli-test")
 	if err := os.Remove(jpath); err != nil {
 		t.Fatal(err)
 	}
