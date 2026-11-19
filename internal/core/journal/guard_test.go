@@ -241,45 +241,60 @@ func TestGuardCreatingVerbStartsWithNilBefore(t *testing.T) {
 	}
 }
 
-// TestGuardSweepFailurePublishesNoFileDiff proves a failed content sweep is
-// published as unknown instead of as a diff against an empty snapshot: a broken
-// pre-sweep must not claim every file was written, and a broken post-sweep must
-// not claim every file was removed.
-func TestGuardSweepFailurePublishesNoFileDiff(t *testing.T) {
+// TestGuardPreSweepFailurePublishesNoFileDiff proves a broken pre-sweep is
+// published as unknown instead of as a diff against an empty snapshot, which
+// would claim every bundle file was written.
+func TestGuardPreSweepFailurePublishesNoFileDiff(t *testing.T) {
 	t.Parallel()
-	t.Run("pre-sweep", func(t *testing.T) {
-		t.Parallel()
-		root := t.TempDir()
-		env := map[string]string{"XDG_STATE_HOME": t.TempDir()}
-		bundleDir := loopBundleDir(t, root, "local-pre")
-		var warns []string
-		code := runGuarded(root, env, "local-pre", func(m string) { warns = append(warns, m) }, func() int {
-			if err := os.Remove(bundleDir); err != nil {
-				t.Fatal(err)
-			}
-			mustWriteFile(t, filepath.Join(bundleDir, "findings.json"), []byte(`{"v":1}`), 0o644)
-			return 0
-		})
-		assertUnobservedEndLine(t, root, env, "local-pre", code, warns)
+	root := t.TempDir()
+	env := map[string]string{"XDG_STATE_HOME": t.TempDir()}
+	bundleDir := loopBundleDir(t, root, "local-pre")
+	var warns []string
+	code := runGuarded(root, env, "local-pre", func(m string) { warns = append(warns, m) }, func() int {
+		mustRemove(t, bundleDir)
+		mustWriteFile(t, filepath.Join(bundleDir, "findings.json"), []byte(`{"v":1}`), 0o644)
+		return 0
 	})
-	t.Run("post-sweep", func(t *testing.T) {
-		t.Parallel()
-		root := t.TempDir()
-		env := map[string]string{"XDG_STATE_HOME": t.TempDir()}
-		bundleDir := filepath.Join(root, ".verdict", "state", "local-post")
-		mustWriteFile(t, filepath.Join(bundleDir, "source.json"), []byte(`{}`), 0o644)
-		var warns []string
-		code := runGuarded(root, env, "local-post", func(m string) { warns = append(warns, m) }, func() int {
-			if err := os.RemoveAll(bundleDir); err != nil {
-				t.Fatal(err)
-			}
-			if err := os.Symlink(bundleDir, bundleDir); err != nil {
-				t.Fatal(err)
-			}
-			return 0
-		})
-		assertUnobservedEndLine(t, root, env, "local-post", code, warns)
+	assertUnobservedEndLine(t, root, env, "local-pre", code, warns)
+}
+
+// TestGuardPostSweepFailurePublishesNoFileDiff proves a broken post-sweep is
+// published as unknown instead of as a diff against an empty snapshot, which
+// would claim every bundle file was removed.
+func TestGuardPostSweepFailurePublishesNoFileDiff(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	env := map[string]string{"XDG_STATE_HOME": t.TempDir()}
+	bundleDir := filepath.Join(root, ".verdict", "state", "local-post")
+	mustWriteFile(t, filepath.Join(bundleDir, "source.json"), []byte(`{}`), 0o644)
+	var warns []string
+	code := runGuarded(root, env, "local-post", func(m string) { warns = append(warns, m) }, func() int {
+		mustRemoveAll(t, bundleDir)
+		mustSymlink(t, bundleDir, bundleDir)
+		return 0
 	})
+	assertUnobservedEndLine(t, root, env, "local-post", code, warns)
+}
+
+func mustRemoveAll(t *testing.T, path string) {
+	t.Helper()
+	if err := os.RemoveAll(path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustRemove(t *testing.T, path string) {
+	t.Helper()
+	if err := os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustSymlink(t *testing.T, oldname, newname string) {
+	t.Helper()
+	if err := os.Symlink(oldname, newname); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func runGuarded(root string, env map[string]string, name string, warn func(string), fn func() int) int {
@@ -315,6 +330,12 @@ func assertUnobservedEndLine(t *testing.T, root string, env map[string]string, n
 	if !ok {
 		t.Fatal("Path returned ok=false")
 	}
+	assertUnobservedEndRecord(t, jpath)
+	assertUnobservedFold(t, jpath, name)
+}
+
+func assertUnobservedEndRecord(t *testing.T, jpath string) {
+	t.Helper()
 	raw, err := os.ReadFile(jpath)
 	if err != nil {
 		t.Fatalf("read journal: %v", err)
@@ -330,6 +351,10 @@ func assertUnobservedEndLine(t *testing.T, root string, env map[string]string, n
 	if !end.Bundle.Unobserved || end.Bundle.Before != nil || end.Bundle.After != "" {
 		t.Fatalf("end line bundle = %+v, want an unobserved bundle with no digests", end.Bundle)
 	}
+}
+
+func assertUnobservedFold(t *testing.T, jpath, name string) {
+	t.Helper()
 	sum, err := Read(jpath, name)
 	if err != nil {
 		t.Fatalf("Read: %v", err)
@@ -337,8 +362,7 @@ func assertUnobservedEndLine(t *testing.T, root string, env map[string]string, n
 	if len(sum.Steps) != 1 || !sum.Steps[0].Bundle.Unobserved {
 		t.Fatalf("folded steps = %+v, want one unobserved step", sum.Steps)
 	}
-	human := strings.Join(FormatHuman(sum), "\n")
-	if !strings.Contains(human, "file diff unknown (content sweep failed)") {
+	if human := strings.Join(FormatHuman(sum), "\n"); !strings.Contains(human, "file diff unknown (content sweep failed)") {
 		t.Fatalf("FormatHuman = %q, want the unknown file diff called out", human)
 	}
 }
@@ -370,6 +394,11 @@ func TestGuardOverlappingStartsShareOneInstantStayDistinct(t *testing.T) {
 	if !ok {
 		t.Fatal("Path returned ok=false")
 	}
+	assertOneFinishedOneUnfinished(t, jpath)
+}
+
+func assertOneFinishedOneUnfinished(t *testing.T, jpath string) {
+	t.Helper()
 	sum, err := Read(jpath, "local-dup")
 	if err != nil {
 		t.Fatalf("Read: %v", err)

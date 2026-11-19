@@ -113,42 +113,57 @@ func namesSecret(arg string) bool {
 	return envsecret.IsSecret(strings.TrimLeft(name, "-"))
 }
 
-// maskAssignments replaces the value of every secret-named NAME=value token in
-// arg with [RedactedValue]: the inline `--flag=value` spelling, a positional
-// `API_TOKEN=...`, and a credential set inside a recorded command string such as
-// `--command 'API_KEY="two words" make test'`. The name, the separator, and any
-// quotes around the value survive, so the record still reads like the command it
-// describes, and the hidden values are returned for the output scrub.
+// maskAssignments replaces the value of every secret-named NAME=value token
+// in arg with [RedactedValue]: the inline `--flag=value` spelling, a
+// positional `API_TOKEN=...`, and a credential set inside a recorded command
+// string such as `--command 'API_KEY="two words" make test'`. The name, the
+// separator, and any quotes around the value survive, so the record still
+// reads like the command it describes, and the hidden values are returned for
+// the output scrub.
 func maskAssignments(arg string) (string, []string) {
 	var (
 		out     strings.Builder
 		secrets []string
 	)
 	for i := 0; i < len(arg); {
-		name, valueAt, ok := assignmentAt(arg, i)
-		if !ok {
+		masked, secret, next := assignmentMask(arg, i)
+		if next == i {
 			out.WriteByte(arg[i])
 			i++
 			continue
 		}
-		value, quote, closed, end := assignmentValue(arg, valueAt)
-		if !envsecret.IsSecret(name) || value == "" {
-			out.WriteByte(arg[i])
-			i++
-			continue
-		}
-		out.WriteString(arg[i:valueAt])
-		if quote != 0 {
-			out.WriteByte(quote)
-		}
-		out.WriteString(RedactedValue)
-		if closed {
-			out.WriteByte(quote)
-		}
-		secrets = append(secrets, value)
-		i = end
+		out.WriteString(masked)
+		secrets = append(secrets, secret)
+		i = next
 	}
 	return out.String(), secrets
+}
+
+// assignmentMask renders the secret-named assignment starting at i, returning
+// the offset just past it. It reports next == i when i starts no redactable
+// assignment, so the caller can copy the byte and scan on.
+func assignmentMask(arg string, i int) (masked, secret string, next int) {
+	name, valueAt, ok := assignmentAt(arg, i)
+	if !ok {
+		return "", "", i
+	}
+	value, quote, closed, end := assignmentValue(arg, valueAt)
+	if !envsecret.IsSecret(name) || value == "" {
+		return "", "", i
+	}
+	return redactedAssignment(arg[i:valueAt], quote, closed), value, end
+}
+
+// redactedAssignment keeps the name, the separator, and the quoting of a
+// redacted assignment so the recorded line keeps its shell shape.
+func redactedAssignment(prefix string, quote byte, closed bool) string {
+	if quote == 0 {
+		return prefix + RedactedValue
+	}
+	if closed {
+		return prefix + string(quote) + RedactedValue + string(quote)
+	}
+	return prefix + string(quote) + RedactedValue
 }
 
 // assignmentAt reports the name and the value offset of a NAME=value token
@@ -158,44 +173,54 @@ func assignmentAt(s string, i int) (name string, valueAt int, ok bool) {
 	if i > 0 && isNameByte(s[i-1]) {
 		return "", 0, false
 	}
-	j := i
-	for j < len(s) && isNameByte(s[j]) {
-		if j == i && !isNameLead(s[j]) {
-			return "", 0, false
-		}
-		j++
+	end := i
+	for end < len(s) && isNameByte(s[end]) {
+		end++
 	}
-	if j == i || j >= len(s) || s[j] != '=' {
+	name = s[i:end]
+	if name == "" || end >= len(s) || s[end] != '=' || !isNameLead(name[0]) {
 		return "", 0, false
 	}
-	return s[i:j], j + 1, true
+	return name, end + 1, true
 }
 
 // assignmentValue returns the value bytes starting at valueAt, the quote byte
-// wrapping them (0 when unquoted), whether that quote is closed, and the offset
-// just past the value. A quoted value runs to its closing quote, so it may hold
-// spaces; an unquoted one ends at the next space.
+// wrapping them (0 when unquoted), whether that quote is closed, and the
+// offset just past the value. A quoted value runs to its closing quote, so it
+// may hold spaces; an unquoted one ends at the next space.
 func assignmentValue(s string, valueAt int) (value string, quote byte, closed bool, end int) {
 	if valueAt >= len(s) {
 		return "", 0, false, valueAt
 	}
-	if q := s[valueAt]; q == '"' || q == '\'' {
-		for j := valueAt + 1; j < len(s); j++ {
-			if s[j] == '\\' && q == '"' {
-				j++
-				continue
-			}
-			if s[j] == q {
-				return s[valueAt+1 : j], q, true, j + 1
-			}
+	if s[valueAt] == '"' || s[valueAt] == '\'' {
+		return quotedValue(s, valueAt)
+	}
+	return unquotedValue(s, valueAt)
+}
+
+// quotedValue returns the value wrapped by the quote at quoteAt and reports
+// whether that quote closed.
+func quotedValue(s string, quoteAt int) (value string, quote byte, closed bool, end int) {
+	quote = s[quoteAt]
+	for end = quoteAt + 1; end < len(s); end++ {
+		if s[end] == '\\' && quote == '"' {
+			end++
+			continue
 		}
-		return s[valueAt+1:], q, false, len(s)
+		if s[end] == quote {
+			return s[quoteAt+1 : end], quote, true, end + 1
+		}
 	}
-	j := valueAt
-	for j < len(s) && !isSpaceByte(s[j]) {
-		j++
+	return s[quoteAt+1:], quote, false, len(s)
+}
+
+// unquotedValue returns the space-delimited value starting at valueAt.
+func unquotedValue(s string, valueAt int) (value string, quote byte, closed bool, end int) {
+	end = valueAt
+	for end < len(s) && !isSpaceByte(s[end]) {
+		end++
 	}
-	return s[valueAt:j], 0, false, j
+	return s[valueAt:end], 0, false, end
 }
 
 func isNameLead(b byte) bool {

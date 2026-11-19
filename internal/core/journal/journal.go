@@ -168,20 +168,22 @@ func appendRawLocked(path string, raw []byte) (int64, error) {
 func terminateTornTail(f *os.File) error {
 	info, err := f.Stat()
 	if err != nil {
-		return err
+		return wrapErr("stat for torn tail", err)
 	}
 	if info.Size() == 0 {
 		return nil
 	}
 	var last [1]byte
 	if _, err := f.ReadAt(last[:], info.Size()-1); err != nil {
-		return err
+		return wrapErr("read last journal byte", err)
 	}
 	if last[0] == '\n' {
 		return nil
 	}
-	_, err = f.Write([]byte{'\n'})
-	return err
+	if _, err := f.Write([]byte{'\n'}); err != nil {
+		return wrapErr("write torn tail terminator", err)
+	}
+	return nil
 }
 
 func truncateLocked(path, repo string, now time.Time, keepBytes int64) error {

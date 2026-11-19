@@ -331,37 +331,50 @@ func TestAppendAfterTornTailKeepsTheNewRecordReadable(t *testing.T) {
 
 func TestReadKeepsTheNewestRecordsPastTheReadCap(t *testing.T) {
 	t.Parallel()
-	jpath := filepath.Join(t.TempDir(), "local-big.jsonl")
-	t0 := time.Date(2026, 11, 19, 10, 0, 0, 0, time.UTC)
-	const records = 20000
-	const firstPID = 1000
-	var b strings.Builder
-	for i := range records {
-		ts := t0.Add(time.Duration(i) * time.Second).Format(time.RFC3339Nano)
-		fmt.Fprintf(&b, `{"schema_version":"1","phase":"end","repo":"/repo/big","step":%q,"verb":"record","channel":"cli","started_at":%q,"ended_at":%q,"refusal":null,"next":"","bundle":{"before":null,"after":"aaaa"},"wrote":[],"removed":[],"pid":%d,"exit":0,"warnings":0}`+"\n",
-			ts, ts, ts, firstPID+i)
-	}
-	mustWriteFile(t, jpath, []byte(b.String()), journalFileMode)
-	if info, err := os.Stat(jpath); err != nil || info.Size() <= maxReadBytes {
-		t.Fatalf("journal size = %v, want a file past the %d-byte read cap (err=%v)", info.Size(), maxReadBytes, err)
-	}
-
+	jpath := writeBigJournal(t)
 	sum, err := Read(jpath, "local-big")
 	if err != nil {
 		t.Fatalf("Read: %v", err)
 	}
-	if len(sum.Steps) == 0 || len(sum.Steps) == records {
-		t.Fatalf("Steps = %d, want a tail window of the %d records", len(sum.Steps), records)
+	if len(sum.Steps) == 0 || len(sum.Steps) == bigJournalRecords {
+		t.Fatalf("Steps = %d, want a tail window of the %d records", len(sum.Steps), bigJournalRecords)
 	}
 	if sum.UnreadableLines != 0 {
 		t.Fatalf("UnreadableLines = %d, want the line the cap lands in dropped, not torn", sum.UnreadableLines)
 	}
-	if got, want := sum.Steps[len(sum.Steps)-1].PID, firstPID+records-1; got != want {
+	if got, want := sum.Steps[len(sum.Steps)-1].PID, bigJournalFirstPID+bigJournalRecords-1; got != want {
 		t.Fatalf("newest folded PID = %d, want %d", got, want)
 	}
-	if got := sum.Steps[0].PID; got <= firstPID {
+	if got := sum.Steps[0].PID; got <= bigJournalFirstPID {
 		t.Fatalf("oldest folded PID = %d, want the earliest records dropped", got)
 	}
+}
+
+const (
+	bigJournalRecords  = 20000
+	bigJournalFirstPID = 1000
+)
+
+// writeBigJournal writes a journal past maxReadBytes and returns its path.
+func writeBigJournal(t *testing.T) string {
+	t.Helper()
+	t0 := time.Date(2026, 11, 19, 10, 0, 0, 0, time.UTC)
+	var b strings.Builder
+	for i := range bigJournalRecords {
+		ts := t0.Add(time.Duration(i) * time.Second).Format(time.RFC3339Nano)
+		fmt.Fprintf(&b, `{"schema_version":"1","phase":"end","repo":"/repo/big","step":%q,"verb":"record","channel":"cli","started_at":%q,"ended_at":%q,"refusal":null,"next":"","bundle":{"before":null,"after":"aaaa"},"wrote":[],"removed":[],"pid":%d,"exit":0,"warnings":0}`+"\n",
+			ts, ts, ts, bigJournalFirstPID+i)
+	}
+	jpath := filepath.Join(t.TempDir(), "local-big.jsonl")
+	mustWriteFile(t, jpath, []byte(b.String()), journalFileMode)
+	info, err := os.Stat(jpath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info.Size() <= maxReadBytes {
+		t.Fatalf("journal size = %d, want a file past the %d-byte read cap", info.Size(), maxReadBytes)
+	}
+	return jpath
 }
 
 func TestAppendTruncationPreservesWholeLines(t *testing.T) {

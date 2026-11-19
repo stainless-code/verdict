@@ -22,10 +22,11 @@ type StartLine struct {
 	PID           int      `json:"pid"         min:"0"`
 }
 
-// BundleDigests records the pre- and post-invocation canonical content-manifest
-// sha256 digests of the bundle directory. Before is nil when the directory did
-// not exist before the call. Unobserved marks a call whose content sweep failed:
-// the digests and the file diff are unknown rather than empty.
+// BundleDigests records the pre- and post-invocation canonical
+// content-manifest sha256 digests of the bundle directory. Before is nil when
+// the directory did not exist before the call. Unobserved marks a call whose
+// content sweep failed: the digests and the file diff are unknown rather than
+// empty.
 type BundleDigests struct {
 	Before     *string `json:"before"`
 	After      string  `json:"after"`
@@ -263,6 +264,19 @@ func stepDetail(st *Step) string {
 	if st.Refusal != nil && *st.Refusal != "" {
 		parts = append(parts, "refusal "+*st.Refusal)
 	}
+	parts = append(parts, stepFileDetail(st)...)
+	if st.Warnings > 0 {
+		parts = append(parts, fmt.Sprintf("(%d %s)", st.Warnings, plural(st.Warnings, "warning", "warnings")))
+	}
+	if st.Bundle.Unobserved {
+		parts = append(parts, "file diff unknown (content sweep failed)")
+	}
+	return strings.Join(parts, " ")
+}
+
+// stepFileDetail renders the wrote and removed clauses of one folded step.
+func stepFileDetail(st *Step) []string {
+	var parts []string
 	if len(st.Wrote) > 0 {
 		paths := make([]string, 0, len(st.Wrote))
 		for i := range st.Wrote {
@@ -273,13 +287,7 @@ func stepDetail(st *Step) string {
 	if len(st.Removed) > 0 {
 		parts = append(parts, "removed "+strings.Join(st.Removed, ", "))
 	}
-	if st.Warnings > 0 {
-		parts = append(parts, fmt.Sprintf("(%d %s)", st.Warnings, plural(st.Warnings, "warning", "warnings")))
-	}
-	if st.Bundle.Unobserved {
-		parts = append(parts, "file diff unknown (content sweep failed)")
-	}
-	return strings.Join(parts, " ")
+	return parts
 }
 
 func formatUnfinishedLines(unfinished []UnfinishedStep) []string {

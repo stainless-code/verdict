@@ -133,9 +133,10 @@ func TestReqArgvFormatsFlagsDeterministically(t *testing.T) {
 	}
 }
 
-// TestReqArgvFlattensNestedFlagsForRedaction proves a value placed in the nested
-// `flags` object reaches the shared redactor as its own operand: an environment
-// credential carried in flags.summary is hidden, and a plain summary survives.
+// TestReqArgvFlattensNestedFlagsForRedaction proves a value placed in the
+// nested `flags` object reaches the shared redactor as its own operand: an
+// environment credential in flags.summary is hidden, and a plain summary
+// survives.
 func TestReqArgvFlattensNestedFlagsForRedaction(t *testing.T) {
 	t.Parallel()
 	const secret = "env-secret-12345"
@@ -158,9 +159,9 @@ func TestReqArgvFlattensNestedFlagsForRedaction(t *testing.T) {
 	}
 }
 
-// TestCappedJournalResultKeepsTruncationAndTruncatedFlag proves the response cap
-// leaves the journal summary's own truncation object alone: an oversized journal
-// result carries both `truncation` and the cap's `truncated: true`.
+// TestCappedJournalResultKeepsTruncationAndTruncatedFlag proves the response
+// cap leaves the journal summary's own truncation object alone: an oversized
+// journal result carries both `truncation` and the cap's `truncated: true`.
 func TestCappedJournalResultKeepsTruncationAndTruncatedFlag(t *testing.T) {
 	t.Parallel()
 	summary := &journalcore.Summary{

@@ -15,6 +15,7 @@ import (
 const (
 	verbFetchLocal = "fetch-local"
 	localPrefix    = "local-"
+	decimalBase    = 10
 )
 
 // Invocation describes one verb execution entering either front door (CLI or
@@ -163,6 +164,7 @@ func finishGuard(inv *Invocation, st *guardState, code int) {
 		}
 	}
 	observed := preObserved && postObserved
+	bundle, wrote, removed := endObservation(preSnap, postSnap, observed)
 	endedAt := st.now().UTC()
 	endLine := EndLine{
 		SchemaVersion: SchemaVersion,
@@ -177,23 +179,26 @@ func finishGuard(inv *Invocation, st *guardState, code int) {
 		Exit:          code,
 		Refusal:       optionalString(inv.Refusal),
 		Warnings:      callInt(inv.Warnings),
-		Wrote:         []FileRecord{},
-		Removed:       []string{},
+		Bundle:        bundle,
+		Wrote:         wrote,
+		Removed:       removed,
 		Next:          callString(inv.Next),
-	}
-	if observed {
-		wrote, removed := Diff(preSnap, postSnap)
-		endLine.Bundle = bundleDigestsOf(preSnap, postSnap)
-		endLine.Wrote = wrote
-		endLine.Removed = removed
-	} else {
-		// A failed sweep observes nothing: publishing the diff of an empty
-		// snapshot would claim every bundle file was written or removed.
-		endLine.Bundle = BundleDigests{Unobserved: true}
 	}
 	if err := AppendEnd(postPath, &endLine, endedAt); err != nil {
 		emitWarn(inv.Warn, postPath, err)
 	}
+}
+
+// endObservation reports what the two sweeps observed. A failed sweep observed
+// nothing, so the end line carries no digests and no file diff rather than the
+// diff of an empty snapshot, which would claim every bundle file was written or
+// removed.
+func endObservation(pre, post Snapshot, observed bool) (BundleDigests, []FileRecord, []string) {
+	if !observed {
+		return BundleDigests{Unobserved: true}, []FileRecord{}, []string{}
+	}
+	wrote, removed := Diff(pre, post)
+	return bundleDigestsOf(pre, post), wrote, removed
 }
 
 func resolveNow(fn func() time.Time) func() time.Time {
@@ -208,7 +213,7 @@ func resolveNow(fn func() time.Time) func() time.Time {
 // than one clock tick.
 func stepID(startedAt time.Time) string {
 	return startedAt.Format(time.RFC3339Nano) + "-" + strconv.Itoa(os.Getpid()) +
-		"-" + strconv.FormatUint(stepSeq.Add(1), 10)
+		"-" + strconv.FormatUint(stepSeq.Add(1), decimalBase)
 }
 
 func resolveVersion(ver string) string {

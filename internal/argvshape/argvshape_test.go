@@ -95,8 +95,8 @@ func TestRecordNeverCollectsTheDirective(t *testing.T) {
 }
 
 // TestRecordRedactsPositionalSecretAssignment proves a bare `NAME=value`
-// positional with a secret-shaped name keeps its name and loses its value, while
-// an ordinary assignment stays readable.
+// positional with a secret-shaped name keeps its name and drops its value,
+// while an ordinary assignment stays readable.
 func TestRecordRedactsPositionalSecretAssignment(t *testing.T) {
 	t.Parallel()
 	argv := []string{"run", "acme/app", "API_TOKEN=s3cr3t-token-value", "FOO=bar"}

@@ -70,13 +70,13 @@ func Read(path, bundleName string) (*Summary, error) {
 func tailReader(f *os.File, maxBytes int64) (io.Reader, error) {
 	info, err := f.Stat()
 	if err != nil {
-		return nil, err
+		return nil, wrapErr("stat journal", err)
 	}
 	if info.Size() <= maxBytes {
 		return f, nil
 	}
 	if _, err := f.Seek(info.Size()-maxBytes, io.SeekStart); err != nil {
-		return nil, err
+		return nil, wrapErr("seek journal tail", err)
 	}
 	br := bufio.NewReader(f)
 	if err := discardPartialLine(br); err != nil {
@@ -88,11 +88,11 @@ func tailReader(f *os.File, maxBytes int64) (io.Reader, error) {
 func discardPartialLine(br *bufio.Reader) error {
 	for {
 		b, err := br.ReadByte()
+		if errors.Is(err, io.EOF) {
+			return nil
+		}
 		if err != nil {
-			if errors.Is(err, io.EOF) {
-				return nil
-			}
-			return err
+			return wrapErr("discard partial journal line", err)
 		}
 		if b == '\n' {
 			return nil
