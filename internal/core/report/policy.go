@@ -6,6 +6,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/approval"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -39,7 +40,7 @@ func evaluateCompliance(st *state) {
 	if st.policy == nil || st.policy.Resolved == nil {
 		return
 	}
-	comp := config.EvaluateReadCompliance(st.policy, st.headSHA, readFindingViews(st.entries))
+	comp := config.EvaluateReadCompliance(st.policy, st.headSHA, readFindingViews(approval.EligibleFindings(st.entries)))
 	if !comp.HasPolicy {
 		return
 	}

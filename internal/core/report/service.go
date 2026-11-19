@@ -143,7 +143,7 @@ func Run(ctx context.Context, req *core.ReportRequest) (*core.ReportResponse, *c
 	}
 
 	evaluateCompliance(st)
-	st.approval = approval.Evaluate(st.entries, flags.Check, flags.Category, st.compliance, reviewdoc.SpecViolationOfBundle(st.dir))
+	st.approval = approval.Evaluate(st.entries, flags.Check, flags.Category, st.compliance, reviewdoc.SpecViolationOfBundle(st.dir), nil)
 	applyDisplayFloor(st)
 	warnLensUsage(st)
 	warnDeepValidation(st)

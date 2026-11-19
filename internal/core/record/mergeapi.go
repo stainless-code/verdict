@@ -155,10 +155,10 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	}
 	var compliance *config.ReadCompliance
 	if st.run != nil && st.run.Resolved != nil {
-		captured := config.EvaluateReadCompliance(st.run, in.HeadFull, approval.Views(st.entries))
+		captured := config.EvaluateReadCompliance(st.run, in.HeadFull, approval.Views(approval.EligibleFindings(st.entries)))
 		compliance = &captured
 	}
-	decision := approval.Evaluate(st.entries, "", "", compliance, reviewdoc.HasSpecViolation(in.Review))
+	decision := approval.Evaluate(st.entries, "", "", compliance, reviewdoc.HasSpecViolation(in.Review), nil)
 	// The body is rendered before the merge exists, so its lead can only be
 	// settled now: record stores this decision and post publishes this body,
 	// and the two may never disagree.
@@ -252,7 +252,7 @@ func reviewBodyOf(review *jq.Obj) string {
 	// S1's minimal renderer owns body text; S3 replaces this seam with the
 	// full body contract. The provisional decision only selects the marker.
 	provisional := approval.Evaluate(reviewdoc.Findings(review), "", "", nil,
-		reviewdoc.HasSpecViolation(review))
+		reviewdoc.HasSpecViolation(review), nil)
 	return reviewdoc.Render(review, provisional)
 }
 

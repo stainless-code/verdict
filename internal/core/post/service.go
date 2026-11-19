@@ -358,7 +358,7 @@ func (st *state) loadReview() *core.RefusalError {
 	}
 	st.review = review
 	provisional := approval.Evaluate(reviewdoc.Findings(review), "", "", nil,
-		reviewdoc.HasSpecViolation(review))
+		reviewdoc.HasSpecViolation(review), nil)
 	st.body = reviewdoc.Render(review, provisional)
 	readcommon.WarnContextSources(st.dir, review, st.warn)
 	if err := recordcore.CheckDegenerate(st.body); err != nil {

@@ -76,6 +76,32 @@ func TestReportComplianceBlocksOnFullFindings(t *testing.T) {
 	requireComplianceStatus(t, resp, "fail")
 }
 
+// TestReportComplianceIgnoresUnverifiedFinding proves an unverified finding
+// matching a captured block clause is filtered before EvaluateReadCompliance
+// and never enters compliance blockers.
+func TestReportComplianceIgnoresUnverifiedFinding(t *testing.T) {
+	const unverifiedSecurity = `{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,` +
+		`"anchored":true,"body":"Body.","suggestion":null,"inBounds":true,"rigor":"walked",` +
+		`"severity":"critical","category":"security","sig":"c111111111111111111111111111111111111111","sig_version":"1",` +
+		`"verification":{"quote":"unverified"},` +
+		`"firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}`
+	req := fixture(t, "["+unverifiedSecurity+"]")
+	writeCompliancePolicy(t)
+	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+		ReadRequest: req,
+		Flags:       core.ReportFlags{Check: "critical"},
+	})
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if resp.Data.Compliance == nil {
+		t.Fatal("report data omits captured compliance")
+	}
+	if resp.Data.Compliance.Blockers != 0 {
+		t.Fatalf("compliance blockers = %d, want 0 for unverified finding", resp.Data.Compliance.Blockers)
+	}
+}
+
 // requireComplianceStatus asserts the gate failed and the compliance
 // dimension carries the expected status.
 func requireComplianceStatus(t *testing.T, resp *core.ReportResponse, want string) {
