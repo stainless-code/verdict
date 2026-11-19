@@ -2,28 +2,37 @@ package run
 
 import (
 	"bytes"
+	"context"
+	"errors"
+	"io/fs"
 	"os"
 	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // salvageWarning names what the binary repaired, not what the agent claims.
 // It rides the run's warning list and the refusal or success envelope alike.
-const salvageWarning = "review.json was missing; salvaged the last fenced json block from the agent's stdout"
+const salvageWarning = "review.json was missing or still the empty placeholder; salvaged the last fenced json block from the agent's stdout"
+
+// salvageAllowed gates a repair on a clean process: a crash, a watchdog kill,
+// a non-zero exit, or a canceled context leaves stdout as evidence only. The
+// run still refuses on the missing artifact, so a failed agent cannot bury a
+// review behind its failure.
+func salvageAllowed(ctx context.Context, res *core.Result, spawnErr error) bool {
+	return ctx.Err() == nil && spawnErr == nil && res != nil && !res.TimedOut && res.ExitCode == 0
+}
 
 // salvageReview writes a findings document the agent printed but never saved.
-// Only an absent artifact qualifies: a stale or malformed file stays the
-// agent's own artifact, and drain's replies contract is never salvaged as a
-// review. A malformed or absent block changes nothing, so the artifact
-// assertion still reports no-review-artifact.
+// An absent artifact qualifies, as does the exact empty placeholder the
+// directive told the agent to replace. Any other file stays the agent's own
+// artifact: a stale or malformed file is never overwritten. The artifact
+// assertion and the shared checker run after this repair.
 func (st *state) salvageReview(args *launchArgs, stdout string) bool {
-	if st.drainDigest != "" {
-		return false
-	}
-	if _, err := os.Stat(args.abs); err == nil {
+	if st.drainDigest != "" || !canReplaceReview(args.abs) {
 		return false
 	}
 	block, ok := lastFindingsBlock(stdout)
@@ -36,6 +45,22 @@ func (st *state) salvageReview(args *launchArgs, stdout string) bool {
 	}
 	st.warn(salvageWarning)
 	return true
+}
+
+// canReplaceReview accepts an absent artifact or the exact empty placeholder.
+// Any other file, including a stale or malformed one, belongs to the agent.
+func canReplaceReview(path string) bool {
+	info, err := os.Stat(path)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return true
+	case err != nil:
+		return false
+	case !info.Mode().IsRegular() || info.Size() > maxRoundReviewBytes:
+		return false
+	}
+	raw, err := os.ReadFile(path)
+	return err == nil && isPlaceholderReview(raw)
 }
 
 func isJSONFence(line string) bool {
@@ -71,66 +96,59 @@ func fencedJSONBlocks(stdout string) [][]byte {
 	return blocks
 }
 
-// lastFindingsBlock returns the last fenced json block that is a findings
-// document.
+// lastFindingsBlock returns the last fenced json block whose root is an object
+// with a findings array. Missing schema_version is the only byte this scanner
+// adds; every other field, including an unknown one, goes to the shared
+// checker unchanged so run and record agree on the verdict.
 func lastFindingsBlock(stdout string) ([]byte, bool) {
 	for _, block := range slices.Backward(fencedJSONBlocks(stdout)) {
-		got := bytes.TrimSpace(block)
-		if isFindingsDocument(got) {
-			return got, true
+		if doc, ok := findingsDocument(block); ok {
+			return doc, true
 		}
 	}
 	return nil, false
 }
 
-var (
-	findingSeverities  = []string{"critical", "important", "informational"}
-	findingConfidences = []string{"high", "medium", "low"}
-)
+func findingsDocument(block []byte) ([]byte, bool) {
+	doc, err := jq.DecodeOrdered(bytes.TrimSpace(block))
+	if err != nil {
+		return nil, false
+	}
+	obj, ok := doc.(*jq.Obj)
+	if !ok {
+		return nil, false
+	}
+	findings, ok := obj.Get("findings")
+	if !ok {
+		return nil, false
+	}
+	if _, ok := findings.([]any); !ok {
+		return nil, false
+	}
+	if _, ok := obj.Get("schema_version"); !ok {
+		obj.Set("schema_version", "1")
+		return []byte(obj.MarshalCompact()), true
+	}
+	return bytes.TrimSpace(block), true
+}
 
-// isFindingsDocument checks the published findings shape without a diff: a
-// finding outside the reviewed hunks is still a document, while a malformed
-// or incomplete one is not salvageable evidence. The required fields and
-// their enums are spelled here, not read from the JSON under test.
-func isFindingsDocument(block []byte) bool {
-	doc, err := jq.Decode(block)
+// isPlaceholderReview recognizes only the exact first-write document: two
+// keys, schema_version "1", and an empty findings array. A clean review with
+// a summary, or any extra field, is finished work and is never overwritten.
+func isPlaceholderReview(raw []byte) bool {
+	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
 		return false
 	}
-	obj, ok := jq.AsMap(doc)
-	if !ok || jq.StrOf(obj["schema_version"]) != "1" {
+	obj, ok := doc.(*jq.Obj)
+	if !ok || len(obj.Keys) != 2 {
 		return false
 	}
-	findings, ok := obj["findings"].([]any)
-	if !ok {
+	version, hasVersion := obj.Get("schema_version")
+	findings, hasFindings := obj.Get("findings")
+	if !hasVersion || !hasFindings || jq.StrOf(version) != "1" {
 		return false
 	}
-	for _, item := range findings {
-		if !isFinding(item) {
-			return false
-		}
-	}
-	return true
-}
-
-func isFinding(item any) bool {
-	f, ok := jq.AsMap(item)
-	return ok && findingFieldsValid(f) && findingEnumsValid(f)
-}
-
-func findingFieldsValid(f map[string]any) bool {
-	if jq.StrOf(f["path"]) == "" {
-		return false
-	}
-	if _, ok := jq.IntOf(f["line"]); !ok {
-		return false
-	}
-	return jq.StrOf(f["claim"]) != "" && jq.StrOf(f["quote"]) != ""
-}
-
-func findingEnumsValid(f map[string]any) bool {
-	if !slices.Contains(findingSeverities, jq.StrOf(f["severity"])) {
-		return false
-	}
-	return slices.Contains(findingConfidences, jq.StrOf(f["confidence"]))
+	items, ok := findings.([]any)
+	return ok && len(items) == 0
 }

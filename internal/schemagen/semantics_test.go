@@ -283,7 +283,7 @@ var publishedSemantics = map[string]string{
 	// specEvidence and receipt, plus approval/spec_checks/receipts on the
 	// record data. No existing envelope property, required key, enum, or type
 	// changed.
-	"envelope.schema.json": "dbd133509d416c3972e7557ab71ed9253dc8fda02344335ecf3d1c6c0a121027",
+	"envelope.schema.json": "b84749db19b6b7c8618e6e92ac23dfde3e027da103969e2827fb26891c37ff7b",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

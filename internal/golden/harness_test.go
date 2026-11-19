@@ -302,6 +302,12 @@ func assertBodiesScrubbed(t *testing.T, out string, entries []scrubbedBody) {
 		if strings.Contains(out, string(entry.raw)) {
 			t.Errorf("%s body survived the golden scrub", entry.name)
 		}
+		// renderBodies emits both spellings. Checking them separately keeps
+		// the escaped assertion alive when only the raw replacement runs.
+		escaped := jsonStringBody(string(entry.raw))
+		if strings.Contains(out, escaped) {
+			t.Errorf("%s JSON-escaped body survived the golden scrub", entry.name)
+		}
 		if !strings.Contains(out, entry.marker) {
 			t.Errorf("golden lacks the %s marker", entry.marker)
 		}

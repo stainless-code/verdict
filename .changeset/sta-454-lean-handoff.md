@@ -6,4 +6,6 @@ The review handoff is now lean and layered. `<bundle>/procedure.md` carries a pu
 
 The directive now says to write `review.json` first with empty findings and update it as the review proceeds. When an agent exits without the file, `run` salvages the last fenced `json` block on stdout that is a findings document, records `salvaged: true` in `launcher.json`, and warns. A malformed or absent block keeps the existing `no-review-artifact` refusal; stale artifacts are never overwritten.
 
+A finished review with no findings must carry a non-empty `summary`; the empty placeholder alone is never a clean review, and `run` checks every artifact with the same checker `record` uses before reporting success.
+
 `prompts_hash` and the provenance receipt now cover every file that feeds the assembled handoff and its refs, so an edit to any of those bytes is visible in the bundle's recorded prompt set.

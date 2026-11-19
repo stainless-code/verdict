@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -39,7 +40,8 @@ type resourceReadResult struct {
 	} `json:"contents"`
 }
 
-// TestResourcesListInventory pins one descriptor per served payload path.
+// TestResourcesListInventory pins one descriptor per served payload and ref
+// path.
 func TestResourcesListInventory(t *testing.T) {
 	t.Parallel()
 	cfg := testConfig()
@@ -55,10 +57,11 @@ func TestResourcesListInventory(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(result.Resources) != len(paths) {
-		t.Fatalf("resources = %d, want the %d served paths", len(result.Resources), len(paths))
+	want := append(slices.Clone(paths), handoffRefPaths()...)
+	if len(result.Resources) != len(want) {
+		t.Fatalf("resources = %d, want the %d served paths", len(result.Resources), len(want))
 	}
-	for i, path := range paths {
+	for i, path := range want {
 		checkResourceDescriptor(t, i, path, result.Resources[i])
 	}
 	checkLiteralMIMEs(t, result.Resources)
@@ -98,6 +101,70 @@ func resourceNamed(resources []resourceDescriptorFrame, path string) (resourceDe
 		}
 	}
 	return resourceDescriptorFrame{}, false
+}
+
+// TestResourcesListIncludesHandoffRefs proves an MCP client can discover
+// every pull path the lean handoff names, with the same MIME rule as payloads.
+func TestResourcesListIncludesHandoffRefs(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	frames := serve(t, &cfg, `{"jsonrpc":"2.0","id":1,"method":"resources/list"}`)
+	if frames["1"].Error != nil {
+		t.Fatalf("resources/list error = %+v", frames["1"].Error)
+	}
+	var result resourceListResult
+	if err := json.Unmarshal(frames["1"].Result, &result); err != nil {
+		t.Fatal(err)
+	}
+	paths, err := skillfs.Paths()
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs := handoffRefPaths()
+	want := append(slices.Clone(paths), refs...)
+	if len(result.Resources) != len(want) {
+		t.Fatalf("resources = %d, want %d payload and ref paths", len(result.Resources), len(want))
+	}
+	for i, path := range want {
+		checkResourceDescriptor(t, i, path, result.Resources[i])
+	}
+}
+
+// TestResourcesReadServesHandoffRefBytes pins the same source and slicing as
+// WriteBundleRefs: the checklist slice stays a slice, not the whole prompt.
+func TestResourcesReadServesHandoffRefBytes(t *testing.T) {
+	t.Parallel()
+	refs := handoffRefPaths()
+	frames := serveResourceReads(t, refs)
+	for i, name := range refs {
+		assertRefResourceRead(t, name, frames[strconv.Itoa(i+1)].Result)
+	}
+}
+
+func assertRefResourceRead(t *testing.T, name string, raw []byte) {
+	t.Helper()
+	var result resourceReadResult
+	if err := json.Unmarshal(raw, &result); err != nil {
+		t.Fatal(err)
+	}
+	want, err := skillfs.ReadRef(matchingRef(t, name))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result.Contents) != 1 || result.Contents[0].Text != string(want) {
+		t.Fatalf("%s resource text = %q, want the ref bytes %q", name, result.Contents[0].Text, want)
+	}
+}
+
+func matchingRef(t *testing.T, name string) skillfs.HandoffRef {
+	t.Helper()
+	for _, ref := range skillfs.HandoffRefs() {
+		if ref.Path == name {
+			return ref
+		}
+	}
+	t.Fatalf("no handoff ref named %q", name)
+	return skillfs.HandoffRef{}
 }
 
 // TestResourcesReadMatchesSkillShow proves every served path reads back the

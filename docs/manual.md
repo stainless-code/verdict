@@ -250,24 +250,25 @@ line per finding. It owns the `> Basis:` line outright — the counts come from
 the stored review, and a line the agent never wrote is never reported back as a
 repair.
 
-| Code                   | Level   | Meaning                                                                                                                  |
-| ---------------------- | ------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `invalid-json`         | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object.                 |
-| `wrong-type`           | mixed   | Error for a wrong type, including a non-integer anchor; warning for a fenced suggestion.                                 |
-| `missing-field`        | error   | A required key is absent.                                                                                                |
-| `bad-enum`             | mixed   | Error for an unknown closed-set value; warning for a malformed KB id or unknown chunk name.                              |
-| `out-of-range`         | error   | A length or numeric bound is outside its published range (summary length, brief approach/question, caps).                |
-| `path-not-in-diff`     | mixed   | Error for a finding path; warning for a brief site outside the diff.                                                     |
-| `unknown-field`        | mixed   | Error at the document root, where the shape is closed; warning inside a finding. The fix names the nearest known key.    |
-| `risk-stale-head`      | warning | `review.json.risk.assessed_head` disagrees with the bundle's current HEAD SHA; the stored claim is marked `stale: true`. |
-| `anchor-outside-hunk`  | warning | The line is provably outside every hunk; `record` moves the finding out of the inline set into the body.                 |
-| `rigor-unset`          | warning | A finding carries no evidence rung; it records as `said` with `rigor_source: default`.                                   |
-| `normalized-fence`     | warning | One whole-document code fence was unwrapped.                                                                             |
-| `normalized-extracted` | warning | Prose around exactly one balanced JSON object was dropped.                                                               |
-| `scalar-to-array`      | warning | A scalar where a string array belongs was wrapped in a one-element array.                                                |
-| `key-alias`            | warning | A known alias (`rung`, `file`) was renamed to its canonical key.                                                         |
-| `enum-synonym`         | warning | A rigor synonym or a case-folded enum value was rewritten to the published value.                                        |
-| `normalized-trivia`    | warning | A BOM, an explicit null on an optional key, or an exact-duplicate finding was removed.                                   |
+| Code                           | Level   | Meaning                                                                                                                  |
+| ------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------ |
+| `invalid-json`                 | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object.                 |
+| `wrong-type`                   | mixed   | Error for a wrong type, including a non-integer anchor; warning for a fenced suggestion.                                 |
+| `missing-field`                | error   | A required key is absent.                                                                                                |
+| `bad-enum`                     | mixed   | Error for an unknown closed-set value; warning for a malformed KB id or unknown chunk name.                              |
+| `out-of-range`                 | error   | A length or numeric bound is outside its published range (summary length, brief approach/question, caps).                |
+| `path-not-in-diff`             | mixed   | Error for a finding path; warning for a brief site outside the diff.                                                     |
+| `unknown-field`                | mixed   | Error at the document root, where the shape is closed; warning inside a finding. The fix names the nearest known key.    |
+| `risk-stale-head`              | warning | `review.json.risk.assessed_head` disagrees with the bundle's current HEAD SHA; the stored claim is marked `stale: true`. |
+| `anchor-outside-hunk`          | warning | The line is provably outside every hunk; `record` moves the finding out of the inline set into the body.                 |
+| `rigor-unset`                  | warning | A finding carries no evidence rung; it records as `said` with `rigor_source: default`.                                   |
+| `normalized-fence`             | warning | One whole-document code fence was unwrapped.                                                                             |
+| `normalized-extracted`         | warning | Prose around exactly one balanced JSON object was dropped.                                                               |
+| `scalar-to-array`              | warning | A scalar where a string array belongs was wrapped in a one-element array.                                                |
+| `key-alias`                    | warning | A known alias (`rung`, `file`) was renamed to its canonical key.                                                         |
+| `enum-synonym`                 | warning | A rigor synonym or a case-folded enum value was rewritten to the published value.                                        |
+| `normalized-trivia`            | warning | A BOM, an explicit null on an optional key, or an exact-duplicate finding was removed.                                   |
+| `empty-findings-needs-summary` | error   | `findings` is empty but `summary` is missing or empty; an untouched placeholder is not a finished clean review.          |
 
 ### Sig contract (sig_version 1)
 
@@ -1691,9 +1692,14 @@ stdout is the protocol channel.
 `prompts/list` offers five task prompts (`address-reviews`, `fix-ci`,
 `incremental-review`, `review`, `validate`). `prompts/get` takes the
 prompt name and no arguments, and returns that task's Procedure assembled by
-the binary from its embedded payload. `resources/list` serves every payload
-file at `verdict://skill/<path>` —
-`resources/read` returns text byte-identical to `verdict skill show`.
+the binary from its embedded payload. The `review` and `address-reviews`
+prompts name their pull refs as `verdict://skill/refs/<name>`: an MCP client
+gets a prompt but no bundle directory, so those resources are part of the
+same surface. `resources/list` serves every payload file at
+`verdict://skill/<path>` and every pull ref at
+`verdict://skill/refs/<name>`, using the same source and slicing as a bundle's
+`refs/` writer. `resources/read` returns payload text byte-identical to `verdict skill show`,
+and ref text byte-identical to that writer.
 Prompts and resources are read-only in every server mode, including
 `--read-only` and `--operator`, and `skill` remains a distribution surface,
 never a tool. `initialize` advertises both capabilities
@@ -2150,23 +2156,39 @@ command it did not run.
 
 `run` invokes your agent only when you ask: one process per round, one bundle. No
 daemon, no queue, no scheduler, no webhook, no model selection, and by default
-it never reads prose: with `--rounds N` it runs the published `CheckReview` shape
-checker over review.json (paths and codes only) to build the next round's fix
-list.
+it never reads prose: it runs the published `CheckReview` shape checker over
+review.json (paths and codes only). With `--rounds N`, the error problems feed
+the next round's fix list; on the final or only round they are the typed
+`bad-review-input` refusal.
 
 ### What `run` asserts
 
 The contract is the artifact, not the output. The directive tells the agent to
 write `.verdict/state/<bundle>/review.json` first with empty findings and then
-update that same file. After the process exits, `run` requires exactly one
-fresh `review.json` — present, a regular file, and not older than the launch
-record it wrote first — then stops. When no file exists, `run` takes the last
-fenced `json` block on the agent's stdout that parses as a findings document,
-writes it as `review.json`, records `salvaged: true` in `launcher.json`, and
-adds a warning. A malformed or absent block changes nothing and keeps the
-`no-review-artifact` refusal; a stale or non-file artifact is never salvaged
-over. `record`/`post` validate the resulting file unchanged, so a review `run`
-accepts is a review they accept.
+update that same file. After a successful process exit, `run` requires exactly
+one fresh `review.json` — present, a regular file, and not older than the
+launch record it wrote first — and validates it with the same bundle-level
+`CheckReview` that `record` uses. A crash, a watchdog timeout, a non-zero exit,
+or a canceled context is never salvaged: it refuses with its own code and
+leaves no written review. Every artifact, salvaged or agent-written, that the
+checker refuses becomes a `bad-review-input` refusal carrying the problem list,
+so a review `run` accepts is one `record` and `post` accept.
+
+Salvage only fills an absent file or the exact placeholder (`schema_version`
+`"1"`, `findings: []`, no other keys). It takes the last fenced `json` block
+whose root is an object with a `findings` array, adds `schema_version: "1"`
+only when the key is absent, and changes no other field. The write records
+`salvaged: true` in `launcher.json` and adds the warning `review.json was
+missing or still the empty placeholder; salvaged the last fenced json block
+from the agent's stdout`. A malformed or absent block keeps the
+`no-review-artifact` refusal; any file other than the exact placeholder —
+including a stale file or a clean review with a `summary` — is never
+overwritten.
+
+A finished clean review must carry a non-empty `summary`. The checker emits
+`empty-findings-needs-summary` at `$.summary` when `findings` is empty and no
+summary was set, so an untouched placeholder can never pass as a clean review.
+A review with findings does not need a `summary`.
 
 The freshness stamp has one-second granularity, so the guarantee is "not older
 than the launch", not "written by this agent". A `review.json` left by an

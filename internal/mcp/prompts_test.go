@@ -82,9 +82,40 @@ func TestPromptsGetBodies(t *testing.T) {
 	for i, task := range tasks {
 		checkPromptBody(t, frames[strconv.Itoa(i+1)], task, expected[task])
 	}
-	assertNamedProcedure(t, frames[taskFrameID(tasks, "review")].Result, "review", skillfs.ReviewProcedure)
+	assertNamedProcedure(t, frames[taskFrameID(tasks, "review")].Result, "review", func() ([]byte, error) {
+		body, err := skillfs.TaskProcedure("review")
+		return servedRefPaths(body, "review"), err
+	})
 	assertNamedProcedure(t, frames[taskFrameID(tasks, "address-reviews")].Result,
-		"address-reviews", skillfs.DrainProcedure)
+		"address-reviews", func() ([]byte, error) {
+			body, err := skillfs.TaskProcedure("address-reviews")
+			return servedRefPaths(body, "address-reviews"), err
+		})
+}
+
+// TestMCPPromptsNameServedRefs proves the MCP handoff points at resources the
+// same server publishes, not at a bundle-relative path an MCP client lacks.
+func TestMCPPromptsNameServedRefs(t *testing.T) {
+	t.Parallel()
+	tasks := []string{"review", "address-reviews"}
+	frames := servePromptGets(t, tasks)
+	for i, task := range tasks {
+		var result promptResult
+		if err := json.Unmarshal(frames[strconv.Itoa(i+1)].Result, &result); err != nil {
+			t.Fatal(err)
+		}
+		assertPromptNamesRefs(t, task, result.Messages[0].Content.Text)
+	}
+}
+
+func assertPromptNamesRefs(t *testing.T, task, text string) {
+	t.Helper()
+	for _, ref := range handoffRefPaths() {
+		want := "`verdict://skill/" + ref + "`"
+		if !strings.Contains(text, want) {
+			t.Errorf("%s prompt does not name %q", task, want)
+		}
+	}
 }
 
 func expectedPromptBodies(t *testing.T) map[string][]byte {
@@ -180,7 +211,7 @@ func literalProcedure(t *testing.T, files ...string) []byte {
 		}
 		want = append(want, part...)
 	}
-	return want
+	return bytes.ReplaceAll(want, []byte("`refs/"), []byte("`verdict://skill/refs/"))
 }
 
 func taskFrameID(tasks []string, want string) string {

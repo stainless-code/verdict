@@ -26,6 +26,8 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/core/recipe"
+	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/core/repair"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -655,7 +657,7 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 	st.human(fmt.Sprintf("» recipe: %s@%s (%s)", args.plan.Name, args.plan.Version, args.plan.Source))
 	st.human(fmt.Sprintf("» run: %s (timeout %ds)", strings.Join(rec.Argv, " "), args.timeout))
 	res, err := st.spawn(ctx, args.argv, args.timeout)
-	if res != nil && ctx.Err() == nil && st.salvageReview(args, res.Stdout) {
+	if salvageAllowed(ctx, res, err) && st.salvageReview(args, res.Stdout) {
 		rec.Salvaged = true
 	}
 	return st.finish(ctx, args, rec, launched, started, res, err, nil)
@@ -759,10 +761,31 @@ func (st *state) finish(ctx context.Context, args *launchArgs, rec *launcher, la
 			st.warn(writeRef.Message)
 		}
 	}
+	if ref == nil && st.drainDigest == "" {
+		ref = st.reviewShapeRefusal(args, res)
+	}
 	if ref != nil {
 		return st.refused(ref, res, ended), ref
 	}
 	return st.response(args, rec, res, art, started, ended, rep), nil
+}
+
+// reviewShapeRefusal validates the artifact with the same bundle-level check
+// record uses. A run must never succeed on a document record would refuse,
+// whether the agent wrote it or the salvage scanner copied it from stdout.
+func (st *state) reviewShapeRefusal(args *launchArgs, res *core.Result) *core.RefusalError {
+	review, readRef := readRoundReview(args, res)
+	if readRef != nil {
+		return readRef
+	}
+	check, checkRef := repair.Check(args.dir, review)
+	if checkRef != nil {
+		return checkRef
+	}
+	if check.Errors == 0 {
+		return nil
+	}
+	return recordcore.ReviewRefusal(check, false)
 }
 
 // refused is the response that accompanies a refusal: it exists only so a

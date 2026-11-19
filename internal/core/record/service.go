@@ -158,7 +158,13 @@ func (st *svc) addWarning(msg string) {
 	}
 }
 
-func reviewRefusal(check CheckResult, strict bool) *core.RefusalError {
+// CodeBadReviewInput is the shared refusal code for a review the
+// published checker refuses. Run reuses it, so their verdicts agree.
+const CodeBadReviewInput = codeBadReviewInput
+
+// ReviewRefusal turns one checker result into the typed problem-list refusal.
+// Record and run both call it, so neither can fork the problem vocabulary.
+func ReviewRefusal(check CheckResult, strict bool) *core.RefusalError {
 	problems := make([]core.Problem, len(check.Problems))
 	copy(problems, check.Problems)
 	for i := range problems {
@@ -171,7 +177,11 @@ func reviewRefusal(check CheckResult, strict bool) *core.RefusalError {
 	}
 	total := check.Errors + check.Warnings
 	msg := fmt.Sprintf("review.json has %d problem(s); fix every one, then re-run", total)
-	return &core.RefusalError{Code: codeBadReviewInput, Message: msg, Problems: problems, ProblemsTruncated: check.Truncated}
+	return &core.RefusalError{Code: CodeBadReviewInput, Message: msg, Problems: problems, ProblemsTruncated: check.Truncated}
+}
+
+func reviewRefusal(check CheckResult, strict bool) *core.RefusalError {
+	return ReviewRefusal(check, strict)
 }
 
 // strictRecord decides whether warnings refuse the run: the --strict flag,

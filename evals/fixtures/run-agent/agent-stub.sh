@@ -46,8 +46,20 @@ esac
 # argument (the directive), then cut the artifact path out of that sentence:
 # no side channel, so a directive that stopped naming its first write fails.
 directive="${!#}"
-rest="${directive#*Write }"
-artifact="${rest%% FIRST with \{*}"
+case "$directive" in
+  *" FIRST with {"*)
+    rest="${directive#*Write }"
+    artifact="${rest%% FIRST with \{*}"
+    ;;
+  *" in place,"*)
+    rest="${directive#*Update }"
+    artifact="${rest%% in place,*}"
+    ;;
+  *)
+    rest=""
+    artifact=""
+    ;;
+esac
 if [ -z "$artifact" ] || [ "$artifact" = "$rest" ]; then
   echo "agent-stub: the directive named no review path to write" >&2
   exit 2

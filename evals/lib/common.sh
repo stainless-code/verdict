@@ -337,7 +337,7 @@ eval_write_review_at() {
           sources: (.sources // null),
           kb: (.kb // null)
         } | with_entries(select(.value != null)) else . end)),
-        summary: ((.body // "") | if type == "string" then .[0:2000] else "" end)
+        summary: ((.body // "") | if type == "string" and length > 0 then .[0:2000] else "No findings in this review." end)
       }
       + (if has("spec_checks") then {spec_checks: .spec_checks} else {} end)
       + (if has("receipts") then {receipts: .receipts} else {} end)

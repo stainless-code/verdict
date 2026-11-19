@@ -88,12 +88,24 @@ func stageDirective(repo, pr, bundle, artifact string, local, hasContext bool, p
 	if at.index > 1 {
 		read += fmt.Sprintf(" Read %s, the review the previous stage wrote.", artifact)
 	}
-	write := fmt.Sprintf("Write %s FIRST with %s, then update that same file with %s. "+
-		"Write nothing else in the bundle.", artifact, emptyReviewDocument, reviewDocument)
+	write := stageWriteLine(artifact, at.index)
 	boundary := "verdict rendered this one command and launches nothing for you: it does " +
 		"not read your prose, retry you, post, or chain the stages. The later stages " +
 		"read the file you write, so keep every value the earlier stages declared."
 	return head + paragraphGap + read + paragraphGap + stageTask(at) + paragraphGap + write + paragraphGap + boundary + "\n"
+}
+
+// stageWriteLine keeps the first stage's placeholder contract, then switches
+// to an in-place update: a later stage that rewrote the file with the empty
+// document would erase the findings and values earlier stages already wrote.
+func stageWriteLine(artifact string, index int) string {
+	if index == 1 {
+		return fmt.Sprintf("Write %s FIRST with %s, then update that same file with %s. "+
+			"Write nothing else in the bundle.", artifact, emptyReviewDocument, reviewDocument)
+	}
+	return fmt.Sprintf("Update %s in place, keeping every finding and value the earlier "+
+		"stages wrote; add your own changes to that same file. Write nothing else in the bundle.",
+		artifact)
 }
 
 // stageTask states the one job the rendered stage owns, with the hints and caps

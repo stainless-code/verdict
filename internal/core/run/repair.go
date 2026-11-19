@@ -131,7 +131,7 @@ func (st *state) repairRound(ctx context.Context, args *launchArgs, rec *launche
 	roundRes, spawnErr := st.spawn(ctx, argv, args.timeout)
 	wallS := st.now().Sub(roundStarted).Seconds()
 	st.writeRoundOut(args, k, roundRes)
-	st.maybeSalvage(ctx, args, rec, roundRes)
+	st.maybeSalvage(ctx, args, rec, roundRes, spawnErr)
 	roundArt := inspectArtifact(args.abs, launched)
 	if ref := st.verdict(ctx, args, roundRes, spawnErr, roundArt); ref != nil {
 		st.writeCrashRoundReview(args, k)
@@ -174,8 +174,8 @@ func (st *state) repairRound(ctx context.Context, args *launchArgs, rec *launche
 
 // maybeSalvage fills an absent review from the round's stdout and records
 // the repair on the same launcher the round outcome writes.
-func (st *state) maybeSalvage(ctx context.Context, args *launchArgs, rec *launcher, res *core.Result) {
-	if res == nil || ctx.Err() != nil || st.drainDigest != "" {
+func (st *state) maybeSalvage(ctx context.Context, args *launchArgs, rec *launcher, res *core.Result, spawnErr error) {
+	if st.drainDigest != "" || !salvageAllowed(ctx, res, spawnErr) {
 		return
 	}
 	if st.salvageReview(args, res.Stdout) {
@@ -233,11 +233,21 @@ func (st *state) repairRefusal(args *launchArgs, rec *launcher, rep *core.RunRep
 		msg = fmt.Sprintf("repair exhausted after %d round(s): review.json still has %d error(s) — "+
 			"fix every error, then re-run", rep.Rounds, errorCount)
 	}
-	ref := &core.RefusalError{
-		Code:              codeRepairExhausted,
-		Message:           msg,
-		Problems:          last.Problems,
-		ProblemsTruncated: last.Truncated,
+	var ref *core.RefusalError
+	if noProgress {
+		ref = &core.RefusalError{
+			Code:              codeRepairExhausted,
+			Message:           msg,
+			Problems:          last.Problems,
+			ProblemsTruncated: last.Truncated,
+		}
+	} else {
+		ref = &core.RefusalError{
+			Code:              recordcore.CodeBadReviewInput,
+			Message:           msg,
+			Problems:          last.Problems,
+			ProblemsTruncated: last.Truncated,
+		}
 	}
 	ended := st.now()
 	if writeRef := st.recordOutcome(rec, args.dir, ended, started, res, art, rep); writeRef != nil {

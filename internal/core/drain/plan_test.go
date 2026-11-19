@@ -108,6 +108,24 @@ func TestWriteProcedureUsesEmbeddedPayload(t *testing.T) {
 	}
 }
 
+// TestWriteProcedureRefsFailureLeavesNoProcedure pins F5: refs are written
+// before the procedure, so a failed ref write cannot strand a procedure that
+// points at files the bundle never received.
+func TestWriteProcedureRefsFailureLeavesNoProcedure(t *testing.T) {
+	dir := t.TempDir()
+	refs := filepath.Join(dir, "refs")
+	if err := os.WriteFile(refs, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteProcedure(dir); err == nil {
+		t.Fatal("WriteProcedure succeeded with refs blocked by a regular file")
+	}
+	procedure := filepath.Join(dir, KeyProcedureMD)
+	if _, err := os.Stat(procedure); !os.IsNotExist(err) {
+		t.Fatalf("%s exists after a refs failure: %v", filepath.ToSlash(procedure), err)
+	}
+}
+
 // TestWriteProcedureAddsOnlyTheThreadsSection proves a drain bundle with
 // prior feedback appends the shared section in place of a review-only one.
 func TestWriteProcedureAddsOnlyTheThreadsSection(t *testing.T) {

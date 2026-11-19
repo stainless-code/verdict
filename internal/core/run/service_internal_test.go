@@ -48,6 +48,79 @@ func (s *scripted) Run(_ context.Context, cmd *core.Command) (core.Result, error
 // prNumber is the bundle directory and PR number every run fixture uses.
 const prNumber = "42"
 
+// fixtureDiff covers every path a run test's review cites, with a hunk wide
+// enough for the line numbers those tests use. Run now validates the artifact
+// with record's checker, which needs the same full.diff a fetched bundle has.
+const fixtureDiff = `diff --git a/a.go b/a.go
+--- a/a.go
++++ b/a.go
+@@ -1,12 +1,12 @@
+-old line 1
++new line 1
+ old line 2
+ old line 3
+ old line 4
+ old line 5
+ old line 6
+ old line 7
+ old line 8
+ old line 9
+ old line 10
+ old line 11
+ old line 12
+diff --git a/old.go b/old.go
+--- a/old.go
++++ b/old.go
+@@ -1,12 +1,12 @@
+-old line 1
++new line 1
+ old line 2
+ old line 3
+ old line 4
+ old line 5
+ old line 6
+ old line 7
+ old line 8
+ old line 9
+ old line 10
+ old line 11
+ old line 12
+diff --git a/notes.txt b/notes.txt
+--- a/notes.txt
++++ b/notes.txt
+@@ -1,12 +1,12 @@
+-old line 1
++new line 1
+ old line 2
+ old line 3
+ old line 4
+ old line 5
+ old line 6
+ old line 7
+ old line 8
+ old line 9
+ old line 10
+ old line 11
+ old line 12
+diff --git a/elsewhere.txt b/elsewhere.txt
+--- a/elsewhere.txt
++++ b/elsewhere.txt
+@@ -1,12 +1,12 @@
+-old line 1
++new line 1
+ old line 2
+ old line 3
+ old line 4
+ old line 5
+ old line 6
+ old line 7
+ old line 8
+ old line 9
+ old line 10
+ old line 11
+ old line 12
+`
+
 // fixtureRoot builds the fixture bundle and returns the reviewed repository
 // root. PR.json is written so the bundle resolves as a PR bundle, not a local
 // one.
@@ -58,8 +131,13 @@ func fixtureRoot(t *testing.T) string {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "PR.json"), []byte(`{"number":42,"state":"OPEN"}`), 0o644); err != nil {
-		t.Fatal(err)
+	for name, body := range map[string]string{
+		"PR.json":   `{"number":42,"state":"OPEN"}`,
+		"full.diff": fixtureDiff,
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	return root
 }

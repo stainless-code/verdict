@@ -15,7 +15,7 @@ const storedHead = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 // cleanFindingsReview is a review with nothing to report: the renderer writes
 // its clean lead for it.
-const cleanFindingsReview = `{"schema_version":"1","findings":[]}`
+const cleanFindingsReview = `{"schema_version":"1","summary":"A short summary of the clean review.","findings":[]}`
 
 // recordedDecision is the receipt record stores for that review once a block
 // clause holds it back.

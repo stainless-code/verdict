@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -328,18 +329,19 @@ func assertRoundPrompts(t *testing.T, cmdr *sequenced) {
 	}
 }
 
-// assertExhausted pins the repair-exhausted refusal: its code, a non-empty
-// problem list with a hint, and the spawn count the cap allowed.
+// assertExhausted pins the final invalid-review refusal: the shared
+// bad-review-input code, a non-empty problem list with a hint, and the spawn
+// count the cap allowed.
 func assertExhausted(t *testing.T, ref *core.RefusalError, cmdr *sequenced, spawns int) {
 	t.Helper()
 	if ref == nil {
-		t.Fatal("Run succeeded, want the repair-exhausted refusal")
+		t.Fatal("Run succeeded, want the bad-review-input refusal")
 	}
-	if ref.Code != codeRepairExhausted {
-		t.Fatalf("code = %q, want %q", ref.Code, codeRepairExhausted)
+	if ref.Code != recordcore.CodeBadReviewInput {
+		t.Fatalf("code = %q, want %q", ref.Code, recordcore.CodeBadReviewInput)
 	}
 	if len(ref.Problems) == 0 {
-		t.Error("repair-exhausted carries no problems")
+		t.Error("bad-review-input carries no problems")
 	}
 	if cmdr.calls != spawns {
 		t.Fatalf("spawns = %d, want %d", cmdr.calls, spawns)
@@ -708,6 +710,38 @@ func assertPassThrough(t *testing.T, cmdr *sequenced, call int) {
 	t.Errorf("round %d argv = %q, want the --model opus passthrough", call, cmdr.argv[call-1])
 }
 
+// TestRepairRoundNeverSalvagesFailedAgent pins F1 in the repair path: a
+// non-zero round exit refuses on its own and leaves no recordable artifact.
+func TestRepairRoundNeverSalvagesFailedAgent(t *testing.T) {
+	root := repairFixture(t)
+	cmdr := &sequenced{result: func(int) core.Result {
+		return core.Result{ExitCode: 1, Stdout: fenced(salvagedFinding)}
+	}}
+	_, ref := Run(t.Context(), repairRequest(root, cmdr, "2", &collector{}))
+	if ref == nil || ref.Code != codeAgentFailed {
+		t.Fatalf("refusal = %+v, want %s", ref, codeAgentFailed)
+	}
+	if _, err := os.Stat(filepath.Join(bundleDir(root), reviewFile)); !os.IsNotExist(err) {
+		t.Fatalf("failed round left review.json: %v", err)
+	}
+}
+
+// TestRepairRoundNeverSalvagesTimeout pins the watchdog branch of the same
+// gate: stdout findings from a killed process stay evidence only.
+func TestRepairRoundNeverSalvagesTimeout(t *testing.T) {
+	root := repairFixture(t)
+	cmdr := &sequenced{result: func(int) core.Result {
+		return core.Result{TimedOut: true, Stdout: fenced(salvagedFinding)}
+	}}
+	_, ref := Run(t.Context(), repairRequest(root, cmdr, "2", &collector{}))
+	if ref == nil || ref.Code != codeAgentTimeout {
+		t.Fatalf("refusal = %+v, want %s", ref, codeAgentTimeout)
+	}
+	if _, err := os.Stat(filepath.Join(bundleDir(root), reviewFile)); !os.IsNotExist(err) {
+		t.Fatalf("timed-out round left review.json: %v", err)
+	}
+}
+
 // TestRepairFreshNoncePerRound proves each round-k prompt mints its own
 // nonce: round 2 and round 3 fences carry different nonces.
 func TestRepairFreshNoncePerRound(t *testing.T) {
@@ -717,8 +751,8 @@ func TestRepairFreshNoncePerRound(t *testing.T) {
 		writeDoc(t, root, "not json attempt "+strings.Repeat("x", call))
 	}}
 	_, ref := Run(t.Context(), repairRequest(root, cmdr, "3", &lines))
-	if ref == nil || ref.Code != codeRepairExhausted {
-		t.Fatalf("ref = %v, want the repair-exhausted refusal", ref)
+	if ref == nil || ref.Code != recordcore.CodeBadReviewInput {
+		t.Fatalf("ref = %v, want the bad-review-input refusal", ref)
 	}
 	if cmdr.calls != 3 {
 		t.Fatalf("spawns = %d, want 3", cmdr.calls)

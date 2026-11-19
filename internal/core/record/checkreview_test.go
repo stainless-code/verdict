@@ -20,7 +20,11 @@ func checkReview(extra string) string {
 	if strings.Contains(extra, `"findings"`) {
 		findings = ""
 	}
-	return `{"schema_version":"1"` + findings + extra + `}`
+	summary := `,"summary":"A short summary of the clean review."`
+	if strings.Contains(extra, `"summary"`) {
+		summary = ""
+	}
+	return `{"schema_version":"1"` + findings + summary + extra + `}`
 }
 
 func checkComment(extra string) string {
@@ -146,6 +150,24 @@ func TestCheckReviewRefusesBadSpecStatus(t *testing.T) {
 	res := recordcore.CheckReview([]byte(review), checkDiff)
 	if !hasProblem(res, "$.spec_checks[0].status", core.ProblemCodeBadEnum) {
 		t.Fatalf("problems = %+v, want the n/a enum refusal", res.Problems)
+	}
+}
+
+// TestCheckReviewCleanReviewNeedsSummary pins the shared rule record, run, and
+// pack test all use: an empty findings array needs a non-empty summary.
+func TestCheckReviewCleanReviewNeedsSummary(t *testing.T) {
+	t.Parallel()
+	res := recordcore.CheckReview([]byte(`{"schema_version":"1","findings":[]}`), checkDiff)
+	if !hasProblem(res, "$.summary", core.ProblemCodeEmptyFindingsNeedsSummary) {
+		t.Fatalf("problems = %+v, want the clean-review summary problem", res.Problems)
+	}
+	withSummary := recordcore.CheckReview([]byte(`{"schema_version":"1","findings":[],"summary":"Reviewed the diff; no defects found."}`), checkDiff)
+	if len(withSummary.Problems) != 0 {
+		t.Fatalf("problems = %+v, want a valid clean review", withSummary.Problems)
+	}
+	withFinding := recordcore.CheckReview([]byte(findingsReview), checkDiff)
+	if hasProblem(withFinding, "$.summary", core.ProblemCodeEmptyFindingsNeedsSummary) {
+		t.Fatalf("a review with findings does not need a summary: %+v", withFinding.Problems)
 	}
 }
 

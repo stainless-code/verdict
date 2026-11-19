@@ -47,8 +47,20 @@ fi
 # (the directive), then cut the artifact path out of that sentence: no side
 # channel, so a directive that stopped naming its artifact fails here.
 directive="${!#}"
-rest="${directive#*Write }"
-artifact="${rest%% FIRST with \{*}"
+case "$directive" in
+  *" FIRST with {"*)
+    rest="${directive#*Write }"
+    artifact="${rest%% FIRST with \{*}"
+    ;;
+  *" in place,"*)
+    rest="${directive#*Update }"
+    artifact="${rest%% in place,*}"
+    ;;
+  *)
+    rest=""
+    artifact=""
+    ;;
+esac
 if [ -z "$artifact" ] || [ "$artifact" = "$rest" ]; then
   echo "repair-stub: the directive named no review path to write" >&2
   exit 2

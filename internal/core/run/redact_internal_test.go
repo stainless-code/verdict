@@ -234,14 +234,31 @@ func TestDirectiveKeepsAPercentPathLiteral(t *testing.T) {
 	if strings.Contains(whole, "%!") {
 		t.Errorf("directive rendered a format operand as data:\n%s", whole)
 	}
+}
+
+// TestStageDirectivesKeepThePercentPathLiteral pins the two write instructions:
+// stage 1 creates the placeholder, and stage 2 preserves what it replaced.
+func TestStageDirectivesKeepThePercentPathLiteral(t *testing.T) {
+	bundle := "/checkouts/%s/%d/100%%/42"
+	artifact := bundle + "/review.json"
+	plan := builtinPlan(t)
+
+	first := staged{index: 1, stage: plan.Stages[0]}
+	stageOne := stageDirective("acme/app", "42", bundle, artifact, false, false, plan, &first)
+	if want := "Write " + artifact + " FIRST with {\"schema_version\": \"1\", \"findings\": []}"; !strings.Contains(stageOne, want) {
+		t.Errorf("stage 1 lost its first-write instruction, want %q in:\n%s", want, stageOne)
+	}
 
 	at := staged{index: 2, stage: plan.Stages[1]}
 	stage := stageDirective("acme/app", "42", bundle, artifact, false, false, plan, &at)
 	if want := "Read " + artifact + ", the review the previous stage wrote."; !strings.Contains(stage, want) {
 		t.Errorf("stage directive does not keep the path literally, want %q in:\n%s", want, stage)
 	}
-	if want := "Write " + artifact + " FIRST with {\"schema_version\": \"1\", \"findings\": []}"; !strings.Contains(stage, want) {
-		t.Errorf("stage directive mangles the write instruction, want %q in:\n%s", want, stage)
+	if want := "Update " + artifact + " in place, keeping every finding and value the earlier stages wrote"; !strings.Contains(stage, want) {
+		t.Errorf("stage 2 mangles the update instruction, want %q in:\n%s", want, stage)
+	}
+	if strings.Contains(stage, "FIRST with") {
+		t.Errorf("stage 2 still tells the agent to overwrite the earlier review:\n%s", stage)
 	}
 	if strings.Contains(stage, "%!") {
 		t.Errorf("stage directive rendered a format operand as data:\n%s", stage)

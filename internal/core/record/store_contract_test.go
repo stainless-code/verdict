@@ -101,7 +101,7 @@ func TestRunRecordInputShapeRefusals(t *testing.T) {
 	finding := func(extra string) string {
 		return `{"path":"notes.txt","line":2,"severity":"important","claim":"Cited finding here with enough substance.","quote":"new line","confidence":"high"` + extra + `}`
 	}
-	valid := `{"schema_version":"1"`
+	valid := `{"schema_version":"1","summary":"A short summary of the clean review."`
 	tests := []struct {
 		name    string
 		extra   string

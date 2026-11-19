@@ -179,12 +179,12 @@ func WriteProcedure(dir string) error {
 	if err != nil {
 		return jq.Sealed("read drain Procedure", err)
 	}
+	if err := skillfs.WriteBundleRefs(dir); err != nil {
+		return jq.Sealed("write drain bundle refs", err)
+	}
 	path := filepath.Join(dir, KeyProcedureMD)
 	if err := atomic.WriteFile(path, out); err != nil {
 		return jq.Sealed("write "+filepath.ToSlash(path), err)
-	}
-	if err := skillfs.WriteBundleRefs(dir); err != nil {
-		return jq.Sealed("write drain bundle refs", err)
 	}
 	return nil
 }

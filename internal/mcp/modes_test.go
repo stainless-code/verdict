@@ -38,7 +38,7 @@ func TestProcedureSurfacesIgnoreModes(t *testing.T) {
 			cfg.ReadOnly = tc.readOnly
 			cfg.Operator = tc.operator
 			frames := procedureFrames(t, &cfg)
-			checkProcedureSurface(t, tc, frames, len(paths), len(skillfs.Tasks()), wantPrompt, wantResource)
+			checkProcedureSurface(t, tc, frames, len(paths)+len(handoffRefPaths()), len(skillfs.Tasks()), wantPrompt, wantResource)
 			wire := procedureWireFrom(frames)
 			if i == 0 {
 				baseline = wire
@@ -63,7 +63,7 @@ func procedureFixtures(t *testing.T) ([]string, []byte, []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	return paths, wantPrompt, wantResource
+	return paths, servedRefPaths(wantPrompt, "review"), wantResource
 }
 
 func procedureFrames(t *testing.T, cfg *Config) map[string]frame {

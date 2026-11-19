@@ -2,7 +2,7 @@
 #
 # STA-332: `verdict run --agent --rounds N` re-prompts an invalid review with
 # the shape checker's fix list, up to N launch-to-check rounds, and refuses
-# repair-exhausted when no round is valid. The "agent" is
+# bad-review-input when no round is valid. The "agent" is
 # evals/fixtures/run-agent/repair-stub.sh on PATH as `claude`: a cooperating
 # script with no model, no credential, and no host. It reads the review path
 # out of the launcher's own directive and changes its answer per invocation,
@@ -10,7 +10,7 @@
 #
 # (a) round 1 invalid, round 2 valid: exit 0, exactly 2 spawns, review.json
 #     is round 2's, rounds_to_valid 2. (b) always invalid with --rounds 3:
-#     exit 1 repair-exhausted, exactly 3 spawns, error.problems non-empty. (c)
+#     exit 1 bad-review-input, exactly 3 spawns, error.problems non-empty. (c)
 #     default (no flag): exactly 1 spawn, no data.repair, no launcher repair
 #     keys. (d) --print --rounds 2 and --rounds 0/6/x refuse bad-flags.
 set -euo pipefail
@@ -83,7 +83,7 @@ before_spawns="$(spawns)"
 export STUB_REPAIR_MODE=always-invalid
 run_review run acme/app "$LOCAL" --agent claude --rounds 3 --json
 assert_exit "an always-invalid agent refuses" 1
-assert_refusal "repair exhausted" "repair-exhausted"
+assert_refusal "repair exhausted" "bad-review-input"
 assert_eq "exactly 3 agent processes ran" "3" "$(( $(spawns) - before_spawns ))"
 if jq -e '.error.problems | length > 0' <"$EVAL_OUT" >/dev/null 2>&1; then
   good "error.problems carries the final list"
