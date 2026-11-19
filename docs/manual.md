@@ -317,13 +317,13 @@ everywhere. A bundle stores the outcome as the evidence receipt in `record.json`
 — one entry per finding quote, the hunk coverage, the spec coverage, the gap
 sentences, and a single `insufficient` flag.
 
-| Verb                      | What it does with the evidence verdict                                                                                                                   |
-| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `record`                  | writes `record.json` with the receipt and, when anything is insufficient, a withheld approval whose reason is the first gap. Exit 0.                     |
-| `run`                     | feeds the gaps into its repair rounds and refuses `review-insufficient` when they survive them.                                                          |
-| `report`                  | withholds `data.approval` and warns once; the advisory read never fails.                                                                                 |
-| `report --check` / `gate` | fails the always-on `spec` dimension on a violated spec check and the always-on `evidence` dimension, and names `review-insufficient`.                   |
-| `post`                    | publishes the findings with the insufficient lead and never approves; a binding approval refuses `review-insufficient`, and `--force` does not waive it. |
+| Verb                      | What it does with the evidence verdict                                                                                                                                                                                      |
+| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `record`                  | writes `record.json` with the receipt and, when anything is insufficient, a withheld approval whose reason is the first gap. Exit 0.                                                                                        |
+| `run`                     | feeds the gaps into its repair rounds and refuses `review-insufficient` when they survive them.                                                                                                                             |
+| `report`                  | withholds `data.approval` and warns once; the advisory read never fails.                                                                                                                                                    |
+| `report --check` / `gate` | fails the always-on `spec` dimension on a violated spec check, sufficient receipt or not; fails the always-on `evidence` dimension, naming `review-insufficient`, only when the receipt is missing, stale, or insufficient. |
+| `post`                    | publishes the findings with the insufficient lead and never approves; a binding approval refuses `review-insufficient`, and `--force` does not waive it.                                                                    |
 
 ### Sig contract (sig_version 1)
 
@@ -1635,7 +1635,7 @@ any spec check the stored record graded `violated`
 violated item) and passes on `met`, `n/a`, or no spec checks at all: the
 derived approval withholds on a violation, so a gate passing over one would
 certify a review the decision refuses. `evidence` `pass`
-needs the current head's evidence receipt with `insufficient: false`, an
+needs the current head's evidence receipt with `insufficient: false`: an
 insufficient receipt fails, and a missing, stale, or unreadable one reads
 `unknown` — so no gate passes without a receipt for the head it certifies.
 Exit codes mirror `report --check`: 0 pass, 1 fail-or-unknown, 2 usage, 3 tool
