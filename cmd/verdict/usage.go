@@ -169,6 +169,9 @@ func usageText() string {
 		"    inputs, and reported = max(claimed, floor)).\n" +
 		"    --max-risk <level> gates on reported risk (exits 1 when exceeded or unknown; exit 0 pass,\n" +
 		"    exit 2 usage, exit 3 tool error).\n" +
+		"    Every gate run also carries the evidence dimension: pass needs the receipt\n" +
+		"    recorded for the fetched HEAD, an insufficient receipt fails, and a\n" +
+		"    missing or stale one reads unknown and fails the gate.\n" +
 		"    --check <tier> opts into gating (same output, machine exits): 0 no open\n" +
 		"    findings at-or-above tier, 1 findings at-or-above tier, 2 usage, 3 tool\n" +
 		"    error (missing/corrupt store). `--category <cat>` filters the ranked\n" +
