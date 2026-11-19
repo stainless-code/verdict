@@ -3,6 +3,7 @@
 package approval
 
 import (
+	"fmt"
 	"slices"
 	"strings"
 
@@ -87,7 +88,8 @@ func Evaluate(
 	// nil slice renders as null, which the schema refuses.
 	gating, unbacked := gatingSigs(entries, limit, category)
 	clauses, droppedClause := clauseSigs(comp, entries, &gating, &unbacked)
-	got := evaluateOutcome(threshold, &decision{
+	got := evaluateOutcome(&decision{
+		threshold:     threshold,
 		gating:        gating,
 		unbacked:      unbacked,
 		specViolated:  specViolated,
@@ -108,6 +110,7 @@ func Evaluate(
 // the policy have been evaluated.
 type decision struct {
 	ev            Evidence
+	threshold     string
 	gating        []string
 	unbacked      []string
 	specViolated  bool
@@ -124,13 +127,14 @@ type outcome struct {
 
 // evaluateOutcome applies the decision ladder: evidence first, then gating
 // findings, then a violated spec check, then insufficiency the evidence pass
-// could not see.
-func evaluateOutcome(threshold string, in *decision) outcome {
-	if got, settled := evidenceOutcome(in.ev); settled {
+// could not see, and only then a clean approval — which a receipt has to
+// complete before it can be granted.
+func evaluateOutcome(in *decision) outcome {
+	if got, settled := evidenceOutcome(in); settled {
 		return got
 	}
 	if len(in.gating) > 0 {
-		return outcome{reason: "open findings at-or-above " + threshold}
+		return outcome{reason: "open findings at-or-above " + in.threshold}
 	}
 	if in.specViolated {
 		return outcome{reason: "violated spec check"}
@@ -145,13 +149,50 @@ func evaluateOutcome(threshold string, in *decision) outcome {
 			reason:       core.CodeReviewInsufficient + ": finding " + in.unbacked[0] + " has no verified quote",
 		}
 	}
+	// A3's last rule, and the one only this decision can enforce: with nothing
+	// gating, approval needs a matched receipt for every non-exempt changed
+	// hunk. The evidence pass already reports a shortfall as an error when it
+	// agrees nothing gates, but it reads the review bytes while this decision
+	// reads the visible store — a finding withheld by an exclusion, a
+	// suppression receipt, or a policy floor is invisible here and was visible
+	// there, so the two can disagree. Reading the receipt's own coverage closes
+	// that gap for good: a review nothing checked may not read as clean.
+	if !in.ev.Receipt.Receipts.Complete {
+		return outcome{approved: false, insufficient: true, reason: incompleteReceiptsReason(in.ev.Receipt)}
+	}
 	return outcome{approved: true, reason: "no gating findings"}
+}
+
+// incompleteReceiptsReason names the coverage shortfall: how many changed hunks
+// the receipt leaves unmatched, or the pass's own sentence when the shortfall
+// is a diff with no keyable hunk at all.
+func incompleteReceiptsReason(ev *core.EvidenceReceipt) string {
+	if missing := ev.Receipts.Total - ev.Receipts.Covered; missing > 0 {
+		return fmt.Sprintf("%s: receipts missing for %d of %d hunks",
+			core.CodeReviewInsufficient, missing, ev.Receipts.Total)
+	}
+	return insufficientReason(ev)
 }
 
 // evidenceOutcome settles the decision on the evidence alone, before any
 // finding is read: no receipt and an insufficient receipt are both refusals,
-// and neither can be answered by a clean finding set.
-func evidenceOutcome(ev Evidence) (outcome, bool) {
+// and neither can be answered by a clean finding set. A verified gating finding
+// is the more decisive fact for the operator, so the reason leads with it while
+// the decision stays insufficient: the receipt still cannot back the head.
+func evidenceOutcome(in *decision) (outcome, bool) {
+	got, settled := receiptOutcome(in.ev)
+	if !settled {
+		return outcome{}, false
+	}
+	if len(in.gating) > 0 {
+		got.reason = "open findings at-or-above " + in.threshold + "; " + got.reason
+	}
+	return got, true
+}
+
+// receiptOutcome is evidenceOutcome's evidence half: the refusal an absent or
+// insufficient receipt earns, without the finding precedence above it.
+func receiptOutcome(ev Evidence) (outcome, bool) {
 	if ev.Receipt == nil {
 		reason := ev.Missing
 		if reason == "" {

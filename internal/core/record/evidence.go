@@ -119,7 +119,8 @@ type evidencePass struct {
 	gating    []bool
 	quotes    []core.EvidenceQuote
 	problems  []Problem
-	gaps      []string
+	errorGaps []string
+	warnGaps  []string
 	dir       string
 	head      string
 	sha       string
@@ -169,10 +170,17 @@ func hunkIndexDrift(dir string, diff []byte) bool {
 // severity at or above the approval tier, or named by a captured block clause.
 // Only a gated finding's evidence gap withholds approval; the rest stay
 // warnings.
+//
+// The severity leg skips a finding the merge will withhold — an excluded path
+// or a suppression receipt — because a withheld finding is invisible to the
+// decision, which is what decides whether the hunk receipts are still owed. A
+// finding a clause names keeps gating whatever withholds it: the decision's
+// clause leg reads the unfiltered set, so that finding can still block.
 func (p *evidencePass) classifyGating() {
 	findings := reviewdoc.Findings(p.review)
 	p.gating = make([]bool, len(findings))
 	named := p.clauseNamed(findings)
+	withheld := newWithheldFindings(p.dir, p.review)
 	limit := core.TierRank(approval.DefaultApprovalTier)
 	for i, item := range findings {
 		m, ok := item.(*jq.Obj)
@@ -180,7 +188,8 @@ func (p *evidencePass) classifyGating() {
 			continue
 		}
 		severity, _ := m.Get(fieldSeverity)
-		p.gating[i] = core.TierRank(severity) <= limit || named[findingViewKey(m)]
+		gates := core.TierRank(severity) <= limit && !withheld.covers(m)
+		p.gating[i] = gates || named[findingViewKey(m)]
 	}
 }
 
@@ -471,7 +480,7 @@ func (p *evidencePass) specProblem(check *evidence.SpecCheckResult) {
 	}
 }
 
-// specNotCodeMessage names the cited path and says which way it fails A8: a
+// specNotCodeMessage names the cited path and says which way it fails A8b: a
 // test-output path is named as such, a path the diff does not carry is named as
 // absent, and an ambiguous one is named as matching several diff sections.
 func (p *evidencePass) specNotCodeMessage(check *evidence.SpecCheckResult) string {
@@ -591,17 +600,26 @@ func contextBlockOf(lines []string) contextBlock {
 // shown.
 func (p *evidencePass) result() *core.EvidenceReceipt {
 	if p.drift {
-		p.gaps = append(p.gaps, msgEvidenceDrift)
+		p.errorGaps = append(p.errorGaps, msgEvidenceDrift)
 	}
 	return &core.EvidenceReceipt{
 		Head:         p.head,
 		DiffSHA256:   p.sha,
 		Quotes:       p.quotes,
-		Gaps:         p.gaps,
+		Gaps:         p.gapList(),
 		Receipts:     p.receiptSummary(),
 		Spec:         p.specSummary(),
 		Insufficient: p.insufficient(),
 	}
+}
+
+// gapList is every gap sentence, errors first: the decision names the first gap
+// as its reason, and a warning may never speak for a refusal. The set is the
+// problem set either way, so a reader who reads all of them loses nothing.
+func (p *evidencePass) gapList() []string {
+	out := make([]string, 0, len(p.errorGaps)+len(p.warnGaps))
+	out = append(out, p.errorGaps...)
+	return append(out, p.warnGaps...)
 }
 
 // insufficient reports whether any evidence problem is an error: only an error
@@ -638,8 +656,9 @@ func (p *evidencePass) specSummary() core.EvidenceSpec {
 	}
 }
 
-// add records one problem and its gap sentence. Past the problem cap the
-// receipt still carries the counts and the gap list stops growing.
+// add records one problem and its gap sentence, kept in the level the emission
+// site decided. Past the problem cap the receipt still carries the counts and
+// the gap list stops growing.
 func (p *evidencePass) add(path, code, level, message, fix string) {
 	if len(p.problems) >= problemCap {
 		return
@@ -651,5 +670,9 @@ func (p *evidencePass) add(path, code, level, message, fix string) {
 		Message: message,
 		Fix:     fix,
 	})
-	p.gaps = append(p.gaps, message)
+	if level == core.ProblemLevelError {
+		p.errorGaps = append(p.errorGaps, message)
+		return
+	}
+	p.warnGaps = append(p.warnGaps, message)
 }

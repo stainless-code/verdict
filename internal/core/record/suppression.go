@@ -126,6 +126,63 @@ func (st *state) exclusions() *core.ExcludedFile {
 	return st.receipt
 }
 
+// withheldFindings answers, from the bundle and the review bytes alone, which
+// review findings the merge will withhold: an excluded path, or a suppressed[]
+// row naming the finding's path (and line, when the row names one). It is the
+// early half of the visibility the approval decision reads from the store, and
+// the evidence pass needs it because a finding that cannot gate must not switch
+// the hunk-receipt requirement off: that would let a review with no receipts
+// read as clean.
+//
+// Two withholding sources are deliberately absent. A row naming a sig prefix
+// cannot match here, because a review finding has no sig until the merge stamps
+// it. A below-severity floor is applied by post alone, so treating it as
+// withholding at record time would demand receipts the merge keeps visible.
+// Neither leaves a gap the decision cannot close: approval requires complete
+// receipts of its own.
+type withheldFindings struct {
+	exclusions   *core.ExcludedFile
+	suppressions []*jq.Obj
+}
+
+// newWithheldFindings reads the two sources a review finding can already be
+// matched against: the bundle's exclusion rows and the review's own suppression
+// receipts. Unreadable exclusion bytes read as no exclusions, the same way the
+// merge treats them.
+func newWithheldFindings(dir string, review *jq.Obj) *withheldFindings {
+	w := &withheldFindings{exclusions: loadExclusions(dir)}
+	raw, has := review.Get(suppressedKey)
+	if !has {
+		return w
+	}
+	rows, ok := raw.([]any)
+	if !ok {
+		return w
+	}
+	for _, row := range rows {
+		if m, ok := row.(*jq.Obj); ok && m != nil {
+			w.suppressions = append(w.suppressions, m)
+		}
+	}
+	return w
+}
+
+// covers reports whether the merge withholds this review finding.
+func (w *withheldFindings) covers(m *jq.Obj) bool {
+	if _, _, ok := matchExclusion(w.exclusions, suppressionString(m, fieldPath)); ok {
+		return true
+	}
+	for _, row := range w.suppressions {
+		if suppressionString(row, fieldSig) != "" {
+			continue
+		}
+		if suppressionMatches(row, m) {
+			return true
+		}
+	}
+	return false
+}
+
 func suppressionMatches(s, e *jq.Obj) bool {
 	if prefix := suppressionString(s, fieldSig); prefix != "" {
 		return suppressionString(s, fieldPath) == suppressionString(e, fieldPath) &&

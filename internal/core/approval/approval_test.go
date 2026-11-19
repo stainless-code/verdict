@@ -9,11 +9,15 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// currentEvidence is a receipt that backs the reviewed head and found nothing
-// to withhold: every decision below starts from it, because an absent receipt
-// is itself an insufficient decision.
+// currentEvidence is a receipt that backs the reviewed head, covered its one
+// changed hunk, and found nothing to withhold: every decision below starts from
+// it, because an absent receipt is itself an insufficient decision, and so is a
+// receipt that leaves a hunk unmatched.
 func currentEvidence() Evidence {
-	return Evidence{Receipt: &core.EvidenceReceipt{Head: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}
+	return Evidence{Receipt: &core.EvidenceReceipt{
+		Head:     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Receipts: core.EvidenceReceipts{Total: 1, Covered: 1, Complete: true},
+	}}
 }
 
 // TestNoConfigDefaultThreshold pins the operator decision: with no policy,
@@ -277,5 +281,88 @@ func TestInsufficientEvidenceWithholdsWithReason(t *testing.T) {
 func TestViolatedSpecCheckWithholds(t *testing.T) {
 	if got := Evaluate(nil, "", "", nil, true, currentEvidence()); got.Approved {
 		t.Fatalf("violated spec check approved: %+v", got)
+	}
+}
+
+// TestIncompleteReceiptsNeverApprove proves the last rule of the ladder: with
+// nothing gating, approval needs a matched receipt for every non-exempt hunk,
+// so a receipt that leaves hunks unmatched refuses and names how many. This is
+// the decision's own guard, and it holds even when the evidence pass read the
+// review as sufficient — a finding withheld after the merge cannot switch the
+// requirement off.
+func TestIncompleteReceiptsNeverApprove(t *testing.T) {
+	ev := Evidence{Receipt: &core.EvidenceReceipt{
+		Head:     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Receipts: core.EvidenceReceipts{Total: 3, Covered: 1, Complete: false},
+	}}
+	got := Evaluate(nil, "", "", nil, false, ev)
+	if got.Approved || !got.Insufficient {
+		t.Fatalf("approval = %+v, want insufficient: 2 of 3 hunks carry no receipt", got)
+	}
+	const wantReason = "review-insufficient: receipts missing for 2 of 3 hunks"
+	if got.Reason != wantReason {
+		t.Fatalf("got.Reason = %q, want %q", got.Reason, wantReason)
+	}
+}
+
+// TestUnkeyableReceiptApprovalNamesTheGap proves the coverage shortfall that is
+// a diff with no keyable hunk at all: there is no count to report, so the
+// reason carries the sentence the pass recorded.
+func TestUnkeyableReceiptApprovalNamesTheGap(t *testing.T) {
+	const gap = "full.diff carries changed hunks but none of their paths can be keyed"
+	ev := Evidence{Receipt: &core.EvidenceReceipt{
+		Head:     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Receipts: core.EvidenceReceipts{Complete: false},
+		Gaps:     []string{gap},
+	}}
+	got := Evaluate(nil, "", "", nil, false, ev)
+	if got.Approved || !got.Insufficient {
+		t.Fatalf("approval = %+v, want insufficient", got)
+	}
+	if want := core.CodeReviewInsufficient + ": " + gap; got.Reason != want {
+		t.Fatalf("got.Reason = %q, want %q", got.Reason, want)
+	}
+}
+
+// TestGatingFindingOutranksTheEvidenceGap proves the reason precedence: a
+// verified open finding at-or-above the tier is the decisive fact, so it leads
+// the reason, and the decision stays insufficient because the receipt still
+// cannot back the head.
+func TestGatingFindingOutranksTheEvidenceGap(t *testing.T) {
+	const gap = "hunk notes.txt\tNEW\t1\t3 has no matched receipt"
+	ev := Evidence{Receipt: &core.EvidenceReceipt{
+		Head:         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Receipts:     core.EvidenceReceipts{Total: 1, Complete: false},
+		Gaps:         []string{gap},
+		Insufficient: true,
+	}}
+	got := Evaluate([]any{openFinding("sig-ver", "important", "verified")}, "", "", nil, false, ev)
+	if got.Approved || !got.Insufficient {
+		t.Fatalf("approval = %+v, want withheld and insufficient", got)
+	}
+	const wantReason = "open findings at-or-above important; review-insufficient: " + gap
+	if got.Reason != wantReason {
+		t.Fatalf("got.Reason = %q, want %q", got.Reason, wantReason)
+	}
+	if !slices.Equal(got.GatingSigs, []string{"sig-ver"}) {
+		t.Fatalf("got.GatingSigs = %v, want [sig-ver]", got.GatingSigs)
+	}
+}
+
+// TestGatingFindingOutranksAnIncompleteReceipt proves the same precedence for
+// the receipt the pass never called insufficient: the finding withholds the
+// approval, so the decision is blocked rather than insufficient, and the gate
+// that reads it still refuses the write.
+func TestGatingFindingOutranksAnIncompleteReceipt(t *testing.T) {
+	ev := Evidence{Receipt: &core.EvidenceReceipt{
+		Head:     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Receipts: core.EvidenceReceipts{Total: 2, Complete: false},
+	}}
+	got := Evaluate([]any{openFinding("sig-ver", "critical", "verified")}, "", "", nil, false, ev)
+	if got.Approved || got.Insufficient {
+		t.Fatalf("approval = %+v, want blocked by the finding, not insufficient", got)
+	}
+	if want := "open findings at-or-above important"; got.Reason != want {
+		t.Fatalf("got.Reason = %q, want %q", got.Reason, want)
 	}
 }

@@ -39,9 +39,9 @@ const cleanEvidenceReview = `{"schema_version":"1","summary":"A short summary of
 // specBullets are the two spec items the checklist fixtures enumerate.
 const specBullets = "- the record must verify quotes\n- the record must receipt every hunk\n"
 
-// evidenceFinding renders one finding at notes.txt:2 quoting quote.
-func evidenceFinding(severity, quote string) string {
-	return `{"path":"notes.txt","line":2,"side":"RIGHT","severity":"` + severity + `",` +
+// evidenceFinding renders one important finding at notes.txt:2 quoting quote.
+func evidenceFinding(quote string) string {
+	return `{"path":"notes.txt","line":2,"side":"RIGHT","severity":"important",` +
 		`"claim":"A defect the diff carries.","quote":"` + quote + `","confidence":"high","rigor":"pointed"}`
 }
 
@@ -168,7 +168,7 @@ func requireGaps(t *testing.T, ev *core.EvidenceReceipt, want ...string) {
 // to does not gate: no signature reaches the decision, and the record is
 // insufficient only because the evidence is.
 func TestRecordEvidenceHallucinatedQuoteNeverGates(t *testing.T) {
-	review := evidenceReview([]string{evidenceFinding("important", "a line the diff never carried")}, "")
+	review := evidenceReview([]string{evidenceFinding("a line the diff never carried")}, "")
 	dir := evidenceBundle(t, review, nil)
 	resp, ref := recordEvidence(t, false)
 	if ref != nil {
@@ -191,7 +191,7 @@ func TestRecordEvidenceHallucinatedQuoteNeverGates(t *testing.T) {
 // stamped verified and that the finding it belongs to gates the approval while
 // the evidence itself is sufficient.
 func TestRecordEvidenceVerifiedQuoteGates(t *testing.T) {
-	review := evidenceReview([]string{evidenceFinding("important", "new line")}, "")
+	review := evidenceReview([]string{evidenceFinding("new line")}, "")
 	dir := evidenceBundle(t, review, nil)
 	resp, ref := recordEvidence(t, false)
 	if ref != nil {
@@ -457,7 +457,7 @@ func seedBlockClause(t *testing.T, dir string) {
 // TestRecordEvidenceDryRunMatchesRecord proves the dry run and the real run
 // read the same bundle the same way: one evidence receipt, field for field.
 func TestRecordEvidenceDryRunMatchesRecord(t *testing.T) {
-	dry := evidenceReview([]string{evidenceFinding("important", "a line the diff never carried")}, "")
+	dry := evidenceReview([]string{evidenceFinding("a line the diff never carried")}, "")
 	dir := evidenceBundle(t, dry, nil)
 	dryResp, ref := recordEvidence(t, true)
 	if ref != nil {
@@ -582,5 +582,146 @@ func TestRecordEvidenceSpecCheckNamesAmbiguousPath(t *testing.T) {
 	}
 	if approval := storedRecord(t, dir).Approval; approval == nil || approval.Approved {
 		t.Fatalf("approval = %+v, want withheld", approval)
+	}
+}
+
+// excludedReceiptRow is the bundle's exclusion receipt: one generated path
+// fetch kept out of full.diff, so no quote on it can be checked and the shape
+// checker accepts a finding against it.
+const excludedPathName = "vendor/.env"
+
+const excludedReceipt = `{"schema_version":"1","patterns_source":".verdict/ignore@base",` +
+	`"defaults":[],"ignore":["vendor/**"],"no_default_excludes":false,` +
+	`"excluded":[{"path":"vendor/.env","old_path":"vendor/.env","rule_id":"ignore:1",` +
+	`"pattern":"vendor/**","reason":"ignore","bytes":123}],` +
+	`"excluded_bytes":123,"kept_bytes":0,` +
+	`"raw_diff_sha256":"7c694511e98420efde208e404cc279e76061ad9bf4dfc50e869348edd5801c6",` +
+	`"diff_sha256":"e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}`
+
+// excludedFinding renders the at-tier finding on the excluded path.
+func excludedFinding() string {
+	return `{"path":"` + excludedPathName + `","line":1,"side":"RIGHT","severity":"important",` +
+		`"claim":"A defect on a path fetch excluded.","quote":"SECRET=1","confidence":"high","rigor":"pointed"}`
+}
+
+// suppressedFindingRow withholds the fixture finding at notes.txt:2 as an agent
+// suppression: path and line, the shape a review writes for a finding it still
+// records.
+const suppressedFindingRow = `{"source":"agent","path":"notes.txt","line":2,` +
+	`"reason":"An intentional compatibility exception the diff carries."}`
+
+// TestRecordExcludedGatingFindingStillOwesReceipts proves the hole a withheld
+// finding opens: an important finding on an excluded path is at-tier at record
+// time, but the merge withholds it, so the decision sees no finding to withhold
+// approval and an empty receipt would be the only fact left. A review nothing
+// checked must not read as clean, so the receipts stay owed and the record is
+// insufficient, naming the hunk a repair round has to supply.
+func TestRecordExcludedGatingFindingStillOwesReceipts(t *testing.T) {
+	review := evidenceReview([]string{excludedFinding()}, "")
+	dir := evidenceBundle(t, review, map[string]string{"excluded.json": excludedReceipt})
+	resp, ref := recordEvidence(t, false)
+	if ref != nil {
+		t.Fatalf("record refusal: %v", ref)
+	}
+	requireWithheldBy(t, evidenceSlug, "exclusion")
+	ev := evidenceOf(t, resp)
+	wantGap := "hunk " + evidenceHunk + " has no matched receipt"
+	if !ev.Insufficient {
+		t.Errorf("evidence = %+v, want insufficient: the only finding was withheld", ev)
+	}
+	// The quote the excluded path cannot carry is a warning, so it follows the
+	// error that actually refuses the review.
+	wantQuoteGap := "finding 1 at " + excludedPathName + ":1 cannot be checked from the bundle (path-not-in-bundle)"
+	requireGaps(t, ev, wantGap, wantQuoteGap)
+	approval := requireApproval(t, storedRecord(t, dir), false, true)
+	if len(approval.GatingSigs) != 0 {
+		t.Errorf("gating sigs = %v, want none: a withheld finding never gates", approval.GatingSigs)
+	}
+	if want := "review-insufficient: " + wantGap; approval.Reason != want {
+		t.Errorf("reason = %q, want %q", approval.Reason, want)
+	}
+}
+
+// TestRecordSuppressedGatingFindingStillOwesReceipts proves the same hole for
+// the other withholding source a review controls: a verified important finding
+// its own suppression receipt hides. The quote checking that finding is not
+// enough to approve the review — nothing in the decision gates, so every hunk
+// still needs its receipt.
+func TestRecordSuppressedGatingFindingStillOwesReceipts(t *testing.T) {
+	review := evidenceReview([]string{evidenceFinding("new line")},
+		`"suppressed":[`+suppressedFindingRow+`],`)
+	dir := evidenceBundle(t, review, nil)
+	resp, ref := recordEvidence(t, false)
+	if ref != nil {
+		t.Fatalf("record refusal: %v", ref)
+	}
+	requireWithheldBy(t, evidenceSlug, "agent")
+	ev := evidenceOf(t, resp)
+	requireQuote(t, ev, "verified", "")
+	wantGap := "hunk " + evidenceHunk + " has no matched receipt"
+	if !ev.Insufficient {
+		t.Errorf("evidence = %+v, want insufficient: the verified finding was withheld", ev)
+	}
+	requireGaps(t, ev, wantGap)
+	approval := requireApproval(t, storedRecord(t, dir), false, true)
+	if len(approval.GatingSigs) != 0 {
+		t.Errorf("gating sigs = %v, want none: a withheld finding never gates", approval.GatingSigs)
+	}
+	if want := "review-insufficient: " + wantGap; approval.Reason != want {
+		t.Errorf("reason = %q, want %q", approval.Reason, want)
+	}
+}
+
+// requireWithheldBy proves the store withheld its one finding for the named
+// source, so a case proves the mechanism it relies on, not just the decision.
+func requireWithheldBy(t *testing.T, slug, source string) {
+	t.Helper()
+	entries := storeEntries(t, slug)
+	if len(entries) != 1 {
+		t.Fatalf("store carries %d entries, want 1", len(entries))
+	}
+	withheld, ok := entries[0]["withheld"].(map[string]any)
+	if !ok {
+		t.Fatalf("entry %v carries no withheld object", entries[0])
+	}
+	if got, isStr := withheld["source"].(string); !isStr || got != source {
+		t.Fatalf("withheld source = %q (entry %v), want %q", got, entries[0], source)
+	}
+}
+
+// TestRecordSigSuppressedApprovalNeedsCompleteReceipts proves the last rule is
+// load-bearing. A suppression row that names a sig prefix cannot be
+// matched against a review finding before the merge stamps it, so the evidence
+// pass still reads that finding as gating and leaves the missing receipt a
+// warning. The decision reads the store instead, sees a withheld finding and
+// nothing else, and must still refuse: a review whose only finding was withheld
+// has approved nothing, and its receipt covers no hunk.
+func TestRecordSigSuppressedApprovalNeedsCompleteReceipts(t *testing.T) {
+	review := evidenceReview([]string{evidenceFinding("new line")}, "")
+	dir := evidenceBundle(t, review, nil)
+	if _, ref := recordEvidence(t, false); ref != nil {
+		t.Fatalf("first record refusal: %v", ref)
+	}
+	sig := entrySig(t, storeEntries(t, evidenceSlug)[0])
+	suppressed := `"suppressed":[{"source":"agent","path":"notes.txt","sig":"` + sig[:12] + `",` +
+		`"reason":"An intentional compatibility exception the diff carries."}],`
+	writeFile(t, dir+"/review.json", evidenceReview([]string{evidenceFinding("new line")}, suppressed))
+	resp, ref := recordEvidence(t, false)
+	if ref != nil {
+		t.Fatalf("second record refusal: %v", ref)
+	}
+	requireWithheldBy(t, evidenceSlug, "agent")
+	// The pass cannot see this row, so it still reads the finding as gating and
+	// leaves the receipt a warning: that is the divergence the decision closes.
+	if ev := evidenceOf(t, resp); ev.Insufficient {
+		t.Fatalf("evidence = %+v, want the pass's own warning-level read", ev)
+	}
+	approval := requireApproval(t, storedRecord(t, dir), false, true)
+	if len(approval.GatingSigs) != 0 {
+		t.Errorf("gating sigs = %v, want none: the only finding is withheld", approval.GatingSigs)
+	}
+	const wantReason = "review-insufficient: receipts missing for 1 of 1 hunks"
+	if approval.Reason != wantReason {
+		t.Errorf("reason = %q, want %q", approval.Reason, wantReason)
 	}
 }
