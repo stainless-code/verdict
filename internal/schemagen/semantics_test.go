@@ -285,7 +285,11 @@ var publishedSemantics = map[string]string{
 	// specEvidence and receipt, plus approval/spec_checks/receipts on the
 	// record data. No existing envelope property, required key, enum, or type
 	// changed.
-	"envelope.schema.json": "b84749db19b6b7c8618e6e92ac23dfde3e027da103969e2827fb26891c37ff7b",
+	// S4 evidence vocabulary: additive nine evidence problem codes on
+	// $defs/problem.code, optional insufficient on $defs/approvalReceipt,
+	// optional nullable evidence on $defs/recordData, and additive
+	// $defs/evidence{Receipt,Quote,Receipts,Spec}. Additions only.
+	"envelope.schema.json": "18494faf1ce4255aad2a6508043a482298c35aca19702d9a2674f3557ad82237",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -319,7 +323,9 @@ var publishedSemantics = map[string]string{
 	// comment. No existing property, required key, enum, or type changed.
 	// risk score: additive optional nullable risk claim ($defs/riskClaim). No
 	// existing property, required key, enum, or type changed.
-	"post.schema.json": "3a8ec3c2c82baa3c0f31a1b80f70de2e27132e4f2472ce04bacbf8c34d262efd",
+	// S4 evidence vocabulary: additive optional insufficient boolean on
+	// $defs/approvalReceipt. No existing property, required key, or type moved.
+	"post.schema.json": "fdb5d1ceaae8ecbd18a5422b44f38b781a5d9ccf334cce7f9e80e42449e803ba",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	// fixtures.schema.json gained hallucination.unverifiable for findings whose
@@ -432,7 +438,10 @@ var publishedSemantics = map[string]string{
 	// findings-only pass adds optional review_sha256 after diff_sha256: the
 	// review bytes record decided on, so post can refuse a review that moved
 	// since the decision. Additive only.
-	"record.schema.json": "84161920cfda7c97e31612464b47382978d664dee909b9a8ebdeae5b4ca7b56a",
+	// S4 evidence vocabulary: additive optional insufficient boolean on
+	// $defs/approvalReceipt, optional nullable evidence property, and
+	// $defs/evidence{Receipt,Quote,Receipts,Spec}. Additions only.
+	"record.schema.json": "2ee528f57f97d8d1ebdc11c8d90732a6dc11920e2d882e4f537cebea8088c5e3",
 
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The

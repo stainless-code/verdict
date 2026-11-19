@@ -175,6 +175,8 @@ var hintRules = []HintRule{
 	{codes: []string{"controls-too-large"}, hint: "try: trim the named control file under its cap, commit it at base, then re-fetch"},
 	{codes: []string{"bad-review-input"}, hint: "try: fix the malformed agent input named above " +
 		"(review.json wants findings[]; each finding wants path, line, severity, claim, quote and confidence), then re-run"},
+	{codes: []string{CodeReviewInsufficient}, hint: "try: fix the evidence gaps named above " +
+		"(quote at path:line, receipt hunk key, spec item), rewrite review.json, then re-run record or run --rounds"},
 	{codes: []string{"index-capped"}, hint: "try: narrow --from/--at to a smaller tree " +
 		"(the 97 MiB git capture cap is fixed; the typed caps cover file, tree and shard bytes only)"},
 	{codes: []string{"index-corrupt", "index-failed"}, hint: "try: delete .verdict/index and rebuild with 'verdict index build'"},

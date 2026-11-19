@@ -186,6 +186,7 @@ repair-exhausted	try: fix every error named in error.problems, then re-run (when
 report-failed	try: run the fetch/record step named above first, then re-run
 requirement-blocked	try: address the cause above, then re-run the same command
 requirement-unmet	try: address the cause above, then re-run the same command
+review-insufficient	try: fix the evidence gaps named above (quote at path:line, receipt hunk key, spec item), rewrite review.json, then re-run record or run --rounds
 rigor-below-floor	try: deepen the evidence for the named findings, or re-run with --force to publish them and record the bypass
 rounds-path-unsafe	try: remove the named path from the bundle (verdict owns it as a plain directory), then re-run
 run-mismatch	try: pick another --run, or delete the existing run directory

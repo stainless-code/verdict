@@ -215,7 +215,8 @@
           "type": "array",
           "items": { "type": "string" }
         },
-        "approved": { "type": "boolean" }
+        "approved": { "type": "boolean" },
+        "insufficient": { "type": "boolean" }
       },
       "required": ["reason", "tier", "gating_sigs", "approved"],
       "additionalProperties": true

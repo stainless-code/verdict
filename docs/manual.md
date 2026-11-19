@@ -250,25 +250,34 @@ line per finding. It owns the `> Basis:` line outright — the counts come from
 the stored review, and a line the agent never wrote is never reported back as a
 repair.
 
-| Code                           | Level   | Meaning                                                                                                                  |
-| ------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `invalid-json`                 | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object.                 |
-| `wrong-type`                   | mixed   | Error for a wrong type, including a non-integer anchor; warning for a fenced suggestion.                                 |
-| `missing-field`                | error   | A required key is absent.                                                                                                |
-| `bad-enum`                     | mixed   | Error for an unknown closed-set value; warning for a malformed KB id or unknown chunk name.                              |
-| `out-of-range`                 | error   | A length or numeric bound is outside its published range (summary length, brief approach/question, caps).                |
-| `path-not-in-diff`             | mixed   | Error for a finding path; warning for a brief site outside the diff.                                                     |
-| `unknown-field`                | mixed   | Error at the document root, where the shape is closed; warning inside a finding. The fix names the nearest known key.    |
-| `risk-stale-head`              | warning | `review.json.risk.assessed_head` disagrees with the bundle's current HEAD SHA; the stored claim is marked `stale: true`. |
-| `anchor-outside-hunk`          | warning | The line is provably outside every hunk; `record` moves the finding out of the inline set into the body.                 |
-| `rigor-unset`                  | warning | A finding carries no evidence rung; it records as `said` with `rigor_source: default`.                                   |
-| `normalized-fence`             | warning | One whole-document code fence was unwrapped.                                                                             |
-| `normalized-extracted`         | warning | Prose around exactly one balanced JSON object was dropped.                                                               |
-| `scalar-to-array`              | warning | A scalar where a string array belongs was wrapped in a one-element array.                                                |
-| `key-alias`                    | warning | A known alias (`rung`, `file`) was renamed to its canonical key.                                                         |
-| `enum-synonym`                 | warning | A rigor synonym or a case-folded enum value was rewritten to the published value.                                        |
-| `normalized-trivia`            | warning | A BOM, an explicit null on an optional key, or an exact-duplicate finding was removed.                                   |
-| `empty-findings-needs-summary` | error   | `findings` is empty but `summary` is missing or empty; an untouched placeholder is not a finished clean review.          |
+| Code                           | Level   | Meaning                                                                                                                                           |
+| ------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `invalid-json`                 | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object.                                          |
+| `wrong-type`                   | mixed   | Error for a wrong type, including a non-integer anchor; warning for a fenced suggestion.                                                          |
+| `missing-field`                | error   | A required key is absent.                                                                                                                         |
+| `bad-enum`                     | mixed   | Error for an unknown closed-set value; warning for a malformed KB id or unknown chunk name.                                                       |
+| `out-of-range`                 | error   | A length or numeric bound is outside its published range (summary length, brief approach/question, caps).                                         |
+| `path-not-in-diff`             | mixed   | Error for a finding path; warning for a brief site outside the diff.                                                                              |
+| `unknown-field`                | mixed   | Error at the document root, where the shape is closed; warning inside a finding. The fix names the nearest known key.                             |
+| `risk-stale-head`              | warning | `review.json.risk.assessed_head` disagrees with the bundle's current HEAD SHA; the stored claim is marked `stale: true`.                          |
+| `anchor-outside-hunk`          | warning | The line is provably outside every hunk; `record` moves the finding out of the inline set into the body.                                          |
+| `rigor-unset`                  | warning | A finding carries no evidence rung; it records as `said` with `rigor_source: default`.                                                            |
+| `normalized-fence`             | warning | One whole-document code fence was unwrapped.                                                                                                      |
+| `normalized-extracted`         | warning | Prose around exactly one balanced JSON object was dropped.                                                                                        |
+| `scalar-to-array`              | warning | A scalar where a string array belongs was wrapped in a one-element array.                                                                         |
+| `key-alias`                    | warning | A known alias (`rung`, `file`) was renamed to its canonical key.                                                                                  |
+| `enum-synonym`                 | warning | A rigor synonym or a case-folded enum value was rewritten to the published value.                                                                 |
+| `normalized-trivia`            | warning | A BOM, an explicit null on an optional key, or an exact-duplicate finding was removed.                                                            |
+| `empty-findings-needs-summary` | error   | `findings` is empty but `summary` is missing or empty; an untouched placeholder is not a finished clean review.                                   |
+| `quote-mismatch`               | mixed   | A finding quote does not match `full.diff` at the cited path/line; error if gating, warning otherwise.                                            |
+| `quote-not-checkable`          | mixed   | A finding quote cannot be verified against the bundle diff (absent path/line, binary, deleted, or oversized); error if gating, warning otherwise. |
+| `receipt-missing`              | error   | A non-exempt changed hunk has no matched reading receipt in `receipts[]`.                                                                         |
+| `receipt-hunk-unknown`         | error   | A receipt names a hunk key that does not match any changed hunk in `hunks.tsv`.                                                                   |
+| `receipt-mismatch`             | error   | A receipt quote does not match any line in the named hunk.                                                                                        |
+| `spec-item-unknown`            | error   | A `spec_checks[].item` quote does not match any enumerated item from `--spec`.                                                                    |
+| `spec-check-missing`           | error   | An enumerated `--spec` item has no matching `spec_checks[]` entry.                                                                                |
+| `spec-evidence-not-code`       | error   | A `met` or `violated` spec check cites a non-code or test-output path instead of changed code.                                                    |
+| `spec-evidence-mismatch`       | error   | A `met` or `violated` spec check's `evidence.quote` does not match `full.diff` at the cited path and line.                                        |
 
 ### Sig contract (sig_version 1)
 

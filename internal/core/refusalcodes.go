@@ -213,6 +213,7 @@ var refusalCodes = []string{
 	"report-failed",
 	"requirement-blocked",
 	"requirement-unmet",
+	"review-insufficient",
 	"rigor-below-floor",
 	"rounds-path-unsafe",
 	"run-mismatch",

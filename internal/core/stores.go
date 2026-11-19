@@ -163,14 +163,14 @@ type Verify struct {
 }
 
 // ApprovalReceipt is the verdict-computed approval decision recorded by
-// approvalReceipt is the verdict-computed approval decision recorded by
 // record and consumed by post and report.
 type ApprovalReceipt struct {
-	Reason     string   `json:"reason"`
-	Tier       string   `enum:"critical|important|informational" json:"tier"`
-	GatingSigs []string `json:"gating_sigs"`
-	Clauses    []string `json:"clauses,omitempty"`
-	Approved   bool     `json:"approved"`
+	Reason       string   `json:"reason"`
+	Tier         string   `enum:"critical|important|informational" json:"tier"`
+	GatingSigs   []string `json:"gating_sigs"`
+	Clauses      []string `json:"clauses,omitempty"`
+	Approved     bool     `json:"approved"`
+	Insufficient bool     `json:"insufficient,omitempty"`
 }
 
 // Brief is the per-finding repair brief: the affected sites plus the outcome,
@@ -231,6 +231,7 @@ type RecordData struct { //nolint:govet // field order is the published property
 	Check           *CheckSummary    `anyOf:"null"                 json:"check,omitempty"`
 	Coverage        *CoverageSummary `anyOf:"null"                 json:"coverage,omitempty"     optional:"true"`
 	Approval        *ApprovalReceipt `anyOf:"null"                 json:"approval,omitempty"     optional:"true"`
+	Evidence        *EvidenceReceipt `anyOf:"null"                 json:"evidence,omitempty"     optional:"true"`
 	SpecChecks      []SpecCheck      `json:"spec_checks,omitempty"`
 	Receipts        []Receipt        `json:"receipts,omitempty"`
 	Normalized      any              `json:"normalized,omitempty"  type:"object"`
@@ -298,6 +299,7 @@ type Record struct { //nolint:govet // field order is the published property ord
 	ValidationMode   string           `enum:"warn|gate"                  json:"validation_mode"`
 	RigorFloors      RigorFloors      `json:"rigor_floors"`
 	Approval         *ApprovalReceipt `anyOf:"null"                      json:"approval,omitempty"       optional:"true"`
+	Evidence         *EvidenceReceipt `anyOf:"null"                      json:"evidence,omitempty"       optional:"true"`
 	SpecChecks       []SpecCheck      `json:"spec_checks,omitempty"`
 	Receipts         []Receipt        `json:"receipts,omitempty"`
 	ConfidenceRaw    any              `json:"-"`
@@ -538,6 +540,9 @@ func setRecordTailWire(o *jq.Obj, d *RecordData, items any) {
 	if d.Repairs != nil {
 		o.Set("repairs", d.Repairs)
 	}
+	if d.Evidence != nil {
+		o.Set("evidence", d.Evidence)
+	}
 }
 
 // findingItemsWire renders typed envelope summaries.
@@ -622,6 +627,9 @@ func wireRecordDecision(r *Record, o *jq.Obj) {
 	o.Set("rigor_floors", r.RigorFloors)
 	if r.Approval != nil {
 		o.Set("approval", r.Approval)
+	}
+	if r.Evidence != nil {
+		o.Set("evidence", r.Evidence)
 	}
 	if len(r.SpecChecks) > 0 {
 		o.Set("spec_checks", r.SpecChecks)

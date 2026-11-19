@@ -142,9 +142,18 @@
             "normalized-trivia",
             "out-of-range",
             "path-not-in-diff",
+            "quote-mismatch",
+            "quote-not-checkable",
+            "receipt-hunk-unknown",
+            "receipt-mismatch",
+            "receipt-missing",
             "rigor-unset",
             "risk-stale-head",
             "scalar-to-array",
+            "spec-check-missing",
+            "spec-evidence-mismatch",
+            "spec-evidence-not-code",
+            "spec-item-unknown",
             "unknown-field",
             "wrong-type"
           ]
@@ -1073,6 +1082,10 @@
         "approval": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/approvalReceipt" }]
         },
+        "evidence": {
+          "description": "Deterministic evidence verification receipt over findings quotes, hunk receipts, and spec checks.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/evidenceReceipt" }]
+        },
         "spec_checks": {
           "type": "array",
           "items": { "$ref": "#/$defs/specCheck" }
@@ -1114,9 +1127,68 @@
           "type": "array",
           "items": { "type": "string" }
         },
-        "approved": { "type": "boolean" }
+        "approved": { "type": "boolean" },
+        "insufficient": { "type": "boolean" }
       },
       "required": ["reason", "tier", "gating_sigs", "approved"],
+      "additionalProperties": true
+    },
+    "evidenceReceipt": {
+      "description": "Deterministic evidence verification receipt pinned to the bundle head and diff SHA-256.",
+      "type": "object",
+      "properties": {
+        "head": { "type": "string" },
+        "diff_sha256": { "type": "string" },
+        "quotes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidenceQuote" }
+        },
+        "gaps": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "receipts": { "$ref": "#/$defs/evidenceReceipts" },
+        "spec": { "$ref": "#/$defs/evidenceSpec" },
+        "insufficient": { "type": "boolean" }
+      },
+      "required": ["head", "diff_sha256", "receipts", "spec", "insufficient"],
+      "additionalProperties": true
+    },
+    "evidenceQuote": {
+      "description": "Per-finding deterministic quote verification status and machine reason.",
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "side": { "enum": ["RIGHT", "LEFT"] },
+        "status": { "enum": ["verified", "unverified"] },
+        "reason": { "type": "string" },
+        "line": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["path", "side", "status", "line"],
+      "additionalProperties": true
+    },
+    "evidenceReceipts": {
+      "description": "Changed-hunk reading receipt coverage summary.",
+      "type": "object",
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "covered": { "type": "integer", "minimum": 0 },
+        "exempt": { "type": "integer", "minimum": 0 },
+        "complete": { "type": "boolean" }
+      },
+      "required": ["total", "covered", "exempt", "complete"],
+      "additionalProperties": true
+    },
+    "evidenceSpec": {
+      "description": "Specification checklist coverage summary against defaults.spec_coverage_min.",
+      "type": "object",
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "covered": { "type": "integer", "minimum": 0 },
+        "min": { "type": "integer", "minimum": 0 },
+        "met": { "type": "boolean" }
+      },
+      "required": ["total", "covered", "min", "met"],
       "additionalProperties": true
     },
     "specCheck": {

@@ -46,9 +46,18 @@ export interface Problem {
     | "normalized-trivia"
     | "out-of-range"
     | "path-not-in-diff"
+    | "quote-mismatch"
+    | "quote-not-checkable"
+    | "receipt-hunk-unknown"
+    | "receipt-mismatch"
+    | "receipt-missing"
     | "rigor-unset"
     | "risk-stale-head"
     | "scalar-to-array"
+    | "spec-check-missing"
+    | "spec-evidence-mismatch"
+    | "spec-evidence-not-code"
+    | "spec-item-unknown"
     | "unknown-field"
     | "wrong-type";
   /** error blocks record; warning lets it proceed and report what it did, unless strict input promotes it. */
@@ -538,6 +547,8 @@ export interface RecordData {
   check?: CheckSummary | null;
   coverage?: CoverageSummary | null;
   approval?: ApprovalReceipt | null;
+  /** Deterministic evidence verification receipt over findings quotes, hunk receipts, and spec checks. */
+  evidence?: EvidenceReceipt | null;
   spec_checks?: Array<SpecCheck>;
   receipts?: Array<Receipt>;
   /** Present on record --dry-run: the exact review object the checker read after safe repairs, as an object. */
@@ -553,6 +564,47 @@ export interface ApprovalReceipt {
   gating_sigs: Array<string>;
   clauses?: Array<string>;
   approved: boolean;
+  insufficient?: boolean;
+  [key: string]: unknown;
+}
+
+/** Deterministic evidence verification receipt pinned to the bundle head and diff SHA-256. */
+export interface EvidenceReceipt {
+  head: string;
+  diff_sha256: string;
+  quotes?: Array<EvidenceQuote>;
+  gaps?: Array<string>;
+  receipts: EvidenceReceipts;
+  spec: EvidenceSpec;
+  insufficient: boolean;
+  [key: string]: unknown;
+}
+
+/** Per-finding deterministic quote verification status and machine reason. */
+export interface EvidenceQuote {
+  path: string;
+  side: "RIGHT" | "LEFT";
+  status: "verified" | "unverified";
+  reason?: string;
+  line: number;
+  [key: string]: unknown;
+}
+
+/** Changed-hunk reading receipt coverage summary. */
+export interface EvidenceReceipts {
+  total: number;
+  covered: number;
+  exempt: number;
+  complete: boolean;
+  [key: string]: unknown;
+}
+
+/** Specification checklist coverage summary against defaults.spec_coverage_min. */
+export interface EvidenceSpec {
+  total: number;
+  covered: number;
+  min: number;
+  met: boolean;
   [key: string]: unknown;
 }
 

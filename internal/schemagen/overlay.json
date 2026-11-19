@@ -222,6 +222,11 @@
       "/$defs/recordData/properties/check": "Present only on a clean dry run: the review-input summary.",
       "/$defs/recordData/properties/normalized": "Present on record --dry-run: the exact review object the checker read after safe repairs, as an object.",
       "/$defs/recordData/properties/repairs": "Present on record --dry-run: every safe review.json rewrite applied, in document order.",
+      "/$defs/recordData/properties/evidence": "Deterministic evidence verification receipt over findings quotes, hunk receipts, and spec checks.",
+      "/$defs/evidenceReceipt": "Deterministic evidence verification receipt pinned to the bundle head and diff SHA-256.",
+      "/$defs/evidenceQuote": "Per-finding deterministic quote verification status and machine reason.",
+      "/$defs/evidenceReceipts": "Changed-hunk reading receipt coverage summary.",
+      "/$defs/evidenceSpec": "Specification checklist coverage summary against defaults.spec_coverage_min.",
       "/$defs/repair": "One safe review.json rewrite: the published repair code and the JSONPath it touched.",
       "/$defs/repair/properties/code": "The repair family: fence unwrap, prose extraction, scalar-to-array, key alias, enum synonym, or trivia removal.",
       "/$defs/repair/properties/path": "JSONPath of the repaired value in the normalized review.",
@@ -486,7 +491,12 @@
       "/properties/review_models": "Every model name the bundle's cost.json prices, deduplicated and sorted; empty when the cost record names none. The reviewer half of the author/reviewer pair.",
       "/properties/repairs": "Safe review.json rewrites applied before the merge, in document order; absent when the review was already clean.",
       "/properties/patch_id": "Bundle patch id at record time, copied from identity.json; absent when the bundle had no identity.",
-      "/properties/patch_id_kind": "Patch id algorithm (git-patch-id or the labeled diff-sha256 fallback); absent when the bundle had no identity."
+      "/properties/patch_id_kind": "Patch id algorithm (git-patch-id or the labeled diff-sha256 fallback); absent when the bundle had no identity.",
+      "/properties/evidence": "Deterministic evidence verification receipt over findings quotes, hunk receipts, and spec checks.",
+      "/$defs/evidenceReceipt": "Deterministic evidence verification receipt pinned to the bundle head and diff SHA-256.",
+      "/$defs/evidenceQuote": "Per-finding deterministic quote verification status and machine reason.",
+      "/$defs/evidenceReceipts": "Changed-hunk reading receipt coverage summary.",
+      "/$defs/evidenceSpec": "Specification checklist coverage summary against defaults.spec_coverage_min."
     }
   },
   "review": {
