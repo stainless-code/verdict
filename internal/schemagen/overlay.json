@@ -57,7 +57,7 @@
   },
   "envelope": {
     "descriptions": {
-      "": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; every verb publishes its data profile here as a single <verb>Data $defs entry (reportData, postData, validationData, recordData, showData, fetchData, fetchLocalData, threadsData, verifyData, triageData, readyData, adoptData, ingestData, nextData, fixData, handoffData, learnData, packData, packTestData, initData, doctorData, checkTreeData, trendData, calibrateData, configData), each validated against the runtime writer and the committed goldens.",
+      "": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; every verb publishes its data profile here as a single <verb>Data $defs entry (reportData, postData, validationData, recordData, showData, fetchData, fetchLocalData, threadsData, verifyData, triageData, readyData, adoptData, ingestData, nextData, fixData, handoffData, journalData, learnData, packData, packTestData, initData, doctorData, checkTreeData, trendData, calibrateData, configData), each validated against the runtime writer and the committed goldens.",
       "/properties/pr": "Numeric PR, else null (local slugs never coerce).",
       "/$defs/error": "Refusal shape from fail(): data is null, message carries the cause plus a try: hint, candidates rides only on the oversize-fetch refusal.",
       "/$defs/findingItem": "Ranked or merged finding locator shared by report items and post/record items.",
@@ -267,7 +267,7 @@
       "/$defs/provenanceInput": "One resolved input, bundle artifact, KB candidate, override, control, config, or exclusion entry without rule bodies or secret values.",
       "/$defs/provenanceTruncatedRow": "One bounded or omitted input row in data.truncated[] when --provenance is active.",
       "/properties/data/properties/receipt": "Fetched bundle receipt (run_id, prompts_hash, inputs, truncations) exposed by report and post under --provenance; absent without the flag.",
-      "/properties/data/properties/truncated": "Bounded-input rows when --provenance is active; elsewhere the boolean truncation flag every verb's data already carries.",
+      "/properties/data/properties/truncated": "Bounded-input rows when --provenance is active, or the boolean truncation flag other verbs carry. The journal summary reports its own truncation notice under `truncation`.",
       "/$defs/prWaitData": "Bounded foreground PR wait outcome; timeout is data with error null.",
       "/$defs/prWaitData/properties/observations": "Snapshots that differed from the previous observation; repeated identical reads do not count.",
       "/$defs/prWaitData/properties/inconsistent_observations": "Reads a bounded wait retried because the host disagreed with itself, such as a GraphQL head that is not yet the REST head right after a push. --once never retries, and a wait still inconsistent at its timeout refuses pr-read-failed instead of claiming an outcome.",
@@ -725,6 +725,17 @@
   "excluded": {
     "descriptions": {
       "": "Byte-accounted exclusion receipt. Paths and rule ids identify removed raw diff sections; both hashes bind the reviewed subset to its raw input."
+    }
+  },
+  "journal": {
+    "descriptions": {
+      "": "One JSONL line in the external bundle journal (<state>/verdict/journal/<repo-key>/<pr>.jsonl). Every bundle-writing invocation appends a start line before executing and an end line on return; whole-line truncation at the 1 MiB cap prepends a truncated notice. Pre- and post-call bundle digests hash the canonical content manifest (path\\0size\\0sha256(content)\\n, sorted by path, skipping *.lock).",
+      "/$defs/startLine": "Opening record written before a bundle-writing invocation runs, naming the canonical repository root.",
+      "/$defs/startLine/properties/step": "Start/end pairing key: the start instant plus the PID and a process-local sequence number, so two overlapping invocations that read the same clock never fold into one pair. `started_at` carries the timestamp.",
+      "/$defs/endLine": "Closing record written when a bundle-writing invocation returns, carrying repo, exit code, refusal, warnings, bundle digests, written/removed paths, and the printed next hint.",
+      "/$defs/truncatedLine": "Notice prepended when the journal file exceeds the 1 MiB cap and is atomically rewritten to the trailing 512 KiB of whole lines.",
+      "/$defs/bundleDigests": "Canonical content-manifest sha256 digests before (null when the bundle did not exist) and after the call. `unobserved` marks a call whose content sweep failed, so the digests and the file diff are unknown rather than empty.",
+      "/$defs/fileRecord": "One bundle-relative file created or whose content changed during the call, with its sha256 and byte length."
     }
   },
   "validation": {

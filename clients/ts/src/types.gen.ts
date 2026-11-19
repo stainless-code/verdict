@@ -1246,6 +1246,75 @@ export interface HandoffRow {
   [key: string]: unknown;
 }
 
+export interface JournalData {
+  bundle: string;
+  truncation: JournalTruncatedInfo;
+  steps: Array<JournalStep>;
+  unfinished: Array<JournalUnfinishedStep>;
+  chain_breaks: Array<JournalChainBreak>;
+  unreadable_lines: number;
+  [key: string]: unknown;
+}
+
+export interface JournalStep {
+  step: string;
+  verb: string;
+  channel: "cli" | "mcp";
+  version: string;
+  started_at: string;
+  ended_at: string;
+  refusal: string | null;
+  next: string;
+  bundle: JournalBundleDigests;
+  argv: Array<string>;
+  wrote: Array<JournalFileRecord>;
+  removed: Array<string>;
+  pid: number;
+  exit: number;
+  warnings: number;
+  duration_ms: number;
+  [key: string]: unknown;
+}
+
+export interface JournalUnfinishedStep {
+  step: string;
+  verb: string;
+  channel: "cli" | "mcp";
+  version: string;
+  started_at: string;
+  argv: Array<string>;
+  pid: number;
+  [key: string]: unknown;
+}
+
+export interface JournalChainBreak {
+  step: string;
+  before: string;
+  previous_after: string;
+  [key: string]: unknown;
+}
+
+export interface JournalTruncatedInfo {
+  at: string | null;
+  kept_from: string | null;
+  dropped: number;
+  [key: string]: unknown;
+}
+
+export interface JournalBundleDigests {
+  before: string | null;
+  after: string;
+  unobserved?: boolean;
+  [key: string]: unknown;
+}
+
+export interface JournalFileRecord {
+  path: string;
+  sha256: string;
+  bytes: number;
+  [key: string]: unknown;
+}
+
 /** learn --json data: exactly one of rule (one appended rule), rules (the status listing), or incident (one attached revert or incident). */
 export interface LearnData {
   rule?: unknown;

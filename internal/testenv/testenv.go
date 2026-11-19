@@ -44,7 +44,7 @@ import (
 var dropPrefixes = []string{"REVIEW_", "GH_", "GITHUB_", "GIT_CONFIG_", "AWS_"}
 
 // dropNames are exact variables the harness always sets itself.
-var dropNames = []string{"HOME", "TMPDIR", "XDG_CONFIG_HOME", "NO_COLOR"}
+var dropNames = []string{"HOME", "TMPDIR", "XDG_CONFIG_HOME", "XDG_STATE_HOME", "NO_COLOR"}
 
 // gitLocation is git's escape hatch set: each one overrides the repository,
 // index, or object store that -C and the working directory would select, and

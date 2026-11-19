@@ -1,0 +1,6 @@
+exit: 0
+--- stdout ---
+journal: local-x (no calls recorded)
+--- stderr ---
+
+--- files ---

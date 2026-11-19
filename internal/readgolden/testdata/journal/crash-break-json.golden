@@ -1,0 +1,98 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "journal",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": {
+    "bundle": "local-x",
+    "steps": [
+      {
+        "step": "2026-11-19T10:03:12.000000Z",
+        "verb": "fetch-local",
+        "channel": "cli",
+        "pid": 51001,
+        "argv": [
+          "fetch-local",
+          "acme/app",
+          "local-x"
+        ],
+        "version": "0.14.2",
+        "started_at": "2026-11-19T10:03:12.000000Z",
+        "ended_at": "2026-11-19T10:03:12.100000Z",
+        "exit": 0,
+        "refusal": null,
+        "warnings": 0,
+        "bundle": {
+          "before": null,
+          "after": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "wrote": [],
+        "removed": [],
+        "next": "",
+        "duration_ms": 100
+      },
+      {
+        "step": "2026-11-19T10:04:00.000000Z",
+        "verb": "record",
+        "channel": "cli",
+        "pid": 51002,
+        "argv": [
+          "record",
+          "acme/app",
+          "local-x"
+        ],
+        "version": "0.14.2",
+        "started_at": "2026-11-19T10:04:00.000000Z",
+        "ended_at": "2026-11-19T10:04:00.200000Z",
+        "exit": 0,
+        "refusal": null,
+        "warnings": 0,
+        "bundle": {
+          "before": "2222222222222222222222222222222222222222222222222222222222222222",
+          "after": "3333333333333333333333333333333333333333333333333333333333333333"
+        },
+        "wrote": [],
+        "removed": [],
+        "next": "",
+        "duration_ms": 200
+      }
+    ],
+    "unfinished": [
+      {
+        "step": "2026-11-19T10:05:00.000000Z",
+        "verb": "report",
+        "channel": "cli",
+        "pid": 51003,
+        "started_at": "2026-11-19T10:05:00.000000Z",
+        "argv": [
+          "report",
+          "acme/app",
+          "local-x"
+        ],
+        "version": "0.14.2"
+      }
+    ],
+    "chain_breaks": [
+      {
+        "step": "2026-11-19T10:04:00.000000Z",
+        "before": "2222222222222222222222222222222222222222222222222222222222222222",
+        "previous_after": "1111111111111111111111111111111111111111111111111111111111111111"
+      }
+    ],
+    "truncation": {
+      "dropped": 0,
+      "at": null,
+      "kept_from": null
+    },
+    "unreadable_lines": 0
+  },
+  "error": null
+}
+--- stderr ---
+
+--- files ---

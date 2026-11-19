@@ -1,0 +1,12 @@
+exit: 0
+--- stdout ---
+journal: local-x (2 steps, 1 unfinished, 1 chain breaks)
+  1  10:03:12Z  fetch-local  exit 0
+  2  10:04:00Z  record       exit 0
+unfinished:
+  10:05:00Z  report  pid 51003  (no end recorded)
+chain breaks:
+  10:04:00Z  before 222222222222 != previous after 111111111111
+--- stderr ---
+
+--- files ---

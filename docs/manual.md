@@ -1351,7 +1351,7 @@ webhook, listener, or MCP subscription. Killing a wait leaves no background work
 
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`ingest`/`fix`/`handoff`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`risk`/`index`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`ingest`/`fix`/`handoff`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`risk`/`index`/`journal`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. Bounded CLI `data` envelopes (`fetch`, `report`, `next`, `show`,
@@ -1369,10 +1369,11 @@ claiming absence. Complete results omit the receipt.
 `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.verdict/state/<pr>/threads.json` from the host (all six
 hosts; GitHub reads GraphQL `reviewThreads`) and returns the feed tally — it
 never refetches the diff, so it is the cheap re-read after replies,
-resolutions, or a push. `report` is the pure offline reader over the store
+resolutions, or a push. `report` is the offline reader over the store
 (ranked items, verdict, counts, patch passthrough, optional `--output` markdown
 with machine-header markers,
-optional `--sarif` for scanners/CI). `--output` markdown leads with
+optional `--sarif` for scanners/CI; like every `localWrites` bundle verb, it
+appends a journal entry to the external bundle journal). `--output` markdown leads with
 `> Confidence: … · Safety: …` (from the stored `post.json`/`record.json`;
 `unrecorded`/`not assessed` when the run recorded neither) and, on clean
 reports (no open findings), closes with a `## What we checked` list of at
@@ -2066,6 +2067,22 @@ refuses `html-symlink` — use the real parent path (for example, `pwd -P`).
 Filesystem operations stay anchored to that checked parent directory. A non-empty directory without the export file set and
 static-page marker refuses `html-not-export`. Recovery and I/O failures use
 `report-failed`. Empty destinations are accepted.
+
+## Journal
+
+Every bundle-writing CLI or MCP invocation (`fetch`, `fetch-local`, `run`, `record` including `--dry-run`, `post`, `verify`, `fix`, `triage`, `adopt`, `ingest`, `threads`, `calibrate`, `report`, `drain`) appends two compact JSON lines to an external, local-only journal file under `<state>/verdict/journal/<repo-key>/<pr>.jsonl` under `storelock` (`<pr>.jsonl.lock` beside the file, mode `0600`): a `start` line when the call begins and an `end` line when it returns, paired by `step` (`<started_at>-<pid>-<n>`, unique per invocation, so two overlapping calls never fold into one pair). Read-only verbs (`show`, `next`, `handoff`, `config`, `risk`, `pack`, `index`, `check-tree`, `doctor`, `pr-wait`, `ready`, `gate`, `journal`), multi-bundle verbs (`trend`, `panel`, `backtest`), non-bundle verbs (`init`, `learn`, `skill`, `upgrade`, `uninstall`, `serve`, `mcp`), and calls refused by a `--read-only` MCP server never write a journal line.
+
+**Location, scope, and cleanup.** `<state>` is `$XDG_STATE_HOME` when set, else `~/.local/state` (on Windows, `%LOCALAPPDATA%` when `$XDG_STATE_HOME` is unset). `<repo-key>` is the first 16 hex characters of `sha256` of the canonical absolute repository root, and `<pr>` is the resolved bundle name (`5101`, `local-7`, `corpus-3`). Nothing journal-related is written inside the repository or `.verdict/` — unless `$XDG_STATE_HOME` (or `%LOCALAPPDATA%`) itself points inside the repository, in which case the journal lands wherever that variable points — so dry runs, refusals, and bundle receipts (`provenance.json`, `run.json`) stay completely untouched. The journal is local to your machine — never committed or uploaded. Delete one bundle's journal by removing `<state>/verdict/journal/<repo-key>/<pr>.jsonl` (and its `.lock` file), or wipe every journal for a repository with `rm -rf <state>/verdict/journal/<repo-key>`.
+
+Each `start` line records `repo` (the canonical repository root), `verb`, `channel` (`cli` or `mcp`), `pid`, redacted `argv` (shared with the launcher's redactor: a secret-flag operand, an inline `--flag=secret` value, a secret-named `NAME=value` anywhere in an argument — a positional assignment or one set inside a `--command` string — and a secret-named environment value all become `***REDACTED***`), `version`, and `started_at`. Each `end` line adds `ended_at`, `exit`, `refusal` (typed refusal code or `null`), `warnings`, `bundle` (`before` and `after` SHA-256 digests), `wrote` (every created or changed bundle file with its `path`, `sha256`, and `bytes`), `removed`, and the printed `next` hint. Dry runs and refusals are journaled to the external file while leaving the repository and bundle untouched.
+
+**Content-digest chain.** `bundle.before` and `bundle.after` hash the canonical manifest `path\0size\0sha256(content)\n`, sorted by path and excluding `*.lock` files. When step `N`'s `bundle.before` disagrees with step `N-1`'s `bundle.after`, `verdict journal` reports a `chain_breaks` entry. The chain detects any content change between steps (including a same-size rewrite with a preserved mtime), but not a rewrite to identical bytes, which is harmless by definition. A content sweep that fails (an unreadable bundle subtree, a symlink loop) warns and publishes no diff at all: `bundle` carries `unobserved: true` with `before: null` and an empty `after`, and `wrote`/`removed` stay empty rather than claiming every file was written or removed.
+
+**Size cap and non-fatal appends.** When an append pushes `<pr>.jsonl` past 1 MiB, Verdict atomically rewrites the file under the same lock to keep the trailing 512 KiB of whole lines and prepends a `{"schema_version":"1","phase":"truncated","repo":...,"at":...,"dropped":N,"kept_from":...}` notice. An append failure (busy lock, read-only filesystem, symlinked journal file) emits `warn: journal: could not append to <path>: <err>` on stderr and never fails the verb.
+
+**Reading the journal.** `verdict journal <owner/repo> <pr|local-name> [--json]` (and the read-only `journal` MCP tool) resolves `<state>/verdict/journal/<repo-key>/<pr>.jsonl` from the repository root and bundle name, reads it without taking a lock, folds `start`/`end` pairs into `steps`, lists unpaired starts in `unfinished`, reports `chain_breaks`, surfaces the size-cap notice under `truncation`, and counts torn lines in `unreadable_lines`. An absent journal file on an existing bundle exits 0 with `steps: []` and `journal: <bundle> (no calls recorded)`; a missing bundle refuses `missing-bundle`.
+
+**Crash and cancellation semantics.** Because every bundle-writing call appends a `start` line before executing and an `end` line on return under a kernel-owned `storelock`, a `SIGKILL` mid-verb releases the lock automatically and leaves an unpaired `start` in `unfinished` while the preceding entry in `steps` identifies the last completed step. Appends are not fsynced, so a process crash costs at most the torn tail line — counted in `unreadable_lines` without breaking earlier steps — while an OS crash or power loss can also lose the most recent appends. A record appended after a torn tail starts on its own line, so one crash never swallows the next call's line. A caught shutdown signal (`SIGINT`/`SIGTERM`, exit 3) is not a crash: the verb cancels cleanly and appends its `end` line with `exit: 3` and `refusal: "canceled"`.
 
 ## Serve (local HTTP surface)
 

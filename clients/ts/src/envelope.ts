@@ -11,6 +11,7 @@ import type {
   IndexData,
   IngestData,
   InitData,
+  JournalData,
   LearnData,
   NextData,
   PackData,
@@ -83,6 +84,7 @@ export interface DataFor {
   risk: RiskData;
   handoff: HandoffData;
   index: IndexData;
+  journal: JournalData;
   adopt: AdoptData;
   ingest: IngestData;
   fix: FixData;

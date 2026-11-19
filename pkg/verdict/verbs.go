@@ -17,6 +17,7 @@ import (
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
 	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
+	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
@@ -1156,4 +1157,32 @@ func (c *Client) PRWait(ctx context.Context, req *PRWaitRequest) (*PRWaitRespons
 		return nil, refusalErr(ref)
 	}
 	return &PRWaitResponse{Result: resultOf(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data)}, nil
+}
+
+// JournalRequest reads one bundle's append-only invocation journal.
+type JournalRequest struct {
+	Invocation
+}
+
+// JournalResponse carries the folded journal summary and human lines.
+type JournalResponse struct {
+	Result
+	Human []string
+}
+
+// Journal reads a bundle's external invocation journal without taking a lock
+// or writing any files.
+func (c *Client) Journal(ctx context.Context, req *JournalRequest) (*JournalResponse, error) {
+	rr, err := c.request(ctx, req.Repo, req.PR)
+	if err != nil {
+		return nil, err
+	}
+	resp, ref := journalcore.Run(ctx, &journalcore.Request{ReadRequest: rr})
+	if ref != nil {
+		return nil, refusalErr(ref)
+	}
+	return &JournalResponse{
+		Result: resultOf(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data.Wire()),
+		Human:  resp.Human,
+	}, nil
 }

@@ -697,3 +697,25 @@ func TestClientPRWaitOnce(t *testing.T) {
 	requireNoError(t, err)
 	assertFields(t, decodeData(t, resp.Data), map[string]any{"outcome": "condition-unmet", "until": "merged"})
 }
+
+func TestClientJournal(t *testing.T) {
+	dir := t.TempDir()
+	stateDir := t.TempDir()
+	t.Chdir(dir)
+	writePRBundle(t, "6101")
+	c := verdict.New(verdict.Options{
+		Env: map[string]string{"XDG_STATE_HOME": stateDir},
+	})
+	verdict.SetRepoRootForTest(c, func(context.Context) (string, error) { return dir, nil })
+	defer c.Close()
+
+	resp, err := c.Journal(t.Context(), &verdict.JournalRequest{Invocation: sdkInvocation("6101")})
+	requireNoError(t, err)
+	assertFields(t, decodeData(t, resp.Data), map[string]any{"bundle": "6101", "unreadable_lines": float64(0)})
+	if len(resp.Human) != 1 || resp.Human[0] != "journal: 6101 (no calls recorded)" {
+		t.Errorf("Human = %q, want empty journal line", resp.Human)
+	}
+
+	_, err = c.Journal(t.Context(), &verdict.JournalRequest{Invocation: sdkInvocation("9999")})
+	requireRefusal(t, err, "missing-bundle", "try: run the fetch/record step named above first, then re-run")
+}

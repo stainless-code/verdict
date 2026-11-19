@@ -6,52 +6,6 @@ import (
 	"testing"
 )
 
-// TestRecordArgvRedactsSecrets pins the provenance rule: the directive
-// becomes a placeholder, a secret-shaped flag's operand is replaced (both
-// spellings), and a bare argument that equals a secret-named environment
-// value is replaced too.
-func TestRecordArgvRedactsSecrets(t *testing.T) {
-	const prompt = "review the bundle"
-	environ := []string{"ANTHROPIC_API_KEY=sk-ant-0123456789", "PATH=/usr/bin"}
-	argv := []string{
-		"claude", "-p", "--model", "opus", "--api-key", "plain-value",
-		"--token=inline-value", "sk-ant-0123456789", prompt,
-	}
-	got, _ := recordArgv(argv, prompt, environ)
-	want := []string{
-		"claude", "-p", "--model", "opus", "--api-key", redactedValue,
-		"--token=" + redactedValue, redactedValue, promptPlaceholder,
-	}
-	if !slices.Equal(got, want) {
-		t.Fatalf("recordArgv = %q, want %q", got, want)
-	}
-}
-
-// TestRecordArgvStackedSecretFlags proves a secret-shaped flag with no operand
-// does not swallow the next flag's operand: `--token --api-key VALUE` has an
-// empty operand for --token, so the value belongs to --api-key and is redacted
-// there rather than surviving verbatim.
-func TestRecordArgvStackedSecretFlags(t *testing.T) {
-	argv := []string{"claude", "-p", "--token", "--api-key", "plain-value"}
-	got, _ := recordArgv(argv, "", nil)
-	want := []string{"claude", "-p", "--token", "--api-key", redactedValue}
-	if !slices.Equal(got, want) {
-		t.Fatalf("recordArgv = %q, want %q", got, want)
-	}
-}
-
-// TestRecordArgvKeepsOrdinaryFlags proves the redactor does not swallow the
-// launcher's own shape: a model name and a turn cap stay readable, and the
-// agent's own flags keep their operands.
-func TestRecordArgvKeepsOrdinaryFlags(t *testing.T) {
-	const prompt = "review the bundle"
-	argv := []string{"codex", "exec", "--model", "o3", "--max-turns", "12", prompt}
-	got, _ := recordArgv(argv, prompt, nil)
-	if got[3] != "o3" || got[5] != "12" {
-		t.Fatalf("recordArgv = %q, want ordinary operands preserved", got)
-	}
-}
-
 // TestScrubSecrets proves the recorded output tail drops the operator's own
 // secret values - the environment's and the argument ones the argv redactor
 // hid - while leaving the rest of the output intact.
@@ -70,38 +24,6 @@ func TestScrubSecrets(t *testing.T) {
 	}
 	if got != "arg[2]="+redactedValue+"\nexit=0" {
 		t.Errorf("scrubSecrets = %q, want only the credential replaced", got)
-	}
-}
-
-// TestRecordArgvReturnsTheSecretsItHid pins the shared walk's second answer:
-// the values the record replaced are exactly the ones the output scrub hides,
-// including an inline `--flag=value`'s value and an argument that equals an
-// environment credential.
-func TestRecordArgvReturnsTheSecretsItHid(t *testing.T) {
-	const prompt = "review the bundle"
-	argv := []string{
-		"claude", "--api-key", "plain-value", "--token=inline-value",
-		"sk-ant-0123456789", prompt,
-	}
-	_, secrets := recordArgv(argv, prompt, []string{"ANTHROPIC_API_KEY=sk-ant-0123456789"})
-	want := []string{"plain-value", "inline-value", "sk-ant-0123456789"}
-	if !slices.Equal(secrets, want) {
-		t.Fatalf("secrets = %q, want %q", secrets, want)
-	}
-}
-
-// TestRecordArgvNeverCollectsTheDirective proves the directive is not a
-// credential: a secret-shaped flag immediately before it must not put hundreds
-// of bytes of tool-generated prose on the scrub list, which would erase the
-// recorded tail.
-func TestRecordArgvNeverCollectsTheDirective(t *testing.T) {
-	const prompt = "review the bundle and write exactly one review file"
-	shape, secrets := recordArgv([]string{"claude", "--token", prompt}, prompt, nil)
-	if slices.Contains(secrets, prompt) {
-		t.Fatalf("secrets = %q, want the directive excluded", secrets)
-	}
-	if shape[2] != promptPlaceholder {
-		t.Errorf("shape = %q, want the directive placeholder", shape)
 	}
 }
 

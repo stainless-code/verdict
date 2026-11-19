@@ -22,6 +22,7 @@ import (
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
 	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
+	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
@@ -226,6 +227,15 @@ func allTools(readOnly, operator bool) []*tool {
 		}, toolDeps{commander: fetchRunner}, decodeInit, wireInit, initcore.Run,
 			func(resp *initcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
+			name: "journal",
+			description: "Read a bundle's append-only invocation journal (steps, unfinished calls, " +
+				"and content-digest chain breaks). Call to audit what ran against a bundle. " +
+				"Reads the external state journal only; writes nothing.",
+			required: requiredRepoPr,
+			meta:     toolMeta{title: "Read bundle journal", mutates: noLocalWrites, readOnly: true, idempotent: true},
+		}, toolDeps{}, decodeJournal, wireJournal, journalcore.Run,
+			func(resp *journalcore.Response) *jq.Obj { return resp.Data.Wire() }),
+		dataTool(&toolSpec{
 			name: "learn",
 			description: "Read or update the local knowledge base. Call to list rules or " +
 				"add, retire, restore, propose, accept, or reject one, or to attach a revert/incident " +
@@ -287,8 +297,8 @@ func allTools(readOnly, operator bool) []*tool {
 		directTool(&toolSpec{
 			name: "report",
 			description: "Render the offline review report (ranked findings, counts, markdown/SARIF). " +
-				"Call after fetch or record; the follow-up is next. Reads the bundle and writes " +
-				"only artifacts you request.",
+				"Call after fetch or record; the follow-up is next. Reads the bundle, appends " +
+				"a journal entry, and writes any artifacts you request.",
 			writeArgs: map[string]string{"Output": "output", "Sarif": "sarif"},
 			required:  requiredRepoPr,
 			meta:      toolMeta{title: "Render report", mutates: localWrites, idempotent: true, servedWhenReadOnly: true},
@@ -452,9 +462,6 @@ func newTool[Req any](
 		req, ok := raw.(*Req)
 		if !ok {
 			return nil, internalRefusal()
-		}
-		if t.requireDryRun && !requestDryRun(raw) {
-			return nil, &core.RefusalError{Code: codeBadFlags, Message: "record writes on a read-only server; re-run with dry_run=true"}
 		}
 		return run(ctx, req)
 	}

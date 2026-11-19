@@ -117,6 +117,12 @@ func (q ReadRequest) RepoRootPath() string {
 	return q.RepoRoot
 }
 
+// BundleTarget returns the invocation's (repo, pr, repoRoot) triple for
+// transport-neutral consumers such as the bundle journal.
+func (q ReadRequest) BundleTarget() (repo, pr, repoRoot string) {
+	return q.Repo, q.Pr, q.RepoRoot
+}
+
 // TimeUTC formats the injected clock (zero time when no runtime is set).
 func (q ReadRequest) TimeUTC() string {
 	if q.Runtime == nil {

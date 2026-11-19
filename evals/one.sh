@@ -11,7 +11,7 @@ SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/verdict-eval-one.XXXXXX")"
 testenv_init "$SANDBOX"
 STUBBIN="$SANDBOX/stubbin"
 STUBLOG="$SANDBOX/gh-stub.log"
-mkdir -p "$STUBBIN"
+mkdir -p "$STUBBIN" "$SANDBOX/state"
 : > "$STUBLOG"
 cat > "$STUBBIN/gh" <<'EOF'
 #!/usr/bin/env bash
@@ -34,6 +34,7 @@ EOF
 chmod +x "$STUBBIN/gh"
 export EVAL_ROOT="$ROOT" EVAL_SANDBOX="$SANDBOX"
 export EVAL_STUBBIN="$STUBBIN" EVAL_STUBLOG="$STUBLOG"
+export XDG_STATE_HOME="$SANDBOX/state"
 EVAL_CLI="${EVAL_CLI:-$ROOT/bin/verdict}"
 if [ ! -x "$EVAL_CLI" ]; then
   echo "evals need a built binary at $EVAL_CLI (run make evals) instead of silently grading nothing" >&2

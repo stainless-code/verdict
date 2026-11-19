@@ -1,0 +1,138 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/journal.schema.json",
+  "title": "<pr>.jsonl — append-only bundle invocation journal",
+  "description": "One JSONL line in the external bundle journal (<state>/verdict/journal/<repo-key>/<pr>.jsonl). Every bundle-writing invocation appends a start line before executing and an end line on return; whole-line truncation at the 1 MiB cap prepends a truncated notice. Pre- and post-call bundle digests hash the canonical content manifest (path\\0size\\0sha256(content)\\n, sorted by path, skipping *.lock).",
+  "anyOf": [
+    { "$ref": "#/$defs/startLine" },
+    { "$ref": "#/$defs/endLine" },
+    { "$ref": "#/$defs/truncatedLine" }
+  ],
+  "$defs": {
+    "startLine": {
+      "description": "Opening record written before a bundle-writing invocation runs, naming the canonical repository root.",
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "phase": { "const": "start" },
+        "repo": { "type": "string" },
+        "step": {
+          "description": "Start/end pairing key: the start instant plus the PID and a process-local sequence number, so two overlapping invocations that read the same clock never fold into one pair. `started_at` carries the timestamp.",
+          "type": "string"
+        },
+        "verb": { "type": "string" },
+        "channel": { "enum": ["cli", "mcp"] },
+        "version": { "type": "string" },
+        "started_at": { "type": "string", "format": "date-time" },
+        "argv": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "pid": { "type": "integer", "minimum": 0 }
+      },
+      "required": [
+        "schema_version",
+        "phase",
+        "repo",
+        "step",
+        "verb",
+        "channel",
+        "version",
+        "started_at",
+        "argv",
+        "pid"
+      ],
+      "additionalProperties": false
+    },
+    "endLine": {
+      "description": "Closing record written when a bundle-writing invocation returns, carrying repo, exit code, refusal, warnings, bundle digests, written/removed paths, and the printed next hint.",
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "phase": { "const": "end" },
+        "repo": { "type": "string" },
+        "step": { "type": "string" },
+        "verb": { "type": "string" },
+        "channel": { "enum": ["cli", "mcp"] },
+        "started_at": { "type": "string", "format": "date-time" },
+        "ended_at": { "type": "string", "format": "date-time" },
+        "refusal": { "type": ["string", "null"] },
+        "next": { "type": "string" },
+        "bundle": { "$ref": "#/$defs/bundleDigests" },
+        "wrote": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/fileRecord" }
+        },
+        "removed": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "pid": { "type": "integer", "minimum": 0 },
+        "exit": { "type": "integer", "minimum": 0 },
+        "warnings": { "type": "integer", "minimum": 0 }
+      },
+      "required": [
+        "schema_version",
+        "phase",
+        "repo",
+        "step",
+        "verb",
+        "channel",
+        "started_at",
+        "ended_at",
+        "refusal",
+        "next",
+        "bundle",
+        "wrote",
+        "removed",
+        "pid",
+        "exit",
+        "warnings"
+      ],
+      "additionalProperties": false
+    },
+    "truncatedLine": {
+      "description": "Notice prepended when the journal file exceeds the 1 MiB cap and is atomically rewritten to the trailing 512 KiB of whole lines.",
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "phase": { "const": "truncated" },
+        "repo": { "type": "string" },
+        "at": { "type": "string", "format": "date-time" },
+        "kept_from": { "type": "string", "format": "date-time" },
+        "dropped": { "type": "integer", "minimum": 0 }
+      },
+      "required": [
+        "schema_version",
+        "phase",
+        "repo",
+        "at",
+        "kept_from",
+        "dropped"
+      ],
+      "additionalProperties": false
+    },
+    "bundleDigests": {
+      "description": "Canonical content-manifest sha256 digests before (null when the bundle did not exist) and after the call. `unobserved` marks a call whose content sweep failed, so the digests and the file diff are unknown rather than empty.",
+      "type": "object",
+      "properties": {
+        "before": { "type": ["string", "null"] },
+        "after": { "type": "string" },
+        "unobserved": { "type": "boolean" }
+      },
+      "required": ["before", "after"],
+      "additionalProperties": false
+    },
+    "fileRecord": {
+      "description": "One bundle-relative file created or whose content changed during the call, with its sha256 and byte length.",
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "sha256": { "type": "string" },
+        "bytes": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["path", "sha256", "bytes"],
+      "additionalProperties": false
+    }
+  }
+}

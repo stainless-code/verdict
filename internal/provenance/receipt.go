@@ -338,10 +338,17 @@ func collectBundleEntry(dir, path string, d fs.DirEntry, rels *[]string) error {
 	if d.IsDir() {
 		return skipBundleDirIfNeeded(relSlash, d.Name())
 	}
-	if relSlash != ReceiptFile && !strings.HasPrefix(d.Name(), ".") {
+	if isIncludedBundleFile(relSlash, d.Name()) {
 		*rels = append(*rels, relSlash)
 	}
 	return nil
+}
+
+func isIncludedBundleFile(relSlash, name string) bool {
+	if strings.HasPrefix(name, ".") {
+		return false
+	}
+	return relSlash != ReceiptFile
 }
 
 func skipBundleDirIfNeeded(relSlash, name string) error {

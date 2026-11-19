@@ -256,8 +256,8 @@ func (st *svc) bundle() (dir, prov, headFull, now string, ref *core.RefusalError
 }
 
 func (st *svc) loadInputs(ctx context.Context, dir string) (*jq.Obj, *core.RefusalError) {
-	if ref := readcommon.CheckLocalFresh(ctx, st.identityCommander(), st.req.RepoRootPath(), dir); ref != nil {
-		return nil, st.withWarnings(ref)
+	if ref := st.checkLocalFresh(ctx, dir); ref != nil {
+		return nil, ref
 	}
 
 	if st.req.DryRun {
@@ -274,6 +274,17 @@ func (st *svc) loadInputs(ctx context.Context, dir string) (*jq.Obj, *core.Refus
 		return nil, refusalOrFailed(err)
 	}
 	return review, nil
+}
+
+func (st *svc) checkLocalFresh(ctx context.Context, dir string) *core.RefusalError {
+	ref := readcommon.CheckLocalFresh(ctx, st.identityCommander(), st.req.RepoRootPath(), dir)
+	if ref == nil {
+		return nil
+	}
+	if ctx.Err() != nil {
+		return st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: "canceled before record completed"})
+	}
+	return st.withWarnings(ref)
 }
 
 // mergeAndName merges the review and then applies the cost-name plan validated

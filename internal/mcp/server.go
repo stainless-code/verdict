@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -354,7 +355,7 @@ func (s *Server) handleToolsCall(ctx context.Context, req *rpcRequest) {
 			s.callMu.Unlock()
 		}()
 		defer cancel()
-		s.writeResult(req.ID, s.call(callCtx, t, request))
+		s.writeResult(req.ID, s.call(callCtx, t, request, params.Arguments))
 	})
 }
 
@@ -370,23 +371,46 @@ func (s *Server) decodeCall(t *tool, id, raw json.RawMessage) (any, bool) {
 	return request, true
 }
 
-func (s *Server) call(ctx context.Context, t *tool, request any) any {
+type jqObjResult struct {
+	data *jq.Obj
+}
+
+func (s *Server) modeRefusal(t *tool, request any) *core.RefusalError {
 	if t.operatorWrite != nil && t.operatorWrite(request) && !s.cfg.Operator {
-		return refusalResult(&core.RefusalError{
+		return &core.RefusalError{
 			Code:    codeBadFlags,
 			Message: "threads resolve requires a server started with --operator",
-		})
+		}
 	}
+	if t.requireDryRun && !requestDryRun(request) {
+		return &core.RefusalError{
+			Code:    codeBadFlags,
+			Message: "record writes on a read-only server; re-run with dry_run=true",
+		}
+	}
+	return nil
+}
+
+func (s *Server) call(ctx context.Context, t *tool, request any, rawArgs json.RawMessage) any {
+	if ref := s.modeRefusal(t, request); ref != nil {
+		return refusalResult(ref)
+	}
+	b := s.bindings(t)
+	counter := &journalcore.CountingProgress{Inner: b.progress}
+	b.progress = counter
 	if t.wire != nil {
-		if err := t.wire(ctx, s.bindings(t), request); err != nil {
+		if err := t.wire(ctx, b, request); err != nil {
 			return refusalResult(wireRefusal(err))
 		}
 	}
-	data, ref := t.invoke(ctx, request)
+	res, ref := s.invokeJournaled(t, b, counter, request, rawArgs, func() (*jqObjResult, *core.RefusalError) {
+		data, r := t.invoke(ctx, request)
+		return &jqObjResult{data: data}, r
+	})
 	if ref != nil {
 		return refusalResult(ref)
 	}
-	return successResult(t.name, data)
+	return successResult(t.name, res.data)
 }
 
 func (s *Server) writeHiddenToolError(id json.RawMessage, name string) {

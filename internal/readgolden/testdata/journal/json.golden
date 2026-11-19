@@ -1,0 +1,85 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "journal",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": {
+    "bundle": "local-x",
+    "steps": [
+      {
+        "step": "2026-11-19T10:03:12.000000Z",
+        "verb": "fetch-local",
+        "channel": "cli",
+        "pid": 51001,
+        "argv": [
+          "fetch-local",
+          "acme/app",
+          "local-x"
+        ],
+        "version": "0.14.2",
+        "started_at": "2026-11-19T10:03:12.000000Z",
+        "ended_at": "2026-11-19T10:03:12.250000Z",
+        "exit": 0,
+        "refusal": null,
+        "warnings": 0,
+        "bundle": {
+          "before": null,
+          "after": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "wrote": [
+          {
+            "path": "full.diff",
+            "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "bytes": 42
+          }
+        ],
+        "removed": [],
+        "next": "run the review",
+        "duration_ms": 250
+      },
+      {
+        "step": "2026-11-19T10:05:44.000000Z",
+        "verb": "record",
+        "channel": "cli",
+        "pid": 51002,
+        "argv": [
+          "record",
+          "acme/app",
+          "local-x",
+          "--dry-run"
+        ],
+        "version": "0.14.2",
+        "started_at": "2026-11-19T10:05:44.000000Z",
+        "ended_at": "2026-11-19T10:05:44.500000Z",
+        "exit": 1,
+        "refusal": "review-empty",
+        "warnings": 2,
+        "bundle": {
+          "before": "1111111111111111111111111111111111111111111111111111111111111111",
+          "after": "1111111111111111111111111111111111111111111111111111111111111111"
+        },
+        "wrote": [],
+        "removed": [],
+        "next": "",
+        "duration_ms": 500
+      }
+    ],
+    "unfinished": [],
+    "chain_breaks": [],
+    "truncation": {
+      "dropped": 0,
+      "at": null,
+      "kept_from": null
+    },
+    "unreadable_lines": 0
+  },
+  "error": null
+}
+--- stderr ---
+
+--- files ---

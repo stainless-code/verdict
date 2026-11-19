@@ -181,6 +181,7 @@ describe("unit: fake binary exit paths", () => {
       "init",
       "risk",
       "handoff",
+      "journal",
     ]) {
       const dir = mkdtempSync(join(tmpdir(), "verdict-argv-"));
       const argvFile = join(dir, "argv.json");

@@ -29,9 +29,10 @@ var wantAnnotations = map[string]toolAnnotations{
 	"init": {
 		Title: "Scaffold controls", DestructiveHint: true, IdempotentHint: true,
 	},
-	"learn": {Title: "Manage knowledge base", IdempotentHint: true},
-	"next":  {Title: "Next finding", ReadOnlyHint: true, IdempotentHint: true},
-	"pack":  {Title: "List lens packs", ReadOnlyHint: true, IdempotentHint: true},
+	"journal": {Title: "Read bundle journal", ReadOnlyHint: true, IdempotentHint: true},
+	"learn":   {Title: "Manage knowledge base", IdempotentHint: true},
+	"next":    {Title: "Next finding", ReadOnlyHint: true, IdempotentHint: true},
+	"pack":    {Title: "List lens packs", ReadOnlyHint: true, IdempotentHint: true},
 	"post": {
 		Title: "Post review", DestructiveHint: true, IdempotentHint: true, OpenWorldHint: true,
 	},
@@ -104,14 +105,14 @@ func TestSurfaceSets(t *testing.T) {
 	defaults := names(allTools(false, false))
 	wantDefaults := []string{
 		"adopt", "calibrate", "check-tree", "config", "doctor", "fetch", "fetch-local", "fix",
-		"handoff", "index", "ingest", "init", "learn", "next", "pack", "post", "pr_wait", "ready", "record", "report", "risk", "show",
+		"handoff", "index", "ingest", "init", "journal", "learn", "next", "pack", "post", "pr_wait", "ready", "record", "report", "risk", "show",
 		"threads", "trend", "verify",
 	}
 	if !reflect.DeepEqual(defaults, wantDefaults) {
 		t.Errorf("default tools = %v, want %v", defaults, wantDefaults)
 	}
 	readOnly := names(allTools(true, false))
-	wantReadOnly := []string{"check-tree", "config", "doctor", "handoff", "index", "next", "pack", "pr_wait", "ready", "record", "report", "risk", "show", "trend"}
+	wantReadOnly := []string{"check-tree", "config", "doctor", "handoff", "index", "journal", "next", "pack", "pr_wait", "ready", "record", "report", "risk", "show", "trend"}
 	if !reflect.DeepEqual(readOnly, wantReadOnly) {
 		t.Errorf("read-only tools = %v, want %v", readOnly, wantReadOnly)
 	}
@@ -204,7 +205,7 @@ func TestMutationDeclarations(t *testing.T) {
 		"config": noLocalWrites, "doctor": noLocalWrites, "fetch": localWrites,
 		"fetch-local": localWrites, "fix": localWrites, "handoff": noLocalWrites,
 		"index":  noLocalWrites,
-		"ingest": localWrites, "init": localWrites, "learn": localWrites, "next": noLocalWrites,
+		"ingest": localWrites, "init": localWrites, "journal": noLocalWrites, "learn": localWrites, "next": noLocalWrites,
 		"pack": noLocalWrites, "post": localWrites, "ready": noLocalWrites,
 		"record": localWrites, "report": localWrites, "risk": noLocalWrites, "show": noLocalWrites,
 		"threads": localWrites, "trend": noLocalWrites, "triage": localWrites,

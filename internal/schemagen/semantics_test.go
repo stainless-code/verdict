@@ -293,7 +293,17 @@ var publishedSemantics = map[string]string{
 	// $defs/gateDimension.id with updated reportGate and gateDimension prose.
 	// Spec gate dimension: additive `spec` member on $defs/gateDimension.id
 	// with updated reportGate and gateDimension prose. Additions only.
-	"envelope.schema.json": "61bb6a23a6a0bd190443bcec795593df339861e15d9bb9b0205422c761ec9fd4",
+	// Bundle journal: additive $defs/journalData (and its helper defs) carrying
+	// the folded summary under its own truncation field; envelope data.truncated
+	// keeps its boolean-or-array shape. Additions only.
+	// journal step pairing key: $defs/journal{Step,UnfinishedStep,ChainBreak}
+	// step stops being a date-time (it carries a PID and sequence suffix), so
+	// the format narrowing is dropped. No property, required key, or type
+	// changed.
+	// journal unobserved sweep: additive optional boolean
+	// $defs/journalBundleDigests.unobserved. No existing property, required key,
+	// or type changed.
+	"envelope.schema.json": "8cb3502ed2684345483b4cdf4b8c6315439098ec04c0da53e276dd6b7fac8639",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -495,6 +505,15 @@ var publishedSemantics = map[string]string{
 	// property, required key, or type changed — the envelope fetchEstimate entry
 	// from f3a22047 is untouched).
 	"usage.schema.json": "95da162703b04193308f8c55cef95affefb4ecd278cc09e5ea3801e061be999e",
+	// additive journal.schema.json (external per-bundle journal line records
+	// carrying canonical repo root; no existing schema property, required key,
+	// or type changed).
+	// journal step pairing key: start/end `step` stops being a date-time (it
+	// carries a PID and sequence suffix) and gains its description. No
+	// property, required key, or type changed.
+	// journal unobserved sweep: additive optional boolean
+	// $defs/bundleDigests.unobserved. Nothing existing changed.
+	"journal.schema.json": "7354407e6e2ca5f7a450ee6136c52b4b4ac68afe9f4133718dcd5991ad5bedd9",
 	// additive validation.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed). It pins the trusted pass: one
 	// result per finding sig with its verdict, reason, optional one-rank

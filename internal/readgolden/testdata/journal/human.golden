@@ -1,0 +1,9 @@
+exit: 0
+--- stdout ---
+journal: local-x (2 steps, 0 unfinished, 0 chain breaks)
+  1  10:03:12Z  fetch-local  exit 0     wrote full.diff
+      next: run the review
+  2  10:05:44Z  record       exit 1     refusal review-empty (2 warnings)
+--- stderr ---
+
+--- files ---

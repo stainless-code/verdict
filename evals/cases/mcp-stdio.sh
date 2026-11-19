@@ -60,12 +60,12 @@ if jq -e 'select(.id == 1).result.instructions | (type == "string") and (contain
 else
   bad "initialize instructions are missing or thin"
 fi
-if jq -e 'select(.id == 2).result.tools | length == 25' <"$MCP_OUT" >/dev/null; then
-  good "tools/list carries 24 core tools (triage is operator-only)"
+if jq -e 'select(.id == 2).result.tools | length == 26' <"$MCP_OUT" >/dev/null; then
+  good "tools/list carries 26 core tools (triage is operator-only)"
 else
-  bad "tools/list count is not 24"
+  bad "tools/list count is not 26"
 fi
-if jq -e 'select(.id == 2).result.tools | map(.name) | (index("report") != null) and (index("post") != null) and (index("ingest") != null) and (index("risk") != null) and (index("install") == null) and (index("triage") == null)' <"$MCP_OUT" >/dev/null; then
+if jq -e 'select(.id == 2).result.tools | map(.name) | (index("report") != null) and (index("post") != null) and (index("ingest") != null) and (index("journal") != null) and (index("risk") != null) and (index("install") == null) and (index("triage") == null)' <"$MCP_OUT" >/dev/null; then
   good "tool names follow the core surface (risk joins; install and triage are never tools)"
 else
   bad "tool names drifted"
@@ -156,8 +156,8 @@ cat >"$FRAMES" <<'EOF'
 EOF
 run_mcp_input "$FRAMES" --read-only
 if [ "$EVAL_STATUS" -eq 0 ]; then good "--read-only session exits 0"; else bad "--read-only exit $EVAL_STATUS"; fi
-if jq -e 'select(.id == 2).result.tools | (length == 14) and (map(.name) | (index("report") != null) and (index("record") != null) and (index("handoff") != null) and (index("config") != null) and (index("pr_wait") != null) and (index("risk") != null) and (index("ingest") == null) and (index("triage") == null))' <"$MCP_OUT" >/dev/null; then
-  good "--read-only exposes report, the dry-run record tool, config, pr_wait, risk, and no submit verbs"
+if jq -e 'select(.id == 2).result.tools | (length == 15) and (map(.name) | (index("report") != null) and (index("record") != null) and (index("handoff") != null) and (index("journal") != null) and (index("config") != null) and (index("pr_wait") != null) and (index("risk") != null) and (index("ingest") == null) and (index("triage") == null))' <"$MCP_OUT" >/dev/null; then
+  good "--read-only exposes report, journal, the dry-run record tool, config, pr_wait, risk, and no submit verbs"
 else
   bad "--read-only tool list drifted"
 fi
@@ -185,8 +185,8 @@ else
 fi
 run_mcp_input "$FRAMES" --operator
 if [ "$EVAL_STATUS" -eq 0 ]; then good "--operator session exits 0"; else bad "--operator exit $EVAL_STATUS"; fi
-if jq -e 'select(.id == 2).result.tools | (length == 26) and (map(.name) | (index("triage") != null) and (index("ingest") != null)) and (map(select(.name == "triage"))[0].inputSchema.properties.status.enum == ["open","addressed","wont-fix","false-positive","deferred"])' <"$MCP_OUT" >/dev/null; then
-  good "--operator exposes 25 tools including ingest and triage with its status enum"
+if jq -e 'select(.id == 2).result.tools | (length == 27) and (map(.name) | (index("triage") != null) and (index("ingest") != null) and (index("journal") != null)) and (map(select(.name == "triage"))[0].inputSchema.properties.status.enum == ["open","addressed","wont-fix","false-positive","deferred"])' <"$MCP_OUT" >/dev/null; then
+  good "--operator exposes 27 tools including ingest, journal, and triage with its status enum"
 else
   bad "--operator tool list drifted"
 fi

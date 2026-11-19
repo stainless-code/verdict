@@ -1,0 +1,27 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "journal",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": {
+    "bundle": "local-x",
+    "steps": [],
+    "unfinished": [],
+    "chain_breaks": [],
+    "truncation": {
+      "dropped": 0,
+      "at": null,
+      "kept_from": null
+    },
+    "unreadable_lines": 0
+  },
+  "error": null
+}
+--- stderr ---
+
+--- files ---
