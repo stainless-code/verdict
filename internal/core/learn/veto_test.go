@@ -33,6 +33,12 @@ const vetoSeed = `{"id":"active-one","rule":"Retire the first active rule","scop
 // in it.
 const vetoSettle = 200 * time.Millisecond
 
+// vetoLockWait is the wait the veto test gives the store lock. Eighteen writers
+// started together serialize on one fsync'd read-modify-write each, so a loaded
+// machine can starve the last of them past the operator's five seconds while
+// the code is right; the test grades the rows kept, not the shipped budget.
+const vetoLockWait = time.Minute
+
 // mixedOp is one write started by the test, tagged with the row it must leave
 // behind and a label for the failure message.
 type mixedOp struct {
@@ -56,6 +62,7 @@ type outcome struct {
 func TestVetoAndAppendKeepEveryRow(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
+	t.Cleanup(kb.LockWaitForTest(vetoLockWait))
 	store := seedVetoStore(t, root)
 	ops := mixedOps()
 	held := holdStoreLock(t, store)
@@ -73,6 +80,35 @@ func TestVetoAndAppendKeepEveryRow(t *testing.T) {
 		}
 	}
 	assertStatuses(t, rows)
+}
+
+// TestAppendRefusesInsideTheBudgetTheHookSets proves the seam the veto test
+// raises reaches the shipped lock: with a one-nanosecond budget an append
+// queued behind a held lock refuses store-busy inside the settle window, where
+// the shipped five seconds is still waiting. It is the mutation guard on the
+// hook itself: a hook nothing reads leaves this append blocked past the window.
+func TestAppendRefusesInsideTheBudgetTheHookSets(t *testing.T) {
+	root := t.TempDir()
+	t.Chdir(root)
+	store := seedVetoStore(t, root)
+	release := holdStoreLock(t, store)
+	defer release()
+	t.Cleanup(kb.LockWaitForTest(time.Nanosecond))
+	refused := make(chan *core.RefusalError, 1)
+	go func() {
+		_, ref := Run(context.Background(),
+			writeRequest(&Request{Rule: appendPairs[0].rule, Scope: "internal", Rigor: "walked"}))
+		refused <- ref
+	}()
+	select {
+	case ref := <-refused:
+		if ref == nil || ref.Code != codeStoreBusy {
+			t.Fatalf("append under a held lock = %v; want a %s refusal", ref, codeStoreBusy)
+		}
+	case <-time.After(vetoSettle):
+		t.Fatalf("append was still waiting %s into a one-nanosecond budget; the hook never "+
+			"reached the store lock", vetoSettle)
+	}
 }
 
 // seedVetoStore writes the six seeded rows and returns the store path.

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
@@ -86,6 +87,20 @@ func AppendHistory(row *jq.Obj, ev *jq.Obj) {
 // raises it: sixteen waiters can starve one past a budget sized for a single
 // operator write while the machine is loaded.
 var lockWait = storelock.DefaultWait
+
+// LockWaitForTest sets the wait a store writer gives its lock for the rest of
+// this process and returns the function that restores the shipped one. It is
+// the seam a test in another package needs: a test that starts more concurrent
+// writers than an operator ever would serializes them on one fsync'd
+// read-modify-write each, so a loaded machine can starve the last of them past
+// the operator's five seconds while the code is right (docs/ci-and-tests.md).
+// No product caller touches it, and [storelock.DefaultWait] stays the shipped
+// budget.
+func LockWaitForTest(wait time.Duration) (restore func()) {
+	prev := lockWait
+	lockWait = wait
+	return func() { lockWait = prev }
+}
 
 // Lock takes the store's OS advisory lock and returns its release. A
 // read-modify-write holds it above its read, so the append, the veto rewrite,
