@@ -85,7 +85,15 @@ func TestMatchQuoteA2(t *testing.T) {
 		"+++ /dev/null\n" +
 		"@@ -1,2 +0,0 @@\n" +
 		"-package gone\n" +
-		"-func removedForever() {}\n"
+		"-func removedForever() {}\n" +
+		"diff --git a/pkg/short.go b/pkg/short.go\n" +
+		"--- a/pkg/short.go\n" +
+		"+++ b/pkg/short.go\n" +
+		"@@ -1,3 +1,3 @@\n" +
+		"-\tx := compute(0)\n" +
+		"+\tx := compute(1)\n" +
+		" \treturn\n" +
+		" }\n"
 
 	idx := evidence.IndexDiff([]byte(diff))
 
@@ -224,6 +232,66 @@ func TestMatchQuoteA2(t *testing.T) {
 			},
 			wantStatus: "unverified",
 			wantReason: "text-differs",
+		},
+		{
+			name: "multi-line interior strict substring fails",
+			req: evidence.QuoteRequest{
+				Path:  "pkg/service.go",
+				Line:  16,
+				Quote: "computePrimaryDigest(payload, salt)\nresult == \"\"\nreturn errEmpty",
+			},
+			wantStatus: "unverified",
+			wantReason: "text-differs",
+		},
+		{
+			name: "multi-line trivial partial quote under 12 non-space chars fails (A2b)",
+			req: evidence.QuoteRequest{
+				Path:  "pkg/short.go",
+				Line:  2,
+				Quote: ")\nreturn",
+			},
+			wantStatus: "unverified",
+			wantReason: "text-differs",
+		},
+		{
+			name: "multi-line partial quote with 11 non-space chars fails (A2b)",
+			req: evidence.QuoteRequest{
+				Path:  "pkg/short.go",
+				Line:  2,
+				Quote: "te(1)\nreturn",
+			},
+			wantStatus: "unverified",
+			wantReason: "text-differs",
+		},
+		{
+			name: "multi-line partial quote with 12 non-space chars verifies (A2b)",
+			req: evidence.QuoteRequest{
+				Path:  "pkg/short.go",
+				Line:  2,
+				Quote: "ute(1)\nreturn",
+			},
+			wantStatus: "verified",
+			wantReason: "",
+		},
+		{
+			name: "multi-line exact whole lines under 12 non-space chars verifies (A2b)",
+			req: evidence.QuoteRequest{
+				Path:  "pkg/short.go",
+				Line:  3,
+				Quote: "return\n}",
+			},
+			wantStatus: "verified",
+			wantReason: "",
+		},
+		{
+			name: "exact single closing brace verifies (A2b)",
+			req: evidence.QuoteRequest{
+				Path:  "pkg/short.go",
+				Line:  3,
+				Quote: "}",
+			},
+			wantStatus: "verified",
+			wantReason: "",
 		},
 		{
 			name: "multi-line first line not a suffix fails",

@@ -255,10 +255,7 @@ func stitchHunkLines(df *DiffFile, side string) []stitchedLine {
 // matchStitchedAt applies the multi-line match rule to one stitched slice.
 func matchStitchedAt(window []stitchedLine, quoteLines []string) bool {
 	last := len(quoteLines) - 1
-	if !strings.HasSuffix(window[0].text, quoteLines[0]) {
-		return false
-	}
-	if !strings.HasPrefix(window[last].text, quoteLines[last]) {
+	if !matchMultiLineEdges(window[0].text, window[last].text, quoteLines) {
 		return false
 	}
 	for j := 1; j < last; j++ {
@@ -394,14 +391,12 @@ func matchSingleLine(rawLine, q string) bool {
 	return actual == q
 }
 
-// matchMultiLine checks a multi-line quote: first line suffix, interior lines
-// exact, last line prefix.
+// matchMultiLine checks a multi-line quote under A2/A2b: first line suffix,
+// interior lines exact, last line prefix; any partial edge requires at least
+// MinFragmentRunes non-space characters across the quote.
 func matchMultiLine(rawLines, quoteLines []string) bool {
 	last := len(quoteLines) - 1
-	if !strings.HasSuffix(normalizeLine(rawLines[0]), quoteLines[0]) {
-		return false
-	}
-	if !strings.HasPrefix(normalizeLine(rawLines[last]), quoteLines[last]) {
+	if !matchMultiLineEdges(normalizeLine(rawLines[0]), normalizeLine(rawLines[last]), quoteLines) {
 		return false
 	}
 	for j := 1; j < last; j++ {
@@ -410,6 +405,29 @@ func matchMultiLine(rawLines, quoteLines []string) bool {
 		}
 	}
 	return true
+}
+
+// matchMultiLineEdges verifies the first-line suffix, last-line prefix, and
+// A2b minimum non-space character count when either edge is partial.
+func matchMultiLineEdges(firstActual, lastActual string, quoteLines []string) bool {
+	firstQuote := quoteLines[0]
+	lastQuote := quoteLines[len(quoteLines)-1]
+	if !strings.HasSuffix(firstActual, firstQuote) || !strings.HasPrefix(lastActual, lastQuote) {
+		return false
+	}
+	if firstActual == firstQuote && lastActual == lastQuote {
+		return true
+	}
+	return totalNonSpaceRunes(quoteLines) >= MinFragmentRunes
+}
+
+// totalNonSpaceRunes counts non-whitespace runes across all lines of a quote.
+func totalNonSpaceRunes(lines []string) int {
+	total := 0
+	for _, ln := range lines {
+		total += nonSpaceRunes(ln)
+	}
+	return total
 }
 
 // normalizeLine strips U+200B, collapses runs of Unicode whitespace to one
