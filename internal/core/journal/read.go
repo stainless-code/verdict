@@ -56,7 +56,48 @@ func Read(path, bundleName string) (*Summary, error) {
 		return nil, wrapErr("open "+path, err)
 	}
 	defer func() { _ = f.Close() }()
-	return foldStream(io.LimitReader(f, maxReadBytes), summary)
+	r, err := tailReader(f, maxReadBytes)
+	if err != nil {
+		return nil, wrapErr("read tail of "+path, err)
+	}
+	return foldStream(r, summary)
+}
+
+// tailReader returns a reader over the newest content of f: the whole file when
+// it fits in maxBytes, and otherwise the last maxBytes starting at a record
+// boundary. A capped read therefore keeps the newest records instead of the
+// oldest, and the line the cut lands in is dropped rather than counted as torn.
+func tailReader(f *os.File, maxBytes int64) (io.Reader, error) {
+	info, err := f.Stat()
+	if err != nil {
+		return nil, err
+	}
+	if info.Size() <= maxBytes {
+		return f, nil
+	}
+	if _, err := f.Seek(info.Size()-maxBytes, io.SeekStart); err != nil {
+		return nil, err
+	}
+	br := bufio.NewReader(f)
+	if err := discardPartialLine(br); err != nil {
+		return nil, err
+	}
+	return br, nil
+}
+
+func discardPartialLine(br *bufio.Reader) error {
+	for {
+		b, err := br.ReadByte()
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
+		}
+		if b == '\n' {
+			return nil
+		}
+	}
 }
 
 func emptySummary(bundleName string) *Summary {

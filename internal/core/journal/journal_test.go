@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -325,6 +326,41 @@ func TestAppendAfterTornTailKeepsTheNewRecordReadable(t *testing.T) {
 	}
 	if sum.UnreadableLines != 1 {
 		t.Fatalf("UnreadableLines = %d, want only the torn fragment", sum.UnreadableLines)
+	}
+}
+
+func TestReadKeepsTheNewestRecordsPastTheReadCap(t *testing.T) {
+	t.Parallel()
+	jpath := filepath.Join(t.TempDir(), "local-big.jsonl")
+	t0 := time.Date(2026, 11, 19, 10, 0, 0, 0, time.UTC)
+	const records = 20000
+	const firstPID = 1000
+	var b strings.Builder
+	for i := range records {
+		ts := t0.Add(time.Duration(i) * time.Second).Format(time.RFC3339Nano)
+		fmt.Fprintf(&b, `{"schema_version":"1","phase":"end","repo":"/repo/big","step":%q,"verb":"record","channel":"cli","started_at":%q,"ended_at":%q,"refusal":null,"next":"","bundle":{"before":null,"after":"aaaa"},"wrote":[],"removed":[],"pid":%d,"exit":0,"warnings":0}`+"\n",
+			ts, ts, ts, firstPID+i)
+	}
+	mustWriteFile(t, jpath, []byte(b.String()), journalFileMode)
+	if info, err := os.Stat(jpath); err != nil || info.Size() <= maxReadBytes {
+		t.Fatalf("journal size = %v, want a file past the %d-byte read cap (err=%v)", info.Size(), maxReadBytes, err)
+	}
+
+	sum, err := Read(jpath, "local-big")
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if len(sum.Steps) == 0 || len(sum.Steps) == records {
+		t.Fatalf("Steps = %d, want a tail window of the %d records", len(sum.Steps), records)
+	}
+	if sum.UnreadableLines != 0 {
+		t.Fatalf("UnreadableLines = %d, want the line the cap lands in dropped, not torn", sum.UnreadableLines)
+	}
+	if got, want := sum.Steps[len(sum.Steps)-1].PID, firstPID+records-1; got != want {
+		t.Fatalf("newest folded PID = %d, want %d", got, want)
+	}
+	if got := sum.Steps[0].PID; got <= firstPID {
+		t.Fatalf("oldest folded PID = %d, want the earliest records dropped", got)
 	}
 }
 
