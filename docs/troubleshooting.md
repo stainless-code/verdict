@@ -1314,6 +1314,12 @@ Cause: `--agent` names an unknown agent.
 
 Fix: re-run with one of the known agent names listed above.
 
+## `spec-too-large`
+
+Cause: the combined `--spec` checklist sources enumerate more than 60 specification items; `fetch` and `fetch-local` refuse before writing any bundle files.
+
+Fix: narrow the `--spec` file under 60 checklist items or split the PR, then re-fetch.
+
 ## `spend-capped`
 
 Cause: the projected run cost exceeds the personal spend ceiling.

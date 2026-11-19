@@ -181,6 +181,7 @@ var fetchValueWants = map[string]string{
 	"--provider": "<name>",
 	flagIndex:    "<ref|dir>",
 	flagContext:  "<file|dir>",
+	flagSpec:     "<file>",
 	flagIgnore:   "<glob>",
 }
 
@@ -270,48 +271,56 @@ func parseLocalToken(r *cli.Runner, f *core.FetchLocalFlags, args []string, i in
 	return i, 0, false
 }
 
+// localValueWants maps each fetch-local single-value or repeatable flag to its
+// operand placeholder for missing-value usage errors.
+var localValueWants = map[string]string{
+	flagIgnore:  "<glob>",
+	flagContext: "<file|dir>",
+	flagSpec:    "<file>",
+	"--range":   "A[..|...]B",
+	"--base":    "<ref>",
+	flagIndex:   "<ref|dir>",
+}
+
 // parseLocalOption consumes fetch-local's value and default-exclusion flags.
 // It returns the next index, a missing-value usage error, and a match flag.
 func parseLocalOption(f *core.FetchLocalFlags, a string, args []string, i int) (int, *cli.UsageError, bool) {
+	if want, ok := localValueWants[a]; ok {
+		v, next, u := cli.FlagValue(args, i, a, want)
+		if u != nil {
+			return i, u, true
+		}
+		setLocalValue(f, a, v)
+		return next, nil, true
+	}
 	switch a {
 	case "--no-default-excludes":
 		f.NoDefaultExcludes = true
 		return i, nil, true
-	case flagIgnore:
-		v, next, u := cli.FlagValue(args, i, a, "<glob>")
-		f.Ignore = append(f.Ignore, v)
-		return next, u, true
-	case flagContext:
-		v, next, u := cli.FlagValue(args, i, a, "<file|dir>")
-		f.Context = append(f.Context, v)
-		return next, u, true
-	case "--range":
-		v, next, u := cli.FlagValue(args, i, a, "A[..|...]B")
-		if u != nil {
-			return i, u, true
-		}
-		f.RangeSpec = v
-		return next, nil, true
-	case "--base":
-		v, next, u := cli.FlagValue(args, i, a, "<ref>")
-		if u != nil {
-			return i, u, true
-		}
-		f.BaseRef = v
-		return next, nil, true
 	case "--stash":
 		f.HasStash = true
 		f.StashN, i = stashValue(args, i)
 		return i, nil, true
-	case flagIndex:
-		v, next, u := cli.FlagValue(args, i, a, "<ref|dir>")
-		if u != nil {
-			return i, u, true
-		}
-		f.Index = v
-		return next, nil, true
 	default:
 		return i, nil, false
+	}
+}
+
+// setLocalValue applies one fetch-local value flag's operand.
+func setLocalValue(f *core.FetchLocalFlags, name, value string) {
+	switch name {
+	case flagIgnore:
+		f.Ignore = append(f.Ignore, value)
+	case flagContext:
+		f.Context = append(f.Context, value)
+	case flagSpec:
+		f.Spec = append(f.Spec, value)
+	case "--range":
+		f.RangeSpec = value
+	case "--base":
+		f.BaseRef = value
+	case flagIndex:
+		f.Index = value
 	}
 }
 
@@ -331,6 +340,8 @@ func setFetchValue(f *core.FetchFlags, name, value string) {
 		f.Ignore = append(f.Ignore, value)
 	case flagContext:
 		f.Context = append(f.Context, value)
+	case flagSpec:
+		f.Spec = append(f.Spec, value)
 	case "--provider":
 		f.HasProvider, f.Provider = true, value
 	case flagIndex:
@@ -345,6 +356,7 @@ func setFetchValue(f *core.FetchFlags, name, value string) {
 const (
 	flagIgnore     = "--ignore"
 	flagContext    = "--context"
+	flagSpec       = "--spec"
 	providerGitHub = "github"
 	flagChunk      = "--chunk"
 	flagIndex      = "--index"

@@ -80,6 +80,11 @@ func (st *state) dispatch(ctx context.Context, s *session, req *core.FetchReques
 		runner: s, env: s.env, repo: req.Repo, pr: req.Pr, root: req.RootPath(),
 		ignore: req.Flags.Ignore, noDefaultExcludes: req.Flags.NoDefaultExcludes,
 	}
+	files, err := collectContextInputs(f.Context, f.Spec)
+	if err != nil {
+		return nil, st.fail(ctx, err, s)
+	}
+	ctx2.contextFiles, ctx2.contextLoaded = files, true
 	budget, _, err := fetchPrepare(ctx2, req, f)
 	if err != nil {
 		return nil, st.fail(ctx, err, s)
@@ -128,6 +133,11 @@ func RunLocal(ctx context.Context, req *core.FetchLocalRequest) (*core.FetchResp
 		runner: s, env: s.env, repo: req.Repo, pr: req.Pr, root: req.RootPath(),
 		ignore: req.Flags.Ignore, noDefaultExcludes: req.Flags.NoDefaultExcludes,
 	}
+	files, err := collectContextInputs(req.Flags.Context, req.Flags.Spec)
+	if err != nil {
+		return nil, st.fail(ctx, err, s)
+	}
+	ctx2.contextFiles, ctx2.contextLoaded = files, true
 	data, next, err := runLocalTail(ctx, ctx2, req)
 	if err != nil {
 		return nil, st.fail(ctx, err, s)

@@ -382,6 +382,8 @@ type fetchRunCtx struct {
 	panelSrc          string
 	ignore            []string
 	panelList         []string
+	contextFiles      []contextFile
 	noDefaultExcludes bool
 	receiptLoaded     bool
+	contextLoaded     bool
 }

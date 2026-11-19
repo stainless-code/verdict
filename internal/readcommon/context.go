@@ -13,19 +13,29 @@ import (
 
 const contextManifestCap = 2097152
 
-// ContextSources lists the source names in an explicitly fetched bundle.
-func ContextSources(dir string) []string {
+// ContextEntry is one source record from a bundle's context.json manifest.
+type ContextEntry struct {
+	Source string `json:"source"`
+	Role   string `json:"role"`
+}
+
+// ContextEntries reads the source names and roles from context.json.
+func ContextEntries(dir string) []ContextEntry {
 	f, err := os.Open(filepath.Join(dir, "context.json"))
 	if err != nil {
 		return nil
 	}
 	defer f.Close()
-	var rows []struct {
-		Source string `json:"source"`
-	}
+	var rows []ContextEntry
 	if err := json.NewDecoder(io.LimitReader(f, contextManifestCap)).Decode(&rows); err != nil {
 		return nil
 	}
+	return rows
+}
+
+// ContextSources lists the source names in an explicitly fetched bundle.
+func ContextSources(dir string) []string {
+	rows := ContextEntries(dir)
 	var out []string
 	for _, row := range rows {
 		out = append(out, row.Source)

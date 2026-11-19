@@ -208,6 +208,7 @@ export type RefusalCode =
   | "skill-read-failed"
   | "skill-target-file"
   | "skill-unknown-agent"
+  | "spec-too-large"
   | "spend-capped"
   | "stale-review-artifact"
   | "store-busy"
