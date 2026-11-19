@@ -427,6 +427,8 @@ func (w *identityWriter) defaults(defs *EffectiveDefaults) {
 	w.text(strText(defs.DisplayMinSeverity))
 	w.text("post_min_severity")
 	w.text(strText(defs.PostMinSeverity))
+	w.text("spec_coverage_min")
+	w.text(strconv.Itoa(defs.SpecCoverageMin))
 }
 
 // requirements keeps the path and category masks in separate fields: a

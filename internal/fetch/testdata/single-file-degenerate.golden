@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "diff-too-large",
-    "message": "group 79cb327781f6115bd9d2ca21b19afa9e39edade7619defea51856731270c87e9 diff 1220081 bytes exceeds its cap 512000 bytes (from built-in) — split the range (fetch-local --range/--base, fetch --base-sha) or exclude files with --ignore <glob>, then re-fetch (override deliberate exceptions only: REVIEW_MAX_BYTES=<n> or the typed max_bytes default)\nnext: fit the diff under the cap with --ignore <glob> (repeatable on fetch and fetch-local) or a .verdict/ignore pattern committed on the base revision — the cap is measured after those exclusions. Paths after -- on fetch-local narrow the review to the matching files — they select, they never exclude\ntry: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch",
+    "message": "group d35afd492a7adc637906cf58378a1d2e16397e90680fdd580891c5797aeccda6 diff 1220081 bytes exceeds its cap 512000 bytes (from built-in) — split the range (fetch-local --range/--base, fetch --base-sha) or exclude files with --ignore <glob>, then re-fetch (override deliberate exceptions only: REVIEW_MAX_BYTES=<n> or the typed max_bytes default)\nnext: fit the diff under the cap with --ignore <glob> (repeatable on fetch and fetch-local) or a .verdict/ignore pattern committed on the base revision — the cap is measured after those exclusions. Paths after -- on fetch-local narrow the review to the matching files — they select, they never exclude\ntry: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch",
     "candidates": [
       {
         "kind": "paths",
@@ -34,7 +34,7 @@ exit: 1
 » gh pr view acme/app#4704
 » gh pr diff -> .verdict/state/4704/full.diff
 » estimate: no comparable past runs — cost unknown (no usable .verdict/state/*/cost.json records yet)
-» chunking opted in for group 79cb327781f6115bd9d2ca21b19afa9e39edade7619defea51856731270c87e9 — single file over cap, keeping today's advisory refusal (split the range or narrow, or override the cap deliberately)
+» chunking opted in for group d35afd492a7adc637906cf58378a1d2e16397e90680fdd580891c5797aeccda6 — single file over cap, keeping today's advisory refusal (split the range or narrow, or override the cap deliberately)
 candidates (suggested scopes — re-run narrowed, nothing auto-narrowed):
 - [paths] re-fetch narrowed to -- huge.txt (~1220081 bytes)
 - [range] split the range in half (~610041 bytes each): fetch-local --range/--base, fetch --base-sha/--since

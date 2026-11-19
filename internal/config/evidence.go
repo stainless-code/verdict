@@ -86,6 +86,7 @@ func evidenceValues(defaults *ResolvedDefaults) []EvidenceValue {
 		{Key: keyEffort, Value: values.Effort, Origin: get(keyEffort)},
 		{Key: keyDisplayFloor, Value: values.DisplayMinSeverity, Origin: get(keyDisplayFloor)},
 		{Key: keyPostFloor, Value: values.PostMinSeverity, Origin: get(keyPostFloor)},
+		{Key: keySpecCoverageMin, Value: values.SpecCoverageMin, Origin: get(keySpecCoverageMin)},
 	}
 	if values.KBMaxChars != nil {
 		out = append(out, EvidenceValue{Key: keyKBMaxChars, Value: values.KBMaxChars, Origin: get(keyKBMaxChars)})

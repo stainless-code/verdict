@@ -72,7 +72,7 @@ exit: 0
 » gh pr diff -> .verdict/state/4703/full.diff
 » estimate: no comparable past runs — cost unknown (no usable .verdict/state/*/cost.json records yet)
 » cap: 100000000 bytes (from REVIEW_MAX_BYTES, default 512000)
-» cap: group aed44f590b75dc477b0c3f49235f6496e42d4800c123e6768d11f40ae4344b17 100000000 bytes (from REVIEW_MAX_BYTES, default 512000)
+» cap: group 51a7d8ba44231bb1862c77ae4ee227c896b65a0963f378dc8c2384ab3faa25e5 100000000 bytes (from REVIEW_MAX_BYTES, default 512000)
 » roles -> .verdict/state/4703/roles.txt (heuristic file roles for triage)
 » panel: none pinned (set REVIEW_PANEL or the typed defaults.panel for comparable, cost-capped runs)
 » reviews + inline comments
@@ -355,7 +355,7 @@ rather than becoming ground truth.
 --- file C/.verdict/state/4703/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "02d5ca4f686d2fad2c83bdd6090598779d0d5adf7b5557a256033e1330ced937",
+  "run_id": "84103b2dbaea48afa58efc89cc7f102634f902d060c5fbdb6e09bf3862e8968d",
   "prompts_hash": "083563d7a259e7198be7760bae6da25d1d2a837ccaa7483b29bc0e3b54b6b82e",
   "inputs": [
     {
@@ -648,7 +648,7 @@ rather than becoming ground truth.
       "name": "run.json",
       "status": "included",
       "sha256": "RUNTIME_SHA256",
-      "bytes": 32182
+      "bytes": 34683
     },
     {
       "kind": "bundle",
@@ -754,7 +754,7 @@ rather than becoming ground truth.
       "name": ".verdict/config.json",
       "status": "built-in",
       "layer": "built-in,env",
-      "detail": "budget_usd=built-in, chunk=built-in, display_min_severity=built-in, effort=built-in, kb_policy.max_fp_rate=built-in, kb_policy.min_judged=built-in, max_bytes=env, panel=built-in, post_min_severity=built-in"
+      "detail": "budget_usd=built-in, chunk=built-in, display_min_severity=built-in, effort=built-in, kb_policy.max_fp_rate=built-in, kb_policy.min_judged=built-in, max_bytes=env, panel=built-in, post_min_severity=built-in, spec_coverage_min=built-in"
     },
     {
       "kind": "exclusions",
@@ -823,7 +823,7 @@ rather than becoming ground truth.
             "f13.txt"
           ],
           "scopes": [],
-          "id": "aed44f590b75dc477b0c3f49235f6496e42d4800c123e6768d11f40ae4344b17",
+          "id": "51a7d8ba44231bb1862c77ae4ee227c896b65a0963f378dc8c2384ab3faa25e5",
           "label": "group 1"
         }
       ]
@@ -881,6 +881,10 @@ rather than becoming ground truth.
             "post_min_severity": {
               "layer": "built-in",
               "source": "built-in"
+            },
+            "spec_coverage_min": {
+              "layer": "built-in",
+              "source": "built-in"
             }
           },
           "shadowed": [
@@ -896,6 +900,7 @@ rather than becoming ground truth.
             "max_bytes": 100000000,
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
+            "spec_coverage_min": 80,
             "chunk": false
           }
         }
@@ -952,6 +957,10 @@ rather than becoming ground truth.
             "post_min_severity": {
               "layer": "built-in",
               "source": "built-in"
+            },
+            "spec_coverage_min": {
+              "layer": "built-in",
+              "source": "built-in"
             }
           },
           "shadowed": [
@@ -967,6 +976,7 @@ rather than becoming ground truth.
             "max_bytes": 100000000,
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
+            "spec_coverage_min": 80,
             "chunk": false
           }
         }
@@ -1023,6 +1033,10 @@ rather than becoming ground truth.
             "post_min_severity": {
               "layer": "built-in",
               "source": "built-in"
+            },
+            "spec_coverage_min": {
+              "layer": "built-in",
+              "source": "built-in"
             }
           },
           "shadowed": [
@@ -1038,6 +1052,7 @@ rather than becoming ground truth.
             "max_bytes": 100000000,
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
+            "spec_coverage_min": 80,
             "chunk": false
           }
         }
@@ -1094,6 +1109,10 @@ rather than becoming ground truth.
             "post_min_severity": {
               "layer": "built-in",
               "source": "built-in"
+            },
+            "spec_coverage_min": {
+              "layer": "built-in",
+              "source": "built-in"
             }
           },
           "shadowed": [
@@ -1109,6 +1128,7 @@ rather than becoming ground truth.
             "max_bytes": 100000000,
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
+            "spec_coverage_min": 80,
             "chunk": false
           }
         }
@@ -1165,6 +1185,10 @@ rather than becoming ground truth.
             "post_min_severity": {
               "layer": "built-in",
               "source": "built-in"
+            },
+            "spec_coverage_min": {
+              "layer": "built-in",
+              "source": "built-in"
             }
           },
           "shadowed": [
@@ -1180,6 +1204,7 @@ rather than becoming ground truth.
             "max_bytes": 100000000,
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
+            "spec_coverage_min": 80,
             "chunk": false
           }
         }
@@ -1236,6 +1261,10 @@ rather than becoming ground truth.
             "post_min_severity": {
               "layer": "built-in",
               "source": "built-in"
+            },
+            "spec_coverage_min": {
+              "layer": "built-in",
+              "source": "built-in"
             }
           },
           "shadowed": [
@@ -1251,6 +1280,7 @@ rather than becoming ground truth.
             "max_bytes": 100000000,
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
+            "spec_coverage_min": 80,
             "chunk": false
           }
         }
@@ -1307,6 +1337,10 @@ rather than becoming ground truth.
             "post_min_severity": {
               "layer": "built-in",
               "source": "built-in"
+            },
+            "spec_coverage_min": {
+              "layer": "built-in",
+              "source": "built-in"
             }
           },
           "shadowed": [
@@ -1322,6 +1356,7 @@ rather than becoming ground truth.
             "max_bytes": 100000000,
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
+            "spec_coverage_min": 80,
             "chunk": false
           }
         }
@@ -1378,6 +1413,10 @@ rather than becoming ground truth.
             "post_min_severity": {
               "layer": "built-in",
               "source": "built-in"
+            },
+            "spec_coverage_min": {
+              "layer": "built-in",
+              "source": "built-in"
             }
           },
           "shadowed": [
@@ -1393,6 +1432,7 @@ rather than becoming ground truth.
             "max_bytes": 100000000,
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
+            "spec_coverage_min": 80,
             "chunk": false
           }
         }
@@ -1449,6 +1489,10 @@ rather than becoming ground truth.
             "post_min_severity": {
               "layer": "built-in",
               "source": "built-in"
+            },
+            "spec_coverage_min": {
+              "layer": "built-in",
+              "source": "built-in"
             }
           },
           "shadowed": [
@@ -1464,6 +1508,7 @@ rather than becoming ground truth.
             "max_bytes": 100000000,
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
+            "spec_coverage_min": 80,
             "chunk": false
           }
         }
@@ -1520,6 +1565,10 @@ rather than becoming ground truth.
             "post_min_severity": {
               "layer": "built-in",
               "source": "built-in"
+            },
+            "spec_coverage_min": {
+              "layer": "built-in",
+              "source": "built-in"
             }
           },
           "shadowed": [
@@ -1535,6 +1584,7 @@ rather than becoming ground truth.
             "max_bytes": 100000000,
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
+            "spec_coverage_min": 80,
             "chunk": false
           }
         }
@@ -1591,6 +1641,10 @@ rather than becoming ground truth.
             "post_min_severity": {
               "layer": "built-in",
               "source": "built-in"
+            },
+            "spec_coverage_min": {
+              "layer": "built-in",
+              "source": "built-in"
             }
           },
           "shadowed": [
@@ -1606,6 +1660,7 @@ rather than becoming ground truth.
             "max_bytes": 100000000,
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
+            "spec_coverage_min": 80,
             "chunk": false
           }
         }
@@ -1662,6 +1717,10 @@ rather than becoming ground truth.
             "post_min_severity": {
               "layer": "built-in",
               "source": "built-in"
+            },
+            "spec_coverage_min": {
+              "layer": "built-in",
+              "source": "built-in"
             }
           },
           "shadowed": [
@@ -1677,6 +1736,7 @@ rather than becoming ground truth.
             "max_bytes": 100000000,
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
+            "spec_coverage_min": 80,
             "chunk": false
           }
         }
@@ -1733,6 +1793,10 @@ rather than becoming ground truth.
             "post_min_severity": {
               "layer": "built-in",
               "source": "built-in"
+            },
+            "spec_coverage_min": {
+              "layer": "built-in",
+              "source": "built-in"
             }
           },
           "shadowed": [
@@ -1748,6 +1812,7 @@ rather than becoming ground truth.
             "max_bytes": 100000000,
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
+            "spec_coverage_min": 80,
             "chunk": false
           }
         }
@@ -1804,6 +1869,10 @@ rather than becoming ground truth.
             "post_min_severity": {
               "layer": "built-in",
               "source": "built-in"
+            },
+            "spec_coverage_min": {
+              "layer": "built-in",
+              "source": "built-in"
             }
           },
           "shadowed": [
@@ -1819,6 +1888,7 @@ rather than becoming ground truth.
             "max_bytes": 100000000,
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
+            "spec_coverage_min": 80,
             "chunk": false
           }
         }
@@ -1868,6 +1938,10 @@ rather than becoming ground truth.
         "post_min_severity": {
           "layer": "built-in",
           "source": "built-in"
+        },
+        "spec_coverage_min": {
+          "layer": "built-in",
+          "source": "built-in"
         }
       },
       "shadowed": [
@@ -1883,6 +1957,7 @@ rather than becoming ground truth.
         "max_bytes": 100000000,
         "kb_min_judged": 5,
         "kb_max_fp_rate": 0.5,
+        "spec_coverage_min": 80,
         "chunk": false
       }
     }
@@ -1892,7 +1967,7 @@ rather than becoming ground truth.
   "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
   "captured_at": "0000-00-00T00:00:00Z",
   "config_sha256": "",
-  "inputs_sha256": "2c267f9c77294f20836218c90156422e9aa4aa7062cc98a362bb3a148319e6d4",
+  "inputs_sha256": "15ae964f72095ed441678339def265d0fbfaec68b6030ef73be7b13847f9b097",
   "evidence": {
     "plan": {
       "effort_tier": "standard",
@@ -1919,7 +1994,7 @@ rather than becoming ground truth.
             "f13.txt"
           ],
           "scopes": [],
-          "id": "aed44f590b75dc477b0c3f49235f6496e42d4800c123e6768d11f40ae4344b17",
+          "id": "51a7d8ba44231bb1862c77ae4ee227c896b65a0963f378dc8c2384ab3faa25e5",
           "label": "group 1"
         }
       ]
@@ -2002,6 +2077,14 @@ rather than becoming ground truth.
       {
         "key": "post_min_severity",
         "value": null,
+        "origin": {
+          "layer": "built-in",
+          "source": "built-in"
+        }
+      },
+      {
+        "key": "spec_coverage_min",
+        "value": 80,
         "origin": {
           "layer": "built-in",
           "source": "built-in"

@@ -196,9 +196,9 @@ func documents() []document {
 						object(false, member{keyRequired, array(stringNode(keyScopeDefaults))}),
 						object(false, member{keyRequired, array(stringNode("requirements"))}),
 					)},
-					// One not-clause carries both scope rules: profile and
+					// One not-clause carries all scope rules: profile and
 					// defaults never combine, and scope defaults never carry
-					// kb_policy — the knowledge-base policy is global-only.
+					// global-only keys (kb_policy, spec_coverage_min).
 					{keyNot, object(false, member{keyAnyOf, array(
 						object(false,
 							member{keyRequired, array(stringNode("profile"), stringNode(keyScopeDefaults))}),
@@ -206,6 +206,11 @@ func documents() []document {
 							member{keyRequired, array(stringNode("defaults"))},
 							member{keyProperties, object(false, member{keyScopeDefaults, object(false,
 								member{keyRequired, array(stringNode("kb_policy"))})})},
+						),
+						object(false,
+							member{keyRequired, array(stringNode("defaults"))},
+							member{keyProperties, object(false, member{keyScopeDefaults, object(false,
+								member{keyRequired, array(stringNode("spec_coverage_min"))})})},
 						),
 					)})},
 				}},

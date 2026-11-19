@@ -106,6 +106,10 @@ func TestSchemaParityStructural(t *testing.T) {
 		{"kb rate high", `{"schema_version":"1","defaults":{"kb_policy":{"max_fp_rate":2}}}`, config.CodeBadConfig, "max_fp_rate"},
 		{"scoped kb policy", `{"schema_version":"1","scopes":[{"name":"s","include":["a/**"],
 			"defaults":{"kb_policy":{"min_judged":5}}}]}`, config.CodeBadScope, "kb_policy"},
+		{"spec coverage min zero", `{"schema_version":"1","defaults":{"spec_coverage_min":0}}`, config.CodeBadConfig, "spec_coverage_min"},
+		{"spec coverage min over 100", `{"schema_version":"1","defaults":{"spec_coverage_min":101}}`, config.CodeBadConfig, "spec_coverage_min"},
+		{"scoped spec coverage min", `{"schema_version":"1","scopes":[{"name":"s","include":["a/**"],
+			"defaults":{"spec_coverage_min":90}}]}`, config.CodeBadScope, "spec_coverage_min"},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -259,7 +263,10 @@ func defaultsProperties(t *testing.T) map[string]any {
 // null branch, so a present null refuses on both sides.
 func TestSchemaNullFree(t *testing.T) {
 	props := defaultsProperties(t)
-	optional := []string{"panel", "budget_usd", "max_bytes", "chunk", "kb_policy", "effort", "display_min_severity", "post_min_severity"}
+	optional := []string{
+		"panel", "budget_usd", "max_bytes", "chunk", "kb_policy", "effort",
+		"display_min_severity", "post_min_severity", "spec_coverage_min",
+	}
 	for _, key := range optional {
 		prop, ok := props[key].(map[string]any)
 		if !ok {

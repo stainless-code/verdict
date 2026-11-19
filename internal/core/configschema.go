@@ -59,6 +59,8 @@ type ConfigDefaults struct { //nolint:govet // field order is the published prop
 	Effort             *string         `enum:"cheap|standard|deep"              json:"effort,omitempty"               nonnull:"true"`
 	DisplayMinSeverity *string         `enum:"critical|important|informational" json:"display_min_severity,omitempty" nonnull:"true"`
 	PostMinSeverity    *string         `enum:"critical|important|informational" json:"post_min_severity,omitempty"    nonnull:"true"`
+	// SpecCoverageMin is the global minimum spec checklist coverage percent (1-100).
+	SpecCoverageMin *int `json:"spec_coverage_min,omitempty" max:"100" min:"1" nonnull:"true"`
 }
 
 // ConfigKBPolicy carries the knowledge-base retirement quorum and ceiling.

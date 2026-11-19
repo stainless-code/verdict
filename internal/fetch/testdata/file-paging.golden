@@ -338,7 +338,7 @@ rather than becoming ground truth.
 --- file C/.verdict/state/4712/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "40544bd0718e134a0a8b1f6bc551c4387e87f4f17ff2d53b882d9e4a51b55419",
+  "run_id": "7e42f7d164252a46a389e29be25b058dec7aef1f7615200af98a2f27b8d25e06",
   "prompts_hash": "083563d7a259e7198be7760bae6da25d1d2a837ccaa7483b29bc0e3b54b6b82e",
   "inputs": [
     {
@@ -638,7 +638,7 @@ rather than becoming ground truth.
       "name": "run.json",
       "status": "included",
       "sha256": "RUNTIME_SHA256",
-      "bytes": 6355
+      "bytes": 6815
     },
     {
       "kind": "bundle",
@@ -744,7 +744,7 @@ rather than becoming ground truth.
       "name": ".verdict/config.json",
       "status": "built-in",
       "layer": "built-in",
-      "detail": "budget_usd=built-in, chunk=built-in, display_min_severity=built-in, effort=built-in, kb_policy.max_fp_rate=built-in, kb_policy.min_judged=built-in, max_bytes=built-in, panel=built-in, post_min_severity=built-in"
+      "detail": "budget_usd=built-in, chunk=built-in, display_min_severity=built-in, effort=built-in, kb_policy.max_fp_rate=built-in, kb_policy.min_judged=built-in, max_bytes=built-in, panel=built-in, post_min_severity=built-in, spec_coverage_min=built-in"
     },
     {
       "kind": "exclusions",
@@ -801,7 +801,7 @@ rather than becoming ground truth.
             "f00.txt"
           ],
           "scopes": [],
-          "id": "172388220bfb70d8b8816f84febd319c7357a3700c6be269ba1d95ba1f630187",
+          "id": "7fbeb72c0e1a5ceb0b6a2464059c0c96e1df76576214e7fe146ccf48e7719308",
           "label": "group 1"
         }
       ]
@@ -859,6 +859,10 @@ rather than becoming ground truth.
             "post_min_severity": {
               "layer": "built-in",
               "source": "built-in"
+            },
+            "spec_coverage_min": {
+              "layer": "built-in",
+              "source": "built-in"
             }
           },
           "shadowed": null,
@@ -867,6 +871,7 @@ rather than becoming ground truth.
             "max_bytes": 512000,
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
+            "spec_coverage_min": 80,
             "chunk": false
           }
         }
@@ -916,6 +921,10 @@ rather than becoming ground truth.
         "post_min_severity": {
           "layer": "built-in",
           "source": "built-in"
+        },
+        "spec_coverage_min": {
+          "layer": "built-in",
+          "source": "built-in"
         }
       },
       "shadowed": null,
@@ -924,6 +933,7 @@ rather than becoming ground truth.
         "max_bytes": 512000,
         "kb_min_judged": 5,
         "kb_max_fp_rate": 0.5,
+        "spec_coverage_min": 80,
         "chunk": false
       }
     }
@@ -933,7 +943,7 @@ rather than becoming ground truth.
   "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
   "captured_at": "0000-00-00T00:00:00Z",
   "config_sha256": "",
-  "inputs_sha256": "17574c1162db64ec48561f32bc892773eb0875b08a29e1778f34b31469b62fd2",
+  "inputs_sha256": "924b0e008dd25fc9fe2a1c35a9ad0ffb2cb8331982229e961478be9c4595496e",
   "evidence": {
     "plan": {
       "effort_tier": "standard",
@@ -947,7 +957,7 @@ rather than becoming ground truth.
             "f00.txt"
           ],
           "scopes": [],
-          "id": "172388220bfb70d8b8816f84febd319c7357a3700c6be269ba1d95ba1f630187",
+          "id": "7fbeb72c0e1a5ceb0b6a2464059c0c96e1df76576214e7fe146ccf48e7719308",
           "label": "group 1"
         }
       ]
@@ -1029,6 +1039,14 @@ rather than becoming ground truth.
       {
         "key": "post_min_severity",
         "value": null,
+        "origin": {
+          "layer": "built-in",
+          "source": "built-in"
+        }
+      },
+      {
+        "key": "spec_coverage_min",
+        "value": 80,
         "origin": {
           "layer": "built-in",
           "source": "built-in"

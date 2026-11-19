@@ -882,6 +882,7 @@ the behavior stays off until a layer above turns it on.
 | gate                  | --live                         | auto             |
 | post                  | --bind                         | off              |
 | post                  | defaults.post_min_severity     | unset            |
+| record                | defaults.spec_coverage_min     | 80               |
 | record, triage, learn | defaults.kb_policy.max_fp_rate | 0.5              |
 | record, triage, learn | defaults.kb_policy.min_judged  | 5                |
 | report                | defaults.display_min_severity  | unset            |
@@ -900,9 +901,12 @@ posture and never gate alone.
 `.verdict/config.json` is the only repository configuration file:
 one strict document (schema `schemas/config.schema.json`) for
 defaults (`panel`, `budget_usd`, `max_bytes`, `chunk`, `kb_policy`, `effort`,
-the two severity floors), the local `index` caps (`files`, `file_bytes`,
+the two severity floors, and `spec_coverage_min`), the local `index` caps (`files`, `file_bytes`,
 `tree_bytes`, `shards_bytes`, `keep_trees`, `refs_per_file`), blocking
-clauses, path scopes, named profiles, and the bind requirement. `fetch`/`fetch-local` read it from the base commit (or
+clauses, path scopes, named profiles, and the bind requirement.
+`defaults.spec_coverage_min` is an integer percent from 1 to 100 (built-in
+default 80), global-only like `kb_policy` — set it in root `defaults` or
+personal `review` settings, never inside a scope. `fetch`/`fetch-local` read it from the base commit (or
 the reviewed worktree for local runs) through the same trusted read; unknown
 fields, misplaced nulls, credential keys, and unsatisfiable clauses refuse
 typed (`bad-config`, `bad-config-credentials`, `bad-requirement`, `bad-scope`)

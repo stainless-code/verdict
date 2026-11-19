@@ -45,7 +45,9 @@ var publishedSemantics = map[string]string{
 	// recall character budget.
 	// trigger: additive optional top-level predicate object with seven closed
 	// optional keys; no existing property, required key, or type changed.
-	"config.schema.json": "416293a853aeb457a2c20cd7b13b3fde7278f7537ce179c2c66278827159943f",
+	// spec_coverage_min: additive optional integer 1-100 on defaults (default
+	// 80, global-only — rejected inside scope defaults like kb_policy).
+	"config.schema.json": "d35ca3d6fd6935eba2370fb6a8b702c9c0e30f3bb93252245277f1b404449592",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets

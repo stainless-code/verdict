@@ -351,7 +351,7 @@ api-base-panel
 --- file C/.verdict/state/4701/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "635f187d25d018ea305eba5f15d29009170d906d72e0c003e371ccabef528ae2",
+  "run_id": "54f612abedc25d489801cc37f6fad3015ae51cde9480684ec79be5cd7efe8dea",
   "prompts_hash": "083563d7a259e7198be7760bae6da25d1d2a837ccaa7483b29bc0e3b54b6b82e",
   "panel": [
     "api-base-panel"
@@ -658,7 +658,7 @@ api-base-panel
       "name": "run.json",
       "status": "included",
       "sha256": "RUNTIME_SHA256",
-      "bytes": 6810
+      "bytes": 7270
     },
     {
       "kind": "bundle",
@@ -767,7 +767,7 @@ api-base-panel
       "status": "included",
       "sha256": "58e27b3168ec974a8b85e537eb76211975aee57cb18183d8b9ee42bc7b28b874",
       "layer": "built-in,repo",
-      "detail": "budget_usd=built-in, chunk=built-in, display_min_severity=built-in, effort=built-in, kb_policy.max_fp_rate=built-in, kb_policy.min_judged=built-in, max_bytes=built-in, panel=repo, post_min_severity=built-in"
+      "detail": "budget_usd=built-in, chunk=built-in, display_min_severity=built-in, effort=built-in, kb_policy.max_fp_rate=built-in, kb_policy.min_judged=built-in, max_bytes=built-in, panel=repo, post_min_severity=built-in, spec_coverage_min=built-in"
     },
     {
       "kind": "exclusions",
@@ -823,7 +823,7 @@ api-base-panel
             "notes.txt"
           ],
           "scopes": [],
-          "id": "237f83c450868196442d14082d63ef4166b2e920671c195f769b104ce8320aa4",
+          "id": "2444dd3fbbe5ccac1a88a71dfefbcea4060cdcca518e0a2923575a38a03e2954",
           "label": "group 1"
         }
       ]
@@ -881,6 +881,10 @@ api-base-panel
             "post_min_severity": {
               "layer": "built-in",
               "source": "built-in"
+            },
+            "spec_coverage_min": {
+              "layer": "built-in",
+              "source": "built-in"
             }
           },
           "shadowed": null,
@@ -892,6 +896,7 @@ api-base-panel
             "max_bytes": 512000,
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
+            "spec_coverage_min": 80,
             "chunk": false
           }
         }
@@ -941,6 +946,10 @@ api-base-panel
         "post_min_severity": {
           "layer": "built-in",
           "source": "built-in"
+        },
+        "spec_coverage_min": {
+          "layer": "built-in",
+          "source": "built-in"
         }
       },
       "shadowed": null,
@@ -952,6 +961,7 @@ api-base-panel
         "max_bytes": 512000,
         "kb_min_judged": 5,
         "kb_max_fp_rate": 0.5,
+        "spec_coverage_min": 80,
         "chunk": false
       }
     }
@@ -961,7 +971,7 @@ api-base-panel
   "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
   "captured_at": "0000-00-00T00:00:00Z",
   "config_sha256": "58e27b3168ec974a8b85e537eb76211975aee57cb18183d8b9ee42bc7b28b874",
-  "inputs_sha256": "a36b69fa73e460b0114fc7967920f0a10ced5b93529b15c9ac3467be10b4e344",
+  "inputs_sha256": "106a652dc48ac8863d8c5a218a1905d5b5001c70f3628516958fec801704b0b4",
   "inventory": {
     "config.json": "58e27b3168ec974a8b85e537eb76211975aee57cb18183d8b9ee42bc7b28b874"
   },
@@ -978,7 +988,7 @@ api-base-panel
             "notes.txt"
           ],
           "scopes": [],
-          "id": "237f83c450868196442d14082d63ef4166b2e920671c195f769b104ce8320aa4",
+          "id": "2444dd3fbbe5ccac1a88a71dfefbcea4060cdcca518e0a2923575a38a03e2954",
           "label": "group 1"
         }
       ]
@@ -1063,6 +1073,14 @@ api-base-panel
       {
         "key": "post_min_severity",
         "value": null,
+        "origin": {
+          "layer": "built-in",
+          "source": "built-in"
+        }
+      },
+      {
+        "key": "spec_coverage_min",
+        "value": 80,
         "origin": {
           "layer": "built-in",
           "source": "built-in"

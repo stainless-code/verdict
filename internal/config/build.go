@@ -268,8 +268,14 @@ func buildDefaultsHead(obj map[string]any, path string, out *core.ConfigDefaults
 	return ref
 }
 
-// buildDefaultsTail validates the advisory and display defaults: effort
-// and the two severity floors.
+// spec_coverage_min bounds (inclusive percent).
+const (
+	specCoverageMinLo = 1
+	specCoverageMinHi = 100
+)
+
+// buildDefaultsTail validates the advisory, display, and evidence defaults:
+// effort, the two severity floors, and spec_coverage_min.
 func buildDefaultsTail(obj map[string]any, path string, out *core.ConfigDefaults) *core.RefusalError {
 	var err *core.RefusalError
 	if out.Effort, err = presentEnum(obj, "effort", path, effortEnum); err != nil {
@@ -278,7 +284,12 @@ func buildDefaultsTail(obj map[string]any, path string, out *core.ConfigDefaults
 	if out.DisplayMinSeverity, err = presentEnum(obj, "display_min_severity", path, severityEnum); err != nil {
 		return err
 	}
-	out.PostMinSeverity, err = presentEnum(obj, "post_min_severity", path, severityEnum)
+	if out.PostMinSeverity, err = presentEnum(obj, "post_min_severity", path, severityEnum); err != nil {
+		return err
+	}
+	out.SpecCoverageMin, err = presentValue(obj, keySpecCoverageMin, path, func(raw any, at string) (int, *core.RefusalError) {
+		return boundedIntRange(raw, at, specCoverageMinLo, specCoverageMinHi)
+	})
 	return err
 }
 
