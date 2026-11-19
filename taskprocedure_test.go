@@ -11,7 +11,10 @@ import (
 
 // wantTasks is the task vocabulary written into the Procedure's mode router.
 // It is a literal, not a copy of the list under test.
-var wantTasks = []string{"address-reviews", "fix-ci", "incremental-review", "review", "validate"}
+var wantTasks = []string{
+	"address-reviews", "build", "ci", "fix-ci", "grade",
+	"incremental-review", "review", "validate",
+}
 
 // TestTasks pins the served task names and their order.
 func TestTasks(t *testing.T) {
@@ -35,6 +38,9 @@ func TestTaskProcedureAssemblies(t *testing.T) {
 		{files: []string{"PROCEDURE.md", "prompts/system.md", "prompts/incremental-review.md"}, task: "incremental-review"},
 		{files: []string{"PROCEDURE.md", "prompts/system.md", "prompts/fix-ci.md"}, task: "fix-ci"},
 		{files: []string{"PROCEDURE.md", "prompts/system.md", "prompts/validate.md"}, task: "validate"},
+		{files: []string{"PROCEDURE.md", "prompts/system.md", "prompts/build.md"}, task: "build"},
+		{files: []string{"PROCEDURE.md", "prompts/system.md", "prompts/ci.md"}, task: "ci"},
+		{files: []string{"PROCEDURE.md", "prompts/system.md", "prompts/grade.md"}, task: "grade"},
 	} {
 		t.Run(tc.task, func(t *testing.T) {
 			t.Parallel()

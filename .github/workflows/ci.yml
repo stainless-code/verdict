@@ -780,22 +780,18 @@ jobs:
           # registry outage. An outage is a warning, not a block: we cannot
           # act on it. Capture the exit code directly; a pipe into tee would
           # report tee's status, not bun's.
-          # Ignored: three highs that live only in Blume's build-time subtree
+          # Ignored: two highs that live only in Blume's build-time subtree
           # and never reach the published artifact (this repo ships static HTML,
           # no tarball at all): path-to-regexp 6.1.0 from @astrojs/vercel's
           # routing-utils (GHSA-9wv6-86v2-598j), and zod 4.1.11 from astro's
-          # content layer, unfixable in range (GHSA-mrhx-c7xc-m3w5; bun audit
-          # fix resolves 0 of 3). picomatch 4.0.7/2.3.2 reaches the build through
-          # astro's internal-helpers and @rollup/pluginutils, is build-time only,
-          # and has no patched release as of 2026-11-17 (the advisory lists no
-          # first patched version; upstream fix PRs remain open); remove this
-          # ignore when a patched picomatch ships. Reassess on every Blume bump;
+          # content layer (GHSA-mrhx-c7xc-m3w5). picomatch was a third until
+          # GHSA-fc5q-39xc-vjpf was withdrawn as not a security issue on
+          # 2026-11-18, so it needs no ignore. Reassess on every Blume bump;
           # any other path still blocks.
           set +e
           out=$(NO_COLOR=1 bun audit --audit-level=high \
             --ignore=GHSA-9wv6-86v2-598j \
             --ignore=GHSA-mrhx-c7xc-m3w5 \
-            --ignore=GHSA-fc5q-39xc-vjpf \
             2>&1)
           code=$?
           set -e

@@ -33,6 +33,12 @@ const vetoSeed = `{"id":"active-one","rule":"Retire the first active rule","scop
 // in it.
 const vetoSettle = 200 * time.Millisecond
 
+// vetoLockWait is the wait the veto test gives the store lock. Eighteen writers
+// started together serialize on one fsync'd read-modify-write each, so a loaded
+// machine can starve the last of them past the operator's five seconds while
+// the code is right; the test grades the rows kept, not the shipped budget.
+const vetoLockWait = time.Minute
+
 // mixedOp is one write started by the test, tagged with the row it must leave
 // behind and a label for the failure message.
 type mixedOp struct {
@@ -56,6 +62,7 @@ type outcome struct {
 func TestVetoAndAppendKeepEveryRow(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
+	t.Cleanup(kb.LockWaitForTest(vetoLockWait))
 	store := seedVetoStore(t, root)
 	ops := mixedOps()
 	held := holdStoreLock(t, store)
@@ -97,10 +104,17 @@ func seedVetoStore(t *testing.T, root string) string {
 // A returned op is reported by what it did — a nil refusal means it landed, and
 // any refusal means it never waited, naming the refusal instead of claiming a
 // landing the store never took.
+//
+// The workers are joined by a cleanup, not only by the wait below, because a
+// failed expectation leaves the test through t.Fatalf with writers queued. The
+// caller registers the lock budget's restore before calling this, so LIFO
+// cleanup order runs this join first: no worker still reads lockWait when the
+// budget goes back.
 func startMixed(t *testing.T, ops []mixedOp, store string, held func()) <-chan string {
 	t.Helper()
 	before := storeBytes(t, store)
 	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
 	refusals := make(chan string, len(ops))
 	returned := make(chan outcome, len(ops))
 	for _, op := range ops {

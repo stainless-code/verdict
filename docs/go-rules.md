@@ -18,7 +18,7 @@ this repo, and the repo files stay the truth for what is gated:
 
 ## MUST (block merge on violation)
 
-- Return `error` (static type) as the last value; never concrete error types (GO-ERRORS-01). — partly: `lint:errcheck` (unhandled returns); the static type is review-only.
+- Return `error` (static type) as the last value; never concrete error types (GO-ERRORS-01). — partly: `lint:errcheck` (unhandled returns); the static type is review-only, and the verb services return the typed `*core.RefusalError` by design (Accepted deviations) — every one of them except `fetch.Run` and `fetch.RunLocal`, which return `error` and follow the rule as written.
 - `%w` only with a documented/tested inspection contract; `%v` seals boundaries (GO-ERRORS-03). — enforced: `lint:errorlint,wrapcheck` (sealed constructors are exempt through `ignore-sigs`).
 - Match errors with `errors.Is`/`As`, never `==` or message text (GO-ERRORS-04). — enforced: `lint:errorlint` (`comparison`, `asserts`).
 - Handle each error once: wrap up, log at the edge; advise only at the command layer (GO-ERRORS-06). — partly: `lint:errcheck,nilerr,nilnesserr`.
@@ -114,6 +114,7 @@ part of adopting these rules.
 Recorded here so a later reader does not "fix" them by accident. Each is a
 decision with a reason, not an oversight.
 
+- **GO-ERRORS-01 (concrete error type):** the verb services under `internal/core/` return `*core.RefusalError` as their last value (`learn.Run`, `post.Run`, `report.Run`, `verify.Run`, and their siblings), and the MCP adapters carry the same static type. `fetch.Run` and `fetch.RunLocal` (`internal/core/fetch/service.go:56`, `:123`) return `error` and are the rule as written: the refusal rides back as that error's dynamic value and the adapter recovers it with `errors.As` (`internal/fetch/fetch.go:156`). A refusal is a value the envelope renders — `code`, `retry_at`, `warnings`, `candidates`, `problems` — so returning `error` everywhere would make every adapter pay that `errors.As` recovery before it could render one, and the hint comes from `cli.HintFor(ref.Code)`, which reads the code, not a message. The rule's nil-interface pitfall does not arise: no caller stores the pointer in an `error` before the check, each binds the concrete pointer and tests it (`resp, ref := learncore.Run(…); if ref != nil`).
 - **GO-EXEC-03/04 (shell, env):** `verify` executes the agent's own command through `bash -c` under a default-deny environment allowlist (dropping `envsecret.IsSecret` names unless explicitly opted in via `--env-allowlist` or base-snapshotted `.verdict/verify-env`), while the fixed `gh`/`git` argv inherits the developer's environment. Both are the product contract; see `SECURITY.md` § Child process environment.
 - **GO-LOG-01 (slog):** the CLI writes frozen `warn:`/`error:` lines and one JSON envelope instead of `slog` records, because byte-identical stdout/stderr is the output contract.
 - **GO-SEC-01 (os.Root):** bundle paths are operator-supplied (G304 excluded in `.golangci.yml`), not agent-supplied.

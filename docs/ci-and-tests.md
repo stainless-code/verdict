@@ -35,7 +35,10 @@ means a human reviewer is the only gate.
   right; `internal/readcommon`'s root-probe fixture runs through
   `RepoRootWithBudget` with the test's own budget instead of widening the poll,
   so the shipped 5 s constant stays the product's and never decides the test.
-  — review-only: nothing detects a fixture that races a constant.
+  The store-lock seam is the same shape: `internal/core/learn`'s eighteen-writer
+  test raises `kb.LockWaitForTest` because that queue needs about half a second
+  of wait on an idle machine, so the operator's five seconds decided it under
+  load. — review-only: nothing detects a fixture that races a constant.
 
 ## Agent launch (`run --agent`)
 

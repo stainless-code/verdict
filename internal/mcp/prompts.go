@@ -18,7 +18,10 @@ const (
 // promptDescriptions is the host-facing copy for the tasks in skillfs.Tasks.
 var promptDescriptions = map[string]string{
 	"address-reviews":    "Address review threads with verified fixes and one reply per thread.",
+	"build":              "Implement a change, self-review the diff before commit, and open the PR.",
+	"ci":                 "Draft the review report for a pipeline without posting anything.",
 	"fix-ci":             "Diagnose a PR-introduced CI failure, fix it, and push the fix with a summary.",
+	"grade":              "Grade closed findings against ground truth and record the agreement rate.",
 	"incremental-review": "Review only the commits added since a prior review, with a no-review note for trivial deltas.",
 	"review":             "Review a fetched PR or local diff and write one review.json.",
 	"validate":           "Validate candidate findings against the bundle without changing it.",
