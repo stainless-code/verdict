@@ -418,7 +418,10 @@ func drainCoreFiles() []string {
 // lean core, and the remaining operator tasks keep their task prompt.
 var taskFiles = map[string]func() []string{
 	"address-reviews":    drainCoreFiles,
+	"build":              func() []string { return genericTaskFiles("build") },
+	"ci":                 func() []string { return genericTaskFiles("ci") },
 	"fix-ci":             func() []string { return genericTaskFiles("fix-ci") },
+	"grade":              func() []string { return genericTaskFiles("grade") },
 	"incremental-review": func() []string { return genericTaskFiles("incremental-review") },
 	"review":             reviewCoreFiles,
 	"validate":           func() []string { return genericTaskFiles("validate") },
