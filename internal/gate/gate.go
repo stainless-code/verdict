@@ -30,6 +30,7 @@ const (
 	idHead          = "head"
 	idLive          = "live_threads"
 	idCompliance    = "compliance"
+	idEvidence      = "evidence"
 	flagMaxSeverity = "--max-severity"
 	flagRequireHE   = "--require-head"
 	flagLive        = "--live"
@@ -237,6 +238,15 @@ var gateActionsByID = map[string]func(status string) string{
 			return actionCoverage
 		case statusUnknown:
 			return "attest coverage for the fetched HEAD (post or record)"
+		}
+		return ""
+	},
+	idEvidence: func(status string) string {
+		switch status {
+		case statusFail:
+			return "fix the evidence gaps in review.json and re-run record"
+		case statusUnknown:
+			return "record an evidence receipt for the fetched HEAD (verdict record)"
 		}
 		return ""
 	},

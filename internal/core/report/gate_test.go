@@ -84,8 +84,8 @@ func TestRunReportCheckTierGate(t *testing.T) {
 			if resp.GateFailed != tc.wantFail {
 				t.Errorf("GateFailed = %v, want %v", resp.GateFailed, tc.wantFail)
 			}
-			if len(resp.CheckLines) != 1 || resp.CheckLines[0] != tc.wantLine {
-				t.Errorf("CheckLines = %q, want exactly %q", resp.CheckLines, tc.wantLine)
+			if len(resp.CheckLines) != 2 || resp.CheckLines[0] != tc.wantLine {
+				t.Errorf("CheckLines = %q, want tier line %q plus evidence line", resp.CheckLines, tc.wantLine)
 			}
 		})
 	}
@@ -218,8 +218,8 @@ func TestRunReportCompletenessGate(t *testing.T) {
 		if !resp.GateFailed {
 			t.Error("GateFailed = false; a missing post must fail the combined gate")
 		}
-		if len(resp.CheckLines) != 2 {
-			t.Fatalf("CheckLines = %q, want one line per dimension", resp.CheckLines)
+		if len(resp.CheckLines) != 3 {
+			t.Fatalf("CheckLines = %q, want one line per dimension (tier, completeness, evidence)", resp.CheckLines)
 		}
 		if !strings.HasPrefix(resp.CheckLines[0], "check: no open findings at-or-above critical — gate passes") {
 			t.Errorf("CheckLines[0] = %q, want the tier line first", resp.CheckLines[0])
@@ -650,7 +650,7 @@ func writeHostBundle(t *testing.T, provider string) {
 	t.Helper()
 	writeFile(t, ".verdict/state/5101/PR.json",
 		`{"state":"OPEN","provider":"`+provider+`","headRefOid":"`+storeHeadSHA+
-			`","baseRefOid":"`+strings.Repeat("b", 40)+`"}`)
+			`","head_sha":"`+storeHeadSHA+`","baseRefOid":"`+strings.Repeat("b", 40)+`"}`)
 }
 
 // TestRunReportLiveProviderRead pins the host read: a GitLab bundle's live
@@ -807,15 +807,15 @@ func TestRunReportGateData(t *testing.T) {
 	}{
 		{
 			name: "tier-only-pass", findings: "[]", live: "skip", check: "critical",
-			wantIDs: []string{"findings", "live_threads"}, wantStat: []string{"pass", "skip"},
-			wantCount: []int{0, -1}, wantFail: false,
+			wantIDs: []string{"findings", "live_threads", "evidence"}, wantStat: []string{"pass", "skip", "pass"},
+			wantCount: []int{0, -1, 0}, wantFail: false,
 		},
 		{
 			name:     "tier-only-fail",
 			findings: "[" + entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"critical"`, "true") + "]",
 			live:     "skip", check: "critical",
-			wantIDs: []string{"findings", "live_threads"}, wantStat: []string{"fail", "skip"},
-			wantCount: []int{1, -1}, wantFail: true,
+			wantIDs: []string{"findings", "live_threads", "evidence"}, wantStat: []string{"fail", "skip", "pass"},
+			wantCount: []int{1, -1, 0}, wantFail: true,
 		},
 		{
 			name: "head-only-missing", findings: "[]", live: "skip", complete: true,

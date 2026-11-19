@@ -8,4 +8,5 @@ next: merge — gate passes
 warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 warn: live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5102 -f query=       query($owne — gating on local dimensions only)
 check: no open findings at-or-above critical — gate passes
+check: evidence checks satisfied (0 quotes verified, 0/0 hunks receipted, 0/0 spec items checked) — gate passes
 --- files ---

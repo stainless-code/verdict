@@ -289,7 +289,9 @@ var publishedSemantics = map[string]string{
 	// $defs/problem.code, optional insufficient on $defs/approvalReceipt,
 	// optional nullable evidence on $defs/recordData, and additive
 	// $defs/evidence{Receipt,Quote,Receipts,Spec}. Additions only.
-	"envelope.schema.json": "18494faf1ce4255aad2a6508043a482298c35aca19702d9a2674f3557ad82237",
+	// S4 evidence gate dimension: additive `evidence` member on
+	// $defs/gateDimension.id with updated reportGate and gateDimension prose.
+	"envelope.schema.json": "6e484acf954343e6d9e20da001a4bd9324fe68a6d7c1c11740863eec23a6e60b",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

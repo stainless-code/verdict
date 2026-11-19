@@ -85,6 +85,7 @@ type state struct { // field grouping documents the loaded dimensions; alignment
 	comp         *core.ReportCompleteness
 	risk         *core.ReportRisk
 	validation   *core.ValidationData
+	evidence     *evidenceState
 	dir          string
 	now          string
 	headSHA      string
@@ -143,10 +144,12 @@ func Run(ctx context.Context, req *core.ReportRequest) (*core.ReportResponse, *c
 	}
 
 	evaluateCompliance(st)
-	st.approval = approval.Evaluate(st.entries, flags.Check, flags.Category, st.compliance, reviewdoc.SpecViolationOfBundle(st.dir), nil)
+	st.approval = approval.Evaluate(st.entries, flags.Check, flags.Category, st.compliance,
+		reviewdoc.SpecViolationOfBundle(st.dir), st.currentEvidenceReceipt())
 	applyDisplayFloor(st)
 	warnLensUsage(st)
 	warnDeepValidation(st)
+	warnEvidence(st)
 	runLiveProbe(ctx, st)
 	return buildResponse(st), nil
 }
@@ -277,6 +280,7 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 	loadStateProvenance(st)
 	loadStateRisk(st)
 	loadStateValidation(st)
+	loadStateEvidence(st)
 	return nil
 }
 

@@ -125,7 +125,8 @@ func TestReportGolden(t *testing.T) {
 		writeFiles(t, dir, map[string]string{
 			".verdict/state/5102/findings.json": findingsDoc(
 				finding(sigInfo, "open", "informational", "said", "inline")),
-			".verdict/state/5102/post.json": postDoc(headA, 7),
+			".verdict/state/5102/post.json":   postDoc(headA, 7),
+			".verdict/state/5102/record.json": evidenceRecordDoc(),
 		})
 	}
 	goArgs = splitRepo("report", "5102",

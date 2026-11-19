@@ -21,7 +21,8 @@ func TestGateGolden(t *testing.T) {
 		writeFiles(t, dir, map[string]string{
 			".verdict/state/5201/findings.json": findingsDoc(
 				finding(sigInfo, "open", "informational", "said", "inline")),
-			".verdict/state/5201/post.json": coveredPostDoc(headA, 31),
+			".verdict/state/5201/post.json":   coveredPostDoc(headA, 31),
+			".verdict/state/5201/record.json": evidenceRecordDoc(),
 		})
 	}
 	goArgs := splitRepo("gate", "5201", "--max-severity", "critical", "--live", "skip")
@@ -36,7 +37,8 @@ func TestGateGolden(t *testing.T) {
 		writeFiles(t, dir, map[string]string{
 			".verdict/state/5201/findings.json": findingsDoc(
 				finding(sigCrit, "open", "critical", "walked", "inline")),
-			".verdict/state/5201/post.json": coveredPostDoc(headA, 32),
+			".verdict/state/5201/post.json":   coveredPostDoc(headA, 32),
+			".verdict/state/5201/record.json": evidenceRecordDoc(),
 		})
 	}
 	goArgs = splitRepo("gate", "5201", "--max-severity", "important", "--live", "skip")
@@ -111,8 +113,18 @@ func mkChunkedBundle(t *testing.T, dir, pr, post string) {
 			finding(sigInfo, "open", "informational", "said", "inline")),
 		".verdict/state/" + pr + "/chunks/manifest.json": `{"schema_version":"1","chunks":[` +
 			`{"name":"01","diff":"chunks/01.diff"},{"name":"02","diff":"chunks/02.diff"}]}`,
-		".verdict/state/" + pr + "/post.json": post,
+		".verdict/state/" + pr + "/post.json":   post,
+		".verdict/state/" + pr + "/record.json": evidenceRecordDoc(),
 	})
+}
+
+// evidenceRecordDoc is a minimal record.json carrying a passing evidence
+// receipt for headA, so the pass-path gate goldens pin evidence pass.
+func evidenceRecordDoc() string {
+	return fmt.Sprintf(`{"schema_version":"1","status":"pr","head":%q,`+
+		`"evidence":{"head":%q,"diff_sha256":"0000000000000000000000000000000000000000000000000000000000000000",`+
+		`"receipts":{"total":0,"covered":0,"exempt":0,"complete":true},`+
+		`"spec":{"total":0,"covered":0,"min":80,"met":true},"insufficient":false}}`, headA, headA)
 }
 
 // chunkedPostDoc is the stored chunked post: the head plus the chunk

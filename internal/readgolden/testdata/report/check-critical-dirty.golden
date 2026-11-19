@@ -8,4 +8,5 @@ next: address open threads
 warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 warn: live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5101 -f query=       query($owne — gating on local dimensions only)
 check: 1 open finding(s) at-or-above critical — gate fails
+check: evidence receipt missing for head aaaaaaa [review-insufficient] — gate fails
 --- files ---

@@ -1,4 +1,4 @@
-exit: 0
+exit: 1
 --- stdout ---
 {
   "schema_version": "1",
@@ -6,7 +6,7 @@ exit: 0
   "repo": "acme/app",
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
-  "next": "merge — gate passes",
+  "next": "address open threads",
   "warnings": [
     "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors"
   ],
@@ -89,7 +89,7 @@ exit: 0
       "approved": true
     },
     "gate": {
-      "passed": true,
+      "passed": false,
       "dimensions": [
         {
           "id": "findings",
@@ -102,6 +102,12 @@ exit: 0
           "status": "skip",
           "detail": "live recheck skipped: local bundle threads unreadable here",
           "count": null
+        },
+        {
+          "id": "evidence",
+          "status": "unknown",
+          "detail": "evidence receipt missing for head aaaaaaa [review-insufficient]",
+          "count": null
         }
       ]
     }
@@ -112,4 +118,5 @@ exit: 0
 warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 info: live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)
 check: no open findings at-or-above critical — gate passes
+check: evidence receipt missing for head aaaaaaa [review-insufficient] — gate fails
 --- files ---
