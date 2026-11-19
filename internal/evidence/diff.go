@@ -105,7 +105,6 @@ type DiffIndex struct {
 	byPath    map[string][]*DiffFile
 	byHunkKey map[string]*DiffHunk
 	files     []*DiffFile
-	hunks     []hunks.Hunk
 }
 
 // IndexDiff parses full.diff bytes into per-file OLD and NEW line maps and
@@ -119,7 +118,6 @@ func IndexDiff(diff []byte) *DiffIndex {
 		return idx
 	}
 	text := string(diff)
-	idx.hunks = hunks.Parse(text)
 	sections := hunks.Files(text)
 	if len(sections) == 0 {
 		return idx
@@ -154,22 +152,6 @@ func (d *DiffIndex) File(path string) (*DiffFile, string) {
 func (d *DiffIndex) HasPath(path string) bool {
 	_, reason := d.File(path)
 	return reason == ""
-}
-
-// Files returns the indexed diff sections in diff order.
-func (d *DiffIndex) Files() []*DiffFile {
-	if d == nil {
-		return nil
-	}
-	return slices.Clone(d.files)
-}
-
-// Hunks returns the flat hunks.Hunk rows parsed from the diff.
-func (d *DiffIndex) Hunks() []hunks.Hunk {
-	if d == nil {
-		return nil
-	}
-	return slices.Clone(d.hunks)
 }
 
 // HunkByKey looks up a hunk by its A3 canonical receipt key.
