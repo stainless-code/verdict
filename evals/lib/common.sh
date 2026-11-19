@@ -388,11 +388,19 @@ eval_diff_lines() {
 
 eval_write_review_at() {
   local path="$1"
-  local raw tmp
+  local raw tmp lines
   raw=$(cat)
   tmp="$path.tmp"
   if printf '%s\n' "$raw" | jq -e . >/dev/null 2>&1; then
-    printf '%s\n' "$raw" | jq --argjson lines "$(eval_diff_lines "$(dirname "$path")")" '
+    # The diff-line map is one entry per changed line, so it passes as a file:
+    # Linux caps a single argv entry at 128 KiB, and a bundle over the review cap
+    # carries megabytes of lines.
+    lines="$path.lines.json"
+    if ! eval_diff_lines "$(dirname "$path")" >"$lines"; then
+      rm -f "$lines" "$tmp"
+      return 1
+    fi
+    if ! printf '%s\n' "$raw" | jq --slurpfile lines "$lines" '
       if type != "object" or has("findings") then . else (
       def anchor: (.line // 1 | if type == "number" then . else tonumber? // 1 end);
       {
@@ -404,7 +412,7 @@ eval_write_review_at() {
           side: (.side // "RIGHT"),
           severity: (.severity // "important"),
           claim: (.body // "converted finding"),
-          quote: (.quote // $lines[((.path // "a.txt") | tostring) + "\t"
+          quote: (.quote // $lines[0][((.path // "a.txt") | tostring) + "\t"
             + ((.line // 1) | tostring)] // .body // "converted finding"),
           confidence: "high",
           rigor: (.rigor // "said"),
@@ -426,6 +434,11 @@ eval_write_review_at() {
       + (if has("risk") then {risk: .risk} else {} end)
       + (if has("security_summary") then {security_summary: .security_summary} else {} end)
       ) end' > "$tmp"
+    then
+      rm -f "$lines" "$tmp"
+      return 1
+    fi
+    rm -f "$lines"
   else
     printf '%s\n' "$raw" > "$tmp"
   fi
@@ -439,10 +452,23 @@ eval_write_review_at() {
 eval_stamp_receipts() {
   local path="$1" receipts
   jq -e 'has("receipts") | not' "$path" >/dev/null 2>&1 || return 0
-  receipts="$(eval_hunk_receipts "$(dirname "$path")")"
-  [ "$receipts" != "[]" ] || return 0
-  jq --argjson r "$receipts" '. + {receipts: $r}' "$path" >"$path.tmp"
+  # The receipt list scales with the changed hunks, so it passes as a file for
+  # the same reason the diff-line map does.
+  receipts="$path.receipts.json"
+  if ! eval_hunk_receipts "$(dirname "$path")" >"$receipts"; then
+    rm -f "$receipts"
+    return 1
+  fi
+  if [ "$(jq 'length' "$receipts")" = "0" ]; then
+    rm -f "$receipts"
+    return 0
+  fi
+  if ! jq --slurpfile r "$receipts" '. + {receipts: $r[0]}' "$path" >"$path.tmp"; then
+    rm -f "$receipts" "$path.tmp"
+    return 1
+  fi
   mv "$path.tmp" "$path"
+  rm -f "$receipts"
 }
 
 eval_write_review() {
