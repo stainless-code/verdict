@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/argvshape"
 	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 )
 
@@ -129,6 +130,31 @@ func TestReqArgvFormatsFlagsDeterministically(t *testing.T) {
 	want := []string{"record", "acme/app", "local-7", "--dry-run", "--token", "shh"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("reqArgv = %q, want %q", got, want)
+	}
+}
+
+// TestReqArgvFlattensNestedFlagsForRedaction proves a value placed in the nested
+// `flags` object reaches the shared redactor as its own operand: an environment
+// credential carried in flags.summary is hidden, and a plain summary survives.
+func TestReqArgvFlattensNestedFlagsForRedaction(t *testing.T) {
+	t.Parallel()
+	const secret = "env-secret-12345"
+	argv := reqArgv("report", json.RawMessage(`{"repo":"acme/app","pr":"local-7","flags":{"summary":"`+secret+`"}}`))
+	wantArgv := []string{"report", "acme/app", "local-7", "--summary", secret}
+	if !slices.Equal(argv, wantArgv) {
+		t.Fatalf("reqArgv = %q, want %q", argv, wantArgv)
+	}
+	shape, secrets := argvshape.Record(argv, "", []string{"ANTHROPIC_API_KEY=" + secret})
+	wantShape := []string{"report", "acme/app", "local-7", "--summary", "***REDACTED***"}
+	if !slices.Equal(shape, wantShape) {
+		t.Fatalf("Record = %q, want %q", shape, wantShape)
+	}
+	if !slices.Equal(secrets, []string{secret}) {
+		t.Fatalf("secrets = %q, want the flags.summary value", secrets)
+	}
+	plain := reqArgv("report", json.RawMessage(`{"repo":"acme/app","pr":"local-7","flags":{"summary":"plain summary"}}`))
+	if !slices.Equal(plain, []string{"report", "acme/app", "local-7", "--summary", "plain summary"}) {
+		t.Fatalf("reqArgv = %q, want the readable summary kept", plain)
 	}
 }
 

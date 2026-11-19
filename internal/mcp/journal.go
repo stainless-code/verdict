@@ -84,7 +84,12 @@ func reqArgv(toolName string, raw json.RawMessage) []string {
 	}
 	argv = appendMCPPositionals(argv, obj)
 	for _, k := range slices.Sorted(maps.Keys(obj)) {
-		if k != argRepo && k != argPr {
+		switch k {
+		case argRepo, argPr:
+			continue
+		case argFlags:
+			argv = appendNestedFlags(argv, obj[k])
+		default:
 			argv = appendArgFlag(argv, flagNameFor(k), obj[k])
 		}
 	}
@@ -96,6 +101,20 @@ func appendMCPPositionals(argv []string, obj map[string]any) []string {
 		if v, ok := obj[key].(string); ok && v != "" {
 			argv = append(argv, v)
 		}
+	}
+	return argv
+}
+
+// appendNestedFlags flattens the verb's nested `flags` object into the same
+// `--name value` operands a CLI invocation carries. Rendering the map itself
+// would hide a credential from the value-matching redactor.
+func appendNestedFlags(argv []string, val any) []string {
+	nested, ok := val.(map[string]any)
+	if !ok {
+		return appendArgFlag(argv, flagNameFor(argFlags), val)
+	}
+	for _, k := range slices.Sorted(maps.Keys(nested)) {
+		argv = appendArgFlag(argv, flagNameFor(k), nested[k])
 	}
 	return argv
 }
