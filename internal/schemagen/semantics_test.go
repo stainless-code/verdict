@@ -296,7 +296,11 @@ var publishedSemantics = map[string]string{
 	// Bundle journal: additive $defs/journalData (and its helper defs), plus
 	// additive object widening on envelope data.truncated for journalData's
 	// truncation summary object. Additions only.
-	"envelope.schema.json": "e2be7f9d05aa529733d8e7a64fb1f4b60d8c7dd1476148a5954414c2a078f72f",
+	// journal step pairing key: $defs/journal{Step,UnfinishedStep,ChainBreak}
+	// step stops being a date-time (it carries a PID and sequence suffix), so
+	// the format narrowing is dropped. No property, required key, or type
+	// changed.
+	"envelope.schema.json": "d0e183ab714266621b2d0c28567120960b4c3594f4b40631d9952fb9f0665c46",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -501,7 +505,10 @@ var publishedSemantics = map[string]string{
 	// additive journal.schema.json (external per-bundle journal line records
 	// carrying canonical repo root; no existing schema property, required key,
 	// or type changed).
-	"journal.schema.json": "42c5f57a7d50ece7eb2d8e513c3f40e23d869a83c7012695497cac76d22004c6",
+	// journal step pairing key: start/end `step` stops being a date-time (it
+	// carries a PID and sequence suffix) and gains its description. No
+	// property, required key, or type changed.
+	"journal.schema.json": "6a2a231fb6e5dca3523798a95253dfb9a77022922467bc224b2452c3d7c282eb",
 	// additive validation.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed). It pins the trusted pass: one
 	// result per finding sig with its verdict, reason, optional one-rank

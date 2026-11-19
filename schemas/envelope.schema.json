@@ -2447,7 +2447,7 @@
     "journalStep": {
       "type": "object",
       "properties": {
-        "step": { "type": "string", "format": "date-time" },
+        "step": { "type": "string" },
         "verb": { "type": "string" },
         "channel": { "enum": ["cli", "mcp"] },
         "version": { "type": "string" },
@@ -2496,7 +2496,7 @@
     "journalUnfinishedStep": {
       "type": "object",
       "properties": {
-        "step": { "type": "string", "format": "date-time" },
+        "step": { "type": "string" },
         "verb": { "type": "string" },
         "channel": { "enum": ["cli", "mcp"] },
         "version": { "type": "string" },
@@ -2521,7 +2521,7 @@
     "journalChainBreak": {
       "type": "object",
       "properties": {
-        "step": { "type": "string", "format": "date-time" },
+        "step": { "type": "string" },
         "before": { "type": "string" },
         "previous_after": { "type": "string" }
       },

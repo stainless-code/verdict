@@ -2,6 +2,7 @@ package journal
 
 import (
 	"os"
+	"strconv"
 	"strings"
 	"sync/atomic"
 	"time"
@@ -104,10 +105,15 @@ type guardState struct {
 	startWritten bool
 }
 
+// stepSeq numbers invocations inside this process so a step key stays unique
+// even when the clock is frozen: two overlapping calls that read the same tick
+// would otherwise fold into one pair and lose an unfinished start.
+var stepSeq atomic.Uint64
+
 func beginGuard(inv *Invocation, verb string) *guardState {
 	nowFn := resolveNow(inv.Now)
 	startedAt := nowFn().UTC()
-	step := startedAt.Format(time.RFC3339Nano)
+	step := stepID(startedAt)
 	redactedArgv, _ := argvshape.Record(inv.Argv, "", inv.Environ)
 	preDir := bundleForVerb(inv.RepoRoot, verb, inv.Pr)
 	journalPath, absRepo, hasPath := journalPathFor(inv.RepoRoot, preDir, inv.Env)
@@ -183,6 +189,14 @@ func resolveNow(fn func() time.Time) func() time.Time {
 		return fn
 	}
 	return time.Now
+}
+
+// stepID is the start/end pairing key: the start instant plus the PID and a
+// process-local sequence number, so the key identifies one invocation rather
+// than one clock tick.
+func stepID(startedAt time.Time) string {
+	return startedAt.Format(time.RFC3339Nano) + "-" + strconv.Itoa(os.Getpid()) +
+		"-" + strconv.FormatUint(stepSeq.Add(1), 10)
 }
 
 func resolveVersion(ver string) string {

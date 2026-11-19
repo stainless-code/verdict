@@ -242,13 +242,14 @@ func firstLineTimestamp(line []byte, fallback string) string {
 	var probe struct {
 		StartedAt string `json:"started_at"`
 		EndedAt   string `json:"ended_at"`
-		Step      string `json:"step"`
 		At        string `json:"at"`
 	}
 	if err := json.Unmarshal(line, &probe); err != nil {
 		return fallback
 	}
-	for _, ts := range []string{probe.StartedAt, probe.EndedAt, probe.Step, probe.At} {
+	// `step` is the invocation-unique pairing key, not a timestamp, so it never
+	// answers kept_from.
+	for _, ts := range []string{probe.StartedAt, probe.EndedAt, probe.At} {
 		if ts != "" {
 			return ts
 		}

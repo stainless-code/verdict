@@ -241,6 +241,48 @@ func TestGuardCreatingVerbStartsWithNilBefore(t *testing.T) {
 	}
 }
 
+// TestGuardOverlappingStartsShareOneInstantStayDistinct proves the pairing key
+// is invocation-unique: two starts that read the same injected clock do not
+// collapse, so the call that never ended still shows as unfinished.
+func TestGuardOverlappingStartsShareOneInstantStayDistinct(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	env := map[string]string{"XDG_STATE_HOME": t.TempDir()}
+	mustWriteFile(t, filepath.Join(root, ".verdict", "state", "local-dup", "source.json"), []byte(`{}`), 0o644)
+	frozen := time.Date(2026, 11, 19, 10, 0, 0, 0, time.UTC)
+	clock := func() time.Time { return frozen }
+	invocation := func(verb string) *Invocation {
+		return &Invocation{
+			Verb: verb, Channel: ChannelCLI, RepoRoot: root, Pr: "local-dup", Env: env,
+			Argv: []string{verb, "acme/app", "local-dup"}, Now: clock,
+		}
+	}
+	unfinished := beginGuard(invocation("record"), "record")
+	finished := beginGuard(invocation("report"), "report")
+	if unfinished.start.Step == finished.start.Step {
+		t.Fatalf("both starts share step %q, want one key per invocation", unfinished.start.Step)
+	}
+	finishGuard(invocation("report"), finished, 0)
+
+	jpath, _, ok := Path(root, "local-dup", env)
+	if !ok {
+		t.Fatal("Path returned ok=false")
+	}
+	sum, err := Read(jpath, "local-dup")
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if len(sum.Steps) != 1 || sum.Steps[0].Verb != "report" {
+		t.Fatalf("Steps = %+v, want the one report step that ended", sum.Steps)
+	}
+	if len(sum.Unfinished) != 1 || sum.Unfinished[0].Verb != "record" {
+		t.Fatalf("Unfinished = %+v, want the record start that never ended", sum.Unfinished)
+	}
+	if n := sum.UnreadableLines; n != 0 {
+		t.Fatalf("UnreadableLines = %d, want 0", n)
+	}
+}
+
 func TestCountingProgressCountsAndForwards(t *testing.T) {
 	t.Parallel()
 	inner := &stubProgress{}

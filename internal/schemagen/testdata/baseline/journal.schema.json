@@ -16,7 +16,10 @@
         "schema_version": { "const": "1" },
         "phase": { "const": "start" },
         "repo": { "type": "string" },
-        "step": { "type": "string", "format": "date-time" },
+        "step": {
+          "description": "Start/end pairing key: the start instant plus the PID and a process-local sequence number, so two overlapping invocations that read the same clock never fold into one pair. `started_at` carries the timestamp.",
+          "type": "string"
+        },
         "verb": { "type": "string" },
         "channel": { "enum": ["cli", "mcp"] },
         "version": { "type": "string" },
@@ -48,7 +51,7 @@
         "schema_version": { "const": "1" },
         "phase": { "const": "end" },
         "repo": { "type": "string" },
-        "step": { "type": "string", "format": "date-time" },
+        "step": { "type": "string" },
         "verb": { "type": "string" },
         "channel": { "enum": ["cli", "mcp"] },
         "started_at": { "type": "string", "format": "date-time" },

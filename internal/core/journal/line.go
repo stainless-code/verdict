@@ -13,7 +13,7 @@ type StartLine struct {
 	SchemaVersion string   `const:"1"          json:"schema_version"`
 	Phase         string   `const:"start"      json:"phase"`
 	Repo          string   `json:"repo"`
-	Step          string   `format:"date-time" json:"step"`
+	Step          string   `json:"step"`
 	Verb          string   `json:"verb"`
 	Channel       string   `enum:"cli|mcp"     json:"channel"`
 	Version       string   `json:"version"`
@@ -42,7 +42,7 @@ type EndLine struct {
 	SchemaVersion string        `const:"1"          json:"schema_version"`
 	Phase         string        `const:"end"        json:"phase"`
 	Repo          string        `json:"repo"`
-	Step          string        `format:"date-time" json:"step"`
+	Step          string        `json:"step"`
 	Verb          string        `json:"verb"`
 	Channel       string        `enum:"cli|mcp"     json:"channel"`
 	StartedAt     string        `format:"date-time" json:"started_at"`
@@ -70,7 +70,7 @@ type TruncatedLine struct {
 
 // Step is one completed invocation folded from its start and end lines.
 type Step struct {
-	Step       string        `format:"date-time" json:"step"`
+	Step       string        `json:"step"`
 	Verb       string        `json:"verb"`
 	Channel    string        `enum:"cli|mcp"     json:"channel"`
 	Version    string        `json:"version"`
@@ -91,7 +91,7 @@ type Step struct {
 // UnfinishedStep is a start line with no matching end line (a crash or
 // in-flight invocation).
 type UnfinishedStep struct {
-	Step      string   `format:"date-time" json:"step"`
+	Step      string   `json:"step"`
 	Verb      string   `json:"verb"`
 	Channel   string   `enum:"cli|mcp"     json:"channel"`
 	Version   string   `json:"version"`
@@ -103,7 +103,7 @@ type UnfinishedStep struct {
 // ChainBreak reports a bundle content-manifest mismatch between one completed
 // step's post-state digest and the next step's pre-state digest.
 type ChainBreak struct {
-	Step          string `format:"date-time"    json:"step"`
+	Step          string `json:"step"`
 	Before        string `json:"before"`
 	PreviousAfter string `json:"previous_after"`
 }
