@@ -43,13 +43,13 @@ if [ "$count_file" != "/dev/null" ]; then
   printf '%s\n' "$call" >"$count_file"
 fi
 
-# The directive ends with: Write <artifact> with {...}. Take the last argument
+# The directive ends with: Write <artifact> FIRST with {...}. Take the last argument
 # (the directive), then cut the artifact path out of that sentence: no side
 # channel, so a directive that stopped naming its artifact fails here.
 directive="${!#}"
 rest="${directive#*Write }"
-artifact="${rest%% with \{*}"
-if [ -z "$artifact" ] || [ "$artifact" = "$directive" ]; then
+artifact="${rest%% FIRST with \{*}"
+if [ -z "$artifact" ] || [ "$artifact" = "$rest" ]; then
   echo "repair-stub: the directive named no review path to write" >&2
   exit 2
 fi

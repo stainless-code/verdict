@@ -19,7 +19,10 @@ import (
 func embeddedReviewBytes(t *testing.T) []byte {
 	t.Helper()
 	var out []byte
-	for _, name := range reviewPayloadPaths {
+	for i, name := range reviewPayloadPaths {
+		if i > 0 {
+			out = append(out, '\n')
+		}
 		raw, err := skillfs.Read(name)
 		if err != nil {
 			t.Fatalf("read embedded %s: %v", name, err)
@@ -59,6 +62,22 @@ func fetchWithProcedure(t *testing.T, kind string, show bool) (*core.FetchRespon
 	return resp, dir
 }
 
+func assertBundleRef(t *testing.T, dir string, ref skillfs.HandoffRef) {
+	t.Helper()
+	path := filepath.Join(filepath.FromSlash(dir), filepath.FromSlash(ref.Path))
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", filepath.ToSlash(path), err)
+	}
+	want, err := skillfs.ReadRef(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Errorf("%s is not a byte-identical copy of %s", filepath.ToSlash(path), ref.Source)
+	}
+}
+
 func assertBundleProcedure(t *testing.T, dir string, want []byte) {
 	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(filepath.FromSlash(dir), "procedure.md"))
@@ -67,6 +86,9 @@ func assertBundleProcedure(t *testing.T, dir string, want []byte) {
 	}
 	if !bytes.Equal(raw, want) {
 		t.Fatalf("%s/procedure.md is not the embedded assembly", dir)
+	}
+	for _, ref := range skillfs.HandoffRefs() {
+		assertBundleRef(t, dir, ref)
 	}
 }
 
@@ -112,7 +134,7 @@ func withMissingReviewProcedure(t *testing.T, path string) {
 	t.Helper()
 	saved := reviewProcedure
 	t.Cleanup(func() { reviewProcedure = saved })
-	reviewProcedure = func() ([]byte, error) {
+	reviewProcedure = func(skillfs.HandoffFacts) ([]byte, error) {
 		return nil, &skillfs.ProcedureFileError{Cause: fs.ErrNotExist, Path: path}
 	}
 }
@@ -121,7 +143,7 @@ func withMissingReviewProcedure(t *testing.T, path string) {
 // and a sibling payload file refuse typed through the real fetch-local path,
 // and that a partial Procedure never lands in the bundle.
 func TestMissingEmbeddedReviewProcedureRefusesFetchLocal(t *testing.T) {
-	for _, path := range []string{"prompts/system.md", "prompts/diagrams.md"} {
+	for _, path := range []string{"prompts/handoff/role-method.md", "prompts/handoff/capability-map.md"} {
 		t.Run(path, func(t *testing.T) { assertMissingReviewProcedureRefusal(t, path) })
 	}
 }

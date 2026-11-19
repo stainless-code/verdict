@@ -131,6 +131,7 @@ func (st *state) repairRound(ctx context.Context, args *launchArgs, rec *launche
 	roundRes, spawnErr := st.spawn(ctx, argv, args.timeout)
 	wallS := st.now().Sub(roundStarted).Seconds()
 	st.writeRoundOut(args, k, roundRes)
+	st.maybeSalvage(ctx, args, rec, roundRes)
 	roundArt := inspectArtifact(args.abs, launched)
 	if ref := st.verdict(ctx, args, roundRes, spawnErr, roundArt); ref != nil {
 		st.writeCrashRoundReview(args, k)
@@ -169,6 +170,17 @@ func (st *state) repairRound(ctx context.Context, args *launchArgs, rec *launche
 		return resp, true, ref, kept, roundRes, roundArt
 	}
 	return nil, false, nil, review, roundRes, roundArt
+}
+
+// maybeSalvage fills an absent review from the round's stdout and records
+// the repair on the same launcher the round outcome writes.
+func (st *state) maybeSalvage(ctx context.Context, args *launchArgs, rec *launcher, res *core.Result) {
+	if res == nil || ctx.Err() != nil || st.drainDigest != "" {
+		return
+	}
+	if st.salvageReview(args, res.Stdout) {
+		rec.Salvaged = true
+	}
 }
 
 // roundSucceeded ends the loop on the first valid review: the outcome is

@@ -55,7 +55,11 @@ func TestNewPlanDigestPinsWaitingComment(t *testing.T) {
 
 func writeDrainProcedureDecoys(t *testing.T, dir string) {
 	t.Helper()
-	for _, name := range []string{"PROCEDURE.md", "prompts/system.md", "prompts/address-reviews.md"} {
+	for _, name := range []string{
+		"PROCEDURE.md", "prompts/system.md", "prompts/address-reviews.md",
+		"prompts/handoff/role-method.md", "prompts/handoff/replies-contract.md", "prompts/handoff/capability-map.md",
+		"prompts/handoff/threads.md",
+	} {
 		path := filepath.Join(dir, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
@@ -69,9 +73,12 @@ func writeDrainProcedureDecoys(t *testing.T, dir string) {
 func embeddedDrainProcedure(t *testing.T) []byte {
 	t.Helper()
 	var want []byte
-	for _, name := range []string{
-		skillfs.ProcedureMD, "prompts/system.md", "prompts/address-reviews.md",
+	for i, name := range []string{
+		"prompts/handoff/role-method.md", "prompts/handoff/replies-contract.md", "prompts/handoff/capability-map.md",
 	} {
+		if i > 0 {
+			want = append(want, '\n')
+		}
 		raw, err := skillfs.Read(name)
 		if err != nil {
 			t.Fatalf("read embedded %s: %v", name, err)
@@ -81,8 +88,8 @@ func embeddedDrainProcedure(t *testing.T) []byte {
 	return want
 }
 
-// TestWriteProcedureUsesEmbeddedPayload pins the drain assembly against the
-// three embedded files and proves disk copies cannot replace any of them.
+// TestWriteProcedureUsesEmbeddedPayload pins the drain core against its three
+// embedded files and proves disk copies cannot replace any of them.
 func TestWriteProcedureUsesEmbeddedPayload(t *testing.T) {
 	dir := t.TempDir()
 	writeDrainProcedureDecoys(t, dir)
@@ -98,5 +105,32 @@ func TestWriteProcedureUsesEmbeddedPayload(t *testing.T) {
 	}
 	if !bytes.Equal(got, want) {
 		t.Fatalf("%s is not the embedded drain assembly", KeyProcedureMD)
+	}
+}
+
+// TestWriteProcedureAddsOnlyTheThreadsSection proves a drain bundle with
+// prior feedback appends the shared section in place of a review-only one.
+func TestWriteProcedureAddsOnlyTheThreadsSection(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "threads.json"),
+		[]byte(`{"schema_version":"1","threads":[{"id":"t1"}]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := WriteProcedure(dir); err != nil {
+		t.Fatal(err)
+	}
+	want := embeddedDrainProcedure(t)
+	section, err := skillfs.Read("prompts/handoff/threads.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want = append(want, '\n')
+	want = append(want, section...)
+	got, err := os.ReadFile(filepath.Join(dir, KeyProcedureMD))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("%s did not append exactly the prior-threads section", KeyProcedureMD)
 	}
 }

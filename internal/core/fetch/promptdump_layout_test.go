@@ -13,7 +13,8 @@ import (
 // It is typed here, not read from the function under test, so a dropped or
 // reordered payload file fails the assembly test.
 var reviewPayloadPaths = []string{
-	skillfs.ProcedureMD, "prompts/system.md", "prompts/review.md", "prompts/diagrams.md",
+	"prompts/handoff/role-method.md", "prompts/handoff/findings-contract.md",
+	"prompts/handoff/capability-map.md",
 }
 
 // TestReviewProcedureFromEmbeddedPayload pins the review assembly against the
@@ -25,7 +26,10 @@ func TestReviewProcedureFromEmbeddedPayload(t *testing.T) {
 	t.Chdir(dir)
 
 	var want strings.Builder
-	for _, name := range reviewPayloadPaths {
+	for i, name := range reviewPayloadPaths {
+		if i > 0 {
+			want.WriteByte('\n')
+		}
 		raw, err := skillfs.Read(name)
 		if err != nil {
 			t.Fatalf("read embedded %s: %v", name, err)
@@ -45,7 +49,8 @@ func TestReviewProcedureFromEmbeddedPayload(t *testing.T) {
 // reader consulted, so a fallback to the working directory is observable.
 func plantProcedureDecoys(t *testing.T, dir string) {
 	t.Helper()
-	paths := []string{"PROCEDURE.md", "prompts/system.md", "prompts/review.md", "prompts/diagrams.md"}
+	paths := append([]string{"PROCEDURE.md", "prompts/system.md", "prompts/review.md", "prompts/diagrams.md"},
+		reviewPayloadPaths...)
 	for i, name := range paths {
 		path := filepath.Join(dir, filepath.FromSlash(name))
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {

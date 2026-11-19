@@ -2,7 +2,7 @@
 set -euo pipefail
 prompt="${!#}"
 rest="${prompt#*Write }"
-artifact="${rest%% with \{*}"
+artifact="${rest%% FIRST with \{*}"
 printf '%s\n' "$0" >>"$LOOP_LOG"
 if [ "$LOOP_MODE" = empty ]; then
   printf '{"schema_version":"1","summary":"No review performed on this change.","findings":[],"coverage":[]}\n' >"$artifact"

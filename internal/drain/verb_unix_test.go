@@ -114,6 +114,27 @@ printf '{"schema_version":"1","plan_digest":"%s","replies":[{"thread_id":"PRRT_1
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
+// literalDrainProcedure is the fact-aware drain assembly the dry run writes:
+// the shared core plus the prior-threads section from its refreshed feed.
+func literalDrainProcedure(t *testing.T) []byte {
+	t.Helper()
+	var out []byte
+	for i, name := range []string{
+		"prompts/handoff/role-method.md", "prompts/handoff/replies-contract.md",
+		"prompts/handoff/capability-map.md", "prompts/handoff/threads.md",
+	} {
+		if i > 0 {
+			out = append(out, '\n')
+		}
+		raw, err := skillfs.Read(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, raw...)
+	}
+	return out
+}
+
 func procedureProbe(t *testing.T, expected []byte) string {
 	t.Helper()
 	expectedPath := filepath.Join(t.TempDir(), "expected.procedure")
@@ -144,10 +165,7 @@ func runDryDraft(t *testing.T, root string, cmdr *drainHostStub) (string, string
 
 func TestDryRunDraftGetsBundleProcedureBeforeAgent(t *testing.T) {
 	root, dir := setupDrainBundle(t)
-	want, err := skillfs.DrainProcedure()
-	if err != nil {
-		t.Fatal(err)
-	}
+	want := literalDrainProcedure(t)
 	probe := procedureProbe(t, want)
 	installProcedureCheckingClaude(t)
 	// The first pass pins the exact feed and plan bytes a drain refresh writes;

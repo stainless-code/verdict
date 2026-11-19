@@ -15,7 +15,30 @@ unset REVIEW_BUDGET_USD REVIEW_MODEL || true
 
 HEADA="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 EXPECTED_TV="$(jq -r .version "$EVAL_ROOT/package.json")"
-EXPECTED_PH="$(for f in PROCEDURE.md prompts/diagrams.md prompts/review.md prompts/system.md prompts/validate.md prompts/verifier.md; do printf '== %s ==\n' "$f"; cat "$EVAL_PROCEDURE/$f"; printf '\n'; done | shasum -a 256 | cut -d' ' -f1)"
+# prompts_hash covers every file that feeds the assembled handoff, not just
+# the six baseline Procedure files: the lean core, its fact sections, and the
+# byte-identical pull ref sources are all recorded in the receipt.
+PROMPT_INPUTS='PROCEDURE.md
+packs/builtin/pack.json
+prompts/diagrams.md
+prompts/handoff/capability-map.md
+prompts/handoff/chunked.md
+prompts/handoff/context.md
+prompts/handoff/findings-contract.md
+prompts/handoff/kb.md
+prompts/handoff/lenses.md
+prompts/handoff/replies-contract.md
+prompts/handoff/role-method.md
+prompts/handoff/threads.md
+prompts/incremental-review.md
+prompts/review.md
+prompts/reviewer-subagent.md
+prompts/system.md
+prompts/validate.md
+prompts/verifier.md
+references/commands.md
+references/panel.md'
+EXPECTED_PH="$(while IFS= read -r f; do printf '== %s ==\n' "$f"; cat "$EVAL_PROCEDURE/$f"; printf '\n'; done <<<"$PROMPT_INPUTS" | shasum -a 256 | cut -d' ' -f1)"
 
 mklocal() { # $1 = slug (without the local- prefix)
   local dir="$EVAL_SANDBOX/.verdict/state/local-$1"

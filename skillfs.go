@@ -7,14 +7,20 @@
 package skillfs
 
 import (
+	"bytes"
 	"embed"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"maps"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
+
+	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // SkillMD is the stub entry point, relative to the payload root.
@@ -141,6 +147,146 @@ func openRoot(m multiFS) (fs.File, error) {
 	return &rootDir{info: info, entries: entries}, nil
 }
 
+// HandoffFacts are the bundle facts that decide a conditional handoff section.
+// A false fact appends no section — there is no stub, placeholder, or hint.
+type HandoffFacts struct {
+	Chunked      bool
+	PriorThreads bool
+	KB           bool
+	Lenses       bool
+	Context      bool
+}
+
+const (
+	roleMethodMD       = "prompts/handoff/role-method.md"
+	findingsContractMD = "prompts/handoff/findings-contract.md"
+	repliesContractMD  = "prompts/handoff/replies-contract.md"
+	capabilityMapMD    = "prompts/handoff/capability-map.md"
+	chunkedSectionMD   = "prompts/handoff/chunked.md"
+	threadsSectionMD   = "prompts/handoff/threads.md"
+	kbSectionMD        = "prompts/handoff/kb.md"
+	lensesSectionMD    = "prompts/handoff/lenses.md"
+	contextSectionMD   = "prompts/handoff/context.md"
+)
+
+type handoffSection struct {
+	has  func(HandoffFacts) bool
+	name string
+}
+
+// handoffSectionOrder is the fixed order every assembly trusts. A section's
+// position never depends on the order facts were set.
+var handoffSectionOrder = []handoffSection{
+	{name: chunkedSectionMD, has: func(f HandoffFacts) bool { return f.Chunked }},
+	{name: threadsSectionMD, has: func(f HandoffFacts) bool { return f.PriorThreads }},
+	{name: kbSectionMD, has: func(f HandoffFacts) bool { return f.KB }},
+	{name: lensesSectionMD, has: func(f HandoffFacts) bool { return f.Lenses }},
+	{name: contextSectionMD, has: func(f HandoffFacts) bool { return f.Context }},
+}
+
+// HandoffRef is one on-demand bundle reference. Path is the bundle slash
+// path; Source is the embedded payload; From/To bound an optional byte slice.
+type HandoffRef struct {
+	Path   string
+	Source string
+	From   string
+	To     string
+}
+
+// handoffRefs is the pull list. The capability map names these paths; the
+// full operator workflow and body-format rules are not part of the handoff.
+var handoffRefs = []HandoffRef{
+	{Path: "refs/review-checklist.md", Source: "prompts/review.md", From: "## Checklist\n", To: "## Review body format"},
+	{Path: "refs/system-boundaries.md", Source: "prompts/system.md"},
+	{Path: "refs/diagrams.md", Source: "prompts/diagrams.md"},
+	{Path: "refs/incremental-review.md", Source: "prompts/incremental-review.md"},
+	{Path: "refs/reviewer-subagent.md", Source: "prompts/reviewer-subagent.md"},
+	{Path: "refs/commands.md", Source: "references/commands.md"},
+	{Path: "refs/panel.md", Source: "references/panel.md"},
+	{Path: "refs/lens-pack.md", Source: "packs/builtin/pack.json"},
+}
+
+// HandoffRefs returns the pull list in capability-map order.
+func HandoffRefs() []HandoffRef { return slices.Clone(handoffRefs) }
+
+// ReadRef returns the exact bytes a pull ref writes. An empty From/To copies
+// the whole source file; otherwise both markers must be present and the ref
+// is the byte slice from the start of From up to the start of To.
+func ReadRef(ref HandoffRef) ([]byte, error) {
+	raw, err := Read(ref.Source)
+	if err != nil {
+		return nil, err
+	}
+	if ref.From == "" && ref.To == "" {
+		return raw, nil
+	}
+	start, end, err := refBounds(raw, ref)
+	if err != nil {
+		return nil, err
+	}
+	return raw[start:end], nil
+}
+
+func refBounds(raw []byte, ref HandoffRef) (int, int, error) {
+	start, end := 0, len(raw)
+	if ref.From != "" {
+		start = bytes.Index(raw, []byte(ref.From))
+		if start < 0 {
+			return 0, 0, &ProcedureFileError{
+				Path:  ref.Source,
+				Cause: jq.NewErrf("reference start marker %q is missing", ref.From),
+			}
+		}
+	}
+	if ref.To != "" {
+		i := bytes.Index(raw[start:], []byte(ref.To))
+		if i < 0 {
+			return 0, 0, &ProcedureFileError{
+				Path:  ref.Source,
+				Cause: jq.NewErrf("reference end marker %q is missing", ref.To),
+			}
+		}
+		end = start + i
+	}
+	return start, end, nil
+}
+
+// HandoffFiles lists every embedded file that feeds the handoff core, its
+// sections, or its refs. Provenance hashes these alongside the six baseline
+// prompt files, so an edit to any assembled byte moves prompts_hash.
+func HandoffFiles() []string {
+	files := []string{roleMethodMD, findingsContractMD, repliesContractMD, capabilityMapMD}
+	for _, section := range handoffSectionOrder {
+		files = append(files, section.name)
+	}
+	for _, ref := range handoffRefs {
+		files = append(files, ref.Source)
+	}
+	slices.Sort(files)
+	return files
+}
+
+// WriteBundleRefs writes the pull refs into a bundle's refs directory. The
+// bytes come only from this binary's embedded payload, never the checkout.
+func WriteBundleRefs(dir string) error {
+	refsDir := filepath.Join(dir, "refs")
+	if err := os.MkdirAll(refsDir, execMode); err != nil {
+		return jq.Sealed("create bundle refs dir", err)
+	}
+	for _, ref := range handoffRefs {
+		raw, err := ReadRef(ref)
+		if err != nil {
+			return err
+		}
+		name, _ := strings.CutPrefix(ref.Path, "refs/")
+		path := filepath.Join(refsDir, filepath.FromSlash(name))
+		if err := atomic.WriteFile(path, raw); err != nil {
+			return jq.Sealed("write bundle ref "+filepath.ToSlash(path), err)
+		}
+	}
+	return nil
+}
+
 // readRootEntries opens one overlay root and drains its directory, closing
 // the handle before the merged root returns it to the caller.
 func readRootEntries(root fs.FS, name string) ([]fs.DirEntry, fs.FileInfo, error) {
@@ -252,23 +398,24 @@ func (e *ProcedureFileError) Unwrap() error { return e.Cause }
 
 const systemPromptMD = "prompts/system.md"
 
-// reviewProcedureFiles is the review assembly's trust order, in one place.
-func reviewProcedureFiles() []string {
-	return []string{ProcedureMD, systemPromptMD, "prompts/review.md", "prompts/diagrams.md"}
+// reviewCoreFiles is the review core's trust order, in one place.
+func reviewCoreFiles() []string {
+	return []string{roleMethodMD, findingsContractMD, capabilityMapMD}
 }
 
-// drainProcedureFiles is the drain assembly's trust order, in one place.
-func drainProcedureFiles() []string {
-	return []string{ProcedureMD, systemPromptMD, "prompts/address-reviews.md"}
+// drainProcedureFiles is the drain core's trust order: the same role, method,
+// and map, with the replies artifact contract in place of findings.
+func drainCoreFiles() []string {
+	return []string{roleMethodMD, repliesContractMD, capabilityMapMD}
 }
 
-// taskFiles is the single task vocabulary: each name maps to its assembly in
-// the order the Procedure's mode router trusts the files.
+// taskFiles is the single task vocabulary: the two handoff tasks assemble a
+// lean core, and the remaining operator tasks keep their task prompt.
 var taskFiles = map[string]func() []string{
-	"address-reviews":    drainProcedureFiles,
+	"address-reviews":    drainCoreFiles,
 	"fix-ci":             func() []string { return genericTaskFiles("fix-ci") },
 	"incremental-review": func() []string { return genericTaskFiles("incremental-review") },
-	"review":             reviewProcedureFiles,
+	"review":             reviewCoreFiles,
 	"validate":           func() []string { return genericTaskFiles("validate") },
 }
 
@@ -296,6 +443,9 @@ func TaskProcedure(task string) ([]byte, error) {
 	if !ok {
 		return nil, &UnknownTaskError{Task: task}
 	}
+	if task == "review" || task == "address-reviews" {
+		return assembleHandoffFiles(files())
+	}
 	return assembleProcedure(files())
 }
 
@@ -314,23 +464,86 @@ func assembleProcedure(files []string) ([]byte, error) {
 	return out, nil
 }
 
-// ReviewProcedure returns the review Procedure served by this binary:
-// PROCEDURE.md, prompts/system.md, prompts/review.md, and prompts/diagrams.md,
-// concatenated in that trust order. It never reads the filesystem. A missing
-// file returns no bytes and a ProcedureFileError; fetch and --show-prompts
-// refuse the whole run as prompt-dump-failed. MCP prompts reuse this public
-// contract.
-func ReviewProcedure() ([]byte, error) {
-	return assembleProcedure(reviewProcedureFiles())
+// assembleHandoffFiles leaves one blank line between embedded files, so every
+// appended ## heading has a blank line before it without a trailing blank
+// line in the formatted source payload.
+func assembleHandoffFiles(files []string) ([]byte, error) {
+	var out []byte
+	for i, name := range files {
+		if i > 0 {
+			out = append(out, '\n')
+		}
+		raw, err := Read(name)
+		if err != nil {
+			return nil, &ProcedureFileError{Path: name, Cause: err}
+		}
+		out = append(out, raw...)
+	}
+	return out, nil
 }
 
-// DrainProcedure returns the drain Procedure served by this binary:
-// PROCEDURE.md, prompts/system.md, and prompts/address-reviews.md, concatenated
-// in that trust order. It never reads the filesystem. A missing file returns
-// no bytes and a ProcedureFileError; the drain bundle writer refuses rather
-// than publishing a partial Procedure. MCP prompts reuse this public contract.
+// ReviewCore returns the pushed review handoff: role, method, findings
+// contract, and capability map. It is the ≤3 KB core an archtest pins; the
+// operator workflow and body-format rules are pull refs, not pushed bytes.
+func ReviewCore() ([]byte, error) {
+	return assembleHandoffFiles(reviewCoreFiles())
+}
+
+// ReviewProcedureFor assembles the lean review core plus the sections whose
+// facts are true, in handoffSectionOrder. A false fact contributes no bytes.
+func ReviewProcedureFor(facts HandoffFacts) ([]byte, error) {
+	return assembleHandoff(reviewCoreFiles(), facts, true)
+}
+
+// DrainProcedureFor assembles the drain core plus the prior-threads section,
+// the only conditional section a drain handoff uses.
+func DrainProcedureFor(facts HandoffFacts) ([]byte, error) {
+	return assembleHandoff(drainCoreFiles(), facts, false)
+}
+
+// sectionApplies gates sections by bundle fact and handoff kind: drain keeps
+// only prior threads, because it answers threads rather than reading a diff.
+func sectionApplies(section handoffSection, facts HandoffFacts, review bool) bool {
+	if !review && section.name != threadsSectionMD {
+		return false
+	}
+	return section.has(facts)
+}
+
+// assembleHandoff appends the sections whose facts are true, each separated
+// from the preceding bytes by one blank line.
+func assembleHandoff(core []string, facts HandoffFacts, review bool) ([]byte, error) {
+	raw, err := assembleHandoffFiles(core)
+	if err != nil {
+		return nil, err
+	}
+	for _, section := range handoffSectionOrder {
+		if !sectionApplies(section, facts, review) {
+			continue
+		}
+		part, err := Read(section.name)
+		if err != nil {
+			return nil, &ProcedureFileError{Path: section.name, Cause: err}
+		}
+		raw = append(raw, '\n')
+		raw = append(raw, part...)
+	}
+	return raw, nil
+}
+
+// ReviewProcedure returns the review handoff with no bundle facts: the pushed
+// core alone. Bundle-aware callers use ReviewProcedureFor; MCP prompts and the
+// golden harness use this fact-free public contract. A missing file returns no
+// bytes and a ProcedureFileError.
+func ReviewProcedure() ([]byte, error) {
+	return ReviewProcedureFor(HandoffFacts{})
+}
+
+// DrainProcedure returns the drain handoff with no bundle facts: the pushed
+// drain core alone. The drain bundle writer may pass facts through
+// DrainProcedureFor; MCP prompts use this fact-free contract.
 func DrainProcedure() ([]byte, error) {
-	return assembleProcedure(drainProcedureFiles())
+	return DrainProcedureFor(HandoffFacts{})
 }
 
 // Read returns one embedded payload file by its slash path.

@@ -268,3 +268,69 @@ func TestScrubNormalizesEmbeddedProcedures(t *testing.T) {
 		}
 	}
 }
+
+type scrubbedBody struct {
+	name   string
+	marker string
+	raw    []byte
+}
+
+func handoffBodies(t *testing.T, entries []scrubbedBody) []scrubbedBody {
+	t.Helper()
+	for i, entry := range entries {
+		raw, err := skillfs.Read(entry.name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		entries[i].raw = raw
+	}
+	return entries
+}
+
+func renderBodies(entries []scrubbedBody) string {
+	var rendered strings.Builder
+	for _, entry := range entries {
+		rendered.Write(entry.raw)
+		rendered.WriteString(`{"prompt_dump":"` + jsonStringBody(string(entry.raw)) + `"}` + newline)
+	}
+	return rendered.String()
+}
+
+func assertBodiesScrubbed(t *testing.T, out string, entries []scrubbedBody) {
+	t.Helper()
+	for _, entry := range entries {
+		if strings.Contains(out, string(entry.raw)) {
+			t.Errorf("%s body survived the golden scrub", entry.name)
+		}
+		if !strings.Contains(out, entry.marker) {
+			t.Errorf("golden lacks the %s marker", entry.marker)
+		}
+	}
+}
+
+// TestScrubNormalizesConditionalSections proves each fact section gets its own
+// marker, including in an escaped prompt dump assembled with that fact true.
+func TestScrubNormalizesConditionalSections(t *testing.T) {
+	sections := handoffBodies(t, []scrubbedBody{
+		{name: "prompts/handoff/chunked.md", marker: embeddedChunkedMarker},
+		{name: "prompts/handoff/threads.md", marker: embeddedThreadsMarker},
+		{name: "prompts/handoff/kb.md", marker: embeddedKBMarker},
+		{name: "prompts/handoff/lenses.md", marker: embeddedLensesMarker},
+		{name: "prompts/handoff/context.md", marker: embeddedContextMarker},
+	})
+	assertBodiesScrubbed(t, Scrub(renderBodies(sections)), sections)
+}
+
+// TestScrubNormalizesPullRefs keeps the review checklist and other ref
+// bodies out of every golden, including escaped prompt dumps.
+func TestScrubNormalizesPullRefs(t *testing.T) {
+	var refs []scrubbedBody
+	for _, ref := range skillfs.HandoffRefs() {
+		raw, err := skillfs.ReadRef(ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		refs = append(refs, scrubbedBody{name: ref.Path, raw: raw, marker: embeddedRefMarker + ref.Path + ">"})
+	}
+	assertBodiesScrubbed(t, Scrub(renderBodies(refs)), refs)
+}

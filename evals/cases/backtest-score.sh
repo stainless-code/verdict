@@ -56,7 +56,7 @@ cat >"$EVAL_SANDBOX/.verdict/agentbin/claude" <<'STUB'
 set -euo pipefail
 directive="${!#}"
 rest="${directive#*Write }"
-artifact="${rest%% with \{*}"
+artifact="${rest%% FIRST with \{*}"
 mkdir -p "$(dirname "$artifact")"
 cat >"$artifact" <<'JSON'
 {"schema_version":"1",

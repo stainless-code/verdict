@@ -112,18 +112,20 @@ for dir in "$LOCAL_DIR" "$PR_DIR"; do
   fi
 done
 
-# --- the directive's Procedure is the one the fetch producer wrote -----------
-# The expectation comes from the shipped skill (`skill show`), and the file
-# under test comes from `fetch-local` (`eval_mk_bundle`). Parsing the path out
-# of the rendered directive means a renamed read line names a file that is
-# not there; nothing plants bytes at the parsed path.
-EXPECTED_PROCEDURE="$SANDBOX/review-procedure.expected"
-: > "$EXPECTED_PROCEDURE"
-for payload in PROCEDURE.md prompts/system.md prompts/review.md prompts/diagrams.md; do
-  run_review skill show "$payload"
-  assert_exit "skill show $payload builds the procedure expectation" 0
-  cat "$EVAL_OUT" >> "$EXPECTED_PROCEDURE"
-done
+# --- the directive's handoff is the one the fetch producer wrote -------------
+# The expectation is the bundle's own procedure.md, written by `fetch-local`
+# (`eval_mk_bundle`). Parsing the path out of the rendered directive means a
+# renamed read line names a file that is not there; nothing plants bytes at
+# the parsed path. The fetched file itself starts with the embedded core.
+EXPECTED_PROCEDURE="$LOCAL_DIR/procedure.md"
+run_review skill show prompts/handoff/role-method.md
+assert_exit "skill show the embedded core builds the handoff expectation" 0
+CORE_BYTES="$(wc -c <"$EVAL_OUT" | tr -d ' ')"
+if head -c "$CORE_BYTES" "$EXPECTED_PROCEDURE" | cmp -s - "$EVAL_OUT"; then
+  good "fetched procedure.md starts with the embedded handoff core"
+else
+  bad "fetched procedure.md lost the embedded handoff core"
+fi
 
 run_review run acme/app "$LOCAL" --agent claude --print --json -- --model opus
 assert_exit "--print renders a directive for the produced-procedure check" 0
@@ -131,9 +133,9 @@ named_procedure="$(jq -r '.data.argv[-1] | capture("Read `(?<p>[^`]+)` first;").
 if [ -n "$named_procedure" ] \
   && [ -f "$EVAL_SANDBOX/$named_procedure" ] \
   && cmp -s "$EVAL_SANDBOX/$named_procedure" "$EXPECTED_PROCEDURE"; then
-  good "--print directive names the fetched Procedure byte-identically"
+  good "--print directive names the fetched handoff byte-identically"
 else
-  bad "--print directive named '$named_procedure', not the fetched embedded Procedure"
+  bad "--print directive named '$named_procedure', not the fetched embedded handoff"
 fi
 
 # --- --print: the escape hatch renders the command and does nothing else -----
@@ -147,7 +149,7 @@ assert_json_field "--print keeps the operator's flags before the directive" \
   "claude -p --model opus [prompt]" \
   '.data.argv | "\(.[0:4] | join(" ")) [prompt]"'
 assert_json_field "--print's directive names the one review file" "true" \
-  '.data.argv[-1] | startswith("Review acme/app local change local-launch") and contains("Write .verdict/state/local-launch/review.json with ")'
+  '.data.argv[-1] | startswith("Review acme/app local change local-launch") and contains("Write .verdict/state/local-launch/review.json FIRST with ")'
 assert_eq "--print launched no agent process" "$before_spawns" "$(spawns)"
 if [ ! -e "$LAUNCHER" ] && [ ! -e "$LOCAL_DIR/review.json" ]; then
   good "--print wrote no launcher record and no review"
@@ -229,7 +231,7 @@ assert_file_grep "the operator's flag kept its operand" "$STUB_AGENT_LOG" '^arg\
 assert_file_grep "the directive arrived whole as the last argument" "$STUB_AGENT_LOG" \
   '^arg\[3\]=Review acme/app local change local-launch and write exactly one review file\.'
 assert_file_grep "the directive named the one artifact to write" "$STUB_AGENT_LOG" \
-  '^arg\[3\]=.*Write .verdict/state/local-launch/review.json with '
+  '^arg\[3\]=.*Write .verdict/state/local-launch/review.json FIRST with '
 assert_file_grep "nothing follows the directive" "$STUB_AGENT_LOG" '^argc=4$'
 assert_file_grep "the agent ran in the repository root" "$STUB_AGENT_LOG" "cwd=$SANDBOX" "-Fx"
 

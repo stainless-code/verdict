@@ -9,9 +9,11 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"maps"
 	"math"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -24,6 +26,20 @@ import (
 var promptFiles = []string{
 	"PROCEDURE.md", "prompts/diagrams.md", "prompts/review.md",
 	"prompts/system.md", "prompts/validate.md", "prompts/verifier.md",
+}
+
+// hashedFiles is the baseline prompt set plus every file that feeds the lean
+// handoff (core, conditional sections, and ref sources). Duplicates collapse,
+// so a ref that is also a baseline prompt moves the digest once.
+func hashedFiles() []string {
+	set := make(map[string]bool, len(promptFiles)+len(skillfs.HandoffFiles()))
+	for _, f := range promptFiles {
+		set[f] = true
+	}
+	for _, f := range skillfs.HandoffFiles() {
+		set[f] = true
+	}
+	return slices.Sorted(maps.Keys(set))
 }
 
 // buildVersion is the release version injected at link time (GoReleaser
@@ -71,7 +87,7 @@ func ToolVersion(root string) string {
 // cannot change the digest.
 func PromptsHash() string {
 	h := sha256.New()
-	for _, f := range promptFiles {
+	for _, f := range hashedFiles() {
 		raw, err := skillfs.Read(f)
 		if err != nil {
 			continue

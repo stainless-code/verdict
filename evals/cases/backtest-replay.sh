@@ -56,7 +56,7 @@ cat >"$EVAL_SANDBOX/.verdict/agentbin/claude" <<'STUB'
 set -euo pipefail
 directive="${!#}"
 rest="${directive#*Write }"
-artifact="${rest%% with \{*}"
+artifact="${rest%% FIRST with \{*}"
 printf '%s\n' "$PWD" >>"$EVAL_AGENT_LOG"
 mkdir -p "$(dirname "$artifact")"
 # One inline finding on the historical line, with the Basis line the record

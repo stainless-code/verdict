@@ -91,13 +91,15 @@ func expectedPromptBodies(t *testing.T) map[string][]byte {
 	t.Helper()
 	return map[string][]byte{
 		"address-reviews": literalProcedure(t,
-			"PROCEDURE.md", "prompts/system.md", "prompts/address-reviews.md"),
+			"prompts/handoff/role-method.md", "prompts/handoff/replies-contract.md",
+			"prompts/handoff/capability-map.md"),
 		"fix-ci": literalProcedure(t,
 			"PROCEDURE.md", "prompts/system.md", "prompts/fix-ci.md"),
 		"incremental-review": literalProcedure(t,
 			"PROCEDURE.md", "prompts/system.md", "prompts/incremental-review.md"),
 		"review": literalProcedure(t,
-			"PROCEDURE.md", "prompts/system.md", "prompts/review.md", "prompts/diagrams.md"),
+			"prompts/handoff/role-method.md", "prompts/handoff/findings-contract.md",
+			"prompts/handoff/capability-map.md"),
 		"validate": literalProcedure(t,
 			"PROCEDURE.md", "prompts/system.md", "prompts/validate.md"),
 	}
@@ -168,7 +170,10 @@ func checkInvalidPrompt(t *testing.T, got frame, name string) {
 func literalProcedure(t *testing.T, files ...string) []byte {
 	t.Helper()
 	var want []byte
-	for _, name := range files {
+	for i, name := range files {
+		if i > 0 && strings.HasPrefix(name, "prompts/handoff/") {
+			want = append(want, '\n')
+		}
 		part, err := skillfs.Read(name)
 		if err != nil {
 			t.Fatal(err)

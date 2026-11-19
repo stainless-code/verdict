@@ -113,9 +113,12 @@ func TestRunAgentAndPostZeroPendingSkipsLaunchAndPost(t *testing.T) {
 func drainProcedureBytes(t *testing.T) []byte {
 	t.Helper()
 	var out []byte
-	for _, name := range []string{
-		skillfs.ProcedureMD, "prompts/system.md", "prompts/address-reviews.md",
+	for i, name := range []string{
+		"prompts/handoff/role-method.md", "prompts/handoff/replies-contract.md", "prompts/handoff/capability-map.md",
 	} {
+		if i > 0 {
+			out = append(out, '\n')
+		}
 		raw, err := skillfs.Read(name)
 		if err != nil {
 			t.Fatalf("read embedded %s: %v", name, err)

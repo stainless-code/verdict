@@ -35,8 +35,8 @@ if [ "${2:-}" = "--help" ]; then
 fi
 directive="${!#}"
 rest="${directive#*Write }"
-artifact="${rest%% with \{*}"
-if [ -z "$artifact" ] || [ "$artifact" = "$directive" ]; then
+artifact="${rest%% FIRST with \{*}"
+if [ -z "$artifact" ] || [ "$artifact" = "$rest" ]; then
   echo "fx: the directive named no review path" >&2
   exit 2
 fi

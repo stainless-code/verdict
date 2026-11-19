@@ -655,6 +655,9 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 	st.human(fmt.Sprintf("» recipe: %s@%s (%s)", args.plan.Name, args.plan.Version, args.plan.Source))
 	st.human(fmt.Sprintf("» run: %s (timeout %ds)", strings.Join(rec.Argv, " "), args.timeout))
 	res, err := st.spawn(ctx, args.argv, args.timeout)
+	if res != nil && ctx.Err() == nil && st.salvageReview(args, res.Stdout) {
+		rec.Salvaged = true
+	}
 	return st.finish(ctx, args, rec, launched, started, res, err, nil)
 }
 

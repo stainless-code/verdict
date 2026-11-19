@@ -91,6 +91,7 @@ type launcher struct { //nolint:govet // field order is the published property o
 	TimedOut      *bool             `json:"timed_out,omitempty"`
 	ArtifactFresh *bool             `json:"artifact_fresh,omitempty"`
 	ArtifactBytes *int64            `json:"artifact_bytes,omitempty"`
+	Salvaged      bool              `json:"salvaged,omitempty"`
 	OutputTail    string            `json:"output_tail,omitempty"`
 	Repair        *launcherRepair   `json:"repair,omitempty"`
 	Attempts      []core.RunAttempt `json:"attempts,omitempty"`

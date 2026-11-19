@@ -17,11 +17,12 @@ verdict init --preset standard --yes
 verdict fetch owner/repo 123
 
 # 2. review with ANY agent (read .verdict/state/123/procedure.md first; it is
-#    the binary's authoritative Procedure for this review — an installed skill may be older):
-#    Point the agent at .verdict/state/123/. It reads .verdict/state/123/procedure.md first,
-#    then .verdict/state/123/full.diff fully via .verdict/state/123/toc.txt, and fans out
-#    0-N lenses per prompts/reviewer-subagent.md for disposition-changing questions only.
-#    Write exactly one .verdict/state/123/review.json {schema_version: "1", findings[], spec_checks?, receipts?, summary?, resolved?, triage?}.
+#    the binary's lean review handoff — a small core, fact sections, and a map
+#    of refs/ files to pull on demand; an installed skill may be older):
+#    Point the agent at .verdict/state/123/. It writes review.json FIRST with
+#    {"schema_version":"1","findings":[]}, reads full.diff fully via toc.txt,
+#    then updates that same file with every suspected finding and its confidence.
+#    refs/ holds the operator workflow and body-format rules for on-demand reads.
 
 # 3. post (exactly once — validates anchors, merges findings, submits)
 verdict post owner/repo 123
@@ -370,7 +371,10 @@ writes, and a dry-run preview is never a receipt.
 ### Bundle namespace (core files vs `x-*`)
 
 A bundle dir holds these core/script artifacts (`PR.json`/`source.json`,
-`procedure.md` (the binary's review Procedure; `drain.procedure.md` for a drain bundle),
+`procedure.md` (the binary's lean review handoff; `drain.procedure.md` for a drain bundle),
+`refs/` (byte-identical pull copies of the review checklist, system boundaries,
+diagrams, incremental rules, reviewer lens, command guide, panel guide, and
+built-in lens pack),
 `full.diff`, `toc.txt`, `roles.txt`, `review.json`, `findings.json`, `findings.dryrun.json`, `record.json`,
 `post.json`, `store.json`, `hunks.tsv`, `reviews.json`, `inline.json`, `threads.json`,
 `threads-resolve.json`, `drain.json`, `drain.dryrun.json`, `drain.replies.json`, `selected.json`,
@@ -1352,24 +1356,24 @@ writes — the bundle is byte-identical after the run, and the bare text path
 never a warning.
 
 `fetch`/`fetch-local` take `--show-prompts`: after the normal bundle write,
-the script renders the assembled agent reading list — the binary's embedded review
-Procedure (`PROCEDURE.md`, `prompts/system.md`, `prompts/review.md`,
-`prompts/diagrams.md`), the bundle
-meta (`PR.json` or `source.json`), `toc.txt`, `roles.txt`, `full.diff`, plus
-`kb.txt`, `lenses.txt`, `reverts.txt`, `sensitive.txt`, and `panel` when
-present, in that order — trusted
-prompts verbatim, then the trust-boundary prologue, then one nonce fence
-per bundle file — to stdout (human mode; progress moves to stderr) or
-`data.prompt_dump` (`--json`). No agent runs, no network beyond the fetch
+the script renders the assembled agent reading list — the binary's embedded
+handoff (`procedure.md`, core plus its fact sections), then the trusted line
+`Trusted refs in <bundle>/refs/: <paths>`, then the trust-boundary prologue,
+then one nonce fence per bundle file (`PR.json` or `source.json`, `toc.txt`,
+`roles.txt`, `full.diff`, plus `kb.txt`, `lenses.txt`, `reverts.txt`,
+`sensitive.txt`, and `panel` when present, in that order) — to stdout (human
+mode; progress moves to stderr) or `data.prompt_dump` (`--json`). No agent runs, no network beyond the fetch
 itself, no store writes beyond the bundle: the flag changes only the printed
 dump, so the bundle is byte-identical with or without it. The trusted assembly
 comes from the binary's embedded payload, never the working directory or a
 `procedure/` checkout, so the dump starts with exactly the bytes written to
 `<bundle>/procedure.md`. Missing bundle files skip silently, but a missing
-embedded Procedure file fails loudly: any of `PROCEDURE.md`,
-`prompts/system.md`, `prompts/review.md`, or `prompts/diagrams.md` refuses
-typed `prompt-dump-failed`, names the path, and writes no partial
-`procedure.md`. Trusted prompts print verbatim first, then a
+embedded handoff file fails loudly: any core or conditional section under
+`prompts/handoff/` refuses typed `prompt-dump-failed`, names the path, and
+writes no partial `procedure.md`. The pull refs land in `<bundle>/refs/`; the
+dump prints only their paths on one trusted line, never their bodies. The
+capability map tells the agent when to read the files. The trusted assembly
+prints first, then a
 tool-generated trust-boundary prologue naming the run's nonce, then every
 present bundle file inside its own fence — the bundle meta (`PR.json` or
 `source.json`), `toc.txt`, `roles.txt`, the diff (`full.diff`, or the
@@ -2152,11 +2156,17 @@ list.
 
 ### What `run` asserts
 
-The contract is the artifact, not the output. After the process exits, `run`
-requires exactly one fresh `.verdict/state/<bundle>/review.json` — present, a
-regular file, and not older than the launch record it wrote first — then
-stops. `record`/`post` validate that file unchanged, so a review `run` accepts
-is a review they accept.
+The contract is the artifact, not the output. The directive tells the agent to
+write `.verdict/state/<bundle>/review.json` first with empty findings and then
+update that same file. After the process exits, `run` requires exactly one
+fresh `review.json` — present, a regular file, and not older than the launch
+record it wrote first — then stops. When no file exists, `run` takes the last
+fenced `json` block on the agent's stdout that parses as a findings document,
+writes it as `review.json`, records `salvaged: true` in `launcher.json`, and
+adds a warning. A malformed or absent block changes nothing and keeps the
+`no-review-artifact` refusal; a stale or non-file artifact is never salvaged
+over. `record`/`post` validate the resulting file unchanged, so a review `run`
+accepts is a review they accept.
 
 The freshness stamp has one-second granularity, so the guarantee is "not older
 than the launch", not "written by this agent". A `review.json` left by an
@@ -2461,19 +2471,19 @@ Every refusal code the binary can emit is listed with its cause and its fix in
 Every way `run` can fail is typed, carries a `try:` hint, and leaves the
 agent's own failure visible to CI:
 
-| Code                    | When                                                                            | Exit        |
-| ----------------------- | ------------------------------------------------------------------------------- | ----------- |
-| `agent-mismatch`        | the binary answered the identity probe with a failure or the wrong text         | 1           |
-| `agent-missing`         | the binary is not on `PATH`                                                     | 1           |
-| `agent-spawn-failed`    | the binary resolved but could not be started                                    | 1           |
-| `agent-timeout`         | the watchdog killed it after `--timeout` seconds                                | 1           |
-| `agent-failed`          | it exited non-zero — **its exit code is the process exit code**                 | the agent's |
-| `no-review-artifact`    | it exited `0` and wrote no `review.json` (or a non-file)                        | 1           |
-| `stale-review-artifact` | `review.json` is older than this launch (an earlier run's)                      | 1           |
-| `unknown-agent`         | the name is not in the agent table                                              | 1           |
-| `agent-record-failed`   | the launcher could not write its provenance record                              | 1           |
-| `repair-exhausted`      | every round left an invalid `review.json` (or a round repeated the prior bytes) | 1           |
-| `rounds-path-unsafe`    | the bundle's `.run.rounds` is a symlink or another non-directory                | 1           |
+| Code                    | When                                                                                                               | Exit        |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------ | ----------- |
+| `agent-mismatch`        | the binary answered the identity probe with a failure or the wrong text                                            | 1           |
+| `agent-missing`         | the binary is not on `PATH`                                                                                        | 1           |
+| `agent-spawn-failed`    | the binary resolved but could not be started                                                                       | 1           |
+| `agent-timeout`         | the watchdog killed it after `--timeout` seconds                                                                   | 1           |
+| `agent-failed`          | it exited non-zero — **its exit code is the process exit code**                                                    | the agent's |
+| `no-review-artifact`    | it exited `0` and wrote no `review.json` (or a non-file), and no fenced findings block on stdout could be salvaged | 1           |
+| `stale-review-artifact` | `review.json` is older than this launch (an earlier run's)                                                         | 1           |
+| `unknown-agent`         | the name is not in the agent table                                                                                 | 1           |
+| `agent-record-failed`   | the launcher could not write its provenance record                                                                 | 1           |
+| `repair-exhausted`      | every round left an invalid `review.json` (or a round repeated the prior bytes)                                    | 1           |
+| `rounds-path-unsafe`    | the bundle's `.run.rounds` is a symlink or another non-directory                                                   | 1           |
 
 An agent exiting `1`, `2`, or `3` is indistinguishable on the exit code alone
 from verdict's own refusal, usage, and canceled codes; `--json` disambiguates
@@ -2495,7 +2505,8 @@ The launch is recorded in `.verdict/state/<bundle>/launcher.json`: agent name,
 resolved binary path, the argv shape (directive replaced by `<prompt>`,
 secret-shaped operands and secret-named environment values redacted), start
 and end timestamps, duration, exit code, timeout flag, artifact freshness and
-size, and a redacted output tail. Each round's full combined output stays in
+size, a `salvaged` flag when stdout supplied a missing review, and a redacted
+output tail. Each round's full combined output stays in
 `.verdict/state/<bundle>/.run.rounds/NN.out` (crash rounds too) and the last
 round's output also stays in `.verdict/state/<bundle>/.run.out`. Both are evidence, not gates. With
 `--rounds N` the record also carries `repair` (rounds, rounds to valid, final
