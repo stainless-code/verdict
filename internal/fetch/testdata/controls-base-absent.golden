@@ -351,8 +351,8 @@ api-base-panel
 --- file C/.verdict/state/4701/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "54f612abedc25d489801cc37f6fad3015ae51cde9480684ec79be5cd7efe8dea",
-  "prompts_hash": "083563d7a259e7198be7760bae6da25d1d2a837ccaa7483b29bc0e3b54b6b82e",
+  "run_id": "d1e4b9bec502cd01129d6886f7fe3f6adb139c31de1276349195a2e818ab810d",
+  "prompts_hash": "f93ad7f99ec1f40295f9d70f414275ddcc216ca75f73115768faa7a94fbc59ed",
   "panel": [
     "api-base-panel"
   ],
@@ -403,8 +403,8 @@ api-base-panel
       "kind": "prompt",
       "name": "prompts/handoff/findings-contract.md",
       "status": "included",
-      "sha256": "0e94822971e89050edc563461fe11f92c284037d0dcaaff7086d6300e4749596",
-      "bytes": 872
+      "sha256": "492cd3632f199155dc8ca099e56b6c4396c1240195020e593d3f81c1766689cb",
+      "bytes": 1357
     },
     {
       "kind": "prompt",
@@ -433,6 +433,13 @@ api-base-panel
       "status": "included",
       "sha256": "ea03c65abe5e11096d956c7fc661579fa1f3a3b51554f946e6c74e227e039fc2",
       "bytes": 424
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/handoff/spec.md",
+      "status": "included",
+      "sha256": "8cd661bd957b129fa2bcf08d510f006dbb297245036752a23d01a24598d8ed85",
+      "bytes": 763
     },
     {
       "kind": "prompt",
@@ -580,8 +587,8 @@ api-base-panel
       "kind": "bundle",
       "name": "procedure.md",
       "status": "included",
-      "sha256": "0cef22215220d10f156b18bb255fb47a3a3a4a12bd13f4a3821765d61c747514",
-      "bytes": 2642
+      "sha256": "f6c1b719e6b1f6da4fb9c5ede0f6145a5e9316d6e82151bcaa4e5271c3b34ae9",
+      "bytes": 3127
     },
     {
       "kind": "bundle",

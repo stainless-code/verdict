@@ -155,6 +155,9 @@ type HandoffFacts struct {
 	KB           bool
 	Lenses       bool
 	Context      bool
+	// Spec is true when a context source carries role: spec, which turns the
+	// handed spec into a checklist the review must answer.
+	Spec bool
 }
 
 const (
@@ -167,6 +170,7 @@ const (
 	kbSectionMD        = "prompts/handoff/kb.md"
 	lensesSectionMD    = "prompts/handoff/lenses.md"
 	contextSectionMD   = "prompts/handoff/context.md"
+	specSectionMD      = "prompts/handoff/spec.md"
 )
 
 type handoffSection struct {
@@ -182,6 +186,7 @@ var handoffSectionOrder = []handoffSection{
 	{name: kbSectionMD, has: func(f HandoffFacts) bool { return f.KB }},
 	{name: lensesSectionMD, has: func(f HandoffFacts) bool { return f.Lenses }},
 	{name: contextSectionMD, has: func(f HandoffFacts) bool { return f.Context }},
+	{name: specSectionMD, has: func(f HandoffFacts) bool { return f.Spec }},
 }
 
 // HandoffRef is one on-demand bundle reference. Path is the bundle slash
