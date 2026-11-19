@@ -102,6 +102,7 @@ type guardState struct {
 	journalPath  string
 	start        StartLine
 	preSnap      Snapshot
+	preObserved  bool
 	startWritten bool
 }
 
@@ -117,7 +118,7 @@ func beginGuard(inv *Invocation, verb string) *guardState {
 	redactedArgv, _ := argvshape.Record(inv.Argv, "", inv.Environ)
 	preDir := bundleForVerb(inv.RepoRoot, verb, inv.Pr)
 	journalPath, absRepo, hasPath := journalPathFor(inv.RepoRoot, preDir, inv.Env)
-	preSnap := sweepBestEffort(preDir, journalPath, inv.Warn)
+	preSnap, preObserved := sweepBestEffort(preDir, journalPath, inv.Warn)
 	st := &guardState{
 		now:         nowFn,
 		journalPath: journalPath,
@@ -133,7 +134,8 @@ func beginGuard(inv *Invocation, verb string) *guardState {
 			Version:       resolveVersion(inv.Version),
 			StartedAt:     step,
 		},
-		preSnap: preSnap,
+		preSnap:     preSnap,
+		preObserved: preObserved,
 	}
 	if hasPath {
 		st.startWritten = true
@@ -150,8 +152,9 @@ func finishGuard(inv *Invocation, st *guardState, code int) {
 	if !hasPath {
 		return
 	}
-	postSnap := sweepBestEffort(postDir, postPath, inv.Warn)
+	postSnap, postObserved := sweepBestEffort(postDir, postPath, inv.Warn)
 	preSnap := st.preSnap
+	preObserved := st.preObserved
 	if !st.startWritten || postPath != st.journalPath {
 		preSnap = Snapshot{}
 		st.start.Repo = absRepo
@@ -159,8 +162,8 @@ func finishGuard(inv *Invocation, st *guardState, code int) {
 			emitWarn(inv.Warn, postPath, err)
 		}
 	}
+	observed := preObserved && postObserved
 	endedAt := st.now().UTC()
-	wrote, removed := Diff(preSnap, postSnap)
 	endLine := EndLine{
 		SchemaVersion: SchemaVersion,
 		Phase:         PhaseEnd,
@@ -174,10 +177,19 @@ func finishGuard(inv *Invocation, st *guardState, code int) {
 		Exit:          code,
 		Refusal:       optionalString(inv.Refusal),
 		Warnings:      callInt(inv.Warnings),
-		Bundle:        bundleDigestsOf(preSnap, postSnap),
-		Wrote:         wrote,
-		Removed:       removed,
+		Wrote:         []FileRecord{},
+		Removed:       []string{},
 		Next:          callString(inv.Next),
+	}
+	if observed {
+		wrote, removed := Diff(preSnap, postSnap)
+		endLine.Bundle = bundleDigestsOf(preSnap, postSnap)
+		endLine.Wrote = wrote
+		endLine.Removed = removed
+	} else {
+		// A failed sweep observes nothing: publishing the diff of an empty
+		// snapshot would claim every bundle file was written or removed.
+		endLine.Bundle = BundleDigests{Unobserved: true}
 	}
 	if err := AppendEnd(postPath, &endLine, endedAt); err != nil {
 		emitWarn(inv.Warn, postPath, err)
@@ -222,13 +234,15 @@ func emitWarn(warn func(string), path string, err error) {
 	warn(WarningMessage(path, err))
 }
 
-func sweepBestEffort(dir, warnPath string, warn func(string)) Snapshot {
+// sweepBestEffort observes dir, reporting false when the sweep failed: its zero
+// Snapshot is then "unknown", never "empty".
+func sweepBestEffort(dir, warnPath string, warn func(string)) (Snapshot, bool) {
 	snap, err := Sweep(dir)
 	if err != nil {
 		emitWarn(warn, warnPath, err)
-		return Snapshot{}
+		return Snapshot{}, false
 	}
-	return snap
+	return snap, true
 }
 
 func optionalString(fn func() string) *string {

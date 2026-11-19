@@ -1304,6 +1304,7 @@ export interface JournalTruncatedInfo {
 export interface JournalBundleDigests {
   before: string | null;
   after: string;
+  unobserved?: boolean;
   [key: string]: unknown;
 }
 

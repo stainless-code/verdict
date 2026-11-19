@@ -113,11 +113,12 @@
       "additionalProperties": false
     },
     "bundleDigests": {
-      "description": "Canonical content-manifest sha256 digests before (null when the bundle did not exist) and after the call.",
+      "description": "Canonical content-manifest sha256 digests before (null when the bundle did not exist) and after the call. `unobserved` marks a call whose content sweep failed, so the digests and the file diff are unknown rather than empty.",
       "type": "object",
       "properties": {
         "before": { "type": ["string", "null"] },
-        "after": { "type": "string" }
+        "after": { "type": "string" },
+        "unobserved": { "type": "boolean" }
       },
       "required": ["before", "after"],
       "additionalProperties": false

@@ -241,6 +241,108 @@ func TestGuardCreatingVerbStartsWithNilBefore(t *testing.T) {
 	}
 }
 
+// TestGuardSweepFailurePublishesNoFileDiff proves a failed content sweep is
+// published as unknown instead of as a diff against an empty snapshot: a broken
+// pre-sweep must not claim every file was written, and a broken post-sweep must
+// not claim every file was removed.
+func TestGuardSweepFailurePublishesNoFileDiff(t *testing.T) {
+	t.Parallel()
+	t.Run("pre-sweep", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+		env := map[string]string{"XDG_STATE_HOME": t.TempDir()}
+		bundleDir := loopBundleDir(t, root, "local-pre")
+		var warns []string
+		code := runGuarded(root, env, "local-pre", func(m string) { warns = append(warns, m) }, func() int {
+			if err := os.Remove(bundleDir); err != nil {
+				t.Fatal(err)
+			}
+			mustWriteFile(t, filepath.Join(bundleDir, "findings.json"), []byte(`{"v":1}`), 0o644)
+			return 0
+		})
+		assertUnobservedEndLine(t, root, env, "local-pre", code, warns)
+	})
+	t.Run("post-sweep", func(t *testing.T) {
+		t.Parallel()
+		root := t.TempDir()
+		env := map[string]string{"XDG_STATE_HOME": t.TempDir()}
+		bundleDir := filepath.Join(root, ".verdict", "state", "local-post")
+		mustWriteFile(t, filepath.Join(bundleDir, "source.json"), []byte(`{}`), 0o644)
+		var warns []string
+		code := runGuarded(root, env, "local-post", func(m string) { warns = append(warns, m) }, func() int {
+			if err := os.RemoveAll(bundleDir); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(bundleDir, bundleDir); err != nil {
+				t.Fatal(err)
+			}
+			return 0
+		})
+		assertUnobservedEndLine(t, root, env, "local-post", code, warns)
+	})
+}
+
+func runGuarded(root string, env map[string]string, name string, warn func(string), fn func() int) int {
+	return Guard(&Invocation{
+		Verb: "record", Channel: ChannelCLI, RepoRoot: root, Pr: name, Env: env,
+		Argv: []string{"record", "acme/app", name}, Warn: warn,
+	}, fn)
+}
+
+// loopBundleDir creates a bundle directory that cannot be swept: a symlink to
+// itself fails every walk with ELOOP.
+func loopBundleDir(t *testing.T, root, name string) string {
+	t.Helper()
+	dir := filepath.Join(root, ".verdict", "state", name)
+	if err := os.MkdirAll(filepath.Dir(dir), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(dir, dir); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func assertUnobservedEndLine(t *testing.T, root string, env map[string]string, name string, code int, warns []string) {
+	t.Helper()
+	if code != 0 {
+		t.Fatalf("Guard code = %d, want 0: a failed sweep never changes the exit code", code)
+	}
+	if len(warns) != 1 || !strings.HasPrefix(warns[0], "journal: could not append to ") {
+		t.Fatalf("warns = %q, want one journal warning for the failed sweep", warns)
+	}
+	jpath, _, ok := Path(root, name, env)
+	if !ok {
+		t.Fatal("Path returned ok=false")
+	}
+	raw, err := os.ReadFile(jpath)
+	if err != nil {
+		t.Fatalf("read journal: %v", err)
+	}
+	lines := splitWholeLines(raw)
+	var end EndLine
+	if err := json.Unmarshal(lines[len(lines)-1], &end); err != nil {
+		t.Fatalf("decode end line: %v", err)
+	}
+	if len(end.Wrote) != 0 || len(end.Removed) != 0 {
+		t.Fatalf("end line published wrote=%+v removed=%v, want no file diff", end.Wrote, end.Removed)
+	}
+	if !end.Bundle.Unobserved || end.Bundle.Before != nil || end.Bundle.After != "" {
+		t.Fatalf("end line bundle = %+v, want an unobserved bundle with no digests", end.Bundle)
+	}
+	sum, err := Read(jpath, name)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if len(sum.Steps) != 1 || !sum.Steps[0].Bundle.Unobserved {
+		t.Fatalf("folded steps = %+v, want one unobserved step", sum.Steps)
+	}
+	human := strings.Join(FormatHuman(sum), "\n")
+	if !strings.Contains(human, "file diff unknown (content sweep failed)") {
+		t.Fatalf("FormatHuman = %q, want the unknown file diff called out", human)
+	}
+}
+
 // TestGuardOverlappingStartsShareOneInstantStayDistinct proves the pairing key
 // is invocation-unique: two starts that read the same injected clock do not
 // collapse, so the call that never ended still shows as unfinished.

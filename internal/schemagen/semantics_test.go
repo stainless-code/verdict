@@ -300,7 +300,10 @@ var publishedSemantics = map[string]string{
 	// step stops being a date-time (it carries a PID and sequence suffix), so
 	// the format narrowing is dropped. No property, required key, or type
 	// changed.
-	"envelope.schema.json": "d0e183ab714266621b2d0c28567120960b4c3594f4b40631d9952fb9f0665c46",
+	// journal unobserved sweep: additive optional boolean
+	// $defs/journalBundleDigests.unobserved. No existing property, required key,
+	// or type changed.
+	"envelope.schema.json": "69be016a1738b3f94d58f55f80783a06f09be4fd0698d54f7581ae4333ca5b65",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -508,7 +511,9 @@ var publishedSemantics = map[string]string{
 	// journal step pairing key: start/end `step` stops being a date-time (it
 	// carries a PID and sequence suffix) and gains its description. No
 	// property, required key, or type changed.
-	"journal.schema.json": "6a2a231fb6e5dca3523798a95253dfb9a77022922467bc224b2452c3d7c282eb",
+	// journal unobserved sweep: additive optional boolean
+	// $defs/bundleDigests.unobserved. Nothing existing changed.
+	"journal.schema.json": "7354407e6e2ca5f7a450ee6136c52b4b4ac68afe9f4133718dcd5991ad5bedd9",
 	// additive validation.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed). It pins the trusted pass: one
 	// result per finding sig with its verdict, reason, optional one-rank

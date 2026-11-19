@@ -2542,7 +2542,8 @@
       "type": "object",
       "properties": {
         "before": { "type": ["string", "null"] },
-        "after": { "type": "string" }
+        "after": { "type": "string" },
+        "unobserved": { "type": "boolean" }
       },
       "required": ["before", "after"],
       "additionalProperties": true

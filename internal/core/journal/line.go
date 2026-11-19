@@ -24,10 +24,12 @@ type StartLine struct {
 
 // BundleDigests records the pre- and post-invocation canonical content-manifest
 // sha256 digests of the bundle directory. Before is nil when the directory did
-// not exist before the call.
+// not exist before the call. Unobserved marks a call whose content sweep failed:
+// the digests and the file diff are unknown rather than empty.
 type BundleDigests struct {
-	Before *string `json:"before"`
-	After  string  `json:"after"`
+	Before     *string `json:"before"`
+	After      string  `json:"after"`
+	Unobserved bool    `json:"unobserved,omitempty"`
 }
 
 // FileRecord records one file written or changed during an invocation.
@@ -163,10 +165,7 @@ func stepObj(st *Step) *jq.Obj {
 			"bytes", st.Wrote[i].Bytes,
 		))
 	}
-	bundleObj := jq.NewObj(
-		"before", ptrStringVal(st.Bundle.Before),
-		"after", st.Bundle.After,
-	)
+	bundleObj := bundleDigestsObj(st.Bundle)
 	return jq.NewObj(
 		"step", st.Step,
 		"verb", st.Verb,
@@ -205,6 +204,14 @@ func chainBreakObj(cb *ChainBreak) *jq.Obj {
 		"before", cb.Before,
 		"previous_after", cb.PreviousAfter,
 	)
+}
+
+func bundleDigestsObj(b BundleDigests) *jq.Obj {
+	pairs := []any{"before", ptrStringVal(b.Before), "after", b.After}
+	if b.Unobserved {
+		pairs = append(pairs, "unobserved", true)
+	}
+	return jq.NewObj(pairs...)
 }
 
 func ptrStringVal(p *string) any {
@@ -268,6 +275,9 @@ func stepDetail(st *Step) string {
 	}
 	if st.Warnings > 0 {
 		parts = append(parts, fmt.Sprintf("(%d %s)", st.Warnings, plural(st.Warnings, "warning", "warnings")))
+	}
+	if st.Bundle.Unobserved {
+		parts = append(parts, "file diff unknown (content sweep failed)")
 	}
 	return strings.Join(parts, " ")
 }

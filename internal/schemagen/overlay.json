@@ -734,7 +734,7 @@
       "/$defs/startLine/properties/step": "Start/end pairing key: the start instant plus the PID and a process-local sequence number, so two overlapping invocations that read the same clock never fold into one pair. `started_at` carries the timestamp.",
       "/$defs/endLine": "Closing record written when a bundle-writing invocation returns, carrying repo, exit code, refusal, warnings, bundle digests, written/removed paths, and the printed next hint.",
       "/$defs/truncatedLine": "Notice prepended when the journal file exceeds the 1 MiB cap and is atomically rewritten to the trailing 512 KiB of whole lines.",
-      "/$defs/bundleDigests": "Canonical content-manifest sha256 digests before (null when the bundle did not exist) and after the call.",
+      "/$defs/bundleDigests": "Canonical content-manifest sha256 digests before (null when the bundle did not exist) and after the call. `unobserved` marks a call whose content sweep failed, so the digests and the file diff are unknown rather than empty.",
       "/$defs/fileRecord": "One bundle-relative file created or whose content changed during the call, with its sha256 and byte length."
     }
   },
