@@ -28,6 +28,30 @@ type Invocation struct {
 	Environ  []string
 }
 
+// BundleTargeter is implemented by [*core.ReadRequest] and promoted by every
+// request type that embeds it.
+type BundleTargeter interface {
+	BundleTarget() (repo, pr, repoRoot string)
+}
+
+// TargetFromRequest extracts (repoRoot, pr) from a decoded request that embeds
+// [core.ReadRequest], returning empty strings otherwise.
+func TargetFromRequest(request any) (repoRoot, pr string) {
+	t, ok := request.(BundleTargeter)
+	if !ok {
+		return "", ""
+	}
+	_, pr, repoRoot = t.BundleTarget()
+	return repoRoot, pr
+}
+
+// BundleFromRequest resolves the bundle directory for a decoded request that
+// embeds [core.ReadRequest].
+func BundleFromRequest(request any) string {
+	repoRoot, pr := TargetFromRequest(request)
+	return BundleFor(repoRoot, pr)
+}
+
 // BundleFor resolves the bundle directory for (repoRoot, pr) using
 // [readcommon.ResolveBundleDir], returning "" when pr is empty or unresolvable.
 func BundleFor(repoRoot, pr string) string {

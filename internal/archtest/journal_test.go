@@ -164,3 +164,169 @@ func TestJournalWritingSetIsLiteral(t *testing.T) {
 		t.Fatalf("journaling verb set = %v, want %v", got, want)
 	}
 }
+
+type parsedMCPTool struct {
+	name      string
+	mutates   string
+	hasBundle bool
+}
+
+// TestJournalMCPRegistryParity enforces DESIGN §1.5 assertion 3: every tool in
+// internal/mcp/tools.go with mutates==localWrites and Repo+Pr required maps to
+// Journals: true in journal.VerbTable, and every noLocalWrites tool maps to
+// Journals: false. It also pins that internal/mcp/server.go routes tool
+// invocations through journal.Guard.
+func TestJournalMCPRegistryParity(t *testing.T) {
+	t.Parallel()
+	root := moduleRoot(t)
+	tools := parseMCPToolSpecs(t, filepath.Join(root, "internal", "mcp", "tools.go"))
+	if len(tools) < 10 {
+		t.Fatalf("parsed only %d MCP tools; tools.go shape changed", len(tools))
+	}
+	for _, tool := range tools {
+		assertMCPToolJournalParity(t, tool)
+	}
+	journalFile := parseGo(t, filepath.Join(root, "internal", "mcp", "journal.go"))
+	if len(findGuardCalls(journalFile)) != 1 {
+		t.Fatalf("internal/mcp/journal.go has %d journal.Guard calls, want 1", len(findGuardCalls(journalFile)))
+	}
+	serverFile := parseGo(t, filepath.Join(root, "internal", "mcp", "server.go"))
+	callFn := findFuncInFile(t, serverFile, "call")
+	if countMethodCalls(callFn.Body, "invokeJournaled") != 1 {
+		t.Fatal("internal/mcp/server.go (*Server).call does not route through invokeJournaled")
+	}
+}
+
+func assertMCPToolJournalParity(t *testing.T, tool parsedMCPTool) {
+	t.Helper()
+	verb := journalcore.CanonicalVerb(tool.name)
+	pol, ok := journalcore.VerbTable[verb]
+	if !ok {
+		t.Errorf("MCP tool %q (verb %q) missing from journal.VerbTable", tool.name, verb)
+		return
+	}
+	switch tool.mutates {
+	case "localWrites":
+		if tool.hasBundle != pol.Journals {
+			t.Errorf("MCP tool %q (localWrites, hasBundle=%v) has VerbTable.Journals=%v",
+				tool.name, tool.hasBundle, pol.Journals)
+		}
+	case "noLocalWrites":
+		if pol.Journals {
+			t.Errorf("MCP tool %q (noLocalWrites) has VerbTable.Journals=true, want false", tool.name)
+		}
+	default:
+		t.Errorf("MCP tool %q has unrecognized mutates=%q", tool.name, tool.mutates)
+	}
+}
+
+func parseMCPToolSpecs(t *testing.T, path string) []parsedMCPTool {
+	t.Helper()
+	file := parseGo(t, path)
+	var tools []parsedMCPTool
+	ast.Inspect(file, func(n ast.Node) bool {
+		lit, ok := n.(*ast.CompositeLit)
+		if !ok || !isIdentType(lit.Type, "toolSpec") {
+			return true
+		}
+		tools = append(tools, extractMCPToolSpec(t, lit))
+		return false
+	})
+	return tools
+}
+
+func extractMCPToolSpec(t *testing.T, lit *ast.CompositeLit) parsedMCPTool {
+	t.Helper()
+	var spec parsedMCPTool
+	for _, elt := range lit.Elts {
+		kv, ok := elt.(*ast.KeyValueExpr)
+		if !ok {
+			continue
+		}
+		key, ok := kv.Key.(*ast.Ident)
+		if !ok {
+			continue
+		}
+		applyToolSpecField(t, &spec, key.Name, kv.Value)
+	}
+	return spec
+}
+
+func applyToolSpecField(t *testing.T, spec *parsedMCPTool, field string, val ast.Expr) {
+	t.Helper()
+	switch field {
+	case "name":
+		if s, ok := stringLiteral(val); ok {
+			spec.name = s
+		}
+	case "required":
+		spec.hasBundle = requiredCarriesBundle(val)
+	case "meta":
+		spec.mutates = extractMutatesClass(val)
+	}
+}
+
+func requiredCarriesBundle(expr ast.Expr) bool {
+	if isIdentType(expr, "requiredRepoPr") {
+		return true
+	}
+	lit, ok := expr.(*ast.CompositeLit)
+	if !ok {
+		return false
+	}
+	return hasIdentElement(lit.Elts, "argRepo") && hasIdentElement(lit.Elts, "argPr")
+}
+
+func hasIdentElement(elts []ast.Expr, name string) bool {
+	for _, elt := range elts {
+		if isIdentType(elt, name) {
+			return true
+		}
+	}
+	return false
+}
+
+func extractMutatesClass(expr ast.Expr) string {
+	lit, ok := expr.(*ast.CompositeLit)
+	if !ok {
+		return ""
+	}
+	for _, elt := range lit.Elts {
+		if val, ok := keyIdentValue(elt, "mutates"); ok {
+			return val
+		}
+	}
+	return ""
+}
+
+func keyIdentValue(elt ast.Expr, field string) (string, bool) {
+	kv, ok := elt.(*ast.KeyValueExpr)
+	if !ok || !isIdentType(kv.Key, field) {
+		return "", false
+	}
+	val, ok := kv.Value.(*ast.Ident)
+	if !ok {
+		return "", false
+	}
+	return val.Name, true
+}
+
+func isIdentType(expr ast.Expr, name string) bool {
+	id, ok := expr.(*ast.Ident)
+	return ok && id.Name == name
+}
+
+func countMethodCalls(node ast.Node, method string) int {
+	count := 0
+	ast.Inspect(node, func(n ast.Node) bool {
+		call, ok := n.(*ast.CallExpr)
+		if !ok {
+			return true
+		}
+		if sel, ok := call.Fun.(*ast.SelectorExpr); ok && sel.Sel.Name == method {
+			count++
+		}
+		return true
+	})
+	return count
+}
