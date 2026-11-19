@@ -3,6 +3,7 @@ exit: 1
 
 --- stderr ---
 warn: $.chunks: chunks was a string; wrapped it in a one-element array
+warn: evidence: hunk c1.txt	NEW	1	2 has no matched receipt
 error: review.json has 2 problem(s); fix every one, then re-run
 $.chunks  scalar-to-array  chunks was a string; wrapped it in a one-element array
   fix: write an array of strings

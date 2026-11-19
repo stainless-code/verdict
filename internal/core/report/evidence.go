@@ -8,6 +8,8 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/approval"
+	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -36,43 +38,93 @@ const (
 	evidenceWarnPrefix    = "evidence: "
 )
 
-// loadStateEvidence reads record.json's evidence receipt and verifies that
-// its pinned head matches the bundle's current head. Missing, unreadable, or
-// stale receipts never fall back to a legacy pass path.
+// loadStateEvidence reads the stored evidence receipt — post.json first, then
+// record.json, the precedence the coverage dimension reads — and verifies that
+// the identity it pinned is the one this bundle still carries: the reviewed
+// head, or the worktree diff digest when the bundle has no commit. Missing,
+// unreadable, or stale receipts never fall back to a legacy pass path.
 func loadStateEvidence(st *state) {
-	raw, err := jq.CappedFile(st.dir+readcommon.RecordSuffix, jq.MaxPRBytes)
+	var stale, unreadable *evidenceState
+	for _, suffix := range []string{readcommon.PostSuffix, readcommon.RecordSuffix} {
+		state := storedEvidence(st, suffix)
+		switch state.kind {
+		case evidencePresent:
+			st.evidence = state
+			return
+		case evidenceStale:
+			if stale == nil {
+				stale = state
+			}
+		case evidenceUnreadable:
+			unreadable = state
+		case evidenceMissing:
+			// A missing receipt is the default below, once both documents are read.
+		}
+	}
+	switch {
+	case stale != nil:
+		st.evidence = stale
+	case unreadable != nil:
+		st.evidence = unreadable
+	default:
+		st.evidence = &evidenceState{kind: evidenceMissing, recordExists: st.recordExists()}
+	}
+}
+
+// storedEvidence reads one stored receipt's evidence block. A file that exists
+// without one has nothing to say about this bundle's evidence, so the caller
+// keeps reading: post.json written before evidence existed must not hide the
+// record.json beside it.
+func storedEvidence(st *state, suffix string) *evidenceState {
+	raw, err := jq.CappedFile(st.dir+suffix, jq.MaxPRBytes)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			st.evidence = &evidenceState{kind: evidenceMissing}
-			return
+			return &evidenceState{kind: evidenceMissing}
 		}
-		st.evidence = &evidenceState{kind: evidenceUnreadable, recordExists: true}
-		return
+		return &evidenceState{kind: evidenceUnreadable, recordExists: true}
 	}
-	var rec core.Record
-	if err := json.Unmarshal(raw, &rec); err != nil {
-		st.evidence = &evidenceState{kind: evidenceUnreadable, recordExists: true}
-		return
+	var doc struct {
+		Evidence *core.EvidenceReceipt `json:"evidence"`
 	}
-	if rec.Evidence == nil {
-		st.evidence = &evidenceState{kind: evidenceMissing, recordExists: true}
-		return
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		return &evidenceState{kind: evidenceUnreadable, recordExists: true}
 	}
-	if st.headSHA == "" || rec.Evidence.Head != st.headSHA {
-		st.evidence = &evidenceState{
-			receipt:      rec.Evidence,
-			recordedHead: rec.Evidence.Head,
-			kind:         evidenceStale,
-			recordExists: true,
+	if doc.Evidence == nil {
+		return &evidenceState{kind: evidenceMissing, recordExists: true}
+	}
+	state := &evidenceState{receipt: doc.Evidence, recordedHead: doc.Evidence.Head, recordExists: true}
+	if evidenceCurrent(st, doc.Evidence) {
+		state.kind = evidencePresent
+	} else {
+		state.kind = evidenceStale
+	}
+	return state
+}
+
+// recordExists reports whether the bundle stores either receipt at all, which
+// separates "never recorded" from "recorded without evidence".
+func (st *state) recordExists() bool {
+	for _, suffix := range []string{readcommon.PostSuffix, readcommon.RecordSuffix} {
+		if _, err := os.Stat(st.dir + suffix); err == nil {
+			return true
 		}
-		return
 	}
-	st.evidence = &evidenceState{
-		receipt:      rec.Evidence,
-		recordedHead: rec.Evidence.Head,
-		kind:         evidencePresent,
-		recordExists: true,
-	}
+	return false
+}
+
+// evidenceCurrent reports whether the receipt pinned the bytes this bundle
+// still carries. A bundle with a commit is identified by its head; a dirty
+// worktree bundle has no head, so its verified diff digest is the identity the
+// receipt has to match, exactly as the coverage receipt does.
+func evidenceCurrent(st *state, ev *core.EvidenceReceipt) bool {
+	current := risk.CoverageIdentity(st.dir, st.headSHA)
+	return current != "" && receiptIdentity(ev) == current
+}
+
+// receiptIdentity renders the receipt's pinned identity the way every verdict
+// receipt states it: the head, or the diff digest when there is no commit.
+func receiptIdentity(ev *core.EvidenceReceipt) string {
+	return readcommon.ReceiptIdentity(map[string]any{"head": ev.Head, "diff_sha256": ev.DiffSHA256})
 }
 
 // currentEvidenceReceipt returns the evidence receipt only when it is
@@ -82,6 +134,31 @@ func (st *state) currentEvidenceReceipt() *core.EvidenceReceipt {
 		return nil
 	}
 	return st.evidence.receipt
+}
+
+// evidenceInput is the approval decision's evidence input: the current receipt
+// when the bundle carries one, and otherwise the sentence naming what is
+// missing. A missing, stale, or unreadable receipt never approves a review.
+func (st *state) evidenceInput() approval.Evidence {
+	if receipt := st.currentEvidenceReceipt(); receipt != nil {
+		return approval.Evidence{Receipt: receipt}
+	}
+	return approval.Evidence{Missing: st.evidenceAbsence()}
+}
+
+// evidenceAbsence names why no current receipt backs the gated head.
+func (st *state) evidenceAbsence() string {
+	if st.evidence == nil {
+		return evidenceMissingSentence(st.headSHA)
+	}
+	switch st.evidence.kind {
+	case evidenceStale:
+		return evidenceStaleSentence(st.headSHA, st.evidence.recordedHead)
+	case evidenceUnreadable:
+		return evidenceUnreadableSentence(st.headSHA)
+	default:
+		return evidenceMissingSentence(st.headSHA)
+	}
 }
 
 // warnEvidence prints one advisory warning when an un-checked report sees an
@@ -205,17 +282,37 @@ func countQuoteStatus(quotes []core.EvidenceQuote, want string) int {
 	return n
 }
 
+// The sentence helpers name one absence without the review-insufficient code:
+// the check line adds the code in brackets and the approval reason prefixes it.
+func evidenceMissingSentence(head string) string {
+	return "evidence receipt missing for head " + shortHeadLabel(head)
+}
+
+func evidenceStaleSentence(head, recorded string) string {
+	return fmt.Sprintf("evidence receipt stale for head %s (recorded %s)",
+		shortHeadLabel(head), shortHeadLabel(recorded))
+}
+
+func evidenceUnreadableSentence(head string) string {
+	return "evidence receipt unreadable for head " + shortHeadLabel(head)
+}
+
 func evidenceMissingDetail(head string) string {
-	return fmt.Sprintf("evidence receipt missing for head %s [%s]", shortHeadLabel(head), core.CodeReviewInsufficient)
+	return evidenceMissingSentence(head) + codedInsufficient()
 }
 
 func evidenceStaleDetail(head, recorded string) string {
-	return fmt.Sprintf("evidence receipt stale for head %s (recorded %s) [%s]",
-		shortHeadLabel(head), shortHeadLabel(recorded), core.CodeReviewInsufficient)
+	return evidenceStaleSentence(head, recorded) + codedInsufficient()
 }
 
 func evidenceUnreadableDetail(head string) string {
-	return fmt.Sprintf("evidence receipt unreadable for head %s [%s]", shortHeadLabel(head), core.CodeReviewInsufficient)
+	return evidenceUnreadableSentence(head) + codedInsufficient()
+}
+
+// codedInsufficient renders the review-insufficient code the detail sentences
+// carry in brackets.
+func codedInsufficient() string {
+	return " [" + core.CodeReviewInsufficient + "]"
 }
 
 func shortHeadLabel(sha string) string {

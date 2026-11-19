@@ -2,6 +2,11 @@ exit: 1
 --- stdout ---
 
 --- stderr ---
+warn: evidence: hunk notes.txt	NEW	1	7 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	11	17 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	21	27 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	31	37 has no matched receipt
+warn: evidence: hunk other.txt	NEW	1	3 has no matched receipt
 warn: no fetch-time hunk snapshot (.verdict/state/local-dg/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
 error: no panel to name the cost entries from: no list was passed and the bundle pins none
 try: pass the panel that ran, in order: --cost-names=<lead>,<lens-1>,<lens-2>

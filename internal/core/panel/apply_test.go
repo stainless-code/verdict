@@ -80,3 +80,25 @@ func confidenceFile(verdicts []string) *File {
 	}
 	return file
 }
+
+// TestPanelMergeKeepsTheQuoteStanding proves a panel merge never rewrites the
+// quote standing record's evidence pass stamped: an unverified entry that gains
+// verifier results stays unverified, so approval still keeps it out of the
+// gating set.
+func TestPanelMergeKeepsTheQuoteStanding(t *testing.T) {
+	entry := jq.NewObj("sig", "abc", "kind", "inline", "status", "open",
+		"verification", jq.NewObj("quote", "unverified"))
+	Apply([]any{entry}, &File{Results: []Result{{Sig: "abc", Model: "a", Verdict: "confirmed", Evidence: "literal evidence"}}})
+	verification, _ := entry.Get("verification")
+	record, ok := verification.(*jq.Obj)
+	if !ok {
+		t.Fatalf("verification = %v, want an object", verification)
+	}
+	quote, _ := record.Get("quote")
+	if quote != "unverified" {
+		t.Fatalf("quote = %v, want the unverified standing kept", quote)
+	}
+	if got, _ := entry.Get("confidence"); got != "confirmed" {
+		t.Fatalf("confidence = %v, want confirmed beside the kept standing", got)
+	}
+}

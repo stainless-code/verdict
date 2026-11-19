@@ -12,15 +12,22 @@ import (
 )
 
 // writeCompliancePolicy writes a real resolved capture with one critical
-// block clause and the head-current required check.
+// security block clause and the head-current required check.
 func writeCompliancePolicy(t *testing.T) {
+	t.Helper()
+	writeCompliancePolicyWith(t, &core.BlockClause{
+		Name: "security-critical", Threshold: "critical", Categories: []string{"security"},
+	})
+}
+
+// writeCompliancePolicyWith writes a real resolved capture carrying clause and
+// the head-current required check.
+func writeCompliancePolicyWith(t *testing.T, clause *core.BlockClause) {
 	t.Helper()
 	repo := &core.Config{
 		SchemaVersion: "1",
 		Requirements: &core.ConfigRequirements{
-			BlockClauses: []core.BlockClause{{
-				Name: "security-critical", Threshold: "critical", Categories: []string{"security"},
-			}},
+			BlockClauses:  []core.BlockClause{*clause},
 			RequireChecks: []string{"head-current"},
 		},
 	}
@@ -47,10 +54,12 @@ func writeCompliancePolicy(t *testing.T) {
 	}
 }
 
-// securityFinding is an open critical security finding on the clause path.
+// securityFinding is an open critical security finding on the clause path,
+// carrying the verified quote standing the evidence pass stamps.
 const securityFinding = `{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,` +
 	`"anchored":true,"body":"Body.","suggestion":null,"inBounds":true,"rigor":"walked",` +
 	`"severity":"critical","category":"security","sig":"c111111111111111111111111111111111111111","sig_version":"1",` +
+	`"verification":{"quote":"verified"},` +
 	`"firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}`
 
 // TestReportComplianceBlocksOnFullFindings proves report evaluates captured
@@ -99,6 +108,46 @@ func TestReportComplianceIgnoresUnverifiedFinding(t *testing.T) {
 	}
 	if resp.Data.Compliance.Blockers != 0 {
 		t.Fatalf("compliance blockers = %d, want 0 for unverified finding", resp.Data.Compliance.Blockers)
+	}
+}
+
+// TestReportUnverifiedClauseNeverApproves proves R1 on the report side with a
+// clause that only an unverified finding matches: the compliance dimension
+// keeps the eligible view and shows no blocker, while the approval decision
+// reads the unfiltered store and refuses.
+func TestReportUnverifiedClauseNeverApproves(t *testing.T) {
+	const unverifiedInfo = `{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,` +
+		`"anchored":true,"body":"Body.","suggestion":null,"inBounds":true,"rigor":"walked",` +
+		`"severity":"informational","sig":"b222222222222222222222222222222222222222","sig_version":"1",` +
+		`"verification":{"quote":"unverified"},` +
+		`"firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}`
+	req := fixture(t, "["+unverifiedInfo+"]")
+	writeCompliancePolicyWith(t, &core.BlockClause{Name: "any-block", Threshold: "informational"})
+	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+		ReadRequest: req,
+		Flags:       core.ReportFlags{Check: "critical", Live: "skip"},
+	})
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if resp.Data.Compliance == nil || resp.Data.Compliance.Blockers != 0 {
+		t.Fatalf("compliance = %+v, want an eligible view with no blocker", resp.Data.Compliance)
+	}
+	requireClauseRefusal(t, resp.Data.Approval)
+}
+
+// requireClauseRefusal proves the approval decision refused the clause it could
+// not gate: withheld, insufficient, with no sig and no clause attached.
+func requireClauseRefusal(t *testing.T, got *core.ApprovalReceipt) {
+	t.Helper()
+	if got == nil {
+		t.Fatal("report data omits the approval decision")
+	}
+	if got.Approved || !got.Insufficient {
+		t.Fatalf("approval = %+v, want Approved=false Insufficient=true", got)
+	}
+	if len(got.GatingSigs) != 0 || len(got.Clauses) != 0 {
+		t.Fatalf("approval = %+v, want no gating sigs and no clauses", got)
 	}
 }
 

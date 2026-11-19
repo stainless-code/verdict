@@ -326,8 +326,10 @@ var publishedSemantics = map[string]string{
 	// risk score: additive optional nullable risk claim ($defs/riskClaim). No
 	// existing property, required key, enum, or type changed.
 	// S4 evidence vocabulary: additive optional insufficient boolean on
-	// $defs/approvalReceipt. No existing property, required key, or type moved.
-	"post.schema.json": "fdb5d1ceaae8ecbd18a5422b44f38b781a5d9ccf334cce7f9e80e42449e803ba",
+	// $defs/approvalReceipt, and the additive optional nullable evidence
+	// receipt ($defs/evidenceReceipt) a completed post publishes. No existing
+	// property, required key, or type moved.
+	"post.schema.json": "f3207b24ae8de21c72334ff92c98e9162b0b7441386b315b47870fc6b49f2e56",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	// fixtures.schema.json descriptions only: hallucination now names the pinned

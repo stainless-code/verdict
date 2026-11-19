@@ -83,10 +83,11 @@ exit: 1
       }
     ],
     "approval": {
-      "reason": "no gating findings",
+      "reason": "review-insufficient: evidence receipt missing for head aaaaaaa",
       "tier": "critical",
       "gating_sigs": [],
-      "approved": true
+      "approved": false,
+      "insufficient": true
     },
     "gate": {
       "passed": false,

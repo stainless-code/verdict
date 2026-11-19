@@ -46,9 +46,13 @@ func assertOneJSONValue(t *testing.T, verb, out string) {
 	}
 }
 
+// writeReviewJSON writes a clean review that also carries the read receipt the
+// bundle's single changed hunk needs: an approval needs every non-exempt hunk
+// receipted, and a fixture without one is insufficient by design.
 func writeReviewJSON(t *testing.T, path string) {
 	t.Helper()
-	body := `{"schema_version":"1","summary":"A clean review with enough text.","findings":[]}`
+	body := `{"schema_version":"1","summary":"A clean review with enough text.","findings":[],` +
+		`"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"TWO"}]}`
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
 		t.Fatal(err)
 	}

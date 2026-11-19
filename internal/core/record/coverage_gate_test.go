@@ -43,9 +43,13 @@ const generatedDiff = "diff --git a/dist/app.min.js b/dist/app.min.js\nindex 333
 
 // coverageReview builds one one-comment review for the given path, with extra
 // as the top-level fragment carrying (or omitting) the coverage[] attestation.
+// The review also carries the read receipt the bundle's one changed hunk needs:
+// a review that attests coverage but receipts nothing is insufficient, so the
+// receipts are what let a fixture reach the gate it is testing.
 func coverageReview(path, extra string) string {
+	receipts := `"receipts":[{"hunk":"` + path + `\tNEW\t1\t3","quote":"new line"}],`
 	return `{"schema_version":"1","body":"> [!IMPORTANT]\n> Gate fixture body with enough length to pass.","approved":false,` +
-		extra + `"comments":[{"path":"` + path + `","line":2,"side":"RIGHT",` +
+		extra + receipts + `"comments":[{"path":"` + path + `","line":2,"side":"RIGHT",` +
 		`"body":"Cited finding here with enough substance.","rigor":"walked","severity":"important"}]}`
 }
 

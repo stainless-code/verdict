@@ -42,7 +42,15 @@ func checkNormalized(dir string, normalized []byte, repairs []Problem) (CheckRes
 	if verification, ok := ReadOptional(dir + "/verification.json"); ok {
 		in.Verification, in.HasVerification = verification, true
 	}
-	return MergeRepairs(CheckReviewInput(normalized, in), repairs, normalized), nil
+	return withBundleEvidence(dir, normalized, MergeRepairs(CheckReviewInput(normalized, in), repairs, normalized)), nil
+}
+
+// withBundleEvidence attaches the evidence receipt the bundle bytes support:
+// the same pass the shared merge runs, so the check path and the stored
+// receipt cannot disagree about what the bundle proves.
+func withBundleEvidence(dir string, normalized []byte, res CheckResult) CheckResult {
+	res.Evidence = reviewEvidenceOf(dir, normalized)
+	return res
 }
 
 func bundleCheckHead(dir string) string {

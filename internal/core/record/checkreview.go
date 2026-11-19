@@ -16,13 +16,15 @@ import (
 )
 
 // CheckResult is CheckReview's output: every problem in document order, the
-// overflow past the 50-problem cap, and the summary a clean dry run reports.
+// overflow past the 50-problem cap, the evidence receipt the bundle bytes
+// support, and the summary a clean dry run reports.
 type CheckResult struct {
-	Problems  []Problem         `json:"problems"`
-	Truncated int               `json:"problems_truncated"`
-	Errors    int               `json:"errors"`
-	Warnings  int               `json:"warnings"`
-	Summary   core.CheckSummary `json:"summary"`
+	Evidence  *core.EvidenceReceipt `anyOf:"null"              json:"evidence,omitempty" optional:"true"`
+	Problems  []Problem             `json:"problems"`
+	Truncated int                   `json:"problems_truncated"`
+	Errors    int                   `json:"errors"`
+	Warnings  int                   `json:"warnings"`
+	Summary   core.CheckSummary     `json:"summary"`
 }
 
 // CheckInput carries everything the one review checker can validate beyond
@@ -131,15 +133,14 @@ func CheckReviewInput(review []byte, in CheckInput) CheckResult {
 	return *c.result()
 }
 
-//nolint:govet // the fields group one check pass
 type checker struct {
-	res             CheckResult
 	excludedPaths   map[string]bool
 	hunks           []hunks.Hunk
-	headSHA         string
 	chunkNames      []string
 	chunkManifest   string
+	headSHA         string
 	verification    []byte
+	res             CheckResult
 	comments        int
 	moved           int
 	hasChunks       bool

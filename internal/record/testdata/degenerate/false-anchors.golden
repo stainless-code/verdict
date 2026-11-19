@@ -8,7 +8,13 @@ exit: 1
   "at": "0000-00-00T00:00:00Z",
   "next": "",
   "warnings": [
-    "$.findings[0].line: anchor -1--1 () is outside every reviewed hunk; record moves it to the body"
+    "$.findings[0].line: anchor -1--1 () is outside every reviewed hunk; record moves it to the body",
+    "evidence: finding 1 at notes.txt:0 cannot be checked from the bundle (line-not-in-bundle)",
+    "evidence: hunk notes.txt\tNEW\t1\t7 has no matched receipt",
+    "evidence: hunk notes.txt\tNEW\t11\t17 has no matched receipt",
+    "evidence: hunk notes.txt\tNEW\t21\t27 has no matched receipt",
+    "evidence: hunk notes.txt\tNEW\t31\t37 has no matched receipt",
+    "evidence: +1 more gap(s) — see record.json evidence.gaps"
   ],
   "data": null,
   "error": {
@@ -20,6 +26,12 @@ exit: 1
 }
 --- stderr ---
 warn: $.findings[0].line: anchor -1--1 () is outside every reviewed hunk; record moves it to the body
+warn: evidence: finding 1 at notes.txt:0 cannot be checked from the bundle (line-not-in-bundle)
+warn: evidence: hunk notes.txt	NEW	1	7 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	11	17 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	21	27 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	31	37 has no matched receipt
+warn: evidence: +1 more gap(s) — see record.json evidence.gaps
 re-enter: verdict record acme/app local-dg --json
 --- files ---
 --- file C/.verdict/state/local-dg/store.json ---

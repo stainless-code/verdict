@@ -16,37 +16,67 @@ import (
 // or above when no stricter policy or --check tier is configured.
 const DefaultApprovalTier = "important"
 
+// Evidence statuses the decision reads. Only an explicit verified stamp
+// counts: a finding the evidence pass never saw, or one whose quote it could
+// not check, carries no approval weight.
 const (
-	quoteUnverified = "unverified"
-	quoteUnchecked  = "unchecked"
+	quoteVerified  = "verified"
+	quoteUnchecked = "unchecked"
+
+	// missingEvidence is the reason an absent receipt carries when the caller
+	// names none: an unreadable or never-recorded bundle is the same fact here.
+	missingEvidence = "evidence receipt missing"
+
+	// droppedClauseReason names a block clause whose finding carries no
+	// verified quote: the clause may not gate, so the review is insufficient.
+	droppedClauseReason = ": unverified finding named by block clause"
 )
 
-// EligibleFindings returns the stored findings whose quote standing is not
-// unverified, preserving store order. Both compliance evaluators (record and
-// report) filter through this helper so an unverified finding never gates,
-// even when named by a block clause.
+// Evidence is the evidence input to one approval decision: the receipt that
+// backs the reviewed head, or why the bundle carries none. A nil receipt is
+// never sufficient — a decision without evidence is an insufficient decision,
+// not a clean one.
+type Evidence struct {
+	Receipt *core.EvidenceReceipt
+	// Missing names why no current receipt backs the head, without the
+	// `review-insufficient` code: "evidence receipt missing for head a1b2c3d".
+	// It is read only when Receipt is nil.
+	Missing string
+}
+
+// EligibleFindings returns the stored findings whose quote standing is
+// verified, preserving store order. The compliance gates that refuse a post or
+// hold readiness read through this helper, so an unverified finding never
+// blocks there.
 func EligibleFindings(entries []any) []any {
 	out := make([]any, 0, len(entries))
 	for _, entry := range entries {
-		if QuoteStatus(entry) == quoteUnverified {
-			continue
+		if Verified(entry) {
+			out = append(out, entry)
 		}
-		out = append(out, entry)
 	}
 	return out
 }
 
+// Verified reports whether one stored finding carries the verified quote
+// standing the evidence pass stamps. A finding without the record, or with a
+// standing this build does not know, is not verified.
+func Verified(entry any) bool {
+	return QuoteStatus(entry) == quoteVerified
+}
+
 // Evaluate derives approval from the visible, open findings, the configured
 // block clauses, any violated spec check, and the deterministic evidence
-// receipt. Unverified findings never enter GatingSigs; insufficient evidence
-// or a dropped block-clause finding that would otherwise flip approval to
-// true yields Approved=false with Insufficient=true.
+// receipt. Gating requires a verified quote: an unverified finding never enters
+// GatingSigs, and a gating finding without one makes the decision insufficient
+// instead of clean. comp must be evaluated over the unfiltered stored findings
+// so clauseSigs can see, and refuse, an unverified blocker.
 func Evaluate(
 	entries []any,
 	tier, category string,
 	comp *config.ReadCompliance,
 	specViolated bool,
-	ev *core.EvidenceReceipt,
+	ev Evidence,
 ) *core.ApprovalReceipt {
 	threshold := tier
 	if threshold == "" {
@@ -55,40 +85,87 @@ func Evaluate(
 	limit := core.TierRank(threshold)
 	// Both lists stay allocated: record.json publishes them as arrays, and a
 	// nil slice renders as null, which the schema refuses.
-	gating := gatingSigs(entries, limit, category)
-	clauses, droppedClause := clauseSigs(comp, entries, &gating)
-	approved, insufficient, reason := evaluateOutcome(threshold, gating, specViolated, droppedClause, ev)
+	gating, unbacked := gatingSigs(entries, limit, category)
+	clauses, droppedClause := clauseSigs(comp, entries, &gating, &unbacked)
+	got := evaluateOutcome(threshold, &decision{
+		gating:        gating,
+		unbacked:      unbacked,
+		specViolated:  specViolated,
+		droppedClause: droppedClause,
+		ev:            ev,
+	})
 	return &core.ApprovalReceipt{
-		Approved:     approved,
-		Insufficient: insufficient,
-		Reason:       reason,
+		Approved:     got.approved,
+		Insufficient: got.insufficient,
+		Reason:       got.reason,
 		Tier:         threshold,
 		GatingSigs:   gating,
 		Clauses:      clauses,
 	}
 }
 
-func evaluateOutcome(
-	threshold string,
-	gating []string,
-	specViolated, droppedClause bool,
-	ev *core.EvidenceReceipt,
-) (approved, insufficient bool, reason string) {
-	if ev != nil && ev.Insufficient {
-		return false, true, insufficientReason(ev)
-	}
-	if len(gating) > 0 {
-		return false, false, "open findings at-or-above " + threshold
-	}
-	if specViolated {
-		return false, false, "violated spec check"
-	}
-	if droppedClause {
-		return false, true, core.CodeReviewInsufficient + ": unverified finding named by block clause"
-	}
-	return true, false, "no gating findings"
+// decision carries the inputs the outcome ladder reads once the findings and
+// the policy have been evaluated.
+type decision struct {
+	ev            Evidence
+	gating        []string
+	unbacked      []string
+	specViolated  bool
+	droppedClause bool
 }
 
+// outcome is one decision: whether approval is granted, whether it was
+// withheld because the evidence could not back it, and why.
+type outcome struct {
+	reason       string
+	approved     bool
+	insufficient bool
+}
+
+// evaluateOutcome applies the decision ladder: evidence first, then gating
+// findings, then a violated spec check, then insufficiency the evidence pass
+// could not see.
+func evaluateOutcome(threshold string, in *decision) outcome {
+	if got, settled := evidenceOutcome(in.ev); settled {
+		return got
+	}
+	if len(in.gating) > 0 {
+		return outcome{reason: "open findings at-or-above " + threshold}
+	}
+	if in.specViolated {
+		return outcome{reason: "violated spec check"}
+	}
+	if in.droppedClause {
+		return outcome{approved: false, insufficient: true, reason: core.CodeReviewInsufficient + droppedClauseReason}
+	}
+	if len(in.unbacked) > 0 {
+		return outcome{
+			approved:     false,
+			insufficient: true,
+			reason:       core.CodeReviewInsufficient + ": finding " + in.unbacked[0] + " has no verified quote",
+		}
+	}
+	return outcome{approved: true, reason: "no gating findings"}
+}
+
+// evidenceOutcome settles the decision on the evidence alone, before any
+// finding is read: no receipt and an insufficient receipt are both refusals,
+// and neither can be answered by a clean finding set.
+func evidenceOutcome(ev Evidence) (outcome, bool) {
+	if ev.Receipt == nil {
+		reason := ev.Missing
+		if reason == "" {
+			reason = missingEvidence
+		}
+		return outcome{approved: false, insufficient: true, reason: core.CodeReviewInsufficient + ": " + reason}, true
+	}
+	if ev.Receipt.Insufficient {
+		return outcome{approved: false, insufficient: true, reason: insufficientReason(ev.Receipt)}, true
+	}
+	return outcome{}, false
+}
+
+// insufficientReason names the first gap the evidence pass recorded.
 func insufficientReason(ev *core.EvidenceReceipt) string {
 	for _, gap := range ev.Gaps {
 		if trimmed := strings.TrimSpace(gap); trimmed != "" {
@@ -98,24 +175,30 @@ func insufficientReason(ev *core.EvidenceReceipt) string {
 	return core.CodeReviewInsufficient + ": evidence checks insufficient"
 }
 
-// gatingSigs collects the sigs of the visible, open, checked findings at or
-// above the tier, in store order.
-func gatingSigs(entries []any, limit int, category string) []string {
-	gating := []string{}
+// gatingSigs splits the visible, open, at-or-above-tier findings of the
+// requested category into the sigs that withhold approval and the sigs that
+// would withhold but carry no verified quote.
+func gatingSigs(entries []any, limit int, category string) (gating, unbacked []string) {
+	gating, unbacked = []string{}, []string{}
 	for _, item := range readcommon.VisibleFindings(entries) {
 		obj, ok := item.(*jq.Obj)
-		if !ok || !withholds(obj, limit, category) {
+		if !ok || !blocks(obj, limit, category) {
 			continue
 		}
-		sig, _ := obj.Get("sig")
-		gating = append(gating, jq.R(sig))
+		sig := jq.R(readcommon.FieldOf(obj, "sig"))
+		if Verified(obj) {
+			gating = append(gating, sig)
+			continue
+		}
+		unbacked = appendUnique(unbacked, sig)
 	}
-	return gating
+	return gating, unbacked
 }
 
-// withholds reports whether one finding blocks approval on its own.
-func withholds(obj *jq.Obj, limit int, category string) bool {
-	if readcommon.StatusOf(obj) != "open" || QuoteStatus(obj) == quoteUnverified {
+// blocks reports whether one finding would withhold approval were its quote
+// verified: open, in the requested category, at or above the tier.
+func blocks(obj *jq.Obj, limit int, category string) bool {
+	if readcommon.StatusOf(obj) != "open" {
 		return false
 	}
 	if category != "" && core.CategoryOf(obj) != category {
@@ -125,20 +208,21 @@ func withholds(obj *jq.Obj, limit int, category string) bool {
 	return core.TierRank(severity) <= limit
 }
 
-// clauseSigs folds verified block-clause findings into the gating sigs and
-// returns the clauses in policy order plus whether any blocker was skipped
-// because its finding is unverified (defense in depth behind EligibleFindings).
-func clauseSigs(comp *config.ReadCompliance, entries []any, gating *[]string) ([]string, bool) {
+// clauseSigs folds the block-clause findings whose quote is verified into the
+// gating sigs, and returns the clauses in policy order plus whether any
+// blocker was skipped because its finding is unverified.
+func clauseSigs(comp *config.ReadCompliance, entries []any, gating, unbacked *[]string) ([]string, bool) {
 	if comp == nil {
 		return []string{}, false
 	}
-	unverified := unverifiedSigs(entries)
+	backed := verifiedSigs(entries)
 	clauses := []string{}
 	dropped := false
 	for i := range comp.Blockers {
 		blocker := &comp.Blockers[i]
-		if _, skip := unverified[blocker.Finding.Sig]; skip {
+		if !backed[blocker.Finding.Sig] {
 			dropped = true
+			*unbacked = appendUnique(*unbacked, blocker.Finding.Sig)
 			continue
 		}
 		clauses = appendUnique(clauses, blocker.Clause)
@@ -149,14 +233,15 @@ func clauseSigs(comp *config.ReadCompliance, entries []any, gating *[]string) ([
 	return clauses, dropped
 }
 
-func unverifiedSigs(entries []any) map[string]struct{} {
-	out := make(map[string]struct{})
+// verifiedSigs collects the sigs of the stored findings whose quote verifies.
+func verifiedSigs(entries []any) map[string]bool {
+	out := make(map[string]bool, len(entries))
 	for _, entry := range entries {
-		if QuoteStatus(entry) != quoteUnverified {
+		if !Verified(entry) {
 			continue
 		}
 		if sig := jq.R(readcommon.FieldOf(entry, "sig")); sig != "" {
-			out[sig] = struct{}{}
+			out[sig] = true
 		}
 	}
 	return out
@@ -188,8 +273,9 @@ func Views(entries []any) []config.FindingView {
 	return out
 }
 
-// QuoteStatus reads the evidence standing stored on one finding. A legacy
-// store without the field reads unchecked, not unverified.
+// QuoteStatus reads the evidence standing stored on one finding. A store
+// without the field, or with a value this build does not know, reads
+// unchecked: never verified.
 func QuoteStatus(entry any) string {
 	value := readcommon.FieldOf(entry, "verification")
 	record, ok := value.(*jq.Obj)
@@ -197,7 +283,7 @@ func QuoteStatus(entry any) string {
 		return quoteUnchecked
 	}
 	quote, _ := record.Get("quote")
-	if status, ok := quote.(string); ok {
+	if status, ok := quote.(string); ok && status != "" {
 		return status
 	}
 	return quoteUnchecked

@@ -71,6 +71,7 @@ type MergeParams struct { //nolint:govet // field grouping documents the merge c
 // MergeResult carries the shared merge outputs both verbs need.
 type MergeResult struct { //nolint:govet // field order is the published property order
 	Approval     *core.ApprovalReceipt
+	Evidence     *core.EvidenceReceipt
 	Verification *core.PanelSummary
 	SpecChecks   []core.SpecCheck
 	Receipts     []core.Receipt
@@ -141,6 +142,10 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	if err != nil {
 		return MergeResult{}, agentRefusal(err)
 	}
+	// The evidence checks run before the merge builds entries: the pass stamps
+	// each finding's quote standing, and the entries read that stamp, so the
+	// stored verification and the receipt are one calculation.
+	st.evidence = checkBundleEvidence(st.dir, in.Review)
 	curated, dstat, err := st.validateAndMerge(in.Body)
 	if err != nil {
 		return MergeResult{}, err
@@ -155,10 +160,13 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	}
 	var compliance *config.ReadCompliance
 	if st.run != nil && st.run.Resolved != nil {
-		captured := config.EvaluateReadCompliance(st.run, in.HeadFull, approval.Views(approval.EligibleFindings(st.entries)))
+		// The decision reads the UNFILTERED set: clauseSigs has to see an
+		// unverified blocker to refuse it, which a pre-filtered view hides.
+		captured := config.EvaluateReadCompliance(st.run, in.HeadFull, approval.Views(st.entries))
 		compliance = &captured
 	}
-	decision := approval.Evaluate(st.entries, "", "", compliance, reviewdoc.HasSpecViolation(in.Review), nil)
+	decision := approval.Evaluate(st.entries, "", "", compliance,
+		reviewdoc.HasSpecViolation(in.Review), approval.Evidence{Receipt: st.evidence})
 	// The body is rendered before the merge exists, so its lead can only be
 	// settled now: record stores this decision and post publishes this body,
 	// and the two may never disagree.
@@ -166,6 +174,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	return MergeResult{
 		Body:         curated,
 		Approval:     decision,
+		Evidence:     st.evidence,
 		SpecChecks:   reviewdoc.SpecChecksTyped(in.Review),
 		Receipts:     reviewdoc.ReceiptsTyped(in.Review),
 		Verification: verification,
@@ -249,11 +258,10 @@ func LoadReviewBytes(reviewRaw []byte) (*jq.Obj, error) {
 }
 
 func reviewBodyOf(review *jq.Obj) string {
-	// S1's minimal renderer owns body text; S3 replaces this seam with the
-	// full body contract. The provisional decision only selects the marker.
-	provisional := approval.Evaluate(reviewdoc.Findings(review), "", "", nil,
-		reviewdoc.HasSpecViolation(review), nil)
-	return reviewdoc.Render(review, provisional)
+	// The renderer picks the lead a review without a decision earns; the merge
+	// corrects it with AlignLead once the evidence pass and the policy have
+	// decided, so no provisional decision is derived from a missing receipt.
+	return reviewdoc.Render(review, nil)
 }
 
 // EnsureStore backfills the store marker when absent.

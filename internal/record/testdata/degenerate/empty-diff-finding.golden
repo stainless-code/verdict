@@ -7,7 +7,9 @@ exit: 1
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
   "next": "",
-  "warnings": [],
+  "warnings": [
+    "evidence: finding 1 at notes.txt:2 cannot be checked from the bundle (path-not-in-bundle)"
+  ],
   "data": null,
   "error": {
     "code": "bad-review-input",
@@ -17,6 +19,7 @@ exit: 1
   }
 }
 --- stderr ---
+warn: evidence: finding 1 at notes.txt:2 cannot be checked from the bundle (path-not-in-bundle)
 re-enter: verdict record acme/app local-dg --json
 --- files ---
 --- file C/.verdict/state/local-dg/store.json ---

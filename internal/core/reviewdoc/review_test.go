@@ -65,10 +65,26 @@ func TestAlignLead(t *testing.T) {
 			want:     "> ⛔ Evidence checks insufficient — no approval.\n\n1. **important** `a.go:10` — Original claim text.\n",
 		},
 		{
+			// The lead is the body's first line, so an insufficient decision
+			// puts it above the drift note rather than below it.
 			name:     "lead after drift note, insufficient",
 			body:     drifted,
 			approval: insuf,
-			want:     "> ⚠️ Note: commits landed after this review's fetch.\n\n> ⛔ Evidence checks insufficient — no approval.\n> Basis: 0 0 0 0 0 0 0\n",
+			want:     "> ⛔ Evidence checks insufficient — no approval.\n> ⚠️ Note: commits landed after this review's fetch.\n\n> ✅ No new issues found.\n> Basis: 0 0 0 0 0 0 0\n",
+		},
+		{
+			// R7: an agent summary that is its own quote line gets no renderer
+			// lead, so insufficiency is prepended rather than swapped in.
+			name:     "quoted summary, insufficient",
+			body:     "> ✅ Looks great from the agent.\n\n1. **important** `a.go:10` — Original claim text.\n",
+			approval: insuf,
+			want:     "> ⛔ Evidence checks insufficient — no approval.\n> ✅ Looks great from the agent.\n\n1. **important** `a.go:10` — Original claim text.\n",
+		},
+		{
+			name:     "quoted summary, approved",
+			body:     "> ✅ Looks great from the agent.\n",
+			approval: approved,
+			want:     "> ✅ Looks great from the agent.\n",
 		},
 		{
 			name:     "lead after drift note, withheld",

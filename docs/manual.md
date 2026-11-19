@@ -1850,10 +1850,20 @@ writes `findings.dryrun.json`, and posts nothing.
 
 Approval is derived by verdict, not asked for by the agent. With no
 repository policy, `important_default` is the named threshold: any open,
-visible finding whose quote standing is not `unverified` at `important` or
-above withholds approval. `block_clauses` and `report --check` refine that
-default when configured, and a violated `spec_checks[]` entry also withholds
-approval. The decision is recorded once, in `record.json` and `data.approval`,
+visible finding whose quote standing is `verified` at `important` or above
+withholds approval. A finding the evidence pass did not verify — `unverified`, a
+stored `unchecked`, or no `verification` record at all — never gates,
+and a gating finding that carries no verified quote leaves an insufficient
+decision instead of a clean one, so a review is never approved on a quote
+nothing checked. `block_clauses` and `report --check` refine that default when
+configured, and a violated `spec_checks[]` entry also withholds approval. The
+approval decision reads the full stored finding set, so a block clause naming
+an unverified finding is refused rather than dropped; the `compliance` gate
+dimension keeps reading the verified view, where such a finding never blocks.
+The decision also needs the evidence receipt for the head it decides on: a
+missing, stale, or unreadable receipt is `review-insufficient`, never an
+approval, so a bundle that never recorded evidence cannot read as green. The decision is recorded once,
+in `record.json` and `data.approval`,
 with the `review_sha256`, `diff_sha256` and head it was decided on; `post` reads
 that stored decision and publishes it even with `--approve=false`, and a
 `record.json` whose review, diff, or head moved since it was written refuses

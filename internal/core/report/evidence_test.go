@@ -84,6 +84,7 @@ func TestEvidenceGatePass(t *testing.T) {
 	if code := runReportExitCode(t, "--check", "important", "--live", "skip"); code != cli.ExitOK {
 		t.Fatalf("report CLI exit = %d, want %d", code, cli.ExitOK)
 	}
+	requireApproval(t, resp, true, false, "no gating findings")
 }
 
 func TestEvidenceGateFailInsufficient(t *testing.T) {
@@ -149,6 +150,9 @@ func TestEvidenceGateMissingIsUnknown(t *testing.T) {
 	if code := runReportExitCode(t, "--check", "important", "--live", "skip"); code != cli.ExitRefused {
 		t.Fatalf("report CLI exit = %d, want %d", code, cli.ExitRefused)
 	}
+	// R3: no legacy path. A bundle with no receipt may not read as approved
+	// beside the failing gate dimension.
+	requireApproval(t, resp, false, true, "review-insufficient: evidence receipt missing for head aaaaaaa")
 }
 
 func TestEvidenceGateStaleIsUnknown(t *testing.T) {
@@ -181,6 +185,8 @@ func TestEvidenceGateStaleIsUnknown(t *testing.T) {
 	if code := runReportExitCode(t, "--check", "important", "--live", "skip"); code != cli.ExitRefused {
 		t.Fatalf("report CLI exit = %d, want %d", code, cli.ExitRefused)
 	}
+	requireApproval(t, resp, false, true,
+		"review-insufficient: evidence receipt stale for head aaaaaaa (recorded ccccccc)")
 }
 
 func TestEvidenceGateUnreadableIsUnknown(t *testing.T) {
@@ -229,5 +235,19 @@ func TestEvidenceAdvisoryReportWarnsAndNeverFails(t *testing.T) {
 	}
 	if code := runReportExitCode(t); code != cli.ExitOK {
 		t.Fatalf("advisory report CLI exit = %d, want %d", code, cli.ExitOK)
+	}
+}
+
+// requireApproval asserts the report's approval decision, which a reviewer
+// reads beside the gate: a withheld gate may never sit next to an approval.
+func requireApproval(t *testing.T, resp *core.ReportResponse, approved, insufficient bool, reason string) {
+	t.Helper()
+	got := resp.Data.Approval
+	if got == nil {
+		t.Fatal("report data omits the approval decision")
+	}
+	if got.Approved != approved || got.Insufficient != insufficient || got.Reason != reason {
+		t.Fatalf("approval = %+v, want approved=%v insufficient=%v reason=%q",
+			got, approved, insufficient, reason)
 	}
 }

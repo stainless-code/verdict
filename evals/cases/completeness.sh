@@ -15,8 +15,10 @@ comp_mk_post() {
   if [ "$head" = "CORRUPT" ]; then
     printf 'not json{{{' > "$dir/post.json"
   else
-    jq -n --arg h "$head" \
-      '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
+    # The stored evidence receipt a completed post leaves beside the head: the
+    # always-on evidence dimension grades it under --check.
+    jq -n --arg h "$head" --argjson e "$(eval_evidence_receipt "$dir" "$head")" \
+      '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null,evidence:$e}' \
       > "$dir/post.json"
   fi
 }
@@ -173,7 +175,10 @@ if [ "$EVAL_STATUS" -eq 0 ] \
 else
   bad "plain --json leaks completeness: $(jq -c '.data.completeness // "absent"' <"$EVAL_OUT" 2>/dev/null)"
 fi
-run_review report acme/app 4262 --check critical
+# The bundle whose post names the fetched head is the one a check can pass: a
+# receipt naming another head fails the always-on evidence dimension, which
+# --completeness does not govern.
+run_review report acme/app 4261 --check critical
 assert_exit "--check alone exits 0" 0
 assert_stream_nogrep "--check alone mentions no completeness" "$EVAL_ERR" "completeness"
 

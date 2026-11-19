@@ -38,10 +38,13 @@ HEAD_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 HEAD_C="cccccccccccccccccccccccccccccccccccccccc"
 HEAD_D="dddddddddddddddddddddddddddddddddddddddd"
 
+# live_mk_post stores the publication receipt a completed post leaves: the head
+# it published at plus the evidence receipt its merge computed, so the always-on
+# evidence dimension grades a recorded review instead of an absent receipt.
 live_mk_post() {
   local pr="$1" head="$2"
-  jq -n --arg h "$head" \
-    '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
+  jq -n --arg h "$head" --argjson e "$(eval_evidence_receipt "$EVAL_SANDBOX/.verdict/state/$pr" "$head")" \
+    '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null,evidence:$e}' \
     > "$EVAL_SANDBOX/.verdict/state/$pr/post.json"
 }
 
@@ -262,8 +265,8 @@ cat > "$EVAL_SANDBOX/.verdict/state/local-liverep/source.json" <<EOF
 {"schema_version":"1","kind":"range","repo":"acme/app","slug":"liverep","base_ref":null,"head_ref":"v2","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_sha":"$HEAD_D","range":"v1..v2","dirty":false,"diff_sha256":"0","files":1,"additions":1,"deletions":1,"tool_version":"0.0.0-test","model":null,"created_at":"2026-01-01T00:00:00Z"}
 EOF
 printf '[]' > "$EVAL_SANDBOX/.verdict/state/local-liverep/findings.json"
-jq -n --arg h "$HEAD_D" \
-  '{schema_version:"1",review:{id:7},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
+jq -n --arg h "$HEAD_D" --argjson e "$(eval_evidence_receipt "$EVAL_SANDBOX/.verdict/state/local-liverep" "$HEAD_D")" \
+  '{schema_version:"1",review:{id:7},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null,evidence:$e}' \
   > "$EVAL_SANDBOX/.verdict/state/local-liverep/post.json"
 set_mode clear
 m="$(mark)"

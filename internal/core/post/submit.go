@@ -550,6 +550,7 @@ func writePostReceipt(st *state, obj *jq.Obj) error {
 	}
 	receipt.Coverage = st.merged.Coverage.Receipt()
 	receipt.ChunkCoverage = st.merged.Coverage.ChunkReceipt()
+	receipt.Evidence = st.merged.Evidence
 	receipt.Summary = st.summary
 	if len(withheld) > 0 {
 		receipt.BelowFloorExcluded = len(withheld)

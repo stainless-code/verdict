@@ -66,7 +66,7 @@ def loop(repo, agent, rounds, budget, output, verdict="verdict", call=execute,
                              "--print", "--json"])
             argv = launch["argv"]
             argv[0] = launch["binary"]
-            argv[-1] += ("\nSelf-review loop: attest coverage[] for every reviewed hunk. "
+            argv[-1] += ("\nSelf-review loop: attest coverage[] and one reading receipt per changed hunk. "
                          "Review the fetched snapshot and write review.json FIRST. "
                          "Then fix the open findings in the working tree only if you reported findings. A clean review must leave the tree unchanged. Do not commit. "
                          "Never change the bundle after writing the review. "

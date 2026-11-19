@@ -13,8 +13,9 @@ import (
 )
 
 // Prepare rewrites one checked review document into the internal merge shape:
-// claim becomes body, finder confidence gets its store name, and every
-// finding reserves the quote verification seam with unchecked.
+// claim becomes body and finder confidence gets its store name. The quote
+// verification standing is left untouched: the bundle evidence pass stamps
+// verified or unverified from the diff bytes before anything is stored.
 func Prepare(review *jq.Obj) {
 	for _, item := range Findings(review) {
 		if m, ok := item.(*jq.Obj); ok {
@@ -31,7 +32,6 @@ func prepareFinding(m *jq.Obj) {
 	if confidence, has := m.Get("confidence"); has {
 		m.Set("finder_confidence", confidence)
 	}
-	m.Set("verification", jq.NewObj("quote", "unchecked"))
 }
 
 // Summary returns the optional human summary. It is never agent-controlled
@@ -149,8 +149,10 @@ func HasSpecViolation(obj *jq.Obj) bool {
 	return false
 }
 
-// Render returns the minimal deterministic body. S3 replaces this renderer;
-// S1 keeps the existing approval markers so consumers need no new grammar.
+// Render returns the minimal deterministic body. A nil approval is the
+// pre-decision render the merge reads: the clean lead is written for a review
+// that reports no findings, and AlignLead corrects it once the evidence pass
+// and the policy have decided.
 func Render(review *jq.Obj, approval *core.ApprovalReceipt) string {
 	var b strings.Builder
 	renderLead(&b, review, approval)
@@ -178,27 +180,39 @@ const (
 
 // AlignLead makes the rendered lead agree with the decision the merge
 // computed. Evidence insufficiency is checked first and overrides both
-// CleanLead and AttentionLead; a withheld non-insufficient decision swaps
-// CleanLead for AttentionLead. Only the lead line moves; summary text is
+// CleanLead and AttentionLead, prepending the lead when the body carries
+// neither; a withheld non-insufficient decision swaps CleanLead for
+// AttentionLead. Only the lead line moves; summary text is
 // the agent's own words and a finding's claim is never rewritten.
 func AlignLead(body string, approval *core.ApprovalReceipt) string {
 	if approval == nil {
 		return body
 	}
 	if approval.Insufficient {
-		if swapped, ok := replaceLeadLine(body, CleanLead, EvidenceInsufficientLead); ok {
-			return swapped
-		}
-		if swapped, ok := replaceLeadLine(body, AttentionLead, EvidenceInsufficientLead); ok {
-			return swapped
-		}
-		return body
+		return insufficientLead(body)
 	}
 	if approval.Approved {
 		return body
 	}
 	swapped, _ := replaceLeadLine(body, CleanLead, AttentionLead)
 	return swapped
+}
+
+// insufficientLead makes an insufficient body start with the insufficient
+// lead. A known lead at the head is swapped; a body whose summary is the
+// agent's own quote line gets the lead prepended, because a body may never
+// certify a review the decision refused.
+func insufficientLead(body string) string {
+	if strings.HasPrefix(body, EvidenceInsufficientLead) {
+		return body
+	}
+	for _, lead := range []string{CleanLead, AttentionLead} {
+		if swapped, ok := replaceLeadLine(body, lead, EvidenceInsufficientLead); ok &&
+			strings.HasPrefix(swapped, EvidenceInsufficientLead) {
+			return swapped
+		}
+	}
+	return EvidenceInsufficientLead + body
 }
 
 func replaceLeadLine(body, oldLead, newLead string) (string, bool) {
@@ -218,11 +232,7 @@ func renderLead(b *strings.Builder, review *jq.Obj, approval *core.ApprovalRecei
 	case approval != nil && approval.Insufficient:
 		b.WriteString(EvidenceInsufficientLead)
 	case !strings.HasPrefix(summary, "> "):
-		if len(Findings(review)) == 0 && approval != nil && approval.Approved {
-			b.WriteString(CleanLead)
-		} else {
-			b.WriteString(AttentionLead)
-		}
+		b.WriteString(undecidedLead(review, approval))
 	}
 	if summary == "" {
 		return
@@ -232,6 +242,16 @@ func renderLead(b *strings.Builder, review *jq.Obj, approval *core.ApprovalRecei
 	}
 	b.WriteString(summary)
 	b.WriteString("\n")
+}
+
+// undecidedLead picks between the clean and attention leads for a summary
+// that is not its own quote line: only a finding-free review a decision did
+// not withhold earns the clean sentence.
+func undecidedLead(review *jq.Obj, approval *core.ApprovalReceipt) string {
+	if len(Findings(review)) == 0 && (approval == nil || approval.Approved) {
+		return CleanLead
+	}
+	return AttentionLead
 }
 
 // renderFinding writes one numbered finding line: severity, anchor, claim.

@@ -2,6 +2,7 @@ exit: 1
 --- stdout ---
 
 --- stderr ---
+warn: evidence: hunk c1.txt	NEW	1	2 has no matched receipt
 error: review.json has 1 problem(s); fix every one, then re-run
 $.chunks  missing-field  chunks attestation covers 1 of 2 manifest chunk(s); missing b
   fix: list every manifest chunk name in top-level chunks

@@ -10,7 +10,13 @@ exit: 1
   "warnings": [
     "$.findings[0].brief.sites[0].path: brief site unknown/file.txt:2 is not a changed file with hunks",
     "$.findings[0].brief.sites[1].path: brief site notes.txt:99 is not a changed file with hunks",
-    "$.findings[0].brief.outcome_typo: unknown brief field \"outcome_typo\""
+    "$.findings[0].brief.outcome_typo: unknown brief field \"outcome_typo\"",
+    "evidence: finding 1 quote does not match full.diff at notes.txt:3 (text-differs)",
+    "evidence: hunk notes.txt\tNEW\t1\t7 has no matched receipt",
+    "evidence: hunk notes.txt\tNEW\t11\t17 has no matched receipt",
+    "evidence: hunk notes.txt\tNEW\t21\t27 has no matched receipt",
+    "evidence: hunk notes.txt\tNEW\t31\t37 has no matched receipt",
+    "evidence: +1 more gap(s) — see record.json evidence.gaps"
   ],
   "data": null,
   "error": {
@@ -24,6 +30,12 @@ exit: 1
 warn: $.findings[0].brief.sites[0].path: brief site unknown/file.txt:2 is not a changed file with hunks
 warn: $.findings[0].brief.sites[1].path: brief site notes.txt:99 is not a changed file with hunks
 warn: $.findings[0].brief.outcome_typo: unknown brief field "outcome_typo"
+warn: evidence: finding 1 quote does not match full.diff at notes.txt:3 (text-differs)
+warn: evidence: hunk notes.txt	NEW	1	7 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	11	17 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	21	27 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	31	37 has no matched receipt
+warn: evidence: +1 more gap(s) — see record.json evidence.gaps
 re-enter: verdict record acme/app local-dg --json
 --- files ---
 --- file C/.verdict/state/local-dg/store.json ---

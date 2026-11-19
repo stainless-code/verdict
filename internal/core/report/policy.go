@@ -32,18 +32,24 @@ func loadRunPolicy(st *state) *core.RefusalError {
 	return nil
 }
 
-// evaluateCompliance evaluates the captured policy against the FULL stored
+// evaluateCompliance evaluates the captured policy twice over the FULL stored
 // finding set before any display filter, so a display floor never hides a
-// blocking finding and a filtered view never greens a gate. Reads never
-// append an outcome or execute a command.
+// blocking finding and a filtered view never greens a gate. The compliance
+// dimension reads the verdict-eligible findings (an unverified finding may not
+// block a gate); the approval decision reads every stored finding, because it
+// has to see the unverified blocker to refuse it. Reads never append an
+// outcome or execute a command.
 func evaluateCompliance(st *state) {
 	if st.policy == nil || st.policy.Resolved == nil {
 		return
 	}
-	comp := config.EvaluateReadCompliance(st.policy, st.headSHA, readFindingViews(approval.EligibleFindings(st.entries)))
-	if !comp.HasPolicy {
+	decided := config.EvaluateReadCompliance(st.policy, st.headSHA, readFindingViews(st.entries))
+	if !decided.HasPolicy {
 		return
 	}
+	st.decisionCompliance = &decided
+	comp := config.EvaluateReadCompliance(st.policy, st.headSHA,
+		readFindingViews(approval.EligibleFindings(st.entries)))
 	st.compliance = &comp
 	st.requiredGaps = requiredProfileGaps(st, &comp)
 	warnCompliance(st, &comp)

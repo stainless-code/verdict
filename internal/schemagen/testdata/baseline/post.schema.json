@@ -79,6 +79,9 @@
     "chunk_coverage": {
       "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/chunkCoverage" }]
     },
+    "evidence": {
+      "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/evidenceReceipt" }]
+    },
     "summary": {
       "description": "PR-level summary comment receipt when --summary comment ran; absent when --summary off.",
       "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/postSummary" }]
@@ -219,6 +222,60 @@
         "insufficient": { "type": "boolean" }
       },
       "required": ["reason", "tier", "gating_sigs", "approved"],
+      "additionalProperties": true
+    },
+    "evidenceReceipt": {
+      "type": "object",
+      "properties": {
+        "head": { "type": "string" },
+        "diff_sha256": { "type": "string" },
+        "quotes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidenceQuote" }
+        },
+        "gaps": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "receipts": { "$ref": "#/$defs/evidenceReceipts" },
+        "spec": { "$ref": "#/$defs/evidenceSpec" },
+        "insufficient": { "type": "boolean" }
+      },
+      "required": ["head", "diff_sha256", "receipts", "spec", "insufficient"],
+      "additionalProperties": true
+    },
+    "evidenceQuote": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "side": { "enum": ["RIGHT", "LEFT"] },
+        "status": { "enum": ["verified", "unverified"] },
+        "reason": { "type": "string" },
+        "line": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["path", "side", "status", "line"],
+      "additionalProperties": true
+    },
+    "evidenceReceipts": {
+      "type": "object",
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "covered": { "type": "integer", "minimum": 0 },
+        "exempt": { "type": "integer", "minimum": 0 },
+        "complete": { "type": "boolean" }
+      },
+      "required": ["total", "covered", "exempt", "complete"],
+      "additionalProperties": true
+    },
+    "evidenceSpec": {
+      "type": "object",
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "covered": { "type": "integer", "minimum": 0 },
+        "min": { "type": "integer", "minimum": 0 },
+        "met": { "type": "boolean" }
+      },
+      "required": ["total", "covered", "min", "met"],
       "additionalProperties": true
     },
     "specCheck": {

@@ -45,6 +45,7 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 	}
 	st.check = &check.Summary
 	st.addCheckWarnings(check)
+	st.addEvidenceWarnings(check.Evidence)
 	if ref := reviewRefusal(check, false); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -145,6 +146,23 @@ func (st *svc) addCheckWarnings(check CheckResult) {
 		if p.Level == core.ProblemLevelWarning {
 			st.addWarning(p.Path + ": " + p.Message)
 		}
+	}
+}
+
+// addEvidenceWarnings prints one warning per evidence gap, bounded, with a
+// count when the bundle carries more. Record never refuses on insufficient
+// evidence: the receipt withholds the approval, so the operator reads every gap
+// and the findings still record.
+func (st *svc) addEvidenceWarnings(ev *core.EvidenceReceipt) {
+	if ev == nil {
+		return
+	}
+	for i, gap := range ev.Gaps {
+		if i >= evidenceWarnCap {
+			st.addWarning(fmt.Sprintf("%s+%d more gap(s) — see record.json evidence.gaps", evidencePrefix, len(ev.Gaps)-evidenceWarnCap))
+			return
+		}
+		st.addWarning(evidencePrefix + gap)
 	}
 }
 
@@ -405,6 +423,7 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 		Coverage:        res.Coverage.Receipt(),
 		ChunkCoverage:   res.Coverage.ChunkReceipt(),
 		Approval:        res.Approval,
+		Evidence:        res.Evidence,
 		SpecChecks:      res.SpecChecks,
 		Receipts:        res.Receipts,
 	}
@@ -440,6 +459,7 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 			SecuritySummary: strOrNil(res.Security),
 			Risk:            res.Risk,
 			Approval:        res.Approval,
+			Evidence:        res.Evidence,
 			SpecChecks:      res.SpecChecks,
 			Receipts:        res.Receipts,
 			Items:           typedItems(res.Entries),
@@ -468,6 +488,7 @@ func (st *svc) dryRun(dir, now string, res *MergeResult) *core.RecordResponse {
 		DryRun:          true,
 		Check:           st.check,
 		Approval:        res.Approval,
+		Evidence:        res.Evidence,
 		SpecChecks:      res.SpecChecks,
 		Receipts:        res.Receipts,
 		Normalized:      normalizedObject(st.normalized),

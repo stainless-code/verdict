@@ -2,6 +2,12 @@ exit: 1
 --- stdout ---
 
 --- stderr ---
+warn: evidence: finding 1 quote does not match full.diff at notes.txt:2 (text-differs)
+warn: evidence: hunk notes.txt	NEW	1	7 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	11	17 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	21	27 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	31	37 has no matched receipt
+warn: evidence: +1 more gap(s) — see record.json evidence.gaps
 error: review.json has 1 problem(s); fix every one, then re-run
 $.findings[0].kb[0]  wrong-type  kb id must be a string
   fix: use a lowercase rule id

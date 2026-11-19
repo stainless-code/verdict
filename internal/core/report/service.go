@@ -75,30 +75,34 @@ type state struct { // field grouping documents the loaded dimensions; alignment
 	// effective display_min_severity withholds below-floor findings
 	// while every gate keeps reading ranked. policy is the typed
 	// run bundle the floor and the gate observations come from.
-	view         []readcommon.Ranked
-	policy       *config.RunState
-	compliance   *config.ReadCompliance
-	approval     *core.ApprovalReceipt
-	requiredGaps []string
-	panel        []any
-	patch        any
-	comp         *core.ReportCompleteness
-	risk         *core.ReportRisk
-	validation   *core.ValidationData
-	evidence     *evidenceState
-	dir          string
-	now          string
-	headSHA      string
-	baseSHA      string
-	panelSrc     string
-	compPosted   string
-	live         liveState
-	nOpen        int
-	nAllOpen     int
-	gate         bool
-	gatePassed   bool
-	liveGate     bool
-	compOK       bool
+	view       []readcommon.Ranked
+	policy     *config.RunState
+	compliance *config.ReadCompliance
+	// decisionCompliance is the same captured policy over the unfiltered
+	// stored findings: the approval decision reads it, compliance keeps the
+	// verdict-eligible view the gate dimension shows.
+	decisionCompliance *config.ReadCompliance
+	approval           *core.ApprovalReceipt
+	requiredGaps       []string
+	panel              []any
+	patch              any
+	comp               *core.ReportCompleteness
+	risk               *core.ReportRisk
+	validation         *core.ValidationData
+	evidence           *evidenceState
+	dir                string
+	now                string
+	headSHA            string
+	baseSHA            string
+	panelSrc           string
+	compPosted         string
+	live               liveState
+	nOpen              int
+	nAllOpen           int
+	gate               bool
+	gatePassed         bool
+	liveGate           bool
+	compOK             bool
 }
 
 type liveState struct {
@@ -144,8 +148,8 @@ func Run(ctx context.Context, req *core.ReportRequest) (*core.ReportResponse, *c
 	}
 
 	evaluateCompliance(st)
-	st.approval = approval.Evaluate(st.entries, flags.Check, flags.Category, st.compliance,
-		reviewdoc.SpecViolationOfBundle(st.dir), st.currentEvidenceReceipt())
+	st.approval = approval.Evaluate(st.entries, flags.Check, flags.Category, st.decisionCompliance,
+		reviewdoc.SpecViolationOfBundle(st.dir), st.evidenceInput())
 	applyDisplayFloor(st)
 	warnLensUsage(st)
 	warnDeepValidation(st)

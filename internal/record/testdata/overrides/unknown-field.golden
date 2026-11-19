@@ -2,6 +2,9 @@ exit: 1
 --- stdout ---
 » anchors: 0 inline, 0 moved to body
 --- stderr ---
+warn: evidence: hunk notes.txt	NEW	1	7 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	11	17 has no matched receipt
+warn: evidence: hunk other.txt	NEW	1	3 has no matched receipt
 warn: no fetch-time hunk snapshot (.verdict/state/local-ov/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
 error: override .verdict/overrides/footer-order.md violates 'footer-order-subset' (unknown field 'bogus' — want only tier, cost, files, link)
 try: re-run with one of the valid values named above

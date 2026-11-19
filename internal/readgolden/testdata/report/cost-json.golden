@@ -225,13 +225,11 @@ exit: 0
       ]
     },
     "approval": {
-      "reason": "open findings at-or-above important",
+      "reason": "review-insufficient: evidence receipt missing for head aaaaaaa",
       "tier": "important",
-      "gating_sigs": [
-        "c111111111111111111111111111111111111111",
-        "b222222222222222222222222222222222222222"
-      ],
-      "approved": false
+      "gating_sigs": [],
+      "approved": false,
+      "insufficient": true
     }
   },
   "error": null

@@ -43,8 +43,10 @@ assert_json_field "brief questions stay an array" "Why is this safe?" '.data.nor
 
 run_review record acme/app "$SLUG" --json
 assert_exit "a clean findings review records" 0
-if [ "$(jq -r '.[0].verification.quote' "$LB/findings.json" 2>/dev/null)" = "unchecked" ]; then
-  good "findings.json reserves the quote verification field"
+# The record verifies the quote against the bundle's own diff, so the stored
+# standing is verified, not S1's constant unchecked placeholder.
+if [ "$(jq -r '.[0].verification.quote' "$LB/findings.json" 2>/dev/null)" = "verified" ]; then
+  good "findings.json stores the verified quote standing"
 else
   bad "findings.json verification: $(cat "$LB/findings.json" 2>/dev/null || echo MISSING)"
 fi

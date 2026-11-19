@@ -62,9 +62,9 @@ matrix_row "fetch-local" "clean-tree" "$EVAL_STATUS" "none" "yes" "no" "created"
 
 eval_write_review_at "$LB/review.json" <<'EOF'
 {"schema_version":"1","body":"> ✅ Three nits below with enough length to pass the guard.","approved":false,"comments":[
-{"path":"notes.txt","line":2,"side":"RIGHT","body":"First nit with enough substance here.","rigor":"pointed","severity":"informational"},
-{"path":"notes.txt","line":3,"side":"RIGHT","body":"Second nit with enough substance here.","rigor":"pointed","severity":"informational"},
-{"path":"notes.txt","line":4,"side":"RIGHT","body":"Third nit with enough substance here.","rigor":"pointed","severity":"informational"}]}
+{"path":"notes.txt","line":2,"side":"RIGHT","body":"First nit with enough substance here.","quote":"new line","rigor":"pointed","severity":"informational"},
+{"path":"notes.txt","line":3,"side":"RIGHT","body":"Second nit with enough substance here.","quote":"bottom","rigor":"pointed","severity":"informational"},
+{"path":"notes.txt","line":4,"side":"RIGHT","body":"Third nit with enough substance here.","quote":"more lines here","rigor":"pointed","severity":"informational"}]}
 EOF
 m0="$(mark)"
 run_review record acme/app loop1 --json
@@ -95,8 +95,8 @@ else
 fi
 eval_write_review_at "$LB/review.json" <<EOF
 {"schema_version":"1","body":"> ✅ Two nits remain with enough length to pass the guard.","approved":false,"comments":[
-{"path":"notes.txt","line":3,"side":"RIGHT","body":"Second nit with enough substance here.","rigor":"pointed","severity":"informational"},
-{"path":"notes.txt","line":4,"side":"RIGHT","body":"Third nit with enough substance here.","rigor":"pointed","severity":"informational"}],
+{"path":"notes.txt","line":3,"side":"RIGHT","body":"Second nit with enough substance here.","quote":"bottom","rigor":"pointed","severity":"informational"},
+{"path":"notes.txt","line":4,"side":"RIGHT","body":"Third nit with enough substance here.","quote":"more lines here","rigor":"pointed","severity":"informational"}],
 "triage":[{"sig":"$SIG1","status":"wont-fix","rationale":"By design: this line is intentionally terse for log brevity."}]}
 EOF
 cp "$LB/review.json" "$EVAL_SANDBOX/round2.json"

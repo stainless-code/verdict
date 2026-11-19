@@ -9,13 +9,16 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/core/reviewdoc"
 )
 
 const storedHead = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
 // cleanFindingsReview is a review with nothing to report: the renderer writes
-// its clean lead for it.
-const cleanFindingsReview = `{"schema_version":"1","summary":"A short summary of the clean review.","findings":[]}`
+// its clean lead for it. It carries the read receipt the fixture bundle's one
+// changed hunk needs, so the clean lead is one evidence does not question.
+const cleanFindingsReview = `{"schema_version":"1","summary":"A short summary of the clean review.","findings":[],` +
+	`"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new line"}]}`
 
 // recordedDecision is the receipt record stores for that review once a block
 // clause holds it back.
@@ -24,11 +27,14 @@ const recordedDecision = `{"approved":false,"reason":"open findings at-or-above 
 	`"clauses":["no-important"]}`
 
 // storedFinding is the prior open finding the block clause fires on. It is not
-// in the current review, so only the store and the clause withhold approval.
+// in the current review, so only the store and the clause withhold approval; it
+// carries the verified quote standing record stamps, so the clause is one that
+// may gate.
 const storedFinding = `[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,` +
 	`"anchored":true,"body":"Prior finding with enough substance.","suggestion":null,` +
 	`"inBounds":true,"rigor":"walked","severity":"informational",` +
 	`"sig":"b222222222222222222222222222222222222222","sig_version":"1",` +
+	`"verification":{"quote":"verified"},` +
 	`"firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]`
 
 // writeRecordedBundle writes a bundle plus a record.json that decision
@@ -148,5 +154,76 @@ func TestBlockClauseBodyDoesNotSayClean(t *testing.T) {
 	}
 	if resp.Data.Event == "APPROVE" {
 		t.Errorf("event = %q, want a non-approving event while a clause blocks approval", resp.Data.Event)
+	}
+}
+
+// insufficientDecision is the decision record stores when a clean review
+// receipts none of the bundle's changed hunks.
+const insufficientDecision = `{"approved":false,"reason":"review-insufficient: hunk notes.txt\tNEW\t1\t3 has no matched receipt",` +
+	`"tier":"important","gating_sigs":[],"insufficient":true}`
+
+// receiptlessReview is a clean review that receipts nothing: the merge reads it
+// as insufficient, so post may publish it but never approve it.
+const receiptlessReview = `{"schema_version":"1","summary":"A short summary of the clean review.","findings":[]}`
+
+// TestInsufficientRecordIsPublishedNotApproved proves an insufficient record
+// still reaches the PR as a comment whose lead says the evidence is short, and
+// that post never turns it into an approval.
+func TestInsufficientRecordIsPublishedNotApproved(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	writeRecordedBundle(t, dir, insufficientDecision)
+	if err := writeTestFile(dir+"/review.json", receiptlessReview); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeTestFile(dir+"/record.json", fmt.Sprintf(
+		`{"schema_version":"1","status":"github","head":"%s","diff_sha256":"%s","review_sha256":"%s",`+
+			`"recorded_at":"2026-11-02T12:00:00Z","findings":0,"open":0,"approval":%s}`,
+		storedHead, fileSHA256(dir+"/full.diff"), fileSHA256(dir+"/review.json"), insufficientDecision)); err != nil {
+		t.Fatal(err)
+	}
+
+	cmdr := postCommander(t)
+	var warnings, human []string
+	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: dir + "/review.json"}, &warnings, &human)
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	body := postedBody(t, cmdr)
+	if !strings.HasPrefix(body, "> ⛔ Evidence checks insufficient — no approval.") {
+		t.Errorf("posted body does not lead with the insufficient lead:\n%.300q", body)
+	}
+	if strings.Contains(body, "> ✅") {
+		t.Errorf("posted body claims a clean review:\n%.300q", body)
+	}
+	if resp.Data.Event == "APPROVE" {
+		t.Errorf("event = %q, want a comment while the evidence is insufficient", resp.Data.Event)
+	}
+}
+
+// TestStoredInsufficientDecisionRelandsBody proves R7: post publishes record's
+// decision, so a stored insufficient approval puts the insufficient lead on the
+// body even when the merge's own evidence checks pass.
+func TestStoredInsufficientDecisionRelandsBody(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	bundle := ".verdict/state/7"
+	// The review receipts the fixture's one hunk, so the merge itself approves
+	// and its body leads with the clean sentence.
+	writeRecordedBundle(t, bundle, insufficientDecision)
+	cmdr := postCommander(t)
+	var warnings, human []string
+	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: bundle + "/review.json"}, &warnings, &human)
+	resp, ref := Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	body := postedBody(t, cmdr)
+	if !strings.HasPrefix(body, reviewdoc.EvidenceInsufficientLead) {
+		t.Errorf("posted body does not lead with the insufficient lead:\n%.300q", body)
+	}
+	if resp.Data.Event == "APPROVE" {
+		t.Errorf("event = %q, want a comment while the stored decision is insufficient", resp.Data.Event)
 	}
 }
