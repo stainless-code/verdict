@@ -1172,7 +1172,7 @@ Fix: run `verdict record <repo> <slug>` again on the current review (then `post`
 
 ## `repair-exhausted`
 
-Cause: `run --rounds N` spent every round without a valid `review.json` (or a round repeated the prior bytes, so there was no progress to spend).
+Cause: `run --rounds N` spent every round without a valid `review.json` (or a round repeated the prior bytes, so there was no progress to spend). The default is two rounds, so this is a review that stayed invalid across one repair attempt.
 
 Fix: fix every error named in `error.problems`, then re-run (when the cap was hit, raise `--rounds` up to 5; for no progress check the round files).
 
@@ -1205,7 +1205,7 @@ refuses once its repair rounds finish; `report --check` and `gate` fail the
 `evidence` dimension; `report` withholds `data.approval`; and `post` refuses a
 binding approval with it, even under `--force`.
 
-Fix: fix the named gaps (quote at `path:line`, receipt hunk key, or spec item and code evidence), rewrite `review.json`, then re-run `record` or `run --rounds`.
+Fix: run `record --dry-run` and read what it names — the finding quote at `path:line` that `full.diff` does not carry, the `hunks.tsv` row with no receipt, the spec item with no check or no code evidence — rewrite `review.json`, then re-run `record` or `run --rounds`. A quote gets one repair round; a receipt or spec gap re-prompts on every round.
 
 ## `rigor-below-floor`
 

@@ -86,7 +86,7 @@ evidence rungs, keep-biased, and its sibling doctrines.
       "evidence": { "path": "src/api.ts", "line": 42, "quote": "retry(3)" }
     }
   ],
-  "receipts": [{ "hunk": "@@ -40,6 +40,8 @@", "quote": "retry(3)" }]
+  "receipts": [{ "hunk": "src/api.ts\tNEW\t40\t47", "quote": "retry(3)" }]
 }
 ```
 
@@ -278,6 +278,50 @@ repair.
 | `spec-check-missing`           | error   | An enumerated `--spec` item has no matching `spec_checks[]` entry.                                                                                |
 | `spec-evidence-not-code`       | error   | A `met` or `violated` spec check cites a non-code or test-output path instead of changed code.                                                    |
 | `spec-evidence-mismatch`       | error   | A `met` or `violated` spec check's `evidence.quote` does not match `full.diff` at the cited path and line.                                        |
+
+### Evidence checks
+
+The same bundle-level pass that validates shape also checks the review's
+evidence, and that pass is the one `record`, `record --dry-run`, `run` and the
+`gate` read. It answers three questions.
+
+**Quotes.** Each finding's `quote` is matched against `full.diff` at its
+`path:line`. Whole lines must match exactly; a quote whose first or last line is
+partial still verifies when it carries at least twelve non-space characters, and
+a quote made only of whole lines needs no minimum. A miss is `quote-mismatch`
+(stacked hunks and a line outside every hunk included), and a place the diff
+cannot answer — a path it does not carry, a binary or deleted side, an oversized
+line, an invalid range — is `quote-not-checkable`. Either code is an error on a
+finding that would gate and a warning below the approval tier, so a weak quote on
+an informational note never blocks publication.
+
+**Receipts.** A review whose findings are all below the approval tier, and which
+violates no spec item, must also show it read the change: `receipts[]` holds one
+entry per non-exempt hunk, `hunk` being the exact row `hunks.tsv` prints for it
+(`<path>\t<NEW|OLD>\t<start>\t<end>`) and `quote` one line that hunk carries. A
+hunk whose path is generated under the shared role heuristic is exempt, and a
+diff whose hunk paths cannot be keyed at all (a path containing a tab) is itself
+reported as the gap rather than silently reading as covered.
+
+**Spec checks.** When the bundle carries `--spec` sources, every enumerated
+bullet and table row needs a `spec_checks[]` entry: `item` quoted verbatim,
+`status` of `met`, `violated` or `n/a`, and, for `met` and `violated`, an
+`evidence` naming a path the diff changes with its `line` and exact `quote`.
+Coverage must reach `defaults.spec_coverage_min` (default 80), and test output,
+snapshots and logs are refused as evidence (`spec-evidence-not-code`).
+
+Every gap becomes an ordinary review-input problem, so one list names it
+everywhere. A bundle stores the outcome as the evidence receipt in `record.json`
+— one entry per finding quote, the hunk coverage, the spec coverage, the gap
+sentences, and a single `insufficient` flag.
+
+| Verb                      | What it does with the evidence verdict                                                                                                                   |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `record`                  | writes `record.json` with the receipt and, when anything is insufficient, a withheld approval whose reason is the first gap. Exit 0.                     |
+| `run`                     | feeds the gaps into its repair rounds and refuses `review-insufficient` when they survive them.                                                          |
+| `report`                  | withholds `data.approval` and warns once; the advisory read never fails.                                                                                 |
+| `report --check` / `gate` | fails the always-on `evidence` dimension and names `review-insufficient`.                                                                                |
+| `post`                    | publishes the findings with the insufficient lead and never approves; a binding approval refuses `review-insufficient`, and `--force` does not waive it. |
 
 ### Sig contract (sig_version 1)
 
@@ -5087,7 +5131,10 @@ evidence into regular supported files before retrying.
 The bundle stores original bytes under `context/`, a `context.json` manifest
 with `source`, `role` (`"context"` or `"spec"`), `retrieved_at`, `sha256` and
 `trust: "untrusted"`, and `context.txt` using the same untrusted fence for both
-roles. `toc.txt` gains a `## context` section listing the manifest's source
+roles. A `role: spec` entry also appends the handoff's spec checklist section to
+`procedure.md`, so the agent is told to label every enumerated item `met`,
+`violated` or `n/a` with code evidence; a bundle with only `role: context`
+sources keeps the plain context section and is asked for no checklist. `toc.txt` gains a `## context` section listing the manifest's source
 names, with `[spec]` appended to spec rows; each name is escaped like an impact
 row, so a source cannot start a section or forge a fence. A fetch without
 context or spec removes stale context artifacts and that section. The `run`
