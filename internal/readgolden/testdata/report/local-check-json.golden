@@ -105,6 +105,12 @@ exit: 1
           "count": null
         },
         {
+          "id": "spec",
+          "status": "pass",
+          "detail": "no violated spec check",
+          "count": 0
+        },
+        {
           "id": "evidence",
           "status": "unknown",
           "detail": "evidence receipt missing for head aaaaaaa [review-insufficient]",
@@ -119,5 +125,6 @@ exit: 1
 warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 info: live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)
 check: no open findings at-or-above critical — gate passes
+check: no violated spec check — gate passes
 check: evidence receipt missing for head aaaaaaa [review-insufficient] — gate fails
 --- files ---

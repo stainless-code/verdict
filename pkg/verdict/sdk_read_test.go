@@ -476,8 +476,8 @@ func TestClientGate(t *testing.T) {
 	for _, dim := range clean.Dimensions {
 		ids = append(ids, dim.ID)
 	}
-	if got := strings.Join(ids, ","); got != "findings,head,coverage,live_threads,evidence" {
-		t.Errorf("dimension ids = %s, want findings,head,coverage,live_threads,evidence", got)
+	if got := strings.Join(ids, ","); got != "findings,head,coverage,live_threads,spec,evidence" {
+		t.Errorf("dimension ids = %s, want findings,head,coverage,live_threads,spec,evidence", got)
 	}
 	if live := clean.Dimensions[3]; live.Status != "skip" {
 		t.Errorf("live dimension = %+v, want skip under live=skip", live)
@@ -518,7 +518,9 @@ type wantDim struct{ id, status string }
 // reads unknown, never a pass.
 func assertGateDimensions(t *testing.T, dims []verdict.GateDimension) {
 	t.Helper()
-	want := []wantDim{{"findings", "fail"}, {"coverage", "skip"}, {"live_threads", "skip"}, {"evidence", "unknown"}}
+	want := []wantDim{
+		{"findings", "fail"}, {"coverage", "skip"}, {"live_threads", "skip"}, {"spec", "pass"}, {"evidence", "unknown"},
+	}
 	if len(dims) != len(want) {
 		t.Fatalf("dimensions = %+v, want %d", dims, len(want))
 	}
@@ -534,7 +536,7 @@ func assertGateDimensions(t *testing.T, dims []verdict.GateDimension) {
 	if live.Count != nil {
 		t.Errorf("live count = %d, want null", *live.Count)
 	}
-	wantEvidenceDetail(t, dims[3])
+	wantEvidenceDetail(t, dims[4])
 }
 
 // wantEvidenceDetail pins the evidence dimension's detail sentence: the store

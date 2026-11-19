@@ -528,6 +528,7 @@ const (
 	dimUnknown    = "unknown"
 	dimCompliance = "compliance"
 	dimRisk       = "risk"
+	dimSpec       = "spec"
 	dimEvidence   = "evidence"
 	checkPrefix   = "check: "
 )
@@ -560,12 +561,14 @@ func gateTail(st *state) (bool, []string, *core.ReportGate) {
 }
 
 // gateDimensions is the ceiling on one run's gate checks: findings, head,
-// coverage, live, compliance, risk, evidence.
-const gateDimensions = 7
+// coverage, live, compliance, risk, spec, evidence.
+const gateDimensions = 8
 
 // gateChecks evaluates the dimensions this run asked for, in wire order. The
-// evidence dimension is always on: a gate that passes without a receipt for the
-// gated head certifies a review nothing checked.
+// spec and evidence dimensions are always on: the derived approval withholds on
+// a violated spec check, so a gate that passed over one would certify a review
+// the decision refuses, and a gate that passed without a receipt for the gated
+// head would certify a review nothing checked.
 func gateChecks(st *state) []gateCheck {
 	specs := []struct {
 		build   func(*state) gateCheck
@@ -577,6 +580,7 @@ func gateChecks(st *state) []gateCheck {
 		{gateLiveCheck, st.liveGate},
 		{gateComplianceCheck, st.compliance != nil && st.compliance.HasPolicy},
 		{gateRiskCheck, st.flags.MaxRisk != "" && st.risk != nil},
+		{gateSpecCheck, true},
 		{gateEvidenceCheck, true},
 	}
 	checks := make([]gateCheck, 0, gateDimensions)
@@ -586,6 +590,28 @@ func gateChecks(st *state) []gateCheck {
 		}
 	}
 	return checks
+}
+
+// gateSpecCheck grades the spec checks the stored record judged: a review the
+// decision withholds over cannot pass a gate, so the first violated item names
+// itself and the count tallies them all.
+func gateSpecCheck(st *state) gateCheck {
+	violations := st.specViolations
+	if len(violations) == 0 {
+		const detail = "no violated spec check"
+		return gateCheck{
+			dim:  core.GateDimension{ID: dimSpec, Status: dimPass, Count: new(0), Detail: detail},
+			line: checkPrefix + detail + " — gate passes",
+		}
+	}
+	detail := "violated spec check: " + violations[0]
+	if len(violations) > 1 {
+		detail = fmt.Sprintf("%d violated spec checks: %s", len(violations), violations[0])
+	}
+	return gateCheck{
+		dim:  core.GateDimension{ID: dimSpec, Status: dimFail, Count: new(len(violations)), Detail: detail},
+		line: checkPrefix + detail + " — gate fails",
+	}
 }
 
 func gateRiskCheck(st *state) gateCheck {

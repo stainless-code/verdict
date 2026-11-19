@@ -56,15 +56,20 @@ func assertCheckLines(t *testing.T, resp *core.ReportResponse, wantFail bool, wa
 	}
 }
 
+// specPassLine and evidencePassLine are the two always-on dimensions' pass
+// lines, in wire order.
+const (
+	specPassLine     = "check: no violated spec check — gate passes"
+	evidencePassLine = "check: evidence checks satisfied (0 quotes verified, 0/0 hunks receipted, 0/0 spec items checked) — gate passes"
+)
+
 // TestReportUnpublishedTierNeverGates proves an open anchored inline finding
 // whose severity is null is untagged, not critical: the severity gate counts
 // nothing at the critical threshold, while the finding still shows up.
-const evidencePassLine = "check: evidence checks satisfied (0 quotes verified, 0/0 hunks receipted, 0/0 spec items checked) — gate passes"
-
 func TestReportUnpublishedTierNeverGates(t *testing.T) {
 	store := "[" + unpublishedFinding(sigUntagged, "null", `"walked"`, "2") + "]"
 	resp := unpublishedRun(t, store, &core.ReportFlags{Check: "critical"})
-	want := []string{"check: no open findings at-or-above critical — gate passes", liveSkipLine, evidencePassLine}
+	want := []string{"check: no open findings at-or-above critical — gate passes", liveSkipLine, specPassLine, evidencePassLine}
 	assertCheckLines(t, resp, false, want)
 	if len(resp.Data.Items) != 1 || resp.Data.Items[0].Sig != sigUntagged {
 		t.Errorf("items = %+v, want the untagged finding still ranked", resp.Data.Items)
@@ -100,7 +105,7 @@ func TestReportUnpublishedRungNeverGates(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			store := "[" + unpublishedFinding(sigTraced, `"critical"`, tc.rigor, "2") + "]"
 			resp := unpublishedRun(t, store, &core.ReportFlags{Check: "critical", Category: tc.category})
-			assertCheckLines(t, resp, tc.wantFail, []string{tc.wantLine, liveSkipLine, evidencePassLine})
+			assertCheckLines(t, resp, tc.wantFail, []string{tc.wantLine, liveSkipLine, specPassLine, evidencePassLine})
 		})
 	}
 }

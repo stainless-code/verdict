@@ -9,5 +9,6 @@ warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without
 warn: live recheck skipped (--live skip requested — gating on local dimensions only)
 check: no open findings at-or-above critical — gate passes
 check: live recheck skipped (--live skip) — gating on local dimensions only
+check: no violated spec check — gate passes
 check: evidence checks satisfied (0 quotes verified, 0/0 hunks receipted, 0/0 spec items checked) — gate passes
 --- files ---

@@ -291,7 +291,9 @@ var publishedSemantics = map[string]string{
 	// $defs/evidence{Receipt,Quote,Receipts,Spec}. Additions only.
 	// S4 evidence gate dimension: additive `evidence` member on
 	// $defs/gateDimension.id with updated reportGate and gateDimension prose.
-	"envelope.schema.json": "6e484acf954343e6d9e20da001a4bd9324fe68a6d7c1c11740863eec23a6e60b",
+	// Spec gate dimension: additive `spec` member on $defs/gateDimension.id
+	// with updated reportGate and gateDimension prose. Additions only.
+	"envelope.schema.json": "61bb6a23a6a0bd190443bcec795593df339861e15d9bb9b0205422c761ec9fd4",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

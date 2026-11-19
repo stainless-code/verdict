@@ -66,10 +66,11 @@ assert_eq "gate envelope keeps the nine-key shape" \
   "at data error next pr repo schema_version verb warnings" \
   "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT")"
 assert_eq "json pass carries passed true" "true" "$(jq -r .data.passed <"$EVAL_OUT")"
-# The evidence dimension always closes the composed gate: a receipt the gate
-# cannot read fails it, so the wire order names all four.
+# Two dimensions always close the composed gate: spec fails on a violated
+# spec check and evidence fails on a receipt the gate cannot read, so the wire
+# order names all five.
 assert_eq "json pass publishes dimension ids in wire order" \
-  "findings coverage live_threads evidence" "$(jq -r '.data.dimensions[].id' <"$EVAL_OUT" | paste -sd' ' -)"
+  "findings coverage live_threads spec evidence" "$(jq -r '.data.dimensions[].id' <"$EVAL_OUT" | paste -sd' ' -)"
 assert_eq "findings dimension carries its tally" "0" "$(jq -r '.data.dimensions[0].count' <"$EVAL_OUT")"
 assert_eq "skip dimension carries a null tally" "null" "$(jq -r '.data.dimensions[2].count' <"$EVAL_OUT")"
 assert_eq "json pass keeps error null" "null" "$(jq -r .error <"$EVAL_OUT")"
@@ -83,9 +84,9 @@ set_mode clear
 run_review gate acme/app "$PR" --max-severity important --live skip --coverage warn
 assert_exit "tier-dirty gate exits 1" 1
 assert_file_grep "fail line names the tier and count" "$EVAL_OUT" "1 open finding(s) at-or-above important"
-# The evidence dimension passes here, so the tally names the one pass beside the
-# failing dimension and the two skips.
-assert_file_grep "fail tally counts the failing dimension" "$EVAL_OUT" "gate: FAIL (1 fail, 1 pass, 2 skip)"
+# The spec and evidence dimensions pass here, so the tally names the two passes
+# beside the failing dimension and the two skips.
+assert_file_grep "fail tally counts the failing dimension" "$EVAL_OUT" "gate: FAIL (1 fail, 2 pass, 2 skip)"
 assert_file_grep "fail carries a next action" "$EVAL_OUT" "try: address or triage the open findings"
 before_hash="$(cat "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" | shasum | cut -d' ' -f1)"
 run_review gate acme/app "$PR" --max-severity important --live skip --coverage warn --json

@@ -115,38 +115,48 @@ func rawJSON(item any) ([]byte, bool) {
 	return raw, err == nil
 }
 
-// SpecViolationOfBundle reads the record receipt's stored spec checks.
-// A missing or unreadable record has no new evidence to violate.
-func SpecViolationOfBundle(dir string) bool {
+// SpecViolationsOfBundle reads the record receipt's stored spec checks and
+// returns the item of every check it marked violated, in stored order. A
+// missing or unreadable record has no new evidence to violate.
+func SpecViolationsOfBundle(dir string) []string {
 	raw, err := os.ReadFile(dir + readcommonRecordSuffix)
 	if err != nil {
-		return false
+		return nil
 	}
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
-		return false
+		return nil
 	}
 	obj, ok := doc.(*jq.Obj)
 	if !ok {
-		return false
+		return nil
 	}
-	return HasSpecViolation(obj)
+	return SpecViolations(obj)
 }
 
 const readcommonRecordSuffix = "/record.json"
 
 // HasSpecViolation reports a violated spec check in a review or record.
 func HasSpecViolation(obj *jq.Obj) bool {
+	return len(SpecViolations(obj)) > 0
+}
+
+// SpecViolations returns the item of every violated spec check in a review or
+// record, in stored order: the decision withholds and the gate fails on the
+// first, and the tally is the length.
+func SpecViolations(obj *jq.Obj) []string {
+	var out []string
 	for _, item := range SpecChecks(obj) {
 		m, ok := item.(*jq.Obj)
 		if !ok {
 			continue
 		}
 		if status, _ := m.Get("status"); jq.R(status) == "violated" {
-			return true
+			text, _ := m.Get("item")
+			out = append(out, jq.R(text))
 		}
 	}
-	return false
+	return out
 }
 
 // Render returns the minimal deterministic body. A nil approval is the

@@ -9,5 +9,6 @@ warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without
 warn: live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5102 -f query=       query($owne — offline posture is strict, failing closed)
 check: no open findings at-or-above critical — gate passes
 check: live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5102 -f query=       query($owne — gate fails: offline posture is strict; restore the network or re-run with --live skip, then re-check)
+check: no violated spec check — gate passes
 check: evidence checks satisfied (0 quotes verified, 0/0 hunks receipted, 0/0 spec items checked) — gate passes
 --- files ---

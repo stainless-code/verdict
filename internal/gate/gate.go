@@ -30,6 +30,7 @@ const (
 	idHead          = "head"
 	idLive          = "live_threads"
 	idCompliance    = "compliance"
+	idSpec          = "spec"
 	idEvidence      = "evidence"
 	flagMaxSeverity = "--max-severity"
 	flagRequireHE   = "--require-head"
@@ -44,6 +45,9 @@ const (
 	// coverage[], so a recovery naming only that key would loop the operator.
 	actionCoverage = "attest the unattested ranges in review.json (coverage[], or every " +
 		"chunk in chunks[] when the bundle is chunked), then re-record or re-post"
+	// actionSpec names the document the spec checks came from, because the gate
+	// reads them from the record and cannot fix the review it graded.
+	actionSpec = "satisfy or correct the violated spec check in review.json, then re-record"
 )
 
 // DefaultLive is the --live posture a gate run starts from.
@@ -240,6 +244,12 @@ var gateActionsByID = map[string]func(status string) string{
 			return "attest coverage for the fetched HEAD (post or record)"
 		}
 		return ""
+	},
+	idSpec: func(status string) string {
+		if status == statusPass {
+			return ""
+		}
+		return actionSpec
 	},
 	idEvidence: func(status string) string {
 		switch status {

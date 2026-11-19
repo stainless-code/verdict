@@ -439,7 +439,7 @@ export interface RiskRow {
   [key: string]: unknown;
 }
 
-/** Composed gate result: every requested dimension in findings, head, coverage, live_threads, compliance, risk, evidence order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral. */
+/** Composed gate result: every requested dimension in findings, head, coverage, live_threads, compliance, risk, spec, evidence order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral. */
 export interface ReportGate {
   /** The gate verdict the exit code follows: exit 0 when true, exit 1 when false. */
   passed: boolean;
@@ -449,7 +449,7 @@ export interface ReportGate {
 
 /** One gate dimension: its id, verdict status, human detail text, and its own failing tally (null where the dimension has no count to report). */
 export interface GateDimension {
-  /** Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), live_threads (unresolved threads on the PR under --live), compliance, risk, or evidence (the stored evidence receipt for that HEAD, always on under --check). */
+  /** Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), live_threads (unresolved threads on the PR under --live), compliance, risk, spec (the spec checks the stored record graded, always on: a violated check withholds the derived approval, so no gate passes over it), or evidence (the stored evidence receipt for that HEAD, always on under --check). */
   id:
     | "findings"
     | "head"
@@ -457,11 +457,12 @@ export interface GateDimension {
     | "live_threads"
     | "compliance"
     | "risk"
+    | "spec"
     | "evidence";
   /** pass, fail, unknown (the dimension could not be read and the posture fails closed), or skip (not requested, or unreachable under --live auto). Only fail and unknown fail the gate. */
   status: "pass" | "fail" | "skip" | "unknown";
   detail: string;
-  /** The dimension's own tally: offending findings for findings, unattested ranges for coverage (unattested chunks on a chunked bundle), versus-thread count for live_threads, evidence gaps for evidence, null for head and for a skipped, unreachable, or unknown probe. */
+  /** The dimension's own tally: offending findings for findings, unattested ranges for coverage (unattested chunks on a chunked bundle), versus-thread count for live_threads, violated spec checks for spec, evidence gaps for evidence, null for head and for a skipped, unreachable, or unknown probe. */
   count: number | null;
   [key: string]: unknown;
 }

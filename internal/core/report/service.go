@@ -82,27 +82,31 @@ type state struct { // field grouping documents the loaded dimensions; alignment
 	// stored findings: the approval decision reads it, compliance keeps the
 	// verdict-eligible view the gate dimension shows.
 	decisionCompliance *config.ReadCompliance
-	approval           *core.ApprovalReceipt
-	requiredGaps       []string
-	panel              []any
-	patch              any
-	comp               *core.ReportCompleteness
-	risk               *core.ReportRisk
-	validation         *core.ValidationData
-	evidence           *evidenceState
-	dir                string
-	now                string
-	headSHA            string
-	baseSHA            string
-	panelSrc           string
-	compPosted         string
-	live               liveState
-	nOpen              int
-	nAllOpen           int
-	gate               bool
-	gatePassed         bool
-	liveGate           bool
-	compOK             bool
+	// specViolations is the item of every spec check the stored record marked
+	// violated: the decision withholds on it, and the gate fails on it, so no
+	// gate passes while the derived decision withholds.
+	specViolations []string
+	approval       *core.ApprovalReceipt
+	requiredGaps   []string
+	panel          []any
+	patch          any
+	comp           *core.ReportCompleteness
+	risk           *core.ReportRisk
+	validation     *core.ValidationData
+	evidence       *evidenceState
+	dir            string
+	now            string
+	headSHA        string
+	baseSHA        string
+	panelSrc       string
+	compPosted     string
+	live           liveState
+	nOpen          int
+	nAllOpen       int
+	gate           bool
+	gatePassed     bool
+	liveGate       bool
+	compOK         bool
 }
 
 type liveState struct {
@@ -148,8 +152,9 @@ func Run(ctx context.Context, req *core.ReportRequest) (*core.ReportResponse, *c
 	}
 
 	evaluateCompliance(st)
+	st.specViolations = reviewdoc.SpecViolationsOfBundle(st.dir)
 	st.approval = approval.Evaluate(st.entries, flags.Check, flags.Category, st.decisionCompliance,
-		reviewdoc.SpecViolationOfBundle(st.dir), st.evidenceInput())
+		len(st.specViolations) > 0, st.evidenceInput())
 	applyDisplayFloor(st)
 	warnLensUsage(st)
 	warnDeepValidation(st)

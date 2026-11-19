@@ -322,7 +322,7 @@ sentences, and a single `insufficient` flag.
 | `record`                  | writes `record.json` with the receipt and, when anything is insufficient, a withheld approval whose reason is the first gap. Exit 0.                     |
 | `run`                     | feeds the gaps into its repair rounds and refuses `review-insufficient` when they survive them.                                                          |
 | `report`                  | withholds `data.approval` and warns once; the advisory read never fails.                                                                                 |
-| `report --check` / `gate` | fails the always-on `evidence` dimension and names `review-insufficient`.                                                                                |
+| `report --check` / `gate` | fails the always-on `spec` dimension on a violated spec check and the always-on `evidence` dimension, and names `review-insufficient`.                   |
 | `post`                    | publishes the findings with the insufficient lead and never approves; a binding approval refuses `review-insufficient`, and `--force` does not waive it. |
 
 ### Sig contract (sig_version 1)
@@ -1628,8 +1628,13 @@ same record `report --completeness` reads), and `--live auto|strict|skip`
 asked for it, and `--live` alone is a usage error rather than a silent pass).
 A dimension is `pass`, `fail`, `unknown` (unreadable and failing closed), or
 `skip` (not requested, or unreachable under `auto`); only `fail` and `unknown`
-fail the gate, so a skip never turns a green run red. The `evidence` dimension
-rides every gate mode, whichever dimension the operator asked for: `pass`
+fail the gate, so a skip never turns a green run red. Two dimensions ride
+every gate mode, whichever dimension the operator asked for. `spec` fails on
+any spec check the stored record graded `violated`
+(`check: violated spec check: <item> — gate fails`, the count tallying every
+violated item) and passes on `met`, `n/a`, or no spec checks at all: the
+derived approval withholds on a violation, so a gate passing over one would
+certify a review the decision refuses. `evidence` `pass`
 needs the current head's evidence receipt with `insufficient: false`, an
 insufficient receipt fails, and a missing, stale, or unreadable one reads
 `unknown` — so no gate passes without a receipt for the head it certifies.
@@ -1671,7 +1676,7 @@ threads, then re-run gate
 ```
 
 `--json` publishes the same verdict as `data.passed` plus `data.dimensions[]`
-in `findings, head, coverage, live_threads, compliance, risk, evidence` order
+in `findings, head, coverage, live_threads, compliance, risk, spec, evidence` order
 (only the dimensions a run composes; `id`, `status`,
 `detail`, `count` —
 null where a dimension has no tally). A failed gate is a verdict, not a

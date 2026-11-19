@@ -102,7 +102,7 @@ func TestGateExitTable(t *testing.T) {
 			want: cli.ExitRefused,
 			subs: []string{
 				"gate: findings     fail  1 open finding(s) at-or-above important",
-				"gate: FAIL (1 fail, 1 pass, 2 skip)",
+				"gate: FAIL (1 fail, 2 pass, 2 skip)",
 				"try: address or triage the open findings, then re-run gate",
 			},
 		},
@@ -129,7 +129,7 @@ func TestGateExitTable(t *testing.T) {
 			want: cli.ExitRefused,
 			subs: []string{
 				"gate: evidence     unknown  evidence receipt missing for head aaaaaaa [review-insufficient]",
-				"gate: FAIL (2 unknown, 2 skip)",
+				"gate: FAIL (2 unknown, 1 pass, 2 skip)",
 			},
 		},
 		{
@@ -284,7 +284,7 @@ func assertEnvelopeFrame(t *testing.T, stdout, stderr string) {
 // wire contract carries, so an added or renamed key fails here first.
 func assertGateShape(t *testing.T, dims []map[string]any) {
 	t.Helper()
-	wantIDs := []string{"findings", "head", "coverage", "live_threads", "evidence"}
+	wantIDs := []string{"findings", "head", "coverage", "live_threads", "spec", "evidence"}
 	if len(dims) != len(wantIDs) {
 		t.Fatalf("dimensions = %v, want %d", dims, len(wantIDs))
 	}
