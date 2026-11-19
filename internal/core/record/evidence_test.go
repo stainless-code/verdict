@@ -325,18 +325,27 @@ func TestRecordEvidenceSpecFloorComesFromCapturedConfig(t *testing.T) {
 	}
 }
 
-// TestRecordEvidenceSpecCheckRefusesTestOutput proves A8: a met check whose
-// evidence is a test file is refused as spec-evidence-not-code even though the
-// path is in the bundle and the quote matches it.
-func TestRecordEvidenceSpecCheckRefusesTestOutput(t *testing.T) {
-	testOutputDiff := evidenceDiff + "diff --git a/notes_test.go b/notes_test.go\n" +
-		"index 5555555..6666666 100644\n--- a/notes_test.go\n+++ b/notes_test.go\n" +
-		"@@ -1,3 +1,3 @@\n top\n-old test\n+new test\n bottom\n"
-	check := `"spec_checks":[{"item":"- the record must verify quotes","status":"met",` +
-		`"evidence":{"path":"notes_test.go","line":2,"quote":"new test"}}],`
-	review := evidenceReview(nil, check)
+// notesTestHunk is the regression-test hunk the test-source case cites and
+// receipts: a NEW-side hunk on notes_test.go whose line 2 carries `new test`.
+const notesTestHunk = "diff --git a/notes_test.go b/notes_test.go\n" +
+	"index 5555555..6666666 100644\n--- a/notes_test.go\n+++ b/notes_test.go\n" +
+	"@@ -1,3 +1,3 @@\n top\n-old test\n+new test\n bottom\n"
+
+// TestRecordEvidenceSpecCheckAcceptsTestSource proves A8b: test source is code
+// evidence, so a review that meets both spec items by citing the regression
+// test it added is satisfied, and with every hunk receipted it approves. A rule
+// refusing test source would make such a review permanently insufficient.
+func TestRecordEvidenceSpecCheckAcceptsTestSource(t *testing.T) {
+	const receipts = `"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new line"},` +
+		`{"hunk":"notes_test.go\tNEW\t1\t3","quote":"new test"}],`
+	const checks = `"spec_checks":[` +
+		`{"item":"- the record must verify quotes","status":"met",` +
+		`"evidence":{"path":"notes_test.go","line":2,"quote":"new test"}},` +
+		`{"item":"- the record must receipt every hunk","status":"met",` +
+		`"evidence":{"path":"notes_test.go","line":1,"quote":"top"}}],`
+	review := evidenceReview(nil, receipts+checks)
 	dir := evidenceBundle(t, review, map[string]string{
-		"full.diff":    testOutputDiff,
+		"full.diff":    evidenceDiff + notesTestHunk,
 		"context.txt":  specContext("SPEC.md"),
 		"context.json": specManifest("SPEC.md", "spec"),
 	})
@@ -345,7 +354,37 @@ func TestRecordEvidenceSpecCheckRefusesTestOutput(t *testing.T) {
 		t.Fatalf("record refusal: %v", ref)
 	}
 	ev := evidenceOf(t, resp)
-	wantGap := `spec check for "- the record must verify quotes" cites notes_test.go, which is test output rather than code`
+	if want := (core.EvidenceSpec{Total: 2, Covered: 2, Min: 80, Met: true}); ev.Spec != want {
+		t.Errorf("spec = %+v, want %+v: the test source meets both items", ev.Spec, want)
+	}
+	requireGaps(t, ev)
+	if approval := requireApproval(t, storedRecord(t, dir), true, false); approval.Reason != "no gating findings" {
+		t.Errorf("reason = %q, want the clean reason", approval.Reason)
+	}
+}
+
+// TestRecordEvidenceSpecCheckRefusesTestOutput proves A8b's other half: a met
+// check whose evidence is test output is refused as spec-evidence-not-code even
+// though the path is in the bundle and the quote matches it — data the review
+// did not write can prove nothing about the change.
+func TestRecordEvidenceSpecCheckRefusesTestOutput(t *testing.T) {
+	const outputDiff = "diff --git a/testdata/fixture.json b/testdata/fixture.json\n" +
+		"index 7777777..8888888 100644\n--- a/testdata/fixture.json\n+++ b/testdata/fixture.json\n" +
+		"@@ -1,2 +1,2 @@\n {\n-  \"token\": \"fresh\"\n+  \"token\": \"expired\"\n"
+	const check = `"spec_checks":[{"item":"- the record must verify quotes","status":"met",` +
+		`"evidence":{"path":"testdata/fixture.json","line":3,"quote":"  \"token\": \"expired\""}}],`
+	review := evidenceReview(nil, check)
+	dir := evidenceBundle(t, review, map[string]string{
+		"full.diff":    evidenceDiff + outputDiff,
+		"context.txt":  specContext("SPEC.md"),
+		"context.json": specManifest("SPEC.md", "spec"),
+	})
+	resp, ref := recordEvidence(t, false)
+	if ref != nil {
+		t.Fatalf("record refusal: %v", ref)
+	}
+	ev := evidenceOf(t, resp)
+	wantGap := `spec check for "- the record must verify quotes" cites testdata/fixture.json, which is test output rather than code`
 	if !slices.Contains(ev.Gaps, wantGap) {
 		t.Fatalf("gaps = %q, want %q", ev.Gaps, wantGap)
 	}

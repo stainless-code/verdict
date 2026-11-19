@@ -307,8 +307,10 @@ reported as the gap rather than silently reading as covered.
 bullet and table row needs a `spec_checks[]` entry: `item` quoted verbatim,
 `status` of `met`, `violated` or `n/a`, and, for `met` and `violated`, an
 `evidence` naming a path the diff changes with its `line` and exact `quote`.
-Coverage must reach `defaults.spec_coverage_min` (default 80), and test output,
-snapshots and logs are refused as evidence (`spec-evidence-not-code`).
+Coverage must reach `defaults.spec_coverage_min` (default 80). Test source is
+code: a review may meet an item with the regression test it added. Test output
+is not — `testdata`, `fixtures`, `snapshots`, `__snapshots__`, and `.golden`,
+`.snap` and `.log` files are refused (`spec-evidence-not-code`).
 
 Every gap becomes an ordinary review-input problem, so one list names it
 everywhere. A bundle stores the outcome as the evidence receipt in `record.json`

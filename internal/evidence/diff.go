@@ -1,6 +1,6 @@
 // Package evidence verifies agent review claims against pinned bundle bytes:
 // diff-line quote matching (A2), per-hunk read receipts (A3), deterministic
-// specification-item enumeration (§4.2), and test-output classification (A8).
+// specification-item enumeration (§4.2), and test-output classification (A8b).
 // Every entry point is pure over bytes and strings with no I/O or git calls.
 package evidence
 

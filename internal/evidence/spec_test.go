@@ -69,21 +69,13 @@ func TestEnumerateSpecItems(t *testing.T) {
 	}
 }
 
-func TestIsTestOutputPathA8(t *testing.T) {
+func TestIsTestOutputPathA8b(t *testing.T) {
 	t.Parallel()
 	tests := []struct {
 		path string
 		want bool
 	}{
-		// Denied basenames.
-		{path: "internal/evidence/quote_test.go", want: true},
-		{path: "src/components/button.test.ts", want: true},
-		{path: "src/components/button.spec.tsx", want: true},
-		{path: "pkg/UPPER_TEST.PY", want: true},
 		// Denied path segments.
-		{path: "test/helper.go", want: true},
-		{path: "pkg/tests/runner.py", want: true},
-		{path: "web/__tests__/util.js", want: true},
 		{path: "internal/core/report/testdata/out.txt", want: true},
 		{path: "evals/fixtures/sample.json", want: true},
 		{path: "ui/snapshots/modal.txt", want: true},
@@ -94,6 +86,14 @@ func TestIsTestOutputPathA8(t *testing.T) {
 		{path: "ui/button.snap", want: true},
 		{path: "build/output.log", want: true},
 		{path: "build/RUN.LOG", want: true},
+		// Test source is code: a review may cite the regression test it added.
+		{path: "internal/evidence/quote_test.go", want: false},
+		{path: "src/components/button.test.ts", want: false},
+		{path: "src/components/button.spec.tsx", want: false},
+		{path: "pkg/UPPER_TEST.PY", want: false},
+		{path: "test/helper.go", want: false},
+		{path: "pkg/tests/runner.py", want: false},
+		{path: "web/__tests__/util.js", want: false},
 		// Allowed source, docs, and examples.
 		{path: "internal/evidence/quote.go", want: false},
 		{path: "internal/contest/runner.go", want: false},
@@ -136,7 +136,19 @@ func TestVerifySpecChecksAndCoverage(t *testing.T) {
 		"+++ b/docs/manual.md\n" +
 		"@@ -10,1 +10,2 @@\n" +
 		" # Auth\n" +
-		"+Tokens expire after 15 minutes.\n"
+		"+Tokens expire after 15 minutes.\n" +
+		"diff --git a/testdata/fixture.json b/testdata/fixture.json\n" +
+		"--- /dev/null\n" +
+		"+++ b/testdata/fixture.json\n" +
+		"@@ -0,0 +1,2 @@\n" +
+		"+{\n" +
+		"+  \"token\": \"expired\"\n" +
+		"diff --git a/ui/out.golden b/ui/out.golden\n" +
+		"--- a/ui/out.golden\n" +
+		"+++ b/ui/out.golden\n" +
+		"@@ -1,1 +1,2 @@\n" +
+		" modal open\n" +
+		"+modal closed\n"
 
 	idx := evidence.IndexDiff([]byte(diff))
 	items := evidence.EnumerateSpecItems([]evidence.SpecBlock{
@@ -188,16 +200,52 @@ func TestVerifySpecChecksAndCoverage(t *testing.T) {
 		assertSpecCoverage(t, &got, 5, 3, false, false)
 	})
 
-	t.Run("test file citation unknown item and quote mismatch refused", func(t *testing.T) {
+	t.Run("test source citation is code evidence", func(t *testing.T) {
+		t.Parallel()
+		oneItem := evidence.EnumerateSpecItems([]evidence.SpecBlock{
+			{Index: 0, Text: "- Reject expired tokens\n"},
+		})
+		checks := []evidence.SpecCheckInput{{
+			Item:         "- Reject expired tokens",
+			Status:       "met",
+			EvidencePath: "auth_test.go",
+			Line:         2,
+			Quote:        "func TestCheckToken() {}",
+		}}
+		got := evidence.VerifySpecChecks(idx, oneItem, checks, 80)
+		assertSpecCoverage(t, &got, 1, 1, true, true)
+		if !got.Checks[0].Valid || got.Checks[0].Reason != "" || got.Checks[0].QuoteReason != "" {
+			t.Fatalf("SpecCheckResult = %+v, want the test source accepted as code", got.Checks[0])
+		}
+	})
+
+	t.Run("test output citation is refused", func(t *testing.T) {
 		t.Parallel()
 		checks := []evidence.SpecCheckInput{
 			{
 				Item:         "- Reject expired tokens",
 				Status:       "met",
-				EvidencePath: "auth_test.go",
+				EvidencePath: "testdata/fixture.json",
 				Line:         2,
-				Quote:        "func TestCheckToken() {}",
+				Quote:        `  "token": "expired"`,
 			},
+			{
+				Item:         "- Document token expiry",
+				Status:       "met",
+				EvidencePath: "ui/out.golden",
+				Line:         2,
+				Quote:        "modal closed",
+			},
+		}
+		got := evidence.VerifySpecChecks(idx, items, checks, 80)
+		assertSpecCoverage(t, &got, 5, 0, false, false)
+		assertSpecCheckReason(t, &got.Checks[0], "spec-evidence-not-code", "spec-evidence-not-code")
+		assertSpecCheckReason(t, &got.Checks[1], "spec-evidence-not-code", "spec-evidence-not-code")
+	})
+
+	t.Run("quote mismatch and unknown item refused", func(t *testing.T) {
+		t.Parallel()
+		checks := []evidence.SpecCheckInput{
 			{
 				Item:         "- Document token expiry",
 				Status:       "met",
@@ -212,9 +260,8 @@ func TestVerifySpecChecksAndCoverage(t *testing.T) {
 		}
 		got := evidence.VerifySpecChecks(idx, items, checks, 80)
 		assertSpecCoverage(t, &got, 5, 0, false, false)
-		assertSpecCheckReason(t, &got.Checks[0], "spec-evidence-not-code", "spec-evidence-not-code")
-		assertSpecCheckReason(t, &got.Checks[1], "spec-evidence-mismatch", "text-differs")
-		assertSpecCheckReason(t, &got.Checks[2], "spec-item-unknown", "")
+		assertSpecCheckReason(t, &got.Checks[0], "spec-evidence-mismatch", "text-differs")
+		assertSpecCheckReason(t, &got.Checks[1], "spec-item-unknown", "")
 	})
 
 	t.Run("zero items passes vacuously", func(t *testing.T) {
@@ -273,26 +320,26 @@ func TestEnumerateSpecItemsTableAndQuoteRules(t *testing.T) {
 	}
 }
 
-// renamedToTestDiff renames source to test code: the NEW path is the one the
-// bundle resolves, the OLD one still reads as production source.
-const renamedToTestDiff = "" +
-	"diff --git a/pkg/helper.go b/pkg/helper_test.go\n" +
+// renamedToTestOutputDiff renames source to test output: the bundle resolves
+// the NEW path, the OLD one still reading as production source.
+const renamedToTestOutputDiff = "" +
+	"diff --git a/pkg/helper.go b/pkg/testdata/helper.json\n" +
 	"similarity index 80%\n" +
 	"rename from pkg/helper.go\n" +
-	"rename to pkg/helper_test.go\n" +
+	"rename to pkg/testdata/helper.json\n" +
 	"--- a/pkg/helper.go\n" +
-	"+++ b/pkg/helper_test.go\n" +
+	"+++ b/pkg/testdata/helper.json\n" +
 	"@@ -1,2 +1,2 @@\n" +
 	" package helper\n" +
 	"-\tfunc Probe() {}\n" +
-	"+\tfunc TestProbe() {}\n"
+	"+\tfunc Probe() {}\n"
 
-// TestVerifySpecChecksRenamedTestCodeIsNotCode proves R5: a citation of the
-// OLD name of a rename onto test code is refused, because the bundle resolves
-// the path to a test file.
-func TestVerifySpecChecksRenamedTestCodeIsNotCode(t *testing.T) {
+// TestVerifySpecChecksRenamedOntoTestOutputIsNotCode proves R5: a citation of
+// the OLD name of a rename onto test output is refused, because the bundle
+// resolves the path to testdata.
+func TestVerifySpecChecksRenamedOntoTestOutputIsNotCode(t *testing.T) {
 	t.Parallel()
-	idx := evidence.IndexDiff([]byte(renamedToTestDiff))
+	idx := evidence.IndexDiff([]byte(renamedToTestOutputDiff))
 	items := evidence.EnumerateSpecItems([]evidence.SpecBlock{
 		{Index: 0, Text: "- Prove the probe\n"},
 	})

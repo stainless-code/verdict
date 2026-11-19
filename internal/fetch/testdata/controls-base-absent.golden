@@ -351,8 +351,8 @@ api-base-panel
 --- file C/.verdict/state/4701/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "d1e4b9bec502cd01129d6886f7fe3f6adb139c31de1276349195a2e818ab810d",
-  "prompts_hash": "f93ad7f99ec1f40295f9d70f414275ddcc216ca75f73115768faa7a94fbc59ed",
+  "run_id": "5d83eed5f08cf41e1ff7a66167ec51b3e73a6afe38b6cc30d1dcc8acc585a078",
+  "prompts_hash": "25f7600e4f49108320439bbca352671fd9a094231e5344cd3031c6d812c00106",
   "panel": [
     "api-base-panel"
   ],
@@ -438,8 +438,8 @@ api-base-panel
       "kind": "prompt",
       "name": "prompts/handoff/spec.md",
       "status": "included",
-      "sha256": "8cd661bd957b129fa2bcf08d510f006dbb297245036752a23d01a24598d8ed85",
-      "bytes": 763
+      "sha256": "53e1d33c4234b466dd42e66848306f7da0300ac75445a8e8d0cfc972bd101080",
+      "bytes": 788
     },
     {
       "kind": "prompt",

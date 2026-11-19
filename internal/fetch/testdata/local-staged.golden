@@ -262,8 +262,8 @@ rather than becoming ground truth.
 --- file C/.verdict/state/local-demo/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "99b07c51a0f140c8d87a336036dadc883825f37fdf18d5b150ae5525329bb641",
-  "prompts_hash": "f93ad7f99ec1f40295f9d70f414275ddcc216ca75f73115768faa7a94fbc59ed",
+  "run_id": "e0eac0f9429091402ca5febd83d524ac2495decfe2f2d1c887c8df91c8c74e63",
+  "prompts_hash": "25f7600e4f49108320439bbca352671fd9a094231e5344cd3031c6d812c00106",
   "inputs": [
     {
       "kind": "prompt",
@@ -346,8 +346,8 @@ rather than becoming ground truth.
       "kind": "prompt",
       "name": "prompts/handoff/spec.md",
       "status": "included",
-      "sha256": "8cd661bd957b129fa2bcf08d510f006dbb297245036752a23d01a24598d8ed85",
-      "bytes": 763
+      "sha256": "53e1d33c4234b466dd42e66848306f7da0300ac75445a8e8d0cfc972bd101080",
+      "bytes": 788
     },
     {
       "kind": "prompt",

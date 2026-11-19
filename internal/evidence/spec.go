@@ -29,13 +29,11 @@ const (
 	tildeByte       = '~'
 )
 
-// A8 test-output classification deny-lists.
+// A8b test-output classification deny-lists. Test SOURCE is code: a review
+// that meets a spec item by citing the regression test it added is satisfied.
+// Only test OUTPUT — data, goldens, snapshots, logs — is refused.
 var (
-	testOutputBasenameMarkers = []string{"_test.", ".test.", ".spec."}
-	testOutputSegments        = map[string]struct{}{
-		"test":          {},
-		"tests":         {},
-		"__tests__":     {},
+	testOutputSegments = map[string]struct{}{
 		"testdata":      {},
 		"fixtures":      {},
 		"snapshots":     {},
@@ -109,9 +107,11 @@ func EnumerateSpecItems(blocks []SpecBlock) []SpecItem {
 }
 
 // IsTestOutputPath reports whether filePath is classified as test output under
-// A8 (basename containing _test., .test., or .spec.; path segment test, tests,
-// __tests__, testdata, fixtures, snapshots, or __snapshots__; extension
-// .golden, .snap, or .log). Docs and examples are allowed.
+// A8b (path segment testdata, fixtures, snapshots, or __snapshots__; extension
+// .golden, .snap, or .log). Test source — a _test., .test. or .spec. basename,
+// or a test, tests or __tests__ segment — is code evidence, as are docs and
+// examples: a spec item that asks for a regression test has to be satisfiable
+// by the test the review added.
 func IsTestOutputPath(filePath string) bool {
 	if filePath == "" {
 		return false
@@ -120,11 +120,11 @@ func IsTestOutputPath(filePath string) bool {
 	if hasDeniedSegment(norm) {
 		return true
 	}
-	return hasDeniedBasenameOrExt(path.Base(norm))
+	return hasDeniedExtension(path.Base(norm))
 }
 
 // hasDeniedSegment reports whether any slash-delimited segment of norm is in
-// the A8 test-output segment deny-list.
+// the A8b test-output segment deny-list.
 func hasDeniedSegment(norm string) bool {
 	for seg := range strings.SplitSeq(norm, "/") {
 		if _, denied := testOutputSegments[seg]; denied {
@@ -134,19 +134,13 @@ func hasDeniedSegment(norm string) bool {
 	return false
 }
 
-// hasDeniedBasenameOrExt reports whether base matches an A8 test-output
-// basename marker or extension.
-func hasDeniedBasenameOrExt(base string) bool {
+// hasDeniedExtension reports whether base carries an A8b test-output extension.
+func hasDeniedExtension(base string) bool {
 	if base == "." || base == "/" {
 		return false
 	}
-	for _, marker := range testOutputBasenameMarkers {
-		if strings.Contains(base, marker) {
-			return true
-		}
-	}
-	_, deniedExt := testOutputExtensions[path.Ext(base)]
-	return deniedExt
+	_, denied := testOutputExtensions[path.Ext(base)]
+	return denied
 }
 
 // MeetsSpecCoverage reports whether covered/total meets minPercent using exact
@@ -160,7 +154,7 @@ func MeetsSpecCoverage(covered, total, minPercent int) bool {
 }
 
 // VerifySpecChecks matches agent spec checks against enumerated items, verifies
-// code evidence for met and violated entries with A2 and A8, and evaluates
+// code evidence for met and violated entries with A2 and A8b, and evaluates
 // coverage against minPercent.
 func VerifySpecChecks(idx *DiffIndex, items []SpecItem, checks []SpecCheckInput, minPercent int) SpecCoverage {
 	byText := make(map[string]SpecItem, len(items))
@@ -226,9 +220,9 @@ func verifyOneSpecCheck(idx *DiffIndex, byText map[string]SpecItem, index int, c
 		base.QuoteReason = pathReason
 		return base
 	}
-	// A8 reads the path the bundle resolves, not just the one the check
-	// spells: a rename onto test code is test output even when the cited
-	// (OLD) name looks like source.
+	// A8b reads the path the bundle resolves, not just the one the check
+	// spells: a rename onto test output is refused even when the cited (OLD)
+	// name looks like code.
 	if IsTestOutputPath(chk.EvidencePath) || IsTestOutputPath(df.Canonical) || IsTestOutputPath(df.OldPath) {
 		base.Reason = ReasonSpecEvidenceNotCode
 		base.QuoteReason = ReasonSpecEvidenceNotCode

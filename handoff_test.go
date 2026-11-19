@@ -346,7 +346,7 @@ func TestSpecChecklistStaysInTheFactSection(t *testing.T) {
 		"Every bullet and every table row in those sources is one checklist item",
 		"the item, quoted verbatim",
 		`"met|violated|n/a"`,
-		"Tests, logs and a summary are not evidence",
+		"Code or test source the diff changes is evidence",
 		"`spec_coverage_min`",
 		"`verdict record --dry-run` names an item that is not in the spec",
 	})
