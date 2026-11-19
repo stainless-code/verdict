@@ -200,7 +200,7 @@ export interface ReportData {
   validation?: ValidationData | null;
   gate?: ReportGate | null;
   receipt?: ProvenanceReceipt;
-  truncated?: boolean | Array<ProvenanceTruncatedRow> | unknown;
+  truncated?: boolean | Array<ProvenanceTruncatedRow>;
   [key: string]: unknown;
 }
 
@@ -501,7 +501,7 @@ export interface PostData {
   summary?: PostSummary | null;
   validation?: ValidationData | null;
   receipt?: ProvenanceReceipt;
-  truncated?: boolean | Array<ProvenanceTruncatedRow> | unknown;
+  truncated?: boolean | Array<ProvenanceTruncatedRow>;
   [key: string]: unknown;
 }
 
@@ -1248,7 +1248,7 @@ export interface HandoffRow {
 
 export interface JournalData {
   bundle: string;
-  truncated: JournalTruncatedInfo;
+  truncation: JournalTruncatedInfo;
   steps: Array<JournalStep>;
   unfinished: Array<JournalUnfinishedStep>;
   chain_breaks: Array<JournalChainBreak>;

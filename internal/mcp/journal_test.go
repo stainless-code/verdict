@@ -158,6 +158,40 @@ func TestReqArgvFlattensNestedFlagsForRedaction(t *testing.T) {
 	}
 }
 
+// TestCappedJournalResultKeepsTruncationAndTruncatedFlag proves the response cap
+// leaves the journal summary's own truncation object alone: an oversized journal
+// result carries both `truncation` and the cap's `truncated: true`.
+func TestCappedJournalResultKeepsTruncationAndTruncatedFlag(t *testing.T) {
+	t.Parallel()
+	summary := &journalcore.Summary{
+		Bundle: "5101",
+		Steps: []journalcore.Step{{
+			Step: "2026-11-19T10:00:00Z-1-1", Verb: "record", Channel: journalcore.ChannelMCP,
+			Argv: []string{"record", strings.Repeat("x", maxResultTextBytes)},
+		}},
+	}
+	res := successResult("journal", summary.Wire())
+	if len(res.Content[0].Text) >= maxResultTextBytes {
+		t.Fatalf("text block = %d bytes, want under the %d budget", len(res.Content[0].Text), maxResultTextBytes)
+	}
+	var content map[string]json.RawMessage
+	if err := json.Unmarshal(res.StructuredContent, &content); err != nil {
+		t.Fatalf("structuredContent: %v", err)
+	}
+	if got := string(content["truncated"]); got != "true" {
+		t.Fatalf("truncated = %s, want the response-cap boolean", got)
+	}
+	var truncation map[string]json.RawMessage
+	if err := json.Unmarshal(content["truncation"], &truncation); err != nil {
+		t.Fatalf("truncation = %s, want the journal summary object: %v", content["truncation"], err)
+	}
+	for _, key := range []string{"dropped", "at", "kept_from"} {
+		if _, ok := truncation[key]; !ok {
+			t.Errorf("truncation object missing %q: %s", key, content["truncation"])
+		}
+	}
+}
+
 // TestMCPJournalToolIsReadOnly proves the `journal` MCP tool is exposed under
 // --read-only with ReadOnlyHint=true, reads the external journal cleanly, and
 // writes no journal lines of its own.

@@ -383,11 +383,11 @@ func TestAppendTruncationPreservesWholeLines(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Read after truncation: %v", err)
 	}
-	if sum.UnreadableLines != 0 || sum.Truncated.Dropped != header.Dropped || sum.Truncated.At == nil || sum.Truncated.KeptFrom == nil {
+	if sum.UnreadableLines != 0 || sum.Truncation.Dropped != header.Dropped || sum.Truncation.At == nil || sum.Truncation.KeptFrom == nil {
 		t.Fatalf("Summary after truncation = %+v, want 0 unreadable and dropped=%d", sum, header.Dropped)
 	}
-	if len(sum.Steps)+sum.Truncated.Dropped != 12 {
-		t.Fatalf("kept (%d) + dropped (%d) != 12", len(sum.Steps), sum.Truncated.Dropped)
+	if len(sum.Steps)+sum.Truncation.Dropped != 12 {
+		t.Fatalf("kept (%d) + dropped (%d) != 12", len(sum.Steps), sum.Truncation.Dropped)
 	}
 }
 
@@ -488,7 +488,7 @@ func TestReadMissingJournalAndWireShape(t *testing.T) {
 		t.Fatalf("FormatHuman(empty) = %q, want single empty line", human)
 	}
 	wire := sum.Wire().MarshalCompact()
-	wantWire := `{"bundle":"local-empty","steps":[],"unfinished":[],"chain_breaks":[],"truncated":{"dropped":0,"at":null,"kept_from":null},"unreadable_lines":0}`
+	wantWire := `{"bundle":"local-empty","steps":[],"unfinished":[],"chain_breaks":[],"truncation":{"dropped":0,"at":null,"kept_from":null},"unreadable_lines":0}`
 	if wire != wantWire {
 		t.Fatalf("Wire = %s, want %s", wire, wantWire)
 	}

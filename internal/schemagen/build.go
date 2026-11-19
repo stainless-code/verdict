@@ -899,12 +899,12 @@ func (b *builder) envelopeData() (*node, error) {
 }
 
 // provenanceWireMembers declares the two keys applyProvenanceWire sets when
-// --provenance is active: the receipt object, and the row array widening
-// data.truncated (which journalData also carries as a summary object).
+// --provenance is active: the receipt object, and the row array that widens the
+// plain boolean on data.truncated.
 func provenanceWireMembers() (receipt, truncated member) {
 	receipt = member{keyReceipt, object(false, member{keyRef, stringNode(defsPrefix + "provenanceReceipt")})}
 	truncated = member{keyTruncated, object(false,
-		member{keyType, array(stringNode(typeBoolean), stringNode(typeArray), stringNode(typeObject))},
+		member{keyType, array(stringNode(typeBoolean), stringNode(typeArray))},
 		member{keyItems, object(false, member{keyRef, stringNode(defsPrefix + "provenanceTruncatedRow")})},
 	)}
 	return receipt, truncated

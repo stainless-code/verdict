@@ -212,7 +212,7 @@ func (st *foldState) applyTruncated(rec *rawRecord) {
 		v := rec.KeptFrom
 		keptFrom = &v
 	}
-	st.summary.Truncated = TruncatedInfo{
+	st.summary.Truncation = TruncatedInfo{
 		Dropped:  rec.Dropped,
 		At:       at,
 		KeptFrom: keptFrom,

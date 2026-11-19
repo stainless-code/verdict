@@ -110,7 +110,7 @@ type ChainBreak struct {
 	PreviousAfter string `json:"previous_after"`
 }
 
-// TruncatedInfo summarizes the most recent truncation record in the journal.
+// TruncatedInfo summarizes the most recent truncation notice in the journal.
 type TruncatedInfo struct {
 	At       *string `format:"date-time" json:"at"`
 	KeptFrom *string `format:"date-time" json:"kept_from"`
@@ -120,7 +120,7 @@ type TruncatedInfo struct {
 // Summary is the folded read view of a bundle's journal.
 type Summary struct {
 	Bundle          string           `json:"bundle"`
-	Truncated       TruncatedInfo    `json:"truncated"`
+	Truncation      TruncatedInfo    `json:"truncation"`
 	Steps           []Step           `json:"steps"`
 	Unfinished      []UnfinishedStep `json:"unfinished"`
 	ChainBreaks     []ChainBreak     `json:"chain_breaks"`
@@ -141,17 +141,17 @@ func (s *Summary) Wire() *jq.Obj {
 	for i := range s.ChainBreaks {
 		breaks = append(breaks, chainBreakObj(&s.ChainBreaks[i]))
 	}
-	trunc := jq.NewObj(
-		"dropped", s.Truncated.Dropped,
-		"at", ptrStringVal(s.Truncated.At),
-		"kept_from", ptrStringVal(s.Truncated.KeptFrom),
+	truncation := jq.NewObj(
+		"dropped", s.Truncation.Dropped,
+		"at", ptrStringVal(s.Truncation.At),
+		"kept_from", ptrStringVal(s.Truncation.KeptFrom),
 	)
 	return jq.NewObj(
 		"bundle", s.Bundle,
 		"steps", steps,
 		"unfinished", unfinished,
 		"chain_breaks", breaks,
-		"truncated", trunc,
+		"truncation", truncation,
 		"unreadable_lines", s.UnreadableLines,
 	)
 }
@@ -231,7 +231,7 @@ func stringSliceVal(in []string) []any {
 
 // FormatHuman renders the frozen human view of a folded journal summary.
 func FormatHuman(s *Summary) []string {
-	if len(s.Steps) == 0 && len(s.Unfinished) == 0 && s.Truncated.Dropped == 0 && s.UnreadableLines == 0 {
+	if len(s.Steps) == 0 && len(s.Unfinished) == 0 && s.Truncation.Dropped == 0 && s.UnreadableLines == 0 {
 		return []string{fmt.Sprintf("journal: %s (no calls recorded)", s.Bundle)}
 	}
 	lines := []string{fmt.Sprintf(
@@ -312,9 +312,9 @@ func formatChainBreakLines(breaks []ChainBreak) []string {
 
 func formatMetaLines(s *Summary) []string {
 	var lines []string
-	if s.Truncated.Dropped > 0 {
+	if s.Truncation.Dropped > 0 {
 		lines = append(lines, fmt.Sprintf("truncated: %d earlier %s dropped",
-			s.Truncated.Dropped, plural(s.Truncated.Dropped, "line", "lines")))
+			s.Truncation.Dropped, plural(s.Truncation.Dropped, "line", "lines")))
 	}
 	if s.UnreadableLines > 0 {
 		lines = append(lines, fmt.Sprintf("unreadable: %d %s skipped",

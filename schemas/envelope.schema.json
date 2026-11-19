@@ -22,8 +22,8 @@
       "type": ["object", "null"],
       "properties": {
         "truncated": {
-          "description": "Bounded-input rows when --provenance is active, a truncation summary object on journal, or the boolean truncation flag other verbs carry.",
-          "type": ["boolean", "array", "object"],
+          "description": "Bounded-input rows when --provenance is active, or the boolean truncation flag other verbs carry. The journal summary reports its own truncation notice under `truncation`.",
+          "type": ["boolean", "array"],
           "items": { "$ref": "#/$defs/provenanceTruncatedRow" }
         },
         "truncation_reason": {
@@ -395,7 +395,7 @@
         },
         "receipt": { "$ref": "#/$defs/provenanceReceipt" },
         "truncated": {
-          "type": ["boolean", "array", "object"],
+          "type": ["boolean", "array"],
           "items": { "$ref": "#/$defs/provenanceTruncatedRow" }
         }
       },
@@ -963,7 +963,7 @@
         },
         "receipt": { "$ref": "#/$defs/provenanceReceipt" },
         "truncated": {
-          "type": ["boolean", "array", "object"],
+          "type": ["boolean", "array"],
           "items": { "$ref": "#/$defs/provenanceTruncatedRow" }
         }
       },
@@ -2419,7 +2419,7 @@
       "type": "object",
       "properties": {
         "bundle": { "type": "string" },
-        "truncated": { "$ref": "#/$defs/journalTruncatedInfo" },
+        "truncation": { "$ref": "#/$defs/journalTruncatedInfo" },
         "steps": {
           "type": "array",
           "items": { "$ref": "#/$defs/journalStep" }
@@ -2436,7 +2436,7 @@
       },
       "required": [
         "bundle",
-        "truncated",
+        "truncation",
         "steps",
         "unfinished",
         "chain_breaks",

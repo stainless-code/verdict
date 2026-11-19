@@ -267,7 +267,7 @@
       "/$defs/provenanceInput": "One resolved input, bundle artifact, KB candidate, override, control, config, or exclusion entry without rule bodies or secret values.",
       "/$defs/provenanceTruncatedRow": "One bounded or omitted input row in data.truncated[] when --provenance is active.",
       "/properties/data/properties/receipt": "Fetched bundle receipt (run_id, prompts_hash, inputs, truncations) exposed by report and post under --provenance; absent without the flag.",
-      "/properties/data/properties/truncated": "Bounded-input rows when --provenance is active, a truncation summary object on journal, or the boolean truncation flag other verbs carry.",
+      "/properties/data/properties/truncated": "Bounded-input rows when --provenance is active, or the boolean truncation flag other verbs carry. The journal summary reports its own truncation notice under `truncation`.",
       "/$defs/prWaitData": "Bounded foreground PR wait outcome; timeout is data with error null.",
       "/$defs/prWaitData/properties/observations": "Snapshots that differed from the previous observation; repeated identical reads do not count.",
       "/$defs/prWaitData/properties/inconsistent_observations": "Reads a bounded wait retried because the host disagreed with itself, such as a GraphQL head that is not yet the REST head right after a push. --once never retries, and a wait still inconsistent at its timeout refuses pr-read-failed instead of claiming an outcome.",

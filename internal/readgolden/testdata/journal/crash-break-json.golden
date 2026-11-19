@@ -84,7 +84,7 @@ exit: 0
         "previous_after": "1111111111111111111111111111111111111111111111111111111111111111"
       }
     ],
-    "truncated": {
+    "truncation": {
       "dropped": 0,
       "at": null,
       "kept_from": null

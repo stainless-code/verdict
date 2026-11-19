@@ -293,9 +293,9 @@ var publishedSemantics = map[string]string{
 	// $defs/gateDimension.id with updated reportGate and gateDimension prose.
 	// Spec gate dimension: additive `spec` member on $defs/gateDimension.id
 	// with updated reportGate and gateDimension prose. Additions only.
-	// Bundle journal: additive $defs/journalData (and its helper defs), plus
-	// additive object widening on envelope data.truncated for journalData's
-	// truncation summary object. Additions only.
+	// Bundle journal: additive $defs/journalData (and its helper defs) carrying
+	// the folded summary under its own truncation field; envelope data.truncated
+	// keeps its boolean-or-array shape. Additions only.
 	// journal step pairing key: $defs/journal{Step,UnfinishedStep,ChainBreak}
 	// step stops being a date-time (it carries a PID and sequence suffix), so
 	// the format narrowing is dropped. No property, required key, or type
@@ -303,7 +303,7 @@ var publishedSemantics = map[string]string{
 	// journal unobserved sweep: additive optional boolean
 	// $defs/journalBundleDigests.unobserved. No existing property, required key,
 	// or type changed.
-	"envelope.schema.json": "69be016a1738b3f94d58f55f80783a06f09be4fd0698d54f7581ae4333ca5b65",
+	"envelope.schema.json": "8cb3502ed2684345483b4cdf4b8c6315439098ec04c0da53e276dd6b7fac8639",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

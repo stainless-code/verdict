@@ -71,7 +71,7 @@ exit: 0
     ],
     "unfinished": [],
     "chain_breaks": [],
-    "truncated": {
+    "truncation": {
       "dropped": 0,
       "at": null,
       "kept_from": null
