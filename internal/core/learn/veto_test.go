@@ -82,35 +82,6 @@ func TestVetoAndAppendKeepEveryRow(t *testing.T) {
 	assertStatuses(t, rows)
 }
 
-// TestAppendRefusesInsideTheBudgetTheHookSets proves the seam the veto test
-// raises reaches the shipped lock: with a one-nanosecond budget an append
-// queued behind a held lock refuses store-busy inside the settle window, where
-// the shipped five seconds is still waiting. It is the mutation guard on the
-// hook itself: a hook nothing reads leaves this append blocked past the window.
-func TestAppendRefusesInsideTheBudgetTheHookSets(t *testing.T) {
-	root := t.TempDir()
-	t.Chdir(root)
-	store := seedVetoStore(t, root)
-	release := holdStoreLock(t, store)
-	defer release()
-	t.Cleanup(kb.LockWaitForTest(time.Nanosecond))
-	refused := make(chan *core.RefusalError, 1)
-	go func() {
-		_, ref := Run(context.Background(),
-			writeRequest(&Request{Rule: appendPairs[0].rule, Scope: "internal", Rigor: "walked"}))
-		refused <- ref
-	}()
-	select {
-	case ref := <-refused:
-		if ref == nil || ref.Code != codeStoreBusy {
-			t.Fatalf("append under a held lock = %v; want a %s refusal", ref, codeStoreBusy)
-		}
-	case <-time.After(vetoSettle):
-		t.Fatalf("append was still waiting %s into a one-nanosecond budget; the hook never "+
-			"reached the store lock", vetoSettle)
-	}
-}
-
 // seedVetoStore writes the six seeded rows and returns the store path.
 func seedVetoStore(t *testing.T, root string) string {
 	t.Helper()
@@ -133,10 +104,17 @@ func seedVetoStore(t *testing.T, root string) string {
 // A returned op is reported by what it did — a nil refusal means it landed, and
 // any refusal means it never waited, naming the refusal instead of claiming a
 // landing the store never took.
+//
+// The workers are joined by a cleanup, not only by the wait below, because a
+// failed expectation leaves the test through t.Fatalf with writers queued. The
+// caller registers the lock budget's restore before calling this, so LIFO
+// cleanup order runs this join first: no worker still reads lockWait when the
+// budget goes back.
 func startMixed(t *testing.T, ops []mixedOp, store string, held func()) <-chan string {
 	t.Helper()
 	before := storeBytes(t, store)
 	var wg sync.WaitGroup
+	t.Cleanup(wg.Wait)
 	refusals := make(chan string, len(ops))
 	returned := make(chan outcome, len(ops))
 	for _, op := range ops {

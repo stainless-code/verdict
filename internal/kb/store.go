@@ -102,6 +102,11 @@ func LockWaitForTest(wait time.Duration) (restore func()) {
 	return func() { lockWait = prev }
 }
 
+// acquireLock takes the store's OS advisory lock with the given wait. It is a
+// variable so the lock-wait test can read the budget [Lock] hands the OS, which
+// is the value that decides a refusal; nothing else replaces it.
+var acquireLock = storelock.Acquire
+
 // Lock takes the store's OS advisory lock and returns its release. A
 // read-modify-write holds it above its read, so the append, the veto rewrite,
 // and the credit rewrite are one writer each; a lock another writer holds past
@@ -122,9 +127,8 @@ func Lock(root string) (func(), error) {
 		//nolint:wrapcheck // the layout error carries the refusal its caller maps
 		return nil, serr
 	}
-	unlock, err := storelock.Acquire(storePath(root), lockWait)
+	unlock, err := acquireLock(storePath(root), lockWait)
 	if err != nil {
-		//nolint:wrapcheck // the shared lock already names the store it guards
 		return nil, err
 	}
 	if serr := layout.EnsureStateIgnore(); serr != nil {
