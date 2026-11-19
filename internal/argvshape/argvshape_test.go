@@ -93,3 +93,43 @@ func TestRecordNeverCollectsTheDirective(t *testing.T) {
 		t.Errorf("shape = %q, want the directive placeholder", shape)
 	}
 }
+
+// TestRecordRedactsPositionalSecretAssignment proves a bare `NAME=value`
+// positional with a secret-shaped name keeps its name and loses its value, while
+// an ordinary assignment stays readable.
+func TestRecordRedactsPositionalSecretAssignment(t *testing.T) {
+	t.Parallel()
+	argv := []string{"run", "acme/app", "API_TOKEN=s3cr3t-token-value", "FOO=bar"}
+	shape, secrets := argvshape.Record(argv, "", nil)
+	want := []string{"run", "acme/app", "API_TOKEN=***REDACTED***", "FOO=bar"}
+	if !slices.Equal(shape, want) {
+		t.Fatalf("Record = %q, want %q", shape, want)
+	}
+	if !slices.Equal(secrets, []string{"s3cr3t-token-value"}) {
+		t.Fatalf("secrets = %q, want the positional assignment value", secrets)
+	}
+}
+
+// TestRecordRedactsAssignmentInsideCommandString proves a credential set inside
+// a `--command` operand is masked there too, including a quoted value with
+// spaces, and that the command's own words survive.
+func TestRecordRedactsAssignmentInsideCommandString(t *testing.T) {
+	t.Parallel()
+	argv := []string{
+		"verify", "acme/app", "5101", "--command",
+		`API_KEY="two words" make test`,
+		`--command`, `API_TOKEN='single quoted' go test ./...`,
+	}
+	shape, secrets := argvshape.Record(argv, "", nil)
+	want := []string{
+		"verify", "acme/app", "5101", "--command",
+		`API_KEY="***REDACTED***" make test`,
+		"--command", `API_TOKEN='***REDACTED***' go test ./...`,
+	}
+	if !slices.Equal(shape, want) {
+		t.Fatalf("Record = %q, want %q", shape, want)
+	}
+	if !slices.Equal(secrets, []string{"two words", "single quoted"}) {
+		t.Fatalf("secrets = %q, want both quoted command values", secrets)
+	}
+}
