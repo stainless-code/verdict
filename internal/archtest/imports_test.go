@@ -68,6 +68,7 @@ var forbiddenDeps = []string{
 // CLI/transport adapter are absent by design.
 var facadeAllowedDeps = map[string]bool{
 	"":                        true, // the payload root (skillfs) embeds the shipped lens pack
+	"internal/argvshape":      true,
 	"internal/atomic":         true,
 	"internal/brief":          true,
 	"internal/config":         true,
@@ -88,6 +89,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/core/init":      true,
 	"internal/core/index":     true,
 	"internal/core/ingest":    true,
+	"internal/core/journal":   true,
 	"internal/core/learn":     true,
 	"internal/core/pack":      true,
 	"internal/core/panel":     true,
@@ -140,7 +142,7 @@ var leafHelpers = []string{"internal/exclude", "internal/shellquote", "internal/
 // unnoticed.
 var coreSubpackages = []string{
 	"adopt", "approval", "backtest", "calibrate", "checktree", "corpus", "corpus/corpustest", "coverage", "doctor", "drain", "exec",
-	"fetch", "fix", "handoff", "index", "ingest", "init", "learn", "pack", "panel", "post", "quality", "query", "ready", "recipe",
+	"fetch", "fix", "handoff", "index", "ingest", "init", "journal", "learn", "pack", "panel", "post", "quality", "query", "ready", "recipe",
 	"record", "repair", "report", "reviewdoc", "risk", "run", "skill", "threads", "trend", "triage", "upgrade", "verify",
 }
 

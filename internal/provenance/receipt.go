@@ -19,6 +19,7 @@ import (
 	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
+	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 )
 
 // ReceiptFile is the per-bundle provenance receipt file name.
@@ -338,10 +339,17 @@ func collectBundleEntry(dir, path string, d fs.DirEntry, rels *[]string) error {
 	if d.IsDir() {
 		return skipBundleDirIfNeeded(relSlash, d.Name())
 	}
-	if relSlash != ReceiptFile && !strings.HasPrefix(d.Name(), ".") {
+	if isIncludedBundleFile(relSlash, d.Name()) {
 		*rels = append(*rels, relSlash)
 	}
 	return nil
+}
+
+func isIncludedBundleFile(relSlash, name string) bool {
+	if strings.HasPrefix(name, ".") {
+		return false
+	}
+	return relSlash != ReceiptFile && relSlash != journalcore.JournalFile && relSlash != journalcore.JournalLockFile
 }
 
 func skipBundleDirIfNeeded(relSlash, name string) error {
