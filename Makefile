@@ -67,6 +67,7 @@ FUZZ_TARGETS := \
 	./internal/core/record:FuzzNormalizeReview \
 	./internal/core/threads:FuzzProviderMappers \
 	./internal/core/verify:FuzzGate \
+	./internal/evidence:FuzzMatchQuote \
 	./internal/hunks:FuzzFiles \
 	./internal/hunks:FuzzHeaderPaths \
 	./internal/hunks:FuzzParse \
