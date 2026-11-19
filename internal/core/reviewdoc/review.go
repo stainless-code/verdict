@@ -167,35 +167,57 @@ func Render(review *jq.Obj, approval *core.ApprovalReceipt) string {
 	return b.String()
 }
 
-// The two leads the renderer writes. AlignLead swaps the clean one for the
-// attention one when the authoritative decision withholds approval, so the
-// body never certifies a review the decision refused.
+// The three leads the renderer writes. AlignLead swaps CleanLead (or
+// AttentionLead when evidence is insufficient) so the body never certifies a
+// review the decision refused.
 const (
-	CleanLead     = "> ✅ No new issues found.\n"
-	AttentionLead = "> ⚠️ Findings require attention.\n"
+	CleanLead                = "> ✅ No new issues found.\n"
+	AttentionLead            = "> ⚠️ Findings require attention.\n"
+	EvidenceInsufficientLead = "> ⛔ Evidence checks insufficient — no approval.\n"
 )
 
 // AlignLead makes the rendered lead agree with the decision the merge
-// computed. The renderer runs before the merge, because its findings are the
-// merge input, so it cannot know about stored findings, block clauses or a
-// violated spec check: a clean marker must not survive a withheld decision.
-// Only the lead line moves; summary text is the agent's own words and a
-// finding's claim is never rewritten.
+// computed. Evidence insufficiency is checked first and overrides both
+// CleanLead and AttentionLead; a withheld non-insufficient decision swaps
+// CleanLead for AttentionLead. Only the lead line moves; summary text is
+// the agent's own words and a finding's claim is never rewritten.
 func AlignLead(body string, approval *core.ApprovalReceipt) string {
-	if approval == nil || approval.Approved {
+	if approval == nil {
 		return body
 	}
-	at := strings.Index(body, CleanLead)
+	if approval.Insufficient {
+		if swapped, ok := replaceLeadLine(body, CleanLead, EvidenceInsufficientLead); ok {
+			return swapped
+		}
+		if swapped, ok := replaceLeadLine(body, AttentionLead, EvidenceInsufficientLead); ok {
+			return swapped
+		}
+		return body
+	}
+	if approval.Approved {
+		return body
+	}
+	swapped, _ := replaceLeadLine(body, CleanLead, AttentionLead)
+	return swapped
+}
+
+func replaceLeadLine(body, oldLead, newLead string) (string, bool) {
+	at := strings.Index(body, oldLead)
 	if at < 0 || (at > 0 && body[at-1] != '\n') {
-		return body
+		return body, false
 	}
-	return body[:at] + AttentionLead + body[at+len(CleanLead):]
+	return body[:at] + newLead + body[at+len(oldLead):], true
 }
 
 // renderLead writes the verdict marker and the optional summary paragraph.
+// Evidence insufficiency is checked first and always writes
+// EvidenceInsufficientLead; the agent's summary is kept verbatim.
 func renderLead(b *strings.Builder, review *jq.Obj, approval *core.ApprovalReceipt) {
 	summary := Summary(review)
-	if !strings.HasPrefix(summary, "> ") {
+	switch {
+	case approval != nil && approval.Insufficient:
+		b.WriteString(EvidenceInsufficientLead)
+	case !strings.HasPrefix(summary, "> "):
 		if len(Findings(review)) == 0 && approval != nil && approval.Approved {
 			b.WriteString(CleanLead)
 		} else {
@@ -213,6 +235,8 @@ func renderLead(b *strings.Builder, review *jq.Obj, approval *core.ApprovalRecei
 }
 
 // renderFinding writes one numbered finding line: severity, anchor, claim.
+// An unverified finding is labeled "unverified — not counted" without
+// rewriting the agent's claim.
 func renderFinding(b *strings.Builder, n int, m *jq.Obj) {
 	path, _ := m.Get("path")
 	line, _ := m.Get("line")
@@ -221,5 +245,24 @@ func renderFinding(b *strings.Builder, n int, m *jq.Obj) {
 	if _, ok := claim.(string); !ok {
 		claim, _ = m.Get("body")
 	}
+	if isUnverifiedFinding(m) {
+		fmt.Fprintf(b, "%d. **%s** `%s:%s` (unverified — not counted) — %s\n",
+			n, jq.R(severity), jq.R(path), jq.R(line), jq.R(claim))
+		return
+	}
 	fmt.Fprintf(b, "%d. **%s** `%s:%s` — %s\n", n, jq.R(severity), jq.R(path), jq.R(line), jq.R(claim))
+}
+
+func isUnverifiedFinding(m *jq.Obj) bool {
+	v, ok := m.Get("verification")
+	if !ok {
+		return false
+	}
+	rec, ok := v.(*jq.Obj)
+	if !ok || rec == nil {
+		return false
+	}
+	q, _ := rec.Get("quote")
+	s, ok := q.(string)
+	return ok && s == "unverified"
 }
