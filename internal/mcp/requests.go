@@ -18,6 +18,7 @@ import (
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
 	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
+	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
@@ -277,6 +278,19 @@ func wireInit(ctx context.Context, b *bindings, req *initcore.Request) error {
 	}
 	req.Human = b.stderr
 	req.Diag = b.stderr
+	return nil
+}
+
+func decodeJournal(req *journalcore.Request, a *args) {
+	a.str(argRepo, &req.Repo)
+	a.str(argPr, &req.Pr)
+}
+
+func wireJournal(ctx context.Context, b *bindings, req *journalcore.Request) error {
+	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
+		return err
+	}
+	req.Warnings = b.warningList()
 	return nil
 }
 

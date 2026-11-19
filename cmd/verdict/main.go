@@ -33,6 +33,7 @@ import (
 	handoffverb "github.com/stainless-code/verdict/internal/handoff"
 	"github.com/stainless-code/verdict/internal/index"
 	"github.com/stainless-code/verdict/internal/ingest"
+	journalverb "github.com/stainless-code/verdict/internal/journal"
 	"github.com/stainless-code/verdict/internal/learn"
 	"github.com/stainless-code/verdict/internal/pack"
 	"github.com/stainless-code/verdict/internal/panel"
@@ -66,7 +67,7 @@ const (
 )
 
 const verbsHint = "fetch|fetch-local|run|panel|record|adopt|ingest|fix|post|triage|report|next|show|" +
-	"check-tree|verify|doctor|calibrate|ready|pr-wait|gate|threads|trend|risk|handoff|index|backtest|" +
+	"check-tree|verify|doctor|calibrate|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|backtest|" +
 	"learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain"
 
 func main() {
@@ -191,6 +192,7 @@ var readVerbs = map[string]readHandler{
 	verbDoctor:   doctor.Run,
 	"check-tree": checktree.Run,
 	"index":      index.Run,
+	"journal":    journalverb.Run,
 	"pack":       pack.Run,
 	"handoff":    handoffverb.Run,
 }

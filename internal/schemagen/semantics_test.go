@@ -293,7 +293,7 @@ var publishedSemantics = map[string]string{
 	// $defs/gateDimension.id with updated reportGate and gateDimension prose.
 	// Spec gate dimension: additive `spec` member on $defs/gateDimension.id
 	// with updated reportGate and gateDimension prose. Additions only.
-	"envelope.schema.json": "61bb6a23a6a0bd190443bcec795593df339861e15d9bb9b0205422c761ec9fd4",
+	"envelope.schema.json": "e857fce228612e9c96ecd6f3fdeeab3a65d560402a4f2dbbdde0409fd1b6924d",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -495,6 +495,10 @@ var publishedSemantics = map[string]string{
 	// property, required key, or type changed — the envelope fetchEstimate entry
 	// from f3a22047 is untouched).
 	"usage.schema.json": "95da162703b04193308f8c55cef95affefb4ecd278cc09e5ea3801e061be999e",
+	// additive journal.schema.json (new bundle document: <bundle>/journal.jsonl
+	// start/end/truncated line records; no existing schema property, required
+	// key, or type changed).
+	"journal.schema.json": "2861d2d2ed2b5d7e197f23dc47b9f4dc35174c5f45d39b09657f2986b89cfdb0",
 	// additive validation.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed). It pins the trusted pass: one
 	// result per finding sig with its verdict, reason, optional one-rank

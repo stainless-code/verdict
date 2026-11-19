@@ -47,6 +47,7 @@ body:
         - trend
         - risk
         - index
+        - journal
         - backtest
         - learn
         - pack

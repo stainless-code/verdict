@@ -7,6 +7,7 @@ import (
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	handoffcore "github.com/stainless-code/verdict/internal/core/handoff"
 	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
+	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 	"github.com/stainless-code/verdict/internal/core/pack"
 	qualitycore "github.com/stainless-code/verdict/internal/core/quality"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
@@ -1510,3 +1511,34 @@ type ExcludedFile = fetchcore.ExcludedFile
 
 // ExcludedPath is one removed raw diff section.
 type ExcludedPath = fetchcore.ExcludedPath
+
+// JournalStartLine is the opening record of one bundle-writing invocation.
+type JournalStartLine = journalcore.StartLine
+
+// JournalEndLine is the closing record of one bundle-writing invocation.
+type JournalEndLine = journalcore.EndLine
+
+// JournalTruncatedLine records a size-cap truncation rewrite of journal.jsonl.
+type JournalTruncatedLine = journalcore.TruncatedLine
+
+// JournalBundleDigests holds the pre- and post-call bundle content-manifest
+// sha256 digests.
+type JournalBundleDigests = journalcore.BundleDigests
+
+// JournalFileRecord describes one bundle file written or changed during a call.
+type JournalFileRecord = journalcore.FileRecord
+
+// JournalData is the folded `verdict journal --json` envelope data profile.
+type JournalData = journalcore.Summary
+
+// JournalStep is one folded invocation step in JournalData.
+type JournalStep = journalcore.Step
+
+// JournalUnfinishedStep is an unpaired start line in JournalData.
+type JournalUnfinishedStep = journalcore.UnfinishedStep
+
+// JournalChainBreak records a bundle content-manifest break between steps.
+type JournalChainBreak = journalcore.ChainBreak
+
+// JournalTruncatedInfo summarizes truncation state in JournalData.
+type JournalTruncatedInfo = journalcore.TruncatedInfo

@@ -1351,7 +1351,7 @@ webhook, listener, or MCP subscription. Killing a wait leaves no background work
 
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`ingest`/`fix`/`handoff`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`risk`/`index`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
+`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`ingest`/`fix`/`handoff`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`risk`/`index`/`journal`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. Bounded CLI `data` envelopes (`fetch`, `report`, `next`, `show`,
@@ -1369,10 +1369,11 @@ claiming absence. Complete results omit the receipt.
 `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.verdict/state/<pr>/threads.json` from the host (all six
 hosts; GitHub reads GraphQL `reviewThreads`) and returns the feed tally — it
 never refetches the diff, so it is the cheap re-read after replies,
-resolutions, or a push. `report` is the pure offline reader over the store
+resolutions, or a push. `report` is the offline reader over the store
 (ranked items, verdict, counts, patch passthrough, optional `--output` markdown
 with machine-header markers,
-optional `--sarif` for scanners/CI). `--output` markdown leads with
+optional `--sarif` for scanners/CI; like every `localWrites` bundle verb, it
+appends a journal entry to `journal.jsonl`). `--output` markdown leads with
 `> Confidence: … · Safety: …` (from the stored `post.json`/`record.json`;
 `unrecorded`/`not assessed` when the run recorded neither) and, on clean
 reports (no open findings), closes with a `## What we checked` list of at
@@ -2066,6 +2067,20 @@ refuses `html-symlink` — use the real parent path (for example, `pwd -P`).
 Filesystem operations stay anchored to that checked parent directory. A non-empty directory without the export file set and
 static-page marker refuses `html-not-export`. Recovery and I/O failures use
 `report-failed`. Empty destinations are accepted.
+
+## Journal
+
+Every bundle-writing CLI or MCP invocation (`fetch`, `fetch-local`, `run`, `record` including `--dry-run`, `post`, `verify`, `fix`, `triage`, `adopt`, `ingest`, `threads`, `calibrate`, `report`, `drain`) appends two compact JSON lines to `<bundle>/journal.jsonl` under `storelock` (`journal.jsonl.lock`, mode `0600`): a `start` line when the call begins and an `end` line when it returns, paired by `step`. Read-only verbs (`show`, `next`, `handoff`, `config`, `risk`, `pack`, `index`, `check-tree`, `doctor`, `pr-wait`, `ready`, `gate`, `journal`), multi-bundle verbs (`trend`, `panel`, `backtest`), and non-bundle verbs (`init`, `learn`, `skill`, `upgrade`, `uninstall`, `serve`, `mcp`) never write to `journal.jsonl`.
+
+Each `start` line records `verb`, `channel` (`cli` or `mcp`), `pid`, redacted `argv` (shared with the launcher's redactor so secret-flag operands, inline `--flag=secret` values, and secret-named environment values become `***REDACTED***`), `version`, and `started_at`. Each `end` line adds `ended_at`, `exit`, `refusal` (typed refusal code or `null`), `warnings`, `bundle` (`before` and `after` SHA-256 digests), `wrote` (every created or changed bundle file with its `path`, `sha256`, and `bytes`), `removed`, and the printed `next` hint. A refusal before a bundle directory exists leaves no journal line.
+
+**Content-digest chain.** `bundle.before` and `bundle.after` hash the canonical manifest `path\0size\0sha256(content)\n`, sorted by path and excluding `journal.jsonl`, `journal.jsonl.lock`, and `*.lock`. When step `N`'s `bundle.before` disagrees with step `N-1`'s `bundle.after`, `verdict journal` reports a `chain_breaks` entry. The chain detects any content change between steps (including a same-size rewrite with a preserved mtime), but not a rewrite to identical bytes, which is harmless by definition.
+
+**Determinism.** `provenance.json` and `run.json` exclude `journal.jsonl` and `journal.jsonl.lock`, so journal timestamps and appends never move `provenance.json` bytes or `run.json`'s `inputs_sha256`.
+
+**Size cap and non-fatal appends.** When an append pushes `journal.jsonl` past 1 MiB, Verdict atomically rewrites the file under the same lock to keep the trailing 512 KiB of whole lines and prepends a `{"schema_version":"1","phase":"truncated","at":...,"dropped":N,"kept_from":...}` notice. An append failure (busy lock, read-only filesystem, symlinked `journal.jsonl`) emits `warn: journal: could not append to <path>: <err>` on stderr and never fails the verb.
+
+**Reading the journal.** `verdict journal <owner/repo> <pr|local-name> [--json]` (and the read-only `journal` MCP tool) reads `<bundle>/journal.jsonl` without taking a lock, folds `start`/`end` pairs into `steps`, lists unpaired starts in `unfinished`, reports `chain_breaks`, surfaces `truncated`, and counts torn lines in `unreadable_lines`. An absent `journal.jsonl` on an existing bundle exits 0 with `steps: []` and `journal: <bundle> (no calls recorded)`; a missing bundle refuses `missing-bundle`.
 
 ## Serve (local HTTP surface)
 

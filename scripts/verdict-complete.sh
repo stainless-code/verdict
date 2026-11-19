@@ -3,7 +3,7 @@
 #
 
 _verdict_verbs() {
-  printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local run panel record adopt ingest fix check-tree ready pr-wait gate threads trend risk handoff index backtest learn pack init skill upgrade uninstall serve config drain
+  printf '%s\n' fetch post triage report next show verify doctor calibrate fetch-local run panel record adopt ingest fix check-tree ready pr-wait gate threads trend risk handoff index journal backtest learn pack init skill upgrade uninstall serve config drain
 }
 
 _verdict_flags() { # $1 = verb
@@ -25,6 +25,7 @@ _verdict_flags() { # $1 = verb
     risk) printf '%s\n' --status --limit --json;;
     handoff) printf '%s\n' --min-severity --paths --format --json;;
     index) printf '%s\n' build status prune callers tests-for co-changed owners blast-radius --from --at --depth --limit --commits --since --min-count --symbol --pr --paths --json;;
+    journal) printf '%s\n' --json;;
     backtest) printf '%s\n' mine replay score fixtures --since --until --run --agent --max-reviews --budget-usd --timeout --rounds --fixture --recordings --json;;
     threads) printf '%s\n' --provider --thread --dry-run --json;;
     drain) printf '%s\n' --provider --max-threads --agent --timeout --post --dry-run --json --;;

@@ -29,6 +29,7 @@ func TestToolCommanders(t *testing.T) {
 		"index":       "exec.Runner{cap=4194304 missing=false}",
 		"ingest":      "<nil>",
 		"init":        "exec.Runner{cap=67108864 missing=true}",
+		"journal":     "<nil>",
 		"learn":       "<nil>",
 		"next":        "<nil>",
 		"pack":        "<nil>",

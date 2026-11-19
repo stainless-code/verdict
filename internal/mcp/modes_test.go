@@ -25,9 +25,9 @@ type procedureModeCase struct {
 func TestProcedureSurfacesIgnoreModes(t *testing.T) {
 	t.Parallel()
 	cases := []procedureModeCase{
-		{name: "default", tools: 25},
-		{name: "read-only", tools: 14, readOnly: true},
-		{name: "operator", tools: 26, operator: true},
+		{name: "default", tools: 26},
+		{name: "read-only", tools: 15, readOnly: true},
+		{name: "operator", tools: 27, operator: true},
 	}
 	paths, wantPrompt, wantResource := procedureFixtures(t)
 

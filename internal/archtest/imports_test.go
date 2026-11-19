@@ -53,6 +53,7 @@ var forbiddenDeps = []string{
 	"internal/panel",
 	"internal/calibrate",
 	"internal/index",
+	"internal/journal",
 	"internal/doctor",
 	"internal/checktree",
 	"internal/scaffold",

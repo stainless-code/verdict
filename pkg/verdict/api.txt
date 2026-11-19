@@ -138,6 +138,10 @@ func (c *Client) Ingest(ctx context.Context, req *IngestRequest) (*IngestRespons
 func (c *Client) Init(ctx context.Context, req *InitRequest) (*InitResponse, error)
     Init scaffolds .verdict control files from a style preset.
 
+func (c *Client) Journal(ctx context.Context, req *JournalRequest) (*JournalResponse, error)
+    Journal reads a bundle's journal.jsonl without taking a lock or writing any
+    files.
+
 func (c *Client) Learn(ctx context.Context, req *LearnRequest) (*Outcome, error)
     Learn reads or updates the local structured knowledge base.
 
@@ -377,6 +381,17 @@ type Invocation struct {
 	PR   string
 }
     Invocation carries the repo/PR positionals shared by most requests.
+
+type JournalRequest struct {
+	Invocation
+}
+    JournalRequest reads one bundle's append-only invocation journal.
+
+type JournalResponse struct {
+	Result
+	Human []string
+}
+    JournalResponse carries the folded journal summary and human lines.
 
 type LearnRequest struct {
 	FromBundle, Pr, Accept, Reject                                    string

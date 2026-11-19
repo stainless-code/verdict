@@ -38,6 +38,7 @@ var VerbTable = map[string]VerbPolicy{
 	"gate":       {Journals: false, Reason: "noLocalWrites: CI exit code; must never mutate the checkout"},
 	"handoff":    {Journals: false, Reason: "noLocalWrites: read-only finding handoff"},
 	"index":      {Journals: false, Reason: "noLocalWrites: read-only code index query"},
+	"journal":    {Journals: false, Reason: "noLocalWrites: read-only journal reader; reading must never write"},
 	"next":       {Journals: false, Reason: "noLocalWrites: read-only next-finding cursor"},
 	"pack":       {Journals: false, Reason: "noLocalWrites: read-only lens pack inspection"},
 	"pr-wait":    {Journals: false, Reason: "noLocalWrites: read-only foreground PR wait"},

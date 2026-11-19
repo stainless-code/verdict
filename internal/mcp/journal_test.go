@@ -105,3 +105,31 @@ func TestReqArgvFormatsFlagsDeterministically(t *testing.T) {
 		t.Fatalf("reqArgv = %q, want %q", got, want)
 	}
 }
+
+// TestMCPJournalToolIsReadOnly proves the `journal` MCP tool is exposed under
+// --read-only with ReadOnlyHint=true, reads journal.jsonl cleanly, and writes
+// no journal lines of its own.
+func TestMCPJournalToolIsReadOnly(t *testing.T) {
+	fixture(t)
+	bundleDir := filepath.Join(".verdict", "state", "5101")
+	list := readOnlyList(t)
+	desc := toolNamed(t, list, "journal")
+	if !desc.Annotations.ReadOnlyHint || !desc.Annotations.IdempotentHint {
+		t.Fatalf("journal annotations = %+v, want readOnly+idempotent", desc.Annotations)
+	}
+	cfg := testConfig()
+	cfg.ReadOnly = true
+	frames := serve(t, &cfg,
+		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"journal","arguments":{"repo":"acme/app","pr":"5101"}}}`,
+	)
+	var res callToolResult
+	if err := json.Unmarshal(frames["1"].Result, &res); err != nil {
+		t.Fatalf("decode journal result: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("journal returned error: %+v", res)
+	}
+	if _, err := os.Stat(filepath.Join(bundleDir, journalcore.JournalFile)); err == nil {
+		t.Fatal("MCP journal tool created journal.jsonl; read-only tool must never write")
+	}
+}

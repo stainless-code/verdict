@@ -339,6 +339,10 @@ export interface VerdictClient {
     args?: string[],
     opts?: RunOptions,
   ): Promise<Envelope<DataFor["index"]>>;
+  journal(
+    args?: string[],
+    opts?: RunOptions,
+  ): Promise<Envelope<DataFor["journal"]>>;
   adopt(
     args?: string[],
     opts?: RunOptions,
@@ -418,6 +422,7 @@ export function createClient(defaults: ClientOptions = {}): VerdictClient {
     risk: (args, opts) => run<DataFor["risk"]>("risk", args, opts),
     handoff: (args, opts) => run<DataFor["handoff"]>("handoff", args, opts),
     index: (args, opts) => run<DataFor["index"]>("index", args, opts),
+    journal: (args, opts) => run<DataFor["journal"]>("journal", args, opts),
     adopt: (args, opts) => run<DataFor["adopt"]>("adopt", args, opts),
     ingest: (args, opts) => run<DataFor["ingest"]>("ingest", args, opts),
     fix: (args, opts) => run<DataFor["fix"]>("fix", args, opts),
