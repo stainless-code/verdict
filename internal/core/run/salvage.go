@@ -68,30 +68,35 @@ func isJSONFence(line string) bool {
 	return fenced && strings.TrimSpace(info) == "json"
 }
 
-// fencedJSONBlocks collects the bodies of complete ```json fences. A later
-// malformed block never hides an earlier valid one.
+// fencedJSONBlock returns one complete ```json body and its closing line.
+// A new opening fence before a close abandons the unclosed draft and hands
+// the new opening back to the caller, so the draft's bytes never join the
+// block that follows it. A malformed block never hides a later valid one.
 func fencedJSONBlock(lines []string, opening int) ([]byte, int) {
 	for j := opening + 1; j < len(lines); j++ {
-		if strings.TrimSpace(lines[j]) != "```" {
-			continue
+		if isJSONFence(lines[j]) {
+			return nil, j - 1
 		}
-		return []byte(strings.Join(lines[opening+1:j], "")), j
+		if strings.TrimSpace(lines[j]) == "```" {
+			return []byte(strings.Join(lines[opening+1:j], "")), j
+		}
 	}
-	return nil, opening
+	return nil, len(lines)
 }
 
 func fencedJSONBlocks(stdout string) [][]byte {
 	lines := strings.SplitAfter(stdout, "\n")
 	var blocks [][]byte
-	for i := 0; i < len(lines); i++ {
+	for i := 0; i < len(lines); {
 		if !isJSONFence(lines[i]) {
+			i++
 			continue
 		}
 		block, end := fencedJSONBlock(lines, i)
 		if block != nil {
 			blocks = append(blocks, block)
 		}
-		i = end
+		i = end + 1
 	}
 	return blocks
 }

@@ -6,9 +6,9 @@ case "$prompt" in
     rest="${prompt#*Write }"
     artifact="${rest%% FIRST with \{*}"
     ;;
-  *" in place,"*)
+  *" in place:"*)
     rest="${prompt#*Update }"
-    artifact="${rest%% in place,*}"
+    artifact="${rest%% in place:*}"
     ;;
   *)
     rest=""

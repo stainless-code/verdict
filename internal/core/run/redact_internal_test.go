@@ -254,8 +254,13 @@ func TestStageDirectivesKeepThePercentPathLiteral(t *testing.T) {
 	if want := "Read " + artifact + ", the review the previous stage wrote."; !strings.Contains(stage, want) {
 		t.Errorf("stage directive does not keep the path literally, want %q in:\n%s", want, stage)
 	}
-	if want := "Update " + artifact + " in place, keeping every finding and value the earlier stages wrote"; !strings.Contains(stage, want) {
+	want := "Update " + artifact + " in place: never reset it to the empty document; keep " +
+		"every earlier finding and value unless this stage's task says to merge, drop or reorder it"
+	if !strings.Contains(stage, want) {
 		t.Errorf("stage 2 mangles the update instruction, want %q in:\n%s", want, stage)
+	}
+	if !strings.Contains(stage, "never reset it to the empty document") {
+		t.Errorf("stage 2 lost the never-reset guard:\n%s", stage)
 	}
 	if strings.Contains(stage, "FIRST with") {
 		t.Errorf("stage 2 still tells the agent to overwrite the earlier review:\n%s", stage)

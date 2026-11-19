@@ -118,6 +118,14 @@ func TestLastFindingsBlockPicksTheLastParsingBlock(t *testing.T) {
 	assertFindingsBlock(t, "```\n"+salvagedFinding+"\n```\n", "")
 }
 
+// TestLastFindingsBlockRestartsAfterUnclosedDraft proves a never-closed draft
+// cannot swallow the valid block that follows it.
+func TestLastFindingsBlockRestartsAfterUnclosedDraft(t *testing.T) {
+	t.Parallel()
+	draft := "draft:\n```json\n{\"findings\":[{\"path\":\"old.go\"\n"
+	assertFindingsBlock(t, draft+fenced(salvagedFinding), salvagedFinding)
+}
+
 // TestRunSalvagesStdoutFindings proves the whole path: no artifact, a fenced
 // document on stdout, a fresh review.json, a recorded flag, and a warning.
 func TestRunSalvagesStdoutFindings(t *testing.T) {

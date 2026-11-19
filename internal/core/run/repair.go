@@ -175,12 +175,13 @@ func (st *state) repairRound(ctx context.Context, args *launchArgs, rec *launche
 // maybeSalvage fills an absent review from the round's stdout and records
 // the repair on the same launcher the round outcome writes.
 func (st *state) maybeSalvage(ctx context.Context, args *launchArgs, rec *launcher, res *core.Result, spawnErr error) {
+	// The launcher describes the round that produced the final artifact, so
+	// last round's salvage must never survive into this one.
+	rec.Salvaged = false
 	if st.drainDigest != "" || !salvageAllowed(ctx, res, spawnErr) {
 		return
 	}
-	if st.salvageReview(args, res.Stdout) {
-		rec.Salvaged = true
-	}
+	rec.Salvaged = st.salvageReview(args, res.Stdout)
 }
 
 // roundSucceeded ends the loop on the first valid review: the outcome is

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"slices"
 	"strconv"
 	"strings"
@@ -182,7 +183,13 @@ func writeBundleProcedure(dir string) error {
 		return procedureRefusal(err)
 	}
 	if err := skillfs.WriteBundleRefs(dir); err != nil {
-		return procedureRefusal(err)
+		if missing, ok := errors.AsType[*skillfs.ProcedureFileError](err); ok {
+			return procedureRefusal(missing)
+		}
+		return &core.RefusalError{
+			Code:    CodeFetchFailed,
+			Message: fmt.Sprintf("could not write %s: %v", filepath.ToSlash(filepath.Join(dir, "refs")), err),
+		}
 	}
 	if werr := atomic.WriteFile(dir+suffixProcedureMD, raw); werr != nil {
 		return &core.RefusalError{

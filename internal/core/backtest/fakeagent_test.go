@@ -141,7 +141,7 @@ func fakePrice(raw string, launch int) string {
 
 // fakeArtifact extracts the review path from the launcher's directive: the
 // first write names it before " FIRST with {", and a later stage names it
-// between "Update " and " in place,".
+// between "Update " and " in place:".
 func fakeArtifact(directive string) string {
 	const firstOpen, firstClose = "Write ", " FIRST with {"
 	if _, rest, ok := strings.Cut(directive, firstOpen); ok {
@@ -149,7 +149,7 @@ func fakeArtifact(directive string) string {
 			return artifact
 		}
 	}
-	const updateOpen, updateClose = "Update ", " in place,"
+	const updateOpen, updateClose = "Update ", " in place:"
 	if _, rest, ok := strings.Cut(directive, updateOpen); ok {
 		if artifact, _, found := strings.Cut(rest, updateClose); found {
 			return artifact

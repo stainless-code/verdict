@@ -103,9 +103,9 @@ func stageWriteLine(artifact string, index int) string {
 		return fmt.Sprintf("Write %s FIRST with %s, then update that same file with %s. "+
 			"Write nothing else in the bundle.", artifact, emptyReviewDocument, reviewDocument)
 	}
-	return fmt.Sprintf("Update %s in place, keeping every finding and value the earlier "+
-		"stages wrote; add your own changes to that same file. Write nothing else in the bundle.",
-		artifact)
+	return fmt.Sprintf("Update %s in place: never reset it to the empty document; keep "+
+		"every earlier finding and value unless this stage's task says to merge, drop or "+
+		"reorder it. Write nothing else in the bundle.", artifact)
 }
 
 // stageTask states the one job the rendered stage owns, with the hints and caps

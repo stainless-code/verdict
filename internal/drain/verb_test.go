@@ -108,6 +108,55 @@ func TestRunAgentAndPostZeroPendingSkipsLaunchAndPost(t *testing.T) {
 	}
 }
 
+// TestEnsureDraftProcedureRestoresRefsKeepsExistingProcedure pins N4: an
+// older procedure is never rewritten, but its pull refs are restored when the
+// bundle lost them.
+func TestEnsureDraftProcedureRestoresRefsKeepsExistingProcedure(t *testing.T) {
+	dir := t.TempDir()
+	procedure := filepath.Join(dir, draincore.KeyProcedureMD)
+	want := []byte("operator-edited drain procedure\n")
+	if err := os.WriteFile(procedure, want, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	refsDir := filepath.Join(dir, "refs")
+	if _, err := os.Stat(refsDir); !os.IsNotExist(err) {
+		t.Fatalf("precondition: refs dir exists: %v", err)
+	}
+	if err := ensureDraftProcedure(dir); err != nil {
+		t.Fatalf("ensureDraftProcedure: %v", err)
+	}
+	assertRefsRestored(t, refsDir)
+	assertProcedureBytes(t, procedure, want)
+}
+
+func assertRefsRestored(t *testing.T, refsDir string) {
+	t.Helper()
+	for _, ref := range skillfs.HandoffRefs() {
+		wantRef, err := skillfs.ReadRef(ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, err := os.ReadFile(filepath.Join(refsDir, filepath.FromSlash(strings.TrimPrefix(ref.Path, "refs/"))))
+		if err != nil {
+			t.Fatalf("read %s: %v", filepath.ToSlash(ref.Path), err)
+		}
+		if !bytes.Equal(got, wantRef) {
+			t.Errorf("%s is not the embedded ref bytes", ref.Path)
+		}
+	}
+}
+
+func assertProcedureBytes(t *testing.T, path string, want []byte) {
+	t.Helper()
+	got, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("procedure = %q, want the unchanged %q", got, want)
+	}
+}
+
 // drainProcedureBytes builds the expected drain Procedure from the embedded
 // payload paths, not from the function under test.
 func drainProcedureBytes(t *testing.T) []byte {

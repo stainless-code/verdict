@@ -127,6 +127,31 @@ func TestShowPromptsDumpStartsWithBundleProcedure(t *testing.T) {
 	}
 }
 
+// TestWriteBundleRefsFilesystemErrorIsFetchFailed keeps a disk error out of
+// the embedded-payload refusal: a blocked refs/ path is an operator filesystem
+// problem, not a missing Procedure file from a bad install.
+func TestWriteBundleRefsFilesystemErrorIsFetchFailed(t *testing.T) {
+	dir := t.TempDir()
+	refs := filepath.Join(dir, "refs")
+	if err := os.WriteFile(refs, []byte("not a directory"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	err := writeBundleProcedure(dir)
+	ref, ok := errors.AsType[*core.RefusalError](err)
+	if !ok {
+		t.Fatalf("writeBundleProcedure error = %v, want a typed refusal", err)
+	}
+	if ref.Code != CodeFetchFailed {
+		t.Fatalf("refusal = %+v, want %s", ref, CodeFetchFailed)
+	}
+	if !strings.Contains(ref.Message, filepath.ToSlash(refs)) {
+		t.Errorf("message = %q, want the blocked refs path", ref.Message)
+	}
+	if strings.Contains(ref.Message, "prompt-dump-failed") {
+		t.Errorf("filesystem error was reported as a missing embed: %q", ref.Message)
+	}
+}
+
 // withMissingReviewProcedure swaps the smallest seam in fetch: a package-level
 // func var that tests set to simulate a broken embedded payload. Production
 // always calls skillfs.ReviewProcedure through the same var.

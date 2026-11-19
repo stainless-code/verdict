@@ -710,6 +710,57 @@ func assertPassThrough(t *testing.T, cmdr *sequenced, call int) {
 	t.Errorf("round %d argv = %q, want the --model opus passthrough", call, cmdr.argv[call-1])
 }
 
+// TestRepairLauncherReportsTheFinalRoundSalvage proves a round-1 salvage does
+// not stick when round 2 writes the artifact itself: launcher.json describes
+// the round that produced the accepted file.
+func TestRepairLauncherReportsTheFinalRoundSalvage(t *testing.T) {
+	root := repairFixture(t)
+	dir := bundleDir(root)
+	roundOne := `{"schema_version":"1","findings":[{"path":"notes.txt","line":2,` +
+		`"severity":"important","claim":"round one","quote":"new"}]}`
+	cmdr := &sequenced{
+		write:  writeOnRound(t, root, 2),
+		result: salvageThenDirectResult(1, fenced(roundOne)),
+	}
+	resp, ref := Run(t.Context(), repairRequest(root, cmdr, "2", &collector{}))
+	if ref != nil {
+		t.Fatalf("Run refused: %v", ref)
+	}
+	if cmdr.calls != 2 {
+		t.Fatalf("spawns = %d, want 2", cmdr.calls)
+	}
+	if !slices.Contains(resp.Warnings, salvageWarning) {
+		t.Fatalf("warnings = %v, want round 1 to have salvaged", resp.Warnings)
+	}
+	assertRepairProfile(t, resp, 2, 2, []bool{false, true})
+	assertLauncherNotSalvaged(t, dir)
+}
+
+func writeOnRound(t *testing.T, root string, round int) func(int) {
+	t.Helper()
+	return func(call int) {
+		if call == round {
+			writeDoc(t, root, reviewDoc)
+		}
+	}
+}
+
+func salvageThenDirectResult(round int, stdout string) func(int) core.Result {
+	return func(call int) core.Result {
+		if call == round {
+			return core.Result{ExitCode: 0, Stdout: stdout}
+		}
+		return core.Result{ExitCode: 0}
+	}
+}
+
+func assertLauncherNotSalvaged(t *testing.T, dir string) {
+	t.Helper()
+	if got, ok := readLauncher(t, dir)["salvaged"]; ok && got == true {
+		t.Fatal("launcher salvaged = true after a direct write round")
+	}
+}
+
 // TestRepairRoundNeverSalvagesFailedAgent pins F1 in the repair path: a
 // non-zero round exit refuses on its own and leaves no recordable artifact.
 func TestRepairRoundNeverSalvagesFailedAgent(t *testing.T) {
