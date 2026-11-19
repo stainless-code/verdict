@@ -267,9 +267,9 @@ type RiskRung struct { //nolint:govet // field order is the published property o
 }
 
 // ReportGate is the composed gate result: every dimension this run
-// requested, in `findings, head, coverage, live_threads, compliance, risk`
-// order. Passed is true iff no dimension failed or read unknown, so a skip
-// stays neutral.
+// requested, in `findings, head, coverage, live_threads, compliance, risk,
+// evidence` order. Passed is true iff no dimension failed or read unknown,
+// so a skip stays neutral.
 type ReportGate struct { //nolint:govet // published wire order: passed before dimensions
 	Passed     bool            `json:"passed"`
 	Dimensions []GateDimension `json:"dimensions"`
@@ -279,10 +279,10 @@ type ReportGate struct { //nolint:govet // published wire order: passed before d
 // script parses; Count is the dimension's own tally, absent when the
 // dimension has none to report.
 type GateDimension struct { //nolint:govet // field order is the published property order
-	ID     string `enum:"findings|head|coverage|live_threads|compliance|risk" json:"id"`
-	Status string `enum:"pass|fail|skip|unknown"                              json:"status"`
+	ID     string `enum:"findings|head|coverage|live_threads|compliance|risk|evidence" json:"id"`
+	Status string `enum:"pass|fail|skip|unknown"                                       json:"status"`
 	Detail string `json:"detail"`
-	Count  *int   `json:"count"                                               min:"0"`
+	Count  *int   `json:"count"                                                        min:"0"`
 }
 
 // Wire renders the gate result in the published key order.

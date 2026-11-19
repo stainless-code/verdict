@@ -45,7 +45,9 @@ var publishedSemantics = map[string]string{
 	// recall character budget.
 	// trigger: additive optional top-level predicate object with seven closed
 	// optional keys; no existing property, required key, or type changed.
-	"config.schema.json": "416293a853aeb457a2c20cd7b13b3fde7278f7537ce179c2c66278827159943f",
+	// spec_coverage_min: additive optional integer 1-100 on defaults (default
+	// 80, global-only — rejected inside scope defaults like kb_policy).
+	"config.schema.json": "d35ca3d6fd6935eba2370fb6a8b702c9c0e30f3bb93252245277f1b404449592",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -283,7 +285,13 @@ var publishedSemantics = map[string]string{
 	// specEvidence and receipt, plus approval/spec_checks/receipts on the
 	// record data. No existing envelope property, required key, enum, or type
 	// changed.
-	"envelope.schema.json": "b84749db19b6b7c8618e6e92ac23dfde3e027da103969e2827fb26891c37ff7b",
+	// S4 evidence vocabulary: additive nine evidence problem codes on
+	// $defs/problem.code, optional insufficient on $defs/approvalReceipt,
+	// optional nullable evidence on $defs/recordData, and additive
+	// $defs/evidence{Receipt,Quote,Receipts,Spec}. Additions only.
+	// S4 evidence gate dimension: additive `evidence` member on
+	// $defs/gateDimension.id with updated reportGate and gateDimension prose.
+	"envelope.schema.json": "6e484acf954343e6d9e20da001a4bd9324fe68a6d7c1c11740863eec23a6e60b",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -317,12 +325,17 @@ var publishedSemantics = map[string]string{
 	// comment. No existing property, required key, enum, or type changed.
 	// risk score: additive optional nullable risk claim ($defs/riskClaim). No
 	// existing property, required key, enum, or type changed.
-	"post.schema.json": "3a8ec3c2c82baa3c0f31a1b80f70de2e27132e4f2472ce04bacbf8c34d262efd",
+	// S4 evidence vocabulary: additive optional insufficient boolean on
+	// $defs/approvalReceipt, and the additive optional nullable evidence
+	// receipt ($defs/evidenceReceipt) a completed post publishes. No existing
+	// property, required key, or type moved.
+	"post.schema.json": "f3207b24ae8de21c72334ff92c98e9162b0b7441386b315b47870fc6b49f2e56",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
-	// fixtures.schema.json gained hallucination.unverifiable for findings whose
-	// quote cannot be checked; rate stays null when checked is zero.
-	"fixtures.schema.json": "55935e917580e94ec5c622cc66130d10ffa13f6ced1177da0436c5c04eb05f38",
+	// fixtures.schema.json descriptions only: hallucination now names the pinned
+	// full.diff verifier and its measured status, and calibration counts eight
+	// shipped hand scores. No property, required key, enum, or type moved.
+	"fixtures.schema.json": "5fe1317e9dd785548552de0667a273dce8ac51333f060fab815f977ac059b1d3",
 	"identity.schema.json": "993b01b4c6891f2dc2e78454aac8bd2abaa8740c073bd5fc8124d4b47f7e68c9",
 	// additive pack.schema.json (new document; no existing schema property,
 	// required key, or type changed). The lens-pack manifest fetch resolves
@@ -430,7 +443,10 @@ var publishedSemantics = map[string]string{
 	// findings-only pass adds optional review_sha256 after diff_sha256: the
 	// review bytes record decided on, so post can refuse a review that moved
 	// since the decision. Additive only.
-	"record.schema.json": "84161920cfda7c97e31612464b47382978d664dee909b9a8ebdeae5b4ca7b56a",
+	// S4 evidence vocabulary: additive optional insufficient boolean on
+	// $defs/approvalReceipt, optional nullable evidence property, and
+	// $defs/evidence{Receipt,Quote,Receipts,Spec}. Additions only.
+	"record.schema.json": "2ee528f57f97d8d1ebdc11c8d90732a6dc11920e2d882e4f537cebea8088c5e3",
 
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The

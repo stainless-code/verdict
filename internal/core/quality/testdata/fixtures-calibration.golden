@@ -7,3 +7,4 @@
 | vr-sta440b-haiku2 | fx1 | claude / haiku-5-5 repeat | 1/5 | 1/5 | K5 | K5 | 0 | 4 | PASS | - |
 | vr-sta440b-sonnet | fx1 | claude / sonnet-5-5 | 1/5 | 1/5 | K5 | K5 | 0 | 4 | PASS | - |
 | vr-sta351a-haiku | fx2 | claude / haiku-5-5 | 1/6 | 1/6 | D2 | D2 | 0 | 0 | PASS | - |
+| synthetic-quotes | fx4 | synthetic / quote-verifier probe | 0/3 | 0/3 | - | - | 0 | 0 | PASS | - |

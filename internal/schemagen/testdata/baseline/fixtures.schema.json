@@ -18,7 +18,7 @@
       "items": { "$ref": "#/$defs/diagnostic" }
     },
     "calibration": {
-      "description": "The seven shipped hand scores, always loaded from bench/quality/<fixture>/recordings even when --recordings supplies live runs. reproduced is true only when every row passes; CI checks it, not the rates.",
+      "description": "The eight shipped hand scores, always loaded from bench/quality/<fixture>/recordings even when --recordings supplies live runs. reproduced is true only when every row passes; CI checks it, not the rates.",
       "$ref": "#/$defs/calibration"
     },
     "recordings": { "type": "integer" },
@@ -56,7 +56,7 @@
           "$ref": "#/$defs/bonus"
         },
         "hallucination": {
-          "description": "S4's quote-verification count. Only explicit matched and mismatch results enter checked and the mismatched/checked rate; no-quote, unsupported and unknown results are unverifiable, never a clean check. rate is null when checked is zero. S6 ships a stub with status stubbed and all gating findings unverifiable.",
+          "description": "Quote-verification count over each fixture's pinned full.diff via PinnedQuoteVerifier. Only explicit matched and mismatch results enter checked and the mismatched/checked rate; no-quote, unsupported and unknown results are unverifiable, never a clean check. status is measured whenever the real verifier ran, and rate is null when checked is zero.",
           "$ref": "#/$defs/hallucination"
         },
         "runs": { "type": "integer" },

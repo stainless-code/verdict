@@ -29,6 +29,7 @@ prompts/handoff/kb.md
 prompts/handoff/lenses.md
 prompts/handoff/replies-contract.md
 prompts/handoff/role-method.md
+prompts/handoff/spec.md
 prompts/handoff/threads.md
 prompts/incremental-review.md
 prompts/review.md

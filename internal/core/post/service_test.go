@@ -591,10 +591,12 @@ func postBundle(t *testing.T, review string) {
 }
 
 // postReview is the review both Run-path tests post: one inline comment, so
-// the payload body and comments are non-empty.
+// the payload body and comments are non-empty, plus the read receipt for the
+// fixture bundle's one changed hunk, so the evidence checks are satisfied.
 const postReview = `{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,` +
 	`"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Consider clarifying this line.",` +
-	`"rigor":"pointed","severity":"informational"}]}`
+	`"rigor":"pointed","severity":"informational"}],` +
+	`"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new line"}]}`
 
 // decodePostedPayload decodes one reviews-POST stdin body.
 func decodePostedPayload(t *testing.T, raw string) map[string]any {

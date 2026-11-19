@@ -6,11 +6,13 @@ import (
 )
 
 const (
-	confirmed    = "confirmed"
-	refuted      = "refuted"
-	insufficient = "insufficient"
-	single       = "single"
-	contested    = "contested"
+	confirmed       = "confirmed"
+	refuted         = "refuted"
+	insufficient    = "insufficient"
+	single          = "single"
+	contested       = "contested"
+	quoteKey        = "quote"
+	quoteUnverified = "unverified"
 )
 
 // Apply enriches live findings while keeping refutations on record.
@@ -50,19 +52,26 @@ func applyEntry(item any, file *File, applied, models map[string]bool) {
 }
 
 // applyVerification writes the merged panel back, keeping the quote standing
-// a prior verification recorded and never inventing one.
+// the entry already carries (the evidence pass stamps it) so a panel run never
+// invents a passing standing of its own.
 func applyVerification(entry *jq.Obj, prior any, results []any) {
 	if len(results) == 0 {
 		return
 	}
-	record := jq.NewObj("quote", "unchecked")
-	if old, ok := prior.(*jq.Obj); ok {
-		if quote, _ := old.Get("quote"); quote != nil {
-			record.Set("quote", quote)
-		}
-	}
+	record := jq.NewObj(quoteKey, quoteStanding(prior))
 	record.Set("panel", results)
 	entry.Set("verification", record)
+}
+
+// quoteStanding reads the standing already recorded on the entry, defaulting
+// to unverified: a finding no quote check stamped is never a silent pass.
+func quoteStanding(prior any) any {
+	if old, ok := prior.(*jq.Obj); ok {
+		if quote, _ := old.Get(quoteKey); quote != nil {
+			return quote
+		}
+	}
+	return quoteUnverified
 }
 
 func mergeResult(results []any, r *Result) []any {

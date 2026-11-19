@@ -86,7 +86,7 @@ evidence rungs, keep-biased, and its sibling doctrines.
       "evidence": { "path": "src/api.ts", "line": 42, "quote": "retry(3)" }
     }
   ],
-  "receipts": [{ "hunk": "@@ -40,6 +40,8 @@", "quote": "retry(3)" }]
+  "receipts": [{ "hunk": "src/api.ts\tNEW\t40\t47", "quote": "retry(3)" }]
 }
 ```
 
@@ -250,25 +250,80 @@ line per finding. It owns the `> Basis:` line outright — the counts come from
 the stored review, and a line the agent never wrote is never reported back as a
 repair.
 
-| Code                           | Level   | Meaning                                                                                                                  |
-| ------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------ |
-| `invalid-json`                 | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object.                 |
-| `wrong-type`                   | mixed   | Error for a wrong type, including a non-integer anchor; warning for a fenced suggestion.                                 |
-| `missing-field`                | error   | A required key is absent.                                                                                                |
-| `bad-enum`                     | mixed   | Error for an unknown closed-set value; warning for a malformed KB id or unknown chunk name.                              |
-| `out-of-range`                 | error   | A length or numeric bound is outside its published range (summary length, brief approach/question, caps).                |
-| `path-not-in-diff`             | mixed   | Error for a finding path; warning for a brief site outside the diff.                                                     |
-| `unknown-field`                | mixed   | Error at the document root, where the shape is closed; warning inside a finding. The fix names the nearest known key.    |
-| `risk-stale-head`              | warning | `review.json.risk.assessed_head` disagrees with the bundle's current HEAD SHA; the stored claim is marked `stale: true`. |
-| `anchor-outside-hunk`          | warning | The line is provably outside every hunk; `record` moves the finding out of the inline set into the body.                 |
-| `rigor-unset`                  | warning | A finding carries no evidence rung; it records as `said` with `rigor_source: default`.                                   |
-| `normalized-fence`             | warning | One whole-document code fence was unwrapped.                                                                             |
-| `normalized-extracted`         | warning | Prose around exactly one balanced JSON object was dropped.                                                               |
-| `scalar-to-array`              | warning | A scalar where a string array belongs was wrapped in a one-element array.                                                |
-| `key-alias`                    | warning | A known alias (`rung`, `file`) was renamed to its canonical key.                                                         |
-| `enum-synonym`                 | warning | A rigor synonym or a case-folded enum value was rewritten to the published value.                                        |
-| `normalized-trivia`            | warning | A BOM, an explicit null on an optional key, or an exact-duplicate finding was removed.                                   |
-| `empty-findings-needs-summary` | error   | `findings` is empty but `summary` is missing or empty; an untouched placeholder is not a finished clean review.          |
+| Code                           | Level   | Meaning                                                                                                                                           |
+| ------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `invalid-json`                 | error   | The file is not one JSON document; the message carries line:col, and the fix is to emit only the object.                                          |
+| `wrong-type`                   | mixed   | Error for a wrong type, including a non-integer anchor; warning for a fenced suggestion.                                                          |
+| `missing-field`                | error   | A required key is absent.                                                                                                                         |
+| `bad-enum`                     | mixed   | Error for an unknown closed-set value; warning for a malformed KB id or unknown chunk name.                                                       |
+| `out-of-range`                 | error   | A length or numeric bound is outside its published range (summary length, brief approach/question, caps).                                         |
+| `path-not-in-diff`             | mixed   | Error for a finding path; warning for a brief site outside the diff.                                                                              |
+| `unknown-field`                | mixed   | Error at the document root, where the shape is closed; warning inside a finding. The fix names the nearest known key.                             |
+| `risk-stale-head`              | warning | `review.json.risk.assessed_head` disagrees with the bundle's current HEAD SHA; the stored claim is marked `stale: true`.                          |
+| `anchor-outside-hunk`          | warning | The line is provably outside every hunk; `record` moves the finding out of the inline set into the body.                                          |
+| `rigor-unset`                  | warning | A finding carries no evidence rung; it records as `said` with `rigor_source: default`.                                                            |
+| `normalized-fence`             | warning | One whole-document code fence was unwrapped.                                                                                                      |
+| `normalized-extracted`         | warning | Prose around exactly one balanced JSON object was dropped.                                                                                        |
+| `scalar-to-array`              | warning | A scalar where a string array belongs was wrapped in a one-element array.                                                                         |
+| `key-alias`                    | warning | A known alias (`rung`, `file`) was renamed to its canonical key.                                                                                  |
+| `enum-synonym`                 | warning | A rigor synonym or a case-folded enum value was rewritten to the published value.                                                                 |
+| `normalized-trivia`            | warning | A BOM, an explicit null on an optional key, or an exact-duplicate finding was removed.                                                            |
+| `empty-findings-needs-summary` | error   | `findings` is empty but `summary` is missing or empty; an untouched placeholder is not a finished clean review.                                   |
+| `quote-mismatch`               | mixed   | A finding quote does not match `full.diff` at the cited path/line; error if gating, warning otherwise.                                            |
+| `quote-not-checkable`          | mixed   | A finding quote cannot be verified against the bundle diff (absent path/line, binary, deleted, or oversized); error if gating, warning otherwise. |
+| `receipt-missing`              | error   | A non-exempt changed hunk has no matched reading receipt in `receipts[]`.                                                                         |
+| `receipt-hunk-unknown`         | error   | A receipt names a hunk key that does not match any changed hunk in `hunks.tsv`.                                                                   |
+| `receipt-mismatch`             | error   | A receipt quote does not match any line in the named hunk.                                                                                        |
+| `spec-item-unknown`            | error   | A `spec_checks[].item` quote does not match any enumerated item from `--spec`.                                                                    |
+| `spec-check-missing`           | error   | An enumerated `--spec` item has no matching `spec_checks[]` entry.                                                                                |
+| `spec-evidence-not-code`       | error   | A `met` or `violated` spec check cites a non-code or test-output path instead of changed code.                                                    |
+| `spec-evidence-mismatch`       | error   | A `met` or `violated` spec check's `evidence.quote` does not match `full.diff` at the cited path and line.                                        |
+
+### Evidence checks
+
+The same bundle-level pass that validates shape also checks the review's
+evidence, and that pass is the one `record`, `record --dry-run`, `run` and the
+`gate` read. It answers three questions.
+
+**Quotes.** Each finding's `quote` is matched against `full.diff` at its
+`path:line`. Whole lines must match exactly; a quote whose first or last line is
+partial still verifies when it carries at least twelve non-space characters, and
+a quote made only of whole lines needs no minimum. A miss is `quote-mismatch`
+(stacked hunks and a line outside every hunk included), and a place the diff
+cannot answer — a path it does not carry, a binary or deleted side, an oversized
+line, an invalid range — is `quote-not-checkable`. Either code is an error on a
+finding that would gate and a warning below the approval tier, so a weak quote on
+an informational note never blocks publication.
+
+**Receipts.** A review whose findings are all below the approval tier, and which
+violates no spec item, must also show it read the change: `receipts[]` holds one
+entry per non-exempt hunk, `hunk` being the exact row `hunks.tsv` prints for it
+(`<path>\t<NEW|OLD>\t<start>\t<end>`) and `quote` one line that hunk carries. A
+hunk whose path is generated under the shared role heuristic is exempt, and a
+diff whose hunk paths cannot be keyed at all (a path containing a tab) is itself
+reported as the gap rather than silently reading as covered.
+
+**Spec checks.** When the bundle carries `--spec` sources, every enumerated
+bullet and table row needs a `spec_checks[]` entry: `item` quoted verbatim,
+`status` of `met`, `violated` or `n/a`, and, for `met` and `violated`, an
+`evidence` naming a path the diff changes with its `line` and exact `quote`.
+Coverage must reach `defaults.spec_coverage_min` (default 80). Test source is
+code: a review may meet an item with the regression test it added. Test output
+is not — `testdata`, `fixtures`, `snapshots`, `__snapshots__`, and `.golden`,
+`.snap` and `.log` files are refused (`spec-evidence-not-code`).
+
+Every gap becomes an ordinary review-input problem, so one list names it
+everywhere. A bundle stores the outcome as the evidence receipt in `record.json`
+— one entry per finding quote, the hunk coverage, the spec coverage, the gap
+sentences, and a single `insufficient` flag.
+
+| Verb                      | What it does with the evidence verdict                                                                                                                   |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `record`                  | writes `record.json` with the receipt and, when anything is insufficient, a withheld approval whose reason is the first gap. Exit 0.                     |
+| `run`                     | feeds the gaps into its repair rounds and refuses `review-insufficient` when they survive them.                                                          |
+| `report`                  | withholds `data.approval` and warns once; the advisory read never fails.                                                                                 |
+| `report --check` / `gate` | fails the always-on `evidence` dimension and names `review-insufficient`.                                                                                |
+| `post`                    | publishes the findings with the insufficient lead and never approves; a binding approval refuses `review-insufficient`, and `--force` does not waive it. |
 
 ### Sig contract (sig_version 1)
 
@@ -632,19 +687,20 @@ and editing the captured copy refuses `controls-stale` at post/record.
 
 ### Evidence ledger
 
-Eight artifacts explain what a run knew and what it proved. Each row states
+Nine artifacts explain what a run knew and what it proved. Each row states
 the artifact, who writes it, and whether a verb gates on it.
 
-| Artifact                  | What it is                                                                                                                                                                                                                                                                                                                              | Who writes it                                                                                                                 | Gates?                                                                                                                                                                                                                                                                                                                                 |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `run.json`                | The typed per-run capture: resolved defaults, per-file resolutions, plan, spend and privacy views, trusted-base inventory hashes, base SHA, the `inputs_sha256` digest, appended check observations, and the `trigger` decision from `ready --filter`.                                                                                  | `fetch`/`fetch-local`; `post` appends observations, `ready --filter` records the trigger decision                             | Yes, except `config --preview` (see below). `post`, `record`, `triage`, `report`, `ready`, `config --explain`, and `verify --group` verify it; a run bundle deleted while its controls snapshot remains, or an edited captured input, refuses `controls-stale`; a bare bundle dir reads with a warning and no repository requirements. |
-| `validation-<group>.json` | The deep-validation receipt for one plan group: run, inputs digest, group, reviewed and execution heads, canonical root, command, exit, timeout and sandbox flags, status, and a redacted output tail.                                                                                                                                  | `verify --group <id> --command <cmd>`                                                                                         | Yes. `post` refuses a binding approval while any `depth: "deep"` group lacks a current receipt; `ready` reports the gap as `profile-work`.                                                                                                                                                                                             |
-| `filesource.json`         | Provenance for the PR file list: `source` (`paged` or `cli`), `cli_cap` (100), `provider_ceiling` (3000), `count`, and `truncated` or `paging_error`.                                                                                                                                                                                   | GitHub `fetch`, when the CLI list arrives at its 100-file cap                                                                 | No. It is an advisory coverage note: a paging failure warns and the run proceeds with the CLI's first 100 files.                                                                                                                                                                                                                       |
-| `full.raw.diff`           | The raw pre-exclusion diff, kept as the patch-identity input when a filtered diff would otherwise replace it. No shipped verb writes it today: `fetch` writes the host diff to `full.diff` and records the filtered hash in `run.json` without writing filtered bytes.                                                                  | Nothing today (a future exclusion pass)                                                                                       | Partly. When present it feeds the identity, and `identity.json`'s `raw_diff_sha256` must reproduce it; a present-but-unreadable file refuses instead of falling back to `full.diff`. Absence is normal.                                                                                                                                |
-| `sensitive.txt`           | The advisory manifest of secret-adjacent paths: filename, extension, and added-line content hits, one path and reason per line, behind a comment header.                                                                                                                                                                                | `fetch`/`fetch-local` (and every provider fetch)                                                                              | No. It is advisory, not a gate: flagged paths stay reviewable evidence, the file is removed when nothing is flagged, and its header asks reviewers to name the path, never the value.                                                                                                                                                  |
-| `incremental.diff.note`   | One `incrementalUnavailable: <host stderr head>` line explaining why the GitHub or GitLab compare read produced no delta.                                                                                                                                                                                                               | GitHub/GitLab `fetch --base-sha/--since` on a failed compare, or any other provider on the flag (naming the unsupported host) | No. No verb reads it; it explains the absent `incremental.diff` beside it while the full-diff review proceeds.                                                                                                                                                                                                                         |
-| `impact.json`             | The index hand-off: the answered tree and commit, the diff's `paths`, `coverage`, the row `limit`, and the measured `symbols`, `callers`, and `tests` lists with their truncation counts (null where unanswered), plus `sources: ["index:<tree>"]`. `stale` is true when the named index answers for another tree than the bundle head. | `fetch`/`fetch-local --index <ref                                                                                             | dir>`                                                                                                                                                                                                                                                                                                                                  | No. It is review context, not a gate: the same `## impact` section lands on `toc.txt`, capped at 8 KiB, and `--show-prompts` fences it with the rest of `toc.txt`. |
-| `plan.txt`                | The combined plan as the `--show-prompts` dump renders it, fenced under this label: one line per group with its stable id, profile, depth, `max_lenses`, checks, files, scopes, panel, panel source, effort, per-group cap, lens pack, and offered lenses.                                                                              | `fetch`/`fetch-local --show-prompts`                                                                                          | No. It is a rendered view for the agent; `run.json` holds the captured plan every gate reads.                                                                                                                                                                                                                                          |
+| Artifact                                  | What it is                                                                                                                                                                                                                                                                                                                              | Who writes it                                                                                                                 | Gates?                                                                                                                                                                                                                                                                                                                                 |
+| ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run.json`                                | The typed per-run capture: resolved defaults, per-file resolutions, plan, spend and privacy views, trusted-base inventory hashes, base SHA, the `inputs_sha256` digest, appended check observations, and the `trigger` decision from `ready --filter`.                                                                                  | `fetch`/`fetch-local`; `post` appends observations, `ready --filter` records the trigger decision                             | Yes, except `config --preview` (see below). `post`, `record`, `triage`, `report`, `ready`, `config --explain`, and `verify --group` verify it; a run bundle deleted while its controls snapshot remains, or an edited captured input, refuses `controls-stale`; a bare bundle dir reads with a warning and no repository requirements. |
+| `validation-<group>.json`                 | The deep-validation receipt for one plan group: run, inputs digest, group, reviewed and execution heads, canonical root, command, exit, timeout and sandbox flags, status, and a redacted output tail.                                                                                                                                  | `verify --group <id> --command <cmd>`                                                                                         | Yes. `post` refuses a binding approval while any `depth: "deep"` group lacks a current receipt; `ready` reports the gap as `profile-work`.                                                                                                                                                                                             |
+| `filesource.json`                         | Provenance for the PR file list: `source` (`paged` or `cli`), `cli_cap` (100), `provider_ceiling` (3000), `count`, and `truncated` or `paging_error`.                                                                                                                                                                                   | GitHub `fetch`, when the CLI list arrives at its 100-file cap                                                                 | No. It is an advisory coverage note: a paging failure warns and the run proceeds with the CLI's first 100 files.                                                                                                                                                                                                                       |
+| `full.raw.diff`                           | The raw pre-exclusion diff, kept as the patch-identity input when a filtered diff would otherwise replace it. No shipped verb writes it today: `fetch` writes the host diff to `full.diff` and records the filtered hash in `run.json` without writing filtered bytes.                                                                  | Nothing today (a future exclusion pass)                                                                                       | Partly. When present it feeds the identity, and `identity.json`'s `raw_diff_sha256` must reproduce it; a present-but-unreadable file refuses instead of falling back to `full.diff`. Absence is normal.                                                                                                                                |
+| `sensitive.txt`                           | The advisory manifest of secret-adjacent paths: filename, extension, and added-line content hits, one path and reason per line, behind a comment header.                                                                                                                                                                                | `fetch`/`fetch-local` (and every provider fetch)                                                                              | No. It is advisory, not a gate: flagged paths stay reviewable evidence, the file is removed when nothing is flagged, and its header asks reviewers to name the path, never the value.                                                                                                                                                  |
+| `incremental.diff.note`                   | One `incrementalUnavailable: <host stderr head>` line explaining why the GitHub or GitLab compare read produced no delta.                                                                                                                                                                                                               | GitHub/GitLab `fetch --base-sha/--since` on a failed compare, or any other provider on the flag (naming the unsupported host) | No. No verb reads it; it explains the absent `incremental.diff` beside it while the full-diff review proceeds.                                                                                                                                                                                                                         |
+| `impact.json`                             | The index hand-off: the answered tree and commit, the diff's `paths`, `coverage`, the row `limit`, and the measured `symbols`, `callers`, and `tests` lists with their truncation counts (null where unanswered), plus `sources: ["index:<tree>"]`. `stale` is true when the named index answers for another tree than the bundle head. | `fetch`/`fetch-local --index <ref                                                                                             | dir>`                                                                                                                                                                                                                                                                                                                                  | No. It is review context, not a gate: the same `## impact` section lands on `toc.txt`, capped at 8 KiB, and `--show-prompts` fences it with the rest of `toc.txt`. |
+| `plan.txt`                                | The combined plan as the `--show-prompts` dump renders it, fenced under this label: one line per group with its stable id, profile, depth, `max_lenses`, checks, files, scopes, panel, panel source, effort, per-group cap, lens pack, and offered lenses.                                                                              | `fetch`/`fetch-local --show-prompts`                                                                                          | No. It is a rendered view for the agent; `run.json` holds the captured plan every gate reads.                                                                                                                                                                                                                                          |
+| `context.json`, `context.txt`, `context/` | Explicitly handed reference context (`--context`) and specification files (`--spec`). Each `context.json` entry records `source`, `role` (`"context"` or `"spec"`), `retrieved_at`, `sha256`, and `trust: "untrusted"`; `context.txt` fences the same bytes; `context/` keeps raw copies.                                               | `fetch`/`fetch-local` with `--context` or `--spec`                                                                            | Spec entries (`role: "spec"`) cap at 60 enumerated checklist items at fetch time (refusing `spec-too-large` with no bundle written); plain `role: "context"` entries stay reference material.                                                                                                                                          |
 
 `config --preview` is the exception: when `run.json` is absent it can fall back
 to its file list, though it still verifies `controls.json` and may lose
@@ -882,10 +938,11 @@ the behavior stays off until a layer above turns it on.
 | gate                  | --live                         | auto             |
 | post                  | --bind                         | off              |
 | post                  | defaults.post_min_severity     | unset            |
+| record                | defaults.spec_coverage_min     | 80               |
 | record, triage, learn | defaults.kb_policy.max_fp_rate | 0.5              |
 | record, triage, learn | defaults.kb_policy.min_judged  | 5                |
 | report                | defaults.display_min_severity  | unset            |
-| run                   | --rounds                       | 1                |
+| run                   | --rounds                       | 2                |
 | run                   | --timeout                      | 300              |
 
 <!-- defaults-at-a-glance:end -->
@@ -900,9 +957,12 @@ posture and never gate alone.
 `.verdict/config.json` is the only repository configuration file:
 one strict document (schema `schemas/config.schema.json`) for
 defaults (`panel`, `budget_usd`, `max_bytes`, `chunk`, `kb_policy`, `effort`,
-the two severity floors), the local `index` caps (`files`, `file_bytes`,
+the two severity floors, and `spec_coverage_min`), the local `index` caps (`files`, `file_bytes`,
 `tree_bytes`, `shards_bytes`, `keep_trees`, `refs_per_file`), blocking
-clauses, path scopes, named profiles, and the bind requirement. `fetch`/`fetch-local` read it from the base commit (or
+clauses, path scopes, named profiles, and the bind requirement.
+`defaults.spec_coverage_min` is an integer percent from 1 to 100 (built-in
+default 80), global-only like `kb_policy` — set it in root `defaults` or
+personal `review` settings, never inside a scope. `fetch`/`fetch-local` read it from the base commit (or
 the reviewed worktree for local runs) through the same trusted read; unknown
 fields, misplaced nulls, credential keys, and unsatisfiable clauses refuse
 typed (`bad-config`, `bad-config-credentials`, `bad-requirement`, `bad-scope`)
@@ -1568,8 +1628,13 @@ same record `report --completeness` reads), and `--live auto|strict|skip`
 asked for it, and `--live` alone is a usage error rather than a silent pass).
 A dimension is `pass`, `fail`, `unknown` (unreadable and failing closed), or
 `skip` (not requested, or unreachable under `auto`); only `fail` and `unknown`
-fail the gate, so a skip never turns a green run red. Exit codes mirror
-`report --check`: 0 pass, 1 fail-or-unknown, 2 usage, 3 tool error.
+fail the gate, so a skip never turns a green run red. The `evidence` dimension
+rides every gate mode, whichever dimension the operator asked for: `pass`
+needs the current head's evidence receipt with `insufficient: false`, an
+insufficient receipt fails, and a missing, stale, or unreadable one reads
+`unknown` — so no gate passes without a receipt for the head it certifies.
+Exit codes mirror `report --check`: 0 pass, 1 fail-or-unknown, 2 usage, 3 tool
+error.
 
 `--coverage require|warn` sets the posture of the coverage dimension, which
 runs on every gate and defaults to `require`. `require` reads the stored
@@ -1606,7 +1671,8 @@ threads, then re-run gate
 ```
 
 `--json` publishes the same verdict as `data.passed` plus `data.dimensions[]`
-in `findings, head, coverage, live_threads, compliance` order (`id`, `status`,
+in `findings, head, coverage, live_threads, compliance, risk, evidence` order
+(only the dimensions a run composes; `id`, `status`,
 `detail`, `count` —
 null where a dimension has no tally). A failed gate is a verdict, not a
 refusal: the envelope keeps `error: null` and the exit code carries the
@@ -1836,10 +1902,23 @@ writes `findings.dryrun.json`, and posts nothing.
 
 Approval is derived by verdict, not asked for by the agent. With no
 repository policy, `important_default` is the named threshold: any open,
-visible finding whose quote standing is not `unverified` at `important` or
-above withholds approval. `block_clauses` and `report --check` refine that
-default when configured, and a violated `spec_checks[]` entry also withholds
-approval. The decision is recorded once, in `record.json` and `data.approval`,
+visible finding whose quote standing is `verified` at `important` or above
+withholds approval. A finding the evidence pass did not verify — `unverified`, a
+stored `unchecked`, or no `verification` record at all — never gates,
+and a gating finding that carries no verified quote leaves an insufficient
+decision instead of a clean one, so a review is never approved on a quote
+nothing checked. `block_clauses` and `report --check` refine that default when
+configured, and a violated `spec_checks[]` entry also withholds approval. The
+approval decision reads the full stored finding set, so a block clause naming
+an unverified finding is refused rather than dropped; the `compliance` gate
+dimension keeps reading the verified view, where such a finding never blocks.
+The decision also needs the evidence receipt for the head it decides on: a
+missing, stale, or unreadable receipt is `review-insufficient`, never an
+approval, so a bundle that never recorded evidence cannot read as green. A
+binding approval the decision withheld refuses `review-insufficient` before any
+host call, and `--force` cannot waive it: force overrides a count of findings,
+never the absence of evidence. The decision is recorded once,
+in `record.json` and `data.approval`,
 with the `review_sha256`, `diff_sha256` and head it was decided on; `post` reads
 that stored decision and publishes it even with `--approve=false`, and a
 `record.json` whose review, diff, or head moved since it was written refuses
@@ -2139,8 +2218,8 @@ the request bypasses the cache. Refusals are never cached.
 
 `fetch` ends with a bundle and a prompt nobody ran. `run` closes that gap
 without becoming an orchestrator: it launches **your** agent against an
-existing bundle, one process per round and one shot by default, and hands the
-result back to the verbs that already exist.
+existing bundle, one process per round and two rounds by default, and hands
+the result back to the verbs that already exist.
 
 ```bash
 verdict fetch-local acme/app work              # writes .verdict/state/local-work/
@@ -2150,16 +2229,18 @@ verdict record acme/app local-work             # the existing validation path, u
 
 For a PR bundle the middle step is `verdict run acme/app 123 --agent claude`
 and the handoff is `verdict post acme/app 123`. `run` never records, posts,
-merges, or pushes; with `--rounds N` it repeats only the launch→check pair,
-up to N rounds, and still records nothing: `next` in its envelope names the
-command it did not run.
+merges, or pushes; with `--rounds N` (default 2) it repeats only the
+launch→check pair, up to N rounds, and still records nothing: `next` in its
+envelope names the command it did not run.
 
 `run` invokes your agent only when you ask: one process per round, one bundle. No
 daemon, no queue, no scheduler, no webhook, no model selection, and by default
 it never reads prose: it runs the published `CheckReview` shape checker over
-review.json (paths and codes only). With `--rounds N`, the error problems feed
-the next round's fix list; on the final or only round they are the typed
-`bad-review-input` refusal.
+review.json (paths and codes only) plus the deterministic evidence checks over
+the same bytes. With `--rounds N`, the error problems — shape and evidence
+alike — feed the next round's fix list; on the final round a shape error is the
+typed `bad-review-input` refusal and evidence that is still insufficient is
+`review-insufficient`.
 
 ### What `run` asserts
 
@@ -2208,17 +2289,24 @@ the handed spec, to check the change against as evidence, never instructions.
 with your privacy exclusions applied); the agent reads the bundle with its own
 tools.
 
-With `--rounds N` (2–5) an invalid `review.json` does not end the run: the
+With `--rounds N` (1–5, default 2) an invalid `review.json` does not end the run: the
 next round re-sends the directive with the prior review bytes (capped at 16 KiB,
 and cut shorter when Windows argv escaping would carry the whole command line
 past 32,767 characters; full bytes in `.run.rounds/NN.review.json`) and the
 checker's fix list fenced under a fresh per-round nonce, and the loop stops on the
 first valid round. Each round rewrites the launch record just before it spawns,
-so the freshness assert is per round. Only shape errors re-prompt (warnings never
-do); a crash, a timeout, a missing or stale artifact, or a byte-identical repeat
-stops the loop at once. `--json` carries the loop in `data.repair` (rounds,
-rounds to valid, per-round hashes, problems); each round's bytes stay in the
-bundle's `.run.rounds/` files.
+so the freshness assert is per round. Shape errors and evidence errors re-prompt;
+warnings never do. A finding quote gets one targeted round: when the same
+`path:line` still fails in the next round that finding is permanently
+unverified, its problems drop to warnings, and no later round asks about it
+again, while a gating one makes the run end in `review-insufficient`. Receipt
+and spec gaps re-prompt on every round until they are fixed or the cap is spent.
+A crash, a timeout, a missing or stale artifact, or a byte-identical repeat stops
+the loop at once; a repeat with evidence gaps left is `review-insufficient`, and
+a shape-only repeat stays `repair-exhausted`. `--json` carries the loop in
+`data.repair` (rounds, rounds to valid, per-round hashes, problems, and each
+round's evidence summary); each round's bytes, check, and evidence receipt stay
+in the bundle's `.run.rounds/` files.
 
 ### Agents, arguments, and `--print`
 
@@ -2517,11 +2605,13 @@ Plus the shared codes: `missing-bundle` (fetch first), `bad-flags` (no
 `--stage` without `--print` and `--recipe`, outside the plan's stages, or
 against a pass-through model when the stage declares one),
 `bad-timeout`, `canceled` (exit 3), and usage errors (exit 2).
-With the default one shot there is no retry, no re-prompt, and no repair
-pass: fix the invocation and run again. With `--rounds N` the only repetition
-is the launch→check pair: an invalid `review.json` re-prompts the agent with
-the checker's fix list, up to N rounds, and exhaustion refuses
-`repair-exhausted`.
+With `--rounds 1` there is no retry, no re-prompt, and no repair pass: fix the
+invocation and run again. With `--rounds N` (the default is 2) the only
+repetition is the launch→check pair: an invalid `review.json` re-prompts the
+agent with the checker's fix list, up to N rounds; a shape problem left after
+the rounds refuses `repair-exhausted` (a byte-identical repeat) or
+`bad-review-input` (a spent cap), and evidence left insufficient refuses
+`review-insufficient`.
 
 The launch is recorded in `.verdict/state/<bundle>/launcher.json`: agent name,
 resolved binary path, the argv shape (directive replaced by `<prompt>`,
@@ -2532,8 +2622,12 @@ output tail. Each round's full combined output stays in
 `.verdict/state/<bundle>/.run.rounds/NN.out` (crash rounds too) and the last
 round's output also stays in `.verdict/state/<bundle>/.run.out`. Both are evidence, not gates. With
 `--rounds N` the record also carries `repair` (rounds, rounds to valid, final
-valid) and top-level `attempts[]` (per-round prompt and review hashes, check verdict, problems),
-and each round's bytes land in `.verdict/state/<bundle>/.run.rounds/`.
+valid) and top-level `attempts[]` (per-round prompt and review hashes, check
+verdict, problems, and the evidence summary: quote, receipt and spec gaps, the
+error count, the quotes the round settled as permanently unverified, and whether
+the receipt withholds approval), and each round's bytes land in
+`.verdict/state/<bundle>/.run.rounds/` as `NN.review.json`, `NN.check.json`,
+`NN.evidence.json`, and `NN.out`.
 
 ### Network
 
@@ -4611,7 +4705,7 @@ Budgets bound the spend, and each one is a real refusal path, not a warning:
   cross the ceiling; the stop reason is `budget-usd`. A review that reported no
   price contributes no projection sample, so unknown spend is never projected
   as zero.
-- `--timeout <secs>` (default 300) and `--rounds <n>` (default 1) are `run`'s
+- `--timeout <secs>` (default 300) and `--rounds <n>` (default 2) are `run`'s
   watchdog and repair-round flags, applied to each review. `--rounds` is
   checked here (1–5) before any worktree or bundle exists, so an unsupported
   count refuses `bad-flags` without spending anything.
@@ -4748,10 +4842,11 @@ line per signal, and the `not citable — SZZ-derived` line.
 converted recordings under `bench/quality/<fixture>/recordings/` against the known defects in
 `bench/quality/fixtures.json`. It is a pure read: no agent launch, no host call,
 no SZZ mine, and no corpus store. `--fixture <id>` limits the report to one
-fixture while calibration still checks all seven shipped runs; `--recordings
-<dir>` is an opt-in root of live recordings to score, resolved against the
-checkout when relative. It never replaces the shipped calibration set. The
-data object is also written to
+fixture while calibration still checks all eight shipped runs (the seven
+historical recordings plus the synthetic quote probe); `--recordings <dir>` is an
+opt-in root of live recordings to score, resolved against the checkout when
+relative. It never replaces the shipped calibration set. The data object is also
+written to
 `.verdict/backtest/fixtures/report.json`; the same shape is published as
 [`schemas/fixtures.schema.json`](../schemas/fixtures.schema.json).
 
@@ -4763,22 +4858,30 @@ recordings, plus `union_hits`), `bonus_union`, `false_green`, `hallucination`,
 and `review_insufficient`. Bonus defects never enter recall. An infra-error
 recording is excluded from every rate denominator; a `gate_passed: null`
 recording is an unknown gate outcome, not a pass. Hallucination is
-`mismatched / checked` over gating findings with an explicit `matched` or
-`mismatch` verifier result; `no-quote`, `unsupported` and unknown results are
-counted as `unverifiable`, never as a clean check. Its rate is `null` when
-checked is zero. S6's stub therefore reports 5 and 1 gating findings with
-0 checked and all of them unverifiable. `review_insufficient` counts only the
+`mismatched / checked` over gating findings verified against each fixture's
+sha256-pinned `full.diff` by `PinnedQuoteVerifier`
+(`internal/evidence.MatchQuote`). Only explicit `matched` and `mismatch` results
+enter `checked`; `no-quote`, `unsupported` and unknown results are counted as
+`unverifiable`, never as a clean check. `status` is `measured` whenever the real
+verifier ran and `stubbed` only when a stand-in answered, and `rate` is `null`
+when `checked` is zero: the seven pre-S4 historical recordings carry no quote, so
+`fx1` and `fx2` stay `null` with 5 and 1 unverifiable gating findings, while `fx4`
+ships a deterministic synthetic quote probe — one matched and one fabricated
+quote — that measures `rate: 0.5`. `review_insufficient` counts only the
 literal `review-insufficient` refusal. Rates are rounded to four decimals and
 a zero denominator renders `null`.
 
-The seven shipped recordings are the immutable calibration. `calibration.rows`
+The eight shipped recordings are the immutable calibration. `calibration.rows`
 and `calibration.reproduced` compare each scorer hit set with the hand score
-transcribed from the original runs. Calibration always reads
+transcribed from the original runs; the synthetic probe's hand score is empty,
+because it exists to pin the verifier rather than a model. Calibration always reads
 `bench/quality/<fixture>/recordings/`, even when `--recordings` supplies live
 runs for recall, false greens and hallucination; CI asserts
 `reproduced == true`, not the rates. The conversion to the fixture recording
-shape was a one-time authoring step: each meta sidecar pins the source bundle and its sha256, and no product
-code reads the older review format. Later recordings use the same fixture shape
+shape was a one-time authoring step: each meta sidecar pins the source bundle
+and its sha256 (the synthetic probe was never converted from a bundle, so it
+carries the all-zero digest and says so in `note`), and no product code reads the
+older review format. Later recordings use the same fixture shape
 (or the findings store when that seam lands). The
 fixture corpus format and provenance are documented in
 [`docs/benchmark.md`](benchmark.md#known-defect-fixtures-backtest-fixtures).
@@ -5009,27 +5112,37 @@ review is posted to GitHub before the merge gate runs.
 
 ### Explicit context
 
-`fetch` and `fetch-local` accept repeatable `--context <file|dir>` operands.
-Only the named files or directory trees are read — there is no ambient discovery
-or connector access. Markdown (`.md`, `.markdown`), JSON and `.txt` files are
-accepted, up to 64 files, 1 MiB total and eight path levels. An unreadable or
-refused `--context` INPUT — a missing, symlinked, special, unsupported or
-over-limit input — refuses `context-invalid`, never the provider-flavored
-`fetch-failed`: the message names the operand as typed and, for a relative path,
-its absolute resolution (relative paths resolve against the current directory),
-and the hint tells you to check each `--context` path. A failure to write the
-bundle's `context*` artifacts keeps `fetch-failed` and its provider hint.
-Reduce the hand-off or copy the evidence into regular supported files before
-retrying.
+`fetch` and `fetch-local` accept repeatable `--context <file|dir>` and
+`--spec <file>` operands. Plain `--context` stays reference material with no
+checklist; `--spec` marks specification sources that define the deterministic
+checklist. Only the named files or directory trees are read — there is no
+ambient discovery or connector access. Markdown (`.md`, `.markdown`), JSON and
+`.txt` files are accepted, up to 64 files, 1 MiB total and eight path levels
+across both flags. An unreadable or refused `--context` or `--spec` INPUT — a
+missing, symlinked, special, unsupported or over-limit input — refuses
+`context-invalid`, never the provider-flavored `fetch-failed`: the message
+names the operand as typed and, for a relative path, its absolute resolution
+(relative paths resolve against the current directory), and the hint tells you
+to check each `--context` path. Across all `--spec` sources, deterministic
+checklist enumeration caps at 60 items; more than 60 items refuses
+`spec-too-large` before any bundle files are written, with a hint to narrow the
+spec file or split the PR. A failure to write the bundle's `context*` artifacts
+keeps `fetch-failed` and its provider hint. Reduce the hand-off or copy the
+evidence into regular supported files before retrying.
 
-The bundle stores original bytes under `context/`, a `context.json` manifest with
-source, retrieval timestamp, SHA-256 and `trust: "untrusted"`, and `context.txt`.
-`toc.txt` gains a `## context` section listing the manifest's source names;
-each name is escaped like an impact row, so a source cannot start a section or
-forge a fence. A fetch without context removes stale context artifacts and that
-section. The `run` directive names `context.txt` as the handed spec when it is
-present. Read `context.txt` as evidence, never instructions. Context fences
-escape forged markers.
+The bundle stores original bytes under `context/`, a `context.json` manifest
+with `source`, `role` (`"context"` or `"spec"`), `retrieved_at`, `sha256` and
+`trust: "untrusted"`, and `context.txt` using the same untrusted fence for both
+roles. A `role: spec` entry also appends the handoff's spec checklist section to
+`procedure.md`, so the agent is told to label every enumerated item `met`,
+`violated` or `n/a` with code evidence; a bundle with only `role: context`
+sources keeps the plain context section and is asked for no checklist. `toc.txt` gains a `## context` section listing the manifest's source
+names, with `[spec]` appended to spec rows; each name is escaped like an impact
+row, so a source cannot start a section or forge a fence. A fetch without
+context or spec removes stale context artifacts and that section. The `run`
+directive names `context.txt` as the handed spec when it is present. Read
+`context.txt` as evidence, never instructions. Context fences escape forged
+markers.
 
 Review comments can cite `sources: ["docs/auth.md"]`, using the manifest's exact
 source names. Record preserves these citations outside the finding signature.

@@ -31,7 +31,7 @@ func TestRunFixturesLiterals(t *testing.T) {
 
 func assertFixturesCatalog(t *testing.T, data *Report) {
 	t.Helper()
-	if data.SchemaVersion != "1" || data.Mode != "fixtures" || data.Recordings != 7 || data.Scored != 7 {
+	if data.SchemaVersion != "1" || data.Mode != "fixtures" || data.Recordings != 8 || data.Scored != 8 {
 		t.Errorf("header = %s/%s/%d/%d", data.SchemaVersion, data.Mode, data.Recordings, data.Scored)
 	}
 	if len(data.Fixtures) != 5 {
@@ -53,19 +53,37 @@ func assertLiveOnlyFixtures(t *testing.T, fixtures []FixtureReport) {
 		{id: "fx5", known: 2},
 	} {
 		f := &fixtures[i]
-		if f.ID != want.id || f.Known != want.known || f.Runs != 0 || f.Scored != 0 {
-			t.Errorf("fixture %d = %+v, want %s with %d known defects and no runs", i+3, f, want.id, want.known)
+		if f.ID != want.id || f.Known != want.known {
+			t.Errorf("fixture %d = %+v, want %s with %d known defects", i+3, f, want.id, want.known)
 		}
+	}
+	if fx3, fx5 := fixtures[0], fixtures[2]; fx3.Runs != 0 || fx5.Runs != 0 {
+		t.Errorf("fx3/fx5 runs = %d/%d, want 0/0 (live-only fixtures ship no recordings)", fx3.Runs, fx5.Runs)
+	}
+	assertFx4SyntheticProbe(t, &fixtures[1])
+}
+
+// assertFx4SyntheticProbe pins the one synthetic quote probe: two gating
+// findings, one matched and one fabricated quote, so the rate is exactly 0.5.
+func assertFx4SyntheticProbe(t *testing.T, fx4 *FixtureReport) {
+	t.Helper()
+	if fx4.Runs != 1 || fx4.Scored != 1 {
+		t.Errorf("fx4 = %d runs/%d scored, want the one synthetic probe", fx4.Runs, fx4.Scored)
+	}
+	h := fx4.Hallucination
+	if h.Status != "measured" || h.GatingFindings != 2 || h.Checked != 2 || h.Unverifiable != 0 ||
+		h.Rate == nil || *h.Rate != 0.5 {
+		t.Errorf("fx4 hallucination = %+v, want measured 2/2/0 at rate 0.5", h)
 	}
 }
 
 func assertCalibrationAndDiagnostics(t *testing.T, data *Report) {
 	t.Helper()
-	if data.Calibration.Rows != 7 || !data.Calibration.Reproduced || len(data.Calibration.Mismatches) != 0 {
+	if data.Calibration.Rows != 8 || !data.Calibration.Reproduced || len(data.Calibration.Mismatches) != 0 {
 		t.Errorf("calibration = %+v", data.Calibration)
 	}
-	if len(data.Diagnostics) != 7 {
-		t.Errorf("diagnostics = %d, want 7", len(data.Diagnostics))
+	if len(data.Diagnostics) != 8 {
+		t.Errorf("diagnostics = %d, want 8", len(data.Diagnostics))
 	}
 }
 
@@ -111,7 +129,7 @@ func assertFx1Bonuses(t *testing.T, fx1 *FixtureReport) {
 	if fx1.BonusUnion.Count != 2 || joinLiteral(fx1.BonusUnion.Hits) != "B1,B2" {
 		t.Errorf("fx1 bonus_union = %+v", fx1.BonusUnion)
 	}
-	if fx1.Hallucination.Rate != nil || fx1.Hallucination.Status != "stubbed" ||
+	if fx1.Hallucination.Rate != nil || fx1.Hallucination.Status != "measured" ||
 		fx1.Hallucination.GatingFindings != 5 || fx1.Hallucination.Checked != 0 ||
 		fx1.Hallucination.Unverifiable != 5 {
 		t.Errorf("fx1 hallucination = %+v", fx1.Hallucination)
@@ -378,8 +396,8 @@ func TestFixtureFilterKeepsCalibration(t *testing.T) {
 	if len(resp.Data.Fixtures) != 1 || resp.Data.Fixtures[0].ID != "fx2" {
 		t.Errorf("fixtures = %+v, want just fx2", resp.Data.Fixtures)
 	}
-	if resp.Data.Calibration.Rows != 7 || !resp.Data.Calibration.Reproduced {
-		t.Errorf("calibration = %+v, want 7 rows still reproduced", resp.Data.Calibration)
+	if resp.Data.Calibration.Rows != 8 || !resp.Data.Calibration.Reproduced {
+		t.Errorf("calibration = %+v, want 8 rows still reproduced", resp.Data.Calibration)
 	}
 }
 
@@ -448,10 +466,10 @@ func TestRecordingsOverrideKeepsShippedCalibration(t *testing.T) {
 	if data.Recordings != 1 || data.Scored != 1 {
 		t.Errorf("header = %d recordings/%d scored, want 1/1", data.Recordings, data.Scored)
 	}
-	if data.Calibration.Rows != 7 || !data.Calibration.Reproduced {
-		t.Errorf("calibration = %+v, want 7 reproduced rows", data.Calibration)
+	if data.Calibration.Rows != 8 || !data.Calibration.Reproduced {
+		t.Errorf("calibration = %+v, want 8 reproduced rows", data.Calibration)
 	}
-	if !strings.Contains(resp.Human, "calibration: 7/7 rows reproduced") {
+	if !strings.Contains(resp.Human, "calibration: 8/8 rows reproduced") {
 		t.Errorf("human calibration line = %q", resp.Human)
 	}
 	if data.Fixtures[1].Runs != 0 {
@@ -482,8 +500,9 @@ func TestMetaTrailingDataRefused(t *testing.T) {
 }
 
 // cancelAfterErrCalls is deterministic: RunFixtures consults Err once at
-// entry and once per recording. One override recording plus the seven shipped
-// calibration recordings makes the tenth check the one just before writeReport.
+// entry and once per recording. One override recording plus the eight shipped
+// calibration recordings makes the eleventh check the one just before
+// writeReport.
 type cancelAfterErrCalls struct {
 	remaining int
 	calls     int
@@ -515,7 +534,7 @@ func TestCanceledWithoutGatingFindingDoesNotWrite(t *testing.T) {
 	}
 	path := filepath.Join(root, ".verdict", "backtest", fixturesDir, reportName)
 	writeTestFile(t, path, "sentinel\n")
-	ctx := &cancelAfterErrCalls{remaining: 9}
+	ctx := &cancelAfterErrCalls{remaining: 10}
 	resp, ref := RunFixtures(ctx, &Request{RepoRoot: root, RecordingsRoot: recordings})
 	if ref == nil || ref.Code != "canceled" {
 		t.Errorf("refusal = %+v, want canceled", ref)
@@ -624,20 +643,29 @@ func TestNoQuoteIsUnverifiableAndGetsRealHead(t *testing.T) {
 	if h.Checked != 0 || h.Unverifiable != 5 || h.Rate != nil {
 		t.Errorf("fx1 hallucination = %+v, want 0 checked / 5 unverifiable / n/a", h)
 	}
+	if h.Status != "stubbed" {
+		t.Errorf("fx1 hallucination status = %q, want stubbed for an injected double", h.Status)
+	}
 	if !strings.Contains(resp.Human, "0 checked, 5 unverifiable") {
 		t.Errorf("human hallucination line = %q", resp.Human)
 	}
-	assertFixtureHead(t, heads)
+	assertPinnedDiffHead(t, heads)
 }
 
-func assertFixtureHead(t *testing.T, heads [][]byte) {
+// assertFixtureHead pins the bytes the verifier is handed: the fixture's
+// pinned full.diff, not the context documents it was scored from.
+func assertPinnedDiffHead(t *testing.T, heads [][]byte) {
 	t.Helper()
 	if len(heads) == 0 || len(heads[0]) == 0 {
 		t.Fatalf("verifier got %d heads, first length %d; want non-empty fixture head", len(heads), len(heads[0]))
 	}
-	if !bytes.Contains(heads[0], []byte("# STA-440 part 2 spec")) ||
-		!bytes.Contains(heads[0], []byte("# STA-440 Research Round 2")) {
-		t.Errorf("head does not carry both pinned fx1 context files: %.80q", heads[0])
+	want := "diff --git a/.changeset/sta-440-agents-2.md b/.changeset/sta-440-agents-2.md\n" +
+		"new file mode 100644\n"
+	if !bytes.HasPrefix(heads[0], []byte(want)) {
+		t.Errorf("head does not start with the pinned fx1 full.diff: %.120q", heads[0])
+	}
+	if !bytes.Contains(heads[0], []byte("+++ b/internal/core/run/agents.go")) {
+		t.Errorf("head does not carry fx1's changed code paths: %.120q", heads[0])
 	}
 }
 
@@ -658,8 +686,84 @@ func TestOnlyExplicitMismatchCountsInRate(t *testing.T) {
 	if h.Checked != 5 || h.Unverifiable != 0 || h.Rate == nil || *h.Rate != 0.2 {
 		t.Errorf("fx1 hallucination = %+v, want 5 checked / 0 unverifiable / 0.2", h)
 	}
-	if h.Status != "measured" || rateText(h.Rate) != "0.2000" {
-		t.Errorf("fx1 hallucination status/rate = %q/%s", h.Status, rateText(h.Rate))
+	if h.Status != "stubbed" || rateText(h.Rate) != "0.2000" {
+		t.Errorf("fx1 hallucination status/rate = %q/%s, want an injected double reported stubbed",
+			h.Status, rateText(h.Rate))
+	}
+}
+
+// TestPinnedVerifierPointerMeasures proves R12: the pinned verifier measures by
+// pointer exactly as it does by value, because both answer from the fixture's
+// pinned bytes rather than from a stand-in.
+func TestPinnedVerifierPointerMeasures(t *testing.T) {
+	byValue, ref := RunFixtures(context.Background(), &Request{
+		RepoRoot: qualityRepoRoot(t), FixtureID: "fx4", Verifier: PinnedQuoteVerifier{},
+	})
+	if ref != nil {
+		t.Fatalf("value run: %s: %s", ref.Code, ref.Message)
+	}
+	byPointer, ref := RunFixtures(context.Background(), &Request{
+		RepoRoot: qualityRepoRoot(t), FixtureID: "fx4", Verifier: &PinnedQuoteVerifier{},
+	})
+	if ref != nil {
+		t.Fatalf("pointer run: %s: %s", ref.Code, ref.Message)
+	}
+	want, got := byValue.Data.Fixtures[0].Hallucination, byPointer.Data.Fixtures[0].Hallucination
+	if want.Status != "measured" || got.Status != "measured" {
+		t.Fatalf("status = %q by value, %q by pointer, want measured for both", want.Status, got.Status)
+	}
+	if rateText(want.Rate) != "0.5000" || rateText(got.Rate) != "0.5000" {
+		t.Fatalf("rate = %s by value, %s by pointer, want 0.5000 for both",
+			rateText(want.Rate), rateText(got.Rate))
+	}
+}
+
+func TestSyntheticQuoteProbeMeasuresHalf(t *testing.T) {
+	resp, ref := RunFixtures(context.Background(), &Request{RepoRoot: qualityRepoRoot(t), FixtureID: "fx4"})
+	if ref != nil {
+		t.Fatalf("run: %s: %s", ref.Code, ref.Message)
+	}
+	h := resp.Data.Fixtures[0].Hallucination
+	if h.Rate == nil || *h.Rate != 0.5 {
+		t.Fatalf("fx4 hallucination rate = %s, want 0.5 (one matched, one fabricated quote)", rateText(h.Rate))
+	}
+	want := "  hallucination: 0.5000 (measured; 2 gating findings, 2 checked, 0 unverifiable)  review-insufficient: 0"
+	if !strings.Contains(resp.Human, want) {
+		t.Errorf("human hallucination line = %q, want %q", resp.Human, want)
+	}
+}
+
+// TestSyntheticProbeQuotesAcrossTheVerifier pins which of the probe's two
+// quotes verifies, so a matcher that answers matched for both cannot leave the
+// rate at 0.5 and pass unnoticed.
+func TestSyntheticProbeQuotesAcrossTheVerifier(t *testing.T) {
+	root := qualityRepoRoot(t)
+	catalog, ref := LoadCatalog(filepath.Join(root, "bench", "quality", catalogName))
+	if ref != nil {
+		t.Fatalf("load catalog: %s: %s", ref.Code, ref.Message)
+	}
+	heads, ref := loadFixtureHeads(root, catalog)
+	if ref != nil {
+		t.Fatalf("load heads: %s: %s", ref.Code, ref.Message)
+	}
+	recording, ref := LoadFixtureRecording(recordingPath(t, "fx4", "synthetic-quotes"))
+	if ref != nil {
+		t.Fatalf("load recording: %s: %s", ref.Code, ref.Message)
+	}
+	findings := canonicalFindings(recording)
+	if len(findings) != 2 {
+		t.Fatalf("probe findings = %d, want 2", len(findings))
+	}
+	want := []QuoteResult{
+		{Status: "matched"},
+		{Status: "mismatch", Reason: "text-differs"},
+	}
+	for i := range want {
+		got := PinnedQuoteVerifier{}.Verify(context.Background(), &findings[i], heads["fx4"])
+		if got != want[i] {
+			t.Errorf("probe finding %d (%s:%d) = %+v, want %+v",
+				i, findings[i].Path, findings[i].Line, got, want[i])
+		}
 	}
 }
 
@@ -676,6 +780,61 @@ func TestContextPinMismatchRefusesBeforeScoring(t *testing.T) {
 	}
 	if !strings.Contains(ref.Message, "context byte count") || !strings.Contains(ref.Message, "fx1") {
 		t.Errorf("refusal message = %q", ref.Message)
+	}
+}
+
+// TestDiffPinMismatchRefusesBeforeScoring proves a fixture's pinned full.diff
+// is checked exactly like its context pins: the byte count first, then the
+// digest, so edited or replaced diff bytes never reach the verifier.
+func TestDiffPinMismatchRefusesBeforeScoring(t *testing.T) {
+	cases := []struct {
+		name   string
+		mutate func([]byte) []byte
+		want   string
+	}{
+		{
+			name:   "one extra byte",
+			mutate: func(raw []byte) []byte { return append(raw, '\n') },
+			want:   "diff byte count for fixture fx1 is ",
+		},
+		{
+			name: "one changed byte",
+			mutate: func(raw []byte) []byte {
+				raw[0] = 'D'
+				return raw
+			},
+			want: "diff sha256 for fixture fx1 is ",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			root := qualityRepoRoot(t)
+			rewriteFixtureDiff(t, root, tc.mutate)
+			_, ref := RunFixtures(context.Background(), &Request{RepoRoot: root})
+			assertDiffPinRefusal(t, ref, tc.want)
+		})
+	}
+}
+
+func rewriteFixtureDiff(t *testing.T, root string, mutate func([]byte) []byte) {
+	t.Helper()
+	path := filepath.Join(root, "bench", "quality", "context", "fx1", "full.diff")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, mutate(raw), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertDiffPinRefusal(t *testing.T, ref *core.RefusalError, want string) {
+	t.Helper()
+	if ref == nil || ref.Code != "fixtures-invalid" {
+		t.Fatalf("refusal = %+v, want fixtures-invalid", ref)
+	}
+	if !strings.Contains(ref.Message, want) {
+		t.Errorf("refusal message = %q, want %q", ref.Message, want)
 	}
 }
 

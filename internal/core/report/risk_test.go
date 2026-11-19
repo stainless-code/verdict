@@ -85,8 +85,11 @@ func TestReportRiskMaxRiskPassOffline(t *testing.T) {
 	if resp.GateFailed || resp.Data.Gate == nil || !resp.Data.Gate.Passed {
 		t.Fatalf("expected passing gate, got failed=%v gate=%+v", resp.GateFailed, resp.Data.Gate)
 	}
-	if len(resp.Data.Gate.Dimensions) != 1 || resp.Data.Gate.Dimensions[0].ID != "risk" {
-		t.Fatalf("expected offline single risk dimension, got %+v", resp.Data.Gate.Dimensions)
+	// Every gate mode carries the evidence dimension, so a --max-risk run
+	// reports risk beside the receipt that backs the head.
+	dims := resp.Data.Gate.Dimensions
+	if len(dims) != 2 || dims[0].ID != "risk" || dims[1].ID != "evidence" {
+		t.Fatalf("expected risk and evidence dimensions, got %+v", dims)
 	}
 }
 

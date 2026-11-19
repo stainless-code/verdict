@@ -2,6 +2,8 @@ exit: 1
 --- stdout ---
 
 --- stderr ---
+warn: evidence: finding 1 at c1.txt:2 cannot be checked from the bundle (ambiguous-path)
+warn: evidence: hunk c1.txt	NEW	1	2 has no matched receipt
 warn: no fetch-time hunk snapshot (.verdict/state/local-ch/hunks.tsv missing) — rebuilding from full.diff, validation is best-effort (re-fetch to pin the snapshot)
 error: refusing record: chunk manifest .verdict/state/local-ch/chunks/manifest.json lists no chunks — re-fetch with 'verdict fetch-local acme/app ch --chunk -- <paths>' to restore the pinned snapshots, then re-run
 try: re-fetch the bundle with --chunk, then re-synthesize across all chunks and re-run

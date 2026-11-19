@@ -1172,7 +1172,7 @@ Fix: run `verdict record <repo> <slug>` again on the current review (then `post`
 
 ## `repair-exhausted`
 
-Cause: `run --rounds N` spent every round without a valid `review.json` (or a round repeated the prior bytes, so there was no progress to spend).
+Cause: `run --rounds N` spent every round without a valid `review.json` (or a round repeated the prior bytes, so there was no progress to spend). The default is two rounds, so this is a review that stayed invalid across one repair attempt.
 
 Fix: fix every error named in `error.problems`, then re-run (when the cap was hit, raise `--rounds` up to 5; for no progress check the round files).
 
@@ -1193,6 +1193,19 @@ Fix: address it, narrow the clause, or re-fetch without the policy.
 Cause: a required typed check has no passing evidence for the reviewed head.
 
 Fix: record the evidence named above (`verify --group <id> --command <cmd>`), then re-run — `--force` cannot satisfy a trusted requirement.
+
+## `review-insufficient`
+
+Cause: the review is not backed by evidence the bundle can check — a missing,
+stale, or unreadable evidence receipt for the decided head, a gating finding
+whose quote is unverified (including a block clause naming one), a missing or
+mismatched changed-hunk receipt, or an unknown, uncovered, or non-code
+specification check. `record` writes the receipt without approval; `run`
+refuses once its repair rounds finish; `report --check` and `gate` fail the
+`evidence` dimension; `report` withholds `data.approval`; and `post` refuses a
+binding approval with it, even under `--force`.
+
+Fix: run `record --dry-run` and read what it names — the finding quote at `path:line` that `full.diff` does not carry, the `hunks.tsv` row with no receipt, the spec item with no check or no code evidence — rewrite `review.json`, then re-run `record` or `run --rounds`. A quote gets one repair round; a receipt or spec gap re-prompts on every round.
 
 ## `rigor-below-floor`
 
@@ -1313,6 +1326,12 @@ Fix: point `--dir` or the agent config at the real skills directory instead of t
 Cause: `--agent` names an unknown agent.
 
 Fix: re-run with one of the known agent names listed above.
+
+## `spec-too-large`
+
+Cause: the combined `--spec` checklist sources enumerate more than 60 specification items; `fetch` and `fetch-local` refuse before writing any bundle files.
+
+Fix: narrow the `--spec` file under 60 checklist items or split the PR, then re-fetch.
 
 ## `spend-capped`
 

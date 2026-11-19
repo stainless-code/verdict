@@ -55,7 +55,8 @@
         },
         "post_min_severity": {
           "enum": ["critical", "important", "informational"]
-        }
+        },
+        "spec_coverage_min": { "type": "integer", "minimum": 1, "maximum": 100 }
       },
       "required": [],
       "additionalProperties": false
@@ -230,6 +231,10 @@
           {
             "required": ["defaults"],
             "properties": { "defaults": { "required": ["kb_policy"] } }
+          },
+          {
+            "required": ["defaults"],
+            "properties": { "defaults": { "required": ["spec_coverage_min"] } }
           }
         ]
       }

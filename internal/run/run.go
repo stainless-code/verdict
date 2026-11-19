@@ -41,8 +41,10 @@ type Request struct {
 // default verify gives the commands it spawns.
 const DefaultTimeoutS = "300"
 
-// DefaultRounds is the launch-to-check round count when --rounds is absent.
-const DefaultRounds = "1"
+// DefaultRounds is the launch-to-check round count when --rounds is absent:
+// two, so a wrong quote or a missing hunk receipt always gets the one repair
+// round the evidence contract is built around. An explicit "1" opts out.
+const DefaultRounds = "2"
 
 // roundsFlag, recipeFlag, and stageFlag are named once for the parser and the
 // usage line.
@@ -129,22 +131,37 @@ func runRequest(r *cli.Runner, req Request, flags *flags) *core.RunRequest {
 		Recipe:      flags.recipe,
 		StageRaw:    flags.stage,
 		TimeoutRaw:  flags.timeout,
-		RoundsRaw:   flags.rounds,
+		RoundsRaw:   requestedRounds(flags),
 		Print:       flags.print,
 		JSONMode:    r.JSONMode,
 		Warnings:    append([]string{}, r.Warnings...),
 	}
 }
 
+// requestedRounds is the round count the service should act on: the operator's
+// value when they named one, and empty otherwise, which leaves the service's
+// own default in charge. The parsed count is never empty — it carries the
+// default for the re-run line — so this is the only place the two differ.
+func requestedRounds(f *flags) string {
+	if !f.roundsSet {
+		return ""
+	}
+	return f.rounds
+}
+
 // flags is the parsed run surface. pass is everything after `--`, verbatim.
+// roundsSet records whether the operator named a count: the parsed value keeps
+// the default so the re-run line can omit it, while the service has to know a
+// render was not asked for a loop it cannot run.
 type flags struct {
-	agent   string
-	recipe  string
-	stage   string
-	timeout string
-	rounds  string
-	pass    []string
-	print   bool
+	agent     string
+	recipe    string
+	stage     string
+	timeout   string
+	rounds    string
+	pass      []string
+	print     bool
+	roundsSet bool
 }
 
 // parseFlags strips run's flags, reporting unknown ones. Every argument after a
@@ -234,6 +251,7 @@ func parseCountedFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, 
 	if v != "" {
 		if a == roundsFlag {
 			f.rounds = v
+			f.roundsSet = true
 		} else {
 			f.timeout = v
 		}

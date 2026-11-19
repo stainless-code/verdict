@@ -22,7 +22,11 @@ const (
 	reqProfile  = "deep-review"
 )
 
-const reqReview = `{"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[]}`
+// reqReview is the approving review the requirement fixtures post. It receipts
+// both changed hunks, because a bound approval needs the evidence a recorded
+// review carries.
+const reqReview = `{"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[],` +
+	`"receipts":[{"hunk":"a.txt\tNEW\t1\t2","quote":"new a"},{"hunk":"b.txt\tNEW\t1\t2","quote":"new b"}]}`
 
 const reqDiff = "diff --git a/a.txt b/a.txt\nindex 1111111..2222222 100644\n" +
 	"--- a/a.txt\n+++ b/a.txt\n@@ -1,2 +1,2 @@\n top\n-old a\n+new a\n" +
@@ -407,9 +411,11 @@ func TestRunCommentKeepsUnmetEvidence(t *testing.T) {
 func TestRunBlockedFindingStillAllowsComment(t *testing.T) {
 	t.Chdir(t.TempDir())
 	seedRequirementBundle(t, nil)
-	review := `{"schema_version":"1","body":"Blocking issue found.","approved":false,"comments":[` +
-		`{"path":"a.txt","line":2,"side":"RIGHT","body":"This breaks the invariant.",` +
-		`"category":"logic","rigor":"pointed","severity":"critical"}]}`
+	// The finding quotes the changed line: only a finding whose quote verifies
+	// can block, so an unverified one records a passing observation instead.
+	review := `{"schema_version":"1","summary":"Blocking issue found.","findings":[` +
+		`{"path":"a.txt","line":2,"side":"RIGHT","claim":"This breaks the invariant.","quote":"new a",` +
+		`"confidence":"high","category":"logic","rigor":"pointed","severity":"critical"}]}`
 	if err := writeTestFile(reqBundle+"/review.json", review); err != nil {
 		t.Fatal(err)
 	}

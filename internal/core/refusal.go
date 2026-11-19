@@ -79,6 +79,15 @@ const (
 	// ProblemCodeEmptyFindingsNeedsSummary refuses a finished clean review
 	// that never replaced the directive's empty placeholder.
 	ProblemCodeEmptyFindingsNeedsSummary = "empty-findings-needs-summary"
+	ProblemCodeQuoteMismatch             = "quote-mismatch"
+	ProblemCodeQuoteNotCheckable         = "quote-not-checkable"
+	ProblemCodeReceiptMissing            = "receipt-missing"
+	ProblemCodeReceiptHunkUnknown        = "receipt-hunk-unknown"
+	ProblemCodeReceiptMismatch           = "receipt-mismatch"
+	ProblemCodeSpecItemUnknown           = "spec-item-unknown"
+	ProblemCodeSpecCheckMissing          = "spec-check-missing"
+	ProblemCodeSpecEvidenceNotCode       = "spec-evidence-not-code"
+	ProblemCodeSpecEvidenceMismatch      = "spec-evidence-mismatch"
 
 	ProblemLevelError   = "error"
 	ProblemLevelWarning = "warning"
@@ -90,8 +99,8 @@ const (
 type Problem struct { //nolint:govet // field order is the published property order
 	Path string `json:"path"`
 	//nolint:revive // published enum tag exceeds the line limit
-	Code    string `enum:"anchor-outside-hunk|bad-enum|empty-findings-needs-summary|enum-synonym|invalid-json|key-alias|missing-field|normalized-extracted|normalized-fence|normalized-trivia|out-of-range|path-not-in-diff|rigor-unset|risk-stale-head|scalar-to-array|unknown-field|wrong-type" json:"code"`
-	Level   string `enum:"error|warning"                                                                                                                                                                                                                                                          json:"level"` //nolint:revive // published enum tag exceeds the line limit
+	Code    string `enum:"anchor-outside-hunk|bad-enum|empty-findings-needs-summary|enum-synonym|invalid-json|key-alias|missing-field|normalized-extracted|normalized-fence|normalized-trivia|out-of-range|path-not-in-diff|quote-mismatch|quote-not-checkable|receipt-hunk-unknown|receipt-mismatch|receipt-missing|rigor-unset|risk-stale-head|scalar-to-array|spec-check-missing|spec-evidence-mismatch|spec-evidence-not-code|spec-item-unknown|unknown-field|wrong-type" json:"code"`
+	Level   string `enum:"error|warning"                                                                                                                                                                                                                                                                                                                                                                                                                                      json:"level"` //nolint:revive // published enum tag exceeds the line limit
 	Message string `json:"message"`
 	Fix     string `json:"fix"`
 	Example any    `json:"example,omitempty"`
@@ -117,6 +126,15 @@ var problemCodeLevels = map[string]string{
 	ProblemCodeNormalizedTrivia:          ProblemLevelWarning,
 	ProblemCodeRiskStaleHead:             ProblemLevelWarning,
 	ProblemCodeEmptyFindingsNeedsSummary: ProblemLevelError,
+	ProblemCodeQuoteMismatch:             ProblemLevelError,
+	ProblemCodeQuoteNotCheckable:         ProblemLevelError,
+	ProblemCodeReceiptMissing:            ProblemLevelError,
+	ProblemCodeReceiptHunkUnknown:        ProblemLevelError,
+	ProblemCodeReceiptMismatch:           ProblemLevelError,
+	ProblemCodeSpecItemUnknown:           ProblemLevelError,
+	ProblemCodeSpecCheckMissing:          ProblemLevelError,
+	ProblemCodeSpecEvidenceNotCode:       ProblemLevelError,
+	ProblemCodeSpecEvidenceMismatch:      ProblemLevelError,
 }
 
 // ProblemCodes returns the published problem-code enum in lexical order.

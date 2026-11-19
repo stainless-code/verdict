@@ -46,9 +46,18 @@ export interface Problem {
     | "normalized-trivia"
     | "out-of-range"
     | "path-not-in-diff"
+    | "quote-mismatch"
+    | "quote-not-checkable"
+    | "receipt-hunk-unknown"
+    | "receipt-mismatch"
+    | "receipt-missing"
     | "rigor-unset"
     | "risk-stale-head"
     | "scalar-to-array"
+    | "spec-check-missing"
+    | "spec-evidence-mismatch"
+    | "spec-evidence-not-code"
+    | "spec-item-unknown"
     | "unknown-field"
     | "wrong-type";
   /** error blocks record; warning lets it proceed and report what it did, unless strict input promotes it. */
@@ -430,7 +439,7 @@ export interface RiskRow {
   [key: string]: unknown;
 }
 
-/** Composed gate result: every requested dimension in findings, head, coverage, live_threads, compliance order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral. */
+/** Composed gate result: every requested dimension in findings, head, coverage, live_threads, compliance, risk, evidence order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral. */
 export interface ReportGate {
   /** The gate verdict the exit code follows: exit 0 when true, exit 1 when false. */
   passed: boolean;
@@ -440,12 +449,19 @@ export interface ReportGate {
 
 /** One gate dimension: its id, verdict status, human detail text, and its own failing tally (null where the dimension has no count to report). */
 export interface GateDimension {
-  /** Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), or live_threads (unresolved threads on the PR under --live). */
-  id: "findings" | "head" | "coverage" | "live_threads" | "compliance" | "risk";
+  /** Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), live_threads (unresolved threads on the PR under --live), compliance, risk, or evidence (the stored evidence receipt for that HEAD, always on under --check). */
+  id:
+    | "findings"
+    | "head"
+    | "coverage"
+    | "live_threads"
+    | "compliance"
+    | "risk"
+    | "evidence";
   /** pass, fail, unknown (the dimension could not be read and the posture fails closed), or skip (not requested, or unreachable under --live auto). Only fail and unknown fail the gate. */
   status: "pass" | "fail" | "skip" | "unknown";
   detail: string;
-  /** The dimension's own tally: offending findings for findings, unattested ranges for coverage (unattested chunks on a chunked bundle), versus-thread count for live_threads, null for head and for a skipped or unreachable live probe. */
+  /** The dimension's own tally: offending findings for findings, unattested ranges for coverage (unattested chunks on a chunked bundle), versus-thread count for live_threads, evidence gaps for evidence, null for head and for a skipped, unreachable, or unknown probe. */
   count: number | null;
   [key: string]: unknown;
 }
@@ -538,6 +554,8 @@ export interface RecordData {
   check?: CheckSummary | null;
   coverage?: CoverageSummary | null;
   approval?: ApprovalReceipt | null;
+  /** Deterministic evidence verification receipt over findings quotes, hunk receipts, and spec checks. */
+  evidence?: EvidenceReceipt | null;
   spec_checks?: Array<SpecCheck>;
   receipts?: Array<Receipt>;
   /** Present on record --dry-run: the exact review object the checker read after safe repairs, as an object. */
@@ -553,6 +571,47 @@ export interface ApprovalReceipt {
   gating_sigs: Array<string>;
   clauses?: Array<string>;
   approved: boolean;
+  insufficient?: boolean;
+  [key: string]: unknown;
+}
+
+/** Deterministic evidence verification receipt pinned to the bundle head and diff SHA-256. */
+export interface EvidenceReceipt {
+  head: string;
+  diff_sha256: string;
+  quotes?: Array<EvidenceQuote>;
+  gaps?: Array<string>;
+  receipts: EvidenceReceipts;
+  spec: EvidenceSpec;
+  insufficient: boolean;
+  [key: string]: unknown;
+}
+
+/** Per-finding deterministic quote verification status and machine reason. */
+export interface EvidenceQuote {
+  path: string;
+  side: "RIGHT" | "LEFT";
+  status: "verified" | "unverified";
+  reason?: string;
+  line: number;
+  [key: string]: unknown;
+}
+
+/** Changed-hunk reading receipt coverage summary. */
+export interface EvidenceReceipts {
+  total: number;
+  covered: number;
+  exempt: number;
+  complete: boolean;
+  [key: string]: unknown;
+}
+
+/** Specification checklist coverage summary against defaults.spec_coverage_min. */
+export interface EvidenceSpec {
+  total: number;
+  covered: number;
+  min: number;
+  met: boolean;
   [key: string]: unknown;
 }
 

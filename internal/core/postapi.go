@@ -177,8 +177,12 @@ type Post struct { //nolint:govet // field order is the published property order
 	RigorFloors      RigorFloors      `json:"rigor_floors"      optional:"true"`
 	Coverage         *CoverageSummary `anyOf:"null"             json:"coverage,omitempty"       optional:"true"`
 	ChunkCoverage    *ChunkCoverage   `anyOf:"null"             json:"chunk_coverage,omitempty" optional:"true"`
-	Summary          *PostSummary     `anyOf:"null"             json:"summary,omitempty"        optional:"true"`
-	ReviewRaw        any              `json:"-"`
+	// Evidence is the deterministic evidence receipt this post's merge
+	// computed, stored beside the head it was made at so report --check grades
+	// the same quote, receipt, and spec checks the publication did.
+	Evidence  *EvidenceReceipt `anyOf:"null" json:"evidence,omitempty" optional:"true"`
+	Summary   *PostSummary     `anyOf:"null" json:"summary,omitempty"  optional:"true"`
+	ReviewRaw any              `json:"-"`
 }
 
 // FloorScope is one path-scoped severity floor that actually withheld a
@@ -378,6 +382,9 @@ func setPostCoverageWire(o *jq.Obj, p *Post) {
 	}
 	if p.ChunkCoverage != nil {
 		o.Set("chunk_coverage", p.ChunkCoverage)
+	}
+	if p.Evidence != nil {
+		o.Set("evidence", p.Evidence)
 	}
 	if p.Summary != nil {
 		o.Set("summary", p.Summary)

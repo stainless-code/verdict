@@ -147,8 +147,8 @@ func TestParseFlagsRounds(t *testing.T) {
 	if done {
 		t.Fatalf("parse failed with exit %d", code)
 	}
-	if flags.rounds != "1" {
-		t.Fatalf("rounds = %q, want the one-shot default", flags.rounds)
+	if flags.rounds != "2" {
+		t.Fatalf("rounds = %q, want the two-round default", flags.rounds)
 	}
 	flags, code, done = parseFlags(r, []string{"--agent", "claude", "--rounds", "3", "--", "--rounds", "9"})
 	if done {

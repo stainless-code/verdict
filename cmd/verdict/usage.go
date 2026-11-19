@@ -5,7 +5,7 @@ func usageText() string {
 		"fetch-local|run|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|handoff|index|" +
 		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
-		"[--index <ref|dir>] [--context <file|dir>] [--ignore <glob>] [--no-default-excludes] " +
+		"[--index <ref|dir>] [--context <file|dir>] [--spec <file>] [--ignore <glob>] [--no-default-excludes] " +
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
@@ -31,7 +31,8 @@ func usageText() string {
 		"    runs unless --consent-over-budget is given (consent lands in budget.json,\n" +
 		"    surfaced by report --cost). Unset: estimate off, fetch as today.\n" +
 		"  fetch-local <owner/repo> <name> [--staged] [--range A[..|...]B] [--base R]\n" +
-		"        [--stash [n]] [--worktree] [--index <ref|dir>] [--context <file|dir>] [--ignore <glob>] [--no-default-excludes]\n" +
+		"        [--stash [n]] [--worktree] [--index <ref|dir>] [--context <file|dir>] [--spec <file>] " +
+		"[--ignore <glob>] [--no-default-excludes]\n" +
 		"        [--consent-over-budget] [--show-prompts] [--chunk]\n" +
 		"        [-- paths...] [--json]\n" +
 		"    local review bundle from git (no GitHub, no PR): writes\n" +
@@ -56,15 +57,18 @@ func usageText() string {
 		"        droid|forge|fx|gemini|goose|grok|hermes|jazz|junie|kilo|kimchi|kimi|kiro|\n" +
 		"        kode|mcode|neovate|openclaw|opencode|pa|pi|qoder|qodercn|qwen|rovodev|\n" +
 		"        vibe|zcode>\n" +
-		"      [--recipe <slug>] [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 1>]\n" +
+		"      [--recipe <slug>] [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 2>]\n" +
 		"      [--print] [-- <agent args>...] [--json]\n" +
-		"    launch YOUR agent against an existing bundle: one process per round, one shot by default.\n" +
+		"    launch YOUR agent against an existing bundle: one process per round, two rounds by default.\n" +
 		"    It requires exactly one fresh review.json (absent refuses no-review-artifact, older\n" +
-		"    than the launch refuses stale-review-artifact), names the next command, and by default never\n" +
-		"    reads the agent's prose, retries, repairs, and never posts. With --rounds N (2-5) an\n" +
-		"    invalid review.json re-prompts the agent with the shape checker's fix list, up to\n" +
-		"    N launch-to-check rounds; exhaustion refuses repair-exhausted. The agent inherits your\n" +
-		"    environment (your key) and may use the network; verdict itself makes no calls.\n" +
+		"    than the launch refuses stale-review-artifact), names the next command, never posts, and\n" +
+		"    reads the agent's prose only through the shape checker's problem list. With --rounds N\n" +
+		"    (1-5) an invalid review.json re-prompts the agent with the checker's fix list, up to N\n" +
+		"    launch-to-check rounds; --rounds 1 opts out. Evidence gaps ride in that same list: a\n" +
+		"    wrong quote gets one repair round, and a review whose evidence stays insufficient after\n" +
+		"    the rounds refuses review-insufficient instead of publishing an unbacked approval.\n" +
+		"    The agent inherits your environment (your key) and may use the network; verdict\n" +
+		"    itself makes no calls.\n" +
 		"    Operators can define more names under the 'agents' key of their own settings\n" +
 		"    file (XDG_CONFIG_HOME/verdict/settings.json); a repository config cannot.\n" +
 		"    A flag that takes the prompt places it immediately before the directive.\n" +
@@ -168,6 +172,9 @@ func usageText() string {
 		"    inputs, and reported = max(claimed, floor)).\n" +
 		"    --max-risk <level> gates on reported risk (exits 1 when exceeded or unknown; exit 0 pass,\n" +
 		"    exit 2 usage, exit 3 tool error).\n" +
+		"    Every gate run also carries the evidence dimension: pass needs the receipt\n" +
+		"    recorded for the fetched HEAD, an insufficient receipt fails, and a\n" +
+		"    missing or stale one reads unknown and fails the gate.\n" +
 		"    --check <tier> opts into gating (same output, machine exits): 0 no open\n" +
 		"    findings at-or-above tier, 1 findings at-or-above tier, 2 usage, 3 tool\n" +
 		"    error (missing/corrupt store). `--category <cat>` filters the ranked\n" +
@@ -263,11 +270,13 @@ func usageText() string {
 		"    findings at-or-above a tier (--max-severity), a completed post for the fetched\n" +
 		"    HEAD (--require-head), the stored diff-coverage receipt for that HEAD\n" +
 		"    (--coverage, default require), live unresolved threads (--live, default auto),\n" +
-		"    and the captured compliance verdict when the bundle carries a typed policy.\n" +
+		"    the captured compliance verdict when the bundle carries a typed policy, and\n" +
+		"    the evidence receipt for the gated HEAD (always on: no gate passes without it).\n" +
 		"    At least one dimension is required; --live and --coverage alone are not.\n" +
 		"    Exits 0 pass, 1 gate failed or unknown, 2 usage, 3 tool error; a gate failure\n" +
 		"    carries data.passed false with error null. data.dimensions[] lists findings,\n" +
-		"    head, coverage, live_threads, compliance with id, status, detail, count.\n" +
+		"    head, coverage, live_threads, compliance, risk, evidence with id, status,\n" +
+		"    detail, count.\n" +
 		"    --coverage require fails on an absent or partial attestation for the gated\n" +
 		"    HEAD; --coverage warn reports the same and never fails the gate. --live skip\n" +
 		"    makes zero network calls; auto keeps the fail-open skip. Never posts,\n" +
@@ -435,8 +444,8 @@ func usageText() string {
 		"    and review-insufficient count. Read-only: no agent, no host, no corpus\n" +
 		"    store. --fixture limits the report to one catalog id; --recordings is an\n" +
 		"    opt-in root of live recordings to score, relative to the checkout by\n" +
-		"    default. The seven shipped recordings are always the calibration, even\n" +
-		"    with --recordings: 7/7 rows must reproduce. Writes\n" +
+		"    default. The eight shipped recordings are always the calibration, even\n" +
+		"    with --recordings: 8/8 rows must reproduce. Writes\n" +
 		"    .verdict/backtest/fixtures/report.json. Rates describe recorded reviews,\n" +
 		"    not a model claim.\n" +
 		"  backtest --since <90d|12w|18mo|2y|<ref>> --agent <name> [replay flags] [--json]\n" +

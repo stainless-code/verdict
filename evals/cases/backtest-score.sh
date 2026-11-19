@@ -74,7 +74,8 @@ cat >"$artifact" <<'JSON'
 {"schema_version":"1",
  "summary":"> Basis: 0 0 1 0 0 0 0",
  "findings":[{"path":"main.go","line":6,"side":"RIGHT",
-              "claim":"The removal is unchecked; the error is dropped.","quote":"defer os.RemoveAll(tmp)","confidence":"high","severity":"important","rigor":"walked"}]}
+              "claim":"The removal is unchecked; the error is dropped.","quote":"\tos.Remove(\"missing\")","confidence":"high","severity":"important","rigor":"walked"}],
+ "receipts":[{"hunk":"main.go\tNEW\t3\t7","quote":"\tos.Remove(\"missing\")"}]}
 JSON
 if [ -n "${EVAL_AGENT_PRICE:-}" ]; then
   printf '{"schema_version":"2","est_usd":%s,"models":[{"name":"stub","input_tokens":10,"output_tokens":5}]}\n' \

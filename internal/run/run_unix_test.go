@@ -87,7 +87,8 @@ const bundleSlug = "local-work"
 
 // validReview is a review the shared record path accepts unchanged: a verdict
 // marker, a section, and no comments to anchor.
-const validReview = `{"schema_version":"1","summary":"> ✅ no findings Reviewed the diff and found nothing worth flagging.","findings":[]}`
+const validReview = `{"schema_version":"1","summary":"> ✅ no findings Reviewed the diff and found nothing worth flagging.","findings":[],` +
+	`"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new"}]}`
 
 // fixtureDiff is the bundle's diff: one small change, so the review has a
 // patch to attest against.
@@ -281,7 +282,7 @@ func TestRunLaunchesAndHandsOff(t *testing.T) {
 		t.Fatalf("exit = %d\nstdout: %s\nstderr: %s", code, out, errOut)
 	}
 	for _, want := range []string{
-		"» run: claude -p <prompt>", "» wrote .verdict/state/local-work/review.json",
+		"» round 1/2: claude -p <prompt>", "» wrote .verdict/state/local-work/review.json",
 		"» recorded .verdict/state/local-work/launcher.json",
 	} {
 		if !strings.Contains(out, want) {

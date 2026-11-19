@@ -19,7 +19,8 @@ const (
 
 func dirtyCoverageBundle(t *testing.T, attestation string) {
 	t.Helper()
-	review := `{"schema_version":"1","body":"Reviewed the entire tracked change.","approved":true,"comments":[],"coverage":` + attestation + `}`
+	review := `{"schema_version":"1","body":"Reviewed the entire tracked change.","approved":true,"comments":[],` +
+		`"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new line"}],"coverage":` + attestation + `}`
 	coverageBundle(t, coverageDiff, review)
 	writeFile(t, dirtyCoverageDir+"/source.json", dirtyCoverageSource)
 }

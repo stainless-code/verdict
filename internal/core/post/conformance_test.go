@@ -73,10 +73,14 @@ const conformanceCommentScenario = "comment"
 
 // conformanceReview is the review every row posts: one inline finding with a
 // multi-line anchor, so a host that flattens anchors has one to flatten and a
-// host that carries them has one to keep.
+// host that carries them has one to keep. The finding quotes the diff and the
+// review receipts the bundle's one changed hunk, because the approve scenario
+// binds an approval and an approval needs verified evidence.
 const conformanceReview = `{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,` +
 	`"comments":[{"path":"` + conformancePath + `","line":2,"start_line":1,"side":"RIGHT",` +
-	`"body":"Consider clarifying this line.","rigor":"pointed","severity":"informational"}]}`
+	`"body":"Consider clarifying this line.","quote":"new line",` +
+	`"rigor":"pointed","severity":"informational"}],` +
+	`"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new line"}]}`
 
 // hostConformance is one host's row: the exact argv each write it can fire
 // uses, and the degradations docs/manual.md promises for what it cannot do.

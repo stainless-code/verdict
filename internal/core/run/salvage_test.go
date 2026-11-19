@@ -11,8 +11,9 @@ import (
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 )
 
-const salvagedFinding = `{"schema_version":"1","findings":[{"path":"a.go","line":1,"severity":"important",` +
-	`"claim":"a real defect","quote":"broken","confidence":"high"}]}`
+const salvagedFinding = `{"schema_version":"1",` + fixtureReceipts +
+	`,"findings":[{"path":"a.go","line":1,"severity":"important",` +
+	`"claim":"a real defect","quote":"new line 1","confidence":"high"}]}`
 
 const earlierFinding = `{"schema_version":"1","findings":[{"path":"old.go","line":9,"severity":"informational",` +
 	`"claim":"earlier","quote":"old","confidence":"low"}]}`
@@ -25,7 +26,8 @@ const extraRootKey = `{"schema_version":"1","approved":true,"findings":[],` +
 
 const placeholderReview = `{"schema_version":"1","findings":[]}`
 
-const cleanReview = `{"schema_version":"1","summary":"Reviewed the diff; no defects found.","findings":[]}`
+const cleanReview = `{"schema_version":"1","summary":"Reviewed the diff; no defects found.","findings":[],` +
+	fixtureReceipts + `}`
 
 func fenced(doc string) string {
 	return "prose before\n```json\n" + doc + "\n```\nprose after\n"

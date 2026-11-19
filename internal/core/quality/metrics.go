@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
+	"github.com/stainless-code/verdict/internal/evidence"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -23,9 +24,9 @@ const (
 	notApplicable       = "n/a"
 )
 
-// IsGatingFinding is the one predicate S4 retargets: a gating finding is
-// critical or important, anchored, and not marked unverified. No other call
-// site decides which findings a quote verifier sees.
+// IsGatingFinding is the one predicate the quote verifier sees: a gating
+// finding is critical or important, anchored, and not marked unverified. No
+// other call site decides which findings a verifier checks.
 func IsGatingFinding(f *Finding) bool {
 	switch strings.ToLower(f.Severity) {
 	case "critical", "important":
@@ -38,8 +39,8 @@ func IsGatingFinding(f *Finding) bool {
 	return f.Refusal != "unverified"
 }
 
-// QuoteResult is one verifier answer. S4's anchored quote check lands behind
-// this same interface without changing the report shape.
+// QuoteResult is one verifier answer. The anchored quote check answers through
+// this interface so the published report shape never moves with the verifier.
 type QuoteResult struct {
 	Status string
 	Reason string
@@ -52,13 +53,52 @@ type QuoteVerifier interface {
 	Verify(ctx context.Context, f *Finding, head []byte) QuoteResult
 }
 
-// StubVerifier reports that S4's quote verification has not shipped. S6
-// publishes a null hallucination rate, never a zero.
-type StubVerifier struct{}
+// PinnedQuoteVerifier is the default verifier: it checks each finding's quote
+// against the fixture's pinned full.diff bytes with evidence.MatchQuote. It
+// answers for every fixture the catalog pins, so its status is measured even
+// when a fixture carries no quote to check.
+type PinnedQuoteVerifier struct{}
 
-// Verify implements QuoteVerifier.
-func (StubVerifier) Verify(_ context.Context, _ *Finding, _ []byte) QuoteResult {
-	return QuoteResult{Status: quoteUnsupported, Reason: "S4 quote verification has not shipped"}
+// Verify implements QuoteVerifier. The index is built per call because the
+// interface hands the verifier bytes, not a pre-parsed diff.
+func (PinnedQuoteVerifier) Verify(_ context.Context, f *Finding, diff []byte) QuoteResult {
+	return verifyQuote(f, evidence.IndexDiff(diff))
+}
+
+func verifyQuote(f *Finding, idx *evidence.DiffIndex) QuoteResult {
+	if strings.TrimSpace(f.Quote) == "" {
+		return QuoteResult{Status: quoteNoQuote}
+	}
+	res := evidence.MatchQuote(idx, evidence.QuoteRequest{
+		Path:      f.Path,
+		Side:      f.Side,
+		Line:      f.Line,
+		StartLine: f.StartLine,
+		Quote:     f.Quote,
+	})
+	if res.Verified() {
+		return QuoteResult{Status: quoteMatched}
+	}
+	switch res.Reason {
+	case evidence.ReasonTextDiffers, evidence.ReasonDeletedLine, evidence.ReasonRangeCrossesHunks:
+		return QuoteResult{Status: quoteMismatch, Reason: res.Reason}
+	default:
+		return QuoteResult{Status: quoteUnsupported, Reason: res.Reason}
+	}
+}
+
+// resolveVerifier returns the verifier for one run and the status that
+// verifier justifies. Only the pinned verifier measures — by value or by
+// pointer, because both answer from the fixture's pinned bytes — while an
+// injected double is reported stubbed so the report never claims a stand-in
+// checked a quote.
+func resolveVerifier(verifier QuoteVerifier) (QuoteVerifier, string) {
+	switch verifier.(type) {
+	case nil, PinnedQuoteVerifier, *PinnedQuoteVerifier:
+		return PinnedQuoteVerifier{}, hallucMeasured
+	default:
+		return verifier, hallucStubbed
+	}
 }
 
 // RecallReport is the fixture's recall over scored runs. A nil rate means the
@@ -86,7 +126,9 @@ type FalseGreenReport struct {
 }
 
 // HallucinationReport counts explicitly verified quotes only. A finding whose
-// quote cannot be checked is unverifiable, never a clean check.
+// quote cannot be checked is unverifiable, never a clean check. Status is
+// measured when the pinned verifier ran and stubbed when a test double stood
+// in for it; rate is null until a quote is checked either way.
 type HallucinationReport struct {
 	Rate           *float64 `json:"rate"`
 	Status         string   `json:"status"`

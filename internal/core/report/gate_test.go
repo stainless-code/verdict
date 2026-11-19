@@ -2,6 +2,7 @@ package reportcore_test
 
 import (
 	"context"
+	"os"
 	"reflect"
 	"strings"
 	"testing"
@@ -84,8 +85,8 @@ func TestRunReportCheckTierGate(t *testing.T) {
 			if resp.GateFailed != tc.wantFail {
 				t.Errorf("GateFailed = %v, want %v", resp.GateFailed, tc.wantFail)
 			}
-			if len(resp.CheckLines) != 1 || resp.CheckLines[0] != tc.wantLine {
-				t.Errorf("CheckLines = %q, want exactly %q", resp.CheckLines, tc.wantLine)
+			if len(resp.CheckLines) != 2 || resp.CheckLines[0] != tc.wantLine {
+				t.Errorf("CheckLines = %q, want tier line %q plus evidence line", resp.CheckLines, tc.wantLine)
 			}
 		})
 	}
@@ -218,8 +219,8 @@ func TestRunReportCompletenessGate(t *testing.T) {
 		if !resp.GateFailed {
 			t.Error("GateFailed = false; a missing post must fail the combined gate")
 		}
-		if len(resp.CheckLines) != 2 {
-			t.Fatalf("CheckLines = %q, want one line per dimension", resp.CheckLines)
+		if len(resp.CheckLines) != 3 {
+			t.Fatalf("CheckLines = %q, want one line per dimension (tier, completeness, evidence)", resp.CheckLines)
 		}
 		if !strings.HasPrefix(resp.CheckLines[0], "check: no open findings at-or-above critical — gate passes") {
 			t.Errorf("CheckLines[0] = %q, want the tier line first", resp.CheckLines[0])
@@ -650,7 +651,7 @@ func writeHostBundle(t *testing.T, provider string) {
 	t.Helper()
 	writeFile(t, ".verdict/state/5101/PR.json",
 		`{"state":"OPEN","provider":"`+provider+`","headRefOid":"`+storeHeadSHA+
-			`","baseRefOid":"`+strings.Repeat("b", 40)+`"}`)
+			`","head_sha":"`+storeHeadSHA+`","baseRefOid":"`+strings.Repeat("b", 40)+`"}`)
 }
 
 // TestRunReportLiveProviderRead pins the host read: a GitLab bundle's live
@@ -803,36 +804,47 @@ func TestRunReportGateData(t *testing.T) {
 		wantStat  []string
 		wantCount []int
 		complete  bool
+		noRecord  bool
 		wantFail  bool
 	}{
 		{
 			name: "tier-only-pass", findings: "[]", live: "skip", check: "critical",
-			wantIDs: []string{"findings", "live_threads"}, wantStat: []string{"pass", "skip"},
-			wantCount: []int{0, -1}, wantFail: false,
+			wantIDs: []string{"findings", "live_threads", "evidence"}, wantStat: []string{"pass", "skip", "pass"},
+			wantCount: []int{0, -1, 0}, wantFail: false,
 		},
 		{
 			name:     "tier-only-fail",
 			findings: "[" + entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"critical"`, "true") + "]",
 			live:     "skip", check: "critical",
-			wantIDs: []string{"findings", "live_threads"}, wantStat: []string{"fail", "skip"},
-			wantCount: []int{1, -1}, wantFail: true,
+			wantIDs: []string{"findings", "live_threads", "evidence"}, wantStat: []string{"fail", "skip", "pass"},
+			wantCount: []int{1, -1, 0}, wantFail: true,
 		},
 		{
+			// R11: --require-head without --max-severity still carries the
+			// evidence dimension, which passes only on a receipt for the head.
 			name: "head-only-missing", findings: "[]", live: "skip", complete: true,
-			wantIDs: []string{"head", "live_threads"}, wantStat: []string{"unknown", "skip"},
-			wantCount: []int{-1, -1}, wantFail: true,
+			wantIDs: []string{"head", "live_threads", "evidence"}, wantStat: []string{"unknown", "skip", "pass"},
+			wantCount: []int{-1, -1, 0}, wantFail: true,
 		},
 		{
 			name: "head-stale", findings: "[]", post: `{"head":"` + strings.Repeat("c", 40) + `"}`,
 			live: "skip", complete: true,
-			wantIDs: []string{"head", "live_threads"}, wantStat: []string{"fail", "skip"},
-			wantCount: []int{-1, -1}, wantFail: true,
+			wantIDs: []string{"head", "live_threads", "evidence"}, wantStat: []string{"fail", "skip", "pass"},
+			wantCount: []int{-1, -1, 0}, wantFail: true,
 		},
 		{
 			name: "head-pass", findings: "[]", post: `{"head":"` + storeHeadSHA + `"}`,
 			live: "skip", complete: true,
-			wantIDs: []string{"head", "live_threads"}, wantStat: []string{"pass", "skip"},
-			wantCount: []int{-1, -1}, wantFail: false,
+			wantIDs: []string{"head", "live_threads", "evidence"}, wantStat: []string{"pass", "skip", "pass"},
+			wantCount: []int{-1, -1, 0}, wantFail: false,
+		},
+		{
+			// R11: no receipt means no passing gate, whatever dimension the
+			// operator asked for.
+			name: "head-pass-without-receipt", findings: "[]", post: `{"head":"` + storeHeadSHA + `"}`,
+			live: "skip", complete: true, noRecord: true,
+			wantIDs: []string{"head", "live_threads", "evidence"}, wantStat: []string{"pass", "skip", "unknown"},
+			wantCount: []int{-1, -1, -1}, wantFail: true,
 		},
 	}
 	for _, tc := range tests {
@@ -840,6 +852,11 @@ func TestRunReportGateData(t *testing.T) {
 			req := fixture(t, tc.findings)
 			if tc.post != "" {
 				writeFile(t, ".verdict/state/5101/post.json", tc.post)
+			}
+			if tc.noRecord {
+				if err := os.Remove(".verdict/state/5101/record.json"); err != nil {
+					t.Fatalf("remove record.json: %v", err)
+				}
 			}
 			flags := core.ReportFlags{Check: tc.check, Completeness: tc.complete, Live: tc.live}
 			resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req, Flags: flags})

@@ -23,11 +23,12 @@ const (
 
 // Built-in defaults: the floor every resolution starts from.
 const (
-	BuiltinMaxBytes    = 512000
-	BuiltinKBMinJudged = 5
-	BuiltinKBMaxFPRate = 0.5
-	BuiltinEffort      = "standard"
-	BuiltinDepth       = "standard"
+	BuiltinMaxBytes        = 512000
+	BuiltinKBMinJudged     = 5
+	BuiltinKBMaxFPRate     = 0.5
+	BuiltinEffort          = "standard"
+	BuiltinDepth           = "standard"
+	BuiltinSpecCoverageMin = 80
 )
 
 // Check IDs owned by the requirements contract.
@@ -48,16 +49,17 @@ const keyBudgetUSD = "budget_usd"
 // Default value keys shared by the field inventory, the evidence capture,
 // and the explain surface, so the three spell each key once.
 const (
-	keyPanel        = "panel"
-	keyMaxBytes     = "max_bytes"
-	keyChunk        = "chunk"
-	keyEffort       = "effort"
-	keyDisplayFloor = "display_min_severity"
-	keyPostFloor    = "post_min_severity"
-	keyKBPolicy     = "kb_policy"
-	keyKBMinJudged  = "kb_policy.min_judged"
-	keyKBMaxFPRate  = "kb_policy.max_fp_rate"
-	keyKBMaxChars   = "kb_policy.max_chars"
+	keyPanel           = "panel"
+	keyMaxBytes        = "max_bytes"
+	keyChunk           = "chunk"
+	keyEffort          = "effort"
+	keyDisplayFloor    = "display_min_severity"
+	keyPostFloor       = "post_min_severity"
+	keySpecCoverageMin = "spec_coverage_min"
+	keyKBPolicy        = "kb_policy"
+	keyKBMinJudged     = "kb_policy.min_judged"
+	keyKBMaxFPRate     = "kb_policy.max_fp_rate"
+	keyKBMaxChars      = "kb_policy.max_chars"
 )
 
 // Partial is one layer's contribution to the ordinary defaults. Each field
@@ -74,6 +76,7 @@ type Partial struct {
 	Effort             *string
 	DisplayMinSeverity *string
 	PostMinSeverity    *string
+	SpecCoverageMin    *int
 	Panel              []string
 	PanelSet           bool
 	KBPolicySet        bool
@@ -104,6 +107,7 @@ func partialFromDefaults(defaults *core.ConfigDefaults) Partial {
 	out.Effort = defaults.Effort
 	out.DisplayMinSeverity = defaults.DisplayMinSeverity
 	out.PostMinSeverity = defaults.PostMinSeverity
+	out.SpecCoverageMin = defaults.SpecCoverageMin
 	return out
 }
 
@@ -114,10 +118,11 @@ func Builtins() Partial {
 	minJudged := BuiltinKBMinJudged
 	maxFPRate := BuiltinKBMaxFPRate
 	effort := BuiltinEffort
+	specCoverageMin := BuiltinSpecCoverageMin
 	return Partial{
 		MaxBytes: &maxBytes, Chunk: &chunk,
 		KBMinJudged: &minJudged, KBMaxFPRate: &maxFPRate, KBPolicySet: true,
-		Effort: &effort,
+		Effort: &effort, SpecCoverageMin: &specCoverageMin,
 	}
 }
 
@@ -153,6 +158,7 @@ func BuiltinDefaults() []BuiltinDefault {
 		{Key: keyKBMaxChars, Value: builtinValue(floor.KBMaxChars), Verbs: []string{verbFetch, verbFetchLocal}},
 		{Key: keyDisplayFloor, Value: builtinValue(floor.DisplayMinSeverity), Verbs: []string{verbReport}},
 		{Key: keyPostFloor, Value: builtinValue(floor.PostMinSeverity), Verbs: []string{verbPost}},
+		{Key: keySpecCoverageMin, Value: builtinValue(floor.SpecCoverageMin), Verbs: []string{verbRecord}},
 	}
 }
 
@@ -191,6 +197,7 @@ type EffectiveDefaults struct {
 	MaxBytes           int64    `json:"max_bytes"`
 	KBMinJudged        int      `json:"kb_min_judged"`
 	KBMaxFPRate        float64  `json:"kb_max_fp_rate"`
+	SpecCoverageMin    int      `json:"spec_coverage_min"`
 	Chunk              bool     `json:"chunk"`
 }
 
@@ -248,7 +255,17 @@ func mergePartials(layers []layerValue) ResolvedDefaults {
 		func(p Partial) (*string, bool) { return p.DisplayMinSeverity, p.DisplayMinSeverity != nil })
 	out.Values.PostMinSeverity, out.Origins["post_min_severity"], out.Shadowed = pickPointer(layers, "post_min_severity", out.Shadowed,
 		func(p Partial) (*string, bool) { return p.PostMinSeverity, p.PostMinSeverity != nil })
+	out.Values.SpecCoverageMin, out.Origins[keySpecCoverageMin], out.Shadowed = pickInt(
+		layers, keySpecCoverageMin, out.Shadowed, func(p Partial) (int, bool) { return derefInt(p.SpecCoverageMin) })
 	return out
+}
+
+// derefInt lifts an optional int into a set pair.
+func derefInt(v *int) (int, bool) {
+	if v == nil {
+		return 0, false
+	}
+	return *v, true
 }
 
 func pickKBMinJudged(p *Partial) (int, bool) {

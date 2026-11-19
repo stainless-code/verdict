@@ -5,6 +5,7 @@ import (
 
 	skillfs "github.com/stainless-code/verdict"
 	threadscore "github.com/stainless-code/verdict/internal/core/threads"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // bundleFacts reads only the bundle's presence facts, in one place. Every
@@ -17,7 +18,20 @@ func bundleFacts(dir string) skillfs.HandoffFacts {
 		KB:           nonEmptyFile(dir + suffixKBTxt),
 		Lenses:       nonEmptyFile(dir + suffixLensesTxt),
 		Context:      nonEmptyFile(dir + "/context.txt"),
+		Spec:         hasSpecSource(dir),
 	}
+}
+
+// hasSpecSource reports whether the bundle's context manifest marks a source
+// role: spec. Only then does the handoff carry the checklist method: a bundle
+// whose context is supporting material asks for no spec_checks.
+func hasSpecSource(dir string) bool {
+	for _, entry := range readcommon.ContextEntries(dir) {
+		if entry.Role == contextRoleSpec {
+			return true
+		}
+	}
+	return false
 }
 
 // hasChunkManifest reports whether the chunk map the review core names is

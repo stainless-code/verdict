@@ -94,7 +94,7 @@ const (
 	fieldVerification = "verification"
 	fieldQuote        = "quote"
 	fieldPanel        = "panel"
-	quoteUnchecked    = "unchecked"
+	quoteUnverified   = "unverified"
 )
 
 // CoverageClaim is one diff-coverage attestation entry: the file and the
@@ -155,22 +155,23 @@ type FindingEntry struct { //nolint:govet // field order is the published proper
 	Extra            *jq.Obj        `json:"-"`
 }
 
-// Verify is the evidence standing of one finding. Quote is
-// filled by S4; S1 always writes unchecked. Panel keeps model verification.
+// Verify is the evidence standing of one finding. Quote is filled by the
+// evidence pass; a stored verification without one reads unverified, never a
+// silent pass. Panel keeps model verification.
 type Verify struct {
 	Quote string         `enum:"unchecked|verified|unverified" json:"quote"`
 	Panel []Verification `json:"panel,omitempty"`
 }
 
 // ApprovalReceipt is the verdict-computed approval decision recorded by
-// approvalReceipt is the verdict-computed approval decision recorded by
 // record and consumed by post and report.
 type ApprovalReceipt struct {
-	Reason     string   `json:"reason"`
-	Tier       string   `enum:"critical|important|informational" json:"tier"`
-	GatingSigs []string `json:"gating_sigs"`
-	Clauses    []string `json:"clauses,omitempty"`
-	Approved   bool     `json:"approved"`
+	Reason       string   `json:"reason"`
+	Tier         string   `enum:"critical|important|informational" json:"tier"`
+	GatingSigs   []string `json:"gating_sigs"`
+	Clauses      []string `json:"clauses,omitempty"`
+	Approved     bool     `json:"approved"`
+	Insufficient bool     `json:"insufficient,omitempty"`
 }
 
 // Brief is the per-finding repair brief: the affected sites plus the outcome,
@@ -231,6 +232,7 @@ type RecordData struct { //nolint:govet // field order is the published property
 	Check           *CheckSummary    `anyOf:"null"                 json:"check,omitempty"`
 	Coverage        *CoverageSummary `anyOf:"null"                 json:"coverage,omitempty"     optional:"true"`
 	Approval        *ApprovalReceipt `anyOf:"null"                 json:"approval,omitempty"     optional:"true"`
+	Evidence        *EvidenceReceipt `anyOf:"null"                 json:"evidence,omitempty"     optional:"true"`
 	SpecChecks      []SpecCheck      `json:"spec_checks,omitempty"`
 	Receipts        []Receipt        `json:"receipts,omitempty"`
 	Normalized      any              `json:"normalized,omitempty"  type:"object"`
@@ -298,6 +300,7 @@ type Record struct { //nolint:govet // field order is the published property ord
 	ValidationMode   string           `enum:"warn|gate"                  json:"validation_mode"`
 	RigorFloors      RigorFloors      `json:"rigor_floors"`
 	Approval         *ApprovalReceipt `anyOf:"null"                      json:"approval,omitempty"       optional:"true"`
+	Evidence         *EvidenceReceipt `anyOf:"null"                      json:"evidence,omitempty"       optional:"true"`
 	SpecChecks       []SpecCheck      `json:"spec_checks,omitempty"`
 	Receipts         []Receipt        `json:"receipts,omitempty"`
 	ConfidenceRaw    any              `json:"-"`
@@ -329,6 +332,37 @@ func (e *FindingEntry) Wire() *jq.Obj {
 // wireTail appends the lifecycle stamps, history, and unknown keys: the
 // section kb rides here (after rationale), then triage attribution,
 // history, then Extra in file order.
+// verificationWire renders the panel verification block as jq values, the shape
+// every stored entry and every panel merge already use: approval reads the
+// quote standing off this object, and a panel merge keeps the standing it
+// finds, so the struct must not be the in-memory representation.
+func verificationWire(v *Verify) *jq.Obj {
+	o := jq.NewObj("quote", v.Quote)
+	if len(v.Panel) == 0 {
+		return o
+	}
+	panel := make([]any, len(v.Panel))
+	for i := range v.Panel {
+		panel[i] = panelEntryWire(&v.Panel[i])
+	}
+	o.Set("panel", panel)
+	return o
+}
+
+// panelEntryWire renders one panel verdict in its published key order.
+func panelEntryWire(v *Verification) *jq.Obj {
+	o := jq.NewObj("model", v.Model)
+	if v.Provider != "" {
+		o.Set("provider", v.Provider)
+	}
+	o.Set("verdict", v.Verdict)
+	o.Set("evidence", v.Evidence)
+	if v.At != "" {
+		o.Set("at", v.At)
+	}
+	return o
+}
+
 func wireTail(e *FindingEntry, o *jq.Obj) {
 	wireVerificationAndTriage(e, o)
 	wireProvenance(e, o)
@@ -341,7 +375,7 @@ func wireVerificationAndTriage(e *FindingEntry, o *jq.Obj) {
 		o.Set("sources", kbWire(e.Sources))
 	}
 	if e.Verification != nil {
-		o.Set("verification", e.Verification)
+		o.Set("verification", verificationWire(e.Verification))
 	}
 	if e.Confidence != "" {
 		o.Set("confidence", e.Confidence)
@@ -538,6 +572,9 @@ func setRecordTailWire(o *jq.Obj, d *RecordData, items any) {
 	if d.Repairs != nil {
 		o.Set("repairs", d.Repairs)
 	}
+	if d.Evidence != nil {
+		o.Set("evidence", d.Evidence)
+	}
 }
 
 // findingItemsWire renders typed envelope summaries.
@@ -622,6 +659,9 @@ func wireRecordDecision(r *Record, o *jq.Obj) {
 	o.Set("rigor_floors", r.RigorFloors)
 	if r.Approval != nil {
 		o.Set("approval", r.Approval)
+	}
+	if r.Evidence != nil {
+		o.Set("evidence", r.Evidence)
 	}
 	if len(r.SpecChecks) > 0 {
 		o.Set("spec_checks", r.SpecChecks)
@@ -788,7 +828,7 @@ func verifyOf(obj *jq.Obj) *Verify {
 	out := &Verify{}
 	out.Quote, _ = fieldString(m, fieldQuote)
 	if out.Quote == "" {
-		out.Quote = quoteUnchecked
+		out.Quote = quoteUnverified
 	}
 	panel, _ := m.Get(fieldPanel)
 	out.Panel = decodePanel(panel)

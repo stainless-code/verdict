@@ -54,7 +54,8 @@ func (host *approvalRetryHost) Run(ctx context.Context, cmd *core.Command) (core
 
 func TestCRApprovalRetriesAfterSummary(t *testing.T) {
 	t.Chdir(t.TempDir())
-	writeGitLabBundle(t, "gitlab", `{"schema_version":"1","body":"> ✅ Everything is ready to ship.","approved":true,"comments":[]}`)
+	writeGitLabBundle(t, "gitlab", `{"schema_version":"1","body":"> ✅ Everything is ready to ship.","approved":true,"comments":[],`+
+		`"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new line"}]}`)
 	host := &approvalRetryHost{}
 	var warnings, human []string
 	req := postTestReq(host, core.PostFlags{Approve: "true", Bind: true, ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)

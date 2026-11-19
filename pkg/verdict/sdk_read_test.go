@@ -470,8 +470,17 @@ func TestClientGate(t *testing.T) {
 	if clean.Passed {
 		t.Error("passed = true, want false with no completed post record")
 	}
-	if last := clean.Dimensions[len(clean.Dimensions)-1]; last.ID != "live_threads" || last.Status != "skip" {
-		t.Errorf("last dimension = %+v, want live_threads/skip", last)
+	// --require-head inserts the head dimension and the evidence dimension always
+	// closes the composed gate, so the whole order is pinned rather than one index.
+	ids := make([]string, 0, len(clean.Dimensions))
+	for _, dim := range clean.Dimensions {
+		ids = append(ids, dim.ID)
+	}
+	if got := strings.Join(ids, ","); got != "findings,head,coverage,live_threads,evidence" {
+		t.Errorf("dimension ids = %s, want findings,head,coverage,live_threads,evidence", got)
+	}
+	if live := clean.Dimensions[3]; live.Status != "skip" {
+		t.Errorf("live dimension = %+v, want skip under live=skip", live)
 	}
 
 	assertDefaultCoveragePosture(t, c)
@@ -504,10 +513,12 @@ func assertDefaultCoveragePosture(t *testing.T, c *verdict.Client) {
 // wantDim is one expected gate dimension: the wire id and its status.
 type wantDim struct{ id, status string }
 
-// assertGateDimensions pins the composed gate's wire order and tallies.
+// assertGateDimensions pins the composed gate's wire order and tallies. The
+// evidence dimension is always composed: a store carrying no evidence receipt
+// reads unknown, never a pass.
 func assertGateDimensions(t *testing.T, dims []verdict.GateDimension) {
 	t.Helper()
-	want := []wantDim{{"findings", "fail"}, {"coverage", "skip"}, {"live_threads", "skip"}}
+	want := []wantDim{{"findings", "fail"}, {"coverage", "skip"}, {"live_threads", "skip"}, {"evidence", "unknown"}}
 	if len(dims) != len(want) {
 		t.Fatalf("dimensions = %+v, want %d", dims, len(want))
 	}
@@ -522,6 +533,16 @@ func assertGateDimensions(t *testing.T, dims []verdict.GateDimension) {
 	}
 	if live.Count != nil {
 		t.Errorf("live count = %d, want null", *live.Count)
+	}
+	wantEvidenceDetail(t, dims[3])
+}
+
+// wantEvidenceDetail pins the evidence dimension's detail sentence: the store
+// carries no receipt, so the dimension names the head it has none for.
+func wantEvidenceDetail(t *testing.T, dim verdict.GateDimension) {
+	t.Helper()
+	if want := "evidence receipt missing for head aaaaaaa [review-insufficient]"; dim.Detail != want {
+		t.Errorf("evidence detail = %q, want %q", dim.Detail, want)
 	}
 }
 

@@ -308,6 +308,9 @@ mk_head 4428 "$HEADB"
 printf '[]' | eval_write_findings 4428
 mk_identity 4428 "$HEADB"
 mk_posted 4428 "$HEADA" "$(real_patch 4428)"
+# The reviewed head moved with the patch, so the bundle needs the receipt for
+# the head it holds: a gate mode grades the receipt, not the patch alone.
+eval_write_record_evidence 4428
 run_review report acme/app 4428 --completeness
 if [ "$EVAL_STATUS" -eq 0 ] && grep -q "same patch reviewed at ${HEADB:0:7} (posted ${HEADA:0:7})" "$EVAL_ERR"; then
   good "report --completeness passes a rebase with the same patch"

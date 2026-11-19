@@ -45,6 +45,7 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 	}
 	st.check = &check.Summary
 	st.addCheckWarnings(check)
+	st.addEvidenceWarnings(check.evidenceReceipt())
 	if ref := reviewRefusal(check, false); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -148,6 +149,23 @@ func (st *svc) addCheckWarnings(check CheckResult) {
 	}
 }
 
+// addEvidenceWarnings prints one warning per evidence gap, bounded, with a
+// count when the bundle carries more. Record never refuses on insufficient
+// evidence: the receipt withholds the approval, so the operator reads every gap
+// and the findings still record.
+func (st *svc) addEvidenceWarnings(ev *core.EvidenceReceipt) {
+	if ev == nil {
+		return
+	}
+	for i, gap := range ev.Gaps {
+		if i >= evidenceWarnCap {
+			st.addWarning(fmt.Sprintf("%s+%d more gap(s) — see record.json evidence.gaps", evidencePrefix, len(ev.Gaps)-evidenceWarnCap))
+			return
+		}
+		st.addWarning(evidencePrefix + gap)
+	}
+}
+
 func (st *svc) addWarning(msg string) {
 	if slices.Contains(st.warnings, msg) {
 		return
@@ -164,6 +182,11 @@ const CodeBadReviewInput = codeBadReviewInput
 
 // ReviewRefusal turns one checker result into the typed problem-list refusal.
 // Record and run both call it, so neither can fork the problem vocabulary.
+// ReviewRefusal refuses a document the shape check rejects. The evidence half
+// of the check is not this refusal's: a review can be perfectly shaped and
+// still lack evidence, and that gap is `review-insufficient`, which record
+// records without refusing. Errors - EvidenceErrors is therefore the shape
+// count, and EvidenceProblems never reach the problem list here.
 func ReviewRefusal(check CheckResult, strict bool) *core.RefusalError {
 	problems := make([]core.Problem, len(check.Problems))
 	copy(problems, check.Problems)
@@ -172,10 +195,11 @@ func ReviewRefusal(check CheckResult, strict bool) *core.RefusalError {
 			problems[i].Level = core.ProblemLevelError
 		}
 	}
-	if check.Errors == 0 && (!strict || check.Warnings == 0) {
+	shapeErrors := check.ShapeErrors()
+	if shapeErrors == 0 && (!strict || check.Warnings == 0) {
 		return nil
 	}
-	total := check.Errors + check.Warnings
+	total := shapeErrors + check.Warnings
 	msg := fmt.Sprintf("review.json has %d problem(s); fix every one, then re-run", total)
 	return &core.RefusalError{Code: CodeBadReviewInput, Message: msg, Problems: problems, ProblemsTruncated: check.Truncated}
 }
@@ -405,6 +429,7 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 		Coverage:        res.Coverage.Receipt(),
 		ChunkCoverage:   res.Coverage.ChunkReceipt(),
 		Approval:        res.Approval,
+		Evidence:        res.Evidence,
 		SpecChecks:      res.SpecChecks,
 		Receipts:        res.Receipts,
 	}
@@ -440,6 +465,7 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 			SecuritySummary: strOrNil(res.Security),
 			Risk:            res.Risk,
 			Approval:        res.Approval,
+			Evidence:        res.Evidence,
 			SpecChecks:      res.SpecChecks,
 			Receipts:        res.Receipts,
 			Items:           typedItems(res.Entries),
@@ -468,6 +494,7 @@ func (st *svc) dryRun(dir, now string, res *MergeResult) *core.RecordResponse {
 		DryRun:          true,
 		Check:           st.check,
 		Approval:        res.Approval,
+		Evidence:        res.Evidence,
 		SpecChecks:      res.SpecChecks,
 		Receipts:        res.Receipts,
 		Normalized:      normalizedObject(st.normalized),

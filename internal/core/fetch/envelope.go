@@ -32,9 +32,9 @@ func fetchTail(
 }
 
 func writeEvidenceAndProcedure(
-	ctx context.Context, ctx2 *fetchRunCtx, in impactInput, inputs []string, at string,
+	ctx context.Context, ctx2 *fetchRunCtx, in impactInput, contextInputs, specInputs []string, at string,
 ) error {
-	if err := writeEvidence(ctx, ctx2, in, inputs, at); err != nil {
+	if err := writeEvidence(ctx, ctx2, in, contextInputs, specInputs, at); err != nil {
 		return err
 	}
 	return writeBundleProcedure(ctx2.dir)
@@ -47,14 +47,15 @@ func fetchTailAfterSource(ctx context.Context, ctx2 *fetchRunCtx, req *core.Fetc
 		return nil, "", ref
 	}
 	in := impactInput{index: f.Index, head: readcommon.PrField(ctx2.dir, keyHeadSHA)}
-	if err := writeEvidenceAndProcedure(ctx, ctx2, in, f.Context, req.TimeUTC()); err != nil {
+	if err := writeEvidenceAndProcedure(ctx, ctx2, in, f.Context, f.Spec, req.TimeUTC()); err != nil {
 		return nil, "", err
 	}
 	writeTailReceipt(ctx2, budget)
 	s, dir := ctx2.runner, ctx2.dir
 	hint := authorRoutingHint(dir)
 	next := "feed " + dir + "/procedure.md + " +
-		dir + "/PR.json + " + diffFeed(dir, chunkJSON != nil, fullDiffFile) + impactFeed(dir, f.Index) + contextFeed(dir, f.Context) +
+		dir + "/PR.json + " + diffFeed(dir, chunkJSON != nil, fullDiffFile) + impactFeed(dir, f.Index) +
+		contextFeed(dir, f.Context, f.Spec) +
 		" to any agent; ask it to write " + dir + "/review.json" +
 		threadsHint(dir) + hint
 	if req.JSONMode {
@@ -464,7 +465,7 @@ func fetchTailLocal(
 	if ref := finalizeLocalRun(ctx, ctx2, req, f, mode.baseSHA, listed); ref != nil {
 		return nil, "", ref
 	}
-	if err := writeEvidence(ctx, ctx2, impactInput{index: f.Index, head: mode.headSHA}, f.Context, req.TimeUTC()); err != nil {
+	if err := writeEvidence(ctx, ctx2, impactInput{index: f.Index, head: mode.headSHA}, f.Context, f.Spec, req.TimeUTC()); err != nil {
 		return nil, "", err
 	}
 	if err := writeBundleProcedure(ctx2.dir); err != nil {
@@ -473,7 +474,7 @@ func fetchTailLocal(
 	writeTailReceipt(ctx2, budget)
 	next := "feed " + ctx2.dir + "/procedure.md + " +
 		ctx2.dir + "/source.json + " + diffFeed(ctx2.dir, chunkJSON != nil, fullDiffFile) + impactFeed(ctx2.dir, f.Index) +
-		contextFeed(ctx2.dir, f.Context) +
+		contextFeed(ctx2.dir, f.Context, f.Spec) +
 		" to any agent; ask it to write " + ctx2.dir + "/review.json"
 	dump, hasDump, err := localDumpPtr(ctx2, req, f)
 	if err != nil {
@@ -506,14 +507,18 @@ func localDumpPtr(
 	return stageDump(ctx2, f.ShowPrompts)
 }
 
-func writeEvidence(ctx context.Context, ctx2 *fetchRunCtx, in impactInput, inputs []string, at string) error {
+func writeEvidence(ctx context.Context, ctx2 *fetchRunCtx, in impactInput, contextInputs, specInputs []string, at string) error {
 	if err := writeAuthor(ctx2); err != nil {
 		return err
 	}
 	if err := writeImpact(ctx, ctx2, in); err != nil {
 		return err
 	}
-	if err := writeContext(ctx2.dir, inputs, at); err != nil {
+	if ctx2.contextLoaded {
+		if err := writeContextFiles(ctx2.dir, ctx2.contextFiles, at); err != nil {
+			return err
+		}
+	} else if err := writeContext(ctx2.dir, contextInputs, specInputs, at); err != nil {
 		return err
 	}
 	return appendContextSection(ctx2.dir)

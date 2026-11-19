@@ -32,10 +32,13 @@ set_mode() { printf '%s' "$1" > "$EVAL_SANDBOX/gate-mode"; }
 HEAD_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 HEAD_C="cccccccccccccccccccccccccccccccccccccccc"
 
+# live_mk_post stores the publication receipt a completed post leaves: the head
+# it published at plus the evidence receipt its merge computed, so the always-on
+# evidence dimension grades a recorded review instead of an absent receipt.
 live_mk_post() {
-  local pr="$1" head="$2"
-  jq -n --arg h "$head" \
-    '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
+  local pr="$1" head="$2" dir="$EVAL_SANDBOX/.verdict/state/$1"
+  jq -n --arg h "$head" --argjson e "$(eval_evidence_receipt "$dir" "$head")" \
+    '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null,evidence:$e}' \
     > "$EVAL_SANDBOX/.verdict/state/$pr/post.json"
 }
 
@@ -46,6 +49,7 @@ CRIT_FINDING='[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anch
 PR=7101
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
+eval_write_record_evidence "$PR"
 set_mode clear
 m="$(mark)"
 run_review gate acme/app "$PR" --max-severity critical --live skip --coverage warn
@@ -62,8 +66,10 @@ assert_eq "gate envelope keeps the nine-key shape" \
   "at data error next pr repo schema_version verb warnings" \
   "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT")"
 assert_eq "json pass carries passed true" "true" "$(jq -r .data.passed <"$EVAL_OUT")"
+# The evidence dimension always closes the composed gate: a receipt the gate
+# cannot read fails it, so the wire order names all four.
 assert_eq "json pass publishes dimension ids in wire order" \
-  "findings coverage live_threads" "$(jq -r '.data.dimensions[].id' <"$EVAL_OUT" | paste -sd' ' -)"
+  "findings coverage live_threads evidence" "$(jq -r '.data.dimensions[].id' <"$EVAL_OUT" | paste -sd' ' -)"
 assert_eq "findings dimension carries its tally" "0" "$(jq -r '.data.dimensions[0].count' <"$EVAL_OUT")"
 assert_eq "skip dimension carries a null tally" "null" "$(jq -r '.data.dimensions[2].count' <"$EVAL_OUT")"
 assert_eq "json pass keeps error null" "null" "$(jq -r .error <"$EVAL_OUT")"
@@ -72,11 +78,14 @@ assert_eq "json pass keeps error null" "null" "$(jq -r .error <"$EVAL_OUT")"
 PR=7102
 eval_mk_bundle "$PR"
 printf '%s' "$CRIT_FINDING" | eval_write_findings "$PR"
+eval_write_record_evidence "$PR"
 set_mode clear
 run_review gate acme/app "$PR" --max-severity important --live skip --coverage warn
 assert_exit "tier-dirty gate exits 1" 1
 assert_file_grep "fail line names the tier and count" "$EVAL_OUT" "1 open finding(s) at-or-above important"
-assert_file_grep "fail tally counts the failing dimension" "$EVAL_OUT" "gate: FAIL (1 fail, 2 skip)"
+# The evidence dimension passes here, so the tally names the one pass beside the
+# failing dimension and the two skips.
+assert_file_grep "fail tally counts the failing dimension" "$EVAL_OUT" "gate: FAIL (1 fail, 1 pass, 2 skip)"
 assert_file_grep "fail carries a next action" "$EVAL_OUT" "try: address or triage the open findings"
 before_hash="$(cat "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" | shasum | cut -d' ' -f1)"
 run_review gate acme/app "$PR" --max-severity important --live skip --coverage warn --json
@@ -114,8 +123,8 @@ assert_file_grep "stale head names both SHAs" "$EVAL_OUT" "posted HEAD ccccccc !
 # post/record write the summary beside the head it was made at, so the gate
 # reads it instead of re-evaluating review.json.
 coverage_post() { # $1 = pr, $2 = head, $3 = the measured summary
-  jq -n --arg h "$2" --argjson c "$3" \
-    '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null,coverage:$c}' \
+  jq -n --arg h "$2" --argjson c "$3" --argjson e "$(eval_evidence_receipt "$EVAL_SANDBOX/.verdict/state/$1" "$2")" \
+    '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null,evidence:$e,coverage:$c}' \
     >"$EVAL_SANDBOX/.verdict/state/$1/post.json"
 }
 
@@ -164,13 +173,15 @@ chunked_store() { # $1 = pr, $2 = head, $3 = the chunk attestation (empty for no
   mkdir -p "$dir/chunks"
   jq -n '{schema_version:"1",chunks:[{name:"chunk-01",diff:"chunks/chunk-01.diff"},{name:"chunk-02",diff:"chunks/chunk-02.diff"}]}' \
     >"$dir/chunks/manifest.json"
+  local evidence
+  evidence="$(eval_evidence_receipt "$dir" "$2")"
   if [ -n "$3" ]; then
-    jq -n --arg h "$2" --argjson c "$3" \
-      '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null,chunk_coverage:$c}' \
+    jq -n --arg h "$2" --argjson c "$3" --argjson e "$evidence" \
+      '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null,evidence:$e,chunk_coverage:$c}' \
       >"$dir/post.json"
   else
-    jq -n --arg h "$2" \
-      '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
+    jq -n --arg h "$2" --argjson e "$evidence" \
+      '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null,evidence:$e}' \
       >"$dir/post.json"
   fi
 }
@@ -210,6 +221,7 @@ assert_eq "a receipt without a chunk attestation publishes unknown" "unknown" \
 PR=7104
 eval_mk_bundle "$PR"
 printf '%s' "$INFO_FINDING" | eval_write_findings "$PR"
+eval_write_record_evidence "$PR"
 set_mode open
 run_review gate acme/app "$PR" --max-severity critical --live auto --coverage warn
 assert_exit "auto posture fails when live opens outnumber local ones" 1
@@ -219,6 +231,7 @@ assert_file_grep "live fail says how out" "$EVAL_OUT" "try: resolve or reply to 
 PR=7106
 eval_mk_bundle "$PR"
 printf '%s' "$INFO_FINDING" | eval_write_findings "$PR"
+eval_write_record_evidence "$PR"
 set_mode open
 m="$(mark)"
 run_review gate acme/app "$PR" --max-severity critical --live skip --coverage warn

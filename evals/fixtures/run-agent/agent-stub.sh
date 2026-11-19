@@ -65,6 +65,9 @@ if [ -z "$artifact" ] || [ "$artifact" = "$rest" ]; then
   exit 2
 fi
 mkdir -p "$(dirname "$artifact")"
+# The one changed hunk of the eval fixture's diff, read and receipted: the
+# review states the hunk it read, which is what the evidence pass checks before
+# an approval can be withheld. The quote is the line that hunk adds.
 cat >"$artifact" <<'JSON'
-{"schema_version":"1","summary":"Nit: one note, nothing blocking.","findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"Nit: rename this line.","quote":"new line","confidence":"high","severity":"informational","rigor":"walked"}]}
+{"schema_version":"1","summary":"Nit: one note, nothing blocking.","findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"Nit: rename this line.","quote":"new line","confidence":"high","severity":"informational","rigor":"walked"}],"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new line"}]}
 JSON

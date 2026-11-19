@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/stainless-code/verdict/internal/evidence"
 )
 
 // The replay tests spawn a real child through the production launcher. No real
@@ -43,11 +45,19 @@ type fakeComment struct {
 	Line       int    `json:"line"`
 }
 
+// fakeReceipt is one read receipt: the hunk row the fake agent read and a line
+// quoted from it.
+type fakeReceipt struct {
+	Hunk  string `json:"hunk"`
+	Quote string `json:"quote"`
+}
+
 // fakeReviewDoc is the review the fake agent writes.
 type fakeReviewDoc struct {
 	SchemaVersion string        `json:"schema_version"`
 	Summary       string        `json:"summary"`
 	Findings      []fakeComment `json:"findings"`
+	Receipts      []fakeReceipt `json:"receipts,omitempty"`
 }
 
 // fakeAgentMain is the child's side of the contract: it appends one line naming
@@ -158,24 +168,76 @@ func fakeArtifact(directive string) string {
 	return ""
 }
 
-// fakeComments anchors one inline comment on the first added file of the
-// bundle's own diff, so the review proves which historical diff it read.
+// fakeComments anchors one inline comment on the first hunk of the bundle's own
+// diff that adds a line, quoting that line byte for byte: the review proves
+// which historical diff it read, and its quote matches the bytes it read.
 func fakeComments(dir string) []fakeComment {
+	anchor, ok := fakeAnchor(dir)
+	if !ok {
+		return nil
+	}
+	return []fakeComment{{
+		Path: anchor.File, Line: anchor.NewStart, Side: "RIGHT", Body: "Nit: rename this line.",
+		Quote: anchor.NewLines[0], Severity: "informational", Rigor: "walked",
+	}}
+}
+
+// fakeAnchor returns the first hunk of the bundle's diff that adds a line.
+func fakeAnchor(dir string) (*evidence.DiffHunk, bool) {
+	diff := fakeDiff(dir)
+	if diff == nil {
+		return nil, false
+	}
+	for _, key := range diff.ReceiptKeys(nil) {
+		hunk, ok := diff.HunkByKey(key)
+		if ok && len(hunk.NewLines) > 0 {
+			return hunk, true
+		}
+	}
+	return nil, false
+}
+
+// fakeReceipts receipts every changed hunk of the bundle's diff, each quoting a
+// line of the side it changes: the receipts a review without a gating finding
+// needs before it can approve.
+func fakeReceipts(dir string) []fakeReceipt {
+	diff := fakeDiff(dir)
+	if diff == nil {
+		return nil
+	}
+	var out []fakeReceipt
+	for _, key := range diff.ReceiptKeys(nil) {
+		if quote, ok := firstQuotedLine(diff, key); ok {
+			out = append(out, fakeReceipt{Hunk: key, Quote: quote})
+		}
+	}
+	return out
+}
+
+// firstQuotedLine returns the line one hunk quotes: its first NEW line, or its
+// first OLD line when the hunk only removes.
+func firstQuotedLine(diff *evidence.DiffIndex, key string) (string, bool) {
+	hunk, ok := diff.HunkByKey(key)
+	if !ok {
+		return "", false
+	}
+	lines := hunk.NewLines
+	if len(lines) == 0 {
+		lines = hunk.OldLines
+	}
+	if len(lines) == 0 {
+		return "", false
+	}
+	return lines[0], true
+}
+
+// fakeDiff indexes the bundle's own diff, or reports that it read none.
+func fakeDiff(dir string) *evidence.DiffIndex {
 	raw, err := os.ReadFile(filepath.Join(dir, "full.diff"))
 	if err != nil {
 		return nil
 	}
-	for line := range strings.SplitSeq(string(raw), "\n") {
-		path, ok := strings.CutPrefix(line, "+++ b/")
-		if !ok {
-			continue
-		}
-		return []fakeComment{{
-			Path: path, Line: 1, Side: "RIGHT", Body: "Nit: rename this line.",
-			Severity: "informational", Rigor: "walked",
-		}}
-	}
-	return nil
+	return evidence.IndexDiff(raw)
 }
 
 // fakeWrite writes the review into the bundle the directive named and, when a
@@ -194,6 +256,7 @@ func fakeWrite(artifact string, launch int) int {
 		SchemaVersion: "1",
 		Findings:      fakeFindingComments(comments),
 		Summary:       fakeSummary,
+		Receipts:      fakeReceipts(filepath.Dir(artifact)),
 	})
 	if err != nil {
 		fmt.Fprintln(os.Stderr, "fake agent: render review:", err)

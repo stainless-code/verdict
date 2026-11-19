@@ -186,6 +186,7 @@ repair-exhausted	try: fix every error named in error.problems, then re-run (when
 report-failed	try: run the fetch/record step named above first, then re-run
 requirement-blocked	try: address the cause above, then re-run the same command
 requirement-unmet	try: address the cause above, then re-run the same command
+review-insufficient	try: fix the evidence gaps named above (quote at path:line, receipt hunk key, spec item), rewrite review.json, then re-run record or run --rounds
 rigor-below-floor	try: deepen the evidence for the named findings, or re-run with --force to publish them and record the bypass
 rounds-path-unsafe	try: remove the named path from the bundle (verdict owns it as a plain directory), then re-run
 run-mismatch	try: pick another --run, or delete the existing run directory
@@ -204,6 +205,7 @@ skill-path-not-inventory	try: run 'verdict skill files' to list every embedded p
 skill-read-failed	try: address the cause above, then re-run the same command
 skill-target-file	try: address the cause above, then re-run the same command
 skill-unknown-agent	try: address the cause above, then re-run the same command
+spec-too-large	try: narrow the --spec file under 60 checklist items or split the PR, then re-fetch
 spend-capped	try: re-run with --consent-over-budget once the spend is approved, or raise the personal spend ceiling (spend.budget_usd) in the operator settings, then re-run
 stale-review-artifact	try: delete the stale review.json (or let the agent overwrite it), then re-run
 store-busy	try: wait for the write holding the store's lock (the OS drops the lock when its holder exits, so a retry after a crash succeeds), then re-run

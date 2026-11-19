@@ -32,12 +32,12 @@ func TestRuntimeFixturesEnvelopeValidates(t *testing.T) {
 	assertWireFields(t, data, map[string]any{
 		"schema_version": "1",
 		"mode":           "fixtures",
-		"recordings":     json.Number("7"),
-		"scored":         json.Number("7"),
+		"recordings":     json.Number("8"),
+		"scored":         json.Number("8"),
 	})
 	calibration := wireSubMap(t, data, "calibration")
 	assertWireFields(t, calibration, map[string]any{
-		"rows": json.Number("7"), "reproduced": true,
+		"rows": json.Number("8"), "reproduced": true,
 	})
 	assertEnvelope(t, doc, "backtest", "", resp.At, resp.Next, resp.Warnings, data)
 	validateWire(t, artifact, "report.json", artifact, decodeWire(t, data))

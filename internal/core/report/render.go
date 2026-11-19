@@ -528,6 +528,7 @@ const (
 	dimUnknown    = "unknown"
 	dimCompliance = "compliance"
 	dimRisk       = "risk"
+	dimEvidence   = "evidence"
 	checkPrefix   = "check: "
 )
 
@@ -559,10 +560,12 @@ func gateTail(st *state) (bool, []string, *core.ReportGate) {
 }
 
 // gateDimensions is the ceiling on one run's gate checks: findings, head,
-// coverage, live, compliance, risk.
-const gateDimensions = 6
+// coverage, live, compliance, risk, evidence.
+const gateDimensions = 7
 
-// gateChecks evaluates the dimensions this run asked for, in wire order.
+// gateChecks evaluates the dimensions this run asked for, in wire order. The
+// evidence dimension is always on: a gate that passes without a receipt for the
+// gated head certifies a review nothing checked.
 func gateChecks(st *state) []gateCheck {
 	specs := []struct {
 		build   func(*state) gateCheck
@@ -574,6 +577,7 @@ func gateChecks(st *state) []gateCheck {
 		{gateLiveCheck, st.liveGate},
 		{gateComplianceCheck, st.compliance != nil && st.compliance.HasPolicy},
 		{gateRiskCheck, st.flags.MaxRisk != "" && st.risk != nil},
+		{gateEvidenceCheck, true},
 	}
 	checks := make([]gateCheck, 0, gateDimensions)
 	for _, spec := range specs {

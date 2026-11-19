@@ -16,13 +16,48 @@ import (
 )
 
 // CheckResult is CheckReview's output: every problem in document order, the
-// overflow past the 50-problem cap, and the summary a clean dry run reports.
+// overflow past the 50-problem cap, the evidence receipt the bundle bytes
+// support, and the summary a clean dry run reports.
 type CheckResult struct {
+	Evidence  *EvidenceCheck    `json:"evidence,omitempty"`
 	Problems  []Problem         `json:"problems"`
-	Truncated int               `json:"problems_truncated"`
-	Errors    int               `json:"errors"`
-	Warnings  int               `json:"warnings"`
 	Summary   core.CheckSummary `json:"summary"`
+	Truncated int               `json:"problems_truncated"`
+	// Errors counts the shape errors and the evidence errors together, so
+	// "no errors" means the review is both well shaped and evidenced.
+	Errors   int `json:"errors"`
+	Warnings int `json:"warnings"`
+}
+
+// EvidenceCheck is the check's evidence half, kept behind one pointer so
+// CheckResult stays small enough to pass by value: the receipt the bundle
+// stores, the pass's gaps as ordinary problems in the pass's order, and how
+// many of those gaps are errors. The gaps are separate from Problems so a
+// consumer that refuses on a malformed document (record's bad-review-input)
+// keeps reading only the shape check, while the repair loop feeds both lists to
+// the agent in one re-prompt.
+type EvidenceCheck struct {
+	Receipt  *core.EvidenceReceipt `json:"receipt,omitempty"`
+	Problems []Problem             `json:"problems"`
+	Errors   int                   `json:"errors"`
+}
+
+// evidenceReceipt returns the stored receipt, or nil when the bytes never
+// decoded and no evidence pass ran.
+func (c CheckResult) evidenceReceipt() *core.EvidenceReceipt {
+	if c.Evidence == nil {
+		return nil
+	}
+	return c.Evidence.Receipt
+}
+
+// ShapeErrors is the count of the review's own (non-evidence) errors: the
+// number record's bad-review-input refusal reports.
+func (c CheckResult) ShapeErrors() int {
+	if c.Evidence == nil {
+		return c.Errors
+	}
+	return c.Errors - c.Evidence.Errors
 }
 
 // CheckInput carries everything the one review checker can validate beyond
@@ -131,15 +166,14 @@ func CheckReviewInput(review []byte, in CheckInput) CheckResult {
 	return *c.result()
 }
 
-//nolint:govet // the fields group one check pass
 type checker struct {
-	res             CheckResult
 	excludedPaths   map[string]bool
 	hunks           []hunks.Hunk
-	headSHA         string
 	chunkNames      []string
 	chunkManifest   string
+	headSHA         string
 	verification    []byte
+	res             CheckResult
 	comments        int
 	moved           int
 	hasChunks       bool

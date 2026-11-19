@@ -168,6 +168,18 @@ type Receipt = core.Receipt
 // ApprovalReceipt is core's derived approval decision.
 type ApprovalReceipt = core.ApprovalReceipt
 
+// EvidenceReceipt is core's deterministic evidence verification summary.
+type EvidenceReceipt = core.EvidenceReceipt
+
+// EvidenceQuote is core's per-finding quote-check outcome.
+type EvidenceQuote = core.EvidenceQuote
+
+// EvidenceReceipts is core's changed-hunk reading receipt coverage summary.
+type EvidenceReceipts = core.EvidenceReceipts
+
+// EvidenceSpec is core's specification checklist coverage summary.
+type EvidenceSpec = core.EvidenceSpec
+
 // Verify is core's finding evidence standing.
 type Verify = core.Verify
 

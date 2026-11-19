@@ -35,6 +35,7 @@ First-party, no upstream text:
 - `prompts/handoff/lenses.md`
 - `prompts/handoff/replies-contract.md`
 - `prompts/handoff/role-method.md`
+- `prompts/handoff/spec.md`
 - `prompts/handoff/threads.md`
 - `prompts/rule-packs.md`
 

@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "fixture": "fx4",
+  "driver": "synthetic / quote-verifier probe",
+  "source_bundle": "synthetic-quotes",
+  "source_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+  "infra_error": null,
+  "refusal_code": null,
+  "note": "Deterministic probe with one quote that matches fx4/full.diff and one fabricated quote, so the verifier measures rate 0.5. No archived bundle to convert, so source_sha256 is the all-zero digest."
+}

@@ -241,6 +241,21 @@ func boundedCount(raw any, path string, floor int64) (int, *core.RefusalError) {
 	return int(val), nil
 }
 
+// boundedIntRange requires an integer inside the closed interval [lo, hi].
+func boundedIntRange(raw any, path string, lo, hi int64) (int, *core.RefusalError) {
+	num, ref := toNumber(raw, path, "an integer")
+	if ref != nil {
+		return 0, ref
+	}
+	if !num.integer {
+		return 0, refuse(CodeBadConfig, "%s: want an integer, got %s", path, num.literal)
+	}
+	if num.intVal < lo || num.intVal > hi {
+		return 0, refuse(CodeBadConfig, "%s: want an integer from %d to %d", path, lo, hi)
+	}
+	return int(num.intVal), nil
+}
+
 // arrayPath renders the canonical indexed child path.
 func arrayPath(path string, i int) string {
 	return path + "[" + itoa(i) + "]"

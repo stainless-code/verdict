@@ -310,13 +310,97 @@ eval_fixture_rebase() {
   mv "$dir/PR.json.tmp" "$dir/PR.json"
 }
 
+# eval_hunk_receipts <bundle dir> prints the read receipts a review of that
+# bundle needs: one per changed hunk, quoting the first line the hunk carries on
+# its NEW side. Record approves only a review whose every non-exempt hunk is
+# receipted, so a fixture that wants an approval asks for these the way an agent
+# reading the diff would.
+eval_hunk_receipts() {
+  local dir="$1"
+  if [ ! -f "$dir/hunks.tsv" ] || [ ! -f "$dir/full.diff" ]; then
+    printf '[]\n'
+    return
+  fi
+  awk -F'\t' '
+    FNR == NR { want[$0] = 1; next }
+    /^\+\+\+ b\// { path = substr($0, 7); next }
+    /^@@ / {
+      flush()
+      if (!match($0, /\+[0-9]+(,[0-9]+)?/)) next
+      split(substr($0, RSTART + 1, RLENGTH - 1), span, ",")
+      start = span[1] + 0
+      span_len = (2 in span) ? span[2] + 0 : 1
+      key = path "\tNEW\t" start "\t" start + span_len - 1
+      next
+    }
+    key == "" { next }
+    {
+      mark = substr($0, 1, 1)
+      if (mark != "+" && mark != " ") next
+      if (quote == "") {
+        quote = substr($0, 2)
+        gsub(/\t/, " ", quote)
+      }
+    }
+    function flush() {
+      if (key != "" && quote != "" && (key in want)) printf "%s\t%s\n", key, quote
+      key = ""
+      quote = ""
+    }
+    END { flush() }
+  ' "$dir/hunks.tsv" "$dir/full.diff" |
+    jq -R -s 'split("\n") | map(select(length > 0)) | map(split("\t"))
+      | map({hunk: (.[0:(length - 1)] | join("\t")), quote: .[-1]})'
+}
+
+# eval_diff_lines <bundle dir> prints a JSON object mapping "<path>\t<line>" to
+# the text full.diff carries at that NEW-side line. A fixture finding that names
+# a line without quoting it quotes that line, so the review states the evidence
+# the evidence pass checks instead of quoting its own prose.
+eval_diff_lines() {
+  local dir="$1"
+  if [ ! -f "$dir/full.diff" ]; then
+    printf '{}'
+    return
+  fi
+  awk '
+    /^\+\+\+ b\// { path = substr($0, 7); next }
+    /^@@ / {
+      if (!match($0, /\+[0-9]+(,[0-9]+)?/)) next
+      split(substr($0, RSTART + 1, RLENGTH - 1), span, ",")
+      newline = span[1] + 0
+      next
+    }
+    path == "" || newline == 0 { next }
+    {
+      mark = substr($0, 1, 1)
+      if (mark == "-") next
+      if (mark != "+" && mark != " ") next
+      text = substr($0, 2)
+      gsub(/\t/, " ", text)
+      printf "%s\t%d\t%s\n", path, newline, text
+      newline++
+    }
+  ' "$dir/full.diff" |
+    jq -R -s 'split("\n") | map(select(length > 0)) | map(split("\t"))
+      | map({key: (.[0:-1] | join("\t")), value: .[-1]}) | from_entries'
+}
+
 eval_write_review_at() {
   local path="$1"
-  local raw tmp
+  local raw tmp lines
   raw=$(cat)
   tmp="$path.tmp"
   if printf '%s\n' "$raw" | jq -e . >/dev/null 2>&1; then
-    printf '%s\n' "$raw" | jq '
+    # The diff-line map is one entry per changed line, so it passes as a file:
+    # Linux caps a single argv entry at 128 KiB, and a bundle over the review cap
+    # carries megabytes of lines.
+    lines="$path.lines.json"
+    if ! eval_diff_lines "$(dirname "$path")" >"$lines"; then
+      rm -f "$lines" "$tmp"
+      return 1
+    fi
+    if ! printf '%s\n' "$raw" | jq --slurpfile lines "$lines" '
       if type != "object" or has("findings") then . else (
       def anchor: (.line // 1 | if type == "number" then . else tonumber? // 1 end);
       {
@@ -328,7 +412,8 @@ eval_write_review_at() {
           side: (.side // "RIGHT"),
           severity: (.severity // "important"),
           claim: (.body // "converted finding"),
-          quote: (.quote // .body // "converted finding"),
+          quote: (.quote // $lines[0][((.path // "a.txt") | tostring) + "\t"
+            + ((.line // 1) | tostring)] // .body // "converted finding"),
           confidence: "high",
           rigor: (.rigor // "said"),
           category: (.category // null),
@@ -349,14 +434,80 @@ eval_write_review_at() {
       + (if has("risk") then {risk: .risk} else {} end)
       + (if has("security_summary") then {security_summary: .security_summary} else {} end)
       ) end' > "$tmp"
+    then
+      rm -f "$lines" "$tmp"
+      return 1
+    fi
+    rm -f "$lines"
   else
     printf '%s\n' "$raw" > "$tmp"
   fi
   mv "$tmp" "$path"
+  eval_stamp_receipts "$path"
+}
+
+# eval_stamp_receipts <review path> adds the hunk receipts a review needs unless
+# the review already states its receipts: an explicit receipts key, even an
+# empty one, is the case saying it wants the shortfall.
+eval_stamp_receipts() {
+  local path="$1" receipts
+  jq -e 'has("receipts") | not' "$path" >/dev/null 2>&1 || return 0
+  # The receipt list scales with the changed hunks, so it passes as a file for
+  # the same reason the diff-line map does.
+  receipts="$path.receipts.json"
+  if ! eval_hunk_receipts "$(dirname "$path")" >"$receipts"; then
+    rm -f "$receipts"
+    return 1
+  fi
+  if [ "$(jq 'length' "$receipts")" = "0" ]; then
+    rm -f "$receipts"
+    return 0
+  fi
+  if ! jq --slurpfile r "$receipts" '. + {receipts: $r[0]}' "$path" >"$path.tmp"; then
+    rm -f "$receipts" "$path.tmp"
+    return 1
+  fi
+  mv "$path.tmp" "$path"
+  rm -f "$receipts"
 }
 
 eval_write_review() {
   eval_write_review_at "$EVAL_SANDBOX/.verdict/state/$1/review.json"
+}
+
+# eval_write_record_evidence <pr> stores the record.json a completed record
+# leaves behind: the reviewed head, the bundle's own diff digest, and the reading
+# receipts its hunks support. A gate run grades this receipt, so a fixture that
+# expects a passing gate on an unposted bundle states the evidence a recorded
+# review carries.
+eval_write_record_evidence() {
+  local pr="$1" dir head
+  dir="$EVAL_SANDBOX/.verdict/state/$pr"
+  head="$(jq -r '.headRefOid // .head_sha // ""' "$dir/PR.json" 2>/dev/null || printf '')"
+  [ -n "$head" ] || head="$(jq -r '.head_sha // ""' "$dir/source.json" 2>/dev/null || printf '')"
+  [ -n "$head" ] || head="$EVAL_FIXTURE_HEAD"
+  jq -n --arg h "$head" --argjson e "$(eval_evidence_receipt "$dir" "$head")" \
+    '{schema_version: "1", status: "github", head: $h, diff_sha256: $e.diff_sha256,
+      recorded_at: "2026-01-01T00:00:00Z", findings: 0, open: 0,
+      approval: {reason: "no gating findings", tier: "important", gating_sigs: [], approved: true},
+      evidence: $e}' >"$dir/record.json"
+}
+
+# eval_evidence_receipt <bundle dir> <head> prints the evidence receipt a
+# recording verb stores for that bundle: the head, the bundle's own diff digest,
+# and one matched receipt per changed hunk. A gate run grades this receipt, so a
+# fixture that expects a passing gate states the evidence a recorded review
+# carries.
+eval_evidence_receipt() {
+  local dir="$1" head="$2" receipts total sha
+  receipts="$(eval_hunk_receipts "$dir")"
+  total="$(printf '%s' "$receipts" | jq 'length')"
+  sha="$( { sha256sum "$dir/full.diff" 2>/dev/null || shasum -a 256 "$dir/full.diff" 2>/dev/null; } | cut -d' ' -f1 || true)"
+  jq -n --arg h "$head" --arg d "$sha" --argjson n "$total" '
+    {head: $h, diff_sha256: $d,
+     receipts: {total: $n, covered: $n, exempt: 0, complete: true},
+     spec: {total: 0, covered: 0, min: 0, met: true},
+     insufficient: false}'
 }
 
 eval_write_findings() {

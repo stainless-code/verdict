@@ -13,8 +13,9 @@ import (
 )
 
 // Prepare rewrites one checked review document into the internal merge shape:
-// claim becomes body, finder confidence gets its store name, and every
-// finding reserves the quote verification seam with unchecked.
+// claim becomes body and finder confidence gets its store name. The quote
+// verification standing is left untouched: the bundle evidence pass stamps
+// verified or unverified from the diff bytes before anything is stored.
 func Prepare(review *jq.Obj) {
 	for _, item := range Findings(review) {
 		if m, ok := item.(*jq.Obj); ok {
@@ -31,7 +32,6 @@ func prepareFinding(m *jq.Obj) {
 	if confidence, has := m.Get("confidence"); has {
 		m.Set("finder_confidence", confidence)
 	}
-	m.Set("verification", jq.NewObj("quote", "unchecked"))
 }
 
 // Summary returns the optional human summary. It is never agent-controlled
@@ -149,8 +149,10 @@ func HasSpecViolation(obj *jq.Obj) bool {
 	return false
 }
 
-// Render returns the minimal deterministic body. S3 replaces this renderer;
-// S1 keeps the existing approval markers so consumers need no new grammar.
+// Render returns the minimal deterministic body. A nil approval is the
+// pre-decision render the merge reads: the clean lead is written for a review
+// that reports no findings, and AlignLead corrects it once the evidence pass
+// and the policy have decided.
 func Render(review *jq.Obj, approval *core.ApprovalReceipt) string {
 	var b strings.Builder
 	renderLead(&b, review, approval)
@@ -167,40 +169,70 @@ func Render(review *jq.Obj, approval *core.ApprovalReceipt) string {
 	return b.String()
 }
 
-// The two leads the renderer writes. AlignLead swaps the clean one for the
-// attention one when the authoritative decision withholds approval, so the
-// body never certifies a review the decision refused.
+// The three leads the renderer writes. AlignLead swaps CleanLead (or
+// AttentionLead when evidence is insufficient) so the body never certifies a
+// review the decision refused.
 const (
-	CleanLead     = "> ✅ No new issues found.\n"
-	AttentionLead = "> ⚠️ Findings require attention.\n"
+	CleanLead                = "> ✅ No new issues found.\n"
+	AttentionLead            = "> ⚠️ Findings require attention.\n"
+	EvidenceInsufficientLead = "> ⛔ Evidence checks insufficient — no approval.\n"
 )
 
 // AlignLead makes the rendered lead agree with the decision the merge
-// computed. The renderer runs before the merge, because its findings are the
-// merge input, so it cannot know about stored findings, block clauses or a
-// violated spec check: a clean marker must not survive a withheld decision.
-// Only the lead line moves; summary text is the agent's own words and a
-// finding's claim is never rewritten.
+// computed. Evidence insufficiency is checked first and overrides both
+// CleanLead and AttentionLead, prepending the lead when the body carries
+// neither; a withheld non-insufficient decision swaps CleanLead for
+// AttentionLead. Only the lead line moves; summary text is
+// the agent's own words and a finding's claim is never rewritten.
 func AlignLead(body string, approval *core.ApprovalReceipt) string {
-	if approval == nil || approval.Approved {
+	if approval == nil {
 		return body
 	}
-	at := strings.Index(body, CleanLead)
+	if approval.Insufficient {
+		return insufficientLead(body)
+	}
+	if approval.Approved {
+		return body
+	}
+	swapped, _ := replaceLeadLine(body, CleanLead, AttentionLead)
+	return swapped
+}
+
+// insufficientLead makes an insufficient body start with the insufficient
+// lead. A known lead at the head is swapped; a body whose summary is the
+// agent's own quote line gets the lead prepended, because a body may never
+// certify a review the decision refused.
+func insufficientLead(body string) string {
+	if strings.HasPrefix(body, EvidenceInsufficientLead) {
+		return body
+	}
+	for _, lead := range []string{CleanLead, AttentionLead} {
+		if swapped, ok := replaceLeadLine(body, lead, EvidenceInsufficientLead); ok &&
+			strings.HasPrefix(swapped, EvidenceInsufficientLead) {
+			return swapped
+		}
+	}
+	return EvidenceInsufficientLead + body
+}
+
+func replaceLeadLine(body, oldLead, newLead string) (string, bool) {
+	at := strings.Index(body, oldLead)
 	if at < 0 || (at > 0 && body[at-1] != '\n') {
-		return body
+		return body, false
 	}
-	return body[:at] + AttentionLead + body[at+len(CleanLead):]
+	return body[:at] + newLead + body[at+len(oldLead):], true
 }
 
 // renderLead writes the verdict marker and the optional summary paragraph.
+// Evidence insufficiency is checked first and always writes
+// EvidenceInsufficientLead; the agent's summary is kept verbatim.
 func renderLead(b *strings.Builder, review *jq.Obj, approval *core.ApprovalReceipt) {
 	summary := Summary(review)
-	if !strings.HasPrefix(summary, "> ") {
-		if len(Findings(review)) == 0 && approval != nil && approval.Approved {
-			b.WriteString(CleanLead)
-		} else {
-			b.WriteString(AttentionLead)
-		}
+	switch {
+	case approval != nil && approval.Insufficient:
+		b.WriteString(EvidenceInsufficientLead)
+	case !strings.HasPrefix(summary, "> "):
+		b.WriteString(undecidedLead(review, approval))
 	}
 	if summary == "" {
 		return
@@ -212,7 +244,19 @@ func renderLead(b *strings.Builder, review *jq.Obj, approval *core.ApprovalRecei
 	b.WriteString("\n")
 }
 
+// undecidedLead picks between the clean and attention leads for a summary
+// that is not its own quote line: only a finding-free review a decision did
+// not withhold earns the clean sentence.
+func undecidedLead(review *jq.Obj, approval *core.ApprovalReceipt) string {
+	if len(Findings(review)) == 0 && (approval == nil || approval.Approved) {
+		return CleanLead
+	}
+	return AttentionLead
+}
+
 // renderFinding writes one numbered finding line: severity, anchor, claim.
+// An unverified finding is labeled "unverified — not counted" without
+// rewriting the agent's claim.
 func renderFinding(b *strings.Builder, n int, m *jq.Obj) {
 	path, _ := m.Get("path")
 	line, _ := m.Get("line")
@@ -221,5 +265,24 @@ func renderFinding(b *strings.Builder, n int, m *jq.Obj) {
 	if _, ok := claim.(string); !ok {
 		claim, _ = m.Get("body")
 	}
+	if isUnverifiedFinding(m) {
+		fmt.Fprintf(b, "%d. **%s** `%s:%s` (unverified — not counted) — %s\n",
+			n, jq.R(severity), jq.R(path), jq.R(line), jq.R(claim))
+		return
+	}
 	fmt.Fprintf(b, "%d. **%s** `%s:%s` — %s\n", n, jq.R(severity), jq.R(path), jq.R(line), jq.R(claim))
+}
+
+func isUnverifiedFinding(m *jq.Obj) bool {
+	v, ok := m.Get("verification")
+	if !ok {
+		return false
+	}
+	rec, ok := v.(*jq.Obj)
+	if !ok || rec == nil {
+		return false
+	}
+	q, _ := rec.Get("quote")
+	s, ok := q.(string)
+	return ok && s == "unverified"
 }

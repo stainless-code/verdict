@@ -211,7 +211,7 @@ func TestRentryRebuildsEachMode(t *testing.T) {
 		{"replay budgets", []string{
 			"replay", "--run", "sweep-1", "--agent", "codex", "--max-reviews", "4",
 			"--budget-usd", "3", "--timeout", "90", "--rounds", "2", "--", "--model", "x",
-		}, false, "verdict backtest replay --run sweep-1 --agent codex --max-reviews 4 --budget-usd 3 --timeout 90 --rounds 2 -- --model x"},
+		}, false, "verdict backtest replay --run sweep-1 --agent codex --max-reviews 4 --budget-usd 3 --timeout 90 -- --model x"},
 		{"replay pass-through quoting", []string{
 			"replay", "--run", "sweep-1", "--agent", "claude", "--", "--model", "fast mode",
 		}, true, "verdict backtest replay --run sweep-1 --agent claude --json -- --model 'fast mode'"},
@@ -225,7 +225,7 @@ func TestRentryRebuildsEachMode(t *testing.T) {
 			"composed",
 			[]string{"--since", "90d", "--until", "main", "--run", "sweep", "--agent", "codex", "--rounds", "2"},
 			true,
-			"verdict backtest --since 90d --until main --run sweep --agent codex --rounds 2 --json",
+			"verdict backtest --since 90d --until main --run sweep --agent codex --json",
 		},
 	}
 	for _, tc := range tests {

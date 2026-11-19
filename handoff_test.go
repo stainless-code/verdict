@@ -59,6 +59,7 @@ func reviewFactCases() []reviewFactCase {
 		{name: "kb", path: "prompts/handoff/kb.md", set: func(f *skillfs.HandoffFacts) { f.KB = true }},
 		{name: "lenses", path: "prompts/handoff/lenses.md", set: func(f *skillfs.HandoffFacts) { f.Lenses = true }},
 		{name: "context", path: "prompts/handoff/context.md", set: func(f *skillfs.HandoffFacts) { f.Context = true }},
+		{name: "spec", path: "prompts/handoff/spec.md", set: func(f *skillfs.HandoffFacts) { f.Spec = true }},
 	}
 }
 
@@ -100,7 +101,8 @@ func TestReviewFactsAppendOnlyTheirSections(t *testing.T) {
 		}
 		paths := append(slices.Clone(handoffCorePaths),
 			"prompts/handoff/chunked.md", "prompts/handoff/threads.md",
-			"prompts/handoff/kb.md", "prompts/handoff/lenses.md", "prompts/handoff/context.md")
+			"prompts/handoff/kb.md", "prompts/handoff/lenses.md",
+			"prompts/handoff/context.md", "prompts/handoff/spec.md")
 		assertReviewAssembly(t, all, literalAssembly(t, paths...), "all-fact review")
 	})
 }
@@ -137,7 +139,7 @@ func TestDrainReusesCoreAndKeepsOnlyThreads(t *testing.T) {
 	withThreads = append(withThreads, literalAssembly(t, "prompts/handoff/threads.md")...)
 	assertDrainAssembly(t, skillfs.HandoffFacts{}, core)
 	assertDrainAssembly(t, skillfs.HandoffFacts{PriorThreads: true}, withThreads)
-	assertDrainAssembly(t, skillfs.HandoffFacts{Chunked: true, KB: true, Lenses: true, Context: true}, core)
+	assertDrainAssembly(t, skillfs.HandoffFacts{Chunked: true, KB: true, Lenses: true, Context: true, Spec: true}, core)
 	assertDrainCoreSharesRole(t)
 }
 
@@ -325,4 +327,44 @@ func TestHandoffFilesCoversEveryHandoffSource(t *testing.T) {
 			t.Errorf("HandoffFiles omits ref source %s", ref.Source)
 		}
 	}
+}
+
+// TestSpecChecklistStaysInTheFactSection keeps the checklist method out of the
+// pushed core: only a bundle whose manifest marks a spec source carries it.
+func TestSpecChecklistStaysInTheFactSection(t *testing.T) {
+	t.Parallel()
+	core, err := skillfs.ReviewCore()
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContainsNone(t, "review core", core, []string{"## Spec checklist", "spec_coverage_min", "role: spec"})
+	section, err := skillfs.Read("prompts/handoff/spec.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContainsAll(t, "spec section", section, []string{
+		"Every bullet and every table row in those sources is one checklist item",
+		"the item, quoted verbatim",
+		`"met|violated|n/a"`,
+		"Code or test source the diff changes is evidence",
+		"`spec_coverage_min`",
+		"`verdict record --dry-run` names an item that is not in the spec",
+	})
+}
+
+// TestFindingsContractAsksForQuotesAndReceipts pins the core's evidence
+// guidance: the quote must be the exact line, a review with no gating finding
+// receipts every hunk, and the dry run names the gaps.
+func TestFindingsContractAsksForQuotesAndReceipts(t *testing.T) {
+	t.Parallel()
+	section, err := skillfs.Read("prompts/handoff/findings-contract.md")
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertContainsAll(t, "findings contract", section, []string{
+		"`quote` is the exact line at `path:line`",
+		"A quote spanning several lines sets `start_line`",
+		"must also show it read the change: `receipts[]` holds one",
+		"`verdict record --dry-run` names every quote, receipt and spec gap",
+	})
 }

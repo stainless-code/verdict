@@ -15,6 +15,7 @@ type FetchFlags struct {
 	// empty means no impact section is written.
 	Index             string
 	Context           []string
+	Spec              []string
 	Ignore            []string
 	NoDefaultExcludes bool
 	BudgetConsent     bool
@@ -42,6 +43,7 @@ type FetchLocalFlags struct {
 	// it; empty means no impact section is written.
 	Index             string
 	Context           []string
+	Spec              []string
 	Ignore            []string
 	Paths             []string
 	Staged            bool

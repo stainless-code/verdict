@@ -142,9 +142,18 @@
             "normalized-trivia",
             "out-of-range",
             "path-not-in-diff",
+            "quote-mismatch",
+            "quote-not-checkable",
+            "receipt-hunk-unknown",
+            "receipt-mismatch",
+            "receipt-missing",
             "rigor-unset",
             "risk-stale-head",
             "scalar-to-array",
+            "spec-check-missing",
+            "spec-evidence-mismatch",
+            "spec-evidence-not-code",
+            "spec-item-unknown",
             "unknown-field",
             "wrong-type"
           ]
@@ -817,7 +826,7 @@
       "additionalProperties": true
     },
     "reportGate": {
-      "description": "Composed gate result: every requested dimension in findings, head, coverage, live_threads, compliance order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral.",
+      "description": "Composed gate result: every requested dimension in findings, head, coverage, live_threads, compliance, risk, evidence order. passed is true iff no dimension failed or read unknown, so a skip and an auto-posture unreachable probe stay neutral.",
       "type": "object",
       "properties": {
         "passed": {
@@ -837,14 +846,15 @@
       "type": "object",
       "properties": {
         "id": {
-          "description": "Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), or live_threads (unresolved threads on the PR under --live).",
+          "description": "Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), live_threads (unresolved threads on the PR under --live), compliance, risk, or evidence (the stored evidence receipt for that HEAD, always on under --check).",
           "enum": [
             "findings",
             "head",
             "coverage",
             "live_threads",
             "compliance",
-            "risk"
+            "risk",
+            "evidence"
           ]
         },
         "status": {
@@ -853,7 +863,7 @@
         },
         "detail": { "type": "string" },
         "count": {
-          "description": "The dimension's own tally: offending findings for findings, unattested ranges for coverage (unattested chunks on a chunked bundle), versus-thread count for live_threads, null for head and for a skipped or unreachable live probe.",
+          "description": "The dimension's own tally: offending findings for findings, unattested ranges for coverage (unattested chunks on a chunked bundle), versus-thread count for live_threads, evidence gaps for evidence, null for head and for a skipped, unreachable, or unknown probe.",
           "type": ["integer", "null"],
           "minimum": 0
         }
@@ -1073,6 +1083,10 @@
         "approval": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/approvalReceipt" }]
         },
+        "evidence": {
+          "description": "Deterministic evidence verification receipt over findings quotes, hunk receipts, and spec checks.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/evidenceReceipt" }]
+        },
         "spec_checks": {
           "type": "array",
           "items": { "$ref": "#/$defs/specCheck" }
@@ -1114,9 +1128,68 @@
           "type": "array",
           "items": { "type": "string" }
         },
-        "approved": { "type": "boolean" }
+        "approved": { "type": "boolean" },
+        "insufficient": { "type": "boolean" }
       },
       "required": ["reason", "tier", "gating_sigs", "approved"],
+      "additionalProperties": true
+    },
+    "evidenceReceipt": {
+      "description": "Deterministic evidence verification receipt pinned to the bundle head and diff SHA-256.",
+      "type": "object",
+      "properties": {
+        "head": { "type": "string" },
+        "diff_sha256": { "type": "string" },
+        "quotes": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidenceQuote" }
+        },
+        "gaps": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "receipts": { "$ref": "#/$defs/evidenceReceipts" },
+        "spec": { "$ref": "#/$defs/evidenceSpec" },
+        "insufficient": { "type": "boolean" }
+      },
+      "required": ["head", "diff_sha256", "receipts", "spec", "insufficient"],
+      "additionalProperties": true
+    },
+    "evidenceQuote": {
+      "description": "Per-finding deterministic quote verification status and machine reason.",
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "side": { "enum": ["RIGHT", "LEFT"] },
+        "status": { "enum": ["verified", "unverified"] },
+        "reason": { "type": "string" },
+        "line": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["path", "side", "status", "line"],
+      "additionalProperties": true
+    },
+    "evidenceReceipts": {
+      "description": "Changed-hunk reading receipt coverage summary.",
+      "type": "object",
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "covered": { "type": "integer", "minimum": 0 },
+        "exempt": { "type": "integer", "minimum": 0 },
+        "complete": { "type": "boolean" }
+      },
+      "required": ["total", "covered", "exempt", "complete"],
+      "additionalProperties": true
+    },
+    "evidenceSpec": {
+      "description": "Specification checklist coverage summary against defaults.spec_coverage_min.",
+      "type": "object",
+      "properties": {
+        "total": { "type": "integer", "minimum": 0 },
+        "covered": { "type": "integer", "minimum": 0 },
+        "min": { "type": "integer", "minimum": 0 },
+        "met": { "type": "boolean" }
+      },
+      "required": ["total", "covered", "min", "met"],
       "additionalProperties": true
     },
     "specCheck": {

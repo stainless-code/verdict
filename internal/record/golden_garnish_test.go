@@ -65,7 +65,12 @@ func TestGoldenBodies(t *testing.T) {
 		writeFiles(t, dir, map[string]string{
 			".verdict/state/local-dg/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
 			".verdict/state/local-dg/full.diff":   genDiff(2),
-			".verdict/state/local-dg/review.json": "{\"schema_version\":\"1\",\"body\":\"> ✅ marker plus enough length to pass the guard ok.\\n\\n<!-- verdict-footer -->\\n> old receipt\\n\",\"approved\":false,\"comments\":[]}",
+			// The receipts let this clean fixture approve: an approval has to cover
+			// every changed hunk, and the collision under test is in the body.
+			".verdict/state/local-dg/review.json": "{\"schema_version\":\"1\",\"body\":\"> ✅ marker plus enough length to pass the guard ok.\\n\\n<!-- verdict-footer -->\\n> old receipt\\n\",\"approved\":false,\"comments\":[]," +
+				`"receipts":[{"hunk":"notes.txt\tNEW\t1\t7","quote":"ctx 1"},` +
+				`{"hunk":"notes.txt\tNEW\t11\t17","quote":"ctx 11"},` +
+				`{"hunk":"other.txt\tNEW\t1\t3","quote":"new"}]}`,
 		})
 	}, "--json")
 	goldenBoth(t, "body/mermaid-stripped", "local-dg", func(t *testing.T, dir string) {

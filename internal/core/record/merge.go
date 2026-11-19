@@ -15,6 +15,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/coverage"
 	"github.com/stainless-code/verdict/internal/diagram"
+	"github.com/stainless-code/verdict/internal/evidence"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
@@ -30,6 +31,7 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	risk            *core.RiskClaim
 	review          *jq.Obj
 	coverage        *coverage.Summary
+	evidence        *core.EvidenceReceipt
 	controls        *controls.Snapshot
 	run             *config.RunState
 	kb              *kb.Ctx
@@ -715,7 +717,7 @@ func buildInline(st *state, m *jq.Obj) freshEntry {
 		Body:             body,
 		Quote:            jq.R(quote),
 		FinderConfidence: jq.R(finderConfidence),
-		Verification:     &core.Verify{Quote: "unchecked"},
+		Verification:     &core.Verify{Quote: entryQuoteStatus(m)},
 		Suggestion:       optString(jq.Alt(sugg, nil)),
 		InBounds:         drop == nil,
 		Rigor:            rigorValue,
@@ -753,6 +755,22 @@ func buildSection(h string) *core.FindingEntry {
 		Body:        h,
 		RigorSource: rigorSourceDefault,
 	}
+}
+
+// entryQuoteStatus reads the quote standing the evidence pass stamped on one
+// finding. Only an explicit verified stamp counts: a finding the pass never saw
+// is unverified, never a silent pass.
+func entryQuoteStatus(m *jq.Obj) string {
+	value, _ := m.Get(verificationKey)
+	record, ok := value.(*jq.Obj)
+	if !ok {
+		return evidence.StatusUnverified
+	}
+	quote, _ := record.Get(fieldQuote)
+	if quote == evidence.StatusVerified {
+		return evidence.StatusVerified
+	}
+	return evidence.StatusUnverified
 }
 
 // pickCategory normalizes one comment's category: a published value reads

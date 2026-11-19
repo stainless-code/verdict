@@ -8,6 +8,12 @@ exit: 0
   "at": "0000-00-00T00:00:00Z",
   "next": "report or triage the local bundle; post stays refused (no PR target)",
   "warnings": [
+    "evidence: hunk notes.txt\tNEW\t1\t7 has no matched receipt",
+    "evidence: hunk notes.txt\tNEW\t11\t17 has no matched receipt",
+    "evidence: hunk notes.txt\tNEW\t21\t27 has no matched receipt",
+    "evidence: hunk notes.txt\tNEW\t31\t37 has no matched receipt",
+    "evidence: hunk notes.txt\tNEW\t41\t47 has no matched receipt",
+    "evidence: +45 more gap(s) — see record.json evidence.gaps",
     "rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important",
     "rigor pointed below critical floor walked on afb9e47 (advisory); a gate would downgrade it to important",
     "rigor pointed below critical floor walked on a9d91e9 (advisory); a gate would downgrade it to important",
@@ -354,11 +360,18 @@ exit: 0
         "anchored": "body",
         "locator": "### ℹ️ Unanchored observations"
       }
-    ]
+    ],
+    "evidence": {"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","diff_sha256":"94c13c09a41c7b60eb7ad434d0022a7886cd82666cb464b623d9bc7d372b66de","gaps":["hunk notes.txt\tNEW\t1\t7 has no matched receipt","hunk notes.txt\tNEW\t11\t17 has no matched receipt","hunk notes.txt\tNEW\t21\t27 has no matched receipt","hunk notes.txt\tNEW\t31\t37 has no matched receipt","hunk notes.txt\tNEW\t41\t47 has no matched receipt","hunk notes.txt\tNEW\t51\t57 has no matched receipt","hunk notes.txt\tNEW\t61\t67 has no matched receipt","hunk notes.txt\tNEW\t71\t77 has no matched receipt","hunk notes.txt\tNEW\t81\t87 has no matched receipt","hunk notes.txt\tNEW\t91\t97 has no matched receipt","hunk notes.txt\tNEW\t101\t107 has no matched receipt","hunk notes.txt\tNEW\t111\t117 has no matched receipt","hunk notes.txt\tNEW\t121\t127 has no matched receipt","hunk notes.txt\tNEW\t131\t137 has no matched receipt","hunk notes.txt\tNEW\t141\t147 has no matched receipt","hunk notes.txt\tNEW\t151\t157 has no matched receipt","hunk notes.txt\tNEW\t161\t167 has no matched receipt","hunk notes.txt\tNEW\t171\t177 has no matched receipt","hunk notes.txt\tNEW\t181\t187 has no matched receipt","hunk notes.txt\tNEW\t191\t197 has no matched receipt","hunk notes.txt\tNEW\t201\t207 has no matched receipt","hunk notes.txt\tNEW\t211\t217 has no matched receipt","hunk notes.txt\tNEW\t221\t227 has no matched receipt","hunk notes.txt\tNEW\t231\t237 has no matched receipt","hunk notes.txt\tNEW\t241\t247 has no matched receipt","hunk notes.txt\tNEW\t251\t257 has no matched receipt","hunk notes.txt\tNEW\t261\t267 has no matched receipt","hunk notes.txt\tNEW\t271\t277 has no matched receipt","hunk notes.txt\tNEW\t281\t287 has no matched receipt","hunk notes.txt\tNEW\t291\t297 has no matched receipt","hunk notes.txt\tNEW\t301\t307 has no matched receipt","hunk notes.txt\tNEW\t311\t317 has no matched receipt","hunk notes.txt\tNEW\t321\t327 has no matched receipt","hunk notes.txt\tNEW\t331\t337 has no matched receipt","hunk notes.txt\tNEW\t341\t347 has no matched receipt","hunk notes.txt\tNEW\t351\t357 has no matched receipt","hunk notes.txt\tNEW\t361\t367 has no matched receipt","hunk notes.txt\tNEW\t371\t377 has no matched receipt","hunk notes.txt\tNEW\t381\t387 has no matched receipt","hunk notes.txt\tNEW\t391\t397 has no matched receipt","hunk notes.txt\tNEW\t401\t407 has no matched receipt","hunk notes.txt\tNEW\t411\t417 has no matched receipt","hunk notes.txt\tNEW\t421\t427 has no matched receipt","hunk notes.txt\tNEW\t431\t437 has no matched receipt","hunk notes.txt\tNEW\t441\t447 has no matched receipt","hunk notes.txt\tNEW\t451\t457 has no matched receipt","hunk notes.txt\tNEW\t461\t467 has no matched receipt","hunk notes.txt\tNEW\t471\t477 has no matched receipt","hunk notes.txt\tNEW\t481\t487 has no matched receipt","hunk notes.txt\tNEW\t491\t497 has no matched receipt"],"receipts":{"total":221,"covered":0,"exempt":0,"complete":false},"spec":{"total":0,"covered":0,"min":0,"met":true},"insufficient":true}
   },
   "error": null
 }
 --- stderr ---
+warn: evidence: hunk notes.txt	NEW	1	7 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	11	17 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	21	27 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	31	37 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	41	47 has no matched receipt
+warn: evidence: +45 more gap(s) — see record.json evidence.gaps
 » anchors: 0 inline, 0 moved to body
 warn: rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important
 warn: rigor pointed below critical floor walked on afb9e47 (advisory); a gate would downgrade it to important
@@ -450,7 +463,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "deferred",
     "rationale": "deferring this finding with a rationale long enough to pass",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -495,7 +508,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -524,7 +537,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -553,7 +566,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -582,7 +595,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -611,7 +624,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -640,7 +653,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -669,7 +682,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -698,7 +711,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -727,7 +740,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -756,7 +769,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -785,7 +798,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -814,7 +827,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -843,7 +856,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -872,7 +885,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -901,7 +914,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -930,7 +943,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -959,7 +972,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -988,7 +1001,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1017,7 +1030,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1046,7 +1059,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1075,7 +1088,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1104,7 +1117,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1133,7 +1146,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1162,7 +1175,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1191,7 +1204,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1220,7 +1233,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1249,7 +1262,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1278,7 +1291,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1307,7 +1320,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1336,7 +1349,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1365,7 +1378,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1394,7 +1407,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1423,7 +1436,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1452,7 +1465,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1481,7 +1494,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1510,7 +1523,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1539,7 +1552,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1568,7 +1581,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1597,7 +1610,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1626,7 +1639,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1655,7 +1668,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1684,7 +1697,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1713,7 +1726,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1742,7 +1755,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1771,7 +1784,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1800,7 +1813,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1829,7 +1842,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1858,7 +1871,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1887,7 +1900,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -1976,7 +1989,7 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "083563d7a259e7198be7760bae6da25d1d2a837ccaa7483b29bc0e3b54b6b82e",
+  "prompts_hash": "25f7600e4f49108320439bbca352671fd9a094231e5344cd3031c6d812c00106",
   "model": null,
   "author": null,
   "review_models": [],
@@ -1984,5 +1997,6 @@ recorded: .verdict/state/local-mx/findings.json (52 open) + .verdict/state/local
   "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":52},
   "validation_mode": "warn",
   "rigor_floors": {"critical":"walked","important":"pointed","informational":"said"},
-  "approval": {"reason":"open findings at-or-above important","tier":"important","gating_sigs":["63b8aa5b62b12a5f047a118ba744c095f7cdfe2c","748484cb3c12e2fa35a083abdd367a5b336bf76e","71eb69f49cb65794b78d63f73b2daa15839457f0","e8e306834f388a5f07f0042bf9d10155c20bc0cc","daea61531f5880722d293dae40483e2173a536c0","c84ffef906aab45b3a73fc7dfc8d511f07747b33","5ae0170615a426fef7188f44a49defeac0a3af6d","c2009016d7998b2ab22b2b0fbd745322e289cec9","65c5e5ce7a39de7e90426bb1b07a7de7087d3ab6","271ee0891736da439f4f1b3b42d10e351632466f","3799f659ab520605018f5f06298e698cdedf1537","b874f9504db49f29b1cbd59250765cc451e9adb3","b280b3f8f087604212dd6db9418c3f1bba430235","fdd8e950a5688b0e284eb0f9a6fa3bfb11431ab7","303ba953e737d793e4e97e9961b152ba5c54a879","c73d365898f5bebe0ba91bdc248b1dbc134235db","351a716c8ca1595a38f5a622ec4176ce0cb207c5","1d4351dd3fb3e342463b745e9a73d0cd6c43e067","afb9e47b4369dfff0fd65963df0a5fe05b1643f5","b6beaf97393791401f703dc359ad51bb81ac34c1","4c8167c8a44087f272e8e688ab290e3e492ac893","5cf0bb2c9c45715d642d91fb22d521121f4252bb","6b75f645793b5dd355fc9ed2f0e24786da9736d4","f4ddf17be1ad81c197e4a8f3b31f55b48a81956f","6bce9b054390d70951c6a9e8a02fc50d1a716d7f","f1d100050738bbc47ad088f76015f44e52c3f227","1af55343737b575f169b27c4eb3a75479c35d25e","f8c039fe2c4925ce3a44d89a8ca99c48836d90ff","102a5d936d30cb6ec72879131374ef7736dc162c","3b89d8029673c23c74d93cd83665bd2b634b1fe6","0b7162fe4040ad8b291165b82f32a64664c54fc0","a9d91e98c7a731fa4079bf7efc4d0338afb4c5aa","4ea3408f91a74c0bb1972173ebafca03ff4ac384","41d2d9c4a0f0dea39bc98942a05be45039435126","5dd4393fbeba6f683672ba36a3f1c915e453b76a","3aa1a65cc1e47062ef1bb8bba33c1f0c0bd473b1","5d41f301dc49610680fdcd5cadc7faf92f805cc4","97782a5d14c51afa41c4e9e0a1a131760d77214a","7c9fd8b403a8266d3d037a44ccbc6f3df4058587","795174ab98e264232526a52bb9866b3bcc7b0ad9","2d784bc747df2755a9549a73fd4930f6d20e73b8","060dd3dec57d5bd58e819ae8d841259fcc2eb664","a045e2bccae60f9ec9bf985bccbbb7faeb3dd3f0","ab7a49a121ca33c2dc971c5f84af0c94a1ed819e","d2ca3f8acc3763fbb3d42e887cc8b59a469c3e4b","4629ed12dc60e25bc29f601351e2b87802cdcb56","d00d2dbb6055691a3c930a1a9c6cfa2e69a41275","29e0cb91381cedb15ff38c803a8b036d3661453e","7b2b8bff18a60e09abf33dc1d0f9fcea8c730cc6"],"approved":false}
+  "approval": {"reason":"review-insufficient: hunk notes.txt\tNEW\t1\t7 has no matched receipt","tier":"important","gating_sigs":[],"approved":false,"insufficient":true},
+  "evidence": {"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","diff_sha256":"94c13c09a41c7b60eb7ad434d0022a7886cd82666cb464b623d9bc7d372b66de","gaps":["hunk notes.txt\tNEW\t1\t7 has no matched receipt","hunk notes.txt\tNEW\t11\t17 has no matched receipt","hunk notes.txt\tNEW\t21\t27 has no matched receipt","hunk notes.txt\tNEW\t31\t37 has no matched receipt","hunk notes.txt\tNEW\t41\t47 has no matched receipt","hunk notes.txt\tNEW\t51\t57 has no matched receipt","hunk notes.txt\tNEW\t61\t67 has no matched receipt","hunk notes.txt\tNEW\t71\t77 has no matched receipt","hunk notes.txt\tNEW\t81\t87 has no matched receipt","hunk notes.txt\tNEW\t91\t97 has no matched receipt","hunk notes.txt\tNEW\t101\t107 has no matched receipt","hunk notes.txt\tNEW\t111\t117 has no matched receipt","hunk notes.txt\tNEW\t121\t127 has no matched receipt","hunk notes.txt\tNEW\t131\t137 has no matched receipt","hunk notes.txt\tNEW\t141\t147 has no matched receipt","hunk notes.txt\tNEW\t151\t157 has no matched receipt","hunk notes.txt\tNEW\t161\t167 has no matched receipt","hunk notes.txt\tNEW\t171\t177 has no matched receipt","hunk notes.txt\tNEW\t181\t187 has no matched receipt","hunk notes.txt\tNEW\t191\t197 has no matched receipt","hunk notes.txt\tNEW\t201\t207 has no matched receipt","hunk notes.txt\tNEW\t211\t217 has no matched receipt","hunk notes.txt\tNEW\t221\t227 has no matched receipt","hunk notes.txt\tNEW\t231\t237 has no matched receipt","hunk notes.txt\tNEW\t241\t247 has no matched receipt","hunk notes.txt\tNEW\t251\t257 has no matched receipt","hunk notes.txt\tNEW\t261\t267 has no matched receipt","hunk notes.txt\tNEW\t271\t277 has no matched receipt","hunk notes.txt\tNEW\t281\t287 has no matched receipt","hunk notes.txt\tNEW\t291\t297 has no matched receipt","hunk notes.txt\tNEW\t301\t307 has no matched receipt","hunk notes.txt\tNEW\t311\t317 has no matched receipt","hunk notes.txt\tNEW\t321\t327 has no matched receipt","hunk notes.txt\tNEW\t331\t337 has no matched receipt","hunk notes.txt\tNEW\t341\t347 has no matched receipt","hunk notes.txt\tNEW\t351\t357 has no matched receipt","hunk notes.txt\tNEW\t361\t367 has no matched receipt","hunk notes.txt\tNEW\t371\t377 has no matched receipt","hunk notes.txt\tNEW\t381\t387 has no matched receipt","hunk notes.txt\tNEW\t391\t397 has no matched receipt","hunk notes.txt\tNEW\t401\t407 has no matched receipt","hunk notes.txt\tNEW\t411\t417 has no matched receipt","hunk notes.txt\tNEW\t421\t427 has no matched receipt","hunk notes.txt\tNEW\t431\t437 has no matched receipt","hunk notes.txt\tNEW\t441\t447 has no matched receipt","hunk notes.txt\tNEW\t451\t457 has no matched receipt","hunk notes.txt\tNEW\t461\t467 has no matched receipt","hunk notes.txt\tNEW\t471\t477 has no matched receipt","hunk notes.txt\tNEW\t481\t487 has no matched receipt","hunk notes.txt\tNEW\t491\t497 has no matched receipt"],"receipts":{"total":221,"covered":0,"exempt":0,"complete":false},"spec":{"total":0,"covered":0,"min":0,"met":true},"insufficient":true}
 }

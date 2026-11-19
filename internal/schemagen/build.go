@@ -196,9 +196,9 @@ func documents() []document {
 						object(false, member{keyRequired, array(stringNode(keyScopeDefaults))}),
 						object(false, member{keyRequired, array(stringNode("requirements"))}),
 					)},
-					// One not-clause carries both scope rules: profile and
+					// One not-clause carries all scope rules: profile and
 					// defaults never combine, and scope defaults never carry
-					// kb_policy — the knowledge-base policy is global-only.
+					// global-only keys (kb_policy, spec_coverage_min).
 					{keyNot, object(false, member{keyAnyOf, array(
 						object(false,
 							member{keyRequired, array(stringNode("profile"), stringNode(keyScopeDefaults))}),
@@ -206,6 +206,11 @@ func documents() []document {
 							member{keyRequired, array(stringNode("defaults"))},
 							member{keyProperties, object(false, member{keyScopeDefaults, object(false,
 								member{keyRequired, array(stringNode("kb_policy"))})})},
+						),
+						object(false,
+							member{keyRequired, array(stringNode("defaults"))},
+							member{keyProperties, object(false, member{keyScopeDefaults, object(false,
+								member{keyRequired, array(stringNode("spec_coverage_min"))})})},
 						),
 					)})},
 				}},
@@ -389,6 +394,10 @@ func documents() []document {
 				{typ: reflect.TypeFor[core.PostSummary](), name: "postSummary"},
 				{typ: reflect.TypeFor[core.RiskClaim](), name: defsRiskClaim},
 				{typ: reflect.TypeFor[ApprovalReceipt](), name: defsApprovalReceipt},
+				{typ: reflect.TypeFor[EvidenceReceipt](), name: defsEvidenceReceipt},
+				{typ: reflect.TypeFor[EvidenceQuote](), name: defsEvidenceQuote},
+				{typ: reflect.TypeFor[EvidenceReceipts](), name: defsEvidenceReceipts},
+				{typ: reflect.TypeFor[EvidenceSpec](), name: defsEvidenceSpec},
 				{typ: reflect.TypeFor[SpecCheck](), name: defsSpecCheck},
 				{typ: reflect.TypeFor[SpecEvidence](), name: defsSpecEvidence},
 				{typ: reflect.TypeFor[Receipt](), name: defsReceipt},
@@ -419,6 +428,10 @@ func documents() []document {
 				{typ: reflect.TypeFor[ChunkCoverage](), name: chunkCoverageType},
 				{typ: reflect.TypeFor[core.RiskClaim](), name: "riskClaim"},
 				{typ: reflect.TypeFor[ApprovalReceipt](), name: defsApprovalReceipt},
+				{typ: reflect.TypeFor[EvidenceReceipt](), name: defsEvidenceReceipt},
+				{typ: reflect.TypeFor[EvidenceQuote](), name: defsEvidenceQuote},
+				{typ: reflect.TypeFor[EvidenceReceipts](), name: defsEvidenceReceipts},
+				{typ: reflect.TypeFor[EvidenceSpec](), name: defsEvidenceSpec},
 				{typ: reflect.TypeFor[SpecCheck](), name: defsSpecCheck},
 				{typ: reflect.TypeFor[SpecEvidence](), name: defsSpecEvidence},
 				{typ: reflect.TypeFor[Receipt](), name: defsReceipt},
@@ -543,6 +556,10 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[core.PostSummary](), name: "postSummary"},
 		{typ: reflect.TypeFor[RecordData](), name: "recordData"},
 		{typ: reflect.TypeFor[ApprovalReceipt](), name: defsApprovalReceipt},
+		{typ: reflect.TypeFor[EvidenceReceipt](), name: defsEvidenceReceipt},
+		{typ: reflect.TypeFor[EvidenceQuote](), name: defsEvidenceQuote},
+		{typ: reflect.TypeFor[EvidenceReceipts](), name: defsEvidenceReceipts},
+		{typ: reflect.TypeFor[EvidenceSpec](), name: defsEvidenceSpec},
 		{typ: reflect.TypeFor[SpecCheck](), name: defsSpecCheck},
 		{typ: reflect.TypeFor[SpecEvidence](), name: defsSpecEvidence},
 		{typ: reflect.TypeFor[Receipt](), name: defsReceipt},
@@ -668,10 +685,14 @@ const defsRiskClaim = "riskClaim"
 // The three evidence definitions are named once: they are published in
 // several documents and must keep one name everywhere.
 const (
-	defsApprovalReceipt = "approvalReceipt"
-	defsSpecCheck       = "specCheck"
-	defsSpecEvidence    = "specEvidence"
-	defsReceipt         = "receipt"
+	defsApprovalReceipt  = "approvalReceipt"
+	defsEvidenceReceipt  = "evidenceReceipt"
+	defsEvidenceQuote    = "evidenceQuote"
+	defsEvidenceReceipts = "evidenceReceipts"
+	defsEvidenceSpec     = "evidenceSpec"
+	defsSpecCheck        = "specCheck"
+	defsSpecEvidence     = "specEvidence"
+	defsReceipt          = "receipt"
 )
 
 const defsValidationData = "validationData"

@@ -139,7 +139,8 @@ func TestRunDriftLookupFailed(t *testing.T) {
 func TestRunStaleApproveDowngrades(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	postBundle(t, `{"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[]}`)
+	postBundle(t, `{"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[],`+
+		`"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new line"}]}`)
 	live := driftLive
 	cmdr := postBundleCommander(t, &live)
 	var warnings, human []string
@@ -234,7 +235,8 @@ func TestRunRecheckOnlyOnApprove(t *testing.T) {
 	t.Run("dry-run-approve", func(t *testing.T) {
 		dir := t.TempDir()
 		t.Chdir(dir)
-		postBundle(t, `{"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[]}`)
+		postBundle(t, `{"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[],`+
+			`"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new line"}]}`)
 		live := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 		cmdr := postBundleCommander(t, &live)
 		cmdr.out["gh\x00api\x00user\x00--jq\x00.login"] = scriptResult{stdout: "reviewer-bot\n"}
@@ -303,7 +305,8 @@ func TestRunApproveLiveThreadBoundary(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			dir := t.TempDir()
 			t.Chdir(dir)
-			postBundle(t, `{"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[]}`)
+			postBundle(t, `{"schema_version":"1","body":"> ✅ Ship it.","approved":true,"comments":[],`+
+				`"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new line"}]}`)
 			live := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 			cmdr := postBundleCommander(t, &live)
 			cmdr.out[threadsArgvKey] = scriptResult{stdout: nodes(tc.live)}

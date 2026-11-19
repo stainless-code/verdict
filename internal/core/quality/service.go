@@ -351,7 +351,6 @@ func fixtureReport(ctx context.Context, req *Request, f *Fixture, head []byte, r
 		ID: f.ID, Label: f.Label, Known: len(f.Known), Bonus: len(f.Bonus),
 		Recall:     RecallReport{PerRun: []float64{}, UnionHits: []string{}},
 		BonusUnion: BonusReport{Hits: []string{}}, FalseGreen: FalseGreenReport{},
-		Hallucination: HallucinationReport{Status: hallucStubbed},
 	}
 	union := map[string]bool{}
 	bonus := map[string]bool{}
@@ -439,10 +438,8 @@ func sortedHits(values map[string]bool) []string {
 func measureHallucination(ctx context.Context, verifier QuoteVerifier, fixtureID string, head []byte,
 	runs []RunScore, findings map[string][]Finding,
 ) (HallucinationReport, *core.RefusalError) {
-	out := HallucinationReport{Status: hallucStubbed}
-	if verifier == nil {
-		verifier = StubVerifier{}
-	}
+	verifier, status := resolveVerifier(verifier)
+	out := HallucinationReport{Status: status}
 	var mismatches int
 	var ref *core.RefusalError
 	for i := range runs {
@@ -505,7 +502,6 @@ func verifyOne(ctx context.Context, verifier QuoteVerifier, out *HallucinationRe
 		return 0
 	}
 	out.Checked++
-	out.Status = hallucMeasured
 	if verdict.Status == quoteMismatch {
 		return 1
 	}

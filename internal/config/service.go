@@ -512,6 +512,10 @@ func resolvedValues(resolved *Resolved) []core.ConfigValue {
 		{Key: keyEffort, Value: values.Effort, Layer: get(keyEffort).Layer, Source: get(keyEffort).Source},
 		{Key: keyDisplayFloor, Value: values.DisplayMinSeverity, Layer: get(keyDisplayFloor).Layer, Source: get(keyDisplayFloor).Source},
 		{Key: keyPostFloor, Value: values.PostMinSeverity, Layer: get(keyPostFloor).Layer, Source: get(keyPostFloor).Source},
+		{
+			Key: keySpecCoverageMin, Value: values.SpecCoverageMin,
+			Layer: get(keySpecCoverageMin).Layer, Source: get(keySpecCoverageMin).Source,
+		},
 	}
 }
 

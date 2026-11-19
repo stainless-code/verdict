@@ -8,6 +8,12 @@ exit: 0
   "at": "0000-00-00T00:00:00Z",
   "next": "report or triage the local bundle; post stays refused (no PR target)",
   "warnings": [
+    "evidence: hunk notes.txt\tNEW\t1\t7 has no matched receipt",
+    "evidence: hunk notes.txt\tNEW\t11\t17 has no matched receipt",
+    "evidence: hunk notes.txt\tNEW\t21\t27 has no matched receipt",
+    "evidence: hunk notes.txt\tNEW\t31\t37 has no matched receipt",
+    "evidence: hunk notes.txt\tNEW\t41\t47 has no matched receipt",
+    "evidence: +45 more gap(s) — see record.json evidence.gaps",
     "rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important",
     "rigor said below important floor pointed on daea615 (advisory)"
   ],
@@ -98,11 +104,18 @@ exit: 0
         "anchored": "body",
         "locator": "### Check the edges"
       }
-    ]
+    ],
+    "evidence": {"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","diff_sha256":"94c13c09a41c7b60eb7ad434d0022a7886cd82666cb464b623d9bc7d372b66de","gaps":["hunk notes.txt\tNEW\t1\t7 has no matched receipt","hunk notes.txt\tNEW\t11\t17 has no matched receipt","hunk notes.txt\tNEW\t21\t27 has no matched receipt","hunk notes.txt\tNEW\t31\t37 has no matched receipt","hunk notes.txt\tNEW\t41\t47 has no matched receipt","hunk notes.txt\tNEW\t51\t57 has no matched receipt","hunk notes.txt\tNEW\t61\t67 has no matched receipt","hunk notes.txt\tNEW\t71\t77 has no matched receipt","hunk notes.txt\tNEW\t81\t87 has no matched receipt","hunk notes.txt\tNEW\t91\t97 has no matched receipt","hunk notes.txt\tNEW\t101\t107 has no matched receipt","hunk notes.txt\tNEW\t111\t117 has no matched receipt","hunk notes.txt\tNEW\t121\t127 has no matched receipt","hunk notes.txt\tNEW\t131\t137 has no matched receipt","hunk notes.txt\tNEW\t141\t147 has no matched receipt","hunk notes.txt\tNEW\t151\t157 has no matched receipt","hunk notes.txt\tNEW\t161\t167 has no matched receipt","hunk notes.txt\tNEW\t171\t177 has no matched receipt","hunk notes.txt\tNEW\t181\t187 has no matched receipt","hunk notes.txt\tNEW\t191\t197 has no matched receipt","hunk notes.txt\tNEW\t201\t207 has no matched receipt","hunk notes.txt\tNEW\t211\t217 has no matched receipt","hunk notes.txt\tNEW\t221\t227 has no matched receipt","hunk notes.txt\tNEW\t231\t237 has no matched receipt","hunk notes.txt\tNEW\t241\t247 has no matched receipt","hunk notes.txt\tNEW\t251\t257 has no matched receipt","hunk notes.txt\tNEW\t261\t267 has no matched receipt","hunk notes.txt\tNEW\t271\t277 has no matched receipt","hunk notes.txt\tNEW\t281\t287 has no matched receipt","hunk notes.txt\tNEW\t291\t297 has no matched receipt","hunk notes.txt\tNEW\t301\t307 has no matched receipt","hunk notes.txt\tNEW\t311\t317 has no matched receipt","hunk notes.txt\tNEW\t321\t327 has no matched receipt","hunk notes.txt\tNEW\t331\t337 has no matched receipt","hunk notes.txt\tNEW\t341\t347 has no matched receipt","hunk notes.txt\tNEW\t351\t357 has no matched receipt","hunk notes.txt\tNEW\t361\t367 has no matched receipt","hunk notes.txt\tNEW\t371\t377 has no matched receipt","hunk notes.txt\tNEW\t381\t387 has no matched receipt","hunk notes.txt\tNEW\t391\t397 has no matched receipt","hunk notes.txt\tNEW\t401\t407 has no matched receipt","hunk notes.txt\tNEW\t411\t417 has no matched receipt","hunk notes.txt\tNEW\t421\t427 has no matched receipt","hunk notes.txt\tNEW\t431\t437 has no matched receipt","hunk notes.txt\tNEW\t441\t447 has no matched receipt","hunk notes.txt\tNEW\t451\t457 has no matched receipt","hunk notes.txt\tNEW\t461\t467 has no matched receipt","hunk notes.txt\tNEW\t471\t477 has no matched receipt","hunk notes.txt\tNEW\t481\t487 has no matched receipt","hunk notes.txt\tNEW\t491\t497 has no matched receipt"],"receipts":{"total":221,"covered":0,"exempt":0,"complete":false},"spec":{"total":0,"covered":0,"min":0,"met":true},"insufficient":true}
   },
   "error": null
 }
 --- stderr ---
+warn: evidence: hunk notes.txt	NEW	1	7 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	11	17 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	21	27 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	31	37 has no matched receipt
+warn: evidence: hunk notes.txt	NEW	41	47 has no matched receipt
+warn: evidence: +45 more gap(s) — see record.json evidence.gaps
 » anchors: 0 inline, 0 moved to body
 warn: rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important
 warn: rigor said below important floor pointed on daea615 (advisory)
@@ -143,7 +156,7 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "status": "deferred",
     "rationale": "deferring this finding with a rationale long enough to pass",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -188,7 +201,7 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -217,7 +230,7 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -246,7 +259,7 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -275,7 +288,7 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -304,7 +317,7 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -333,7 +346,7 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -362,7 +375,7 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -391,7 +404,7 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -420,7 +433,7 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
     "status": "open",
     "rationale": "",
     "verification": {
-      "quote": "unchecked"
+      "quote": "unverified"
     },
     "history": [
       {
@@ -487,7 +500,7 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "083563d7a259e7198be7760bae6da25d1d2a837ccaa7483b29bc0e3b54b6b82e",
+  "prompts_hash": "25f7600e4f49108320439bbca352671fd9a094231e5344cd3031c6d812c00106",
   "model": null,
   "author": null,
   "review_models": [],
@@ -495,5 +508,6 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
   "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":11},
   "validation_mode": "warn",
   "rigor_floors": {"critical":"walked","important":"pointed","informational":"said"},
-  "approval": {"reason":"open findings at-or-above important","tier":"important","gating_sigs":["63b8aa5b62b12a5f047a118ba744c095f7cdfe2c","748484cb3c12e2fa35a083abdd367a5b336bf76e","71eb69f49cb65794b78d63f73b2daa15839457f0","e8e306834f388a5f07f0042bf9d10155c20bc0cc","daea61531f5880722d293dae40483e2173a536c0","c84ffef906aab45b3a73fc7dfc8d511f07747b33","5ae0170615a426fef7188f44a49defeac0a3af6d","c2009016d7998b2ab22b2b0fbd745322e289cec9","65c5e5ce7a39de7e90426bb1b07a7de7087d3ab6"],"approved":false}
+  "approval": {"reason":"review-insufficient: hunk notes.txt\tNEW\t1\t7 has no matched receipt","tier":"important","gating_sigs":[],"approved":false,"insufficient":true},
+  "evidence": {"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","diff_sha256":"94c13c09a41c7b60eb7ad434d0022a7886cd82666cb464b623d9bc7d372b66de","gaps":["hunk notes.txt\tNEW\t1\t7 has no matched receipt","hunk notes.txt\tNEW\t11\t17 has no matched receipt","hunk notes.txt\tNEW\t21\t27 has no matched receipt","hunk notes.txt\tNEW\t31\t37 has no matched receipt","hunk notes.txt\tNEW\t41\t47 has no matched receipt","hunk notes.txt\tNEW\t51\t57 has no matched receipt","hunk notes.txt\tNEW\t61\t67 has no matched receipt","hunk notes.txt\tNEW\t71\t77 has no matched receipt","hunk notes.txt\tNEW\t81\t87 has no matched receipt","hunk notes.txt\tNEW\t91\t97 has no matched receipt","hunk notes.txt\tNEW\t101\t107 has no matched receipt","hunk notes.txt\tNEW\t111\t117 has no matched receipt","hunk notes.txt\tNEW\t121\t127 has no matched receipt","hunk notes.txt\tNEW\t131\t137 has no matched receipt","hunk notes.txt\tNEW\t141\t147 has no matched receipt","hunk notes.txt\tNEW\t151\t157 has no matched receipt","hunk notes.txt\tNEW\t161\t167 has no matched receipt","hunk notes.txt\tNEW\t171\t177 has no matched receipt","hunk notes.txt\tNEW\t181\t187 has no matched receipt","hunk notes.txt\tNEW\t191\t197 has no matched receipt","hunk notes.txt\tNEW\t201\t207 has no matched receipt","hunk notes.txt\tNEW\t211\t217 has no matched receipt","hunk notes.txt\tNEW\t221\t227 has no matched receipt","hunk notes.txt\tNEW\t231\t237 has no matched receipt","hunk notes.txt\tNEW\t241\t247 has no matched receipt","hunk notes.txt\tNEW\t251\t257 has no matched receipt","hunk notes.txt\tNEW\t261\t267 has no matched receipt","hunk notes.txt\tNEW\t271\t277 has no matched receipt","hunk notes.txt\tNEW\t281\t287 has no matched receipt","hunk notes.txt\tNEW\t291\t297 has no matched receipt","hunk notes.txt\tNEW\t301\t307 has no matched receipt","hunk notes.txt\tNEW\t311\t317 has no matched receipt","hunk notes.txt\tNEW\t321\t327 has no matched receipt","hunk notes.txt\tNEW\t331\t337 has no matched receipt","hunk notes.txt\tNEW\t341\t347 has no matched receipt","hunk notes.txt\tNEW\t351\t357 has no matched receipt","hunk notes.txt\tNEW\t361\t367 has no matched receipt","hunk notes.txt\tNEW\t371\t377 has no matched receipt","hunk notes.txt\tNEW\t381\t387 has no matched receipt","hunk notes.txt\tNEW\t391\t397 has no matched receipt","hunk notes.txt\tNEW\t401\t407 has no matched receipt","hunk notes.txt\tNEW\t411\t417 has no matched receipt","hunk notes.txt\tNEW\t421\t427 has no matched receipt","hunk notes.txt\tNEW\t431\t437 has no matched receipt","hunk notes.txt\tNEW\t441\t447 has no matched receipt","hunk notes.txt\tNEW\t451\t457 has no matched receipt","hunk notes.txt\tNEW\t461\t467 has no matched receipt","hunk notes.txt\tNEW\t471\t477 has no matched receipt","hunk notes.txt\tNEW\t481\t487 has no matched receipt","hunk notes.txt\tNEW\t491\t497 has no matched receipt"],"receipts":{"total":221,"covered":0,"exempt":0,"complete":false},"spec":{"total":0,"covered":0,"min":0,"met":true},"insufficient":true}
 }

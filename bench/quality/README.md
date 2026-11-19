@@ -1,13 +1,13 @@
 # Known-defect fixtures
 
-This directory is the `backtest fixtures` corpus: five reviewed ranges with hand-known defects, their context files, and seven converted recordings on the first two ranges that pin the scorer. The three CodeRabbit-known-defect ranges ship no recordings; they are for live runs. It is a sibling of [`../corpus/`](../corpus/), not a set of `case.json` manifests: the ground truth here is a defect description plus regex matchers, and scoring is per defect over `path` + `claim`, with no line window.
+This directory is the `backtest fixtures` corpus: five reviewed ranges with hand-known defects, their context files, each fixture's reviewed `full.diff`, and seven converted recordings on the first two ranges that pin the scorer. The three CodeRabbit-known-defect ranges exist for live runs; the only recording among them is one synthetic quote probe on fx4, which pins the verifier's rate without a model in the loop. It is a sibling of [`../corpus/`](../corpus/), not a set of `case.json` manifests: the ground truth here is a defect description plus regex matchers, and scoring is per defect over `path` + `claim`, with no line window.
 
 ## Files
 
-- `fixtures.json` — the catalog: fixtures, known and bonus defects with their matchers, the seven hand scores, and the praise/defect-verb regexes used by the calibration table.
-- `context/<fixture>/` — the spec and research files the live review was handed. Their paths, byte counts and sha256 values are pinned in the catalog.
-- `<fixture>/recordings/<bundle>.json` — the corpus's own minimal recording shape: `schema_version`, `findings` with `path`, `line`, `severity` and `text`, plus `gate_passed`. The scorer reads only this shape; there is no reader for an older review format.
-- `<fixture>/recordings/<bundle>.meta.json` — driver, provenance, infra error and refusal code. `source_bundle` and `source_sha256` name the archived bundle the recording was converted from; the conversion was a one-time authoring step and its script is not shipped. A nil `gate_passed` means there was no gate result, not a pass.
+- `fixtures.json` — the catalog: fixtures, known and bonus defects with their matchers, the eight hand scores, and the praise/defect-verb regexes used by the calibration table.
+- `context/<fixture>/` — the spec and research files the live review was handed plus the fixture's pinned `full.diff`. Their paths, byte counts and sha256 values are pinned in the catalog.
+- `<fixture>/recordings/<bundle>.json` — the corpus's own minimal recording shape: `schema_version`, `findings` with `path`, `line`, `severity`, `text`, and optional `quote`/`start_line`/`side`, plus `gate_passed`. The scorer reads only this shape; there is no reader for an older review format. `fx4/recordings/synthetic-quotes.json` is a deterministic two-finding probe (one matched quote, one fabricated quote) that proves the real quote verifier measures `rate: 0.5`.
+- `<fixture>/recordings/<bundle>.meta.json` — driver, provenance, infra error and refusal code. `source_bundle` and `source_sha256` name the archived bundle the recording was converted from; the conversion was a one-time authoring step and its script is not shipped. A nil `gate_passed` means there was no gate result, not a pass. A recording with no archived bundle to convert, such as the synthetic probe, carries the all-zero digest (`000…0`) and says so in `note`.
 
 ## Matcher semantics
 

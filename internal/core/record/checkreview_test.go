@@ -79,18 +79,17 @@ func TestClaimBecomesStoreBody(t *testing.T) {
 	}
 }
 
-// TestFinderConfidenceAndVerification proves the input confidence is stored
-// as finder_confidence and that a fresh finding starts quote-unchecked.
-func TestFinderConfidenceAndVerification(t *testing.T) {
+// TestFinderConfidenceLeavesQuoteStanding proves the input confidence is stored
+// as finder_confidence and that loading a review invents no quote standing: the
+// bundle evidence pass stamps verified or unverified from the diff bytes.
+func TestFinderConfidenceLeavesQuoteStanding(t *testing.T) {
 	finding := storedFinding(t, findingsReview)
 	confidence, _ := finding.Get("finder_confidence")
 	if confidence != "high" {
 		t.Fatalf("finder_confidence = %v, want high", confidence)
 	}
-	verification, _ := finding.Get("verification")
-	quote, _ := mustObj(t, verification).Get("quote")
-	if quote != "unchecked" {
-		t.Fatalf("verification quote = %v, want unchecked", quote)
+	if verification, has := finding.Get("verification"); has {
+		t.Fatalf("loaded finding carries verification = %v, want the evidence pass to stamp it", verification)
 	}
 }
 

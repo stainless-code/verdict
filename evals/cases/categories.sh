@@ -101,6 +101,7 @@ eval_write_findings "$PR" <<EOF
 {"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Style nit here with enough substance to keep.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","category":"style","sig":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]},
 {"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Untagged observation here with enough substance.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","category":null,"sig":"cccccccccccccccccccccccccccccccccccccccc","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
+eval_write_record_evidence "$PR"
 run_review report acme/app "$PR" --json
 assert_exit "report --json exits 0" 0
 if [ "$(jq -c '.data.counts.by_category' <"$EVAL_OUT")" = '{"accidental-commit":0,"docs":0,"edge-case":0,"logic":0,"other":0,"performance":0,"security":1,"style":1,"untagged":1}' ]; then

@@ -17,28 +17,28 @@ run_review backtest fixtures
 assert_exit "fixtures exits 0" 0
 
 cat >"$EVAL_SANDBOX/expected-human.txt" <<'EOF'
-backtest fixtures  (5 fixtures, 7 recorded reviews, 7 scored)
+backtest fixtures  (5 fixtures, 8 recorded reviews, 8 scored)
 fx1  STA-440 part 2, first build (291c83ae5..98d8becd9)  (6 recordings, 6 scored)
   recall per run: 0.0000 0.0000 0.2000 1.0000 0.2000 0.2000  mean: 0.2667  union: 1.0000 (N=6, 5 known defects)
   bonus union: 2/2  false green: 3/5 (1 unknown gate outcome)
-  hallucination: n/a (stubbed; 5 gating findings, 0 checked, 5 unverifiable)  review-insufficient: 0
+  hallucination: n/a (measured; 5 gating findings, 0 checked, 5 unverifiable)  review-insufficient: 0
 fx2  STA-351 PR A (d69957f9c..475310826)  (1 recording, 1 scored)
   recall per run: 0.1667  mean: 0.1667  union: 0.1667 (N=1, 6 known defects)
   bonus union: 0/0  false green: 0/1 (0 unknown gate outcomes)
-  hallucination: n/a (stubbed; 1 gating findings, 0 checked, 1 unverifiable)  review-insufficient: 0
+  hallucination: n/a (measured; 1 gating findings, 0 checked, 1 unverifiable)  review-insufficient: 0
 fx3  PR #187 backtest fixtures, pre-CodeRabbit (05f131e3d..0c725614b)  (0 recordings, 0 scored)
   recall per run:   mean: n/a  union: 0.0000 (N=0, 6 known defects)
   bonus union: 0/0  false green: 0/0 (0 unknown gate outcomes)
-  hallucination: n/a (stubbed; 0 gating findings, 0 checked, 0 unverifiable)  review-insufficient: 0
-fx4  PR #186 directive names context.txt, pre-CodeRabbit (852ce808b..154107e75)  (0 recordings, 0 scored)
-  recall per run:   mean: n/a  union: 0.0000 (N=0, 3 known defects)
-  bonus union: 0/0  false green: 0/0 (0 unknown gate outcomes)
-  hallucination: n/a (stubbed; 0 gating findings, 0 checked, 0 unverifiable)  review-insufficient: 0
+  hallucination: n/a (measured; 0 gating findings, 0 checked, 0 unverifiable)  review-insufficient: 0
+fx4  PR #186 directive names context.txt, pre-CodeRabbit (852ce808b..154107e75)  (1 recording, 1 scored)
+  recall per run: 0.0000  mean: 0.0000  union: 0.0000 (N=1, 3 known defects)
+  bonus union: 0/0  false green: 0/0 (1 unknown gate outcome)
+  hallucination: 0.5000 (measured; 2 gating findings, 2 checked, 0 unverifiable)  review-insufficient: 0
 fx5  PR #183 Procedure in the Bundle, pre-CodeRabbit (5407576f1..e13240d9b)  (0 recordings, 0 scored)
   recall per run:   mean: n/a  union: 0.0000 (N=0, 2 known defects)
   bonus union: 0/0  false green: 0/0 (0 unknown gate outcomes)
-  hallucination: n/a (stubbed; 0 gating findings, 0 checked, 0 unverifiable)  review-insufficient: 0
-calibration: 7/7 rows reproduced
+  hallucination: n/a (measured; 0 gating findings, 0 checked, 0 unverifiable)  review-insufficient: 0
+calibration: 8/8 rows reproduced
 known defects from fixture manifests; rates describe recorded reviews, not a model claim
 EOF
 assert_file_eq "human block" "$EVAL_SANDBOX/expected-human.txt" "$EVAL_OUT"
@@ -48,9 +48,9 @@ assert_exit "fixtures --json exits 0" 0
 assert_envelope "fixtures envelope"
 assert_json_field "verb" "backtest" '.verb'
 assert_json_field "mode" "fixtures" '.data.mode'
-assert_json_field "recordings" "7" '.data.recordings'
-assert_json_field "scored" "7" '.data.scored'
-assert_json_field "calibration rows" "7" '.data.calibration.rows'
+assert_json_field "recordings" "8" '.data.recordings'
+assert_json_field "scored" "8" '.data.scored'
+assert_json_field "calibration rows" "8" '.data.calibration.rows'
 assert_json_field "calibration reproduced" "true" '.data.calibration.reproduced'
 assert_json_field "fx1 mean" "0.2667" '.data.fixtures[0].recall.mean'
 assert_json_field "fx1 union" "1" '.data.fixtures[0].recall.union'
@@ -60,10 +60,13 @@ assert_json_field "fx1 bonus union" "2" '.data.fixtures[0].bonus_union.count'
 assert_json_field "fx2 recall" "0.1667" '.data.fixtures[1].recall.per_run[0]'
 assert_json_field "five fixtures" "5" '.data.fixtures | length'
 assert_json_field "fx3 no runs" "0" '.data.fixtures[2].runs'
-assert_json_field "fx4 no runs" "0" '.data.fixtures[3].runs'
+assert_json_field "fx4 synthetic run" "1" '.data.fixtures[3].runs'
+assert_json_field "fx4 hallucination rate" "0.5" '.data.fixtures[3].hallucination.rate'
+assert_json_field "fx4 hallucination status" "measured" '.data.fixtures[3].hallucination.status'
+assert_json_field "fx4 hallucination checked" "2" '.data.fixtures[3].hallucination.checked'
 assert_json_field "fx5 no runs" "0" '.data.fixtures[4].runs'
-assert_json_field "hallucination stays null" "null" '.data.fixtures[0].hallucination.rate'
-assert_json_field "hallucination status" "stubbed" '.data.fixtures[0].hallucination.status'
+assert_json_field "hallucination stays null on pre-S4 fx1" "null" '.data.fixtures[0].hallucination.rate'
+assert_json_field "hallucination status measured on fx1" "measured" '.data.fixtures[0].hallucination.status'
 assert_json_field "hallucination unverifiable" "5" '.data.fixtures[0].hallucination.unverifiable'
 assert_json_field "review-insufficient" "0" '.data.fixtures[0].review_insufficient'
 
@@ -82,7 +85,7 @@ run_review backtest fixtures --fixture fx2 --json
 assert_exit "filtered fixtures exits 0" 0
 assert_json_field "one fixture" "1" '.data.fixtures | length'
 assert_json_field "selected id" "fx2" '.data.fixtures[0].id'
-assert_json_field "calibration still covers all runs" "7" '.data.calibration.rows'
+assert_json_field "calibration still covers all runs" "8" '.data.calibration.rows'
 cp "$REPORT" "$EVAL_SANDBOX/report.filtered.json"
 
 run_review backtest fixtures --fixture fx1-typo --json
@@ -99,10 +102,10 @@ run_review backtest fixtures --recordings live --json
 assert_exit "--recordings exits 0" 0
 assert_json_field "override scores one run" "1" '.data.recordings'
 assert_json_field "override fx1 runs" "1" '.data.fixtures[0].runs'
-assert_json_field "override calibration rows" "7" '.data.calibration.rows'
+assert_json_field "override calibration rows" "8" '.data.calibration.rows'
 assert_json_field "override calibration reproduced" "true" '.data.calibration.reproduced'
 run_review backtest fixtures --recordings live
-assert_file_grep "human calibration still 7/7" "$EVAL_OUT" "calibration: 7/7 rows reproduced"
+assert_file_grep "human calibration still 8/8" "$EVAL_OUT" "calibration: 8/8 rows reproduced"
 cp "$REPORT" "$EVAL_SANDBOX/report.live.json"
 
 # A sidecar that names another fixture is refused, not silently rescored.
@@ -126,8 +129,8 @@ cp "$EVAL_SANDBOX/infra-meta.json" \
   "$EVAL_SANDBOX/bench/quality/fx1/recordings/vr-sta440b-haiku.meta.json"
 run_review backtest fixtures --json
 assert_exit "infra-error run exits 0" 0
-assert_json_field "one run unscored" "6" '.data.scored'
-assert_json_field "calibration rows stay fixed" "7" '.data.calibration.rows'
+assert_json_field "one run unscored" "7" '.data.scored'
+assert_json_field "calibration rows stay fixed" "8" '.data.calibration.rows'
 assert_json_field "calibration fails on unscored run" "false" '.data.calibration.reproduced'
 assert_json_field "calibration names the unscored run" "vr-sta440b-haiku" \
   '.data.calibration.mismatches[0]'

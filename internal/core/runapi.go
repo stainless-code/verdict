@@ -117,17 +117,36 @@ type RunRepair struct { //nolint:govet // field order is the published property 
 }
 
 // RunAttempt is one launch-to-check round: the prompt hash the agent saw, the
-// review hash it left, whether the shape check passed, the checker's problems
-// in full, the checker's overflow past its problem cap, and the round's wall
-// time in seconds.
+// review hash it left, whether the checks passed, the checker's problems in
+// full, the checker's overflow past its problem cap, the round's evidence
+// summary, and its wall time in seconds.
 type RunAttempt struct { //nolint:govet // field order is the published property order
-	Round        int       `json:"round"`
-	PromptSHA256 string    `json:"prompt_sha256"`
-	ReviewSHA256 string    `json:"review_sha256"`
-	CheckOK      bool      `json:"check_ok"`
-	Problems     []Problem `json:"problems"`
-	Truncated    int       `json:"truncated"`
-	WallS        float64   `json:"wall_s"`
+	Round        int          `json:"round"`
+	PromptSHA256 string       `json:"prompt_sha256"`
+	ReviewSHA256 string       `json:"review_sha256"`
+	Evidence     *RunEvidence `json:"evidence,omitempty"`
+	Problems     []Problem    `json:"problems"`
+	Truncated    int          `json:"truncated"`
+	CheckOK      bool         `json:"check_ok"`
+	WallS        float64      `json:"wall_s"`
+}
+
+// RunEvidence is one round's evidence verdict, the half of the round the shape
+// checker cannot see: how many quotes, hunk receipts and spec items the bundle
+// left uncovered, how many of those gaps were errors, which finding quotes this
+// round settled as permanently unverified, and whether the receipt withholds
+// approval.
+type RunEvidence struct {
+	// Settled names the finding quotes whose one repair round was spent, as
+	// path:side:line. A settled quote is permanently unverified for this run:
+	// no later round asks about it and, when the finding would gate, the run
+	// ends in review-insufficient.
+	Settled      []string `json:"settled,omitempty"`
+	QuoteGaps    int      `json:"quote_gaps"`
+	ReceiptGaps  int      `json:"receipt_gaps"`
+	SpecGaps     int      `json:"spec_gaps"`
+	Errors       int      `json:"errors"`
+	Insufficient bool     `json:"insufficient"`
 }
 
 // Wire renders the data object in wire order.

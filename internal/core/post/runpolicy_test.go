@@ -29,7 +29,16 @@ func policyTestState(entries []any, rs *config.RunState) *state {
 	return st
 }
 
+// policyEntry builds one stored finding carrying the verified quote standing
+// the evidence pass stamps, which is what lets it gate.
 func policyEntry(path, category, severity, status string) *jq.Obj {
+	return jq.NewObj("path", path, "category", category, "severity", severity, "status", status,
+		"verification", jq.NewObj("quote", "verified"))
+}
+
+// unverifiedPolicyEntry is the same finding with no verification record, the
+// shape a bundle records when the evidence pass could not check its quote.
+func unverifiedPolicyEntry(path, category, severity, status string) *jq.Obj {
 	return jq.NewObj("path", path, "category", category, "severity", severity, "status", status)
 }
 
@@ -104,6 +113,19 @@ func TestComplianceGatePasses(t *testing.T) {
 	st := policyTestState(entries, policyRunState())
 	if ref := st.complianceGate(); ref != nil {
 		t.Fatalf("gate = %v, want nil", ref)
+	}
+}
+
+// TestComplianceGateSkipsUnverifiedFinding proves R4: a finding whose quote
+// does not verify never blocks the compliance gate, because the approval
+// decision is where an unverified blocker becomes an insufficient refusal.
+func TestComplianceGateSkipsUnverifiedFinding(t *testing.T) {
+	st := policyTestState([]any{
+		unverifiedPolicyEntry("pay/core.go", "security", "critical", "open"),
+	}, policyRunState())
+	st.flags.Approve, st.flags.Bind = approveTrue, true
+	if ref := st.complianceGate(); ref != nil {
+		t.Fatalf("gate = %v, want nil for an unverified finding", ref)
 	}
 }
 

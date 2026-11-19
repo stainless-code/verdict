@@ -344,8 +344,8 @@ rather than becoming ground truth.
 --- file C/.verdict/state/4701/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "bccd55f48501e1843359e00b1eeb9c725874898c5d7871c1983d2a576a87bf96",
-  "prompts_hash": "083563d7a259e7198be7760bae6da25d1d2a837ccaa7483b29bc0e3b54b6b82e",
+  "run_id": "8d0d3326a121bcd63e500db843c0905cd1f9d4dda94a6863ea6930cccd85df2d",
+  "prompts_hash": "25f7600e4f49108320439bbca352671fd9a094231e5344cd3031c6d812c00106",
   "inputs": [
     {
       "kind": "prompt",
@@ -393,8 +393,8 @@ rather than becoming ground truth.
       "kind": "prompt",
       "name": "prompts/handoff/findings-contract.md",
       "status": "included",
-      "sha256": "0e94822971e89050edc563461fe11f92c284037d0dcaaff7086d6300e4749596",
-      "bytes": 872
+      "sha256": "492cd3632f199155dc8ca099e56b6c4396c1240195020e593d3f81c1766689cb",
+      "bytes": 1357
     },
     {
       "kind": "prompt",
@@ -423,6 +423,13 @@ rather than becoming ground truth.
       "status": "included",
       "sha256": "ea03c65abe5e11096d956c7fc661579fa1f3a3b51554f946e6c74e227e039fc2",
       "bytes": 424
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/handoff/spec.md",
+      "status": "included",
+      "sha256": "53e1d33c4234b466dd42e66848306f7da0300ac75445a8e8d0cfc972bd101080",
+      "bytes": 788
     },
     {
       "kind": "prompt",
@@ -566,8 +573,8 @@ rather than becoming ground truth.
       "kind": "bundle",
       "name": "procedure.md",
       "status": "included",
-      "sha256": "0cef22215220d10f156b18bb255fb47a3a3a4a12bd13f4a3821765d61c747514",
-      "bytes": 2642
+      "sha256": "f6c1b719e6b1f6da4fb9c5ede0f6145a5e9316d6e82151bcaa4e5271c3b34ae9",
+      "bytes": 3127
     },
     {
       "kind": "bundle",
@@ -644,7 +651,7 @@ rather than becoming ground truth.
       "name": "run.json",
       "status": "included",
       "sha256": "RUNTIME_SHA256",
-      "bytes": 6361
+      "bytes": 6821
     },
     {
       "kind": "bundle",
@@ -750,7 +757,7 @@ rather than becoming ground truth.
       "name": ".verdict/config.json",
       "status": "built-in",
       "layer": "built-in",
-      "detail": "budget_usd=built-in, chunk=built-in, display_min_severity=built-in, effort=built-in, kb_policy.max_fp_rate=built-in, kb_policy.min_judged=built-in, max_bytes=built-in, panel=built-in, post_min_severity=built-in"
+      "detail": "budget_usd=built-in, chunk=built-in, display_min_severity=built-in, effort=built-in, kb_policy.max_fp_rate=built-in, kb_policy.min_judged=built-in, max_bytes=built-in, panel=built-in, post_min_severity=built-in, spec_coverage_min=built-in"
     },
     {
       "kind": "exclusions",
@@ -806,7 +813,7 @@ rather than becoming ground truth.
             "notes.txt"
           ],
           "scopes": [],
-          "id": "d6a3014287e71739f98fa44cd9198dfc84681097be7a99b34b9ddccc728d2067",
+          "id": "3d31006af0e2525ec9250ddb7e893dc8e1613bab708ef688b33eb5c7efa36893",
           "label": "group 1"
         }
       ]
@@ -864,6 +871,10 @@ rather than becoming ground truth.
             "post_min_severity": {
               "layer": "built-in",
               "source": "built-in"
+            },
+            "spec_coverage_min": {
+              "layer": "built-in",
+              "source": "built-in"
             }
           },
           "shadowed": null,
@@ -872,6 +883,7 @@ rather than becoming ground truth.
             "max_bytes": 512000,
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
+            "spec_coverage_min": 80,
             "chunk": false
           }
         }
@@ -921,6 +933,10 @@ rather than becoming ground truth.
         "post_min_severity": {
           "layer": "built-in",
           "source": "built-in"
+        },
+        "spec_coverage_min": {
+          "layer": "built-in",
+          "source": "built-in"
         }
       },
       "shadowed": null,
@@ -929,6 +945,7 @@ rather than becoming ground truth.
         "max_bytes": 512000,
         "kb_min_judged": 5,
         "kb_max_fp_rate": 0.5,
+        "spec_coverage_min": 80,
         "chunk": false
       }
     }
@@ -938,7 +955,7 @@ rather than becoming ground truth.
   "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
   "captured_at": "0000-00-00T00:00:00Z",
   "config_sha256": "",
-  "inputs_sha256": "cbe6bc8b33d70d8ee98cfa8e6e0f952b3bee74dac0db7d71ae714dfddaea9aca",
+  "inputs_sha256": "16ecfb0130504e0908df244cc1a55173b706f80ea97c713d3326a1eea9fe57bf",
   "evidence": {
     "plan": {
       "effort_tier": "standard",
@@ -952,7 +969,7 @@ rather than becoming ground truth.
             "notes.txt"
           ],
           "scopes": [],
-          "id": "d6a3014287e71739f98fa44cd9198dfc84681097be7a99b34b9ddccc728d2067",
+          "id": "3d31006af0e2525ec9250ddb7e893dc8e1613bab708ef688b33eb5c7efa36893",
           "label": "group 1"
         }
       ]
@@ -1034,6 +1051,14 @@ rather than becoming ground truth.
       {
         "key": "post_min_severity",
         "value": null,
+        "origin": {
+          "layer": "built-in",
+          "source": "built-in"
+        }
+      },
+      {
+        "key": "spec_coverage_min",
+        "value": 80,
         "origin": {
           "layer": "built-in",
           "source": "built-in"

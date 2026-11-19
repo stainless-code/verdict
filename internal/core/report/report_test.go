@@ -28,6 +28,11 @@ func fixture(t *testing.T, findings string) core.ReadRequest {
 		`{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 			`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
 	writeFile(t, ".verdict/state/5101/findings.json", findings)
+	writeFile(t, ".verdict/state/5101/record.json",
+		`{"schema_version":"1","status":"pr","head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
+			`"evidence":{"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","diff_sha256":"`+strings.Repeat("0", 64)+`",`+
+			`"receipts":{"total":0,"covered":0,"exempt":0,"complete":true},`+
+			`"spec":{"total":0,"covered":0,"min":80,"met":true},"insufficient":false}}`)
 	return core.ReadRequest{
 		Runtime: fixedRuntime(),
 		Repo:    "acme/app",

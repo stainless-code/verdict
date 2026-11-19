@@ -119,3 +119,49 @@ func writeFactFile(t *testing.T, dir, name, body string) {
 		t.Fatal(err)
 	}
 }
+
+// TestBundleFactsSpecRole proves the spec fact reads the context manifest: a
+// role: spec source turns the checklist method on, and supporting context that
+// is not a spec leaves it off.
+func TestBundleFactsSpecRole(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeFactFile(t, dir, "context.txt", "notes body\n")
+	writeFactFile(t, dir, "context.json", `[{"source":"notes.md","role":"context"}]`)
+	if bundleFacts(dir).Spec {
+		t.Error("a context-only bundle set Spec, want the checklist method off")
+	}
+	writeFactFile(t, dir, "context.json", `[{"source":"notes.md","role":"context"},{"source":"spec.md","role":"spec"}]`)
+	if !bundleFacts(dir).Spec {
+		t.Error("a role: spec source left Spec false")
+	}
+}
+
+// TestWriteBundleProcedureCarriesTheSpecSection proves the bundle writer's
+// bytes: procedure.md ends with the checklist method the fact asked for, not
+// with the context section a context-only bundle gets.
+func TestWriteBundleProcedureCarriesTheSpecSection(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeFactFile(t, dir, "context.txt", "spec body\n")
+	writeFactFile(t, dir, "context.json", `[{"source":"spec.md","role":"spec"}]`)
+	if err := writeBundleProcedure(dir); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(filepath.Join(dir, "procedure.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := embeddedReviewBytes(t)
+	for _, name := range []string{"prompts/handoff/context.md", "prompts/handoff/spec.md"} {
+		part, err := skillfs.Read(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		want = append(want, '\n')
+		want = append(want, part...)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("procedure.md = %d bytes, want the literal %d-byte assembly", len(got), len(want))
+	}
+}

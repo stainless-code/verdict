@@ -11,7 +11,6 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
-	"github.com/stainless-code/verdict/internal/core/approval"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/core/reviewdoc"
@@ -357,9 +356,9 @@ func (st *state) loadReview() *core.RefusalError {
 		return refusalOrFailed(err)
 	}
 	st.review = review
-	provisional := approval.Evaluate(reviewdoc.Findings(review), "", "", nil,
-		reviewdoc.HasSpecViolation(review))
-	st.body = reviewdoc.Render(review, provisional)
+	// The body is rendered before the merge can decide: the lead it writes is
+	// the undecided one, and the merge aligns it with the real decision.
+	st.body = reviewdoc.Render(review, nil)
 	readcommon.WarnContextSources(st.dir, review, st.warn)
 	if err := recordcore.CheckDegenerate(st.body); err != nil {
 		return refusalOrFailed(err)
@@ -475,6 +474,10 @@ func (st *state) merge() *core.RefusalError {
 	if ref := st.adoptStoredApproval(); ref != nil {
 		return ref
 	}
+	// post publishes record's decision, so the body's lead has to follow that
+	// decision and not the merge's own: the two may disagree when the record
+	// found the evidence insufficient.
+	st.body = reviewdoc.AlignLead(st.body, st.merged.Approval)
 	st.applyApprovedFlag()
 	return st.rigorGate()
 }
@@ -601,11 +604,13 @@ func (st *state) approveGate() *core.RefusalError {
 	return nil
 }
 
-// approvalBlockers runs the four gates an approval must clear after the status
-// count: privacy, deep validation, lens coverage, and head freshness. Each
-// returns a typed refusal or nil, and the first refusal wins.
+// approvalBlockers runs the gates an approval must clear after the status
+// count: the evidence decision, privacy, deep validation, lens coverage, and
+// head freshness. Each returns a typed refusal or nil, and the first refusal
+// wins.
 func (st *state) approvalBlockers() *core.RefusalError {
 	for _, gate := range []func() *core.RefusalError{
+		st.evidenceGate,
 		st.privacyConflictGate, st.deepValidationGate, st.lensApprovalGate, st.headGate,
 	} {
 		if ref := gate(); ref != nil {

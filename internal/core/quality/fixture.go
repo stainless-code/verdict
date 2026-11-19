@@ -52,10 +52,12 @@ type Fixture struct {
 	Context []ContextFile `json:"context"`
 	Known   []Defect      `json:"known"`
 	Bonus   []Defect      `json:"bonus"`
+	Diff    ContextFile   `json:"diff"`
 }
 
-// ContextFile is a spec or research file the reviewer was handed, with the
-// sha256 of the shipped bytes pinned in the catalog.
+// ContextFile is one file the corpus ships beside a fixture, with the sha256
+// of its bytes pinned in the catalog: a spec or research document the reviewer
+// was handed, or the fixture's reviewed full.diff.
 type ContextFile struct {
 	Path   string `json:"path"`
 	SHA256 string `json:"sha256"`
@@ -100,15 +102,18 @@ type RecordingMeta struct {
 }
 
 // Finding is the canonical input to a matcher. Claim comes from the fixture
-// recording's text field; Line and Anchored come from its line field.
+// recording's text field; Line, StartLine, Side and Quote feed the quote
+// verifier.
 type Finding struct {
-	Anchored *bool
-	Path     string
-	Claim    string
-	Severity string
-	Quote    string
-	Refusal  string
-	Line     int
+	Anchored  *bool
+	Path      string
+	Claim     string
+	Severity  string
+	Quote     string
+	Refusal   string
+	Side      string
+	Line      int
+	StartLine int
 }
 
 // LoadCatalog reads and validates the shipped catalog at path.
@@ -182,7 +187,7 @@ func validateFixture(f *Fixture, seen map[string]bool, path string) *core.Refusa
 	if f.Repo == "" || !commitID(f.Base) || !commitID(f.Head) {
 		return invalidCatalog(path, fixturePrefix+f.ID+" needs repo and 40-hex base and head")
 	}
-	if ref := validateContext(f.Context, f.ID, path); ref != nil {
+	if ref := validatePins(f, path); ref != nil {
 		return ref
 	}
 	if len(f.Known) == 0 {
@@ -195,13 +200,22 @@ func validateFixture(f *Fixture, seen map[string]bool, path string) *core.Refusa
 	return validateDefects(f.Bonus, f.ID, path, defectIDs)
 }
 
-func validateContext(entries []ContextFile, id, path string) *core.RefusalError {
-	for _, c := range entries {
-		if !relativePath(c.Path) || !digestID(c.SHA256) || c.Bytes <= 0 {
-			return invalidCatalog(path, fixturePrefix+id+" has an invalid context pin")
+// validatePins checks the shape of every sha256 pin a fixture carries: the
+// context documents it was handed and the reviewed full.diff beside them.
+func validatePins(f *Fixture, path string) *core.RefusalError {
+	for _, pin := range f.Context {
+		if !validPin(pin) {
+			return invalidCatalog(path, fixturePrefix+f.ID+" has an invalid context pin")
 		}
 	}
+	if !validPin(f.Diff) {
+		return invalidCatalog(path, fixturePrefix+f.ID+" has an invalid diff pin")
+	}
 	return nil
+}
+
+func validPin(pin ContextFile) bool {
+	return relativePath(pin.Path) && digestID(pin.SHA256) && pin.Bytes > 0
 }
 
 func relativePath(name string) bool {
@@ -222,49 +236,48 @@ func windowsDrive(name string) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }
 
-// loadFixtureHeads reads the catalog's pinned context files into the bytes
-// handed to a quote verifier. A changed or unreadable pin is a catalog error:
-// the verifier must never inspect material the corpus did not ship.
+// loadFixtureHeads verifies every fixture's pinned context files and loads
+// its pinned full.diff bytes for the quote verifier. A changed or unreadable
+// pin is a catalog error: the verifier must never inspect unpinned bytes.
 func loadFixtureHeads(root string, catalog *Catalog) (map[string][]byte, *core.RefusalError) {
 	heads := make(map[string][]byte, len(catalog.Fixtures))
 	for i := range catalog.Fixtures {
 		f := &catalog.Fixtures[i]
-		head, ref := loadContextHead(root, f)
+		if ref := verifyContextPins(root, f); ref != nil {
+			return nil, ref
+		}
+		diff, ref := loadPinnedFile(root, f.ID, "diff", &f.Diff)
 		if ref != nil {
 			return nil, ref
 		}
-		heads[f.ID] = head
+		heads[f.ID] = diff
 	}
 	return heads, nil
 }
 
-func loadContextHead(root string, f *Fixture) ([]byte, *core.RefusalError) {
-	var head []byte
+func verifyContextPins(root string, f *Fixture) *core.RefusalError {
 	for j := range f.Context {
-		raw, ref := loadPinnedContext(root, f, &f.Context[j])
-		if ref != nil {
-			return nil, ref
+		if _, ref := loadPinnedFile(root, f.ID, "context", &f.Context[j]); ref != nil {
+			return ref
 		}
-		head = append(head, raw...)
-		head = append(head, '\n')
 	}
-	return head, nil
+	return nil
 }
 
-func loadPinnedContext(root string, f *Fixture, c *ContextFile) ([]byte, *core.RefusalError) {
-	full := filepath.Join(root, filepath.FromSlash(c.Path))
+func loadPinnedFile(root, fixtureID, kind string, pin *ContextFile) ([]byte, *core.RefusalError) {
+	full := filepath.Join(root, filepath.FromSlash(pin.Path))
 	raw, err := jq.CappedFile(full, maxReviewBytes)
 	if err != nil {
-		return nil, invalidCatalog(full, "unreadable context file for fixture "+f.ID)
+		return nil, invalidCatalog(full, "unreadable "+kind+" file for fixture "+fixtureID)
 	}
-	if len(raw) != c.Bytes {
-		return nil, invalidCatalog(full, "context byte count for fixture "+f.ID+isText+
-			strconv.Itoa(len(raw))+", pin says "+strconv.Itoa(c.Bytes))
+	if len(raw) != pin.Bytes {
+		return nil, invalidCatalog(full, kind+" byte count for fixture "+fixtureID+isText+
+			strconv.Itoa(len(raw))+", pin says "+strconv.Itoa(pin.Bytes))
 	}
 	sum := sha256.Sum256(raw)
-	if got := hex.EncodeToString(sum[:]); got != c.SHA256 {
-		return nil, invalidCatalog(full, "context sha256 for fixture "+f.ID+isText+got+
-			", pin says "+c.SHA256)
+	if got := hex.EncodeToString(sum[:]); got != pin.SHA256 {
+		return nil, invalidCatalog(full, kind+" sha256 for fixture "+fixtureID+isText+got+
+			", pin says "+pin.SHA256)
 	}
 	return raw, nil
 }

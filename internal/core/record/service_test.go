@@ -92,7 +92,7 @@ func checkRecordResponse(t *testing.T, resp *core.RecordResponse) {
 		t.Errorf("At = %q", resp.At)
 	}
 	data := resp.Data.Wire()
-	wantKeys := []string{"dir", "anchors", "findings", "confidence", "security_summary", "items"}
+	wantKeys := []string{"dir", "anchors", "findings", "confidence", "security_summary", "items", "evidence"}
 	if strings.Join(data.Keys, ",") != strings.Join(wantKeys, ",") {
 		t.Errorf("data keys = %v, want %v", data.Keys, wantKeys)
 	}
@@ -127,7 +127,7 @@ func checkRecordStores(t *testing.T) {
 		"findings", "open", "confidence", "security_summary", "tool_version", "prompts_hash", "model",
 		"author", "review_models",
 		"validation_hash", "validation_counts", "validation_mode", "rigor_floors",
-		"approval",
+		"approval", "evidence",
 	}
 	if strings.Join(order, ",") != strings.Join(wantOrder, ",") {
 		t.Errorf("record.json keys = %v, want %v", order, wantOrder)

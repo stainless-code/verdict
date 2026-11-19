@@ -351,8 +351,8 @@ api-base-panel
 --- file C/.verdict/state/4701/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "635f187d25d018ea305eba5f15d29009170d906d72e0c003e371ccabef528ae2",
-  "prompts_hash": "083563d7a259e7198be7760bae6da25d1d2a837ccaa7483b29bc0e3b54b6b82e",
+  "run_id": "5d83eed5f08cf41e1ff7a66167ec51b3e73a6afe38b6cc30d1dcc8acc585a078",
+  "prompts_hash": "25f7600e4f49108320439bbca352671fd9a094231e5344cd3031c6d812c00106",
   "panel": [
     "api-base-panel"
   ],
@@ -403,8 +403,8 @@ api-base-panel
       "kind": "prompt",
       "name": "prompts/handoff/findings-contract.md",
       "status": "included",
-      "sha256": "0e94822971e89050edc563461fe11f92c284037d0dcaaff7086d6300e4749596",
-      "bytes": 872
+      "sha256": "492cd3632f199155dc8ca099e56b6c4396c1240195020e593d3f81c1766689cb",
+      "bytes": 1357
     },
     {
       "kind": "prompt",
@@ -433,6 +433,13 @@ api-base-panel
       "status": "included",
       "sha256": "ea03c65abe5e11096d956c7fc661579fa1f3a3b51554f946e6c74e227e039fc2",
       "bytes": 424
+    },
+    {
+      "kind": "prompt",
+      "name": "prompts/handoff/spec.md",
+      "status": "included",
+      "sha256": "53e1d33c4234b466dd42e66848306f7da0300ac75445a8e8d0cfc972bd101080",
+      "bytes": 788
     },
     {
       "kind": "prompt",
@@ -580,8 +587,8 @@ api-base-panel
       "kind": "bundle",
       "name": "procedure.md",
       "status": "included",
-      "sha256": "0cef22215220d10f156b18bb255fb47a3a3a4a12bd13f4a3821765d61c747514",
-      "bytes": 2642
+      "sha256": "f6c1b719e6b1f6da4fb9c5ede0f6145a5e9316d6e82151bcaa4e5271c3b34ae9",
+      "bytes": 3127
     },
     {
       "kind": "bundle",
@@ -658,7 +665,7 @@ api-base-panel
       "name": "run.json",
       "status": "included",
       "sha256": "RUNTIME_SHA256",
-      "bytes": 6810
+      "bytes": 7270
     },
     {
       "kind": "bundle",
@@ -767,7 +774,7 @@ api-base-panel
       "status": "included",
       "sha256": "58e27b3168ec974a8b85e537eb76211975aee57cb18183d8b9ee42bc7b28b874",
       "layer": "built-in,repo",
-      "detail": "budget_usd=built-in, chunk=built-in, display_min_severity=built-in, effort=built-in, kb_policy.max_fp_rate=built-in, kb_policy.min_judged=built-in, max_bytes=built-in, panel=repo, post_min_severity=built-in"
+      "detail": "budget_usd=built-in, chunk=built-in, display_min_severity=built-in, effort=built-in, kb_policy.max_fp_rate=built-in, kb_policy.min_judged=built-in, max_bytes=built-in, panel=repo, post_min_severity=built-in, spec_coverage_min=built-in"
     },
     {
       "kind": "exclusions",
@@ -823,7 +830,7 @@ api-base-panel
             "notes.txt"
           ],
           "scopes": [],
-          "id": "237f83c450868196442d14082d63ef4166b2e920671c195f769b104ce8320aa4",
+          "id": "2444dd3fbbe5ccac1a88a71dfefbcea4060cdcca518e0a2923575a38a03e2954",
           "label": "group 1"
         }
       ]
@@ -881,6 +888,10 @@ api-base-panel
             "post_min_severity": {
               "layer": "built-in",
               "source": "built-in"
+            },
+            "spec_coverage_min": {
+              "layer": "built-in",
+              "source": "built-in"
             }
           },
           "shadowed": null,
@@ -892,6 +903,7 @@ api-base-panel
             "max_bytes": 512000,
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
+            "spec_coverage_min": 80,
             "chunk": false
           }
         }
@@ -941,6 +953,10 @@ api-base-panel
         "post_min_severity": {
           "layer": "built-in",
           "source": "built-in"
+        },
+        "spec_coverage_min": {
+          "layer": "built-in",
+          "source": "built-in"
         }
       },
       "shadowed": null,
@@ -952,6 +968,7 @@ api-base-panel
         "max_bytes": 512000,
         "kb_min_judged": 5,
         "kb_max_fp_rate": 0.5,
+        "spec_coverage_min": 80,
         "chunk": false
       }
     }
@@ -961,7 +978,7 @@ api-base-panel
   "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
   "captured_at": "0000-00-00T00:00:00Z",
   "config_sha256": "58e27b3168ec974a8b85e537eb76211975aee57cb18183d8b9ee42bc7b28b874",
-  "inputs_sha256": "a36b69fa73e460b0114fc7967920f0a10ced5b93529b15c9ac3467be10b4e344",
+  "inputs_sha256": "106a652dc48ac8863d8c5a218a1905d5b5001c70f3628516958fec801704b0b4",
   "inventory": {
     "config.json": "58e27b3168ec974a8b85e537eb76211975aee57cb18183d8b9ee42bc7b28b874"
   },
@@ -978,7 +995,7 @@ api-base-panel
             "notes.txt"
           ],
           "scopes": [],
-          "id": "237f83c450868196442d14082d63ef4166b2e920671c195f769b104ce8320aa4",
+          "id": "2444dd3fbbe5ccac1a88a71dfefbcea4060cdcca518e0a2923575a38a03e2954",
           "label": "group 1"
         }
       ]
@@ -1063,6 +1080,14 @@ api-base-panel
       {
         "key": "post_min_severity",
         "value": null,
+        "origin": {
+          "layer": "built-in",
+          "source": "built-in"
+        }
+      },
+      {
+        "key": "spec_coverage_min",
+        "value": 80,
         "origin": {
           "layer": "built-in",
           "source": "built-in"
