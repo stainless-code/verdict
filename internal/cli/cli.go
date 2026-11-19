@@ -42,6 +42,7 @@ type Runner struct {
 	Rentry             string
 	Pr                 string
 	Repo               string
+	refusal            string
 	Warnings           []string
 	Candidates         []any
 	JSONMode           bool
@@ -138,6 +139,7 @@ func (r *Runner) RefuseExit(err error, code int) int {
 	if !ok {
 		ref = &RefusalError{Code: "internal", Message: err.Error()}
 	}
+	r.refusal = ref.Code
 	code = ExitFor(ref, code)
 	msg := ref.Message + "\n" + HintFor(ref.Code)
 	if !r.JSONMode {
@@ -288,6 +290,10 @@ func (r *Runner) ReportUsage(err *UsageError) int {
 	fmt.Fprintln(r.Diag, err.Message)
 	return ExitUsage
 }
+
+// RefusalCode returns the refusal code rendered through [Runner.RefuseExit],
+// or "" when no refusal was rendered.
+func (r *Runner) RefusalCode() string { return r.refusal }
 
 // HintFor returns the remediation hint for a refusal code. The table
 // lives in core so every transport renders the same hints (see

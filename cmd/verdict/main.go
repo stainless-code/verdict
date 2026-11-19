@@ -23,6 +23,7 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/configcmd"
 	"github.com/stainless-code/verdict/internal/core"
+	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 	"github.com/stainless-code/verdict/internal/core/upgrade"
 	"github.com/stainless-code/verdict/internal/doctor"
 	drainverb "github.com/stainless-code/verdict/internal/drain"
@@ -114,7 +115,7 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 		r.RouteHuman()
 		return r.Refuse(err)
 	}
-	return dispatch(cmd, r, repo, pr, root, env, forces, rest, stderr, readFile)
+	return dispatch(cmd, r, repo, pr, root, env, forces, args, rest, stderr, readFile)
 }
 
 func handleMetaFlags(args []string, stdout *os.File, readFile func(string) ([]byte, error)) bool {
@@ -209,7 +210,7 @@ func shutdownSignalContext() (context.Context, context.CancelFunc) {
 
 func dispatch(
 	cmd string, r *cli.Runner, repo, pr, root string, env map[string]string,
-	forces *cli.GlobalForces, rest []string, stderr *os.File,
+	forces *cli.GlobalForces, args, rest []string, stderr *os.File,
 	readFile func(string) ([]byte, error),
 ) int {
 	r.RouteHuman()
@@ -230,6 +231,30 @@ func dispatch(
 	if !ok {
 		return code
 	}
+	scan, restore := cli.InstallNextScanner(r)
+	defer restore()
+	return journalcore.Guard(&journalcore.Invocation{
+		Verb:     cmd,
+		Channel:  journalcore.ChannelCLI,
+		RepoRoot: repoRoot,
+		Pr:       pr,
+		Argv:     args,
+		Environ:  os.Environ(),
+		Version:  cliVersion(root, readFile),
+		Now:      r.Now,
+		Warn:     r.Warn,
+		Refusal:  r.RefusalCode,
+		Warnings: func() int { return len(r.Warnings) },
+		Next:     func() string { return scan.Next(r.JSONMode) },
+	}, func() int {
+		return dispatchVerb(ctx, cmd, r, repo, pr, root, repoRoot, env, forces, rest, stderr)
+	})
+}
+
+func dispatchVerb(
+	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root, repoRoot string,
+	env map[string]string, forces *cli.GlobalForces, rest []string, stderr *os.File,
+) int {
 	if h, ok := readVerbs[cmd]; ok {
 		return h(ctx, r, rest, readcommon.Request{
 			Runtime: &core.Runtime{Env: env, Now: r.Now},
