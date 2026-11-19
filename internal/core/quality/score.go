@@ -306,7 +306,7 @@ func joinSet(values map[string]bool) string {
 	return strings.Join(ids, ",")
 }
 
-// CalibrationTable renders the seven-row table the harness published.
+// CalibrationTable renders the eight-row table the harness published.
 func CalibrationTable(result *CalibrationResult) string {
 	var sb strings.Builder
 	sb.WriteString("| bundle | fixture | driver | hand | harness | hand hits | harness hits | praise | null sev | status | reason |\n")

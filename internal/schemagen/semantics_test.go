@@ -330,9 +330,10 @@ var publishedSemantics = map[string]string{
 	"post.schema.json": "fdb5d1ceaae8ecbd18a5422b44f38b781a5d9ccf334cce7f9e80e42449e803ba",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
-	// fixtures.schema.json gained hallucination.unverifiable for findings whose
-	// quote cannot be checked; rate stays null when checked is zero.
-	"fixtures.schema.json": "55935e917580e94ec5c622cc66130d10ffa13f6ced1177da0436c5c04eb05f38",
+	// fixtures.schema.json descriptions only: hallucination now names the pinned
+	// full.diff verifier and its measured status, and calibration counts eight
+	// shipped hand scores. No property, required key, enum, or type moved.
+	"fixtures.schema.json": "5fe1317e9dd785548552de0667a273dce8ac51333f060fab815f977ac059b1d3",
 	"identity.schema.json": "993b01b4c6891f2dc2e78454aac8bd2abaa8740c073bd5fc8124d4b47f7e68c9",
 	// additive pack.schema.json (new document; no existing schema property,
 	// required key, or type changed). The lens-pack manifest fetch resolves

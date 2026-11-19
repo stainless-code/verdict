@@ -49,6 +49,7 @@ func TestCalibrationReproduced(t *testing.T) {
 		{"vr-sta440b-haiku2", "1/5", "1/5", "K5", "K5", 0, 4},
 		{"vr-sta440b-sonnet", "1/5", "1/5", "K5", "K5", 0, 4},
 		{"vr-sta351a-haiku", "1/6", "1/6", "D2", "D2", 0, 0},
+		{"synthetic-quotes", "0/3", "0/3", "-", "-", 0, 0},
 	}
 	assertCalibrationRows(t, result, want)
 	golden.Check(t, "fixtures-calibration", CalibrationTable(result))
@@ -123,30 +124,33 @@ func fixtureFor(t *testing.T, catalog *Catalog, id string) *Fixture {
 	return nil
 }
 
-func TestCatalogPinsContextBytes(t *testing.T) {
+// TestCatalogPinsShippedBytes re-hashes every shipped file the catalog pins:
+// the context documents and each fixture's full.diff.
+func TestCatalogPinsShippedBytes(t *testing.T) {
 	catalog, ref := LoadCatalog(repoPath("bench", "quality", catalogName))
 	if ref != nil {
 		t.Fatalf("load catalog: %s: %s", ref.Code, ref.Message)
 	}
 	for i := range catalog.Fixtures {
 		for j := range catalog.Fixtures[i].Context {
-			assertContextPin(t, &catalog.Fixtures[i].Context[j])
+			assertPinnedFile(t, &catalog.Fixtures[i].Context[j])
 		}
+		assertPinnedFile(t, &catalog.Fixtures[i].Diff)
 	}
 }
 
-func assertContextPin(t *testing.T, c *ContextFile) {
+func assertPinnedFile(t *testing.T, pin *ContextFile) {
 	t.Helper()
-	raw, err := os.ReadFile(repoPath(filepath.FromSlash(c.Path)))
+	raw, err := os.ReadFile(repoPath(filepath.FromSlash(pin.Path)))
 	if err != nil {
-		t.Fatalf("read %s: %v", c.Path, err)
+		t.Fatalf("read %s: %v", pin.Path, err)
 	}
-	if len(raw) != c.Bytes {
-		t.Errorf("%s bytes = %d, pin says %d", c.Path, len(raw), c.Bytes)
+	if len(raw) != pin.Bytes {
+		t.Errorf("%s bytes = %d, pin says %d", pin.Path, len(raw), pin.Bytes)
 	}
 	digest := sha256.Sum256(raw)
-	if got := hex.EncodeToString(digest[:]); got != c.SHA256 {
-		t.Errorf("%s sha256 = %s, pin says %s", c.Path, got, c.SHA256)
+	if got := hex.EncodeToString(digest[:]); got != pin.SHA256 {
+		t.Errorf("%s sha256 = %s, pin says %s", pin.Path, got, pin.SHA256)
 	}
 }
 
@@ -245,6 +249,7 @@ func smallCatalog(t *testing.T) *Catalog {
     "base": "1111111111111111111111111111111111111111",
     "head": "2222222222222222222222222222222222222222",
     "context": [],
+    "diff": {"path": "bench/quality/diff/fx.diff", "sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "bytes": 1},
     "known": [
       {"id": "A", "description": "literal A", "matchers": [["alpha", "beta"]]},
       {"id": "B", "description": "literal B", "matchers": [["gamma"], ["delta", "epsilon"]]}
@@ -480,6 +485,7 @@ const minimalCatalog = `{
       "base": "0000000000000000000000000000000000000000",
       "head": "1111111111111111111111111111111111111111",
       "context": [],
+      "diff": {"path": "bench/quality/diff/fx-min.diff", "sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bytes": 1},
       "known": [{"id": "K1", "description": "known defect", "matchers": [["x"]]}],
       "bonus": []
     }

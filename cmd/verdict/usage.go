@@ -436,8 +436,8 @@ func usageText() string {
 		"    and review-insufficient count. Read-only: no agent, no host, no corpus\n" +
 		"    store. --fixture limits the report to one catalog id; --recordings is an\n" +
 		"    opt-in root of live recordings to score, relative to the checkout by\n" +
-		"    default. The seven shipped recordings are always the calibration, even\n" +
-		"    with --recordings: 7/7 rows must reproduce. Writes\n" +
+		"    default. The eight shipped recordings are always the calibration, even\n" +
+		"    with --recordings: 8/8 rows must reproduce. Writes\n" +
 		"    .verdict/backtest/fixtures/report.json. Rates describe recorded reviews,\n" +
 		"    not a model claim.\n" +
 		"  backtest --since <90d|12w|18mo|2y|<ref>> --agent <name> [replay flags] [--json]\n" +

@@ -72,7 +72,12 @@
             ]
           ]
         }
-      ]
+      ],
+      "diff": {
+        "path": "bench/quality/context/fx1/full.diff",
+        "sha256": "18ec4a3d848af30889eddd00aa0b821d59de57b3524eef81486c9614cb70d542",
+        "bytes": 115598
+      }
     },
     {
       "id": "fx2",
@@ -137,7 +142,12 @@
           "matchers": [["drain-refusals\\.sh", "argv|stub|any argv|accept"]]
         }
       ],
-      "bonus": []
+      "bonus": [],
+      "diff": {
+        "path": "bench/quality/context/fx2/full.diff",
+        "sha256": "9f608d0f2fd86eed73d51bcff34dbae66ee45e45672258aa884a4bc77a4955f0",
+        "bytes": 135596
+      }
     },
     {
       "id": "fx3",
@@ -251,7 +261,12 @@
           ]
         }
       ],
-      "bonus": []
+      "bonus": [],
+      "diff": {
+        "path": "bench/quality/context/fx3/full.diff",
+        "sha256": "30a576d54f8c02c36121b74ee15343b383a9eac623942d65d613423b0d561897",
+        "bytes": 340236
+      }
     },
     {
       "id": "fx4",
@@ -313,7 +328,12 @@
           ]
         }
       ],
-      "bonus": []
+      "bonus": [],
+      "diff": {
+        "path": "bench/quality/context/fx4/full.diff",
+        "sha256": "c5c649afa43e56664b74bfcb6b22843ddb24b9a709be76d1ecd402e8a7ce644c",
+        "bytes": 39089
+      }
     },
     {
       "id": "fx5",
@@ -367,7 +387,12 @@
           ]
         }
       ],
-      "bonus": []
+      "bonus": [],
+      "diff": {
+        "path": "bench/quality/context/fx5/full.diff",
+        "sha256": "7eb75319820506e0c04430781db4a67cf5b64577c9b029b8e3e335cb68164002",
+        "bytes": 236553
+      }
     }
   ],
   "calibration": [
@@ -419,6 +444,13 @@
       "driver": "claude / haiku-5-5",
       "hand": ["D2"],
       "hand_label": "1/6"
+    },
+    {
+      "recording": "synthetic-quotes",
+      "fixture": "fx4",
+      "driver": "synthetic / quote-verifier probe",
+      "hand": [],
+      "hand_label": "0/3"
     }
   ],
   "review_signals": {

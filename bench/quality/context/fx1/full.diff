@@ -1,0 +1,1963 @@
+diff --git a/.changeset/sta-440-agents-2.md b/.changeset/sta-440-agents-2.md
+new file mode 100644
+index 000000000..d8b15bad6
+--- /dev/null
++++ b/.changeset/sta-440-agents-2.md
+@@ -0,0 +1,5 @@
++---
++"@stainless-code/verdict": minor
++---
++
++`run --agent` now offers 32 more cited headless agents, including Cline and Junie after CLI-reference checks. Rows whose binary shares a name with another tool run a harmless identity probe before launch; a non-zero exit, a five-second timeout, or a missing match refuses the new `agent-mismatch` code before any agent starts, and `launcher.json` records `probe: {args, ok}` for a passing check. Operator agents can set `probe_args` and `probe_match` under settings.json `agents`, with `probe_match` required when `probe_args` is present.
+diff --git a/clients/ts/src/refusal-codes.gen.ts b/clients/ts/src/refusal-codes.gen.ts
+index e195cdbec..3a76de077 100644
+--- a/clients/ts/src/refusal-codes.gen.ts
++++ b/clients/ts/src/refusal-codes.gen.ts
+@@ -4,6 +4,7 @@
+ export type RefusalCode =
+   | "adopt-failed"
+   | "agent-failed"
++  | "agent-mismatch"
+   | "agent-missing"
+   | "agent-record-failed"
+   | "agent-spawn-failed"
+diff --git a/cmd/verdict/usage.go b/cmd/verdict/usage.go
+index b6de37fc2..d036be33a 100644
+--- a/cmd/verdict/usage.go
++++ b/cmd/verdict/usage.go
+@@ -50,7 +50,11 @@ func usageText() string {
+ 		"    to stdout (human; progress moves to stderr) or data.prompt_dump (--json).\n" +
+ 		"    No agent runs, no network beyond the fetch, no store writes beyond the bundle.\n" +
+ 		"  run <owner/repo> <pr|local-name>\n" +
+-		"      --agent <agy|amp|claude|codex|copilot|crush|cursor|droid|gemini|goose|kiro|opencode|pi|qwen>\n" +
++		"      --agent <adal|agy|amp|auggie|autohand|bob|claude|cline|codearts|codebuddy|\n" +
++		"        codex|commandcode|continue|copilot|cortex|crush|cursor|dcode|devin|dexto|\n" +
++		"        droid|forge|fx|gemini|goose|grok|hermes|jazz|junie|kilo|kimchi|kimi|kiro|\n" +
++		"        kode|mcode|neovate|openclaw|opencode|pa|pi|qoder|qodercn|qwen|rovodev|\n" +
++		"        vibe|zcode>\n" +
+ 		"      [--recipe <slug>] [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 1>]\n" +
+ 		"      [--print] [-- <agent args>...] [--json]\n" +
+ 		"    launch YOUR agent against an existing bundle: one process per round, one shot by default.\n" +
+@@ -63,6 +67,8 @@ func usageText() string {
+ 		"    Operators can define more names under the 'agents' key of their own settings\n" +
+ 		"    file (XDG_CONFIG_HOME/verdict/settings.json); a repository config cannot.\n" +
+ 		"    A flag that takes the prompt places it immediately before the directive.\n" +
++		"    A binary whose name clashes with another tool answers a harmless help probe\n" +
++		"    before launch; a mismatch refuses agent-mismatch without starting an agent.\n" +
+ 		"    A non-zero agent exit is the process exit code (agent-failed); the watchdog\n" +
+ 		"    timeout (agent-timeout), a missing binary (agent-missing), and a spawn failure\n" +
+ 		"    (agent-spawn-failed) refuse typed with a hint. Provenance lands in\n" +
+diff --git a/docs/manual.md b/docs/manual.md
+index 97b6bc8bd..966cb7e4a 100644
+--- a/docs/manual.md
++++ b/docs/manual.md
+@@ -2150,22 +2150,54 @@ branches on none of it. With no prompt flag the argv is
+ pass-through flag can never be swallowed as the prompt flag's value.
+ `--print` renders the same bytes a launch spawns.
+ 
+-| Name       | Binary and agent flags           | Prompt placement | Official install                                               | Flag that lets it write the artifact                                                           | Source                                                                                                                         |
+-| ---------- | -------------------------------- | ---------------- | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+-| `agy`      | `agy`                            | `-p <directive>` | `curl -fsSL https://antigravity.google/cli/install.sh \| bash` | `--dangerously-skip-permissions`, or `--mode accept-edits`                                     | [Antigravity CLI](https://github.com/google-antigravity/antigravity-cli)                                                       |
+-| `amp`      | `amp`                            | `-x <directive>` | `npm install -g @ampcode/cli`                                  | none: tools run without an approval prompt by default                                          | [Amp execute mode](https://ampcode.com/docs/markdown/cli/execute-mode)                                                         |
+-| `claude`   | `claude -p`                      | last argument    | `curl -fsSL https://claude.ai/install.sh \| bash`              | `--permission-mode acceptEdits`, `--allowedTools`, or `--dangerously-skip-permissions`         | [Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md)                                                       |
+-| `codex`    | `codex exec`                     | last argument    | `npm install -g @openai/codex`                                 | `--sandbox workspace-write` (the default sandbox is read-only)                                 | [Codex README](https://github.com/openai/codex/blob/main/README.md)                                                            |
+-| `copilot`  | `copilot`                        | `-p <directive>` | `npm install -g @github/copilot`                               | `--allow-tool=write` or `--allow-all-tools`                                                    | [Copilot CLI automation](https://docs.github.com/en/copilot/how-tos/copilot-cli/automate-copilot-cli/run-cli-programmatically) |
+-| `crush`    | `crush run`                      | last argument    | `brew install charmbracelet/tap/crush`                         | none: `run` auto-approves permission requests                                                  | [Crush run command](https://github.com/charmbracelet/crush/blob/main/internal/cmd/run.go)                                      |
+-| `cursor`   | `cursor-agent -p`                | last argument    | `curl https://cursor.com/install -fsS \| bash`                 | none for workspace writes; `--force` for shell or writes outside the workspace                 | [Cursor headless](https://cursor.com/docs/cli/headless)                                                                        |
+-| `droid`    | `droid exec`                     | last argument    | `curl -fsSL https://app.factory.ai/cli \| sh`                  | `--auto <level>`                                                                               | [Droid CLI reference](https://docs.factory.com/droid-cli/cli-reference.md)                                                     |
+-| `gemini`   | `gemini`                         | `-p <directive>` | `npm install -g @google/gemini-cli`                            | `--approval-mode=auto_edit`, plus `--skip-trust` for an untrusted folder                       | [Gemini CLI README](https://github.com/google-gemini/gemini-cli/blob/main/README.md)                                           |
+-| `goose`    | `goose run`                      | `-t <directive>` | `brew install block-goose-cli`                                 | none: autonomous mode is the default; `--model` usually needs `--provider` or `GOOSE_PROVIDER` | [Goose running tasks](https://github.com/aaif-goose/goose/blob/main/documentation/docs/guides/running-tasks.md)                |
+-| `kiro`     | `kiro-cli chat --no-interactive` | last argument    | `curl -fsSL https://cli.kiro.dev/install \| bash`              | `--trust-all-tools`; name `--v2` or `--v3` yourself so the harness stays explicit              | [Kiro headless](https://kiro.dev/docs/cli/headless.md)                                                                         |
+-| `opencode` | `opencode run`                   | last argument    | `npm install -g @opencode/cli`                                 | `--auto` when custom ask rules or `.env` reads could block                                     | [OpenCode CLI](https://opencode.ai/docs/cli/)                                                                                  |
+-| `pi`       | `pi -p`                          | last argument    | `curl -fsSL https://pi.dev/install.sh \| sh`                   | none: tools are enabled by default; `--tools` narrows the allowlist                            | [Pi quickstart](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/quickstart.md)                        |
+-| `qwen`     | `qwen`                           | last argument    | `npm install -g @qwen-code/qwen-code@latest`                   | `--approval-mode=yolo` in a trusted folder                                                     | [Qwen top-level options](https://github.com/QwenLM/qwen-code/blob/main/packages/cli/src/config/top-level-options.ts)           |
++| Name          | Binary and agent flags           | Prompt placement | Official install                                                                                                                       | Flag that lets it write the artifact                                                             | Source                                                                                                                             |
++| ------------- | -------------------------------- | ---------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
++| `adal`        | `adal`                           | `-q <directive>` | `curl -fsSL https://adal.sylph.ai/install.sh \| bash`                                                                                  | `--yolo` or `--permission-mode yolo`                                                             | [AdaL headless](https://docs.sylph.ai/integration/headless.md)                                                                     |
++| `agy`         | `agy`                            | `-p <directive>` | `curl -fsSL https://antigravity.google/cli/install.sh \| bash`                                                                         | `--dangerously-skip-permissions`, or `--mode accept-edits`                                       | [Antigravity CLI](https://github.com/google-antigravity/antigravity-cli)                                                           |
++| `amp`         | `amp`                            | `-x <directive>` | `npm install -g @ampcode/cli`                                                                                                          | none: tools run without an approval prompt by default                                            | [Amp execute mode](https://ampcode.com/docs/markdown/cli/execute-mode)                                                             |
++| `auggie`      | `auggie --print`                 | last argument    | `npm install -g @augmentcode/auggie@prerelease`                                                                                        | none documented; unmatched tools follow the runtime default                                      | [Augment CLI reference](https://docs.augmentcode.com/cli/reference.md)                                                             |
++| `autohand`    | `autohand`                       | last argument    | `curl -fsSL https://autohand.ai/install.sh \| bash`                                                                                    | `-y` / `--unrestricted`                                                                          | [Autohand parser](https://github.com/autohandai/code-cli/blob/main/src/index.ts)                                                   |
++| `bob`         | `bob run`                        | last argument    | `curl -fsSL https://bob.ibm.com/download/bobshell.sh \| bash`                                                                          | none: `bob run` pre-approves every tool                                                          | [Bob shell](https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive)                                         |
++| `claude`      | `claude -p`                      | last argument    | `curl -fsSL https://claude.ai/install.sh \| bash`                                                                                      | `--permission-mode acceptEdits`, `--allowedTools`, or `--dangerously-skip-permissions`           | [Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md)                                                           |
++| `cline`       | `cline`                          | last argument    | `npm install -g cline`                                                                                                                 | none: a prompt runs in yolo mode by default                                                      | [Cline CLI reference](https://github.com/cline/cline/blob/main/docs/cli/cli-reference.mdx)                                         |
++| `codearts`    | `codearts run`                   | last argument    | `sh -c "$(curl -L https://cnnorth4-cloudide-marketplace.obs.cn-north-4.myhuaweicloud.com/codearts/cli_tui/install_script/install.sh)"` | `--full_access` (no sandbox), or `--auto_approval`                                               | [CodeArts run](https://support.huaweicloud.com/usermanual-cli/codeartsagent_cli_0034.html)                                         |
++| `codebuddy`   | `codebuddy -p`                   | last argument    | `npm install -g @tencent-ai/codebuddy-code`                                                                                            | `-y` / `--dangerously-skip-permissions` in `-p` mode                                             | [CodeBuddy headless](https://www.codebuddy.ai/docs/cli/headless)                                                                   |
++| `codex`       | `codex exec`                     | last argument    | `npm install -g @openai/codex`                                                                                                         | `--sandbox workspace-write` (the default sandbox is read-only)                                   | [Codex README](https://github.com/openai/codex/blob/main/README.md)                                                                |
++| `commandcode` | `commandcode`                    | `-p <directive>` | `npm i -g command-code@latest`                                                                                                         | `--yolo` / `--dangerously-skip-permissions`                                                      | [Command Code headless](https://commandcode.ai/docs/headless)                                                                      |
++| `continue`    | `cn -p`                          | last argument    | `npm i -g @continuedev/cli`                                                                                                            | `--auto` or `--allow <tool>`                                                                     | [Continue quickstart](https://github.com/continuedev/continue/blob/main/docs/cli/quickstart.mdx)                                   |
++| `copilot`     | `copilot`                        | `-p <directive>` | `npm install -g @github/copilot`                                                                                                       | `--allow-tool=write` or `--allow-all-tools`                                                      | [Copilot CLI automation](https://docs.github.com/en/copilot/how-tos/copilot-cli/automate-copilot-cli/run-cli-programmatically)     |
++| `cortex`      | `cortex`                         | `-p <directive>` | `curl -qLsS https://ai.snowflake.com/static/cc-scripts/install.sh \| sh`                                                               | `--bypass` / `--dangerously-allow-all-tool-calls`                                                | [Cortex CLI reference](https://docs.snowflake.com/en/user-guide/cortex-code/cli-reference)                                         |
++| `crush`       | `crush run`                      | last argument    | `brew install charmbracelet/tap/crush`                                                                                                 | none: `run` auto-approves permission requests                                                    | [Crush run command](https://github.com/charmbracelet/crush/blob/main/internal/cmd/run.go)                                          |
++| `cursor`      | `cursor-agent -p`                | last argument    | `curl https://cursor.com/install -fsS \| bash`                                                                                         | none for workspace writes; `--force` for shell or writes outside the workspace                   | [Cursor headless](https://cursor.com/docs/cli/headless)                                                                            |
++| `dcode`       | `dcode`                          | `-n <directive>` | `curl -LsSf https://langch.in/dcode \| bash`                                                                                           | none for files/network in `-n`; `-S all` for shell                                               | [Deep Agents main.py](https://github.com/langchain-ai/deepagents/blob/main/libs/code/deepagents_code/main.py)                      |
++| `devin`       | `devin`                          | `-p <directive>` | `curl -fsSL https://cli.devin.ai/install.sh \| bash`                                                                                   | `--permission-mode accept-edits` (plus `--respect-workspace-trust false` in an untrusted folder) | [Devin commands](https://docs.devin.ai/cli/reference/commands.md)                                                                  |
++| `dexto`       | `dexto run`                      | last argument    | `npm install -g dexto`                                                                                                                 | `--full-access` / `--auto-approve` (root flag; put it before `run` if required)                  | [Dexto run command](https://github.com/truffle-ai/dexto/blob/main/packages/cli/src/cli/commands/run/register.ts)                   |
++| `droid`       | `droid exec`                     | last argument    | `curl -fsSL https://app.factory.ai/cli \| sh`                                                                                          | `--auto <level>`                                                                                 | [Droid CLI reference](https://docs.factory.com/droid-cli/cli-reference.md)                                                         |
++| `forge`       | `forge`                          | `-p <directive>` | `curl -fsSL https://forgecode.dev/cli \| sh`                                                                                           | none documented; tools come from `forge config`                                                  | [ForgeCode cli.rs](https://github.com/tailcallhq/forgecode/blob/main/crates/forge_main/src/cli.rs)                                 |
++| `fx`          | `fx ask`                         | last argument    | `curl -fsSL https://fx.sh/setup.sh \| bash`                                                                                            | none for ordinary edits; `--permission-mode full-access` disables checks                         | [fx ask](https://fx.sh/docs/using-fx/fx-ask)                                                                                       |
++| `gemini`      | `gemini`                         | `-p <directive>` | `npm install -g @google/gemini-cli`                                                                                                    | `--approval-mode=auto_edit`, plus `--skip-trust` for an untrusted folder                         | [Gemini CLI README](https://github.com/google-gemini/gemini-cli/blob/main/README.md)                                               |
++| `goose`       | `goose run`                      | `-t <directive>` | `brew install block-goose-cli`                                                                                                         | none: autonomous mode is the default; `--model` usually needs `--provider` or `GOOSE_PROVIDER`   | [Goose running tasks](https://github.com/aaif-goose/goose/blob/main/documentation/docs/guides/running-tasks.md)                    |
++| `grok`        | `grok`                           | `-p <directive>` | `curl -fsSL https://x.ai/cli/install.sh \| bash`                                                                                       | none: headless runs with full tool access                                                        | [Grok headless](https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md) |
++| `hermes`      | `hermes`                         | `-z <directive>` | `curl -fsSL https://hermes-agent.nousresearch.com/install.sh \| bash`                                                                  | none: approvals are auto-bypassed in `-z`                                                        | [Hermes parser](https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/_parser.py)                                      |
++| `jazz`        | `jazz run`                       | last argument    | `curl -fsSL https://github.com/lvndry/jazz/releases/latest/download/install.sh \| bash`                                                | `--approval-policy high-risk`; `--agent <id>` is required after `--`                             | [Jazz commands](https://github.com/lvndry/jazz/blob/main/docs/commands.md)                                                         |
++| `junie`       | `junie`                          | last argument    | `curl -fsSL https://junie.jetbrains.com/install.sh \| bash`                                                                            | none for workspace edits; sensitive actions use `~/.junie/allowlist.json`                        | [Junie headless](https://junie.jetbrains.com/docs/junie-headless.html)                                                             |
++| `kilo`        | `kilo run`                       | last argument    | `npm install -g @kilocode/cli`                                                                                                         | `--auto` or `--yolo`                                                                             | [Kilo run](https://github.com/Kilo-Org/kilocode/blob/main/packages/opencode/src/cli/cmd/run.ts)                                    |
++| `kimchi`      | `kimchi`                         | `-p <directive>` | `curl -fsSL https://github.com/getkimchi/kimchi/releases/latest/download/install.sh \| bash`                                           | `KIMCHI_PERMISSIONS=yolo` plus `--approve` in an untrusted folder                                | [Kimchi headless](https://docs.kimchi.dev/docs/coding-headless.md)                                                                 |
++| `kimi`        | `kimi`                           | `-p <directive>` | `curl -fsSL https://code.kimi.com/kimi-code/install.sh \| bash`                                                                        | none: `-p` auto-approves regular tool calls                                                      | [Kimi command](https://github.com/MoonshotAI/kimi-code/blob/main/docs/en/reference/kimi-command.md)                                |
++| `kiro`        | `kiro-cli chat --no-interactive` | last argument    | `curl -fsSL https://cli.kiro.dev/install \| bash`                                                                                      | `--trust-all-tools`; name `--v2` or `--v3` yourself so the harness stays explicit                | [Kiro headless](https://kiro.dev/docs/cli/headless.md)                                                                             |
++| `kode`        | `kode`                           | last argument    | `npm install -g @shareai-lab/kode`                                                                                                     | none: headless defaults to `bypassPermissions` unless `--safe`                                   | [Kode parser](https://github.com/shareAI-lab/Kode-CLI/blob/main/apps/cli/src/entrypoints/cli/cliParser/program.tsx)                |
++| `mcode`       | `mcode exec`                     | last argument    | `curl -fsSL https://filecdn.minimax.chat/public/install.sh \| bash`                                                                    | `--permission full`                                                                              | [MiniMax contract](https://github.com/MiniMax-AI/minimax-code/blob/main/packages/tui/src/cli/contract.ts)                          |
++| `neovate`     | `neovate`                        | last argument    | `npm install -g @neovate/code`                                                                                                         | `--approval-mode yolo` or `autoEdit`                                                             | [Neovate parser](https://github.com/neovateai/neovate-code/blob/master/src/index.ts)                                               |
++| `openclaw`    | `openclaw agent exec`            | last argument    | `curl -fsSL https://openclaw.ai/install.sh \| bash`                                                                                    | none: the headless turn uses the full execution policy in `--cwd`                                | [OpenClaw agent exec](https://github.com/openclaw/openclaw/blob/main/docs/cli/agent.md)                                            |
++| `opencode`    | `opencode run`                   | last argument    | `npm install -g @opencode/cli`                                                                                                         | `--auto` when custom ask rules or `.env` reads could block                                       | [OpenCode CLI](https://opencode.ai/docs/cli/)                                                                                      |
++| `pa`          | `pa`                             | last argument    | `curl -fsSL https://assistant.posit.co/builds/install-tui.sh \| bash`                                                                  | `--auto` or `--yolo`                                                                             | [Posit TUI](https://assistant.posit.co/docs/reference/tui/)                                                                        |
++| `pi`          | `pi -p`                          | last argument    | `curl -fsSL https://pi.dev/install.sh \| sh`                                                                                           | none: tools are enabled by default; `--tools` narrows the allowlist                              | [Pi quickstart](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/quickstart.md)                            |
++| `qoder`       | `qoder`                          | last argument    | `curl -fsSL https://qoder.com/install \| bash`                                                                                         | `--permission-mode accept_edits` or `--yolo`                                                     | [Qoder scripts](https://docs.qoder.com/cli/run-in-scripts.md)                                                                      |
++| `qodercn`     | `qodercn`                        | last argument    | `curl -fsSL https://static.qoder.com.cn/qoder-cli-cn/install.sh \| bash`                                                               | `--permission-mode accept_edits` or `--yolo`                                                     | [Qoder CN scripts](https://docs.qoder.cn/cli/run-in-scripts.md)                                                                    |
++| `qwen`        | `qwen`                           | last argument    | `npm install -g @qwen-code/qwen-code@latest`                                                                                           | `--approval-mode=yolo` in a trusted folder                                                       | [Qwen top-level options](https://github.com/QwenLM/qwen-code/blob/main/packages/cli/src/config/top-level-options.ts)               |
++| `rovodev`     | `acli rovodev run`               | last argument    | `install Atlassian CLI (acli)`                                                                                                         | `--yolo`                                                                                         | [Rovo CLI commands](https://support.atlassian.com/rovo/docs/rovo-dev-cli-commands/)                                                |
++| `vibe`        | `vibe`                           | `-p <directive>` | `curl -LsSf https://mistral.ai/vibe/install.sh \| bash`                                                                                | `--auto-approve` or `--yolo` for shell and unlisted tools                                        | [Vibe programmatic](https://github.com/mistralai/mistral-vibe/blob/main/docs/programmatic-mode.md)                                 |
++| `zcode`       | `zcode`                          | `-p <directive>` | `build @zcode/cli from https://github.com/zai-org/ZCode`                                                                               | none: `--mode` defaults to `yolo` with `--prompt`                                                | [ZCode reference](https://github.com/zai-org/ZCode/blob/main/apps/zcode-cli/docs/usage/02-cli-reference.md)                        |
+ 
+ Permission and approval flags are yours to pass after `--`, never baked into a
+ row. Gemini CLI's maintained scope is Enterprise and Code Assist; free, Pro,
+@@ -2193,14 +2225,18 @@ and `agents`:
+       "args": ["exec"],
+       "prompt_flag": "-p",
+       "model_flag": "--model",
+-      "install": "brew install local-agent"
++      "install": "brew install local-agent",
++      "probe_args": ["ask", "--help"],
++      "probe_match": "ask"
+     }
+   }
+ }
+ ```
+ 
+ `binary` is required and is either a name resolved on `PATH` or an absolute
+-path; `args` defaults to `[]`, and the other three fields are optional strings.
++path; `args` defaults to `[]`, and the other fields are optional strings.
++`probe_match` is required when `probe_args` is set, and both use the same
++identity check as the shipped rows.
+ A name matches `[a-z0-9][a-z0-9-]*` and must not collide with a shipped row.
+ Unknown keys at any level, a blank binary, a relative binary containing a path
+ separator, a bad name, and a collision all refuse `bad-settings` naming the
+@@ -2214,6 +2250,19 @@ A defined agent behaves like any shipped row: its own flags come first, your
+ records `agent_source: "prefs"` so provenance says where the definition came
+ from.
+ 
++#### Binary name clashes and the identity probe
++
++Six shipped binaries share their name with another tool: `bob`, `cortex`,
++`forge`, `fx`, `grok`, and `kilo`. Before a launch, verdict runs the row's
++harmless help command with the launch's environment, no stdin, a five-second
++budget, and a 64 KiB capture. The combined output must contain the row's match
++text; a non-zero exit, a timeout, or a missing match refuses `agent-mismatch`
++and starts no agent. `--print` spawns nothing, so it never probes. A passing
++check is recorded as `probe: {"args": [...], "ok": true}` in `launcher.json`.
++Define the agent in settings.json `agents` with an absolute `binary` path, or
++pass `--agent` for the one you meant, when the wrong tool wins `PATH` resolution.
++`jazz` was checked in Homebrew and has no known namesake, so it carries no probe.
++
+ ### Recipes (declared review pipelines)
+ 
+ A review pipeline — lenses, synthesizer, dedupe, rank — is a file you can
+@@ -2361,6 +2410,7 @@ agent's own failure visible to CI:
+ 
+ | Code                    | When                                                                            | Exit        |
+ | ----------------------- | ------------------------------------------------------------------------------- | ----------- |
++| `agent-mismatch`        | the binary answered the identity probe with a failure or the wrong text         | 1           |
+ | `agent-missing`         | the binary is not on `PATH`                                                     | 1           |
+ | `agent-spawn-failed`    | the binary resolved but could not be started                                    | 1           |
+ | `agent-timeout`         | the watchdog killed it after `--timeout` seconds                                | 1           |
+diff --git a/docs/troubleshooting.md b/docs/troubleshooting.md
+index b49df76c5..f55528a93 100644
+--- a/docs/troubleshooting.md
++++ b/docs/troubleshooting.md
+@@ -18,6 +18,12 @@ Cause: the launched agent exited non-zero.
+ 
+ Fix: read the recorded tail in `.verdict/state/<bundle>/launcher.json`, fix the invocation (the agent's own flags go after `--`), then re-run `verdict run`.
+ 
++## `agent-mismatch`
++
++Cause: the binary resolved for a row with a binary-name clash failed its identity probe (non-zero exit, timeout, or missing match text).
++
++Fix: define the agent in settings.json `agents` with an absolute `binary` path, or re-run `verdict run` with `--agent` for the one you meant.
++
+ ## `agent-missing`
+ 
+ Cause: the named agent binary is not on `PATH`.
+diff --git a/evals/README.md b/evals/README.md
+index e4d106b5c..a1a2560b0 100644
+--- a/evals/README.md
++++ b/evals/README.md
+@@ -180,6 +180,7 @@ the build.
+ | `rule-exposure`            | Per-rule `recalled_in`, `cited_in`, `exposure`, and `acceptance` on `learn --status`                  | Real CLI `learn --status` (text and `--json`) over seeded bundles: missing `kb-recall.json` reads `null`/`unmeasured`; two measured bundles recalling both rules where one rule is never cited and the other is cited once addressed read `recalled_in=2 cited_in=0 exposure=0 acceptance=n/a` and `recalled_in=2 cited_in=1 exposure=0.5 acceptance=1`. Zero host calls                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+ | `self-review`              | Bounded local self-review recipe                                                                      | Claude, Codex, and OpenCode stubs fix on round 2 or exhaust two rounds; assert exit, last gate, receipts, one spawn per round, zero host calls, and recipe unit checks.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
+ | `run-agent`                | Shipped agent-launch recipe: one fresh review.json, then handoff                                      | Committed stub agent on PATH as `claude` (no model, no network, no secret): `--print` renders the exact argv and writes nothing; a launch spawns one process in the repo root, is accepted only for one fresh `review.json`, and `launcher.json` records the redacted argv, exit, and freshness; `record` merges the launched review byte-identically; on a PR bundle `post --dry-run` accepts it at `COMMENT` with no `post.json`; stale, missing, failed, timed-out, and not-installed all refuse typed, and the docs recipe plus the CI step that proves the case ran are graded too                                                                                                                                                                                                                                                                                                                                                                                      |
++| `run-agent-probe`          | Identity probe for a clashing agent binary                                                            | Two `fx` stubs derive their behavior from argv: the agent answers `ask --help` and writes the directive review, the JSON viewer refuses `agent-mismatch`; `--print` spawns nothing, a passing launch records `probe.args`/`probe.ok` in `launcher.json`, and the mismatch starts no agent and writes no artifact                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
+ | `run-custom-agent`         | Operator-defined `run --agent` row from prefs                                                         | A stub generated in the sandbox is defined only under a sandboxed `XDG_CONFIG_HOME`, derives its behavior from the argv (subcommand, prompt flag immediately before the directive, review path in the directive), and `--print` matches the launch byte for byte; `launcher.json` marks `agent_source: "prefs"`, a missing binary carries the install hint from its definition, `unknown-agent` labels both sources, a repo-local config with `agents` does not define an agent, and a shipped-name collision refuses `bad-settings`                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+ | `run-recipe`               | Declared review pipelines resolve from the base recipe control, never the PR's own edit               | Real git base and head, `fetch-local --base` bundles, committed stub agent as `claude`: `--print` fills `data.recipe` (base version, sha256, four stages, its lens, the budget), named in the argv, writing nothing; an absent lens and an over-limit budget each warn once, then run; no `--recipe` resolves `builtin/default` and warns about nothing; the launch's `launcher.json.recipe` equals `data.recipe` exactly, the directive carries the pipeline never the description, `record` accepts the review; a head rewrite never reaches the plan; `--allow-head-controls` reads the head's copy instead; tampered snapshot bytes refuse `controls-stale`; `unknown-recipe` and `bad-recipe` refuse before any spawn; `--print --stage <n>` renders one stage's argv (the declared hint as the model argument, lens hints and caps, the `review.json` the stages chain through) plus its own refusals; zero host calls                                                 |
+ | `run-repair`               | Structured-output repair loop in `run --rounds N`                                                     | Committed repair stub on PATH as `claude` (no model, no network, no secret): round 1 invalid then round 2 valid exits 0 with exactly 2 spawns, `rounds_to_valid` 2, round 2's bytes in place, and per-round evidence under `.run.rounds/`; always-invalid with `--rounds 3` refuses `repair-exhausted` with exactly 3 spawns and non-empty `error.problems`; the default spawns once with no `data.repair`; `--print --rounds` and `--rounds 0/6/x` refuse `bad-flags`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+diff --git a/evals/cases/run-agent-probe.sh b/evals/cases/run-agent-probe.sh
+new file mode 100755
+index 000000000..da7e17494
+--- /dev/null
++++ b/evals/cases/run-agent-probe.sh
+@@ -0,0 +1,107 @@
++#!/usr/bin/env bash
++#
++# STA-440: a binary-name clash is settled by a help probe before a launch. The
++# two `fx` stubs below derive every answer from argv: the agent answers its own
++# ask --help and writes the directive's review, while the JSON viewer prints the
++# wrong identity. No model, no secret, no host.
++set -euo pipefail
++HERE="$(cd "$(dirname "$0")" && pwd)"
++# shellcheck source=../lib/common.sh
++. "$HERE/../lib/common.sh"
++
++SANDBOX="$(cd "$EVAL_SANDBOX" && pwd)"
++LOCAL=local-probe
++DIR="$SANDBOX/.verdict/state/$LOCAL"
++LAUNCHER="$DIR/launcher.json"
++AGENTBIN="$SANDBOX/probebin"
++STUB_LOG="$SANDBOX/fx-probe.log"
++mkdir -p "$AGENTBIN"
++export STUB_LOG
++
++cat >"$AGENTBIN/fx" <<'STUB'
++#!/usr/bin/env bash
++set -euo pipefail
++printf 'argc=%s argv=%s\n' "$#" "$*" >>"$STUB_LOG"
++if [ "${1:-}" != "ask" ]; then
++  echo "fx: expected ask <directive>" >&2
++  exit 2
++fi
++if [ "${2:-}" = "--help" ]; then
++  echo "fx ask: runs one noninteractive request and exits"
++  exit 0
++fi
++directive="${!#}"
++rest="${directive#*Write }"
++artifact="${rest%% with \{*}"
++if [ -z "$artifact" ] || [ "$artifact" = "$directive" ]; then
++  echo "fx: the directive named no review path" >&2
++  exit 2
++fi
++cat >"$artifact" <<'JSON'
++{"schema_version":"1","body":"Nit: one note.","approved":false,"comments":[]}
++JSON
++STUB
++chmod +x "$AGENTBIN/fx"
++export PATH="$AGENTBIN:$PATH"
++
++eval_mk_bundle "$LOCAL"
++
++# --- --print renders argv and spawns nothing, so it cannot probe -------------
++: >"$STUB_LOG"
++run_review run acme/app "$LOCAL" --agent fx --print --json -- --model M
++assert_exit "fx --print renders" 0
++assert_envelope "fx --print envelope"
++assert_json_field "--print uses fx ask" "fx ask --model M" \
++  '.data.argv | .[0:4] | join(" ")'
++if [ -s "$STUB_LOG" ]; then
++  echo "--print spawned a probe: $(cat "$STUB_LOG")" >&2
++  exit 1
++fi
++
++# --- the real agent passes the probe and records it before the launch --------
++: >"$STUB_LOG"
++run_review run acme/app "$LOCAL" --agent fx --json -- --model M
++assert_exit "fx launches after a matching probe" 0
++assert_envelope "fx launch envelope"
++assert_json_field "the launch accepts one fresh review" "true" '.data.artifact_fresh'
++assert_json_field "launcher.json records the probe args" "ask,--help" \
++  '.probe.args | join(",")' "$LAUNCHER"
++assert_json_field "launcher.json records the passing probe" "true" \
++  '.probe.ok' "$LAUNCHER"
++assert_file_grep "the probe ran first" "$STUB_LOG" '^argc=2 argv=ask --help$'
++assert_file_grep "the launch followed it" "$STUB_LOG" '^argc=4 argv=ask --model M Review acme/app'
++
++# --- a different fx refuses before starting any agent -----------------------
++cat >"$AGENTBIN/fx" <<'STUB'
++#!/usr/bin/env bash
++set -euo pipefail
++printf 'wrong argc=%s argv=%s\n' "$#" "$*" >>"$STUB_LOG"
++if [ "${2:-}" = "--help" ]; then
++  echo "fx 1.0: terminal JSON viewer"
++  exit 0
++fi
++echo "fx: JSON viewer has no ask command" >&2
++exit 1
++STUB
++chmod +x "$AGENTBIN/fx"
++rm -f "$DIR/review.json" "$DIR/launcher.json"
++: >"$STUB_LOG"
++run_review run acme/app "$LOCAL" --agent fx --json -- --model M
++assert_exit "a clashing binary refuses" 1
++assert_refusal "clash" "agent-mismatch"
++assert_json_field "the refusal names the resolved path" "true" \
++  '.error.message | contains("probe")'
++assert_json_field "the refusal hint names settings.json" "true" \
++  '(.error.message // "") | contains("settings.json")'
++assert_file_grep "only the probe ran" "$STUB_LOG" '^wrong argc=2 argv=ask --help$'
++if [ -e "$DIR/review.json" ] || [ -e "$LAUNCHER" ]; then
++  echo "the mismatch wrote a launch artifact" >&2
++  exit 1
++fi
++if [ "$(wc -l <"$STUB_LOG" | tr -d ' ')" != "1" ]; then
++  echo "the mismatch started an agent: $(cat "$STUB_LOG")" >&2
++  exit 1
++fi
++assert_stream_nogrep "run made no host call" "$EVAL_STUBLOG" "stub-gh"
++
++eval_end
+diff --git a/internal/archtest/agent_sources_test.go b/internal/archtest/agent_sources_test.go
+index 72fefbf25..7aad55c55 100644
+--- a/internal/archtest/agent_sources_test.go
++++ b/internal/archtest/agent_sources_test.go
+@@ -31,6 +31,63 @@ func TestBuiltinAgentsCarrySourceComments(t *testing.T) {
+ 	}
+ }
+ 
++// TestAgentNamesMatchTheirSurfaces pins the two human lists of --agent names
++// against the shipped table. A row that exists in code but not in usage or the
++// docs is undiscoverable; a name in the docs that no row answers is a lie.
++func TestAgentNamesMatchTheirSurfaces(t *testing.T) {
++	t.Parallel()
++	root := moduleRoot(t)
++	names := shippedAgentNames(t, filepath.Join(root, "internal", "core", "run", "agents.go"))
++	for _, surface := range []struct {
++		path   string
++		quoted bool
++	}{
++		{path: filepath.Join(root, "cmd", "verdict", "usage.go")},
++		{path: filepath.Join(root, "docs", "manual.md"), quoted: true},
++		{path: filepath.Join(root, "skills", "verdict", "references", "commands.md"), quoted: true},
++	} {
++		assertSurfaceNames(t, surface.path, surface.quoted, names)
++	}
++}
++
++func shippedAgentNames(t *testing.T, path string) []string {
++	t.Helper()
++	raw, err := os.ReadFile(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	matches := agentNameLiteral.FindAllStringSubmatch(string(raw), -1)
++	if len(matches) == 0 {
++		t.Fatal("agent table scan found no names; the guard would pass vacuously")
++	}
++	names := make([]string, 0, len(matches))
++	for _, match := range matches {
++		names = append(names, match[1])
++	}
++	return names
++}
++
++func assertSurfaceNames(t *testing.T, path string, quoted bool, names []string) {
++	t.Helper()
++	doc, err := os.ReadFile(path)
++	if err != nil {
++		t.Fatal(err)
++	}
++	for _, name := range names {
++		want := surfaceWant(name, quoted)
++		if !strings.Contains(string(doc), want) {
++			t.Errorf("%s does not name agent %q (want %q)", path, name, want)
++		}
++	}
++}
++
++func surfaceWant(name string, quoted bool) string {
++	if quoted {
++		return "`" + name + "`"
++	}
++	return name
++}
++
+ func checkAgentSourceComments(t *testing.T, path string, lines []string) int {
+ 	t.Helper()
+ 	seen := 0
+diff --git a/internal/config/fields.go b/internal/config/fields.go
+index 4e8a89ed7..ec3beb615 100644
+--- a/internal/config/fields.go
++++ b/internal/config/fields.go
+@@ -40,7 +40,7 @@ var (
+ 	personalTopFields     = core.SettingsTopKeys()
+ 	personalSpendFields   = []string{"budget_usd", "require_known_estimate", "enforce_cap"}
+ 	personalPrivacyFields = []string{"exclusions"}
+-	personalAgentFields   = []string{"binary", "args", "prompt_flag", "model_flag", "install"}
++	personalAgentFields   = []string{"binary", "args", "prompt_flag", "model_flag", "install", "probe_args", "probe_match"}
+ )
+ 
+ // The typed operator-settings sections: named once so the field contract,
+diff --git a/internal/config/personal.go b/internal/config/personal.go
+index e79bdd4fa..6a2efa431 100644
+--- a/internal/config/personal.go
++++ b/internal/config/personal.go
+@@ -54,7 +54,9 @@ type PersonalAgent struct {
+ 	PromptFlag string
+ 	ModelFlag  string
+ 	Install    string
++	ProbeMatch string
+ 	Args       []string
++	ProbeArgs  []string
+ }
+ 
+ // PersonalSettings is the parsed personal layer: review defaults (every
+@@ -87,7 +89,6 @@ const (
+ const (
+ 	wantObjectMsg = "want an object, got %s"
+ 	binaryField   = ".binary"
+-	argsField     = ".args"
+ )
+ 
+ // agentNamePattern is the published name vocabulary: a lowercase slug that
+@@ -319,8 +320,13 @@ func presentBool(obj map[string]any, key, path string) (bool, *core.RefusalError
+ // to it, so a new shipped row cannot become a silently shadowed operator name.
+ func BuiltinAgentNames() []string {
+ 	return []string{
+-		"agy", "amp", "claude", "codex", "copilot", "crush", "cursor",
+-		"droid", "gemini", "goose", "kiro", "opencode", "pi", "qwen",
++		"adal", "agy", "amp", "auggie", "autohand", "bob", "claude",
++		"cline", "codearts", "codebuddy", "codex", "commandcode", "continue",
++		"copilot", "cortex", "crush", "cursor", "dcode", "devin", "dexto",
++		"droid", "forge", "fx", "gemini", "goose", "grok", "hermes", "jazz",
++		"junie", "kilo", "kimchi", "kimi", "kiro", "kode", "mcode",
++		"neovate", "openclaw", "opencode", "pa", "pi", "qoder", "qodercn",
++		"qwen", "rovodev", "vibe", "zcode",
+ 	}
+ }
+ 
+@@ -369,9 +375,14 @@ func buildAgentRow(name string, raw any, builtins []string) (PersonalAgent, *cor
+ 	if ref != nil {
+ 		return PersonalAgent{}, ref
+ 	}
++	probeArgs, probeMatch, ref := agentProbeFields(entry, path)
++	if ref != nil {
++		return PersonalAgent{}, ref
++	}
+ 	return PersonalAgent{
+ 		Name: name, Binary: binary, Args: args, PromptFlag: prompt,
+-		ModelFlag: model, Install: install,
++		ModelFlag: model, Install: install, ProbeArgs: probeArgs,
++		ProbeMatch: probeMatch,
+ 	}, nil
+ }
+ 
+@@ -409,19 +420,44 @@ func agentBinary(entry map[string]any, path string) (string, *core.RefusalError)
+ 
+ // agentArgs reads the optional argument list, defaulting to an empty one.
+ func agentArgs(entry map[string]any, path string) ([]string, *core.RefusalError) {
+-	raw, ok := entry["args"]
++	return agentStringArray(entry, "args", path)
++}
++
++// agentProbeFields reads the optional identity check. A probe without a match
++// cannot identify anything, so the pair is validated at the prefs boundary.
++func agentProbeFields(entry map[string]any, path string) (args []string, match string, ref *core.RefusalError) {
++	_, present := entry["probe_args"]
++	if present {
++		args, ref = agentStringArray(entry, "probe_args", path)
++		if ref != nil {
++			return nil, "", ref
++		}
++	}
++	match, ref = agentOptionalString(entry, "probe_match", path)
++	if ref != nil {
++		return nil, "", ref
++	}
++	if present && match == "" {
++		return nil, "", agentRefuse(path+".probe_match", "is required when probe_args is set")
++	}
++	return args, match, nil
++}
++
++// agentStringArray reads one optional array of strings, defaulting to empty.
++func agentStringArray(entry map[string]any, key, path string) ([]string, *core.RefusalError) {
++	raw, ok := entry[key]
+ 	if !ok {
+ 		return []string{}, nil
+ 	}
+ 	items, ok := raw.([]any)
+ 	if !ok {
+-		return nil, agentRefuse(path+argsField, "want an array of strings, got %s", jsonKind(raw))
++		return nil, agentRefuse(path+"."+key, "want an array of strings, got %s", jsonKind(raw))
+ 	}
+ 	out := make([]string, 0, len(items))
+ 	for i, item := range items {
+ 		arg, ok := item.(string)
+ 		if !ok {
+-			return nil, agentRefuse(arrayPath(path+argsField, i), "want a string, got %s", jsonKind(item))
++			return nil, agentRefuse(arrayPath(path+"."+key, i), "want a string, got %s", jsonKind(item))
+ 		}
+ 		out = append(out, arg)
+ 	}
+diff --git a/internal/config/personal_agents_test.go b/internal/config/personal_agents_test.go
+index e54f8ba4f..66b6f33c7 100644
+--- a/internal/config/personal_agents_test.go
++++ b/internal/config/personal_agents_test.go
+@@ -18,7 +18,8 @@ func TestParsePersonalAgents(t *testing.T) {
+ 			"z-local": map[string]any{
+ 				"binary": "local-agent", "args": []string{"exec", "-q"},
+ 				"prompt_flag": "-p", "model_flag": "-m",
+-				"install": "brew install local-agent",
++				"install":    "brew install local-agent",
++				"probe_args": []string{"ask", "--help"}, "probe_match": "ask",
+ 			},
+ 			"a-min": map[string]any{"binary": binary},
+ 		},
+@@ -58,7 +59,8 @@ func assertFullAgent(t *testing.T, row *PersonalAgent) {
+ 	if row.Name != "z-local" || row.Binary != "local-agent" ||
+ 		!slices.Equal(row.Args, []string{"exec", "-q"}) ||
+ 		row.PromptFlag != "-p" || row.ModelFlag != "-m" ||
+-		row.Install != "brew install local-agent" {
++		row.Install != "brew install local-agent" ||
++		!slices.Equal(row.ProbeArgs, []string{"ask", "--help"}) || row.ProbeMatch != "ask" {
+ 		t.Errorf("row = %+v, want every field read verbatim", row)
+ 	}
+ }
+@@ -134,6 +136,26 @@ func TestPersonalAgentsRefusals(t *testing.T) {
+ 			give: []byte(`{"agents":{"local":{"binary":"local","prompt_flag":true}}}`),
+ 			want: "$.agents.local.prompt_flag",
+ 		},
++		{
++			name: "probe args need an array of strings",
++			give: []byte(`{"agents":{"local":{"binary":"local","probe_args":"ask"}}}`),
++			want: "$.agents.local.probe_args",
++		},
++		{
++			name: "probe args element is a string",
++			give: []byte(`{"agents":{"local":{"binary":"local","probe_args":[3]}}}`),
++			want: "$.agents.local.probe_args[0]",
++		},
++		{
++			name: "probe args need a match",
++			give: []byte(`{"agents":{"local":{"binary":"local","probe_args":["ask"]}}}`),
++			want: "$.agents.local.probe_match",
++		},
++		{
++			name: "wrong probe match type",
++			give: []byte(`{"agents":{"local":{"binary":"local","probe_match":true}}}`),
++			want: "$.agents.local.probe_match",
++		},
+ 	}
+ 	for _, tc := range tests {
+ 		t.Run(tc.name, func(t *testing.T) { assertAgentRefusal(t, tc.give, tc.want) })
+diff --git a/internal/core/hint.go b/internal/core/hint.go
+index 9babe4e12..f7d913c8b 100644
+--- a/internal/core/hint.go
++++ b/internal/core/hint.go
+@@ -215,6 +215,8 @@ var hintRules = []HintRule{
+ 		"$VAR, then re-run"},
+ 	{codes: []string{"sandbox-unavailable"}, hint: "try: on Linux install bubblewrap and allow unprivileged " +
+ 		"user namespaces; on macOS sandbox-exec ships with the OS — or re-run without --sandbox on a command you trust"},
++	{codes: []string{"agent-mismatch"}, hint: "try: define it in settings.json agents with an absolute binary path, " +
++		"or pass --agent for the one you meant"},
+ 	{codes: []string{"agent-missing"}, hint: "try: install the agent CLI (or put it on PATH), or re-run with " +
+ 		"--agent <name> for one you have"},
+ 	{codes: []string{"agent-spawn-failed"}, hint: "try: check the binary runs from your shell " +
+diff --git a/internal/core/refusalcodes.go b/internal/core/refusalcodes.go
+index d783a038d..90aac7e79 100644
+--- a/internal/core/refusalcodes.go
++++ b/internal/core/refusalcodes.go
+@@ -27,6 +27,7 @@ const CodeBadFlags = "bad-flags"
+ var refusalCodes = []string{
+ 	"adopt-failed",
+ 	"agent-failed",
++	"agent-mismatch",
+ 	"agent-missing",
+ 	"agent-record-failed",
+ 	"agent-spawn-failed",
+diff --git a/internal/core/run/agents.go b/internal/core/run/agents.go
+index 4f5ce69ca..aa92d6f67 100644
+--- a/internal/core/run/agents.go
++++ b/internal/core/run/agents.go
+@@ -33,7 +33,12 @@ type agentDef struct {
+ 	ModelFlag  string
+ 	PromptFlag string
+ 	Source     string
++	// ProbeMatch is the substring the launcher expects from the identity probe.
++	ProbeMatch string
+ 	Args       []string
++	// ProbeArgs runs the binary's harmless one-shot help before a launch; a
++	// row declares it only when another tool shares the binary name.
++	ProbeArgs []string
+ }
+ 
+ // modelFlag is the argument every shipped row takes a model name on; a row
+@@ -52,12 +57,21 @@ const (
+ 	nameCursor   = "cursor"
+ 	nameOpenCode = "opencode"
+ 	argsRun      = "run"
++	argsExec     = "exec"
++	argsAsk      = "ask"
++	argsHelp     = "--help"
+ )
+ 
+ // agentDefs is the shipped agent table, sorted by name. Every row is data: a
+ // new agent is a new entry here, and nothing else in the launcher changes.
+ // Permission and approval flags stay with the operator via `-- <args>`.
+ var agentDefs = []agentDef{
++	// --agent 'adal' is Sylph's product slug.
++	// https://docs.sylph.ai/integration/headless.md — read 2026-11-17
++	{
++		Name: "adal", Binary: "adal", ModelFlag: modelFlag, PromptFlag: "-q",
++		Install: "curl -fsSL https://adal.sylph.ai/install.sh | bash",
++	},
+ 	// https://github.com/google-antigravity/antigravity-cli — read 2026-11-17
+ 	{
+ 		Name: "agy", Binary: "agy", ModelFlag: modelFlag, PromptFlag: "-p",
+@@ -68,36 +82,134 @@ var agentDefs = []agentDef{
+ 		Name: "amp", Binary: "amp", ModelFlag: modelFlag, PromptFlag: "-x",
+ 		Install: "npm install -g @ampcode/cli",
+ 	},
++	// --agent 'auggie' is the CLI name for Augment.
++	// https://docs.augmentcode.com/cli/reference.md — read 2026-11-17
++	{
++		Name: "auggie", Binary: "auggie", ModelFlag: modelFlag,
++		Args:    []string{"--print"},
++		Install: "npm install -g @augmentcode/auggie@prerelease",
++	},
++	// --agent 'autohand' is the CLI name for Autohand Code.
++	// https://github.com/autohandai/code-cli/blob/main/src/index.ts — read 2026-11-17
++	{
++		Name: "autohand", Binary: "autohand", ModelFlag: modelFlag,
++		Install: "curl -fsSL https://autohand.ai/install.sh | bash",
++	},
++	// brew info bob: neovim version manager; brew search --formula /^bob$/ -> bob (clash).
++	// https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive — read 2026-11-17
++	{
++		Name: "bob", Binary: "bob",
++		Args:      []string{argsRun},
++		ProbeArgs: []string{argsRun, argsHelp}, ProbeMatch: argsRun,
++		Install: "curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash",
++	},
+ 	// https://code.claude.com/docs/en/cli-reference.md — read 2026-11-17
+ 	{
+-		Name: nameClaude, Binary: nameClaude, ModelFlag: modelFlag, Args: []string{"-p"},
++		Name: nameClaude, Binary: nameClaude, ModelFlag: modelFlag,
++		Args:    []string{"-p"},
+ 		Install: "curl -fsSL https://claude.ai/install.sh | bash",
+ 	},
++	// The CLI reference confirms a positional prompt runs in yolo mode; -i opens the TUI.
++	// https://github.com/cline/cline/blob/main/docs/cli/cli-reference.mdx — read 2026-11-17
++	{
++		Name: "cline", Binary: "cline", ModelFlag: modelFlag,
++		Install: "npm install -g cline",
++	},
++	// --agent 'codearts' is the CLI name for CodeArts Agent.
++	// https://support.huaweicloud.com/usermanual-cli/codeartsagent_cli_0034.html — read 2026-11-17
++	{
++		Name: "codearts", Binary: "codearts", ModelFlag: modelFlag,
++		Args: []string{argsRun},
++		Install: "sh -c \"$(curl -L https://cnnorth4-cloudide-marketplace.obs.cn-north-4.myhuaweicloud.com/" +
++			"codearts/cli_tui/install_script/install.sh)\"",
++	},
++	// https://www.codebuddy.ai/docs/cli/headless — read 2026-11-17
++	{
++		Name: "codebuddy", Binary: "codebuddy", ModelFlag: modelFlag,
++		Args:    []string{"-p"},
++		Install: "npm install -g @tencent-ai/codebuddy-code",
++	},
+ 	// https://github.com/openai/codex/blob/main/README.md — read 2026-11-17
+ 	{
+-		Name: nameCodex, Binary: nameCodex, ModelFlag: modelFlag, Args: []string{"exec"},
++		Name: nameCodex, Binary: nameCodex, ModelFlag: modelFlag,
++		Args:    []string{argsExec},
+ 		Install: "npm install -g @openai/codex",
+ 	},
++	// https://commandcode.ai/docs/headless — read 2026-11-17
++	{
++		Name: "commandcode", Binary: "commandcode", ModelFlag: modelFlag, PromptFlag: "-p",
++		Install: "npm i -g command-code@latest",
++	},
++	// --agent 'continue' is Continue's product slug; the binary is cn.
++	// https://github.com/continuedev/continue/blob/main/docs/cli/quickstart.mdx — read 2026-11-17
++	{
++		Name: "continue", Binary: "cn", ModelFlag: modelFlag,
++		Args:    []string{"-p"},
++		Install: "npm i -g @continuedev/cli",
++	},
+ 	// https://docs.github.com/en/copilot/how-tos/copilot-cli/automate-copilot-cli/run-cli-programmatically — read 2026-11-17
+ 	{
+ 		Name: "copilot", Binary: "copilot", ModelFlag: modelFlag, PromptFlag: "-p",
+ 		Install: "npm install -g @github/copilot",
+ 	},
++	// brew info cortex: Prometheus long-term storage; brew search --formula /^cortex$/ -> cortex (clash).
++	// https://docs.snowflake.com/en/user-guide/cortex-code/cli-reference — read 2026-11-17
++	{
++		Name: "cortex", Binary: "cortex", ModelFlag: modelFlag, PromptFlag: "-p",
++		ProbeArgs: []string{argsHelp}, ProbeMatch: "--print",
++		Install: "curl -qLsS https://ai.snowflake.com/static/cc-scripts/install.sh | sh",
++	},
+ 	// https://github.com/charmbracelet/crush/blob/main/internal/cmd/run.go — read 2026-11-17
+ 	{
+-		Name: "crush", Binary: "crush", ModelFlag: modelFlag, Args: []string{argsRun},
++		Name: "crush", Binary: "crush", ModelFlag: modelFlag,
++		Args:    []string{argsRun},
+ 		Install: "brew install charmbracelet/tap/crush",
+ 	},
+ 	// https://cursor.com/docs/cli/headless — read 2026-11-17
+ 	{
+-		Name: "cursor", Binary: "cursor-agent", ModelFlag: modelFlag, Args: []string{"-p"},
++		Name: "cursor", Binary: "cursor-agent", ModelFlag: modelFlag,
++		Args:    []string{"-p"},
+ 		Install: "curl https://cursor.com/install -fsS | bash",
+ 	},
++	// --agent 'dcode' is the CLI name for Deep Agents.
++	// https://github.com/langchain-ai/deepagents/blob/main/libs/code/deepagents_code/main.py — read 2026-11-17
++	{
++		Name: "dcode", Binary: "dcode", ModelFlag: modelFlag, PromptFlag: "-n",
++		Install: "curl -LsSf https://langch.in/dcode | bash",
++	},
++	// --agent 'devin' is the product slug for Devin for Terminal.
++	// https://docs.devin.ai/cli/reference/commands.md — read 2026-11-17
++	{
++		Name: "devin", Binary: "devin", ModelFlag: modelFlag, PromptFlag: "-p",
++		Install: "curl -fsSL https://cli.devin.ai/install.sh | bash",
++	},
++	// https://github.com/truffle-ai/dexto/blob/main/packages/cli/src/cli/commands/run/register.ts — read 2026-11-17
++	{
++		Name: "dexto", Binary: "dexto", ModelFlag: modelFlag,
++		Args:    []string{argsRun},
++		Install: "npm install -g dexto",
++	},
+ 	// https://docs.factory.com/droid-cli/cli-reference.md — read 2026-11-17
+ 	{
+-		Name: "droid", Binary: "droid", ModelFlag: modelFlag, Args: []string{"exec"},
++		Name: "droid", Binary: "droid", ModelFlag: modelFlag,
++		Args:    []string{argsExec},
+ 		Install: "curl -fsSL https://app.factory.ai/cli | sh",
+ 	},
++	// brew info forge: ArrayFire visualization; brew search --formula /^forge$/ -> forge (clash).
++	// https://github.com/tailcallhq/forgecode/blob/main/crates/forge_main/src/cli.rs — read 2026-11-17
++	{
++		Name: "forge", Binary: "forge", PromptFlag: "-p",
++		ProbeArgs: []string{argsHelp}, ProbeMatch: "--prompt",
++		Install: "curl -fsSL https://forgecode.dev/cli | sh",
++	},
++	// brew info fx: terminal JSON viewer; brew search --formula /^fx$/ -> fx (clash).
++	// https://fx.sh/docs/using-fx/fx-ask — read 2026-11-17
++	{
++		Name: "fx", Binary: "fx", ModelFlag: modelFlag,
++		Args:      []string{argsAsk},
++		ProbeArgs: []string{argsAsk, argsHelp}, ProbeMatch: argsAsk,
++		Install: "curl -fsSL https://fx.sh/setup.sh | bash",
++	},
+ 	// https://github.com/google-gemini/gemini-cli/blob/main/README.md — read 2026-11-17
+ 	{
+ 		Name: "gemini", Binary: "gemini", ModelFlag: modelFlag, PromptFlag: "-p",
+@@ -105,37 +217,150 @@ var agentDefs = []agentDef{
+ 	},
+ 	// https://github.com/aaif-goose/goose/blob/main/documentation/docs/guides/running-tasks.md — read 2026-11-17
+ 	{
+-		Name: "goose", Binary: "goose", ModelFlag: modelFlag, PromptFlag: "-t", Args: []string{argsRun},
++		Name: "goose", Binary: "goose", ModelFlag: modelFlag, PromptFlag: "-t",
++		Args:    []string{argsRun},
+ 		Install: "brew install block-goose-cli",
+ 	},
++	// brew info grok: regex tool; brew search --formula /^grok$/ -> grok (clash).
++	// https://github.com/xai-org/grok-build/blob/main/crates/codegen/xai-grok-pager/docs/user-guide/14-headless-mode.md — read 2026-11-17
++	{
++		Name: "grok", Binary: "grok", ModelFlag: modelFlag, PromptFlag: "-p",
++		ProbeArgs: []string{argsHelp}, ProbeMatch: "--single",
++		Install: "curl -fsSL https://x.ai/cli/install.sh | bash",
++	},
++	// --agent 'hermes' is the CLI name for Hermes Agent.
++	// https://github.com/NousResearch/hermes-agent/blob/main/hermes_cli/_parser.py — read 2026-11-17
++	{
++		Name: "hermes", Binary: "hermes", ModelFlag: modelFlag, PromptFlag: "-z",
++		Install: "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash",
++	},
++	// brew info jazz: no formula; brew search --formula /^jazz$/ -> none (no known clash, no probe).
++	// jazz run needs --agent <id>; pass it after '--'.
++	// https://github.com/lvndry/jazz/blob/main/docs/commands.md — read 2026-11-17
++	{
++		Name: "jazz", Binary: "jazz",
++		Args:    []string{argsRun},
++		Install: "curl -fsSL https://github.com/lvndry/jazz/releases/latest/download/install.sh | bash",
++	},
++	// --model is confirmed in the Junie CLI reference (parameters.html, read 2026-11-17).
++	// https://junie.jetbrains.com/docs/junie-headless.html — read 2026-11-17
++	{
++		Name: "junie", Binary: "junie", ModelFlag: modelFlag,
++		Install: "curl -fsSL https://junie.jetbrains.com/install.sh | bash",
++	},
++	// brew info kilo: no formula; brew search --formula /^kilo$/ -> none; antirez/kilo is a text editor (clash).
++	// https://github.com/Kilo-Org/kilocode/blob/main/packages/opencode/src/cli/cmd/run.ts — read 2026-11-17
++	{
++		Name: "kilo", Binary: "kilo", ModelFlag: modelFlag,
++		Args:      []string{argsRun},
++		ProbeArgs: []string{argsRun, argsHelp}, ProbeMatch: argsRun,
++		Install: "npm install -g @kilocode/cli",
++	},
++	// --agent 'kimchi' is the product slug.
++	// https://docs.kimchi.dev/docs/coding-headless.md — read 2026-11-17
++	{
++		Name: "kimchi", Binary: "kimchi", ModelFlag: modelFlag, PromptFlag: "-p",
++		Install: "curl -fsSL https://github.com/getkimchi/kimchi/releases/latest/download/install.sh | bash",
++	},
++	// --agent 'kimi' is the CLI name for Kimi Code.
++	// https://github.com/MoonshotAI/kimi-code/blob/main/docs/en/reference/kimi-command.md — read 2026-11-17
++	{
++		Name: "kimi", Binary: "kimi", ModelFlag: modelFlag, PromptFlag: "-p",
++		Install: "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash",
++	},
+ 	// https://kiro.dev/docs/cli/headless.md — read 2026-11-17
+ 	{
+ 		Name: "kiro", Binary: "kiro-cli", ModelFlag: modelFlag,
+ 		Args:    []string{"chat", "--no-interactive"},
+ 		Install: "curl -fsSL https://cli.kiro.dev/install | bash",
+ 	},
++	// --agent 'kode' is the product slug.
++	// https://github.com/shareAI-lab/Kode-CLI/blob/main/apps/cli/src/entrypoints/cli/cliParser/program.tsx — read 2026-11-17
++	{
++		Name: "kode", Binary: "kode", ModelFlag: modelFlag,
++		Install: "npm install -g @shareai-lab/kode",
++	},
++	// --agent 'mcode' is the CLI name for MiniMax Code.
++	// https://github.com/MiniMax-AI/minimax-code/blob/main/packages/tui/src/cli/contract.ts — read 2026-11-17
++	{
++		Name: "mcode", Binary: "mcode", ModelFlag: modelFlag,
++		Args:    []string{argsExec},
++		Install: "curl -fsSL https://filecdn.minimax.chat/public/install.sh | bash",
++	},
++	// https://github.com/neovateai/neovate-code/blob/master/src/index.ts — read 2026-11-17
++	{
++		Name: "neovate", Binary: "neovate", ModelFlag: modelFlag,
++		Install: "npm install -g @neovate/code",
++	},
++	// --agent 'openclaw' is the product slug.
++	// https://github.com/openclaw/openclaw/blob/main/docs/cli/agent.md — read 2026-11-17
++	{
++		Name: "openclaw", Binary: "openclaw", ModelFlag: modelFlag,
++		Args:    []string{"agent", argsExec},
++		Install: "curl -fsSL https://openclaw.ai/install.sh | bash",
++	},
+ 	// https://opencode.ai/docs/cli/ — read 2026-11-17
+ 	{
+-		Name: nameOpenCode, Binary: nameOpenCode, ModelFlag: modelFlag, Args: []string{argsRun},
++		Name: nameOpenCode, Binary: nameOpenCode, ModelFlag: modelFlag,
++		Args:    []string{argsRun},
+ 		Install: "npm install -g @opencode/cli",
+ 	},
++	// --agent 'pa' is the CLI name for Posit Assistant.
++	// https://assistant.posit.co/docs/reference/tui/ — read 2026-11-17
++	{
++		Name: "pa", Binary: "pa", ModelFlag: modelFlag,
++		Install: "curl -fsSL https://assistant.posit.co/builds/install-tui.sh | bash",
++	},
+ 	// https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/quickstart.md — read 2026-11-17
+ 	{
+-		Name: "pi", Binary: "pi", ModelFlag: modelFlag, Args: []string{"-p"},
++		Name: "pi", Binary: "pi", ModelFlag: modelFlag,
++		Args:    []string{"-p"},
+ 		Install: "curl -fsSL https://pi.dev/install.sh | sh",
+ 	},
++	// --agent 'qoder' is the product slug.
++	// https://docs.qoder.com/cli/run-in-scripts.md — read 2026-11-17
++	{
++		Name: "qoder", Binary: "qoder", ModelFlag: modelFlag,
++		Install: "curl -fsSL https://qoder.com/install | bash",
++	},
++	// --agent 'qodercn' is the CLI name for Qoder CN.
++	// https://docs.qoder.cn/cli/run-in-scripts.md — read 2026-11-17
++	{
++		Name: "qodercn", Binary: "qodercn", ModelFlag: modelFlag,
++		Install: "curl -fsSL https://static.qoder.com.cn/qoder-cli-cn/install.sh | bash",
++	},
+ 	// https://github.com/QwenLM/qwen-code/blob/main/packages/cli/src/config/top-level-options.ts — read 2026-11-17
+ 	{
+ 		Name: "qwen", Binary: "qwen", ModelFlag: modelFlag,
+ 		Install: "npm install -g @qwen-code/qwen-code@latest",
+ 	},
++	// --agent 'rovodev' is the product slug; the binary is acli.
++	// https://support.atlassian.com/rovo/docs/rovo-dev-cli-commands/ — read 2026-11-17
++	{
++		Name: "rovodev", Binary: "acli",
++		Args:    []string{"rovodev", argsRun},
++		Install: "install Atlassian CLI (acli)",
++	},
++	// --agent 'vibe' is the CLI name for Mistral Vibe.
++	// https://github.com/mistralai/mistral-vibe/blob/main/docs/programmatic-mode.md — read 2026-11-17
++	{
++		Name: "vibe", Binary: "vibe", ModelFlag: modelFlag, PromptFlag: "-p",
++		Install: "curl -LsSf https://mistral.ai/vibe/install.sh | bash",
++	},
++	// --agent 'zcode' is the product slug.
++	// https://github.com/zai-org/ZCode/blob/main/apps/zcode-cli/docs/usage/02-cli-reference.md — read 2026-11-17
++	{
++		Name: "zcode", Binary: "zcode", PromptFlag: "-p",
++		Install: "build @zcode/cli from https://github.com/zai-org/ZCode",
++	},
+ }
+ 
+ // lookupAgent resolves one --agent name against the table.
+ func lookupAgent(name string) (agentDef, bool) {
+-	for _, def := range agentDefs {
++	for i := range agentDefs {
++		def := &agentDefs[i]
+ 		if def.Name == name {
+-			return def, true
++			return *def, true
+ 		}
+ 	}
+ 	return agentDef{}, false
+@@ -153,9 +378,10 @@ func AgentNames() []string {
+ 			names = append(names, name)
+ 		}
+ 	}
+-	for _, def := range agentDefs {
+-		if !slices.Contains(first, def.Name) {
+-			names = append(names, def.Name)
++	for i := range agentDefs {
++		name := agentDefs[i].Name
++		if !slices.Contains(first, name) {
++			names = append(names, name)
+ 		}
+ 	}
+ 	return names
+diff --git a/internal/core/run/agents_internal_test.go b/internal/core/run/agents_internal_test.go
+index 812284b77..3add6f5cf 100644
+--- a/internal/core/run/agents_internal_test.go
++++ b/internal/core/run/agents_internal_test.go
+@@ -2,104 +2,333 @@ package run
+ 
+ import (
+ 	"slices"
++	"strings"
+ 	"testing"
+ )
+ 
+ type builtinRow struct {
+-	name       string
+-	binary     string
+-	args       []string
+-	promptFlag string
+-	install    string
+-	wantArgv   []string
++	name          string
++	binary        string
++	promptFlag    string
++	probeMatch    string
++	install       string
++	args          []string
++	probeArgs     []string
++	wantArgv      []string
++	wantPrintArgv []string
++	noModel       bool
+ }
+ 
+-// TestBuiltinAgentRows pins every shipped row: its binary, its non-interactive
+-// flags, its official install hint, and the exact argv a model hint and a
+-// pass-through flag produce. Prompt-bearing rows put their flag immediately
+-// before the directive; the others keep the positional shape. The name set is
+-// literal, so a new row cannot join the table without a reviewed expectation.
+-func TestBuiltinAgentRows(t *testing.T) {
+-	tests := []builtinRow{
++// builtinRows is the literal contract for the shipped table: every row's
++// binary, flags, probe, install hint, composed argv, and --print argv. A new
++// row cannot join the table without a reviewed expectation here.
++func builtinRows() []builtinRow {
++	return []builtinRow{
++		{
++			name: "adal", binary: "adal", args: []string{}, promptFlag: "-q",
++			install:       "curl -fsSL https://adal.sylph.ai/install.sh | bash",
++			wantArgv:      []string{"adal", "--model", "M", "--x", "-q", "PROMPT"},
++			wantPrintArgv: []string{"adal", "--model", "M", "-q", "PROMPT"},
++		},
++		{
++			name: "agy", binary: "agy", args: []string{}, promptFlag: "-p",
++			install:       "curl -fsSL https://antigravity.google/cli/install.sh | bash",
++			wantArgv:      []string{"agy", "--model", "M", "--x", "-p", "PROMPT"},
++			wantPrintArgv: []string{"agy", "--model", "M", "-p", "PROMPT"},
++		},
++		{
++			name: "amp", binary: "amp", args: []string{}, promptFlag: "-x",
++			install:       "npm install -g @ampcode/cli",
++			wantArgv:      []string{"amp", "--model", "M", "--x", "-x", "PROMPT"},
++			wantPrintArgv: []string{"amp", "--model", "M", "-x", "PROMPT"},
++		},
++		{
++			name: "auggie", binary: "auggie", args: []string{"--print"}, promptFlag: "",
++			install:       "npm install -g @augmentcode/auggie@prerelease",
++			wantArgv:      []string{"auggie", "--print", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"auggie", "--print", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "autohand", binary: "autohand", args: []string{}, promptFlag: "",
++			install:       "curl -fsSL https://autohand.ai/install.sh | bash",
++			wantArgv:      []string{"autohand", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"autohand", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "bob", binary: "bob", args: []string{"run"}, promptFlag: "",
++			noModel:   true,
++			probeArgs: []string{"run", "--help"}, probeMatch: "run",
++			install:       "curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash",
++			wantArgv:      []string{"bob", "run", "--x", "PROMPT"},
++			wantPrintArgv: []string{"bob", "run", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "claude", binary: "claude", args: []string{"-p"}, promptFlag: "",
++			install:       "curl -fsSL https://claude.ai/install.sh | bash",
++			wantArgv:      []string{"claude", "-p", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"claude", "-p", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "cline", binary: "cline", args: []string{}, promptFlag: "",
++			install:       "npm install -g cline",
++			wantArgv:      []string{"cline", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"cline", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "codearts", binary: "codearts", args: []string{"run"}, promptFlag: "",
++			install:       "sh -c \"$(curl -L https://cnnorth4-cloudide-marketplace.obs.cn-north-4.myhuaweicloud.com/codearts/cli_tui/install_script/install.sh)\"",
++			wantArgv:      []string{"codearts", "run", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"codearts", "run", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "codebuddy", binary: "codebuddy", args: []string{"-p"}, promptFlag: "",
++			install:       "npm install -g @tencent-ai/codebuddy-code",
++			wantArgv:      []string{"codebuddy", "-p", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"codebuddy", "-p", "--model", "M", "PROMPT"},
++		},
+ 		{
+-			name: "agy", binary: "agy", promptFlag: "-p",
+-			install:  "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+-			wantArgv: []string{"agy", "--model", "M", "--x", "-p", "PROMPT"},
++			name: "codex", binary: "codex", args: []string{"exec"}, promptFlag: "",
++			install:       "npm install -g @openai/codex",
++			wantArgv:      []string{"codex", "exec", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"codex", "exec", "--model", "M", "PROMPT"},
+ 		},
+ 		{
+-			name: "amp", binary: "amp", promptFlag: "-x",
+-			install:  "npm install -g @ampcode/cli",
+-			wantArgv: []string{"amp", "--model", "M", "--x", "-x", "PROMPT"},
++			name: "commandcode", binary: "commandcode", args: []string{}, promptFlag: "-p",
++			install:       "npm i -g command-code@latest",
++			wantArgv:      []string{"commandcode", "--model", "M", "--x", "-p", "PROMPT"},
++			wantPrintArgv: []string{"commandcode", "--model", "M", "-p", "PROMPT"},
+ 		},
+ 		{
+-			name: "claude", binary: "claude", args: []string{"-p"},
+-			install:  "curl -fsSL https://claude.ai/install.sh | bash",
+-			wantArgv: []string{"claude", "-p", "--model", "M", "--x", "PROMPT"},
++			name: "continue", binary: "cn", args: []string{"-p"}, promptFlag: "",
++			install:       "npm i -g @continuedev/cli",
++			wantArgv:      []string{"cn", "-p", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"cn", "-p", "--model", "M", "PROMPT"},
+ 		},
+ 		{
+-			name: "codex", binary: "codex", args: []string{"exec"},
+-			install:  "npm install -g @openai/codex",
+-			wantArgv: []string{"codex", "exec", "--model", "M", "--x", "PROMPT"},
++			name: "copilot", binary: "copilot", args: []string{}, promptFlag: "-p",
++			install:       "npm install -g @github/copilot",
++			wantArgv:      []string{"copilot", "--model", "M", "--x", "-p", "PROMPT"},
++			wantPrintArgv: []string{"copilot", "--model", "M", "-p", "PROMPT"},
+ 		},
+ 		{
+-			name: "copilot", binary: "copilot", promptFlag: "-p",
+-			install:  "npm install -g @github/copilot",
+-			wantArgv: []string{"copilot", "--model", "M", "--x", "-p", "PROMPT"},
++			name: "cortex", binary: "cortex", args: []string{}, promptFlag: "-p",
++			probeArgs: []string{"--help"}, probeMatch: "--print",
++			install:       "curl -qLsS https://ai.snowflake.com/static/cc-scripts/install.sh | sh",
++			wantArgv:      []string{"cortex", "--model", "M", "--x", "-p", "PROMPT"},
++			wantPrintArgv: []string{"cortex", "--model", "M", "-p", "PROMPT"},
+ 		},
+ 		{
+-			name: "crush", binary: "crush", args: []string{"run"},
+-			install:  "brew install charmbracelet/tap/crush",
+-			wantArgv: []string{"crush", "run", "--model", "M", "--x", "PROMPT"},
++			name: "crush", binary: "crush", args: []string{"run"}, promptFlag: "",
++			install:       "brew install charmbracelet/tap/crush",
++			wantArgv:      []string{"crush", "run", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"crush", "run", "--model", "M", "PROMPT"},
+ 		},
+ 		{
+-			name: "cursor", binary: "cursor-agent", args: []string{"-p"},
+-			install:  "curl https://cursor.com/install -fsS | bash",
+-			wantArgv: []string{"cursor-agent", "-p", "--model", "M", "--x", "PROMPT"},
++			name: "cursor", binary: "cursor-agent", args: []string{"-p"}, promptFlag: "",
++			install:       "curl https://cursor.com/install -fsS | bash",
++			wantArgv:      []string{"cursor-agent", "-p", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"cursor-agent", "-p", "--model", "M", "PROMPT"},
+ 		},
+ 		{
+-			name: "droid", binary: "droid", args: []string{"exec"},
+-			install:  "curl -fsSL https://app.factory.ai/cli | sh",
+-			wantArgv: []string{"droid", "exec", "--model", "M", "--x", "PROMPT"},
++			name: "dcode", binary: "dcode", args: []string{}, promptFlag: "-n",
++			install:       "curl -LsSf https://langch.in/dcode | bash",
++			wantArgv:      []string{"dcode", "--model", "M", "--x", "-n", "PROMPT"},
++			wantPrintArgv: []string{"dcode", "--model", "M", "-n", "PROMPT"},
+ 		},
+ 		{
+-			name: "gemini", binary: "gemini", promptFlag: "-p",
+-			install:  "npm install -g @google/gemini-cli",
+-			wantArgv: []string{"gemini", "--model", "M", "--x", "-p", "PROMPT"},
++			name: "devin", binary: "devin", args: []string{}, promptFlag: "-p",
++			install:       "curl -fsSL https://cli.devin.ai/install.sh | bash",
++			wantArgv:      []string{"devin", "--model", "M", "--x", "-p", "PROMPT"},
++			wantPrintArgv: []string{"devin", "--model", "M", "-p", "PROMPT"},
++		},
++		{
++			name: "dexto", binary: "dexto", args: []string{"run"}, promptFlag: "",
++			install:       "npm install -g dexto",
++			wantArgv:      []string{"dexto", "run", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"dexto", "run", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "droid", binary: "droid", args: []string{"exec"}, promptFlag: "",
++			install:       "curl -fsSL https://app.factory.ai/cli | sh",
++			wantArgv:      []string{"droid", "exec", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"droid", "exec", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "forge", binary: "forge", args: []string{}, promptFlag: "-p",
++			noModel:   true,
++			probeArgs: []string{"--help"}, probeMatch: "--prompt",
++			install:       "curl -fsSL https://forgecode.dev/cli | sh",
++			wantArgv:      []string{"forge", "--x", "-p", "PROMPT"},
++			wantPrintArgv: []string{"forge", "--model", "M", "-p", "PROMPT"},
++		},
++		{
++			name: "fx", binary: "fx", args: []string{"ask"}, promptFlag: "",
++			probeArgs: []string{"ask", "--help"}, probeMatch: "ask",
++			install:       "curl -fsSL https://fx.sh/setup.sh | bash",
++			wantArgv:      []string{"fx", "ask", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"fx", "ask", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "gemini", binary: "gemini", args: []string{}, promptFlag: "-p",
++			install:       "npm install -g @google/gemini-cli",
++			wantArgv:      []string{"gemini", "--model", "M", "--x", "-p", "PROMPT"},
++			wantPrintArgv: []string{"gemini", "--model", "M", "-p", "PROMPT"},
+ 		},
+ 		{
+ 			name: "goose", binary: "goose", args: []string{"run"}, promptFlag: "-t",
+-			install:  "brew install block-goose-cli",
+-			wantArgv: []string{"goose", "run", "--model", "M", "--x", "-t", "PROMPT"},
++			install:       "brew install block-goose-cli",
++			wantArgv:      []string{"goose", "run", "--model", "M", "--x", "-t", "PROMPT"},
++			wantPrintArgv: []string{"goose", "run", "--model", "M", "-t", "PROMPT"},
++		},
++		{
++			name: "grok", binary: "grok", args: []string{}, promptFlag: "-p",
++			probeArgs: []string{"--help"}, probeMatch: "--single",
++			install:       "curl -fsSL https://x.ai/cli/install.sh | bash",
++			wantArgv:      []string{"grok", "--model", "M", "--x", "-p", "PROMPT"},
++			wantPrintArgv: []string{"grok", "--model", "M", "-p", "PROMPT"},
++		},
++		{
++			name: "hermes", binary: "hermes", args: []string{}, promptFlag: "-z",
++			install:       "curl -fsSL https://hermes-agent.nousresearch.com/install.sh | bash",
++			wantArgv:      []string{"hermes", "--model", "M", "--x", "-z", "PROMPT"},
++			wantPrintArgv: []string{"hermes", "--model", "M", "-z", "PROMPT"},
++		},
++		{
++			name: "jazz", binary: "jazz", args: []string{"run"}, promptFlag: "",
++			noModel:       true,
++			install:       "curl -fsSL https://github.com/lvndry/jazz/releases/latest/download/install.sh | bash",
++			wantArgv:      []string{"jazz", "run", "--x", "PROMPT"},
++			wantPrintArgv: []string{"jazz", "run", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "junie", binary: "junie", args: []string{}, promptFlag: "",
++			install:       "curl -fsSL https://junie.jetbrains.com/install.sh | bash",
++			wantArgv:      []string{"junie", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"junie", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "kilo", binary: "kilo", args: []string{"run"}, promptFlag: "",
++			probeArgs: []string{"run", "--help"}, probeMatch: "run",
++			install:       "npm install -g @kilocode/cli",
++			wantArgv:      []string{"kilo", "run", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"kilo", "run", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "kimchi", binary: "kimchi", args: []string{}, promptFlag: "-p",
++			install:       "curl -fsSL https://github.com/getkimchi/kimchi/releases/latest/download/install.sh | bash",
++			wantArgv:      []string{"kimchi", "--model", "M", "--x", "-p", "PROMPT"},
++			wantPrintArgv: []string{"kimchi", "--model", "M", "-p", "PROMPT"},
+ 		},
+ 		{
+-			name: "kiro", binary: "kiro-cli", args: []string{"chat", "--no-interactive"},
+-			install:  "curl -fsSL https://cli.kiro.dev/install | bash",
+-			wantArgv: []string{"kiro-cli", "chat", "--no-interactive", "--model", "M", "--x", "PROMPT"},
++			name: "kimi", binary: "kimi", args: []string{}, promptFlag: "-p",
++			install:       "curl -fsSL https://code.kimi.com/kimi-code/install.sh | bash",
++			wantArgv:      []string{"kimi", "--model", "M", "--x", "-p", "PROMPT"},
++			wantPrintArgv: []string{"kimi", "--model", "M", "-p", "PROMPT"},
+ 		},
+ 		{
+-			name: "opencode", binary: "opencode", args: []string{"run"},
+-			install:  "npm install -g @opencode/cli",
+-			wantArgv: []string{"opencode", "run", "--model", "M", "--x", "PROMPT"},
++			name: "kiro", binary: "kiro-cli", args: []string{"chat", "--no-interactive"}, promptFlag: "",
++			install:       "curl -fsSL https://cli.kiro.dev/install | bash",
++			wantArgv:      []string{"kiro-cli", "chat", "--no-interactive", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"kiro-cli", "chat", "--no-interactive", "--model", "M", "PROMPT"},
+ 		},
+ 		{
+-			name: "pi", binary: "pi", args: []string{"-p"},
+-			install:  "curl -fsSL https://pi.dev/install.sh | sh",
+-			wantArgv: []string{"pi", "-p", "--model", "M", "--x", "PROMPT"},
++			name: "kode", binary: "kode", args: []string{}, promptFlag: "",
++			install:       "npm install -g @shareai-lab/kode",
++			wantArgv:      []string{"kode", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"kode", "--model", "M", "PROMPT"},
+ 		},
+ 		{
+-			name: "qwen", binary: "qwen",
+-			install:  "npm install -g @qwen-code/qwen-code@latest",
+-			wantArgv: []string{"qwen", "--model", "M", "--x", "PROMPT"},
++			name: "mcode", binary: "mcode", args: []string{"exec"}, promptFlag: "",
++			install:       "curl -fsSL https://filecdn.minimax.chat/public/install.sh | bash",
++			wantArgv:      []string{"mcode", "exec", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"mcode", "exec", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "neovate", binary: "neovate", args: []string{}, promptFlag: "",
++			install:       "npm install -g @neovate/code",
++			wantArgv:      []string{"neovate", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"neovate", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "openclaw", binary: "openclaw", args: []string{"agent", "exec"}, promptFlag: "",
++			install:       "curl -fsSL https://openclaw.ai/install.sh | bash",
++			wantArgv:      []string{"openclaw", "agent", "exec", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"openclaw", "agent", "exec", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "opencode", binary: "opencode", args: []string{"run"}, promptFlag: "",
++			install:       "npm install -g @opencode/cli",
++			wantArgv:      []string{"opencode", "run", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"opencode", "run", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "pa", binary: "pa", args: []string{}, promptFlag: "",
++			install:       "curl -fsSL https://assistant.posit.co/builds/install-tui.sh | bash",
++			wantArgv:      []string{"pa", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"pa", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "pi", binary: "pi", args: []string{"-p"}, promptFlag: "",
++			install:       "curl -fsSL https://pi.dev/install.sh | sh",
++			wantArgv:      []string{"pi", "-p", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"pi", "-p", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "qoder", binary: "qoder", args: []string{}, promptFlag: "",
++			install:       "curl -fsSL https://qoder.com/install | bash",
++			wantArgv:      []string{"qoder", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"qoder", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "qodercn", binary: "qodercn", args: []string{}, promptFlag: "",
++			install:       "curl -fsSL https://static.qoder.com.cn/qoder-cli-cn/install.sh | bash",
++			wantArgv:      []string{"qodercn", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"qodercn", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "qwen", binary: "qwen", args: []string{}, promptFlag: "",
++			install:       "npm install -g @qwen-code/qwen-code@latest",
++			wantArgv:      []string{"qwen", "--model", "M", "--x", "PROMPT"},
++			wantPrintArgv: []string{"qwen", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "rovodev", binary: "acli", args: []string{"rovodev", "run"}, promptFlag: "",
++			noModel:       true,
++			install:       "install Atlassian CLI (acli)",
++			wantArgv:      []string{"acli", "rovodev", "run", "--x", "PROMPT"},
++			wantPrintArgv: []string{"acli", "rovodev", "run", "--model", "M", "PROMPT"},
++		},
++		{
++			name: "vibe", binary: "vibe", args: []string{}, promptFlag: "-p",
++			install:       "curl -LsSf https://mistral.ai/vibe/install.sh | bash",
++			wantArgv:      []string{"vibe", "--model", "M", "--x", "-p", "PROMPT"},
++			wantPrintArgv: []string{"vibe", "--model", "M", "-p", "PROMPT"},
++		},
++		{
++			name: "zcode", binary: "zcode", args: []string{}, promptFlag: "-p",
++			noModel:       true,
++			install:       "build @zcode/cli from https://github.com/zai-org/ZCode",
++			wantArgv:      []string{"zcode", "--x", "-p", "PROMPT"},
++			wantPrintArgv: []string{"zcode", "--model", "M", "-p", "PROMPT"},
+ 		},
+ 	}
++}
++
++// TestBuiltinAgentRows pins every shipped row: its binary, its non-interactive
++// flags, its identity probe, its official install hint, and the exact argv a
++// model hint and a pass-through flag produce. Prompt-bearing rows put their
++// flag immediately before the directive; the others keep the positional shape.
++// The name set is literal, so a new row cannot join the table unnoticed.
++func TestBuiltinAgentRows(t *testing.T) {
++	tests := builtinRows()
+ 	wantNames := make([]string, 0, len(tests))
+ 	for _, tc := range tests {
+ 		wantNames = append(wantNames, tc.name)
+ 		t.Run(tc.name, func(t *testing.T) { assertBuiltinRow(t, &tc) })
+ 	}
+ 	names := make([]string, 0, len(agentDefs))
+-	for _, def := range agentDefs {
+-		names = append(names, def.Name)
++	for i := range agentDefs {
++		names = append(names, agentDefs[i].Name)
+ 	}
+ 	if !slices.Equal(names, wantNames) {
+ 		t.Errorf("table names = %q, want %q", names, wantNames)
+@@ -112,22 +341,77 @@ func assertBuiltinRow(t *testing.T, tc *builtinRow) {
+ 	if !ok {
+ 		t.Fatalf("lookupAgent(%q) found no row", tc.name)
+ 	}
++	assertRowFields(t, tc, &def)
++	assertRowArgv(t, tc, &def)
++}
++
++// assertRowFields pins the data a user can read in --print and launcher.json.
++func assertRowFields(t *testing.T, tc *builtinRow, def *agentDef) {
++	t.Helper()
+ 	if def.Binary != tc.binary || def.PromptFlag != tc.promptFlag || def.Install != tc.install {
+ 		t.Errorf("row = %+v, want binary %q, prompt flag %q, install %q",
+ 			def, tc.binary, tc.promptFlag, tc.install)
+ 	}
+-	if !slices.Equal(def.Args, tc.args) {
+-		t.Errorf("args = %q, want %q", def.Args, tc.args)
++	if !slices.Equal(def.Args, tc.args) || !slices.Equal(def.ProbeArgs, tc.probeArgs) ||
++		def.ProbeMatch != tc.probeMatch {
++		t.Errorf("row = %+v, want args %q, probe %q / %q",
++			def, tc.args, tc.probeArgs, tc.probeMatch)
++	}
++}
++
++// assertRowArgv pins the composed launch argv and the model flag it reflects.
++func assertRowArgv(t *testing.T, tc *builtinRow, def *agentDef) {
++	t.Helper()
++	wantModel := modelFlag
++	if tc.noModel {
++		wantModel = ""
+ 	}
+-	if def.ModelFlag != modelFlag {
+-		t.Errorf("model flag = %q, want %q", def.ModelFlag, modelFlag)
++	if def.ModelFlag != wantModel {
++		t.Errorf("model flag = %q, want %q", def.ModelFlag, wantModel)
+ 	}
+-	got := argvFor(&def, "M", []string{"--x"}, "PROMPT")
++	got := argvFor(def, "M", []string{"--x"}, "PROMPT")
+ 	if !slices.Equal(got, tc.wantArgv) {
+ 		t.Errorf("argv = %q, want %q", got, tc.wantArgv)
+ 	}
+ }
+ 
++// TestBuiltinAgentPrint pins the --print path for every row: the same binary,
++// agent flags, pass-through model, prompt flag, and directive, with no process
++// spawned. The pass-through model replaces a stage hint on a launch, so no
++// second --model comes from the definition.
++func TestBuiltinAgentPrint(t *testing.T) {
++	for _, tc := range builtinRows() {
++		t.Run(tc.name, func(t *testing.T) { assertPrintedRow(t, &tc) })
++	}
++}
++
++// assertPrintedRow drives one --print render and compares its argv and spawn
++// count with the literal row expectation.
++func assertPrintedRow(t *testing.T, tc *builtinRow) {
++	t.Helper()
++	root := fixtureRoot(t)
++	cmdr := &scripted{}
++	req := request(root, cmdr)
++	req.Agent = tc.name
++	req.Print = true
++	req.PassThrough = []string{"--model", "M"}
++	resp, ref := Run(t.Context(), req)
++	if ref != nil {
++		t.Fatalf("print refused: %v", ref)
++	}
++	argv := slices.Clone(resp.Data.Argv)
++	if len(argv) == 0 || !strings.HasPrefix(argv[len(argv)-1], "Review acme/app ") {
++		t.Fatalf("printed argv = %q, want a directive", argv)
++	}
++	argv[len(argv)-1] = "PROMPT"
++	if !slices.Equal(argv, tc.wantPrintArgv) {
++		t.Errorf("print argv = %q, want %q", argv, tc.wantPrintArgv)
++	}
++	if cmdr.calls != 0 {
++		t.Errorf("print spawned %d processes, want zero", cmdr.calls)
++	}
++}
++
+ // TestArgvForPromptPlacement pins the one shape change in STA-440: a row that
+ // takes its prompt as a flag value puts that flag immediately before the
+ // directive, after every operator argument, so a pass-through flag cannot be
+diff --git a/internal/core/run/probe_internal_test.go b/internal/core/run/probe_internal_test.go
+new file mode 100644
+index 000000000..a1a89d8cb
+--- /dev/null
++++ b/internal/core/run/probe_internal_test.go
+@@ -0,0 +1,228 @@
++package run
++
++import (
++	"context"
++	"errors"
++	"io"
++	"slices"
++	"strings"
++	"testing"
++
++	"github.com/stainless-code/verdict/internal/config"
++	"github.com/stainless-code/verdict/internal/core"
++	"github.com/stainless-code/verdict/internal/jq"
++)
++
++// probeCdr answers from argv, like the agent it stands in for: the help probe
++// prints its identity, and the real directive writes the review. It records
++// every command, so a test can prove a refusal launched no agent.
++type probeCdr struct {
++	answer  func(argv []string) (core.Result, error)
++	onWrite func()
++	calls   []*core.Command
++}
++
++// Run implements core.Commander.
++func (p *probeCdr) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
++	p.calls = append(p.calls, cmd)
++	if p.answer != nil {
++		return p.answer(cmd.Argv)
++	}
++	if p.onWrite != nil {
++		p.onWrite()
++	}
++	return core.Result{}, nil
++}
++
++// probeDef is the operator row every probe test launches: the fake's help
++// subcommand identifies it, and its exec subcommand writes the review.
++func probeDef() config.PersonalAgent {
++	return config.PersonalAgent{
++		Name: "local", Binary: "local-agent", Args: []string{"exec"},
++		PromptFlag: "-p", Install: "brew install local-agent",
++		ProbeArgs: []string{"ask", "--help"}, ProbeMatch: "ask",
++	}
++}
++
++// probeRequest resolves the fake binary to a literal path, so a refusal can
++// name the path the operator would have to replace in settings.json.
++func probeRequest(root string, cdr *probeCdr) *core.RunRequest {
++	req := request(root, cdr)
++	req.Agent = "local"
++	req.LookPath = func(string) (string, error) { return "/opt/agents/local-agent", nil }
++	return req
++}
++
++// probeCalls counts the real agent launches, never the identity probe.
++func (p *probeCdr) launches() int {
++	n := 0
++	for _, cmd := range p.calls {
++		if len(cmd.Argv) > 1 && cmd.Argv[1] == "exec" {
++			n++
++		}
++	}
++	return n
++}
++
++// TestProbeMatchingLaunches pins the probe's argv, child environment, no-stdin
++// contract, 64 KiB capture cap, and launcher record before the real launch.
++func TestProbeMatchingLaunches(t *testing.T) {
++	root, dir, cdr := probeFixture(t)
++	_, ref := WithAgents(t.Context(), probeRequest(root, cdr), []config.PersonalAgent{probeDef()})
++	if ref != nil {
++		t.Fatalf("launch refused: %v", ref)
++	}
++	if len(cdr.calls) != 2 || cdr.launches() != 1 {
++		t.Fatalf("commands = %d, launches = %d; want a probe and one launch", len(cdr.calls), cdr.launches())
++	}
++	assertProbeCommand(t, root, cdr.calls[0])
++	assertProbeRecord(t, dir)
++}
++
++// probeFixture plants a bundle and an agent that answers its own help probe.
++func probeFixture(t *testing.T) (string, string, *probeCdr) {
++	t.Helper()
++	root := fixtureRoot(t)
++	dir := bundleDir(root)
++	cdr := &probeCdr{answer: func(argv []string) (core.Result, error) {
++		if slices.Equal(argv[1:], []string{"ask", "--help"}) {
++			return core.Result{Stdout: "Usage: local-agent ask --help\n"}, nil
++		}
++		if slices.Contains(argv, "exec") {
++			writeReview(t, dir)
++		}
++		return core.Result{}, nil
++	}}
++	return root, dir, cdr
++}
++
++// assertProbeCommand pins the process contract the child sees: the resolved
++// binary, its own argv, no stdin, the launch's environment, and the byte cap.
++func assertProbeCommand(t *testing.T, root string, cmd *core.Command) {
++	t.Helper()
++	if want := []string{"/opt/agents/local-agent", "ask", "--help"}; !slices.Equal(cmd.Argv, want) {
++		t.Errorf("probe argv = %q, want %q", cmd.Argv, want)
++	}
++	if cmd.OutputCap != 64*1024 {
++		t.Errorf("probe capture cap = %d, want 65536", cmd.OutputCap)
++	}
++	if cmd.Dir != root || !slices.Equal(cmd.Env, []string{"ANTHROPIC_API_KEY=sk-ant-0123456789abcdef"}) {
++		t.Errorf("probe child = dir %q env %q; want the launch's dir and env", cmd.Dir, cmd.Env)
++	}
++	if cmd.Stdin == nil {
++		t.Fatal("probe inherited stdin; want no stdin")
++	}
++	buf := make([]byte, 1)
++	if n, err := cmd.Stdin.Read(buf); n != 0 || err != io.EOF {
++		t.Errorf("probe stdin read = %d, %v; want EOF", n, err)
++	}
++}
++
++// assertProbeRecord pins the launcher's probe receipt: the original args and
++// a passing result, both before the launch is recorded.
++func assertProbeRecord(t *testing.T, dir string) {
++	t.Helper()
++	rec := readLauncher(t, dir)
++	got, isMap := jq.AsMap(rec["probe"])
++	if !isMap || got["ok"] != true {
++		t.Fatalf("launcher probe = %v, want ok=true", rec["probe"])
++	}
++	if args, ok := got["args"].([]any); !ok || !slices.Equal(args, []any{"ask", "--help"}) {
++		t.Errorf("launcher probe args = %v, want [ask --help]", got["args"])
++	}
++}
++
++// TestProbeRefusalsBeforeLaunch pins every mismatch shape: no agent process
++// starts, the typed code is literal, and the message names the agent, the
++// resolved path, and why the probe failed.
++type probeRefusalCase struct {
++	name   string
++	answer func(argv []string) (core.Result, error)
++	want   string
++}
++
++func TestProbeRefusalsBeforeLaunch(t *testing.T) {
++	tests := []probeRefusalCase{
++		{
++			name: "non-zero exit",
++			answer: func([]string) (core.Result, error) {
++				return core.Result{ExitCode: 3, Stderr: "other tool"}, nil
++			},
++			want: "exited 3",
++		},
++		{
++			name: "timeout",
++			answer: func([]string) (core.Result, error) {
++				return core.Result{TimedOut: true}, nil
++			},
++			want: "timed out",
++		},
++		{
++			name: "missing match",
++			answer: func([]string) (core.Result, error) {
++				return core.Result{Stdout: "a different agent"}, nil
++			},
++			want: "did not contain",
++		},
++		{
++			name: "spawn error",
++			answer: func([]string) (core.Result, error) {
++				return core.Result{}, errors.New("permission denied")
++			},
++			want: "could not run",
++		},
++	}
++	for _, tc := range tests {
++		t.Run(tc.name, func(t *testing.T) { assertProbeRefusal(t, tc) })
++	}
++}
++
++// assertProbeRefusal drives one failed probe through the service and checks
++// that it refuses before the real launch.
++func assertProbeRefusal(t *testing.T, tc probeRefusalCase) {
++	t.Helper()
++	root := fixtureRoot(t)
++	cdr := &probeCdr{answer: tc.answer}
++	_, ref := WithAgents(t.Context(), probeRequest(root, cdr), []config.PersonalAgent{probeDef()})
++	if ref == nil || ref.Code != "agent-mismatch" {
++		t.Fatalf("refusal = %+v, want agent-mismatch", ref)
++	}
++	if cdr.launches() != 0 {
++		t.Errorf("launches = %d, want zero", cdr.launches())
++	}
++	assertProbeMessage(t, ref.Message, tc.want)
++}
++
++// assertProbeMessage pins the facts a refusal shows the operator: the agent,
++// the binary path, the probe result, and a concrete next step.
++func assertProbeMessage(t *testing.T, message, result string) {
++	t.Helper()
++	for _, frag := range []string{"local", "/opt/agents/local-agent", result} {
++		if !strings.Contains(message, frag) {
++			t.Errorf("message = %q, want it to name %q", message, frag)
++		}
++	}
++	hint := core.HintFor("agent-mismatch")
++	if !strings.Contains(hint, "settings.json") || !strings.Contains(hint, "--agent") {
++		t.Errorf("hint = %q, want the settings.json and --agent remedy", hint)
++	}
++}
++
++// TestProbeSkippedUnderPrint proves a render spawns nothing at all: no probe
++// process, even when the row declares one.
++func TestProbeSkippedUnderPrint(t *testing.T) {
++	root := fixtureRoot(t)
++	cdr := &probeCdr{answer: func([]string) (core.Result, error) {
++		t.Fatal("a --print render spawned a process")
++		return core.Result{}, nil
++	}}
++	req := probeRequest(root, cdr)
++	req.Print = true
++	resp, ref := WithAgents(t.Context(), req, []config.PersonalAgent{probeDef()})
++	if ref != nil {
++		t.Fatalf("print refused: %v", ref)
++	}
++	if len(cdr.calls) != 0 || !resp.Data.Printed {
++		t.Errorf("calls = %d, printed = %v; want a render with no process", len(cdr.calls), resp.Data.Printed)
++	}
++}
+diff --git a/internal/core/run/record.go b/internal/core/run/record.go
+index 4e217e289..c30c270cd 100644
+--- a/internal/core/run/record.go
++++ b/internal/core/run/record.go
+@@ -59,6 +59,14 @@ type launcherRepair struct {
+ 	FinalValid    bool `json:"final_valid"`
+ }
+ 
++// launcherProbe records the identity check a binary-name clash required
++// before the launch. Only a passing probe reaches the record: a mismatch
++// refuses first.
++type launcherProbe struct {
++	Args []string `json:"args"`
++	OK   bool     `json:"ok"`
++}
++
+ // launcher is the provenance record. The launch write fills everything down to
+ // Timeout; the outcome write adds the fields from DurationMS on, so a record
+ // left behind by a launcher that never came back still says what started and
+@@ -77,6 +85,7 @@ type launcher struct { //nolint:govet // field order is the published property o
+ 	StartedAt     string            `json:"started_at"`
+ 	Timeout       int               `json:"timeout"`
+ 	DurationMS    *int              `json:"duration_ms,omitempty"`
++	Probe         *launcherProbe    `json:"probe,omitempty"`
+ 	EndedAt       string            `json:"ended_at,omitempty"`
+ 	Exit          *int              `json:"exit,omitempty"`
+ 	TimedOut      *bool             `json:"timed_out,omitempty"`
+diff --git a/internal/core/run/redact_internal_test.go b/internal/core/run/redact_internal_test.go
+index 449bf4f19..83258501d 100644
+--- a/internal/core/run/redact_internal_test.go
++++ b/internal/core/run/redact_internal_test.go
+@@ -246,6 +246,22 @@ func TestDirectiveKeepsAPercentPathLiteral(t *testing.T) {
+ 	}
+ }
+ 
++// assertAgentTableFields checks the fields every row must carry. Five vendors
++// configure a model in their own settings, not on the CLI.
++func assertAgentTableFields(t *testing.T, table []string) {
++	t.Helper()
++	noModel := map[string]bool{"bob": true, "forge": true, "jazz": true, "rovodev": true, "zcode": true}
++	for _, name := range table {
++		def, ok := lookupAgent(name)
++		if !ok || def.Binary == "" || def.Install == "" {
++			t.Errorf("agent %q has no binary or install hint: %+v", name, def)
++		}
++		if def.ModelFlag == "" && !noModel[name] {
++			t.Errorf("agent %q has no model flag: %+v", name, def)
++		}
++	}
++}
++
+ // TestAgentTableIsSortedAndUnique keeps the data table honest: duplicate or
+ // unsorted rows would make the known-name list a lie.
+ func TestAgentTableIsSortedAndUnique(t *testing.T) {
+@@ -257,12 +273,7 @@ func TestAgentTableIsSortedAndUnique(t *testing.T) {
+ 		t.Errorf("agent table repeats a name: %v", table)
+ 	}
+ 	assertKnownNamesEnumerateTable(t, table)
+-	for _, name := range table {
+-		def, ok := lookupAgent(name)
+-		if !ok || def.Binary == "" || def.ModelFlag == "" || def.Install == "" {
+-			t.Errorf("agent %q has no binary, model flag, or install hint: %+v", name, def)
+-		}
+-	}
++	assertAgentTableFields(t, table)
+ 	if _, ok := lookupAgent("gpt"); ok {
+ 		t.Error("lookupAgent resolved an agent that is not in the table")
+ 	}
+@@ -270,8 +281,8 @@ func TestAgentTableIsSortedAndUnique(t *testing.T) {
+ 
+ func tableNames() []string {
+ 	names := make([]string, 0, len(agentDefs))
+-	for _, def := range agentDefs {
+-		names = append(names, def.Name)
++	for i := range agentDefs {
++		names = append(names, agentDefs[i].Name)
+ 	}
+ 	return names
+ }
+diff --git a/internal/core/run/service.go b/internal/core/run/service.go
+index 2cd947273..85884e929 100644
+--- a/internal/core/run/service.go
++++ b/internal/core/run/service.go
+@@ -45,6 +45,14 @@ const (
+ 	codeBadSettings = "bad-settings"
+ )
+ 
++const (
++	// probeTimeout bounds the identity probe, separately from the agent's own
++	// --timeout budget: a wrong binary must never hold a launch for minutes.
++	probeTimeout = 5 * time.Second
++	// probeOutputCap caps the probe's combined capture at 64 KiB.
++	probeOutputCap = 64 * 1024
++)
++
+ // Reused refusal codes: the shared vocabulary for "you canceled", "there is no
+ // such bundle", "this flag combination is wrong", and "that timeout is not a
+ // number". Reusing them keeps one meaning per code across verbs.
+@@ -83,7 +91,8 @@ func WithAgents(
+ 	ctx context.Context, req *core.RunRequest, agents []config.PersonalAgent,
+ ) (resp *core.RunResponse, ref *core.RefusalError) {
+ 	seen := make(map[string]bool, len(agents))
+-	for _, def := range agents {
++	for i := range agents {
++		def := &agents[i]
+ 		path := "$.agents." + def.Name
+ 		if _, ok := lookupAgent(def.Name); ok {
+ 			return nil, &core.RefusalError{
+@@ -153,9 +162,11 @@ func (st *state) argsFor(def *agentDef, dir string, timeout int) (*launchArgs, *
+ 		abs:      filepath.Join(dir, st.artifactName()),
+ 		timeout:  timeout,
+ 	}
+-	if _, ref := st.resolve(&args.def); ref != nil {
++	bin, ref := st.resolve(&args.def)
++	if ref != nil {
+ 		return nil, ref
+ 	}
++	args.bin = bin
+ 	st.compose(args, st.req, st.promptBundle(dir), st.promptArtifact(dir), readcommon.IsLocalBundleDir(dir))
+ 	return args, nil
+ }
+@@ -281,12 +292,66 @@ func (st *state) invoke(ctx context.Context, args *launchArgs, rounds int) (*cor
+ 		}
+ 		return st.printed(args), nil
+ 	}
++	if ref := st.probe(ctx, args); ref != nil {
++		return nil, ref
++	}
+ 	if rounds > 1 {
+ 		return st.repairLoop(ctx, args, rounds)
+ 	}
+ 	return st.launch(ctx, args)
+ }
+ 
++// probe confirms a binary is the agent the row claims before any launch. It
++// runs the declared harmless command with the launch's environment and working
++// directory, no stdin, a five-second budget, and a capped capture. A wrong,
++// silent, or hanging binary refuses agent-mismatch without spawning the agent.
++func (st *state) probe(ctx context.Context, args *launchArgs) *core.RefusalError {
++	if len(args.def.ProbeArgs) == 0 {
++		return nil
++	}
++	if ctx.Err() != nil {
++		return st.refuse(codeCanceled, msgCanceled)
++	}
++	commander := st.commander()
++	if commander == nil {
++		return st.refuse("agent-mismatch", fmt.Sprintf(
++			"agent '%s' at %s could not be probed: no commander in runtime", args.def.Name, args.bin))
++	}
++	pctx, cancel := context.WithTimeout(ctx, probeTimeout)
++	defer cancel()
++	res, err := commander.Run(pctx, &core.Command{
++		Argv:      append([]string{args.bin}, args.def.ProbeArgs...),
++		Env:       st.childEnv(),
++		Dir:       st.workDir(),
++		Stdin:     strings.NewReader(""),
++		OutputCap: probeOutputCap,
++	})
++	out := res.Stdout + res.Stderr
++	if len(out) > probeOutputCap {
++		out = out[:probeOutputCap]
++	}
++	result := ""
++	ok := false
++	switch {
++	case pctx.Err() != nil || res.TimedOut:
++		result = "timed out"
++	case err != nil:
++		result = fmt.Sprintf("could not run the probe: %v", err)
++	case res.ExitCode != 0:
++		result = fmt.Sprintf("exited %d", res.ExitCode)
++	case !strings.Contains(out, args.def.ProbeMatch):
++		result = fmt.Sprintf("probe output did not contain '%s'", args.def.ProbeMatch)
++	default:
++		ok = true
++	}
++	if !ok {
++		return st.refuse("agent-mismatch", fmt.Sprintf(
++			"agent '%s' at %s failed its identity probe: %s", args.def.Name, args.bin, result))
++	}
++	args.probe = &launcherProbe{Args: slices.Clone(args.def.ProbeArgs), OK: true}
++	return nil
++}
++
+ type state struct {
+ 	req         *core.RunRequest
+ 	argSecrets  []string
+@@ -300,6 +365,8 @@ type state struct {
+ // bundle and its review path, the timeout, and the exact argv.
+ type launchArgs struct {
+ 	def      agentDef
++	bin      string
++	probe    *launcherProbe
+ 	plan     *recipe.Plan
+ 	staged   *staged
+ 	dir      string
+@@ -426,9 +493,9 @@ func (st *state) lookupAgent(name string) (agentDef, bool) {
+ 	if def, ok := lookupAgent(name); ok {
+ 		return def, true
+ 	}
+-	for _, def := range st.defs {
+-		if def.Name == name {
+-			return operatorAgent(&def), true
++	for i := range st.defs {
++		if st.defs[i].Name == name {
++			return operatorAgent(&st.defs[i]), true
+ 		}
+ 	}
+ 	return agentDef{}, false
+@@ -441,7 +508,8 @@ func operatorAgent(def *config.PersonalAgent) agentDef {
+ 	return agentDef{
+ 		Name: def.Name, Binary: def.Binary, Install: def.Install,
+ 		ModelFlag: def.ModelFlag, PromptFlag: def.PromptFlag,
+-		Args: slices.Clone(def.Args), Source: agentSourcePrefs,
++		ProbeMatch: def.ProbeMatch, Args: slices.Clone(def.Args),
++		ProbeArgs: slices.Clone(def.ProbeArgs), Source: agentSourcePrefs,
+ 	}
+ }
+ 
+@@ -452,8 +520,8 @@ func (st *state) knownAgents() string {
+ 		return message + "none"
+ 	}
+ 	names := make([]string, 0, len(st.defs))
+-	for _, def := range st.defs {
+-		names = append(names, def.Name)
++	for i := range st.defs {
++		names = append(names, st.defs[i].Name)
+ 	}
+ 	return message + strings.Join(names, ", ")
+ }
+@@ -542,10 +610,7 @@ func (st *state) stageNext(at *staged, stages int, dir string) string {
+ // launch runs the one process of a one-shot run: resolve, record the launch,
+ // spawn with the watchdog, then assert the artifact and hand off.
+ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunResponse, *core.RefusalError) {
+-	bin, ref := st.resolve(&args.def)
+-	if ref != nil {
+-		return nil, ref
+-	}
++	bin := args.bin
+ 	started := st.now()
+ 	rec := &launcher{
+ 		SchemaVersion: launcherSchema,
+@@ -557,6 +622,7 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
+ 		Artifact:      args.artifact,
+ 		StartedAt:     core.NowUTC(started),
+ 		Timeout:       args.timeout,
++		Probe:         args.probe,
+ 	}
+ 	rec.Argv, st.argSecrets = st.displayArgv(args)
+ 	launched, ref := writeLauncher(filepath.Join(args.dir, launcherFile), rec)
+diff --git a/internal/core/run/service_internal_test.go b/internal/core/run/service_internal_test.go
+index 61825542b..abc7cc8d6 100644
+--- a/internal/core/run/service_internal_test.go
++++ b/internal/core/run/service_internal_test.go
+@@ -88,7 +88,7 @@ func missingLookPath(string) (string, error) {
+ }
+ 
+ // request builds a service request whose PATH probe resolves the agent.
+-func request(root string, cmdr *scripted) *core.RunRequest {
++func request(root string, cmdr core.Commander) *core.RunRequest {
+ 	rt := &core.Runtime{Env: map[string]string{}, Now: time.Now, Commander: cmdr}
+ 	return &core.RunRequest{
+ 		Runtime: rt, Repo: "acme/app", Pr: "42", RepoRoot: root,
+diff --git a/internal/core/testdata/hints.golden b/internal/core/testdata/hints.golden
+index 5082c5b78..b979ab904 100644
+--- a/internal/core/testdata/hints.golden
++++ b/internal/core/testdata/hints.golden
+@@ -1,5 +1,6 @@
+ adopt-failed	try: address the cause above, then re-run the same command
+ agent-failed	try: read the recorded tail in launcher.json, fix the invocation (the agent's own flags go after '--'), then re-run
++agent-mismatch	try: define it in settings.json agents with an absolute binary path, or pass --agent for the one you meant
+ agent-missing	try: install the agent CLI (or put it on PATH), or re-run with --agent <name> for one you have
+ agent-record-failed	try: make the bundle directory writable (or re-fetch the bundle), then re-run
+ agent-spawn-failed	try: check the binary runs from your shell (permissions, shebang), then re-run
+diff --git a/scripts/size-baseline.txt b/scripts/size-baseline.txt
+index b2ec03c80..5c8d5d9ed 100644
+--- a/scripts/size-baseline.txt
++++ b/scripts/size-baseline.txt
+@@ -1,7 +1,7 @@
+ deps 0
+-darwin/amd64 17570000
+-darwin/arm64 15970000
+-linux/amd64 17270000
++darwin/amd64 17590000
++darwin/arm64 16000000
++linux/amd64 17290000
+ linux/arm64 15600000
+-windows/amd64 17660000
+-windows/arm64 15750000
++windows/amd64 17680000
++windows/arm64 15770000
+diff --git a/skills/verdict/references/commands.md b/skills/verdict/references/commands.md
+index 7a1b39229..e10f41f28 100644
+--- a/skills/verdict/references/commands.md
++++ b/skills/verdict/references/commands.md
+@@ -69,14 +69,26 @@ the exact argv without spawning or writing. Everything after `--` reaches the
+ agent first; a flag that takes the prompt as its value sits immediately before
+ the directive, so your flags cannot be swallowed as that value.
+ 
+-Names come from the shipped table (`agy`, `amp`, `claude`, `codex`, `copilot`,
+-`crush`, `cursor`, `droid`, `gemini`, `goose`, `kiro`, `opencode`, `pi`, `qwen`)
++Names come from the shipped table (`adal`, `agy`, `amp`, `auggie`, `autohand`,
++`bob`, `claude`, `cline`, `codearts`, `codebuddy`, `codex`, `commandcode`,
++`continue`, `copilot`, `cortex`, `crush`, `cursor`, `dcode`, `devin`, `dexto`,
++`droid`, `forge`, `fx`, `gemini`, `goose`, `grok`, `hermes`, `jazz`, `junie`,
++`kilo`, `kimchi`, `kimi`, `kiro`, `kode`, `mcode`, `neovate`, `openclaw`,
++`opencode`, `pa`, `pi`, `qoder`, `qodercn`, `qwen`, `rovodev`, `vibe`, `zcode`)
+ or from the `agents` key of your own `${XDG_CONFIG_HOME:-$HOME/.config}/verdict/settings.json`.
+ The prefs shape is `{"agents": {"<name>": {"binary": "...", "args": [],
+-"prompt_flag": "...", "model_flag": "...", "install": "..."}}}`; `binary` is
+-required, `args` defaults to `[]`, and names cannot collide with a shipped row.
+-A repository config cannot define one. `unknown-agent` lists both groups, and
+-`launcher.json` marks prefs-defined rows with `agent_source: "prefs"`.
++"prompt_flag": "...", "model_flag": "...", "install": "...",
++"probe_args": [], "probe_match": "..."}}}`; `binary` is required, `args` defaults
++to `[]`, `probe_match` is required when `probe_args` is set, and names cannot
++collide with a shipped row. A repository config cannot define one. `unknown-agent`
++lists both groups, and `launcher.json` marks prefs-defined rows with
++`agent_source: "prefs"`.
++
++A row whose binary name clashes with another tool probes it first: a harmless
++help command must exit zero and contain the row's match text within five seconds.
++A mismatch refuses `agent-mismatch` before any agent starts; `--print` spawns
++nothing and does not probe. `launcher.json` records `probe: {"args": [...],
++"ok": true}` for a launch that passed.
+ 
+ ## Suppression receipts
+ 

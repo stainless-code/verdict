@@ -28,13 +28,17 @@ type FixtureRecording struct {
 	Findings      []FixtureFinding `json:"findings"`
 }
 
-// FixtureFinding is one finding in a fixture recording. Line is carried for
-// provenance only; matching uses Path and Text.
+// FixtureFinding is one finding in a fixture recording. Quote, Side, and
+// StartLine are optional so historical pre-S4 recordings keep decoding and
+// report no-quote honestly.
 type FixtureFinding struct {
-	Severity *string `json:"severity"`
-	Line     *int    `json:"line"`
-	Path     string  `json:"path"`
-	Text     string  `json:"text"`
+	Severity  *string `json:"severity"`
+	Line      *int    `json:"line"`
+	StartLine *int    `json:"start_line,omitempty"`
+	Side      *string `json:"side,omitempty"`
+	Quote     *string `json:"quote,omitempty"`
+	Path      string  `json:"path"`
+	Text      string  `json:"text"`
 }
 
 // LoadFixtureRecording reads one fixture-format recording with strict JSON.
@@ -78,7 +82,8 @@ func (f *FixtureFinding) Canonical() Finding {
 	anchored := f.Line != nil && *f.Line > 0
 	return Finding{
 		Path: f.Path, Claim: f.Text, Severity: stringOf(f.Severity),
-		Line: intOf(f.Line), Anchored: &anchored,
+		Quote: stringOf(f.Quote), Side: stringOf(f.Side),
+		Line: intOf(f.Line), StartLine: intOf(f.StartLine), Anchored: &anchored,
 	}
 }
 
