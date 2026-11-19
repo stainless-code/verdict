@@ -11,8 +11,10 @@
 # (a) round 1 invalid, round 2 valid: exit 0, exactly 2 spawns, review.json
 #     is round 2's, rounds_to_valid 2. (b) always invalid with --rounds 3:
 #     exit 1 bad-review-input, exactly 3 spawns, error.problems non-empty. (c)
-#     default (no flag): exactly 1 spawn, no data.repair, no launcher repair
-#     keys. (d) --print --rounds 2 and --rounds 0/6/x refuse bad-flags.
+#     default (no flag): two rounds, one spawn on a valid first round, and the
+#     repair profile the loop always records. (d) --rounds 1: exactly 1 spawn,
+#     no data.repair, no launcher repair keys. (e) --print --rounds 2 and
+#     --rounds 0/6/x refuse bad-flags.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -91,25 +93,35 @@ else
   bad "error.problems is empty"
 fi
 
-# --- (c) default: one shot, today's shape ------------------------------------
+# --- (c) the default: two rounds, one spawn when round 1 is already valid -----
 rm -f "$STUB_REPAIR_COUNT"
 before_spawns="$(spawns)"
 export STUB_REPAIR_MODE=valid
 run_review run acme/app "$LOCAL" --agent claude --json
-assert_exit "the default still exits 0" 0
-assert_eq "the default spawns exactly 1 agent process" "1" "$(( $(spawns) - before_spawns ))"
+assert_exit "the default exits 0 on a valid first round" 0
+assert_eq "a valid first round spends one of the two default rounds" "1" "$(( $(spawns) - before_spawns ))"
+assert_json_field "the default runs two rounds" "2" '.data.repair.rounds'
+assert_json_field "a valid first round is the round it took" "1" '.data.repair.rounds_to_valid'
+assert_json_field "the default launcher records the loop" "2" '.repair.rounds' "$LAUNCHER"
+
+# --- (d) --rounds 1: one shot, no repair profile ------------------------------
+rm -f "$STUB_REPAIR_COUNT"
+before_spawns="$(spawns)"
+run_review run acme/app "$LOCAL" --agent claude --rounds 1 --json
+assert_exit "--rounds 1 exits 0" 0
+assert_eq "--rounds 1 spawns exactly 1 agent process" "1" "$(( $(spawns) - before_spawns ))"
 if jq -e '.data | has("repair") | not' <"$EVAL_OUT" >/dev/null 2>&1; then
-  good "the default envelope carries no data.repair"
+  good "--rounds 1 carries no data.repair"
 else
-  bad "the default envelope gained data.repair"
+  bad "--rounds 1 gained data.repair"
 fi
 if jq -e 'has("repair") or has("attempts") | not' <"$LAUNCHER" >/dev/null 2>&1; then
-  good "the default launcher.json keeps its old shape"
+  good "--rounds 1 launcher.json keeps the one-shot shape"
 else
-  bad "the default launcher.json gained repair keys"
+  bad "--rounds 1 launcher.json gained repair keys"
 fi
 
-# --- (d) round-count refusals -------------------------------------------------
+# --- (e) round-count refusals -------------------------------------------------
 before_spawns="$(spawns)"
 run_review run acme/app "$LOCAL" --agent claude --print --rounds 2 --json
 assert_exit "--print with --rounds refuses" 1

@@ -38,10 +38,11 @@ const (
 )
 
 // Defaults the replay mode hands the core service: the same 300-second
-// watchdog `run` gives one launch, one round, and a ten-review cap.
+// watchdog `run` gives one launch, the same two repair rounds, and a
+// ten-review cap.
 const (
 	defaultTimeoutS   = "300"
-	defaultRounds     = "1"
+	defaultRounds     = "2"
 	defaultMaxReviews = "10"
 	// defaultUntil is the miner's window end when --until is absent.
 	defaultUntil = "HEAD"

@@ -12,6 +12,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"unicode/utf8"
 
@@ -22,6 +23,10 @@ import (
 
 // feedbackCap bounds the problems JSON a follow-up prompt carries.
 const feedbackCap = 8192
+
+// quoteVerified is the standing a quote carries once it matched the bundle
+// diff; every other standing is a gap the re-prompt names.
+const quoteVerified = "verified"
 
 // priorCap bounds the embedded prior review bytes a follow-up prompt carries:
 // the full bytes stay in .run.rounds/NN.review.json and the prompt names that
@@ -282,9 +287,228 @@ func Valid(res recordcore.CheckResult) bool {
 }
 
 // Problems returns the checker's problems with errors first, the order the
-// feedback block and the recorded attempt carry.
+// feedback block and the recorded attempt carry. The evidence half rides with
+// the shape half: one re-prompt names a missing hunk receipt and a wrong quote
+// the same way it names a missing field, so the agent needs no second grammar.
 func Problems(res recordcore.CheckResult) []core.Problem {
-	return errorsFirst(res.Problems)
+	gaps := evidenceProblems(res)
+	merged := make([]core.Problem, 0, len(res.Problems)+len(gaps))
+	merged = append(merged, res.Problems...)
+	merged = append(merged, gaps...)
+	return errorsFirst(merged)
+}
+
+// evidenceProblems returns the check's evidence gaps, in the pass's order.
+func evidenceProblems(res recordcore.CheckResult) []core.Problem {
+	if res.Evidence == nil {
+		return nil
+	}
+	return res.Evidence.Problems
+}
+
+// receipt returns the check's evidence receipt, or nil when no pass ran.
+func receipt(res recordcore.CheckResult) *core.EvidenceReceipt {
+	if res.Evidence == nil {
+		return nil
+	}
+	return res.Evidence.Receipt
+}
+
+// quoteProblemIndex reads the finding index out of the JSONPath a quote
+// problem addresses ($.findings[i].quote). The index ties one problem to the
+// receipt entry the same finding produced, which is how a round knows which
+// quote it is being asked about; a path in another shape reports false.
+func quoteProblemIndex(path string) (int, bool) {
+	rest, ok := strings.CutPrefix(path, "$.findings[")
+	if !ok {
+		return 0, false
+	}
+	num, ok := strings.CutSuffix(rest, "].quote")
+	if !ok {
+		return 0, false
+	}
+	i, err := strconv.Atoi(num)
+	if err != nil || i < 0 {
+		return 0, false
+	}
+	return i, true
+}
+
+// quoteLocator renders one receipt quote as the locator a re-prompt names and
+// the loop remembers: path:side:line, the site the agent has to fix.
+func quoteLocator(q *core.EvidenceQuote) string {
+	side := q.Side
+	if side == "" {
+		side = "RIGHT"
+	}
+	return fmt.Sprintf("%s:%s:%d", q.Path, side, q.Line)
+}
+
+// UnverifiedQuotes returns the locator of every finding whose quote the round's
+// receipt left unverified, in finding order. A receipt with no quotes at all
+// reports none: a review with no findings has nothing to verify.
+func UnverifiedQuotes(res recordcore.CheckResult) []string {
+	ev := receipt(res)
+	if ev == nil {
+		return nil
+	}
+	return unverifiedLocators(ev.Quotes)
+}
+
+// unverifiedLocators renders the locator of each quote that did not match the
+// bundle diff, in finding order.
+func unverifiedLocators(quotes []core.EvidenceQuote) []string {
+	var out []string
+	for i := range quotes {
+		if quotes[i].Status == quoteVerified {
+			continue
+		}
+		out = append(out, quoteLocator(&quotes[i]))
+	}
+	return out
+}
+
+// Settle applies the one-round quote budget: every locator asked about in the
+// previous round and still unverified now is settled permanently unverified,
+// so its problems drop to warnings and no further round spends tokens on it.
+// The returned result is the loop's working copy — the stored receipt keeps
+// the gap, and a gating finding still withholds approval, which the run turns
+// into the final review-insufficient refusal.
+func Settle(res recordcore.CheckResult, asked map[string]bool) (recordcore.CheckResult, []string) {
+	ev := receipt(res)
+	if len(asked) == 0 || ev == nil {
+		return res, nil
+	}
+	settled := askedAndUnverified(ev.Quotes, asked)
+	if len(settled) == 0 {
+		return res, nil
+	}
+	demoted := demoteSettled(res.Evidence.Problems, ev.Quotes, settled)
+	shape := res.ShapeErrors()
+	check := *res.Evidence
+	check.Problems = demoted
+	check.Errors = countErrors(demoted)
+	res.Evidence = &check
+	res.Errors = shape + check.Errors
+	return res, sortedKeys(settled)
+}
+
+// askedAndUnverified is the intersection of the locators the previous round
+// asked about and the ones this round still reports: the quotes whose one
+// repair round was spent.
+func askedAndUnverified(quotes []core.EvidenceQuote, asked map[string]bool) map[string]bool {
+	settled := map[string]bool{}
+	for _, locator := range unverifiedLocators(quotes) {
+		if asked[locator] {
+			settled[locator] = true
+		}
+	}
+	return settled
+}
+
+// demoteSettled copies the problem list with every settled quote's problem
+// lowered to a warning: the loop stops asking, so the problem stops being the
+// reason a round runs. Every other gap keeps the level that decides whether the
+// run publishes.
+func demoteSettled(problems []core.Problem, quotes []core.EvidenceQuote, settled map[string]bool) []core.Problem {
+	out := make([]core.Problem, len(problems))
+	copy(out, problems)
+	for i := range out {
+		if namesSettledQuote(&out[i], quotes, settled) {
+			out[i].Level = core.ProblemLevelWarning
+		}
+	}
+	return out
+}
+
+// namesSettledQuote reports whether p is the quote problem of a finding whose
+// locator this round settled.
+func namesSettledQuote(p *core.Problem, quotes []core.EvidenceQuote, settled map[string]bool) bool {
+	if !quoteProblem(p) {
+		return false
+	}
+	index, ok := quoteProblemIndex(p.Path)
+	if !ok || index >= len(quotes) {
+		return false
+	}
+	return settled[quoteLocator(&quotes[index])]
+}
+
+// sortedKeys returns a map's keys in order, so the recorded settle list is
+// stable.
+func sortedKeys(set map[string]bool) []string {
+	keys := make([]string, 0, len(set))
+	for key := range set {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
+}
+
+// RepairableQuotes returns the locators still worth a re-prompt: unverified
+// now and not already settled. The loop hands this set to the next round, which
+// is what limits a quote to one targeted repair.
+func RepairableQuotes(res recordcore.CheckResult, settled []string) map[string]bool {
+	done := make(map[string]bool, len(settled))
+	for _, locator := range settled {
+		done[locator] = true
+	}
+	out := map[string]bool{}
+	for _, locator := range UnverifiedQuotes(res) {
+		if !done[locator] {
+			out[locator] = true
+		}
+	}
+	return out
+}
+
+// InsufficientRefusal refuses a review whose evidence the bundle cannot
+// confirm: the evidence gaps as the problem list, led by note when the loop
+// has one, under the review-insufficient code. It reports nil when the receipt
+// is present and sufficient, and nil when there is no receipt at all — a
+// bundle with no diff to check has no evidence verdict to report.
+func InsufficientRefusal(res recordcore.CheckResult, note string) *core.RefusalError {
+	ev := receipt(res)
+	if ev == nil || !ev.Insufficient {
+		return nil
+	}
+	gaps := evidenceProblems(res)
+	lead := fmt.Sprintf("%d evidence error(s)", countErrors(gaps))
+	if first := firstError(gaps); first != "" {
+		lead += ": " + first
+	}
+	if note != "" {
+		lead = note + ": " + lead
+	}
+	return core.InsufficientRefusal(lead+"; fix every one, then re-run", errorsFirst(gaps))
+}
+
+// firstError returns the first error-level problem's message, which is the one
+// the operator can act on first.
+func firstError(problems []core.Problem) string {
+	for i := range problems {
+		if problems[i].Level == core.ProblemLevelError {
+			return problems[i].Message
+		}
+	}
+	return ""
+}
+
+// quoteProblem reports whether p is a finding-quote gap, the family the
+// one-round budget governs.
+func quoteProblem(p *core.Problem) bool {
+	return p.Code == core.ProblemCodeQuoteMismatch || p.Code == core.ProblemCodeQuoteNotCheckable
+}
+
+// countErrors counts the error-level problems in one list.
+func countErrors(problems []core.Problem) int {
+	n := 0
+	for i := range problems {
+		if problems[i].Level == core.ProblemLevelError {
+			n++
+		}
+	}
+	return n
 }
 
 func errorsFirst(problems []core.Problem) []core.Problem {

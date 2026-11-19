@@ -35,22 +35,30 @@ const (
 	// maxRoundReviewBytes caps one round's review read, the same 32 MiB
 	// record's agent-input cap uses.
 	maxRoundReviewBytes = 32 << 20
+	// quoteVerified is the standing the evidence receipt gives a quote that
+	// matched the bundle diff; every other standing is a gap.
+	quoteVerified = "verified"
 )
 
-// MinRounds and MaxRounds bound --rounds: one shot by default, and a cap so a
+// MinRounds and MaxRounds bound --rounds: two rounds by default, so the one
+// repair round the evidence contract depends on always happens, and a cap so a
 // never-valid agent cannot bill unbounded work.
 const (
 	MinRounds = 1
 	MaxRounds = 5
+	// defaultRounds is the round count when --rounds is absent: the first
+	// round plus the one targeted repair round a wrong quote or a missing hunk
+	// receipt needs.
+	defaultRounds = 2
 )
 
 // rounds parses the raw --rounds value: a total launch-to-check round count
-// between 1 and 5. Anything else is a bad-flags refusal, the same family a
-// missing --agent uses.
+// between 1 and 5, two when the flag is absent. Anything else is a bad-flags
+// refusal, the same family a missing --agent uses.
 func (st *state) rounds() (int, *core.RefusalError) {
 	raw := st.req.RoundsRaw
 	if raw == "" {
-		raw = "1"
+		raw = strconv.Itoa(defaultRounds)
 	}
 	n, err := strconv.Atoi(raw)
 	if err != nil || n < MinRounds || n > MaxRounds || !digits(raw) {
@@ -79,6 +87,7 @@ func (st *state) repairLoop(ctx context.Context, args *launchArgs, n int) (*core
 		Agent:         args.def.Name,
 		AgentSource:   args.def.Source,
 		Binary:        bin,
+		Recipe:        args.plan,
 		Bundle:        args.bundle,
 		Artifact:      args.artifact,
 		StartedAt:     core.NowUTC(started),
@@ -90,9 +99,8 @@ func (st *state) repairLoop(ctx context.Context, args *launchArgs, n int) (*core
 		return nil, ref
 	}
 	rep := &core.RunRepair{Rounds: n, Attempts: []core.RunAttempt{}}
-	var prior []byte
-	var lastRes *core.Result
-	var lastArt artifactState
+	var in roundState
+	var last roundOutcome
 	for k := 1; k <= n; k++ {
 		// The launch record's mtime is this round's freshness baseline: it
 		// comes from the same filesystem clock, at the same granularity, as the
@@ -102,15 +110,42 @@ func (st *state) repairLoop(ctx context.Context, args *launchArgs, n int) (*core
 		if writeRef != nil {
 			return nil, writeRef
 		}
-		resp, stop, ref, review, res, art := st.repairRound(ctx, args, rec, rep, started, launched, prior, k, n)
-		lastRes, lastArt = res, art
-		if stop {
-			return resp, ref
+		last = st.repairRound(ctx, args, rec, rep, started, launched, in, k, n)
+		if last.stop {
+			return last.resp, last.ref
 		}
-		prior = review
+		in = last.next
 	}
-	resp, ref, _, _ := st.repairRefusal(args, rec, rep, started, lastRes, lastArt, false)
+	resp, ref := st.repairRefusal(args, rec, rep, started, &last)
 	return resp, ref
+}
+
+// roundState is what round k inherits from round k-1: the quote locators its
+// re-prompt asked to fix, which bounds every quote to one targeted repair
+// round, and the bytes it left, for the no-progress comparison and the
+// re-prompt's prior section.
+type roundState struct {
+	asked map[string]bool
+	prior []byte
+}
+
+// roundOutcome is one round's answer to the loop. stop ends the loop with resp
+// and ref; next carries the state the following round reads.
+type roundOutcome struct {
+	resp   *core.RunResponse
+	ref    *core.RefusalError
+	review []byte
+	res    *core.Result
+	art    artifactState
+	next   roundState
+	// check is the checker's verdict as produced; work is the loop's view of
+	// it, after the quote budget demoted the problems it settled. The final
+	// refusal reads check: a settled quote stops being asked about, but the
+	// evidence it leaves behind is still missing.
+	check      recordcore.CheckResult
+	work       recordcore.CheckResult
+	noProgress bool
+	stop       bool
 }
 
 // repairRound runs one launch-to-check round and its shape check, launched
@@ -119,12 +154,9 @@ func (st *state) repairLoop(ctx context.Context, args *launchArgs, n int) (*core
 // repeats the prior bytes all stop here. review is the bytes this round left,
 // for the next round's no-progress comparison.
 func (st *state) repairRound(ctx context.Context, args *launchArgs, rec *launcher, rep *core.RunRepair,
-	started, launched time.Time, prior []byte, k, n int,
-) (resp *core.RunResponse, stop bool, ref *core.RefusalError, review []byte, res *core.Result, art artifactState) {
-	prompt := args.prompt
-	if k > 1 {
-		prompt = repair.RoundPrompt(args.prompt, repair.Nonce(), prior, k, n, rep.Attempts[len(rep.Attempts)-1].Problems, args.artifact)
-	}
+	started, launched time.Time, in roundState, k, n int,
+) roundOutcome {
+	prompt := st.roundPrompt(args, rep, in, k, n)
 	argv := argvFor(&args.def, args.model(), st.req.PassThrough, prompt)
 	st.human(fmt.Sprintf("» round %d/%d: %s (timeout %ds)", k, n, strings.Join(rec.Argv, " "), args.timeout))
 	roundStarted := st.now()
@@ -135,41 +167,139 @@ func (st *state) repairRound(ctx context.Context, args *launchArgs, rec *launche
 	roundArt := inspectArtifact(args.abs, launched)
 	if ref := st.verdict(ctx, args, roundRes, spawnErr, roundArt); ref != nil {
 		st.writeCrashRoundReview(args, k)
-		resp, ref, res, art := st.roundFailed(args, rec, rep, started, roundRes, roundArt, ref)
-		return resp, true, ref, nil, res, art
+		return st.stopped(args, rec, rep, started, roundRes, roundArt, ref)
 	}
 	review, readRef := readRoundReview(args, roundRes)
 	if readRef != nil {
-		resp, ref, res, art := st.roundFailed(args, rec, rep, started, roundRes, roundArt, readRef)
-		return resp, true, ref, nil, res, art
+		return st.stopped(args, rec, rep, started, roundRes, roundArt, readRef)
 	}
 	check, checkRef := repair.Check(args.dir, review)
 	if checkRef != nil {
-		resp, ref, res, art := st.roundFailed(args, rec, rep, started, roundRes, roundArt, checkRef)
-		return resp, true, ref, nil, res, art
+		return st.stopped(args, rec, rep, started, roundRes, roundArt, checkRef)
 	}
-	problems := repair.Problems(check)
-	st.writeRoundFiles(args, k, review, check)
+	return st.checkedRound(args, rec, rep, started, roundRes, roundArt, in, &roundBytes{
+		review: review, check: check, prompt: prompt, wallS: wallS,
+	}, k)
+}
+
+// roundBytes is one round's checked output, as the stop decision reads it.
+type roundBytes struct {
+	prompt string
+	review []byte
+	check  recordcore.CheckResult
+	wallS  float64
+}
+
+// checkedRound applies the round's evidence budget and decides whether the loop
+// stops: a byte-identical review, a review that is ready to publish, or nothing
+// left to repair.
+func (st *state) checkedRound(args *launchArgs, rec *launcher, rep *core.RunRepair,
+	started time.Time, res *core.Result, art artifactState, in roundState, out *roundBytes, k int,
+) roundOutcome {
+	// Settle spends the one-round quote budget before anything reads the
+	// result: a quote the previous round asked about and this round still
+	// cannot verify is permanently unverified, so its problems drop to
+	// warnings and no later round pays for it again.
+	effective, settled := repair.Settle(out.check, in.asked)
+	st.writeRoundFiles(args, k, out.review, out.check)
 	rep.Attempts = append(rep.Attempts, core.RunAttempt{
 		Round:        k,
-		PromptSHA256: shaHex([]byte(prompt)),
-		ReviewSHA256: shaHex(review),
-		CheckOK:      repair.Valid(check),
-		Problems:     problems,
-		Truncated:    check.Truncated,
-		WallS:        wallS,
+		PromptSHA256: shaHex([]byte(out.prompt)),
+		ReviewSHA256: shaHex(out.review),
+		Evidence:     evidenceSummary(effective, settled),
+		CheckOK:      publishable(effective),
+		Problems:     repair.Problems(effective),
+		Truncated:    effective.Truncated,
+		WallS:        out.wallS,
 	})
-	if k > 1 && bytes.Equal(review, prior) {
-		resp, ref, res, art := st.repairRefusal(args, rec, rep, started, roundRes, roundArt, true)
-		return resp, true, ref, nil, res, art
+	next := roundState{prior: out.review, asked: repair.RepairableQuotes(effective, settled)}
+	last := roundOutcome{review: out.review, res: res, art: art, next: next, check: out.check, work: effective}
+	if k > 1 && bytes.Equal(out.review, in.prior) {
+		last.noProgress, last.stop = true, true
+		last.resp, last.ref = st.repairRefusal(args, rec, rep, started, &last)
+		return last
 	}
-	if repair.Valid(check) {
-		rep.RoundsToValid = k
-		rep.FinalValid = true
-		resp, ref, kept := st.roundSucceeded(args, rec, rep, started, roundRes, roundArt, review)
-		return resp, true, ref, kept, roundRes, roundArt
+	if !repair.Valid(effective) {
+		return last
 	}
-	return nil, false, nil, review, roundRes, roundArt
+	// A well-shaped review can still leave a gating quote unverified, a hunk
+	// unreceipted, or a spec item unchecked: that is the run's
+	// review-insufficient refusal, not a success.
+	if ref := repair.InsufficientRefusal(out.check, ""); ref != nil {
+		return st.stopped(args, rec, rep, started, res, art, ref)
+	}
+	st.publishRound(rep, k)
+	last.stop = true
+	last.resp, last.ref, last.review = st.roundSucceeded(args, rec, rep, started, res, art, out.review)
+	return last
+}
+
+// publishRound marks the repair profile's outcome: the round the loop reached
+// a valid review in, and that the final round is the one that did.
+func (st *state) publishRound(rep *core.RunRepair, k int) {
+	rep.RoundsToValid = k
+	rep.FinalValid = true
+}
+
+// roundPrompt renders the directive round k sends: round 1 keeps the base
+// directive byte-identical, and later rounds append the prior review and the
+// fix list.
+func (st *state) roundPrompt(args *launchArgs, rep *core.RunRepair, in roundState, k, n int) string {
+	if k == 1 {
+		return args.prompt
+	}
+	return repair.RoundPrompt(args.prompt, repair.Nonce(), in.prior, k, n,
+		rep.Attempts[len(rep.Attempts)-1].Problems, args.artifact)
+}
+
+// stopped ends the loop on one round's refusal, recording the outcome first so
+// the launcher says how far the loop got.
+func (st *state) stopped(args *launchArgs, rec *launcher, rep *core.RunRepair,
+	started time.Time, res *core.Result, art artifactState, ref *core.RefusalError,
+) roundOutcome {
+	resp, ref, res, art := st.roundFailed(args, rec, rep, started, res, art, ref)
+	return roundOutcome{resp: resp, ref: ref, res: res, art: art, stop: true}
+}
+
+// evidenceSummary renders one round's evidence verdict for the attempt record:
+// the coverage counts, the error count, the quotes this round settled, and
+// whether the receipt withholds approval. It reports nothing for a round whose
+// bytes never decoded, since an undecodable review carries no findings to
+// verify.
+func evidenceSummary(check recordcore.CheckResult, settled []string) *core.RunEvidence {
+	if check.Evidence == nil {
+		return nil
+	}
+	ev := check.Evidence.Receipt
+	if ev == nil {
+		return nil
+	}
+	return &core.RunEvidence{
+		Settled:      settled,
+		QuoteGaps:    unverifiedQuotes(ev.Quotes),
+		ReceiptGaps:  ev.Receipts.Total - ev.Receipts.Covered,
+		SpecGaps:     ev.Spec.Total - ev.Spec.Covered,
+		Errors:       check.Evidence.Errors,
+		Insufficient: ev.Insufficient,
+	}
+}
+
+// publishable reports whether one round left a review the run can hand off:
+// no shape error, no evidence error, and no receipt gap withholding approval.
+func publishable(check recordcore.CheckResult) bool {
+	ev := check.Evidence
+	return repair.Valid(check) && (ev == nil || ev.Receipt == nil || !ev.Receipt.Insufficient)
+}
+
+// unverifiedQuotes counts the receipt's quotes that did not match the diff.
+func unverifiedQuotes(quotes []core.EvidenceQuote) int {
+	n := 0
+	for i := range quotes {
+		if quotes[i].Status != quoteVerified {
+			n++
+		}
+	}
+	return n
 }
 
 // maybeSalvage fills an absent review from the round's stdout and records
@@ -214,47 +344,61 @@ func (st *state) roundFailed(args *launchArgs, rec *launcher, rep *core.RunRepai
 // the final round's problems, with the no-progress cause when the last round
 // repeated the prior bytes instead of spending the cap.
 func (st *state) repairRefusal(args *launchArgs, rec *launcher, rep *core.RunRepair,
-	started time.Time, res *core.Result, art artifactState, noProgress bool,
-) (*core.RunResponse, *core.RefusalError, *core.Result, artifactState) {
-	last := core.RunAttempt{}
+	started time.Time, last *roundOutcome,
+) (*core.RunResponse, *core.RefusalError) {
+	attempt := core.RunAttempt{}
 	if len(rep.Attempts) > 0 {
-		last = rep.Attempts[len(rep.Attempts)-1]
+		attempt = rep.Attempts[len(rep.Attempts)-1]
 	}
-	errorCount := 0
-	for _, p := range last.Problems {
-		if p.Level == core.ProblemLevelError {
-			errorCount++
-		}
+	note := ""
+	if last.noProgress {
+		note = fmt.Sprintf("repair stopped after round %d/%d: review.json is byte-identical to round %d (no progress)",
+			attempt.Round, rep.Rounds, attempt.Round-1)
 	}
-	var msg string
-	if noProgress {
-		msg = fmt.Sprintf("repair stopped after round %d/%d: review.json is byte-identical to round %d (no progress) "+
-			"with %d error(s) — fix every error, then re-run", last.Round, rep.Rounds, last.Round-1, errorCount)
-	} else {
-		msg = fmt.Sprintf("repair exhausted after %d round(s): review.json still has %d error(s) — "+
-			"fix every error, then re-run", rep.Rounds, errorCount)
-	}
-	var ref *core.RefusalError
-	if noProgress {
-		ref = &core.RefusalError{
-			Code:              codeRepairExhausted,
-			Message:           msg,
-			Problems:          last.Problems,
-			ProblemsTruncated: last.Truncated,
-		}
-	} else {
-		ref = &core.RefusalError{
-			Code:              recordcore.CodeBadReviewInput,
-			Message:           msg,
-			Problems:          last.Problems,
-			ProblemsTruncated: last.Truncated,
-		}
+	// A document the shape check still rejects keeps its own code: the operator
+	// has to fix JSON before any quote can be checked against it. Only a
+	// well-shaped review whose evidence the bundle cannot confirm earns
+	// review-insufficient, which is the run's refusal when evidence errors
+	// survive the rounds.
+	// Two branches cover every way the loop stops short of a valid review: a
+	// shape error left, or an evidence gap left. Demotion only lowers a level,
+	// so a round that ends invalid either keeps a shape error or keeps an
+	// evidence error, and either one is a refusal below.
+	ref := shapeRefusal(&attempt, last.check, rep.Rounds, last.noProgress, note)
+	if ref == nil {
+		ref = repair.InsufficientRefusal(last.check, note)
 	}
 	ended := st.now()
-	if writeRef := st.recordOutcome(rec, args.dir, ended, started, res, art, rep); writeRef != nil {
+	if writeRef := st.recordOutcome(rec, args.dir, ended, started, last.res, last.art, rep); writeRef != nil {
 		st.warn(writeRef.Message)
 	}
-	return st.refused(ref, res, ended), ref, res, art
+	return st.refused(ref, last.res, ended), ref
+}
+
+// shapeRefusal is the never-valid refusal for shape-only problems, keeping the
+// two codes the loop already published: a repeated review is repair-exhausted
+// and a spent round cap is bad-review-input. It reports nil when the round has
+// no shape errors left, which is where the evidence refusal takes over.
+func shapeRefusal(attempt *core.RunAttempt, check recordcore.CheckResult, rounds int, noProgress bool, note string) *core.RefusalError {
+	errorCount := check.ShapeErrors()
+	if errorCount == 0 {
+		return nil
+	}
+	if noProgress {
+		return &core.RefusalError{
+			Code:              codeRepairExhausted,
+			Message:           fmt.Sprintf("%s with %d error(s) — fix every error, then re-run", note, errorCount),
+			Problems:          attempt.Problems,
+			ProblemsTruncated: attempt.Truncated,
+		}
+	}
+	return &core.RefusalError{
+		Code: recordcore.CodeBadReviewInput,
+		Message: fmt.Sprintf("repair exhausted after %d round(s): review.json still has %d error(s) — "+
+			"fix every error, then re-run", rounds, errorCount),
+		Problems:          attempt.Problems,
+		ProblemsTruncated: attempt.Truncated,
+	}
 }
 
 // readRoundReview reads the artifact the verdict already accepted, capped at
@@ -340,7 +484,7 @@ func roundEvidenceFile(name string) bool {
 	if !ok || len(num) != 2 || !digits(num) {
 		return false
 	}
-	return ext == "out" || ext == "review.json" || ext == "check.json"
+	return ext == "out" || ext == "review.json" || ext == "check.json" || ext == "evidence.json"
 }
 
 // clearRoundFiles removes stale per-round evidence before the loop starts,
@@ -451,6 +595,33 @@ func (st *state) writeRoundFiles(args *launchArgs, k int, review []byte, check r
 	}
 	if err := atomic.WriteFileMode(base+".check.json", raw, roundEvidenceMode); err != nil {
 		st.warn(fmt.Sprintf("could not keep the round-%d check: %v", k, err))
+	}
+	st.writeRoundEvidence(base, evidenceReceiptOf(check), k)
+}
+
+// evidenceReceiptOf returns the round's stored receipt, or nil when the bytes
+// never decoded and no evidence pass ran.
+func evidenceReceiptOf(check recordcore.CheckResult) *core.EvidenceReceipt {
+	if check.Evidence == nil {
+		return nil
+	}
+	return check.Evidence.Receipt
+}
+
+// writeRoundEvidence keeps the round's evidence receipt beside its check: the
+// authoritative record of what the bundle could and could not verify, which a
+// re-prompt truncated by its budget still points at.
+func (st *state) writeRoundEvidence(base string, receipt *core.EvidenceReceipt, k int) {
+	if receipt == nil {
+		return
+	}
+	raw, err := json.MarshalIndent(receipt, "", "  ")
+	if err != nil {
+		st.warn(fmt.Sprintf("could not render the round-%d evidence: %v", k, err))
+		return
+	}
+	if err := atomic.WriteFileMode(base+".evidence.json", raw, roundEvidenceMode); err != nil {
+		st.warn(fmt.Sprintf("could not keep the round-%d evidence: %v", k, err))
 	}
 }
 

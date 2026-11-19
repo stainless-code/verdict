@@ -67,27 +67,46 @@ const (
 // the shared merge both call it, so `record --dry-run` and `record` cannot
 // disagree about what the bundle proves.
 func checkBundleEvidence(dir string, review *jq.Obj) *core.EvidenceReceipt {
+	receipt, _ := evidencePassOf(dir, review)
+	return receipt
+}
+
+// evidencePassOf runs the pass and returns both halves of its answer: the
+// receipt the bundle stores and the problems the repair loop re-prompts with.
+func evidencePassOf(dir string, review *jq.Obj) (*core.EvidenceReceipt, []Problem) {
 	pass := newEvidencePass(dir, review)
 	pass.classifyGating()
 	pass.checkQuotes()
 	pass.checkReceipts()
 	pass.checkSpec()
-	return pass.result()
+	return pass.result(), pass.problemList()
 }
 
 // reviewEvidenceOf runs the evidence pass over normalized review bytes. Bytes
 // that do not decode carry no findings to verify, so the checker's own
-// invalid-json problem stands alone.
-func reviewEvidenceOf(dir string, normalized []byte) *core.EvidenceReceipt {
+// invalid-json problem stands alone and the evidence half is empty.
+func reviewEvidenceOf(dir string, normalized []byte) (*core.EvidenceReceipt, []Problem) {
 	doc, err := jq.DecodeOrdered(normalized)
 	if err != nil {
-		return nil
+		return nil, nil
 	}
 	review, ok := doc.(*jq.Obj)
 	if !ok {
+		return nil, nil
+	}
+	return evidencePassOf(dir, review)
+}
+
+// problemList renders the pass's problems as the published shape: a stable
+// copy in the order the checks found them, as the pass's own problemCap already
+// capped them.
+func (p *evidencePass) problemList() []Problem {
+	if len(p.problems) == 0 {
 		return nil
 	}
-	return checkBundleEvidence(dir, review)
+	out := make([]Problem, len(p.problems))
+	copy(out, p.problems)
+	return out
 }
 
 // evidencePass carries one pass: the parsed bundle bytes, the review document,

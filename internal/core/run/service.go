@@ -292,9 +292,8 @@ func (st *state) promptPath(abs, display string) string {
 // after the request is fully resolved.
 func (st *state) invoke(ctx context.Context, args *launchArgs, rounds int) (*core.RunResponse, *core.RefusalError) {
 	if st.req.Print {
-		if rounds > 1 {
-			return nil, st.refuse(codeBadFlags, "run --print renders one command: re-run without --print "+
-				"to launch --rounds "+st.req.RoundsRaw)
+		if ref := st.printRoundsRefusal(rounds); ref != nil {
+			return nil, ref
 		}
 		if !printablePassThrough(st.req.PassThrough, st.req.Environ) {
 			return nil, st.refuse(codeBadFlags, "--print accepts only model and cost options with safe values; "+
@@ -305,10 +304,29 @@ func (st *state) invoke(ctx context.Context, args *launchArgs, rounds int) (*cor
 	if ref := st.probe(ctx, args); ref != nil {
 		return nil, ref
 	}
-	if rounds > 1 {
+	if st.roundLoop(rounds) {
 		return st.repairLoop(ctx, args, rounds)
 	}
 	return st.launch(ctx, args)
+}
+
+// printRoundsRefusal refuses a render asked for a repair loop it cannot run: a
+// render launches nothing, so the absent flag's default two rounds are ignored,
+// while an explicit count above one is an operator error.
+func (st *state) printRoundsRefusal(rounds int) *core.RefusalError {
+	if rounds <= 1 || st.req.RoundsRaw == "" {
+		return nil
+	}
+	return st.refuse(codeBadFlags, "run --print renders one command: re-run without --print "+
+		"to launch --rounds "+st.req.RoundsRaw)
+}
+
+// roundLoop reports whether this invocation runs the launch-to-check loop. A
+// drain launch writes drain.replies.json, not a review: there is nothing for
+// the loop's review checker to read, so it stays one shot whatever the round
+// count says.
+func (st *state) roundLoop(rounds int) bool {
+	return rounds > 1 && st.drainDigest == ""
 }
 
 // probe confirms a binary is the agent the row claims before any launch. It
@@ -772,7 +790,9 @@ func (st *state) finish(ctx context.Context, args *launchArgs, rec *launcher, la
 
 // reviewShapeRefusal validates the artifact with the same bundle-level check
 // record uses. A run must never succeed on a document record would refuse,
-// whether the agent wrote it or the salvage scanner copied it from stdout.
+// whether the agent wrote it or the salvage scanner copied it from stdout, and
+// a one-shot run carries the same evidence refusal a repaired one does: no
+// round to fix a gap is not permission to publish it.
 func (st *state) reviewShapeRefusal(args *launchArgs, res *core.Result) *core.RefusalError {
 	review, readRef := readRoundReview(args, res)
 	if readRef != nil {
@@ -782,10 +802,10 @@ func (st *state) reviewShapeRefusal(args *launchArgs, res *core.Result) *core.Re
 	if checkRef != nil {
 		return checkRef
 	}
-	if check.Errors == 0 {
-		return nil
+	if ref := recordcore.ReviewRefusal(check, false); ref != nil {
+		return ref
 	}
-	return recordcore.ReviewRefusal(check, false)
+	return repair.InsufficientRefusal(check, "")
 }
 
 // refused is the response that accompanies a refusal: it exists only so a

@@ -3,6 +3,7 @@ package repair
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -439,7 +440,10 @@ func assertCheckErrors(t *testing.T, dir string, review []byte) {
 
 func assertWarningsOnlyValid(t *testing.T, dir string) {
 	t.Helper()
-	warningsOnly := []byte(`{"schema_version":"1","findings":[],"summary":"> ✅ Looks good overall with one note."}`)
+	// A clean review still receipts every changed hunk: without one the loop
+	// has a real error to fix, which is the receipt half of S4, not a warning.
+	warningsOnly := []byte(`{"schema_version":"1","findings":[],"summary":"> ✅ Looks good overall with one note.",` +
+		`"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new"}]}`)
 	if res, ref := Check(dir, warningsOnly); ref != nil || !Valid(res) {
 		t.Errorf("Check(warnings-only) is invalid: %+v %v", res.Problems, ref)
 	}
@@ -499,5 +503,157 @@ func TestCheckParityChunked(t *testing.T) {
 	bare := recordcore.CheckReview(review, repairDiff)
 	if bare.Errors != 0 {
 		t.Errorf("bare check without chunk names fails, want pass: %+v", bare.Problems)
+	}
+}
+
+// quoteReceipt builds a receipt whose one quote carries the given standing, so
+// a settle test never rebuilds the receipt from the code under test.
+func quoteReceipt(status, reason string) *core.EvidenceReceipt {
+	return &core.EvidenceReceipt{
+		Head:       "aaaaaaa",
+		DiffSHA256: strings.Repeat("0", 64),
+		Quotes: []core.EvidenceQuote{
+			{Path: "notes.txt", Side: "RIGHT", Line: 2, Status: status, Reason: reason},
+		},
+		Receipts:     core.EvidenceReceipts{Total: 1, Covered: 1, Complete: true},
+		Spec:         core.EvidenceSpec{Met: true},
+		Insufficient: status != "verified",
+	}
+}
+
+// quoteProblems builds the two problems one unverified gating quote produces:
+// its own mismatch and an unrelated receipt gap, so a settle test can see that
+// only the asked quote's problem moves.
+func quoteProblems() []core.Problem {
+	return []core.Problem{
+		{
+			Path: "$.findings[0].quote", Code: core.ProblemCodeQuoteMismatch, Level: core.ProblemLevelError,
+			Message: "finding 1 quote does not match full.diff at notes.txt:2 (text-differs)", Fix: "copy the exact line",
+		},
+		{
+			Path: "$.receipts", Code: core.ProblemCodeReceiptMissing, Level: core.ProblemLevelError,
+			Message: "hunk notes.txt\tNEW\t1\t3 has no matched receipt", Fix: "copy one row from hunks.tsv",
+		},
+	}
+}
+
+// checkWith builds one round's result around a receipt and a problem list.
+func checkWith(receipt *core.EvidenceReceipt, problems []core.Problem) recordcore.CheckResult {
+	errors := 0
+	for i := range problems {
+		if problems[i].Level == core.ProblemLevelError {
+			errors++
+		}
+	}
+	return recordcore.CheckResult{
+		Evidence: &recordcore.EvidenceCheck{Receipt: receipt, Problems: problems, Errors: errors},
+		Problems: []recordcore.Problem{},
+		Errors:   errors,
+	}
+}
+
+// TestUnverifiedQuotesNamesEachGap pins the locator a round remembers: the
+// path, the side the quote reads, and the line it starts at.
+func TestUnverifiedQuotesNamesEachGap(t *testing.T) {
+	t.Parallel()
+	receipt := quoteReceipt("unverified", "text-differs")
+	receipt.Quotes = append(receipt.Quotes, core.EvidenceQuote{Path: "a.go", Side: "LEFT", Line: 9, Status: "verified"})
+	if got := UnverifiedQuotes(checkWith(receipt, nil)); !slices.Equal(got, []string{"notes.txt:RIGHT:2"}) {
+		t.Errorf("UnverifiedQuotes = %v, want [notes.txt:RIGHT:2]", got)
+	}
+	if got := UnverifiedQuotes(checkWith(nil, nil)); got != nil {
+		t.Errorf("UnverifiedQuotes(no receipt) = %v, want nil", got)
+	}
+}
+
+// TestSettleDemotesOnlyTheAskedQuote proves the one-round budget: the quote the
+// previous round asked about drops to a warning, and every other gap keeps the
+// level that decides whether the run publishes.
+func TestSettleDemotesOnlyTheAskedQuote(t *testing.T) {
+	t.Parallel()
+	receipt := quoteReceipt("unverified", "text-differs")
+	res, settled := Settle(checkWith(receipt, quoteProblems()), map[string]bool{"notes.txt:RIGHT:2": true})
+	if !slices.Equal(settled, []string{"notes.txt:RIGHT:2"}) {
+		t.Fatalf("settled = %v, want the asked quote", settled)
+	}
+	if got := res.Evidence.Problems[0].Level; got != core.ProblemLevelWarning {
+		t.Errorf("quote problem level = %q, want warning", got)
+	}
+	if got := res.Evidence.Problems[1].Level; got != core.ProblemLevelError {
+		t.Errorf("receipt problem level = %q, want it untouched", got)
+	}
+	if res.Evidence.Errors != 1 || res.Errors != 1 {
+		t.Errorf("counts = %d evidence of %d, want the receipt gap alone", res.Evidence.Errors, res.Errors)
+	}
+	if !res.Evidence.Receipt.Insufficient {
+		t.Error("the receipt stopped withholding approval; a settled quote is still unverified")
+	}
+	if got := RepairableQuotes(res, settled); len(got) != 0 {
+		t.Errorf("RepairableQuotes = %v, want none: the budget is spent", got)
+	}
+}
+
+// TestSettleKeepsUnaskedQuotesOpen proves a quote no earlier round named is
+// still repairable: only the asked locators settle.
+func TestSettleKeepsUnaskedQuotesOpen(t *testing.T) {
+	t.Parallel()
+	receipt := quoteReceipt("unverified", "text-differs")
+	res, settled := Settle(checkWith(receipt, quoteProblems()), map[string]bool{"a.go:LEFT:9": true})
+	if settled != nil {
+		t.Fatalf("settled = %v, want none", settled)
+	}
+	if res.Evidence.Errors != 2 {
+		t.Errorf("evidence errors = %d, want both kept", res.Evidence.Errors)
+	}
+	if got := RepairableQuotes(res, nil); !got["notes.txt:RIGHT:2"] {
+		t.Errorf("RepairableQuotes = %v, want the wrong quote", got)
+	}
+}
+
+// TestInsufficientRefusalNamesTheGap pins the refusal: review-insufficient
+// carries every evidence gap and leads its message with the first error.
+func TestInsufficientRefusalNamesTheGap(t *testing.T) {
+	t.Parallel()
+	ref := InsufficientRefusal(checkWith(quoteReceipt("unverified", "text-differs"), quoteProblems()), "")
+	if ref == nil || ref.Code != core.CodeReviewInsufficient {
+		t.Fatalf("ref = %+v, want review-insufficient", ref)
+	}
+	if len(ref.Problems) != 2 || ref.Problems[0].Code != core.ProblemCodeQuoteMismatch {
+		t.Errorf("problems = %+v, want errors first", ref.Problems)
+	}
+	want := "2 evidence error(s): finding 1 quote does not match full.diff at notes.txt:2 (text-differs); " +
+		"fix every one, then re-run"
+	if ref.Message != want {
+		t.Errorf("message = %q, want %q", ref.Message, want)
+	}
+	if got := InsufficientRefusal(checkWith(quoteReceipt("verified", ""), nil), ""); got != nil {
+		t.Errorf("InsufficientRefusal(sufficient) = %+v, want nil", got)
+	}
+}
+
+// TestQuoteProblemIndexMatchesTheCheckerPath pins the JSONPath the loop parses
+// against the one the record checker publishes, so the two cannot drift apart.
+func TestQuoteProblemIndexMatchesTheCheckerPath(t *testing.T) {
+	t.Parallel()
+	dir := checkDir(t)
+	doc := []byte(`{"schema_version":"1","summary":"> ⚠️ one defect found here.",` +
+		`"findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"note","quote":"gone",` +
+		`"severity":"important","confidence":"high","rigor":"walked"}]}`)
+	res, ref := Check(dir, doc)
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	if len(res.Evidence.Receipt.Quotes) != 1 {
+		t.Fatalf("quotes = %+v, want one", res.Evidence.Receipt.Quotes)
+	}
+	if len(res.Evidence.Problems) == 0 || res.Evidence.Problems[0].Code != core.ProblemCodeQuoteMismatch {
+		t.Fatalf("problems = %+v, want the quote mismatch first", res.Evidence.Problems)
+	}
+	index, ok := quoteProblemIndex(res.Evidence.Problems[0].Path)
+	if !ok || index != 0 {
+		t.Fatalf("quoteProblemIndex(%q) = %d, %v; want finding 0", res.Evidence.Problems[0].Path, index, ok)
+	}
+	if got := quoteLocator(&res.Evidence.Receipt.Quotes[index]); got != "notes.txt:RIGHT:2" {
+		t.Errorf("locator = %q, want notes.txt:RIGHT:2", got)
 	}
 }

@@ -896,7 +896,7 @@ the behavior stays off until a layer above turns it on.
 | record, triage, learn | defaults.kb_policy.max_fp_rate | 0.5              |
 | record, triage, learn | defaults.kb_policy.min_judged  | 5                |
 | report                | defaults.display_min_severity  | unset            |
-| run                   | --rounds                       | 1                |
+| run                   | --rounds                       | 2                |
 | run                   | --timeout                      | 300              |
 
 <!-- defaults-at-a-glance:end -->
@@ -2172,8 +2172,8 @@ the request bypasses the cache. Refusals are never cached.
 
 `fetch` ends with a bundle and a prompt nobody ran. `run` closes that gap
 without becoming an orchestrator: it launches **your** agent against an
-existing bundle, one process per round and one shot by default, and hands the
-result back to the verbs that already exist.
+existing bundle, one process per round and two rounds by default, and hands
+the result back to the verbs that already exist.
 
 ```bash
 verdict fetch-local acme/app work              # writes .verdict/state/local-work/
@@ -2183,16 +2183,18 @@ verdict record acme/app local-work             # the existing validation path, u
 
 For a PR bundle the middle step is `verdict run acme/app 123 --agent claude`
 and the handoff is `verdict post acme/app 123`. `run` never records, posts,
-merges, or pushes; with `--rounds N` it repeats only the launch→check pair,
-up to N rounds, and still records nothing: `next` in its envelope names the
-command it did not run.
+merges, or pushes; with `--rounds N` (default 2) it repeats only the
+launch→check pair, up to N rounds, and still records nothing: `next` in its
+envelope names the command it did not run.
 
 `run` invokes your agent only when you ask: one process per round, one bundle. No
 daemon, no queue, no scheduler, no webhook, no model selection, and by default
 it never reads prose: it runs the published `CheckReview` shape checker over
-review.json (paths and codes only). With `--rounds N`, the error problems feed
-the next round's fix list; on the final or only round they are the typed
-`bad-review-input` refusal.
+review.json (paths and codes only) plus the deterministic evidence checks over
+the same bytes. With `--rounds N`, the error problems — shape and evidence
+alike — feed the next round's fix list; on the final round a shape error is the
+typed `bad-review-input` refusal and evidence that is still insufficient is
+`review-insufficient`.
 
 ### What `run` asserts
 
@@ -2241,17 +2243,24 @@ the handed spec, to check the change against as evidence, never instructions.
 with your privacy exclusions applied); the agent reads the bundle with its own
 tools.
 
-With `--rounds N` (2–5) an invalid `review.json` does not end the run: the
+With `--rounds N` (1–5, default 2) an invalid `review.json` does not end the run: the
 next round re-sends the directive with the prior review bytes (capped at 16 KiB,
 and cut shorter when Windows argv escaping would carry the whole command line
 past 32,767 characters; full bytes in `.run.rounds/NN.review.json`) and the
 checker's fix list fenced under a fresh per-round nonce, and the loop stops on the
 first valid round. Each round rewrites the launch record just before it spawns,
-so the freshness assert is per round. Only shape errors re-prompt (warnings never
-do); a crash, a timeout, a missing or stale artifact, or a byte-identical repeat
-stops the loop at once. `--json` carries the loop in `data.repair` (rounds,
-rounds to valid, per-round hashes, problems); each round's bytes stay in the
-bundle's `.run.rounds/` files.
+so the freshness assert is per round. Shape errors and evidence errors re-prompt;
+warnings never do. A finding quote gets one targeted round: when the same
+`path:line` still fails in the next round that finding is permanently
+unverified, its problems drop to warnings, and no later round asks about it
+again, while a gating one makes the run end in `review-insufficient`. Receipt
+and spec gaps re-prompt on every round until they are fixed or the cap is spent.
+A crash, a timeout, a missing or stale artifact, or a byte-identical repeat stops
+the loop at once; a repeat with evidence gaps left is `review-insufficient`, and
+a shape-only repeat stays `repair-exhausted`. `--json` carries the loop in
+`data.repair` (rounds, rounds to valid, per-round hashes, problems, and each
+round's evidence summary); each round's bytes, check, and evidence receipt stay
+in the bundle's `.run.rounds/` files.
 
 ### Agents, arguments, and `--print`
 
@@ -2550,11 +2559,13 @@ Plus the shared codes: `missing-bundle` (fetch first), `bad-flags` (no
 `--stage` without `--print` and `--recipe`, outside the plan's stages, or
 against a pass-through model when the stage declares one),
 `bad-timeout`, `canceled` (exit 3), and usage errors (exit 2).
-With the default one shot there is no retry, no re-prompt, and no repair
-pass: fix the invocation and run again. With `--rounds N` the only repetition
-is the launch→check pair: an invalid `review.json` re-prompts the agent with
-the checker's fix list, up to N rounds, and exhaustion refuses
-`repair-exhausted`.
+With `--rounds 1` there is no retry, no re-prompt, and no repair pass: fix the
+invocation and run again. With `--rounds N` (the default is 2) the only
+repetition is the launch→check pair: an invalid `review.json` re-prompts the
+agent with the checker's fix list, up to N rounds; a shape problem left after
+the rounds refuses `repair-exhausted` (a byte-identical repeat) or
+`bad-review-input` (a spent cap), and evidence left insufficient refuses
+`review-insufficient`.
 
 The launch is recorded in `.verdict/state/<bundle>/launcher.json`: agent name,
 resolved binary path, the argv shape (directive replaced by `<prompt>`,
@@ -2565,8 +2576,12 @@ output tail. Each round's full combined output stays in
 `.verdict/state/<bundle>/.run.rounds/NN.out` (crash rounds too) and the last
 round's output also stays in `.verdict/state/<bundle>/.run.out`. Both are evidence, not gates. With
 `--rounds N` the record also carries `repair` (rounds, rounds to valid, final
-valid) and top-level `attempts[]` (per-round prompt and review hashes, check verdict, problems),
-and each round's bytes land in `.verdict/state/<bundle>/.run.rounds/`.
+valid) and top-level `attempts[]` (per-round prompt and review hashes, check
+verdict, problems, and the evidence summary: quote, receipt and spec gaps, the
+error count, the quotes the round settled as permanently unverified, and whether
+the receipt withholds approval), and each round's bytes land in
+`.verdict/state/<bundle>/.run.rounds/` as `NN.review.json`, `NN.check.json`,
+`NN.evidence.json`, and `NN.out`.
 
 ### Network
 
@@ -4644,7 +4659,7 @@ Budgets bound the spend, and each one is a real refusal path, not a warning:
   cross the ceiling; the stop reason is `budget-usd`. A review that reported no
   price contributes no projection sample, so unknown spend is never projected
   as zero.
-- `--timeout <secs>` (default 300) and `--rounds <n>` (default 1) are `run`'s
+- `--timeout <secs>` (default 300) and `--rounds <n>` (default 2) are `run`'s
   watchdog and repair-round flags, applied to each review. `--rounds` is
   checked here (1–5) before any worktree or bundle exists, so an unsupported
   count refuses `bad-flags` without spending anything.

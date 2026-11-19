@@ -57,15 +57,18 @@ func usageText() string {
 		"        droid|forge|fx|gemini|goose|grok|hermes|jazz|junie|kilo|kimchi|kimi|kiro|\n" +
 		"        kode|mcode|neovate|openclaw|opencode|pa|pi|qoder|qodercn|qwen|rovodev|\n" +
 		"        vibe|zcode>\n" +
-		"      [--recipe <slug>] [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 1>]\n" +
+		"      [--recipe <slug>] [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 2>]\n" +
 		"      [--print] [-- <agent args>...] [--json]\n" +
-		"    launch YOUR agent against an existing bundle: one process per round, one shot by default.\n" +
+		"    launch YOUR agent against an existing bundle: one process per round, two rounds by default.\n" +
 		"    It requires exactly one fresh review.json (absent refuses no-review-artifact, older\n" +
-		"    than the launch refuses stale-review-artifact), names the next command, and by default never\n" +
-		"    reads the agent's prose, retries, repairs, and never posts. With --rounds N (2-5) an\n" +
-		"    invalid review.json re-prompts the agent with the shape checker's fix list, up to\n" +
-		"    N launch-to-check rounds; exhaustion refuses repair-exhausted. The agent inherits your\n" +
-		"    environment (your key) and may use the network; verdict itself makes no calls.\n" +
+		"    than the launch refuses stale-review-artifact), names the next command, never posts, and\n" +
+		"    reads the agent's prose only through the shape checker's problem list. With --rounds N\n" +
+		"    (1-5) an invalid review.json re-prompts the agent with the checker's fix list, up to N\n" +
+		"    launch-to-check rounds; --rounds 1 opts out. Evidence gaps ride in that same list: a\n" +
+		"    wrong quote gets one repair round, and a review whose evidence stays insufficient after\n" +
+		"    the rounds refuses review-insufficient instead of publishing an unbacked approval.\n" +
+		"    The agent inherits your environment (your key) and may use the network; verdict\n" +
+		"    itself makes no calls.\n" +
 		"    Operators can define more names under the 'agents' key of their own settings\n" +
 		"    file (XDG_CONFIG_HOME/verdict/settings.json); a repository config cannot.\n" +
 		"    A flag that takes the prompt places it immediately before the directive.\n" +

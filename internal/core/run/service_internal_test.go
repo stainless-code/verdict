@@ -147,8 +147,15 @@ func bundleDir(root string) string {
 	return filepath.Join(root, ".verdict", "state", prNumber)
 }
 
+// fixtureReceipts is the receipts clause every clean review of fixtureDiff
+// owes: one entry per changed hunk, each quoting a line that hunk adds. A
+// clean review with an unreceipted hunk is a review-insufficient gap run now
+// refuses.
+const fixtureReceipts = `"receipts":[{"hunk":"a.go\tNEW\t1\t12","quote":"new line 1"},{"hunk":"old.go\tNEW\t1\t12","quote":"new line 1"},{"hunk":"notes.txt\tNEW\t1\t12","quote":"new line 1"},{"hunk":"elsewhere.txt\tNEW\t1\t12","quote":"new line 1"}]`
+
 // reviewDoc is a minimal review the shared record path accepts unchanged.
-const reviewDoc = `{"schema_version":"1","summary":"> ✅ no findings Reviewed the diff.","findings":[]}`
+const reviewDoc = `{"schema_version":"1","summary":"> ✅ no findings Reviewed the diff.","findings":[],` +
+	fixtureReceipts + `}`
 
 // writeReview plants the review artifact at the contract path.
 func writeReview(t *testing.T, dir string) string {
@@ -165,7 +172,9 @@ func missingLookPath(string) (string, error) {
 	return "", errors.New("executable file not found in $PATH")
 }
 
-// request builds a service request whose PATH probe resolves the agent.
+// request builds a service request whose PATH probe resolves the agent, with
+// the round loop opted out: these fixtures' agents write one review and never
+// rewrite it, which is the one-shot contract. The loop has its own fixtures.
 func request(root string, cmdr core.Commander) *core.RunRequest {
 	rt := &core.Runtime{Env: map[string]string{}, Now: time.Now, Commander: cmdr}
 	return &core.RunRequest{
@@ -176,6 +185,7 @@ func request(root string, cmdr core.Commander) *core.RunRequest {
 		Environ:    []string{"ANTHROPIC_API_KEY=sk-ant-0123456789abcdef"},
 		Agent:      "claude",
 		TimeoutRaw: "300",
+		RoundsRaw:  "1",
 	}
 }
 

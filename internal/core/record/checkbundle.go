@@ -45,11 +45,25 @@ func checkNormalized(dir string, normalized []byte, repairs []Problem) (CheckRes
 	return withBundleEvidence(dir, normalized, MergeRepairs(CheckReviewInput(normalized, in), repairs, normalized)), nil
 }
 
-// withBundleEvidence attaches the evidence receipt the bundle bytes support:
-// the same pass the shared merge runs, so the check path and the stored
-// receipt cannot disagree about what the bundle proves.
+// withBundleEvidence attaches the evidence receipt the bundle bytes support
+// and folds its gaps into the result: the same pass the shared merge runs, so
+// the check path and the stored receipt cannot disagree about what the bundle
+// proves. Evidence warnings stay out of res.Warnings — that count is the shape
+// checker's, and a stale-head or normalized-fence warning refusing under
+// --strict must not depend on how many quotes failed.
 func withBundleEvidence(dir string, normalized []byte, res CheckResult) CheckResult {
-	res.Evidence = reviewEvidenceOf(dir, normalized)
+	receipt, problems := reviewEvidenceOf(dir, normalized)
+	if receipt == nil {
+		return res
+	}
+	check := &EvidenceCheck{Receipt: receipt, Problems: problems}
+	for i := range problems {
+		if problems[i].Level == core.ProblemLevelError {
+			check.Errors++
+		}
+	}
+	res.Evidence = check
+	res.Errors += check.Errors
 	return res
 }
 

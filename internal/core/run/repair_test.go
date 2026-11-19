@@ -2,6 +2,7 @@ package run
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -94,12 +95,22 @@ const (
 	// invalidDoc anchors its comment on a file the diff never touched.
 	invalidDoc = `{"schema_version":"1","summary":"> ✅ first attempt Review text here.",` +
 		`"findings":[{"path":"elsewhere.txt","line":1,"side":"RIGHT","claim":"note","quote":"note","severity":"important","confidence":"high","rigor":"walked"}]}`
-	// validDoc is the same review re-anchored on the changed file.
+	// validDoc is the same review re-anchored on the changed file, quoting the
+	// line the hunk adds and receipting the hunk it read.
 	validDoc = `{"schema_version":"1","summary":"> ✅ second attempt Review text here.",` +
-		`"findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"note","quote":"note","severity":"important","confidence":"high","rigor":"walked"}]}`
-	// warningsDoc misses schema_version: warnings only, so leniently valid.
-	warningsDoc = `{"schema_version":"1","summary":"> ✅ warnings only Review text here.","findings":[]}`
+		`"findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"note","quote":"new","severity":"important","confidence":"high","rigor":"walked"}],` +
+		`"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new"}]}`
+	// warningsDoc is a clean review whose only weakness is its prose: the
+	// warnings-only shape the loop tolerates, with the receipt a clean review
+	// now owes the bundle.
+	warningsDoc = `{"schema_version":"1","summary":"> ✅ warnings only Review text here.","findings":[],` +
+		`"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new"}]}`
 )
+
+// repairReviewDoc is a clean review of repairFixture's one hunk: the receipt
+// key is the row hunks.tsv would print for @@ -1,3 +1,3 @@.
+const repairReviewDoc = `{"schema_version":"1","summary":"> ✅ no findings Reviewed the diff.","findings":[],` +
+	`"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new"}]}`
 
 // repairRecord reads the launcher record's repair profile back.
 func repairRecord(t *testing.T, dir string) map[string]any {
@@ -251,7 +262,7 @@ func TestRepairValidFirstRoundStopsAtOne(t *testing.T) {
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	var lines collector
-	cmdr := &sequenced{write: func(int) { writeDoc(t, root, reviewDoc) }}
+	cmdr := &sequenced{write: func(int) { writeDoc(t, root, repairReviewDoc) }}
 	resp, ref := Run(t.Context(), repairRequest(root, cmdr, "3", &lines))
 	if ref != nil {
 		t.Fatalf("Run refused: %v", ref)
@@ -442,7 +453,7 @@ func TestRepairWarningsOnlyNeedsNoExtraRound(t *testing.T) {
 }
 
 // TestRoundsValidation pins the --rounds range: 1-5 parses, and an absent
-// value keeps the one-shot default.
+// value is the two rounds the evidence contract's one repair round needs.
 func TestRoundsValidation(t *testing.T) {
 	for _, tc := range []struct {
 		raw  string
@@ -457,8 +468,8 @@ func TestRoundsValidation(t *testing.T) {
 		}
 	}
 	st := &state{req: &core.RunRequest{}}
-	if n, ref := st.rounds(); ref != nil || n != 1 {
-		t.Errorf("rounds(\"\") = %d, %v; want the one-shot default", n, ref)
+	if n, ref := st.rounds(); ref != nil || n != 2 {
+		t.Errorf("rounds(\"\") = %d, %v; want the two-round default", n, ref)
 	}
 }
 
@@ -497,7 +508,7 @@ func TestRepairOneShotLeavesNoRepairProfile(t *testing.T) {
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	var lines collector
-	cmdr := &sequenced{write: func(int) { writeDoc(t, root, reviewDoc) }}
+	cmdr := &sequenced{write: func(int) { writeDoc(t, root, repairReviewDoc) }}
 	resp, ref := Run(t.Context(), repairRequest(root, cmdr, "1", &lines))
 	if ref != nil {
 		t.Fatalf("Run refused: %v", ref)
@@ -740,7 +751,7 @@ func writeOnRound(t *testing.T, root string, round int) func(int) {
 	t.Helper()
 	return func(call int) {
 		if call == round {
-			writeDoc(t, root, reviewDoc)
+			writeDoc(t, root, repairReviewDoc)
 		}
 	}
 }
@@ -1052,7 +1063,7 @@ func TestRepairRefusesSymlinkedRoundsDir(t *testing.T) {
 		t.Skipf("symlink creation unavailable: %v", err)
 	}
 	var lines collector
-	cmdr := &sequenced{write: func(int) { writeDoc(t, root, reviewDoc) }}
+	cmdr := &sequenced{write: func(int) { writeDoc(t, root, repairReviewDoc) }}
 	_, ref := Run(t.Context(), repairRequest(root, cmdr, "3", &lines))
 	if ref == nil {
 		t.Fatal("Run ran through a symlinked .run.rounds, want rounds-path-unsafe")
@@ -1080,7 +1091,7 @@ func TestRepairRefusesFileAtRoundsDir(t *testing.T) {
 		t.Fatal(err)
 	}
 	var lines collector
-	cmdr := &sequenced{write: func(int) { writeDoc(t, root, reviewDoc) }}
+	cmdr := &sequenced{write: func(int) { writeDoc(t, root, repairReviewDoc) }}
 	_, ref := Run(t.Context(), repairRequest(root, cmdr, "3", &lines))
 	if ref == nil || ref.Code != "rounds-path-unsafe" {
 		t.Fatalf("ref = %v, want rounds-path-unsafe", ref)
@@ -1145,5 +1156,324 @@ func assertMode(t *testing.T, path string, want os.FileMode) {
 	}
 	if got := fi.Mode().Perm(); got != want {
 		t.Errorf("%s mode = %#o, want %#o", filepath.Base(path), got, want)
+	}
+}
+
+// The evidence docs the targeted-round tests drive. repairFixture's diff is one
+// notes.txt hunk (@@ -1,3 +1,3 @@) that adds the line "new" at NEW line 2, so a
+// receipt is {"hunk":"notes.txt\tNEW\t1\t3","quote":"new"} and a verified quote
+// is a line that hunk carries.
+const (
+	// receiptDoc is the one receipt repairFixture's hunk needs.
+	receiptDoc = `"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new"}]`
+	// unreceiptedDoc is a clean review that receipts no hunk: the gap the
+	// re-prompt must name. A review with a gating finding owes no receipts, so
+	// the gap only exists for a review that reports nothing.
+	unreceiptedDoc = `{"schema_version":"1","summary":"> ✅ receipt gap Review text here.","findings":[]}`
+	// wrongQuoteDoc receipts the hunk but quotes a line it does not carry, so
+	// the gating finding is unverified.
+	wrongQuoteDoc = `{"schema_version":"1","summary":"> ✅ wrong quote Review text here.",` +
+		`"findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"note","quote":"gone","severity":"important","confidence":"high","rigor":"walked"}],` + receiptDoc + `}`
+	// repeatedQuoteDoc is wrongQuoteDoc under another summary: the same wrong
+	// quote, byte-different review, so the loop reads it as progress and the
+	// quote budget, not the no-progress rule, has to stop it.
+	repeatedQuoteDoc = `{"schema_version":"1","summary":"> ✅ still wrong Review text here.",` +
+		`"findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"note","quote":"gone","severity":"important","confidence":"high","rigor":"walked"}],` + receiptDoc + `}`
+	// informationalWrongQuoteDoc is wrongQuoteDoc at a severity below the
+	// approval tier: the quote gap is a warning, so the run publishes it.
+	informationalWrongQuoteDoc = `{"schema_version":"1","summary":"> ✅ note only Review text here.",` +
+		`"findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"note","quote":"gone","severity":"informational","confidence":"high","rigor":"walked"}],` + receiptDoc + `}`
+)
+
+// roundEvidence decodes one round's .run.rounds/NN.evidence.json receipt.
+func roundEvidence(t *testing.T, dir string, round int) map[string]any {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(dir, roundsDir, fmt.Sprintf("%02d.evidence.json", round)))
+	if err != nil {
+		t.Fatalf("missing round-%d evidence: %v", round, err)
+	}
+	doc, err := jq.Decode(raw)
+	if err != nil {
+		t.Fatal(err)
+	}
+	rec, ok := jq.AsMap(doc)
+	if !ok {
+		t.Fatalf("round-%d evidence = %v, want an object", round, doc)
+	}
+	return rec
+}
+
+// attemptEvidence returns one attempt's evidence summary from the response.
+func attemptEvidence(t *testing.T, resp *core.RunResponse, round int) *core.RunEvidence {
+	t.Helper()
+	rep := resp.Data.Repair
+	if rep == nil || len(rep.Attempts) < round {
+		t.Fatalf("repair profile = %+v, want %d attempts", rep, round)
+	}
+	ev := rep.Attempts[round-1].Evidence
+	if ev == nil {
+		t.Fatalf("attempt %d carries no evidence summary", round)
+	}
+	return ev
+}
+
+// recordedAttempt returns one attempt the launcher kept, which is where a
+// refused run records the rounds the response cannot carry.
+func recordedAttempt(t *testing.T, dir string, round int) map[string]any {
+	t.Helper()
+	attempts, ok := readLauncher(t, dir)["attempts"].([]any)
+	if !ok || len(attempts) < round {
+		t.Fatalf("launcher attempts = %v, want %d", readLauncher(t, dir)["attempts"], round)
+	}
+	attempt, ok := attempts[round-1].(map[string]any)
+	if !ok {
+		t.Fatalf("attempt %d = %v, want an object", round, attempts[round-1])
+	}
+	return attempt
+}
+
+// recordedEvidence returns one attempt's recorded evidence summary.
+func recordedEvidence(t *testing.T, dir string, round int) map[string]any {
+	t.Helper()
+	ev, ok := recordedAttempt(t, dir, round)["evidence"].(map[string]any)
+	if !ok {
+		t.Fatalf("attempt %d carries no evidence summary", round)
+	}
+	return ev
+}
+
+// roundField returns one field of a round's evidence receipt as the decoded
+// JSON value it is, failing the test when the receipt does not carry it.
+func roundField(t *testing.T, dir string, round int, field string) any {
+	t.Helper()
+	value, ok := roundEvidence(t, dir, round)[field]
+	if !ok {
+		t.Fatalf("round %d evidence carries no %q", round, field)
+	}
+	return value
+}
+
+// roundMap returns one object field of a round's evidence receipt.
+func roundMap(t *testing.T, dir string, round int, field string) map[string]any {
+	t.Helper()
+	value, ok := roundField(t, dir, round, field).(map[string]any)
+	if !ok {
+		t.Fatalf("round %d evidence %q = %v, want an object", round, field, field)
+	}
+	return value
+}
+
+// roundList returns one array field of a round's evidence receipt.
+func roundList(t *testing.T, dir string, round int, field string) []any {
+	t.Helper()
+	value, ok := roundField(t, dir, round, field).([]any)
+	if !ok {
+		t.Fatalf("round %d evidence %q = %v, want an array", round, field, field)
+	}
+	return value
+}
+
+// perCall drives the loop: round k's agent writes docs[k-1].
+func perCall(t *testing.T, root string, docs ...string) *sequenced {
+	t.Helper()
+	return &sequenced{write: func(call int) { writeDoc(t, root, docs[call-1]) }}
+}
+
+// requireRun fails on a refusal, so a passing leg reads its own response after.
+func requireRun(t *testing.T, ref *core.RefusalError) {
+	t.Helper()
+	if ref != nil {
+		t.Fatalf("Run refused: %v", ref)
+	}
+}
+
+// assertSpawns pins how many agent processes the loop launched.
+func assertSpawns(t *testing.T, cmdr *sequenced, want int) {
+	t.Helper()
+	if cmdr.calls != want {
+		t.Fatalf("spawns = %d, want %d", cmdr.calls, want)
+	}
+}
+
+// asMap asserts one decoded JSON value is an object.
+func asMap(t *testing.T, value any) map[string]any {
+	t.Helper()
+	out, ok := value.(map[string]any)
+	if !ok {
+		t.Fatalf("value = %v, want an object", value)
+	}
+	return out
+}
+
+// TestRepairMissingReceiptFixedInRoundTwo proves a receipt gap feeds the
+// re-prompt and the run publishes once the agent pays it: the round that fixed
+// it is the reported round, and each round keeps its own receipt.
+func TestRepairMissingReceiptFixedInRoundTwo(t *testing.T) {
+	root := repairFixture(t)
+	dir := bundleDir(root)
+	var lines collector
+	cmdr := perCall(t, root, unreceiptedDoc, repairReviewDoc)
+	resp, ref := Run(t.Context(), repairRequest(root, cmdr, "2", &lines))
+	requireRun(t, ref)
+	assertSpawns(t, cmdr, 2)
+	assertRepairProfile(t, resp, 2, 2, []bool{false, true})
+	if first := attemptEvidence(t, resp, 1); first.ReceiptGaps != 1 || first.Errors != 1 || !first.Insufficient {
+		t.Errorf("round 1 evidence = %+v, want one receipt gap withholding approval", first)
+	}
+	if second := attemptEvidence(t, resp, 2); second.ReceiptGaps != 0 || second.Errors != 0 || second.Insufficient {
+		t.Errorf("round 2 evidence = %+v, want a closed gap", second)
+	}
+	if got := roundMap(t, dir, 1, "receipts")["complete"]; got != false {
+		t.Errorf("round 1 receipts complete = %v, want false", got)
+	}
+	if got := roundMap(t, dir, 2, "receipts")["complete"]; got != true {
+		t.Errorf("round 2 receipts complete = %v, want true", got)
+	}
+}
+
+// TestRepairQuoteFixedInRoundTwo proves the quote gap is what the re-prompt
+// names, and the published receipt records the quote as verified.
+func TestRepairQuoteFixedInRoundTwo(t *testing.T) {
+	root := repairFixture(t)
+	dir := bundleDir(root)
+	var lines collector
+	cmdr := perCall(t, root, wrongQuoteDoc, validDoc)
+	resp, ref := Run(t.Context(), repairRequest(root, cmdr, "2", &lines))
+	requireRun(t, ref)
+	assertSpawns(t, cmdr, 2)
+	if first := attemptEvidence(t, resp, 1); first.QuoteGaps != 1 || first.Settled != nil {
+		t.Errorf("round 1 evidence = %+v, want one open quote gap", first)
+	}
+	if !strings.Contains(lastPrompt(cmdr, 2), "quote does not match full.diff at notes.txt:2") {
+		t.Errorf("round 2 prompt misses the quote's path:line:\n%s", lastPrompt(cmdr, 2))
+	}
+	quotes := roundList(t, dir, 2, "quotes")
+	if len(quotes) != 1 {
+		t.Fatalf("round 2 quotes = %v, want one", quotes)
+	}
+	if got := asMap(t, quotes[0]); got["status"] != "verified" || got["path"] != "notes.txt" ||
+		fmt.Sprint(got["line"]) != "2" {
+		t.Errorf("round 2 quote = %v, want notes.txt:2 verified", got)
+	}
+}
+
+// TestRepairSettledQuoteRefusesInsufficient proves the one-round quote budget:
+// a second round with the same wrong quote stops the loop even though earlier
+// rounds remain, and the settled finding makes the run refuse
+// review-insufficient rather than publish an unbacked approval.
+func TestRepairSettledQuoteRefusesInsufficient(t *testing.T) {
+	root := repairFixture(t)
+	var lines collector
+	cmdr := perCall(t, root, wrongQuoteDoc, repeatedQuoteDoc)
+	_, ref := Run(t.Context(), repairRequest(root, cmdr, "5", &lines))
+	if ref == nil || ref.Code != core.CodeReviewInsufficient {
+		t.Fatalf("ref = %v, want review-insufficient", ref)
+	}
+	if cmdr.calls != 2 {
+		t.Fatalf("spawns = %d, want 2: a settled quote earns no third round", cmdr.calls)
+	}
+	if !hasProblemIn(ref, "$.findings[0].quote", core.ProblemCodeQuoteMismatch) {
+		t.Fatalf("problems = %+v, want the quote mismatch", ref.Problems)
+	}
+	if !strings.Contains(ref.Message, "1 evidence error(s)") {
+		t.Errorf("message = %q, want it to count the evidence error", ref.Message)
+	}
+	assertSettled(t, bundleDir(root))
+}
+
+// assertSettled pins the recorded settle list and the round's own verdict: the
+// quote is named, and the round does not claim a publishable review.
+func assertSettled(t *testing.T, dir string) {
+	t.Helper()
+	settled, ok := recordedEvidence(t, dir, 2)["settled"].([]any)
+	if !ok || !slices.Equal(settled, []any{"notes.txt:RIGHT:2"}) {
+		t.Errorf("round 2 settled = %v, want the wrong quote's locator", settled)
+	}
+	checkOK, found := recordedAttempt(t, dir, 2)["check_ok"].(bool)
+	if !found {
+		t.Fatal("round 2 attempt carries no check_ok")
+	}
+	if checkOK {
+		t.Error("round 2 check_ok is true: a settled quote still withholds approval")
+	}
+}
+
+// TestRepairSettledQuoteStaysInsufficientAfterNoProgress proves a
+// byte-identical review keeping its wrong quote is review-insufficient, not
+// repair-exhausted: the gap, not the repetition, refuses.
+func TestRepairSettledQuoteStaysInsufficientAfterNoProgress(t *testing.T) {
+	root := repairFixture(t)
+	var lines collector
+	cmdr := perCall(t, root, wrongQuoteDoc, wrongQuoteDoc, wrongQuoteDoc)
+	_, ref := Run(t.Context(), repairRequest(root, cmdr, "3", &lines))
+	if ref == nil || ref.Code != core.CodeReviewInsufficient {
+		t.Fatalf("ref = %v, want review-insufficient", ref)
+	}
+	if cmdr.calls != 2 {
+		t.Fatalf("spawns = %d, want 2", cmdr.calls)
+	}
+	if !strings.Contains(ref.Message, "byte-identical") {
+		t.Errorf("message = %q, want the no-progress cause", ref.Message)
+	}
+}
+
+// TestRepairReceiptGapNeverFixedRefusesInsufficient proves receipt gaps keep
+// re-prompting until the round cap, then refuse with the final problem list.
+func TestRepairReceiptGapNeverFixedRefusesInsufficient(t *testing.T) {
+	root := repairFixture(t)
+	var lines collector
+	cmdr := perCall(t, root, unreceiptedDoc, strings.Replace(unreceiptedDoc, "receipt gap", "second look", 1))
+	_, ref := Run(t.Context(), repairRequest(root, cmdr, "2", &lines))
+	if ref == nil || ref.Code != core.CodeReviewInsufficient {
+		t.Fatalf("ref = %v, want review-insufficient", ref)
+	}
+	if cmdr.calls != 2 {
+		t.Fatalf("spawns = %d, want 2", cmdr.calls)
+	}
+	if !hasProblemIn(ref, "$.receipts", core.ProblemCodeReceiptMissing) {
+		t.Fatalf("problems = %+v, want the receipt gap", ref.Problems)
+	}
+	if got := recordedEvidence(t, bundleDir(root), 2); fmt.Sprint(got["errors"]) != "1" {
+		t.Errorf("round 2 evidence = %v, want one error", got)
+	}
+}
+
+// TestRepairOneShotRoundPerformsNoRepair proves an explicit --rounds 1 spends
+// no repair round: the gap refuses on the artifact the agent wrote.
+func TestRepairOneShotRoundPerformsNoRepair(t *testing.T) {
+	root := repairFixture(t)
+	var lines collector
+	cmdr := perCall(t, root, unreceiptedDoc)
+	resp, ref := Run(t.Context(), repairRequest(root, cmdr, "1", &lines))
+	if ref == nil || ref.Code != core.CodeReviewInsufficient {
+		t.Fatalf("ref = %v, want review-insufficient", ref)
+	}
+	if cmdr.calls != 1 {
+		t.Fatalf("spawns = %d, want 1", cmdr.calls)
+	}
+	if resp.Data != nil {
+		t.Errorf("one-shot refusal carries data: %+v", resp.Data)
+	}
+}
+
+// TestRepairNonGatingQuoteIsPublishedUnverified proves a quote gap below the
+// approval tier is a warning: the run publishes the finding and the receipt
+// records the unverified quote, which is the standing post's lead reads.
+func TestRepairNonGatingQuoteIsPublishedUnverified(t *testing.T) {
+	root := repairFixture(t)
+	dir := bundleDir(root)
+	var lines collector
+	cmdr := perCall(t, root, informationalWrongQuoteDoc)
+	resp, ref := Run(t.Context(), repairRequest(root, cmdr, "2", &lines))
+	requireRun(t, ref)
+	if cmdr.calls != 1 {
+		t.Fatalf("spawns = %d, want 1: a warning never runs another round", cmdr.calls)
+	}
+	ev := attemptEvidence(t, resp, 1)
+	if ev.QuoteGaps != 1 || ev.Insufficient || ev.Errors != 0 {
+		t.Errorf("round 1 evidence = %+v, want one unverified quote and no error", ev)
+	}
+	if got := asMap(t, roundList(t, dir, 1, "quotes")[0]); got["status"] != "unverified" {
+		t.Errorf("round 1 quote = %v, want unverified", got)
 	}
 }

@@ -45,7 +45,7 @@ func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *c
 	}
 	st.check = &check.Summary
 	st.addCheckWarnings(check)
-	st.addEvidenceWarnings(check.Evidence)
+	st.addEvidenceWarnings(check.evidenceReceipt())
 	if ref := reviewRefusal(check, false); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -182,6 +182,11 @@ const CodeBadReviewInput = codeBadReviewInput
 
 // ReviewRefusal turns one checker result into the typed problem-list refusal.
 // Record and run both call it, so neither can fork the problem vocabulary.
+// ReviewRefusal refuses a document the shape check rejects. The evidence half
+// of the check is not this refusal's: a review can be perfectly shaped and
+// still lack evidence, and that gap is `review-insufficient`, which record
+// records without refusing. Errors - EvidenceErrors is therefore the shape
+// count, and EvidenceProblems never reach the problem list here.
 func ReviewRefusal(check CheckResult, strict bool) *core.RefusalError {
 	problems := make([]core.Problem, len(check.Problems))
 	copy(problems, check.Problems)
@@ -190,10 +195,11 @@ func ReviewRefusal(check CheckResult, strict bool) *core.RefusalError {
 			problems[i].Level = core.ProblemLevelError
 		}
 	}
-	if check.Errors == 0 && (!strict || check.Warnings == 0) {
+	shapeErrors := check.ShapeErrors()
+	if shapeErrors == 0 && (!strict || check.Warnings == 0) {
 		return nil
 	}
-	total := check.Errors + check.Warnings
+	total := shapeErrors + check.Warnings
 	msg := fmt.Sprintf("review.json has %d problem(s); fix every one, then re-run", total)
 	return &core.RefusalError{Code: CodeBadReviewInput, Message: msg, Problems: problems, ProblemsTruncated: check.Truncated}
 }
