@@ -110,3 +110,25 @@ func TestDirtyCoverageEditAfterFetch(t *testing.T) {
 		t.Fatalf("gate refusal = %v, want coverage-stale", ref)
 	}
 }
+
+type cancelOnRunCommander struct{ cancel context.CancelFunc }
+
+func (c cancelOnRunCommander) Run(ctx context.Context, _ *core.Command) (core.Result, error) {
+	c.cancel()
+	return core.Result{}, ctx.Err()
+}
+
+// TestRecordLocalFreshCancelReportsCanceled pins GO-CLI-05 on the dirty-local
+// freshness check: canceling ctx during `git diff HEAD` returns `canceled`
+// (exit 3), never `coverage-stale` (exit 1).
+func TestRecordLocalFreshCancelReportsCanceled(t *testing.T) {
+	dirtyCoverageBundle(t, `[{"file":"notes.txt","ranges":"all"}]`)
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	req := recordRequest(t, &collector{}, coverageSlug)
+	req.Commander = cancelOnRunCommander{cancel: cancel}
+	_, ref := recordcore.Run(ctx, req)
+	if ref == nil || ref.Code != "canceled" {
+		t.Fatalf("record refusal on cancel = %v, want canceled", ref)
+	}
+}

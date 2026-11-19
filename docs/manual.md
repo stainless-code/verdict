@@ -2082,6 +2082,8 @@ Each `start` line records `verb`, `channel` (`cli` or `mcp`), `pid`, redacted `a
 
 **Reading the journal.** `verdict journal <owner/repo> <pr|local-name> [--json]` (and the read-only `journal` MCP tool) reads `<bundle>/journal.jsonl` without taking a lock, folds `start`/`end` pairs into `steps`, lists unpaired starts in `unfinished`, reports `chain_breaks`, surfaces `truncated`, and counts torn lines in `unreadable_lines`. An absent `journal.jsonl` on an existing bundle exits 0 with `steps: []` and `journal: <bundle> (no calls recorded)`; a missing bundle refuses `missing-bundle`.
 
+**Crash and cancellation semantics.** Because every bundle-writing call appends a `start` line before executing and an `end` line on return under a kernel-owned `storelock`, a `SIGKILL` mid-verb releases the lock automatically and leaves an unpaired `start` in `unfinished` while the preceding entry in `steps` identifies the last completed step. A machine crash mid-write costs at most one torn tail line, counted in `unreadable_lines` without breaking earlier steps. A caught shutdown signal (`SIGINT`/`SIGTERM`, exit 3) is not a crash: the verb cancels cleanly and appends its `end` line with `exit: 3` and `refusal: "canceled"`.
+
 ## Serve (local HTTP surface)
 
 `verdict serve` starts one read-only HTTP surface over the current repository's
