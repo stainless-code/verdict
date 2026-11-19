@@ -103,7 +103,7 @@ if [ ! -e "$BUNDLE_DIR/journal.jsonl" ] && [ ! -e "$BUNDLE_DIR/journal.jsonl.loc
 else
   bad "found unexpected journal artifact inside $BUNDLE_DIR"
 fi
-if jq -s --arg repo "$REPO_CANON" 'length > 0 and all(.[]; .repo == $repo)' "$JOURNAL" >/dev/null; then
+if jq -se --arg repo "$REPO_CANON" 'length > 0 and all(.[]; .repo == $repo)' "$JOURNAL" >/dev/null; then
   good "every journal line carries the canonical repo root"
 else
   bad "a journal line is missing or mismatched repo"
