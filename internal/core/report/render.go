@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/approval"
 	panelcore "github.com/stainless-code/verdict/internal/core/panel"
+	"github.com/stainless-code/verdict/internal/core/reviewdoc"
 	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
@@ -66,7 +67,7 @@ func reportNext(st *state) string {
 
 func buildData(st *state) *core.ReportData {
 	data := &core.ReportData{
-		Verification: panelcore.Summarize(st.entries),
+		Verification: st.execution.Attach(panelcore.Summarize(st.entries)),
 		Validation:   st.validation,
 		Approval:     st.approval,
 		GeneratedAt:  st.now,
@@ -287,6 +288,9 @@ func buildHuman(st *state) []string {
 	lines = append(lines, readcommon.ContextLine(st.dir)...)
 	lines = append(lines, cleanHeadline(st)...)
 	lines = append(lines, verificationHuman(st.entries)...)
+	if line := reviewdoc.FinderLine(st.execution.Attach(nil)); line != "" {
+		lines = append(lines, strings.TrimPrefix(line, "> "))
+	}
 	for _, item := range view {
 		lines = append(lines, readcommon.CitationLines(item.Entry)...)
 		lines = append(lines, fmt.Sprintf("%d. [%s] %s (%s)",

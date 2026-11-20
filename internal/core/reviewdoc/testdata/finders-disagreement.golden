@@ -1,0 +1,40 @@
+> ⛔ Evidence checks insufficient — no approval.
+> Decision: withheld — blocking cross check contested
+> Finders: 2 completed; cross-checks: 0 confirmed, 1 contested, 0 pending
+> Basis: 0 reproduced · 0 ran · 0 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes
+
+Two-finder review of token refresh.
+
+<!--
+Review metadata. Findings written against a1b2c3d;
+if commits landed on feat/token-refresh since, treat every bug/file/line as POTENTIALLY STALE.
+- Mode: Review (initial)
+- Files reviewed: 2
+- Commits reviewed: 1
+- Base: main (1122334)
+- Head: feat/token-refresh (a1b2c3d)
+- Reviewed commits:
+  - a1b2c3d — Refactor token refresh helper
+- Prior review: none
+-->
+
+**Evidence gaps**
+
+- Receipts: 2/2 changed hunks verified
+- Spec: 2/2 items covered (min 2)
+
+**Findings**
+
+1. ⚠️ **important** [src/auth.go:42][ev-1] (origins: finder-1; checks: finder-2 contested) (cross-check unresolved — not counted) — Token refresh skips expiration validation.
+
+   <details><summary>Cross-check evidence</summary>
+
+   finder-2 refuted (verified quote): The unchanged guard rejects expired tokens before refresh.
+
+   > src/auth.go:41 — if expired { return ErrExpired }
+
+   </details>
+
+**Spec checks** — 0 met · 0 violated · 0 n/a (2/2 spec items covered, min 2)
+
+[ev-1]: https://github.com/acme/app/blob/a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/src/auth.go#L42

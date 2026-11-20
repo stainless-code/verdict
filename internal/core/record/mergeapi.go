@@ -151,7 +151,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	if err := st.validateAndMerge(); err != nil {
 		return MergeResult{}, err
 	}
-	verification := st.applyPanel(panel)
+	verification := st.executionPanel(execution, panel)
 	execution.Stamp(st.entries)
 	execution.ApplyEvidence(st.evidence)
 	if err := st.persistMerged(); err != nil {
@@ -460,4 +460,11 @@ func (st *state) persistMerged() error {
 		st.kb.CommitStaged(st.findingsFile, st.now)
 	}
 	return nil
+}
+
+func (st *state) executionPanel(execution *panelcore.Execution, file *panelcore.File) *core.PanelSummary {
+	if !execution.Active {
+		return st.applyPanel(file)
+	}
+	return execution.Attach(panelcore.Summarize(st.entries))
 }

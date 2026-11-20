@@ -1,7 +1,6 @@
 package panelcore
 
 import (
-	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -53,6 +52,7 @@ func parseQuote(raw any) (CodeQuote, error) {
 
 // Execution keeps eligibility derived from bound files out of agent input.
 type Execution struct {
+	Origins        map[string][]string
 	Expected       map[string][]string
 	Checked        map[string][]any
 	Eligible       map[string]bool
@@ -61,6 +61,7 @@ type Execution struct {
 	dir, head      string
 	Gap            string
 	SpecViolations []string
+	Completed      int
 	Active         bool
 }
 
@@ -77,6 +78,7 @@ func CheckExecution(dir string, review *jq.Obj) *Execution {
 	state.Eligible = make(map[string]bool)
 	state.Expected = make(map[string][]string)
 	state.Checked = make(map[string][]any)
+	state.Origins = make(map[string][]string)
 	if state.Gap != "" {
 		return state
 	}
@@ -155,15 +157,6 @@ func (s *Execution) referencesMatch(docs ...*jq.Obj) bool {
 	return true
 }
 
-func sameReview(a, b *jq.Obj) bool {
-	left, err := json.Marshal(a.Fields)
-	if err != nil {
-		return false
-	}
-	right, err := json.Marshal(b.Fields)
-	return err == nil && bytes.Equal(left, right)
-}
-
 func readObject(dir, name string) (*jq.Obj, []byte) {
 	raw, err := readArtifact(dir, name, maxReceiptBytes)
 	if err != nil {
@@ -214,10 +207,7 @@ func (s *Execution) checkFiles(dir string, review *jq.Obj, raw []byte) string {
 	if manifest == nil || plan == nil || err != nil {
 		return "execution manifest, plan or diff missing"
 	}
-	if readcommon.FieldOf(manifest, fieldStatus) != "complete" {
-		return "execution manifest is incomplete"
-	}
-	head := readcommon.PrField(dir, executionHead)
+	head := readcommon.OpenBundle(dir).Head()
 	s.head = head
 	bindings := map[string]string{
 		executionIDKey: s.ID, executionHead: head, executionDiffSHA: digest(diff),
@@ -227,6 +217,10 @@ func (s *Execution) checkFiles(dir string, review *jq.Obj, raw []byte) string {
 		return "execution manifest " + gap
 	}
 
+	s.completedFinders(manifest)
+	if gap := s.planExpectations(plan, Findings(review)); gap != "" {
+		return gap
+	}
 	file, gap := boundReceipt(dir, head, bindings, Findings(review))
 	if gap != "" {
 		return gap
@@ -237,6 +231,9 @@ func (s *Execution) checkFiles(dir string, review *jq.Obj, raw []byte) string {
 	}
 	s.blockingGap(Findings(review))
 	s.specGap(review)
+	if readcommon.FieldOf(manifest, fieldStatus) != "complete" {
+		return "execution manifest is incomplete"
+	}
 	return ""
 }
 
@@ -317,7 +314,7 @@ func (s *Execution) acceptResult(expected map[string]map[string]bool, idx *evide
 		quoteStatus = "verified"
 	}
 	s.Checked[result.Sig] = append(s.Checked[result.Sig], jq.NewObj(fieldChecker, result.Checker,
-		fieldVerdict, result.Verdict, "quote_status", quoteStatus, "evidence", result.Evidence))
+		fieldVerdict, result.Verdict, "quote_status", quoteStatus, "evidence", result.Evidence, "quote", crossQuoteDocument(result.Quote)))
 	if !valid || result.Verdict != confirmed {
 		s.Eligible[result.Sig] = false
 	}
@@ -334,10 +331,11 @@ func (s *Execution) initializeChecks(expected map[string]map[string]bool, findin
 			return "execution plan omits a finding"
 		}
 		s.Eligible[sig] = true
-		for checker := range expected[sig] {
-			s.Expected[sig] = append(s.Expected[sig], checker)
-		}
+		s.Expected[sig] = nil
+		s.Origins[sig] = nil
+		s.assignCheckers(sig, expected[sig])
 		slices.Sort(s.Expected[sig])
+		slices.Sort(s.Origins[sig])
 	}
 	return ""
 }
@@ -382,7 +380,7 @@ func (s *Execution) Stamp(entries []any) {
 	if !s.Active {
 		return
 	}
-	if s.Gap == "" && readcommon.PrField(s.dir, executionHead) != s.head {
+	if s.Gap == "" && readcommon.OpenBundle(s.dir).Head() != s.head {
 		s.seal("bundle head changed before applying cross checks")
 	}
 	for _, row := range entries {
@@ -409,7 +407,14 @@ func (s *Execution) stampEntry(row any) {
 	if checks == nil {
 		checks = []any{}
 	}
-	cross := jq.NewObj(executionIDKey, s.ID, fieldStatus, "pending",
+	status := "pending"
+	if s.Gap == "" && s.Eligible[sig] {
+		status = "confirmed"
+	}
+	if hasRefutation(checks) {
+		status = "contested"
+	}
+	cross := jq.NewObj(executionIDKey, s.ID, fieldStatus, status, "origins", checkerValues(s.Origins[sig]),
 		"expected", checkerValues(s.Expected[sig]), "checks", checks)
 	verification.Set("cross", cross)
 	if s.Gap == "" && s.Eligible[sig] && EligibleCross(cross) {
@@ -443,12 +448,12 @@ func (s *Execution) Problem() string {
 	return ""
 }
 
-// EligibleCross requires every assigned checker, rather than a status claim.
+// EligibleCross requires completed execution standing and every assigned checker.
 func EligibleCross(cross any) bool {
 	if cross == nil {
 		return true
 	}
-	if jq.StrOf(readcommon.FieldOf(cross, executionIDKey)) == "" {
+	if jq.StrOf(readcommon.FieldOf(cross, executionIDKey)) == "" || readcommon.FieldOf(cross, fieldStatus) != confirmed {
 		return false
 	}
 	expected := jq.Elements(readcommon.FieldOf(cross, "expected"))
@@ -512,7 +517,7 @@ func appendPriorChecks(checks []any, verification *jq.Obj) []any {
 		if readcommon.FieldOf(row, fieldVerdict) != refuted {
 			continue
 		}
-		checks = append(checks, jq.NewObj(fieldChecker, readcommon.FieldOf(row, fieldModel),
+		checks = append(checks, jq.NewObj(fieldChecker, readcommon.FieldOf(row, fieldChecker),
 			fieldVerdict, refuted, "quote_status", "unverified", fieldEvidence, readcommon.FieldOf(row, fieldEvidence)))
 	}
 	return checks
@@ -522,11 +527,39 @@ func (s *Execution) seal(gap string) {
 	s.Gap = gap
 	if gap != "" {
 		s.Eligible = make(map[string]bool)
-		s.Checked = nil
+		if gap != "execution manifest is incomplete" {
+			s.Checked = nil
+		}
 		s.SpecViolations = nil
 	}
 }
 
 func sameAggregate(root, review *jq.Obj) bool {
 	return sameReview(root, review) && aggregateVersion(root)
+}
+
+func crossQuoteDocument(quote *CodeQuote) any {
+	if quote == nil {
+		return nil
+	}
+	return jq.NewObj("path", quote.Path, "side", quote.Side, "line", quote.Line, "text", quote.Text)
+}
+
+func (s *Execution) planExpectations(plan *jq.Obj, findings []any) string {
+	expected, gap := expectedChecks(plan, findings)
+	if gap != "" {
+		return gap
+	}
+	return s.initializeChecks(expected, findings)
+}
+
+func (s *Execution) assignCheckers(sig string, expected map[string]bool) {
+	for checker := range expected {
+		s.Expected[sig] = append(s.Expected[sig], checker)
+		origin := "finder-1"
+		if checker == origin {
+			origin = "finder-2"
+		}
+		s.Origins[sig] = append(s.Origins[sig], origin)
+	}
 }
