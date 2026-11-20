@@ -497,7 +497,7 @@ func (st *state) previewDryRun(footerText string) {
 	}
 }
 
-func (st *state) dryRunResponse(ctx context.Context) (*core.PostResponse, *core.RefusalError) {
+func (st *state) dryRunResponse(ctx context.Context) (*Response, *core.RefusalError) {
 	if st.summaryMode() == summaryComment {
 		sum, ref := st.planSummary(ctx)
 		if ref != nil {
@@ -554,7 +554,7 @@ func (st *state) dryRunResponse(ctx context.Context) (*core.PostResponse, *core.
 		data.Provenance = *prov
 	}
 	st.applyProvenance(data)
-	return &core.PostResponse{
+	return &Response{
 		Repo: st.req.Repo, Pr: st.req.Pr, At: st.now,
 		Data:     data,
 		Warnings: st.warnings,
@@ -566,7 +566,7 @@ func (st *state) dryRunResponse(ctx context.Context) (*core.PostResponse, *core.
 // response. The CLI prints through this function and the tests decode the same
 // bytes, so a change to the argument list moves both instead of letting a test
 // render an approximation the CLI never emits.
-func RenderPostEnvelope(resp *core.PostResponse) *jq.Obj {
+func RenderPostEnvelope(resp *Response) *jq.Obj {
 	return core.RenderEnvelope("post", resp.Repo, resp.Pr, resp.At, resp.Next,
 		resp.Warnings, resp.Data.Wire(), nil)
 }

@@ -4,14 +4,13 @@ import (
 	"bytes"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
 func TestRemoteAuthority(t *testing.T) {
 	t.Parallel()
 	var warnings []string
-	st := postTestState(t.TempDir(), liveGuardHead, core.PostFlags{}, &warnings)
+	st := postTestState(t.TempDir(), liveGuardHead, Flags{}, &warnings)
 	st.body = "summary"
 	st.merged.Kept = []any{jq.NewObj("path", "a.go", "side", "RIGHT", "line", 10, "body", "broken")}
 	st.event = "COMMENT"
@@ -33,7 +32,7 @@ func TestRemoteAuthority(t *testing.T) {
 func TestRemoteMissingOnlyAndRearm(t *testing.T) {
 	t.Parallel()
 	var warnings []string
-	st := postTestState(t.TempDir(), liveGuardHead, core.PostFlags{}, &warnings)
+	st := postTestState(t.TempDir(), liveGuardHead, Flags{}, &warnings)
 	first := projectComment(jq.NewObj("path", "a.go", "side", "RIGHT", "line", 10, "body", "broken"), "")
 	second := projectComment(jq.NewObj("path", "b.go", "side", "RIGHT", "line", 20, "body", "another bug"), "")
 	st.comments = []any{first, second}
@@ -74,7 +73,7 @@ func TestRearmRecorded(t *testing.T) {
 	var warnings, human []string
 	cmdr := gitlabCommander(t)
 	cmdr.out[gitlabRecheckArgv] = scriptResult{stdout: "[{\"notes\":[" + prior.MarshalPretty() + "]}]"}
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	response, ref := Run(t.Context(), req)
 	if ref != nil {
 		t.Fatal(ref)

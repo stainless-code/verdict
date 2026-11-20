@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/pack"
 )
 
@@ -38,7 +37,7 @@ func TestPostRefusesMissingLock(t *testing.T) {
 	writePostLockPack(t, "")
 	postBundle(t, postReview)
 	var warnings, human []string
-	req := postTestReq(nil, core.PostFlags{
+	req := postTestReq(nil, Flags{
 		Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true,
 	}, &warnings, &human)
 	_, ref := Run(context.Background(), req)
@@ -63,7 +62,7 @@ func TestPostRefusesLockDrift(t *testing.T) {
 		})+`"}]}`)
 	postBundle(t, postReview)
 	var warnings, human []string
-	req := postTestReq(nil, core.PostFlags{
+	req := postTestReq(nil, Flags{
 		Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true,
 	}, &warnings, &human)
 	_, ref := Run(context.Background(), req)

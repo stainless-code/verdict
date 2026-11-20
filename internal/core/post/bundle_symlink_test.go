@@ -4,8 +4,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-
-	"github.com/stainless-code/verdict/internal/core"
 )
 
 // TestPostRefusesBundleSymlink verifies the published refusal or read contract.
@@ -34,7 +32,7 @@ func checkBundleSymlink(t *testing.T, component, tail string) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
-	_, ref := Run(t.Context(), &core.PostRequest{RepoRoot: root, Pr: "42", Flags: core.PostFlags{Approve: "false", DryRun: true}})
+	_, ref := Run(t.Context(), &Request{RepoRoot: root, Pr: "42", Flags: Flags{Approve: "false", DryRun: true}})
 	if ref == nil || ref.Code != "bad-config" {
 		t.Fatalf("refusal = %v; want bad-config", ref)
 	}

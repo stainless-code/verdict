@@ -371,7 +371,7 @@ func TestGitLabPostFailureStopsWithoutReplay(t *testing.T) {
 	cmdr := gitlabCommander(t)
 	cmdr.out[gitlabNotesArgv] = limit
 	var warnings []string
-	st := postTestState(dir, "", core.PostFlags{}, &warnings)
+	st := postTestState(dir, "", Flags{}, &warnings)
 	payload := postPayload("review body", eventComment, gitlabHead, []any{
 		jq.NewObj("path", "notes.txt", "line", 2, "side", "RIGHT", "body", "B"),
 		jq.NewObj("path", "notes.txt", "line", 1, "side", "RIGHT", "body", "C"),
@@ -405,7 +405,7 @@ func TestGitLabPostFailureSidecar(t *testing.T) {
 	cmdr := gitlabCommander(t)
 	cmdr.out[gitlabDiscussionsArgv] = scriptResult{stderr: "HTTP 400: Note position is invalid\n", fail: true}
 	var warnings []string
-	st := postTestState(dir, "", core.PostFlags{}, &warnings)
+	st := postTestState(dir, "", Flags{}, &warnings)
 	payload := postPayload("review body", eventComment, gitlabHead, []any{
 		jq.NewObj("path", "notes.txt", "line", 2, "side", "RIGHT", "body", "B"),
 	})
@@ -432,7 +432,7 @@ func TestGitLabPostFailureWithoutStderr(t *testing.T) {
 	cmdr := gitlabCommander(t)
 	cmdr.out[gitlabDiscussionsArgv] = scriptResult{fail: true}
 	var warnings []string
-	st := postTestState(dir, "", core.PostFlags{}, &warnings)
+	st := postTestState(dir, "", Flags{}, &warnings)
 	payload := postPayload("review body", eventComment, gitlabHead, []any{
 		jq.NewObj("path", "notes.txt", "line", 2, "side", "RIGHT", "body", "B"),
 	})
@@ -506,7 +506,7 @@ func TestRunPostGitLabSubmits(t *testing.T) {
 	writeGitLabBundle(t, "gitlab", gitlabBundleReview)
 	cmdr := gitlabCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -524,7 +524,7 @@ func TestRunPostGitLabApprovesWhenBound(t *testing.T) {
 		`"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new line"}]}`)
 	cmdr := gitlabCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{
+	req := postTestReq(cmdr, Flags{
 		Approve: "true", Bind: true, Force: true, ReviewFile: ".verdict/state/7/review.json",
 	}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
@@ -551,7 +551,7 @@ func TestRunPostGitLabRefusesRepostFromFetchedMarker(t *testing.T) {
 	writeGitLabBundle(t, "gitlab", gitlabBundleReview)
 	cmdr := gitlabCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	if _, ref := Run(context.Background(), req); ref != nil {
 		t.Fatalf("first Run refusal: %v", ref)
 	}
@@ -571,7 +571,7 @@ func TestRunPostRefusesHostWithoutSubmit(t *testing.T) {
 	writeGitLabBundle(t, "bitbucket", gitlabBundleReview)
 	cmdr := gitlabCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	_, ref := Run(context.Background(), req)
 	if ref == nil || ref.Code != "provider-unimplemented" {
 		t.Fatalf("ref = %v, want provider-unimplemented", ref)
@@ -664,7 +664,7 @@ func assertOpenCount(t *testing.T, raw string, want int, bad bool) {
 }
 
 // assertGitLabRunData pins the envelope a posted comment review returns.
-func assertGitLabRunData(t *testing.T, resp *core.PostResponse) {
+func assertGitLabRunData(t *testing.T, resp *Response) {
 	t.Helper()
 	if resp.Data.Event != eventComment || resp.Data.CommitID != gitlabHead {
 		t.Errorf("data = %+v, want a COMMENT review of %s", resp.Data, gitlabHead)
@@ -747,7 +747,7 @@ func refetchThenRepost(t *testing.T, note string, warnings, human *[]string) *co
 		t.Fatal(err)
 	}
 	second.out[gitlabRecheckArgv] = scriptResult{stdout: string(live)}
-	req := postTestReq(second, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, warnings, human)
+	req := postTestReq(second, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, warnings, human)
 	_, ref := Run(context.Background(), req)
 	if got := countCalls(second, gitlabNotesArgv); got != 0 {
 		t.Errorf("retry reposted summary %d times, want 0", got)

@@ -56,10 +56,10 @@ func writePostProvenance(t *testing.T) {
 	}
 }
 
-func runPostDryRun(t *testing.T, prov, jsonMode bool) (*core.PostResponse, []string, []string) {
+func runPostDryRun(t *testing.T, prov, jsonMode bool) (*Response, []string, []string) {
 	t.Helper()
 	var warnings, human []string
-	flags := core.PostFlags{DryRun: true, Approve: "false", ReviewFile: ".verdict/state/7/review.json", Provenance: prov}
+	flags := Flags{DryRun: true, Approve: "false", ReviewFile: ".verdict/state/7/review.json", Provenance: prov}
 	req := postTestReq(postCommander(t), flags, &warnings, &human)
 	req.JSONMode = jsonMode
 	resp, ref := Run(context.Background(), req)
@@ -125,7 +125,7 @@ type postProvenanceWire struct {
 	Truncated []core.ProvenanceTruncatedRow `json:"truncated"`
 }
 
-func decodePostProvenance(t *testing.T, resp *core.PostResponse) postProvenanceWire {
+func decodePostProvenance(t *testing.T, resp *Response) postProvenanceWire {
 	t.Helper()
 	var decoded postProvenanceWire
 	if err := json.Unmarshal([]byte(jq.PrettyOrdered(resp.Data.Wire())), &decoded); err != nil {

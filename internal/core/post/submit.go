@@ -351,7 +351,7 @@ func postOnce(ctx context.Context, cmdr Commander, provider string, env map[stri
 	return writer.post(ctx, cmdr, env, core.CapabilitiesFor(provider), repo, pr, dir, payload)
 }
 
-func (st *state) submit(ctx context.Context) (*core.PostResponse, *core.RefusalError) {
+func (st *state) submit(ctx context.Context) (*Response, *core.RefusalError) {
 	cmdr, ref := st.commander()
 	if ref != nil {
 		return nil, ref
@@ -609,7 +609,7 @@ func stampProvenance(st *state, receipt *core.Post) error {
 	return nil
 }
 
-func (st *state) successResponse(obj *jq.Obj, posted string) *core.PostResponse {
+func (st *state) successResponse(obj *jq.Obj, posted string) *Response {
 	payload, _, _ := st.floorPayload()
 	nOpen, nDeferred, nAddressed := postCounts(payload)
 	var next string
@@ -656,7 +656,7 @@ func (st *state) successResponse(obj *jq.Obj, posted string) *core.PostResponse 
 		st.human(strings.TrimRight(posted, newline))
 		st.printProvenanceTable()
 	}
-	return &core.PostResponse{
+	return &Response{
 		Repo: st.req.Repo, Pr: st.req.Pr, At: st.now,
 		Data:     data,
 		Warnings: st.warnings,

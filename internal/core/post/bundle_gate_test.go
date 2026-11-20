@@ -16,7 +16,7 @@ const missingBundleHint = "try: run the fetch/record step named above first, the
 
 type bundleGateCase struct {
 	name     string
-	flags    core.PostFlags
+	flags    Flags
 	setup    func(t *testing.T)
 	wantCode string
 	wantMsg  []string
@@ -33,28 +33,28 @@ func TestRunGatesBeforeStoreBackfill(t *testing.T) {
 	for _, tc := range []bundleGateCase{
 		{
 			name:     "no bundle dir",
-			flags:    core.PostFlags{Approve: "false", ReviewFile: review},
+			flags:    Flags{Approve: "false", ReviewFile: review},
 			setup:    closed,
 			wantCode: codeMissingBundle,
 			wantMsg:  []string{"missing .verdict/state/7 ", "run fetch acme/app 7 first"},
 		},
 		{
 			name:     "no bundle dir on dry run",
-			flags:    core.PostFlags{Approve: "false", ReviewFile: review, DryRun: true},
+			flags:    Flags{Approve: "false", ReviewFile: review, DryRun: true},
 			setup:    closed,
 			wantCode: codeMissingBundle,
 			wantMsg:  []string{"missing .verdict/state/7 ", "run fetch acme/app 7 first"},
 		},
 		{
 			name:     "bundle dir without review",
-			flags:    core.PostFlags{Approve: "false", ReviewFile: review},
+			flags:    Flags{Approve: "false", ReviewFile: review},
 			setup:    dirOnly,
 			wantCode: codeMissingReviewFile,
 			wantMsg:  []string{"missing .verdict/state/7/review.json"},
 		},
 		{
 			name:     "bundle without diff",
-			flags:    core.PostFlags{Approve: "false", ReviewFile: review},
+			flags:    Flags{Approve: "false", ReviewFile: review},
 			setup:    noDiff,
 			wantCode: codeMissingDiff,
 			wantMsg:  []string{"missing .verdict/state/7/full.diff"},

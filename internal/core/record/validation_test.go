@@ -121,18 +121,18 @@ func (c *validationCommander) Run(_ context.Context, cmd *core.Command) (core.Re
 	}
 }
 
-func runValidationPost(t *testing.T, flags core.PostFlags, floors ...string) (*core.PostResponse, *core.RefusalError, *validationCommander) {
+func runValidationPost(t *testing.T, flags postcore.Flags, floors ...string) (*postcore.Response, *core.RefusalError, *validationCommander) {
 	t.Helper()
 	resp, ref, cmdr, _ := runValidationPostProgress(t, flags, floors...)
 	return resp, ref, cmdr
 }
 
-func runValidationPostProgress(t *testing.T, flags core.PostFlags, floors ...string) (*core.PostResponse, *core.RefusalError, *validationCommander, []string) {
+func runValidationPostProgress(t *testing.T, flags postcore.Flags, floors ...string) (*postcore.Response, *core.RefusalError, *validationCommander, []string) {
 	t.Helper()
 	cmdr := &validationCommander{t: t}
 	progress := &collector{}
 	root := ""
-	req := &core.PostRequest{
+	req := &postcore.Request{
 		Runtime:      &core.Runtime{Env: map[string]string{}, Now: testRuntime(progress).Now, Progress: progress},
 		Repo:         "acme/app",
 		Pr:           "7",
@@ -147,8 +147,8 @@ func runValidationPostProgress(t *testing.T, flags core.PostFlags, floors ...str
 	return resp, ref, cmdr, progress.warns
 }
 
-func validationFlags() core.PostFlags {
-	return core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}
+func validationFlags() postcore.Flags {
+	return postcore.Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}
 }
 
 func decodeEntries(t *testing.T, path string) []map[string]any {

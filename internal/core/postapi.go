@@ -4,30 +4,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// PostFlags carries the resolved post options: the adapter parses argv and
-// the service receives values only.
-type PostFlags struct {
-	Approve     string `enum:"true|false"`
-	MinSeverity string `enum:"critical|important|informational|off"`
-	ReviewFile  string
-	// Summary opts into maintaining one separate PR-level summary comment
-	// (comment) updated in place across posts, or keeps it disabled (off).
-	Summary        string `enum:"off|comment"`
-	RequestChanges bool
-	Bind           bool
-	Force          bool
-	DryRun         bool
-	// RequireCoverage refuses an absent or partial diff-coverage
-	// attestation; --force never bypasses it.
-	RequireCoverage bool
-	// AllowSecretValues publishes a review whose text carries a
-	// secret-shaped value: the pre-submit scan refuses
-	// post-secret-shaped without it, and the receipt records what it let
-	// through.
-	AllowSecretValues bool
-	Provenance        bool
-}
-
 // PostSummary records the planned (on dry-run) or executed (on real post)
 // PR-level summary comment action.
 type PostSummary struct { //nolint:govet // field order is the published property order
@@ -37,33 +13,6 @@ type PostSummary struct { //nolint:govet // field order is the published propert
 	Marker         string `json:"marker,omitempty"          optional:"true"`
 	DuplicateCount int    `json:"duplicate_count,omitempty" min:"0"         optional:"true"`
 	Note           string `json:"note,omitempty"            optional:"true"`
-}
-
-// PostRequest is the post service invocation: the read runtime and
-// positionals, the resolved options, the render configuration, the JSON-mode
-// flag, and the warnings the adapter already accumulated (prefs).
-type PostRequest struct { //nolint:govet // field grouping documents the request surface
-	ReadRequest
-	Flags PostFlags
-	// RequireRigor names the per-tier evidence floors this invocation
-	// demands (`critical=walked`). A named tier also gates: below-floor
-	// findings refuse rigor-below-floor unless --force records the bypass.
-	RequireRigor []string
-	Effective    Effective
-	JSONMode     bool
-	Warnings     []string
-}
-
-// PostResponse carries the post outcome: the envelope identity, the typed
-// data, and the accumulated warnings. Human lines stream live through the
-// runtime progress observer, so the response carries no rendered lines.
-type PostResponse struct { //nolint:govet // field grouping documents the response surface
-	Repo     string
-	Pr       string
-	At       string
-	Data     *PostData
-	Warnings []string
-	Next     string
 }
 
 // PostData is the post verb's --json data profile (dry-run and real post).

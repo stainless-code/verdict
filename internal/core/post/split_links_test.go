@@ -5,8 +5,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/stainless-code/verdict/internal/core"
 )
 
 func TestSplitPreFooterPerPartEvidenceLinkDefs(t *testing.T) {
@@ -45,7 +43,7 @@ func TestSplitRunsAfterFinalBannersStaysWithinLimit(t *testing.T) {
 	live := driftLive
 	cmdr := postBundleCommander(t, &live)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)

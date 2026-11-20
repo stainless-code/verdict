@@ -55,7 +55,7 @@ func TestPartialPublishRecovery(t *testing.T) {
 		comments = append(comments, projectComment(jq.NewObj("path", "notes.txt", "side", "RIGHT", "line", 2, "body", body), ""))
 	}
 	newState := func() *state {
-		st := postTestState(dir, gitlabHead, core.PostFlags{}, &warnings)
+		st := postTestState(dir, gitlabHead, Flags{}, &warnings)
 		st.comments = comments
 		st.event = "COMMENT"
 		st.payloads = []string{postPayload("summary", "COMMENT", gitlabHead, comments)}
@@ -109,7 +109,7 @@ func TestReviewRetryWithoutFetch(t *testing.T) {
 	writeGitLabBundle(t, "gitlab", `{"schema_version":"1","body":"> ⚠️ Three findings need attention.","approved":false,"comments":[{"path":"notes.txt","line":2,"body":"first bug"},{"path":"notes.txt","line":3,"body":"second bug"},{"path":"notes.txt","line":2,"body":"third bug"}]}`)
 	host := &failingDiscussionHost{failAt: 2}
 	var warnings, human []string
-	req := postTestReq(host, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	req := postTestReq(host, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	if _, ref := Run(t.Context(), req); ref == nil || ref.Code != codePostFailed {
 		t.Fatalf("first run = %v, want partial failure", ref)
 	}
@@ -130,7 +130,7 @@ func TestLivePublicationFailsClosed(t *testing.T) {
 			writeGitLabBundle(t, "gitlab", gitlabBundleReview)
 			host := &failingDiscussionHost{readFail: body == "failure", readBody: body}
 			var warnings, human []string
-			req := postTestReq(host, core.PostFlags{Approve: "false", Force: true, ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+			req := postTestReq(host, Flags{Approve: "false", Force: true, ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 			if _, ref := Run(t.Context(), req); ref == nil || ref.Code != codePostFailed {
 				t.Fatalf("read failure = %v", ref)
 			}

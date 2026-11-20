@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/config"
-	"github.com/stainless-code/verdict/internal/core"
+	postcore "github.com/stainless-code/verdict/internal/core/post"
 	"github.com/stainless-code/verdict/internal/gate"
 	"github.com/stainless-code/verdict/internal/run"
 )
@@ -74,7 +74,7 @@ func defaultsRows() [][]string {
 		})
 	}
 	rows = append(rows,
-		[]string{"post", "--bind", defaultsCell(core.PostFlags{}.Bind)},
+		[]string{"post", "--bind", defaultsCell(postcore.Flags{}.Bind)},
 		[]string{"gate", "--live", gate.DefaultLive},
 		[]string{"gate", "--coverage", gate.DefaultCoverage},
 		[]string{"run", "--timeout", run.DefaultTimeoutS},

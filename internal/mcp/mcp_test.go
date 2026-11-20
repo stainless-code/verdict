@@ -271,7 +271,7 @@ func postFixture(t *testing.T) {
 	}
 }
 
-// TestPostTool proves the post tool is registered from core.PostRequest, a
+// TestPostTool proves the post tool is registered from postcore.Request, a
 // scripted dry run returns the envelope data without posting, and a typed
 // refusal keeps isError/code.
 //

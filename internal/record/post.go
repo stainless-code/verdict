@@ -47,7 +47,7 @@ func RunPost(ctx context.Context, r *cli.Runner, args []string, req *Request) in
 // the injected runtime (environment, clock, progress, and the production
 // split-stream commander), the render configuration, and the adapter-routed
 // flags.
-func postRequest(r *cli.Runner, req *Request, inv *postInvocation) *core.PostRequest {
+func postRequest(r *cli.Runner, req *Request, inv *postInvocation) *postcore.Request {
 	root := req.Root
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
@@ -56,7 +56,7 @@ func postRequest(r *cli.Runner, req *Request, inv *postInvocation) *core.PostReq
 		},
 		Repo: req.Repo, Pr: req.Pr, Forces: req.Forces, Root: &root, RepoRoot: req.RepoRoot,
 	}
-	return &core.PostRequest{
+	return &postcore.Request{
 		ReadRequest:  read,
 		Flags:        inv.flags,
 		RequireRigor: inv.requireRigor,
@@ -69,7 +69,7 @@ func postRequest(r *cli.Runner, req *Request, inv *postInvocation) *core.PostReq
 // parsePostFlags strips post's flags, reporting unknown ones. A value flag
 // with no operand is a usage error.
 func parsePostFlags(r *cli.Runner, args []string, dir string) (*postInvocation, int, bool) {
-	inv := &postInvocation{flags: core.PostFlags{Approve: "false", ReviewFile: dir + "/review.json"}}
+	inv := &postInvocation{flags: postcore.Flags{Approve: "false", ReviewFile: dir + "/review.json"}}
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch {
@@ -97,7 +97,7 @@ func parsePostFlags(r *cli.Runner, args []string, dir string) (*postInvocation, 
 // the re-entry line share.
 const postApproveFlag = "--approve"
 
-func parsePostEqFlag(f *core.PostFlags, arg string) bool {
+func parsePostEqFlag(f *postcore.Flags, arg string) bool {
 	name, val, ok := strings.Cut(arg, postEqSep)
 	if !ok {
 		return false
@@ -114,7 +114,7 @@ func parsePostEqFlag(f *core.PostFlags, arg string) bool {
 	}
 }
 
-func applyPostSwitchFlag(f *core.PostFlags, arg string) bool {
+func applyPostSwitchFlag(f *postcore.Flags, arg string) bool {
 	switch arg {
 	case "--request-changes":
 		f.RequestChanges = true
@@ -157,7 +157,7 @@ var postWants = map[string]string{
 }
 
 type postInvocation struct {
-	flags        core.PostFlags
+	flags        postcore.Flags
 	requireRigor []string
 }
 

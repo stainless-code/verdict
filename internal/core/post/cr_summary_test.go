@@ -4,14 +4,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
 func TestCROmittedGitLabSummary(t *testing.T) {
 	t.Parallel()
 	var warnings []string
-	st := postTestState(t.TempDir(), gitlabHead, core.PostFlags{}, &warnings)
+	st := postTestState(t.TempDir(), gitlabHead, Flags{}, &warnings)
 	st.body = "A rendered summary already published."
 	st.event = "COMMENT"
 	st.merged.Kept = []any{jq.NewObj("path", "notes.txt", "side", "RIGHT", "line", 2, "body", "Missing inline finding.")}
@@ -50,7 +49,7 @@ func TestCRMalformedNotesFailClosed(t *testing.T) {
 func TestCRFollowupRetryAdvice(t *testing.T) {
 	t.Parallel()
 	var warnings []string
-	st := postTestState(t.TempDir(), liveGuardHead, core.PostFlags{}, &warnings)
+	st := postTestState(t.TempDir(), liveGuardHead, Flags{}, &warnings)
 	st.event = "COMMENT"
 	st.body = "The first rendered review summary."
 	st.extraParts = []string{"Remaining follow-up text."}
@@ -75,7 +74,7 @@ func assertCRMalformedNotes(t *testing.T, raw string) {
 	writeGitLabBundle(t, "gitlab", gitlabBundleReview)
 	host := &failingDiscussionHost{readBody: raw}
 	var warnings, human []string
-	req := postTestReq(host, core.PostFlags{Approve: "false", Force: true, ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	req := postTestReq(host, Flags{Approve: "false", Force: true, ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	if _, ref := Run(t.Context(), req); ref == nil || ref.Code != codePostFailed {
 		t.Fatalf("malformed nested notes accepted: %v", ref)
 	}

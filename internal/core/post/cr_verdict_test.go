@@ -2,14 +2,12 @@ package postcore
 
 import (
 	"testing"
-
-	"github.com/stainless-code/verdict/internal/core"
 )
 
 func crVerdictState(t *testing.T, event string) *state {
 	t.Helper()
 	var warnings []string
-	st := postTestState(t.TempDir(), liveGuardHead, core.PostFlags{}, &warnings)
+	st := postTestState(t.TempDir(), liveGuardHead, Flags{}, &warnings)
 	st.event = event
 	st.body = "A rendered review summary."
 	st.buildPayloads()

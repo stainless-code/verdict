@@ -58,7 +58,7 @@ func TestCRApprovalRetriesAfterSummary(t *testing.T) {
 		`"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new line"}]}`)
 	host := &approvalRetryHost{}
 	var warnings, human []string
-	req := postTestReq(host, core.PostFlags{Approve: "true", Bind: true, ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	req := postTestReq(host, Flags{Approve: "true", Bind: true, ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	if _, ref := Run(t.Context(), req); ref == nil || ref.Code != codePostFailed {
 		t.Fatalf("first approval = %v", ref)
 	}

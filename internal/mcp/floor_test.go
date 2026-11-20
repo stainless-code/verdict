@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	postcore "github.com/stainless-code/verdict/internal/core/post"
 )
 
 func TestPostFloorDecoder(t *testing.T) {
@@ -12,7 +13,7 @@ func TestPostFloorDecoder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var req core.PostRequest
+	var req postcore.Request
 	decodePost(&req, a)
 	if err := a.done(); err != nil {
 		t.Fatal(err)

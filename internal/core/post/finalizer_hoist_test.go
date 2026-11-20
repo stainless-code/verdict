@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -42,7 +41,7 @@ func TestSuppressionDoesNotChangeGate(t *testing.T) {
 
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{
+	req := postTestReq(cmdr, Flags{
 		Approve: "true", Bind: true, ReviewFile: ".verdict/state/7/review.json",
 	}, &warnings, &human)
 	_, ref := Run(context.Background(), req)
@@ -68,7 +67,7 @@ func TestRunForceSameSHAFallsThrough(t *testing.T) {
 	first := seedPostedOnce(t)
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{
+	req := postTestReq(cmdr, Flags{
 		Approve: "false", ReviewFile: ".verdict/state/7/review.json", Force: true,
 	}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
@@ -103,7 +102,7 @@ func seedPostedOnce(t *testing.T) string {
 	t.Helper()
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("seed post refused: %v", ref)

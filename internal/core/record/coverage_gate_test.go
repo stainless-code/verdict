@@ -373,10 +373,10 @@ func (c *postCommanderStub) Run(_ context.Context, cmd *core.Command) (core.Resu
 
 // postRequest builds the post request the adapter would pass the service, over
 // the scripted commander and this test's clock.
-func postRequest(t *testing.T, flags core.PostFlags) *core.PostRequest {
+func postRequest(t *testing.T, flags postcore.Flags) *postcore.Request {
 	t.Helper()
 	root := ""
-	return &core.PostRequest{
+	return &postcore.Request{
 		Runtime: &core.Runtime{
 			Env:       map[string]string{},
 			Now:       func() time.Time { return fixedNow },
@@ -397,7 +397,7 @@ func postRequest(t *testing.T, flags core.PostFlags) *core.PostRequest {
 // shared merge, so force has nothing to skip.
 func TestPostCoverageGateIgnoresForce(t *testing.T) {
 	postCoverageBundle(t, partialCoverage())
-	_, ref := postcore.Run(context.Background(), postRequest(t, core.PostFlags{
+	_, ref := postcore.Run(context.Background(), postRequest(t, postcore.Flags{
 		Approve:         "false",
 		ReviewFile:      ".verdict/state/7/review.json",
 		Force:           true,
@@ -427,7 +427,7 @@ func TestPostReceiptCarriesCoverageOnlyWhenAttested(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			postCoverageBundle(t, tc.review)
-			_, ref := postcore.Run(context.Background(), postRequest(t, core.PostFlags{
+			_, ref := postcore.Run(context.Background(), postRequest(t, postcore.Flags{
 				Approve:    "false",
 				ReviewFile: ".verdict/state/7/review.json",
 			}))

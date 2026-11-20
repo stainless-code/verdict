@@ -50,7 +50,7 @@ func TestRunPostFailedCarriesStderrHead(t *testing.T) {
 			postBundle(t, postReview)
 			cmdr := postFailCommander(t, scriptResult{stderr: tc.stderr, fail: true})
 			var warnings, human []string
-			req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+			req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 			_, ref := Run(context.Background(), req)
 			if ref == nil || ref.Code != codePostFailed {
 				t.Fatalf("ref = %v, want post-failed", ref)
@@ -97,7 +97,7 @@ func TestRunReceiptProvenanceTriple(t *testing.T) {
 	writeProvenanceFixture(t)
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -148,7 +148,7 @@ func TestRunSuccessNextLine(t *testing.T) {
 			postBundle(t, tc.review)
 			cmdr := postCommander(t)
 			var warnings, human []string
-			req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+			req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 			resp, ref := Run(context.Background(), req)
 			if ref != nil {
 				t.Fatalf("Run refusal: %v", ref)
@@ -173,7 +173,7 @@ func TestPostRetryWarningNumbering(t *testing.T) {
 		{stdout: `{"id":101,"state":"commented"}`},
 	}}
 	var warnings []string
-	st := postTestState(t.TempDir(), "", core.PostFlags{}, &warnings)
+	st := postTestState(t.TempDir(), "", Flags{}, &warnings)
 	posted, ref := st.postOneWithRetry(context.Background(), cmdr, "{}")
 	if ref != nil {
 		t.Fatalf("retry fell through to a refusal: %v", ref)
@@ -353,7 +353,7 @@ func TestRunDryRunFooterDisposition(t *testing.T) {
 			writeProvenanceFixture(t)
 			cmdr := postCommander(t)
 			var warnings, human []string
-			req := postTestReq(cmdr, core.PostFlags{
+			req := postTestReq(cmdr, Flags{
 				Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true,
 			}, &warnings, &human)
 			req.Effective.PublishFooter = tc.footer

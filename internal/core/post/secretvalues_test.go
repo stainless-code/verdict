@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -35,7 +34,7 @@ func TestRunRefusesSecretShapedBeforeHostCalls(t *testing.T) {
 	postBundle(t, secretFindingsReview)
 	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{}}
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	_, ref := Run(context.Background(), req)
 	if ref == nil {
 		t.Fatal("secret-shaped review posted; want a refusal")
@@ -71,7 +70,7 @@ func TestRunDryRunWarnsOnSecretShaped(t *testing.T) {
 	postBundle(t, secretFindingsReview)
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("dry run refused: %v", ref)
@@ -105,7 +104,7 @@ func TestRunAllowSecretValuesRecordsOverride(t *testing.T) {
 	postBundle(t, secretSummaryReview)
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{
+	req := postTestReq(cmdr, Flags{
 		Approve: "false", ReviewFile: ".verdict/state/7/review.json", AllowSecretValues: true,
 	}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
@@ -241,7 +240,7 @@ func TestRunRefusesSecretInheritedFromStoredBrief(t *testing.T) {
 	seedStoredSecretBrief(t)
 	var warnings, human []string
 	cmdr := postCommander(t)
-	second := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	second := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	_, ref := Run(context.Background(), second)
 	if ref == nil || ref.Code != "post-secret-shaped" {
 		t.Fatalf("inherited secret brief: refusal = %v, want post-secret-shaped", ref)
@@ -262,7 +261,7 @@ func seedStoredSecretBrief(t *testing.T) {
 	t.Chdir(dir)
 	postBundle(t, secretBriefReview)
 	var warnings, human []string
-	first := postTestReq(postCommander(t), core.PostFlags{
+	first := postTestReq(postCommander(t), Flags{
 		Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true, AllowSecretValues: true,
 	}, &warnings, &human)
 	if _, ref := Run(context.Background(), first); ref != nil {

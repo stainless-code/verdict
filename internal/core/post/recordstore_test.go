@@ -58,7 +58,7 @@ func TestAdoptStoredApprovalPublishesTheRecordedDecision(t *testing.T) {
 	t.Chdir(dir)
 	writeRecordedBundle(t, dir, recordedDecision)
 	var warnings []string
-	p := postTestState(dir, storedHead, core.PostFlags{ReviewFile: dir + "/review.json"}, &warnings)
+	p := postTestState(dir, storedHead, Flags{ReviewFile: dir + "/review.json"}, &warnings)
 	p.merged = recordcore.MergeResult{Approval: &core.ApprovalReceipt{Approved: true, Reason: "no gating findings", Tier: "important"}}
 
 	if ref := p.adoptStoredApproval(); ref != nil {
@@ -81,7 +81,7 @@ func TestAdoptStoredApprovalRefusesAMovedReview(t *testing.T) {
 		t.Fatal(err)
 	}
 	var warnings []string
-	p := postTestState(dir, storedHead, core.PostFlags{ReviewFile: dir + "/review.json"}, &warnings)
+	p := postTestState(dir, storedHead, Flags{ReviewFile: dir + "/review.json"}, &warnings)
 	computed := &core.ApprovalReceipt{Approved: true, Reason: "no gating findings", Tier: "important"}
 	p.merged = recordcore.MergeResult{Approval: computed}
 
@@ -102,7 +102,7 @@ func TestAdoptStoredApprovalIgnoresAnUnrecordedBundle(t *testing.T) {
 	t.Chdir(dir)
 	postBundle(t, cleanFindingsReview)
 	var warnings []string
-	p := postTestState(dir, storedHead, core.PostFlags{ReviewFile: dir + "/review.json"}, &warnings)
+	p := postTestState(dir, storedHead, Flags{ReviewFile: dir + "/review.json"}, &warnings)
 	computed := &core.ApprovalReceipt{Approved: true, Reason: "no gating findings", Tier: "important"}
 	p.merged = recordcore.MergeResult{Approval: computed}
 
@@ -140,7 +140,7 @@ func TestBlockClauseBodyDoesNotSayClean(t *testing.T) {
 
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -185,7 +185,7 @@ func TestInsufficientRecordIsPublishedNotApproved(t *testing.T) {
 
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: dir + "/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: dir + "/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -214,7 +214,7 @@ func TestStoredInsufficientDecisionRelandsBody(t *testing.T) {
 	writeRecordedBundle(t, bundle, insufficientDecision)
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: bundle + "/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: bundle + "/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -237,7 +237,7 @@ func TestBindingApprovalRefusesInsufficientDecision(t *testing.T) {
 	postBundle(t, receiptlessReview)
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{
+	req := postTestReq(cmdr, Flags{
 		Approve: "true", Bind: true, Force: true, ReviewFile: ".verdict/state/7/review.json",
 	}, &warnings, &human)
 	_, ref := Run(context.Background(), req)
@@ -264,7 +264,7 @@ func TestStoredInsufficientDecisionRefusesBindingApproval(t *testing.T) {
 	writeRecordedBundle(t, ".verdict/state/7", insufficientDecision)
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{
+	req := postTestReq(cmdr, Flags{
 		Approve: "true", Bind: true, Force: true, ReviewFile: ".verdict/state/7/review.json",
 	}, &warnings, &human)
 	_, ref := Run(context.Background(), req)

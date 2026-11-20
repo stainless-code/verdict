@@ -19,7 +19,7 @@ import (
 func policyTestState(entries []any, rs *config.RunState) *state {
 	var warnings []string
 	st := postTestState(".", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		core.PostFlags{Approve: "false"}, &warnings)
+		Flags{Approve: "false"}, &warnings)
 	st.merged.Entries = entries
 	st.now = "2026-11-06T00:00:00Z"
 	st.dir = filepath.Join(".verdict", "state", "7")
@@ -332,7 +332,7 @@ func TestApproveBindWithPolicyProvesNoCircularPrerequisite(t *testing.T) {
 	policyBundleWithPolicy(t)
 	cmdr := policyCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "true", Bind: true, Force: true, ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "true", Bind: true, Force: true, ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run approval: %v", ref)
@@ -384,7 +384,7 @@ func TestApproveWithoutBindRefusesForceProof(t *testing.T) {
 	policyBundleWithPolicy(t)
 	cmdr := policyCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "true", Force: true, ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "true", Force: true, ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	_, ref := Run(context.Background(), req)
 	if ref == nil || ref.Code != CodeBindRequired {
 		t.Fatalf("approval without bind under force = %v, want bind-required", ref)
@@ -524,7 +524,7 @@ func TestPostReceiptStaysBareWithoutExclusions(t *testing.T) {
 // TestComplianceGateKeepsNonApprovalEvidence
 // keeps failed observations for comments and negative verdicts.
 func TestComplianceGateKeepsNonApprovalEvidence(t *testing.T) {
-	for _, flags := range []core.PostFlags{
+	for _, flags := range []Flags{
 		{Approve: approveFalse},
 		{Approve: approveFalse, Bind: true, RequestChanges: true},
 		{Approve: approveTrue},

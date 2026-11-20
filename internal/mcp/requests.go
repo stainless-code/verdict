@@ -21,6 +21,7 @@ import (
 	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
+	postcore "github.com/stainless-code/verdict/internal/core/post"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
@@ -346,7 +347,7 @@ func wireNext(ctx context.Context, b *bindings, req *core.NextRequest) error {
 	return nil
 }
 
-func decodePost(req *core.PostRequest, a *args) {
+func decodePost(req *postcore.Request, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.strings("requireRigor", &req.RequireRigor)
@@ -365,7 +366,7 @@ func decodePost(req *core.PostRequest, a *args) {
 	})
 }
 
-func wirePost(ctx context.Context, b *bindings, req *core.PostRequest) error {
+func wirePost(ctx context.Context, b *bindings, req *postcore.Request) error {
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
 		return err
 	}

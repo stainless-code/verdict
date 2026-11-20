@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
+	postcore "github.com/stainless-code/verdict/internal/core/post"
 )
 
 // TestDecodePostCarriesTheSecretOverride proves the MCP surface reaches the
@@ -39,7 +39,7 @@ func decodePostOverride(t *testing.T, args string) bool {
 	if err != nil {
 		t.Fatalf("newArgs(%s): %v", args, err)
 	}
-	var req core.PostRequest
+	var req postcore.Request
 	decodePost(&req, a)
 	if err := a.done(); err != nil {
 		t.Fatalf("decodePost(%s): %v", args, err)

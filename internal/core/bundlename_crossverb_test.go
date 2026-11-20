@@ -125,8 +125,8 @@ func bundleVerbs() []bundleVerb {
 			return ref
 		}},
 		{name: "post", run: func(ctx context.Context, pr string) *core.RefusalError {
-			_, ref := postcore.Run(ctx, &core.PostRequest{
-				ReadRequest: bundleRead(pr), Flags: core.PostFlags{Approve: "true"},
+			_, ref := postcore.Run(ctx, &postcore.Request{
+				ReadRequest: bundleRead(pr), Flags: postcore.Flags{Approve: "true"},
 			})
 			return ref
 		}},

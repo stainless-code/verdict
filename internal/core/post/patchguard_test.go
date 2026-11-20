@@ -60,7 +60,7 @@ func guardCommander() core.Commander {
 
 // patchGuardState builds a guard test state over the canonical pair
 // whose injected commander recomputes the fixture identities.
-func patchGuardState(flags core.PostFlags, warnings *[]string) *state {
+func patchGuardState(flags Flags, warnings *[]string) *state {
 	p := postTestState(".verdict/state/1648", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", flags, warnings)
 	p.req.Commander = guardCommander()
 	return p
@@ -131,7 +131,7 @@ func TestPatchGuardRefusesSamePatchNewSHA(t *testing.T) {
 	const cur = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	patchGuardPair(t, cur, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb")
 	var warnings []string
-	p := patchGuardState(core.PostFlags{}, &warnings)
+	p := patchGuardState(Flags{}, &warnings)
 	ref := p.patchGuard(context.Background())
 	if ref == nil || ref.Code != "already-reviewed-patch" {
 		t.Fatalf("patchGuard = %v, want already-reviewed-patch", ref)
@@ -147,7 +147,7 @@ func TestPatchGuardForceRecords(t *testing.T) {
 	const cur, sib = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 	patchGuardPair(t, cur, sib)
 	var warnings []string
-	forced := patchGuardState(core.PostFlags{Force: true}, &warnings)
+	forced := patchGuardState(Flags{Force: true}, &warnings)
 	if ref := forced.patchGuard(context.Background()); ref != nil {
 		t.Fatalf("forced patchGuard = %v, want nil", ref)
 	}
@@ -181,7 +181,7 @@ func patchGuardProceeds(t *testing.T, setup func(t *testing.T), wantWarn string)
 	t.Chdir(dir)
 	setup(t)
 	var warnings []string
-	p := patchGuardState(core.PostFlags{}, &warnings)
+	p := patchGuardState(Flags{}, &warnings)
 	if ref := p.patchGuard(context.Background()); ref != nil {
 		t.Fatalf("patchGuard = %v, want nil", ref)
 	}
@@ -265,7 +265,7 @@ func TestPatchGuardDryRunSkips(t *testing.T) {
 	patchGuardBundle(t, "1648", patchGuardPatch, "git-patch-id", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", patchGuardDiff, false)
 	patchGuardBundle(t, "1649", patchGuardPatch, "git-patch-id", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", patchGuardDiff, true)
 	var warnings []string
-	p := patchGuardState(core.PostFlags{DryRun: true}, &warnings)
+	p := patchGuardState(Flags{DryRun: true}, &warnings)
 	if ref := p.patchGuard(context.Background()); ref != nil {
 		t.Fatalf("dry-run patchGuard = %v, want nil", ref)
 	}
@@ -367,11 +367,11 @@ func TestPatchGuardSameSHAWinsFirst(t *testing.T) {
 		t.Fatal(err)
 	}
 	var warnings []string
-	p := patchGuardState(core.PostFlags{}, &warnings)
+	p := patchGuardState(Flags{}, &warnings)
 	if ref := p.runGuards(context.Background()); ref == nil || ref.Code != "already-posted" {
 		t.Fatalf("runGuards = %v, want already-posted first", ref)
 	}
-	forced := patchGuardState(core.PostFlags{Force: true}, &warnings)
+	forced := patchGuardState(Flags{Force: true}, &warnings)
 	if ref := forced.runGuards(context.Background()); ref != nil {
 		t.Fatalf("forced runGuards = %v, want nil", ref)
 	}
@@ -402,7 +402,7 @@ func TestPatchGuardTamperedClaimProceeds(t *testing.T) {
 		t.Fatal(err)
 	}
 	var warnings []string
-	p := patchGuardState(core.PostFlags{}, &warnings)
+	p := patchGuardState(Flags{}, &warnings)
 	if ref := p.patchGuard(context.Background()); ref != nil {
 		t.Fatalf("patchGuard = %v, want nil", ref)
 	}
@@ -424,7 +424,7 @@ func TestPatchGuardEmptyReceiptProceeds(t *testing.T) {
 		t.Fatal(err)
 	}
 	var warnings []string
-	p := patchGuardState(core.PostFlags{}, &warnings)
+	p := patchGuardState(Flags{}, &warnings)
 	if ref := p.patchGuard(context.Background()); ref != nil {
 		t.Fatalf("patchGuard = %v, want nil", ref)
 	}
@@ -443,7 +443,7 @@ func TestPatchGuardInvalidHeadTimeProceeds(t *testing.T) {
 		t.Fatal(err)
 	}
 	var warnings []string
-	p := patchGuardState(core.PostFlags{}, &warnings)
+	p := patchGuardState(Flags{}, &warnings)
 	if ref := p.patchGuard(context.Background()); ref != nil {
 		t.Fatalf("patchGuard = %v, want nil", ref)
 	}
@@ -460,7 +460,7 @@ func TestPatchGuardRawUnreadableProceeds(t *testing.T) {
 		t.Fatal(err)
 	}
 	var warnings []string
-	p := patchGuardState(core.PostFlags{}, &warnings)
+	p := patchGuardState(Flags{}, &warnings)
 	if ref := p.patchGuard(context.Background()); ref != nil {
 		t.Fatalf("patchGuard = %v, want nil", ref)
 	}

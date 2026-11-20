@@ -338,9 +338,9 @@ func (c *Client) Post(ctx context.Context, req *PostRequest) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, ref := postcore.Run(ctx, &core.PostRequest{
+	resp, ref := postcore.Run(ctx, &postcore.Request{
 		ReadRequest: rr,
-		Flags: core.PostFlags{
+		Flags: postcore.Flags{
 			Approve: req.Approve, ReviewFile: req.ReviewFile, Summary: req.Summary,
 			RequestChanges: req.RequestChanges, Bind: req.Bind, Force: req.Force, DryRun: req.DryRun,
 			AllowSecretValues: req.AllowSecretValues,

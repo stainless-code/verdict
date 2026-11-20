@@ -136,7 +136,7 @@ func TestPostRetryAtOnExhaustion(t *testing.T) {
 	limited := retryResult{stderr: "HTTP 429: secondary rate limit exceeded, retry-after: 0", fail: true}
 	cmdr := &retryCommander{t: t, results: []retryResult{limited, limited, limited}}
 	var warnings []string
-	st := postTestState(t.TempDir(), "", core.PostFlags{}, &warnings)
+	st := postTestState(t.TempDir(), "", Flags{}, &warnings)
 	_, ref := st.postOneWithRetry(context.Background(), cmdr, "{}")
 	if ref == nil {
 		t.Fatal("exhausted retry returned no refusal")
@@ -156,7 +156,7 @@ func TestPostRetryCanceledDuringBackoff(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cmdr := &cancelRetryCommander{cancel: cancel, stderr: "HTTP 429: secondary rate limit exceeded, retry-after: 30"}
 	var warnings []string
-	st := postTestState(t.TempDir(), "", core.PostFlags{}, &warnings)
+	st := postTestState(t.TempDir(), "", Flags{}, &warnings)
 	start := time.Now()
 	_, ref := st.postOneWithRetry(ctx, cmdr, "{}")
 	if elapsed := time.Since(start); elapsed > 2*time.Second {
