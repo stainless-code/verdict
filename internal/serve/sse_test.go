@@ -335,7 +335,18 @@ func TestShutdownStopsOpenEventsStream(t *testing.T) {
 	if serveErr := awaitServe(t, done); serveErr != nil {
 		t.Fatalf("Serve() with an open event stream = %v, want nil", serveErr)
 	}
-	if _, err := io.ReadAll(response.Body); err != nil {
+	readDone := make(chan error, 1)
+	go func() { _, err := io.ReadAll(response.Body); readDone <- err }()
+	var readErr error
+	testenv.Until(t, func() bool {
+		select {
+		case readErr = <-readDone:
+			return true
+		default:
+			return false
+		}
+	})
+	if err := readErr; err != nil {
 		t.Fatalf("read stopped event stream: %v", err)
 	}
 }
@@ -431,7 +442,18 @@ func TestListenerErrorStopsOpenEventsStream(t *testing.T) {
 	default:
 		t.Fatal("Serve() returned on listener error without signaling active SSE streams")
 	}
-	if _, err := io.ReadAll(response.Body); err != nil {
+	readDone := make(chan error, 1)
+	go func() { _, err := io.ReadAll(response.Body); readDone <- err }()
+	var readErr error
+	testenv.Until(t, func() bool {
+		select {
+		case readErr = <-readDone:
+			return true
+		default:
+			return false
+		}
+	})
+	if err := readErr; err != nil {
 		t.Fatalf("read stopped event stream after listener error: %v", err)
 	}
 }
