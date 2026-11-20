@@ -68,14 +68,11 @@ func postFromPlan(ctx context.Context, r *cli.Runner, req Request, fl *flags,
 	if _, _, _, ref := draincore.ValidatePostDrafts(plan, drafts, plan.Provider); ref != nil {
 		return r.Refuse(ref)
 	}
-	result, ref := postWrites(ctx, req, in.dir, plan, drafts, in, fl.dryRun)
-	if ref != nil {
-		return r.Refuse(ref)
-	}
+	// Drafting can outlast changes on the host, so refresh under the post lock before writing.
 	if fl.dryRun {
-		return postDryRunFinish(r, req, in.dir, plan, fl, result)
+		return runDryRunPost(ctx, r, req, fl, in.dir, plan, drafts)
 	}
-	return postFinish(r, req, in.dir, plan, result)
+	return runRealPost(ctx, r, req, fl, in.dir, plan, drafts)
 }
 
 func runDryRunPost(ctx context.Context, r *cli.Runner, req Request, fl *flags, dir string,
