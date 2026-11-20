@@ -146,11 +146,14 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	// The evidence checks run before the merge builds entries: the pass stamps
 	// each finding's quote standing, and the entries read that stamp, so the
 	// stored verification and the receipt are one calculation.
+	execution := panelcore.CheckExecution(st.dir, in.Review)
 	st.evidence = checkBundleEvidence(st.dir, in.Review)
 	if err := st.validateAndMerge(); err != nil {
 		return MergeResult{}, err
 	}
 	verification := st.applyPanel(panel)
+	execution.Stamp(st.entries)
+	execution.ApplyEvidence(st.evidence)
 	if err := st.persistMerged(); err != nil {
 		return MergeResult{}, err
 	}

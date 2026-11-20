@@ -302,6 +302,8 @@ func documents() []document {
 				{typ: reflect.TypeFor[core.Withheld](), name: "withheld"},
 				{typ: reflect.TypeFor[core.Verification](), name: "panelVerification"},
 				{typ: reflect.TypeFor[Verify](), name: "findingVerification"},
+				{typ: reflect.TypeFor[core.CrossVerification](), name: "crossVerification", closed: true},
+				{typ: reflect.TypeFor[core.CrossCheck](), name: "crossCheck", closed: true},
 				{typ: reflect.TypeFor[Brief](), name: defsBrief},
 				{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
 				{typ: reflect.TypeFor[HistoryEvent](), name: "historyEvent"},
@@ -723,6 +725,7 @@ const defsValidationData = "validationData"
 
 func reviewDefs() []definition {
 	return []definition{
+		{typ: reflect.TypeFor[core.ExecutionReference](), name: "executionReference", closed: true},
 		{typ: reflect.TypeFor[Finding](), name: "finding"},
 		{typ: reflect.TypeFor[SpecCheck](), name: defsSpecCheck, closed: true},
 		{typ: reflect.TypeFor[SpecEvidence](), name: defsSpecEvidence, closed: true},
@@ -1289,9 +1292,13 @@ func appendKeywords(schema *node, tag reflect.StructTag) {
 
 func panelDefinitions(receipt bool) []definition {
 	if receipt {
-		return []definition{{typ: reflect.TypeFor[panelcore.Result](), name: "result"}}
+		return []definition{
+			{typ: reflect.TypeFor[panelcore.Result](), name: "result"},
+			{typ: reflect.TypeFor[panelcore.CodeQuote](), name: "codeQuote", closed: true},
+		}
 	}
 	return []definition{
+		{typ: reflect.TypeFor[panelcore.DirectedCheck](), name: "directedCheck", closed: true},
 		{typ: reflect.TypeFor[panelcore.Verifier](), name: "verifier"},
 		{typ: reflect.TypeFor[panelcore.Finding](), name: "finding"},
 		{typ: reflect.TypeFor[panelcore.Totals](), name: "totals"},

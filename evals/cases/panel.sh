@@ -35,7 +35,7 @@ assert_eq 'planner creates no store or receipt' '0' "$(find "$dir" -maxdepth 1 \
 a="$(jq -r '.findings[0].sig' "$dir/verification/plan.json")"
 b="$(jq -r '.findings[1].sig' "$dir/verification/plan.json")"
 jq -n --arg a "$a" --arg b "$b" --arg h "$EVAL_FIXTURE_HEAD" \
-  '{schema_version:"1",head_sha:$h,results:[{sig:$a,model:"verifier-a",provider:"one",verdict:"confirmed",evidence:"SECRET_VERIFIER_EVIDENCE confirms the missing guard."},{sig:$b,model:"verifier-a",provider:"one",verdict:"refuted",evidence:"SECRET_VERIFIER_EVIDENCE shows the caller deduplicates first."}]}' > "$dir/verification/verdicts.json"
+  '{schema_version:"2",head_sha:$h,results:[{sig:$a,model:"verifier-a",checker:"verifier-a",provider:"one",verdict:"confirmed",evidence:"SECRET_VERIFIER_EVIDENCE confirms the missing guard."},{sig:$b,model:"verifier-a",checker:"verifier-a",provider:"one",verdict:"refuted",evidence:"SECRET_VERIFIER_EVIDENCE shows the caller deduplicates first."}]}' > "$dir/verification/verdicts.json"
 cp "$dir/verification/verdicts.json" "$EVAL_SANDBOX/verdicts-before.json"
 run_review record acme/app local-panel --json
 if [ "$EVAL_STATUS" -ne 0 ]; then cat "$EVAL_OUT"; cat "$EVAL_ERR"; bail 'record applies invoker verdicts'; fi
@@ -47,7 +47,7 @@ assert_exit 'second-look planning succeeds' 0
 assert_json_field 'exactly one second look' '1' '.data.second_look'
 assert_file_grep 'dispatch includes prior evidence' "$dir/verification/dispatch.md" '^> SECRET_VERIFIER_EVIDENCE shows'
 assert_file_eq 'planner never rewrites verdicts' "$EVAL_SANDBOX/verdicts-before.json" "$dir/verification/verdicts.json"
-jq --arg b "$b" '.results += [{sig:$b,model:"verifier-b",verdict:"confirmed",evidence:"The second look confirms a reachable duplicate write."}]' \
+jq --arg b "$b" '.results += [{sig:$b,model:"verifier-b",checker:"verifier-b",verdict:"confirmed",evidence:"The second look confirms a reachable duplicate write."}]' \
   "$dir/verification/verdicts.json" > "$EVAL_SANDBOX/next-verdicts.json"
 mv "$EVAL_SANDBOX/next-verdicts.json" "$dir/verification/verdicts.json"
 run_review record acme/app local-panel --json

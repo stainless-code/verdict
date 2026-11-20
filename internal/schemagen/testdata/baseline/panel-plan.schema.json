@@ -5,6 +5,10 @@
   "description": "Local planner output at verification/plan.json; verifiers follow the synthesizer in the pinned panel roster. No model or network call occurs.",
   "type": "object",
   "properties": {
+    "checks": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/directedCheck" }
+    },
     "schema_version": { "const": "1" },
     "head_sha": { "type": "string" },
     "generated_at": { "type": "string" },
@@ -37,6 +41,16 @@
   ],
   "additionalProperties": false,
   "$defs": {
+    "directedCheck": {
+      "type": "object",
+      "properties": {
+        "sig": { "type": "string" },
+        "origin": { "enum": ["finder-1", "finder-2"] },
+        "checker": { "enum": ["finder-1", "finder-2"] }
+      },
+      "required": ["sig", "origin", "checker"],
+      "additionalProperties": false
+    },
     "verifier": {
       "type": "object",
       "properties": {

@@ -99,7 +99,7 @@ func TestPersistedRefutationPlan(t *testing.T) {
 	dir := t.TempDir()
 	review := jq.NewObj("findings", []any{jq.NewObj("path", "src/db.go", "line", 42, "claim", "a reproducible crash")})
 	writeFixture(t, filepath.Join(dir, "findings.json"), `[{"sig":"22faf6e92ee1b7c1759122039e82c246c8295bc8","status":"open","verification":[{"model":"a","verdict":"refuted","evidence":"original counterexample"},{"model":"a","verdict":"confirmed","evidence":"later confirmation"}]}]`)
-	receipt := `{"schema_version":"1","head_sha":"head","results":[{"sig":"22faf6e92ee1b7c1759122039e82c246c8295bc8","model":"a","verdict":"confirmed","evidence":"later confirmation"}]}`
+	receipt := `{"schema_version":"2","head_sha":"head","results":[{"sig":"22faf6e92ee1b7c1759122039e82c246c8295bc8","model":"a","checker":"a","verdict":"confirmed","evidence":"later confirmation"}]}`
 	writeFixture(t, filepath.Join(dir, "verification/verdicts.json"), receipt)
 	assertPersistedPlan(t, dir, review)
 	assertFile(t, filepath.Join(dir, "verification/verdicts.json"), receipt)

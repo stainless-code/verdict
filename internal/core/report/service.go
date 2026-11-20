@@ -15,6 +15,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/approval"
+	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/core/reviewdoc"
 	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/identity"
@@ -58,6 +59,7 @@ const (
 )
 
 type state struct { // field grouping documents the loaded dimensions; alignment is irrelevant here
+	execution  *panelcore.Execution
 	truncation *core.Truncation
 	provenance *core.ProvenanceReceipt
 	req        *Request
@@ -151,6 +153,9 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 
 	evaluateCompliance(st)
 	st.specViolations = reviewdoc.SpecViolationsOfBundle(st.dir)
+	if st.execution.Active {
+		st.specViolations = st.execution.SpecViolations
+	}
 	st.approval = approval.Evaluate(st.entries, flags.Check, flags.Category, st.decisionCompliance,
 		len(st.specViolations) > 0, st.evidenceInput())
 	applyDisplayFloor(st)
@@ -288,6 +293,10 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 	loadStateRisk(st)
 	loadStateValidation(st)
 	loadStateEvidence(st)
+	execution := panelcore.CheckExecution(st.dir, nil)
+	st.execution = execution
+	execution.Stamp(st.entries)
+	execution.ApplyEvidence(st.currentEvidenceReceipt())
 	return nil
 }
 

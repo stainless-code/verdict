@@ -19,6 +19,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/approval"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -298,7 +299,7 @@ func githubLive(ctx context.Context, st *state, dir string) *core.RefusalError {
 // warning. Both hosts decode onto the same keys first, so this tail runs
 // once for either provider.
 func applyLive(st *state, dir string) {
-	fetched := readcommon.PrField(dir, "head_sha")
+	fetched := readcommon.PrField(dir, readyHeadSHA)
 	liveHead := liveString(st.live, "headRefOid")
 	if fetched != "" && liveHead != "" && fetched != liveHead {
 		st.warn("bundle stale (fetched " + readcommon.ShortSHA(fetched) + ", live " +
@@ -536,6 +537,13 @@ func applyThreadCounts(st *state, open, malformed int) {
 // absent typed policy invents no blocker for legacy reads. It never appends
 // an outcome or executes a command.
 func loadPolicyCompliance(st *state, dir string) {
+	execution := panelcore.CheckExecution(dir, nil)
+	if gap := execution.Problem(); gap != "" {
+		st.blockers = append(st.blockers, Blocker{
+			Kind: "review-insufficient", Detail: gap,
+			Action: "complete the expected execution and cross checks",
+		})
+	}
 	rs, ref := config.VerifyRunState(dir)
 	if ref != nil {
 		st.policy = &config.ReadCompliance{HasPolicy: true, Unverified: true}
@@ -551,10 +559,24 @@ func loadPolicyCompliance(st *state, dir string) {
 		st.warn("compliance unknown: findings store is unreadable")
 		return
 	}
-	comp := config.EvaluateReadCompliance(rs, readcommon.PrField(dir, "head_sha"), policyFindings(entries))
+	execution.Stamp(entries)
+	st.retainCrossClause(execution, rs, dir, entries)
+	comp := config.EvaluateReadCompliance(rs, readcommon.PrField(dir, readyHeadSHA), policyFindings(entries))
 	if comp.HasPolicy {
 		st.policy = &comp
 		st.requiredGaps = requiredProfileGaps(st, dir)
+	}
+}
+
+const readyHeadSHA = "head_sha"
+
+func (st *state) retainCrossClause(execution *panelcore.Execution, rs *config.RunState, dir string, entries []any) {
+	rawCompliance := config.EvaluateReadCompliance(rs, readcommon.PrField(dir, readyHeadSHA), approval.Views(entries))
+	if execution.Active && approval.UnbackedClauses(&rawCompliance, entries) {
+		st.blockers = append(st.blockers, Blocker{
+			Kind: "review-insufficient", Detail: "block clause names an unresolved cross check",
+			Action: "complete the assigned cross checks",
+		})
 	}
 }
 
@@ -569,7 +591,7 @@ func requiredProfileGaps(st *state, dir string) []string {
 	if ref != nil || rs == nil || rs.Resolved == nil {
 		return nil
 	}
-	head := readcommon.PrField(dir, "head_sha")
+	head := readcommon.PrField(dir, readyHeadSHA)
 	var gaps []string
 	for _, gap := range verifycore.DeepGaps(rs, dir, head, st.req.RepoRootPath()) {
 		gaps = append(gaps, "required work: "+gap)

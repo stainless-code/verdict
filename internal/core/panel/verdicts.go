@@ -32,18 +32,24 @@ const (
 // Result is one invoker-written opinion; it is separate from executable
 // verification.json.
 type Result struct {
-	Sig      string `json:"sig"                            minLength:"1"`
-	Model    string `json:"model"                          minLength:"1"`
-	Provider string `json:"provider,omitempty"`
-	Verdict  string `enum:"confirmed|refuted|insufficient" json:"verdict"`
-	Evidence string `json:"evidence"                       maxLength:"500" minLength:"10"`
-	At       string `json:"at,omitempty"`
+	Checker  string     `json:"checker"                        minLength:"1"`
+	Quote    *CodeQuote `anyOf:"null"                          json:"quote,omitempty"`
+	Sig      string     `json:"sig"                            minLength:"1"`
+	Model    string     `json:"model,omitempty"`
+	Provider string     `json:"provider,omitempty"`
+	Verdict  string     `enum:"confirmed|refuted|insufficient" json:"verdict"`
+	Evidence string     `json:"evidence"                       maxLength:"500"        minLength:"10"`
+	At       string     `json:"at,omitempty"`
 }
 
 // File is the head-bound verifier receipt at verification/verdicts.json.
 type File struct {
-	SchemaVersion string   `const:"1"       json:"schema_version"`
-	HeadSHA       string   `json:"head_sha" minLength:"1"`
+	ExecutionID   string   `json:"execution_id,omitempty"`
+	DiffSHA256    string   `json:"diff_sha256,omitempty"`
+	ReviewSHA256  string   `json:"review_sha256,omitempty"`
+	PlanSHA256    string   `json:"plan_sha256,omitempty"`
+	SchemaVersion string   `const:"2"                      json:"schema_version"`
+	HeadSHA       string   `json:"head_sha"                minLength:"1"`
 	Results       []Result `json:"results"`
 }
 
@@ -77,9 +83,12 @@ func Parse(raw []byte, head string, findings []any) (*File, []string, error) {
 		return nil, nil, bad("verification/verdicts.json must be an object")
 	}
 	var warnings []string
-	warnExtras(doc, []string{"schema_version", "head_sha", "results"}, &warnings)
-	if doc["schema_version"] != "1" {
-		return nil, nil, bad("verification/verdicts.json needs schema_version 1")
+	warnExtras(doc, []string{
+		"schema_version", executionHead, "results",
+		executionIDKey, executionDiffSHA, executionReviewSHA, executionPlanSHA,
+	}, &warnings)
+	if doc["schema_version"] != "2" {
+		return nil, nil, bad("verification/verdicts.json needs schema_version 2")
 	}
 	if err := checkHead(doc, head); err != nil {
 		return nil, nil, err
@@ -92,7 +101,11 @@ func Parse(raw []byte, head string, findings []any) (*File, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	return &File{SchemaVersion: "1", HeadSHA: head, Results: results}, warnings, nil
+	return &File{
+		SchemaVersion: "2", HeadSHA: head, Results: results,
+		ExecutionID: jq.StrOf(doc[executionIDKey]), DiffSHA256: jq.StrOf(doc[executionDiffSHA]),
+		ReviewSHA256: jq.StrOf(doc[executionReviewSHA]), PlanSHA256: jq.StrOf(doc[executionPlanSHA]),
+	}, warnings, nil
 }
 
 func parseResults(rows, findings []any, warnings *[]string) ([]Result, error) {
@@ -104,9 +117,9 @@ func parseResults(rows, findings []any, warnings *[]string) ([]Result, error) {
 		if err != nil {
 			return nil, err
 		}
-		key := r.Sig + "\x00" + r.Model
+		key := r.Sig + "\x00" + r.Checker
 		if seen[key] {
-			return nil, bad("verification/verdicts.json duplicate (sig, model): " + r.Sig + ", " + r.Model)
+			return nil, bad("verification/verdicts.json duplicate (sig, checker): " + r.Sig + ", " + r.Model)
 		}
 		seen[key] = true
 		results = append(results, r)
@@ -149,7 +162,7 @@ func parseResult(item any, findings []any, warnings *[]string) (Result, error) {
 	if !ok {
 		return Result{}, bad("verification/verdicts.json result must be an object")
 	}
-	warnExtras(m, []string{fieldSig, fieldModel, "provider", fieldVerdict, fieldEvidence, "at"}, warnings)
+	warnExtras(m, []string{fieldSig, fieldModel, "provider", fieldVerdict, fieldEvidence, "at", "checker", "quote"}, warnings)
 	r, err := decodeResult(m)
 	if err != nil {
 		return r, err
@@ -167,12 +180,12 @@ func parseResult(item any, findings []any, warnings *[]string) (Result, error) {
 
 func validResult(r *Result) bool {
 	n := utf8.RuneCountInString(r.Evidence)
-	return strings.TrimSpace(r.Sig) != "" && strings.TrimSpace(r.Model) != "" &&
+	return strings.TrimSpace(r.Sig) != "" && strings.TrimSpace(r.Checker) != "" &&
 		slices.Contains([]string{confirmed, refuted, insufficient}, r.Verdict) && n >= minEvidence && n <= maxEvidence
 }
 
 func checkHead(doc map[string]any, head string) error {
-	if h, ok := doc["head_sha"].(string); !ok || h == "" {
+	if h, ok := doc[executionHead].(string); !ok || h == "" {
 		return bad("verification/verdicts.json needs head_sha")
 	} else if h != head {
 		return &core.RefusalError{Code: CodeStale, Message: "verification/verdicts.json head does not match bundle head"}
@@ -248,8 +261,17 @@ func decodeResult(m map[string]any) (Result, error) {
 			return Result{}, bad("verification/verdicts.json result fields must be strings")
 		}
 	}
+	var quote *CodeQuote
+	if m["quote"] != nil {
+		value, err := parseQuote(m["quote"])
+		if err != nil {
+			return Result{}, err
+		}
+		quote = &value
+	}
 	return Result{
-		Sig: jq.StrOf(m[fieldSig]), Model: jq.StrOf(m[fieldModel]), Provider: jq.StrOf(m["provider"]),
-		Verdict: jq.StrOf(m[fieldVerdict]), Evidence: jq.StrOf(m[fieldEvidence]), At: jq.StrOf(m["at"]),
+		Quote: quote, Checker: jq.StrOf(m["checker"]), Sig: jq.StrOf(m[fieldSig]), Model: jq.StrOf(m[fieldModel]),
+		Provider: jq.StrOf(m["provider"]),
+		Verdict:  jq.StrOf(m[fieldVerdict]), Evidence: jq.StrOf(m[fieldEvidence]), At: jq.StrOf(m["at"]),
 	}, nil
 }

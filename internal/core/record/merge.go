@@ -259,7 +259,7 @@ func checkReviewSchema(review *jq.Obj) error {
 		return nil
 	}
 	rv, has := review.Get("schema_version")
-	if !has || rv == nil || jq.R(rv) != schemaVersion1 {
+	if !has || rv == nil || (jq.R(rv) != schemaVersion1 && jq.R(rv) != "2") {
 		return &core.RefusalError{Code: codeBadReviewSchema, Message: fmt.Sprintf(msgBadSchema, jq.R(rv))}
 	}
 	findings, has := review.Get("findings")

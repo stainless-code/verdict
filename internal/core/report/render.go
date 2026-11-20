@@ -858,7 +858,7 @@ func tierHit(e any, threshold int, category string) bool {
 	if core.TierRank(readcommon.FieldOf(e, "severity")) > threshold {
 		return false
 	}
-	if approval.QuoteStatus(e) == "unverified" {
+	if approval.QuoteStatus(e) == "unverified" || !approval.CrossEligible(e) {
 		return false
 	}
 	return category == "" || gateEligible(e)

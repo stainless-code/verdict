@@ -8,6 +8,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/approval"
+	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/core/reviewdoc"
 	"github.com/stainless-code/verdict/internal/evidence"
 	"github.com/stainless-code/verdict/internal/hunks"
@@ -74,12 +75,15 @@ func checkBundleEvidence(dir string, review *jq.Obj) *core.EvidenceReceipt {
 // evidencePassOf runs the pass and returns both halves of its answer: the
 // receipt the bundle stores and the problems the repair loop re-prompts with.
 func evidencePassOf(dir string, review *jq.Obj) (*core.EvidenceReceipt, []Problem) {
+	execution := panelcore.CheckExecution(dir, review)
 	pass := newEvidencePass(dir, review)
 	pass.classifyGating()
 	pass.checkQuotes()
 	pass.checkReceipts()
 	pass.checkSpec()
-	return pass.result(), pass.problemList()
+	receipt := pass.result()
+	execution.ApplyEvidence(receipt)
+	return receipt, pass.problemList()
 }
 
 // reviewEvidenceOf runs the evidence pass over normalized review bytes. Bytes
