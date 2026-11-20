@@ -1,0 +1,41 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "internal/core/run/service.go",
+      "line": 351,
+      "severity": "important",
+      "text": "The probe receipt is stored on launchArgs but only the one-shot st.launch copies it into launcher.json; the --rounds > 1 branch calls st.repairLoop, whose launcher literal omits Probe, so a passing identity probe is absent from launcher.json on every multi-round run.",
+      "quote": "\targs.probe = &launcherProbe{Args: slices.Clone(args.def.ProbeArgs), OK: true}"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 112,
+      "severity": "important",
+      "text": "Spec item \"**cline:** confirm from the vendor CLI reference that a positional prompt runs once and exits (not interactive in a TTY). If it is not confirmable, exclude cline with a reason.\" is not met: the row comment records yolo mode and the -i TUI flag but never records one-shot exit, while the handed research lists cline's exit as still open, so an interactive CLI can be launched as a headless agent.",
+      "quote": "\t// The CLI reference confirms a positional prompt runs in yolo mode; -i opens the TUI."
+    },
+    {
+      "path": "internal/core/run/service.go",
+      "line": 299,
+      "severity": "informational",
+      "text": "The probe checks the binary resolved in argsFor, but the --rounds path re-resolves the agent in repairLoop and launches through that second path; a PATH change between the two resolutions lets a different binary be launched after a passing probe.",
+      "quote": "\t\treturn st.repairLoop(ctx, args, rounds)"
+    },
+    {
+      "path": "internal/config/personal.go",
+      "line": 436,
+      "severity": "informational",
+      "text": "An operator row with probe_match but no probe_args passes closed-key validation and the field is silently ignored, so a misspelled or omitted probe_args leaves the agent unprobed with no refusal.",
+      "quote": "\tmatch, ref = agentOptionalString(entry, \"probe_match\", path)"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 256,
+      "severity": "informational",
+      "text": "The kilo probe accepts any output containing the bare word \"run\"; the same row records a text-editor namesake, whose usage or error text can contain that word, so the wrong binary may pass the identity check.",
+      "quote": "\t\tProbeArgs: []string{argsRun, argsHelp}, ProbeMatch: argsRun,"
+    }
+  ],
+  "gate_passed": false
+}

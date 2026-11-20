@@ -1,0 +1,83 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 280,
+      "severity": "important",
+      "text": "Spec item \"* **Include:** adal, auggie, autohand, bob, cline\\*, codearts, codebuddy, commandcode (binary `commandcode`, an official alias of `cmd`; avoids `cmd.exe` on Windows), cn (Continue), cortex, dcode (Deep Agents), devin, dexto, forge, fx, grok, hermes, jazz, junie\\*, kilo, kimchi, kimi, kode, mcode (MiniMax), neovate, openclaw, pa (Posit Assistant), qoder, qodercn, rovodev (binary `acli`, Args `rovodev run`), vibe (Mistral), zcode.\" requires the Kode row to follow RESEARCH-2's documented headless invocation `kode -p \"<prompt>\"`, but this row sets neither Args nor PromptFlag, so the launch composes `kode --model M <directive>`. RESEARCH-2 records Kode's parser as `-p, --print ... Print response and exit (useful for pipes)`; without that switch the CLI opens its interactive TUI, so `run --agent kode` waits for the watchdog and records `agent-timeout` instead of a review. `TestBuiltinAgentPrint` pins the flagless argv, so the test cannot catch it.",
+      "quote": "\t\tName: \"kode\", Binary: \"kode\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 292,
+      "severity": "important",
+      "text": "Spec item \"* **Include:** adal, auggie, autohand, bob, cline\\*, codearts, codebuddy, commandcode (binary `commandcode`, an official alias of `cmd`; avoids `cmd.exe` on Windows), cn (Continue), cortex, dcode (Deep Agents), devin, dexto, forge, fx, grok, hermes, jazz, junie\\*, kilo, kimchi, kimi, kode, mcode (MiniMax), neovate, openclaw, pa (Posit Assistant), qoder, qodercn, rovodev (binary `acli`, Args `rovodev run`), vibe (Mistral), zcode.\" requires the Neovate row to follow RESEARCH-2's headless invocation `neovate -q \"<prompt>\"`, but this row sets neither Args nor PromptFlag, so the launch composes `neovate --model M <directive>`. The cited parser says the CLI is interactive by default and `-q/--quiet` selects non-interactive mode; without it `run --agent neovate` opens the TUI, ends only at the watchdog, and writes no review. `TestBuiltinAgentPrint` pins the flagless argv.",
+      "quote": "\t\tName: \"neovate\", Binary: \"neovate\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 323,
+      "severity": "important",
+      "text": "Spec item \"* **Include:** adal, auggie, autohand, bob, cline\\*, codearts, codebuddy, commandcode (binary `commandcode`, an official alias of `cmd`; avoids `cmd.exe` on Windows), cn (Continue), cortex, dcode (Deep Agents), devin, dexto, forge, fx, grok, hermes, jazz, junie\\*, kilo, kimchi, kimi, kode, mcode (MiniMax), neovate, openclaw, pa (Posit Assistant), qoder, qodercn, rovodev (binary `acli`, Args `rovodev run`), vibe (Mistral), zcode.\" requires the Qoder row to follow RESEARCH-2's headless invocation `qoder -p \"<prompt>\"`, but this row sets neither Args nor PromptFlag, so the launch composes `qoder --model M <directive>`. The cited reference says headless mode is entered with the `--print` flag (short `-p`); without it `run --agent qoder` stays interactive, exhausts `--timeout`, and writes no review. `TestBuiltinAgentPrint` pins the flagless argv.",
+      "quote": "\t\tName: \"qoder\", Binary: \"qoder\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 329,
+      "severity": "important",
+      "text": "Spec item \"* **Include:** adal, auggie, autohand, bob, cline\\*, codearts, codebuddy, commandcode (binary `commandcode`, an official alias of `cmd`; avoids `cmd.exe` on Windows), cn (Continue), cortex, dcode (Deep Agents), devin, dexto, forge, fx, grok, hermes, jazz, junie\\*, kilo, kimchi, kimi, kode, mcode (MiniMax), neovate, openclaw, pa (Posit Assistant), qoder, qodercn, rovodev (binary `acli`, Args `rovodev run`), vibe (Mistral), zcode.\" requires the Qoder CN row to follow RESEARCH-2's headless invocation `qodercn -p \"<prompt>\"`, but this row sets neither Args nor PromptFlag, so the launch composes `qodercn --model M <directive>`. docs.qoder.cn documents `--print`/`-p` as the way to enter headless mode; without it `run --agent qodercn` stays interactive, exhausts the watchdog, and writes no review. `TestBuiltinAgentPrint` pins the flagless argv.",
+      "quote": "\t\tName: \"qodercn\", Binary: \"qodercn\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/service.go",
+      "line": 625,
+      "severity": "important",
+      "text": "Spec item \"* Record the probe in `launcher.json`: `probe: {args, ok}`.\" holds only on the one-shot path: this added line is the only place the probe reaches the launcher record. `invoke` probes before it branches, then `repairLoop` (internal/core/run/repair.go:77) builds its own launcher literal with no `Probe` field and rewrites launcher.json on every round. So `run --agent fx --rounds 2` passes the identity probe and records a launcher.json with no `probe` key, and no test combines a probed row with `--rounds`.",
+      "quote": "\t\tProbe:         args.probe,"
+    },
+    {
+      "path": "internal/core/run/service.go",
+      "line": 336,
+      "severity": "informational",
+      "text": "An operator cancellation during the probe is folded into the timeout arm: `pctx.Err()` is non-nil both for the 5 s deadline and for a canceled parent context, so a Ctrl-C during the identity probe refuses `agent-mismatch` with the result \"timed out\" and the wrong-tool hint instead of the launcher's `canceled` code, which `verdict` prefers whenever `ctx.Err() != nil`. Only `context.DeadlineExceeded` should blame the binary. No probe test exercises cancellation.",
+      "quote": "\tcase pctx.Err() != nil || res.TimedOut:"
+    },
+    {
+      "path": "internal/core/run/service.go",
+      "line": 351,
+      "severity": "informational",
+      "text": "Spec item \"  * with the same child environment and redaction as the launch;\" is met for the child environment (`Env: st.childEnv()`) but not for redaction: this line clones `def.ProbeArgs` verbatim into `launcher.json`, bypassing the `displayArgv`/`recordArgv` path that replaces secret-shaped launch operands with `[redactedValue]`. An operator probe such as `probe_args: [\"--token\", \"<credential>\"]` is recorded in the bundle in clear, while the same bytes in the launch argv are hidden and added to the output scrub list.",
+      "quote": "\targs.probe = &launcherProbe{Args: slices.Clone(args.def.ProbeArgs), OK: true}"
+    },
+    {
+      "path": "internal/core/run/service.go",
+      "line": 317,
+      "severity": "informational",
+      "text": "A nil commander is a wiring failure, but the probe types it as `agent-mismatch` and the hint then tells the operator to fix their settings.json binary path or pass `--agent`, blaming the binary for an internal error. `spawn` treats the same condition as `errNoCommander` and reports `agent-spawn-failed`; an internal nil-commander refusal should not be typed as the agent-identity mismatch.",
+      "quote": "\t\treturn st.refuse(\"agent-mismatch\", fmt.Sprintf("
+    },
+    {
+      "path": "internal/config/personal.go",
+      "line": 440,
+      "severity": "informational",
+      "text": "The probe pair is validated in one direction only: `probe_match` without `probe_args`, or with `probe_args: []`, is accepted silently, and `probe` returns early when `len(args.def.ProbeArgs) == 0`, so the identity check the operator asked for never runs and nothing warns. Only the `probe_args`-without-`probe_match` direction refuses `bad-settings`.",
+      "quote": "\tif present && match == \"\" {"
+    },
+    {
+      "path": "internal/archtest/agent_sources_test.go",
+      "line": 36,
+      "severity": "informational",
+      "text": "The comment promises a two-way pin, but `assertSurfaceNames` only walks the names scanned out of agents.go and looks each one up in a surface; a stale or misspelled agent name left in usage.go, docs/manual.md, or references/commands.md is never checked, so the \"a name in the docs that no row answers is a lie\" case the comment claims to catch still passes.",
+      "quote": "// docs is undiscoverable; a name in the docs that no row answers is a lie."
+    },
+    {
+      "path": "internal/archtest/agent_sources_test.go",
+      "line": 78,
+      "severity": "informational",
+      "text": "The usage.go half of the new guard is a bare substring search over the whole file: `pa` occurs 134 times in usage.go (including `package`) and `pi` 14 times, so deleting either name from the `--agent` list still satisfies `strings.Contains` and the test passes. The check should match the `<a|b|...>` list shape, not a bare name anywhere in the file.",
+      "quote": "\t\tif !strings.Contains(string(doc), want) {"
+    }
+  ],
+  "gate_passed": false
+}

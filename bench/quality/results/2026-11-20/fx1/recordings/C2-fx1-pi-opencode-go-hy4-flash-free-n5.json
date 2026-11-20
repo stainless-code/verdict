@@ -1,0 +1,41 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "internal/core/run/service.go",
+      "line": 625,
+      "severity": "important",
+      "text": "The spec requires \"Record the probe in `launcher.json`: `probe: {args, ok}`.\" This assignment is the only place `args.probe` reaches a launcher record, in the one-shot `launch()`; the `--rounds N` path builds its own `launcher` in `repairLoop` (internal/core/run/repair.go:77-86) without `Probe: args.probe`. A multi-round launch with a probing agent therefore runs the probe but leaves no `probe` key in launcher.json, and the new eval and probe tests only exercise the one-shot path. Verified with a temporary test: a passing probe with RoundsRaw=2 produced launcher.json with no `probe` field.",
+      "quote": "\t\tProbe:         args.probe,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 292,
+      "severity": "important",
+      "text": "This `neovate` row omits the boolean `-q`/`--quiet` that makes the CLI non-interactive. The cited vendor help says \"Run the code agent with a prompt, interactive by default, use -q/--quiet for non-interactive mode\", and RESEARCH-2's headless invocation is `neovate -q \"<prompt>\"` with the prompt as a trailing positional. `verdict run --agent neovate` therefore composes `neovate --model M --x <directive>` and starts an interactive TUI instead of a headless agent, so the review artifact is never written and the run ends as a timeout or no-artifact refusal. The new argv and --print tests assert the same missing flag, so they cannot catch it.",
+      "quote": "\t\tName: \"neovate\", Binary: \"neovate\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 323,
+      "severity": "important",
+      "text": "This `qoder` row omits the boolean `-p`/`--print` that enters headless mode. The cited vendor doc says \"To enter Headless mode, add the `--print` flag (short form `-p`)\" and lists the invocation as `qoder -p \"<prompt>\"` with a trailing positional prompt. The composed argv is `qoder --model M --x <directive>`, which launches the interactive CLI rather than the headless one; no review artifact follows and the run times out or refuses no-review-artifact. The row's argv and --print tests pin the same wrong argv.",
+      "quote": "\t\tName: \"qoder\", Binary: \"qoder\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 329,
+      "severity": "important",
+      "text": "This `qodercn` row omits the boolean `-p`/`--print` that enters headless mode. The cited vendor doc says \"Enter Headless mode by adding `--print` (short form `-p`)\" and shows `qodercn -p \"<prompt>\"` with a trailing positional prompt. The composed argv is `qodercn --model M --x <directive>`, so the launch opens the interactive CLI instead of writing the review, ending in a timeout or no-review-artifact refusal. The row's argv and --print tests repeat the same omission.",
+      "quote": "\t\tName: \"qodercn\", Binary: \"qodercn\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 280,
+      "severity": "important",
+      "text": "This `kode` row omits the boolean `-p`/`--print` that selects non-interactive output. The cited vendor parser describes the program as \"starts an interactive session by default, use -p/--print for non-interactive output\", and RESEARCH-2's headless invocation is `kode -p \"<prompt>\"` with a trailing positional prompt. The composed argv `kode --model M --x <directive>` starts an interactive session, so a launch cannot produce the review artifact. The new table-driven argv and --print tests enshrine the same missing flag.",
+      "quote": "\t\tName: \"kode\", Binary: \"kode\", ModelFlag: modelFlag,"
+    }
+  ],
+  "gate_passed": false
+}

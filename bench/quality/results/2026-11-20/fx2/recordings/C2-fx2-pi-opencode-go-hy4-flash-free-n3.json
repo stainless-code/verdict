@@ -1,0 +1,13 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "internal/core/run/service.go",
+      "line": 129,
+      "severity": "important",
+      "text": "STA-351 §5 requires the drain directive to name 'the single output file drain.replies.json and its plan_digest', but in drain draft mode the directive names review.json while the launcher asserts drain.replies.json. compose() passes st.promptArtifact(dir) as the directive's artifact argument, and promptArtifact() still hardcodes reviewFile (service.go:226); only args.artifact and args.abs were switched to st.artifactName() (drain.replies.json) at lines 122-123. A probe of st.argsFor in drain mode printed 'Write exactly one file, .verdict/state/7/review.json, ...' while args.abs was .../drain.replies.json. An agent that follows the directive writes review.json and the launch then refuses no-review-artifact for the missing drain.replies.json, so drain --agent fails in real use. The stub agent in evals/cases/drain-plan.sh writes drain.replies.json directly and TestDrainDirectiveAndArtifact checks args.artifact but never the artifact name inside args.prompt, which is why passing tests miss this. Fix: have promptArtifact() use st.artifactName() (or pass args.artifact) and assert the directive names drain.replies.json.",
+      "quote": "\tst.compose(args, st.req, st.promptBundle(dir), st.promptArtifact(dir), readcommon.IsLocalBundleDir(dir))"
+    }
+  ],
+  "gate_passed": false
+}

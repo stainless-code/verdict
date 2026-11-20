@@ -1,0 +1,69 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "internal/drain/verb.go",
+      "line": 66,
+      "severity": "important",
+      "text": "Every refusal `RunThreads` returns is re-labeled `drain-failed`, so the code is discarded. Reproduced: `drain acme/app 7 --provider bogus --json` exits 1 with `drain-failed` and the \"refresh threads, confirm host auth\" hint, while `threads acme/app 7 --provider bogus` returns the typed `bad-provider` refusal; a bad provider is not one of the causes the spec's `drain-failed` row names (missing/unreadable bundle or threads.json, truncated feed, unreadable login). The same wrap swallows the `canceled` refusal `RunThreads` returns at its entry check (`internal/core/fetch/threadsverb.go:105`), the shutdown window the repo's `cancelAfterGuard` model covers, turning the GO-CLI-05 exit-3 cancel into exit 1; `drain` is also absent from the `cancellationVerbs` roster in `cmd/verdict/cancel_exit_test.go`, so no test catches either leg. Replay the typed refusal (`r.RefuseTyped(ref)`) instead of re-wrapping every code.",
+      "quote": "\t\treturn r.Refuse(drainFailed(ref.Message))"
+    },
+    {
+      "path": "docs/manual.md",
+      "line": 321,
+      "severity": "informational",
+      "text": "These new drain paragraphs name `drain.json` and `drain.replies.json`, but the normative `### Bundle namespace (core files vs `x-*`)` section a dozen lines below never adds either to its core/script artifact list, and its \"Agents write only `review.json` (plus ...)\" sentence still excludes `drain.replies.json` even though the drafting agent writes it. That same section says anything a verb adds that is not listed MUST live under `x-*`, so the manual contradicts the shipped verb and tells a plugin it may claim `drain.json` as foreign scratch. Add both names beside `threads.json`/`threads-resolve.json`, and `drain.replies.json` to the agent-write list.",
+      "quote": "`drain.json`: `pending[]`, typed `skipped[]` reasons, `other_threads`, and a"
+    },
+    {
+      "path": "internal/core/drain/drafts.go",
+      "line": 74,
+      "severity": "informational",
+      "text": "Draft validation re-decodes the whole agent-supplied replies array once per entry: `checkReplies` (line 72) calls `validateFields`, which `json.Unmarshal`s `raw` again at line 190, so validating n replies costs n full parses of the document. At the panel's own limits (`--max-threads` 100, `MaxBodyRunes` 4000, up to 4 bytes per character) that is a document of up to about 1.6 MB decoded about 100 times — roughly 160 MB of decode to read four key names one unmarshal already produced. One `[]map[string]json.RawMessage` decode before the loop removes the quadratic work. This is a bound from the constants, not a measured profile.",
+      "quote": "\t\tif ref := validateFields(raw, i, site); ref != nil {"
+    },
+    {
+      "path": "internal/drain/verb.go",
+      "line": 140,
+      "severity": "informational",
+      "text": "`--max-threads` is range-checked only inside `readInputs`, i.e. after the live threads refresh, the extra login read, and the rewrite of `threads.json`. Reproduced against a stub `gh`: `drain acme/app 7 --max-threads 0 --json` runs the `api graphql` refresh plus `api user --jq .login`, writes `threads.json`, then exits 2 with a bare usage line and no envelope. A flag-syntax error should be rejected with the other flags in `parseFlags`, before the first host read or local write.",
+      "quote": "\tlimit, code, done := parseLimit(r, fl.max)"
+    },
+    {
+      "path": "internal/drain/verb.go",
+      "line": 96,
+      "severity": "informational",
+      "text": "`--timeout` and `-- <agent args>` are accepted in every mode but consumed only when an agent actually launches, so both are silently dropped in plan mode and on `--agent` with zero pending. Reproduced: `drain acme/app 7 --timeout abc --json` exits 0 and writes a plan where the `run` launcher would refuse the bad timeout, and `drain acme/app 7 -- --model x --json` without `--agent` exits 0 with the argument discarded (`--json` after `--` is swallowed too, so the run is not even in JSON mode). Reject the two flags when no launch will happen, or validate `--timeout` up front.",
+      "quote": "\tif fl.agent != \"\" && len(plan.Pending) > 0 {"
+    },
+    {
+      "path": "internal/drain/verb.go",
+      "line": 163,
+      "severity": "informational",
+      "text": "This branch also fires for an empty login with a nil error — `ghSelfLogin` returns `(\"\", nil)` when the host prints nothing (`internal/core/post/submit.go:132`) — so the operator-facing refusal reads `could not read authenticated login for github: <nil>`, naming no cause, and carries the generic drain hint. Reproduced with a stub `gh` that prints an empty login. Split the empty-login case into its own message.",
+      "quote": "\t\treturn \"\", drainFailed(fmt.Sprintf(\"could not read authenticated login for %s: %v\", provider, err))"
+    },
+    {
+      "path": "internal/drain/verb.go",
+      "line": 265,
+      "severity": "informational",
+      "text": "The corrupt-ledger refusal has no test: nothing in the repo writes a malformed `.verdict/state/N/replies.json` (the eval seeds a valid legacy entry, and `internal/drain` has a single Go test covering commander injection), so the property the comment names — a corrupt ledger refuses instead of reading as \"nobody answered\" — is unproven; rewriting this branch to return an empty ledger leaves every unit test and both drain evals green. The failure mode is a second reply to an already-answered thread once posting lands in PR B.",
+      "quote": "\t\treturn nil, jq.NewErrf(\"unreadable %s: %v\", path, err)"
+    },
+    {
+      "path": "internal/mcp/server.go",
+      "line": 374,
+      "severity": "informational",
+      "text": "The new `cliOnly` branch that answers a `tools/call` for `drain` is not exercised: `TestDrainIsHiddenFromMCP` (`internal/mcp/contract_test.go:230`) only inspects the registry map, and `TestHiddenToolErrorContract` (`internal/mcp/params_contract_test.go:186`) lists `triage`/`post` only, so no test sends a `tools/call` for a cli-only name. Deleting this branch leaves every test green while a `--read-only` server answers a drain call with the `read-only-tool` refusal result instead of the hidden-tool protocol error. Add a cli-only case to the hidden-tool contract.",
+      "quote": "\tif hidden.cliOnly {"
+    },
+    {
+      "path": "internal/core/refusalcodes.go",
+      "line": 125,
+      "severity": "informational",
+      "text": "Spec §7 requires four new codes (`drain-failed`, `drafts-invalid`, `drafts-stale`, `drain-incomplete`), each with registration, a hint, a troubleshooting entry, `make tsgen`, and the hints golden; only three shipped. `drain-incomplete` appears in no registration, hint rule, troubleshooting section, generated TS union, or `hints.golden`. Deferring it is defensible because only `drain --post` (PR B, out of scope here) emits it, but neither the diff nor `.changeset/drain-plan.md` records that deferral, so the PR B author has no registered code, hint, or troubleshooting text to build against.",
+      "quote": "\t\"drain-failed\","
+    }
+  ],
+  "gate_passed": false
+}

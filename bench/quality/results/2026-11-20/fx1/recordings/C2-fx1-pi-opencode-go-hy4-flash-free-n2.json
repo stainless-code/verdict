@@ -1,0 +1,48 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 280,
+      "severity": "important",
+      "text": "Spec item \"* **Include:** adal, auggie, autohand, bob, cline\\\\*, codearts, codebuddy, commandcode (binary `commandcode`, an official alias of `cmd`; avoids `cmd.exe` on Windows), cn (Continue), cortex, dcode (Deep Agents), devin, dexto, forge, fx, grok, hermes, jazz, junie\\\\*, kilo, kimchi, kimi, kode, mcode (MiniMax), neovate, openclaw, pa (Posit Assistant), qoder, qodercn, rovodev (binary `acli`, Args `rovodev run`), vibe (Mistral), zcode.\" requires a Kode row built from RESEARCH-2, but this row has no `-p`/`--print`. Kode's own parser says it starts an interactive session by default and only `-p/--print` gives non-interactive output, so `--agent kode` spawns a TUI under the watchdog and eventually refuses `no-review-artifact` instead of writing the review; the manual table repeats the flagless row.",
+      "quote": "\t\tName: \"kode\", Binary: \"kode\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 292,
+      "severity": "important",
+      "text": "The `Include` row for Neovate omits its non-interactive flag: `src/index.ts` says 'interactive by default, use -q/--quiet for non-interactive mode', but this row composes `neovate --model M <directive>` with no `-q`. A launch opens the TUI, waits for the watchdog, and never writes `review.json`; `TestBuiltinAgentPrint` pins the flagless argv instead of catching it.",
+      "quote": "\t\tName: \"neovate\", Binary: \"neovate\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 323,
+      "severity": "important",
+      "text": "The `Include` row for Qoder omits `-p/--print`; Qoder's 'Run in Scripts' doc says that flag is how Headless mode is entered. The composed argv runs interactively, so `--agent qoder` hangs until `--timeout` and refuses `no-review-artifact` rather than producing a review; the manual 'Binary and agent flags' column also shows only `qoder`.",
+      "quote": "\t\tName: \"qoder\", Binary: \"qoder\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 329,
+      "severity": "important",
+      "text": "The `Include` row for Qoder CN omits `-p/--print`, which docs.qoder.cn documents as the way to enter Headless mode. `--agent qodercn` therefore starts an interactive CLI, exhausts the watchdog, and refuses `no-review-artifact` instead of writing the review.",
+      "quote": "\t\tName: \"qodercn\", Binary: \"qodercn\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/service.go",
+      "line": 336,
+      "severity": "important",
+      "text": "An operator cancellation during the probe is reported as `agent-mismatch`: `pctx.Err()` is non-nil for parent cancellation as well as for the 5 s deadline, so the switch labels it 'timed out' and shows the wrong-tool hint (`settings.json`/`--agent`). The launcher's own verdict path puts `ctx.Err()` ahead of every observation; no probe test exercises cancellation.",
+      "quote": "\tcase pctx.Err() != nil || res.TimedOut:"
+    },
+    {
+      "path": "internal/core/run/service.go",
+      "line": 351,
+      "severity": "informational",
+      "text": "Spec: `* with the same child environment and redaction as the launch;` — probe args bypass the launch's `displayArgv`/`scrubSecrets` path and are stored verbatim in `launcher.json`. An operator whose `probe_args` contain a credential-shaped value leaks it into the bundle record; launch argv with the same value would be redacted.",
+      "quote": "\targs.probe = &launcherProbe{Args: slices.Clone(args.def.ProbeArgs), OK: true}"
+    }
+  ],
+  "gate_passed": false
+}

@@ -1,0 +1,62 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 323,
+      "severity": "important",
+      "text": "The `qoder` row omits the boolean `-p`/`--print` the spec's research table names as its headless invocation (`qoder -p \"<prompt>\"`, \"To enter Headless mode, add the --print flag\"): `argvFor` composes `qoder --model M <directive>`, so a launch starts the interactive CLI instead of a one-shot run and hangs until the watchdog refuses `agent-timeout`. The manual row and the `builtinRows` expectation repeat the omission. Spec item: \"Use RESEARCH-2's step-2 table.\"",
+      "quote": "\t\tName: \"qoder\", Binary: \"qoder\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 329,
+      "severity": "important",
+      "text": "The `qodercn` row omits the boolean `-p`/`--print` that its cited research invocation requires (`qodercn -p \"<prompt>\"`; \"进入 Headless 模式的方式是加上 --print（简写 -p）\"), so `verdict run --agent qodercn` launches `qodercn --model M <directive>` and never enters headless mode: the process runs interactively until the watchdog refuses `agent-timeout`, and the manual row repeats the missing flag. Spec item: \"Use RESEARCH-2's step-2 table.\"",
+      "quote": "\t\tName: \"qodercn\", Binary: \"qodercn\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 280,
+      "severity": "important",
+      "text": "The `kode` row omits the boolean `-p`/`--print` from its cited headless invocation (`kode -p \"<prompt>\"`; `-p, --print ... Print response and exit`): the composed argv `kode --model M <directive>` puts the directive behind no print flag, so the CLI opens its TUI instead of printing one response and exiting, and the shipped row can never finish a headless review. The manual row and the `builtinRows` expectation repeat the omission. Spec item: \"Use RESEARCH-2's step-2 table.\"",
+      "quote": "\t\tName: \"kode\", Binary: \"kode\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 292,
+      "severity": "important",
+      "text": "The `neovate` row omits `-q`/`--quiet`, which its cited source makes mandatory for headless use (\"interactive by default, use -q/--quiet for non-interactive mode\"): `neovate --model M <directive>` starts the interactive TUI instead of a one-shot turn, so the row only ever times out or waits for input. The manual row repeats the omission. Spec item: \"Use RESEARCH-2's step-2 table.\"",
+      "quote": "\t\tName: \"neovate\", Binary: \"neovate\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/service.go",
+      "line": 625,
+      "severity": "important",
+      "text": "The probe result is threaded into `launch` only: `--rounds N` goes through `repairLoop`, which builds its own `launcher` value without copying `args.probe`, so a probed row's `launcher.json` never carries the required `probe: {args, ok}` on any repair run. Reproduced with `run --agent fx --rounds 2`: the `ask --help` probe ran (`CALL argc=2 first=ask second=--help`) and the record keys are agent,argv,artifact,...,repair,schema_version,started_at,timed_out,timeout — no `probe`. Spec item: \"Record the probe in `launcher.json`: `probe: {args, ok}`.\"",
+      "quote": "\t\tProbe:         args.probe,"
+    },
+    {
+      "path": "internal/core/run/service.go",
+      "line": 336,
+      "severity": "informational",
+      "text": "A canceled context during the probe is classified as a probe timeout and then as `agent-mismatch`: `pctx.Err()` is non-nil for parent cancellation as well as for the 5 s deadline, so Ctrl-C inside the probe reports \"failed its identity probe: timed out\" with exit 1, while every other run path maps `ctx.Err() != nil` to `canceled` (exit 3). The refusal code and exit status are therefore wrong for a cancellation.",
+      "quote": "\tcase pctx.Err() != nil || res.TimedOut:"
+    },
+    {
+      "path": "internal/archtest/agent_sources_test.go",
+      "line": 78,
+      "severity": "informational",
+      "text": "The new surface guard matches each name with a bare `strings.Contains` over the whole file once `quoted` is false (`usage.go`), so 12 of the 46 names — `amp`, `claude`, `codex`, `copilot`, `cursor`, `forge`, `gemini`, `goose`, `opencode`, `pa`, `pi`, `qwen` — still match after deletion from the `--agent` list because they occur elsewhere in the file; reproduced by dropping `pa|pi` from usage.go and watching `TestAgentNamesMatchTheirSurfaces` pass. It also checks only table→surface, so the comment's own \"a name in the docs that no row answers is a lie\" case cannot fail.",
+      "quote": "\t\tif !strings.Contains(string(doc), want) {"
+    },
+    {
+      "path": "internal/core/run/service.go",
+      "line": 348,
+      "severity": "informational",
+      "text": "The code emitted here is not classified by `backtest replay`: `replayStopCodes` still lists only agent-missing, agent-spawn-failed, unknown-agent, bad-flags, bad-timeout and canceled, although its comment stops the walk when \"the agent cannot run at all, so every later candidate would fail the same way\" — exactly an identity mismatch. A replay whose PATH resolves the clashing binary therefore records one `agent-mismatch` row per candidate and walks the whole run instead of stopping after the first, and the manual's \"Five failures end the whole walk\" list is not extended either.",
+      "quote": "\t\treturn st.refuse(\"agent-mismatch\", fmt.Sprintf("
+    }
+  ],
+  "gate_passed": false
+}

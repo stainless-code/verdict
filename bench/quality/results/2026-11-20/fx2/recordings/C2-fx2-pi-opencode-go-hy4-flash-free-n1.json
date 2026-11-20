@@ -1,0 +1,27 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "internal/core/run/service.go",
+      "line": 129,
+      "severity": "important",
+      "text": "The drain directive names the wrong output file, so a compliant drafting agent never creates the artifact the freshness assertion checks. argsFor now points args.abs and args.artifact at drain.replies.json through artifactName (lines 122-123), but the changed compose call still passes st.promptArtifact(dir) (line 129), and promptArtifact hardcodes reviewFile. drainDirective writes that artifact path verbatim into the prompt, so the agent is told to write review.json while artifactRefusal checks drain.replies.json. A drafting agent that follows the directive is refused with no-review-artifact even when its drafts are valid; the stub-agent evals miss this because their stub ignores the prompt and writes drain.replies.json directly.",
+      "quote": "\tst.compose(args, st.req, st.promptBundle(dir), st.promptArtifact(dir), readcommon.IsLocalBundleDir(dir))"
+    },
+    {
+      "path": "internal/drain/verb.go",
+      "line": 140,
+      "severity": "informational",
+      "text": "--max-threads is validated only here, inside readInputs, after Run() already called fetchcore.RunThreads (which rewrites threads.json) and after selfLogin shelled out to the host CLI. Spec section 10 requires \"Every refusal comes before the first write\"; a value such as --max-threads 0 refreshes and overwrites the bundle feed and makes host calls before the usage error is reported.",
+      "quote": "\tlimit, code, done := parseLimit(r, fl.max)"
+    },
+    {
+      "path": "internal/core/drain/plan.go",
+      "line": 61,
+      "severity": "informational",
+      "text": "Spec section 10 house rules say \"no `//nolint`\". This change adds two new suppressions against that rule: this one on File and another on Pending at internal/core/drain/select.go:51. Both carry a reason, which the repository AGENTS.md permits, but the handed spec's rule is unconditional.",
+      "quote": "type File struct { //nolint:govet // field order is the published JSON contract"
+    }
+  ],
+  "gate_passed": false
+}

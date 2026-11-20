@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "fixture": "fx2",
+  "driver": "pi-opencode-go-hy4-flash-free",
+  "source_bundle": "4/review.json",
+  "source_sha256": "1c93263030b7ccb45eae1a8c7e0bf7ea09e1801510109810a363bc18b85675d4",
+  "infra_error": null,
+  "refusal_code": null,
+  "note": "converted from review.json by factory convert.py; claim->text, quote->quote"
+}
