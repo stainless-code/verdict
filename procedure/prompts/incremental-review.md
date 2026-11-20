@@ -31,7 +31,9 @@ Same structured findings contract as `review.md`, scoped to the delta.
    drafting the new review, then run `verdict threads` once more after the push. If uncertain/
    partial: leave open. Only retire bot and verdict threads; human threads belong to humans.
    False-positive resolves erode trust faster than false negatives.
-   Claim still-open out-of-scope items via `triage[]` with status `deferred` and a ≥30-char rationale.
+   Claim still-open out-of-scope items via `triage[]` only when the thread maps to a stored
+   finding signature in `findings.json` — use that `sig`, status `deferred`, and a ≥30-char
+   rationale. Preserve unmapped out-of-scope thread context in `summary`.
 4. **Triage the incremental changes** (domain/seams/contracts/surfaces). You are the synthesizer.
    Apply the scope gate in `prompts/system.md` — it alone decides the non-substantive path
    (no review, 1–2 sentence note) vs full scrutiny.
