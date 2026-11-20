@@ -17,10 +17,10 @@ run_review record acme/app "$SLUG" --json
 assert_exit "record accepts reproduction" 0
 SIG="$(jq -r '.[0].sig' "$LB/findings.json")"
 ARTIFACT="$(jq -r '.[0].reproduction.path' "$LB/findings.json")"
-if [ "$ARTIFACT" = "tests/$SIG.py" ] && [ "$(cat "$LB/$ARTIFACT")" = 'assert False' ]; then
+if [ "$ARTIFACT" = "tests/$SIG-161139e764cc.py" ] && [ "$(cat "$LB/$ARTIFACT")" = 'assert False' ]; then
   good "retained artifact names its finding and keeps its test"
 else bad "artifact missing or wrong"; fi
-if jq -e --arg cmd "python3 tests/$SIG.py" '.command == $cmd' "$LB/tests/$SIG.command.json" >/dev/null; then
+if jq -e --arg cmd "python3 tests/$SIG-161139e764cc.py" '.command == $cmd' "$LB/tests/$SIG-161139e764cc.command.json" >/dev/null; then
   good "rerun command retained"
 else bad "rerun command missing"; fi
 run_review show acme/app "$SLUG" --sig "$SIG" --json

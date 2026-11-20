@@ -1168,12 +1168,17 @@ A finding at `reproduced` can include `reproduction`:
 ```
 
 The agent writes `probe.py` inside the bundle before `record`. The source path
-is relative to the bundle. The command uses `{artifact}` for the retained file
+is relative to the bundle and uses forward slashes on every platform;
+backslashes in agent input are rejected. The command uses `{artifact}` for the retained file
 and runs from the bundle directory. An empty `path` retains the command itself
-as a shell script, with `sh tests/<sig>.sh` as its rerun command.
+as a shell script, with `sh tests/<sig>-<hash>.sh` as its rerun command.
 
-`record` copies the draft to `tests/<sig>.<ext>` and saves its command in
-`tests/<sig>.command.json`. Each file is limited to 64 KiB, each command to
+`record` copies the draft to `tests/<sig>-<hash>.<ext>` and saves its command in
+`tests/<sig>-<hash>.command.json`. The hash is the first 12 hexadecimal
+characters of SHA-256 over the redacted test bytes. Retained files are immutable
+— identical writes are no-ops, and a name already holding different bytes
+refuses capture. A new reproduction keeps earlier receipts intact even if
+saving its sidecar or findings fails. Each file is limited to 64 KiB, each command to
 4,096 bytes, and each record operation to 16 artifacts (at most 1 MiB of test
 content). Paths must stay inside the bundle; symlinks and special files are
 rejected. Files are written atomically with mode `0600`. Credential-shaped

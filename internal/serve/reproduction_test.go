@@ -14,7 +14,7 @@ import (
 func TestReproductionDownload(t *testing.T) {
 	files := fixtureFiles()
 	raw := finding(sigCrit, "open", "critical", "reproduced")
-	files[filepath.ToSlash(filepath.Join(".verdict", "state", "1234", "findings.json"))] = `[` + strings.TrimSuffix(raw, "}") + `,"reproduction":{"path":"tests/` + sigCrit + `.sh","command":"sh artifact"}}]`
+	files[filepath.ToSlash(filepath.Join(".verdict", "state", "1234", "findings.json"))] = `[` + strings.TrimSuffix(raw, "}") + `,"reproduction":{"path":"tests/` + sigCrit + `-2ed27c1421e6.sh","command":"sh artifact"}}]`
 	dir := writeFixture(t, files)
 	bundle := filepath.Join(dir, ".verdict", "state", "1234")
 	if _, err := repro.Capture(bundle, sigCrit, "", "false", false); err != nil {
@@ -27,7 +27,7 @@ func TestReproductionDownload(t *testing.T) {
 		t.Fatalf("download = %d %q", result.status, result.body)
 	}
 	checkReproductionHeaders(t, result)
-	if err := os.Remove(filepath.Join(bundle, "tests", sigCrit+".sh")); err != nil {
+	if err := os.Remove(filepath.Join(bundle, "tests", sigCrit+"-2ed27c1421e6.sh")); err != nil {
 		t.Fatal(err)
 	}
 	result = call(t, ts, http.MethodGet, path, "", bearer())

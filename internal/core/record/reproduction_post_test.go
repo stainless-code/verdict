@@ -26,10 +26,10 @@ func checkPostReproduction(t *testing.T, dry bool, store string) {
 		t.Fatal(err)
 	}
 	raw := readRetainedFile(t, filepath.Join(dir, store))
-	if !strings.Contains(raw, `"path": "tests/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.sh"`) {
+	if !strings.Contains(raw, `"path": "tests/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-2ed27c1421e6.sh"`) {
 		t.Fatalf("stored receipt missing: %s", raw)
 	}
-	if got := readRetainedFile(t, filepath.Join(dir, "tests", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.sh")); got != "false\n" {
+	if got := readRetainedFile(t, filepath.Join(dir, "tests", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-2ed27c1421e6.sh")); got != "false\n" {
 		t.Fatalf("retained test = %q", got)
 	}
 	checkRetainedCommand(t, dir)
@@ -37,8 +37,8 @@ func checkPostReproduction(t *testing.T, dry bool, store string) {
 
 func checkRetainedCommand(t *testing.T, dir string) {
 	t.Helper()
-	got := readRetainedFile(t, filepath.Join(dir, "tests", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.command.json"))
-	if got != `{"path":"tests/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.sh","command":"sh tests/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.sh","redacted":false}` {
+	got := readRetainedFile(t, filepath.Join(dir, "tests", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-2ed27c1421e6.command.json"))
+	if got != `{"path":"tests/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-2ed27c1421e6.sh","command":"sh tests/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-2ed27c1421e6.sh","redacted":false}` {
 		t.Fatalf("retained command = %q", got)
 	}
 }

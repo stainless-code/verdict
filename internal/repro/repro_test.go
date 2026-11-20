@@ -18,7 +18,7 @@ func TestCaptureAndRead(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if receipt.Command != "python3 tests/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.py" || receipt.Redacted {
+	if receipt.Command != "python3 tests/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-161139e764cc.py" || receipt.Redacted {
 		t.Fatalf("receipt = %+v", receipt)
 	}
 	raw, err := Read(dir, testSig, receipt.Path)
@@ -83,8 +83,8 @@ func TestReadRejectsOtherFinding(t *testing.T) {
 
 func checkSavedCommand(t *testing.T, dir string) {
 	t.Helper()
-	command, err := os.ReadFile(filepath.Join(dir, "tests", testSig+".command.json"))
-	if err != nil || !strings.Contains(string(command), `"command":"python3 tests/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.py"`) {
+	command, err := os.ReadFile(filepath.Join(dir, "tests", "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-161139e764cc.command.json"))
+	if err != nil || !strings.Contains(string(command), `"command":"python3 tests/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa-161139e764cc.py"`) {
 		t.Fatalf("command = %q, %v", command, err)
 	}
 }
