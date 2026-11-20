@@ -70,6 +70,21 @@ func TestInlineProse(t *testing.T) {
 			in:   "Contact sec@example.com or @alice.",
 			want: "Contact sec@example.com or @" + zwsp + "alice.",
 		},
+		{
+			name: "escaped-opening-backtick-sanitizes-following-prose",
+			in:   "see \\`@mallory <script>x</script> [l](https://evil.test)` ok",
+			want: "see \\`@" + zwsp + "mallory &lt;script>x&lt;/script> [l]" + zwsp + "(https://evil.test)` ok",
+		},
+		{
+			name: "odd-backslash-run-before-backtick-is-escaped",
+			in:   "see \\\\\\`@mallory <img src=x>` end",
+			want: "see \\\\\\`@" + zwsp + "mallory &lt;img src=x>` end",
+		},
+		{
+			name: "even-backslash-run-before-backtick-opens-code-span",
+			in:   "see \\\\`@mallory` and @bob",
+			want: "see \\\\`@mallory` and @" + zwsp + "bob",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

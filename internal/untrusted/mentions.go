@@ -36,15 +36,15 @@ func NeutralizeMentions(body string) string {
 	if !strings.Contains(body, "@") {
 		return body
 	}
-	var scan mentionScan
+	chunks := strings.Split(body, "\n")
+	scan := mentionScan{lines: chunks}
 	var out strings.Builder
 	out.Grow(len(body))
-	first := true
-	for chunk := range strings.SplitSeq(body, "\n") {
-		if !first {
+	for i, chunk := range chunks {
+		if i > 0 {
 			out.WriteByte('\n')
 		}
-		first = false
+		scan.lineIdx = i
 		out.WriteString(scan.rewriteChunk(chunk))
 	}
 	return out.String()
@@ -66,6 +66,8 @@ func cutCR(text string) (line, cr string) {
 }
 
 type mentionScan struct {
+	lines    []string
+	lineIdx  int
 	fenceLen int
 	code     int
 	fence    byte
@@ -73,6 +75,9 @@ type mentionScan struct {
 }
 
 func (s *mentionScan) line(line string) string {
+	if s.comment {
+		return s.prose(line)
+	}
 	if s.fence != 0 {
 		if fenceCloses(line, s.fence, s.fenceLen) {
 			s.fence, s.fenceLen = 0, 0
@@ -101,7 +106,7 @@ func (s *mentionScan) prose(line string) string {
 			i = s.copyComment(&out, line, i)
 		case s.code > 0:
 			i = s.copyCodeSpan(&out, line, i)
-		case strings.HasPrefix(line[i:], commentOpen):
+		case s.opensComment(line, i):
 			s.comment = true
 			out.WriteString(commentOpen)
 			i += len(commentOpen)
@@ -115,6 +120,24 @@ func (s *mentionScan) prose(line string) string {
 		}
 	}
 	return out.String()
+}
+
+func (s *mentionScan) opensComment(line string, i int) bool {
+	return strings.HasPrefix(line[i:], commentOpen) &&
+		!isEscaped(line, i) &&
+		s.hasCommentClose(line[i+len(commentOpen):])
+}
+
+func (s *mentionScan) hasCommentClose(rest string) bool {
+	if strings.Contains(rest, commentClose) {
+		return true
+	}
+	for k := s.lineIdx + 1; k < len(s.lines); k++ {
+		if strings.Contains(s.lines[k], commentClose) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *mentionScan) copyComment(out *strings.Builder, line string, i int) int {
@@ -141,9 +164,63 @@ func (s *mentionScan) copyCodeSpan(out *strings.Builder, line string, i int) int
 }
 
 func (s *mentionScan) openCodeSpan(out *strings.Builder, line string, i int) int {
-	s.code = runLen(line[i:], '`')
-	out.WriteString(line[i : i+s.code])
-	return i + s.code
+	if isEscaped(line, i) {
+		out.WriteByte('`')
+		return i + 1
+	}
+	run := runLen(line[i:], '`')
+	if s.hasClosingTicks(line[i+run:], run) {
+		s.code = run
+	}
+	out.WriteString(line[i : i+run])
+	return i + run
+}
+
+func (s *mentionScan) hasClosingTicks(rest string, want int) bool {
+	if lineHasTickRun(rest, want) {
+		return true
+	}
+	for k := s.lineIdx + 1; k < len(s.lines); k++ {
+		next, _ := cutCR(s.lines[k])
+		if endsParagraph(next) {
+			return false
+		}
+		if lineHasTickRun(next, want) {
+			return true
+		}
+	}
+	return false
+}
+
+func endsParagraph(line string) bool {
+	if strings.TrimSpace(line) == "" {
+		return true
+	}
+	_, _, ok := fenceOpens(line)
+	return ok
+}
+
+func lineHasTickRun(s string, want int) bool {
+	for i := 0; i < len(s); {
+		if s[i] != '`' {
+			i++
+			continue
+		}
+		run := runLen(s[i:], '`')
+		if run == want {
+			return true
+		}
+		i += run
+	}
+	return false
+}
+
+func isEscaped(s string, i int) bool {
+	bs := 0
+	for j := i - 1; j >= 0 && s[j] == '\\'; j-- {
+		bs++
+	}
+	return bs%2 == 1
 }
 
 func copyMention(out *strings.Builder, line string, i int) int {

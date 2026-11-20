@@ -211,6 +211,31 @@ func TestNeutralizeMentions(t *testing.T) {
 			in:   "",
 			want: "",
 		},
+		{
+			name: "escaped-backtick-does-not-open-code-span",
+			in:   "see \\`@alice` and @bob\n",
+			want: "see \\`@" + zwsp + "alice` and @" + zwsp + "bob\n",
+		},
+		{
+			name: "escaped-comment-opener-does-not-enter-comment",
+			in:   "see \\<!-- @alice --> and @bob\n",
+			want: "see \\<!-- @" + zwsp + "alice --> and @" + zwsp + "bob\n",
+		},
+		{
+			name: "unmatched-backtick-does-not-suppress-later-mentions",
+			in:   "stray ` before @alice\nand @bob on next line\n",
+			want: "stray ` before @" + zwsp + "alice\nand @" + zwsp + "bob on next line\n",
+		},
+		{
+			name: "unclosed-html-comment-does-not-suppress-later-mentions",
+			in:   "dangling <!-- before @alice\nand @bob\n",
+			want: "dangling <!-- before @" + zwsp + "alice\nand @" + zwsp + "bob\n",
+		},
+		{
+			name: "fence-line-inside-html-comment-does-not-open-fence",
+			in:   "<!--\n```\n-->\nPing @alice after comment.\n",
+			want: "<!--\n```\n-->\nPing @" + zwsp + "alice after comment.\n",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

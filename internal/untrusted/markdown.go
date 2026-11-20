@@ -179,9 +179,11 @@ func CapRunes(s string, maxRunes int) string {
 func writeBacktickSegment(out *strings.Builder, flat string, i int) int {
 	run := runLen(flat[i:], '`')
 	if run == 1 {
-		if closeIdx := findClosingSingleTick(flat, i+1); closeIdx > i {
-			out.WriteString(fence.Safe(flat[i : closeIdx+1]))
-			return closeIdx + 1
+		if !isEscaped(flat, i) {
+			if closeIdx := findClosingSingleTick(flat, i+1); closeIdx > i {
+				out.WriteString(fence.Safe(flat[i : closeIdx+1]))
+				return closeIdx + 1
+			}
 		}
 		out.WriteByte('`')
 		return i + 1
