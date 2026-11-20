@@ -105,7 +105,7 @@ func awaitRead(ctx context.Context, wait time.Duration) error {
 	if retry.Sleep(ctx, wait) {
 		return nil
 	}
-	return ctx.Err() //nolint:wrapcheck // the context error is the cancellation signal
+	return ctx.Err()
 }
 
 func ghLiveSHA(ctx context.Context, cmdr Commander, repo, pr string) (string, error) {

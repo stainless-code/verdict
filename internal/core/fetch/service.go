@@ -470,7 +470,7 @@ func (s *session) awaitRetry(ctx context.Context, wait time.Duration, attempt in
 	}
 	s.Warn(fmt.Sprintf("transient GitHub error — retry %d/2, bundle untouched", attempt+1))
 	if !retry.Sleep(ctx, wait) {
-		return false, ctx.Err() //nolint:wrapcheck // the context error is the cancellation signal
+		return false, ctx.Err()
 	}
 	return false, nil
 }
