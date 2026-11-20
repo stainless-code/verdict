@@ -306,18 +306,14 @@ func loadStateValidation(st *state) {
 	if !st.flags.Validation {
 		return
 	}
-	file, hash, ref := validation.Load(st.dir, st.headSHA, st.entries)
-	if file != nil {
-		st.judgements = file.Results
-	}
 	if data := storedValidation(st.dir); data != nil {
 		st.validation = data
-		st.reconcileValidationRows(file, data, hash)
-		if ref != nil {
-			st.warn("validation artifact unreadable (" + ref.Message + ") — the table lists no per-finding results")
+		if !st.req.JSONOnly {
+			st.loadStoredValidationRows(data)
 		}
 		return
 	}
+	file, hash, ref := validation.Load(st.dir, st.headSHA, st.entries)
 	if ref != nil {
 		st.warn("validation artifact unreadable (" + ref.Message + ") — degrading cleanly")
 		return
@@ -326,6 +322,7 @@ func loadStateValidation(st *state) {
 		st.warn("validation artifact absent (" + validation.FileName + " not found in bundle)")
 		return
 	}
+	st.judgements = file.Results
 	policy := validation.PolicyFromConfig(nil)
 	st.validation = &core.ValidationData{
 		Hash: &hash, Counts: validation.Tally(file, st.entries), Mode: policy.Mode, Floors: policy.Floors,
@@ -506,9 +503,16 @@ func corruptPatch(dir string) *core.RefusalError {
 	}
 }
 
-func (st *state) reconcileValidationRows(file *core.ValidationFile, data *core.ValidationData, hash string) {
-	if file != nil && (data.Hash == nil || *data.Hash != hash) {
-		st.judgements = nil
+func (st *state) loadStoredValidationRows(data *core.ValidationData) {
+	file, hash, ref := validation.Load(st.dir, st.headSHA, st.entries)
+	switch {
+	case ref != nil:
+		st.warn("validation artifact unreadable (" + ref.Message + ") — the table lists no per-finding results")
+	case file == nil:
+		return
+	case data.Hash == nil || *data.Hash != hash:
 		st.warn("validation artifact differs from the recorded pass — the table lists no per-finding results")
+	default:
+		st.judgements = file.Results
 	}
 }

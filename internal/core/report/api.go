@@ -46,6 +46,7 @@ type Request struct { //nolint:govet // request grouping; the struct is one call
 	// policy rather than the launch directory's. It is a transport seam, not
 	// an MCP argument, so it stays out of the generated tool schema.
 	OverridesDir string `json:"-"`
+	JSONOnly     bool   `json:"-"`
 }
 
 // Response carries the report's typed data, warnings, and pure render
