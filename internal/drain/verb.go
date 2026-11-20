@@ -146,10 +146,27 @@ func buildPlan(ctx context.Context, r *cli.Runner, req Request, fl *flags, limit
 	}
 	plan, _ := draincore.NewPlan(resp.Data.Provider, threadscore.PRNumber(req.Pr), resp.Data.HeadSHA,
 		req.TimeUTC(), in.self, in.feed, in.ledger, limit)
+	if err := retainReceipt(in.dir, plan); err != nil {
+		return nil, nil, r.Refuse(drainFailed(err.Error())), true
+	}
 	if err := writePlanArtifacts(in.dir, plan, fl.dryRun, fl.agent != "" && len(plan.Pending) > 0); err != nil {
 		return nil, nil, r.Refuse(drainFailed(err.Error())), true
 	}
 	return in, plan, 0, false
+}
+
+func retainReceipt(dir string, plan *draincore.File) error {
+	previous, err := draincore.ReadPlan(dir + pathSep + draincore.KeyPlanJSON)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return jq.Sealed("retain drain receipt", err)
+	}
+	if previous.Provider == plan.Provider && previous.PR == plan.PR {
+		plan.Posted, plan.Failed, plan.PostedAt = previous.Posted, previous.Failed, previous.PostedAt
+	}
+	return nil
 }
 
 // A dry run leaves the real bundle's host state, threads, plan, and any
@@ -208,6 +225,9 @@ func procedureFileExists(dir string) (bool, error) {
 }
 
 func finishPlan(r *cli.Runner, req Request, fl *flags, dir string, plan *draincore.File) int {
+	if fl.post && !fl.dryRun && len(plan.Failed) > 0 {
+		return postFinish(r, req, dir, plan, &draincore.PostResult{Incomplete: true})
+	}
 	nextText := next(req, fl)
 	if fl.post {
 		nextText = postSuccessNext(req)
