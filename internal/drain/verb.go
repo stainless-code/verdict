@@ -146,7 +146,7 @@ func buildPlan(ctx context.Context, r *cli.Runner, req Request, fl *flags, limit
 	}
 	plan, _ := draincore.NewPlan(resp.Data.Provider, threadscore.PRNumber(req.Pr), resp.Data.HeadSHA,
 		req.TimeUTC(), in.self, in.feed, in.ledger, limit)
-	if err := retainReceipt(in.dir, plan); err != nil {
+	if err := retainReceipt(in, plan); err != nil {
 		return nil, nil, r.Refuse(drainFailed(err.Error())), true
 	}
 	if err := writePlanArtifacts(in.dir, plan, fl.dryRun, fl.agent != "" && len(plan.Pending) > 0); err != nil {
@@ -155,8 +155,8 @@ func buildPlan(ctx context.Context, r *cli.Runner, req Request, fl *flags, limit
 	return in, plan, 0, false
 }
 
-func retainReceipt(dir string, plan *draincore.File) error {
-	previous, err := draincore.ReadPlan(dir + pathSep + draincore.KeyPlanJSON)
+func retainReceipt(in *planInputs, plan *draincore.File) error {
+	previous, err := draincore.ReadPlan(in.dir + pathSep + draincore.KeyPlanJSON)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
@@ -164,6 +164,7 @@ func retainReceipt(dir string, plan *draincore.File) error {
 		return jq.Sealed("retain drain receipt", err)
 	}
 	if previous.Provider == plan.Provider && previous.PR == plan.PR {
+		previous.ClearObsoleteFailures(in.feed)
 		plan.Posted, plan.Failed, plan.PostedAt = previous.Posted, previous.Failed, previous.PostedAt
 	}
 	return nil

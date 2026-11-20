@@ -82,6 +82,9 @@ func Post(req *PostRequest) (*PostResult, *core.RefusalError) {
 		return nil, ref
 	}
 	byID := postThreads(req.Feed)
+	if !req.DryRun {
+		req.Plan.clearObsoleteFailures(byID)
+	}
 	res := &PostResult{Posted: []Posted{}, Failed: []Failed{}, Planned: []Planned{}}
 	for _, reply := range doc.Replies {
 		postOne(req, byID, reply, res)
@@ -96,6 +99,33 @@ func Post(req *PostRequest) (*PostResult, *core.RefusalError) {
 	saveFeed(req, res)
 	res.Incomplete = len(req.Plan.Failed) > 0
 	return res, nil
+}
+
+const resolveFailure = "could not resolve thread: "
+
+// ClearObsoleteFailures drops failures whose threads resolved or whose drafts
+// no longer match the waiting comment. An unresolved withdraw still needs
+// resolution even after its reply becomes the latest comment.
+func (f *File) ClearObsoleteFailures(feed *threadscore.File) {
+	f.clearObsoleteFailures(postThreads(feed))
+}
+
+func (f *File) clearObsoleteFailures(byID map[string]*threadscore.Thread) {
+	f.Failed = slices.DeleteFunc(f.Failed, func(failure Failed) bool {
+		thread := byID[failure.ThreadID]
+		switch {
+		case thread == nil, failure.ThreadID == "":
+			return false
+		case thread.Resolved:
+			return true
+		case len(thread.Comments) == 0, strings.HasPrefix(failure.Reason, resolveFailure):
+			return false
+		}
+		last := thread.Comments[len(thread.Comments)-1].ID
+		return slices.ContainsFunc(f.Pending, func(p Pending) bool {
+			return p.ThreadID == failure.ThreadID && p.WaitingCommentID != last
+		})
+	})
 }
 
 func mergePosted(existing, extra []Posted) []Posted {
@@ -253,7 +283,7 @@ func recordPost(req *PostRequest, thread *threadscore.Thread, reply Reply, id st
 		return posted, true
 	}
 	if err := req.Resolve(reply.ThreadID); err != nil {
-		res.Failed = append(res.Failed, Failed{ThreadID: reply.ThreadID, Reason: "could not resolve thread: " + err.Error()})
+		res.Failed = append(res.Failed, Failed{ThreadID: reply.ThreadID, Reason: resolveFailure + err.Error()})
 		return posted, true
 	}
 	thread.Resolved = true
