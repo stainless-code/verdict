@@ -315,6 +315,10 @@ func loadStateValidation(st *state) {
 	}
 	if data := storedValidation(st.dir); data != nil {
 		st.validation = data
+		if file != nil && (data.Hash == nil || *data.Hash != hash) {
+			st.judgements = nil
+			st.warn("validation artifact differs from the recorded pass — the table lists no per-finding results")
+		}
 		if ref != nil {
 			st.warn("validation artifact unreadable (" + ref.Message + ") — the table lists no per-finding results")
 		}
