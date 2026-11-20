@@ -140,6 +140,10 @@ func Triple(root, dir string) (toolVersion, promptsHash, model string) {
 // Spend rolls the latest cost record into the footer tier and spend words,
 // degrading silently (garnish, never a refusal).
 func Spend(dir string) (tier, cost string) {
+	rollup := readcommon.CostTotal(dir)
+	if rollup.Phased {
+		return phaseSpend(dir, rollup.Cost)
+	}
 	tier, cost = "standard", unrecorded
 	records := readcommon.CostRecords(dir)
 	if len(records) == 0 {
@@ -401,4 +405,18 @@ func bundleHead(dir string) string {
 		return ""
 	}
 	return jq.StrOf(sm["head_sha"])
+}
+
+func phaseSpend(dir string, cost *jq.Obj) (string, string) {
+	tier := "standard"
+	records := readcommon.CostRecords(dir)
+	if len(records) > 0 {
+		tier = readcommon.CostTier(records[len(records)-1])
+	}
+	value, _ := cost.Get("est_usd")
+	amount, known := readcommon.NumVal(value)
+	if !known {
+		return tier, unrecorded
+	}
+	return tier, "$" + jqTostring(readcommon.Round4(amount))
 }

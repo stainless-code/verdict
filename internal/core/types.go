@@ -133,12 +133,12 @@ type ReportFilters struct { //nolint:govet // field order is the published prope
 
 // ReportCost is the summed cost rollup carried by report --cost.
 type ReportCost struct { //nolint:govet // field order is the published property order
-	Runs              int       `json:"runs"                          min:"0"`
-	RunsWithCost      int       `json:"runs_with_cost"                min:"0"`
-	InputTokens       int       `json:"input_tokens"                  min:"0"`
-	OutputTokens      int       `json:"output_tokens"                 min:"0"`
-	TotalTokens       int       `json:"total_tokens"                  min:"0"`
-	CachedInputTokens int       `json:"cached_input_tokens,omitempty" min:"0"`
+	Runs              int       `json:"runs"                min:"0"`
+	RunsWithCost      int       `json:"runs_with_cost"      min:"0"`
+	InputTokens       *int      `json:"input_tokens"        min:"0"`
+	OutputTokens      *int      `json:"output_tokens"       min:"0"`
+	TotalTokens       *int      `json:"total_tokens"        min:"0"`
+	CachedInputTokens *int      `json:"cached_input_tokens" min:"0"`
 	EstUSD            *float64  `json:"est_usd"`
 	ByTier            CostTiers `json:"by_tier"`
 	Receipts          []any     `json:"receipts,omitempty"`
@@ -153,10 +153,10 @@ type CostTiers struct {
 
 // CostTier is one effort tier's token rollup.
 type CostTier struct {
-	Runs         int `json:"runs"          min:"0"`
-	InputTokens  int `json:"input_tokens"  min:"0"`
-	OutputTokens int `json:"output_tokens" min:"0"`
-	TotalTokens  int `json:"total_tokens"  min:"0"`
+	InputTokens  *int `json:"input_tokens"  min:"0"`
+	OutputTokens *int `json:"output_tokens" min:"0"`
+	TotalTokens  *int `json:"total_tokens"  min:"0"`
+	Runs         int  `json:"runs"          min:"0"`
 }
 
 // ReportCompleteness compares fetched, posted and reviewed heads, plus the

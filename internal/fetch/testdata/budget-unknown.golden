@@ -335,8 +335,8 @@ rather than becoming ground truth.
 --- file C/.verdict/state/4705/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "2db7e0b893f7f98a74cf2f4d6b95abf479a0a6b3b5787d0ae3126e8f451d0aec",
-  "prompts_hash": "22ebb4a0eb60457cd0acc9ec52828b611473081b54842981cc37ed4a5528ed53",
+  "run_id": "0fdd15d92e4f888f20c54689cf7ef9a8a6d7d0e8e371493e3b01bf7cae8ece62",
+  "prompts_hash": "d75e983b4a3f6201c1f99385e5538116dba52e40fe3d672b0ddcb59d7cd4e9d9",
   "inputs": [
     {
       "kind": "prompt",
@@ -384,8 +384,8 @@ rather than becoming ground truth.
       "kind": "prompt",
       "name": "prompts/handoff/findings-contract.md",
       "status": "included",
-      "sha256": "fe6d8dcdc370cf6eb9aa02fefaf23c36cf634e9a86f91af5335bdb33168fddf7",
-      "bytes": 1420
+      "sha256": "7ffaba10e50a499f834a43062dcdc58a790044480e6d05384acbfa9a05da353d",
+      "bytes": 1551
     },
     {
       "kind": "prompt",
@@ -557,8 +557,8 @@ rather than becoming ground truth.
       "kind": "bundle",
       "name": "procedure.md",
       "status": "included",
-      "sha256": "ab4fec1296792adcdd0047b270bea313b9e6996bcdd8a9772e3291df2e6b30a1",
-      "bytes": 3130
+      "sha256": "c221ed72ff63875f69342ab16a763248eaa236a94220756ffa852d126561f053",
+      "bytes": 3261
     },
     {
       "kind": "bundle",

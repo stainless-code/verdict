@@ -352,9 +352,9 @@ previous merge filled a missing rung with `pointed`, and every other recognized 
 reads as `model`. A review that explicitly wrote `pointed` is indistinguishable from
 a default-filled one, so those entries read as `default` either way. Changing the normalization orphans
 history — that ships as a new `sig_version`, never silently.
-`review.json` inputs stamp `schema_version: "1"` (`post`/`record` refuse an
-absent or different value with `bad-enum`; there is no shim for another
-version);
+Manual and finder `review.json` inputs use `schema_version: "1"`. The coordinator
+writes an execution-bound aggregate at version `"2"`; its `execution` reference
+is required. `post` and `record` do not use a compatibility decoder;
 every bundle carries
 `.verdict/state/N/store.json` (`{"schema_version":"1"}`) marking the generation of the
 whole store — plugins read it instead of sniffing shapes. GitHub bundles keep
@@ -2290,6 +2290,30 @@ the same bytes. With `--rounds N`, the error problems — shape and evidence
 alike — feed the next round's fix list; on the final round a shape error is the
 typed `bad-review-input` refusal and evidence that is still insufficient is
 `review-insufficient`.
+
+### Captured two-finder executions
+
+The coordinator currently has an internal opt-in seam. The CLI default and flags
+are unchanged. Each finder reviews the whole diff in a fresh process: finder-1
+uses a contract-first method, and finder-2 uses a behavior-first method. The
+coordinator merges exact signatures and dispatches each candidate to the opposite
+finder for a fresh cross-check. Duplicate findings keep both origins and receive
+both directed checks.
+
+`record`, `post`, `report`, and their MCP adapters consume the same bound receipts.
+The S3 body reports completed finders and confirmed, contested, and pending checks.
+Each finding names its origins and checker standing. A potentially blocking
+finding with missing, refuted, or unverified cross evidence does not gate as
+confirmed, and approval is insufficient. Refutations remain visible as bounded
+quoted evidence. `verification.cross` is derived output: removing or forging it
+cannot replace the bound receipts. Finder ids identify processes, not providers.
+
+Cost handoffs identify each launch by execution, finder, phase, and launch id.
+The report sums those phases once, ignoring a root aggregate claim beside them.
+An unreported phase leaves token totals and USD `null`. This is a pre-v1 SDK wire
+break: nullable totals must not become zero when a client decodes them. The
+legacy single-finder cost path is unchanged. Launching remains CLI-only; MCP has
+no `verdict_run` tool.
 
 ### What `run` asserts
 
@@ -5108,13 +5132,14 @@ provider identity is operator-supplied, never inferred by Verdict.
 After writing `review.json`, run `panel` and dispatch each section of
 `.verdict/state/<bundle>/verification/dispatch.md` to its named verifier.
 The machine plan is `verification/plan.json`. The invoker collects results in
-`verification/verdicts.json`: `schema_version: "1"`, the bundle `head_sha`, and
-`results[]` containing `sig`, `model`, optional `provider` and `at`, `verdict`
+`verification/verdicts.json`: `schema_version: "2"`, the bundle `head_sha`, and
+`results[]` containing `sig`, the assigned `checker` seat, optional `model`,
+`provider`, and `at`, `verdict`
 (`confirmed|refuted|insufficient`), and `evidence` (10–500 characters).
 `schemas/panel.schema.json` describes verdicts; `schemas/panel-plan.schema.json`
 describes the plan. Extra input keys warn and are discarded.
 
-Then run `record` or `post`. Results attach to findings as `verification[]`;
+Then run `record` or `post`. Results attach to findings as `verification.panel[]`;
 `confidence` is `contested` if any result refutes, otherwise `confirmed` if any
 confirms, otherwise `single`. There is no vote. Missing verifiers never block,
 and a refutation never drops or downgrades a finding. A later confirmation
@@ -5126,12 +5151,16 @@ The planner writes only `verification/plan.json` and `verification/dispatch.md`.
 `verification/verdicts.json` is invoker-written; executable-proof
 `verification.json` remains a separate channel and can mark a finding addressed.
 Record/post summaries appear only when a verdict file was read. Report displays
-stored confidence counts. The posted body receives at most one count-only line;
-it never receives verifier evidence. Plans cap work at 100 findings, 4 verifiers,
+stored confidence counts. Manual panel evidence stays out of the posted body. Automatic cross-check
+refutations appear as bounded quoted evidence with the finder summary. Plans cap work at 100 findings, 4 verifiers,
 and 400 dispatches. Section findings have no inline anchor and are not dispatched.
 
 The verifier prompt joins the provenance hash in this release. Existing receipts
 keep their historical hashes; new receipts use the updated prompt set.
+
+Manual panel receipts use the checker seat assigned by `verification/plan.json`.
+`model` and `provider` are optional metadata; a checker seat is the identity.
+Automatic receipts also bind execution, head, diff, review, and plan digests.
 
 ## The runner is your CI
 

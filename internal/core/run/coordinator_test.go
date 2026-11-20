@@ -303,3 +303,31 @@ func (p *phaseCommander) assertCrossCandidate(phase string, finding any) {
 		p.t.Fatal("selected claim missing from cross batch")
 	}
 }
+
+func TestCoordinatorPublishesExecutionSummary(t *testing.T) {
+	req, _ := coordinatorFixture(t)
+	response, ref := TwoFinders(t.Context(), req)
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	execution := response.Data.Execution
+	if execution == nil || execution.Counts == nil || execution.ID == "" || execution.Status != "complete" || execution.Counts.Completed != 2 || execution.Counts.Confirmed != 2 {
+		t.Fatalf("execution = %+v", execution)
+	}
+}
+
+func TestCoordinatorPublishesPartialFailures(t *testing.T) {
+	req, commander := coordinatorFixture(t)
+	commander.fail = true
+	response, ref := TwoFinders(t.Context(), req)
+	if ref == nil || ref.Code != "review-insufficient" {
+		t.Fatalf("refusal = %v", ref)
+	}
+	execution := response.Data.Execution
+	if execution == nil || execution.Counts == nil || execution.Status != "partial" || execution.Counts.Completed != 1 || len(execution.Failures) != 1 {
+		t.Fatalf("execution = %+v", execution)
+	}
+	if execution.Failures[0].Phase != "x-finder-1" || execution.Failures[0].Code != "agent-failed" {
+		t.Fatalf("failures = %+v", execution.Failures)
+	}
+}

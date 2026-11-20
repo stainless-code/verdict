@@ -4,7 +4,7 @@ package core
 // claims.
 type Verification struct {
 	Checker  string `json:"checker,omitempty"`
-	Model    string `json:"model,omitempty"                          minLength:"1"`
+	Model    string `json:"model,omitempty"                minLength:"1"`
 	Provider string `json:"provider,omitempty"`
 	Verdict  string `enum:"confirmed|refuted|insufficient" json:"verdict"`
 	Evidence string `json:"evidence"                       maxLength:"500" minLength:"10"`

@@ -141,6 +141,10 @@ type Invocation struct {
 // Result carries the envelope fields shared by bundle-scoped responses.
 // Data is the verb's data profile as JSON, byte-identical to the --json
 // envelope's data object.
+//
+// Pre-v1 wire break: two-finder cost input_tokens, output_tokens,
+// total_tokens, cached_input_tokens and by_tier token fields may be null.
+// Null means unknown usage; it must not be decoded as a measured zero.
 type Result struct {
 	Repo     string
 	PR       string

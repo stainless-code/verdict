@@ -16,14 +16,17 @@ import (
 // reformat of schemas/*.schema.json must not change it. Moving the schemas
 // out of the installed skill to schemas/ re-pinned every hash: only each $id
 // URL moved; no property, required key, enum, or type changed.
+// S5 versions aggregate bindings and adds finder outcomes. Nullable phase
+// totals are a deliberate pre-v1 wire break; the eight changed schemas are
+// named in the S5 changeset.
 var publishedSemantics = map[string]string{
 	// additive author.schema.json (new bundle document; the advisory author
 	// fingerprint fetch detects). No existing schema property, required key,
 	// enum, or type changed.
 	"author.schema.json":      "0773058075a17e2d53e2d8c6a1bdfad2150bcb41a64c76e24ef4cc88cf4ef6d9",
 	"excluded.schema.json":    "0d2646d108ddc5d13c2718b4e5d7f66084e5f5f2ee29883cf375d29ef8b112c4",
-	"panel-plan.schema.json":  "d0aca49a2b875cf2c75cf7e814cbb0351fd485d98d8435e81e8bd0156d68298e",
-	"panel.schema.json":       "ea4c3cb0bedb92b968c7dd0a5109a875a35e3ea30fb9e22235f96748022a31c0",
+	"panel-plan.schema.json":  "0c07f920a8b899d683a8e344d1ed9d5ba707c745c8335ef9db88a94704ff4dd6",
+	"panel.schema.json":       "cc9b5ddf39449f0ab03c0152bcb00f26a9d6754d326511a9c345391d4d012c25",
 	"calibration.schema.json": "053bb6495d947663278044fa75308c89e0b72a93b8dbc0c0e84710cf17357f85",
 	// additive backtest.schema.json (new run-artifact document for the backtest
 	// score report; no existing schema property, required key, or type changed).
@@ -93,7 +96,7 @@ var publishedSemantics = map[string]string{
 	// while the rollup sums one total. The models array accepts one shape
 	// only; the reader dropped its object-form coercion in the same change.
 	// No property, required key, enum, or type changed.
-	"cost.schema.json": "dbb18c3237ce7d2311b5205372f4a1e78334e5c61a1750118ba419d2c1f177a8",
+	"cost.schema.json": "8e43b973a8f279c8fe34e8d35877682be8d0ebe17a0fc07c8cc0601ea6ca4172",
 	// additive fetchEstimate $defs entry (measured-usage basis fields).
 	// The additive showData/showFix/verifyHint $defs entries (show --json
 	// data.fix). Neither change touched an existing property, required key,
@@ -303,7 +306,7 @@ var publishedSemantics = map[string]string{
 	// journal unobserved sweep: additive optional boolean
 	// $defs/journalBundleDigests.unobserved. No existing property, required key,
 	// or type changed.
-	"envelope.schema.json": "4854b17f5eeafdca806e4b7014df9be5755814a971110778d52c4fb48c46f545",
+	"envelope.schema.json": "57f86af6869213381a7ba0a52ae0e6719cb5e58d1af0daa0ad7ce372130cea8e",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -315,7 +318,7 @@ var publishedSemantics = map[string]string{
 	// sarif ingest: additive optional entry.source enum (model|tool) and
 	// optional tool, rule_id, and fingerprint strings on findings entries. No
 	// existing property, required key, or type changed.
-	"findings.schema.json": "4357edb85756c424fa4bad8c59c993f6b3c746b1205598eb3a27bb3a82cd7af3",
+	"findings.schema.json": "6aa560434a01f2ba0d41dfeb29c7eef7ef1878941caa1dcd771c15ff811faf92",
 	// post_floor_scoped: additive optional per-path posting floor list with its
 	// $defs/floorScope entry (required path, enum floor). No existing
 	// property, required key, or type changed.
@@ -341,7 +344,7 @@ var publishedSemantics = map[string]string{
 	// $defs/approvalReceipt, and the additive optional nullable evidence
 	// receipt ($defs/evidenceReceipt) a completed post publishes. No existing
 	// property, required key, or type moved.
-	"post.schema.json": "dc62f8134ed4837ad4b8abd28573382bb90ceaf95aaa8d9adb5d855b59885a38",
+	"post.schema.json": "37fba04335ad7deb720476081d62eec225849c55312908f458a5088474232822",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	// fixtures.schema.json descriptions only: hallucination now names the pinned
@@ -458,7 +461,7 @@ var publishedSemantics = map[string]string{
 	// S4 evidence vocabulary: additive optional insufficient boolean on
 	// $defs/approvalReceipt, optional nullable evidence property, and
 	// $defs/evidence{Receipt,Quote,Receipts,Spec}. Additions only.
-	"record.schema.json": "48c673fd26939c62351370a75cc4663167f067f7c044de2607763d9dce10c343",
+	"record.schema.json": "39283ac43dcd0b5270343cd655ddccec5d19d9e66d8e3f5be0560e266c68fa49",
 
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
@@ -485,7 +488,7 @@ var publishedSemantics = map[string]string{
 	// schema does not publish refuses). finding, specCheck, specEvidence and
 	// receipt are new definitions. This is the deliberate pre-v1 break: there
 	// is no compatibility shape.
-	"review.schema.json": "cbea45927483aed8b735233141ae1817482005fc5fc2b5f5d6b99adb506540a8",
+	"review.schema.json": "d50b3b9b6ae31c1ca5ed5ba2e3253b99e6f00db689a3cd9044585ab29740dcfc",
 	// additive selected.schema.json (new bundle document: the reaction-scoped
 	// fix selection fetch writes and fix --selected reads). A new document
 	// only: no existing schema property, required key, enum, or type changed.

@@ -94,8 +94,8 @@ type RunData struct { //nolint:govet // field order is the published property or
 	Argv       []string           `json:"argv"`
 	Bundle     string             `json:"bundle"`
 	Artifact   string             `json:"artifact"`
-	Recipe     *RecipePlan        `json:"recipe,omitempty"`
-	Stage      *RecipeStageRender `json:"stage,omitempty"`
+	Recipe     *RecipePlan        `anyOf:"null"                 json:"recipe,omitempty"`
+	Stage      *RecipeStageRender `anyOf:"null"                 json:"stage,omitempty"`
 	StartedAt  string             `json:"started_at,omitempty"`
 	EndedAt    string             `json:"ended_at,omitempty"`
 	DurationMS int                `json:"duration_ms,omitempty"`
@@ -105,7 +105,8 @@ type RunData struct { //nolint:govet // field order is the published property or
 	Fresh      bool               `json:"artifact_fresh"`
 	Printed    bool               `json:"printed,omitempty"`
 	Record     string             `json:"record,omitempty"`
-	Repair     *RunRepair         `json:"repair,omitempty"`
+	Execution  *RunExecution      `anyOf:"null"                 json:"execution,omitempty"`
+	Repair     *RunRepair         `anyOf:"null"                 json:"repair,omitempty"`
 }
 
 // RunRepair is the repair-loop profile: the round cap, how many rounds it
@@ -128,7 +129,7 @@ type RunAttempt struct { //nolint:govet // field order is the published property
 	Round        int          `json:"round"`
 	PromptSHA256 string       `json:"prompt_sha256"`
 	ReviewSHA256 string       `json:"review_sha256"`
-	Evidence     *RunEvidence `json:"evidence,omitempty"`
+	Evidence     *RunEvidence `anyOf:"null"         json:"evidence,omitempty"`
 	Problems     []Problem    `json:"problems"`
 	Truncated    int          `json:"truncated"`
 	CheckOK      bool         `json:"check_ok"`
@@ -156,4 +157,18 @@ type RunEvidence struct {
 // Wire renders the data object in wire order.
 func (d *RunData) Wire() *jq.Obj {
 	return structObj(reflect.ValueOf(d).Elem())
+}
+
+// RunExecution exposes the captured topology without adding a launcher API.
+type RunExecution struct {
+	ID       string            `json:"id"`
+	Status   string            `enum:"in-progress|complete|partial" json:"status"`
+	Counts   *FinderSummary    `anyOf:"null"                        json:"counts"`
+	Failures []RunPhaseFailure `json:"failures"`
+}
+
+// RunPhaseFailure identifies an incomplete phase without exposing raw logs.
+type RunPhaseFailure struct {
+	Phase string `json:"phase"`
+	Code  string `json:"code"`
 }

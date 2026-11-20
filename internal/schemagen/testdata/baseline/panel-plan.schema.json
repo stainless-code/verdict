@@ -2,14 +2,22 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/panel-plan.schema.json",
   "title": "verification/plan.json — independent dispatch plan",
-  "description": "Local planner output at verification/plan.json; verifiers follow the synthesizer in the pinned panel roster. No model or network call occurs.",
+  "description": "Version 1 manual dispatch plan, or version 2 execution-bound automatic plan with directed checks and exact-signature source mappings. The planner does not launch agents.",
   "type": "object",
   "properties": {
+    "execution_id": { "type": "string" },
+    "diff_sha256": { "type": "string" },
+    "review_sha256": { "type": "string" },
+    "sources": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/executionSource" },
+      "maxItems": 100
+    },
     "checks": {
       "type": "array",
       "items": { "$ref": "#/$defs/directedCheck" }
     },
-    "schema_version": { "const": "1" },
+    "schema_version": { "enum": ["1", "2"] },
     "head_sha": { "type": "string" },
     "generated_at": { "type": "string" },
     "panel_source": { "type": "string" },
@@ -28,18 +36,32 @@
     "dispatch": { "type": "string" },
     "totals": { "$ref": "#/$defs/totals" }
   },
-  "required": [
-    "schema_version",
-    "head_sha",
-    "generated_at",
-    "panel_source",
-    "verifiers",
-    "findings",
-    "second_look",
-    "dispatch",
-    "totals"
-  ],
+  "required": ["schema_version", "head_sha"],
   "additionalProperties": false,
+  "anyOf": [
+    {
+      "properties": { "schema_version": { "const": "1" } },
+      "required": [
+        "generated_at",
+        "panel_source",
+        "verifiers",
+        "findings",
+        "second_look",
+        "dispatch",
+        "totals"
+      ]
+    },
+    {
+      "properties": { "schema_version": { "const": "2" } },
+      "required": [
+        "execution_id",
+        "diff_sha256",
+        "review_sha256",
+        "checks",
+        "sources"
+      ]
+    }
+  ],
   "$defs": {
     "directedCheck": {
       "type": "object",
@@ -49,6 +71,30 @@
         "checker": { "enum": ["finder-1", "finder-2"] }
       },
       "required": ["sig", "origin", "checker"],
+      "additionalProperties": false
+    },
+    "executionSource": {
+      "type": "object",
+      "properties": {
+        "sig": { "type": "string" },
+        "origins": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/finderOrigin" },
+          "minItems": 1,
+          "maxItems": 2
+        }
+      },
+      "required": ["sig", "origins"],
+      "additionalProperties": false
+    },
+    "finderOrigin": {
+      "type": "object",
+      "properties": {
+        "finding": { "type": "object", "additionalProperties": true },
+        "finder": { "enum": ["finder-1", "finder-2"] },
+        "index": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["finding", "finder", "index"],
       "additionalProperties": false
     },
     "verifier": {

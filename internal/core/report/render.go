@@ -226,12 +226,12 @@ func costFromObj(cost *jq.Obj) *core.ReportCost {
 	c := &core.ReportCost{
 		Runs:         jqInt(cost, keyRuns),
 		RunsWithCost: jqInt(cost, "runs_with_cost"),
-		InputTokens:  jqInt(cost, "input_tokens"),
-		OutputTokens: jqInt(cost, "output_tokens"),
-		TotalTokens:  jqInt(cost, "total_tokens"),
+		InputTokens:  nullableCostInt(cost, "input_tokens"),
+		OutputTokens: nullableCostInt(cost, "output_tokens"),
+		TotalTokens:  nullableCostInt(cost, "total_tokens"),
 		ByTier:       costTiers(cost),
 	}
-	c.CachedInputTokens = jqInt(cost, "cached_input_tokens")
+	c.CachedInputTokens = nullableCostInt(cost, "cached_input_tokens")
 	if est, ok := readcommon.NumVal(jqVal(cost, "est_usd")); ok {
 		c.EstUSD = &est
 	}
@@ -262,14 +262,17 @@ func costTier(byTier *jq.Obj, tier string) core.CostTier {
 	}
 	return core.CostTier{
 		Runs:         jqInt(obj, keyRuns),
-		InputTokens:  jqInt(obj, "input_tokens"),
-		OutputTokens: jqInt(obj, "output_tokens"),
-		TotalTokens:  jqInt(obj, "total_tokens"),
+		InputTokens:  nullableCostInt(obj, "input_tokens"),
+		OutputTokens: nullableCostInt(obj, "output_tokens"),
+		TotalTokens:  nullableCostInt(obj, "total_tokens"),
 	}
 }
 
 // keyRuns names the rollup's runs field (frozen wire key).
-const keyRuns = "runs"
+const (
+	keyRuns        = "runs"
+	costNumberBase = 10
+)
 
 func jqInt(obj *jq.Obj, key string) int {
 	f, _ := readcommon.NumVal(jqVal(obj, key))
@@ -1001,4 +1004,16 @@ func flattenReason(reason string) string {
 		return r
 	}, reason)
 	return strings.Join(strings.Fields(plain), " ")
+}
+
+func nullableCostInt(obj *jq.Obj, key string) *int {
+	n, ok := jq.IntOf(jqVal(obj, key))
+	if raw, yes := jqVal(obj, key).(int64); yes {
+		n, ok = jq.IntOf(jq.Number(strconv.FormatInt(raw, costNumberBase)))
+	}
+	if !ok {
+		return nil
+	}
+	value := n
+	return &value
 }

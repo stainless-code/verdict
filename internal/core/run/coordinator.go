@@ -43,6 +43,7 @@ func (st *state) coordinate(ctx context.Context, base *launchArgs, rounds int) (
 		reviews: make([]*jq.Obj, finderCount), failures: []any{},
 	}
 	ref := c.run(ctx)
+	c.executionResponse()
 	return c.response, ref
 }
 
@@ -162,11 +163,16 @@ func (c *coordinator) freeze() *core.RefusalError {
 	if ref := writeCoordinator(c.dir, reviewFile, c.review); ref != nil {
 		return ref
 	}
+	c.plan.Set("schema_version", "2")
+	c.plan.Set("execution_id", c.id)
+	c.plan.Set("head_sha", readcommon.OpenBundle(c.dir).Head())
+	c.plan.Set("diff_sha256", shaHex(diff))
+	c.plan.Set("review_sha256", shaHex(coordinatorBytes(c.review)))
 	planPath := filepath.Join("verification", "plan.json")
 	if ref := writeCoordinator(c.dir, planPath, c.plan); ref != nil {
 		return ref
 	}
-	c.binding = jq.NewObj("schema_version", "2", "execution_id", c.id, "head_sha", readcommon.PrField(c.dir, "head_sha"),
+	c.binding = jq.NewObj("schema_version", "2", "execution_id", c.id, "head_sha", readcommon.OpenBundle(c.dir).Head(),
 		"diff_sha256", shaHex(diff), "review_sha256", shaHex(coordinatorBytes(c.review)),
 		"plan_sha256", shaHex(coordinatorBytes(c.plan)), "results", []any{})
 	return c.snapshot.bind(c.dir, reviewFile, planPath)
@@ -285,4 +291,33 @@ func (c *coordinator) checkpoint(output string) func() *core.RefusalError {
 		}
 		return rejectPhaseLinks(output)
 	}
+}
+
+func (c *coordinator) executionResponse() {
+	if c.snapshot == nil {
+		return
+	}
+	if c.response == nil {
+		c.response = &core.RunResponse{Repo: c.st.req.Repo, Pr: c.st.req.Pr, At: core.NowUTC(c.st.now())}
+	}
+	if c.response.Data == nil {
+		argv, _ := c.st.displayArgv(c.base)
+		c.response.Data = &core.RunData{
+			Agent: c.base.def.Name, Binary: c.base.bin, Argv: argv,
+			Bundle: readcommon.DisplayPath(c.st.req.RepoRootPath(), c.dir), Timeout: c.base.timeout,
+		}
+	}
+	execution := panelcore.CheckExecution(c.dir, nil)
+	counts := execution.Attach(nil).Finders
+	failures := make([]core.RunPhaseFailure, 0, len(c.failures))
+	for _, row := range c.failures {
+		failures = append(failures, core.RunPhaseFailure{
+			Phase: jq.StrOf(readcommon.FieldOf(row, "phase")), Code: jq.StrOf(readcommon.FieldOf(row, "code")),
+		})
+	}
+	c.response.Data.Execution = &core.RunExecution{
+		ID: c.id, Status: readcommon.JSONStr(filepath.Join(c.dir, launcherFile), "status"),
+		Counts: counts, Failures: failures,
+	}
+	c.aggregateResponse()
 }

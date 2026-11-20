@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/panel.schema.json",
   "title": "verification/verdicts.json — independent verifier receipts",
-  "description": "Invoker-written verification/verdicts.json: head-bound independent opinions. Duplicate (sig, checker) and unknown or ambiguous signatures are refused by the runtime; a refutation never deletes a finding.",
+  "description": "Version 2 checker receipts. Automatic receipts bind execution, head, diff, aggregate review and plan digests; record and post derive cross standing from these files. Manual checker identities come from the panel plan. Invoker-written verification/verdicts.json: head-bound independent opinions. Duplicate (sig, checker) and unknown or ambiguous signatures are refused by the runtime; a refutation never deletes a finding.",
   "type": "object",
   "properties": {
     "execution_id": { "type": "string" },

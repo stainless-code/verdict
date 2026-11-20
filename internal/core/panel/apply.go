@@ -87,6 +87,10 @@ func mergeResult(results []any, r *Result) []any {
 	if r.At != "" {
 		result.Set("at", r.At)
 	}
+	return mergeCheckerResult(results, r, result)
+}
+
+func mergeCheckerResult(results []any, r *Result, result *jq.Obj) []any {
 	for i, old := range results {
 		m, _ := object(old)
 		if m["checker"] != r.Checker || (m[fieldVerdict] == refuted && r.Verdict != refuted) {

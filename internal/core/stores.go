@@ -554,14 +554,18 @@ func (d *RecordData) Wire() *jq.Obj {
 	if d.Verification != nil {
 		o.Set("verification", d.Verification)
 	}
+	setRecordApproval(o, d)
 	setRecordTailWire(o, d, items)
 	return o
 }
 
-func setRecordTailWire(o *jq.Obj, d *RecordData, items any) {
+func setRecordApproval(o *jq.Obj, d *RecordData) {
 	if d.Verification != nil && d.Verification.Finders != nil {
 		o.Set("approval", d.Approval)
 	}
+}
+
+func setRecordTailWire(o *jq.Obj, d *RecordData, items any) {
 	if d.Coverage != nil {
 		o.Set("coverage", d.Coverage)
 	}

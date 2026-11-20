@@ -259,6 +259,7 @@ func (c *checker) checkReview(obj *jq.Obj) {
 		v, _ := obj.Get(key)
 		switch key {
 		case "execution":
+			c.checkExecutionReference(v)
 		case fieldSchemaVersion:
 			execution, _ := obj.Get("execution")
 			c.checkSchemaVersion(v, execution != nil)
@@ -317,7 +318,11 @@ func (c *checker) checkSchemaVersion(v any, automatic bool) {
 		c.wrongType(problemSchemaVersion, "schema_version must be the string \"1\"", "set \"schema_version\": \"1\"", schemaVersion1)
 		return
 	}
-	if s != schemaVersion1 && (s != "2" || !automatic) {
+	version := schemaVersion1
+	if automatic {
+		version = "2"
+	}
+	if s != version {
 		c.badEnum(problemSchemaVersion, fmt.Sprintf("unknown schema_version %q", s),
 			"write the only supported version", schemaVersion1)
 	}
@@ -1153,6 +1158,25 @@ func (c *checker) checkSources(base string, v any) {
 	for _, item := range items {
 		if _, ok := item.(string); !ok {
 			c.wrongType(base+".sources", "source must be a string", "use a source name")
+		}
+	}
+}
+
+func (c *checker) checkExecutionReference(value any) {
+	ref, ok := value.(*jq.Obj)
+	if !ok {
+		c.wrongType("$.execution", "execution must be an object", "use the coordinator execution reference", nil)
+		return
+	}
+	id, _ := ref.Get("id")
+	c.checkString("$.execution.id", id, true, "copy the captured execution id")
+	count, _ := ref.Get("finders")
+	if n, ok := jq.IntOf(count); !ok || n != 2 {
+		c.outOfRange("$.execution.finders", "execution requires two finders", "write 2", 2)
+	}
+	for _, key := range ref.Keys {
+		if key != "id" && key != "finders" {
+			c.unknownRoot("execution." + key)
 		}
 	}
 }

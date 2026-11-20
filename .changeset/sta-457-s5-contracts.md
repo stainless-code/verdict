@@ -1,0 +1,9 @@
+---
+"@stainless-code/verdict": minor
+---
+
+Captured two-finder executions now render completed finders, directed cross-check counts, per-finding origins and checker standing, and bounded quoted refutation evidence. Record, post, report, and their MCP adapters recompute cross eligibility from bound artifacts. A missing or forged stored stamp cannot replace those artifacts. Launching remains behind the internal seam; this change adds no CLI flag, default flip, MCP launcher, or SDK launcher.
+
+Pre-v1 SDK wire break: report cost `input_tokens`, `output_tokens`, `total_tokens`, `cached_input_tokens`, and the token fields under `by_tier` can be `null`. Null means unknown usage, never a measured zero. The Go facade retains `Result.Data` as raw JSON and documents the change in `pkg/verdict/api.txt`; generated TypeScript cost fields are nullable. Two-finder rollups price each bound launch once and ignore a root aggregate claim beside its phases. The legacy single-finder cost path is unchanged.
+
+Changed schemas: `review.schema.json` (finder/manual v1 versus bound aggregate v2), `panel-plan.schema.json` (manual v1 and automatic v2), `panel.schema.json` (v2 receipt documentation), `findings.schema.json` (origins and checker quote standing), `record.schema.json`, `post.schema.json`, `envelope.schema.json` (finder summaries, run execution data, and nullable cost totals), and `cost.schema.json` (phase accounting documentation). Manual panel receipts use v2 with assigned checker seats; no compatibility decoder was added.

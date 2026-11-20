@@ -165,8 +165,8 @@ func usageText() string {
 		"    touch no network; gate runs (--check/--completeness) end with one live-thread recheck read.\n" +
 		"    --sarif writes a SARIF 2.1.0 file (severity→level, category in properties, sig as\n" +
 		"    fingerprint) for scanners/CI.\n" +
-		"    --cost adds a spend rollup from .verdict/state/<pr>/cost.json (absent/unreadable -> zeros, never fails; " +
-		"stratified by effort tier).\n" +
+		"    --cost adds spend by effort tier. Captured two-finder runs sum bound phase usage;\n" +
+		"    missing phase tokens or USD stay null (unknown), never zero.\n" +
 		"    Consented over-budget receipts from .verdict/state/<pr>/budget.json surface here when present.\n" +
 		"    --risk prints the advisory risk assessment (claimed risk or unknown, deterministic store floor\n" +
 		"    inputs, and reported = max(claimed, floor)).\n" +
