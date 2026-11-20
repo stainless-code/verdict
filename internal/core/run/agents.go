@@ -35,7 +35,10 @@ type agentDef struct {
 	Source     string
 	// ProbeMatch is the substring the launcher expects from the identity probe.
 	ProbeMatch string
-	Args       []string
+	// LaunchWarning is emitted once on stderr at launch when a headless CLI
+	// carries a known reliability caveat.
+	LaunchWarning string
+	Args          []string
 	// ProbeArgs runs the binary's harmless one-shot help before a launch; a
 	// row declares it only when another tool shares the binary name.
 	ProbeArgs []string
@@ -62,6 +65,13 @@ const (
 	argsHelp     = "--help"
 )
 
+// agyLaunchWarning flags Antigravity CLI's headless write soft-denial before
+// launch: outside trustedWorkspaces, `agy -p` auto-denies file edits and exits
+// 0 with no artifact, while approval flags stay with the operator after `--`.
+const agyLaunchWarning = "agy print mode (-p) soft-denies file edits outside trusted workspaces, " +
+	"so review.json may never be written; trust this repository in agy's settings or pass " +
+	"-- --dangerously-skip-permissions (your approval bypass)"
+
 // agentDefs is the shipped agent table, sorted by name. Every row is data: a
 // new agent is a new entry here, and nothing else in the launcher changes.
 // Permission and approval flags stay with the operator via `-- <args>`.
@@ -75,7 +85,8 @@ var agentDefs = []agentDef{
 	// https://github.com/google-antigravity/antigravity-cli — read 2026-11-17
 	{
 		Name: "agy", Binary: "agy", ModelFlag: modelFlag, PromptFlag: "-p",
-		Install: "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+		LaunchWarning: agyLaunchWarning,
+		Install:       "curl -fsSL https://antigravity.google/cli/install.sh | bash",
 	},
 	// https://ampcode.com/docs/markdown/cli/execute-mode — read 2026-11-17
 	{

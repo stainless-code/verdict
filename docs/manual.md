@@ -2346,7 +2346,7 @@ pass-through flag can never be swallowed as the prompt flag's value.
 | Name          | Binary and agent flags           | Prompt placement       | Official install                                                                                                                       | Flag that lets it write the artifact                                                             | Source                                                                                                                             |
 | ------------- | -------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
 | `adal`        | `adal`                           | `-q <directive>`       | `curl -fsSL https://adal.sylph.ai/install.sh \| bash`                                                                                  | `--yolo` or `--permission-mode yolo`                                                             | [AdaL headless](https://docs.sylph.ai/integration/headless.md)                                                                     |
-| `agy`         | `agy`                            | `-p <directive>`       | `curl -fsSL https://antigravity.google/cli/install.sh \| bash`                                                                         | `--dangerously-skip-permissions`, or `--mode accept-edits`                                       | [Antigravity CLI](https://github.com/google-antigravity/antigravity-cli)                                                           |
+| `agy`         | `agy`                            | `-p <directive>`       | `curl -fsSL https://antigravity.google/cli/install.sh \| bash`                                                                         | `--dangerously-skip-permissions`, or `--mode accept-edits` in a trusted workspace                | [Antigravity CLI](https://github.com/google-antigravity/antigravity-cli)                                                           |
 | `amp`         | `amp`                            | `-x <directive>`       | `npm install -g @ampcode/cli`                                                                                                          | none: tools run without an approval prompt by default                                            | [Amp execute mode](https://ampcode.com/docs/markdown/cli/execute-mode)                                                             |
 | `auggie`      | `auggie --print`                 | last argument          | `npm install -g @augmentcode/auggie@prerelease`                                                                                        | none documented; unmatched tools follow the runtime default                                      | [Augment CLI reference](https://docs.augmentcode.com/cli/reference.md)                                                             |
 | `autohand`    | `autohand`                       | last argument          | `curl -fsSL https://autohand.ai/install.sh \| bash`                                                                                    | `-y` / `--unrestricted`                                                                          | [Autohand parser](https://github.com/autohandai/code-cli/blob/main/src/index.ts)                                                   |
@@ -2399,6 +2399,26 @@ supported one-shot form (`-p` is deprecated). `cursor` keeps `cursor-agent`
 because that is the binary its installer still puts on `PATH`.
 
 `cline` has known hangs when stdout is piped (cline#14544) or stdin stays open (cline#14570); `run --timeout` bounds both.
+
+`agy` print mode (`-p`) soft-denies file edits (`Edit` / `write_file`) outside
+trusted workspaces — even under default `auto` mode or `--mode accept-edits` —
+and exits `0` without writing `review.json`, so `run` refuses
+`no-review-artifact`. Two operator-side remedies apply: add the repository to
+`trustedWorkspaces` (or allow `write_file(...)` under `permissions.allow`) in
+`~/.gemini/antigravity-cli/settings.json` (see the
+[Antigravity CLI settings schema](https://antigravity.google/schemas/v1/settings.json)
+and [headless mode docs](https://antigravity.google/docs/cli/headless)), or
+pass `-- --dangerously-skip-permissions` explicitly (an approval bypass stays
+the operator's choice and is never baked into the shipped row):
+
+```bash
+verdict run <owner/repo> <pr|local-name> --agent agy -- --model gemini-4-neon-high --dangerously-skip-permissions
+```
+
+Because that soft-denial exits `0` silently unless configured, `run --agent agy`
+prints a one-line warning on stderr at launch (`warn: agy print mode (-p) soft-denies file edits outside trusted workspaces, so review.json may never be written; trust this repository in agy's settings or pass -- --dangerously-skip-permissions (your approval bypass)`)
+and proceeds rather than refusing. As history, `agy` versions before 1.5.13
+were observed returning before sub-agents finished (2026-11-18).
 
 Aider is deliberately absent. Its positional arguments are files to edit, not
 a prompt, so it cannot read a verdict bundle with its own tools; it also

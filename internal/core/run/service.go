@@ -304,10 +304,17 @@ func (st *state) invoke(ctx context.Context, args *launchArgs, rounds int) (*cor
 	if ref := st.probe(ctx, args); ref != nil {
 		return nil, ref
 	}
+	st.warnLaunch(&args.def)
 	if st.roundLoop(rounds) {
 		return st.repairLoop(ctx, args, rounds)
 	}
 	return st.launch(ctx, args)
+}
+
+func (st *state) warnLaunch(def *agentDef) {
+	if def.LaunchWarning != "" {
+		st.warn(def.LaunchWarning)
+	}
 }
 
 // printRoundsRefusal refuses a render asked for a repair loop it cannot run: a
