@@ -2,12 +2,12 @@ package main
 
 import (
 	"errors"
+	"github.com/stainless-code/verdict/internal/testenv"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 )
 
 // TestCheckoutRootFindsCheckout checks the walk-up from a bin dir.
@@ -82,19 +82,36 @@ func TestClosableReaderCloseUnblocksAStuckRead(t *testing.T) {
 	if err := reader.Close(); err != nil {
 		t.Fatalf("Close = %v", err)
 	}
-	select {
-	case err := <-readDone:
-		if !errors.Is(err, io.ErrClosedPipe) {
-			t.Fatalf("Read after Close = %v, want io.ErrClosedPipe", err)
+	var readErr error
+	testenv.Until(t, func() bool {
+		select {
+		case readErr = <-readDone:
+			return true
+		default:
+			return false
 		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("Close did not unblock a read parked on the source")
+	})
+	if !errors.Is(readErr, io.ErrClosedPipe) {
+		t.Fatalf("Read after Close = %v, want io.ErrClosedPipe", readErr)
 	}
 }
 
 func TestClosableReaderForwardsDataThenEOF(t *testing.T) {
 	t.Parallel()
-	got, err := io.ReadAll(closableReader(strings.NewReader("frame\n")))
+	reader := closableReader(strings.NewReader("frame\n"))
+	t.Cleanup(func() { _ = reader.Close() })
+	var got []byte
+	var err error
+	done := make(chan struct{})
+	go func() { got, err = io.ReadAll(reader); close(done) }()
+	testenv.Until(t, func() bool {
+		select {
+		case <-done:
+			return true
+		default:
+			return false
+		}
+	})
 	if err != nil {
 		t.Fatalf("ReadAll = %v", err)
 	}
