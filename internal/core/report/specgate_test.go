@@ -54,11 +54,11 @@ func writeRecordWithSpecChecks(t *testing.T, checks []core.SpecCheck) {
 
 // runSpecGate runs one report gate over a store whose record carries these
 // spec checks.
-func runSpecGate(t *testing.T, flags *core.ReportFlags, checks []core.SpecCheck) *core.ReportResponse {
+func runSpecGate(t *testing.T, flags *reportcore.Flags, checks []core.SpecCheck) *reportcore.Response {
 	t.Helper()
 	req := fixture(t, "[]")
 	writeRecordWithSpecChecks(t, checks)
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req, Flags: *flags})
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{ReadRequest: req, Flags: *flags})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -67,7 +67,7 @@ func runSpecGate(t *testing.T, flags *core.ReportFlags, checks []core.SpecCheck)
 
 // specDim returns the published spec dimension, failing the test when the
 // gate does not carry it.
-func specDim(t *testing.T, resp *core.ReportResponse) core.GateDimension {
+func specDim(t *testing.T, resp *reportcore.Response) core.GateDimension {
 	t.Helper()
 	if resp.Data.Gate == nil {
 		t.Fatal("data.gate is nil on a gate run")
@@ -82,7 +82,7 @@ func specDim(t *testing.T, resp *core.ReportResponse) core.GateDimension {
 }
 
 // assertSpecDim proves one spec dimension's verdict, tally, and detail.
-func assertSpecDim(t *testing.T, resp *core.ReportResponse, status string, count int, detail string) {
+func assertSpecDim(t *testing.T, resp *reportcore.Response, status string, count int, detail string) {
 	t.Helper()
 	dim := specDim(t, resp)
 	if dim.Status != status {
@@ -97,7 +97,7 @@ func assertSpecDim(t *testing.T, resp *core.ReportResponse, status string, count
 }
 
 // assertCheckLine proves one exact line on the human tail.
-func assertCheckLine(t *testing.T, resp *core.ReportResponse, want string) {
+func assertCheckLine(t *testing.T, resp *reportcore.Response, want string) {
 	t.Helper()
 	if !containsLine(resp.CheckLines, want) {
 		t.Errorf("CheckLines = %q, want it to contain %q", resp.CheckLines, want)
@@ -106,7 +106,7 @@ func assertCheckLine(t *testing.T, resp *core.ReportResponse, want string) {
 
 // assertApprovalWithheld proves the derived decision refused this review for
 // its spec check alone.
-func assertApprovalWithheld(t *testing.T, resp *core.ReportResponse) {
+func assertApprovalWithheld(t *testing.T, resp *reportcore.Response) {
 	t.Helper()
 	if resp.Data.Approval == nil || resp.Data.Approval.Approved {
 		t.Fatalf("approval = %+v, want withheld", resp.Data.Approval)
@@ -118,7 +118,7 @@ func assertApprovalWithheld(t *testing.T, resp *core.ReportResponse) {
 
 // assertSpecPasses proves the clean legs: the gate passes, the decision
 // approves, and the dimension reports a zero tally.
-func assertSpecPasses(t *testing.T, resp *core.ReportResponse) {
+func assertSpecPasses(t *testing.T, resp *reportcore.Response) {
 	t.Helper()
 	if resp.GateFailed {
 		t.Errorf("GateFailed = true, want false (lines %q)", resp.CheckLines)
@@ -135,7 +135,7 @@ func assertSpecPasses(t *testing.T, resp *core.ReportResponse) {
 // withholds approval, and the gate used to pass over it because no dimension
 // read the spec checks at all.
 func TestRunReportCheckSpecViolationFailsGate(t *testing.T) {
-	resp := runSpecGate(t, &core.ReportFlags{Check: "important"}, []core.SpecCheck{
+	resp := runSpecGate(t, &reportcore.Flags{Check: "important"}, []core.SpecCheck{
 		specCheck(metItem, "met"),
 		specCheck(violatedItem, "violated"),
 	})
@@ -151,7 +151,7 @@ func TestRunReportCheckSpecViolationFailsGate(t *testing.T) {
 // violated spec checks fail with count 2 and name the first, so a dimension
 // that counted met items, or dropped the count, cannot pass.
 func TestRunReportCheckSpecCheckCount(t *testing.T) {
-	resp := runSpecGate(t, &core.ReportFlags{Check: "important"}, []core.SpecCheck{
+	resp := runSpecGate(t, &reportcore.Flags{Check: "important"}, []core.SpecCheck{
 		specCheck(violatedItem, "violated"),
 		specCheck(metItem, "met"),
 		specCheck("the toc names context", "violated"),
@@ -180,7 +180,7 @@ func TestRunReportCheckSpecCheckPasses(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			assertSpecPasses(t, runSpecGate(t, &core.ReportFlags{Check: "important"}, tc.checks))
+			assertSpecPasses(t, runSpecGate(t, &reportcore.Flags{Check: "important"}, tc.checks))
 		})
 	}
 }
@@ -192,11 +192,11 @@ func TestRunReportCheckSpecCheckPasses(t *testing.T) {
 func TestRunReportSpecDimensionOnEveryGateMode(t *testing.T) {
 	tests := []struct {
 		name  string
-		flags core.ReportFlags
+		flags reportcore.Flags
 	}{
-		{name: "completeness-only", flags: core.ReportFlags{Completeness: true, Live: "skip"}},
-		{name: "coverage", flags: core.ReportFlags{Coverage: "warn", Live: "skip"}},
-		{name: "max-risk", flags: core.ReportFlags{MaxRisk: "critical"}},
+		{name: "completeness-only", flags: reportcore.Flags{Completeness: true, Live: "skip"}},
+		{name: "coverage", flags: reportcore.Flags{Coverage: "warn", Live: "skip"}},
+		{name: "max-risk", flags: reportcore.Flags{MaxRisk: "critical"}},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
@@ -206,7 +206,7 @@ func TestRunReportSpecDimensionOnEveryGateMode(t *testing.T) {
 }
 
 // assertSpecFails proves the spec dimension failed and took the gate with it.
-func assertSpecFails(t *testing.T, resp *core.ReportResponse) {
+func assertSpecFails(t *testing.T, resp *reportcore.Response) {
 	t.Helper()
 	if dim := specDim(t, resp); dim.Status != "fail" {
 		t.Errorf("spec status = %q, want fail", dim.Status)

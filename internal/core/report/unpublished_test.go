@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
 )
 
@@ -34,11 +33,11 @@ func unpublishedFinding(sig, severity, rigor, line string) string {
 
 // unpublishedRun runs one report over a single-finding store, live probe
 // skipped so the leg stays offline, and returns the response.
-func unpublishedRun(t *testing.T, store string, flags *core.ReportFlags) *core.ReportResponse {
+func unpublishedRun(t *testing.T, store string, flags *reportcore.Flags) *reportcore.Response {
 	t.Helper()
 	req := fixture(t, store)
 	flags.Live = "skip"
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req, Flags: *flags})
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{ReadRequest: req, Flags: *flags})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -46,7 +45,7 @@ func unpublishedRun(t *testing.T, store string, flags *core.ReportFlags) *core.R
 }
 
 // assertCheckLines proves the exact check lines and the gate verdict.
-func assertCheckLines(t *testing.T, resp *core.ReportResponse, wantFail bool, want []string) {
+func assertCheckLines(t *testing.T, resp *reportcore.Response, wantFail bool, want []string) {
 	t.Helper()
 	if got := strings.Join(resp.CheckLines, "\n"); got != strings.Join(want, "\n") {
 		t.Errorf("CheckLines = %q, want %q", resp.CheckLines, want)
@@ -68,7 +67,7 @@ const (
 // nothing at the critical threshold, while the finding still shows up.
 func TestReportUnpublishedTierNeverGates(t *testing.T) {
 	store := "[" + unpublishedFinding(sigUntagged, "null", `"walked"`, "2") + "]"
-	resp := unpublishedRun(t, store, &core.ReportFlags{Check: "critical"})
+	resp := unpublishedRun(t, store, &reportcore.Flags{Check: "critical"})
 	want := []string{"check: no open findings at-or-above critical — gate passes", liveSkipLine, specPassLine, evidencePassLine}
 	assertCheckLines(t, resp, false, want)
 	if len(resp.Data.Items) != 1 || resp.Data.Items[0].Sig != sigUntagged {
@@ -104,7 +103,7 @@ func TestReportUnpublishedRungNeverGates(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			store := "[" + unpublishedFinding(sigTraced, `"critical"`, tc.rigor, "2") + "]"
-			resp := unpublishedRun(t, store, &core.ReportFlags{Check: "critical", Category: tc.category})
+			resp := unpublishedRun(t, store, &reportcore.Flags{Check: "critical", Category: tc.category})
 			assertCheckLines(t, resp, tc.wantFail, []string{tc.wantLine, liveSkipLine, specPassLine, evidencePassLine})
 		})
 	}
@@ -120,7 +119,7 @@ func TestReportRanksUnpublishedValues(t *testing.T) {
 		unpublishedFinding(sigWalked, `"critical"`, `"walked"`, "3"),
 		unpublishedFinding(sigTraced, `"critical"`, `"traced"`, "2"),
 	}, ",") + "]"
-	resp := unpublishedRun(t, store, &core.ReportFlags{})
+	resp := unpublishedRun(t, store, &reportcore.Flags{})
 	want := []struct {
 		sig  string
 		rank int
@@ -147,7 +146,7 @@ func TestReportRanksUnpublishedValues(t *testing.T) {
 // the pointed default for a null rigor instead of reading it as unrecorded.
 func TestReportBasisDefaultsNullRigor(t *testing.T) {
 	store := "[" + unpublishedFinding(sigNullRung, `"critical"`, "null", "2") + "]"
-	resp := unpublishedRun(t, store, &core.ReportFlags{Output: "out.md"})
+	resp := unpublishedRun(t, store, &reportcore.Flags{Output: "out.md"})
 	if resp.Output == nil {
 		t.Fatal("no output artifact returned")
 	}

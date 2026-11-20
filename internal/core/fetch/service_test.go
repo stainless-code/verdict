@@ -166,7 +166,7 @@ func (testProgress) Diag(string) {}
 var fetchTestTime = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 
 // fetchTestReq builds a fetch request over scripted streams.
-func fetchTestReq(cmdr Commander, human, diag *bytes.Buffer, warnings *[]string) *core.FetchRequest {
+func fetchTestReq(cmdr Commander, human, diag *bytes.Buffer, warnings *[]string) *Request {
 	root := ""
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
@@ -179,9 +179,9 @@ func fetchTestReq(cmdr Commander, human, diag *bytes.Buffer, warnings *[]string)
 		Pr:   "7",
 		Root: &root,
 	}
-	return &core.FetchRequest{
+	return &Request{
 		ReadRequest: read,
-		Flags:       core.FetchFlags{HeadControls: true, Provider: "github"},
+		Flags:       Flags{HeadControls: true, Provider: "github"},
 		Effective:   core.Defaults(),
 		Warnings:    []string{},
 		Human:       human,
@@ -316,7 +316,7 @@ func assertFetchFiles(t *testing.T) {
 }
 
 // assertFetchData proves the typed response carries the envelope inputs.
-func assertFetchData(t *testing.T, resp *core.FetchResponse, human *bytes.Buffer) {
+func assertFetchData(t *testing.T, resp *Response, human *bytes.Buffer) {
 	t.Helper()
 	if resp.Data == nil {
 		t.Fatal("no response data")
@@ -343,7 +343,7 @@ func assertFetchIdentity(t *testing.T, data *core.FetchData) {
 }
 
 // assertFetchEnvelope proves the wire envelope and human lines.
-func assertFetchEnvelope(t *testing.T, resp *core.FetchResponse, human *bytes.Buffer) {
+func assertFetchEnvelope(t *testing.T, resp *Response, human *bytes.Buffer) {
 	t.Helper()
 	env := core.RenderEnvelope("fetch", resp.Repo, resp.Pr, resp.At, resp.Next,
 		resp.Warnings, resp.Data.Wire(), nil)
@@ -488,9 +488,9 @@ func TestRunLocalWorktree(t *testing.T) {
 		Pr:   "mine",
 		Root: &root,
 	}
-	req := &core.FetchLocalRequest{
+	req := &LocalRequest{
 		ReadRequest: read,
-		Flags:       core.FetchLocalFlags{HeadControls: true},
+		Flags:       LocalFlags{HeadControls: true},
 		Effective:   core.Defaults(),
 		Warnings:    []string{},
 		Human:       &human,
@@ -512,7 +512,7 @@ func TestRunLocalWorktree(t *testing.T) {
 // assertLocalBundle proves the worktree bundle landed with the envelope
 // inputs: source.json beside the diff, the worktree kind, and the
 // done/next lines on the human stream.
-func assertLocalBundle(t *testing.T, resp *core.FetchResponse, human *bytes.Buffer, diff, head string) {
+func assertLocalBundle(t *testing.T, resp *Response, human *bytes.Buffer, diff, head string) {
 	t.Helper()
 	if resp.Data == nil || !resp.Data.Local || resp.Data.Kind != "worktree" {
 		t.Fatalf("data = %+v", resp.Data)

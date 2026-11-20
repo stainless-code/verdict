@@ -49,7 +49,7 @@ const (
 // never reads, writes, or fabricates patch.json, and every outcome of an
 // executed command leaves a receipt — a success is never left standing as
 // the latest completion after a later failure.
-func RunGroup(ctx context.Context, req *core.VerifyRequest, dir, now string) (*core.VerifyResponse, *core.RefusalError) {
+func RunGroup(ctx context.Context, req *Request, dir, now string) (*Response, *core.RefusalError) {
 	st := &state{req: req, warnings: append([]string{}, req.Warnings...)}
 	run, ref := st.prepareValidation(ctx, dir, req)
 	if ref != nil {
@@ -93,7 +93,7 @@ type validationRun struct {
 // contract fixes: both-or-neither, canonical root, pinned capture, timeout,
 // allowlist, commander, reviewed head, then the checked-out head. A refusal
 // here means nothing ran, so no receipt is invented.
-func (st *state) prepareValidation(ctx context.Context, dir string, req *core.VerifyRequest) (*validationRun, *core.RefusalError) {
+func (st *state) prepareValidation(ctx context.Context, dir string, req *Request) (*validationRun, *core.RefusalError) {
 	run, ref := st.validationInputs(dir, req)
 	if ref != nil {
 		return nil, ref
@@ -106,7 +106,7 @@ func (st *state) prepareValidation(ctx context.Context, dir string, req *core.Ve
 
 // validationInputs proves the request shape, canonical root, pinned capture,
 // budget, allowlist, and commander. Nothing executes here.
-func (st *state) validationInputs(dir string, req *core.VerifyRequest) (*validationRun, *core.RefusalError) {
+func (st *state) validationInputs(dir string, req *Request) (*validationRun, *core.RefusalError) {
 	if req.Group == "" || req.Command == "" {
 		return nil, &core.RefusalError{Code: codeBadGroupValidation, Message: fmt.Sprintf(
 			"group validation needs both --group and --command (got group=%q command=%s); "+
@@ -133,7 +133,7 @@ func (st *state) validationInputs(dir string, req *core.VerifyRequest) (*validat
 
 // pinnedRun canonicalizes the reviewed root and pins the capture, receipt
 // path, and requested stable group.
-func (st *state) pinnedRun(dir string, req *core.VerifyRequest) (*validationRun, *core.RefusalError) {
+func (st *state) pinnedRun(dir string, req *Request) (*validationRun, *core.RefusalError) {
 	root, ref := canonicalRoot(req.RepoRootPath())
 	if ref != nil {
 		return nil, ref
@@ -177,9 +177,9 @@ func bindReviewedHead(ctx context.Context, run *validationRun, dir string) *core
 }
 
 // executeValidation runs the pinned command once and records its outcome.
-func (st *state) executeValidation(ctx context.Context, dir, now string, req *core.VerifyRequest,
+func (st *state) executeValidation(ctx context.Context, dir, now string, req *Request,
 	run *validationRun,
-) (*core.VerifyResponse, *core.RefusalError) {
+) (*Response, *core.RefusalError) {
 	if !coreexec.WatchdogEnforced() {
 		st.warn("no ps(1) — timeout unenforced for this run")
 	}
@@ -213,7 +213,7 @@ func (st *state) executeValidation(ctx context.Context, dir, now string, req *co
 // applyExecution stamps the captured execution facts. A cancellation or a
 // watchdog timeout is recorded as such even when the injected runner returns
 // nil error, so the receipt can never claim a pass for a stopped command.
-func (st *state) applyExecution(ctx context.Context, req *core.VerifyRequest,
+func (st *state) applyExecution(ctx context.Context, req *Request,
 	receipt *core.ValidationReceipt, res core.Result, runRef *core.RefusalError,
 ) {
 	receipt.OutputTail = redactSecrets(coreexec.TrimTail(lastBytes(res.Stdout+res.Stderr, tailCap)), req.Environ)
@@ -496,12 +496,12 @@ func firstLine(s string) string {
 
 // groupResponse renders the group-mode outcome; only a matching head and a
 // zero exit may carry the success next step.
-func (st *state) groupResponse(dir, receiptPath string, receipt *core.ValidationReceipt) *core.VerifyResponse {
+func (st *state) groupResponse(dir, receiptPath string, receipt *core.ValidationReceipt) *Response {
 	next := "validation failed or unavailable — fix it, or report the failure; do not claim a pass"
 	if receipt.Passed {
 		next = "validation holds for this group and head — the receipt is recorded"
 	}
-	return &core.VerifyResponse{
+	return &Response{
 		Repo: st.req.Repo,
 		Pr:   st.req.Pr,
 		At:   receipt.At,

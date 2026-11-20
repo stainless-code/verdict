@@ -7,6 +7,7 @@ import (
 
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 // TestRecordStampsTheAuthorPair proves record.json carries the fetch
@@ -15,13 +16,13 @@ import (
 // than inventing a human author.
 func TestRecordStampsTheAuthorPair(t *testing.T) {
 	bundle(t, "local-pair", reviewJSON(""))
-	writeFile(t, ".verdict/state/local-pair/author.json",
+	testkit.WriteFile(t, ".verdict/state/local-pair/author.json",
 		`{"schema_version":"1","agent":"claude","model":"Opus 4.5","confidence":"high",`+
 			`"evidence":[{"field":"commits","signal":"Co-Authored-By: Claude Opus 4.5 <noreply@anthropic.com>"}]}`)
-	writeFile(t, ".verdict/state/local-pair/cost.json",
+	testkit.WriteFile(t, ".verdict/state/local-pair/cost.json",
 		`{"schema_version":"2","models":[{"name":"gpt-5.1-codex","input_tokens":10},`+
 			`{"name":"gpt-5.1-codex","input_tokens":4},{"input_tokens":2}]}`)
-	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, "local-pair")); ref != nil {
+	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &testkit.Collector{}, "local-pair")); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
 	rec := decodeObject(t, ".verdict/state/local-pair/record.json")
@@ -50,8 +51,8 @@ func TestRecordIgnoresNonObjectCostModels(t *testing.T) {
 func assertCostModelsRecord(t *testing.T, slug, models, want string) {
 	t.Helper()
 	bundle(t, slug, reviewJSON(""))
-	writeFile(t, ".verdict/state/"+slug+"/cost.json", `{"schema_version":"2","models":`+models+`}`)
-	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, slug)); ref != nil {
+	testkit.WriteFile(t, ".verdict/state/"+slug+"/cost.json", `{"schema_version":"2","models":`+models+`}`)
+	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &testkit.Collector{}, slug)); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
 	rec := decodeObject(t, ".verdict/state/"+slug+"/record.json")
@@ -64,7 +65,7 @@ func assertCostModelsRecord(t *testing.T, slug, models, want string) {
 // published null: an unknown author is never guessed as human.
 func TestRecordStampsNoAuthorWithoutAFingerprint(t *testing.T) {
 	bundle(t, "local-nopair", reviewJSON(""))
-	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, "local-nopair")); ref != nil {
+	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &testkit.Collector{}, "local-nopair")); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
 	rec := decodeObject(t, ".verdict/state/local-nopair/record.json")

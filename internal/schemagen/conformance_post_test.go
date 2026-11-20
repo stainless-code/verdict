@@ -45,7 +45,7 @@ func (e postArgvError) Error() string { return string(e) }
 var postTestTime = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 
 // runPostDryRun builds a minimal GitHub bundle and runs the post dry-run.
-func runPostDryRun(t *testing.T) *core.PostResponse {
+func runPostDryRun(t *testing.T) *postcore.Response {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -64,13 +64,13 @@ func runPostDryRun(t *testing.T) *core.PostResponse {
 		"gh\x00api\x00repos/acme/app/pulls/5101\x00--jq\x00.head.sha":   "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa\n",
 	}}
 	root := ""
-	req := &core.PostRequest{
+	req := &postcore.Request{
 		Runtime: &core.Runtime{
 			Now:       func() time.Time { return postTestTime },
 			Commander: cmdr,
 		},
 		Repo: "acme/app", Pr: "5101", Root: &root,
-		Flags:     core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/5101/review.json", DryRun: true},
+		Flags:     postcore.Flags{Approve: "false", ReviewFile: ".verdict/state/5101/review.json", DryRun: true},
 		Effective: core.Defaults(),
 	}
 	resp, ref := postcore.Run(context.Background(), req)
@@ -82,7 +82,7 @@ func runPostDryRun(t *testing.T) *core.PostResponse {
 
 // runPostSubmit builds the same bundle and runs the real post through the
 // stubbed reviews POST.
-func runPostSubmit(t *testing.T) *core.PostResponse {
+func runPostSubmit(t *testing.T) *postcore.Response {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -100,13 +100,13 @@ func runPostSubmit(t *testing.T) *core.PostResponse {
 		"gh\x00api\x00repos/acme/app/pulls/5101/reviews\x00--method\x00POST\x00--input\x00-\x00--jq\x00{id, state, html_url, submitted_at}": `{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}`,
 	}}
 	root := ""
-	req := &core.PostRequest{
+	req := &postcore.Request{
 		Runtime: &core.Runtime{
 			Now:       func() time.Time { return postTestTime },
 			Commander: cmdr,
 		},
 		Repo: "acme/app", Pr: "5101", Root: &root,
-		Flags:     core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/5101/review.json"},
+		Flags:     postcore.Flags{Approve: "false", ReviewFile: ".verdict/state/5101/review.json"},
 		Effective: core.Defaults(),
 		JSONMode:  true,
 	}

@@ -25,7 +25,7 @@ const worktreeTestDiff = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n
 
 // worktreeReq builds a fetch-local request with the worktree flag set,
 // mirroring the TestRunLocalWorktree harness.
-func worktreeReq(cmdr *scriptCommander, human, diag *bytes.Buffer, streamed *[]string) *core.FetchLocalRequest {
+func worktreeReq(cmdr *scriptCommander, human, diag *bytes.Buffer, streamed *[]string) *LocalRequest {
 	root := ""
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
@@ -38,9 +38,9 @@ func worktreeReq(cmdr *scriptCommander, human, diag *bytes.Buffer, streamed *[]s
 		Pr:   "mine",
 		Root: &root,
 	}
-	return &core.FetchLocalRequest{
+	return &LocalRequest{
 		ReadRequest: read,
-		Flags:       core.FetchLocalFlags{Worktree: true, HeadControls: true},
+		Flags:       LocalFlags{Worktree: true, HeadControls: true},
 		Effective:   core.Defaults(),
 		Warnings:    []string{},
 		Human:       human,
@@ -165,9 +165,9 @@ func TestRunLocalWorktreeRange(t *testing.T) {
 		Pr:   "mine",
 		Root: &root,
 	}
-	req := &core.FetchLocalRequest{
+	req := &LocalRequest{
 		ReadRequest: read,
-		Flags:       core.FetchLocalFlags{Worktree: true, RangeSpec: "a..b", HeadControls: true},
+		Flags:       LocalFlags{Worktree: true, RangeSpec: "a..b", HeadControls: true},
 		Effective:   core.Defaults(),
 		Warnings:    []string{},
 		Human:       &human,
@@ -226,9 +226,9 @@ func TestRunLocalWorktreeStaged(t *testing.T) {
 		Pr:   "mine",
 		Root: &root,
 	}
-	req := &core.FetchLocalRequest{
+	req := &LocalRequest{
 		ReadRequest: read,
-		Flags:       core.FetchLocalFlags{Worktree: true, Staged: true, HeadControls: true},
+		Flags:       LocalFlags{Worktree: true, Staged: true, HeadControls: true},
 		Effective:   core.Defaults(),
 		Warnings:    []string{},
 		Human:       &human,

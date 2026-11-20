@@ -36,7 +36,7 @@ func runReportExitCode(t *testing.T, args ...string) int {
 	return reportcli.Run(context.Background(), r, args, reportcli.Request{Repo: "acme/app", Pr: "5101"})
 }
 
-func findEvidenceDim(t *testing.T, resp *core.ReportResponse) core.GateDimension {
+func findEvidenceDim(t *testing.T, resp *reportcore.Response) core.GateDimension {
 	t.Helper()
 	if resp.Data.Gate == nil {
 		t.Fatal("data.gate is nil on --check run")
@@ -63,9 +63,9 @@ func TestEvidenceGatePass(t *testing.T) {
 		Spec:         core.EvidenceSpec{Total: 10, Covered: 8, Min: 80, Met: true},
 		Insufficient: false,
 	})
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Check: "important", Live: "skip"},
+		Flags:       reportcore.Flags{Check: "important", Live: "skip"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -101,9 +101,9 @@ func TestEvidenceGateFailInsufficient(t *testing.T) {
 		Spec:         core.EvidenceSpec{Total: 0, Covered: 0, Min: 80, Met: true},
 		Insufficient: true,
 	})
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Check: "important", Live: "skip"},
+		Flags:       reportcore.Flags{Check: "important", Live: "skip"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -129,9 +129,9 @@ func TestEvidenceGateMissingIsUnknown(t *testing.T) {
 	if err := os.Remove(".verdict/state/5101/record.json"); err != nil {
 		t.Fatal(err)
 	}
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Check: "important", Live: "skip"},
+		Flags:       reportcore.Flags{Check: "important", Live: "skip"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -164,9 +164,9 @@ func TestEvidenceGateStaleIsUnknown(t *testing.T) {
 		Spec:         core.EvidenceSpec{Total: 0, Covered: 0, Min: 80, Met: true},
 		Insufficient: false,
 	})
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Check: "important", Live: "skip"},
+		Flags:       reportcore.Flags{Check: "important", Live: "skip"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -192,9 +192,9 @@ func TestEvidenceGateStaleIsUnknown(t *testing.T) {
 func TestEvidenceGateUnreadableIsUnknown(t *testing.T) {
 	req := fixture(t, "[]")
 	writeFile(t, ".verdict/state/5101/record.json", `{broken`)
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Check: "important", Live: "skip"},
+		Flags:       reportcore.Flags{Check: "important", Live: "skip"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -222,7 +222,7 @@ func TestEvidenceAdvisoryReportWarnsAndNeverFails(t *testing.T) {
 		Spec:         core.EvidenceSpec{Total: 0, Covered: 0, Min: 80, Met: true},
 		Insufficient: true,
 	})
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req})
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{ReadRequest: req})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -240,7 +240,7 @@ func TestEvidenceAdvisoryReportWarnsAndNeverFails(t *testing.T) {
 
 // requireApproval asserts the report's approval decision, which a reviewer
 // reads beside the gate: a withheld gate may never sit next to an approval.
-func requireApproval(t *testing.T, resp *core.ReportResponse, approved, insufficient bool, reason string) {
+func requireApproval(t *testing.T, resp *reportcore.Response, approved, insufficient bool, reason string) {
 	t.Helper()
 	got := resp.Data.Approval
 	if got == nil {

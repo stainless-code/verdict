@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	reportcore "github.com/stainless-code/verdict/internal/core/report"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -43,7 +44,7 @@ type cacheKey struct {
 }
 
 // keyFor derives the cache key for one composition.
-func keyFor(root Root, bundle string, flags *core.ReportFlags) cacheKey {
+func keyFor(root Root, bundle string, flags *reportcore.Flags) cacheKey {
 	return cacheKey{
 		root:   root.ID,
 		bundle: bundle,
@@ -56,7 +57,7 @@ func keyFor(root Root, bundle string, flags *core.ReportFlags) cacheKey {
 // entry is one cached composition: the response or refusal plus the artifact
 // inventory it was built from.
 type entry struct {
-	resp  *core.ReportResponse
+	resp  *reportcore.Response
 	ref   *core.RefusalError
 	inv   inventoryReport
 	stamp stamp
@@ -191,8 +192,8 @@ func (l *Layer) fingerprint(ctx context.Context, root Root, dir string) (stamp, 
 // cache. The cache is bounded by the bundle cap and never written anywhere: a
 // stale entry is a bug, not data loss.
 func (l *Layer) cached(
-	ctx context.Context, root Root, bundle, dir string, flags *core.ReportFlags,
-) (*core.ReportResponse, *core.RefusalError, inventoryReport) {
+	ctx context.Context, root Root, bundle, dir string, flags *reportcore.Flags,
+) (*reportcore.Response, *core.RefusalError, inventoryReport) {
 	key := keyFor(root, bundle, flags)
 	current, cacheable := l.fingerprint(ctx, root, dir)
 	l.mu.Lock()

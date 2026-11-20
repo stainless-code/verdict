@@ -14,7 +14,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
-	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/packtest"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -48,11 +47,11 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if code, done := r.Canceled(ctx, verbPack); done {
 		return code
 	}
-	read := req
-	if read.Runtime == nil {
-		read.Runtime = &core.Runtime{}
+	var cmdr core.Commander
+	if req.Runtime != nil {
+		cmdr = req.Commander
 	}
-	read.Progress = cli.Progress{R: r}
+	read := r.Read(req, cmdr)
 	if inv.sub == subList {
 		return runList(ctx, r, read)
 	}
@@ -82,9 +81,8 @@ func runList(ctx context.Context, r *cli.Runner, read Request) int {
 		return r.RefuseTyped(ref)
 	}
 	if r.JSONMode {
-		env := core.RenderEnvelope(verbPack, "", "", resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.Emit(verbPack, "", "", resp.At, resp.Next,
+			resp.Warnings, resp.Data.Wire())
 		return cli.ExitOK
 	}
 	for _, line := range resp.Human {
@@ -101,9 +99,8 @@ func runAdd(ctx context.Context, r *cli.Runner, read Request, source string) int
 		return r.RefuseTyped(ref)
 	}
 	if r.JSONMode {
-		env := core.RenderEnvelope(verbPack, "", "", resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.Emit(verbPack, "", "", resp.At, resp.Next,
+			resp.Warnings, resp.Data.Wire())
 		return cli.ExitOK
 	}
 	for _, line := range resp.Human {
@@ -225,8 +222,7 @@ func resolveInstalledPack(ctx context.Context, read Request, name string) (*pack
 
 func renderTestResponse(r *cli.Runner, resp *packtest.TestResponse) {
 	if r.JSONMode {
-		env := core.RenderEnvelope(verbPack, "", "", resp.At, resp.Next, r.Warnings, core.Wire(resp.Data), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.Emit(verbPack, "", "", resp.At, resp.Next, r.Warnings, core.Wire(resp.Data))
 	} else {
 		for _, line := range resp.Human {
 			fmt.Fprintln(r.Human, line)

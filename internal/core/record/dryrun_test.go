@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 //nolint:revive // the walk is one flat closure
@@ -46,9 +47,9 @@ func snapshotTree(t *testing.T, root string) map[string]string {
 //nolint:cyclop,gocognit,revive // the dry-run assertions read as one block
 func TestDryRunWritesNothing(t *testing.T) {
 	bundle(t, "local-dry", reviewJSON(""))
-	writeFile(t, ".verdict/state/local-dry/findings.json", "[]\n")
-	writeFile(t, ".verdict/state/local-dry/record.json", `{"old":true}`)
-	c := &collector{}
+	testkit.WriteFile(t, ".verdict/state/local-dry/findings.json", "[]\n")
+	testkit.WriteFile(t, ".verdict/state/local-dry/record.json", `{"old":true}`)
+	c := &testkit.Collector{}
 	req := recordRequest(t, c, "local-dry")
 	req.DryRun = true
 	before := snapshotTree(t, ".verdict/state/local-dry")
@@ -81,9 +82,9 @@ func TestDryRunWritesNothing(t *testing.T) {
 	if resp.Data.Findings.File != "" {
 		t.Errorf("dry-run findings.file = %q, want empty", resp.Data.Findings.File)
 	}
-	if !strings.Contains(strings.Join(c.human, "\n"),
+	if !strings.Contains(strings.Join(c.HumanLines, "\n"),
 		"» findings: 1 sigs (dry run — no findings file written)") {
-		t.Errorf("dry-run progress = %q; want no findings-file destination", c.human)
+		t.Errorf("dry-run progress = %q; want no findings-file destination", c.HumanLines)
 	}
 }
 
@@ -93,7 +94,7 @@ func TestDryRunAndRecordShareProblems(t *testing.T) {
 	bad := `{"schema_version":"1","body":"` + checkBody + `","approved":false,` +
 		`"comments":[{"path":"notes.txt","line":2,"body":"x","rigor":"walked","brief":{"outcome":"Reject duplicate deliveries before anything is enqueued.","questions":"why"}}]}`
 	bundle(t, "local-same", bad)
-	c := &collector{}
+	c := &testkit.Collector{}
 	req := recordRequest(t, c, "local-same")
 	req.DryRun = true
 	_, dry := recordcore.Run(context.Background(), req)
@@ -115,13 +116,13 @@ func TestDryRunAndRecordShareProblems(t *testing.T) {
 func TestPRBundleDryRun(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFile(t, ".verdict/state/5101/PR.json", `{"provider":"github","state":"OPEN",`+
+	testkit.WriteFile(t, ".verdict/state/5101/PR.json", `{"provider":"github","state":"OPEN",`+
 		`"headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
 		`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
-	writeFile(t, ".verdict/state/5101/full.diff", "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n"+
+	testkit.WriteFile(t, ".verdict/state/5101/full.diff", "diff --git a/notes.txt b/notes.txt\nindex 1111111..2222222 100644\n"+
 		"--- a/notes.txt\n+++ b/notes.txt\n@@ -1,3 +1,3 @@\n top\n-old line\n+new line\n bottom\n")
-	writeFile(t, ".verdict/state/5101/review.json", reviewJSON(""))
-	c := &collector{}
+	testkit.WriteFile(t, ".verdict/state/5101/review.json", reviewJSON(""))
+	c := &testkit.Collector{}
 	req := recordRequest(t, c, "5101")
 	req.DryRun = true
 	resp, ref := recordcore.Run(context.Background(), req)

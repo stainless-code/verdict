@@ -23,6 +23,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
+	reportcore "github.com/stainless-code/verdict/internal/core/report"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
@@ -270,7 +271,7 @@ func postFixture(t *testing.T) {
 	}
 }
 
-// TestPostTool proves the post tool is registered from core.PostRequest, a
+// TestPostTool proves the post tool is registered from postcore.Request, a
 // scripted dry run returns the envelope data without posting, and a typed
 // refusal keeps isError/code.
 //
@@ -637,7 +638,7 @@ func TestArgsDecode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req, ok := raw.(*core.ReportRequest)
+	req, ok := raw.(*reportcore.Request)
 	if !ok {
 		t.Fatalf("decoded type = %T", raw)
 	}

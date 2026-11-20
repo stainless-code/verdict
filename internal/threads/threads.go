@@ -10,10 +10,8 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
-	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
-	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -43,11 +41,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		return r.Refuse(ref)
 	}
 	r.Warnings = resp.Warnings
-	if r.JSONMode {
-		env := core.RenderEnvelope(verbThreads, resp.Repo, resp.Pr, resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-	}
+	r.Emit(verbThreads, resp.Repo, resp.Pr, resp.At, resp.Next,
+		resp.Warnings, resp.Data.Wire())
 	return cli.ExitOK
 }
 
@@ -74,25 +69,16 @@ func runResolve(ctx context.Context, r *cli.Runner, args []string, req Request) 
 		return r.Refuse(ref)
 	}
 	r.Warnings = resp.Warnings
-	if r.JSONMode {
-		env := core.RenderEnvelope(verbThreads, resp.Repo, resp.Pr, resp.At, resp.Next,
-			resp.Warnings, resp.Resolve.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-	}
+	r.Emit(verbThreads, resp.Repo, resp.Pr, resp.At, resp.Next,
+		resp.Warnings, resp.Resolve.Wire())
 	return cli.ExitOK
 }
 
 // resolveRequest injects the runner's clock, progress observer, and command
 // runner into the typed resolve request.
 func resolveRequest(r *cli.Runner, req Request, repo, pr string, threads []string, dry bool) *fetchcore.ThreadsRequest {
-	read := req
+	read := r.Read(req, coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true})
 	read.Repo, read.Pr = repo, pr
-	if read.Runtime == nil {
-		read.Runtime = &core.Runtime{}
-	}
-	read.Now = r.Now
-	read.Progress = cli.Progress{R: r}
-	read.Commander = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
 	return &fetchcore.ThreadsRequest{
 		ReadRequest: read,
 		Threads:     threads,
@@ -129,13 +115,7 @@ func parseResolveFlags(r *cli.Runner, args []string) (threads []string, dry bool
 // threadsRequest injects the runner's clock, progress observer, and command
 // runner into the typed refresh request.
 func threadsRequest(r *cli.Runner, req Request, provider string) *fetchcore.ThreadsRequest {
-	read := req
-	if read.Runtime == nil {
-		read.Runtime = &core.Runtime{}
-	}
-	read.Now = r.Now
-	read.Progress = cli.Progress{R: r}
-	read.Commander = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
+	read := r.Read(req, coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true})
 	return &fetchcore.ThreadsRequest{
 		ReadRequest: read,
 		Provider:    provider,

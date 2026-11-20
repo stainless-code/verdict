@@ -22,7 +22,7 @@ import (
 // bundle persists first, so the prompt dump already carries the combined
 // plan and every model-facing export already withholds privacy paths.
 func fetchTail(
-	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f *core.FetchFlags, budget *budgetState,
+	ctx context.Context, ctx2 *fetchRunCtx, req *Request, f *Flags, budget *budgetState,
 	fcap *fetchCap, chunkJSON any, incBase string,
 ) (*core.FetchData, string, error) {
 	if err := writeProviderSource(ctx2.dir, ctx2.runner.providerSource); err != nil {
@@ -40,7 +40,7 @@ func writeEvidenceAndProcedure(
 	return writeBundleProcedure(ctx2.dir)
 }
 
-func fetchTailAfterSource(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f *core.FetchFlags, budget *budgetState,
+func fetchTailAfterSource(ctx context.Context, ctx2 *fetchRunCtx, req *Request, f *Flags, budget *budgetState,
 	fcap *fetchCap, chunkJSON any, incBase string,
 ) (*core.FetchData, string, error) {
 	if ref := finalizeRemoteRun(ctx, ctx2, req, f); ref != nil {
@@ -79,7 +79,7 @@ func fetchTailAfterSource(ctx context.Context, ctx2 *fetchRunCtx, req *core.Fetc
 }
 
 func writeFetchTailJSON(
-	ctx2 *fetchRunCtx, f *core.FetchFlags, budget *budgetState,
+	ctx2 *fetchRunCtx, f *Flags, budget *budgetState,
 	fcap *fetchCap, chunkJSON any, incBase, next, hint string,
 ) (*core.FetchData, string, error) {
 	dump, hasDump, err := stageDump(ctx2, f.ShowPrompts)
@@ -458,7 +458,7 @@ func addRevertsArtifact(obj *jq.Obj, dir string) {
 // Data.PromptDump for the adapter to own on stdout (human mode) or in the
 // envelope (JSON mode).
 func fetchTailLocal(
-	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags, budget *budgetState,
+	ctx context.Context, ctx2 *fetchRunCtx, req *LocalRequest, f *LocalFlags, budget *budgetState,
 	fcap *fetchCap, chunkJSON any, mode *localMode,
 	listed string, total, adds, dels int,
 ) (*core.FetchData, string, error) {
@@ -492,7 +492,7 @@ func fetchTailLocal(
 // localDumpPtr stages the prompt dump for the local tail: JSON mode stages
 // before progress, human mode renders only under --show-prompts.
 func localDumpPtr(
-	ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags,
+	ctx2 *fetchRunCtx, req *LocalRequest, f *LocalFlags,
 ) (string, bool, error) {
 	if !req.JSONMode {
 		if !f.ShowPrompts {

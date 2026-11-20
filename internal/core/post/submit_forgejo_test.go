@@ -378,7 +378,7 @@ func assertForgejoResponse(t *testing.T, raw string, status int, body string, ok
 func forgejoState(t *testing.T, dir string, cmdr Commander) *state {
 	t.Helper()
 	return &state{
-		req: &core.PostRequest{
+		req: &Request{
 			Runtime: &core.Runtime{Env: forgejoEnv(), Commander: cmdr, Now: func() time.Time { return postTestTime }},
 			Repo:    "acme/app", Pr: "7", Effective: core.Defaults(),
 		},

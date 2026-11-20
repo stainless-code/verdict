@@ -158,7 +158,7 @@ func exclusionRule(defaults, explicit []exclude.Rule, attrs []byte, file, old st
 }
 
 func phaseTwoFiltered(
-	ctx context.Context, fc *fetchRunCtx, req *core.FetchRequest, flags *core.FetchFlags, dir string, budget *budgetState,
+	ctx context.Context, fc *fetchRunCtx, req *Request, flags *Flags, dir string, budget *budgetState,
 ) error {
 	if err := phaseTwo(ctx, fc, req, flags, dir, budget); err != nil {
 		return err

@@ -58,7 +58,7 @@ func revertsFetch(t *testing.T) (*core.FetchData, string, []string) {
 	var human, diag bytes.Buffer
 	warnings := []string{}
 	resp, err := RunLocal(context.Background(),
-		localScriptReq(cmdr, &human, &diag, &warnings, nil, core.FetchLocalFlags{}))
+		localScriptReq(cmdr, &human, &diag, &warnings, nil, LocalFlags{}))
 	if err != nil {
 		t.Fatalf("RunLocal: %v", err)
 	}
@@ -207,7 +207,7 @@ func TestProviderBundleWritesRevertsNote(t *testing.T) {
 	scripts := gitlabScripts(dir, `[{"old_path":"a.go","new_path":"a.go"}]`)
 	ctx2 := hostCtx(t, &scriptCommander{t: t, out: scripts}, dir)
 	ctx2.runCfg = &runConfig{}
-	if _, err := fetchGitLab(context.Background(), ctx2, hostRequest(), &core.FetchFlags{}); err != nil {
+	if _, err := fetchGitLab(context.Background(), ctx2, hostRequest(), &Flags{}); err != nil {
 		t.Fatalf("fetchGitLab: %v", err)
 	}
 	if err := writeProviderBundle(ctx2); err != nil {

@@ -614,7 +614,7 @@ func TestPlanCostNamesAcceptsAgreeingScopes(t *testing.T) {
 		      "defaults":{"values":{"panel":["lead","lens-1"]}}},
 		     {"path":"verdict.toml","scopes":["api"],
 		      "defaults":{"values":{"panel":["lead","lens-1"]}}}]}}`)
-	st := &svc{req: &core.RecordRequest{Flags: core.RecordFlags{CostNames: true}}}
+	st := &svc{req: &Request{Flags: Flags{CostNames: true}}}
 	pass, ref := st.planCostNames(dir)
 	if ref != nil {
 		t.Fatalf("two scopes pinning one panel must be accepted, got %v", ref)
@@ -705,7 +705,7 @@ func TestPlanCostNamesRefusesScopedPanel(t *testing.T) {
 		    "defaults":{"values":{"panel":["lead","lens-1"]}},
 		    "files":[{"path":"verdict.toml","scopes":["web"],
 		      "defaults":{"values":{"panel":["lead","lens-9"]}}}]}}`)
-	st := &svc{req: &core.RecordRequest{Flags: core.RecordFlags{CostNames: true}}}
+	st := &svc{req: &Request{Flags: Flags{CostNames: true}}}
 	if _, ref := st.planCostNames(dir); ref == nil || ref.Code != codeCostPanelUnresolved {
 		t.Fatalf("want %q, got %v", codeCostPanelUnresolved, ref)
 	} else if !strings.Contains(ref.Message, "web") || !strings.Contains(ref.Message, "lens-9") {

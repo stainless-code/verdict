@@ -72,8 +72,8 @@ func writeGroupFile(t *testing.T, path, body string) {
 	}
 }
 
-func groupRequest(root, group, command string, cmdr core.Commander) *core.VerifyRequest {
-	return &core.VerifyRequest{
+func groupRequest(root, group, command string, cmdr core.Commander) *verifycore.Request {
+	return &verifycore.Request{
 		Repo: "acme/app", Pr: "7", RepoRoot: root, Runtime: &core.Runtime{Commander: cmdr},
 		TimeoutRaw: "30",
 		Group:      group,

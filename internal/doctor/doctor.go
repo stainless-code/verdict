@@ -12,7 +12,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	doctorcore "github.com/stainless-code/verdict/internal/core/doctor"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
-	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -55,9 +54,8 @@ func writeStamp(r *cli.Runner, now time.Time) {
 // trailing human summary built from the existing check rows.
 func writeResponse(r *cli.Runner, resp *doctorcore.Response) {
 	if r.JSONMode {
-		env := core.RenderEnvelope("doctor", "", "", resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.Emit("doctor", "", "", resp.At, resp.Next,
+			resp.Warnings, resp.Data.Wire())
 		return
 	}
 	ok, warn, fail := resp.Data.Counts()
@@ -80,13 +78,8 @@ func runTime(r *cli.Runner) time.Time {
 // doctorRequest injects the runner's clock, progress observer, and command
 // runner into the typed service request.
 func doctorRequest(r *cli.Runner, req Request, now time.Time, provider string) *doctorcore.Request {
-	read := req
-	if read.Runtime == nil {
-		read.Runtime = &core.Runtime{}
-	}
+	read := r.Read(req, coreexec.Runner{})
 	read.Now = func() time.Time { return now }
-	read.Progress = cli.Progress{R: r}
-	read.Commander = coreexec.Runner{}
 	return &doctorcore.Request{
 		ReadRequest: read,
 		Provider:    provider,

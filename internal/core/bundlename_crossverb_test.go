@@ -91,7 +91,7 @@ func bundleVerbs() []bundleVerb {
 			return ref
 		}},
 		{name: "fetch", run: func(ctx context.Context, pr string) *core.RefusalError {
-			_, err := fetchcore.Run(ctx, &core.FetchRequest{ReadRequest: bundleRead(pr)})
+			_, err := fetchcore.Run(ctx, &fetchcore.Request{ReadRequest: bundleRead(pr)})
 			return refusalOf(err)
 		}},
 		{name: "fix", run: func(ctx context.Context, pr string) *core.RefusalError {
@@ -99,7 +99,7 @@ func bundleVerbs() []bundleVerb {
 			return ref
 		}},
 		{name: "gate", run: func(ctx context.Context, pr string) *core.RefusalError {
-			_, ref := reportcore.Run(ctx, &core.ReportRequest{
+			_, ref := reportcore.Run(ctx, &reportcore.Request{
 				ReadRequest: bundleRead(pr), Flags: reportcore.Flags{Check: "critical"},
 			})
 			return ref
@@ -125,8 +125,8 @@ func bundleVerbs() []bundleVerb {
 			return ref
 		}},
 		{name: "post", run: func(ctx context.Context, pr string) *core.RefusalError {
-			_, ref := postcore.Run(ctx, &core.PostRequest{
-				ReadRequest: bundleRead(pr), Flags: core.PostFlags{Approve: "true"},
+			_, ref := postcore.Run(ctx, &postcore.Request{
+				ReadRequest: bundleRead(pr), Flags: postcore.Flags{Approve: "true"},
 			})
 			return ref
 		}},
@@ -135,11 +135,11 @@ func bundleVerbs() []bundleVerb {
 			return ref
 		}},
 		{name: "record", run: func(ctx context.Context, pr string) *core.RefusalError {
-			_, ref := recordcore.Run(ctx, &core.RecordRequest{ReadRequest: bundleRead(pr)})
+			_, ref := recordcore.Run(ctx, &recordcore.Request{ReadRequest: bundleRead(pr)})
 			return ref
 		}},
 		{name: "report", run: func(ctx context.Context, pr string) *core.RefusalError {
-			_, ref := reportcore.Run(ctx, &core.ReportRequest{ReadRequest: bundleRead(pr)})
+			_, ref := reportcore.Run(ctx, &reportcore.Request{ReadRequest: bundleRead(pr)})
 			return ref
 		}},
 		{name: "run", run: func(ctx context.Context, pr string) *core.RefusalError {
@@ -161,7 +161,7 @@ func bundleVerbs() []bundleVerb {
 			return ref
 		}},
 		{name: "verify", run: func(ctx context.Context, pr string) *core.RefusalError {
-			_, ref := verifycore.Run(ctx, &core.VerifyRequest{ReadRequest: bundleRead(pr)})
+			_, ref := verifycore.Run(ctx, &verifycore.Request{ReadRequest: bundleRead(pr)})
 			return ref
 		}},
 	}
@@ -232,7 +232,7 @@ func TestBundleVerbsResolveValidNames(t *testing.T) {
 // assertBundleVerbResolved pins that report reads the named bundle's store.
 func assertBundleVerbResolved(t *testing.T, pr string) {
 	t.Helper()
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: bundleRead(pr)})
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{ReadRequest: bundleRead(pr)})
 	if ref != nil {
 		t.Fatalf("report %s refused %s: %s", pr, ref.Code, ref.Message)
 	}

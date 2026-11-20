@@ -270,7 +270,7 @@ func allTools(readOnly, operator bool) []*tool {
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Post review", mutates: localWrites, destructive: true, idempotent: true, openWorld: true},
 		}, toolDeps{commander: fetchRunner}, decodePost, wirePost, postcore.Run,
-			func(resp *core.PostResponse) *jq.Obj { return wireData(resp.Data) }),
+			func(resp *postcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
 			name: "pr_wait", description: "Bounded foreground GitHub PR wait. No local writes. Timeout defaults to 50s and cannot exceed 50s. Use instead of sleep loops.",
 			required: []string{argRepo, argPr, "until"},
@@ -293,7 +293,7 @@ func allTools(readOnly, operator bool) []*tool {
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Record review", mutates: localWrites, idempotent: true, servedWhenReadOnly: true, readOnlyDryRun: true},
 		}, toolDeps{commander: fetchRunner}, decodeRecord, wireRecord, recordcore.Run,
-			func(resp *core.RecordResponse) *jq.Obj { return wireData(resp.Data) }),
+			func(resp *recordcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		directTool(&toolSpec{
 			name: "report",
 			description: "Render the offline review report (ranked findings, counts, markdown/SARIF). " +
@@ -358,7 +358,7 @@ func allTools(readOnly, operator bool) []*tool {
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Run verification", mutates: localWrites, destructive: true, openWorld: true},
 		}, toolDeps{commander: coreexec.Watchdog{}}, decodeVerify, wireVerify, verifycore.Run,
-			func(resp *core.VerifyResponse) *jq.Obj { return wireData(resp.Data) }),
+			func(resp *verifycore.Response) *jq.Obj { return wireData(resp.Data) }),
 	}
 	for _, t := range tools {
 		if t.name == "threads" {
@@ -499,7 +499,7 @@ func invokeService[R, S any](
 	return data(resp), nil
 }
 
-func invokeReport(ctx context.Context, req *core.ReportRequest) (*jq.Obj, *core.RefusalError) {
+func invokeReport(ctx context.Context, req *reportcore.Request) (*jq.Obj, *core.RefusalError) {
 	resp, ref := reportcore.Run(ctx, req)
 	if ref != nil {
 		return nil, ref
@@ -609,7 +609,7 @@ func invokeCheckTree(ctx context.Context, req *checktreecore.Request) (*jq.Obj, 
 	return wireData(resp.Data), nil
 }
 
-func invokeFetch(ctx context.Context, req *core.FetchRequest) (*jq.Obj, *core.RefusalError) {
+func invokeFetch(ctx context.Context, req *fetchcore.Request) (*jq.Obj, *core.RefusalError) {
 	resp, err := fetchcore.Run(ctx, req)
 	if err != nil {
 		return nil, commandRefusal(err)
@@ -617,7 +617,7 @@ func invokeFetch(ctx context.Context, req *core.FetchRequest) (*jq.Obj, *core.Re
 	return wireData(resp.Data), nil
 }
 
-func invokeFetchLocal(ctx context.Context, req *core.FetchLocalRequest) (*jq.Obj, *core.RefusalError) {
+func invokeFetchLocal(ctx context.Context, req *fetchcore.LocalRequest) (*jq.Obj, *core.RefusalError) {
 	resp, err := fetchcore.RunLocal(ctx, req)
 	if err != nil {
 		return nil, commandRefusal(err)
@@ -659,7 +659,7 @@ func wireData(v any) *jq.Obj {
 }
 
 func requestDryRun(raw any) bool {
-	req, ok := raw.(*core.RecordRequest)
+	req, ok := raw.(*recordcore.Request)
 	return ok && req.DryRun
 }
 

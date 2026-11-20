@@ -117,9 +117,9 @@ func (p testProgress) Diag(string) {}
 var postTestTime = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 
 // postTestReq builds a post request over a scripted commander.
-func postTestReq(cmdr Commander, flags core.PostFlags, warnings *[]string, human *[]string) *core.PostRequest {
+func postTestReq(cmdr Commander, flags Flags, warnings *[]string, human *[]string) *Request {
 	root := ""
-	return &core.PostRequest{
+	return &Request{
 		Runtime: &core.Runtime{
 			Env:       map[string]string{},
 			Now:       func() time.Time { return postTestTime },
@@ -144,9 +144,9 @@ func writeTestFile(path, content string) error {
 }
 
 // postTestState builds a minimal state for guard unit tests.
-func postTestState(dir, commitID string, flags core.PostFlags, warnings *[]string) *state {
+func postTestState(dir, commitID string, flags Flags, warnings *[]string) *state {
 	root := ""
-	req := &core.PostRequest{
+	req := &Request{
 		Runtime: &core.Runtime{
 			Env:      map[string]string{},
 			Now:      func() time.Time { return postTestTime },
@@ -195,7 +195,7 @@ func TestFinalizerGuard(t *testing.T) {
 		t.Fatal(err)
 	}
 	var warnings []string
-	p := postTestState(dir, forceCase.commitID, core.PostFlags{Force: true}, &warnings)
+	p := postTestState(dir, forceCase.commitID, Flags{Force: true}, &warnings)
 	if ref := p.finalizerGuard(); ref != nil {
 		t.Errorf("forced repost refused: %v", ref)
 	}
@@ -224,7 +224,7 @@ func checkFinalizerCase(t *testing.T, tc *finalizerCase) {
 		}
 	}
 	var warnings []string
-	p := postTestState(dir, tc.commitID, core.PostFlags{}, &warnings)
+	p := postTestState(dir, tc.commitID, Flags{}, &warnings)
 	ref := p.finalizerGuard()
 	if tc.wantWarn != "" {
 		joined := strings.Join(p.warnings, "\n")
@@ -260,7 +260,7 @@ func TestFinalizerAlreadyPostedNamesOverride(t *testing.T) {
 		t.Fatal(err)
 	}
 	var warnings []string
-	p := postTestState(dir, head, core.PostFlags{}, &warnings)
+	p := postTestState(dir, head, Flags{}, &warnings)
 	p.req.Pr = "7"
 	ref := p.finalizerGuard()
 	if ref == nil {
@@ -276,7 +276,7 @@ func TestFinalizerAlreadyPostedNamesOverride(t *testing.T) {
 // postSplitState builds a minimal state for split unit tests.
 func postSplitState(warnings *[]string) *state {
 	root := ""
-	req := &core.PostRequest{
+	req := &Request{
 		Runtime: &core.Runtime{
 			Env:      map[string]string{},
 			Now:      func() time.Time { return postTestTime },
@@ -541,7 +541,7 @@ func TestRunBadApprove(t *testing.T) {
 	t.Chdir(dir)
 	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{}}
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "yes"}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "yes"}, &warnings, &human)
 	_, ref := Run(context.Background(), req)
 	if ref == nil || ref.Code != "bad-approve" {
 		t.Fatalf("ref = %v, want bad-approve", ref)
@@ -557,7 +557,7 @@ func TestRunCanceled(t *testing.T) {
 	t.Chdir(dir)
 	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{}}
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false"}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "false"}, &warnings, &human)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	_, ref := Run(ctx, req)
@@ -652,7 +652,7 @@ func TestRunDryRun(t *testing.T) {
 	postBundle(t, postReview)
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -732,7 +732,7 @@ func TestRunDryRunAnchorsReachJSONPayload(t *testing.T) {
 	postBundle(t, dryRunSplitReview)
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -770,7 +770,7 @@ func TestRunSubmit(t *testing.T) {
 	postBundle(t, postReview)
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)

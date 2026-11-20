@@ -10,6 +10,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 const (
@@ -29,10 +30,10 @@ const storeBody = "> [!IMPORTANT] Store contract fixture with enough substance."
 func writeStoreBundle(t *testing.T, slug, review string) {
 	t.Helper()
 	t.Chdir(t.TempDir())
-	writeFile(t, ".verdict/state/"+slug+"/source.json",
+	testkit.WriteFile(t, ".verdict/state/"+slug+"/source.json",
 		`{"head_sha":"`+storeHead+`","base_sha":"`+storeBase+`","head_ref":"work"}`)
-	writeFile(t, ".verdict/state/"+slug+"/full.diff", storeDiff)
-	writeFile(t, ".verdict/state/"+slug+"/review.json", review)
+	testkit.WriteFile(t, ".verdict/state/"+slug+"/full.diff", storeDiff)
+	testkit.WriteFile(t, ".verdict/state/"+slug+"/review.json", review)
 }
 
 func storeEntries(t *testing.T, slug string) []map[string]any {
@@ -144,7 +145,7 @@ func TestRunRecordInputShapeRefusals(t *testing.T) {
 	for _, tc := range fileTests {
 		t.Run(tc.name, func(t *testing.T) {
 			writeStoreBundle(t, "local-shape", valid+`,"findings":[]}`)
-			writeFile(t, ".verdict/state/local-shape/"+tc.path, tc.content)
+			testkit.WriteFile(t, ".verdict/state/local-shape/"+tc.path, tc.content)
 			checkShapeRefusal(t, "local-shape", tc.code, tc.wantErr, tc.path == "findings.json")
 			kept, err := os.ReadFile(".verdict/state/local-shape/" + tc.path)
 			if err != nil || string(kept) != tc.content {
@@ -161,7 +162,7 @@ func TestRunRecordInputShapeRefusals(t *testing.T) {
 //nolint:revive // one refusal asserts the code, the gate message, and the unwritten artifacts inline
 func checkShapeRefusal(t *testing.T, slug, code, wantErr string, priorStore bool) {
 	t.Helper()
-	c := &collector{}
+	c := &testkit.Collector{}
 	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, slug))
 	if ref == nil {
 		t.Fatalf("Run(%s) succeeded (data %+v); want refusal %s", slug, resp, code)
@@ -204,7 +205,7 @@ func TestRunRecordRefusesOversizeVerification(t *testing.T) {
 	writeStoreBundle(t, "local-cap",
 		`{"schema_version":"1","body":"`+storeBody+`","approved":false,"comments":[]}`)
 	padded := "[" + strings.Repeat(" ", 32<<20) + "]"
-	writeFile(t, ".verdict/state/local-cap/verification.json", padded)
+	testkit.WriteFile(t, ".verdict/state/local-cap/verification.json", padded)
 	checkShapeRefusal(t, "local-cap", "bad-review-input", "32 MiB agent-input cap", false)
 }
 
@@ -218,9 +219,9 @@ func TestRunRecordArtifactValues(t *testing.T) {
 		`"confidence":3,"security_summary":"No new attack surface.",` +
 		`"comments":[{"path":"notes.txt","line":2,"body":"Cited finding here with enough substance."}]}`
 	writeStoreBundle(t, "local-av", review)
-	writeFile(t, ".verdict/state/local-av/cost.json", `[{"models":[{"name":"claude-sonnet-4"}]}]`)
+	testkit.WriteFile(t, ".verdict/state/local-av/cost.json", `[{"models":[{"name":"claude-sonnet-4"}]}]`)
 
-	c := &collector{}
+	c := &testkit.Collector{}
 	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-av"))
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -261,8 +262,8 @@ func TestRunRecordArtifactValues(t *testing.T) {
 		t.Errorf("item locator = %v, want notes.txt:2", loc)
 	}
 
-	if hasWarning(c.warns, "no hunks indexed") {
-		t.Errorf("warnings = %v; hunks were indexed", c.warns)
+	if hasWarning(c.Warnings, "no hunks indexed") {
+		t.Errorf("warnings = %v; hunks were indexed", c.Warnings)
 	}
 }
 
@@ -294,7 +295,7 @@ func TestRunRecordSigContract(t *testing.T) {
 		`"approved":false,"comments":[{"path":"notes.txt","line":2,` +
 		`"body":"Cited finding here with enough substance."}]}`
 	writeStoreBundle(t, "local-sig", review)
-	c := &collector{}
+	c := &testkit.Collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-sig")); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -354,9 +355,9 @@ func TestRunRecordPriorMerge(t *testing.T) {
 		`{"path":"notes.txt","line":2,"body":"Cited finding here with enough substance."},` +
 		`{"path":"notes.txt","line":3,"body":"Second inline finding body for the store."}]}`
 	writeStoreBundle(t, "local-pm", review)
-	writeFile(t, ".verdict/state/local-pm/findings.json", prior)
+	testkit.WriteFile(t, ".verdict/state/local-pm/findings.json", prior)
 
-	c := &collector{}
+	c := &testkit.Collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-pm")); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -410,11 +411,11 @@ func TestRunRecordDeltaReopen(t *testing.T) {
 		`"rationale":"Fixed.","history":[]}]`
 	writeStoreBundle(t, "local-ro",
 		`{"schema_version":"1","body":"`+storeBody+`","approved":false,"comments":[]}`)
-	writeFile(t, ".verdict/state/local-ro/findings.json", prior)
-	writeFile(t, ".verdict/state/local-ro/incremental.diff",
+	testkit.WriteFile(t, ".verdict/state/local-ro/findings.json", prior)
+	testkit.WriteFile(t, ".verdict/state/local-ro/incremental.diff",
 		"diff --git a/notes.txt b/notes.txt\n--- a/notes.txt\n+++ b/notes.txt\n@@ -1,1 +1,1 @@\n-a\n+b\n")
 
-	c := &collector{}
+	c := &testkit.Collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-ro")); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -465,7 +466,7 @@ func TestRunRecordFenceDemotion(t *testing.T) {
 				`{"path":"notes.txt","line":2,"body":"Cited finding here with enough substance.",` +
 				`"suggestion":` + mustJSON(t, tc.suggestion) + `}]}`
 			writeStoreBundle(t, slug, review)
-			c := &collector{}
+			c := &testkit.Collector{}
 			if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, slug)); ref != nil {
 				t.Fatalf("Run refusal: %v", ref)
 			}
@@ -485,13 +486,13 @@ func TestRunRecordFenceDemotion(t *testing.T) {
 				t.Errorf("suggestion = %v, want the agent's text %q", inline["suggestion"], tc.suggestion)
 			}
 			if tc.wantWarn == "" {
-				if hasWarning(c.warns, "demoting") {
-					t.Errorf("warnings = %v; a plain suggestion demotes nothing", c.warns)
+				if hasWarning(c.Warnings, "demoting") {
+					t.Errorf("warnings = %v; a plain suggestion demotes nothing", c.Warnings)
 				}
 				return
 			}
-			if !hasWarning(c.warns, tc.wantWarn) {
-				t.Errorf("warnings = %v, want %q", c.warns, tc.wantWarn)
+			if !hasWarning(c.Warnings, tc.wantWarn) {
+				t.Errorf("warnings = %v, want %q", c.Warnings, tc.wantWarn)
 			}
 		})
 	}
@@ -516,8 +517,8 @@ func TestRunRecordKeepsFetchSnapshot(t *testing.T) {
 	const pinned = "notes.txt\tNEW\t1\t99\n"
 	writeStoreBundle(t, "local-snap",
 		`{"schema_version":"1","body":"`+storeBody+`","approved":false,"comments":[]}`)
-	writeFile(t, ".verdict/state/local-snap/hunks.tsv", pinned)
-	c := &collector{}
+	testkit.WriteFile(t, ".verdict/state/local-snap/hunks.tsv", pinned)
+	c := &testkit.Collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-snap")); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -528,8 +529,8 @@ func TestRunRecordKeepsFetchSnapshot(t *testing.T) {
 	if string(raw) != pinned {
 		t.Errorf("hunks.tsv = %q, want the pinned fetch-time snapshot %q untouched", raw, pinned)
 	}
-	if hasWarning(c.warns, "no fetch-time hunk snapshot") {
-		t.Errorf("warnings = %v; the pinned snapshot exists, nothing to rebuild", c.warns)
+	if hasWarning(c.Warnings, "no fetch-time hunk snapshot") {
+		t.Errorf("warnings = %v; the pinned snapshot exists, nothing to rebuild", c.Warnings)
 	}
 }
 
@@ -604,12 +605,12 @@ func TestRunRecordAuthorityClaims(t *testing.T) {
 			writeStoreBundle(t, slug, `{"schema_version":"1","body":"`+storeBody+`","approved":false,`+
 				`"comments":[`+comment+`]`+tc.resolved+`}`)
 			if tc.prior != "" {
-				writeFile(t, ".verdict/state/"+slug+"/findings.json", tc.prior)
+				testkit.WriteFile(t, ".verdict/state/"+slug+"/findings.json", tc.prior)
 			}
 			if tc.claims != "" {
-				writeFile(t, ".verdict/state/"+slug+"/verification.json", tc.claims)
+				testkit.WriteFile(t, ".verdict/state/"+slug+"/verification.json", tc.claims)
 			}
-			c := &collector{}
+			c := &testkit.Collector{}
 			if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, slug)); ref != nil {
 				t.Fatalf("Run refusal: %v", ref)
 			}
@@ -666,11 +667,11 @@ func TestRunRecordClaimsAllApplyInOneRun(t *testing.T) {
 		`"triage":[{"sig":"` + triagedSig + `","status":"wont-fix",` +
 		`"rationale":"By design: the gate owns that decision and tests cover it."}]}`
 	writeStoreBundle(t, "local-cc", review)
-	writeFile(t, ".verdict/state/local-cc/verification.json",
+	testkit.WriteFile(t, ".verdict/state/local-cc/verification.json",
 		`[{"sig":"`+verifiedSig+`","verdict":"VERIFIED","verifyCmd":"go test ./...","resultHead":"aaaaaaa"},`+
 			`{"sig":"`+secondVerifiedSig+`","verdict":"VERIFIED","verifyCmd":"go test ./...","resultHead":"aaaaaaa"}]`)
 
-	c := &collector{}
+	c := &testkit.Collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-cc")); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -722,7 +723,7 @@ func TestRunRecordTriageRationaleFloor(t *testing.T) {
 				`"comments":[{"path":"notes.txt","line":2,"body":"Cited finding here with enough substance."}],` +
 				`"triage":[{"sig":"` + tc.claimSig + `","status":"wont-fix","rationale":"` + tc.rationale + `"}]}`
 			writeStoreBundle(t, slug, review)
-			c := &collector{}
+			c := &testkit.Collector{}
 			if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, slug)); ref != nil {
 				t.Fatalf("Run refusal: %v", ref)
 			}
@@ -733,8 +734,8 @@ func TestRunRecordTriageRationaleFloor(t *testing.T) {
 			if tc.wantWarn == "" {
 				return
 			}
-			if !hasWarning(c.warns, tc.wantWarn) {
-				t.Errorf("warnings = %v, want %q", c.warns, tc.wantWarn)
+			if !hasWarning(c.Warnings, tc.wantWarn) {
+				t.Errorf("warnings = %v, want %q", c.Warnings, tc.wantWarn)
 			}
 		})
 	}
@@ -758,7 +759,7 @@ func TestRunRecordTriageClaimsCompose(t *testing.T) {
 		`{"sig":"` + firstSig + `","status":"wont-fix","rationale":"` + rationale + `"},` +
 		`{"sig":"` + secondSig + `","status":"false-positive","rationale":"` + rationale + `"}]}`
 	writeStoreBundle(t, "local-tc", review)
-	c := &collector{}
+	c := &testkit.Collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-tc")); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -796,17 +797,17 @@ func TestRunRecordVerifiedContradiction(t *testing.T) {
 			review := `{"schema_version":"1","body":"` + storeBody + `","approved":false,` +
 				`"comments":[{"path":"notes.txt","line":2,"body":"Cited finding here with enough substance."}]}`
 			writeStoreBundle(t, slug, review)
-			writeFile(t, ".verdict/state/"+slug+"/verification.json", claims)
-			writeFile(t, ".verdict/state/"+slug+"/patch.json", tc.patch)
-			c := &collector{}
+			testkit.WriteFile(t, ".verdict/state/"+slug+"/verification.json", claims)
+			testkit.WriteFile(t, ".verdict/state/"+slug+"/patch.json", tc.patch)
+			c := &testkit.Collector{}
 			if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, slug)); ref != nil {
 				t.Fatalf("Run refusal: %v", ref)
 			}
 			if got := bySig(t, storeEntries(t, slug))[sig]["status"]; got != "addressed" {
 				t.Errorf("status = %v, want addressed (the flip stands)", got)
 			}
-			if !hasWarning(c.warns, tc.wantWarn) {
-				t.Errorf("warnings = %v, want %q", c.warns, tc.wantWarn)
+			if !hasWarning(c.Warnings, tc.wantWarn) {
+				t.Errorf("warnings = %v, want %q", c.Warnings, tc.wantWarn)
 			}
 		})
 	}

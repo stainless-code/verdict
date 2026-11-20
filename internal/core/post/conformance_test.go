@@ -345,7 +345,7 @@ func conformanceScenarios() []conformanceScenario {
 
 // conformanceRun is everything one scripted post made observable.
 type conformanceRun struct {
-	response *core.PostResponse
+	response *Response
 	refusal  *core.RefusalError
 	root     string
 	calls    [][]string
@@ -372,7 +372,7 @@ func runConformance(t *testing.T, row *hostConformance, scn conformanceScenario)
 	root := conformanceBundle(t, row.provider)
 	cmdr := conformanceCommander(t, row, scn)
 	var warnings, human []string
-	flags := core.PostFlags{
+	flags := Flags{
 		Approve: scn.approve, RequestChanges: scn.changes, Bind: scn.bind,
 		Force: scn.force, DryRun: scn.dryRun,
 		ReviewFile: filepath.Join(conformanceBundleDir(root), "review.json"),
@@ -1449,7 +1449,7 @@ func conformanceGapPhrases() []string {
 
 // conformanceEnvelopeBytes renders the envelope exactly as the CLI prints it
 // for `post --json`: the frozen key order over the ordered data object.
-func conformanceEnvelopeBytes(t *testing.T, resp *core.PostResponse) string {
+func conformanceEnvelopeBytes(t *testing.T, resp *Response) string {
 	t.Helper()
 	return jq.PrettyOrdered(RenderPostEnvelope(resp))
 }

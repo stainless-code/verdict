@@ -11,6 +11,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 // evidenceSlug names the local bundle every evidence case records into.
@@ -73,12 +74,12 @@ func evidenceBundle(t *testing.T, review string, files map[string]string) string
 	t.Helper()
 	t.Chdir(t.TempDir())
 	dir := ".verdict/state/" + evidenceSlug
-	writeFile(t, dir+"/source.json", `{"head_sha":"`+coverageHead+
+	testkit.WriteFile(t, dir+"/source.json", `{"head_sha":"`+coverageHead+
 		`","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`)
-	writeFile(t, dir+"/full.diff", evidenceDiff)
-	writeFile(t, dir+"/review.json", review)
+	testkit.WriteFile(t, dir+"/full.diff", evidenceDiff)
+	testkit.WriteFile(t, dir+"/review.json", review)
 	for rel, content := range files {
-		writeFile(t, dir+"/"+rel, content)
+		testkit.WriteFile(t, dir+"/"+rel, content)
 	}
 	seedControls(t, dir)
 	return dir
@@ -86,10 +87,10 @@ func evidenceBundle(t *testing.T, review string, files map[string]string) string
 
 // recordEvidence records the fixture bundle, returning the response and the
 // refusal. Warnings ride on the response, so the stream needs no third result.
-func recordEvidence(t *testing.T, dryRun bool) (*core.RecordResponse, *core.RefusalError) {
+func recordEvidence(t *testing.T, dryRun bool) (*recordcore.Response, *core.RefusalError) {
 	t.Helper()
-	c := &collector{}
-	req := &core.RecordRequest{Effective: core.Defaults(), DryRun: dryRun}
+	c := &testkit.Collector{}
+	req := &recordcore.Request{Effective: core.Defaults(), DryRun: dryRun}
 	req.Runtime = testRuntime(c)
 	req.Repo, req.Pr = "acme/app", evidenceSlug
 	return recordcore.Run(context.Background(), req)
@@ -110,7 +111,7 @@ func storedRecord(t *testing.T, dir string) *core.Record {
 }
 
 // evidenceOf returns the response's evidence receipt.
-func evidenceOf(t *testing.T, resp *core.RecordResponse) *core.EvidenceReceipt {
+func evidenceOf(t *testing.T, resp *recordcore.Response) *core.EvidenceReceipt {
 	t.Helper()
 	if resp == nil || resp.Data.Evidence == nil {
 		t.Fatalf("response carries no evidence receipt")
@@ -575,7 +576,7 @@ const unkeyableDiff = "diff --git \"a/odd\\tname.txt\" \"b/odd\\tname.txt\"\n" +
 func TestRecordEvidenceUnkeyableDiffIsGap(t *testing.T) {
 	review := cleanEvidenceReview
 	dir := evidenceBundle(t, review, nil)
-	writeFile(t, dir+"/full.diff", unkeyableDiff)
+	testkit.WriteFile(t, dir+"/full.diff", unkeyableDiff)
 
 	resp, ref := recordEvidence(t, false)
 	if resp == nil {
@@ -744,7 +745,7 @@ func TestRecordSigSuppressedApprovalNeedsCompleteReceipts(t *testing.T) {
 	sig := entrySig(t, storeEntries(t, evidenceSlug)[0])
 	suppressed := `"suppressed":[{"source":"agent","path":"notes.txt","sig":"` + sig[:12] + `",` +
 		`"reason":"An intentional compatibility exception the diff carries."}],`
-	writeFile(t, dir+"/review.json", evidenceReview([]string{evidenceFinding("new line")}, suppressed))
+	testkit.WriteFile(t, dir+"/review.json", evidenceReview([]string{evidenceFinding("new line")}, suppressed))
 	resp, ref := recordEvidence(t, false)
 	if ref != nil {
 		t.Fatalf("second record refusal: %v", ref)

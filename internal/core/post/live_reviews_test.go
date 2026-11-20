@@ -5,8 +5,6 @@ import (
 	"strconv"
 	"strings"
 	"testing"
-
-	"github.com/stainless-code/verdict/internal/core"
 )
 
 const (
@@ -60,7 +58,7 @@ func TestFinalizerGuardLiveReviews(t *testing.T) {
 			dir := t.TempDir()
 			writeLiveReview(t, dir, tc.body, tc.commitID)
 			var warnings []string
-			p := postTestState(dir, liveGuardHead, core.PostFlags{Force: tc.force}, &warnings)
+			p := postTestState(dir, liveGuardHead, Flags{Force: tc.force}, &warnings)
 			ref := p.finalizerGuard()
 			if tc.want == "" {
 				if ref != nil {
@@ -89,7 +87,7 @@ func TestFinalizerGuardLiveReviewsUnreadable(t *testing.T) {
 		t.Fatal(err)
 	}
 	var warnings []string
-	p := postTestState(dir, liveGuardHead, core.PostFlags{}, &warnings)
+	p := postTestState(dir, liveGuardHead, Flags{}, &warnings)
 	if ref := p.finalizerGuard(); ref != nil {
 		t.Fatalf("corrupt reviews refused: %v", ref)
 	}
@@ -125,7 +123,7 @@ func TestDuplicateGuardLiveReviews(t *testing.T) {
 			dir := t.TempDir()
 			writeLiveReview(t, dir, tc.body, liveGuardHead)
 			var warnings []string
-			p := postTestState(dir, liveGuardHead, core.PostFlags{Force: tc.force}, &warnings)
+			p := postTestState(dir, liveGuardHead, Flags{Force: tc.force}, &warnings)
 			p.phash = tc.phash
 			ref := p.duplicateGuard()
 			if tc.want == "" {
@@ -153,7 +151,7 @@ func TestDuplicateGuardLocalMarker(t *testing.T) {
 		t.Fatal(err)
 	}
 	var warnings []string
-	p := postTestState(dir, liveGuardHead, core.PostFlags{}, &warnings)
+	p := postTestState(dir, liveGuardHead, Flags{}, &warnings)
 	p.phash = liveGuardHash
 	if ref := p.duplicateGuard(); ref == nil || ref.Code != "duplicate-payload" {
 		t.Fatalf("local marker refusal = %v, want duplicate-payload", ref)
@@ -187,7 +185,7 @@ func TestFinalizerGuardIgnoresPendingReviews(t *testing.T) {
 		t.Fatal(err)
 	}
 	var warnings []string
-	p := postTestState(dir, liveGuardHead, core.PostFlags{}, &warnings)
+	p := postTestState(dir, liveGuardHead, Flags{}, &warnings)
 	if ref := p.finalizerGuard(); ref != nil {
 		t.Fatalf("a pending draft refused the post: %v", ref)
 	}

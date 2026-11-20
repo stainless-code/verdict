@@ -62,9 +62,9 @@ func (c *Client) Report(ctx context.Context, req *ReportRequest) (*ReportRespons
 	if err != nil {
 		return nil, err
 	}
-	resp, ref := reportcore.Run(ctx, &core.ReportRequest{
+	resp, ref := reportcore.Run(ctx, &reportcore.Request{
 		ReadRequest: rr,
-		Flags: core.ReportFlags{
+		Flags: reportcore.Flags{
 			Status: req.Status, Kind: req.Kind, Output: req.Output, Sarif: req.Sarif,
 			Check: req.Check, Live: req.Live, MaxRisk: req.MaxRisk,
 			Cost: req.Cost, Completeness: req.Completeness,
@@ -177,9 +177,9 @@ func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, err
 	if err != nil {
 		return nil, err
 	}
-	resp, ref := reportcore.Run(ctx, &core.ReportRequest{
+	resp, ref := reportcore.Run(ctx, &reportcore.Request{
 		ReadRequest: rr,
-		Flags: core.ReportFlags{
+		Flags: reportcore.Flags{
 			Check: req.MaxSeverity, Completeness: req.RequireHead, Live: req.Live, Coverage: coverage,
 		},
 		Effective: core.Defaults(),
@@ -306,12 +306,12 @@ func (c *Client) Record(ctx context.Context, req *RecordRequest) (*Result, error
 	if err != nil {
 		return nil, err
 	}
-	resp, ref := recordcore.Run(ctx, &core.RecordRequest{
+	resp, ref := recordcore.Run(ctx, &recordcore.Request{
 		ReadRequest: rr,
 		Effective:   core.Defaults(),
 		DryRun:      req.DryRun,
 		Strict:      req.Strict,
-		Flags: core.RecordFlags{
+		Flags: recordcore.Flags{
 			CostNames: req.CostNames, CostPanel: req.CostPanel,
 		},
 	})
@@ -338,9 +338,9 @@ func (c *Client) Post(ctx context.Context, req *PostRequest) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	resp, ref := postcore.Run(ctx, &core.PostRequest{
+	resp, ref := postcore.Run(ctx, &postcore.Request{
 		ReadRequest: rr,
-		Flags: core.PostFlags{
+		Flags: postcore.Flags{
 			Approve: req.Approve, ReviewFile: req.ReviewFile, Summary: req.Summary,
 			RequestChanges: req.RequestChanges, Bind: req.Bind, Force: req.Force, DryRun: req.DryRun,
 			AllowSecretValues: req.AllowSecretValues,
@@ -391,7 +391,7 @@ func (c *Client) Verify(ctx context.Context, req *VerifyRequest) (*VerifyRespons
 	if err != nil {
 		return nil, err
 	}
-	resp, ref := verifycore.Run(ctx, &core.VerifyRequest{
+	resp, ref := verifycore.Run(ctx, &verifycore.Request{
 		ReadRequest:  rr,
 		TimeoutRaw:   req.Timeout,
 		Group:        req.Group,
@@ -435,9 +435,9 @@ func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error) 
 	if err != nil {
 		return nil, err
 	}
-	resp, err := fetchcore.Run(ctx, &core.FetchRequest{
+	resp, err := fetchcore.Run(ctx, &fetchcore.Request{
 		ReadRequest: rr,
-		Flags: core.FetchFlags{
+		Flags: fetchcore.Flags{
 			Context: req.Context, Ignore: req.Ignore, NoDefaultExcludes: req.NoDefaultExcludes,
 			BaseSHA: req.BaseSHA, Provider: req.Provider, BudgetConsent: req.BudgetConsent,
 			ShowPrompts: req.ShowPrompts, ChunkFlag: req.Chunk, HeadControls: req.HeadControls,
@@ -474,9 +474,9 @@ func (c *Client) FetchLocal(ctx context.Context, req *FetchLocalRequest) (*Resul
 	if err != nil {
 		return nil, err
 	}
-	resp, err := fetchcore.RunLocal(ctx, &core.FetchLocalRequest{
+	resp, err := fetchcore.RunLocal(ctx, &fetchcore.LocalRequest{
 		ReadRequest: rr,
-		Flags: core.FetchLocalFlags{
+		Flags: fetchcore.LocalFlags{
 			Context: req.Context, Ignore: req.Ignore, NoDefaultExcludes: req.NoDefaultExcludes,
 			RangeSpec: req.Range, BaseRef: req.BaseRef, StashN: req.Stash, Paths: req.Paths,
 			Staged: req.Staged, HasStash: req.HasStash, BudgetConsent: req.BudgetConsent,

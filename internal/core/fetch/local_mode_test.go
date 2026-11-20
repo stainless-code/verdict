@@ -26,8 +26,8 @@ const (
 func localScriptReq(
 	cmdr *scriptCommander, human, diag *bytes.Buffer, warnings *[]string,
 	//nolint:gocritic // the helper mirrors the production API, which takes the flags by value
-	env map[string]string, flags core.FetchLocalFlags,
-) *core.FetchLocalRequest {
+	env map[string]string, flags LocalFlags,
+) *LocalRequest {
 	root := ""
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
@@ -41,7 +41,7 @@ func localScriptReq(
 		Root: &root,
 	}
 	flags.HeadControls = true
-	return &core.FetchLocalRequest{
+	return &LocalRequest{
 		ReadRequest: read,
 		Flags:       flags,
 		Effective:   core.Defaults(),
@@ -99,15 +99,15 @@ func scriptBasePolicy(cmdr *scriptCommander, base, body string) {
 func TestRunLocalSelectorExclusivity(t *testing.T) {
 	cases := []struct {
 		name  string
-		flags core.FetchLocalFlags
+		flags LocalFlags
 	}{
-		{"range+base", core.FetchLocalFlags{RangeSpec: "a..b", BaseRef: "main"}},
-		{"range+staged", core.FetchLocalFlags{RangeSpec: "a..b", Staged: true}},
-		{"range+stash", core.FetchLocalFlags{RangeSpec: "a..b", HasStash: true}},
-		{"base+staged", core.FetchLocalFlags{BaseRef: "main", Staged: true}},
-		{"base+stash", core.FetchLocalFlags{BaseRef: "main", HasStash: true}},
-		{"staged+stash", core.FetchLocalFlags{Staged: true, HasStash: true}},
-		{"all four", core.FetchLocalFlags{RangeSpec: "a..b", BaseRef: "main", Staged: true, HasStash: true}},
+		{"range+base", LocalFlags{RangeSpec: "a..b", BaseRef: "main"}},
+		{"range+staged", LocalFlags{RangeSpec: "a..b", Staged: true}},
+		{"range+stash", LocalFlags{RangeSpec: "a..b", HasStash: true}},
+		{"base+staged", LocalFlags{BaseRef: "main", Staged: true}},
+		{"base+stash", LocalFlags{BaseRef: "main", HasStash: true}},
+		{"staged+stash", LocalFlags{Staged: true, HasStash: true}},
+		{"all four", LocalFlags{RangeSpec: "a..b", BaseRef: "main", Staged: true, HasStash: true}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -118,7 +118,7 @@ func TestRunLocalSelectorExclusivity(t *testing.T) {
 
 // assertExclusivityRefusal proves one multi-selector request refuses
 // bad-flags without touching the repo beyond the two preamble probes.
-func assertExclusivityRefusal(t *testing.T, flags *core.FetchLocalFlags) {
+func assertExclusivityRefusal(t *testing.T, flags *LocalFlags) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -151,7 +151,7 @@ func assertExclusivityRefusal(t *testing.T, flags *core.FetchLocalFlags) {
 const cleanStagedDiff = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n"
 
 // stagedCleanRun runs one hermetic --staged fetch-local over cleanStagedDiff.
-func stagedCleanRun(t *testing.T) *core.FetchResponse {
+func stagedCleanRun(t *testing.T) *Response {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -159,7 +159,7 @@ func stagedCleanRun(t *testing.T) *core.FetchResponse {
 	var human, diag bytes.Buffer
 	var streamed []string
 	resp, err := RunLocal(context.Background(),
-		localScriptReq(cmdr, &human, &diag, &streamed, nil, core.FetchLocalFlags{Staged: true}))
+		localScriptReq(cmdr, &human, &diag, &streamed, nil, LocalFlags{Staged: true}))
 	if err != nil {
 		t.Fatalf("RunLocal: %v", err)
 	}
@@ -223,7 +223,7 @@ func TestRunLocalCapInclusiveAtBoundary(t *testing.T) {
 	var streamed []string
 	env := map[string]string{"REVIEW_MAX_BYTES": strconv.Itoa(len(capTestDiff))}
 	resp, err := RunLocal(context.Background(),
-		localScriptReq(cmdr, &human, &diag, &streamed, env, core.FetchLocalFlags{Staged: true}))
+		localScriptReq(cmdr, &human, &diag, &streamed, env, LocalFlags{Staged: true}))
 	if err != nil {
 		t.Fatalf("RunLocal at exactly the cap: %v", err)
 	}
@@ -243,7 +243,7 @@ func TestRunLocalCapRefusesOneByteOver(t *testing.T) {
 	var streamed []string
 	env := map[string]string{"REVIEW_MAX_BYTES": strconv.Itoa(capBytes)}
 	_, err := RunLocal(context.Background(),
-		localScriptReq(cmdr, &human, &diag, &streamed, env, core.FetchLocalFlags{Staged: true}))
+		localScriptReq(cmdr, &human, &diag, &streamed, env, LocalFlags{Staged: true}))
 	ref := requireRefusal(t, err, "diff-too-large")
 	for _, want := range []string{strconv.Itoa(len(capTestDiff)), strconv.Itoa(capBytes)} {
 		if !strings.Contains(ref.Message, want) {
@@ -279,7 +279,7 @@ func TestRunLocalBinaryDiffWarnsNoHunks(t *testing.T) {
 	var human, diag bytes.Buffer
 	var streamed []string
 	resp, err := RunLocal(context.Background(),
-		localScriptReq(cmdr, &human, &diag, &streamed, nil, core.FetchLocalFlags{}))
+		localScriptReq(cmdr, &human, &diag, &streamed, nil, LocalFlags{}))
 	if err != nil {
 		t.Fatalf("RunLocal: %v", err)
 	}
@@ -316,7 +316,7 @@ func TestRunLocalEmptyDiffWarns(t *testing.T) {
 	var human, diag bytes.Buffer
 	var streamed []string
 	resp, err := RunLocal(context.Background(),
-		localScriptReq(cmdr, &human, &diag, &streamed, nil, core.FetchLocalFlags{}))
+		localScriptReq(cmdr, &human, &diag, &streamed, nil, LocalFlags{}))
 	if err != nil {
 		t.Fatalf("RunLocal: %v", err)
 	}

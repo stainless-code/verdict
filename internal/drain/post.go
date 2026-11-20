@@ -348,11 +348,8 @@ func postDryRunFinish(r *cli.Runner, req Request, dir string, plan *draincore.Fi
 	}
 	fmt.Fprintf(r.Human, "» %d planned, %d skipped (dry run; nothing posted) -> %s/%s\n",
 		len(preview.Planned), len(preview.Skipped), dir, draincore.KeyDryRunJSON)
-	if r.JSONMode {
-		env := core.RenderEnvelope(verbDrain, req.Repo, req.Pr, cli.NowUTC(r.Now()), dryRunNext(req, fl),
-			r.Warnings, preview.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-	}
+	r.Emit(verbDrain, req.Repo, req.Pr, cli.NowUTC(r.Now()), dryRunNext(req, fl),
+		r.Warnings, preview.Wire())
 	return cli.ExitOK
 }
 
@@ -380,11 +377,8 @@ func postFinish(r *cli.Runner, req Request, dir string, plan *draincore.File,
 		r.WriteRentry()
 		return cli.ExitFor(ref, cli.ExitRefused)
 	}
-	if r.JSONMode {
-		env := core.RenderEnvelope(verbDrain, req.Repo, req.Pr, cli.NowUTC(r.Now()), nextText,
-			r.Warnings, plan.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-	}
+	r.Emit(verbDrain, req.Repo, req.Pr, cli.NowUTC(r.Now()), nextText,
+		r.Warnings, plan.Wire())
 	return cli.ExitOK
 }
 

@@ -23,7 +23,7 @@ import (
 )
 
 func runProvider(
-	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f *core.FetchFlags, budget *budgetState,
+	ctx context.Context, ctx2 *fetchRunCtx, req *Request, f *Flags, budget *budgetState,
 ) (*core.FetchData, string, error) {
 	incBase, incremental, err := fetchProviderBundle(ctx, ctx2, req, f)
 	if err != nil {
@@ -49,7 +49,7 @@ func runProvider(
 // the unsupported-host note, the identity record, the chunk plan, and the
 // envelope tail.
 func providerTail(
-	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f *core.FetchFlags,
+	ctx context.Context, ctx2 *fetchRunCtx, req *Request, f *Flags,
 	budget *budgetState, fc *fetchCap, chunkActive bool, incBase string, incremental bool,
 ) (*core.FetchData, string, error) {
 	r, dir := ctx2.runner, ctx2.dir
@@ -74,7 +74,7 @@ func providerTail(
 
 // providerIncrementalNote writes the unsupported-host note when a provider
 // that did not own the compare still received --base-sha/--since.
-func providerIncrementalNote(r *session, dir string, f *core.FetchFlags, incremental bool) *core.RefusalError {
+func providerIncrementalNote(r *session, dir string, f *Flags, incremental bool) *core.RefusalError {
 	if !f.HasBase || f.BaseSHA == "" || incremental {
 		return nil
 	}
@@ -120,7 +120,7 @@ func writeProviderBundle(ctx2 *fetchRunCtx) error {
 // the adapter owns the --base-sha step (GitLab today) instead of the shared
 // unsupported-host note.
 func fetchProviderBundle(
-	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f *core.FetchFlags,
+	ctx context.Context, ctx2 *fetchRunCtx, req *Request, f *Flags,
 ) (incBase string, incremental bool, err error) {
 	switch f.Provider {
 	case providerGitLab:
@@ -148,7 +148,7 @@ func (s *session) cliFetch(ctx context.Context, bin string, args ...string) (cor
 
 // fetchGitLab mirrors the gitlab backend.
 func fetchGitLab(
-	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f *core.FetchFlags,
+	ctx context.Context, ctx2 *fetchRunCtx, req *Request, f *Flags,
 ) (string, error) {
 	r, dir, repo, pr := ctx2.runner, ctx2.dir, req.Repo, req.Pr
 	if err := r.needTool(binGlab); err != nil {
@@ -250,7 +250,7 @@ func gitlabDiffFail(dir, stderr string) error {
 // gitlabIncremental owns the --base-sha compare: the comparison API's
 // per-file diffs join into the bundle's incremental.diff, or the run
 // continues with the unavailability note GitHub writes.
-func gitlabIncremental(ctx context.Context, r *session, dir, pid string, f *core.FetchFlags) (string, error) {
+func gitlabIncremental(ctx context.Context, r *session, dir, pid string, f *Flags) (string, error) {
 	if !f.HasBase || f.BaseSHA == "" {
 		return nullStr, nil
 	}
@@ -491,7 +491,7 @@ func numOrZero(s string) int64 {
 }
 
 // fetchGitCafe mirrors the gitcafe backend.
-func fetchGitCafe(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest) error {
+func fetchGitCafe(ctx context.Context, ctx2 *fetchRunCtx, req *Request) error {
 	r, dir, repo, pr := ctx2.runner, ctx2.dir, req.Repo, req.Pr
 	if err := r.needTool(providerCafe); err != nil {
 		return err
@@ -841,7 +841,7 @@ func plainValue(e any) any {
 	return e
 }
 
-func fetchForgejo(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest) error {
+func fetchForgejo(ctx context.Context, ctx2 *fetchRunCtx, req *Request) error {
 	r, dir, pr := ctx2.runner, ctx2.dir, req.Pr
 	if err := r.needTool("curl"); err != nil {
 		return err
@@ -1149,7 +1149,7 @@ func mergeAdd(docs []any) (any, bool) {
 	return out, true
 }
 
-func fetchBitbucket(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest) error {
+func fetchBitbucket(ctx context.Context, ctx2 *fetchRunCtx, req *Request) error {
 	r, dir, repo, pr := ctx2.runner, ctx2.dir, req.Repo, req.Pr
 	if err := r.needTool("curl"); err != nil {
 		return err
@@ -1393,7 +1393,7 @@ type azureConn struct {
 	meta    string
 }
 
-func fetchAzure(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest) error {
+func fetchAzure(ctx context.Context, ctx2 *fetchRunCtx, req *Request) error {
 	r, dir, repo, pr := ctx2.runner, ctx2.dir, req.Repo, req.Pr
 	if err := r.needTool(binAz); err != nil {
 		return err

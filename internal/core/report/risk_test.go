@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
 )
 
@@ -17,9 +16,9 @@ func TestReportRiskUnassessed(t *testing.T) {
 	writeFile(t, ".verdict/state/5101/record.json",
 		`{"head":"`+storeHeadSHA+`","coverage":{"gaps":0}}`)
 
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Risk: true},
+		Flags:       reportcore.Flags{Risk: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refused: %+v", ref)
@@ -47,9 +46,9 @@ func TestReportRiskFloorOverride(t *testing.T) {
 	writeFile(t, ".verdict/state/5101/post.json",
 		`{"head":"`+storeHeadSHA+`","risk":{"level":"low","rationale":"Looks straightforward at first glance.","assessed_head":"`+storeHeadSHA+`"}}`)
 
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Risk: true},
+		Flags:       reportcore.Flags{Risk: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refused: %+v", ref)
@@ -75,9 +74,9 @@ func TestReportRiskMaxRiskPassOffline(t *testing.T) {
 	writeFile(t, ".verdict/state/5101/post.json",
 		`{"head":"`+storeHeadSHA+`","coverage":{"gaps":0},"risk":{"level":"medium","rationale":"Touches shared persistence layer cleanly.","assessed_head":"`+storeHeadSHA+`"}}`)
 
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{MaxRisk: "medium"},
+		Flags:       reportcore.Flags{MaxRisk: "medium"},
 	})
 	if ref != nil {
 		t.Fatalf("pass Run refused: %+v", ref)
@@ -98,9 +97,9 @@ func TestReportRiskMaxRiskFailOffline(t *testing.T) {
 	writeFile(t, ".verdict/state/5101/post.json",
 		`{"head":"`+storeHeadSHA+`","coverage":{"gaps":0},"risk":{"level":"medium","rationale":"Touches shared persistence layer cleanly.","assessed_head":"`+storeHeadSHA+`"}}`)
 
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{MaxRisk: "low"},
+		Flags:       reportcore.Flags{MaxRisk: "low"},
 	})
 	if ref != nil {
 		t.Fatalf("fail Run refused: %+v", ref)
@@ -118,9 +117,9 @@ func TestReportRiskMaxRiskFailOffline(t *testing.T) {
 
 func TestReportRiskInvalidMaxRiskRefuses(t *testing.T) {
 	req := fixture(t, "[]")
-	_, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	_, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{MaxRisk: "extreme"},
+		Flags:       reportcore.Flags{MaxRisk: "extreme"},
 	})
 	if ref == nil || ref.Code != "bad-flags" {
 		t.Fatalf("ref = %+v, want bad-flags", ref)
@@ -136,9 +135,9 @@ func TestReportRiskWithheldFindingStillRaisesFloor(t *testing.T) {
 	writeFile(t, ".verdict/state/5101/record.json",
 		`{"head":"`+storeHeadSHA+`","coverage":{"gaps":0},"risk":{"level":"low","rationale":"Looks low.","assessed_head":"`+storeHeadSHA+`"}}`)
 
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Risk: true, MaxRisk: "low"},
+		Flags:       reportcore.Flags{Risk: true, MaxRisk: "low"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refused: %+v", ref)
@@ -160,9 +159,9 @@ func TestReportRiskPrefersFreshRecordClaimOverStalePost(t *testing.T) {
 	writeFile(t, ".verdict/state/5101/record.json",
 		`{"head":"`+storeHeadSHA+`","coverage":{"gaps":0},"risk":{"level":"high","rationale":"Fresh record.","assessed_head":"`+storeHeadSHA+`"}}`)
 
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Risk: true},
+		Flags:       reportcore.Flags{Risk: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refused: %+v", ref)
@@ -193,9 +192,9 @@ func TestReportRiskScore(t *testing.T) {
 	writeFile(t, ".verdict/state/5101/impact.json", `{"symbols":{"count":1},"callers":{"count":3},"stale":false}`)
 	writeFile(t, ".verdict/state/5101/full.diff", reportRiskDiff(21))
 
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Risk: true},
+		Flags:       reportcore.Flags{Risk: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refused: %+v", ref)
@@ -238,9 +237,9 @@ func TestReportRiskScoreOnlyUnderRiskFlag(t *testing.T) {
 	writeFile(t, ".verdict/state/5101/record.json",
 		`{"head":"`+storeHeadSHA+`","coverage":{"gaps":0},"risk":{"level":"medium","rationale":"Touches shared persistence layer cleanly.","assessed_head":"`+storeHeadSHA+`"}}`)
 
-	gated, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	gated, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{MaxRisk: "medium"},
+		Flags:       reportcore.Flags{MaxRisk: "medium"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refused: %+v", ref)
@@ -252,7 +251,7 @@ func TestReportRiskScoreOnlyUnderRiskFlag(t *testing.T) {
 		t.Errorf("--max-risk human output carries a score line:\n%s", strings.Join(gated.Human, "\n"))
 	}
 
-	plain, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req})
+	plain, ref := reportcore.Run(context.Background(), &reportcore.Request{ReadRequest: req})
 	if ref != nil {
 		t.Fatalf("Run refused: %+v", ref)
 	}

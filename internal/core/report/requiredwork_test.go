@@ -54,8 +54,8 @@ func TestReportCleanNoOpenRequirementPassesWithNoPriorPost(t *testing.T) {
 		RequireChecks: []string{"no-open-above-block"},
 	}}
 	writeResolvedCapture(t, resolveCapture(t, repo, nil))
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
-		ReadRequest: req, Flags: core.ReportFlags{Check: "critical"},
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
+		ReadRequest: req, Flags: reportcore.Flags{Check: "critical"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -80,8 +80,8 @@ func TestReportDeepGroupWithoutReceiptNeverPasses(t *testing.T) {
 		Scopes:        []core.ConfigScope{{Name: "deep", Include: []string{"notes.txt"}, Profile: &deep}},
 	}
 	writeResolvedCapture(t, resolveCapture(t, repo, nil))
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
-		ReadRequest: req, Flags: core.ReportFlags{Check: "critical"},
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
+		ReadRequest: req, Flags: reportcore.Flags{Check: "critical"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -107,8 +107,8 @@ func TestReportWarnsEachProfileGapOnce(t *testing.T) {
 		Scopes:        []core.ConfigScope{{Name: "deep", Include: []string{"notes.txt"}, Profile: &deep}},
 	}
 	writeResolvedCapture(t, resolveCapture(t, repo, nil))
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
-		ReadRequest: req, Flags: core.ReportFlags{Check: "critical"},
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
+		ReadRequest: req, Flags: reportcore.Flags{Check: "critical"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -137,8 +137,8 @@ func TestReportWarnsEachLensGapOnce(t *testing.T) {
 		Scopes:        []core.ConfigScope{{Name: "capped", Include: []string{"notes.txt"}, Profile: &capped}},
 	}
 	writeResolvedCapture(t, resolveCapture(t, repo, nil))
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
-		ReadRequest: req, Flags: core.ReportFlags{Check: "critical"},
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
+		ReadRequest: req, Flags: reportcore.Flags{Check: "critical"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -167,8 +167,8 @@ func TestReportCappedGroupWithoutAttestationNeverPasses(t *testing.T) {
 		Scopes:        []core.ConfigScope{{Name: "capped", Include: []string{"notes.txt"}, Profile: &capped}},
 	}
 	writeResolvedCapture(t, resolveCapture(t, repo, nil))
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
-		ReadRequest: req, Flags: core.ReportFlags{Check: "critical"},
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
+		ReadRequest: req, Flags: reportcore.Flags{Check: "critical"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -191,8 +191,8 @@ func TestReportPrivacyConflictNeverPassesFromEmptyFindings(t *testing.T) {
 	}}
 	personal := &config.PersonalSettings{Privacy: config.PersonalPrivacy{Exclusions: []string{"notes.txt"}}}
 	writeResolvedCapture(t, resolveCapture(t, repo, personal))
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
-		ReadRequest: req, Flags: core.ReportFlags{Check: "critical"},
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
+		ReadRequest: req, Flags: reportcore.Flags{Check: "critical"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)

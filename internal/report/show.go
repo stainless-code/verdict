@@ -54,10 +54,9 @@ func renderShowJSON(r *cli.Runner, req Request, resp *core.ShowResponse, rec any
 	if resp.Item == nil {
 		next = "partial results — a miss is not proof of absence"
 	}
-	env := core.RenderEnvelope("show", req.Repo, req.Pr, resp.At,
+	r.Emit("show", req.Repo, req.Pr, resp.At,
 		next, resp.Warnings,
-		resp.Receipt.Apply(data), nil)
-	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		resp.Receipt.Apply(data))
 }
 
 // parseShowFlags parses the show flags.

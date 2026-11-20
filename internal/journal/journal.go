@@ -10,7 +10,6 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
 	journalcore "github.com/stainless-code/verdict/internal/core/journal"
-	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -36,9 +35,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	}
 	r.Warnings = resp.Warnings
 	if r.JSONMode {
-		env := core.RenderEnvelope("journal", resp.Repo, resp.Pr, resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.Emit("journal", resp.Repo, resp.Pr, resp.At, resp.Next,
+			resp.Warnings, resp.Data.Wire())
 		return cli.ExitOK
 	}
 	for _, line := range resp.Human {
@@ -48,12 +46,11 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 }
 
 func buildRequest(r *cli.Runner, req Request) *journalcore.Request {
-	read := req
-	if read.Runtime == nil {
-		read.Runtime = &core.Runtime{}
+	var cmdr core.Commander
+	if req.Runtime != nil {
+		cmdr = req.Commander
 	}
-	read.Now = r.Now
-	read.Progress = cli.Progress{R: r}
+	read := r.Read(req, cmdr)
 	return &journalcore.Request{
 		ReadRequest: read,
 		Warnings:    append([]string{}, r.Warnings...),

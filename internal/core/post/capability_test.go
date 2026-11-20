@@ -79,7 +79,7 @@ func TestRunPostGitLabWarnsOnRequestChanges(t *testing.T) {
 	writeGitLabBundle(t, providerGitLab, gitlabBundleReview)
 	cmdr := gitlabCommander(t)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{
+	req := postTestReq(cmdr, Flags{
 		Approve: "false", RequestChanges: true, Bind: true,
 		ReviewFile: ".verdict/state/7/review.json",
 	}, &warnings, &human)

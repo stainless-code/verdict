@@ -8,6 +8,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core/pack"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 const recordLockManifest = `{"schema_version":"1","name":"acme/lenses","version":"1.0.0","lenses":[{"id":"perf"}]}`
@@ -16,10 +17,10 @@ const recordLockManifest = `{"schema_version":"1","name":"acme/lenses","version"
 // snapshot, plus the lock body when non-empty.
 func writeRecordLockPack(t *testing.T, lock string) {
 	t.Helper()
-	writeFile(t, ".verdict/packs/lenses/pack.json", recordLockManifest)
-	writeFile(t, ".verdict/packs/lenses/lenses/perf.md", "perf body\n")
+	testkit.WriteFile(t, ".verdict/packs/lenses/pack.json", recordLockManifest)
+	testkit.WriteFile(t, ".verdict/packs/lenses/lenses/perf.md", "perf body\n")
 	if lock != "" {
-		writeFile(t, pack.LockFile, lock)
+		testkit.WriteFile(t, pack.LockFile, lock)
 	}
 }
 
@@ -37,7 +38,7 @@ func lockBodyFor(hash string) string {
 func TestRecordRefusesMissingLock(t *testing.T) {
 	bundle(t, "local-lock-missing", reviewJSON(""))
 	writeRecordLockPack(t, "")
-	_, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, "local-lock-missing"))
+	_, ref := recordcore.Run(context.Background(), recordRequest(t, &testkit.Collector{}, "local-lock-missing"))
 	if ref == nil || ref.Code != pack.CodeLockMissing {
 		t.Fatalf("record = %v, want pack-lock-missing", ref)
 	}
@@ -52,7 +53,7 @@ func TestRecordRefusesLockDrift(t *testing.T) {
 	bundle(t, "local-lock-drift", reviewJSON(""))
 	wrong := strings.Repeat("0", 64)
 	writeRecordLockPack(t, lockBodyFor(wrong))
-	_, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, "local-lock-drift"))
+	_, ref := recordcore.Run(context.Background(), recordRequest(t, &testkit.Collector{}, "local-lock-drift"))
 	if ref == nil || ref.Code != pack.CodeLockDrift {
 		t.Fatalf("record = %v, want pack-lock-drift", ref)
 	}
@@ -68,8 +69,8 @@ func TestRecordRefusesEditedLockSnapshot(t *testing.T) {
 	bundle(t, "local-lock-tamper", reviewJSON(""))
 	writeRecordLockPack(t, lockBodyFor(
 		"24e651328246cb30fd8e65893deb92d3136036b466daa9615f92a7110c592b0c"))
-	req := recordRequest(t, &collector{}, "local-lock-tamper")
-	writeFile(t, filepath.Join(".verdict", "state", "local-lock-tamper", "controls", "verdict.lock"),
+	req := recordRequest(t, &testkit.Collector{}, "local-lock-tamper")
+	testkit.WriteFile(t, filepath.Join(".verdict", "state", "local-lock-tamper", "controls", "verdict.lock"),
 		`{"schema_version":"1","packs":[]}`)
 	_, ref := recordcore.Run(context.Background(), req)
 	if ref == nil || ref.Code != "controls-stale" {

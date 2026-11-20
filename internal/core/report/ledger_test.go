@@ -6,7 +6,6 @@ import (
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
-	"github.com/stainless-code/verdict/internal/core"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
 )
 
@@ -54,9 +53,9 @@ func TestReportNeverRecordsCheckOutcomes(t *testing.T) {
 	req := fixture(t, "[]")
 	writeFile(t, ".verdict/state/5101/post.json", `{"head":"`+storeHeadSHA+`"}`)
 	writeReportRunState(t)
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Completeness: true},
+		Flags:       reportcore.Flags{Completeness: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)

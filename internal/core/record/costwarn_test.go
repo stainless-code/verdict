@@ -8,22 +8,22 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 // The literal warning a nameless models[] entry carries on every surface:
-// stderr, the envelope warnings[], and the progress collector.
+// stderr, the envelope warnings[], and the progress testkit.Collector.
 const namelessCostWarning = `cost.json: models[0] has no name — the name is what attribution reads; add "name"`
 
 // TestRecordWarnsNamelessCostEntry proves the repro records, stays priced, and
 // warns exactly once with the literal text.
 func TestRecordWarnsNamelessCostEntry(t *testing.T) {
 	bundle(t, "local-costwarn", reviewJSON(""))
-	writeFile(t, ".verdict/state/local-costwarn/cost.json",
+	testkit.WriteFile(t, ".verdict/state/local-costwarn/cost.json",
 		`{"schema_version":"2","run":"dog","inputs_sha256":"deadbeef","models":[{"model":"claude-x","input_tokens":1200,"output_tokens":300}]}`)
-	c := &collector{}
+	c := &testkit.Collector{}
 	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-costwarn"))
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -31,8 +31,8 @@ func TestRecordWarnsNamelessCostEntry(t *testing.T) {
 	if got := countCostWarnings(resp.Warnings, namelessCostWarning); got != 1 {
 		t.Errorf("warnings = %q, want exactly one %q", resp.Warnings, namelessCostWarning)
 	}
-	if !slices.Contains(c.warns, namelessCostWarning) {
-		t.Errorf("collector warns = %q, want %q", c.warns, namelessCostWarning)
+	if !slices.Contains(c.Warnings, namelessCostWarning) {
+		t.Errorf("testkit.Collector warns = %q, want %q", c.Warnings, namelessCostWarning)
 	}
 	if _, err := os.ReadFile(".verdict/state/local-costwarn/record.json"); err != nil {
 		t.Errorf("record.json: %v, want the record written", err)
@@ -50,9 +50,9 @@ func TestRecordWarnsNamelessCostEntry(t *testing.T) {
 // warns: the schema requires a name and only a string satisfies it.
 func TestRecordWarnsNonStringCostName(t *testing.T) {
 	bundle(t, "local-costnum", reviewJSON(""))
-	writeFile(t, ".verdict/state/local-costnum/cost.json",
+	testkit.WriteFile(t, ".verdict/state/local-costnum/cost.json",
 		`{"schema_version":"2","models":[{"model":"a","input_tokens":1,"name":5}]}`)
-	c := &collector{}
+	c := &testkit.Collector{}
 	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-costnum"))
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -67,9 +67,9 @@ func TestRecordWarnsNonStringCostName(t *testing.T) {
 // name warns.
 func TestRecordSilentOnEmptyStringCostName(t *testing.T) {
 	bundle(t, "local-costempty", reviewJSON(""))
-	writeFile(t, ".verdict/state/local-costempty/cost.json",
+	testkit.WriteFile(t, ".verdict/state/local-costempty/cost.json",
 		`{"schema_version":"2","models":[{"model":"a","input_tokens":1,"name":""}]}`)
-	c := &collector{}
+	c := &testkit.Collector{}
 	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-costempty"))
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -86,10 +86,10 @@ func TestRecordSilentOnEmptyStringCostName(t *testing.T) {
 // records qualifies each warning with its record, as a literal.
 func TestRecordWarnsEachRecordOfMultiRecordCostFile(t *testing.T) {
 	bundle(t, "local-costmulti", reviewJSON(""))
-	writeFile(t, ".verdict/state/local-costmulti/cost.json",
+	testkit.WriteFile(t, ".verdict/state/local-costmulti/cost.json",
 		`[{"models":[{"model":"a","input_tokens":1}]},`+
 			`{"models":[{"model":"b","input_tokens":2},{"name":"lead","model":"c","input_tokens":3}]}]`)
-	c := &collector{}
+	c := &testkit.Collector{}
 	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-costmulti"))
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -123,9 +123,9 @@ func mustCostField(t *testing.T, res readcommon.CostResult, key string) any {
 // named) warn twice, naming each position.
 func TestRecordWarnsEachNamelessCostEntry(t *testing.T) {
 	bundle(t, "local-costwarn3", reviewJSON(""))
-	writeFile(t, ".verdict/state/local-costwarn3/cost.json",
+	testkit.WriteFile(t, ".verdict/state/local-costwarn3/cost.json",
 		`{"schema_version":"2","models":[{"model":"a","input_tokens":1},{"name":"lead","model":"b","input_tokens":2},{"model":"c","input_tokens":3}]}`)
-	c := &collector{}
+	c := &testkit.Collector{}
 	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-costwarn3"))
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -147,9 +147,9 @@ func TestRecordWarnsEachNamelessCostEntry(t *testing.T) {
 // about cost.
 func TestRecordSilentOnNamedCostEntries(t *testing.T) {
 	bundle(t, "local-costok", reviewJSON(""))
-	writeFile(t, ".verdict/state/local-costok/cost.json",
+	testkit.WriteFile(t, ".verdict/state/local-costok/cost.json",
 		`{"schema_version":"2","models":[{"name":"lead","model":"a","input_tokens":1}]}`)
-	c := &collector{}
+	c := &testkit.Collector{}
 	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-costok"))
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -166,13 +166,13 @@ func TestRecordSilentOnNamedCostEntries(t *testing.T) {
 // warning text and writes nothing.
 func TestDryRunWarnsNamelessCostEntry(t *testing.T) {
 	bundle(t, "local-costdry", reviewJSON(""))
-	writeFile(t, ".verdict/state/local-costdry/cost.json",
+	testkit.WriteFile(t, ".verdict/state/local-costdry/cost.json",
 		`{"schema_version":"2","run":"dog","inputs_sha256":"deadbeef","models":[{"model":"claude-x","input_tokens":1200,"output_tokens":300}]}`)
 	before, err := os.ReadFile(".verdict/state/local-costdry/cost.json")
 	if err != nil {
 		t.Fatal(err)
 	}
-	c := &collector{}
+	c := &testkit.Collector{}
 	req := recordRequest(t, c, "local-costdry")
 	req.DryRun = true
 	resp, ref := recordcore.Run(context.Background(), req)
@@ -221,7 +221,7 @@ func countNamelessWarnings(warnings []string) int {
 // writing while the nameless scan reads the file the repair has not touched.
 func TestCostWarningsMatchAcrossDryRunWithCostNames(t *testing.T) {
 	dryResp, liveResp := runCostParityPair(t, "local-costparity",
-		core.RecordFlags{CostNames: true, CostPanel: []string{"lead"}})
+		recordcore.Flags{CostNames: true, CostPanel: []string{"lead"}})
 	if got := countCostWarnings(dryResp.Warnings,
 		`cost names: would name 1 models[] entries from the panel (dry run — nothing written)`); got != 1 {
 		t.Errorf("dry-run warnings = %q, want exactly one would-name repair message", dryResp.Warnings)
@@ -244,7 +244,7 @@ func TestCostWarningsMatchAcrossDryRunWithCostNames(t *testing.T) {
 // TestCostWarningsMatchAcrossDryRunWithoutCostNames proves the other half: an
 // entry no repair names still warns in both modes, with the same warning set.
 func TestCostWarningsMatchAcrossDryRunWithoutCostNames(t *testing.T) {
-	dryResp, liveResp := runCostParityPair(t, "local-costparityplain", core.RecordFlags{})
+	dryResp, liveResp := runCostParityPair(t, "local-costparityplain", recordcore.Flags{})
 	if got := countCostWarnings(dryResp.Warnings, namelessCostWarning); got != 1 {
 		t.Errorf("dry-run warnings = %q, want exactly one %q", dryResp.Warnings, namelessCostWarning)
 	}
@@ -257,12 +257,12 @@ func TestCostWarningsMatchAcrossDryRunWithoutCostNames(t *testing.T) {
 // runCostParityPair records one nameless cost entry twice over the same
 // bundle: first as a dry run, then live. Both runs share the flags, so the
 // parity assertion compares only what the mode changes.
-func runCostParityPair(t *testing.T, slug string, flags core.RecordFlags) (dry, live *core.RecordResponse) {
+func runCostParityPair(t *testing.T, slug string, flags recordcore.Flags) (dry, live *recordcore.Response) {
 	t.Helper()
 	bundle(t, slug, reviewJSON(""))
-	writeFile(t, ".verdict/state/"+slug+"/cost.json",
+	testkit.WriteFile(t, ".verdict/state/"+slug+"/cost.json",
 		`{"schema_version":"2","models":[{"model":"a","input_tokens":1}]}`)
-	c := &collector{}
+	c := &testkit.Collector{}
 	req := recordRequest(t, c, slug)
 	req.Flags = flags
 	req.DryRun = true

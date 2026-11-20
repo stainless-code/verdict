@@ -8,8 +8,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/stainless-code/verdict/internal/core"
 )
 
 // TestFetchLocalSymlinkedContextRefusal proves a symlinked --context operand
@@ -27,7 +25,7 @@ func TestFetchLocalSymlinkedContextRefusal(t *testing.T) {
 	var streamed []string
 	_, err := RunLocal(t.Context(),
 		localScriptReq(cmdr, &human, &diag, &streamed, nil,
-			core.FetchLocalFlags{Staged: true, Context: []string{"link.md"}}))
+			LocalFlags{Staged: true, Context: []string{"link.md"}}))
 	ref := requireRefusal(t, err, "context-invalid")
 	for _, want := range []string{"link.md", filepath.Join(dir, "link.md"), "symlink"} {
 		if !strings.Contains(filepath.ToSlash(ref.Message), filepath.ToSlash(want)) {

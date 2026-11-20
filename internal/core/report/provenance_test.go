@@ -63,9 +63,9 @@ func writeReportProvenance(t *testing.T) {
 	}
 }
 
-func runReportChecked(t *testing.T, req core.ReadRequest, flags *core.ReportFlags) *core.ReportResponse {
+func runReportChecked(t *testing.T, req core.ReadRequest, flags *reportcore.Flags) *reportcore.Response {
 	t.Helper()
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req, Flags: *flags})
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{ReadRequest: req, Flags: *flags})
 	if ref != nil {
 		t.Fatalf("report refused: %s: %s", ref.Code, ref.Message)
 	}
@@ -77,7 +77,7 @@ type reportProvenanceWire struct {
 	Truncated []core.ProvenanceTruncatedRow `json:"truncated"`
 }
 
-func decodeReportProvenance(t *testing.T, resp *core.ReportResponse) reportProvenanceWire {
+func decodeReportProvenance(t *testing.T, resp *reportcore.Response) reportProvenanceWire {
 	t.Helper()
 	var decoded reportProvenanceWire
 	if err := json.Unmarshal([]byte(jq.PrettyOrdered(resp.Data.Wire())), &decoded); err != nil {
@@ -90,7 +90,7 @@ func TestReportProvenanceWireGatingHumanTableAndDegrade(t *testing.T) {
 	req := fixture(t, "[]")
 	writeReportProvenance(t)
 
-	plainResp := runReportChecked(t, req, &core.ReportFlags{})
+	plainResp := runReportChecked(t, req, &reportcore.Flags{})
 	plainWire := jq.PrettyOrdered(plainResp.Data.Wire())
 	if strings.Contains(plainWire, `"inputs"`) || strings.Contains(plainWire, `"receipt"`) {
 		t.Fatalf("report without --provenance exposed provenance keys:\n%s", plainWire)
@@ -99,7 +99,7 @@ func TestReportProvenanceWireGatingHumanTableAndDegrade(t *testing.T) {
 	assertReportProvenanceIncluded(t, req)
 
 	writeFile(t, reportBundleDir+"/provenance.json", "{corrupt")
-	badResp := runReportChecked(t, req, &core.ReportFlags{Provenance: true})
+	badResp := runReportChecked(t, req, &reportcore.Flags{Provenance: true})
 	if !strings.Contains(strings.Join(badResp.Warnings, "\n"), "provenance.json") {
 		t.Fatalf("expected provenance.json warning on malformed file, got: %v", badResp.Warnings)
 	}
@@ -107,7 +107,7 @@ func TestReportProvenanceWireGatingHumanTableAndDegrade(t *testing.T) {
 
 func assertReportProvenanceIncluded(t *testing.T, req core.ReadRequest) {
 	t.Helper()
-	provResp := runReportChecked(t, req, &core.ReportFlags{Provenance: true})
+	provResp := runReportChecked(t, req, &reportcore.Flags{Provenance: true})
 	decoded := decodeReportProvenance(t, provResp)
 	assertReportProvenanceRows(t, &decoded)
 	humanText := strings.Join(provResp.Human, "\n")
@@ -163,7 +163,7 @@ func TestReportProvenanceCopiesBundleTruncation(t *testing.T) {
 	writeReportProvenance(t)
 	writeFile(t, reportBundleDir+"/truncation.json", bundleTruncation)
 
-	resp := runReportChecked(t, req, &core.ReportFlags{Provenance: true})
+	resp := runReportChecked(t, req, &reportcore.Flags{Provenance: true})
 	if resp.Data.Receipt == nil || resp.Data.Receipt.Returned != 0 {
 		t.Fatalf("report's own receipt = %+v, want returned 0 for an empty item list", resp.Data.Receipt)
 	}

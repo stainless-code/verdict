@@ -21,10 +21,14 @@ import (
 	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
+	postcore "github.com/stainless-code/verdict/internal/core/post"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
+	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	reportcore "github.com/stainless-code/verdict/internal/core/report"
 	riskcore "github.com/stainless-code/verdict/internal/core/risk"
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
+	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -144,7 +148,7 @@ func wireDoctor(ctx context.Context, b *bindings, req *doctorcore.Request) error
 	return nil
 }
 
-func decodeFetch(req *core.FetchRequest, a *args) {
+func decodeFetch(req *fetchcore.Request, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.flags(func(f *args) {
@@ -162,7 +166,7 @@ func decodeFetch(req *core.FetchRequest, a *args) {
 	})
 }
 
-func wireFetch(ctx context.Context, b *bindings, req *core.FetchRequest) error {
+func wireFetch(ctx context.Context, b *bindings, req *fetchcore.Request) error {
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
 		return err
 	}
@@ -175,7 +179,7 @@ func wireFetch(ctx context.Context, b *bindings, req *core.FetchRequest) error {
 	return nil
 }
 
-func decodeFetchLocal(req *core.FetchLocalRequest, a *args) {
+func decodeFetchLocal(req *fetchcore.LocalRequest, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.flags(func(f *args) {
@@ -197,7 +201,7 @@ func decodeFetchLocal(req *core.FetchLocalRequest, a *args) {
 	})
 }
 
-func wireFetchLocal(ctx context.Context, b *bindings, req *core.FetchLocalRequest) error {
+func wireFetchLocal(ctx context.Context, b *bindings, req *fetchcore.LocalRequest) error {
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
 		return err
 	}
@@ -343,7 +347,7 @@ func wireNext(ctx context.Context, b *bindings, req *core.NextRequest) error {
 	return nil
 }
 
-func decodePost(req *core.PostRequest, a *args) {
+func decodePost(req *postcore.Request, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.strings("requireRigor", &req.RequireRigor)
@@ -362,7 +366,7 @@ func decodePost(req *core.PostRequest, a *args) {
 	})
 }
 
-func wirePost(ctx context.Context, b *bindings, req *core.PostRequest) error {
+func wirePost(ctx context.Context, b *bindings, req *postcore.Request) error {
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
 		return err
 	}
@@ -395,7 +399,7 @@ func wireReady(ctx context.Context, b *bindings, req *readycore.Request) error {
 	return nil
 }
 
-func decodeRecord(req *core.RecordRequest, a *args) {
+func decodeRecord(req *recordcore.Request, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.boolean("dry_run", &req.DryRun)
@@ -404,7 +408,7 @@ func decodeRecord(req *core.RecordRequest, a *args) {
 	})
 }
 
-func wireRecord(ctx context.Context, b *bindings, req *core.RecordRequest) error {
+func wireRecord(ctx context.Context, b *bindings, req *recordcore.Request) error {
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
 		return err
 	}
@@ -413,7 +417,7 @@ func wireRecord(ctx context.Context, b *bindings, req *core.RecordRequest) error
 	return nil
 }
 
-func decodeReport(req *core.ReportRequest, a *args) {
+func decodeReport(req *reportcore.Request, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.flags(func(f *args) {
@@ -433,7 +437,7 @@ func decodeReport(req *core.ReportRequest, a *args) {
 	})
 }
 
-func wireReport(ctx context.Context, b *bindings, req *core.ReportRequest) error {
+func wireReport(ctx context.Context, b *bindings, req *reportcore.Request) error {
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
 		return err
 	}
@@ -529,7 +533,7 @@ func wireRisk(ctx context.Context, b *bindings, req *riskcore.QueueRequest) erro
 	return nil
 }
 
-func decodeVerify(req *core.VerifyRequest, a *args) {
+func decodeVerify(req *verifycore.Request, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.str("timeoutRaw", &req.TimeoutRaw)
@@ -539,7 +543,7 @@ func decodeVerify(req *core.VerifyRequest, a *args) {
 	a.strings("envAllowlist", &req.EnvAllowlist)
 }
 
-func wireVerify(ctx context.Context, b *bindings, req *core.VerifyRequest) error {
+func wireVerify(ctx context.Context, b *bindings, req *verifycore.Request) error {
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
 		return err
 	}

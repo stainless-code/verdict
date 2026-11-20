@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
+	reportcore "github.com/stainless-code/verdict/internal/core/report"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -27,12 +27,12 @@ func TestReportValidationProjectsTheStoredReceipt(t *testing.T) {
 	req := fixture(t, "["+openFinding+"]")
 	writeFile(t, reportBundleDir+"/post.json", validationReceipt)
 
-	plain := runReportChecked(t, req, &core.ReportFlags{})
+	plain := runReportChecked(t, req, &reportcore.Flags{})
 	if strings.Contains(jq.PrettyOrdered(plain.Data.Wire()), `"validation"`) {
 		t.Fatal("report without --validation exposed the pass")
 	}
 
-	wire := jq.PrettyOrdered(runReportChecked(t, req, &core.ReportFlags{Validation: true}).Data.Wire())
+	wire := jq.PrettyOrdered(runReportChecked(t, req, &reportcore.Flags{Validation: true}).Data.Wire())
 	for _, want := range []string{`"hash": "9f2b"`, `"mode": "gate"`, `"confirmed": 1`, `"critical": "walked"`} {
 		if !strings.Contains(wire, want) {
 			t.Fatalf("report --validation wire is missing %s:\n%s", want, wire)
@@ -47,7 +47,7 @@ func TestReportValidationTalliesTheArtifact(t *testing.T) {
 	req := fixture(t, "["+openFinding+"]")
 	writeFile(t, reportBundleDir+"/validation.json", validationArtifact)
 
-	resp := runReportChecked(t, req, &core.ReportFlags{Validation: true})
+	resp := runReportChecked(t, req, &reportcore.Flags{Validation: true})
 	wire := jq.PrettyOrdered(resp.Data.Wire())
 	for _, want := range []string{
 		`"mode": "warn"`, `"confirmed": 1`, `"unvalidated": 0`,
@@ -63,7 +63,7 @@ func TestReportValidationTalliesTheArtifact(t *testing.T) {
 // no receipt warns and adds no key.
 func TestReportValidationAbsentDegrades(t *testing.T) {
 	req := fixture(t, "["+openFinding+"]")
-	resp := runReportChecked(t, req, &core.ReportFlags{Validation: true})
+	resp := runReportChecked(t, req, &reportcore.Flags{Validation: true})
 	if resp.Data.Validation != nil {
 		t.Fatalf("report invented a pass: %+v", resp.Data.Validation)
 	}
@@ -76,7 +76,7 @@ func TestReportOmitsRowsFromDifferentValidationPass(t *testing.T) {
 	req := fixture(t, "["+openFinding+"]")
 	writeFile(t, reportBundleDir+"/post.json", validationReceipt)
 	writeFile(t, reportBundleDir+"/validation.json", validationArtifact)
-	resp := runReportChecked(t, req, &core.ReportFlags{Validation: true})
+	resp := runReportChecked(t, req, &reportcore.Flags{Validation: true})
 	if strings.Contains(strings.Join(resp.Human, "\n"), "The reset is reachable") {
 		t.Fatal("report paired current rows with recorded counts")
 	}

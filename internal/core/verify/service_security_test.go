@@ -8,6 +8,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 // TestVerifyRedactsSecretsAtTheLengthBoundary pins the documented "8+ chars"
@@ -18,7 +19,7 @@ import (
 // -> `>`): an 8-byte token then reaches patch.json verbatim.
 func TestVerifyRedactsSecretsAtTheLengthBoundary(t *testing.T) {
 	bundle(t, `{"verifyCmd":"printf tail"}`)
-	c := &collector{}
+	c := &testkit.Collector{}
 	cmdr := &scriptCommander{res: core.Result{Stdout: "a=abcd1234 b=abcd123 c=abcd12345"}}
 	resp, ref := verifycore.Run(context.Background(), verifyRequest(c, cmdr, "10",
 		[]string{"PATH=/bin", "EIGHT_TOKEN=abcd1234", "SEVEN_TOKEN=abcd123"}, true))
@@ -57,7 +58,7 @@ func wantNext(t *testing.T, res core.Result, want string) {
 	t.Helper()
 	bundle(t, `{"verifyCmd":"printf x"}`)
 	resp, ref := verifycore.Run(context.Background(),
-		verifyRequest(&collector{}, &scriptCommander{res: res}, "10", []string{"PATH=/bin"}, true))
+		verifyRequest(&testkit.Collector{}, &scriptCommander{res: res}, "10", []string{"PATH=/bin"}, true))
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -88,7 +89,7 @@ func (d *deadlineCommander) Run(ctx context.Context, _ *core.Command) (core.Resu
 func TestVerifyTimeoutIsSeconds(t *testing.T) {
 	bundle(t, `{"verifyCmd":"printf x"}`)
 	dc := &deadlineCommander{}
-	req := verifyRequest(&collector{}, &scriptCommander{}, "30", []string{"PATH=/bin"}, true)
+	req := verifyRequest(&testkit.Collector{}, &scriptCommander{}, "30", []string{"PATH=/bin"}, true)
 	req.Commander = dc
 	if _, ref := verifycore.Run(context.Background(), req); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -115,7 +116,7 @@ func TestVerifyCancelDuringStartRefusesCanceled(t *testing.T) {
 	bundle(t, `{"verifyCmd":"printf x"}`)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	req := verifyRequest(&collector{}, &scriptCommander{}, "30", []string{"PATH=/bin"}, true)
+	req := verifyRequest(&testkit.Collector{}, &scriptCommander{}, "30", []string{"PATH=/bin"}, true)
 	req.Commander = &cancelThenFailCommander{cancel: cancel}
 	_, ref := verifycore.Run(ctx, req)
 	if ref == nil || ref.Code != "canceled" {

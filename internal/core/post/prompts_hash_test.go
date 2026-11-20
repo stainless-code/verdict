@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/provenance"
 )
 
@@ -61,7 +60,7 @@ func assertSuccessPromptsHash(t *testing.T, want, label string) {
 	t.Helper()
 	var warnings, human []string
 	req := postTestReq(postCommander(t),
-		core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+		Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("%s success refused: %s: %s", label, ref.Code, ref.Message)

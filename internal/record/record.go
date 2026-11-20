@@ -13,7 +13,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
-	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // Request carries the resolved record invocation.
@@ -51,26 +50,23 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req *Request) int {
 		return r.RefuseTyped(ref)
 	}
 	r.Warnings = resp.Warnings
-	if r.JSONMode {
-		env := core.RenderEnvelope("record", resp.Repo, resp.Pr, resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-	}
+	r.Emit("record", resp.Repo, resp.Pr, resp.At, resp.Next,
+		resp.Warnings, resp.Data.Wire())
 	return cli.ExitOK
 }
 
 // recordRequest builds the core request from the runner and invocation.
-func recordRequest(r *cli.Runner, req *Request) *core.RecordRequest {
+func recordRequest(r *cli.Runner, req *Request) *recordcore.Request {
 	root := req.Root
-	read := core.ReadRequest{
-		Runtime:  &core.Runtime{Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}, Commander: coreexec.Runner{}},
+	read := r.Read(core.ReadRequest{
+		Runtime:  &core.Runtime{Env: req.Env},
 		Repo:     req.Repo,
 		Pr:       req.Pr,
 		Forces:   req.Forces,
 		Root:     &root,
 		RepoRoot: req.RepoRoot,
-	}
-	return &core.RecordRequest{
+	}, coreexec.Runner{})
+	return &recordcore.Request{
 		ReadRequest: read,
 		Effective:   r.Effective,
 		Warnings:    append([]string{}, r.Warnings...),

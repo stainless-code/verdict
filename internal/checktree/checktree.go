@@ -45,13 +45,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // checktreeRequest injects the runner's clock, progress observer, and
 // command runner into the typed service request.
 func checktreeRequest(r *cli.Runner, req Request, expect string) *checktreecore.Request {
-	read := req
-	if read.Runtime == nil {
-		read.Runtime = &core.Runtime{}
-	}
-	read.Now = r.Now
-	read.Progress = cli.Progress{R: r}
-	read.Commander = coreexec.Runner{}
+	read := r.Read(req, coreexec.Runner{})
 	return &checktreecore.Request{
 		ReadRequest: read,
 		Expect:      expect,

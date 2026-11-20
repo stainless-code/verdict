@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 type filterEnvCase struct {
@@ -157,7 +158,7 @@ func TestFilterChildEnvTable(t *testing.T) {
 
 func TestVerifyDefaultDenyAndExplicitAllowlist(t *testing.T) {
 	bundle(t, `{"verifyCmd":"printf ok"}`)
-	c, cmdr := &collector{}, &scriptCommander{res: core.Result{Stdout: "ok"}}
+	c, cmdr := &testkit.Collector{}, &scriptCommander{res: core.Result{Stdout: "ok"}}
 	environ := []string{
 		"PATH=/usr/bin",
 		"HOME=/Users/dev",
@@ -187,8 +188,8 @@ func TestVerifyDefaultDenyAndExplicitAllowlist(t *testing.T) {
 	if !slices.Equal(resp.Warnings, []string{wantWarn}) {
 		t.Errorf("resp.Warnings = %v, want [%q]", resp.Warnings, wantWarn)
 	}
-	if !slices.Equal(c.warns, []string{wantWarn}) {
-		t.Errorf("streamed warns = %v, want [%q]", c.warns, wantWarn)
+	if !slices.Equal(c.Warnings, []string{wantWarn}) {
+		t.Errorf("streamed warns = %v, want [%q]", c.Warnings, wantWarn)
 	}
 	assertNoValueLeak(t, strings.Join(resp.Warnings, "\n"),
 		"supersecret_foo_token_999", "supersecret_lc_token_888", "unlisted_secret_value_777")
@@ -205,7 +206,7 @@ func assertNoValueLeak(t *testing.T, text string, forbidden ...string) {
 
 func writeControlsVerifyEnv(t *testing.T, bundleDir, body string) {
 	t.Helper()
-	writeFile(t, filepath.Join(bundleDir, "controls", "verify-env"), body)
+	testkit.WriteFile(t, filepath.Join(bundleDir, "controls", "verify-env"), body)
 	sum := sha256.Sum256([]byte(body))
 	shaHex := hex.EncodeToString(sum[:])
 	manifest := fmt.Sprintf(`{
@@ -223,16 +224,16 @@ func writeControlsVerifyEnv(t *testing.T, bundleDir, body string) {
   ]
 }
 `, controls.VerifyEnvPath, len(body), shaHex)
-	writeFile(t, filepath.Join(bundleDir, controls.FileName), manifest)
-	writeFile(t, filepath.Join(bundleDir, "PR.json"), `{"baseRefOid":"abcdef1234567890abcdef1234567890abcdef12"}`)
+	testkit.WriteFile(t, filepath.Join(bundleDir, controls.FileName), manifest)
+	testkit.WriteFile(t, filepath.Join(bundleDir, "PR.json"), `{"baseRefOid":"abcdef1234567890abcdef1234567890abcdef12"}`)
 }
 
 func TestVerifyRefusesControlsStaleAgainstBundleBase(t *testing.T) {
 	bundle(t, `{"verifyCmd":"printf ok"}`)
 	writeControlsVerifyEnv(t, ".verdict/state/5201", "FOO_TOKEN\n")
-	writeFile(t, ".verdict/state/5201/PR.json", `{"baseRefOid":"1111111111111111111111111111111111111111"}`)
+	testkit.WriteFile(t, ".verdict/state/5201/PR.json", `{"baseRefOid":"1111111111111111111111111111111111111111"}`)
 
-	c, cmdr := &collector{}, &scriptCommander{res: core.Result{Stdout: "ok"}}
+	c, cmdr := &testkit.Collector{}, &scriptCommander{res: core.Result{Stdout: "ok"}}
 	environ := []string{"PATH=/bin", "FOO_TOKEN=must_not_pass"}
 	_, ref := verifycore.Run(context.Background(), verifyRequest(c, cmdr, "10", environ, false))
 	if ref == nil || ref.Code != controls.CodeStale {
@@ -246,11 +247,11 @@ func TestVerifyRefusesControlsStaleAgainstBundleBase(t *testing.T) {
 func TestVerifyEnvControlsSnapshotTrustedWhileWorktreeIgnored(t *testing.T) {
 	bundle(t, `{"verifyCmd":"printf ok"}`)
 	// Untrusted worktree .verdict/verify-env tries to opt in WORKTREE_EVIL_VAR.
-	writeFile(t, ".verdict/verify-env", "WORKTREE_EVIL_VAR\n")
+	testkit.WriteFile(t, ".verdict/verify-env", "WORKTREE_EVIL_VAR\n")
 	// Base-snapshotted controls/verify-env opts in SNAPSHOT_VAR and FOO_TOKEN.
 	writeControlsVerifyEnv(t, ".verdict/state/5201", "# comment line\n\nSNAPSHOT_VAR\r\n  FOO_TOKEN  \n")
 
-	c, cmdr := &collector{}, &scriptCommander{res: core.Result{Stdout: "ok"}}
+	c, cmdr := &testkit.Collector{}, &scriptCommander{res: core.Result{Stdout: "ok"}}
 	environ := []string{
 		"PATH=/bin",
 		"SNAPSHOT_VAR=from_base_snapshot",
@@ -278,9 +279,9 @@ func TestVerifyEnvControlsSnapshotTrustedWhileWorktreeIgnored(t *testing.T) {
 
 func TestVerifyWorktreeVerifyEnvIgnoredWithoutControlsManifest(t *testing.T) {
 	bundle(t, `{"verifyCmd":"printf ok"}`)
-	writeFile(t, ".verdict/verify-env", "WORKTREE_ONLY_VAR\n")
+	testkit.WriteFile(t, ".verdict/verify-env", "WORKTREE_ONLY_VAR\n")
 
-	c, cmdr := &collector{}, &scriptCommander{res: core.Result{Stdout: "ok"}}
+	c, cmdr := &testkit.Collector{}, &scriptCommander{res: core.Result{Stdout: "ok"}}
 	environ := []string{"PATH=/bin", "WORKTREE_ONLY_VAR=should_not_pass"}
 	resp, ref := verifycore.Run(context.Background(), verifyRequest(c, cmdr, "10", environ, false))
 	if ref != nil {
@@ -305,7 +306,7 @@ func TestVerifyInvalidEnvAllowlistRefusesWithoutLeakingValue(t *testing.T) {
 func checkInvalidEnvAllowlist(t *testing.T, bad string) {
 	t.Helper()
 	bundle(t, `{"verifyCmd":"printf ok"}`)
-	c, cmdr := &collector{}, &scriptCommander{}
+	c, cmdr := &testkit.Collector{}, &scriptCommander{}
 	req := verifyRequest(c, cmdr, "10", []string{"PATH=/bin"}, true)
 	req.EnvAllowlist = []string{bad}
 	_, ref := verifycore.Run(context.Background(), req)
@@ -325,7 +326,7 @@ func TestVerifyInvalidVerifyEnvFileRefusesWithoutLeakingLine(t *testing.T) {
 	bundle(t, `{"verifyCmd":"printf ok"}`)
 	writeControlsVerifyEnv(t, ".verdict/state/5201", "VALID_VAR\nFOO_TOKEN=supersecret_file_val_999\n")
 
-	c, cmdr := &collector{}, &scriptCommander{}
+	c, cmdr := &testkit.Collector{}, &scriptCommander{}
 	_, ref := verifycore.Run(context.Background(), verifyRequest(c, cmdr, "10", []string{"PATH=/bin"}, true))
 	if ref == nil || ref.Code != "bad-flags" {
 		t.Fatalf("ref = %v, want bad-flags", ref)

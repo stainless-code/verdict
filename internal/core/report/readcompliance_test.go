@@ -68,9 +68,9 @@ const securityFinding = `{"kind":"inline","path":"notes.txt","side":"RIGHT","lin
 func TestReportComplianceBlocksOnFullFindings(t *testing.T) {
 	req := fixture(t, "["+securityFinding+"]")
 	writeCompliancePolicy(t)
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Check: "critical"},
+		Flags:       reportcore.Flags{Check: "critical"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -96,9 +96,9 @@ func TestReportComplianceIgnoresUnverifiedFinding(t *testing.T) {
 		`"firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}`
 	req := fixture(t, "["+unverifiedSecurity+"]")
 	writeCompliancePolicy(t)
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Check: "critical"},
+		Flags:       reportcore.Flags{Check: "critical"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -123,9 +123,9 @@ func TestReportUnverifiedClauseNeverApproves(t *testing.T) {
 		`"firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}`
 	req := fixture(t, "["+unverifiedInfo+"]")
 	writeCompliancePolicyWith(t, &core.BlockClause{Name: "any-block", Threshold: "informational"})
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Check: "critical", Live: "skip"},
+		Flags:       reportcore.Flags{Check: "critical", Live: "skip"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -153,7 +153,7 @@ func requireClauseRefusal(t *testing.T, got *core.ApprovalReceipt) {
 
 // requireComplianceStatus asserts the gate failed and the compliance
 // dimension carries the expected status.
-func requireComplianceStatus(t *testing.T, resp *core.ReportResponse, want string) {
+func requireComplianceStatus(t *testing.T, resp *reportcore.Response, want string) {
 	t.Helper()
 	if !resp.GateFailed {
 		t.Fatal("gate passed while captured requirements were unmet")
@@ -175,9 +175,9 @@ func requireComplianceStatus(t *testing.T, resp *core.ReportResponse, want strin
 func TestReportCompliancePendingCheckIsUnknownNotPass(t *testing.T) {
 	req := fixture(t, "[]")
 	writeCompliancePolicy(t)
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Check: "critical"},
+		Flags:       reportcore.Flags{Check: "critical"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -193,9 +193,9 @@ func TestReportCompliancePendingCheckIsUnknownNotPass(t *testing.T) {
 // policy adds no compliance view or dimension: absence invents nothing.
 func TestReportLegacyBundleInventsNoCompliance(t *testing.T) {
 	req := fixture(t, "["+securityFinding+"]")
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Check: "critical"},
+		Flags:       reportcore.Flags{Check: "critical"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)

@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
 )
 
@@ -17,7 +16,7 @@ func TestReportWithheldVisibilityAndGate(t *testing.T) {
 		t.Fatal(err)
 	}
 	rr := fixture(t, string(raw))
-	req := &core.ReportRequest{ReadRequest: rr, Flags: core.ReportFlags{Check: "critical", Sarif: "out.sarif", Live: "skip"}}
+	req := &reportcore.Request{ReadRequest: rr, Flags: reportcore.Flags{Check: "critical", Sarif: "out.sarif", Live: "skip"}}
 	resp := runQuietReport(t, req)
 	if len(resp.Data.Items) != 0 || resp.GateFailed || resp.Data.Counts.Withheld != 1 {
 		t.Fatalf("default report = %+v", resp.Data)
@@ -54,7 +53,7 @@ func checkSarifSilence(t *testing.T, raw []byte) {
 	}
 }
 
-func runQuietReport(t *testing.T, req *core.ReportRequest) *core.ReportResponse {
+func runQuietReport(t *testing.T, req *reportcore.Request) *reportcore.Response {
 	t.Helper()
 	resp, ref := reportcore.Run(context.Background(), req)
 	if ref != nil {

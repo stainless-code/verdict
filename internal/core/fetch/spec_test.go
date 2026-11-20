@@ -23,7 +23,7 @@ func TestFetchLocalSpecMarksRoleAndTOC(t *testing.T) {
 	var human, diag bytes.Buffer
 	var streamed []string
 	resp, err := RunLocal(t.Context(), localScriptReq(cmdr, &human, &diag, &streamed, nil,
-		core.FetchLocalFlags{
+		LocalFlags{
 			Staged:  true,
 			Context: []string{"notes.md"},
 			Spec:    []string{"spec.md"},
@@ -61,7 +61,7 @@ func TestFetchLocalContextAloneHasNoSpecRole(t *testing.T) {
 	var human, diag bytes.Buffer
 	var streamed []string
 	_, err := RunLocal(t.Context(), localScriptReq(cmdr, &human, &diag, &streamed, nil,
-		core.FetchLocalFlags{Staged: true, Context: []string{"notes.md"}}))
+		LocalFlags{Staged: true, Context: []string{"notes.md"}}))
 	if err != nil {
 		t.Fatalf("RunLocal with --context: %v", err)
 	}
@@ -88,7 +88,7 @@ func TestFetchLocalSpecCap150Passes(t *testing.T) {
 	var human, diag bytes.Buffer
 	var streamed []string
 	resp, err := RunLocal(t.Context(), localScriptReq(cmdr, &human, &diag, &streamed, nil,
-		core.FetchLocalFlags{Staged: true, Spec: []string{"spec75a.md", "spec75b.md"}}))
+		LocalFlags{Staged: true, Spec: []string{"spec75a.md", "spec75b.md"}}))
 	if err != nil {
 		t.Fatalf("RunLocal with 150 spec items failed: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestFetchLocalSpecCap151RefusesWithoutWrites(t *testing.T) {
 	var human, diag bytes.Buffer
 	var streamed []string
 	_, err := RunLocal(t.Context(), localScriptReq(cmdr, &human, &diag, &streamed, nil,
-		core.FetchLocalFlags{Staged: true, Spec: []string{"spec-a.md", "spec-b.md"}}))
+		LocalFlags{Staged: true, Spec: []string{"spec-a.md", "spec-b.md"}}))
 	ref := requireRefusal(t, err, "spec-too-large")
 	if !strings.Contains(ref.Message, "151") || !strings.Contains(ref.Message, "150") {
 		t.Fatalf("refusal message = %q, want item count 151 and cap 150", ref.Message)
@@ -138,7 +138,7 @@ func TestFetchLocalSpecValidationMatchesContext(t *testing.T) {
 	var human, diag bytes.Buffer
 	var streamed []string
 	_, err := RunLocal(t.Context(), localScriptReq(cmdr, &human, &diag, &streamed, nil,
-		core.FetchLocalFlags{Staged: true, Spec: []string{"bad.go"}}))
+		LocalFlags{Staged: true, Spec: []string{"bad.go"}}))
 	ref := requireRefusal(t, err, "context-invalid")
 	if !strings.Contains(ref.Message, "--spec") {
 		t.Fatalf("refusal message = %q, want --spec", ref.Message)

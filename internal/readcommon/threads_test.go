@@ -8,19 +8,8 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
-
-// threadReadCommander records the argv of one gh read and replays a payload.
-type threadReadCommander struct {
-	stdout string
-	argv   []string
-}
-
-// Run replays the scripted stdout.
-func (c *threadReadCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
-	c.argv = cmd.Argv
-	return core.Result{Stdout: c.stdout}, nil
-}
 
 // threadNodes decodes one nodes fixture.
 func threadNodes(t *testing.T, doc string) []any {
@@ -90,6 +79,7 @@ type threadReadCase struct {
 	name         string
 	wantQuery    string
 	avoidQuery   string
+	query        string
 	withComments bool
 }
 
@@ -123,19 +113,21 @@ func assertThreadRead(t *testing.T, nodes []any, res readcommon.GhResult, argv [
 func TestThreadsRoutesThroughCommander(t *testing.T) {
 	t.Parallel()
 	cases := []threadReadCase{
-		{"resolution only", "nodes { isResolved }", "comments(first:30)", false},
-		{"with comments", "comments(first:30) { nodes { body path } }", "", true},
+		{"resolution only", "nodes { isResolved }", "comments(first:30)", literalThreadsQuery, false},
+		{"with comments", "comments(first:30) { nodes { body path } }", "", literalCommentsQuery, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			cmdr := &threadReadCommander{stdout: threadPage}
+			cmdr := &testkit.Script{T: t, Results: map[string]core.Result{
+				strings.Join([]string{"gh", "api", "graphql", "--paginate", "-F", "owner=acme", "-F", "name=app", "-F", "pr=5101", "-f", "query=" + tc.query}, "\x00"): {Stdout: threadPage},
+			}}
 			nodes, res, err := readcommon.Threads(
 				context.Background(), cmdr, "acme", "app", "5101", tc.withComments)
 			if err != nil {
 				t.Fatalf("Threads() error: %v", err)
 			}
-			assertThreadRead(t, nodes, res, cmdr.argv, tc)
+			assertThreadRead(t, nodes, res, cmdr.Calls[0].Argv, tc)
 		})
 	}
 }
@@ -152,3 +144,25 @@ func TestThreadsMissingCommander(t *testing.T) {
 		t.Errorf("Threads(nil commander) = (%v, %+v); want zero values", nodes, res)
 	}
 }
+
+const literalThreadsQuery = `
+      query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
+        repository(owner:$owner, name:$name) {
+          pullRequest(number:$pr) {
+            reviewThreads(first:100, after:$endCursor) {
+              nodes { isResolved }
+            }
+          }
+        }
+      }`
+
+const literalCommentsQuery = `
+    query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
+      repository(owner:$owner, name:$name) {
+        pullRequest(number:$pr) {
+          reviewThreads(first:100, after:$endCursor) {
+            nodes { isResolved comments(first:30) { nodes { body path } } }
+          }
+        }
+      }
+    }`

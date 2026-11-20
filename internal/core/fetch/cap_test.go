@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -24,7 +23,7 @@ const capTestDiff = "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1
 // the legacy controls the base snapshot still carries.
 func runLocalStagedDiff(
 	t *testing.T, diff string, env map[string]string, controls map[string]string, chunk bool,
-) (*core.FetchResponse, *bytes.Buffer, error) {
+) (*Response, *bytes.Buffer, error) {
 	t.Helper()
 	cmdr := stagedLocalCommander(t, diff)
 	for name, body := range controls {
@@ -42,7 +41,7 @@ func runLocalStagedDiff(
 	var human, diag bytes.Buffer
 	var streamed []string
 	resp, err := RunLocal(context.Background(),
-		localScriptReq(cmdr, &human, &diag, &streamed, env, core.FetchLocalFlags{Staged: true, ChunkFlag: chunk}))
+		localScriptReq(cmdr, &human, &diag, &streamed, env, LocalFlags{Staged: true, ChunkFlag: chunk}))
 	return resp, &human, err
 }
 
@@ -436,7 +435,7 @@ func typedChunkArmsSlicing(t *testing.T) {
 	var human, diag bytes.Buffer
 	var streamed []string
 	resp, err := RunLocal(context.Background(),
-		localScriptReq(cmdr, &human, &diag, &streamed, nil, core.FetchLocalFlags{Staged: true}))
+		localScriptReq(cmdr, &human, &diag, &streamed, nil, LocalFlags{Staged: true}))
 	if err != nil {
 		t.Fatalf("chunked run: %v", err)
 	}

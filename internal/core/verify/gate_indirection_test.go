@@ -8,6 +8,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 func patchWithCmd(t *testing.T, cmd string) string {
@@ -76,7 +77,7 @@ func wantIndirectionRefusal(t *testing.T, cmd string) {
 	bundle(t, patchWithCmd(t, cmd))
 	cmdr := &scriptCommander{res: core.Result{ExitCode: 0}}
 	_, ref := verifycore.Run(context.Background(),
-		verifyRequest(&collector{}, cmdr, "10", []string{"PATH=/bin"}, true))
+		verifyRequest(&testkit.Collector{}, cmdr, "10", []string{"PATH=/bin"}, true))
 	if len(cmdr.got) != 0 {
 		t.Fatalf("commander spawned %v; the gate must refuse %q before anything runs",
 			cmdr.got[0].Argv, cmd)

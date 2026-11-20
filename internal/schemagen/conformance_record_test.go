@@ -117,7 +117,7 @@ func TestFindingsUnknownKeysConform(t *testing.T) {
 
 // runRecordFixture builds a hermetic local bundle and runs the record
 // service.
-func runRecordFixture(t *testing.T) *core.RecordResponse {
+func runRecordFixture(t *testing.T) *recordcore.Response {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -136,7 +136,7 @@ func runRecordFixture(t *testing.T) *core.RecordResponse {
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 	runtime := &core.Runtime{Now: func() time.Time { return now }}
 	read := core.ReadRequest{Runtime: runtime, Repo: "acme/app", Pr: "local-rr"}
-	resp, ref := recordcore.Run(context.Background(), &core.RecordRequest{
+	resp, ref := recordcore.Run(context.Background(), &recordcore.Request{
 		ReadRequest: read,
 		Effective:   core.Defaults(),
 	})

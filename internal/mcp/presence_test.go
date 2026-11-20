@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 )
 
 // TestPresenceFieldsCovered proves every Has* field on any MCP request type is
@@ -117,17 +118,17 @@ func TestDerivePresences(t *testing.T) {
 	t.Parallel()
 	t.Run("fetch", func(t *testing.T) {
 		t.Parallel()
-		empty := core.FetchFlags{}
+		empty := fetchcore.Flags{}
 		core.DerivePresences(&empty)
 		if empty.HasBase || empty.HasProvider {
 			t.Errorf("empty fetch flags derived %+v", empty)
 		}
-		full := core.FetchFlags{BaseSHA: "abc", Provider: "github"}
+		full := fetchcore.Flags{BaseSHA: "abc", Provider: "github"}
 		core.DerivePresences(&full)
 		if !full.HasBase || !full.HasProvider {
 			t.Errorf("populated fetch flags derived %+v", full)
 		}
-		noProvider := core.FetchFlags{BaseSHA: "abc"}
+		noProvider := fetchcore.Flags{BaseSHA: "abc"}
 		core.DerivePresences(&noProvider)
 		if !noProvider.HasBase || noProvider.HasProvider {
 			t.Errorf("empty provider derived %+v", noProvider)
@@ -135,12 +136,12 @@ func TestDerivePresences(t *testing.T) {
 	})
 	t.Run("fetch-local", func(t *testing.T) {
 		t.Parallel()
-		stashed := core.FetchLocalFlags{StashN: "2"}
+		stashed := fetchcore.LocalFlags{StashN: "2"}
 		core.DerivePresences(&stashed)
 		if !stashed.HasStash {
 			t.Errorf("stash flag derived %+v", stashed)
 		}
-		empty := core.FetchLocalFlags{}
+		empty := fetchcore.LocalFlags{}
 		core.DerivePresences(&empty)
 		if empty.HasStash {
 			t.Errorf("empty local flags derived %+v", empty)

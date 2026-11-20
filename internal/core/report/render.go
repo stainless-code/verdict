@@ -18,7 +18,7 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-func buildResponse(st *state) *core.ReportResponse {
+func buildResponse(st *state) *Response {
 	var gateFailed bool
 	var checkLines []string
 	var gate *core.ReportGate
@@ -26,7 +26,7 @@ func buildResponse(st *state) *core.ReportResponse {
 		gateFailed, checkLines, gate = gateTail(st)
 		st.gatePassed = !gateFailed
 	}
-	resp := &core.ReportResponse{
+	resp := &Response{
 		Repo:     st.req.Repo,
 		Pr:       st.req.Pr,
 		At:       st.now,

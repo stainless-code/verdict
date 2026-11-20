@@ -10,7 +10,6 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
 	handoffcore "github.com/stainless-code/verdict/internal/core/handoff"
-	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -46,9 +45,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	}
 	r.Warnings = resp.Warnings
 	if r.JSONMode {
-		env := core.RenderEnvelope("handoff", resp.Repo, req.Pr, resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.Emit("handoff", resp.Repo, req.Pr, resp.At, resp.Next,
+			resp.Warnings, resp.Data.Wire())
 		return cli.ExitOK
 	}
 	for _, line := range resp.Human {
@@ -58,12 +56,11 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 }
 
 func handoffRequest(r *cli.Runner, req Request, opts options) *handoffcore.Request {
-	read := req
-	if read.Runtime == nil {
-		read.Runtime = &core.Runtime{}
+	var cmdr core.Commander
+	if req.Runtime != nil {
+		cmdr = req.Commander
 	}
-	read.Now = r.Now
-	read.Progress = cli.Progress{R: r}
+	read := r.Read(req, cmdr)
 	return &handoffcore.Request{
 		ReadRequest: read,
 		MinSeverity: opts.minSeverity,

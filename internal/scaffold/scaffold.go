@@ -49,11 +49,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if resp.ExitCode != 0 {
 		return resp.ExitCode
 	}
-	if r.JSONMode {
-		env := core.RenderEnvelope("init", "", "", resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprintln(r.Out, env.MarshalPretty())
-	}
+	r.Emit("init", "", "", resp.At, resp.Next,
+		resp.Warnings, resp.Data.Wire())
 	return cli.ExitOK
 }
 
@@ -68,13 +65,12 @@ func initRequest(r *cli.Runner, req Request, f flags) *initcore.Request {
 		Diag:        r.Diag,
 		ReadAnswer:  readAnswer,
 	}
-	out.ReadRequest = core.ReadRequest{
+	out.ReadRequest = r.Read(core.ReadRequest{
 		Runtime: &core.Runtime{
-			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
-			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
+			Env: req.Env,
 		},
 		RepoRoot: req.RepoRoot,
-	}
+	}, coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true})
 	return out
 }
 

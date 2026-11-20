@@ -4,27 +4,14 @@ import (
 	"bytes"
 	"context"
 	"os"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
-	"github.com/stainless-code/verdict/internal/testenv"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
-
-var fixedNow = time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
-
-type collector struct {
-	human []string
-	warns []string
-}
-
-func (c *collector) Human(line string) { c.human = append(c.human, line) }
-func (c *collector) Warn(msg string)   { c.warns = append(c.warns, msg) }
-func (c *collector) Diag(string)       {}
 
 type scriptCommander struct {
 	got []*core.Command
@@ -40,34 +27,24 @@ func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result
 	return s.res, nil
 }
 
-func writeFile(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(testenv.MaybeFindingsReview(path, content)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func bundle(t *testing.T, patch string) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
-	writeFile(t, ".verdict/state/5201/patch.json", patch)
+	testkit.WriteFile(t, ".verdict/state/5201/patch.json", patch)
 }
 
-func verifyRequest(c *collector, cmdr *scriptCommander, timeout string, environ []string, jsonMode bool) *core.VerifyRequest {
+func verifyRequest(c *testkit.Collector, cmdr *scriptCommander, timeout string, environ []string, jsonMode bool) *verifycore.Request {
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
-			Now:       func() time.Time { return fixedNow },
+			Now:       testkit.FixedNow,
 			Progress:  c,
 			Commander: cmdr,
 		},
 		Repo: "acme/app",
 		Pr:   "5201",
 	}
-	return &core.VerifyRequest{
+	return &verifycore.Request{
 		ReadRequest: read,
 		TimeoutRaw:  timeout,
 		Environ:     environ,
@@ -79,7 +56,7 @@ func verifyRequest(c *collector, cmdr *scriptCommander, timeout string, environ 
 // patch write, the envelope data, and the streamed human lines.
 func TestVerifySuccess(t *testing.T) {
 	bundle(t, `{"verifyCmd":"printf ok"}`)
-	c, cmdr := &collector{}, &scriptCommander{res: core.Result{Stdout: "ok", ExitCode: 0}}
+	c, cmdr := &testkit.Collector{}, &scriptCommander{res: core.Result{Stdout: "ok", ExitCode: 0}}
 	resp, ref := verifycore.Run(context.Background(), verifyRequest(c, cmdr, "10", []string{"PATH=/bin", "HOME=/tmp/h"}, true))
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -99,7 +76,7 @@ func checkVerifySpawn(t *testing.T, cmdr *scriptCommander) {
 	}
 }
 
-func checkVerifyResponse(t *testing.T, c *collector, resp *core.VerifyResponse) {
+func checkVerifyResponse(t *testing.T, c *testkit.Collector, resp *verifycore.Response) {
 	t.Helper()
 	if resp.Exit != 0 || resp.TimedOut || resp.Tail != "ok" {
 		t.Errorf("response = %+v", resp)
@@ -107,7 +84,7 @@ func checkVerifyResponse(t *testing.T, c *collector, resp *core.VerifyResponse) 
 	if resp.Data.Exit != 0 || resp.Data.TimedOut || resp.Data.OutputTail != "ok" || resp.Data.Patch != ".verdict/state/5201" {
 		t.Errorf("data = %+v", resp.Data)
 	}
-	joined := strings.Join(c.human, "\n")
+	joined := strings.Join(c.HumanLines, "\n")
 	for _, want := range []string{"» verify: printf ok (timeout 10s)", "» exit=0 timed_out=false", "recorded into .verdict/state/5201/patch.json"} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("human lines miss %q:\n%s", want, joined)
@@ -157,7 +134,7 @@ func TestVerifyNoColor(t *testing.T) {
 func checkNoColor(t *testing.T, environ []string, want string) {
 	t.Helper()
 	bundle(t, `{"verifyCmd":"printf ok"}`)
-	c, cmdr := &collector{}, &scriptCommander{}
+	c, cmdr := &testkit.Collector{}, &scriptCommander{}
 	if _, ref := verifycore.Run(context.Background(), verifyRequest(c, cmdr, "10", environ, true)); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -176,7 +153,7 @@ func checkNoColor(t *testing.T, environ []string, want string) {
 // while .verify.out keeps raw output.
 func TestVerifyRedaction(t *testing.T) {
 	bundle(t, `{"verifyCmd":"printf tail"}`)
-	c, cmdr := &collector{}, &scriptCommander{res: core.Result{Stdout: "leak:supersecretvalue123:done"}}
+	c, cmdr := &testkit.Collector{}, &scriptCommander{res: core.Result{Stdout: "leak:supersecretvalue123:done"}}
 	resp, ref := verifycore.Run(context.Background(), verifyRequest(c, cmdr, "10",
 		[]string{"PATH=/bin", "EVAL_PROBE_TOKEN=supersecretvalue123"}, true))
 	if ref != nil {
@@ -201,7 +178,7 @@ func TestVerifyOutputOwnerOnly(t *testing.T) {
 	bundle(t, `{"verifyCmd":"printf tok"}`)
 	cmdr := &scriptCommander{res: core.Result{Stdout: "tok=leakedvalue123"}}
 	if _, ref := verifycore.Run(context.Background(),
-		verifyRequest(&collector{}, cmdr, "10", []string{"PATH=/bin"}, true)); ref != nil {
+		verifyRequest(&testkit.Collector{}, cmdr, "10", []string{"PATH=/bin"}, true)); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
 	info, err := os.Stat(".verdict/state/5201/.verify.out")
@@ -217,7 +194,7 @@ func TestVerifyOutputOwnerOnly(t *testing.T) {
 // seconds marker.
 func TestVerifyTimeout(t *testing.T) {
 	bundle(t, `{"verifyCmd":"sleep 30"}`)
-	c, cmdr := &collector{}, &scriptCommander{res: core.Result{Stdout: "partial", ExitCode: 137, TimedOut: true}}
+	c, cmdr := &testkit.Collector{}, &scriptCommander{res: core.Result{Stdout: "partial", ExitCode: 137, TimedOut: true}}
 	resp, ref := verifycore.Run(context.Background(), verifyRequest(c, cmdr, "2", []string{"PATH=/bin"}, true))
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -262,11 +239,11 @@ func readProofFile(t *testing.T, path string) []byte {
 // proof file untouched.
 func TestVerifyCancelKeepsPriorProof(t *testing.T) {
 	bundle(t, `{"verifyCmd":"sleep 30","verifyExit":0,"verifiedAt":"2026-11-01T12:00:00Z","timedOut":false,"verifiedTail":"ok"}`)
-	writeFile(t, ".verdict/state/5201/.verify.out", "ok")
-	writeFile(t, ".verdict/state/5201/.verify.timeout", "timeout after 2s\n")
+	testkit.WriteFile(t, ".verdict/state/5201/.verify.out", "ok")
+	testkit.WriteFile(t, ".verdict/state/5201/.verify.timeout", "timeout after 2s\n")
 	before := readProof(t)
 	ctx, cancel := context.WithCancel(context.Background())
-	req := verifyRequest(&collector{}, &scriptCommander{}, "10", []string{"PATH=/bin"}, true)
+	req := verifyRequest(&testkit.Collector{}, &scriptCommander{}, "10", []string{"PATH=/bin"}, true)
 	req.Commander = cancelCommander{cancel: cancel}
 	_, ref := verifycore.Run(ctx, req)
 	if ref == nil || ref.Code != "canceled" {
@@ -283,8 +260,8 @@ func TestVerifyCancelKeepsPriorProof(t *testing.T) {
 // the previous run's timeout marker.
 func TestVerifySuccessClearsStaleMarker(t *testing.T) {
 	bundle(t, `{"verifyCmd":"printf ok"}`)
-	writeFile(t, ".verdict/state/5201/.verify.timeout", "timeout after 2s\n")
-	c, cmdr := &collector{}, &scriptCommander{res: core.Result{Stdout: "ok"}}
+	testkit.WriteFile(t, ".verdict/state/5201/.verify.timeout", "timeout after 2s\n")
+	c, cmdr := &testkit.Collector{}, &scriptCommander{res: core.Result{Stdout: "ok"}}
 	if _, ref := verifycore.Run(context.Background(), verifyRequest(c, cmdr, "10", []string{"PATH=/bin"}, true)); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -297,7 +274,7 @@ func TestVerifySuccessClearsStaleMarker(t *testing.T) {
 // the exit intact.
 func TestVerifyDecoy(t *testing.T) {
 	bundle(t, `{"verifyCmd":"(sleep 30 &)"}`)
-	c, cmdr := &collector{}, &scriptCommander{res: core.Result{ExitCode: 0, TimedOut: true, Decoy: true}}
+	c, cmdr := &testkit.Collector{}, &scriptCommander{res: core.Result{ExitCode: 0, TimedOut: true, Decoy: true}}
 	resp, ref := verifycore.Run(context.Background(), verifyRequest(c, cmdr, "10", []string{"PATH=/bin"}, true))
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -343,9 +320,9 @@ func checkVerifyRefusal(t *testing.T, name, patch, timeout, code string) {
 	if name == "missing-patch" {
 		_ = os.Remove(".verdict/state/5201/patch.json")
 	} else {
-		writeFile(t, ".verdict/state/5201/patch.json", patch)
+		testkit.WriteFile(t, ".verdict/state/5201/patch.json", patch)
 	}
-	c, cmdr := &collector{}, &scriptCommander{}
+	c, cmdr := &testkit.Collector{}, &scriptCommander{}
 	req := verifyRequest(c, cmdr, timeout, []string{"PATH=/bin"}, false)
 	req.Warnings = []string{"prefs warning"}
 	_, ref := verifycore.Run(context.Background(), req)

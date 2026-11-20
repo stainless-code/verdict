@@ -69,9 +69,9 @@ func samePatchBundle(t *testing.T, postedPatch string) {
 func TestRunReportCompletenessSamePatch(t *testing.T) {
 	req := withIdentityCommander(fixture(t, "[]"))
 	samePatchBundle(t, samePatchID)
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Completeness: true},
+		Flags:       reportcore.Flags{Completeness: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -118,9 +118,9 @@ func assertSamePatchIDs(t *testing.T, comp *core.ReportCompleteness) {
 func TestRunReportCompletenessDifferentPatch(t *testing.T) {
 	req := withIdentityCommander(fixture(t, "[]"))
 	samePatchBundle(t, "0123456789abcdef0123456789abcdef01234567")
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Completeness: true},
+		Flags:       reportcore.Flags{Completeness: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -143,9 +143,9 @@ func TestRunReportCompletenessLegacyWarns(t *testing.T) {
 	req := withIdentityCommander(fixture(t, "[]"))
 	writeFile(t, ".verdict/state/5101/post.json",
 		`{"schema_version":"1","review":{"id":1},"head":"`+storeHeadSHA+`","posted_at":"2026-01-01T00:00:00Z"}`)
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Completeness: true},
+		Flags:       reportcore.Flags{Completeness: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -163,7 +163,7 @@ func TestRunReportCompletenessLegacyWarns(t *testing.T) {
 
 // assertStaleCompleteness proves the gate fails stale with no same-patch
 // relaxation: SamePatch is absent and the stale-head failure stands.
-func assertStaleCompleteness(t *testing.T, resp *core.ReportResponse, warn string) {
+func assertStaleCompleteness(t *testing.T, resp *reportcore.Response, warn string) {
 	t.Helper()
 	if resp == nil {
 		t.Fatal("missing response")
@@ -190,9 +190,9 @@ func TestRunReportCompletenessStaleBytes(t *testing.T) {
 	req := withIdentityCommander(fixture(t, "[]"))
 	samePatchBundle(t, samePatchID)
 	writeFile(t, ".verdict/state/5101/full.diff", "replaced bytes\n")
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Completeness: true},
+		Flags:       reportcore.Flags{Completeness: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -208,9 +208,9 @@ func TestRunReportCompletenessStaleHead(t *testing.T) {
 	raw := readFile(t, ".verdict/state/5101/identity.json")
 	writeFile(t, ".verdict/state/5101/identity.json",
 		strings.Replace(string(raw), `"head_sha":"`+storeHeadSHA+`"`, `"head_sha":"cccccccccccccccccccccccccccccccccccccccc"`, 1))
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Completeness: true},
+		Flags:       reportcore.Flags{Completeness: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -227,9 +227,9 @@ func TestRunReportCompletenessIncompleteReceipt(t *testing.T) {
 	samePatchBundle(t, samePatchID)
 	writeFile(t, ".verdict/state/5101/post.json",
 		`{"patch_id":"`+samePatchID+`","patch_id_kind":"git-patch-id"}`)
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Completeness: true},
+		Flags:       reportcore.Flags{Completeness: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -243,7 +243,7 @@ func TestRunReportCompletenessIncompleteReceipt(t *testing.T) {
 // assertIncompletePostGate proves the pre-existing incomplete-post gate
 // stands with no same-patch relaxation: same_patch and posted_patch_id
 // absent, the verified reviewed id still reported.
-func assertIncompletePostGate(t *testing.T, resp *core.ReportResponse) {
+func assertIncompletePostGate(t *testing.T, resp *reportcore.Response) {
 	t.Helper()
 	joined := strings.Join(resp.CheckLines, "\n")
 	if !strings.Contains(joined, "check: incomplete — post record carries no head SHA") {
@@ -274,9 +274,9 @@ func TestRunReportCompletenessPendingReceipt(t *testing.T) {
 			req := withIdentityCommander(fixture(t, "[]"))
 			samePatchBundle(t, samePatchID)
 			writeFile(t, ".verdict/state/5101/post.json", review)
-			resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+			resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 				ReadRequest: req,
-				Flags:       core.ReportFlags{Completeness: true},
+				Flags:       reportcore.Flags{Completeness: true},
 			})
 			if ref != nil {
 				t.Fatalf("Run refusal: %v", ref)
@@ -293,9 +293,9 @@ func TestRunReportCompletenessInvalidIdentity(t *testing.T) {
 	samePatchBundle(t, samePatchID)
 	raw := readFile(t, ".verdict/state/5101/identity.json")
 	writeFile(t, ".verdict/state/5101/identity.json", strings.Replace(string(raw), samePatchID, "not-a-patch-id", 1))
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Completeness: true},
+		Flags:       reportcore.Flags{Completeness: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -324,9 +324,9 @@ func TestRunReportCompletenessTamperedClaim(t *testing.T) {
 	writeFile(t, ".verdict/state/5101/identity.json", strings.Replace(string(ident), samePatchID, tampered, 1))
 	posted := readFile(t, ".verdict/state/5101/post.json")
 	writeFile(t, ".verdict/state/5101/post.json", strings.Replace(string(posted), samePatchID, tampered, 1))
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Completeness: true},
+		Flags:       reportcore.Flags{Completeness: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -342,9 +342,9 @@ func TestRunReportCompletenessEmptyReceipt(t *testing.T) {
 	writeFile(t, ".verdict/state/5101/post.json",
 		`{"schema_version":"1","review":{},"head":"`+samePatchHead+`","posted_at":"2026-01-01T00:00:00Z",`+
 			`"patch_id":"`+samePatchID+`","patch_id_kind":"git-patch-id"}`)
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Completeness: true},
+		Flags:       reportcore.Flags{Completeness: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -360,9 +360,9 @@ func TestRunReportCompletenessInvalidHeadTime(t *testing.T) {
 	writeFile(t, ".verdict/state/5101/post.json",
 		`{"schema_version":"1","review":{},"head":"not-a-head","posted_at":"not-a-time",`+
 			`"patch_id":"`+samePatchID+`","patch_id_kind":"git-patch-id"}`)
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Completeness: true},
+		Flags:       reportcore.Flags{Completeness: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -379,9 +379,9 @@ func TestRunReportCompletenessRawUnreadable(t *testing.T) {
 	if err := os.Mkdir(".verdict/state/5101/full.raw.diff", 0o755); err != nil {
 		t.Fatal(err)
 	}
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Completeness: true},
+		Flags:       reportcore.Flags{Completeness: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)

@@ -26,7 +26,7 @@ func TestFetchLocalMissingRelativeContextRefusal(t *testing.T) {
 	var streamed []string
 	_, err := RunLocal(t.Context(),
 		localScriptReq(cmdr, &human, &diag, &streamed, nil,
-			core.FetchLocalFlags{Staged: true, Context: []string{typed}}))
+			LocalFlags{Staged: true, Context: []string{typed}}))
 	ref := requireRefusal(t, err, "context-invalid")
 	resolved := filepath.Join(root, "nope.md")
 	for _, want := range []string{typed, resolved} {
@@ -52,7 +52,7 @@ func TestFetchLocalGoodContextStillBundles(t *testing.T) {
 	var streamed []string
 	_, err := RunLocal(t.Context(),
 		localScriptReq(cmdr, &human, &diag, &streamed, nil,
-			core.FetchLocalFlags{Staged: true, Context: []string{"evidence.txt"}}))
+			LocalFlags{Staged: true, Context: []string{"evidence.txt"}}))
 	if err != nil {
 		t.Fatalf("RunLocal with a valid relative context: %v", err)
 	}

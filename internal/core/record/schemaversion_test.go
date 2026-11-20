@@ -6,12 +6,13 @@ import (
 	"testing"
 
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 func TestRecordOmitsSchemaVersionWarning(t *testing.T) {
 	review := `{"body":"> [!IMPORTANT]\n> Record service check with enough length.","approved":false,"comments":[]}`
 	bundle(t, "local-noschema", review)
-	c := &collector{}
+	c := &testkit.Collector{}
 	resp, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-noschema"))
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)

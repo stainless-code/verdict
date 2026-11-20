@@ -10,10 +10,10 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 // sandboxCommander scripts one result per spawn in call order, so the probe
@@ -57,12 +57,12 @@ func sandboxHomeFixture(t *testing.T) string {
 	return home
 }
 
-func sandboxRequest(env []string, cmdr core.Commander) *core.VerifyRequest {
+func sandboxRequest(env []string, cmdr core.Commander) *verifycore.Request {
 	read := core.ReadRequest{
-		Runtime: &core.Runtime{Now: func() time.Time { return fixedNow }, Progress: &collector{}, Commander: cmdr},
+		Runtime: &core.Runtime{Now: testkit.FixedNow, Progress: &testkit.Collector{}, Commander: cmdr},
 		Repo:    "acme/app", Pr: "5201",
 	}
-	return &core.VerifyRequest{
+	return &verifycore.Request{
 		ReadRequest: read,
 		TimeoutRaw:  "10",
 		Sandbox:     true,
@@ -149,7 +149,7 @@ func TestSandboxWrapsVerifyCommand(t *testing.T) {
 }
 
 // runSandboxedVerify drives one sandboxed patch run in a fresh bundle.
-func runSandboxedVerify(t *testing.T, vcmd string, results []core.Result) (string, string, *core.VerifyResponse, *sandboxCommander) {
+func runSandboxedVerify(t *testing.T, vcmd string, results []core.Result) (string, string, *verifycore.Response, *sandboxCommander) {
 	t.Helper()
 	root := t.TempDir()
 	t.Chdir(root)
@@ -157,7 +157,7 @@ func runSandboxedVerify(t *testing.T, vcmd string, results []core.Result) (strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, ".verdict/state/5201/patch.json", string(raw))
+	testkit.WriteFile(t, ".verdict/state/5201/patch.json", string(raw))
 	home := sandboxHomeFixture(t)
 	if results == nil {
 		results = []core.Result{{}, {Stdout: "ok"}}
@@ -190,7 +190,7 @@ func checkSandboxSpawn(t *testing.T, cmdr *sandboxCommander, root, home, vcmd st
 }
 
 // checkSandboxRecord asserts the outcome names the sandbox on both surfaces.
-func checkSandboxRecord(t *testing.T, resp *core.VerifyResponse) {
+func checkSandboxRecord(t *testing.T, resp *verifycore.Response) {
 	t.Helper()
 	if !resp.Data.Sandboxed {
 		t.Error("data.sandboxed = false, want true")
@@ -225,7 +225,7 @@ func runProbeFailure(t *testing.T) ([]byte, *sandboxCommander, *core.RefusalErro
 	t.Helper()
 	root := t.TempDir()
 	t.Chdir(root)
-	writeFile(t, ".verdict/state/5201/patch.json", `{"verifyCmd":"printf created > sentinel.txt"}`)
+	testkit.WriteFile(t, ".verdict/state/5201/patch.json", `{"verifyCmd":"printf created > sentinel.txt"}`)
 	before, err := os.ReadFile(".verdict/state/5201/patch.json")
 	if err != nil {
 		t.Fatal(err)
@@ -277,7 +277,7 @@ func TestSandboxWithoutHomeRefuses(t *testing.T) {
 	}
 	root := t.TempDir()
 	t.Chdir(root)
-	writeFile(t, ".verdict/state/5201/patch.json", `{"verifyCmd":"printf ok"}`)
+	testkit.WriteFile(t, ".verdict/state/5201/patch.json", `{"verifyCmd":"printf ok"}`)
 	cmdr := &sandboxCommander{}
 	req := sandboxRequest([]string{"PATH=/bin"}, cmdr)
 	req.RepoRoot = root
@@ -316,7 +316,7 @@ func TestSandboxGroupValidationWrapsTheOperatorCommand(t *testing.T) {
 	checkGroupReceipt(t, root, resp)
 }
 
-func runSandboxedGroup(t *testing.T) (string, string, *core.VerifyResponse, *groupSandboxCommander) {
+func runSandboxedGroup(t *testing.T) (string, string, *verifycore.Response, *groupSandboxCommander) {
 	t.Helper()
 	root := groupBundle(t)
 	home := sandboxHomeFixture(t)
@@ -348,7 +348,7 @@ func checkGroupCommandArgv(t *testing.T, root, home string, cmdr *groupSandboxCo
 }
 
 // checkGroupReceipt asserts the response and receipt both carry sandboxed.
-func checkGroupReceipt(t *testing.T, root string, resp *core.VerifyResponse) {
+func checkGroupReceipt(t *testing.T, root string, resp *verifycore.Response) {
 	t.Helper()
 	if !resp.Data.Sandboxed {
 		t.Error("data.sandboxed = false, want true")
@@ -369,7 +369,7 @@ func checkGroupReceipt(t *testing.T, root string, resp *core.VerifyResponse) {
 func TestUnsandboxedRunClearsAStaleSandboxClaim(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
-	writeFile(t, ".verdict/state/5201/patch.json",
+	testkit.WriteFile(t, ".verdict/state/5201/patch.json",
 		`{"verifyCmd":"printf ok","sandboxed":true,"verifyExit":0}`)
 	cmdr := &sandboxCommander{results: []core.Result{{Stdout: "ok"}}}
 	req := sandboxRequest([]string{"PATH=/bin", "HOME=" + sandboxHomeFixture(t)}, cmdr)

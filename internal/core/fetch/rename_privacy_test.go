@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 )
 
@@ -214,7 +213,7 @@ func runRenameStagedPrompt(t *testing.T, settingsPath string) (string, string) {
 	cmdr := stagedRenameCommander(t, renamePrivacyDiff)
 	var human, diag bytes.Buffer
 	var streamed []string
-	flags := core.FetchLocalFlags{Staged: true, ShowPrompts: true}
+	flags := LocalFlags{Staged: true, ShowPrompts: true}
 	req := localScriptReq(cmdr, &human, &diag, &streamed, nil, flags)
 	req.SettingsPath = settingsPath
 	req.JSONMode = true

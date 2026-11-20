@@ -268,7 +268,7 @@ func testLocalOmittedExcludes(t *testing.T) {
 	cmdr.out["git\x00diff\x00--numstat\x00--cached"] = scriptResult{stdout: "1\t1\ta.txt\n0\t0\tempty.txt\n1\t1\tvendor/.env\n"}
 	var human, diag bytes.Buffer
 	var streamed []string
-	req := localScriptReq(cmdr, &human, &diag, &streamed, map[string]string{}, core.FetchLocalFlags{Staged: true})
+	req := localScriptReq(cmdr, &human, &diag, &streamed, map[string]string{}, LocalFlags{Staged: true})
 	resp, err := RunLocal(context.Background(), req)
 	if err != nil {
 		t.Fatalf("RunLocal: %v", err)

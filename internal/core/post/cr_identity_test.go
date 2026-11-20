@@ -3,7 +3,6 @@ package postcore
 import (
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -16,7 +15,7 @@ func TestCRPostPreservesVerifiedPatchIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	var warnings, human []string
-	req := postTestReq(postCommander(t), core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	req := postTestReq(postCommander(t), Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
 	if _, ref := Run(t.Context(), req); ref != nil {
 		t.Fatal(ref)
 	}

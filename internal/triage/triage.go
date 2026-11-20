@@ -10,7 +10,6 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
-	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // Request carries the resolved triage invocation.
@@ -42,23 +41,20 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	}
 	r.Warnings = resp.Warnings
 	fmt.Fprintln(r.Human, resp.Human)
-	if r.JSONMode {
-		env := core.RenderEnvelope("triage", r.Repo, r.Pr, resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-	}
+	r.Emit("triage", r.Repo, r.Pr, resp.At, resp.Next,
+		resp.Warnings, resp.Data.Wire())
 	return cli.ExitOK
 }
 
 // triageRequest injects the runner's clock and progress observer into the
 // typed service request.
 func triageRequest(r *cli.Runner, req Request, flags flags) *triagecore.Request {
-	read := core.ReadRequest{
-		Runtime:  &core.Runtime{Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}},
+	read := r.Read(core.ReadRequest{
+		Runtime:  &core.Runtime{Env: req.Env},
 		Repo:     req.Repo,
 		Pr:       req.Pr,
 		RepoRoot: req.RepoRoot,
-	}
+	}, nil)
 	out := &triagecore.Request{
 		Sig:       flags.sig,
 		Status:    flags.status,

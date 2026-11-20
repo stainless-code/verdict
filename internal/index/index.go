@@ -10,10 +10,8 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
-	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
-	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -35,9 +33,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	}
 	r.Warnings = resp.Warnings
 	if r.JSONMode {
-		env := core.RenderEnvelope("index", "", "", resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.Emit("index", "", "", resp.At, resp.Next,
+			resp.Warnings, resp.Data.Wire())
 		return 0
 	}
 	for _, line := range resp.Human {
@@ -64,14 +61,8 @@ type invocation struct {
 
 // request builds the typed service request.
 func (inv *invocation) request(r *cli.Runner, req Request) *indexcore.Request {
-	read := req
-	if read.Runtime == nil {
-		read.Runtime = &core.Runtime{}
-	}
-	read.Now = r.Now
+	read := r.Read(req, coreexec.Runner{})
 	read.Pr = inv.pr
-	read.Progress = cli.Progress{R: r}
-	read.Commander = coreexec.Runner{}
 	return &indexcore.Request{
 		ReadRequest: read,
 		Query:       inv.query,

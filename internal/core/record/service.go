@@ -30,7 +30,7 @@ import (
 // envelope inputs come back in the response for the adapter to render.
 //
 //nolint:revive // the gate order is the service contract
-func Run(ctx context.Context, req *core.RecordRequest) (*core.RecordResponse, *core.RefusalError) {
+func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	st := &svc{req: req, warnings: append([]string{}, req.Warnings...)}
 	if err := ctx.Err(); err != nil {
 		return nil, &core.RefusalError{Code: codeCanceled, Message: "canceled before record completed"}
@@ -213,7 +213,7 @@ func reviewRefusal(check CheckResult, strict bool) *core.RefusalError {
 // record request's own environment. The environment leg matters because the
 // snapshot only captures fetch time, while CLI record, dry run, MCP, and SDK
 // callers all carry their runtime env into this request.
-func strictRecord(req *core.RecordRequest, snap *controls.Snapshot) bool {
+func strictRecord(req *Request, snap *controls.Snapshot) bool {
 	if req.Strict {
 		return true
 	}
@@ -346,7 +346,7 @@ func refusalOrFailed(err error) *core.RefusalError {
 }
 
 type svc struct {
-	req        *core.RecordRequest
+	req        *Request
 	controls   *controls.Snapshot
 	run        *config.RunState
 	check      *core.CheckSummary
@@ -410,7 +410,7 @@ func (st *svc) identityCommander() core.Commander {
 	return st.req.Commander
 }
 
-func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, res *MergeResult) (*core.RecordResponse, *core.RefusalError) {
+func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, res *MergeResult) (*Response, *core.RefusalError) {
 	nOpen := CountStatus(res.Entries, statusOpen)
 	nDeferred := CountStatus(res.Entries, "deferred")
 	nAddressed := CountStatus(res.Entries, "addressed")
@@ -461,7 +461,7 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 	if st.req.Runtime != nil {
 		st.req.Human(strings.TrimSuffix(fmt.Sprintf(msgRecorded, dir, nOpen, dir), "\n"))
 	}
-	return &core.RecordResponse{
+	return &Response{
 		Repo: st.req.Repo,
 		Pr:   st.req.Pr,
 		At:   now,
@@ -486,7 +486,7 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 	}, nil
 }
 
-func (st *svc) dryRun(dir, now string, res *MergeResult) *core.RecordResponse {
+func (st *svc) dryRun(dir, now string, res *MergeResult) *Response {
 	nOpen := CountStatus(res.Entries, statusOpen)
 	nDeferred := CountStatus(res.Entries, "deferred")
 	nAddressed := CountStatus(res.Entries, "addressed")
@@ -514,7 +514,7 @@ func (st *svc) dryRun(dir, now string, res *MergeResult) *core.RecordResponse {
 	if st.store != nil && st.store.Provider() == "github" {
 		next = "fix every problem, then post the review with verdict post"
 	}
-	return &core.RecordResponse{
+	return &Response{
 		Repo:     st.req.Repo,
 		Pr:       st.req.Pr,
 		At:       now,

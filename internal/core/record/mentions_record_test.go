@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/testkit"
 	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
@@ -42,11 +43,11 @@ func mentionBundle(t *testing.T, slug, body string) string {
 	t.Helper()
 	t.Chdir(t.TempDir())
 	dir := ".verdict/state/" + slug
-	writeFile(t, dir+"/source.json", `{"head_sha":"`+mentionHead+
+	testkit.WriteFile(t, dir+"/source.json", `{"head_sha":"`+mentionHead+
 		`","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`)
-	writeFile(t, dir+"/full.diff", mentionDiff)
-	writeFile(t, dir+"/hunks.tsv", hunks.Format(hunks.Parse(mentionDiff)))
-	writeFile(t, dir+"/review.json", mentionReviewJSON(t, body))
+	testkit.WriteFile(t, dir+"/full.diff", mentionDiff)
+	testkit.WriteFile(t, dir+"/hunks.tsv", hunks.Format(hunks.Parse(mentionDiff)))
+	testkit.WriteFile(t, dir+"/review.json", mentionReviewJSON(t, body))
 	seedControls(t, dir)
 	return dir
 }
@@ -64,7 +65,7 @@ func mergeMentionBody(t *testing.T, slug, body string) string {
 	if ref != nil {
 		t.Fatalf("controls gate: %v", ref)
 	}
-	c := &collector{}
+	c := &testkit.Collector{}
 	res, merr := recordcore.Merge(testRuntime(c), &recordcore.MergeParams{
 		Dir:          dir,
 		Prov:         "local",
@@ -124,7 +125,7 @@ func TestRecordNeutralizesBodyMentions(t *testing.T) {
 	bundle(t, "local-mention",
 		`{"schema_version":"1","body":"Ping @alice about the retry loop.","approved":false,`+
 			`"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Ping @alice-b2 about retry."}]}`)
-	c := &collector{}
+	c := &testkit.Collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-mention")); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -154,7 +155,7 @@ const mentionSuggestion = "notify(@dave)\n"
 func mergeMentionEntry(t *testing.T, slug, commentBody string) string {
 	t.Helper()
 	dir := mentionBundle(t, slug, "prose only")
-	writeFile(t, dir+"/review.json", jq.NewObj(
+	testkit.WriteFile(t, dir+"/review.json", jq.NewObj(
 		"schema_version", "1",
 		"body", "prose only",
 		"approved", false,
@@ -175,7 +176,7 @@ func mergeMentionEntry(t *testing.T, slug, commentBody string) string {
 	if ref != nil {
 		t.Fatalf("controls gate: %v", ref)
 	}
-	res, merr := recordcore.Merge(testRuntime(&collector{}), &recordcore.MergeParams{
+	res, merr := recordcore.Merge(testRuntime(&testkit.Collector{}), &recordcore.MergeParams{
 		Dir: dir, Prov: "local", HeadFull: mentionHead, Review: review,
 		ReviewFile: dir + "/review.json", Root: ".", RepoRoot: ".",
 		FindingsFile: dir + "/findings.json", DryRun: true,

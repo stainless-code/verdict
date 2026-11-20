@@ -5,13 +5,11 @@ package ready
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
-	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -33,11 +31,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		return refuseReady(r, q, ref)
 	}
 	r.Warnings = resp.Warnings
-	if r.JSONMode {
-		env := core.RenderEnvelope("ready", req.Repo, req.Pr, resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-	}
+	r.Emit("ready", req.Repo, req.Pr, resp.At, resp.Next,
+		resp.Warnings, resp.Data.Wire())
 	if resp.GateFailed {
 		return 1
 	}
@@ -47,12 +42,11 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // readyRequest injects the runner's clock, progress observer, and command
 // runner into the typed service request.
 func readyRequest(r *cli.Runner, req Request) *readycore.Request {
-	read := req
-	if read.Runtime == nil {
-		read.Runtime = &core.Runtime{}
+	var cmdr core.Commander
+	if req.Runtime != nil {
+		cmdr = req.Commander
 	}
-	read.Now = r.Now
-	read.Progress = cli.Progress{R: r}
+	read := r.Read(req, cmdr)
 	if read.Commander == nil {
 		read.Commander = coreexec.Runner{}
 	}

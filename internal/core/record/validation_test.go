@@ -16,6 +16,7 @@ import (
 	postcore "github.com/stainless-code/verdict/internal/core/post"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 // The three candidate findings every validation case starts from: a hedged
@@ -58,7 +59,7 @@ const rejectedFixtureSHA = "da80ca637d8ecc3f33a986c954c3f38f47cc26cea16ca25e63ed
 // snapshot is taken; rewriteConfig simulates a head edit afterwards.
 func baseConfig(t *testing.T, body string) {
 	t.Helper()
-	writeFile(t, ".verdict/config.json", body)
+	testkit.WriteFile(t, ".verdict/config.json", body)
 }
 
 func validationBundle(t *testing.T, config string) {
@@ -70,10 +71,10 @@ func validationBundleWithReview(t *testing.T, config, review string) {
 	t.Helper()
 	t.Chdir(t.TempDir())
 	dir := ".verdict/state/7"
-	writeFile(t, dir+"/PR.json", `{"state":"OPEN","headRefOid":"`+coverageHead+
+	testkit.WriteFile(t, dir+"/PR.json", `{"state":"OPEN","headRefOid":"`+coverageHead+
 		`","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"someone-else"}}`)
-	writeFile(t, dir+"/full.diff", coverageDiff)
-	writeFile(t, dir+"/review.json", review)
+	testkit.WriteFile(t, dir+"/full.diff", coverageDiff)
+	testkit.WriteFile(t, dir+"/review.json", review)
 	if config != "" {
 		baseConfig(t, config)
 	}
@@ -82,7 +83,7 @@ func validationBundleWithReview(t *testing.T, config, review string) {
 
 func writeValidation(t *testing.T, body string) {
 	t.Helper()
-	writeFile(t, ".verdict/state/7/validation.json", body)
+	testkit.WriteFile(t, ".verdict/state/7/validation.json", body)
 }
 
 // validationCommander keeps every posted payload, so a case grades what
@@ -121,18 +122,18 @@ func (c *validationCommander) Run(_ context.Context, cmd *core.Command) (core.Re
 	}
 }
 
-func runValidationPost(t *testing.T, flags core.PostFlags, floors ...string) (*core.PostResponse, *core.RefusalError, *validationCommander) {
+func runValidationPost(t *testing.T, flags postcore.Flags, floors ...string) (*postcore.Response, *core.RefusalError, *validationCommander) {
 	t.Helper()
 	resp, ref, cmdr, _ := runValidationPostProgress(t, flags, floors...)
 	return resp, ref, cmdr
 }
 
-func runValidationPostProgress(t *testing.T, flags core.PostFlags, floors ...string) (*core.PostResponse, *core.RefusalError, *validationCommander, []string) {
+func runValidationPostProgress(t *testing.T, flags postcore.Flags, floors ...string) (*postcore.Response, *core.RefusalError, *validationCommander, []string) {
 	t.Helper()
 	cmdr := &validationCommander{t: t}
-	progress := &collector{}
+	progress := &testkit.Collector{}
 	root := ""
-	req := &core.PostRequest{
+	req := &postcore.Request{
 		Runtime:      &core.Runtime{Env: map[string]string{}, Now: testRuntime(progress).Now, Progress: progress},
 		Repo:         "acme/app",
 		Pr:           "7",
@@ -144,11 +145,11 @@ func runValidationPostProgress(t *testing.T, flags core.PostFlags, floors ...str
 	}
 	req.Commander = cmdr
 	resp, ref := postcore.Run(context.Background(), req)
-	return resp, ref, cmdr, progress.warns
+	return resp, ref, cmdr, progress.Warnings
 }
 
-func validationFlags() core.PostFlags {
-	return core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}
+func validationFlags() postcore.Flags {
+	return postcore.Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}
 }
 
 func decodeEntries(t *testing.T, path string) []map[string]any {
@@ -290,7 +291,7 @@ func TestCarriedOverFindingValidated(t *testing.T) {
 	if _, ref, _ := runValidationPost(t, validationFlags()); ref != nil {
 		t.Fatalf("first post refused: %v (%s)", ref, ref.Message)
 	}
-	writeFile(t, ".verdict/state/7/review.json", `{"schema_version":"1","body":"> [!IMPORTANT]\n> A later review.","approved":false,"comments":[`+
+	testkit.WriteFile(t, ".verdict/state/7/review.json", `{"schema_version":"1","body":"> [!IMPORTANT]\n> A later review.","approved":false,"comments":[`+
 		`{"path":"notes.txt","line":3,"side":"RIGHT","body":"A later claim with its own anchor.","rigor":"walked","severity":"important"}]}`)
 	writeValidation(t, `{"schema_version":"1","head_sha":"`+coverageHead+`","results":[{"sig":"`+walkedSig+
 		`","verdict":"REJECTED","reason":"The carried claim cites no evidence in the hunk it names."}]}`)
@@ -379,7 +380,7 @@ func TestDowngradeApplied(t *testing.T) {
 // records a null hash and counts every finding unvalidated.
 func TestNoValidationReceipt(t *testing.T) {
 	bundle(t, "local-rr", reviewJSON(""))
-	c := &collector{}
+	c := &testkit.Collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-rr")); ref != nil {
 		t.Fatalf("record refused: %v", ref)
 	}
@@ -448,7 +449,7 @@ func TestCriticalDowngradesInsteadOfRefusing(t *testing.T) {
 // close, plus a clean important finding so the post still has something to say.
 func writtenReview(t *testing.T, path string) {
 	t.Helper()
-	writeFile(t, path, `{"schema_version":"1","body":"> [!IMPORTANT]\n> Two findings.","approved":false,"comments":[`+
+	testkit.WriteFile(t, path, `{"schema_version":"1","body":"> [!IMPORTANT]\n> Two findings.","approved":false,"comments":[`+
 		`{"path":"notes.txt","line":2,"side":"RIGHT","body":"`+hedgedBody+`","rigor":"said","severity":"critical"},`+
 		`{"path":"notes.txt","line":2,"side":"RIGHT","body":"`+walkedBody+`","rigor":"walked","severity":"important"}]}`)
 }
@@ -456,7 +457,7 @@ func writtenReview(t *testing.T, path string) {
 // verifyClaim marks one finding addressed in the same run that posts it.
 func verifyClaim(t *testing.T, sig string) {
 	t.Helper()
-	writeFile(t, ".verdict/state/7/verification.json", `[{"sig":"`+sig+
+	testkit.WriteFile(t, ".verdict/state/7/verification.json", `[{"sig":"`+sig+
 		`","verdict":"VERIFIED","resultHead":"`+coverageHead+`","verifyCmd":"go test ./..."}]`)
 }
 
@@ -491,7 +492,7 @@ func TestFloorsSkipStoredAddressedFinding(t *testing.T) {
 	}
 	// The next run reports only the clean finding, so the closed one carries
 	// over as stored history rather than reopening.
-	writeFile(t, ".verdict/state/7/review.json", `{"schema_version":"1","body":"> [!IMPORTANT]\n> One finding.","approved":false,"comments":[`+
+	testkit.WriteFile(t, ".verdict/state/7/review.json", `{"schema_version":"1","body":"> [!IMPORTANT]\n> One finding.","approved":false,"comments":[`+
 		`{"path":"notes.txt","line":2,"side":"RIGHT","body":"`+walkedBody+`","rigor":"walked","severity":"important"}]}`)
 	os.Remove(".verdict/state/7/verification.json")
 	if _, ref, _ := runValidationPost(t, validationFlags(), "critical=walked"); ref != nil {
@@ -661,13 +662,13 @@ func assertPostPromptQuiet(t *testing.T, validator string) {
 // which shares the merge with post.
 func TestRecordWarnsWhenValidatorPromptDiffers(t *testing.T) {
 	bundle(t, "local-drift", reviewJSON(""))
-	writeFile(t, ".verdict/state/local-drift/validation.json",
+	testkit.WriteFile(t, ".verdict/state/local-drift/validation.json",
 		emptyPass(strings.Repeat("a", 40), `"validator":{"prompt_sha256":"`+strings.Repeat("cd", 32)+`"},`))
-	c := &collector{}
+	c := &testkit.Collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-drift")); ref != nil {
 		t.Fatalf("record refused: %v (%s)", ref, ref.Message)
 	}
-	got := promptWarnings(c.warns)
+	got := promptWarnings(c.Warnings)
 	if len(got) != 1 || !strings.HasPrefix(got[0], "validation.json was produced with prompts/validate.md sha256 cdcdcdc, but this build ships ") {
 		t.Fatalf("prompt warnings = %q, want one naming the recorded digest cdcdcdc", got)
 	}

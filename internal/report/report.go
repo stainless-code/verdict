@@ -17,7 +17,6 @@ import (
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
 	"github.com/stainless-code/verdict/internal/core/risk"
-	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/shellquote"
 )
@@ -68,7 +67,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 
 // writeOutputs writes the requested artifacts in shell order: --output
 // first, then --sarif.
-func writeOutputs(resp *core.ReportResponse) *cli.RefusalError {
+func writeOutputs(resp *reportcore.Response) *cli.RefusalError {
 	if ref := writeArtifact(resp.Output); ref != nil {
 		return ref
 	}
@@ -77,7 +76,7 @@ func writeOutputs(resp *core.ReportResponse) *cli.RefusalError {
 
 // emitReport writes the artifact notices, then the envelope or the human
 // summary.
-func emitReport(r *cli.Runner, req Request, resp *core.ReportResponse) {
+func emitReport(r *cli.Runner, req Request, resp *reportcore.Response) {
 	if resp.Sarif != nil {
 		fmt.Fprintf(r.Human, "wrote %s\n", resp.Sarif.Path)
 	}
@@ -85,9 +84,8 @@ func emitReport(r *cli.Runner, req Request, resp *core.ReportResponse) {
 		if resp.Output != nil {
 			fmt.Fprintf(r.Human, "wrote %s\n", resp.Output.Path)
 		}
-		env := core.RenderEnvelope("report", req.Repo, req.Pr, resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.Emit("report", req.Repo, req.Pr, resp.At, resp.Next,
+			resp.Warnings, resp.Data.Wire())
 		return
 	}
 	for _, line := range resp.Human {
@@ -96,15 +94,15 @@ func emitReport(r *cli.Runner, req Request, resp *core.ReportResponse) {
 }
 
 // emitChecks writes the gate diagnostics after output.
-func emitChecks(r *cli.Runner, resp *core.ReportResponse) {
+func emitChecks(r *cli.Runner, resp *reportcore.Response) {
 	for _, line := range resp.CheckLines {
 		fmt.Fprintln(r.Diag, line)
 	}
 }
 
 // reportRequest builds the core request from the parsed flags and runner.
-func reportRequest(r *cli.Runner, req Request, flags *reportcore.Flags) *core.ReportRequest {
-	return &core.ReportRequest{
+func reportRequest(r *cli.Runner, req Request, flags *reportcore.Flags) *reportcore.Request {
+	return &reportcore.Request{
 		ReadRequest: readRequest(r, req),
 		Flags:       *flags,
 		Effective:   r.Effective,
@@ -115,13 +113,7 @@ func reportRequest(r *cli.Runner, req Request, flags *reportcore.Flags) *core.Re
 // readRequest injects the runner's clock, progress observer, and command
 // runner into the typed read request.
 func readRequest(r *cli.Runner, req Request) core.ReadRequest {
-	read := req
-	if read.Runtime == nil {
-		read.Runtime = &core.Runtime{}
-	}
-	read.Now = r.Now
-	read.Progress = cli.Progress{R: r}
-	read.Commander = coreexec.Runner{}
+	read := r.Read(req, coreexec.Runner{})
 	return read
 }
 

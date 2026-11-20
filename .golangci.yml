@@ -262,6 +262,8 @@ linters:
       # Sealed constructors carry the layer-boundary contract (GO-ERRORS-03):
       # callers map these errors to typed refusals instead of inspecting them.
       ignore-sigs:
+        # GO-CONTEXT-02 requires preserving the cancellation error.
+        - func (context.Context).Err() error
         - .Sealed(
         - .NewErr(
         - .NewErrf(

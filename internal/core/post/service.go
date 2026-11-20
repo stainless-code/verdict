@@ -45,7 +45,7 @@ const msgCanceledPost = "canceled before post completed"
 // stdout/stderr or exits; human lines stream through the runtime progress
 // observer, stores go through the shared atomic path, and the envelope
 // inputs come back in the response for the adapter to render.
-func Run(ctx context.Context, req *core.PostRequest) (*core.PostResponse, *core.RefusalError) {
+func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	st := &state{req: req, warnings: append([]string{}, req.Warnings...)}
 	st.flags = req.Flags
 	if err := ctx.Err(); err != nil {
@@ -115,9 +115,9 @@ func (st *state) summaryMode() string {
 }
 
 type state struct { //nolint:govet // field grouping documents the post run state
-	req               *core.PostRequest
+	req               *Request
 	warnings          []string
-	flags             core.PostFlags
+	flags             Flags
 	provenanceReceipt *core.ProvenanceReceipt
 	review            *jq.Obj
 	merged            recordcore.MergeResult
@@ -296,7 +296,7 @@ func (st *state) prepare(ctx context.Context) *core.RefusalError {
 	return st.settledSecretGate()
 }
 
-func (st *state) publish(ctx context.Context) (*core.PostResponse, *core.RefusalError) {
+func (st *state) publish(ctx context.Context) (*Response, *core.RefusalError) {
 	st.finalizeBody()
 	st.preflight()
 	st.buildPayloads()

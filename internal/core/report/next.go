@@ -27,9 +27,9 @@ func RunNext(ctx context.Context, req *core.NextRequest) (*core.NextResponse, *c
 		resp.StoreUnreadable = true
 		return resp, nil
 	}
-	reportResp, ref := Run(ctx, &core.ReportRequest{
+	reportResp, ref := Run(ctx, &Request{
 		ReadRequest: req.ReadRequest,
-		Flags:       core.ReportFlags{Status: statusF, Kind: statusAll, Live: liveAuto},
+		Flags:       Flags{Status: statusF, Kind: statusAll, Live: liveAuto},
 		Effective:   req.Effective,
 		Warnings:    req.Warnings,
 	})

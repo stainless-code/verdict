@@ -9,10 +9,8 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
-	"github.com/stainless-code/verdict/internal/core"
 	calibratecore "github.com/stainless-code/verdict/internal/core/calibrate"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
-	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -37,24 +35,15 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		return r.Refuse(ref)
 	}
 	r.Warnings = resp.Warnings
-	if r.JSONMode {
-		env := core.RenderEnvelope("calibrate", req.Repo, req.Pr, resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-	}
+	r.Emit("calibrate", req.Repo, req.Pr, resp.At, resp.Next,
+		resp.Warnings, resp.Data.Wire())
 	return 0
 }
 
 // calibrateRequest injects the runner's clock, progress observer, and
 // command runner into the typed service request.
 func calibrateRequest(r *cli.Runner, req Request, st flagState) *calibratecore.Request {
-	read := req
-	if read.Runtime == nil {
-		read.Runtime = &core.Runtime{}
-	}
-	read.Now = r.Now
-	read.Progress = cli.Progress{R: r}
-	read.Commander = coreexec.Runner{}
+	read := r.Read(req, coreexec.Runner{})
 	return &calibratecore.Request{
 		ReadRequest: read,
 		Reactions:   st.reactions, ReactionReason: st.reason,

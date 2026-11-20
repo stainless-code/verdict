@@ -47,7 +47,7 @@ func seedSummaryBundle(t *testing.T, provider string) {
 	seedPostControls(t, dir, summaryTestBase)
 }
 
-func summaryReq(cmdr Commander, provider string, flags core.PostFlags, warnings, human *[]string) *core.PostRequest {
+func summaryReq(cmdr Commander, provider string, flags Flags, warnings, human *[]string) *Request {
 	req := postTestReq(cmdr, flags, warnings, human)
 	if provider == providerForgejo {
 		req.Env = forgejoEnv()
@@ -194,7 +194,7 @@ type summaryHostCase struct {
 	page2Raw      string
 }
 
-func runSummaryPostCase(t *testing.T, provider string, cmdr *scriptCommander, flags core.PostFlags) *core.PostResponse {
+func runSummaryPostCase(t *testing.T, provider string, cmdr *scriptCommander, flags Flags) *Response {
 	t.Helper()
 	var warnings, human []string
 	req := summaryReq(cmdr, provider, flags, &warnings, &human)
@@ -262,7 +262,7 @@ func verifyHostSummaryCreate(t *testing.T, p *summaryHostCase, marker, reviewMar
 	t.Chdir(t.TempDir())
 	seedSummaryBundle(t, p.provider)
 	cmdr := hostBaseCommander(t, p.provider, "["+reviewMarkerComment+"]", p.inlineJSON)
-	resp := runSummaryPostCase(t, p.provider, cmdr, core.PostFlags{
+	resp := runSummaryPostCase(t, p.provider, cmdr, Flags{
 		Approve: "false", ReviewFile: ".verdict/state/7/review.json", Summary: "comment",
 	})
 	if resp.Data.Summary == nil || resp.Data.Summary.Action != "create" || resp.Data.Summary.Marker != marker {
@@ -324,7 +324,7 @@ func verifyHostSummaryUpdate(t *testing.T, p *summaryHostCase, marker string) {
 	if p.page2Route != "" {
 		cmdr.out[p.page2Route] = scriptResult{stdout: p.page2Raw}
 	}
-	resp := runSummaryPostCase(t, p.provider, cmdr, core.PostFlags{
+	resp := runSummaryPostCase(t, p.provider, cmdr, Flags{
 		Approve: "false", ReviewFile: ".verdict/state/7/review.json", Summary: "comment",
 	})
 	if resp.Data.Summary == nil || resp.Data.Summary.Action != "update" || resp.Data.Summary.CommentID != "401" {
@@ -351,7 +351,7 @@ func verifyHostSummaryIgnoresOther(t *testing.T, p *summaryHostCase, markedOther
 	t.Chdir(t.TempDir())
 	seedSummaryBundle(t, p.provider)
 	cmdr := hostBaseCommander(t, p.provider, "["+markedOther+"]", p.inlineJSON)
-	resp := runSummaryPostCase(t, p.provider, cmdr, core.PostFlags{
+	resp := runSummaryPostCase(t, p.provider, cmdr, Flags{
 		Approve: "false", ReviewFile: ".verdict/state/7/review.json", Summary: "comment",
 	})
 	if resp.Data.Summary == nil || resp.Data.Summary.Action != "create" {
@@ -373,7 +373,7 @@ func TestSummaryCommentMultipleMatchesUpdatesNewestNeverDeletes(t *testing.T) {
 	cmdr.out["gh\x00api\x00repos/acme/app/issues/comments/402\x00--method\x00PATCH\x00--input\x00-"] = scriptResult{
 		stdout: `{"id":402,"html_url":"https://gh.example/c/402","user":{"login":"someone-else"},"body":"updated newest"}`,
 	}
-	resp := runSummaryPostCase(t, providerGitHub, cmdr, core.PostFlags{
+	resp := runSummaryPostCase(t, providerGitHub, cmdr, Flags{
 		Approve: "false", ReviewFile: ".verdict/state/7/review.json", Summary: "comment",
 	})
 	if resp.Data.Summary == nil || resp.Data.Summary.Action != "update" ||
@@ -421,7 +421,7 @@ func verifyDryRunOff(t *testing.T) {
 	seedSummaryBundle(t, providerGitHub)
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := summaryReq(cmdr, providerGitHub, core.PostFlags{
+	req := summaryReq(cmdr, providerGitHub, Flags{
 		Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true,
 	}, &warnings, &human)
 	req.JSONMode = false
@@ -446,7 +446,7 @@ func TestSummaryCommentFailureKeepsReviewReceipt(t *testing.T) {
 		fail: true, stderr: "HTTP 502",
 	}
 	var warnings, human []string
-	req := summaryReq(cmdr, providerGitHub, core.PostFlags{
+	req := summaryReq(cmdr, providerGitHub, Flags{
 		Approve: "false", ReviewFile: ".verdict/state/7/review.json", Summary: "comment",
 	}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
@@ -468,7 +468,7 @@ func verifyDryRunComment(t *testing.T, listJSON, wantAct, wantLine string) {
 	seedSummaryBundle(t, providerGitHub)
 	cmdr := hostBaseCommander(t, providerGitHub, listJSON, "[]")
 	var warnings, human []string
-	req := summaryReq(cmdr, providerGitHub, core.PostFlags{
+	req := summaryReq(cmdr, providerGitHub, Flags{
 		Approve: "false", ReviewFile: ".verdict/state/7/review.json", Summary: "comment", DryRun: true,
 	}, &warnings, &human)
 	req.JSONMode = false
@@ -492,7 +492,7 @@ func verifyRealPostOff(t *testing.T) {
 	t.Chdir(t.TempDir())
 	seedSummaryBundle(t, providerGitHub)
 	cmdr := postCommander(t)
-	resp := runSummaryPostCase(t, providerGitHub, cmdr, core.PostFlags{
+	resp := runSummaryPostCase(t, providerGitHub, cmdr, Flags{
 		Approve: "false", ReviewFile: ".verdict/state/7/review.json",
 	})
 	if resp.Data.Summary != nil {
@@ -517,7 +517,7 @@ func verifyBadSummaryFlag(t *testing.T) {
 	seedSummaryBundle(t, providerGitHub)
 	cmdr := postCommander(t)
 	var warnings, human []string
-	req := summaryReq(cmdr, providerGitHub, core.PostFlags{
+	req := summaryReq(cmdr, providerGitHub, Flags{
 		Approve: "false", ReviewFile: ".verdict/state/7/review.json", Summary: "description",
 	}, &warnings, &human)
 	if _, ref := Run(context.Background(), req); ref == nil || ref.Code != "bad-flags" {

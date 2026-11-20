@@ -156,10 +156,10 @@ func ledgerVerdict(t *testing.T, rs *config.RunState, group, check, head string)
 	return config.CheckObservation{}, false
 }
 
-func runApproval(t *testing.T, cmdr *scriptCommander, force bool) (*core.PostResponse, *core.RefusalError) {
+func runApproval(t *testing.T, cmdr *scriptCommander, force bool) (*Response, *core.RefusalError) {
 	t.Helper()
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{
+	req := postTestReq(cmdr, Flags{
 		Approve: "true", Bind: true, Force: force, ReviewFile: reqBundle + "/review.json",
 	}, &warnings, &human)
 	return Run(context.Background(), req)
@@ -389,7 +389,7 @@ func TestRunCommentKeepsUnmetEvidence(t *testing.T) {
 	live := reqHeadSHA
 	cmdr := requirementCommander(t, &live, 2, false)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: reqBundle + "/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: reqBundle + "/review.json"}, &warnings, &human)
 	resp, ref := Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("comment run refused: %v (%s)", ref, ref.Message)
@@ -422,7 +422,7 @@ func TestRunBlockedFindingStillAllowsComment(t *testing.T) {
 	live := reqHeadSHA
 	cmdr := requirementCommander(t, &live, 0, false)
 	var warnings, human []string
-	req := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: reqBundle + "/review.json"}, &warnings, &human)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: reqBundle + "/review.json"}, &warnings, &human)
 	resp, ref := Run(t.Context(), req)
 	if ref != nil {
 		t.Fatalf("comment run refused: %v (%s)", ref, ref.Message)

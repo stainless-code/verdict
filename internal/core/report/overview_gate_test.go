@@ -30,7 +30,7 @@ func TestRenderOverviewGate(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			req := &core.ReportRequest{
+			req := &Request{
 				Effective: core.Effective{PublishOverview: strTrue, DiagramsStructural: strTrue},
 			}
 			req.Forces = tt.forces
