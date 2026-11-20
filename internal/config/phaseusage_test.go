@@ -23,3 +23,24 @@ func TestPhaseCostBindsCapturedExecution(t *testing.T) {
 		t.Fatal("phase costs from another execution bound to capture")
 	}
 }
+
+func TestUnphasedUsageCannotBindForeignExecution(t *testing.T) {
+	capture := &RunState{Name: "7", InputsSHA256: "inputs", Execution: &core.ExecutionReference{ID: "execution-A", Finders: 2}}
+	record := map[string]any{"run": "7", "inputs_sha256": "inputs", "execution_id": "execution-B"}
+	if bindsCapture(record, capture) {
+		t.Fatal("unphased foreign cost bound to capture")
+	}
+}
+
+func TestMalformedLatestPhaseUsageCannotFallBack(t *testing.T) {
+	capture := &RunState{Name: "7", InputsSHA256: "inputs", Execution: &core.ExecutionReference{ID: "execution-A", Finders: 2}}
+	records := []map[string]any{
+		{"schema_version": "2", "run": "7", "inputs_sha256": "inputs", "lenses": []any{}},
+		{"schema_version": "2", "run": "7", "inputs_sha256": "inputs", "lenses": []any{}, "phases": []any{}},
+	}
+	latest, version, _ := newestBinding(records, capture)
+	_, status, _ := certifiedEntries(latest, version)
+	if status != "malformed" {
+		t.Fatalf("latest malformed cost reported %q", status)
+	}
+}

@@ -648,8 +648,6 @@ func readCostFile(path string) ([]byte, string) {
 }
 
 func phaseCaptureMatches(record map[string]any, rs *RunState) bool {
-	if _, present := record["phases"]; !present {
-		return true
-	}
-	return rs.Execution != nil && recordString(record, "execution_id") == rs.Execution.ID
+	id := recordString(record, "execution_id")
+	return id == "" || (rs.Execution != nil && id == rs.Execution.ID)
 }
