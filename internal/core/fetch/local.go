@@ -20,7 +20,7 @@ import (
 // runLocalTail owns the fetch-local block: worktree/staged/range/branch/
 // stash diff modes sharing the cap/chunk/budget/prompt planes, returning
 // the envelope data and next step for the adapter to render.
-func runLocalTail(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest) (*core.FetchData, string, error) {
+func runLocalTail(ctx context.Context, ctx2 *fetchRunCtx, req *LocalRequest) (*core.FetchData, string, error) {
 	r := ctx2.runner
 	f := &req.Flags
 	mode, dir, slug, ref := localSetup(ctx, ctx2, req, f)
@@ -44,7 +44,7 @@ func runLocalTail(ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRe
 }
 
 func runLocalBuild(
-	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags,
+	ctx context.Context, ctx2 *fetchRunCtx, req *LocalRequest, f *LocalFlags,
 	r *session, dir, slug string, mode *localMode,
 ) (*core.FetchData, string, error) {
 	if ref := localPolicy(ctx, ctx2, req, f, r, mode); ref != nil {
@@ -80,8 +80,8 @@ func runLocalBuild(
 // full plan waits for the actual diff files, so no group-blind spend gate
 // runs here.
 func localPolicy(
-	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest,
-	f *core.FetchLocalFlags, r *session, mode *localMode,
+	ctx context.Context, ctx2 *fetchRunCtx, req *LocalRequest,
+	f *LocalFlags, r *session, mode *localMode,
 ) error {
 	controlsRoot := req.RepoRootPath()
 	if r.iso != nil {
@@ -109,8 +109,8 @@ func localPolicy(
 // localResolve completes the plan over the actual listed files before caps,
 // chunking, or any model-facing export.
 func localResolve(
-	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest,
-	f *core.FetchLocalFlags, mode *localMode, listed string,
+	ctx context.Context, ctx2 *fetchRunCtx, req *LocalRequest,
+	f *LocalFlags, mode *localMode, listed string,
 ) error {
 	rc := ctx2.runCfg
 	if err := rc.resolveLocalPhaseTwo(
@@ -138,7 +138,7 @@ func localSlugGate(pr, slug string) *core.RefusalError {
 }
 
 // localModeCount counts the selected diff modes for the exclusivity gate.
-func localModeCount(f *core.FetchLocalFlags) int {
+func localModeCount(f *LocalFlags) int {
 	modes := 0
 	if f.RangeSpec != "" {
 		modes++
@@ -168,7 +168,7 @@ func localBundleDir(root, slug string) (string, *core.RefusalError) {
 // localSetup owns the fetch-local preamble: slug gate, worktree check,
 // mode resolution, and the bundle directory.
 func localSetup(
-	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags,
+	ctx context.Context, ctx2 *fetchRunCtx, req *LocalRequest, f *LocalFlags,
 ) (localMode, string, string, error) {
 	slug := localSlug(req.Pr)
 	if ref := localSlugGate(req.Pr, slug); ref != nil {
@@ -203,7 +203,7 @@ func localSetup(
 // localBudgetGates runs the single spend gate over the full plan, then
 // prepares the bundle directory. The same state rides the tail receipt, so
 // the gate result is never a discarded local shadow.
-func localBudgetGates(ctx2 *fetchRunCtx, f *core.FetchLocalFlags, root, dir string) (budgetState, error) {
+func localBudgetGates(ctx2 *fetchRunCtx, f *LocalFlags, root, dir string) (budgetState, error) {
 	r := ctx2.runner
 	resolved := ctx2.runCfg.resolved
 	budget := resolveBudget(r, resolved)
@@ -330,7 +330,7 @@ func localStores(ctx2 *fetchRunCtx, r *session, dir, slug, listed, numstat strin
 // localFinish owns the fetch-local tail: source.json, the done/next
 // lines, the opt-in chunks, and the typed data for the adapter's envelope.
 func localFinish(
-	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchLocalRequest, f *core.FetchLocalFlags, r *session,
+	ctx context.Context, ctx2 *fetchRunCtx, req *LocalRequest, f *LocalFlags, r *session,
 	dir string, budget *budgetState, fc fetchCap, chunkActive bool, mode *localMode,
 	listed string, total, adds, dels int, diffSHA string,
 ) (*core.FetchData, string, error) {
@@ -423,7 +423,7 @@ func (m *localMode) diffArgs() []string {
 }
 
 // resolveLocalMode owns the fetch-local mode resolution.
-func resolveLocalMode(ctx context.Context, s *session, f *core.FetchLocalFlags, branch string) (localMode, error) {
+func resolveLocalMode(ctx context.Context, s *session, f *LocalFlags, branch string) (localMode, error) {
 	switch {
 	case f.HasStash:
 		return resolveStashMode(ctx, s, f)
@@ -438,7 +438,7 @@ func resolveLocalMode(ctx context.Context, s *session, f *core.FetchLocalFlags, 
 	}
 }
 
-func resolveStashMode(ctx context.Context, s *session, f *core.FetchLocalFlags) (localMode, error) {
+func resolveStashMode(ctx context.Context, s *session, f *LocalFlags) (localMode, error) {
 	if _, err := s.run(ctx, gitCmdRevParse, "-q", flagVerify, stashRefPrefix+f.StashN+"}"); err != nil {
 		return localMode{}, &core.RefusalError{
 			Code:    "bad-stash",
@@ -453,7 +453,7 @@ func resolveStashMode(ctx context.Context, s *session, f *core.FetchLocalFlags) 
 
 // resolveBaseMode owns the base mode: the merge-base with HEAD bounds a
 // branch-style diff.
-func resolveBaseMode(ctx context.Context, s *session, f *core.FetchLocalFlags, branch string) (localMode, error) {
+func resolveBaseMode(ctx context.Context, s *session, f *LocalFlags, branch string) (localMode, error) {
 	mb, err := s.gitLine(ctx, "merge-base", f.BaseRef, gitHeadRef)
 	if err != nil {
 		return localMode{}, &core.RefusalError{Code: "bad-base", Message: fmt.Sprintf("no merge-base with '%s'", f.BaseRef)}

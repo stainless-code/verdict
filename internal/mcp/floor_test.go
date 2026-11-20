@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
+	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
 )
 
@@ -28,7 +28,7 @@ func TestFetchExclusionOverrideDecoder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var req core.FetchRequest
+	var req fetchcore.Request
 	decodeFetch(&req, a)
 	if err := a.done(); err != nil {
 		t.Fatal(err)
@@ -43,7 +43,7 @@ func TestFetchLocalExclusionOverrideDecoder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var local core.FetchLocalRequest
+	var local fetchcore.LocalRequest
 	decodeFetchLocal(&local, a)
 	if err := a.done(); err != nil {
 		t.Fatal(err)

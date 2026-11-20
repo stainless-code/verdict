@@ -44,7 +44,7 @@ func writeLocalFixtureFiles(t *testing.T, configJSON string) {
 	}
 }
 
-func runLocalProvenanceFixture(t *testing.T, configJSON string, env map[string]string) (*core.FetchResponse, []string, string) {
+func runLocalProvenanceFixture(t *testing.T, configJSON string, env map[string]string) (*Response, []string, string) {
 	t.Helper()
 	cmdr := &scriptCommander{
 		t: t,
@@ -65,7 +65,7 @@ func runLocalProvenanceFixture(t *testing.T, configJSON string, env map[string]s
 	}
 	var human, diag bytes.Buffer
 	var warnings []string
-	req := localScriptReq(cmdr, &human, &diag, &warnings, env, core.FetchLocalFlags{})
+	req := localScriptReq(cmdr, &human, &diag, &warnings, env, LocalFlags{})
 	resp, err := RunLocal(context.Background(), req)
 	if err != nil {
 		t.Fatalf("RunLocal error: %v", err)

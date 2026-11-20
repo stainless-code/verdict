@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -23,7 +22,7 @@ const (
 )
 
 // hostRequest is the fetch request every host fixture answers.
-func hostRequest() *core.FetchRequest { return &core.FetchRequest{Repo: hostRepo, Pr: hostPR} }
+func hostRequest() *Request { return &Request{Repo: hostRepo, Pr: hostPR} }
 
 // hostCtx builds a provider run context over a scripted commander: the bundle
 // directory, the owner/repo positional, and the PR number.
@@ -144,7 +143,7 @@ func gitlabScripts(dir, diffs string) map[string]scriptResult {
 func gitlabPRFiles(t *testing.T, dir, diffs string) ([]string, []string) {
 	t.Helper()
 	ctx := hostCtx(t, &scriptCommander{t: t, out: gitlabScripts(dir, diffs)}, dir)
-	if _, err := fetchGitLab(context.Background(), ctx, hostRequest(), &core.FetchFlags{}); err != nil {
+	if _, err := fetchGitLab(context.Background(), ctx, hostRequest(), &Flags{}); err != nil {
 		t.Fatalf("fetchGitLab: %v", err)
 	}
 	return hostFiles(t, hostObj(t, dir+suffixPRJSON)), *ctx.runner.warnings
@@ -200,7 +199,7 @@ func TestGitLabChangedFileReadFailureWarns(t *testing.T) {
 		scripts[gitlabAPI+leg+"\x00--paginate"] = scriptResult{stderr: "glab: 403 Forbidden", fail: true}
 	}
 	ctx := hostCtx(t, &scriptCommander{t: t, out: scripts}, dir)
-	if _, err := fetchGitLab(context.Background(), ctx, hostRequest(), &core.FetchFlags{}); err != nil {
+	if _, err := fetchGitLab(context.Background(), ctx, hostRequest(), &Flags{}); err != nil {
 		t.Fatalf("fetchGitLab: %v", err)
 	}
 	assertWarning(t, *ctx.runner.warnings, "changed-file read failed")
@@ -628,7 +627,7 @@ func TestGitLabUnreadableChangedFilePayloadWarns(t *testing.T) {
 			t.Parallel()
 			dir := t.TempDir()
 			ctx := hostCtx(t, &scriptCommander{t: t, out: gitlabScripts(dir, payload)}, dir)
-			if _, err := fetchGitLab(context.Background(), ctx, hostRequest(), &core.FetchFlags{}); err != nil {
+			if _, err := fetchGitLab(context.Background(), ctx, hostRequest(), &Flags{}); err != nil {
 				t.Fatalf("fetchGitLab: %v", err)
 			}
 			assertWarning(t, *ctx.runner.warnings, "changed-file payload unreadable")

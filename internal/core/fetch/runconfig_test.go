@@ -283,7 +283,7 @@ func TestPrivacySentinelAbsentFromModelFacingOutputs(t *testing.T) {
 
 // stagedPrivacyRun stages an over-cap-free local run with a personal privacy
 // exclusion on secret/** and returns the response plus the bundle directory.
-func stagedPrivacyRun(t *testing.T) *core.FetchResponse {
+func stagedPrivacyRun(t *testing.T) *Response {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -301,7 +301,7 @@ func stagedPrivacyRun(t *testing.T) *core.FetchResponse {
 	cmdr := stagedLocalCommander(t, privacySentinelDiff())
 	var human, diag bytes.Buffer
 	var streamed []string
-	flags := core.FetchLocalFlags{Staged: true, ShowPrompts: true}
+	flags := LocalFlags{Staged: true, ShowPrompts: true}
 	req := localScriptReq(cmdr, &human, &diag, &streamed, nil, flags)
 	req.SettingsPath = settingsPath
 	req.JSONMode = true

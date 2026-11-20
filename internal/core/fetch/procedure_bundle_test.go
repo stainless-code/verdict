@@ -34,12 +34,12 @@ func embeddedReviewBytes(t *testing.T) []byte {
 
 // fetchWithProcedure runs one hermetic fetch of either kind and returns its
 // response and the bundle dir in display form.
-func fetchWithProcedure(t *testing.T, kind string, show bool) (*core.FetchResponse, string) {
+func fetchWithProcedure(t *testing.T, kind string, show bool) (*Response, string) {
 	t.Helper()
 	t.Chdir(t.TempDir())
 	var human, diag bytes.Buffer
 	var warnings []string
-	var resp *core.FetchResponse
+	var resp *Response
 	var err error
 	var dir string
 	switch kind {
@@ -50,7 +50,7 @@ func fetchWithProcedure(t *testing.T, kind string, show bool) (*core.FetchRespon
 		dir = filepath.ToSlash(filepath.Join(".verdict", "state", "7"))
 	case "fetch-local":
 		req := localScriptReq(stagedLocalCommander(t, cleanStagedDiff), &human, &diag, &warnings,
-			nil, core.FetchLocalFlags{Staged: true, ShowPrompts: show})
+			nil, LocalFlags{Staged: true, ShowPrompts: show})
 		resp, err = RunLocal(t.Context(), req)
 		dir = filepath.ToSlash(filepath.Join(".verdict", "state", "local-mine"))
 	default:
@@ -92,7 +92,7 @@ func assertBundleProcedure(t *testing.T, dir string, want []byte) {
 	}
 }
 
-func assertDumpStartsWithProcedure(t *testing.T, kind, dir string, resp *core.FetchResponse, want []byte) {
+func assertDumpStartsWithProcedure(t *testing.T, kind, dir string, resp *Response, want []byte) {
 	t.Helper()
 	if resp.Data == nil || resp.Data.PromptDump == nil {
 		t.Fatalf("%s returned no prompt dump", kind)
@@ -180,7 +180,7 @@ func assertMissingReviewProcedureRefusal(t *testing.T, path string) {
 	var human, diag bytes.Buffer
 	var warnings []string
 	req := localScriptReq(stagedLocalCommander(t, cleanStagedDiff), &human, &diag, &warnings,
-		nil, core.FetchLocalFlags{Staged: true, ShowPrompts: true})
+		nil, LocalFlags{Staged: true, ShowPrompts: true})
 	_, err := RunLocal(t.Context(), req)
 	ref, ok := errors.AsType[*core.RefusalError](err)
 	if !ok || ref.Code != "prompt-dump-failed" {

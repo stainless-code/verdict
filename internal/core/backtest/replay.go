@@ -780,11 +780,11 @@ func (s *replaySession) bundleDir(dir string) string {
 
 // fetchRequest is the fetch-local invocation that builds one replay bundle:
 // the candidate's own base and head, never HEAD.
-func (s *replaySession) fetchRequest(name string, c *Candidate) *core.FetchLocalRequest {
+func (s *replaySession) fetchRequest(name string, c *Candidate) *fetchcore.LocalRequest {
 	read := s.readRequest(replayRepo, name)
-	return &core.FetchLocalRequest{
+	return &fetchcore.LocalRequest{
 		ReadRequest:  read,
-		Flags:        core.FetchLocalFlags{RangeSpec: c.Base + ".." + c.Head},
+		Flags:        fetchcore.LocalFlags{RangeSpec: c.Base + ".." + c.Head},
 		SettingsPath: s.req.SettingsPath,
 		Effective:    s.req.Effective,
 		JSONMode:     s.req.JSONMode,

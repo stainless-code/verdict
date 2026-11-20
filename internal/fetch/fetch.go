@@ -83,7 +83,7 @@ func RunLocal(ctx context.Context, r *cli.Runner, args []string, req Request) in
 // invocation: the injected runtime (environment, clock, progress, and the
 // production split-stream commander), the render configuration, and the
 // adapter-routed streams.
-func fetchRequest(r *cli.Runner, req Request, f *core.FetchFlags) *core.FetchRequest {
+func fetchRequest(r *cli.Runner, req Request, f *fetchcore.Flags) *fetchcore.Request {
 	root := req.Root
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
@@ -93,7 +93,7 @@ func fetchRequest(r *cli.Runner, req Request, f *core.FetchFlags) *core.FetchReq
 		},
 		Repo: req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
 	}
-	return &core.FetchRequest{
+	return &fetchcore.Request{
 		ReadRequest:  read,
 		Flags:        *f,
 		SettingsPath: cli.SettingsPath(req.Env["HOME"], req.Env["XDG_CONFIG_HOME"]),
@@ -106,7 +106,7 @@ func fetchRequest(r *cli.Runner, req Request, f *core.FetchFlags) *core.FetchReq
 }
 
 // fetchLocalRequest builds the core fetch-local request.
-func fetchLocalRequest(r *cli.Runner, req Request, f *core.FetchLocalFlags) *core.FetchLocalRequest {
+func fetchLocalRequest(r *cli.Runner, req Request, f *fetchcore.LocalFlags) *fetchcore.LocalRequest {
 	root := req.Root
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
@@ -116,7 +116,7 @@ func fetchLocalRequest(r *cli.Runner, req Request, f *core.FetchLocalFlags) *cor
 		},
 		Repo: req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
 	}
-	return &core.FetchLocalRequest{
+	return &fetchcore.LocalRequest{
 		ReadRequest:  read,
 		Flags:        *f,
 		SettingsPath: cli.SettingsPath(req.Env["HOME"], req.Env["XDG_CONFIG_HOME"]),
@@ -131,7 +131,7 @@ func fetchLocalRequest(r *cli.Runner, req Request, f *core.FetchLocalFlags) *cor
 // renderFetch renders a fetch success: warnings carry onto the runner, the
 // prompt dump owns stdout in human mode, and JSON mode prints exactly one
 // envelope to stdout.
-func renderFetch(r *cli.Runner, resp *core.FetchResponse, verb string) int {
+func renderFetch(r *cli.Runner, resp *fetchcore.Response, verb string) int {
 	r.Warnings = resp.Warnings
 	if r.JSONMode {
 		env := core.RenderEnvelope(verb, resp.Repo, resp.Pr, resp.At, resp.Next,
@@ -161,8 +161,8 @@ func refuseFetch(r *cli.Runner, err error) int {
 
 // parseFetchFlags strips fetch's flags, reporting unknown ones. A value flag
 // with no operand is a usage error.
-func parseFetchFlags(r *cli.Runner, args []string) (core.FetchFlags, int, bool) {
-	var f core.FetchFlags
+func parseFetchFlags(r *cli.Runner, args []string) (fetchcore.Flags, int, bool) {
+	var f fetchcore.Flags
 	for i := 0; i < len(args); i++ {
 		next, code, done := parseFetchToken(r, &f, args, i)
 		if done {
@@ -187,7 +187,7 @@ var fetchValueWants = map[string]string{
 
 // parseFetchToken consumes one fetch argument, returning the next index plus a
 // usage refusal when the token is unknown or a value flag lost its operand.
-func parseFetchToken(r *cli.Runner, f *core.FetchFlags, args []string, i int) (int, int, bool) {
+func parseFetchToken(r *cli.Runner, f *fetchcore.Flags, args []string, i int) (int, int, bool) {
 	a := args[i]
 	if want, ok := fetchValueWants[a]; ok {
 		v, next, u := cli.FlagValue(args, i, a, want)
@@ -220,8 +220,8 @@ func parseFetchToken(r *cli.Runner, f *core.FetchFlags, args []string, i int) (i
 // parseLocalFlags strips fetch-local's flags, reporting unknown ones. A bare
 // --stash keeps its documented optional value ("0"); every other value flag
 // with no operand is a usage error.
-func parseLocalFlags(r *cli.Runner, args []string) (core.FetchLocalFlags, int, bool) {
-	var f core.FetchLocalFlags
+func parseLocalFlags(r *cli.Runner, args []string) (fetchcore.LocalFlags, int, bool) {
+	var f fetchcore.LocalFlags
 	for i := 0; i < len(args); i++ {
 		next, code, done := parseLocalToken(r, &f, args, i)
 		if done {
@@ -234,7 +234,7 @@ func parseLocalFlags(r *cli.Runner, args []string) (core.FetchLocalFlags, int, b
 
 // parseLocalToken consumes one fetch-local argument, returning the next
 // index plus a usage refusal when the token is an unknown flag.
-func parseLocalToken(r *cli.Runner, f *core.FetchLocalFlags, args []string, i int) (int, int, bool) {
+func parseLocalToken(r *cli.Runner, f *fetchcore.LocalFlags, args []string, i int) (int, int, bool) {
 	a := args[i]
 	if next, u, ok := parseLocalOption(f, a, args, i); ok {
 		if u != nil {
@@ -284,7 +284,7 @@ var localValueWants = map[string]string{
 
 // parseLocalOption consumes fetch-local's value and default-exclusion flags.
 // It returns the next index, a missing-value usage error, and a match flag.
-func parseLocalOption(f *core.FetchLocalFlags, a string, args []string, i int) (int, *cli.UsageError, bool) {
+func parseLocalOption(f *fetchcore.LocalFlags, a string, args []string, i int) (int, *cli.UsageError, bool) {
 	if want, ok := localValueWants[a]; ok {
 		v, next, u := cli.FlagValue(args, i, a, want)
 		if u != nil {
@@ -307,7 +307,7 @@ func parseLocalOption(f *core.FetchLocalFlags, a string, args []string, i int) (
 }
 
 // setLocalValue applies one fetch-local value flag's operand.
-func setLocalValue(f *core.FetchLocalFlags, name, value string) {
+func setLocalValue(f *fetchcore.LocalFlags, name, value string) {
 	switch name {
 	case flagIgnore:
 		f.Ignore = append(f.Ignore, value)
@@ -334,7 +334,7 @@ func stashValue(args []string, i int) (string, int) {
 }
 
 // setFetchValue applies one fetch value flag's operand.
-func setFetchValue(f *core.FetchFlags, name, value string) {
+func setFetchValue(f *fetchcore.Flags, name, value string) {
 	switch name {
 	case flagIgnore:
 		f.Ignore = append(f.Ignore, value)

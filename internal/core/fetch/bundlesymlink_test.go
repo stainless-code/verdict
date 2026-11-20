@@ -21,7 +21,7 @@ func TestRunLocalRefusesSymlinkedBundleDir(t *testing.T) {
 	var human, diag bytes.Buffer
 	var streamed []string
 	_, err := RunLocal(context.Background(),
-		localScriptReq(cmdr, &human, &diag, &streamed, nil, core.FetchLocalFlags{Staged: true}))
+		localScriptReq(cmdr, &human, &diag, &streamed, nil, LocalFlags{Staged: true}))
 	assertSymlinkedBundleRefused(t, err, "local-mine", target)
 }
 

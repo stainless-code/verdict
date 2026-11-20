@@ -91,7 +91,7 @@ func bundleVerbs() []bundleVerb {
 			return ref
 		}},
 		{name: "fetch", run: func(ctx context.Context, pr string) *core.RefusalError {
-			_, err := fetchcore.Run(ctx, &core.FetchRequest{ReadRequest: bundleRead(pr)})
+			_, err := fetchcore.Run(ctx, &fetchcore.Request{ReadRequest: bundleRead(pr)})
 			return refusalOf(err)
 		}},
 		{name: "fix", run: func(ctx context.Context, pr string) *core.RefusalError {

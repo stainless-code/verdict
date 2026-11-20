@@ -148,7 +148,7 @@ func wireDoctor(ctx context.Context, b *bindings, req *doctorcore.Request) error
 	return nil
 }
 
-func decodeFetch(req *core.FetchRequest, a *args) {
+func decodeFetch(req *fetchcore.Request, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.flags(func(f *args) {
@@ -166,7 +166,7 @@ func decodeFetch(req *core.FetchRequest, a *args) {
 	})
 }
 
-func wireFetch(ctx context.Context, b *bindings, req *core.FetchRequest) error {
+func wireFetch(ctx context.Context, b *bindings, req *fetchcore.Request) error {
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
 		return err
 	}
@@ -179,7 +179,7 @@ func wireFetch(ctx context.Context, b *bindings, req *core.FetchRequest) error {
 	return nil
 }
 
-func decodeFetchLocal(req *core.FetchLocalRequest, a *args) {
+func decodeFetchLocal(req *fetchcore.LocalRequest, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.flags(func(f *args) {
@@ -201,7 +201,7 @@ func decodeFetchLocal(req *core.FetchLocalRequest, a *args) {
 	})
 }
 
-func wireFetchLocal(ctx context.Context, b *bindings, req *core.FetchLocalRequest) error {
+func wireFetchLocal(ctx context.Context, b *bindings, req *fetchcore.LocalRequest) error {
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
 		return err
 	}

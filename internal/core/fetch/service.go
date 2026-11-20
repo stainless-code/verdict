@@ -53,7 +53,7 @@ type Commander interface {
 // writer, warnings accumulate for the envelope and stream through the
 // runtime progress observer, and the envelope inputs come back in the
 // response for the adapter to render.
-func Run(ctx context.Context, req *core.FetchRequest) (*core.FetchResponse, error) {
+func Run(ctx context.Context, req *Request) (*Response, error) {
 	st := newState(req)
 	if err := ctx.Err(); err != nil {
 		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: msgCanceledFetch})
@@ -65,7 +65,7 @@ func Run(ctx context.Context, req *core.FetchRequest) (*core.FetchResponse, erro
 	return st.dispatch(ctx, s, req)
 }
 
-func (st *state) dispatch(ctx context.Context, s *session, req *core.FetchRequest) (*core.FetchResponse, error) {
+func (st *state) dispatch(ctx context.Context, s *session, req *Request) (*Response, error) {
 	provider, source, ref := core.ResolveProvider(ctx, s.commander, req.RepoRootPath(), req.Flags.Provider, s.env)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
@@ -96,7 +96,7 @@ func (st *state) dispatch(ctx context.Context, s *session, req *core.FetchReques
 	return st.response(ctx2, req, data, next)
 }
 
-func (st *state) provider(f *core.FetchFlags) (*core.FetchFlags, *core.RefusalError) {
+func (st *state) provider(f *Flags) (*Flags, *core.RefusalError) {
 	if f.Provider == "" {
 		f.Provider = providerGitHub
 	}
@@ -110,7 +110,7 @@ func (st *state) provider(f *core.FetchFlags) (*core.FetchFlags, *core.RefusalEr
 }
 
 func (st *state) backend(
-	ctx context.Context, ctx2 *fetchRunCtx, req *core.FetchRequest, f *core.FetchFlags, budget *budgetState,
+	ctx context.Context, ctx2 *fetchRunCtx, req *Request, f *Flags, budget *budgetState,
 ) (*core.FetchData, string, error) {
 	if f.Provider != providerGitHub {
 		return runProvider(ctx, ctx2, req, f, budget)
@@ -120,7 +120,7 @@ func (st *state) backend(
 
 // RunLocal executes `fetch-local <owner/repo> <name>`: the local worktree
 // bundle build. Same transport contract as Run.
-func RunLocal(ctx context.Context, req *core.FetchLocalRequest) (*core.FetchResponse, error) {
+func RunLocal(ctx context.Context, req *LocalRequest) (*Response, error) {
 	st := newLocalState(req)
 	if err := ctx.Err(); err != nil {
 		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: msgCanceledFetch})
@@ -146,7 +146,7 @@ func RunLocal(ctx context.Context, req *core.FetchLocalRequest) (*core.FetchResp
 		return nil, err
 	}
 	writeProvenanceReceipt(ctx2, data)
-	resp := &core.FetchResponse{
+	resp := &Response{
 		Repo:     req.Repo,
 		Pr:       req.Pr,
 		At:       req.TimeUTC(),
@@ -160,18 +160,18 @@ func RunLocal(ctx context.Context, req *core.FetchLocalRequest) (*core.FetchResp
 // state carries one fetch run: the request plus the warnings accumulated
 // before the response or refusal.
 type state struct {
-	req      *core.FetchRequest
+	req      *Request
 	warnings []string
 }
 
 // newState seeds a fetch run with the adapter's warnings.
-func newState(req *core.FetchRequest) *state {
+func newState(req *Request) *state {
 	return &state{req: req, warnings: append([]string{}, req.Warnings...)}
 }
 
 // newLocalState seeds a fetch-local run with the adapter's warnings.
-func newLocalState(req *core.FetchLocalRequest) *state {
-	return &state{req: &core.FetchRequest{
+func newLocalState(req *LocalRequest) *state {
+	return &state{req: &Request{
 		ReadRequest: req.ReadRequest,
 		Effective:   req.Effective,
 		JSONMode:    req.JSONMode,
@@ -227,12 +227,12 @@ func attachRetryAt(ref *core.RefusalError, s *session) {
 }
 
 // response builds the typed success response.
-func (st *state) response(ctx2 *fetchRunCtx, req *core.FetchRequest, data *core.FetchData, next string) (*core.FetchResponse, error) {
+func (st *state) response(ctx2 *fetchRunCtx, req *Request, data *core.FetchData, next string) (*Response, error) {
 	if err := finishTruncation(data); err != nil {
 		return nil, err
 	}
 	writeProvenanceReceipt(ctx2, data)
-	return &core.FetchResponse{
+	return &Response{
 		Repo:     req.Repo,
 		Pr:       req.Pr,
 		At:       req.TimeUTC(),

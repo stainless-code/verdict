@@ -10,7 +10,6 @@ import (
 	"testing"
 	"testing/fstest"
 
-	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/pack"
 )
 
@@ -65,7 +64,7 @@ func runRecallLocal(t *testing.T, store string) string {
 	var human, diag bytes.Buffer
 	var streamed []string
 	if _, err := RunLocal(context.Background(),
-		localScriptReq(cmdr, &human, &diag, &streamed, nil, core.FetchLocalFlags{})); err != nil {
+		localScriptReq(cmdr, &human, &diag, &streamed, nil, LocalFlags{})); err != nil {
 		t.Fatalf("RunLocal: %v", err)
 	}
 	return filepath.Join(".verdict", "state", "local-mine")
@@ -109,7 +108,7 @@ func TestRunLocalKBRecallRankAndManifest(t *testing.T) {
 	var human, diag bytes.Buffer
 	var streamed []string
 	resp, err := RunLocal(context.Background(),
-		localScriptReq(cmdr, &human, &diag, &streamed, nil, core.FetchLocalFlags{}))
+		localScriptReq(cmdr, &human, &diag, &streamed, nil, LocalFlags{}))
 	if err != nil {
 		t.Fatalf("RunLocal: %v", err)
 	}
@@ -241,7 +240,7 @@ func TestRunLocalKBRecallCleanDiffLeavesNoFiles(t *testing.T) {
 	var human, diag bytes.Buffer
 	var streamed []string
 	resp, err := RunLocal(context.Background(),
-		localScriptReq(cmdr, &human, &diag, &streamed, nil, core.FetchLocalFlags{}))
+		localScriptReq(cmdr, &human, &diag, &streamed, nil, LocalFlags{}))
 	if err != nil {
 		t.Fatalf("RunLocal: %v", err)
 	}
@@ -266,7 +265,7 @@ func plantStaleRecall(t *testing.T, bundle string) {
 
 // assertNoRecallFiles proves a clean run leaves neither artifact on disk
 // nor advertised in the envelope: stale files are cleared, not inherited.
-func assertNoRecallFiles(t *testing.T, resp *core.FetchResponse, bundle string) {
+func assertNoRecallFiles(t *testing.T, resp *Response, bundle string) {
 	t.Helper()
 	for _, name := range []string{"kb.txt", "kb-recall.json"} {
 		if _, err := os.Stat(filepath.Join(bundle, name)); !os.IsNotExist(err) {
@@ -280,7 +279,7 @@ func assertNoRecallFiles(t *testing.T, resp *core.FetchResponse, bundle string) 
 
 // assertRecallArtifacts proves the envelope advertises both recall
 // artifacts for --json consumers, at the bundle's own paths.
-func assertRecallArtifacts(t *testing.T, resp *core.FetchResponse, dir string) {
+func assertRecallArtifacts(t *testing.T, resp *Response, dir string) {
 	t.Helper()
 	for _, name := range []string{"kb.txt", "kb-recall.json"} {
 		if got, ok := resp.Data.Artifacts.Get(name); !ok || got != dir+"/"+name {

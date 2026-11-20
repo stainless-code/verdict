@@ -7,8 +7,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/stainless-code/verdict/internal/core"
 )
 
 // stagedGroupCommander scripts a hermetic --staged run over a multi-file diff
@@ -30,14 +28,14 @@ func stagedGroupCommander(t *testing.T, diff, files, numstat, policy string) *sc
 }
 
 // runStagedGroups runs one fetch-local over the scripted commander.
-func runStagedGroups(t *testing.T, cmdr *scriptCommander) (*core.FetchResponse, error) {
+func runStagedGroups(t *testing.T, cmdr *scriptCommander) (*Response, error) {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
 	var human, diag bytes.Buffer
 	var streamed []string
 	return RunLocal(context.Background(),
-		localScriptReq(cmdr, &human, &diag, &streamed, nil, core.FetchLocalFlags{Staged: true}))
+		localScriptReq(cmdr, &human, &diag, &streamed, nil, LocalFlags{Staged: true}))
 }
 
 // twoGroupPolicy pins a small cap on the a.txt scope and a large one on b.txt.

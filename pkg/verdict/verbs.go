@@ -435,9 +435,9 @@ func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error) 
 	if err != nil {
 		return nil, err
 	}
-	resp, err := fetchcore.Run(ctx, &core.FetchRequest{
+	resp, err := fetchcore.Run(ctx, &fetchcore.Request{
 		ReadRequest: rr,
-		Flags: core.FetchFlags{
+		Flags: fetchcore.Flags{
 			Context: req.Context, Ignore: req.Ignore, NoDefaultExcludes: req.NoDefaultExcludes,
 			BaseSHA: req.BaseSHA, Provider: req.Provider, BudgetConsent: req.BudgetConsent,
 			ShowPrompts: req.ShowPrompts, ChunkFlag: req.Chunk, HeadControls: req.HeadControls,
@@ -474,9 +474,9 @@ func (c *Client) FetchLocal(ctx context.Context, req *FetchLocalRequest) (*Resul
 	if err != nil {
 		return nil, err
 	}
-	resp, err := fetchcore.RunLocal(ctx, &core.FetchLocalRequest{
+	resp, err := fetchcore.RunLocal(ctx, &fetchcore.LocalRequest{
 		ReadRequest: rr,
-		Flags: core.FetchLocalFlags{
+		Flags: fetchcore.LocalFlags{
 			Context: req.Context, Ignore: req.Ignore, NoDefaultExcludes: req.NoDefaultExcludes,
 			RangeSpec: req.Range, BaseRef: req.BaseRef, StashN: req.Stash, Paths: req.Paths,
 			Staged: req.Staged, HasStash: req.HasStash, BudgetConsent: req.BudgetConsent,

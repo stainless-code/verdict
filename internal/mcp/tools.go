@@ -609,7 +609,7 @@ func invokeCheckTree(ctx context.Context, req *checktreecore.Request) (*jq.Obj, 
 	return wireData(resp.Data), nil
 }
 
-func invokeFetch(ctx context.Context, req *core.FetchRequest) (*jq.Obj, *core.RefusalError) {
+func invokeFetch(ctx context.Context, req *fetchcore.Request) (*jq.Obj, *core.RefusalError) {
 	resp, err := fetchcore.Run(ctx, req)
 	if err != nil {
 		return nil, commandRefusal(err)
@@ -617,7 +617,7 @@ func invokeFetch(ctx context.Context, req *core.FetchRequest) (*jq.Obj, *core.Re
 	return wireData(resp.Data), nil
 }
 
-func invokeFetchLocal(ctx context.Context, req *core.FetchLocalRequest) (*jq.Obj, *core.RefusalError) {
+func invokeFetchLocal(ctx context.Context, req *fetchcore.LocalRequest) (*jq.Obj, *core.RefusalError) {
 	resp, err := fetchcore.RunLocal(ctx, req)
 	if err != nil {
 		return nil, commandRefusal(err)
