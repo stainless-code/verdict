@@ -17,7 +17,6 @@ import (
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
 	"github.com/stainless-code/verdict/internal/core/risk"
-	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/shellquote"
 )
@@ -85,9 +84,8 @@ func emitReport(r *cli.Runner, req Request, resp *reportcore.Response) {
 		if resp.Output != nil {
 			fmt.Fprintf(r.Human, "wrote %s\n", resp.Output.Path)
 		}
-		env := core.RenderEnvelope("report", req.Repo, req.Pr, resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.Emit("report", req.Repo, req.Pr, resp.At, resp.Next,
+			resp.Warnings, resp.Data.Wire())
 		return
 	}
 	for _, line := range resp.Human {
@@ -115,13 +113,7 @@ func reportRequest(r *cli.Runner, req Request, flags *reportcore.Flags) *reportc
 // readRequest injects the runner's clock, progress observer, and command
 // runner into the typed read request.
 func readRequest(r *cli.Runner, req Request) core.ReadRequest {
-	read := req
-	if read.Runtime == nil {
-		read.Runtime = &core.Runtime{}
-	}
-	read.Now = r.Now
-	read.Progress = cli.Progress{R: r}
-	read.Commander = coreexec.Runner{}
+	read := r.Read(req, coreexec.Runner{})
 	return read
 }
 

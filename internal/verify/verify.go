@@ -15,7 +15,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
-	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // Request carries the resolved verify invocation.
@@ -45,11 +44,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		return r.RefuseTyped(ref)
 	}
 	r.Warnings = resp.Warnings
-	if r.JSONMode {
-		env := core.RenderEnvelope("verify", resp.Repo, resp.Pr, resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-	}
+	r.Emit("verify", resp.Repo, resp.Pr, resp.At, resp.Next,
+		resp.Warnings, resp.Data.Wire())
 	return 0
 }
 
@@ -59,13 +55,12 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // for the child's NO_COLOR default.
 func verifyRequest(r *cli.Runner, req Request, flags *verifyFlags) *verifycore.Request {
 	root := req.Root
-	read := core.ReadRequest{
+	read := r.Read(core.ReadRequest{
 		Runtime: &core.Runtime{
-			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
-			Commander: coreexec.Watchdog{},
+			Env: req.Env,
 		},
 		Repo: req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
-	}
+	}, coreexec.Watchdog{})
 	return &verifycore.Request{
 		ReadRequest:  read,
 		TimeoutRaw:   flags.timeout,

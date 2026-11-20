@@ -136,8 +136,7 @@ func render(r *cli.Runner, req readcommon.Request, output *planned) {
 	}
 	data.Set("second_look", output.second)
 	if r.JSONMode {
-		env := core.RenderEnvelope(verb, req.Repo, req.Pr, req.TimeUTC(), panelNext, r.Warnings, data, nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.Emit(verb, req.Repo, req.Pr, req.TimeUTC(), panelNext, r.Warnings, data)
 		return
 	}
 	const line = "» panel: %v verifiers · %v findings · %v dispatches -> %s/verification/dispatch.md\n"

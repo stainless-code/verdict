@@ -32,11 +32,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, repoRoot string) int
 		return r.RefuseTyped(ref)
 	}
 	r.Warnings = resp.Warnings
-	if r.JSONMode {
-		env := core.RenderEnvelope("learn", "", "", resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprintln(r.Out, env.MarshalPretty())
-	}
+	r.Emit("learn", "", "", resp.At, resp.Next,
+		resp.Warnings, resp.Data.Wire())
 	return cli.ExitOK
 }
 
@@ -63,10 +60,10 @@ func learnRequest(r *cli.Runner, f *flags, repoRoot string) *learncore.Request {
 		At:         f.at,
 		JSONMode:   r.JSONMode,
 	}
-	out.ReadRequest = core.ReadRequest{
-		Runtime:  &core.Runtime{Now: r.Now, Progress: cli.Progress{R: r}},
+	out.ReadRequest = r.Read(core.ReadRequest{
+		Runtime:  &core.Runtime{},
 		RepoRoot: repoRoot, Repo: f.fromBundle, Pr: f.pr,
-	}
+	}, nil)
 	return out
 }
 

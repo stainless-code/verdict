@@ -12,7 +12,6 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
 	riskcore "github.com/stainless-code/verdict/internal/core/risk"
-	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -42,9 +41,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	}
 	r.Warnings = resp.Warnings
 	if r.JSONMode {
-		env := core.RenderEnvelope("risk", resp.Repo, "", resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.Emit("risk", resp.Repo, "", resp.At, resp.Next,
+			resp.Warnings, resp.Data.Wire())
 		return cli.ExitOK
 	}
 	for _, line := range resp.Human {
@@ -56,12 +54,11 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // riskRequest injects the runner's clock and progress observer into the typed
 // service request.
 func riskRequest(r *cli.Runner, req Request, opts options) *riskcore.QueueRequest {
-	read := req
-	if read.Runtime == nil {
-		read.Runtime = &core.Runtime{}
+	var cmdr core.Commander
+	if req.Runtime != nil {
+		cmdr = req.Commander
 	}
-	read.Now = r.Now
-	read.Progress = cli.Progress{R: r}
+	read := r.Read(req, cmdr)
 	return &riskcore.QueueRequest{
 		ReadRequest: read,
 		Status:      opts.status,

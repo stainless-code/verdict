@@ -13,7 +13,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
-	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -82,17 +81,11 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // copies the runtime instead of filling the caller's in, so an injected
 // commander survives and concurrent callers never share one.
 func gateRequest(r *cli.Runner, req Request, flags *reportcore.Flags) *reportcore.Request {
-	read := req
-	rt := &core.Runtime{}
-	if read.Runtime != nil {
-		*rt = *read.Runtime
+	var cmdr core.Commander = coreexec.Runner{}
+	if req.Runtime != nil && req.Commander != nil {
+		cmdr = req.Commander
 	}
-	rt.Now = r.Now
-	rt.Progress = cli.Progress{R: r}
-	if rt.Commander == nil {
-		rt.Commander = coreexec.Runner{}
-	}
-	read.Runtime = rt
+	read := r.Read(req, cmdr)
 	return &reportcore.Request{
 		ReadRequest: read,
 		Flags:       *flags,
@@ -108,9 +101,8 @@ func emit(r *cli.Runner, req Request, resp *reportcore.Response) {
 		fmt.Fprintln(r.Human, line)
 	}
 	if r.JSONMode {
-		env := core.RenderEnvelope("gate", req.Repo, req.Pr, resp.At, gateNext(gate),
-			resp.Warnings, gate.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.Emit("gate", req.Repo, req.Pr, resp.At, gateNext(gate),
+			resp.Warnings, gate.Wire())
 		return
 	}
 	if hint := gateHint(gate); hint != "" {

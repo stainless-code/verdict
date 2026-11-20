@@ -479,9 +479,8 @@ func announce(r *cli.Runner, server *Server) {
 			"sources", []any{},
 			"errors", []any{},
 		)
-		env := core.RenderEnvelope("serve", "", "", cli.NowUTC(r.Now()), "",
-			r.Warnings, data, nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.Emit("serve", "", "", cli.NowUTC(r.Now()), "",
+			r.Warnings, data)
 		return
 	}
 	fmt.Fprintln(r.Human, "serve: "+server.URL())

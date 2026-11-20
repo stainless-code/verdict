@@ -9,7 +9,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
-	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -38,7 +37,7 @@ func RunPost(ctx context.Context, r *cli.Runner, args []string, req *Request) in
 	}
 	r.Warnings = resp.Warnings
 	if r.JSONMode {
-		fmt.Fprint(r.Out, jq.PrettyOrdered(postcore.RenderPostEnvelope(resp)))
+		r.Emit("post", resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data.Wire())
 	}
 	return cli.ExitOK
 }
@@ -49,13 +48,12 @@ func RunPost(ctx context.Context, r *cli.Runner, args []string, req *Request) in
 // flags.
 func postRequest(r *cli.Runner, req *Request, inv *postInvocation) *postcore.Request {
 	root := req.Root
-	read := core.ReadRequest{
+	read := r.Read(core.ReadRequest{
 		Runtime: &core.Runtime{
-			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
-			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
+			Env: req.Env,
 		},
 		Repo: req.Repo, Pr: req.Pr, Forces: req.Forces, Root: &root, RepoRoot: req.RepoRoot,
-	}
+	}, coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true})
 	return &postcore.Request{
 		ReadRequest:  read,
 		Flags:        inv.flags,

@@ -50,21 +50,18 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req *Request) int {
 	}
 	r.Warnings = resp.Warnings
 	fmt.Fprintln(r.Human, resp.Human)
-	if r.JSONMode {
-		env := core.RenderEnvelope(ingestcore.VerbIngest, r.Repo, r.Pr, resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-	}
+	r.Emit(ingestcore.VerbIngest, r.Repo, r.Pr, resp.At, resp.Next,
+		resp.Warnings, resp.Data.Wire())
 	return cli.ExitOK
 }
 
 func ingestRequest(r *cli.Runner, req *Request, sarifFlag string) (*ingestcore.Request, *core.RefusalError) {
-	read := core.ReadRequest{
-		Runtime:  &core.Runtime{Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}},
+	read := r.Read(core.ReadRequest{
+		Runtime:  &core.Runtime{Env: req.Env},
 		Repo:     req.Repo,
 		Pr:       req.Pr,
 		RepoRoot: req.RepoRoot,
-	}
+	}, nil)
 	out := &ingestcore.Request{ReadRequest: read, SARIF: sarifFlag}
 	if sarifFlag != "-" {
 		return out, nil

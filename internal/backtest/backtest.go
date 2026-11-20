@@ -171,9 +171,7 @@ func runComposed(ctx context.Context, r *cli.Runner, req Request, f *flags) int 
 // mineRequest is one miner invocation.
 func mineRequest(r *cli.Runner, req Request, f *flags) *corebacktest.Request {
 	return &corebacktest.Request{
-		Runtime: &core.Runtime{
-			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}, Commander: coreexec.Runner{MissingTool: true},
-		},
+		Runtime:  r.Read(core.ReadRequest{Runtime: &core.Runtime{Env: req.Env}}, coreexec.Runner{MissingTool: true}).Runtime,
 		RepoRoot: req.RepoRoot, Mode: modeMine, Since: f.since, Until: f.until,
 		Run: f.run, Warnings: append([]string{}, r.Warnings...),
 	}
@@ -183,9 +181,7 @@ func mineRequest(r *cli.Runner, req Request, f *flags) *corebacktest.Request {
 // so an invocation with no --since scans the last 12 months.
 func revertsRequest(r *cli.Runner, req Request, f *flags) *corebacktest.Request {
 	return &corebacktest.Request{
-		Runtime: &core.Runtime{
-			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}, Commander: coreexec.Runner{MissingTool: true},
-		},
+		Runtime:  r.Read(core.ReadRequest{Runtime: &core.Runtime{Env: req.Env}}, coreexec.Runner{MissingTool: true}).Runtime,
 		RepoRoot: req.RepoRoot, Mode: modeReverts, Since: f.since, Until: f.until,
 		Warnings: append([]string{}, r.Warnings...),
 	}
@@ -196,11 +192,8 @@ func revertsRequest(r *cli.Runner, req Request, f *flags) *corebacktest.Request 
 // bundle build inside the service is a fetch-local build.
 func replayRequest(r *cli.Runner, req Request, f *flags, run string) *corebacktest.ReplayRequest {
 	return &corebacktest.ReplayRequest{
-		Runtime: &core.Runtime{
-			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
-			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
-			PackFS:    skillfs.FS,
-		},
+		Runtime: r.Read(core.ReadRequest{Runtime: &core.Runtime{Env: req.Env, PackFS: skillfs.FS}},
+			coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}).Runtime,
 		LookPath:      exec.LookPath,
 		Effective:     r.Effective,
 		PassThrough:   f.pass,
@@ -222,7 +215,7 @@ func replayRequest(r *cli.Runner, req Request, f *flags, run string) *corebackte
 // scoreRequest is one scoring invocation for the run it is given.
 func scoreRequest(r *cli.Runner, req Request, run string) *corebacktest.ScoreRequest {
 	return &corebacktest.ScoreRequest{
-		Runtime:  &core.Runtime{Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}},
+		Runtime:  r.Read(core.ReadRequest{Runtime: &core.Runtime{Env: req.Env}}, nil).Runtime,
 		RepoRoot: req.RepoRoot, Run: run, Warnings: append([]string{}, r.Warnings...),
 	}
 }

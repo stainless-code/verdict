@@ -57,6 +57,11 @@ type flags struct {
 // same gates and reads and writes a preview instead of posting.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Cmd, r.Repo, r.Pr = verbDrain, req.Repo, req.Pr
+	var cmdr core.Commander
+	if req.Runtime != nil {
+		cmdr = req.Commander
+	}
+	req = r.Read(req, cmdr)
 	fl, limit, code, done := parseRunArgs(ctx, r, args, req)
 	if done {
 		return code
@@ -215,11 +220,8 @@ func finishPlan(r *cli.Runner, req Request, fl *flags, dir string, plan *drainco
 		nextText = postSuccessNext(req)
 	}
 	fmt.Fprintf(r.Human, "» %d pending, %d skipped -> %s/%s\n", len(plan.Pending), len(plan.Skipped), dir, draincore.KeyPlanJSON)
-	if r.JSONMode {
-		env := core.RenderEnvelope(verbDrain, req.Repo, req.Pr, core.NowUTC(r.Now()), nextText,
-			r.Warnings, plan.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-	}
+	r.Emit(verbDrain, req.Repo, req.Pr, core.NowUTC(r.Now()), nextText,
+		r.Warnings, plan.Wire())
 	return cli.ExitOK
 }
 
@@ -303,12 +305,11 @@ func next(req Request, fl *flags) string {
 }
 
 func refreshRequest(r *cli.Runner, req Request, fl *flags) *fetchcore.ThreadsRequest {
-	read := req
-	if read.Runtime == nil {
-		read.Runtime = &core.Runtime{}
+	var cmdr core.Commander
+	if req.Runtime != nil {
+		cmdr = req.Commander
 	}
-	read.Now = r.Now
-	read.Progress = cli.Progress{R: r}
+	read := r.Read(req, cmdr)
 	if read.Commander == nil {
 		read.Commander = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
 	}
@@ -405,11 +406,8 @@ func ReadLedger(path string) ([]draincore.LedgerEntry, error) {
 
 func draft(ctx context.Context, r *cli.Runner, req Request, fl *flags, dir string, plan *draincore.File) (int, bool) {
 	launch := &core.RunRequest{
-		Runtime: &core.Runtime{
-			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
-			Commander: coreexec.Watchdog{},
-		},
-		Repo: req.Repo, Pr: req.Pr, RepoRoot: req.RepoRoot,
+		Runtime: r.Read(core.ReadRequest{Runtime: &core.Runtime{Env: req.Env}}, coreexec.Watchdog{}).Runtime,
+		Repo:    req.Repo, Pr: req.Pr, RepoRoot: req.RepoRoot,
 		LookPath:    exec.LookPath,
 		PassThrough: fl.pass,
 		Environ:     os.Environ(),

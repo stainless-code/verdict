@@ -119,11 +119,8 @@ func refuse(r *cli.Runner, resp *core.RunResponse, ref *core.RefusalError) int {
 func runRequest(r *cli.Runner, req Request, flags *flags) *core.RunRequest {
 	root := req.Root
 	return &core.RunRequest{
-		Runtime: &core.Runtime{
-			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
-			Commander: coreexec.Watchdog{},
-		},
-		Repo: req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
+		Runtime: r.Read(core.ReadRequest{Runtime: &core.Runtime{Env: req.Env}}, coreexec.Watchdog{}).Runtime,
+		Repo:    req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
 		LookPath:    exec.LookPath,
 		PassThrough: flags.pass,
 		Environ:     os.Environ(),

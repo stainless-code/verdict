@@ -56,9 +56,8 @@ func reqEnv(req Request, key string) string {
 func renderConfig(r *cli.Runner, resp *core.ConfigResponse) int {
 	r.Warnings = resp.Warnings
 	if r.JSONMode {
-		env := core.RenderEnvelope("config", resp.Repo, resp.Pr, resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.Emit("config", resp.Repo, resp.Pr, resp.At, resp.Next,
+			resp.Warnings, resp.Data.Wire())
 		return cli.ExitOK
 	}
 	for _, line := range humanLines(resp.Data) {

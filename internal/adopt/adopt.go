@@ -11,7 +11,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	adoptcore "github.com/stainless-code/verdict/internal/core/adopt"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
-	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // Request carries the resolved adopt invocation.
@@ -41,23 +40,20 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	}
 	r.Warnings = resp.Warnings
 	fmt.Fprintln(r.Human, resp.Human)
-	if r.JSONMode {
-		env := core.RenderEnvelope("adopt", req.Repo, req.Pr, resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
-	}
+	r.Emit("adopt", req.Repo, req.Pr, resp.At, resp.Next,
+		resp.Warnings, resp.Data.Wire())
 	return cli.ExitOK
 }
 
 // adoptRequest injects the runner's clock and progress observer into the
 // typed service request.
 func adoptRequest(r *cli.Runner, req Request, from string) *adoptcore.Request {
-	read := core.ReadRequest{
-		Runtime:  &core.Runtime{Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}, Commander: coreexec.Runner{}},
+	read := r.Read(core.ReadRequest{
+		Runtime:  &core.Runtime{Env: req.Env},
 		Repo:     req.Repo,
 		Pr:       req.Pr,
 		RepoRoot: req.RepoRoot,
-	}
+	}, coreexec.Runner{})
 	out := &adoptcore.Request{From: from}
 	out.ReadRequest = read
 	return out

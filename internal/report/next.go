@@ -66,9 +66,8 @@ func callNext(ctx context.Context, r *cli.Runner, req Request, statusF string, c
 // renderNextJSON writes the machine envelope for either mode.
 func renderNextJSON(r *cli.Runner, req Request, resp *core.NextResponse, covMode bool) int {
 	if covMode {
-		env := core.RenderEnvelope(nextVerb, req.Repo, req.Pr, resp.At, coverageNextLine(resp.Coverage),
-			resp.Warnings, jq.NewObj("coverage", resp.Coverage), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.Emit(nextVerb, req.Repo, req.Pr, resp.At, coverageNextLine(resp.Coverage),
+			resp.Warnings, jq.NewObj("coverage", resp.Coverage))
 		return cli.ExitOK
 	}
 	next := nextNone
@@ -80,9 +79,8 @@ func renderNextJSON(r *cli.Runner, req Request, resp *core.NextResponse, covMode
 		next = nextAddress
 		item = resp.Item.Wire()
 	}
-	env := core.RenderEnvelope(nextVerb, req.Repo, req.Pr, resp.At, next,
-		resp.Warnings, resp.Receipt.Apply(jq.NewObj("item", item)), nil)
-	fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+	r.Emit(nextVerb, req.Repo, req.Pr, resp.At, next,
+		resp.Warnings, resp.Receipt.Apply(jq.NewObj("item", item)))
 	return cli.ExitOK
 }
 

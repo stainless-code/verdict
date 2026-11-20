@@ -85,8 +85,7 @@ func badFlag(flag string) *core.RefusalError {
 
 func render(r *cli.Runner, req readcommon.Request, resp *readycore.WaitResponse) {
 	if r.JSONMode {
-		env := core.RenderEnvelope("pr-wait", req.Repo, req.Pr, resp.At, resp.Next, resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.Emit("pr-wait", req.Repo, req.Pr, resp.At, resp.Next, resp.Warnings, resp.Data.Wire())
 	} else {
 		fmt.Fprintln(r.Out, resp.Data.Wire().MarshalCompact())
 	}

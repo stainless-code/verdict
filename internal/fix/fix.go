@@ -56,11 +56,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		return r.RefuseTyped(ref)
 	}
 	r.Warnings = resp.Warnings
-	if r.JSONMode {
-		env := core.RenderEnvelope("fix", r.Repo, r.Pr, resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprintln(r.Out, env.MarshalPretty())
-	}
+	r.Emit("fix", r.Repo, r.Pr, resp.At, resp.Next,
+		resp.Warnings, resp.Data.Wire())
 	return cli.ExitOK
 }
 
@@ -69,13 +66,12 @@ func fixRequest(r *cli.Runner, req Request, f *flags) *fixcore.Request {
 		Sig: f.sig, All: f.all, Selected: f.selected, MinSeverity: f.minSeverity,
 		VerifyCmd: f.verifyCmd, Paths: f.paths, Human: r.Human,
 	}
-	out.ReadRequest = core.ReadRequest{
+	out.ReadRequest = r.Read(core.ReadRequest{
 		Runtime: &core.Runtime{
-			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
-			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
+			Env: req.Env,
 		},
 		Repo: req.Repo, Pr: req.Pr, RepoRoot: req.RepoRoot,
-	}
+	}, coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true})
 	return out
 }
 

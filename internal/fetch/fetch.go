@@ -16,7 +16,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
-	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // Request carries the resolved fetch invocation.
@@ -85,14 +84,14 @@ func RunLocal(ctx context.Context, r *cli.Runner, args []string, req Request) in
 // adapter-routed streams.
 func fetchRequest(r *cli.Runner, req Request, f *fetchcore.Flags) *fetchcore.Request {
 	root := req.Root
-	read := core.ReadRequest{
+	read := r.Read(core.ReadRequest{
 		Runtime: &core.Runtime{
-			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
-			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
-			PackFS:    skillfs.FS,
+			Env: req.Env,
+
+			PackFS: skillfs.FS,
 		},
 		Repo: req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
-	}
+	}, coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true})
 	return &fetchcore.Request{
 		ReadRequest:  read,
 		Flags:        *f,
@@ -108,14 +107,14 @@ func fetchRequest(r *cli.Runner, req Request, f *fetchcore.Flags) *fetchcore.Req
 // fetchLocalRequest builds the core fetch-local request.
 func fetchLocalRequest(r *cli.Runner, req Request, f *fetchcore.LocalFlags) *fetchcore.LocalRequest {
 	root := req.Root
-	read := core.ReadRequest{
+	read := r.Read(core.ReadRequest{
 		Runtime: &core.Runtime{
-			Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r},
-			Commander: coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true},
-			PackFS:    skillfs.FS,
+			Env: req.Env,
+
+			PackFS: skillfs.FS,
 		},
 		Repo: req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
-	}
+	}, coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true})
 	return &fetchcore.LocalRequest{
 		ReadRequest:  read,
 		Flags:        *f,
@@ -134,9 +133,8 @@ func fetchLocalRequest(r *cli.Runner, req Request, f *fetchcore.LocalFlags) *fet
 func renderFetch(r *cli.Runner, resp *fetchcore.Response, verb string) int {
 	r.Warnings = resp.Warnings
 	if r.JSONMode {
-		env := core.RenderEnvelope(verb, resp.Repo, resp.Pr, resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.Emit(verb, resp.Repo, resp.Pr, resp.At, resp.Next,
+			resp.Warnings, resp.Data.Wire())
 		return cli.ExitOK
 	}
 	if resp.Data != nil && resp.Data.PromptDump != nil {

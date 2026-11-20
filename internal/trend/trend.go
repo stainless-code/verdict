@@ -10,7 +10,6 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
-	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -42,9 +41,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	}
 	r.Warnings = resp.Warnings
 	if r.JSONMode {
-		env := core.RenderEnvelope("trend", req.Repo, req.Pr, resp.At, resp.Next,
-			resp.Warnings, resp.Data.Wire(), nil)
-		fmt.Fprint(r.Out, jq.PrettyOrdered(env))
+		r.Emit("trend", req.Repo, req.Pr, resp.At, resp.Next,
+			resp.Warnings, resp.Data.Wire())
 		return 0
 	}
 	for _, line := range resp.Human {
@@ -56,12 +54,11 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // trendRequest injects the runner's clock and progress observer into the
 // typed service request.
 func trendRequest(r *cli.Runner, req Request, doOverlap bool) *trendcore.Request {
-	read := req
-	if read.Runtime == nil {
-		read.Runtime = &core.Runtime{}
+	var cmdr core.Commander
+	if req.Runtime != nil {
+		cmdr = req.Commander
 	}
-	read.Now = r.Now
-	read.Progress = cli.Progress{R: r}
+	read := r.Read(req, cmdr)
 	return &trendcore.Request{
 		ReadRequest: read,
 		Overlap:     doOverlap,
