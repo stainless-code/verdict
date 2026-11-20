@@ -11,4 +11,5 @@ by category: untagged 6
 next: address open threads
 --- stderr ---
 warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
+warn: reproduced finding e555555555555555555555555555555555555555 has no runnable artifact: reproduction: reproduction missing
 --- files ---

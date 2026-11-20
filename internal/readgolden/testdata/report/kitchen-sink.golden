@@ -286,6 +286,7 @@ exit: 1
 --- stderr ---
 warn: patch identity unavailable — completeness compares heads
 warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
+warn: reproduced finding e555555555555555555555555555555555555555 has no runnable artifact: reproduction: reproduction missing
 warn: live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5101 -f query=       query($owne — gating on local dimensions only)
 wrote out.sarif
 wrote out.md

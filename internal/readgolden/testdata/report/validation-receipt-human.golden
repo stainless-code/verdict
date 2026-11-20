@@ -14,4 +14,5 @@ next: address open threads
 warn: validation artifact differs from the recorded pass — the table lists no per-finding results
 warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 warn: evidence: evidence receipt missing for head aaaaaaa [review-insufficient]
+warn: reproduced finding e555555555555555555555555555555555555555 has no runnable artifact: reproduction: reproduction missing
 --- files ---
