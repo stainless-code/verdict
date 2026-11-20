@@ -48,6 +48,7 @@ type RunRequest struct { //nolint:govet // field grouping documents the request 
 	StageRaw          string
 	Checkout          string
 	TimeoutRaw        string
+	FindersRaw        string
 	RoundsRaw         string
 	// ProbeTimeout overrides the identity probe's test-owned budget; zero keeps
 	// the shipped default.

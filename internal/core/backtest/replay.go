@@ -827,6 +827,7 @@ func (s *replaySession) runRequest(bundle, checkout string) *core.RunRequest {
 		Checkout:    checkout,
 		TimeoutRaw:  s.budgets.timeoutRaw,
 		RoundsRaw:   s.budgets.roundsRaw,
+		FindersRaw:  "1",
 		JSONMode:    s.req.JSONMode,
 	}
 }

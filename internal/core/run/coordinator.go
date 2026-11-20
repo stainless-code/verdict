@@ -26,6 +26,7 @@ type coordinator struct {
 	binding  *jq.Obj
 	response *core.RunResponse
 	dir      string
+	source   string
 	id       string
 	reviews  []*jq.Obj
 	failures []any
@@ -64,9 +65,6 @@ func (c *coordinator) run(ctx context.Context) *core.RefusalError {
 }
 
 func (c *coordinator) initialize(ctx context.Context) *core.RefusalError {
-	if c.st.req.Print || c.st.req.StageRaw != "" {
-		return c.st.refuse(codeBadFlags, "two-finder execution cannot render one command")
-	}
 	if resumeArguments(c.st.req.PassThrough) {
 		return c.st.refuse(codeBadFlags, "two finders require fresh processes — remove session-resume options")
 	}
@@ -183,6 +181,8 @@ func (c *coordinator) finish() *core.RefusalError {
 		return ref
 	}
 	manifest := cloneUnionRow(c.binding)
+	manifest.Set("finders", 2)
+	manifest.Set("finder_source", c.source)
 	manifest.Set("results", nil)
 	manifest.Set("failures", c.failures)
 	manifest.Set("artifacts", c.snapshot)
@@ -242,15 +242,26 @@ func (c *coordinator) runCross(ctx context.Context) *core.RefusalError {
 }
 
 func (c *coordinator) capture() *core.RefusalError {
-	captured, _, err := config.ReadRunState(c.dir)
-	if err != nil || captured == nil {
+	captured, readRef := readFinderCapture(c.dir)
+	if readRef != nil {
+		return readRef
+	}
+	if captured == nil {
 		return c.st.refuse(codeMissingBundle, "two finders require a captured run")
 	}
+	_, source, ref := c.st.finderPolicy(c.dir)
+	if ref != nil {
+		return ref
+	}
+	c.source = source
+	captured.Finders = 2
+	captured.FinderSource = source
 	captured.Execution = &core.ExecutionReference{ID: c.id, Finders: finderCount}
 	if err := config.WriteRunState(c.dir, captured); err != nil {
 		return c.st.refuse(codeRecordFailed, fmt.Sprintf("capture execution: %v", err))
 	}
-	manifest := jq.NewObj("schema_version", "2", "execution_id", c.id, "status", "in-progress")
+	manifest := jq.NewObj("schema_version", "2", "execution_id", c.id, "status", "in-progress",
+		"finders", 2, "finder_source", captured.FinderSource)
 	return writeCoordinator(c.dir, launcherFile, manifest)
 }
 

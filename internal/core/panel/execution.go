@@ -63,6 +63,7 @@ type Execution struct {
 	Gap            string
 	SpecViolations []string
 	Completed      int
+	Retired        bool
 	Active         bool
 }
 
@@ -70,6 +71,7 @@ type Execution struct {
 func CheckExecution(dir string, review *jq.Obj) *Execution {
 	state := executionState(dir)
 	captured, _ := readObject(dir, "run.json")
+	state.Retired = retiredSingle(captured)
 	rootReview, raw := readObject(dir, "review.json")
 	state.readReferences(captured, rootReview, review)
 	state.readReceiptReference()
@@ -379,11 +381,12 @@ func checkResultQuote(idx *evidence.DiffIndex, result *Result) bool {
 // Stamp discards agent-written cross standing.
 func (s *Execution) Stamp(entries []any) {
 	if !s.Active {
+		if s.Retired {
+			clearRetiredCross(entries)
+		}
 		return
 	}
-	if s.Gap == "" && readcommon.OpenBundle(s.dir).Head() != s.head {
-		s.seal("bundle head changed before applying cross checks")
-	}
+	s.refreshCapture()
 	for _, row := range entries {
 		s.stampEntry(row)
 	}
@@ -563,4 +566,32 @@ func (s *Execution) assignCheckers(sig string, expected map[string]bool) {
 
 func completedCross(cross any) bool {
 	return jq.StrOf(readcommon.FieldOf(cross, executionIDKey)) != "" && readcommon.FieldOf(cross, fieldStatus) == confirmed
+}
+
+func clearRetiredCross(entries []any) {
+	for _, entry := range entries {
+		verification, ok := readcommon.FieldOf(entry, executionVerification).(*jq.Obj)
+		if ok {
+			verification.Delete("cross")
+		}
+	}
+}
+
+func retiredSingle(captured any) bool {
+	count, _ := jq.IntOf(readcommon.FieldOf(captured, "finders"))
+	return count == 1 && jq.StrOf(readcommon.FieldOf(captured, "superseded")) != ""
+}
+
+func (s *Execution) refreshCapture() {
+	if s.Gap != "" {
+		return
+	}
+	if readcommon.OpenBundle(s.dir).Head() != s.head {
+		s.seal("bundle head changed before applying cross checks")
+		return
+	}
+	captured, _ := readObject(s.dir, "run.json")
+	if jq.StrOf(readcommon.FieldOf(readcommon.FieldOf(captured, "execution"), "id")) != s.ID {
+		s.seal("captured execution changed before applying cross checks")
+	}
 }

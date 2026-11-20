@@ -393,3 +393,18 @@ func assertSinglePrefsAgent(t *testing.T, defs []config.PersonalAgent) {
 		t.Fatalf("definitions = %+v, want the prefs row", defs)
 	}
 }
+
+func TestFindersFlagAndReentry(t *testing.T) {
+	r, _, _ := testRunner()
+	parsed, _, done := parseFlags(r, []string{"--finders", "1", "--agent", "claude"})
+	if done || parsed.finders != "1" {
+		t.Fatalf("parsed=%+v done=%v", parsed, done)
+	}
+	if got := rentry(Request{Repo: "acme/app", Pr: "42"}, &parsed, false); got != "verdict run acme/app 42 --finders 1 --agent claude" {
+		t.Fatalf("re-entry = %s", got)
+	}
+	request := runRequest(r, Request{Repo: "acme/app", Pr: "42"}, &parsed)
+	if request.FindersRaw != "1" {
+		t.Fatalf("request finders = %q", request.FindersRaw)
+	}
+}

@@ -28,6 +28,7 @@ import (
 // fetch: readers enforce the binding, while older artifacts without it
 // report unavailable provenance instead of claiming verified policy.
 type RunState struct {
+	Superseded       string                   `json:"superseded,omitempty"`
 	FinderSource     string                   `json:"finder_source,omitempty"`
 	Execution        *core.ExecutionReference `anyOf:"null"                       json:"execution,omitempty"`
 	Resolved         *Resolved                `json:"resolved"`
@@ -42,6 +43,7 @@ type RunState struct {
 	Outcomes         []CheckObservation       `json:"outcomes,omitempty"`
 	Trigger          *TriggerDecision         `json:"trigger,omitempty"`
 	Root             RequirementSet           `json:"root"`
+	Finders          int                      `json:"finders,omitempty"`
 	Trusted          bool                     `json:"trusted"`
 	RequiresEvidence bool                     `json:"requires_evidence,omitempty"`
 }

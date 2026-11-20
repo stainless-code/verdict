@@ -1,14 +1,7 @@
 // Package run launches the operator's own agent against an existing bundle.
 //
-// One process, one bundle, up to --rounds shots: the service resolves the
-// agent binary, writes a launch record, spawns the agent through the injected
-// commander with the same watchdog verify uses, then asserts exactly one fresh
-// review artifact and hands off. A one-shot run never re-prompts; with
-// --rounds N an invalid review re-prompts the agent with the shape checker's
-// fix list, up to N rounds. It never posts. A missing binary, a spawn failure,
-// a watchdog timeout, a non-zero exit, an absent artifact, and a stale one are
-// typed refusals, each with a hint; the agent's own non-zero exit is also the
-// process exit code.
+// Each finder and cross batch uses a fresh process so independent reviews
+// cannot share session state. The launcher never posts.
 package run
 
 import (
@@ -82,8 +75,7 @@ const (
 	floatBitSize = 64
 )
 
-// Run launches the configured agent against the bundle, one shot by default
-// and up to --rounds launch-to-check rounds when the operator asks.
+// Run launches the selected finder topology against captured bundle evidence.
 func Run(ctx context.Context, req *core.RunRequest) (resp *core.RunResponse, ref *core.RefusalError) {
 	return WithAgents(ctx, req, nil)
 }
@@ -121,7 +113,7 @@ func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.
 	if err := ctx.Err(); err != nil {
 		return nil, st.refuse(codeCanceled, msgCanceled)
 	}
-	dir, ref := st.bundle()
+	dir, ref := st.launchBundle()
 	if ref != nil {
 		return nil, ref
 	}
@@ -141,10 +133,7 @@ func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.
 	if ref != nil {
 		return nil, ref
 	}
-	if st.twoFinders {
-		return st.coordinate(ctx, args, rounds)
-	}
-	return st.invoke(ctx, args, rounds)
+	return st.launchSelected(ctx, args, rounds)
 }
 
 // argsFor resolves everything one invocation works from: the declared pipeline,

@@ -303,3 +303,14 @@ func TestExecutionPartialRetainsChecksWithoutEligibility(t *testing.T) {
 		t.Fatalf("partial problem = %q", state.Problem())
 	}
 }
+
+func TestExecutionCannotStampAfterRetirement(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	state := CheckExecution(dir, nil)
+	writeExecutionFile(t, dir, "run.json", []byte(`{"schema_version":"1","finders":1,"superseded":"retired-execution"}`))
+	entry := executionEntry()
+	state.Stamp([]any{entry})
+	if EligibleCross(readCross(entry)) || state.Problem() != "execution: captured execution changed before applying cross checks" {
+		t.Fatalf("retired execution stamped: cross=%v problem=%s", readCross(entry), state.Problem())
+	}
+}
