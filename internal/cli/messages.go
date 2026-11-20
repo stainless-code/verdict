@@ -28,8 +28,8 @@ const (
 	msgAttrUnknown  = "settings file %s: publish.attribution '%s' unknown (want off|product|full)"
 	msgAttrType     = "settings file %s: publish.attribution must be a string (want off|product|full)"
 	msgTextType     = "settings file %s: publish.%s must be a string%s"
-	msgDiagramsObj  = "settings file %s: publish.diagrams must be an object (want {structural, behavioral, expanded})"
-	msgDiagramsKey  = "settings file %s: unknown publish.diagrams key '%s' (want only structural, behavioral, expanded)"
+	msgDiagramsObj  = "settings file %s: publish.diagrams must be an object (want {structural})"
+	msgDiagramsKey  = "settings file %s: unknown publish.diagrams key '%s' (want only structural)"
 	msgDiagramsBool = "settings file %s: publish.diagrams.%s must be a boolean (want true|false)"
 )
 

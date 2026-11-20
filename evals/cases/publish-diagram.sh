@@ -6,7 +6,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/../lib/common.sh"
 
 unset XDG_CONFIG_HOME || true
-unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVIEW_PUBLISH_DIAGRAMS_EXPANDED || true
+unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL || true
 unset REVIEW_PUBLISH_OVERVIEW || true
 
 diagram_status() { jq -r '.data.body.diagram.status // empty' <"$EVAL_OUT" 2>/dev/null; }
@@ -142,7 +142,7 @@ if [ "$EVAL_STATUS" -ne 0 ] \
 else
   bad "unknown diagrams key gave exit $EVAL_STATUS"
 fi
-printf '{"publish":{"diagrams":{"behavioral":"yes"}}}' > "$EVAL_SANDBOX/xdg-dbad/verdict/settings.json"
+printf '{"publish":{"diagrams":{"structural":"yes"}}}' > "$EVAL_SANDBOX/xdg-dbad/verdict/settings.json"
 run_review check-tree --json
 if [ "$EVAL_STATUS" -ne 0 ] \
   && [ "$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)" = "bad-settings" ]; then
@@ -162,7 +162,6 @@ unset XDG_CONFIG_HOME || true
 
 # --- M1: manual documents structural diagrams and retirement of behavioral diagrams ---
 if grep -Fq 'publish.diagrams.structural' "$EVAL_ROOT/docs/manual.md" \
-  && grep -Fq 'publish.diagrams.behavioral' "$EVAL_ROOT/docs/manual.md" \
   && grep -Fq 'retired from agent-authored' "$EVAL_ROOT/docs/manual.md"; then
   good "manual documents structural diagrams and behavioral diagram retirement"
 else
@@ -171,7 +170,7 @@ fi
 
 # --- cleanup: no knob state leaks into later cases ---
 unset XDG_CONFIG_HOME || true
-unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVIEW_PUBLISH_DIAGRAMS_EXPANDED || true
+unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL || true
 unset REVIEW_PUBLISH_OVERVIEW || true
 rm -rf "$EVAL_SANDBOX/xdg-nostruct" "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/xdg-dbad"
 

@@ -41,8 +41,6 @@ func applyStringForces(r *Runner, eff *Effective, g *GlobalForces) {
 		{dst: &eff.PublishLogo, force: g.PublishLogoForce},
 		{dst: &eff.PublishOverview, force: g.PublishOverviewForce},
 		{dst: &eff.DiagramsStructural, force: g.DiagramsStructuralForce},
-		{dst: &eff.DiagramsBehavioral, force: g.DiagramsBehavioralForce},
-		{dst: &eff.DiagramsExpanded, force: g.DiagramsExpandedForce},
 	}
 	for _, o := range overlay {
 		if o.force != "" {
@@ -129,12 +127,8 @@ var boolFlags = map[string]func(*GlobalForces){
 	"--no-footer":             func(g *GlobalForces) { g.PublishFooterForce = FlagOff },
 	"--overview":              func(g *GlobalForces) { g.PublishOverviewForce = FlagOn },
 	"--no-overview":           func(g *GlobalForces) { g.PublishOverviewForce = FlagOff },
-	"--diagram-behavioral":    func(g *GlobalForces) { g.DiagramsBehavioralForce = FlagOn },
-	"--no-diagram-behavioral": func(g *GlobalForces) { g.DiagramsBehavioralForce = FlagOff },
 	"--diagram-structural":    func(g *GlobalForces) { g.DiagramsStructuralForce = FlagOn },
 	"--no-diagram-structural": func(g *GlobalForces) { g.DiagramsStructuralForce = FlagOff },
-	"--diagram-expanded":      func(g *GlobalForces) { g.DiagramsExpandedForce = FlagOn },
-	"--no-diagram-expanded":   func(g *GlobalForces) { g.DiagramsExpandedForce = FlagOff },
 	"--logo":                  func(g *GlobalForces) { g.PublishLogoForce = FlagOn },
 	"--no-logo":               func(g *GlobalForces) { g.PublishLogoForce = FlagOff },
 	"--json":                  func(g *GlobalForces) { g.OutputForce = formatJSON },

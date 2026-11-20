@@ -60,8 +60,6 @@ type Effective struct {
 	PublishLogoURL         string
 	PublishOverview        string
 	DiagramsStructural     string
-	DiagramsBehavioral     string
-	DiagramsExpanded       string
 }
 
 // Defaults returns the knob values every verb starts from.
@@ -77,8 +75,6 @@ func Defaults() Effective {
 		PublishLogoURL:         "https://raw.githubusercontent.com/stainless-code/verdict/main/apps/docs/public/logo.svg",
 		PublishOverview:        FlagOn,
 		DiagramsStructural:     FlagOn,
-		DiagramsBehavioral:     FlagOff,
-		DiagramsExpanded:       FlagOff,
 	}
 }
 
@@ -94,8 +90,6 @@ type GlobalForces struct {
 	PublishCopyright          string
 	OutputForce               string
 	PublishLogoForce          string
-	DiagramsExpandedForce     string
-	DiagramsBehavioralForce   string
 	DiagramsStructuralForce   string
 	PublishLogoURLSet         bool
 	PublishCopyrightSet       bool
