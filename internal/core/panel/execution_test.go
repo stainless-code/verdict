@@ -82,7 +82,7 @@ func TestExecutionConfirmsGroundedOtherFinder(t *testing.T) {
 	entry := executionEntry()
 	state.Stamp([]any{entry})
 	cross := readCross(entry)
-	if state.Problem() != "" || !EligibleCross(cross) {
+	if !state.Active || readcommon.FieldOf(cross, "status") != "confirmed" || state.Problem() != "" || !EligibleCross(cross) {
 		t.Fatalf("grounded confirmation rejected: %+v, %v", state, cross)
 	}
 }
@@ -158,6 +158,9 @@ func TestExecutionRetainsPriorRefutation(t *testing.T) {
 	}
 	prior.Set("panel", []any{jq.NewObj("model", "finder-2", "verdict", "refuted", "evidence", "The earlier check found a live dispute.")})
 	state.Stamp([]any{entry})
+	if status := readcommon.FieldOf(readCross(entry), "status"); status != "pending" {
+		t.Fatalf("prior refutation left status %v, want pending", status)
+	}
 	if EligibleCross(readCross(entry)) {
 		t.Fatal("current confirmation erased a prior refutation")
 	}
@@ -165,5 +168,76 @@ func TestExecutionRetainsPriorRefutation(t *testing.T) {
 	state.ApplyEvidence(receipt)
 	if !receipt.Insufficient {
 		t.Fatal("prior refutation became sufficient")
+	}
+}
+
+func TestCheckerQuoteRejectsUnknownField(t *testing.T) {
+	_, err := parseQuote(map[string]any{"path": "notes.txt", "side": "RIGHT", "line": 1, "text": "return unsafeValue", "lien": 1})
+	if err == nil {
+		t.Fatal("checker quote accepted unknown field lien")
+	}
+}
+
+func TestExecutionRejectsReceiptWithoutReferences(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	if err := os.Remove(filepath.Join(dir, "launcher.json")); err != nil {
+		t.Fatal(err)
+	}
+	writeExecutionFile(t, dir, "run.json", []byte(`{"schema_version":"1"}`))
+	writeExecutionFile(t, dir, "review.json", []byte(`{"schema_version":"1","findings":[]}`))
+	assertExecutionIneligible(t, dir)
+}
+
+func TestExecutionIgnoresAddressedHistory(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	state := CheckExecution(dir, nil)
+	state.Stamp([]any{executionEntry(), jq.NewObj("sig", "old", "status", "addressed", "severity", "important")})
+	if gap := state.Problem(); gap != "" {
+		t.Fatalf("addressed history blocks execution: %s", gap)
+	}
+}
+
+func TestFailedResultsDoNotPublishSpecViolations(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	review := strings.TrimSuffix(executionReview, "}") + `,"spec_checks":[{"item":"item-1","status":"violated","finding_sig":"1fd35ceaaa1fc0a98e1486617b35249c646ee577"}]}`
+	writeExecutionFile(t, dir, "review.json", []byte(review))
+	manifest, _ := readObject(dir, "launcher.json")
+	manifest.Set("review_sha256", testDigest([]byte(review)))
+	writeExecutionFile(t, dir, "launcher.json", []byte(manifest.MarshalCompact()))
+	path := filepath.Join("verification", "verdicts.json")
+	receipt, _ := readObject(dir, path)
+	receipt.Set("review_sha256", testDigest([]byte(review)))
+	rows, _ := receipt.Get("results")
+	receipt.Set("results", append(jq.Elements(rows), jq.NewObj("sig", executionSig, "checker", "finder-1",
+		"verdict", "insufficient", "evidence", "Unassigned extra result.")))
+	writeExecutionFile(t, dir, path, []byte(receipt.MarshalCompact()))
+	state := CheckExecution(dir, nil)
+	if state.Problem() != "execution: execution received an unexpected checker or duplicate" || len(state.SpecViolations) != 0 {
+		t.Fatalf("problem = %q, spec violations = %v", state.Problem(), state.SpecViolations)
+	}
+}
+
+func TestExecutionReadsDiffAboveReceiptLimit(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	diff := []byte(executionDiff + strings.Repeat(" ", 33554432) + "\n")
+	writeExecutionFile(t, dir, "full.diff", diff)
+	for _, path := range []string{"launcher.json", filepath.Join("verification", "verdicts.json")} {
+		doc, _ := readObject(dir, path)
+		doc.Set("diff_sha256", testDigest(diff))
+		writeExecutionFile(t, dir, path, []byte(doc.MarshalCompact()))
+	}
+	if state := CheckExecution(dir, nil); !state.Active || state.Problem() != "" {
+		t.Fatalf("large captured diff: %q", state.Problem())
+	}
+}
+
+func TestExecutionCannotStampOnRefreshedHead(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	state := CheckExecution(dir, nil)
+	writeExecutionFile(t, dir, "PR.json", []byte(`{"headRefOid":"next-head"}`))
+	entry := executionEntry()
+	state.Stamp([]any{entry})
+	if EligibleCross(readCross(entry)) || state.Problem() != "execution: bundle head changed before applying cross checks" {
+		t.Fatalf("refresh left cross = %v, problem = %q", readCross(entry), state.Problem())
 	}
 }

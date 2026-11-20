@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/evidence"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -19,6 +20,7 @@ import (
 
 const (
 	fieldChecker          = "checker"
+	fieldStatus           = "status"
 	executionIDKey        = "execution_id"
 	executionReviewSHA    = "review_sha256"
 	executionVerification = "verification"
@@ -41,7 +43,9 @@ func parseQuote(raw any) (CodeQuote, error) {
 		return CodeQuote{}, bad("invalid checker quote")
 	}
 	var quote CodeQuote
-	if err := json.Unmarshal(data, &quote); err != nil {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&quote); err != nil {
 		return CodeQuote{}, bad("invalid checker quote")
 	}
 	return quote, nil
@@ -54,6 +58,7 @@ type Execution struct {
 	Eligible       map[string]bool
 	BlockingGap    string
 	ID             string
+	dir, head      string
 	Gap            string
 	SpecViolations []string
 	Active         bool
@@ -65,6 +70,7 @@ func CheckExecution(dir string, review *jq.Obj) *Execution {
 	captured, _ := readObject(dir, "run.json")
 	rootReview, raw := readObject(dir, "review.json")
 	state.readReferences(captured, rootReview, review)
+	state.readReceiptReference()
 	if !state.Active {
 		return state
 	}
@@ -95,13 +101,23 @@ func CheckExecution(dir string, review *jq.Obj) *Execution {
 }
 
 func executionState(dir string) *Execution {
-	state := &Execution{}
+	state := &Execution{dir: dir}
 	manifest, _ := readObject(dir, "launcher.json")
 	if id := jq.StrOf(readcommon.FieldOf(manifest, executionIDKey)); id != "" {
 		state.ID = id
 		state.Active = true
 	}
 	return state
+}
+
+func (s *Execution) readReceiptReference() {
+	if s.Active {
+		return
+	}
+	receipt, _ := readObject(s.dir, filepath.Join(executionVerification, "verdicts.json"))
+	if id := jq.StrOf(readcommon.FieldOf(receipt, executionIDKey)); id != "" {
+		s.ID, s.Active = id, true
+	}
 }
 
 func (s *Execution) readReferences(docs ...*jq.Obj) {
@@ -149,7 +165,7 @@ func sameReview(a, b *jq.Obj) bool {
 }
 
 func readObject(dir, name string) (*jq.Obj, []byte) {
-	raw, err := readArtifact(dir, name)
+	raw, err := readArtifact(dir, name, maxReceiptBytes)
 	if err != nil {
 		return nil, nil
 	}
@@ -164,7 +180,7 @@ func readObject(dir, name string) (*jq.Obj, []byte) {
 	return obj, raw
 }
 
-func readArtifact(dir, name string) ([]byte, error) {
+func readArtifact(dir, name string, limit int64) ([]byte, error) {
 	root, err := os.OpenRoot(dir)
 	if err != nil {
 		return nil, bad("execution bundle unreadable")
@@ -179,8 +195,8 @@ func readArtifact(dir, name string) ([]byte, error) {
 	if err != nil || !info.Mode().IsRegular() {
 		return nil, bad("execution artifact is not a regular file")
 	}
-	raw, err := io.ReadAll(io.LimitReader(file, maxReceiptBytes+1))
-	if err != nil || len(raw) > maxReceiptBytes {
+	raw, err := io.ReadAll(io.LimitReader(file, limit+1))
+	if err != nil || int64(len(raw)) > limit {
 		return nil, bad("execution artifact exceeds read limit")
 	}
 	return raw, nil
@@ -194,14 +210,15 @@ func digest(raw []byte) string {
 func (s *Execution) checkFiles(dir string, review *jq.Obj, raw []byte) string {
 	manifest, _ := readObject(dir, "launcher.json")
 	plan, planRaw := readObject(dir, filepath.Join(executionVerification, "plan.json"))
-	diff, err := readArtifact(dir, "full.diff")
+	diff, err := readArtifact(dir, "full.diff", coreexec.FetchOutputCap)
 	if manifest == nil || plan == nil || err != nil {
 		return "execution manifest, plan or diff missing"
 	}
-	if readcommon.FieldOf(manifest, "status") != "complete" {
+	if readcommon.FieldOf(manifest, fieldStatus) != "complete" {
 		return "execution manifest is incomplete"
 	}
 	head := readcommon.PrField(dir, executionHead)
+	s.head = head
 	bindings := map[string]string{
 		executionIDKey: s.ID, executionHead: head, executionDiffSHA: digest(diff),
 		executionReviewSHA: digest(raw), executionPlanSHA: digest(planRaw),
@@ -215,10 +232,12 @@ func (s *Execution) checkFiles(dir string, review *jq.Obj, raw []byte) string {
 		return gap
 	}
 
-	gap = s.checkResults(plan, file, evidence.IndexDiff(diff), Findings(review))
+	if gap = s.checkResults(plan, file, evidence.IndexDiff(diff), Findings(review)); gap != "" {
+		return gap
+	}
 	s.blockingGap(Findings(review))
 	s.specGap(review)
-	return gap
+	return ""
 }
 
 func boundReceipt(dir, head string, bindings map[string]string, findings []any) (*File, string) {
@@ -250,7 +269,9 @@ func bindingGap(doc *jq.Obj, bindings map[string]string) string {
 func (s *Execution) blockingGap(findings []any) {
 	for _, finding := range findings {
 		sig := jq.StrOf(readcommon.FieldOf(finding, fieldSig))
-		if !s.Eligible[sig] && core.TierRank(readcommon.FieldOf(finding, "severity")) <= core.TierRank("important") {
+		status := readcommon.StatusOf(finding)
+		blockingTier := core.TierRank(readcommon.FieldOf(finding, fieldSeverity)) <= core.TierRank("important")
+		if (status == "" || status == readcommon.StatusOpen) && !s.Eligible[sig] && blockingTier {
 			s.BlockingGap = "blocking cross check missing, unverified or contested"
 		}
 	}
@@ -361,6 +382,9 @@ func (s *Execution) Stamp(entries []any) {
 	if !s.Active {
 		return
 	}
+	if s.Gap == "" && readcommon.PrField(s.dir, executionHead) != s.head {
+		s.seal("bundle head changed before applying cross checks")
+	}
 	for _, row := range entries {
 		s.stampEntry(row)
 	}
@@ -381,18 +405,16 @@ func (s *Execution) stampEntry(row any) {
 		verification = jq.NewObj("quote", "unchecked")
 	}
 	sig := jq.StrOf(readcommon.FieldOf(entry, fieldSig))
-	status := "pending"
-	if s.Gap == "" && s.Eligible[sig] {
-		status = "confirmed"
-	}
 	checks := appendPriorChecks(s.Checked[sig], verification)
 	if checks == nil {
 		checks = []any{}
 	}
-	cross := jq.NewObj(executionIDKey, s.ID, "status", status,
+	cross := jq.NewObj(executionIDKey, s.ID, fieldStatus, "pending",
 		"expected", checkerValues(s.Expected[sig]), "checks", checks)
 	verification.Set("cross", cross)
-	if !EligibleCross(cross) {
+	if s.Gap == "" && s.Eligible[sig] && EligibleCross(cross) {
+		cross.Set(fieldStatus, "confirmed")
+	} else {
 		s.Eligible[sig] = false
 	}
 	entry.Set(executionVerification, verification)
@@ -461,7 +483,7 @@ func (s *Execution) specGap(review *jq.Obj) {
 	rows, _ := review.Get("spec_checks")
 	for _, row := range jq.Elements(rows) {
 		sig := jq.StrOf(readcommon.FieldOf(row, "finding_sig"))
-		if readcommon.FieldOf(row, "status") != "violated" {
+		if readcommon.FieldOf(row, fieldStatus) != "violated" {
 			continue
 		}
 		if !s.Eligible[sig] {
@@ -501,6 +523,7 @@ func (s *Execution) seal(gap string) {
 	if gap != "" {
 		s.Eligible = make(map[string]bool)
 		s.Checked = nil
+		s.SpecViolations = nil
 	}
 }
 
