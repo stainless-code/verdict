@@ -1035,8 +1035,12 @@ func inspectArtifact(path string, launched time.Time) artifactState {
 }
 
 func (a *launchArgs) checkReview(review []byte) (recordcore.CheckResult, *core.RefusalError) {
-	if a.target.checker == nil {
-		return repair.Check(a.dir, review)
+	if a.target.checker != nil {
+		return a.target.checker(a.target.evidence, review)
 	}
-	return a.target.checker(a.target.evidence, review)
+	dir := a.target.evidence
+	if dir == "" {
+		dir = a.dir
+	}
+	return repair.Check(dir, review)
 }

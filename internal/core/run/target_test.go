@@ -58,3 +58,12 @@ func TestLaunchTargetChecker(t *testing.T) {
 		t.Fatalf("checker result = %v", ref)
 	}
 }
+
+func TestLaunchTargetDefaultCheckerReadsEvidence(t *testing.T) {
+	dir := bundleDir(fixtureRoot(t))
+	args := &launchArgs{dir: filepath.Join(dir, "x-finder-1"), target: launchTarget{evidence: dir}}
+	result, ref := args.checkReview([]byte(reviewDoc))
+	if ref != nil || result.Errors != 0 {
+		t.Fatalf("default check = %+v, %v", result, ref)
+	}
+}
