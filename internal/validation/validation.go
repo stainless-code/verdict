@@ -14,6 +14,7 @@ import (
 	"io/fs"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
 	skillfs "github.com/stainless-code/verdict"
@@ -257,7 +258,7 @@ func PromptDrift(file *core.ValidationFile) string {
 	}
 	return fmt.Sprintf("validation.json was produced with %s sha256 %s, but this build ships %s: "+
 		"the pass may have judged against a different prompt",
-		promptFile, readcommon.ShortSHA(recorded), readcommon.ShortSHA(current))
+		promptFile, strconv.Quote(readcommon.ShortSHA(recorded)), readcommon.ShortSHA(current))
 }
 
 // Hash is the SHA-256 of the artifact's exact bytes.
