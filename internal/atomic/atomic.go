@@ -307,3 +307,26 @@ func replaceable(path string) (target string, perm os.FileMode, ok bool) {
 	}
 	return path, fi.Mode().Perm(), true
 }
+
+// CreateFileModeIn publishes bytes without replacing existing evidence.
+// The result is false when another file already owns the name.
+func CreateFileModeIn(root *os.Root, name string, data []byte, mode os.FileMode) (bool, error) {
+	path := filepath.Join(root.Name(), name)
+	staged, err := stageIn(root, path, filepath.Dir(name), data, mode)
+	if err != nil {
+		return false, err
+	}
+	defer func() {
+		if err := root.Remove(staged); err != nil {
+			return
+		}
+	}()
+	if err := root.Link(staged, name); err != nil {
+		if errors.Is(err, fs.ErrExist) {
+			return false, nil
+		}
+		return false, jq.Sealed(opWrite+path, err)
+	}
+	fsyncRootDir(root, filepath.Dir(name))
+	return true, nil
+}

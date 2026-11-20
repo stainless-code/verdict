@@ -246,6 +246,18 @@
     const items = Array.isArray(report.items) ? report.items : [];
     if (!gateOnly) {
       content.append(objectPanel("Review summary", reviewSummary(report)));
+      for (const item of items) {
+        if (
+          mode === "static" ||
+          !item.reproduction ||
+          !/^[a-f0-9]{40}$/.test(item.sig)
+        )
+          continue;
+        const link = node("a", `Reproduction ${item.sig.slice(0, 8)}`);
+        link.href = `${route().path}/findings/${item.sig}/reproduction`;
+        link.download = "reproduction.txt";
+        content.append(link);
+      }
       content.append(
         table(
           "Findings",

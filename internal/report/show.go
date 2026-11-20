@@ -21,6 +21,7 @@ func RunShow(ctx context.Context, r *cli.Runner, args []string, req Request) int
 	if code, done := r.Canceled(ctx, "show"); done {
 		return code
 	}
+	inheritedWarnings := len(r.Warnings)
 	resp, ref := reportcore.RunShow(ctx, &core.ShowRequest{
 		ReadRequest: readRequest(r, req),
 		Sig:         sig,
@@ -36,6 +37,9 @@ func RunShow(ctx context.Context, r *cli.Runner, args []string, req Request) int
 	if r.JSONMode {
 		renderShowJSON(r, req, resp, rec)
 		return cli.ExitOK
+	}
+	for _, warning := range resp.Warnings[inheritedWarnings:] {
+		r.Warn(warning)
 	}
 	if resp.Item == nil {
 		fmt.Fprintln(r.Human, "show: sig not in partial results — a miss is not proof of absence")

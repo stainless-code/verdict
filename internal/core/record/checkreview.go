@@ -106,7 +106,7 @@ var (
 	}
 	knownFindingKeys = []string{
 		fieldPath, fieldLine, fieldStartLine, fieldSide, fieldClaim, fieldQuote, fieldConfidenceInput,
-		fieldRigor, fieldSeverity, fieldCategory, fieldSources, fieldSuggestion, fieldBrief, fieldKB,
+		fieldRigor, fieldSeverity, fieldCategory, fieldSources, fieldSuggestion, fieldBrief, fieldKB, "reproduction",
 	}
 	knownSpecCheckKeys = []string{fieldItem, fieldStatus, fieldEvidence}
 	knownEvidenceKeys  = []string{fieldPath, fieldLine, fieldQuote}
@@ -569,6 +569,8 @@ func (c *checker) checkFindingText(base, key string, v any) bool {
 // whether it knew the key.
 func (c *checker) checkFindingShape(base, key string, v any) bool {
 	switch key {
+	case "reproduction":
+		// The bundle-bound capture validates the path and command together.
 	case fieldSuggestion:
 		c.checkSuggestion(base+pathDot+fieldSuggestion, v)
 	case fieldBrief:

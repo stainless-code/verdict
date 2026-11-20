@@ -162,6 +162,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	warnLensUsage(st)
 	warnDeepValidation(st)
 	warnEvidence(st)
+	warnReproductions(st)
 	runLiveProbe(ctx, st)
 	return buildResponse(st), nil
 }
@@ -523,5 +524,11 @@ func (st *state) loadStoredValidationRows(data *core.ValidationData) {
 		st.warn("validation artifact differs from the recorded pass — the table lists no per-finding results")
 	default:
 		st.judgements = file.Results
+	}
+}
+
+func warnReproductions(st *state) {
+	for _, warning := range readcommon.ReproductionWarnings(st.dir, st.entries) {
+		st.warn(warning)
 	}
 }

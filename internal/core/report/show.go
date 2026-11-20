@@ -35,6 +35,7 @@ func RunShow(_ context.Context, req *core.ShowRequest) (*core.ShowResponse, *cor
 	if rec := findRecord(entries, full); rec != nil {
 		resp.Item = &core.FindingItem{Raw: rec}
 		resp.Fix = buildFix(rec, dir)
+		resp.Warnings = append(resp.Warnings, readcommon.ReproductionWarnings(dir, []any{rec})...)
 		resp.Receipt = receipt.ForResult(1)
 	}
 	return resp, nil

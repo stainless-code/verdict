@@ -31,6 +31,10 @@ func (s *Server) routes() []route {
 		{Method: http.MethodGet, Pattern: "/app.js", Handler: s.assetHandler("app.js")},
 		{Method: http.MethodGet, Pattern: "/app.css", Handler: s.assetHandler("app.css")},
 		{Method: http.MethodGet, Pattern: "/assets/{name}", Handler: http.HandlerFunc(s.handleAsset)},
+		{
+			Method: http.MethodGet, Pattern: "/v1/roots/{root}/bundles/{bundle}/findings/{sig}/reproduction",
+			Handler: s.guard(s.handleReproduction),
+		},
 		{Method: http.MethodGet, Pattern: "/v1/health", Handler: s.guard(s.handleHealth)},
 		{Method: http.MethodGet, Pattern: "/v1/roots", Handler: s.guard(s.handleRoots)},
 		{Method: http.MethodGet, Pattern: "/v1/bundles", Handler: s.guard(s.handleBundles)},
@@ -162,7 +166,7 @@ func (s *Server) handleBundles(w http.ResponseWriter, r *http.Request) {
 
 // handleDetail publishes one bundle's report, gate, threads, and ledger.
 func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
-	bundle := r.PathValue("bundle")
+	bundle := r.PathValue(bundlePathKey)
 	view, err := s.layer.Detail(r.Context(), r.PathValue("root"), bundle)
 	if err != nil {
 		s.writeViewError(w, verbServe, bundle, err)
@@ -173,7 +177,7 @@ func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 
 // handleShow publishes one finding through the show service.
 func (s *Server) handleShow(w http.ResponseWriter, r *http.Request) {
-	bundle := r.PathValue("bundle")
+	bundle := r.PathValue(bundlePathKey)
 	sig := r.PathValue("sig")
 	if !query.ValidSig(sig) {
 		s.problem(w, http.StatusNotFound, "not-found", "no such bundle or sig")
@@ -186,3 +190,18 @@ func (s *Server) handleShow(w http.ResponseWriter, r *http.Request) {
 	}
 	s.writeView(w, verbShow, view)
 }
+
+func (s *Server) handleReproduction(w http.ResponseWriter, r *http.Request) {
+	raw, err := s.layer.Reproduction(r.Context(), r.PathValue("root"), r.PathValue(bundlePathKey), r.PathValue("sig"))
+	if err != nil {
+		s.writeViewError(w, verbShow, r.PathValue(bundlePathKey), err)
+		return
+	}
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="reproduction.txt"`)
+	if _, err := w.Write(raw); err != nil {
+		return
+	}
+}
+
+const bundlePathKey = "bundle"

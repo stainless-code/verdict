@@ -764,3 +764,35 @@ if (process.env.VERDICT_EXPORT) {
     assert.equal(ui.sources.length, 0);
   });
 }
+
+test("links a retained reproduction to its download", async () => {
+  const artifactDetail = envelope({
+    report: {
+      items: [
+        {
+          sig: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          reproduction: {
+            path: "tests/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.py",
+          },
+        },
+      ],
+    },
+  });
+  const ui = await createUI({
+    respond: respondFrom(
+      new Map([
+        ["/v1/bundles", inbox],
+        ["/v1/roots/root-123/bundles/local-good", artifactDetail],
+      ]),
+    ),
+  });
+  await ui.navigate("#/r/root-123/local-good");
+  const link = ui.elements
+    .get("content")
+    .children.find((child) => child.tagName === "A");
+  assert.equal(
+    link?.href,
+    "/v1/roots/root-123/bundles/local-good/findings/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/reproduction",
+  );
+  assert.equal(link?.download, "reproduction.txt");
+});

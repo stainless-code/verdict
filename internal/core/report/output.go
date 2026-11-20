@@ -187,7 +187,7 @@ func rankedLine(_ *state, item readcommon.Ranked, linkable bool) string {
 		locator = "[" + locator + "][ev-" + strconv.Itoa(item.Rank) + "]"
 	}
 	return strconv.Itoa(item.Rank) + ". [" + jq.Str(readcommon.FieldOf(item.Entry, "status")) + "] " + locator +
-		" (" + sigOutput(item.Entry) + ", " + rigorOutput(item.Entry) + ") — " + bodyOutput(item.Entry)
+		" (" + sigOutput(item.Entry) + ", " + rigorOutput(item.Entry) + ") — " + bodyOutput(item.Entry) + reproductionOutput(item.Entry)
 }
 
 func sigOutput(entry any) string {
@@ -386,3 +386,17 @@ func renderFooter(st *state) string {
 	}
 	return out
 }
+
+func reproductionOutput(entry any) string {
+	if readcommon.FieldOf(entry, "rigor") != "reproduced" {
+		return ""
+	}
+	raw, ok := readcommon.FieldOf(entry, "reproduction").(*jq.Obj)
+	if !ok || raw == nil {
+		return " [reproduction missing]"
+	}
+	name := readcommon.FieldOf(raw, reproductionPathKey)
+	return " [reproduction: " + jq.StrOf(name) + "]"
+}
+
+const reproductionPathKey = "path"

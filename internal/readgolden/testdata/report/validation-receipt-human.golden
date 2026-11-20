@@ -5,7 +5,7 @@ report: .verdict/state/5101 (6 shown) open=4 head=aaaaaaa
 2. [open] notes.txt:2 (b2222222)
 3. [open] notes.txt:2 (f6666666)
 4. [open] notes.txt:2 (a3333333)
-5. [deferred] notes.txt:2 (e5555555)
+5. [deferred] notes.txt:2 (e5555555) [reproduction missing]
 6. [addressed] notes.txt:2 (d4444444)
 by category: untagged 6
 validation: mode=gate hash=9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f confirmed=1 rejected=1 downgraded=1 unvalidated=1
@@ -14,4 +14,5 @@ next: address open threads
 warn: validation artifact differs from the recorded pass — the table lists no per-finding results
 warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 warn: evidence: evidence receipt missing for head aaaaaaa [review-insufficient]
+warn: reproduced finding e555555555555555555555555555555555555555 has no runnable artifact: reproduction: reproduction missing
 --- files ---

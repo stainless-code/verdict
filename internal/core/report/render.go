@@ -291,7 +291,7 @@ func buildHuman(st *state) []string {
 		lines = append(lines, readcommon.CitationLines(item.Entry)...)
 		lines = append(lines, fmt.Sprintf("%d. [%s] %s (%s)",
 			item.Rank, jq.Str(readcommon.FieldOf(item.Entry, "status")),
-			readcommon.Locator(item.Entry), sigHuman(item.Entry)))
+			readcommon.Locator(item.Entry), sigHuman(item.Entry))+reproductionOutput(item.Entry))
 	}
 	lines = appendHumanTail(st, lines)
 	if st.flags.Provenance {
