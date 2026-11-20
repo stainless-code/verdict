@@ -179,3 +179,28 @@ func assertCanonicalFooterPreserved(t *testing.T, res *recordcore.MergeResult) {
 		}
 	}
 }
+
+func TestMergeRendersDemotedFencedSuggestionInMovedBody(t *testing.T) {
+	review := jq.NewObj(
+		"schema_version", "1",
+		"summary", "One fenced suggestion.",
+		"findings", []any{
+			jq.NewObj(
+				"path", "notes.txt", "line", 2, "side", "RIGHT",
+				"severity", "important", "rigor", "walked",
+				"quote", "new line",
+				"claim", "Fenced suggestion must survive demotion in the rendered body.",
+				"suggestion", "```go\nreplacement()\n```",
+			),
+		},
+	).MarshalPretty()
+
+	res := mergeDefectBundle(t, review)
+	if res.NKept != 0 || res.NMoved != 1 {
+		t.Fatalf("NKept=%d NMoved=%d, want 0 and 1", res.NKept, res.NMoved)
+	}
+	wantBlock := "  ````\n  ```go\n  replacement()\n  ```\n  ````"
+	if !strings.Contains(res.Body, wantBlock) {
+		t.Fatalf("demoted suggestion missing from MergeResult.Body:\n%s", res.Body)
+	}
+}

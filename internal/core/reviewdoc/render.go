@@ -413,7 +413,43 @@ func formatFindingItem(num int, m *jq.Obj, links *linkTable, moved bool) (line, 
 
 	line = buildFindingLine(num, m, anchor, claim, dropReason, moved)
 	indent := findingDetailsIndent(moved)
-	return line, renderBriefDetails(m, path, startLine, endLine, claim, indent, links)
+	return line, renderFindingDetails(m, path, startLine, endLine, claim, indent, moved, links)
+}
+
+func renderFindingDetails(
+	m *jq.Obj, findingPath string, findingStart, findingEnd int, claim, indent string, moved bool, links *linkTable,
+) string {
+	var parts []string
+	if moved {
+		if sugg := renderMovedSuggestion(m, indent); sugg != "" {
+			parts = append(parts, sugg)
+		}
+	}
+	if b := renderBriefDetails(m, findingPath, findingStart, findingEnd, claim, indent, links); b != "" {
+		parts = append(parts, b)
+	}
+	return strings.Join(parts, paraBreak)
+}
+
+func renderMovedSuggestion(m *jq.Obj, indent string) string {
+	raw := strings.ReplaceAll(jq.StrOf(fieldVal(m, "suggestion")), "\r\n", lineBreak)
+	raw = strings.ReplaceAll(raw, "\r", lineBreak)
+	raw = strings.TrimSuffix(raw, lineBreak)
+	if strings.TrimSpace(raw) == "" {
+		return ""
+	}
+	clean := untrusted.NeutralizeMentions(raw)
+	fence := untrusted.FenceFor(clean, 0)
+	lines := []string{indent + fence}
+	for ln := range strings.SplitSeq(clean, lineBreak) {
+		if ln == "" {
+			lines = append(lines, "")
+			continue
+		}
+		lines = append(lines, indent+ln)
+	}
+	lines = append(lines, indent+fence)
+	return strings.Join(lines, lineBreak)
 }
 
 func isLeftSide(m *jq.Obj) bool {
