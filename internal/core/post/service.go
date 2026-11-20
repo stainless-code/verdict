@@ -156,6 +156,8 @@ type state struct { //nolint:govet // field grouping documents the post run stat
 	// secretShapes is what --allow-secret-values let through, in first-seen
 	// order; the receipt records it so an overridden post stays legible.
 	secretShapes []string
+	// judgedShapes is every shape the gate has seen so far, whatever it decided.
+	judgedShapes []string
 	me           string
 	meErr        error
 	meLoaded     bool
@@ -288,7 +290,10 @@ func (st *state) prepare(ctx context.Context) *core.RefusalError {
 	if st.flags.DryRun {
 		st.findingsFile = st.dir + "/findings.dryrun.json"
 	}
-	return st.merge()
+	if ref := st.merge(); ref != nil {
+		return ref
+	}
+	return st.settledSecretGate()
 }
 
 func (st *state) publish(ctx context.Context) (*core.PostResponse, *core.RefusalError) {

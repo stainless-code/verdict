@@ -195,13 +195,51 @@ func reviewComments(review *jq.Obj) []reviewComment {
 // refusal makes zero host calls — nothing a typo in review.json would otherwise
 // have asked the host for.
 func (st *state) secretScanGate() *core.RefusalError {
-	sites := st.reviewSecretSites()
+	return st.secretGate(st.reviewSecretSites())
+}
+
+// settledSecretGate scans the body the merge settled, which carries text the
+// raw review never held: a stored brief survives a same-signature review that
+// omits it, and the renderer publishes it. Only shapes the raw scan did not
+// already judge count, so one value is never warned about twice.
+func (st *state) settledSecretGate() *core.RefusalError {
+	body := appendSecretSite(nil, "review body", st.body)
+	return st.secretGate(unjudgedSecretSites(body, st.judgedShapes))
+}
+
+func unjudgedSecretSites(sites []secretSite, judged []string) []secretSite {
+	var out []secretSite
+	for _, site := range sites {
+		var fresh []string
+		for _, name := range site.shapes {
+			if !slices.Contains(judged, name) {
+				fresh = append(fresh, name)
+			}
+		}
+		if len(fresh) > 0 {
+			out = append(out, secretSite{where: site.where, shapes: fresh})
+		}
+	}
+	return out
+}
+
+func (st *state) secretGate(sites []secretSite) *core.RefusalError {
 	if len(sites) == 0 {
 		return nil
 	}
 	located := secretSiteList(sites)
+	names := secretShapeNames(sites)
+	for _, name := range names {
+		if !slices.Contains(st.judgedShapes, name) {
+			st.judgedShapes = append(st.judgedShapes, name)
+		}
+	}
 	if st.flags.AllowSecretValues {
-		st.secretShapes = secretShapeNames(sites)
+		for _, name := range names {
+			if !slices.Contains(st.secretShapes, name) {
+				st.secretShapes = append(st.secretShapes, name)
+			}
+		}
 		st.warn(fmt.Sprintf(msgSecretAllowed, AllowSecretValuesFlag, located))
 		return nil
 	}

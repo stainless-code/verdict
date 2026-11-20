@@ -222,3 +222,52 @@ func TestSecretSiteListCaps(t *testing.T) {
 		t.Errorf("single site = %q", got)
 	}
 }
+
+const (
+	secretBriefReview = `{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,` +
+		`"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Consider clarifying this line.",` +
+		`"rigor":"pointed","severity":"informational",` +
+		`"brief":{"outcome":"Rotate AKIAIOSFODNN7EXAMPLE before merging."}}]}`
+	briefOmittedReview = `{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,` +
+		`"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Consider clarifying this line.",` +
+		`"rigor":"pointed","severity":"informational"}]}`
+)
+
+// TestRunRefusesSecretInheritedFromStoredBrief proves the scan covers what the
+// merge publishes, not only what review.json carries: a stored brief whose
+// outcome holds a credential rides into the body when a later same-signature
+// review omits the brief, so that post must refuse as well.
+//
+//nolint:revive // one leg: record the brief, re-review without it, assert the refusal
+func TestRunRefusesSecretInheritedFromStoredBrief(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	postBundle(t, secretBriefReview)
+	var warnings, human []string
+	first := postTestReq(postCommander(t), core.PostFlags{
+		Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true, AllowSecretValues: true,
+	}, &warnings, &human)
+	if _, ref := Run(context.Background(), first); ref != nil {
+		t.Fatalf("recording run refused: %v", ref)
+	}
+	if err := os.Rename(".verdict/state/7/findings.dryrun.json", ".verdict/state/7/findings.json"); err != nil {
+		t.Fatalf("promote recorded findings: %v", err)
+	}
+	if err := writeTestFile(".verdict/state/7/review.json", briefOmittedReview); err != nil {
+		t.Fatal(err)
+	}
+	cmdr := postCommander(t)
+	second := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	_, ref := Run(context.Background(), second)
+	if ref == nil || ref.Code != "post-secret-shaped" {
+		t.Fatalf("inherited secret brief: refusal = %v, want post-secret-shaped", ref)
+	}
+	if strings.Contains(ref.Message, "AKIAIOSFODNN7EXAMPLE") {
+		t.Errorf("refusal republished the value: %q", ref.Message)
+	}
+	for _, call := range cmdr.calls {
+		if strings.Contains(strings.Join(call, " "), "--method POST") {
+			t.Errorf("refused post submitted to the host: %q", call)
+		}
+	}
+}
