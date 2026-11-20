@@ -32,6 +32,10 @@ case " $* " in
   *) exit 9 ;;
 esac
 case " $* " in
+  *" --disable-nosem "*) ;;
+  *) exit 9 ;;
+esac
+case " $* " in
   *" --disable-version-check "*) ;;
   *) exit 9 ;;
 esac
@@ -52,7 +56,7 @@ EOF
                 return subprocess.run(['python3', str(ADAPTER), str(bundle), str(checkout), head], env=env, check=False).returncode
 
             self.assertEqual(invoke(), 0)
-            raw = (bundle / 'x-scanner.json').read_text()
+            raw = (bundle / 'x-scanner.json').read_text(encoding='utf-8')
             evidence = json.loads(raw)
             self.assertEqual(evidence['status'], 'complete')
             self.assertEqual(evidence['tool'], {'name': 'opengrep', 'version': '2.0.0'})
@@ -62,17 +66,17 @@ EOF
             self.assertEqual(evidence['findings'][1]['changed_hunk'], False)
             self.assertRegex(evidence['rule_sha256'], r'^[a-f0-9]{64}$')
             for secret in ('hunter2', 'SECRET', 'token=secret'):
-                self.assertNotIn(secret, raw + (bundle / 'x-scanner.md').read_text())
-            original_stub = stub.read_text()
+                self.assertNotIn(secret, raw + (bundle / 'x-scanner.md').read_text(encoding='utf-8'))
+            original_stub = stub.read_text(encoding='utf-8')
             for old, new in [('"scanned":["a.go"]', '"scanned":[]'),
                              ('"errors":[]', '"errors":[{"type":"unsupported language"}]')]:
                 stub.write_text(original_stub.replace(old, new))
                 self.assertEqual(invoke(), 1)
-                self.assertEqual(json.loads((bundle / 'x-scanner.json').read_text())['status'], 'incomplete')
+                self.assertEqual(json.loads((bundle / 'x-scanner.json').read_text(encoding='utf-8'))['status'], 'incomplete')
             for body in ('exit 7', 'echo 1.0.0', 'echo 2.0.0; exit 0', 'sleep 6'):
                 stub.write_text('#!/bin/sh\n' + body + '\n')
                 self.assertEqual(invoke(), 1)
-                self.assertEqual(json.loads((bundle / 'x-scanner.json').read_text())['status'], 'incomplete')
+                self.assertEqual(json.loads((bundle / 'x-scanner.json').read_text(encoding='utf-8'))['status'], 'incomplete')
             stub.unlink()
             self.assertEqual(invoke(), 1)
 

@@ -74,7 +74,7 @@ def scan(args, evidence):
         raise ValueError('version-mismatch')
     evidence['tool']['version'] = VERSION
     code, output = run(['opengrep', 'scan', '--config', str(RULES), '--json',
-                        '--metrics=off', '--disable-version-check',
+                        '--metrics=off', '--disable-version-check', '--disable-nosem',
                         '--timeout', '10', '--max-memory', '1024', '--jobs', '1',
                         '--dataflow-traces', '.'], str(checkout), 90)
     if code:
@@ -136,7 +136,7 @@ def main():
                        ('x-scanner.md', '\n'.join(text) + '\n')]:
         fd, temp = tempfile.mkstemp(prefix='.x-scanner-', dir=bundle)
         try:
-            with os.fdopen(fd, 'w') as handle:
+            with os.fdopen(fd, 'w', encoding='utf-8') as handle:
                 handle.write(data)
             os.replace(temp, bundle / name)
         finally:
