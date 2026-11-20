@@ -2,12 +2,13 @@ package main
 
 import (
 	"errors"
-	"github.com/stainless-code/verdict/internal/testenv"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // TestCheckoutRootFindsCheckout checks the walk-up from a bin dir.

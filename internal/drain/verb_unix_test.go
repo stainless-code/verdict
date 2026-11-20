@@ -5,7 +5,6 @@ package drain
 import (
 	"context"
 	"encoding/json"
-	"github.com/stainless-code/verdict/internal/core"
 	"os"
 	"path/filepath"
 	"strings"
@@ -13,6 +12,7 @@ import (
 
 	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	draincore "github.com/stainless-code/verdict/internal/core/drain"
 	threadscore "github.com/stainless-code/verdict/internal/core/threads"
 )
@@ -248,10 +248,13 @@ func (s *resolvingDraftHost) Run(ctx context.Context, cmd *core.Command) (core.R
 	}
 	return s.drainHostStub.Run(ctx, cmd)
 }
+
 func TestAgentPostSkipsThreadResolvedDuringDrafting(t *testing.T) {
 	root, _ := setupDrainBundle(t)
 	installStubClaude(t)
-	cmdr := &resolvingDraftHost{drainHostStub: drainHostStub{pageJSON: onePendingPageJSON(), self: "verdict-bot"}}
+	cmdr := &resolvingDraftHost{}
+	cmdr.pageJSON = onePendingPageJSON()
+	cmdr.self = "verdict-bot"
 	out, diag, code := runDrainTest(t, root, cmdr, []string{"--agent", "claude", "--post"})
 	if code != cli.ExitOK {
 		t.Fatalf("exit = %d, %s %s", code, out, diag)

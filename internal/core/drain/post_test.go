@@ -349,6 +349,7 @@ func TestPostRetainsIncompleteForUnretriedFailure(t *testing.T) {
 		t.Fatalf("Post incomplete = %v, refusal = %v; want true", res.Incomplete, ref)
 	}
 }
+
 func TestPostClearsRecoveredFeedFailure(t *testing.T) {
 	req, _, _ := postFixture(t, nil)
 	req.SaveFeed = func(*threadscore.File) error { return errors.New("disk full") }

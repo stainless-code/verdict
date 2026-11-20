@@ -386,12 +386,12 @@ func awaitServe(t *testing.T, done <-chan error) error {
 
 type failingAfterOneAcceptListener struct {
 	net.Listener
-	failAccept chan struct{}
-	once       sync.Once
-	accepted   int
-	closeOnce  sync.Once
 	closeErr   error
+	failAccept chan struct{}
+	accepted   int
 	mu         sync.Mutex
+	once       sync.Once
+	closeOnce  sync.Once
 }
 
 func (l *failingAfterOneAcceptListener) Accept() (net.Conn, error) {
@@ -459,7 +459,7 @@ func TestListenerErrorStopsOpenEventsStream(t *testing.T) {
 }
 
 func TestFailingListenerCloseReleasesAccept(t *testing.T) {
-	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
