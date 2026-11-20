@@ -87,7 +87,7 @@
           id="roi-per-pr"
           inputmode="decimal"
           min="0"
-          step="0.01"
+          step="any"
           type="number"
           value="0.50"
         />
@@ -443,13 +443,50 @@
     perPr: 0.5,
   } as const;
 
-  const usd = (n: number): string =>
-    new Intl.NumberFormat("en-US", {
+  const usd = (n: number): string => {
+    if (n === 0) return "$0";
+    if (n > 0 && n < 0.01) {
+      if (n < 0.000001) return "<$0.000001";
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 6,
+      }).format(n);
+    }
+    return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",
-      minimumFractionDigits: n > 0 && n < 10 ? 2 : 0,
-      maximumFractionDigits: n > 0 && n < 10 ? 2 : 0,
+      minimumFractionDigits: n < 10 ? 2 : 0,
+      maximumFractionDigits: n < 10 ? 2 : 0,
     }).format(n);
+  };
+
+  const formatPerPr = (n: number): string => {
+    if (n === 0) return "$0.00";
+    if (n > 0 && n < 0.01) {
+      if (n < 0.000001) return "<$0.000001";
+      return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 6,
+      }).format(n);
+    }
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 4,
+    }).format(n);
+  };
+
+  const isFullyPriced = (cost: ParsedCost): boolean =>
+    cost.est_usd !== null &&
+    cost.runs !== null &&
+    cost.runs_with_cost !== null &&
+    cost.runs > 0 &&
+    cost.runs_with_cost === cost.runs;
 
   const intFmt = (n: number): string =>
     new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n);
@@ -588,7 +625,7 @@
         set("verdictAnnual", `${usd(verdictAnnual)} / yr`);
         set(
           "verdictFormula",
-          `$0 seats + ${intFmt(prs)} PRs × $${perPr.toFixed(2)}/PR`,
+          `$0 seats + ${intFmt(prs)} PRs × ${formatPerPr(perPr)}/PR`,
         );
 
         if (diffMonthly > 0) {
@@ -651,7 +688,7 @@
           ],
           [
             "est_usd",
-            cost.est_usd === null ? "null (unknown)" : `$${cost.est_usd.toFixed(4)}`,
+            cost.est_usd === null ? "null (unknown)" : formatPerPr(cost.est_usd),
           ],
         ];
         parsedGridEl.textContent = "";
@@ -700,19 +737,19 @@
           return;
         }
         renderParsed(parsed);
-        if (parsed.est_usd === null || parsed.runs_with_cost === 0) {
+        if (!isFullyPriced(parsed) || parsed.est_usd === null) {
           fromReportCost = false;
           if (parseStatusEl) {
             parseStatusEl.textContent =
-              "Parsed report --cost has est_usd: null (unknown, never coerced to $0). Enter an estimate manually or provide a priced cost.json.";
+              "Parsed report --cost has unknown or partially priced spend (est_usd is null or runs_with_cost != runs; never coerced to $0 or treated as a full total). Enter an estimate manually or provide a fully priced cost.json.";
           }
           render();
           return;
         }
-        perPrEl.value = parsed.est_usd.toFixed(2);
+        perPrEl.value = String(parsed.est_usd);
         fromReportCost = true;
         if (parseStatusEl) {
-          parseStatusEl.textContent = `Loaded est_usd=$${parsed.est_usd.toFixed(2)} from report --cost (${parsed.runs_with_cost ?? "?"} priced run(s)).`;
+          parseStatusEl.textContent = `Loaded est_usd=${formatPerPr(parsed.est_usd)} from report --cost (${parsed.runs_with_cost}/${parsed.runs} priced run(s)).`;
         }
         render();
       });
