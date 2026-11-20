@@ -316,7 +316,7 @@ assert_exit "stale-block repost succeeds" 0
 assert_eq "stale block leaves exactly one marker" "1" "$(grep -c '<!-- verdict-footer -->' "$EVAL_OUT")"
 assert_file_grep "stale block is replaced with the fresh version" "$EVAL_OUT" "Verdict $VER" "-F"
 assert_file_nogrep "stale block drops the old version" "$EVAL_OUT" 'Verdict 9.9.9' "-F"
-assert_file_grep "stale block warns it is replacing" "$EVAL_ERR" 'replacing it with the canonical block' "-F"
+assert_stream_nogrep "neutralized smuggled footer needs no replace warning" "$EVAL_ERR" 'replacing it with the canonical block' "-F"
 
 PR=4510
 eval_mk_bundle "$PR"

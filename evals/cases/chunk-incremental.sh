@@ -225,9 +225,9 @@ if [ "$(jq -r '.data.anchors.moved' <"$EVAL_OUT" 2>/dev/null)" = "1" ] \
 else
   bad "anchors: $(jq -c '.data.anchors' <"$EVAL_OUT" 2>/dev/null)"
 fi
-if [ "$(jq 'length' <"$GBUNDLE/findings.json" 2>/dev/null)" = "2" ] \
+if [ "$(jq 'length' <"$GBUNDLE/findings.json" 2>/dev/null)" = "1" ] \
   && [ "$(jq '[.[] | select(.anchored == false)] | length' <"$GBUNDLE/findings.json" 2>/dev/null)" = "1" ]; then
-  good "moved comment merges as unanchored (nothing posts as in-hunk)"
+  good "moved comment merges as one unanchored finding (nothing posts as in-hunk)"
 else
   bad "gate findings: $(jq -c 'map({anchored})' <"$GBUNDLE/findings.json" 2>/dev/null)"
 fi

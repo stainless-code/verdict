@@ -105,7 +105,7 @@ run_review record acme/app "$SLUG" --dry-run --json
 assert_exit "clean dry run exits 0" 0
 assert_json_field "summary findings" "2" '.data.check.findings'
 assert_json_field "summary moved anchors" "1" '.data.check.anchors_moved_to_body'
-assert_json_field "would record both findings plus the moved anchor" "3" '.data.findings.open'
+assert_json_field "would record both findings (inline plus moved)" "2" '.data.findings.open'
 check_untouched "summary dry run" "$BEFORE"
 
 # --cost-names repairs attribution without touching a number: the dry run has

@@ -9,6 +9,33 @@ SHA_A="aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 SHA_B="bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 SHA_F="ffffffffffffffffffffffffffffffffffffffff"
 
+STUB_SAVED="$EVAL_SANDBOX/gh-stub-orig"
+cp "$EVAL_STUBBIN/gh" "$STUB_SAVED"
+restore_stub() { cp "$STUB_SAVED" "$EVAL_STUBBIN/gh"; }
+trap restore_stub EXIT
+cat > "$EVAL_STUBBIN/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
+if [ "${1:-}" = "api" ] && [ "${2:-}" = "graphql" ]; then
+  printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'; exit 0
+fi
+case "$*" in
+  'api repos/'*'/reviews --paginate'|'api repos/'*'/comments --paginate')
+    echo '[]'; exit 0;;
+  *reviews*)
+    if [ -n "${EVAL_SAVE_PAYLOAD:-}" ]; then cat > "$EVAL_SAVE_PAYLOAD"; fi
+    printf '%s' '{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}'
+    exit 0;;
+  *pulls*)
+    printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; exit 0;;
+  *user*)
+    printf 'someone-else'; exit 0;;
+esac
+echo "evals-stub-gh: network disabled ($*)" >&2
+exit 1
+EOF
+chmod +x "$EVAL_STUBBIN/gh"
+
 PR=4521
 dir="$EVAL_SANDBOX/.verdict/state/$PR"
 mkdir -p "$dir"
@@ -41,14 +68,14 @@ eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ No new issues found.\n> Confidence: 4/5 · Safety: not assessed\n\n**Reviewed changes**\n\n- `notes.txt` — one line changed\n\n```diff\n a\n b\n c\n d\n e\n```","approved":true,"comments":[]}
 EOF
-run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "longer than 3 lines outside collapsed details" "$EVAL_ERR" \
-  && [ "$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null | head -c 3)" = "---" ]; then
-  good "long visible quote exits 0, warns, keeps the footer"
-else
-  bad "quote-cap path gave exit $EVAL_STATUS"
-fi
+export EVAL_SAVE_PAYLOAD="$EVAL_SANDBOX/posted-4522.json"
+rm -f "$EVAL_SAVE_PAYLOAD"
+run_review post acme/app "$PR" --json
+unset EVAL_SAVE_PAYLOAD
+assert_exit "smuggled multi-line fence in summary exits 0" 0
+jq -r '.body // empty' "$EVAL_SANDBOX/posted-4522.json" > "$EVAL_SANDBOX/body-4522.md"
+assert_file_grep "posted body carries the canonical footer" "$EVAL_SANDBOX/body-4522.md" '<!-- verdict-footer -->' "-F"
+assert_file_nogrep "summary fences are neutralized in the posted body" "$EVAL_SANDBOX/body-4522.md" '```diff' "-F"
 
 PR=4523
 eval_mk_bundle "$PR"
@@ -91,17 +118,21 @@ assert_file_nogrep "local report carries no blob URLs" "$EVAL_SANDBOX/out-4524.m
 
 PR=4525
 eval_mk_bundle "$PR"
-eval_write_review "$PR" <<EOF
-{"schema_version":"1","body":"> ✅ No new issues found.\n> Confidence: 4/5 · Safety: not assessed\n\n[notes.txt:2][ev-1]\n\n[ev-1]: https://github.com/acme/app/blob/$SHA_F/notes.txt#L2","approved":true,"comments":[]}
+cat > "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" <<EOF
+{"state":"OPEN","headRefOid":"$SHA_A","baseRefOid":"$EVAL_FIXTURE_BASE","author":{"login":"teammate"},"url":"https://github.com/acme/app/pull/$PR","files":[{"path":"notes.txt","additions":1,"deletions":1}]}
 EOF
-run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "differs from the reviewed SHA" "$EVAL_ERR" \
-  && [ "$(jq -r '.data.body.footer // empty' <"$EVAL_OUT" 2>/dev/null | head -c 3)" = "---" ]; then
-  good "wrong-SHA link exits 0, warns, keeps the footer"
-else
-  bad "mismatch path gave exit $EVAL_STATUS"
-fi
+eval_write_review "$PR" <<EOF
+{"schema_version":"1","findings":[{"path":"notes.txt","line":2,"severity":"important","claim":"Off by one on the retry count.","quote":"new line","confidence":"high","rigor":"pointed"}],"summary":"Smuggled [notes.txt:2][ev-1] [ev-1]: https://github.com/acme/app/blob/$SHA_F/notes.txt#L2"}
+EOF
+export EVAL_SAVE_PAYLOAD="$EVAL_SANDBOX/posted-4525.json"
+rm -f "$EVAL_SAVE_PAYLOAD"
+run_review post acme/app "$PR" --json
+unset EVAL_SAVE_PAYLOAD
+assert_exit "binary-pinned permalink post succeeds" 0
+jq -r '.body // empty' "$EVAL_SANDBOX/posted-4525.json" > "$EVAL_SANDBOX/body-4525.md"
+assert_file_grep "finding renders reference-style [ev-1] link" "$EVAL_SANDBOX/body-4525.md" '[notes.txt:2][ev-1]' "-F"
+assert_file_grep "permalink definition pins reviewed SHA" "$EVAL_SANDBOX/body-4525.md" "[ev-1]: https://github.com/acme/app/blob/$SHA_A/notes.txt#L2" "-F"
+assert_file_nogrep "smuggled wrong-SHA definition cannot override [ev-1]" "$EVAL_SANDBOX/body-4525.md" "[ev-1]: https://github.com/acme/app/blob/$SHA_F/notes.txt#L2" "-F"
 PR=4526
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<EOF

@@ -47,8 +47,8 @@ func TestInlineProse(t *testing.T) {
 		},
 		{
 			name: "markdown-links-images-and-refs",
-			in:   "[click](https://evil.test) ![px](https://evil.test/1.png) [spoof][ev-1]",
-			want: "[click]" + zwsp + "(https://evil.test) !" + zwsp + "[px]" + zwsp + "(https://evil.test/1.png) [spoof]" + zwsp + "[ev-1]",
+			in:   "[click](https://evil.test) ![px](https://evil.test/1.png) [spoof][ev-1] [ev-1]: https://evil.test",
+			want: "[click]" + zwsp + "(https://evil.test) !" + zwsp + "[px]" + zwsp + "(https://evil.test/1.png) [spoof]" + zwsp + "[ev-1] [ev-1]" + zwsp + ": https://evil.test",
 		},
 		{
 			name: "bidi-and-line-breaks",

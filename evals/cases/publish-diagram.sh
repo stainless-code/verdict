@@ -10,256 +10,59 @@ unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVI
 unset REVIEW_PUBLISH_OVERVIEW || true
 
 diagram_status() { jq -r '.data.body.diagram.status // empty' <"$EVAL_OUT" 2>/dev/null; }
-diagram_field() { jq -r ".data.body.diagram.$1 // empty" <"$EVAL_OUT" 2>/dev/null; }
-diagram_bool() { jq -r ".data.body.diagram.$1" <"$EVAL_OUT" 2>/dev/null; }
-body_chars() { grep -o 'body chars: [0-9]*' "$EVAL_OUT" | grep -o '[0-9]*'; }
 
+STUB_SAVED="$EVAL_SANDBOX/gh-stub-orig"
+cp "$EVAL_STUBBIN/gh" "$STUB_SAVED"
+restore_stub() { cp "$STUB_SAVED" "$EVAL_STUBBIN/gh"; }
+trap restore_stub EXIT
+cat > "$EVAL_STUBBIN/gh" <<'EOF'
+#!/usr/bin/env bash
+echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
+if [ "${1:-}" = "api" ] && [ "${2:-}" = "graphql" ]; then
+  printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'; exit 0
+fi
+case "$*" in
+  'api repos/'*'/reviews --paginate'|'api repos/'*'/comments --paginate')
+    echo '[]'; exit 0;;
+  *reviews*)
+    if [ -n "${EVAL_SAVE_PAYLOAD:-}" ]; then cat > "$EVAL_SAVE_PAYLOAD"; fi
+    printf '%s' '{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}'
+    exit 0;;
+  *pulls*)
+    printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; exit 0;;
+  *user*)
+    printf 'someone-else'; exit 0;;
+esac
+echo "evals-stub-gh: network disabled ($*)" >&2
+exit 1
+EOF
+chmod +x "$EVAL_STUBBIN/gh"
+
+# --- D1: smuggled diagram markers and mermaid fences in summary are neutralized ---
 PR=4701
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"> ✅ No new issues found.\n> Confidence: 4/5 · Safety: not assessed\n\n**Reviewed changes**\n\n- `notes.txt` — one line changed\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>Behavior flow (generated — verify against the diff)</summary>\n\n```mermaid\nsequenceDiagram\n    participant C as Caller\n    participant S as Service\n    C->>S: request\n    S-->>C: response\n```\n\n</details>\n<!-- verdict-diagram:end -->","approved":true,"comments":[]}
+{"schema_version":"1","findings":[],"summary":"Reviewed notes.txt.\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>Behavior flow</summary>\n\n```mermaid\nsequenceDiagram\n    C->>S: request\n```\n\n</details>\n<!-- verdict-diagram:end -->"}
 EOF
 run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(diagram_status)" = "stripped" ] \
-  && [ "$(diagram_field blocks)" = "1" ] \
-  && grep -q "publish.diagrams.behavioral is off" "$EVAL_ERR"; then
-  good "off default strips the block (exit 0, disposition stripped)"
-else
-  bad "off-default gave exit $EVAL_STATUS status '$(diagram_status)'"
-fi
+assert_exit "smuggled diagram in summary exits 0" 0
+assert_eq "neutralized summary reports no live diagram" "" "$(diagram_status)"
 run_review post acme/app "$PR" --dry-run
-if [ "$EVAL_STATUS" -eq 0 ] && grep -q "^diagram: stripped" "$EVAL_OUT"; then
-  good "human dry-run names the stripped disposition"
-else
-  bad "human dry-run disposition missing (exit $EVAL_STATUS)"
-fi
+assert_exit "smuggled diagram human dry-run exits 0" 0
+assert_file_grep "verdict marker preserved when summary smuggles diagram markup" "$EVAL_OUT" "preflight: body=verdict" "-F"
+export EVAL_SAVE_PAYLOAD="$EVAL_SANDBOX/posted-4701.json"
+rm -f "$EVAL_SAVE_PAYLOAD"
+run_review post acme/app "$PR" --json
+unset EVAL_SAVE_PAYLOAD
+assert_exit "smuggled diagram post exits 0" 0
+jq -r '.body // empty' "$EVAL_SANDBOX/posted-4701.json" > "$EVAL_SANDBOX/body-4701.md"
+assert_file_grep "posted body carries the clean verdict lead" "$EVAL_SANDBOX/body-4701.md" '> ✅ No new issues found.' "-F"
+assert_file_nogrep "raw verdict-diagram marker is neutralized" "$EVAL_SANDBOX/body-4701.md" "<!-- verdict-diagram:start -->" "-F"
+assert_file_nogrep "raw mermaid fence is neutralized" "$EVAL_SANDBOX/body-4701.md" '```mermaid' "-F"
 
-mkdir -p "$EVAL_SANDBOX/xdg-beh/verdict"
-printf '{"publish":{"diagrams":{"behavioral":true}}}' > "$EVAL_SANDBOX/xdg-beh/verdict/settings.json"
-export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-beh"
-run_review post acme/app "$PR" --dry-run --json
-assert_exit "behavioral=true render succeeds" 0
-assert_eq "behavioral=true keeps the block" "kept" "$(diagram_status)"
-assert_eq "behavioral=true keeps the mermaid keyword" "sequenceDiagram" "$(diagram_field keyword)"
-assert_eq "behavioral=true collapses the block" "true" "$(diagram_bool collapsed)"
-assert_eq "behavioral=true wraps the block" "true" "$(diagram_bool wrapped)"
-assert_eq "behavioral=true leaves the note empty" "" "$(diagram_field note)"
-assert_stream_nogrep "behavioral=true warns about nothing" "$EVAL_ERR" "diagram" "-i"
-run_review post acme/app "$PR" --dry-run
-collapsed_chars="$(body_chars)"
-if [ "$EVAL_STATUS" -eq 0 ] && grep -q "^diagram: kept" "$EVAL_OUT"; then
-  good "human dry-run names the kept disposition ($collapsed_chars chars)"
-else
-  bad "human kept disposition missing (exit $EVAL_STATUS)"
-fi
-
-printf '{"publish":{"diagrams":{"behavioral":true,"expanded":true}}}' > "$EVAL_SANDBOX/xdg-beh/verdict/settings.json"
-run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(diagram_status)" = "kept" ] \
-  && [ "$(diagram_bool collapsed)" = "false" ]; then
-  good "expanded=true renders the kept block open"
-else
-  bad "expanded path gave exit $EVAL_STATUS collapsed '$(diagram_bool collapsed)'"
-fi
-run_review post acme/app "$PR" --dry-run
-expanded_chars="$(body_chars)"
-if [ "$EVAL_STATUS" -eq 0 ] && [ "$((expanded_chars - collapsed_chars))" = "5" ]; then
-  good "open wrapper adds exactly 5 body chars (<details> -> <details open>)"
-else
-  bad "wrapper delta wrong ($collapsed_chars -> $expanded_chars)"
-fi
-unset XDG_CONFIG_HOME || true
-
-frag="$EVAL_PROCEDURE/prompts/diagrams.md"
-if [ -f "$frag" ] \
-  && grep -Fq 'sequenceDiagram' "$frag" && grep -Fq 'stateDiagram' "$frag" \
-  && grep -Fq 'gitGraph' "$frag" && grep -Fq 'quadrantChart' "$frag" \
-  && grep -Fq 'classDiagram' "$frag" && grep -Fq 'erDiagram' "$frag" \
-  && grep -Fq 'gantt' "$frag" && grep -Fq 'flowchart' "$frag" \
-  && grep -Fq 'mindmap' "$frag"; then
-  good "fragment carries the 7-type selection map"
-else
-  bad "selection map incomplete in prompts/diagrams.md"
-fi
-if grep -Fq 'illustrative' "$frag" \
-  && grep -Fq 'One diagram max' "$frag" \
-  && grep -Fq 'stay markdown tables' "$frag" \
-  && grep -Fq 'verdict-diagram:start' "$frag" \
-  && grep -Fq 'verdict-diagram:end' "$frag" \
-  && grep -Fq 'verify against the diff' "$frag"; then
-  good "fragment carries honesty label, cap, tables rule, markers, generated label"
-else
-  bad "contract clauses missing from prompts/diagrams.md"
-fi
-if grep -Fq 'prompts/diagrams.md' "$EVAL_PROCEDURE/prompts/review.md" \
-  && grep -Fq 'publish.diagrams.behavioral' "$EVAL_PROCEDURE/prompts/review.md"; then
-  good "review.md references the fragment and the opt-in knob"
-else
-  bad "review.md hook missing"
-fi
-
-PR=4702
-eval_mk_bundle "$PR"
-eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"> ✅ No new issues found.\n> Confidence: 4/5 · Safety: not assessed\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>Behavior flow (generated — verify against the diff)</summary>\n\n```mermaid\nxychart-beta\n    title Beta\n```\n\n</details>\n<!-- verdict-diagram:end -->","approved":true,"comments":[]}
-EOF
-mkdir -p "$EVAL_SANDBOX/xdg-d3/verdict"
-printf '{"publish":{"diagrams":{"behavioral":true}}}' > "$EVAL_SANDBOX/xdg-d3/verdict/settings.json"
-export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-d3"
-run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(diagram_status)" = "dropped" ] \
-  && grep -q "unknown keyword 'xychart-beta'" "$EVAL_ERR" \
-  && [ "$(diagram_field note)" = "> Diagram omitted: unknown keyword 'xychart-beta' (want one of: flowchart graph mindmap sequenceDiagram stateDiagram gitGraph quadrantChart classDiagram erDiagram gantt) — see prompts/diagrams.md." ]; then
-  good "beta keyword exits 0, warns, drops with the allowlist note"
-else
-  bad "beta path gave exit $EVAL_STATUS status '$(diagram_status)'"
-fi
-
-PR=4703
-eval_mk_bundle "$PR"
-eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"> ✅ No new issues found.\n> Confidence: 4/5 · Safety: not assessed\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>Behavior flow (generated — verify against the diff)</summary>\n\n```mermaid\nsequenceDiagram\n    A->>B: unclosed","approved":true,"comments":[]}
-EOF
-run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(diagram_status)" = "dropped" ] \
-  && grep -q "unbalanced fence" "$EVAL_ERR"; then
-  good "unclosed fence exits 0 and drops fails-soft"
-else
-  bad "unbalanced path gave exit $EVAL_STATUS status '$(diagram_status)'"
-fi
-
-PR=4704
-eval_mk_bundle "$PR"
-eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"> ✅ No new issues found.\n> Confidence: 4/5 · Safety: not assessed\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>Behavior flow (generated — verify against the diff)</summary>\n\n```mermaid\n\n```\n\n</details>\n<!-- verdict-diagram:end -->","approved":true,"comments":[]}
-EOF
-run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(diagram_status)" = "dropped" ] \
-  && grep -q "empty fence" "$EVAL_ERR"; then
-  good "empty fence exits 0 and drops with a note"
-else
-  bad "empty path gave exit $EVAL_STATUS status '$(diagram_status)'"
-fi
-
-# --- D3e: cap keeps the first, drops the extra ---
-PR=4705
-eval_mk_bundle "$PR"
-eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"> ✅ No new issues found.\n> Confidence: 4/5 · Safety: not assessed\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>Behavior flow (generated — verify against the diff)</summary>\n\n```mermaid\nsequenceDiagram\n    A->>B: first\n```\n\n</details>\n<!-- verdict-diagram:end -->\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>Behavior flow (generated — verify against the diff)</summary>\n\n```mermaid\nflowchart TD\n    A --> B\n```\n\n</details>\n<!-- verdict-diagram:end -->","approved":true,"comments":[]}
-EOF
-run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(diagram_status)" = "kept" ] \
-  && [ "$(diagram_field keyword)" = "sequenceDiagram" ] \
-  && [ "$(diagram_field blocks)" = "2" ] \
-  && grep -q "one-diagram cap" "$EVAL_ERR"; then
-  good "cap keeps the first block and drops the extra with a note"
-else
-  bad "cap path gave exit $EVAL_STATUS status '$(diagram_status)' kw '$(diagram_field keyword)'"
-fi
-
-# --- D3f: unmarked valid fence keeps with an advisory warn ---
-PR=4706
-eval_mk_bundle "$PR"
-eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"> ✅ No new issues found.\n> Confidence: 4/5 · Safety: not assessed\n\n```mermaid\nsequenceDiagram\n    A->>B: bare\n```","approved":true,"comments":[]}
-EOF
-run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(diagram_status)" = "kept" ] \
-  && grep -q "outside the marked wrapper" "$EVAL_ERR"; then
-  good "unmarked valid fence keeps (keep-biased) with a wrapper warn"
-else
-  bad "unmarked path gave exit $EVAL_STATUS status '$(diagram_status)'"
-fi
-
-# --- D3g: fenceless markers drop ---
-PR=4707
-eval_mk_bundle "$PR"
-eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"> ✅ No new issues found.\n> Confidence: 4/5 · Safety: not assessed\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>Behavior flow (generated — verify against the diff)</summary>\n\nno fence here\n\n</details>\n<!-- verdict-diagram:end -->","approved":true,"comments":[]}
-EOF
-run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(diagram_status)" = "dropped" ] \
-  && grep -q "no mermaid fence" "$EVAL_ERR"; then
-  good "marked block without a fence drops with a note"
-else
-  bad "fenceless path gave exit $EVAL_STATUS status '$(diagram_status)'"
-fi
-run_review post acme/app "$PR" --dry-run
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "preflight: body=verdict" "$EVAL_OUT"; then
-  good "fenceless drop preserves the verdict marker (no content eaten past the span)"
-else
-  bad "fenceless drop ate the callout (exit $EVAL_STATUS)"
-fi
-unset XDG_CONFIG_HOME || true
-
-# --- D8: indented fences parse; single-line fences never swallow; notes precede the divider ---
-# The doc wrapper is 2-space indented: fences must parse inside 3 columns.
-PR=4712
-eval_mk_bundle "$PR"
-eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"> ✅ Looks fine.\n> Confidence: 4/5 · Safety: not assessed\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>Behavior flow (generated — verify against the diff)</summary>\n\n  ```mermaid\n  sequenceDiagram\n  C->>S: hi\n  ```\n\n</details>\n<!-- verdict-diagram:end -->","approved":true,"comments":[]}
-EOF
-run_review post acme/app "$PR" --dry-run --json --diagram-behavioral
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && [ "$(diagram_status)" = "kept" ] \
-  && [ "$(diagram_field keyword)" = "sequenceDiagram" ]; then
-  good "indented multi-line fence validates and keeps"
-else
-  bad "indented fence gave exit $EVAL_STATUS status '$(diagram_status)'"
-fi
-run_review post acme/app "$PR" --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] && [ "$(diagram_status)" = "stripped" ]; then
-  good "indented block is detected by the opt-in gate when off"
-else
-  bad "indented block evaded the gate (exit $EVAL_STATUS status '$(diagram_status)')"
-fi
-# A non-indented single-line fence is not a GitHub block: it must not open a
-# swallow, and the valid block after it must still keep.
-PR=4713
-eval_mk_bundle "$PR"
-eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"> ✅ Looks fine.\n> Confidence: 4/5 · Safety: not assessed\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>First (single-line, invalid)</summary>\n\n```mermaid sequenceDiagram C->>S: hi ```\n\n</details>\n<!-- verdict-diagram:end -->\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>Second (valid)</summary>\n\n```mermaid\nsequenceDiagram\nC->>S: hi\n```\n\n</details>\n<!-- verdict-diagram:end -->","approved":true,"comments":[]}
-EOF
-run_review post acme/app "$PR" --dry-run --json --diagram-behavioral
-assert_exit "single-line fence render succeeds" 0
-assert_eq "single-line fence keeps the valid block" "kept" "$(diagram_status)"
-assert_eq "single-line fence never swallows into one block" "2" "$(diagram_field blocks)"
-assert_stream_nogrep "single-line fence reports no unbalanced fence" "$EVAL_ERR" "unbalanced fence"
-# Notes-before-divider idempotency: a pasted-output body (footer + note)
-# re-renders byte-identically to the fresh run — the note survives strip-replace.
-PR=4714
-eval_mk_bundle "$PR"
-eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"> ✅ Looks fine.\n> Confidence: 4/5 · Safety: not assessed\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>Behavior flow (generated — verify against the diff)</summary>\n\nno fence here\n\n</details>\n<!-- verdict-diagram:end -->","approved":true,"comments":[]}
-EOF
-run_review post acme/app "$PR" --dry-run
-if [ "$EVAL_STATUS" -eq 0 ]; then
-  fresh_chars="$(body_chars)"
-else
-  fresh_chars="FAIL($EVAL_STATUS)"
-fi
-PR=4715
-eval_mk_bundle "$PR"
-eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"> ✅ Looks fine.\n> Confidence: 4/5 · Safety: not assessed\n\n<!-- verdict-diagram:start -->\n<details>\n<summary>Behavior flow (generated — verify against the diff)</summary>\n\nno fence here\n\n</details>\n<!-- verdict-diagram:end -->\n\n<!-- verdict-footer -->\n> stale footer\n\n> Diagram omitted: stale reason","approved":true,"comments":[]}
-EOF
-run_review post acme/app "$PR" --dry-run
-if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "replacing it with the canonical block" "$EVAL_ERR" \
-  && [ "$(body_chars)" = "$fresh_chars" ]; then
-  good "pasted footer+note re-renders byte-identically (note survives strip-replace)"
-else
-  bad "re-render parity gave exit $EVAL_STATUS chars '$(body_chars)' vs fresh '$fresh_chars'"
-fi
+# --- D2: review.md no longer instructs agents to draw behavioral diagrams ---
+assert_file_nogrep "review.md no longer references prompts/diagrams.md" "$EVAL_PROCEDURE/prompts/review.md" "prompts/diagrams.md" "-F"
+assert_file_nogrep "review.md no longer references publish.diagrams.behavioral" "$EVAL_PROCEDURE/prompts/review.md" "publish.diagrams.behavioral" "-F"
 
 # --- D4: structural split (topology half, table stays) ---
 PR=4708
@@ -288,7 +91,7 @@ fi
 PR=4710
 eval_mk_bundle "$PR"
 eval_write_review "$PR" <<'EOF'
-{"schema_version":"1","body":"> ✅ No new issues found.\n> Confidence: 4/5 · Safety: not assessed","approved":true,"comments":[]}
+{"schema_version":"1","findings":[],"summary":"No new issues found."}
 EOF
 eval_write_findings "$PR" <<'EOF'
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Parity probe.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","sig":"8888888888888888888888888888888888888888","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
@@ -305,41 +108,6 @@ run_review post acme/app "$PR" --dry-run
 assert_exit "dry-run baseline succeeds" 0
 assert_stream_nogrep "human dry-run stdout carries no diagram line" "$EVAL_OUT" "diagram" "-i"
 unset XDG_CONFIG_HOME || true
-
-# --- D6: precedence flags > file > env ---
-mkdir -p "$EVAL_SANDBOX/xdg-doff/verdict"
-printf '{"publish":{"diagrams":{"behavioral":false}}}' > "$EVAL_SANDBOX/xdg-doff/verdict/settings.json"
-export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-doff"
-run_review post acme/app 4701 --dry-run --json --diagram-behavioral
-if [ "$EVAL_STATUS" -eq 0 ] && [ "$(diagram_status)" = "kept" ]; then
-  good "flag --diagram-behavioral wins over a false file"
-else
-  bad "flag-over-file gave exit $EVAL_STATUS status '$(diagram_status)'"
-fi
-run_review post acme/app 4701 --dry-run --json --diagram-behavioral --diagram-expanded
-if [ "$EVAL_STATUS" -eq 0 ] && [ "$(diagram_status)" = "kept" ] \
-  && [ "$(diagram_bool collapsed)" = "false" ]; then
-  good "flags --diagram-behavioral --diagram-expanded keep and open over a false file"
-else
-  bad "expanded flag gave exit $EVAL_STATUS status '$(diagram_status)' collapsed '$(diagram_bool collapsed)'"
-fi
-unset XDG_CONFIG_HOME || true
-# shellcheck disable=SC2034
-REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL="true"
-export REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL
-run_review post acme/app 4701 --dry-run --json
-if [ "$EVAL_STATUS" -eq 0 ] && [ "$(diagram_status)" = "kept" ]; then
-  good "env true alone (no file) keeps the block"
-else
-  bad "env alone gave exit $EVAL_STATUS status '$(diagram_status)'"
-fi
-run_review post acme/app 4701 --dry-run --json --no-diagram-behavioral
-if [ "$EVAL_STATUS" -eq 0 ] && [ "$(diagram_status)" = "stripped" ]; then
-  good "flag --no-diagram-behavioral wins over a true env"
-else
-  bad "no-flag-over-env gave exit $EVAL_STATUS status '$(diagram_status)'"
-fi
-unset REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL || true
 
 # --- D7: unknown diagrams keys and bad values refuse typed bad-settings ---
 mkdir -p "$EVAL_SANDBOX/xdg-dbad/verdict"
@@ -370,21 +138,19 @@ else
 fi
 unset XDG_CONFIG_HOME || true
 
-# --- M1: manual carries the behavioral paragraph ---
-if grep -Fq 'publish.diagrams.behavioral' "$EVAL_ROOT/docs/manual.md" \
-  && grep -Fq -- '--diagram-behavioral' "$EVAL_ROOT/docs/manual.md" \
-  && grep -Fq 'verdict-diagram:start' "$EVAL_ROOT/docs/manual.md" \
-  && grep -Fq 'byte-identical whether the knobs' "$EVAL_ROOT/docs/manual.md"; then
-  good "manual carries knobs, flags, markers, and the parity note"
+# --- M1: manual documents structural diagrams and retirement of behavioral diagrams ---
+if grep -Fq 'publish.diagrams.structural' "$EVAL_ROOT/docs/manual.md" \
+  && grep -Fq 'publish.diagrams.behavioral' "$EVAL_ROOT/docs/manual.md" \
+  && grep -Fq 'retired from agent-authored' "$EVAL_ROOT/docs/manual.md"; then
+  good "manual documents structural diagrams and behavioral diagram retirement"
 else
-  bad "behavioral paragraph missing from docs/manual.md"
+  bad "diagram documentation missing from docs/manual.md"
 fi
 
 # --- cleanup: no knob state leaks into later cases ---
 unset XDG_CONFIG_HOME || true
 unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL REVIEW_PUBLISH_DIAGRAMS_EXPANDED || true
 unset REVIEW_PUBLISH_OVERVIEW || true
-rm -rf "$EVAL_SANDBOX/xdg-beh" "$EVAL_SANDBOX/xdg-d3" "$EVAL_SANDBOX/xdg-nostruct" \
-  "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/xdg-doff" "$EVAL_SANDBOX/xdg-dbad"
+rm -rf "$EVAL_SANDBOX/xdg-nostruct" "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/xdg-dbad"
 
 eval_end

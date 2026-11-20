@@ -208,25 +208,35 @@ func findClosingSingleTick(s string, from int) int {
 func writeSanitizedProse(out *strings.Builder, chunk string) {
 	chunk = fence.BreakRuns(chunk, '~')
 	for i := 0; i < len(chunk); {
-		switch {
-		case chunk[i] == '<':
-			out.WriteString(htmlLT)
-			i++
-		case strings.HasPrefix(chunk[i:], "]("):
-			out.WriteString("]" + zeroWidthSpace + "(")
-			i += 2
-		case strings.HasPrefix(chunk[i:], "]["):
-			out.WriteString("]" + zeroWidthSpace + "[")
-			i += 2
-		case strings.HasPrefix(chunk[i:], "!["):
-			out.WriteString("!" + zeroWidthSpace + "[")
-			i += 2
-		case chunk[i] == '@' && opensMention(chunk, i):
-			i = copyMention(out, chunk, i)
-		default:
-			out.WriteByte(chunk[i])
-			i++
+		if adv := writeNeutralizedPair(out, chunk[i:]); adv > 0 {
+			i += adv
+			continue
 		}
+		if chunk[i] == '@' && opensMention(chunk, i) {
+			i = copyMention(out, chunk, i)
+			continue
+		}
+		out.WriteByte(chunk[i])
+		i++
+	}
+}
+
+func writeNeutralizedPair(out *strings.Builder, rest string) int {
+	if rest[0] == '<' {
+		out.WriteString(htmlLT)
+		return 1
+	}
+	if len(rest) < 2 {
+		return 0
+	}
+	switch rest[:2] {
+	case "](", "][", "]:", "![":
+		out.WriteByte(rest[0])
+		out.WriteString(zeroWidthSpace)
+		out.WriteByte(rest[1])
+		return 2
+	default:
+		return 0
 	}
 }
 
