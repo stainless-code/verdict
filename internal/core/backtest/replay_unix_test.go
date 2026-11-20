@@ -118,19 +118,11 @@ var pinnedExe = sync.OnceValues(func() (*os.File, error) {
 	return os.Open(exe)
 })
 
-// plantFakeBinary links exe at dst when exe is still on disk, and copies the
-// pinned descriptor when the path was unlinked under the running binary.
-func plantFakeBinary(t *testing.T, dst, exe string) {
+func plantFakeBinary(t *testing.T, dst, _ string) {
 	t.Helper()
 	src, err := pinnedExe()
 	if err != nil {
 		t.Fatalf("open the test binary: %v", err)
-	}
-	if _, statErr := os.Stat(exe); statErr == nil {
-		if err := os.Symlink(exe, dst); err != nil {
-			t.Fatalf("link the fake agent: %v", err)
-		}
-		return
 	}
 	materializeFakeBinary(t, dst, src)
 }
@@ -1063,5 +1055,21 @@ func TestReplayPlantMaterializesUnlinkedTestBinary(t *testing.T) {
 		if row.Status != statusOKCode {
 			t.Errorf("row %d status = %q, want %q", i+1, row.Status, statusOKCode)
 		}
+	}
+}
+
+func TestReplayPlantAlwaysMaterializes(t *testing.T) {
+	exe, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	dst := filepath.Join(t.TempDir(), "claude")
+	plantFakeBinary(t, dst, exe)
+	info, err := os.Lstat(dst)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !info.Mode().IsRegular() {
+		t.Fatalf("agent mode = %v, want regular file", info.Mode())
 	}
 }
