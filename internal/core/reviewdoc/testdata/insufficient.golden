@@ -1,0 +1,35 @@
+> ⛔ Evidence checks insufficient — no approval.
+> Decision: withheld — review-insufficient: finding 2 quote does not match full.diff at pkg/cache.go:19 (text-differs)
+> Basis: 0 reproduced · 0 ran · 1 walked · 1 pointed · 0 said · 0 rules cited · 0 verified fixes
+
+Reviewed auth and cache changes; one cache write appears unsynchronized.
+
+<!--
+Review metadata. Findings written against a1b2c3d;
+if commits landed on feat/cache-fix since, treat every bug/file/line as POTENTIALLY STALE.
+- Mode: Review (initial)
+- Files reviewed: 2
+- Commits reviewed: 1
+- Base: main (1122334)
+- Head: feat/cache-fix (a1b2c3d)
+- Reviewed commits:
+  - a1b2c3d — Add in-memory token cache
+- Prior review: none
+-->
+
+**Evidence gaps**
+
+- Quotes: 1/2 finding quotes verified
+- Receipts: 0/2 changed hunks verified
+- Gaps:
+  - finding 2 quote does not match full.diff at pkg/cache.go:19 (text-differs)
+  - hunk pkg/cache.go:NEW:1-25 has no matched receipt
+  - hunk pkg/auth.go:NEW:30-55 has no matched receipt
+
+**Findings**
+
+1. 🚨 **critical** [pkg/cache.go:19][ev-1] (`pointed`) (unverified — not counted) — Possible race on map write.
+2. ⚠️ **important** [pkg/auth.go:42][ev-2] (`walked`) — Token check skips expiry.
+
+[ev-1]: https://github.com/acme/app/blob/a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/pkg/cache.go#L19
+[ev-2]: https://github.com/acme/app/blob/a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/pkg/auth.go#L42

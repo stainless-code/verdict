@@ -151,7 +151,7 @@ func SpecViolations(obj *jq.Obj) []string {
 		if !ok {
 			continue
 		}
-		if status, _ := m.Get("status"); jq.R(status) == "violated" {
+		if status, _ := m.Get("status"); jq.R(status) == statusViolated {
 			text, _ := m.Get("item")
 			out = append(out, jq.R(text))
 		}

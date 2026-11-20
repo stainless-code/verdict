@@ -21,7 +21,25 @@ import (
 // a dropped cite never reaches the posted line; carried-over findings stay
 // silent because only entries reported at now count.
 func ReviewBasisCounts(review *jq.Obj, entries []any, now string) string {
-	counts := map[string]int{}
+	counts, cited, verified := computeBasisCounts(review, entries, now)
+	return renderBasis(counts, cited, verified)
+}
+
+// FormatBasisLine formats the run's Basis counts in the labeled form shared
+// with `verdict report` (`R reproduced · ... · C rules cited · V verified
+// fixes`).
+func FormatBasisLine(review *jq.Obj, entries []any, now string) string {
+	counts, cited, verified := computeBasisCounts(review, entries, now)
+	parts := make([]string, 0, len(core.RungValues)+2)
+	for _, rung := range core.RungValues {
+		parts = append(parts, strconv.Itoa(counts[rung])+" "+rung)
+	}
+	parts = append(parts, strconv.Itoa(cited)+" rules cited", strconv.Itoa(verified)+" verified fixes")
+	return strings.Join(parts, " · ")
+}
+
+func computeBasisCounts(review *jq.Obj, entries []any, now string) (counts map[string]int, cited, verified int) {
+	counts = map[string]int{}
 	for _, c := range reviewComments(review) {
 		m, ok := c.(*jq.Obj)
 		if !ok {
@@ -29,7 +47,7 @@ func ReviewBasisCounts(review *jq.Obj, entries []any, now string) string {
 		}
 		counts[commentRigor(m)]++
 	}
-	return renderBasis(counts, runCited(entries, now), runVerified(entries, now))
+	return counts, len(runCited(entries, now)), runVerified(entries, now)
 }
 
 // runCited collects the distinct kb ids stored on this run's fresh entries:
@@ -160,14 +178,14 @@ func flipAtNow(h any, now string) bool {
 	return ev == "addressed" || ev == "triaged"
 }
 
-func renderBasis(counts map[string]int, cited map[string]bool, verified int) string {
+func renderBasis(counts map[string]int, cited, verified int) string {
 	parts := []string{
-		strconv.Itoa(counts["reproduced"]),
-		strconv.Itoa(counts["ran"]),
-		strconv.Itoa(counts["walked"]),
+		strconv.Itoa(counts[rigorReproduced]),
+		strconv.Itoa(counts[rigorRan]),
+		strconv.Itoa(counts[rigorWalked]),
 		strconv.Itoa(counts[rigorPointed]),
-		strconv.Itoa(counts["said"]),
-		strconv.Itoa(len(cited)),
+		strconv.Itoa(counts[rigorSaid]),
+		strconv.Itoa(cited),
 		strconv.Itoa(verified),
 	}
 	return strings.Join(parts, " ")

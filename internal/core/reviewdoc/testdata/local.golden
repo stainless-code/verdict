@@ -1,0 +1,19 @@
+> ✅ No new issues found.
+> Basis: 0 reproduced · 0 ran · 0 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes
+
+Local diff looks clean.
+
+<!--
+Review metadata. Findings written against dirty;
+if commits landed on work since, treat every bug/file/line as POTENTIALLY STALE.
+- Mode: Review (local, unposted)
+- Files reviewed: 1
+- Range: main..HEAD
+- Base: main (1122334)
+- Head: work (dirty)
+- Prior review: none
+-->
+
+**What we checked**
+
+- `pkg/run.go` (source)
