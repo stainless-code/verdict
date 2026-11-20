@@ -507,6 +507,7 @@ func resolvedValues(resolved *Resolved) []core.ConfigValue {
 		{Key: keyBudgetUSD, Value: values.BudgetUSD, Layer: get(keyBudgetUSD).Layer, Source: get(keyBudgetUSD).Source},
 		{Key: keyMaxBytes, Value: values.MaxBytes, Layer: get(keyMaxBytes).Layer, Source: get(keyMaxBytes).Source},
 		{Key: keyChunk, Value: values.Chunk, Layer: get(keyChunk).Layer, Source: get(keyChunk).Source},
+		{Key: keyFinders, Value: values.Finders, Layer: get(keyFinders).Layer, Source: get(keyFinders).Source},
 		{Key: keyKBMinJudged, Value: values.KBMinJudged, Layer: get(keyKBMinJudged).Layer, Source: get(keyKBMinJudged).Source},
 		{Key: keyKBMaxFPRate, Value: values.KBMaxFPRate, Layer: get(keyKBMaxFPRate).Layer, Source: get(keyKBMaxFPRate).Source},
 		{Key: keyEffort, Value: values.Effort, Layer: get(keyEffort).Layer, Source: get(keyEffort).Source},

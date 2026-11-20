@@ -23,7 +23,7 @@ var (
 	}
 	defaultsFields = []string{
 		keyPanel, keyBudgetUSD, keyMaxBytes, keyChunk, keyKBPolicy, keyEffort,
-		keyDisplayFloor, keyPostFloor, keySpecCoverageMin,
+		keyDisplayFloor, keyPostFloor, keySpecCoverageMin, keyFinders,
 	}
 	kbPolicyFields     = []string{"min_judged", "max_fp_rate", "max_chars"}
 	rigorPolicyFields  = append([]string{"mode"}, severityEnum...)
@@ -201,6 +201,9 @@ func checkScopeDefaults(raw any, path string) *core.RefusalError {
 		return refuse(CodeBadScope,
 			"%s.kb_policy: kb_policy is global-only — set it in root defaults or personal settings, "+
 				"not inside a scope", path)
+	}
+	if _, present := obj[keyFinders]; present {
+		return refuse(CodeBadScope, "%s.finders: finders is global-only — set root defaults or personal settings", path)
 	}
 	if _, present := obj[keySpecCoverageMin]; present {
 		return refuse(CodeBadScope,

@@ -84,3 +84,23 @@ func assertRuntimeReviewValidity(t *testing.T, doc string, valid bool) {
 		t.Fatalf("runtime validity differs: %+v", runtime)
 	}
 }
+
+func TestFinderCountConfigSchema(t *testing.T) {
+	schema := loadSchemaDocument(t, "config.schema.json")
+	for _, tc := range []struct {
+		doc   string
+		valid bool
+	}{
+		{`{"schema_version":"1","defaults":{"finders":1}}`, true},
+		{`{"schema_version":"1","defaults":{"finders":2}}`, true},
+		{`{"schema_version":"1","defaults":{"finders":0}}`, false},
+		{`{"schema_version":"1","defaults":{"finders":3}}`, false},
+		{`{"schema_version":"1","scopes":[{"name":"api","include":["*.go"],"defaults":{"finders":1}}]}`, false},
+	} {
+		t.Run(tc.doc, func(t *testing.T) {
+			if failures := parityViolations(t, schema, tc.doc); (len(failures) == 0) != tc.valid {
+				t.Fatalf("valid=%v failures=%v", tc.valid, failures)
+			}
+		})
+	}
+}

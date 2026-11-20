@@ -28,6 +28,7 @@ import (
 // fetch: readers enforce the binding, while older artifacts without it
 // report unavailable provenance instead of claiming verified policy.
 type RunState struct {
+	FinderSource     string                   `json:"finder_source,omitempty"`
 	Execution        *core.ExecutionReference `anyOf:"null"                       json:"execution,omitempty"`
 	Resolved         *Resolved                `json:"resolved"`
 	SchemaVersion    string                   `json:"schema_version"`

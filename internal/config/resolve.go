@@ -29,6 +29,7 @@ const (
 	BuiltinEffort          = "standard"
 	BuiltinDepth           = "standard"
 	BuiltinSpecCoverageMin = 80
+	BuiltinFinders         = 2
 )
 
 // Check IDs owned by the requirements contract.
@@ -49,6 +50,7 @@ const keyBudgetUSD = "budget_usd"
 // Default value keys shared by the field inventory, the evidence capture,
 // and the explain surface, so the three spell each key once.
 const (
+	keyFinders         = "finders"
 	keyPanel           = "panel"
 	keyMaxBytes        = "max_bytes"
 	keyChunk           = "chunk"
@@ -66,6 +68,7 @@ const (
 // carries its own presence bit so nested objects merge per field and
 // arrays replace: a set-but-empty panel replaces, an unset one inherits.
 type Partial struct {
+	Finders            *int
 	BudgetUSD          *float64
 	BudgetDisplay      string
 	MaxBytes           *int64
@@ -108,6 +111,7 @@ func partialFromDefaults(defaults *core.ConfigDefaults) Partial {
 	out.DisplayMinSeverity = defaults.DisplayMinSeverity
 	out.PostMinSeverity = defaults.PostMinSeverity
 	out.SpecCoverageMin = defaults.SpecCoverageMin
+	out.Finders = defaults.Finders
 	return out
 }
 
@@ -119,10 +123,11 @@ func Builtins() Partial {
 	maxFPRate := BuiltinKBMaxFPRate
 	effort := BuiltinEffort
 	specCoverageMin := BuiltinSpecCoverageMin
+	finders := BuiltinFinders
 	return Partial{
 		MaxBytes: &maxBytes, Chunk: &chunk,
 		KBMinJudged: &minJudged, KBMaxFPRate: &maxFPRate, KBPolicySet: true,
-		Effort: &effort, SpecCoverageMin: &specCoverageMin,
+		Effort: &effort, SpecCoverageMin: &specCoverageMin, Finders: &finders,
 	}
 }
 
@@ -159,6 +164,7 @@ func BuiltinDefaults() []BuiltinDefault {
 		{Key: keyDisplayFloor, Value: builtinValue(floor.DisplayMinSeverity), Verbs: []string{verbReport}},
 		{Key: keyPostFloor, Value: builtinValue(floor.PostMinSeverity), Verbs: []string{verbPost}},
 		{Key: keySpecCoverageMin, Value: builtinValue(floor.SpecCoverageMin), Verbs: []string{verbRecord}},
+		{Key: keyFinders, Value: builtinValue(floor.Finders), Verbs: []string{"run"}},
 	}
 }
 
@@ -198,6 +204,7 @@ type EffectiveDefaults struct {
 	KBMinJudged        int      `json:"kb_min_judged"`
 	KBMaxFPRate        float64  `json:"kb_max_fp_rate"`
 	SpecCoverageMin    int      `json:"spec_coverage_min"`
+	Finders            int      `json:"finders,omitempty"`
 	Chunk              bool     `json:"chunk"`
 }
 
@@ -257,6 +264,8 @@ func mergePartials(layers []layerValue) ResolvedDefaults {
 		func(p Partial) (*string, bool) { return p.PostMinSeverity, p.PostMinSeverity != nil })
 	out.Values.SpecCoverageMin, out.Origins[keySpecCoverageMin], out.Shadowed = pickInt(
 		layers, keySpecCoverageMin, out.Shadowed, func(p Partial) (int, bool) { return derefInt(p.SpecCoverageMin) })
+	out.Values.Finders, out.Origins[keyFinders], out.Shadowed = pickInt(layers, keyFinders, out.Shadowed,
+		func(p Partial) (int, bool) { return derefInt(p.Finders) })
 	return out
 }
 

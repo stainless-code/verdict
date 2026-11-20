@@ -287,6 +287,11 @@ func buildDefaultsTail(obj map[string]any, path string, out *core.ConfigDefaults
 	if out.PostMinSeverity, err = presentEnum(obj, "post_min_severity", path, severityEnum); err != nil {
 		return err
 	}
+	if out.Finders, err = presentValue(obj, keyFinders, path, func(raw any, at string) (int, *core.RefusalError) {
+		return boundedIntRange(raw, at, 1, 2)
+	}); err != nil {
+		return err
+	}
 	out.SpecCoverageMin, err = presentValue(obj, keySpecCoverageMin, path, func(raw any, at string) (int, *core.RefusalError) {
 		return boundedIntRange(raw, at, specCoverageMinLo, specCoverageMinHi)
 	})

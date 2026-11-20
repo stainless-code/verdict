@@ -40,6 +40,7 @@
       "description": "One defaults object: the pinned model roster, the estimate guard threshold, the diff cap, the chunk opt-in, the knowledge-base policy, the advisory effort tier, and the display and payload severity floors.",
       "type": "object",
       "properties": {
+        "finders": { "type": "integer", "minimum": 1, "maximum": 2 },
         "panel": {
           "type": "array",
           "items": { "type": "string" },
@@ -235,6 +236,10 @@
           {
             "required": ["defaults"],
             "properties": { "defaults": { "required": ["spec_coverage_min"] } }
+          },
+          {
+            "required": ["defaults"],
+            "properties": { "defaults": { "required": ["finders"] } }
           }
         ]
       }

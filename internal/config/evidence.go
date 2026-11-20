@@ -81,6 +81,7 @@ func evidenceValues(defaults *ResolvedDefaults) []EvidenceValue {
 		{Key: keyBudgetUSD, Value: values.BudgetUSD, Origin: get(keyBudgetUSD)},
 		{Key: keyMaxBytes, Value: values.MaxBytes, Origin: get(keyMaxBytes)},
 		{Key: keyChunk, Value: values.Chunk, Origin: get(keyChunk)},
+		{Key: keyFinders, Value: values.Finders, Origin: get(keyFinders)},
 		{Key: keyKBMinJudged, Value: values.KBMinJudged, Origin: get(keyKBMinJudged)},
 		{Key: keyKBMaxFPRate, Value: values.KBMaxFPRate, Origin: get(keyKBMaxFPRate)},
 		{Key: keyEffort, Value: values.Effort, Origin: get(keyEffort)},
