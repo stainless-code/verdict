@@ -55,8 +55,12 @@ type Script struct {
 }
 
 // Run records the command and returns its registered result.
-func (s *Script) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
+// If ctx is already canceled, Run returns ctx.Err() without recording.
+func (s *Script) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
 	s.T.Helper()
+	if err := ctx.Err(); err != nil {
+		return core.Result{}, err
+	}
 	snapshot := *cmd
 	snapshot.Argv = slices.Clone(cmd.Argv)
 	s.Calls = append(s.Calls, &snapshot)

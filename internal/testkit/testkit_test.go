@@ -1,6 +1,8 @@
 package testkit_test
 
 import (
+	"context"
+	"errors"
 	"slices"
 	"testing"
 
@@ -30,5 +32,20 @@ func TestScriptSnapshotsCommand(t *testing.T) {
 	}
 	if !slices.Equal(s.Calls[1].Argv, []string{"git", "diff"}) {
 		t.Errorf("second call argv = %q; want [git diff]", s.Calls[1].Argv)
+	}
+}
+
+func TestScriptRejectsCancelledContext(t *testing.T) {
+	s := &testkit.Script{T: t, Results: map[string]core.Result{
+		"git\x00status": {},
+	}}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	_, err := s.Run(ctx, &core.Command{Argv: []string{"git", "status"}})
+	if !errors.Is(err, context.Canceled) {
+		t.Errorf("Run error = %v; want context.Canceled", err)
+	}
+	if len(s.Calls) != 0 {
+		t.Errorf("Calls length = %d; want 0", len(s.Calls))
 	}
 }
