@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/spend"
 )
 
 // floatBitSize is the bit size of the float64 the budget values parse into.
@@ -125,7 +126,7 @@ func recordEstimate(st *budgetState, consent bool) {
 // run with no budget has nothing to exceed, and a consented hit arms a receipt
 // instead of refusing.
 func gateOrdinaryBudget(st *budgetState, consent bool) error {
-	if !st.hasBudget || !overBudget(st.estUSD, st.budgetUSD) {
+	if !st.hasBudget || spend.Authorize(spendProjection(st.estUSD), spend.Policy{Budget: st.budgetUSD}, false).Code == "" {
 		return nil
 	}
 	if consent {
@@ -179,7 +180,7 @@ func gatePersonalCeiling(st *budgetState, res *config.Resolved) error {
 		return nil
 	}
 	limit := strconv.FormatFloat(*res.Spend.PersonalLimit, 'f', -1, floatBitSize)
-	if config.SpendExceeds(st.estUSD, limit) {
+	if spend.Authorize(spendProjection(st.estUSD), spend.Policy{Personal: limit}, false).Code != "" {
 		return personalCeilingError(st, limit)
 	}
 	return nil
@@ -201,7 +202,7 @@ func personalCeilingError(st *budgetState, limit string) error {
 // receipt that states the reason even when no USD ceiling is set; a
 // lenient posture proceeds unenforced.
 func gateUnknownEstimate(r *session, st *budgetState, res *config.Resolved, consent bool) error {
-	if res != nil && res.Spend.RequireKnownEstimate && !consent {
+	if res != nil && spend.Authorize(spend.Projection{}, spend.Policy{RequireKnown: res.Spend.RequireKnownEstimate}, consent).Code != "" {
 		return &core.RefusalError{Code: "budget-unknown", Message: unknownEstimateMessage(st)}
 	}
 	if consent {
@@ -382,7 +383,17 @@ func costRecord(it any) costRec {
 			tier = strings.ToLower(s)
 		}
 	}
-	rec := costRec{tier: tier}
+	return priceCostRecord(costRec{tier: tier}, m)
+}
+
+func priceCostRecord(rec costRec, m map[string]any) costRec {
+	if projection, present, valid := spend.RecordProjection(m); present {
+		if valid && projection.Total != nil {
+			rec.usd = strconv.FormatFloat(*projection.Total, 'f', -1, floatBitSize)
+			rec.has = true
+		}
+		return rec
+	}
 	if m != nil {
 		if num, ok := estNumber(m["est_usd"]); ok {
 			rec.usd, rec.has = num, true
@@ -470,8 +481,7 @@ func tierStats(recs []costRec, t string) tierStat {
 	}
 	st.meanVal = -1.0
 	if st.priced > 0 {
-		st.meanVal = sum / float64(st.priced)
-		st.mean = jq.Compact(readcommon.Round4(st.meanVal))
+		st.meanVal, st.mean = spend.MeanUSD(sum, st.priced)
 	}
 	slices.Sort(st.harness)
 	st.harness = slices.Compact(st.harness)
@@ -561,12 +571,7 @@ func tierPriced(r costRec, sum float64, priced int) (float64, int) {
 }
 
 func overBudget(projected, budget string) bool {
-	p, err1 := strconv.ParseFloat(projected, numBitSize)
-	b, err2 := strconv.ParseFloat(budget, numBitSize)
-	if err1 != nil || err2 != nil {
-		return false
-	}
-	return p > b
+	return spend.Exceeds(projected, budget)
 }
 
 func jsonNumber(lit string) any {
@@ -635,4 +640,12 @@ func indentPretty(pretty string) string {
 		lines[i] = "  " + lines[i]
 	}
 	return strings.Join(lines, newline)
+}
+
+func spendProjection(literal string) spend.Projection {
+	value, err := strconv.ParseFloat(literal, floatBitSize)
+	if err != nil {
+		return spend.Projection{}
+	}
+	return spend.Projection{Total: &value}
 }

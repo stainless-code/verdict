@@ -14,6 +14,11 @@
     "record": {
       "type": "object",
       "properties": {
+        "execution_id": { "type": "string" },
+        "phases": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/phaseUsage" }
+        },
         "schema_version": { "const": "2" },
         "effort": {
           "description": "Run tier; missing or unknown values roll up as standard.",
@@ -43,6 +48,28 @@
       },
       "required": [],
       "additionalProperties": true
+    },
+    "phaseUsage": {
+      "type": "object",
+      "properties": {
+        "usd": { "type": ["number", "null"], "minimum": 0 },
+        "input_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "output_tokens": { "type": ["integer", "null"], "minimum": 0 },
+        "execution_id": { "type": "string", "minLength": 1 },
+        "launch_id": { "type": "string", "minLength": 1 },
+        "finder": { "enum": ["finder-1", "finder-2"] },
+        "phase": { "enum": ["discovery", "repair", "cross"] }
+      },
+      "required": [
+        "usd",
+        "input_tokens",
+        "output_tokens",
+        "execution_id",
+        "launch_id",
+        "finder",
+        "phase"
+      ],
+      "additionalProperties": false
     },
     "lensUsage": {
       "type": "object",

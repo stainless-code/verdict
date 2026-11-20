@@ -113,6 +113,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/hunks":          true,
 	"internal/identity":       true,
 	"internal/incident":       true,
+	"internal/spend":          true,
 	"internal/jq":             true,
 	"internal/kb":             true,
 	"internal/overrides":      true,

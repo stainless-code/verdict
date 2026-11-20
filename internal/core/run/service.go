@@ -315,14 +315,22 @@ func (st *state) invoke(ctx context.Context, args *launchArgs, rounds int) (*cor
 		}
 		return st.printed(args), nil
 	}
-	if ref := st.probe(ctx, args); ref != nil {
+	if ref := st.prepareLaunch(ctx, args, rounds); ref != nil {
 		return nil, ref
 	}
+
 	st.warnLaunch(&args.def)
 	if st.roundLoop(rounds) {
 		return st.repairLoop(ctx, args, rounds)
 	}
 	return st.launch(ctx, args)
+}
+
+func (st *state) prepareLaunch(ctx context.Context, args *launchArgs, rounds int) *core.RefusalError {
+	if ref := st.authorizeSpend(args.target.evidence, rounds); ref != nil {
+		return ref
+	}
+	return st.probe(ctx, args)
 }
 
 func (st *state) warnLaunch(def *agentcatalog.Launch) {

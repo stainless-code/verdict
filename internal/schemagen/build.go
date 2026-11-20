@@ -7,6 +7,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/core/threads"
+	"github.com/stainless-code/verdict/internal/spend"
 )
 
 const (
@@ -243,6 +244,7 @@ func documents() []document {
 			anyOf: []reflect.Type{reflect.TypeFor[CostRecord](), reflect.TypeFor[[]CostRecord]()},
 			defs: []definition{
 				{typ: reflect.TypeFor[CostRecord](), name: defsRecord},
+				{typ: reflect.TypeFor[spend.Phase](), name: "phaseUsage", closed: true},
 				{typ: reflect.TypeFor[LensUsage](), name: "lensUsage"},
 				{typ: reflect.TypeFor[GroupCost](), name: "groupCost"},
 				{typ: reflect.TypeFor[ModelSpend](), name: "modelSpend"},

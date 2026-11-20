@@ -93,7 +93,7 @@ var publishedSemantics = map[string]string{
 	// while the rollup sums one total. The models array accepts one shape
 	// only; the reader dropped its object-form coercion in the same change.
 	// No property, required key, enum, or type changed.
-	"cost.schema.json": "96a8b137f3294e790438a755331a2a7975f11cb1187352ae5151891cd38a0d17",
+	"cost.schema.json": "dbb18c3237ce7d2311b5205372f4a1e78334e5c61a1750118ba419d2c1f177a8",
 	// additive fetchEstimate $defs entry (measured-usage basis fields).
 	// The additive showData/showFix/verifyHint $defs entries (show --json
 	// data.fix). Neither change touched an existing property, required key,

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/spend"
 )
 
 // RunRequest is the run service invocation: the read runtime (commander,
@@ -36,15 +37,18 @@ import (
 // never resolve inside the checkout.
 type RunRequest struct { //nolint:govet // field grouping documents the request surface
 	ReadRequest
-	LookPath    func(string) (string, error)
-	PassThrough []string
-	Environ     []string
-	Agent       string
-	Recipe      string
-	StageRaw    string
-	Checkout    string
-	TimeoutRaw  string
-	RoundsRaw   string
+	SpendPlan         []spend.Phase
+	SpendPolicy       *spend.Policy
+	ConsentOverBudget bool
+	LookPath          func(string) (string, error)
+	PassThrough       []string
+	Environ           []string
+	Agent             string
+	Recipe            string
+	StageRaw          string
+	Checkout          string
+	TimeoutRaw        string
+	RoundsRaw         string
 	// ProbeTimeout overrides the identity probe's test-owned budget; zero keeps
 	// the shipped default.
 	ProbeTimeout time.Duration
