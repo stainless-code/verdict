@@ -349,6 +349,9 @@ func addPermissionHint(ref *core.RefusalError, req Request, f *flags) {
 const personalFloatBits = 64
 
 func personalPolicy(settings config.PersonalSpend) *spend.Policy {
+	if (settings == config.PersonalSpend{}) {
+		return nil
+	}
 	policy := &spend.Policy{RequireKnown: settings.RequireKnownEstimate, EnforceCap: settings.EnforceCap}
 	if settings.BudgetUSD != nil {
 		policy.Personal = strconv.FormatFloat(*settings.BudgetUSD, 'f', -1, personalFloatBits)

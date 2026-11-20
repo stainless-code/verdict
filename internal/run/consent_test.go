@@ -16,3 +16,10 @@ func TestConsentFlagReachesRequestAndRentry(t *testing.T) {
 		t.Fatalf("rentry = %q", got)
 	}
 }
+
+func TestMissingPersonalSettingsKeepCapturedSpend(t *testing.T) {
+	_, policy, ref := personalAgents(map[string]string{"XDG_CONFIG_HOME": t.TempDir()})
+	if ref != nil || policy != nil {
+		t.Fatalf("missing settings override capture with policy %+v, refusal %v", policy, ref)
+	}
+}
