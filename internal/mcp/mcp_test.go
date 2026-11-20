@@ -1083,22 +1083,34 @@ func TestServeCancelJoinsReaderGoroutine(t *testing.T) {
 	cfg := testConfig()
 	server := New(&cfg)
 	reader := newClosableBlockingReader()
+	t.Cleanup(func() { _ = reader.Close() })
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	var out bytes.Buffer
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(ctx, reader, &out) }()
-	<-reader.entered
-	cancel()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("Serve = %v, want nil", err)
+	testenv.Until(t, func() bool {
+		select {
+		case <-reader.entered:
+			return true
+		default:
+			return false
 		}
-	case <-time.After(2 * time.Second):
-		_ = reader.Close()
-		t.Fatal("Serve did not close and join the reader on context cancel")
+	})
+	cancel()
+	var serveErr error
+	testenv.Until(t, func() bool {
+		select {
+		case serveErr = <-done:
+			return true
+		default:
+			return false
+		}
+	})
+	if err := serveErr; err != nil {
+		t.Fatalf("Serve = %v, want nil", err)
 	}
+
 	if !reader.readFinished.Load() {
 		t.Fatal("Serve returned before the readLoop goroutine exited")
 	}
@@ -1115,14 +1127,25 @@ func TestServeCancelWithoutClosableReader(t *testing.T) {
 	var out bytes.Buffer
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(ctx, struct{ io.Reader }{reader}, &out) }()
-	<-reader.entered
-	cancel()
-	select {
-	case err := <-done:
-		if err != nil {
-			t.Fatalf("Serve = %v, want nil", err)
+	testenv.Until(t, func() bool {
+		select {
+		case <-reader.entered:
+			return true
+		default:
+			return false
 		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("Serve did not return after cancel with a non-closable reader")
+	})
+	cancel()
+	var serveErr error
+	testenv.Until(t, func() bool {
+		select {
+		case serveErr = <-done:
+			return true
+		default:
+			return false
+		}
+	})
+	if serveErr != nil {
+		t.Fatalf("Serve = %v, want nil", serveErr)
 	}
 }
