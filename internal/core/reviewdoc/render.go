@@ -68,7 +68,7 @@ func Render(in *RenderInput) string {
 	if summary := renderSummaryBlock(in.Review); summary != "" {
 		blocks = append(blocks, summary)
 	}
-	blocks = append(blocks, renderMetadataComment(&in.BundleMeta))
+	blocks = append(blocks, renderMetadataComment(&in.BundleMeta, in.HeadFull))
 	blocks = appendBodySections(blocks, in, kept, moved, links)
 	if defs := links.definitions(); len(defs) > 0 {
 		blocks = append(blocks, strings.Join(defs, lineBreak))
@@ -412,7 +412,7 @@ func formatFindingItem(num int, m *jq.Obj, links *linkTable, moved bool) (line, 
 	claim := untrusted.InlineProse(findingClaim(m))
 
 	line = buildFindingLine(num, m, anchor, claim, dropReason, moved)
-	indent := findingDetailsIndent(moved)
+	indent := findingDetailsIndent(num, moved)
 	return line, renderFindingDetails(m, path, startLine, endLine, claim, indent, moved, links)
 }
 
@@ -475,18 +475,18 @@ func buildFindingLine(num int, m *jq.Obj, anchor, claim, dropReason string, move
 }
 
 func writeItemPrefix(sb *strings.Builder, num int, moved bool) {
-	if moved {
-		sb.WriteString(bulletPrefix)
-		return
-	}
-	sb.WriteString(strconv.Itoa(num) + ". ")
+	sb.WriteString(itemPrefix(num, moved))
 }
 
-func findingDetailsIndent(moved bool) string {
+func itemPrefix(num int, moved bool) string {
 	if moved {
-		return "  "
+		return bulletPrefix
 	}
-	return "   "
+	return strconv.Itoa(num) + ". "
+}
+
+func findingDetailsIndent(num int, moved bool) string {
+	return strings.Repeat(spaceStr, len(itemPrefix(num, moved)))
 }
 
 func writeSeverity(sb *strings.Builder, sev string) {

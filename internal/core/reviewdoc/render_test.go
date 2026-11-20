@@ -477,3 +477,41 @@ func TestRenderBodyLeftSideFindingRendersCodeSpanNotHeadPermalink(t *testing.T) 
 		t.Errorf("RIGHT finding lost its HEAD permalink:\n%s", got)
 	}
 }
+
+func TestRenderBodyItemTenIndentAndHeadFullMetaFallback(t *testing.T) {
+	t.Parallel()
+	findings := make([]any, 0, 10)
+	for i := 1; i <= 10; i++ {
+		f := jq.NewObj(
+			"sig", "sig-"+strconv.Itoa(100+i),
+			"status", "open",
+			"severity", "informational",
+			"rigor", "pointed",
+			"anchored", true,
+			"inBounds", true,
+			"path", "src/f_"+strconv.Itoa(100+i)+".go",
+			"line", i,
+			"claim", "Item "+strconv.Itoa(i)+" claim.",
+			"verification", jq.NewObj("quote", "verified"),
+		)
+		if i == 10 {
+			f.Set("brief", jq.NewObj("outcome", "Indent item 10 details by four spaces."))
+		}
+		findings = append(findings, f)
+	}
+	got := reviewdoc.Render(&reviewdoc.RenderInput{
+		Review:   jq.NewObj("findings", findings),
+		Approval: &core.ApprovalReceipt{Approved: true, Reason: "no gating findings", Tier: "important"},
+		Kept:     findings,
+		BaseURL:  testBaseURL,
+		HeadFull: testHeadFull,
+	})
+	if !strings.Contains(got, "Findings written against a1b2c3d;") || !strings.Contains(got, "- Head: a1b2c3d") {
+		t.Errorf("metadata comment did not fall back to HeadFull:\n%s", got)
+	}
+	want10 := "10. ℹ️ **informational** [src/f_110.go:10][ev-10] (`pointed`) — Item 10 claim.\n\n" +
+		"    <details><summary>Technical details</summary>\n\n    ````markdown\n"
+	if !strings.Contains(got, want10) {
+		t.Errorf("item 10 continuation block not indented by 4 spaces:\n%s", got)
+	}
+}

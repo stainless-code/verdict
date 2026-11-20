@@ -227,8 +227,8 @@ func diffMetaFiles(dir string) []MetaFile {
 	return out
 }
 
-func renderMetadataComment(meta *BundleMeta) string {
-	headShort := metaHeadShort(meta)
+func renderMetadataComment(meta *BundleMeta, headFull string) string {
+	headShort := metaHeadShort(meta, headFull)
 	mode := firstNonEmpty(meta.Mode, modeInitial)
 	prior := firstNonEmpty(meta.PriorReview, priorNone)
 	fileCount := meta.FileCount
@@ -252,11 +252,12 @@ func renderMetadataComment(meta *BundleMeta) string {
 	return strings.Join(lines, "\n")
 }
 
-func metaHeadShort(meta *BundleMeta) string {
-	if meta.IsLocal && (meta.Dirty || meta.HeadSHA == "") {
+func metaHeadShort(meta *BundleMeta, headFull string) string {
+	headSHA := firstNonEmpty(meta.HeadSHA, headFull)
+	if meta.IsLocal && (meta.Dirty || headSHA == "") {
 		return dirtyLabel
 	}
-	if s := readcommon.ShortSHA(meta.HeadSHA); s != "" {
+	if s := readcommon.ShortSHA(headSHA); s != "" {
 		return s
 	}
 	return unknownLabel
