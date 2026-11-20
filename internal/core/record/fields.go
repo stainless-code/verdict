@@ -110,6 +110,4 @@ const (
 	hunkFieldCount    = 4
 	hunkStartIdx      = 2
 	hunkEndIdx        = 3
-	degenerateFloor   = 20
-	placeholderFloor  = 50
 )

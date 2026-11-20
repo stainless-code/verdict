@@ -57,7 +57,7 @@ type BundleMeta struct {
 }
 
 // LoadBundleMeta reads PR.json or source.json, post.json, incremental.diff,
-// and full.diff from dir to populate metadata for [RenderBody].
+// and full.diff from dir to populate metadata for [Render].
 func LoadBundleMeta(dir, headFull string) BundleMeta {
 	if prMap := readJSONMap(filepath.Join(dir, "PR.json")); prMap != nil {
 		return metaFromPR(dir, headFull, prMap)
@@ -81,7 +81,7 @@ func metaFromPR(dir, headFull string, m map[string]any) BundleMeta {
 		files = diffMetaFiles(dir)
 	}
 	head := firstNonEmpty(jq.StrOf(m["headRefOid"]), jq.StrOf(m["head_sha"]), headFull)
-	prior, mode := prPriorAndMode(dir)
+	prior, mode := prPriorAndMode(dir, head)
 	return BundleMeta{
 		HeadSHA:     head,
 		HeadRef:     firstNonEmpty(jq.StrOf(m["headRefName"]), jq.StrOf(m["head_ref"])),
@@ -116,20 +116,25 @@ func metaFromSource(dir, headFull string, m map[string]any) BundleMeta {
 	}
 }
 
-func prPriorAndMode(dir string) (prior, mode string) {
+func prPriorAndMode(dir, headFull string) (prior, mode string) {
 	postMap := readJSONMap(filepath.Join(dir, "post.json"))
-	if postMap == nil {
+	hasIncr := hasNonEmptyFile(filepath.Join(dir, "incremental.diff"))
+	sha := postedHeadSHA(postMap)
+	if !hasIncr && (sha == "" || sha == headFull) {
 		return priorNone, modeInitial
 	}
-	sha := firstNonEmpty(jq.StrOf(postMap["head_sha"]), jq.StrOf(postMap["commit_id"]))
-	prior = priorNone
-	if sha != "" {
-		prior = readcommon.ShortSHA(sha)
-	}
-	if hasNonEmptyFile(filepath.Join(dir, "incremental.diff")) {
+	prior = firstNonEmpty(readcommon.ShortSHA(sha), priorNone)
+	if hasIncr {
 		return prior, modeRereviewIncr
 	}
 	return prior, modeRereview
+}
+
+func postedHeadSHA(postMap map[string]any) string {
+	if postMap == nil {
+		return ""
+	}
+	return firstNonEmpty(jq.StrOf(postMap["head"]), jq.StrOf(postMap["head_sha"]), jq.StrOf(postMap["commit_id"]))
 }
 
 func prMetaCommits(raw any) []MetaCommit {

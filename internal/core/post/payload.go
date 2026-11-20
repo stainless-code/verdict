@@ -3,12 +3,16 @@ package postcore
 import (
 	"context"
 	"fmt"
+	"maps"
+	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/core/reviewdoc"
 	"github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/overrides"
@@ -17,6 +21,27 @@ import (
 )
 
 const paragraphBreak = "\n\n"
+
+var evRefRe = regexp.MustCompile(`\]\[ev-(\d+)\]`)
+
+// finalizeBody renders the settled body once all banners and approval
+// decisions are known, splits at the hosting limit with per-part `[ev-N]`
+// definitions, and appends the canonical footer.
+func (st *state) finalizeBody() {
+	if renderIn := st.merged.RenderInput; renderIn != nil {
+		renderIn.Banners = append([]string{}, st.banners...)
+		renderIn.Approval = st.merged.Approval
+		body := reviewdoc.Render(renderIn)
+		body = recordcore.AppendCoverageLine(body, st.merged.Coverage)
+		body = st.splitPreFooter(body)
+		opts := recordcore.FooterOpts(&st.req.Effective, st.req.Forces, st.req.RootPath(),
+			st.dir, overrides.At(st.controls.OverridesDir()))
+		body = recordcore.ApplyFooter(body, opts, st.warn)
+		st.body = body
+		st.merged.Body = body
+		st.merged.Marker = recordcore.BodyMarker(body)
+	}
+}
 
 func (st *state) buildPayloads() {
 	kept, sigs := recordcore.PublicComments(st.merged.Entries, st.merged.Kept, st.merged.KeptSigs)
@@ -56,19 +81,14 @@ func commitIDValue(commitID string) any {
 	return commitID
 }
 
-// hostingBodyLimit caps one posted review body: GitHub rejects review
-// bodies past 65,536 characters wholesale (422), so the Go port splits an
-// over-limit body across follow-up review comments instead of
-// submitting a doomed review.
+// hostingBodyLimit caps one posted review body at GitHub's 65,536-byte limit.
 const hostingBodyLimit = 65536
 
 const maxSplitParts = 999
 
 var splitNoteReserve = max(len(splitFirstNote(maxSplitParts+1)), len(splitFollowHead(maxSplitParts, maxSplitParts)))
 
-const (
-	paraSep = paragraphBreak
-)
+const paraSep = paragraphBreak
 
 func splitFirstNote(n int) string {
 	return fmt.Sprintf("\n\n> ⚠️ Note: this review continues in %d follow-up "+
@@ -81,6 +101,7 @@ func splitFollowHead(k, n int) string {
 }
 
 func (st *state) splitPreFooter(body string) string {
+	st.extraParts = nil
 	block, ferr := provenance.RenderFooter(recordcore.FooterOpts(
 		&st.req.Effective, st.req.Forces, st.req.RootPath(), st.dir, overrides.At(st.controls.OverridesDir())))
 	if ferr != nil {
@@ -90,12 +111,13 @@ func (st *state) splitPreFooter(body string) string {
 	if block != "" {
 		sep = paragraphBreak
 	}
-	reserve := len(sep) + len(block) + reviewMarkerReserve
-	if len(body)+reserve <= hostingBodyLimit {
+	part1Reserve := len(sep) + len(block) + reviewMarkerReserve
+	if len(body)+part1Reserve <= hostingBodyLimit {
 		return body
 	}
-	budget := max(hostingBodyLimit-reserve-splitNoteReserve, 1)
-	parts := splitBody(body, budget)
+	budget := max(hostingBodyLimit-part1Reserve-splitNoteReserve, 1)
+	content, defs := extractLinkDefs(body)
+	parts := splitBodyWithLinks(content, defs, budget)
 	if len(parts) <= 1 {
 		return body
 	}
@@ -107,37 +129,175 @@ func (st *state) splitPreFooter(body string) string {
 }
 
 func splitBody(text string, budget int) []string {
-	budget = max(budget, 1)
-	if len(text) <= budget {
-		return []string{text}
-	}
-	var parts []string
-	var cur strings.Builder
-	for _, c := range bodyChunks(text, budget) {
-		sep := ""
-		if cur.Len() > 0 {
-			sep = paraSep
-		}
-		if cur.Len()+len(sep)+len(c) > budget {
-			parts = append(parts, cur.String())
-			cur.Reset()
-			sep = ""
-		}
-		cur.WriteString(sep)
-		cur.WriteString(c)
-	}
-	if cur.Len() > 0 {
-		parts = append(parts, cur.String())
-	}
-	return parts
+	return splitBodyWithLinks(text, nil, budget)
 }
 
-func bodyChunks(text string, budget int) []string {
+type splitAcc struct {
+	defs   map[int]string
+	refs   map[int]bool
+	cur    strings.Builder
+	parts  []string
+	budget int
+}
+
+func (a *splitAcc) add(chunk string) {
+	cRefs := referencedLinkIDs(chunk, a.defs)
+	sep := ""
+	if a.cur.Len() > 0 {
+		sep = paraSep
+	}
+	if a.cur.Len() > 0 && a.cur.Len()+len(sep)+len(chunk)+mergedDefsLen(a.refs, cRefs, a.defs) > a.budget {
+		a.flush()
+		sep = ""
+	}
+	a.cur.WriteString(sep)
+	a.cur.WriteString(chunk)
+	for _, id := range cRefs {
+		a.refs[id] = true
+	}
+}
+
+func (a *splitAcc) flush() {
+	if a.cur.Len() == 0 {
+		return
+	}
+	a.parts = append(a.parts, finishSplitPart(a.cur.String(), a.refs, a.defs))
+	a.cur.Reset()
+	a.refs = map[int]bool{}
+}
+
+func splitBodyWithLinks(text string, defs map[int]string, budget int) []string {
+	budget = max(budget, 1)
+	if len(defs) == 0 && len(text) <= budget {
+		return []string{text}
+	}
+	acc := splitAcc{defs: defs, refs: map[int]bool{}, budget: budget}
+	for _, c := range bodyChunksWithLinks(text, defs, budget) {
+		acc.add(c)
+	}
+	acc.flush()
+	return acc.parts
+}
+
+func bodyChunksWithLinks(text string, defs map[int]string, budget int) []string {
 	var out []string
 	for para := range strings.SplitSeq(text, paraSep) {
-		out = append(out, runeChunks(para, budget)...)
+		paraBudget := budget
+		if len(defs) > 0 {
+			paraBudget = max(budget-defsLen(referencedLinkIDs(para, defs), defs), 1)
+		}
+		out = append(out, runeChunks(para, paraBudget)...)
 	}
 	return out
+}
+
+func extractLinkDefs(body string) (string, map[int]string) {
+	paras := strings.Split(body, paraSep)
+	var kept []string
+	defs := map[int]string{}
+	for _, p := range paras {
+		if parsed, ok := parseLinkDefBlock(p); ok {
+			maps.Copy(defs, parsed)
+			continue
+		}
+		kept = append(kept, p)
+	}
+	if len(defs) == 0 {
+		return body, nil
+	}
+	return strings.Join(kept, paraSep), defs
+}
+
+func parseLinkDefBlock(para string) (map[int]string, bool) {
+	if para == "" {
+		return nil, false
+	}
+	out := map[int]string{}
+	for line := range strings.SplitSeq(para, newline) {
+		id, ok := parseLinkDefLine(line)
+		if !ok {
+			return nil, false
+		}
+		out[id] = line
+	}
+	return out, len(out) > 0
+}
+
+func parseLinkDefLine(line string) (int, bool) {
+	rest, ok := strings.CutPrefix(line, "[ev-")
+	if !ok {
+		return 0, false
+	}
+	numStr, _, ok := strings.Cut(rest, "]: ")
+	if !ok {
+		return 0, false
+	}
+	n, err := strconv.Atoi(numStr)
+	return n, err == nil && n > 0
+}
+
+func referencedLinkIDs(s string, defs map[int]string) []int {
+	if len(defs) == 0 || !strings.Contains(s, "][ev-") {
+		return nil
+	}
+	seen := map[int]bool{}
+	var ids []int
+	for _, m := range evRefRe.FindAllStringSubmatch(s, -1) {
+		n, err := strconv.Atoi(m[1])
+		if err != nil || seen[n] || defs[n] == "" {
+			continue
+		}
+		seen[n] = true
+		ids = append(ids, n)
+	}
+	slices.Sort(ids)
+	return ids
+}
+
+func mergedDefsLen(existing map[int]bool, add []int, defs map[int]string) int {
+	if len(defs) == 0 || (len(existing) == 0 && len(add) == 0) {
+		return 0
+	}
+	ids := make([]int, 0, len(existing)+len(add))
+	for id := range existing {
+		ids = append(ids, id)
+	}
+	for _, id := range add {
+		if !existing[id] {
+			ids = append(ids, id)
+		}
+	}
+	return defsLen(ids, defs)
+}
+
+func defsLen(ids []int, defs map[int]string) int {
+	if len(ids) == 0 {
+		return 0
+	}
+	total := len(paraSep)
+	for i, id := range ids {
+		if i > 0 {
+			total++
+		}
+		total += len(defs[id])
+	}
+	return total
+}
+
+func finishSplitPart(content string, refs map[int]bool, defs map[int]string) string {
+	if len(refs) == 0 || len(defs) == 0 {
+		return content
+	}
+	ids := make([]int, 0, len(refs))
+	for id := range refs {
+		ids = append(ids, id)
+	}
+	slices.Sort(ids)
+	lines := make([]string, 0, len(ids))
+	for _, id := range ids {
+		lines = append(lines, defs[id])
+	}
+	return content + paraSep + strings.Join(lines, newline)
 }
 
 func runeChunks(para string, budget int) []string {
@@ -323,61 +483,4 @@ func (st *state) dryRunResponse(ctx context.Context) (*core.PostResponse, *core.
 func RenderPostEnvelope(resp *core.PostResponse) *jq.Obj {
 	return core.RenderEnvelope("post", resp.Repo, resp.Pr, resp.At, resp.Next,
 		resp.Warnings, resp.Data.Wire(), nil)
-}
-
-func panelBody(body string, summary *core.PanelSummary) string {
-	if summary == nil {
-		return body
-	}
-	line := ""
-	if summary.Confirmed+summary.Contested != 0 {
-		line = fmt.Sprintf("> ℹ️ %d findings · %d contested by a verifier",
-			summary.Single+summary.Confirmed+summary.Contested, summary.Contested)
-	}
-	body, found := replacePanelSummary(body, line)
-	if found || line == "" {
-		return body
-	}
-	lines := strings.Split(body, newline)
-	for i, s := range lines {
-		if strings.HasPrefix(s, "> ") {
-			return strings.Join(append(append(lines[:i+1:i+1], line), lines[i+1:]...), newline)
-		}
-	}
-	return line + paraSep + body
-}
-
-func replacePanelSummary(body, line string) (string, bool) {
-	lines := strings.Split(body, newline)
-	out := lines[:0]
-	found := false
-	for _, existing := range lines {
-		if !isPanelSummary(existing) {
-			out = append(out, existing)
-			continue
-		}
-		if !found && line != "" {
-			out = append(out, line)
-		}
-		found = true
-	}
-	return strings.Join(out, newline), found
-}
-
-func isPanelSummary(line string) bool {
-	counts, ok := strings.CutPrefix(line, "> ℹ️ ")
-	if !ok {
-		return false
-	}
-	findings, rest, ok := strings.Cut(counts, " findings · ")
-	if !ok {
-		return false
-	}
-	contested, ok := strings.CutSuffix(rest, " contested by a verifier")
-	return ok && decimalCount(findings) && decimalCount(contested)
-}
-
-func decimalCount(s string) bool {
-	n, err := strconv.Atoi(s)
-	return err == nil && n >= 0 && strconv.Itoa(n) == s
 }

@@ -13,9 +13,6 @@ import (
 	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
-// MinorLead opens an approved review carrying only informational findings.
-const MinorLead = "> ℹ️ Informational findings only.\n"
-
 const (
 	maxSummaryRunes    = 2000
 	maxSpecItemRunes   = 300
@@ -55,9 +52,9 @@ type RenderInput struct {
 	BundleMeta   BundleMeta
 }
 
-// RenderBody renders the deterministic review body from settled findings,
+// Render renders the deterministic review body from settled findings,
 // receipts, spec checks, metadata, and approval state.
-func RenderBody(in *RenderInput) string {
+func Render(in *RenderInput) string {
 	if in == nil {
 		return ""
 	}

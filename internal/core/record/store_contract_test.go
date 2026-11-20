@@ -285,14 +285,10 @@ func readRecord(t *testing.T, slug string) map[string]any {
 // lowercase SHA-1 of `path + "\n" + heading + "\n" + body` with every
 // whitespace run squashed to one space. The expected digests were taken with
 // `tr -s '[:space:]' ' ' | sed … | shasum -a 1`, not from the code under test.
-//
-//nolint:revive // the sig literals and their entry assertions read better inline
 func TestRunRecordSigContract(t *testing.T) {
 	const (
 		// sha1("notes.txt Cited finding here with enough substance.")
 		inlineSig = "101d0761051f365731b9b857810c9b3603c50208"
-		// sha1("### Watch ### Watch") — an empty path segment.
-		sectionSig = "3ceff5b0459a70df4fd5816acbdcdfad7caa3c39"
 	)
 	review := `{"schema_version":"1","body":"` + storeBody + `\n\n### Watch\n\nProse under the watch heading.",` +
 		`"approved":false,"comments":[{"path":"notes.txt","line":2,` +
@@ -303,8 +299,8 @@ func TestRunRecordSigContract(t *testing.T) {
 		t.Fatalf("Run refusal: %v", ref)
 	}
 	entries := storeEntries(t, "local-sig")
-	if len(entries) != 2 {
-		t.Fatalf("findings = %d, want the inline finding and the ### Watch section", len(entries))
+	if len(entries) != 1 {
+		t.Fatalf("findings = %d, want only the 1 inline finding (no scraped section)", len(entries))
 	}
 	got := bySig(t, entries)
 	inline, ok := got[inlineSig]
@@ -313,13 +309,6 @@ func TestRunRecordSigContract(t *testing.T) {
 	}
 	if inline["kind"] != "inline" || inline["path"] != "notes.txt" || inline["sig_version"] != "1" {
 		t.Errorf("inline entry = %v", inline)
-	}
-	section, ok := got[sectionSig]
-	if !ok {
-		t.Fatalf("no entry for sig %s; sigs = %v", sectionSig, sigsOf(got))
-	}
-	if section["kind"] != "section" || section["heading"] != "### Watch" || section["anchored"] != "body" {
-		t.Errorf("section entry = %v", section)
 	}
 }
 

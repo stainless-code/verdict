@@ -29,7 +29,7 @@ exit: 0
       "moved": 0
     },
     "findings": {
-      "open": 12,
+      "open": 10,
       "deferred": 0,
       "addressed": 0,
       "file": ".verdict/state/local-mx/findings.json"
@@ -96,18 +96,6 @@ exit: 0
         "status": "open",
         "anchored": true,
         "locator": "notes.txt:633"
-      },
-      {
-        "sig": "99cd29f4506a07a6e5afe278e095cef33f4798b3",
-        "status": "open",
-        "anchored": "body",
-        "locator": "### Watch the loop"
-      },
-      {
-        "sig": "e5ae2abbcc127fe8d3594517ddb1cc52a9d5a0fb",
-        "status": "open",
-        "anchored": "body",
-        "locator": "### Check the edges"
       }
     ],
     "evidence": {"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","diff_sha256":"94c13c09a41c7b60eb7ad434d0022a7886cd82666cb464b623d9bc7d372b66de","quotes":[{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":3},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":73},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":143},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":213},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":283},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":353},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":423},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":493},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":563},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":633}],"gaps":["finding 1 quote does not match full.diff at notes.txt:3 (text-differs)","finding 2 quote does not match full.diff at notes.txt:73 (text-differs)","finding 3 quote does not match full.diff at notes.txt:143 (text-differs)","finding 4 quote does not match full.diff at notes.txt:213 (text-differs)","finding 5 quote does not match full.diff at notes.txt:283 (text-differs)","finding 6 quote does not match full.diff at notes.txt:353 (text-differs)","finding 7 quote does not match full.diff at notes.txt:423 (text-differs)","finding 8 quote does not match full.diff at notes.txt:493 (text-differs)","finding 9 quote does not match full.diff at notes.txt:563 (text-differs)","finding 10 quote does not match full.diff at notes.txt:633 (text-differs)","hunk notes.txt\tNEW\t1\t7 has no matched receipt","hunk notes.txt\tNEW\t11\t17 has no matched receipt","hunk notes.txt\tNEW\t21\t27 has no matched receipt","hunk notes.txt\tNEW\t31\t37 has no matched receipt","hunk notes.txt\tNEW\t41\t47 has no matched receipt","hunk notes.txt\tNEW\t51\t57 has no matched receipt","hunk notes.txt\tNEW\t61\t67 has no matched receipt","hunk notes.txt\tNEW\t71\t77 has no matched receipt","hunk notes.txt\tNEW\t81\t87 has no matched receipt","hunk notes.txt\tNEW\t91\t97 has no matched receipt","hunk notes.txt\tNEW\t101\t107 has no matched receipt","hunk notes.txt\tNEW\t111\t117 has no matched receipt","hunk notes.txt\tNEW\t121\t127 has no matched receipt","hunk notes.txt\tNEW\t131\t137 has no matched receipt","hunk notes.txt\tNEW\t141\t147 has no matched receipt","hunk notes.txt\tNEW\t151\t157 has no matched receipt","hunk notes.txt\tNEW\t161\t167 has no matched receipt","hunk notes.txt\tNEW\t171\t177 has no matched receipt","hunk notes.txt\tNEW\t181\t187 has no matched receipt","hunk notes.txt\tNEW\t191\t197 has no matched receipt","hunk notes.txt\tNEW\t201\t207 has no matched receipt","hunk notes.txt\tNEW\t211\t217 has no matched receipt","hunk notes.txt\tNEW\t221\t227 has no matched receipt","hunk notes.txt\tNEW\t231\t237 has no matched receipt","hunk notes.txt\tNEW\t241\t247 has no matched receipt","hunk notes.txt\tNEW\t251\t257 has no matched receipt","hunk notes.txt\tNEW\t261\t267 has no matched receipt","hunk notes.txt\tNEW\t271\t277 has no matched receipt","hunk notes.txt\tNEW\t281\t287 has no matched receipt","hunk notes.txt\tNEW\t291\t297 has no matched receipt","hunk notes.txt\tNEW\t301\t307 has no matched receipt","hunk notes.txt\tNEW\t311\t317 has no matched receipt","hunk notes.txt\tNEW\t321\t327 has no matched receipt","hunk notes.txt\tNEW\t331\t337 has no matched receipt","hunk notes.txt\tNEW\t341\t347 has no matched receipt","hunk notes.txt\tNEW\t351\t357 has no matched receipt","hunk notes.txt\tNEW\t361\t367 has no matched receipt","hunk notes.txt\tNEW\t371\t377 has no matched receipt","hunk notes.txt\tNEW\t381\t387 has no matched receipt","hunk notes.txt\tNEW\t391\t397 has no matched receipt"],"receipts":{"total":221,"covered":0,"exempt":0,"complete":false},"spec":{"total":0,"covered":0,"min":0,"met":true},"insufficient":true}
@@ -129,7 +117,7 @@ warn: ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)
 warn: rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important
 warn: rigor said below critical floor walked on c7bc06e (advisory)
 warn: rigor said below important floor pointed on daea615 (advisory)
-» findings: 12 sigs -> .verdict/state/local-mx/findings.json
+» findings: 10 sigs -> .verdict/state/local-mx/findings.json
   c7bc06e4  open  true  notes.txt
   63b8aa5b  open  true  notes.txt
   748484cb  open  true  notes.txt
@@ -140,9 +128,7 @@ warn: rigor said below important floor pointed on daea615 (advisory)
   5ae01706  open  true  notes.txt
   c2009016  open  true  notes.txt
   65c5e5ce  open  true  notes.txt
-  99cd29f4  open  body  ### Watch the loop
-  e5ae2abb  open  body  ### Check the edges
-recorded: .verdict/state/local-mx/findings.json (12 open) + .verdict/state/local-mx/record.json — report/triage read it; post stays refused (no PR target)
+recorded: .verdict/state/local-mx/findings.json (10 open) + .verdict/state/local-mx/record.json — report/triage read it; post stays refused (no PR target)
 --- files ---
 --- file C/.verdict/state/local-mx/findings.json ---
 [
@@ -429,50 +415,6 @@ recorded: .verdict/state/local-mx/findings.json (12 open) + .verdict/state/local
     "verification": {
       "quote": "unverified"
     },
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
-  },
-  {
-    "kind": "section",
-    "heading": "### Watch the loop",
-    "anchored": "body",
-    "body": "### Watch the loop",
-    "rigor_source": "default",
-    "severity": null,
-    "category": null,
-    "sig": "99cd29f4506a07a6e5afe278e095cef33f4798b3",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "kb": [],
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
-  },
-  {
-    "kind": "section",
-    "heading": "### Check the edges",
-    "anchored": "body",
-    "body": "### Check the edges",
-    "rigor_source": "default",
-    "severity": null,
-    "category": null,
-    "sig": "e5ae2abbcc127fe8d3594517ddb1cc52a9d5a0fb",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "kb": [],
     "history": [
       {
         "at": "0000-00-00T00:00:00Z",
@@ -932,8 +874,8 @@ other.txt	NEW	1	3
   "diff_sha256": "94c13c09a41c7b60eb7ad434d0022a7886cd82666cb464b623d9bc7d372b66de",
   "review_sha256": "e0bdde2a3f75e0025a92a939190d2d9e09077b72ff70b1ff3912fbbc0b8eeee6",
   "recorded_at": "0000-00-00T00:00:00Z",
-  "findings": 12,
-  "open": 12,
+  "findings": 10,
+  "open": 10,
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
@@ -942,7 +884,7 @@ other.txt	NEW	1	3
   "author": null,
   "review_models": [],
   "validation_hash": null,
-  "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":12},
+  "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":10},
   "validation_mode": "warn",
   "rigor_floors": {"critical":"walked","important":"pointed","informational":"said"},
   "approval": {"reason":"review-insufficient: finding 1 quote does not match full.diff at notes.txt:3 (text-differs)","tier":"important","gating_sigs":[],"approved":false,"insufficient":true},

@@ -802,8 +802,9 @@ func TestRunSubmit(t *testing.T) {
 		t.Errorf("posted commit_id = %v, want %s", payload["commit_id"], head)
 	}
 	body, ok := payload["body"].(string)
-	if !ok || !strings.HasPrefix(body, "> ✅ Looks good — minor note below.") {
-		t.Errorf("posted body lost the review prose: %q", body)
+	if !ok || !strings.HasPrefix(body, "> ℹ️ Informational findings only.\n") ||
+		!strings.Contains(body, `\> ✅ Looks good — minor note below.`) {
+		t.Errorf("posted body lost the verdict lead or review prose: %q", body)
 	}
 	wantComments := []any{map[string]any{
 		"path": "notes.txt", "line": float64(2), "side": "RIGHT",

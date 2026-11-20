@@ -14,7 +14,6 @@ import (
 	postcore "github.com/stainless-code/verdict/internal/core/post"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/hunks"
-	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -88,7 +87,6 @@ func mergeCoverage(t *testing.T, require bool) (string, []string, error) {
 	if ref != nil {
 		t.Fatalf("controls gate: %v", ref)
 	}
-	bodyRaw, _ := review.Get("body")
 	c := &collector{}
 	res, merr := recordcore.Merge(testRuntime(c), &recordcore.MergeParams{
 		Dir:             dir,
@@ -98,7 +96,6 @@ func mergeCoverage(t *testing.T, require bool) (string, []string, error) {
 		ReviewFile:      dir + "/review.json",
 		Root:            ".",
 		RepoRoot:        ".",
-		Body:            jq.R(jq.Alt(bodyRaw, "")),
 		FindingsFile:    dir + "/findings.json",
 		Effective:       core.Defaults(),
 		Repo:            "acme/app",

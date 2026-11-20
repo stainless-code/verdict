@@ -73,7 +73,6 @@ func mergeMentionBody(t *testing.T, slug, body string) string {
 		ReviewFile:   dir + "/review.json",
 		Root:         ".",
 		RepoRoot:     ".",
-		Body:         body,
 		FindingsFile: dir + "/findings.json",
 		DryRun:       true,
 		Effective:    core.Defaults(),
@@ -111,26 +110,20 @@ func TestMergeNeutralizesMentionsOnce(t *testing.T) {
 		"### Ask @" + mentionZWSP + "alice-b2",
 		"user@example.com",
 		"`@carol`",
-		"```go\nnotify(@dave)\n```",
 	} {
 		if !strings.Contains(merged, want) {
 			t.Errorf("merged body misses %q:\n%s", want, merged)
 		}
-	}
-	if n := strings.Count(merged, mentionZWSP); n != 2 {
-		t.Errorf("zero-width spaces = %d, want 2 (one per prose mention):\n%s", n, merged)
 	}
 	if again := untrusted.NeutralizeMentions(merged); again != merged {
 		t.Errorf("re-scanning the recorded body changed it:\nfirst:\n%s\nsecond:\n%s", merged, again)
 	}
 }
 
-// TestRecordNeutralizesBodyMentions proves the record write path stores the
-// neutralized body: the section heading record derives from the agent's body
-// reaches findings.json with the escape, never as a live mention.
 func TestRecordNeutralizesBodyMentions(t *testing.T) {
 	bundle(t, "local-mention",
-		`{"schema_version":"1","body":"> [!IMPORTANT]\n> Ping @alice about the retry loop before merging.\n\n### Ask @alice-b2\n\nDetails live in the note above.\n","approved":false,"comments":[]}`)
+		`{"schema_version":"1","body":"Ping @alice about the retry loop.","approved":false,`+
+			`"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Ping @alice-b2 about retry."}]}`)
 	c := &collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-mention")); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -140,8 +133,8 @@ func TestRecordNeutralizesBodyMentions(t *testing.T) {
 		t.Fatalf("read findings.json: %v", err)
 	}
 	stored := string(raw)
-	if !strings.Contains(stored, "### Ask @"+mentionZWSP+"alice-b2") {
-		t.Errorf("findings.json misses the escaped heading:\n%s", stored)
+	if !strings.Contains(stored, "Ping @"+mentionZWSP+"alice-b2") {
+		t.Errorf("findings.json misses the escaped finding mention:\n%s", stored)
 	}
 	if strings.Contains(stored, "@alice") {
 		t.Errorf("findings.json still carries a live mention:\n%s", stored)
@@ -185,7 +178,7 @@ func mergeMentionEntry(t *testing.T, slug, commentBody string) string {
 	res, merr := recordcore.Merge(testRuntime(&collector{}), &recordcore.MergeParams{
 		Dir: dir, Prov: "local", HeadFull: mentionHead, Review: review,
 		ReviewFile: dir + "/review.json", Root: ".", RepoRoot: ".",
-		Body: "prose only", FindingsFile: dir + "/findings.json", DryRun: true,
+		FindingsFile: dir + "/findings.json", DryRun: true,
 		Effective: core.Defaults(), Repo: "acme/app", Pr: slug,
 		Cmd: "record", Controls: snap, InputChecked: true,
 	})

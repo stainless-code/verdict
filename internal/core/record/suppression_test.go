@@ -4,9 +4,12 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/reviewdoc"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/testenv"
@@ -91,12 +94,16 @@ func TestSuppressionExclusionReceipt(t *testing.T) {
 }
 
 func TestSuppressionMovedBodyHidden(t *testing.T) {
-	moved := jq.NewObj("path", "a.go", "line", 2, "body", "finding", "dropReason", "out of range")
-	entry := jq.NewObj("path", "a.go", "line", 2, "body", "finding", "withheld", jq.NewObj("source", "agent", "reason", "An intentional compatibility exception.", "at", "2026-11-13T12:00:00Z"))
-	st := &state{entries: []any{entry}, moved: []any{moved}}
-	got := st.hideWithheldMoved(appendMoveSection("Review", st.moved))
-	if got != "Review" {
-		t.Fatalf("body leaked withheld finding: %q", got)
+	moved := jq.NewObj("sig", "sig-m", "path", "a.go", "line", 2, "body", "SECRET_MOVED_FINDING",
+		"dropReason", "out of range",
+		"withheld", jq.NewObj("source", "agent", "reason", "An intentional compatibility exception.", "at", "2026-11-13T12:00:00Z"))
+	got := reviewdoc.Render(&reviewdoc.RenderInput{
+		Review:   jq.NewObj("summary", "Review summary.", "findings", []any{}),
+		Approval: &core.ApprovalReceipt{Approved: true, Reason: "no gating findings"},
+		Moved:    []any{moved},
+	})
+	if strings.Contains(got, "SECRET_MOVED_FINDING") || strings.Contains(got, core.MovedSectionHeading) {
+		t.Fatalf("body leaked withheld moved finding:\n%s", got)
 	}
 }
 
@@ -129,13 +136,14 @@ func TestCheckerAllowsReceiptedExclusion(t *testing.T) {
 }
 
 func TestHiddenMovedSectionDoesNotInventFinding(t *testing.T) {
-	moved := jq.NewObj("path", "a.go", "line", 2, "body", "finding")
-	entry := jq.NewObj("path", "a.go", "line", 2, "body", "finding", "withheld", jq.NewObj("source", "agent", "reason", "An intentional compatibility exception.", "at", "2026-11-13T12:00:00Z"))
-	derived := jq.NewObj("kind", "section", "heading", core.MovedSectionHeading)
-	st := &state{entries: []any{entry, derived}, moved: []any{moved}}
-	st.hideWithheldMoved(appendMoveSection("Review", st.moved))
+	moved := jq.NewObj("path", "a.go", "line", 2, "body", "finding", "dropReason", "out of range")
+	st := &state{moved: []any{moved}, controls: &controls.Snapshot{}}
+	st.buildEntries()
 	if len(st.entries) != 1 {
-		t.Fatalf("withheld move invented %d findings; want one original", len(st.entries))
+		t.Fatalf("moved finding produced %d store entries; want 1 inline entry and no derived section", len(st.entries))
+	}
+	if readcommon.KindOf(st.entries[0]) != "inline" {
+		t.Fatalf("entry kind = %q, want inline", readcommon.KindOf(st.entries[0]))
 	}
 }
 

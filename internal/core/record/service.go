@@ -319,7 +319,6 @@ func (st *svc) merge(dir, prov, headFull string, review *jq.Obj) (MergeResult, *
 		ReviewFile:      dir + reviewSuffix,
 		Root:            req.RootPath(),
 		RepoRoot:        req.RepoRootPath(),
-		Body:            reviewBodyOf(review),
 		FindingsFile:    dir + "/findings.json",
 		Effective:       req.Effective,
 		Forces:          req.Forces,

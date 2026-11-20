@@ -280,9 +280,9 @@ func TestCategoryPreservedAndClearedOnRepost(t *testing.T) {
 	}
 }
 
-// TestSectionCategoryNull proves section findings carry an explicit null
-// category, never an inferred label.
-func TestSectionCategoryNull(t *testing.T) {
+// TestSummaryHeadingDoesNotCreateSectionEntry proves ### headings in summary
+// never pollute findings.json with synthetic section entries.
+func TestSummaryHeadingDoesNotCreateSectionEntry(t *testing.T) {
 	review := `{"schema_version":"1","body":"` + storeBody + `\n\n### Watch\n\nProse under the watch heading.",` +
 		`"approved":false,"comments":[]}`
 	writeStoreBundle(t, "local-seccat", review)
@@ -290,11 +290,8 @@ func TestSectionCategoryNull(t *testing.T) {
 		t.Fatalf("Run refusal: %v", ref)
 	}
 	entries := storeEntries(t, "local-seccat")
-	if len(entries) != 1 {
-		t.Fatalf("findings = %d, want the one section", len(entries))
-	}
-	if v, ok := entries[0]["category"]; !ok || v != nil {
-		t.Errorf("section category = %#v (present=%v), want explicit null", entries[0]["category"], ok)
+	if len(entries) != 0 {
+		t.Fatalf("findings = %d, want 0 (headings in summary are never scraped into findings.json)", len(entries))
 	}
 }
 

@@ -68,7 +68,7 @@ func TestRunDriftKeepsPinnedSnapshot(t *testing.T) {
 	if !strings.HasPrefix(body, driftNotePrefix) {
 		t.Errorf("posted body does not lead with the drift note:\n%.400q", body)
 	}
-	if !strings.Contains(body, "> ✅ Looks good — minor note below.") {
+	if !strings.Contains(body, `\> ✅ Looks good — minor note below.`) {
 		t.Errorf("posted body lost the review prose")
 	}
 	markerIdx := strings.LastIndex(body, "<!-- verdict-review payload=")
@@ -101,8 +101,10 @@ func TestRunNoDriftIsQuiet(t *testing.T) {
 	if joined := strings.Join(resp.Warnings, "\n"); strings.Contains(joined, "HEAD moved") || strings.Contains(joined, "live SHA lookup failed") {
 		t.Errorf("equal-SHA run warned %q, want neither drift line", joined)
 	}
-	if body := postedBody(t, cmdr); !strings.HasPrefix(body, "> ✅ Looks good — minor note below.") {
-		t.Errorf("equal-SHA body was annotated:\n%.200q", body)
+	if body := postedBody(t, cmdr); !strings.HasPrefix(body, "> ⛔ Evidence checks insufficient — no approval.") &&
+		!strings.HasPrefix(body, "> ⚠️ Findings require attention.") &&
+		!strings.HasPrefix(body, "> ℹ️ Informational findings only.") {
+		t.Errorf("equal-SHA body was unexpectedly annotated:\n%.200q", body)
 	}
 }
 
@@ -173,7 +175,7 @@ func TestRunStaleApproveDowngrades(t *testing.T) {
 	if strings.Contains(body[:driftAt], `\n`) {
 		t.Errorf("downgrade note carries a literal backslash-n:\n%.600q", body)
 	}
-	if !strings.Contains(body[driftAt:], "> ✅ Ship it.") {
+	if !strings.Contains(body[driftAt:], `\> ✅ Ship it.`) {
 		t.Errorf("review prose does not follow the drift note:\n%.600q", body)
 	}
 	if payload := postedPayloads(t, cmdr); len(payload) != 1 || payload[0]["event"] != eventComment {

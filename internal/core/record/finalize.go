@@ -19,20 +19,31 @@ var (
 	receiptLineRe2 = regexp.MustCompile(`(?m)^\s*> .*Reviewed with \[`)
 )
 
-func (st *state) applyFooter(body string) string {
-	block, err := provenance.RenderFooter(st.footerOpts())
+func maybeWarn(warn func(string), msg string) {
+	if warn != nil {
+		warn(msg)
+	}
+}
+
+// ApplyFooter appends the canonical rendered footer block to body.
+func ApplyFooter(body string, opts *provenance.FooterOpts, warn func(string)) string {
+	block, err := provenance.RenderFooter(opts)
 	if err != nil || block == "" {
 		return body
 	}
 	if strings.Contains(body, core.FooterDivider) {
-		st.warn("body already carries a rendered footer — replacing it with the canonical block")
+		maybeWarn(warn, "body already carries a rendered footer — replacing it with the canonical block")
 		body = provenance.StripFooter(body)
 	}
 	if receiptLineRe.MatchString(body) || receiptLineRe2.MatchString(body) {
-		st.warn("body already carries a footer receipt — keeping the agent block, script footer skipped")
+		maybeWarn(warn, "body already carries a footer receipt — keeping the agent block, script footer skipped")
 		return body
 	}
 	return body + "\n\n" + block
+}
+
+func (st *state) applyFooter(body string) string {
+	return ApplyFooter(body, st.footerOpts(), st.warn)
 }
 
 func (st *state) footerOpts() *provenance.FooterOpts {
@@ -57,11 +68,17 @@ func FooterOpts(effective *core.Effective, forces *core.GlobalForces, root, dir 
 	}
 }
 
-func (st *state) setMarker(body string) {
-	st.marker = "plain"
+// BodyMarker reports "verdict" when body carries a rendered verdict lead, or
+// "plain" otherwise.
+func BodyMarker(body string) string {
 	if markerRe.MatchString(body) {
-		st.marker = "verdict"
+		return "verdict"
 	}
+	return "plain"
+}
+
+func (st *state) setMarker(body string) {
+	st.marker = BodyMarker(body)
 }
 
 func (st *state) countHunks() {

@@ -1,5 +1,5 @@
 exit: 0
---- stdout (size=67066 sha256=b4669ab244a196359a8ce7d24b90b98751f09209a5b25206326aad91d79f2cde) ---
+--- stdout (size=66539 sha256=9164c05cb08d9350e92c949de1f402868042a62bb026f2f357fd0dfecdb29fad) ---
 --- stderr ---
 warn: $.findings[12].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
 warn: $.findings[14].suggestion: suggestion contains a fence — demoting it to body
@@ -152,7 +152,7 @@ warn: rigor said below critical floor walked on 71358a4 (advisory)
 warn: rigor said below important floor pointed on 3cf8d26 (advisory)
 warn: rigor said below important floor pointed on 79fb98e (advisory)
 warn: rigor said below critical floor walked on a5c35e4 (advisory)
-» findings: 203 sigs -> .verdict/state/local-mx/findings.json
+» findings: 200 sigs -> .verdict/state/local-mx/findings.json
   c7bc06e4  open  true  notes.txt
   63b8aa5b  open  true  notes.txt
   748484cb  open  true  notes.txt
@@ -353,12 +353,9 @@ warn: rigor said below critical floor walked on a5c35e4 (advisory)
   a859c615  open  false  notes.txt
   90c9d255  open  false  notes.txt
   5c088656  open  false  notes.txt
-  99cd29f4  open  body  ### Watch the loop
-  e5ae2abb  open  body  ### Check the edges
-  1b5fa562  open  body  ### ℹ️ Unanchored observations
-recorded: .verdict/state/local-mx/findings.json (203 open) + .verdict/state/local-mx/record.json — report/triage read it; post stays refused (no PR target)
+recorded: .verdict/state/local-mx/findings.json (200 open) + .verdict/state/local-mx/record.json — report/triage read it; post stays refused (no PR target)
 --- files ---
---- file C/.verdict/state/local-mx/findings.json (size=136078 sha256=b9fef7932d1c21f77bf38316a9aedb8a2cfe9aff507422f5146e206435534863) ---
+--- file C/.verdict/state/local-mx/findings.json (size=134550 sha256=0a44ae646bef14d362d0ea222c51d202be208021a9a6075a734702dfe23e7f3c) ---
 --- file C/.verdict/state/local-mx/hunks.tsv ---
 notes.txt	OLD	1	7
 notes.txt	NEW	1	7
@@ -810,8 +807,8 @@ other.txt	NEW	1	3
   "diff_sha256": "94c13c09a41c7b60eb7ad434d0022a7886cd82666cb464b623d9bc7d372b66de",
   "review_sha256": "8eb16b52f2798b213be29c85dd3ca8505ac1053bdc775517e847f4a757562e62",
   "recorded_at": "0000-00-00T00:00:00Z",
-  "findings": 203,
-  "open": 203,
+  "findings": 200,
+  "open": 200,
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
@@ -820,7 +817,7 @@ other.txt	NEW	1	3
   "author": null,
   "review_models": [],
   "validation_hash": null,
-  "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":203},
+  "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":200},
   "validation_mode": "warn",
   "rigor_floors": {"critical":"walked","important":"pointed","informational":"said"},
   "approval": {"reason":"review-insufficient: finding 1 quote does not match full.diff at notes.txt:3 (text-differs)","tier":"important","gating_sigs":[],"approved":false,"insufficient":true},

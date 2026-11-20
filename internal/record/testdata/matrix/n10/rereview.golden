@@ -24,7 +24,7 @@ exit: 0
       "moved": 0
     },
     "findings": {
-      "open": 11,
+      "open": 9,
       "deferred": 1,
       "addressed": 0,
       "file": ".verdict/state/local-mx/findings.json"
@@ -91,18 +91,6 @@ exit: 0
         "status": "open",
         "anchored": true,
         "locator": "notes.txt:633"
-      },
-      {
-        "sig": "99cd29f4506a07a6e5afe278e095cef33f4798b3",
-        "status": "open",
-        "anchored": "body",
-        "locator": "### Watch the loop"
-      },
-      {
-        "sig": "e5ae2abbcc127fe8d3594517ddb1cc52a9d5a0fb",
-        "status": "open",
-        "anchored": "body",
-        "locator": "### Check the edges"
       }
     ],
     "evidence": {"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","diff_sha256":"94c13c09a41c7b60eb7ad434d0022a7886cd82666cb464b623d9bc7d372b66de","gaps":["hunk notes.txt\tNEW\t1\t7 has no matched receipt","hunk notes.txt\tNEW\t11\t17 has no matched receipt","hunk notes.txt\tNEW\t21\t27 has no matched receipt","hunk notes.txt\tNEW\t31\t37 has no matched receipt","hunk notes.txt\tNEW\t41\t47 has no matched receipt","hunk notes.txt\tNEW\t51\t57 has no matched receipt","hunk notes.txt\tNEW\t61\t67 has no matched receipt","hunk notes.txt\tNEW\t71\t77 has no matched receipt","hunk notes.txt\tNEW\t81\t87 has no matched receipt","hunk notes.txt\tNEW\t91\t97 has no matched receipt","hunk notes.txt\tNEW\t101\t107 has no matched receipt","hunk notes.txt\tNEW\t111\t117 has no matched receipt","hunk notes.txt\tNEW\t121\t127 has no matched receipt","hunk notes.txt\tNEW\t131\t137 has no matched receipt","hunk notes.txt\tNEW\t141\t147 has no matched receipt","hunk notes.txt\tNEW\t151\t157 has no matched receipt","hunk notes.txt\tNEW\t161\t167 has no matched receipt","hunk notes.txt\tNEW\t171\t177 has no matched receipt","hunk notes.txt\tNEW\t181\t187 has no matched receipt","hunk notes.txt\tNEW\t191\t197 has no matched receipt","hunk notes.txt\tNEW\t201\t207 has no matched receipt","hunk notes.txt\tNEW\t211\t217 has no matched receipt","hunk notes.txt\tNEW\t221\t227 has no matched receipt","hunk notes.txt\tNEW\t231\t237 has no matched receipt","hunk notes.txt\tNEW\t241\t247 has no matched receipt","hunk notes.txt\tNEW\t251\t257 has no matched receipt","hunk notes.txt\tNEW\t261\t267 has no matched receipt","hunk notes.txt\tNEW\t271\t277 has no matched receipt","hunk notes.txt\tNEW\t281\t287 has no matched receipt","hunk notes.txt\tNEW\t291\t297 has no matched receipt","hunk notes.txt\tNEW\t301\t307 has no matched receipt","hunk notes.txt\tNEW\t311\t317 has no matched receipt","hunk notes.txt\tNEW\t321\t327 has no matched receipt","hunk notes.txt\tNEW\t331\t337 has no matched receipt","hunk notes.txt\tNEW\t341\t347 has no matched receipt","hunk notes.txt\tNEW\t351\t357 has no matched receipt","hunk notes.txt\tNEW\t361\t367 has no matched receipt","hunk notes.txt\tNEW\t371\t377 has no matched receipt","hunk notes.txt\tNEW\t381\t387 has no matched receipt","hunk notes.txt\tNEW\t391\t397 has no matched receipt","hunk notes.txt\tNEW\t401\t407 has no matched receipt","hunk notes.txt\tNEW\t411\t417 has no matched receipt","hunk notes.txt\tNEW\t421\t427 has no matched receipt","hunk notes.txt\tNEW\t431\t437 has no matched receipt","hunk notes.txt\tNEW\t441\t447 has no matched receipt","hunk notes.txt\tNEW\t451\t457 has no matched receipt","hunk notes.txt\tNEW\t461\t467 has no matched receipt","hunk notes.txt\tNEW\t471\t477 has no matched receipt","hunk notes.txt\tNEW\t481\t487 has no matched receipt","hunk notes.txt\tNEW\t491\t497 has no matched receipt"],"receipts":{"total":221,"covered":0,"exempt":0,"complete":false},"spec":{"total":0,"covered":0,"min":0,"met":true},"insufficient":true}
@@ -119,7 +107,7 @@ warn: evidence: +45 more gap(s) — see record.json evidence.gaps
 » anchors: 0 inline, 0 moved to body
 warn: rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important
 warn: rigor said below important floor pointed on daea615 (advisory)
-» findings: 12 sigs -> .verdict/state/local-mx/findings.json
+» findings: 10 sigs -> .verdict/state/local-mx/findings.json
   c7bc06e4  deferred  true  notes.txt
   63b8aa5b  open  true  notes.txt
   748484cb  open  true  notes.txt
@@ -130,9 +118,7 @@ warn: rigor said below important floor pointed on daea615 (advisory)
   5ae01706  open  true  notes.txt
   c2009016  open  true  notes.txt
   65c5e5ce  open  true  notes.txt
-  99cd29f4  open  body  ### Watch the loop
-  e5ae2abb  open  body  ### Check the edges
-recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local-mx/record.json — report/triage read it; post stays refused (no PR target)
+recorded: .verdict/state/local-mx/findings.json (9 open) + .verdict/state/local-mx/record.json — report/triage read it; post stays refused (no PR target)
 --- files ---
 --- file C/.verdict/state/local-mx/findings.json ---
 [
@@ -441,50 +427,6 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
         "event": "reported"
       }
     ]
-  },
-  {
-    "kind": "section",
-    "heading": "### Watch the loop",
-    "anchored": "body",
-    "body": "### Watch the loop",
-    "rigor_source": "default",
-    "severity": null,
-    "category": null,
-    "sig": "99cd29f4506a07a6e5afe278e095cef33f4798b3",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "kb": [],
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
-  },
-  {
-    "kind": "section",
-    "heading": "### Check the edges",
-    "anchored": "body",
-    "body": "### Check the edges",
-    "rigor_source": "default",
-    "severity": null,
-    "category": null,
-    "sig": "e5ae2abbcc127fe8d3594517ddb1cc52a9d5a0fb",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "kb": [],
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
   }
 ]
 --- file C/.verdict/state/local-mx/record.json ---
@@ -495,8 +437,8 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
   "diff_sha256": "94c13c09a41c7b60eb7ad434d0022a7886cd82666cb464b623d9bc7d372b66de",
   "review_sha256": "c3d374aacd1b401841298fe2567cf882ce6b1307bead623eef6e8e325eebba9b",
   "recorded_at": "0000-00-00T00:00:00Z",
-  "findings": 12,
-  "open": 11,
+  "findings": 10,
+  "open": 9,
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
@@ -505,7 +447,7 @@ recorded: .verdict/state/local-mx/findings.json (11 open) + .verdict/state/local
   "author": null,
   "review_models": [],
   "validation_hash": null,
-  "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":11},
+  "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":9},
   "validation_mode": "warn",
   "rigor_floors": {"critical":"walked","important":"pointed","informational":"said"},
   "approval": {"reason":"review-insufficient: hunk notes.txt\tNEW\t1\t7 has no matched receipt","tier":"important","gating_sigs":[],"approved":false,"insufficient":true},

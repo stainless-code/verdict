@@ -32,7 +32,7 @@ func TestRenderBodyGoldens(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := reviewdoc.RenderBody(tc.input) + "\n"
+			got := reviewdoc.Render(tc.input) + "\n"
 			golden.Check(t, tc.name, got)
 		})
 	}
@@ -379,7 +379,7 @@ func TestRenderBodyDeterministicOrdering(t *testing.T) {
 		"verification", jq.NewObj("quote", "verified"))
 
 	mk := func(order []any) string {
-		return reviewdoc.RenderBody(&reviewdoc.RenderInput{
+		return reviewdoc.Render(&reviewdoc.RenderInput{
 			Review:   jq.NewObj("findings", order),
 			Approval: &core.ApprovalReceipt{Approved: false, Reason: "open findings", Tier: "important"},
 			Kept:     order,
@@ -415,7 +415,7 @@ func TestRenderBodyCapsOverflow(t *testing.T) {
 	for i := range gaps {
 		gaps[i] = "gap " + strconv.Itoa(i)
 	}
-	got := reviewdoc.RenderBody(&reviewdoc.RenderInput{
+	got := reviewdoc.Render(&reviewdoc.RenderInput{
 		Review:   jq.NewObj("findings", []any{}),
 		Approval: &core.ApprovalReceipt{Approved: false, Insufficient: true, Reason: "missing evidence"},
 		Evidence: &core.EvidenceReceipt{Gaps: gaps, Insufficient: true},
@@ -433,7 +433,7 @@ func TestRenderBodyCapsOverflow(t *testing.T) {
 		t.Errorf("missing gap overflow line:\n%s", got)
 	}
 
-	cleanGot := reviewdoc.RenderBody(&reviewdoc.RenderInput{
+	cleanGot := reviewdoc.Render(&reviewdoc.RenderInput{
 		Review:     jq.NewObj("findings", []any{}),
 		Approval:   &core.ApprovalReceipt{Approved: true, Reason: "clean"},
 		BundleMeta: reviewdoc.BundleMeta{HeadSHA: testHeadFull, Files: files, FileCount: len(files)},

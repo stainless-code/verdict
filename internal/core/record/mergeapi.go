@@ -23,6 +23,7 @@ import (
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -41,11 +42,10 @@ type MergeParams struct { //nolint:govet // field grouping documents the merge c
 	ReviewFile   string
 	Root         string
 	RepoRoot     string
-	Body         string
+	Banners      []string
 	DryRun       bool
 	MinSeverity  string
 	FindingsFile string
-	PreFooter    func(string) string
 	Effective    core.Effective
 	Forces       *core.GlobalForces
 	Repo         string
@@ -76,6 +76,7 @@ type MergeResult struct { //nolint:govet // field order is the published propert
 	SpecChecks   []core.SpecCheck
 	Receipts     []core.Receipt
 	Validation   *ValidationResult
+	RenderInput  *reviewdoc.RenderInput
 	Body         string
 	Diagram      diagram.Status
 	Entries      []any
@@ -111,27 +112,27 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		return MergeResult{}, &core.RefusalError{Code: controls.CodeUnavailable, Message: "merge needs a controls snapshot"}
 	}
 	st := &state{
-		review:       in.Review,
-		forces:       in.Forces,
-		preFooter:    in.PreFooter,
-		progress:     rt.Progress,
-		effective:    in.Effective,
-		cmd:          in.Cmd,
-		repo:         in.Repo,
-		pr:           in.Pr,
-		env:          rt.Env,
-		now:          rt.TimeUTC(),
-		findingsFile: in.FindingsFile,
-		dir:          in.Dir,
-		reviewFile:   in.ReviewFile,
-		root:         in.Root,
-		repoRoot:     in.repoRootPath(),
-		headFull:     in.HeadFull,
-		headShort:    readcommon.ShortSHA(in.HeadFull),
-		prov:         in.Prov,
-		dryRun:       in.DryRun,
-		controls:     in.Controls,
-		run:          in.Run, minSeverity: in.MinSeverity,
+		review:          in.Review,
+		forces:          in.Forces,
+		progress:        rt.Progress,
+		effective:       in.Effective,
+		cmd:             in.Cmd,
+		repo:            in.Repo,
+		pr:              in.Pr,
+		env:             rt.Env,
+		now:             rt.TimeUTC(),
+		findingsFile:    in.FindingsFile,
+		dir:             in.Dir,
+		reviewFile:      in.ReviewFile,
+		root:            in.Root,
+		repoRoot:        in.repoRootPath(),
+		headFull:        in.HeadFull,
+		headShort:       readcommon.ShortSHA(in.HeadFull),
+		prov:            in.Prov,
+		dryRun:          in.DryRun,
+		controls:        in.Controls,
+		run:             in.Run,
+		minSeverity:     in.MinSeverity,
 		hunkRows:        in.HunkRows,
 		inputChecked:    in.InputChecked,
 		requireCoverage: in.RequireCoverage,
@@ -146,8 +147,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	// each finding's quote standing, and the entries read that stamp, so the
 	// stored verification and the receipt are one calculation.
 	st.evidence = checkBundleEvidence(st.dir, in.Review)
-	curated, dstat, err := st.validateAndMerge(in.Body)
-	if err != nil {
+	if err := st.validateAndMerge(); err != nil {
 		return MergeResult{}, err
 	}
 	verification := st.applyPanel(panel)
@@ -167,19 +167,20 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	}
 	decision := approval.Evaluate(st.entries, "", "", compliance,
 		reviewdoc.HasSpecViolation(in.Review), approval.Evidence{Receipt: st.evidence})
-	// The body is rendered before the merge exists, so its lead can only be
-	// settled now: record stores this decision and post publishes this body,
-	// and the two may never disagree.
-	curated = reviewdoc.AlignLead(curated, decision)
+	specChecks := reviewdoc.SpecChecksTyped(in.Review)
+	renderIn := st.buildRenderInput(in.Review, decision, verification, specChecks, in.Banners)
+	curated := st.applyFooter(AppendCoverageLine(reviewdoc.Render(renderIn), st.coverage))
+	st.setMarker(curated)
 	return MergeResult{
 		Body:         curated,
+		RenderInput:  renderIn,
 		Approval:     decision,
 		Evidence:     st.evidence,
-		SpecChecks:   reviewdoc.SpecChecksTyped(in.Review),
+		SpecChecks:   specChecks,
 		Receipts:     reviewdoc.ReceiptsTyped(in.Review),
 		Verification: verification,
 		Validation:   st.validation,
-		Diagram:      dstat,
+		Diagram:      diagram.Status{State: "absent"},
 		Entries:      st.entries,
 		Kept:         st.kept,
 		KeptSigs:     st.keptSigs,
@@ -195,6 +196,82 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		Coverage:     st.coverage,
 		Warnings:     st.warnings,
 	}, nil
+}
+
+func (st *state) buildRenderInput(
+	review *jq.Obj,
+	decision *core.ApprovalReceipt,
+	verification *core.PanelSummary,
+	specChecks []core.SpecCheck,
+	banners []string,
+) *reviewdoc.RenderInput {
+	baseURL := ""
+	if provenance.EvidenceLinkable(st.dir, st.headFull) == core.FlagOn {
+		baseURL = provenance.EvidenceBaseURL(st.dir, st.repo)
+	}
+	return &reviewdoc.RenderInput{
+		Review:       review,
+		Approval:     decision,
+		Evidence:     st.evidence,
+		Verification: verification,
+		Risk:         st.risk,
+		Entries:      st.entries,
+		Kept:         settledRenderFindings(st.entries, st.kept, st.keptSigs),
+		Moved:        settledRenderFindings(st.entries, st.moved, st.movedSigs),
+		SpecChecks:   specChecks,
+		Banners:      append([]string{}, banners...),
+		Basis:        provenance.FormatBasisLine(review, st.entries, st.now),
+		Security:     jq.StrOf(st.security),
+		BaseURL:      baseURL,
+		HeadFull:     st.headFull,
+		Now:          st.now,
+		BundleMeta:   reviewdoc.LoadBundleMeta(st.dir, st.headFull),
+	}
+}
+
+func indexEntriesBySig(entries []any) map[string]*jq.Obj {
+	bySig := make(map[string]*jq.Obj, len(entries))
+	for _, entry := range entries {
+		m, ok := entry.(*jq.Obj)
+		if !ok || m == nil {
+			continue
+		}
+		if s, ok := sigString(m); ok && s != "" {
+			bySig[s] = m
+		}
+	}
+	return bySig
+}
+
+func settledRenderFindings(entries, raw []any, sigs []string) []any {
+	bySig := indexEntriesBySig(entries)
+	out := make([]any, 0, len(raw))
+	for i, item := range raw {
+		if m, ok := item.(*jq.Obj); ok && m != nil {
+			out = append(out, mergeRenderFinding(m, sigAt(sigs, i), bySig))
+		}
+	}
+	return out
+}
+
+func mergeRenderFinding(raw *jq.Obj, sig string, bySig map[string]*jq.Obj) *jq.Obj {
+	base := raw.Clone()
+	if settled, ok := bySig[sig]; ok {
+		base = settled.Clone()
+		for _, k := range []string{fieldStartLine, fieldDropReason} {
+			if v, has := raw.Get(k); has && v != nil {
+				base.Set(k, v)
+			}
+		}
+	}
+	return base
+}
+
+func sigAt(sigs []string, i int) string {
+	if i < len(sigs) {
+		return sigs[i]
+	}
+	return ""
 }
 
 func reportFindings(st *state) {
@@ -225,8 +302,7 @@ func reportFindings(st *state) {
 // LoadReview reads and gates a review.json file: the size cap and the JSON
 // object shape. It normalizes first, so post reads the same repaired object
 // record checks and stores; record's dry-run data.normalized is exactly what
-// post merges. record's checker owns content validity; post calls
-// [CheckDegenerate] for its body bar.
+// post merges. record's checker owns content validity.
 func LoadReview(path string) (*jq.Obj, error) {
 	reviewRaw, err := readAgentFile(path)
 	if err != nil {
@@ -255,13 +331,6 @@ func LoadReviewBytes(reviewRaw []byte) (*jq.Obj, error) {
 	}
 	reviewdoc.Prepare(review)
 	return review, nil
-}
-
-func reviewBodyOf(review *jq.Obj) string {
-	// The renderer picks the lead a review without a decision earns; the merge
-	// corrects it with AlignLead once the evidence pass and the policy have
-	// decided, so no provisional decision is derived from a missing receipt.
-	return reviewdoc.Render(review, nil)
 }
 
 // EnsureStore backfills the store marker when absent.
@@ -360,29 +429,7 @@ func exists(path string) bool {
 	return err == nil
 }
 
-// CheckDegenerate refuses a degenerate review body: shorter than the floor
-// with no verdict marker, or a short placeholder-looking string.
-func CheckDegenerate(body string) error {
-	if markerRe.MatchString(body) {
-		return nil
-	}
-	if len(body) < degenerateFloor {
-		return &core.RefusalError{Code: "degenerate-body", Message: "refusing degenerate body (<20 chars, no verdict marker)."}
-	}
-	if len(body) < placeholderFloor && asciiContainsLower(body, placeholderRe) {
-		return &core.RefusalError{Code: "degenerate-body", Message: "refusing placeholder-looking short body."}
-	}
-	return nil
-}
-
-func asciiContainsLower(s string, re *regexp.Regexp) bool {
-	return re.MatchString(readcommon.ASCIILower(s))
-}
-
-var (
-	markerRe      = regexp.MustCompile(`(?m)^> (✅|ℹ️|\[!IMPORTANT\]|\[!CAUTION\])`)
-	placeholderRe = regexp.MustCompile(`test|testing|placeholder|temp|foo|bar|asdf|dummy|sample`)
-)
+var markerRe = regexp.MustCompile(`(?m)^> (✅|ℹ️|⚠️|⛔|\[!IMPORTANT\]|\[!CAUTION\])`)
 
 func (st *state) loadPanel(in *MergeParams) (*panelcore.File, error) {
 	file, warnings, err := panelcore.Load(in.Dir, in.HeadFull, panelcore.Findings(in.Review))
