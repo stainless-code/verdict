@@ -51,7 +51,8 @@ type ConfigIndex struct {
 // repository, personal, built-in cascade resolves each field in that order.
 // Nested objects merge per field; arrays replace.
 type ConfigDefaults struct { //nolint:govet // field order is the published property order
-	Finders            *int            `json:"finders,omitempty"                max:"2"                               min:"1"        nonnull:"true"`
+	Finders *int `json:"finders,omitempty" max:"2" min:"1" nonnull:"true"`
+
 	Panel              []string        `json:"panel,omitempty"                  minItems:"1"                          nonnull:"true"`
 	BudgetUSD          *float64        `exclusiveMin:"0"                        json:"budget_usd,omitempty"           nonnull:"true"`
 	MaxBytes           *int64          `json:"max_bytes,omitempty"              min:"1"                               nonnull:"true"`
