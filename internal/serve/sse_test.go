@@ -5,11 +5,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -368,4 +371,60 @@ func awaitServe(t *testing.T, done <-chan error) error {
 		}
 	})
 	return serveErr
+}
+
+type failingAfterOneAcceptListener struct {
+	net.Listener
+	failAccept chan struct{}
+	once       sync.Once
+	accepted   int
+	mu         sync.Mutex
+}
+
+func (l *failingAfterOneAcceptListener) Accept() (net.Conn, error) {
+	l.mu.Lock()
+	l.accepted++
+	n := l.accepted
+	l.mu.Unlock()
+	if n == 1 {
+		return l.Listener.Accept()
+	}
+	<-l.failAccept
+	return nil, errors.New("synthetic listener failure")
+}
+
+func (l *failingAfterOneAcceptListener) triggerFailure() {
+	l.once.Do(func() { close(l.failAccept) })
+}
+
+func TestListenerErrorStopsOpenEventsStream(t *testing.T) {
+	root := writeFixture(t, fixtureFiles())
+	server, err := New(&Config{Root: root, Port: 0, Token: testToken, Now: fixedNow})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := server.Listen(t.Context()); err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	wrapper := &failingAfterOneAcceptListener{
+		Listener:   server.listener,
+		failAccept: make(chan struct{}),
+	}
+	server.listener = wrapper
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(t.Context()) }()
+	response := openLiveEventStream(t, server)
+	t.Cleanup(func() { _ = response.Body.Close() })
+	wrapper.triggerFailure()
+	if serveErr := awaitServe(t, done); serveErr == nil {
+		t.Fatal("Serve() after listener error = nil, want error")
+	}
+	select {
+	case <-server.streamsDone:
+	default:
+		t.Fatal("Serve() returned on listener error without signaling active SSE streams")
+	}
+	if _, err := io.ReadAll(response.Body); err != nil {
+		t.Fatalf("read stopped event stream after listener error: %v", err)
+	}
 }

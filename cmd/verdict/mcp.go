@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"strings"
 
@@ -96,7 +97,7 @@ func runMCP(
 	})
 	ctx, stop := shutdownSignalContext()
 	defer stop()
-	err := server.Serve(ctx, os.Stdin, stdout)
+	err := server.Serve(ctx, closableReader(os.Stdin), stdout)
 	if ctx.Err() != nil {
 		return cli.ExitBroke
 	}
@@ -105,4 +106,17 @@ func runMCP(
 		return cli.ExitRefused
 	}
 	return cli.ExitOK
+}
+
+// closableReader exists because Close cannot interrupt a blocked terminal
+// read: Serve joins its reader goroutine, so it must read from a pipe whose
+// Close always unblocks. The copier stays parked in r.Read and dies with the
+// process.
+func closableReader(r io.Reader) io.ReadCloser {
+	pr, pw := io.Pipe()
+	go func() {
+		_, err := io.Copy(pw, r)
+		_ = pw.CloseWithError(err)
+	}()
+	return pr
 }

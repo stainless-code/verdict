@@ -148,7 +148,7 @@ func runCapture(t *testing.T, args []string) (int, string, string) {
 		return ch
 	}
 	out, derr := drain(stdoutR), drain(stderrR)
-	code := run(args, stdoutW, stderrW, func(string) string { return "" }, os.ReadFile)
+	code := run(args, stdoutW, stderrW, os.Getenv, os.ReadFile)
 	_ = stdoutW.Close()
 	_ = stderrW.Close()
 	return code, string(<-out), string(<-derr)

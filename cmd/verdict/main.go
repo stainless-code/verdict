@@ -517,9 +517,7 @@ func envMap(getenv func(string) string) map[string]string {
 	}
 	env := make(map[string]string, len(keys))
 	for _, k := range keys {
-		if v, ok := os.LookupEnv(k); ok {
-			env[k] = v
-		} else if v := getenv(k); v != "" {
+		if v := getenv(k); v != "" {
 			env[k] = v
 		}
 	}
