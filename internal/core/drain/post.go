@@ -9,8 +9,8 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
-	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	threadscore "github.com/stainless-code/verdict/internal/core/threads"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // ReasonStaleThread names a draft whose waiting comment changed after the
@@ -147,7 +147,7 @@ func postOne(req *PostRequest, byID map[string]*threadscore.Thread, reply Reply,
 		req.Plan.Skipped = append(req.Plan.Skipped, Skip{ThreadID: reply.ThreadID, Reason: reason})
 		return
 	}
-	body := recordcore.NeutralizeMentions(reply.Body) + "\n\n" +
+	body := untrusted.NeutralizeMentions(reply.Body) + "\n\n" +
 		threadscore.ReplyMarker(reply.ThreadID, reply.WaitingCommentID)
 	if req.DryRun {
 		planReply(reply, thread, res, body)

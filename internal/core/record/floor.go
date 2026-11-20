@@ -112,3 +112,49 @@ func (s *sectionFilter) drop(line string) bool {
 	s.dropping = dropSectionLine(line, s.hidden, s.dropping)
 	return s.dropping
 }
+
+const (
+	fenceIndentMax = 3
+	fenceRunMin    = 3
+)
+
+func fenceLeadingSpaces(line string) int {
+	i := 0
+	for i < len(line) && i < fenceIndentMax && line[i] == ' ' {
+		i++
+	}
+	return i
+}
+
+func fenceRunLen(s string, c byte) int {
+	n := 0
+	for n < len(s) && s[n] == c {
+		n++
+	}
+	return n
+}
+
+func fenceOpens(line string) (char byte, n int, ok bool) {
+	i := fenceLeadingSpaces(line)
+	if i >= len(line) || (line[i] != '`' && line[i] != '~') {
+		return 0, 0, false
+	}
+	char = line[i]
+	n = fenceRunLen(line[i:], char)
+	if n < fenceRunMin {
+		return 0, 0, false
+	}
+	if char == '`' && strings.IndexByte(line[i+n:], '`') >= 0 {
+		return 0, 0, false
+	}
+	return char, n, true
+}
+
+func fenceCloses(line string, char byte, open int) bool {
+	i := fenceLeadingSpaces(line)
+	n := fenceRunLen(line[i:], char)
+	if n < open {
+		return false
+	}
+	return strings.TrimRight(line[i+n:], " \t") == ""
+}

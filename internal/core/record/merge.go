@@ -22,6 +22,7 @@ import (
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/sig"
+	"github.com/stainless-code/verdict/internal/untrusted"
 	"github.com/stainless-code/verdict/internal/validation"
 )
 
@@ -114,7 +115,7 @@ func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 	// wrote is neutralized before any bytes are stored or hashed, and before
 	// the basis line, diagram, and footer are appended, so nothing downstream
 	// has to scan or rewrite them.
-	body = NeutralizeMentions(body)
+	body = untrusted.NeutralizeMentions(body)
 	st.kb = kb.New(st.warn)
 	st.kb.Root = st.repoRoot
 	st.kb.ReadFile = st.controls.ReadFile
@@ -705,7 +706,7 @@ func buildInline(st *state, m *jq.Obj) freshEntry {
 	rigor, _ := m.Get(fieldRigor)
 	sev, _ := m.Get(fieldSeverity)
 	cat, hasCat := m.Get(fieldCategory)
-	body := NeutralizeMentions(jq.StrOf(jq.Alt(bd, "")))
+	body := untrusted.NeutralizeMentions(jq.StrOf(jq.Alt(bd, "")))
 	rigorValue, rigorSource := pickRigor(rigor)
 	category := pickCategory(st, m, cat, hasCat)
 	entry := &core.FindingEntry{

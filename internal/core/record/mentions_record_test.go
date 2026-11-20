@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // mentionZWSP is the escape the recorded body must carry.
@@ -119,7 +120,7 @@ func TestMergeNeutralizesMentionsOnce(t *testing.T) {
 	if n := strings.Count(merged, mentionZWSP); n != 2 {
 		t.Errorf("zero-width spaces = %d, want 2 (one per prose mention):\n%s", n, merged)
 	}
-	if again := recordcore.NeutralizeMentions(merged); again != merged {
+	if again := untrusted.NeutralizeMentions(merged); again != merged {
 		t.Errorf("re-scanning the recorded body changed it:\nfirst:\n%s\nsecond:\n%s", merged, again)
 	}
 }
@@ -227,7 +228,7 @@ func TestRecordFindingSignatureCoversTheEscape(t *testing.T) {
 	if raw != escaped {
 		t.Errorf("raw and pre-escaped input diverge, so the signature does not cover the escape:\nraw:\n%s\nescaped:\n%s", raw, escaped)
 	}
-	if again := recordcore.NeutralizeMentions(mentionCommentBody); again != "Ping @"+mentionZWSP+"bob-abc about the retry loop; write to user@example.com.\n" {
+	if again := untrusted.NeutralizeMentions(mentionCommentBody); again != "Ping @"+mentionZWSP+"bob-abc about the retry loop; write to user@example.com.\n" {
 		t.Errorf("second pass changed the body: %q", again)
 	}
 }

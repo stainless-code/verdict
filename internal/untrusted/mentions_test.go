@@ -1,12 +1,10 @@
-package recordcore
+package untrusted
 
 import (
 	"strings"
 	"testing"
 )
 
-// zwsp is the escape under test, spelled once so a case reads as the bytes it
-// expects rather than as an invisible character.
 const zwsp = "\u200b"
 
 type mentionCase struct {
@@ -15,10 +13,6 @@ type mentionCase struct {
 	want string
 }
 
-// TestNeutralizeMentions walks the body shapes the escape must and must not
-// touch. Every case also asserts idempotence: neutralizing the wanted bytes
-// again returns them unchanged, because the escape sits between `@` and the
-// handle, so the handle no longer starts with a handle byte.
 func TestNeutralizeMentions(t *testing.T) {
 	t.Parallel()
 	cases := []mentionCase{
@@ -108,29 +102,21 @@ func TestNeutralizeMentions(t *testing.T) {
 			want: "~~@" + zwsp + "alice~~ shipped it.\n",
 		},
 		{
-			// A single `~` is a local-part byte, so `~@example.com` is an
-			// address: escaping it would insert a zero-width space into it.
-			// The dot behind the `@` is what makes it one.
 			name: "tilde-single-address",
 			in:   "Mail ~@example.com about it.\n",
 			want: "Mail ~@example.com about it.\n",
 		},
 		{
-			// The same lone `~` with no domain behind the `@` is prose: a host
-			// notifies the handle, so it escapes like any other mention.
 			name: "tilde-bare-handle",
 			in:   "Ping ~@alice now.\n",
 			want: "Ping ~@" + zwsp + "alice now.\n",
 		},
 		{
-			// A period is not a domain: `~@alice.` has no label behind the dot,
-			// so it is a handle at the end of a sentence and it escapes.
 			name: "tilde-handle-then-period",
 			in:   "Thanks ~@alice.\n",
 			want: "Thanks ~@" + zwsp + "alice.\n",
 		},
 		{
-			// Two labels: still an address, still byte-identical.
 			name: "tilde-single-address-two-labels",
 			in:   "Mail ~@mail.example.co.uk about it.\n",
 			want: "Mail ~@mail.example.co.uk about it.\n",
@@ -141,9 +127,6 @@ func TestNeutralizeMentions(t *testing.T) {
 			want: "Ship it ~~@" + zwsp + "alice~~.\n",
 		},
 		{
-			// A run of three tildes is not GFM strikethrough, but a host still
-			// notifies on the handle inside it, so the run counts as markup and
-			// the mention is escaped.
 			name: "tilde-triple-prose",
 			in:   "So ~~~@alice~~~ here.\n",
 			want: "So ~~~@" + zwsp + "alice~~~ here.\n",
@@ -237,7 +220,6 @@ func TestNeutralizeMentions(t *testing.T) {
 	}
 }
 
-// checkMentionCase grades one row and its idempotence.
 func checkMentionCase(t *testing.T, tc mentionCase) {
 	t.Helper()
 	got := NeutralizeMentions(tc.in)
@@ -249,9 +231,6 @@ func checkMentionCase(t *testing.T, tc mentionCase) {
 	}
 }
 
-// TestNeutralizeMentionsLeavesTheBodyLength proves the escape only ever adds
-// bytes: a body grows by one zero-width space per mention and never shrinks,
-// so no downstream length guard can see a shorter body than the agent wrote.
 func TestNeutralizeMentionsLeavesTheBodyLength(t *testing.T) {
 	t.Parallel()
 	in := "Ping @alice about @bob's note.\n"

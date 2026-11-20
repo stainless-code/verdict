@@ -1,30 +1,16 @@
-package recordcore
+package untrusted
 
 import "strings"
 
-// A review body is written by an agent and published verbatim: an `@handle`
-// in prose notifies that person the moment the review is submitted. The
-// neutralization therefore happens here, once, where the shared merge
-// constructs the body into the record and the payload — never at submit
-// time, which would make the posted bytes diverge from the recorded body,
-// the dry-run output, and the payload digest.
-//
-// The escape is a U+200B ZERO WIDTH SPACE between `@` and the handle: it is
-// invisible in rendered Markdown, still plain text in the recorded bytes, and
-// hosts do not resolve a mention across it. A code span would change the
-// rendering, so it is not the form.
+// zeroWidthSpace breaks @mentions and HTML comment/link sequences without
+// changing visible rendering or stripping bytes.
 const zeroWidthSpace = "\u200b"
 
-// commentOpen and commentClose bound an HTML comment, which no rewrite may
-// enter: finding markers are comments too.
 const (
 	commentOpen  = "<!--"
 	commentClose = "-->"
 )
 
-// A fence may be indented by at most fenceIndentMax spaces and must open with
-// a run of at least fenceRunMin markers, so a deeper indented line is never a
-// fence.
 const (
 	fenceIndentMax = 3
 	fenceRunMin    = 3
@@ -54,7 +40,7 @@ func NeutralizeMentions(body string) string {
 	var out strings.Builder
 	out.Grow(len(body))
 	first := true
-	for chunk := range strings.SplitSeq(body, newline) {
+	for chunk := range strings.SplitSeq(body, "\n") {
 		if !first {
 			out.WriteByte('\n')
 		}
@@ -64,9 +50,6 @@ func NeutralizeMentions(body string) string {
 	return out.String()
 }
 
-// rewriteChunk rewrites one line's content and restores its terminator:
-// SplitSeq drops the newlines, and a trailing CR belongs to the terminator so
-// a CRLF body stays byte-identical outside the escape.
 func (s *mentionScan) rewriteChunk(text string) string {
 	line, cr := cutCR(text)
 	var out strings.Builder
@@ -82,17 +65,13 @@ func cutCR(text string) (line, cr string) {
 	return text, ""
 }
 
-// mentionScan carries the block state one body's lines leave behind.
 type mentionScan struct {
-	fenceLen int  // the open fence's marking run, 0 outside a block
-	code     int  // the open inline code span's backtick run, 0 outside
-	fence    byte // 0, '`' or '~' while a fenced block is open
-	comment  bool // inside an HTML comment
+	fenceLen int
+	code     int
+	fence    byte
+	comment  bool
 }
 
-// line rewrites one line's prose mentions, updating the block state. Fence
-// lines come back unchanged: the opening and closing fences of a code block
-// belong to the block, not to its prose.
 func (s *mentionScan) line(line string) string {
 	if s.fence != 0 {
 		if fenceCloses(line, s.fence, s.fenceLen) {
@@ -105,15 +84,14 @@ func (s *mentionScan) line(line string) string {
 		return line
 	}
 	if strings.TrimSpace(line) == "" {
-		// A blank line ends the paragraph, and a code span cannot cross one:
-		// without this, one stray backtick would hide every mention after it.
+		// A blank line ends the paragraph so one stray backtick cannot hide
+		// mentions in later paragraphs.
 		s.code = 0
 		return line
 	}
 	return s.prose(line)
 }
 
-// prose walks one prose line and escapes the mentions it finds.
 func (s *mentionScan) prose(line string) string {
 	var out strings.Builder
 	out.Grow(len(line))
@@ -139,7 +117,6 @@ func (s *mentionScan) prose(line string) string {
 	return out.String()
 }
 
-// copyComment copies one byte of an open comment, or closes it.
 func (s *mentionScan) copyComment(out *strings.Builder, line string, i int) int {
 	if strings.HasPrefix(line[i:], commentClose) {
 		s.comment = false
@@ -150,8 +127,6 @@ func (s *mentionScan) copyComment(out *strings.Builder, line string, i int) int 
 	return i + 1
 }
 
-// copyCodeSpan copies one byte of an open code span, or closes it on an equal
-// backtick run. A shorter or longer run is literal content, not a close.
 func (s *mentionScan) copyCodeSpan(out *strings.Builder, line string, i int) int {
 	if line[i] != '`' {
 		out.WriteByte(line[i])
@@ -165,15 +140,12 @@ func (s *mentionScan) copyCodeSpan(out *strings.Builder, line string, i int) int
 	return i + run
 }
 
-// openCodeSpan opens a code span on the backtick run at i.
 func (s *mentionScan) openCodeSpan(out *strings.Builder, line string, i int) int {
 	s.code = runLen(line[i:], '`')
 	out.WriteString(line[i : i+s.code])
 	return i + s.code
 }
 
-// copyMention escapes the handle after the `@` at i, or copies the byte when
-// no handle starts there.
 func copyMention(out *strings.Builder, line string, i int) int {
 	n := handleLen(line[i+1:])
 	if n == 0 {
@@ -186,46 +158,26 @@ func copyMention(out *strings.Builder, line string, i int) int {
 	return i + 1 + n
 }
 
-// opensMention reports whether the `@` at i can open a mention. Whitespace and
-// punctuation do, because `(@alice)`, `**@alice**`, and `_@alice_` all notify;
-// a local-part byte does not, because `user@example.com` is an address and an
-// escape there would corrupt it.
 func opensMention(line string, i int) bool {
 	j := i
 	for j > 0 && isEmphasisMarkup(line[j-1]) {
 		j--
 	}
 	if i-j == 1 && line[i-1] == '~' {
-		// A lone `~` is a local-part byte, not strikethrough markup, but only
-		// when what follows reads as a domain: `~@example.com` is a valid
-		// address, so an escape there would insert a zero-width space into it,
-		// while `~@alice` has no domain and would notify. Strikethrough is
-		// always a run of two or more, which the walk above still collects.
+		// A lone `~` is a local-part byte only when followed by a domain, so
+		// `~@example.com` stays intact while `~@alice` escapes.
 		return !domainShaped(line[i+1:])
 	}
 	if j < i {
-		// Emphasis markup right before the `@` is markup, not the tail of an
-		// address. A local part that genuinely ends in `_`, `*`, or `~`
-		// (`foo_@example.com`, `foo~@example.com`) keeps it because a
-		// local-part byte precedes the run.
 		return j == 0 || !isLocalPartByte(line[j-1])
 	}
 	return i == 0 || !isLocalPartByte(line[i-1])
 }
 
-// isEmphasisMarkup reports whether c can sit in a run of emphasis or
-// strikethrough markup that ends right before a `@`. `~` belongs here because
-// `~~@alice~~` renders as a strikethrough mention, and `~` is also a valid
-// local-part byte, so the run is the only thing that tells the two apart: a
-// run of two or more is markup, a single one is the tail of an address.
 func isEmphasisMarkup(c byte) bool {
 	return c == '*' || c == '_' || c == '~'
 }
 
-// domainShaped reports whether s — the text after an `@` — reads as the domain
-// half of an address: a label, a dot, then at least one byte of the next
-// label. A dot with nothing behind it is a sentence's period, so `~@alice.`
-// still has no domain and its handle still notifies.
 func domainShaped(s string) bool {
 	n := handleLen(s)
 	if n == 0 || n+1 >= len(s) || s[n] != '.' {
@@ -234,9 +186,6 @@ func domainShaped(s string) bool {
 	return isHandleByte(s[n+1])
 }
 
-// isLocalPartByte reports whether c may sit in the local part of an address
-// immediately before its `@`. A superset of the handle charset, so every
-// address-shaped run stays verbatim.
 func isLocalPartByte(c byte) bool {
 	if isHandleByte(c) {
 		return true
@@ -248,7 +197,6 @@ func isLocalPartByte(c byte) bool {
 	return false
 }
 
-// handleLen counts the leading bytes of s that a host accepts in a handle.
 func handleLen(s string) int {
 	n := 0
 	for n < len(s) && isHandleByte(s[n]) {
@@ -261,7 +209,6 @@ func isHandleByte(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '-'
 }
 
-// runLen counts the leading run of c in s.
 func runLen(s string, c byte) int {
 	n := 0
 	for n < len(s) && s[n] == c {
@@ -270,8 +217,6 @@ func runLen(s string, c byte) int {
 	return n
 }
 
-// leadingSpaces counts the indentation a fence may carry: never more than
-// fenceIndentMax, so a deeper indented line is code of another kind.
 func leadingSpaces(line string) int {
 	i := 0
 	for i < len(line) && i < fenceIndentMax && line[i] == ' ' {
@@ -280,9 +225,6 @@ func leadingSpaces(line string) int {
 	return i
 }
 
-// fenceOpens reports an opening fence: up to three leading spaces, then at
-// least three backticks or tildes. A backtick fence's info string may not
-// carry a backtick, so “ ```@alice``` “ stays an inline code span.
 func fenceOpens(line string) (char byte, n int, ok bool) {
 	i := leadingSpaces(line)
 	if i >= len(line) || (line[i] != '`' && line[i] != '~') {
@@ -299,10 +241,6 @@ func fenceOpens(line string) (char byte, n int, ok bool) {
 	return char, n, true
 }
 
-// fenceCloses reports a closing fence for the open block: the same character,
-// a run at least as long as the opener, and nothing but spaces or tabs after
-// it. Fence lines themselves are returned unchanged, so the block's bytes stay
-// intact.
 func fenceCloses(line string, char byte, open int) bool {
 	i := leadingSpaces(line)
 	n := runLen(line[i:], char)

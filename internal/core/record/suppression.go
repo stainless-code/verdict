@@ -9,6 +9,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 const (
@@ -285,7 +286,7 @@ func (st *state) hideWithheldMoved(body string) string {
 
 func movedKey(e *jq.Obj) string {
 	line, _ := e.Get(fieldLine)
-	return suppressionString(e, fieldPath) + "\x00" + jq.R(line) + "\x00" + NeutralizeMentions(suppressionString(e, "body"))
+	return suppressionString(e, fieldPath) + "\x00" + jq.R(line) + "\x00" + untrusted.NeutralizeMentions(suppressionString(e, "body"))
 }
 
 func (st *state) parseSuppression(item any) (*jq.Obj, error) {

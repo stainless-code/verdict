@@ -16,9 +16,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/core"
-	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/sarif"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 const (
@@ -327,7 +327,7 @@ func extractMessage(runIdx, resIdx int, msg *sarifMessage) (string, *core.Refusa
 	if text == "" {
 		return "", badSARIF(fmt.Sprintf("SARIF runs[%d].results[%d].message.text must not be empty", runIdx, resIdx))
 	}
-	return recordcore.NeutralizeMentions(text), nil
+	return untrusted.NeutralizeMentions(text), nil
 }
 
 func extractLocation(
