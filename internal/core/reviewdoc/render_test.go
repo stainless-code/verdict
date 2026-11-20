@@ -396,7 +396,7 @@ func TestRenderBodyDeterministicOrdering(t *testing.T) {
 	idxCrit := strings.Index(first, "Critical Z.")
 	idxImpA := strings.Index(first, "Important A.")
 	idxImpB := strings.Index(first, "Important B.")
-	if idxCrit >= idxImpA || idxImpA >= idxImpB {
+	if idxCrit < 0 || idxImpA < 0 || idxImpB < 0 || idxCrit >= idxImpA || idxImpA >= idxImpB {
 		t.Fatalf("unexpected rank order: crit=%d impA=%d impB=%d\n%s", idxCrit, idxImpA, idxImpB, first)
 	}
 }
