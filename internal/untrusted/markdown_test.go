@@ -171,6 +171,9 @@ func TestCodeSpanAndLinkLabel(t *testing.T) {
 	if got := LinkLabel("dir/[x] <y> @alice.go:1"); got != `dir/\[x\] &lt;y> @`+zwsp+"alice.go:1" {
 		t.Errorf("LinkLabel hostile = %q", got)
 	}
+	if got := LinkLabel("dir/a`b.go:7"); got != `dir/a\`+"`b.go:7" {
+		t.Errorf("LinkLabel backtick = %q", got)
+	}
 }
 
 func TestEscapeURLPathFenceAndCapRunes(t *testing.T) {

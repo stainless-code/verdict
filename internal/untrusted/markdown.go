@@ -109,7 +109,7 @@ func LinkLabel(s string) string {
 	out.Grow(len(flat))
 	for i := 0; i < len(flat); {
 		switch flat[i] {
-		case '\\', '[', ']':
+		case '\\', '[', ']', '`':
 			out.WriteByte('\\')
 			out.WriteByte(flat[i])
 			i++
