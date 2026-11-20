@@ -182,13 +182,50 @@ func splitBodyWithLinks(text string, defs map[int]string, budget int) []string {
 func bodyChunksWithLinks(text string, defs map[int]string, budget int) []string {
 	var out []string
 	for para := range strings.SplitSeq(text, paraSep) {
-		paraBudget := budget
-		if len(defs) > 0 {
-			paraBudget = max(budget-defsLen(referencedLinkIDs(para, defs), defs), 1)
-		}
-		out = append(out, runeChunks(para, paraBudget)...)
+		out = append(out, paraChunksWithLinks(para, defs, budget)...)
 	}
 	return out
+}
+
+func paraChunksWithLinks(para string, defs map[int]string, budget int) []string {
+	if len(defs) == 0 {
+		return runeChunks(para, budget)
+	}
+	var out []string
+	for len(para) > 0 {
+		cut := fitChunkWithDefs(para, defs, budget)
+		out = append(out, para[:cut])
+		para = para[cut:]
+	}
+	return out
+}
+
+func fitChunkWithDefs(para string, defs map[int]string, budget int) int {
+	if len(para)+defsLen(referencedLinkIDs(para, defs), defs) <= budget {
+		return len(para)
+	}
+	lo := minNonSplittingCut(para, budget)
+	hi := min(len(para), budget)
+	best := fitRunes(para, lo)
+	for lo <= hi {
+		mid := lo + (hi-lo)/2
+		cut := fitRunes(para, mid)
+		if cut+defsLen(referencedLinkIDs(para[:cut], defs), defs) <= budget {
+			best = cut
+			lo = mid + 1
+		} else {
+			hi = mid - 1
+		}
+	}
+	return best
+}
+
+func minNonSplittingCut(s string, budget int) int {
+	spans := evRefTokenSpans(s)
+	if len(spans) > 0 && spans[0][0] == 0 && spans[0][1] <= budget {
+		return spans[0][1]
+	}
+	return 1
 }
 
 func extractLinkDefs(body string) (string, map[int]string) {
@@ -322,7 +359,56 @@ func fitRunes(s string, space int) int {
 		_, w := utf8.DecodeRuneInString(s)
 		return w
 	}
+	return adjustCutForEvRefs(s, cut)
+}
+
+func adjustCutForEvRefs(s string, cut int) int {
+	for _, span := range evRefTokenSpans(s) {
+		if span[0] < cut && cut < span[1] {
+			if span[0] > 0 {
+				return span[0]
+			}
+			return cut
+		}
+	}
 	return cut
+}
+
+func evRefTokenSpans(s string) [][2]int {
+	matches := evRefRe.FindAllStringIndex(s, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	var spans [][2]int
+	for _, m := range matches {
+		if start, ok := findRefLabelStart(s, m[0]); ok {
+			spans = append(spans, [2]int{start, m[1]})
+		}
+	}
+	return spans
+}
+
+func findRefLabelStart(s string, closeIdx int) (int, bool) {
+	for i := closeIdx - 1; i >= 0; i-- {
+		switch {
+		case s[i] == '\n':
+			return 0, false
+		case isEscapedAt(s, i):
+		case s[i] == ']':
+			return 0, false
+		case s[i] == '[':
+			return i, i < closeIdx-1
+		}
+	}
+	return 0, false
+}
+
+func isEscapedAt(s string, i int) bool {
+	bs := 0
+	for j := i - 1; j >= 0 && s[j] == '\\'; j-- {
+		bs++
+	}
+	return bs%2 == 1
 }
 
 func buildPostComments(kept []any, sigs []string) []any {

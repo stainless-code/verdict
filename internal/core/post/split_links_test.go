@@ -2,6 +2,7 @@ package postcore
 
 import (
 	"context"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -60,6 +61,72 @@ func TestSplitRunsAfterFinalBannersStaysWithinLimit(t *testing.T) {
 		b := payloadBody(t, pl)
 		if len(b) > hostingBodyLimit {
 			t.Errorf("payload %d exceeds 65536 limit: %d bytes", i+1, len(b))
+		}
+	}
+}
+
+func TestRuneChunksDoesNotSplitEvidenceRefToken(t *testing.T) {
+	t.Parallel()
+	para := "prefix [a][ev-1] suffix"
+	chunks := runeChunks(para, 11)
+	if len(chunks) != 3 || chunks[0] != "prefix " || chunks[1] != "[a][ev-1] s" || chunks[2] != "uffix" {
+		t.Fatalf("runeChunks split reference token across boundary: %q", chunks)
+	}
+}
+
+func TestSplitPreFooterManyEvidenceDefsExceedingPartBudget(t *testing.T) {
+	t.Parallel()
+	const count = 700
+	lines := make([]string, 0, count)
+	defs := make([]string, 0, count)
+	for i := 1; i <= count; i++ {
+		id := strconv.Itoa(i)
+		lines = append(lines, id+". ⚠️ **important** [src/pkg/file_"+id+".go:"+id+"][ev-"+id+"] (`walked`) — Finding claim number "+id+" with details.")
+		defs = append(defs, "[ev-"+id+"]: https://github.com/acme/app/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/src/pkg/file_"+id+".go#L"+id)
+	}
+	body := strings.Join([]string{
+		"> ⚠️ Findings require attention.",
+		"**Findings**\n\n" + strings.Join(lines, "\n"),
+		strings.Join(defs, "\n"),
+	}, "\n\n")
+	if len(body) <= hostingBodyLimit {
+		t.Fatalf("fixture len = %d, want > %d", len(body), hostingBodyLimit)
+	}
+
+	var warnings []string
+	p := postSplitState(&warnings)
+	head := p.splitPreFooter(body)
+	if len(p.extraParts) == 0 {
+		t.Fatal("expected split into multiple parts")
+	}
+	allParts := append([]string{head}, p.extraParts...)
+	verifySplitPartsKeepAllEvidenceDefs(t, allParts, count)
+}
+
+func verifySplitPartsKeepAllEvidenceDefs(t *testing.T, parts []string, wantRefs int) {
+	t.Helper()
+	seenRefs := map[string]bool{}
+	for idx, part := range parts {
+		verifyOneSplitPartEvidenceDefs(t, idx, len(parts), part, seenRefs)
+	}
+	if len(seenRefs) != wantRefs {
+		t.Fatalf("preserved %d distinct [ev-N] references across parts, want %d", len(seenRefs), wantRefs)
+	}
+}
+
+func verifyOneSplitPartEvidenceDefs(t *testing.T, idx, total int, part string, seenRefs map[string]bool) {
+	t.Helper()
+	if idx > 0 {
+		assertSplitPart(t, splitFollowHead(idx+1, total)+part)
+	} else {
+		assertSplitPart(t, part)
+	}
+	for _, m := range evRefRe.FindAllStringSubmatch(part, -1) {
+		id := m[1]
+		seenRefs[id] = true
+		defPrefix := "[ev-" + id + "]: https://github.com/acme/app/blob/"
+		if !strings.Contains(part, defPrefix) {
+			t.Fatalf("part %d references [ev-%s] but lacks its definition", idx+1, id)
 		}
 	}
 }
