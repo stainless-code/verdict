@@ -4,7 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"path/filepath"
 	"strings"
 
@@ -197,9 +199,13 @@ func WritePlan(path string, f *File) error {
 	return atomic.WriteFile(path, []byte(jq.PrettyOrdered(f.Wire())))
 }
 
-// ReadPlan reads the plan a draft was written against.
+// ReadPlan reads the plan a draft was written against. A missing file
+// returns [fs.ErrNotExist].
 func ReadPlan(path string) (*File, error) {
 	raw, err := jq.CappedFile(path, jq.MaxPRBytes)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, fs.ErrNotExist
+	}
 	if err != nil {
 		return nil, jq.NewErrf("read plan: %v", err)
 	}

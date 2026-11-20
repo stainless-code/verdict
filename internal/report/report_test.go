@@ -144,3 +144,19 @@ func TestReportMaxRiskMissingStore(t *testing.T) {
 		t.Fatalf("exit = %d, want 3; out=%s diag=%s", code, out.String(), diag.String())
 	}
 }
+
+func TestJSONValidationUsesStoredReceiptWithoutTableWarning(t *testing.T) {
+	setupRiskCLIBundle(t, `{"validation_mode":"gate","validation_hash":"9f2b","validation_counts":{"confirmed":1}}`)
+	if err := os.WriteFile(".verdict/state/local-risk-cli/validation.json", []byte("{broken"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var out, diag bytes.Buffer
+	r := &cli.Runner{Out: &out, Human: &diag, Diag: &diag, JSONMode: true, Effective: cli.Defaults()}
+	code := Run(t.Context(), r, []string{"--validation", "--live", "skip"}, Request{Repo: "acme/app", Pr: "local-risk-cli"})
+	if code != 0 || !strings.Contains(out.String(), `"hash": "9f2b"`) {
+		t.Fatalf("exit=%d, out=%s, diag=%s; want recorded validation hash 9f2b", code, &out, &diag)
+	}
+	if strings.Contains(out.String(), "the table lists no per-finding results") {
+		t.Errorf("JSON contains a table warning: %s", &out)
+	}
+}

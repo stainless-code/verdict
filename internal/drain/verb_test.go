@@ -224,3 +224,26 @@ func TestRunPostPathLocksBeforeWritingPlan(t *testing.T) {
 		t.Fatalf("plan not written: %v", err)
 	}
 }
+
+func TestPlanOnlyLocksBeforeWritingPlan(t *testing.T) {
+	t.Parallel()
+	root, dir := setupDrainBundle(t)
+	probe := &lockProbingCommander{
+		inner: &drainHostStub{
+			pageJSON: `{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}`,
+			self:     "verdict-bot",
+		},
+		dir: dir,
+	}
+	out, diag, code := runDrainTest(t, root, probe, nil)
+	if code != 0 {
+		t.Fatalf("Run exit = %d, out=%s, diag=%s", code, out, diag)
+	}
+	if !probe.probed || !probe.planAbsent || !probe.lockHeld {
+		t.Fatalf("lock probe before plan write: probed=%v planAbsent=%v lockHeld=%v",
+			probe.probed, probe.planAbsent, probe.lockHeld)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "drain.json")); err != nil {
+		t.Fatalf("plan not written: %v", err)
+	}
+}

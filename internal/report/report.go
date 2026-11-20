@@ -105,6 +105,7 @@ func reportRequest(r *cli.Runner, req Request, flags *reportcore.Flags) *reportc
 	return &reportcore.Request{
 		ReadRequest: readRequest(r, req),
 		Flags:       *flags,
+		JSONOnly:    r.JSONMode,
 		Effective:   r.Effective,
 		Warnings:    append([]string{}, r.Warnings...),
 	}

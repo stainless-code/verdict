@@ -365,3 +365,39 @@ func TestPostClearsRecoveredFeedFailure(t *testing.T) {
 		t.Fatalf("failures = %+v, want only other", req.Plan.Failed)
 	}
 }
+
+func TestPostClearsObsoleteThreadFailures(t *testing.T) {
+	req, calls, _ := postFixture(t, nil)
+	req.Plan.Failed = []Failed{
+		{ThreadID: "PRRT_1", Reason: "host rejected reply"},
+		{ThreadID: "PRRT_2", Reason: "could not resolve thread: host refused"},
+	}
+	req.Feed.Threads[0].Comments[1].ID = "103"
+	req.Feed.Threads[1].Resolved = true
+	res, ref := Post(req)
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	if res.Incomplete || len(req.Plan.Failed) != 0 {
+		t.Errorf("incomplete=%v failures=%+v; want false and no failures", res.Incomplete, req.Plan.Failed)
+	}
+	if len(*calls) != 1 || (*calls)[0].thread != "PRRT_3" {
+		t.Errorf("calls = %+v; want only PRRT_3", *calls)
+	}
+}
+
+func TestPostRetainsWithdrawFailureWhenReplyAdvancesThread(t *testing.T) {
+	req, calls, _ := postFixture(t, nil)
+	req.Plan.Failed = []Failed{{ThreadID: "PRRT_2", Reason: "could not resolve thread: host refused"}}
+	req.Feed.Threads[1].Comments = append(req.Feed.Threads[1].Comments, threadscore.Comment{ID: "202"})
+	res, ref := Post(req)
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	if !res.Incomplete || len(req.Plan.Failed) != 1 || req.Plan.Failed[0].ThreadID != "PRRT_2" {
+		t.Errorf("incomplete=%v failures=%+v; want unresolved PRRT_2 failure", res.Incomplete, req.Plan.Failed)
+	}
+	if len(*calls) != 2 || (*calls)[0].thread != "PRRT_1" || (*calls)[1].thread != "PRRT_3" {
+		t.Errorf("calls = %+v; want PRRT_1 and PRRT_3", *calls)
+	}
+}

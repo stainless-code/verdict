@@ -1089,7 +1089,7 @@ func TestServeCancelJoinsReaderGoroutine(t *testing.T) {
 	defer cancel()
 	var out bytes.Buffer
 	done := make(chan error, 1)
-	go func() { done <- server.Serve(ctx, reader, &out) }()
+	go func() { done <- server.ServeInterruptible(ctx, reader, &out) }()
 	testenv.Until(t, func() bool {
 		select {
 		case <-reader.entered:
@@ -1128,6 +1128,40 @@ func TestServeCancelWithoutClosableReader(t *testing.T) {
 	var out bytes.Buffer
 	done := make(chan error, 1)
 	go func() { done <- server.Serve(ctx, struct{ io.Reader }{reader}, &out) }()
+	testenv.Until(t, func() bool {
+		select {
+		case <-reader.entered:
+			return true
+		default:
+			return false
+		}
+	})
+	cancel()
+	var serveErr error
+	testenv.Until(t, func() bool {
+		select {
+		case serveErr = <-done:
+			return true
+		default:
+			return false
+		}
+	})
+	if serveErr != nil {
+		t.Fatalf("Serve = %v, want nil", serveErr)
+	}
+}
+
+func TestServeCancelWithNopCloser(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	server := New(&cfg)
+	reader := newClosableBlockingReader()
+	t.Cleanup(func() { _ = reader.Close() })
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var out bytes.Buffer
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(ctx, io.NopCloser(reader), &out) }()
 	testenv.Until(t, func() bool {
 		select {
 		case <-reader.entered:
