@@ -442,3 +442,38 @@ func TestRenderBodyCapsOverflow(t *testing.T) {
 		t.Errorf("missing checked-files overflow line:\n%s", cleanGot)
 	}
 }
+
+func TestRenderBodyLeftSideFindingRendersCodeSpanNotHeadPermalink(t *testing.T) {
+	t.Parallel()
+	left := jq.NewObj(
+		"sig", "sig-left", "status", "open", "severity", "important", "rigor", "walked",
+		"anchored", true, "inBounds", true, "path", "src/deleted.go",
+		"start_line", 10, "line", 12, "side", "LEFT",
+		"claim", "Removed guard leaves caller exposed.",
+		"verification", jq.NewObj("quote", "verified"),
+	)
+	right := jq.NewObj(
+		"sig", "sig-right", "status", "open", "severity", "informational", "rigor", "pointed",
+		"anchored", true, "inBounds", true, "path", "src/added.go",
+		"line", 20, "side", "RIGHT",
+		"claim", "New helper can be simplified.",
+		"verification", jq.NewObj("quote", "verified"),
+	)
+	got := reviewdoc.Render(&reviewdoc.RenderInput{
+		Review:   jq.NewObj("findings", []any{left, right}),
+		Approval: &core.ApprovalReceipt{Approved: false, Reason: "open findings", Tier: "important"},
+		Kept:     []any{left, right},
+		BaseURL:  testBaseURL,
+		HeadFull: testHeadFull,
+	})
+	if !strings.Contains(got, "1. ⚠️ **important** `src/deleted.go:10-12` (`walked`) — Removed guard leaves caller exposed.") {
+		t.Errorf("LEFT finding did not render as a code span:\n%s", got)
+	}
+	if strings.Contains(got, "src/deleted.go#L10-L12") {
+		t.Errorf("LEFT finding linked to HEAD blob at old line numbers:\n%s", got)
+	}
+	if !strings.Contains(got, "2. ℹ️ **informational** [src/added.go:20][ev-1] (`pointed`) — New helper can be simplified.") ||
+		!strings.Contains(got, "[ev-1]: https://github.com/acme/app/blob/"+testHeadFull+"/src/added.go#L20") {
+		t.Errorf("RIGHT finding lost its HEAD permalink:\n%s", got)
+	}
+}

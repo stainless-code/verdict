@@ -407,13 +407,17 @@ func formatFindingItem(num int, m *jq.Obj, links *linkTable, moved bool) (line, 
 	startLine, _ := jq.IntOf(fieldVal(m, "start_line"))
 	endLine, _ := jq.IntOf(fieldVal(m, "line"))
 	dropReason := untrusted.InlineProse(jq.StrOf(fieldVal(m, "dropReason")))
-	allowLink := !moved || !strings.HasPrefix(dropReason, pathNotIndexedPref)
+	allowLink := !isLeftSide(m) && (!moved || !strings.HasPrefix(dropReason, pathNotIndexedPref))
 	anchor := links.anchor(path, startLine, endLine, allowLink)
 	claim := untrusted.InlineProse(findingClaim(m))
 
 	line = buildFindingLine(num, m, anchor, claim, dropReason, moved)
 	indent := findingDetailsIndent(moved)
 	return line, renderBriefDetails(m, path, startLine, endLine, claim, indent, links)
+}
+
+func isLeftSide(m *jq.Obj) bool {
+	return strings.EqualFold(jq.StrOf(fieldVal(m, "side")), "LEFT")
 }
 
 func buildFindingLine(num int, m *jq.Obj, anchor, claim, dropReason string, moved bool) string {
