@@ -93,6 +93,7 @@ type state struct { // field grouping documents the loaded dimensions; alignment
 	comp           *core.ReportCompleteness
 	risk           *core.ReportRisk
 	validation     *core.ValidationData
+	judgements     []core.ValidationResult
 	evidence       *evidenceState
 	dir            string
 	now            string
@@ -308,11 +309,17 @@ func loadStateValidation(st *state) {
 	if !st.flags.Validation {
 		return
 	}
+	file, hash, ref := validation.Load(st.dir, st.headSHA, st.entries)
+	if file != nil {
+		st.judgements = file.Results
+	}
 	if data := storedValidation(st.dir); data != nil {
 		st.validation = data
+		if ref != nil {
+			st.warn("validation artifact unreadable (" + ref.Message + ") — the table lists no per-finding results")
+		}
 		return
 	}
-	file, hash, ref := validation.Load(st.dir, st.headSHA, st.entries)
 	if ref != nil {
 		st.warn("validation artifact unreadable (" + ref.Message + ") — degrading cleanly")
 		return

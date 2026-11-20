@@ -1,6 +1,7 @@
 package readgolden_test
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -39,6 +40,26 @@ func kitchenSink(t *testing.T, dir, pr string) {
 		".verdict/state/" + pr + "/chunks/manifest.json":     `{"chunks":[{"name":"chunk-a"}]}`,
 		".verdict/state/" + pr + "/chunks/chunk-a.cost.json": costChunk(),
 	})
+}
+
+// validationPass renders a validation.json judging three of the four open
+// findings: one downgrade, one rejection, and one confirmation whose reason
+// carries a newline and a terminal escape the table must flatten.
+func validationPass() string {
+	return `{"schema_version":"1","head_sha":"` + headA + `","results":[` +
+		`{"sig":"` + sigCrit + `","verdict":"DOWNGRADED","from_severity":"critical","to_severity":"important",` +
+		`"reason":"The hunk only reaches this path under a test flag."},` +
+		`{"sig":"` + sigImp + `","verdict":"REJECTED","reason":"The cited line is outside the diff."},` +
+		`{"sig":"` + sigInfo + `","verdict":"CONFIRMED","reason":"Reachable from the cited hunk.\n\u001b[31mNo   change.\u001b[0m"}]}`
+}
+
+// validationReceipt renders the post.json a gate-mode post wrote after it
+// applied a pass, so the report reads the stored tally instead of recounting.
+func validationReceipt() string {
+	return `{"schema_version":"1","head":"` + headA + `","posted_at":"2026-01-01T00:00:00Z",` +
+		`"validation_hash":"` + strings.Repeat("9f", 32) + `",` +
+		`"validation_counts":{"confirmed":1,"rejected":1,"downgraded":1,"unvalidated":1},"validation_mode":"gate",` +
+		`"rigor_floors":{"critical":"walked","important":"pointed","informational":"said"}}`
 }
 
 // TestReportGolden pins the report verb across the human
@@ -104,6 +125,25 @@ func TestReportGolden(t *testing.T) {
 		"--output", "out.md", "--sarif", "out.sarif", "--json")
 	goldenRead(t, "report/kitchen-sink", chunked, nil,
 		allowKeys("C/out.md", "C/out.sarif"), goArgs...)
+
+	judged := func(t *testing.T, dir, _ string) {
+		t.Helper()
+		mkPRBundle(t, dir, "5101")
+		writeFiles(t, dir, map[string]string{
+			".verdict/state/5101/findings.json":   mixedFindings(),
+			".verdict/state/5101/validation.json": validationPass(),
+		})
+	}
+	goArgs = splitRepo("report", "5101", "--validation")
+	goldenRead(t, "report/validation-human", judged, nil, nil, goArgs...)
+
+	receipted := func(t *testing.T, dir, _ string) {
+		t.Helper()
+		judged(t, dir, "")
+		writeFiles(t, dir, map[string]string{".verdict/state/5101/post.json": validationReceipt()})
+	}
+	goArgs = splitRepo("report", "5101", "--validation")
+	goldenRead(t, "report/validation-receipt-human", receipted, nil, nil, goArgs...)
 
 	dirty := func(t *testing.T, dir, _ string) {
 		t.Helper()

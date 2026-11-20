@@ -1208,9 +1208,23 @@ artifact bytes, `null` when the pass was skipped), `validation_counts`
 `rigor_floors`. `unvalidated` counts the findings the pass owed a result: open
 and not already withheld, which is the set a skipped pass counts too. `post --json` reports the applied pass under `data.validation`
 only when one ran, and `report --json --validation` reads it back — the receipt
-a `post` or `record` run stored, or a tally of the artifact when none has. A
+a `post` or `record` run stored, or a tally of the artifact when none has.
+Without `--json`, `report --validation` prints the same pass as a table below
+the finding list: a `validation:` line with the mode, the exact-file hash, and
+the four counts, then one row per judged finding with its short sig, verdict,
+the severity move (`critical → important` for `DOWNGRADED`, `-` otherwise), and
+the validator's reason flattened to one line. The rows come from
+`validation.json`, so a receipt whose artifact is gone or unreadable prints the
+`validation:` line alone, with a warning when the artifact is unreadable. A
 `validation.json` written for another head refuses `validation-stale`; a
 malformed one refuses `bad-validation`.
+
+A pass may record `validator.prompt_sha256`, the SHA-256 of the
+`prompts/validate.md` it ran. When that digest differs from the prompt this
+build ships, `post` and `record` warn with both short digests and still apply
+the pass: it may have judged against another rubric, and only the operator can
+tell whether that matters. An absent digest never warns, and the comparison
+ignores case.
 
 ### Diff coverage (agent attestation)
 

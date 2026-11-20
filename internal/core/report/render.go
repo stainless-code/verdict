@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
@@ -323,6 +325,7 @@ func appendHumanTail(st *state, lines []string) []string {
 	if st.risk != nil {
 		lines = append(lines, riskHuman(st.risk)...)
 	}
+	lines = append(lines, validationHuman(st)...)
 	lines = append(lines, quietLines(st)...)
 	return append(lines, extraHuman(st)...)
 }
@@ -924,4 +927,57 @@ func reportReceipt(st *state) *core.Truncation {
 		}
 	}
 	return readcommon.BundleTruncation(st.dir).ForResult(len(viewRanked(st)))
+}
+
+// validationHuman renders the pass: the tally and the exact-file hash on top,
+// then one row per judged finding with the verdict, the severity move, and the
+// validator's reason flattened to one line.
+func validationHuman(st *state) []string {
+	data := st.validation
+	if data == nil {
+		return nil
+	}
+	hash := "none"
+	if data.Hash != nil {
+		hash = *data.Hash
+	}
+	lines := []string{fmt.Sprintf("validation: mode=%s hash=%s confirmed=%d rejected=%d downgraded=%d unvalidated=%d",
+		data.Mode, hash, data.Counts.Confirmed, data.Counts.Rejected, data.Counts.Downgraded, data.Counts.Unvalidated)}
+	if len(st.judgements) == 0 {
+		return lines
+	}
+	rows := make([][4]string, 0, len(st.judgements)+1)
+	rows = append(rows, [4]string{"sig", "verdict", "move", "reason"})
+	for i := range st.judgements {
+		r := &st.judgements[i]
+		move := "-"
+		if r.Verdict == core.ValidationDowngraded {
+			move = r.FromSeverity + " → " + r.ToSeverity
+		}
+		rows = append(rows, [4]string{readcommon.Prefix(r.Sig), r.Verdict, move, flattenReason(r.Reason)})
+	}
+	var widths [3]int
+	for _, row := range rows {
+		for c := range widths {
+			widths[c] = max(widths[c], utf8.RuneCountInString(row[c]))
+		}
+	}
+	for _, row := range rows {
+		lines = append(lines, "  "+padRune(row[0], widths[0])+"  "+padRune(row[1], widths[1])+"  "+padRune(row[2], widths[2])+"  "+row[3])
+	}
+	return lines
+}
+
+func padRune(s string, width int) string {
+	return s + strings.Repeat(" ", width-utf8.RuneCountInString(s))
+}
+
+func flattenReason(reason string) string {
+	plain := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) && !unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, reason)
+	return strings.Join(strings.Fields(plain), " ")
 }
