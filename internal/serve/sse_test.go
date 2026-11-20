@@ -378,6 +378,8 @@ type failingAfterOneAcceptListener struct {
 	failAccept chan struct{}
 	once       sync.Once
 	accepted   int
+	closeOnce  sync.Once
+	closeErr   error
 	mu         sync.Mutex
 }
 
@@ -391,6 +393,11 @@ func (l *failingAfterOneAcceptListener) Accept() (net.Conn, error) {
 	}
 	<-l.failAccept
 	return nil, errors.New("synthetic listener failure")
+}
+
+func (l *failingAfterOneAcceptListener) Close() error {
+	l.closeOnce.Do(func() { l.triggerFailure(); l.closeErr = l.Listener.Close() })
+	return l.closeErr
 }
 
 func (l *failingAfterOneAcceptListener) triggerFailure() {
@@ -427,4 +434,26 @@ func TestListenerErrorStopsOpenEventsStream(t *testing.T) {
 	if _, err := io.ReadAll(response.Body); err != nil {
 		t.Fatalf("read stopped event stream after listener error: %v", err)
 	}
+}
+
+func TestFailingListenerCloseReleasesAccept(t *testing.T) {
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrapper := &failingAfterOneAcceptListener{Listener: listener, failAccept: make(chan struct{}), accepted: 1}
+	t.Cleanup(func() { wrapper.triggerFailure(); _ = listener.Close() })
+	done := make(chan error, 1)
+	go func() { _, err := wrapper.Accept(); done <- err }()
+	if err := wrapper.Close(); err != nil {
+		t.Fatal(err)
+	}
+	testenv.Until(t, func() bool {
+		select {
+		case err := <-done:
+			return err != nil
+		default:
+			return false
+		}
+	})
 }
