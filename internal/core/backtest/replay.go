@@ -840,7 +840,7 @@ func (s *replaySession) record(ctx context.Context, bundle string) *core.Refusal
 	if cancel := s.st.canceled(ctx); cancel != nil {
 		return cancel
 	}
-	resp, ref := recordcore.Run(ctx, &core.RecordRequest{
+	resp, ref := recordcore.Run(ctx, &recordcore.Request{
 		ReadRequest: s.readRequest(replayRepo, bundle),
 		Effective:   s.req.Effective,
 	})

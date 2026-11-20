@@ -58,7 +58,7 @@ func reviewJSON(kbFrag string) string {
 		`"rigor":"walked","severity":"important"` + kbFrag + `}]}`
 }
 
-func recordRequest(t *testing.T, c *collector, slug string) *core.RecordRequest {
+func recordRequest(t *testing.T, c *collector, slug string) *recordcore.Request {
 	t.Helper()
 	seedControls(t, ".verdict/state/"+slug)
 	read := core.ReadRequest{
@@ -66,7 +66,7 @@ func recordRequest(t *testing.T, c *collector, slug string) *core.RecordRequest 
 		Repo:    "acme/app",
 		Pr:      slug,
 	}
-	return &core.RecordRequest{
+	return &recordcore.Request{
 		ReadRequest: read,
 		Effective:   core.Defaults(),
 	}
@@ -86,7 +86,7 @@ func TestRunRecordData(t *testing.T) {
 	checkRecordHuman(t, c.human)
 }
 
-func checkRecordResponse(t *testing.T, resp *core.RecordResponse) {
+func checkRecordResponse(t *testing.T, resp *recordcore.Response) {
 	t.Helper()
 	if resp.At != "2026-11-02T12:00:00Z" {
 		t.Errorf("At = %q", resp.At)

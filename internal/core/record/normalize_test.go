@@ -263,7 +263,7 @@ func TestRecordNormalizesWeakModelShapes(t *testing.T) {
 
 // checkDryRunRepairs proves the dry run carries the normalized object and
 // one repair per applied rewrite.
-func checkDryRunRepairs(t *testing.T, resp *core.RecordResponse) {
+func checkDryRunRepairs(t *testing.T, resp *recordcore.Response) {
 	t.Helper()
 	if resp.Data.Normalized == nil || len(resp.Data.Repairs) == 0 {
 		t.Fatalf("dry run data = %+v, want normalized and repairs", resp.Data)

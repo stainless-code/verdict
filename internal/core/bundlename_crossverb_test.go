@@ -135,7 +135,7 @@ func bundleVerbs() []bundleVerb {
 			return ref
 		}},
 		{name: "record", run: func(ctx context.Context, pr string) *core.RefusalError {
-			_, ref := recordcore.Run(ctx, &core.RecordRequest{ReadRequest: bundleRead(pr)})
+			_, ref := recordcore.Run(ctx, &recordcore.Request{ReadRequest: bundleRead(pr)})
 			return ref
 		}},
 		{name: "report", run: func(ctx context.Context, pr string) *core.RefusalError {

@@ -117,7 +117,7 @@ func TestCategoryNotInSig(t *testing.T) {
 
 // runBadCategory records one review carrying an unknown category and returns
 // the response plus the warnings the run reported.
-func runBadCategory(t *testing.T, slug string, dryRun bool) (*core.RecordResponse, []string) {
+func runBadCategory(t *testing.T, slug string, dryRun bool) (*recordcore.Response, []string) {
 	t.Helper()
 	writeStoreBundle(t, slug, categoryReview(t, `"sec"`))
 	c := &collector{}

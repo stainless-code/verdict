@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 )
 
@@ -35,7 +34,7 @@ func checkBundleSymlink(t *testing.T, component, tail string) {
 	if err := os.Symlink(target, link); err != nil {
 		t.Fatal(err)
 	}
-	_, ref := recordcore.Run(t.Context(), &core.RecordRequest{RepoRoot: root, Pr: "42"})
+	_, ref := recordcore.Run(t.Context(), &recordcore.Request{RepoRoot: root, Pr: "42"})
 	if ref == nil || ref.Code != "bad-config" {
 		t.Fatalf("refusal = %v; want bad-config", ref)
 	}

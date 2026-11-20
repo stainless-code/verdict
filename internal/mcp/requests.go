@@ -22,6 +22,7 @@ import (
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
+	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	riskcore "github.com/stainless-code/verdict/internal/core/risk"
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
@@ -396,7 +397,7 @@ func wireReady(ctx context.Context, b *bindings, req *readycore.Request) error {
 	return nil
 }
 
-func decodeRecord(req *core.RecordRequest, a *args) {
+func decodeRecord(req *recordcore.Request, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.boolean("dry_run", &req.DryRun)
@@ -405,7 +406,7 @@ func decodeRecord(req *core.RecordRequest, a *args) {
 	})
 }
 
-func wireRecord(ctx context.Context, b *bindings, req *core.RecordRequest) error {
+func wireRecord(ctx context.Context, b *bindings, req *recordcore.Request) error {
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
 		return err
 	}

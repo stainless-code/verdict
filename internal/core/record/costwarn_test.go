@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -221,7 +220,7 @@ func countNamelessWarnings(warnings []string) int {
 // writing while the nameless scan reads the file the repair has not touched.
 func TestCostWarningsMatchAcrossDryRunWithCostNames(t *testing.T) {
 	dryResp, liveResp := runCostParityPair(t, "local-costparity",
-		core.RecordFlags{CostNames: true, CostPanel: []string{"lead"}})
+		recordcore.Flags{CostNames: true, CostPanel: []string{"lead"}})
 	if got := countCostWarnings(dryResp.Warnings,
 		`cost names: would name 1 models[] entries from the panel (dry run — nothing written)`); got != 1 {
 		t.Errorf("dry-run warnings = %q, want exactly one would-name repair message", dryResp.Warnings)
@@ -244,7 +243,7 @@ func TestCostWarningsMatchAcrossDryRunWithCostNames(t *testing.T) {
 // TestCostWarningsMatchAcrossDryRunWithoutCostNames proves the other half: an
 // entry no repair names still warns in both modes, with the same warning set.
 func TestCostWarningsMatchAcrossDryRunWithoutCostNames(t *testing.T) {
-	dryResp, liveResp := runCostParityPair(t, "local-costparityplain", core.RecordFlags{})
+	dryResp, liveResp := runCostParityPair(t, "local-costparityplain", recordcore.Flags{})
 	if got := countCostWarnings(dryResp.Warnings, namelessCostWarning); got != 1 {
 		t.Errorf("dry-run warnings = %q, want exactly one %q", dryResp.Warnings, namelessCostWarning)
 	}
@@ -257,7 +256,7 @@ func TestCostWarningsMatchAcrossDryRunWithoutCostNames(t *testing.T) {
 // runCostParityPair records one nameless cost entry twice over the same
 // bundle: first as a dry run, then live. Both runs share the flags, so the
 // parity assertion compares only what the mode changes.
-func runCostParityPair(t *testing.T, slug string, flags core.RecordFlags) (dry, live *core.RecordResponse) {
+func runCostParityPair(t *testing.T, slug string, flags recordcore.Flags) (dry, live *recordcore.Response) {
 	t.Helper()
 	bundle(t, slug, reviewJSON(""))
 	writeFile(t, ".verdict/state/"+slug+"/cost.json",

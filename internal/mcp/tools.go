@@ -293,7 +293,7 @@ func allTools(readOnly, operator bool) []*tool {
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Record review", mutates: localWrites, idempotent: true, servedWhenReadOnly: true, readOnlyDryRun: true},
 		}, toolDeps{commander: fetchRunner}, decodeRecord, wireRecord, recordcore.Run,
-			func(resp *core.RecordResponse) *jq.Obj { return wireData(resp.Data) }),
+			func(resp *recordcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		directTool(&toolSpec{
 			name: "report",
 			description: "Render the offline review report (ranked findings, counts, markdown/SARIF). " +
@@ -659,7 +659,7 @@ func wireData(v any) *jq.Obj {
 }
 
 func requestDryRun(raw any) bool {
-	req, ok := raw.(*core.RecordRequest)
+	req, ok := raw.(*recordcore.Request)
 	return ok && req.DryRun
 }
 

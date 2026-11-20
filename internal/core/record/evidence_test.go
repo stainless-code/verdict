@@ -86,10 +86,10 @@ func evidenceBundle(t *testing.T, review string, files map[string]string) string
 
 // recordEvidence records the fixture bundle, returning the response and the
 // refusal. Warnings ride on the response, so the stream needs no third result.
-func recordEvidence(t *testing.T, dryRun bool) (*core.RecordResponse, *core.RefusalError) {
+func recordEvidence(t *testing.T, dryRun bool) (*recordcore.Response, *core.RefusalError) {
 	t.Helper()
 	c := &collector{}
-	req := &core.RecordRequest{Effective: core.Defaults(), DryRun: dryRun}
+	req := &recordcore.Request{Effective: core.Defaults(), DryRun: dryRun}
 	req.Runtime = testRuntime(c)
 	req.Repo, req.Pr = "acme/app", evidenceSlug
 	return recordcore.Run(context.Background(), req)
@@ -110,7 +110,7 @@ func storedRecord(t *testing.T, dir string) *core.Record {
 }
 
 // evidenceOf returns the response's evidence receipt.
-func evidenceOf(t *testing.T, resp *core.RecordResponse) *core.EvidenceReceipt {
+func evidenceOf(t *testing.T, resp *recordcore.Response) *core.EvidenceReceipt {
 	t.Helper()
 	if resp == nil || resp.Data.Evidence == nil {
 		t.Fatalf("response carries no evidence receipt")

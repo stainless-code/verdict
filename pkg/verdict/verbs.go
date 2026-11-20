@@ -306,12 +306,12 @@ func (c *Client) Record(ctx context.Context, req *RecordRequest) (*Result, error
 	if err != nil {
 		return nil, err
 	}
-	resp, ref := recordcore.Run(ctx, &core.RecordRequest{
+	resp, ref := recordcore.Run(ctx, &recordcore.Request{
 		ReadRequest: rr,
 		Effective:   core.Defaults(),
 		DryRun:      req.DryRun,
 		Strict:      req.Strict,
-		Flags: core.RecordFlags{
+		Flags: recordcore.Flags{
 			CostNames: req.CostNames, CostPanel: req.CostPanel,
 		},
 	})

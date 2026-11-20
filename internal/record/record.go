@@ -60,7 +60,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req *Request) int {
 }
 
 // recordRequest builds the core request from the runner and invocation.
-func recordRequest(r *cli.Runner, req *Request) *core.RecordRequest {
+func recordRequest(r *cli.Runner, req *Request) *recordcore.Request {
 	root := req.Root
 	read := core.ReadRequest{
 		Runtime:  &core.Runtime{Env: req.Env, Now: r.Now, Progress: cli.Progress{R: r}, Commander: coreexec.Runner{}},
@@ -70,7 +70,7 @@ func recordRequest(r *cli.Runner, req *Request) *core.RecordRequest {
 		Root:     &root,
 		RepoRoot: req.RepoRoot,
 	}
-	return &core.RecordRequest{
+	return &recordcore.Request{
 		ReadRequest: read,
 		Effective:   r.Effective,
 		Warnings:    append([]string{}, r.Warnings...),
