@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"maps"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -20,6 +21,7 @@ func (r *Runner) Read(req core.ReadRequest, cmdr core.Commander) core.ReadReques
 	rt := &core.Runtime{}
 	if req.Runtime != nil {
 		*rt = *req.Runtime
+		rt.Env = maps.Clone(req.Env)
 	}
 	rt.Now = r.Now
 	rt.Progress = Progress{R: r}

@@ -68,6 +68,14 @@ func TestReadCopiesRuntime(t *testing.T) {
 		t.Fatal("Read mutated caller runtime")
 	}
 	checkReadResult(t, got, selectedCmd)
+	rt.Env["KEY"] = "caller changed"
+	if got.Env["KEY"] != "value" {
+		t.Errorf("Read environment changed with caller: %q; want value", got.Env["KEY"])
+	}
+	got.Env["KEY"] = "request changed"
+	if rt.Env["KEY"] != "caller changed" {
+		t.Errorf("caller environment changed with request: %q; want caller changed", rt.Env["KEY"])
+	}
 	got.Progress.Human("injected")
 	if out.Len() != 0 {
 		t.Fatalf("Read retained caller progress: %q", out.String())
@@ -93,5 +101,13 @@ func TestReadInitializesRuntime(t *testing.T) {
 	empty := r.Read(core.ReadRequest{}, selectedCmd)
 	if empty.Runtime == nil || empty.Commander != selectedCmd {
 		t.Fatal("Read did not initialize runtime")
+	}
+}
+
+func TestReadPreservesNilEnv(t *testing.T) {
+	r := &cli.Runner{}
+	got := r.Read(core.ReadRequest{Runtime: &core.Runtime{}}, &readCommander{})
+	if got.Env != nil {
+		t.Fatalf("Read Env = %v; want nil", got.Env)
 	}
 }
