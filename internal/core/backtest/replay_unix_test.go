@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"math"
 	"os"
 	"os/exec"
@@ -13,6 +14,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -104,6 +106,54 @@ func (f *replayFixture) prPath(n int) string {
 		fmt.Sprintf("%03d", n), "replay.json")
 }
 
+// pinnedExe keeps one read-only descriptor to this test binary open from the
+// first launch fixture, so a mid-suite sweep of the Go build workdir under
+// TMPDIR can still materialize the fake agent binary into the test's own
+// TempDir instead of leaving a dangling symlink.
+var pinnedExe = sync.OnceValues(func() (*os.File, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return nil, err
+	}
+	return os.Open(exe)
+})
+
+// plantFakeBinary links exe at dst when exe is still on disk, and copies the
+// pinned descriptor when the path was unlinked under the running binary.
+func plantFakeBinary(t *testing.T, dst, exe string) {
+	t.Helper()
+	src, err := pinnedExe()
+	if err != nil {
+		t.Fatalf("open the test binary: %v", err)
+	}
+	if _, statErr := os.Stat(exe); statErr == nil {
+		if err := os.Symlink(exe, dst); err != nil {
+			t.Fatalf("link the fake agent: %v", err)
+		}
+		return
+	}
+	materializeFakeBinary(t, dst, src)
+}
+
+func materializeFakeBinary(t *testing.T, dst string, src *os.File) {
+	t.Helper()
+	info, err := src.Stat()
+	if err != nil {
+		t.Fatalf("stat the pinned test binary: %v", err)
+	}
+	out, err := os.OpenFile(dst, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
+	if err != nil {
+		t.Fatalf("create the fake agent: %v", err)
+	}
+	if _, err := io.Copy(out, io.NewSectionReader(src, 0, info.Size())); err != nil {
+		_ = out.Close()
+		t.Fatalf("materialize the fake agent: %v", err)
+	}
+	if err := out.Close(); err != nil {
+		t.Fatalf("close the fake agent: %v", err)
+	}
+}
+
 // plant makes the fake agent the claude the launcher resolves, in mode, with
 // price as the cost it reports (empty writes no cost.json; a comma-separated
 // list prices the launches in order).
@@ -113,14 +163,12 @@ func (f *replayFixture) plant(t *testing.T, mode, price string) {
 	if err != nil {
 		t.Fatalf("resolve the test binary: %v", err)
 	}
-	bin := t.TempDir()
-	if err := os.Symlink(exe, filepath.Join(bin, "claude")); err != nil {
-		t.Fatalf("link the fake agent: %v", err)
-	}
+	f.pathWithoutAgents(t)
+	bin := os.Getenv("PATH")
+	plantFakeBinary(t, filepath.Join(bin, "claude"), exe)
 	t.Setenv(fakeAgentEnv, mode)
 	t.Setenv(fakeAgentCostEnv, price)
 	t.Setenv(fakeAgentLogEnv, f.log)
-	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 // pathWithoutAgents leaves git resolvable and every agent absent.
@@ -129,6 +177,9 @@ func (f *replayFixture) pathWithoutAgents(t *testing.T) {
 	git, err := exec.LookPath("git")
 	if err != nil {
 		t.Fatalf("git is not installed: %v", err)
+	}
+	if resolved, err := filepath.EvalSymlinks(git); err == nil {
+		git = resolved
 	}
 	dir := t.TempDir()
 	if err := os.Symlink(git, filepath.Join(dir, "git")); err != nil {
@@ -345,8 +396,8 @@ func TestReplayLongRunIDsKeepDistinctBundles(t *testing.T) {
 		f.writeMine(t, id, &f.mine)
 		data := runReplayOK(t, f.request(t, func(r *ReplayRequest) { r.Run = id })).Data
 		want := "local-bt-1-" + id
-		if got := data.PRs[0].Bundle; got != want {
-			t.Errorf("run %q bundle = %q, want %q", id, got, want)
+		if got := data.PRs[0].Bundle; got != want || data.PRs[0].Status != statusOKCode {
+			t.Errorf("run %q row 1 = (%q, %q), want (%q, %q)", id, got, data.PRs[0].Status, want, statusOKCode)
 		}
 		if other, ok := seen[data.PRs[0].Bundle]; ok {
 			t.Errorf("runs %q and %q share bundle %q", other, id, data.PRs[0].Bundle)
@@ -958,5 +1009,59 @@ func TestReplayHumanOutput(t *testing.T) {
 	}
 	if !slices.Equal(f.rec.lines, want) {
 		t.Errorf("human lines =\n%s\nwant\n%s", strings.Join(f.rec.lines, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+// TestReplayPlantIsolatesPathFromHostAgents proves a planted fake agent
+// scrubs the inherited PATH to git and the fake binary alone: if the planted
+// claude symlink is dangling or another agent is requested, LookPath must
+// refuse agent-missing instead of falling through to a host CLI on PATH that
+// exits non-zero as agent-failed with zero fake launches.
+func TestReplayPlantIsolatesPathFromHostAgents(t *testing.T) {
+	hostBin := t.TempDir()
+	hostClaude := filepath.Join(hostBin, "claude")
+	if err := os.WriteFile(hostClaude, []byte("#!/bin/sh\nexit 1\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", hostBin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	f := newReplayFixture(t)
+	f.plant(t, "write", "0.6")
+	plantedDir, _, _ := strings.Cut(os.Getenv("PATH"), string(os.PathListSeparator))
+	plantedClaude := filepath.Join(plantedDir, "claude")
+	if err := os.Remove(plantedClaude); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(t.TempDir(), "unlinked-test-binary"), plantedClaude); err != nil {
+		t.Fatal(err)
+	}
+	ref := runReplayRefusal(t, f.request(t, nil))
+	if ref.Code != agentMissingCode {
+		t.Fatalf("code = %q, want %q (%s)", ref.Code, agentMissingCode, ref.Message)
+	}
+	if got := f.launches(t); got != 0 {
+		t.Errorf("launches = %d, want 0", got)
+	}
+}
+
+// TestReplayPlantMaterializesUnlinkedTestBinary proves plantFakeBinary
+// materializes the fake agent from the pinned startup descriptor when the
+// on-disk test binary path has been unlinked mid-run.
+func TestReplayPlantMaterializesUnlinkedTestBinary(t *testing.T) {
+	f := newReplayFixture(t)
+	f.plant(t, "write", "0.6")
+	plantedDir, _, _ := strings.Cut(os.Getenv("PATH"), string(os.PathListSeparator))
+	plantedClaude := filepath.Join(plantedDir, "claude")
+	if err := os.Remove(plantedClaude); err != nil {
+		t.Fatal(err)
+	}
+	plantFakeBinary(t, plantedClaude, filepath.Join(t.TempDir(), "unlinked-test-binary"))
+	data := runReplayOK(t, f.request(t, nil)).Data
+	if got := f.launches(t); got != 2 {
+		t.Fatalf("launches = %d, want 2", got)
+	}
+	for i, row := range data.PRs {
+		if row.Status != statusOKCode {
+			t.Errorf("row %d status = %q, want %q", i+1, row.Status, statusOKCode)
+		}
 	}
 }
