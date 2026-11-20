@@ -442,7 +442,7 @@ recorded: .verdict/state/local-mx/findings.json (9 open) + .verdict/state/local-
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "25f7600e4f49108320439bbca352671fd9a094231e5344cd3031c6d812c00106",
+  "prompts_hash": "5ce2ab820ff08a21ec73ac4fc78d7978e117591be093954448bdee51fd9e596a",
   "model": null,
   "author": null,
   "review_models": [],

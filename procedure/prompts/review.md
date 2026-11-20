@@ -100,8 +100,8 @@
 6. **Aggregate & draft.** Merge, de-dup overlaps (two lenses catching same = higher confidence — record per finding which lenses independently found it).
    Chunked bundles: draft per-chunk findings with NEW line numbers from the
    chunk diffs, then merge, de-dupe by signature, re-tier severity, and emit
-   exactly one review document across all chunks — same body format, callout
-   ladder, and evidence-rung tags as a small-PR review (rungs unchanged).
+   exactly one review document across all chunks — same structured findings shape
+   and evidence-rung tags as a small-PR review (rungs unchanged).
    Trace each finding yourself. Drop praise, style prefs, speculative/unverified, pre-existing
    code unrelated to the PR (heuristic: root cause in lines this PR added/modified = in scope,
    else drop unless PR introduced/amplified the regression), anything not actionable.
@@ -112,7 +112,7 @@
    (`file:line` or library source) / walked (failure traced step by step, can't reach) /
    ran (script or test against the real code) / reproduced (in the running app). Push each
    finding as far down-rung as is cheap and say where it stopped; a `said` `rigor` finding is
-   labeled `unproven` in the body or dropped. Perf-adjacent findings carry the limiter (from
+   tagged `said` or dropped. Perf-adjacent findings carry the limiter (from
    a profile, not a guess) plus run count and spread, or are marked `unproven`. Count errors
    and confirm the timed code actually ran; one honest ballpark run, stated as one run, beats
    five-figure theater. Tag severity `critical` / `important` / `informational` mirroring the
@@ -123,9 +123,13 @@
    Each finding names `path`, a strict integer `line`, `severity`, `claim`, `quote` and `confidence`; optional `rigor`,
    `category`, `suggestion`, `brief`, `sources` and `kb` stay as published. Verdict renders the body and derives approval,
    so never write `approved`, `body` or `comments[]` — those are the refused v1 shape.
-   Draft inline comments with NEW line numbers. Every comment: actionable, 2–3 sentences max
-   visible, one per root cause, name other sites in that comment. Attach `<details>Technical
-details</details>` when the fix is non-trivial or cross-file. For the top-severity finding,
+   Draft findings with NEW line numbers. Every `claim`: actionable, 2–3 sentences max,
+   one per root cause. When the fix is non-trivial or cross-file, attach a structured `brief` —
+   `{sites: [{path, line?}], outcome, approach?, questions?}` — where `sites` names the other
+   affected changed files (≤10; each line must sit inside a reviewed hunk or it drops with a
+   warning), `outcome` is the required one-sentence 10–500 char goal, and optional
+   `approach`/`questions` carry fix guidance or open questions; verdict renders `Technical details`
+   from `brief`. For the top-severity finding,
    state the one load-bearing fact it stands on plus its rung — if that fact never got past
    `pointed`, say so.
 7. **Submit.** Write exactly one `.verdict/state/N/review.json` with `{schema_version: "1", findings[], spec_checks[], receipts[], summary?}` — one document total across all chunks, never one per chunk — (plus optional `resolved` sigs and per-finding `category?` from the taxonomy below); on chunked bundles also stamp top-level `"chunks": [...]` naming every manifest chunk the synthesis covers (the coverage attestation `post`/`record` gate on — an attested claim that omits a chunk is refused, so attested partial coverage can never post as complete; unattested reviews validate as today with a loud warning naming the manifest). Verdict refuses the v1 shape and reports every v2 contract problem; write clean JSON. `post` validates anchors, merges the findings store, and submits. Run one `prompts/validate.md` pass when the review is worth it and write its `validation.json` beside `review.json`; `post` applies its verdicts and the per-tier `rigor_policy` floors, and records which file it applied. Optional `security_summary` carries one paragraph; a non-string value refuses the review. Before `post` or `record`, run `verdict record <repo> <slug> --dry-run`, fix every problem it lists, repeat at most 3 rounds, and if problems remain STOP and report them to the user instead of recording a partial review. Then run `verdict post owner/repo N` — done when it returns a review URL. A secret-shaped value in the body or a finding refuses `post-secret-shaped` before any host call (name the path, never the value; `--allow-secret-values` publishes it anyway). Record addressed sigs (short ids from the prior `findings.json` table) in `resolved`; the flip to `addressed` needs `verification.json` evidence (below). `post` prints the fresh sig table for the next run. Binding verdicts (`APPROVE` / `REQUEST_CHANGES`) need `--bind`, else `post` downgrades to `COMMENT`; `APPROVE` is refused while `open` + `deferred` findings remain (`--force` overrides). A binding `APPROVE` on a stale fetch (commits landed after your fetch) posts as `COMMENT`, never `APPROVE` — `--force` does not override that; re-fetch the delta per `prompts/incremental-review.md` step 2 and review it to bind. Claim other states via `triage[]` entries `{sig, status, rationale}` — `wont-fix` / `false-positive` / `deferred` need rationale ≥30 chars citing a re-read or the intent anchor, else ignored; bare `resolved[]` sigs are proposals only and flip to `addressed` solely on a `.verdict/state/N/verification.json` entry `{sig, verdict: VERIFIED, verifyCmd, resultHead}` with `resultHead` matching HEAD (`NOT VERIFIED` reopens, `INCONCLUSIVE` only logs).
@@ -134,7 +138,7 @@ details</details>` when the fix is non-trivial or cross-file. For the top-severi
    `"1-240,300-320"` of changed source lines, or
    absent/`"all"` for the whole file (read them from `toc.txt`; a range is side-agnostic — one
    interval covers that hunk on either side). Generated and vendored paths are exempt automatically.
-   A partial attestation warns once and adds one body line, and `next <repo> <pr> --coverage` prints
+   A partial attestation warns once and is recorded in the coverage receipt, and `next <repo> <pr> --coverage` prints
    the gaps before you post; `gate` reads the stored receipt and fails on an absent or partial one,
    so a review that stamps nothing fails the default merge gate even though `post`/`record` only warn.
    `--require-coverage` on `post`/`record` turns absence or a gap into a `coverage-incomplete`
@@ -190,23 +194,10 @@ details</details>` when the fix is non-trivial or cross-file. For the top-severi
    are subsets of the sibling `input_tokens`, never additions. Absent or
    `null` reads as unknown, never zero.
 
-## Review body format (Default format — at most two parts, in order)
+## Finding categories
 
-1. **Reviewed changes preamble** — bold `**Reviewed changes**` lead-in + one sentence on what
-   was reviewed, then bullets of substantive changes (short bolded title, one sentence each).
-   A reviewer must grasp full scope from this list alone. Close with the metadata comment.
-2. **Cross-cutting `### {emoji} {what's wrong, not what to do}`** per concern with no line anchor
-   (absence, sequencing/rollout/migration order, human-only design decisions, scope questions).
-   Line-anchorable concerns go inline even with broad implications. No non-anchorable
-   concerns → body is just preamble + metadata.
-
-**Severity emoji on every `###`, nowhere else:**
-`🚨` critical (blocks merge — data loss/security/broken core) ·
-`⚠️` important (must address before merge) ·
-`ℹ️` informational (mergeable as-is).
-
-**Category taxonomy (descriptive only — never a severity rule):** an inline finding may
-carry one `category`; omit it when the finding spans kinds.
+Descriptive only — never a severity rule. Each finding may carry one `category`; omit it when
+the finding spans kinds.
 
 | `category`          | What it names                                                                                                   |
 | ------------------- | --------------------------------------------------------------------------------------------------------------- |
@@ -219,146 +210,6 @@ carry one `category`; omit it when the finding spans kinds.
 | `docs`              | A comment, README, changelog, or public contract that is wrong or missing.                                      |
 | `other`             | A real finding that genuinely fits none of the above; prefer a specific value.                                  |
 
-**Behavior decides placement, not fix size.** Wrong value/message, crash, race, leak, missed
-cleanup, slow path → own inline (or `###` if no anchor) at real severity, however small the fix.
-
-**Blank line between every block element** (GitHub parser quirk with `<details>/<summary>` —
-without it markdown renders as literal text).
-
-### Metadata comment (fill from PR.json — or source.json for local bundles — never count by hand)
-
-Local variant: fill `head_sha_short` from `source.json` (`dirty` when the worktree
-moved since fetch), `range` instead of the commits block, and
-`- Mode: Review (local, unposted)`.
-
-```html
-<!--
-Review metadata. Findings written against {head_sha_short};
-if commits landed on {head_ref} since, treat every bug/file/line as POTENTIALLY STALE.
-- Mode: Review (initial)
-- Files reviewed: {file_count}
-- Commits reviewed: {commit_count}
-- Base: {base_ref} ({base_sha_short})
-- Head: {head_ref} ({head_sha_short})
-- Reviewed commits:
-  - {sha_short} — {subject}
-- Prior review: none
--->
-```
-
-### Technical details (every body `###` carries one; inline carries one when non-trivial)
-
-`````html
-<details><summary>Technical details</summary>
-
-````markdown
-# {title}
-
-## Affected sites
-- [{file:line}][ev-N] — {what's wrong}
-
-## Required outcome
-- {what the fix needs to achieve, not how to achieve it}
-
-## Suggested approach (optional)
-## Open questions for human (optional)
-````
-
-</details>
-`````
-
-Also stamp each inline comment with a machine-readable `brief` —
-`{sites: [{path, line?}], outcome, approach?, questions?}` — where `sites` names the
-other affected changed files (≤10; a line must sit inside a reviewed hunk or it drops
-with a warning), `outcome` is the required one-sentence 10–500 char goal, and the
-optional `approach`/`questions` mirror the block; keep `<details>Technical details</details>`
-as the human form rather than pasting the brief twice (shape, type, required-field, and
-range failures refuse the review; a site outside every hunk or a short approach/question
-warns and drops only that part).
-
-4-backtick fence keeps inner 3-backtick fences copyable. Skip optional sections when empty.
-Backtick-wrap identifiers — each `###` IS the issue.
-
-### Evidence links (permalink-first)
-
-Affected-site references are links first, quotes second. Every finding names
-its sites as reference-style links pinned to the reviewed commit, with the
-definitions collected in one block after the last finding:
-
-- `[src/api.ts:42][ev-1]` with `[ev-1]: https://github.com/<owner>/<repo>/blob/<full-reviewed-SHA>/src/api.ts#L42`
-  (line range `#L42-L44` for multi-line anchors; one ref per site).
-- The SHA is the reviewed commit (`headRefOid` in `PR.json`, `head_sha` in
-  `source.json`) — never whatever HEAD happens to be when you write this.
-- Visible body stays link-first: code quotes (fenced blocks) live only
-  inside `<details>` blocks, at most 3 lines each; anything longer moves
-  inside the details or is cut — the link already points at the lines.
-- Non-GitHub and local bundles: plain `` `path:line` `` text, never
-  `github.com/.../blob/...` URLs (they would 404 on another host — GitLab and
-  Forgejo `post` anchor findings natively instead, and the other three hosts
-  have no submit path, so `record`/`report` degrade gracefully).
-- The script checks blob SHAs against the reviewed commit and warns on drift
-  or long visible quotes, keeping the body — pin SHAs honestly and never
-  reshape findings to fit the check.
-
-### Behavioral diagram (optional, opt-in)
-
-At most one behavioral diagram per review, and only when the change's flow
-needs it (multi-step logic prose can't carry). The full contract lives in
-`prompts/diagrams.md` — read it before drawing: 7-type selection map,
-honesty rule (every node from the diff, fictional content labeled),
-copy-exact skeletons pinned to GitHub's rendered subset, one-diagram cap,
-tables-stay-tables, collapsed wrapper with the generated label and markers,
-placed after the metadata comment. The script strips behavioral diagrams
-unless the operator opts in (`publish.diagrams.behavioral`), and drops
-malformed or beta-keyword blocks with a note — never a failure. Never
-hand-draw the change-topology diagram (report renders it from bundle data).
-
-## Confidence-led opening (all reviews)
-
-The verdict callout stays the first line — it carries the marker the tool
-gates on. The next lines lead with confidence plus safety assessment:
-
-> ✅ No new issues found.
-> Confidence: 4/5 · Safety: no new attack surface (auth paths untouched).
-
-`Confidence` mirrors top-level `confidence` (1–5) in `review.json`;
-`Safety` is the one-line read from `security_summary` (or `not assessed`
-when you did not assess it). Confidence is the agent's "would I merge on
-this review" judgment, informed by evidence depth, coverage, and rule
-support — the scale stays 1-5 across runs so past verdicts stay comparable
-(no rescaling, no formula; a computed score stays deferred until
-machine-verifiable inputs exist, with kb-measure X2/X3 outputs as the named
-trigger). Full reasoning stays in the inline comments and the findings store
-(the machine envelope) — the posted body stays tight.
-
-Verdict renders the body from your findings, and with it the third lead line:
-
-> Basis: 0 reproduced · 0 ran · 0 walked · 2 pointed · 0 said · 1 rules cited · 0 verified fixes
-
-Every count is computed from your `review.json` — rigor across your findings
-(every finding carries one rung, default `pointed`), distinct `kb` rule ids
-cited, and verified fixes (0 on an initial review) — so you never write it and
-never reshape findings to fit it. On chunked bundles the line sums every rung
-count across all chunks. Stamp the rungs honestly and the line follows.
-
-Clean reviews (nothing actionable) close the summary with a bounded
-**What we checked** list — at most seven bullets drawn from `toc.txt`
-coverage and `roles.txt` (no new data collection; a `**`-lead-in, never a
-`###` heading, so it never files as a section finding):
-
-**What we checked**
-
-- `src/api.ts` — request validation (source)
-- `src/api.test.ts` — new cases for the changed paths (test)
-
-Do not hand-write the footer (and never emit the `<!-- verdict-footer -->`
-marker — it is machine-owned, and a body carrying it gets its rendered block
-replaced): the script appends one merged block at the body end — a
-product-linked logo plus linked bold product name (level-knobbed, version
-inline) with receipt fields (tier, cost or unrecorded, files reviewed,
-review link when known). Pre-post the review
-link is unknown — never invent a review id or URL.
-
 ## Verdict ladder (the CLI derives it, you never claim it)
 
 - **Critical** (blocks merge — bugs/security/data loss/broken core): at least one open
@@ -368,9 +219,9 @@ link is unknown — never invent a review id or URL.
   nits/style/consider-also.
 - **Minor only**: open findings below `important` approve; a violated `spec_checks[]` entry still
   withholds.
-- **Informational** (mergeable, nothing actionable): no open findings at-or-above `important`, so the
-  body opens `> ✅ No new issues found.` NO inline findings (✅ contradicts anchors —
-  if anchorable, record it).
+- **Clean** (mergeable, nothing actionable): no open findings at-or-above `important` and no
+  violated `spec_checks[]`. Verdict derives approval and renders the review body from your
+  structured findings and optional one-paragraph plain-text `summary`.
 
 Two levers: finding severity + the `block_clauses` policy a repository configures. Wrapping
 mergeable feedback in `important` trains authors to ignore the gate, so grade the consequence,

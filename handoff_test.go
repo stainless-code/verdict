@@ -244,7 +244,6 @@ func TestHandoffRefsAndFiles(t *testing.T) {
 	want := []struct{ path, source string }{
 		{path: "refs/review-checklist.md", source: "prompts/review.md"},
 		{path: "refs/system-boundaries.md", source: "prompts/system.md"},
-		{path: "refs/diagrams.md", source: "prompts/diagrams.md"},
 		{path: "refs/incremental-review.md", source: "prompts/incremental-review.md"},
 		{path: "refs/reviewer-subagent.md", source: "prompts/reviewer-subagent.md"},
 		{path: "refs/commands.md", source: "references/commands.md"},
@@ -268,14 +267,12 @@ func pullRef(t *testing.T, path string) skillfs.HandoffRef {
 }
 
 // TestReviewChecklistRefIsOnlyTheChecklist pins the sliced ref against the
-// body-format and ladder sections that stayed in the operator prompt.
+// ladder section that stayed in the operator prompt.
 func TestReviewChecklistRefIsOnlyTheChecklist(t *testing.T) {
 	t.Parallel()
 	body := wantBundleRef(t, pullRef(t, "refs/review-checklist.md"))
-	assertContainsAll(t, "review-checklist ref", body, []string{"## Checklist"})
-	assertContainsNone(t, "review-checklist ref", body, []string{
-		"## Review body format", "Verdict ladder",
-	})
+	assertContainsAll(t, "review-checklist ref", body, []string{"## Checklist", "## Finding categories"})
+	assertContainsNone(t, "review-checklist ref", body, []string{"## Verdict ladder"})
 }
 
 func assertBlankLinesBeforeHeadings(t *testing.T, label string, raw []byte) {
