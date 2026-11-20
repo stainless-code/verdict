@@ -3,6 +3,7 @@
 package drain
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -11,6 +12,7 @@ import (
 
 	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	draincore "github.com/stainless-code/verdict/internal/core/drain"
 	threadscore "github.com/stainless-code/verdict/internal/core/threads"
 )
@@ -70,10 +72,33 @@ func assertOneRunLedgerAndCalls(t *testing.T, dir string, cmdr *drainHostStub) {
 	if cmdr.postCount("PRRT_1") != 1 {
 		t.Errorf("host post calls = %d, want 1 (calls=%v)", cmdr.postCount("PRRT_1"), cmdr.calls)
 	}
+	assertSingleRefreshHostReads(t, cmdr.callLog())
 	entries, err := ReadLedger(filepath.Join(dir, draincore.KeyLedgerJSON))
 	if err != nil || len(entries) != 1 || entries[0].ReplyID != "501" {
 		t.Errorf("ledger = %+v, err=%v", entries, err)
 	}
+}
+
+func assertSingleRefreshHostReads(t *testing.T, calls []string) {
+	t.Helper()
+	graphqlReads, userReads := countRefreshHostReads(calls)
+	if graphqlReads != 2 || userReads != 2 {
+		t.Errorf("host reads = (graphql:%d, user:%d), want (2, 2); calls=%v", graphqlReads, userReads, calls)
+	}
+}
+
+func countRefreshHostReads(calls []string) (int, int) {
+	graphqlReads := 0
+	userReads := 0
+	for _, call := range calls {
+		if strings.Contains(call, "api graphql") && !strings.Contains(call, "resolveReviewThread") {
+			graphqlReads++
+		}
+		if strings.Contains(call, "api user --jq .login") {
+			userReads++
+		}
+	}
+	return graphqlReads, userReads
 }
 
 func onePendingPageJSON() string {
@@ -207,4 +232,34 @@ func TestDryRunDraftLeavesExistingBundleProcedureByteIdentical(t *testing.T) {
 	}
 	assertProcedureProbe(t, probe)
 	assertFilesUnchanged(t, dir, before)
+}
+
+type resolvingDraftHost struct {
+	drainHostStub
+	reads int
+}
+
+func (s *resolvingDraftHost) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
+	if strings.Contains(strings.Join(cmd.Argv, " "), "api graphql") {
+		s.reads++
+		if s.reads == 2 {
+			s.pageJSON = strings.ReplaceAll(s.pageJSON, `"isResolved":false`, `"isResolved":true`)
+		}
+	}
+	return s.drainHostStub.Run(ctx, cmd)
+}
+
+func TestAgentPostSkipsThreadResolvedDuringDrafting(t *testing.T) {
+	root, _ := setupDrainBundle(t)
+	installStubClaude(t)
+	cmdr := &resolvingDraftHost{}
+	cmdr.pageJSON = onePendingPageJSON()
+	cmdr.self = "verdict-bot"
+	out, diag, code := runDrainTest(t, root, cmdr, []string{"--agent", "claude", "--post"})
+	if code != cli.ExitOK {
+		t.Fatalf("exit = %d, %s %s", code, out, diag)
+	}
+	if got := cmdr.postCount("PRRT_1"); got != 0 {
+		t.Fatalf("posts = %d, want 0 for resolved thread", got)
+	}
 }

@@ -5,11 +5,14 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -332,7 +335,18 @@ func TestShutdownStopsOpenEventsStream(t *testing.T) {
 	if serveErr := awaitServe(t, done); serveErr != nil {
 		t.Fatalf("Serve() with an open event stream = %v, want nil", serveErr)
 	}
-	if _, err := io.ReadAll(response.Body); err != nil {
+	readDone := make(chan error, 1)
+	go func() { _, err := io.ReadAll(response.Body); readDone <- err }()
+	var readErr error
+	testenv.Until(t, func() bool {
+		select {
+		case readErr = <-readDone:
+			return true
+		default:
+			return false
+		}
+	})
+	if err := readErr; err != nil {
 		t.Fatalf("read stopped event stream: %v", err)
 	}
 }
@@ -368,4 +382,100 @@ func awaitServe(t *testing.T, done <-chan error) error {
 		}
 	})
 	return serveErr
+}
+
+type failingAfterOneAcceptListener struct {
+	net.Listener
+	closeErr   error
+	failAccept chan struct{}
+	accepted   int
+	mu         sync.Mutex
+	once       sync.Once
+	closeOnce  sync.Once
+}
+
+func (l *failingAfterOneAcceptListener) Accept() (net.Conn, error) {
+	l.mu.Lock()
+	l.accepted++
+	n := l.accepted
+	l.mu.Unlock()
+	if n == 1 {
+		return l.Listener.Accept()
+	}
+	<-l.failAccept
+	return nil, errors.New("synthetic listener failure")
+}
+
+func (l *failingAfterOneAcceptListener) Close() error {
+	l.closeOnce.Do(func() { l.triggerFailure(); l.closeErr = l.Listener.Close() })
+	return l.closeErr
+}
+
+func (l *failingAfterOneAcceptListener) triggerFailure() {
+	l.once.Do(func() { close(l.failAccept) })
+}
+
+func TestListenerErrorStopsOpenEventsStream(t *testing.T) {
+	root := writeFixture(t, fixtureFiles())
+	server, err := New(&Config{Root: root, Port: 0, Token: testToken, Now: fixedNow})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	if err := server.Listen(t.Context()); err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	wrapper := &failingAfterOneAcceptListener{
+		Listener:   server.listener,
+		failAccept: make(chan struct{}),
+	}
+	server.listener = wrapper
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(t.Context()) }()
+	response := openLiveEventStream(t, server)
+	t.Cleanup(func() { _ = response.Body.Close() })
+	wrapper.triggerFailure()
+	if serveErr := awaitServe(t, done); serveErr == nil {
+		t.Fatal("Serve() after listener error = nil, want error")
+	}
+	select {
+	case <-server.streamsDone:
+	default:
+		t.Fatal("Serve() returned on listener error without signaling active SSE streams")
+	}
+	readDone := make(chan error, 1)
+	go func() { _, err := io.ReadAll(response.Body); readDone <- err }()
+	var readErr error
+	testenv.Until(t, func() bool {
+		select {
+		case readErr = <-readDone:
+			return true
+		default:
+			return false
+		}
+	})
+	if err := readErr; err != nil {
+		t.Fatalf("read stopped event stream after listener error: %v", err)
+	}
+}
+
+func TestFailingListenerCloseReleasesAccept(t *testing.T) {
+	listener, err := (&net.ListenConfig{}).Listen(t.Context(), "tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wrapper := &failingAfterOneAcceptListener{Listener: listener, failAccept: make(chan struct{}), accepted: 1}
+	t.Cleanup(func() { wrapper.triggerFailure(); _ = listener.Close() })
+	done := make(chan error, 1)
+	go func() { _, err := wrapper.Accept(); done <- err }()
+	if err := wrapper.Close(); err != nil {
+		t.Fatal(err)
+	}
+	testenv.Until(t, func() bool {
+		select {
+		case err := <-done:
+			return err != nil
+		default:
+			return false
+		}
+	})
 }

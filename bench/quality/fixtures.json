@@ -116,6 +116,11 @@
               "\\bnext\\b",
               "--post|post the drafts",
               "internal/drain/verb\\.go|internal/core/run/service\\.go|envelope|post the drafts|drafted nothing|no drafts|zero pending|nothing was drafted"
+            ],
+            [
+              "internal/core/run/service\\.go",
+              "--post",
+              "suggest|hint|recommend"
             ]
           ]
         },

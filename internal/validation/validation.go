@@ -14,8 +14,10 @@ import (
 	"io/fs"
 	"path/filepath"
 	"slices"
+	"strconv"
 	"strings"
 
+	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -24,6 +26,8 @@ import (
 
 // FileName is the bundle artifact this package reads.
 const FileName = "validation.json"
+
+const promptFile = "prompts/validate.md"
 
 // MaxBytes caps the artifact.
 const MaxBytes = 1 << 20
@@ -234,6 +238,28 @@ func Load(dir, head string, findings []any) (*core.ValidationFile, string, *core
 		return nil, "", ref
 	}
 	return file, Hash(raw), nil
+}
+
+// PromptDrift names the prompt digest a pass recorded when it differs from the
+// validate prompt this binary ships, so the operator learns the pass judged
+// against another rubric. It is empty when the pass names no digest or the two
+// agree.
+func PromptDrift(file *core.ValidationFile) string {
+	if file.Validator == nil || strings.TrimSpace(file.Validator.PromptSHA256) == "" {
+		return ""
+	}
+	shipped, err := skillfs.Read(promptFile)
+	if err != nil {
+		return ""
+	}
+	recorded, current := strings.TrimSpace(file.Validator.PromptSHA256), Hash(shipped)
+	if strings.EqualFold(recorded, current) {
+		return ""
+	}
+	quoted := strconv.Quote(readcommon.ShortSHA(recorded))
+	return fmt.Sprintf("validation.json was produced with %s sha256 %s, but this build ships %s: "+
+		"the pass may have judged against a different prompt",
+		promptFile, quoted[1:len(quoted)-1], readcommon.ShortSHA(current))
 }
 
 // Hash is the SHA-256 of the artifact's exact bytes.

@@ -302,6 +302,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	case <-ctx.Done():
 		return s.drain(ctx, server)
 	case err := <-serveErr:
+		s.stopEventStreams()
 		if errors.Is(err, http.ErrServerClosed) {
 			return nil
 		}

@@ -148,7 +148,7 @@ func runCapture(t *testing.T, args []string) (int, string, string) {
 		return ch
 	}
 	out, derr := drain(stdoutR), drain(stderrR)
-	code := run(args, stdoutW, stderrW, func(string) string { return "" }, os.ReadFile)
+	code := run(args, stdoutW, stderrW, os.Getenv, os.ReadFile)
 	_ = stdoutW.Close()
 	_ = stderrW.Close()
 	return code, string(<-out), string(<-derr)
@@ -159,7 +159,7 @@ func hermeticEnv(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
 	for _, k := range []string{
-		"NO_COLOR", "REVIEW_OUTPUT_FORMAT", "REVIEW_LAYOUT_COMPACT", "REVIEW_COLOR_MODE",
+		"CODEX_HOME", "VERDICT_INSTALL", "NO_COLOR", "REVIEW_OUTPUT_FORMAT", "REVIEW_LAYOUT_COMPACT", "REVIEW_COLOR_MODE",
 		"REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL", "REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL",
 		"REVIEW_PUBLISH_DIAGRAMS_EXPANDED", "REVIEW_PUBLISH_FOOTER",
 		"REVIEW_PUBLISH_ATTRIBUTION", "REVIEW_PUBLISH_ATTRIBUTION_TEXT",
@@ -230,5 +230,16 @@ func TestNextCoverageMissingPositionals(t *testing.T) {
 	code, out, derr := runCapture(t, []string{"next", "--coverage"})
 	if code != 2 || out != "" || !strings.HasPrefix(derr, "error: next requires <owner/repo> and <pr|local-name>\n") {
 		t.Fatalf("next missing positionals: exit %d stdout %q stderr %q", code, out, derr)
+	}
+}
+
+func TestHermeticEnvClearsHostInstallPaths(t *testing.T) {
+	t.Setenv("CODEX_HOME", "host-codex")
+	t.Setenv("VERDICT_INSTALL", "host-install")
+	hermeticEnv(t)
+	for _, key := range []string{"CODEX_HOME", "VERDICT_INSTALL"} {
+		if got := os.Getenv(key); got != "" {
+			t.Errorf("%s = %q, want empty", key, got)
+		}
 	}
 }

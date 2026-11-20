@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -1045,5 +1047,105 @@ func TestRefusalResultWarnings(t *testing.T) {
 	}
 	if _, ok := plainMap["warnings"]; ok {
 		t.Error("plain structuredContent carries warnings")
+	}
+}
+
+type closableBlockingReader struct {
+	entered      chan struct{}
+	closed       chan struct{}
+	enterOnce    sync.Once
+	closeOnce    sync.Once
+	readFinished atomic.Bool
+}
+
+func newClosableBlockingReader() *closableBlockingReader {
+	return &closableBlockingReader{
+		entered: make(chan struct{}),
+		closed:  make(chan struct{}),
+	}
+}
+
+func (r *closableBlockingReader) Read([]byte) (int, error) {
+	r.enterOnce.Do(func() { close(r.entered) })
+	<-r.closed
+	time.Sleep(20 * time.Millisecond)
+	r.readFinished.Store(true)
+	return 0, io.ErrClosedPipe
+}
+
+func (r *closableBlockingReader) Close() error {
+	r.closeOnce.Do(func() { close(r.closed) })
+	return nil
+}
+
+func TestServeCancelJoinsReaderGoroutine(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	server := New(&cfg)
+	reader := newClosableBlockingReader()
+	t.Cleanup(func() { _ = reader.Close() })
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var out bytes.Buffer
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(ctx, reader, &out) }()
+	testenv.Until(t, func() bool {
+		select {
+		case <-reader.entered:
+			return true
+		default:
+			return false
+		}
+	})
+	cancel()
+	var serveErr error
+	testenv.Until(t, func() bool {
+		select {
+		case serveErr = <-done:
+			return true
+		default:
+			return false
+		}
+	})
+	if err := serveErr; err != nil {
+		t.Fatalf("Serve = %v, want nil", err)
+	}
+
+	if !reader.readFinished.Load() {
+		t.Fatal("Serve returned before the readLoop goroutine exited")
+	}
+}
+
+func TestServeCancelWithoutClosableReader(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	server := New(&cfg)
+	reader := newClosableBlockingReader()
+	t.Cleanup(func() { _ = reader.Close() })
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var out bytes.Buffer
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(ctx, struct{ io.Reader }{reader}, &out) }()
+	testenv.Until(t, func() bool {
+		select {
+		case <-reader.entered:
+			return true
+		default:
+			return false
+		}
+	})
+	cancel()
+	var serveErr error
+	testenv.Until(t, func() bool {
+		select {
+		case serveErr = <-done:
+			return true
+		default:
+			return false
+		}
+	})
+	if serveErr != nil {
+		t.Fatalf("Serve = %v, want nil", serveErr)
 	}
 }

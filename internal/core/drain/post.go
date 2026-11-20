@@ -17,6 +17,8 @@ import (
 // plan was made: the agent answered a question that is no longer the last one.
 const ReasonStaleThread = "stale-thread"
 
+const feedSaveFailure = "could not update threads.json: "
+
 // PostRequest carries one post run.
 type PostRequest struct {
 	Plan      *File
@@ -87,13 +89,67 @@ func Post(req *PostRequest) (*PostResult, *core.RefusalError) {
 	if req.DryRun {
 		return res, nil
 	}
-	req.Plan.Posted = res.Posted
-	req.Plan.Failed = res.Failed
+	req.Plan.Posted = mergePosted(req.Plan.Posted, res.Posted)
+	req.Plan.Failed = mergeFailed(req.Plan.Failed, res.Failed, res.Posted)
 	at := req.At
 	req.Plan.PostedAt = &at
 	saveFeed(req, res)
-	res.Incomplete = len(res.Failed) > 0
+	res.Incomplete = len(req.Plan.Failed) > 0
 	return res, nil
+}
+
+func mergePosted(existing, extra []Posted) []Posted {
+	out := make([]Posted, 0, len(existing)+len(extra))
+	out = append(out, existing...)
+	for _, p := range extra {
+		idx := slices.IndexFunc(out, func(e Posted) bool {
+			return e.ThreadID != "" && e.ThreadID == p.ThreadID
+		})
+		if idx >= 0 {
+			out[idx] = p
+		} else {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func mergeFailed(existing, extra []Failed, postedNow []Posted) []Failed {
+	out := keepUnpostedFailures(existing, postedNow)
+	for _, f := range extra {
+		out = upsertFailed(out, f)
+	}
+	return out
+}
+
+func keepUnpostedFailures(existing []Failed, postedNow []Posted) []Failed {
+	out := make([]Failed, 0, len(existing))
+	for _, e := range existing {
+		if e.ThreadID == "" || !hasPostedThread(postedNow, e.ThreadID) {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+func upsertFailed(out []Failed, f Failed) []Failed {
+	idx := slices.IndexFunc(out, func(e Failed) bool {
+		if f.ThreadID != "" {
+			return e.ThreadID == f.ThreadID
+		}
+		return e == f
+	})
+	if idx >= 0 {
+		out[idx] = f
+		return out
+	}
+	return append(out, f)
+}
+
+func hasPostedThread(posted []Posted, threadID string) bool {
+	return slices.ContainsFunc(posted, func(p Posted) bool {
+		return p.ThreadID == threadID
+	})
 }
 
 func postDrafts(req *PostRequest) (*RepliesFile, *core.RefusalError) {
@@ -130,9 +186,12 @@ func saveFeed(req *PostRequest, res *PostResult) {
 	if req.SaveFeed == nil {
 		return
 	}
+	req.Plan.Failed = slices.DeleteFunc(req.Plan.Failed, func(f Failed) bool {
+		return f.ThreadID == "" && strings.HasPrefix(f.Reason, feedSaveFailure)
+	})
 	if err := req.SaveFeed(req.Feed); err != nil {
-		res.Failed = append(res.Failed, Failed{Reason: "could not update threads.json: " + err.Error()})
-		req.Plan.Failed = res.Failed
+		res.Failed = append(res.Failed, Failed{Reason: feedSaveFailure + err.Error()})
+		req.Plan.Failed = mergeFailed(req.Plan.Failed, res.Failed, res.Posted)
 	}
 }
 
@@ -144,7 +203,7 @@ func postOne(req *PostRequest, byID map[string]*threadscore.Thread, reply Reply,
 	}
 	last := &thread.Comments[len(thread.Comments)-1]
 	if reason := postSkipReason(req, reply, thread, last); reason != "" {
-		req.Plan.Skipped = append(req.Plan.Skipped, Skip{ThreadID: reply.ThreadID, Reason: reason})
+		req.Plan.Skipped = appendUniqueSkips(req.Plan.Skipped, []Skip{{ThreadID: reply.ThreadID, Reason: reason}})
 		return
 	}
 	body := untrusted.NeutralizeMentions(reply.Body) + "\n\n" +
@@ -166,7 +225,7 @@ func postOne(req *PostRequest, byID map[string]*threadscore.Thread, reply Reply,
 func missingThread(req *PostRequest, reply Reply, res *PostResult) {
 	reason := "thread missing from refreshed feed"
 	if req.DryRun {
-		req.Plan.Skipped = append(req.Plan.Skipped, Skip{ThreadID: reply.ThreadID, Reason: reason})
+		req.Plan.Skipped = appendUniqueSkips(req.Plan.Skipped, []Skip{{ThreadID: reply.ThreadID, Reason: reason}})
 		return
 	}
 	res.Failed = append(res.Failed, Failed{ThreadID: reply.ThreadID, Reason: reason})

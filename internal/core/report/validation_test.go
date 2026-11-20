@@ -71,3 +71,16 @@ func TestReportValidationAbsentDegrades(t *testing.T) {
 		t.Fatalf("warnings = %v, want the absent artifact named", resp.Warnings)
 	}
 }
+
+func TestReportOmitsRowsFromDifferentValidationPass(t *testing.T) {
+	req := fixture(t, "["+openFinding+"]")
+	writeFile(t, reportBundleDir+"/post.json", validationReceipt)
+	writeFile(t, reportBundleDir+"/validation.json", validationArtifact)
+	resp := runReportChecked(t, req, &core.ReportFlags{Validation: true})
+	if strings.Contains(strings.Join(resp.Human, "\n"), "The reset is reachable") {
+		t.Fatal("report paired current rows with recorded counts")
+	}
+	if !strings.Contains(strings.Join(resp.Warnings, "\n"), "differs from the recorded") {
+		t.Fatalf("warnings = %v", resp.Warnings)
+	}
+}

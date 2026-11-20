@@ -3,6 +3,7 @@ package validation_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -218,5 +219,12 @@ func TestFloors(t *testing.T) {
 	}
 	if len(downgrades) != 1 || downgrades[0].Sig != sigB {
 		t.Fatalf("downgrades = %+v, want the pointed critical downgraded to important", downgrades)
+	}
+}
+
+func TestPromptDriftEscapesControlBytes(t *testing.T) {
+	file := &core.ValidationFile{Validator: &core.ValidationValidator{PromptSHA256: "\x1b[2Jbad"}}
+	if got := validation.PromptDrift(file); strings.ContainsRune(got, '\x1b') {
+		t.Fatalf("warning contains terminal escape: %q", got)
 	}
 }

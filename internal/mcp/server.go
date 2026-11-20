@@ -176,6 +176,12 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	select {
 	case readErr = <-read:
 	case <-ctx.Done():
+		if closer, ok := in.(io.Closer); ok {
+			_ = closer.Close()
+			canceledReadErr := <-read
+			_ = canceledReadErr // Cancellation already determines the read outcome.
+		}
+		// A reader without Close cannot be unblocked; its goroutine exits with the process.
 	}
 	s.callMu.Lock()
 	s.stopping = true

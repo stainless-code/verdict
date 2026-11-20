@@ -93,6 +93,7 @@ type state struct { // field grouping documents the loaded dimensions; alignment
 	comp           *core.ReportCompleteness
 	risk           *core.ReportRisk
 	validation     *core.ValidationData
+	judgements     []core.ValidationResult
 	evidence       *evidenceState
 	dir            string
 	now            string
@@ -308,11 +309,18 @@ func loadStateValidation(st *state) {
 	if !st.flags.Validation {
 		return
 	}
+	file, hash, ref := validation.Load(st.dir, st.headSHA, st.entries)
+	if file != nil {
+		st.judgements = file.Results
+	}
 	if data := storedValidation(st.dir); data != nil {
 		st.validation = data
+		st.reconcileValidationRows(file, data, hash)
+		if ref != nil {
+			st.warn("validation artifact unreadable (" + ref.Message + ") — the table lists no per-finding results")
+		}
 		return
 	}
-	file, hash, ref := validation.Load(st.dir, st.headSHA, st.entries)
 	if ref != nil {
 		st.warn("validation artifact unreadable (" + ref.Message + ") — degrading cleanly")
 		return
@@ -498,5 +506,12 @@ func corruptPatch(dir string) *core.RefusalError {
 	return &core.RefusalError{
 		Code:    "corrupt-store",
 		Message: fmt.Sprintf("patch store %s/patch.json is unreadable (re-run post to rebuild, or restore the file)", dir),
+	}
+}
+
+func (st *state) reconcileValidationRows(file *core.ValidationFile, data *core.ValidationData, hash string) {
+	if file != nil && (data.Hash == nil || *data.Hash != hash) {
+		st.judgements = nil
+		st.warn("validation artifact differs from the recorded pass — the table lists no per-finding results")
 	}
 }

@@ -2,10 +2,13 @@ package recordcore_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -581,5 +584,91 @@ func wroteWithheldReason(t *testing.T, _ []string, _ *validationCommander) {
 	stored := findingEntry(t, hedgedSig)
 	if !strings.Contains(jq.Compact(stored["withheld"]), "VALIDATOR-PRIVATE") {
 		t.Fatal("the stored receipt lost the validator's reason")
+	}
+}
+
+func emptyPass(head, validator string) string {
+	return `{"schema_version":"1","head_sha":"` + head + `",` + validator + `"results":[]}`
+}
+
+func shippedValidatePromptSHA(t *testing.T) string {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join("..", "..", "..", "procedure", "prompts", "validate.md"))
+	if err != nil {
+		t.Fatalf("read the shipped validate prompt: %v", err)
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+func promptWarnings(warns []string) []string {
+	var out []string
+	for _, w := range warns {
+		if strings.Contains(w, "prompts/validate.md") {
+			out = append(out, w)
+		}
+	}
+	return out
+}
+
+// TestPostWarnsWhenValidatorPromptDiffers pins the drift warning: a pass that
+// recorded another prompt digest still applies, and post names both digests.
+func TestPostWarnsWhenValidatorPromptDiffers(t *testing.T) {
+	shipped := shippedValidatePromptSHA(t)[:7]
+	validationBundle(t, "")
+	writeValidation(t, emptyPass(coverageHead, `"validator":{"prompt_sha256":"`+strings.Repeat("ab", 32)+`"},`))
+	_, ref, _, warns := runValidationPostProgress(t, validationFlags())
+	if ref != nil {
+		t.Fatalf("post refused: %v (%s)", ref, ref.Message)
+	}
+	got := promptWarnings(warns)
+	want := "validation.json was produced with prompts/validate.md sha256 abababa, but this build ships " + shipped +
+		": the pass may have judged against a different prompt"
+	if len(got) != 1 || got[0] != want {
+		t.Fatalf("prompt warnings = %q, want exactly %q", got, want)
+	}
+}
+
+// TestPostStaysQuietWhenValidatorPromptMatches pins the other side: the
+// shipped digest, in either case, and an absent digest raise no warning.
+func TestPostStaysQuietWhenValidatorPromptMatches(t *testing.T) {
+	for name, validator := range map[string]string{
+		"shipped digest": `"validator":{"prompt_sha256":"` + shippedValidatePromptSHA(t) + `"},`,
+		"upper case":     `"validator":{"prompt_sha256":"` + strings.ToUpper(shippedValidatePromptSHA(t)) + `"},`,
+		"no digest":      `"validator":{"model":"m"},`,
+		"no validator":   "",
+	} {
+		t.Run(name, func(t *testing.T) {
+			assertPostPromptQuiet(t, validator)
+		})
+	}
+}
+
+func assertPostPromptQuiet(t *testing.T, validator string) {
+	t.Helper()
+	validationBundle(t, "")
+	writeValidation(t, emptyPass(coverageHead, validator))
+	_, ref, _, warns := runValidationPostProgress(t, validationFlags())
+	if ref != nil {
+		t.Fatalf("post refused: %v (%s)", ref, ref.Message)
+	}
+	if got := promptWarnings(warns); len(got) != 0 {
+		t.Fatalf("prompt warnings = %q, want none", got)
+	}
+}
+
+// TestRecordWarnsWhenValidatorPromptDiffers pins the same warning on record,
+// which shares the merge with post.
+func TestRecordWarnsWhenValidatorPromptDiffers(t *testing.T) {
+	bundle(t, "local-drift", reviewJSON(""))
+	writeFile(t, ".verdict/state/local-drift/validation.json",
+		emptyPass(strings.Repeat("a", 40), `"validator":{"prompt_sha256":"`+strings.Repeat("cd", 32)+`"},`))
+	c := &collector{}
+	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-drift")); ref != nil {
+		t.Fatalf("record refused: %v (%s)", ref, ref.Message)
+	}
+	got := promptWarnings(c.warns)
+	if len(got) != 1 || !strings.HasPrefix(got[0], "validation.json was produced with prompts/validate.md sha256 cdcdcdc, but this build ships ") {
+		t.Fatalf("prompt warnings = %q, want one naming the recorded digest cdcdcdc", got)
 	}
 }

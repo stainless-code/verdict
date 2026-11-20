@@ -5,6 +5,8 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
@@ -323,6 +325,7 @@ func appendHumanTail(st *state, lines []string) []string {
 	if st.risk != nil {
 		lines = append(lines, riskHuman(st.risk)...)
 	}
+	lines = append(lines, validationHuman(st)...)
 	lines = append(lines, quietLines(st)...)
 	return append(lines, extraHuman(st)...)
 }
@@ -924,4 +927,74 @@ func reportReceipt(st *state) *core.Truncation {
 		}
 	}
 	return readcommon.BundleTruncation(st.dir).ForResult(len(viewRanked(st)))
+}
+
+// validationHuman renders the pass: the tally and the exact-file hash on top,
+// then one row per judged finding with the verdict, the severity move, and the
+// validator's reason flattened to one line.
+func validationHuman(st *state) []string {
+	data := st.validation
+	if data == nil {
+		return nil
+	}
+	hash := "none"
+	if data.Hash != nil {
+		hash = *data.Hash
+	}
+	lines := []string{fmt.Sprintf("validation: mode=%s hash=%s confirmed=%d rejected=%d downgraded=%d unvalidated=%d",
+		data.Mode, hash, data.Counts.Confirmed, data.Counts.Rejected, data.Counts.Downgraded, data.Counts.Unvalidated)}
+	if len(st.judgements) == 0 {
+		return lines
+	}
+	return append(lines, validationRows(st.judgements)...)
+}
+
+const (
+	validationSigHeader    = "sig"
+	validationColumns      = 4
+	validationSpacing      = "  "
+	validationReasonColumn = validationColumns - 1
+)
+
+func validationRows(judgements []core.ValidationResult) []string {
+	rows := make([][validationColumns]string, 0, len(judgements)+1)
+	rows = append(rows, [validationColumns]string{validationSigHeader, "verdict", "move", "reason"})
+	for i := range judgements {
+		r := &judgements[i]
+		move := "-"
+		if r.Verdict == core.ValidationDowngraded {
+			move = r.FromSeverity + " → " + r.ToSeverity
+		}
+		rows = append(rows, [validationColumns]string{readcommon.Prefix(r.Sig), r.Verdict, move, flattenReason(r.Reason)})
+	}
+	return formatValidationRows(rows)
+}
+
+func formatValidationRows(rows [][validationColumns]string) []string {
+	var widths [validationReasonColumn]int
+	for _, row := range rows {
+		for c := range widths {
+			widths[c] = max(widths[c], utf8.RuneCountInString(row[c]))
+		}
+	}
+	lines := make([]string, 0, len(rows))
+	for _, row := range rows {
+		lines = append(lines, validationSpacing+padRune(row[0], widths[0])+validationSpacing+
+			padRune(row[1], widths[1])+validationSpacing+padRune(row[2], widths[2])+validationSpacing+row[validationReasonColumn])
+	}
+	return lines
+}
+
+func padRune(s string, width int) string {
+	return s + strings.Repeat(" ", width-utf8.RuneCountInString(s))
+}
+
+func flattenReason(reason string) string {
+	plain := strings.Map(func(r rune) rune {
+		if unicode.IsControl(r) && !unicode.IsSpace(r) {
+			return -1
+		}
+		return r
+	}, reason)
+	return strings.Join(strings.Fields(plain), " ")
 }

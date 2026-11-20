@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,6 +16,7 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
 	draincore "github.com/stainless-code/verdict/internal/core/drain"
+	"github.com/stainless-code/verdict/internal/storelock"
 )
 
 type stubCommander struct{}
@@ -175,4 +178,49 @@ func drainProcedureBytes(t *testing.T) []byte {
 		out = append(out, raw...)
 	}
 	return out
+}
+
+type lockProbingCommander struct {
+	inner      core.Commander
+	dir        string
+	probed     bool
+	planAbsent bool
+	lockHeld   bool
+}
+
+func (p *lockProbingCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
+	if len(cmd.Argv) >= 4 && cmd.Argv[0] == "gh" && cmd.Argv[1] == "api" && cmd.Argv[2] == "user" {
+		p.probed = true
+		_, statErr := os.Stat(filepath.Join(p.dir, draincore.KeyPlanJSON))
+		p.planAbsent = errors.Is(statErr, fs.ErrNotExist)
+		unlock, lockErr := storelock.Acquire(filepath.Join(p.dir, verbDrain), 0)
+		if lockErr == nil {
+			unlock()
+		}
+		p.lockHeld = errors.Is(lockErr, storelock.ErrBusy)
+	}
+	return p.inner.Run(ctx, cmd)
+}
+
+func TestRunPostPathLocksBeforeWritingPlan(t *testing.T) {
+	t.Parallel()
+	root, dir := setupDrainBundle(t)
+	probe := &lockProbingCommander{
+		inner: &drainHostStub{
+			pageJSON: `{"data":{"repository":{"pullRequest":{"reviewThreads":{"pageInfo":{"hasNextPage":false,"endCursor":null},"nodes":[]}}}}}`,
+			self:     "verdict-bot",
+		},
+		dir: dir,
+	}
+	out, diag, code := runDrainTest(t, root, probe, []string{"--agent", "nonexistent-agent", "--post"})
+	if code != cli.ExitOK {
+		t.Fatalf("Run exit = %d, out=%s, diag=%s", code, out, diag)
+	}
+	if !probe.probed || !probe.planAbsent || !probe.lockHeld {
+		t.Fatalf("lock probe before plan write: probed=%v planAbsent=%v lockHeld=%v",
+			probe.probed, probe.planAbsent, probe.lockHeld)
+	}
+	if _, err := os.Stat(filepath.Join(dir, draincore.KeyPlanJSON)); err != nil {
+		t.Fatalf("plan not written: %v", err)
+	}
 }
