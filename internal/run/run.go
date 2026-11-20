@@ -20,6 +20,7 @@ import (
 	"os/exec"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/agentcatalog"
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
@@ -78,6 +79,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	}
 	resp, ref := runcore.WithAgents(ctx, runRequest(r, req, &flags), agents)
 	if ref != nil {
+		addPermissionHint(ref, req, &flags)
 		return refuse(r, resp, ref)
 	}
 	r.Warnings = resp.Warnings
@@ -317,4 +319,16 @@ func quoteArg(arg string) string {
 		return arg
 	}
 	return "'" + strings.ReplaceAll(arg, "'", `'\''`) + "'"
+}
+
+func addPermissionHint(ref *core.RefusalError, req Request, f *flags) {
+	if ref.Code != "no-review-artifact" || len(f.pass) != 0 {
+		return
+	}
+	row, ok := agentcatalog.Lookup(f.agent)
+	if !ok || row.Launch == nil || row.Launch.PermissionHint == "" {
+		return
+	}
+	command := RenderCommand([]string{"verdict", "run", req.Repo, req.Pr, "--agent", f.agent})
+	ref.Message += "\nre-run with: " + command + " -- " + row.Launch.PermissionHint
 }

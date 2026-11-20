@@ -649,3 +649,22 @@ func TestRunAgyWarnsOnStderrAtLaunch(t *testing.T) {
 		t.Errorf("stderr = %q, want %q", diag, wantLine)
 	}
 }
+
+func TestRunMissingArtifactPermissionHint(t *testing.T) {
+	t.Run("no pass-through", func(t *testing.T) { checkMissingArtifactHint(t, nil, true) })
+	t.Run("operator arguments", func(t *testing.T) { checkMissingArtifactHint(t, []string{"--", "--model", "small"}, false) })
+}
+
+func checkMissingArtifactHint(t *testing.T, pass []string, want bool) {
+	t.Helper()
+	f := newFixture(t)
+	f.plantAs(t, "codex", "silent")
+	args := append([]string{"--agent", "codex", "--rounds", "1"}, pass...)
+	code, out, diag := runVerb(t, f, args...)
+	if code != 1 {
+		t.Fatalf("exit = %d: %s %s", code, out, diag)
+	}
+	if got := strings.Contains(diag, "--agent codex -- --sandbox workspace-write"); got != want {
+		t.Fatalf("permission hint present = %v, want %v: %s", got, want, diag)
+	}
+}
