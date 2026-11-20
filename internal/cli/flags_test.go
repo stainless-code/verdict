@@ -11,8 +11,8 @@ import (
 // TestStripGlobalToggles checks the boolean global flags land on forces.
 func TestStripGlobalToggles(t *testing.T) {
 	rest, g := mustStrip(t, []string{
-		"--compact", "--no-footer", "--overview", "--diagram-behavioral",
-		"--no-diagram-structural", "--diagram-expanded", "--logo", "--no-json",
+		"--compact", "--no-footer", "--overview",
+		"--no-diagram-structural", "--logo", "--no-json",
 		"--no-attribution", "record", "acme/app", "local-x",
 	})
 	if len(rest) != 3 || rest[0] != "record" {
@@ -21,9 +21,7 @@ func TestStripGlobalToggles(t *testing.T) {
 	checkForce(t, "compact", g.CompactForce, cli.FlagOn)
 	checkForce(t, "footer", g.PublishFooterForce, cli.FlagOff)
 	checkForce(t, "overview", g.PublishOverviewForce, cli.FlagOn)
-	checkForce(t, "behavioral", g.DiagramsBehavioralForce, cli.FlagOn)
 	checkForce(t, "structural", g.DiagramsStructuralForce, cli.FlagOff)
-	checkForce(t, "expanded", g.DiagramsExpandedForce, cli.FlagOn)
 	checkForce(t, "logo", g.PublishLogoForce, cli.FlagOn)
 	checkForce(t, "output", g.OutputForce, "text")
 	checkForce(t, "attribution", g.PublishAttributionForce, "off")
@@ -258,8 +256,6 @@ func TestApplyGlobalForcesKitchenSink(t *testing.T) {
 		PublishLogoURLSet:         true,
 		PublishOverviewForce:      cli.FlagOff,
 		DiagramsStructuralForce:   cli.FlagOff,
-		DiagramsBehavioralForce:   cli.FlagOn,
-		DiagramsExpandedForce:     cli.FlagOn,
 	}
 	if err := cli.ApplyGlobalForces(r, g, false); err != nil {
 		t.Fatalf("ApplyGlobalForces: %v", err)
@@ -276,8 +272,6 @@ func TestApplyGlobalForcesKitchenSink(t *testing.T) {
 		{"logo url", eff.PublishLogoURL, "https://x/y.png"},
 		{"overview", eff.PublishOverview, cli.FlagOff},
 		{"structural", eff.DiagramsStructural, cli.FlagOff},
-		{"behavioral", eff.DiagramsBehavioral, cli.FlagOn},
-		{"expanded", eff.DiagramsExpanded, cli.FlagOn},
 		{"output", r.Output, "json"},
 	} {
 		if tc.got != tc.want {
@@ -390,9 +384,7 @@ func TestBoolFlagTableUncoveredHalf(t *testing.T) {
 		{func(g *cli.GlobalForces) string { return g.CompactForce }, "--no-compact", cli.FlagOff},
 		{func(g *cli.GlobalForces) string { return g.PublishFooterForce }, "--footer", cli.FlagOn},
 		{func(g *cli.GlobalForces) string { return g.PublishOverviewForce }, "--no-overview", cli.FlagOff},
-		{func(g *cli.GlobalForces) string { return g.DiagramsBehavioralForce }, "--no-diagram-behavioral", cli.FlagOff},
 		{func(g *cli.GlobalForces) string { return g.DiagramsStructuralForce }, "--diagram-structural", cli.FlagOn},
-		{func(g *cli.GlobalForces) string { return g.DiagramsExpandedForce }, "--no-diagram-expanded", cli.FlagOff},
 		{func(g *cli.GlobalForces) string { return g.PublishLogoForce }, "--no-logo", cli.FlagOff},
 	} {
 		t.Run(tc.flag, func(t *testing.T) { checkBoolFlag(t, tc) })

@@ -2880,9 +2880,7 @@ presentation sample:
     "logo": true,
     "logo_url": "https://raw.githubusercontent.com/stainless-code/verdict/main/apps/docs/public/logo.svg",
     "diagrams": {
-      "structural": true,
-      "behavioral": false,
-      "expanded": false
+      "structural": true
     }
   }
 }
@@ -3224,10 +3222,7 @@ Agent-drawn behavioral mermaid diagrams are retired from agent-authored
 `review.json`: verdict renders the review body deterministically from structured
 findings, and `summary` neutralizes raw HTML comments and code fences.
 Structural topology diagrams in `report --overview` remain active and are gated
-by `publish.diagrams.structural` (bool, default `true`). The existing
-`publish.diagrams.behavioral` and `publish.diagrams.expanded` settings keys
-still validate as booleans (`bad-settings` on unknown keys or non-boolean
-values).
+by `publish.diagrams.structural` (bool, default `true`).
 
 ## Section overrides (per-block template fragments)
 
