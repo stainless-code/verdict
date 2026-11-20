@@ -90,3 +90,12 @@ func TestMeanPreservesFetchRounding(t *testing.T) {
 		t.Fatalf("fetch mean = %v, %q", mean, literal)
 	}
 }
+
+func TestDecodePhaseTokenNumbers(t *testing.T) {
+	raw := []byte(`[{"execution_id":"execution-A","launch_id":"one","finder":"finder-1","phase":"discovery","usd":2,"input_tokens":1e3,"output_tokens":9223372036854775807.0}]`)
+	phases, code := DecodePhases(raw, "execution-A")
+	if code != "" || len(phases) != 1 || phases[0].InputTokens == nil || *phases[0].InputTokens != 1000 ||
+		phases[0].OutputTokens == nil || *phases[0].OutputTokens != 9223372036854775807 {
+		t.Fatalf("integral phase tokens = %+v, %q", phases, code)
+	}
+}

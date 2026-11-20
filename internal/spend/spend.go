@@ -204,20 +204,49 @@ func sumTokens(phases []Phase, selectTokens func(*Phase) *int64) *int64 {
 
 // DecodePhases certifies phase attribution together with the cost record.
 func DecodePhases(raw []byte, execution string) ([]Phase, string) {
-	var phases []Phase
+	var wire []struct {
+		Phase
+		Input  json.RawMessage `json:"input_tokens"`
+		Output json.RawMessage `json:"output_tokens"`
+	}
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&phases); err != nil {
+	if err := decoder.Decode(&wire); err != nil {
 		return nil, badPhaseUsage
 	}
 	var extra any
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
 		return nil, badPhaseUsage
 	}
+	phases := make([]Phase, len(wire))
+	for i := range wire {
+		item := &wire[i]
+		input, inputOK := decodeTokens(item.Input)
+		output, outputOK := decodeTokens(item.Output)
+		if !inputOK || !outputOK {
+			return nil, badPhaseUsage
+		}
+		item.InputTokens, item.OutputTokens = input, output
+		phases[i] = item.Phase
+	}
 	if _, code := Project(execution, phases); code != "" {
 		return nil, code
 	}
 	return phases, ""
+}
+
+func decodeTokens(raw json.RawMessage) (*int64, bool) {
+	if len(raw) == 0 || string(raw) == "null" {
+		return nil, true
+	}
+	if raw[0] != '-' && (raw[0] < '0' || raw[0] > '9') {
+		return nil, false
+	}
+	value, ok := new(big.Rat).SetString(string(raw))
+	if !ok || value.Sign() < 0 || !value.IsInt() || !value.Num().IsInt64() {
+		return nil, false
+	}
+	return new(value.Num().Int64()), true
 }
 
 // Expected prices no work implicitly, including bounded repair attempts.
