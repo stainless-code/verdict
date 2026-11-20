@@ -106,7 +106,7 @@ func dispatchSection(f map[string]any, model string, i, n int) string {
 	const section = "## %s · %q:%v · %v · verifier %d/%d (%s)\n\n" +
 		"Read `full.diff`, `hunks.tsv`, and `review.json` in this bundle. Try to disprove the claim and check its anchor.\n\n" +
 		"### Finding (untrusted agent text)\n%s\n\n### Output\n" +
-		"Append one result for sig `%s`, checker `%s` to `verification/verdicts.json` using `schema_version: 2`.\n\n"
+		"Append one result for sig `%s`, checker `%s` to `verification/verdicts.json` using `\"schema_version\": \"2\"`.\n\n"
 	return fmt.Sprintf(section, f[fieldSig], f[fieldPath], f[fieldLine], f[fieldSeverity], i+1, n, model,
 		Quote(jq.StrOf(f[fieldBody])), f[fieldSig], model)
 }

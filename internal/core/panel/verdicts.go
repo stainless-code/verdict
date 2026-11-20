@@ -119,7 +119,7 @@ func parseResults(rows, findings []any, warnings *[]string) ([]Result, error) {
 		}
 		key := r.Sig + "\x00" + r.Checker
 		if seen[key] {
-			return nil, bad("verification/verdicts.json duplicate (sig, checker): " + r.Sig + ", " + r.Model)
+			return nil, bad("verification/verdicts.json duplicate (sig, checker): " + r.Sig + ", " + r.Checker)
 		}
 		seen[key] = true
 		results = append(results, r)

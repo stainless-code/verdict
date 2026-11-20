@@ -117,3 +117,19 @@ func TestResultFieldTypes(t *testing.T) {
 		})
 	}
 }
+
+func TestDuplicateDiagnosticNamesChecker(t *testing.T) {
+	raw := []byte(`{"schema_version":"2","head_sha":"head","results":[{"sig":"abcdef","checker":"seat-1","verdict":"confirmed","evidence":"literal evidence"},{"sig":"abcdef","checker":"seat-1","verdict":"refuted","evidence":"literal evidence"}]}`)
+	_, _, err := Parse(raw, "head", []any{jq.NewObj("sig", "abcdef")})
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || ref.Message != "verification/verdicts.json duplicate (sig, checker): abcdef, seat-1" {
+		t.Fatalf("duplicate diagnostic: %v", err)
+	}
+}
+
+func TestDispatchUsesStringVersion(t *testing.T) {
+	out := dispatchSection(map[string]any{"sig": "abcdef"}, "seat-1", 0, 1)
+	if !strings.Contains(out, `"schema_version": "2"`) {
+		t.Fatalf("dispatch lacks string version: %s", out)
+	}
+}
