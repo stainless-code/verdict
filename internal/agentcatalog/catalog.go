@@ -27,13 +27,15 @@ type MCP struct {
 
 // Launch describes one non-interactive invocation.
 type Launch struct {
-	Citation   string
-	Name       string
-	Binary     string
-	Install    string
-	ModelFlag  string
-	PromptFlag string
-	Source     string
+	PermissionHint     string
+	PermissionCitation string
+	Citation           string
+	Name               string
+	Binary             string
+	Install            string
+	ModelFlag          string
+	PromptFlag         string
+	Source             string
 	// ProbeMatch is the substring the launcher expects from the identity probe.
 	ProbeMatch string
 	// LaunchWarning is emitted once on stderr at launch when a headless CLI
@@ -91,8 +93,10 @@ var catalog = []Agent{
 	{
 		Name: "agy",
 		Launch: &Launch{
-			Citation: "https://github.com/google-antigravity/antigravity-cli",
-			Binary:   "agy", ModelFlag: modelFlag, PromptFlag: "-p",
+			Citation:           "https://github.com/google-antigravity/antigravity-cli",
+			PermissionHint:     "--dangerously-skip-permissions",
+			PermissionCitation: "https://github.com/google-antigravity/antigravity-cli",
+			Binary:             "agy", ModelFlag: modelFlag, PromptFlag: "-p",
 			LaunchWarning: agyLaunchWarning,
 			Install:       "curl -fsSL https://antigravity.google/cli/install.sh | bash",
 		},
@@ -144,8 +148,10 @@ var catalog = []Agent{
 	{
 		Name: "claude",
 		Launch: &Launch{
-			Citation: "https://code.claude.com/docs/en/cli-reference.md",
-			Binary:   nameClaude, ModelFlag: modelFlag,
+			Citation:           "https://code.claude.com/docs/en/cli-reference.md",
+			PermissionHint:     "--permission-mode acceptEdits",
+			PermissionCitation: "https://code.claude.com/docs/en/cli-reference.md",
+			Binary:             nameClaude, ModelFlag: modelFlag,
 			Args:    []string{"-p"},
 			Install: "curl -fsSL https://claude.ai/install.sh | bash",
 		},
@@ -200,8 +206,10 @@ var catalog = []Agent{
 	{
 		Name: "codex",
 		Launch: &Launch{
-			Citation: "https://github.com/openai/codex/blob/main/README.md",
-			Binary:   nameCodex, ModelFlag: modelFlag,
+			Citation:           "https://github.com/openai/codex/blob/main/README.md",
+			PermissionHint:     "--sandbox workspace-write",
+			PermissionCitation: "https://github.com/openai/codex/blob/main/README.md",
+			Binary:             nameCodex, ModelFlag: modelFlag,
 			Args:    []string{argsExec},
 			Install: "npm install -g @openai/codex",
 		},
