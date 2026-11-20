@@ -7,6 +7,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 func TestPlanDispatch(t *testing.T) {
@@ -75,5 +76,15 @@ func TestPlanWireOrder(t *testing.T) {
 	const want = `{"schema_version":"1","head_sha":"head","generated_at":"now","panel_source":"bundle/panel","verifiers":[{"model":"a","provider":null}],"findings":[{"sig":"22faf6e92ee1b7c1759122039e82c246c8295bc8","path":"src/db.go","line":42,"severity":"important","kind":"inline"}],"second_look":[],"dispatch":"bundle/verification/dispatch.md","totals":{"findings":1,"verifiers":1,"dispatches":1}}`
 	if got := plan.MarshalCompact(); got != want {
 		t.Fatalf("plan wire=%s, want %s", got, want)
+	}
+}
+
+func TestAggregatePlanUsesStoredClaimIdentity(t *testing.T) {
+	review := jq.NewObj("schema_version", "2", "findings", []any{
+		jq.NewObj("path", "notes.txt", "claim", "Retrying @alice never completes."),
+	})
+	row := Findings(review)[0]
+	if got := readcommon.FieldOf(row, "sig"); got != "30c25afea5b69e9b75a8722fe0e5136a8a4f63a3" {
+		t.Fatalf("aggregate claim identity = %q", got)
 	}
 }

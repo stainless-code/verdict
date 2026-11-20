@@ -9,6 +9,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/sig"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 const (
@@ -30,19 +31,28 @@ const (
 func Findings(review *jq.Obj) []any {
 	out := make([]any, 0)
 	raw, _ := review.Get("findings")
+	aggregate := aggregateVersion(review)
 	for _, item := range jq.Elements(raw) {
 		c, ok := object(item)
 		if !ok {
 			continue
 		}
-		path, body := jq.StrOf(c[fieldPath]), jq.StrOf(c[fieldBody])
-		if body == "" {
-			body = jq.StrOf(c["claim"])
-		}
-		out = append(out, jq.NewObj(fieldSig, sig.Finding(path, "", body), fieldPath, path,
-			fieldLine, c[fieldLine], fieldSeverity, c[fieldSeverity], "kind", "inline", fieldBody, body))
+		out = append(out, planFinding(c, aggregate))
 	}
 	return out
+}
+
+func planFinding(finding map[string]any, aggregate bool) *jq.Obj {
+	path, body := jq.StrOf(finding[fieldPath]), jq.StrOf(finding[fieldBody])
+	if body == "" || aggregate {
+		body = jq.StrOf(finding["claim"])
+	}
+	identityBody := body
+	if aggregate {
+		identityBody = untrusted.NeutralizeMentions(body)
+	}
+	return jq.NewObj(fieldSig, sig.Finding(path, "", identityBody), fieldPath, path,
+		fieldLine, finding[fieldLine], fieldSeverity, finding[fieldSeverity], "kind", "inline", fieldBody, body)
 }
 
 // Plan builds a bounded plan with independently dispatchable findings.
