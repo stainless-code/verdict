@@ -18,25 +18,47 @@ trap restore_stub EXIT
 cat > "$EVAL_STUBBIN/gh" <<'EOF'
 #!/usr/bin/env bash
 echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
-if [ "${1:-}" = "api" ] && [ "${2:-}" = "graphql" ]; then
-  printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'; exit 0
-fi
 case "$*" in
-  'api repos/'*'/reviews --paginate'|'api repos/'*'/comments --paginate')
-    echo '[]'; exit 0;;
-  *reviews*)
+  'api repos/acme/app/pulls/4701 --jq .head.sha') printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; exit 0;;
+  'api repos/acme/app/pulls/4701/reviews --paginate'|'api repos/acme/app/pulls/4701/comments --paginate'|'api repos/acme/app/issues/4701/comments --paginate') echo '[]'; exit 0;;
+  'api graphql --paginate -F owner=acme -F name=app -F pr=4701 -f query=
+      query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
+        repository(owner:$owner, name:$name) {
+          pullRequest(number:$pr) {
+            reviewThreads(first:100, after:$endCursor) {
+              nodes { isResolved }
+            }
+          }
+        }
+      }') echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'; exit 0;;
+  'api repos/acme/app/pulls/4701/reviews --method POST --input - --jq {id, state, html_url, submitted_at}'|'api repos/acme/app/issues/4701/comments --method POST --input -')
     if [ -n "${EVAL_SAVE_PAYLOAD:-}" ]; then cat > "$EVAL_SAVE_PAYLOAD"; fi
-    printf '%s' '{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}'
-    exit 0;;
-  *pulls*)
-    printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; exit 0;;
-  *user*)
-    printf 'someone-else'; exit 0;;
+    echo '{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}'; exit 0;;
+  'api repos/acme/app/pulls/4710 --jq .head.sha') printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; exit 0;;
+  'api repos/acme/app/pulls/4710/reviews --paginate'|'api repos/acme/app/pulls/4710/comments --paginate'|'api repos/acme/app/issues/4710/comments --paginate') echo '[]'; exit 0;;
+  'api graphql --paginate -F owner=acme -F name=app -F pr=4710 -f query=
+      query($owner:String!, $name:String!, $pr:Int!, $endCursor:String) {
+        repository(owner:$owner, name:$name) {
+          pullRequest(number:$pr) {
+            reviewThreads(first:100, after:$endCursor) {
+              nodes { isResolved }
+            }
+          }
+        }
+      }') echo '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'; exit 0;;
+  'api repos/acme/app/pulls/4710/reviews --method POST --input - --jq {id, state, html_url, submitted_at}'|'api repos/acme/app/issues/4710/comments --method POST --input -')
+    if [ -n "${EVAL_SAVE_PAYLOAD:-}" ]; then cat > "$EVAL_SAVE_PAYLOAD"; fi
+    echo '{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}'; exit 0;;
+  "api user --jq .login") printf someone-else; exit 0;;
 esac
-echo "evals-stub-gh: network disabled ($*)" >&2
-exit 1
+echo "evals-stub-gh: unregistered argv ($*)" >&2
+exit 64
 EOF
 chmod +x "$EVAL_STUBBIN/gh"
+status=0
+"$EVAL_STUBBIN/gh" api repos/acme/app/pulls/4701/reviews --method DELETE >/dev/null 2>&1 || status=$?
+assert_eq "unexpected review deletion is refused" 64 "$status"
+
 
 # --- D1: smuggled diagram markers and mermaid fences in summary are neutralized ---
 PR=4701
