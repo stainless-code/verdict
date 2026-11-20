@@ -9,12 +9,9 @@ report: .verdict/state/5101 (6 shown) open=4 head=aaaaaaa
 6. [addressed] notes.txt:2 (d4444444)
 by category: untagged 6
 validation: mode=gate hash=9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f9f confirmed=1 rejected=1 downgraded=1 unvalidated=1
-  sig       verdict     move                  reason
-  c1111111  DOWNGRADED  critical → important  The hunk only reaches this path under a test flag.
-  b2222222  REJECTED    -                     The cited line is outside the diff.
-  a3333333  CONFIRMED   -                     Reachable from the cited hunk. [31mNo change.[0m
 next: address open threads
 --- stderr ---
+warn: validation artifact differs from the recorded pass — the table lists no per-finding results
 warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
 warn: evidence: evidence receipt missing for head aaaaaaa [review-insufficient]
 --- files ---
