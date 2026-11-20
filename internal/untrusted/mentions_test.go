@@ -1,10 +1,6 @@
 package untrusted
 
 import (
-	"go/ast"
-	"go/parser"
-	"go/token"
-	"os"
 	"strings"
 	"testing"
 )
@@ -272,34 +268,46 @@ func TestNeutralizeMentionsLeavesTheBodyLength(t *testing.T) {
 	}
 }
 
-func TestCommentCloseLookupHasNoLoop(t *testing.T) {
-	data, err := os.ReadFile("mentions.go")
-	if err != nil {
-		t.Fatal(err)
+func TestCommentCloseLookup(t *testing.T) {
+	const document = "-->\n<!-- @a\n<!-- @b -->\n<!-- @c"
+	scan := mentionScan{lastCommentClose: strings.LastIndex(document, "-->")}
+	if scan.lastCommentClose != 20 {
+		t.Fatalf("last closer = %d, want 20", scan.lastCommentClose)
 	}
-	f, err := parser.ParseFile(token.NewFileSet(), "mentions.go", data, 0)
-	if err != nil {
-		t.Fatal(err)
+	for _, tc := range []struct {
+		name   string
+		offset int
+		from   int
+		want   bool
+	}{
+		{name: "first-opener-shares-closer", offset: 4, from: 4, want: true},
+		{name: "second-opener-shares-closer", offset: 12, from: 4, want: true},
+		{name: "opener-after-last-closer", offset: 24, from: 4, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			scan.lineOffset = tc.offset
+			if got := scan.hasCommentClose(tc.from); got != tc.want {
+				t.Errorf("hasCommentClose(%d) at offset %d = %v, want %v", tc.from, tc.offset, got, tc.want)
+			}
+		})
 	}
-	ast.Inspect(f, func(n ast.Node) bool {
-		fn, ok := n.(*ast.FuncDecl)
-		if ok && fn.Name.Name == "hasCommentClose" {
-			assertNoCommentLookupLoop(t, fn.Body)
-		}
-		return true
-	})
+	if got := NeutralizeMentions(document); got != "-->\n<!-- @a\n<!-- @b -->\n<!-- @\u200bc" {
+		t.Errorf("neutralized document = %q", got)
+	}
 }
 
-func assertNoCommentLookupLoop(t *testing.T, body *ast.BlockStmt) {
-	t.Helper()
-	ast.Inspect(body, func(n ast.Node) bool {
-		_, forLoop := n.(*ast.ForStmt)
-		_, rangeLoop := n.(*ast.RangeStmt)
-		if forLoop || rangeLoop {
-			t.Error("comment-close lookup rescans lines")
-		}
-		return true
-	})
+func TestCommentCloseBeforeOpenerDoesNotCount(t *testing.T) {
+	const document = "-->\n<!-- @alice"
+	scan := mentionScan{lastCommentClose: strings.LastIndex(document, "-->"), lineOffset: 4}
+	if scan.lastCommentClose != 0 {
+		t.Fatalf("last closer = %d, want 0", scan.lastCommentClose)
+	}
+	if scan.hasCommentClose(4) {
+		t.Error("closer before opener counted as a following closer")
+	}
+	if got := NeutralizeMentions(document); got != "-->\n<!-- @\u200balice" {
+		t.Errorf("neutralized document = %q", got)
+	}
 }
 
 func TestUnclosedCommentFlood(t *testing.T) {
