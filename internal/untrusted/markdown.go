@@ -12,6 +12,7 @@ import (
 const (
 	htmlLT      = "&lt;"
 	ellipsis    = "…"
+	evRefPrefix = "[ev-"
 	hrMinRun    = 3
 	maxListDigs = 9
 )
@@ -228,11 +229,20 @@ func writeNeutralizedPair(out *strings.Builder, rest string) int {
 		out.WriteString(htmlLT)
 		return 1
 	}
+	if startsEvRef(rest) {
+		out.WriteByte('[')
+		out.WriteString(zeroWidthSpace)
+		return 1
+	}
 	if len(rest) < 2 {
 		return 0
 	}
 	switch rest[:2] {
-	case "](", "][", "]:", "![":
+	case "][", "![":
+		out.WriteByte(rest[0])
+		out.WriteString(zeroWidthSpace)
+		return 1
+	case "](", "]:":
 		out.WriteByte(rest[0])
 		out.WriteString(zeroWidthSpace)
 		out.WriteByte(rest[1])
@@ -240,6 +250,17 @@ func writeNeutralizedPair(out *strings.Builder, rest string) int {
 	default:
 		return 0
 	}
+}
+
+func startsEvRef(rest string) bool {
+	if len(rest) <= len(evRefPrefix)+1 || !strings.EqualFold(rest[:len(evRefPrefix)], evRefPrefix) {
+		return false
+	}
+	j := len(evRefPrefix)
+	for j < len(rest) && rest[j] >= '0' && rest[j] <= '9' {
+		j++
+	}
+	return j > len(evRefPrefix) && j < len(rest) && rest[j] == ']'
 }
 
 func flattenInline(s string) string {

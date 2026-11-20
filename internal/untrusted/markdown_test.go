@@ -48,7 +48,12 @@ func TestInlineProse(t *testing.T) {
 		{
 			name: "markdown-links-images-and-refs",
 			in:   "[click](https://evil.test) ![px](https://evil.test/1.png) [spoof][ev-1] [ev-1]: https://evil.test",
-			want: "[click]" + zwsp + "(https://evil.test) !" + zwsp + "[px]" + zwsp + "(https://evil.test/1.png) [spoof]" + zwsp + "[ev-1] [ev-1]" + zwsp + ": https://evil.test",
+			want: "[click]" + zwsp + "(https://evil.test) !" + zwsp + "[px]" + zwsp + "(https://evil.test/1.png) [spoof]" + zwsp + "[" + zwsp + "ev-1] [" + zwsp + "ev-1]" + zwsp + ": https://evil.test",
+		},
+		{
+			name: "standalone-and-chained-ev-shortcut-refs",
+			in:   "[spoof][ev-1] and [ev-2] and [EV-12]",
+			want: "[spoof]" + zwsp + "[" + zwsp + "ev-1] and [" + zwsp + "ev-2] and [" + zwsp + "EV-12]",
 		},
 		{
 			name: "bidi-and-line-breaks",
