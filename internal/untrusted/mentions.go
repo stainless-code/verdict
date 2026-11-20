@@ -67,9 +67,9 @@ func cutCR(text string) (line, cr string) {
 }
 
 type mentionScan struct {
+	lines            []string
 	lastCommentClose int
 	lineOffset       int
-	lines            []string
 	lineIdx          int
 	fenceLen         int
 	code             int

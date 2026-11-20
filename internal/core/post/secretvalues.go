@@ -210,12 +210,7 @@ func (st *state) settledSecretGate() *core.RefusalError {
 func unjudgedSecretSites(sites []secretSite, judged []string) []secretSite {
 	var out []secretSite
 	for _, site := range sites {
-		var fresh []string
-		for _, name := range site.shapes {
-			if !slices.Contains(judged, name) {
-				fresh = append(fresh, name)
-			}
-		}
+		fresh := unjudgedShapes(site.shapes, judged)
 		if len(fresh) > 0 {
 			out = append(out, secretSite{where: site.where, shapes: fresh})
 		}
@@ -229,17 +224,9 @@ func (st *state) secretGate(sites []secretSite) *core.RefusalError {
 	}
 	located := secretSiteList(sites)
 	names := secretShapeNames(sites)
-	for _, name := range names {
-		if !slices.Contains(st.judgedShapes, name) {
-			st.judgedShapes = append(st.judgedShapes, name)
-		}
-	}
+	st.judgedShapes = append(st.judgedShapes, unjudgedShapes(names, st.judgedShapes)...)
 	if st.flags.AllowSecretValues {
-		for _, name := range names {
-			if !slices.Contains(st.secretShapes, name) {
-				st.secretShapes = append(st.secretShapes, name)
-			}
-		}
+		st.secretShapes = append(st.secretShapes, unjudgedShapes(names, st.secretShapes)...)
 		st.warn(fmt.Sprintf(msgSecretAllowed, AllowSecretValuesFlag, located))
 		return nil
 	}
@@ -282,4 +269,14 @@ func secretShapeNames(sites []secretSite) []string {
 		}
 	}
 	return out
+}
+
+func unjudgedShapes(names, judged []string) []string {
+	var fresh []string
+	for _, name := range names {
+		if !slices.Contains(judged, name) {
+			fresh = append(fresh, name)
+		}
+	}
+	return fresh
 }

@@ -163,7 +163,10 @@ func TestSettledRenderFindingsKeepRawAnchors(t *testing.T) {
 	entries := []any{jq.NewObj("sig", "same", "line", 99, "side", "RIGHT", "anchored", true)}
 	got := settledRenderFindings(entries, raw, []string{"same", "same"})
 	for i, want := range []string{`{"line":2,"side":"LEFT","anchored":false}`, `{"line":99,"side":"RIGHT","anchored":true}`} {
-		m, _ := got[i].(*jq.Obj)
+		m, ok := got[i].(*jq.Obj)
+		if !ok {
+			t.Fatal("rendered finding is not an object")
+		}
 		line, _ := m.Get("line")
 		side, _ := m.Get("side")
 		anchored, _ := m.Get("anchored")

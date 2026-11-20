@@ -281,19 +281,25 @@ func TestCommentCloseLookupHasNoLoop(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, decl := range f.Decls {
-		fn, ok := decl.(*ast.FuncDecl)
-		if !ok || fn.Name.Name != "hasCommentClose" {
-			continue
+	ast.Inspect(f, func(n ast.Node) bool {
+		fn, ok := n.(*ast.FuncDecl)
+		if ok && fn.Name.Name == "hasCommentClose" {
+			assertNoCommentLookupLoop(t, fn.Body)
 		}
-		ast.Inspect(fn.Body, func(n ast.Node) bool {
-			switch n.(type) {
-			case *ast.ForStmt, *ast.RangeStmt:
-				t.Error("comment-close lookup rescans lines")
-			}
-			return true
-		})
-	}
+		return true
+	})
+}
+
+func assertNoCommentLookupLoop(t *testing.T, body *ast.BlockStmt) {
+	t.Helper()
+	ast.Inspect(body, func(n ast.Node) bool {
+		_, forLoop := n.(*ast.ForStmt)
+		_, rangeLoop := n.(*ast.RangeStmt)
+		if forLoop || rangeLoop {
+			t.Error("comment-close lookup rescans lines")
+		}
+		return true
+	})
 }
 
 func TestUnclosedCommentFlood(t *testing.T) {

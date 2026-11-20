@@ -4,6 +4,8 @@
 
 Verdict now renders the review body deterministically from structured findings, bundle metadata, evidence receipts, spec checks, and the derived approval decision instead of relying on agent-written body-formatting rules.
 
+Rendered findings retain their own line, side, and anchor state even when their signatures match. Summary sanitization respects balanced double-backtick code spans and neutralizes HTML after their closing delimiter.
+
 ### User-visible review body changes
 
 1. **Lead callout ownership:** Verdict always emits the opening verdict lead (`> ✅ No new issues found.`, `> ℹ️ Informational findings only.`, `> ⚠️ Issues found — see inline comments.`, or `> ⛔ Evidence checks insufficient — no approval.`). `summary` can no longer override or suppress the lead.
