@@ -445,6 +445,13 @@ func tightenedMatcherCases() []fixtureMatcherCase {
 			},
 		},
 		{
+			name: "fx2_D2_positive_run_service_recommends_post", fixtureID: "fx2", defectID: "D2", want: true,
+			finding: Finding{
+				Path:  "internal/core/run/service.go",
+				Claim: "The drain launch result recommends running verdict drain acme/app 7 --post, but --post is not supported by this change, so the hint sends the operator to an unsupported flag",
+			},
+		},
+		{
 			name: "fx2_D2_negative_refusal_code_mentions_post", fixtureID: "fx2", defectID: "D2", want: false,
 			finding: Finding{
 				Path:  "internal/core/refusalcodes.go",
