@@ -1103,3 +1103,26 @@ func TestServeCancelJoinsReaderGoroutine(t *testing.T) {
 		t.Fatal("Serve returned before the readLoop goroutine exited")
 	}
 }
+
+func TestServeCancelWithoutClosableReader(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig()
+	server := New(&cfg)
+	reader := newClosableBlockingReader()
+	t.Cleanup(func() { _ = reader.Close() })
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var out bytes.Buffer
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(ctx, struct{ io.Reader }{reader}, &out) }()
+	<-reader.entered
+	cancel()
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Serve = %v, want nil", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("Serve did not return after cancel with a non-closable reader")
+	}
+}
