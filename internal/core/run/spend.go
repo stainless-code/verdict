@@ -1,6 +1,7 @@
 package run
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -13,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/spend"
@@ -24,17 +26,31 @@ const (
 	spendReceiptMode     = 0o600
 )
 
-func (st *state) authorizeSpend(dir string, rounds int) *core.RefusalError {
+func (st *state) authorizeSpend(ctx context.Context, dir string, rounds int) *core.RefusalError {
 	if st.drainDigest != "" {
 		return nil
 	}
 	captured, _, err := config.ReadRunState(dir)
-	if err != nil || captured == nil || captured.Execution == nil {
+	if err != nil {
+		return st.unreadableSpendCapture(dir, err.Error())
+	}
+	if captured == nil || captured.Execution == nil {
 		if st.req.SpendPlan != nil {
 			return st.refuse(codeBadFlags, "spend plan requires a captured S5 execution")
 		}
 		return nil
 	}
+	return st.authorizeSpendPlan(ctx, dir, captured, rounds)
+}
+
+func (st *state) unreadableSpendCapture(dir, message string) *core.RefusalError {
+	if st.req.SpendPlan != nil || panelcore.CheckExecution(dir, nil).Active {
+		return st.refuse(codeRecordFailed, message)
+	}
+	return nil
+}
+
+func (st *state) authorizeSpendPlan(ctx context.Context, dir string, captured *config.RunState, rounds int) *core.RefusalError {
 	phases, code := spend.CompletePlan(captured.Execution.ID, rounds, st.req.SpendPlan)
 	if code != "" {
 		return st.refuse(codeBadFlags, "spend plan has invalid or repeated launch attribution")
@@ -43,10 +59,10 @@ func (st *state) authorizeSpend(dir string, rounds int) *core.RefusalError {
 	if code != "" {
 		return st.refuse(codeBadFlags, "spend plan cannot be projected")
 	}
-	return st.authorizeProjection(dir, captured, rounds, phases, projection)
+	return st.authorizeProjection(ctx, dir, captured, rounds, phases, projection)
 }
 
-func (st *state) authorizeProjection(dir string, captured *config.RunState, rounds int,
+func (st *state) authorizeProjection(ctx context.Context, dir string, captured *config.RunState, rounds int,
 	phases []spend.Phase, projection spend.Projection,
 ) *core.RefusalError {
 	policy := st.spendPolicy(captured)
@@ -60,7 +76,7 @@ func (st *state) authorizeProjection(dir string, captured *config.RunState, roun
 	if authorization.Code != "" {
 		return st.refuse(authorization.Code, "S5 spend authorization required — pass run --consent-over-budget for this invocation")
 	}
-	return st.spendReceipt(dir, captured.Execution.ID, rounds, phases, projection, policy)
+	return st.spendReceipt(ctx, dir, captured.Execution.ID, rounds, phases, projection, policy)
 }
 
 func (st *state) spendPolicy(captured *config.RunState) spend.Policy {
@@ -100,7 +116,7 @@ func resolvedBudget(settings *config.Resolved) string {
 	return formatUSD(*settings.Defaults.Values.BudgetUSD)
 }
 
-func (st *state) spendReceipt(dir, execution string, rounds int, phases []spend.Phase,
+func (st *state) spendReceipt(ctx context.Context, dir, execution string, rounds int, phases []spend.Phase,
 	projection spend.Projection, policy spend.Policy,
 ) *core.RefusalError {
 	topology := jq.NewObj("execution_id", execution, "finders", 2, "rounds", rounds, "recipe", st.req.Recipe, "phases", phases)
@@ -113,7 +129,7 @@ func (st *state) spendReceipt(dir, execution string, rounds int, phases []spend.
 		record.Set("consent", "--consent-over-budget")
 	}
 	path := filepath.Join(dir, "budget.json")
-	unlock, err := storelock.Acquire(path, storelock.DefaultWait)
+	unlock, err := storelock.AcquireContext(ctx, path, storelock.DefaultWait)
 	if err != nil {
 		return st.refuse(codeRecordFailed, fmt.Sprintf("cannot lock spend receipts: %v", err))
 	}
@@ -124,7 +140,11 @@ func (st *state) spendReceipt(dir, execution string, rounds int, phases []spend.
 	}
 
 	ledger = append(ledger, record)
-	if err := atomic.WriteFileMode(path, []byte(jq.PrettyOrdered(ledger)+"\n"), spendReceiptMode); err != nil {
+	raw := []byte(jq.PrettyOrdered(ledger) + "\n")
+	if len(raw) > maxSpendReceiptBytes {
+		return st.refuse(codeRecordFailed, "budget.json receipt ledger is full; re-fetch into a fresh bundle")
+	}
+	if err := atomic.WriteFileMode(path, raw, spendReceiptMode); err != nil {
 		return st.refuse(codeRecordFailed, fmt.Sprintf("cannot record spend authorization: %v", err))
 	}
 	return nil

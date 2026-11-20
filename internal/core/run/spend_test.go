@@ -2,6 +2,7 @@ package run
 
 import (
 	"bytes"
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
@@ -9,6 +10,7 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/spend"
+	"github.com/stainless-code/verdict/internal/storelock"
 )
 
 func spendState(t *testing.T) (*state, string) {
@@ -26,7 +28,7 @@ func spendState(t *testing.T) (*state, string) {
 func TestSpendConsentIsPerInvocation(t *testing.T) {
 	state, dir := spendState(t)
 	state.req.ConsentOverBudget = true
-	if ref := state.authorizeSpend(dir, 2); ref != nil {
+	if ref := state.authorizeSpend(t.Context(), dir, 2); ref != nil {
 		t.Fatal(ref)
 	}
 	raw, err := os.ReadFile(filepath.Join(dir, "budget.json"))
@@ -34,7 +36,7 @@ func TestSpendConsentIsPerInvocation(t *testing.T) {
 		t.Fatal(err)
 	}
 	state.req.ConsentOverBudget = false
-	ref := state.authorizeSpend(dir, 2)
+	ref := state.authorizeSpend(t.Context(), dir, 2)
 	if ref == nil || ref.Code != "budget-unknown" {
 		t.Fatalf("previous consent reused: %v", ref)
 	}
@@ -51,7 +53,7 @@ func TestSpendKnownLowerBoundRequiresConsent(t *testing.T) {
 	state, dir := spendState(t)
 	state.req.Env["REVIEW_BUDGET_USD"] = "1"
 	state.req.SpendPlan = []spend.Phase{{ExecutionID: "execution-A", LaunchID: "finder-1-discovery-1", Finder: "finder-1", Phase: "discovery", USD: new(2.0)}}
-	ref := state.authorizeSpend(dir, 2)
+	ref := state.authorizeSpend(t.Context(), dir, 2)
 	if ref == nil || ref.Code != "budget-exceeded" {
 		t.Fatalf("known spend passed guard: %v", ref)
 	}
@@ -60,10 +62,10 @@ func TestSpendKnownLowerBoundRequiresConsent(t *testing.T) {
 func TestSpendReceiptChangesWithTopology(t *testing.T) {
 	state, dir := spendState(t)
 	state.req.ConsentOverBudget = true
-	if ref := state.authorizeSpend(dir, 2); ref != nil {
+	if ref := state.authorizeSpend(t.Context(), dir, 2); ref != nil {
 		t.Fatal(ref)
 	}
-	if ref := state.authorizeSpend(dir, 1); ref != nil {
+	if ref := state.authorizeSpend(t.Context(), dir, 1); ref != nil {
 		t.Fatal(ref)
 	}
 	ledger := twoSpendReceipts(t, dir)
@@ -92,4 +94,55 @@ func twoSpendReceipts(t *testing.T, dir string) []any {
 		t.Fatalf("receipt ledger = %v", value)
 	}
 	return ledger
+}
+
+func TestSpendRefusesMalformedCapture(t *testing.T) {
+	state, dir := spendState(t)
+	if err := os.WriteFile(filepath.Join(dir, "run.json"), []byte("{"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "launcher.json"), []byte(`{"execution_id":"execution-A"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ref := state.authorizeSpend(t.Context(), dir, 2)
+	if ref == nil || ref.Code != "agent-record-failed" {
+		t.Fatalf("malformed capture authorization = %v", ref)
+	}
+}
+
+func TestSpendAppendKeepsLedgerReadable(t *testing.T) {
+	state, dir := spendState(t)
+	state.req.ConsentOverBudget = true
+	raw := append(append([]byte(`["`), bytes.Repeat([]byte("a"), 1048570)...), []byte("\"]\n")...)
+	path := filepath.Join(dir, "budget.json")
+	if err := os.WriteFile(path, raw, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ref := state.authorizeSpend(t.Context(), dir, 2)
+	if ref == nil || ref.Code != "agent-record-failed" {
+		t.Fatalf("oversize append authorization = %v", ref)
+	}
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(raw, after) {
+		t.Fatal("oversize append changed ledger")
+	}
+}
+
+func TestCanceledSpendPreparation(t *testing.T) {
+	state, dir := spendState(t)
+	state.req.ConsentOverBudget = true
+	unlock, err := storelock.Acquire(filepath.Join(dir, "budget.json"), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unlock()
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	ref := state.prepareLaunch(ctx, &launchArgs{target: launchTarget{evidence: dir}}, 2)
+	if ref == nil || ref.Code != "canceled" {
+		t.Fatalf("canceled spend preparation = %v", ref)
+	}
 }

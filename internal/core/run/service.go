@@ -327,7 +327,11 @@ func (st *state) invoke(ctx context.Context, args *launchArgs, rounds int) (*cor
 }
 
 func (st *state) prepareLaunch(ctx context.Context, args *launchArgs, rounds int) *core.RefusalError {
-	if ref := st.authorizeSpend(args.target.evidence, rounds); ref != nil {
+	ref := st.authorizeSpend(ctx, args.target.evidence, rounds)
+	if ctx.Err() != nil {
+		return st.refuse(codeCanceled, msgCanceled)
+	}
+	if ref != nil {
 		return ref
 	}
 	return st.probe(ctx, args)
