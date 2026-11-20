@@ -43,7 +43,20 @@ func TestFindingReproductionRoundTrip(t *testing.T) {
 		t.Fatalf("decoded receipt = %+v", entry.Reproduction)
 	}
 	got, _ := entry.Wire().Get("reproduction")
-	if jq.Compact(got) != `{"path":"probe.py","command":"python3 probe.py","redacted":true}` {
+	if jq.PrettyOrdered(got) != "{\n  \"path\": \"probe.py\",\n  \"command\": \"python3 probe.py\",\n  \"redacted\": true\n}\n" {
 		t.Fatalf("wired receipt = %s", jq.Compact(got))
+	}
+}
+
+func TestFindingReproductionPreservesUnknownMembers(t *testing.T) {
+	const subtree = "{\n  \"path\": \"probe.py\",\n  \"command\": \"python3 probe.py\",\n  \"redacted\": false,\n  \"future\": {\n    \"z\": [\n      3,\n      2\n    ],\n    \"a\": \"retained\"\n  }\n}\n"
+	value, err := jq.DecodeOrdered([]byte(subtree))
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := core.FindingEntryOf(jq.NewObj("kind", "inline", "reproduction", value))
+	actual, _ := entry.Wire().Get("reproduction")
+	if got := jq.PrettyOrdered(actual); got != subtree {
+		t.Fatalf("reproduction changed:\n%s", got)
 	}
 }

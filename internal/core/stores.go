@@ -16,6 +16,8 @@ import (
 
 // keyAnchored, keyStatus, keyCategory, and keyBody are the FindingEntry and
 // payload wire keys touched in multiple render and decode paths.
+const reproductionKey = "reproduction"
+
 const (
 	keyAnchored = "anchored"
 	keyStatus   = "status"
@@ -128,7 +130,8 @@ type TriageClaim struct {
 // bytes and positions; the merge itself preserves prior order through the
 // ordered clone-and-overlay path.
 type FindingEntry struct { //nolint:govet // field order is the published property order
-	Reproduction *repro.Receipt `anyOf:"null" json:"reproduction,omitempty"`
+	Reproduction    *repro.Receipt `anyOf:"null" json:"reproduction,omitempty"`
+	reproductionRaw *jq.Obj        `json:"-"`
 
 	Sig              string         `json:"sig"`
 	SigVersion       string         `const:"1"                                      json:"sig_version"`
@@ -330,8 +333,10 @@ func (e *FindingEntry) Wire() *jq.Obj {
 	} else {
 		o = e.wireInline()
 	}
-	if e.Reproduction != nil {
-		o.Set("reproduction", e.Reproduction)
+	if e.reproductionRaw != nil {
+		o.Set(reproductionKey, e.reproductionRaw.Clone())
+	} else if e.Reproduction != nil {
+		o.Set(reproductionKey, e.Reproduction)
 	}
 	o.Set("sig", e.Sig)
 	o.Set("sig_version", e.SigVersion)
@@ -744,7 +749,7 @@ var findingKeys = map[string]bool{
 	"rigor": true, "rigor_source": true, "severity": true, keyCategory: true, keyStatus: true, "firstSeen": true,
 	"lastSeen": true, "rationale": true, "triagedAt": true, "triagedBy": true,
 	"source": true, "tool": true, "rule_id": true, "fingerprint": true,
-	"history": true, "reproduction": true,
+	"history": true, reproductionKey: true,
 }
 
 // FindingEntryOf decodes one ordered store entry into the typed shape,
@@ -792,6 +797,11 @@ func entryOptions(e *FindingEntry, obj *jq.Obj) {
 	e.FinderConfidence, _ = fieldString(obj, "finder_confidence")
 	e.Verification = verifyOf(obj)
 	e.Reproduction = reproductionOf(obj)
+	if raw, ok := obj.Get(reproductionKey); ok {
+		if ordered, ok := raw.(*jq.Obj); ok {
+			e.reproductionRaw = ordered.Clone()
+		}
+	}
 	e.Source, _ = fieldString(obj, "source")
 	e.Tool, _ = fieldString(obj, "tool")
 	e.RuleID, _ = fieldString(obj, "rule_id")
@@ -1005,7 +1015,7 @@ type CrossCheck struct {
 }
 
 func reproductionOf(obj *jq.Obj) *repro.Receipt {
-	value, ok := obj.Get("reproduction")
+	value, ok := obj.Get(reproductionKey)
 	if !ok || value == nil {
 		return nil
 	}
