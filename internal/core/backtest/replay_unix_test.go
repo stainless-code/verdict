@@ -118,7 +118,7 @@ var pinnedExe = sync.OnceValues(func() (*os.File, error) {
 	return os.Open(exe)
 })
 
-func plantFakeBinary(t *testing.T, dst, _ string) {
+func plantFakeBinary(t *testing.T, dst string) {
 	t.Helper()
 	src, err := pinnedExe()
 	if err != nil {
@@ -151,13 +151,9 @@ func materializeFakeBinary(t *testing.T, dst string, src *os.File) {
 // list prices the launches in order).
 func (f *replayFixture) plant(t *testing.T, mode, price string) {
 	t.Helper()
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatalf("resolve the test binary: %v", err)
-	}
 	f.pathWithoutAgents(t)
 	bin := os.Getenv("PATH")
-	plantFakeBinary(t, filepath.Join(bin, "claude"), exe)
+	plantFakeBinary(t, filepath.Join(bin, "claude"))
 	t.Setenv(fakeAgentEnv, mode)
 	t.Setenv(fakeAgentCostEnv, price)
 	t.Setenv(fakeAgentLogEnv, f.log)
@@ -1035,36 +1031,48 @@ func TestReplayPlantIsolatesPathFromHostAgents(t *testing.T) {
 	}
 }
 
-// TestReplayPlantMaterializesUnlinkedTestBinary proves plantFakeBinary
-// materializes the fake agent from the pinned startup descriptor when the
-// on-disk test binary path has been unlinked mid-run.
 func TestReplayPlantMaterializesUnlinkedTestBinary(t *testing.T) {
+	const childPath = "VERDICT_TEST_UNLINK_EXE"
+	if exe := os.Getenv(childPath); exe != "" {
+		assertReplayAfterUnlink(t, exe)
+		return
+	}
+	exe := filepath.Join(t.TempDir(), "unlink.test")
+	plantFakeBinary(t, exe)
+	cmd := exec.CommandContext(t.Context(), exe, "-test.run=^TestReplayPlantMaterializesUnlinkedTestBinary$")
+	cmd.Env = testenv.Base(map[string]string{childPath: exe})
+	cmd.WaitDelay = time.Second
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("unlinked executable child: %v\n%s", err, out)
+	}
+}
+
+func assertReplayAfterUnlink(t *testing.T, exe string) {
+	t.Helper()
 	f := newReplayFixture(t)
 	f.plant(t, "write", "0.6")
-	plantedDir, _, _ := strings.Cut(os.Getenv("PATH"), string(os.PathListSeparator))
-	plantedClaude := filepath.Join(plantedDir, "claude")
+	plantedClaude := filepath.Join(os.Getenv("PATH"), "claude")
 	if err := os.Remove(plantedClaude); err != nil {
 		t.Fatal(err)
 	}
-	plantFakeBinary(t, plantedClaude, filepath.Join(t.TempDir(), "unlinked-test-binary"))
+	if err := os.Remove(exe); err != nil {
+		t.Fatal(err)
+	}
+	plantFakeBinary(t, plantedClaude)
 	data := runReplayOK(t, f.request(t, nil)).Data
 	if got := f.launches(t); got != 2 {
 		t.Fatalf("launches = %d, want 2", got)
 	}
 	for i, row := range data.PRs {
-		if row.Status != statusOKCode {
-			t.Errorf("row %d status = %q, want %q", i+1, row.Status, statusOKCode)
+		if row.Status != "ok" {
+			t.Errorf("row %d status = %q, want ok", i+1, row.Status)
 		}
 	}
 }
 
 func TestReplayPlantAlwaysMaterializes(t *testing.T) {
-	exe, err := os.Executable()
-	if err != nil {
-		t.Fatal(err)
-	}
 	dst := filepath.Join(t.TempDir(), "claude")
-	plantFakeBinary(t, dst, exe)
+	plantFakeBinary(t, dst)
 	info, err := os.Lstat(dst)
 	if err != nil {
 		t.Fatal(err)
