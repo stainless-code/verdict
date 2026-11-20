@@ -187,6 +187,13 @@ func warnEvidence(st *state) {
 // Pass requires a current-head receipt with insufficient=false; insufficient
 // fails; missing, stale, or unreadable reads unknown (which fails the gate).
 func gateEvidenceCheck(st *state) gateCheck {
+	if st.flags.Check != "" && st.execution != nil && st.execution.Active && gateHasPendingCross(st) {
+		detail := "a finding within the requested tier lacks a confirmed cross check"
+		return gateCheck{
+			dim:  core.GateDimension{ID: dimEvidence, Status: dimFail, Detail: detail},
+			line: checkPrefix + detail + gateFailSuffix,
+		}
+	}
 	kind := evidenceMissing
 	if st.evidence != nil {
 		kind = st.evidence.kind
@@ -213,6 +220,19 @@ func gateEvidenceCheck(st *state) gateCheck {
 			line: checkPrefix + detail + gateFailSuffix,
 		}
 	}
+}
+
+func gateHasPendingCross(st *state) bool {
+	threshold := core.TierRank(st.flags.Check)
+	for _, entry := range readcommon.VisibleFindings(st.entries) {
+		if readcommon.StatusOf(entry) == statusOpen &&
+			(st.flags.Category == "" || core.CategoryOf(entry) == st.flags.Category) &&
+			core.TierRank(readcommon.FieldOf(entry, "severity")) <= threshold &&
+			approval.QuoteStatus(entry) == "verified" && !approval.CrossEligible(entry) {
+			return true
+		}
+	}
+	return false
 }
 
 func gatePresentEvidence(ev *core.EvidenceReceipt) gateCheck {
