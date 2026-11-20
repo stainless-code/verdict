@@ -23,8 +23,8 @@ import (
 // to act, when the merge stays the human's. `run` is omitted because it spawns
 // the operator's own agent: an MCP tool that launches a local agent process
 // would make every tool call a recursive launcher of unpriced work, which
-// is the boundary the run guardrail draws — the operator asks for one
-// process, from their own terminal or CI, not from inside a model's turn.
+// is the run boundary — the operator selects the finder topology from their
+// own terminal or CI, not from inside a model's turn.
 var mcpOmittedVerbs = map[string]string{
 	"panel":     "CLI-only invoker dispatch contract (STA-91)",
 	"mcp":       "the MCP transport entry point itself",
@@ -32,7 +32,7 @@ var mcpOmittedVerbs = map[string]string{
 	"uninstall": "distribution surface (pkg/verdict/doc.go)",
 	"upgrade":   "distribution surface (pkg/verdict/doc.go)",
 	"gate":      "a CI exit code, not a tool an agent should act on",
-	"run":       "spawns the operator's agent; a tool that launches an agent recurses",
+	"run":       "launches the operator's finder topology; MCP consumes evidence only",
 	"drain":     "writes a local plan and may launch the operator's agent, so a tool call would start unpriced local work",
 	"backtest":  "mining is free, but replay will spend on model runs: the CLI owns both",
 	"serve":     "the MCP surface already exposes the same reads as tools; a tool that binds a listener starts a transport from a transport",

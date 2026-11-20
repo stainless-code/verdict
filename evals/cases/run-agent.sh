@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # STA-300: `verdict run --agent` is a shipped recipe, so it is graded as one:
-# one configured agent process, launched against a real (produced) bundle by
+# single-finder opt-out plus the default finder topology against a real bundle by
 # the shipped agent table, writing exactly one fresh review.json, then handed
 # to `record` (local bundle) and `post --dry-run` (PR bundle) unchanged.
 #
@@ -127,7 +127,7 @@ else
   bad "fetched procedure.md lost the embedded handoff core"
 fi
 
-run_review run acme/app "$LOCAL" --agent claude --print --json -- --model opus
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --print --json -- --model opus
 assert_exit "--print renders a directive for the produced-procedure check" 0
 named_procedure="$(jq -r '.data.argv[-1] | capture("Read `(?<p>[^`]+)` first;").p' <"$EVAL_OUT")"
 if [ -n "$named_procedure" ] \
@@ -140,7 +140,7 @@ fi
 
 # --- --print: the escape hatch renders the command and does nothing else -----
 before_spawns="$(spawns)"
-run_review run acme/app "$LOCAL" --agent claude --print --json -- --model opus
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --print --json -- --model opus
 assert_exit "--print exits 0 without launching" 0
 assert_envelope "--print"
 assert_json_field "--print names the agent" "claude" '.data.agent'
@@ -157,7 +157,7 @@ else
   bad "--print wrote into the bundle (launcher.json or review.json)"
 fi
 
-run_review run acme/app "$LOCAL" --agent claude --print -- --model opus
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --print -- --model opus
 assert_exit "--print (human) exits 0" 0
 assert_file_grep "--print (human) renders the exact argv" "$EVAL_OUT" \
   "claude -p --model opus 'Review acme/app local change local-launch"
@@ -182,7 +182,7 @@ run_cli_in "$CTX_REPO" fetch-local acme/app ctx --context spec.md --json -- note
 assert_exit "fetch-local produces a bundle with context" 0
 CTX_BUNDLE="$CTX_REPO/.verdict/state/local-ctx"
 
-run_cli_in "$CTX_REPO" run acme/app ctx --agent claude --print --json -- --model opus
+run_cli_in "$CTX_REPO" run acme/app ctx --finders 1 --agent claude --print --json -- --model opus
 assert_exit "--print renders the context bundle's directive" 0
 assert_envelope "--print with context"
 CTX_FILES="$SANDBOX/context-directive-files.txt"
@@ -199,7 +199,7 @@ else
 fi
 assert_eq "--print with context launched no agent process" "$before_spawns" "$(spawns)"
 
-run_review run acme/app "$LOCAL" --agent claude --print --json -- --model opus
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --print --json -- --model opus
 assert_exit "--print renders a directive for a bundle without context" 0
 NOCTX_FILES="$SANDBOX/no-context-directive-files.txt"
 jq -r '.data.argv[-1] | [scan("`([^`]+)`") | .[0] | split("/") | last] | unique[]' \
@@ -209,7 +209,7 @@ assert_file_nogrep "--print directive omits context.txt when the bundle has none
 
 # --- the launch: one process, one fresh artifact, one provenance record ------
 export STUB_AGENT_MODE=write
-run_review run acme/app "$LOCAL" --agent claude --json -- --model opus
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --json -- --model opus
 assert_exit "launch exits 0 when the agent writes review.json" 0
 assert_envelope "launch"
 assert_json_field "launch reports the agent name" "claude" '.data.agent'
@@ -269,7 +269,7 @@ fi
 assert_stream_nogrep "record made no host call either" "$EVAL_STUBLOG" "stub-gh"
 
 # --- the PR handoff: post --dry-run accepts it, and nothing is submitted -----
-run_review run acme/app "$PR" --agent claude --json
+run_review run acme/app "$PR" --finders 1 --agent claude --json
 assert_exit "launch on a PR bundle exits 0" 0
 assert_json_field "the PR launch hands off to post" \
   "post the review with verdict post acme/app $PR" '.next'
@@ -293,28 +293,28 @@ fi
 # on every filesystem, never a same-second race.
 touch -t 202001010000 "$LOCAL_DIR/review.json"
 export STUB_AGENT_MODE=none
-run_review run acme/app "$LOCAL" --agent claude --json
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --json
 assert_exit "a leftover review.json from an earlier run refuses" 1
 assert_refusal "stale artifact" "stale-review-artifact"
 assert_json_field "the stale refusal names the left-over file" "true" \
   '.error.message | contains("predates this run")'
 
 rm -f "$LOCAL_DIR/review.json"
-run_review run acme/app "$LOCAL" --agent claude --json
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --json
 assert_exit "an agent that writes nothing refuses" 1
 assert_refusal "no artifact" "no-review-artifact"
 assert_json_field "the no-artifact refusal names the file it wanted" "true" \
   '.error.message | contains(".verdict/state/local-launch/review.json")'
 
 export STUB_AGENT_MODE=fail
-run_review run acme/app "$LOCAL" --agent claude --json
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --json
 assert_exit "the agent's own exit code becomes the process exit code" 7
 assert_refusal "agent failure" "agent-failed"
 assert_json_field "the failure names the agent's exit" "true" \
   '.error.message | contains("exited 7")'
 
 export STUB_AGENT_MODE=hang
-run_review run acme/app "$LOCAL" --agent claude --timeout 2 --json
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --timeout 2 --json
 assert_exit "the watchdog kills an over-budget agent" 1
 assert_refusal "watchdog" "agent-timeout"
 assert_json_field "the timeout refusal names the watchdog" "true" \
@@ -322,20 +322,20 @@ assert_json_field "the timeout refusal names the watchdog" "true" \
 assert_json_field "the record marks the kill" "true" '.timed_out' "$LAUNCHER"
 
 before_spawns="$(spawns)"
-run_cli_path "$EVAL_STUBBIN:$MINBIN" run acme/app "$LOCAL" --agent claude --json
+run_cli_path "$EVAL_STUBBIN:$MINBIN" run acme/app "$LOCAL" --finders 1 --agent claude --json
 assert_exit "an agent binary that is not installed refuses" 1
 assert_refusal "agent missing" "agent-missing"
 assert_json_field "the missing-agent refusal names PATH" "true" \
   '.error.message | contains("not installed")'
-run_review run acme/app "$LOCAL" --agent nope --json
+run_review run acme/app "$LOCAL" --finders 1 --agent nope --json
 assert_exit "an unknown agent name refuses" 1
 assert_refusal "unknown agent" "unknown-agent"
 assert_json_field "the unknown-agent refusal lists the shipped table" "true" \
   '.error.message | contains("claude, codex, cursor, opencode")'
-run_review run acme/app "$LOCAL" --agent claude --timeout soon --json
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --timeout soon --json
 assert_exit "a non-numeric timeout is a typed refusal" 1
 assert_refusal "bad timeout" "bad-timeout"
-run_review run acme/app 9999 --agent claude --json
+run_review run acme/app 9999 --finders 1 --agent claude --json
 assert_exit "a missing bundle refuses instead of fetching" 1
 assert_refusal "missing bundle" "missing-bundle"
 assert_eq "no refusal launched an agent process" "$before_spawns" "$(spawns)"
@@ -343,7 +343,7 @@ assert_eq "no refusal launched an agent process" "$before_spawns" "$(spawns)"
 # --- the provenance record redacts secrets the child really received --------
 export ANTHROPIC_API_KEY="$SECRET"
 export STUB_AGENT_MODE=write
-run_review run acme/app "$LOCAL" --agent claude --json \
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --json \
   -- --api-key "$ANTHROPIC_API_KEY" --fast
 assert_exit "a launch carrying a credential still succeeds" 0
 assert_json_field "the recorded argv redacts the secret operand" "***REDACTED***" \
@@ -368,7 +368,7 @@ unset ANTHROPIC_API_KEY
 ARG_SECRET="sk-ant-eval-argonly-0002"
 export STUB_AGENT_LOG=/dev/stdout
 export STUB_AGENT_MODE=write
-run_review run acme/app "$LOCAL" --agent claude --json \
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --json \
   -- --api-key "$ARG_SECRET" --fast
 export STUB_AGENT_LOG="$SANDBOX/agent-argv.log"
 assert_exit "a child that echoes its own argv still launches" 0
@@ -379,6 +379,25 @@ assert_file_grep "the child received the real credential (raw log)" "$LOCAL_DIR/
   "^arg\\[2\\]=$ARG_SECRET$" "-E"
 assert_eq "the child's raw log is operator-only" "-rw-------" \
   "$(ls -l "$LOCAL_DIR/.run.out" | cut -c1-10)"
+
+eval_mk_bundle local-two
+before="$(spawns)"
+run_review run acme/app local-two --agent claude --rounds 1 --json
+assert_exit "default launches two finders and both cross-checks" 0
+assert_eq "default pays four isolated launches" "4" "$(( $(spawns) - before ))"
+assert_json_field "both finders completed" "2" '.data.execution.counts.completed'
+assert_json_field "both directed checks confirmed" "2" '.data.execution.counts.confirmed'
+for phase in x-finder-1 x-finder-2 x-cross-1 x-cross-2; do
+  if [ -f "$SANDBOX/.verdict/state/local-two/$phase/launcher.json" ]; then
+    good "default isolates $phase"
+  else
+    bad "default omitted $phase launcher"
+  fi
+done
+rm "$SANDBOX/.verdict/state/local-two/verification/verdicts.json"
+run_review record acme/app local-two --dry-run --json
+assert_exit "missing cross receipt refuses approval" 0
+assert_json_field "missing bound receipt is insufficient" "true" '.data.approval.insufficient'
 
 # --- the shipped recipe: docs claim no more than the launcher proves ---------
 if [ -f "$RECIPE" ]; then

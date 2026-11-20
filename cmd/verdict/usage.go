@@ -57,14 +57,15 @@ func usageText() string {
 		"        droid|forge|fx|gemini|goose|grok|hermes|jazz|junie|kilo|kimchi|kimi|kiro|\n" +
 		"        kode|mcode|neovate|openclaw|opencode|pa|pi|qoder|qodercn|qwen|rovodev|\n" +
 		"        vibe|zcode>\n" +
-		"      [--recipe <slug>] [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 2>]\n" +
+		"      [--finders <1|2, default 2>] [--recipe <slug>] [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 2>]\n" +
 		"      [--print] [-- <agent args>...] [--json]\n" +
-		"    launch YOUR agent against an existing bundle: one process per round, two rounds by default.\n" +
-		"    It requires exactly one fresh review.json (absent refuses no-review-artifact, older\n" +
+		"    launch YOUR agent as two isolated whole-diff finders with opposite-finder cross-checks.\n" +
+		"    --finders 1 restores one finder; --print/--stage require it. Recipes supply declarative context.\n" +
+		"    Each finder requires one fresh review.json (absent refuses no-review-artifact, older\n" +
 		"    than the launch refuses stale-review-artifact), names the next command, never posts, and\n" +
 		"    reads the agent's prose only through the shape checker's problem list. With --rounds N\n" +
 		"    (1-5) an invalid review.json re-prompts the agent with the checker's fix list, up to N\n" +
-		"    launch-to-check rounds; --rounds 1 opts out. Evidence gaps ride in that same list: a\n" +
+		"    launch-to-check rounds per finder; --rounds 1 disables repair. Evidence gaps ride in that same list: a\n" +
 		"    wrong quote gets one repair round, and a review whose evidence stays insufficient after\n" +
 		"    the rounds refuses review-insufficient instead of publishing an unbacked approval.\n" +
 		"    The agent inherits your environment (your key) and may use the network; verdict\n" +

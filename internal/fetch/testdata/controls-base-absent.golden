@@ -351,7 +351,7 @@ api-base-panel
 --- file C/.verdict/state/4701/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "3fd109691a539d179dee96c9de38098c72a143230b456bebc4eb97ec240ef145",
+  "run_id": "32ba564b48f8c576342862e666f9423b33496e2556e0ab022112bfbe693aa9f3",
   "prompts_hash": "d75e983b4a3f6201c1f99385e5538116dba52e40fe3d672b0ddcb59d7cd4e9d9",
   "panel": [
     "api-base-panel"
@@ -658,7 +658,7 @@ api-base-panel
       "name": "run.json",
       "status": "included",
       "sha256": "RUNTIME_SHA256",
-      "bytes": 7270
+      "bytes": 7677
     },
     {
       "kind": "bundle",
@@ -767,7 +767,7 @@ api-base-panel
       "status": "included",
       "sha256": "58e27b3168ec974a8b85e537eb76211975aee57cb18183d8b9ee42bc7b28b874",
       "layer": "built-in,repo",
-      "detail": "budget_usd=built-in, chunk=built-in, display_min_severity=built-in, effort=built-in, kb_policy.max_fp_rate=built-in, kb_policy.min_judged=built-in, max_bytes=built-in, panel=repo, post_min_severity=built-in, spec_coverage_min=built-in"
+      "detail": "budget_usd=built-in, chunk=built-in, display_min_severity=built-in, effort=built-in, finders=built-in, kb_policy.max_fp_rate=built-in, kb_policy.min_judged=built-in, max_bytes=built-in, panel=repo, post_min_severity=built-in, spec_coverage_min=built-in"
     },
     {
       "kind": "exclusions",
@@ -856,6 +856,10 @@ api-base-panel
               "layer": "built-in",
               "source": "built-in"
             },
+            "finders": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
@@ -895,6 +899,7 @@ api-base-panel
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
             "spec_coverage_min": 80,
+            "finders": 2,
             "chunk": false
           }
         }
@@ -918,6 +923,10 @@ api-base-panel
           "source": "built-in"
         },
         "effort": {
+          "layer": "built-in",
+          "source": "built-in"
+        },
+        "finders": {
           "layer": "built-in",
           "source": "built-in"
         },
@@ -960,6 +969,7 @@ api-base-panel
         "kb_min_judged": 5,
         "kb_max_fp_rate": 0.5,
         "spec_coverage_min": 80,
+        "finders": 2,
         "chunk": false
       }
     }
@@ -969,7 +979,7 @@ api-base-panel
   "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
   "captured_at": "0000-00-00T00:00:00Z",
   "config_sha256": "58e27b3168ec974a8b85e537eb76211975aee57cb18183d8b9ee42bc7b28b874",
-  "inputs_sha256": "106a652dc48ac8863d8c5a218a1905d5b5001c70f3628516958fec801704b0b4",
+  "inputs_sha256": "a72297d1ccc956948b1457d1eb9b1f6ffc1472648c2a75c3a44f3fb00d991d10",
   "inventory": {
     "config.json": "58e27b3168ec974a8b85e537eb76211975aee57cb18183d8b9ee42bc7b28b874"
   },
@@ -1031,6 +1041,14 @@ api-base-panel
       {
         "key": "chunk",
         "value": false,
+        "origin": {
+          "layer": "built-in",
+          "source": "built-in"
+        }
+      },
+      {
+        "key": "finders",
+        "value": 2,
         "origin": {
           "layer": "built-in",
           "source": "built-in"

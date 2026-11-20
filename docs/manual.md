@@ -956,6 +956,7 @@ the behavior stays off until a layer above turns it on.
 | report                | defaults.display_min_severity  | unset            |
 | run                   | --rounds                       | 2                |
 | run                   | --timeout                      | 300              |
+| run                   | defaults.finders               | 2                |
 
 <!-- defaults-at-a-glance:end -->
 
@@ -2266,9 +2267,8 @@ the request bypasses the cache. Refusals are never cached.
 ## Your agent, launched (`run --agent`)
 
 `fetch` ends with a bundle and a prompt nobody ran. `run` closes that gap
-without becoming an orchestrator: it launches **your** agent against an
-existing bundle, one process per round and two rounds by default, and hands
-the result back to the verbs that already exist.
+by launching **your** agent as two isolated whole-diff finders, followed by
+opposite-finder cross-checks. `--finders 1` restores the single-finder workflow.
 
 ```bash
 verdict fetch-local acme/app work              # writes .verdict/state/local-work/
@@ -2279,10 +2279,10 @@ verdict record acme/app local-work             # the existing validation path, u
 For a PR bundle the middle step is `verdict run acme/app 123 --agent claude`
 and the handoff is `verdict post acme/app 123`. `run` never records, posts,
 merges, or pushes; with `--rounds N` (default 2) it repeats only the
-launch→check pair, up to N rounds, and still records nothing: `next` in its
+launch→check pair per finder, up to N rounds, and still records nothing: `next` in its
 envelope names the command it did not run.
 
-`run` invokes your agent only when you ask: one process per round, one bundle. No
+`run` invokes your agent only when you ask, against one bundle. No
 daemon, no queue, no scheduler, no webhook, no model selection, and by default
 it never reads prose: it runs the published `CheckReview` shape checker over
 review.json (paths and codes only) plus the deterministic evidence checks over
@@ -2293,8 +2293,25 @@ typed `bad-review-input` refusal and evidence that is still insufficient is
 
 ### Captured two-finder executions
 
-The coordinator currently has an internal opt-in seam. The CLI default and flags
-are unchanged. Each finder reviews the whole diff in a fresh process: finder-1
+`run --agent` defaults to two finders. Set global `defaults.finders` to `1` or
+`2` in base-owned repository configuration, or use personal `review.finders`
+as a fallback. The value is captured at fetch time; scopes cannot override it.
+`run --finders 1|2` wins over the capture and records its source.
+`--print` and `--stage` require `--finders 1`; two-finder rendering refuses
+without writing or launching. An explicit recipe is declarative context;
+the lean finder procedures control automatic discovery.
+
+Before a rerun, the launcher moves an existing automatic execution and its
+receipts into `x-superseded/<id>` inside the bundle. The old manifest, isolated
+outputs, aggregate review, and panel receipts remain inspectable there. Readers
+ignore them. A retirement failure refuses before any agent launch and names the
+restore location. A single-finder rerun clears the retired cross standing while
+retaining the finding history. A fresh single-finder bundle gains no extra files.
+
+Drain stays single-agent. Backtest replay explicitly uses one finder to retain
+its existing historical control and budget meaning.
+
+Each finder reviews the whole diff in a fresh process: finder-1
 uses a contract-first method, and finder-2 uses a behavior-first method. The
 coordinator merges exact signatures and dispatches each candidate to the opposite
 finder for a fresh cross-check. Duplicate findings keep both origins and receive
@@ -2312,7 +2329,7 @@ Cost handoffs identify each launch by execution, finder, phase, and launch id.
 The report sums those phases once, ignoring a root aggregate claim beside them.
 An unreported phase leaves token totals and USD `null`. This is a pre-v1 SDK wire
 break: nullable totals must not become zero when a client decodes them. The
-legacy single-finder cost path is unchanged. Launching remains CLI-only; MCP has
+single-finder cost rollup is unchanged. Launching remains CLI-only; MCP has
 no `verdict_run` tool.
 
 ### What `run` asserts

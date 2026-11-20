@@ -413,7 +413,7 @@ rather than becoming ground truth.
 --- file C/.verdict/state/4703/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "3bf86df24fec1a27c64f924ee62e2a72da59996f017961739c82e8bbc53224f4",
+  "run_id": "5713b4940144d5d30bfc40e0b234bf7d1a0819b58c2786e0c14f0b2dc211acc1",
   "prompts_hash": "d75e983b4a3f6201c1f99385e5538116dba52e40fe3d672b0ddcb59d7cd4e9d9",
   "inputs": [
     {
@@ -755,7 +755,7 @@ rather than becoming ground truth.
       "name": "run.json",
       "status": "included",
       "sha256": "RUNTIME_SHA256",
-      "bytes": 34487
+      "bytes": 36662
     },
     {
       "kind": "bundle",
@@ -861,7 +861,7 @@ rather than becoming ground truth.
       "name": ".verdict/config.json",
       "status": "built-in",
       "layer": "built-in,flag",
-      "detail": "budget_usd=built-in, chunk=flag, display_min_severity=built-in, effort=built-in, kb_policy.max_fp_rate=built-in, kb_policy.min_judged=built-in, max_bytes=built-in, panel=built-in, post_min_severity=built-in, spec_coverage_min=built-in"
+      "detail": "budget_usd=built-in, chunk=flag, display_min_severity=built-in, effort=built-in, finders=built-in, kb_policy.max_fp_rate=built-in, kb_policy.min_judged=built-in, max_bytes=built-in, panel=built-in, post_min_severity=built-in, spec_coverage_min=built-in"
     },
     {
       "kind": "exclusions",
@@ -974,6 +974,10 @@ rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "finders": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
@@ -1017,6 +1021,7 @@ rather than becoming ground truth.
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
             "spec_coverage_min": 80,
+            "finders": 2,
             "chunk": true
           }
         }
@@ -1050,6 +1055,10 @@ rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "finders": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
@@ -1093,6 +1102,7 @@ rather than becoming ground truth.
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
             "spec_coverage_min": 80,
+            "finders": 2,
             "chunk": true
           }
         }
@@ -1126,6 +1136,10 @@ rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "finders": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
@@ -1169,6 +1183,7 @@ rather than becoming ground truth.
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
             "spec_coverage_min": 80,
+            "finders": 2,
             "chunk": true
           }
         }
@@ -1202,6 +1217,10 @@ rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "finders": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
@@ -1245,6 +1264,7 @@ rather than becoming ground truth.
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
             "spec_coverage_min": 80,
+            "finders": 2,
             "chunk": true
           }
         }
@@ -1278,6 +1298,10 @@ rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "finders": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
@@ -1321,6 +1345,7 @@ rather than becoming ground truth.
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
             "spec_coverage_min": 80,
+            "finders": 2,
             "chunk": true
           }
         }
@@ -1354,6 +1379,10 @@ rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "finders": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
@@ -1397,6 +1426,7 @@ rather than becoming ground truth.
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
             "spec_coverage_min": 80,
+            "finders": 2,
             "chunk": true
           }
         }
@@ -1430,6 +1460,10 @@ rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "finders": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
@@ -1473,6 +1507,7 @@ rather than becoming ground truth.
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
             "spec_coverage_min": 80,
+            "finders": 2,
             "chunk": true
           }
         }
@@ -1506,6 +1541,10 @@ rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "finders": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
@@ -1549,6 +1588,7 @@ rather than becoming ground truth.
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
             "spec_coverage_min": 80,
+            "finders": 2,
             "chunk": true
           }
         }
@@ -1582,6 +1622,10 @@ rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "finders": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
@@ -1625,6 +1669,7 @@ rather than becoming ground truth.
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
             "spec_coverage_min": 80,
+            "finders": 2,
             "chunk": true
           }
         }
@@ -1658,6 +1703,10 @@ rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "finders": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
@@ -1701,6 +1750,7 @@ rather than becoming ground truth.
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
             "spec_coverage_min": 80,
+            "finders": 2,
             "chunk": true
           }
         }
@@ -1734,6 +1784,10 @@ rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "finders": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
@@ -1777,6 +1831,7 @@ rather than becoming ground truth.
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
             "spec_coverage_min": 80,
+            "finders": 2,
             "chunk": true
           }
         }
@@ -1810,6 +1865,10 @@ rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "finders": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
@@ -1853,6 +1912,7 @@ rather than becoming ground truth.
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
             "spec_coverage_min": 80,
+            "finders": 2,
             "chunk": true
           }
         }
@@ -1886,6 +1946,10 @@ rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "finders": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
@@ -1929,6 +1993,7 @@ rather than becoming ground truth.
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
             "spec_coverage_min": 80,
+            "finders": 2,
             "chunk": true
           }
         }
@@ -1962,6 +2027,10 @@ rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "finders": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "kb_policy.max_chars": {
               "layer": "built-in",
               "source": "built-in"
@@ -2005,6 +2074,7 @@ rather than becoming ground truth.
             "kb_min_judged": 5,
             "kb_max_fp_rate": 0.5,
             "spec_coverage_min": 80,
+            "finders": 2,
             "chunk": true
           }
         }
@@ -2028,6 +2098,10 @@ rather than becoming ground truth.
           "source": "built-in"
         },
         "effort": {
+          "layer": "built-in",
+          "source": "built-in"
+        },
+        "finders": {
           "layer": "built-in",
           "source": "built-in"
         },
@@ -2074,6 +2148,7 @@ rather than becoming ground truth.
         "kb_min_judged": 5,
         "kb_max_fp_rate": 0.5,
         "spec_coverage_min": 80,
+        "finders": 2,
         "chunk": true
       }
     }
@@ -2083,7 +2158,7 @@ rather than becoming ground truth.
   "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
   "captured_at": "0000-00-00T00:00:00Z",
   "config_sha256": "",
-  "inputs_sha256": "e464e17945c6f7d3ae1d9c8fcef161729d0bf0aee5be80b0d8f762e13c09952c",
+  "inputs_sha256": "538c091cf6061cdb8c3e8ead5448ca7c4f197c2e43e6beff7302b9952353ef37",
   "evidence": {
     "plan": {
       "effort_tier": "standard",
@@ -2156,6 +2231,14 @@ rather than becoming ground truth.
         "origin": {
           "layer": "flag",
           "source": "command line"
+        }
+      },
+      {
+        "key": "finders",
+        "value": 2,
+        "origin": {
+          "layer": "built-in",
+          "source": "built-in"
         }
       },
       {

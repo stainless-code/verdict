@@ -1184,3 +1184,25 @@ func TestServeCancelWithNopCloser(t *testing.T) {
 		t.Fatalf("Serve = %v, want nil", serveErr)
 	}
 }
+
+func TestFinderLaunchIsNotAnMCPTool(t *testing.T) {
+	for _, name := range []string{"run", "verdict_run"} {
+		t.Run(name, func(t *testing.T) {
+			assertFinderToolUnavailable(t, name)
+		})
+	}
+}
+
+func assertFinderToolUnavailable(t *testing.T, name string) {
+	t.Helper()
+	cfg := testConfig()
+	var out bytes.Buffer
+	input := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"` + name + `","arguments":{"repo":"acme/app","pr":"7","flags":{"finders":"2","agent":"claude"}}}}` + "\n"
+	if err := New(&cfg).Serve(t.Context(), strings.NewReader(input), &out); err != nil {
+		t.Fatal(err)
+	}
+	response := decodeFrames(t, out.Bytes())["1"]
+	if response.Error == nil || response.Error.Code != -32602 || response.Error.Message != "unknown tool: "+name {
+		t.Fatalf("launcher exposed over MCP: %s", out.String())
+	}
+}

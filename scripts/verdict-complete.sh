@@ -30,7 +30,7 @@ _verdict_flags() { # $1 = verb
     threads) printf '%s\n' --provider --thread --dry-run --json;;
     drain) printf '%s\n' --provider --max-threads --agent --timeout --post --dry-run --json --;;
     fetch-local) printf '%s\n' --staged --range --base --stash --worktree --context --spec --ignore --no-default-excludes --index --consent-over-budget --show-prompts --chunk --json;;
-    run) printf '%s\n' --agent --recipe --stage --timeout --rounds --print --json --;;
+    run) printf '%s\n' --agent --recipe --stage --timeout --finders --rounds --print --json --;;
     learn) printf '%s\n' --propose --from-bundle --accept --reject --dry-run --pack --incident --sha --path --note --url --at --rule --scope --id --provenance --rigor --status --retire --restore --reason --json;;
     pack) printf '%s\n' list add test --dir --json;;
     adopt) printf '%s\n' --from --json;;
