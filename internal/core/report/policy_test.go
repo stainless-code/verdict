@@ -54,7 +54,7 @@ func TestDisplayFloorHidesBelowFloorButGatesStayFull(t *testing.T) {
 		floorFinding("informational", "d222222222222222222222222222222222222222")+"]")
 	writeFloorPolicy(t, "important")
 	r := req
-	rq := &core.ReportRequest{ReadRequest: r, Flags: core.ReportFlags{Check: "informational"}}
+	rq := &reportcore.Request{ReadRequest: r, Flags: reportcore.Flags{Check: "informational"}}
 	resp, ref := reportcore.Run(context.Background(), rq)
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -78,7 +78,7 @@ func TestDisplayFloorHidesBelowFloorButGatesStayFull(t *testing.T) {
 func TestDisplayFloorEmptyViewDoesNotPromiseThreads(t *testing.T) {
 	req := fixture(t, "["+floorFinding("informational", "d222222222222222222222222222222222222222")+"]")
 	writeFloorPolicy(t, "important")
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req})
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{ReadRequest: req})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -110,7 +110,7 @@ func assertGateLine(t *testing.T, lines []string, verdict string) {
 func TestDisplayFloorAbsentShowsAll(t *testing.T) {
 	req := fixture(t, "["+floorFinding("critical", "c111111111111111111111111111111111111111")+","+
 		floorFinding("informational", "d222222222222222222222222222222222222222")+"]")
-	rq := &core.ReportRequest{ReadRequest: req}
+	rq := &reportcore.Request{ReadRequest: req}
 	resp, ref := reportcore.Run(context.Background(), rq)
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -218,7 +218,7 @@ func TestScopedDisplayFloorWithholdsOnlyItsOwnPath(t *testing.T) {
 	req := fixture(t, list)
 	writeScopedFloorPolicy(t)
 	resp, ref := reportcore.Run(context.Background(),
-		&core.ReportRequest{ReadRequest: req, Flags: core.ReportFlags{Check: "informational"}})
+		&reportcore.Request{ReadRequest: req, Flags: reportcore.Flags{Check: "informational"}})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}

@@ -6,7 +6,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
 )
 
@@ -36,7 +35,7 @@ func wantCategoryCounts() map[string]int {
 }
 
 // checkCategoryCounts asserts the whole-store by_category tally.
-func checkCategoryCounts(t *testing.T, resp *core.ReportResponse) {
+func checkCategoryCounts(t *testing.T, resp *reportcore.Response) {
 	t.Helper()
 	if !reflect.DeepEqual(resp.Data.Counts.ByCategory, wantCategoryCounts()) {
 		t.Errorf("by_category = %v, want %v", resp.Data.Counts.ByCategory, wantCategoryCounts())
@@ -55,9 +54,9 @@ func categoryStore() string {
 // the gated class while the whole-store counts keep every bucket.
 func TestReportCategoryFilter(t *testing.T) {
 	req := fixture(t, categoryStore())
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Category: "security"},
+		Flags:       reportcore.Flags{Category: "security"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -74,7 +73,7 @@ func TestReportCategoryFilter(t *testing.T) {
 // carry every published key plus untagged with zero defaults.
 func TestReportByCategoryKeys(t *testing.T) {
 	req := fixture(t, categoryStore())
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req})
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{ReadRequest: req})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -117,9 +116,9 @@ func TestReportCheckCategoryGate(t *testing.T) {
 func runCategoryGate(t *testing.T, category string, failed bool) {
 	t.Helper()
 	req := fixture(t, categoryStore())
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Check: "critical", Category: category, Live: "skip"},
+		Flags:       reportcore.Flags{Check: "critical", Category: category, Live: "skip"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -147,9 +146,9 @@ func checkLineNames(lines []string, category string) bool {
 // the typed bad-category refusal instead of a silently passing gate.
 func TestReportBadCategoryRefusal(t *testing.T) {
 	req := fixture(t, categoryStore())
-	_, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	_, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Category: "securty", Check: "important", Live: "skip"},
+		Flags:       reportcore.Flags{Category: "securty", Check: "important", Live: "skip"},
 	})
 	if ref == nil {
 		t.Fatal("Run with Category securty refused nothing, want bad-category")
@@ -175,9 +174,9 @@ func eligibilityFinding(sig, anchored, rigor string) string {
 func runEligibilityGate(t *testing.T, store string) bool {
 	t.Helper()
 	req := fixture(t, store)
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Check: "important", Category: "security", Live: "skip"},
+		Flags:       reportcore.Flags{Check: "important", Category: "security", Live: "skip"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -221,9 +220,9 @@ func TestReportCategoryGateEligibility(t *testing.T) {
 func TestReportBaselineGateIgnoresEligibility(t *testing.T) {
 	store := "[" + eligibilityFinding("dddddddddddddddddddddddddddddddddddddddd", "false", `"said"`) + "]"
 	req := fixture(t, store)
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Check: "important", Live: "skip"},
+		Flags:       reportcore.Flags{Check: "important", Live: "skip"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -237,9 +236,9 @@ func TestReportBaselineGateIgnoresEligibility(t *testing.T) {
 // properties.category without changing the rule id or level.
 func TestReportSarifCategory(t *testing.T) {
 	req := fixture(t, categoryStore())
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Sarif: "report.sarif"},
+		Flags:       reportcore.Flags{Sarif: "report.sarif"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -261,7 +260,7 @@ func TestReportSarifCategory(t *testing.T) {
 
 // checkFilteredItems proves the ranked display holds only the security
 // finding and drops the group line under a filter.
-func checkFilteredItems(t *testing.T, resp *core.ReportResponse) {
+func checkFilteredItems(t *testing.T, resp *reportcore.Response) {
 	t.Helper()
 	if len(resp.Data.Items) != 1 {
 		t.Fatalf("items = %d, want only the security finding", len(resp.Data.Items))

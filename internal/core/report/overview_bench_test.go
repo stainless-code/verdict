@@ -93,7 +93,7 @@ func runOverviewBench(b *testing.B, files int) {
 	}
 	st := &state{
 		dir: dir,
-		req: &core.ReportRequest{Effective: core.Effective{
+		req: &Request{Effective: core.Effective{
 			PublishOverview:    strTrue,
 			DiagramsStructural: strTrue,
 		}},

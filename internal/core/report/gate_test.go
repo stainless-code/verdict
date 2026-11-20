@@ -75,9 +75,9 @@ func TestRunReportCheckTierGate(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			req := fixture(t, tc.findings)
-			resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+			resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 				ReadRequest: req,
-				Flags:       core.ReportFlags{Check: tc.check},
+				Flags:       reportcore.Flags{Check: tc.check},
 			})
 			if ref != nil {
 				t.Fatalf("Run refusal: %v", ref)
@@ -106,9 +106,9 @@ func TestRunReportGatePassNextNamesMerge(t *testing.T) {
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+			resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 				ReadRequest: fixture(t, tc.findings),
-				Flags:       core.ReportFlags{Check: "important"},
+				Flags:       reportcore.Flags{Check: "important"},
 			})
 			if ref != nil {
 				t.Fatalf("Run refusal: %v", ref)
@@ -118,7 +118,7 @@ func TestRunReportGatePassNextNamesMerge(t *testing.T) {
 	}
 }
 
-func assertGateNext(t *testing.T, resp *core.ReportResponse, gateFailed bool, wantNext string) {
+func assertGateNext(t *testing.T, resp *reportcore.Response, gateFailed bool, wantNext string) {
 	t.Helper()
 	if resp.GateFailed != gateFailed {
 		t.Errorf("GateFailed = %v, want %v", resp.GateFailed, gateFailed)
@@ -171,9 +171,9 @@ func TestRunReportCompletenessGate(t *testing.T) {
 			if tc.postSet {
 				writeFile(t, ".verdict/state/5101/post.json", tc.post)
 			}
-			resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+			resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 				ReadRequest: req,
-				Flags:       core.ReportFlags{Completeness: true},
+				Flags:       reportcore.Flags{Completeness: true},
 			})
 			if ref != nil {
 				t.Fatalf("Run refusal: %v", ref)
@@ -209,9 +209,9 @@ func TestRunReportCompletenessGate(t *testing.T) {
 
 	t.Run("combined-fails-on-either", func(t *testing.T) {
 		req := fixture(t, "[]")
-		resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+		resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 			ReadRequest: req,
-			Flags:       core.ReportFlags{Check: "critical", Completeness: true},
+			Flags:       reportcore.Flags{Check: "critical", Completeness: true},
 		})
 		if ref != nil {
 			t.Fatalf("Run refusal: %v", ref)
@@ -279,9 +279,9 @@ func stalePostCheckLines(t *testing.T, provider string) string {
 	req := fixture(t, "[]")
 	writeHostBundle(t, provider)
 	writeFile(t, ".verdict/state/5101/post.json", `{"head":"`+strings.Repeat("d", 40)+`"}`)
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Completeness: true, Live: "skip"},
+		Flags:       reportcore.Flags{Completeness: true, Live: "skip"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -397,12 +397,12 @@ func TestRunReportLiveGate(t *testing.T) {
 			req := fixture(t, tc.findings)
 			cmd := &threadCommander{stdout: tc.page, stderr: "boom", fail: tc.cmdFails}
 			req.Commander = cmd
-			flags := core.ReportFlags{Live: tc.live}
+			flags := reportcore.Flags{Live: tc.live}
 			if tc.gate {
 				writeFile(t, ".verdict/state/5101/post.json", `{"head":"`+storeHeadSHA+`"}`)
 				flags.Completeness = true
 			}
-			resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req, Flags: flags})
+			resp, ref := reportcore.Run(context.Background(), &reportcore.Request{ReadRequest: req, Flags: flags})
 			if ref != nil {
 				t.Fatalf("Run refusal: %v", ref)
 			}
@@ -460,9 +460,9 @@ func TestRunReportLocalBundleLiveSkip(t *testing.T) {
 		Runtime: &core.Runtime{Now: func() time.Time { return fixedNow }, Commander: cmd, Progress: progress},
 		Repo:    "acme/app", Pr: "local-gate",
 	}
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Completeness: true},
+		Flags:       reportcore.Flags{Completeness: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -488,7 +488,7 @@ func TestRunReportLocalBundleLiveSkip(t *testing.T) {
 	}
 }
 
-func liveDimensionStatus(resp *core.ReportResponse) string {
+func liveDimensionStatus(resp *reportcore.Response) string {
 	if resp.Data.Gate == nil {
 		return ""
 	}
@@ -529,7 +529,7 @@ func TestRunReportCounts(t *testing.T) {
 
 	t.Run("whole-store", func(t *testing.T) {
 		req := fixture(t, findings)
-		resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req})
+		resp, ref := reportcore.Run(context.Background(), &reportcore.Request{ReadRequest: req})
 		if ref != nil {
 			t.Fatalf("Run refusal: %v", ref)
 		}
@@ -546,9 +546,9 @@ func TestRunReportCounts(t *testing.T) {
 
 	t.Run("filtered", func(t *testing.T) {
 		req := fixture(t, findings)
-		resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+		resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 			ReadRequest: req,
-			Flags:       core.ReportFlags{Status: "open"},
+			Flags:       reportcore.Flags{Status: "open"},
 		})
 		if ref != nil {
 			t.Fatalf("Run refusal: %v", ref)
@@ -574,7 +574,7 @@ func TestRunReportCounts(t *testing.T) {
 //nolint:revive // the defaults assert inline
 func TestRunReportEnvelopeDefaults(t *testing.T) {
 	req := fixture(t, "[]")
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req})
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{ReadRequest: req})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -666,9 +666,9 @@ func TestRunReportLiveProviderRead(t *testing.T) {
 		gitlabDiscussions:   {Stdout: "[" + gitlabDiscussion("d1", false) + "]"},
 	}}
 	req.Commander = cmd
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Completeness: true},
+		Flags:       reportcore.Flags{Completeness: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -764,9 +764,9 @@ func TestRunReportLiveOtherProviderGate(t *testing.T) {
 			writeHostBundle(t, tc.provider)
 			cmd := &liveThreadCommander{script: tc.script}
 			req.Commander = cmd
-			resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+			resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 				ReadRequest: req,
-				Flags:       core.ReportFlags{Check: "critical", Live: tc.live},
+				Flags:       reportcore.Flags{Check: "critical", Live: tc.live},
 			})
 			if ref != nil {
 				t.Fatalf("Run refusal: %v", ref)
@@ -858,8 +858,8 @@ func TestRunReportGateData(t *testing.T) {
 					t.Fatalf("remove record.json: %v", err)
 				}
 			}
-			flags := core.ReportFlags{Check: tc.check, Completeness: tc.complete, Live: tc.live}
-			resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req, Flags: flags})
+			flags := reportcore.Flags{Check: tc.check, Completeness: tc.complete, Live: tc.live}
+			resp, ref := reportcore.Run(context.Background(), &reportcore.Request{ReadRequest: req, Flags: flags})
 			if ref != nil {
 				t.Fatalf("Run refusal: %v", ref)
 			}
@@ -893,7 +893,7 @@ func TestRunReportGateData(t *testing.T) {
 
 	t.Run("advisory-run-carries-no-gate-block", func(t *testing.T) {
 		req := fixture(t, "[]")
-		resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req})
+		resp, ref := reportcore.Run(context.Background(), &reportcore.Request{ReadRequest: req})
 		if ref != nil {
 			t.Fatalf("Run refusal: %v", ref)
 		}
@@ -911,9 +911,9 @@ func TestRunReportGateData(t *testing.T) {
 func TestRunReportBadTierRefusal(t *testing.T) {
 	store := "[" + entryJSON("1111111111111111111111111111111111111111", "inline", "open", `"informational"`, "true") + "]"
 	req := fixture(t, store)
-	_, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	_, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Check: "bogus"},
+		Flags:       reportcore.Flags{Check: "bogus"},
 	})
 	if ref == nil {
 		t.Fatal("Run with Check bogus refused nothing, want bad-flags")

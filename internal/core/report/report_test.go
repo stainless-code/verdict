@@ -64,7 +64,7 @@ const openFinding = `{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2
 //nolint:revive // one assertion block per response dimension
 func TestRunReportData(t *testing.T) {
 	req := fixture(t, "["+openFinding+"]")
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req})
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{ReadRequest: req})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -124,9 +124,9 @@ func TestRunReportArtifacts(t *testing.T) {
 		sarifFindingJSON("bug", "critical", sigBug)+","+
 		sarifFindingJSON("security", "important", sigSec)+","+
 		sarifFindingJSON("style", "informational", sigStyle)+"]")
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Output: "out.md", Sarif: "out.sarif"},
+		Flags:       reportcore.Flags{Output: "out.md", Sarif: "out.sarif"},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
@@ -229,7 +229,7 @@ func TestRunReportArtifacts(t *testing.T) {
 // the warnings accumulated before the refusal.
 func TestRunReportCorruptStore(t *testing.T) {
 	req := fixture(t, "[42]")
-	_, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	_, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
 		Warnings:    []string{"prefs warning"},
 	})

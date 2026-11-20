@@ -179,9 +179,9 @@ func readyThreadCount(t *testing.T, req core.ReadRequest) int {
 // reportThreadCount runs report's live gate and returns its thread count.
 func reportThreadCount(t *testing.T, req core.ReadRequest) int {
 	t.Helper()
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
-		Flags:       core.ReportFlags{Check: "informational", Live: "auto"},
+		Flags:       reportcore.Flags{Check: "informational", Live: "auto"},
 	})
 	if ref != nil {
 		t.Fatalf("report refusal: %v", ref)

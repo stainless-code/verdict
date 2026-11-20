@@ -81,7 +81,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // gateRequest composes the report request whose dimensions the gate reads. It
 // copies the runtime instead of filling the caller's in, so an injected
 // commander survives and concurrent callers never share one.
-func gateRequest(r *cli.Runner, req Request, flags *reportcore.Flags) *core.ReportRequest {
+func gateRequest(r *cli.Runner, req Request, flags *reportcore.Flags) *reportcore.Request {
 	read := req
 	rt := &core.Runtime{}
 	if read.Runtime != nil {
@@ -93,7 +93,7 @@ func gateRequest(r *cli.Runner, req Request, flags *reportcore.Flags) *core.Repo
 		rt.Commander = coreexec.Runner{}
 	}
 	read.Runtime = rt
-	return &core.ReportRequest{
+	return &reportcore.Request{
 		ReadRequest: read,
 		Flags:       *flags,
 		Effective:   r.Effective,
@@ -102,7 +102,7 @@ func gateRequest(r *cli.Runner, req Request, flags *reportcore.Flags) *core.Repo
 }
 
 // emit writes the per-dimension lines, then the envelope or the verdict.
-func emit(r *cli.Runner, req Request, resp *core.ReportResponse) {
+func emit(r *cli.Runner, req Request, resp *reportcore.Response) {
 	gate := resp.Data.Gate
 	for _, line := range gateLines(gate) {
 		fmt.Fprintln(r.Human, line)

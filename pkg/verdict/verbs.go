@@ -62,9 +62,9 @@ func (c *Client) Report(ctx context.Context, req *ReportRequest) (*ReportRespons
 	if err != nil {
 		return nil, err
 	}
-	resp, ref := reportcore.Run(ctx, &core.ReportRequest{
+	resp, ref := reportcore.Run(ctx, &reportcore.Request{
 		ReadRequest: rr,
-		Flags: core.ReportFlags{
+		Flags: reportcore.Flags{
 			Status: req.Status, Kind: req.Kind, Output: req.Output, Sarif: req.Sarif,
 			Check: req.Check, Live: req.Live, MaxRisk: req.MaxRisk,
 			Cost: req.Cost, Completeness: req.Completeness,
@@ -177,9 +177,9 @@ func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, err
 	if err != nil {
 		return nil, err
 	}
-	resp, ref := reportcore.Run(ctx, &core.ReportRequest{
+	resp, ref := reportcore.Run(ctx, &reportcore.Request{
 		ReadRequest: rr,
-		Flags: core.ReportFlags{
+		Flags: reportcore.Flags{
 			Check: req.MaxSeverity, Completeness: req.RequireHead, Live: req.Live, Coverage: coverage,
 		},
 		Effective: core.Defaults(),

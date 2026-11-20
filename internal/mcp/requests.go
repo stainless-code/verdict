@@ -23,6 +23,7 @@ import (
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	readycore "github.com/stainless-code/verdict/internal/core/ready"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	reportcore "github.com/stainless-code/verdict/internal/core/report"
 	riskcore "github.com/stainless-code/verdict/internal/core/risk"
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
@@ -415,7 +416,7 @@ func wireRecord(ctx context.Context, b *bindings, req *recordcore.Request) error
 	return nil
 }
 
-func decodeReport(req *core.ReportRequest, a *args) {
+func decodeReport(req *reportcore.Request, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.flags(func(f *args) {
@@ -435,7 +436,7 @@ func decodeReport(req *core.ReportRequest, a *args) {
 	})
 }
 
-func wireReport(ctx context.Context, b *bindings, req *core.ReportRequest) error {
+func wireReport(ctx context.Context, b *bindings, req *reportcore.Request) error {
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
 		return err
 	}

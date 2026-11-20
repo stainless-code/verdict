@@ -99,7 +99,7 @@ func bundleVerbs() []bundleVerb {
 			return ref
 		}},
 		{name: "gate", run: func(ctx context.Context, pr string) *core.RefusalError {
-			_, ref := reportcore.Run(ctx, &core.ReportRequest{
+			_, ref := reportcore.Run(ctx, &reportcore.Request{
 				ReadRequest: bundleRead(pr), Flags: reportcore.Flags{Check: "critical"},
 			})
 			return ref
@@ -139,7 +139,7 @@ func bundleVerbs() []bundleVerb {
 			return ref
 		}},
 		{name: "report", run: func(ctx context.Context, pr string) *core.RefusalError {
-			_, ref := reportcore.Run(ctx, &core.ReportRequest{ReadRequest: bundleRead(pr)})
+			_, ref := reportcore.Run(ctx, &reportcore.Request{ReadRequest: bundleRead(pr)})
 			return ref
 		}},
 		{name: "run", run: func(ctx context.Context, pr string) *core.RefusalError {
@@ -232,7 +232,7 @@ func TestBundleVerbsResolveValidNames(t *testing.T) {
 // assertBundleVerbResolved pins that report reads the named bundle's store.
 func assertBundleVerbResolved(t *testing.T, pr string) {
 	t.Helper()
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: bundleRead(pr)})
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{ReadRequest: bundleRead(pr)})
 	if ref != nil {
 		t.Fatalf("report %s refused %s: %s", pr, ref.Code, ref.Message)
 	}

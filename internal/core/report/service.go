@@ -57,13 +57,10 @@ const (
 	dashSpace         = "- "
 )
 
-// Flags aliases core's resolved report options.
-type Flags = core.ReportFlags
-
 type state struct { // field grouping documents the loaded dimensions; alignment is irrelevant here
 	truncation *core.Truncation
 	provenance *core.ProvenanceReceipt
-	req        *core.ReportRequest
+	req        *Request
 	flags      Flags
 	warnings   []string
 	counts     core.ReportCounts
@@ -129,7 +126,7 @@ const (
 // Run loads the report dimensions and returns the typed response. It never
 // writes stdout/stderr or exits; artifacts are returned as bytes for the
 // adapter to write.
-func Run(ctx context.Context, req *core.ReportRequest) (*core.ReportResponse, *core.RefusalError) {
+func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	flags := normalizeFlags(req)
 	if ref := validateReportFlags(&flags); ref != nil {
 		return nil, ref
@@ -187,7 +184,7 @@ func loadGatePolicy(ctx context.Context, st *state) *core.RefusalError {
 	return readcommon.CheckLocalFresh(ctx, st.req.Commander, st.req.RepoRootPath(), st.dir)
 }
 
-func normalizeFlags(req *core.ReportRequest) Flags {
+func normalizeFlags(req *Request) Flags {
 	flags := req.Flags
 	flags.Status = orDefault(flags.Status, statusAll)
 	flags.Kind = orDefault(flags.Kind, statusAll)

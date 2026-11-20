@@ -5,7 +5,6 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
 )
 
@@ -28,7 +27,7 @@ func checkHeadline(t *testing.T, findings, want string, clean bool) {
 	t.Helper()
 	req := fixture(t, findings)
 	writeFile(t, ".verdict/state/5101/PR.json", `{"headRefOid":"aaaaaaaa","files":[{"path":"a.go"},{"path":"b.go"}]}`)
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: req})
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{ReadRequest: req})
 	if ref != nil {
 		t.Fatal(ref)
 	}

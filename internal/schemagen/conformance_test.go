@@ -68,7 +68,7 @@ func TestRuntimeRefusalOutputValidates(t *testing.T) {
 }
 
 // runReportFixture builds a hermetic bundle and runs the report service.
-func runReportFixture(t *testing.T) *core.ReportResponse {
+func runReportFixture(t *testing.T) *reportcore.Response {
 	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -85,9 +85,9 @@ func runReportFixture(t *testing.T) *core.ReportResponse {
 	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
 	runtime := &core.Runtime{Now: func() time.Time { return now }}
 	read := core.ReadRequest{Runtime: runtime, Repo: "acme/app", Pr: "5101"}
-	resp, ref := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: read,
-		Flags:       core.ReportFlags{Cost: true, Completeness: true},
+		Flags:       reportcore.Flags{Cost: true, Completeness: true},
 	})
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)

@@ -125,7 +125,7 @@ type totals struct {
 }
 
 // add folds one readable bundle into the portfolio.
-func (t *totals) add(resp *core.ReportResponse) {
+func (t *totals) add(resp *reportcore.Response) {
 	t.bundles++
 	t.open += resp.Data.Verdict.Open
 	t.deferred += resp.Data.Verdict.Deferred
@@ -287,7 +287,7 @@ func (l *listing) add(item *bundleItem) {
 // bundleItem is one composed inbox row and what it folded into the view.
 type bundleItem struct {
 	row  any
-	resp *core.ReportResponse
+	resp *reportcore.Response
 	errs []ErrRow
 	inv  inventoryReport
 }
@@ -312,7 +312,7 @@ func (l *Layer) collectBundle(
 // refuses.
 func (l *Layer) row(
 	ctx context.Context, root Root, bundle string, names map[string]bool,
-) (any, *core.ReportResponse, []ErrRow, inventoryReport) {
+) (any, *reportcore.Response, []ErrRow, inventoryReport) {
 	dir, ok, ref := resolveAmong(root, bundle, names)
 	if ref != nil {
 		row := jq.NewObj(

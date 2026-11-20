@@ -23,6 +23,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
+	reportcore "github.com/stainless-code/verdict/internal/core/report"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
@@ -637,7 +638,7 @@ func TestArgsDecode(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req, ok := raw.(*core.ReportRequest)
+	req, ok := raw.(*reportcore.Request)
 	if !ok {
 		t.Fatalf("decoded type = %T", raw)
 	}

@@ -18,9 +18,9 @@ func TestReportCountsBySourceAndGateIncludesToolFindings(t *testing.T) {
 	rt := &core.Runtime{Now: func() time.Time { return time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC) }}
 	repoRoot := filepath.Dir(filepath.Dir(filepath.Dir(dir)))
 	base := core.ReadRequest{Runtime: rt, RepoRoot: repoRoot, Repo: "o/r", Pr: "77"}
-	resp, ref := Run(context.Background(), &core.ReportRequest{
+	resp, ref := Run(context.Background(), &Request{
 		ReadRequest: base,
-		Flags:       core.ReportFlags{Check: "important", Coverage: "warn"},
+		Flags:       Flags{Check: "important", Coverage: "warn"},
 		Effective:   core.Defaults(),
 	})
 	if ref != nil {

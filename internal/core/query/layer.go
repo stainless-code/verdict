@@ -301,15 +301,15 @@ func resolveAmong(root Root, bundle string, names map[string]bool) (string, bool
 
 // compose runs the report service with the offline posture the spec fixes.
 func (l *Layer) compose(
-	ctx context.Context, root Root, bundle, dir string, flags *core.ReportFlags,
-) (*core.ReportResponse, *core.RefusalError) {
+	ctx context.Context, root Root, bundle, dir string, flags *reportcore.Flags,
+) (*reportcore.Response, *core.RefusalError) {
 	read := core.ReadRequest{
 		Runtime:  l.runtimeFor(),
 		Repo:     bundleRepo(dir),
 		Pr:       bundle,
 		RepoRoot: root.Path,
 	}
-	req := &core.ReportRequest{
+	req := &reportcore.Request{
 		ReadRequest:  read,
 		Flags:        *flags,
 		OverridesDir: filepath.Join(root.Path, config.VerdictDir, "overrides"),
@@ -319,12 +319,12 @@ func (l *Layer) compose(
 
 // inboxFlags compose one inbox row: every status and kind, the offline live
 // posture, and the cost rollup.
-func inboxFlags() core.ReportFlags {
-	return core.ReportFlags{Status: "all", Kind: "all", Live: "skip", Cost: true}
+func inboxFlags() reportcore.Flags {
+	return reportcore.Flags{Status: "all", Kind: "all", Live: "skip", Cost: true}
 }
 
 // detailFlags compose one detail: the inbox flags plus the requested tier.
-func (l *Layer) detailFlags() core.ReportFlags {
+func (l *Layer) detailFlags() reportcore.Flags {
 	flags := inboxFlags()
 	flags.Check = l.check
 	return flags

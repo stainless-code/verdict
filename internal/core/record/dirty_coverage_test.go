@@ -58,9 +58,9 @@ func assertDirtyCoverageGate(t *testing.T, wantFail bool) {
 	rt := testRuntime(&collector{})
 	rt.Commander = &dirtyDiffCommander{diff: coverageDiff}
 	read := core.ReadRequest{Runtime: rt, Repo: "acme/app", Pr: coverageSlug}
-	resp, refusal := reportcore.Run(context.Background(), &core.ReportRequest{
+	resp, refusal := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: read,
-		Flags:       core.ReportFlags{Check: "informational", Coverage: "require", Live: "skip"},
+		Flags:       reportcore.Flags{Check: "informational", Coverage: "require", Live: "skip"},
 	})
 	if refusal != nil {
 		if wantFail && refusal.Code == "coverage-stale" {
@@ -105,7 +105,7 @@ func TestDirtyCoverageEditAfterFetch(t *testing.T) {
 	rt := testRuntime(&collector{})
 	rt.Commander = cmd
 	read := core.ReadRequest{Runtime: rt, Repo: "acme/app", Pr: coverageSlug}
-	_, ref := reportcore.Run(context.Background(), &core.ReportRequest{ReadRequest: read, Flags: core.ReportFlags{Check: "informational", Coverage: "require", Live: "skip"}})
+	_, ref := reportcore.Run(context.Background(), &reportcore.Request{ReadRequest: read, Flags: reportcore.Flags{Check: "informational", Coverage: "require", Live: "skip"}})
 	if ref == nil || ref.Code != "coverage-stale" {
 		t.Fatalf("gate refusal = %v, want coverage-stale", ref)
 	}

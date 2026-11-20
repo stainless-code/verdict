@@ -499,7 +499,7 @@ func invokeService[R, S any](
 	return data(resp), nil
 }
 
-func invokeReport(ctx context.Context, req *core.ReportRequest) (*jq.Obj, *core.RefusalError) {
+func invokeReport(ctx context.Context, req *reportcore.Request) (*jq.Obj, *core.RefusalError) {
 	resp, ref := reportcore.Run(ctx, req)
 	if ref != nil {
 		return nil, ref
