@@ -2,6 +2,8 @@ package readycore_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -275,4 +277,36 @@ func hasBlocker(blockers []readycore.Blocker, kind string) bool {
 		}
 	}
 	return false
+}
+
+func TestReadyWithholdsOnPriorPanelRefutation(t *testing.T) {
+	resolved, rs := complianceResolved(t)
+	const head = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	const signature = "1fd35ceaaa1fc0a98e1486617b35249c646ee577"
+	rs.Execution = &core.ExecutionReference{ID: "execution-A", Finders: 2}
+	rs.Outcomes = []config.CheckObservation{{Check: "head-current", Group: resolved.Plan.Groups[0].ID, Head: head, Passed: true}}
+	bundle := writeReadyBundle(t, rs)
+	const review = `{"schema_version":"2","execution":{"id":"execution-A","finders":2},"findings":[{"path":"notes.txt","line":1,"side":"RIGHT","severity":"important","claim":"Unhandled await error path here.","quote":"return unsafeValue","confidence":"high"}]}`
+	const diff = "diff --git a/notes.txt b/notes.txt\n--- a/notes.txt\n+++ b/notes.txt\n@@ -1 +1 @@\n-return safeValue\n+return unsafeValue\n"
+	const plan = `{"checks":[{"sig":"` + signature + `","origin":"finder-1","checker":"finder-2"}]}`
+	binding := fmt.Sprintf(`"schema_version":"2","execution_id":"execution-A","head_sha":"%s","diff_sha256":"%x","review_sha256":"%x","plan_sha256":"%x"`,
+		head, sha256.Sum256([]byte(diff)), sha256.Sum256([]byte(review)), sha256.Sum256([]byte(plan)))
+	mkdir(t, filepath.Join(bundle, "verification"))
+	write(t, filepath.Join(bundle, "review.json"), review)
+	write(t, filepath.Join(bundle, "full.diff"), diff)
+	write(t, filepath.Join(bundle, "verification", "plan.json"), plan)
+	write(t, filepath.Join(bundle, "launcher.json"), "{"+binding+`,"status":"complete"}`)
+	write(t, filepath.Join(bundle, "verification", "verdicts.json"), "{"+binding+`,"results":[{"sig":"`+signature+`","checker":"finder-2","verdict":"confirmed","evidence":"The selected branch changes the return value.","quote":{"path":"notes.txt","side":"RIGHT","line":1,"text":"return unsafeValue"}}]}`)
+	write(t, filepath.Join(bundle, "findings.json"), `[{"sig":"`+signature+`","status":"open","kind":"inline","severity":"important","verification":{"quote":"verified","panel":[{"model":"finder-2","verdict":"refuted","evidence":"Earlier live dispute."}]}}]`)
+	req := &readycore.Request{Check: true}
+	req.ReadRequest = core.ReadRequest{
+		Runtime: &core.Runtime{Commander: &readyCommander{head: head}}, Repo: "acme/app", Pr: "5201",
+	}
+	resp, ref := readycore.Run(t.Context(), req)
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	if !resp.GateFailed || !slices.ContainsFunc(resp.Data.Blockers, func(b readycore.Blocker) bool { return b.Kind == "review-insufficient" }) {
+		t.Fatalf("prior refutation readiness = %v, blockers = %+v", resp.Ready, resp.Data.Blockers)
+	}
 }

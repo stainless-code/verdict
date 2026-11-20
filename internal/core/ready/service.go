@@ -538,12 +538,7 @@ func applyThreadCounts(st *state, open, malformed int) {
 // an outcome or executes a command.
 func loadPolicyCompliance(st *state, dir string) {
 	execution := panelcore.CheckExecution(dir, nil)
-	if gap := execution.Problem(); gap != "" {
-		st.blockers = append(st.blockers, Blocker{
-			Kind: "review-insufficient", Detail: gap,
-			Action: "complete the expected execution and cross checks",
-		})
-	}
+	defer st.retainExecutionGap(execution)
 	rs, ref := config.VerifyRunState(dir)
 	if ref != nil {
 		st.policy = &config.ReadCompliance{HasPolicy: true, Unverified: true}
@@ -565,6 +560,15 @@ func loadPolicyCompliance(st *state, dir string) {
 	if comp.HasPolicy {
 		st.policy = &comp
 		st.requiredGaps = requiredProfileGaps(st, dir)
+	}
+}
+
+func (st *state) retainExecutionGap(execution *panelcore.Execution) {
+	if gap := execution.Problem(); gap != "" {
+		st.blockers = append(st.blockers, Blocker{
+			Kind: "review-insufficient", Detail: gap,
+			Action: "complete the expected execution and cross checks",
+		})
 	}
 }
 
