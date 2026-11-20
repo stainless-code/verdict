@@ -165,6 +165,11 @@ func TestReviewSecretSitesLocations(t *testing.T) {
 			review: `{"summary":"x","findings":[{"claim":"AKIAIOSFODNN7EXAMPLE"},{"claim":"ghp_0123456789abcdefghijABCDEFGHIJ012345"}]}`,
 			want:   []string{"finding 1 (aws-access-key-id)", "finding 2 (github-token)"},
 		},
+		{
+			name:   "receipt hunk and quote",
+			review: `{"summary":"x","receipts":[{"hunk":"AKIAIOSFODNN7EXAMPLE.txt\tNEW\t1\t3","quote":"ok"},{"hunk":"a.txt\tNEW\t1\t3","quote":"ghp_0123456789abcdefghijABCDEFGHIJ012345"}]}`,
+			want:   []string{"receipt 1 (aws-access-key-id)", "receipt 2 (github-token)"},
+		},
 		{"non-object comment", `{"summary":"x","findings":[7,{"claim":"AKIAIOSFODNN7EXAMPLE"}]}`, []string{"finding 2 (aws-access-key-id)"}},
 		{
 			name:   "finding and brief and spec paths",

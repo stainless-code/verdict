@@ -119,7 +119,7 @@ func receiptSecretSites(review *jq.Obj) []secretSite {
 			continue
 		}
 		where := fmt.Sprintf("receipt %d", i+1)
-		sites = appendSecretSite(sites, where, reviewStringField(obj, fieldPath))
+		sites = appendSecretSite(sites, where, reviewStringField(obj, "hunk"))
 		sites = appendSecretSite(sites, where, reviewStringField(obj, "quote"))
 	}
 	return sites
