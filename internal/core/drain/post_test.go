@@ -340,3 +340,12 @@ func assertNoDraftCount(t *testing.T, skipped []Skip, want int) {
 		t.Errorf("no-draft skips = %d, want %d: %+v", got, want, skipped)
 	}
 }
+
+func TestPostRetainsIncompleteForUnretriedFailure(t *testing.T) {
+	req, _, _ := postFixture(t, nil)
+	req.Plan.Failed = []Failed{{ThreadID: "other", Reason: "host refused"}}
+	res, ref := Post(req)
+	if ref != nil || !res.Incomplete {
+		t.Fatalf("Post incomplete = %v, refusal = %v; want true", res.Incomplete, ref)
+	}
+}

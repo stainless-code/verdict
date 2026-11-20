@@ -92,7 +92,7 @@ func Post(req *PostRequest) (*PostResult, *core.RefusalError) {
 	at := req.At
 	req.Plan.PostedAt = &at
 	saveFeed(req, res)
-	res.Incomplete = len(res.Failed) > 0
+	res.Incomplete = len(req.Plan.Failed) > 0
 	return res, nil
 }
 

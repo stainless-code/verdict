@@ -367,10 +367,10 @@ func postFinish(r *cli.Runner, req Request, dir string, plan *draincore.File,
 		nextText = "re-run verdict drain " + req.Repo + " " + req.Pr + " --post"
 	}
 	fmt.Fprintf(r.Human, "» %d posted, %d failed -> %s/%s\n",
-		len(result.Posted), len(result.Failed), dir, draincore.KeyPlanJSON)
+		len(result.Posted), len(plan.Failed), dir, draincore.KeyPlanJSON)
 	if result.Incomplete {
 		ref := &core.RefusalError{Code: "drain-incomplete", Message: fmt.Sprintf(
-			"%d thread(s) could not be posted; the ledger makes a re-run idempotent", len(result.Failed))}
+			"%d thread(s) could not be posted; the ledger makes a re-run idempotent", len(plan.Failed))}
 		if !r.JSONMode {
 			return r.Refuse(ref)
 		}
