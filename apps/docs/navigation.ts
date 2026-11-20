@@ -21,11 +21,12 @@ export interface DocsTreeGroup {
   readonly pages: readonly DocsTreePage[];
 }
 
-/** The header's five sections, each with the route its tab lands on. */
+/** The header's six sections, each with the route its tab lands on. */
 export const docsSections: readonly DocsSection[] = [
   { label: "Docs", landing: "/docs/introduction", path: "/docs" },
   { label: "Agents", landing: "/agents", path: "/agents" },
   { label: "Compare", landing: "/compare", path: "/compare" },
+  { label: "ROI", landing: "/roi", path: "/roi" },
   { label: "Roadmap", landing: "/roadmap", path: "/roadmap" },
   { label: "Changelog", landing: "/changelog", path: "/changelog" },
 ];
@@ -85,6 +86,7 @@ export const docsTree: readonly DocsTreeGroup[] = [
   { label: "Agents", pages: [{ label: "Agents", route: "/agents" }] },
   { label: "Compare", pages: [{ label: "Compare", route: "/compare" }] },
   { label: "Roadmap", pages: [{ label: "Roadmap", route: "/roadmap" }] },
+  { label: "ROI", pages: [{ label: "ROI", route: "/roi" }] },
 ];
 
 export interface FooterLink {

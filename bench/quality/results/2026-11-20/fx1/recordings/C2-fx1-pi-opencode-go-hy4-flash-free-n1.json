@@ -1,0 +1,41 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 323,
+      "severity": "important",
+      "text": "The `qoder` row launches `qoder <directive>` with no `--print`/`-p`, although the cited CLI reference says \"To enter Headless mode, add the --print flag (short form -p)\"; the default verdict launch opens the interactive UI instead of a headless one-shot, so it never produces the required fresh review.json.",
+      "quote": "\t\tName: \"qoder\", Binary: \"qoder\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 329,
+      "severity": "important",
+      "text": "The `qodercn` row omits the `--print`/`-p` flag that the cited Qoder CN reference requires to enter headless mode; a default `verdict run --agent qodercn` launches an interactive session and cannot deliver the review artifact.",
+      "quote": "\t\tName: \"qodercn\", Binary: \"qodercn\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 292,
+      "severity": "important",
+      "text": "The `neovate` row omits `-q`/`--quiet`, which the cited parser describes as the switch from interactive-by-default to non-interactive mode; the shipped default invocation stays interactive and hangs on the watchdog instead of writing a review.",
+      "quote": "\t\tName: \"neovate\", Binary: \"neovate\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 280,
+      "severity": "important",
+      "text": "The `kode` row has no `-p`/`--print` even though the cited parser defines it as \"Print response and exit (useful for pipes)\"; the row's positional prompt alone leaves the agent interactive, breaking the one-shot launch contract.",
+      "quote": "\t\tName: \"kode\", Binary: \"kode\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/service.go",
+      "line": 298,
+      "severity": "important",
+      "text": "Spec item \"Record the probe in `launcher.json`: `probe: {args, ok}`\" is violated under `--rounds N`: `invoke` sets `args.probe` but this branch enters `repairLoop`, whose launcher literal never copies `args.probe`, so a multi-round launch of a clashing binary records no probe receipt.",
+      "quote": "\tif rounds > 1 {"
+    }
+  ],
+  "gate_passed": false
+}

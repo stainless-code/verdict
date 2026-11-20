@@ -1,0 +1,34 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "internal/core/run/service.go",
+      "line": 129,
+      "severity": "critical",
+      "text": "Spec §5 requires the directive to name \"the single output file `drain.replies.json` and its `plan_digest`\", but this changed line composes the drain directive with `st.promptArtifact(dir)`, and that helper still joins `reviewFile` (internal/core/run/service.go:226), not `st.artifactName()`. The drain prompt builder (`drainDirective`, internal/core/run/prompt.go:174) then tells the agent to \"Write exactly one file, .verdict/state/<pr>/review.json\" while `args.abs`/`args.artifact` assert `.verdict/state/<pr>/drain.replies.json`. Impact: every faithful `drain --agent <name>` run writes the file the prompt names, the launcher's existence and freshness assertion at the other path then fails, and the verb refuses `no-review-artifact` — the whole draft leg cannot complete. Nothing catches it: drain_test.go:48 checks `args.artifact` (which is correct) but never the prompt text, and the eval stub writes `drain.replies.json` without reading the directive.",
+      "quote": "\tst.compose(args, st.req, st.promptBundle(dir), st.promptArtifact(dir), readcommon.IsLocalBundleDir(dir))"
+    },
+    {
+      "path": "internal/core/run/drain_test.go",
+      "line": 48,
+      "severity": "informational",
+      "text": "`TestDrainDirectiveAndArtifact` is named for both the directive and the artifact, but this assertion only checks `args.abs` and `args.artifact` (both correct) and `assertDrainDirective` checks bundle files, digest and boundary words — never that the prompt names `drain.replies.json`. A directive that names `review.json` therefore passes, which is exactly the mismatch shipped in service.go:129/226; the test cannot fail for the wiring it claims to cover, and the eval stub sidesteps it by writing the draft file directly.",
+      "quote": "\tif filepath.Base(args.abs) != drainFile || !strings.Contains(args.artifact, drainFile) {"
+    },
+    {
+      "path": "internal/schemagen/overlay.json",
+      "line": 515,
+      "severity": "informational",
+      "text": "The published `$defs/skip` description enumerates every `skipped[].reason` value it documents (resolved, answered, bot-reply, already-replied, not-review-comment, deferred) but omits `no-draft`, which `draft` appends to `plan.Skipped` after validating a partial drafts file (internal/drain/verb.go:301). After any draft that leaves a pending thread unanswered, drain.json carries a reason the published enumeration does not list, so a consumer switching on the documented reason set meets an undocumented value; the generated drain.schema.json carries the same omission.",
+      "quote": "      \"/$defs/skip\": \"One thread left open and why: resolved, answered, bot-reply, already-replied, not-review-comment, or deferred.\","
+    },
+    {
+      "path": "internal/drain/verb.go",
+      "line": 279,
+      "severity": "informational",
+      "text": "The draft launch builds its `core.RunRequest` without `JSONMode: r.JSONMode` (run's adapter sets it, internal/run/run.go:118), so `drain --agent <name> --json` spawns the agent with a child environment that never receives the forced `NO_COLOR=1` that `state.childEnv` adds for machine-only runs. The agent's captured stdout/stderr (`.run.out`, the launcher record's output tail) can then carry ANSI escapes into a `--json` run, which the reused launcher promises cannot happen.",
+      "quote": "\t\tEnviron:     os.Environ(),"
+    }
+  ],
+  "gate_passed": false
+}

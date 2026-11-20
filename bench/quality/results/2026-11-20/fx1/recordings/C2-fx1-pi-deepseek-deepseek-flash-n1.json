@@ -1,0 +1,76 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 280,
+      "severity": "important",
+      "text": "The `kode` row emits no non-interactive switch, so a launch composes `kode [--model M] <directive>` while RESEARCH-2's step-2 table (which the spec's \"Use RESEARCH-2's step-2 table\" item tells the author to follow) documents headless Kode as `kode -p \"<prompt>\"`: the cited parser says \"-p, --print ... Print response and exit (useful for pipes).\" Without `-p` Kode starts its interactive TUI, so the run only ends at the watchdog `--timeout` and records `agent-timeout`. `Args` (or `PromptFlag`) must carry `-p`; the row's argv expectation at internal/core/run/agents_internal_test.go:237-238 repeats the omission, and docs/manual.md documents the same flagless invocation, so both pass over the defect.",
+      "quote": "Name: \"kode\", Binary: \"kode\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 292,
+      "severity": "important",
+      "text": "The `neovate` row emits no non-interactive switch, so a launch composes `neovate [--model M] <directive>` while RESEARCH-2's step-2 table documents `neovate -q \"<prompt>\"` and the cited source says \"Run the code agent with a prompt, interactive by default, use -q/--quiet for non-interactive mode.\" A launch therefore opens the Neovate TUI and only ends when the watchdog kills it (`agent-timeout`). `Args` needs `-q`; the argv expectation at internal/core/run/agents_internal_test.go:247-250 encodes the same omission and cannot catch it.",
+      "quote": "Name: \"neovate\", Binary: \"neovate\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 323,
+      "severity": "important",
+      "text": "The `qoder` row emits no non-interactive switch, so a launch composes `qoder [--model M] <directive>` while the cited reference says \"To enter Headless mode, add the --print flag (short form -p)\" and RESEARCH-2's step-2 table gives `qoder -p \"<prompt>\"`. Without `-p` the CLI stays interactive and the run hangs until the watchdog records `agent-timeout`. `Args` needs `-p`; the argv expectation at internal/core/run/agents_internal_test.go:277-280 and the manual row repeat the omission.",
+      "quote": "Name: \"qoder\", Binary: \"qoder\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 329,
+      "severity": "important",
+      "text": "The `qodercn` row emits no non-interactive switch, so a launch composes `qodercn [--model M] <directive>` while the cited Chinese reference says headless mode is entered with `--print` (short `-p`) and RESEARCH-2's step-2 table gives `qodercn -p \"<prompt>\"`. Without `-p` the run only ends at the watchdog timeout (`agent-timeout`). `Args` needs `-p`; internal/core/run/agents_internal_test.go:283-286 encodes the same omission.",
+      "quote": "Name: \"qodercn\", Binary: \"qodercn\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/service.go",
+      "line": 625,
+      "severity": "important",
+      "text": "The spec's \"Record the probe in `launcher.json`: `probe: {args, ok}`\" holds only on the one-shot path: `repairLoop` (internal/core/run/repair.go:77) builds its own `launcher` record with no `Probe`, and `invoke` probes before it branches into `--rounds`. So `run --agent fx --rounds 2` passes the probe, launches, and rewrites `launcher.json` with no `probe` field. Setting `Probe: args.probe` in the repair record closes the gap; no test covers a probed row together with `--rounds`, so it is invisible.",
+      "quote": "Probe:         args.probe,"
+    },
+    {
+      "path": "internal/core/run/service.go",
+      "line": 336,
+      "severity": "informational",
+      "text": "A parent-context cancel during the probe is folded into the timeout arm: `pctx.Err() != nil` is true for `context.Canceled`, so an operator Ctrl-C while the identity probe runs refuses `agent-mismatch` with the result \"timed out\" instead of the launcher's `canceled` code, which the rest of the launcher prefers whenever `ctx.Err() != nil`. Distinguish `context.DeadlineExceeded` from a canceled parent before blaming the binary.",
+      "quote": "case pctx.Err() != nil || res.TimedOut:"
+    },
+    {
+      "path": "internal/core/run/service.go",
+      "line": 317,
+      "severity": "informational",
+      "text": "A missing commander is a wiring failure, but the probe types it as `agent-mismatch` with a message about the binary and the operator-facing hint then tells the user to fix their settings.json binary path; `spawn()` treats the same condition as an internal error (`errNoCommander`, service.go:668). An internal nil-commander refusal should not be typed as the agent-identity mismatch.",
+      "quote": "return st.refuse(\"agent-mismatch\", fmt.Sprintf("
+    },
+    {
+      "path": "internal/archtest/agent_sources_test.go",
+      "line": 36,
+      "severity": "informational",
+      "text": "The test comment promises a two-way pin (\"a name in the docs that no row answers is a lie\"), but `assertSurfaceNames` only walks the names scanned out of `agents.go` and looks each one up in the surface; a stale or misspelled agent name left in usage.go, docs/manual.md or references/commands.md is never checked, so the documented-name-with-no-row case the comment claims to catch still passes.",
+      "quote": "// docs is undiscoverable; a name in the docs that no row answers is a lie."
+    },
+    {
+      "path": "internal/config/personal.go",
+      "line": 440,
+      "severity": "informational",
+      "text": "An operator row that sets `probe_match` without `probe_args` (or with `probe_args: []`) is accepted silently: `probe()` returns early when `len(ProbeArgs) == 0`, so the identity check the operator asked for never runs and nothing warns. Only the `probe_args`-without-`probe_match` direction refuses, so the pair validation is one-sided.",
+      "quote": "if present && match == \"\" {"
+    },
+    {
+      "path": "internal/archtest/agent_sources_test.go",
+      "line": 78,
+      "severity": "informational",
+      "text": "The usage.go half of the new guard is a bare substring search over the whole file: usage.go contains `pa` (in `package main`) and `pi` (in `pipeline`), so deleting one of those names from the `--agent` list still satisfies `strings.Contains` and the test passes. Match the list shape (the `<...|...>` run) instead of searching the file for the bare name.",
+      "quote": "if !strings.Contains(string(doc), want) {"
+    }
+  ],
+  "gate_passed": false
+}

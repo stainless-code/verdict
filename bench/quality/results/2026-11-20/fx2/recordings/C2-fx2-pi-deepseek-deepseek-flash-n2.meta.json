@@ -1,0 +1,10 @@
+{
+  "schema_version": "1",
+  "fixture": "fx2",
+  "driver": "pi-deepseek-deepseek-flash",
+  "source_bundle": "2/review.json",
+  "source_sha256": "342de41925f8c1484920e5fcf38f1b05c4decd14b67971fb05bdd3a9e93a41c7",
+  "infra_error": null,
+  "refusal_code": null,
+  "note": "converted from review.json by factory convert.py; claim->text, quote->quote"
+}

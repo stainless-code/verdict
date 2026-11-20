@@ -1,0 +1,48 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 280,
+      "severity": "important",
+      "text": "The `kode` row omits the `-p`/`--print` flag that the spec requires from RESEARCH-2's step-2 invocation `kode -p \"<prompt>\"`; the composed argv is `kode --model M <directive>`, so launching this new agent starts the interactive CLI rather than printing a review, leaving no `review.json` and ending in no-review-artifact or a watchdog timeout.",
+      "quote": "\t\tName: \"kode\", Binary: \"kode\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 292,
+      "severity": "important",
+      "text": "The `neovate` row omits the `-q`/`--quiet` flag that the spec requires from RESEARCH-2's step-2 invocation `neovate -q \"<prompt>\"` (\"interactive by default\"); the composed argv is `neovate --model M <directive>`, so launching this new agent starts a TUI instead of a headless run and cannot produce the expected review artifact.",
+      "quote": "\t\tName: \"neovate\", Binary: \"neovate\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 323,
+      "severity": "important",
+      "text": "The `qoder` row omits the `-p`/`--print` flag that RESEARCH-2 documents as the way to enter headless mode (`To enter Headless mode, add the --print flag`); the composed argv is `qoder --model M <directive>`, so the new agent runs interactively instead of writing a review.",
+      "quote": "\t\tName: \"qoder\", Binary: \"qoder\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/agents.go",
+      "line": 329,
+      "severity": "important",
+      "text": "The `qodercn` row omits the `-p`/`--print` flag that RESEARCH-2 documents as the way to enter headless mode; the composed argv is `qodercn --model M <directive>`, so the new agent runs interactively instead of writing a review.",
+      "quote": "\t\tName: \"qodercn\", Binary: \"qodercn\", ModelFlag: modelFlag,"
+    },
+    {
+      "path": "internal/core/run/service.go",
+      "line": 348,
+      "severity": "informational",
+      "text": "The new `agent-mismatch` refusal is launch-wide (a clashing binary fails the same probe in every checkout) but is absent from `replayStopCodes` in `internal/core/backtest/replay.go:92`; `backtest replay` therefore records it as one candidate's status and keeps launching the failed probe for every remaining candidate, contradicting the manual's promise that failures where \"the agent cannot run at all\" end the walk.",
+      "quote": "\t\treturn st.refuse(\"agent-mismatch\", fmt.Sprintf("
+    },
+    {
+      "path": "docs/manual.md",
+      "line": 2413,
+      "severity": "informational",
+      "text": "The change publishes `agent-mismatch` in the manual table, troubleshooting, hint golden and TS refusal codes, but the user-facing refusal list in `apps/docs/content/01-docs/(guides)/agent-run-review.mdx` still enumerates only `unknown-agent`, `agent-missing`, `no-review-artifact` and `stale-review-artifact`, leaving a documented surface unaware of the new refusal.",
+      "quote": "| `agent-mismatch`        | the binary answered the identity probe with a failure or the wrong text         | 1           |"
+    }
+  ],
+  "gate_passed": false
+}

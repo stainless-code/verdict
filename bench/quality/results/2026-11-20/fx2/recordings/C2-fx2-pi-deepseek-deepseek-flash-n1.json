@@ -1,0 +1,76 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "internal/core/run/service.go",
+      "line": 129,
+      "severity": "critical",
+      "text": "Spec §5 requires the drain directive to name \"the single output file `drain.replies.json` and its `plan_digest`\", but `argsFor` hands `compose` the result of `st.promptArtifact(dir)`, and `promptArtifact` still joins `reviewFile`, so `drainDirective` tells the agent \"Write exactly one file, .verdict/state/<pr>/review.json\" while the launcher asserts `drain.replies.json`; an agent that obeys its directive writes review.json and every `drain --agent` run is refused `no-review-artifact` (observed in the drain-plan eval: the stub agent's recorded argv reads \"Write exactly one file, .verdict/state/7/review.json\"), so the drafting leg only succeeds when the agent ignores the instruction.",
+      "quote": "\tst.compose(args, st.req, st.promptBundle(dir), st.promptArtifact(dir), readcommon.IsLocalBundleDir(dir))"
+    },
+    {
+      "path": "internal/core/run/drain_test.go",
+      "line": 57,
+      "severity": "important",
+      "text": "`assertDrainDirective` checks only loose fragments (drain.json, threads.json, findings.json, the digest, defer, post nothing, untrusted data) and never asserts the prompt names `drain.replies.json`, so a directive naming the wrong output file passes; the stub agents in `evals/cases/drain-plan.sh` and `drain-refusals.sh` also hardcode the reply path, so no Go test or eval can observe the artifact name the prompt carries.",
+      "quote": "\tfor _, want := range []string{\"drain.json\", \"threads.json\", \"findings.json\", \"abc123\", \"defer\", \"post nothing\", \"untrusted data\"} {"
+    },
+    {
+      "path": "internal/core/run/drain.go",
+      "line": 17,
+      "severity": "informational",
+      "text": "Reusing `execute` also reuses `run`'s review-artifact hints: a drain launch that writes nothing is refused `no-review-artifact` with the hint \"run the printed command yourself (--print) to see why no review.json appeared\", and a pre-existing draft is refused `stale-review-artifact` with \"delete the stale review.json (or let the agent overwrite it)\" (observed live for drain --agent) — neither names drain.replies.json and drain accepts no --print, so the operator is pointed at the wrong file and a flag the verb rejects.",
+      "quote": "\treturn execute(ctx, st)"
+    },
+    {
+      "path": "internal/schemagen/overlay.json",
+      "line": 515,
+      "severity": "informational",
+      "text": "The published `$defs.skip` description enumerates the skip reasons as \"resolved, answered, bot-reply, already-replied, not-review-comment, or deferred\", but `CheckDrafts` appends `no-draft` entries into the same `skipped[]` list (observed: `{\"thread_id\":\"PRRT_solo\",\"reason\":\"no-draft\"}`) and spec §4.2 requires it, so the schema documentation describing a machine-readable enum omits a value the shipped code emits.",
+      "quote": "      \"/$defs/skip\": \"One thread left open and why: resolved, answered, bot-reply, already-replied, not-review-comment, or deferred.\","
+    },
+    {
+      "path": "internal/drain/verb.go",
+      "line": 32,
+      "severity": "informational",
+      "text": "The verb declares its own `defaultMax = \"20\"` beside `draincore.DefaultMaxThreads = 20`, and nothing reads the core constant, so the documented default has two sources that can drift silently (the usage text and the schema descriptions hardcode 20 a third time).",
+      "quote": "\tdefaultMax = \"20\""
+    },
+    {
+      "path": "internal/core/drain/drafts.go",
+      "line": 168,
+      "severity": "informational",
+      "text": "`checkBody` exempts `defer` from the non-empty body rule, but the published `drain-replies.schema.json` marks `body` as required on every reply (`[\"thread_id\",\"waiting_comment_id\",\"disposition\",\"body\"]`), so a defer draft written without a `body` key passes `CheckDrafts` while failing the schema the skill ships, leaving two contracts for the same file inconsistent.",
+      "quote": "\tif reply.Disposition != DispositionDefer && strings.TrimSpace(reply.Body) == \"\" {"
+    },
+    {
+      "path": "internal/core/drain/drafts.go",
+      "line": 189,
+      "severity": "informational",
+      "text": "`validateFields` re-unmarshals the whole replies array on every entry, so a drafts file with n replies is decoded n times (quadratic work over up to 100 entries of 4000-character bodies) purely to find unknown keys; decoding once into `[]map[string]json.RawMessage` would keep the same site names at linear cost.",
+      "quote": "\tvar replies []map[string]json.RawMessage"
+    },
+    {
+      "path": "internal/drain/verb.go",
+      "line": 169,
+      "severity": "informational",
+      "text": "`next` keys only off `fl.agent != \"\"`, so `drain <repo> <pr> --agent <name>` on a feed with zero pending threads — a run that launched no agent and left `drafts` null — still answers `\"next\": \"post the drafts with verdict drain acme/app 7 --post\"` (observed), naming a command that cannot succeed with no drafts; the spec says `next` names the command the run did not do.",
+      "quote": "\tif fl.agent != \"\" {"
+    },
+    {
+      "path": "internal/drain/verb.go",
+      "line": 271,
+      "severity": "informational",
+      "text": "The launch request built for `--agent` omits `JSONMode`, unlike `internal/run/run.go:118`, so under `drain --json` the agent child is not given `NO_COLOR=1` by `childEnv` and its raw escape codes can reach the recorded `.run.out` and `run.json` output tail.",
+      "quote": "\tlaunch := &core.RunRequest{"
+    },
+    {
+      "path": "docs/manual.md",
+      "line": 321,
+      "severity": "informational",
+      "text": "The new paragraph documents `drain.json` and the agent-written `drain.replies.json`, but the manual's bundle-namespace contract above still lists the core artifacts without either file and states \"Agents write only `review.json` (plus `verification.json`/`patch.json`/`report.md`/`replies.json`/`noreview.md` where a mode file says so)\" plus the rule that anything else a verb adds must live under `x-*`, so two shipped bundle files contradict the documented namespace.",
+      "quote": "`drain.json`: `pending[]`, typed `skipped[]` reasons, `other_threads`, and a"
+    }
+  ],
+  "gate_passed": false
+}

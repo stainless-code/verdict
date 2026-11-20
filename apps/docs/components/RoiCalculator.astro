@@ -1,0 +1,739 @@
+---
+/**
+ * Offline ROI calculator: compares seat-priced hosted code review against
+ * Verdict's bring-your-own-model spend.
+ *
+ * Every default value is explicitly labeled an estimate. Model spend can be
+ * populated by pasting the real `verdict report <repo> <pr> --cost --json`
+ * object (or envelope) or the human `cost:` line; absent/null `est_usd` stays
+ * unknown rather than being coerced to zero (never-forced doctrine).
+ *
+ * Zero external dependencies and zero network calls.
+ */
+---
+
+<roi-calculator class="roi not-prose">
+  <div class="roi-grid">
+    <fieldset class="roi-group">
+      <legend class="roi-legend">Team and hosted baseline</legend>
+      <div class="roi-field">
+        <label class="roi-label" for="roi-devs">
+          Developers
+          <span class="roi-badge">Estimate</span>
+        </label>
+        <input
+          class="roi-input"
+          data-field="devs"
+          id="roi-devs"
+          inputmode="numeric"
+          min="1"
+          step="1"
+          type="number"
+          value="10"
+        />
+        <p class="roi-hint">Default: 10 developers (estimate).</p>
+      </div>
+
+      <div class="roi-field">
+        <label class="roi-label" for="roi-seat">
+          Hosted reviewer price (USD / dev / month)
+          <span class="roi-badge">Estimate</span>
+        </label>
+        <input
+          class="roi-input"
+          data-field="seat"
+          id="roi-seat"
+          inputmode="decimal"
+          min="0"
+          step="1"
+          type="number"
+          value="30"
+        />
+        <p class="roi-hint">
+          Default: $30/dev/mo (estimate; see the Compare page for published seat
+          plans checked 2026-11-04).
+        </p>
+      </div>
+
+      <div class="roi-field">
+        <label class="roi-label" for="roi-prs">
+          Pull requests per month
+          <span class="roi-badge">Estimate</span>
+        </label>
+        <input
+          class="roi-input"
+          data-field="prs"
+          id="roi-prs"
+          inputmode="numeric"
+          min="0"
+          step="1"
+          type="number"
+          value="120"
+        />
+        <p class="roi-hint">Default: 120 PRs/mo across the team (estimate).</p>
+      </div>
+    </fieldset>
+
+    <fieldset class="roi-group">
+      <legend class="roi-legend">Verdict model spend</legend>
+      <div class="roi-field">
+        <label class="roi-label" for="roi-per-pr">
+          Model spend per PR (<code>est_usd</code>, USD)
+          <span class="roi-badge" data-spend-badge>Estimate</span>
+        </label>
+        <input
+          class="roi-input"
+          data-field="perPr"
+          id="roi-per-pr"
+          inputmode="decimal"
+          min="0"
+          step="0.01"
+          type="number"
+          value="0.50"
+        />
+        <p class="roi-hint">
+          Default: $0.50/PR (estimate; matches <code>init --preset standard</code>'s
+          <code>defaults.budget_usd</code> guard, not a measured model bill). Set
+          to <code>0</code> for a local model, or paste <code>report --cost</code>
+          below.
+        </p>
+      </div>
+
+      <div class="roi-field">
+        <label class="roi-label" for="roi-paste">
+          Paste <code>verdict report --cost</code> output (optional)
+        </label>
+        <textarea
+          class="roi-textarea"
+          data-paste
+          id="roi-paste"
+          placeholder='{"runs":1,"runs_with_cost":1,"input_tokens":42000,"output_tokens":3500,"total_tokens":45500,"cached_input_tokens":0,"est_usd":0.18}'
+          rows="4"
+        ></textarea>
+        <p class="roi-hint">
+          Accepts the full <code>report --cost --json</code> envelope, its
+          <code>data.cost</code> object, or the human <code>cost:</code> line.
+          Parsed locally in your browser; nothing is sent over the network.
+        </p>
+        <p aria-live="polite" class="roi-parse" data-parse-status role="status"></p>
+      </div>
+
+      <div class="roi-actions">
+        <button class="roi-reset" data-reset type="button">
+          Reset defaults
+        </button>
+      </div>
+    </fieldset>
+  </div>
+
+  <div aria-live="polite" class="roi-results" data-results>
+    <div class="roi-card">
+      <p class="roi-card-label">
+        Seat-priced hosted reviewer
+        <span class="roi-badge">Estimate</span>
+      </p>
+      <p class="roi-card-value" data-out="hostedMonthly">$300 / mo</p>
+      <p class="roi-card-sub" data-out="hostedAnnual">$3,600 / yr</p>
+      <p class="roi-card-meta" data-out="hostedFormula">
+        10 devs × $30/dev/mo
+      </p>
+    </div>
+
+    <div class="roi-card">
+      <p class="roi-card-label">
+        Verdict (BYO model)
+        <span class="roi-badge" data-out-basis>Estimate</span>
+      </p>
+      <p class="roi-card-value" data-out="verdictMonthly">$60 / mo</p>
+      <p class="roi-card-sub" data-out="verdictAnnual">$720 / yr</p>
+      <p class="roi-card-meta" data-out="verdictFormula">
+        $0 seats + 120 PRs × $0.50/PR
+      </p>
+    </div>
+
+    <div class="roi-card roi-card-accent">
+      <p class="roi-card-label" data-out="diffLabel">
+        Estimated difference
+      </p>
+      <p class="roi-card-value" data-out="diffMonthly">$240 / mo lower</p>
+      <p class="roi-card-sub" data-out="diffAnnual">$2,880 / yr</p>
+      <p class="roi-card-meta" data-out="breakeven">
+        Break-even: 600 PRs/mo at these inputs
+      </p>
+    </div>
+  </div>
+
+  <div class="roi-parsed-box" data-parsed-box hidden>
+    <p class="roi-parsed-title">Parsed <code>report --cost</code> fields</p>
+    <dl class="roi-parsed-grid" data-parsed-grid></dl>
+  </div>
+
+  <noscript>
+    <p class="roi-noscript">
+      JavaScript is disabled. Compute the comparison directly: hosted monthly
+      spend = <code>developers × seat_price</code>; Verdict monthly spend =
+      <code>prs_per_month × est_usd</code> (from
+      <code>verdict report &lt;repo&gt; &lt;pr&gt; --cost --json</code> at
+      <code>.data.cost.est_usd</code>; $0 Verdict license/seats). With the
+      default estimates above (10 devs × $30 vs. 120 PRs × $0.50): $300/mo
+      hosted vs. $60/mo model spend ($240/mo difference; break-even at 600
+      PRs/mo).
+    </p>
+  </noscript>
+</roi-calculator>
+
+<style>
+  .roi {
+    display: block;
+    margin-block: 1.5rem;
+    padding: 1.25rem;
+    border: 1px solid var(--blume-border);
+    border-radius: 0.75rem;
+    background: var(--landing-surface, var(--blume-background));
+  }
+
+  .roi-grid {
+    display: grid;
+    gap: 1.25rem;
+  }
+
+  @media (min-width: 48rem) {
+    .roi-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  .roi-group {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.875rem;
+  }
+
+  .roi-legend {
+    margin-bottom: 0.25rem;
+    padding: 0;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--blume-foreground);
+  }
+
+  .roi-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3125rem;
+  }
+
+  .roi-label {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--blume-foreground);
+  }
+
+  .roi-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.0625rem 0.4375rem;
+    border: 1px solid var(--blume-border);
+    border-radius: 9999px;
+    background: var(--blume-muted);
+    color: var(--blume-muted-foreground);
+    font-size: 0.6875rem;
+    font-weight: 500;
+    line-height: 1.25rem;
+  }
+
+  .roi-input,
+  .roi-textarea {
+    width: 100%;
+    padding: 0.5rem 0.6875rem;
+    border: 1px solid var(--blume-border);
+    border-radius: 0.5rem;
+    background: var(--blume-background);
+    color: var(--blume-foreground);
+    font: inherit;
+    font-size: 0.875rem;
+    line-height: 1.35;
+  }
+
+  .roi-textarea {
+    font-family: var(--blume-font-mono, ui-monospace, monospace);
+    font-size: 0.75rem;
+    resize: vertical;
+  }
+
+  .roi-input:focus-visible,
+  .roi-textarea:focus-visible,
+  .roi-reset:focus-visible {
+    outline: 2px solid var(--blume-accent);
+    outline-offset: 2px;
+  }
+
+  .roi-hint {
+    margin: 0;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: var(--blume-muted-foreground);
+  }
+
+  .roi-parse {
+    margin: 0.125rem 0 0;
+    font-size: 0.75rem;
+    line-height: 1.45;
+    color: var(--blume-accent);
+  }
+
+  .roi-parse:empty {
+    display: none;
+  }
+
+  .roi-actions {
+    display: flex;
+    justify-content: flex-start;
+  }
+
+  .roi-reset {
+    padding: 0.375rem 0.75rem;
+    border: 1px solid var(--blume-border);
+    border-radius: 0.5rem;
+    background: var(--blume-muted);
+    color: var(--blume-foreground);
+    font: inherit;
+    font-size: 0.75rem;
+    font-weight: 500;
+    cursor: pointer;
+  }
+
+  .roi-reset:hover {
+    border-color: var(--blume-accent);
+  }
+
+  .roi-results {
+    display: grid;
+    gap: 0.875rem;
+    margin-top: 1.25rem;
+    padding-top: 1.25rem;
+    border-top: 1px solid var(--blume-border);
+  }
+
+  @media (min-width: 48rem) {
+    .roi-results {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  .roi-card {
+    padding: 0.875rem 1rem;
+    border: 1px solid var(--blume-border);
+    border-radius: 0.625rem;
+    background: var(--blume-background);
+  }
+
+  .roi-card-accent {
+    border-color: var(--blume-accent);
+  }
+
+  .roi-card-label {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.375rem;
+    margin: 0;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--blume-muted-foreground);
+  }
+
+  .roi-card-value {
+    margin: 0.375rem 0 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+    line-height: 1.25;
+    color: var(--blume-foreground);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .roi-card-sub {
+    margin: 0.25rem 0 0;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--blume-muted-foreground);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .roi-card-meta {
+    margin: 0.375rem 0 0;
+    font-size: 0.75rem;
+    line-height: 1.4;
+    color: var(--landing-faint, var(--blume-muted-foreground));
+  }
+
+  .roi-parsed-box {
+    margin-top: 1rem;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--blume-border);
+    border-radius: 0.5rem;
+    background: var(--blume-muted);
+  }
+
+  .roi-parsed-box[hidden] {
+    display: none;
+  }
+
+  .roi-parsed-title {
+    margin: 0 0 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--blume-foreground);
+  }
+
+  .roi-parsed-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(9rem, 1fr));
+    gap: 0.5rem 1rem;
+    margin: 0;
+    font-family: var(--blume-font-mono, ui-monospace, monospace);
+    font-size: 0.75rem;
+  }
+
+  .roi-parsed-grid :global(dt) {
+    color: var(--blume-muted-foreground);
+    font-weight: 400;
+  }
+
+  .roi-parsed-grid :global(dd) {
+    margin: 0;
+    color: var(--blume-foreground);
+    font-weight: 600;
+  }
+
+  .roi-noscript {
+    margin: 1rem 0 0;
+    padding: 0.75rem 1rem;
+    border: 1px solid var(--blume-border);
+    border-radius: 0.5rem;
+    background: var(--blume-muted);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+    color: var(--blume-foreground);
+  }
+</style>
+
+<script>
+  interface ParsedCost {
+    runs: number | null;
+    runs_with_cost: number | null;
+    input_tokens: number | null;
+    output_tokens: number | null;
+    total_tokens: number | null;
+    cached_input_tokens: number | null;
+    est_usd: number | null;
+  }
+
+  const DEFAULTS = {
+    devs: 10,
+    seat: 30,
+    prs: 120,
+    perPr: 0.5,
+  } as const;
+
+  const usd = (n: number): string =>
+    new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency: "USD",
+      minimumFractionDigits: n > 0 && n < 10 ? 2 : 0,
+      maximumFractionDigits: n > 0 && n < 10 ? 2 : 0,
+    }).format(n);
+
+  const intFmt = (n: number): string =>
+    new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(n);
+
+  const asNum = (v: unknown): number | null =>
+    typeof v === "number" && Number.isFinite(v) && v >= 0 ? v : null;
+
+  const parseReportCost = (raw: string): ParsedCost | null => {
+    const trimmed = raw.trim();
+    if (trimmed === "") return null;
+
+    if (trimmed.startsWith("{")) {
+      try {
+        const parsed: unknown = JSON.parse(trimmed);
+        if (typeof parsed !== "object" || parsed === null) return null;
+        const rec = parsed as Record<string, unknown>;
+        let costObj: Record<string, unknown> | null = null;
+        if (
+          typeof rec.data === "object" &&
+          rec.data !== null &&
+          typeof (rec.data as Record<string, unknown>).cost === "object" &&
+          (rec.data as Record<string, unknown>).cost !== null
+        ) {
+          costObj = (rec.data as Record<string, unknown>).cost as Record<
+            string,
+            unknown
+          >;
+        } else if (typeof rec.cost === "object" && rec.cost !== null) {
+          costObj = rec.cost as Record<string, unknown>;
+        } else if (
+          "est_usd" in rec ||
+          "runs_with_cost" in rec ||
+          "total_tokens" in rec
+        ) {
+          costObj = rec;
+        }
+        if (costObj === null) return null;
+        return {
+          runs: asNum(costObj.runs),
+          runs_with_cost: asNum(costObj.runs_with_cost),
+          input_tokens: asNum(costObj.input_tokens),
+          output_tokens: asNum(costObj.output_tokens),
+          total_tokens: asNum(costObj.total_tokens),
+          cached_input_tokens: asNum(costObj.cached_input_tokens),
+          est_usd: asNum(costObj.est_usd),
+        };
+      } catch {
+        return null;
+      }
+    }
+
+    // Human `report --cost` line:
+    // cost: 1 run(s), 1 with records — in=42000 out=3500 total=45500 est_usd=0.18 cached=0
+    const lineMatch =
+      /cost:\s*(\d+)\s+run\(s\),\s*(\d+)\s+with records\s+[—–-]\s+in=(\d+)\s+out=(\d+)\s+total=(\d+)\s+est_usd=(n\/a|\d+(?:\.\d+)?)\s+cached=(\d+)/iu.exec(
+        trimmed,
+      );
+    if (lineMatch === null) return null;
+    const estRaw = lineMatch[6];
+    const estVal =
+      estRaw.toLowerCase() === "n/a" ? null : Number.parseFloat(estRaw);
+    return {
+      runs: Number.parseInt(lineMatch[1], 10),
+      runs_with_cost: Number.parseInt(lineMatch[2], 10),
+      input_tokens: Number.parseInt(lineMatch[3], 10),
+      output_tokens: Number.parseInt(lineMatch[4], 10),
+      total_tokens: Number.parseInt(lineMatch[5], 10),
+      cached_input_tokens: Number.parseInt(lineMatch[7], 10),
+      est_usd: estVal !== null && Number.isFinite(estVal) ? estVal : null,
+    };
+  };
+
+  class RoiCalculator extends HTMLElement {
+    connectedCallback() {
+      const devsEl = this.querySelector<HTMLInputElement>('[data-field="devs"]');
+      const seatEl = this.querySelector<HTMLInputElement>('[data-field="seat"]');
+      const prsEl = this.querySelector<HTMLInputElement>('[data-field="prs"]');
+      const perPrEl =
+        this.querySelector<HTMLInputElement>('[data-field="perPr"]');
+      const pasteEl = this.querySelector<HTMLTextAreaElement>("[data-paste]");
+      const resetEl = this.querySelector<HTMLButtonElement>("[data-reset]");
+      const parseStatusEl =
+        this.querySelector<HTMLElement>("[data-parse-status]");
+      const spendBadgeEl =
+        this.querySelector<HTMLElement>("[data-spend-badge]");
+      const outBasisEl = this.querySelector<HTMLElement>("[data-out-basis]");
+      const parsedBoxEl = this.querySelector<HTMLElement>("[data-parsed-box]");
+      const parsedGridEl =
+        this.querySelector<HTMLElement>("[data-parsed-grid]");
+
+      const out = (name: string) =>
+        this.querySelector<HTMLElement>(`[data-out="${name}"]`);
+
+      if (!devsEl || !seatEl || !prsEl || !perPrEl) return;
+
+      let fromReportCost = false;
+
+      const num = (el: HTMLInputElement, fallback: number): number => {
+        const n = Number.parseFloat(el.value);
+        return Number.isFinite(n) && n >= 0 ? n : fallback;
+      };
+
+      const render = () => {
+        const devs = Math.max(0, Math.round(num(devsEl, 0)));
+        const seat = num(seatEl, 0);
+        const prs = Math.max(0, Math.round(num(prsEl, 0)));
+        const perPr = num(perPrEl, 0);
+
+        const hostedMonthly = devs * seat;
+        const hostedAnnual = hostedMonthly * 12;
+        const verdictMonthly = prs * perPr;
+        const verdictAnnual = verdictMonthly * 12;
+        const diffMonthly = hostedMonthly - verdictMonthly;
+        const diffAnnual = diffMonthly * 12;
+
+        const basisLabel = fromReportCost
+          ? "From report --cost"
+          : "Estimate";
+        if (spendBadgeEl) spendBadgeEl.textContent = basisLabel;
+        if (outBasisEl) {
+          outBasisEl.textContent = fromReportCost
+            ? "Projected (report --cost × est. PRs)"
+            : "Estimate";
+        }
+
+        const set = (name: string, text: string) => {
+          const el = out(name);
+          if (el) el.textContent = text;
+        };
+
+        set("hostedMonthly", `${usd(hostedMonthly)} / mo`);
+        set("hostedAnnual", `${usd(hostedAnnual)} / yr`);
+        set("hostedFormula", `${intFmt(devs)} devs × ${usd(seat)}/dev/mo`);
+
+        set("verdictMonthly", `${usd(verdictMonthly)} / mo`);
+        set("verdictAnnual", `${usd(verdictAnnual)} / yr`);
+        set(
+          "verdictFormula",
+          `$0 seats + ${intFmt(prs)} PRs × $${perPr.toFixed(2)}/PR`,
+        );
+
+        if (diffMonthly > 0) {
+          set("diffLabel", "Estimated difference");
+          set("diffMonthly", `${usd(diffMonthly)} / mo lower`);
+          set("diffAnnual", `${usd(diffAnnual)} / yr lower with Verdict`);
+        } else if (diffMonthly < 0) {
+          set("diffLabel", "Estimated difference");
+          set("diffMonthly", `${usd(Math.abs(diffMonthly))} / mo higher`);
+          set(
+            "diffAnnual",
+            `${usd(Math.abs(diffAnnual))} / yr higher than seats`,
+          );
+        } else {
+          set("diffLabel", "Estimated difference");
+          set("diffMonthly", "$0 / mo (equal)");
+          set("diffAnnual", "$0 / yr");
+        }
+
+        if (perPr === 0) {
+          set("breakeven", "Local / $0 model tokens: $0 variable review spend");
+        } else if (hostedMonthly === 0) {
+          set("breakeven", "Break-even: n/a (hosted seat baseline is $0)");
+        } else {
+          const be = Math.floor(hostedMonthly / perPr);
+          set("breakeven", `Break-even: ${intFmt(be)} PRs/mo at these inputs`);
+        }
+      };
+
+      const renderParsed = (cost: ParsedCost | null) => {
+        if (!parsedBoxEl || !parsedGridEl) return;
+        if (cost === null) {
+          parsedBoxEl.hidden = true;
+          parsedGridEl.textContent = "";
+          return;
+        }
+        const entries: [string, string][] = [
+          ["runs", cost.runs === null ? "n/a" : intFmt(cost.runs)],
+          [
+            "runs_with_cost",
+            cost.runs_with_cost === null ? "n/a" : intFmt(cost.runs_with_cost),
+          ],
+          [
+            "input_tokens",
+            cost.input_tokens === null ? "n/a" : intFmt(cost.input_tokens),
+          ],
+          [
+            "output_tokens",
+            cost.output_tokens === null ? "n/a" : intFmt(cost.output_tokens),
+          ],
+          [
+            "total_tokens",
+            cost.total_tokens === null ? "n/a" : intFmt(cost.total_tokens),
+          ],
+          [
+            "cached_input_tokens",
+            cost.cached_input_tokens === null
+              ? "n/a"
+              : intFmt(cost.cached_input_tokens),
+          ],
+          [
+            "est_usd",
+            cost.est_usd === null ? "null (unknown)" : `$${cost.est_usd.toFixed(4)}`,
+          ],
+        ];
+        parsedGridEl.textContent = "";
+        for (const [key, value] of entries) {
+          const wrap = document.createElement("div");
+          const dt = document.createElement("dt");
+          dt.textContent = key;
+          const dd = document.createElement("dd");
+          dd.textContent = value;
+          wrap.append(dt, dd);
+          parsedGridEl.append(wrap);
+        }
+        parsedBoxEl.hidden = false;
+      };
+
+      const onInput = () => {
+        render();
+      };
+
+      devsEl.addEventListener("input", onInput);
+      seatEl.addEventListener("input", onInput);
+      prsEl.addEventListener("input", onInput);
+      perPrEl.addEventListener("input", () => {
+        fromReportCost = false;
+        render();
+      });
+
+      pasteEl?.addEventListener("input", () => {
+        const raw = pasteEl.value.trim();
+        if (raw === "") {
+          fromReportCost = false;
+          if (parseStatusEl) parseStatusEl.textContent = "";
+          renderParsed(null);
+          render();
+          return;
+        }
+        const parsed = parseReportCost(raw);
+        if (parsed === null) {
+          fromReportCost = false;
+          if (parseStatusEl) {
+            parseStatusEl.textContent =
+              "Could not parse report --cost JSON or human cost: line. Enter est_usd manually above.";
+          }
+          renderParsed(null);
+          render();
+          return;
+        }
+        renderParsed(parsed);
+        if (parsed.est_usd === null || parsed.runs_with_cost === 0) {
+          fromReportCost = false;
+          if (parseStatusEl) {
+            parseStatusEl.textContent =
+              "Parsed report --cost has est_usd: null (unknown, never coerced to $0). Enter an estimate manually or provide a priced cost.json.";
+          }
+          render();
+          return;
+        }
+        perPrEl.value = parsed.est_usd.toFixed(2);
+        fromReportCost = true;
+        if (parseStatusEl) {
+          parseStatusEl.textContent = `Loaded est_usd=$${parsed.est_usd.toFixed(2)} from report --cost (${parsed.runs_with_cost ?? "?"} priced run(s)).`;
+        }
+        render();
+      });
+
+      resetEl?.addEventListener("click", () => {
+        devsEl.value = String(DEFAULTS.devs);
+        seatEl.value = String(DEFAULTS.seat);
+        prsEl.value = String(DEFAULTS.prs);
+        perPrEl.value = DEFAULTS.perPr.toFixed(2);
+        if (pasteEl) pasteEl.value = "";
+        if (parseStatusEl) parseStatusEl.textContent = "";
+        fromReportCost = false;
+        renderParsed(null);
+        render();
+      });
+
+      render();
+    }
+  }
+
+  if (!customElements.get("roi-calculator")) {
+    customElements.define("roi-calculator", RoiCalculator);
+  }
+</script>

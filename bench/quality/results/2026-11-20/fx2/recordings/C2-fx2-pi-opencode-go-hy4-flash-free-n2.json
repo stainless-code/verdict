@@ -1,0 +1,41 @@
+{
+  "schema_version": "1",
+  "findings": [
+    {
+      "path": "internal/drain/verb.go",
+      "line": 64,
+      "severity": "important",
+      "text": "A truncated feed is detected only after `RunThreads` has rewritten `threads.json`: the refresh writes the partial feed, then `readInputs` checks `resp.Data.Truncated` at line 129, so the `drain-failed` refusal leaves a partial feed where a complete one used to be. Spec §3 says to 'refuse drain-failed before any agent launch or write' and §10 says 'Every refusal comes before the first write.'",
+      "quote": "\tresp, ref := fetchcore.RunThreads(ctx, refreshRequest(r, req, fl))"
+    },
+    {
+      "path": "internal/drain/verb.go",
+      "line": 66,
+      "severity": "important",
+      "text": "Every refusal returned by the threads refresh is rewritten as `drain-failed`, discarding typed codes such as `bad-provider`, `threads-failed` and `canceled` that the shared threads path returns. Spec §7 reserves `drain-failed` for an unreadable bundle or `threads.json`, a truncated feed, or an unreadable login, so an invalid `--provider` or a cancellation mid-refresh reports the wrong code to callers.",
+      "quote": "\t\treturn r.Refuse(drainFailed(ref.Message))"
+    },
+    {
+      "path": "internal/drain/verb.go",
+      "line": 140,
+      "severity": "informational",
+      "text": "`--max-threads` is validated here, after the live refresh (line 64) and the login read (line 132), so an out-of-range value performs host reads and rewrites `threads.json` before the usage refusal. Spec §10 requires every refusal before the first write; the range check belongs in `parseFlags`.",
+      "quote": "\tlimit, code, done := parseLimit(r, fl.max)"
+    },
+    {
+      "path": "internal/drain/verb.go",
+      "line": 287,
+      "severity": "informational",
+      "text": "The drafting launcher runs after `drain.json` has already been written at line 93, so a bad `--agent` or `--timeout` refuses only after the plan landed, leaving a plan for a run that never drafted. Spec §10 requires refusals before the first write.",
+      "quote": "\tres, ref := runlaunch.Drain(ctx, launch, plan.PlanDigest)"
+    },
+    {
+      "path": "internal/drain/verb.go",
+      "line": 170,
+      "severity": "informational",
+      "text": "With `--agent` and zero pending threads the agent does not launch and no `drain.replies.json` is written, yet `next` still names `--post`; the spec's draft→`--post` transition assumes drafts exist, and this build has no `--post` flag for the operator to run.",
+      "quote": "\t\treturn \"post the drafts with verdict drain \" + req.Repo + \" \" + req.Pr + \" --post\""
+    }
+  ],
+  "gate_passed": false
+}

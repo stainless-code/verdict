@@ -13,6 +13,17 @@ Verdict splits code review into steps your agent runs on your machine: fetch, re
 - **Machine-readable.** Review verbs print one `--json` envelope. `report` also exports SARIF for scanners and CI.
 - **No PR needed.** `fetch-local` reviews your working tree and never posts.
 
+## Who it's for
+
+- **Solo developer** — Run `fetch-local` on your working tree or branch for an evidence-graded pre-PR pass with no remote account or subscription.
+- **OSS maintainer** — Triage outside pull requests with `fetch` and `verify --sandbox` so untrusted diffs stay contained while review controls remain base-owned.
+- **Startup team** — Add a deterministic `report --check` merge gate on your own CI runner with no per-seat or per-review meter.
+- **Agent-heavy workflow** — Put a bounded self-review loop and `--json` envelopes between fast agent edits and `post` so unproven findings never ship as fact.
+- **Regulated environment** — Keep tokens, diffs, and receipts local on your machine or runner, run a local model when code cannot leave the host, and keep append-only findings history.
+- **DevEx / platform team** — Standardize review policy with pinned lens packs, typed `.verdict/config.json`, SARIF exports, and `report --cost` rollups across repositories.
+
+**Measured:** In the [2026-11-20 results snapshot](bench/quality/results/2026-11-20/README.md) (`verdict backtest fixtures`, 16 scored runs across `fx1` and `fx2` on two drivers), the shipped flow recorded **0/16 false greens** and **0/46 hallucinated quotes** among verified gating findings — see the [ROI & benchmarks page](https://stainless-code.com/verdict/roi) for recall by fixture and the cost calculator.
+
 ## Quickstart
 
 ### 1. Install
@@ -162,7 +173,7 @@ Report vulnerabilities through [`SECURITY.md`](SECURITY.md).
 
 ## Docs
 
-- [Docs site](https://stainless-code.com/verdict): quickstart, how it reviews, comparison, glossary.
+- [Docs site](https://stainless-code.com/verdict): quickstart, how it reviews, comparison, ROI, glossary.
 - [`docs/manual.md`](docs/manual.md): the operator manual. Every verb, flag, store file, and exit code.
 - [`docs/troubleshooting.md`](docs/troubleshooting.md): every refusal code, its cause, and its fix.
 - [`docs/vision.md`](docs/vision.md): what Verdict is and where its craft comes from.
