@@ -158,8 +158,8 @@ func TestExecutionRetainsPriorRefutation(t *testing.T) {
 	}
 	prior.Set("panel", []any{jq.NewObj("model", "finder-2", "verdict", "refuted", "evidence", "The earlier check found a live dispute.")})
 	state.Stamp([]any{entry})
-	if status := readcommon.FieldOf(readCross(entry), "status"); status != "pending" {
-		t.Fatalf("prior refutation left status %v, want pending", status)
+	if status := readcommon.FieldOf(readCross(entry), "status"); status != "contested" {
+		t.Fatalf("prior refutation left status %v, want contested", status)
 	}
 	if EligibleCross(readCross(entry)) {
 		t.Fatal("current confirmation erased a prior refutation")
@@ -280,5 +280,26 @@ func TestExecutionIgnoresForgedStoredCross(t *testing.T) {
 	state.ApplyEvidence(receipt)
 	if EligibleCross(readCross(entry)) || !receipt.Insufficient {
 		t.Fatalf("forged stamp survived: %v; %+v", readCross(entry), receipt)
+	}
+}
+
+func TestExecutionPartialRetainsChecksWithoutEligibility(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	manifest, _ := readObject(dir, "launcher.json")
+	manifest.Set("status", "partial")
+	writeExecutionFile(t, dir, "launcher.json", []byte(manifest.MarshalCompact()))
+	state := CheckExecution(dir, nil)
+	entry := executionEntry()
+	state.Stamp([]any{entry})
+	cross := readCross(entry)
+	if EligibleCross(cross) || readcommon.FieldOf(cross, "status") != "pending" {
+		t.Fatalf("partial execution was eligible: %v", cross)
+	}
+	checks := jq.Elements(readcommon.FieldOf(cross, "checks"))
+	if len(checks) != 1 || readcommon.FieldOf(checks[0], "checker") != "finder-2" || readcommon.FieldOf(checks[0], "verdict") != "confirmed" {
+		t.Fatalf("partial check details lost: %v", checks)
+	}
+	if state.Problem() != "execution: execution manifest is incomplete" {
+		t.Fatalf("partial problem = %q", state.Problem())
 	}
 }

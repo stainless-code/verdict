@@ -1,6 +1,7 @@
 package panelcore
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -417,11 +418,7 @@ func (s *Execution) stampEntry(row any) {
 	cross := jq.NewObj(executionIDKey, s.ID, fieldStatus, status, "origins", checkerValues(s.Origins[sig]),
 		"expected", checkerValues(s.Expected[sig]), "checks", checks)
 	verification.Set("cross", cross)
-	if s.Gap == "" && s.Eligible[sig] && EligibleCross(cross) {
-		cross.Set(fieldStatus, "confirmed")
-	} else {
-		s.Eligible[sig] = false
-	}
+	s.Eligible[sig] = EligibleCross(cross)
 	entry.Set(executionVerification, verification)
 }
 
@@ -448,12 +445,12 @@ func (s *Execution) Problem() string {
 	return ""
 }
 
-// EligibleCross requires completed execution standing and every assigned checker.
+// EligibleCross requires completion and every assigned checker.
 func EligibleCross(cross any) bool {
 	if cross == nil {
 		return true
 	}
-	if jq.StrOf(readcommon.FieldOf(cross, executionIDKey)) == "" || readcommon.FieldOf(cross, fieldStatus) != confirmed {
+	if !completedCross(cross) {
 		return false
 	}
 	expected := jq.Elements(readcommon.FieldOf(cross, "expected"))
@@ -562,4 +559,8 @@ func (s *Execution) assignCheckers(sig string, expected map[string]bool) {
 		}
 		s.Origins[sig] = append(s.Origins[sig], origin)
 	}
+}
+
+func completedCross(cross any) bool {
+	return jq.StrOf(readcommon.FieldOf(cross, executionIDKey)) != "" && readcommon.FieldOf(cross, fieldStatus) == confirmed
 }

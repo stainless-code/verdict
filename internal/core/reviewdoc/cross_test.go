@@ -24,10 +24,10 @@ func TestRenderFinderGoldens(t *testing.T) {
 	}
 }
 
-func finderEntry(origins, expected, checks []any) *jq.Obj {
+func finderEntry(status string, origins, expected, checks []any) *jq.Obj {
 	return jq.NewObj("sig", "literal-signature", "status", "open", "severity", "important", "path", "src/auth.go", "line", 42,
 		"body", "Token refresh skips expiration validation.", "verification", jq.NewObj("quote", "verified", "cross",
-			jq.NewObj("execution_id", "execution-A", "origins", origins, "expected", expected, "checks", checks)))
+			jq.NewObj("execution_id", "execution-A", "status", status, "origins", origins, "expected", expected, "checks", checks)))
 }
 
 func finderCheck(checker, verdict string) *jq.Obj {
@@ -47,13 +47,13 @@ func finderBody(entry *jq.Obj, counts *core.FinderSummary) *reviewdoc.RenderInpu
 }
 
 func finderDuplicate() *reviewdoc.RenderInput {
-	entry := finderEntry([]any{"finder-1", "finder-2"}, []any{"finder-1", "finder-2"},
+	entry := finderEntry("confirmed", []any{"finder-1", "finder-2"}, []any{"finder-1", "finder-2"},
 		[]any{finderCheck("finder-1", "confirmed"), finderCheck("finder-2", "confirmed")})
 	return finderBody(entry, &core.FinderSummary{Completed: 2, Confirmed: 2})
 }
 
 func finderDisagreement() *reviewdoc.RenderInput {
-	entry := finderEntry([]any{"finder-1"}, []any{"finder-2"}, []any{finderCheck("finder-2", "refuted")})
+	entry := finderEntry("contested", []any{"finder-1"}, []any{"finder-2"}, []any{finderCheck("finder-2", "refuted")})
 	in := finderBody(entry, &core.FinderSummary{Completed: 2, Contested: 1})
 	in.Approval.Insufficient = true
 	in.Approval.Reason = "blocking cross check contested"
@@ -61,9 +61,9 @@ func finderDisagreement() *reviewdoc.RenderInput {
 }
 
 func finderPartial() *reviewdoc.RenderInput {
-	entry := finderEntry([]any{"finder-2"}, []any{"finder-1"}, []any{})
+	entry := finderEntry("pending", []any{"finder-2"}, []any{"finder-1"}, []any{})
 	entry.Set("verification", jq.NewObj("quote", "unverified", "cross", jq.NewObj("execution_id", "execution-A",
-		"origins", []any{"finder-2"}, "expected", []any{"finder-1"}, "checks", []any{})))
+		"status", "pending", "origins", []any{"finder-2"}, "expected", []any{"finder-1"}, "checks", []any{})))
 	in := finderBody(entry, &core.FinderSummary{Completed: 1, Pending: 1})
 	in.Approval.Insufficient = true
 	in.Approval.Reason = "execution incomplete"
