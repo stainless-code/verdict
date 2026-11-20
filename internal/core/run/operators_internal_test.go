@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/agentcatalog"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -121,7 +122,7 @@ func TestOperatorAgentCollisionRefusesSettings(t *testing.T) {
 // TestOperatorAgentWithoutModelFlag proves an optional model flag renders no
 // model argument, rather than an empty argument the binary would misread.
 func TestOperatorAgentWithoutModelFlag(t *testing.T) {
-	def := agentDef{Name: "local", Binary: "local-agent", ModelFlag: "", PromptFlag: "-t"}
+	def := agentcatalog.Launch{Name: "local", Binary: "local-agent", ModelFlag: "", PromptFlag: "-t"}
 	if got := argvFor(&def, "M", []string{"--x"}, "PROMPT"); !slices.Equal(got,
 		[]string{"local-agent", "--x", "-t", "PROMPT"}) {
 		t.Errorf("argv = %q, want no model argument", got)

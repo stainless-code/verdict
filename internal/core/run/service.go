@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/agentcatalog"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
@@ -146,7 +147,7 @@ func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.
 // argsFor resolves everything one invocation works from: the declared pipeline,
 // the stage a render covers, the bundle and its review path, the exact argv,
 // and the agent binary on PATH.
-func (st *state) argsFor(def *agentDef, dir string, timeout int) (*launchArgs, *core.RefusalError) {
+func (st *state) argsFor(def *agentcatalog.Launch, dir string, timeout int) (*launchArgs, *core.RefusalError) {
 	plan, ref := st.pipeline(dir)
 	if ref != nil {
 		return nil, ref
@@ -311,7 +312,7 @@ func (st *state) invoke(ctx context.Context, args *launchArgs, rounds int) (*cor
 	return st.launch(ctx, args)
 }
 
-func (st *state) warnLaunch(def *agentDef) {
+func (st *state) warnLaunch(def *agentcatalog.Launch) {
 	if def.LaunchWarning != "" {
 		st.warn(def.LaunchWarning)
 	}
@@ -414,7 +415,7 @@ type state struct {
 // the declared pipeline, the one stage a render covers (nil otherwise), the
 // bundle and its review path, the timeout, and the exact argv.
 type launchArgs struct {
-	def      agentDef
+	def      agentcatalog.Launch
 	bin      string
 	probe    *launcherProbe
 	plan     *recipe.Plan
@@ -539,7 +540,7 @@ func (st *state) bundle() (string, *core.RefusalError) {
 
 // lookupAgent resolves one name against the shipped table, then the prefs
 // definitions read for this invocation. Collisions refuse before this point.
-func (st *state) lookupAgent(name string) (agentDef, bool) {
+func (st *state) lookupAgent(name string) (agentcatalog.Launch, bool) {
 	if def, ok := lookupAgent(name); ok {
 		return def, true
 	}
@@ -548,14 +549,14 @@ func (st *state) lookupAgent(name string) (agentDef, bool) {
 			return operatorAgent(&st.defs[i]), true
 		}
 	}
-	return agentDef{}, false
+	return agentcatalog.Launch{}, false
 }
 
 // operatorAgent projects one prefs row onto the same data shape as a shipped
 // row. The source marker travels to launcher.json so provenance can say where
 // the definition came from.
-func operatorAgent(def *config.PersonalAgent) agentDef {
-	return agentDef{
+func operatorAgent(def *config.PersonalAgent) agentcatalog.Launch {
+	return agentcatalog.Launch{
 		Name: def.Name, Binary: def.Binary, Install: def.Install,
 		ModelFlag: def.ModelFlag, PromptFlag: def.PromptFlag,
 		ProbeMatch: def.ProbeMatch, Args: slices.Clone(def.Args),
@@ -579,13 +580,13 @@ func (st *state) knownAgents() string {
 // agent resolves the --agent value against the shipped table and the operator
 // definitions. An absent or unknown name refuses with both sources labeled: the
 // message is the only place an operator learns the table can grow.
-func (st *state) agent() (agentDef, *core.RefusalError) {
+func (st *state) agent() (agentcatalog.Launch, *core.RefusalError) {
 	if st.req.Agent == "" {
-		return agentDef{}, st.refuse(codeBadFlags, "run needs --agent <name> ("+st.knownAgents()+")")
+		return agentcatalog.Launch{}, st.refuse(codeBadFlags, "run needs --agent <name> ("+st.knownAgents()+")")
 	}
 	def, ok := st.lookupAgent(st.req.Agent)
 	if !ok {
-		return agentDef{}, st.refuse(codeUnknownAgent, fmt.Sprintf(
+		return agentcatalog.Launch{}, st.refuse(codeUnknownAgent, fmt.Sprintf(
 			"unknown agent '%s' (%s)", st.req.Agent, st.knownAgents()))
 	}
 	return def, nil
@@ -691,7 +692,7 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 // resolve finds the agent binary on PATH. "Not installed" is the launcher's
 // typed refusal, not a spawn error: the distinction tells the operator whether
 // to install something or to fix what is installed.
-func (st *state) resolve(def *agentDef) (string, *core.RefusalError) {
+func (st *state) resolve(def *agentcatalog.Launch) (string, *core.RefusalError) {
 	look := st.req.LookPath
 	if look == nil {
 		look = exec.LookPath

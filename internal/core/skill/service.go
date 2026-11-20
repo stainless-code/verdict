@@ -8,6 +8,7 @@ package skill
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"strings"
 
 	skillfs "github.com/stainless-code/verdict"
+	"github.com/stainless-code/verdict/internal/agentcatalog"
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -56,24 +58,24 @@ const (
 	payloadScriptsDir    = "scripts"
 )
 
-const skillsSlot = "skills"
-
 // targetRoot is the target directory itself, the root of every payload path.
 const targetRoot = "."
 
 const agentShared = "agents"
 
-const (
-	agentOpencode = "opencode"
-	agentGoose    = "goose"
-	agentWindsurf = "windsurf"
-)
-
-// agentNames is the supported `--agent` vocabulary (the installer's nine plus
-// Codex, which keeps a project skills dir of its own).
-var agentNames = []string{
-	agentShared, "claude", "codex", "cursor", agentOpencode,
-	"copilot", "gemini", agentGoose, "qwen", agentWindsurf,
+func supportedAgents() []string {
+	var rows []agentcatalog.Agent
+	for _, row := range agentcatalog.All() {
+		if row.Skills != nil {
+			rows = append(rows, row)
+		}
+	}
+	slices.SortFunc(rows, func(a, b agentcatalog.Agent) int { return cmp.Compare(a.Skills.Order, b.Skills.Order) })
+	names := make([]string, 0, len(rows))
+	for _, row := range rows {
+		names = append(names, row.Name)
+	}
+	return names
 }
 
 // Request is one skill invocation. Dir/Agent/Force/DryRun are read only by
@@ -422,7 +424,7 @@ func (req *Request) target() (string, *core.RefusalError) {
 	dir, known := req.agentDir(agent)
 	if !known {
 		return "", refuse(codeBadAgent,
-			fmt.Sprintf("unknown agent %q (want one of %s)", agent, strings.Join(agentNames, ", ")))
+			fmt.Sprintf("unknown agent %q (want one of %s)", agent, strings.Join(supportedAgents(), ", ")))
 	}
 	if dir == "" {
 		return "", refuse(codeNoHome,
@@ -447,48 +449,32 @@ func (req *Request) resolvedTarget(agent string) (string, *core.RefusalError) {
 	return filepath.Clean(abs), nil
 }
 
-type agentLayout struct {
-	base  string
-	parts []string
-}
-
 func (req *Request) agentDir(agent string) (string, bool) {
-	home := req.env("HOME")
-	config := req.env("XDG_CONFIG_HOME")
-	if config == "" && home != "" {
-		config = filepath.Join(home, ".config")
-	}
-	layouts := map[string]agentLayout{
-		agentShared:   {home, []string{".agents", skillsSlot}},
-		"claude":      {claudeBase(req, home), []string{skillsSlot}},
-		"codex":       {codexBase(req, home), []string{skillsSlot}},
-		"cursor":      {home, []string{".cursor", skillsSlot}},
-		agentOpencode: {config, []string{agentOpencode, skillsSlot}},
-		"copilot":     {home, []string{".copilot", skillsSlot}},
-		"gemini":      {home, []string{".gemini", skillsSlot}},
-		agentGoose:    {config, []string{agentGoose, skillsSlot}},
-		"qwen":        {home, []string{".qwen", skillsSlot}},
-		"windsurf":    {home, []string{".codeium", "windsurf", skillsSlot}},
-	}
-	layout, ok := layouts[agent]
-	if !ok {
+	row, ok := agentcatalog.Lookup(agent)
+	if !ok || row.Skills == nil {
 		return "", false
 	}
-	return joinBase(layout.base, layout.parts...), true
+	return req.skillsDir(row.Skills), true
 }
 
-func claudeBase(req *Request, home string) string {
-	if dir := req.env("CLAUDE_CONFIG_DIR"); dir != "" {
-		return dir
+func (req *Request) skillsDir(spec *agentcatalog.Skills) string {
+	base := req.env("HOME")
+	parts := spec.Parts
+	if spec.Base == "config" {
+		base = req.configBase(base)
 	}
-	return joinBase(home, ".claude")
+	if override := req.env(spec.Env); spec.Env != "" && override != "" {
+		base = override
+		parts = parts[1:]
+	}
+	return joinBase(base, parts...)
 }
 
-func codexBase(req *Request, home string) string {
-	if dir := req.env("CODEX_HOME"); dir != "" {
+func (req *Request) configBase(home string) string {
+	if dir := req.env("XDG_CONFIG_HOME"); dir != "" {
 		return dir
 	}
-	return joinBase(home, ".codex")
+	return joinBase(home, ".config")
 }
 
 func joinBase(base string, parts ...string) string {

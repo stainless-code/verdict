@@ -3,31 +3,41 @@ package archtest
 import (
 	"os"
 	"path/filepath"
-	"regexp"
 	"strings"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/agentcatalog"
 )
 
-var (
-	agentRowLine     = regexp.MustCompile(`^\s*Name: "`)
-	agentSourceLine  = regexp.MustCompile(`^// https://\S+ — read 2026-11-17$`)
-	agentNameLiteral = regexp.MustCompile(`Name: "([a-z0-9-]+)"`)
-	agentBlockLine   = regexp.MustCompile(`^(//.*|\{)$`)
-)
-
-// TestBuiltinAgentsCarrySourceComments reads the shipped agent table and fails
-// when a row loses the one-line primary-source citation above it. The citation
-// is the evidence trail for a headless argv and a model flag; a row added from
-// memory is not a row this repo can defend.
-func TestBuiltinAgentsCarrySourceComments(t *testing.T) {
-	t.Parallel()
-	path := filepath.Join(moduleRoot(t), "internal", "core", "run", "agents.go")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
+func TestAgentCatalogIntegrity(t *testing.T) {
+	seen := map[string]bool{}
+	for _, row := range agentcatalog.All() {
+		for _, name := range append([]string{row.Name}, row.Aliases...) {
+			if seen[name] {
+				t.Errorf("duplicate name or alias %q", name)
+			}
+			seen[name] = true
+		}
+		checkCatalogCitations(t, row)
 	}
-	if checkAgentSourceComments(t, path, strings.Split(string(raw), "\n")) == 0 {
-		t.Fatalf("%s: scan found no agent rows; the guard would pass vacuously", path)
+}
+
+func checkCatalogCitations(t *testing.T, row agentcatalog.Agent) {
+	t.Helper()
+	citations := map[string]string{}
+	if row.Launch != nil {
+		citations["launch"] = row.Launch.Citation
+	}
+	if row.Skills != nil {
+		citations["skills"] = row.Skills.Citation
+	}
+	if row.MCP != nil {
+		citations["MCP"] = row.MCP.Citation
+	}
+	for group, cite := range citations {
+		if !strings.HasPrefix(cite, "https://") {
+			t.Errorf("%s %s missing citation", row.Name, group)
+		}
 	}
 }
 
@@ -37,7 +47,12 @@ func TestBuiltinAgentsCarrySourceComments(t *testing.T) {
 func TestAgentNamesMatchTheirSurfaces(t *testing.T) {
 	t.Parallel()
 	root := moduleRoot(t)
-	names := shippedAgentNames(t, filepath.Join(root, "internal", "core", "run", "agents.go"))
+	var names []string
+	for _, row := range agentcatalog.All() {
+		if row.Launch != nil {
+			names = append(names, row.Name)
+		}
+	}
 	for _, surface := range []struct {
 		path   string
 		quoted bool
@@ -48,23 +63,6 @@ func TestAgentNamesMatchTheirSurfaces(t *testing.T) {
 	} {
 		assertSurfaceNames(t, surface.path, surface.quoted, names)
 	}
-}
-
-func shippedAgentNames(t *testing.T, path string) []string {
-	t.Helper()
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	matches := agentNameLiteral.FindAllStringSubmatch(string(raw), -1)
-	if len(matches) == 0 {
-		t.Fatal("agent table scan found no names; the guard would pass vacuously")
-	}
-	names := make([]string, 0, len(matches))
-	for _, match := range matches {
-		names = append(names, match[1])
-	}
-	return names
 }
 
 func assertSurfaceNames(t *testing.T, path string, quoted bool, names []string) {
@@ -86,43 +84,4 @@ func surfaceWant(name string, quoted bool) string {
 		return "`" + name + "`"
 	}
 	return name
-}
-
-func checkAgentSourceComments(t *testing.T, path string, lines []string) int {
-	t.Helper()
-	seen := 0
-	for i, line := range lines {
-		if !agentRowLine.MatchString(line) {
-			continue
-		}
-		seen++
-		assertAgentSourceRow(t, path, lines, i, line)
-	}
-	return seen
-}
-
-func assertAgentSourceRow(t *testing.T, path string, lines []string, i int, line string) {
-	t.Helper()
-	name := agentNameLiteral.FindStringSubmatch(line)
-	if len(name) != 2 {
-		t.Fatalf("%s:%d: row has no name literal: %s", path, i+1, line)
-	}
-	if !sourceCommentAbove(lines, i) {
-		t.Errorf("%s:%d: agent %q has no source comment with a URL and read date", path, i+1, name[1])
-	}
-}
-
-// sourceCommentAbove walks through the opening brace and the row's own comment
-// block, stopping at the blank line that separates one row from the next.
-func sourceCommentAbove(lines []string, row int) bool {
-	for j := row - 1; j >= 0; j-- {
-		trimmed := strings.TrimSpace(lines[j])
-		if agentSourceLine.MatchString(trimmed) {
-			return true
-		}
-		if !agentBlockLine.MatchString(trimmed) {
-			return false
-		}
-	}
-	return false
 }

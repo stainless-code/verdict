@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/agentcatalog"
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -208,41 +209,26 @@ func resolve(req *Request) (host, *core.RefusalError) {
 	if req == nil {
 		return host{}, refuse(CodeUnknownAgent, "mcp config needs an agent")
 	}
-	if spec, ok := cwdHosts[req.Agent]; ok {
-		return host{filepath.Join(req.Cwd, spec.rel), spec.format, spec.printOnly}, nil
-	}
-	if spec, ok := homeHosts[req.Agent]; ok {
-		home := homeDir(req.Env)
-		if home == "" {
-			return host{}, refuse(CodeNoHome, req.Agent+" config needs HOME; set it and re-run")
-		}
-		return host{filepath.Join(home, spec.rel), spec.format, spec.printOnly}, nil
-	}
-	if req.Agent == AgentCodex {
-		return codexHost(req.Env)
+	row, ok := agentcatalog.Lookup(req.Agent)
+	if ok && row.MCP != nil {
+		return resolveSpec(req, row.MCP)
 	}
 	return host{}, refuse(CodeUnknownAgent,
 		fmt.Sprintf("unknown agent %q (want claude, cursor, codex, gemini, qwen, windsurf, opencode, goose, or copilot)", req.Agent))
 }
 
-type hostSpec struct {
-	rel       string
-	format    string
-	printOnly bool
-}
-
-var cwdHosts = map[string]hostSpec{
-	AgentClaude:   {".mcp.json", FormatJSON, false},
-	AgentCursor:   {filepath.Join(".cursor", "mcp.json"), FormatJSON, false},
-	AgentOpencode: {"opencode.json", FormatJSON, true},
-	AgentCopilot:  {filepath.Join(".vscode", "mcp.json"), FormatJSON, true},
-}
-
-var homeHosts = map[string]hostSpec{
-	AgentGemini:   {filepath.Join(".gemini", "settings.json"), FormatJSON, false},
-	AgentQwen:     {filepath.Join(".qwen", "settings.json"), FormatJSON, false},
-	AgentWindsurf: {filepath.Join(".codeium", "windsurf", "mcp_config.json"), FormatJSON, false},
-	AgentGoose:    {filepath.Join(".config", "goose", "config.yaml"), FormatYAML, true},
+func resolveSpec(req *Request, spec *agentcatalog.MCP) (host, *core.RefusalError) {
+	if spec.Scope == "codex" {
+		return codexHost(req.Env)
+	}
+	base := req.Cwd
+	if spec.Scope == "home" {
+		base = homeDir(req.Env)
+		if base == "" {
+			return host{}, refuse(CodeNoHome, req.Agent+" config needs HOME; set it and re-run")
+		}
+	}
+	return host{filepath.Join(base, filepath.FromSlash(spec.Path)), spec.Format, spec.PrintOnly}, nil
 }
 
 func codexBase(env map[string]string) (string, *core.RefusalError) {
