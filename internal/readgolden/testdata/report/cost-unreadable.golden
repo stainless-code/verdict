@@ -9,7 +9,8 @@ exit: 0
   "next": "address open threads",
   "warnings": [
     "cost.json unreadable — spend unrecorded for this rollup",
-    "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors"
+    "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors",
+    "reproduced finding e555555555555555555555555555555555555555 has no runnable artifact: reproduction: reproduction missing"
   ],
   "data": {
     "generated_at": "0000-00-00T00:00:00Z",

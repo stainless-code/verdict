@@ -20,7 +20,9 @@ exit: 0
     "ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)",
     "rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important",
     "rigor said below critical floor walked on c7bc06e (advisory)",
-    "rigor said below important floor pointed on daea615 (advisory)"
+    "rigor said below important floor pointed on daea615 (advisory)",
+    "reproduced finding e8e306834f388a5f07f0042bf9d10155c20bc0cc has no runnable artifact: reproduction: supply reproduction.path and reproduction.command",
+    "reproduced finding 65c5e5ce7a39de7e90426bb1b07a7de7087d3ab6 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command"
   ],
   "data": {
     "dir": ".verdict/state/local-mx",
@@ -117,6 +119,8 @@ warn: ignoring unknown kb rule 'rec-rule' (no .verdict/kb.jsonl yet)
 warn: rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important
 warn: rigor said below critical floor walked on c7bc06e (advisory)
 warn: rigor said below important floor pointed on daea615 (advisory)
+warn: reproduced finding e8e306834f388a5f07f0042bf9d10155c20bc0cc has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 65c5e5ce7a39de7e90426bb1b07a7de7087d3ab6 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
 » findings: 10 sigs -> .verdict/state/local-mx/findings.json
   c7bc06e4  open  true  notes.txt
   63b8aa5b  open  true  notes.txt

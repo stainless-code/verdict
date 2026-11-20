@@ -15,7 +15,9 @@ exit: 0
     "evidence: hunk notes.txt\tNEW\t41\t47 has no matched receipt",
     "evidence: +45 more gap(s) — see record.json evidence.gaps",
     "rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important",
-    "rigor said below important floor pointed on daea615 (advisory)"
+    "rigor said below important floor pointed on daea615 (advisory)",
+    "reproduced finding e8e306834f388a5f07f0042bf9d10155c20bc0cc has no runnable artifact: reproduction: supply reproduction.path and reproduction.command",
+    "reproduced finding 65c5e5ce7a39de7e90426bb1b07a7de7087d3ab6 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command"
   ],
   "data": {
     "dir": ".verdict/state/local-mx",
@@ -107,6 +109,8 @@ warn: evidence: +45 more gap(s) — see record.json evidence.gaps
 » anchors: 0 inline, 0 moved to body
 warn: rigor pointed below critical floor walked on c84ffef (advisory); a gate would downgrade it to important
 warn: rigor said below important floor pointed on daea615 (advisory)
+warn: reproduced finding e8e306834f388a5f07f0042bf9d10155c20bc0cc has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 65c5e5ce7a39de7e90426bb1b07a7de7087d3ab6 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
 » findings: 10 sigs -> .verdict/state/local-mx/findings.json
   c7bc06e4  deferred  true  notes.txt
   63b8aa5b  open  true  notes.txt
