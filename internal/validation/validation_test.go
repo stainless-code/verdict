@@ -224,7 +224,9 @@ func TestFloors(t *testing.T) {
 
 func TestPromptDriftEscapesControlBytes(t *testing.T) {
 	file := &core.ValidationFile{Validator: &core.ValidationValidator{PromptSHA256: "\x1b[2Jbad"}}
-	if got := validation.PromptDrift(file); strings.ContainsRune(got, '\x1b') {
-		t.Fatalf("warning contains terminal escape: %q", got)
+	got := validation.PromptDrift(file)
+	if !strings.HasPrefix(got, `validation.json was produced with prompts/validate.md sha256 \x1b[2Jbad, but this build ships `) ||
+		strings.ContainsRune(got, '\x1b') {
+		t.Fatalf("warning = %q, want prompt drift with escaped control bytes", got)
 	}
 }
