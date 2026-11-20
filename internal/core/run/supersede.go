@@ -11,6 +11,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/core/repair"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -28,12 +29,15 @@ func (st *state) launchSelected(ctx context.Context, args *launchArgs, rounds in
 }
 
 func (st *state) supersede(dir string) *core.RefusalError {
+	if !panelcore.CheckExecution(dir, nil).Active {
+		return nil
+	}
 	captured, ref := readFinderCapture(dir)
 	if ref != nil {
 		return ref
 	}
 	if captured == nil || captured.Execution == nil {
-		return nil
+		return retirementRefusal("x-superseded", jq.NewErrf("automatic artifacts have no captured execution; restore run.json"))
 	}
 	location, err := retireArtifacts(dir)
 	if err != nil {

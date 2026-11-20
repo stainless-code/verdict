@@ -71,7 +71,7 @@ type Execution struct {
 func CheckExecution(dir string, review *jq.Obj) *Execution {
 	state := executionState(dir)
 	captured, _ := readObject(dir, "run.json")
-	state.Retired = retiredSingle(captured)
+	state.readTopology(captured)
 	rootReview, raw := readObject(dir, "review.json")
 	state.readReferences(captured, rootReview, review)
 	state.readReceiptReference()
@@ -577,9 +577,12 @@ func clearRetiredCross(entries []any) {
 	}
 }
 
-func retiredSingle(captured any) bool {
+func (s *Execution) readTopology(captured any) {
 	count, _ := jq.IntOf(readcommon.FieldOf(captured, "finders"))
-	return count == 1 && jq.StrOf(readcommon.FieldOf(captured, "superseded")) != ""
+	s.Retired = count == 1 && jq.StrOf(readcommon.FieldOf(captured, "superseded")) != ""
+	if count == 2 {
+		s.Active = true
+	}
 }
 
 func (s *Execution) refreshCapture() {

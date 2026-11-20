@@ -314,3 +314,22 @@ func TestExecutionCannotStampAfterRetirement(t *testing.T) {
 		t.Fatalf("retired execution stamped: cross=%v problem=%s", readCross(entry), state.Problem())
 	}
 }
+
+func TestExecutionCapturedTopologyCannotBecomeManual(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	writeExecutionFile(t, dir, "run.json", []byte(`{"schema_version":"1","finders":2}`))
+	writeExecutionFile(t, dir, "review.json", []byte(`{"schema_version":"1","findings":[],"summary":"No findings."}`))
+	for _, path := range []string{"launcher.json", filepath.Join("verification", "verdicts.json")} {
+		if err := os.Remove(filepath.Join(dir, path)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state := CheckExecution(dir, nil)
+	entry := executionEntry()
+	state.Stamp([]any{entry})
+	receipt := &core.EvidenceReceipt{}
+	state.ApplyEvidence(receipt)
+	if !state.Active || !receipt.Insufficient || EligibleCross(readCross(entry)) {
+		t.Fatalf("captured topology became manual: state=%+v receipt=%+v cross=%v", state, receipt, readCross(entry))
+	}
+}
