@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -56,7 +57,9 @@ type Script struct {
 // Run records the command and returns its registered result.
 func (s *Script) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	s.T.Helper()
-	s.Calls = append(s.Calls, cmd)
+	snapshot := *cmd
+	snapshot.Argv = slices.Clone(cmd.Argv)
+	s.Calls = append(s.Calls, &snapshot)
 	key := strings.Join(cmd.Argv, "\x00")
 	res, ok := s.Results[key]
 	err, hasErr := s.Errors[key]
