@@ -57,10 +57,7 @@
         {
           "id": "B1",
           "description": "internal/core/run/repair.go repairLoop launcher literal has no Probe field",
-          "matchers": [
-            ["repair", "probe|launcher"],
-            ["launcher", "probe"]
-          ]
+          "matchers": [["repair", "probe", "launcher|record|receipt"]]
         },
         {
           "id": "B2",
@@ -68,7 +65,8 @@
           "matchers": [
             [
               "cancel|parent context",
-              "agent-mismatch|wrong binary|timed out|canceled"
+              "agent-mismatch|wrong binary|timed out",
+              "pctx|probe|mislabeled|reported as|folded|classified as"
             ]
           ]
         }
@@ -98,8 +96,15 @@
           "description": "internal/core/run/service.go promptArtifact joins reviewFile, not drainFile",
           "matchers": [
             [
-              "drain\\.replies\\.json|promptartifact|artifactname",
-              "review\\.json|wrong artifact|reviewfile"
+              "promptartifact|argsfor",
+              "reviewfile|review\\.json",
+              "directive|compose|promptartifact|drain\\.replies\\.json|artifactname|drainfile"
+            ],
+            [
+              "internal/core/run/service\\.go",
+              "directive",
+              "reviewfile|review\\.json",
+              "drain\\.replies\\.json|drainfile|artifactname"
             ]
           ]
         },
@@ -107,8 +112,11 @@
           "id": "D2",
           "description": "internal/drain/verb.go next and internal/core/run/service.go suggest --post",
           "matchers": [
-            ["\\bnext\\b", "--post|post the drafts"],
-            ["drain .*--post"]
+            [
+              "\\bnext\\b",
+              "--post|post the drafts",
+              "internal/drain/verb\\.go|internal/core/run/service\\.go|envelope|post the drafts|drafted nothing|no drafts|zero pending|nothing was drafted"
+            ]
           ]
         },
         {
@@ -117,7 +125,8 @@
           "matchers": [
             [
               "validatefields",
-              "required|missing|refuse|reject|unchecked|absent"
+              "required|missing|absent|omitted",
+              "key|field|property|properties|schema"
             ]
           ]
         },
@@ -127,19 +136,31 @@
           "matchers": [
             [
               "drain\\.schema\\.json|\\$defs",
-              "additionalproperties|closed|open"
+              "additionalproperties|additional properties|closed[- ]object|closed schema"
             ]
           ]
         },
         {
           "id": "D5",
           "description": "evals/cases/drain-plan.sh gh stub matches *api graphql* instead of exact argv",
-          "matchers": [["drain-plan\\.sh", "argv|stub|any argv|accept"]]
+          "matchers": [
+            [
+              "drain-plan\\.sh",
+              "\\bgh\\b|graphql",
+              "\\*api graphql\\*|wildcard|glob|exact argv|any argv|loose|broad|unregistered|case.*\\*"
+            ]
+          ]
         },
         {
           "id": "D6",
           "description": "evals/cases/drain-refusals.sh gh stub matches *api graphql* instead of exact argv",
-          "matchers": [["drain-refusals\\.sh", "argv|stub|any argv|accept"]]
+          "matchers": [
+            [
+              "drain-refusals\\.sh",
+              "\\bgh\\b|graphql",
+              "\\*api graphql\\*|wildcard|glob|exact argv|any argv|loose|broad|unregistered|case.*\\*"
+            ]
+          ]
         }
       ],
       "bonus": [],
@@ -324,7 +345,12 @@
               "source row|manifest source|^- |source listing",
               "inside|section|scope|awk"
             ],
-            ["context-sources", "toc|source", "inside|section|scope|awk"]
+            [
+              "context-sources",
+              "## context|context section|toc\\.txt",
+              "source row|manifest source|source listing|grep",
+              "inside|section|scope|awk"
+            ]
           ]
         }
       ],

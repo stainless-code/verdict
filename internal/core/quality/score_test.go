@@ -367,6 +367,198 @@ func assertCrossHits(t *testing.T, m *Matcher, defects *map[string]Defect, tc *c
 	}
 }
 
+type fixtureMatcherCase struct {
+	name      string
+	fixtureID string
+	defectID  string
+	finding   Finding
+	want      bool
+}
+
+func defectFor(t *testing.T, catalog *Catalog, fixtureID, defectID string) *Defect {
+	t.Helper()
+	fx := fixtureFor(t, catalog, fixtureID)
+	for i := range fx.Known {
+		if fx.Known[i].ID == defectID {
+			return &fx.Known[i]
+		}
+	}
+	for i := range fx.Bonus {
+		if fx.Bonus[i].ID == defectID {
+			return &fx.Bonus[i]
+		}
+	}
+	t.Fatalf("unknown defect %s/%s", fixtureID, defectID)
+	return nil
+}
+
+// TestFixtureMatchersTightened pins both genuine positives and observed
+// false-positive findings (from the 2026-11-20 snapshot audit) so loose
+// regexes cannot inflate recall by crediting unrelated defects.
+func TestFixtureMatchersTightened(t *testing.T) {
+	catalog, ref := LoadCatalog(repoPath("bench", "quality", catalogName))
+	if ref != nil {
+		t.Fatalf("load catalog: %s: %s", ref.Code, ref.Message)
+	}
+	m := NewMatcher(catalog)
+	cases := tightenedMatcherCases()
+	for i := range cases {
+		tc := &cases[i]
+		t.Run(tc.name, func(t *testing.T) {
+			d := defectFor(t, catalog, tc.fixtureID, tc.defectID)
+			if got := m.Matches(&tc.finding, d.Matchers); got != tc.want {
+				t.Errorf("%s/%s match = %v, want %v (path=%q)",
+					tc.fixtureID, tc.defectID, got, tc.want, tc.finding.Path)
+			}
+		})
+	}
+}
+
+func tightenedMatcherCases() []fixtureMatcherCase {
+	return []fixtureMatcherCase{
+		{
+			name: "fx2_D1_positive_promptArtifact_reviewFile", fixtureID: "fx2", defectID: "D1", want: true,
+			finding: Finding{
+				Path:  "internal/core/run/service.go",
+				Claim: "argsFor hands compose the result of st.promptArtifact(dir), and promptArtifact still joins reviewFile, so drainDirective tells the agent to write review.json while the launcher asserts drain.replies.json",
+			},
+		},
+		{
+			name: "fx2_D1_negative_manual_namespace", fixtureID: "fx2", defectID: "D1", want: false,
+			finding: Finding{
+				Path:  "docs/manual.md",
+				Claim: "These new drain paragraphs name drain.json and drain.replies.json, but the normative Bundle namespace section never adds either to its core/script artifact list, and its \"Agents write only review.json\" sentence still excludes drain.replies.json",
+			},
+		},
+		{
+			name: "fx2_D1_negative_drain_artifact_hint", fixtureID: "fx2", defectID: "D1", want: false,
+			finding: Finding{
+				Path:  "internal/core/run/drain.go",
+				Claim: "Reusing execute also reuses run's review-artifact hints: no-review-artifact says review.json instead of drain.replies.json",
+			},
+		},
+		{
+			name: "fx2_D2_positive_next_suggests_post", fixtureID: "fx2", defectID: "D2", want: true,
+			finding: Finding{
+				Path:  "internal/drain/verb.go",
+				Claim: "next keys only off fl.agent != \"\", so drain <repo> <pr> --agent <name> on zero pending threads still answers \"next\": \"post the drafts with verdict drain acme/app 7 --post\"",
+			},
+		},
+		{
+			name: "fx2_D2_negative_refusal_code_mentions_post", fixtureID: "fx2", defectID: "D2", want: false,
+			finding: Finding{
+				Path:  "internal/core/refusalcodes.go",
+				Claim: "Spec §7 requires four new codes; only three shipped. drain-incomplete is deferred because only drain --post (PR B, out of scope here) emits it",
+			},
+		},
+		{
+			name: "fx2_D3_positive_validateFields_missing_required", fixtureID: "fx2", defectID: "D3", want: true,
+			finding: Finding{
+				Path:  "internal/core/drain/drafts.go",
+				Claim: "validateFields only rejects unknown keys and never checks for missing required keys",
+			},
+		},
+		{
+			name: "fx2_D3_negative_validateFields_quadratic", fixtureID: "fx2", defectID: "D3", want: false,
+			finding: Finding{
+				Path:  "internal/core/drain/drafts.go",
+				Claim: "validateFields re-unmarshals the whole replies array on every entry purely to reject unknown keys",
+			},
+		},
+		{
+			name: "fx2_D4_positive_schema_additionalProperties", fixtureID: "fx2", defectID: "D4", want: true,
+			finding: Finding{
+				Path:  "skills/verdict/schemas/drain.schema.json",
+				Claim: "drain.schema.json $defs entries set additionalProperties: true instead of closing the object",
+			},
+		},
+		{
+			name: "fx2_D4_negative_overlay_defs_open_threads", fixtureID: "fx2", defectID: "D4", want: false,
+			finding: Finding{
+				Path:  "internal/schemagen/overlay.json",
+				Claim: "The published $defs.skip description omits no-draft when open threads are skipped",
+			},
+		},
+		{
+			name: "fx2_D5_positive_drain_plan_gh_stub_wildcard", fixtureID: "fx2", defectID: "D5", want: true,
+			finding: Finding{
+				Path:  "evals/cases/drain-plan.sh",
+				Claim: "evals/cases/drain-plan.sh gh stub matches *api graphql* instead of exact argv",
+			},
+		},
+		{
+			name: "fx2_D5_negative_drain_test_stub_agents", fixtureID: "fx2", defectID: "D5", want: false,
+			finding: Finding{
+				Path:  "internal/core/run/drain_test.go",
+				Claim: "assertDrainDirective never asserts the prompt names drain.replies.json; the stub agents in evals/cases/drain-plan.sh and drain-refusals.sh also hardcode the reply path",
+			},
+		},
+		{
+			name: "fx2_D5_negative_service_mentions_stub_agent", fixtureID: "fx2", defectID: "D5", want: false,
+			finding: Finding{
+				Path:  "internal/core/run/service.go",
+				Claim: "promptArtifact hardcodes reviewFile; the stub agent in evals/cases/drain-plan.sh writes drain.replies.json directly",
+			},
+		},
+		{
+			name: "fx2_D6_positive_drain_refusals_gh_stub_wildcard", fixtureID: "fx2", defectID: "D6", want: true,
+			finding: Finding{
+				Path:  "evals/cases/drain-refusals.sh",
+				Claim: "evals/cases/drain-refusals.sh gh stub matches *api graphql* wildcard instead of checking exact argv",
+			},
+		},
+		{
+			name: "fx2_D6_negative_drain_test_stub_agents", fixtureID: "fx2", defectID: "D6", want: false,
+			finding: Finding{
+				Path:  "internal/core/run/drain_test.go",
+				Claim: "assertDrainDirective never asserts the prompt names drain.replies.json; the stub agents in evals/cases/drain-plan.sh and drain-refusals.sh also hardcode the reply path",
+			},
+		},
+		{
+			name: "fx1_B1_positive_repairLoop_omits_probe", fixtureID: "fx1", defectID: "B1", want: true,
+			finding: Finding{
+				Path:  "internal/core/run/service.go",
+				Claim: "repairLoop builds its own launcher literal without Probe, so launcher.json omits the probe receipt under --rounds",
+			},
+		},
+		{
+			name: "fx1_B1_negative_probe_args_redaction", fixtureID: "fx1", defectID: "B1", want: false,
+			finding: Finding{
+				Path:  "internal/core/run/service.go",
+				Claim: "probe args bypass displayArgv redaction and are cloned verbatim into launcher.json",
+			},
+		},
+		{
+			name: "fx1_B2_positive_parent_cancel_mislabeled", fixtureID: "fx1", defectID: "B2", want: true,
+			finding: Finding{
+				Path:  "internal/core/run/service.go",
+				Claim: "A parent-context cancel during the probe triggers pctx.Err() != nil and refuses agent-mismatch timed out",
+			},
+		},
+		{
+			name: "fx1_B2_negative_replayStopCodes_mentions_canceled", fixtureID: "fx1", defectID: "B2", want: false,
+			finding: Finding{
+				Path:  "internal/core/run/service.go",
+				Claim: "replayStopCodes still lists only agent-missing, bad-timeout and canceled, so backtest replay keeps walking after agent-mismatch",
+			},
+		},
+		{
+			name: "fx4_D3_positive_context_sources_toc_scope", fixtureID: "fx4", defectID: "D3", want: true,
+			finding: Finding{
+				Path:  "evals/cases/context-sources.sh",
+				Claim: "evals/cases/context-sources.sh greps for the source row anywhere in toc.txt rather than inside the ## context section",
+			},
+		},
+		{
+			name: "fx4_D3_negative_unrelated_context_sources", fixtureID: "fx4", defectID: "D3", want: false,
+			finding: Finding{
+				Path:  "evals/cases/context-sources.sh",
+				Claim: "context-sources.sh leaves a temporary fixture dir outside the section cleanup scope",
+			},
+		},
+	}
+}
+
 func TestFixtureRecordingLoader(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "literal"+recordingExt)
