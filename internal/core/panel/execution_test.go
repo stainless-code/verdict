@@ -241,3 +241,44 @@ func TestExecutionCannotStampOnRefreshedHead(t *testing.T) {
 		t.Fatalf("refresh left cross = %v, problem = %q", readCross(entry), state.Problem())
 	}
 }
+
+func TestExecutionRestoresStrippedCrossFromBoundArtifacts(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	entry := executionEntry()
+	state := CheckExecution(dir, nil)
+	state.Stamp([]any{entry})
+	if readCross(entry) == nil || !EligibleCross(readCross(entry)) || state.Problem() != "" {
+		t.Fatalf("bound confirmation was not restored: %v; %s", readCross(entry), state.Problem())
+	}
+}
+
+func TestExecutionStrippedCrossWithoutReceiptIsInsufficient(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	if err := os.Remove(filepath.Join(dir, "verification", "verdicts.json")); err != nil {
+		t.Fatal(err)
+	}
+	assertExecutionIneligible(t, dir)
+}
+
+func TestExecutionStrippedCrossWithoutExpectedRowIsInsufficient(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", true)
+	assertExecutionIneligible(t, dir)
+}
+
+func TestExecutionIgnoresForgedStoredCross(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", true)
+	entry := executionEntry()
+	verification, _ := entry.Get("verification")
+	stamp, ok := verification.(*jq.Obj)
+	if !ok {
+		t.Fatal("fixture verification is not an object")
+	}
+	stamp.Set("cross", jq.NewObj("execution_id", "execution-A", "status", "confirmed", "expected", []any{"finder-2"}, "checks", []any{jq.NewObj("checker", "finder-2", "verdict", "confirmed", "quote_status", "verified")}))
+	state := CheckExecution(dir, nil)
+	state.Stamp([]any{entry})
+	receipt := &core.EvidenceReceipt{}
+	state.ApplyEvidence(receipt)
+	if EligibleCross(readCross(entry)) || !receipt.Insufficient {
+		t.Fatalf("forged stamp survived: %v; %+v", readCross(entry), receipt)
+	}
+}
