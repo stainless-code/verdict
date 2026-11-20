@@ -164,9 +164,20 @@ func applyCommanderOverrides(tools []*tool, overrides map[string]core.Commander)
 }
 
 // Serve runs the newline-delimited JSON-RPC loop until stdin closes or ctx is
-// canceled, then cancels in-flight calls, waits for them, and returns. Stdout
-// carries only protocol frames.
+// canceled, then cancels in-flight calls and waits for them. The caller
+// owns the reader, and a blocked read can outlive Serve. Stdout carries
+// only protocol frames.
 func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
+	return s.serve(ctx, in, out, nil)
+}
+
+// ServeInterruptible runs Serve with a reader whose Close promptly unblocks
+// Read. On cancellation it closes the reader and waits for the read loop.
+func (s *Server) ServeInterruptible(ctx context.Context, in io.ReadCloser, out io.Writer) error {
+	return s.serve(ctx, in, out, in.Close)
+}
+
+func (s *Server) serve(ctx context.Context, in io.Reader, out io.Writer, interrupt func() error) error {
 	s.out = out
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -176,12 +187,12 @@ func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	select {
 	case readErr = <-read:
 	case <-ctx.Done():
-		if closer, ok := in.(io.Closer); ok {
-			_ = closer.Close()
+		if interrupt != nil {
+			closeErr := interrupt()
+			_ = closeErr
 			canceledReadErr := <-read
-			_ = canceledReadErr // Cancellation already determines the read outcome.
+			_ = canceledReadErr
 		}
-		// A reader without Close cannot be unblocked; its goroutine exits with the process.
 	}
 	s.callMu.Lock()
 	s.stopping = true
