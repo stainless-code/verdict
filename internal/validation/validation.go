@@ -256,9 +256,10 @@ func PromptDrift(file *core.ValidationFile) string {
 	if strings.EqualFold(recorded, current) {
 		return ""
 	}
+	quoted := strconv.Quote(readcommon.ShortSHA(recorded))
 	return fmt.Sprintf("validation.json was produced with %s sha256 %s, but this build ships %s: "+
 		"the pass may have judged against a different prompt",
-		promptFile, strconv.Quote(readcommon.ShortSHA(recorded)), readcommon.ShortSHA(current))
+		promptFile, quoted[1:len(quoted)-1], readcommon.ShortSHA(current))
 }
 
 // Hash is the SHA-256 of the artifact's exact bytes.
