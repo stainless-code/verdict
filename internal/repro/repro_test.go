@@ -53,16 +53,10 @@ func TestCaptureDryRun(t *testing.T) {
 }
 
 func TestCaptureRejectsUnsafeInputs(t *testing.T) {
-	dir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(dir, "probe.py"), []byte("assert False"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(dir, "huge.py"), []byte(strings.Repeat("x", 65537)), 0o600); err != nil {
-		t.Fatal(err)
-	}
+	dir := unsafeInputFixture(t)
 	for _, tc := range []struct{ name, source, command string }{
 		{"escape", filepath.Join("..", "probe.py"), "python3 {artifact}"},
-		{"absolute", filepath.Join(dir, "huge.py"), "python3 {artifact}"},
+		{"absolute", filepath.Join(dir, "probe.py"), "python3 {artifact}"},
 		{"large file", "huge.py", "python3 {artifact}"},
 		{"large command", "", strings.Repeat("x", 4097)},
 		{"empty command", "", ""},
@@ -93,4 +87,22 @@ func checkSavedCommand(t *testing.T, dir string) {
 	if err != nil || !strings.Contains(string(command), `"command":"python3 tests/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa.py"`) {
 		t.Fatalf("command = %q, %v", command, err)
 	}
+}
+
+func unsafeInputFixture(t *testing.T) string {
+	t.Helper()
+	parent := t.TempDir()
+	dir := filepath.Join(parent, "bundle")
+	if err := os.Mkdir(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	for _, target := range []string{filepath.Join(parent, "probe.py"), filepath.Join(dir, "probe.py")} {
+		if err := os.WriteFile(target, []byte("assert False\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "huge.py"), []byte(strings.Repeat("x", 65537)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }
