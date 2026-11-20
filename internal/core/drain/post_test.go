@@ -349,3 +349,18 @@ func TestPostRetainsIncompleteForUnretriedFailure(t *testing.T) {
 		t.Fatalf("Post incomplete = %v, refusal = %v; want true", res.Incomplete, ref)
 	}
 }
+func TestPostClearsRecoveredFeedFailure(t *testing.T) {
+	req, _, _ := postFixture(t, nil)
+	req.SaveFeed = func(*threadscore.File) error { return errors.New("disk full") }
+	if _, ref := Post(req); ref != nil {
+		t.Fatal(ref)
+	}
+	req.Plan.Failed = append(req.Plan.Failed, Failed{ThreadID: "other", Reason: "host refused"})
+	req.SaveFeed = func(*threadscore.File) error { return nil }
+	if _, ref := Post(req); ref != nil {
+		t.Fatal(ref)
+	}
+	if len(req.Plan.Failed) != 1 || req.Plan.Failed[0].ThreadID != "other" {
+		t.Fatalf("failures = %+v, want only other", req.Plan.Failed)
+	}
+}

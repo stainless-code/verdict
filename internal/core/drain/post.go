@@ -17,6 +17,8 @@ import (
 // plan was made: the agent answered a question that is no longer the last one.
 const ReasonStaleThread = "stale-thread"
 
+const feedSaveFailure = "could not update threads.json: "
+
 // PostRequest carries one post run.
 type PostRequest struct {
 	Plan      *File
@@ -184,8 +186,11 @@ func saveFeed(req *PostRequest, res *PostResult) {
 	if req.SaveFeed == nil {
 		return
 	}
+	req.Plan.Failed = slices.DeleteFunc(req.Plan.Failed, func(f Failed) bool {
+		return f.ThreadID == "" && strings.HasPrefix(f.Reason, feedSaveFailure)
+	})
 	if err := req.SaveFeed(req.Feed); err != nil {
-		res.Failed = append(res.Failed, Failed{Reason: "could not update threads.json: " + err.Error()})
+		res.Failed = append(res.Failed, Failed{Reason: feedSaveFailure + err.Error()})
 		req.Plan.Failed = mergeFailed(req.Plan.Failed, res.Failed, res.Posted)
 	}
 }
