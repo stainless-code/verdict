@@ -161,7 +161,7 @@ func bundleVerbs() []bundleVerb {
 			return ref
 		}},
 		{name: "verify", run: func(ctx context.Context, pr string) *core.RefusalError {
-			_, ref := verifycore.Run(ctx, &core.VerifyRequest{ReadRequest: bundleRead(pr)})
+			_, ref := verifycore.Run(ctx, &verifycore.Request{ReadRequest: bundleRead(pr)})
 			return ref
 		}},
 	}

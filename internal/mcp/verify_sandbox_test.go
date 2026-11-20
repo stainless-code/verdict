@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/stainless-code/verdict/internal/core"
+	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 )
 
 // TestVerifySandboxArgumentDecodes proves the MCP `sandbox` argument reaches
@@ -14,7 +14,7 @@ func TestVerifySandboxArgumentDecodes(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req := &core.VerifyRequest{}
+	req := &verifycore.Request{}
 	decodeVerify(req, a)
 	if err := a.done(); err != nil {
 		t.Fatalf("decode: %v", err)

@@ -25,6 +25,7 @@ import (
 	riskcore "github.com/stainless-code/verdict/internal/core/risk"
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
+	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -529,7 +530,7 @@ func wireRisk(ctx context.Context, b *bindings, req *riskcore.QueueRequest) erro
 	return nil
 }
 
-func decodeVerify(req *core.VerifyRequest, a *args) {
+func decodeVerify(req *verifycore.Request, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
 	a.str("timeoutRaw", &req.TimeoutRaw)
@@ -539,7 +540,7 @@ func decodeVerify(req *core.VerifyRequest, a *args) {
 	a.strings("envAllowlist", &req.EnvAllowlist)
 }
 
-func wireVerify(ctx context.Context, b *bindings, req *core.VerifyRequest) error {
+func wireVerify(ctx context.Context, b *bindings, req *verifycore.Request) error {
 	if err := b.wireRead(ctx, &req.ReadRequest); err != nil {
 		return err
 	}

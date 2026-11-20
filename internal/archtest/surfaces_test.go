@@ -459,8 +459,8 @@ func checkUnique(t *testing.T, kind string, list []string) {
 func TestVerifySandboxReachesEveryTypedSurface(t *testing.T) {
 	t.Parallel()
 	root := moduleRoot(t)
-	if !structHasBoolField(t, filepath.Join(root, "internal", "core", "verifyapi.go"), "VerifyRequest", "Sandbox") {
-		t.Error("core.VerifyRequest lost its Sandbox field")
+	if !structHasBoolField(t, filepath.Join(root, "internal", "core", "verify", "api.go"), "Request", "Sandbox") {
+		t.Error("verifycore.Request lost its Sandbox field")
 	}
 	if !structHasBoolField(t, filepath.Join(root, "pkg", "verdict", "verbs.go"), "VerifyRequest", "Sandbox") {
 		t.Error("pkg/verdict.VerifyRequest lost its Sandbox field")

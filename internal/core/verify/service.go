@@ -48,7 +48,7 @@ func corruptStoreRefusal(dir string) *core.RefusalError {
 
 // deepGroup reports whether the request asks for deep group validation, which
 // takes the group path instead of the ordinary patch path.
-func deepGroup(req *core.VerifyRequest) bool {
+func deepGroup(req *Request) bool {
 	return req.Group != "" || req.Command != ""
 }
 
@@ -57,7 +57,7 @@ func deepGroup(req *core.VerifyRequest) bool {
 // exits; human lines stream through the runtime progress observer, stores
 // go through the shared atomic path, and the envelope inputs come back in
 // the response for the adapter to render.
-func Run(ctx context.Context, req *core.VerifyRequest) (*core.VerifyResponse, *core.RefusalError) {
+func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	st := &state{req: req, warnings: append([]string{}, req.Warnings...)}
 	if err := ctx.Err(); err != nil {
 		return nil, &core.RefusalError{Code: codeCanceled, Message: msgCanceled}
@@ -89,7 +89,7 @@ func Run(ctx context.Context, req *core.VerifyRequest) (*core.VerifyResponse, *c
 }
 
 type state struct {
-	req      *core.VerifyRequest
+	req      *Request
 	warnings []string
 	env      []string
 }
@@ -116,7 +116,7 @@ func (st *state) runtime() *core.Runtime {
 	return st.req.Runtime
 }
 
-func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int) (*core.VerifyResponse, *core.RefusalError) {
+func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int) (*Response, *core.RefusalError) {
 	commander := st.commander()
 	if commander == nil {
 		return nil, st.withWarnings(&core.RefusalError{
@@ -187,7 +187,7 @@ func failed(err error) *core.RefusalError {
 	return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(msgVerifyFailed, err)}
 }
 
-func (st *state) record(dir, now, outPath, timeoutPath string, res core.Result) (*core.VerifyResponse, *core.RefusalError) {
+func (st *state) record(dir, now, outPath, timeoutPath string, res core.Result) (*Response, *core.RefusalError) {
 	combined := res.Stdout + res.Stderr
 	tail := sanitizeTail(coreexec.TrimTail(lastBytes(combined, tailCap)), st.req.Environ)
 	st.human(fmt.Sprintf("» exit=%d timed_out=%s", res.ExitCode, strconv.FormatBool(res.TimedOut)))
@@ -204,12 +204,12 @@ func (st *state) record(dir, now, outPath, timeoutPath string, res core.Result) 
 	return st.response(dir, now, res.ExitCode, res.TimedOut, tail), nil
 }
 
-func (st *state) response(dir, now string, exit int, timedOut bool, tail string) *core.VerifyResponse {
+func (st *state) response(dir, now string, exit int, timedOut bool, tail string) *Response {
 	next := "proof failed — fix, do not claim"
 	if exit == 0 && !timedOut {
 		next = "proof holds — revalidator may VERIFY"
 	}
-	return &core.VerifyResponse{
+	return &Response{
 		Repo:     st.req.Repo,
 		Pr:       st.req.Pr,
 		At:       now,

@@ -57,7 +57,7 @@ func bundle(t *testing.T, patch string) {
 	writeFile(t, ".verdict/state/5201/patch.json", patch)
 }
 
-func verifyRequest(c *collector, cmdr *scriptCommander, timeout string, environ []string, jsonMode bool) *core.VerifyRequest {
+func verifyRequest(c *collector, cmdr *scriptCommander, timeout string, environ []string, jsonMode bool) *verifycore.Request {
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
 			Now:       func() time.Time { return fixedNow },
@@ -67,7 +67,7 @@ func verifyRequest(c *collector, cmdr *scriptCommander, timeout string, environ 
 		Repo: "acme/app",
 		Pr:   "5201",
 	}
-	return &core.VerifyRequest{
+	return &verifycore.Request{
 		ReadRequest: read,
 		TimeoutRaw:  timeout,
 		Environ:     environ,
@@ -99,7 +99,7 @@ func checkVerifySpawn(t *testing.T, cmdr *scriptCommander) {
 	}
 }
 
-func checkVerifyResponse(t *testing.T, c *collector, resp *core.VerifyResponse) {
+func checkVerifyResponse(t *testing.T, c *collector, resp *verifycore.Response) {
 	t.Helper()
 	if resp.Exit != 0 || resp.TimedOut || resp.Tail != "ok" {
 		t.Errorf("response = %+v", resp)

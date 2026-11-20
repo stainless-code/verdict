@@ -391,7 +391,7 @@ func (c *Client) Verify(ctx context.Context, req *VerifyRequest) (*VerifyRespons
 	if err != nil {
 		return nil, err
 	}
-	resp, ref := verifycore.Run(ctx, &core.VerifyRequest{
+	resp, ref := verifycore.Run(ctx, &verifycore.Request{
 		ReadRequest:  rr,
 		TimeoutRaw:   req.Timeout,
 		Group:        req.Group,

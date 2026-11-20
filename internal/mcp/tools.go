@@ -358,7 +358,7 @@ func allTools(readOnly, operator bool) []*tool {
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Run verification", mutates: localWrites, destructive: true, openWorld: true},
 		}, toolDeps{commander: coreexec.Watchdog{}}, decodeVerify, wireVerify, verifycore.Run,
-			func(resp *core.VerifyResponse) *jq.Obj { return wireData(resp.Data) }),
+			func(resp *verifycore.Response) *jq.Obj { return wireData(resp.Data) }),
 	}
 	for _, t := range tools {
 		if t.name == "threads" {

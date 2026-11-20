@@ -57,12 +57,12 @@ func sandboxHomeFixture(t *testing.T) string {
 	return home
 }
 
-func sandboxRequest(env []string, cmdr core.Commander) *core.VerifyRequest {
+func sandboxRequest(env []string, cmdr core.Commander) *verifycore.Request {
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{Now: func() time.Time { return fixedNow }, Progress: &collector{}, Commander: cmdr},
 		Repo:    "acme/app", Pr: "5201",
 	}
-	return &core.VerifyRequest{
+	return &verifycore.Request{
 		ReadRequest: read,
 		TimeoutRaw:  "10",
 		Sandbox:     true,
@@ -149,7 +149,7 @@ func TestSandboxWrapsVerifyCommand(t *testing.T) {
 }
 
 // runSandboxedVerify drives one sandboxed patch run in a fresh bundle.
-func runSandboxedVerify(t *testing.T, vcmd string, results []core.Result) (string, string, *core.VerifyResponse, *sandboxCommander) {
+func runSandboxedVerify(t *testing.T, vcmd string, results []core.Result) (string, string, *verifycore.Response, *sandboxCommander) {
 	t.Helper()
 	root := t.TempDir()
 	t.Chdir(root)
@@ -190,7 +190,7 @@ func checkSandboxSpawn(t *testing.T, cmdr *sandboxCommander, root, home, vcmd st
 }
 
 // checkSandboxRecord asserts the outcome names the sandbox on both surfaces.
-func checkSandboxRecord(t *testing.T, resp *core.VerifyResponse) {
+func checkSandboxRecord(t *testing.T, resp *verifycore.Response) {
 	t.Helper()
 	if !resp.Data.Sandboxed {
 		t.Error("data.sandboxed = false, want true")
@@ -316,7 +316,7 @@ func TestSandboxGroupValidationWrapsTheOperatorCommand(t *testing.T) {
 	checkGroupReceipt(t, root, resp)
 }
 
-func runSandboxedGroup(t *testing.T) (string, string, *core.VerifyResponse, *groupSandboxCommander) {
+func runSandboxedGroup(t *testing.T) (string, string, *verifycore.Response, *groupSandboxCommander) {
 	t.Helper()
 	root := groupBundle(t)
 	home := sandboxHomeFixture(t)
@@ -348,7 +348,7 @@ func checkGroupCommandArgv(t *testing.T, root, home string, cmdr *groupSandboxCo
 }
 
 // checkGroupReceipt asserts the response and receipt both carry sandboxed.
-func checkGroupReceipt(t *testing.T, root string, resp *core.VerifyResponse) {
+func checkGroupReceipt(t *testing.T, root string, resp *verifycore.Response) {
 	t.Helper()
 	if !resp.Data.Sandboxed {
 		t.Error("data.sandboxed = false, want true")

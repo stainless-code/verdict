@@ -57,7 +57,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // environ snapshot for the child and redaction, the production watchdog,
 // the progress observer), the raw timeout string, and the JSON-mode flag
 // for the child's NO_COLOR default.
-func verifyRequest(r *cli.Runner, req Request, flags *verifyFlags) *core.VerifyRequest {
+func verifyRequest(r *cli.Runner, req Request, flags *verifyFlags) *verifycore.Request {
 	root := req.Root
 	read := core.ReadRequest{
 		Runtime: &core.Runtime{
@@ -66,7 +66,7 @@ func verifyRequest(r *cli.Runner, req Request, flags *verifyFlags) *core.VerifyR
 		},
 		Repo: req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
 	}
-	return &core.VerifyRequest{
+	return &verifycore.Request{
 		ReadRequest:  read,
 		TimeoutRaw:   flags.timeout,
 		Group:        flags.group,
