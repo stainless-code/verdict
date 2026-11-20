@@ -101,11 +101,14 @@ func Post(req *PostRequest) (*PostResult, *core.RefusalError) {
 	return res, nil
 }
 
-const resolveFailure = "could not resolve thread: "
+const (
+	recordReplyFailure = "could not record reply: "
+	resolveFailure     = "could not resolve thread: "
+)
 
-// ClearObsoleteFailures drops failures whose threads resolved or whose drafts
-// no longer match the waiting comment. An unresolved withdraw still needs
-// resolution even after its reply becomes the latest comment.
+// ClearObsoleteFailures drops superseded reply failures and resolved
+// withdrawal failures. A posted reply with a missing ledger entry still
+// needs reconciliation.
 func (f *File) ClearObsoleteFailures(feed *threadscore.File) {
 	f.clearObsoleteFailures(postThreads(feed))
 }
@@ -114,7 +117,7 @@ func (f *File) clearObsoleteFailures(byID map[string]*threadscore.Thread) {
 	f.Failed = slices.DeleteFunc(f.Failed, func(failure Failed) bool {
 		thread := byID[failure.ThreadID]
 		switch {
-		case thread == nil, failure.ThreadID == "":
+		case thread == nil, failure.ThreadID == "", strings.HasPrefix(failure.Reason, recordReplyFailure):
 			return false
 		case thread.Resolved:
 			return true
@@ -274,7 +277,7 @@ func recordPost(req *PostRequest, thread *threadscore.Thread, reply Reply, id st
 		InReplyTo: reply.WaitingCommentID, By: ReplyBy,
 	}
 	if err := req.Append(&entry); err != nil {
-		res.Failed = append(res.Failed, Failed{ThreadID: reply.ThreadID, Reason: "could not record reply: " + err.Error()})
+		res.Failed = append(res.Failed, Failed{ThreadID: reply.ThreadID, Reason: recordReplyFailure + err.Error()})
 		return Posted{}, false
 	}
 	req.Ledger = append(req.Ledger, entry)
