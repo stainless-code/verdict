@@ -237,9 +237,27 @@ const (
 // merge publishes, not only what review.json carries: a stored brief whose
 // outcome holds a credential rides into the body when a later same-signature
 // review omits the brief, so that post must refuse as well.
-//
-//nolint:revive // one leg: record the brief, re-review without it, assert the refusal
 func TestRunRefusesSecretInheritedFromStoredBrief(t *testing.T) {
+	seedStoredSecretBrief(t)
+	var warnings, human []string
+	cmdr := postCommander(t)
+	second := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	_, ref := Run(context.Background(), second)
+	if ref == nil || ref.Code != "post-secret-shaped" {
+		t.Fatalf("inherited secret brief: refusal = %v, want post-secret-shaped", ref)
+	}
+	if strings.Contains(ref.Message, "AKIAIOSFODNN7EXAMPLE") {
+		t.Errorf("refusal republished the value: %q", ref.Message)
+	}
+	for _, call := range cmdr.calls {
+		if strings.Contains(strings.Join(call, " "), "--method POST") {
+			t.Errorf("refused post submitted to the host: %q", call)
+		}
+	}
+}
+
+func seedStoredSecretBrief(t *testing.T) {
+	t.Helper()
 	dir := t.TempDir()
 	t.Chdir(dir)
 	postBundle(t, secretBriefReview)
@@ -255,19 +273,5 @@ func TestRunRefusesSecretInheritedFromStoredBrief(t *testing.T) {
 	}
 	if err := writeTestFile(".verdict/state/7/review.json", briefOmittedReview); err != nil {
 		t.Fatal(err)
-	}
-	cmdr := postCommander(t)
-	second := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
-	_, ref := Run(context.Background(), second)
-	if ref == nil || ref.Code != "post-secret-shaped" {
-		t.Fatalf("inherited secret brief: refusal = %v, want post-secret-shaped", ref)
-	}
-	if strings.Contains(ref.Message, "AKIAIOSFODNN7EXAMPLE") {
-		t.Errorf("refusal republished the value: %q", ref.Message)
-	}
-	for _, call := range cmdr.calls {
-		if strings.Contains(strings.Join(call, " "), "--method POST") {
-			t.Errorf("refused post submitted to the host: %q", call)
-		}
 	}
 }
