@@ -59,7 +59,7 @@ func (st *state) captureEntryReproduction(entry *jq.Obj, remaining int) int {
 		return 0
 	}
 	sig, _ := sigString(entry)
-	receipt, used, err := captureReproduction(st.dir, sig, raw, st.dryRun || st.cmd != recordCommand, remaining)
+	receipt, used, err := captureReproduction(st.dir, sig, raw, !st.persistsFindings(), remaining)
 	if err != nil {
 		st.warn(fmt.Sprintf("reproduced finding %s has no runnable artifact: %s", sig, envsecret.ScrubShapes(err.Error())))
 		return 0

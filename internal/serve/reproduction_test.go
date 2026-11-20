@@ -26,11 +26,19 @@ func TestReproductionDownload(t *testing.T) {
 	if result.status != http.StatusOK || string(result.body) != "false\n" {
 		t.Fatalf("download = %d %q", result.status, result.body)
 	}
+	checkReproductionHeaders(t, result)
 	if err := os.Remove(filepath.Join(bundle, "tests", sigCrit+".sh")); err != nil {
 		t.Fatal(err)
 	}
 	result = call(t, ts, http.MethodGet, path, "", bearer())
 	if result.status != http.StatusNotFound {
 		t.Fatalf("missing artifact status = %d", result.status)
+	}
+}
+
+func checkReproductionHeaders(t *testing.T, response result) {
+	t.Helper()
+	if got := response.header.Get("X-Content-Type-Options"); got != "nosniff" {
+		t.Fatalf("X-Content-Type-Options = %q, want nosniff", got)
 	}
 }

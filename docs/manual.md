@@ -1185,7 +1185,9 @@ failure. The agent's original source file is left as supplied.
 `serve` finding table links to a download. Read paths validate the retained
 path again. A `reproduced` finding without usable evidence warns
 `has no runnable artifact`; the claim stays recorded. `record --dry-run`
-validates the draft without saving it. These artifacts are drafts — Verdict
+validates the draft without saving it. `post` also retains artifacts during its
+local merge, including `post --dry-run`, which writes `findings.dryrun.json`.
+These artifacts are drafts — Verdict
 never runs them, promotes them into the reviewed worktree, commits them, or
 includes them in a posted comment.
 
