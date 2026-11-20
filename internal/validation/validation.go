@@ -255,7 +255,8 @@ func PromptDrift(file *core.ValidationFile) string {
 	if strings.EqualFold(recorded, current) {
 		return ""
 	}
-	return fmt.Sprintf("validation.json was produced with %s sha256 %s, but this build ships %s: the pass may have judged against a different prompt",
+	return fmt.Sprintf("validation.json was produced with %s sha256 %s, but this build ships %s: "+
+		"the pass may have judged against a different prompt",
 		promptFile, readcommon.ShortSHA(recorded), readcommon.ShortSHA(current))
 }
 

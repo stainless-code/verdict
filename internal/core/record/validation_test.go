@@ -639,16 +639,21 @@ func TestPostStaysQuietWhenValidatorPromptMatches(t *testing.T) {
 		"no validator":   "",
 	} {
 		t.Run(name, func(t *testing.T) {
-			validationBundle(t, "")
-			writeValidation(t, emptyPass(coverageHead, validator))
-			_, ref, _, warns := runValidationPostProgress(t, validationFlags())
-			if ref != nil {
-				t.Fatalf("post refused: %v (%s)", ref, ref.Message)
-			}
-			if got := promptWarnings(warns); len(got) != 0 {
-				t.Fatalf("prompt warnings = %q, want none", got)
-			}
+			assertPostPromptQuiet(t, validator)
 		})
+	}
+}
+
+func assertPostPromptQuiet(t *testing.T, validator string) {
+	t.Helper()
+	validationBundle(t, "")
+	writeValidation(t, emptyPass(coverageHead, validator))
+	_, ref, _, warns := runValidationPostProgress(t, validationFlags())
+	if ref != nil {
+		t.Fatalf("post refused: %v (%s)", ref, ref.Message)
+	}
+	if got := promptWarnings(warns); len(got) != 0 {
+		t.Fatalf("prompt warnings = %q, want none", got)
 	}
 }
 

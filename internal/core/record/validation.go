@@ -37,9 +37,7 @@ func (st *state) applyValidation() *core.RefusalError {
 	out := &ValidationResult{Mode: policy.Mode, Floors: policy.Floors}
 	st.judged = map[string]core.ValidationResult{}
 	if file != nil {
-		if drift := validation.PromptDrift(file); drift != "" {
-			st.warn(drift)
-		}
+		st.warnPromptDrift(file)
 		out.Hash = &hash
 		if out.Counts, ref = st.applyVerdicts(file, policy.Mode); ref != nil {
 			return ref
@@ -48,6 +46,12 @@ func (st *state) applyValidation() *core.RefusalError {
 	st.policy = policy
 	st.validation = out
 	return nil
+}
+
+func (st *state) warnPromptDrift(file *core.ValidationFile) {
+	if drift := validation.PromptDrift(file); drift != "" {
+		st.warn(drift)
+	}
 }
 
 func (st *state) sealFloors() {

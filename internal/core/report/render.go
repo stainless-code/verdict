@@ -946,24 +946,41 @@ func validationHuman(st *state) []string {
 	if len(st.judgements) == 0 {
 		return lines
 	}
-	rows := make([][4]string, 0, len(st.judgements)+1)
-	rows = append(rows, [4]string{"sig", "verdict", "move", "reason"})
-	for i := range st.judgements {
-		r := &st.judgements[i]
+	return append(lines, validationRows(st.judgements)...)
+}
+
+const (
+	validationSigHeader    = "sig"
+	validationColumns      = 4
+	validationSpacing      = "  "
+	validationReasonColumn = validationColumns - 1
+)
+
+func validationRows(judgements []core.ValidationResult) []string {
+	rows := make([][validationColumns]string, 0, len(judgements)+1)
+	rows = append(rows, [validationColumns]string{validationSigHeader, "verdict", "move", "reason"})
+	for i := range judgements {
+		r := &judgements[i]
 		move := "-"
 		if r.Verdict == core.ValidationDowngraded {
 			move = r.FromSeverity + " → " + r.ToSeverity
 		}
-		rows = append(rows, [4]string{readcommon.Prefix(r.Sig), r.Verdict, move, flattenReason(r.Reason)})
+		rows = append(rows, [validationColumns]string{readcommon.Prefix(r.Sig), r.Verdict, move, flattenReason(r.Reason)})
 	}
-	var widths [3]int
+	return formatValidationRows(rows)
+}
+
+func formatValidationRows(rows [][validationColumns]string) []string {
+	var widths [validationReasonColumn]int
 	for _, row := range rows {
 		for c := range widths {
 			widths[c] = max(widths[c], utf8.RuneCountInString(row[c]))
 		}
 	}
+	lines := make([]string, 0, len(rows))
 	for _, row := range rows {
-		lines = append(lines, "  "+padRune(row[0], widths[0])+"  "+padRune(row[1], widths[1])+"  "+padRune(row[2], widths[2])+"  "+row[3])
+		lines = append(lines, validationSpacing+padRune(row[0], widths[0])+validationSpacing+
+			padRune(row[1], widths[1])+validationSpacing+padRune(row[2], widths[2])+validationSpacing+row[validationReasonColumn])
 	}
 	return lines
 }
