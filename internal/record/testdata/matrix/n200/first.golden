@@ -812,7 +812,7 @@ other.txt	NEW	1	3
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "5ce2ab820ff08a21ec73ac4fc78d7978e117591be093954448bdee51fd9e596a",
+  "prompts_hash": "7969e23171f7f90c981afa1d9e31fd12ab7e81841c49ad58c6525c802f342e24",
   "model": null,
   "author": null,
   "review_models": [],

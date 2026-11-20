@@ -195,7 +195,7 @@ func TestPromptsHashIgnoresDiskLayouts(t *testing.T) {
 		"procedure/prompts/validate.md": "nested validate decoy",
 	})
 	t.Chdir(dir)
-	const want = "5ce2ab820ff08a21ec73ac4fc78d7978e117591be093954448bdee51fd9e596a"
+	const want = "7969e23171f7f90c981afa1d9e31fd12ab7e81841c49ad58c6525c802f342e24"
 	if got := provenance.PromptsHash(); got != want {
 		t.Errorf("PromptsHash = %s, want the embedded set %s", got, want)
 	}
