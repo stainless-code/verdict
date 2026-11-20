@@ -1,16 +1,20 @@
 package core
 
+import "github.com/stainless-code/verdict/internal/spend"
+
 // CostRecord is one agent self-reported spend record (or one element of the
 // array a re-reviewed bundle writes), read from a bundle's cost.json and
 // published as schemas/cost.schema.json.
 type CostRecord struct {
-	SchemaVersion string       `const:"2"                     json:"schema_version,omitempty"`
-	Effort        string       `json:"effort,omitempty"`
-	Models        []ModelSpend `json:"models,omitempty"`
-	EstUSD        *float64     `json:"est_usd,omitempty"`
-	WallSeconds   *float64     `json:"wall_seconds,omitempty"`
-	DiffBytes     *float64     `json:"diff_bytes,omitempty"`
-	Lenses        []LensUsage  `json:"lenses,omitempty"`
+	ExecutionID   string        `json:"execution_id,omitempty"`
+	Phases        []spend.Phase `json:"phases,omitempty"`
+	SchemaVersion string        `const:"2"                     json:"schema_version,omitempty"`
+	Effort        string        `json:"effort,omitempty"`
+	Models        []ModelSpend  `json:"models,omitempty"`
+	EstUSD        *float64      `json:"est_usd,omitempty"`
+	WallSeconds   *float64      `json:"wall_seconds,omitempty"`
+	DiffBytes     *float64      `json:"diff_bytes,omitempty"`
+	Lenses        []LensUsage   `json:"lenses,omitempty"`
 	// Run and InputsSHA256 bind a lens attestation to the exact captured run
 	// it belongs to, copied verbatim from run.json. They are optional so a
 	// billing-only record stays readable, but a record without the current

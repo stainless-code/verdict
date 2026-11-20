@@ -9,6 +9,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/sig"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 const (
@@ -30,19 +31,28 @@ const (
 func Findings(review *jq.Obj) []any {
 	out := make([]any, 0)
 	raw, _ := review.Get("findings")
+	aggregate := aggregateVersion(review)
 	for _, item := range jq.Elements(raw) {
 		c, ok := object(item)
 		if !ok {
 			continue
 		}
-		path, body := jq.StrOf(c[fieldPath]), jq.StrOf(c[fieldBody])
-		if body == "" {
-			body = jq.StrOf(c["claim"])
-		}
-		out = append(out, jq.NewObj(fieldSig, sig.Of(path+"\n\n"+body), fieldPath, path,
-			fieldLine, c[fieldLine], fieldSeverity, c[fieldSeverity], "kind", "inline", fieldBody, body))
+		out = append(out, planFinding(c, aggregate))
 	}
 	return out
+}
+
+func planFinding(finding map[string]any, aggregate bool) *jq.Obj {
+	path, body := jq.StrOf(finding[fieldPath]), jq.StrOf(finding[fieldBody])
+	if body == "" || aggregate {
+		body = jq.StrOf(finding["claim"])
+	}
+	identityBody := body
+	if aggregate {
+		identityBody = untrusted.NeutralizeMentions(body)
+	}
+	return jq.NewObj(fieldSig, sig.Finding(path, "", identityBody), fieldPath, path,
+		fieldLine, finding[fieldLine], fieldSeverity, finding[fieldSeverity], "kind", "inline", fieldBody, body)
 }
 
 // Plan builds a bounded plan with independently dispatchable findings.
@@ -106,7 +116,7 @@ func dispatchSection(f map[string]any, model string, i, n int) string {
 	const section = "## %s · %q:%v · %v · verifier %d/%d (%s)\n\n" +
 		"Read `full.diff`, `hunks.tsv`, and `review.json` in this bundle. Try to disprove the claim and check its anchor.\n\n" +
 		"### Finding (untrusted agent text)\n%s\n\n### Output\n" +
-		"Append one result for sig `%s`, model `%s` to `verification/verdicts.json`.\n\n"
+		"Append one result for sig `%s`, checker `%s` to `verification/verdicts.json` using `\"schema_version\": \"2\"`.\n\n"
 	return fmt.Sprintf(section, f[fieldSig], f[fieldPath], f[fieldLine], f[fieldSeverity], i+1, n, model,
 		Quote(jq.StrOf(f[fieldBody])), f[fieldSig], model)
 }

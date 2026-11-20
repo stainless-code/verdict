@@ -163,6 +163,9 @@
     "findingVerification": {
       "type": "object",
       "properties": {
+        "cross": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/crossVerification" }]
+        },
         "quote": { "enum": ["unchecked", "verified", "unverified"] },
         "panel": {
           "type": "array",
@@ -171,6 +174,34 @@
       },
       "required": ["quote"],
       "additionalProperties": true
+    },
+    "crossVerification": {
+      "type": "object",
+      "properties": {
+        "execution_id": { "type": "string" },
+        "status": { "enum": ["confirmed", "pending"] },
+        "expected": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "checks": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/crossCheck" }
+        }
+      },
+      "required": ["execution_id", "status", "expected", "checks"],
+      "additionalProperties": false
+    },
+    "crossCheck": {
+      "type": "object",
+      "properties": {
+        "checker": { "type": "string" },
+        "verdict": { "enum": ["confirmed", "refuted", "insufficient"] },
+        "quote_status": { "enum": ["verified", "unverified"] },
+        "evidence": { "type": "string" }
+      },
+      "required": ["checker", "verdict", "quote_status", "evidence"],
+      "additionalProperties": false
     },
     "brief": {
       "description": "The machine form of the finding: affected sites, the required outcome, an optional approach, and open questions.",

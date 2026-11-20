@@ -173,7 +173,7 @@ func (st *state) repairRound(ctx context.Context, args *launchArgs, rec *launche
 	if readRef != nil {
 		return st.stopped(args, rec, rep, started, roundRes, roundArt, readRef)
 	}
-	check, checkRef := repair.Check(args.dir, review)
+	check, checkRef := args.checkReview(review)
 	if checkRef != nil {
 		return st.stopped(args, rec, rep, started, roundRes, roundArt, checkRef)
 	}

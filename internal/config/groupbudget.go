@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"math/big"
 	"strconv"
+
+	spendpolicy "github.com/stainless-code/verdict/internal/spend"
 )
 
 // GroupBudget is one resolved plan group's spend contract: the guard and the
@@ -292,7 +294,7 @@ func scanSample(sample *CostSample, groupID, tier string) (named, atTier int, es
 // comparing exact decimals so display rounding never flips a guard. Either side
 // unknown means no claim.
 func SpendExceeds(projected, limit string) bool {
-	return exceeds(rationalOf(projected), rationalOf(limit))
+	return spendpolicy.Exceeds(projected, limit)
 }
 
 // rationalOf parses an exact decimal literal; a missing or negative value is
@@ -432,7 +434,7 @@ func boundSamples(records []map[string]any, rs *RunState) ([]CostSample, bool) {
 		if !boundTo(obj, rs) {
 			continue
 		}
-		costs, ok := groupCostsOf(obj)
+		costs, ok := boundGroupCosts(obj)
 		if !ok {
 			return nil, false
 		}
@@ -486,4 +488,11 @@ func groupCostEntry(item any) (GroupCostAttribution, bool) {
 	}
 	cost.EstUSD = num.String()
 	return cost, true
+}
+
+func boundGroupCosts(record map[string]any) ([]GroupCostAttribution, bool) {
+	if _, present, valid := spendpolicy.RecordProjection(record); present && !valid {
+		return nil, false
+	}
+	return groupCostsOf(record)
 }

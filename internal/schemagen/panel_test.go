@@ -13,10 +13,10 @@ func TestPanelReceiptSchema(t *testing.T) {
 		name, doc string
 		valid     bool
 	}{
-		{"valid", `{"schema_version":"1","head_sha":"head","results":[{"sig":"abc","model":"m","verdict":"refuted","evidence":"counterexample present"}]}`, true},
-		{"long evidence", `{"schema_version":"1","head_sha":"head","results":[{"sig":"abc","model":"m","verdict":"refuted","evidence":"` + strings.Repeat("x", 501) + `"}]}`, false},
-		{"missing evidence", `{"schema_version":"1","head_sha":"head","results":[{"sig":"abc","model":"m","verdict":"refuted"}]}`, false},
-		{"unknown verdict", `{"schema_version":"1","head_sha":"head","results":[{"sig":"abc","model":"m","verdict":"maybe","evidence":"counterexample present"}]}`, false},
+		{"valid", `{"schema_version":"2","head_sha":"head","results":[{"sig":"abc","model":"m","checker":"m","verdict":"refuted","evidence":"counterexample present"}]}`, true},
+		{"long evidence", `{"schema_version":"2","head_sha":"head","results":[{"sig":"abc","model":"m","checker":"m","verdict":"refuted","evidence":"` + strings.Repeat("x", 501) + `"}]}`, false},
+		{"missing evidence", `{"schema_version":"2","head_sha":"head","results":[{"sig":"abc","model":"m","checker":"m","verdict":"refuted"}]}`, false},
+		{"unknown verdict", `{"schema_version":"2","head_sha":"head","results":[{"sig":"abc","model":"m","checker":"m","verdict":"maybe","evidence":"counterexample present"}]}`, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

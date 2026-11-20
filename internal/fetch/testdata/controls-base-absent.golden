@@ -351,8 +351,8 @@ api-base-panel
 --- file C/.verdict/state/4701/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "1afb648487dfb6b93af5eb8b3ab3159e70b86d21918f912aeb42518a2770f337",
-  "prompts_hash": "7969e23171f7f90c981afa1d9e31fd12ab7e81841c49ad58c6525c802f342e24",
+  "run_id": "1db927680c9536d3517736ceaa1cf940ac2246662a3a1ba99398ded47136ce28",
+  "prompts_hash": "22ebb4a0eb60457cd0acc9ec52828b611473081b54842981cc37ed4a5528ed53",
   "panel": [
     "api-base-panel"
   ],
@@ -487,8 +487,8 @@ api-base-panel
       "kind": "prompt",
       "name": "prompts/verifier.md",
       "status": "included",
-      "sha256": "0f6e0c6f0fa613588824da7e19055439d1c428bcf6abb416b8ed4ce3d32b2697",
-      "bytes": 918
+      "sha256": "3901dfa42c8ce42a630c2ec24105ba54d8658d1b967d42bb5b4632c6de3a0763",
+      "bytes": 1204
     },
     {
       "kind": "prompt",

@@ -274,6 +274,7 @@
     "specCheck": {
       "type": "object",
       "properties": {
+        "finding_sig": { "type": "string" },
         "item": { "type": "string", "minLength": 1 },
         "status": { "enum": ["met", "violated", "n/a"] },
         "evidence": { "$ref": "#/$defs/specEvidence" }

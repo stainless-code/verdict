@@ -345,8 +345,8 @@ rather than becoming ground truth.
 --- file C/.verdict/state/4715/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "f0e81e377e4786940b4152944c7d300c34a70f8c21550b4d76cc2d8f98a23c3f",
-  "prompts_hash": "7969e23171f7f90c981afa1d9e31fd12ab7e81841c49ad58c6525c802f342e24",
+  "run_id": "ffe649a5a9869d0c834e7e4819e476b362dac27299edb5c5cad58a879e7e0ef1",
+  "prompts_hash": "22ebb4a0eb60457cd0acc9ec52828b611473081b54842981cc37ed4a5528ed53",
   "inputs": [
     {
       "kind": "prompt",
@@ -478,8 +478,8 @@ rather than becoming ground truth.
       "kind": "prompt",
       "name": "prompts/verifier.md",
       "status": "included",
-      "sha256": "0f6e0c6f0fa613588824da7e19055439d1c428bcf6abb416b8ed4ce3d32b2697",
-      "bytes": 918
+      "sha256": "3901dfa42c8ce42a630c2ec24105ba54d8658d1b967d42bb5b4632c6de3a0763",
+      "bytes": 1204
     },
     {
       "kind": "prompt",

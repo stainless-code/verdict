@@ -101,7 +101,7 @@ const (
 
 var (
 	knownReviewKeys = []string{
-		fieldSchemaVersion, problemFindings, problemSpecChecks, problemReceipts, problemSummary, suppressedKey,
+		"execution", fieldSchemaVersion, problemFindings, problemSpecChecks, problemReceipts, problemSummary, suppressedKey,
 		fieldResolved, fieldTriage, fieldChunks, fieldCoverage, fieldSecuritySummary, fieldRisk,
 	}
 	knownFindingKeys = []string{
@@ -258,8 +258,10 @@ func (c *checker) checkReview(obj *jq.Obj) {
 	for _, key := range obj.Keys {
 		v, _ := obj.Get(key)
 		switch key {
+		case "execution":
 		case fieldSchemaVersion:
-			c.checkSchemaVersion(v)
+			execution, _ := obj.Get("execution")
+			c.checkSchemaVersion(v, execution != nil)
 		case problemFindings:
 			c.checkFindings(v)
 		case problemSpecChecks:
@@ -309,13 +311,13 @@ func (c *checker) checkReview(obj *jq.Obj) {
 	}
 }
 
-func (c *checker) checkSchemaVersion(v any) {
+func (c *checker) checkSchemaVersion(v any, automatic bool) {
 	s, ok := v.(string)
 	if !ok {
 		c.wrongType(problemSchemaVersion, "schema_version must be the string \"1\"", "set \"schema_version\": \"1\"", schemaVersion1)
 		return
 	}
-	if s != schemaVersion1 {
+	if s != schemaVersion1 && (s != "2" || !automatic) {
 		c.badEnum(problemSchemaVersion, fmt.Sprintf("unknown schema_version %q", s),
 			"write the only supported version", schemaVersion1)
 	}
@@ -407,6 +409,8 @@ func (c *checker) checkSpecCheckFields(base string, m *jq.Obj) {
 		switch key {
 		case fieldItem:
 			c.checkFilled(base+pathDot+fieldItem, value, "quote the spec item")
+		case "finding_sig":
+			c.checkString(base+".finding_sig", value, false, "use the full union finding signature")
 		case fieldStatus:
 			c.checkEnum(base+pathDot+fieldStatus, value, specStatuses, "use met, violated or n/a")
 		case fieldEvidence:

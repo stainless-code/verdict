@@ -9,6 +9,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -63,7 +64,17 @@ func EligibleFindings(entries []any) []any {
 // standing the evidence pass stamps. A finding without the record, or with a
 // standing this build does not know, is not verified.
 func Verified(entry any) bool {
-	return QuoteStatus(entry) == quoteVerified
+	if QuoteStatus(entry) != quoteVerified {
+		return false
+	}
+	return CrossEligible(entry)
+}
+
+// CrossEligible preserves manual gates while enforcing automatic evidence.
+func CrossEligible(entry any) bool {
+	verification := readcommon.FieldOf(entry, "verification")
+	cross := readcommon.FieldOf(verification, "cross")
+	return cross == nil || (QuoteStatus(entry) == quoteVerified && panelcore.EligibleCross(cross))
 }
 
 // Evaluate derives approval from the visible, open findings, the configured
@@ -293,6 +304,17 @@ func appendUnique(dst []string, val string) []string {
 		return dst
 	}
 	return append(dst, val)
+}
+
+// UnbackedClauses retains insufficiency when compliance filters a candidate.
+func UnbackedClauses(comp *config.ReadCompliance, entries []any) bool {
+	backed := verifiedSigs(entries)
+	for i := range comp.Blockers {
+		if !backed[comp.Blockers[i].Finding.Sig] {
+			return true
+		}
+	}
+	return false
 }
 
 // Views adapts stored entries to the compliance evaluator's finding shape.

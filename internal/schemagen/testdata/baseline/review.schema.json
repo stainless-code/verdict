@@ -5,9 +5,12 @@
   "description": "What the agent writes: findings with code evidence, optional spec checks and receipts, and an optional summary. verdict derives approval from stored findings. The document is closed: an approved, body or comments[] key is not published, and a document without findings[] refuses. Errors: wrong schema_version, missing findings, finding path/line/severity/claim/quote/confidence shape or enum failures, malformed spec_checks or receipts, shape failures in the retained claim arrays, and any root key the schema does not publish. Warnings: an anchor outside the reviewed hunks (record moves the finding to the body), an unknown finding key, unset rigor, an unknown or non-string category, brief parts that fail validation, a malformed kb id, and unattested chunks; --strict/strict_input promotes every warning to a refusal.",
   "type": "object",
   "properties": {
+    "execution": {
+      "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/executionReference" }]
+    },
     "schema_version": {
-      "description": "Required literal \"1\". Any other value refuses; there is no shim.",
-      "const": "1"
+      "description": "Finder input uses version 1; execution-bound aggregate input uses version 2.",
+      "enum": ["1", "2"]
     },
     "findings": {
       "description": "Required array of findings. Each finding carries a path, strict integer line, severity, claim, quoted code, and finder confidence; the claim is stored as the finding body.",
@@ -61,6 +64,15 @@
   "required": ["schema_version", "findings"],
   "additionalProperties": false,
   "$defs": {
+    "executionReference": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "finders": { "type": "integer", "minimum": 2, "maximum": 2 }
+      },
+      "required": ["id", "finders"],
+      "additionalProperties": false
+    },
     "finding": {
       "type": "object",
       "properties": {
@@ -139,6 +151,7 @@
     "specCheck": {
       "type": "object",
       "properties": {
+        "finding_sig": { "type": "string" },
         "item": { "type": "string", "minLength": 1 },
         "status": {
           "description": "met, violated or n/a; only violated withholds approval in S1.",

@@ -25,18 +25,19 @@ const (
 // Review is schemas/review.schema.json: the agent-written findings-only
 // review input. Verdict renders the body and derives approval.
 type Review struct { //nolint:govet // field order is the published property order
-	SchemaVersion   string          `const:"1"                         json:"schema_version"`
-	Findings        []Finding       `json:"findings"`
-	SpecChecks      []SpecCheck     `json:"spec_checks,omitempty"`
-	Receipts        []Receipt       `json:"receipts,omitempty"`
-	Summary         string          `json:"summary,omitempty"          maxLength:"2000"`
-	Resolved        []string        `json:"resolved,omitempty"`
-	Triage          []TriageClaim   `json:"triage,omitempty"`
-	Coverage        []CoverageClaim `json:"coverage,omitempty"`
-	Chunks          []string        `json:"chunks,omitempty"`
-	Suppressed      []Suppression   `json:"suppressed,omitempty"`
-	Risk            *RiskClaim      `anyOf:"null"                      json:"risk,omitempty" optional:"true"`
-	SecuritySummary *string         `json:"security_summary,omitempty"`
+	Execution       *ExecutionReference `anyOf:"null"                      json:"execution,omitempty"`
+	SchemaVersion   string              `enum:"1|2"                        json:"schema_version"`
+	Findings        []Finding           `json:"findings"`
+	SpecChecks      []SpecCheck         `json:"spec_checks,omitempty"`
+	Receipts        []Receipt           `json:"receipts,omitempty"`
+	Summary         string              `json:"summary,omitempty"          maxLength:"2000"`
+	Resolved        []string            `json:"resolved,omitempty"`
+	Triage          []TriageClaim       `json:"triage,omitempty"`
+	Coverage        []CoverageClaim     `json:"coverage,omitempty"`
+	Chunks          []string            `json:"chunks,omitempty"`
+	Suppressed      []Suppression       `json:"suppressed,omitempty"`
+	Risk            *RiskClaim          `anyOf:"null"                      json:"risk,omitempty"      optional:"true"`
+	SecuritySummary *string             `json:"security_summary,omitempty"`
 }
 
 // Finding is one agent claim with the code evidence verdict can check. The
@@ -61,9 +62,10 @@ type Finding struct {
 
 // SpecCheck is one quoted specification item and its code evidence.
 type SpecCheck struct {
-	Item     string       `json:"item"             minLength:"1"`
-	Status   string       `enum:"met|violated|n/a" json:"status"`
-	Evidence SpecEvidence `json:"evidence"`
+	FindingSig string       `json:"finding_sig,omitempty"`
+	Item       string       `json:"item"                  minLength:"1"`
+	Status     string       `enum:"met|violated|n/a"      json:"status"`
+	Evidence   SpecEvidence `json:"evidence"`
 }
 
 // SpecEvidence is the code location quoted for one spec check.
@@ -159,8 +161,9 @@ type FindingEntry struct { //nolint:govet // field order is the published proper
 // evidence pass; a stored verification without one reads unverified, never a
 // silent pass. Panel keeps model verification.
 type Verify struct {
-	Quote string         `enum:"unchecked|verified|unverified" json:"quote"`
-	Panel []Verification `json:"panel,omitempty"`
+	Cross *CrossVerification `anyOf:"null"                         json:"cross,omitempty"`
+	Quote string             `enum:"unchecked|verified|unverified" json:"quote"`
+	Panel []Verification     `json:"panel,omitempty"`
 }
 
 // ApprovalReceipt is the verdict-computed approval decision recorded by
@@ -962,4 +965,26 @@ type Withheld struct {
 	Reason      string `json:"reason"`
 	ExclusionID string `json:"exclusion_id,omitempty"`
 	At          string `json:"at"`
+}
+
+// ExecutionReference prevents automatic work from downgrading to manual.
+type ExecutionReference struct {
+	ID      string `json:"id"      minLength:"1"`
+	Finders int    `json:"finders" max:"2"       min:"2"`
+}
+
+// CrossVerification prevents a quote stamp from replacing assigned checks.
+type CrossVerification struct {
+	ExecutionID string       `json:"execution_id"`
+	Status      string       `enum:"confirmed|pending" json:"status"`
+	Expected    []string     `json:"expected"`
+	Checks      []CrossCheck `json:"checks"`
+}
+
+// CrossCheck keeps quote standing separate from the checker's opinion.
+type CrossCheck struct {
+	Checker     string `json:"checker"`
+	Verdict     string `enum:"confirmed|refuted|insufficient" json:"verdict"`
+	QuoteStatus string `enum:"verified|unverified"            json:"quote_status"`
+	Evidence    string `json:"evidence"`
 }

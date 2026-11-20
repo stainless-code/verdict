@@ -4,15 +4,16 @@ package panelcore
 // contract.
 type PlanDocument struct { //nolint:govet // schema property order follows the plan document
 
-	SchemaVersion string     `const:"1"           json:"schema_version"`
-	HeadSHA       string     `json:"head_sha"`
-	GeneratedAt   string     `json:"generated_at"`
-	PanelSource   string     `json:"panel_source"`
-	Verifiers     []Verifier `json:"verifiers"`
-	Findings      []Finding  `json:"findings"`
-	SecondLook    []string   `json:"second_look"`
-	Dispatch      string     `json:"dispatch"`
-	Totals        Totals     `json:"totals"`
+	Checks        []DirectedCheck `json:"checks,omitempty"`
+	SchemaVersion string          `const:"1"               json:"schema_version"`
+	HeadSHA       string          `json:"head_sha"`
+	GeneratedAt   string          `json:"generated_at"`
+	PanelSource   string          `json:"panel_source"`
+	Verifiers     []Verifier      `json:"verifiers"`
+	Findings      []Finding       `json:"findings"`
+	SecondLook    []string        `json:"second_look"`
+	Dispatch      string          `json:"dispatch"`
+	Totals        Totals          `json:"totals"`
 }
 
 // Verifier is one roster member after the synthesizer.
@@ -35,4 +36,11 @@ type Totals struct {
 	Findings   int `json:"findings"   max:"100" min:"0"`
 	Verifiers  int `json:"verifiers"  max:"4"   min:"1"`
 	Dispatches int `json:"dispatches" max:"400" min:"0"`
+}
+
+// DirectedCheck is assigned by the coordinator before a checker sees a claim.
+type DirectedCheck struct {
+	Sig     string `json:"sig"`
+	Origin  string `enum:"finder-1|finder-2" json:"origin"`
+	Checker string `enum:"finder-1|finder-2" json:"checker"`
 }

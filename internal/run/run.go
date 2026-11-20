@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/agentcatalog"
@@ -27,6 +28,7 @@ import (
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	runcore "github.com/stainless-code/verdict/internal/core/run"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/spend"
 )
 
 // Request carries the resolved run invocation.
@@ -56,7 +58,8 @@ const (
 )
 
 // verbsWanted is the flag list the unknown-flag usage error names.
-const verbsWanted = "--agent <name>, --recipe <slug>, --stage <n>, --timeout <secs>, --rounds <n>, --print, -- <agent args>, --json"
+const verbsWanted = "--agent <name>, --recipe <slug>, --stage <n>, --timeout <secs>, --rounds <n>, " +
+	"--consent-over-budget, --print, -- <agent args>, --json"
 
 // Run executes `run <owner/repo> <pr|local-name> --agent <name> [--recipe
 // <slug>] [--stage <n>] [--timeout <secs>] [--rounds <n>] [--print] [--
@@ -73,11 +76,13 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if code, done := r.Canceled(ctx, "run"); done {
 		return code
 	}
-	agents, ref := personalAgents(req.Env)
+	agents, policy, ref := personalAgents(req.Env)
 	if ref != nil {
 		return refuse(r, nil, &core.RefusalError{Code: ref.Code, Message: ref.Message})
 	}
-	resp, ref := runcore.WithAgents(ctx, runRequest(r, req, &flags), agents)
+	request := runRequest(r, req, &flags)
+	request.SpendPolicy = policy
+	resp, ref := runcore.WithAgents(ctx, request, agents)
 	if ref != nil {
 		addPermissionHint(ref, req, &flags)
 		return refuse(r, resp, ref)
@@ -97,12 +102,12 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // personalAgents reads operator-defined agents from the prefs file only. A
 // repository config can never define one: the typed repo parser refuses the
 // key, and this read addresses only the XDG/HOME settings path.
-func personalAgents(env map[string]string) ([]config.PersonalAgent, *core.RefusalError) {
+func personalAgents(env map[string]string) ([]config.PersonalAgent, *spend.Policy, *core.RefusalError) {
 	prefs, ref := config.LoadPersonal(config.SettingsPath(env["HOME"], env["XDG_CONFIG_HOME"]))
 	if ref != nil {
-		return nil, ref
+		return nil, nil, ref
 	}
-	return prefs.Agents, nil
+	return prefs.Agents, personalPolicy(prefs.Spend), nil
 }
 
 // refuse renders a run refusal, preserving the agent's own exit code when the
@@ -123,17 +128,18 @@ func runRequest(r *cli.Runner, req Request, flags *flags) *core.RunRequest {
 	return &core.RunRequest{
 		Runtime: r.Read(core.ReadRequest{Runtime: &core.Runtime{Env: req.Env}}, coreexec.Watchdog{}).Runtime,
 		Repo:    req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
-		LookPath:    exec.LookPath,
-		PassThrough: flags.pass,
-		Environ:     os.Environ(),
-		Agent:       flags.agent,
-		Recipe:      flags.recipe,
-		StageRaw:    flags.stage,
-		TimeoutRaw:  flags.timeout,
-		RoundsRaw:   requestedRounds(flags),
-		Print:       flags.print,
-		JSONMode:    r.JSONMode,
-		Warnings:    append([]string{}, r.Warnings...),
+		LookPath:          exec.LookPath,
+		PassThrough:       flags.pass,
+		Environ:           os.Environ(),
+		Agent:             flags.agent,
+		Recipe:            flags.recipe,
+		StageRaw:          flags.stage,
+		TimeoutRaw:        flags.timeout,
+		RoundsRaw:         requestedRounds(flags),
+		Print:             flags.print,
+		ConsentOverBudget: flags.consent,
+		JSONMode:          r.JSONMode,
+		Warnings:          append([]string{}, r.Warnings...),
 	}
 }
 
@@ -159,6 +165,7 @@ type flags struct {
 	timeout   string
 	rounds    string
 	pass      []string
+	consent   bool
 	print     bool
 	roundsSet bool
 }
@@ -193,6 +200,9 @@ func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) 
 		return parseStageFlag(r, f, args, i)
 	case "--timeout", roundsFlag:
 		return parseCountedFlag(r, f, args, i)
+	case "--consent-over-budget":
+		f.consent = true
+		return i, 0, false
 	case "--print":
 		f.print = true
 		return i, 0, false
@@ -263,6 +273,9 @@ func parseCountedFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, 
 // the operator used.
 func rentry(req Request, f *flags, jsonMode bool) string {
 	s := "verdict run " + req.Repo + " " + req.Pr + flagTail(f)
+	if f.consent {
+		s += " --consent-over-budget"
+	}
 	if jsonMode {
 		s += " --json"
 	}
@@ -331,4 +344,17 @@ func addPermissionHint(ref *core.RefusalError, req Request, f *flags) {
 	}
 	command := RenderCommand([]string{"verdict", "run", req.Repo, req.Pr, "--agent", f.agent})
 	ref.Message += "\nre-run with: " + command + " -- " + row.Launch.PermissionHint
+}
+
+const personalFloatBits = 64
+
+func personalPolicy(settings config.PersonalSpend) *spend.Policy {
+	if (settings == config.PersonalSpend{}) {
+		return nil
+	}
+	policy := &spend.Policy{RequireKnown: settings.RequireKnownEstimate, EnforceCap: settings.EnforceCap}
+	if settings.BudgetUSD != nil {
+		policy.Personal = strconv.FormatFloat(*settings.BudgetUSD, 'f', -1, personalFloatBits)
+	}
+	return policy
 }

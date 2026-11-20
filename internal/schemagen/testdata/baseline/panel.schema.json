@@ -2,10 +2,14 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/panel.schema.json",
   "title": "verification/verdicts.json — independent verifier receipts",
-  "description": "Invoker-written verification/verdicts.json: head-bound independent opinions. Duplicate (sig, model) and unknown or ambiguous signatures are refused by the runtime; a refutation never deletes a finding.",
+  "description": "Invoker-written verification/verdicts.json: head-bound independent opinions. Duplicate (sig, checker) and unknown or ambiguous signatures are refused by the runtime; a refutation never deletes a finding.",
   "type": "object",
   "properties": {
-    "schema_version": { "const": "1" },
+    "execution_id": { "type": "string" },
+    "diff_sha256": { "type": "string" },
+    "review_sha256": { "type": "string" },
+    "plan_sha256": { "type": "string" },
+    "schema_version": { "const": "2" },
     "head_sha": { "type": "string", "minLength": 1 },
     "results": {
       "type": "array",
@@ -18,15 +22,30 @@
     "result": {
       "type": "object",
       "properties": {
+        "checker": { "type": "string", "minLength": 1 },
+        "quote": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/codeQuote" }]
+        },
         "sig": { "type": "string", "minLength": 1 },
-        "model": { "type": "string", "minLength": 1 },
+        "model": { "type": "string" },
         "provider": { "type": "string" },
         "verdict": { "enum": ["confirmed", "refuted", "insufficient"] },
         "evidence": { "type": "string", "maxLength": 500, "minLength": 10 },
         "at": { "type": "string" }
       },
-      "required": ["sig", "model", "verdict", "evidence"],
+      "required": ["checker", "sig", "verdict", "evidence"],
       "additionalProperties": true
+    },
+    "codeQuote": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "side": { "enum": ["LEFT", "RIGHT"] },
+        "text": { "type": "string" },
+        "line": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["path", "side", "text", "line"],
+      "additionalProperties": false
     }
   }
 }

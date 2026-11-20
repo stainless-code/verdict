@@ -4,6 +4,7 @@
 package storelock
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -38,12 +39,33 @@ func LockPath(store string) string { return store + LockSuffix }
 // process exits, however it exits, so a crashed writer leaves no stale lock to
 // break and a paused one keeps the bytes it is writing.
 func Acquire(store string, wait time.Duration) (func(), error) {
+	return acquire(store, wait, func() error {
+		time.Sleep(pollInterval)
+		return nil
+	})
+}
+
+// AcquireContext takes the same lock and stops waiting when ctx is canceled.
+func AcquireContext(ctx context.Context, store string, wait time.Duration) (func(), error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	return acquire(store, wait, func() error {
+		select {
+		case <-ctx.Done():
+		case <-time.After(pollInterval):
+		}
+		return ctx.Err()
+	})
+}
+
+func acquire(store string, wait time.Duration, pause func() error) (func(), error) {
 	file := LockPath(store)
 	f, err := os.OpenFile(file, os.O_CREATE|os.O_RDWR, lockMode)
 	if err != nil {
 		return nil, fmt.Errorf("store lock %s: %w", file, err) //nolint:wrapcheck // the file names the lock
 	}
-	if err := awaitLock(f, time.Now().Add(wait)); err != nil {
+	if err := awaitLock(f, time.Now().Add(wait), pause); err != nil {
 		_ = f.Close()
 		return nil, err
 	}
@@ -52,18 +74,16 @@ func Acquire(store string, wait time.Duration) (func(), error) {
 
 // awaitLock polls the kernel for the lock until deadline, refusing [ErrBusy]
 // while another writer holds it.
-func awaitLock(f *os.File, deadline time.Time) error {
-	for {
+func awaitLock(f *os.File, deadline time.Time, pause func() error) error {
+	var waitErr error
+	for ; waitErr == nil; waitErr = pause() {
 		held, err := tryLock(f)
-		if err != nil {
+		if held || err != nil {
 			return err
-		}
-		if held {
-			return nil
 		}
 		if !time.Now().Before(deadline) {
 			return ErrBusy //nolint:wrapcheck // the package's own sentinel
 		}
-		time.Sleep(pollInterval)
 	}
+	return waitErr
 }

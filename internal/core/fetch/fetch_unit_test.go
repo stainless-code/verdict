@@ -195,7 +195,7 @@ func TestEstimateObjectBasis(t *testing.T) {
 			t.Fatalf("self-reported estimate carries %q", key)
 		}
 	}
-	st.recordBasis(tierStat{measured: 2, priced: 2, harness: []string{"claude-code"}})
+	st.recordBasis(&tierStat{measured: 2, priced: 2, harness: []string{"claude-code"}})
 	obj = estimateObject(st, "standard")
 	if got, _ := obj.Get("basis"); got != "measured" {
 		t.Fatalf("basis = %v, want measured", got)
@@ -213,7 +213,7 @@ func TestEstimateObjectBasis(t *testing.T) {
 func TestRecordBasisMixed(t *testing.T) {
 	t.Parallel()
 	st := &budgetState{}
-	st.recordBasis(tierStat{measured: 1, priced: 2, harness: []string{"opencode"}})
+	st.recordBasis(&tierStat{measured: 1, priced: 2, harness: []string{"opencode"}})
 	if st.estBasis != "mixed" {
 		t.Fatalf("partial basis = %q, want mixed", st.estBasis)
 	}

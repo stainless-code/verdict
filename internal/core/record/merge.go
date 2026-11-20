@@ -259,7 +259,8 @@ func checkReviewSchema(review *jq.Obj) error {
 		return nil
 	}
 	rv, has := review.Get("schema_version")
-	if !has || rv == nil || jq.R(rv) != schemaVersion1 {
+	execution, _ := review.Get("execution")
+	if !has || rv == nil || (rv != schemaVersion1 && (rv != "2" || execution == nil)) {
 		return &core.RefusalError{Code: codeBadReviewSchema, Message: fmt.Sprintf(msgBadSchema, jq.R(rv))}
 	}
 	findings, has := review.Get("findings")
@@ -693,10 +694,10 @@ func optString(v any) *string {
 }
 
 func stampEntry(st *state, e *core.FindingEntry, kbRaw any, kbExists bool) *core.FindingEntry {
-	key := sigKeyPart(e.Path) + newline + sigKeyPart(e.Heading) + newline + sigBody(e.Body)
+	key := sig.Finding(sigKeyPart(e.Path), sigKeyPart(e.Heading), sigBody(e.Body))
 	norm := st.kb.NormalizeEntry(jq.NewObj(fieldKB, kbRaw), kbExists)
 	e.KB = kbStrings(norm)
-	e.Sig = sig.Of(key)
+	e.Sig = key
 	e.SigVersion = sigVersion1
 	e.FirstSeen = st.headShort
 	e.LastSeen = st.headShort

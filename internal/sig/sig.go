@@ -81,3 +81,8 @@ func trimSpaces(s string) string {
 	}
 	return s[start:end]
 }
+
+// Finding derives an identity after the caller has prepared the stored claim.
+func Finding(path, heading, body string) string {
+	return Of(path + "\n" + heading + "\n" + body)
+}

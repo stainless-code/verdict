@@ -148,6 +148,14 @@ func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.
 // the stage a render covers, the bundle and its review path, the exact argv,
 // and the agent binary on PATH.
 func (st *state) argsFor(def *agentcatalog.Launch, dir string, timeout int) (*launchArgs, *core.RefusalError) {
+	return st.argsForTarget(def, timeout, launchTarget{
+		evidence: dir, output: dir,
+		artifact: st.artifactName(), checker: repair.Check,
+	})
+}
+
+func (st *state) argsForTarget(def *agentcatalog.Launch, timeout int, target launchTarget) (*launchArgs, *core.RefusalError) {
+	dir := target.evidence
 	plan, ref := st.pipeline(dir)
 	if ref != nil {
 		return nil, ref
@@ -158,12 +166,13 @@ func (st *state) argsFor(def *agentcatalog.Launch, dir string, timeout int) (*la
 	}
 	args := &launchArgs{
 		def:      *def,
-		dir:      dir,
+		target:   target,
+		dir:      target.output,
 		plan:     plan,
 		staged:   at,
 		bundle:   readcommon.DisplayPath(st.req.RepoRootPath(), dir),
-		artifact: readcommon.DisplayPath(st.req.RepoRootPath(), filepath.Join(dir, st.artifactName())),
-		abs:      filepath.Join(dir, st.artifactName()),
+		artifact: readcommon.DisplayPath(st.req.RepoRootPath(), filepath.Join(target.output, target.artifact)),
+		abs:      filepath.Join(target.output, target.artifact),
 		timeout:  timeout,
 	}
 	bin, ref := st.resolve(&args.def)
@@ -171,7 +180,13 @@ func (st *state) argsFor(def *agentcatalog.Launch, dir string, timeout int) (*la
 		return nil, ref
 	}
 	args.bin = bin
-	st.compose(args, st.req, st.promptBundle(dir), st.promptArtifact(dir), readcommon.IsLocalBundleDir(dir))
+	artifact := st.promptPath(args.abs, args.artifact)
+	st.compose(args, st.req, st.promptBundle(dir), artifact, readcommon.IsLocalBundleDir(dir))
+	if target.procedure != "" {
+		procedure := st.promptPath(target.procedure, readcommon.DisplayPath(st.req.RepoRootPath(), target.procedure))
+		args.prompt = strings.ReplaceAll(args.prompt, st.promptBundle(dir)+"/procedure.md", procedure)
+	}
+	args.argv = argvFor(&args.def, args.model(), st.req.PassThrough, args.prompt)
 	return args, nil
 }
 
@@ -179,7 +194,11 @@ func (st *state) argsFor(def *agentcatalog.Launch, dir string, timeout int) (*la
 // whole-pipeline directive, or the one stage --stage asked to render, whose
 // declared model hint becomes the agent's model argument.
 func (st *state) compose(a *launchArgs, req *core.RunRequest, bundle, artifact string, local bool) {
-	hasContext := contextInBundle(a.dir)
+	evidenceDir := a.target.evidence
+	if evidenceDir == "" {
+		evidenceDir = a.dir
+	}
+	hasContext := contextInBundle(evidenceDir)
 	switch {
 	case st.drainDigest != "":
 		a.prompt = drainDirective(req.Repo, req.Pr, bundle, artifact, st.drainDigest)
@@ -273,12 +292,6 @@ func (st *state) promptBundle(dir string) string {
 	return st.promptPath(dir, readcommon.DisplayPath(st.req.RepoRootPath(), dir))
 }
 
-// promptArtifact is the review path the directive names, resolved the same way.
-func (st *state) promptArtifact(dir string) string {
-	path := filepath.Join(dir, st.artifactName())
-	return st.promptPath(path, readcommon.DisplayPath(st.req.RepoRootPath(), path))
-}
-
 // promptPath keeps the display path for a launch in the repository root. A
 // launch from another checkout names the path absolutely, because the bundle
 // lives under the repository root, outside that checkout.
@@ -302,14 +315,26 @@ func (st *state) invoke(ctx context.Context, args *launchArgs, rounds int) (*cor
 		}
 		return st.printed(args), nil
 	}
-	if ref := st.probe(ctx, args); ref != nil {
+	if ref := st.prepareLaunch(ctx, args, rounds); ref != nil {
 		return nil, ref
 	}
+
 	st.warnLaunch(&args.def)
 	if st.roundLoop(rounds) {
 		return st.repairLoop(ctx, args, rounds)
 	}
 	return st.launch(ctx, args)
+}
+
+func (st *state) prepareLaunch(ctx context.Context, args *launchArgs, rounds int) *core.RefusalError {
+	ref := st.authorizeSpend(ctx, args.target.evidence, rounds)
+	if ctx.Err() != nil {
+		return st.refuse(codeCanceled, msgCanceled)
+	}
+	if ref != nil {
+		return ref
+	}
+	return st.probe(ctx, args)
 }
 
 func (st *state) warnLaunch(def *agentcatalog.Launch) {
@@ -411,10 +436,19 @@ type state struct {
 	defs        []config.PersonalAgent
 }
 
+type launchTarget struct {
+	checker   func(string, []byte) (recordcore.CheckResult, *core.RefusalError)
+	evidence  string
+	output    string
+	procedure string
+	artifact  string
+}
+
 // launchArgs is the resolved invocation one launch works from: the definition,
 // the declared pipeline, the one stage a render covers (nil otherwise), the
 // bundle and its review path, the timeout, and the exact argv.
 type launchArgs struct {
+	target   launchTarget
 	def      agentcatalog.Launch
 	bin      string
 	probe    *launcherProbe
@@ -806,7 +840,7 @@ func (st *state) reviewShapeRefusal(args *launchArgs, res *core.Result) *core.Re
 	if readRef != nil {
 		return readRef
 	}
-	check, checkRef := repair.Check(args.dir, review)
+	check, checkRef := args.checkReview(review)
 	if checkRef != nil {
 		return checkRef
 	}
@@ -998,4 +1032,15 @@ func inspectArtifact(path string, launched time.Time) artifactState {
 	art.size = info.Size()
 	art.fresh = art.regular && !art.mtime.Before(launched)
 	return art
+}
+
+func (a *launchArgs) checkReview(review []byte) (recordcore.CheckResult, *core.RefusalError) {
+	if a.target.checker != nil {
+		return a.target.checker(a.target.evidence, review)
+	}
+	dir := a.target.evidence
+	if dir == "" {
+		dir = a.dir
+	}
+	return repair.Check(dir, review)
 }

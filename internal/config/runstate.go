@@ -28,20 +28,21 @@ import (
 // fetch: readers enforce the binding, while older artifacts without it
 // report unavailable provenance instead of claiming verified policy.
 type RunState struct {
-	Resolved         *Resolved          `json:"resolved"`
-	SchemaVersion    string             `json:"schema_version"`
-	Name             string             `json:"name"`
-	BaseSHA          string             `json:"base_sha"`
-	CapturedAt       string             `json:"captured_at"`
-	ConfigSHA256     string             `json:"config_sha256"`
-	InputsSHA256     string             `json:"inputs_sha256,omitempty"`
-	Inventory        map[string]string  `json:"inventory,omitempty"`
-	Evidence         Evidence           `json:"evidence"`
-	Outcomes         []CheckObservation `json:"outcomes,omitempty"`
-	Trigger          *TriggerDecision   `json:"trigger,omitempty"`
-	Root             RequirementSet     `json:"root"`
-	Trusted          bool               `json:"trusted"`
-	RequiresEvidence bool               `json:"requires_evidence,omitempty"`
+	Execution        *core.ExecutionReference `anyOf:"null"                       json:"execution,omitempty"`
+	Resolved         *Resolved                `json:"resolved"`
+	SchemaVersion    string                   `json:"schema_version"`
+	Name             string                   `json:"name"`
+	BaseSHA          string                   `json:"base_sha"`
+	CapturedAt       string                   `json:"captured_at"`
+	ConfigSHA256     string                   `json:"config_sha256"`
+	InputsSHA256     string                   `json:"inputs_sha256,omitempty"`
+	Inventory        map[string]string        `json:"inventory,omitempty"`
+	Evidence         Evidence                 `json:"evidence"`
+	Outcomes         []CheckObservation       `json:"outcomes,omitempty"`
+	Trigger          *TriggerDecision         `json:"trigger,omitempty"`
+	Root             RequirementSet           `json:"root"`
+	Trusted          bool                     `json:"trusted"`
+	RequiresEvidence bool                     `json:"requires_evidence,omitempty"`
 }
 
 // TriggerDecision is the recorded local trigger outcome: whether the PR

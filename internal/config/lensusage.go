@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/spend"
 )
 
 // LensUsage is the evaluated, group-attributed lens evidence from one run
@@ -307,7 +308,7 @@ var lensRecordKeysByVersion = map[string]map[string]bool{
 	lensSchemaVersion: {
 		"schema_version": true, "effort": true, "models": true, "est_usd": true,
 		"wall_seconds": true, "diff_bytes": true, "lenses": true,
-		"run": true, "inputs_sha256": true, "group_costs": true,
+		"run": true, "inputs_sha256": true, "group_costs": true, "execution_id": true, "phases": true,
 	},
 }
 
@@ -469,7 +470,7 @@ func bindable(rs *RunState) bool {
 // hash, whatever version it declares: a newer writer's evidence is still this
 // run's evidence, refused by version rather than reported as missing.
 func bindsCapture(record map[string]any, rs *RunState) bool {
-	return recordString(record, "run") == rs.Name &&
+	return phaseCaptureMatches(record, rs) && recordString(record, "run") == rs.Name &&
 		recordString(record, "inputs_sha256") == rs.InputsSHA256
 }
 
@@ -538,6 +539,10 @@ func lensRecordEntries(record map[string]any, version string) (entries []core.Le
 	if field, found := unregisteredField(record, keys); found {
 		return nil, false, false, unregisteredFieldProblem(version, field)
 	}
+	if _, present, valid := spend.RecordProjection(record); present && !valid {
+		return nil, true, false, "invalid phase usage"
+	}
+
 	return lensListEntries(record)
 }
 
@@ -640,4 +645,9 @@ func readCostFile(path string) ([]byte, string) {
 		return nil, LensUsageMalformed
 	}
 	return raw, ""
+}
+
+func phaseCaptureMatches(record map[string]any, rs *RunState) bool {
+	id := recordString(record, "execution_id")
+	return id == "" || (rs.Execution != nil && id == rs.Execution.ID)
 }

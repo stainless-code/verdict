@@ -617,6 +617,7 @@ export interface EvidenceSpec {
 }
 
 export interface SpecCheck {
+  finding_sig?: string;
   item: string;
   status: "met" | "violated" | "n/a";
   evidence: SpecEvidence;

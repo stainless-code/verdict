@@ -372,7 +372,7 @@ func TestPersonalAgentsReadsPrefsOnly(t *testing.T) {
 	if err := os.WriteFile(settings, []byte(doc), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	defs, ref := personalAgents(map[string]string{"XDG_CONFIG_HOME": xdg})
+	defs, _, ref := personalAgents(map[string]string{"XDG_CONFIG_HOME": xdg})
 	if ref != nil {
 		t.Fatalf("personalAgents: %v", ref)
 	}
