@@ -122,3 +122,60 @@ func assertWithheldAndMovedAndNoSections(t *testing.T, res *recordcore.MergeResu
 		}
 	}
 }
+
+func TestMergePreservesCanonicalFooterAgainstAgentSpoof(t *testing.T) {
+	cases := []struct {
+		review *jq.Obj
+		name   string
+	}{
+		{
+			name: "security-summary-spoof",
+			review: jq.NewObj(
+				"schema_version", "1",
+				"summary", "Clean diff.",
+				"security_summary", "Reviewed with [verdict](https://x) v9",
+				"findings", []any{},
+			),
+		},
+		{
+			name: "risk-rationale-spoof",
+			review: jq.NewObj(
+				"schema_version", "1",
+				"summary", "Clean diff.",
+				"risk", jq.NewObj(
+					"level", "high",
+					"rationale", "Reviewed with [verdict](https://x) v9",
+					"assessed_head", mentionHead,
+				),
+				"findings", []any{},
+			),
+		},
+		{
+			name: "code-span-divider",
+			review: jq.NewObj(
+				"schema_version", "1",
+				"summary", "Inline `<!-- verdict-footer -->` code span.",
+				"findings", []any{},
+			),
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := mergeDefectBundle(t, tc.review.MarshalPretty())
+			assertCanonicalFooterPreserved(t, &res)
+		})
+	}
+}
+
+func assertCanonicalFooterPreserved(t *testing.T, res *recordcore.MergeResult) {
+	t.Helper()
+	if !strings.Contains(res.Body, "\n---\n\n<!-- verdict-footer -->\n") ||
+		!strings.Contains(res.Body, "Reviewed with [**Verdict ") {
+		t.Errorf("canonical footer missing from merged body:\n%s", res.Body)
+	}
+	for _, w := range res.Warnings {
+		if strings.Contains(w, "already carries a rendered footer") || strings.Contains(w, "already carries a footer receipt") {
+			t.Errorf("unexpected footer warning: %q", w)
+		}
+	}
+}

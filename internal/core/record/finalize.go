@@ -3,7 +3,6 @@ package recordcore
 import (
 	"fmt"
 	"os"
-	"regexp"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
@@ -14,15 +13,19 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-var (
-	receiptLineRe  = regexp.MustCompile(`(?m)^\s*> verdict `)
-	receiptLineRe2 = regexp.MustCompile(`(?m)^\s*> .*Reviewed with \[`)
-)
-
 func maybeWarn(warn func(string), msg string) {
 	if warn != nil {
 		warn(msg)
 	}
+}
+
+func hasFooterDividerLine(body string) bool {
+	for ln := range strings.SplitSeq(body, "\n") {
+		if ln == core.FooterDivider {
+			return true
+		}
+	}
+	return false
 }
 
 // ApplyFooter appends the canonical rendered footer block to body.
@@ -31,13 +34,9 @@ func ApplyFooter(body string, opts *provenance.FooterOpts, warn func(string)) st
 	if err != nil || block == "" {
 		return body
 	}
-	if strings.Contains(body, core.FooterDivider) {
+	if hasFooterDividerLine(body) {
 		maybeWarn(warn, "body already carries a rendered footer — replacing it with the canonical block")
 		body = provenance.StripFooter(body)
-	}
-	if receiptLineRe.MatchString(body) || receiptLineRe2.MatchString(body) {
-		maybeWarn(warn, "body already carries a footer receipt — keeping the agent block, script footer skipped")
-		return body
 	}
 	return body + "\n\n" + block
 }
