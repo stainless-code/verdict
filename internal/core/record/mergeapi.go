@@ -258,9 +258,11 @@ func mergeRenderFinding(raw *jq.Obj, sig string, bySig map[string]*jq.Obj) *jq.O
 	base := raw.Clone()
 	if settled, ok := bySig[sig]; ok {
 		base = settled.Clone()
-		for _, k := range []string{fieldStartLine, fieldDropReason} {
+		for _, k := range []string{fieldLine, fieldSide, fieldAnchored, fieldStartLine, fieldDropReason} {
 			if v, has := raw.Get(k); has && v != nil {
 				base.Set(k, v)
+			} else {
+				base.Delete(k)
 			}
 		}
 	}
