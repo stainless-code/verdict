@@ -37,7 +37,7 @@ func NeutralizeMentions(body string) string {
 		return body
 	}
 	chunks := strings.Split(body, "\n")
-	scan := mentionScan{lines: chunks}
+	scan := mentionScan{lines: chunks, lastCommentClose: strings.LastIndex(body, commentClose)}
 	var out strings.Builder
 	out.Grow(len(body))
 	for i, chunk := range chunks {
@@ -46,6 +46,7 @@ func NeutralizeMentions(body string) string {
 		}
 		scan.lineIdx = i
 		out.WriteString(scan.rewriteChunk(chunk))
+		scan.lineOffset += len(chunk) + 1
 	}
 	return out.String()
 }
@@ -66,12 +67,14 @@ func cutCR(text string) (line, cr string) {
 }
 
 type mentionScan struct {
-	lines    []string
-	lineIdx  int
-	fenceLen int
-	code     int
-	fence    byte
-	comment  bool
+	lastCommentClose int
+	lineOffset       int
+	lines            []string
+	lineIdx          int
+	fenceLen         int
+	code             int
+	fence            byte
+	comment          bool
 }
 
 func (s *mentionScan) line(line string) string {
@@ -125,19 +128,11 @@ func (s *mentionScan) prose(line string) string {
 func (s *mentionScan) opensComment(line string, i int) bool {
 	return strings.HasPrefix(line[i:], commentOpen) &&
 		!isEscaped(line, i) &&
-		s.hasCommentClose(line[i+len(commentOpen):])
+		s.hasCommentClose(i+len(commentOpen))
 }
 
-func (s *mentionScan) hasCommentClose(rest string) bool {
-	if strings.Contains(rest, commentClose) {
-		return true
-	}
-	for k := s.lineIdx + 1; k < len(s.lines); k++ {
-		if strings.Contains(s.lines[k], commentClose) {
-			return true
-		}
-	}
-	return false
+func (s *mentionScan) hasCommentClose(from int) bool {
+	return s.lastCommentClose >= s.lineOffset+from
 }
 
 func (s *mentionScan) copyComment(out *strings.Builder, line string, i int) int {

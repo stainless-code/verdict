@@ -1,6 +1,10 @@
 package untrusted
 
 import (
+	"go/ast"
+	"go/parser"
+	"go/token"
+	"os"
 	"strings"
 	"testing"
 )
@@ -265,5 +269,36 @@ func TestNeutralizeMentionsLeavesTheBodyLength(t *testing.T) {
 	}
 	if strings.Count(got, zeroWidthSpace) != 2 {
 		t.Errorf("zero-width spaces = %d, want 2 in %q", strings.Count(got, zeroWidthSpace), got)
+	}
+}
+
+func TestCommentCloseLookupHasNoLoop(t *testing.T) {
+	data, err := os.ReadFile("mentions.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	f, err := parser.ParseFile(token.NewFileSet(), "mentions.go", data, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, decl := range f.Decls {
+		fn, ok := decl.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "hasCommentClose" {
+			continue
+		}
+		ast.Inspect(fn.Body, func(n ast.Node) bool {
+			switch n.(type) {
+			case *ast.ForStmt, *ast.RangeStmt:
+				t.Error("comment-close lookup rescans lines")
+			}
+			return true
+		})
+	}
+}
+
+func TestUnclosedCommentFlood(t *testing.T) {
+	got := NeutralizeMentions(strings.Repeat("<!-- @alice\n", 100000))
+	if strings.Count(got, "@\u200balice") != 100000 {
+		t.Fatal("unclosed comments hid mentions")
 	}
 }
