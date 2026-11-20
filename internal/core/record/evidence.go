@@ -75,7 +75,14 @@ func checkBundleEvidence(dir string, review *jq.Obj) *core.EvidenceReceipt {
 // evidencePassOf runs the pass and returns both halves of its answer: the
 // receipt the bundle stores and the problems the repair loop re-prompts with.
 func evidencePassOf(dir string, review *jq.Obj) (*core.EvidenceReceipt, []Problem) {
-	execution := panelcore.CheckExecution(dir, review)
+	return evidencePhaseOf(dir, review, false)
+}
+
+func evidencePhaseOf(dir string, review *jq.Obj, discovery bool) (*core.EvidenceReceipt, []Problem) {
+	execution := &panelcore.Execution{}
+	if !discovery {
+		execution = panelcore.CheckExecution(dir, review)
+	}
 	pass := newEvidencePass(dir, review)
 	pass.classifyGating()
 	pass.checkQuotes()
@@ -86,10 +93,10 @@ func evidencePassOf(dir string, review *jq.Obj) (*core.EvidenceReceipt, []Proble
 	return receipt, pass.problemList()
 }
 
-// reviewEvidenceOf runs the evidence pass over normalized review bytes. Bytes
+// phaseEvidenceOf runs the evidence pass over normalized review bytes. Bytes
 // that do not decode carry no findings to verify, so the checker's own
 // invalid-json problem stands alone and the evidence half is empty.
-func reviewEvidenceOf(dir string, normalized []byte) (*core.EvidenceReceipt, []Problem) {
+func phaseEvidenceOf(dir string, normalized []byte, discovery bool) (*core.EvidenceReceipt, []Problem) {
 	doc, err := jq.DecodeOrdered(normalized)
 	if err != nil {
 		return nil, nil
@@ -98,7 +105,7 @@ func reviewEvidenceOf(dir string, normalized []byte) (*core.EvidenceReceipt, []P
 	if !ok {
 		return nil, nil
 	}
-	return evidencePassOf(dir, review)
+	return evidencePhaseOf(dir, review, discovery)
 }
 
 // problemList renders the pass's problems as the published shape: a stable

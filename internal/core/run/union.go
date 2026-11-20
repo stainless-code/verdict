@@ -110,7 +110,7 @@ func quoteSide(row *jq.Obj) string {
 func appendUnionRows(out []any, seen map[string]bool, review *jq.Obj, key string) []any {
 	rows, _ := review.Get(key)
 	for _, row := range jq.Elements(rows) {
-		encoded := jq.Compact(row)
+		encoded := unionRowKey(row, key)
 		if !seen[encoded] {
 			seen[encoded] = true
 			out = append(out, row)
@@ -148,4 +148,11 @@ func unionRows(ordered []*unionCandidate) ([]any, []any, []any) {
 		}
 	}
 	return findings, checks, sources
+}
+
+func unionRowKey(row any, key string) string {
+	if key == "receipts" {
+		return jq.StrOf(readcommon.FieldOf(row, "hunk")) + "\x00" + jq.StrOf(readcommon.FieldOf(row, "quote"))
+	}
+	return jq.Compact(row)
 }

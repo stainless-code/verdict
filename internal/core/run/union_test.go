@@ -85,9 +85,40 @@ func TestFinderProceduresShareS4ContractAndDistinctMethods(t *testing.T) {
 
 func assertFinderContract(t *testing.T, raw []byte) {
 	t.Helper()
+	if strings.Contains(string(raw), "verdict record --dry-run") || !strings.Contains(string(raw), "Do not invoke record or post during discovery.") {
+		t.Fatal("finder invokes aggregate checking before discovery closes")
+	}
 	for _, contract := range []string{"Every suspected defect", "quote", "confidence", "Do not spawn sub-agents", "Capability map"} {
 		if !strings.Contains(string(raw), contract) {
 			t.Fatalf("missing %q", contract)
 		}
+	}
+}
+
+func TestDiscoveryUnionUsesSignatureTieBreak(t *testing.T) {
+	review := unionInput(t, `{"findings":[{"path":"a.go","claim":"Changed value breaks the caller.","severity":"important"},{"path":"a.go","claim":"Other defect breaks cleanup.","severity":"important"}]}`)
+	for range 20 {
+		got, _, err := discoveryUnion("test", nil, []*jq.Obj{review, nil})
+		if err != nil {
+			t.Fatal(err)
+		}
+		rows := jq.Elements(readcommon.FieldOf(got, "findings"))
+		if len(rows) != 2 || readcommon.FieldOf(rows[0], "claim") != "Other defect breaks cleanup." ||
+			readcommon.FieldOf(rows[1], "claim") != "Changed value breaks the caller." {
+			t.Fatalf("order = %s", compactRows(rows))
+		}
+	}
+}
+
+func TestDiscoveryUnionDeduplicatesReceiptTuples(t *testing.T) {
+	first := unionInput(t, `{"receipts":[{"hunk":"literal-hunk","quote":"literal-quote"}]}`)
+	second := unionInput(t, `{"receipts":[{"quote":"literal-quote","hunk":"literal-hunk"}]}`)
+	review, _, err := discoveryUnion("test", nil, []*jq.Obj{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := jq.Elements(readcommon.FieldOf(review, "receipts"))
+	if got := compactRows(rows); got != `[{"hunk":"literal-hunk","quote":"literal-quote"}]` {
+		t.Fatalf("receipts = %s", got)
 	}
 }

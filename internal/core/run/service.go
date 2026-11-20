@@ -141,6 +141,9 @@ func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.
 	if ref != nil {
 		return nil, ref
 	}
+	if st.twoFinders {
+		return st.coordinate(ctx, args, rounds)
+	}
 	return st.invoke(ctx, args, rounds)
 }
 
@@ -327,7 +330,7 @@ func (st *state) invoke(ctx context.Context, args *launchArgs, rounds int) (*cor
 }
 
 func (st *state) prepareLaunch(ctx context.Context, args *launchArgs, rounds int) *core.RefusalError {
-	ref := st.authorizeSpend(ctx, args.target.evidence, rounds)
+	ref := st.phaseSpend(ctx, args.target.evidence, rounds)
 	if ctx.Err() != nil {
 		return st.refuse(codeCanceled, msgCanceled)
 	}
@@ -434,6 +437,7 @@ type state struct {
 	drainDigest string
 	warnings    []string
 	defs        []config.PersonalAgent
+	twoFinders  bool
 }
 
 type launchTarget struct {
@@ -448,6 +452,7 @@ type launchTarget struct {
 // the declared pipeline, the one stage a render covers (nil otherwise), the
 // bundle and its review path, the timeout, and the exact argv.
 type launchArgs struct {
+	guard    func() *core.RefusalError
 	target   launchTarget
 	def      agentcatalog.Launch
 	bin      string
@@ -695,6 +700,9 @@ func (st *state) stageNext(at *staged, stages int, dir string) string {
 // launch runs the one process of a one-shot run: resolve, record the launch,
 // spawn with the watchdog, then assert the artifact and hand off.
 func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunResponse, *core.RefusalError) {
+	if ref := args.checkpoint(); ref != nil {
+		return nil, ref
+	}
 	bin := args.bin
 	started := st.now()
 	rec := &launcher{
@@ -717,6 +725,9 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 	st.human(fmt.Sprintf("» recipe: %s@%s (%s)", args.plan.Name, args.plan.Version, args.plan.Source))
 	st.human(fmt.Sprintf("» run: %s (timeout %ds)", strings.Join(rec.Argv, " "), args.timeout))
 	res, err := st.spawn(ctx, args.argv, args.timeout)
+	if ref := args.checkpoint(); ref != nil {
+		return nil, ref
+	}
 	if salvageAllowed(ctx, res, err) && st.salvageReview(args, res.Stdout) {
 		rec.Salvaged = true
 	}
@@ -1043,4 +1054,18 @@ func (a *launchArgs) checkReview(review []byte) (recordcore.CheckResult, *core.R
 		dir = a.dir
 	}
 	return repair.Check(dir, review)
+}
+
+func (st *state) phaseSpend(ctx context.Context, dir string, rounds int) *core.RefusalError {
+	if st.twoFinders {
+		return nil
+	}
+	return st.authorizeSpend(ctx, dir, rounds)
+}
+
+func (a *launchArgs) checkpoint() *core.RefusalError {
+	if a.guard != nil {
+		return a.guard()
+	}
+	return nil
 }

@@ -33,6 +33,7 @@ func finderProcedure(dir, output string, index int) ([]byte, *core.RefusalError)
 		fragments.WriteString(string(raw) + "\n\n")
 	}
 	text += fragments.String()
+	text = finderCheckInstructions(text)
 	text = strings.ReplaceAll(text, "<bundle>/review.json", filepath.Join(output, reviewFile))
 	text = strings.ReplaceAll(text, "<bundle>", dir)
 	return []byte(text), nil
@@ -65,4 +66,12 @@ func finderHasSpec(dir string) bool {
 	}
 
 	return false
+}
+
+func finderCheckInstructions(text string) string {
+	text = strings.ReplaceAll(text,
+		"`verdict record --dry-run` names every quote, receipt and spec gap it finds; run it, fix what it names, and run it again.",
+		"The launcher checks this finder artifact against pinned evidence and returns targeted repair requests. "+
+			"Fix only this artifact. Do not invoke record or post during discovery.")
+	return strings.ReplaceAll(text, "`verdict record --dry-run`", "The launcher's S4 check")
 }
