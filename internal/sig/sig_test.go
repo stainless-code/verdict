@@ -30,3 +30,9 @@ func TestOf(t *testing.T) {
 		})
 	}
 }
+
+func TestFinding(t *testing.T) {
+	if got := sig.Finding("notes.txt", "", "Unhandled await error path here."); got != "1fd35ceaaa1fc0a98e1486617b35249c646ee577" {
+		t.Fatalf("finding identity = %s", got)
+	}
+}

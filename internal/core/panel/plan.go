@@ -39,7 +39,7 @@ func Findings(review *jq.Obj) []any {
 		if body == "" {
 			body = jq.StrOf(c["claim"])
 		}
-		out = append(out, jq.NewObj(fieldSig, sig.Of(path+"\n\n"+body), fieldPath, path,
+		out = append(out, jq.NewObj(fieldSig, sig.Finding(path, "", body), fieldPath, path,
 			fieldLine, c[fieldLine], fieldSeverity, c[fieldSeverity], "kind", "inline", fieldBody, body))
 	}
 	return out
