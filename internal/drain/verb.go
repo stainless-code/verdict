@@ -105,7 +105,7 @@ func checkPostProviderCap(fl *flags) *core.RefusalError {
 }
 
 func runPlanAndMaybePost(ctx context.Context, r *cli.Runner, req Request, fl *flags, limit int) int {
-	unlock, ref := maybeAcquirePostLock(req, fl)
+	unlock, ref := acquireDrainLock(req)
 	if ref != nil {
 		return r.Refuse(ref)
 	}
@@ -127,13 +127,6 @@ func runPlanSteps(ctx context.Context, r *cli.Runner, req Request, fl *flags, li
 		return postFromPlan(ctx, r, req, fl, in, plan)
 	}
 	return finishPlan(r, req, fl, in.dir, plan)
-}
-
-func maybeAcquirePostLock(req Request, fl *flags) (func(), *core.RefusalError) {
-	if !fl.post {
-		return func() {}, nil
-	}
-	return acquireDrainLock(req)
 }
 
 func buildPlan(ctx context.Context, r *cli.Runner, req Request, fl *flags, limit int) (*planInputs, *draincore.File, int, bool) {
