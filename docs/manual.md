@@ -1161,6 +1161,34 @@ A severity says how bad a finding is; a rigor rung says how much proof stands
 behind it (`said` < `pointed` < `walked` < `ran` < `reproduced`). Both are
 recorded per finding, and both decide publication.
 
+A finding at `reproduced` can include `reproduction`:
+
+```json
+"reproduction": { "path": "probe.py", "command": "python3 {artifact}" }
+```
+
+The agent writes `probe.py` inside the bundle before `record`. The source path
+is relative to the bundle. The command uses `{artifact}` for the retained file
+and runs from the bundle directory. An empty `path` retains the command itself
+as a shell script, with `sh tests/<sig>.sh` as its rerun command.
+
+`record` copies the draft to `tests/<sig>.<ext>` and saves its command in
+`tests/<sig>.command.json`. Each file is limited to 64 KiB, each command to
+4,096 bytes, and each record operation to 16 artifacts (at most 1 MiB of test
+content). Paths must stay inside the bundle; symlinks and special files are
+rejected. Files are written atomically with mode `0600`. Credential-shaped
+values are redacted using the shared secret scan; `redacted: true` means the
+retained draft may need replacement credentials before it can reproduce the
+failure. The agent's original source file is left as supplied.
+
+`report` names the artifact, `show` includes its path and command, and the
+`serve` finding table links to a download. Read paths validate the retained
+path again. A `reproduced` finding without usable evidence warns
+`has no runnable artifact`; the claim stays recorded. `record --dry-run`
+validates the draft without saving it. These artifacts are drafts — Verdict
+never runs them, promotes them into the reviewed worktree, commits them, or
+includes them in a posted comment.
+
 A trusted pass over the candidates writes `validation.json` beside
 `review.json` — one `CONFIRMED`, `REJECTED`, or `DOWNGRADED` result per finding
 sig with a 10-500 character reason. The pass runs in `prompts/validate.md`,

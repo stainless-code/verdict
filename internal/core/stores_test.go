@@ -35,3 +35,15 @@ func TestFindingEntryOfPreservesNullCategoryPresence(t *testing.T) {
 		t.Errorf("Wire category = %#v (present=%v), want security", v, ok)
 	}
 }
+
+func TestFindingReproductionRoundTrip(t *testing.T) {
+	raw := jq.NewObj("kind", "inline", "reproduction", jq.NewObj("path", "probe.py", "command", "python3 probe.py", "redacted", true))
+	entry := core.FindingEntryOf(raw)
+	if entry.Reproduction == nil || entry.Reproduction.Command != "python3 probe.py" || !entry.Reproduction.Redacted {
+		t.Fatalf("decoded receipt = %+v", entry.Reproduction)
+	}
+	got, _ := entry.Wire().Get("reproduction")
+	if jq.Compact(got) != `{"path":"probe.py","command":"python3 probe.py","redacted":true}` {
+		t.Fatalf("wired receipt = %s", jq.Compact(got))
+	}
+}

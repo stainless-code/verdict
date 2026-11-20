@@ -315,7 +315,7 @@ var publishedSemantics = map[string]string{
 	// sarif ingest: additive optional entry.source enum (model|tool) and
 	// optional tool, rule_id, and fingerprint strings on findings entries. No
 	// existing property, required key, or type changed.
-	"findings.schema.json": "4357edb85756c424fa4bad8c59c993f6b3c746b1205598eb3a27bb3a82cd7af3",
+	"findings.schema.json": "c2bb8bdafbcb537177a3a78f634d2e7b9e59c3770eee322af0aa7e1ec3aecea1",
 	// post_floor_scoped: additive optional per-path posting floor list with its
 	// $defs/floorScope entry (required path, enum floor). No existing
 	// property, required key, or type changed.
@@ -485,7 +485,7 @@ var publishedSemantics = map[string]string{
 	// schema does not publish refuses). finding, specCheck, specEvidence and
 	// receipt are new definitions. This is the deliberate pre-v1 break: there
 	// is no compatibility shape.
-	"review.schema.json": "cbea45927483aed8b735233141ae1817482005fc5fc2b5f5d6b99adb506540a8",
+	"review.schema.json": "1022ca81eff5c8f86b01435214cbc90f0a5ce661749bc7baba3f16c4ae7dbc4a",
 	// additive selected.schema.json (new bundle document: the reaction-scoped
 	// fix selection fetch writes and fix --selected reads). A new document
 	// only: no existing schema property, required key, enum, or type changed.

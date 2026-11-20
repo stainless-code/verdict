@@ -1334,3 +1334,7 @@ func getHealth(t *testing.T, addr, token string) {
 		_ = derr
 	}()
 }
+
+func (l *blockingLayer) Reproduction(context.Context, string, string, string) ([]byte, error) {
+	return nil, query.ErrNotFound
+}

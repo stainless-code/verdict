@@ -119,6 +119,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/overrides":      true,
 	"internal/provenance":     true,
 	"internal/readcommon":     true,
+	"internal/repro":          true,
 	"internal/retry":          true,
 	"internal/reverts":        true,
 	"internal/sarif":          true,

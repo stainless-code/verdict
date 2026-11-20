@@ -162,6 +162,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	warnLensUsage(st)
 	warnDeepValidation(st)
 	warnEvidence(st)
+	st.warnings = append(st.warnings, readcommon.ReproductionWarnings(st.dir, st.entries)...)
 	runLiveProbe(ctx, st)
 	return buildResponse(st), nil
 }

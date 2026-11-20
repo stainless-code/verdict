@@ -549,13 +549,18 @@ func (st *state) buildEntries() {
 	fresh := freshInline(st)
 	kbExists := st.controls.Has(kb.File)
 	for _, fe := range fresh {
-		st.entries = append(st.entries, stampEntry(st, fe.entry, fe.kbRaw, kbExists).Wire())
+		entry := stampEntry(st, fe.entry, fe.kbRaw, kbExists).Wire()
+		if fe.reproduction != nil {
+			entry.Set("reproduction", fe.reproduction)
+		}
+		st.entries = append(st.entries, entry)
 	}
 }
 
 type freshEntry struct {
-	entry *core.FindingEntry
-	kbRaw any
+	entry        *core.FindingEntry
+	kbRaw        any
+	reproduction any
 }
 
 func freshInlineSigs(entries []any, offset, count int) []string {
@@ -625,7 +630,8 @@ func buildInline(st *state, m *jq.Obj) freshEntry {
 	if v, ok := m.Get(fieldSources); ok {
 		entry.Sources = kbStrings(v)
 	}
-	return freshEntry{entry: entry, kbRaw: jq.Alt(kbc, nil)}
+	reproduction, _ := m.Get("reproduction")
+	return freshEntry{entry: entry, kbRaw: jq.Alt(kbc, nil), reproduction: reproduction}
 }
 
 // briefOf validates a comment's optional machine brief against the anchor
@@ -867,6 +873,7 @@ func mergeFields(st *state, pm, n *jq.Obj) *jq.Obj {
 	m.Set(fieldAnchored, nanch)
 	overlayAlt(m, n, pm, fieldRigor)
 	overlayAlt(m, n, pm, fieldRigorSource)
+	overlayAlt(m, n, pm, "reproduction")
 	overlayAlt(m, n, pm, fieldSeverity)
 	mergeCategory(m, n)
 	overlayAlt(m, n, pm, fieldSuggestion)

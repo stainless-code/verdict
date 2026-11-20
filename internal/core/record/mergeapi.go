@@ -151,6 +151,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	if err := st.validateAndMerge(); err != nil {
 		return MergeResult{}, err
 	}
+	st.captureReproductions()
 	verification := st.applyPanel(panel)
 	execution.Stamp(st.entries)
 	execution.ApplyEvidence(st.evidence)
