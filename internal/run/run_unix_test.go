@@ -118,11 +118,16 @@ func newFixture(t *testing.T) *fixture {
 // its argv into.
 func (f *fixture) plant(t *testing.T, mode string) string {
 	t.Helper()
+	return f.plantAs(t, "claude", mode)
+}
+
+func (f *fixture) plantAs(t *testing.T, binary, mode string) string {
+	t.Helper()
 	exe, err := os.Executable()
 	if err != nil {
 		t.Fatalf("resolve the test binary: %v", err)
 	}
-	if err := os.Symlink(exe, filepath.Join(f.bin, "claude")); err != nil {
+	if err := os.Symlink(exe, filepath.Join(f.bin, binary)); err != nil {
 		t.Fatalf("link the fake agent: %v", err)
 	}
 	argvFile := filepath.Join(t.TempDir(), "argv")
@@ -613,5 +618,34 @@ func assertArgvPrefix(t *testing.T, got, want []string) {
 		if got[i] != want[i] {
 			t.Errorf("argv[%d] = %q, want %q", i, got[i], want[i])
 		}
+	}
+}
+
+// TestRunAgyWarnsOnStderrAtLaunch proves `run --agent agy` prints the one-line
+// headless warning on stderr at launch without refusing, and stays silent on
+// --print.
+func TestRunAgyWarnsOnStderrAtLaunch(t *testing.T) {
+	const wantLine = "warn: agy print mode (-p) soft-denies file edits outside trusted workspaces, " +
+		"so review.json may never be written; trust this repository in agy's settings or pass " +
+		"-- --dangerously-skip-permissions (your approval bypass)\n"
+
+	f := newFixture(t)
+	f.writeReviewSrc(t)
+	f.plantAs(t, "agy", "write")
+
+	code, _, printDiag := runVerb(t, f, "--agent", "agy", "--print")
+	if code != cli.ExitOK {
+		t.Fatalf("--print exit = %d, want 0", code)
+	}
+	if printDiag != "" {
+		t.Errorf("--print stderr = %q, want empty", printDiag)
+	}
+
+	code, out, diag := runVerb(t, f, "--agent", "agy", "--rounds", "1")
+	if code != cli.ExitOK {
+		t.Fatalf("run exit = %d, want 0\nstdout: %s\nstderr: %s", code, out, diag)
+	}
+	if diag != wantLine {
+		t.Errorf("stderr = %q, want %q", diag, wantLine)
 	}
 }

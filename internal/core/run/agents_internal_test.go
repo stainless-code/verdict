@@ -12,6 +12,7 @@ type builtinRow struct {
 	promptFlag    string
 	probeMatch    string
 	install       string
+	launchWarning string
 	args          []string
 	probeArgs     []string
 	wantArgv      []string
@@ -33,6 +34,7 @@ func builtinRows() []builtinRow {
 		{
 			name: "agy", binary: "agy", args: []string{}, promptFlag: "-p",
 			install:       "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+			launchWarning: "agy print mode (-p) soft-denies file edits outside trusted workspaces, so review.json may never be written; trust this repository in agy's settings or pass -- --dangerously-skip-permissions (your approval bypass)",
 			wantArgv:      []string{"agy", "--model", "M", "--x", "-p", "PROMPT"},
 			wantPrintArgv: []string{"agy", "--model", "M", "-p", "PROMPT"},
 		},
@@ -353,9 +355,9 @@ func assertRowFields(t *testing.T, tc *builtinRow, def *agentDef) {
 			def, tc.binary, tc.promptFlag, tc.install)
 	}
 	if !slices.Equal(def.Args, tc.args) || !slices.Equal(def.ProbeArgs, tc.probeArgs) ||
-		def.ProbeMatch != tc.probeMatch {
-		t.Errorf("row = %+v, want args %q, probe %q / %q",
-			def, tc.args, tc.probeArgs, tc.probeMatch)
+		def.ProbeMatch != tc.probeMatch || def.LaunchWarning != tc.launchWarning {
+		t.Errorf("row = %+v, want args %q, probe %q / %q, launch warning %q",
+			def, tc.args, tc.probeArgs, tc.probeMatch, tc.launchWarning)
 	}
 }
 

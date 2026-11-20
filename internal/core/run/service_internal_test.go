@@ -1496,3 +1496,110 @@ func assertStageRefusal(t *testing.T, tc *stageRefusalCase, passThrough []string
 		t.Errorf("spawns = %d, want 0: a refused render starts nothing", cmdr.calls)
 	}
 }
+
+type warnSpy struct {
+	warns []string
+}
+
+func (*warnSpy) Human(string)      {}
+func (w *warnSpy) Warn(msg string) { w.warns = append(w.warns, msg) }
+func (*warnSpy) Diag(string)       {}
+
+// TestRunAgyEmitsLaunchWarningBeforeSpawn proves --agent agy warns once before
+// the first child starts, proceeds without refusing, emits nothing on --print,
+// and leaves other agents silent.
+func TestRunAgyEmitsLaunchWarningBeforeSpawn(t *testing.T) {
+	const wantWarning = "agy print mode (-p) soft-denies file edits outside trusted workspaces, " +
+		"so review.json may never be written; trust this repository in agy's settings or pass " +
+		"-- --dangerously-skip-permissions (your approval bypass)"
+
+	t.Run("one-shot warns before spawn and succeeds", func(t *testing.T) {
+		assertAgyOneShotWarning(t, wantWarning)
+	})
+	t.Run("multi-round repair loop warns once", func(t *testing.T) {
+		assertAgyRepairLoopWarning(t, wantWarning)
+	})
+	t.Run("print emits no launch warning", func(t *testing.T) {
+		assertNoLaunchWarning(t, "agy", true)
+	})
+	t.Run("other agents stay silent", func(t *testing.T) {
+		assertNoLaunchWarning(t, "claude", false)
+	})
+}
+
+func assertAgyOneShotWarning(t *testing.T, wantWarning string) {
+	t.Helper()
+	root := fixtureRoot(t)
+	dir := bundleDir(root)
+	spy := &warnSpy{}
+	var warnsAtSpawn []string
+	cmdr := &scripted{write: func() {
+		warnsAtSpawn = slices.Clone(spy.warns)
+		writeReview(t, dir)
+	}}
+	req := request(root, cmdr)
+	req.Agent, req.RoundsRaw, req.Progress = "agy", "1", spy
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("Run refused: %v", ref)
+	}
+	if cmdr.calls != 1 {
+		t.Fatalf("calls = %d, want 1", cmdr.calls)
+	}
+	want := []string{wantWarning}
+	if !slices.Equal(warnsAtSpawn, want) {
+		t.Errorf("warnings before spawn = %q, want %q", warnsAtSpawn, want)
+	}
+	if !slices.Equal(resp.Warnings, want) {
+		t.Errorf("resp.Warnings = %q, want %q", resp.Warnings, want)
+	}
+}
+
+func assertAgyRepairLoopWarning(t *testing.T, wantWarning string) {
+	t.Helper()
+	root := fixtureRoot(t)
+	dir := bundleDir(root)
+	spy := &warnSpy{}
+	round := 0
+	cmdr := &scripted{write: func() {
+		round++
+		if round == 1 {
+			writeUnder(t, dir, "review.json", `{"schema_version":"1","findings":[]}`)
+			return
+		}
+		writeReview(t, dir)
+	}}
+	req := request(root, cmdr)
+	req.Agent, req.RoundsRaw, req.Progress = "agy", "2", spy
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("Run refused: %v", ref)
+	}
+	if cmdr.calls != 2 {
+		t.Fatalf("calls = %d, want 2", cmdr.calls)
+	}
+	want := []string{wantWarning}
+	if !slices.Equal(spy.warns, want) {
+		t.Errorf("emitted warnings = %q, want %q", spy.warns, want)
+	}
+	if !slices.Equal(resp.Warnings, want) {
+		t.Errorf("resp.Warnings = %q, want %q", resp.Warnings, want)
+	}
+}
+
+func assertNoLaunchWarning(t *testing.T, agent string, printOnly bool) {
+	t.Helper()
+	root := fixtureRoot(t)
+	dir := bundleDir(root)
+	spy := &warnSpy{}
+	cmdr := &scripted{write: func() { writeReview(t, dir) }}
+	req := request(root, cmdr)
+	req.Agent, req.Print, req.RoundsRaw, req.Progress = agent, printOnly, "1", spy
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("Run refused: %v", ref)
+	}
+	if len(spy.warns) != 0 || len(resp.Warnings) != 0 {
+		t.Errorf("%s (print=%v) warnings = spy %q resp %q, want none", agent, printOnly, spy.warns, resp.Warnings)
+	}
+}
