@@ -12,6 +12,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 const recordTestPatch = "9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d"
@@ -25,7 +26,7 @@ func stampIdentity(t *testing.T, slug string) {
 	t.Helper()
 	sum := sha256.Sum256([]byte(recordTestDiff))
 	sha := hex.EncodeToString(sum[:])
-	writeFile(t, ".verdict/state/"+slug+"/identity.json",
+	testkit.WriteFile(t, ".verdict/state/"+slug+"/identity.json",
 		`{"schema_version":"1","patch_id":"`+recordTestPatch+`","patch_id_kind":"git-patch-id",`+
 			`"diff_sha256":"`+sha+`","raw_diff_sha256":"`+sha+`",`+
 			`"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
@@ -49,7 +50,7 @@ func (c *recordStubCommander) Run(_ context.Context, cmd *core.Command) (core.Re
 // record.json.
 func runRecordPatch(t *testing.T, slug string) map[string]any {
 	t.Helper()
-	c := &collector{}
+	c := &testkit.Collector{}
 	req := recordRequest(t, c, slug)
 	req.Commander = &recordStubCommander{}
 	if _, ref := recordcore.Run(context.Background(), req); ref != nil {
@@ -90,7 +91,7 @@ func TestRunRecordOmitsPatchIdentityLegacy(t *testing.T) {
 func TestRunRecordOmitsPatchIdentityStale(t *testing.T) {
 	bundle(t, "local-stale", reviewJSON(""))
 	stampIdentity(t, "local-stale")
-	writeFile(t, ".verdict/state/local-stale/identity.json",
+	testkit.WriteFile(t, ".verdict/state/local-stale/identity.json",
 		`{"schema_version":"1","patch_id":"`+recordTestPatch+`","patch_id_kind":"git-patch-id",`+
 			`"diff_sha256":"0000000000000000000000000000000000000000000000000000000000000000",`+
 			`"raw_diff_sha256":"0000000000000000000000000000000000000000000000000000000000000000",`+
@@ -111,7 +112,7 @@ func TestRunRecordOmitsTamperedPatchIdentity(t *testing.T) {
 		t.Fatal(err)
 	}
 	tampered := strings.Replace(string(raw), recordTestPatch, strings.Repeat("1", 40), 1)
-	writeFile(t, ".verdict/state/local-tampered/identity.json", tampered)
+	testkit.WriteFile(t, ".verdict/state/local-tampered/identity.json", tampered)
 	rec := runRecordPatch(t, "local-tampered")
 	if _, ok := rec["patch_id"]; ok {
 		t.Errorf("tampered record.json carries patch_id: %v", rec["patch_id"])

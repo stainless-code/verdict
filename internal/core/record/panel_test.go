@@ -8,12 +8,13 @@ import (
 	postcore "github.com/stainless-code/verdict/internal/core/post"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 func TestRecordPanelReceipt(t *testing.T) {
 	coverageBundle(t, coverageDiff, coverageReview("notes.txt", ""))
-	writeFile(t, ".verdict/state/local-cov/verification/verdicts.json", `{"schema_version":"1","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","results":[{"sig":"101d0761051f365731b9b857810c9b3603c50208","model":"verifier","verdict":"refuted","evidence":"The caller already validates this input."}]}`)
-	c := &collector{}
+	testkit.WriteFile(t, ".verdict/state/local-cov/verification/verdicts.json", `{"schema_version":"1","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","results":[{"sig":"101d0761051f365731b9b857810c9b3603c50208","model":"verifier","verdict":"refuted","evidence":"The caller already validates this input."}]}`)
+	c := &testkit.Collector{}
 	response, ref := recordcore.Run(context.Background(), recordRequest(t, c, coverageSlug))
 	if ref != nil {
 		t.Fatal(ref)
@@ -28,7 +29,7 @@ func TestRecordPanelReceipt(t *testing.T) {
 
 func TestPostPanelDryRun(t *testing.T) {
 	postCoverageBundle(t, coverageReview("notes.txt", ""))
-	writeFile(t, ".verdict/state/7/verification/verdicts.json", `{"schema_version":"1","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","results":[{"sig":"101d0761051f365731b9b857810c9b3603c50208","model":"verifier","verdict":"refuted","evidence":"PRIVATE_VERIFIER_EVIDENCE: caller already validates."}]}`)
+	testkit.WriteFile(t, ".verdict/state/7/verification/verdicts.json", `{"schema_version":"1","head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","results":[{"sig":"101d0761051f365731b9b857810c9b3603c50208","model":"verifier","verdict":"refuted","evidence":"PRIVATE_VERIFIER_EVIDENCE: caller already validates."}]}`)
 	response, ref := postcore.Run(context.Background(), postRequest(t, postcore.Flags{DryRun: true, Approve: "false", ReviewFile: ".verdict/state/7/review.json"}))
 	if ref != nil {
 		t.Fatal(ref)

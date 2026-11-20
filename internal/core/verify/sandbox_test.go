@@ -10,10 +10,10 @@ import (
 	"slices"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 // sandboxCommander scripts one result per spawn in call order, so the probe
@@ -59,7 +59,7 @@ func sandboxHomeFixture(t *testing.T) string {
 
 func sandboxRequest(env []string, cmdr core.Commander) *verifycore.Request {
 	read := core.ReadRequest{
-		Runtime: &core.Runtime{Now: func() time.Time { return fixedNow }, Progress: &collector{}, Commander: cmdr},
+		Runtime: &core.Runtime{Now: testkit.FixedNow, Progress: &testkit.Collector{}, Commander: cmdr},
 		Repo:    "acme/app", Pr: "5201",
 	}
 	return &verifycore.Request{
@@ -157,7 +157,7 @@ func runSandboxedVerify(t *testing.T, vcmd string, results []core.Result) (strin
 	if err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, ".verdict/state/5201/patch.json", string(raw))
+	testkit.WriteFile(t, ".verdict/state/5201/patch.json", string(raw))
 	home := sandboxHomeFixture(t)
 	if results == nil {
 		results = []core.Result{{}, {Stdout: "ok"}}
@@ -225,7 +225,7 @@ func runProbeFailure(t *testing.T) ([]byte, *sandboxCommander, *core.RefusalErro
 	t.Helper()
 	root := t.TempDir()
 	t.Chdir(root)
-	writeFile(t, ".verdict/state/5201/patch.json", `{"verifyCmd":"printf created > sentinel.txt"}`)
+	testkit.WriteFile(t, ".verdict/state/5201/patch.json", `{"verifyCmd":"printf created > sentinel.txt"}`)
 	before, err := os.ReadFile(".verdict/state/5201/patch.json")
 	if err != nil {
 		t.Fatal(err)
@@ -277,7 +277,7 @@ func TestSandboxWithoutHomeRefuses(t *testing.T) {
 	}
 	root := t.TempDir()
 	t.Chdir(root)
-	writeFile(t, ".verdict/state/5201/patch.json", `{"verifyCmd":"printf ok"}`)
+	testkit.WriteFile(t, ".verdict/state/5201/patch.json", `{"verifyCmd":"printf ok"}`)
 	cmdr := &sandboxCommander{}
 	req := sandboxRequest([]string{"PATH=/bin"}, cmdr)
 	req.RepoRoot = root
@@ -369,7 +369,7 @@ func checkGroupReceipt(t *testing.T, root string, resp *verifycore.Response) {
 func TestUnsandboxedRunClearsAStaleSandboxClaim(t *testing.T) {
 	root := t.TempDir()
 	t.Chdir(root)
-	writeFile(t, ".verdict/state/5201/patch.json",
+	testkit.WriteFile(t, ".verdict/state/5201/patch.json",
 		`{"verifyCmd":"printf ok","sandboxed":true,"verifyExit":0}`)
 	cmdr := &sandboxCommander{results: []core.Result{{Stdout: "ok"}}}
 	req := sandboxRequest([]string{"PATH=/bin", "HOME=" + sandboxHomeFixture(t)}, cmdr)

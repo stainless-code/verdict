@@ -10,6 +10,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 const normalizeBody = "> ✅ marker plus enough length to pass the guard ok."
@@ -246,7 +247,7 @@ func TestRecordNormalizesWeakModelShapes(t *testing.T) {
 		`"resolved":"a1b2","findings":[{"file":"notes.txt","line":2,"claim":"A finding with enough substance.",` +
 		`"quote":"new line","confidence":"high","rung":"traced","severity":"Critical","brief":{"outcome":"Reject duplicate deliveries before anything is enqueued.","questions":"Why is this safe?"}}]}` + "\n```"
 	bundle(t, "local-norm", review)
-	c := &collector{}
+	c := &testkit.Collector{}
 	req := recordRequest(t, c, "local-norm")
 	req.DryRun = true
 	resp, ref := recordcore.Run(context.Background(), req)
@@ -305,7 +306,7 @@ func TestRecordStrictRefusesRepairs(t *testing.T) {
 	review := "```json\n" + `{"schema_version":"1","summary":"` + normalizeBody + `",` +
 		`"findings":[{"file":"notes.txt","line":2,"claim":"A finding with enough substance.","quote":"new line","confidence":"high","severity":"important","rung":"traced"}]}` + "\n```"
 	bundle(t, "local-norm-strict", review)
-	c := &collector{}
+	c := &testkit.Collector{}
 	req := recordRequest(t, c, "local-norm-strict")
 	req.DryRun = true
 	req.Strict = true
@@ -365,13 +366,13 @@ func checkStrictCase(t *testing.T, tc strictCase) {
 	t.Helper()
 	slug := "local-strict-" + tc.name
 	bundle(t, slug, tc.in)
-	c := &collector{}
+	c := &testkit.Collector{}
 	req := recordRequest(t, c, slug)
 	req.DryRun = true
 	if _, ref := recordcore.Run(context.Background(), req); ref != nil {
 		t.Fatalf("default run refused: %v %+v", ref, ref.Problems)
 	}
-	cs := &collector{}
+	cs := &testkit.Collector{}
 	sreq := recordRequest(t, cs, slug)
 	sreq.DryRun = true
 	sreq.Strict = true
@@ -402,13 +403,13 @@ func TestRecordStrictEnvAtRecordTime(t *testing.T) {
 	review := "```json\n" + `{"schema_version":"1","summary":"` + normalizeBody + `",` +
 		`"findings":[{"path":"notes.txt","line":2,"claim":"A finding with enough substance.","quote":"new line","confidence":"high","severity":"important","rung":"traced"}]}` + "\n```"
 	bundle(t, "local-norm-env", review)
-	c := &collector{}
+	c := &testkit.Collector{}
 	req := recordRequest(t, c, "local-norm-env")
 	req.DryRun = true
 	if _, ref := recordcore.Run(context.Background(), req); ref != nil {
 		t.Fatalf("default run refused: %v %+v", ref, ref.Problems)
 	}
-	ce := &collector{}
+	ce := &testkit.Collector{}
 	ereq := recordRequest(t, ce, "local-norm-env")
 	ereq.DryRun = true
 	ereq.Env = map[string]string{"REVIEW_STRICT_INPUT": "1"}

@@ -10,16 +10,17 @@ import (
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 func mergeDefectBundle(t *testing.T, reviewJSON string) recordcore.MergeResult {
 	t.Helper()
 	t.Chdir(t.TempDir())
 	dir := ".verdict/state/local-defects"
-	writeFile(t, dir+"/source.json", `{"head_sha":"`+mentionHead+`","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`)
-	writeFile(t, dir+"/full.diff", mentionDiff)
-	writeFile(t, dir+"/hunks.tsv", hunks.Format(hunks.Parse(mentionDiff)))
-	writeFile(t, dir+"/review.json", reviewJSON)
+	testkit.WriteFile(t, dir+"/source.json", `{"head_sha":"`+mentionHead+`","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`)
+	testkit.WriteFile(t, dir+"/full.diff", mentionDiff)
+	testkit.WriteFile(t, dir+"/hunks.tsv", hunks.Format(hunks.Parse(mentionDiff)))
+	testkit.WriteFile(t, dir+"/review.json", reviewJSON)
 	seedControls(t, dir)
 	review, err := recordcore.LoadReview(dir + "/review.json")
 	if err != nil {
@@ -29,7 +30,7 @@ func mergeDefectBundle(t *testing.T, reviewJSON string) recordcore.MergeResult {
 	if ref != nil {
 		t.Fatalf("controls gate: %v", ref)
 	}
-	res, merr := recordcore.Merge(testRuntime(&collector{}), &recordcore.MergeParams{
+	res, merr := recordcore.Merge(testRuntime(&testkit.Collector{}), &recordcore.MergeParams{
 		Dir:          dir,
 		Prov:         "local",
 		HeadFull:     mentionHead,

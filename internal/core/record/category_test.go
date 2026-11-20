@@ -9,6 +9,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/testenv"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 // categoryComment renders one store-contract comment carrying raw category
@@ -59,7 +60,7 @@ func noteCategory(t *testing.T, seen map[string]bool, e map[string]any) {
 func TestCategoryRoundTrip(t *testing.T) {
 	cats := []string{`"logic"`, `"edge-case"`, `"security"`, `"performance"`, `"accidental-commit"`, `"style"`, `"docs"`, `"other"`, `null`}
 	writeStoreBundle(t, "local-cat", categoryReview(t, cats...))
-	c := &collector{}
+	c := &testkit.Collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-cat")); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -98,12 +99,12 @@ func checkWireOrder(t *testing.T, path string) {
 // finding's identity.
 func TestCategoryNotInSig(t *testing.T) {
 	writeStoreBundle(t, "local-sigcat", categoryReview(t, "absent"))
-	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, "local-sigcat")); ref != nil {
+	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &testkit.Collector{}, "local-sigcat")); ref != nil {
 		t.Fatalf("plain Run refusal: %v", ref)
 	}
 	plain := storeEntries(t, "local-sigcat")
-	writeFile(t, ".verdict/state/local-sigcat/review.json", categoryReview(t, `"security"`))
-	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, "local-sigcat")); ref != nil {
+	testkit.WriteFile(t, ".verdict/state/local-sigcat/review.json", categoryReview(t, `"security"`))
+	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &testkit.Collector{}, "local-sigcat")); ref != nil {
 		t.Fatalf("categorized Run refusal: %v", ref)
 	}
 	categorized := storeEntries(t, "local-sigcat")
@@ -120,14 +121,14 @@ func TestCategoryNotInSig(t *testing.T) {
 func runBadCategory(t *testing.T, slug string, dryRun bool) (*recordcore.Response, []string) {
 	t.Helper()
 	writeStoreBundle(t, slug, categoryReview(t, `"sec"`))
-	c := &collector{}
+	c := &testkit.Collector{}
 	req := recordRequest(t, c, slug)
 	req.DryRun = dryRun
 	resp, ref := recordcore.Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("dryRun=%v Run refusal: %v", dryRun, ref)
 	}
-	return resp, c.warns
+	return resp, c.Warnings
 }
 
 // countWarnings counts warnings containing want.
@@ -176,7 +177,7 @@ func TestUnknownCategoryWarnsNullDryRun(t *testing.T) {
 // instead of refusing the review.
 func TestNonStringCategory(t *testing.T) {
 	writeStoreBundle(t, "local-numcat", categoryReview(t, `3`))
-	c := &collector{}
+	c := &testkit.Collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-numcat")); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
@@ -187,8 +188,8 @@ func TestNonStringCategory(t *testing.T) {
 	if v, ok := entries[0]["category"]; !ok || v != nil {
 		t.Errorf("entry category = %#v (present=%v), want stored null", entries[0]["category"], ok)
 	}
-	if !hasWarning(c.warns, "storing null") {
-		t.Errorf("warnings = %v, want the store-null warning", c.warns)
+	if !hasWarning(c.Warnings, "storing null") {
+		t.Errorf("warnings = %v, want the store-null warning", c.Warnings)
 	}
 }
 
@@ -218,15 +219,15 @@ func TestFalseCategoryWarnsOnceDryRun(t *testing.T) {
 func checkFalseCategory(t *testing.T, slug string, dryRun bool) {
 	t.Helper()
 	writeStoreBundle(t, slug, categoryReview(t, `false`))
-	c := &collector{}
+	c := &testkit.Collector{}
 	req := recordRequest(t, c, slug)
 	req.DryRun = dryRun
 	resp, ref := recordcore.Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("dryRun=%v Run refusal: %v", dryRun, ref)
 	}
-	if n := countWarnings(c.warns, "category must be a string or null"); n != 1 {
-		t.Errorf("dryRun=%v false-category warnings = %d, want exactly one: %v", dryRun, n, c.warns)
+	if n := countWarnings(c.Warnings, "category must be a string or null"); n != 1 {
+		t.Errorf("dryRun=%v false-category warnings = %d, want exactly one: %v", dryRun, n, c.Warnings)
 	}
 	if len(resp.Data.Items) != 1 {
 		t.Fatalf("dryRun=%v items = %d, want 1", dryRun, len(resp.Data.Items))
@@ -238,13 +239,13 @@ func checkFalseCategory(t *testing.T, slug string, dryRun bool) {
 // records by default and refuses under strict input.
 func TestFalseCategoryStrictRefuses(t *testing.T) {
 	writeStoreBundle(t, "local-falsecat-strict", categoryReview(t, `false`))
-	c := &collector{}
+	c := &testkit.Collector{}
 	dreq := recordRequest(t, c, "local-falsecat-strict")
 	dreq.DryRun = true
 	if _, ref := recordcore.Run(context.Background(), dreq); ref != nil {
 		t.Fatalf("default Run refusal: %v", ref)
 	}
-	sreq := recordRequest(t, &collector{}, "local-falsecat-strict")
+	sreq := recordRequest(t, &testkit.Collector{}, "local-falsecat-strict")
 	sreq.DryRun = true
 	sreq.Strict = true
 	_, ref := recordcore.Run(context.Background(), sreq)
@@ -260,18 +261,18 @@ func TestFalseCategoryStrictRefuses(t *testing.T) {
 // absent category preserves the prior label, an explicit null clears it.
 func TestCategoryPreservedAndClearedOnRepost(t *testing.T) {
 	writeStoreBundle(t, "local-repost", categoryReview(t, `"security"`))
-	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, "local-repost")); ref != nil {
+	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &testkit.Collector{}, "local-repost")); ref != nil {
 		t.Fatalf("first Run refusal: %v", ref)
 	}
-	writeFile(t, ".verdict/state/local-repost/review.json", categoryReview(t, "absent"))
-	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, "local-repost")); ref != nil {
+	testkit.WriteFile(t, ".verdict/state/local-repost/review.json", categoryReview(t, "absent"))
+	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &testkit.Collector{}, "local-repost")); ref != nil {
 		t.Fatalf("absent re-post refusal: %v", ref)
 	}
 	if got := storeEntries(t, "local-repost")[0]["category"]; got != "security" {
 		t.Errorf("absent re-post category = %#v, want the preserved label", got)
 	}
-	writeFile(t, ".verdict/state/local-repost/review.json", categoryReview(t, `null`))
-	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, "local-repost")); ref != nil {
+	testkit.WriteFile(t, ".verdict/state/local-repost/review.json", categoryReview(t, `null`))
+	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &testkit.Collector{}, "local-repost")); ref != nil {
 		t.Fatalf("explicit-null re-post refusal: %v", ref)
 	}
 	cleared := storeEntries(t, "local-repost")[0]
@@ -286,7 +287,7 @@ func TestSummaryHeadingDoesNotCreateSectionEntry(t *testing.T) {
 	review := `{"schema_version":"1","body":"` + storeBody + `\n\n### Watch\n\nProse under the watch heading.",` +
 		`"approved":false,"comments":[]}`
 	writeStoreBundle(t, "local-seccat", review)
-	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, "local-seccat")); ref != nil {
+	if _, ref := recordcore.Run(context.Background(), recordRequest(t, &testkit.Collector{}, "local-seccat")); ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
 	entries := storeEntries(t, "local-seccat")

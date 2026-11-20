@@ -10,6 +10,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/testenv"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 type riskCheckCase struct {
@@ -156,7 +157,7 @@ func TestRunRecordRiskPersistence(t *testing.T) {
 func testFreshRiskRecord(t *testing.T) {
 	const slug = "local-risk-fresh"
 	bundle(t, slug, reviewJSON("")[:len(reviewJSON(""))-1]+`,"risk":{"level":"medium","rationale":"Changes validation rules and adds new fields.","assessed_head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}}`)
-	resp, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, slug))
+	resp, ref := recordcore.Run(context.Background(), recordRequest(t, &testkit.Collector{}, slug))
 	if ref != nil {
 		t.Fatalf("Run refused: %+v", ref)
 	}
@@ -192,7 +193,7 @@ func readRecordRiskMap(t *testing.T, slug string) map[string]any {
 func testStaleRiskRecord(t *testing.T) {
 	const slug = "local-risk-stale"
 	bundle(t, slug, reviewJSON("")[:len(reviewJSON(""))-1]+`,"risk":{"level":"low","rationale":"Assessed against stale head commit before push.","assessed_head":"cccccccccccccccccccccccccccccccccccccccc"}}`)
-	req := recordRequest(t, &collector{}, slug)
+	req := recordRequest(t, &testkit.Collector{}, slug)
 	req.Strict = true
 	if _, ref := recordcore.Run(context.Background(), req); ref == nil || ref.Code != "bad-review-input" {
 		t.Fatalf("strict Run ref = %+v, want bad-review-input", ref)
@@ -211,7 +212,7 @@ func testStaleRiskRecord(t *testing.T) {
 func testAbsentRiskRecord(t *testing.T) {
 	const slug = "local-risk-none"
 	bundle(t, slug, reviewJSON(""))
-	resp, ref := recordcore.Run(context.Background(), recordRequest(t, &collector{}, slug))
+	resp, ref := recordcore.Run(context.Background(), recordRequest(t, &testkit.Collector{}, slug))
 	if ref != nil {
 		t.Fatalf("Run refused: %+v", ref)
 	}

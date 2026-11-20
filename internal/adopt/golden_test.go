@@ -11,7 +11,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/golden"
-	"github.com/stainless-code/verdict/internal/testenv"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 var harness *golden.Harness
@@ -20,21 +20,6 @@ var harness *golden.Harness
 func TestMain(m *testing.M) {
 	os.Exit(golden.RunMain(m, &harness))
 }
-
-// fixtureDiff is the shared bundle patch both target and source carry.
-const fixtureDiff = "diff --git a/notes.txt b/notes.txt\n" +
-	"index 1111111..2222222 100644\n" +
-	"--- a/notes.txt\n" +
-	"+++ b/notes.txt\n" +
-	"@@ -1,3 +1,3 @@\n" +
-	" top\n" +
-	"-old line\n" +
-	"+new line\n" +
-	" bottom\n"
-
-// fixturePR is the default GitHub-shaped PR record.
-const fixturePR = `{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",` +
-	`"baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"teammate"}}`
 
 // fixtureFindings is the two-entry source store: the first anchor is covered
 // by the diff hunk, the second drifts past it.
@@ -50,38 +35,27 @@ const fixtureFindings = `[` +
 	`"sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open",` +
 	`"rationale":"","history":[]}]`
 
-// writeFile writes one fixture file, creating parents.
-func writeFile(t *testing.T, path, content string) {
-	t.Helper()
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, []byte(testenv.MaybeFindingsReview(path, content)), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
 // mkTarget crafts the target PR bundle (PR record + patch).
 func mkTarget(t *testing.T, dir, pr string) {
 	t.Helper()
-	writeFile(t, filepath.Join(dir, ".verdict", "state", "4311", "PR.json"), pr)
-	writeFile(t, filepath.Join(dir, ".verdict", "state", "4311", "full.diff"), fixtureDiff)
+	testkit.WriteFile(t, filepath.Join(dir, ".verdict", "state", "4311", "PR.json"), pr)
+	testkit.WriteFile(t, filepath.Join(dir, ".verdict", "state", "4311", "full.diff"), testkit.Diff)
 }
 
 // mkLocal crafts the source local bundle with its findings store.
 func mkLocal(t *testing.T, dir, findings string) {
 	t.Helper()
 	bdir := filepath.Join(dir, ".verdict", "state", "local-adopt1")
-	writeFile(t, filepath.Join(bdir, "source.json"),
+	testkit.WriteFile(t, filepath.Join(bdir, "source.json"),
 		`{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","head_ref":"work"}`)
-	writeFile(t, filepath.Join(bdir, "full.diff"), fixtureDiff)
-	writeFile(t, filepath.Join(bdir, "findings.json"), findings)
+	testkit.WriteFile(t, filepath.Join(bdir, "full.diff"), testkit.Diff)
+	testkit.WriteFile(t, filepath.Join(bdir, "findings.json"), findings)
 }
 
 // setupHappy builds a fresh target and the standard source bundle.
 func setupHappy(t *testing.T, dir, _ string) {
 	t.Helper()
-	mkTarget(t, dir, fixturePR)
+	mkTarget(t, dir, testkit.PRRecord)
 	mkLocal(t, dir, fixtureFindings)
 }
 
@@ -89,14 +63,14 @@ func setupHappy(t *testing.T, dir, _ string) {
 func setupPinned(t *testing.T, dir, _ string) {
 	t.Helper()
 	setupHappy(t, dir, "")
-	writeFile(t, filepath.Join(dir, ".verdict", "state", "4311", "hunks.tsv"),
+	testkit.WriteFile(t, filepath.Join(dir, ".verdict", "state", "4311", "hunks.tsv"),
 		"notes.txt\tNEW\t1\t3\n")
 }
 
 // setupMissingDiff builds a target without the patch store.
 func setupMissingDiff(t *testing.T, dir, _ string) {
 	t.Helper()
-	mkTarget(t, dir, fixturePR)
+	mkTarget(t, dir, testkit.PRRecord)
 	if err := os.Remove(filepath.Join(dir, ".verdict", "state", "4311", "full.diff")); err != nil {
 		t.Fatal(err)
 	}
@@ -137,19 +111,19 @@ func setupForgejo(t *testing.T, dir, _ string) {
 func setupAdopted(t *testing.T, dir, _ string) {
 	t.Helper()
 	setupHappy(t, dir, "")
-	writeFile(t, filepath.Join(dir, ".verdict", "state", "4311", "findings.json"), "[]")
+	testkit.WriteFile(t, filepath.Join(dir, ".verdict", "state", "4311", "findings.json"), "[]")
 }
 
 // setupMissingFrom points --from at a bundle that does not exist.
 func setupMissingFrom(t *testing.T, dir, _ string) {
 	t.Helper()
-	mkTarget(t, dir, fixturePR)
+	mkTarget(t, dir, testkit.PRRecord)
 }
 
 // setupCorruptFrom builds a truncated source findings store.
 func setupCorruptFrom(t *testing.T, dir, _ string) {
 	t.Helper()
-	mkTarget(t, dir, fixturePR)
+	mkTarget(t, dir, testkit.PRRecord)
 	mkLocal(t, dir, `[{"kind":"inline","sig":"nope"`)
 }
 

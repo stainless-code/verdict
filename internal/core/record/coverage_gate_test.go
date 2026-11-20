@@ -7,7 +7,6 @@ import (
 	"os"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
@@ -15,6 +14,7 @@ import (
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 // coverageSlug names the local bundle every gate case records into.
@@ -64,11 +64,11 @@ func coverageBundle(t *testing.T, diff, review string) {
 	t.Helper()
 	t.Chdir(t.TempDir())
 	dir := ".verdict/state/" + coverageSlug
-	writeFile(t, dir+"/source.json", `{"head_sha":"`+coverageHead+
+	testkit.WriteFile(t, dir+"/source.json", `{"head_sha":"`+coverageHead+
 		`","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`)
-	writeFile(t, dir+"/full.diff", diff)
-	writeFile(t, dir+"/hunks.tsv", hunks.Format(hunks.Parse(diff)))
-	writeFile(t, dir+"/review.json", review)
+	testkit.WriteFile(t, dir+"/full.diff", diff)
+	testkit.WriteFile(t, dir+"/hunks.tsv", hunks.Format(hunks.Parse(diff)))
+	testkit.WriteFile(t, dir+"/review.json", review)
 	seedControls(t, dir)
 }
 
@@ -87,7 +87,7 @@ func mergeCoverage(t *testing.T, require bool) (string, []string, error) {
 	if ref != nil {
 		t.Fatalf("controls gate: %v", ref)
 	}
-	c := &collector{}
+	c := &testkit.Collector{}
 	res, merr := recordcore.Merge(testRuntime(c), &recordcore.MergeParams{
 		Dir:             dir,
 		Prov:            "local",
@@ -105,14 +105,14 @@ func mergeCoverage(t *testing.T, require bool) (string, []string, error) {
 		InputChecked:    true,
 		RequireCoverage: require,
 	})
-	return res.Body, c.warns, merr
+	return res.Body, c.Warnings, merr
 }
 
 // runCoverage runs the record service over the fixture bundle: the full path
 // that would write the findings store, so a refused run's writes are graded.
 func runCoverage(t *testing.T, require, dryRun bool) *core.RefusalError {
 	t.Helper()
-	c := &collector{}
+	c := &testkit.Collector{}
 	req := recordRequest(t, c, coverageSlug)
 	req.Flags.RequireCoverage = require
 	req.DryRun = dryRun
@@ -334,10 +334,10 @@ func postCoverageBundle(t *testing.T, review string) {
 	t.Helper()
 	t.Chdir(t.TempDir())
 	dir := ".verdict/state/7"
-	writeFile(t, dir+"/PR.json", `{"state":"OPEN","headRefOid":"`+coverageHead+
+	testkit.WriteFile(t, dir+"/PR.json", `{"state":"OPEN","headRefOid":"`+coverageHead+
 		`","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"someone-else"}}`)
-	writeFile(t, dir+"/full.diff", coverageDiff)
-	writeFile(t, dir+"/review.json", review)
+	testkit.WriteFile(t, dir+"/full.diff", coverageDiff)
+	testkit.WriteFile(t, dir+"/review.json", review)
 	seedControls(t, dir)
 }
 
@@ -379,8 +379,8 @@ func postRequest(t *testing.T, flags postcore.Flags) *postcore.Request {
 	return &postcore.Request{
 		Runtime: &core.Runtime{
 			Env:       map[string]string{},
-			Now:       func() time.Time { return fixedNow },
-			Progress:  &collector{},
+			Now:       testkit.FixedNow,
+			Progress:  &testkit.Collector{},
 			Commander: &postCommanderStub{t: t},
 		},
 		Repo:      "acme/app",
@@ -447,7 +447,7 @@ func assertRefusalKeepsPriorStore(t *testing.T, dryRun bool) {
 	t.Helper()
 	coverageBundle(t, coverageDiff, partialCoverage())
 	prior := "[]\n"
-	writeFile(t, ".verdict/state/"+coverageSlug+"/findings.json", prior)
+	testkit.WriteFile(t, ".verdict/state/"+coverageSlug+"/findings.json", prior)
 	if ref := runCoverage(t, true, dryRun); ref == nil || ref.Code != codeCoverageIncomplete {
 		t.Fatalf("refusal = %v, want %q", ref, codeCoverageIncomplete)
 	}
