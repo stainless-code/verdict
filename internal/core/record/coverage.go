@@ -91,11 +91,9 @@ func gapList(sum *coverage.Summary, limit int) string {
 	return out
 }
 
-// applyCoverageLine inserts the one machine-built coverage line before the
-// footer. An absent attestation and a complete one add nothing, so a legacy
-// review stays byte-identical and a full one stays clean.
-func (st *state) applyCoverageLine(body string) string {
-	sum := st.coverage
+// AppendCoverageLine inserts the one machine-built coverage line before the
+// footer. An absent attestation and a complete one add nothing.
+func AppendCoverageLine(body string, sum *coverage.Summary) string {
 	if sum == nil || sum.Chunked || !sum.Present || sum.Complete() || !sum.Measured() {
 		return body
 	}
@@ -104,7 +102,7 @@ func (st *state) applyCoverageLine(body string) string {
 		percent = *sum.Percent
 	}
 	line := fmt.Sprintf(msgCoverageLine, percent, gapList(sum, lineGapCap))
-	return body + "\n\n" + line + "\n"
+	return body + "\n\n" + line
 }
 
 // reportCoverage warns the human summary once per merge: the same numbers the

@@ -85,7 +85,7 @@ func TestBodyOnlyAnchorsMoveEveryFinding(t *testing.T) {
 		anchorComment("notes.txt", "2", "", "RIGHT"),
 		anchorComment("missing.txt", "99", "", "RIGHT"),
 	})
-	st.validateAnchors("body")
+	st.validateAnchors()
 	if len(st.kept) != 0 || len(st.moved) != 2 {
 		t.Fatalf("body-only anchors: kept=%d moved=%d, want kept=0 moved=2", len(st.kept), len(st.moved))
 	}

@@ -1,12 +1,10 @@
-package recordcore
+package untrusted
 
 import (
 	"strings"
 	"testing"
 )
 
-// zwsp is the escape under test, spelled once so a case reads as the bytes it
-// expects rather than as an invisible character.
 const zwsp = "\u200b"
 
 type mentionCase struct {
@@ -15,10 +13,6 @@ type mentionCase struct {
 	want string
 }
 
-// TestNeutralizeMentions walks the body shapes the escape must and must not
-// touch. Every case also asserts idempotence: neutralizing the wanted bytes
-// again returns them unchanged, because the escape sits between `@` and the
-// handle, so the handle no longer starts with a handle byte.
 func TestNeutralizeMentions(t *testing.T) {
 	t.Parallel()
 	cases := []mentionCase{
@@ -108,29 +102,21 @@ func TestNeutralizeMentions(t *testing.T) {
 			want: "~~@" + zwsp + "alice~~ shipped it.\n",
 		},
 		{
-			// A single `~` is a local-part byte, so `~@example.com` is an
-			// address: escaping it would insert a zero-width space into it.
-			// The dot behind the `@` is what makes it one.
 			name: "tilde-single-address",
 			in:   "Mail ~@example.com about it.\n",
 			want: "Mail ~@example.com about it.\n",
 		},
 		{
-			// The same lone `~` with no domain behind the `@` is prose: a host
-			// notifies the handle, so it escapes like any other mention.
 			name: "tilde-bare-handle",
 			in:   "Ping ~@alice now.\n",
 			want: "Ping ~@" + zwsp + "alice now.\n",
 		},
 		{
-			// A period is not a domain: `~@alice.` has no label behind the dot,
-			// so it is a handle at the end of a sentence and it escapes.
 			name: "tilde-handle-then-period",
 			in:   "Thanks ~@alice.\n",
 			want: "Thanks ~@" + zwsp + "alice.\n",
 		},
 		{
-			// Two labels: still an address, still byte-identical.
 			name: "tilde-single-address-two-labels",
 			in:   "Mail ~@mail.example.co.uk about it.\n",
 			want: "Mail ~@mail.example.co.uk about it.\n",
@@ -141,9 +127,6 @@ func TestNeutralizeMentions(t *testing.T) {
 			want: "Ship it ~~@" + zwsp + "alice~~.\n",
 		},
 		{
-			// A run of three tildes is not GFM strikethrough, but a host still
-			// notifies on the handle inside it, so the run counts as markup and
-			// the mention is escaped.
 			name: "tilde-triple-prose",
 			in:   "So ~~~@alice~~~ here.\n",
 			want: "So ~~~@" + zwsp + "alice~~~ here.\n",
@@ -228,6 +211,31 @@ func TestNeutralizeMentions(t *testing.T) {
 			in:   "",
 			want: "",
 		},
+		{
+			name: "escaped-backtick-does-not-open-code-span",
+			in:   "see \\`@alice` and @bob\n",
+			want: "see \\`@" + zwsp + "alice` and @" + zwsp + "bob\n",
+		},
+		{
+			name: "escaped-comment-opener-does-not-enter-comment",
+			in:   "see \\<!-- @alice --> and @bob\n",
+			want: "see \\<!-- @" + zwsp + "alice --> and @" + zwsp + "bob\n",
+		},
+		{
+			name: "unmatched-backtick-does-not-suppress-later-mentions",
+			in:   "stray ` before @alice\nand @bob on next line\n",
+			want: "stray ` before @" + zwsp + "alice\nand @" + zwsp + "bob on next line\n",
+		},
+		{
+			name: "unclosed-html-comment-does-not-suppress-later-mentions",
+			in:   "dangling <!-- before @alice\nand @bob\n",
+			want: "dangling <!-- before @" + zwsp + "alice\nand @" + zwsp + "bob\n",
+		},
+		{
+			name: "fence-line-inside-html-comment-does-not-open-fence",
+			in:   "<!--\n```\n-->\nPing @alice after comment.\n",
+			want: "<!--\n```\n-->\nPing @" + zwsp + "alice after comment.\n",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -237,7 +245,6 @@ func TestNeutralizeMentions(t *testing.T) {
 	}
 }
 
-// checkMentionCase grades one row and its idempotence.
 func checkMentionCase(t *testing.T, tc mentionCase) {
 	t.Helper()
 	got := NeutralizeMentions(tc.in)
@@ -249,9 +256,6 @@ func checkMentionCase(t *testing.T, tc mentionCase) {
 	}
 }
 
-// TestNeutralizeMentionsLeavesTheBodyLength proves the escape only ever adds
-// bytes: a body grows by one zero-width space per mention and never shrinks,
-// so no downstream length guard can see a shorter body than the agent wrote.
 func TestNeutralizeMentionsLeavesTheBodyLength(t *testing.T) {
 	t.Parallel()
 	in := "Ping @alice about @bob's note.\n"
@@ -261,5 +265,54 @@ func TestNeutralizeMentionsLeavesTheBodyLength(t *testing.T) {
 	}
 	if strings.Count(got, zeroWidthSpace) != 2 {
 		t.Errorf("zero-width spaces = %d, want 2 in %q", strings.Count(got, zeroWidthSpace), got)
+	}
+}
+
+func TestCommentCloseLookup(t *testing.T) {
+	const document = "-->\n<!-- @a\n<!-- @b -->\n<!-- @c"
+	scan := mentionScan{lastCommentClose: strings.LastIndex(document, "-->")}
+	if scan.lastCommentClose != 20 {
+		t.Fatalf("last closer = %d, want 20", scan.lastCommentClose)
+	}
+	for _, tc := range []struct {
+		name   string
+		offset int
+		from   int
+		want   bool
+	}{
+		{name: "first-opener-shares-closer", offset: 4, from: 4, want: true},
+		{name: "second-opener-shares-closer", offset: 12, from: 4, want: true},
+		{name: "opener-after-last-closer", offset: 24, from: 4, want: false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			scan.lineOffset = tc.offset
+			if got := scan.hasCommentClose(tc.from); got != tc.want {
+				t.Errorf("hasCommentClose(%d) at offset %d = %v, want %v", tc.from, tc.offset, got, tc.want)
+			}
+		})
+	}
+	if got := NeutralizeMentions(document); got != "-->\n<!-- @a\n<!-- @b -->\n<!-- @\u200bc" {
+		t.Errorf("neutralized document = %q", got)
+	}
+}
+
+func TestCommentCloseBeforeOpenerDoesNotCount(t *testing.T) {
+	const document = "-->\n<!-- @alice"
+	scan := mentionScan{lastCommentClose: strings.LastIndex(document, "-->"), lineOffset: 4}
+	if scan.lastCommentClose != 0 {
+		t.Fatalf("last closer = %d, want 0", scan.lastCommentClose)
+	}
+	if scan.hasCommentClose(4) {
+		t.Error("closer before opener counted as a following closer")
+	}
+	if got := NeutralizeMentions(document); got != "-->\n<!-- @\u200balice" {
+		t.Errorf("neutralized document = %q", got)
+	}
+}
+
+func TestUnclosedCommentFlood(t *testing.T) {
+	got := NeutralizeMentions(strings.Repeat("<!-- @alice\n", 100000))
+	if strings.Count(got, "@\u200balice") != 100000 {
+		t.Fatal("unclosed comments hid mentions")
 	}
 }

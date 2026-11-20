@@ -118,7 +118,6 @@ var refusalCodes = []string{
 	"cost-unreadable",
 	"coverage-incomplete",
 	"coverage-stale",
-	"degenerate-body",
 	"diff-failed",
 	"diff-too-large",
 	"download-failed",

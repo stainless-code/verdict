@@ -165,7 +165,17 @@ func TestReviewSecretSitesLocations(t *testing.T) {
 			review: `{"summary":"x","findings":[{"claim":"AKIAIOSFODNN7EXAMPLE"},{"claim":"ghp_0123456789abcdefghijABCDEFGHIJ012345"}]}`,
 			want:   []string{"finding 1 (aws-access-key-id)", "finding 2 (github-token)"},
 		},
+		{
+			name:   "receipt hunk and quote",
+			review: `{"summary":"x","receipts":[{"hunk":"AKIAIOSFODNN7EXAMPLE.txt\tNEW\t1\t3","quote":"ok"},{"hunk":"a.txt\tNEW\t1\t3","quote":"ghp_0123456789abcdefghijABCDEFGHIJ012345"}]}`,
+			want:   []string{"receipt 1 (aws-access-key-id)", "receipt 2 (github-token)"},
+		},
 		{"non-object comment", `{"summary":"x","findings":[7,{"claim":"AKIAIOSFODNN7EXAMPLE"}]}`, []string{"finding 2 (aws-access-key-id)"}},
+		{
+			name:   "finding and brief and spec paths",
+			review: `{"summary":"x","findings":[{"path":"dir/AKIAIOSFODNN7EXAMPLE.go","claim":"ok"},{"path":"a.go","claim":"ok","brief":{"sites":[{"path":"dir/ghp_0123456789abcdefghijABCDEFGHIJ012345.go"}],"outcome":"fix"}}],"spec_checks":[{"item":"ok","status":"met","evidence":{"path":"dir/sk-ant-api03-abcdefghij0123.go","line":1,"quote":"ok"}}]}`,
+			want:   []string{"finding 1 (aws-access-key-id)", "finding 2 (github-token)", "spec_check 1 (anthropic-api-key)"},
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -210,5 +220,58 @@ func TestSecretSiteListCaps(t *testing.T) {
 	}
 	if got := secretSiteList([]secretSite{{where: "summary body", shapes: []string{"stripe-key"}}}); got != "summary body (stripe-key)" {
 		t.Errorf("single site = %q", got)
+	}
+}
+
+const (
+	secretBriefReview = `{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,` +
+		`"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Consider clarifying this line.",` +
+		`"rigor":"pointed","severity":"informational",` +
+		`"brief":{"outcome":"Rotate AKIAIOSFODNN7EXAMPLE before merging."}}]}`
+	briefOmittedReview = `{"schema_version":"1","body":"> ✅ Looks good — minor note below.","approved":false,` +
+		`"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Consider clarifying this line.",` +
+		`"rigor":"pointed","severity":"informational"}]}`
+)
+
+// TestRunRefusesSecretInheritedFromStoredBrief proves the scan covers what the
+// merge publishes, not only what review.json carries: a stored brief whose
+// outcome holds a credential rides into the body when a later same-signature
+// review omits the brief, so that post must refuse as well.
+func TestRunRefusesSecretInheritedFromStoredBrief(t *testing.T) {
+	seedStoredSecretBrief(t)
+	var warnings, human []string
+	cmdr := postCommander(t)
+	second := postTestReq(cmdr, core.PostFlags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	_, ref := Run(context.Background(), second)
+	if ref == nil || ref.Code != "post-secret-shaped" {
+		t.Fatalf("inherited secret brief: refusal = %v, want post-secret-shaped", ref)
+	}
+	if strings.Contains(ref.Message, "AKIAIOSFODNN7EXAMPLE") {
+		t.Errorf("refusal republished the value: %q", ref.Message)
+	}
+	for _, call := range cmdr.calls {
+		if strings.Contains(strings.Join(call, " "), "--method POST") {
+			t.Errorf("refused post submitted to the host: %q", call)
+		}
+	}
+}
+
+func seedStoredSecretBrief(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Chdir(dir)
+	postBundle(t, secretBriefReview)
+	var warnings, human []string
+	first := postTestReq(postCommander(t), core.PostFlags{
+		Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true, AllowSecretValues: true,
+	}, &warnings, &human)
+	if _, ref := Run(context.Background(), first); ref != nil {
+		t.Fatalf("recording run refused: %v", ref)
+	}
+	if err := os.Rename(".verdict/state/7/findings.dryrun.json", ".verdict/state/7/findings.json"); err != nil {
+		t.Fatalf("promote recorded findings: %v", err)
+	}
+	if err := writeTestFile(".verdict/state/7/review.json", briefOmittedReview); err != nil {
+		t.Fatal(err)
 	}
 }

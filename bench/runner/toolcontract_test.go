@@ -94,7 +94,7 @@ func TestToolFreeTransformNeedsItsAnchors(t *testing.T) {
 		{"7. **Submit.**", "7. **Submit.**"},
 		{toolFreeCoverageHead, toolFreeCoverageHead},
 		{toolFreeCoverageTail, toolFreeCoverageTail},
-		{"## Review body format", "## Review body format"},
+		{"## Finding categories", "## Finding categories"},
 	} {
 		got, err := toToolFreePrefix(strings.Replace(fakePrefix, tc.remove, "", 1))
 		if err == nil {

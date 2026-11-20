@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/reviewdoc"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -30,27 +31,21 @@ func TestFloorWithholdsAndWarnsForNull(t *testing.T) {
 	}
 }
 
-func TestFloorHidesSectionAcrossHorizontalRule(t *testing.T) {
-	e := jq.NewObj("heading", "### Low", "withheld", jq.NewObj("source", "below-severity", "reason", "below floor", "at", "2026-11-13T12:00:00Z"))
-	st := &state{entries: []any{e}, effective: core.Effective{PublishFooter: core.FlagOn}}
-	body := "### Low\nprivate\n---\nprivate after rule\n### High\nvisible\n\n---\n\n<!-- verdict-footer -->\nReceipt\n"
-	got := st.hideWithheldSections(body)
-	if got != "### High\nvisible\n\n---\n\n<!-- verdict-footer -->\nReceipt\n" {
-		t.Fatalf("section leaked or footer changed: %q", got)
+func TestFloorWithheldFindingsOmittedFromRenderedBody(t *testing.T) {
+	low := jq.NewObj("sig", "low", "path", "a.go", "line", 1, "severity", "informational", "status", "open", "body", "PRIVATE_LOW_CLAIM",
+		"withheld", jq.NewObj("source", "below-severity", "reason", "below floor", "at", "2026-11-13T12:00:00Z"))
+	high := jq.NewObj("sig", "high", "path", "b.go", "line", 2, "severity", "important", "status", "open", "body", "PUBLIC_HIGH_CLAIM",
+		"verification", jq.NewObj("quote", "verified"))
+	got := reviewdoc.Render(&reviewdoc.RenderInput{
+		Review:   jq.NewObj("findings", []any{low, high}),
+		Approval: &core.ApprovalReceipt{Approved: false, Reason: "open findings"},
+		Kept:     []any{low, high},
+	})
+	if strings.Contains(got, "PRIVATE_LOW_CLAIM") || strings.Contains(got, "[withheld]") {
+		t.Fatalf("withheld finding leaked into rendered body:\n%s", got)
 	}
-}
-
-func TestWithheldSectionNestedFences(t *testing.T) {
-	for _, code := range []string{
-		"````text\n```\n## fake\nPRIVATE\n```\n### fake\nPRIVATE\n````\n",
-		"~~~~text\n~~~\n## fake\nPRIVATE\n```\n### fake\nPRIVATE\n~~~~\n",
-	} {
-		e := jq.NewObj("heading", "### Low", "withheld", jq.NewObj("source", "agent", "reason", "An intentional compatibility exception.", "at", "2026-11-13T12:00:00Z"))
-		st := &state{entries: []any{e}}
-		got := st.hideWithheldSections("### Low\n" + code + "### High\npublic finding\n")
-		if got != "### High\npublic finding\n" {
-			t.Fatalf("fenced section leaked: %q", got)
-		}
+	if !strings.Contains(got, "PUBLIC_HIGH_CLAIM") {
+		t.Fatalf("visible finding missing from rendered body:\n%s", got)
 	}
 }
 

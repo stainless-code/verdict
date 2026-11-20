@@ -244,11 +244,23 @@ an unparsable or non-object document, a finding with no recoverable
 string `path`/`claim`, an unknown `schema_version`, a corrupt store, or partial chunk
 coverage still refuses. `record --dry-run` adds `data.normalized` (the exact
 object the checker read) and `data.repairs`; verdict never rewrites
-`review.json` on disk. Because the agent writes no body, the CLI also renders
-one: the verdict marker, the optional `summary` paragraph, then one numbered
-line per finding. It owns the `> Basis:` line outright — the counts come from
-the stored review, and a line the agent never wrote is never reported back as a
-repair.
+`review.json` on disk. Because the agent writes no body, verdict renders the
+review body deterministically after evidence checks, panel merge, withholding,
+and approval evaluation: the opening verdict blockquote (one of the four leads
+— clean, informational-only, blocking, or evidence-insufficient — followed by
+`> Decision: withheld — …` when approval is withheld, optional `> Safety:` and
+`> Risk:` lines, and the labeled `> Basis:` counts), one sanitized plain-text
+`summary` paragraph, the `<!-- Review metadata … -->` HTML comment, ranked
+findings (with severity emoji, reference-style `[path:line][ev-N]` permalinks
+on GitHub PRs or plain `` `path:line` `` on non-GitHub/local bundles, rigor,
+category, KB ids, `(unverified — not counted)` for unverified quotes, and
+collapsed `<details><summary>Technical details</summary>` rendered from
+`brief`), `### ℹ️ Unanchored observations` for moved findings without
+duplication, `**Spec checks**` when `--spec` items were graded, `**What we
+checked**` (with hunk-receipt tally on clean reviews), or `**Evidence gaps**`
+when evidence is insufficient. Withheld findings are omitted from the body.
+When `post` splits a body over 65,536 bytes, each split comment carries its own
+used `[ev-N]` reference definitions so links stay self-contained.
 
 | Code                           | Level   | Meaning                                                                                                                                           |
 | ------------------------------ | ------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -2884,8 +2896,8 @@ key (including server-shaped or `org.*` namespaces) refuses with typed
 `secret`/`password`/`pat`/`credential`/`bearer` and compounds) refuses with
 typed `bad-settings-credentials` — credentials never live in the file.
 Absent file (or a file holding only defaults) keeps every gate
-byte-identical to today (marker-first, degenerate-body bar unchanged); only
-the rendered bytes gain the default footer block below — no forced
+byte-identical (marker-first verdict body rendered from structured findings);
+only the rendered bytes gain the default footer block below — no forced
 migration, no env removed.
 
 ## Install routes and where commands run
@@ -3162,11 +3174,13 @@ Re-merging a bundle that predates this change is safe (the rewrite is a fixed
 point) but re-keys those entries once, because their stored signatures were
 computed over the raw bytes. A `suggestion` is a code replacement and is never
 touched — a zero-width space inside a patch would be a silent edit to it. A
-comment's machine `brief` is record-only, not published, and stays verbatim.
+finding's structured `brief` renders into collapsed `Technical details` in the
+review body with untrusted prose sanitized (newlines, HTML tags/comments,
+markdown links, code fences, and `@mentions` neutralized).
 
 ## Permalink evidence links
 
-Findings link to code instead of pasting it: bodies reference each site as a reference-style `blob/<reviewed-SHA>/<path>#Lx` link (line ranges as `#Lx-Ly`), pinned to the reviewed commit — never live HEAD — so links survive later pushes; code quotes stay at most 3 lines and live only inside collapsed `<details>` blocks, with the visible body link-first. Non-GitHub and local bundles render plain `` `path:line` `` text instead (a blob URL there would 404), and the same degradation applies to `record`/`report` outputs. Link shape is garnish like the basis line: `post`/`record` warn on a wrong-SHA link or a long visible quote and keep the body — reviews never fail over it.
+Findings link to code instead of pasting it: verdict renders each site as a reference-style `[path:line][ev-N]` link whose definition points to `blob/<reviewed-SHA>/<path>#Lx` (line ranges as `#Lx-Ly`), pinned to the reviewed commit — never live HEAD — so links survive later pushes; non-trivial fix guidance lives inside collapsed `<details><summary>Technical details</summary>` blocks rendered from `finding.brief`. Non-GitHub and local bundles render plain `` `path:line` `` text instead (a blob URL there would 404), and the same degradation applies to `record`/`report` outputs. When `post` splits a body past 65,536 bytes, each split comment carries only the `[ev-N]` definitions it references.
 
 ## Change overview (file table + topology)
 
@@ -3190,34 +3204,16 @@ does the same; `--overview` forces it on and `--no-overview` forces it off
 — `false` renders the table alone. Posted agent bodies never carry the block
 — `report --output` is its only home, so one truth never forks into two.
 
-## Behavioral diagrams (agent-drawn, opt-in)
+## Behavioral diagrams (retired from agent reviews)
 
-Complex logic can ship an agent-drawn mermaid diagram in the posted body —
-at most one, collapsed, labeled generated, placed after the metadata
-comment. The agent contract lives in `prompts/diagrams.md`: a 7-type
-selection map (structure→`flowchart`/`mindmap`, call order→
-`sequenceDiagram`, lifecycles→`stateDiagram`, version chains→`gitGraph`,
-option matrices→`quadrantChart`, data shapes→`classDiagram`/`erDiagram`,
-schedules→`gantt`), a nodes-from-diff-only honesty rule (illustrative content
-labeled `illustrative`), copy-exact skeletons pinned to GitHub's rendered
-subset (no beta types), a one-diagram cap, and tables-stay-tables. The script
-side is grammar-level only: fenced block, keyword in the allowlist,
-balanced fences, non-empty. Unknown/beta keywords, unbalanced or empty
-fences, and cap extras warn and drop with a one-line `> Diagram omitted: …`
-note — a review never fails over a diagram. Mid-body blocks carry their own
-marker pair (`<!-- verdict-diagram:start -->` /
-`<!-- verdict-diagram:end -->`): the same strip-replace idiom as the footer
-divider, bounded because the footer marker cuts to end-of-body and a mid-body
-diagram is not terminal. Knobs live under `publish.diagrams`:
-`publish.diagrams.behavioral` (bool, default `false` — the block renders
-only when opted in), `publish.diagrams.structural` (bool, default `true` —
-the topology half above), `publish.diagrams.expanded` (bool, default
-`false` — renders the kept block open instead of collapsed). Flags
-`--diagram-behavioral` / `--no-diagram-behavioral` (plus
-the matching `-structural` / `-expanded` pairs) win over the file; the file
-wins over `REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL` / `_STRUCTURAL` / `_EXPANDED`
-env; env wins over defaults. With no diagram in the body the output path is
-byte-identical whether the knobs are set or not.
+Agent-drawn behavioral mermaid diagrams are retired from agent-authored
+`review.json`: verdict renders the review body deterministically from structured
+findings, and `summary` neutralizes raw HTML comments and code fences.
+Structural topology diagrams in `report --overview` remain active and are gated
+by `publish.diagrams.structural` (bool, default `true`). The existing
+`publish.diagrams.behavioral` and `publish.diagrams.expanded` settings keys
+still validate as booleans (`bad-settings` on unknown keys or non-boolean
+values).
 
 ## Section overrides (per-block template fragments)
 

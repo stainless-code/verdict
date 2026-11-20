@@ -53,7 +53,7 @@ exit: 0
       "moved": 4
     },
     "findings": {
-      "open": 53,
+      "open": 50,
       "deferred": 0,
       "addressed": 0,
       "file": ".verdict/state/local-mx/findings.json"
@@ -360,24 +360,6 @@ exit: 0
         "status": "open",
         "anchored": false,
         "locator": "notes.txt:99991"
-      },
-      {
-        "sig": "99cd29f4506a07a6e5afe278e095cef33f4798b3",
-        "status": "open",
-        "anchored": "body",
-        "locator": "### Watch the loop"
-      },
-      {
-        "sig": "e5ae2abbcc127fe8d3594517ddb1cc52a9d5a0fb",
-        "status": "open",
-        "anchored": "body",
-        "locator": "### Check the edges"
-      },
-      {
-        "sig": "1b5fa562f7dc550466a653d4d9d849bdee15b60a",
-        "status": "open",
-        "anchored": "body",
-        "locator": "### ℹ️ Unanchored observations"
       }
     ],
     "evidence": {"head":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","diff_sha256":"94c13c09a41c7b60eb7ad434d0022a7886cd82666cb464b623d9bc7d372b66de","quotes":[{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":3},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":73},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":143},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":213},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":283},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":353},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":423},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":493},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":563},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":633},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":103},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"line-not-in-bundle","line":99991},{"path":"notes.txt","side":"LEFT","status":"unverified","reason":"text-differs","line":133},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":143},{"path":"notes.txt","side":"LEFT","status":"unverified","reason":"text-differs","line":153},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1123},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1193},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1263},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1333},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1403},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1473},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1543},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1613},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1683},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1753},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1823},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1893},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1963},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":2033},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":303},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"line-not-in-bundle","line":99991},{"path":"notes.txt","side":"LEFT","status":"unverified","reason":"text-differs","line":333},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":343},{"path":"notes.txt","side":"LEFT","status":"unverified","reason":"text-differs","line":353},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":323},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":393},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":463},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":533},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":603},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":673},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":743},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":813},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":883},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":953},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1023},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1093},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1163},{"path":"notes.txt","side":"RIGHT","status":"unverified","reason":"text-differs","line":1233}],"gaps":["finding 1 quote does not match full.diff at notes.txt:3 (text-differs)","finding 2 quote does not match full.diff at notes.txt:73 (text-differs)","finding 3 quote does not match full.diff at notes.txt:143 (text-differs)","finding 4 quote does not match full.diff at notes.txt:213 (text-differs)","finding 5 quote does not match full.diff at notes.txt:283 (text-differs)","finding 6 quote does not match full.diff at notes.txt:353 (text-differs)","finding 7 quote does not match full.diff at notes.txt:423 (text-differs)","finding 8 quote does not match full.diff at notes.txt:493 (text-differs)","finding 9 quote does not match full.diff at notes.txt:563 (text-differs)","finding 10 quote does not match full.diff at notes.txt:633 (text-differs)","finding 11 quote does not match full.diff at notes.txt:103 (text-differs)","finding 12 quote does not match full.diff at notes.txt:1 (text-differs)","finding 13 at notes.txt:99991 cannot be checked from the bundle (line-not-in-bundle)","finding 14 quote does not match full.diff at notes.txt:133 (text-differs)","finding 15 quote does not match full.diff at notes.txt:143 (text-differs)","finding 16 quote does not match full.diff at notes.txt:153 (text-differs)","finding 17 quote does not match full.diff at notes.txt:1123 (text-differs)","finding 18 quote does not match full.diff at notes.txt:1193 (text-differs)","finding 19 quote does not match full.diff at notes.txt:1263 (text-differs)","finding 20 quote does not match full.diff at notes.txt:1333 (text-differs)","finding 21 quote does not match full.diff at notes.txt:1403 (text-differs)","finding 22 quote does not match full.diff at notes.txt:1473 (text-differs)","finding 23 quote does not match full.diff at notes.txt:1543 (text-differs)","finding 24 quote does not match full.diff at notes.txt:1613 (text-differs)","finding 25 quote does not match full.diff at notes.txt:1683 (text-differs)","finding 26 quote does not match full.diff at notes.txt:1753 (text-differs)","finding 27 quote does not match full.diff at notes.txt:1823 (text-differs)","finding 28 quote does not match full.diff at notes.txt:1893 (text-differs)","finding 29 quote does not match full.diff at notes.txt:1963 (text-differs)","finding 30 quote does not match full.diff at notes.txt:2033 (text-differs)","finding 31 quote does not match full.diff at notes.txt:303 (text-differs)","finding 32 quote does not match full.diff at notes.txt:1 (text-differs)","finding 33 at notes.txt:99991 cannot be checked from the bundle (line-not-in-bundle)","finding 34 quote does not match full.diff at notes.txt:333 (text-differs)","finding 35 quote does not match full.diff at notes.txt:343 (text-differs)","finding 36 quote does not match full.diff at notes.txt:353 (text-differs)","finding 37 quote does not match full.diff at notes.txt:323 (text-differs)","finding 38 quote does not match full.diff at notes.txt:393 (text-differs)","finding 39 quote does not match full.diff at notes.txt:463 (text-differs)","finding 40 quote does not match full.diff at notes.txt:533 (text-differs)","finding 41 quote does not match full.diff at notes.txt:603 (text-differs)","finding 42 quote does not match full.diff at notes.txt:673 (text-differs)","finding 43 quote does not match full.diff at notes.txt:743 (text-differs)","finding 44 quote does not match full.diff at notes.txt:813 (text-differs)","finding 45 quote does not match full.diff at notes.txt:883 (text-differs)","finding 46 quote does not match full.diff at notes.txt:953 (text-differs)","finding 47 quote does not match full.diff at notes.txt:1023 (text-differs)","finding 48 quote does not match full.diff at notes.txt:1093 (text-differs)","finding 49 quote does not match full.diff at notes.txt:1163 (text-differs)","finding 50 quote does not match full.diff at notes.txt:1233 (text-differs)"],"receipts":{"total":221,"covered":0,"exempt":0,"complete":false},"spec":{"total":0,"covered":0,"min":0,"met":true},"insufficient":true}
@@ -427,7 +409,7 @@ warn: rigor said below critical floor walked on f8c039f (advisory)
 warn: rigor said below important floor pointed on 0b7162f (advisory)
 warn: rigor said below important floor pointed on 3aa1a65 (advisory)
 warn: rigor said below critical floor walked on 2d784bc (advisory)
-» findings: 53 sigs -> .verdict/state/local-mx/findings.json
+» findings: 50 sigs -> .verdict/state/local-mx/findings.json
   c7bc06e4  open  true  notes.txt
   63b8aa5b  open  true  notes.txt
   748484cb  open  true  notes.txt
@@ -478,10 +460,7 @@ warn: rigor said below critical floor walked on 2d784bc (advisory)
   d00d2dbb  open  false  notes.txt
   29e0cb91  open  false  notes.txt
   7b2b8bff  open  false  notes.txt
-  99cd29f4  open  body  ### Watch the loop
-  e5ae2abb  open  body  ### Check the edges
-  1b5fa562  open  body  ### ℹ️ Unanchored observations
-recorded: .verdict/state/local-mx/findings.json (53 open) + .verdict/state/local-mx/record.json — report/triage read it; post stays refused (no PR target)
+recorded: .verdict/state/local-mx/findings.json (50 open) + .verdict/state/local-mx/record.json — report/triage read it; post stays refused (no PR target)
 --- files ---
 --- file C/.verdict/state/local-mx/findings.json ---
 [
@@ -1934,72 +1913,6 @@ recorded: .verdict/state/local-mx/findings.json (53 open) + .verdict/state/local
         "event": "reported"
       }
     ]
-  },
-  {
-    "kind": "section",
-    "heading": "### Watch the loop",
-    "anchored": "body",
-    "body": "### Watch the loop",
-    "rigor_source": "default",
-    "severity": null,
-    "category": null,
-    "sig": "99cd29f4506a07a6e5afe278e095cef33f4798b3",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "kb": [],
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
-  },
-  {
-    "kind": "section",
-    "heading": "### Check the edges",
-    "anchored": "body",
-    "body": "### Check the edges",
-    "rigor_source": "default",
-    "severity": null,
-    "category": null,
-    "sig": "e5ae2abbcc127fe8d3594517ddb1cc52a9d5a0fb",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "kb": [],
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
-  },
-  {
-    "kind": "section",
-    "heading": "### ℹ️ Unanchored observations",
-    "anchored": "body",
-    "body": "### ℹ️ Unanchored observations",
-    "rigor_source": "default",
-    "severity": null,
-    "category": null,
-    "sig": "1b5fa562f7dc550466a653d4d9d849bdee15b60a",
-    "sig_version": "1",
-    "firstSeen": "aaaaaaa",
-    "lastSeen": "aaaaaaa",
-    "status": "open",
-    "rationale": "",
-    "kb": [],
-    "history": [
-      {
-        "at": "0000-00-00T00:00:00Z",
-        "event": "reported"
-      }
-    ]
   }
 ]
 --- file C/.verdict/state/local-mx/hunks.tsv ---
@@ -2453,17 +2366,17 @@ other.txt	NEW	1	3
   "diff_sha256": "94c13c09a41c7b60eb7ad434d0022a7886cd82666cb464b623d9bc7d372b66de",
   "review_sha256": "dc33a59a6d1f2758ca217825e0e2e80a5e7b8a662b8c12e968b3ff0cca22335f",
   "recorded_at": "0000-00-00T00:00:00Z",
-  "findings": 53,
-  "open": 53,
+  "findings": 50,
+  "open": 50,
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "25f7600e4f49108320439bbca352671fd9a094231e5344cd3031c6d812c00106",
+  "prompts_hash": "7969e23171f7f90c981afa1d9e31fd12ab7e81841c49ad58c6525c802f342e24",
   "model": null,
   "author": null,
   "review_models": [],
   "validation_hash": null,
-  "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":53},
+  "validation_counts": {"confirmed":0,"rejected":0,"downgraded":0,"unvalidated":50},
   "validation_mode": "warn",
   "rigor_floors": {"critical":"walked","important":"pointed","informational":"said"},
   "approval": {"reason":"review-insufficient: finding 1 quote does not match full.diff at notes.txt:3 (text-differs)","tier":"important","gating_sigs":[],"approved":false,"insufficient":true},

@@ -486,15 +486,15 @@ rather than becoming ground truth.
 --- file C/.verdict/state/4703/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "d23d3991fa6facd1108a382da762de867f7cc041eca4383aa6e5249552f02dd5",
-  "prompts_hash": "25f7600e4f49108320439bbca352671fd9a094231e5344cd3031c6d812c00106",
+  "run_id": "d174baeae5c43582f4f16dec64f639883cf5ac5114d66d9e075c41fb8c0e8aea",
+  "prompts_hash": "7969e23171f7f90c981afa1d9e31fd12ab7e81841c49ad58c6525c802f342e24",
   "inputs": [
     {
       "kind": "prompt",
       "name": "PROCEDURE.md",
       "status": "included",
-      "sha256": "91a612daaf5a776266dfe654bf350f83f2c957a8289a233e905988dcbed7fed7",
-      "bytes": 13395
+      "sha256": "529138b404d6783cb02abee32e57e2ed96a98a2273fa602a5034a8e7dc3d103d",
+      "bytes": 13400
     },
     {
       "kind": "prompt",
@@ -514,8 +514,8 @@ rather than becoming ground truth.
       "kind": "prompt",
       "name": "prompts/handoff/capability-map.md",
       "status": "included",
-      "sha256": "b42b390543f4d6acdfdc47ef754a636c4b33f71d4da42de0545a856171ce28c3",
-      "bytes": 870
+      "sha256": "a80ec3f3be686e5d634c68d740947e24f27bcbe5da407af62dff65779d546c4d",
+      "bytes": 810
     },
     {
       "kind": "prompt",
@@ -535,8 +535,8 @@ rather than becoming ground truth.
       "kind": "prompt",
       "name": "prompts/handoff/findings-contract.md",
       "status": "included",
-      "sha256": "492cd3632f199155dc8ca099e56b6c4396c1240195020e593d3f81c1766689cb",
-      "bytes": 1357
+      "sha256": "fe6d8dcdc370cf6eb9aa02fefaf23c36cf634e9a86f91af5335bdb33168fddf7",
+      "bytes": 1420
     },
     {
       "kind": "prompt",
@@ -584,15 +584,15 @@ rather than becoming ground truth.
       "kind": "prompt",
       "name": "prompts/incremental-review.md",
       "status": "included",
-      "sha256": "6d303ee871969968fbd3cabb17966cf04fbecf19d5faa91ede1b8858023e2690",
-      "bytes": 6980
+      "sha256": "4a7c1973de4af5c7b74fe099e9764684ef896eb439d40849a4f37c7da43c0f32",
+      "bytes": 6853
     },
     {
       "kind": "prompt",
       "name": "prompts/review.md",
       "status": "included",
-      "sha256": "8eff61b07ffd06c9f31e12597781f9b31e6fb43e142ee3ffa2e69122fbafc911",
-      "bytes": 27389
+      "sha256": "04285ffbfeebcf29eeca41738a761f1a96515884e0557ae9f4d4117221fed47c",
+      "bytes": 20212
     },
     {
       "kind": "prompt",
@@ -757,8 +757,8 @@ rather than becoming ground truth.
       "kind": "bundle",
       "name": "procedure.md",
       "status": "included",
-      "sha256": "c2708e657d86fb3f60f843a7c68d3c2d8d070db1d47d91d70ea19e98bdfa9170",
-      "bytes": 3120
+      "sha256": "1b8df9d23d7ac81d2901c6db60c5b9bb6d80760767e6241f860b5b40521f9ebc",
+      "bytes": 3123
     },
     {
       "kind": "bundle",
@@ -769,17 +769,10 @@ rather than becoming ground truth.
     },
     {
       "kind": "bundle",
-      "name": "refs/diagrams.md",
-      "status": "included",
-      "sha256": "d19183a969b0e131d7520f0d2fa82889b903c4878e5fcea5ca9f2f0901eacd2d",
-      "bytes": 3780
-    },
-    {
-      "kind": "bundle",
       "name": "refs/incremental-review.md",
       "status": "included",
-      "sha256": "6d303ee871969968fbd3cabb17966cf04fbecf19d5faa91ede1b8858023e2690",
-      "bytes": 6980
+      "sha256": "4a7c1973de4af5c7b74fe099e9764684ef896eb439d40849a4f37c7da43c0f32",
+      "bytes": 6853
     },
     {
       "kind": "bundle",
@@ -799,8 +792,8 @@ rather than becoming ground truth.
       "kind": "bundle",
       "name": "refs/review-checklist.md",
       "status": "included",
-      "sha256": "680b17cdbc3abe90d754d5aa0da68da4faf7810e755d0abffb6da469aa450059",
-      "bytes": 17173
+      "sha256": "db5de16b434364be5343631dd81c36e8f27b6581beeaec1139270e720c2ad93e",
+      "bytes": 19026
     },
     {
       "kind": "bundle",
@@ -970,8 +963,6 @@ rather than becoming ground truth.
 }
 --- file C/.verdict/state/4703/refs/commands.md ---
 <embedded ref refs/commands.md>
---- file C/.verdict/state/4703/refs/diagrams.md ---
-<embedded ref refs/diagrams.md>
 --- file C/.verdict/state/4703/refs/incremental-review.md ---
 <embedded ref refs/incremental-review.md>
 --- file C/.verdict/state/4703/refs/lens-pack.md ---

@@ -10,10 +10,10 @@ import (
 	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/core"
-	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	threadscore "github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 const (
@@ -387,7 +387,7 @@ func cleanSummaryProse(raw string) string {
 		}
 		break
 	}
-	return strings.TrimSpace(recordcore.NeutralizeMentions(strings.Join(lines, newline)))
+	return strings.TrimSpace(untrusted.NeutralizeMentions(strings.Join(lines, newline)))
 }
 
 func renderSummaryInlineSection(comments []any, links []summaryInlineLink) string {

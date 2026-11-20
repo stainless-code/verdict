@@ -14,14 +14,13 @@ import (
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/coverage"
-	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/evidence"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
-	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/sig"
+	"github.com/stainless-code/verdict/internal/untrusted"
 	"github.com/stainless-code/verdict/internal/validation"
 )
 
@@ -36,7 +35,6 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	run             *config.RunState
 	kb              *kb.Ctx
 	forces          *core.GlobalForces
-	preFooter       func(string) string
 	progress        core.Progress
 	effective       core.Effective
 	minSeverity     string
@@ -58,6 +56,7 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	headFull        string
 	kept            []any
 	keptSigs        []string
+	movedSigs       []string
 	hunkRows        []hunks.Hunk
 	moved           []any
 	entries         []any
@@ -109,12 +108,7 @@ func (st *state) human(line string) {
 	}
 }
 
-func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
-	// The body is constructed here, once, for both verbs: a mention the agent
-	// wrote is neutralized before any bytes are stored or hashed, and before
-	// the basis line, diagram, and footer are appended, so nothing downstream
-	// has to scan or rewrite them.
-	body = NeutralizeMentions(body)
+func (st *state) validateAndMerge() error {
 	st.kb = kb.New(st.warn)
 	st.kb.Root = st.repoRoot
 	st.kb.ReadFile = st.controls.ReadFile
@@ -125,41 +119,39 @@ func (st *state) validateAndMerge(body string) (string, diagram.Status, error) {
 	readcommon.WarnContextSources(st.dir, st.review, st.warn)
 	st.kb.Staged = []map[string]any{}
 	if err := checkReviewSchema(st.review); err != nil {
-		return "", diagram.Status{}, err
+		return err
 	}
 	if err := st.validateInputs(); err != nil {
-		return "", diagram.Status{}, err
+		return err
 	}
 	if err := st.evaluateCoverage(); err != nil {
-		return "", diagram.Status{}, err
+		return err
 	}
 	anchorHunks, err := st.validateChunkMerge()
 	if err != nil {
-		return "", diagram.Status{}, err
+		return err
 	}
 	st.anchorHunks = anchorHunks
 	if err := st.parseConfidence(); err != nil {
-		return "", diagram.Status{}, err
+		return err
 	}
-	body = st.validateAnchors(body)
-	body = st.demoteFences(body)
-	body = appendMoveSection(body, st.moved)
+	st.validateAnchors()
+	st.demoteFences()
 	st.reportMoves()
-	st.buildEntries(body)
-	st.keptSigs = freshInlineSigs(st.entries, len(st.kept))
+	st.buildEntries()
+	st.keptSigs = freshInlineSigs(st.entries, 0, len(st.kept))
+	st.movedSigs = freshInlineSigs(st.entries, len(st.kept), len(st.moved))
 	if err := st.finishEntries(); err != nil {
-		return "", diagram.Status{}, err
+		return err
 	}
-	body = st.hideWithheldSections(st.hideWithheldMoved(body))
-	body = st.hideWithheldInlineClaims(body)
-	curated, dstat, err := st.garnishChecks(body)
-	if err != nil {
-		return "", diagram.Status{}, err
+	if ref := readcommon.ValidateOverridesAt(st.controls.OverridesDir()); ref != nil {
+		//nolint:wrapcheck // the typed bad-override refusal passes through unchanged; the edge renders Code/Message
+		return ref
 	}
-	st.setMarker(curated)
+	st.reportCoverage()
 	st.countHunks()
 	removeDerivedSnapshot(st)
-	return curated, dstat, nil
+	return nil
 }
 
 // finishEntries runs the pass and then the floors, in that order and for two
@@ -236,43 +228,6 @@ func (st *state) reportMoves() {
 	}
 }
 
-func (st *state) garnishChecks(body string) (string, diagram.Status, error) {
-	// The review document carries no body: this renderer owns every body
-	// byte, so the CLI writes the Basis line and never reports it back as an
-	// agent repair.
-	body = provenance.ApplyBasisLine(
-		provenance.ReviewBasisCounts(st.review, st.entries, st.now), body)
-	for _, w := range provenance.ValidateEvidenceLinks(
-		body, st.headFull, provenance.EvidenceLinkable(st.dir, st.headFull)) {
-		st.warn(w)
-	}
-	dr := st.applyDiagram(body)
-	body = dr.Body
-	if st.preFooter != nil {
-		body = st.preFooter(body)
-	}
-	if ref := readcommon.ValidateOverridesAt(st.controls.OverridesDir()); ref != nil {
-		//nolint:wrapcheck // the typed bad-override refusal passes through unchanged; the edge renders Code/Message
-		return "", dr.Status, ref
-	}
-	body = st.applyCoverageLine(body)
-	st.reportCoverage()
-	body = st.applyFooter(body)
-	st.setMarker(body)
-	return body, dr.Status, nil
-}
-
-func (st *state) applyDiagram(body string) diagram.Result {
-	dr := diagram.Validate(body,
-		st.effective.DiagramsBehavioral == core.FlagOn,
-		st.effective.DiagramsExpanded == core.FlagOn,
-		core.FooterDivider)
-	for _, w := range dr.Warns {
-		st.warn(w)
-	}
-	return dr
-}
-
 func anchorLoc(m *jq.Obj) string {
 	p, _ := m.Get(fieldPath)
 	line, _ := m.Get(fieldLine)
@@ -297,21 +252,6 @@ func validJSON(raw []byte) bool {
 	}
 	_, err := jq.DecodeSlurp(bytes.NewReader(raw))
 	return err == nil
-}
-
-func (st *state) hideWithheldInlineClaims(body string) string {
-	for _, item := range st.entries {
-		obj, ok := item.(*jq.Obj)
-		if !ok || !obj.Has("withheld") {
-			continue
-		}
-		claim, _ := obj.Get("body")
-		text := jq.R(claim)
-		if text != "" {
-			body = strings.ReplaceAll(body, text, "[withheld]")
-		}
-	}
-	return body
 }
 
 func checkReviewSchema(review *jq.Obj) error {
@@ -403,7 +343,7 @@ func (st *state) parseSecuritySummary() error {
 	return nil
 }
 
-func (st *state) validateAnchors(body string) string {
+func (st *state) validateAnchors() {
 	st.kept = []any{}
 	st.moved = []any{}
 	var comments []any
@@ -412,7 +352,7 @@ func (st *state) validateAnchors(body string) string {
 	}
 	if st.bodyOnlyAnchors {
 		st.moveEveryAnchor(comments)
-		return body
+		return
 	}
 	hs := st.hunkRows
 	if hs == nil {
@@ -426,7 +366,6 @@ func (st *state) validateAnchors(body string) string {
 		}
 		st.classifyComment(m, hs)
 	}
-	return body
 }
 
 // moveEveryAnchor sends every finding to the body instead of an inline anchor:
@@ -564,7 +503,7 @@ func loadHunkRows(path string) []hunks.Hunk {
 	return out
 }
 
-func (st *state) demoteFences(body string) string {
+func (st *state) demoteFences() {
 	kept := st.kept[:0:0]
 	var fenced []any
 	for _, c := range st.kept {
@@ -586,7 +525,6 @@ func (st *state) demoteFences(body string) string {
 		st.moved = append(fenced, st.moved...)
 		st.kept = kept
 	}
-	return body
 }
 
 func hasSuggestionFence(m *jq.Obj) bool {
@@ -598,38 +536,6 @@ func hasSuggestionFence(m *jq.Obj) bool {
 	return ok && strings.Contains(ss, "```")
 }
 
-func appendMoveSection(body string, moved []any) string {
-	if len(moved) == 0 {
-		return body
-	}
-	lines := make([]string, 0, len(moved))
-	for _, c := range moved {
-		m, ok := c.(*jq.Obj)
-		if !ok || m == nil {
-			continue
-		}
-		lines = append(lines, moveLine(m))
-	}
-	return body + "\n\n" + moveSection(lines)
-}
-
-func moveSection(lines []string) string {
-	return moveSectionHead + strings.Join(lines, newline)
-}
-
-const moveSectionHead = core.MovedSectionHeading + "\n\nThe following points fell outside " +
-	"the diff hunks for the reviewed SHA, so they post here instead of inline:\n"
-
-func moveLine(m *jq.Obj) string {
-	p, _ := m.Get(fieldPath)
-	line, _ := m.Get(fieldLine)
-	start, _ := m.Get(fieldStartLine)
-	loc := fmt.Sprintf("%s:%s-%s", jq.Interp(p), jq.Interp(jq.Alt(start, line)), jq.Interp(line))
-	drop, _ := m.Get(fieldDropReason)
-	reason := jq.Interp(jq.Alt(drop, "outside reviewed hunks"))
-	return fmt.Sprintf("- `%s` — %s (%s)", loc, entryBody(m), reason)
-}
-
 func runeSlice(s string, n int) string {
 	runes := []rune(s)
 	if len(runes) > n {
@@ -638,10 +544,8 @@ func runeSlice(s string, n int) string {
 	return s
 }
 
-func (st *state) buildEntries(body string) {
-	var fresh []freshEntry
-	fresh = append(fresh, freshInline(st)...)
-	fresh = append(fresh, freshSections(body)...)
+func (st *state) buildEntries() {
+	fresh := freshInline(st)
 	kbExists := st.controls.Has(kb.File)
 	for _, fe := range fresh {
 		st.entries = append(st.entries, stampEntry(st, fe.entry, fe.kbRaw, kbExists).Wire())
@@ -653,12 +557,13 @@ type freshEntry struct {
 	kbRaw any
 }
 
-func freshInlineSigs(entries []any, kept int) []string {
-	if kept > len(entries) {
-		kept = len(entries)
+func freshInlineSigs(entries []any, offset, count int) []string {
+	if offset >= len(entries) || count <= 0 {
+		return nil
 	}
-	out := make([]string, 0, kept)
-	for i := range kept {
+	end := min(offset+count, len(entries))
+	out := make([]string, 0, end-offset)
+	for i := offset; i < end; i++ {
 		value := ""
 		if m, ok := entries[i].(*jq.Obj); ok && m != nil {
 			value, _ = sigString(m)
@@ -681,17 +586,6 @@ func freshInline(st *state) []freshEntry {
 	return fresh
 }
 
-func freshSections(body string) []freshEntry {
-	var fresh []freshEntry
-	for h := range strings.SplitSeq(body, newline) {
-		if !strings.HasPrefix(h, "### ") {
-			continue
-		}
-		fresh = append(fresh, freshEntry{entry: buildSection(h)})
-	}
-	return fresh
-}
-
 func buildInline(st *state, m *jq.Obj) freshEntry {
 	drop, _ := m.Get(fieldDropReason)
 	path, _ := m.Get(fieldPath)
@@ -705,7 +599,7 @@ func buildInline(st *state, m *jq.Obj) freshEntry {
 	rigor, _ := m.Get(fieldRigor)
 	sev, _ := m.Get(fieldSeverity)
 	cat, hasCat := m.Get(fieldCategory)
-	body := NeutralizeMentions(jq.StrOf(jq.Alt(bd, "")))
+	body := untrusted.NeutralizeMentions(jq.StrOf(jq.Alt(bd, "")))
 	rigorValue, rigorSource := pickRigor(rigor)
 	category := pickCategory(st, m, cat, hasCat)
 	entry := &core.FindingEntry{
@@ -745,16 +639,6 @@ func briefOf(st *state, m *jq.Obj) *core.Brief {
 		st.warnInput(w)
 	}
 	return b
-}
-
-func buildSection(h string) *core.FindingEntry {
-	return &core.FindingEntry{
-		Kind:        "section",
-		Heading:     h,
-		Anchored:    fieldBody,
-		Body:        h,
-		RigorSource: rigorSourceDefault,
-	}
 }
 
 // entryQuoteStatus reads the quote standing the evidence pass stamped on one

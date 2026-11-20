@@ -1,6 +1,6 @@
 # INCREMENTAL REVIEW — delta re-review after new commits
 
-Same body format + callout ladder as `review.md`, scoped to the delta.
+Same structured findings contract as `review.md`, scoped to the delta.
 
 ---
 
@@ -31,7 +31,9 @@ Same body format + callout ladder as `review.md`, scoped to the delta.
    drafting the new review, then run `verdict threads` once more after the push. If uncertain/
    partial: leave open. Only retire bot and verdict threads; human threads belong to humans.
    False-positive resolves erode trust faster than false negatives.
-   Carry still-open out-of-scope items as Deferred bullets in the review body — what, and why deferred.
+   Claim still-open out-of-scope items via `triage[]` only when the thread maps to a stored
+   finding signature in `findings.json` — use that `sig`, status `deferred`, and a ≥30-char
+   rationale. Preserve unmapped out-of-scope thread context in `summary`.
 4. **Triage the incremental changes** (domain/seams/contracts/surfaces). You are the synthesizer.
    Apply the scope gate in `prompts/system.md` — it alone decides the non-substantive path
    (no review, 1–2 sentence note) vs full scrutiny.
@@ -53,20 +55,17 @@ Same body format + callout ladder as `review.md`, scoped to the delta.
    "New lines": `incremental.diff` directly,
    else `git diff <prior-review-sha>..HEAD`. Draft inline with NEW numbers from full diff.
    Sigs are line-number-free, so chunk re-slicing never breaks dedup on chunked bundles.
-7. **Body.** Same Default format as Review, scoped to the **delta** ("Reviewed changes" bullets
-   describe since prior, each starting with a past-tense verb, e.g. `- Extracted shared CLI…`).
-   No separate "Prior review feedback" checklist — that lives in your working notes, not the body.
+7. **Summary.** Set optional one-paragraph plain-text `summary` scoped to the delta
+   (required when `findings[]` is empty). Verdict renders the review body.
 8. **Submit — EXACTLY ONE of:**
    - No new issues + non-substantive delta → NO review. Write `.verdict/state/N/noreview.md` (1–2 sentences,
      e.g. "No new issues. Changes since last review are formatting-only.") and post as a plain
      issue comment (or stdout if local-only). Do NOT submit an empty review.
-   - New critical → a `critical` finding + `> [!CAUTION]` + summary.
-   - New must-address non-critical → an `important` finding + `> [!IMPORTANT]` + summary (never for nits).
-   - New minor only → an `informational` finding + `> ℹ️ …` + summary.
-   - Informational (mergeable, worth surfacing) → no gating findings, NO inline, `> ✅ …` + summary.
-     Anchorable point → downgrade to minor instead.
-   - No new issues + substantive delta (new behavior/fixes) → review, no gating findings when prior
-     feedback is addressed, body `> ✅ No new issues found.` + summary.
+   - New critical → a `critical` finding + optional one-paragraph `summary`.
+   - New must-address non-critical → an `important` finding + optional one-paragraph `summary` (never for nits).
+   - New minor only → an `informational` finding + optional one-paragraph `summary`.
+   - No new issues + substantive delta (new behavior/fixes) → empty `findings[]` + required one-paragraph `summary`
+     + `receipts[]` covering the changed hunks.
 
 Every review branch above ends the same way: Write exactly one `.verdict/state/N/review.json` with `{schema_version: "1", findings[], spec_checks[], receipts[], summary?}` (plus optional `resolved` sigs); `post` validates anchors, merges the findings store, and submits — the same path as an unchunked delta, no extra machinery. On chunked bundles the cross-chunk coverage gate applies unchanged: stamp every manifest chunk in top-level `"chunks"` — the affected chunks re-read for this delta, plus the unaffected chunks carried from the prior completed review (prior `findings.json`, step 2; when no prior review exists, read the unaffected chunks too) — and a synthesis missing one is refused, never posted partial. Every finding carries its `confidence` (`high|medium|low`); only `security_summary` is optional, as in `review.md` — absent stays absent. List prior-run sigs the delta addresses in `resolved`. Triage and verification work exactly as in `review.md` step 7.
 

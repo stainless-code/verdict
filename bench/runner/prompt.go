@@ -44,7 +44,7 @@ const (
 
 // promptFiles are the four trusted files every agent prompt opens with, in
 // the order the tool concatenates them.
-var promptFiles = []string{"PROCEDURE.md", "prompts/system.md", "prompts/review.md", "prompts/diagrams.md"}
+var promptFiles = []string{"PROCEDURE.md", "prompts/system.md", "prompts/review.md"}
 
 // fenceLine matches the tool's untrusted-region header. The prompt files quote
 // the marker shape in prose with `nonce=<hex>` placeholders, so the match
@@ -145,7 +145,7 @@ func toToolFreePrefix(prefix string) (string, error) {
 	if out, err = replaceRange(out, "7. **Submit.**", toolFreeCoverageHead, toolFreeSubmit); err != nil {
 		return "", err
 	}
-	if out, err = replaceRange(out, toolFreeCoverageTail, "## Review body format", toolFreeCost); err != nil {
+	if out, err = replaceRange(out, toolFreeCoverageTail, "## Finding categories", toolFreeCost); err != nil {
 		return "", err
 	}
 	return toolFreeBanner + out, nil

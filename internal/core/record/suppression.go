@@ -266,28 +266,6 @@ func PublicComments(entries, comments []any, sigs []string) ([]any, []string) {
 	return kept, keptSigs
 }
 
-func (st *state) hideWithheldMoved(body string) string {
-	var visible []any
-	hidden := withheldIndex(st.entries, movedKey)
-	for _, entry := range st.moved {
-		if e, ok := entry.(*jq.Obj); ok && !hidden[movedKey(e)] {
-			visible = append(visible, e)
-		}
-	}
-	if len(visible) == len(st.moved) {
-		return body
-	}
-	if len(visible) == 0 {
-		st.dropDerivedMoveHeading()
-	}
-	return strings.Replace(body, appendMoveSection("", st.moved), appendMoveSection("", visible), 1)
-}
-
-func movedKey(e *jq.Obj) string {
-	line, _ := e.Get(fieldLine)
-	return suppressionString(e, fieldPath) + "\x00" + jq.R(line) + "\x00" + NeutralizeMentions(suppressionString(e, "body"))
-}
-
 func (st *state) parseSuppression(item any) (*jq.Obj, error) {
 	m, ok := item.(*jq.Obj)
 	if !ok || m == nil {
@@ -439,14 +417,4 @@ func validExclusionRows(rows []core.ExcludedPath) bool {
 
 func exclusionRowMatches(row *core.ExcludedPath, file string) bool {
 	return file != "" && (row.Path == file || row.OldPath == file)
-}
-
-func (st *state) dropDerivedMoveHeading() {
-	var entries []any
-	for _, entry := range st.entries {
-		if readcommon.FieldOf(entry, fieldHeading) != core.MovedSectionHeading {
-			entries = append(entries, entry)
-		}
-	}
-	st.entries = entries
 }

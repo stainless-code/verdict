@@ -2,7 +2,6 @@ package recordcore
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
@@ -54,28 +53,6 @@ func (st *state) floorEntry(e *jq.Obj, floor, severity string, rank int) {
 	}
 }
 
-func (st *state) hideWithheldSections(body string) string {
-	hidden := withheldIndex(st.entries, func(e *jq.Obj) string { return suppressionString(e, fieldHeading) })
-	var out strings.Builder
-	filter := sectionFilter{hidden: hidden}
-	for line := range strings.SplitAfterSeq(body, "\n") {
-		if !filter.drop(strings.TrimRight(line, "\r\n")) {
-			out.WriteString(line)
-		}
-	}
-	return out.String()
-}
-
-func dropSectionLine(line string, hidden map[string]bool, dropping bool) bool {
-	if strings.HasPrefix(line, "### ") {
-		return hidden[strings.TrimSpace(line)]
-	}
-	if strings.HasPrefix(line, "## ") {
-		return false
-	}
-	return dropping
-}
-
 func (st *state) floorFinding(entry any) int {
 	e, ok := entry.(*jq.Obj)
 	if !ok || suppressionString(e, fieldHeading) == core.MovedSectionHeading {
@@ -89,26 +66,4 @@ func (st *state) floorFinding(entry any) int {
 		return 1
 	}
 	return 0
-}
-
-type sectionFilter struct {
-	hidden   map[string]bool
-	fenceLen int
-	fence    byte
-	dropping bool
-}
-
-func (s *sectionFilter) drop(line string) bool {
-	if s.fence != 0 {
-		if fenceCloses(line, s.fence, s.fenceLen) {
-			s.fence, s.fenceLen = 0, 0
-		}
-		return s.dropping
-	}
-	if char, n, ok := fenceOpens(line); ok {
-		s.fence, s.fenceLen = char, n
-		return s.dropping
-	}
-	s.dropping = dropSectionLine(line, s.hidden, s.dropping)
-	return s.dropping
 }

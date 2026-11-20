@@ -80,7 +80,7 @@ else
   bad "payload comments: $(jq -c '.comments' <"$PAYLOAD_4281" 2>/dev/null || echo unreadable)"
 fi
 if grep -q "Unanchored observations" "$PAYLOAD_4281" \
-  && grep -Fq 'notes.txt:50-50' "$PAYLOAD_4281" \
+  && grep -Fq 'notes.txt:50' "$PAYLOAD_4281" \
   && grep -q "outside reviewed hunks" "$PAYLOAD_4281"; then
   good "dropped anchor lands in the body as a named note with its reason"
 else

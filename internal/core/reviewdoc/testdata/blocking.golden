@@ -1,0 +1,73 @@
+> ⚠️ Findings require attention.
+> Decision: withheld — open findings at-or-above important (clauses: no-auth-regressions)
+> ℹ️ 2 findings · 1 contested by a verifier
+> Safety: Token verification bypass affects unauthenticated callers.
+> Risk: high — Touches JWT signature validation on the public API edge.
+> Basis: 0 reproduced · 1 ran · 1 walked · 0 pointed · 0 said · 1 rules cited · 0 verified fixes
+
+Two defects in token verification allow expired tokens through and drop audit logging on retry.
+
+<!--
+Review metadata. Findings written against a1b2c3d;
+if commits landed on feat/token-refresh since, treat every bug/file/line as POTENTIALLY STALE.
+- Mode: Review (initial)
+- Files reviewed: 3
+- Commits reviewed: 1
+- Base: main (1122334)
+- Head: feat/token-refresh (a1b2c3d)
+- Reviewed commits:
+  - a1b2c3d — Update JWT verification flow
+- Prior review: none
+-->
+
+**Findings**
+
+1. 🚨 **critical** [src/auth.go:42-44][ev-1] (`ran`, `security`, kb: jwt-exp) — Token check skips `exp` validation when `leeway` is zero, allowing expired tokens to authenticate.
+
+   <details><summary>Technical details</summary>
+
+   ````markdown
+   # Token check skips `exp` validation when `leeway` is zero, allowing expired tokens to authenticate
+
+   ## Affected sites
+   - [src/auth.go:42-44][ev-1]
+   - [src/middleware.go:19][ev-2]
+
+   ## Required outcome
+   - Reject expired tokens regardless of whether leeway is zero.
+
+   ## Suggested approach
+   - Check `now.After(claims.ExpiresAt.Add(leeway))` unconditionally.
+
+   ## Open questions for human
+   - Should clock skew default to 30s when config omits leeway?
+   ````
+
+   </details>
+
+2. ⚠️ **important** [src/audit.go:88][ev-3] (`walked`, `logic`) — Retry loop swallows the audit sink error instead of propagating it.
+
+### ℹ️ Unanchored observations
+
+The following points fell outside the diff hunks for the reviewed SHA, so they post here instead of inline:
+
+- ⚠️ **important** [src/config.go:12][ev-4] (`pointed`) — Default timeout constant stays at 0 after removing the fallback guard. (anchor 12-12 (RIGHT) outside reviewed hunks)
+- ℹ️ **informational** `src/ghost.go:5` (`said`) — Missing file should not produce a broken blob link. (path not in diff index: src/ghost.go)
+
+**Spec checks** — 1 met · 1 violated · 0 n/a (2/2 spec items covered, min 2)
+
+- ❌ Expired tokens must be rejected on every path — [src/auth.go:42][ev-5]
+
+<details><summary>Spec checklist (2 items)</summary>
+
+- ✅ Audit event records request ID — [src/audit.go:61][ev-6]
+- ❌ Expired tokens must be rejected on every path — [src/auth.go:42][ev-5]
+
+</details>
+
+[ev-1]: https://github.com/acme/app/blob/a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/src/auth.go#L42-L44
+[ev-2]: https://github.com/acme/app/blob/a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/src/middleware.go#L19
+[ev-3]: https://github.com/acme/app/blob/a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/src/audit.go#L88
+[ev-4]: https://github.com/acme/app/blob/a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/src/config.go#L12
+[ev-5]: https://github.com/acme/app/blob/a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/src/auth.go#L42
+[ev-6]: https://github.com/acme/app/blob/a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/src/audit.go#L61

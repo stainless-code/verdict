@@ -145,7 +145,6 @@ var hintRules = []HintRule{
 	{codes: []string{"ambiguous-patch-match"}, hint: "try: pass the exact --from <local-slug> named above"},
 	{codes: []string{"already-posted"}, hint: "try: re-run with --force to override, or fetch --base-sha " +
 		"<posted-head> for the delta and review it instead — re-fetch if the earlier review was deleted"},
-	{codes: []string{"degenerate-body"}, hint: "try: open with a verdict marker (see prompts/review.md), then re-run"},
 	{codes: []string{"pr-not-open"}, hint: "try: re-fetch the PR (bundle may be stale)"},
 	{codes: []string{"unknown-sig", "ambiguous-sig", "unknown-judgment"}, hint: "try: copy the full sig prefix from report output"},
 	{codes: []string{"unknown-recipe"}, hint: "try: pass --recipe <name> from the list above; " +

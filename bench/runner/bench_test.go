@@ -71,7 +71,7 @@ const (
 		"   Attest coverage — the default `gate` requires it. Stamp entries of `{\"file\": …, \"ranges\": …}`.\n" +
 		"   A partial attestation warns once and adds one body line.\n" +
 		"8. **Cost record.** With every `review.json`, write cost.json.\n" +
-		"## Review body format\n"
+		"## Finding categories\n"
 )
 
 // TestSplitTrustedPrefixCutsAtTheFirstFence pins where the trusted half ends.

@@ -41,19 +41,86 @@ type secretSite struct {
 	shapes []string
 }
 
-// reviewSecretSites walks the text post is about to send — the summary body and
-// each finding's body and suggestion — and returns one entry per located value,
-// in review order. It reads the review input rather than the rendered payload
-// because it runs before the first host read, and every byte it reads is
-// operator or agent text that a render would only copy: the marker, the footer,
-// the diagram, and the split notes are verdict's own and carry no credential.
 func (st *state) reviewSecretSites() []secretSite {
-	var sites []secretSite
-	if shapes := envsecret.SecretValueShapes(st.body); len(shapes) > 0 {
-		sites = append(sites, secretSite{where: "summary body", shapes: shapes})
+	if st.review == nil {
+		return nil
 	}
+	var sites []secretSite
+	sites = appendSecretSite(sites, "summary body", reviewStringField(st.review, "summary"))
+	sites = appendSecretSite(sites, "security_summary", reviewStringField(st.review, "security_summary"))
+	sites = appendSecretSite(sites, "risk.rationale", reviewRiskRationale(st.review))
 	for _, c := range reviewComments(st.review) {
 		sites = append(sites, commentSecretSites(c.index, c.obj)...)
+	}
+	sites = append(sites, specCheckSecretSites(st.review)...)
+	sites = append(sites, receiptSecretSites(st.review)...)
+	return sites
+}
+
+func appendSecretSite(sites []secretSite, where, text string) []secretSite {
+	if text == "" {
+		return sites
+	}
+	if shapes := envsecret.SecretValueShapes(text); len(shapes) > 0 {
+		return append(sites, secretSite{where: where, shapes: shapes})
+	}
+	return sites
+}
+
+func reviewStringField(obj *jq.Obj, key string) string {
+	raw, ok := obj.Get(key)
+	if !ok || raw == nil {
+		return ""
+	}
+	return jq.R(raw)
+}
+
+func reviewRiskRationale(review *jq.Obj) string {
+	raw, ok := review.Get("risk")
+	if !ok {
+		return ""
+	}
+	riskObj, ok := raw.(*jq.Obj)
+	if !ok || riskObj == nil {
+		return ""
+	}
+	return reviewStringField(riskObj, "rationale")
+}
+
+func specCheckSecretSites(review *jq.Obj) []secretSite {
+	raw, _ := review.Get("spec_checks")
+	var sites []secretSite
+	for i, item := range jq.Elements(raw) {
+		if obj, ok := item.(*jq.Obj); ok && obj != nil {
+			sites = appendSpecCheckSites(sites, i+1, obj)
+		}
+	}
+	return sites
+}
+
+func appendSpecCheckSites(sites []secretSite, index int, obj *jq.Obj) []secretSite {
+	where := fmt.Sprintf("spec_check %d", index)
+	sites = appendSecretSite(sites, where, reviewStringField(obj, "item"))
+	if ev, ok := obj.Get("evidence"); ok {
+		if evObj, ok := ev.(*jq.Obj); ok && evObj != nil {
+			sites = appendSecretSite(sites, where, reviewStringField(evObj, fieldPath))
+			sites = appendSecretSite(sites, where, reviewStringField(evObj, "quote"))
+		}
+	}
+	return sites
+}
+
+func receiptSecretSites(review *jq.Obj) []secretSite {
+	raw, _ := review.Get("receipts")
+	var sites []secretSite
+	for i, item := range jq.Elements(raw) {
+		obj, ok := item.(*jq.Obj)
+		if !ok || obj == nil {
+			continue
+		}
+		where := fmt.Sprintf("receipt %d", i+1)
+		sites = appendSecretSite(sites, where, reviewStringField(obj, "hunk"))
+		sites = appendSecretSite(sites, where, reviewStringField(obj, "quote"))
 	}
 	return sites
 }
@@ -65,21 +132,40 @@ type reviewComment struct {
 	index int
 }
 
-// commentSecretSites locates the values one review comment carries. Its body
-// and its suggestion are both posted verbatim, so both are scanned; the
-// location is the finding's 1-based index, because review input carries no sig
-// (sigs are minted by the merge, which runs after the live-head read this scan
-// deliberately precedes).
 func commentSecretSites(index int, c *jq.Obj) []secretSite {
 	where := fmt.Sprintf("finding %d", index)
 	var sites []secretSite
-	for _, field := range []string{fieldBody, "claim", fieldSuggestion} {
-		raw, ok := c.Get(field)
-		if !ok {
-			continue
+	for _, field := range []string{fieldPath, fieldBody, "claim", "quote", fieldSuggestion} {
+		sites = appendSecretSite(sites, where, reviewStringField(c, field))
+	}
+	if rawBrief, ok := c.Get("brief"); ok {
+		if bObj, ok := rawBrief.(*jq.Obj); ok && bObj != nil {
+			sites = appendBriefSecretSites(sites, where, bObj)
 		}
-		if shapes := envsecret.SecretValueShapes(jq.R(jq.Alt(raw, ""))); len(shapes) > 0 {
-			sites = append(sites, secretSite{where: where, shapes: shapes})
+	}
+	return sites
+}
+
+func appendBriefSecretSites(sites []secretSite, where string, bObj *jq.Obj) []secretSite {
+	sites = appendBriefSitePathSecrets(sites, where, bObj)
+	sites = appendSecretSite(sites, where, reviewStringField(bObj, "outcome"))
+	sites = appendSecretSite(sites, where, reviewStringField(bObj, "approach"))
+	if qs, ok := bObj.Get("questions"); ok {
+		for _, q := range jq.Elements(qs) {
+			sites = appendSecretSite(sites, where, jq.R(jq.Alt(q, "")))
+		}
+	}
+	return sites
+}
+
+func appendBriefSitePathSecrets(sites []secretSite, where string, bObj *jq.Obj) []secretSite {
+	rawSites, ok := bObj.Get("sites")
+	if !ok {
+		return sites
+	}
+	for _, item := range jq.Elements(rawSites) {
+		if sObj, ok := item.(*jq.Obj); ok && sObj != nil {
+			sites = appendSecretSite(sites, where, reviewStringField(sObj, fieldPath))
 		}
 	}
 	return sites
@@ -109,13 +195,38 @@ func reviewComments(review *jq.Obj) []reviewComment {
 // refusal makes zero host calls — nothing a typo in review.json would otherwise
 // have asked the host for.
 func (st *state) secretScanGate() *core.RefusalError {
-	sites := st.reviewSecretSites()
+	return st.secretGate(st.reviewSecretSites())
+}
+
+// settledSecretGate scans the body the merge settled, which carries text the
+// raw review never held: a stored brief survives a same-signature review that
+// omits it, and the renderer publishes it. Only shapes the raw scan did not
+// already judge count, so one value is never warned about twice.
+func (st *state) settledSecretGate() *core.RefusalError {
+	body := appendSecretSite(nil, "review body", st.body)
+	return st.secretGate(unjudgedSecretSites(body, st.judgedShapes))
+}
+
+func unjudgedSecretSites(sites []secretSite, judged []string) []secretSite {
+	var out []secretSite
+	for _, site := range sites {
+		fresh := unjudgedShapes(site.shapes, judged)
+		if len(fresh) > 0 {
+			out = append(out, secretSite{where: site.where, shapes: fresh})
+		}
+	}
+	return out
+}
+
+func (st *state) secretGate(sites []secretSite) *core.RefusalError {
 	if len(sites) == 0 {
 		return nil
 	}
 	located := secretSiteList(sites)
+	names := secretShapeNames(sites)
+	st.judgedShapes = append(st.judgedShapes, unjudgedShapes(names, st.judgedShapes)...)
 	if st.flags.AllowSecretValues {
-		st.secretShapes = secretShapeNames(sites)
+		st.secretShapes = append(st.secretShapes, unjudgedShapes(names, st.secretShapes)...)
 		st.warn(fmt.Sprintf(msgSecretAllowed, AllowSecretValuesFlag, located))
 		return nil
 	}
@@ -158,4 +269,14 @@ func secretShapeNames(sites []secretSite) []string {
 		}
 	}
 	return out
+}
+
+func unjudgedShapes(names, judged []string) []string {
+	var fresh []string
+	for _, name := range names {
+		if !slices.Contains(judged, name) {
+			fresh = append(fresh, name)
+		}
+	}
+	return fresh
 }

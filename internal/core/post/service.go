@@ -13,7 +13,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
-	"github.com/stainless-code/verdict/internal/core/reviewdoc"
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -129,6 +128,7 @@ type state struct { //nolint:govet // field grouping documents the post run stat
 	phash             string
 	dir               string
 	body              string
+	banners           []string
 	commitID          string
 	fetchedSHA        string
 	payload           string
@@ -156,6 +156,8 @@ type state struct { //nolint:govet // field grouping documents the post run stat
 	// secretShapes is what --allow-secret-values let through, in first-seen
 	// order; the receipt records it so an overridden post stays legible.
 	secretShapes []string
+	// judgedShapes is every shape the gate has seen so far, whatever it decided.
+	judgedShapes []string
 	me           string
 	meErr        error
 	meLoaded     bool
@@ -288,10 +290,14 @@ func (st *state) prepare(ctx context.Context) *core.RefusalError {
 	if st.flags.DryRun {
 		st.findingsFile = st.dir + "/findings.dryrun.json"
 	}
-	return st.merge()
+	if ref := st.merge(); ref != nil {
+		return ref
+	}
+	return st.settledSecretGate()
 }
 
 func (st *state) publish(ctx context.Context) (*core.PostResponse, *core.RefusalError) {
+	st.finalizeBody()
 	st.preflight()
 	st.buildPayloads()
 	st.eventLine()
@@ -356,13 +362,7 @@ func (st *state) loadReview() *core.RefusalError {
 		return refusalOrFailed(err)
 	}
 	st.review = review
-	// The body is rendered before the merge can decide: the lead it writes is
-	// the undecided one, and the merge aligns it with the real decision.
-	st.body = reviewdoc.Render(review, nil)
 	readcommon.WarnContextSources(st.dir, review, st.warn)
-	if err := recordcore.CheckDegenerate(st.body); err != nil {
-		return refusalOrFailed(err)
-	}
 	return nil
 }
 
@@ -377,8 +377,8 @@ func (st *state) checkDrift(ctx context.Context) {
 		st.driftStale = true
 		fetched, liveShort := readcommon.ShortSHA(st.fetchedSHA), readcommon.ShortSHA(live)
 		st.warn(fmt.Sprintf(msgDriftMoved, fetched, liveShort, st.req.Repo, st.req.Pr, fetched))
-		st.body = fmt.Sprintf(msgDriftNote, fetched, liveShort,
-			st.req.Repo, st.req.Pr, fetched) + "\n\n" + st.body
+		st.banners = append(st.banners, fmt.Sprintf(msgDriftNote, fetched, liveShort,
+			st.req.Repo, st.req.Pr, fetched))
 	} else if live == "" {
 		st.warn("live SHA lookup failed — proceeding on fetched hunks")
 	}
@@ -454,9 +454,9 @@ func (st *state) merge() *core.RefusalError {
 		Dir: st.dir, Prov: st.provider(),
 		HeadFull: st.commitID,
 		Review:   st.review, ReviewFile: st.flags.ReviewFile,
-		Root: st.req.RootPath(), RepoRoot: st.req.RepoRootPath(), Body: st.body,
-		DryRun: st.flags.DryRun, FindingsFile: st.findingsFile,
-		PreFooter: st.splitPreFooter,
+		Root: st.req.RootPath(), RepoRoot: st.req.RepoRootPath(),
+		Banners: st.banners,
+		DryRun:  st.flags.DryRun, FindingsFile: st.findingsFile,
 		Effective: st.req.Effective, Forces: st.req.Forces,
 		Repo: st.req.Repo, Pr: st.req.Pr, Cmd: "post", Controls: st.controls,
 		RequireCoverage: st.flags.RequireCoverage,
@@ -469,15 +469,11 @@ func (st *state) merge() *core.RefusalError {
 	if err != nil {
 		return refusalOrFailed(err)
 	}
-	st.merged, st.body, st.diagram = res, panelBody(res.Body, res.Verification), res.Diagram
+	st.merged, st.body, st.diagram = res, res.Body, res.Diagram
 	st.recordAnchorGap(caps, res.NMoved)
 	if ref := st.adoptStoredApproval(); ref != nil {
 		return ref
 	}
-	// post publishes record's decision, so the body's lead has to follow that
-	// decision and not the merge's own: the two may disagree when the record
-	// found the evidence insufficient.
-	st.body = reviewdoc.AlignLead(st.body, st.merged.Approval)
 	st.applyApprovedFlag()
 	return st.rigorGate()
 }
@@ -625,7 +621,8 @@ func (st *state) approvalBlockers() *core.RefusalError {
 func (st *state) downgradeStale() {
 	st.warn(fmt.Sprintf(msgStaleDowngrade, readcommon.ShortSHA(st.fetchedSHA), readcommon.ShortSHA(st.liveSHA),
 		st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.fetchedSHA)))
-	st.body = fmt.Sprintf(msgStaleNote, st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.fetchedSHA)) + "\n\n" + st.body
+	note := fmt.Sprintf(msgStaleNote, st.req.Repo, st.req.Pr, readcommon.ShortSHA(st.fetchedSHA))
+	st.banners = append([]string{note}, st.banners...)
 	st.event = eventComment
 }
 
@@ -706,8 +703,9 @@ func (st *state) probeRecheck(ctx context.Context) (int, bool) {
 		return liveOpen, false
 	}
 	st.warn("live thread recheck unreachable — downgrading to COMMENT (posting on local findings only)")
-	st.body = "> ⚠️ Note: live thread recheck unreachable (" + reason +
-		"); posting as COMMENT instead of " + eventApprove + ".\n\n" + st.body
+	note := "> ⚠️ Note: live thread recheck unreachable (" + reason +
+		"); posting as COMMENT instead of " + eventApprove + "."
+	st.banners = append([]string{note}, st.banners...)
 	st.event = eventComment
 	return 0, true
 }

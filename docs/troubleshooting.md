@@ -572,12 +572,6 @@ Fix: re-run `fetch-local` to refresh `.verdict/state/local-<name>/`, review the
 new bundle, then record again. Coverage from the previous snapshot cannot
 certify the current tree.
 
-## `degenerate-body`
-
-Cause: the published body carries no verdict marker.
-
-Fix: open with a verdict marker (see `prompts/review.md`), then re-run.
-
 ## `diff-failed`
 
 Cause: `git diff` failed for the requested range.

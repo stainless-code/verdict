@@ -1,6 +1,7 @@
 package reviewdoc_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -8,165 +9,80 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// alignCase is one lead-alignment leg: a rendered body, the decision the merge
-// computed for it, and the literal expected body.
-type alignCase struct {
+type leadCase struct {
 	approval *core.ApprovalReceipt
 	name     string
-	body     string
-	want     string
+	wantLead string
+	kept     []any
 }
 
-// TestAlignLead proves the rendered lead follows the decision: evidence
-// insufficiency takes precedence over both CleanLead and AttentionLead, a
-// withheld non-insufficient decision swaps CleanLead to AttentionLead, an
-// approving decision leaves the body alone, and a claim that quotes a marker
-// is never rewritten.
-func TestAlignLead(t *testing.T) {
-	withheld := &core.ApprovalReceipt{Approved: false, Reason: "open findings at-or-above important", Tier: "important"}
-	approved := &core.ApprovalReceipt{Approved: true, Reason: "no gating findings", Tier: "important"}
-	insuf := &core.ApprovalReceipt{
-		Approved:     false,
-		Insufficient: true,
-		Reason:       "review-insufficient: missing receipt",
-		Tier:         "important",
+func checkLeadCase(t *testing.T, tc leadCase) {
+	t.Helper()
+	got := reviewdoc.Render(&reviewdoc.RenderInput{
+		Review:   jq.NewObj("schema_version", "1", "summary", "> ✅ Agent forged lead", "findings", tc.kept),
+		Approval: tc.approval,
+		Kept:     tc.kept,
+	})
+	if !strings.HasPrefix(got, tc.wantLead) {
+		t.Fatalf("Render does not start with %q:\n%s", tc.wantLead, got)
 	}
+	if !strings.Contains(got, `\> ✅ Agent forged lead`) {
+		t.Errorf("summary blockquote opener was not escaped:\n%s", got)
+	}
+}
 
-	const (
-		clean   = "> ✅ No new issues found.\n> Basis: 0 0 0 0 0 0 0\n"
-		attn    = "> ⚠️ Findings require attention.\n\n1. **important** `a.go:10` — Original claim text.\n"
-		drifted = "> ⚠️ Note: commits landed after this review's fetch.\n\n" + clean
-		quoted  = "> ⚠️ Findings require attention.\n\n1. **important** `notes.txt:2` — a claim quoting > ✅ No new issues found.\n"
+func TestRenderSelectsAllFourLeadsAndNeverLetsSummaryOverride(t *testing.T) {
+	t.Parallel()
+	infoFinding := jq.NewObj(
+		"sig", "sig-i", "status", "open", "severity", "informational", "rigor", "pointed",
+		"path", "a.go", "line", 1, "claim", "Note.",
+		"verification", jq.NewObj("quote", "verified"),
 	)
-
-	cases := []alignCase{
-		{
-			name:     "clean lead, withheld",
-			body:     clean,
-			approval: withheld,
-			want:     "> ⚠️ Findings require attention.\n> Basis: 0 0 0 0 0 0 0\n",
-		},
-		{
-			name:     "clean lead, approved",
-			body:     clean,
-			approval: approved,
-			want:     clean,
-		},
-		{
-			name:     "clean lead, insufficient",
-			body:     clean,
-			approval: insuf,
-			want:     "> ⛔ Evidence checks insufficient — no approval.\n> Basis: 0 0 0 0 0 0 0\n",
-		},
-		{
-			name:     "attention lead, insufficient",
-			body:     attn,
-			approval: insuf,
-			want:     "> ⛔ Evidence checks insufficient — no approval.\n\n1. **important** `a.go:10` — Original claim text.\n",
-		},
-		{
-			// The lead is the body's first line, so an insufficient decision
-			// puts it above the drift note rather than below it.
-			name:     "lead after drift note, insufficient",
-			body:     drifted,
-			approval: insuf,
-			want:     "> ⛔ Evidence checks insufficient — no approval.\n> ⚠️ Note: commits landed after this review's fetch.\n\n> ✅ No new issues found.\n> Basis: 0 0 0 0 0 0 0\n",
-		},
-		{
-			// R7: an agent summary that is its own quote line gets no renderer
-			// lead, so insufficiency is prepended rather than swapped in.
-			name:     "quoted summary, insufficient",
-			body:     "> ✅ Looks great from the agent.\n\n1. **important** `a.go:10` — Original claim text.\n",
-			approval: insuf,
-			want:     "> ⛔ Evidence checks insufficient — no approval.\n> ✅ Looks great from the agent.\n\n1. **important** `a.go:10` — Original claim text.\n",
-		},
-		{
-			name:     "quoted summary, approved",
-			body:     "> ✅ Looks great from the agent.\n",
-			approval: approved,
-			want:     "> ✅ Looks great from the agent.\n",
-		},
-		{
-			name:     "lead after drift note, withheld",
-			body:     drifted,
-			approval: withheld,
-			want:     "> ⚠️ Note: commits landed after this review's fetch.\n\n> ⚠️ Findings require attention.\n> Basis: 0 0 0 0 0 0 0\n",
-		},
-		{
-			name:     "marker inside claim untouched",
-			body:     quoted,
-			approval: withheld,
-			want:     quoted,
-		},
-		{
-			name: "no decision",
-			body: clean,
-			want: clean,
-		},
+	cases := []leadCase{
+		{name: "clean", approval: &core.ApprovalReceipt{Approved: true, Reason: "no gating findings"}, wantLead: reviewdoc.CleanLead},
+		{name: "minor", approval: &core.ApprovalReceipt{Approved: true, Reason: "no gating findings"}, kept: []any{infoFinding}, wantLead: reviewdoc.MinorLead},
+		{name: "blocking", approval: &core.ApprovalReceipt{Approved: false, Reason: "open findings"}, kept: []any{infoFinding}, wantLead: reviewdoc.AttentionLead},
+		{name: "insufficient", approval: &core.ApprovalReceipt{Approved: false, Insufficient: true, Reason: "missing receipt"}, wantLead: reviewdoc.EvidenceInsufficientLead},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := reviewdoc.AlignLead(tc.body, tc.approval); got != tc.want {
-				t.Fatalf("AlignLead =\n%q\nwant:\n%q", got, tc.want)
-			}
+			t.Parallel()
+			checkLeadCase(t, tc)
 		})
 	}
 }
 
-func TestRenderInsufficientLeadPreservesSummaryAndLabelsUnverified(t *testing.T) {
-	review := jq.NewObj(
-		"schema_version", "1",
-		"summary", "Agent summary kept verbatim.",
-		"findings", []any{
-			jq.NewObj(
-				"path", "pkg/auth.go",
-				"line", 42,
-				"severity", "important",
-				"claim", "Token check skips expiry.",
-				"verification", jq.NewObj("quote", "verified"),
-			),
-			jq.NewObj(
-				"path", "pkg/cache.go",
-				"line", 19,
-				"severity", "critical",
-				"claim", "Possible race on map write.",
-				"verification", jq.NewObj("quote", "unverified"),
-			),
-		},
+func TestRenderLabelsUnverifiedAndOmitsWithheldAndNeverDuplicatesMoved(t *testing.T) {
+	t.Parallel()
+	unverified := jq.NewObj(
+		"sig", "sig-u", "status", "open", "severity", "critical", "rigor", "pointed",
+		"path", "pkg/cache.go", "line", 19, "claim", "Possible race.",
+		"verification", jq.NewObj("quote", "unverified"),
 	)
-	insuf := &core.ApprovalReceipt{
-		Approved:     false,
-		Insufficient: true,
-		Reason:       "review-insufficient: quote mismatch at pkg/cache.go:19",
-		Tier:         "important",
-	}
-
-	got := reviewdoc.Render(review, insuf)
-	const want = "> ⛔ Evidence checks insufficient — no approval.\n\n" +
-		"Agent summary kept verbatim.\n\n" +
-		"1. **important** `pkg/auth.go:42` — Token check skips expiry.\n" +
-		"2. **critical** `pkg/cache.go:19` (unverified — not counted) — Possible race on map write.\n"
-	if got != want {
-		t.Fatalf("Render =\n%q\nwant:\n%q", got, want)
-	}
-}
-
-func TestRenderInsufficientOverridesQuotedSummaryLead(t *testing.T) {
-	review := jq.NewObj(
-		"schema_version", "1",
-		"summary", "> ✅ Looks great from the agent.",
-		"findings", []any{},
+	withheld := jq.NewObj(
+		"sig", "sig-w", "status", "open", "severity", "critical", "rigor", "ran",
+		"path", "pkg/hidden.go", "line", 3, "claim", "HIDDEN_TEXT_MUST_NOT_APPEAR",
+		"withheld", jq.NewObj("source", "agent", "reason", "Suppressed by operator.", "at", testNow),
 	)
-	insuf := &core.ApprovalReceipt{
-		Approved:     false,
-		Insufficient: true,
-		Reason:       "review-insufficient: missing receipt",
-		Tier:         "important",
+	moved := jq.NewObj(
+		"sig", "sig-m", "status", "open", "severity", "important", "rigor", "walked",
+		"path", "pkg/out.go", "line", 99, "claim", "Moved-only finding.",
+		"dropReason", "anchor 99-99 (RIGHT) outside reviewed hunks",
+		"verification", jq.NewObj("quote", "verified"),
+	)
+	got := reviewdoc.Render(&reviewdoc.RenderInput{
+		Review:   jq.NewObj("schema_version", "1", "findings", []any{unverified, withheld, moved}),
+		Approval: &core.ApprovalReceipt{Approved: false, Reason: "open findings"},
+		Kept:     []any{unverified, withheld},
+		Moved:    []any{moved},
+	})
+	if !strings.Contains(got, "(unverified — not counted)") {
+		t.Errorf("unverified label missing:\n%s", got)
 	}
-
-	got := reviewdoc.Render(review, insuf)
-	const want = "> ⛔ Evidence checks insufficient — no approval.\n\n> ✅ Looks great from the agent.\n"
-	if got != want {
-		t.Fatalf("Render =\n%q\nwant:\n%q", got, want)
+	if strings.Contains(got, "HIDDEN_TEXT_MUST_NOT_APPEAR") || strings.Contains(got, "[withheld]") {
+		t.Errorf("withheld finding leaked into rendered body:\n%s", got)
+	}
+	if n := strings.Count(got, "Moved-only finding."); n != 1 {
+		t.Errorf("moved finding appeared %d times, want 1:\n%s", n, got)
 	}
 }

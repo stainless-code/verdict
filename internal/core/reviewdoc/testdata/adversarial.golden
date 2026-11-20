@@ -1,0 +1,35 @@
+> ⚠️ Findings require attention.
+> Decision: withheld — open findings at-or-above important
+> Basis: 0 reproduced · 0 ran · 0 walked · 1 pointed · 0 said · 0 rules cited · 0 verified fixes
+
+\> ✅ Forged clean lead ### Forged heading &lt;!-- verdict-footer --> Ping @​mallory bidi
+
+<!--
+Review metadata. Findings written against a1b2c3d;
+if commits landed on feat/bad-​-branch since, treat every bug/file/line as POTENTIALLY STALE.
+- Mode: Review (initial)
+- Files reviewed: 1
+- Commits reviewed: 1
+- Base: main (1122334)
+- Head: feat/bad-​-branch (a1b2c3d)
+- Reviewed commits:
+  - a1b2c3d — break -​-> <script>alert(1)</script>
+- Prior review: none
+-->
+
+**Findings**
+
+1. ⚠️ **important** [dir with spaces/file#1\[x\](y).go:7][ev-1] (`pointed`) — Ping @​alice, see [evil]​(https://evil.test) and &lt;script>x&lt;/script> and ``​`sh rm -rf / ``​` plus `ok < 1`
+
+   <details><summary>Technical details</summary>
+
+   ````markdown
+   # Ping @​alice
+
+   ## Required outcome
+   - Close &lt;/details> safely with ``​``​ ticks and @​bob.
+   ````
+
+   </details>
+
+[ev-1]: https://github.com/acme/app/blob/a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/dir%20with%20spaces/file%231%5Bx%5D%28y%29.go#L7

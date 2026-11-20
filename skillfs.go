@@ -201,9 +201,8 @@ type HandoffRef struct {
 // handoffRefs is the pull list. The capability map names these paths; the
 // full operator workflow and body-format rules are not part of the handoff.
 var handoffRefs = []HandoffRef{
-	{Path: "refs/review-checklist.md", Source: "prompts/review.md", From: "## Checklist\n", To: "## Review body format"},
+	{Path: "refs/review-checklist.md", Source: "prompts/review.md", From: "## Checklist\n", To: "## Verdict ladder"},
 	{Path: "refs/system-boundaries.md", Source: "prompts/system.md"},
-	{Path: "refs/diagrams.md", Source: "prompts/diagrams.md"},
 	{Path: "refs/incremental-review.md", Source: "prompts/incremental-review.md"},
 	{Path: "refs/reviewer-subagent.md", Source: "prompts/reviewer-subagent.md"},
 	{Path: "refs/commands.md", Source: "references/commands.md"},

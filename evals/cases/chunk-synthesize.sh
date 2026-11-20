@@ -42,11 +42,11 @@ if grep -Fq 'one document total across all chunks, never one per chunk' "$PROMPT
 else
   bad "prompt misses the exactly-one-document synthesis rule"
 fi
-if grep -Fq 'sums every rung' "$PROMPT" \
-  && grep -Fq 'computed from your `review.json`' "$PROMPT"; then
-  good "prompt sums Basis rungs across chunks and names the CLI as the writer"
+if grep -Fq 'same structured findings shape' "$PROMPT" \
+  && grep -Fq 'Verdict renders the body' "$PROMPT"; then
+  good "prompt routes synthesized chunks through structured findings and binary rendering"
 else
-  bad "prompt Basis-sum rule is missing"
+  bad "prompt structured synthesis rule is missing"
 fi
 if grep -Fq 'rungs unchanged' "$PROMPT"; then
   good "prompt keeps evidence rungs unchanged across chunks"

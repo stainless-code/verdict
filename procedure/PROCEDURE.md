@@ -164,7 +164,7 @@ model, and the recorded reviewer is what `trend` groups by.
 4. **Exactly one terminal write.** The router's Terminal-write column is exhaustive:
    produce that write and stop. A trivial incremental delta ends in a 1–2 sentence
    no-review note, never an empty review.
-5. **Match the callout to the author's next action.** The severity ladder lives in
+5. **Match finding severity to the author's next action.** The severity ladder lives in
    `prompts/review.md` — pick the tier the author should act on, never louder. Binding
    verdicts need `--bind` (else `post` downgrades to `COMMENT`); `APPROVE` is refused while
    `open` + `deferred` findings stand (`--force` overrides), and a binding `APPROVE`
