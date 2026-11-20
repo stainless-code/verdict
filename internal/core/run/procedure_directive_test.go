@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	skillfs "github.com/stainless-code/verdict"
+	"github.com/stainless-code/verdict/internal/agentcatalog"
 	draincore "github.com/stainless-code/verdict/internal/core/drain"
 )
 
@@ -64,7 +65,7 @@ func TestDrainDirectiveNamesBundleProcedureFile(t *testing.T) {
 	want := embeddedDrainProcedure(t)
 
 	st := drainState(root, "7", "digest")
-	args, ref := st.argsFor(&agentDef{Name: "claude", Binary: "/bin/true"}, dir, 30)
+	args, ref := st.argsFor(&agentcatalog.Launch{Name: "claude", Binary: "/bin/true"}, dir, 30)
 	if ref != nil {
 		t.Fatal(ref)
 	}

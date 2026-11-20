@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/agentcatalog"
 	"github.com/stainless-code/verdict/internal/core"
 )
 
@@ -41,7 +42,7 @@ func TestDrainDirectiveAndArtifact(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeDrainFile(t, filepath.Join(dir, reviewFile))
-	args, ref := st.argsFor(&agentDef{Name: "claude", Binary: "/bin/true"}, dir, 30)
+	args, ref := st.argsFor(&agentcatalog.Launch{Name: "claude", Binary: "/bin/true"}, dir, 30)
 	if ref != nil {
 		t.Fatal(ref)
 	}
@@ -135,7 +136,7 @@ func TestRunDirectiveStillNamesReviewFile(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	args, ref := st.argsFor(&agentDef{Name: "claude", Binary: "/bin/true"}, dir, 30)
+	args, ref := st.argsFor(&agentcatalog.Launch{Name: "claude", Binary: "/bin/true"}, dir, 30)
 	if ref != nil {
 		t.Fatal(ref)
 	}

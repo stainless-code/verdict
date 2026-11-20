@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/agentcatalog"
 )
 
 type builtinRow struct {
@@ -328,9 +330,11 @@ func TestBuiltinAgentRows(t *testing.T) {
 		wantNames = append(wantNames, tc.name)
 		t.Run(tc.name, func(t *testing.T) { assertBuiltinRow(t, &tc) })
 	}
-	names := make([]string, 0, len(agentDefs))
-	for i := range agentDefs {
-		names = append(names, agentDefs[i].Name)
+	names := make([]string, 0, len(AgentNames()))
+	for _, row := range agentcatalog.All() {
+		if row.Launch != nil {
+			names = append(names, row.Name)
+		}
 	}
 	if !slices.Equal(names, wantNames) {
 		t.Errorf("table names = %q, want %q", names, wantNames)
@@ -348,7 +352,7 @@ func assertBuiltinRow(t *testing.T, tc *builtinRow) {
 }
 
 // assertRowFields pins the data a user can read in --print and launcher.json.
-func assertRowFields(t *testing.T, tc *builtinRow, def *agentDef) {
+func assertRowFields(t *testing.T, tc *builtinRow, def *agentcatalog.Launch) {
 	t.Helper()
 	if def.Binary != tc.binary || def.PromptFlag != tc.promptFlag || def.Install != tc.install {
 		t.Errorf("row = %+v, want binary %q, prompt flag %q, install %q",
@@ -362,7 +366,7 @@ func assertRowFields(t *testing.T, tc *builtinRow, def *agentDef) {
 }
 
 // assertRowArgv pins the composed launch argv and the model flag it reflects.
-func assertRowArgv(t *testing.T, tc *builtinRow, def *agentDef) {
+func assertRowArgv(t *testing.T, tc *builtinRow, def *agentcatalog.Launch) {
 	t.Helper()
 	wantModel := modelFlag
 	if tc.noModel {
@@ -421,26 +425,26 @@ func assertPrintedRow(t *testing.T, tc *builtinRow) {
 func TestArgvForPromptPlacement(t *testing.T) {
 	tests := []struct {
 		name string
-		def  agentDef
+		def  agentcatalog.Launch
 		want []string
 	}{
 		{
 			name: "positional prompt",
-			def: agentDef{
+			def: agentcatalog.Launch{
 				Name: "claude", Binary: "claude", Args: []string{"-p"}, ModelFlag: modelFlag,
 			},
 			want: []string{"claude", "-p", "--model", "M", "--x", "PROMPT"},
 		},
 		{
 			name: "flag value prompt",
-			def: agentDef{
+			def: agentcatalog.Launch{
 				Name: "amp", Binary: "amp", Args: nil, PromptFlag: "-x", ModelFlag: modelFlag,
 			},
 			want: []string{"amp", "--model", "M", "--x", "-x", "PROMPT"},
 		},
 		{
 			name: "flag value prompt after a subcommand",
-			def: agentDef{
+			def: agentcatalog.Launch{
 				Name: "goose", Binary: "goose", Args: []string{"run"}, PromptFlag: "-t", ModelFlag: modelFlag,
 			},
 			want: []string{"goose", "run", "--model", "M", "--x", "-t", "PROMPT"},
@@ -461,15 +465,15 @@ func TestArgvForPromptPlacement(t *testing.T) {
 // empty argument is ever handed to a binary, with or without PromptFlag.
 func TestArgvForOmitsEmptyFields(t *testing.T) {
 	tests := []struct {
-		def  agentDef
+		def  agentcatalog.Launch
 		want []string
 	}{
 		{
-			def:  agentDef{Name: "codex", Binary: "codex", Args: []string{"exec"}, ModelFlag: modelFlag},
+			def:  agentcatalog.Launch{Name: "codex", Binary: "codex", Args: []string{"exec"}, ModelFlag: modelFlag},
 			want: []string{"codex", "exec", "PROMPT"},
 		},
 		{
-			def:  agentDef{Name: "amp", Binary: "amp", PromptFlag: "-x", ModelFlag: modelFlag},
+			def:  agentcatalog.Launch{Name: "amp", Binary: "amp", PromptFlag: "-x", ModelFlag: modelFlag},
 			want: []string{"amp", "-x", "PROMPT"},
 		},
 	}

@@ -39,7 +39,7 @@ func InstallDetected(ctx context.Context, req *Request) (Detection, *core.Refusa
 	}
 	if len(det.Plans) == 0 {
 		return Detection{}, refuse(codeNoDetected, "no agent with an existing skills dir was detected; "+
-			"run --agent <name> to pick one ("+strings.Join(agentNames, ", ")+")")
+			"run --agent <name> to pick one ("+strings.Join(supportedAgents(), ", ")+")")
 	}
 	if req.DryRun {
 		return det, nil
@@ -144,7 +144,7 @@ func planDetected(ctx context.Context, req *Request) (Detection, *core.RefusalEr
 }
 
 func detectAll(files Inventory, req *Request) (agents []string, plans []Plan, resolvable bool, ref *core.RefusalError) {
-	for _, agent := range agentNames {
+	for _, agent := range supportedAgents() {
 		dir, _ := req.agentDir(agent)
 		if dir == "" {
 			continue

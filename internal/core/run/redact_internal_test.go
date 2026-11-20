@@ -4,6 +4,8 @@ import (
 	"slices"
 	"strings"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/agentcatalog"
 )
 
 // TestScrubSecrets proves the recorded output tail drops the operator's own
@@ -226,9 +228,11 @@ func TestAgentTableIsSortedAndUnique(t *testing.T) {
 }
 
 func tableNames() []string {
-	names := make([]string, 0, len(agentDefs))
-	for i := range agentDefs {
-		names = append(names, agentDefs[i].Name)
+	names := make([]string, 0, len(AgentNames()))
+	for _, row := range agentcatalog.All() {
+		if row.Launch != nil {
+			names = append(names, row.Name)
+		}
 	}
 	return names
 }

@@ -68,7 +68,7 @@ func StatusDetected(ctx context.Context, req *Request, includeDiff bool) (Status
 	}
 	if len(det.Plans) == 0 {
 		return StatusSet{}, refuse(codeNoDetected, "no agent with an existing skills dir was detected; "+
-			"run --agent <name> to pick one ("+strings.Join(agentNames, ", ")+")")
+			"run --agent <name> to pick one ("+strings.Join(supportedAgents(), ", ")+")")
 	}
 	set, ref := buildStatusSet(Inventory{Name: det.Name, Version: det.Version}, det.Agents, det.Plans, includeDiff)
 	if ref != nil {
