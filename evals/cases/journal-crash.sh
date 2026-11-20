@@ -81,7 +81,7 @@ seed_bundle() {
   eval_fixture_repo "$repo"
   run_in "$repo" fetch-local acme/app "$slug" --json
   assert_exit "$slug fetch-local succeeds" 0
-  run_in "$repo" run acme/app "local-$slug" --agent claude --rounds 1 --json
+  run_in "$repo" run acme/app "local-$slug" --agent claude --finders 1 --rounds 1 --json
   assert_exit "$slug run succeeds" 0
 }
 

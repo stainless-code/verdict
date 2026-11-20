@@ -79,3 +79,7 @@ mkdir -p "$(dirname "$artifact")"
 cat >"$artifact" <<'JSON'
 {"schema_version":"1","summary":"Nit: one note, nothing blocking.","findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"Nit: rename this line.","quote":"new line","confidence":"high","severity":"informational","rigor":"walked"}],"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new line"}]}
 JSON
+
+if [ "$mode" = stale ]; then
+  touch -t 202001010000 "$artifact"
+fi

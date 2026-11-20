@@ -23,15 +23,15 @@ into your repo as `.github/workflows/verdict-review.yml`.
    agent: it sets `VERDICT_AGENT` in the step's `env:` (one of `claude`, `codex`,
    `cursor`, `opencode` — the shipped `run --agent` table) and the `--agent`
    argument that reads it. Install that CLI on the runner in an earlier step;
-   the recipe never downloads it. The agent reads `.verdict/state/<pr>/procedure.md`
-   first — the binary's authoritative Procedure for this review (an installed
-   skill may be older) — then `full.diff` via `toc.txt` (plus `PR.json` and
-   `roles.txt`), and writes exactly
-   one `.verdict/state/<pr>/review.json` (`schema_version: "1"`, `findings[]`,
-   optional `spec_checks[]`, `receipts[]`, `summary`, `resolved[]`/`triage[]`). The step fails
-   unless that file is fresh: `run` refuses `no-review-artifact` when the agent
-   wrote nothing and `stale-review-artifact` when it left an earlier run's
-   file, so a silent agent cannot reach `post`.
+   the recipe never downloads it. `run` defaults to two isolated whole-diff
+   finders with opposite-finder cross-checks. Each finder reads its lean
+   procedure and the pinned bundle evidence, then writes its own v1 review.
+   The coordinator writes `.verdict/state/<pr>/review.json` at
+   `schema_version: "2"`, bound to the execution and cross receipts.
+   A missing or stale phase artifact makes the automatic execution
+   `review-insufficient`, so a silent agent cannot reach `post`.
+   With `--finders 1`, the single-finder contract writes one v1 review and
+   refuses `no-review-artifact` or `stale-review-artifact` directly.
 6. **Post** — `verdict post <repo> <pr>` validates anchors, merges
    `findings.json`, and submits exactly one review.
 7. **Merge gate** — one composed exit code:
