@@ -30,20 +30,52 @@ type dryRunWriteError struct{}
 
 func (dryRunWriteError) Error() string { return "dry run attempted a write" }
 
+func acquireDrainLock(req Request) (func(), *core.RefusalError) {
+	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	if ref != nil {
+		return nil, drainFailed(ref.Message)
+	}
+	unlock, err := storelock.Acquire(filepath.Join(dir, verbDrain), storelock.DefaultWait)
+	if err != nil {
+		return nil, drainFailed(fmt.Sprintf("could not lock %s: %v", dir, err))
+	}
+	return unlock, nil
+}
+
 func postMode(ctx context.Context, r *cli.Runner, req Request, fl *flags) int {
+	unlock, ref := acquireDrainLock(req)
+	if ref != nil {
+		return r.Refuse(ref)
+	}
+	defer unlock()
 	dir, plan, drafts, ref := postPreflight(req, fl)
 	if ref != nil {
 		return r.Refuse(ref)
 	}
-	unlock, err := storelock.Acquire(filepath.Join(dir, verbDrain), storelock.DefaultWait)
-	if err != nil {
-		return r.Refuse(drainFailed(fmt.Sprintf("could not lock %s: %v", dir, err)))
-	}
-	defer unlock()
 	if fl.dryRun {
 		return runDryRunPost(ctx, r, req, fl, dir, plan, drafts)
 	}
 	return runRealPost(ctx, r, req, fl, dir, plan, drafts)
+}
+
+func postFromPlan(ctx context.Context, r *cli.Runner, req Request, fl *flags,
+	in *planInputs, plan *draincore.File,
+) int {
+	drafts, ref := postDraftsFile(in.dir)
+	if ref != nil {
+		return r.Refuse(ref)
+	}
+	if _, _, _, ref := draincore.ValidatePostDrafts(plan, drafts, plan.Provider); ref != nil {
+		return r.Refuse(ref)
+	}
+	result, ref := postWrites(ctx, req, in.dir, plan, drafts, in, fl.dryRun)
+	if ref != nil {
+		return r.Refuse(ref)
+	}
+	if fl.dryRun {
+		return postDryRunFinish(r, req, in.dir, plan, fl, result)
+	}
+	return postFinish(r, req, in.dir, plan, result)
 }
 
 func runDryRunPost(ctx context.Context, r *cli.Runner, req Request, fl *flags, dir string,
@@ -53,6 +85,7 @@ func runDryRunPost(ctx context.Context, r *cli.Runner, req Request, fl *flags, d
 	if ref != nil {
 		return r.Refuse(ref)
 	}
+	r.Warnings = resp.Warnings
 	in, ref := dryRunInputs(ctx, req, resp, dir, feed)
 	if ref != nil {
 		return r.Refuse(ref)
@@ -61,7 +94,7 @@ func runDryRunPost(ctx context.Context, r *cli.Runner, req Request, fl *flags, d
 	if ref != nil {
 		return r.Refuse(ref)
 	}
-	return postDryRunFinish(r, req, dir, plan, fl, resp, result)
+	return postDryRunFinish(r, req, dir, plan, fl, result)
 }
 
 func runRealPost(ctx context.Context, r *cli.Runner, req Request, fl *flags, dir string,
@@ -71,6 +104,7 @@ func runRealPost(ctx context.Context, r *cli.Runner, req Request, fl *flags, dir
 	if ref != nil {
 		return r.Refuse(drainFailed(ref.Message))
 	}
+	r.Warnings = resp.Warnings
 	in, ref := readInputs(ctx, req, resp)
 	if ref != nil {
 		return r.Refuse(ref)
@@ -79,7 +113,7 @@ func runRealPost(ctx context.Context, r *cli.Runner, req Request, fl *flags, dir
 	if ref != nil {
 		return r.Refuse(ref)
 	}
-	return postFinish(r, req, dir, plan, resp, result)
+	return postFinish(r, req, dir, plan, result)
 }
 
 func postPreflight(req Request, fl *flags) (string, *draincore.File, []byte, *core.RefusalError) {
@@ -306,9 +340,8 @@ func postSuccessNext(req Request) string {
 }
 
 func postDryRunFinish(r *cli.Runner, req Request, dir string, plan *draincore.File, fl *flags,
-	resp *fetchcore.ThreadsResponse, result *draincore.PostResult,
+	result *draincore.PostResult,
 ) int {
-	r.Warnings = resp.Warnings
 	preview := &draincore.DryRunFile{
 		Provider: plan.Provider, PR: plan.PR, HeadSHA: plan.HeadSHA,
 		PlannedAt: cli.NowUTC(r.Now()), Planned: result.Planned, Skipped: plan.Skipped,
@@ -327,9 +360,8 @@ func postDryRunFinish(r *cli.Runner, req Request, dir string, plan *draincore.Fi
 }
 
 func postFinish(r *cli.Runner, req Request, dir string, plan *draincore.File,
-	resp *fetchcore.ThreadsResponse, result *draincore.PostResult,
+	result *draincore.PostResult,
 ) int {
-	r.Warnings = resp.Warnings
 	nextText := postSuccessNext(req)
 	if result.Incomplete {
 		nextText = "re-run verdict drain " + req.Repo + " " + req.Pr + " --post"

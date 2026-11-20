@@ -70,10 +70,33 @@ func assertOneRunLedgerAndCalls(t *testing.T, dir string, cmdr *drainHostStub) {
 	if cmdr.postCount("PRRT_1") != 1 {
 		t.Errorf("host post calls = %d, want 1 (calls=%v)", cmdr.postCount("PRRT_1"), cmdr.calls)
 	}
+	assertSingleRefreshHostReads(t, cmdr.callLog())
 	entries, err := ReadLedger(filepath.Join(dir, draincore.KeyLedgerJSON))
 	if err != nil || len(entries) != 1 || entries[0].ReplyID != "501" {
 		t.Errorf("ledger = %+v, err=%v", entries, err)
 	}
+}
+
+func assertSingleRefreshHostReads(t *testing.T, calls []string) {
+	t.Helper()
+	graphqlReads, userReads := countRefreshHostReads(calls)
+	if graphqlReads != 1 || userReads != 1 {
+		t.Errorf("host reads = (graphql:%d, user:%d), want (1, 1); calls=%v", graphqlReads, userReads, calls)
+	}
+}
+
+func countRefreshHostReads(calls []string) (int, int) {
+	graphqlReads := 0
+	userReads := 0
+	for _, call := range calls {
+		if strings.Contains(call, "api graphql") && !strings.Contains(call, "resolveReviewThread") {
+			graphqlReads++
+		}
+		if strings.Contains(call, "api user --jq .login") {
+			userReads++
+		}
+	}
+	return graphqlReads, userReads
 }
 
 func onePendingPageJSON() string {

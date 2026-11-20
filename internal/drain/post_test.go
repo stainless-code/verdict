@@ -404,9 +404,97 @@ func TestPostConcurrentRunsSerialize(t *testing.T) {
 	if cmdr.postCount("PRRT_1") != 1 || cmdr.postCount("PRRT_2") != 1 {
 		t.Errorf("post counts = (1:%d, 2:%d), want (1, 1)", cmdr.postCount("PRRT_1"), cmdr.postCount("PRRT_2"))
 	}
+	assertConcurrentLedgerAndPlan(t, dir)
+}
+
+func assertConcurrentLedgerAndPlan(t *testing.T, dir string) {
+	t.Helper()
 	entries, err := ReadLedger(filepath.Join(dir, draincore.KeyLedgerJSON))
 	if err != nil || len(entries) != 2 {
 		t.Errorf("ledger = %+v (len %d), err=%v; want 2 entries", entries, len(entries), err)
+	}
+	plan, err := draincore.ReadPlan(filepath.Join(dir, draincore.KeyPlanJSON))
+	if err != nil || len(plan.Posted) != 2 {
+		t.Errorf("plan.Posted = %+v, err=%v; want 2 posted entries matching ledger", plan, err)
+	}
+}
+
+func TestPostTwiceMergesReceiptAcrossRuns(t *testing.T) {
+	t.Parallel()
+	root, dir := setupDrainBundle(t)
+	replies := []draincore.Reply{
+		{ThreadID: "PRRT_1", WaitingCommentID: "102", Disposition: draincore.DispositionAnswer, Body: "Answer one."},
+		{ThreadID: "PRRT_2", WaitingCommentID: "202", Disposition: draincore.DispositionWithdraw, Body: "Answer two."},
+	}
+	writePlanAndDrafts(t, dir, "github", replies, "")
+	cmdr := &drainHostStub{pageJSON: twoPendingPageJSON(), self: "verdict-bot", failRootID: "201"}
+	if out, diag, code := runDrainTest(t, root, cmdr, []string{"--post"}); code != cli.ExitRefused {
+		t.Fatalf("first run exit = %d, want %d (out=%s diag=%s)", code, cli.ExitRefused, out, diag)
+	}
+	cmdr.failRootID = ""
+	if out, diag, code := runDrainTest(t, root, cmdr, []string{"--post"}); code != cli.ExitOK {
+		t.Fatalf("second run exit = %d, want %d (out=%s diag=%s)", code, cli.ExitOK, out, diag)
+	}
+	assertMergedReceiptMatchesLedger(t, dir)
+	assertFailedReceiptMergesAcrossRuns(t)
+}
+
+func assertMergedReceiptMatchesLedger(t *testing.T, dir string) {
+	t.Helper()
+	entries, err := ReadLedger(filepath.Join(dir, draincore.KeyLedgerJSON))
+	if err != nil || len(entries) != 2 {
+		t.Fatalf("ledger = %+v, err=%v; want 2 entries", entries, err)
+	}
+	plan, err := draincore.ReadPlan(filepath.Join(dir, draincore.KeyPlanJSON))
+	if err != nil {
+		t.Fatalf("ReadPlan: %v", err)
+	}
+	wantPosted := []draincore.Posted{
+		{ThreadID: "PRRT_1", ReplyID: "501", Disposition: "answer", Resolved: false},
+		{ThreadID: "PRRT_2", ReplyID: "502", Disposition: "withdraw", Resolved: true},
+	}
+	if len(plan.Posted) != len(wantPosted) || plan.Posted[0] != wantPosted[0] || plan.Posted[1] != wantPosted[1] {
+		t.Errorf("plan.Posted = %+v, want %+v", plan.Posted, wantPosted)
+	}
+	if len(plan.Failed) != 0 {
+		t.Errorf("plan.Failed = %+v, want empty after retry succeeds", plan.Failed)
+	}
+}
+
+func assertFailedReceiptMergesAcrossRuns(t *testing.T) {
+	t.Helper()
+	root, dir := setupDrainBundle(t)
+	firstDraft := []draincore.Reply{
+		{ThreadID: "PRRT_1", WaitingCommentID: "102", Disposition: draincore.DispositionAnswer, Body: "Answer one."},
+	}
+	digest := writePlanAndDrafts(t, dir, "github", firstDraft, "")
+	cmdr := &drainHostStub{pageJSON: twoPendingPageJSON(), self: "verdict-bot", failRootID: "101"}
+	if _, _, code := runDrainTest(t, root, cmdr, []string{"--post"}); code != cli.ExitRefused {
+		t.Fatalf("first failing run exit = %d, want %d", code, cli.ExitRefused)
+	}
+	secondDraft, err := json.Marshal(draincore.RepliesFile{
+		SchemaVersion: draincore.SchemaVersion,
+		PlanDigest:    digest,
+		Replies: []draincore.Reply{
+			{ThreadID: "PRRT_2", WaitingCommentID: "202", Disposition: draincore.DispositionAnswer, Body: "Answer two."},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, draincore.KeyDraftsJSON), secondDraft, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cmdr.failRootID = "201"
+	if _, _, code := runDrainTest(t, root, cmdr, []string{"--post"}); code != cli.ExitRefused {
+		t.Fatalf("second failing run exit = %d, want %d", code, cli.ExitRefused)
+	}
+	plan, err := draincore.ReadPlan(filepath.Join(dir, draincore.KeyPlanJSON))
+	if err != nil {
+		t.Fatalf("ReadPlan: %v", err)
+	}
+	if len(plan.Failed) != 2 || plan.Failed[0].ThreadID != "PRRT_1" || plan.Failed[1].ThreadID != "PRRT_2" {
+		t.Errorf("plan.Failed = %+v, want [PRRT_1 PRRT_2]", plan.Failed)
 	}
 }
 

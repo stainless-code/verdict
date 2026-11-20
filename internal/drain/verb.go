@@ -100,42 +100,58 @@ func checkPostProviderCap(fl *flags) *core.RefusalError {
 }
 
 func runPlanAndMaybePost(ctx context.Context, r *cli.Runner, req Request, fl *flags, limit int) int {
-	dir, plan, code, done := buildPlan(ctx, r, req, fl, limit)
+	unlock, ref := maybeAcquirePostLock(req, fl)
+	if ref != nil {
+		return r.Refuse(ref)
+	}
+	defer unlock()
+	return runPlanSteps(ctx, r, req, fl, limit)
+}
+
+func runPlanSteps(ctx context.Context, r *cli.Runner, req Request, fl *flags, limit int) int {
+	in, plan, code, done := buildPlan(ctx, r, req, fl, limit)
 	if done {
 		return code
 	}
 	if fl.agent != "" && len(plan.Pending) > 0 {
-		if code, done := draft(ctx, r, req, fl, dir, plan); done {
+		if code, done := draft(ctx, r, req, fl, in.dir, plan); done {
 			return code
 		}
 	}
 	if fl.post && len(plan.Pending) > 0 {
-		return postMode(ctx, r, req, fl)
+		return postFromPlan(ctx, r, req, fl, in, plan)
 	}
-	return finishPlan(r, req, fl, dir, plan)
+	return finishPlan(r, req, fl, in.dir, plan)
 }
 
-func buildPlan(ctx context.Context, r *cli.Runner, req Request, fl *flags, limit int) (string, *draincore.File, int, bool) {
+func maybeAcquirePostLock(req Request, fl *flags) (func(), *core.RefusalError) {
+	if !fl.post {
+		return func() {}, nil
+	}
+	return acquireDrainLock(req)
+}
+
+func buildPlan(ctx context.Context, r *cli.Runner, req Request, fl *flags, limit int) (*planInputs, *draincore.File, int, bool) {
 	resp, ref := fetchcore.RunThreads(ctx, refreshRequest(r, req, fl))
 	if ref != nil {
-		return "", nil, r.Refuse(drainFailed(ref.Message)), true
+		return nil, nil, r.Refuse(drainFailed(ref.Message)), true
 	}
 	r.Warnings = resp.Warnings
 	if fl.post {
 		if ref := checkThreadReplyCap(resp.Data.Provider); ref != nil {
-			return "", nil, r.Refuse(ref), true
+			return nil, nil, r.Refuse(ref), true
 		}
 	}
 	in, ref := readInputs(ctx, req, resp)
 	if ref != nil {
-		return "", nil, r.Refuse(ref), true
+		return nil, nil, r.Refuse(ref), true
 	}
 	plan, _ := draincore.NewPlan(resp.Data.Provider, threadscore.PRNumber(req.Pr), resp.Data.HeadSHA,
 		req.TimeUTC(), in.self, in.feed, in.ledger, limit)
 	if err := writePlanArtifacts(in.dir, plan, fl.dryRun, fl.agent != "" && len(plan.Pending) > 0); err != nil {
-		return "", nil, r.Refuse(drainFailed(err.Error())), true
+		return nil, nil, r.Refuse(drainFailed(err.Error())), true
 	}
-	return in.dir, plan, 0, false
+	return in, plan, 0, false
 }
 
 // A dry run leaves the real bundle's host state, threads, plan, and any

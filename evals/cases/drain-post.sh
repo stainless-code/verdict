@@ -210,7 +210,8 @@ LEDGER_BEFORE="$(wc -c <"$DIR/replies.json")"
 run_review drain acme/app 7 --post --json
 if [ "$EVAL_STATUS" -eq 0 ] && [ "$(grep -Ec 'POST|threadId=' "$EVAL_STUBLOG" || true)" = "$WRITES_BEFORE" ] \
   && [ "$(wc -c <"$DIR/replies.json")" = "$LEDGER_BEFORE" ] \
-  && jq -e '.data | (.posted | length == 0)' <"$EVAL_OUT" >/dev/null; then
+  && jq -e '.data | (.posted | length == 2)' <"$EVAL_OUT" >/dev/null \
+  && jq -e '.posted | length == 2' "$DIR/drain.json" >/dev/null; then
   good "P6 a rerun makes zero writes and adds no ledger entry"
 else
   bad "P6 rerun: exit $EVAL_STATUS $(head -c 400 "$EVAL_OUT")"
