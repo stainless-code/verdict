@@ -1,0 +1,21 @@
+rules:
+  - id: verdict.go.insecure-tls
+    languages: [go]
+    severity: WARNING
+    message: TLS certificate verification is disabled.
+    pattern: "tls.Config{..., InsecureSkipVerify: true, ...}"
+  - id: verdict.go.shell-command
+    languages: [go]
+    severity: WARNING
+    message: A shell command needs argument and trust review.
+    pattern: exec.Command("sh", "-c", ...)
+  - id: verdict.ts.eval
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: Dynamic evaluation needs trust review.
+    pattern: eval(...)
+  - id: verdict.ts.loose-false
+    languages: [typescript, javascript]
+    severity: WARNING
+    message: Loose equality with false may coerce unexpected values.
+    pattern: $X == false
