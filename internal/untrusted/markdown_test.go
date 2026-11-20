@@ -194,3 +194,8 @@ func TestEscapeURLPathFenceAndCapRunes(t *testing.T) {
 		t.Errorf("CapRunes truncated = %q", got)
 	}
 }
+
+func TestInlineProseDoubleTickBoundary(t *testing.T) {
+	checkIdempotent(t, "InlineProse", InlineProse, sanitizeCase{in: "`` a ` b `` <img src=x> `", want: "`` a ` b `` &lt;img src=x> `"})
+	checkIdempotent(t, "InlineProse", InlineProse, sanitizeCase{in: "`` <tag> ` @alice ``", want: "`` <tag> ` @alice ``"})
+}
