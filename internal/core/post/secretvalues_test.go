@@ -166,6 +166,11 @@ func TestReviewSecretSitesLocations(t *testing.T) {
 			want:   []string{"finding 1 (aws-access-key-id)", "finding 2 (github-token)"},
 		},
 		{"non-object comment", `{"summary":"x","findings":[7,{"claim":"AKIAIOSFODNN7EXAMPLE"}]}`, []string{"finding 2 (aws-access-key-id)"}},
+		{
+			name:   "finding and brief and spec paths",
+			review: `{"summary":"x","findings":[{"path":"dir/AKIAIOSFODNN7EXAMPLE.go","claim":"ok"},{"path":"a.go","claim":"ok","brief":{"sites":[{"path":"dir/ghp_0123456789abcdefghijABCDEFGHIJ012345.go"}],"outcome":"fix"}}],"spec_checks":[{"item":"ok","status":"met","evidence":{"path":"dir/sk-ant-api03-abcdefghij0123.go","line":1,"quote":"ok"}}]}`,
+			want:   []string{"finding 1 (aws-access-key-id)", "finding 2 (github-token)", "spec_check 1 (anthropic-api-key)"},
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

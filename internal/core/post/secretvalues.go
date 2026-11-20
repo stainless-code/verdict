@@ -103,6 +103,7 @@ func appendSpecCheckSites(sites []secretSite, index int, obj *jq.Obj) []secretSi
 	sites = appendSecretSite(sites, where, reviewStringField(obj, "item"))
 	if ev, ok := obj.Get("evidence"); ok {
 		if evObj, ok := ev.(*jq.Obj); ok && evObj != nil {
+			sites = appendSecretSite(sites, where, reviewStringField(evObj, fieldPath))
 			sites = appendSecretSite(sites, where, reviewStringField(evObj, "quote"))
 		}
 	}
@@ -117,7 +118,9 @@ func receiptSecretSites(review *jq.Obj) []secretSite {
 		if !ok || obj == nil {
 			continue
 		}
-		sites = appendSecretSite(sites, fmt.Sprintf("receipt %d", i+1), reviewStringField(obj, "quote"))
+		where := fmt.Sprintf("receipt %d", i+1)
+		sites = appendSecretSite(sites, where, reviewStringField(obj, fieldPath))
+		sites = appendSecretSite(sites, where, reviewStringField(obj, "quote"))
 	}
 	return sites
 }
@@ -132,7 +135,7 @@ type reviewComment struct {
 func commentSecretSites(index int, c *jq.Obj) []secretSite {
 	where := fmt.Sprintf("finding %d", index)
 	var sites []secretSite
-	for _, field := range []string{fieldBody, "claim", "quote", fieldSuggestion} {
+	for _, field := range []string{fieldPath, fieldBody, "claim", "quote", fieldSuggestion} {
 		sites = appendSecretSite(sites, where, reviewStringField(c, field))
 	}
 	if rawBrief, ok := c.Get("brief"); ok {
@@ -144,11 +147,25 @@ func commentSecretSites(index int, c *jq.Obj) []secretSite {
 }
 
 func appendBriefSecretSites(sites []secretSite, where string, bObj *jq.Obj) []secretSite {
+	sites = appendBriefSitePathSecrets(sites, where, bObj)
 	sites = appendSecretSite(sites, where, reviewStringField(bObj, "outcome"))
 	sites = appendSecretSite(sites, where, reviewStringField(bObj, "approach"))
 	if qs, ok := bObj.Get("questions"); ok {
 		for _, q := range jq.Elements(qs) {
 			sites = appendSecretSite(sites, where, jq.R(jq.Alt(q, "")))
+		}
+	}
+	return sites
+}
+
+func appendBriefSitePathSecrets(sites []secretSite, where string, bObj *jq.Obj) []secretSite {
+	rawSites, ok := bObj.Get("sites")
+	if !ok {
+		return sites
+	}
+	for _, item := range jq.Elements(rawSites) {
+		if sObj, ok := item.(*jq.Obj); ok && sObj != nil {
+			sites = appendSecretSite(sites, where, reviewStringField(sObj, fieldPath))
 		}
 	}
 	return sites
