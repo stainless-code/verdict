@@ -74,6 +74,34 @@ func TestPhaseRollupKeepsUnknownSpendForUnreadableCrossLauncher(t *testing.T) {
 	}
 }
 
+func TestPhaseRollupKeepsUnknownSpendForCrashedCrossLaunch(t *testing.T) {
+	dir := phaseCostFixture(t, phaseCostKnown)
+	writeStore(t, dir, map[string]string{filepath.Join("x-cross-1", ".run.rounds", "01.out"): "round one"})
+	cost := readcommon.CostRollup(dir).Cost
+	if got := costNum(t, cost, "runs"); got != 3 {
+		t.Fatalf("runs = %v", got)
+	}
+	if got, _ := cost.Get("est_usd"); got != nil {
+		t.Fatalf("cross launch without a manifest priced = %v", got)
+	}
+}
+
+// TestPhaseRollupKeepsUnknownSpendForUnreadableCrossNamespace proves a cross
+// namespace the rollup cannot even look inside - a plain file where the
+// directory belongs - keeps spend unknown instead of reading the phase as never
+// launched.
+func TestPhaseRollupKeepsUnknownSpendForUnreadableCrossNamespace(t *testing.T) {
+	dir := phaseCostFixture(t, phaseCostKnown)
+	writeStore(t, dir, map[string]string{"x-cross-1": "not a directory"})
+	cost := readcommon.CostRollup(dir).Cost
+	if got := costNum(t, cost, "runs"); got != 3 {
+		t.Fatalf("runs = %v", got)
+	}
+	if got, _ := cost.Get("est_usd"); got != nil {
+		t.Fatalf("unreadable cross namespace priced = %v", got)
+	}
+}
+
 func TestPhaseRollupCountsLaunchedRoundsWithoutReviews(t *testing.T) {
 	dir := phaseCostFixture(t, phaseCostKnown)
 	writeStore(t, dir, map[string]string{

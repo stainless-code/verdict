@@ -2,7 +2,9 @@ package readcommon
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io/fs"
 	"math"
 	"os"
 	"path/filepath"
@@ -77,11 +79,10 @@ func observedCostPhases(dir, execution string) []spend.Phase {
 
 func observedFinderPhases(dir, execution, finder, phase string) []spend.Phase {
 	namespace := costNamespace(finder, phase)
-	launcherPath := filepath.Join(dir, namespace, "launcher.json")
-	launcher := phaseCostObject(launcherPath)
+	launcher := phaseCostObject(filepath.Join(dir, namespace, "launcher.json"))
 	// A cross launch that left no evidence is the zero-cross case; one whose
 	// evidence exists but cannot be read is a launch no price can be bound to.
-	if launcher == nil && phase == "cross" && !launchEvidenceExists(launcherPath) {
+	if launcher == nil && phase == "cross" && !launchEvidenceExists(dir, namespace) {
 		return nil
 	}
 	attempts := phaseAttemptCount(dir, namespace, launcher)
@@ -99,11 +100,18 @@ func observedFinderPhases(dir, execution, finder, phase string) []spend.Phase {
 	return phases
 }
 
-// launchEvidenceExists reports whether a launch left any evidence at path, even
-// evidence no price can be read from.
-func launchEvidenceExists(path string) bool {
-	_, err := os.Lstat(path)
-	return err == nil
+// launchEvidenceExists reports whether a launch left any evidence in
+// namespace, even evidence no price can be read from: a manifest, or
+// the rounds directory a launch writes its first output into. A lookup
+// this cannot answer is evidence too, so unreadable spend stays unknown
+// rather than reading as zero.
+func launchEvidenceExists(dir, namespace string) bool {
+	for _, name := range []string{"launcher.json", ".run.rounds"} {
+		if _, err := os.Lstat(filepath.Join(dir, namespace, name)); !errors.Is(err, fs.ErrNotExist) {
+			return true
+		}
+	}
+	return false
 }
 
 func phasePrices(dir, execution string) (map[string]phasePrice, bool) {
