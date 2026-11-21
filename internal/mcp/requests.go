@@ -157,6 +157,7 @@ func decodeFetch(req *fetchcore.Request, a *args) {
 		f.str("index", &req.Flags.Index)
 		f.strings("context", &req.Flags.Context)
 		f.strings("spec", &req.Flags.Spec)
+		f.strings("issue", &req.Flags.Issue)
 		f.strings("ignore", &req.Flags.Ignore)
 		f.boolean("noDefaultExcludes", &req.Flags.NoDefaultExcludes)
 		f.boolean("budgetConsent", &req.Flags.BudgetConsent)

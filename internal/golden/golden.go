@@ -104,6 +104,8 @@ func renderFile(sb *strings.Builder, key, body string, roots []string) {
 
 var runtimeBundleArtifacts = map[string]bool{
 	"budget.json":  true,
+	"context.json": true,
+	"context.txt":  true,
 	"run.json":     true,
 	"source.json":  true,
 	"threads.json": true,

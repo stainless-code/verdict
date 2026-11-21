@@ -16,6 +16,7 @@ type Flags struct {
 	Index             string
 	Context           []string
 	Spec              []string
+	Issue             []string
 	Ignore            []string
 	NoDefaultExcludes bool
 	BudgetConsent     bool

@@ -261,6 +261,7 @@ type FetchRequest struct {
 	Invocation
 	BaseSHA, Provider                 string
 	Context                           []string
+	Issue                             []string
 	Ignore                            []string
 	NoDefaultExcludes                 bool
 	BudgetConsent, ShowPrompts, Chunk bool

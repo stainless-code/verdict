@@ -28,7 +28,8 @@ type Request struct {
 }
 
 // Run executes `fetch <owner/repo> <pr> [--base-sha|--since <sha>]
-// [--provider <name>] [--index <ref|dir>] [--consent-over-budget]
+// [--provider <name>] [--index <ref|dir>] [--context <file|dir>]
+// [--spec <file>] [--issue <ref>] [--consent-over-budget]
 // [--allow-head-controls] [--show-prompts] [--chunk] [--json]`, returning the
 // process exit code.
 // Human progress goes to the runner's human stream; --json mode prints
@@ -180,6 +181,7 @@ var fetchValueWants = map[string]string{
 	flagIndex:    "<ref|dir>",
 	flagContext:  "<file|dir>",
 	flagSpec:     "<file>",
+	flagIssue:    "<ref>",
 	flagIgnore:   "<glob>",
 }
 
@@ -187,13 +189,11 @@ var fetchValueWants = map[string]string{
 // usage refusal when the token is unknown or a value flag lost its operand.
 func parseFetchToken(r *cli.Runner, f *fetchcore.Flags, args []string, i int) (int, int, bool) {
 	a := args[i]
+	if code, done, consumed := parseInlineIssue(r, f, a); consumed {
+		return i, code, done
+	}
 	if want, ok := fetchValueWants[a]; ok {
-		v, next, u := cli.FlagValue(args, i, a, want)
-		if u != nil {
-			return i, r.ReportUsage(u), true
-		}
-		setFetchValue(f, a, v)
-		return next, 0, false
+		return parseFetchValue(r, f, args, i, a, want)
 	}
 	switch a {
 	case "--consent-over-budget":
@@ -208,11 +208,43 @@ func parseFetchToken(r *cli.Runner, f *fetchcore.Flags, args []string, i int) (i
 		f.ChunkFlag = true
 	default:
 		msg := fmt.Sprintf("unknown flag '%s' for fetch (want --base-sha|--since <sha>, "+
-			"--provider <name>, --index <ref|dir>, --consent-over-budget, --allow-head-controls, "+
+			"--provider <name>, --index <ref|dir>, --issue <ref>, --consent-over-budget, --allow-head-controls, "+
 			"--ignore <glob>, --no-default-excludes, --show-prompts, --chunk, --json)", a)
 		return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
 	}
 	return i, 0, false
+}
+
+// parseFetchValue consumes one value flag and its operand, reporting the
+// missing-value usage error a bare flag or an empty --issue earns.
+func parseFetchValue(r *cli.Runner, f *fetchcore.Flags, args []string, i int, flag, want string) (int, int, bool) {
+	v, next, u := cli.FlagValue(args, i, flag, want)
+	if u != nil {
+		return i, r.ReportUsage(u), true
+	}
+	if flag == flagIssue && v == "" {
+		// An empty issue reference is a missing operand, not a ref the
+		// service would have to spend a host read refusing.
+		return i, r.ReportUsage(cli.MissingValue(flag, want)), true
+	}
+	setFetchValue(f, flag, v)
+	return next, 0, false
+}
+
+// parseInlineIssue consumes the `--issue=<ref>` spelling, which the global
+// pass leaves alone because only fetch takes the flag. consumed reports
+// whether this token was the flag, done whether the command is finished; an
+// empty inline value is a missing operand.
+func parseInlineIssue(r *cli.Runner, f *fetchcore.Flags, a string) (code int, done, consumed bool) {
+	value, ok := strings.CutPrefix(a, flagIssue+"=")
+	if !ok {
+		return 0, false, false
+	}
+	if value == "" {
+		return r.ReportUsage(cli.MissingValue(flagIssue, fetchValueWants[flagIssue])), true, true
+	}
+	f.Issue = append(f.Issue, value)
+	return 0, false, true
 }
 
 // parseLocalFlags strips fetch-local's flags, reporting unknown ones. A bare
@@ -340,6 +372,8 @@ func setFetchValue(f *fetchcore.Flags, name, value string) {
 		f.Context = append(f.Context, value)
 	case flagSpec:
 		f.Spec = append(f.Spec, value)
+	case flagIssue:
+		f.Issue = append(f.Issue, value)
 	case "--provider":
 		f.HasProvider, f.Provider = true, value
 	case flagIndex:
@@ -355,6 +389,7 @@ const (
 	flagIgnore     = "--ignore"
 	flagContext    = "--context"
 	flagSpec       = "--spec"
+	flagIssue      = "--issue"
 	providerGitHub = "github"
 	flagChunk      = "--chunk"
 	flagIndex      = "--index"

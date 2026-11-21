@@ -24,6 +24,7 @@ const (
 	keyHeadSHA     = "head_sha"
 	keyID          = "id"
 	keyIndex       = "index"
+	keyIssue       = "issue"
 	keyItems       = "items"
 	keyJSON        = "json"
 	keyKind        = "kind"
@@ -67,6 +68,7 @@ const (
 
 	// Provider binaries and argv tokens.
 	binAz              = "az"
+	binCurl            = "curl"
 	binGit             = "git"
 	binGlab            = "glab"
 	ghCmdPR            = "pr"
@@ -175,4 +177,51 @@ const (
 	spaceSep       = " "
 	schemaV1       = "1"
 	diffSuffix     = ".diff"
+)
+
+// Issue sources in the context set: the count cap on auto-discovered issues,
+// the per-document byte cap, and the one GraphQL page size.
+const (
+	issueMaxLinked  = 5
+	issueMaxBytes   = 64 << 10
+	issueMaxGraphQL = 20
+	issueExt        = ".md"
+)
+
+// Issue reference kinds: the two shapes --issue resolves through.
+const (
+	issueKindBare   = "bare"
+	issueKindGitHub = "github"
+)
+
+// Issue warning reasons. Each names one outcome class a read can reach; none
+// of them ever carries a response body or a credential.
+const (
+	reasonHostError      = "host-error"
+	reasonMissingTool    = "missing-tool"
+	reasonNotFound       = "not-found"
+	reasonOverBytes      = "bytes"
+	reasonOverFiles      = "files"
+	reasonOverItems      = "items"
+	reasonOverIssues     = "issues"
+	reasonTruncatedBytes = "bytes"
+	reasonTruncatedList  = "list"
+	reasonUnauthorized   = "unauthorized"
+	reasonUnsupported    = "unsupported"
+	reasonRateLimited    = "rate-limited"
+)
+
+// Issue surface messages: the refusal texts --issue refuses with and the
+// typed warnings it emits, each with its token and reason spelled once.
+const (
+	msgIssueWhitespace      = "--issue %s: whitespace is not an issue reference"
+	msgIssueUnrecognized    = "--issue %s: unrecognized issue reference (want owner/repo#12, #12, or a GitHub issue URL)"
+	msgIssueNeedsNumber     = "--issue %s: an issue reference needs a number"
+	msgIssueBareProvider    = "--issue %s: a bare #N needs --provider github (name the repo as owner/repo#N)"
+	msgIssueUnavailable     = "issue-unavailable (%s): %s"
+	msgIssueTruncated       = "issue-truncated (%s): %s"
+	msgIssueOverCap         = "issue-over-cap (%s): %s"
+	msgIssueOverIssues      = "issue-over-cap (%s): kept %d of %d linked issues"
+	msgIssueUnsupported     = "issue-unavailable (%s): %s has no linked-issue read in this build (link the issue with --issue)"
+	msgIssueLinkedReadError = "%s#%s linked issues"
 )

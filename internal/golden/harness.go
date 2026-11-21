@@ -491,6 +491,7 @@ func scrubEmbeddedProcedures(s string) string {
 func Scrub(s string) string {
 	s = tsRe.ReplaceAllString(s, "0000-00-00T00:00:00Z")
 	s = scrubNonce(s)
+	s = fenceNonceRe.ReplaceAllString(s, "${1}NONCE")
 	s = versionScrub()(s)
 	s = curlMsRe.ReplaceAllString(s, "${1}0${2}")
 	return scrubEmbeddedProcedures(s)
@@ -499,6 +500,11 @@ func Scrub(s string) string {
 // nonceRe matches the trust-boundary nonce line; the same nonce fences
 // every untrusted region of a prompt dump.
 var nonceRe = regexp.MustCompile(`with NONCE replaced by this run's nonce: ([0-9a-f]{16})\.`)
+
+// fenceNonceRe matches one untrusted fence marker carrying a run's nonce. A
+// bundle's context.txt carries the nonce without the trust-boundary line a
+// prompt dump carries, so the dump-shaped scrub above cannot find it there.
+var fenceNonceRe = regexp.MustCompile(`(<<<(?:END )?UNTRUSTED nonce=)([0-9a-f]{16})`)
 
 // scrubNonce replaces a run's prompt nonce with a placeholder. Dumps carry
 // no other random material; SHAs are 40 hex chars and never match the

@@ -118,6 +118,7 @@ index-failed	try: delete .verdict/index and rebuild with 'verdict index build'
 ingest-failed	try: confirm the bundle path and SARIF file readability, then re-run
 init-failed	try: address the cause above, then re-run the same command
 internal	try: address the cause above, then re-run the same command
+issue-invalid	try: pass --issue owner/repo#12, #12, or a GitHub issue URL, then re-run
 learn-failed	try: address the cause above, then re-run the same command
 ledger-too-large	try: trim or archive rows in .verdict/incidents.jsonl, then re-run
 manager-failed	try: address the cause above, then re-run the same command
