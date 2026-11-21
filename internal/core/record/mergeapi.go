@@ -151,6 +151,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	if err := st.validateAndMerge(); err != nil {
 		return MergeResult{}, err
 	}
+	st.captureReproductions()
 	verification := st.executionPanel(execution, panel)
 	execution.Stamp(st.entries)
 	execution.ApplyEvidence(st.evidence)
@@ -453,7 +454,7 @@ func (st *state) applyPanel(file *panelcore.File) *core.PanelSummary {
 }
 
 func (st *state) persistMerged() error {
-	if !st.dryRun || st.cmd != recordCommand {
+	if st.persistsFindings() {
 		if err := writeFindings(st); err != nil {
 			return err
 		}
@@ -467,4 +468,8 @@ func (st *state) executionPanel(execution *panelcore.Execution, file *panelcore.
 		return st.applyPanel(file)
 	}
 	return execution.Attach(panelcore.Summarize(st.entries))
+}
+
+func (st *state) persistsFindings() bool {
+	return !st.dryRun || st.cmd != recordCommand
 }

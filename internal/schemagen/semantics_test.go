@@ -319,7 +319,12 @@ var publishedSemantics = map[string]string{
 	// sarif ingest: additive optional entry.source enum (model|tool) and
 	// optional tool, rule_id, and fingerprint strings on findings entries. No
 	// existing property, required key, or type changed.
-	"findings.schema.json": "6aa560434a01f2ba0d41dfeb29c7eef7ef1878941caa1dcd771c15ff811faf92",
+	// reproduction: additive nullable entry.reproduction with its closed
+	// $defs/reproductionReceipt. The same bump carries S5's cross-check
+	// additions: an optional panelVerification checker, crossVerification
+	// origins with the contested status, and an optional crossCheck quote
+	// with its $defs/crossQuote.
+	"findings.schema.json": "ea97f241b1f5087fe262b43ca363700df26c9513cfffa5e73f4463631f4b8476",
 	// post_floor_scoped: additive optional per-path posting floor list with its
 	// $defs/floorScope entry (required path, enum floor). No existing
 	// property, required key, or type changed.
@@ -489,7 +494,10 @@ var publishedSemantics = map[string]string{
 	// schema does not publish refuses). finding, specCheck, specEvidence and
 	// receipt are new definitions. This is the deliberate pre-v1 break: there
 	// is no compatibility shape.
-	"review.schema.json": "d50b3b9b6ae31c1ca5ed5ba2e3253b99e6f00db689a3cd9044585ab29740dcfc",
+	// reproduction: additive optional finding.reproduction with its closed
+	// $defs/reproduction, and schema_version 2 requires the execution
+	// reference (the two-finder aggregate input).
+	"review.schema.json": "49f79e2563c7fe6a951f8ef0a7b2c3c72b7c653eb04d75088a7ffb512d888ccf",
 	// additive selected.schema.json (new bundle document: the reaction-scoped
 	// fix selection fetch writes and fix --selected reads). A new document
 	// only: no existing schema property, required key, enum, or type changed.

@@ -54,3 +54,16 @@ func HasSecretValue(text string) bool {
 	}
 	return false
 }
+
+const privateKeyKinds = `(?:RSA |EC |DSA |OPENSSH |ENCRYPTED )?PRIVATE KEY-----`
+
+var privateKeyBlock = regexp.MustCompile(`(?s)-----BEGIN ` + privateKeyKinds + `.*?(?:-----END ` + privateKeyKinds + `|$)`)
+
+// ScrubShapes replaces credential-shaped values using the shared scan table.
+func ScrubShapes(text string) string {
+	text = privateKeyBlock.ReplaceAllString(text, Redacted)
+	for _, shape := range valueShapes {
+		text = shape.re.ReplaceAllString(text, Redacted)
+	}
+	return text
+}

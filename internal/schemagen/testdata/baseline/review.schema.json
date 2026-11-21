@@ -89,6 +89,9 @@
     "finding": {
       "type": "object",
       "properties": {
+        "reproduction": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reproduction" }]
+        },
         "path": {
           "description": "Diff-relative path required; a path not in the fetched diff refuses.",
           "type": "string"
@@ -218,6 +221,15 @@
       },
       "required": ["path", "source", "reason"],
       "additionalProperties": true
+    },
+    "reproduction": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "command": { "type": "string", "maxLength": 4096, "minLength": 1 }
+      },
+      "required": ["path", "command"],
+      "additionalProperties": false
     },
     "brief": {
       "description": "The machine form of the finding: affected sites, the required outcome, an optional approach, and open questions.",

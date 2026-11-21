@@ -3,4 +3,5 @@ exit: 0
 next: c1111111 [open] notes.txt:2 — address via address-reviews mode, then post
 --- stderr ---
 warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
+warn: reproduced finding e555555555555555555555555555555555555555 has no runnable artifact: reproduction: reproduction missing
 --- files ---

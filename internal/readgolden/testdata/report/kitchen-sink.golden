@@ -10,6 +10,7 @@ exit: 1
   "warnings": [
     "patch identity unavailable — completeness compares heads",
     "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors",
+    "reproduced finding e555555555555555555555555555555555555555 has no runnable artifact: reproduction: reproduction missing",
     "live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5101 -f query=       query($owne — gating on local dimensions only)"
   ],
   "data": {
@@ -285,6 +286,7 @@ exit: 1
 --- stderr ---
 warn: patch identity unavailable — completeness compares heads
 warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
+warn: reproduced finding e555555555555555555555555555555555555555 has no runnable artifact: reproduction: reproduction missing
 warn: live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5101 -f query=       query($owne — gating on local dimensions only)
 wrote out.sarif
 wrote out.md
@@ -304,7 +306,7 @@ check: evidence receipt missing for head aaaaaaa [review-insufficient] — gate 
 2. [open] [notes.txt:2][ev-2] (b2222222, pointed) — Usable body here with enough substance.
 3. [open] [notes.txt:2][ev-3] (f6666666, pointed) — Usable body here with enough substance.
 4. [open] [notes.txt:2][ev-4] (a3333333, said) — Usable body here with enough substance.
-5. [deferred] [notes.txt:2][ev-5] (e5555555, reproduced) — Usable body here with enough substance.
+5. [deferred] [notes.txt:2][ev-5] (e5555555, reproduced) — Usable body here with enough substance. [reproduction missing]
 6. [addressed] [notes.txt:2][ev-6] (d4444444, walked) — Usable body here with enough substance.
 [ev-1]: https://github.com/acme/app/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/notes.txt#L2
 [ev-2]: https://github.com/acme/app/blob/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/notes.txt#L2

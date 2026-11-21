@@ -25,7 +25,17 @@ exit: 0
     "rigor said below critical floor walked on f8c039f (advisory)",
     "rigor said below important floor pointed on 0b7162f (advisory)",
     "rigor said below important floor pointed on 3aa1a65 (advisory)",
-    "rigor said below critical floor walked on 2d784bc (advisory)"
+    "rigor said below critical floor walked on 2d784bc (advisory)",
+    "reproduced finding e8e306834f388a5f07f0042bf9d10155c20bc0cc has no runnable artifact: reproduction: supply reproduction.path and reproduction.command",
+    "reproduced finding 65c5e5ce7a39de7e90426bb1b07a7de7087d3ab6 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command",
+    "reproduced finding 351a716c8ca1595a38f5a622ec4176ce0cb207c5 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command",
+    "reproduced finding 5cf0bb2c9c45715d642d91fb22d521121f4252bb has no runnable artifact: reproduction: supply reproduction.path and reproduction.command",
+    "reproduced finding 1af55343737b575f169b27c4eb3a75479c35d25e has no runnable artifact: reproduction: supply reproduction.path and reproduction.command",
+    "reproduced finding 5dd4393fbeba6f683672ba36a3f1c915e453b76a has no runnable artifact: reproduction: supply reproduction.path and reproduction.command",
+    "reproduced finding 795174ab98e264232526a52bb9866b3bcc7b0ad9 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command",
+    "reproduced finding d2ca3f8acc3763fbb3d42e887cc8b59a469c3e4b has no runnable artifact: reproduction: supply reproduction.path and reproduction.command",
+    "reproduced finding 4629ed12dc60e25bc29f601351e2b87802cdcb56 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command",
+    "reproduced finding d00d2dbb6055691a3c930a1a9c6cfa2e69a41275 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command"
   ],
   "data": {
     "dir": ".verdict/state/local-mx",
@@ -367,6 +377,16 @@ warn: rigor said below critical floor walked on f8c039f (advisory)
 warn: rigor said below important floor pointed on 0b7162f (advisory)
 warn: rigor said below important floor pointed on 3aa1a65 (advisory)
 warn: rigor said below critical floor walked on 2d784bc (advisory)
+warn: reproduced finding e8e306834f388a5f07f0042bf9d10155c20bc0cc has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 65c5e5ce7a39de7e90426bb1b07a7de7087d3ab6 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 351a716c8ca1595a38f5a622ec4176ce0cb207c5 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 5cf0bb2c9c45715d642d91fb22d521121f4252bb has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 1af55343737b575f169b27c4eb3a75479c35d25e has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 5dd4393fbeba6f683672ba36a3f1c915e453b76a has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 795174ab98e264232526a52bb9866b3bcc7b0ad9 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding d2ca3f8acc3763fbb3d42e887cc8b59a469c3e4b has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 4629ed12dc60e25bc29f601351e2b87802cdcb56 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding d00d2dbb6055691a3c930a1a9c6cfa2e69a41275 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
 » findings: 50 sigs -> .verdict/state/local-mx/findings.json
   c7bc06e4  deferred  true  notes.txt
   63b8aa5b  open  true  notes.txt

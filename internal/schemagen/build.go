@@ -7,6 +7,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/core/threads"
+	"github.com/stainless-code/verdict/internal/repro"
 	"github.com/stainless-code/verdict/internal/spend"
 )
 
@@ -313,6 +314,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[core.CrossVerification](), name: "crossVerification", closed: true},
 				{typ: reflect.TypeFor[core.CrossCheck](), name: "crossCheck", closed: true},
 				{typ: reflect.TypeFor[core.CrossQuote](), name: "crossQuote", closed: true},
+				{typ: reflect.TypeFor[repro.Receipt](), name: "reproductionReceipt", closed: true},
 				{typ: reflect.TypeFor[Brief](), name: defsBrief},
 				{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
 				{typ: reflect.TypeFor[HistoryEvent](), name: "historyEvent"},
@@ -755,6 +757,7 @@ func reviewDefs() []definition {
 		{typ: reflect.TypeFor[SpecEvidence](), name: defsSpecEvidence, closed: true},
 		{typ: reflect.TypeFor[Receipt](), name: defsReceipt, closed: true},
 		{typ: reflect.TypeFor[core.Suppression](), name: "suppression"},
+		{typ: reflect.TypeFor[core.Reproduction](), name: "reproduction", closed: true},
 		{typ: reflect.TypeFor[Brief](), name: defsBrief},
 		{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
 		{typ: reflect.TypeFor[TriageClaim](), name: "triageClaim"},

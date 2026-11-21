@@ -8,7 +8,8 @@ exit: 0
   "at": "0000-00-00T00:00:00Z",
   "next": "address open threads",
   "warnings": [
-    "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors"
+    "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors",
+    "reproduced finding e555555555555555555555555555555555555555 has no runnable artifact: reproduction: reproduction missing"
   ],
   "data": {
     "generated_at": "0000-00-00T00:00:00Z",
@@ -236,4 +237,5 @@ exit: 0
 }
 --- stderr ---
 warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
+warn: reproduced finding e555555555555555555555555555555555555555 has no runnable artifact: reproduction: reproduction missing
 --- files ---

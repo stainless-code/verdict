@@ -1,5 +1,5 @@
 exit: 0
---- stdout (size=66539 sha256=9164c05cb08d9350e92c949de1f402868042a62bb026f2f357fd0dfecdb29fad) ---
+--- stdout (size=72819 sha256=8326ac912409550d28145e94e57fdb93eeb0b9d2c53535a27a1b50e29cafa937) ---
 --- stderr ---
 warn: $.findings[12].line: anchor 99991-99991 (RIGHT) is outside every reviewed hunk; record moves it to the body
 warn: $.findings[14].suggestion: suggestion contains a fence — demoting it to body
@@ -152,6 +152,46 @@ warn: rigor said below critical floor walked on 71358a4 (advisory)
 warn: rigor said below important floor pointed on 3cf8d26 (advisory)
 warn: rigor said below important floor pointed on 79fb98e (advisory)
 warn: rigor said below critical floor walked on a5c35e4 (advisory)
+warn: reproduced finding e8e306834f388a5f07f0042bf9d10155c20bc0cc has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 65c5e5ce7a39de7e90426bb1b07a7de7087d3ab6 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 351a716c8ca1595a38f5a622ec4176ce0cb207c5 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 5cf0bb2c9c45715d642d91fb22d521121f4252bb has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 1af55343737b575f169b27c4eb3a75479c35d25e has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 5dd4393fbeba6f683672ba36a3f1c915e453b76a has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 795174ab98e264232526a52bb9866b3bcc7b0ad9 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding d2ca3f8acc3763fbb3d42e887cc8b59a469c3e4b has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 31d6f2a607d7d052f2d2ecb06dac573bd83eb46d has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding a1d3837a59b249575d53b285d8c5ba9e842f2db9 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 73927a00207e64fe1e7c6534875d97cc45bc9dd3 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 556fc30680d43379f7b4590c863b94632216b29d has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 6c4f5eca609dd4bced122ef91fe5539b344aca63 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding edddefc49c4458dd36207bc4bcbaa75c03ff55de has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 3e93d47c9f2206e7e0b362cd389d2f57a878cf72 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding eae4e80a54957a71b46abca405c4bbf9062d217d has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 7f0f0b1fe3dc18885133d3cb099665153311500b has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding a9f71ad60301775d120c3d9a0b62ec5494a1a6fa has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 450d48bed94fcca1d473da21f2fc680d7db4be6e has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding bab6667c874f7e2455d7c7f04ebade1f5db36b3f has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 316ce35e553b85c8a231b0e32d2aaa0fe8fa495b has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding bee33c09675112e82dfaf3380ce6af736eb84253 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding fecf647288e96a76a21a3dcb148c8729d12ecf30 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding a0d994168e5a525701c330a1512f938c4c207648 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 26462cdea88a6b000ec54320a4c9975cc234e882 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding cde0138e8d7fa4289c844f388ed23dd2dbef3aea has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 2201f14b69bb55d4d75ef02d4f840afab872a7f8 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 5c1ee2e7761fa40433c7fb025a08cb7651dc280c has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding c054b504fac7221174d3a3420b3923daed1fe86d has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 09d3e683ae1f33e92a6422dd18709698c082a2c2 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 4629ed12dc60e25bc29f601351e2b87802cdcb56 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding d00d2dbb6055691a3c930a1a9c6cfa2e69a41275 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding ce238ee6987812617c92597afd2f68a76a230c36 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 27aad97f5534276f5cc5d9f038bd4701a2953a50 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding dd42c118b0344f47934bd3006c2a64e34ff8275a has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding b28e91e6d02119443c969ee3ca4a0534c6b9cbcd has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 46226d7405f360cb839e8b2b487a7c9ae89fa334 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 41040d39782161fefd4a29ec6a0ee8cf36b8ef77 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 3ac501dc686bda02bf3988c4ed27bb159a53ea53 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
+warn: reproduced finding 85f1aca7c210a828396ae08c6adfd4e6a2fe44c4 has no runnable artifact: reproduction: supply reproduction.path and reproduction.command
 » findings: 200 sigs -> .verdict/state/local-mx/findings.json
   c7bc06e4  open  true  notes.txt
   63b8aa5b  open  true  notes.txt
