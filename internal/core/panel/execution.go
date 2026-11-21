@@ -60,6 +60,7 @@ type Execution struct {
 	BlockingGap    string
 	ID             string
 	dir, head      string
+	receiptSHA     string
 	Gap            string
 	SpecViolations []string
 	Completed      int
@@ -224,7 +225,7 @@ func (s *Execution) checkFiles(dir string, review *jq.Obj, raw []byte) string {
 	if gap := s.planExpectations(plan, Findings(review)); gap != "" {
 		return gap
 	}
-	file, gap := boundReceipt(dir, head, bindings, Findings(review))
+	file, gap := s.boundReceipt(dir, head, bindings, Findings(review))
 	if gap != "" {
 		return gap
 	}
@@ -240,7 +241,10 @@ func (s *Execution) checkFiles(dir string, review *jq.Obj, raw []byte) string {
 	return ""
 }
 
-func boundReceipt(dir, head string, bindings map[string]string, findings []any) (*File, string) {
+// boundReceipt validates the panel receipt against this check's bindings and
+// keeps its digest, so a receipt removed or replaced before the stamp is
+// published cannot carry the standing this check gave it.
+func (s *Execution) boundReceipt(dir, head string, bindings map[string]string, findings []any) (*File, string) {
 	receipt, receiptRaw := readObject(dir, filepath.Join(executionVerification, "verdicts.json"))
 	if receipt == nil {
 		return nil, "execution panel receipt missing"
@@ -253,6 +257,7 @@ func boundReceipt(dir, head string, bindings map[string]string, findings []any) 
 	if parseErr != nil || len(warnings) > 0 {
 		return nil, "execution panel receipt invalid"
 	}
+	s.receiptSHA = digest(receiptRaw)
 	return file, ""
 }
 
@@ -596,5 +601,10 @@ func (s *Execution) refreshCapture() {
 	captured, _ := readObject(s.dir, "run.json")
 	if jq.StrOf(readcommon.FieldOf(readcommon.FieldOf(captured, "execution"), "id")) != s.ID {
 		s.seal("captured execution changed before applying cross checks")
+		return
+	}
+	receipt, receiptRaw := readObject(s.dir, filepath.Join(executionVerification, "verdicts.json"))
+	if receipt == nil || digest(receiptRaw) != s.receiptSHA {
+		s.seal("execution panel receipt changed before applying cross checks")
 	}
 }
