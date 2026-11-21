@@ -1,17 +1,21 @@
 // Package initcore is the init verb's domain service: the guided offline
 // scaffolder that writes the typed `.verdict/config.json` with style
 // presets beside the `.verdict/kb.jsonl` starter and the tracked-shape
-// `.verdict/.gitignore`, then runs check-tree validation. Existing files
-// print a preview and need --yes/--force (or, in human mode, an interactive
-// confirm) before overwrite — the never-prompts doctrine holds: machine mode
-// never prompts, even on a TTY. internal/scaffold owns argv parsing, stdin,
-// envelope rendering, and exit mapping.
+// `.verdict/.gitignore`, then runs check-tree validation. With `--ci github`
+// it also writes the every-PR workflow. Existing files print a preview and
+// need --yes/--force (or, in human mode, an interactive confirm) before
+// overwrite — the never-prompts doctrine holds: machine mode never prompts,
+// even on a TTY. internal/scaffold owns argv parsing, stdin, envelope
+// rendering, and exit mapping.
 package initcore
 
 import (
+	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -30,10 +34,18 @@ const (
 	codeBadSettings  = "bad-settings"
 	codeBadBudget    = "bad-budget"
 	codeBadPreset    = "bad-preset"
-	codeNeedsConfirm = "needs-confirm"
+	codeUnknownAgent = "unknown-agent"
+	// CodeNeedsConfirm is the refusal the adapter annotates: the re-enter
+	// command it prints must carry the --yes this run did not.
+	CodeNeedsConfirm = "needs-confirm"
 	reviewDotName    = ".verdict"
 	newlineStr       = "\n"
 	scaffoldDirPerm  = 0o777
+	// The three answers a scaffold path can give: absent, already current, or
+	// written by an older run.
+	statusCreate    = "create"
+	statusKeep      = "keep"
+	statusOverwrite = "overwrite"
 )
 
 // Request carries the resolved init invocation: the shared runtime (env,
@@ -42,11 +54,18 @@ const (
 type Request struct { //nolint:govet // the transport contract keeps its field order
 	core.ReadRequest
 	Preset      string `enum:"chill|standard|strict"`
+	CI          string `enum:"github"`
+	Agent       string
+	KeySecret   string
 	Yes         bool
 	Interactive bool
-	Human       io.Writer
-	Diag        io.Writer
-	ReadAnswer  func() string
+	Print       bool
+	// Machine is the --json mode: stdout carries exactly one envelope, so a
+	// --print payload goes only in the data slot.
+	Machine    bool
+	Human      io.Writer
+	Diag       io.Writer
+	ReadAnswer func() string
 }
 
 // Response carries the completed scaffold: the envelope inputs and the typed
@@ -59,19 +78,24 @@ type Response struct {
 	ExitCode int
 }
 
-// Data is the init envelope's data profile.
+// Data is the init envelope's data profile. The CI fields are present only on
+// a --ci run, so a plain init keeps its envelope byte-identical.
 type Data struct {
 	Preset         string
 	BudgetUSD      string
 	KBMinJudged    jq.Number
 	KBMaxFPRate    jq.Number
+	CI             string
+	WorkflowPath   string
+	WorkflowStatus string
+	Workflow       string
 	Files          []string
 	CheckTreeClean bool
 }
 
 // Wire renders the profile in published wire order.
 func (d *Data) Wire() *jq.Obj {
-	return jq.NewObj(
+	out := jq.NewObj(
 		"preset", d.Preset,
 		"budget_usd", d.BudgetUSD,
 		"kb_min_judged", d.KBMinJudged,
@@ -79,6 +103,18 @@ func (d *Data) Wire() *jq.Obj {
 		"files", fileValues(d.Files),
 		"check_tree_clean", d.CheckTreeClean,
 	)
+	if d.CI == "" {
+		return out
+	}
+	out.Set("ci", d.CI)
+	out.Set("workflow_path", d.WorkflowPath)
+	if d.WorkflowStatus != "" {
+		out.Set("workflow_status", d.WorkflowStatus)
+	}
+	if d.Workflow != "" {
+		out.Set("workflow", d.Workflow)
+	}
+	return out
 }
 
 func fileValues(files []string) []any {
@@ -170,45 +206,290 @@ func (st *state) reviewDot() string {
 func (st *state) reviewPath(name string) string { return filepath.Join(st.reviewDot(), name) }
 
 func (st *state) runInit(ctx context.Context) *core.RefusalError {
-	vals, ref := st.resolvePreset()
+	vals, workflow, ref := st.plan()
 	if ref != nil {
 		return ref
 	}
+	if workflow != nil && st.req.Print {
+		st.printWorkflow(vals, workflow)
+		return nil
+	}
+	return st.writeScaffold(ctx, vals, workflow)
+}
+
+// plan resolves the preset and renders the workflow, or answers the refusal
+// that stops the run before anything touches disk.
+func (st *state) plan() (presetVals, []byte, *core.RefusalError) {
+	vals, ref := st.resolvePreset()
+	if ref != nil {
+		return presetVals{}, nil, ref
+	}
+	workflow, ref := st.workflowFor()
+	if ref != nil {
+		return presetVals{}, nil, ref
+	}
+	return vals, workflow, nil
+}
+
+// writeScaffold previews, confirms, writes the controls and the workflow, then
+// reports the tree check and the next step.
+func (st *state) writeScaffold(ctx context.Context, vals presetVals, workflow []byte) *core.RefusalError {
 	wants := presetFiles(vals)
-	if err := os.MkdirAll(st.reviewDot(), scaffoldDirPerm); err != nil {
-		return st.refuse(codeInitFailed,
-			fmt.Sprintf("init failed: init could not create .verdict (storage writable?): %v", err))
+	wfStatus, ref := st.workflowStatus(workflow)
+	if ref != nil {
+		return ref
 	}
 	statuses, needOverwrite := st.collectStatuses(wants)
-	st.previewScaffold(wants)
-	if code, done, ref := st.writeWithConfirm(wants, needOverwrite); ref != nil {
+	st.previewScaffold(wants, workflow, wfStatus)
+	code, done, ref := st.writeWithConfirm(wants, needOverwrite || wfStatus == statusOverwrite)
+	if ref != nil {
 		return ref
-	} else if done {
+	}
+	if done {
 		st.exit = code
 		return nil
 	}
 	if ref := st.validateScaffold(); ref != nil {
 		return ref
 	}
+	if ref := st.publishWorkflowIfAny(workflow, wfStatus); ref != nil {
+		return ref
+	}
 	treeClean := st.reportTree(ctx)
-	st.reportNext(vals, statuses, treeClean)
+	st.reportNext(vals, statuses, treeClean, workflow, wfStatus)
 	return nil
 }
 
-func (st *state) writeWithConfirm(wants map[string]string, needOverwrite bool) (int, bool, *core.RefusalError) {
-	if needOverwrite && !st.req.Yes {
-		code, ref := st.confirmOverwrite()
+// publishWorkflowIfAny writes the workflow when the run asked for one.
+func (st *state) publishWorkflowIfAny(workflow []byte, status string) *core.RefusalError {
+	if workflow == nil {
+		return nil
+	}
+	return st.writeWorkflow(workflow, status)
+}
+
+// workflowStatus reads the committed workflow's relation to the rendered
+// bytes. Every component is pinned below the repository root, so a symlinked or
+// non-directory .github, .github/workflows, or workflow refuses even when a
+// matching file sits behind it — and refuses before .verdict/ is created.
+func (st *state) workflowStatus(workflow []byte) (string, *core.RefusalError) {
+	if workflow == nil {
+		return "", nil
+	}
+	root, err := os.OpenRoot(st.req.RepoRootPath())
+	if err != nil {
+		return "", st.workflowRefusal()
+	}
+	defer root.Close()
+	return st.confinedWorkflowStatus(root, workflow)
+}
+
+// confinedWorkflowStatus compares the workflow below an opened repository root.
+func (st *state) confinedWorkflowStatus(root *os.Root, workflow []byte) (string, *core.RefusalError) {
+	for _, dir := range []string{".github", workflowDir} {
+		present, ref := st.workflowDirPresent(root, dir)
 		if ref != nil {
-			return 0, true, ref
+			return "", ref
 		}
-		if code != 0 {
-			return code, true, nil
+		if !present {
+			return statusCreate, nil
 		}
+	}
+	parent, err := readcommon.OpenDirectoryIn(root, workflowDir)
+	if err != nil {
+		return "", st.workflowRefusal()
+	}
+	defer parent.Close()
+	return st.workflowFileStatus(parent, workflow)
+}
+
+// workflowDirPresent reports whether dir exists below root as a real directory.
+func (st *state) workflowDirPresent(root *os.Root, dir string) (bool, *core.RefusalError) {
+	info, err := root.Lstat(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false, nil
+	}
+	if err != nil || !info.IsDir() {
+		return false, st.workflowRefusal()
+	}
+	return true, nil
+}
+
+// workflowFileStatus compares the workflow inside an already-pinned
+// .github/workflows root. A path that is not a regular file is refused rather
+// than followed.
+func (st *state) workflowFileStatus(parent *os.Root, workflow []byte) (string, *core.RefusalError) {
+	info, err := parent.Lstat(workflowBase)
+	if errors.Is(err, fs.ErrNotExist) {
+		return statusCreate, nil
+	}
+	if err != nil || !info.Mode().IsRegular() {
+		return "", st.refuse(codeInitFailed,
+			"init will not write "+workflowPath+": the path is not a regular file")
+	}
+	cur, ref := st.readConfinedWorkflow(parent)
+	if ref != nil {
+		return "", ref
+	}
+	if bytes.Equal(cur, workflow) {
+		return statusKeep, nil
+	}
+	return statusOverwrite, nil
+}
+
+// readConfinedWorkflow reads the committed workflow through the pinned parent.
+func (st *state) readConfinedWorkflow(parent *os.Root) ([]byte, *core.RefusalError) {
+	f, err := readcommon.OpenRegularNoSymlinkIn(parent, workflowBase)
+	if err != nil {
+		return nil, st.workflowRefusal()
+	}
+	defer f.Close()
+	cur, err := io.ReadAll(f)
+	if err != nil {
+		return nil, st.workflowRefusal()
+	}
+	return cur, nil
+}
+
+// writeWorkflow publishes the rendered workflow, creating the name or
+// replacing a confirmed one.
+func (st *state) writeWorkflow(workflow []byte, status string) *core.RefusalError {
+	if status == statusKeep {
+		st.humanf("keep: %s (already up to date)\n", workflowPath)
+		return nil
+	}
+	parent, base, ref := st.workflowParent()
+	if ref != nil {
+		return ref
+	}
+	defer parent.Close()
+	if ref := st.publishWorkflow(parent, base, workflow, status); ref != nil {
+		return ref
+	}
+	st.humanf("wrote: %s\n", workflowPath)
+	return nil
+}
+
+func (st *state) publishWorkflow(parent *os.Root, base string, workflow []byte, status string) *core.RefusalError {
+	if status == statusOverwrite {
+		if err := atomic.WriteFileIn(parent, base, workflow); err != nil {
+			return st.workflowRefusal()
+		}
+		return nil
+	}
+	if created, err := atomic.CreateFileModeIn(parent, base, workflow, workflowMode); err != nil || !created {
+		return st.workflowRefusal()
+	}
+	return nil
+}
+
+// workflowParent opens .github/workflows through [os.Root], creating the two
+// directories only when absent and refusing a symlinked or non-directory
+// component: the workflow is a committed file, so init never writes it through
+// a link. Traversal stays strictly below the repository root, so a repository
+// reached through a symlinked ancestor (a /var or workspace link above it)
+// still writes normally.
+func (st *state) workflowParent() (*os.Root, string, *core.RefusalError) {
+	root, err := os.OpenRoot(st.req.RepoRootPath())
+	if err != nil {
+		return nil, "", st.workflowRefusal()
+	}
+	defer root.Close()
+	for _, dir := range []string{".github", workflowDir} {
+		if ref := st.createWorkflowDir(root, dir); ref != nil {
+			return nil, "", ref
+		}
+	}
+	parent, err := readcommon.OpenDirectoryIn(root, workflowDir)
+	if err != nil {
+		return nil, "", st.workflowRefusal()
+	}
+	return parent, workflowBase, nil
+}
+
+func (st *state) createWorkflowDir(root *os.Root, dir string) *core.RefusalError {
+	info, err := root.Lstat(dir)
+	if errors.Is(err, fs.ErrNotExist) {
+		if mkErr := root.Mkdir(dir, scaffoldDirPerm); mkErr != nil {
+			return st.workflowRefusal()
+		}
+		return nil
+	}
+	if err != nil || !info.IsDir() {
+		return st.workflowRefusal()
+	}
+	return nil
+}
+
+func (st *state) workflowRefusal() *core.RefusalError {
+	return st.refuse(codeInitFailed,
+		"init could not write "+workflowPath+" (symlinked path, or storage not writable?)")
+}
+
+// printWorkflow renders the file and writes nothing: no .verdict directory, no
+// .github directory, and no check-tree pass over a tree it did not touch.
+func (st *state) printWorkflow(vals presetVals, workflow []byte) {
+	if !st.req.Machine {
+		st.humanf("%s", workflow)
+	}
+	st.at = st.req.TimeUTC()
+	st.next = "write it with: " + st.writeCommand()
+	st.data = &Data{
+		Preset:       st.req.Preset,
+		BudgetUSD:    vals.budget,
+		KBMinJudged:  jq.Number(vals.kbMin),
+		KBMaxFPRate:  jq.Number(vals.kbRate),
+		CI:           st.req.CI,
+		WorkflowPath: workflowPath,
+		Workflow:     string(workflow),
+	}
+}
+
+// writeCommand is the --print line that reproduces these exact bytes: the same
+// --ci run, carrying the agent and key secret only when they differ from the
+// defaults a bare `verdict init --ci github` already renders.
+func (st *state) writeCommand() string {
+	out := "verdict init --ci " + st.req.CI
+	if st.req.Agent != "" && st.req.Agent != defaultAgent {
+		out += " --agent " + st.req.Agent
+	}
+	if st.req.KeySecret != "" {
+		out += " --key-secret " + st.req.KeySecret
+	}
+	return out
+}
+
+func (st *state) writeWithConfirm(wants map[string]string, needOverwrite bool) (int, bool, *core.RefusalError) {
+	if code, stop, ref := st.confirmGate(needOverwrite); stop {
+		return code, true, ref
+	}
+	if ref := st.createStateDir(); ref != nil {
+		return 0, true, ref
 	}
 	if ref := st.writeControls(wants); ref != nil {
 		return 0, true, ref
 	}
 	return 0, false, nil
+}
+
+// confirmGate asks the overwrite question before anything touches disk: a
+// refused or aborted run stops here with nothing created.
+func (st *state) confirmGate(needOverwrite bool) (int, bool, *core.RefusalError) {
+	if !needOverwrite || st.req.Yes {
+		return 0, false, nil
+	}
+	code, ref := st.confirmOverwrite()
+	return code, ref != nil || code != 0, ref
+}
+
+// createStateDir creates .verdict only after the confirm gate, so a refused
+// run leaves no directory behind.
+func (st *state) createStateDir() *core.RefusalError {
+	if err := os.MkdirAll(st.reviewDot(), scaffoldDirPerm); err != nil {
+		return st.refuse(codeInitFailed,
+			fmt.Sprintf("init failed: init could not create .verdict (storage writable?): %v", err))
+	}
+	return nil
 }
 
 func (st *state) resolvePreset() (presetVals, *core.RefusalError) {
@@ -226,26 +507,30 @@ func (st *state) collectStatuses(wants map[string]string) ([]string, bool) {
 	for _, t := range targets {
 		status := st.targetStatus(t, wants[t])
 		statuses = append(statuses, t+":"+status)
-		if status == "overwrite" {
+		if status == statusOverwrite {
 			needOverwrite = true
 		}
 	}
 	return statuses, needOverwrite
 }
 
-func (st *state) previewScaffold(wants map[string]string) {
+func (st *state) previewScaffold(wants map[string]string, workflow []byte, wfStatus string) {
 	st.humanf("init: preset %s (chill: unpinned/10/0.7, standard: "+
 		"1 member/5/0.5, strict: lead+2 lenses/3/0.3)\n", st.req.Preset)
 	for _, t := range targets {
 		st.humanf("--- .verdict/%s (%s) ---\n", t, st.targetStatus(t, wants[t]))
 		st.humanf("%s\n", wants[t])
 	}
+	if workflow != nil {
+		st.humanf("--- %s (%s) ---\n", workflowPath, wfStatus)
+		st.humanf("%s", workflow)
+	}
 }
 
 func (st *state) confirmOverwrite() (int, *core.RefusalError) {
 	if !st.req.Interactive {
-		return 0, st.refuse(codeNeedsConfirm,
-			"init refuses to overwrite existing control files without "+
+		return 0, st.refuse(CodeNeedsConfirm,
+			"init refuses to overwrite existing files without "+
 				"confirm (re-run with --yes after reviewing the preview above)")
 	}
 	st.diagf("Proceed? [y/N] ")
@@ -301,7 +586,7 @@ func (st *state) writeControl(name, body string) *core.RefusalError {
 	return nil
 }
 
-func (st *state) isCurrent(t, want string) bool { return st.targetStatus(t, want) == "keep" }
+func (st *state) isCurrent(t, want string) bool { return st.targetStatus(t, want) == statusKeep }
 
 func (st *state) cannotWriteControl(t string) *core.RefusalError {
 	return st.refuse(codeInitFailed,
@@ -320,11 +605,16 @@ func (st *state) reportTree(ctx context.Context) bool {
 	return treeClean
 }
 
-func (st *state) reportNext(vals presetVals, statuses []string, treeClean bool) {
-	st.humanf("next: pin real panel slugs in .verdict/config.json, " +
-		"tune defaults.budget_usd, then fetch\n")
+func (st *state) reportNext(vals presetVals, statuses []string, treeClean bool, workflow []byte, wfStatus string) {
+	next := "pin real panel slugs in .verdict/config.json, " +
+		"tune defaults.budget_usd, then fetch"
+	if workflow != nil {
+		next = "commit " + workflowPath + " with .verdict/, set the repository variable " +
+			"VERDICT_VERSION to a release with run --agent, then open a pull request"
+	}
+	st.humanf("next: %s\n", next)
 	st.at = st.req.TimeUTC()
-	st.next = "pin real panel slugs in .verdict/config.json, tune defaults.budget_usd, then fetch"
+	st.next = next
 	st.data = &Data{
 		Preset:         st.req.Preset,
 		BudgetUSD:      vals.budget,
@@ -332,6 +622,11 @@ func (st *state) reportNext(vals presetVals, statuses []string, treeClean bool) 
 		KBMaxFPRate:    jq.Number(vals.kbRate),
 		Files:          statuses,
 		CheckTreeClean: treeClean,
+	}
+	if workflow != nil {
+		st.data.CI = st.req.CI
+		st.data.WorkflowPath = workflowPath
+		st.data.WorkflowStatus = wfStatus
 	}
 }
 
@@ -402,12 +697,12 @@ func kbStarter() string {
 func (st *state) targetStatus(t, want string) string {
 	cur, err := os.ReadFile(st.reviewPath(t))
 	if err != nil {
-		return "create"
+		return statusCreate
 	}
 	if string(cur) == want+newlineStr || string(cur) == want {
-		return "keep"
+		return statusKeep
 	}
-	return "overwrite"
+	return statusOverwrite
 }
 
 // validateScaffold re-parses the written configuration through the strict

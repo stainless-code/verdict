@@ -623,7 +623,8 @@ type LearnIncident struct { //nolint:govet // field order is the published prope
 }
 
 // InitData is the init verb's --json data profile: the applied preset values
-// and the files they were written to.
+// and the files they were written to, plus the every-PR workflow when the
+// invocation carried --ci.
 type InitData struct { //nolint:govet // field order is the published property order
 	Preset         string   `json:"preset"`
 	BudgetUSD      string   `json:"budget_usd"`
@@ -631,6 +632,10 @@ type InitData struct { //nolint:govet // field order is the published property o
 	KBMaxFPRate    float64  `json:"kb_max_fp_rate"`
 	Files          []string `json:"files"`
 	CheckTreeClean bool     `json:"check_tree_clean"`
+	CI             string   `json:"ci,omitempty"`
+	WorkflowPath   string   `json:"workflow_path,omitempty"`
+	WorkflowStatus string   `json:"workflow_status,omitempty"`
+	Workflow       string   `json:"workflow,omitempty"`
 }
 
 // DoctorData is the doctor verb's --json data profile: every preflight row

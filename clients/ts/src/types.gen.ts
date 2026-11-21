@@ -1452,6 +1452,10 @@ export interface InitData {
   kb_max_fp_rate: number;
   files: Array<string>;
   check_tree_clean: boolean;
+  ci?: string;
+  workflow_path?: string;
+  workflow_status?: string;
+  workflow?: string;
   [key: string]: unknown;
 }
 

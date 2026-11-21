@@ -1,4 +1,4 @@
-exit: 0
+exit: 1
 --- stdout ---
 {
   "schema_version": "1",
@@ -6,27 +6,17 @@ exit: 0
   "repo": "",
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
-  "next": "pin real panel slugs in .verdict/config.json, tune defaults.budget_usd, then fetch",
-  "warnings": [
-    "init completed; the worktree has uncommitted changes (see check-tree above)"
-  ],
-  "data": {
-    "preset": "chill",
-    "budget_usd": "2.00",
-    "kb_min_judged": 10,
-    "kb_max_fp_rate": 0.7,
-    "files": [
-      "config.json:create",
-      "kb.jsonl:create",
-      ".gitignore:create"
-    ],
-    "check_tree_clean": false
-  },
-  "error": null
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "needs-confirm",
+    "message": "init refuses to overwrite existing files without confirm (re-run with --yes after reviewing the preview above)\ntry: re-run with --yes after reviewing the preview, then re-run"
+  }
 }
 --- stderr ---
 init: preset chill (chill: unpinned/10/0.7, standard: 1 member/5/0.5, strict: lead+2 lenses/3/0.3)
---- .verdict/config.json (create) ---
+--- .verdict/config.json (overwrite) ---
 {
   "schema_version": "1",
   "defaults": {
@@ -47,35 +37,5 @@ init: preset chill (chill: unpinned/10/0.7, standard: 1 member/5/0.5, strict: le
 incidents.jsonl.lock
 kb.jsonl.lock
 reverts.jsonl.lock
-wrote: .verdict/config.json
-wrote: .verdict/kb.jsonl
-wrote: .verdict/.gitignore
-check-tree: dirty worktree — commit or stash first:
-?? .review/budget
-?? .verdict/.gitignore
-?? .verdict/config.json
-?? .verdict/kb.jsonl
-warn: init completed; the worktree has uncommitted changes (see check-tree above)
-next: pin real panel slugs in .verdict/config.json, tune defaults.budget_usd, then fetch
+re-enter: verdict init --preset chill --yes --json
 --- files ---
---- file C/.verdict/.gitignore ---
-/state/
-/backtest/
-/index/
-incidents.jsonl.lock
-kb.jsonl.lock
-reverts.jsonl.lock
---- file C/.verdict/config.json ---
-{
-  "schema_version": "1",
-  "defaults": {
-    "budget_usd": 2.00,
-    "kb_policy": {
-      "min_judged": 10,
-      "max_fp_rate": 0.7
-    }
-  }
-}
---- file C/.verdict/kb.jsonl ---
-{"id":"check-error-paths","rule":"Check error paths on every awaited call before approving","scope":"src/*.ts,src/*.js","provenance":"starter","rigor":"pointed","hits":0,"false_hits":0,"judged":0,"status":"active"}
-{"id":"verify-before-claim","rule":"Verify every addressed claim with the repo's own verify command before marking addressed","scope":"*","provenance":"starter","rigor":"walked","hits":0,"false_hits":0,"judged":0,"status":"active"}

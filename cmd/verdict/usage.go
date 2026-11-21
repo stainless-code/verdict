@@ -479,7 +479,8 @@ func usageText() string {
 		"    the bundle must already carry findings.json. trend --incidents measures the\n" +
 		"    miss rate over those rows. A repeat attach reports existing and moves no\n" +
 		"    byte; --dry-run writes nothing.\n" +
-		"  init [--preset chill|standard|strict] [--yes] [--force] [--json]\n" +
+		"  init [--preset chill|standard|strict] [--ci github] [--agent <name>]\n" +
+		"      [--key-secret <NAME>] [--print] [--yes] [--force] [--json]\n" +
 		"    guided offline scaffolder: writes the typed controls (tracked\n" +
 		"    .verdict/config.json defaults, .verdict/kb.jsonl starter, and the\n" +
 		"    .verdict/.gitignore /state/ line) with style presets, then runs\n" +
@@ -489,6 +490,16 @@ func usageText() string {
 		"    standard (one pinned member, 5 / 0.5), strict (lead + 2 lenses, 3 / 0.3).\n" +
 		"    Never touches network. Existing files print a preview and need\n" +
 		"    --yes/--force (or an interactive confirm) before overwrite.\n" +
+		"    --ci github also writes .github/workflows/verdict-review.yml: one\n" +
+		"    workflow whose steps fetch, review with your agent, post, report, and\n" +
+		"    gate on every pull request from this repository. It pins the release,\n" +
+		"    reads VERDICT_VERSION and VERDICT_MODEL from repository variables,\n" +
+		"    and reads the model key from one repository secret. Fork pull\n" +
+		"    requests are skipped: they get no secrets.\n" +
+		"    --agent names the agent to launch (default claude, any run --agent\n" +
+		"    name); --key-secret overrides the secret name, which defaults to the\n" +
+		"    agent's documented key variable. --print prints the workflow and\n" +
+		"    writes nothing.\n" +
 		"  skill [show [<path>]|files|status|install|uninstall] [--format md|json] [--dir <skills-dir>|--agent <name>...]\n" +
 		"        [--detect] [--diff] [--force] [--dry-run] [--json]\n" +
 		"    serve, inspect, or remove the skill embedded in this binary (never a skew):\n" +

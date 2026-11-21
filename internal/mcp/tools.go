@@ -55,6 +55,12 @@ const (
 var (
 	requiredRepoPr  = []string{argRepo, argPr}
 	omitPositionals = map[string]bool{fieldRepo: true, fieldPr: true}
+	// omitWorkflow is omitPositionals plus the CI scaffolding flags: generating
+	// a workflow file is a once-per-repo setup step the operator runs from the
+	// CLI, so the published init tool keeps writing controls only.
+	omitWorkflow = map[string]bool{
+		fieldRepo: true, fieldPr: true, "CI": true, "Agent": true, "KeySecret": true, "Print": true,
+	}
 )
 
 var cliOnlyVerbs = map[string]string{
@@ -222,7 +228,7 @@ func allTools(readOnly, operator bool) []*tool {
 			description: "Scaffold .verdict control files from a style preset. Call once in a " +
 				"new repository; yes=true overwrites existing controls. Writes controls and " +
 				"runs a tree check.",
-			omit: omitPositionals,
+			omit: omitWorkflow,
 			meta: toolMeta{title: "Scaffold controls", mutates: localWrites, destructive: true, idempotent: true},
 		}, toolDeps{commander: fetchRunner}, decodeInit, wireInit, initcore.Run,
 			func(resp *initcore.Response) *jq.Obj { return wireData(resp.Data) }),
