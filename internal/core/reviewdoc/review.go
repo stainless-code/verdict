@@ -113,10 +113,10 @@ func rawJSON(item any) ([]byte, bool) {
 	return raw, err == nil
 }
 
-// SpecViolationsOfBundle reads the record receipt's stored spec checks and
-// returns the item of every check it marked violated, in stored order. A
-// missing or unreadable record has no new evidence to violate.
-func SpecViolationsOfBundle(dir string) []string {
+// SpecFailuresOfBundle reads the record receipt's stored spec checks and
+// returns every check that withholds approval, in stored order. A missing or
+// unreadable record has no new evidence to judge.
+func SpecFailuresOfBundle(dir string) []core.SpecFailure {
 	raw, err := os.ReadFile(dir + readcommonRecordSuffix)
 	if err != nil {
 		return nil
@@ -129,30 +129,36 @@ func SpecViolationsOfBundle(dir string) []string {
 	if !ok {
 		return nil
 	}
-	return SpecViolations(obj)
+	return SpecFailures(obj)
 }
 
 const readcommonRecordSuffix = "/record.json"
 
-// HasSpecViolation reports a violated spec check in a review or record.
-func HasSpecViolation(obj *jq.Obj) bool {
-	return len(SpecViolations(obj)) > 0
+// HasSpecFailure reports a spec check that withholds approval in a review or
+// record: one the code violates, or one nothing implements.
+func HasSpecFailure(obj *jq.Obj) bool {
+	return len(SpecFailures(obj)) > 0
 }
 
-// SpecViolations returns the item of every violated spec check in a review or
-// record, in stored order: the decision withholds and the gate fails on the
-// first, and the tally is the length.
-func SpecViolations(obj *jq.Obj) []string {
-	var out []string
+// SpecFailures returns the status and item of every spec check that withholds
+// approval — `violated` and `unmet` — in stored order. The status travels with
+// the item because the decision names which failure kind it is: a violated
+// requirement and a missing one are different sentences to the author, and the
+// width of the list is the tally.
+func SpecFailures(obj *jq.Obj) []core.SpecFailure {
+	var out []core.SpecFailure
 	for _, item := range SpecChecks(obj) {
 		m, ok := item.(*jq.Obj)
 		if !ok {
 			continue
 		}
-		if status, _ := m.Get("status"); jq.R(status) == statusViolated {
-			text, _ := m.Get("item")
-			out = append(out, jq.R(text))
+		status, _ := m.Get("status")
+		name := jq.R(status)
+		if name != statusViolated && name != statusUnmet {
+			continue
 		}
+		text, _ := m.Get("item")
+		out = append(out, core.SpecFailure{Status: name, Item: jq.R(text)})
 	}
 	return out
 }

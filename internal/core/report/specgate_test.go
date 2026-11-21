@@ -215,3 +215,69 @@ func assertSpecFails(t *testing.T, resp *reportcore.Response) {
 		t.Errorf("GateFailed = false, want true (lines %q)", resp.CheckLines)
 	}
 }
+
+// unmetItem is the requirement nothing implements in the unmet fixtures.
+const unmetItem = "the retry budget resets on 429"
+
+// unmetCheck builds one stored spec check for a requirement the change does
+// not deliver: no diff line, and the note the record keeps beside it.
+func unmetCheck(item, note string) core.SpecCheck {
+	return core.SpecCheck{Item: item, Status: "unmet", Note: note}
+}
+
+// assertWithheldReason proves the derived decision refused the review with this
+// exact reason.
+func assertWithheldReason(t *testing.T, resp *reportcore.Response, want string) {
+	t.Helper()
+	if resp.Data.Approval == nil || resp.Data.Approval.Approved {
+		t.Fatalf("approval = %+v, want withheld", resp.Data.Approval)
+	}
+	if resp.Data.Approval.Reason != want {
+		t.Errorf("approval reason = %q, want %q", resp.Data.Approval.Reason, want)
+	}
+}
+
+// TestRunReportCheckUnmetSpecFailsGate proves a requirement nothing implements
+// withholds and fails the gate the way a violated one does, and that the detail
+// says which of the two it was.
+func TestRunReportCheckUnmetSpecFailsGate(t *testing.T) {
+	resp := runSpecGate(t, &reportcore.Flags{Check: "important"}, []core.SpecCheck{
+		specCheck(metItem, "met"),
+		unmetCheck(unmetItem, "no retry budget exists yet"),
+	})
+	assertWithheldReason(t, resp, "unmet spec check: "+unmetItem)
+	if !resp.GateFailed {
+		t.Errorf("GateFailed = false; a gate must not pass while approval withholds (lines %q)", resp.CheckLines)
+	}
+	assertSpecDim(t, resp, "fail", 1, "unmet spec check: "+unmetItem)
+	assertCheckLine(t, resp, "check: unmet spec check: "+unmetItem+" — gate fails")
+}
+
+// TestRunReportCheckMixedSpecFailuresNameBoth proves two failures of different
+// kinds tally as two and name the first, so a dimension that counted only
+// violated rows cannot pass.
+func TestRunReportCheckMixedSpecFailuresNameBoth(t *testing.T) {
+	resp := runSpecGate(t, &reportcore.Flags{Check: "important"}, []core.SpecCheck{
+		specCheck(violatedItem, "violated"),
+		unmetCheck(unmetItem, "no retry budget exists yet"),
+	})
+	assertWithheldReason(t, resp, "violated spec check; unmet spec check: "+unmetItem)
+	if !resp.GateFailed {
+		t.Errorf("GateFailed = false; a gate must not pass while approval withholds (lines %q)", resp.CheckLines)
+	}
+	assertSpecDim(t, resp, "fail", 2, "2 failed spec checks: violated spec check: "+violatedItem)
+}
+
+// TestRunReportCheckUnmetNeedsNoteButStillFails proves the gate reads the
+// status, not the note: an unexplained unmet row still fails, so a missing note
+// can never read as a pass.
+func TestRunReportCheckUnmetNeedsNoteButStillFails(t *testing.T) {
+	resp := runSpecGate(t, &reportcore.Flags{Check: "important"}, []core.SpecCheck{
+		specCheck(metItem, "met"),
+		{Item: unmetItem, Status: "unmet"},
+	})
+	if !resp.GateFailed {
+		t.Errorf("GateFailed = false, want true (lines %q)", resp.CheckLines)
+	}
+	assertSpecDim(t, resp, "fail", 1, "unmet spec check: "+unmetItem)
+}

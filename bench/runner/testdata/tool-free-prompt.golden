@@ -398,11 +398,11 @@ the finding spans kinds.
 - **Must-address non-critical** (real consequences if shipped — wrong behavior, missing validation,
   regressions): an open `important` finding withholds approval. Never spend this tier on
   nits/style/consider-also.
-- **Minor only**: open findings below `important` approve; a violated `spec_checks[]` entry still
-  withholds.
+- **Minor only**: open findings below `important` approve; a violated or `unmet` `spec_checks[]`
+  entry still withholds.
 - **Clean** (mergeable, nothing actionable): no open findings at-or-above `important` and no
-  violated `spec_checks[]`. Verdict derives approval and renders the review body from your
-  structured findings and optional one-paragraph plain-text `summary`.
+  violated or `unmet` `spec_checks[]`. Verdict derives approval and renders the review body from
+  your structured findings and optional one-paragraph plain-text `summary`.
 
 Two levers: finding severity + the `block_clauses` policy a repository configures. Wrapping
 mergeable feedback in `important` trains authors to ignore the gate, so grade the consequence,

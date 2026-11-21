@@ -56,6 +56,15 @@ type EvidenceSpec struct {
 	Met     bool `json:"met"`
 }
 
+// SpecFailure is one spec check that withholds approval: the status that
+// failed (`violated` or `unmet`) and the item it graded. The pair travels
+// together because the decision names which kind failed, and the list's width
+// is the tally.
+type SpecFailure struct {
+	Status string
+	Item   string
+}
+
 // InsufficientRefusal returns a typed review-insufficient refusal carrying
 // the open evidence problems.
 func InsufficientRefusal(reason string, problems []Problem) *RefusalError {
@@ -105,5 +114,45 @@ func SpecCheckMissingProblem(index int, item string) Problem {
 		Level:   ProblemLevelError,
 		Message: fmt.Sprintf("spec item %d (%q) has no check", index, item),
 		Fix:     "add a spec_checks[] entry quoting that item",
+	}
+}
+
+// SpecCheckUnmetProblem builds the published problem for a spec check that
+// reports a requirement nothing implements. It is an error because the review
+// is withholding on it, and it names the item rather than the row's note: the
+// note is agent prose, and a problem message is rendered into a log.
+func SpecCheckUnmetProblem(index int, item string) Problem {
+	return Problem{
+		Path:    fmt.Sprintf("$.spec_checks[%d].status", index),
+		Code:    ProblemCodeSpecCheckUnmet,
+		Level:   ProblemLevelError,
+		Message: fmt.Sprintf("spec check %d (%q) is unmet", index, item),
+		Fix:     "implement the requirement, or record n/a with a note saying why it does not apply",
+	}
+}
+
+// SpecNoteMissingProblem builds the published problem for an `unmet` row that
+// carries no note: a requirement declared missing has to say what is missing.
+func SpecNoteMissingProblem(index int) Problem {
+	return Problem{
+		Path:    fmt.Sprintf("$.spec_checks[%d].note", index),
+		Code:    ProblemCodeSpecNoteMissing,
+		Level:   ProblemLevelError,
+		Message: fmt.Sprintf("spec check %d is unmet and carries no note", index),
+		Fix:     `add "note" saying what is missing`,
+	}
+}
+
+// SpecNAUnjustifiedProblem builds the published problem for an `n/a` row that
+// carries no note. It is a warning, promoted to an error by --strict and
+// strict_input: rows already in the wild carry this shape, and a warning is the
+// honest level for text the review can still be read without.
+func SpecNAUnjustifiedProblem(index int) Problem {
+	return Problem{
+		Path:    fmt.Sprintf("$.spec_checks[%d].note", index),
+		Code:    ProblemCodeSpecNAUnjustified,
+		Level:   ProblemLevelWarning,
+		Message: fmt.Sprintf("spec check %d is n/a and carries no note", index),
+		Fix:     `add "note" saying why the item does not apply`,
 	}
 }

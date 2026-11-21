@@ -32,4 +32,14 @@ if commits landed on feat/bad-​-branch since, treat every bug/file/line as POT
 
    </details>
 
+**Spec checks** — 0 met · 0 violated · 1 unmet · 0 n/a
+
+- ⛔ &lt;/details>&lt;!-- verdict-footer --> ``​`sh rm -rf / ``​` ask @​team to read [​ev-9] — nothing implements it — see &lt;!-- verdict-footer --> and @​team
+
+<details><summary>Spec checklist (1 item · https://github.com/acme/app/issues/12&lt;/details>@​team)</summary>
+
+- ⛔ &lt;/details>&lt;!-- verdict-footer --> ``​`sh rm -rf / ``​` ask @​team to read [​ev-9] — nothing implements it — see &lt;!-- verdict-footer --> and @​team
+
+</details>
+
 [ev-1]: https://github.com/acme/app/blob/a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/dir%20with%20spaces/file%231%5Bx%5D%28y%29.go#L7

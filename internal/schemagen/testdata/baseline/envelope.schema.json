@@ -342,9 +342,12 @@
             "risk-stale-head",
             "scalar-to-array",
             "spec-check-missing",
+            "spec-check-unmet",
             "spec-evidence-mismatch",
             "spec-evidence-not-code",
             "spec-item-unknown",
+            "spec-na-unjustified",
+            "spec-note-missing",
             "unknown-field",
             "wrong-type"
           ]
@@ -1404,10 +1407,11 @@
       "properties": {
         "finding_sig": { "type": "string" },
         "item": { "type": "string", "minLength": 1 },
-        "status": { "enum": ["met", "violated", "n/a"] },
+        "status": { "enum": ["met", "violated", "unmet", "n/a"] },
+        "note": { "type": "string", "maxLength": 500 },
         "evidence": { "$ref": "#/$defs/specEvidence" }
       },
-      "required": ["item", "status", "evidence"],
+      "required": ["item", "status"],
       "additionalProperties": true
     },
     "specEvidence": {

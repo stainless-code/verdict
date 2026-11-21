@@ -170,15 +170,20 @@
         "finding_sig": { "type": "string" },
         "item": { "type": "string", "minLength": 1 },
         "status": {
-          "description": "met, violated or n/a; only violated withholds approval in S1.",
-          "enum": ["met", "violated", "n/a"]
+          "description": "met, violated, unmet or n/a; violated and unmet withhold approval, and only those two fail the spec gate.",
+          "enum": ["met", "violated", "unmet", "n/a"]
+        },
+        "note": {
+          "description": "Optional one-line reason, at most 500 characters: required for unmet (what is missing) and expected for n/a (why it does not apply), forbidden content never echoed in a problem message.",
+          "type": "string",
+          "maxLength": 500
         },
         "evidence": {
-          "description": "One quoted code location: path, strict integer line, and quote.",
+          "description": "One quoted code location: path, strict integer line, and quote. Required for met and violated; refused for unmet and n/a, which have no diff line to cite.",
           "$ref": "#/$defs/specEvidence"
         }
       },
-      "required": ["item", "status", "evidence"],
+      "required": ["item", "status"],
       "additionalProperties": false
     },
     "specEvidence": {

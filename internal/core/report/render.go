@@ -603,25 +603,51 @@ func gateChecks(st *state) []gateCheck {
 }
 
 // gateSpecCheck grades the spec checks the stored record judged: a review the
-// decision withholds over cannot pass a gate, so the first violated item names
-// itself and the count tallies them all.
+// decision withholds over cannot pass a gate, so the first failed item names
+// itself and the count tallies them all. A failed check is one the code
+// violates or one nothing implements; the detail says which, because the two
+// are different work for the author.
 func gateSpecCheck(st *state) gateCheck {
-	violations := st.specViolations
-	if len(violations) == 0 {
+	failures := st.specFailures
+	if len(failures) == 0 {
 		const detail = "no violated spec check"
 		return gateCheck{
 			dim:  core.GateDimension{ID: dimSpec, Status: dimPass, Count: new(0), Detail: detail},
 			line: checkPrefix + detail + " — gate passes",
 		}
 	}
-	detail := "violated spec check: " + violations[0]
-	if len(violations) > 1 {
-		detail = fmt.Sprintf("%d violated spec checks: %s", len(violations), violations[0])
+	detail := specFailureDetail(failures[0])
+	if len(failures) > 1 {
+		detail = fmt.Sprintf("%d failed spec checks: %s", len(failures), detail)
+		if allViolatedSpecFailures(failures) {
+			detail = fmt.Sprintf("%d violated spec checks: %s", len(failures), failures[0].Item)
+		}
 	}
 	return gateCheck{
-		dim:  core.GateDimension{ID: dimSpec, Status: dimFail, Count: new(len(violations)), Detail: detail},
+		dim:  core.GateDimension{ID: dimSpec, Status: dimFail, Count: new(len(failures)), Detail: detail},
 		line: checkPrefix + detail + " — gate fails",
 	}
+}
+
+// specFailureDetail words one failing spec check for the gate line: a violated
+// row keeps the sentence it has always carried, and an unmet row says nothing
+// implements the requirement.
+func specFailureDetail(failure core.SpecFailure) string {
+	if failure.Status == "unmet" {
+		return "unmet spec check: " + failure.Item
+	}
+	return "violated spec check: " + failure.Item
+}
+
+// allViolatedSpecFailures reports whether every failure is a violated row, so
+// the tally keeps the wording a violations-only gate has always printed.
+func allViolatedSpecFailures(failures []core.SpecFailure) bool {
+	for _, failure := range failures {
+		if failure.Status != "violated" {
+			return false
+		}
+	}
+	return true
 }
 
 func gateRiskCheck(st *state) gateCheck {

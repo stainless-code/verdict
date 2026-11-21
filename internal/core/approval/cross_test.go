@@ -10,7 +10,7 @@ import (
 func TestCrossStandingWithholdsApproval(t *testing.T) {
 	entry := jq.NewObj("sig", "abc", "status", "open", "severity", "important", "verification",
 		jq.NewObj("quote", "verified", "cross", jq.NewObj("execution_id", "execution-A", "expected", []any{"finder-2"}, "checks", []any{})))
-	decision := Evaluate([]any{entry}, "", "", nil, false, currentEvidence())
+	decision := Evaluate([]any{entry}, "", "", nil, nil, currentEvidence())
 	if decision.Approved || !decision.Insufficient || len(decision.GatingSigs) != 0 {
 		t.Fatalf("pending cross check approved or gated: %+v", decision)
 	}
@@ -22,7 +22,7 @@ func TestCrossStandingWithholdsApproval(t *testing.T) {
 func TestInformationalCrossGapDoesNotWithhold(t *testing.T) {
 	entry := jq.NewObj("sig", "abc", "status", "open", "severity", "informational", "verification",
 		jq.NewObj("quote", "verified", "cross", jq.NewObj("execution_id", "execution-A", "expected", []any{"finder-2"}, "checks", []any{})))
-	decision := Evaluate([]any{entry}, "", "", nil, false, currentEvidence())
+	decision := Evaluate([]any{entry}, "", "", nil, nil, currentEvidence())
 	if !decision.Approved || decision.Insufficient {
 		t.Fatalf("informational cross gap withheld: %+v", decision)
 	}
@@ -35,7 +35,7 @@ func TestPendingCrossBlockClauseStaysInsufficient(t *testing.T) {
 	if !UnbackedClauses(comp, []any{entry}) {
 		t.Fatal("readiness lost the pending block-clause candidate")
 	}
-	decision := Evaluate([]any{entry}, "", "", comp, false, currentEvidence())
+	decision := Evaluate([]any{entry}, "", "", comp, nil, currentEvidence())
 	if !decision.Insufficient || decision.Approved {
 		t.Fatalf("pending block clause became sufficient: %+v", decision)
 	}
@@ -43,7 +43,7 @@ func TestPendingCrossBlockClauseStaysInsufficient(t *testing.T) {
 
 func TestManualFindingWithoutCrossRetainsEligibility(t *testing.T) {
 	entry := jq.NewObj("sig", "manual", "status", "open", "severity", "important", "verification", jq.NewObj("quote", "verified"))
-	decision := Evaluate([]any{entry}, "", "", nil, false, currentEvidence())
+	decision := Evaluate([]any{entry}, "", "", nil, nil, currentEvidence())
 	if !CrossEligible(entry) || decision.Insufficient || len(decision.GatingSigs) != 1 || decision.GatingSigs[0] != "manual" {
 		t.Fatalf("manual behavior changed: %+v", decision)
 	}

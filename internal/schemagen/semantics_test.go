@@ -310,7 +310,12 @@ var publishedSemantics = map[string]string{
 	// init --ci github: additive optional strings ci, workflow_path,
 	// workflow_status and workflow on $defs/initData. No existing property,
 	// required key, or type changed.
-	"envelope.schema.json": "5241c36ec28af3fc6778d2d16764a53bad7f01e80dc971e3bee053ea19e248f3",
+	// intent check: additive optional note on $defs/specCheck, "unmet" added to
+	// its status enum, and $defs/specCheck no longer requires evidence (a status
+	// with no diff line cites none; met/violated still require it in the checker).
+	// Three new problem codes join the published enum. No existing property,
+	// required key, or type moved.
+	"envelope.schema.json": "f95467acd96355b5aa3f82477fd22b985738570eb6d790d04b5cd2cfffe3add6",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -353,7 +358,12 @@ var publishedSemantics = map[string]string{
 	// $defs/approvalReceipt, and the additive optional nullable evidence
 	// receipt ($defs/evidenceReceipt) a completed post publishes. No existing
 	// property, required key, or type moved.
-	"post.schema.json": "37fba04335ad7deb720476081d62eec225849c55312908f458a5088474232822",
+	// intent check: additive optional note on $defs/specCheck, "unmet" added to
+	// its status enum, and $defs/specCheck no longer requires evidence (a status
+	// with no diff line cites none; met/violated still require it in the checker).
+	// Three new problem codes join the published enum. No existing property,
+	// required key, or type moved.
+	"post.schema.json": "0e78e7558ddb8983133c2e7cfb9a96fa55a1cfa110247f7892254407e764f540",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	// fixtures.schema.json descriptions only: hallucination now names the pinned
@@ -470,7 +480,12 @@ var publishedSemantics = map[string]string{
 	// S4 evidence vocabulary: additive optional insufficient boolean on
 	// $defs/approvalReceipt, optional nullable evidence property, and
 	// $defs/evidence{Receipt,Quote,Receipts,Spec}. Additions only.
-	"record.schema.json": "39283ac43dcd0b5270343cd655ddccec5d19d9e66d8e3f5be0560e266c68fa49",
+	// intent check: additive optional note on $defs/specCheck, "unmet" added to
+	// its status enum, and $defs/specCheck no longer requires evidence (a status
+	// with no diff line cites none; met/violated still require it in the checker).
+	// Three new problem codes join the published enum. No existing property,
+	// required key, or type moved.
+	"record.schema.json": "8b3510c48c26f104ee3a26fc155ebed57549e14c4c8ff8a165a508109cc9ce6e",
 
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
@@ -500,7 +515,12 @@ var publishedSemantics = map[string]string{
 	// reproduction: additive optional finding.reproduction with its closed
 	// $defs/reproduction, and schema_version 2 requires the execution
 	// reference (the two-finder aggregate input).
-	"review.schema.json": "49f79e2563c7fe6a951f8ef0a7b2c3c72b7c653eb04d75088a7ffb512d888ccf",
+	// intent check: additive optional note on $defs/specCheck, "unmet" added to
+	// its status enum, and $defs/specCheck no longer requires evidence (a status
+	// with no diff line cites none; met/violated still require it in the checker).
+	// Three new problem codes join the published enum. No existing property,
+	// required key, or type moved.
+	"review.schema.json": "a2172a2c8318c9dd3a699c20f2e8d0e44bec77ca2812d6c21b5be97346699bbd",
 	// additive selected.schema.json (new bundle document: the reaction-scoped
 	// fix selection fetch writes and fix --selected reads). A new document
 	// only: no existing schema property, required key, enum, or type changed.

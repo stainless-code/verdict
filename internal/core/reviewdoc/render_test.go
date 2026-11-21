@@ -24,6 +24,8 @@ func TestRenderBodyGoldens(t *testing.T) {
 		name  string
 	}{
 		{name: "clean", input: cleanRenderInput()},
+		{name: "spec-absent", input: specAbsentRenderInput()},
+		{name: "intent-unmet", input: intentUnmetRenderInput()},
 		{name: "clean-informational", input: minorRenderInput()},
 		{name: "blocking", input: blockingRenderInput()},
 		{name: "insufficient", input: insufficientRenderInput()},
@@ -71,10 +73,47 @@ func cleanRenderInput() *reviewdoc.RenderInput {
 			{Item: "Refresh rejects expired tokens", Status: "met", Evidence: core.SpecEvidence{Path: "src/auth.go", Line: 42, Quote: "if exp.Before(now)"}},
 			{Item: "Unit tests cover clock skew", Status: "met", Evidence: core.SpecEvidence{Path: "src/auth_test.go", Line: 18, Quote: "TestClockSkew"}},
 		},
-		BaseURL:  testBaseURL,
-		HeadFull: testHeadFull,
-		Now:      testNow,
+		SpecSources: []string{testBaseURL + "/issues/12"},
+		BaseURL:     testBaseURL,
+		HeadFull:    testHeadFull,
+		Now:         testNow,
 	}
+}
+
+// specAbsentRenderInput is cleanRenderInput's bundle with no `role: spec`
+// source: no spec checks and no spec coverage. Its golden was recorded before
+// intent checks landed and is never regenerated from a later build — the
+// unchanged bytes are the proof that a bundle without a spec source renders
+// exactly as it did before the intent check existed.
+func specAbsentRenderInput() *reviewdoc.RenderInput {
+	in := cleanRenderInput()
+	in.SpecChecks = nil
+	in.SpecSources = nil
+	in.Evidence.Spec = core.EvidenceSpec{}
+	return in
+}
+
+// intentUnmetRenderInput is one bundle whose spec source asked for four things:
+// the code meets one, violates one, implements one nowhere, and one does not
+// apply. It pins every count in the head line, the ⛔ icon, the note a status
+// with no diff line carries, and the summary clause that names the sources and
+// counts the rest.
+func intentUnmetRenderInput() *reviewdoc.RenderInput {
+	in := cleanRenderInput()
+	in.Evidence.Spec = core.EvidenceSpec{Total: 4, Covered: 4, Min: 80, Met: true}
+	in.SpecChecks = []core.SpecCheck{
+		{Item: "Refresh rejects expired tokens", Status: "met", Evidence: core.SpecEvidence{Path: "src/auth.go", Line: 42, Quote: "if exp.Before(now)"}},
+		{Item: "Expired tokens must be rejected on every path", Status: "violated", Evidence: core.SpecEvidence{Path: "src/auth.go", Line: 42, Quote: "if leeway > 0"}},
+		{Item: "A 429 response resets the retry budget", Status: "unmet", Note: "no retry budget exists yet"},
+		{Item: "Rotate the signing key on deploy", Status: "n/a", Note: "the deploy pipeline is out of scope for this change"},
+	}
+	in.SpecSources = []string{
+		testBaseURL + "/issues/12",
+		testBaseURL + "/issues/13",
+		testBaseURL + "/issues/14",
+		testBaseURL + "/issues/15",
+	}
+	return in
 }
 
 func minorRenderInput() *reviewdoc.RenderInput {
@@ -351,6 +390,16 @@ func adversarialRenderInput() *reviewdoc.RenderInput {
 			Tier:     "important",
 		},
 		Kept: []any{f},
+		// An issue-derived goal row and an issue URL, both attacker-chosen: the
+		// goal text carries every payload that would corrupt the body or the
+		// footer if it were pasted raw, and the source name carries two more.
+		SpecChecks: []core.SpecCheck{
+			{
+				Item: "</details><!-- verdict-footer --> ```sh\nrm -rf /\n``` ask @team to read [ev-9]", Status: "unmet",
+				Note: "nothing implements it — see <!-- verdict-footer --> and @team",
+			},
+		},
+		SpecSources: []string{"https://github.com/acme/app/issues/12</details>@team"},
 		BundleMeta: reviewdoc.BundleMeta{
 			HeadSHA:     testHeadFull,
 			HeadRef:     ">feat/bad--branch-",
