@@ -331,3 +331,41 @@ func TestCoordinatorPublishesPartialFailures(t *testing.T) {
 		t.Fatalf("failures = %+v", execution.Failures)
 	}
 }
+
+// TestCoordinatorRefusesSessionResumePerAgent proves the fresh-process guard
+// reads the selected agent's own vocabulary: Codex continues a session with a
+// `resume` subcommand (and spells `-c` as a config override, which must pass
+// through), while Claude continues with `-c`.
+func TestCoordinatorRefusesSessionResumePerAgent(t *testing.T) {
+	cases := []struct {
+		name        string
+		agent       string
+		passThrough []string
+		refused     bool
+	}{
+		{"codex resume subcommand", "codex", []string{"resume", "--last"}, true},
+		{"codex config override", "codex", []string{"-c", `model_reasoning_effort="high"`}, false},
+		{"claude continue flag", "claude", []string{"-c"}, true},
+		{"claude resume flag", "claude", []string{"--resume", "execution-A"}, true},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req, commander := coordinatorFixture(t)
+			req.Agent = tc.agent
+			req.PassThrough = tc.passThrough
+			_, ref := TwoFinders(t.Context(), req)
+			if tc.refused {
+				if ref == nil || ref.Code != "bad-flags" || len(commander.phases) != 0 {
+					t.Fatalf("refusal = %v, phases = %v", ref, commander.phases)
+				}
+				return
+			}
+			if ref != nil {
+				t.Fatalf("pass-through refused: %v", ref)
+			}
+			if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1,x-cross-2" {
+				t.Fatalf("phases = %s", got)
+			}
+		})
+	}
+}

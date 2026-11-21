@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/agentcatalog"
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
@@ -65,7 +67,7 @@ func (c *coordinator) run(ctx context.Context) *core.RefusalError {
 }
 
 func (c *coordinator) initialize(ctx context.Context) *core.RefusalError {
-	if resumeArguments(c.st.req.PassThrough) {
+	if resumeArguments(&c.base.def, c.st.req.PassThrough) {
 		return c.st.refuse(codeBadFlags, "two finders require fresh processes — remove session-resume options")
 	}
 	if ref := c.capture(); ref != nil {
@@ -79,11 +81,20 @@ func (c *coordinator) initialize(ctx context.Context) *core.RefusalError {
 	return ref
 }
 
-func resumeArguments(args []string) bool {
+// sessionFlags is the shared session-continuation vocabulary: flag names every
+// shipped CLI reading that way continues a previous conversation. A row whose
+// CLI spells continuation differently, or reuses one of these names for
+// something else, declares it in Launch.ResumeArgs.
+var sessionFlags = []string{"--resume", "--continue", "--session", "--session-id", "-r"}
+
+// resumeArguments reports whether the operator's pass-through asks the agent to
+// continue an earlier session, which would let a later finder read an earlier
+// review's context. A bare subcommand matches too: Codex spells continuation
+// `exec resume`.
+func resumeArguments(def *agentcatalog.Launch, args []string) bool {
 	for _, arg := range args {
 		name, _, _ := strings.Cut(arg, "=")
-		switch name {
-		case "--resume", "--continue", "--session", "--session-id", "-r", "-c":
+		if slices.Contains(sessionFlags, name) || slices.Contains(def.ResumeArgs, name) {
 			return true
 		}
 	}
