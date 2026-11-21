@@ -262,3 +262,63 @@ func checkProblems(t *testing.T, res recordcore.CheckResult, want int) {
 		t.Fatalf("problems = %+v, want %d", res.Problems, want)
 	}
 }
+
+// TestCheckReviewRefusesEmptyExecutionID proves the checkbox matches the
+// published review schema: execution.id closes with minLength 1, so an empty id
+// is as unusable as an absent one.
+func TestCheckReviewRefusesEmptyExecutionID(t *testing.T) {
+	review := `{"schema_version":"2","execution":{"id":"","finders":2},"findings":[],"summary":"A short summary of the clean review."}`
+	res := recordcore.CheckReview([]byte(review), checkDiff)
+	if !hasProblem(res, "$.execution.id", core.ProblemCodeOutOfRange) {
+		t.Fatalf("problems = %+v, want an empty-id refusal at $.execution.id", res.Problems)
+	}
+}
+
+// TestCheckReviewRepairHintUsesSelectedVersion proves every schema_version
+// diagnostic hands back the version the document itself selects: following a
+// "1" hint on an aggregate review repeats the failure.
+func TestCheckReviewRepairHintUsesSelectedVersion(t *testing.T) {
+	cases := []struct {
+		name   string
+		review string
+		path   string
+		code   string
+	}{
+		{
+			"aggregate wrong version",
+			`{"schema_version":"1","execution":{"id":"execution-A","finders":2},"findings":[],"summary":"A short summary."}`,
+			"$.schema_version", core.ProblemCodeBadEnum,
+		},
+		{
+			"aggregate wrong type",
+			`{"schema_version":2,"execution":{"id":"execution-A","finders":2},"findings":[],"summary":"A short summary."}`,
+			"$.schema_version", core.ProblemCodeWrongType,
+		},
+		{
+			"aggregate missing version",
+			`{"execution":{"id":"execution-A","finders":2},"findings":[],"summary":"A short summary."}`,
+			"$.schema_version", core.ProblemCodeMissingField,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			res := recordcore.CheckReview([]byte(tc.review), checkDiff)
+			problem, ok := findProblem(res, tc.path, tc.code)
+			if !ok {
+				t.Fatalf("problems = %+v, want %s at %s", res.Problems, tc.code, tc.path)
+			}
+			if problem.Example != "2" {
+				t.Fatalf("example = %#v, want the selected version \"2\"", problem.Example)
+			}
+		})
+	}
+}
+
+func findProblem(res recordcore.CheckResult, path, code string) (core.Problem, bool) {
+	for _, p := range res.Problems {
+		if p.Path == path && p.Code == code {
+			return p, true
+		}
+	}
+	return core.Problem{}, false
+}

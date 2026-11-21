@@ -261,8 +261,7 @@ func (c *checker) checkReview(obj *jq.Obj) {
 		case "execution":
 			c.checkExecutionReference(v)
 		case fieldSchemaVersion:
-			execution, _ := obj.Get("execution")
-			c.checkSchemaVersion(v, execution != nil)
+			c.checkSchemaVersion(v, reviewVersion(obj))
 		case problemFindings:
 			c.checkFindings(v)
 		case problemSpecChecks:
@@ -289,7 +288,8 @@ func (c *checker) checkReview(obj *jq.Obj) {
 		}
 	}
 	if _, ok := obj.Get(fieldSchemaVersion); !ok {
-		c.missing(problemSchemaVersion, "missing schema_version", "set \"schema_version\": \"1\"", schemaVersion1)
+		version := reviewVersion(obj)
+		c.missing(problemSchemaVersion, "missing schema_version", fmt.Sprintf("set \"schema_version\": %q", version), version)
 	}
 	if _, ok := obj.Get(problemFindings); !ok {
 		c.missing("$.findings", "missing findings", "write \"findings\": []", []any{})
@@ -312,20 +312,28 @@ func (c *checker) checkReview(obj *jq.Obj) {
 	}
 }
 
-func (c *checker) checkSchemaVersion(v any, automatic bool) {
+func (c *checker) checkSchemaVersion(v any, version string) {
 	s, ok := v.(string)
 	if !ok {
-		c.wrongType(problemSchemaVersion, "schema_version must be the string \"1\"", "set \"schema_version\": \"1\"", schemaVersion1)
+		c.wrongType(problemSchemaVersion, fmt.Sprintf("schema_version must be the string %q", version),
+			fmt.Sprintf("set \"schema_version\": %q", version), version)
 		return
-	}
-	version := schemaVersion1
-	if automatic {
-		version = "2"
 	}
 	if s != version {
 		c.badEnum(problemSchemaVersion, fmt.Sprintf("unknown schema_version %q", s),
-			"write the only supported version", schemaVersion1)
+			"write the only supported version", version)
 	}
+}
+
+// reviewVersion is the version the document's own execution reference selects:
+// an aggregate review carrying one is version 2, and everything else is
+// version 1. Every schema_version diagnostic hands it back, so a repair hint
+// never names a version the same document would fail on again.
+func reviewVersion(obj *jq.Obj) string {
+	if execution, ok := obj.Get("execution"); ok && execution != nil {
+		return schemaVersion2
+	}
+	return schemaVersion1
 }
 
 func (c *checker) checkString(path string, v any, required bool, fix string) {
@@ -1169,7 +1177,7 @@ func (c *checker) checkExecutionReference(value any) {
 		return
 	}
 	id, _ := ref.Get("id")
-	c.checkString("$.execution.id", id, true, "copy the captured execution id")
+	c.checkFilled("$.execution.id", id, "copy the captured execution id")
 	count, _ := ref.Get("finders")
 	if n, ok := jq.IntOf(count); !ok || n != 2 {
 		c.outOfRange("$.execution.finders", "execution requires two finders", "write 2", 2)
