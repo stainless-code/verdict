@@ -50,7 +50,7 @@ skip-token ban and test determinism. Read both before writing or reviewing Go.
 ## Git and commits
 
 - Never push to protected branches (`main`, `master`, `production`, `develop`,
-  `staging`); work on `agent/<issue>-<kebab>`.
+  `staging`); branch `agent/<kebab>` (add `<issue>-` only on closing PRs).
 - Never add `Co-authored-by` trailers.
 - One commit per change; leave unrelated files untouched.
 
