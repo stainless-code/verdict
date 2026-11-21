@@ -55,6 +55,15 @@ func TestNullableCostSchema(t *testing.T) {
 		t.Fatalf("unknown usage = %s", raw)
 	}
 	validateWire(t, schema, "report cost", defOf(t, schema, "reportCost"), decodeWire(t, data))
+	for _, cost := range []struct {
+		def string
+		doc any
+	}{
+		{"costTier", decodeWire(t, core.CostTier{})},
+		{"costTiers", decodeWire(t, core.CostTiers{})},
+	} {
+		validateWire(t, schema, cost.def, defOf(t, schema, cost.def), cost.doc)
+	}
 }
 
 func TestAutomaticPlanSchema(t *testing.T) {
