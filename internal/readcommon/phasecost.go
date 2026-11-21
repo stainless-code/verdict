@@ -77,9 +77,14 @@ func observedCostPhases(dir, execution string) []spend.Phase {
 
 func observedFinderPhases(dir, execution, finder, phase string) []spend.Phase {
 	namespace := costNamespace(finder, phase)
-	launcher := phaseCostObject(filepath.Join(dir, namespace, "launcher.json"))
+	launcherPath := filepath.Join(dir, namespace, "launcher.json")
+	launcher := phaseCostObject(launcherPath)
+	// A cross launch that left no evidence is the zero-cross case; one whose
+	// evidence exists but cannot be read is a launch no price can be bound to.
 	if launcher == nil && phase == "cross" {
-		return nil
+		if _, err := os.Lstat(launcherPath); err != nil {
+			return nil
+		}
 	}
 	attempts := phaseAttemptCount(dir, namespace, launcher)
 	var phases []spend.Phase

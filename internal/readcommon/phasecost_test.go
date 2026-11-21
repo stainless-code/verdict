@@ -61,3 +61,15 @@ func TestPhaseRollupRejectsRepeatedLaunchAttribution(t *testing.T) {
 		t.Fatalf("repeated phases: cost=%v warnings=%v", got, result.Warns)
 	}
 }
+
+func TestPhaseRollupKeepsUnknownSpendForUnreadableCrossLauncher(t *testing.T) {
+	dir := phaseCostFixture(t, phaseCostKnown)
+	writeStore(t, dir, map[string]string{filepath.Join("x-cross-1", "launcher.json"): `{`})
+	cost := readcommon.CostRollup(dir).Cost
+	if got := costNum(t, cost, "runs"); got != 3 {
+		t.Fatalf("runs = %v", got)
+	}
+	if got, _ := cost.Get("est_usd"); got != nil {
+		t.Fatalf("unreadable cross launcher priced = %v", got)
+	}
+}
