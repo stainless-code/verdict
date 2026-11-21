@@ -190,9 +190,6 @@ func automaticArtifacts() []string {
 	return []string{"launcher.json", "review.json", "verification", "x-finder-1", "x-finder-2", "x-cross-1", "x-cross-2"}
 }
 
-// retiredFixture turns the completed fixture into the capture a retirement
-// leaves behind: no execution reference, the retirement location recorded, and
-// none of the artifacts it moved still live.
 func retiredFixture(t *testing.T, dir string, retired bool) {
 	t.Helper()
 	capture, _, err := config.ReadRunState(dir)
@@ -213,9 +210,6 @@ func retiredFixture(t *testing.T, dir string, retired bool) {
 	}
 }
 
-// TestCoordinatorRefusesResumeBeforeRetirement proves a retry that cannot
-// launch leaves the completed execution alone: the refusal arrives before the
-// retirement moves anything.
 func TestCoordinatorRefusesResumeBeforeRetirement(t *testing.T) {
 	req, commander := completedExecution(t)
 	commander.phases = nil
@@ -238,9 +232,6 @@ func TestCoordinatorRefusesResumeBeforeRetirement(t *testing.T) {
 	}
 }
 
-// TestCoordinatorRecoversARetiredCapture proves a capture that a retirement
-// left with no execution reference and no live artifacts starts a replacement
-// instead of wedging the bundle.
 func TestCoordinatorRecoversARetiredCapture(t *testing.T) {
 	req, commander := completedExecution(t)
 	retiredFixture(t, commander.dir, true)
@@ -253,9 +244,20 @@ func TestCoordinatorRecoversARetiredCapture(t *testing.T) {
 	}
 }
 
-// TestCoordinatorRefusesADamagedCapture proves the recovery reads the
-// retirement marker: a capture that lost its execution reference without one
-// is damaged, not retired, and still refuses.
+// TestRetiredCaptureFailsClosedOnAnUninspectablePath proves the recovery treats
+// only a confirmed absence as a retired artifact: where the lookup itself fails
+// - here every artifact path resolves inside a plain file - the capture stays
+// damaged instead of reading as retired and starting over on top of evidence.
+func TestRetiredCaptureFailsClosedOnAnUninspectablePath(t *testing.T) {
+	bundle := filepath.Join(t.TempDir(), "local-damaged")
+	if err := os.WriteFile(bundle, []byte("not a bundle"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if retiredCapture(&config.RunState{Superseded: "x-superseded/legacy"}, bundle) {
+		t.Fatal("capture with uninspectable artifact paths read as retired")
+	}
+}
+
 func TestCoordinatorRefusesADamagedCapture(t *testing.T) {
 	req, commander := completedExecution(t)
 	retiredFixture(t, commander.dir, false)

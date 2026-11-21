@@ -100,7 +100,7 @@ func retiredCapture(captured *config.RunState, dir string) bool {
 		return false
 	}
 	for _, name := range executionArtifacts {
-		if _, err := os.Lstat(filepath.Join(dir, name)); err == nil {
+		if _, err := os.Lstat(filepath.Join(dir, name)); !errors.Is(err, fs.ErrNotExist) {
 			return false
 		}
 	}
