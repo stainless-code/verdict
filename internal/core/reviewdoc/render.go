@@ -46,10 +46,14 @@ type RenderInput struct {
 	Banners      []string
 	Basis        string
 	Security     string
-	BaseURL      string
-	HeadFull     string
-	Now          string
-	BundleMeta   BundleMeta
+	// Topology is the pre-rendered collapsed topology block, or "" when the
+	// knob is off, the bundle is small, or there is nothing to draw. Render
+	// places it; it never reads the disk.
+	Topology   string
+	BaseURL    string
+	HeadFull   string
+	Now        string
+	BundleMeta BundleMeta
 }
 
 // Render renders the deterministic review body from settled findings,
@@ -69,6 +73,9 @@ func Render(in *RenderInput) string {
 		blocks = append(blocks, summary)
 	}
 	blocks = append(blocks, renderMetadataComment(&in.BundleMeta, in.HeadFull))
+	if in.Topology != "" {
+		blocks = append(blocks, in.Topology)
+	}
 	blocks = appendBodySections(blocks, in, kept, moved, links)
 	if defs := links.definitions(); len(defs) > 0 {
 		blocks = append(blocks, strings.Join(defs, lineBreak))

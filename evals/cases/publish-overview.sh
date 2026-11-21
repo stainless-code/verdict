@@ -103,7 +103,7 @@ cat > "$EVAL_SANDBOX/want-4601.md" <<'EOF'
 </details>
 
 <details>
-<summary>Change topology</summary>
+<summary>Change topology (computed from the diff)</summary>
 
 ```mermaid
 flowchart TD

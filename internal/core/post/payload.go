@@ -179,12 +179,51 @@ func splitBodyWithLinks(text string, defs map[int]string, budget int) []string {
 	return acc.parts
 }
 
+// bodyChunksWithLinks splits text into the chunks a part may hold. A maximal
+// <details>…</details> region is one chunk candidate, so a part boundary never
+// lands inside the block and GitHub never renders half a diagram.
 func bodyChunksWithLinks(text string, defs map[int]string, budget int) []string {
 	var out []string
-	for para := range strings.SplitSeq(text, paraSep) {
-		out = append(out, paraChunksWithLinks(para, defs, budget)...)
+	for _, unit := range bodyUnits(text) {
+		out = append(out, paraChunksWithLinks(unit, defs, budget)...)
 	}
 	return out
+}
+
+// bodyUnits partitions text into the units the chunker works on: one paragraph
+// outside a <details> region, one whole region while inside one. A region
+// wider than the budget cannot stay whole, so the per-paragraph splitter cuts
+// it like any oversized paragraph; an unbalanced closing tag never starts a
+// region.
+func bodyUnits(text string) []string {
+	var units []string
+	depth := 0
+	for para := range strings.SplitSeq(text, paraSep) {
+		if depth == 0 {
+			units = append(units, para)
+			depth = max(detailsDepth(para), 0)
+			continue
+		}
+		units[len(units)-1] += paraSep + para
+		depth = max(depth+detailsDepth(para), 0)
+	}
+	return units
+}
+
+// detailsDepth is a paragraph's net <details>/</details> line count, so a
+// region spanning blank lines joins into one unit.
+func detailsDepth(para string) int {
+	depth := 0
+	for line := range strings.SplitSeq(para, newline) {
+		t := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(t, "<details"):
+			depth++
+		case strings.HasPrefix(t, "</details"):
+			depth--
+		}
+	}
+	return depth
 }
 
 func paraChunksWithLinks(para string, defs map[int]string, budget int) []string {

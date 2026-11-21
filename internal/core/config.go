@@ -78,6 +78,13 @@ func Defaults() Effective {
 	}
 }
 
+// StructuralTopology reports whether a body carries the computed topology: the
+// feature knob and its topology half, so `publish.overview: false` never still
+// draws a diagram the operator turned off.
+func (e *Effective) StructuralTopology() bool {
+	return e.PublishOverview == FlagOn && e.DiagramsStructural == FlagOn
+}
+
 // GlobalForces carries the flag-layer overrides from the global strip.
 type GlobalForces struct {
 	PublishLogoURLForce       string

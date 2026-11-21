@@ -29,6 +29,7 @@ func TestRenderBodyGoldens(t *testing.T) {
 		{name: "insufficient", input: insufficientRenderInput()},
 		{name: "local", input: localRenderInput()},
 		{name: "adversarial", input: adversarialRenderInput()},
+		{name: "topology-large", input: topologyLargeRenderInput()},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -514,4 +515,57 @@ func TestRenderBodyItemTenIndentAndHeadFullMetaFallback(t *testing.T) {
 	if !strings.Contains(got, want10) {
 		t.Errorf("item 10 continuation block not indented by 4 spaces:\n%s", got)
 	}
+}
+
+// topologyLargeBlock is the block a nine-file PR posts, written out: Render
+// places the bytes it is handed and never derives them, so the expectation is
+// the block itself, not a second call to the builder under test.
+const topologyLargeBlock = "<details>\n" +
+	"<summary>Change topology (computed from the diff)</summary>\n" +
+	"\n" +
+	"```mermaid\n" +
+	"flowchart TD\n" +
+	"    PR[\"PR #4610 +49/-12\"]\n" +
+	"    PR --> F1[\"F1 app.ts\"]\n" +
+	"    PR --> F2[\"F2 theme.ts\"]\n" +
+	"    PR --> F3[\"F3 api.ts\"]\n" +
+	"    PR --> F4[\"F4 cli.ts\"]\n" +
+	"    PR --> F5[\"F5 db.ts\"]\n" +
+	"    PR --> F6[\"F6 log.ts\"]\n" +
+	"    PR --> F7[\"F7 props.ts\"]\n" +
+	"    PR --> F8[\"F8 util.ts\"]\n" +
+	"    PR --> F9[\"F9 main.ts\"]\n" +
+	"    F1 -->|\"uses theme.ts\"| F2\n" +
+	"```\n" +
+	"\n" +
+	"</details>"
+
+// topologyLargeRenderInput is the clean input with a nine-file bundle's
+// metadata and that block, so the golden pins where the map lands: after the
+// metadata comment and before the findings.
+func topologyLargeRenderInput() *reviewdoc.RenderInput {
+	in := cleanRenderInput()
+	in.BundleMeta = reviewdoc.BundleMeta{
+		HeadSHA:     testHeadFull,
+		HeadRef:     "feat/topology",
+		BaseSHA:     testBaseFull,
+		BaseRef:     "main",
+		Mode:        "Review (initial)",
+		PriorReview: "none",
+		Commits:     []reviewdoc.MetaCommit{{SHA: testHeadFull, Subject: "Add the computed topology block"}},
+		Files: []reviewdoc.MetaFile{
+			{Path: "src/app.ts", Additions: 12, Deletions: 3, HasStats: true},
+			{Path: "src/theme.ts", Additions: 4, Deletions: 0, HasStats: true},
+			{Path: "src/api.ts", Additions: 9, Deletions: 1, HasStats: true},
+			{Path: "src/cli.ts", Additions: 2, Deletions: 2, HasStats: true},
+			{Path: "src/db.ts", Additions: 7, Deletions: 0, HasStats: true},
+			{Path: "src/log.ts", Additions: 1, Deletions: 1, HasStats: true},
+			{Path: "src/props.ts", Additions: 3, Deletions: 0, HasStats: true},
+			{Path: "src/util.ts", Additions: 5, Deletions: 5, HasStats: true},
+			{Path: "src/main.ts", Additions: 6, Deletions: 0, HasStats: true},
+		},
+		FileCount: 9,
+	}
+	in.Topology = topologyLargeBlock
+	return in
 }

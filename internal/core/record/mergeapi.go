@@ -23,6 +23,7 @@ import (
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/overrides"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -230,7 +231,23 @@ func (st *state) buildRenderInput(
 		HeadFull:     st.headFull,
 		Now:          st.now,
 		BundleMeta:   reviewdoc.LoadBundleMeta(st.dir, st.headFull),
+		Topology:     st.topologyBlock(),
 	}
+}
+
+// topologyBlock renders the structural topology the body carries, or "" when
+// the knob pair is off or the bundle stays below the size gate. The size gate
+// is never bypassed here: a below-threshold PR posts no diagram even with
+// --overview, which only moves the report's own gate.
+func (st *state) topologyBlock() string {
+	if !st.effective.StructuralTopology() {
+		return ""
+	}
+	b := diagram.LoadBundle(st.dir)
+	if !diagram.Large(b, overrides.At(st.controls.OverridesDir())) {
+		return ""
+	}
+	return diagram.Block(b, st.pr)
 }
 
 func indexEntriesBySig(entries []any) map[string]*jq.Obj {
