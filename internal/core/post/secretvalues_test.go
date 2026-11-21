@@ -216,6 +216,18 @@ func TestReviewSecretSitesLocations(t *testing.T) {
 			review: `{"summary":"x","findings":[{"path":"dir/AKIAIOSFODNN7EXAMPLE.go","claim":"ok"},{"path":"a.go","claim":"ok","brief":{"sites":[{"path":"dir/ghp_0123456789abcdefghijABCDEFGHIJ012345.go"}],"outcome":"fix"}}],"spec_checks":[{"item":"ok","status":"met","evidence":{"path":"dir/sk-ant-api03-abcdefghij0123.go","line":1,"quote":"ok"}}]}`,
 			want:   []string{"finding 1 (aws-access-key-id)", "finding 2 (github-token)", "spec_check 1 (anthropic-api-key)"},
 		},
+		{
+			name: "brief outcome, approach and questions",
+			review: `{"summary":"x","findings":[{"claim":"ok","brief":` +
+				`{"outcome":"Rotate AKIAIOSFODNN7EXAMPLE before merging.",` +
+				`"approach":"Use ghp_0123456789abcdefghijABCDEFGHIJ012345 for the deploy.",` +
+				`"questions":["Is sk-ant-api03-abcdefghij0123 the right key?"]}}]}`,
+			want: []string{
+				"finding 1 (aws-access-key-id)",
+				"finding 1 (github-token)",
+				"finding 1 (anthropic-api-key)",
+			},
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
@@ -313,5 +325,44 @@ func seedStoredSecretBrief(t *testing.T) {
 	}
 	if err := writeTestFile(".verdict/state/7/review.json", briefOmittedReview); err != nil {
 		t.Fatal(err)
+	}
+}
+
+// TestRunRefusesSecretShapedBrief proves the pre-submit scan covers the
+// structured brief on a review comment, not only the free-text fields: a
+// credential in the brief refuses the post by finding location, makes no host
+// call, and never reappears in the refusal message.
+func TestRunRefusesSecretShapedBrief(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	const leaked = "ghp_0123456789abcdefghijABCDEFGHIJ012345"
+	review := `{"schema_version":"1","body":"> ⚠️ Findings require attention.","approved":false,` +
+		`"comments":[{"path":"notes.txt","line":2,"side":"RIGHT",` +
+		`"body":"Rotate the leaked token before merging.",` +
+		`"rigor":"pointed","severity":"critical",` +
+		`"verification":{"quote":"verified"},` +
+		`"brief":{"outcome":"Rotate ` + "`" + leaked + "`" + ` before merging."}}],` +
+		`"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new line"}]}`
+	postBundle(t, review)
+	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{}}
+	var warnings, human []string
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	_, ref := Run(context.Background(), req)
+	if ref == nil {
+		t.Fatal("secret-shaped brief posted; want a refusal")
+	}
+	if ref.Code != "post-secret-shaped" {
+		t.Fatalf("code = %q, want post-secret-shaped (message %q)", ref.Code, ref.Message)
+	}
+	for _, want := range []string{"finding 1 (github-token)", "--allow-secret-values"} {
+		if !strings.Contains(ref.Message, want) {
+			t.Errorf("refusal %q misses %q", ref.Message, want)
+		}
+	}
+	if strings.Contains(ref.Message, leaked) {
+		t.Errorf("refusal republished the value: %q", ref.Message)
+	}
+	if len(cmdr.calls) != 0 {
+		t.Errorf("refused post called the host: %q", cmdr.calls)
 	}
 }

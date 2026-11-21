@@ -41,6 +41,7 @@ func applyStringForces(r *Runner, eff *Effective, g *GlobalForces) {
 		{dst: &eff.PublishLogo, force: g.PublishLogoForce},
 		{dst: &eff.PublishOverview, force: g.PublishOverviewForce},
 		{dst: &eff.DiagramsStructural, force: g.DiagramsStructuralForce},
+		{dst: &eff.PublishFixPrompt, force: g.PublishFixPromptForce},
 	}
 	for _, o := range overlay {
 		if o.force != "" {
@@ -131,6 +132,8 @@ var boolFlags = map[string]func(*GlobalForces){
 	"--no-diagram-structural": func(g *GlobalForces) { g.DiagramsStructuralForce = FlagOff },
 	"--logo":                  func(g *GlobalForces) { g.PublishLogoForce = FlagOn },
 	"--no-logo":               func(g *GlobalForces) { g.PublishLogoForce = FlagOff },
+	"--fix-prompt":            func(g *GlobalForces) { g.PublishFixPromptForce = FlagOn },
+	"--no-fix-prompt":         func(g *GlobalForces) { g.PublishFixPromptForce = FlagOff },
 	"--json":                  func(g *GlobalForces) { g.OutputForce = formatJSON },
 	"--no-json":               func(g *GlobalForces) { g.OutputForce = formatText },
 	"--no-attribution":        func(g *GlobalForces) { g.PublishAttributionForce = AttributionOff },

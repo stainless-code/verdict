@@ -51,3 +51,12 @@ func TestStructuralTopology(t *testing.T) {
 		})
 	}
 }
+
+// TestDefaultsPublishFixPrompt pins the shipped default: the copy-me block is
+// on for production, and only a fixture or an operator turns it off.
+func TestDefaultsPublishFixPrompt(t *testing.T) {
+	t.Parallel()
+	if got := core.Defaults().PublishFixPrompt; got != core.FlagOn {
+		t.Fatalf("Defaults().PublishFixPrompt = %q; want %q", got, core.FlagOn)
+	}
+}

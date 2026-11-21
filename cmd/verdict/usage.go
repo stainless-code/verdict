@@ -616,16 +616,16 @@ func usageText() string {
 		"  --footer / --no-footer, --attribution [off|product|full] / --no-attribution,\n" +
 		"  --attribution-text <text>, --copyright <text>, --logo / --no-logo,\n" +
 		"  --logo-url <url>, --overview / --no-overview,\n" +
-		"  --diagram-structural / --no-diagram-structural.\n" +
+		"  --diagram-structural / --no-diagram-structural, --fix-prompt / --no-fix-prompt.\n" +
 		"  Flags win over the settings file, which wins over env\n" +
 		"  (REVIEW_OUTPUT_FORMAT, REVIEW_LAYOUT_COMPACT, REVIEW_COLOR_MODE,\n" +
 		"  REVIEW_PUBLISH_FOOTER, REVIEW_PUBLISH_ATTRIBUTION,\n" +
 		"  REVIEW_PUBLISH_ATTRIBUTION_TEXT, REVIEW_PUBLISH_COPYRIGHT,\n" +
 		"  REVIEW_PUBLISH_LOGO, REVIEW_PUBLISH_LOGO_URL, REVIEW_PUBLISH_OVERVIEW,\n" +
-		"  REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL),\n" +
+		"  REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL, REVIEW_PUBLISH_FIX_PROMPT),\n" +
 		"  which wins over defaults. The settings file holds presentation (output,\n" +
 		"  layout, color) plus publish (footer receipt + leveled attribution + logo +\n" +
-		"  overview + diagrams) namespaces\n" +
+		"  overview + diagrams + fix prompt) namespaces\n" +
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
 		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/index/journal/backtest/learn/pack/init/" +

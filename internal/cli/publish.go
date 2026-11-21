@@ -22,6 +22,7 @@ func resolvePublishEnv(env map[string]string, eff *Effective, warn func(string))
 		eff.PublishLogoURL = v
 	}
 	resolveOnOffEnv(env, "REVIEW_PUBLISH_OVERVIEW", &eff.PublishOverview, warn)
+	resolveOnOffEnv(env, "REVIEW_PUBLISH_FIX_PROMPT", &eff.PublishFixPrompt, warn)
 }
 
 func resolveOnOffEnv(env map[string]string, key string, dst *string, warn func(string)) {
@@ -79,6 +80,7 @@ func publishKeys(eff *Effective) []publishKey {
 		{dst: &eff.PublishLogo, key: "logo", bool: true},
 		{dst: &eff.PublishLogoURL, key: "logo_url", hint: " (empty reads text-only)"},
 		{dst: &eff.PublishOverview, key: "overview", bool: true},
+		{dst: &eff.PublishFixPrompt, key: "fix_prompt", bool: true},
 	}
 }
 
@@ -127,7 +129,7 @@ func validateAttributionText(path string, eff *Effective) error {
 func checkPublishKeys(path string, pub map[string]any) error {
 	for _, k := range SortedKeys(pub) {
 		switch k {
-		case "footer", "attribution", "attribution_text", "copyright", "logo", "logo_url", "overview", "diagrams":
+		case "footer", "attribution", "attribution_text", "copyright", "logo", "logo_url", "overview", "diagrams", "fix_prompt":
 		default:
 			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgPublishKeys, path, k)}
 		}

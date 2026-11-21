@@ -233,6 +233,7 @@ func (st *state) buildRenderInput(
 		Now:          st.now,
 		BundleMeta:   reviewdoc.LoadBundleMeta(st.dir, st.headFull),
 		Topology:     st.topologyBlock(),
+		FixPrompt:    st.effective.PublishFixPrompt == core.FlagOn,
 	}
 }
 

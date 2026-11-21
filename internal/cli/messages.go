@@ -19,9 +19,9 @@ const (
 
 const (
 	msgPublishObj = "settings file %s: publish must be an object (want {footer, " +
-		"attribution, attribution_text, copyright, logo, logo_url, overview, diagrams})"
+		"attribution, attribution_text, copyright, logo, logo_url, overview, diagrams, fix_prompt})"
 	msgPublishKeys = "settings file %s: unknown publish key '%s' (want only footer, " +
-		"attribution, attribution_text, copyright, logo, logo_url, overview, diagrams)"
+		"attribution, attribution_text, copyright, logo, logo_url, overview, diagrams, fix_prompt)"
 	msgPublishBool  = "settings file %s: publish.%s must be a boolean (want %s)"
 	msgAttrMigrated = "settings file %s: publish.attribution is now off|product|full (P1b " +
 		"migration from the day-old P1 bool — use \"off\" for false, \"product\" for true)"
