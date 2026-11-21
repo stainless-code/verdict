@@ -47,6 +47,8 @@ type Launch struct {
 	// Codex continues with a `resume` subcommand, Claude with `-c`. A
 	// two-finder run refuses them, because each finder starts fresh.
 	ResumeArgs []string
+	// ResumeCitation names the docs that spell those options for this row.
+	ResumeCitation string
 	// ProbeArgs runs the binary's harmless one-shot help before a launch; a
 	// row declares it only when another tool shares the binary name.
 	ProbeArgs []string
@@ -157,9 +159,10 @@ var catalog = []Agent{
 			PermissionHint:     "--permission-mode acceptEdits",
 			PermissionCitation: "https://code.claude.com/docs/en/cli-reference.md",
 			Binary:             nameClaude, ModelFlag: modelFlag,
-			Args:       []string{"-p"},
-			ResumeArgs: []string{"-c"},
-			Install:    "curl -fsSL https://claude.ai/install.sh | bash",
+			Args:           []string{"-p"},
+			ResumeArgs:     []string{"-c"},
+			ResumeCitation: "https://code.claude.com/docs/en/cli-reference.md",
+			Install:        "curl -fsSL https://claude.ai/install.sh | bash",
 		},
 		Skills: &Skills{
 			Base:     valueHome,
@@ -216,9 +219,10 @@ var catalog = []Agent{
 			PermissionHint:     "--sandbox workspace-write",
 			PermissionCitation: "https://github.com/openai/codex/blob/main/README.md",
 			Binary:             nameCodex, ModelFlag: modelFlag,
-			Args:       []string{argsExec},
-			ResumeArgs: []string{"resume"},
-			Install:    "npm install -g @openai/codex",
+			Args:           []string{argsExec},
+			ResumeArgs:     []string{"resume"},
+			ResumeCitation: "https://github.com/openai/codex/blob/main/README.md",
+			Install:        "npm install -g @openai/codex",
 		},
 		Skills: &Skills{
 			Base:     valueHome,
