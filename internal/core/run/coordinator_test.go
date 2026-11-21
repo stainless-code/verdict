@@ -345,8 +345,14 @@ func TestCoordinatorRefusesSessionResumePerAgent(t *testing.T) {
 	}{
 		{"codex resume subcommand", "codex", []string{"resume", "--last"}, true},
 		{"codex config override", "codex", []string{"-c", `model_reasoning_effort="high"`}, false},
+		{"codex sandbox short flag", "codex", []string{"-s", "workspace-write"}, false},
 		{"claude continue flag", "claude", []string{"-c"}, true},
 		{"claude resume flag", "claude", []string{"--resume", "execution-A"}, true},
+		{"opencode continue flag", "opencode", []string{"-c"}, true},
+		{"opencode fork session", "opencode", []string{"--fork"}, true},
+		{"opencode named session", "opencode", []string{"-s", "sess-1"}, true},
+		{"pi continue flag", "pi", []string{"-c"}, true},
+		{"pi fork session", "pi", []string{"--fork", "sess-1"}, true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

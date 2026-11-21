@@ -61,8 +61,10 @@ const modelFlag = "--model"
 // The docs each row cites for its CLI facts, shared by the launch citation and
 // the permission or continuation claim beside it.
 const (
-	docClaudeCLI   = "https://code.claude.com/docs/en/cli-reference.md"
-	docCodexReadme = "https://github.com/openai/codex/blob/main/README.md"
+	docClaudeCLI    = "https://code.claude.com/docs/en/cli-reference.md"
+	docCodexReadme  = "https://github.com/openai/codex/blob/main/README.md"
+	docOpenCodeCLI  = "https://opencode.ai/docs/cli/"
+	docPiQuickstart = "https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/quickstart.md"
 )
 
 const (
@@ -581,10 +583,12 @@ var catalog = []Agent{
 	{
 		Name: "opencode",
 		Launch: &Launch{
-			Citation: "https://opencode.ai/docs/cli/",
+			Citation: docOpenCodeCLI,
 			Binary:   nameOpenCode, ModelFlag: modelFlag,
-			Args:    []string{argsRun},
-			Install: "npm install -g @opencode/cli",
+			Args:           []string{argsRun},
+			ResumeArgs:     []string{"-c", "-s", "--fork"},
+			ResumeCitation: docOpenCodeCLI,
+			Install:        "npm install -g @opencode/cli",
 		},
 		Skills: &Skills{
 			Base:     "config",
@@ -615,10 +619,12 @@ var catalog = []Agent{
 	{
 		Name: "pi",
 		Launch: &Launch{
-			Citation: "https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/quickstart.md",
+			Citation: docPiQuickstart,
 			Binary:   "pi", ModelFlag: modelFlag,
-			Args:    []string{"-p"},
-			Install: "curl -fsSL https://pi.dev/install.sh | sh",
+			Args:           []string{"-p"},
+			ResumeArgs:     []string{"-c", "--fork"},
+			ResumeCitation: docPiQuickstart,
+			Install:        "curl -fsSL https://pi.dev/install.sh | sh",
 		},
 	},
 	// --agent 'qoder' is the product slug.

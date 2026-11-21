@@ -54,7 +54,7 @@ func TestResumeOptionsCiteAgentDocs(t *testing.T) {
 			checkManualResume(t, string(raw), agent)
 		}
 	}
-	if declared != 2 {
+	if declared != 4 {
 		t.Fatalf("rows declaring continuation options = %d", declared)
 	}
 }
