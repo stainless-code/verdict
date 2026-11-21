@@ -78,3 +78,32 @@ func boundSnapshot(t *testing.T, dir, leaf string) executionSnapshot {
 	}
 	return snapshot
 }
+
+// TestSnapshotInventorySkipsOutputNamespaces proves the evidence inventory
+// never descends into an output namespace. A walk that hashes every regular
+// file it meets fails the whole checkpoint on a retirement holding an
+// unreadable artifact; the skip keeps history, and a sibling phase a parallel
+// worker is writing, out of the pinned input set entirely.
+func TestSnapshotInventorySkipsOutputNamespaces(t *testing.T) {
+	dir := t.TempDir()
+	writeUnder(t, dir, "full.diff", fixtureDiff)
+	writeUnder(t, filepath.Join(dir, "x-superseded", "legacy"), "review.json", `{"retired":true}`)
+	unreadable := filepath.Join(dir, "x-superseded", "legacy", "aux.txt")
+	if err := os.WriteFile(unreadable, []byte("retired bytes"), 0o000); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(unreadable, 0o600) }) //nolint:errcheck // leaves the temp dir removable
+	snapshot, ref := captureSnapshot(dir)
+	if ref != nil {
+		t.Fatalf("capture = %v, want the output namespace skipped", ref)
+	}
+	if ref := snapshot.check(dir); ref != nil {
+		t.Fatalf("check = %v, want the output namespace skipped", ref)
+	}
+	if _, bound := snapshot[filepath.Join("x-superseded", "legacy", "review.json")]; bound {
+		t.Fatal("inventory bound an artifact under a retired execution")
+	}
+	if _, bound := snapshot["full.diff"]; !bound {
+		t.Fatal("inventory dropped a pinned input")
+	}
+}

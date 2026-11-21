@@ -83,7 +83,8 @@ func (st *state) repairLoop(ctx context.Context, args *launchArgs, n int) (*core
 	}
 	started := st.now()
 	rec := st.launchRecord(args, bin, started)
-	rec.Argv, st.argSecrets = st.displayArgv(args)
+	argv, argSecrets := st.displayArgv(args)
+	rec.Argv = argv
 	if ref := st.clearRoundFiles(args); ref != nil {
 		return nil, ref
 	}
@@ -99,13 +100,13 @@ func (st *state) repairLoop(ctx context.Context, args *launchArgs, n int) (*core
 		if writeRef != nil {
 			return nil, writeRef
 		}
-		last = st.repairRound(ctx, args, rec, rep, started, launched, in, k, n)
+		last = st.repairRound(ctx, args, rec, rep, started, launched, in, k, n, argSecrets)
 		if last.stop {
 			return last.resp, last.ref
 		}
 		in = last.next
 	}
-	resp, ref := st.repairRefusal(args, rec, rep, started, &last)
+	resp, ref := st.repairRefusal(args, rec, rep, started, &last, argSecrets)
 	return resp, ref
 }
 
@@ -143,7 +144,7 @@ type roundOutcome struct {
 // repeats the prior bytes all stop here. review is the bytes this round left,
 // for the next round's no-progress comparison.
 func (st *state) repairRound(ctx context.Context, args *launchArgs, rec *launcher, rep *core.RunRepair,
-	started, launched time.Time, in roundState, k, n int,
+	started, launched time.Time, in roundState, k, n int, argSecrets []string,
 ) roundOutcome {
 	if ref := args.checkpoint(); ref != nil {
 		return roundOutcome{stop: true, ref: ref}
@@ -162,19 +163,19 @@ func (st *state) repairRound(ctx context.Context, args *launchArgs, rec *launche
 	roundArt := inspectArtifact(args.abs, launched)
 	if ref := st.verdict(ctx, args, roundRes, spawnErr, roundArt); ref != nil {
 		st.writeCrashRoundReview(args, k)
-		return st.stopped(args, rec, rep, started, roundRes, roundArt, ref)
+		return st.stopped(args, rec, rep, started, roundRes, roundArt, ref, argSecrets)
 	}
 	review, readRef := readRoundReview(args, roundRes)
 	if readRef != nil {
-		return st.stopped(args, rec, rep, started, roundRes, roundArt, readRef)
+		return st.stopped(args, rec, rep, started, roundRes, roundArt, readRef, argSecrets)
 	}
 	check, checkRef := args.checkReview(review)
 	if checkRef != nil {
-		return st.stopped(args, rec, rep, started, roundRes, roundArt, checkRef)
+		return st.stopped(args, rec, rep, started, roundRes, roundArt, checkRef, argSecrets)
 	}
 	return st.checkedRound(args, rec, rep, started, roundRes, roundArt, in, &roundBytes{
 		review: review, check: check, prompt: prompt, wallS: wallS,
-	}, k)
+	}, k, argSecrets)
 }
 
 // roundBytes is one round's checked output, as the stop decision reads it.
@@ -190,6 +191,7 @@ type roundBytes struct {
 // left to repair.
 func (st *state) checkedRound(args *launchArgs, rec *launcher, rep *core.RunRepair,
 	started time.Time, res *core.Result, art artifactState, in roundState, out *roundBytes, k int,
+	argSecrets []string,
 ) roundOutcome {
 	// Settle spends the one-round quote budget before anything reads the
 	// result: a quote the previous round asked about and this round still
@@ -211,7 +213,7 @@ func (st *state) checkedRound(args *launchArgs, rec *launcher, rep *core.RunRepa
 	last := roundOutcome{review: out.review, res: res, art: art, next: next, check: out.check, work: effective}
 	if k > 1 && bytes.Equal(out.review, in.prior) {
 		last.noProgress, last.stop = true, true
-		last.resp, last.ref = st.repairRefusal(args, rec, rep, started, &last)
+		last.resp, last.ref = st.repairRefusal(args, rec, rep, started, &last, argSecrets)
 		return last
 	}
 	if !repair.Valid(effective) {
@@ -221,11 +223,11 @@ func (st *state) checkedRound(args *launchArgs, rec *launcher, rep *core.RunRepa
 	// unreceipted, or a spec item unchecked: that is the run's
 	// review-insufficient refusal, not a success.
 	if ref := repair.InsufficientRefusal(out.check, ""); ref != nil {
-		return st.stopped(args, rec, rep, started, res, art, ref)
+		return st.stopped(args, rec, rep, started, res, art, ref, argSecrets)
 	}
 	st.publishRound(rep, k)
 	last.stop = true
-	last.resp, last.ref, last.review = st.roundSucceeded(args, rec, rep, started, res, art, out.review)
+	last.resp, last.ref, last.review = st.roundSucceeded(args, rec, rep, started, res, art, out.review, argSecrets)
 	return last
 }
 
@@ -250,9 +252,9 @@ func (st *state) roundPrompt(args *launchArgs, rep *core.RunRepair, in roundStat
 // stopped ends the loop on one round's refusal, recording the outcome first so
 // the launcher says how far the loop got.
 func (st *state) stopped(args *launchArgs, rec *launcher, rep *core.RunRepair,
-	started time.Time, res *core.Result, art artifactState, ref *core.RefusalError,
+	started time.Time, res *core.Result, art artifactState, ref *core.RefusalError, argSecrets []string,
 ) roundOutcome {
-	resp, ref, res, art := st.roundFailed(args, rec, rep, started, res, art, ref)
+	resp, ref, res, art := st.roundFailed(args, rec, rep, started, res, art, ref, argSecrets)
 	return roundOutcome{resp: resp, ref: ref, res: res, art: art, stop: true}
 }
 
@@ -314,10 +316,10 @@ func (st *state) maybeSalvage(ctx context.Context, args *launchArgs, rec *launch
 // failed outcome write refuses like the one-shot path, since no other
 // refusal competes on this path.
 func (st *state) roundSucceeded(args *launchArgs, rec *launcher, rep *core.RunRepair,
-	started time.Time, res *core.Result, art artifactState, review []byte,
+	started time.Time, res *core.Result, art artifactState, review []byte, argSecrets []string,
 ) (*core.RunResponse, *core.RefusalError, []byte) {
 	ended := st.now()
-	if writeRef := st.recordOutcome(rec, args.dir, ended, started, res, art, rep); writeRef != nil {
+	if writeRef := st.recordOutcome(rec, args.dir, ended, started, res, art, rep, argSecrets); writeRef != nil {
 		return st.refused(writeRef, res, ended), writeRef, nil
 	}
 	return st.response(args, rec, res, art, started, ended, rep), nil, review
@@ -326,10 +328,10 @@ func (st *state) roundSucceeded(args *launchArgs, rec *launcher, rep *core.RunRe
 // roundFailed ends the loop on a launch or artifact failure with the existing
 // codes: the outcome so far is recorded and no further round runs.
 func (st *state) roundFailed(args *launchArgs, rec *launcher, rep *core.RunRepair,
-	started time.Time, res *core.Result, art artifactState, ref *core.RefusalError,
+	started time.Time, res *core.Result, art artifactState, ref *core.RefusalError, argSecrets []string,
 ) (*core.RunResponse, *core.RefusalError, *core.Result, artifactState) {
 	ended := st.now()
-	if writeRef := st.recordOutcome(rec, args.dir, ended, started, res, art, rep); writeRef != nil {
+	if writeRef := st.recordOutcome(rec, args.dir, ended, started, res, art, rep, argSecrets); writeRef != nil {
 		st.warn(writeRef.Message)
 	}
 	return st.refused(ref, res, ended), ref, res, art
@@ -339,7 +341,7 @@ func (st *state) roundFailed(args *launchArgs, rec *launcher, rep *core.RunRepai
 // the final round's problems, with the no-progress cause when the last round
 // repeated the prior bytes instead of spending the cap.
 func (st *state) repairRefusal(args *launchArgs, rec *launcher, rep *core.RunRepair,
-	started time.Time, last *roundOutcome,
+	started time.Time, last *roundOutcome, argSecrets []string,
 ) (*core.RunResponse, *core.RefusalError) {
 	attempt := core.RunAttempt{}
 	if len(rep.Attempts) > 0 {
@@ -364,7 +366,7 @@ func (st *state) repairRefusal(args *launchArgs, rec *launcher, rep *core.RunRep
 		ref = repair.InsufficientRefusal(last.check, note)
 	}
 	ended := st.now()
-	if writeRef := st.recordOutcome(rec, args.dir, ended, started, last.res, last.art, rep); writeRef != nil {
+	if writeRef := st.recordOutcome(rec, args.dir, ended, started, last.res, last.art, rep, argSecrets); writeRef != nil {
 		st.warn(writeRef.Message)
 	}
 	return st.refused(ref, last.res, ended), ref

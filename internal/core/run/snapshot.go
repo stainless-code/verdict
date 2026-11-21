@@ -15,11 +15,20 @@ import (
 	"github.com/stainless-code/verdict/internal/core/journal"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/storelock"
 )
 
 // snapshotAbsent is the digest a name that does not exist at all is recorded
 // under, so a file appearing later still reads as a change.
 const snapshotAbsent = "absent"
+
+// verificationDir is the phase directory the plan, the verdicts, and every
+// reader of a captured execution resolve by name.
+const verificationDir = "verification"
+
+// budgetPath is the spend receipt the launcher writes beside the bundle: an
+// output of the execution, never one of its inputs.
+const budgetPath = "budget.json"
 
 type executionSnapshot map[string]string
 
@@ -174,19 +183,79 @@ func (snapshot executionSnapshot) bind(dir string, names ...string) *core.Refusa
 
 func outputNamespace(name string) bool {
 	first, _, _ := strings.Cut(filepath.ToSlash(name), "/")
-	return strings.HasPrefix(first, "x-") || first == "verification" || first == launcherFile ||
-		first == reviewFile || first == "budget.json" || strings.HasPrefix(first, ".run")
+	return strings.HasPrefix(first, "x-") || first == verificationDir || first == launcherFile ||
+		first == reviewFile || first == budgetPath || strings.HasPrefix(first, ".run")
 }
 
+// bindInputs records the digest of every pinned input the bundle carries. The
+// walk skips an output namespace at its own depth instead of descending into it
+// and filtering afterwards: the sibling phase directories hold artifacts a
+// parallel phase is writing right now, and reading them would appear as drift
+// (and, on Windows, as a sharing violation) rather than as progress.
 func (snapshot executionSnapshot) bindInputs(dir string) *core.RefusalError {
-	files, err := journal.Sweep(dir)
-	if err != nil {
+	found := &inputWalk{snapshot: snapshot, dir: dir}
+	if err := filepath.WalkDir(dir, found.visit); err != nil {
+		if found.refused != nil {
+			return found.refused
+		}
 		return &core.RefusalError{Code: codeStaleArtifact, Message: "cannot snapshot evidence inventory"}
 	}
-	for _, file := range files.Files {
-		if !outputNamespace(file.Path) {
-			snapshot[filepath.FromSlash(file.Path)] = file.SHA256
+	return nil
+}
+
+// inputWalk accumulates the pinned inputs of one bundle walk. It reports the
+// first refusal through the field, because the walk callback can only carry an
+// error of its own.
+type inputWalk struct {
+	refused  *core.RefusalError
+	snapshot executionSnapshot
+	dir      string
+}
+
+func (w *inputWalk) visit(path string, entry fs.DirEntry, walkErr error) error {
+	if walkErr != nil {
+		if errors.Is(walkErr, fs.ErrNotExist) {
+			return nil
 		}
+		return walkErr
+	}
+	rel, err := filepath.Rel(w.dir, path)
+	if err != nil {
+		return jq.Sealed("evidence inventory", err)
+	}
+	if rel == "." {
+		return nil
+	}
+	if outputNamespace(rel) {
+		return skipOutputNamespace(entry)
+	}
+	if !w.pinnable(entry) {
+		return nil
+	}
+	return w.bind(rel)
+}
+
+// skipOutputNamespace keeps the walk out of a directory no input lives in,
+// rather than hashing it and filtering afterwards.
+func skipOutputNamespace(entry fs.DirEntry) error {
+	if entry.IsDir() {
+		return filepath.SkipDir
+	}
+	return nil
+}
+
+func (w *inputWalk) pinnable(entry fs.DirEntry) bool {
+	return entry.Type().IsRegular() && !strings.HasSuffix(entry.Name(), storelock.LockSuffix)
+}
+
+func (w *inputWalk) bind(rel string) error {
+	digest, ref := snapshotFileDigest(w.dir, rel)
+	if ref != nil {
+		w.refused = ref
+		return jq.Sealed("evidence inventory", ref)
+	}
+	if digest != snapshotAbsent {
+		w.snapshot[rel] = digest
 	}
 	return nil
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
+	"sync"
 
 	"github.com/stainless-code/verdict/internal/core"
 	panelcore "github.com/stainless-code/verdict/internal/core/panel"
@@ -20,71 +21,156 @@ const (
 	crossResults = "results"
 )
 
-func (c *coordinator) cross(ctx context.Context, index int) *core.RefusalError {
+// crossPhase names one cross check's phase directory.
+func crossPhase(index int) string { return fmt.Sprintf("x-cross-%d", index+1) }
+
+// crossPlan is one cross check ready to launch: the batch it asks about, the
+// phase directory, and the argv. Both plans are written before either worker
+// starts, so the two checks read the same pinned evidence.
+type crossPlan struct {
+	args    *launchArgs
+	checker string
+	name    string
+	output  string
+	batch   []any
+	skip    bool
+}
+
+// prepareCross writes both cross requests in index order. A finder with no
+// candidate owed to its checker has nothing to dispatch, and its phase
+// directory is never created.
+func (c *coordinator) prepareCross() ([]crossPlan, *core.RefusalError) {
+	plans := make([]crossPlan, finderCount)
+	for i := range finderCount {
+		plan, ref := c.planCross(i)
+		if ref != nil {
+			return nil, ref
+		}
+		plans[i] = plan
+	}
+	return plans, nil
+}
+
+func (c *coordinator) planCross(index int) (crossPlan, *core.RefusalError) {
 	checker := fmt.Sprintf("finder-%d", index+1)
 	batch := crossBatch(c.plan, c.review, checker)
 	if len(batch) == 0 {
-		return nil
+		return crossPlan{skip: true}, nil
 	}
-	name := fmt.Sprintf("x-cross-%d", index+1)
+	name := crossPhase(index)
 	output, ref := phaseDirectory(c.dir, name)
 	if ref != nil {
-		return ref
+		return crossPlan{}, ref
 	}
 	binding := cloneUnionRow(c.binding)
 	binding.Delete(crossResults)
 	request := jq.NewObj(crossChecker, checker, "binding", binding, "candidates", batch)
 	if ref := writeCoordinator(output, "request.json", request); ref != nil {
-		return ref
+		return crossPlan{}, ref
 	}
 	args, ref := c.st.argsForTarget(&c.base.def, c.base.timeout, launchTarget{
 		evidence: c.dir, output: output, artifact: "verdicts.json",
 	})
 	if ref != nil {
-		return ref
+		return crossPlan{}, ref
 	}
 	args.guard = c.checkpoint(output)
-	if ref := c.snapshot.bind(c.dir, filepath.Join(name, "request.json")); ref != nil {
-		return ref
+	if ref := c.bind(filepath.Join(name, "request.json")); ref != nil {
+		return crossPlan{}, ref
 	}
 	args.prompt = crossDirective(c.dir, output, args.abs)
-	return c.crossAttempts(ctx, args, checker, batch, name, output)
+	return crossPlan{args: args, checker: checker, name: name, output: output, batch: batch}, nil
 }
 
-func (c *coordinator) crossAttempts(ctx context.Context, args *launchArgs, checker string, batch []any,
-	name, output string,
-) *core.RefusalError {
-	accepted := c.crossChecker(args, checker, batch)
-	for attempt := range min(c.rounds, finderCount) {
-		ref := c.crossAttempt(ctx, args, attempt)
-		if ref == nil {
-			c.appendResults(*accepted)
-			return c.bindCross(name)
-		}
-		if fatalPhaseRefusal(ref) {
-			return ref
-		}
-		if ref.Code != recordcore.CodeBadReviewInput {
-			c.failed(name, ref.Code)
-			return c.bindCross(name)
-		}
-		prior, _ := crashReviewBytes(args.abs)
-		args.prompt = repair.RoundPrompt(crossDirective(c.dir, output, args.abs), repair.Nonce(), prior,
-			attempt+2, min(c.rounds, finderCount), crossProblems(), args.artifact)
+// crossOutcome is one cross check's contribution to the fan-in: the accepted
+// rows to append, the failure to record, and the refusal that ends the run.
+type crossOutcome struct {
+	ref      *core.RefusalError
+	response *core.RunResponse
+	worker   *state
+	failure  string
+	rows     []any
+	fatal    bool
+}
+
+// crossPhase runs one cross check. A fatal refusal cancels the sibling at once;
+// an exhausted or failed check is this phase's own failure and lets the sibling
+// finish.
+func (c *coordinator) crossPhase(ctx context.Context, plan *crossPlan, worker *state,
+	cancel context.CancelFunc,
+) crossOutcome {
+	accepted := c.crossChecker(plan.args, plan.checker, plan.batch)
+	out := c.crossAttempts(ctx, plan, worker, accepted)
+	if out.fatal {
+		cancel()
 	}
-
-	c.failed(name, "cross-incomplete")
-	return c.bindCross(name)
+	return out
 }
 
-func (c *coordinator) keepCrossAttempt(args *launchArgs, round int) {
+// crossAttempts spends one check's round budget. A repairable answer earns the
+// next round; every other refusal ends this check with its own failure
+// recorded, leaving the sibling check to finish.
+func (c *coordinator) crossAttempts(ctx context.Context, plan *crossPlan, worker *state,
+	accepted *[]any,
+) crossOutcome {
+	out := crossOutcome{worker: worker}
+	for attempt := range min(c.rounds, finderCount) {
+		ref := c.crossAttempt(ctx, plan.args, attempt, worker, &out)
+		if ref == nil {
+			out.rows = *accepted
+			c.bindCrossOutcome(&out, plan)
+			return out
+		}
+		if c.crossStopped(&out, plan, ref) {
+			return out
+		}
+		c.repromptCross(plan, attempt)
+	}
+	out.failure = "cross-incomplete"
+	c.bindCrossOutcome(&out, plan)
+	return out
+}
+
+// crossStopped records one attempt's refusal and reports whether the rounds
+// stop here: a fatal refusal ends the run, a repaired one continues, and any
+// other failure ends this check.
+func (c *coordinator) crossStopped(out *crossOutcome, plan *crossPlan, ref *core.RefusalError) bool {
+	if fatalPhaseRefusal(ref) {
+		out.ref, out.fatal = ref, true
+		return true
+	}
+	if ref.Code == recordcore.CodeBadReviewInput {
+		return false
+	}
+	out.failure = ref.Code
+	c.bindCrossOutcome(out, plan)
+	return true
+}
+
+// bindCrossOutcome binds one check's artifacts, recording a bind failure as the
+// fatal refusal that ends the run.
+func (c *coordinator) bindCrossOutcome(out *crossOutcome, plan *crossPlan) {
+	if bindRef := c.bindCross(plan.name); bindRef != nil {
+		out.ref, out.fatal = bindRef, true
+	}
+}
+
+// repromptCross renders the next round's directive: the prior artifact, the
+// rows still to fix, and the same requested signatures.
+func (c *coordinator) repromptCross(plan *crossPlan, attempt int) {
+	prior, _ := crashReviewBytes(plan.args.abs)
+	plan.args.prompt = repair.RoundPrompt(crossDirective(c.dir, plan.output, plan.args.abs), repair.Nonce(), prior,
+		attempt+2, min(c.rounds, finderCount), crossProblems(), plan.args.artifact)
+}
+
+func (st *state) keepCrossAttempt(args *launchArgs, round int) {
 	raw, ok := crashReviewBytes(args.abs)
 	if !ok {
 		return
 	}
 	checked, ref := args.checkReview(raw)
 	if ref == nil {
-		c.st.writeRoundFiles(args, round, raw, checked)
+		st.writeRoundFiles(args, round, raw, checked)
 	}
 }
 
@@ -190,17 +276,19 @@ func (c *coordinator) appendResults(rows []any) {
 	c.binding.Set(crossResults, append(jq.Elements(old), rows...))
 }
 
-func (c *coordinator) crossAttempt(ctx context.Context, args *launchArgs, attempt int) *core.RefusalError {
-	if ref := c.snapshot.check(c.dir); ref != nil {
+func (c *coordinator) crossAttempt(ctx context.Context, args *launchArgs, attempt int, worker *state,
+	out *crossOutcome,
+) *core.RefusalError {
+	if ref := c.check(); ref != nil {
 		return ref
 	}
 	args.argv = argvFor(&args.def, args.model(), c.st.req.PassThrough, args.prompt)
 	var ref *core.RefusalError
-	c.response, ref = c.st.launch(ctx, args)
+	out.response, ref = worker.launch(ctx, args)
 	if drift := c.phaseEnded(ctx); drift != nil {
 		return drift
 	}
-	c.keepCrossAttempt(args, attempt+1)
+	worker.keepCrossAttempt(args, attempt+1)
 	return ref
 }
 
@@ -216,7 +304,65 @@ func groundedCrossQuote(idx *evidence.DiffIndex, q *panelcore.CodeQuote) bool {
 }
 
 func (c *coordinator) bindCross(name string) *core.RefusalError {
-	return c.snapshot.bindPhase(c.dir, name)
+	return c.bindPhase(name)
+}
+
+// runCross dispatches both cross checks at once, then folds their outcomes in
+// index order: warnings, the cancel, the accepted rows, the failures, and the
+// response the run reports.
+func (c *coordinator) runCross(ctx context.Context) *core.RefusalError {
+	plans, ref := c.prepareCross()
+	if ref != nil {
+		return ref
+	}
+	progress := &syncProgress{}
+	outcomes := make([]crossOutcome, finderCount)
+	phaseCtx, phaseCancel := context.WithCancel(ctx)
+	defer phaseCancel()
+	var wg sync.WaitGroup
+	for i := range finderCount {
+		if plans[i].skip {
+			continue
+		}
+		worker := c.st.phaseState(progress)
+		wg.Go(func() {
+			outcomes[i] = c.crossPhase(phaseCtx, &plans[i], worker, phaseCancel)
+		})
+	}
+	wg.Wait()
+	return c.mergeCross(ctx, outcomes)
+}
+
+func (c *coordinator) mergeCross(ctx context.Context, outcomes []crossOutcome) *core.RefusalError {
+	for i := range outcomes {
+		c.st.replay(outcomes[i].worker)
+	}
+	if ref := canceledRefusal(ctx, c.st); ref != nil {
+		return ref
+	}
+	fatal := c.recordCross(outcomes)
+	if fatal != nil {
+		return fatal
+	}
+	return c.check()
+}
+
+// recordCross folds both checks' outcomes in index order: the accepted rows
+// first, so the verdicts keep the plan's order whatever the checks finished in,
+// then the failures and the response.
+func (c *coordinator) recordCross(outcomes []crossOutcome) *core.RefusalError {
+	var fatal *core.RefusalError
+	for i := range outcomes {
+		fatal = mergeFatal(fatal, outcomes[i].ref)
+		c.appendResults(outcomes[i].rows)
+		if outcomes[i].failure != "" {
+			c.failed(crossPhase(i), outcomes[i].failure)
+		}
+		if outcomes[i].response != nil {
+			c.response = outcomes[i].response
+		}
+	}
+	return fatal
 }
 
 func fatalPhaseRefusal(ref *core.RefusalError) bool {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"time"
 )
 
 // Command is one spawned process: the argv to run, the stdin to feed it,
@@ -25,6 +26,12 @@ type Command struct {
 	// commander's documented default. A commander never grows a capture
 	// past this bound: the surplus is discarded and recorded.
 	OutputCap int
+	// GracePeriod is how long a terminated command's process group gets to
+	// exit after the stop signal before the group is killed outright. Zero
+	// (the default) kills at once, the posture every verb but the agent
+	// launcher keeps; a positive period asks the group to stop first, so an
+	// agent that flushes its work on SIGTERM is not left half-written.
+	GracePeriod time.Duration
 }
 
 // Result is one completed process: the captured streams plus the wait

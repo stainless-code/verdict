@@ -143,7 +143,7 @@ func assertSupersededArtifacts(t *testing.T, dir string) {
 
 func TestTwoFinderRerunSupersedesPreviousExecution(t *testing.T) {
 	req, commander := completedExecution(t)
-	commander.phases = nil
+	commander.reset()
 	if _, ref := Run(t.Context(), req); ref != nil {
 		t.Fatal(ref)
 	}
@@ -155,9 +155,8 @@ func TestTwoFinderRerunSupersedesPreviousExecution(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(commander.dir, location, "launcher.json")); err != nil {
 		t.Fatal(err)
 	}
-	if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1,x-cross-2" {
-		t.Fatalf("rerun launches = %s", got)
-	}
+	assertPhaseGroups(t, commander.launched(),
+		[]string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1", "x-cross-2"})
 }
 
 func TestRetirementFailureRefusesBeforeLaunch(t *testing.T) {
@@ -212,7 +211,7 @@ func retiredFixture(t *testing.T, dir string, retired bool) {
 
 func TestCoordinatorRefusesResumeBeforeRetirement(t *testing.T) {
 	req, commander := completedExecution(t)
-	commander.phases = nil
+	commander.reset()
 	req.PassThrough = []string{"--resume"}
 	_, ref := Run(t.Context(), req)
 	if ref == nil || ref.Code != "bad-flags" {
@@ -235,13 +234,12 @@ func TestCoordinatorRefusesResumeBeforeRetirement(t *testing.T) {
 func TestCoordinatorRecoversARetiredCapture(t *testing.T) {
 	req, commander := completedExecution(t)
 	retiredFixture(t, commander.dir, true)
-	commander.phases = nil
+	commander.reset()
 	if _, ref := Run(t.Context(), req); ref != nil {
 		t.Fatalf("retired capture refused: %v", ref)
 	}
-	if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1,x-cross-2" {
-		t.Fatalf("replacement launches = %s", got)
-	}
+	assertPhaseGroups(t, commander.launched(),
+		[]string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1", "x-cross-2"})
 }
 
 // TestRetiredCaptureFailsClosedOnAnUninspectablePath proves the recovery treats
@@ -261,12 +259,109 @@ func TestRetiredCaptureFailsClosedOnAnUninspectablePath(t *testing.T) {
 func TestCoordinatorRefusesADamagedCapture(t *testing.T) {
 	req, commander := completedExecution(t)
 	retiredFixture(t, commander.dir, false)
-	commander.phases = nil
+	commander.reset()
 	_, ref := Run(t.Context(), req)
 	if ref == nil || ref.Code != "agent-record-failed" || !strings.Contains(ref.Message, "restore run.json") {
 		t.Fatalf("damaged capture = %v", ref)
 	}
-	if len(commander.phases) != 0 {
-		t.Fatalf("damaged capture launched: %v", commander.phases)
+	if launched := commander.launched(); len(launched) != 0 {
+		t.Fatalf("damaged capture launched: %v", launched)
 	}
+}
+
+// TestSupersedeRetiresOrphanedPhaseWithNoActiveExecution proves a phase
+// directory no execution marker accounts for is retired, not refused: the old
+// code let phaseDirectory fail with "cannot create fresh phase directory",
+// which names the symptom and leaves the operator to delete artifacts by hand.
+func TestSupersedeRetiresOrphanedPhaseWithNoActiveExecution(t *testing.T) {
+	req, commander := coordinatorFixture(t)
+	req.FindersRaw = "2"
+	// A partial run nothing marks: no launcher record, and a capture that names
+	// no finders, exactly what a re-fetch over a partial run leaves behind.
+	writeUnder(t, commander.dir, "run.json", `{"schema_version":"1","finders":0}`)
+	writeUnder(t, filepath.Join(commander.dir, "x-finder-2"), "review.json", `{"changed":true}`)
+	if _, ref := TwoFinders(t.Context(), req); ref != nil {
+		t.Fatalf("orphaned phase refused the re-run: %v", ref)
+	}
+	location := retiredLocation(t, commander.dir)
+	retired := readPhaseBytes(t, filepath.Join(commander.dir, location, "x-finder-2", "review.json"))
+	if string(retired) != `{"changed":true}` {
+		t.Fatalf("retired finder artifact = %q", retired)
+	}
+	if fresh := readPhaseBytes(t, filepath.Join(commander.dir, "x-finder-2", "review.json")); string(fresh) == `{"changed":true}` {
+		t.Fatal("the re-run reused the orphaned phase directory")
+	}
+	assertCoordinatorArtifacts(t, commander.dir)
+}
+
+// TestSupersedeRetiresAnInterruptedPriorRunAfterRefetch proves the shape the
+// damaged-capture refusal used to trap: an in-progress execution whose launcher
+// record and both finder phases survived, and a re-fetch that reset run.json to
+// no finders and no execution reference. The artifacts themselves record the
+// execution, so they are retired and the replacement run proceeds.
+func TestSupersedeRetiresAnInterruptedPriorRunAfterRefetch(t *testing.T) {
+	req, commander := completedExecution(t)
+	commander.reset()
+	writeUnder(t, commander.dir, "launcher.json",
+		`{"schema_version":"2","execution_id":"prior","status":"in-progress","finders":2}`)
+	refetchedCapture(t, commander.dir)
+	if _, ref := Run(t.Context(), req); ref != nil {
+		t.Fatalf("interrupted prior run refused the re-run: %v", ref)
+	}
+	location := retiredLocation(t, commander.dir)
+	for _, name := range []string{"launcher.json", filepath.Join("x-finder-1", "review.json"), filepath.Join("x-finder-2", "review.json")} {
+		if raw := readPhaseBytes(t, filepath.Join(commander.dir, location, name)); len(raw) == 0 {
+			t.Fatalf("retired %s is empty", name)
+		}
+	}
+	if raw := readPhaseBytes(t, filepath.Join(commander.dir, location, "launcher.json")); !strings.Contains(string(raw), `"prior"`) {
+		t.Fatalf("retired launcher record = %s, want the interrupted execution", raw)
+	}
+	capture := readPhaseObject(t, filepath.Join(commander.dir, "run.json"))
+	if readcommon.FieldOf(capture, "superseded") != location {
+		t.Fatalf("capture superseded = %s, want %s", jq.Compact(capture), location)
+	}
+	assertCoordinatorArtifacts(t, commander.dir)
+}
+
+// refetchedCapture rewrites run.json the way fetch's persistRunBundle does over
+// an existing bundle: a brand-new capture with no execution reference and no
+// finder count, while every artifact of the interrupted execution stays put.
+func refetchedCapture(t *testing.T, dir string) {
+	t.Helper()
+	capture, _, err := config.ReadRunState(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capture.Execution, capture.Finders, capture.Superseded = nil, 0, ""
+	if err := config.WriteRunState(dir, capture); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// retiredLocation names the one retirement a bundle holds, failing when the
+// bundle published none or several.
+func retiredLocation(t *testing.T, dir string) string {
+	t.Helper()
+	entries, err := os.ReadDir(filepath.Join(dir, supersededDir))
+	if err != nil {
+		t.Fatalf("no retirement published: %v", err)
+	}
+	var names []string
+	for _, entry := range entries {
+		names = append(names, filepath.Join(supersededDir, entry.Name()))
+	}
+	if len(names) != 1 {
+		t.Fatalf("retirements = %q, want exactly one", names)
+	}
+	return names[0]
+}
+
+func readPhaseBytes(t *testing.T, path string) []byte {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return raw
 }

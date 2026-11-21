@@ -29,6 +29,51 @@ func killGroup(cmd *osexec.Cmd) error {
 	return nil
 }
 
+// terminatePoll is the gap between two liveness reads while a grace period
+// runs out.
+const terminatePoll = 25 * time.Millisecond
+
+// terminateGroup ends one process group. A zero grace keeps the posture every
+// verb but the agent launcher has: SIGKILL the group at once. A positive grace
+// asks the whole group to stop with SIGTERM — the group, because signaling one
+// pid would leave the agent's own children running — and escalates to SIGKILL
+// only when the group is still there at the end of it. ESRCH ends the wait
+// immediately, so a child that honors the stop signal costs no grace at all.
+func terminateGroup(cmd *osexec.Cmd, grace time.Duration) {
+	if cmd.Process == nil {
+		return
+	}
+	if grace > 0 && signalStop(cmd) && groupOutlived(cmd.Process.Pid, grace) {
+		_ = killGroup(cmd) //nolint:errcheck // the group is already gone or unreachable
+		return
+	}
+	_ = killGroup(cmd) //nolint:errcheck // no process left to report a kill failure to
+}
+
+// signalStop asks the whole group to stop, reporting whether the signal was
+// delivered: a group that is already gone needs no escalation either.
+func signalStop(cmd *osexec.Cmd) bool {
+	return syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM) == nil
+}
+
+// groupOutlived reports whether the process group is still addressable when the
+// grace period runs out. The poll is a plain sleep, not a context wait: the
+// context that started the termination has already ended, and the escalation
+// must happen whether or not a caller is still listening.
+func groupOutlived(pid int, grace time.Duration) bool {
+	deadline := time.Now().Add(grace)
+	for {
+		if err := syscall.Kill(-pid, 0); err != nil {
+			return false
+		}
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return true
+		}
+		time.Sleep(min(remaining, terminatePoll))
+	}
+}
+
 func processAlive(ctx context.Context, cmd *osexec.Cmd) bool {
 	if cmd.Process == nil {
 		return false

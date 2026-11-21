@@ -18,9 +18,8 @@ func TestDefaultLaunchUsesTwoFinders(t *testing.T) {
 	if ref != nil {
 		t.Fatal(ref)
 	}
-	if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1,x-cross-2" {
-		t.Fatalf("launches = %s", got)
-	}
+	assertPhaseGroups(t, commander.launched(),
+		[]string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1", "x-cross-2"})
 	if response.Data.Execution == nil || response.Data.Execution.Counts.Completed != 2 {
 		t.Fatalf("execution = %+v", response.Data.Execution)
 	}
@@ -96,9 +95,8 @@ func TestFinderFlagOverridesCapturedDefault(t *testing.T) {
 	if _, ref := Run(t.Context(), req); ref != nil {
 		t.Fatal(ref)
 	}
-	if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1,x-cross-2" {
-		t.Fatalf("launches = %s", got)
-	}
+	assertPhaseGroups(t, commander.launched(),
+		[]string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1", "x-cross-2"})
 	capture := readPhaseObject(t, filepath.Join(commander.dir, "run.json"))
 	if readcommon.FieldOf(capture, "finder_source") != "flag" {
 		t.Fatalf("override source = %s", capture.MarshalCompact())
@@ -115,8 +113,8 @@ func assertRenderingRefuses(t *testing.T, stage string) {
 	if ref == nil || ref.Code != "bad-flags" || !strings.Contains(ref.Message, "--finders 1") {
 		t.Fatalf("refusal = %v", ref)
 	}
-	if len(commander.phases) != 0 {
-		t.Fatalf("render launched %v", commander.phases)
+	if launched := commander.launched(); len(launched) != 0 {
+		t.Fatalf("render launched %v", launched)
 	}
 	if _, err := os.Stat(filepath.Join(commander.dir, "launcher.json")); !os.IsNotExist(err) {
 		t.Fatalf("render wrote manifest: %v", err)

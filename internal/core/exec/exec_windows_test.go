@@ -39,7 +39,7 @@ func TestExecuteTimeoutKillsTree(t *testing.T) {
 // already inside the job, and the child is running afterwards.
 func TestSpawnedChildIsInJobBeforeItRuns(t *testing.T) {
 	var expired atomic.Bool
-	proc, waitDone, _, err := spawnWatched(t.Context(), &core.Command{
+	proc, waitDone, _, _, err := spawnWatched(t.Context(), &core.Command{
 		Argv: []string{"bash", "-c", "exec sleep 30"}, Env: os.Environ(),
 	}, &expired)
 	if err != nil {

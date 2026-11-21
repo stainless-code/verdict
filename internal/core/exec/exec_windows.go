@@ -319,6 +319,13 @@ func killGroup(cmd *osexec.Cmd) error {
 	return taskkillTree(cmd.Process.Pid)
 }
 
+// terminateGroup ends the job object at once, grace or not: a graceful stop on
+// Windows needs a console control event a windowless job cannot be handed, so
+// the tree is killed the way every verb's tree is.
+func terminateGroup(cmd *osexec.Cmd, _ time.Duration) {
+	_ = killGroup(cmd) //nolint:errcheck // the job object is already gone or unreachable
+}
+
 func taskkillTree(pid int) error {
 	//nolint:gosec,noctx // G204: fixed argv over our own pid; noctx: the kill must outlive the expired context
 	kill := osexec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(pid))

@@ -19,7 +19,11 @@ type forgedOriginCommander struct {
 
 func (p *forgedOriginCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
 	result, err := p.phaseCommander.Run(ctx, cmd)
-	phase := p.phases[len(p.phases)-1]
+	phase, ok := phaseOf(cmd)
+	if !ok {
+		p.t.Errorf("unexpected argv: %q", cmd.Argv)
+		return result, err
+	}
 	switch phase {
 	case "x-finder-1":
 		raw := strings.Replace(coordinatorReview, `"path":"a.go"`, `"origin":"finder-2","path":"a.go"`, 1)
@@ -77,14 +81,11 @@ func assertForgedOrigin(t *testing.T, self bool) {
 
 func assertOriginDispatch(t *testing.T, base *phaseCommander, self bool) {
 	t.Helper()
-	phases := strings.Join(base.phases, ",")
-	want := "x-finder-1,x-finder-2,x-cross-2"
+	groups := [][]string{{"x-finder-1", "x-finder-2"}, {"x-cross-2"}}
 	if self {
-		want = "x-finder-1,x-finder-2,x-cross-2,x-cross-2"
+		groups = [][]string{{"x-finder-1", "x-finder-2"}, {"x-cross-2", "x-cross-2"}}
 	}
-	if phases != want {
-		t.Fatalf("forged origin redirected dispatch: %s", phases)
-	}
+	assertPhaseGroups(t, base.launched(), groups...)
 	plan := readPhaseObject(t, filepath.Join(base.dir, "verification", "plan.json"))
 	if got := compactRows(jq.Elements(readcommon.FieldOf(plan, "checks"))); got != `[{"sig":"b02621c6e34339ac215c21bbc73527b558e69185","origin":"finder-1","checker":"finder-2"}]` {
 		t.Fatalf("trusted origin plan = %s", got)

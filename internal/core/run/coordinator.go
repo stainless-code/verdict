@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"sync"
 
 	"github.com/stainless-code/verdict/internal/agentcatalog"
 	"github.com/stainless-code/verdict/internal/atomic"
@@ -19,6 +20,9 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
+// coordinator runs one two-finder execution. Its mutable fields are written
+// only between phases: a parallel phase works from its own state clone and
+// outcome, and the fan-in merges those in index order.
 type coordinator struct {
 	st       *state
 	base     *launchArgs
@@ -32,7 +36,38 @@ type coordinator struct {
 	id       string
 	reviews  []*jq.Obj
 	failures []any
+	snapMu   sync.RWMutex
 	rounds   int
+}
+
+// check is the snapshot checkpoint. It takes the read lock, so a phase can
+// never iterate the digest map while its sibling binds a name into it.
+func (c *coordinator) check() *core.RefusalError {
+	c.snapMu.RLock()
+	defer c.snapMu.RUnlock()
+	return c.snapshot.check(c.dir)
+}
+
+// bind records the digests of artifacts a phase just wrote.
+func (c *coordinator) bind(names ...string) *core.RefusalError {
+	c.snapMu.Lock()
+	defer c.snapMu.Unlock()
+	return c.snapshot.bind(c.dir, names...)
+}
+
+// bindPhase records every artifact one phase directory holds.
+func (c *coordinator) bindPhase(name string) *core.RefusalError {
+	c.snapMu.Lock()
+	defer c.snapMu.Unlock()
+	return c.snapshot.bindPhase(c.dir, name)
+}
+
+// artifacts is the digest map the launcher record carries. It is read after the
+// fan-in has joined; the read lock keeps that contract explicit.
+func (c *coordinator) artifacts() executionSnapshot {
+	c.snapMu.RLock()
+	defer c.snapMu.RUnlock()
+	return c.snapshot
 }
 
 // TwoFinders opts into the coordinator without changing the public CLI.
@@ -98,31 +133,69 @@ func resumeArguments(def *agentcatalog.Launch, args []string) bool {
 	return false
 }
 
-func (c *coordinator) discover(ctx context.Context, index int) *core.RefusalError {
-	name := fmt.Sprintf("x-finder-%d", index+1)
-	output, ref := phaseDirectory(c.dir, name)
-	if ref != nil {
-		return ref
+// finderPhase names one finder's phase directory, the literal path every
+// consumer of the launcher record already knows.
+func finderPhase(index int) string { return fmt.Sprintf("x-finder-%d", index+1) }
+
+// prepareDiscovery creates both phase directories and pins their procedures and
+// the evidence inventory in index order before either agent starts, so the two
+// launches begin from the same bytes and neither can see the other's writes.
+func (c *coordinator) prepareDiscovery() ([]*launchArgs, *core.RefusalError) {
+	args := make([]*launchArgs, finderCount)
+	for i := range finderCount {
+		output, ref := phaseDirectory(c.dir, finderPhase(i))
+		if ref != nil {
+			return nil, ref
+		}
+		if args[i], ref = c.discoveryArgs(output, i); ref != nil {
+			return nil, ref
+		}
 	}
-	args, ref := c.discoveryArgs(output, index)
-	if ref != nil {
-		return ref
+	if ref := c.check(); ref != nil {
+		return nil, ref
 	}
-	if ref := c.snapshot.check(c.dir); ref != nil {
-		return ref
-	}
-	c.response, ref = c.st.invoke(ctx, args, c.rounds)
+	return args, nil
+}
+
+// discoveryOutcome is one finder's contribution to the fan-in: its review, the
+// failure to record, and the refusal that ends the whole run. A worker writes
+// only its own outcome, so no two goroutines share a field.
+type discoveryOutcome struct {
+	ref      *core.RefusalError
+	response *core.RunResponse
+	review   *jq.Obj
+	worker   *state
+	failure  string
+	fatal    bool
+}
+
+// discoverPhase runs one finder's launch. A fatal refusal — a cancel, a
+// snapshot checkpoint, an unwritable phase, a phase that left a link — cancels
+// the sibling immediately; an agent's own failure is recorded and lets the
+// sibling finish, which is what keeps a partial execution partial.
+func (c *coordinator) discoverPhase(ctx context.Context, index int, args *launchArgs, worker *state,
+	cancel context.CancelFunc,
+) discoveryOutcome {
+	out := discoveryOutcome{worker: worker}
+	name := finderPhase(index)
+	out.response, out.ref = worker.invoke(ctx, args, c.rounds)
 	if drift := c.phaseEnded(ctx); drift != nil {
-		return drift
+		out.ref, out.fatal = drift, true
+		cancel()
+		return out
 	}
-	if ref != nil {
-		c.failed(name, ref.Code)
+	if out.ref != nil {
+		out.failure, out.ref = out.ref.Code, nil
 	}
-	c.reviews[index] = readDiscovery(args.abs)
-	if c.reviews[index] == nil && ref == nil {
-		c.failed(name, codeNoArtifact)
+	out.review = readDiscovery(args.abs)
+	if out.review == nil && out.failure == "" {
+		out.failure = codeNoArtifact
 	}
-	return c.snapshot.bindPhase(c.dir, name)
+	if bindRef := c.bindPhase(name); bindRef != nil {
+		out.ref, out.fatal = bindRef, true
+		cancel()
+	}
+	return out
 }
 
 func readDiscovery(path string) *jq.Obj {
@@ -146,7 +219,7 @@ func (c *coordinator) phaseEnded(ctx context.Context) *core.RefusalError {
 	if ctx.Err() != nil {
 		return c.st.refuse(codeCanceled, msgCanceled)
 	}
-	return c.snapshot.check(c.dir)
+	return c.check()
 }
 
 func (c *coordinator) failed(phase, code string) {
@@ -174,18 +247,18 @@ func (c *coordinator) freeze() *core.RefusalError {
 	c.plan.Set("head_sha", readcommon.OpenBundle(c.dir).Head())
 	c.plan.Set("diff_sha256", shaHex(diff))
 	c.plan.Set("review_sha256", shaHex(coordinatorBytes(c.review)))
-	planPath := filepath.Join("verification", "plan.json")
+	planPath := filepath.Join(verificationDir, "plan.json")
 	if ref := writeCoordinator(c.dir, planPath, c.plan); ref != nil {
 		return ref
 	}
 	c.binding = jq.NewObj("schema_version", "2", "execution_id", c.id, "head_sha", readcommon.OpenBundle(c.dir).Head(),
 		"diff_sha256", shaHex(diff), "review_sha256", shaHex(coordinatorBytes(c.review)),
 		"plan_sha256", shaHex(coordinatorBytes(c.plan)), "results", []any{})
-	return c.snapshot.bind(c.dir, reviewFile, planPath)
+	return c.bind(reviewFile, planPath)
 }
 
 func (c *coordinator) finish() *core.RefusalError {
-	if ref := writeCoordinator(c.dir, filepath.Join("verification", "verdicts.json"), c.binding); ref != nil {
+	if ref := writeCoordinator(c.dir, filepath.Join(verificationDir, "verdicts.json"), c.binding); ref != nil {
 		return ref
 	}
 	manifest := cloneUnionRow(c.binding)
@@ -194,7 +267,7 @@ func (c *coordinator) finish() *core.RefusalError {
 	setManifestBudget(manifest, c.st.budget)
 	manifest.Set("results", nil)
 	manifest.Set("failures", c.failures)
-	manifest.Set("artifacts", c.snapshot)
+	manifest.Set("artifacts", c.artifacts())
 	manifest.Set("profiles", []any{
 		jq.NewObj("finder", "finder-1", "profile", "contract-first"),
 		jq.NewObj("finder", "finder-2", "profile", "behavior-first"),
@@ -204,7 +277,7 @@ func (c *coordinator) finish() *core.RefusalError {
 		status = "partial"
 	}
 	manifest.Set("status", status)
-	if ref := c.snapshot.check(c.dir); ref != nil {
+	if ref := c.check(); ref != nil {
 		return ref
 	}
 	if ref := writeCoordinator(c.dir, launcherFile, manifest); ref != nil {
@@ -242,22 +315,86 @@ func (c *coordinator) validateAggregate() *core.RefusalError {
 	return nil
 }
 
+// runDiscovery launches both finders at once and merges what they left in index
+// order, so the run reads the same whatever order the agents happened to finish
+// in.
 func (c *coordinator) runDiscovery(ctx context.Context) *core.RefusalError {
-	for i := range finderCount {
-		if ref := c.discover(ctx, i); ref != nil {
-			return ref
-		}
+	args, ref := c.prepareDiscovery()
+	if ref != nil {
+		return ref
 	}
-	return nil
+	progress := &syncProgress{}
+	workers := make([]*state, finderCount)
+	for i := range finderCount {
+		workers[i] = c.st.phaseState(progress)
+	}
+	outcomes := make([]discoveryOutcome, finderCount)
+	phaseCtx, phaseCancel := context.WithCancel(ctx)
+	defer phaseCancel()
+	var wg sync.WaitGroup
+	for i := range finderCount {
+		wg.Go(func() {
+			outcomes[i] = c.discoverPhase(phaseCtx, i, args[i], workers[i], phaseCancel)
+		})
+	}
+	wg.Wait()
+	return c.mergeDiscovery(ctx, outcomes)
 }
 
-func (c *coordinator) runCross(ctx context.Context) *core.RefusalError {
-	for i := range finderCount {
-		if ref := c.cross(ctx, i); ref != nil {
-			return ref
+// mergeDiscovery folds both finders' outcomes in index order: warnings first,
+// then the cancel, the failures, the reviews, and the response the run reports,
+// and one final checkpoint over everything both agents wrote.
+func (c *coordinator) mergeDiscovery(ctx context.Context, outcomes []discoveryOutcome) *core.RefusalError {
+	for i := range outcomes {
+		c.st.replay(outcomes[i].worker)
+	}
+	if ref := canceledRefusal(ctx, c.st); ref != nil {
+		return ref
+	}
+	fatal := c.recordDiscoveries(outcomes)
+	if fatal != nil {
+		return fatal
+	}
+	return c.check()
+}
+
+// recordDiscoveries folds both finders' outcomes in index order and reports the
+// refusal that ends the run, if any.
+func (c *coordinator) recordDiscoveries(outcomes []discoveryOutcome) *core.RefusalError {
+	var fatal *core.RefusalError
+	for i := range outcomes {
+		fatal = mergeFatal(fatal, outcomes[i].ref)
+		c.reviews[i] = outcomes[i].review
+		if outcomes[i].failure != "" {
+			c.failed(finderPhase(i), outcomes[i].failure)
+		}
+		if outcomes[i].response != nil {
+			c.response = outcomes[i].response
 		}
 	}
-	return nil
+	return fatal
+}
+
+// canceledRefusal reports the operator's cancel, which outranks every phase's
+// own refusal and leaves nothing to merge: the run never finished.
+func canceledRefusal(ctx context.Context, st *state) *core.RefusalError {
+	if ctx.Err() == nil {
+		return nil
+	}
+	return st.refuse(codeCanceled, msgCanceled)
+}
+
+// mergeFatal keeps the refusal the run reports: the first real failure in
+// worker order, because the sibling that failure canceled only reports the
+// cancel it inherited.
+func mergeFatal(current, next *core.RefusalError) *core.RefusalError {
+	if next == nil {
+		return current
+	}
+	if current == nil || (current.Code == codeCanceled && next.Code != codeCanceled) {
+		return next
+	}
+	return current
 }
 
 func (c *coordinator) capture() *core.RefusalError {
@@ -297,7 +434,7 @@ func (c *coordinator) discoveryArgs(output string, index int) (*launchArgs, *cor
 		evidence: c.dir, output: output, procedure: filepath.Join(output, "procedure.md"),
 		artifact: reviewFile, checker: recordcore.CheckDiscovery,
 	}
-	if ref := c.snapshot.bind(c.dir, filepath.Join(filepath.Base(output), "procedure.md")); ref != nil {
+	if ref := c.bind(filepath.Join(filepath.Base(output), "procedure.md")); ref != nil {
 		return nil, ref
 	}
 	args, ref := c.st.argsForTarget(&c.base.def, c.base.timeout, target)
@@ -322,7 +459,7 @@ func (c *coordinator) aggregateResponse() {
 
 func (c *coordinator) checkpoint(output string) func() *core.RefusalError {
 	return func() *core.RefusalError {
-		if ref := c.snapshot.check(c.dir); ref != nil {
+		if ref := c.check(); ref != nil {
 			return ref
 		}
 		return rejectPhaseLinks(output)

@@ -4,7 +4,9 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -12,10 +14,15 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
+// phaseCommander scripts the finder and cross phases and logs every launch. The
+// log is guarded: the coordinator runs each pair of phases at once, so two
+// launches append to it from two goroutines.
 type phaseCommander struct {
 	t           *testing.T
 	dir         string
+	calls       map[string]int
 	phases      []string
+	mu          sync.Mutex
 	fail        bool
 	drift       bool
 	repair      bool
@@ -23,51 +30,121 @@ type phaseCommander struct {
 	crossBroken bool
 	tamper      bool
 	distinct    bool
+	outputDir   bool
 }
 
 func (p *phaseCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	manifest := readPhaseObject(p.t, filepath.Join(p.dir, "launcher.json"))
 	if readcommon.FieldOf(manifest, "status") != "in-progress" {
-		p.t.Fatal("final manifest was committed before launches finished")
+		p.t.Error("final manifest was committed before launches finished")
 	}
-	prompt := cmd.Argv[len(cmd.Argv)-1]
-	phase := ""
-	for _, name := range []string{"x-finder-1", "x-finder-2", "x-cross-1", "x-cross-2"} {
-		if strings.Contains(prompt, name) {
-			phase = name
-			break
-		}
+	phase, ok := phaseOf(cmd)
+	if !ok {
+		p.t.Errorf("unexpected argv: %q", cmd.Argv)
+		return core.Result{ExitCode: 2}, nil
 	}
-	if phase == "" {
-		p.t.Fatalf("unexpected argv: %q", cmd.Argv)
-	}
-	p.phases = append(p.phases, phase)
-	return p.writePhase(phase, cmd), nil
+	return p.writePhase(phase, p.record(phase), cmd), nil
 }
 
-func (p *phaseCommander) writePhase(phase string, cmd *core.Command) core.Result {
+// record logs one launch and reports how many times that phase has launched.
+func (p *phaseCommander) record(phase string) int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.calls == nil {
+		p.calls = map[string]int{}
+	}
+	p.calls[phase]++
+	p.phases = append(p.phases, phase)
+	return p.calls[phase]
+}
+
+// launched is a copy of the launch log, so a reader never walks a slice a
+// phase may still append to.
+func (p *phaseCommander) launched() []string {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return slices.Clone(p.phases)
+}
+
+// reset forgets the launch log, so a test can re-run the same fixture and read
+// the second run's launches alone.
+func (p *phaseCommander) reset() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.phases, p.calls = nil, nil
+}
+
+func (p *phaseCommander) phaseCalls(phase string) int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.calls[phase]
+}
+
+// phaseOf reads the phase directory out of the launched directive.
+func phaseOf(cmd *core.Command) (string, bool) {
+	prompt := cmd.Argv[len(cmd.Argv)-1]
+	for _, name := range []string{"x-finder-1", "x-finder-2", "x-cross-1", "x-cross-2"} {
+		if strings.Contains(prompt, name) {
+			return name, true
+		}
+	}
+	return "", false
+}
+
+func (p *phaseCommander) writePhase(phase string, attempt int, cmd *core.Command) core.Result {
 	p.changeEvidence(phase)
+	if p.outputDir {
+		p.makeOutputPathADirectory(phase)
+	}
 	if p.fail && phase == "x-finder-1" {
 		return core.Result{ExitCode: 7}
 	}
-	name, raw := "review.json", coordinatorReview
-	if p.distinct {
-		raw = strings.ReplaceAll(raw, "Changed value breaks the caller.", distinctClaim(phase))
-	}
-	if strings.HasPrefix(phase, "x-cross-") {
-		name, raw = "verdicts.json", p.crossReview(phase)
-	}
-	if p.repair && strings.HasPrefix(phase, "x-finder-") && phaseCalls(p.phases, phase) == 1 {
-		raw = `{"schema_version":"1","findings":"broken"}`
-	}
-	writeUnder(p.t, filepath.Join(p.dir, phase), name, raw)
+	writeUnder(p.t, filepath.Join(p.dir, phase), p.artifactName(phase), p.artifactBytes(phase, attempt))
 	if cmd.Dir != filepath.Dir(filepath.Dir(filepath.Dir(p.dir))) {
-		p.t.Fatalf("cwd = %q", cmd.Dir)
+		p.t.Errorf("cwd = %q", cmd.Dir)
 	}
 	return core.Result{}
 }
 
-func (p *phaseCommander) crossReview(phase string) string {
+// artifactName is the file one phase writes.
+func (p *phaseCommander) artifactName(phase string) string {
+	if strings.HasPrefix(phase, "x-cross-") {
+		return "verdicts.json"
+	}
+	return reviewFile
+}
+
+// artifactBytes renders the bytes one phase leaves, at the attempt it is on.
+func (p *phaseCommander) artifactBytes(phase string, attempt int) string {
+	if strings.HasPrefix(phase, "x-cross-") {
+		return p.crossReview(phase, attempt)
+	}
+	return p.finderReview(phase, attempt)
+}
+
+func (p *phaseCommander) finderReview(phase string, attempt int) string {
+	if p.repair && attempt == 1 {
+		return `{"schema_version":"1","findings":"broken"}`
+	}
+	if p.distinct {
+		return strings.ReplaceAll(coordinatorReview, "Changed value breaks the caller.", distinctClaim(phase))
+	}
+	return coordinatorReview
+}
+
+// makeOutputPathADirectory gives one phase a `.run.out` the launcher cannot
+// write, so that phase buffers a warning naming its own directory: the fan-in
+// then has two distinct warnings whose order it must decide.
+func (p *phaseCommander) makeOutputPathADirectory(phase string) {
+	if !strings.HasPrefix(phase, "x-finder-") || p.phaseCalls(phase) != 1 {
+		return
+	}
+	if err := os.MkdirAll(filepath.Join(p.dir, phase, runOutputFile), 0o700); err != nil {
+		p.t.Errorf("plant unwritable output path: %v", err)
+	}
+}
+
+func (p *phaseCommander) crossReview(phase string, attempt int) string {
 	request := readPhaseObject(p.t, filepath.Join(p.dir, phase, "request.json"))
 	candidates := jq.Elements(readcommon.FieldOf(request, "candidates"))
 	results := []any{}
@@ -77,7 +154,7 @@ func (p *phaseCommander) crossReview(phase string) string {
 		results = append(results, jq.NewObj("sig", readcommon.FieldOf(candidate, "sig"), "verdict", "confirmed",
 			"evidence", "The changed value violates the caller contract.", "quote", jq.NewObj("path", "a.go", "side", "RIGHT", "line", 1, "text", "new line 1")))
 	}
-	if p.crossBroken || (p.crossRepair && len(p.phases) == 3) {
+	if p.crossBroken || (p.crossRepair && phase == "x-cross-1" && attempt == 1) {
 		return `{"results":[]}`
 	}
 	return jq.PrettyOrdered(jq.NewObj("results", results))
@@ -118,10 +195,42 @@ func TestCoordinatorIsolatesAndCrossesBothOrigins(t *testing.T) {
 	if _, ref := TwoFinders(t.Context(), req); ref != nil {
 		t.Fatalf("%v manifest=%s", ref, jq.Compact(readPhaseObject(t, filepath.Join(commander.dir, "launcher.json"))))
 	}
-	if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1,x-cross-2" {
-		t.Fatalf("phases = %s", got)
-	}
+	assertPhaseGroups(t, commander.launched(),
+		[]string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1", "x-cross-2"})
 	assertCoordinatorArtifacts(t, commander.dir)
+}
+
+// assertPhaseGroups proves the launch log is the given groups in that group
+// order, each group in any order: the finder pair and the cross pair are
+// barriers, while the two launches inside a barrier overlap.
+func assertPhaseGroups(t *testing.T, phases []string, groups ...[]string) {
+	t.Helper()
+	at := 0
+	for _, group := range groups {
+		at = matchPhaseGroup(t, phases, at, group)
+	}
+	if at != len(phases) {
+		t.Fatalf("launches = %v, want %v", phases, groups)
+	}
+}
+
+// matchPhaseGroup consumes one barrier's launches: every position must be an
+// unconsumed member of the group, and the group may finish in any order.
+func matchPhaseGroup(t *testing.T, phases []string, at int, group []string) int {
+	t.Helper()
+	remaining := slices.Clone(group)
+	for range group {
+		if at >= len(phases) {
+			t.Fatalf("launches = %v, want one of %v next", phases, group)
+		}
+		found := slices.Index(remaining, phases[at])
+		if found < 0 {
+			t.Fatalf("launch %d is %q, want one of %v (log %v)", at, phases[at], group, phases)
+		}
+		remaining = slices.Delete(remaining, found, found+1)
+		at++
+	}
+	return at
 }
 
 func assertCoordinatorArtifacts(t *testing.T, dir string) {
@@ -163,9 +272,9 @@ func TestCoordinatorFailedFinderIsPartial(t *testing.T) {
 	if ref == nil || ref.Code != "review-insufficient" {
 		t.Fatalf("refusal = %v", ref)
 	}
-	if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1" {
-		t.Fatalf("phases = %s", got)
-	}
+	// The survived finder still owes its opposite check: only x-cross-1 has a
+	// candidate batch, so the failed finder's own check is never dispatched.
+	assertPhaseGroups(t, commander.launched(), []string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1"})
 	manifest := readPhaseObject(t, filepath.Join(commander.dir, "launcher.json"))
 	if readcommon.FieldOf(manifest, "status") != "partial" {
 		t.Fatal("failed finder completed execution")
@@ -178,8 +287,13 @@ func TestCoordinatorDriftStopsBeforeNextPhase(t *testing.T) {
 	commander.repair = true
 	req.RoundsRaw = "2"
 	_, ref := TwoFinders(t.Context(), req)
-	if ref == nil || ref.Code != "stale-review-artifact" || len(commander.phases) != 1 {
-		t.Fatalf("refusal=%v phases=%v", ref, commander.phases)
+	if ref == nil || ref.Code != "stale-review-artifact" {
+		t.Fatalf("refusal = %v", ref)
+	}
+	for _, phase := range commander.launched() {
+		if strings.HasPrefix(phase, "x-cross-") {
+			t.Fatalf("drift crossed: %v", commander.launched())
+		}
 	}
 	manifest := readPhaseObject(t, filepath.Join(commander.dir, "launcher.json"))
 	if readcommon.FieldOf(manifest, "status") != "in-progress" {
@@ -194,9 +308,8 @@ func TestCoordinatorRepairsFinderIndependently(t *testing.T) {
 	if _, ref := TwoFinders(t.Context(), req); ref != nil {
 		t.Fatal(ref)
 	}
-	if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-1,x-finder-2,x-finder-2,x-cross-1,x-cross-2" {
-		t.Fatalf("phases = %s", got)
-	}
+	assertPhaseGroups(t, commander.launched(),
+		[]string{"x-finder-1", "x-finder-1", "x-finder-2", "x-finder-2"}, []string{"x-cross-1", "x-cross-2"})
 }
 
 func TestCoordinatorRepairsCrossAtMostOnce(t *testing.T) {
@@ -206,19 +319,8 @@ func TestCoordinatorRepairsCrossAtMostOnce(t *testing.T) {
 	if _, ref := TwoFinders(t.Context(), req); ref != nil {
 		t.Fatal(ref)
 	}
-	if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1,x-cross-1,x-cross-2" {
-		t.Fatalf("phases = %s", got)
-	}
-}
-
-func phaseCalls(phases []string, phase string) int {
-	count := 0
-	for _, name := range phases {
-		if name == phase {
-			count++
-		}
-	}
-	return count
+	assertPhaseGroups(t, commander.launched(),
+		[]string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1", "x-cross-1", "x-cross-2"})
 }
 
 func TestCoordinatorExhaustsCrossRepairWithoutExtraLaunches(t *testing.T) {
@@ -229,17 +331,27 @@ func TestCoordinatorExhaustsCrossRepairWithoutExtraLaunches(t *testing.T) {
 	if ref == nil || ref.Code != "review-insufficient" {
 		t.Fatalf("refusal = %v", ref)
 	}
-	if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1,x-cross-1,x-cross-2,x-cross-2" {
-		t.Fatalf("phases = %s", got)
-	}
+	assertPhaseGroups(t, commander.launched(),
+		[]string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1", "x-cross-1", "x-cross-2", "x-cross-2"})
 }
 
+// TestCoordinatorDetectsChangedCompletedFinder proves a bound finder artifact
+// that changes underfoot refuses the run. The change lands during a cross
+// launch, which is where a parallel discovery can see it: both finders' phases
+// are bound by then, so the checkpoint that refuses is the running check's own.
 func TestCoordinatorDetectsChangedCompletedFinder(t *testing.T) {
 	req, commander := coordinatorFixture(t)
 	commander.tamper = true
 	_, ref := TwoFinders(t.Context(), req)
-	if ref == nil || ref.Code != "stale-review-artifact" || len(commander.phases) != 2 {
-		t.Fatalf("refusal=%v phases=%v", ref, commander.phases)
+	if ref == nil || ref.Code != "stale-review-artifact" {
+		t.Fatalf("refusal = %v", ref)
+	}
+	if _, err := os.Stat(filepath.Join(commander.dir, "verification", "verdicts.json")); !os.IsNotExist(err) {
+		t.Fatalf("tampered execution published verdicts: %v", err)
+	}
+	launched := commander.launched()
+	if slices.Contains(launched, "x-finder-1") == false || slices.Contains(launched, "x-finder-2") == false {
+		t.Fatalf("detection skipped a finder: %v", launched)
 	}
 }
 
@@ -280,13 +392,12 @@ func TestCoordinatorCrossDispatchesOnlyOppositeCandidates(t *testing.T) {
 	if _, ref := TwoFinders(t.Context(), req); ref != nil {
 		t.Fatal(ref)
 	}
-	if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1,x-cross-2" {
-		t.Fatalf("phases = %s", got)
-	}
+	assertPhaseGroups(t, commander.launched(),
+		[]string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1", "x-cross-2"})
 }
 
 func (p *phaseCommander) changeEvidence(phase string) {
-	if p.tamper && phase == "x-finder-2" {
+	if p.tamper && strings.HasPrefix(phase, "x-cross-") && p.phaseCalls(phase) == 1 {
 		writeUnder(p.t, filepath.Join(p.dir, "x-finder-1"), "review.json", `{"changed":true}`)
 	}
 	if p.drift {
@@ -300,7 +411,7 @@ func (p *phaseCommander) assertCrossCandidate(phase string, finding any) {
 		expected = oppositeClaim(phase)
 	}
 	if readcommon.FieldOf(finding, "claim") != expected {
-		p.t.Fatal("selected claim missing from cross batch")
+		p.t.Error("selected claim missing from cross batch")
 	}
 }
 
@@ -363,22 +474,21 @@ func assertResumePassThrough(t *testing.T, agent string, passThrough []string, r
 	req.Agent, req.PassThrough = agent, passThrough
 	_, ref := TwoFinders(t.Context(), req)
 	if refused {
-		if ref == nil || ref.Code != "bad-flags" || len(commander.phases) != 0 {
-			t.Fatalf("refusal = %v, phases = %v", ref, commander.phases)
+		if ref == nil || ref.Code != "bad-flags" || len(commander.launched()) != 0 {
+			t.Fatalf("refusal = %v, launches = %v", ref, commander.launched())
 		}
 		return
 	}
 	if ref != nil {
 		t.Fatalf("pass-through refused: %v", ref)
 	}
-	if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1,x-cross-2" {
-		t.Fatalf("phases = %s", got)
-	}
+	assertPhaseGroups(t, commander.launched(),
+		[]string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1", "x-cross-2"})
 }
 
 func TestCoordinatorHandsOffTheAggregateBundle(t *testing.T) {
 	req, commander := completedExecution(t)
-	commander.phases = nil
+	commander.reset()
 	response, ref := Run(t.Context(), req)
 	if ref != nil {
 		t.Fatal(ref)

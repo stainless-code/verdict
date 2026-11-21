@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/agentcatalog"
@@ -422,12 +423,39 @@ func probeFailure(pctx context.Context, out string, res core.Result, err error, 
 
 type state struct { //nolint:govet // request first: the service reads one invocation
 	req         *core.RunRequest
-	argSecrets  []string
+	progress    *syncProgress
 	drainDigest string
 	warnings    []string
 	defs        []config.PersonalAgent
 	budget      *core.ReviewBudget
 	twoFinders  bool
+}
+
+// syncProgress is the one lock the parallel phases share: it serializes their
+// human lines, while each worker keeps its warnings to itself for a
+// deterministic replay after the join.
+type syncProgress struct {
+	mu sync.Mutex
+}
+
+// phaseState gives one discovery or cross worker a copy of the run state: its
+// own warning buffer and the shared progress lock, so neither worker appends to
+// the other's slice or to the coordinator's.
+func (st *state) phaseState(progress *syncProgress) *state {
+	worker := *st
+	worker.warnings = nil
+	worker.progress = progress
+	return &worker
+}
+
+// replay folds one worker's buffered warnings into the run's, in worker order.
+func (st *state) replay(worker *state) {
+	if worker == nil {
+		return
+	}
+	for _, warning := range worker.warnings {
+		st.warn(warning)
+	}
 }
 
 type launchTarget struct {
@@ -533,15 +561,23 @@ func formatUSD(value float64) string {
 
 func (st *state) warn(msg string) {
 	st.warnings = append(st.warnings, msg)
-	if st.req.Runtime != nil {
-		st.req.Warn(msg)
+	if st.progress != nil || st.req.Runtime == nil {
+		return
 	}
+	st.req.Warn(msg)
 }
 
+// human emits one operator-facing line, serialized while parallel phases run so
+// two agents' lines never interleave mid-line.
 func (st *state) human(line string) {
-	if st.req.Runtime != nil {
-		st.req.Human(line)
+	if st.req.Runtime == nil {
+		return
 	}
+	if st.progress != nil {
+		st.progress.mu.Lock()
+		defer st.progress.mu.Unlock()
+	}
+	st.req.Human(line)
 }
 
 // now reads the injected clock, defaulting to the wall clock.
@@ -716,7 +752,8 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 	bin := args.bin
 	started := st.now()
 	rec := st.launchRecord(args, bin, started)
-	rec.Argv, st.argSecrets = st.displayArgv(args)
+	argv, argSecrets := st.displayArgv(args)
+	rec.Argv = argv
 	launched, ref := writeLauncher(filepath.Join(args.dir, launcherFile), rec)
 	if ref != nil {
 		return nil, ref
@@ -730,7 +767,7 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 	if salvageAllowed(ctx, res, err) && st.salvageReview(args, res.Stdout) {
 		rec.Salvaged = true
 	}
-	return st.finish(ctx, args, rec, launched, started, res, err, nil)
+	return st.finish(ctx, args, rec, launched, started, res, err, nil, argSecrets)
 }
 
 // resolve finds the agent binary on PATH. "Not installed" is the launcher's
@@ -768,16 +805,22 @@ func (st *state) spawn(ctx context.Context, argv []string, timeout int) (*core.R
 	tctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
 	res, err := commander.Run(tctx, &core.Command{
-		Argv:      argv,
-		Env:       st.childEnv(),
-		Dir:       st.workDir(),
-		OutputCap: coreexec.VerifyOutputCap,
+		Argv:        argv,
+		Env:         st.childEnv(),
+		Dir:         st.workDir(),
+		OutputCap:   coreexec.VerifyOutputCap,
+		GracePeriod: agentGracePeriod,
 	})
 	if err != nil {
 		return nil, err //nolint:wrapcheck // spawn failures are mapped by the caller, never reworded
 	}
 	return &res, nil
 }
+
+// agentGracePeriod is how long an agent's process group gets to finish after
+// the watchdog's stop signal, so a child that flushes its review on SIGTERM is
+// not killed mid-write. Every other verb keeps the immediate kill.
+const agentGracePeriod = 5 * time.Second
 
 // errNoCommander is the launcher's own wiring failure: no scripted or
 // production commander reached the service.
@@ -800,7 +843,8 @@ func (st *state) commander() core.Commander {
 }
 
 // childEnv is the ordered process environment the agent inherits, with NO_COLOR
-// forced under --json so a machine-only run cannot gain escape codes.
+// forced under --json so a machine-only run cannot gain escape codes. The clone
+// keeps the append off the request's backing array, which parallel phases read.
 func (st *state) childEnv() []string {
 	env := st.req.Environ
 	if !st.req.JSONMode {
@@ -811,7 +855,7 @@ func (st *state) childEnv() []string {
 			return env
 		}
 	}
-	return append(env, "NO_COLOR=1")
+	return append(slices.Clone(env), "NO_COLOR=1")
 }
 
 // finish writes the outcome record and turns the observations into the run's
@@ -819,12 +863,12 @@ func (st *state) childEnv() []string {
 // assertion. res is nil when no process ever started. rep carries the
 // repair-loop attempts, nil on a one-shot run.
 func (st *state) finish(ctx context.Context, args *launchArgs, rec *launcher, launched, started time.Time,
-	res *core.Result, spawnErr error, rep *core.RunRepair,
+	res *core.Result, spawnErr error, rep *core.RunRepair, argSecrets []string,
 ) (*core.RunResponse, *core.RefusalError) {
 	art := inspectArtifact(args.abs, launched)
 	ref := st.verdict(ctx, args, res, spawnErr, art)
 	ended := st.now()
-	if writeRef := st.recordOutcome(rec, args.dir, ended, started, res, art, rep); writeRef != nil {
+	if writeRef := st.recordOutcome(rec, args.dir, ended, started, res, art, rep, argSecrets); writeRef != nil {
 		if ref == nil {
 			ref = writeRef
 		} else {
@@ -916,14 +960,14 @@ func (st *state) artifactRefusal(args *launchArgs, art artifactState) *core.Refu
 // shape, the timings, and the exit code; the full stream stays in .run.out
 // for the operator. A non-nil rep adds the repair-loop profile and attempts.
 func (st *state) recordOutcome(rec *launcher, dir string, ended, started time.Time,
-	res *core.Result, art artifactState, rep *core.RunRepair,
+	res *core.Result, art artifactState, rep *core.RunRepair, argSecrets []string,
 ) *core.RefusalError {
 	if res != nil {
 		output := res.Stdout + res.Stderr
 		if err := writeRunOutput(filepath.Join(dir, runOutputFile), output); err != nil {
 			st.warn(err.Error())
 		}
-		rec.OutputTail = st.tail(output)
+		rec.OutputTail = st.tail(output, argSecrets)
 		rec.Exit = &res.ExitCode
 		rec.TimedOut = &res.TimedOut
 	}
@@ -947,8 +991,8 @@ func (st *state) recordOutcome(rec *launcher, dir string, ended, started time.Ti
 // recorded argv hid, because a child that echoes its own argv prints the very
 // credential the operator typed after `--`. The full stream stays in .run.out,
 // the way verify keeps .verify.out raw for the operator.
-func (st *state) tail(output string) string {
-	return scrubSecrets(tailOf(output, tailCap), st.req.Environ, st.argSecrets)
+func (st *state) tail(output string, argSecrets []string) string {
+	return scrubSecrets(tailOf(output, tailCap), st.req.Environ, argSecrets)
 }
 
 // response is the successful run's envelope data plus the handoff line.
