@@ -332,10 +332,6 @@ func TestCoordinatorPublishesPartialFailures(t *testing.T) {
 	}
 }
 
-// TestCoordinatorRefusesSessionResumePerAgent proves the fresh-process guard
-// reads the selected agent's own vocabulary: Codex continues a session with a
-// `resume` subcommand (and spells `-c` as a config override, which must pass
-// through), while Claude continues with `-c`.
 func TestCoordinatorRefusesSessionResumePerAgent(t *testing.T) {
 	cases := []struct {
 		name        string
@@ -380,9 +376,6 @@ func assertResumePassThrough(t *testing.T, agent string, passThrough []string, r
 	}
 }
 
-// TestCoordinatorHandsOffTheAggregateBundle proves the response's next step is
-// read from the bundle the coordinator wrote, not from a finder's phase
-// directory: a local bundle hands off to record, never to post.
 func TestCoordinatorHandsOffTheAggregateBundle(t *testing.T) {
 	req, commander := completedExecution(t)
 	commander.phases = nil

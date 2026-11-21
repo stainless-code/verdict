@@ -45,8 +45,6 @@ func discoveryUnion(execution string, diff []byte, reviews []*jq.Obj) (*jq.Obj, 
 	return renderUnion(execution, candidates, attestations)
 }
 
-// mergeReview folds one finder's review into the union: its findings and the
-// read attestations the aggregate owes.
 func mergeReview(candidates map[string]*unionCandidate, idx *evidence.DiffIndex,
 	attestations *unionAttestations, index int, review *jq.Obj,
 ) error {
@@ -200,7 +198,6 @@ func unionRows(ordered []*unionCandidate) ([]any, []any, []any) {
 	return findings, checks, sources
 }
 
-// unionChecks directs one opposite-finder check at each origin of a signature.
 func unionChecks(candidate *unionCandidate) []any {
 	checks := make([]any, 0, len(candidate.origins))
 	for _, origin := range candidate.origins {

@@ -263,9 +263,6 @@ func checkProblems(t *testing.T, res recordcore.CheckResult, want int) {
 	}
 }
 
-// TestCheckReviewRefusesEmptyExecutionID proves the checkbox matches the
-// published review schema: execution.id closes with minLength 1, so an empty id
-// is as unusable as an absent one.
 func TestCheckReviewRefusesEmptyExecutionID(t *testing.T) {
 	review := `{"schema_version":"2","execution":{"id":"","finders":2},"findings":[],"summary":"A short summary of the clean review."}`
 	res := recordcore.CheckReview([]byte(review), checkDiff)
@@ -274,9 +271,6 @@ func TestCheckReviewRefusesEmptyExecutionID(t *testing.T) {
 	}
 }
 
-// TestCheckReviewRepairHintUsesSelectedVersion proves every schema_version
-// diagnostic hands back the version the document itself selects: following a
-// "1" hint on an aggregate review repeats the failure.
 func TestCheckReviewRepairHintUsesSelectedVersion(t *testing.T) {
 	cases := []struct {
 		name   string

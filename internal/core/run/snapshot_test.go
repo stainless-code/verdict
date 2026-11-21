@@ -8,13 +8,8 @@ import (
 	"testing"
 )
 
-// auxArtifactMiB is the size of the auxiliary finder artifact the streaming
-// test binds: no phase file is size-capped, so the checkpoint has to hash one
-// this large without holding it.
 const auxArtifactMiB = 32
 
-// TestSnapshotCheckStreamsPhaseArtifacts proves the checkpoint hashes a phase
-// artifact instead of loading it, and still notices a changed byte in it.
 func TestSnapshotCheckStreamsPhaseArtifacts(t *testing.T) {
 	dir, phase, big := bigPhaseArtifact(t)
 	snapshot := executionSnapshot{}
@@ -35,7 +30,6 @@ func TestSnapshotCheckStreamsPhaseArtifacts(t *testing.T) {
 	}
 }
 
-// bigPhaseArtifact writes one uncapped phase artifact of auxArtifactMiB.
 func bigPhaseArtifact(t *testing.T) (string, string, []byte) {
 	t.Helper()
 	dir := t.TempDir()
@@ -50,7 +44,6 @@ func bigPhaseArtifact(t *testing.T) (string, string, []byte) {
 	return dir, phase, big
 }
 
-// checkAllocation reports how many bytes one snapshot check allocated.
 func checkAllocation(t *testing.T, snapshot executionSnapshot, dir string) uint64 {
 	t.Helper()
 	runtime.GC()
