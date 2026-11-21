@@ -12,8 +12,9 @@ import (
 )
 
 // benchOverviewShapes spans the multi-file gate, a review-scale PR, and a
-// monorepo-sized one.
-var benchOverviewShapes = []int{defaultMaxFiles + 1, 200, 2000}
+// monorepo-sized one. The first shape is one file past the built-in 8-file
+// gate.
+var benchOverviewShapes = []int{9, 200, 2000}
 
 func benchSectionHead(i int) string {
 	return fmt.Sprintf("diff --git a/pkg/f%04d.txt b/pkg/f%04d.txt\n"+

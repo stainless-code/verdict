@@ -1,4 +1,4 @@
-package reportcore
+package diagram
 
 import (
 	"slices"
@@ -7,10 +7,10 @@ import (
 	"testing"
 )
 
-func linearOverviewEdges(rows []fileRowShape, added [][2]string) []overviewEdge {
+func linearEdges(rows []File, added [][2]string) []Edge {
 	freq, index := linearEdgeTargets(rows)
 	seen := map[[2]int]bool{}
-	var edges []overviewEdge
+	var edges []Edge
 	for _, add := range added {
 		if cur, ok := index[add[0]]; ok {
 			edges = appendLinearMentionEdges(edges, rows, freq, seen, cur, add[1])
@@ -20,41 +20,41 @@ func linearOverviewEdges(rows []fileRowShape, added [][2]string) []overviewEdge 
 }
 
 func appendLinearMentionEdges(
-	edges []overviewEdge, rows []fileRowShape, freq map[string]int,
+	edges []Edge, rows []File, freq map[string]int,
 	seen map[[2]int]bool, cur int, line string,
-) []overviewEdge {
+) []Edge {
 	for j, row := range rows {
 		key := [2]int{cur, j}
-		if j == cur || seen[key] || !linearMentions(line, row.path, freq[linearBaseName(row.path)] == 1) {
+		if j == cur || seen[key] || !linearMentions(line, row.Path, freq[linearBaseName(row.Path)] == 1) {
 			continue
 		}
 		seen[key] = true
-		edges = append(edges, overviewEdge{
-			from:  rows[cur].id,
-			to:    row.id,
-			label: linearEdgeLabel(rows[cur], row, freq),
+		edges = append(edges, Edge{
+			From:  rows[cur].ID,
+			To:    row.ID,
+			Label: linearEdgeLabel(rows[cur], row, freq),
 		})
 	}
 	return edges
 }
 
-func linearEdgeTargets(rows []fileRowShape) (map[string]int, map[string]int) {
+func linearEdgeTargets(rows []File) (map[string]int, map[string]int) {
 	freq := map[string]int{}
 	index := map[string]int{}
 	for i, row := range rows {
-		freq[linearBaseName(row.path)]++
-		index[row.path] = i
+		freq[linearBaseName(row.Path)]++
+		index[row.Path] = i
 	}
 	return freq, index
 }
 
-func linearEdgeLabel(src, dst fileRowShape, freq map[string]int) string {
-	target := dst.path
-	if freq[linearBaseName(dst.path)] == 1 {
-		target = linearBaseName(dst.path)
+func linearEdgeLabel(src, dst File, freq map[string]int) string {
+	target := dst.Path
+	if freq[linearBaseName(dst.Path)] == 1 {
+		target = linearBaseName(dst.Path)
 	}
 	relation := "uses "
-	if src.role == "test" || src.role == "config" {
+	if src.Role == "test" || src.Role == "config" {
 		relation = "validates "
 	}
 	return relation + target
@@ -74,18 +74,18 @@ func linearBaseName(path string) string {
 	return path
 }
 
-type overviewEquivalenceCase struct {
+type topologyEquivalenceCase struct {
 	name  string
-	rows  []fileRowShape
+	rows  []File
 	added [][2]string
 }
 
-func overviewEquivalenceCases() []overviewEquivalenceCase {
-	return []overviewEquivalenceCase{
+func topologyEquivalenceCases() []topologyEquivalenceCase {
+	return []topologyEquivalenceCase{
 		{name: "empty", rows: nil, added: nil},
 		{
 			name: "empty path row",
-			rows: []fileRowShape{{id: "F1", path: ""}, {id: "F2", path: "a.txt"}},
+			rows: []File{{ID: "F1", Path: ""}, {ID: "F2", Path: "a.txt"}},
 			added: [][2]string{
 				{"a.txt", "anything"},
 				{"a.txt", ""},
@@ -94,7 +94,7 @@ func overviewEquivalenceCases() []overviewEquivalenceCase {
 		},
 		{
 			name: "duplicate paths",
-			rows: []fileRowShape{{id: "F1", path: "p/a.go"}, {id: "F2", path: "p/a.go"}, {id: "F3", path: "q"}},
+			rows: []File{{ID: "F1", Path: "p/a.go"}, {ID: "F2", Path: "p/a.go"}, {ID: "F3", Path: "q"}},
 			added: [][2]string{
 				{"p/a.go", "see p/a.go"},
 				{"p/a.go", "see p/a.go and q"},
@@ -102,7 +102,7 @@ func overviewEquivalenceCases() []overviewEquivalenceCase {
 		},
 		{
 			name: "shared basename",
-			rows: []fileRowShape{{id: "F1", path: "x/a.go"}, {id: "F2", path: "y/a.go"}},
+			rows: []File{{ID: "F1", Path: "x/a.go"}, {ID: "F2", Path: "y/a.go"}},
 			added: [][2]string{
 				{"x/a.go", "a.go"},
 				{"x/a.go", "x/a.go"},
@@ -111,7 +111,7 @@ func overviewEquivalenceCases() []overviewEquivalenceCase {
 		},
 		{
 			name: "unique basename",
-			rows: []fileRowShape{{id: "F1", path: "x/b.go"}, {id: "F2", path: "c.go"}},
+			rows: []File{{ID: "F1", Path: "x/b.go"}, {ID: "F2", Path: "c.go"}},
 			added: [][2]string{
 				{"x/b.go", "b.go"},
 				{"x/b.go", "x/b.go"},
@@ -120,7 +120,7 @@ func overviewEquivalenceCases() []overviewEquivalenceCase {
 		},
 		{
 			name: "trailing slash empty base",
-			rows: []fileRowShape{{id: "F1", path: "dir/"}, {id: "F2", path: "file.go"}},
+			rows: []File{{ID: "F1", Path: "dir/"}, {ID: "F2", Path: "file.go"}},
 			added: [][2]string{
 				{"dir/", "anything at all"},
 				{"file.go", "file.go"},
@@ -128,7 +128,7 @@ func overviewEquivalenceCases() []overviewEquivalenceCase {
 		},
 		{
 			name: "shared empty base",
-			rows: []fileRowShape{{id: "F1", path: "one/"}, {id: "F2", path: "two/"}},
+			rows: []File{{ID: "F1", Path: "one/"}, {ID: "F2", Path: "two/"}},
 			added: [][2]string{
 				{"one/", "anything at all"},
 				{"one/", "one/"},
@@ -137,7 +137,7 @@ func overviewEquivalenceCases() []overviewEquivalenceCase {
 		},
 		{
 			name: "unicode",
-			rows: []fileRowShape{{id: "F1", path: "pkg/é.txt"}, {id: "F2", path: "pkg/ß.txt"}},
+			rows: []File{{ID: "F1", Path: "pkg/é.txt"}, {ID: "F2", Path: "pkg/ß.txt"}},
 			added: [][2]string{
 				{"pkg/é.txt", "é.txt"},
 				{"pkg/ß.txt", "pkg/ß.txt"},
@@ -145,7 +145,7 @@ func overviewEquivalenceCases() []overviewEquivalenceCase {
 		},
 		{
 			name: "seen dedupes per source target pair",
-			rows: []fileRowShape{{id: "F1", path: "a.go"}, {id: "F2", path: "b.go"}},
+			rows: []File{{ID: "F1", Path: "a.go"}, {ID: "F2", Path: "b.go"}},
 			added: [][2]string{
 				{"a.go", "b.go and b.go"},
 				{"a.go", "a.go and b.go"},
@@ -154,7 +154,7 @@ func overviewEquivalenceCases() []overviewEquivalenceCase {
 		},
 		{
 			name: "cur missing",
-			rows: []fileRowShape{{id: "F1", path: "a.go"}},
+			rows: []File{{ID: "F1", Path: "a.go"}},
 			added: [][2]string{
 				{"missing.go", "a.go"},
 				{"a.go", "a.go"},
@@ -162,7 +162,7 @@ func overviewEquivalenceCases() []overviewEquivalenceCase {
 		},
 		{
 			name: "no slash",
-			rows: []fileRowShape{{id: "F1", path: "Makefile"}, {id: "F2", path: "make"}},
+			rows: []File{{ID: "F1", Path: "Makefile"}, {ID: "F2", Path: "make"}},
 			added: [][2]string{
 				{"Makefile", "make Makefile"},
 				{"make", "Makefile"},
@@ -170,7 +170,7 @@ func overviewEquivalenceCases() []overviewEquivalenceCase {
 		},
 		{
 			name: "path is substring of another path",
-			rows: []fileRowShape{{id: "F1", path: "a.go"}, {id: "F2", path: "aa.go"}, {id: "F3", path: "aaa.go"}},
+			rows: []File{{ID: "F1", Path: "a.go"}, {ID: "F2", Path: "aa.go"}, {ID: "F3", Path: "aaa.go"}},
 			added: [][2]string{
 				{"a.go", "aaa.go"},
 				{"aaa.go", "a.go"},
@@ -179,7 +179,7 @@ func overviewEquivalenceCases() []overviewEquivalenceCase {
 		},
 		{
 			name: "overlapping patterns",
-			rows: []fileRowShape{{id: "F1", path: "f.txt"}, {id: "F2", path: "x/f.txt"}, {id: "F3", path: "x/f.txt.bak"}},
+			rows: []File{{ID: "F1", Path: "f.txt"}, {ID: "F2", Path: "x/f.txt"}, {ID: "F3", Path: "x/f.txt.bak"}},
 			added: [][2]string{
 				{"f.txt", "x/f.txt.bak"},
 				{"x/f.txt", "x/f.txt.bak and f.txt"},
@@ -187,10 +187,10 @@ func overviewEquivalenceCases() []overviewEquivalenceCase {
 		},
 		{
 			name: "repeated source lines",
-			rows: []fileRowShape{
-				{id: "F1", path: "src/a.go", role: "test"},
-				{id: "F2", path: "src/b.go", role: "config"},
-				{id: "F3", path: "src/c.go", role: "src"},
+			rows: []File{
+				{ID: "F1", Path: "src/a.go", Role: "test"},
+				{ID: "F2", Path: "src/b.go", Role: "config"},
+				{ID: "F3", Path: "src/c.go", Role: "src"},
 			},
 			added: [][2]string{
 				{"src/a.go", "b.go"},
@@ -202,13 +202,13 @@ func overviewEquivalenceCases() []overviewEquivalenceCase {
 	}
 }
 
-// TestOverviewEdgesMatchLinearScan pins the indexed scan to the linear
+// TestEdgesMatchLinearScan pins the indexed scan to the linear
 // implementation it replaced, including the empty-path and hash-edge cases.
-func TestOverviewEdgesMatchLinearScan(t *testing.T) {
-	for _, tc := range overviewEquivalenceCases() {
+func TestEdgesMatchLinearScan(t *testing.T) {
+	for _, tc := range topologyEquivalenceCases() {
 		t.Run(tc.name, func(t *testing.T) {
-			got := overviewEdges(tc.rows, tc.added)
-			want := linearOverviewEdges(tc.rows, tc.added)
+			got := Edges(tc.rows, tc.added)
+			want := linearEdges(tc.rows, tc.added)
 			if !slices.Equal(got, want) {
 				t.Fatalf("edges differ\n got: %v\nwant: %v", got, want)
 			}
@@ -244,20 +244,20 @@ func randomEquivalenceWord(rng *equivalenceRand) string {
 	return sb.String()
 }
 
-func randomEquivalenceRows(rng *equivalenceRand) []fileRowShape {
+func randomEquivalenceRows(rng *equivalenceRand) []File {
 	roles := []string{"src", "test", "config"}
-	rows := make([]fileRowShape, rng.intN(20))
+	rows := make([]File, rng.intN(20))
 	for i := range rows {
-		rows[i] = fileRowShape{
-			id:   "F" + strconv.Itoa(i+1),
-			path: randomEquivalencePath(rng),
-			role: roles[rng.intN(len(roles))],
+		rows[i] = File{
+			ID:   "F" + strconv.Itoa(i+1),
+			Path: randomEquivalencePath(rng),
+			Role: roles[rng.intN(len(roles))],
 		}
 	}
 	return rows
 }
 
-func randomEquivalenceLine(rng *equivalenceRand, rows []fileRowShape) string {
+func randomEquivalenceLine(rng *equivalenceRand, rows []File) string {
 	switch rng.intN(6) {
 	case 0:
 		return ""
@@ -267,13 +267,13 @@ func randomEquivalenceLine(rng *equivalenceRand, rows []fileRowShape) string {
 		return randomEquivalenceWord(rng)
 	case 3:
 		if len(rows) > 0 {
-			return "see " + linearBaseName(rows[rng.intN(len(rows))].path) + " here"
+			return "see " + linearBaseName(rows[rng.intN(len(rows))].Path) + " here"
 		}
 	}
 	var sb strings.Builder
 	for range rng.intN(5) {
 		if len(rows) > 0 && rng.intN(3) == 0 {
-			_, _ = sb.WriteString(rows[rng.intN(len(rows))].path)
+			_, _ = sb.WriteString(rows[rng.intN(len(rows))].Path)
 			continue
 		}
 		_, _ = sb.WriteString(randomEquivalenceWord(rng))
@@ -297,30 +297,30 @@ func (r *equivalenceRand) intN(n int) int {
 	return int(r.next() % uint64(n))
 }
 
-func randomEquivalenceAdded(rng *equivalenceRand, rows []fileRowShape) [][2]string {
+func randomEquivalenceAdded(rng *equivalenceRand, rows []File) [][2]string {
 	added := make([][2]string, rng.intN(20))
 	for i := range added {
 		path := "missing/go.go"
 		if len(rows) > 0 && rng.intN(4) != 0 {
-			path = rows[rng.intN(len(rows))].path
+			path = rows[rng.intN(len(rows))].Path
 		}
 		added[i] = [2]string{path, randomEquivalenceLine(rng, rows)}
 	}
 	return added
 }
 
-// TestOverviewEdgesIndexedScan covers the rolling-hash path selected once the
+// TestEdgesIndexedScan covers the rolling-hash path selected once the
 // pattern count passes the linear threshold.
-func TestOverviewEdgesIndexedScan(t *testing.T) {
-	rows := make([]fileRowShape, 40)
+func TestEdgesIndexedScan(t *testing.T) {
+	rows := make([]File, 40)
 	for i := range rows {
-		rows[i] = fileRowShape{
-			id:   "F" + strconv.Itoa(i+1),
-			path: "pkg/d" + strconv.Itoa(i%5) + "/f" + strconv.Itoa(i) + ".go",
+		rows[i] = File{
+			ID:   "F" + strconv.Itoa(i+1),
+			Path: "pkg/d" + strconv.Itoa(i%5) + "/f" + strconv.Itoa(i) + ".go",
 		}
 	}
-	rows[0].path = "pkg/d0/shared.go"
-	rows[10].path = "pkg/d1/shared.go"
+	rows[0].Path = "pkg/d0/shared.go"
+	rows[10].Path = "pkg/d1/shared.go"
 	added := [][2]string{
 		{"pkg/d0/shared.go", "see f1.go and f2.go"},
 		{"pkg/d1/f1.go", "pkg/d2/f2.go then pkg/d1/f1.go"},
@@ -331,8 +331,8 @@ func TestOverviewEdgesIndexedScan(t *testing.T) {
 		{"pkg/d6/f6.go", "f0.go"},
 		{"pkg/d7/f7.go", ""},
 	}
-	got := overviewEdges(rows, added)
-	want := linearOverviewEdges(rows, added)
+	got := Edges(rows, added)
+	want := linearEdges(rows, added)
 	if !slices.Equal(got, want) {
 		t.Fatalf("edges differ\n got: %v\nwant: %v", got, want)
 	}
@@ -362,15 +362,15 @@ func TestMentionIndexHashCollisions(t *testing.T) {
 	}
 }
 
-// TestOverviewEdgesRandomizedEquivalence fuzzes paths, roles, and lines with a
+// TestEdgesRandomizedEquivalence fuzzes paths, roles, and lines with a
 // fixed seed so failures reproduce.
-func TestOverviewEdgesRandomizedEquivalence(t *testing.T) {
+func TestEdgesRandomizedEquivalence(t *testing.T) {
 	rng := &equivalenceRand{state: 1}
 	for i := range 300 {
 		rows := randomEquivalenceRows(rng)
 		added := randomEquivalenceAdded(rng, rows)
-		got := overviewEdges(rows, added)
-		want := linearOverviewEdges(rows, added)
+		got := Edges(rows, added)
+		want := linearEdges(rows, added)
 		if !slices.Equal(got, want) {
 			t.Fatalf("case %d rows=%v added=%v\n got: %v\nwant: %v", i, rows, added, got, want)
 		}

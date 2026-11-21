@@ -3275,33 +3275,51 @@ Findings link to code instead of pasting it: verdict renders each site as a refe
 
 ## Change overview (file table + topology)
 
-Large diffs get a script-computed overview in `report --output`: a collapsed
-file table (`#`, file, `+/-`, hunks, role) plus a collapsed `flowchart TD`
-topology (`PR` node → file nodes, with `uses`/`validates` edges only where an
-added diff line names another changed file — unknown relations are omitted,
-never invented). Shown collapsed when the bundle holds more than 8 files or
-the diff exceeds 24KB (24576 bytes); smaller diffs render byte-identical
-output with no overview block. Every table row carries a stable `F1..Fn` id
-reserved for future prose annotation — prose would decorate, never replace,
-so the table renders identically with or without it. Model one-liners are
-explicitly out (a future slice with its own trigger decides those). All cells
-and edges derive from the owned bundle stores — file list and deltas from
-`PR.json`/diff headers, hunk counts from `hunks.tsv`, roles from `roles.txt`;
-no tokens are spent and nothing is hallucinated. Knobs: `publish.overview`
-(bool, default `true`) gates the feature and `REVIEW_PUBLISH_OVERVIEW` env
-does the same; `--overview` forces it on and `--no-overview` forces it off
-(flags win over file over env). With the block on,
-`publish.diagrams.structural` (bool, default `true`) gates the topology half
-— `false` renders the table alone. Posted agent bodies never carry the block
-— `report --output` is its only home, so one truth never forks into two.
+Large diffs get a script-computed overview: a collapsed file table (`#`, file,
+`+/-`, hunks, role) plus a collapsed `flowchart TD` topology (`PR` node → file
+nodes, with `uses`/`validates` edges only where an added diff line names
+another changed file — unknown relations are omitted, never invented). One
+builder under `internal/diagram` feeds both surfaces, so the block cannot fork
+into two truths: `report --output` renders the table and the topology, and
+`record`/`post` render the same topology block in the review body. Both label
+it `<summary>Change topology (computed from the diff)</summary>`. Shown
+collapsed when the bundle holds more than 8 files or the diff exceeds
+24KB (24576 bytes); smaller diffs render byte-identical output with no overview
+block, and a small PR's review body keeps exactly the bytes it always had.
+Every table row carries a stable `F1..Fn` id reserved for future prose
+annotation — prose would decorate, never replace, so the table renders
+identically with or without it. Model one-liners are explicitly out (a future
+slice with its own trigger decides those). All cells and edges derive from the
+owned bundle stores — file list and deltas from `PR.json`/diff headers, hunk
+counts from `hunks.tsv`, roles from `roles.txt`; no tokens are spent and
+nothing is hallucinated. Caps keep a block postable: at most 60 file nodes and
+60 edges in bundle order, one label shortened to 180 bytes so a deep monorepo
+path cannot spend the room the whole graph needs, and a 12,000-byte ceiling
+that drops whole nodes or edges before it ever reaches the fences — plus one
+legal mermaid comment inside the fence (`%% 9 more files and 41 more edges
+omitted (bundle order)`) naming what the caps left out. Edges only ever join
+nodes the block renders, so a truncated graph never points at a node it did
+not draw, and the posted-body splitter treats a `<details>` region as one
+unit, so a 65,536-byte split never cuts the block in half. Knobs:
+`publish.overview` (bool, default `true`) gates the feature and
+`REVIEW_PUBLISH_OVERVIEW` env does the same; `--overview` forces it on and
+`--no-overview` forces it off (flags win over file over env). With the
+block on, `publish.diagrams.structural` (bool, default `true`) gates the
+topology half — `false` renders the table alone in `report --output` and leaves
+the review body with no diagram at all. The body reads both knobs together: it
+carries the block only when `publish.overview` and
+`publish.diagrams.structural` are both on, `REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL`
+and `--no-diagram-structural` opt out, and the size gate is never bypassed —
+`--overview` moves the report's gate, never a posted comment's.
 
 ## Behavioral diagrams (retired from agent reviews)
 
 Agent-drawn behavioral mermaid diagrams are retired from agent-authored
 `review.json`: verdict renders the review body deterministically from structured
-findings, and `summary` neutralizes raw HTML comments and code fences.
-Structural topology diagrams in `report --overview` remain active and are gated
-by `publish.diagrams.structural` (bool, default `true`).
+findings, and `summary` neutralizes raw HTML comments and code fences. The
+structural half survives as the computed topology above — verdict draws it from
+the diff, the agent never does — and `publish.diagrams.structural` (bool,
+default `true`) still gates that block.
 
 ## Section overrides (per-block template fragments)
 

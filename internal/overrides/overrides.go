@@ -151,6 +151,11 @@ const (
 // degenerate-guarded by the locked invariants.
 func Thresholds() (files, bytes int, ref error) { return At("").Thresholds() }
 
+// DefaultThresholds returns the built-in gate an absent fragment reads, so a
+// caller that cannot use a fragment's error falls back to the same numbers
+// instead of restating them.
+func DefaultThresholds() (files, bytes int) { return defaultMaxFiles, defaultMaxBytes }
+
 // Thresholds reads the walkthrough-threshold fragment from this set.
 func (s Set) Thresholds() (files, bytes int, ref error) {
 	files, bytes = defaultMaxFiles, defaultMaxBytes

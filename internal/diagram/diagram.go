@@ -1,6 +1,8 @@
-// Package diagram validates a behavioral diagram: grammar-level validation
-// plus opt-in gating of the agent-drawn mermaid block. It warns and drops
-// with a note, never failing the run — like the basis and evidence garnish.
+// Package diagram owns the mermaid surfaces: the deterministic structural
+// topology computed from a bundle's diff (never agent-drawn), and the
+// grammar-level validation of the behavioral diagram the review body used to
+// carry. Validation warns and drops with a note, never failing the run — like
+// the basis and evidence garnish.
 package diagram
 
 import (

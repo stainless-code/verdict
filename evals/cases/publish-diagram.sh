@@ -103,8 +103,8 @@ assert_file_nogrep "structural=false hides the mermaid block" "$EVAL_SANDBOX/out
 unset XDG_CONFIG_HOME || true
 run_review report acme/app "$PR" --output "$EVAL_SANDBOX/out-4709.md" --overview
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -Fq '<summary>Change topology</summary>' "$EVAL_SANDBOX/out-4709.md"; then
-  good "structural default keeps today's topology bytes"
+  && grep -Fq '<summary>Change topology (computed from the diff)</summary>' "$EVAL_SANDBOX/out-4709.md"; then
+  good "structural default keeps the computed topology bytes"
 else
   bad "structural default gave exit $EVAL_STATUS"
 fi
@@ -129,6 +129,78 @@ fi
 run_review post acme/app "$PR" --dry-run
 assert_exit "dry-run baseline succeeds" 0
 assert_stream_nogrep "human dry-run stdout carries no diagram line" "$EVAL_OUT" "diagram" "-i"
+unset XDG_CONFIG_HOME || true
+
+# --- T13: the computed topology reaches the posted body, and both knobs remove it ---
+# A 9-file diff crosses the 8-file gate, so the body carries the block the
+# agent never draws. PR 4710's stub arms are reused from D5.
+capture_body() { # $1 = destination body file, $2.. = extra post flags
+  local dest="$1" payload="$EVAL_SANDBOX/capture-payload.json"
+  shift
+  export EVAL_SAVE_PAYLOAD="$payload"
+  rm -f "$payload"
+  run_review post acme/app "$PR" --json "$@"
+  unset EVAL_SAVE_PAYLOAD
+  if [ -f "$payload" ]; then jq -r '.body // empty' "$payload" >"$dest"; fi
+}
+PR=4710
+fixture_repo="$(eval_fixture_scratch)/repo"
+mkdir -p "$fixture_repo"
+i=1
+while [ "$i" -le 8 ]; do
+  printf 'top\nold %s\n' "$i" >"$fixture_repo/extra$i.ts"
+  i=$((i + 1))
+done
+eval_fixture_repo "$fixture_repo"
+i=1
+while [ "$i" -le 8 ]; do
+  printf 'top\nnew %s\n' "$i" >"$fixture_repo/extra$i.ts"
+  i=$((i + 1))
+done
+eval_mk_bundle "$PR"
+# The producer's provider bundle carries metadata only, so the fixture states
+# the nine changed files the gate must count.
+bundle_dir="$EVAL_SANDBOX/.verdict/state/$PR"
+jq '.files = [
+  {"path":"notes.txt","additions":1,"deletions":1},
+  {"path":"extra1.ts","additions":1,"deletions":1},
+  {"path":"extra2.ts","additions":1,"deletions":1},
+  {"path":"extra3.ts","additions":1,"deletions":1},
+  {"path":"extra4.ts","additions":1,"deletions":1},
+  {"path":"extra5.ts","additions":1,"deletions":1},
+  {"path":"extra6.ts","additions":1,"deletions":1},
+  {"path":"extra7.ts","additions":1,"deletions":1},
+  {"path":"extra8.ts","additions":1,"deletions":1}
+]' "$bundle_dir/PR.json" >"$bundle_dir/PR.json.tmp"
+mv "$bundle_dir/PR.json.tmp" "$bundle_dir/PR.json"
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","findings":[],"summary":"Large PR with a computed topology."}
+EOF
+run_review post acme/app "$PR" --dry-run --json
+assert_exit "large-bundle dry-run exits 0" 0
+assert_eq "large-bundle dry-run reports no diagram status" "" "$(diagram_status)"
+capture_body "$EVAL_SANDBOX/body-topology.md"
+assert_exit "large-bundle post exits 0" 0
+assert_file_grep "posted body carries the computed topology block" "$EVAL_SANDBOX/body-topology.md" \
+  '<summary>Change topology (computed from the diff)</summary>' "-F"
+assert_file_grep "posted topology renders every file node" "$EVAL_SANDBOX/body-topology.md" '    PR --> F9[' "-F"
+assert_file_nogrep "posted topology invents no relation" "$EVAL_SANDBOX/body-topology.md" '-->|' "-F"
+capture_body "$EVAL_SANDBOX/body-noflag.md" --force --no-diagram-structural
+assert_exit "--no-diagram-structural post exits 0" 0
+assert_file_nogrep "--no-diagram-structural removes the block" "$EVAL_SANDBOX/body-noflag.md" "Change topology"
+mkdir -p "$EVAL_SANDBOX/xdg-nostruct-body/verdict"
+printf '{"publish":{"diagrams":{"structural":false}}}' > "$EVAL_SANDBOX/xdg-nostruct-body/verdict/settings.json"
+export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-nostruct-body"
+capture_body "$EVAL_SANDBOX/body-nostruct.md" --force
+assert_exit "structural=false post exits 0" 0
+assert_file_nogrep "structural=false removes the block from the body" "$EVAL_SANDBOX/body-nostruct.md" "Change topology"
+unset XDG_CONFIG_HOME || true
+mkdir -p "$EVAL_SANDBOX/xdg-noov-body/verdict"
+printf '{"publish":{"overview":false}}' > "$EVAL_SANDBOX/xdg-noov-body/verdict/settings.json"
+export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-noov-body"
+capture_body "$EVAL_SANDBOX/body-noov.md" --force
+assert_exit "overview=false post exits 0" 0
+assert_file_nogrep "overview=false removes the block from the body" "$EVAL_SANDBOX/body-noov.md" "Change topology"
 unset XDG_CONFIG_HOME || true
 
 # --- D7: unknown diagrams keys and bad values refuse typed bad-settings ---
@@ -172,6 +244,7 @@ fi
 unset XDG_CONFIG_HOME || true
 unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL || true
 unset REVIEW_PUBLISH_OVERVIEW || true
-rm -rf "$EVAL_SANDBOX/xdg-nostruct" "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/xdg-dbad"
+rm -rf "$EVAL_SANDBOX/xdg-nostruct" "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/xdg-dbad" \
+  "$EVAL_SANDBOX/xdg-nostruct-body" "$EVAL_SANDBOX/xdg-noov-body"
 
 eval_end
