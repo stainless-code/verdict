@@ -79,25 +79,68 @@ func coordinatorBytes(value any) []byte { return []byte(jq.PrettyOrdered(value) 
 // snapshotFileDigest streams one snapshot file's digest. The checkpoint covers
 // every artifact the snapshot names, including a finder's auxiliary files,
 // which carry no size ceiling: only the digest is needed, so the file is never
-// loaded whole.
+// loaded whole. The leaf is confined to the bundle and refused when it is not a
+// regular file, so a swapped symlink cannot make the checkpoint hash a file
+// outside the bundle.
 func snapshotFileDigest(dir, name string) (string, *core.RefusalError) {
-	file, err := readcommon.OpenNoBlock(filepath.Join(dir, name))
+	root, err := os.OpenRoot(dir)
 	if errors.Is(err, fs.ErrNotExist) {
 		return snapshotAbsent, nil
 	}
 	if err != nil {
-		return "", &core.RefusalError{Code: codeMissingBundle, Message: "snapshot file unreadable: " + name}
+		return "", snapshotUnreadable(name)
+	}
+	defer func() { _ = root.Close() }()
+	file, ref := openSnapshotLeaf(root, name)
+	if ref != nil {
+		return "", ref
+	}
+	if file == nil {
+		return snapshotAbsent, nil
 	}
 	defer func() { _ = file.Close() }()
-	info, err := file.Stat()
-	if err != nil || !info.Mode().IsRegular() {
-		return "", &core.RefusalError{Code: codeStaleArtifact, Message: "snapshot file is unsafe: " + name}
-	}
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
-		return "", &core.RefusalError{Code: codeMissingBundle, Message: "snapshot file unreadable: " + name}
+		return "", snapshotUnreadable(name)
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// openSnapshotLeaf opens a bound leaf without following it. A nil file and a
+// nil refusal mean the leaf is absent, which the checkpoint records as such.
+func openSnapshotLeaf(root *os.Root, name string) (*os.File, *core.RefusalError) {
+	leaf := filepath.ToSlash(name)
+	before, err := root.Lstat(leaf)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, snapshotUnreadable(name)
+	}
+	if !before.Mode().IsRegular() {
+		return nil, snapshotUnsafe(name)
+	}
+	file, err := readcommon.OpenNoFollowIn(root, leaf)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, snapshotUnreadable(name)
+	}
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		_ = file.Close()
+		return nil, snapshotUnsafe(name)
+	}
+	return file, nil
+}
+
+func snapshotUnsafe(name string) *core.RefusalError {
+	return &core.RefusalError{Code: codeStaleArtifact, Message: "snapshot file is unsafe: " + name}
+}
+
+func snapshotUnreadable(name string) *core.RefusalError {
+	return &core.RefusalError{Code: codeMissingBundle, Message: "snapshot file unreadable: " + name}
 }
 
 // snapshotBytes reads one snapshot file whole for a consumer that needs its
@@ -109,11 +152,11 @@ func snapshotBytes(dir, name string) ([]byte, *core.RefusalError) {
 		return nil, nil
 	}
 	if err != nil || !info.Mode().IsRegular() {
-		return nil, &core.RefusalError{Code: codeStaleArtifact, Message: "snapshot file is unsafe: " + name}
+		return nil, snapshotUnsafe(name)
 	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, &core.RefusalError{Code: codeMissingBundle, Message: "snapshot file unreadable: " + name}
+		return nil, snapshotUnreadable(name)
 	}
 	return raw, nil
 }
