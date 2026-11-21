@@ -196,15 +196,18 @@ func TestRenderWorkflowCarriesTheAgentKeyWiring(t *testing.T) {
 	}
 }
 
-// checkRenderedWorkflow pins one agent's rendered lines.
+// checkRenderedWorkflow pins one agent's rendered lines for every provider:
+// the agent/key seam does not move with the CI host.
 func checkRenderedWorkflow(t *testing.T, tc renderCase) {
 	t.Helper()
-	body, ref := RenderWorkflow(tc.agent, tc.secret)
-	if ref != nil {
-		t.Fatalf("render: %s: %s", ref.Code, ref.Message)
-	}
-	for _, want := range tc.lines {
-		assertWorkflowLine(t, string(body), want)
+	for _, ci := range Providers() {
+		body, ref := RenderWorkflow(ci.name, tc.agent, tc.secret)
+		if ref != nil {
+			t.Fatalf("render %s: %s: %s", ci.name, ref.Code, ref.Message)
+		}
+		for _, want := range tc.lines {
+			assertWorkflowLine(t, string(body), want)
+		}
 	}
 }
 
@@ -240,13 +243,21 @@ type skillStepCase struct {
 // that reads it, and the absence of the other variable.
 func checkSkillStep(t *testing.T, tc *skillStepCase) {
 	t.Helper()
-	body, ref := RenderWorkflow(tc.agent, tc.secret)
-	if ref != nil {
-		t.Fatalf("render: %s: %s", ref.Code, ref.Message)
+	for _, ci := range Providers() {
+		body, ref := RenderWorkflow(ci.name, tc.agent, tc.secret)
+		if ref != nil {
+			t.Fatalf("render %s: %s: %s", ci.name, ref.Code, ref.Message)
+		}
+		checkSkillStepFor(t, ci.name, string(body), tc)
 	}
-	step := workflowStep(string(body), "Install the review skill")
+}
+
+// checkSkillStepFor pins one provider's skill step.
+func checkSkillStepFor(t *testing.T, ciName, body string, tc *skillStepCase) {
+	t.Helper()
+	step := workflowStep(body, "Install the review skill")
 	if step == "" {
-		t.Fatal("the render carries no skill step")
+		t.Fatalf("%s: the render carries no skill step", ciName)
 	}
 	for _, want := range []string{
 		"          " + tc.env + ": " + tc.value,
@@ -288,18 +299,33 @@ func otherSkillEnv(env string) string {
 // the hint is documentation, never an argument verdict bakes.
 func TestRenderWorkflowKeepsThePermissionHintOutOfArgv(t *testing.T) {
 	t.Parallel()
-	body, ref := RenderWorkflow("claude", "")
+	for _, ci := range Providers() {
+		assertPermissionHintNotInArgv(t, ci)
+	}
+}
+
+// assertPermissionHintNotInArgv proves one provider's agent step keeps the
+// catalog's permission hint documentation, never argv.
+func assertPermissionHintNotInArgv(t *testing.T, ci ciProvider) {
+	t.Helper()
+	body, ref := RenderWorkflow(ci.Name(), "claude", "")
 	if ref != nil {
-		t.Fatalf("render: %s: %s", ref.Code, ref.Message)
+		t.Fatalf("render %s: %s: %s", ci.Name(), ref.Code, ref.Message)
 	}
 	for line := range strings.SplitSeq(string(body), "\n") {
-		trimmed := strings.TrimSpace(line)
-		if !strings.HasPrefix(trimmed, "verdict run ") {
-			continue
-		}
-		if strings.Contains(trimmed, "--permission-mode") {
-			t.Fatalf("the agent step bakes the permission flag into argv: %s", trimmed)
-		}
+		checkPermissionArgvLine(t, ci.Name(), line)
+	}
+}
+
+// checkPermissionArgvLine grades one rendered line.
+func checkPermissionArgvLine(t *testing.T, ci, line string) {
+	t.Helper()
+	trimmed := strings.TrimSpace(line)
+	if !strings.HasPrefix(trimmed, "verdict run ") {
+		return
+	}
+	if strings.Contains(trimmed, "--permission-mode") {
+		t.Fatalf("%s: the agent step bakes the permission flag into argv: %s", ci, trimmed)
 	}
 }
 
@@ -312,4 +338,142 @@ func assertWorkflowLine(t *testing.T, body, want string) {
 		}
 	}
 	t.Fatalf("workflow carries no line %q", want)
+}
+
+// providerPathCase is one --ci target's literal coordinates: the two directory
+// components init pins, the file it writes, and the path the envelope names.
+type providerPathCase struct { //nolint:govet // the case mirrors the provider registry it grades
+	name string
+	dirs []string
+	base string
+	path string
+}
+
+// TestProvidersDeclareTheirPaths pins every provider's coordinates as
+// literals, so a new row cannot silently land in another host's directory.
+func TestProvidersDeclareTheirPaths(t *testing.T) {
+	t.Parallel()
+	want := []providerPathCase{
+		{
+			name: "github",
+			dirs: []string{".github", ".github/workflows"},
+			base: "verdict-review.yml",
+			path: ".github/workflows/verdict-review.yml",
+		},
+		{
+			name: "forgejo",
+			dirs: []string{".forgejo", ".forgejo/workflows"},
+			base: "verdict-review.yml",
+			path: ".forgejo/workflows/verdict-review.yml",
+		},
+	}
+	got := Providers()
+	if len(got) != len(want) {
+		t.Fatalf("Providers() = %d entries, want %d", len(got), len(want))
+	}
+	for i, tc := range want {
+		ci := got[i]
+		if ci.name != tc.name || !slices.Equal(ci.dirs, tc.dirs) || ci.base != tc.base || ci.path() != tc.path {
+			t.Fatalf("Providers()[%d] = {name:%q dirs:%q base:%q path:%q}, want %+v",
+				i, ci.name, ci.dirs, ci.base, ci.path(), tc)
+		}
+	}
+	if values := CIValues(); values != "github|forgejo" {
+		t.Fatalf("CIValues() = %q, want %q", values, "github|forgejo")
+	}
+}
+
+// TestLookupCIRejectsAnUnknownProvider proves the registry is the only list:
+// a value no row carries is not silently rendered as github.
+func TestLookupCIRejectsAnUnknownProvider(t *testing.T) {
+	t.Parallel()
+	if _, ok := LookupCI("bogus"); ok {
+		t.Fatal("LookupCI accepted an unknown provider")
+	}
+	_, ref := RenderWorkflow("bogus", "claude", "")
+	if ref == nil || ref.Code != "bad-settings" {
+		t.Fatalf("RenderWorkflow(bogus) refusal = %v, want bad-settings", ref)
+	}
+	if !strings.Contains(ref.Message, "github|forgejo") {
+		t.Fatalf("the refusal does not name the accepted values: %q", ref.Message)
+	}
+}
+
+// TestForgejoWorkflowCarriesTheProviderContract pins the Forgejo render's
+// provider-specific lines as literals: the host context, the automatic token,
+// the bundled provider marker, the cleared tokens, the fully-qualified action,
+// and the two absences that keep the workflow runnable on Forgejo.
+func TestForgejoWorkflowCarriesTheProviderContract(t *testing.T) {
+	t.Parallel()
+	body, ref := RenderWorkflow("forgejo", "claude", "")
+	if ref != nil {
+		t.Fatalf("render forgejo: %s: %s", ref.Code, ref.Message)
+	}
+	workflow := string(body)
+	assertForgejoHeader(t, workflow)
+	assertForgejoLines(t, workflow)
+	assertForgejoAbsences(t, workflow)
+	if got := strings.Count(workflow, "--provider forgejo"); got != 1 {
+		t.Fatalf("the Forgejo render carries --provider forgejo %d times, want 1 (the fetch step)", got)
+	}
+	wantSteps := []string{
+		"Checkout",
+		"Install verdict",
+		"Install the review skill",
+		"Fetch the PR bundle",
+		"Agent review (verdict run --agent, your agent + your key)",
+		"Post the review",
+		"Review summary (advisory, never gates)",
+		"Merge gate (findings + freshness + coverage + live threads)",
+	}
+	if steps := workflowStepNames(workflow); !slices.Equal(steps, wantSteps) {
+		t.Fatalf("Forgejo step names = %q, want %q", steps, wantSteps)
+	}
+}
+
+// assertForgejoHeader pins the generated header's provider name.
+func assertForgejoHeader(t *testing.T, workflow string) {
+	t.Helper()
+	first, _, _ := strings.Cut(workflow, "\n")
+	if want := "# Generated by `verdict init --ci forgejo`. Review before committing."; first != want {
+		t.Fatalf("first line = %q, want %q", first, want)
+	}
+}
+
+// assertForgejoLines pins the provider-specific lines as literals.
+func assertForgejoLines(t *testing.T, workflow string) {
+	t.Helper()
+	for _, want := range []string{
+		"          FORGEJO_HOST: ${{ github.server_url }}",
+		"          FORGEJO_TOKEN: ${{ github.token }}",
+		"          FORGEJO_TOKEN: \"\"",
+		"          GITHUB_TOKEN: \"\"",
+		"          GH_TOKEN: \"\"",
+		`          verdict fetch "$VERDICT_REPOSITORY" "$VERDICT_PR" --provider forgejo`,
+		"        uses: https://github.com/stainless-code/verdict/setup-verdict@" +
+			SetupVerdictPin + " # " + SetupVerdictVersion,
+	} {
+		assertWorkflowLine(t, workflow, want)
+	}
+}
+
+// assertForgejoAbsences pins what the Forgejo render must not carry.
+func assertForgejoAbsences(t *testing.T, workflow string) {
+	t.Helper()
+	for _, forbidden := range []string{"permissions:", "Readiness pre-check", "secrets.GITHUB_TOKEN"} {
+		if strings.Contains(workflow, forbidden) {
+			t.Fatalf("the Forgejo render carries %q", forbidden)
+		}
+	}
+}
+
+// workflowStepNames answers one render's step names in order.
+func workflowStepNames(workflow string) []string {
+	var steps []string
+	for line := range strings.SplitSeq(workflow, "\n") {
+		if name, ok := strings.CutPrefix(line, "      - name: "); ok {
+			steps = append(steps, name)
+		}
+	}
+	return steps
 }

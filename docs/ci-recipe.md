@@ -9,8 +9,12 @@ into your repo as `.github/workflows/verdict-review.yml`.
 
 One command writes that file for you: `verdict init --ci github` (see the
 manual's _Every PR_ section) renders every step below inline and pinned, with
-your agent and key wired from repository settings. Copy the example by hand
-only when you want to change the shape yourself.
+your agent and key wired from repository settings. Forgejo's Actions runner
+takes the same pipeline from one command: `verdict init --ci forgejo` writes
+`.forgejo/workflows/verdict-review.yml`, fetches with `--provider forgejo`, and
+reads `FORGEJO_HOST`/`FORGEJO_TOKEN` from the runner's own context (see the
+manual's _Forgejo Actions_ section). Copy the example by hand only when you want
+to change the shape yourself.
 
 ## The pipeline
 

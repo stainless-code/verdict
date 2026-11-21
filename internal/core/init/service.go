@@ -2,10 +2,10 @@
 // scaffolder that writes the typed `.verdict/config.json` with style
 // presets beside the `.verdict/kb.jsonl` starter and the tracked-shape
 // `.verdict/.gitignore`, then runs check-tree validation. With `--ci github`
-// it also writes the every-PR workflow. Existing files print a preview and
-// need --yes/--force (or, in human mode, an interactive confirm) before
-// overwrite — the never-prompts doctrine holds: machine mode never prompts,
-// even on a TTY. internal/scaffold owns argv parsing, stdin, envelope
+// or `--ci forgejo` it also writes the every-PR workflow. Existing files print
+// a preview and need --yes/--force (or, in human mode, an interactive confirm)
+// before overwrite — the never-prompts doctrine holds: machine mode never
+// prompts, even on a TTY. internal/scaffold owns argv parsing, stdin, envelope
 // rendering, and exit mapping.
 package initcore
 
@@ -54,7 +54,7 @@ const (
 type Request struct { //nolint:govet // the transport contract keeps its field order
 	core.ReadRequest
 	Preset      string `enum:"chill|standard|strict"`
-	CI          string `enum:"github"`
+	CI          string `enum:"github|forgejo"`
 	Agent       string
 	KeySecret   string
 	Yes         bool
@@ -127,6 +127,7 @@ func fileValues(files []string) []any {
 
 type state struct { //nolint:govet // init service state is allocated once per invocation
 	req      *Request
+	ci       ciProvider
 	warnings []string
 	at       string
 	next     string
@@ -224,6 +225,15 @@ func (st *state) plan() (presetVals, []byte, *core.RefusalError) {
 	if ref != nil {
 		return presetVals{}, nil, ref
 	}
+	if st.req.CI == "" {
+		return vals, nil, nil
+	}
+	ci, ok := LookupCI(st.req.CI)
+	if !ok {
+		return presetVals{}, nil, st.refuse(codeBadSettings,
+			fmt.Sprintf("unknown --ci '%s' (want %s)", st.req.CI, CIValues()))
+	}
+	st.ci = ci
 	workflow, ref := st.workflowFor()
 	if ref != nil {
 		return presetVals{}, nil, ref
@@ -269,9 +279,10 @@ func (st *state) publishWorkflowIfAny(workflow []byte, status string) *core.Refu
 }
 
 // workflowStatus reads the committed workflow's relation to the rendered
-// bytes. Every component is pinned below the repository root, so a symlinked or
-// non-directory .github, .github/workflows, or workflow refuses even when a
-// matching file sits behind it — and refuses before .verdict/ is created.
+// bytes. Every component is pinned below the repository root, so a symlinked
+// or non-directory workflow directory, or a symlinked workflow, refuses even
+// when a matching file sits behind it — and refuses before .verdict/ is
+// created.
 func (st *state) workflowStatus(workflow []byte) (string, *core.RefusalError) {
 	if workflow == nil {
 		return "", nil
@@ -286,7 +297,7 @@ func (st *state) workflowStatus(workflow []byte) (string, *core.RefusalError) {
 
 // confinedWorkflowStatus compares the workflow below an opened repository root.
 func (st *state) confinedWorkflowStatus(root *os.Root, workflow []byte) (string, *core.RefusalError) {
-	for _, dir := range []string{".github", workflowDir} {
+	for _, dir := range st.ci.dirs {
 		present, ref := st.workflowDirPresent(root, dir)
 		if ref != nil {
 			return "", ref
@@ -295,7 +306,7 @@ func (st *state) confinedWorkflowStatus(root *os.Root, workflow []byte) (string,
 			return statusCreate, nil
 		}
 	}
-	parent, err := readcommon.OpenDirectoryIn(root, workflowDir)
+	parent, err := readcommon.OpenDirectoryIn(root, st.ci.dirs[len(st.ci.dirs)-1])
 	if err != nil {
 		return "", st.workflowRefusal()
 	}
@@ -315,17 +326,16 @@ func (st *state) workflowDirPresent(root *os.Root, dir string) (bool, *core.Refu
 	return true, nil
 }
 
-// workflowFileStatus compares the workflow inside an already-pinned
-// .github/workflows root. A path that is not a regular file is refused rather
-// than followed.
+// workflowFileStatus compares the workflow inside an already-pinned workflow
+// directory. A path that is not a regular file is refused rather than followed.
 func (st *state) workflowFileStatus(parent *os.Root, workflow []byte) (string, *core.RefusalError) {
-	info, err := parent.Lstat(workflowBase)
+	info, err := parent.Lstat(st.ci.base)
 	if errors.Is(err, fs.ErrNotExist) {
 		return statusCreate, nil
 	}
 	if err != nil || !info.Mode().IsRegular() {
 		return "", st.refuse(codeInitFailed,
-			"init will not write "+workflowPath+": the path is not a regular file")
+			"init will not write "+st.ci.path()+": the path is not a regular file")
 	}
 	cur, ref := st.readConfinedWorkflow(parent)
 	if ref != nil {
@@ -339,7 +349,7 @@ func (st *state) workflowFileStatus(parent *os.Root, workflow []byte) (string, *
 
 // readConfinedWorkflow reads the committed workflow through the pinned parent.
 func (st *state) readConfinedWorkflow(parent *os.Root) ([]byte, *core.RefusalError) {
-	f, err := readcommon.OpenRegularNoSymlinkIn(parent, workflowBase)
+	f, err := readcommon.OpenRegularNoSymlinkIn(parent, st.ci.base)
 	if err != nil {
 		return nil, st.workflowRefusal()
 	}
@@ -355,7 +365,7 @@ func (st *state) readConfinedWorkflow(parent *os.Root) ([]byte, *core.RefusalErr
 // replacing a confirmed one.
 func (st *state) writeWorkflow(workflow []byte, status string) *core.RefusalError {
 	if status == statusKeep {
-		st.humanf("keep: %s (already up to date)\n", workflowPath)
+		st.humanf("keep: %s (already up to date)\n", st.ci.path())
 		return nil
 	}
 	parent, base, ref := st.workflowParent()
@@ -366,7 +376,7 @@ func (st *state) writeWorkflow(workflow []byte, status string) *core.RefusalErro
 	if ref := st.publishWorkflow(parent, base, workflow, status); ref != nil {
 		return ref
 	}
-	st.humanf("wrote: %s\n", workflowPath)
+	st.humanf("wrote: %s\n", st.ci.path())
 	return nil
 }
 
@@ -383,28 +393,28 @@ func (st *state) publishWorkflow(parent *os.Root, base string, workflow []byte, 
 	return nil
 }
 
-// workflowParent opens .github/workflows through [os.Root], creating the two
-// directories only when absent and refusing a symlinked or non-directory
-// component: the workflow is a committed file, so init never writes it through
-// a link. Traversal stays strictly below the repository root, so a repository
-// reached through a symlinked ancestor (a /var or workspace link above it)
-// still writes normally.
+// workflowParent opens the provider's workflow directory through [os.Root],
+// creating the directory components only when absent and refusing a symlinked
+// or non-directory component: the workflow is a committed file, so init never
+// writes it through a link. Traversal stays strictly below the repository
+// root, so a repository reached through a symlinked ancestor (a /var or
+// workspace link above it) still writes normally.
 func (st *state) workflowParent() (*os.Root, string, *core.RefusalError) {
 	root, err := os.OpenRoot(st.req.RepoRootPath())
 	if err != nil {
 		return nil, "", st.workflowRefusal()
 	}
 	defer root.Close()
-	for _, dir := range []string{".github", workflowDir} {
+	for _, dir := range st.ci.dirs {
 		if ref := st.createWorkflowDir(root, dir); ref != nil {
 			return nil, "", ref
 		}
 	}
-	parent, err := readcommon.OpenDirectoryIn(root, workflowDir)
+	parent, err := readcommon.OpenDirectoryIn(root, st.ci.dirs[len(st.ci.dirs)-1])
 	if err != nil {
 		return nil, "", st.workflowRefusal()
 	}
-	return parent, workflowBase, nil
+	return parent, st.ci.base, nil
 }
 
 func (st *state) createWorkflowDir(root *os.Root, dir string) *core.RefusalError {
@@ -423,11 +433,11 @@ func (st *state) createWorkflowDir(root *os.Root, dir string) *core.RefusalError
 
 func (st *state) workflowRefusal() *core.RefusalError {
 	return st.refuse(codeInitFailed,
-		"init could not write "+workflowPath+" (symlinked path, or storage not writable?)")
+		"init could not write "+st.ci.path()+" (symlinked path, or storage not writable?)")
 }
 
 // printWorkflow renders the file and writes nothing: no .verdict directory, no
-// .github directory, and no check-tree pass over a tree it did not touch.
+// workflow directory, and no check-tree pass over a tree it did not touch.
 func (st *state) printWorkflow(vals presetVals, workflow []byte) {
 	if !st.req.Machine {
 		st.humanf("%s", workflow)
@@ -440,7 +450,7 @@ func (st *state) printWorkflow(vals presetVals, workflow []byte) {
 		KBMinJudged:  jq.Number(vals.kbMin),
 		KBMaxFPRate:  jq.Number(vals.kbRate),
 		CI:           st.req.CI,
-		WorkflowPath: workflowPath,
+		WorkflowPath: st.ci.path(),
 		Workflow:     string(workflow),
 	}
 }
@@ -522,7 +532,7 @@ func (st *state) previewScaffold(wants map[string]string, workflow []byte, wfSta
 		st.humanf("%s\n", wants[t])
 	}
 	if workflow != nil {
-		st.humanf("--- %s (%s) ---\n", workflowPath, wfStatus)
+		st.humanf("--- %s (%s) ---\n", st.ci.path(), wfStatus)
 		st.humanf("%s", workflow)
 	}
 }
@@ -609,7 +619,7 @@ func (st *state) reportNext(vals presetVals, statuses []string, treeClean bool, 
 	next := "pin real panel slugs in .verdict/config.json, " +
 		"tune defaults.budget_usd, then fetch"
 	if workflow != nil {
-		next = "commit " + workflowPath + " with .verdict/, set the repository variable " +
+		next = "commit " + st.ci.path() + " with .verdict/, set the repository variable " +
 			"VERDICT_VERSION to a release with run --agent, then open a pull request"
 	}
 	st.humanf("next: %s\n", next)
@@ -625,7 +635,7 @@ func (st *state) reportNext(vals presetVals, statuses []string, treeClean bool, 
 	}
 	if workflow != nil {
 		st.data.CI = st.req.CI
-		st.data.WorkflowPath = workflowPath
+		st.data.WorkflowPath = st.ci.path()
 		st.data.WorkflowStatus = wfStatus
 	}
 }
