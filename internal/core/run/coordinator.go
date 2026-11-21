@@ -67,9 +67,6 @@ func (c *coordinator) run(ctx context.Context) *core.RefusalError {
 }
 
 func (c *coordinator) initialize(ctx context.Context) *core.RefusalError {
-	if resumeArguments(&c.base.def, c.st.req.PassThrough) {
-		return c.st.refuse(codeBadFlags, "two finders require fresh processes — remove session-resume options")
-	}
 	if ref := c.capture(); ref != nil {
 		return ref
 	}

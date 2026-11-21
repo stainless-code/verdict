@@ -17,6 +17,9 @@ import (
 )
 
 func (st *state) launchSelected(ctx context.Context, args *launchArgs, rounds int) (*core.RunResponse, *core.RefusalError) {
+	if st.twoFinders && resumeArguments(&args.def, st.req.PassThrough) {
+		return nil, st.refuse(codeBadFlags, "two finders require fresh processes — remove session-resume options")
+	}
 	if !st.req.Print && st.drainDigest == "" {
 		if ref := st.supersede(args.target.evidence); ref != nil {
 			return nil, ref
@@ -36,12 +39,17 @@ func (st *state) supersede(dir string) *core.RefusalError {
 	if ref != nil {
 		return ref
 	}
-	if captured == nil || captured.Execution == nil {
+	if captured == nil {
 		return retirementRefusal("x-superseded", jq.NewErrf("automatic artifacts have no captured execution; restore run.json"))
 	}
-	location, err := retireArtifacts(dir)
-	if err != nil {
-		return retirementRefusal(location, err)
+	location := captured.Superseded
+	if captured.Execution != nil {
+		var err error
+		if location, err = retireArtifacts(dir); err != nil {
+			return retirementRefusal(location, err)
+		}
+	} else if !retiredCapture(captured, dir) {
+		return retirementRefusal("x-superseded", jq.NewErrf("automatic artifacts have no captured execution; restore run.json"))
 	}
 	count, source, ref := st.finderPolicy(dir)
 	if ref != nil {
@@ -53,6 +61,31 @@ func (st *state) supersede(dir string) *core.RefusalError {
 		return retirementRefusal(location, err)
 	}
 	return nil
+}
+
+// executionArtifacts names the automatic artifacts a captured execution
+// writes beside its record: retirement moves them, and a live one among them
+// means the capture is damaged rather than retired.
+var executionArtifacts = []string{
+	"launcher.json", "review.json", "verification", "x-finder-1", "x-finder-2",
+	"x-cross-1", "x-cross-2", "cost.json",
+}
+
+// retiredCapture reports whether a capture that lost its execution reference is
+// an already-retired one. A replacement launch can abort after the retirement
+// published, and re-running it then has to start over instead of asking for a
+// hand repair; a capture with no retirement marker or a live artifact is a
+// damaged execution and keeps its refusal.
+func retiredCapture(captured *config.RunState, dir string) bool {
+	if captured.Superseded == "" {
+		return false
+	}
+	for _, name := range executionArtifacts {
+		if _, err := os.Lstat(filepath.Join(dir, name)); err == nil {
+			return false
+		}
+	}
+	return true
 }
 
 func retirementRefusal(location string, err error) *core.RefusalError {
@@ -86,10 +119,7 @@ func retireArtifacts(dir string) (string, error) {
 }
 
 func moveExecutionArtifacts(root *os.Root, staging string) error {
-	for _, name := range []string{
-		"launcher.json", "review.json", "verification", "x-finder-1", "x-finder-2",
-		"x-cross-1", "x-cross-2", "cost.json",
-	} {
+	for _, name := range executionArtifacts {
 		if err := root.Rename(name, filepath.Join(staging, name)); err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return jq.NewErrf("retire %s: %v", name, err)
 		}

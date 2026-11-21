@@ -185,3 +185,87 @@ func assertSupersededReport(t *testing.T, req *core.RunRequest) {
 		t.Fatalf("report read retired cross standing: %+v", response.Data.Approval)
 	}
 }
+
+func automaticArtifacts() []string {
+	return []string{"launcher.json", "review.json", "verification", "x-finder-1", "x-finder-2", "x-cross-1", "x-cross-2"}
+}
+
+// TestCoordinatorRefusesResumeBeforeRetirement proves a retry that cannot
+// launch leaves the completed execution alone: the refusal arrives before the
+// retirement moves anything.
+func TestCoordinatorRefusesResumeBeforeRetirement(t *testing.T) {
+	req, commander := completedExecution(t)
+	commander.phases = nil
+	req.PassThrough = []string{"--resume"}
+	_, ref := Run(t.Context(), req)
+	if ref == nil || ref.Code != "bad-flags" {
+		t.Fatalf("refusal = %v", ref)
+	}
+	capture := readPhaseObject(t, filepath.Join(commander.dir, "run.json"))
+	if readcommon.FieldOf(readcommon.FieldOf(capture, "execution"), "id") == "" {
+		t.Fatalf("refused retry dropped the captured execution: %s", jq.Compact(capture))
+	}
+	for _, name := range automaticArtifacts() {
+		if _, err := os.Stat(filepath.Join(commander.dir, name)); err != nil {
+			t.Fatalf("refused retry removed %s: %v", name, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(commander.dir, "x-superseded")); !os.IsNotExist(err) {
+		t.Fatalf("refused retry published a retirement: %v", err)
+	}
+}
+
+// TestCoordinatorRecoversARetiredCapture proves a capture that a retirement
+// left with no execution reference and no live artifacts starts a replacement
+// instead of wedging the bundle.
+func TestCoordinatorRecoversARetiredCapture(t *testing.T) {
+	req, commander := completedExecution(t)
+	capture, _, err := config.ReadRunState(commander.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capture.Execution, capture.Superseded = nil, "x-superseded/legacy"
+	if err := config.WriteRunState(commander.dir, capture); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range automaticArtifacts() {
+		if err := os.RemoveAll(filepath.Join(commander.dir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	commander.phases = nil
+	if _, ref := Run(t.Context(), req); ref != nil {
+		t.Fatalf("retired capture refused: %v", ref)
+	}
+	if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1,x-cross-2" {
+		t.Fatalf("replacement launches = %s", got)
+	}
+}
+
+// TestCoordinatorRefusesADamagedCapture proves the recovery reads the
+// retirement marker: a capture that lost its execution reference without one
+// is damaged, not retired, and still refuses.
+func TestCoordinatorRefusesADamagedCapture(t *testing.T) {
+	req, commander := completedExecution(t)
+	capture, _, err := config.ReadRunState(commander.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capture.Execution = nil
+	if err := config.WriteRunState(commander.dir, capture); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range automaticArtifacts() {
+		if err := os.RemoveAll(filepath.Join(commander.dir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	commander.phases = nil
+	_, ref := Run(t.Context(), req)
+	if ref == nil || ref.Code != "agent-record-failed" || !strings.Contains(ref.Message, "restore run.json") {
+		t.Fatalf("damaged capture = %v", ref)
+	}
+	if len(commander.phases) != 0 {
+		t.Fatalf("damaged capture launched: %v", commander.phases)
+	}
+}
