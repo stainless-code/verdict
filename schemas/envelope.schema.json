@@ -2886,7 +2886,11 @@
         "ci": { "type": "string" },
         "workflow_path": { "type": "string" },
         "workflow_status": { "type": "string" },
-        "workflow": { "type": "string" }
+        "workflow": { "type": "string" },
+        "root_path": { "type": "string" },
+        "root_status": { "type": "string" },
+        "root_workflow": { "type": "string" },
+        "include_snippet": { "type": "string" }
       },
       "required": [
         "preset",

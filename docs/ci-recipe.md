@@ -13,8 +13,12 @@ your agent and key wired from repository settings. Forgejo's Actions runner
 takes the same pipeline from one command: `verdict init --ci forgejo` writes
 `.forgejo/workflows/verdict-review.yml`, fetches with `--provider forgejo`, and
 reads `FORGEJO_HOST`/`FORGEJO_TOKEN` from the runner's own context (see the
-manual's _Forgejo Actions_ section). Copy the example by hand only when you want
-to change the shape yourself.
+manual's _Forgejo Actions_ section). GitLab takes the same pipeline from
+`verdict init --ci gitlab`, which writes `.gitlab/ci/verdict-review.yml` and —
+only when the project has no root pipeline — a minimal `.gitlab-ci.yml` that
+includes it, and never touches a root pipeline you already have (see the
+manual's _GitLab CI_ section; `--print` is the preview that writes nothing).
+Copy the example by hand only when you want to change the shape yourself.
 
 ## The pipeline
 

@@ -624,7 +624,9 @@ type LearnIncident struct { //nolint:govet // field order is the published prope
 
 // InitData is the init verb's --json data profile: the applied preset values
 // and the files they were written to, plus the every-PR workflow when the
-// invocation carried --ci.
+// invocation carried --ci. A provider that plans a second file at the
+// repository root reports it too: its path, its status or rendered bytes, and
+// the include an operator adds to a root pipeline init left alone.
 type InitData struct { //nolint:govet // field order is the published property order
 	Preset         string   `json:"preset"`
 	BudgetUSD      string   `json:"budget_usd"`
@@ -636,6 +638,10 @@ type InitData struct { //nolint:govet // field order is the published property o
 	WorkflowPath   string   `json:"workflow_path,omitempty"`
 	WorkflowStatus string   `json:"workflow_status,omitempty"`
 	Workflow       string   `json:"workflow,omitempty"`
+	RootPath       string   `json:"root_path,omitempty"`
+	RootStatus     string   `json:"root_status,omitempty"`
+	RootWorkflow   string   `json:"root_workflow,omitempty"`
+	IncludeSnippet string   `json:"include_snippet,omitempty"`
 }
 
 // DoctorData is the doctor verb's --json data profile: every preflight row

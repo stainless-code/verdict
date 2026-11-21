@@ -492,7 +492,7 @@ func usageText() string {
 		"    the bundle must already carry findings.json. trend --incidents measures the\n" +
 		"    miss rate over those rows. A repeat attach reports existing and moves no\n" +
 		"    byte; --dry-run writes nothing.\n" +
-		"  init [--preset chill|standard|strict] [--ci github|forgejo] [--agent <name>]\n" +
+		"  init [--preset chill|standard|strict] [--ci github|forgejo|gitlab] [--agent <name>]\n" +
 		"      [--key-secret <NAME>] [--print] [--yes] [--force] [--json]\n" +
 		"    guided offline scaffolder: writes the typed controls (tracked\n" +
 		"    .verdict/config.json defaults, .verdict/kb.jsonl starter, and the\n" +
@@ -510,6 +510,10 @@ func usageText() string {
 		"    reads VERDICT_VERSION and VERDICT_MODEL from repository variables,\n" +
 		"    and reads the model key from one repository secret. Fork pull\n" +
 		"    requests are skipped: they get no secrets.\n" +
+		"    --ci gitlab writes .gitlab/ci/verdict-review.yml as a merge-request\n" +
+		"    pipeline and, only when the project has no root pipeline, a minimal\n" +
+		"    .gitlab-ci.yml that includes it. An existing root is never touched,\n" +
+		"    with or without --force; the include to add is printed instead.\n" +
 		"    --agent names the agent to launch (default claude, any run --agent\n" +
 		"    name); --key-secret overrides the secret name, which defaults to the\n" +
 		"    agent's documented key variable. --print prints the workflow and\n" +

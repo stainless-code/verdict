@@ -196,11 +196,16 @@ func TestRenderWorkflowCarriesTheAgentKeyWiring(t *testing.T) {
 	}
 }
 
-// checkRenderedWorkflow pins one agent's rendered lines for every provider:
-// the agent/key seam does not move with the CI host.
+// checkRenderedWorkflow pins one agent's rendered lines for the Actions
+// providers: the agent/key seam does not move between them. GitLab renders the
+// same seam in its own vocabulary, graded by
+// TestGitLabWorkflowCarriesTheAgentKeyWiring.
 func checkRenderedWorkflow(t *testing.T, tc renderCase) {
 	t.Helper()
 	for _, ci := range Providers() {
+		if ci.name == "gitlab" {
+			continue
+		}
 		body, ref := RenderWorkflow(ci.name, tc.agent, tc.secret)
 		if ref != nil {
 			t.Fatalf("render %s: %s: %s", ci.name, ref.Code, ref.Message)
@@ -252,9 +257,15 @@ func checkSkillStep(t *testing.T, tc *skillStepCase) {
 	}
 }
 
-// checkSkillStepFor pins one provider's skill step.
+// checkSkillStepFor pins one provider's skill step. GitLab has no steps: the
+// whole job is one shell, so the agent name lives in the variables block and
+// the script entry reads that variable.
 func checkSkillStepFor(t *testing.T, ciName, body string, tc *skillStepCase) {
 	t.Helper()
+	if ciName == "gitlab" {
+		checkGitLabSkillStep(t, body, tc)
+		return
+	}
 	step := workflowStep(body, "Install the review skill")
 	if step == "" {
 		t.Fatalf("%s: the render carries no skill step", ciName)
@@ -269,6 +280,23 @@ func checkSkillStepFor(t *testing.T, ciName, body string, tc *skillStepCase) {
 	}
 	if other := otherSkillEnv(tc.env); strings.Contains(step, other+": ") {
 		t.Fatalf("skill step names %s as well:\n%s", other, step)
+	}
+}
+
+// checkGitLabSkillStep pins the GitLab skill wiring: the variable the installer
+// is called with, and whether the mapped variable name is the only one present.
+func checkGitLabSkillStep(t *testing.T, body string, tc *skillStepCase) {
+	t.Helper()
+	call := "      verdict skill install --agent \"$" + tc.env + "\""
+	assertWorkflowLine(t, body, call)
+	if tc.env == "VERDICT_SKILL_AGENT" {
+		assertWorkflowLine(t, body, "    VERDICT_SKILL_AGENT: "+tc.value)
+		assertWorkflowLine(t, body, "    VERDICT_AGENT: "+tc.agent)
+		return
+	}
+	assertWorkflowLine(t, body, "    VERDICT_AGENT: "+tc.value)
+	if strings.Contains(body, "VERDICT_SKILL_AGENT") {
+		t.Fatalf("a row with its own skills directory names the shared one:\n%s", body)
 	}
 }
 
@@ -306,7 +334,7 @@ func TestRenderWorkflowKeepsThePermissionHintOutOfArgv(t *testing.T) {
 
 // assertPermissionHintNotInArgv proves one provider's agent step keeps the
 // catalog's permission hint documentation, never argv.
-func assertPermissionHintNotInArgv(t *testing.T, ci ciProvider) {
+func assertPermissionHintNotInArgv(t *testing.T, ci *ciProvider) {
 	t.Helper()
 	body, ref := RenderWorkflow(ci.Name(), "claude", "")
 	if ref != nil {
@@ -350,7 +378,7 @@ type providerPathCase struct { //nolint:govet // the case mirrors the provider r
 }
 
 // TestProvidersDeclareTheirPaths pins every provider's coordinates as
-// literals, so a new row cannot silently land in another host's directory.
+// literals, so a new row cannot land in another host's directory.
 func TestProvidersDeclareTheirPaths(t *testing.T) {
 	t.Parallel()
 	want := []providerPathCase{
@@ -366,20 +394,49 @@ func TestProvidersDeclareTheirPaths(t *testing.T) {
 			base: "verdict-review.yml",
 			path: ".forgejo/workflows/verdict-review.yml",
 		},
+		{
+			name: "gitlab",
+			dirs: []string{".gitlab", ".gitlab/ci"},
+			base: "verdict-review.yml",
+			path: ".gitlab/ci/verdict-review.yml",
+		},
 	}
 	got := Providers()
 	if len(got) != len(want) {
 		t.Fatalf("Providers() = %d entries, want %d", len(got), len(want))
 	}
 	for i, tc := range want {
-		ci := got[i]
-		if ci.name != tc.name || !slices.Equal(ci.dirs, tc.dirs) || ci.base != tc.base || ci.path() != tc.path {
-			t.Fatalf("Providers()[%d] = {name:%q dirs:%q base:%q path:%q}, want %+v",
-				i, ci.name, ci.dirs, ci.base, ci.path(), tc)
-		}
+		assertProviderPath(t, got[i], tc)
 	}
-	if values := CIValues(); values != "github|forgejo" {
-		t.Fatalf("CIValues() = %q, want %q", values, "github|forgejo")
+	assertProviderRoots(t)
+}
+
+// assertProviderPath pins one provider's coordinates against its literal row.
+func assertProviderPath(t *testing.T, ci *ciProvider, want providerPathCase) {
+	t.Helper()
+	if ci.name != want.name || !slices.Equal(ci.dirs, want.dirs) {
+		t.Fatalf("provider = {name:%q dirs:%q}, want %+v", ci.name, ci.dirs, want)
+	}
+	if ci.base != want.base || ci.path() != want.path {
+		t.Fatalf("provider = {base:%q path:%q}, want %+v", ci.base, ci.path(), want)
+	}
+}
+
+// assertProviderRoots pins the --ci values and the one provider that plans a
+// second file at the repository root.
+func assertProviderRoots(t *testing.T) {
+	t.Helper()
+	if values := CIValues(); values != "github|forgejo|gitlab" {
+		t.Fatalf("CIValues() = %q, want %q", values, "github|forgejo|gitlab")
+	}
+	root, ok := LookupCI("gitlab")
+	if !ok || root.root == nil || root.root.name != ".gitlab-ci.yml" {
+		t.Fatalf("the gitlab provider plans no .gitlab-ci.yml root")
+	}
+	for _, name := range []string{"github", "forgejo"} {
+		if single, ok := LookupCI(name); !ok || single.root != nil {
+			t.Fatalf("%s plans a root file; only GitLab does", name)
+		}
 	}
 }
 
@@ -394,7 +451,7 @@ func TestLookupCIRejectsAnUnknownProvider(t *testing.T) {
 	if ref == nil || ref.Code != "bad-settings" {
 		t.Fatalf("RenderWorkflow(bogus) refusal = %v, want bad-settings", ref)
 	}
-	if !strings.Contains(ref.Message, "github|forgejo") {
+	if !strings.Contains(ref.Message, "github|forgejo|gitlab") {
 		t.Fatalf("the refusal does not name the accepted values: %q", ref.Message)
 	}
 }
@@ -464,6 +521,200 @@ func assertForgejoAbsences(t *testing.T, workflow string) {
 		if strings.Contains(workflow, forbidden) {
 			t.Fatalf("the Forgejo render carries %q", forbidden)
 		}
+	}
+}
+
+// TestGitLabWorkflowCarriesTheProviderContract pins the GitLab render's
+// provider-specific lines as literals: the merge-request rule with its fork
+// clause, the history the controls are read from, the host, the bundled
+// provider marker, the runtime token boundary, and the absences that keep the
+// file GitLab YAML rather than an Actions workflow.
+func TestGitLabWorkflowCarriesTheProviderContract(t *testing.T) {
+	t.Parallel()
+	body, ref := RenderWorkflow("gitlab", "claude", "")
+	if ref != nil {
+		t.Fatalf("render gitlab: %s: %s", ref.Code, ref.Message)
+	}
+	workflow := string(body)
+	assertGitLabHeader(t, workflow)
+	assertGitLabLines(t, workflow)
+	assertGitLabAbsences(t, workflow)
+	if got := strings.Count(workflow, "--provider gitlab"); got != 1 {
+		t.Fatalf("the GitLab render carries --provider gitlab %d times, want 1 (the fetch block)", got)
+	}
+}
+
+// assertGitLabHeader pins the generated header: one command, and the host's own
+// word for a proposed change.
+func assertGitLabHeader(t *testing.T, workflow string) {
+	t.Helper()
+	lines := strings.Split(workflow, "\n")
+	if want := "# Generated by `verdict init --ci gitlab`. Review before committing."; lines[0] != want {
+		t.Fatalf("first line = %q, want %q", lines[0], want)
+	}
+	if want := "# Commit this file: every merge request then runs verdict on your runner with"; lines[2] != want {
+		t.Fatalf("header line 3 = %q, want %q", lines[2], want)
+	}
+}
+
+// assertGitLabLines pins the provider-specific lines as literals.
+func assertGitLabLines(t *testing.T, workflow string) {
+	t.Helper()
+	for _, want := range []string{
+		"verdict-review:",
+		"  stage: test",
+		`    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_PROJECT_PATH == $CI_PROJECT_PATH'`,
+		`    GIT_DEPTH: "0"`,
+		"    VERDICT_REPOSITORY: $CI_PROJECT_PATH",
+		"    VERDICT_PR: $CI_MERGE_REQUEST_IID",
+		"    VERDICT_AGENT: claude",
+		"    GITLAB_HOST: $CI_SERVER_FQDN",
+		"  interruptible: true",
+		"  timeout: 30 minutes",
+		`      curl -fsSL "https://raw.githubusercontent.com/stainless-code/verdict/` + SetupVerdictPin + `/install.sh" ` + `\`,
+		`      verdict skill install --agent "$VERDICT_AGENT"`,
+		`      verdict fetch "$VERDICT_REPOSITORY" "$VERDICT_PR" --provider gitlab`,
+		`      verdict ready "$VERDICT_REPOSITORY" "$VERDICT_PR" --check`,
+		"        unset GITLAB_TOKEN GLAB_TOKEN GITLAB_ACCESS_TOKEN OAUTH_TOKEN CI_JOB_TOKEN GLAB_ENABLE_CI_AUTOLOGIN GH_TOKEN GITHUB_TOKEN",
+		`        verdict run "$VERDICT_REPOSITORY" "$VERDICT_PR" --agent "$VERDICT_AGENT" "${agent_args[@]}"`,
+		"        --max-severity critical --require-head --live auto",
+	} {
+		assertWorkflowLine(t, workflow, want)
+	}
+}
+
+// assertGitLabAbsences pins what the GitLab render must not carry: an Actions
+// workflow's keys, a step env, or a named model key.
+func assertGitLabAbsences(t *testing.T, workflow string) {
+	t.Helper()
+	for _, forbidden := range []string{
+		"uses:", "permissions:", "on:", "env:", "pull_request", "concurrency:",
+		"secrets.", "ANTHROPIC_API_KEY", "GITLAB_TOKEN:",
+	} {
+		if strings.Contains(workflow, forbidden) {
+			t.Fatalf("the GitLab render carries %q", forbidden)
+		}
+	}
+}
+
+// TestGitLabWorkflowCarriesTheAgentKeyWiring pins the agent/key seam in
+// GitLab's own vocabulary: the key names no variable on the default row, one
+// alias line when the CI/CD variable name differs, and the name to create when
+// the catalog row documents no key variable at all.
+func TestGitLabWorkflowCarriesTheAgentKeyWiring(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name      string
+		agent     string
+		secret    string
+		keyInFile string
+		lines     []string
+		absent    []string
+		keyCount  int
+	}{
+		{
+			name:  "claude with the documented key variable",
+			agent: "claude",
+			lines: []string{
+				"    VERDICT_AGENT: claude",
+				"      # verdict never bakes a permission flag: this agent's documented one is " +
+					"--permission-mode acceptEdits,",
+				"      #   curl -fsSL https://claude.ai/install.sh | bash",
+			},
+			absent: []string{"ANTHROPIC_API_KEY", "VERDICT_SKILL_AGENT"},
+		},
+		{
+			name:   "claude naming another CI/CD variable",
+			agent:  "claude",
+			secret: "REVIEW_KEY",
+			lines: []string{
+				"    ANTHROPIC_API_KEY: $REVIEW_KEY",
+			},
+			keyCount:  1,
+			keyInFile: "ANTHROPIC_API_KEY",
+		},
+		{
+			name:   "amp with an explicit variable",
+			agent:  "amp",
+			secret: "AMP_API_KEY",
+			lines: []string{
+				"    VERDICT_AGENT: amp",
+				"    VERDICT_SKILL_AGENT: agents",
+				"      verdict skill install --agent \"$VERDICT_SKILL_AGENT\"",
+				"    # Set AMP_API_KEY as a masked project variable: this",
+				"      # This agent has no documented permission flag.",
+				"      #   npm install -g @ampcode/cli",
+			},
+			absent:    []string{"ANTHROPIC_API_KEY", "AMP_API_KEY: $AMP_API_KEY"},
+			keyCount:  1,
+			keyInFile: "AMP_API_KEY",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			checkGitLabWiring(t, tc.agent, tc.secret, tc.lines, tc.absent, tc.keyCount, tc.keyInFile)
+		})
+	}
+}
+
+// checkGitLabWiring pins one GitLab render's wiring lines, its absences, and
+// how many times the key variable is named at all.
+func checkGitLabWiring(t *testing.T, agent, secret string, lines, absent []string, keyCount int, key string) {
+	t.Helper()
+	body, ref := RenderWorkflow("gitlab", agent, secret)
+	if ref != nil {
+		t.Fatalf("render gitlab/%s: %s: %s", agent, ref.Code, ref.Message)
+	}
+	workflow := string(body)
+	for _, want := range lines {
+		assertWorkflowLine(t, workflow, want)
+	}
+	for _, forbidden := range absent {
+		if strings.Contains(workflow, forbidden) {
+			t.Fatalf("the GitLab render carries %q:\n%s", forbidden, workflow)
+		}
+	}
+	if key == "" {
+		return
+	}
+	if got := strings.Count(workflow, key); got != keyCount {
+		t.Fatalf("the render names %q %d times, want %d", key, got, keyCount)
+	}
+}
+
+// TestGitLabRootFileShape pins the second planned file as literals: the
+// generated header, the one include, and the snippet an operator adds to a root
+// pipeline init left alone.
+func TestGitLabRootFileShape(t *testing.T) {
+	t.Parallel()
+	path, body, ok := RootFile("gitlab")
+	if !ok {
+		t.Fatal("RootFile(gitlab) reports no second file")
+	}
+	if path != ".gitlab-ci.yml" {
+		t.Fatalf("RootFile(gitlab) path = %q, want .gitlab-ci.yml", path)
+	}
+	want := "# Generated by `verdict init --ci gitlab`. Review before committing.\n" +
+		"#\n" +
+		"# Commit this file: every merge request then runs verdict on your runner with\n" +
+		"# your agent and your own model key. Regenerate after upgrading verdict.\n" +
+		"\n" +
+		"# One include, so this file stays yours to edit. Delete the include to turn\n" +
+		"# the automatic review off; .gitlab/ci/verdict-review.yml is the pipeline.\n" +
+		"\n" +
+		"include:\n" +
+		"  - local: .gitlab/ci/verdict-review.yml\n"
+	if string(body) != want {
+		t.Fatalf("RootFile(gitlab) body = %q, want %q", body, want)
+	}
+	if snippet := IncludeSnippet("gitlab"); snippet != "include:\n  - local: .gitlab/ci/verdict-review.yml\n" {
+		t.Fatalf("IncludeSnippet(gitlab) = %q", snippet)
+	}
+	if path, body, ok := RootFile("github"); ok || path != "" || body != nil {
+		t.Fatalf("RootFile(github) = %q, %q, %v; want no second file", path, body, ok)
+	}
+	if snippet := IncludeSnippet("forgejo"); snippet != "" {
+		t.Fatalf("IncludeSnippet(forgejo) = %q, want the empty string", snippet)
 	}
 }
 
