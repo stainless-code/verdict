@@ -1,6 +1,10 @@
 package run
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"errors"
+	"io"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -10,7 +14,12 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/journal"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
+
+// snapshotAbsent is the digest a name that does not exist at all is recorded
+// under, so a file appearing later still reads as a change.
+const snapshotAbsent = "absent"
 
 type executionSnapshot map[string]string
 
@@ -20,11 +29,11 @@ func captureSnapshot(dir string) (executionSnapshot, *core.RefusalError) {
 		"PR.json", "source.json", "full.diff", "hunks.tsv", "run.json",
 		"context.txt", "procedure.md", "roles.txt", "toc.txt",
 	} {
-		raw, ref := snapshotBytes(dir, name)
+		digest, ref := snapshotFileDigest(dir, name)
 		if ref != nil {
 			return nil, ref
 		}
-		snapshot[name] = snapshotDigest(raw)
+		snapshot[name] = digest
 	}
 
 	if ref := snapshot.bindInputs(dir); ref != nil {
@@ -38,11 +47,11 @@ func (snapshot executionSnapshot) check(dir string) *core.RefusalError {
 		return ref
 	}
 	for name, hash := range snapshot {
-		raw, ref := snapshotBytes(dir, name)
+		digest, ref := snapshotFileDigest(dir, name)
 		if ref != nil {
 			return ref
 		}
-		if snapshotDigest(raw) != hash {
+		if digest != hash {
 			return &core.RefusalError{Code: codeStaleArtifact, Message: "execution snapshot changed: " + name}
 		}
 	}
@@ -67,6 +76,32 @@ func writeCoordinator(dir, name string, value any) *core.RefusalError {
 
 func coordinatorBytes(value any) []byte { return []byte(jq.PrettyOrdered(value) + "\n") }
 
+// snapshotFileDigest streams one snapshot file's digest. The checkpoint covers
+// every artifact the snapshot names, including a finder's auxiliary files,
+// which carry no size ceiling: only the digest is needed, so the file is never
+// loaded whole.
+func snapshotFileDigest(dir, name string) (string, *core.RefusalError) {
+	file, err := readcommon.OpenNoBlock(filepath.Join(dir, name))
+	if errors.Is(err, fs.ErrNotExist) {
+		return snapshotAbsent, nil
+	}
+	if err != nil {
+		return "", &core.RefusalError{Code: codeMissingBundle, Message: "snapshot file unreadable: " + name}
+	}
+	defer func() { _ = file.Close() }()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() {
+		return "", &core.RefusalError{Code: codeStaleArtifact, Message: "snapshot file is unsafe: " + name}
+	}
+	hash := sha256.New()
+	if _, err := io.Copy(hash, file); err != nil {
+		return "", &core.RefusalError{Code: codeMissingBundle, Message: "snapshot file unreadable: " + name}
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+// snapshotBytes reads one snapshot file whole for a consumer that needs its
+// contents, never for a digest.
 func snapshotBytes(dir, name string) ([]byte, *core.RefusalError) {
 	path := filepath.Join(dir, name)
 	info, err := os.Lstat(path)
@@ -85,20 +120,13 @@ func snapshotBytes(dir, name string) ([]byte, *core.RefusalError) {
 
 func (snapshot executionSnapshot) bind(dir string, names ...string) *core.RefusalError {
 	for _, name := range names {
-		raw, ref := snapshotBytes(dir, name)
+		digest, ref := snapshotFileDigest(dir, name)
 		if ref != nil {
 			return ref
 		}
-		snapshot[name] = snapshotDigest(raw)
+		snapshot[name] = digest
 	}
 	return nil
-}
-
-func snapshotDigest(raw []byte) string {
-	if raw == nil {
-		return "absent"
-	}
-	return shaHex(raw)
 }
 
 func outputNamespace(name string) bool {
