@@ -99,6 +99,9 @@ func retiredCapture(captured *config.RunState, dir string) bool {
 	if captured.Superseded == "" {
 		return false
 	}
+	if info, err := os.Stat(dir); err != nil || !info.IsDir() {
+		return false
+	}
 	for _, name := range executionArtifacts {
 		if _, err := os.Lstat(filepath.Join(dir, name)); !errors.Is(err, fs.ErrNotExist) {
 			return false

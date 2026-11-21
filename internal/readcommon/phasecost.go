@@ -106,8 +106,16 @@ func observedFinderPhases(dir, execution, finder, phase string) []spend.Phase {
 // this cannot answer is evidence too, so unreadable spend stays unknown
 // rather than reading as zero.
 func launchEvidenceExists(dir, namespace string) bool {
+	nsDir := filepath.Join(dir, namespace)
+	info, err := os.Lstat(nsDir)
+	if errors.Is(err, fs.ErrNotExist) {
+		return false
+	}
+	if err != nil || !info.IsDir() {
+		return true
+	}
 	for _, name := range []string{"launcher.json", ".run.rounds"} {
-		if _, err := os.Lstat(filepath.Join(dir, namespace, name)); !errors.Is(err, fs.ErrNotExist) {
+		if _, err := os.Lstat(filepath.Join(nsDir, name)); !errors.Is(err, fs.ErrNotExist) {
 			return true
 		}
 	}
