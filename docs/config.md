@@ -100,6 +100,16 @@ shadowed values. Personal spend and privacy are constraints, never
 defaults: the repository can never raise the personal limit, and scopes
 and flags can never narrow, remove, or except exclusions.
 
+`defaults.budget` (the `run` review depth: `auto|light|standard|deep`) and
+`defaults.sensitive_paths` (extra high-risk path globs, each validated like
+every other portable glob) are global-only, like `finders` and `kb_policy`: a
+scope that sets either refuses `bad-scope`. They are captured into the run
+record so `run` reads them back without re-parsing configuration, and an unset
+pair stays out of the effective defaults entirely, so a capture written before
+these keys existed re-verifies unchanged. `run` is their only consumer; the
+manual's "Review budget (`--budget auto`)" section owns the classification
+rules.
+
 Every matching scope resolves in file order with last-field-wins
 defaults, unioned requirements, and the last named profile; scopes with
 none of `profile`, `defaults`, or `requirements` refuse, as does `profile`

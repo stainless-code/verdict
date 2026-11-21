@@ -51,7 +51,10 @@ var publishedSemantics = map[string]string{
 	// finders: optional global integer 1 or 2; default 2; scopes refuse it.
 	// spec_coverage_min: additive optional integer 1-100 on defaults (default
 	// 80, global-only — rejected inside scope defaults like kb_policy).
-	"config.schema.json": "6accf11e882a4b7216f07f417ad439d24b3f184b7c873bb11d256963529fdf89",
+	// review budget: additive optional defaults enum budget (auto|light|
+	// standard|deep) and defaults.sensitive_paths (>= 1 portable glob), both
+	// global-only. No existing property, required key, enum, or type changed.
+	"config.schema.json": "de555bd98345cf1a86aff68adc3aa02d3ed4e0212476d7b3f4eb589fb257d277",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -315,7 +318,10 @@ var publishedSemantics = map[string]string{
 	// with no diff line cites none; met/violated still require it in the checker).
 	// Three new problem codes join the published enum. No existing property,
 	// required key, or type moved.
-	"envelope.schema.json": "f95467acd96355b5aa3f82477fd22b985738570eb6d790d04b5cd2cfffe3add6",
+	// review budget: additive optional data.budget on $defs/runData and its new
+	// $defs/reviewBudget shape. No existing property, required key, enum, or
+	// type changed; a run that names no depth omits the key entirely.
+	"envelope.schema.json": "32d95c75d881c5eb576fc72b1d907c0124cd153387e7f967b31967ddb7af6673",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

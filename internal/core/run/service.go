@@ -420,12 +420,13 @@ func probeFailure(pctx context.Context, out string, res core.Result, err error, 
 	}
 }
 
-type state struct {
+type state struct { //nolint:govet // request first: the service reads one invocation
 	req         *core.RunRequest
 	argSecrets  []string
 	drainDigest string
 	warnings    []string
 	defs        []config.PersonalAgent
+	budget      *core.ReviewBudget
 	twoFinders  bool
 }
 
@@ -656,6 +657,7 @@ func (st *state) printed(args *launchArgs) *core.RunResponse {
 		Recipe:   args.plan,
 		Timeout:  args.timeout,
 		Printed:  true,
+		Budget:   st.budget,
 	}
 	next := "re-run without --print to launch it, or run the printed command yourself"
 	if args.staged != nil {
@@ -686,15 +688,11 @@ func (st *state) stageNext(at *staged, stages int, dir string) string {
 		at.index+1, st.req.Repo, st.req.Pr, st.req.Agent, st.req.Recipe, at.index+1)
 }
 
-// launch runs the one process of a one-shot run: resolve, record the launch,
-// spawn with the watchdog, then assert the artifact and hand off.
-func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunResponse, *core.RefusalError) {
-	if ref := args.checkpoint(); ref != nil {
-		return nil, ref
-	}
-	bin := args.bin
-	started := st.now()
-	rec := &launcher{
+// launchRecord is the one place a launch record is built, so a field the record
+// gained — the review budget, for one — cannot reach the one-shot launch and
+// not the repair loop's.
+func (st *state) launchRecord(args *launchArgs, bin string, started time.Time) *launcher {
+	return &launcher{
 		SchemaVersion: launcherSchema,
 		Agent:         args.def.Name,
 		AgentSource:   args.def.Source,
@@ -705,7 +703,19 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 		StartedAt:     core.NowUTC(started),
 		Timeout:       args.timeout,
 		Probe:         args.probe,
+		Budget:        st.budget,
 	}
+}
+
+// launch runs the one process of a one-shot run: resolve, record the launch,
+// spawn with the watchdog, then assert the artifact and hand off.
+func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunResponse, *core.RefusalError) {
+	if ref := args.checkpoint(); ref != nil {
+		return nil, ref
+	}
+	bin := args.bin
+	started := st.now()
+	rec := st.launchRecord(args, bin, started)
 	rec.Argv, st.argSecrets = st.displayArgv(args)
 	launched, ref := writeLauncher(filepath.Join(args.dir, launcherFile), rec)
 	if ref != nil {
@@ -969,6 +979,7 @@ func (st *state) response(args *launchArgs, rec *launcher, res *core.Result, art
 			Fresh:      art.fresh,
 			Record:     st.display(rec.path(args.dir)),
 			Repair:     rep,
+			Budget:     st.budget,
 		},
 		Next: st.next(args.dir),
 	}

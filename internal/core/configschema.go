@@ -52,6 +52,12 @@ type ConfigIndex struct {
 // Nested objects merge per field; arrays replace.
 type ConfigDefaults struct { //nolint:govet // field order is the published property order
 	Finders *int `json:"finders,omitempty" max:"2" min:"1" nonnull:"true"`
+	// Budget is the review-depth default: auto classifies the diff, a tier
+	// name pins the depth. It is distinct from the budget_usd spend ceiling.
+	Budget *string `enum:"auto|light|standard|deep" json:"budget,omitempty" nonnull:"true"`
+	// SensitivePaths extends the built-in high-risk path globs; it can never
+	// remove one.
+	SensitivePaths []string `json:"sensitive_paths,omitempty" minItems:"1" nonnull:"true"`
 
 	Panel              []string        `json:"panel,omitempty"                  minItems:"1"                          nonnull:"true"`
 	BudgetUSD          *float64        `exclusiveMin:"0"                        json:"budget_usd,omitempty"           nonnull:"true"`

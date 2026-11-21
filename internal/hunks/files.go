@@ -12,18 +12,19 @@ import (
 // fieldalignment), and consumers iterate the slice by index because the
 // struct is larger than a register pair.
 type File struct {
-	Header     string   // the raw `diff --git` line
-	OldPath    string   // a-side path, quote/space-safe
-	Path       string   // b-side path, quote/space-safe
-	Hunks      []Hunk   // parsed OLD/NEW ranges, in diff order
-	AddedLines []string // added content lines without the leading "+"
-	Size       int64    // section bytes, each line counting its newline
-	Additions  int      // added content lines, the +++ header excluded
-	Deletions  int      // removed content lines, the --- header excluded
-	HunkCount  int      // "@@ " header lines (the overview hunk column)
-	HunkMarks  int      // "@@"-prefixed lines (the coverage and hunk totals)
-	StartLine  int      // 1-based line number of the header
-	EndLine    int      // 1-based line number of the section's last line
+	Header       string   // the raw `diff --git` line
+	OldPath      string   // a-side path, quote/space-safe
+	Path         string   // b-side path, quote/space-safe
+	PreviousPath string   // a-side path of a rename, else ""
+	Hunks        []Hunk   // parsed OLD/NEW ranges, in diff order
+	AddedLines   []string // added content lines without the leading "+"
+	Size         int64    // section bytes, each line counting its newline
+	Additions    int      // added content lines, the +++ header excluded
+	Deletions    int      // removed content lines, the --- header excluded
+	HunkCount    int      // "@@ " header lines (the overview hunk column)
+	HunkMarks    int      // "@@"-prefixed lines (the coverage and hunk totals)
+	StartLine    int      // 1-based line number of the header
+	EndLine      int      // 1-based line number of the section's last line
 }
 
 // Files scans diffText once into one File per `diff --git` header. Content
@@ -73,11 +74,12 @@ func (s *fileScan) open(ln string) {
 	}
 	oldPath, newPath := HeaderPaths(ln)
 	s.files = append(s.files, File{
-		Header:    ln,
-		OldPath:   oldPath,
-		Path:      newPath,
-		StartLine: s.lineNo,
-		Size:      int64(len(ln)) + 1,
+		Header:       ln,
+		OldPath:      oldPath,
+		Path:         newPath,
+		PreviousPath: previousPath(oldPath, newPath),
+		StartLine:    s.lineNo,
+		Size:         int64(len(ln)) + 1,
 	})
 	s.cur = len(s.files) - 1
 	s.name = newPath
@@ -94,6 +96,8 @@ func (s *fileScan) count(ln string) {
 		f.Hunks = append(f.Hunks, hunkRows(s.name, ln)...)
 	case strings.HasPrefix(ln, "@@"):
 		f.HunkMarks++
+	case strings.HasPrefix(ln, renameFrom):
+		f.PreviousPath = UnquotePath(strings.TrimPrefix(ln, renameFrom))
 	case strings.HasPrefix(ln, renameTo):
 		s.name = UnquotePath(strings.TrimPrefix(ln, renameTo))
 	case addedContent(ln):
@@ -113,6 +117,16 @@ func (s *fileScan) finish() {
 
 // HeaderIndex renders the `grep -n "^diff --git"` toc line for the section.
 func (f *File) HeaderIndex() string { return strconv.Itoa(f.StartLine) + ":" + f.Header }
+
+// previousPath returns the a-side path of a rename section: the header renders
+// two different paths only when git detected a rename, and `/dev/null` is the
+// created-file marker rather than a path.
+func previousPath(oldPath, newPath string) string {
+	if oldPath == "" || oldPath == newPath || oldPath == devNullPath {
+		return ""
+	}
+	return oldPath
+}
 
 // addedContent reports whether ln is an added content line (not the +++
 // header).
@@ -134,6 +148,10 @@ const (
 	hunkHeader = "@@ "
 	// renameTo renames the hunk rows of a section.
 	renameTo = "rename to "
+	// renameFrom names the path a rename section came from.
+	renameFrom = "rename from "
+	// devNullPath is the a-side marker of a created file, never a path.
+	devNullPath = "/dev/null"
 	// newline is the diff line terminator.
 	newline = "\n"
 )

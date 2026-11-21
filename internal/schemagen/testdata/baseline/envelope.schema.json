@@ -95,6 +95,10 @@
         },
         "repair": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/runRepair" }]
+        },
+        "budget": {
+          "description": "The resolved review-depth decision, present only when --budget or defaults.budget participated; a run that named no depth omits it, so its envelope stays byte-identical. The same object is launcher.json's budget key.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reviewBudget" }]
         }
       },
       "required": [
@@ -199,6 +203,62 @@
         }
       },
       "required": ["rounds", "rounds_to_valid", "final_valid", "attempts"],
+      "additionalProperties": true
+    },
+    "reviewBudget": {
+      "description": "The review budget's recorded decision: the tier that won, which layer asked for it, the requested value, the bundle measurements it read, the dispatch it bought, and the signals that decided it. Three tier names map onto two launch shapes: standard and deep both run two finders with opposite-finder cross-checks, and deep additionally records the risk signal that escalated it.",
+      "type": "object",
+      "properties": {
+        "tier": {
+          "description": "The resolved depth: light (one finder), standard or deep (two finders plus cross-checks).",
+          "enum": ["light", "standard", "deep"]
+        },
+        "source": {
+          "description": "Which lever asked for the depth: the --budget flag or the captured defaults.budget.",
+          "enum": ["flag", "config"]
+        },
+        "requested": {
+          "description": "The value as requested; auto means the classifier decided the tier.",
+          "enum": ["auto", "light", "standard", "deep"]
+        },
+        "files": {
+          "description": "The gate's file count the classifier read.",
+          "type": "integer"
+        },
+        "diff_bytes": {
+          "description": "The full diff's byte count the classifier read.",
+          "type": "integer"
+        },
+        "finders": {
+          "description": "The finder count that actually launched (1 or 2).",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2
+        },
+        "cross_check": {
+          "description": "off for a single-finder run, opposite-finder when two finders cross-check each other.",
+          "enum": ["off", "opposite-finder"]
+        },
+        "reasons": {
+          "description": "The closed-vocabulary signals that selected the tier, in rule order, e.g. sensitive-path: **/migrations/**.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "overridden_by": {
+          "description": "finders when an explicit --finders outranked the budget; the effective finder count beside it is the one that launched.",
+          "enum": ["finders"]
+        }
+      },
+      "required": [
+        "tier",
+        "source",
+        "requested",
+        "files",
+        "diff_bytes",
+        "finders",
+        "cross_check",
+        "reasons"
+      ],
       "additionalProperties": true
     },
     "runAttempt": {

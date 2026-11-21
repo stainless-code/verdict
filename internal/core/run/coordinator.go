@@ -191,6 +191,7 @@ func (c *coordinator) finish() *core.RefusalError {
 	manifest := cloneUnionRow(c.binding)
 	manifest.Set("finders", 2)
 	manifest.Set("finder_source", c.source)
+	setManifestBudget(manifest, c.st.budget)
 	manifest.Set("results", nil)
 	manifest.Set("failures", c.failures)
 	manifest.Set("artifacts", c.snapshot)
@@ -210,6 +211,16 @@ func (c *coordinator) finish() *core.RefusalError {
 		return ref
 	}
 	return c.validateAggregate()
+}
+
+// setManifestBudget carries the review-budget decision when one participated.
+// A nil budget leaves the key out entirely, so a launch that named no depth
+// keeps its manifest byte-identical.
+func setManifestBudget(manifest *jq.Obj, recorded *core.ReviewBudget) {
+	if recorded == nil {
+		return
+	}
+	manifest.Set("budget", core.Wire(recorded))
 }
 
 func (c *coordinator) validateAggregate() *core.RefusalError {
@@ -257,7 +268,7 @@ func (c *coordinator) capture() *core.RefusalError {
 	if captured == nil {
 		return c.st.refuse(codeMissingBundle, "two finders require a captured run")
 	}
-	_, source, ref := c.st.finderPolicy(c.dir)
+	_, source, ref := c.st.finderPolicy(captured)
 	if ref != nil {
 		return ref
 	}
@@ -270,6 +281,7 @@ func (c *coordinator) capture() *core.RefusalError {
 	}
 	manifest := jq.NewObj("schema_version", "2", "execution_id", c.id, "status", "in-progress",
 		"finders", 2, "finder_source", captured.FinderSource)
+	setManifestBudget(manifest, c.st.budget)
 	return writeCoordinator(c.dir, launcherFile, manifest)
 }
 
@@ -329,6 +341,7 @@ func (c *coordinator) executionResponse() {
 		c.response.Data = &core.RunData{
 			Agent: c.base.def.Name, Binary: c.base.bin, Argv: argv,
 			Bundle: readcommon.DisplayPath(c.st.req.RepoRootPath(), c.dir), Timeout: c.base.timeout,
+			Budget: c.st.budget,
 		}
 	}
 	execution := panelcore.CheckExecution(c.dir, nil)

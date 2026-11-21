@@ -33,8 +33,9 @@ var (
 	categoryEnum = []string{"logic", "edge-case", "security", "performance", "accidental-commit", "style", "docs", "other"}
 	checkEnum    = []string{"no-open-above-block", "head-current", "no-live-threads"}
 	severityEnum = []string{severityCritical, severityImportant, severityInformational}
-	effortEnum   = []string{"cheap", "standard", "deep"}
-	depthEnum    = []string{"standard", "deep"}
+	effortEnum   = []string{effortCheap, effortStandard, effortDeep}
+	budgetEnum   = []string{"auto", "light", effortStandard, effortDeep}
+	depthEnum    = []string{effortStandard, effortDeep}
 )
 
 // Parse reads one repository configuration in the fixed refusal order:

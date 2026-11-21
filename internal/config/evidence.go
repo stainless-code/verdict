@@ -92,6 +92,16 @@ func evidenceValues(defaults *ResolvedDefaults) []EvidenceValue {
 	if values.KBMaxChars != nil {
 		out = append(out, EvidenceValue{Key: keyKBMaxChars, Value: values.KBMaxChars, Origin: get(keyKBMaxChars)})
 	}
+	// The review-depth defaults join the capture only when a layer set them, so
+	// a capture that named neither keeps the bytes it always had.
+	if values.Budget != "" {
+		out = append(out, EvidenceValue{Key: keyBudget, Value: values.Budget, Origin: get(keyBudget)})
+	}
+	if values.SensitivePaths != nil {
+		out = append(out, EvidenceValue{
+			Key: keySensitivePaths, Value: slices.Clone(values.SensitivePaths), Origin: get(keySensitivePaths),
+		})
+	}
 	return out
 }
 

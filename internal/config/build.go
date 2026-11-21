@@ -292,6 +292,14 @@ func buildDefaultsTail(obj map[string]any, path string, out *core.ConfigDefaults
 	}); err != nil {
 		return err
 	}
+	if out.Budget, err = presentEnum(obj, keyBudget, path, budgetEnum); err != nil {
+		return err
+	}
+	if out.SensitivePaths, err = presentStrings(obj, keySensitivePaths, path, func(raw any, at string) ([]string, *core.RefusalError) {
+		return globArray(raw, at, 1)
+	}); err != nil {
+		return err
+	}
 	out.SpecCoverageMin, err = presentValue(obj, keySpecCoverageMin, path, func(raw any, at string) (int, *core.RefusalError) {
 		return boundedIntRange(raw, at, specCoverageMinLo, specCoverageMinHi)
 	})

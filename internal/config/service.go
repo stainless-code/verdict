@@ -502,7 +502,7 @@ func resolvedValues(resolved *Resolved) []core.ConfigValue {
 	values := resolved.Defaults.Values
 	origins := resolved.Defaults.Origins
 	get := func(key string) FieldOrigin { return origins[key] }
-	return []core.ConfigValue{
+	out := []core.ConfigValue{
 		{Key: keyPanel, Value: values.Panel, Layer: get(keyPanel).Layer, Source: get(keyPanel).Source},
 		{Key: keyBudgetUSD, Value: values.BudgetUSD, Layer: get(keyBudgetUSD).Layer, Source: get(keyBudgetUSD).Source},
 		{Key: keyMaxBytes, Value: values.MaxBytes, Layer: get(keyMaxBytes).Layer, Source: get(keyMaxBytes).Source},
@@ -518,6 +518,21 @@ func resolvedValues(resolved *Resolved) []core.ConfigValue {
 			Layer: get(keySpecCoverageMin).Layer, Source: get(keySpecCoverageMin).Source,
 		},
 	}
+	// The review-depth defaults appear only when a layer set them, so a
+	// configuration that names neither renders the values it always did.
+	if values.Budget != "" {
+		out = append(out, core.ConfigValue{
+			Key: keyBudget, Value: values.Budget,
+			Layer: get(keyBudget).Layer, Source: get(keyBudget).Source,
+		})
+	}
+	if values.SensitivePaths != nil {
+		out = append(out, core.ConfigValue{
+			Key: keySensitivePaths, Value: values.SensitivePaths,
+			Layer: get(keySensitivePaths).Layer, Source: get(keySensitivePaths).Source,
+		})
+	}
+	return out
 }
 
 func planGroups(plan Plan) []core.ConfigPlanGroup {

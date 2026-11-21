@@ -46,7 +46,7 @@ func (st *state) supersede(dir string) *core.RefusalError {
 	if ref != nil {
 		return ref
 	}
-	count, source, ref := st.finderPolicy(dir)
+	count, source, ref := st.finderPolicy(captured)
 	if ref != nil {
 		return ref
 	}

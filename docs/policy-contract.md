@@ -25,6 +25,12 @@ resolves it.
   estimate guard. The two refusals never share a code: a personal-ceiling hit
   is `spend-capped`, an ordinary guard overrun is `budget-exceeded`, and both
   take a fresh `--consent-over-budget`.
+- **Review budget** is a different axis entirely: `run`'s `--budget`
+  (`auto|light|standard|deep`) and `defaults.budget` choose how many finders
+  launch, never how much may be spent. It records its tier and reasons in
+  `launcher.json` and `data.budget`, and no gate reads it. The manual's "Review
+  budget (`--budget auto`)" section owns the rules; the per-group USD Budget row
+  in the rule table below stays the spend guard.
 
 ## Rule table
 

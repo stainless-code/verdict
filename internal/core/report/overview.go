@@ -47,13 +47,13 @@ func overviewTableLines(rows []diagram.File) []string {
 		"<details>", "<summary>Files changed (" + strconv.Itoa(len(rows)) + ")</summary>", "",
 		"| # | File | +/- | Hunks | Role |", "|---|---|---|---|---|",
 	}
-	for _, row := range rows {
-		lines = append(lines, overviewTableRow(row))
+	for i := range rows {
+		lines = append(lines, overviewTableRow(&rows[i]))
 	}
 	return append(lines, "", "</details>", "")
 }
 
-func overviewTableRow(row diagram.File) string {
+func overviewTableRow(row *diagram.File) string {
 	return "| " + row.ID + " | `" + diagram.Sanitize(row.Path) + "` | +" +
 		strconv.Itoa(row.Adds) + "/-" + strconv.Itoa(row.Dels) +
 		" | " + strconv.Itoa(row.Hunks) + " | " + row.Role + " |"

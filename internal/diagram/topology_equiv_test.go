@@ -32,7 +32,7 @@ func appendLinearMentionEdges(
 		edges = append(edges, Edge{
 			From:  rows[cur].ID,
 			To:    row.ID,
-			Label: linearEdgeLabel(rows[cur], row, freq),
+			Label: linearEdgeLabel(&rows[cur], &rows[j], freq),
 		})
 	}
 	return edges
@@ -48,7 +48,7 @@ func linearEdgeTargets(rows []File) (map[string]int, map[string]int) {
 	return freq, index
 }
 
-func linearEdgeLabel(src, dst File, freq map[string]int) string {
+func linearEdgeLabel(src, dst *File, freq map[string]int) string {
 	target := dst.Path
 	if freq[linearBaseName(dst.Path)] == 1 {
 		target = linearBaseName(dst.Path)

@@ -19,6 +19,8 @@ export interface RunData {
   record?: string;
   execution?: RunExecution | null;
   repair?: RunRepair | null;
+  /** The resolved review-depth decision, present only when --budget or defaults.budget participated; a run that named no depth omits it, so its envelope stays byte-identical. The same object is launcher.json's budget key. */
+  budget?: ReviewBudget | null;
   [key: string]: unknown;
 }
 
@@ -73,6 +75,29 @@ export interface RunRepair {
   rounds_to_valid: number;
   final_valid: boolean;
   attempts: Array<RunAttempt>;
+  [key: string]: unknown;
+}
+
+/** The review budget's recorded decision: the tier that won, which layer asked for it, the requested value, the bundle measurements it read, the dispatch it bought, and the signals that decided it. Three tier names map onto two launch shapes: standard and deep both run two finders with opposite-finder cross-checks, and deep additionally records the risk signal that escalated it. */
+export interface ReviewBudget {
+  /** The resolved depth: light (one finder), standard or deep (two finders plus cross-checks). */
+  tier: "light" | "standard" | "deep";
+  /** Which lever asked for the depth: the --budget flag or the captured defaults.budget. */
+  source: "flag" | "config";
+  /** The value as requested; auto means the classifier decided the tier. */
+  requested: "auto" | "light" | "standard" | "deep";
+  /** The gate's file count the classifier read. */
+  files: number;
+  /** The full diff's byte count the classifier read. */
+  diff_bytes: number;
+  /** The finder count that actually launched (1 or 2). */
+  finders: number;
+  /** off for a single-finder run, opposite-finder when two finders cross-check each other. */
+  cross_check: "off" | "opposite-finder";
+  /** The closed-vocabulary signals that selected the tier, in rule order, e.g. sensitive-path: ** /migrations/**. */
+  reasons: Array<string>;
+  /** finders when an explicit --finders outranked the budget; the effective finder count beside it is the one that launched. */
+  overridden_by?: "finders";
   [key: string]: unknown;
 }
 

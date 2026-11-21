@@ -82,18 +82,7 @@ func (st *state) repairLoop(ctx context.Context, args *launchArgs, n int) (*core
 		return nil, ref
 	}
 	started := st.now()
-	rec := &launcher{
-		SchemaVersion: launcherSchema,
-		Agent:         args.def.Name,
-		AgentSource:   args.def.Source,
-		Binary:        bin,
-		Recipe:        args.plan,
-		Bundle:        args.bundle,
-		Artifact:      args.artifact,
-		StartedAt:     core.NowUTC(started),
-		Timeout:       args.timeout,
-		Probe:         args.probe,
-	}
+	rec := st.launchRecord(args, bin, started)
 	rec.Argv, st.argSecrets = st.displayArgv(args)
 	if ref := st.clearRoundFiles(args); ref != nil {
 		return nil, ref

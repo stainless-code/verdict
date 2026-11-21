@@ -25,6 +25,7 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/budget"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	runcore "github.com/stainless-code/verdict/internal/core/run"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -56,11 +57,13 @@ const (
 	recipeFlag  = "--recipe"
 	stageFlag   = "--stage"
 	findersFlag = "--finders"
+	budgetFlag  = "--budget"
 )
 
 // verbsWanted is the flag list the unknown-flag usage error names.
 const verbsWanted = "--agent <name>, --recipe <slug>, --stage <n>, --timeout <secs>, --rounds <n>, " +
-	"--finders <1|2>, --consent-over-budget, --print, -- <agent args>, --json"
+	"--finders <1|2>, --budget <" + budget.RequestAuto + "|" + budget.TierLight + "|" + budget.TierStandard + "|" +
+	budget.TierDeep + ">, --consent-over-budget, --print, -- <agent args>, --json"
 
 // Run executes `run <owner/repo> <pr|local-name> --agent <name> [--recipe
 // <slug>] [--stage <n>] [--timeout <secs>] [--rounds <n>] [--print] [--
@@ -138,6 +141,7 @@ func runRequest(r *cli.Runner, req Request, flags *flags) *core.RunRequest {
 		TimeoutRaw:        flags.timeout,
 		RoundsRaw:         requestedRounds(flags),
 		FindersRaw:        flags.finders,
+		BudgetRaw:         flags.budget,
 		Print:             flags.print,
 		ConsentOverBudget: flags.consent,
 		JSONMode:          r.JSONMode,
@@ -162,6 +166,7 @@ func requestedRounds(f *flags) string {
 // render was not asked for a loop it cannot run.
 type flags struct {
 	finders   string
+	budget    string
 	agent     string
 	recipe    string
 	stage     string
@@ -201,6 +206,8 @@ func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) 
 		return parseNameFlag(r, f, args, i)
 	case findersFlag:
 		return parseFindersFlag(r, f, args, i)
+	case budgetFlag:
+		return parseBudgetFlag(r, f, args, i)
 	case stageFlag:
 		return parseStageFlag(r, f, args, i)
 	case "--timeout", roundsFlag:
@@ -277,7 +284,7 @@ func parseCountedFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, 
 // pass-through tail is not reproduced: its quoting belongs to whatever shell
 // the operator used.
 func rentry(req Request, f *flags, jsonMode bool) string {
-	s := "verdict run " + req.Repo + " " + req.Pr + flagTail(f)
+	s := "verdict run " + req.Repo + argSep + req.Pr + flagTail(f)
 	if f.consent {
 		s += " --consent-over-budget"
 	}
@@ -292,7 +299,7 @@ func rentry(req Request, f *flags, jsonMode bool) string {
 // this line exactly as typed — a refusal names the value it could not read —
 // and the line exists to be pasted back into a shell.
 func flagTail(f *flags) string {
-	s := findersTail(f.finders)
+	s := findersTail(f.finders) + budgetTail(f.budget)
 	if f.agent != "" {
 		s += " --agent " + f.agent
 	}
@@ -318,6 +325,9 @@ func flagTail(f *flags) string {
 // the characters no shell metacharacter uses.
 const shellSafeChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_./:=@%+,"
 
+// argSep is the single space every rendered command joins its parts with.
+const argSep = " "
+
 // RenderCommand renders one argv as a POSIX shell command line, quoting every
 // argument that is not already safe. It is what --print writes: the exact
 // command the launcher would spawn, copy-pasteable into sh/bash/zsh, which is
@@ -327,7 +337,7 @@ func RenderCommand(argv []string) string {
 	for _, arg := range argv {
 		parts = append(parts, quoteArg(arg))
 	}
-	return strings.Join(parts, " ")
+	return strings.Join(parts, argSep)
 }
 
 // quoteArg single-quotes one argument when it carries anything a shell would
@@ -382,4 +392,26 @@ func findersTail(raw string) string {
 		return ""
 	}
 	return " --finders " + quoteArg(raw)
+}
+
+// parseBudgetFlag consumes --budget, refusing an unknown depth here rather than
+// in the service: the vocabulary is fixed, so the refusal is a usage error that
+// lands before any bundle is read and before any process could start.
+func parseBudgetFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) {
+	value, next, usage := cli.FlagValue(args, i, budgetFlag, "<"+budget.Vocabulary()+">")
+	if usage != nil {
+		return i, r.ReportUsage(usage), true
+	}
+	if !budget.ValidRequest(value) {
+		return i, r.ReportUsage(&cli.UsageError{Message: budgetFlag + " must be " + budget.Vocabulary()}), true
+	}
+	f.budget = value
+	return next, 0, false
+}
+
+func budgetTail(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	return argSep + budgetFlag + argSep + quoteArg(raw)
 }
