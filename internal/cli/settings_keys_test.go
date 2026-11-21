@@ -59,3 +59,26 @@ func TestRemovedDiagramSettings(t *testing.T) {
 		})
 	}
 }
+
+// TestPublishFixPromptSetting proves the new publish boolean travels the same
+// path as its siblings: a JSON bool resolves, a non-bool refuses typed
+// bad-settings, and an unknown near-miss names the allow-list.
+func TestPublishFixPromptSetting(t *testing.T) {
+	t.Parallel()
+	res, err := cli.ResolvePrefs(&cli.Runner{}, map[string]string{"HOME": t.TempDir()},
+		func(string) ([]byte, error) { return []byte(`{"publish":{"fix_prompt":false}}`), nil })
+	if err != nil {
+		t.Fatalf("publish.fix_prompt=false refused: %v", err)
+	}
+	if got := res.Effective.PublishFixPrompt; got != "false" {
+		t.Fatalf("PublishFixPrompt = %q; want false", got)
+	}
+	if ref := settingsRefusal(t, `{"publish":{"fix_prompt":"yes"}}`); !strings.Contains(ref.Message,
+		"publish.fix_prompt must be a boolean (want true|false)") {
+		t.Fatalf("non-bool message = %q", ref.Message)
+	}
+	if ref := settingsRefusal(t, `{"publish":{"fixprompt":false}}`); !strings.Contains(ref.Message,
+		"unknown publish key 'fixprompt'") {
+		t.Fatalf("unknown-key message = %q", ref.Message)
+	}
+}

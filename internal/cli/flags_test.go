@@ -13,7 +13,7 @@ func TestStripGlobalToggles(t *testing.T) {
 	rest, g := mustStrip(t, []string{
 		"--compact", "--no-footer", "--overview",
 		"--no-diagram-structural", "--logo", "--no-json",
-		"--no-attribution", "record", "acme/app", "local-x",
+		"--no-attribution", "--fix-prompt", "record", "acme/app", "local-x",
 	})
 	if len(rest) != 3 || rest[0] != "record" {
 		t.Fatalf("rest = %v", rest)
@@ -25,6 +25,7 @@ func TestStripGlobalToggles(t *testing.T) {
 	checkForce(t, "logo", g.PublishLogoForce, cli.FlagOn)
 	checkForce(t, "output", g.OutputForce, "text")
 	checkForce(t, "attribution", g.PublishAttributionForce, "off")
+	checkForce(t, "fix prompt", g.PublishFixPromptForce, cli.FlagOn)
 }
 
 func checkForce(t *testing.T, name, got, want string) {
@@ -256,6 +257,7 @@ func TestApplyGlobalForcesKitchenSink(t *testing.T) {
 		PublishLogoURLSet:         true,
 		PublishOverviewForce:      cli.FlagOff,
 		DiagramsStructuralForce:   cli.FlagOff,
+		PublishFixPromptForce:     cli.FlagOff,
 	}
 	if err := cli.ApplyGlobalForces(r, g, false); err != nil {
 		t.Fatalf("ApplyGlobalForces: %v", err)
@@ -272,6 +274,7 @@ func TestApplyGlobalForcesKitchenSink(t *testing.T) {
 		{"logo url", eff.PublishLogoURL, "https://x/y.png"},
 		{"overview", eff.PublishOverview, cli.FlagOff},
 		{"structural", eff.DiagramsStructural, cli.FlagOff},
+		{"fix prompt", eff.PublishFixPrompt, cli.FlagOff},
 		{"output", r.Output, "json"},
 	} {
 		if tc.got != tc.want {
@@ -384,6 +387,7 @@ func TestBoolFlagTableUncoveredHalf(t *testing.T) {
 		{func(g *cli.GlobalForces) string { return g.CompactForce }, "--no-compact", cli.FlagOff},
 		{func(g *cli.GlobalForces) string { return g.PublishFooterForce }, "--footer", cli.FlagOn},
 		{func(g *cli.GlobalForces) string { return g.PublishOverviewForce }, "--no-overview", cli.FlagOff},
+		{func(g *cli.GlobalForces) string { return g.PublishFixPromptForce }, "--no-fix-prompt", cli.FlagOff},
 		{func(g *cli.GlobalForces) string { return g.DiagramsStructuralForce }, "--diagram-structural", cli.FlagOn},
 		{func(g *cli.GlobalForces) string { return g.PublishLogoForce }, "--no-logo", cli.FlagOff},
 	} {
