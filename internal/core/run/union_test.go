@@ -126,11 +126,6 @@ func TestDiscoveryUnionDeduplicatesReceiptTuples(t *testing.T) {
 	}
 }
 
-// TestDiscoveryUnionKeepsOneOriginPerFinder proves the plan stays one
-// directed check per finder: a finder that reports the same path and claim at
-// two anchors is one finding, not two origins, so the written plan never
-// carries a repeated check or a source above the two finders panel-plan
-// allows.
 func TestDiscoveryUnionKeepsOneOriginPerFinder(t *testing.T) {
 	twice := unionInput(t, `{"findings":[`+
 		`{"path":"a.go","line":1,"side":"RIGHT","severity":"important","claim":"Changed value breaks the caller.","quote":"new line 1","confidence":"high"},`+
@@ -160,10 +155,6 @@ func TestDiscoveryUnionKeepsOneOriginPerFinder(t *testing.T) {
 	}
 }
 
-// TestDiscoveryUnionCarriesReadAttestations proves the aggregate review keeps
-// the coverage and chunk claims its finders made: record --require-coverage
-// reads the aggregate, so a dropped claim refuses a review that was covered,
-// and the chunked gate needs the manifest's chunk names on top-level chunks.
 func TestDiscoveryUnionCarriesReadAttestations(t *testing.T) {
 	first := unionInput(t, `{"coverage":[{"file":"a.go","ranges":"1-3"}],"chunks":["chunk-1"],"receipts":[]}`)
 	second := unionInput(t, `{"coverage":[{"file":"old.go","ranges":"all"},{"file":"a.go","ranges":"1-3"}],"chunks":["chunk-2","chunk-1"]}`)
@@ -179,9 +170,6 @@ func TestDiscoveryUnionCarriesReadAttestations(t *testing.T) {
 	}
 }
 
-// TestDiscoveryUnionOmitsUnattestedReadClaims proves the fields stay absent
-// when no finder supplied them, so a bundle without an attestation reads
-// exactly as before.
 func TestDiscoveryUnionOmitsUnattestedReadClaims(t *testing.T) {
 	review, _, err := discoveryUnion("test", nil, []*jq.Obj{unionInput(t, coordinatorReview)})
 	if err != nil {
@@ -191,5 +179,28 @@ func TestDiscoveryUnionOmitsUnattestedReadClaims(t *testing.T) {
 		if _, ok := review.Get(key); ok {
 			t.Fatalf("%s = %v, want the field absent", key, readcommon.FieldOf(review, key))
 		}
+	}
+}
+
+// TestDiscoveryUnionKeepsReproductionFromTheDuplicate proves a reproduced
+// finding keeps the reproduction it was reported with: the artifact is what
+// record captures, so a merge that keeps the tuple but drops the payload stores
+// a "reproduced" finding with nothing to run.
+func TestDiscoveryUnionKeepsReproductionFromTheDuplicate(t *testing.T) {
+	payload := `{"path":"","command":"false"}`
+	first := unionInput(t, `{"findings":[{"path":"a.go","line":1,"side":"RIGHT","severity":"important",`+
+		`"claim":"Changed value breaks the caller.","quote":"new line 1","confidence":"high",`+
+		`"rigor":"reproduced","reproduction":`+payload+`}]}`)
+	second := unionInput(t, `{"findings":[{"path":"a.go","line":3,"side":"RIGHT","severity":"critical",`+
+		`"claim":"Changed value breaks the caller.","quote":"old line 3","confidence":"high",`+
+		`"rigor":"reproduced","reproduction":`+payload+`}]}`)
+	review, _, err := discoveryUnion("test", []byte(fixtureDiff), []*jq.Obj{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := jq.Elements(readcommon.FieldOf(review, "findings"))
+	want := `[{"path":"a.go","line":1,"side":"RIGHT","severity":"critical","claim":"Changed value breaks the caller.","quote":"new line 1","confidence":"high","rigor":"reproduced","reproduction":` + payload + `}]`
+	if got := compactRows(rows); got != want {
+		t.Fatalf("findings = %s", got)
 	}
 }
