@@ -73,3 +73,20 @@ func TestPhaseRollupKeepsUnknownSpendForUnreadableCrossLauncher(t *testing.T) {
 		t.Fatalf("unreadable cross launcher priced = %v", got)
 	}
 }
+
+func TestPhaseRollupCountsLaunchedRoundsWithoutReviews(t *testing.T) {
+	dir := phaseCostFixture(t, phaseCostKnown)
+	writeStore(t, dir, map[string]string{
+		filepath.Join("x-finder-1", "launcher.json"):                 `{"attempts":[{"round":1}]}`,
+		filepath.Join("x-finder-1", ".run.rounds", "01.out"):         "round one",
+		filepath.Join("x-finder-1", ".run.rounds", "01.review.json"): `{}`,
+		filepath.Join("x-finder-1", ".run.rounds", "02.out"):         "round two output, no review",
+	})
+	cost := readcommon.CostRollup(dir).Cost
+	if got := costNum(t, cost, "runs"); got != 3 {
+		t.Fatalf("runs = %v", got)
+	}
+	if got, _ := cost.Get("est_usd"); got != nil {
+		t.Fatalf("unreviewed repair round priced = %v", got)
+	}
+}

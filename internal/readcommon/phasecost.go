@@ -198,19 +198,23 @@ func phaseTokenObject(phases []spend.Phase) *jq.Obj {
 	return jq.NewObj(keyRuns, len(phases), keyInputTokens, in, keyOutputTokens, out, keyTotalTokens, total)
 }
 
+// phaseAttemptCount counts the rounds this phase launched. NN.out is the one
+// file every round writes before its verdict, so a round that stopped before
+// saving a review still counts, and a launcher's attempt records stay a lower
+// bound.
 func phaseAttemptCount(dir, namespace string, launcher any) int {
 	count := max(len(jq.Elements(FieldOf(launcher, "attempts"))), 1)
 	files, err := os.ReadDir(filepath.Join(dir, namespace, ".run.rounds"))
 	if err != nil {
 		return count
 	}
-	reviews := 0
+	rounds := 0
 	for _, file := range files {
-		if strings.HasSuffix(file.Name(), ".review.json") {
-			reviews++
+		if strings.HasSuffix(file.Name(), ".out") {
+			rounds++
 		}
 	}
-	return max(count, reviews)
+	return max(count, rounds)
 }
 
 func costNamespace(finder, phase string) string {
