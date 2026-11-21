@@ -79,14 +79,17 @@ func TestFinderProceduresShareS4ContractAndDistinctMethods(t *testing.T) {
 	if !strings.Contains(string(first), "Read spec/context first.") || !strings.Contains(string(second), "last file toward the first") {
 		t.Fatal("finder methods lost their different entry points")
 	}
-	assertFinderContract(t, first)
-	assertFinderContract(t, second)
+	assertFinderContract(t, first, filepath.Join(dir, "x-finder-1", "review.json"))
+	assertFinderContract(t, second, filepath.Join(dir, "x-finder-2", "review.json"))
 }
 
-func assertFinderContract(t *testing.T, raw []byte) {
+func assertFinderContract(t *testing.T, raw []byte, outputPath string) {
 	t.Helper()
 	if strings.Contains(string(raw), "verdict record --dry-run") || !strings.Contains(string(raw), "Do not invoke record or post during discovery.") {
 		t.Fatal("finder invokes aggregate checking before discovery closes")
+	}
+	if !strings.Contains(string(raw), outputPath) || strings.Contains(string(raw), "<bundle>") {
+		t.Fatal("finder procedure does not name its own review artifact")
 	}
 	for _, contract := range []string{"Every suspected defect", "quote", "confidence", "Do not spawn sub-agents", "Capability map"} {
 		if !strings.Contains(string(raw), contract) {
