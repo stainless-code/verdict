@@ -27,9 +27,7 @@ const (
 func discoveryUnion(execution string, diff []byte, reviews []*jq.Obj) (*jq.Obj, *jq.Obj, error) {
 	candidates := make(map[string]*unionCandidate)
 	idx := evidence.IndexDiff(diff)
-	receipts, specs := []any{}, []any{}
-	receiptKeys := make(map[string]bool)
-	specKeys := make(map[string]bool)
+	attestations := &unionAttestations{seen: make(map[string]bool)}
 	for i, review := range reviews {
 		if review == nil {
 			continue
@@ -39,14 +37,48 @@ func discoveryUnion(execution string, diff []byte, reviews []*jq.Obj) (*jq.Obj, 
 		if err := mergeDiscovery(candidates, idx, finder, jq.Elements(rows)); err != nil {
 			return nil, nil, err
 		}
-
-		receipts = appendUnionRows(receipts, receiptKeys, review, "receipts")
-		specs = appendUnionRows(specs, specKeys, review, "spec_checks")
+		for _, key := range []string{"receipts", "spec_checks", "coverage", "chunks"} {
+			attestations.merge(review, key)
+		}
 	}
 	if len(candidates) > maxUnionFindings {
 		return nil, nil, jq.NewErrf("union exceeds 100 findings")
 	}
-	return renderUnion(execution, candidates, receipts, specs)
+	return renderUnion(execution, candidates, attestations)
+}
+
+// unionAttestations collects what each finder attests it read: the receipts and
+// spec checks the union has always carried, plus the coverage ranges and chunk
+// names the aggregate review owes on its own. record --require-coverage and the
+// chunked gate read the aggregate, so a claim kept only in a finder artifact is
+// a claim the aggregate never made.
+type unionAttestations struct {
+	receipts, specs, coverage, chunks []any
+	seen                              map[string]bool
+}
+
+// merge folds one finder's rows for key into the aggregate, dropping tuples it
+// already carries: two finders attesting one hunk, one claim, or one chunk is
+// one attestation.
+func (a *unionAttestations) merge(review *jq.Obj, key string) {
+	rows, _ := review.Get(key)
+	for _, row := range jq.Elements(rows) {
+		encoded := key + "\x00" + unionRowKey(row, key)
+		if a.seen[encoded] {
+			continue
+		}
+		a.seen[encoded] = true
+		switch key {
+		case "receipts":
+			a.receipts = append(a.receipts, row)
+		case "spec_checks":
+			a.specs = append(a.specs, row)
+		case "coverage":
+			a.coverage = append(a.coverage, row)
+		case "chunks":
+			a.chunks = append(a.chunks, row)
+		}
+	}
 }
 
 func mergeDiscovery(candidates map[string]*unionCandidate, idx *evidence.DiffIndex, finder string, rows []any) error {
@@ -72,7 +104,7 @@ func mergeDiscovery(candidates map[string]*unionCandidate, idx *evidence.DiffInd
 	return nil
 }
 
-func renderUnion(execution string, candidates map[string]*unionCandidate, receipts, specs []any) (*jq.Obj, *jq.Obj, error) {
+func renderUnion(execution string, candidates map[string]*unionCandidate, attestations *unionAttestations) (*jq.Obj, *jq.Obj, error) {
 	ordered := make([]*unionCandidate, 0, len(candidates))
 	for _, candidate := range candidates {
 		ordered = append(ordered, candidate)
@@ -86,9 +118,22 @@ func renderUnion(execution string, candidates map[string]*unionCandidate, receip
 	})
 	findings, checks, sources := unionRows(ordered)
 	review := jq.NewObj("schema_version", "2", "execution", jq.NewObj("id", execution, "finders", 2),
-		"findings", findings, "receipts", receipts, "spec_checks", specs, "summary",
+		"findings", findings, "receipts", attestations.receipts, "spec_checks", attestations.specs, "summary",
 		fmt.Sprintf("Two-finder union: %d findings.", len(findings)))
+	attestations.attach(review)
 	return review, jq.NewObj("checks", checks, "sources", sources), nil
+}
+
+// attach writes the read attestations some finder supplied. A bundle no finder
+// attested keeps the fields absent, which is how an unattested aggregate
+// reaches the coverage gate.
+func (a *unionAttestations) attach(review *jq.Obj) {
+	if len(a.coverage) > 0 {
+		review.Set("coverage", a.coverage)
+	}
+	if len(a.chunks) > 0 {
+		review.Set("chunks", a.chunks)
+	}
 }
 
 func cloneUnionRow(row *jq.Obj) *jq.Obj {
@@ -105,18 +150,6 @@ func quoteSide(row *jq.Obj) string {
 		return "RIGHT"
 	}
 	return side
-}
-
-func appendUnionRows(out []any, seen map[string]bool, review *jq.Obj, key string) []any {
-	rows, _ := review.Get(key)
-	for _, row := range jq.Elements(rows) {
-		encoded := unionRowKey(row, key)
-		if !seen[encoded] {
-			seen[encoded] = true
-			out = append(out, row)
-		}
-	}
-	return out
 }
 
 func mergeDuplicate(prior *unionCandidate, row, origin *jq.Obj, verified bool) {

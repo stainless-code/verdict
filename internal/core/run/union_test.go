@@ -156,3 +156,37 @@ func TestDiscoveryUnionKeepsOneOriginPerFinder(t *testing.T) {
 		t.Fatalf("origins = %s", got)
 	}
 }
+
+// TestDiscoveryUnionCarriesReadAttestations proves the aggregate review keeps
+// the coverage and chunk claims its finders made: record --require-coverage
+// reads the aggregate, so a dropped claim refuses a review that was covered,
+// and the chunked gate needs the manifest's chunk names on top-level chunks.
+func TestDiscoveryUnionCarriesReadAttestations(t *testing.T) {
+	first := unionInput(t, `{"coverage":[{"file":"a.go","ranges":"1-3"}],"chunks":["chunk-1"],"receipts":[]}`)
+	second := unionInput(t, `{"coverage":[{"file":"old.go","ranges":"all"},{"file":"a.go","ranges":"1-3"}],"chunks":["chunk-2","chunk-1"]}`)
+	review, _, err := discoveryUnion("test", nil, []*jq.Obj{first, second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := compactRows(jq.Elements(readcommon.FieldOf(review, "coverage"))); got != `[{"file":"a.go","ranges":"1-3"},{"file":"old.go","ranges":"all"}]` {
+		t.Fatalf("coverage = %s", got)
+	}
+	if got := compactRows(jq.Elements(readcommon.FieldOf(review, "chunks"))); got != `["chunk-1","chunk-2"]` {
+		t.Fatalf("chunks = %s", got)
+	}
+}
+
+// TestDiscoveryUnionOmitsUnattestedReadClaims proves the fields stay absent
+// when no finder supplied them, so a bundle without an attestation reads
+// exactly as before.
+func TestDiscoveryUnionOmitsUnattestedReadClaims(t *testing.T) {
+	review, _, err := discoveryUnion("test", nil, []*jq.Obj{unionInput(t, coordinatorReview)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, key := range []string{"coverage", "chunks"} {
+		if _, ok := review.Get(key); ok {
+			t.Fatalf("%s = %v, want the field absent", key, readcommon.FieldOf(review, key))
+		}
+	}
+}
