@@ -36,6 +36,11 @@ type Launch struct {
 	ModelFlag          string
 	PromptFlag         string
 	Source             string
+	// KeyEnv names the environment variable this CLI reads its model key
+	// from, with the doc that states it; a row without one needs an explicit
+	// --key-secret from the operator.
+	KeyEnv         string
+	KeyEnvCitation string
 	// ProbeMatch is the substring the launcher expects from the identity probe.
 	ProbeMatch string
 	// LaunchWarning is emitted once on stderr at launch when a headless CLI
@@ -167,6 +172,8 @@ var catalog = []Agent{
 			Citation:           docClaudeCLI,
 			PermissionHint:     "--permission-mode acceptEdits",
 			PermissionCitation: docClaudeCLI,
+			KeyEnv:             "ANTHROPIC_API_KEY",
+			KeyEnvCitation:     docClaudeCLI,
 			Binary:             nameClaude, ModelFlag: modelFlag,
 			Args:           []string{"-p"},
 			ResumeArgs:     []string{"-c"},
@@ -227,6 +234,8 @@ var catalog = []Agent{
 			Citation:           docCodexReadme,
 			PermissionHint:     "--sandbox workspace-write",
 			PermissionCitation: docCodexReadme,
+			KeyEnv:             "OPENAI_API_KEY",
+			KeyEnvCitation:     docCodexReadme,
 			Binary:             nameCodex, ModelFlag: modelFlag,
 			Args:           []string{argsExec},
 			ResumeArgs:     []string{"resume"},

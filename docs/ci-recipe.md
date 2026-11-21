@@ -7,6 +7,11 @@ to the model provider whose key you already hold. The worked example lives
 at [examples/verdict-review.yml](../examples/verdict-review.yml); copy it
 into your repo as `.github/workflows/verdict-review.yml`.
 
+One command writes that file for you: `verdict init --ci github` (see the
+manual's _Every PR_ section) renders every step below inline and pinned, with
+your agent and key wired from repository settings. Copy the example by hand
+only when you want to change the shape yourself.
+
 ## The pipeline
 
 1. **Install** — the `setup-verdict` action installs a pinned, signature-

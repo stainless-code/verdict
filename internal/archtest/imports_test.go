@@ -68,7 +68,10 @@ var forbiddenDeps = []string{
 // distribution surfaces (internal/core/upgrade, internal/core/skill) and every
 // CLI/transport adapter are absent by design.
 var facadeAllowedDeps = map[string]bool{
-	"":                        true, // the payload root (skillfs) embeds the shipped lens pack
+	"": true, // the payload root (skillfs) embeds the shipped lens pack
+	// init renders the CI workflow from the catalog row's documented key and
+	// permission facts, so the facade now reaches the catalog itself.
+	"internal/agentcatalog":   true,
 	"internal/argvshape":      true,
 	"internal/atomic":         true,
 	"internal/brief":          true,

@@ -45,6 +45,7 @@ var internalFieldNames = map[string]bool{
 	"Environ":     true,
 	"JSONMode":    true,
 	"Interactive": true,
+	"Machine":     true,
 }
 
 type schemaSource = reflect.Type
