@@ -22,23 +22,21 @@ type unionCandidate struct {
 const (
 	maxUnionFindings = 100
 	unionSeverity    = "severity"
+	unionFinder      = "finder"
+	unionReceipts    = "receipts"
+	unionSpecChecks  = "spec_checks"
 )
 
 func discoveryUnion(execution string, diff []byte, reviews []*jq.Obj) (*jq.Obj, *jq.Obj, error) {
 	candidates := make(map[string]*unionCandidate)
 	idx := evidence.IndexDiff(diff)
-	attestations := &unionAttestations{seen: make(map[string]bool)}
+	attestations := &unionAttestations{rows: make(map[string][]any), seen: make(map[string]bool)}
 	for i, review := range reviews {
 		if review == nil {
 			continue
 		}
-		finder := fmt.Sprintf("finder-%d", i+1)
-		rows, _ := review.Get("findings")
-		if err := mergeDiscovery(candidates, idx, finder, jq.Elements(rows)); err != nil {
+		if err := mergeReview(candidates, idx, attestations, i, review); err != nil {
 			return nil, nil, err
-		}
-		for _, key := range []string{"receipts", "spec_checks", "coverage", "chunks"} {
-			attestations.merge(review, key)
 		}
 	}
 	if len(candidates) > maxUnionFindings {
@@ -47,15 +45,36 @@ func discoveryUnion(execution string, diff []byte, reviews []*jq.Obj) (*jq.Obj, 
 	return renderUnion(execution, candidates, attestations)
 }
 
+// mergeReview folds one finder's review into the union: its findings and the
+// read attestations the aggregate owes.
+func mergeReview(candidates map[string]*unionCandidate, idx *evidence.DiffIndex,
+	attestations *unionAttestations, index int, review *jq.Obj,
+) error {
+	finder := fmt.Sprintf("finder-%d", index+1)
+	rows, _ := review.Get("findings")
+	if err := mergeDiscovery(candidates, idx, finder, jq.Elements(rows)); err != nil {
+		return err
+	}
+	for _, key := range attestationKeys {
+		attestations.merge(review, key)
+	}
+	return nil
+}
+
 // unionAttestations collects what each finder attests it read: the receipts and
 // spec checks the union has always carried, plus the coverage ranges and chunk
 // names the aggregate review owes on its own. record --require-coverage and the
 // chunked gate read the aggregate, so a claim kept only in a finder artifact is
 // a claim the aggregate never made.
 type unionAttestations struct {
-	receipts, specs, coverage, chunks []any
-	seen                              map[string]bool
+	rows map[string][]any
+	seen map[string]bool
 }
+
+// attestationKeys are the review fields a finder attests and the aggregate
+// carries. receipts and spec_checks are the ones it has always carried;
+// coverage and chunks are written only when a finder supplied them.
+var attestationKeys = []string{unionReceipts, unionSpecChecks, "coverage", "chunks"}
 
 // merge folds one finder's rows for key into the aggregate, dropping tuples it
 // already carries: two finders attesting one hunk, one claim, or one chunk is
@@ -68,16 +87,7 @@ func (a *unionAttestations) merge(review *jq.Obj, key string) {
 			continue
 		}
 		a.seen[encoded] = true
-		switch key {
-		case "receipts":
-			a.receipts = append(a.receipts, row)
-		case "spec_checks":
-			a.specs = append(a.specs, row)
-		case "coverage":
-			a.coverage = append(a.coverage, row)
-		case "chunks":
-			a.chunks = append(a.chunks, row)
-		}
+		a.rows[key] = append(a.rows[key], row)
 	}
 }
 
@@ -93,7 +103,7 @@ func mergeDiscovery(candidates map[string]*unionCandidate, idx *evidence.DiffInd
 			Path: jq.StrOf(readcommon.FieldOf(row, "path")), Side: quoteSide(row),
 			Line: line, Quote: jq.StrOf(readcommon.FieldOf(row, "quote")),
 		}).Verified()
-		origin := jq.NewObj("finder", finder, "index", n, "finding", row)
+		origin := jq.NewObj(unionFinder, finder, "index", n, "finding", row)
 		prior := candidates[signature]
 		if prior == nil {
 			candidates[signature] = &unionCandidate{row: row, origins: []any{origin}, signature: signature, verified: verified}
@@ -118,7 +128,8 @@ func renderUnion(execution string, candidates map[string]*unionCandidate, attest
 	})
 	findings, checks, sources := unionRows(ordered)
 	review := jq.NewObj("schema_version", "2", "execution", jq.NewObj("id", execution, "finders", 2),
-		"findings", findings, "receipts", attestations.receipts, "spec_checks", attestations.specs, "summary",
+		"findings", findings, unionReceipts, attestations.rows[unionReceipts], unionSpecChecks,
+		attestations.rows[unionSpecChecks], "summary",
 		fmt.Sprintf("Two-finder union: %d findings.", len(findings)))
 	attestations.attach(review)
 	return review, jq.NewObj("checks", checks, "sources", sources), nil
@@ -128,11 +139,10 @@ func renderUnion(execution string, candidates map[string]*unionCandidate, attest
 // attested keeps the fields absent, which is how an unattested aggregate
 // reaches the coverage gate.
 func (a *unionAttestations) attach(review *jq.Obj) {
-	if len(a.coverage) > 0 {
-		review.Set("coverage", a.coverage)
-	}
-	if len(a.chunks) > 0 {
-		review.Set("chunks", a.chunks)
+	for _, key := range []string{"coverage", "chunks"} {
+		if rows := a.rows[key]; len(rows) > 0 {
+			review.Set(key, rows)
+		}
 	}
 }
 
@@ -156,7 +166,7 @@ func mergeDuplicate(prior *unionCandidate, row, origin *jq.Obj, verified bool) {
 	// One finder contributes one origin per signature, so a report of the same
 	// path and claim at two anchors stays one finding: the plan emits one
 	// directed check per origin, and a repeated origin would repeat the check.
-	if !hasOrigin(prior.origins, jq.StrOf(readcommon.FieldOf(origin, "finder"))) {
+	if !hasOrigin(prior.origins, jq.StrOf(readcommon.FieldOf(origin, unionFinder))) {
 		prior.origins = append(prior.origins, origin)
 	}
 	severity := readcommon.FieldOf(prior.row, unionSeverity)
@@ -173,7 +183,7 @@ func mergeDuplicate(prior *unionCandidate, row, origin *jq.Obj, verified bool) {
 
 func hasOrigin(origins []any, finder string) bool {
 	for _, origin := range origins {
-		if readcommon.FieldOf(origin, "finder") == finder {
+		if readcommon.FieldOf(origin, unionFinder) == finder {
 			return true
 		}
 	}
@@ -185,20 +195,27 @@ func unionRows(ordered []*unionCandidate) ([]any, []any, []any) {
 	for _, candidate := range ordered {
 		findings = append(findings, cloneUnionRow(candidate.row))
 		sources = append(sources, jq.NewObj("sig", candidate.signature, "origins", candidate.origins))
-		for _, origin := range candidate.origins {
-			finder := jq.StrOf(readcommon.FieldOf(origin, "finder"))
-			checker := "finder-1"
-			if finder == checker {
-				checker = "finder-2"
-			}
-			checks = append(checks, jq.NewObj("sig", candidate.signature, "origin", finder, "checker", checker))
-		}
+		checks = append(checks, unionChecks(candidate)...)
 	}
 	return findings, checks, sources
 }
 
+// unionChecks directs one opposite-finder check at each origin of a signature.
+func unionChecks(candidate *unionCandidate) []any {
+	checks := make([]any, 0, len(candidate.origins))
+	for _, origin := range candidate.origins {
+		finder := jq.StrOf(readcommon.FieldOf(origin, unionFinder))
+		checker := "finder-1"
+		if finder == checker {
+			checker = "finder-2"
+		}
+		checks = append(checks, jq.NewObj("sig", candidate.signature, "origin", finder, "checker", checker))
+	}
+	return checks
+}
+
 func unionRowKey(row any, key string) string {
-	if key == "receipts" {
+	if key == unionReceipts {
 		return jq.StrOf(readcommon.FieldOf(row, "hunk")) + "\x00" + jq.StrOf(readcommon.FieldOf(row, "quote"))
 	}
 	return jq.Compact(row)

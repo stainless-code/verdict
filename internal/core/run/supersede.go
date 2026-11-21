@@ -40,16 +40,11 @@ func (st *state) supersede(dir string) *core.RefusalError {
 		return ref
 	}
 	if captured == nil {
-		return retirementRefusal("x-superseded", jq.NewErrf("automatic artifacts have no captured execution; restore run.json"))
+		return retirementRefusal(supersededDir, damagedCapture())
 	}
-	location := captured.Superseded
-	if captured.Execution != nil {
-		var err error
-		if location, err = retireArtifacts(dir); err != nil {
-			return retirementRefusal(location, err)
-		}
-	} else if !retiredCapture(captured, dir) {
-		return retirementRefusal("x-superseded", jq.NewErrf("automatic artifacts have no captured execution; restore run.json"))
+	location, ref := retirementLocation(captured, dir)
+	if ref != nil {
+		return ref
 	}
 	count, source, ref := st.finderPolicy(dir)
 	if ref != nil {
@@ -70,6 +65,30 @@ var executionArtifacts = []string{
 	"launcher.json", "review.json", "verification", "x-finder-1", "x-finder-2",
 	"x-cross-1", "x-cross-2", "cost.json",
 }
+
+// retirementLocation retires the captured execution and names where it went. A
+// capture that already published its retirement keeps that location, so a
+// replacement that failed after the move starts over instead of stalling.
+func retirementLocation(captured *config.RunState, dir string) (string, *core.RefusalError) {
+	if captured.Execution != nil {
+		location, err := retireArtifacts(dir)
+		if err != nil {
+			return location, retirementRefusal(location, err)
+		}
+		return location, nil
+	}
+	if !retiredCapture(captured, dir) {
+		return "", retirementRefusal(supersededDir, damagedCapture())
+	}
+	return captured.Superseded, nil
+}
+
+func damagedCapture() error {
+	return jq.NewErrf("automatic artifacts have no captured execution; restore run.json")
+}
+
+// supersededDir holds the executions earlier replacement runs retired.
+const supersededDir = "x-superseded"
 
 // retiredCapture reports whether a capture that lost its execution reference is
 // an already-retired one. A replacement launch can abort after the retirement
@@ -96,7 +115,7 @@ func retirementRefusal(location string, err error) *core.RefusalError {
 const retirementDirMode = 0o700
 
 func retireArtifacts(dir string) (string, error) {
-	location := filepath.Join("x-superseded", repair.Nonce())
+	location := filepath.Join(supersededDir, repair.Nonce())
 	staging := location + ".retiring"
 	root, err := os.OpenRoot(dir)
 	if err != nil {
@@ -115,7 +134,7 @@ func retireArtifacts(dir string) (string, error) {
 	if err := root.Rename(staging, location); err != nil {
 		return staging, jq.NewErrf("publish retirement: %v", err)
 	}
-	return location, syncRetirement(root, "x-superseded")
+	return location, syncRetirement(root, supersededDir)
 }
 
 func moveExecutionArtifacts(root *os.Root, staging string) error {

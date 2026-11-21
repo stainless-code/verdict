@@ -144,7 +144,7 @@ func Spend(dir string) (tier, cost string) {
 	if rollup.Phased {
 		return phaseSpend(dir, rollup.Cost)
 	}
-	tier, cost = "standard", unrecorded
+	tier, cost = tierStandard, unrecorded
 	records := readcommon.CostRecords(dir)
 	if len(records) == 0 {
 		return tier, cost
@@ -408,8 +408,9 @@ func bundleHead(dir string) string {
 }
 
 func phaseSpend(dir string, cost *jq.Obj) (string, string) {
-	tier := "standard"
-	if records := readcommon.CostRecords(dir); len(records) > 0 {
+	records := readcommon.CostRecords(dir)
+	var tier string
+	if len(records) > 0 {
 		tier = readcommon.CostTier(records[len(records)-1])
 	} else {
 		tier = phasedTier(cost)
@@ -429,18 +430,18 @@ func phaseSpend(dir string, cost *jq.Obj) (string, string) {
 func phasedTier(cost *jq.Obj) string {
 	byTier := readcommon.FieldOf(cost, "by_tier")
 	priced := ""
-	for _, name := range []string{"cheap", "standard", "deep"} {
+	for _, name := range []string{"cheap", tierStandard, "deep"} {
 		runs, ok := readcommon.NumVal(readcommon.FieldOf(readcommon.FieldOf(byTier, name), "runs"))
 		if !ok || runs == 0 {
 			continue
 		}
 		if priced != "" {
-			return "standard"
+			return tierStandard
 		}
 		priced = name
 	}
 	if priced == "" {
-		return "standard"
+		return tierStandard
 	}
 	return readcommon.EffortTier(priced)
 }

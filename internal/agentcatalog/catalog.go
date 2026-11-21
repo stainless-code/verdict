@@ -58,6 +58,13 @@ type Launch struct {
 // whose binary spells it differently carries its own value.
 const modelFlag = "--model"
 
+// The docs each row cites for its CLI facts, shared by the launch citation and
+// the permission or continuation claim beside it.
+const (
+	docClaudeCLI   = "https://code.claude.com/docs/en/cli-reference.md"
+	docCodexReadme = "https://github.com/openai/codex/blob/main/README.md"
+)
+
 const (
 	nameClaude   = "claude"
 	nameCodex    = "codex"
@@ -155,13 +162,13 @@ var catalog = []Agent{
 	{
 		Name: "claude",
 		Launch: &Launch{
-			Citation:           "https://code.claude.com/docs/en/cli-reference.md",
+			Citation:           docClaudeCLI,
 			PermissionHint:     "--permission-mode acceptEdits",
-			PermissionCitation: "https://code.claude.com/docs/en/cli-reference.md",
+			PermissionCitation: docClaudeCLI,
 			Binary:             nameClaude, ModelFlag: modelFlag,
 			Args:           []string{"-p"},
 			ResumeArgs:     []string{"-c"},
-			ResumeCitation: "https://code.claude.com/docs/en/cli-reference.md",
+			ResumeCitation: docClaudeCLI,
 			Install:        "curl -fsSL https://claude.ai/install.sh | bash",
 		},
 		Skills: &Skills{
@@ -215,13 +222,13 @@ var catalog = []Agent{
 	{
 		Name: "codex",
 		Launch: &Launch{
-			Citation:           "https://github.com/openai/codex/blob/main/README.md",
+			Citation:           docCodexReadme,
 			PermissionHint:     "--sandbox workspace-write",
-			PermissionCitation: "https://github.com/openai/codex/blob/main/README.md",
+			PermissionCitation: docCodexReadme,
 			Binary:             nameCodex, ModelFlag: modelFlag,
 			Args:           []string{argsExec},
 			ResumeArgs:     []string{"resume"},
-			ResumeCitation: "https://github.com/openai/codex/blob/main/README.md",
+			ResumeCitation: docCodexReadme,
 			Install:        "npm install -g @openai/codex",
 		},
 		Skills: &Skills{

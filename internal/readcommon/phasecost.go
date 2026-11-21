@@ -81,10 +81,8 @@ func observedFinderPhases(dir, execution, finder, phase string) []spend.Phase {
 	launcher := phaseCostObject(launcherPath)
 	// A cross launch that left no evidence is the zero-cross case; one whose
 	// evidence exists but cannot be read is a launch no price can be bound to.
-	if launcher == nil && phase == "cross" {
-		if _, err := os.Lstat(launcherPath); err != nil {
-			return nil
-		}
+	if launcher == nil && phase == "cross" && !launchEvidenceExists(launcherPath) {
+		return nil
 	}
 	attempts := phaseAttemptCount(dir, namespace, launcher)
 	var phases []spend.Phase
@@ -99,6 +97,13 @@ func observedFinderPhases(dir, execution, finder, phase string) []spend.Phase {
 		})
 	}
 	return phases
+}
+
+// launchEvidenceExists reports whether a launch left any evidence at path, even
+// evidence no price can be read from.
+func launchEvidenceExists(path string) bool {
+	_, err := os.Lstat(path)
+	return err == nil
 }
 
 func phasePrices(dir, execution string) (map[string]phasePrice, bool) {

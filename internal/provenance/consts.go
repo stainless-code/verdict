@@ -10,3 +10,6 @@ const (
 )
 
 const unrecorded = "unrecorded"
+
+// tierStandard is the effort tier an unrecorded or mixed bundle reports.
+const tierStandard = "standard"
