@@ -122,3 +122,37 @@ func TestDiscoveryUnionDeduplicatesReceiptTuples(t *testing.T) {
 		t.Fatalf("receipts = %s", got)
 	}
 }
+
+// TestDiscoveryUnionKeepsOneOriginPerFinder proves the plan stays one
+// directed check per finder: a finder that reports the same path and claim at
+// two anchors is one finding, not two origins, so the written plan never
+// carries a repeated check or a source above the two finders panel-plan
+// allows.
+func TestDiscoveryUnionKeepsOneOriginPerFinder(t *testing.T) {
+	twice := unionInput(t, `{"findings":[`+
+		`{"path":"a.go","line":1,"side":"RIGHT","severity":"important","claim":"Changed value breaks the caller.","quote":"new line 1","confidence":"high"},`+
+		`{"path":"a.go","line":3,"side":"RIGHT","severity":"important","claim":"Changed value breaks the caller.","quote":"old line 3","confidence":"high"}]}`)
+	review, plan, err := discoveryUnion("test", []byte(fixtureDiff), []*jq.Obj{twice, unionInput(t, coordinatorReview)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	rows := jq.Elements(readcommon.FieldOf(review, "findings"))
+	if got := compactRows(rows); got != `[{"path":"a.go","line":1,"side":"RIGHT","severity":"important","claim":"Changed value breaks the caller.","quote":"new line 1","confidence":"high"}]` {
+		t.Fatalf("findings = %s", got)
+	}
+	if got := compactRows(jq.Elements(readcommon.FieldOf(plan, "checks"))); got != `[{"sig":"b02621c6e34339ac215c21bbc73527b558e69185","origin":"finder-1","checker":"finder-2"},{"sig":"b02621c6e34339ac215c21bbc73527b558e69185","origin":"finder-2","checker":"finder-1"}]` {
+		t.Fatalf("checks = %s", got)
+	}
+	sources := jq.Elements(readcommon.FieldOf(plan, "sources"))
+	if len(sources) != 1 {
+		t.Fatalf("sources = %s", compactRows(sources))
+	}
+	origins := jq.Elements(readcommon.FieldOf(sources[0], "origins"))
+	finders := make([]string, 0, len(origins))
+	for _, origin := range origins {
+		finders = append(finders, jq.StrOf(readcommon.FieldOf(origin, "finder")))
+	}
+	if got := strings.Join(finders, ","); got != "finder-1,finder-2" {
+		t.Fatalf("origins = %s", got)
+	}
+}

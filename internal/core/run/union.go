@@ -120,7 +120,12 @@ func appendUnionRows(out []any, seen map[string]bool, review *jq.Obj, key string
 }
 
 func mergeDuplicate(prior *unionCandidate, row, origin *jq.Obj, verified bool) {
-	prior.origins = append(prior.origins, origin)
+	// One finder contributes one origin per signature, so a report of the same
+	// path and claim at two anchors stays one finding: the plan emits one
+	// directed check per origin, and a repeated origin would repeat the check.
+	if !hasOrigin(prior.origins, jq.StrOf(readcommon.FieldOf(origin, "finder"))) {
+		prior.origins = append(prior.origins, origin)
+	}
 	severity := readcommon.FieldOf(prior.row, unionSeverity)
 	if core.TierRank(readcommon.FieldOf(row, unionSeverity)) < core.TierRank(severity) {
 		severity = readcommon.FieldOf(row, unionSeverity)
@@ -131,6 +136,15 @@ func mergeDuplicate(prior *unionCandidate, row, origin *jq.Obj, verified bool) {
 	copyRow := cloneUnionRow(prior.row)
 	copyRow.Set(unionSeverity, severity)
 	prior.row = copyRow
+}
+
+func hasOrigin(origins []any, finder string) bool {
+	for _, origin := range origins {
+		if readcommon.FieldOf(origin, "finder") == finder {
+			return true
+		}
+	}
+	return false
 }
 
 func unionRows(ordered []*unionCandidate) ([]any, []any, []any) {
