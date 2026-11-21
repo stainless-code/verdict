@@ -7,12 +7,20 @@ to the model provider whose key you already hold. The worked example lives
 at [examples/verdict-review.yml](../examples/verdict-review.yml); copy it
 into your repo as `.github/workflows/verdict-review.yml`.
 
+One command writes that file for you: `verdict init --ci github` (see the
+manual's _Every PR_ section) renders every step below inline and pinned, with
+your agent and key wired from repository settings. Copy the example by hand
+only when you want to change the shape yourself.
+
 ## The pipeline
 
 1. **Install** — the `setup-verdict` action installs a pinned, signature-
    verified binary and adds it to `PATH` (set `vars.VERDICT_VERSION` to a release containing `run --agent`).
 2. **Install the review skill** — `verdict skill install --agent "$VERDICT_AGENT"`
-   installs the skill for the selected agent before review.
+   installs the skill for the selected agent before review. An agent whose
+   catalog row declares no skills directory of its own (most rows) installs
+   into the shared `~/.agents/skills`: the generated step names `agents` there,
+   because naming such an agent is `unknown-agent`.
 3. **Fetch** — `verdict fetch <repo> <pr>` builds `.verdict/state/<pr>/` (PR record,
    `full.diff`, `toc.txt`, `roles.txt`).
 4. **Readiness pre-check** — `verdict ready <repo> <pr> --check` fails fast

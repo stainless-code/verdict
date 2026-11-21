@@ -2818,7 +2818,11 @@
           "type": "array",
           "items": { "type": "string" }
         },
-        "check_tree_clean": { "type": "boolean" }
+        "check_tree_clean": { "type": "boolean" },
+        "ci": { "type": "string" },
+        "workflow_path": { "type": "string" },
+        "workflow_status": { "type": "string" },
+        "workflow": { "type": "string" }
       },
       "required": [
         "preset",

@@ -24,6 +24,17 @@ type manualSurface struct {
 // reads or writes that exact name. Do not replace one with a description.
 var manualSurfaces = []manualSurface{
 	{
+		section: "every PR",
+		heading: "### Every PR",
+		terms: []string{
+			"verdict init --ci github", ".github/workflows/verdict-review.yml",
+			"VERDICT_MODEL", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "--key-secret",
+			"verdict gate --max-severity critical --require-head --live auto",
+			"if: github.event.pull_request.head.repo.full_name == github.repository",
+			"a skipped job reads as a pass", "VERDICT_VERSION",
+		},
+	},
+	{
 		section: "policy engine",
 		heading: "## Policy engine (scopes, profiles, deep validation)",
 		terms:   []string{"scopes[]", "max_lenses", "default_profile", "controls-stale"},

@@ -307,7 +307,10 @@ var publishedSemantics = map[string]string{
 	// journal unobserved sweep: additive optional boolean
 	// $defs/journalBundleDigests.unobserved. No existing property, required key,
 	// or type changed.
-	"envelope.schema.json": "57f86af6869213381a7ba0a52ae0e6719cb5e58d1af0daa0ad7ce372130cea8e",
+	// init --ci github: additive optional strings ci, workflow_path,
+	// workflow_status and workflow on $defs/initData. No existing property,
+	// required key, or type changed.
+	"envelope.schema.json": "5241c36ec28af3fc6778d2d16764a53bad7f01e80dc971e3bee053ea19e248f3",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

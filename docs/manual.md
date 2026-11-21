@@ -2909,6 +2909,9 @@ New operators onboard in one offline command — no network, ever:
 verdict init --preset standard --yes   # chill|standard|strict, default standard
 ```
 
+Add `--ci github` to write the every-PR workflow as well (see _The runner is
+your CI_ → _Every PR_).
+
 `init` writes the standard local control files, then runs check-tree
 validation (same filter: own `.verdict/state/` scratch ignored). Existing files
 print a preview and need `--yes`/`--force` (or, in human mode, an
@@ -5224,7 +5227,9 @@ install your agent CLI before the Action, and keep checkout `fetch-depth: 0` and
 
 Pass `repository`, `pull-request`, and `github-token` explicitly. Choose `agent`
 (`claude`, `codex`, `cursor`, or `opencode`) and pass `anthropic-api-key` or
-`openai-api-key` from your secrets. Inputs are strings — Actions composite
+`openai-api-key` from your secrets. That four-name ceiling belongs to the
+composite Action's own input validation: a generated workflow (below) takes any
+`run --agent` name from the catalog. Inputs are strings — Actions composite
 metadata does not support input `type` declarations. Empty key inputs overwrite
 ambient provider key variables; the agent step clears `GH_TOKEN` and `GITHUB_TOKEN`.
 Use a clean CI runner without preconfigured agent login credentials. Verdict
@@ -5238,6 +5243,61 @@ installed `version`. Pin the Action to a full commit SHA, as the example does.
 The Action owns fetch → ready → run → post → report → gate; `run` makes no
 network call of its own and refuses missing or stale `review.json`. A successful
 review is posted to GitHub before the merge gate runs.
+
+### Every PR
+
+For the every-PR path, one offline command renders the whole workflow:
+
+```bash
+verdict init --ci github            # --agent <name>, --key-secret <NAME>, --print
+```
+
+It writes `.github/workflows/verdict-review.yml` beside the usual controls: the
+same pipeline as the Action, inline — `verdict fetch`, `verdict ready --check`,
+`verdict run --agent`, `verdict post`, the advisory `verdict report`, then
+`verdict gate --max-severity critical --require-head --live auto`. Post runs
+before the gate because the gate's freshness and coverage dimensions read the
+receipt post writes. Every `uses:` pins a full 40-hex commit, `on:` is
+`pull_request` (never `pull_request_target`), and the job budget is 30 minutes.
+
+`--agent` picks any `run --agent` name from the agent table (default `claude`).
+The review-skill step installs into that agent's own skills directory, or into
+the shared `~/.agents/skills` when its catalog row declares none — most rows
+declare none, so the step names `agents` there; naming the agent itself is
+`unknown-agent`.
+The agent step launches that CLI, so the runner needs it on `PATH` before the
+step runs: verdict installs itself and never downloads an agent CLI. Install the
+selected agent in an earlier step — the agent table's `Install` command, or a
+runner image that ships it. The generated file quotes that command inside the
+agent step as a comment, never as a step that runs an unpinned installer.
+The model is optional: set the repository variable `VERDICT_MODEL` and the step
+adds it to the agent's argv. The key arrives as one repository secret, under the
+variable the agent reads — `ANTHROPIC_API_KEY` for `claude`, `OPENAI_API_KEY` for
+`codex` — and holds the secret `--key-secret` names. Without `--key-secret` both
+names are the catalog row's documented one; a row that documents none needs
+`--key-secret`. So `--agent claude --key-secret REVIEW_KEY` renders
+`ANTHROPIC_API_KEY: ${{ secrets.REVIEW_KEY }}`, because claude reads that
+variable whatever your repository calls the secret. No secret is written into a
+script: each arrives as a step `env:` entry, the agent step clears `GH_TOKEN` and
+`GITHUB_TOKEN`, and verdict never logs or proxies a key. The catalog row's
+documented permission flag is quoted in the agent step as a comment, never
+baked into argv: add it yourself after `--` when the run needs it.
+
+`--print` prints the file and writes nothing — no `.verdict/`, no `.github/`,
+no check-tree — so it is the safe way to read a change before committing. An
+existing workflow needs `--yes`/`--force` (or an interactive confirm) like the
+control files, and a refused run writes nothing at all.
+
+Fork pull requests are skipped. The job carries
+`if: github.event.pull_request.head.repo.full_name == github.repository`
+because a run from a fork gets no repository secrets and a read-only token, so
+the agent step could not start; a skipped job reads as a pass to branch
+protection, which is the honest cost. Remove that line only to opt in with a
+token and key you control for untrusted code.
+
+Commit the workflow with the controls, set the repository variable
+`VERDICT_VERSION` to a release containing `run --agent` (`v0.7.0` or newer), and
+require the `review + merge gate` check in branch protection.
 
 ### Explicit context
 
