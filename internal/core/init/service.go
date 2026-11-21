@@ -1,12 +1,14 @@
 // Package initcore is the init verb's domain service: the guided offline
 // scaffolder that writes the typed `.verdict/config.json` with style
 // presets beside the `.verdict/kb.jsonl` starter and the tracked-shape
-// `.verdict/.gitignore`, then runs check-tree validation. With `--ci github`
-// or `--ci forgejo` it also writes the every-PR workflow. Existing files print
-// a preview and need --yes/--force (or, in human mode, an interactive confirm)
-// before overwrite — the never-prompts doctrine holds: machine mode never
-// prompts, even on a TTY. internal/scaffold owns argv parsing, stdin, envelope
-// rendering, and exit mapping.
+// `.verdict/.gitignore`, then runs check-tree validation. With `--ci github`,
+// `--ci forgejo`, or `--ci gitlab` it also writes the every-PR workflow, and on
+// GitLab a minimal root pipeline that includes it — created only when the
+// project has none, because an existing root belongs to the operator. Existing
+// files print a preview and need --yes/--force (or, in human mode, an
+// interactive confirm) before overwrite — the never-prompts doctrine holds:
+// machine mode never prompts, even on a TTY. internal/scaffold owns argv
+// parsing, stdin, envelope rendering, and exit mapping.
 package initcore
 
 import (
@@ -40,12 +42,17 @@ const (
 	CodeNeedsConfirm = "needs-confirm"
 	reviewDotName    = ".verdict"
 	newlineStr       = "\n"
-	scaffoldDirPerm  = 0o777
-	// The three answers a scaffold path can give: absent, already current, or
-	// written by an older run.
+	// humanRaw is the human stream's pass-through format: rendered bytes reach
+	// the operator exactly as the render produced them.
+	humanRaw        = "%s"
+	scaffoldDirPerm = 0o777
+	// The four answers a scaffold path can give: absent, already current,
+	// written by an older run, or — for a root pipeline only — the operator's
+	// own file, which init reports and never writes.
 	statusCreate    = "create"
 	statusKeep      = "keep"
 	statusOverwrite = "overwrite"
+	statusPresent   = "present"
 )
 
 // Request carries the resolved init invocation: the shared runtime (env,
@@ -54,7 +61,7 @@ const (
 type Request struct { //nolint:govet // the transport contract keeps its field order
 	core.ReadRequest
 	Preset      string `enum:"chill|standard|strict"`
-	CI          string `enum:"github|forgejo"`
+	CI          string `enum:"github|forgejo|gitlab"`
 	Agent       string
 	KeySecret   string
 	Yes         bool
@@ -89,6 +96,10 @@ type Data struct {
 	WorkflowPath   string
 	WorkflowStatus string
 	Workflow       string
+	RootPath       string
+	RootStatus     string
+	RootWorkflow   string
+	IncludeSnippet string
 	Files          []string
 	CheckTreeClean bool
 }
@@ -114,6 +125,19 @@ func (d *Data) Wire() *jq.Obj {
 	if d.Workflow != "" {
 		out.Set("workflow", d.Workflow)
 	}
+	if d.RootPath == "" {
+		return out
+	}
+	out.Set("root_path", d.RootPath)
+	if d.RootStatus != "" {
+		out.Set("root_status", d.RootStatus)
+	}
+	if d.RootWorkflow != "" {
+		out.Set("root_workflow", d.RootWorkflow)
+	}
+	if d.IncludeSnippet != "" {
+		out.Set("include_snippet", d.IncludeSnippet)
+	}
 	return out
 }
 
@@ -126,13 +150,18 @@ func fileValues(files []string) []any {
 }
 
 type state struct { //nolint:govet // init service state is allocated once per invocation
-	req      *Request
-	ci       ciProvider
-	warnings []string
-	at       string
-	next     string
-	data     *Data
-	exit     int
+	req *Request
+	ci  *ciProvider
+	// rootBody is the second planned file a provider with a root pipeline
+	// renders, and rootState is its relation to what is on disk. Both stay empty
+	// for a single-file provider.
+	rootBody  []byte
+	rootState string
+	warnings  []string
+	at        string
+	next      string
+	data      *Data
+	exit      int
 }
 
 // Run executes `init --preset <chill|standard|strict> [--yes]`.
@@ -238,6 +267,9 @@ func (st *state) plan() (presetVals, []byte, *core.RefusalError) {
 	if ref != nil {
 		return presetVals{}, nil, ref
 	}
+	if _, root, ok := RootFile(ci.name); ok {
+		st.rootBody = root
+	}
 	return vals, workflow, nil
 }
 
@@ -245,13 +277,11 @@ func (st *state) plan() (presetVals, []byte, *core.RefusalError) {
 // reports the tree check and the next step.
 func (st *state) writeScaffold(ctx context.Context, vals presetVals, workflow []byte) *core.RefusalError {
 	wants := presetFiles(vals)
-	wfStatus, ref := st.workflowStatus(workflow)
+	wfStatus, statuses, needOverwrite, ref := st.planWrites(wants, workflow)
 	if ref != nil {
 		return ref
 	}
-	statuses, needOverwrite := st.collectStatuses(wants)
-	st.previewScaffold(wants, workflow, wfStatus)
-	code, done, ref := st.writeWithConfirm(wants, needOverwrite || wfStatus == statusOverwrite)
+	code, done, ref := st.writeScaffoldFiles(wants, workflow, wfStatus, needOverwrite)
 	if ref != nil {
 		return ref
 	}
@@ -259,14 +289,58 @@ func (st *state) writeScaffold(ctx context.Context, vals presetVals, workflow []
 		st.exit = code
 		return nil
 	}
-	if ref := st.validateScaffold(); ref != nil {
-		return ref
-	}
-	if ref := st.publishWorkflowIfAny(workflow, wfStatus); ref != nil {
-		return ref
-	}
 	treeClean := st.reportTree(ctx)
 	st.reportNext(vals, statuses, treeClean, workflow, wfStatus)
+	return nil
+}
+
+// planWrites resolves both planned files' statuses before anything touches disk
+// and previews them: a refused or aborted run then leaves no directory behind.
+func (st *state) planWrites(wants map[string]string, workflow []byte) (string, []string, bool, *core.RefusalError) {
+	wfStatus, ref := st.workflowStatus(workflow)
+	if ref != nil {
+		return "", nil, false, ref
+	}
+	if ref := st.planRootStatus(); ref != nil {
+		return "", nil, false, ref
+	}
+	statuses, needOverwrite := st.collectStatuses(wants)
+	st.previewScaffold(wants, workflow, wfStatus)
+	return wfStatus, statuses, needOverwrite, nil
+}
+
+// writeScaffoldFiles confirms, writes the controls, and publishes the owned
+// file before the root pipeline that includes it. An existing root never needs
+// the confirm: init reports it and writes nothing there.
+func (st *state) writeScaffoldFiles(
+	wants map[string]string, workflow []byte, wfStatus string, needOverwrite bool,
+) (int, bool, *core.RefusalError) {
+	code, done, ref := st.writeWithConfirm(wants, needOverwrite || wfStatus == statusOverwrite)
+	if ref != nil || done {
+		return code, done, ref
+	}
+	if ref := st.validateScaffold(); ref != nil {
+		return 0, false, ref
+	}
+	if ref := st.publishWorkflowIfAny(workflow, wfStatus); ref != nil {
+		return 0, false, ref
+	}
+	return 0, false, st.publishRoot()
+}
+
+// planRootStatus resolves the root pipeline's relation to the rendered bytes,
+// before .verdict/ exists: a path init will not write refuses here, so the run
+// leaves nothing behind. The status is read, never a reason to confirm — init
+// does not write an existing root.
+func (st *state) planRootStatus() *core.RefusalError {
+	if st.rootBody == nil {
+		return nil
+	}
+	state, ref := st.rootStatus()
+	if ref != nil {
+		return ref
+	}
+	st.rootState = state
 	return nil
 }
 
@@ -436,11 +510,113 @@ func (st *state) workflowRefusal() *core.RefusalError {
 		"init could not write "+st.ci.path()+" (symlinked path, or storage not writable?)")
 }
 
-// printWorkflow renders the file and writes nothing: no .verdict directory, no
-// workflow directory, and no check-tree pass over a tree it did not touch.
+// rootStatus reads the root pipeline's relation to the rendered bytes. The
+// component is pinned at the repository root, so a symlink, a directory, or any
+// other non-regular file there refuses before .verdict/ exists.
+func (st *state) rootStatus() (string, *core.RefusalError) {
+	root, err := os.OpenRoot(st.req.RepoRootPath())
+	if err != nil {
+		return "", st.rootRefusal()
+	}
+	defer root.Close()
+	return st.confinedRootStatus(root, st.rootBody)
+}
+
+// confinedRootStatus compares the root pipeline inside an opened repository
+// root. It answers one of three states: absent, identical, or the operator's
+// own divergent file — which init reports and never writes, with or without
+// --force.
+func (st *state) confinedRootStatus(root *os.Root, body []byte) (string, *core.RefusalError) {
+	info, err := root.Lstat(st.ci.root.name)
+	if errors.Is(err, fs.ErrNotExist) {
+		return statusCreate, nil
+	}
+	if err != nil || !info.Mode().IsRegular() {
+		return "", st.refuse(codeInitFailed,
+			"init will not write "+st.ci.root.name+": the path is not a regular file")
+	}
+	cur, ref := st.readConfinedRoot(root)
+	if ref != nil {
+		return "", ref
+	}
+	if bytes.Equal(cur, body) {
+		return statusKeep, nil
+	}
+	return statusPresent, nil
+}
+
+// readConfinedRoot reads the root pipeline through the pinned repository root.
+func (st *state) readConfinedRoot(root *os.Root) ([]byte, *core.RefusalError) {
+	f, err := readcommon.OpenRegularNoSymlinkIn(root, st.ci.root.name)
+	if err != nil {
+		return nil, st.rootRefusal()
+	}
+	defer f.Close()
+	cur, err := io.ReadAll(f)
+	if err != nil {
+		return nil, st.rootRefusal()
+	}
+	return cur, nil
+}
+
+// publishRoot writes the provider's root pipeline file, and only ever creates
+// it: an existing root belongs to the operator and stays untouched with or
+// without --force. The owned workflow is written first, so a root that includes
+// it never names a file that is not there.
+func (st *state) publishRoot() *core.RefusalError {
+	if st.rootBody == nil || st.rootState == "" {
+		return nil
+	}
+	switch st.rootState {
+	case statusKeep:
+		st.humanf("keep: %s (already up to date)\n", st.ci.root.name)
+		return nil
+	case statusPresent:
+		st.reportRootPresent()
+		return nil
+	}
+	root, err := os.OpenRoot(st.req.RepoRootPath())
+	if err != nil {
+		return st.rootRefusal()
+	}
+	defer root.Close()
+	created, err := atomic.CreateFileModeIn(root, st.ci.root.name, st.rootBody, workflowMode)
+	if err != nil {
+		return st.rootRefusal()
+	}
+	if !created {
+		// The name was taken between the status read and the write: it is the
+		// operator's file now, so report it instead of replacing it.
+		st.rootState = statusPresent
+		st.reportRootPresent()
+		return nil
+	}
+	st.humanf("wrote: %s\n", st.ci.root.name)
+	return nil
+}
+
+// reportRootPresent tells the operator that their own root pipeline was left
+// alone, and hands them the exact include to add.
+func (st *state) reportRootPresent() {
+	st.humanf("present: %s (left untouched)\n", st.ci.root.name)
+	st.humanf("add this to %s:\n", st.ci.root.name)
+	st.humanf(humanRaw, st.ci.root.include)
+}
+
+// rootRefusal is the root pipeline's write refusal: path-derived, naming the
+// file the operator must look at.
+func (st *state) rootRefusal() *core.RefusalError {
+	return st.refuse(codeInitFailed,
+		"init could not write "+st.ci.root.name+" (symlinked path, or storage not writable?)")
+}
+
+// printWorkflow renders the files and writes nothing: no .verdict directory, no
+// workflow directory, no root pipeline, and no check-tree pass over a tree it
+// did not touch. A two-file target renders both, because one of them may never
+// be written at all.
 func (st *state) printWorkflow(vals presetVals, workflow []byte) {
 	if !st.req.Machine {
-		st.humanf("%s", workflow)
+		st.printRendered(workflow)
 	}
 	st.at = st.req.TimeUTC()
 	st.next = "write it with: " + st.writeCommand()
@@ -453,6 +629,34 @@ func (st *state) printWorkflow(vals presetVals, workflow []byte) {
 		WorkflowPath: st.ci.path(),
 		Workflow:     string(workflow),
 	}
+	if st.rootBody == nil {
+		return
+	}
+	st.data.RootPath = st.ci.root.name
+	st.data.RootWorkflow = string(st.rootBody)
+	st.data.IncludeSnippet = st.ci.root.include
+}
+
+// printRendered writes the rendered bytes: the pipeline alone for a single-file
+// target, and headed sections for a two-file target, whose second file is
+// created only when absent.
+func (st *state) printRendered(workflow []byte) {
+	if st.rootBody == nil {
+		st.printBytes(workflow)
+		return
+	}
+	st.humanf("--- %s (rendered) ---\n", st.ci.path())
+	st.printBytes(workflow)
+	st.humanf("--- %s (created only when absent; never overwritten) ---\n", st.ci.root.name)
+	st.printBytes(st.rootBody)
+	st.humanf("--- add this to an existing %s ---\n", st.ci.root.name)
+	st.printBytes([]byte(st.ci.root.include))
+}
+
+// printBytes writes already-rendered bytes verbatim: the human stream carries
+// them as they are, with no expansion of anything they contain.
+func (st *state) printBytes(body []byte) {
+	st.humanf(humanRaw, body)
 }
 
 // writeCommand is the --print line that reproduces these exact bytes: the same
@@ -533,7 +737,11 @@ func (st *state) previewScaffold(wants map[string]string, workflow []byte, wfSta
 	}
 	if workflow != nil {
 		st.humanf("--- %s (%s) ---\n", st.ci.path(), wfStatus)
-		st.humanf("%s", workflow)
+		st.humanf(humanRaw, workflow)
+	}
+	if st.rootBody != nil {
+		st.humanf("--- %s (%s) ---\n", st.ci.root.name, st.rootState)
+		st.humanf(humanRaw, st.rootBody)
 	}
 }
 
@@ -619,8 +827,7 @@ func (st *state) reportNext(vals presetVals, statuses []string, treeClean bool, 
 	next := "pin real panel slugs in .verdict/config.json, " +
 		"tune defaults.budget_usd, then fetch"
 	if workflow != nil {
-		next = "commit " + st.ci.path() + " with .verdict/, set the repository variable " +
-			"VERDICT_VERSION to a release with run --agent, then open a pull request"
+		next = st.workflowNext()
 	}
 	st.humanf("next: %s\n", next)
 	st.at = st.req.TimeUTC()
@@ -638,6 +845,29 @@ func (st *state) reportNext(vals presetVals, statuses []string, treeClean bool, 
 		st.data.WorkflowPath = st.ci.path()
 		st.data.WorkflowStatus = wfStatus
 	}
+	if st.rootBody != nil {
+		st.data.RootPath = st.ci.root.name
+		st.data.RootStatus = st.rootState
+		st.data.IncludeSnippet = st.ci.root.include
+	}
+}
+
+// workflowNext is the closing instruction for a --ci run: what to commit, the
+// variable that pins the release, and the change request to open. A root
+// pipeline init left alone is the operator's own edit, so the instruction says
+// so instead of claiming it was written.
+func (st *state) workflowNext() string {
+	commit := "commit " + st.ci.path()
+	switch {
+	case st.rootBody == nil:
+		commit += " with .verdict/"
+	case st.rootState == statusPresent:
+		commit += " with .verdict/, add the include to " + st.ci.root.name + " yourself"
+	default:
+		commit += " and " + st.ci.root.name + " with .verdict/"
+	}
+	return commit + ", set the " + st.ci.variableStore() + " VERDICT_VERSION to a release with " +
+		"run --agent, then open a " + st.ci.prNoun()
 }
 
 // presetFiles renders the scaffolded shared files: the typed configuration

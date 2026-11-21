@@ -1485,6 +1485,10 @@ export interface InitData {
   workflow_path?: string;
   workflow_status?: string;
   workflow?: string;
+  root_path?: string;
+  root_status?: string;
+  root_workflow?: string;
+  include_snippet?: string;
   [key: string]: unknown;
 }
 

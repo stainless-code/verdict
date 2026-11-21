@@ -238,24 +238,24 @@ assert_refusal "the malformed-secret refusal" "bad-settings"
 
 ci_init "$PRINT" init --ci bogus
 assert_exit "an unknown --ci is a usage error" 2
-assert_file_grep "the usage error names both providers" "$EVAL_ERR" \
-  "unknown --ci 'bogus' for init (want github|forgejo)"
+assert_file_grep "the usage error names every provider" "$EVAL_ERR" \
+  "unknown --ci 'bogus' for init (want github|forgejo|gitlab)"
 ci_init "$PRINT" init --print
 assert_exit "--print without --ci is a usage error" 2
-assert_file_grep "--print names the flag it needs" "$EVAL_ERR" "--print needs --ci github|forgejo"
+assert_file_grep "--print names the flags it needs" "$EVAL_ERR" "--print needs --ci github|forgejo|gitlab"
 ci_init "$PRINT" init --agent claude
 assert_exit "--agent without --ci is a usage error" 2
-assert_file_grep "--agent names the flag it needs" "$EVAL_ERR" "--agent needs --ci github|forgejo"
+assert_file_grep "--agent names the flag it needs" "$EVAL_ERR" "--agent needs --ci github|forgejo|gitlab"
 ci_init "$PRINT" init --ci
 assert_exit "--ci without a value is a usage error" 2
-assert_file_grep "--ci names both values" "$EVAL_ERR" "--ci needs a value (want github|forgejo)"
+assert_file_grep "--ci names every value" "$EVAL_ERR" "--ci needs a value (want github|forgejo|gitlab)"
 ci_init "$PRINT" init --ci=
 assert_exit "an empty --ci= is a usage error" 2
-assert_file_grep "an empty --ci= names both values" "$EVAL_ERR" "--ci needs a value (want github|forgejo)"
+assert_file_grep "an empty --ci= names every value" "$EVAL_ERR" "--ci needs a value (want github|forgejo|gitlab)"
 ci_init "$PRINT" init --ci ""
 assert_exit "an empty --ci operand is a usage error" 2
-assert_file_grep "an empty --ci operand names both values" "$EVAL_ERR" \
-  "--ci needs a value (want github|forgejo)"
+assert_file_grep "an empty --ci operand names every value" "$EVAL_ERR" \
+  "--ci needs a value (want github|forgejo|gitlab)"
 
 LINK="$EVAL_SANDBOX/ci-forgejo-link"
 ci_repo "$LINK"

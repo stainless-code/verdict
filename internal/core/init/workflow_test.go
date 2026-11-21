@@ -5,6 +5,8 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -19,7 +21,7 @@ func (cleanCommander) Run(context.Context, *core.Command) (core.Result, error) {
 }
 
 // ciRequest is one `init --ci <provider>` invocation rooted at repoRoot.
-func ciRequest(repoRoot string, ci ciProvider) *Request {
+func ciRequest(repoRoot string, ci *ciProvider) *Request {
 	req := &Request{Preset: "standard", CI: ci.Name(), Agent: "claude"}
 	req.ReadRequest = core.ReadRequest{
 		Runtime:  &core.Runtime{Commander: cleanCommander{}},
@@ -29,7 +31,7 @@ func ciRequest(repoRoot string, ci ciProvider) *Request {
 }
 
 // mustRender is the workflow bytes the refusal tests plant behind a link.
-func mustRender(t *testing.T, ci ciProvider) []byte {
+func mustRender(t *testing.T, ci *ciProvider) []byte {
 	t.Helper()
 	body, ref := RenderWorkflow(ci.Name(), "claude", "")
 	if ref != nil {
@@ -74,7 +76,7 @@ func mustSymlink(t *testing.T, target, link string) {
 
 // assertRefusedNoWrites proves the refusal happened before .verdict/ existed:
 // zero partial writes, on every platform.
-func assertRefusedNoWrites(t *testing.T, repo string, ci ciProvider) {
+func assertRefusedNoWrites(t *testing.T, repo string, ci *ciProvider) {
 	t.Helper()
 	_, ref := Run(t.Context(), ciRequest(repo, ci))
 	if ref == nil {
@@ -101,7 +103,7 @@ func TestWorkflowStatusRefusesASymlinkedParent(t *testing.T) {
 
 // assertSymlinkedParentRefused plants the workflow behind a link at the
 // provider's top-level directory.
-func assertSymlinkedParentRefused(t *testing.T, ci ciProvider) {
+func assertSymlinkedParentRefused(t *testing.T, ci *ciProvider) {
 	t.Helper()
 	base := t.TempDir()
 	repo := filepath.Join(base, "repo")
@@ -124,7 +126,7 @@ func TestWorkflowStatusRefusesASymlinkedWorkflowsDir(t *testing.T) {
 
 // assertSymlinkedWorkflowsDirRefused plants the workflow behind a link at the
 // workflows component.
-func assertSymlinkedWorkflowsDirRefused(t *testing.T, ci ciProvider) {
+func assertSymlinkedWorkflowsDirRefused(t *testing.T, ci *ciProvider) {
 	t.Helper()
 	base := t.TempDir()
 	repo := filepath.Join(base, "repo")
@@ -157,7 +159,7 @@ func TestWorkflowStatusRefusesASymlinkedWorkflowFile(t *testing.T) {
 }
 
 // assertSymlinkedWorkflowRefused plants a symlink at the workflow file itself.
-func assertSymlinkedWorkflowRefused(t *testing.T, ci ciProvider) {
+func assertSymlinkedWorkflowRefused(t *testing.T, ci *ciProvider) {
 	t.Helper()
 	repo := t.TempDir()
 	mustMkdirAll(t, filepath.Join(repo, ci.dirs[1]))
@@ -178,7 +180,7 @@ func TestWorkflowWritesUnderASymlinkedAncestor(t *testing.T) {
 }
 
 // assertWritesUnderAncestor runs init over a symlinked repository root.
-func assertWritesUnderAncestor(t *testing.T, ci ciProvider) {
+func assertWritesUnderAncestor(t *testing.T, ci *ciProvider) {
 	t.Helper()
 	base := t.TempDir()
 	realRepo := filepath.Join(base, "real")
@@ -198,6 +200,214 @@ func assertWritesUnderAncestor(t *testing.T, ci ciProvider) {
 	}
 	if _, err := os.Stat(filepath.Join(realRepo, reviewDotName, configName)); err != nil {
 		t.Fatalf("the control files did not land under the real root: %v", err)
+	}
+}
+
+// gitlabTarget is the one provider that plans a second file at the repository
+// root, so the cases below can name it once.
+func gitlabTarget(t *testing.T) *ciProvider {
+	t.Helper()
+	ci, ok := LookupCI("gitlab")
+	if !ok {
+		t.Fatal("the gitlab provider is gone")
+	}
+	return ci
+}
+
+// mustRootFile is the rendered root pipeline the tests compare bytes against.
+func mustRootFile(t *testing.T) []byte {
+	t.Helper()
+	_, body, ok := RootFile("gitlab")
+	if !ok {
+		t.Fatal("RootFile(gitlab) reports no second file")
+	}
+	return body
+}
+
+// TestRootPipelineIsCreatedOnlyWhenAbsent proves the one transition init owns
+// at the repository root: an absent pipeline becomes the rendered include file,
+// and the closing instruction says both files are now the operator's to commit.
+func TestRootPipelineIsCreatedOnlyWhenAbsent(t *testing.T) {
+	t.Parallel()
+	repo := t.TempDir()
+	resp := mustRunInit(t, ciRequest(repo, gitlabTarget(t)))
+	if resp.Data.RootStatus != statusCreate {
+		t.Fatalf("root_status = %q, want %q", resp.Data.RootStatus, statusCreate)
+	}
+	wrote, err := os.ReadFile(filepath.Join(repo, ".gitlab-ci.yml"))
+	if err != nil {
+		t.Fatalf("the root pipeline did not land: %v", err)
+	}
+	if !bytes.Equal(wrote, mustRootFile(t)) {
+		t.Fatalf("the written root pipeline is not the rendered bytes:\n%s", wrote)
+	}
+	if want := "commit .gitlab/ci/verdict-review.yml and .gitlab-ci.yml with .verdict/, " +
+		"set the CI/CD variable VERDICT_VERSION to a release with run --agent, " +
+		"then open a merge request"; resp.Next != want {
+		t.Fatalf("next = %q, want %q", resp.Next, want)
+	}
+	if resp.Data.IncludeSnippet != IncludeSnippet("gitlab") {
+		t.Fatalf("include_snippet = %q", resp.Data.IncludeSnippet)
+	}
+}
+
+// TestRootPipelineIsNeverOverwritten proves an existing root belongs to the
+// operator: a divergent file stays byte-identical with and without --force, and
+// the next line tells the operator to add the include themselves.
+func TestRootPipelineIsNeverOverwritten(t *testing.T) {
+	t.Parallel()
+	for _, force := range []bool{false, true} {
+		t.Run(strconv.FormatBool(force), func(t *testing.T) {
+			t.Parallel()
+			assertRootPipelineKept(t, force)
+		})
+	}
+}
+
+// rootPresentNext is the closing instruction for a root pipeline init left
+// alone: the operator adds the include themselves.
+const rootPresentNext = "commit .gitlab/ci/verdict-review.yml with .verdict/, " +
+	"add the include to .gitlab-ci.yml yourself, set the CI/CD variable " +
+	"VERDICT_VERSION to a release with run --agent, then open a merge request"
+
+// assertRootPipelineKept proves one --force setting leaves a divergent root
+// pipeline byte-identical, reports present, and still writes the owned file.
+func assertRootPipelineKept(t *testing.T, force bool) {
+	t.Helper()
+	seed := []byte("stages: [build, deploy]\n")
+	repo := t.TempDir()
+	mustWriteFile(t, filepath.Join(repo, ".gitlab-ci.yml"), seed)
+	req := ciRequest(repo, gitlabTarget(t))
+	req.Yes = force
+	resp := mustRunInit(t, req)
+	if resp.Data.RootStatus != statusPresent {
+		t.Fatalf("root_status = %q, want %q", resp.Data.RootStatus, statusPresent)
+	}
+	got, err := os.ReadFile(filepath.Join(repo, ".gitlab-ci.yml"))
+	if err != nil || !bytes.Equal(got, seed) {
+		t.Fatalf("the operator's root pipeline changed: %q, %v", got, err)
+	}
+	if resp.Next != rootPresentNext {
+		t.Fatalf("next = %q, want %q", resp.Next, rootPresentNext)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".gitlab", "ci", "verdict-review.yml")); err != nil {
+		t.Fatalf("the owned pipeline did not land: %v", err)
+	}
+}
+
+// TestRootPipelineIdenticalBytesReadAsKeep proves a second run over its own
+// output reports keep instead of rewriting, so the command is idempotent.
+func TestRootPipelineIdenticalBytesReadAsKeep(t *testing.T) {
+	t.Parallel()
+	repo := t.TempDir()
+	mustWriteFile(t, filepath.Join(repo, ".gitlab-ci.yml"), mustRootFile(t))
+	resp := mustRunInit(t, ciRequest(repo, gitlabTarget(t)))
+	if resp.Data.RootStatus != statusKeep {
+		t.Fatalf("root_status = %q, want %q", resp.Data.RootStatus, statusKeep)
+	}
+}
+
+// TestRootPipelineRefusesASymlink proves a symlinked root pipeline is never
+// followed: it refuses by name before .verdict/ exists.
+func TestRootPipelineRefusesASymlink(t *testing.T) {
+	t.Parallel()
+	assertRootPipelineRefused(t, plantSymlinkedRoot)
+}
+
+// TestRootPipelineRefusesADirectory proves a directory where the root pipeline
+// belongs refuses on Unix and Windows alike, and writes nothing first.
+func TestRootPipelineRefusesADirectory(t *testing.T) {
+	t.Parallel()
+	assertRootPipelineRefused(t, plantDirectoryRoot)
+}
+
+// plantSymlinkedRoot points the root pipeline at a file outside the repository.
+func plantSymlinkedRoot(t *testing.T, repo string) {
+	t.Helper()
+	mustWriteFile(t, filepath.Join(repo, "elsewhere.yml"), mustRootFile(t))
+	mustSymlink(t, filepath.Join(repo, "elsewhere.yml"), filepath.Join(repo, ".gitlab-ci.yml"))
+}
+
+// plantDirectoryRoot creates a directory where the root pipeline belongs.
+func plantDirectoryRoot(t *testing.T, repo string) {
+	t.Helper()
+	mustMkdirAll(t, filepath.Join(repo, ".gitlab-ci.yml"))
+}
+
+// assertRootPipelineRefused plants one non-regular root pipeline and proves the
+// refusal is typed, path-derived, and write-free.
+func assertRootPipelineRefused(t *testing.T, plant func(t *testing.T, repo string)) {
+	t.Helper()
+	repo := t.TempDir()
+	plant(t, repo)
+	_, ref := Run(t.Context(), ciRequest(repo, gitlabTarget(t)))
+	if ref == nil || ref.Code != codeInitFailed {
+		t.Fatalf("refusal = %v, want init-failed", ref)
+	}
+	want := "init will not write .gitlab-ci.yml: the path is not a regular file"
+	if ref.Message != want {
+		t.Fatalf("refusal message = %q, want %q", ref.Message, want)
+	}
+	if _, err := os.Lstat(filepath.Join(repo, reviewDotName)); !os.IsNotExist(err) {
+		t.Fatalf("the refused run created %s (err=%v)", reviewDotName, err)
+	}
+}
+
+// TestPrintPlansBothFiles proves --print renders both bodies and the include
+// without reading or writing the tree: no .gitlab/, no .gitlab-ci.yml, and no
+// .verdict/.
+func TestPrintPlansBothFiles(t *testing.T) {
+	t.Parallel()
+	repo := t.TempDir()
+	var out bytes.Buffer
+	req := ciRequest(repo, gitlabTarget(t))
+	req.Print = true
+	req.Human = &out
+	resp := mustRunInit(t, req)
+	assertPrintedData(t, resp.Data)
+	assertPrintedSections(t, out.String())
+	assertNothingWritten(t, repo)
+}
+
+// assertPrintedData pins the envelope's two-file fields.
+func assertPrintedData(t *testing.T, data *Data) {
+	t.Helper()
+	if data.RootPath != ".gitlab-ci.yml" {
+		t.Fatalf("root_path = %q, want .gitlab-ci.yml", data.RootPath)
+	}
+	if data.RootWorkflow != string(mustRootFile(t)) {
+		t.Fatalf("root_workflow is not the rendered root pipeline:\n%s", data.RootWorkflow)
+	}
+	if data.IncludeSnippet != IncludeSnippet("gitlab") {
+		t.Fatalf("include_snippet = %q", data.IncludeSnippet)
+	}
+	if data.Workflow == "" || len(data.Files) != 0 {
+		t.Fatalf("printed files = %q, pipeline bytes = %d", data.Files, len(data.Workflow))
+	}
+}
+
+// assertPrintedSections pins the human --print output's three headed sections.
+func assertPrintedSections(t *testing.T, out string) {
+	t.Helper()
+	for _, want := range []string{
+		"--- .gitlab/ci/verdict-review.yml (rendered) ---",
+		"--- .gitlab-ci.yml (created only when absent; never overwritten) ---",
+		"--- add this to an existing .gitlab-ci.yml ---",
+		IncludeSnippet("gitlab"),
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("--print output carries no %q:\n%s", want, out)
+		}
+	}
+}
+
+// assertNothingWritten proves a render-only run created no path it previewed.
+func assertNothingWritten(t *testing.T, repo string) {
+	t.Helper()
+	for _, rel := range []string{".gitlab", ".gitlab-ci.yml", reviewDotName} {
+		if _, err := os.Lstat(filepath.Join(repo, rel)); !os.IsNotExist(err) {
+			t.Fatalf("--print created %s (err=%v)", rel, err)
+		}
 	}
 }
 

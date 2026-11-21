@@ -5517,6 +5517,92 @@ the file and writes nothing; an existing workflow needs `--yes`/`--force` (or an
 interactive confirm) like the control files, and a refused run writes nothing at
 all.
 
+### GitLab CI
+
+GitLab's merge-request pipelines take the same one command, with the provider
+named explicitly:
+
+```bash
+verdict init --ci gitlab            # --agent <name>, --key-secret <NAME>, --print
+```
+
+It writes `.gitlab/ci/verdict-review.yml` beside the usual controls, and — only
+when the project has no root pipeline — a minimal `.gitlab-ci.yml` whose whole
+body is one include:
+
+```yaml
+include:
+  - local: .gitlab/ci/verdict-review.yml
+```
+
+An existing `.gitlab-ci.yml` is never modified, with or without `--force`: it is
+yours the moment it exists, and a generated include in it could displace a
+pipeline you wrote. The command reports `present` for it and prints the include
+above for you to add. The two files must land in the same commit, because
+GitLab resolves an included file on the same branch.
+
+The pipeline is one job with one shell and eight script blocks: install verdict,
+`verdict skill install`, `verdict fetch … --provider gitlab`, `verdict ready
+--check`, `verdict run --agent`, `verdict post`, the advisory `verdict report`,
+then `verdict gate --max-severity critical --require-head --live auto`. Only the
+fetch block passes `--provider gitlab`; it writes the bundle's provider marker,
+and `run`, `post`, `report`, and `gate` read it from there. `post` precedes the
+gate because the gate's freshness and coverage dimensions read the receipt post
+writes.
+
+The credential is a **project access token with the `api` scope**, stored as a
+masked project or group CI/CD variable named `GITLAB_TOKEN`. `CI_JOB_TOKEN`
+cannot post: GitLab's job-token allowlist grants it `GET` on merge requests and
+notes only, while `verdict post` writes discussions, notes, and an approval.
+Never set `GITLAB_TOKEN=$CI_JOB_TOKEN` either — `glab` sends `GITLAB_TOKEN` as a
+`PRIVATE-TOKEN` header that job tokens are rejected from, so requests fail with
+401 or 404. Nothing in the generated YAML names the token: `glab` reads it from
+the job environment.
+
+The token boundary is a runtime one. Project and group variables outrank every
+YAML source, so a job-level `GITLAB_TOKEN: ""` would be ignored and the agent
+would inherit a live `api`-scoped token. Instead the agent block launches
+`verdict run` in a subshell that unsets `GITLAB_TOKEN`, `GITLAB_ACCESS_TOKEN`,
+`OAUTH_TOKEN`, `CI_JOB_TOKEN`, `GLAB_ENABLE_CI_AUTOLOGIN`, `GH_TOKEN`, and
+`GITHUB_TOKEN`. `post`, `report`, and `gate` run after the subshell and still
+find the token. `--key-secret REVIEW_KEY` renders one alias line,
+`ANTHROPIC_API_KEY: $REVIEW_KEY`, in the job's `variables:` block; the default
+names no key variable at all, because the agent's own variable name is already
+what the operator stores.
+
+Self-hosted instances are wired with `GITLAB_HOST: $CI_SERVER_FQDN`, which keeps
+a nonstandard port, and `GIT_DEPTH: "0"`, because the review controls are read
+from the merge request base commit (`git show <base>:<path>`) and new projects
+otherwise clone twenty commits deep. The job declares `stage: test`, so a
+project whose own `.gitlab-ci.yml` replaces the default `stages:` list must keep
+`test` in it (or override `stage`) for the job to get a stage. Redundant
+pipelines are cancelled through `interruptible: true`.
+
+The `rules:` clause selects `merge_request_event` **and** drops the one pipeline
+a parent-project member can trigger for a merge request from a fork: on that
+path GitLab runs the parent's variables against the fork's `CI_PROJECT_PATH`, so
+the guard is the only thing standing between a parent token and fork-controlled
+code. A dropped job reads as a pass to a required-check rule. Marking
+`GITLAB_TOKEN` **protected** is the stronger option, at the cost of hiding it
+from merge requests whose source branch is not protected.
+
+Runner prerequisites: `glab` on `PATH` (verdict installs itself and never
+downloads a host CLI), the selected agent CLI on `PATH` before the agent block
+(the catalog's install command rides along as a comment), plus `curl` and `tar`
+for the installer and `bash` for every script block. The installer is pinned at
+the release this build ships, and `VERDICT_VERSION` is a CI/CD variable holding
+a release tag, or unset for latest. Signature verification is checksum-only
+unless the runner image ships `cosign`; set `VERDICT_REQUIRE_SIGNATURE=1` to fail
+closed. Keep `.git/config`'s `https://gitlab-ci-token:$CI_JOB_TOKEN@…` origin in
+mind: the agent can read a job token, which is `GET`-only on merge requests and
+notes and expires with the job.
+
+Commit both files with the controls, set `VERDICT_VERSION`, and require the
+`verdict-review` job in the merge-request approval rules. `--print` previews
+both files and the include without reading or writing the tree; an existing
+verdict pipeline needs `--yes`/`--force` (or an interactive confirm) like the
+control files, and a refused run writes nothing at all.
+
 ### Explicit context
 
 `fetch` and `fetch-local` accept repeatable `--context <file|dir>` and

@@ -313,6 +313,10 @@ var publishedSemantics = map[string]string{
 	// init --ci github: additive optional strings ci, workflow_path,
 	// workflow_status and workflow on $defs/initData. No existing property,
 	// required key, or type changed.
+	// init --ci gitlab: additive optional strings root_path, root_status,
+	// root_workflow and include_snippet on $defs/initData, for the second file
+	// a two-file provider plans. No existing property, required key, or type
+	// changed.
 	// intent check: additive optional note on $defs/specCheck, "unmet" added to
 	// its status enum, and $defs/specCheck no longer requires evidence (a status
 	// with no diff line cites none; met/violated still require it in the checker).
@@ -321,7 +325,7 @@ var publishedSemantics = map[string]string{
 	// review budget: additive optional data.budget on $defs/runData and its new
 	// $defs/reviewBudget shape. No existing property, required key, enum, or
 	// type changed; a run that names no depth omits the key entirely.
-	"envelope.schema.json": "32d95c75d881c5eb576fc72b1d907c0124cd153387e7f967b31967ddb7af6673",
+	"envelope.schema.json": "5c3a07d8b03dc0f2a157f21583215a2b12e6bb6f609bc0ca1b99b1f2ff7bc69a",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

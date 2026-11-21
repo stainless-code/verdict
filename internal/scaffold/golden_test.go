@@ -110,6 +110,29 @@ func seedStaleForgejoWorkflow(t *testing.T, dir, _ string) {
 	seedStaleAt(t, dir, filepath.Join(".forgejo", "workflows", "verdict-review.yml"))
 }
 
+// seedStaleGitLabWorkflow commits a divergent GitLab pipeline, so the overwrite
+// guard has a user-authored file to refuse.
+func seedStaleGitLabWorkflow(t *testing.T, dir, _ string) {
+	t.Helper()
+	seedStaleAt(t, dir, filepath.Join(".gitlab", "ci", "verdict-review.yml"))
+}
+
+// seedRootPipeline commits an operator-owned root pipeline: init reports it and
+// never writes it, with or without --force.
+func seedRootPipeline(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	if err := os.WriteFile(filepath.Join(dir, ".gitlab-ci.yml"), []byte(rootPipelineSeed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gitRun(t, dir, "add", "-A")
+	gitRun(t, dir, "commit", "-qm", "seed root pipeline")
+}
+
+// rootPipelineSeed is the operator's own root pipeline, with a stage list the
+// generated job does not own.
+const rootPipelineSeed = "stages: [build, deploy]\n"
+
 // seedStaleAt commits a divergent workflow at rel, so both providers grade the
 // same refusal over their own path.
 func seedStaleAt(t *testing.T, dir, rel string) {
@@ -212,9 +235,10 @@ func testTreeEdges(t *testing.T) {
 		"init", "", "", "--bogus")
 }
 
-// testGeneratedWorkflow covers both providers: create, refuse, force, and both
+// testGeneratedWorkflow covers every provider: create, refuse, force, and both
 // --print shapes, each of which must leave the tree untouched when it only
-// renders. The GitHub goldens are the byte-identical contract STA-465 shipped.
+// renders. The GitHub goldens are the byte-identical contract STA-465 shipped,
+// and the Forgejo ones STA-472's.
 func testGeneratedWorkflow(t *testing.T) {
 	t.Helper()
 	initBoth(t, "ci-github-create", emptyRepo,
@@ -237,4 +261,26 @@ func testGeneratedWorkflow(t *testing.T) {
 		"init", "", "", "--ci", "forgejo", "--print")
 	initBoth(t, "ci-forgejo-print-json", emptyRepo,
 		"init", "", "", "--ci", "forgejo", "--print", "--json")
+	testGitLabWorkflow(t)
+}
+
+// testGitLabWorkflow covers the only two-file provider: both files created, an
+// operator-owned root left untouched with and without --force, the owned
+// pipeline's own overwrite guard, and both --print shapes.
+func testGitLabWorkflow(t *testing.T) {
+	t.Helper()
+	initBoth(t, "ci-gitlab-create", emptyRepo,
+		"init", "", "", "--ci", "gitlab")
+	initBoth(t, "ci-gitlab-print", emptyRepo,
+		"init", "", "", "--ci", "gitlab", "--print")
+	initBoth(t, "ci-gitlab-print-json", emptyRepo,
+		"init", "", "", "--ci", "gitlab", "--print", "--json")
+	initBoth(t, "ci-gitlab-refuse", seedStaleGitLabWorkflow,
+		"init", "", "", "--ci", "gitlab")
+	initBoth(t, "ci-gitlab-force", seedStaleGitLabWorkflow,
+		"init", "", "", "--ci", "gitlab", "--force")
+	initBoth(t, "ci-gitlab-root-present", seedRootPipeline,
+		"init", "", "", "--ci", "gitlab")
+	initBoth(t, "ci-gitlab-root-present-force", seedRootPipeline,
+		"init", "", "", "--ci", "gitlab", "--force")
 }

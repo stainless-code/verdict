@@ -20,7 +20,9 @@ const generatedForkGuard = "    if: github.event.pull_request.head.repo.full_nam
 
 // generatedStepNames is each generated job's step order, literally. Forgejo
 // omits the readiness step because `ready --check` refuses
-// provider-unimplemented on a Forgejo bundle (STA-472 D2).
+// provider-unimplemented on a Forgejo bundle (STA-472 D2). GitLab has no steps
+// at all — one job, one shell — so its order is graded over script blocks in
+// TestGeneratedWorkflowStepOrder.
 var generatedStepNames = map[string][]string{
 	"github": {
 		"Checkout",
@@ -67,6 +69,20 @@ var generatedPipeline = map[string][]string{
 		`verdict report "$VERDICT_REPOSITORY" "$VERDICT_PR"`,
 		`verdict gate "$VERDICT_REPOSITORY" "$VERDICT_PR" \`,
 	},
+	// GitLab runs eight script entries, starting with the pinned installer:
+	// there is no composite-action equivalent, so the install is a script and
+	// the first block the gate order depends on.
+	"gitlab": {
+		`curl -fsSL "https://raw.githubusercontent.com/stainless-code/verdict/` +
+			initcore.SetupVerdictPin + `/install.sh" \`,
+		`verdict skill install --agent "$VERDICT_AGENT"`,
+		`verdict fetch "$VERDICT_REPOSITORY" "$VERDICT_PR" --provider gitlab`,
+		`verdict ready "$VERDICT_REPOSITORY" "$VERDICT_PR" --check`,
+		`verdict run "$VERDICT_REPOSITORY" "$VERDICT_PR" --agent "$VERDICT_AGENT" "${agent_args[@]}"`,
+		`verdict post "$VERDICT_REPOSITORY" "$VERDICT_PR"`,
+		`verdict report "$VERDICT_REPOSITORY" "$VERDICT_PR"`,
+		`verdict gate "$VERDICT_REPOSITORY" "$VERDICT_PR" \`,
+	},
 }
 
 const (
@@ -74,6 +90,10 @@ const (
 	// GitHub strips before handing the body to bash.
 	runHeader = "        run: |"
 	runIndent = "          "
+	// gitlabRunHeader opens one GitLab script entry: the whole pipeline is one
+	// job, so each entry is a `- |` block indented six spaces.
+	gitlabRunHeader = "    - |"
+	gitlabRunIndent = "      "
 	// agentStepName is the one step that launches the operator's agent, so it
 	// is where every injected write token must be cleared.
 	agentStepName = "Agent review (verdict run --agent, your agent + your key)"
@@ -107,16 +127,42 @@ func generatedWorkflow(t *testing.T, ci string) string {
 	return string(body)
 }
 
+// runHeaderFor is the line that opens a script block on this provider's YAML,
+// and runIndentFor the indentation its runner strips before handing the body to
+// bash.
+func runHeaderFor(ci string) string {
+	if ci == "gitlab" {
+		return gitlabRunHeader
+	}
+	return runHeader
+}
+
+func runIndentFor(ci string) string {
+	if ci == "gitlab" {
+		return gitlabRunIndent
+	}
+	return runIndent
+}
+
 // TestGeneratedWorkflowPinsMatchShippedActions proves the generator cannot
 // drift from the shipped composite Action and example: the pins it renders are
 // the very constants action.yml and examples/verdict-review.yml carry. The
 // Forgejo install step is fully qualified because a short-form reference
 // resolves through DEFAULT_ACTIONS_URL, which does not mirror this repository.
+// GitLab has no action to pin at all: its install is the release-pinned
+// installer script, and a `uses:` line there would be YAML GitLab ignores.
 func TestGeneratedWorkflowPinsMatchShippedActions(t *testing.T) {
 	t.Parallel()
 	root := moduleRoot(t)
 	for _, ci := range initcore.Providers() {
 		workflow := generatedWorkflow(t, ci.Name())
+		if ci.Name() == "gitlab" {
+			assertNoUsesLines(t, "gitlab workflow", workflow)
+			assertLineIn(t, "gitlab workflow", workflow,
+				`      curl -fsSL "https://raw.githubusercontent.com/stainless-code/verdict/`+
+					initcore.SetupVerdictPin+`/install.sh" \`)
+			continue
+		}
 		assertUsesLines(t, ci.Name()+" workflow", workflow)
 		assertLineIn(t, ci.Name()+" workflow", workflow,
 			"        uses: actions/checkout@"+initcore.CheckoutPin+" # "+initcore.CheckoutVersion)
@@ -151,7 +197,7 @@ func TestGeneratedWorkflowShape(t *testing.T) {
 	}
 }
 
-// generatedShapeLines is the top-level contract every provider shares.
+// generatedShapeLines is the top-level contract the Actions providers share.
 var generatedShapeLines = []string{
 	"on:",
 	"  pull_request:",
@@ -167,13 +213,37 @@ var generatedShapeLines = []string{
 	"    # pass to branch protection.",
 }
 
+// generatedGitLabShapeLines is GitLab's top-level contract: one job whose rules
+// select merge request pipelines and drop the parent-project path a fork merge
+// request can reach, the history the review controls are read from, the host
+// that survives a nonstandard port, and the job budget.
+var generatedGitLabShapeLines = []string{
+	"verdict-review:",
+	"  stage: test",
+	"  rules:",
+	`    - if: '$CI_PIPELINE_SOURCE == "merge_request_event" && $CI_MERGE_REQUEST_SOURCE_PROJECT_PATH == $CI_PROJECT_PATH'`,
+	"  variables:",
+	`    GIT_DEPTH: "0"`,
+	"    VERDICT_REPOSITORY: $CI_PROJECT_PATH",
+	"    VERDICT_PR: $CI_MERGE_REQUEST_IID",
+	"    VERDICT_AGENT: claude",
+	"    GITLAB_HOST: $CI_SERVER_FQDN",
+	"  interruptible: true",
+	"  timeout: 30 minutes",
+	"  script:",
+}
+
 // assertGeneratedShape pins one provider's top-level contract.
 func assertGeneratedShape(t *testing.T, ci string) {
 	t.Helper()
 	workflow := generatedWorkflow(t, ci)
 	assertGeneratedHeader(t, ci, workflow)
-	for _, want := range generatedShapeLines {
-		assertLineIn(t, ci+" workflow", workflow, want)
+	want := generatedShapeLines
+	if ci == "gitlab" {
+		want = generatedGitLabShapeLines
+	}
+	for _, line := range want {
+		assertLineIn(t, ci+" workflow", workflow, line)
 	}
 	assertNoPullRequestTarget(t, ci, workflow)
 	assertJobBudget(t, ci, workflow)
@@ -199,14 +269,36 @@ func assertNoPullRequestTarget(t *testing.T, ci, workflow string) {
 }
 
 // assertGeneratedPermissions pins the one provider-specific top-level shape:
-// GitHub keeps both permission blocks, Forgejo carries neither.
+// GitHub keeps both permission blocks, Forgejo and GitLab carry neither.
 func assertGeneratedPermissions(t *testing.T, ci, workflow string) {
 	t.Helper()
-	if ci == "github" {
+	switch ci {
+	case "github":
 		assertGithubPermissions(t, workflow)
-		return
+	case "gitlab":
+		assertGitLabShape(t, workflow)
+	default:
+		assertForgejoShape(t, workflow)
 	}
-	assertForgejoShape(t, workflow)
+}
+
+// assertGitLabShape pins what the GitLab render must and must not carry: no
+// GitHub-only keys, and the merge-request vocabulary of its own host.
+func assertGitLabShape(t *testing.T, workflow string) {
+	t.Helper()
+	for _, forbidden := range []string{"permissions:", "uses:", "on:", "pull_request"} {
+		if strings.Contains(workflow, forbidden) {
+			t.Fatalf("the GitLab render carries %q", forbidden)
+		}
+	}
+	for _, want := range []string{
+		"  rules:",
+		`      verdict fetch "$VERDICT_REPOSITORY" "$VERDICT_PR" --provider gitlab`,
+		"    GITLAB_HOST: $CI_SERVER_FQDN",
+		"  timeout: 30 minutes",
+	} {
+		assertLineIn(t, "gitlab workflow", workflow, want)
+	}
 }
 
 // assertGithubPermissions pins both GitHub permission blocks.
@@ -237,6 +329,10 @@ func assertForgejoShape(t *testing.T, workflow string) {
 // assertJobBudget pins the generated job's literal timeout inside 1..60.
 func assertJobBudget(t *testing.T, ci, workflow string) {
 	t.Helper()
+	if ci == "gitlab" {
+		assertLineIn(t, ci+" workflow", workflow, "  timeout: 30 minutes")
+		return
+	}
 	const key = "    timeout-minutes: "
 	for line := range strings.SplitSeq(workflow, "\n") {
 		value, ok := strings.CutPrefix(line, key)
@@ -252,8 +348,10 @@ func assertJobBudget(t *testing.T, ci, workflow string) {
 	t.Fatalf("%s: generated job declares no timeout-minutes", ci)
 }
 
-// TestGeneratedWorkflowStepOrder pins both orders literally: the step names,
-// and the verdict verbs whose sequence the merge gate depends on.
+// TestGeneratedWorkflowStepOrder pins both orders literally: the step names on
+// the Actions hosts, and the verdict verbs whose sequence the merge gate
+// depends on everywhere. GitLab has no steps — one job, one shell — so its
+// script entries are ordered instead, and the step extractor must find none.
 func TestGeneratedWorkflowStepOrder(t *testing.T) {
 	t.Parallel()
 	for _, provider := range initcore.Providers() {
@@ -266,6 +364,13 @@ func TestGeneratedWorkflowStepOrder(t *testing.T) {
 func assertGeneratedStepOrder(t *testing.T, ci string) {
 	t.Helper()
 	workflow := generatedWorkflow(t, ci)
+	if ci == "gitlab" {
+		assertOrdered(t, workflow, generatedPipeline[ci])
+		if names := workflowStepNames(workflow); len(names) != 0 {
+			t.Fatalf("the GitLab render carries Actions steps: %q", names)
+		}
+		return
+	}
 	if names, want := workflowStepNames(workflow), generatedStepNames[ci]; !slices.Equal(names, want) {
 		t.Fatalf("step names = %q, want %q", names, want)
 	}
@@ -300,6 +405,10 @@ func TestGeneratedWorkflowKeepsSecretsOutOfShells(t *testing.T) {
 func assertGeneratedSecretsStayOut(t *testing.T, ci string) {
 	t.Helper()
 	workflow := generatedWorkflow(t, ci)
+	if ci == "gitlab" {
+		assertGitLabSecretsStayOut(t, workflow)
+		return
+	}
 	assertSecretsStayInEnv(t, ci, workflow)
 	assertNoExpressionInRunBodies(t, ci, workflow)
 	agent := generatedStepBlockOrFail(t, workflow, agentStepName)
@@ -325,6 +434,83 @@ func assertAgentClearsTokens(t *testing.T, ci, agent string) {
 	}
 	for _, line := range want {
 		assertLineIn(t, "agent step", agent, line)
+	}
+}
+
+// gitlabAgentClears is the runtime token boundary GitLab needs and the Actions
+// hosts do not: project and group variables outrank every YAML source, so a
+// job-level empty value cannot hide an api-scoped write token. The unset is a
+// scoped subshell, so post, report and gate still find the token.
+const gitlabAgentClears = "  unset GITLAB_TOKEN GLAB_TOKEN GITLAB_ACCESS_TOKEN OAUTH_TOKEN CI_JOB_TOKEN " +
+	"GLAB_ENABLE_CI_AUTOLOGIN GH_TOKEN GITHUB_TOKEN"
+
+// gitlabSecretName matches the environment names that carry a credential, so a
+// script block that reads one fails here.
+var gitlabSecretName = regexp.MustCompile(`\b[A-Z_][A-Z0-9_]*(?:KEY|TOKEN)\b`)
+
+// assertGitLabSecretsStayOut grades the GitLab render: the key never reaches a
+// script, the agent block empties glab's whole lookup order in a subshell, and
+// no block interpolates an expression.
+func assertGitLabSecretsStayOut(t *testing.T, workflow string) {
+	t.Helper()
+	assertNoExpressionInRunBodies(t, "gitlab", workflow)
+	blocks := generatedRunBlocks(workflow, "gitlab")
+	if want := len(generatedPipeline["gitlab"]); len(blocks) != want {
+		t.Fatalf("run blocks = %d, want %d", len(blocks), want)
+	}
+	assertGitLabAgentClears(t, blocks)
+	assertGitLabScriptsNameNoToken(t, blocks)
+	assertRunBlocksCarryNoSecret(t, "gitlab", workflow)
+}
+
+// assertGitLabAgentClears requires the launching block to empty every name glab
+// reads a credential from, and to do it in a subshell so later blocks keep the
+// token.
+func assertGitLabAgentClears(t *testing.T, blocks []string) {
+	t.Helper()
+	for _, block := range blocks {
+		if strings.Contains(block, "verdict run ") {
+			assertAgentBlockClears(t, block)
+			return
+		}
+	}
+	t.Fatal("no generated block launches verdict run")
+}
+
+// assertAgentBlockClears pins one launching block: every name glab reads, and a
+// scoped subshell so later blocks keep the token they need.
+func assertAgentBlockClears(t *testing.T, block string) {
+	t.Helper()
+	if !strings.Contains(block, gitlabAgentClears) {
+		t.Fatalf("the agent block does not clear glab's token names:\n%s", block)
+	}
+	if !strings.Contains(block, "\n(\n") || !strings.Contains(block, "\n)") {
+		t.Fatalf("the token clear is not a scoped subshell:\n%s", block)
+	}
+}
+
+// assertGitLabScriptsNameNoToken refuses a credential name in a script block.
+// The one line allowed to name a token is the agent block's unset line, which
+// removes the names rather than reading them.
+func assertGitLabScriptsNameNoToken(t *testing.T, blocks []string) {
+	t.Helper()
+	for _, block := range blocks {
+		for line := range strings.SplitSeq(block, "\n") {
+			assertScriptLineNamesNoToken(t, line)
+		}
+	}
+}
+
+// assertScriptLineNamesNoToken refuses one script line that reads a credential.
+// The agent block's unset line is allowed: it removes the names rather than
+// reading them.
+func assertScriptLineNamesNoToken(t *testing.T, line string) {
+	t.Helper()
+	if strings.Contains(line, "unset ") {
+		return
+	}
+	if name := gitlabSecretName.FindString(line); name != "" {
+		t.Errorf("a GitLab script block names the credential %q: %s", name, line)
 	}
 }
 
@@ -360,7 +546,7 @@ func assertSecretsStayInEnv(t *testing.T, ci, workflow string) {
 // the only supported carrier.
 func assertNoExpressionInRunBodies(t *testing.T, ci, workflow string) {
 	t.Helper()
-	for _, block := range generatedRunBlocks(workflow) {
+	for _, block := range generatedRunBlocks(workflow, ci) {
 		if strings.Contains(block, "${{") {
 			t.Errorf("%s: run block interpolates an expression:\n%s", ci, block)
 		}
@@ -371,7 +557,7 @@ func assertNoExpressionInRunBodies(t *testing.T, ci, workflow string) {
 // its shell, or dumps the environment.
 func assertRunBlocksCarryNoSecret(t *testing.T, ci, workflow string) {
 	t.Helper()
-	for _, block := range generatedRunBlocks(workflow) {
+	for _, block := range generatedRunBlocks(workflow, ci) {
 		for _, forbidden := range []string{"secrets.", "set -x", "printenv", "echo $"} {
 			if strings.Contains(block, forbidden) {
 				t.Errorf("%s: run block carries %q:\n%s", ci, forbidden, block)
@@ -397,7 +583,7 @@ func TestGeneratedWorkflowRunsAreValidShell(t *testing.T) {
 // extracted text must parse, which no byte comparison can show.
 func assertRunBodiesParse(t *testing.T, bash, ci string) {
 	t.Helper()
-	blocks := generatedRunBlocks(generatedWorkflow(t, ci))
+	blocks := generatedRunBlocks(generatedWorkflow(t, ci), ci)
 	if want := len(generatedPipeline[ci]); len(blocks) != want {
 		t.Fatalf("%s: run blocks = %d, want %d (one per pipeline step)", ci, len(blocks), want)
 	}
@@ -451,6 +637,18 @@ func assertUsesLines(t *testing.T, label, workflow string) {
 	}
 }
 
+// assertNoUsesLines refuses an action reference on a host that resolves none:
+// GitLab would ignore the key, so a generated `uses:` would be a pin the
+// operator believed in and no runner enforced.
+func assertNoUsesLines(t *testing.T, label, workflow string) {
+	t.Helper()
+	for line := range strings.SplitSeq(workflow, "\n") {
+		if strings.Contains(line, "uses:") {
+			t.Errorf("%s carries an action reference: %s", label, line)
+		}
+	}
+}
+
 // assertOrdered fails unless every want appears in src in the given order.
 func assertOrdered(t *testing.T, src string, wants []string) {
 	t.Helper()
@@ -490,32 +688,60 @@ func generatedStepBlockOrFail(t *testing.T, workflow, name string) string {
 	return block
 }
 
-// generatedRunBlocks returns each `run: |` body with its ten-space indent
-// removed: the exact text GitHub hands bash.
-func generatedRunBlocks(workflow string) []string {
+// generatedRunBlocks returns each script body with its indentation removed: the
+// exact text the runner hands bash.
+func generatedRunBlocks(workflow, ci string) []string {
 	lines := strings.Split(workflow, "\n")
+	header, indent := runHeaderFor(ci), runIndentFor(ci)
 	var blocks []string
 	for i := 0; i < len(lines); i++ {
-		if lines[i] != runHeader {
+		if lines[i] != header {
 			continue
 		}
-		body, next := runBody(lines, i+1)
+		body, next := runBody(lines, i+1, indent)
 		blocks = append(blocks, body)
 		i = next - 1
 	}
 	return blocks
 }
 
-// runBody collects the indented lines after a `run: |` header, answering the
-// body and the index of the first line that is not part of it.
-func runBody(lines []string, start int) (string, int) {
+// runBody collects the indented lines after a script header, answering the body
+// and the index of the first line that is not part of it.
+func runBody(lines []string, start int, indent string) (string, int) {
 	var body []string
 	for i := start; i < len(lines); i++ {
-		text, ok := strings.CutPrefix(lines[i], runIndent)
+		text, ok := strings.CutPrefix(lines[i], indent)
 		if !ok {
 			return strings.Join(body, "\n"), i
 		}
 		body = append(body, text)
 	}
 	return strings.Join(body, "\n"), len(lines)
+}
+
+// TestGitLabRootIncludeNamesThePipeline proves the second file a GitLab run
+// plans cannot drift from the pipeline it includes: the root ends with the
+// snippet the command prints, and both name the committed pipeline path.
+func TestGitLabRootIncludeNamesThePipeline(t *testing.T) {
+	t.Parallel()
+	path, body, ok := initcore.RootFile("gitlab")
+	if !ok {
+		t.Fatal("RootFile(gitlab) reports no second file")
+	}
+	if path != ".gitlab-ci.yml" {
+		t.Fatalf("RootFile(gitlab) path = %q, want .gitlab-ci.yml", path)
+	}
+	want := "include:\n  - local: .gitlab/ci/verdict-review.yml\n"
+	if snippet := initcore.IncludeSnippet("gitlab"); snippet != want {
+		t.Fatalf("IncludeSnippet(gitlab) = %q, want %q", snippet, want)
+	}
+	if !strings.HasSuffix(string(body), want) {
+		t.Fatalf("the root file does not end with the printed include:\n%s", body)
+	}
+	if got := initcore.IncludeSnippet("github"); got != "" {
+		t.Fatalf("IncludeSnippet(github) = %q, want the empty string", got)
+	}
+	if path, body, ok := initcore.RootFile("github"); ok || path != "" || body != nil {
+		t.Fatalf("RootFile(github) = %q, %q, %v; want no second file", path, body, ok)
+	}
 }

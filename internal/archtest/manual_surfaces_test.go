@@ -44,6 +44,16 @@ var manualSurfaces = []manualSurface{
 		},
 	},
 	{
+		section: "gitlab ci",
+		heading: "### GitLab CI",
+		terms: []string{
+			"verdict init --ci gitlab", ".gitlab/ci/verdict-review.yml",
+			".gitlab-ci.yml", "include:", "- local: .gitlab/ci/verdict-review.yml",
+			"GITLAB_TOKEN", "GITLAB_HOST", "CI_SERVER_FQDN", "--provider gitlab",
+			"CI_JOB_TOKEN", "glab", "merge_request_event", "--key-secret",
+		},
+	},
+	{
 		section: "policy engine",
 		heading: "## Policy engine (scopes, profiles, deep validation)",
 		terms:   []string{"scopes[]", "max_lenses", "default_profile", "controls-stale"},
