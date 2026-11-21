@@ -41,3 +41,28 @@ func checkManualPermission(t *testing.T, manual, name string) {
 		t.Fatalf("%s permission data absent from manual row: %s", name, line)
 	}
 }
+
+func TestResumeOptionsCiteAgentDocs(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "manual.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	declared := 0
+	for _, agent := range All() {
+		if agent.Launch != nil && len(agent.Launch.ResumeArgs) > 0 {
+			declared++
+			checkManualResume(t, string(raw), agent)
+		}
+	}
+	if declared != 4 {
+		t.Fatalf("rows declaring continuation options = %d", declared)
+	}
+}
+
+func checkManualResume(t *testing.T, manual string, agent Agent) {
+	t.Helper()
+	line := manualLaunchRow(manual, agent.Name, agent.Launch.Citation)
+	if agent.Launch.ResumeCitation == "" || !strings.Contains(line, agent.Launch.ResumeCitation) {
+		t.Fatalf("%s declares continuation options without a cited row: %q", agent.Name, line)
+	}
+}

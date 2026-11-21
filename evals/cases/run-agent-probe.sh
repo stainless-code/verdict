@@ -63,7 +63,7 @@ eval_mk_bundle "$LOCAL"
 
 # --- --print renders argv and spawns nothing, so it cannot probe -------------
 : >"$STUB_LOG"
-run_review run acme/app "$LOCAL" --agent fx --print --json -- --model M
+run_review run acme/app "$LOCAL" --finders 1 --agent fx --print --json -- --model M
 assert_exit "fx --print renders" 0
 assert_envelope "fx --print envelope"
 assert_json_field "--print uses fx ask" "fx ask --model M" \
@@ -75,7 +75,7 @@ fi
 
 # --- the real agent passes the probe and records it before the launch --------
 : >"$STUB_LOG"
-run_review run acme/app "$LOCAL" --agent fx --json -- --model M
+run_review run acme/app "$LOCAL" --finders 1 --agent fx --json -- --model M
 assert_exit "fx launches after a matching probe" 0
 assert_envelope "fx launch envelope"
 assert_json_field "the launch accepts one fresh review" "true" '.data.artifact_fresh'
@@ -101,7 +101,7 @@ STUB
 chmod +x "$AGENTBIN/fx"
 rm -f "$DIR/review.json" "$DIR/launcher.json"
 : >"$STUB_LOG"
-run_review run acme/app "$LOCAL" --agent fx --json -- --model M
+run_review run acme/app "$LOCAL" --finders 1 --agent fx --json -- --model M
 assert_exit "a clashing binary refuses" 1
 assert_refusal "clash" "agent-mismatch"
 assert_json_field "the refusal names the documented flag" "true" \

@@ -262,3 +262,62 @@ func checkProblems(t *testing.T, res recordcore.CheckResult, want int) {
 		t.Fatalf("problems = %+v, want %d", res.Problems, want)
 	}
 }
+
+func TestCheckReviewRefusesEmptyExecutionID(t *testing.T) {
+	review := `{"schema_version":"2","execution":{"id":"","finders":2},"findings":[],"summary":"A short summary of the clean review."}`
+	res := recordcore.CheckReview([]byte(review), checkDiff)
+	if !hasProblem(res, "$.execution.id", core.ProblemCodeOutOfRange) {
+		t.Fatalf("problems = %+v, want an empty-id refusal at $.execution.id", res.Problems)
+	}
+}
+
+func TestCheckReviewRepairHintUsesSelectedVersion(t *testing.T) {
+	cases := []struct {
+		name   string
+		review string
+		path   string
+		code   string
+	}{
+		{
+			"aggregate wrong version",
+			`{"schema_version":"1","execution":{"id":"execution-A","finders":2},"findings":[],"summary":"A short summary."}`,
+			"$.schema_version", core.ProblemCodeBadEnum,
+		},
+		{
+			"aggregate wrong type",
+			`{"schema_version":2,"execution":{"id":"execution-A","finders":2},"findings":[],"summary":"A short summary."}`,
+			"$.schema_version", core.ProblemCodeWrongType,
+		},
+		{
+			"aggregate missing version",
+			`{"execution":{"id":"execution-A","finders":2},"findings":[],"summary":"A short summary."}`,
+			"$.schema_version", core.ProblemCodeMissingField,
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assertRepairHint(t, tc.review, tc.path, tc.code)
+		})
+	}
+}
+
+func assertRepairHint(t *testing.T, review, path, code string) {
+	t.Helper()
+	res := recordcore.CheckReview([]byte(review), checkDiff)
+	problem, ok := findProblem(res, path, code)
+	if !ok {
+		t.Fatalf("problems = %+v, want %s at %s", res.Problems, code, path)
+	}
+	if problem.Example != "2" {
+		t.Fatalf("example = %#v, want the selected version \"2\"", problem.Example)
+	}
+}
+
+func findProblem(res recordcore.CheckResult, path, code string) (core.Problem, bool) {
+	for _, p := range res.Problems {
+		if p.Path == path && p.Code == code {
+			return p, true
+		}
+	}
+	return core.Problem{}, false
+}

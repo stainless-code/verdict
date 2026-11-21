@@ -63,7 +63,7 @@ def loop(repo, agent, rounds, budget, output, verdict="verdict", call=execute,
         try:
             invoke([verdict, "fetch-local", repo, name, "--json"])
             launch = invoke([verdict, "run", repo, local, "--agent", agent,
-                             "--print", "--json"])
+                             "--finders", "1", "--print", "--json"])
             argv = launch["argv"]
             argv[0] = launch["binary"]
             argv[-1] += ("\nSelf-review loop: attest coverage[] and one reading receipt per changed hunk. "

@@ -117,6 +117,9 @@ func renderLeadBlock(in *RenderInput, visibleCount int) string {
 	if dec := decisionLine(in.Approval); dec != "" {
 		lines = append(lines, dec)
 	}
+	if finders := FinderLine(in.Verification); finders != "" {
+		lines = append(lines, finders)
+	}
 	if panel := panelLine(in.Verification); panel != "" {
 		lines = append(lines, panel)
 	}
@@ -295,7 +298,7 @@ func quoteTallyLine(quotes []core.EvidenceQuote) string {
 	}
 	verified := 0
 	for i := range quotes {
-		if quotes[i].Status == "verified" {
+		if quotes[i].Status == crossVerified {
 			verified++
 		}
 	}
@@ -420,6 +423,9 @@ func renderFindingDetails(
 	m *jq.Obj, findingPath string, findingStart, findingEnd int, claim, indent string, moved bool, links *linkTable,
 ) string {
 	var parts []string
+	if cross := renderCrossDetails(m, indent); cross != "" {
+		parts = append(parts, cross)
+	}
 	if moved {
 		if sugg := renderMovedSuggestion(m, indent); sugg != "" {
 			parts = append(parts, sugg)
@@ -466,6 +472,12 @@ func buildFindingLine(num int, m *jq.Obj, anchor, claim, dropReason string, move
 	}
 	if isUnverifiedQuote(m) {
 		sb.WriteString(spaceStr + unverifiedTag)
+	}
+	if label := crossLabel(m); label != "" {
+		sb.WriteString(spaceStr + label)
+	}
+	if crossExcluded(m) {
+		sb.WriteString(spaceStr + crossExcludedTag)
 	}
 	sb.WriteString(" — " + claim)
 	if moved {
@@ -561,7 +573,7 @@ func isUnverifiedQuote(m *jq.Obj) bool {
 	}
 	q, _ := rec.Get("quote")
 	s, ok := q.(string)
-	return !ok || s != "verified"
+	return !ok || s != crossVerified
 }
 
 func renderBriefDetails(m *jq.Obj, findingPath string, findingStart, findingEnd int, claim, indent string, links *linkTable) string {

@@ -1,0 +1,27 @@
+> ⚠️ Findings require attention.
+> Decision: withheld — open findings at-or-above important
+> Finders: 2 completed; cross-checks: 2 confirmed, 0 contested, 0 pending
+> Basis: 0 reproduced · 0 ran · 0 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes
+
+Two-finder review of token refresh.
+
+<!--
+Review metadata. Findings written against a1b2c3d;
+if commits landed on feat/token-refresh since, treat every bug/file/line as POTENTIALLY STALE.
+- Mode: Review (initial)
+- Files reviewed: 2
+- Commits reviewed: 1
+- Base: main (1122334)
+- Head: feat/token-refresh (a1b2c3d)
+- Reviewed commits:
+  - a1b2c3d — Refactor token refresh helper
+- Prior review: none
+-->
+
+**Findings**
+
+1. ⚠️ **important** [src/auth.go:42][ev-1] (origins: finder-1, finder-2; checks: finder-1 confirmed, finder-2 confirmed) — Token refresh skips expiration validation.
+
+**Spec checks** — 0 met · 0 violated · 0 n/a (2/2 spec items covered, min 2)
+
+[ev-1]: https://github.com/acme/app/blob/a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/src/auth.go#L42

@@ -87,7 +87,7 @@ export PATH="$AGENTBIN:$PATH"
 eval_mk_bundle "$LOCAL"
 
 # --- --print: the custom row renders the exact argv and spawns nothing -------
-run_review run acme/app "$LOCAL" --agent local --print --json -- --model test-model
+run_review run acme/app "$LOCAL" --finders 1 --agent local --print --json -- --model test-model
 assert_exit "a prefs-defined agent prints" 0
 assert_envelope "custom agent --print"
 assert_json_field "--print names the custom agent" "local" '.data.agent'
@@ -99,7 +99,7 @@ assert_json_field "--print keeps the directive last" "true" \
   '.data.argv[-1] | startswith("Review acme/app local change local-custom")'
 
 # --- the launch: one process, provenance marked as prefs, one review ---------
-run_review run acme/app "$LOCAL" --agent local --json -- --model test-model
+run_review run acme/app "$LOCAL" --finders 1 --agent local --json -- --model test-model
 assert_exit "a prefs-defined agent launches" 0
 assert_envelope "custom agent launch"
 assert_json_field "the launch accepts one fresh review" "true" '.data.artifact_fresh'
@@ -138,7 +138,7 @@ assert_json_field "the refusal names the prefs install hint" "true" \
   '.error.message | contains("install custom-agent")'
 
 # --- discovery and the prefs-only boundary ----------------------------------
-run_review run acme/app "$LOCAL" --agent nope --json
+run_review run acme/app "$LOCAL" --finders 1 --agent nope --json
 assert_exit "an unknown name refuses" 1
 assert_refusal "unknown custom name" "unknown-agent"
 assert_json_field "the refusal labels the prefs source" "true" \
@@ -147,7 +147,7 @@ assert_json_field "the refusal labels the prefs source" "true" \
 rm -f "$DIR/review.json" "$DIR/launcher.json"
 printf '%s\n' '{"schema_version":"1","agents":{"local":{"binary":"custom-agent"}}}' >"$EVAL_SANDBOX/.verdict/config.json"
 write_settings '{}'
-run_review run acme/app "$LOCAL" --agent local --json
+run_review run acme/app "$LOCAL" --finders 1 --agent local --json
 assert_exit "a repo config cannot define an agent" 1
 assert_refusal "repo config is not an agent source" "unknown-agent"
 assert_json_field "the refusal says no operator agent is defined" "true" \
@@ -155,7 +155,7 @@ assert_json_field "the refusal says no operator agent is defined" "true" \
 rm -f "$EVAL_SANDBOX/.verdict/config.json"
 
 write_settings '{"agents":{"claude":{"binary":"custom-agent"}}}'
-run_review run acme/app "$LOCAL" --agent claude --print --json
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --print --json
 assert_exit "a colliding name refuses bad-settings" 1
 assert_refusal "collision" "bad-settings"
 assert_json_field "the refusal names the agents key" "true" \

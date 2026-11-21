@@ -80,6 +80,7 @@ func repairRequest(root string, cmdr *sequenced, rounds string, lines *collector
 		Environ:    []string{"ANTHROPIC_API_KEY=sk-ant-0123456789abcdef"},
 		Agent:      "claude",
 		TimeoutRaw: "300",
+		FindersRaw: "1",
 		RoundsRaw:  rounds,
 	}
 }

@@ -157,13 +157,14 @@
     "panelVerification": {
       "type": "object",
       "properties": {
+        "checker": { "type": "string" },
         "model": { "type": "string", "minLength": 1 },
         "provider": { "type": "string" },
         "verdict": { "enum": ["confirmed", "refuted", "insufficient"] },
         "evidence": { "type": "string", "maxLength": 500, "minLength": 10 },
         "at": { "type": "string" }
       },
-      "required": ["model", "verdict", "evidence"],
+      "required": ["verdict", "evidence"],
       "additionalProperties": true
     },
     "findingVerification": {
@@ -185,7 +186,11 @@
       "type": "object",
       "properties": {
         "execution_id": { "type": "string" },
-        "status": { "enum": ["confirmed", "pending"] },
+        "status": { "enum": ["confirmed", "contested", "pending"] },
+        "origins": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
         "expected": {
           "type": "array",
           "items": { "type": "string" }
@@ -195,18 +200,32 @@
           "items": { "$ref": "#/$defs/crossCheck" }
         }
       },
-      "required": ["execution_id", "status", "expected", "checks"],
+      "required": ["execution_id", "status", "origins", "expected", "checks"],
       "additionalProperties": false
     },
     "crossCheck": {
       "type": "object",
       "properties": {
+        "quote": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/crossQuote" }]
+        },
         "checker": { "type": "string" },
         "verdict": { "enum": ["confirmed", "refuted", "insufficient"] },
         "quote_status": { "enum": ["verified", "unverified"] },
         "evidence": { "type": "string" }
       },
       "required": ["checker", "verdict", "quote_status", "evidence"],
+      "additionalProperties": false
+    },
+    "crossQuote": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "side": { "enum": ["LEFT", "RIGHT"] },
+        "text": { "type": "string" },
+        "line": { "type": "integer", "minimum": 1 }
+      },
+      "required": ["path", "side", "text", "line"],
       "additionalProperties": false
     },
     "reproductionReceipt": {

@@ -43,8 +43,8 @@ means a human reviewer is the only gate.
 ## Agent launch (`run --agent`)
 
 - **The launcher is graded end to end, not only by unit tests.**
-  `verdict run <repo> <pr|local-name> --agent <name>` spawns one configured
-  agent process and asserts exactly one fresh `review.json`. The unit tests
+  `verdict run <repo> <pr|local-name> --agent <name>` defaults to two isolated finders and opposite-finder cross-checks.
+  `--finders 1` asserts the original one-process, one-review contract. The unit tests
   drive a scripted commander, so nothing there spawns the shipped argv shape
   against a produced bundle. — enforced: `evals/cases/run-agent.sh`
   (`./evals/one.sh run-agent`), and the CI `evals` lanes re-read
@@ -61,8 +61,10 @@ network: a stub `gh` answers first on `PATH`, and the single intercepted call
 in the whole case is the PR dry-run's head lookup (the case asserts `run`
 itself made zero host calls).
 
-**What it proves.** `--print` renders the exact argv and spawns and writes
-nothing. A launch spawns exactly one process in the repository root, hands it
+**What it proves.** The default produces four isolated processes when both
+finders report a candidate; removing a bound receipt makes approval insufficient.
+With `--finders 1`, `--print` renders the exact argv and spawns and writes
+nothing. A single-finder launch spawns exactly one process in the repository root, hands it
 the directive after the operator's pass-through flags, and accepts exactly one
 fresh `review.json`; `launcher.json` records the agent, the resolved binary,
 the redacted argv (`<prompt>` placeholder, `***REDACTED***` secret operand

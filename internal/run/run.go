@@ -52,14 +52,15 @@ const DefaultRounds = "2"
 // roundsFlag, recipeFlag, and stageFlag are named once for the parser and the
 // usage line.
 const (
-	roundsFlag = "--rounds"
-	recipeFlag = "--recipe"
-	stageFlag  = "--stage"
+	roundsFlag  = "--rounds"
+	recipeFlag  = "--recipe"
+	stageFlag   = "--stage"
+	findersFlag = "--finders"
 )
 
 // verbsWanted is the flag list the unknown-flag usage error names.
 const verbsWanted = "--agent <name>, --recipe <slug>, --stage <n>, --timeout <secs>, --rounds <n>, " +
-	"--consent-over-budget, --print, -- <agent args>, --json"
+	"--finders <1|2>, --consent-over-budget, --print, -- <agent args>, --json"
 
 // Run executes `run <owner/repo> <pr|local-name> --agent <name> [--recipe
 // <slug>] [--stage <n>] [--timeout <secs>] [--rounds <n>] [--print] [--
@@ -136,6 +137,7 @@ func runRequest(r *cli.Runner, req Request, flags *flags) *core.RunRequest {
 		StageRaw:          flags.stage,
 		TimeoutRaw:        flags.timeout,
 		RoundsRaw:         requestedRounds(flags),
+		FindersRaw:        flags.finders,
 		Print:             flags.print,
 		ConsentOverBudget: flags.consent,
 		JSONMode:          r.JSONMode,
@@ -159,6 +161,7 @@ func requestedRounds(f *flags) string {
 // the default so the re-run line can omit it, while the service has to know a
 // render was not asked for a loop it cannot run.
 type flags struct {
+	finders   string
 	agent     string
 	recipe    string
 	stage     string
@@ -196,6 +199,8 @@ func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) 
 	switch a {
 	case "--agent", recipeFlag:
 		return parseNameFlag(r, f, args, i)
+	case findersFlag:
+		return parseFindersFlag(r, f, args, i)
 	case stageFlag:
 		return parseStageFlag(r, f, args, i)
 	case "--timeout", roundsFlag:
@@ -287,7 +292,7 @@ func rentry(req Request, f *flags, jsonMode bool) string {
 // this line exactly as typed — a refusal names the value it could not read —
 // and the line exists to be pasted back into a shell.
 func flagTail(f *flags) string {
-	var s string
+	s := findersTail(f.finders)
 	if f.agent != "" {
 		s += " --agent " + f.agent
 	}
@@ -343,6 +348,7 @@ func addPermissionHint(ref *core.RefusalError, req Request, f *flags) {
 		return
 	}
 	command := RenderCommand([]string{"verdict", "run", req.Repo, req.Pr, "--agent", f.agent})
+	command += findersTail(f.finders)
 	ref.Message += "\nre-run with: " + command + " -- " + row.Launch.PermissionHint
 }
 
@@ -357,4 +363,23 @@ func personalPolicy(settings config.PersonalSpend) *spend.Policy {
 		policy.Personal = strconv.FormatFloat(*settings.BudgetUSD, 'f', -1, personalFloatBits)
 	}
 	return policy
+}
+
+func parseFindersFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) {
+	value, next, usage := cli.FlagValue(args, i, findersFlag, "<1|2>")
+	if usage != nil {
+		return i, r.ReportUsage(usage), true
+	}
+	if value == "" {
+		return i, r.ReportUsage(cli.MissingValue(findersFlag, "<1|2>")), true
+	}
+	f.finders = value
+	return next, 0, false
+}
+
+func findersTail(raw string) string {
+	if raw == "" {
+		return ""
+	}
+	return " --finders " + quoteArg(raw)
 }

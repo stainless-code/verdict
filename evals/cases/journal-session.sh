@@ -75,7 +75,7 @@ run_in_repo fetch-local acme/app "$BUNDLE_SLUG" --json
 assert_exit "fetch-local succeeds" 0
 
 # 2. run --agent claude (passing CLI + env secrets after -- so redaction is tested)
-run_in_repo run acme/app "$BUNDLE_NAME" --agent claude --rounds 1 --json \
+run_in_repo run acme/app "$BUNDLE_NAME" --agent claude --finders 1 --rounds 1 --json \
   -- --token "$CLI_SECRET" "$ENV_SECRET"
 assert_exit "run --agent claude succeeds" 0
 

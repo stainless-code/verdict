@@ -31,7 +31,7 @@
   },
   "cost": {
     "descriptions": {
-      "": "What the agent writes per prompts/review.md and report --cost rolls up. One object per run, or an array when a bundle was reviewed more than once. The script only sums — it never prices: effort defaults to standard when missing or unknown, records without models still count as runs but not as runs_with_cost, every `models[]` entry must name its model — the name is what attribution reads, and the rollup sums all of them into one total rather than reporting per model, absent/unreadable records contribute zeros and never fail. Per-chunk records (chunks/<name>.cost.json) share this shape. Two readers treat unknown keys differently, and this schema allows them for both. Aggregators — the rollup, the group estimate, the receipt — read the fields they know and ignore the rest, so a newer writer's extra field never voids history. Certification of lens evidence is version-scoped: a record offered as schema_version \"2\" may carry only the top-level fields v2 defines, and an extra one refuses that record by name until it is removed or a version that defines it is declared. A record bound to the run at a different version refuses as unsupported rather than being re-read as v2.",
+      "": "What the agent writes per prompts/review.md and report --cost rolls up. One object per run, or an array when a bundle was reviewed more than once. The script only sums — it never prices: effort defaults to standard when missing or unknown, records without models still count as runs but not as runs_with_cost, every `models[]` entry must name its model — the name is what attribution reads, and the rollup sums all of them into one total rather than reporting per model, absent/unreadable records contribute zeros and never fail. Per-chunk records (chunks/<name>.cost.json) share this shape. Two readers treat unknown keys differently, and this schema allows them for both. Aggregators — the rollup, the group estimate, the receipt — read the fields they know and ignore the rest, so a newer writer's extra field never voids history. Certification of lens evidence is version-scoped: a record offered as schema_version \"2\" may carry only the top-level fields v2 defines, and an extra one refuses that record by name until it is removed or a version that defines it is declared. A record bound to the run at a different version refuses as unsupported rather than being re-read as v2. For a captured two-finder execution, report prices only execution-bound phases matched to observed launch ids, never the root est_usd beside them. Missing usage stays null.",
       "/$defs/record/properties/effort": "Run tier; missing or unknown values roll up as standard.",
       "/$defs/record/properties/models": "One entry per model that generated tokens: the synthesizer first, then each lens.",
       "/$defs/record/properties/est_usd": "The agent's own math from its price sheet, null when prices are unknown — never guessed.",
@@ -72,8 +72,8 @@
       "/$defs/gateDimension/properties/id": "Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), live_threads (unresolved threads on the PR under --live), compliance, risk, spec (the spec checks the stored record graded, always on: a violated check withholds the derived approval, so no gate passes over it), or evidence (the stored evidence receipt for that HEAD, always on under --check).",
       "/$defs/gateDimension/properties/status": "pass, fail, unknown (the dimension could not be read and the posture fails closed), or skip (not requested, or unreachable under --live auto). Only fail and unknown fail the gate.",
       "/$defs/gateDimension/properties/count": "The dimension's own tally: offending findings for findings, unattested ranges for coverage (unattested chunks on a chunked bundle), versus-thread count for live_threads, violated spec checks for spec, evidence gaps for evidence, null for head and for a skipped, unreachable, or unknown probe.",
-      "/$defs/reportCost": "Summed rollup from cost.json plus per-chunk records; by_tier always carries all three tiers.",
-      "/$defs/reportCost/properties/cached_input_tokens": "Summed per-model cache_read_input_tokens plus cache_creation_input_tokens; totals stay input + output exactly.",
+      "/$defs/reportCost": "Cost rollup by effort tier. Captured two-finder executions sum bound launch phases and ignore root aggregate claims; missing phase usage leaves tokens and USD null, never zero.",
+      "/$defs/reportCost/properties/cached_input_tokens": "Summed cache tokens for model records. Null for phase handoffs without cache attribution; cached tokens are a subset of input tokens.",
       "/$defs/postData": "post --dry-run --json data (dry_run true, findings carry the dry-run file) and real-post data (dry_run false, findings carry counts plus the accepted review object).",
       "/$defs/postData/properties/review": "Real-post only: the accepted GitHub review object.",
       "/$defs/postData/properties/summary": "Planned (on dry-run) or executed (when --summary comment is active) PR-level summary comment action.",
@@ -277,7 +277,8 @@
       "/$defs/riskBands": "The queued bundles per recomputed risk band, worst first. Every band is always present, zeros included.",
       "/$defs/riskRow": "One ranked bundle: its host state, its recomputed band and receipt reasons, the advisory score with each component's points and weight, and whether it needs a human (any band but low).",
       "/$defs/riskRow/properties/score": "The 0-100 triage score: reach 35, churn 25, category 25, rung 15, integer-divided by 100. measured counts the components whose artifact was read, so a missing one reads unmeasured at 0 points instead of a clean zero.",
-      "/$defs/riskRow/properties/state": "open and local are live and stay in the default queue; merged and closed are named as skipped unless --status all asks for them. A state token the queue does not know reads open."
+      "/$defs/riskRow/properties/state": "open and local are live and stay in the default queue; merged and closed are named as skipped unless --status all asks for them. A state token the queue does not know reads open.",
+      "/$defs/runData": "CLI-only launcher response. A captured two-finder execution includes its id, completion counts and phase failures; this profile adds no MCP or SDK launch method."
     }
   },
   "findings": {
@@ -501,7 +502,7 @@
   },
   "review": {
     "descriptions": {
-      "": "What the agent writes: findings with code evidence, optional spec checks and receipts, and an optional summary. verdict derives approval from stored findings. The document is closed: an approved, body or comments[] key is not published, and a document without findings[] refuses. Errors: wrong schema_version, missing findings, finding path/line/severity/claim/quote/confidence shape or enum failures, malformed spec_checks or receipts, shape failures in the retained claim arrays, and any root key the schema does not publish. Warnings: an anchor outside the reviewed hunks (record moves the finding to the body), an unknown finding key, unset rigor, an unknown or non-string category, brief parts that fail validation, a malformed kb id, and unattested chunks; --strict/strict_input promotes every warning to a refusal.",
+      "": "Version 1 manual/finder input, or version 2 coordinator aggregate with a required execution reference. What the agent writes: findings with code evidence, optional spec checks and receipts, and an optional summary. verdict derives approval from stored findings. The document is closed: an approved, body or comments[] key is not published, and a document without findings[] refuses. Errors: wrong schema_version, missing findings, finding path/line/severity/claim/quote/confidence shape or enum failures, malformed spec_checks or receipts, shape failures in the retained claim arrays, and any root key the schema does not publish. Warnings: an anchor outside the reviewed hunks (record moves the finding to the body), an unknown finding key, unset rigor, an unknown or non-string category, brief parts that fail validation, a malformed kb id, and unattested chunks; --strict/strict_input promotes every warning to a refusal.",
       "/properties/schema_version": "Finder input uses version 1; execution-bound aggregate input uses version 2.",
       "/properties/findings": "Required array of findings. Each finding carries a path, strict integer line, severity, claim, quoted code, and finder confidence; the claim is stored as the finding body.",
       "/properties/spec_checks": "Optional spec items with status met, violated or n/a and one quoted evidence location. S4 enforces coverage and quote matching; S1 stores them.",
@@ -591,13 +592,13 @@
   },
   "selected": {
     "descriptions": {
-      "": "The reaction-scoped fix selection: the finding sigs whose posted root review comment carries at least one human \ud83d\udc4d, written by a GitHub fetch (the only host whose reactions verdict reads) and read by fix --selected. No reaction leaves no file at all, because an empty selection would claim a scope nobody asked for.",
+      "": "The reaction-scoped fix selection: the finding sigs whose posted root review comment carries at least one human 👍, written by a GitHub fetch (the only host whose reactions verdict reads) and read by fix --selected. No reaction leaves no file at all, because an empty selection would claim a scope nobody asked for.",
       "/properties/schema_version": "Format version; only \"1\" is published.",
       "/properties/repo": "Repository whose review comments were read, owner/name.",
       "/properties/pr": "Pull-request number the selected comments belong to.",
       "/properties/head_sha": "The bundle head the selection was read at (the fetched head, not the live one).",
       "/properties/selected_at": "UTC timestamp of the read, RFC 3339.",
-      "/properties/sigs": "Finding sigs (40-hex) whose root review comment carries at least one human \ud83d\udc4d, sorted and deduplicated. Bots and a comment's own poster never count, and a reply is never the root, so only verdict's own posted finding comment can select a sig. fix --selected addresses exactly these sigs."
+      "/properties/sigs": "Finding sigs (40-hex) whose root review comment carries at least one human 👍, sorted and deduplicated. Bots and a comment's own poster never count, and a reply is never the root, so only verdict's own posted finding comment can select a sig. fix --selected addresses exactly these sigs."
     }
   },
   "threads": {
@@ -714,12 +715,12 @@
   },
   "panel": {
     "descriptions": {
-      "": "Invoker-written verification/verdicts.json: head-bound independent opinions. Duplicate (sig, checker) and unknown or ambiguous signatures are refused by the runtime; a refutation never deletes a finding."
+      "": "Version 2 checker receipts. Automatic receipts bind execution, head, diff, aggregate review and plan digests; record and post derive cross standing from these files. Manual checker identities come from the panel plan. Invoker-written verification/verdicts.json: head-bound independent opinions. Duplicate (sig, checker) and unknown or ambiguous signatures are refused by the runtime; a refutation never deletes a finding."
     }
   },
   "panel-plan": {
     "descriptions": {
-      "": "Local planner output at verification/plan.json; verifiers follow the synthesizer in the pinned panel roster. No model or network call occurs."
+      "": "Version 1 manual dispatch plan, or version 2 execution-bound automatic plan with directed checks and exact-signature source mappings. The planner does not launch agents."
     }
   },
   "excluded": {

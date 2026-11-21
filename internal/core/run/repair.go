@@ -156,11 +156,17 @@ type roundOutcome struct {
 func (st *state) repairRound(ctx context.Context, args *launchArgs, rec *launcher, rep *core.RunRepair,
 	started, launched time.Time, in roundState, k, n int,
 ) roundOutcome {
+	if ref := args.checkpoint(); ref != nil {
+		return roundOutcome{stop: true, ref: ref}
+	}
 	prompt := st.roundPrompt(args, rep, in, k, n)
 	argv := argvFor(&args.def, args.model(), st.req.PassThrough, prompt)
 	st.human(fmt.Sprintf("» round %d/%d: %s (timeout %ds)", k, n, strings.Join(rec.Argv, " "), args.timeout))
 	roundStarted := st.now()
 	roundRes, spawnErr := st.spawn(ctx, argv, args.timeout)
+	if ref := args.checkpoint(); ref != nil {
+		return roundOutcome{stop: true, ref: ref}
+	}
 	wallS := st.now().Sub(roundStarted).Seconds()
 	st.writeRoundOut(args, k, roundRes)
 	st.maybeSalvage(ctx, args, rec, roundRes, spawnErr)

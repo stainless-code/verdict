@@ -44,7 +44,7 @@ func applyEntry(item any, file *File, applied, models map[string]bool) {
 		if r.Sig != id {
 			continue
 		}
-		applied[r.Sig], models[r.Model] = true, true
+		applied[r.Sig], models[r.Checker] = true, true
 		results = mergeResult(results, &r)
 	}
 	applyVerification(entry, prior, results)
@@ -75,7 +75,10 @@ func quoteStanding(prior any) any {
 }
 
 func mergeResult(results []any, r *Result) []any {
-	result := jq.NewObj("model", r.Model)
+	result := jq.NewObj("checker", r.Checker)
+	if r.Model != "" {
+		result.Set("model", r.Model)
+	}
 	if r.Provider != "" {
 		result.Set("provider", r.Provider)
 	}
@@ -84,9 +87,13 @@ func mergeResult(results []any, r *Result) []any {
 	if r.At != "" {
 		result.Set("at", r.At)
 	}
+	return mergeCheckerResult(results, r, result)
+}
+
+func mergeCheckerResult(results []any, r *Result, result *jq.Obj) []any {
 	for i, old := range results {
 		m, _ := object(old)
-		if m["model"] != r.Model || (m[fieldVerdict] == refuted && r.Verdict != refuted) {
+		if m["checker"] != r.Checker || (m[fieldVerdict] == refuted && r.Verdict != refuted) {
 			continue
 		}
 		results[i] = result
@@ -172,7 +179,7 @@ func verifierModels(entries []any) map[string]bool {
 func collectModels(m map[string]any, models map[string]bool) {
 	for _, value := range storedPanel(m["verification"]) {
 		result, _ := object(value)
-		if model, ok := result["model"].(string); ok && model != "" {
+		if model, ok := result["checker"].(string); ok && model != "" {
 			models[model] = true
 		}
 	}

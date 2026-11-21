@@ -13,6 +13,7 @@ import (
 
 const (
 	verificationSummaryType = "verificationSummary"
+	finderSummaryType       = "finderSummary"
 	keySchema               = "$schema"
 	keyID                   = "$id"
 	keyTitle                = "title"
@@ -133,6 +134,7 @@ type document struct {
 	root                 reflect.Type
 	anyOf                []reflect.Type
 	defs                 []definition
+	constraints          []member
 	additionalProperties bool
 }
 
@@ -205,15 +207,19 @@ func documents() []document {
 						object(false,
 							member{keyRequired, array(stringNode("profile"), stringNode(keyScopeDefaults))}),
 						object(false,
-							member{keyRequired, array(stringNode("defaults"))},
+							member{keyRequired, array(stringNode(keyScopeDefaults))},
 							member{keyProperties, object(false, member{keyScopeDefaults, object(false,
 								member{keyRequired, array(stringNode("kb_policy"))})})},
 						),
 						object(false,
-							member{keyRequired, array(stringNode("defaults"))},
+							member{keyRequired, array(stringNode(keyScopeDefaults))},
 							member{keyProperties, object(false, member{keyScopeDefaults, object(false,
 								member{keyRequired, array(stringNode("spec_coverage_min"))})})},
 						),
+						object(false,
+							member{keyRequired, array(stringNode(keyScopeDefaults))},
+							member{keyProperties, object(false, member{keyScopeDefaults, object(false,
+								member{keyRequired, array(stringNode("finders"))})})}),
 					)})},
 				}},
 				{typ: reflect.TypeFor[ConfigProfile](), name: "profile", closed: true},
@@ -307,6 +313,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[Verify](), name: "findingVerification"},
 				{typ: reflect.TypeFor[core.CrossVerification](), name: "crossVerification", closed: true},
 				{typ: reflect.TypeFor[core.CrossCheck](), name: "crossCheck", closed: true},
+				{typ: reflect.TypeFor[core.CrossQuote](), name: "crossQuote", closed: true},
 				{typ: reflect.TypeFor[repro.Receipt](), name: "reproductionReceipt", closed: true},
 				{typ: reflect.TypeFor[Brief](), name: defsBrief},
 				{typ: reflect.TypeFor[BriefSite](), name: defsBriefSite},
@@ -413,6 +420,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[WithheldCapability](), name: "withheldCapability"},
 				{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
 				{typ: reflect.TypeFor[core.PanelSummary](), name: verificationSummaryType},
+				{typ: reflect.TypeFor[core.FinderSummary](), name: finderSummaryType},
 				{typ: reflect.TypeFor[ChunkCoverage](), name: chunkCoverageType},
 				{typ: reflect.TypeFor[core.PostSummary](), name: "postSummary"},
 				{typ: reflect.TypeFor[core.RiskClaim](), name: defsRiskClaim},
@@ -448,6 +456,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[Repair](), name: "repair"},
 				{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
 				{typ: reflect.TypeFor[core.PanelSummary](), name: verificationSummaryType},
+				{typ: reflect.TypeFor[core.FinderSummary](), name: finderSummaryType},
 				{typ: reflect.TypeFor[ChunkCoverage](), name: chunkCoverageType},
 				{typ: reflect.TypeFor[core.RiskClaim](), name: "riskClaim"},
 				{typ: reflect.TypeFor[ApprovalReceipt](), name: defsApprovalReceipt},
@@ -483,6 +492,7 @@ func documents() []document {
 			name:  "panel-plan",
 			title: "verification/plan.json — independent dispatch plan", root: reflect.TypeFor[panelcore.PlanDocument](),
 			additionalProperties: false,
+			constraints:          panelPlanVersions(),
 			defs:                 panelDefinitions(false),
 		},
 
@@ -490,6 +500,7 @@ func documents() []document {
 			name:                 "review",
 			title:                "review.json — agent-written review input",
 			root:                 reflect.TypeFor[Review](),
+			constraints:          reviewVersions(),
 			defs:                 reviewDefs(),
 			additionalProperties: false,
 		},
@@ -534,6 +545,16 @@ func documents() []document {
 
 func envelopeDefs() []definition {
 	return []definition{
+		{typ: reflect.TypeFor[core.RunData](), name: "runData"},
+		{typ: reflect.TypeFor[core.RecipePlan](), name: "runRecipe"},
+		{typ: reflect.TypeFor[core.RecipeStage](), name: "runRecipeStage"},
+		{typ: reflect.TypeFor[core.RecipeStageRender](), name: "runRecipeStageRender"},
+		{typ: reflect.TypeFor[core.RecipeLens](), name: "runRecipeLens"},
+		{typ: reflect.TypeFor[core.RunExecution](), name: "runExecution"},
+		{typ: reflect.TypeFor[core.RunPhaseFailure](), name: "runPhaseFailure"},
+		{typ: reflect.TypeFor[core.RunRepair](), name: "runRepair"},
+		{typ: reflect.TypeFor[core.RunAttempt](), name: "runAttempt"},
+		{typ: reflect.TypeFor[core.RunEvidence](), name: "runEvidence"},
 		{typ: reflect.TypeFor[core.Truncation](), name: "truncation"},
 		{typ: reflect.TypeFor[SchemaError](), name: "error"},
 		{typ: reflect.TypeFor[Candidate](), name: "candidate"},
@@ -548,6 +569,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[core.ProvenanceTruncatedRow](), name: "provenanceTruncatedRow"},
 		{typ: reflect.TypeFor[CoverageSummary](), name: coverageSummaryType},
 		{typ: reflect.TypeFor[core.PanelSummary](), name: verificationSummaryType},
+		{typ: reflect.TypeFor[core.FinderSummary](), name: finderSummaryType},
 		{typ: reflect.TypeFor[ReportData](), name: "reportData"},
 		{typ: reflect.TypeFor[ReportHead](), name: "reportHead"},
 		{typ: reflect.TypeFor[ReportVerdict](), name: "reportVerdict"},
@@ -767,6 +789,7 @@ func (b *builder) documentNode(doc *document) (*node, error) {
 		{keyTitle, stringNode(doc.title)},
 	}
 	members = append(members, content.members...)
+	members = append(members, doc.constraints...)
 	if len(doc.defs) > 0 {
 		defs, err := b.defsNode(doc.defs)
 		if err != nil {
@@ -1304,8 +1327,38 @@ func panelDefinitions(receipt bool) []definition {
 	}
 	return []definition{
 		{typ: reflect.TypeFor[panelcore.DirectedCheck](), name: "directedCheck", closed: true},
+		{typ: reflect.TypeFor[panelcore.ExecutionSource](), name: "executionSource", closed: true},
+		{typ: reflect.TypeFor[panelcore.FinderOrigin](), name: "finderOrigin", closed: true},
 		{typ: reflect.TypeFor[panelcore.Verifier](), name: "verifier"},
 		{typ: reflect.TypeFor[panelcore.Finding](), name: "finding"},
 		{typ: reflect.TypeFor[panelcore.Totals](), name: "totals"},
 	}
+}
+
+func reviewVersions() []member {
+	version := func(value string, automatic bool) member {
+		properties := object(false, member{"schema_version", object(false, member{keyConst, stringNode(value)})})
+		if automatic {
+			properties.members = append(properties.members, member{"execution", object(false, member{keyType, stringNode(typeObject)})})
+		}
+		return member{keyProperties, properties}
+	}
+	required := member{keyRequired, array(stringNode("execution"))}
+	return []member{{keyAnyOf, array(
+		object(false, version("1", false), member{keyNot, object(false, required)}),
+		object(false, version("2", true), required),
+	)}}
+}
+
+func panelPlanVersions() []member {
+	version := func(value string) member {
+		return member{keyProperties, object(false,
+			member{"schema_version", object(false, member{keyConst, stringNode(value)})})}
+	}
+	return []member{{keyAnyOf, array(
+		object(false, version("1"), member{keyRequired, array(stringNode("generated_at"), stringNode("panel_source"),
+			stringNode("verifiers"), stringNode("findings"), stringNode("second_look"), stringNode("dispatch"), stringNode("totals"))}),
+		object(false, version("2"), member{keyRequired, array(stringNode("execution_id"), stringNode("diff_sha256"),
+			stringNode("review_sha256"), stringNode("checks"), stringNode("sources"))}),
+	)}}
 }

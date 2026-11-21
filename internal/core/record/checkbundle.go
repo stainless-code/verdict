@@ -23,6 +23,16 @@ func CheckBundle(dir string, review []byte) (CheckResult, *core.RefusalError) {
 // normalizer's repairs into the result: the caller normalized once and keeps
 // the normalized bytes for its own output.
 func checkNormalized(dir string, normalized []byte, repairs []Problem) (CheckResult, *core.RefusalError) {
+	return checkPhase(dir, normalized, repairs, false)
+}
+
+// CheckDiscovery checks S4 evidence before cross-checking is complete.
+func CheckDiscovery(dir string, review []byte) (CheckResult, *core.RefusalError) {
+	normalized, repairs := NormalizeReview(review)
+	return checkPhase(dir, normalized, repairs, true)
+}
+
+func checkPhase(dir string, normalized []byte, repairs []Problem, discovery bool) (CheckResult, *core.RefusalError) {
 	st := &state{dir: dir}
 	if invalidJSON(normalized) == nil {
 		if ref := st.validateSuppressionBytes(normalized); ref != nil {
@@ -42,17 +52,17 @@ func checkNormalized(dir string, normalized []byte, repairs []Problem) (CheckRes
 	if verification, ok := ReadOptional(dir + "/verification.json"); ok {
 		in.Verification, in.HasVerification = verification, true
 	}
-	return withBundleEvidence(dir, normalized, MergeRepairs(CheckReviewInput(normalized, in), repairs, normalized)), nil
+	return withPhaseEvidence(dir, normalized, MergeRepairs(CheckReviewInput(normalized, in), repairs, normalized), discovery), nil
 }
 
-// withBundleEvidence attaches the evidence receipt the bundle bytes support
+// withPhaseEvidence attaches the evidence receipt the bundle bytes support
 // and folds its gaps into the result: the same pass the shared merge runs, so
 // the check path and the stored receipt cannot disagree about what the bundle
 // proves. Evidence warnings stay out of res.Warnings — that count is the shape
 // checker's, and a stale-head or normalized-fence warning refusing under
 // --strict must not depend on how many quotes failed.
-func withBundleEvidence(dir string, normalized []byte, res CheckResult) CheckResult {
-	receipt, problems := reviewEvidenceOf(dir, normalized)
+func withPhaseEvidence(dir string, normalized []byte, res CheckResult, discovery bool) CheckResult {
+	receipt, problems := phaseEvidenceOf(dir, normalized, discovery)
 	if receipt == nil {
 		return res
 	}

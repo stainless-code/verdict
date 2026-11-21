@@ -223,6 +223,7 @@ func runVerb(t *testing.T, f *fixture, args ...string) (int, string, string) {
 	if jsonMode {
 		r.Human = diag
 	}
+	local = append([]string{"--finders", "1"}, local...)
 	code := Run(context.Background(), r, local, Request{
 		Env:  map[string]string{"HOME": os.Getenv("HOME"), "XDG_CONFIG_HOME": os.Getenv("XDG_CONFIG_HOME")},
 		Repo: "acme/app", Pr: f.slug, Root: f.root, RepoRoot: f.root,
@@ -664,7 +665,7 @@ func checkMissingArtifactHint(t *testing.T, pass []string, want bool) {
 	if code != 1 {
 		t.Fatalf("exit = %d: %s %s", code, out, diag)
 	}
-	if got := strings.Contains(diag, "--agent codex -- --sandbox workspace-write"); got != want {
+	if got := strings.Contains(diag, "--agent codex --finders 1 -- --sandbox workspace-write"); got != want {
 		t.Fatalf("permission hint present = %v, want %v: %s", got, want, diag)
 	}
 }

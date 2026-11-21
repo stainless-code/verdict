@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 func TestConfidenceKeepsFindings(t *testing.T) {
@@ -28,17 +29,17 @@ func TestConfidenceKeepsFindings(t *testing.T) {
 
 func TestRepostPreservesAndReplaces(t *testing.T) {
 	entry := jq.NewObj("sig", "abc", "status", "open", "verification", []any{jq.NewObj("model", "a", "verdict", "refuted", "evidence", "original counterexample")})
-	Apply([]any{entry}, &File{Results: []Result{{Sig: "abc", Model: "b", Verdict: "confirmed", Evidence: "later confirmation"}}})
+	Apply([]any{entry}, &File{Results: []Result{{Sig: "abc", Checker: "b", Model: "b", Verdict: "confirmed", Evidence: "later confirmation"}}})
 	Apply([]any{entry}, &File{})
 	if got, _ := entry.Get("confidence"); got != "contested" {
 		t.Fatalf("later confirmation outvoted refutation: %v", got)
 	}
-	Apply([]any{entry}, &File{Results: []Result{{Sig: "abc", Model: "b", Verdict: "confirmed", Evidence: "replacement evidence"}}})
+	Apply([]any{entry}, &File{Results: []Result{{Sig: "abc", Checker: "b", Model: "b", Verdict: "confirmed", Evidence: "replacement evidence"}}})
 	wire := jq.PrettyOrdered(entry)
 	if !strings.Contains(wire, "original counterexample") || !strings.Contains(wire, "replacement evidence") || strings.Contains(wire, "later confirmation") {
 		t.Fatalf("repost=%s", wire)
 	}
-	Apply([]any{entry}, &File{Results: []Result{{Sig: "abc", Model: "a", Verdict: "confirmed", Evidence: "same model second look"}}})
+	Apply([]any{entry}, &File{Results: []Result{{Sig: "abc", Checker: "a", Model: "a", Verdict: "confirmed", Evidence: "same model second look"}}})
 	if got, _ := entry.Get("confidence"); got != "contested" {
 		t.Fatalf("second look erased refutation: %v", got)
 	}
@@ -47,7 +48,7 @@ func TestRepostPreservesAndReplaces(t *testing.T) {
 func TestTerminalAndLegacy(t *testing.T) {
 	entry := jq.NewObj("sig", "abc", "status", "addressed")
 	before := jq.PrettyOrdered(entry)
-	summary, warnings := Apply([]any{entry}, &File{Results: []Result{{Sig: "abc", Model: "a", Verdict: "refuted"}}})
+	summary, warnings := Apply([]any{entry}, &File{Results: []Result{{Sig: "abc", Checker: "a", Model: "a", Verdict: "refuted"}}})
 	if jq.PrettyOrdered(entry) != before || len(warnings) != 1 || summary.Verifiers != 0 {
 		t.Fatalf("terminal finding changed: %v %v", summary, warnings)
 	}
@@ -76,7 +77,7 @@ func assertConfidence(t *testing.T, verdicts []string, want string) {
 func confidenceFile(verdicts []string) *File {
 	file := &File{}
 	for i, v := range verdicts {
-		file.Results = append(file.Results, Result{Sig: "abc", Model: string(rune('a' + i)), Verdict: v, Evidence: "literal evidence"})
+		file.Results = append(file.Results, Result{Sig: "abc", Checker: string(rune('a' + i)), Model: string(rune('a' + i)), Verdict: v, Evidence: "literal evidence"})
 	}
 	return file
 }
@@ -88,7 +89,7 @@ func confidenceFile(verdicts []string) *File {
 func TestPanelMergeKeepsTheQuoteStanding(t *testing.T) {
 	entry := jq.NewObj("sig", "abc", "kind", "inline", "status", "open",
 		"verification", jq.NewObj("quote", "unverified"))
-	Apply([]any{entry}, &File{Results: []Result{{Sig: "abc", Model: "a", Verdict: "confirmed", Evidence: "literal evidence"}}})
+	Apply([]any{entry}, &File{Results: []Result{{Sig: "abc", Checker: "a", Model: "a", Verdict: "confirmed", Evidence: "literal evidence"}}})
 	verification, _ := entry.Get("verification")
 	record, ok := verification.(*jq.Obj)
 	if !ok {
@@ -100,5 +101,21 @@ func TestPanelMergeKeepsTheQuoteStanding(t *testing.T) {
 	}
 	if got, _ := entry.Get("confidence"); got != "confirmed" {
 		t.Fatalf("confidence = %v, want confirmed beside the kept standing", got)
+	}
+}
+
+func TestManualCheckerSeatsDoNotCollapseOneModel(t *testing.T) {
+	entry := jq.NewObj("sig", "abc", "kind", "inline", "status", "open")
+	file := &File{Results: []Result{
+		{Sig: "abc", Checker: "seat-1", Model: "same-model", Verdict: "confirmed", Evidence: "First independent seat."},
+		{Sig: "abc", Checker: "seat-2", Model: "same-model", Verdict: "confirmed", Evidence: "Second independent seat."},
+	}}
+	summary, _ := Apply([]any{entry}, file)
+	if summary.Verifiers != 2 {
+		t.Fatalf("verifiers = %d", summary.Verifiers)
+	}
+	verification, _ := entry.Get("verification")
+	if len(jq.Elements(readcommon.FieldOf(verification, "panel"))) != 2 {
+		t.Fatal("checker seats collapsed")
 	}
 }

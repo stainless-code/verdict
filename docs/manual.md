@@ -352,9 +352,9 @@ previous merge filled a missing rung with `pointed`, and every other recognized 
 reads as `model`. A review that explicitly wrote `pointed` is indistinguishable from
 a default-filled one, so those entries read as `default` either way. Changing the normalization orphans
 history — that ships as a new `sig_version`, never silently.
-`review.json` inputs stamp `schema_version: "1"` (`post`/`record` refuse an
-absent or different value with `bad-enum`; there is no shim for another
-version);
+Manual and finder `review.json` inputs use `schema_version: "1"`. The coordinator
+writes an execution-bound aggregate at version `"2"`; its `execution` reference
+is required. `post` and `record` do not use a compatibility decoder;
 every bundle carries
 `.verdict/state/N/store.json` (`{"schema_version":"1"}`) marking the generation of the
 whole store — plugins read it instead of sniffing shapes. GitHub bundles keep
@@ -956,6 +956,7 @@ the behavior stays off until a layer above turns it on.
 | report                | defaults.display_min_severity  | unset            |
 | run                   | --rounds                       | 2                |
 | run                   | --timeout                      | 300              |
+| run                   | defaults.finders               | 2                |
 
 <!-- defaults-at-a-glance:end -->
 
@@ -2301,9 +2302,8 @@ the request bypasses the cache. Refusals are never cached.
 ## Your agent, launched (`run --agent`)
 
 `fetch` ends with a bundle and a prompt nobody ran. `run` closes that gap
-without becoming an orchestrator: it launches **your** agent against an
-existing bundle, one process per round and two rounds by default, and hands
-the result back to the verbs that already exist.
+by launching **your** agent as two isolated whole-diff finders, followed by
+opposite-finder cross-checks. `--finders 1` restores the single-finder workflow.
 
 ```bash
 verdict fetch-local acme/app work              # writes .verdict/state/local-work/
@@ -2314,10 +2314,10 @@ verdict record acme/app local-work             # the existing validation path, u
 For a PR bundle the middle step is `verdict run acme/app 123 --agent claude`
 and the handoff is `verdict post acme/app 123`. `run` never records, posts,
 merges, or pushes; with `--rounds N` (default 2) it repeats only the
-launch→check pair, up to N rounds, and still records nothing: `next` in its
+launch→check pair per finder, up to N rounds, and still records nothing: `next` in its
 envelope names the command it did not run.
 
-`run` invokes your agent only when you ask: one process per round, one bundle. No
+`run` invokes your agent only when you ask, against one bundle. No
 daemon, no queue, no scheduler, no webhook, no model selection, and by default
 it never reads prose: it runs the published `CheckReview` shape checker over
 review.json (paths and codes only) plus the deterministic evidence checks over
@@ -2325,6 +2325,47 @@ the same bytes. With `--rounds N`, the error problems — shape and evidence
 alike — feed the next round's fix list; on the final round a shape error is the
 typed `bad-review-input` refusal and evidence that is still insufficient is
 `review-insufficient`.
+
+### Captured two-finder executions
+
+`run --agent` defaults to two finders. Set global `defaults.finders` to `1` or
+`2` in base-owned repository configuration, or use personal `review.finders`
+as a fallback. The value is captured at fetch time; scopes cannot override it.
+`run --finders 1|2` wins over the capture and records its source.
+`--print` and `--stage` require `--finders 1`; two-finder rendering refuses
+without writing or launching. An explicit recipe is declarative context;
+the lean finder procedures control automatic discovery.
+
+Before a rerun, the launcher moves an existing automatic execution and its
+receipts into `x-superseded/<id>` inside the bundle. The old manifest, isolated
+outputs, aggregate review, and panel receipts remain inspectable there. Readers
+ignore them. A retirement failure refuses before any agent launch and names the
+restore location. A single-finder rerun clears the retired cross standing while
+retaining the finding history. A fresh single-finder bundle gains no extra files.
+
+Drain stays single-agent. Backtest replay explicitly uses one finder to retain
+its existing historical control and budget meaning.
+
+Each finder reviews the whole diff in a fresh process: finder-1
+uses a contract-first method, and finder-2 uses a behavior-first method. The
+coordinator merges exact signatures and dispatches each candidate to the opposite
+finder for a fresh cross-check. Duplicate findings keep both origins and receive
+both directed checks.
+
+`record`, `post`, `report`, and their MCP adapters consume the same bound receipts.
+The S3 body reports completed finders and confirmed, contested, and pending checks.
+Each finding names its origins and checker standing. A potentially blocking
+finding with missing, refuted, or unverified cross evidence does not gate as
+confirmed, and approval is insufficient. Refutations remain visible as bounded
+quoted evidence. `verification.cross` is derived output: removing or forging it
+cannot replace the bound receipts. Finder ids identify processes, not providers.
+
+Cost handoffs identify each launch by execution, finder, phase, and launch id.
+The report sums those phases once, ignoring a root aggregate claim beside them.
+An unreported phase leaves token totals and USD `null`. This is a pre-v1 SDK wire
+break: nullable totals must not become zero when a client decodes them. The
+single-finder cost rollup is unchanged. Launching remains CLI-only; MCP has
+no `verdict_run` tool.
 
 ### What `run` asserts
 
@@ -5143,13 +5184,14 @@ provider identity is operator-supplied, never inferred by Verdict.
 After writing `review.json`, run `panel` and dispatch each section of
 `.verdict/state/<bundle>/verification/dispatch.md` to its named verifier.
 The machine plan is `verification/plan.json`. The invoker collects results in
-`verification/verdicts.json`: `schema_version: "1"`, the bundle `head_sha`, and
-`results[]` containing `sig`, `model`, optional `provider` and `at`, `verdict`
+`verification/verdicts.json`: `schema_version: "2"`, the bundle `head_sha`, and
+`results[]` containing `sig`, the assigned `checker` seat, optional `model`,
+`provider`, and `at`, `verdict`
 (`confirmed|refuted|insufficient`), and `evidence` (10–500 characters).
 `schemas/panel.schema.json` describes verdicts; `schemas/panel-plan.schema.json`
 describes the plan. Extra input keys warn and are discarded.
 
-Then run `record` or `post`. Results attach to findings as `verification[]`;
+Then run `record` or `post`. Results attach to findings as `verification.panel[]`;
 `confidence` is `contested` if any result refutes, otherwise `confirmed` if any
 confirms, otherwise `single`. There is no vote. Missing verifiers never block,
 and a refutation never drops or downgrades a finding. A later confirmation
@@ -5161,12 +5203,16 @@ The planner writes only `verification/plan.json` and `verification/dispatch.md`.
 `verification/verdicts.json` is invoker-written; executable-proof
 `verification.json` remains a separate channel and can mark a finding addressed.
 Record/post summaries appear only when a verdict file was read. Report displays
-stored confidence counts. The posted body receives at most one count-only line;
-it never receives verifier evidence. Plans cap work at 100 findings, 4 verifiers,
+stored confidence counts. Manual panel evidence stays out of the posted body. Automatic cross-check
+refutations appear as bounded quoted evidence with the finder summary. Plans cap work at 100 findings, 4 verifiers,
 and 400 dispatches. Section findings have no inline anchor and are not dispatched.
 
 The verifier prompt joins the provenance hash in this release. Existing receipts
 keep their historical hashes; new receipts use the updated prompt set.
+
+Manual panel receipts use the checker seat assigned by `verification/plan.json`.
+`model` and `provider` are optional metadata; a checker seat is the identity.
+Automatic receipts also bind execution, head, diff, review, and plan digests.
 
 ## The runner is your CI
 

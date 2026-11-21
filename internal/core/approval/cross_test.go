@@ -40,3 +40,11 @@ func TestPendingCrossBlockClauseStaysInsufficient(t *testing.T) {
 		t.Fatalf("pending block clause became sufficient: %+v", decision)
 	}
 }
+
+func TestManualFindingWithoutCrossRetainsEligibility(t *testing.T) {
+	entry := jq.NewObj("sig", "manual", "status", "open", "severity", "important", "verification", jq.NewObj("quote", "verified"))
+	decision := Evaluate([]any{entry}, "", "", nil, false, currentEvidence())
+	if !CrossEligible(entry) || decision.Insufficient || len(decision.GatingSigs) != 1 || decision.GatingSigs[0] != "manual" {
+		t.Fatalf("manual behavior changed: %+v", decision)
+	}
+}

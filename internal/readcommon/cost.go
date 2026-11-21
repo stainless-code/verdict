@@ -39,6 +39,7 @@ type CostResult struct {
 	Cost     *jq.Obj
 	Receipts []any
 	Warns    []string
+	Phased   bool
 }
 
 // CostRollup owns the report --cost rollup: the top-level cost.json plus
@@ -51,10 +52,16 @@ func CostRollup(dir string) CostResult {
 	return res
 }
 
-// CostTotal reads only cost.json and chunk cost records, without the
-// budget.json receipt join. Aggregate views that do not publish receipts use
-// this same canonical rollup without reading an unrelated artifact.
+// CostTotal reads bound phase usage for automatic executions, or legacy cost
+// and chunk records otherwise. It omits the budget.json receipt join.
 func CostTotal(dir string) CostResult {
+	if execution := costExecution(dir); execution != "" {
+		return phaseCostTotal(dir, execution)
+	}
+	return legacyCostTotal(dir)
+}
+
+func legacyCostTotal(dir string) CostResult {
 	res := CostResult{}
 	top, topPresent, topParsed := readCostFile(filepath.Join(dir, CostFile))
 	chunkFiles := chunkCostFiles(dir)

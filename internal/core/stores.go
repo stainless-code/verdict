@@ -573,8 +573,15 @@ func (d *RecordData) Wire() *jq.Obj {
 	if d.Verification != nil {
 		o.Set("verification", d.Verification)
 	}
+	setRecordApproval(o, d)
 	setRecordTailWire(o, d, items)
 	return o
+}
+
+func setRecordApproval(o *jq.Obj, d *RecordData) {
+	if d.Verification != nil && d.Verification.Finders != nil {
+		o.Set("approval", d.Approval)
+	}
 }
 
 func setRecordTailWire(o *jq.Obj, d *RecordData, items any) {
@@ -1001,17 +1008,27 @@ type ExecutionReference struct {
 // CrossVerification prevents a quote stamp from replacing assigned checks.
 type CrossVerification struct {
 	ExecutionID string       `json:"execution_id"`
-	Status      string       `enum:"confirmed|pending" json:"status"`
+	Status      string       `enum:"confirmed|contested|pending" json:"status"`
+	Origins     []string     `json:"origins"`
 	Expected    []string     `json:"expected"`
 	Checks      []CrossCheck `json:"checks"`
 }
 
 // CrossCheck keeps quote standing separate from the checker's opinion.
 type CrossCheck struct {
-	Checker     string `json:"checker"`
-	Verdict     string `enum:"confirmed|refuted|insufficient" json:"verdict"`
-	QuoteStatus string `enum:"verified|unverified"            json:"quote_status"`
-	Evidence    string `json:"evidence"`
+	Quote       *CrossQuote `anyOf:"null"                          json:"quote,omitempty"`
+	Checker     string      `json:"checker"`
+	Verdict     string      `enum:"confirmed|refuted|insufficient" json:"verdict"`
+	QuoteStatus string      `enum:"verified|unverified"            json:"quote_status"`
+	Evidence    string      `json:"evidence"`
+}
+
+// CrossQuote retains the checker quote independently of its explanation.
+type CrossQuote struct {
+	Path string `json:"path"`
+	Side string `enum:"LEFT|RIGHT" json:"side"`
+	Text string `json:"text"`
+	Line int    `json:"line"       min:"1"`
 }
 
 func reproductionOf(obj *jq.Obj) *repro.Receipt {

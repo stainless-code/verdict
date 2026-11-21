@@ -163,12 +163,26 @@
     "verificationSummary": {
       "type": "object",
       "properties": {
+        "finders": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/finderSummary" }]
+        },
         "verifiers": { "type": "integer", "minimum": 0 },
         "confirmed": { "type": "integer", "minimum": 0 },
         "contested": { "type": "integer", "minimum": 0 },
         "single": { "type": "integer", "minimum": 0 }
       },
       "required": ["verifiers", "confirmed", "contested", "single"],
+      "additionalProperties": true
+    },
+    "finderSummary": {
+      "type": "object",
+      "properties": {
+        "completed": { "type": "integer", "minimum": 0, "maximum": 2 },
+        "confirmed": { "type": "integer", "minimum": 0 },
+        "contested": { "type": "integer", "minimum": 0 },
+        "pending": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["completed", "confirmed", "contested", "pending"],
       "additionalProperties": true
     },
     "chunkCoverage": {

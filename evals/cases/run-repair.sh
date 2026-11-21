@@ -53,7 +53,7 @@ eval_mk_bundle "$LOCAL"
 # --- (a) round 1 invalid, round 2 valid --------------------------------------
 rm -f "$STUB_REPAIR_COUNT"
 export STUB_REPAIR_MODE=fix-on-second
-run_review run acme/app "$LOCAL" --agent claude --rounds 3 --json
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --rounds 3 --json
 assert_exit "invalid then valid exits 0" 0
 assert_envelope "repair loop"
 assert_json_field "rounds_to_valid is 2" "2" '.data.repair.rounds_to_valid'
@@ -83,7 +83,7 @@ assert_json_field "launcher.json records both attempts" "2" '.attempts | length'
 rm -f "$STUB_REPAIR_COUNT"
 before_spawns="$(spawns)"
 export STUB_REPAIR_MODE=always-invalid
-run_review run acme/app "$LOCAL" --agent claude --rounds 3 --json
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --rounds 3 --json
 assert_exit "an always-invalid agent refuses" 1
 assert_refusal "repair exhausted" "bad-review-input"
 assert_eq "exactly 3 agent processes ran" "3" "$(( $(spawns) - before_spawns ))"
@@ -97,7 +97,7 @@ fi
 rm -f "$STUB_REPAIR_COUNT"
 before_spawns="$(spawns)"
 export STUB_REPAIR_MODE=valid
-run_review run acme/app "$LOCAL" --agent claude --json
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --json
 assert_exit "the default exits 0 on a valid first round" 0
 assert_eq "a valid first round spends one of the two default rounds" "1" "$(( $(spawns) - before_spawns ))"
 assert_json_field "the default runs two rounds" "2" '.data.repair.rounds'
@@ -107,7 +107,7 @@ assert_json_field "the default launcher records the loop" "2" '.repair.rounds' "
 # --- (d) --rounds 1: one shot, no repair profile ------------------------------
 rm -f "$STUB_REPAIR_COUNT"
 before_spawns="$(spawns)"
-run_review run acme/app "$LOCAL" --agent claude --rounds 1 --json
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --rounds 1 --json
 assert_exit "--rounds 1 exits 0" 0
 assert_eq "--rounds 1 spawns exactly 1 agent process" "1" "$(( $(spawns) - before_spawns ))"
 if jq -e '.data | has("repair") | not' <"$EVAL_OUT" >/dev/null 2>&1; then
@@ -123,11 +123,11 @@ fi
 
 # --- (e) round-count refusals -------------------------------------------------
 before_spawns="$(spawns)"
-run_review run acme/app "$LOCAL" --agent claude --print --rounds 2 --json
+run_review run acme/app "$LOCAL" --finders 1 --agent claude --print --rounds 2 --json
 assert_exit "--print with --rounds refuses" 1
 assert_refusal "--print with --rounds" "bad-flags"
 for bad in 0 6 x; do
-  run_review run acme/app "$LOCAL" --agent claude --rounds "$bad" --json
+  run_review run acme/app "$LOCAL" --finders 1 --agent claude --rounds "$bad" --json
   assert_exit "--rounds $bad refuses" 1
   assert_refusal "--rounds $bad" "bad-flags"
 done

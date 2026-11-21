@@ -329,29 +329,30 @@ gh_before="$(gh_calls)"
 export STUB_AGENT_MODE=write
 run_recipe_step
 assert_exit "the shipped agent step exits 0 when the agent writes a review" 0
-assert_json_field "the step's agent wrote the findings review artifact" "1" \
+assert_json_field "the step's coordinator wrote the aggregate review artifact" "2" \
   '.schema_version' "$PR_DIR/review.json"
 assert_json_field "the step's launcher recorded the configured agent" "$VERDICT_AGENT" \
-  '.agent' "$PR_DIR/launcher.json"
+  '.agent' "$PR_DIR/x-finder-1/launcher.json"
 assert_file_grep "the directive named the artifact the agent wrote" "$STUB_AGENT_LOG" \
-  "^arg\\[[0-9]+\\]=.*Write .verdict/state/$PR_BUNDLE/review.json FIRST with " "-E"
+  "^arg\\[[0-9]+\\]=.*Write .*x-finder-1/review.json FIRST with " "-E"
 assert_file_grep "the agent ran in the repository root" "$STUB_AGENT_LOG" "cwd=$SANDBOX" "-Fx"
 
 # An earlier run's artifact is not a fresh review: the step must fail.
 touch -t 202001010000 "$PR_DIR/review.json"
-export STUB_AGENT_MODE=none
+export STUB_AGENT_MODE=stale
 run_recipe_step
 assert_exit "the step fails on an artifact that predates the launch" 1
-assert_file_grep "the stale refusal names the review file" "$EVAL_ERR" \
-  ".verdict/state/$PR_BUNDLE/review.json predates this run" "-F"
+assert_json_field "both stale finders remain failed" "2" \
+  '[.failures[] | select(.code == "stale-review-artifact")] | length' "$PR_DIR/launcher.json"
 
 # An agent that writes nothing must fail the job, not reach `post`.
 rm -f "$PR_DIR/review.json"
+export STUB_AGENT_MODE=none
 run_recipe_step
 assert_exit "the step fails when the agent writes no review" 1
-assert_file_grep "the no-artifact refusal names the file it wanted" "$EVAL_ERR" \
-  "wrote no .verdict/state/$PR_BUNDLE/review.json" "-F"
-assert_eq "the three recipe legs launched the stub agent once each" "3" "$(recipe_spawns)"
+assert_json_field "both missing artifacts remain failed" "2" \
+  '[.failures[] | select(.code == "no-review-artifact")] | length' "$PR_DIR/launcher.json"
+assert_eq "three topology legs launch four, four, then two processes" "10" "$(recipe_spawns)"
 assert_eq "the shipped agent step made zero host calls" "$gh_before" "$(gh_calls)"
 unset STUB_AGENT_MODE ANTHROPIC_API_KEY VERDICT_AGENT
 

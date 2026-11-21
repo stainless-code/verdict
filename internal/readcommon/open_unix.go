@@ -30,7 +30,12 @@ func OpenNoBlockIn(root *os.Root, name string) (*os.File, error) {
 	return f, nil
 }
 
-func openNoFollowIn(root *os.Root, name string) (*os.File, error) {
+// OpenNoFollowIn opens a file below root neither following a final symlink nor
+// waiting for a writer (O_NOFOLLOW|O_NONBLOCK). The caller still fstats the
+// descriptor and refuses anything but a regular file, and on platforms without
+// O_NOFOLLOW it must lstat the leaf first. Missing files preserve
+// [fs.ErrNotExist].
+func OpenNoFollowIn(root *os.Root, name string) (*os.File, error) {
 	f, err := root.OpenFile(name, os.O_RDONLY|syscall.O_NONBLOCK|syscall.O_NOFOLLOW, 0)
 	if err != nil {
 		return nil, openError("open without following symlinks", err)

@@ -185,6 +185,7 @@ func request(root string, cmdr core.Commander) *core.RunRequest {
 		Environ:    []string{"ANTHROPIC_API_KEY=sk-ant-0123456789abcdef"},
 		Agent:      "claude",
 		TimeoutRaw: "300",
+		FindersRaw: "1",
 		RoundsRaw:  "1",
 	}
 }

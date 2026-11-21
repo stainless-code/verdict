@@ -140,7 +140,11 @@ func Triple(root, dir string) (toolVersion, promptsHash, model string) {
 // Spend rolls the latest cost record into the footer tier and spend words,
 // degrading silently (garnish, never a refusal).
 func Spend(dir string) (tier, cost string) {
-	tier, cost = "standard", unrecorded
+	rollup := readcommon.CostTotal(dir)
+	if rollup.Phased {
+		return phaseSpend(dir, rollup.Cost)
+	}
+	tier, cost = tierStandard, unrecorded
 	records := readcommon.CostRecords(dir)
 	if len(records) == 0 {
 		return tier, cost
@@ -401,4 +405,43 @@ func bundleHead(dir string) string {
 		return ""
 	}
 	return jq.StrOf(sm["head_sha"])
+}
+
+func phaseSpend(dir string, cost *jq.Obj) (string, string) {
+	records := readcommon.CostRecords(dir)
+	var tier string
+	if len(records) > 0 {
+		tier = readcommon.CostTier(records[len(records)-1])
+	} else {
+		tier = phasedTier(cost)
+	}
+	value, _ := cost.Get("est_usd")
+	amount, known := readcommon.NumVal(value)
+	if !known {
+		return tier, unrecorded
+	}
+	return tier, "$" + jqTostring(readcommon.Round4(amount))
+}
+
+// phasedTier names the effort tier the phase records priced. A bundle that
+// prices its launches per phase keeps no root record for the footer to read, so
+// the tier comes from the rollup the footer already shows; launches across two
+// tiers are not one claim and stay standard.
+func phasedTier(cost *jq.Obj) string {
+	byTier := readcommon.FieldOf(cost, "by_tier")
+	priced := ""
+	for _, name := range []string{"cheap", tierStandard, "deep"} {
+		runs, ok := readcommon.NumVal(readcommon.FieldOf(readcommon.FieldOf(byTier, name), "runs"))
+		if !ok || runs == 0 {
+			continue
+		}
+		if priced != "" {
+			return tierStandard
+		}
+		priced = name
+	}
+	if priced == "" {
+		return tierStandard
+	}
+	return readcommon.EffortTier(priced)
 }

@@ -379,8 +379,8 @@ func compareReportData(t *testing.T, got *core.ReportData, modeled *ReportData) 
 		t.Fatal("fixture lost its cost rollup")
 	}
 	if modeled.Cost.Runs != got.Cost.Runs ||
-		modeled.Cost.InputTokens != got.Cost.InputTokens ||
-		modeled.Cost.TotalTokens != got.Cost.TotalTokens ||
+		!reflect.DeepEqual(modeled.Cost.InputTokens, got.Cost.InputTokens) ||
+		!reflect.DeepEqual(modeled.Cost.TotalTokens, got.Cost.TotalTokens) ||
 		!reflect.DeepEqual(modeled.Cost.ByTier, got.Cost.ByTier) {
 		t.Errorf("cost = %+v, want %+v", modeled.Cost, got.Cost)
 	}

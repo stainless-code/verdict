@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/review.schema.json",
   "title": "review.json — agent-written review input",
-  "description": "What the agent writes: findings with code evidence, optional spec checks and receipts, and an optional summary. verdict derives approval from stored findings. The document is closed: an approved, body or comments[] key is not published, and a document without findings[] refuses. Errors: wrong schema_version, missing findings, finding path/line/severity/claim/quote/confidence shape or enum failures, malformed spec_checks or receipts, shape failures in the retained claim arrays, and any root key the schema does not publish. Warnings: an anchor outside the reviewed hunks (record moves the finding to the body), an unknown finding key, unset rigor, an unknown or non-string category, brief parts that fail validation, a malformed kb id, and unattested chunks; --strict/strict_input promotes every warning to a refusal.",
+  "description": "Version 1 manual/finder input, or version 2 coordinator aggregate with a required execution reference. What the agent writes: findings with code evidence, optional spec checks and receipts, and an optional summary. verdict derives approval from stored findings. The document is closed: an approved, body or comments[] key is not published, and a document without findings[] refuses. Errors: wrong schema_version, missing findings, finding path/line/severity/claim/quote/confidence shape or enum failures, malformed spec_checks or receipts, shape failures in the retained claim arrays, and any root key the schema does not publish. Warnings: an anchor outside the reviewed hunks (record moves the finding to the body), an unknown finding key, unset rigor, an unknown or non-string category, brief parts that fail validation, a malformed kb id, and unattested chunks; --strict/strict_input promotes every warning to a refusal.",
   "type": "object",
   "properties": {
     "execution": {
@@ -63,6 +63,19 @@
   },
   "required": ["schema_version", "findings"],
   "additionalProperties": false,
+  "anyOf": [
+    {
+      "properties": { "schema_version": { "const": "1" } },
+      "not": { "required": ["execution"] }
+    },
+    {
+      "properties": {
+        "schema_version": { "const": "2" },
+        "execution": { "type": "object" }
+      },
+      "required": ["execution"]
+    }
+  ],
   "$defs": {
     "executionReference": {
       "type": "object",

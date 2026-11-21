@@ -64,6 +64,7 @@ const (
 
 const (
 	schemaVersion1        = "1"
+	schemaVersion2        = "2"
 	sigVersion1           = "1"
 	newline               = "\n"
 	prSuffix              = "/PR.json"

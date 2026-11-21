@@ -25,6 +25,7 @@ func TestBuiltinDefaultsMatchFloor(t *testing.T) {
 		"display_min_severity":  nil,
 		"post_min_severity":     nil,
 		"spec_coverage_min":     80,
+		"finders":               2,
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("BuiltinDefaults = %#v; want %#v", got, want)

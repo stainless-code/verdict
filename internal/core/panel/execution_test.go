@@ -158,8 +158,8 @@ func TestExecutionRetainsPriorRefutation(t *testing.T) {
 	}
 	prior.Set("panel", []any{jq.NewObj("model", "finder-2", "verdict", "refuted", "evidence", "The earlier check found a live dispute.")})
 	state.Stamp([]any{entry})
-	if status := readcommon.FieldOf(readCross(entry), "status"); status != "pending" {
-		t.Fatalf("prior refutation left status %v, want pending", status)
+	if status := readcommon.FieldOf(readCross(entry), "status"); status != "contested" {
+		t.Fatalf("prior refutation left status %v, want contested", status)
 	}
 	if EligibleCross(readCross(entry)) {
 		t.Fatal("current confirmation erased a prior refutation")
@@ -239,5 +239,141 @@ func TestExecutionCannotStampOnRefreshedHead(t *testing.T) {
 	state.Stamp([]any{entry})
 	if EligibleCross(readCross(entry)) || state.Problem() != "execution: bundle head changed before applying cross checks" {
 		t.Fatalf("refresh left cross = %v, problem = %q", readCross(entry), state.Problem())
+	}
+}
+
+func TestExecutionRestoresStrippedCrossFromBoundArtifacts(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	entry := executionEntry()
+	state := CheckExecution(dir, nil)
+	state.Stamp([]any{entry})
+	if readCross(entry) == nil || !EligibleCross(readCross(entry)) || state.Problem() != "" {
+		t.Fatalf("bound confirmation was not restored: %v; %s", readCross(entry), state.Problem())
+	}
+}
+
+func TestExecutionStrippedCrossWithoutReceiptIsInsufficient(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	if err := os.Remove(filepath.Join(dir, "verification", "verdicts.json")); err != nil {
+		t.Fatal(err)
+	}
+	assertExecutionIneligible(t, dir)
+}
+
+func TestExecutionStrippedCrossWithoutExpectedRowIsInsufficient(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", true)
+	assertExecutionIneligible(t, dir)
+}
+
+func TestExecutionIgnoresForgedStoredCross(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", true)
+	entry := executionEntry()
+	verification, _ := entry.Get("verification")
+	stamp, ok := verification.(*jq.Obj)
+	if !ok {
+		t.Fatal("fixture verification is not an object")
+	}
+	stamp.Set("cross", jq.NewObj("execution_id", "execution-A", "status", "confirmed", "expected", []any{"finder-2"}, "checks", []any{jq.NewObj("checker", "finder-2", "verdict", "confirmed", "quote_status", "verified")}))
+	state := CheckExecution(dir, nil)
+	state.Stamp([]any{entry})
+	receipt := &core.EvidenceReceipt{}
+	state.ApplyEvidence(receipt)
+	if EligibleCross(readCross(entry)) || !receipt.Insufficient {
+		t.Fatalf("forged stamp survived: %v; %+v", readCross(entry), receipt)
+	}
+}
+
+func TestExecutionPartialRetainsChecksWithoutEligibility(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	manifest, _ := readObject(dir, "launcher.json")
+	manifest.Set("status", "partial")
+	writeExecutionFile(t, dir, "launcher.json", []byte(manifest.MarshalCompact()))
+	state := CheckExecution(dir, nil)
+	entry := executionEntry()
+	state.Stamp([]any{entry})
+	cross := readCross(entry)
+	if EligibleCross(cross) || readcommon.FieldOf(cross, "status") != "pending" {
+		t.Fatalf("partial execution was eligible: %v", cross)
+	}
+	checks := jq.Elements(readcommon.FieldOf(cross, "checks"))
+	if len(checks) != 1 || readcommon.FieldOf(checks[0], "checker") != "finder-2" || readcommon.FieldOf(checks[0], "verdict") != "confirmed" {
+		t.Fatalf("partial check details lost: %v", checks)
+	}
+	if state.Problem() != "execution: execution manifest is incomplete" {
+		t.Fatalf("partial problem = %q", state.Problem())
+	}
+}
+
+func TestExecutionCannotStampAfterRetirement(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	state := CheckExecution(dir, nil)
+	writeExecutionFile(t, dir, "run.json", []byte(`{"schema_version":"1","finders":1,"superseded":"retired-execution"}`))
+	entry := executionEntry()
+	state.Stamp([]any{entry})
+	if EligibleCross(readCross(entry)) || state.Problem() != "execution: captured execution changed before applying cross checks" {
+		t.Fatalf("retired execution stamped: cross=%v problem=%s", readCross(entry), state.Problem())
+	}
+}
+
+func TestExecutionCapturedTopologyCannotBecomeManual(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	writeExecutionFile(t, dir, "run.json", []byte(`{"schema_version":"1","finders":2}`))
+	writeExecutionFile(t, dir, "review.json", []byte(`{"schema_version":"1","findings":[],"summary":"No findings."}`))
+	for _, path := range []string{"launcher.json", filepath.Join("verification", "verdicts.json")} {
+		if err := os.Remove(filepath.Join(dir, path)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	state := CheckExecution(dir, nil)
+	entry := executionEntry()
+	state.Stamp([]any{entry})
+	receipt := &core.EvidenceReceipt{}
+	state.ApplyEvidence(receipt)
+	if !state.Active || !receipt.Insufficient || EligibleCross(readCross(entry)) {
+		t.Fatalf("captured topology became manual: state=%+v receipt=%+v cross=%v", state, receipt, readCross(entry))
+	}
+}
+
+func TestStampRefusesAReceiptChangedAfterCheck(t *testing.T) {
+	cases := []struct {
+		tamper func(t *testing.T, dir string)
+		name   string
+	}{
+		{name: "removed", tamper: func(t *testing.T, dir string) {
+			t.Helper()
+			if err := os.Remove(filepath.Join(dir, "verification", "verdicts.json")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+		{name: "replaced", tamper: func(t *testing.T, dir string) {
+			t.Helper()
+			path := filepath.Join(dir, "verification", "verdicts.json")
+			if err := os.WriteFile(path, []byte(`{}`), 0o600); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			assertReceiptChangeRefused(t, tc.tamper)
+		})
+	}
+}
+
+func assertReceiptChangeRefused(t *testing.T, tamper func(t *testing.T, dir string)) {
+	t.Helper()
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	state := CheckExecution(dir, nil)
+	if state.Problem() != "" {
+		t.Fatalf("fixture problem = %q", state.Problem())
+	}
+	tamper(t, dir)
+	entry := executionEntry()
+	state.Stamp([]any{entry})
+	if cross := readCross(entry); readcommon.FieldOf(cross, "status") == "confirmed" {
+		t.Fatalf("stamped confirmed cross after the receipt changed: %v", cross)
+	}
+	if state.Problem() != "execution: execution panel receipt changed before applying cross checks" {
+		t.Fatalf("problem = %q", state.Problem())
 	}
 }

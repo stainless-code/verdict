@@ -47,6 +47,14 @@ esac
 # no side channel, so a directive that stopped naming its first write fails.
 directive="${!#}"
 case "$directive" in
+  *"Check only incoming candidates."*)
+    request="${directive#*request }"
+    request="${request%%. Candidate*}"
+    artifact="${directive#*Write only }"
+    artifact="${artifact%%. Work in*}"
+    jq '{results: [.candidates[] | {sig: .sig, verdict: "confirmed", evidence: "The changed line preserves the reported caller defect.", quote: {path: "notes.txt", side: "RIGHT", line: 2, text: "new line"}}]}' "$request" >"$artifact"
+    exit 0
+    ;;
   *" FIRST with {"*)
     rest="${directive#*Write }"
     artifact="${rest%% FIRST with \{*}"
@@ -71,3 +79,7 @@ mkdir -p "$(dirname "$artifact")"
 cat >"$artifact" <<'JSON'
 {"schema_version":"1","summary":"Nit: one note, nothing blocking.","findings":[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"Nit: rename this line.","quote":"new line","confidence":"high","severity":"informational","rigor":"walked"}],"receipts":[{"hunk":"notes.txt\tNEW\t1\t3","quote":"new line"}]}
 JSON
+
+if [ "$mode" = stale ]; then
+  touch -t 202001010000 "$artifact"
+fi

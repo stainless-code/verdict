@@ -89,7 +89,7 @@ assert_file_grep "the worktree carries the head document" "$WORKTREE_RECIPES" '9
 # --- (i) --print: data.recipe, the rendered pipeline, and no writes ----------
 export STUB_AGENT_MODE=none
 before_spawns="$(spawns)"
-run_review run acme/app local-demo --agent claude --recipe quick --print --json
+run_review run acme/app local-demo --finders 1 --agent claude --recipe quick --print --json
 assert_exit "--print exits 0 without launching" 0
 assert_envelope "--print"
 assert_json_field "--print is marked printed" "true" '.data.printed'
@@ -138,7 +138,7 @@ if [ ! -e "$LENSLESS/lenses.txt" ]; then
 else
   bad "the lens-less leg left lenses.txt in place (it grades nothing)"
 fi
-run_review run acme/app local-lensless --agent claude --print --json
+run_review run acme/app local-lensless --finders 1 --agent claude --print --json
 assert_exit "the implicit pipeline exits 0 without launching" 0
 assert_json_field "the implicit pipeline is the built-in default" "default" '.data.recipe.name'
 assert_json_field "the implicit pipeline names the built-in version" "1.0.0" '.data.recipe.version'
@@ -157,7 +157,7 @@ assert_json_field "the rendered argv names the built-in pipeline" "true" \
 # review.json the stages chain through. Verdict itself still starts no process.
 export STUB_AGENT_MODE=none
 stage_spawns="$(spawns)"
-run_review run acme/app local-demo --agent claude --recipe quick --print --stage 2 --json
+run_review run acme/app local-demo --finders 1 --agent claude --recipe quick --print --stage 2 --json
 assert_exit "--print --stage exits 0 without launching" 0
 assert_envelope "--print --stage"
 assert_json_field "data.stage names the rendered position" "2" '.data.stage.index'
@@ -178,7 +178,7 @@ else
   bad "--print --stage wrote into the bundle (launcher.json or review.json)"
 fi
 
-run_review run acme/app local-demo --agent claude --recipe quick --print --stage 1 --json
+run_review run acme/app local-demo --finders 1 --agent claude --recipe quick --print --stage 1 --json
 assert_exit "the lens stage renders its own command" 0
 assert_json_field "the lens stage renders the declared lens hint and caps" "true" \
   '.data.argv[-1] | contains("logic (model sonnet, max_files 8, max_findings 6)")'
@@ -187,7 +187,7 @@ assert_json_field "the lens stage's argv is the agent flags and one directive" "
 assert_json_field "the first stage reads no previous review" "true" \
   '.data.argv[-1] | contains("the previous stage wrote") | not'
 
-run_review run acme/app local-demo --agent claude --recipe quick --print --stage 4 --json
+run_review run acme/app local-demo --finders 1 --agent claude --recipe quick --print --stage 4 --json
 assert_exit "the rank stage renders its own command" 0
 assert_json_field "the last stage's hint closes the pipeline" "true" \
   '.next | contains("stage 4 closes the pipeline") and contains("verdict record acme/app local-demo")'
@@ -195,43 +195,43 @@ assert_json_field "the last stage's hint never points past the pipeline" "true" 
   '.next | contains("--stage 5") | not'
 
 # --- (xiii) every --stage refusal lands before any process -----------------
-run_review run acme/app local-demo --agent claude --recipe quick --stage 2 --json
+run_review run acme/app local-demo --finders 1 --agent claude --recipe quick --stage 2 --json
 assert_exit "--stage without --print refuses" 1
 assert_refusal "--stage without --print" "bad-flags"
 assert_json_field "the refusal names what a stage render needs" "true" \
   '.error.message | contains("renders one stage'"'"'s command for --print")'
 
-run_review run acme/app local-demo --agent claude --print --stage 2 --json
+run_review run acme/app local-demo --finders 1 --agent claude --print --stage 2 --json
 assert_exit "--stage without --recipe refuses" 1
 assert_refusal "--stage without --recipe" "bad-flags"
 assert_json_field "the refusal names the missing pipeline" "true" \
   '.error.message | contains("--recipe is missing")'
 
-run_review run acme/app local-demo --agent claude --recipe quick --print --stage 5 --json
+run_review run acme/app local-demo --finders 1 --agent claude --recipe quick --print --stage 5 --json
 assert_exit "a stage index past the last stage refuses" 1
 assert_refusal "a stage index past the last stage" "bad-flags"
 assert_json_field "the refusal names the four resolved stages" "true" \
   '.error.message | contains("1 lenses, 2 synthesize, 3 dedupe, 4 rank")'
 
-run_review run acme/app local-demo --agent claude --recipe quick --print --stage 02 --json
+run_review run acme/app local-demo --finders 1 --agent claude --recipe quick --print --stage 02 --json
 assert_exit "a non-canonical stage index refuses" 1
 assert_refusal "a non-canonical stage index" "bad-flags"
 assert_json_field "the refusal echoes the index it could not read" "true" \
   '.error.message | contains("got '"'"'02'"'"'")'
 
-run_review run acme/app local-demo --agent claude --recipe quick --print --stage ""
+run_review run acme/app local-demo --finders 1 --agent claude --recipe quick --print --stage ""
 assert_exit "an empty stage operand is a usage error, not a whole pipeline" 2
 assert_file_grep "the usage error names the operand it wants" "$EVAL_ERR" \
   "--stage needs a value (want <n>)" "-F"
 
-run_review run acme/app local-demo --agent claude --recipe quick --print --stage 2 -- --model sonnet
+run_review run acme/app local-demo --finders 1 --agent claude --recipe quick --print --stage 2 -- --model sonnet
 assert_exit "a pass-through model against a declared hint refuses" 1
 assert_file_grep "the refusal names the declared hint" "$EVAL_ERR" \
   "--print --stage 2 renders the declared model hint 'opus'" "-F"
 assert_eq "no --stage refusal launched an agent process" "$stage_spawns" "$(spawns)"
 
 # --- (viii) a budget over the personal limit warns once ---------------------
-run_review run acme/app local-demo --agent claude --recipe spendy --print --json
+run_review run acme/app local-demo --finders 1 --agent claude --recipe spendy --print --json
 assert_exit "an over-limit budget still runs" 0
 assert_json_field "the over-limit budget is recorded, not refused" "5" '.data.recipe.budget_usd'
 assert_json_field "an over-limit budget warns once" "1" '.warnings | length'
@@ -250,13 +250,13 @@ assert_file_grep "the snapshot carries the head document under the flag"   "$HEA
 assert_json_field "the opt-out stamps policy head" "head" '.data.controls.policy'
 assert_json_field "the opt-out warns once" "1" \
   '[.warnings[] | select(contains("allow-head-controls"))] | length'
-run_review run acme/app local-demo-head --agent claude --recipe quick --print --json
+run_review run acme/app local-demo-head --finders 1 --agent claude --recipe quick --print --json
 assert_exit "the head-controlled bundle exits 0 without launching" 0
 assert_json_field "the head's version is what the plan records" "9.9.9" '.data.recipe.version'
 assert_json_field "the head entry is still sourced from the repository" "repo" '.data.recipe.source'
 assert_json_field "the head's own lens reaches the plan" "evil-lens" \
   '.data.recipe.stages[0].lenses[0].id'
-run_review run acme/app local-demo-head --agent claude --recipe default --print --json
+run_review run acme/app local-demo-head --finders 1 --agent claude --recipe default --print --json
 assert_exit "the head-only default entry resolves" 0
 assert_json_field "a name only the head declares resolves to the repository entry" "9.9.9" \
   '.data.recipe.version'
@@ -266,7 +266,7 @@ assert_eq "neither head-controlled --print launched an agent process" \
 
 # --- (ii) the launch records the same plan the envelope carries -------------
 export STUB_AGENT_MODE=write
-run_review run acme/app local-demo --agent claude --recipe quick --json
+run_review run acme/app local-demo --finders 1 --agent claude --recipe quick --json
 assert_exit "the launch exits 0 when the agent writes review.json" 0
 assert_envelope "launch"
 assert_eq "launch ran exactly one agent process" "1" "$(spawns)"
@@ -295,7 +295,7 @@ fi
 
 # --- (v) unknown-recipe refuses before any process starts -------------------
 before_spawns="$(spawns)"
-run_review run acme/app local-demo --agent claude --recipe nope --json
+run_review run acme/app local-demo --finders 1 --agent claude --recipe nope --json
 assert_exit "an unknown recipe refuses" 1
 assert_refusal "unknown recipe" "unknown-recipe"
 assert_json_field "the refusal lists the built-in name" "true" '.error.message | contains("default")'
@@ -303,7 +303,7 @@ assert_json_field "the refusal lists the repository names" "true" '.error.messag
 assert_eq "an unknown recipe launched no agent process" "$before_spawns" "$(spawns)"
 # The hint reaches a human run (a --json refusal carries the code only), so the
 # operator is told where a recipe lives instead of only that this one is gone.
-run_review run acme/app local-demo --agent claude --recipe nope
+run_review run acme/app local-demo --finders 1 --agent claude --recipe nope
 assert_exit "an unknown recipe refuses in human output too" 1
 assert_file_grep "the hint names the base document to commit" "$EVAL_ERR" \
   "recipes live in .verdict/recipes.json at the base" "-F"
@@ -314,7 +314,7 @@ TAMPERED="$SANDBOX/.verdict/state/local-tampered"
 cp -R "$BUNDLE" "$TAMPERED"
 printf '{"schema_version":"1","recipes":{"default":{"version":"6.6.6","synthesize":{}}}}\n' \
   >"$TAMPERED/controls/recipes.json"
-run_review run acme/app local-tampered --agent claude --print --json
+run_review run acme/app local-tampered --finders 1 --agent claude --print --json
 assert_exit "a recipe edited inside the snapshot refuses" 1
 assert_refusal "tampered snapshot" "controls-stale"
 assert_eq "a tampered snapshot launched no agent process" "$before_spawns" "$(spawns)"
@@ -330,7 +330,7 @@ assert_eq "a tampered snapshot launched no agent process" "$before_spawns" "$(sp
 BAD_BASE="$(sandbox_git rev-parse HEAD)"
 run_review fetch-local acme/app bad --base "$BAD_BASE" --json -- notes.txt
 assert_exit "a bundle over a malformed document is still produced" 0
-run_review run acme/app local-bad --agent claude --print --json
+run_review run acme/app local-bad --finders 1 --agent claude --print --json
 assert_exit "a malformed recipe refuses" 1
 assert_refusal "malformed recipe" "bad-recipe"
 assert_json_field "the diagnostic names the JSON path" "true" \

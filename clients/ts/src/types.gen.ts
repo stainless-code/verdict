@@ -1,4 +1,103 @@
 // GENERATED from schemas/envelope.schema.json ($defs) by clients/ts/scripts/gen-ts-types.mjs. Do not edit.
+/** CLI-only launcher response. A captured two-finder execution includes its id, completion counts and phase failures; this profile adds no MCP or SDK launch method. */
+export interface RunData {
+  agent: string;
+  binary: string;
+  argv: Array<string>;
+  bundle: string;
+  artifact: string;
+  recipe?: RunRecipe | null;
+  stage?: RunRecipeStageRender | null;
+  started_at?: string;
+  ended_at?: string;
+  duration_ms?: number;
+  exit: number;
+  timed_out: boolean;
+  timeout: number;
+  artifact_fresh: boolean;
+  printed?: boolean;
+  record?: string;
+  execution?: RunExecution | null;
+  repair?: RunRepair | null;
+  [key: string]: unknown;
+}
+
+export interface RunRecipe {
+  name: string;
+  version: string;
+  source: "builtin" | "repo";
+  sha256: string;
+  budget_usd?: number;
+  stages: Array<RunRecipeStage>;
+  [key: string]: unknown;
+}
+
+export interface RunRecipeStage {
+  kind: "lenses" | "synthesize" | "dedupe" | "rank";
+  lens_source?: "declared" | "bundle";
+  lenses?: Array<RunRecipeLens>;
+  model?: string;
+  [key: string]: unknown;
+}
+
+export interface RunRecipeStageRender {
+  index: number;
+  kind: "lenses" | "synthesize" | "dedupe" | "rank";
+  [key: string]: unknown;
+}
+
+export interface RunRecipeLens {
+  id: string;
+  model?: string;
+  max_files?: number;
+  max_findings?: number;
+  [key: string]: unknown;
+}
+
+export interface RunExecution {
+  id: string;
+  status: "in-progress" | "complete" | "partial";
+  counts: FinderSummary | null;
+  failures: Array<RunPhaseFailure>;
+  [key: string]: unknown;
+}
+
+export interface RunPhaseFailure {
+  phase: string;
+  code: string;
+  [key: string]: unknown;
+}
+
+export interface RunRepair {
+  rounds: number;
+  rounds_to_valid: number;
+  final_valid: boolean;
+  attempts: Array<RunAttempt>;
+  [key: string]: unknown;
+}
+
+export interface RunAttempt {
+  round: number;
+  prompt_sha256: string;
+  review_sha256: string;
+  evidence?: RunEvidence | null;
+  problems: Array<Problem>;
+  truncated: number;
+  check_ok: boolean;
+  wall_s: number;
+  [key: string]: unknown;
+}
+
+export interface RunEvidence {
+  settled?: Array<string>;
+  quote_gaps: number;
+  receipt_gaps: number;
+  spec_gaps: number;
+  errors: number;
+  insufficient: boolean;
+  [key: string]: unknown;
+}
+
 export interface Truncation {
   truncated: boolean;
   truncation_reason:
@@ -173,10 +272,19 @@ export interface CoverageSummary {
 }
 
 export interface VerificationSummary {
+  finders?: FinderSummary | null;
   verifiers: number;
   confirmed: number;
   contested: number;
   single: number;
+  [key: string]: unknown;
+}
+
+export interface FinderSummary {
+  completed: number;
+  confirmed: number;
+  contested: number;
+  pending: number;
   [key: string]: unknown;
 }
 
@@ -251,15 +359,15 @@ export interface ReportFilters {
   [key: string]: unknown;
 }
 
-/** Summed rollup from cost.json plus per-chunk records; by_tier always carries all three tiers. */
+/** Cost rollup by effort tier. Captured two-finder executions sum bound launch phases and ignore root aggregate claims; missing phase usage leaves tokens and USD null, never zero. */
 export interface ReportCost {
   runs: number;
   runs_with_cost: number;
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
-  /** Summed per-model cache_read_input_tokens plus cache_creation_input_tokens; totals stay input + output exactly. */
-  cached_input_tokens?: number;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
+  /** Summed cache tokens for model records. Null for phase handoffs without cache attribution; cached tokens are a subset of input tokens. */
+  cached_input_tokens: number | null;
   est_usd: number | null;
   by_tier: CostTiers;
   receipts?: unknown[];
@@ -274,10 +382,10 @@ export interface CostTiers {
 }
 
 export interface CostTier {
+  input_tokens: number | null;
+  output_tokens: number | null;
+  total_tokens: number | null;
   runs: number;
-  input_tokens: number;
-  output_tokens: number;
-  total_tokens: number;
   [key: string]: unknown;
 }
 

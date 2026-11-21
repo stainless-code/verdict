@@ -27,6 +27,9 @@ func OpenNoBlockIn(root *os.Root, name string) (*os.File, error) {
 	return f, nil
 }
 
-func openNoFollowIn(root *os.Root, name string) (*os.File, error) {
+// OpenNoFollowIn opens a file below root. A non-unix filesystem carries no
+// FIFO namespace and no O_NOFOLLOW, so the caller lstat-checks the leaf for a
+// symlink before opening and fstats the descriptor afterwards.
+func OpenNoFollowIn(root *os.Root, name string) (*os.File, error) {
 	return OpenNoBlockIn(root, name)
 }

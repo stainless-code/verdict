@@ -176,7 +176,7 @@ func openRegularLeaf(root *os.Root, name string) (*os.File, error) {
 		return nil, ErrSymlinkPath
 	}
 	freezeFileID(before)
-	f, err := openNoFollowIn(root, name)
+	f, err := OpenNoFollowIn(root, name)
 	if err != nil {
 		return nil, err
 	}

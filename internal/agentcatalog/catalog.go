@@ -42,6 +42,13 @@ type Launch struct {
 	// carries a known reliability caveat.
 	LaunchWarning string
 	Args          []string
+	// ResumeArgs names this row's session-continuation options beyond the
+	// shared flag vocabulary, spelled the way its own CLI spells them:
+	// Codex continues with a `resume` subcommand, Claude with `-c`. A
+	// two-finder run refuses them, because each finder starts fresh.
+	ResumeArgs []string
+	// ResumeCitation names the docs that spell those options for this row.
+	ResumeCitation string
 	// ProbeArgs runs the binary's harmless one-shot help before a launch; a
 	// row declares it only when another tool shares the binary name.
 	ProbeArgs []string
@@ -50,6 +57,15 @@ type Launch struct {
 // modelFlag is the argument every shipped row takes a model name on; a row
 // whose binary spells it differently carries its own value.
 const modelFlag = "--model"
+
+// The docs each row cites for its CLI facts, shared by the launch citation and
+// the permission or continuation claim beside it.
+const (
+	docClaudeCLI    = "https://code.claude.com/docs/en/cli-reference.md"
+	docCodexReadme  = "https://github.com/openai/codex/blob/main/README.md"
+	docOpenCodeCLI  = "https://opencode.ai/docs/cli/"
+	docPiQuickstart = "https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/quickstart.md"
+)
 
 const (
 	nameClaude   = "claude"
@@ -148,12 +164,14 @@ var catalog = []Agent{
 	{
 		Name: "claude",
 		Launch: &Launch{
-			Citation:           "https://code.claude.com/docs/en/cli-reference.md",
+			Citation:           docClaudeCLI,
 			PermissionHint:     "--permission-mode acceptEdits",
-			PermissionCitation: "https://code.claude.com/docs/en/cli-reference.md",
+			PermissionCitation: docClaudeCLI,
 			Binary:             nameClaude, ModelFlag: modelFlag,
-			Args:    []string{"-p"},
-			Install: "curl -fsSL https://claude.ai/install.sh | bash",
+			Args:           []string{"-p"},
+			ResumeArgs:     []string{"-c"},
+			ResumeCitation: docClaudeCLI,
+			Install:        "curl -fsSL https://claude.ai/install.sh | bash",
 		},
 		Skills: &Skills{
 			Base:     valueHome,
@@ -206,12 +224,14 @@ var catalog = []Agent{
 	{
 		Name: "codex",
 		Launch: &Launch{
-			Citation:           "https://github.com/openai/codex/blob/main/README.md",
+			Citation:           docCodexReadme,
 			PermissionHint:     "--sandbox workspace-write",
-			PermissionCitation: "https://github.com/openai/codex/blob/main/README.md",
+			PermissionCitation: docCodexReadme,
 			Binary:             nameCodex, ModelFlag: modelFlag,
-			Args:    []string{argsExec},
-			Install: "npm install -g @openai/codex",
+			Args:           []string{argsExec},
+			ResumeArgs:     []string{"resume"},
+			ResumeCitation: docCodexReadme,
+			Install:        "npm install -g @openai/codex",
 		},
 		Skills: &Skills{
 			Base:     valueHome,
@@ -563,10 +583,12 @@ var catalog = []Agent{
 	{
 		Name: "opencode",
 		Launch: &Launch{
-			Citation: "https://opencode.ai/docs/cli/",
+			Citation: docOpenCodeCLI,
 			Binary:   nameOpenCode, ModelFlag: modelFlag,
-			Args:    []string{argsRun},
-			Install: "npm install -g @opencode/cli",
+			Args:           []string{argsRun},
+			ResumeArgs:     []string{"-c", "-s", "--fork"},
+			ResumeCitation: docOpenCodeCLI,
+			Install:        "npm install -g @opencode/cli",
 		},
 		Skills: &Skills{
 			Base:     "config",
@@ -597,10 +619,12 @@ var catalog = []Agent{
 	{
 		Name: "pi",
 		Launch: &Launch{
-			Citation: "https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/quickstart.md",
+			Citation: docPiQuickstart,
 			Binary:   "pi", ModelFlag: modelFlag,
-			Args:    []string{"-p"},
-			Install: "curl -fsSL https://pi.dev/install.sh | sh",
+			Args:           []string{"-p"},
+			ResumeArgs:     []string{"-c", "--fork"},
+			ResumeCitation: docPiQuickstart,
+			Install:        "curl -fsSL https://pi.dev/install.sh | sh",
 		},
 	},
 	// --agent 'qoder' is the product slug.
