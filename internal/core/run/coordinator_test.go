@@ -369,3 +369,18 @@ func TestCoordinatorRefusesSessionResumePerAgent(t *testing.T) {
 		})
 	}
 }
+
+// TestCoordinatorHandsOffTheAggregateBundle proves the response's next step is
+// read from the bundle the coordinator wrote, not from a finder's phase
+// directory: a local bundle hands off to record, never to post.
+func TestCoordinatorHandsOffTheAggregateBundle(t *testing.T) {
+	req, commander := completedExecution(t)
+	commander.phases = nil
+	response, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	if want := "record the review with verdict record acme/app local-supersede"; response.Next != want {
+		t.Fatalf("next = %q, want %q", response.Next, want)
+	}
+}

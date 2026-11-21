@@ -298,10 +298,15 @@ func (c *coordinator) discoveryArgs(output string, index int) (*launchArgs, *cor
 	return args, ref
 }
 
+// aggregateResponse points the response at the aggregate artifacts the
+// coordinator wrote and recomputes the handoff from the bundle itself: the
+// retained child response named a finder's phase directory, which is not the
+// operator's next step.
 func (c *coordinator) aggregateResponse() {
 	if c.response == nil || c.response.Data == nil {
 		return
 	}
+	c.response.Next = c.st.next(c.dir)
 	c.response.Data.Artifact = readcommon.DisplayPath(c.st.req.RepoRootPath(), filepath.Join(c.dir, reviewFile))
 	c.response.Data.Record = readcommon.DisplayPath(c.st.req.RepoRootPath(), filepath.Join(c.dir, launcherFile))
 }
