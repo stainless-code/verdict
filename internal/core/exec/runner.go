@@ -66,7 +66,7 @@ func (r Runner) Run(ctx context.Context, cmd *core.Command) (core.Result, error)
 	proc.WaitDelay = waitDelay
 	setGroup(proc)
 	var expired atomic.Bool
-	proc.Cancel = recordExpiry(ctx, proc, &expired)
+	proc.Cancel = newTerminator(proc, cmd.GracePeriod, &expired).cancel(ctx)
 	if err := startTree(proc); err != nil {
 		return core.Result{}, err
 	}
@@ -81,7 +81,7 @@ func (r Runner) Run(ctx context.Context, cmd *core.Command) (core.Result, error)
 	}
 	if exitErr, ok := errors.AsType[*osexec.ExitError](runErr); ok {
 		res.ExitCode = waitStatusCode(exitErr, false)
-	} else if runErr != nil && !errors.Is(runErr, osexec.ErrWaitDelay) {
+	} else if runErr != nil && !errors.Is(runErr, osexec.ErrWaitDelay) && !contextDone(runErr, proc) {
 		return res, fmt.Errorf("%s: %w", cmd.Argv[0], runErr) //nolint:wrapcheck // locally constructed spawn message, not an external error
 	}
 	if res.StdoutTruncated {

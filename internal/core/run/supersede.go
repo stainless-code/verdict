@@ -31,9 +31,14 @@ func (st *state) launchSelected(ctx context.Context, args *launchArgs, rounds in
 	return st.invoke(ctx, args, rounds)
 }
 
+// supersede retires whatever a previous execution left before a replacement
+// launch writes its own phases. Three shapes reach it: an active execution with
+// its capture (the ordinary re-run), an active execution whose capture a
+// re-fetch reset (an interrupted run), and stale phase directories with no
+// active execution behind them at all (a partial run, or a re-fetch over one).
 func (st *state) supersede(dir string) *core.RefusalError {
 	if !panelcore.CheckExecution(dir, nil).Active {
-		return nil
+		return retireInactivePhases(dir)
 	}
 	captured, ref := readFinderCapture(dir)
 	if ref != nil {
@@ -41,6 +46,9 @@ func (st *state) supersede(dir string) *core.RefusalError {
 	}
 	if captured == nil {
 		return retirementRefusal(supersededDir, damagedCapture())
+	}
+	if refetchCapture(captured) {
+		return st.retireRefetchedCapture(dir, captured)
 	}
 	location, ref := retirementLocation(captured, dir)
 	if ref != nil {
@@ -58,12 +66,85 @@ func (st *state) supersede(dir string) *core.RefusalError {
 	return nil
 }
 
-// executionArtifacts names the automatic artifacts a captured execution
-// writes beside its record: retirement moves them, and a live one among them
-// means the capture is damaged rather than retired.
+// executionArtifacts names the automatic artifacts a captured execution writes
+// beside its record: retirement moves them, and a live one among them means the
+// capture is damaged rather than retired. The capture's active marker moves
+// last, so a retirement interrupted halfway still leaves an execution the next
+// run can recognize instead of an active marker with no evidence behind it.
 var executionArtifacts = []string{
-	"launcher.json", "review.json", "verification", "x-finder-1", "x-finder-2",
-	"x-cross-1", "x-cross-2", "cost.json",
+	"x-finder-1", "x-finder-2", "x-cross-1", "x-cross-2", verificationDir,
+	"review.json", "cost.json", "launcher.json",
+}
+
+// phaseArtifacts are the execution's phase directories alone: their presence
+// without an active execution is what poisons a re-run.
+var phaseArtifacts = []string{"x-finder-1", "x-finder-2", "x-cross-1", "x-cross-2", verificationDir}
+
+// refetchCapture reports the shape a re-fetch leaves behind: it rewrites
+// run.json with no execution reference and no finder count, while the prior
+// execution's launcher record and phase directories stay on disk.
+func refetchCapture(captured *config.RunState) bool {
+	return captured.Execution == nil && captured.Finders == 0 && captured.Superseded == ""
+}
+
+// retireRefetchedCapture retires an interrupted execution a re-fetch reset. It
+// is the same retirement the ordinary re-run performs; only the evidence that
+// an execution happened is gone, and the artifacts themselves are the record.
+func (st *state) retireRefetchedCapture(dir string, captured *config.RunState) *core.RefusalError {
+	count, source, ref := st.finderPolicy(captured)
+	if ref != nil {
+		return ref
+	}
+	location, err := retireArtifacts(dir)
+	if err != nil {
+		return retirementRefusal(location, err)
+	}
+	captured.Finders, captured.FinderSource, captured.Superseded = count, source, location
+	if err := config.WriteRunState(dir, captured); err != nil {
+		return retirementRefusal(location, err)
+	}
+	return nil
+}
+
+// retireInactivePhases retires phase directories that survive an execution no
+// marker accounts for. Left in place they make the replacement launch fail
+// with "cannot create fresh phase directory", which names the symptom and not
+// the cause, and leaves the operator to hand-edit the bundle.
+func retireInactivePhases(dir string) *core.RefusalError {
+	stale, err := stalePhaseArtifacts(dir)
+	if err != nil {
+		return &core.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf(
+			"cannot inspect the bundle's phase directories: %v; no agent launched", err)}
+	}
+	if !stale {
+		return nil
+	}
+	location, err := retireArtifacts(dir)
+	if err != nil {
+		return retirementRefusal(location, err)
+	}
+	return nil
+}
+
+// stalePhaseArtifacts reports whether any phase directory is on disk. The
+// lookup runs through an opened root without following links, so a swapped
+// symlink cannot make the question about a directory outside the bundle.
+func stalePhaseArtifacts(dir string) (bool, error) {
+	root, err := os.OpenRoot(dir)
+	if err != nil {
+		return false, jq.Sealed("open bundle root", err)
+	}
+	defer func() { _ = root.Close() }()
+	for _, name := range phaseArtifacts {
+		_, err := root.Lstat(name)
+		if err == nil {
+			return true, nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return false, jq.Sealed("inspect phase directory "+name, err)
+		}
+	}
+	return false, nil
 }
 
 // retirementLocation retires the captured execution and names where it went. A

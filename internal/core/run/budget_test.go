@@ -216,9 +216,8 @@ func TestBudgetRenameCombinesPRJSONAndDiff(t *testing.T) {
 	if ref != nil {
 		t.Fatal(ref)
 	}
-	if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1,x-cross-2" {
-		t.Fatalf("launches = %s", got)
-	}
+	assertPhaseGroups(t, commander.launched(),
+		[]string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1", "x-cross-2"})
 	assertBudget(t, dataBudget(t, response.Data), map[string]any{
 		"tier": "deep", "requested": "auto", "files": 5, "finders": 2,
 		"reasons": []string{"sensitive-path: **/auth/**"},
@@ -237,9 +236,8 @@ func TestBudgetRenameFromPRJSON(t *testing.T) {
 	if ref != nil {
 		t.Fatal(ref)
 	}
-	if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1,x-cross-2" {
-		t.Fatalf("launches = %s", got)
-	}
+	assertPhaseGroups(t, commander.launched(),
+		[]string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1", "x-cross-2"})
 	assertBudget(t, dataBudget(t, response.Data), map[string]any{
 		"tier": "deep", "requested": "auto", "files": 4, "finders": 2,
 		"reasons": []string{"sensitive-path: **/auth/**"},
@@ -290,9 +288,8 @@ func TestBudgetAutoEscalatesSensitivePath(t *testing.T) {
 	if ref != nil {
 		t.Fatal(ref)
 	}
-	if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1,x-cross-2" {
-		t.Fatalf("launches = %s", got)
-	}
+	assertPhaseGroups(t, commander.launched(),
+		[]string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1", "x-cross-2"})
 	assertBudget(t, dataBudget(t, response.Data), map[string]any{
 		"tier": "deep", "requested": "auto", "finders": 2, "cross_check": "opposite-finder",
 		"reasons": []string{"sensitive-path: **/a.go"},
@@ -360,9 +357,8 @@ func TestFinderFlagSkipsCapturedBudget(t *testing.T) {
 	if ref != nil {
 		t.Fatal(ref)
 	}
-	if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1,x-cross-2" {
-		t.Fatalf("launches = %s", got)
-	}
+	assertPhaseGroups(t, commander.launched(),
+		[]string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1", "x-cross-2"})
 	if response.Data.Budget != nil {
 		t.Fatalf("data.budget = %+v; want absent", response.Data.Budget)
 	}
@@ -385,9 +381,8 @@ func TestBudgetFlagOutranksCapturedFinders(t *testing.T) {
 	if ref != nil {
 		t.Fatal(ref)
 	}
-	if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1,x-cross-2" {
-		t.Fatalf("launches = %s", got)
-	}
+	assertPhaseGroups(t, commander.launched(),
+		[]string{"x-finder-1", "x-finder-2"}, []string{"x-cross-1", "x-cross-2"})
 	assertBudget(t, dataBudget(t, response.Data), map[string]any{
 		"tier": "standard", "source": "flag", "requested": "standard", "finders": 2,
 	})
@@ -406,8 +401,8 @@ func TestBudgetRenderingRefusesTwoFinders(t *testing.T) {
 	if ref == nil || ref.Code != "bad-flags" || !strings.Contains(ref.Message, "--finders 1") {
 		t.Fatalf("refusal = %v", ref)
 	}
-	if len(commander.phases) != 0 {
-		t.Fatalf("render launched %v", commander.phases)
+	if launched := commander.launched(); len(launched) != 0 {
+		t.Fatalf("render launched %v", launched)
 	}
 	if _, err := os.Stat(filepath.Join(commander.dir, launcherFile)); !os.IsNotExist(err) {
 		t.Fatalf("render wrote the launcher record: %v", err)

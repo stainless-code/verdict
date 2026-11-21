@@ -1604,3 +1604,24 @@ func assertNoLaunchWarning(t *testing.T, agent string, printOnly bool) {
 		t.Errorf("%s (print=%v) warnings = spy %q resp %q, want none", agent, printOnly, spy.warns, resp.Warnings)
 	}
 }
+
+// TestChildEnvClonesBeforeAppending proves the NO_COLOR append cannot write
+// into the request's own environment array: the two parallel phases call
+// childEnv at once, and appending in place would have both write one slot.
+func TestChildEnvClonesBeforeAppending(t *testing.T) {
+	environ := make([]string, 1, 4)
+	environ[0] = "PATH=/usr/bin"
+	st := &state{req: &core.RunRequest{JSONMode: true, Environ: environ}}
+	first := st.childEnv()
+	second := st.childEnv()
+	want := []string{"PATH=/usr/bin", "NO_COLOR=1"}
+	if !slices.Equal(first, want) || !slices.Equal(second, want) {
+		t.Fatalf("childEnv = %q, %q, want %q twice", first, second, want)
+	}
+	if &first[1] == &second[1] {
+		t.Fatal("both calls appended into the request's environment array")
+	}
+	if len(environ) != 1 || environ[0] != "PATH=/usr/bin" {
+		t.Fatalf("request environment = %q, want it untouched", environ)
+	}
+}

@@ -316,6 +316,116 @@ func killReportedPid(pidFile string) {
 	}
 }
 
+// reportedPid reads the pid one fixture child wrote, failing when the child
+// never got far enough to write it.
+func reportedPid(t *testing.T, pidFile string) int {
+	t.Helper()
+	raw, err := os.ReadFile(pidFile)
+	if err != nil {
+		t.Fatalf("fixture never reported a pid: %v", err)
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(raw)))
+	if err != nil {
+		t.Fatalf("pid file = %q: %v", raw, err)
+	}
+	return pid
+}
+
+// TestWatchdogGracePeriodLetsTheChildExitCleanly proves the opt-in shutdown:
+// the group is asked to stop with SIGTERM, this child catches it, writes its
+// marker and exits 0, and the watchdog still reports the run as timed out
+// without ever escalating to SIGKILL.
+func TestWatchdogGracePeriodLetsTheChildExitCleanly(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "terminated")
+	tctx, cancel := context.WithTimeout(t.Context(), 200*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	res, err := Watchdog{}.Run(tctx, &core.Command{
+		Argv: []string{"bash", "-c", `trap 'printf caught > '` + shellQuote(marker) + `'; exit 0' TERM; ` +
+			`printf started; while :; do sleep 0.05; done`},
+		GracePeriod: 2 * time.Second,
+	})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if raw, err := os.ReadFile(marker); err != nil || string(raw) != "caught" {
+		t.Fatalf("marker = %q, %v: the group never received SIGTERM", raw, err)
+	}
+	if !res.TimedOut || res.ExitCode != 0 {
+		t.Fatalf("result = %+v, want the deadline with the child's own exit 0", res)
+	}
+	if elapsed >= 1500*time.Millisecond {
+		t.Fatalf("Run took %v: the group exited inside its grace, so no escalation was due", elapsed)
+	}
+}
+
+// TestWatchdogGracePeriodEscalatesToSigkill proves a group that ignores SIGTERM
+// is killed at the end of the grace period, grandchildren included.
+func TestWatchdogGracePeriodEscalatesToSigkill(t *testing.T) {
+	pidFile := filepath.Join(t.TempDir(), "grandchild.pid")
+	tctx, cancel := context.WithTimeout(t.Context(), 700*time.Millisecond)
+	defer cancel()
+	start := time.Now()
+	res, err := Watchdog{}.Run(tctx, &core.Command{
+		Argv: []string{"bash", "-c", `trap '' TERM; bash -c 'trap "" TERM; printf %s $$ > '` +
+			shellQuote(pidFile) + `'; while :; do sleep 0.05; done' & wait`},
+		GracePeriod: 200 * time.Millisecond,
+	})
+	elapsed := time.Since(start)
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid := reportedPid(t, pidFile)
+	t.Cleanup(func() { _ = syscall.Kill(pid, syscall.SIGKILL) }) //nolint:errcheck // best-effort reap after the assertion
+	if !res.TimedOut || res.ExitCode != 137 {
+		t.Fatalf("result = %+v, want the SIGKILL escalation reported as 137", res)
+	}
+	if elapsed < 300*time.Millisecond {
+		t.Fatalf("Run took %v: the group was killed before its grace period ended", elapsed)
+	}
+	testenv.Until(t, func() bool { return !pidAlive(pid) })
+}
+
+// TestWatchdogCancelBeforeTheDeadlineIsNotATimeout proves the second poll bug
+// is fixed: a budgeted run the operator cancels well inside its budget ends
+// without claiming the watchdog fired.
+func TestWatchdogCancelBeforeTheDeadlineIsNotATimeout(t *testing.T) {
+	marker := filepath.Join(t.TempDir(), "started")
+	ctx, cancel := context.WithTimeout(t.Context(), 30*time.Second)
+	defer cancel()
+	done := make(chan core.Result, 1)
+	go func() {
+		res, err := Watchdog{}.Run(ctx, &core.Command{
+			Argv:        []string{"bash", "-c", `printf started > '` + marker + `'; exec sleep 30`},
+			Env:         os.Environ(),
+			GracePeriod: 2 * time.Second,
+		})
+		if err != nil {
+			res.ExitCode = -1
+		}
+		done <- res
+	}()
+	testenv.Until(t, func() bool {
+		_, err := os.Stat(marker)
+		return err == nil
+	})
+	cancel()
+	select {
+	case res := <-done:
+		if res.TimedOut {
+			t.Fatalf("result = %+v, want no timeout for an operator cancel inside the budget", res)
+		}
+	case <-time.After(returnBound):
+		t.Fatalf("Run did not return within %v of the cancel", returnBound)
+	}
+}
+
+// shellQuote wraps one fixture path in single quotes for the child's shell.
+func shellQuote(value string) string {
+	return "'" + strings.ReplaceAll(value, "'", `'\''`) + "'"
+}
+
 // TestRunnerBothStreamsPastCapDoNotDeadlock proves a child that floods stdout
 // and stderr at once, both far past the cap and both larger than a pipe
 // buffer, still finishes: the capture discards the surplus without ever

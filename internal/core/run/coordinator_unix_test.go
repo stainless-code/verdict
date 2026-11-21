@@ -5,6 +5,8 @@ package run
 import (
 	"os"
 	"path/filepath"
+	"slices"
+	"strings"
 	"testing"
 
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
@@ -32,7 +34,11 @@ func TestCoordinatorOfflineLauncherSkipsEmptyCrossBatches(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(raw) != "first\nsecond\n" {
+	// The two finders run in parallel, so the shared counter records who started
+	// first, not a fixed order: both must appear exactly once.
+	launches := strings.Fields(string(raw))
+	slices.Sort(launches)
+	if !slices.Equal(launches, []string{"first", "second"}) {
 		t.Fatalf("launches = %q", raw)
 	}
 	assertNoCrossOutput(t, commander.dir)
