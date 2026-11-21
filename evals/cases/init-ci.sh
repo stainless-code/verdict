@@ -282,19 +282,19 @@ assert_refusal "the malformed-secret refusal" "bad-settings"
 
 ci_init "$PRINT" init --ci bogus
 assert_exit "an unknown --ci is a usage error" 2
-assert_file_grep "the usage error names the only provider" "$EVAL_ERR" "unknown --ci 'bogus' for init (want github)"
+assert_file_grep "the usage error names both providers" "$EVAL_ERR" "unknown --ci 'bogus' for init (want github|forgejo)"
 ci_init "$PRINT" init --print
 assert_exit "--print without --ci is a usage error" 2
-assert_file_grep "--print names the flag it needs" "$EVAL_ERR" "--print needs --ci github"
+assert_file_grep "--print names the flag it needs" "$EVAL_ERR" "--print needs --ci github|forgejo"
 ci_init "$PRINT" init --agent claude
 assert_exit "--agent without --ci is a usage error" 2
-assert_file_grep "--agent names the flag it needs" "$EVAL_ERR" "--agent needs --ci github"
+assert_file_grep "--agent names the flag it needs" "$EVAL_ERR" "--agent needs --ci github|forgejo"
 ci_init "$PRINT" init --ci
 assert_exit "--ci without a value is a usage error" 2
-assert_file_grep "--ci names its only value" "$EVAL_ERR" "--ci needs a value (want github)"
+assert_file_grep "--ci names both values" "$EVAL_ERR" "--ci needs a value (want github|forgejo)"
 ci_init "$PRINT" init --ci=
 assert_exit "an empty --ci= is a usage error" 2
-assert_file_grep "an empty --ci= names its only value" "$EVAL_ERR" "--ci needs a value (want github)"
+assert_file_grep "an empty --ci= names both values" "$EVAL_ERR" "--ci needs a value (want github|forgejo)"
 ci_init "$PRINT" init --ci github --agent=
 assert_exit "an empty --agent= is a usage error" 2
 assert_file_grep "an empty --agent= names its operand" "$EVAL_ERR" "--agent needs a value (want <name>)"
@@ -304,8 +304,8 @@ assert_file_grep "an empty --key-secret= names its operand" "$EVAL_ERR" \
   "--key-secret needs a value (want <NAME>)"
 ci_init "$PRINT" init --ci ""
 assert_exit "an empty --ci operand is a usage error" 2
-assert_file_grep "an empty --ci operand names its only value" "$EVAL_ERR" \
-  "--ci needs a value (want github)"
+assert_file_grep "an empty --ci operand names both values" "$EVAL_ERR" \
+  "--ci needs a value (want github|forgejo)"
 ci_init "$PRINT" init --ci github --agent ""
 assert_exit "an empty --agent operand is a usage error" 2
 assert_file_grep "an empty --agent operand names its operand" "$EVAL_ERR" \

@@ -35,6 +35,15 @@ var manualSurfaces = []manualSurface{
 		},
 	},
 	{
+		section: "forgejo actions",
+		heading: "### Forgejo Actions",
+		terms: []string{
+			"verdict init --ci forgejo", ".forgejo/workflows/verdict-review.yml",
+			"FORGEJO_HOST", "FORGEJO_TOKEN", "github.server_url", "--provider forgejo",
+			"cosign", "ubuntu-latest", "reads as a pass",
+		},
+	},
+	{
 		section: "policy engine",
 		heading: "## Policy engine (scopes, profiles, deep validation)",
 		terms:   []string{"scopes[]", "max_lenses", "default_profile", "controls-stale"},

@@ -24,9 +24,9 @@ type Request struct {
 }
 
 // Run executes
-// `init [--preset <chill|standard|strict>] [--ci github [--agent <name>]
-// [--key-secret <NAME>] [--print]] [--yes] [--json]`, returning the process
-// exit code.
+// `init [--preset <chill|standard|strict>] [--ci github|forgejo
+// [--agent <name>] [--key-secret <NAME>] [--print]] [--yes] [--json]`,
+// returning the process exit code.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = "", ""
 	flags, code, done := parseFlags(r, args)
@@ -156,7 +156,7 @@ func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
 func unknownInitFlag(name string) *cli.UsageError {
 	return &cli.UsageError{Message: fmt.Sprintf(
 		"unknown flag '%s' for init (want --preset <chill|standard|strict>, "+
-			"--ci github, --agent <name>, --key-secret <NAME>, --print, "+
+			"--ci "+initcore.CIValues()+", --agent <name>, --key-secret <NAME>, --print, "+
 			"--yes, --force, --json)", name)}
 }
 
@@ -188,7 +188,7 @@ func equalFlag(name, value string, f *flags) (u *cli.UsageError, known bool) {
 	case "--preset":
 		return storeEqual(value, name, "chill|standard|strict", &f.preset), true
 	case "--ci":
-		return storeEqual(value, name, "github", &f.ci), true
+		return storeEqual(value, name, initcore.CIValues(), &f.ci), true
 	case flagAgent:
 		return storeEqual(value, name, "<name>", &f.agent), true
 	case flagKeySecret:
@@ -215,7 +215,7 @@ func parseValueFlag(args []string, i int, f *flags) (int, *cli.UsageError, bool)
 	case "--preset":
 		return flagValue(args, i, "--preset", "chill|standard|strict", &f.preset)
 	case "--ci":
-		return flagValue(args, i, "--ci", "github", &f.ci)
+		return flagValue(args, i, "--ci", initcore.CIValues(), &f.ci)
 	case flagAgent:
 		return flagValue(args, i, flagAgent, "<name>", &f.agent)
 	case flagKeySecret:
@@ -245,8 +245,9 @@ func scopedFlagError(f *flags) *cli.UsageError {
 	if f.ci == "" {
 		return unscopeError(f)
 	}
-	if f.ci != "github" {
-		return &cli.UsageError{Message: fmt.Sprintf("unknown --ci '%s' for init (want github)", f.ci)}
+	if _, ok := initcore.LookupCI(f.ci); !ok {
+		return &cli.UsageError{Message: fmt.Sprintf(
+			"unknown --ci '%s' for init (want %s)", f.ci, initcore.CIValues())}
 	}
 	if f.agent == "" {
 		f.agent = "claude"
@@ -261,7 +262,7 @@ func unscopeError(f *flags) *cli.UsageError {
 		given bool
 	}{{flagAgent, f.agent != ""}, {flagKeySecret, f.keySecret != ""}, {"--print", f.print}} {
 		if scoped.given {
-			return &cli.UsageError{Message: scoped.name + " needs --ci github"}
+			return &cli.UsageError{Message: scoped.name + " needs --ci " + initcore.CIValues()}
 		}
 	}
 	return nil

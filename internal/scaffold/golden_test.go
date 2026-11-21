@@ -96,12 +96,26 @@ func seedFiles(t *testing.T, dir string, seed map[string]string) {
 	}
 }
 
-// seedStaleWorkflow commits a divergent workflow, so the overwrite guard has a
-// user-authored file to refuse.
+// seedStaleWorkflow commits a divergent GitHub workflow, so the overwrite guard
+// has a user-authored file to refuse.
 func seedStaleWorkflow(t *testing.T, dir, _ string) {
 	t.Helper()
+	seedStaleAt(t, dir, filepath.Join(".github", "workflows", "verdict-review.yml"))
+}
+
+// seedStaleForgejoWorkflow commits a divergent Forgejo workflow, so the
+// overwrite guard has a user-authored file to refuse.
+func seedStaleForgejoWorkflow(t *testing.T, dir, _ string) {
+	t.Helper()
+	seedStaleAt(t, dir, filepath.Join(".forgejo", "workflows", "verdict-review.yml"))
+}
+
+// seedStaleAt commits a divergent workflow at rel, so both providers grade the
+// same refusal over their own path.
+func seedStaleAt(t *testing.T, dir, rel string) {
+	t.Helper()
 	mkRepo(t, dir)
-	path := filepath.Join(dir, ".github", "workflows", "verdict-review.yml")
+	path := filepath.Join(dir, rel)
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -198,9 +212,9 @@ func testTreeEdges(t *testing.T) {
 		"init", "", "", "--bogus")
 }
 
-// testGeneratedWorkflow covers --ci github: create, refuse, force, and both
+// testGeneratedWorkflow covers both providers: create, refuse, force, and both
 // --print shapes, each of which must leave the tree untouched when it only
-// renders.
+// renders. The GitHub goldens are the byte-identical contract STA-465 shipped.
 func testGeneratedWorkflow(t *testing.T) {
 	t.Helper()
 	initBoth(t, "ci-github-create", emptyRepo,
@@ -213,4 +227,14 @@ func testGeneratedWorkflow(t *testing.T) {
 		"init", "", "", "--ci", "github", "--print")
 	initBoth(t, "ci-github-print-json", emptyRepo,
 		"init", "", "", "--ci", "github", "--print", "--json")
+	initBoth(t, "ci-forgejo-create", emptyRepo,
+		"init", "", "", "--ci", "forgejo")
+	initBoth(t, "ci-forgejo-refuse", seedStaleForgejoWorkflow,
+		"init", "", "", "--ci", "forgejo")
+	initBoth(t, "ci-forgejo-force", seedStaleForgejoWorkflow,
+		"init", "", "", "--ci", "forgejo", "--force")
+	initBoth(t, "ci-forgejo-print", emptyRepo,
+		"init", "", "", "--ci", "forgejo", "--print")
+	initBoth(t, "ci-forgejo-print-json", emptyRepo,
+		"init", "", "", "--ci", "forgejo", "--print", "--json")
 }

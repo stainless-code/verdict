@@ -2909,8 +2909,8 @@ New operators onboard in one offline command — no network, ever:
 verdict init --preset standard --yes   # chill|standard|strict, default standard
 ```
 
-Add `--ci github` to write the every-PR workflow as well (see _The runner is
-your CI_ → _Every PR_).
+Add `--ci github` or `--ci forgejo` to write the every-PR workflow as well
+(see _The runner is your CI_ → _Every PR_ and _Forgejo Actions_).
 
 `init` writes the standard local control files, then runs check-tree
 validation (same filter: own `.verdict/state/` scratch ignored). Existing files
@@ -5327,6 +5327,68 @@ token and key you control for untrusted code.
 Commit the workflow with the controls, set the repository variable
 `VERDICT_VERSION` to a release containing `run --agent` (`v0.7.0` or newer), and
 require the `review + merge gate` check in branch protection.
+
+### Forgejo Actions
+
+Forgejo's own Actions runner takes the same one command, with the provider
+named explicitly:
+
+```bash
+verdict init --ci forgejo          # --agent <name>, --key-secret <NAME>, --print
+```
+
+It writes `.forgejo/workflows/verdict-review.yml` beside the usual controls.
+The pipeline is the same one `--ci github` renders — `verdict fetch`,
+`verdict run --agent`, `verdict post`, the advisory `verdict report`, then
+`verdict gate --max-severity critical --require-head --live auto` — wired to
+verdict's native Forgejo provider. Only the fetch step passes
+`--provider forgejo`; it writes the bundle's provider marker, and `run`, `post`,
+`report`, and `gate` read it from there.
+
+Host and token come from the runner's own context, never a repository secret:
+`FORGEJO_HOST: ${{ github.server_url }}` and
+`FORGEJO_TOKEN: ${{ github.token }}`. Forgejo's automatic token is a context
+value and an injected environment variable, so the workflow never invents
+`secrets.GITHUB_TOKEN`; that alias is GitHub-only. Forgejo exports the token
+under both names into every step, so the agent step clears `GH_TOKEN`,
+`GITHUB_TOKEN`, and `FORGEJO_TOKEN` before the review starts. No secret is
+written into a script: each arrives as a step `env:` entry.
+
+The render carries no `permissions:` block. Forgejo has no granular permission
+model, so the block would be inert YAML that reads like a control it is not. The
+automatic token is repository-scoped and read-only for fork pull requests,
+which is why the fork guard stays:
+`if: github.event.pull_request.head.repo.full_name == github.repository`.
+A skipped job reads as a pass to branch protection, the same honest cost as the
+GitHub workflow.
+
+There is no readiness step yet. `verdict ready --check` has no Forgejo live
+reads and refuses `provider-unimplemented` on a Forgejo bundle, so keeping the
+step would fail every pull request. The merge gate is still the blocker;
+the readiness step lands here the day `ready` gains a Forgejo host row.
+
+Runner prerequisites: a registered runner label named `ubuntu-latest` (or
+rename `runs-on` to a label you register), the selected agent CLI on `PATH`
+before the `Agent review` step, and `cosign` on the runner image for signature
+verification. Without `cosign`, add `require-signature: 'false'` under the
+install step's `with:` for checksum-only verification — a deliberate downgrade,
+not the default. The install step reaches the action
+through the fully-qualified `https://github.com/stainless-code/verdict` URL,
+because a short-form reference resolves through `DEFAULT_ACTIONS_URL`, which
+does not mirror this repository. Keep `actions/checkout` and `actions/cache`
+reachable through that URL too. The installer also downloads release
+archives, `checksums.txt`, and `commit.txt` from `VERDICT_DOWNLOAD_URL`,
+which defaults to GitHub, so an air-gapped instance must mirror
+`stainless-code/verdict` and its release assets, re-point that one install
+line, and set `VERDICT_DOWNLOAD_URL` to the mirror's release base for the
+job.
+
+Commit the workflow with the controls, set the repository variable
+`VERDICT_VERSION` to a release containing `run --agent` (`v0.7.0` or newer), and
+require the `review + merge gate` check in branch protection. `--print` previews
+the file and writes nothing; an existing workflow needs `--yes`/`--force` (or an
+interactive confirm) like the control files, and a refused run writes nothing at
+all.
 
 ### Explicit context
 
