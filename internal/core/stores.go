@@ -72,11 +72,16 @@ type Finding struct {
 }
 
 // SpecCheck is one quoted specification item and its code evidence.
+// `evidence` is required for `met` and `violated`, and refused for a status
+// that has no diff line to quote. `note` carries the one-line reason such a
+// status needs: what is missing for `unmet`, why the item does not apply for
+// `n/a`.
 type SpecCheck struct {
 	FindingSig string       `json:"finding_sig,omitempty"`
-	Item       string       `json:"item"                  minLength:"1"`
-	Status     string       `enum:"met|violated|n/a"      json:"status"`
-	Evidence   SpecEvidence `json:"evidence"`
+	Item       string       `json:"item"                   minLength:"1"`
+	Status     string       `enum:"met|violated|unmet|n/a" json:"status"`
+	Note       string       `json:"note,omitempty"         maxLength:"500"`
+	Evidence   SpecEvidence `json:"evidence,omitzero"      optional:"true"`
 }
 
 // SpecEvidence is the code location quoted for one spec check.

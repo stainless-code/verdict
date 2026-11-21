@@ -154,9 +154,12 @@ export interface Problem {
     | "risk-stale-head"
     | "scalar-to-array"
     | "spec-check-missing"
+    | "spec-check-unmet"
     | "spec-evidence-mismatch"
     | "spec-evidence-not-code"
     | "spec-item-unknown"
+    | "spec-na-unjustified"
+    | "spec-note-missing"
     | "unknown-field"
     | "wrong-type";
   /** error blocks record; warning lets it proceed and report what it did, unless strict input promotes it. */
@@ -727,8 +730,9 @@ export interface EvidenceSpec {
 export interface SpecCheck {
   finding_sig?: string;
   item: string;
-  status: "met" | "violated" | "n/a";
-  evidence: SpecEvidence;
+  status: "met" | "violated" | "unmet" | "n/a";
+  note?: string;
+  evidence?: SpecEvidence;
   [key: string]: unknown;
 }
 

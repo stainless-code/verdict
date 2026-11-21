@@ -2,7 +2,9 @@ package evidence_test
 
 import (
 	"slices"
+	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/evidence"
 )
@@ -392,4 +394,185 @@ func TestVerifySpecChecksAmbiguousPathReason(t *testing.T) {
 		t.Fatalf("checks = %+v, want one", got.Checks)
 	}
 	assertSpecCheckReason(t, &got.Checks[0], "spec-evidence-not-code", "ambiguous-path")
+}
+
+// goalCase is one prose block and the one item it is supposed to state.
+type goalCase struct {
+	want *evidence.SpecItem
+	name string
+	text string
+}
+
+// assertGoal proves the block yields exactly the expected goal item, or no item
+// at all when want is nil.
+func assertGoal(t *testing.T, text string, want *evidence.SpecItem) {
+	t.Helper()
+	got := evidence.EnumerateSpecItems([]evidence.SpecBlock{{Index: 0, Text: text}})
+	if want == nil {
+		if len(got) != 0 {
+			t.Fatalf("items = %+v, want none", got)
+		}
+		return
+	}
+	if len(got) != 1 {
+		t.Fatalf("items = %+v, want one goal item", got)
+	}
+	if got[0] != *want {
+		t.Fatalf("item = %+v, want %+v", got[0], *want)
+	}
+}
+
+// runGoalCases runs one table of prose blocks through assertGoal.
+func runGoalCases(t *testing.T, cases []goalCase) {
+	t.Helper()
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			t.Parallel()
+			assertGoal(t, c.text, c.want)
+		})
+	}
+}
+
+// TestEnumerateSpecItemsGoalFromHeading proves a titled source states its goal
+// in the title: without the synthesis an ordinary prose specification is a
+// requirement-free source that satisfies every gate while asking for nothing.
+func TestEnumerateSpecItemsGoalFromHeading(t *testing.T) {
+	t.Parallel()
+	runGoalCases(t, []goalCase{
+		{
+			name: "heading beats prose",
+			text: "Some introduction.\n\n## Retry budget\n\nA 429 must reset it.\n",
+			want: &evidence.SpecItem{ID: "0:3", Text: "Retry budget", BlockIndex: 0, Line: 3},
+		},
+		{
+			name: "level one heading closes its hashes",
+			text: "# Bounded retries ###\n\nProse.\n",
+			want: &evidence.SpecItem{ID: "0:1", Text: "Bounded retries", BlockIndex: 0, Line: 1},
+		},
+	})
+}
+
+// TestEnumerateSpecItemsGoalFromProse proves an untitled source falls back to
+// its first line that carries prose, and that quoted text, a fence body, and
+// table scaffolding are never prose.
+func TestEnumerateSpecItemsGoalFromProse(t *testing.T) {
+	t.Parallel()
+	runGoalCases(t, []goalCase{
+		{
+			name: "first prose line",
+			text: "Tokens must stop working 15 minutes after issue.\n\nNothing enumerates here.\n",
+			want: &evidence.SpecItem{ID: "0:1", Text: "Tokens must stop working 15 minutes after issue.", BlockIndex: 0, Line: 1},
+		},
+		{
+			name: "blockquote is not prose",
+			text: "> quoted specification\n> more quote\n\nReset the budget on 429.\n",
+			want: &evidence.SpecItem{ID: "0:4", Text: "Reset the budget on 429.", BlockIndex: 0, Line: 4},
+		},
+		{
+			name: "fence body is not prose",
+			text: "```sh\nexpire tokens after 15m\n```\n\nExpire tokens after 15 minutes.\n",
+			want: &evidence.SpecItem{ID: "0:5", Text: "Expire tokens after 15 minutes.", BlockIndex: 0, Line: 5},
+		},
+		{
+			name: "table scaffolding is not prose",
+			text: "| Requirement | Owner |\n| --- | --- |\n\nThe real goal.\n",
+			want: &evidence.SpecItem{ID: "0:4", Text: "The real goal.", BlockIndex: 0, Line: 4},
+		},
+		{
+			name: "no prose at all",
+			text: "> only a quote\n\n```sh\nrm -rf /\n```\n",
+			want: nil,
+		},
+	})
+}
+
+// TestEnumerateSpecItemsGoalIsCapped proves one long prose line cannot become a
+// whole document of requirement text, and that the cut lands on a rune
+// boundary so the quoted item still matches what the agent is told to check.
+func TestEnumerateSpecItemsGoalIsCapped(t *testing.T) {
+	t.Parallel()
+	const capped = 300
+	text := strings.Repeat("a", capped-1) + "é" + strings.Repeat("tail", 50)
+	got := evidence.EnumerateSpecItems([]evidence.SpecBlock{{Index: 0, Text: text}})
+	if len(got) != 1 {
+		t.Fatalf("items = %+v, want one goal item", len(got))
+	}
+	want := strings.Repeat("a", capped-1) + "é"
+	if got[0].Text != want {
+		t.Fatalf("item = %q, want %q", got[0].Text, want)
+	}
+	if n := utf8.RuneCountInString(got[0].Text); n != capped {
+		t.Errorf("item = %d runes, want %d", n, capped)
+	}
+}
+
+// unmetNAFixture is the three-item checklist and the one-hunk diff the
+// unmet/n-a cases grade: a met row quotes auth.go:2.
+func unmetNAFixture() (*evidence.DiffIndex, []evidence.SpecItem) {
+	diff := "" +
+		"diff --git a/auth.go b/auth.go\n" +
+		"--- a/auth.go\n" +
+		"+++ b/auth.go\n" +
+		"@@ -1,2 +1,3 @@\n" +
+		" package auth\n" +
+		"+func CheckToken() error { return ErrExpired }\n" +
+		" // end\n"
+	items := evidence.EnumerateSpecItems([]evidence.SpecBlock{
+		{Index: 0, Text: "- Reject expired tokens\n- Reset the retry budget\n- Rotate the signing key\n"},
+	})
+	return evidence.IndexDiff([]byte(diff)), items
+}
+
+// TestVerifySpecChecksUnmetAndNAVerify proves an unmet row and an n/a row — the
+// two statuses with no diff line to cite — verify as covered items carrying no
+// evidence at all.
+func TestVerifySpecChecksUnmetAndNAVerify(t *testing.T) {
+	t.Parallel()
+	idx, items := unmetNAFixture()
+	got := evidence.VerifySpecChecks(idx, items, []evidence.SpecCheckInput{
+		{
+			Item: "- Reject expired tokens", Status: "met", EvidencePath: "auth.go", Line: 2,
+			Quote: "func CheckToken() error { return ErrExpired }",
+		},
+		{Item: "- Reset the retry budget", Status: "unmet"},
+		{Item: "- Rotate the signing key", Status: "n/a"},
+	}, 0)
+	assertSpecCoverage(t, &got, 3, 3, true, true)
+	for _, chk := range got.Checks[1:] {
+		if !chk.Valid || chk.Reason != "" {
+			t.Errorf("check %+v, want valid with no reason", chk)
+		}
+	}
+}
+
+// TestVerifySpecChecksUnmetAndNARejectEvidence proves either status refuses a
+// path, a quote, or a line: each is a claim about a diff line that cannot exist
+// for a requirement nothing implements or one that does not apply.
+func TestVerifySpecChecksUnmetAndNARejectEvidence(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name, status string
+		chk          evidence.SpecCheckInput
+	}{
+		{"unmet path", "unmet", evidence.SpecCheckInput{EvidencePath: "auth.go"}},
+		{"unmet quote", "unmet", evidence.SpecCheckInput{Quote: "func CheckToken() error { return ErrExpired }"}},
+		{"unmet line", "unmet", evidence.SpecCheckInput{Line: 2}},
+		{"n/a path", "n/a", evidence.SpecCheckInput{EvidencePath: "auth.go"}},
+		{"n/a quote", "n/a", evidence.SpecCheckInput{Quote: "func CheckToken() error { return ErrExpired }"}},
+		{"n/a line", "n/a", evidence.SpecCheckInput{Line: 2}},
+	}
+	for _, c := range cases {
+		t.Run(c.name+" is refused", func(t *testing.T) {
+			t.Parallel()
+			idx, items := unmetNAFixture()
+			chk := c.chk
+			chk.Item, chk.Status = "- Reset the retry budget", c.status
+			got := evidence.VerifySpecChecks(idx, items, []evidence.SpecCheckInput{chk}, 0)
+			if len(got.Checks) != 1 {
+				t.Fatalf("checks = %+v, want one", got.Checks)
+			}
+			assertSpecCheckReason(t, &got.Checks[0],
+				"spec-evidence-unexpected", "spec-evidence-unexpected")
+		})
+	}
 }

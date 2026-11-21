@@ -39,18 +39,19 @@ const (
 // Evidence messages. Every sentence names the exact bundle fact the agent has
 // to change, because it is also the repair problem text.
 const (
-	msgEvidenceDrift     = "hunks.tsv disagrees with full.diff (hunk-index-drift); receipts were checked against the diff"
-	msgQuoteMismatch     = "finding %d quote does not match full.diff at %s:%d (%s)"
-	msgQuoteNotCheckable = "finding %d at %s:%d cannot be checked from the bundle (%s)"
-	msgReceiptUnknown    = "receipt hunk %q is not a changed hunk in hunks.tsv"
-	msgReceiptMismatch   = "receipt for %s quotes text that hunk does not carry (%s)"
-	msgReceiptLarge      = "receipt for %s quotes more than %d lines"
-	msgReceiptsUnkeyable = "full.diff carries changed hunks but none of their paths can be keyed (a path holds a tab or newline)"
-	msgSpecItemUnknown   = "spec check item %q is not an item in context.txt"
-	msgSpecNotCode       = "spec check for %q cites %s, which is test output rather than code"
-	msgSpecNotInDiff     = "spec check for %q cites %s, which is not a path in full.diff"
-	msgSpecAmbiguous     = "spec check for %q cites %s, which matches more than one path in full.diff"
-	msgSpecMismatch      = "spec check for %q cites %s:%d, but the quote does not match full.diff"
+	msgEvidenceDrift         = "hunks.tsv disagrees with full.diff (hunk-index-drift); receipts were checked against the diff"
+	msgQuoteMismatch         = "finding %d quote does not match full.diff at %s:%d (%s)"
+	msgQuoteNotCheckable     = "finding %d at %s:%d cannot be checked from the bundle (%s)"
+	msgReceiptUnknown        = "receipt hunk %q is not a changed hunk in hunks.tsv"
+	msgReceiptMismatch       = "receipt for %s quotes text that hunk does not carry (%s)"
+	msgReceiptLarge          = "receipt for %s quotes more than %d lines"
+	msgReceiptsUnkeyable     = "full.diff carries changed hunks but none of their paths can be keyed (a path holds a tab or newline)"
+	msgSpecItemUnknown       = "spec check item %q is not an item in context.txt"
+	msgSpecNotCode           = "spec check for %q cites %s, which is test output rather than code"
+	msgSpecNotInDiff         = "spec check for %q cites %s, which is not a path in full.diff"
+	msgSpecAmbiguous         = "spec check for %q cites %s, which matches more than one path in full.diff"
+	msgSpecMismatch          = "spec check for %q cites %s:%d, but the quote does not match full.diff"
+	msgSpecNoEvidenceAllowed = "spec check for %q is %s, which has no diff line to quote, so it must carry no evidence"
 
 	fixQuoteMismatch  = "copy an exact line from that hunk of full.diff, or delete the finding"
 	fixQuoteAnchor    = "anchor the finding to the changed line in full.diff that introduces the defect, and quote that line"
@@ -59,6 +60,7 @@ const (
 	fixReceiptKeys    = "re-fetch the bundle so full.diff carries keyable paths"
 	fixSpecItem       = "quote one bullet, numbered line or table row from the spec verbatim"
 	fixSpecEvidence   = "cite a path changed in full.diff and quote the exact line from it"
+	fixSpecNoEvidence = `delete the row's "evidence" object and say why in "note"`
 )
 
 // checkBundleEvidence assembles the evidence input from the bundle's own bytes
@@ -397,9 +399,9 @@ func (p *evidencePass) receiptLevel() string {
 }
 
 // needsReceipts reports whether a matched receipt per hunk is the only thing
-// still withholding approval: no gating finding and no violated spec check.
+// still withholding approval: no gating finding and no spec check that failed.
 func (p *evidencePass) needsReceipts() bool {
-	return !p.anyGating() && !reviewdoc.HasSpecViolation(p.review)
+	return !p.anyGating() && !reviewdoc.HasSpecFailure(p.review)
 }
 
 // anyGating reports whether any finding would withhold approval on its own.
@@ -465,6 +467,7 @@ func (p *evidencePass) checkSpec() {
 func (p *evidencePass) specProblems(cov *evidence.SpecCoverage) {
 	for i := range cov.Checks {
 		p.specProblem(&cov.Checks[i])
+		p.specUnmetProblem(&cov.Checks[i])
 	}
 	for i, item := range cov.Missing {
 		problem := core.SpecCheckMissingProblem(i+1, item.Text)
@@ -472,8 +475,21 @@ func (p *evidencePass) specProblems(cov *evidence.SpecCoverage) {
 	}
 }
 
+// specUnmetProblem reports a requirement the review grades as not implemented.
+// The row is valid — it needs no diff line, precisely because nothing in the
+// diff implements it — so the status itself is the finding, and approval
+// withholds on it through the spec-failure list.
+func (p *evidencePass) specUnmetProblem(check *evidence.SpecCheckResult) {
+	if !check.Valid || check.Status != evidence.SpecStatusUnmet {
+		return
+	}
+	problem := core.SpecCheckUnmetProblem(check.Index, check.Item)
+	p.add(problem.Path, problem.Code, problem.Level, problem.Message, problem.Fix)
+}
+
 // specProblem adds one invalid check's problem: an unknown item, non-code
-// evidence, or a quote that does not match the cited code.
+// evidence, a quote that does not match the cited code, or evidence on a row
+// whose status has no diff line to cite.
 func (p *evidencePass) specProblem(check *evidence.SpecCheckResult) {
 	if check.Valid {
 		return
@@ -485,6 +501,9 @@ func (p *evidencePass) specProblem(check *evidence.SpecCheckResult) {
 	case evidence.ReasonSpecEvidenceNotCode:
 		p.add(fmt.Sprintf(specEvidencePath, check.Index), core.ProblemCodeSpecEvidenceNotCode,
 			core.ProblemLevelError, p.specNotCodeMessage(check), fixSpecEvidence)
+	case evidence.ReasonSpecEvidenceUnexpected:
+		p.add(fmt.Sprintf(specEvidencePath, check.Index), core.ProblemCodeSpecEvidenceMismatch,
+			core.ProblemLevelError, fmt.Sprintf(msgSpecNoEvidenceAllowed, check.Item, check.Status), fixSpecNoEvidence)
 	default:
 		p.add(fmt.Sprintf(specQuotePath, check.Index), core.ProblemCodeSpecEvidenceMismatch,
 			core.ProblemLevelError, p.specMismatchMessage(check), fixSpecEvidence)
@@ -556,6 +575,20 @@ func specBlocks(dir string) []evidence.SpecBlock {
 	return blocks
 }
 
+// specSources returns the source name of every context.txt block whose manifest
+// role is spec, in context.json order. The renderer names them, so a reader of
+// the body knows what the checklist graded the change against. A bundle with no
+// spec source yields nothing, and nothing about the body moves.
+func specSources(dir string) []string {
+	var sources []string
+	for _, entry := range readcommon.ContextEntries(dir) {
+		if entry.Role == specRole {
+			sources = append(sources, entry.Source)
+		}
+	}
+	return sources
+}
+
 // contextRoles maps each manifest source to its role.
 func contextRoles(dir string) map[string]string {
 	entries := readcommon.ContextEntries(dir)
@@ -606,9 +639,10 @@ func contextBlockOf(lines []string) contextBlock {
 }
 
 // result assembles the receipt. Insufficiency is exactly the presence of an
-// error-level problem: every level is set at its emission site from the gating
-// decision, so the receipt cannot disagree with the problems the agent would be
-// shown.
+// error-level problem other than an `unmet` spec row: every level is set at its
+// emission site from the gating decision, so the receipt cannot disagree with
+// the problems the agent would be shown. An unmet row withholds through the
+// decision's spec-failure list instead — see insufficient.
 func (p *evidencePass) result() *core.EvidenceReceipt {
 	if p.drift {
 		p.errorGaps = append(p.errorGaps, msgEvidenceDrift)
@@ -634,10 +668,13 @@ func (p *evidencePass) gapList() []string {
 }
 
 // insufficient reports whether any evidence problem is an error: only an error
-// withholds approval.
+// withholds approval. A `spec-check-unmet` row is deliberately not counted: the
+// row verified, and it withholds through the spec-failure list the way a
+// `violated` row does. Reading it as insufficient here would tell the operator
+// the review could not be verified, which is the opposite of what the row says.
 func (p *evidencePass) insufficient() bool {
 	for i := range p.problems {
-		if p.problems[i].Level == core.ProblemLevelError {
+		if p.problems[i].Level == core.ProblemLevelError && p.problems[i].Code != core.ProblemCodeSpecCheckUnmet {
 			return true
 		}
 	}

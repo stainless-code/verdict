@@ -32,6 +32,11 @@ const (
 	// droppedClauseReason names a block clause whose finding carries no
 	// verified quote: the clause may not gate, so the review is insufficient.
 	droppedClauseReason = ": unverified finding named by block clause"
+
+	// specStatusUnmet is the spec-check status that reports a requirement
+	// nothing in the diff implements. It withholds approval without making the
+	// review unverifiable.
+	specStatusUnmet = "unmet"
 )
 
 // Evidence is the evidence input to one approval decision: the receipt that
@@ -78,7 +83,7 @@ func CrossEligible(entry any) bool {
 }
 
 // Evaluate derives approval from the visible, open findings, the configured
-// block clauses, any violated spec check, and the deterministic evidence
+// block clauses, the spec checks that failed, and the deterministic evidence
 // receipt. Gating requires a verified quote: an unverified finding never enters
 // GatingSigs, and a gating finding without one makes the decision insufficient
 // instead of clean. comp must be evaluated over the unfiltered stored findings
@@ -87,7 +92,7 @@ func Evaluate(
 	entries []any,
 	tier, category string,
 	comp *config.ReadCompliance,
-	specViolated bool,
+	specFailures []core.SpecFailure,
 	ev Evidence,
 ) *core.ApprovalReceipt {
 	threshold := tier
@@ -103,7 +108,7 @@ func Evaluate(
 		threshold:     threshold,
 		gating:        gating,
 		unbacked:      unbacked,
-		specViolated:  specViolated,
+		specFailures:  specFailures,
 		droppedClause: droppedClause,
 		ev:            ev,
 	})
@@ -124,7 +129,7 @@ type decision struct {
 	threshold     string
 	gating        []string
 	unbacked      []string
-	specViolated  bool
+	specFailures  []core.SpecFailure
 	droppedClause bool
 }
 
@@ -137,8 +142,8 @@ type outcome struct {
 }
 
 // evaluateOutcome applies the decision ladder: evidence first, then gating
-// findings, then a violated spec check, then insufficiency the evidence pass
-// could not see, and only then a clean approval — which a receipt has to
+// findings, then the spec checks that failed, then insufficiency the evidence
+// pass could not see, and only then a clean approval — which a receipt has to
 // complete before it can be granted.
 func evaluateOutcome(in *decision) outcome {
 	if got, settled := evidenceOutcome(in); settled {
@@ -147,8 +152,8 @@ func evaluateOutcome(in *decision) outcome {
 	if len(in.gating) > 0 {
 		return outcome{reason: "open findings at-or-above " + in.threshold}
 	}
-	if in.specViolated {
-		return outcome{reason: "violated spec check"}
+	if reason := specFailureReason(in.specFailures); reason != "" {
+		return outcome{reason: reason}
 	}
 	if in.droppedClause {
 		return outcome{approved: false, insufficient: true, reason: core.CodeReviewInsufficient + droppedClauseReason}
@@ -183,6 +188,34 @@ func incompleteReceiptsReason(ev *core.EvidenceReceipt) string {
 			core.CodeReviewInsufficient, missing, ev.Receipts.Total)
 	}
 	return insufficientReason(ev)
+}
+
+// specFailureReason words the spec checks that withheld approval. A review
+// whose only failing rows are `violated` keeps the sentence it has always had,
+// so the stored decision and its goldens do not move; an `unmet` row names
+// itself, because "nothing implements this" is a different instruction to the
+// author than "this code is wrong".
+func specFailureReason(failures []core.SpecFailure) string {
+	unmet, violated := "", false
+	for _, failure := range failures {
+		if failure.Status != specStatusUnmet {
+			violated = true
+			continue
+		}
+		if unmet == "" {
+			unmet = failure.Item
+		}
+	}
+	switch {
+	case violated && unmet != "":
+		return "violated spec check; unmet spec check: " + unmet
+	case violated:
+		return "violated spec check"
+	case unmet != "":
+		return "unmet spec check: " + unmet
+	default:
+		return ""
+	}
 }
 
 // evidenceOutcome settles the decision on the evidence alone, before any

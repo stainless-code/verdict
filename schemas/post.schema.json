@@ -297,10 +297,11 @@
       "properties": {
         "finding_sig": { "type": "string" },
         "item": { "type": "string", "minLength": 1 },
-        "status": { "enum": ["met", "violated", "n/a"] },
+        "status": { "enum": ["met", "violated", "unmet", "n/a"] },
+        "note": { "type": "string", "maxLength": 500 },
         "evidence": { "$ref": "#/$defs/specEvidence" }
       },
-      "required": ["item", "status", "evidence"],
+      "required": ["item", "status"],
       "additionalProperties": true
     },
     "specEvidence": {

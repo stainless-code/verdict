@@ -25,9 +25,9 @@ if commits landed on feat/token-refresh since, treat every bug/file/line as POTE
 
 Hunk receipts: 2/2 changed hunks verified.
 
-**Spec checks** — 2 met · 0 violated · 0 n/a (2/2 spec items covered, min 2)
+**Spec checks** — 2 met · 0 violated · 0 unmet · 0 n/a (2/2 spec items covered, min 2)
 
-<details><summary>Spec checklist (2 items)</summary>
+<details><summary>Spec checklist (2 items · https://github.com/acme/app/issues/12)</summary>
 
 - ✅ Refresh rejects expired tokens — [src/auth.go:42][ev-1]
 - ✅ Unit tests cover clock skew — [src/auth_test.go:18][ev-2]

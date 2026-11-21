@@ -16,6 +16,8 @@ import (
 const (
 	maxSummaryRunes    = 2000
 	maxSpecItemRunes   = 300
+	maxSpecNoteRunes   = 500
+	maxSpecSourceRunes = 200
 	maxBriefTitleRunes = 100
 	maxEvidenceGaps    = 5
 	checkedShown       = 7
@@ -28,6 +30,15 @@ const (
 	spaceStr           = " "
 	statusMet          = "met"
 	statusViolated     = "violated"
+	statusUnmet        = "unmet"
+	// specSourcesShown bounds the spec sources the collapsed summary names;
+	// the rest are counted, never silently dropped.
+	specSourcesShown   = 3
+	itemLabelOne       = "item"
+	itemLabelMany      = "items"
+	moreSourcesPrefix  = "+"
+	moreSourcesSuffix  = " more"
+	noteSeparator      = " — "
 	unverifiedTag      = "(unverified — not counted)"
 	pathNotIndexedPref = "path not in diff index"
 )
@@ -43,9 +54,13 @@ type RenderInput struct {
 	Kept         []any
 	Moved        []any
 	SpecChecks   []core.SpecCheck
-	Banners      []string
-	Basis        string
-	Security     string
+	// SpecSources names the context sources whose role is spec, in manifest
+	// order. The checklist block names them so a reader sees what the change
+	// was graded against; an empty list renders exactly as before.
+	SpecSources []string
+	Banners     []string
+	Basis       string
+	Security    string
 	// Topology is the pre-rendered collapsed topology block, or "" when the
 	// knob is off, the bundle is small, or there is nothing to draw. Render
 	// places it; it never reads the disk.
@@ -105,7 +120,7 @@ func appendBodySections(blocks []string, in *RenderInput, kept, moved []*jq.Obj,
 	if isCleanRender(in.Approval, len(kept)+len(moved)) {
 		blocks = append(blocks, renderCheckedBlock(&in.BundleMeta, in.Evidence)...)
 	}
-	return append(blocks, renderSpecChecksBlock(in.SpecChecks, in.Evidence, links)...)
+	return append(blocks, renderSpecChecksBlock(in.SpecChecks, in.SpecSources, in.Evidence, links)...)
 }
 
 func isInsufficient(a *core.ApprovalReceipt) bool {
@@ -715,61 +730,91 @@ func renderCheckedFiles(files []MetaFile) string {
 	return strings.Join(lines, lineBreak)
 }
 
-func renderSpecChecksBlock(checks []core.SpecCheck, ev *core.EvidenceReceipt, links *linkTable) []string {
+func renderSpecChecksBlock(checks []core.SpecCheck, sources []string, ev *core.EvidenceReceipt, links *linkTable) []string {
 	hasSpecEv := ev != nil && ev.Spec.Total > 0
 	if len(checks) == 0 && !hasSpecEv {
 		return nil
 	}
-	met, violated, na := countSpecStatuses(checks)
-	head := fmt.Sprintf("**Spec checks** — %d met · %d violated · %d n/a", met, violated, na)
+	counts := countSpecStatuses(checks)
+	head := fmt.Sprintf("**Spec checks** — %d met · %d violated · %d unmet · %d n/a",
+		counts.met, counts.violated, counts.unmet, counts.na)
 	if hasSpecEv {
 		head += fmt.Sprintf(" (%d/%d spec items covered, min %d)", ev.Spec.Covered, ev.Spec.Total, ev.Spec.Min)
 	}
 	blocks := []string{head}
-	if violated > 0 {
-		blocks = append(blocks, renderViolatedSpecs(checks, links))
+	if failed := renderFailedSpecs(checks, links); failed != "" {
+		blocks = append(blocks, failed)
 	}
 	if len(checks) > 0 {
-		blocks = append(blocks, renderSpecChecklistDetails(checks, links))
+		blocks = append(blocks, renderSpecChecklistDetails(checks, sources, links))
 	}
 	return blocks
 }
 
-func countSpecStatuses(checks []core.SpecCheck) (met, violated, na int) {
+// specCounts is the per-status tally the head line prints.
+type specCounts struct {
+	met      int
+	violated int
+	unmet    int
+	na       int
+}
+
+func countSpecStatuses(checks []core.SpecCheck) specCounts {
+	var counts specCounts
 	for i := range checks {
 		switch checks[i].Status {
 		case statusMet:
-			met++
+			counts.met++
 		case statusViolated:
-			violated++
+			counts.violated++
+		case statusUnmet:
+			counts.unmet++
 		default:
-			na++
+			counts.na++
 		}
 	}
-	return met, violated, na
+	return counts
 }
 
-func renderViolatedSpecs(checks []core.SpecCheck, links *linkTable) string {
+// renderFailedSpecs lists the rows the review withholds on — violated and
+// unmet — outside the collapsed checklist: a requirement nobody implemented is
+// as much the author's work as one the code gets wrong.
+func renderFailedSpecs(checks []core.SpecCheck, links *linkTable) string {
 	var lines []string
 	for i := range checks {
-		if checks[i].Status == statusViolated {
+		if checks[i].Status == statusViolated || checks[i].Status == statusUnmet {
 			lines = append(lines, formatSpecCheckLine(&checks[i], links))
 		}
 	}
 	return strings.Join(lines, lineBreak)
 }
 
-func renderSpecChecklistDetails(checks []core.SpecCheck, links *linkTable) string {
-	label := "items"
+func renderSpecChecklistDetails(checks []core.SpecCheck, sources []string, links *linkTable) string {
+	label := itemLabelMany
 	if len(checks) == 1 {
-		label = "item"
+		label = itemLabelOne
 	}
 	lines := make([]string, 0, len(checks))
 	for i := range checks {
 		lines = append(lines, formatSpecCheckLine(&checks[i], links))
 	}
-	return fmt.Sprintf("<details><summary>Spec checklist (%d %s)</summary>\n\n%s\n\n</details>",
-		len(checks), label, strings.Join(lines, lineBreak))
+	return fmt.Sprintf("<details><summary>Spec checklist (%d %s%s)</summary>\n\n%s\n\n</details>",
+		len(checks), label, formatSpecSources(sources), strings.Join(lines, lineBreak))
+}
+
+// formatSpecSources renders the ` · source · source (+N more)` clause the
+// summary carries, empty when the bundle names no spec source. Each source is
+// escaped and capped: a source name is a URL an attacker chose.
+func formatSpecSources(sources []string) string {
+	var out strings.Builder
+	for i, source := range sources {
+		if i == specSourcesShown {
+			fmt.Fprintf(&out, " · %s%d%s", moreSourcesPrefix, len(sources)-specSourcesShown, moreSourcesSuffix)
+			break
+		}
+		out.WriteString(" · " + untrusted.InlineProse(untrusted.CapRunes(source, maxSpecSourceRunes)))
+	}
+	return out.String()
 }
 
 func formatSpecCheckLine(sc *core.SpecCheck, links *linkTable) string {
@@ -779,13 +824,19 @@ func formatSpecCheckLine(sc *core.SpecCheck, links *linkTable) string {
 		icon = "✅"
 	case statusViolated:
 		icon = "❌"
+	case statusUnmet:
+		icon = "⛔"
 	}
 	item := untrusted.InlineProse(untrusted.CapRunes(sc.Item, maxSpecItemRunes))
+	line := bulletPrefix + icon + spaceStr + item
+	if note := untrusted.InlineProse(untrusted.CapRunes(sc.Note, maxSpecNoteRunes)); note != "" {
+		line += noteSeparator + note
+	}
 	if sc.Evidence.Path == "" {
-		return bulletPrefix + icon + spaceStr + item
+		return line
 	}
 	anchor := links.anchor(sc.Evidence.Path, 0, sc.Evidence.Line, true)
-	return bulletPrefix + icon + spaceStr + item + " — " + anchor
+	return line + noteSeparator + anchor
 }
 
 func fieldVal(m *jq.Obj, key string) any {

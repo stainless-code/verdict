@@ -54,7 +54,7 @@ The following points fell outside the diff hunks for the reviewed SHA, so they p
 - ⚠️ **important** [src/config.go:12][ev-4] (`pointed`) — Default timeout constant stays at 0 after removing the fallback guard. (anchor 12-12 (RIGHT) outside reviewed hunks)
 - ℹ️ **informational** `src/ghost.go:5` (`said`) — Missing file should not produce a broken blob link. (path not in diff index: src/ghost.go)
 
-**Spec checks** — 1 met · 1 violated · 0 n/a (2/2 spec items covered, min 2)
+**Spec checks** — 1 met · 1 violated · 0 unmet · 0 n/a (2/2 spec items covered, min 2)
 
 - ❌ Expired tokens must be rejected on every path — [src/auth.go:42][ev-5]
 

@@ -171,7 +171,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		compliance = &captured
 	}
 	decision := approval.Evaluate(st.entries, "", "", compliance,
-		reviewdoc.HasSpecViolation(in.Review), approval.Evidence{Receipt: st.evidence})
+		reviewdoc.SpecFailures(in.Review), approval.Evidence{Receipt: st.evidence})
 	specChecks := reviewdoc.SpecChecksTyped(in.Review)
 	renderIn := st.buildRenderInput(in.Review, decision, verification, specChecks, in.Banners)
 	curated := st.applyFooter(AppendCoverageLine(reviewdoc.Render(renderIn), st.coverage))
@@ -224,6 +224,7 @@ func (st *state) buildRenderInput(
 		Kept:         settledRenderFindings(st.entries, st.kept, st.keptSigs),
 		Moved:        settledRenderFindings(st.entries, st.moved, st.movedSigs),
 		SpecChecks:   specChecks,
+		SpecSources:  specSources(st.dir),
 		Banners:      append([]string{}, banners...),
 		Basis:        provenance.FormatBasisLine(review, st.entries, st.now),
 		Security:     jq.StrOf(st.security),

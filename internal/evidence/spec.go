@@ -5,6 +5,7 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 // Specification checklist limits, statuses, and failure reasons.
@@ -15,11 +16,13 @@ const (
 
 	SpecStatusMet      = "met"
 	SpecStatusViolated = "violated"
+	SpecStatusUnmet    = "unmet"
 	SpecStatusNA       = "n/a"
 
-	ReasonSpecItemUnknown      = "spec-item-unknown"
-	ReasonSpecEvidenceNotCode  = "spec-evidence-not-code"
-	ReasonSpecEvidenceMismatch = "spec-evidence-mismatch"
+	ReasonSpecItemUnknown        = "spec-item-unknown"
+	ReasonSpecEvidenceNotCode    = "spec-evidence-not-code"
+	ReasonSpecEvidenceMismatch   = "spec-evidence-mismatch"
+	ReasonSpecEvidenceUnexpected = "spec-evidence-unexpected"
 
 	minCodeFenceLen = 3
 	tablePipe       = "|"
@@ -27,6 +30,16 @@ const (
 	idSeparator     = ":"
 	backtickByte    = '`'
 	tildeByte       = '~'
+	atxHashByte     = '#'
+	// maxSpecItemRunes caps one item's text, so a single long prose line
+	// cannot become a 100 KB requirement. The renderer caps the same field at
+	// the same number when it prints it.
+	maxSpecItemRunes = 300
+	// minHeadingIndent is the deepest indentation Markdown still reads as an
+	// ATX heading, and maxHeadingLevel its deepest level.
+	minHeadingIndent     = 3
+	maxHeadingLevel      = 6
+	headingTrailingChars = "# \t"
 )
 
 // A8b test-output classification deny-lists. Test SOURCE is code: a review
@@ -97,6 +110,11 @@ type SpecCoverage struct {
 // and table body rows (excluding header and separator rows), absorbs indented
 // continuation lines, normalizes text, deduplicates across blocks keeping the
 // first <block>:<line> ID.
+//
+// A block that enumerates nothing still states a goal, so one is synthesized
+// from the block's own bytes: its first ATX heading, else its first prose line.
+// Without that, an ordinary prose specification is a requirement-free source
+// that passes every gate while asking for nothing.
 func EnumerateSpecItems(blocks []SpecBlock) []SpecItem {
 	seen := make(map[string]struct{})
 	var items []SpecItem
@@ -204,29 +222,38 @@ func verifyOneSpecCheck(idx *DiffIndex, byText map[string]SpecItem, index int, c
 			Reason: ReasonSpecItemUnknown,
 		}
 	}
-	base := SpecCheckResult{
-		Index:  index,
-		ItemID: item.ID,
-		Item:   item.Text,
-		Status: chk.Status,
+	reason, quoteReason := specEvidenceFailure(idx, chk)
+	return SpecCheckResult{
+		Index:       index,
+		ItemID:      item.ID,
+		Item:        item.Text,
+		Status:      chk.Status,
+		Reason:      reason,
+		QuoteReason: quoteReason,
+		Valid:       reason == "",
 	}
-	if chk.Status == SpecStatusNA {
-		base.Valid = true
-		return base
+}
+
+// specEvidenceFailure grades the evidence one row offers and returns the reason
+// and quote reason a failure carries, both empty when the row verifies. A
+// status that does not apply and one nothing implements both fail before any
+// diff line exists: there is no code to quote, so a quoted location is a claim
+// about evidence that cannot exist, and the reason the status was chosen lives
+// in the row's note. The two answered statuses must cite changed code and quote
+// it exactly.
+func specEvidenceFailure(idx *DiffIndex, chk SpecCheckInput) (string, string) {
+	if chk.Status == SpecStatusNA || chk.Status == SpecStatusUnmet {
+		if hasSpecEvidence(chk) {
+			return ReasonSpecEvidenceUnexpected, ReasonSpecEvidenceUnexpected
+		}
+		return "", ""
 	}
 	df, pathReason := idx.File(chk.EvidencePath)
 	if pathReason != "" {
-		base.Reason = ReasonSpecEvidenceNotCode
-		base.QuoteReason = pathReason
-		return base
+		return ReasonSpecEvidenceNotCode, pathReason
 	}
-	// A8b reads the path the bundle resolves, not just the one the check
-	// spells: a rename onto test output is refused even when the cited (OLD)
-	// name looks like code.
-	if IsTestOutputPath(chk.EvidencePath) || IsTestOutputPath(df.Canonical) || IsTestOutputPath(df.OldPath) {
-		base.Reason = ReasonSpecEvidenceNotCode
-		base.QuoteReason = ReasonSpecEvidenceNotCode
-		return base
+	if specEvidenceNotCode(chk.EvidencePath, df) {
+		return ReasonSpecEvidenceNotCode, ReasonSpecEvidenceNotCode
 	}
 	qr := MatchQuote(idx, QuoteRequest{
 		Path:  chk.EvidencePath,
@@ -235,12 +262,23 @@ func verifyOneSpecCheck(idx *DiffIndex, byText map[string]SpecItem, index int, c
 		Side:  SideRight,
 	})
 	if !qr.Verified() {
-		base.Reason = ReasonSpecEvidenceMismatch
-		base.QuoteReason = qr.Reason
-		return base
+		return ReasonSpecEvidenceMismatch, qr.Reason
 	}
-	base.Valid = true
-	return base
+	return "", ""
+}
+
+// specEvidenceNotCode reports whether the quoted location is test output rather
+// than code. A8b reads the path the bundle resolves, not just the one the check
+// spells: a rename onto test output is refused even when the cited (OLD) name
+// looks like code.
+func specEvidenceNotCode(cited string, df *DiffFile) bool {
+	return IsTestOutputPath(cited) || IsTestOutputPath(df.Canonical) || IsTestOutputPath(df.OldPath)
+}
+
+// hasSpecEvidence reports whether a check carries any of the three evidence
+// fields, so a status whose evidence is forbidden can refuse one that does.
+func hasSpecEvidence(chk SpecCheckInput) bool {
+	return chk.EvidencePath != "" || chk.Quote != "" || chk.Line != 0
 }
 
 // missingSpecItems returns enumerated items not present in covered, in order.
@@ -272,20 +310,127 @@ type specFence struct {
 	open   bool
 }
 
-// enumerateSpecBlock scans one SpecBlock's lines into deduplicated SpecItems.
+// enumerateSpecBlock scans one SpecBlock's lines into deduplicated SpecItems,
+// and falls back to one synthesized goal item when the block enumerates none.
 func enumerateSpecBlock(blk SpecBlock, seen map[string]struct{}, items []SpecItem) []SpecItem {
 	cleaned := strings.ReplaceAll(strings.ReplaceAll(blk.Text, crlfSeq, diffNewline), zeroWidthSpace, "")
 	if cleaned == "" {
 		return items
 	}
 	lines := strings.Split(strings.TrimSuffix(cleaned, diffNewline), diffNewline)
+	before := len(items)
 	var scan specScan
 	for i := 0; i < len(lines); {
 		text, nextIdx := scan.item(lines, i)
 		items = appendSpecItem(items, seen, blk.Index, i+1, text)
 		i = nextIdx
 	}
+	if len(items) > before {
+		return items
+	}
+	if text, line := blockGoal(lines); text != "" {
+		items = appendSpecItem(items, seen, blk.Index, line, text)
+	}
 	return items
+}
+
+// blockGoal derives the one requirement a prose block states: its first ATX
+// heading text, else its first line that carries prose. Fence bodies,
+// blockquotes, and table scaffolding are never the goal — they are quoted
+// material or table machinery, not a statement of intent.
+func blockGoal(lines []string) (string, int) {
+	if text, line := blockHeading(lines); text != "" {
+		return text, line
+	}
+	return blockProse(lines)
+}
+
+// blockHeading returns the first ATX heading in the block, capped like every
+// other item.
+func blockHeading(lines []string) (string, int) {
+	text, line := "", 0
+	(&goalScan{}).each(lines, func(i int, ln string) bool {
+		if heading, ok := atxHeadingText(ln); ok {
+			text, line = capSpecRunes(heading), i+1
+			return false
+		}
+		return true
+	})
+	return text, line
+}
+
+// blockProse returns the first line of the block that carries prose, capped
+// like every other item.
+func blockProse(lines []string) (string, int) {
+	text, line := "", 0
+	(&goalScan{}).each(lines, func(i int, ln string) bool {
+		if normalized := normalizeLine(ln); normalized != "" {
+			text, line = capSpecRunes(normalized), i+1
+			return false
+		}
+		return true
+	})
+	return text, line
+}
+
+// goalScan walks a block's lines with the item scanner's own fence and table
+// state, so a line it reads as prose is one the scanner would also read as
+// prose: fence bodies, table rows and separators, and quoted text are skipped.
+type goalScan struct{ scan specScan }
+
+// each visits every candidate line in order and stops when visit returns false.
+func (g *goalScan) each(lines []string, visit func(i int, ln string) bool) {
+	for i := 0; i < len(lines); {
+		if _, next, done := g.scan.table(lines, i); done {
+			i = next
+			continue
+		}
+		if isBlockquoteLine(lines[i]) {
+			i++
+			continue
+		}
+		if !visit(i, lines[i]) {
+			return
+		}
+		i++
+	}
+}
+
+// atxHeadingText returns the text of an ATX heading line (one to six `#`
+// followed by a space, up to three spaces of indentation), with the optional
+// closing sequence removed. An `#hashtag` is not a heading.
+func atxHeadingText(ln string) (string, bool) {
+	trimmed := strings.TrimLeft(ln, asciiSpace)
+	if len(ln)-len(trimmed) > minHeadingIndent {
+		return "", false
+	}
+	hashes := countLeadingByte(trimmed, atxHashByte)
+	if hashes == 0 || hashes > maxHeadingLevel {
+		return "", false
+	}
+	rest := trimmed[hashes:]
+	if rest != "" && !strings.HasPrefix(rest, asciiSpace) && !strings.HasPrefix(rest, "\t") {
+		return "", false
+	}
+	return strings.TrimRight(normalizeLine(rest), headingTrailingChars), true
+}
+
+// capSpecRunes truncates s to maxSpecItemRunes Unicode runes at a rune
+// boundary. The cut is silent because the truncated text is itself the item
+// the agent quotes: an ellipsis would never match what the agent is told to
+// check.
+func capSpecRunes(s string) string {
+	if utf8.RuneCountInString(s) <= maxSpecItemRunes {
+		return s
+	}
+	runes := 0
+	for idx := range s {
+		if runes == maxSpecItemRunes {
+			return s[:idx]
+		}
+		runes++
+	}
+	return s
 }
 
 // specScan carries the block's Markdown state across lines: the open code

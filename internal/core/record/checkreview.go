@@ -95,6 +95,10 @@ const (
 	exampleWontFix       = "wont-fix"
 	exampleFalsePositive = "false-positive"
 	maxSummaryRunes      = 2000
+	maxSpecNoteRunes     = 500
+	specNoteKey          = "note"
+	specStatusUnmet      = "unmet"
+	specStatusNA         = "n/a"
 	prefixMissing        = "missing "
 	prefixWrite          = "write "
 )
@@ -108,7 +112,7 @@ var (
 		fieldPath, fieldLine, fieldStartLine, fieldSide, fieldClaim, fieldQuote, fieldConfidenceInput,
 		fieldRigor, fieldSeverity, fieldCategory, fieldSources, fieldSuggestion, fieldBrief, fieldKB, "reproduction",
 	}
-	knownSpecCheckKeys = []string{fieldItem, fieldStatus, fieldEvidence}
+	knownSpecCheckKeys = []string{fieldItem, fieldStatus, specNoteKey, fieldEvidence}
 	knownEvidenceKeys  = []string{fieldPath, fieldLine, fieldQuote}
 	knownReceiptKeys   = []string{"hunk", fieldQuote}
 	knownTriageKeys    = []string{fieldSig, fieldStatus, problemRationale}
@@ -116,7 +120,7 @@ var (
 	knownRiskKeys      = []string{fieldLevel, problemRationale, fieldAssessedHead}
 	reviewKeys         = []string{tierCritical, exampleImportant, "informational"}
 	finderConfidence   = []string{confidenceHigh, "medium", "low"}
-	specStatuses       = []string{"met", "violated", "n/a"}
+	specStatuses       = []string{"met", "violated", "unmet", "n/a"}
 	riskLevels         = []string{"low", "medium", "high", "critical"}
 	rigorKeys          = []string{rungSaid, rungPointed, rungWalked, rungRan, rungReproduced}
 	triageStatuses     = []string{"open", "addressed", exampleWontFix, exampleFalsePositive, "deferred"}
@@ -411,12 +415,41 @@ func (c *checker) checkSpecChecks(v any) {
 			continue
 		}
 		c.checkSpecCheckFields(base, m)
-		c.requireKeys(base, m, knownSpecCheckKeys)
+		c.requireKeys(base, m, requiredSpecCheckKeys(m))
+		c.checkSpecNoteRules(i, m)
 	}
+}
+
+// requiredSpecCheckKeys names the keys one row must publish. `evidence` is
+// required where a diff line exists to quote and refused everywhere else: a
+// requirement nothing implements, and one that does not apply, have no line an
+// agent could honestly cite.
+func requiredSpecCheckKeys(m *jq.Obj) []string {
+	keys := []string{fieldItem, fieldStatus}
+	if specNeedsEvidence(m) {
+		keys = append(keys, fieldEvidence)
+	}
+	return keys
+}
+
+// specNeedsEvidence reports whether the row's status is one the code answers:
+// `met` and `violated` cite a diff line, and every other status may not.
+func specNeedsEvidence(m *jq.Obj) bool {
+	name := specStatusName(m)
+	return name != specStatusUnmet && name != specStatusNA
+}
+
+// specStatusName reads the row's status as text. An absent or non-string value
+// reads empty, which needs evidence and fails the enum check on its own, so the
+// two readers never depend on which problem reports the bad value.
+func specStatusName(m *jq.Obj) string {
+	status, _ := m.Get(fieldStatus)
+	return jq.StrOf(status)
 }
 
 // checkSpecCheckFields dispatches every published spec-check key.
 func (c *checker) checkSpecCheckFields(base string, m *jq.Obj) {
+	needsEvidence := specNeedsEvidence(m)
 	for _, key := range m.Keys {
 		value, _ := m.Get(key)
 		switch key {
@@ -425,13 +458,64 @@ func (c *checker) checkSpecCheckFields(base string, m *jq.Obj) {
 		case "finding_sig":
 			c.checkString(base+".finding_sig", value, false, "use the full union finding signature")
 		case fieldStatus:
-			c.checkEnum(base+pathDot+fieldStatus, value, specStatuses, "use met, violated or n/a")
+			c.checkEnum(base+pathDot+fieldStatus, value, specStatuses, "use met, violated, unmet or n/a")
+		case specNoteKey:
+			c.checkSpecNote(base+pathDot+specNoteKey, value)
 		case fieldEvidence:
-			c.checkEvidence(base+pathDot+fieldEvidence, value)
+			if needsEvidence {
+				c.checkEvidence(base+pathDot+fieldEvidence, value)
+			}
 		default:
 			c.unknown(base, key, knownSpecCheckKeys)
 		}
 	}
+}
+
+// checkSpecNote validates the optional one-line reason a spec row carries.
+// An empty note is as useless as an absent one, so both fail the same way.
+func (c *checker) checkSpecNote(base string, v any) {
+	note, ok := v.(string)
+	if !ok {
+		c.wrongType(base, "note must be a string", "write one line saying why", exampleEllipsis)
+		return
+	}
+	if utf8.RuneCountInString(note) > maxSpecNoteRunes {
+		c.outOfRange(base, fmt.Sprintf("note must be at most %d characters (got %d)",
+			maxSpecNoteRunes, utf8.RuneCountInString(note)),
+			"shorten the note to one line", exampleEllipsis)
+		return
+	}
+	if strings.TrimSpace(note) == "" {
+		c.outOfRange(base, "note must not be empty", "write one line saying why", exampleEllipsis)
+	}
+}
+
+// checkSpecNoteRules enforces the note each status owes. `unmet` declares a
+// requirement the change does not deliver, so it must say what is missing —
+// an unjustified unmet row is an error. `n/a` claims the requirement does not
+// apply, which rows already in the wild leave unexplained: that stays a
+// warning, and --strict or strict_input promotes it.
+func (c *checker) checkSpecNoteRules(index int, m *jq.Obj) {
+	switch specStatusName(m) {
+	case specStatusUnmet:
+		if !hasSpecNote(m) {
+			c.add(core.SpecNoteMissingProblem(index))
+		}
+	case specStatusNA:
+		if !hasSpecNote(m) {
+			c.add(core.SpecNAUnjustifiedProblem(index))
+		}
+	}
+}
+
+// hasSpecNote reports whether a spec row carries a non-blank note.
+func hasSpecNote(m *jq.Obj) bool {
+	nv, ok := m.Get(specNoteKey)
+	if !ok {
+		return false
+	}
+	note, ok := nv.(string)
+	return ok && strings.TrimSpace(note) != ""
 }
 
 func (c *checker) checkEvidence(base string, v any) {

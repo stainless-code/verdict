@@ -1,0 +1,25 @@
+> ✅ No new issues found.
+> Safety: No new attack surface; auth paths untouched.
+> Basis: 0 reproduced · 0 ran · 0 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes
+
+Reviewed the token refresh refactor and its unit tests; expiration checks and error propagation match the existing contract.
+
+<!--
+Review metadata. Findings written against a1b2c3d;
+if commits landed on feat/token-refresh since, treat every bug/file/line as POTENTIALLY STALE.
+- Mode: Review (initial)
+- Files reviewed: 2
+- Commits reviewed: 1
+- Base: main (1122334)
+- Head: feat/token-refresh (a1b2c3d)
+- Reviewed commits:
+  - a1b2c3d — Refactor token refresh helper
+- Prior review: none
+-->
+
+**What we checked**
+
+- `src/auth.go` (+14/-6, source)
+- `src/auth_test.go` (+32/-0, test)
+
+Hunk receipts: 2/2 changed hunks verified.

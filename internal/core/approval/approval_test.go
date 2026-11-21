@@ -43,7 +43,7 @@ func TestNoConfigDefaultThreshold(t *testing.T) {
 // tier that decided it.
 func checkDefaultThreshold(t *testing.T, severity string, approved bool) {
 	t.Helper()
-	got := Evaluate([]any{openFinding("sig-1", severity, "verified")}, "", "", nil, false, currentEvidence())
+	got := Evaluate([]any{openFinding("sig-1", severity, "verified")}, "", "", nil, nil, currentEvidence())
 	if got.Approved != approved {
 		t.Fatalf("approved = %v, want %v (receipt %+v)", got.Approved, approved, got)
 	}
@@ -84,7 +84,7 @@ func TestUnbackedFindingNeverGatesButIsInsufficient(t *testing.T) {
 // gates and leaves an insufficient decision naming its sig.
 func requireUnbackedGating(t *testing.T, severity, quote string) {
 	t.Helper()
-	got := Evaluate([]any{openFinding("sig-unbacked", severity, quote)}, "", "", nil, false, currentEvidence())
+	got := Evaluate([]any{openFinding("sig-unbacked", severity, quote)}, "", "", nil, nil, currentEvidence())
 	if got.Approved || !got.Insufficient {
 		t.Fatalf("%s finding with quote %q = %+v, want Approved=false Insufficient=true", severity, quote, got)
 	}
@@ -101,7 +101,7 @@ func requireUnbackedGating(t *testing.T, severity, quote string) {
 // that carries no verification object at all.
 func TestFindingWithoutVerificationRecordIsUnbacked(t *testing.T) {
 	bare := jq.NewObj("sig", "sig-bare", "status", "open", "severity", "critical", "path", "notes.txt")
-	got := Evaluate([]any{bare}, "", "", nil, false, currentEvidence())
+	got := Evaluate([]any{bare}, "", "", nil, nil, currentEvidence())
 	if got.Approved || !got.Insufficient || len(got.GatingSigs) != 0 {
 		t.Fatalf("finding without verification = %+v, want unbacked and insufficient", got)
 	}
@@ -111,7 +111,7 @@ func TestFindingWithoutVerificationRecordIsUnbacked(t *testing.T) {
 // findings that would have gated: a below-tier finding without a quote is a
 // warning elsewhere and never withholds here.
 func TestUnbackedInformationalStaysWarning(t *testing.T) {
-	got := Evaluate([]any{openFinding("sig-info", "informational", "unverified")}, "", "", nil, false, currentEvidence())
+	got := Evaluate([]any{openFinding("sig-info", "informational", "unverified")}, "", "", nil, nil, currentEvidence())
 	if !got.Approved || got.Insufficient {
 		t.Fatalf("unbacked informational finding = %+v, want approved", got)
 	}
@@ -140,7 +140,7 @@ func TestMissingReceiptNeverApproves(t *testing.T) {
 // named reason.
 func requireMissingReceipt(t *testing.T, missing, want string) {
 	t.Helper()
-	got := Evaluate(nil, "", "", nil, false, Evidence{Missing: missing})
+	got := Evaluate(nil, "", "", nil, nil, Evidence{Missing: missing})
 	if got.Approved || !got.Insufficient {
 		t.Fatalf("missing receipt = %+v, want Approved=false Insufficient=true", got)
 	}
@@ -152,7 +152,7 @@ func requireMissingReceipt(t *testing.T, missing, want string) {
 // TestStaleReceiptReasonIsCarried proves the report's stale sentence reaches
 // the decision verbatim behind the code.
 func TestStaleReceiptReasonIsCarried(t *testing.T) {
-	got := Evaluate(nil, "", "", nil, false, Evidence{
+	got := Evaluate(nil, "", "", nil, nil, Evidence{
 		Missing: "evidence receipt stale for head aaaaaaa (recorded bbbbbbb)",
 	})
 	if got.Approved || !got.Insufficient {
@@ -194,7 +194,7 @@ func TestUnverifiedBlockClauseNeverGatesAndIsInsufficient(t *testing.T) {
 			Finding: config.FindingView{Sig: "sig-unv", Path: "notes.txt", Severity: "informational", Status: "open"},
 		}},
 	}
-	got := Evaluate(entries, "", "", comp, false, currentEvidence())
+	got := Evaluate(entries, "", "", comp, nil, currentEvidence())
 	if got.Approved {
 		t.Fatalf("dropping unverified block-clause finding manufactured green: %+v", got)
 	}
@@ -214,7 +214,7 @@ func TestUnverifiedBlockClauseNeverGatesAndIsInsufficient(t *testing.T) {
 }
 
 func TestVerifiedTierFindingGates(t *testing.T) {
-	got := Evaluate([]any{openFinding("sig-ver", "important", "verified")}, "", "", nil, false, currentEvidence())
+	got := Evaluate([]any{openFinding("sig-ver", "important", "verified")}, "", "", nil, nil, currentEvidence())
 	if got.Approved || got.Insufficient {
 		t.Fatalf("verified important finding = %+v, want Approved=false Insufficient=false", got)
 	}
@@ -238,7 +238,7 @@ func TestVerifiedBlockClauseGatesDropsUnverifiedSibling(t *testing.T) {
 			{Clause: "unv-clause", Finding: config.FindingView{Sig: "sig-unv", Status: "open"}},
 		},
 	}
-	got := Evaluate(entries, "", "", comp, false, currentEvidence())
+	got := Evaluate(entries, "", "", comp, nil, currentEvidence())
 	if got.Approved || got.Insufficient {
 		t.Fatalf("mixed block clauses = %+v, want Approved=false Insufficient=false", got)
 	}
@@ -257,7 +257,7 @@ func TestInsufficientEvidenceWithholdsWithReason(t *testing.T) {
 		Gaps:         []string{"hunk notes.txt\tNEW\t1\t3 has no matched receipt", "second gap"},
 		Insufficient: true,
 	}}
-	got := Evaluate([]any{openFinding("sig-unv", "critical", "unverified")}, "", "", nil, false, ev)
+	got := Evaluate([]any{openFinding("sig-unv", "critical", "unverified")}, "", "", nil, nil, ev)
 	if got.Approved {
 		t.Fatalf("insufficient evidence approved: %+v", got)
 	}
@@ -272,15 +272,76 @@ func TestInsufficientEvidenceWithholdsWithReason(t *testing.T) {
 		t.Fatalf("got.Reason = %q, want %q", got.Reason, wantReason)
 	}
 
-	clean := Evaluate(nil, "", "", nil, false, currentEvidence())
+	clean := Evaluate(nil, "", "", nil, nil, currentEvidence())
 	if !clean.Approved || clean.Insufficient || clean.Reason != "no gating findings" {
 		t.Fatalf("sufficient clean review = %+v, want Approved=true Insufficient=false", clean)
 	}
 }
 
+// TestViolatedSpecCheckWithholds pins the sentence a violations-only review has
+// always carried: widening the failure list to a second kind must not move the
+// reason byte for byte.
 func TestViolatedSpecCheckWithholds(t *testing.T) {
-	if got := Evaluate(nil, "", "", nil, true, currentEvidence()); got.Approved {
+	got := Evaluate(nil, "", "", nil, []core.SpecFailure{
+		{Status: "violated", Item: "Reject expired tokens"},
+	}, currentEvidence())
+	if got.Approved {
 		t.Fatalf("violated spec check approved: %+v", got)
+	}
+	if got.Insufficient {
+		t.Fatalf("violated spec check read as insufficient: %+v", got)
+	}
+	if want := "violated spec check"; got.Reason != want {
+		t.Fatalf("reason = %q, want %q", got.Reason, want)
+	}
+}
+
+// TestUnmetSpecCheckWithholds proves a requirement nothing implements withholds
+// approval and names itself, without reading as an unverifiable review.
+func TestUnmetSpecCheckWithholds(t *testing.T) {
+	got := Evaluate(nil, "", "", nil, []core.SpecFailure{
+		{Status: "unmet", Item: "A 429 response resets the budget"},
+	}, currentEvidence())
+	if got.Approved {
+		t.Fatalf("unmet spec check approved: %+v", got)
+	}
+	if got.Insufficient {
+		t.Fatalf("unmet spec check read as insufficient: %+v", got)
+	}
+	if want := "unmet spec check: A 429 response resets the budget"; got.Reason != want {
+		t.Fatalf("reason = %q, want %q", got.Reason, want)
+	}
+}
+
+// TestMixedSpecCheckFailuresNameBoth proves a review with a violated row and an
+// unmet one states both facts, and still withholds.
+// TestTwoUnmetSpecChecksNameOnlyUnmet proves a review whose failures are all
+// unmet rows never claims a violation: the reason names the first unmet item
+// and nothing else, so the decision cannot tell an author their code is wrong
+// when nothing implements the requirement.
+func TestTwoUnmetSpecChecksNameOnlyUnmet(t *testing.T) {
+	got := Evaluate(nil, "", "", nil, []core.SpecFailure{
+		{Status: "unmet", Item: "A 429 response resets the budget"},
+		{Status: "unmet", Item: "Rotate the signing key on deploy"},
+	}, currentEvidence())
+	if got.Approved {
+		t.Fatalf("unmet spec failures approved: %+v", got)
+	}
+	if want := "unmet spec check: A 429 response resets the budget"; got.Reason != want {
+		t.Fatalf("reason = %q, want %q", got.Reason, want)
+	}
+}
+
+func TestMixedSpecCheckFailuresNameBoth(t *testing.T) {
+	got := Evaluate(nil, "", "", nil, []core.SpecFailure{
+		{Status: "violated", Item: "Reject expired tokens"},
+		{Status: "unmet", Item: "A 429 response resets the budget"},
+	}, currentEvidence())
+	if got.Approved {
+		t.Fatalf("mixed spec failures approved: %+v", got)
+	}
+	if want := "violated spec check; unmet spec check: A 429 response resets the budget"; got.Reason != want {
+		t.Fatalf("reason = %q, want %q", got.Reason, want)
 	}
 }
 
@@ -295,7 +356,7 @@ func TestIncompleteReceiptsNeverApprove(t *testing.T) {
 		Head:     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Receipts: core.EvidenceReceipts{Total: 3, Covered: 1, Complete: false},
 	}}
-	got := Evaluate(nil, "", "", nil, false, ev)
+	got := Evaluate(nil, "", "", nil, nil, ev)
 	if got.Approved || !got.Insufficient {
 		t.Fatalf("approval = %+v, want insufficient: 2 of 3 hunks carry no receipt", got)
 	}
@@ -315,7 +376,7 @@ func TestUnkeyableReceiptApprovalNamesTheGap(t *testing.T) {
 		Receipts: core.EvidenceReceipts{Complete: false},
 		Gaps:     []string{gap},
 	}}
-	got := Evaluate(nil, "", "", nil, false, ev)
+	got := Evaluate(nil, "", "", nil, nil, ev)
 	if got.Approved || !got.Insufficient {
 		t.Fatalf("approval = %+v, want insufficient", got)
 	}
@@ -336,7 +397,7 @@ func TestGatingFindingOutranksTheEvidenceGap(t *testing.T) {
 		Gaps:         []string{gap},
 		Insufficient: true,
 	}}
-	got := Evaluate([]any{openFinding("sig-ver", "important", "verified")}, "", "", nil, false, ev)
+	got := Evaluate([]any{openFinding("sig-ver", "important", "verified")}, "", "", nil, nil, ev)
 	if got.Approved || !got.Insufficient {
 		t.Fatalf("approval = %+v, want withheld and insufficient", got)
 	}
@@ -358,7 +419,7 @@ func TestGatingFindingOutranksAnIncompleteReceipt(t *testing.T) {
 		Head:     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Receipts: core.EvidenceReceipts{Total: 2, Complete: false},
 	}}
-	got := Evaluate([]any{openFinding("sig-ver", "critical", "verified")}, "", "", nil, false, ev)
+	got := Evaluate([]any{openFinding("sig-ver", "critical", "verified")}, "", "", nil, nil, ev)
 	if got.Approved || got.Insufficient {
 		t.Fatalf("approval = %+v, want blocked by the finding, not insufficient", got)
 	}

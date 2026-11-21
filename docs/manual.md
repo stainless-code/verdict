@@ -84,6 +84,11 @@ evidence rungs, keep-biased, and its sibling doctrines.
       "item": "The handed spec requires bounded retries.",
       "status": "met",
       "evidence": { "path": "src/api.ts", "line": 42, "quote": "retry(3)" }
+    },
+    {
+      "item": "A 429 response resets the retry budget.",
+      "status": "unmet",
+      "note": "No retry budget exists yet; the handler still retries unbounded."
     }
   ],
   "receipts": [{ "hunk": "src/api.ts\tNEW\t40\t47", "quote": "retry(3)" }]
@@ -256,7 +261,9 @@ on GitHub PRs or plain `` `path:line` `` on non-GitHub/local bundles, rigor,
 category, KB ids, `(unverified — not counted)` for unverified quotes, and
 collapsed `<details><summary>Technical details</summary>` rendered from
 `brief`), `### ℹ️ Unanchored observations` for moved findings without
-duplication, `**Spec checks**` when `--spec` items were graded, `**What we
+duplication, `**Spec checks**` when a `role: spec` source was graded (the met, violated,
+unmet and n/a tally, the failed items, and the collapsed checklist naming its
+sources), `**What we
 checked**` (with hunk-receipt tally on clean reviews), or `**Evidence gaps**`
 when evidence is insufficient. Withheld findings are omitted from the body.
 When `post` splits a body over 65,536 bytes, each split comment carries its own
@@ -286,10 +293,13 @@ used `[ev-N]` reference definitions so links stay self-contained.
 | `receipt-missing`              | error   | A non-exempt changed hunk has no matched reading receipt in `receipts[]`.                                                                         |
 | `receipt-hunk-unknown`         | error   | A receipt names a hunk key that does not match any changed hunk in `hunks.tsv`.                                                                   |
 | `receipt-mismatch`             | error   | A receipt quote does not match any line in the named hunk.                                                                                        |
-| `spec-item-unknown`            | error   | A `spec_checks[].item` quote does not match any enumerated item from `--spec`.                                                                    |
-| `spec-check-missing`           | error   | An enumerated `--spec` item has no matching `spec_checks[]` entry.                                                                                |
+| `spec-item-unknown`            | error   | A `spec_checks[].item` quote does not match any enumerated item from a `role: spec` source.                                                       |
+| `spec-check-missing`           | error   | An enumerated `role: spec` item has no matching `spec_checks[]` entry.                                                                            |
+| `spec-check-unmet`             | error   | A spec check reports a requirement nothing implements; approval is withheld and the `spec` gate fails.                                            |
+| `spec-note-missing`            | error   | An `unmet` spec check carries no `note` saying what is missing.                                                                                   |
+| `spec-na-unjustified`          | warning | An `n/a` spec check carries no `note` saying why the item does not apply; `--strict` and `strict_input` promote it to an error.                   |
 | `spec-evidence-not-code`       | error   | A `met` or `violated` spec check cites a non-code or test-output path instead of changed code.                                                    |
-| `spec-evidence-mismatch`       | error   | A `met` or `violated` spec check's `evidence.quote` does not match `full.diff` at the cited path and line.                                        |
+| `spec-evidence-mismatch`       | error   | A `met` or `violated` spec check's `evidence.quote` does not match `full.diff`, or an `unmet`/`n/a` check carries evidence it may not.            |
 
 ### Evidence checks
 
@@ -315,27 +325,50 @@ hunk whose path is generated under the shared role heuristic is exempt, and a
 diff whose hunk paths cannot be keyed at all (a path containing a tab) is itself
 reported as the gap rather than silently reading as covered.
 
-**Spec checks.** When the bundle carries `--spec` sources, every enumerated
-bullet and table row needs a `spec_checks[]` entry: `item` quoted verbatim,
-`status` of `met`, `violated` or `n/a`, and, for `met` and `violated`, an
-`evidence` naming a path the diff changes with its `line` and exact `quote`.
-Coverage must reach `defaults.spec_coverage_min` (default 80). Test source is
-code: a review may meet an item with the regression test it added. Test output
-is not — `testdata`, `fixtures`, `snapshots`, `__snapshots__`, and `.golden`,
-`.snap` and `.log` files are refused (`spec-evidence-not-code`).
+**Spec checks.** When the bundle carries a `role: spec` source — a linked
+issue, `--issue`, or `--spec` — every enumerated bullet and table row needs a
+`spec_checks[]` entry: `item` quoted verbatim, and a `status` of `met`,
+`violated`, `unmet` or `n/a`. `met` and `violated` need an `evidence` naming a
+path the diff changes with its `line` and exact `quote`; `unmet` (nothing
+implements the requirement) and `n/a` (the requirement does not apply) carry no
+evidence at all, because neither has a diff line an agent could honestly cite.
+Both instead carry a one-line `note`: what is missing, or why the item does not
+apply. A missing `note` is an error on `unmet` (`spec-note-missing`) and a
+warning on `n/a` (`spec-na-unjustified`), which `--strict` or `strict_input`
+promotes.
+
+A spec source that enumerates nothing still states a goal, so one item is
+synthesized from it: the source's first heading, else its first prose line, cut
+at 300 runes. An ordinary prose issue therefore owes exactly one checklist row,
+and a source that already enumerates bullets or table rows is untouched.
+
+Every enumerated item needs a check — the threshold does not relax that. A
+missing entry is `spec-check-missing` (error) at any coverage level, so
+every item is graded, not 80% of them; `defaults.spec_coverage_min` (default 80) decides only the `evidence.spec.met` flag and the coverage sentence in the
+receipt and body. `violated` and `unmet` both withhold approval, `unmet`
+withholding with `unmet spec check: <item>`, and both fail the always-on `spec`
+gate. Test source is code: a review may meet an item with the regression test it
+added. Test output is not — `testdata`, `fixtures`, `snapshots`,
+`__snapshots__`, and `.golden`, `.snap` and `.log` files are refused
+(`spec-evidence-not-code`).
+
+A change the goal does not ask for is reported as an ordinary finding with
+`category: "accidental-commit"` and a verified quote, so the existing severity
+ladder decides whether it withholds. It is never stretched into a `violated`
+row: no requirement asked for it.
 
 Every gap becomes an ordinary review-input problem, so one list names it
 everywhere. A bundle stores the outcome as the evidence receipt in `record.json`
 — one entry per finding quote, the hunk coverage, the spec coverage, the gap
 sentences, and a single `insufficient` flag.
 
-| Verb                      | What it does with the evidence verdict                                                                                                                                                                                      |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `record`                  | writes `record.json` with the receipt and, when anything is insufficient, a withheld approval whose reason is the first gap. Exit 0.                                                                                        |
-| `run`                     | feeds the gaps into its repair rounds and refuses `review-insufficient` when they survive them.                                                                                                                             |
-| `report`                  | withholds `data.approval` and warns once; the advisory read never fails.                                                                                                                                                    |
-| `report --check` / `gate` | fails the always-on `spec` dimension on a violated spec check, sufficient receipt or not; fails the always-on `evidence` dimension, naming `review-insufficient`, only when the receipt is missing, stale, or insufficient. |
-| `post`                    | publishes the findings with the insufficient lead and never approves; a binding approval refuses `review-insufficient`, and `--force` does not waive it.                                                                    |
+| Verb                      | What it does with the evidence verdict                                                                                                                                                                                                   |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `record`                  | writes `record.json` with the receipt and, when anything is insufficient, a withheld approval whose reason is the first gap. Exit 0.                                                                                                     |
+| `run`                     | feeds the gaps into its repair rounds and refuses `review-insufficient` when they survive them.                                                                                                                                          |
+| `report`                  | withholds `data.approval` and warns once; the advisory read never fails.                                                                                                                                                                 |
+| `report --check` / `gate` | fails the always-on `spec` dimension on a `violated` or `unmet` spec check, sufficient receipt or not; fails the always-on `evidence` dimension, naming `review-insufficient`, only when the receipt is missing, stale, or insufficient. |
+| `post`                    | publishes the findings with the insufficient lead and never approves; a binding approval refuses `review-insufficient`, and `--force` does not waive it.                                                                                 |
 
 ### Sig contract (sig_version 1)
 
@@ -975,7 +1008,10 @@ the two severity floors, and `spec_coverage_min`), the local `index` caps (`file
 clauses, path scopes, named profiles, and the bind requirement.
 `defaults.spec_coverage_min` is an integer percent from 1 to 100 (built-in
 default 80), global-only like `kb_policy` — set it in root `defaults` or
-personal `review` settings, never inside a scope. `fetch`/`fetch-local` read it from the base commit (or
+personal `review` settings, never inside a scope. It decides the
+`evidence.spec.met` flag and the coverage sentence; it never relaxes the
+per-item rule, because a missing `spec_checks[]` row is `spec-check-missing` at
+any threshold. `fetch`/`fetch-local` read it from the base commit (or
 the reviewed worktree for local runs) through the same trusted read; unknown
 fields, misplaced nulls, credential keys, and unsatisfiable clauses refuse
 typed (`bad-config`, `bad-config-credentials`, `bad-requirement`, `bad-scope`)
@@ -1693,9 +1729,12 @@ A dimension is `pass`, `fail`, `unknown` (unreadable and failing closed), or
 `skip` (not requested, or unreachable under `auto`); only `fail` and `unknown`
 fail the gate, so a skip never turns a green run red. Two dimensions ride
 every gate mode, whichever dimension the operator asked for. `spec` fails on
-any spec check the stored record graded `violated`
-(`check: violated spec check: <item> — gate fails`, the count tallying every
-violated item) and passes on `met`, `n/a`, or no spec checks at all: the
+any spec check the stored record graded `violated` or `unmet`
+(`check: violated spec check: <item> — gate fails` or
+`check: unmet spec check: <item> — gate fails`, the count tallying every failed
+item and the detail naming the first) and passes on `met`, `n/a`, or no spec
+checks at all: the
+
 derived approval withholds on a violation, so a gate passing over one would
 certify a review the decision refuses. `evidence` `pass`
 needs the current head's evidence receipt with `insufficient: false`: an
@@ -1977,7 +2016,8 @@ stored `unchecked`, or no `verification` record at all — never gates,
 and a gating finding that carries no verified quote leaves an insufficient
 decision instead of a clean one, so a review is never approved on a quote
 nothing checked. `block_clauses` and `report --check` refine that default when
-configured, and a violated `spec_checks[]` entry also withholds approval. The
+configured, and a `violated` or `unmet` `spec_checks[]` entry also withholds
+approval. The
 approval decision reads the full stored finding set, so a block clause naming
 an unverified finding is refused rather than dropped; the `compliance` gate
 dimension keeps reading the verified view, where such a finding never blocks.

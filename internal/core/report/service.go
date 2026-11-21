@@ -81,32 +81,32 @@ type state struct { // field grouping documents the loaded dimensions; alignment
 	// stored findings: the approval decision reads it, compliance keeps the
 	// verdict-eligible view the gate dimension shows.
 	decisionCompliance *config.ReadCompliance
-	// specViolations is the item of every spec check the stored record marked
-	// violated: the decision withholds on it, and the gate fails on it, so no
-	// gate passes while the derived decision withholds.
-	specViolations []string
-	approval       *core.ApprovalReceipt
-	requiredGaps   []string
-	panel          []any
-	patch          any
-	comp           *core.ReportCompleteness
-	risk           *core.ReportRisk
-	validation     *core.ValidationData
-	judgements     []core.ValidationResult
-	evidence       *evidenceState
-	dir            string
-	now            string
-	headSHA        string
-	baseSHA        string
-	panelSrc       string
-	compPosted     string
-	live           liveState
-	nOpen          int
-	nAllOpen       int
-	gate           bool
-	gatePassed     bool
-	liveGate       bool
-	compOK         bool
+	// specFailures is every spec check the stored record judged failed —
+	// violated or unmet: the decision withholds on it, and the gate fails on
+	// it, so no gate passes while the derived decision withholds.
+	specFailures []core.SpecFailure
+	approval     *core.ApprovalReceipt
+	requiredGaps []string
+	panel        []any
+	patch        any
+	comp         *core.ReportCompleteness
+	risk         *core.ReportRisk
+	validation   *core.ValidationData
+	judgements   []core.ValidationResult
+	evidence     *evidenceState
+	dir          string
+	now          string
+	headSHA      string
+	baseSHA      string
+	panelSrc     string
+	compPosted   string
+	live         liveState
+	nOpen        int
+	nAllOpen     int
+	gate         bool
+	gatePassed   bool
+	liveGate     bool
+	compOK       bool
 }
 
 type liveState struct {
@@ -152,12 +152,9 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	}
 
 	evaluateCompliance(st)
-	st.specViolations = reviewdoc.SpecViolationsOfBundle(st.dir)
-	if st.execution.Active {
-		st.specViolations = st.execution.SpecViolations
-	}
+	st.specFailures = specFailuresWithExecution(st)
 	st.approval = approval.Evaluate(st.entries, flags.Check, flags.Category, st.decisionCompliance,
-		len(st.specViolations) > 0, st.evidenceInput())
+		st.specFailures, st.evidenceInput())
 	applyDisplayFloor(st)
 	warnLensUsage(st)
 	warnDeepValidation(st)
@@ -165,6 +162,30 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	warnReproductions(st)
 	runLiveProbe(ctx, st)
 	return buildResponse(st), nil
+}
+
+// specFailuresWithExecution reads the stored record's failing spec checks, and
+// keeps the execution panel's own judgement of them when a cross-checked run
+// graded the review. A `violated` row is a claim about code, so it counts only
+// when the panel found it eligible; an `unmet` row carries no finding and no
+// quote, so no cross-check can agree or disagree with it and it always counts.
+func specFailuresWithExecution(st *state) []core.SpecFailure {
+	failures := reviewdoc.SpecFailuresOfBundle(st.dir)
+	if !st.execution.Active {
+		return failures
+	}
+	violated := make(map[string]bool, len(st.execution.SpecViolations))
+	for _, item := range st.execution.SpecViolations {
+		violated[item] = true
+	}
+	kept := make([]core.SpecFailure, 0, len(failures))
+	for _, failure := range failures {
+		if failure.Status == "violated" && !violated[failure.Item] {
+			continue
+		}
+		kept = append(kept, failure)
+	}
+	return kept
 }
 
 func validateReportFlags(flags *Flags) *core.RefusalError {

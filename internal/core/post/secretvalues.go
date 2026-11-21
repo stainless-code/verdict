@@ -101,6 +101,9 @@ func specCheckSecretSites(review *jq.Obj) []secretSite {
 func appendSpecCheckSites(sites []secretSite, index int, obj *jq.Obj) []secretSite {
 	where := fmt.Sprintf("spec_check %d", index)
 	sites = appendSecretSite(sites, where, reviewStringField(obj, "item"))
+	// note is free text on the same row: an operator pasting a credential into
+	// a justification must hit the same refusal the item does.
+	sites = appendSecretSite(sites, where, reviewStringField(obj, "note"))
 	if ev, ok := obj.Get("evidence"); ok {
 		if evObj, ok := ev.(*jq.Obj); ok && evObj != nil {
 			sites = appendSecretSite(sites, where, reviewStringField(evObj, fieldPath))

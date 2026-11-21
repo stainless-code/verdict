@@ -1,6 +1,7 @@
 package reviewdoc_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -84,5 +85,47 @@ func TestRenderLabelsUnverifiedAndOmitsWithheldAndNeverDuplicatesMoved(t *testin
 	}
 	if n := strings.Count(got, "Moved-only finding."); n != 1 {
 		t.Errorf("moved finding appeared %d times, want 1:\n%s", n, got)
+	}
+}
+
+// TestSpecFailuresCarryStatusAndItem proves the failing rows travel with the
+// kind of failure they are, in stored order, and that met and n/a rows are
+// absent: the decision words a violated requirement differently from one
+// nothing implements.
+func TestSpecFailuresCarryStatusAndItem(t *testing.T) {
+	t.Parallel()
+	review := jq.NewObj("spec_checks", []any{
+		jq.NewObj("item", "Refresh rejects expired tokens", "status", "met"),
+		jq.NewObj("item", "Raw and parsed owners stay separate", "status", "n/a"),
+		jq.NewObj("item", "A 429 response resets the budget", "status", "unmet"),
+		jq.NewObj("item", "Expired tokens are rejected on every path", "status", "violated"),
+	})
+	got := reviewdoc.SpecFailures(review)
+	want := []core.SpecFailure{
+		{Status: "unmet", Item: "A 429 response resets the budget"},
+		{Status: "violated", Item: "Expired tokens are rejected on every path"},
+	}
+	if !slices.Equal(got, want) {
+		t.Fatalf("SpecFailures = %+v, want %+v", got, want)
+	}
+	if !reviewdoc.HasSpecFailure(review) {
+		t.Error("HasSpecFailure = false, want true with two failing rows")
+	}
+}
+
+// TestSpecFailuresIgnoresAnonymousRows proves a malformed row cannot claim a
+// failure: only an object with a closed status counts, and a met-only review
+// has none.
+func TestSpecFailuresIgnoresAnonymousRows(t *testing.T) {
+	t.Parallel()
+	review := jq.NewObj("spec_checks", []any{
+		"unmet",
+		jq.NewObj("item", "Refresh rejects expired tokens", "status", "met"),
+	})
+	if got := reviewdoc.SpecFailures(review); len(got) != 0 {
+		t.Fatalf("SpecFailures = %+v, want none", got)
+	}
+	if reviewdoc.HasSpecFailure(review) {
+		t.Error("HasSpecFailure = true, want false")
 	}
 }
