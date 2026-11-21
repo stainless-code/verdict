@@ -1,5 +1,285 @@
 # @stainless-code/verdict
 
+## 0.8.0
+
+### Minor Changes
+
+- ecc6b89: `drain` is a hidden CLI verb that refreshes threads, plans the review threads waiting on a verdict reply, and pins the plan with a digest. `drain --agent <name>` launches one agent through the same launcher `run` uses and validates its `drain.replies.json` against the plan. No host writes or reply posting ship in this slice.
+- 6923d0e: `drain --post` answers the waiting review threads from a validated `drain.replies.json`. GitHub and GitLab post one marked reply per draft and append `replies.json` under a lock after each write; `withdraw` also resolves its thread. Secret-shaped bodies refuse before any write, stale threads are skipped, and a failed write records `failed[]` and refuses `drain-incomplete` so the same command can finish the remaining replies.
+- 9c68ea2: `run --agent` now supports fourteen verified official agent CLIs, including `agy`, `amp`, `copilot`, `crush`, `droid`, `gemini`, `goose`, `kiro`, `pi`, and `qwen`, with prompt flags placed immediately before the directive for agents that take it as a flag value. Operators can define more agents under the new `agents` key of their own settings file; the shape is prefs-only, closed, and refuses name collisions and invalid binaries as `bad-settings`.
+- b7cdbf3: Retain bounded, redacted reproduction tests and rerun commands in review bundles. Report and show name the artifact, serve offers a download, and unsupported reproduced claims warn.
+- bc6f739: A bad `--context` path now refuses `context-invalid` with a path-specific hint instead of `fetch-failed`.
+
+  **Breaking changes**
+
+  A bad `--context` input — missing, symlinked, too deep or too large, or the wrong type — now refuses `context-invalid` instead of `fetch-failed`. Scripts that matched `fetch-failed` for these cases must match `context-invalid`. Bundle-write failures still refuse `fetch-failed`. The refusal names the path as typed and, for a relative path, its absolute resolution, and its hint tells you to check each `--context` path.
+
+- 98d8bec: `run --agent` now offers 32 more cited headless agents, including Cline and Junie after CLI-reference checks. Rows whose binary shares a name with another tool run a harmless identity probe before launch; a non-zero exit, a five-second timeout, or a missing match refuses the new `agent-mismatch` code before any agent starts, and `launcher.json` records `probe: {args, ok}` for a passing check. Operator agents can set `probe_args` and `probe_match` under settings.json `agents`, with `probe_match` required when `probe_args` is present.
+- 770b32f: `drain --post --dry-run` runs every post gate and live read, then writes `drain.dryrun.json` with the exact marked replies and typed skips a real post would produce. It makes zero host writes and leaves `replies.json`, `drain.json`, and `threads.json` byte-identical; `--agent --post --dry-run` plans, drafts, then previews. The flag requires `--post` and secret-shaped bodies still refuse.
+- 5712cec: **Breaking changes**
+
+  The installed skill is now a small Bootstrap skill: it only says when to use Verdict and how to reach the binary. The binary serves the full Procedure, so the instructions always match the version that checks your work.
+
+  Reinstall the skill on every machine. For harness installs, for each installed agent, run `verdict skill status --agent <x>` and delete the old `verdict` skill directory at the path printed after `->`; then run `verdict skill install --agent <x>`. `verdict skill install --detect` is fine instead of `--agent`. `verdict skill uninstall` removes only the new Bootstrap skill files, so it would leave the old Procedure files beside the stub.
+
+  For registry installs, delete the old `verdict` skill directory, then re-run `npx skills add stainless-code/verdict`.
+
+  Copies went stale between releases: the Procedure lived inside the installed skill, so an older copy could hand an agent instructions that disagreed with the binary grading its work. Keeping it in the binary removes that skew.
+
+- 66342c5: Every fetched bundle now carries `procedure.md`, the review Procedure assembled by the binary from its embedded payload. Drain plans carry `drain.procedure.md` for reply drafting. The `run`, stage, and drain directives name those files as authoritative, so an installed skill that is older can no longer displace them. The fetch `next:` hints and `--show-prompts` output point at the bundle Procedure, and provenance receipts record its sha256 as a bundle input. `PromptsHash` now reads the embedded payload, so an installed user gets the real prompt-set hash without a `procedure/` checkout.
+- 85b2e97: MCP hosts can now load the Procedure straight from the binary. `prompts/list` and `prompts/get` serve five task prompts (`address-reviews`, `fix-ci`, `incremental-review`, `review`, `validate`), and `resources/list` and `resources/read` serve every payload file at `verdict://skill/<path>`, byte-identical to `verdict skill show`. Prompts and resources are read-only and available in every server mode, including `--read-only` and `--operator`. `initialize` advertises both capabilities and points hosts at the `review` prompt or `verdict://skill/PROCEDURE.md`.
+- 31efb1b: **Breaking changes**
+
+  Published JSON schemas moved from `skills/verdict/schemas/` to `/schemas/`; every `$id` changed accordingly.
+
+- 9de3880: Verdict now writes an append-only per-bundle invocation journal under `<state>/verdict/journal/<repo-key>/<pr>.jsonl` (`$XDG_STATE_HOME`, falling back to `~/.local/state` on Unix or `%LOCALAPPDATA%` on Windows) for every bundle-writing CLI and MCP call, and adds the read-only `verdict journal <owner/repo> <pr|local-name> [--json]` verb (plus its MCP tool, Go facade method, TypeScript client method, shell completion, and `schemas/journal.schema.json`). Each call records paired `start` and `end` lines carrying the canonical `repo` root, redacted `argv`, content-digest `bundle.before`/`bundle.after` tamper-evidence hashes, exact `wrote`/`removed` paths with SHA-256 digests, exit code, refusal code, warnings count, and `next` hint, bounded at 1 MiB with atomic whole-line truncation and non-fatal append warnings. The folded `verdict journal` summary pairs each call under a unique `step` key, reports the size-cap notice under `truncation`, and publishes `bundle.unobserved` with no file diff when a content sweep fails instead of claiming every file changed. Because the journal lives outside the repository and `.verdict/`, dry runs, refusals, and bundle receipts stay completely untouched.
+- 938bc6d: `review.json` is now a findings-only handoff: each finding carries a path, strict integer line, severity, claim, quoted code, and finder confidence; optional spec checks and receipts reserve the evidence S4 verifies. Verdict renders the body and derives approval from the stored findings, with a documented default threshold and the existing block-clause policy. The document keeps `"schema_version": "1"` — this is a breaking change inside that version, shipped with no shim.
+
+  **Breaking changes**
+
+  `review.json` must carry `findings[]` and may no longer carry `approved`, `body`, `comments[]`, `sections[]` or a top-level `confidence`; the document is closed, so any of those keys refuses as an unknown field and there is no repair hint for the old shape. To rewrite a stored v1 file, move each `comments[].body` into `findings[].claim`, add `quote`, `severity` and `confidence` to every finding, convert `line` to an integer, move the old `body` prose to `summary` (at most 2000 characters), drop `approved`, `sections[]` and top-level `confidence`, and keep the claim arrays (`resolved`, `triage`, `coverage`, `chunks`, `suppressed`, `risk`, `security_summary`) unchanged.
+
+  One problem code that policed the old contract is gone: `basis-replaced` (the agent writes no
+  body, so there is no line for the CLI to repair). The closed document refuses the removed keys
+  as `unknown-field`, and the review prompt drops `in-bounds` with the rest of the body grammar.
+
+  The dry run's `data.check` now reports `findings` and `anchors_moved_to_body` in place of the
+  `comments` and `sections` counters that described the old body grammar.
+
+  Approval is no longer an agent claim. With no repository policy, any open, visible finding whose quote standing is not `unverified` at `important` or above withholds approval, as does any violated `spec_checks[]` entry; `block_clauses` and `report --check` refine that default when configured. `record` decides once and stores the decision in `record.json` as `approval`, beside the `review_sha256` it decided on; `post` publishes that stored decision, renders its body from the same decision, and refuses `record-stale` when the review, diff, or head moved after the record, rather than deciding again over a review nobody recorded.
+
+  Do not release between this slice and S4. S1 stores `spec_checks[]` and `receipts[]` but does not verify quotes or require receipt coverage; S4 adds the insufficient-review refusal and closes the gap where a findings-free review would otherwise derive approval. The release hold is tracked in Linear.
+
+- 1dfcc29: `backtest fixtures` grades converted fixture recordings against hand-known defects in a new fixture corpus. It publishes recall, bonus-union, false-green, hallucination (with explicit `unverifiable` counts) and `review-insufficient` metrics, reproduces seven hand scores as calibration, and writes one report under `.verdict/backtest/fixtures/report.json`. The mode never launches an agent or calls a host.
+- 4ab8691: The review handoff is now lean and layered. `<bundle>/procedure.md` carries a pushed core — role, two method lines, the findings-only contract, and a capability map — capped at 3 KB by an archtest. Sections for chunked diffs, prior threads, knowledge-base rules, lenses, and handed context are appended only when the bundle carries that fact. A sliced review checklist and the remaining reference material are written to `<bundle>/refs/` and pulled on demand; the full operator workflow and body-format rules stay with `verdict skill show`. `--show-prompts` prints the assembled handoff and one line naming the refs, never their bodies. Drain and the MCP task prompts use the same core where it applies.
+
+  The directive now says to write `review.json` first with empty findings and update it as the review proceeds; after a clean exit only (no crash, timeout or non-zero exit), `run` salvages the last fenced `json` block on stdout that decodes to an object with a `findings` array, adding `schema_version` "1" if missing, records `salvaged: true` in `launcher.json`, and warns. It replaces only an absent artifact or the exact empty placeholder; a salvaged or written review that fails the shared checker is refused `bad-review-input` with its problems, which feed the next round under `--rounds`, while only stdout with no such block keeps `no-review-artifact`.
+
+  A finished review with no findings must carry a non-empty `summary`; the empty placeholder alone is never a clean review, and `run` checks every artifact with the same checker `record` uses before reporting success.
+
+  `prompts_hash` and the provenance receipt now cover every file that feeds the assembled handoff and its refs, so an edit to any of those bytes is visible in the bundle's recorded prompt set.
+
+- b6cf021: Verdict now renders the review body deterministically from structured findings, bundle metadata, evidence receipts, spec checks, and the derived approval decision instead of relying on agent-written body-formatting rules.
+
+  Rendered findings retain their own line, side, and anchor state even when their signatures match. Summary sanitization respects balanced double-backtick code spans and neutralizes HTML after their closing delimiter.
+
+  ### User-visible review body changes
+  1. **Lead callout ownership:** Verdict always emits the opening verdict lead (`> ✅ No new issues found.`, `> ℹ️ Informational findings only.`, `> ⚠️ Issues found — see inline comments.`, or `> ⛔ Evidence checks insufficient — no approval.`). `summary` can no longer override or suppress the lead.
+  2. **Decision line:** Withheld and insufficient reviews add `> Decision: withheld — <reason>` (including blocking clauses when present) directly under the lead.
+  3. **Labeled `Basis:` line:** Counts render in labeled form (`> Basis: 0 reproduced · 0 ran · 1 walked · 2 pointed · 0 said · 1 rules cited · 0 verified fixes`), matching `verdict report`.
+  4. **`Safety:` and `Risk:` lead lines:** Rendered in the opening blockquote whenever `security_summary` or `risk` is set in `review.json`.
+  5. **Sanitized single-paragraph `summary`:** Rendered as one plain-text paragraph with line breaks collapsed and HTML tags/comments, fences, links, and `@mentions` neutralized.
+  6. **Deterministic review metadata comment:** Always rendered as `<!-- Review metadata ... -->` from `PR.json` (or `source.json` for local bundles), `post.json`, and `incremental.diff`.
+  7. **Deterministic finding ordering and presentation:** Findings are ranked via `readcommon.Rank`, carry severity emoji (`🚨`/`⚠️`/`ℹ️`), rigor/category/KB metadata, reference-style `[path:line][ev-N]` permalinks pinned to the reviewed commit on GitHub PRs (plain `` `path:line` `` on non-GitHub/local bundles, unindexed paths, and `LEFT`-side deleted-line anchors), live `(unverified — not counted)` labels for unverified quotes, and collapsed `<details><summary>Technical details</summary>` blocks rendered from `finding.brief`.
+  8. **Unanchored and withheld findings:** Moved findings render only under `### ℹ️ Unanchored observations` (no duplication in the numbered list, and any moved or fence-demoted `suggestion` renders inside an indented dynamic code fence); withheld findings (suppressed, excluded, below severity floor, or validation-rejected) are completely omitted from the body.
+  9. **Spec checks, receipts, and evidence gaps:** Renders `**Spec checks**` (violated visible, met/n/a collapsed) when `--spec` items were graded, `**What we checked**` (up to 7 files with role and `+/-`, plus hunk-receipt tally) on clean reviews, and `**Evidence gaps**` (quote/receipt/spec tallies plus up to 5 gaps) on insufficient reviews.
+  10. **`body.marker` telemetry:** Reports `"verdict"` on all four rendered leads, including blocking (`⚠️`) and insufficient (`⛔`) reviews.
+  11. **Behavioral mermaid diagrams retired from agent reviews:** Removed body-formatting and behavioral-diagram instructions from `prompts/review.md`, `prompts/incremental-review.md`, and agent handoff refs (`refs/diagrams.md`). Structural diagrams in `report --overview` are unchanged. (CLI/config behavioral-diagram flags remain accepted for now and are deferred to a follow-up cleanup.)
+
+  **Breaking changes**
+
+  - Removed the unreachable `degenerate-body` refusal code (`CheckDegenerate`) and `freshSections` body-section extraction; verdict owns the rendered body end to end.
+  - When `post` splits an oversized body above 65,536 bytes, each split comment now carries its own self-contained `[ev-N]` reference definitions.
+
+- 8b159e9: `fetch` and `fetch-local` now accept a repeatable `--spec <file>` flag to hand
+  specification documents into the bundle separately from plain `--context`
+  reference material.
+
+  - Validation matches `--context` (size, type, symlink, and depth caps).
+  - Spec sources are stored in the same `context/` directory and fenced
+    `context.txt`, while `context.json` records `"role": "spec"` or
+    `"role": "context"` per entry in place and `toc.txt`'s `## context` section
+    marks spec rows with `[spec]`.
+  - Combined spec sources are capped at 150 enumerated checklist items; exceeding
+    the cap refuses `spec-too-large` with no bundle files written.
+
+- 5e1ab56: Verdict now checks the evidence a review states before it decides anything: each finding's `quote` is matched against the pinned diff at its `path:line`, a review whose findings are all below the approval tier must receipt every non-exempt changed hunk, and `--spec` sources get a per-item checklist. The verdict is stored as an evidence receipt in `record.json` and read by every verb: `record --dry-run` names each gap, `run` repairs them across its rounds and refuses `review-insufficient` when they survive, `report --check` and `gate` fail an always-on `evidence` dimension, and `post` publishes the findings with an insufficient lead and never approves.
+
+  **Breaking changes**
+
+  A review that states no evidence is now insufficient rather than approved. `review.json` must quote the exact line at each finding's `path:line` (`start_line` plus one quoted line per range line for a multi-line quote), and a review with no gating finding must carry `receipts[]` — one `{"hunk":"<the hunks.tsv row>","quote":"<a line that hunk carries>"}` per non-exempt hunk; `verdict record --dry-run` names every gap and now ends a clean review with a warning instead of silence. `run --rounds` defaults to 2 instead of 1, so an invalid review is re-prompted once unless you pass `--rounds 1`; `run` also refuses `review-insufficient` where it used to hand off, and a plain `run` envelope now carries `data.repair` on that default. `report --check` and `gate` always grade a seventh dimension, `evidence`, so a bundle that never recorded a receipt for its head reads `unknown` and fails instead of passing on the other six. `fetch --spec`, and the `defaults.spec_coverage_min` default of 80 it feeds, become part of the review contract: an enumerated spec item with no check, or with test-output evidence (logs, goldens, snapshots, `testdata`; test source counts as code), withholds approval. There is no compatibility shim for any of this — v0.7 is not yet at 1.0, and the previous behaviour approved reviews nothing had checked.
+
+- 20f6fb0: Panel receipts use version 2 with invoker-assigned checker identities. S5 receipts bind the execution, head, diff, frozen review and dispatch plan, and every confirmation or refutation quote passes the S4 matcher. Approval, spec, compliance, post, report, gate and ready require all assigned other-finder checks. Missing or disputed blocking checks withhold approval as insufficient. Manual panel decisions remain unchanged when no S5 execution is captured.
+
+  This is a deliberate pre-v1 break — version 1 panel receipts are refused, with no compatibility decoder. Finder review input remains version 1; execution-bound aggregate review input uses version 2. Execution fields are inactive until a coordinator captures an S5 execution.
+
+  Changed schemas (with matching generated baselines and semantic pins):
+
+  - `schemas/envelope.schema.json`
+  - `schemas/findings.schema.json`
+  - `schemas/panel-plan.schema.json`
+  - `schemas/panel.schema.json`
+  - `schemas/post.schema.json`
+  - `schemas/record.schema.json`
+  - `schemas/review.schema.json`
+
+  The verifier prompt now states the v2 contract. These goldens change only prompt hashes, their derived run IDs and procedure receipt hashes/byte counts:
+
+  - `internal/fetch/testdata/author-advisory.golden`
+  - `internal/fetch/testdata/azure-happy.golden`
+  - `internal/fetch/testdata/base-sha-json.golden`
+  - `internal/fetch/testdata/base-sha-note.golden`
+  - `internal/fetch/testdata/bitbucket-happy.golden`
+  - `internal/fetch/testdata/bitbucket-paging.golden`
+  - `internal/fetch/testdata/budget-over-consented.golden`
+  - `internal/fetch/testdata/budget-unknown.golden`
+  - `internal/fetch/testdata/budget-unreadable.golden`
+  - `internal/fetch/testdata/budget-unset.golden`
+  - `internal/fetch/testdata/budget-within.golden`
+  - `internal/fetch/testdata/cap-override-beats-chunk.golden`
+  - `internal/fetch/testdata/cap-override.golden`
+  - `internal/fetch/testdata/controls-base-absent.golden`
+  - `internal/fetch/testdata/dump-json.golden`
+  - `internal/fetch/testdata/dump-text.golden`
+  - `internal/fetch/testdata/empty-diff.golden`
+  - `internal/fetch/testdata/file-paging.golden`
+  - `internal/fetch/testdata/forgejo-happy.golden`
+  - `internal/fetch/testdata/gitcafe-base-note.golden`
+  - `internal/fetch/testdata/gitcafe-happy.golden`
+  - `internal/fetch/testdata/gitlab-base-note.golden`
+  - `internal/fetch/testdata/gitlab-base.golden`
+  - `internal/fetch/testdata/gitlab-happy.golden`
+  - `internal/fetch/testdata/gitlab-text.golden`
+  - `internal/fetch/testdata/happy-json.golden`
+  - `internal/fetch/testdata/happy-text.golden`
+  - `internal/fetch/testdata/local-branch.golden`
+  - `internal/fetch/testdata/local-dump-chunk.golden`
+  - `internal/fetch/testdata/local-dump-text.golden`
+  - `internal/fetch/testdata/local-paths.golden`
+  - `internal/fetch/testdata/local-range.golden`
+  - `internal/fetch/testdata/local-range3.golden`
+  - `internal/fetch/testdata/local-staged.golden`
+  - `internal/fetch/testdata/local-stash.golden`
+  - `internal/fetch/testdata/local-untracked.golden`
+  - `internal/fetch/testdata/local-worktree-text.golden`
+  - `internal/fetch/testdata/local-worktree.golden`
+  - `internal/fetch/testdata/over-cap-chunk-text.golden`
+  - `internal/fetch/testdata/over-cap-chunk.golden`
+  - `internal/fetch/testdata/over-cap-knob.golden`
+  - `internal/fetch/testdata/ratelimit-retry.golden`
+  - `internal/fetch/testdata/sensitive-kb-head.golden`
+  - `internal/fetch/testdata/sensitive-kb.golden`
+  - `internal/fetch/testdata/since-alias.golden`
+  - `internal/fetch/testdata/threads-degraded.golden`
+  - `internal/record/testdata/body/mermaid-stripped.golden`
+  - `internal/record/testdata/body/non-ascii.golden`
+  - `internal/record/testdata/body/receipt-collision.golden`
+  - `internal/record/testdata/chunk/drift.golden`
+  - `internal/record/testdata/chunk/unattested.golden`
+  - `internal/record/testdata/chunk/unknown-chunk-claim.golden`
+  - `internal/record/testdata/chunk/valid.golden`
+  - `internal/record/testdata/claims/verify-triage-resolved/rereview.golden`
+  - `internal/record/testdata/degenerate/blob-link-local.golden`
+  - `internal/record/testdata/degenerate/brief-valid.golden`
+  - `internal/record/testdata/degenerate/carried-footer.golden`
+  - `internal/record/testdata/degenerate/fenced-suggestion.golden`
+  - `internal/record/testdata/degenerate/finding-confidence-valid.golden`
+  - `internal/record/testdata/degenerate/normalized-fenced.golden`
+  - `internal/record/testdata/degenerate/normalized-prose.golden`
+  - `internal/record/testdata/degenerate/normalized-weak-shapes.golden`
+  - `internal/record/testdata/incremental/non-touching/rereview.golden`
+  - `internal/record/testdata/incremental/reopen/rereview.golden`
+  - `internal/record/testdata/kb/absent.golden`
+  - `internal/record/testdata/kb/bad-id-shape.golden`
+  - `internal/record/testdata/kb/bad-policy-env.golden`
+  - `internal/record/testdata/kb/bad-shape.golden`
+  - `internal/record/testdata/kb/broken-store.golden`
+  - `internal/record/testdata/kb/counter-adds/rereview.golden`
+  - `internal/record/testdata/kb/duplicate.golden`
+  - `internal/record/testdata/kb/empty.golden`
+  - `internal/record/testdata/kb/false-positive/rereview.golden`
+  - `internal/record/testdata/kb/joins-idempotent/rereview.golden`
+  - `internal/record/testdata/kb/no-store.golden`
+  - `internal/record/testdata/kb/null.golden`
+  - `internal/record/testdata/kb/retired.golden`
+  - `internal/record/testdata/kb/string-counters/rereview.golden`
+  - `internal/record/testdata/kb/truncated.golden`
+  - `internal/record/testdata/kb/unknown.golden`
+  - `internal/record/testdata/kb/valid.golden`
+  - `internal/record/testdata/matrix/n10/first.golden`
+  - `internal/record/testdata/matrix/n10/rereview.golden`
+  - `internal/record/testdata/matrix/n200/first.golden`
+  - `internal/record/testdata/matrix/n200/rereview.golden`
+  - `internal/record/testdata/matrix/n50/first.golden`
+  - `internal/record/testdata/matrix/n50/rereview.golden`
+  - `internal/record/testdata/overrides/dir-as-fragment.golden`
+  - `internal/record/testdata/overrides/eq-threshold.golden`
+  - `internal/record/testdata/overrides/valid.golden`
+  - `internal/record/testdata/provider/gitlab.golden`
+  - `internal/record/testdata/refuse/empty-prior.golden`
+  - `internal/record/testdata/refuse/false-prior.golden`
+  - `internal/record/testdata/refuse/null-prior.golden`
+  - `internal/record/testdata/refuse/utf8-scrubbed-claim.golden`
+  - `internal/record/testdata/source/dirty-head.golden`
+  - `internal/record/testdata/source/dirty-string.golden`
+  - `internal/record/testdata/uncite/absent-keeps/rereview.golden`
+  - `internal/record/testdata/uncite/explicit-clears/rereview.golden`
+  - `internal/record/testdata/uncite/malformed-clears/rereview.golden`
+  - `internal/record/testdata/uncite/null-keeps/rereview.golden`
+  - `internal/record/testdata/verify/ambiguous-prefix/rereview.golden`
+  - `internal/record/testdata/verify/bad-head/rereview.golden`
+  - `internal/record/testdata/verify/contradict-exit/rereview.golden`
+  - `internal/record/testdata/verify/contradict-timeout/rereview.golden`
+  - `internal/record/testdata/verify/empty-cmd/rereview.golden`
+  - `internal/record/testdata/verify/inconclusive/rereview.golden`
+  - `internal/record/testdata/verify/on-addressed/rereview.golden`
+
+  Migrated eval fixture: `evals/cases/panel.sh`.
+
+  The generated TypeScript `SpecCheck` type in `clients/ts/src/types.gen.ts` adds optional `finding_sig` from the schema. Public token totals and `pkg/verdict/api.txt` are unchanged.
+
+- efc4342: Captured two-finder executions now render completed finders, directed cross-check counts, per-finding origins and checker standing, and bounded quoted refutation evidence. Record, post, report, and their MCP adapters recompute cross eligibility from bound artifacts. A missing or forged stored stamp cannot replace those artifacts. Launching remains behind the internal seam; this change adds no CLI flag, default flip, MCP launcher, or SDK launcher.
+
+  Pre-v1 SDK wire break: report cost `input_tokens`, `output_tokens`, `total_tokens`, `cached_input_tokens`, and the token fields under `by_tier` can be `null`. Null means unknown usage, never a measured zero. The Go facade retains `Result.Data` as raw JSON and documents the change in `pkg/verdict/api.txt`; generated TypeScript cost fields are nullable. Two-finder rollups price each bound launch once and ignore a root aggregate claim beside its phases. A launched phase that cannot be priced — cross evidence that cannot be read, or a repair round that stopped before saving a review — still counts in `runs` while `est_usd` stays `null`, so a rollup never reports a complete total that priced only part of what it launched. The footer tier for such a bundle comes from the tier its phase records priced rather than falling back to `standard`. The legacy single-finder cost path is unchanged.
+
+  Changed schemas: `review.schema.json` (finder/manual v1 versus bound aggregate v2), `panel-plan.schema.json` (manual v1 and automatic v2), `panel.schema.json` (v2 receipt documentation), `findings.schema.json` (origins and checker quote standing), `record.schema.json`, `post.schema.json`, `envelope.schema.json` (finder summaries, run execution data, and nullable cost totals), and `cost.schema.json` (phase accounting documentation). Manual panel receipts use v2 with assigned checker seats; no compatibility decoder was added.
+
+- 11ea710: `run --agent` now defaults to two isolated whole-diff finders followed by opposite-finder cross-checks. Global `defaults.finders` accepts 1 or 2; personal `review.finders` supplies a fallback, and `run --finders` overrides the captured value. Scoped finder counts are refused.
+
+  Use `--finders 1` for the existing single-finder procedure, repair loop, and artifact contract. `--print` and `--stage` require one finder and name that remedy when they refuse. Drain remains single-agent, and backtest replay explicitly retains one finder. MCP and SDK surfaces consume the resulting evidence without gaining a launch method.
+
+  `config.schema.json` adds the global finder count. Configuration evidence and generated goldens now include its resolved value and origin. Two-finder execution receipts record the selected count and source before the first launch.
+
+  Reruns preserve previous automatic execution artifacts under `x-superseded/<id>`. Retirement publishes before a replacement launch; a failure refuses the launch. Captured execution identity stays active until retirement completes, so an interrupted move cannot admit stale confirmations. A single-finder replacement ignores retired cross standing while retaining finding history.
+
+- 31f4df8: Add phase usage attribution to `cost.json`: each phase names its execution, finder and launch. USD and token counts explicitly permit unknown values. The shared projection preserves unknown phases, compares exact decimal totals and known lower bounds, and never counts a root aggregate beside its phase costs. Phase certification checks the execution and captured run binding.
+
+  `run --consent-over-budget` grants consent only to the current invocation. For a captured S5 execution, authorization precedes any launch and records the bounded topology and projection digest in the budget receipt ledger. Unknown required prices refuse as `budget-unknown` under the require-known policy, and hard billing caps remain unsupported. Ordinary single-finder launching remains unchanged.
+
+  Changed schema: `schemas/cost.schema.json` and its matching generated baseline and semantic pin. No schema version compatibility decoder was added. No goldens changed in this slice.
+
+- b40de1d: Remove the inactive behavioral-diagram controls: CLI flags `--diagram-behavioral`, `--no-diagram-behavioral`, `--diagram-expanded`, and `--no-diagram-expanded`; personal settings keys `publish.diagrams.behavioral` and `publish.diagrams.expanded`; and environment variables `REVIEW_PUBLISH_DIAGRAMS_BEHAVIORAL` and `REVIEW_PUBLISH_DIAGRAMS_EXPANDED`. Removed flags now produce the normal unknown-flag usage error, and removed settings keys produce `bad-settings`.
+
+  Structural diagrams in `report --overview`, including `publish.diagrams.structural` and its CLI and environment controls, remain available.
+
+- abb3389: `ready --filter` now gates the review on the closed trigger predicates in the trusted base configuration: matching PRs run and record the decision, non-matching PRs refuse `filtered-out` before any host call, and unusable policy or facts refuse `trigger-failed`.
+
+  Fetch now requests and records PR labels in `PR.json` for every host, so the `labels` trigger predicate can read them from the bundle.
+
+### Patch Changes
+
+- 4b05cd3: `verdict mcp` now joins its protocol read loop on shutdown when given a closable reader. A goroutine blocked on a non-closable source can outlive `Serve`. `verdict serve` now ends open event streams when the HTTP listener fails, not only on a clean shutdown. The CLI now reads its environment only through the injected source, so host variables no longer leak into a run that was given its own.
+
+  `report --validation` without `--json` now prints a validation table: the mode, the exact-file hash, and the counts, then one row per judged finding with its verdict, severity move, and reason. `post` and `record` now warn when `validation.json` records a `validator.prompt_sha256` that differs from the `prompts/validate.md` this build ships, and still apply the pass.
+
+  `drain --agent --post` refreshes threads after drafting so resolved or changed threads are skipped. Drain receipts retain outstanding failures across runs and clear recovered feed-save failures. Validation reports omit rows when the current artifact differs from the recorded pass, and prompt drift warnings escape control characters.
+
+- 348f8ab: Drain commands now serialize writes to the same bundle. Replanning keeps prior posting receipts, and retries clear failures when the thread is resolved or the reply draft is obsolete. An unresolved withdrawal still requires resolution.
+
+  MCP servers can shut down even when closing their input would leave a read blocked. The CLI still joins its protocol reader during shutdown.
+
+  `report --validation --json` uses the saved validation tally when a receipt exists and omits warnings specific to the human table.
+
+- 8dbe092: The `--spec` checklist cap is now 150 items. The 60-item ceiling refused real specification documents mid-PR; `fetch` and `fetch-local` still refuse `spec-too-large` before writing any bundle file once the combined `--spec` sources enumerate more than 150 items, and the refusal message and hint name the new limit.
+- 3232b0f: `report --check` and `gate` now fail on a violated spec check. The new always-on `spec` dimension reads the spec checks the stored record graded: a `violated` one fails the gate with `violated spec check: <item>` and a tally of every violated item, while `met`, `n/a`, and a review with no spec checks pass. Before this, a bundle whose only defect was a violated spec check passed the gate while the derived approval withheld with `violated spec check`, so the gate certified a review the decision refused.
+- 154107e: The run directive names the handed `--context` spec.
+- f44be4c: The MCP server now serves `build`, `ci`, and `grade` as task prompts, one per task prompt the
+  Procedure's mode router names, so `prompts/list` offers eight instead of five. Each body is the
+  same assembly the other task prompts use — `PROCEDURE.md`, `prompts/system.md`, and that task's
+  own prompt — and an unknown name still refuses `-32602` and lists the valid tasks.
+- a39930f: `run --agent agy` now prints a one-line warning on stderr at launch (`warn: agy print mode (-p) soft-denies file edits outside trusted workspaces, so review.json may never be written; trust this repository in agy's settings or pass -- --dangerously-skip-permissions (your approval bypass)`) and proceeds rather than refusing. `docs/manual.md` documents the edit soft-denial, its two operator-side remedies (`trustedWorkspaces` / `permissions.allow` in `~/.gemini/antigravity-cli/settings.json`, or `-- --dangerously-skip-permissions`), and the working `run --agent agy` recipe.
+- 1e911d7: Name the agent's documented permission flag when a run with no pass-through arguments produces no review artifact.
+
 ## 0.7.0
 
 ### Minor Changes
