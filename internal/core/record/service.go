@@ -276,8 +276,18 @@ func (st *svc) loadInputs(ctx context.Context, dir string) (*jq.Obj, *core.Refus
 	return review, nil
 }
 
+// checkoutRoot is the checkout a local bundle's freshness check reads: the
+// reviewed repository root, or the caller-named checkout when the bundle lives
+// elsewhere (verdict demo). A remote bundle never reaches it.
+func (st *svc) checkoutRoot() string {
+	if st.req.RepoLayerRoot != "" {
+		return st.req.RepoLayerRoot
+	}
+	return st.req.RepoRootPath()
+}
+
 func (st *svc) checkLocalFresh(ctx context.Context, dir string) *core.RefusalError {
-	ref := readcommon.CheckLocalFresh(ctx, st.identityCommander(), st.req.RepoRootPath(), dir)
+	ref := readcommon.CheckLocalFresh(ctx, st.identityCommander(), st.checkoutRoot(), dir)
 	if ref == nil {
 		return nil
 	}
@@ -465,6 +475,7 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 		Repo: st.req.Repo,
 		Pr:   st.req.Pr,
 		At:   now,
+		Body: res.Body,
 		Data: &core.RecordData{
 			Dir:             dir,
 			Anchors:         core.AnchorsSummary{Kept: res.NKept, Moved: res.NMoved},
@@ -519,6 +530,7 @@ func (st *svc) dryRun(dir, now string, res *MergeResult) *Response {
 		Pr:       st.req.Pr,
 		At:       now,
 		Data:     dry,
+		Body:     res.Body,
 		Warnings: st.warnings,
 		Next:     next,
 	}

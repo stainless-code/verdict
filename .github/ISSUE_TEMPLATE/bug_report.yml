@@ -24,6 +24,7 @@ body:
       label: Verb
       description: The verb you ran (`mcp` is the hidden stdio transport)
       options:
+        - demo
         - fetch
         - post
         - triage

@@ -284,7 +284,7 @@ in the message ([`docs/ci-and-tests.md`](docs/ci-and-tests.md)).
 
 Use the issue templates (bug reports name the verb and paste the
 `--json` envelope; features name the surface they touch) and fill in
-the PR template checklist. Verbs are: `fetch`, `post`, `triage`,
+the PR template checklist. Verbs are: `demo`, `fetch`, `post`, `triage`,
 `report`, `next`, `show`, `verify`, `doctor`, `calibrate`,
 `fetch-local`, `run`, `record`, `panel`, `adopt`, `ingest`, `fix`, `handoff`, `check-tree`, `ready`, `pr-wait`,
 `trend`, `risk`, `index`, `journal`, `backtest`, `learn`, `pack`, `init`, `threads`, `skill`, `upgrade`, `uninstall`,

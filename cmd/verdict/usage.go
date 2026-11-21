@@ -1,9 +1,17 @@
 package main
 
 func usageText() string {
-	return "usage: verdict fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
+	return "usage: verdict demo|fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
 		"fetch-local|run|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|" +
 		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain [opts]\n" +
+		"  demo [<public-github-pr-url>] [--agent <name>] [--keep] [--json]\n" +
+		"    one review, zero setup: a public GitHub pull request by URL (gh when signed in for\n" +
+		"    github.com, the anonymous API otherwise) or your own working tree when the argument\n" +
+		"    is omitted. Every artifact lands in one disposable temp directory, removed on exit\n" +
+		"    unless --keep, so nothing is written in your repository. The first installed agent\n" +
+		"    CLI on PATH is used with a single finder; --agent names one instead. It records the\n" +
+		"    review and prints it — posting is structurally out of reach. Exit 2 is usage, 1 a\n" +
+		"    typed refusal, 3 a cancel.\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--index <ref|dir>] [--context <file|dir>] [--spec <file>] [--issue <ref>] [--ignore <glob>] [--no-default-excludes] " +
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
@@ -627,13 +635,17 @@ func usageText() string {
 		"  layout, color) plus publish (footer receipt + leveled attribution + logo +\n" +
 		"  overview + diagrams + fix prompt) namespaces\n" +
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
-		"  --json on fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
+		"  --json on demo/fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
 		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/index/journal/backtest/learn/pack/init/" +
 		"skill/upgrade/uninstall/serve/config: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
 		"  Glossary: https://stainless-code.com/verdict/docs/glossary\n"
 }
+
+// optionals take at most one optional positional and no repo/pr pair, so the
+// split must not read the first token as a repository and the second as a PR.
+var optionals = map[string]bool{cmdDemo: true}
 
 var bareVerbs = map[string]bool{
 	"check-tree": true,
@@ -657,7 +669,7 @@ func arityUsage(cmd, repo, pr string) bool {
 	if cmd == "" {
 		return true
 	}
-	if bareVerbs[cmd] {
+	if bareVerbs[cmd] || optionals[cmd] {
 		return false
 	}
 	if repoOnlyVerbs[cmd] {

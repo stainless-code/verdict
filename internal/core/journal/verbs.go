@@ -33,18 +33,20 @@ var VerbTable = map[string]VerbPolicy{
 
 	// Read-only bundle or repo verbs (noLocalWrites: must never write).
 	"check-tree": {Journals: false, Reason: "noLocalWrites: read-only git worktree gate"},
-	"config":     {Journals: false, Reason: "noLocalWrites: read-only policy explanation"},
-	"doctor":     {Journals: false, Reason: "noLocalWrites: read-only environment preflight"},
-	"gate":       {Journals: false, Reason: "noLocalWrites: CI exit code; must never mutate the checkout"},
-	"handoff":    {Journals: false, Reason: "noLocalWrites: read-only finding handoff"},
-	"index":      {Journals: false, Reason: "noLocalWrites: read-only code index query"},
-	"journal":    {Journals: false, Reason: "noLocalWrites: read-only journal reader; reading must never write"},
-	"next":       {Journals: false, Reason: "noLocalWrites: read-only next-finding cursor"},
-	"pack":       {Journals: false, Reason: "noLocalWrites: read-only lens pack inspection"},
-	"pr-wait":    {Journals: false, Reason: "noLocalWrites: read-only foreground PR wait"},
-	"ready":      {Journals: false, Reason: "noLocalWrites: read-only merge readiness check"},
-	"risk":       {Journals: false, Reason: "noLocalWrites: read-only risk queue"},
-	"show":       {Journals: false, Reason: "noLocalWrites: read-only single-finding display"},
+	"demo": {Journals: false, Reason: "no local writes in the caller's tree: every artifact lands " +
+		"in a disposable temp directory removed on exit"},
+	"config":  {Journals: false, Reason: "noLocalWrites: read-only policy explanation"},
+	"doctor":  {Journals: false, Reason: "noLocalWrites: read-only environment preflight"},
+	"gate":    {Journals: false, Reason: "noLocalWrites: CI exit code; must never mutate the checkout"},
+	"handoff": {Journals: false, Reason: "noLocalWrites: read-only finding handoff"},
+	"index":   {Journals: false, Reason: "noLocalWrites: read-only code index query"},
+	"journal": {Journals: false, Reason: "noLocalWrites: read-only journal reader; reading must never write"},
+	"next":    {Journals: false, Reason: "noLocalWrites: read-only next-finding cursor"},
+	"pack":    {Journals: false, Reason: "noLocalWrites: read-only lens pack inspection"},
+	"pr-wait": {Journals: false, Reason: "noLocalWrites: read-only foreground PR wait"},
+	"ready":   {Journals: false, Reason: "noLocalWrites: read-only merge readiness check"},
+	"risk":    {Journals: false, Reason: "noLocalWrites: read-only risk queue"},
+	"show":    {Journals: false, Reason: "noLocalWrites: read-only single-finding display"},
 
 	// Multi-bundle verbs (no single bundle home, Q4).
 	"backtest": {Journals: false, Reason: "multi-bundle replay under .verdict/backtest/ (Q4)"},

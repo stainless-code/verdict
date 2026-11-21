@@ -25,6 +25,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 	"github.com/stainless-code/verdict/internal/core/upgrade"
+	demo "github.com/stainless-code/verdict/internal/demo"
 	"github.com/stainless-code/verdict/internal/doctor"
 	drainverb "github.com/stainless-code/verdict/internal/drain"
 	"github.com/stainless-code/verdict/internal/fetch"
@@ -66,7 +67,7 @@ const (
 	verbDoctor = "doctor"
 )
 
-const verbsHint = "fetch|fetch-local|run|panel|record|adopt|ingest|fix|post|triage|report|next|show|" +
+const verbsHint = "demo|fetch|fetch-local|run|panel|record|adopt|ingest|fix|post|triage|report|next|show|" +
 	"check-tree|verify|doctor|calibrate|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|backtest|" +
 	"learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain"
 
@@ -173,6 +174,8 @@ const cmdTrend = "trend"
 
 const cmdBacktest = "backtest"
 
+const cmdDemo = "demo"
+
 const cmdRisk = "risk"
 
 var readVerbs = map[string]readHandler{
@@ -198,10 +201,12 @@ var readVerbs = map[string]readHandler{
 }
 
 // repoFreeVerbs run without a resolvable repository root: doctor exists to
-// report why the probe cannot answer (a missing git is a warning row), and
-// skill only writes the embedded payload into agent directories. They keep a
-// cwd-relative posture instead of refusing not-a-repo.
-var repoFreeVerbs = map[string]bool{verbDoctor: true, verbSkill: true}
+// report why the probe cannot answer (a missing git is a warning row), skill
+// only writes the embedded payload into agent directories, and demo reads a
+// public pull request by URL with no checkout at all (its local form refuses
+// not-a-repo itself, naming both invocation shapes). They keep a cwd-relative
+// posture instead of refusing not-a-repo.
+var repoFreeVerbs = map[string]bool{verbDoctor: true, verbSkill: true, cmdDemo: true}
 
 // shutdownSignalContext is the root context of every long-running entry point:
 // SIGINT and SIGTERM cancel it (GO-CLI-05). SIGKILL cannot be caught, so
@@ -353,6 +358,10 @@ func dispatchLocal(
 		return backtestverb.Run(ctx, r, rest, backtestverb.Request{
 			Env: env, Root: root, RepoRoot: repoRoot,
 		}), true
+	case cmdDemo:
+		// demo owns its own positionals (an optional public PR URL), so it
+		// reads neither the repo nor the pr split above.
+		return demo.Run(ctx, r, rest, demo.Request{Env: env, Root: root}), true
 	case verbSkill:
 		return runSkill(ctx, r, rest, env, root), true
 	default:
@@ -380,10 +389,7 @@ func splitCommand(args []string) (cmd, repo, pr string, rest []string) {
 		return "", "", "", args
 	}
 	cmd, args = args[0], args[1:]
-	if htmlInvocation(cmd, args) {
-		return cmd, "", "", args
-	}
-	if bareVerbs[cmd] {
+	if noPositionalPair(cmd, args) {
 		return cmd, "", "", args
 	}
 	if repoOnlyVerbs[cmd] {
@@ -392,11 +398,15 @@ func splitCommand(args []string) (cmd, repo, pr string, rest []string) {
 		}
 		return cmd, repo, "", rest
 	}
-	if cmd == cmdBacktest {
-		return cmd, "", "", args
-	}
 	repo, pr, rest = splitPositionals(args)
 	return cmd, repo, pr, rest
+}
+
+// noPositionalPair reports the invocations whose arguments are never a repo/pr
+// pair: the HTML surface, the bare verbs, the verbs with one optional
+// positional, and the local backtest miner.
+func noPositionalPair(cmd string, args []string) bool {
+	return htmlInvocation(cmd, args) || bareVerbs[cmd] || optionals[cmd] || cmd == cmdBacktest
 }
 
 func splitPositionals(args []string) (repo, pr string, rest []string) {

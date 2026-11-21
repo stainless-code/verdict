@@ -142,6 +142,11 @@ func (st *state) backend(
 	if f.Provider != providerGitHub {
 		return runProvider(ctx, ctx2, req, f, budget)
 	}
+	if f.PublicRead {
+		// A public read has no gh and no checkout, but every write, gate, and
+		// envelope after the reads is the shared provider tail.
+		return runProvider(ctx, ctx2, req, f, budget)
+	}
 	return runGitHub(ctx, ctx2, req, f, budget)
 }
 
@@ -454,6 +459,16 @@ func (s *session) ghFetch(ctx context.Context, args ...string) (core.Result, err
 func (s *session) curlFetch(ctx context.Context, auth curlauth.Credential, flags ...string) (core.Result, error) {
 	argv, stdin := auth.StdinArgv(flags...)
 	return s.fetchWithRetry(ctx, binCurl, argv, stdin)
+}
+
+// curlPublic runs curl with no credential document at all: the anonymous
+// transport a public host read uses, sharing the same bounded retry so a
+// rate-limited page behaves like any other transient failure. --disable leads
+// the argv so the operator's curlrc can never add a header (an Authorization
+// one would turn an anonymous read into a credentialed one).
+func (s *session) curlPublic(ctx context.Context, flags ...string) (core.Result, error) {
+	argv := append([]string{flagCurlDisable}, flags...)
+	return s.fetchWithRetry(ctx, binCurl, argv, "")
 }
 
 // fetchWithRetry runs one tool with the shared bounded transient retry:

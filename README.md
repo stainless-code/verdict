@@ -64,7 +64,22 @@ irm https://stainless-code.com/verdict/install.ps1 | iex
 
 Check it with `verdict --version`.
 
-### 2. Add the skill
+### 2. Try it on a public pull request (no setup)
+
+```bash
+verdict demo https://github.com/owner/repo/pull/123
+```
+
+One review, zero configuration: `demo` reads the pull request over the public
+API when `gh` is not signed in, launches the first coding-agent CLI it finds on
+`PATH` with a single finder, records the review, and prints it with the change
+topology. Every artifact lives in one throwaway temp directory, so nothing is
+written in your repository, and posting is structurally out of reach. Inside a
+git repository the same command with no argument reviews your own uncommitted
+changes. `--agent <name>` picks the agent, `--keep` keeps the bundle, and
+`--json` prints one envelope.
+
+### 3. Add the skill
 
 The installed skill is a small Bootstrap skill: it names when to use Verdict and how to reach the binary. The binary serves the full Procedure through `verdict skill`, so the instructions always match the version that checks your work.
 
@@ -75,7 +90,7 @@ verdict skill install --detect
 `--detect` installs into every agent whose skills directory already exists and
 is non-empty. To target one agent, run `verdict skill install --agent claude`. The agent names are in `verdict skill --help`. The shim resolves `VERDICT_BIN`, then the skill's own `bin/verdict`, then `verdict` on `PATH`; it never fetches during a review. You can also use the registry: `npx skills add stainless-code/verdict`. Use one route per machine, or the skill loads twice. The registry route installs only the skill, so install the binary first: `install.sh` is not shipped in the npm tarball. After `verdict upgrade`, re-run the install to refresh the copy.
 
-### 3. Review a PR
+### 4. Review a PR
 
 You need [`gh`](https://cli.github.com) signed in with `repo` scope, and `git`. Run `verdict doctor` to check.
 

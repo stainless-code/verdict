@@ -37,6 +37,10 @@ const (
 	// CodeUnavailable: no or invalid snapshot, or the base object is not
 	// reachable locally.
 	CodeUnavailable = "controls-unavailable"
+
+	// CodeCanceled names an interrupted controls read: a stopped context is the
+	// operator's cancel, never an absent or unreadable repository layer.
+	CodeCanceled = "canceled"
 	// CodeStale: the snapshot base or a used-file hash does not match.
 	CodeStale = "controls-stale"
 	// CodeTooLarge: a control file exceeds its cap.
@@ -114,6 +118,10 @@ type Request struct {
 	Env map[string]string
 	// AllowHead reads the worktree instead of the base commit.
 	AllowHead bool
+	// Optional reads an absent repository layer as no controls at all: the run
+	// has no checkout to read (verdict demo's URL form), so a base git cannot
+	// supply is not a refusal. Adapter-injected; no CLI flag reaches it.
+	Optional bool
 }
 
 // Snapshot is one resolved control set plus its on-disk location and the
@@ -137,7 +145,7 @@ func Resolve(ctx context.Context, cmd core.Commander, req *Request) (*Snapshot, 
 		snap.File.Policy, snap.File.SHA = PolicyHead, ""
 		contents, ref = readWorktree(req.Root)
 	} else {
-		contents, ref = readBase(ctx, cmd, req.Repo, req.Root, req.BaseSHA)
+		contents, ref = readBase(ctx, cmd, req.Repo, req.Root, req.BaseSHA, req.Optional)
 	}
 	if ref == nil {
 		snap.File.StrictInput = strictInput(req.Env)
