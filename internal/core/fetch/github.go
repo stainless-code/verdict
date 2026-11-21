@@ -329,6 +329,7 @@ func fetchPrepare(ctx2 *fetchRunCtx, req *Request, f *Flags) (*budgetState, stri
 	}
 	ctx2.runCfg = rc
 	rc.root = req.RepoRootPath()
+	rc.optional = f.NoRepoLayer
 	for _, warn := range rc.envWarns {
 		ctx2.runner.Warn(warn)
 	}

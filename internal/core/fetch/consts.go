@@ -77,8 +77,13 @@ const (
 	flagQuery          = "--query"
 	flagCached         = "--cached"
 	flagChunk          = "--chunk"
+	flagCurlDisable    = "--disable"
 	flagCurlFail       = "-sf"
 	flagCurlFollowFail = "-sfL"
+	// flagCurlPublicFail is the anonymous read's flag set: -S keeps curl's own
+	// error line on stderr, which is the only text a 403, 404, or 429 leaves
+	// behind (a silent -s turns every one of them into an empty failure).
+	flagCurlPublicFail = "-sSfL"
 	flagDetach         = "--detach"
 	flagForce          = "--force"
 	flagJSON           = "--json"
@@ -177,6 +182,28 @@ const (
 	spaceSep       = " "
 	schemaV1       = "1"
 	diffSuffix     = ".diff"
+)
+
+// Public GitHub reads (verdict demo's URL form): the anonymous REST root, the
+// diff media type, the list page size, the files sub-resource and its receipt,
+// the anonymous hourly request budget, and the one warning the token-only
+// thread read emits.
+const (
+	publicAPIHost        = "https://api.github.com/"
+	publicDiffAccept     = "Accept:application/vnd.github.v3.diff"
+	publicFilesPath      = "/files"
+	publicReviewsPath    = "/reviews"
+	publicCommentsPath   = "/comments"
+	publicFilesSource    = "api"
+	publicFilesourceFile = "/filesource.json"
+	msgPublicThreads     = "thread resolution needs 'gh auth login'; this public bundle records none"
+)
+
+const (
+	// publicPerPage is the list page size the anonymous API is asked for.
+	publicPerPage = 100
+	// publicRateLimit is the anonymous hourly request budget per IP.
+	publicRateLimit = 60
 )
 
 // Issue sources in the context set: the count cap on auto-discovered issues,

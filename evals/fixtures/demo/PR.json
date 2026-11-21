@@ -1,0 +1,15 @@
+{
+  "number": 7,
+  "title": "Retry the upload",
+  "body": "Adds one retry to the upload path.",
+  "state": "open",
+  "draft": false,
+  "html_url": "https://github.com/acme/app/pull/7",
+  "user": { "login": "mate" },
+  "labels": [{ "name": "bug" }],
+  "base": { "ref": "main", "sha": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" },
+  "head": {
+    "ref": "feat/retry",
+    "sha": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+}

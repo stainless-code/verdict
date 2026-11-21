@@ -124,6 +124,106 @@ outside reviewed hunks`); drops never fail the run. If the snapshot is
 missing, the run rebuilds it from `full.diff` with a best-effort warning —
 re-fetch to pin it.
 
+## Demo (zero-config first review)
+
+`verdict demo [<public-github-pr-url>] [--agent <name>] [--keep] [--json]`
+reviews one change with no setup and no risk: it writes nothing in your
+repository and it cannot post.
+
+```bash
+verdict demo https://github.com/owner/repo/pull/123   # any public PR
+verdict demo                                          # your own working tree, inside a git repo
+```
+
+The URL form accepts `https://github.com/<owner>/<repo>/pull/<n>` (a trailing
+slash, a `/files`, `/commits`, or `/checks` sub-page, and a query or fragment
+are fine). Anything else refuses `bad-target` with the wanted shape named: a
+bare `owner/repo`, a bare number, a non-HTTPS scheme, another host, and
+`/issues/<n>` are never repaired into a pull request. Neither path segment is
+taken on trust: an owner or repository carrying a `.`/`..` entry, a leading
+dash, a percent escape (any; `%2F`, `%2E`, and `%20` included), a space, or anything outside
+`A-Za-z0-9._-` refuses `bad-target`, so no segment is interpolated into a
+provider API path.
+
+The no-URL form reads the tracked working tree when it differs from `HEAD` and
+`HEAD~1..HEAD` when it is clean, and refuses `bad-range` on a clean root commit;
+outside a git repository it refuses `not-a-repo` naming both forms. Untracked
+files are not part of either read: a tree holding only untracked files takes the
+commit range and warns that the untracked files were left out, so stage them
+(`git add`) and re-run to include them.
+
+The read picks its transport by asking
+`gh auth status --hostname github.com --active --no-refresh`: signed in, `demo`
+reads with `gh`; no active account for the host (or `gh` absent), it reads the
+public REST API anonymously with `curl` and says so once. `--active` asks about
+the account `gh` would actually use, so a stale second login cannot read as
+signed in, and `--no-refresh` keeps the probe from refreshing stored
+credentials. A `gh` older than either flag is asked again one flag lighter
+(`--active`, then `--no-refresh`, then the bare `--hostname` probe).
+Every anonymous `curl` call leads with `--disable`, so a `~/.curlrc` can never
+add a header, and with `-sSfL` so curl's own error line survives on stderr — the
+only text a real `403`, `404`, or `429` leaves behind. Anonymous reads are capped by GitHub at 60 requests/hour per IP,
+and that is quoted only when the failure is the cap (`403`, `429`, or the host's
+rate-limit note): a `404` names a missing or private pull request instead of
+sending you off to wait for a quota that will not reset. Thread resolution is
+the one GitHub read that needs a token, so a public bundle records an empty,
+`truncated: true` thread feed with a warning. A review or comment list longer
+than the paging ceiling is recorded with its warning, never silently short.
+
+The repository layer is absent by construction in the URL form: a demo has no
+checkout it may trust, so the recorded controls snapshot is `policy: base` with
+an empty inventory instead of the head's controls. Normal `fetch` is unchanged
+and still refuses `controls-unavailable` when the base commit is not readable.
+
+The agent is the first runnable coding-agent CLI on `PATH` — a deterministic
+preference order over the shipped table, skipping rows known to soft-deny file
+writes and rows whose binary name another tool shares. `--agent <name>` overrides
+it; an empty `--agent=` (or `--agent ""`) is a usage error at exit 2 rather than
+a silent fall back to detection. With nothing installed the refusal is two lines: what is missing, and the
+shortlist with its install command. Detection is a presence probe, not an
+authentication check, so an installed-but-unauthenticated agent fails later as
+its own typed refusal with its stderr recorded. The launch is one finder
+(`--finders 1` equivalent), the round count defaults to two so one repair round
+still applies, and the watchdog budget is 300 s.
+
+The printed next steps name the full equivalent the operator would type —
+`fetch` (or `fetch-local`), `run`, then `record` (with `--dry-run` for a URL
+review) — and a URL demo that read the public API says that the `fetch` step
+needs `gh auth login` first, because `fetch` is the authenticated transport.
+
+Record renders the body `post` would publish, byte for byte, including the
+footer and — over the diagram size gate — the computed topology. Below that gate
+the demo prints the topology block itself, so a two-file change still shows it;
+`publish.overview: false` or `--no-overview` turns the block off in both places.
+The URL form records a dry run, because `record.json` is the receipt of a
+publication the demo never performs; the local form records for real.
+
+Output: the review is on stdout, every progress line and warning is on stderr.
+`--json` prints exactly one envelope (`schema_version: "1"`, `verb: "demo"`) with
+`data.mode` (`remote`|`local`), `data.fetched_via` (`gh`|`public-api`|`git`),
+`data.review_body`, `data.topology`, `data.findings`, `data.approval`,
+`data.bundle_dir`, `data.kept`, and `data.duration_ms`. Exit codes are the
+shipped ones: `0` success, `1` typed refusal (including the agent's own
+non-zero exit), `2` usage, `3` canceled.
+
+Every artifact lands in one `verdict-demo-*` directory under `TMPDIR`, resolved
+through symlinks before anything is written and removed on exit — on success, on
+a refusal, and on a cancel. A temp parent that is the checkout, or sits inside
+it, refuses `fetch-failed` before anything is created, and the created directory
+is checked again after resolution, so a symlinked target cannot slip it inside
+the tree either. Both forms carry the guard: a URL review run from inside a
+clone protects that clone just as the local form protects the tree it reviews,
+so `TMPDIR` can never turn a read-only demo into a write in the caller's
+repository. `--keep` keeps the
+directory and names the path in a warning (and in `data.bundle_dir`); a cleanup
+failure warns — on a refusal too, where no response is returned — and never
+changes the exit code.
+
+`curl` is the anonymous transport and ships on macOS, Linux, and Windows 10
+1803+. A missing `curl` (or `git` for the local form) prints the frozen
+`missing: <tool>` line in human mode; `--json` renders the same failure through
+the envelope, so a script never loses it.
+
 ## Findings store + triage authority
 
 `post` writes `.verdict/state/N/findings.json`: one record per finding with a stable
@@ -1451,7 +1551,7 @@ webhook, listener, or MCP subscription. Killing a wait leaves no background work
 
 ## Machine surface
 
-`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`ingest`/`fix`/`handoff`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`risk`/`index`/`journal`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
+`demo`/`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`ingest`/`fix`/`handoff`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`risk`/`index`/`journal`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. Bounded CLI `data` envelopes (`fetch`, `report`, `next`, `show`,

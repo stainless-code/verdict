@@ -87,6 +87,29 @@ func TestSplitCommandRest(t *testing.T) {
 	checkSplit(t, nil, "", "", "", 0)
 }
 
+// TestSplitCommandOptionalVerb pins the one verb with an optional positional:
+// `demo [<url>]` carries its URL as a rest argument, never as the repo/pr pair,
+// so an absent URL stays distinguishable from a present one.
+func TestSplitCommandOptionalVerb(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		args []string
+		rest []string
+	}{
+		{
+			args: []string{"demo", "https://github.com/acme/app/pull/7", "--json"},
+			rest: []string{"https://github.com/acme/app/pull/7", "--json"},
+		},
+		{args: []string{"demo"}, rest: []string{}},
+	} {
+		cmd, repo, pr, rest := splitCommand(tc.args)
+		if cmd != "demo" || repo != "" || pr != "" || !slices.Equal(rest, tc.rest) {
+			t.Errorf("split %v = %q %q %q %q, want demo with rest %q",
+				tc.args, cmd, repo, pr, rest, tc.rest)
+		}
+	}
+}
+
 func checkSplit(t *testing.T, args []string, wantCmd, wantRepo, wantPR string, wantRest int) {
 	t.Helper()
 	cmd, repo, pr, rest := splitCommand(args)

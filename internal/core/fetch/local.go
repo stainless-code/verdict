@@ -83,7 +83,7 @@ func localPolicy(
 	ctx context.Context, ctx2 *fetchRunCtx, req *LocalRequest,
 	f *LocalFlags, r *session, mode *localMode,
 ) error {
-	controlsRoot := req.RepoRootPath()
+	controlsRoot := localGitRoot(req, f)
 	if r.iso != nil {
 		controlsRoot = r.iso.dir
 	}
@@ -95,7 +95,7 @@ func localPolicy(
 		return ref
 	}
 	ctx2.runCfg = rc
-	rc.root = req.RepoRootPath()
+	rc.root = localGitRoot(req, f)
 	for _, warn := range rc.envWarns {
 		r.Warn(warn)
 	}
@@ -120,6 +120,18 @@ func localResolve(
 	}
 	ctx2.runner.privacy = rc.resolved.Privacy
 	return filterExcluded(ctx2)
+}
+
+// localGitRoot is the checkout a local run's base-commit reads run in: the
+// reviewed repository root, or the caller-named checkout when the bundle is
+// written elsewhere (verdict demo keeps every artifact in a disposable temp
+// dir while the base controls still come from the operator's tree). Bundle
+// paths never use it.
+func localGitRoot(req *LocalRequest, f *LocalFlags) string {
+	if f.RepoLayerRoot != "" {
+		return f.RepoLayerRoot
+	}
+	return req.RepoRootPath()
 }
 
 // localSlugGate owns the fetch-local name gate: empty, numeric, and

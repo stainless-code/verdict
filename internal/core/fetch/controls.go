@@ -18,7 +18,7 @@ func resolveControls(
 	r := ctx2.runner
 	snap, ref := controls.Resolve(ctx, r.commander, &controls.Request{
 		BundleDir: ctx2.dir, Repo: repo, BaseSHA: baseSHA, AllowHead: allowHead,
-		Env: ctx2.env, Root: root,
+		Env: ctx2.env, Root: root, Optional: optionalRepoLayer(ctx2.runCfg),
 	})
 	if ref != nil {
 		return ref //nolint:wrapcheck // the typed refusal passes through unchanged
@@ -29,6 +29,11 @@ func resolveControls(
 	}
 	return nil
 }
+
+// optionalRepoLayer reports whether this run's repository layer is absent by
+// construction: verdict demo's URL form sets it, every argv-reachable run
+// leaves it false, so the strict read is what an operator and a PR both get.
+func optionalRepoLayer(rc *runConfig) bool { return rc != nil && rc.optional }
 
 // readControl reads one control from the resolved snapshot. A nil snapshot
 // reads absent (fail closed); no fetch reader ever touches the worktree.

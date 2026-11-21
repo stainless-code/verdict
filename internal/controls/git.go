@@ -29,8 +29,8 @@ var fullSHA = regexp.MustCompile(`^[0-9a-f]{40}([0-9a-f]{24})?$`)
 // (not a repository, or the object is missing) and repo names a GitHub
 // repository, the same base commit is read through the contents API instead;
 // without a repo the read refuses.
-func readBase(ctx context.Context, cmd core.Commander, repo, root, base string) (map[string][]byte, *core.RefusalError) {
-	return readPaths(ctx, cmd, repo, root, base, Inventory, true)
+func readBase(ctx context.Context, cmd core.Commander, repo, root, base string, optional bool) (map[string][]byte, *core.RefusalError) {
+	return readPaths(ctx, cmd, repo, root, base, Inventory, true, optional)
 }
 
 // readPaths reads the fixed inventory plus, when trees is set, every regular
@@ -38,7 +38,7 @@ func readBase(ctx context.Context, cmd core.Commander, repo, root, base string) 
 // recursion so a directory squatting a control path stays visible and refuses
 // as a non-regular control; only the pack tree recurses.
 func readPaths(
-	ctx context.Context, cmd core.Commander, repo, root, base string, paths []string, trees bool,
+	ctx context.Context, cmd core.Commander, repo, root, base string, paths []string, trees, optional bool,
 ) (map[string][]byte, *core.RefusalError) {
 	if !fullSHA.MatchString(base) {
 		return nil, refuse(CodeUnavailable, "the bundle does not name a full PR base commit")
@@ -47,7 +47,7 @@ func readPaths(
 	if trees {
 		read = append(read, PacksPrefix)
 	}
-	blobs := &blobReader{cmd: cmd, root: root, base: base, contents: map[string][]byte{}}
+	blobs := &blobReader{cmd: cmd, root: root, base: base, contents: map[string][]byte{}, optional: optional}
 	served, ref := blobs.readFixed(ctx, repo, read, paths)
 	if ref != nil {
 		return nil, ref
@@ -80,7 +80,7 @@ func lsTree(ctx context.Context, cmd core.Commander, root, base string, recurse 
 // exactly like the inventory read above; configuration inputs reuse it so
 // the trust posture stays in one place.
 func ReadPaths(ctx context.Context, cmd core.Commander, repo, root, base string, paths []string) (map[string][]byte, *core.RefusalError) {
-	return readPaths(ctx, cmd, repo, root, base, paths, false)
+	return readPaths(ctx, cmd, repo, root, base, paths, false, false)
 }
 
 // blobReader reads every regular blob one ls-tree listing names, with the
@@ -91,25 +91,53 @@ type blobReader struct {
 	root     string
 	base     string
 	total    int
+	// optional reports a run with no checkout: a failed listing reads absent
+	// instead of refusing or reaching for the contents API.
+	optional bool
 }
 
 // readFixed reads the fixed control paths, falling back to the contents API
 // when git cannot supply the base and repo names a GitHub repository. served
 // reports that the API answered for the whole tree, pack walk included.
 func (b *blobReader) readFixed(ctx context.Context, repo string, read, paths []string) (bool, *core.RefusalError) {
-	tree, err := lsTree(ctx, b.cmd, b.root, b.base, false, paths...)
-	if err != nil && repo != "" {
-		contents, ref := readContents(ctx, b.cmd, repo, b.base, read)
-		if ref != nil {
-			return false, ref
-		}
-		b.contents = contents
+	if ref := canceledControls(ctx); ref != nil {
+		return false, ref
+	}
+	if b.optional {
+		// No checkout behind this run: the repository layer is absent by
+		// construction, so the read answers "nothing" without listing anything.
+		// A successful listing would be a checkout that merely happens to hold
+		// the base commit (verdict demo's URL form run inside a clone), and its
+		// controls are not this pull request's. served=true also stops the pack
+		// walk from asking git again.
 		return true, nil
 	}
-	if err != nil {
+	tree, err := lsTree(ctx, b.cmd, b.root, b.base, false, paths...)
+	if err == nil {
+		return false, b.read(ctx, tree)
+	}
+	if ref := canceledControls(ctx); ref != nil {
+		return false, ref
+	}
+	if repo == "" {
 		return false, b.unreadable(err)
 	}
-	return false, b.read(ctx, tree)
+	contents, ref := readContents(ctx, b.cmd, repo, b.base, read)
+	if ref != nil {
+		return false, ref
+	}
+	b.contents = contents
+	return true, nil
+}
+
+// canceledControls maps a stopped listing to the cancel refusal: blaming the
+// checkout for an interrupted read would report the controls as unavailable
+// when nothing was actually unreadable.
+func canceledControls(ctx context.Context) *core.RefusalError {
+	if ctx.Err() == nil {
+		return nil
+	}
+	return refuse(CodeCanceled, "canceled before the controls read completed")
 }
 
 // readPacks reads the recursive pack tree listing.

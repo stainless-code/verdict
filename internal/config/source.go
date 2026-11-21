@@ -29,6 +29,29 @@ type BaseConfig struct {
 // Present but malformed input parses (and refuses) downstream; this
 // adapter never creates shared configuration as a side effect of a read.
 func ReadBase(ctx context.Context, cmd core.Commander, repo, root, base string) (*BaseConfig, *core.RefusalError) {
+	return readBase(ctx, cmd, repo, root, base, false)
+}
+
+// ReadBaseOptional reads the typed configuration for a run whose repository
+// layer is absent by construction (verdict demo's URL form: no checkout to
+// read at the PR base). A base git cannot supply reads as no repository
+// policy, exactly like an absent `.verdict/config.json`, and the contents API
+// is never reached: the run has no host credential it may spend on controls.
+func ReadBaseOptional(ctx context.Context, cmd core.Commander, repo, root, base string) (*BaseConfig, *core.RefusalError) {
+	return readBase(ctx, cmd, repo, root, base, true)
+}
+
+// readBase reads one base configuration through the shipped D1 seam, with the
+// optional posture selecting the repository-layer-absent read.
+//
+// The optional posture answers "no repository policy" without touching git at
+// all: root names wherever the run was anchored, and when verdict demo's URL
+// form runs inside a clone that happens to hold the PR's base commit, that
+// checkout's `.verdict/config.json` is not this pull request's policy.
+func readBase(ctx context.Context, cmd core.Commander, repo, root, base string, optional bool) (*BaseConfig, *core.RefusalError) {
+	if optional {
+		return &BaseConfig{}, nil
+	}
 	contents, ref := controls.ReadPaths(ctx, cmd, repo, root, base, []string{ConfigPath})
 	if ref != nil {
 		return nil, ref

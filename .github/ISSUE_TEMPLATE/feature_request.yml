@@ -8,6 +8,7 @@ body:
       label: Surface
       description: The verb or surface this touches (`mcp` is the hidden stdio transport)
       options:
+        - demo
         - fetch
         - post
         - triage

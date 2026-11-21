@@ -123,6 +123,9 @@ func writeProviderBundle(ctx2 *fetchRunCtx) error {
 func fetchProviderBundle(
 	ctx context.Context, ctx2 *fetchRunCtx, req *Request, f *Flags,
 ) (incBase string, incremental bool, err error) {
+	if f.PublicRead {
+		return nullStr, false, fetchGitHubPublic(ctx, ctx2, req)
+	}
 	switch f.Provider {
 	case providerGitLab:
 		base, gerr := fetchGitLab(ctx, ctx2, req, f)
@@ -1980,6 +1983,7 @@ func elementsOrEmpty(v any) []any {
 }
 
 var providerStates = map[string]map[string]string{
+	providerGitHub:    {stateOpen: stateOpen, stateClosed: stateClosed, stateMerged: stateMerged},
 	providerGitLab:    {"opened": stateOpen, stateClosed: stateClosed, stateMerged: stateMerged},
 	providerGitCafe:   {stateOpen: stateOpen, stateClosed: stateClosed, stateMerged: stateMerged},
 	providerBitbucket: {"OPEN": stateOpen, "MERGED": stateMerged, "DECLINED": stateClosed, "SUPERSEDED": stateClosed},

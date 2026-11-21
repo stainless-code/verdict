@@ -36,6 +36,10 @@ type runConfig struct {
 	envWarns   []string
 	envPartial config.Partial
 	trusted    bool
+	// optional is the run's repository-layer-absent posture (verdict demo's
+	// URL form): the base policy read answers "no repository policy" instead
+	// of refusing when git cannot supply the base.
+	optional bool
 }
 
 // resolvePhaseOne parses the invocation layers that need no base
@@ -103,7 +107,7 @@ func (rc *runConfig) resolvePhaseTwo(
 	chunkFlag bool, files []config.FileInput, settingsPath string,
 ) *core.RefusalError {
 	rc.baseSHA = baseSHA
-	base, ref := config.ReadBase(ctx, cmd, repo, rc.root, baseSHA)
+	base, ref := rc.readBase(ctx, cmd, repo, baseSHA)
 	if ref != nil {
 		return ref
 	}
@@ -165,6 +169,16 @@ func (rc *runConfig) resolveLocalPhaseTwo(
 	return nil
 }
 
+// readBase reads the trusted-base configuration with this run's posture: the
+// shipped strict seam, or the repository-layer-absent read when the run has no
+// checkout it may trust (verdict demo's URL form).
+func (rc *runConfig) readBase(ctx context.Context, cmd Commander, repo, baseSHA string) (*config.BaseConfig, *core.RefusalError) {
+	if rc.optional {
+		return config.ReadBaseOptional(ctx, cmd, repo, rc.root, baseSHA)
+	}
+	return config.ReadBase(ctx, cmd, repo, rc.root, baseSHA)
+}
+
 // readBasePolicy reads and parses the trusted base policy when the run has a
 // base commit: a present document becomes the raw capture the run is trusted
 // with, and head edits never move it.
@@ -172,7 +186,7 @@ func (rc *runConfig) readBasePolicy(ctx context.Context, cmd Commander, baseSHA 
 	if baseSHA == "" {
 		return nil, nil
 	}
-	base, ref := config.ReadBase(ctx, cmd, "", rc.root, baseSHA)
+	base, ref := rc.readBase(ctx, cmd, "", baseSHA)
 	if ref != nil {
 		return nil, ref
 	}

@@ -25,6 +25,15 @@ type Flags struct {
 	HeadControls      bool
 	HasBase           bool `json:"-"`
 	HasProvider       bool `json:"-"`
+	// PublicRead reads a public GitHub pull request over the anonymous REST
+	// API (curl) instead of gh. Adapter-injected: no CLI flag, no MCP field,
+	// no schema; verdict demo is its only caller.
+	PublicRead bool `json:"-"`
+	// NoRepoLayer records that the run has no checkout it may trust, so the
+	// repository control and configuration layers are absent by construction.
+	// Adapter-injected like PublicRead; the snapshot it writes is honest about
+	// it (`policy: base`, empty inventory).
+	NoRepoLayer bool `json:"-"`
 }
 
 // Request is the fetch service invocation: the read runtime and
@@ -67,6 +76,11 @@ type LocalFlags struct {
 	RangeSpec string
 	BaseRef   string
 	StashN    string
+	// RepoLayerRoot is the checkout the run's base-commit reads run in when the
+	// bundle is written somewhere else (verdict demo keeps every artifact in a
+	// disposable temp dir, but the base controls and policy still come from the
+	// operator's checkout). Empty reads RepoRoot, the shipped posture.
+	RepoLayerRoot string `json:"-"`
 	// Index is the operator's explicit index hand-off, exactly as fetch takes
 	// it; empty means no impact section is written.
 	Index             string
