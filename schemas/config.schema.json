@@ -37,10 +37,20 @@
   "additionalProperties": false,
   "$defs": {
     "defaults": {
-      "description": "One defaults object: the pinned model roster, the estimate guard threshold, the diff cap, the chunk opt-in, the knowledge-base policy, the advisory effort tier, and the display and payload severity floors.",
+      "description": "One defaults object: the pinned model roster, the estimate guard threshold, the diff cap, the chunk opt-in, the knowledge-base policy, the advisory effort tier, the finder count, the run review depth, the extra high-risk path globs, and the display and payload severity floors.",
       "type": "object",
       "properties": {
         "finders": { "type": "integer", "minimum": 1, "maximum": 2 },
+        "budget": {
+          "description": "The default review depth for verdict run: auto classifies each diff, light, standard and deep pin one. Distinct from budget_usd, which is a spend ceiling.",
+          "enum": ["auto", "light", "standard", "deep"]
+        },
+        "sensitive_paths": {
+          "description": "High-risk path globs that extend the built-in auth, security, migrations, billing, and CI-workflow list; the built-ins can never be removed, so the only direction a repository can move review depth is up.",
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
         "panel": {
           "type": "array",
           "items": { "type": "string" },

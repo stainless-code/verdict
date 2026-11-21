@@ -27,6 +27,20 @@ func defaultsValues(d *ResolvedDefaults) []core.ConfigValue {
 			Layer: get(keyKBMaxChars).Layer, Source: get(keyKBMaxChars).Source,
 		})
 	}
+	// The review-depth defaults appear only when a layer set them, keeping the
+	// explain surface of a configuration that names neither unchanged.
+	if values.Budget != "" {
+		out = append(out, core.ConfigValue{
+			Key: keyBudget, Value: values.Budget,
+			Layer: get(keyBudget).Layer, Source: get(keyBudget).Source,
+		})
+	}
+	if values.SensitivePaths != nil {
+		out = append(out, core.ConfigValue{
+			Key: keySensitivePaths, Value: values.SensitivePaths,
+			Layer: get(keySensitivePaths).Layer, Source: get(keySensitivePaths).Source,
+		})
+	}
 	return out
 }
 

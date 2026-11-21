@@ -408,3 +408,37 @@ func TestFindersFlagAndReentry(t *testing.T) {
 		t.Fatalf("request finders = %q", request.FindersRaw)
 	}
 }
+
+// TestBudgetFlagAndReentry pins the --budget surface: the flag reaches the
+// service, the re-entry line carries it beside --finders, and an unknown depth
+// is a usage refusal (exit 2) before any bundle is read.
+func TestBudgetFlagAndReentry(t *testing.T) {
+	r, _, _ := testRunner()
+	parsed, code, done := parseFlags(r, []string{"--budget", "auto", "--finders", "2", "--agent", "claude"})
+	if done || code != 0 || parsed.budget != "auto" || parsed.finders != "2" {
+		t.Fatalf("parsed=%+v code=%d done=%v", parsed, code, done)
+	}
+	want := "verdict run acme/app 42 --finders 2 --budget auto --agent claude"
+	if got := rentry(Request{Repo: "acme/app", Pr: "42"}, &parsed, false); got != want {
+		t.Fatalf("re-entry = %s; want %s", got, want)
+	}
+	request := runRequest(r, Request{Repo: "acme/app", Pr: "42"}, &parsed)
+	if request.BudgetRaw != "auto" {
+		t.Fatalf("request budget = %q", request.BudgetRaw)
+	}
+
+	for _, raw := range []string{"fast", "cheap", "Auto", ""} {
+		t.Run(raw, func(t *testing.T) { assertBudgetUsageRefusal(t, raw) })
+	}
+}
+
+// assertBudgetUsageRefusal grades one rejected depth: the parse ends the
+// invocation with the usage exit code instead of reaching the service.
+func assertBudgetUsageRefusal(t *testing.T, raw string) {
+	t.Helper()
+	runner, _, _ := testRunner()
+	_, code, done := parseFlags(runner, []string{"--budget", raw})
+	if !done || code != cli.ExitUsage {
+		t.Fatalf("budget %q: done=%v code=%d", raw, done, code)
+	}
+}

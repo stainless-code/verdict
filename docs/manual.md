@@ -989,6 +989,7 @@ the behavior stays off until a layer above turns it on.
 | report                | defaults.display_min_severity  | unset            |
 | run                   | --rounds                       | 2                |
 | run                   | --timeout                      | 300              |
+| run                   | defaults.budget                | unset            |
 | run                   | defaults.finders               | 2                |
 
 <!-- defaults-at-a-glance:end -->
@@ -1003,7 +1004,8 @@ posture and never gate alone.
 `.verdict/config.json` is the only repository configuration file:
 one strict document (schema `schemas/config.schema.json`) for
 defaults (`panel`, `budget_usd`, `max_bytes`, `chunk`, `kb_policy`, `effort`,
-the two severity floors, and `spec_coverage_min`), the local `index` caps (`files`, `file_bytes`,
+`finders`, `budget` (review depth), `sensitive_paths`, the two severity floors,
+and `spec_coverage_min`), the local `index` caps (`files`, `file_bytes`,
 `tree_bytes`, `shards_bytes`, `keep_trees`, `refs_per_file`), blocking
 clauses, path scopes, named profiles, and the bind requirement.
 `defaults.spec_coverage_min` is an integer percent from 1 to 100 (built-in
@@ -2365,6 +2367,91 @@ the same bytes. With `--rounds N`, the error problems — shape and evidence
 alike — feed the next round's fix list; on the final round a shape error is the
 typed `bad-review-input` refusal and evidence that is still insufficient is
 `review-insufficient`.
+
+### Review budget (`--budget auto`)
+
+`run` can choose its own depth from the captured diff before it launches
+anything. `--budget auto` classifies the bundle; `--budget light|standard|deep`
+pins a depth outright. The classifier is a pure function of measurements the
+bundle already carries — the changed rows and their roles, the gate's file
+count, the diff's byte count, the resolved walkthrough thresholds, and the
+sensitive-path globs — so it makes no model call, reads nothing off the
+network, and resolves the same diff the same way every time.
+
+| Tier       | Launch count                        |
+| ---------- | ----------------------------------- |
+| `light`    | one finder, no cross-check          |
+| `standard` | two finders, opposite-finder checks |
+| `deep`     | two finders, opposite-finder checks |
+
+Three tier names map onto two launch shapes on purpose. A third finder is
+pinned out of reach, and a two-finder run cannot drop its cross-check without
+making every gated finding unapprovable. What `deep` buys today is that
+configuration cannot under-power it — a repository-wide `defaults.finders: 1`
+never single-finders an auth or migration diff under `--budget auto` — and that
+`launcher.json` and `data.budget` record the signal that escalated it.
+
+The rules, first match wins:
+
+| #   | Condition                                                        | Tier       | Reason                                    |
+| --- | ---------------------------------------------------------------- | ---------- | ----------------------------------------- |
+| R1  | a changed path matches a sensitive glob                          | `deep`     | `sensitive-path: <glob>`                  |
+| R2  | every row is `docs`, `test`, or `generated`, under the threshold | `light`    | `docs-or-test-only`                       |
+| R3  | every row is `docs`, `test`, or `generated`, over the threshold  | `standard` | `docs-or-test-only`, `large-docs-only: …` |
+| R4  | over the walkthrough threshold                                   | `deep`     | `walkthrough-threshold: <files>/<bytes>`  |
+| R5  | at most 3 files and 4096 bytes                                   | `light`    | `tiny-diff: <files>/<bytes>`              |
+| R6  | otherwise                                                        | `standard` | `standard-size`                           |
+
+R1 outranks the cheap rules: a one-file `docs` change inside a sensitive tree
+is still `deep`, which is the point of the glob. A rename is matched at both
+ends, so moving a file out of `auth/` still selects `deep`. R3 keeps a lockfile
+or documentation avalanche at `standard` — size alone, with no source row
+changed, never buys the escalated tier. A bundle whose diff measured no bytes
+reads `standard`, never `light`, even when its file rows exist: missing
+evidence never drops risk. The three-file / 4096-byte tiny bound is a package
+constant, deliberately not configurable, so a second knob set for "small"
+cannot drift from the gate's.
+
+Precedence, highest first:
+
+| Rank | Source                      | Effect                                                                       |
+| ---- | --------------------------- | ---------------------------------------------------------------------------- |
+| 1    | `--finders N`               | count = N; no classification and no `budget` unless `--budget` is also given |
+| 2    | `--budget`                  | `auto` classifies, a tier pins it                                            |
+| 3    | captured `defaults.budget`  | same resolution as rank 2, `source: config`                                  |
+| 4    | captured `defaults.finders` | count = N, today's behavior                                                  |
+| 5    | built-in                    | two finders                                                                  |
+
+`--finders N` always wins. With a depth also requested it wins the dispatch and
+the record says so: `data.budget.overridden_by: "finders"`, `finders` set to
+the count that actually launched, and `cross_check: "off"` for one finder.
+`drain` and `backtest replay` never reach the classifier, so they keep their
+one-finder launch.
+
+The default sensitive globs are `**/auth/**`, `**/security/**`,
+`**/migrations/**`, `**/billing/**`, and `.github/workflows/**`.
+`defaults.sensitive_paths` **extends** that list and can never remove an
+entry. With `--budget auto` (or `defaults.budget: auto`), a sensitive-path
+match selects `deep`, so an auth diff cannot be configured out of the deep
+pass. A pinned tier (`defaults.budget` or `--budget light|standard|deep`)
+replaces classification, so a pinned `light` runs one finder for an auth diff.
+
+`--budget` is review **depth**, not money. `budget_usd`, `REVIEW_BUDGET_USD`,
+and `bundle/budget.json` are the spend ceiling; `defaults.effort`
+(`cheap|standard|deep`) is the advisory spend tier the group estimate reads.
+Neither selects a launch shape, and no code path reads one for another.
+
+The decision is recorded, not inferred. `launcher.json` carries a `budget`
+object beside `finders` (for a captured two-finder execution, and for the
+single-finder launch record), `--json` mirrors it at `data.budget`, and a run
+that asked for no depth carries no `budget` key at all. `run.json` is untouched:
+its `inputs_sha256` seals what the fetch captured, and a run-time decision is
+not a captured input. At resolution time one human line names the tier, the
+measurements, and every reason, for example:
+
+```text
+review budget: deep (12 files, 96731 bytes) — sensitive-path: **/migrations/**, walkthrough-threshold: 8/24576
+```
 
 ### Captured two-finder executions
 

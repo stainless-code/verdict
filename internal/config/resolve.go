@@ -58,6 +58,8 @@ const (
 	keyDisplayFloor    = "display_min_severity"
 	keyPostFloor       = "post_min_severity"
 	keySpecCoverageMin = "spec_coverage_min"
+	keyBudget          = "budget"
+	keySensitivePaths  = "sensitive_paths"
 	keyKBPolicy        = "kb_policy"
 	keyKBMinJudged     = "kb_policy.min_judged"
 	keyKBMaxFPRate     = "kb_policy.max_fp_rate"
@@ -67,8 +69,11 @@ const (
 // Partial is one layer's contribution to the ordinary defaults. Each field
 // carries its own presence bit so nested objects merge per field and
 // arrays replace: a set-but-empty panel replaces, an unset one inherits.
-type Partial struct {
+type Partial struct { //nolint:govet // the field order is the order a layer authors its values
 	Finders            *int
+	Budget             *string
+	Sensitive          []string
+	SensitiveSet       bool
 	BudgetUSD          *float64
 	BudgetDisplay      string
 	MaxBytes           *int64
@@ -112,6 +117,10 @@ func partialFromDefaults(defaults *core.ConfigDefaults) Partial {
 	out.PostMinSeverity = defaults.PostMinSeverity
 	out.SpecCoverageMin = defaults.SpecCoverageMin
 	out.Finders = defaults.Finders
+	out.Budget = defaults.Budget
+	if defaults.SensitivePaths != nil {
+		out.Sensitive, out.SensitiveSet = defaults.SensitivePaths, true
+	}
 	return out
 }
 
@@ -141,6 +150,7 @@ type BuiltinDefault struct {
 
 const (
 	verbFetch      = "fetch"
+	verbRun        = "run"
 	verbFetchLocal = "fetch-local"
 	verbPost       = "post"
 	verbReport     = "report"
@@ -164,7 +174,8 @@ func BuiltinDefaults() []BuiltinDefault {
 		{Key: keyDisplayFloor, Value: builtinValue(floor.DisplayMinSeverity), Verbs: []string{verbReport}},
 		{Key: keyPostFloor, Value: builtinValue(floor.PostMinSeverity), Verbs: []string{verbPost}},
 		{Key: keySpecCoverageMin, Value: builtinValue(floor.SpecCoverageMin), Verbs: []string{verbRecord}},
-		{Key: keyFinders, Value: builtinValue(floor.Finders), Verbs: []string{"run"}},
+		{Key: keyFinders, Value: builtinValue(floor.Finders), Verbs: []string{verbRun}},
+		{Key: keyBudget, Value: builtinValue(floor.Budget), Verbs: []string{verbRun}},
 	}
 }
 
@@ -192,7 +203,7 @@ type ShadowedValue struct {
 }
 
 // EffectiveDefaults is the merged ordinary defaults for one file.
-type EffectiveDefaults struct {
+type EffectiveDefaults struct { //nolint:govet // the field order is the published property order
 	BudgetUSD          *float64 `json:"budget_usd,omitempty"`
 	BudgetDisplay      string   `json:"-"`
 	DisplayMinSeverity *string  `json:"display_min_severity,omitempty"`
@@ -205,6 +216,8 @@ type EffectiveDefaults struct {
 	KBMaxFPRate        float64  `json:"kb_max_fp_rate"`
 	SpecCoverageMin    int      `json:"spec_coverage_min"`
 	Finders            int      `json:"finders,omitempty"`
+	Budget             string   `json:"budget,omitempty"`
+	SensitivePaths     []string `json:"sensitive_paths,omitempty"`
 	Chunk              bool     `json:"chunk"`
 }
 
@@ -240,7 +253,7 @@ type layerValue struct {
 // the same field is recorded as shadowed in layer order.
 func mergePartials(layers []layerValue) ResolvedDefaults {
 	out := ResolvedDefaults{Origins: map[string]FieldOrigin{}}
-	out.Values.Panel, out.Origins["panel"], out.Shadowed = pickStrings(layers, "panel",
+	out.Values.Panel, out.Origins["panel"], out.Shadowed = pickStrings(layers, "panel", out.Shadowed,
 		func(p Partial) ([]string, bool) { return p.Panel, p.PanelSet })
 	out.Values.BudgetUSD, out.Origins[keyBudgetUSD], out.Shadowed = pickPointer(layers, keyBudgetUSD, out.Shadowed,
 		func(p Partial) (*float64, bool) { return p.BudgetUSD, p.BudgetUSD != nil })
@@ -266,6 +279,22 @@ func mergePartials(layers []layerValue) ResolvedDefaults {
 		layers, keySpecCoverageMin, out.Shadowed, func(p Partial) (int, bool) { return derefInt(p.SpecCoverageMin) })
 	out.Values.Finders, out.Origins[keyFinders], out.Shadowed = pickInt(layers, keyFinders, out.Shadowed,
 		func(p Partial) (int, bool) { return derefInt(p.Finders) })
+	// The two review-depth keys have no built-in, so a configuration that names
+	// neither resolves to nothing and records no origin either: absent means
+	// absent, and a capture written before these keys existed stays
+	// byte-identical under the same configuration.
+	budget, budgetOrigin, shadowed := pickString(layers, keyBudget, out.Shadowed,
+		func(p Partial) (string, bool) { return derefString(p.Budget) })
+	out.Values.Budget, out.Shadowed = budget, shadowed
+	if budget != "" {
+		out.Origins[keyBudget] = budgetOrigin
+	}
+	sensitive, sensitiveOrigin, shadowed := pickStrings(layers, keySensitivePaths, out.Shadowed,
+		func(p Partial) ([]string, bool) { return p.Sensitive, p.SensitiveSet })
+	out.Values.SensitivePaths, out.Shadowed = sensitive, shadowed
+	if sensitive != nil {
+		out.Origins[keySensitivePaths] = sensitiveOrigin
+	}
 	return out
 }
 
@@ -336,8 +365,9 @@ type ptrField[T any] = func(Partial) (*T, bool)
 
 // pickStrings resolves one string-slice field: the first set layer wins
 // and replaces; the rest shadow.
-func pickStrings(layers []layerValue, key string, get func(Partial) ([]string, bool)) ([]string, FieldOrigin, []ShadowedValue) {
-	var shadowed []ShadowedValue
+func pickStrings(layers []layerValue, key string, shadowed []ShadowedValue,
+	get func(Partial) ([]string, bool),
+) ([]string, FieldOrigin, []ShadowedValue) {
 	winner := FieldOrigin{Layer: LayerBuiltIn, Source: LayerBuiltIn}
 	var value []string
 	set := false

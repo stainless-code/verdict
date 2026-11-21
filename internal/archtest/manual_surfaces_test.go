@@ -95,6 +95,14 @@ var manualSurfaces = []manualSurface{
 		},
 	},
 	{
+		section: "review budget",
+		heading: "### Review budget (`--budget auto`)",
+		terms: []string{
+			"--budget", "defaults.budget", "defaults.sensitive_paths", "data.budget",
+			"launcher.json", "overridden_by", "**/migrations/**",
+		},
+	},
+	{
 		section: "MCP prompts and resources",
 		heading: "### MCP server (stdio, experimental until 1.0)",
 		terms: []string{

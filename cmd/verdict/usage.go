@@ -66,10 +66,14 @@ func usageText() string {
 		"        droid|forge|fx|gemini|goose|grok|hermes|jazz|junie|kilo|kimchi|kimi|kiro|\n" +
 		"        kode|mcode|neovate|openclaw|opencode|pa|pi|qoder|qodercn|qwen|rovodev|\n" +
 		"        vibe|zcode>\n" +
-		"      [--finders <1|2, default 2>] [--recipe <slug>] [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 2>]\n" +
+		"      [--finders <1|2, default 2>] [--budget <auto|light|standard|deep>] [--recipe <slug>]\n" +
+		"      [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 2>]\n" +
 		"      [--print] [-- <agent args>...] [--json]\n" +
 		"    launch YOUR agent as two isolated whole-diff finders with opposite-finder cross-checks.\n" +
 		"    --finders 1 restores one finder; --print/--stage require it. Recipes supply declarative context.\n" +
+		"    --budget auto classifies the diff before launching: light runs one finder, standard and\n" +
+		"    deep run two with cross-checks, and a sensitive path escalates to deep. --finders N always\n" +
+		"    wins; the tier and its reasons land in launcher.json and --json data.budget.\n" +
 		"    Each finder requires one fresh review.json (absent refuses no-review-artifact, older\n" +
 		"    than the launch refuses stale-review-artifact), names the next command, never posts, and\n" +
 		"    reads the agent's prose only through the shape checker's problem list. With --rounds N\n" +

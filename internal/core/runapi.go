@@ -46,6 +46,7 @@ type RunRequest struct { //nolint:govet // field grouping documents the request 
 	Agent             string
 	Recipe            string
 	StageRaw          string
+	BudgetRaw         string
 	Checkout          string
 	TimeoutRaw        string
 	FindersRaw        string
@@ -108,6 +109,26 @@ type RunData struct { //nolint:govet // field order is the published property or
 	Record     string             `json:"record,omitempty"`
 	Execution  *RunExecution      `anyOf:"null"                 json:"execution,omitempty"`
 	Repair     *RunRepair         `anyOf:"null"                 json:"repair,omitempty"`
+	Budget     *ReviewBudget      `anyOf:"null"                 json:"budget,omitempty"`
+}
+
+// ReviewBudget is the resolved review-depth decision: what was asked for, which
+// layer asked, the signals that decided it, and the two dispatch facts it owns.
+// It is present only when --budget or defaults.budget participated, so every
+// run that named no depth keeps its envelope byte-identical. It is recorded in
+// launcher.json and this data profile, never in run.json: run.json's
+// inputs_sha256 seals what the fetch captured, and a run-time decision is not a
+// captured input.
+type ReviewBudget struct { //nolint:govet // field order is the published property order
+	Tier         string   `enum:"light|standard|deep"      json:"tier"`
+	Source       string   `enum:"flag|config"              json:"source"`
+	Requested    string   `enum:"auto|light|standard|deep" json:"requested"`
+	Files        int      `json:"files"`
+	DiffBytes    int      `json:"diff_bytes"`
+	Finders      int      `json:"finders"                  max:"2"                        min:"1"`
+	CrossCheck   string   `enum:"off|opposite-finder"      json:"cross_check"`
+	Reasons      []string `json:"reasons"`
+	OverriddenBy string   `enum:"finders"                  json:"overridden_by,omitempty"`
 }
 
 // RunRepair is the repair-loop profile: the round cap, how many rounds it

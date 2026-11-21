@@ -74,27 +74,28 @@ type launcherProbe struct {
 // yet" distinct from a real zero. Repair and Attempts stay out unless --rounds
 // asked for more than one round, so a one-shot record keeps its old shape.
 type launcher struct { //nolint:govet // field order is the published property order
-	SchemaVersion string            `json:"schema_version"`
-	Agent         string            `json:"agent"`
-	AgentSource   string            `json:"agent_source,omitempty"`
-	Binary        string            `json:"binary"`
-	Argv          []string          `json:"argv"`
-	Bundle        string            `json:"bundle"`
-	Artifact      string            `json:"artifact"`
-	Recipe        *recipe.Plan      `json:"recipe,omitempty"`
-	StartedAt     string            `json:"started_at"`
-	Timeout       int               `json:"timeout"`
-	DurationMS    *int              `json:"duration_ms,omitempty"`
-	Probe         *launcherProbe    `json:"probe,omitempty"`
-	EndedAt       string            `json:"ended_at,omitempty"`
-	Exit          *int              `json:"exit,omitempty"`
-	TimedOut      *bool             `json:"timed_out,omitempty"`
-	ArtifactFresh *bool             `json:"artifact_fresh,omitempty"`
-	ArtifactBytes *int64            `json:"artifact_bytes,omitempty"`
-	Salvaged      bool              `json:"salvaged,omitempty"`
-	OutputTail    string            `json:"output_tail,omitempty"`
-	Repair        *launcherRepair   `json:"repair,omitempty"`
-	Attempts      []core.RunAttempt `json:"attempts,omitempty"`
+	SchemaVersion string             `json:"schema_version"`
+	Agent         string             `json:"agent"`
+	AgentSource   string             `json:"agent_source,omitempty"`
+	Binary        string             `json:"binary"`
+	Argv          []string           `json:"argv"`
+	Bundle        string             `json:"bundle"`
+	Artifact      string             `json:"artifact"`
+	Recipe        *recipe.Plan       `json:"recipe,omitempty"`
+	StartedAt     string             `json:"started_at"`
+	Timeout       int                `json:"timeout"`
+	DurationMS    *int               `json:"duration_ms,omitempty"`
+	Probe         *launcherProbe     `json:"probe,omitempty"`
+	EndedAt       string             `json:"ended_at,omitempty"`
+	Exit          *int               `json:"exit,omitempty"`
+	TimedOut      *bool              `json:"timed_out,omitempty"`
+	ArtifactFresh *bool              `json:"artifact_fresh,omitempty"`
+	ArtifactBytes *int64             `json:"artifact_bytes,omitempty"`
+	Salvaged      bool               `json:"salvaged,omitempty"`
+	OutputTail    string             `json:"output_tail,omitempty"`
+	Repair        *launcherRepair    `json:"repair,omitempty"`
+	Attempts      []core.RunAttempt  `json:"attempts,omitempty"`
+	Budget        *core.ReviewBudget `json:"budget,omitempty"`
 }
 
 // path is the record's location beside the bundle's other receipts.

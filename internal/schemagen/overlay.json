@@ -19,14 +19,16 @@
       "/properties/requirements": "Conjunctive review requirements: every applicable clause must hold for compliance, and required checks accumulate across matching scopes.",
       "/properties/trigger": "Closed local trigger predicates read from the trusted base configuration: lists OR within one predicate and AND across predicates; an absent section runs every PR.",
       "/properties/profiles": "Named work-profile descriptions keyed by profile name; scope profile fields and default_profile resolve against these names.",
-      "/$defs/defaults": "One defaults object: the pinned model roster, the estimate guard threshold, the diff cap, the chunk opt-in, the knowledge-base policy, the advisory effort tier, and the display and payload severity floors.",
+      "/$defs/defaults": "One defaults object: the pinned model roster, the estimate guard threshold, the diff cap, the chunk opt-in, the knowledge-base policy, the advisory effort tier, the finder count, the run review depth, the extra high-risk path globs, and the display and payload severity floors.",
       "/$defs/kbPolicy": "Knowledge-base retirement quorum and ceiling.",
       "/$defs/requirements": "Blocking clauses with per-source thresholds, prepublication check names, and the approval bind requirement.",
       "/$defs/trigger": "One trigger predicate set: authors, changed-path globs, labels, a title regular expression, base branches, and draft state. title_matches compiles when the configuration is parsed.",
       "/$defs/blockClause": "One blocking predicate: a required name and severity threshold with optional category and path masks; absent masks mean every category or path.",
       "/$defs/scope": "One path-scoped entry: required include globs with optional excludes plus resolution inputs — at most one of a named profile or inline defaults, with optional inline requirements.",
       "/$defs/profile": "One work-profile description: provider-neutral depth, the checks the group must evaluate, and the lens budget.",
-      "/$defs/configIndex": "The local code index caps: file count, per-file bytes, tree bytes, shard-cache bytes, trees kept by prune, and references recorded per file. Absent keys keep the built-in defaults."
+      "/$defs/configIndex": "The local code index caps: file count, per-file bytes, tree bytes, shard-cache bytes, trees kept by prune, and references recorded per file. Absent keys keep the built-in defaults.",
+      "/$defs/defaults/properties/budget": "The default review depth for verdict run: auto classifies each diff, light, standard and deep pin one. Distinct from budget_usd, which is a spend ceiling.",
+      "/$defs/defaults/properties/sensitive_paths": "High-risk path globs that extend the built-in auth, security, migrations, billing, and CI-workflow list; the built-ins can never be removed, so the only direction a repository can move review depth is up."
     }
   },
   "cost": {
@@ -278,7 +280,18 @@
       "/$defs/riskRow": "One ranked bundle: its host state, its recomputed band and receipt reasons, the advisory score with each component's points and weight, and whether it needs a human (any band but low).",
       "/$defs/riskRow/properties/score": "The 0-100 triage score: reach 35, churn 25, category 25, rung 15, integer-divided by 100. measured counts the components whose artifact was read, so a missing one reads unmeasured at 0 points instead of a clean zero.",
       "/$defs/riskRow/properties/state": "open and local are live and stay in the default queue; merged and closed are named as skipped unless --status all asks for them. A state token the queue does not know reads open.",
-      "/$defs/runData": "CLI-only launcher response. A captured two-finder execution includes its id, completion counts and phase failures; this profile adds no MCP or SDK launch method."
+      "/$defs/runData": "CLI-only launcher response. A captured two-finder execution includes its id, completion counts and phase failures; this profile adds no MCP or SDK launch method.",
+      "/$defs/runData/properties/budget": "The resolved review-depth decision, present only when --budget or defaults.budget participated; a run that named no depth omits it, so its envelope stays byte-identical. The same object is launcher.json's budget key.",
+      "/$defs/reviewBudget": "The review budget's recorded decision: the tier that won, which layer asked for it, the requested value, the bundle measurements it read, the dispatch it bought, and the signals that decided it. Three tier names map onto two launch shapes: standard and deep both run two finders with opposite-finder cross-checks, and deep additionally records the risk signal that escalated it.",
+      "/$defs/reviewBudget/properties/tier": "The resolved depth: light (one finder), standard or deep (two finders plus cross-checks).",
+      "/$defs/reviewBudget/properties/source": "Which lever asked for the depth: the --budget flag or the captured defaults.budget.",
+      "/$defs/reviewBudget/properties/requested": "The value as requested; auto means the classifier decided the tier.",
+      "/$defs/reviewBudget/properties/files": "The gate's file count the classifier read.",
+      "/$defs/reviewBudget/properties/diff_bytes": "The full diff's byte count the classifier read.",
+      "/$defs/reviewBudget/properties/finders": "The finder count that actually launched (1 or 2).",
+      "/$defs/reviewBudget/properties/cross_check": "off for a single-finder run, opposite-finder when two finders cross-check each other.",
+      "/$defs/reviewBudget/properties/reasons": "The closed-vocabulary signals that selected the tier, in rule order, e.g. sensitive-path: **/migrations/**.",
+      "/$defs/reviewBudget/properties/overridden_by": "finders when an explicit --finders outranked the budget; the effective finder count beside it is the one that launched."
     }
   },
   "findings": {

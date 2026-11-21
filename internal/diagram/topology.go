@@ -83,9 +83,10 @@ const (
 )
 
 // File is one changed file: the row both surfaces render, carrying the stable
-// id its node uses.
+// id its node uses and, for a renamed file, the path it came from.
 type File struct {
 	ID, Path, Role string
+	PreviousPath   string
 	Adds, Dels     int
 	Hunks          int
 }
@@ -144,6 +145,7 @@ func bundleFileCount(dir string, files []hunks.File) int {
 // falling back to the path's shape.
 func fileRows(dir string, files []hunks.File) []File {
 	paths := bundlePaths(dir, files)
+	backfillPrevious(paths, files)
 	roles := bundleRoles(dir, paths)
 	hunksByPath := bundleHunkCounts(dir, files)
 	rows := make([]File, 0, len(paths))
@@ -153,12 +155,13 @@ func fileRows(dir string, files []hunks.File) []File {
 			role = readcommon.PathRole(p.path)
 		}
 		rows = append(rows, File{
-			ID:    "F" + strconv.Itoa(i+1),
-			Path:  p.path,
-			Role:  role,
-			Adds:  p.adds,
-			Dels:  p.dels,
-			Hunks: hunksByPath[p.path],
+			ID:           "F" + strconv.Itoa(i+1),
+			Path:         p.path,
+			PreviousPath: p.prev,
+			Role:         role,
+			Adds:         p.adds,
+			Dels:         p.dels,
+			Hunks:        hunksByPath[p.path],
 		})
 	}
 	return rows
@@ -172,6 +175,32 @@ func bundlePaths(dir string, files []hunks.File) []pathRow {
 		}
 	}
 	return pathsFromFiles(files)
+}
+
+// backfillPrevious fills a row's rename source from the diff when PR.json
+// omitted it: `gh pr view --json files` carries no `previous_filename`, while
+// the bundled diff still renders `rename from`, and preferring the PR rows must
+// not discard what the diff already measured.
+func backfillPrevious(rows []pathRow, files []hunks.File) {
+	renames := diffRenames(files)
+	for i := range rows {
+		if rows[i].prev == "" {
+			rows[i].prev = renames[rows[i].path]
+		}
+	}
+}
+
+// diffRenames maps each renamed destination the diff names to the path it came
+// from, skipping a section whose two sides are the same path.
+func diffRenames(files []hunks.File) map[string]string {
+	renames := make(map[string]string, len(files))
+	for i := range files {
+		source := files[i].PreviousPath
+		if source != "" && files[i].Path != "" && source != files[i].Path {
+			renames[files[i].Path] = source
+		}
+	}
+	return renames
 }
 
 // bundleHunkCounts prefers the fetch-time hunks.tsv snapshot and falls back
@@ -202,14 +231,23 @@ func addedLines(files []hunks.File) [][2]string {
 	return rows
 }
 
+// Thresholds returns the walkthrough gate this override set names: the file
+// count and diff bytes a bundle must exceed to read as large. A fragment this
+// caller cannot read falls back to the built-in numbers, so a malformed or
+// absent override never changes what "large" means.
+func Thresholds(ref overrides.Set) (files, bytes int) {
+	files, bytes = overrides.DefaultThresholds()
+	if f, n, err := ref.Thresholds(); err == nil {
+		files, bytes = f, n
+	}
+	return files, bytes
+}
+
 // Large reports whether the bundle crosses the walkthrough thresholds: more
 // than the configured file count or more than the configured diff bytes. A
 // fragment this caller cannot read falls back to the built-in numbers.
 func Large(b Bundle, ref overrides.Set) bool {
-	files, bytes := overrides.DefaultThresholds()
-	if f, n, err := ref.Thresholds(); err == nil {
-		files, bytes = f, n
-	}
+	files, bytes := Thresholds(ref)
 	return b.FileCount > files || b.DiffBytes > bytes
 }
 
@@ -249,8 +287,8 @@ func Block(b Bundle, prSlug string) string {
 	used := len(strings.Join(lines, newline))
 	nodes, used, filesOmitted := fitNodes(b.Files, budget, used)
 	edges, _, edgesOmitted := fitEdges(Edges(nodes, b.Added), budget, used)
-	for _, node := range nodes {
-		lines = append(lines, nodeLine(node))
+	for i := range nodes {
+		lines = append(lines, nodeLine(&nodes[i]))
 	}
 	for _, edge := range edges {
 		lines = append(lines, edgeLine(edge))
@@ -275,7 +313,7 @@ func blockHead(rows []File, prSlug string) []string {
 func fitNodes(files []File, budget, used int) ([]File, int, int) {
 	kept := 0
 	for kept < len(files) && kept < maxTopoNodes {
-		cost := len(newline + nodeLine(files[kept]))
+		cost := len(newline + nodeLine(&files[kept]))
 		if used+cost > budget {
 			break
 		}
@@ -301,7 +339,7 @@ func fitEdges(edges []Edge, budget, used int) ([]Edge, int, int) {
 }
 
 // nodeLine renders one file node.
-func nodeLine(node File) string {
+func nodeLine(node *File) string {
 	return mermaidIndent + "PR --> " + node.ID + "[\"" + node.ID + " " +
 		topoLabel(Sanitize(baseName(node.Path))) + "\"]"
 }
@@ -413,6 +451,7 @@ func numericFilesLength(files any) (int, bool) {
 
 type pathRow struct {
 	path       string
+	prev       string
 	adds, dels int
 }
 
@@ -487,11 +526,24 @@ func prPathRow(f any) (pathRow, bool) {
 	if fm == nil {
 		return pathRow{path: nullPath}, true
 	}
-	return pathRow{
+	row := pathRow{
 		path: jq.Str(fm["path"]),
 		adds: digitsOrZero(jq.Str(fm["additions"])),
 		dels: digitsOrZero(jq.Str(fm["deletions"])),
-	}, true
+	}
+	row.prev = previousName(fm["previous_filename"], row.path)
+	return row, true
+}
+
+// previousName reads a file entry's pre-rename path, which the host omits for
+// an ordinary change. A missing, non-string, empty, or unchanged value reads
+// as no previous path, so the row never claims a rename that did not happen.
+func previousName(value any, path string) string {
+	prev, ok := value.(string)
+	if !ok || prev == "" || prev == path {
+		return ""
+	}
+	return prev
 }
 
 func emptyFilesValue(files any) bool {
@@ -586,7 +638,10 @@ func pathsFromFiles(files []hunks.File) []pathRow {
 		if !ok {
 			i = len(rows)
 			index[f.Path] = i
-			rows = append(rows, pathRow{path: f.Path})
+			rows = append(rows, pathRow{path: f.Path, prev: f.PreviousPath})
+		}
+		if rows[i].prev == "" {
+			rows[i].prev = f.PreviousPath
 		}
 		rows[i].adds += f.Additions
 		rows[i].dels += f.Deletions
@@ -607,7 +662,7 @@ func appendMentionEdges(
 		edges = append(edges, Edge{
 			From:  rows[cur].ID,
 			To:    rows[dst].ID,
-			Label: edgeLabel(rows[cur], rows[dst], freq),
+			Label: edgeLabel(&rows[cur], &rows[dst], freq),
 		})
 	}
 	return edges
@@ -827,7 +882,7 @@ func (m *mentionIndex) appendWindow(hash uint64, window string, dst []int) []int
 	}
 }
 
-func edgeLabel(src, dst File, freq map[string]int) string {
+func edgeLabel(src, dst *File, freq map[string]int) string {
 	target := dst.Path
 	if freq[baseName(dst.Path)] == 1 {
 		target = baseName(dst.Path)
