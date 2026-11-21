@@ -42,7 +42,18 @@ type contextEntry struct {
 type contextFile struct {
 	source string
 	role   string
-	body   []byte
+	// ext overrides the raw copy's extension for a source composed in
+	// memory: an issue document is Markdown whatever its URL ends with.
+	ext  string
+	body []byte
+}
+
+// copyExt is the extension the raw copy under context/ takes.
+func (f contextFile) copyExt() string {
+	if f.ext != "" {
+		return f.ext
+	}
+	return filepath.Ext(f.source)
 }
 
 type contextReader struct {
@@ -365,7 +376,7 @@ func clearContext(root *os.Root) error {
 func saveContext(root *os.Root, files []contextFile, at string) error {
 	entries, text := renderContext(files, at)
 	for i, file := range files {
-		if err := root.WriteFile(fmt.Sprintf("context/%03d%s", i, filepath.Ext(file.source)), file.body, contextFileMode); err != nil {
+		if err := root.WriteFile(fmt.Sprintf("context/%03d%s", i, file.copyExt()), file.body, contextFileMode); err != nil {
 			return contextWriteFailure("context copy: %s", err.Error())
 		}
 	}
@@ -382,8 +393,11 @@ func saveContext(root *os.Root, files []contextFile, at string) error {
 	return nil
 }
 
-func contextFeed(dir string, contextInputs, specInputs []string) string {
-	if len(contextInputs) == 0 && len(specInputs) == 0 {
+// contextFeed names the context text file in the run directive when the
+// bundle carries one, so an issue-only bundle names it too: the operator's
+// flags are not the only way context reaches a bundle any more.
+func contextFeed(dir string) string {
+	if !nonEmptyFile(dir + "/context.txt") {
 		return ""
 	}
 	return " + " + dir + "/context.txt"

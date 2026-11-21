@@ -5,7 +5,7 @@ func usageText() string {
 		"fetch-local|run|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|" +
 		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain [opts]\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
-		"[--index <ref|dir>] [--context <file|dir>] [--spec <file>] [--ignore <glob>] [--no-default-excludes] " +
+		"[--index <ref|dir>] [--context <file|dir>] [--spec <file>] [--issue <ref>] [--ignore <glob>] [--no-default-excludes] " +
 		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
@@ -24,6 +24,15 @@ func usageText() string {
 		"    diffs warn, never fail). Paths after -- on fetch-local narrow the review to the matching files — they\n" +
 		"    select, they never exclude.\n" +
 		"    Deliberate exceptions only: REVIEW_MAX_BYTES=<n> (or the typed max_bytes default) overrides the cap.\n" +
+		"    Linked issues: on GitHub, a PR body or title naming an issue with a closing keyword (\"Fixes #12\")\n" +
+		"    pulls that issue's title and body into the bundle as a spec source, beside --spec. --issue <ref>\n" +
+		"    (repeatable) adds one explicitly: owner/repo#12 or a GitHub issue URL (read with gh on any\n" +
+		"    provider), or a bare #12 (GitHub only). An unreadable issue warns (issue-unavailable,\n" +
+		"    issue-truncated, issue-over-cap) and never fails the fetch; a malformed ref refuses issue-invalid.\n" +
+		"    A GitHub link that carries no closing keyword (the sidebar \"Linked issues\" form) needs\n" +
+		"    --issue '#12'. Other hosts have no linked-issue read in this build: a PR body with closing keywords\n" +
+		"    warns issue-unavailable (unsupported). An issue in another tracker (Linear, Jira, ...)\n" +
+		"    reaches the review as text through --spec <file>, written by that tracker's own CLI.\n" +
 		"    Chunking opt-in only: --chunk (or the typed chunk default) marks over-cap fetches for " +
 		"chunked slicing (override chain wins; absent reads today's refusal).\n" +
 		"    With REVIEW_BUDGET_USD (or the typed budget_usd default) set, fetch prints a pre-run\n" +

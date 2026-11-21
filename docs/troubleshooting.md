@@ -762,6 +762,21 @@ Cause: an unexpected internal error — the message carries the detail.
 
 Fix: re-run the same command; if it repeats, report it with the full output.
 
+## `issue-invalid`
+
+Cause: a `fetch` `--issue` operand is not one of the three accepted shapes — a
+GitHub `owner/repo#12` or issue URL, or a bare `#12`. The message names the
+operand and what was wrong: whitespace, an unrecognised reference, a missing or
+zero number, or a bare `#12` on a non-GitHub provider (there is no repository to
+join the number to there).
+
+Fix: pass `--issue owner/repo#12`, `--issue '#12'` (GitHub only), or
+`--issue https://github.com/owner/repo/issues/12`, then re-run. A bare number on
+another host refuses because the reference cannot name a repo; spell it out as
+`owner/repo#12`, which reads `gh` on any provider. An issue in another tracker
+(Linear, Jira, ...) is not an issue reference: write that tracker's text to a
+file and pass it as `--spec <file>`.
+
 ## `learn-failed`
 
 Cause: `learn` could not write the knowledge-base store (or create `.verdict`).

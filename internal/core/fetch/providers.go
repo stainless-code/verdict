@@ -29,6 +29,7 @@ func runProvider(
 	if err != nil {
 		return nil, "", err
 	}
+	warnUnsupportedLinkedIssues(ctx2, f.Provider)
 	if ref := resolveControls(ctx, ctx2, "", req.RepoRootPath(), readcommon.PrField(ctx2.dir, keyBaseSHA), f.HeadControls); ref != nil {
 		return nil, "", ref
 	}

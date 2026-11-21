@@ -122,6 +122,7 @@ export type RefusalCode =
   | "ingest-failed"
   | "init-failed"
   | "internal"
+  | "issue-invalid"
   | "learn-failed"
   | "ledger-too-large"
   | "manager-failed"

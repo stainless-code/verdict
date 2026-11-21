@@ -1,0 +1,17 @@
+{
+  "state": "OPEN",
+  "headRefOid": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  "baseRefOid": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+  "title": "Harden the retry budget",
+  "body": "Retries stop at three per host.\n\nFixes #12",
+  "headRefName": "sebastian/harden-retry-budget",
+  "author": { "login": "teammate" },
+  "url": "https://github.com/acme/app/pull/4701",
+  "commits": [],
+  "files": [{ "path": "notes.txt", "additions": 1, "deletions": 1 }],
+  "additions": 1,
+  "deletions": 1,
+  "isDraft": false,
+  "reviewDecision": "",
+  "state": "OPEN"
+}

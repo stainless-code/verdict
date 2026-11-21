@@ -19,6 +19,7 @@ publishing a page adds a route in `apps/docs/sources/`, not a second copy.
 - [Manual](manual.md): the operator contract: the --json envelope, exit codes, store files, refusal codes, control files, model wiring, and every provider.
 
 - [Adding a verb](adding-a-verb.md): the five surfaces one command reaches, and the two allowlists that decide where it may stop.
+- [ADR: forge-native linked issues](adr-forge-native-issues.md): why the core reads linked issues only through the forges it already talks to, and how an external tracker's text arrives through `--spec`.
 - [Benchmark corpus](benchmark.md): how the measured review rates are built and graded offline, and what the comparison page may cite.
 - [CI and test rules](ci-and-tests.md): the skip-token ban on commit messages, and the rules that keep the suite deterministic.
 - [CI recipe](ci-recipe.md): the copy-paste workflow that runs fetch, review, gate and post on your own runner.

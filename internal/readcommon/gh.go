@@ -69,6 +69,28 @@ const (
         }
       }
     }`
+	// QueryClosingIssues is the PR's linked-issue read. Its connection is an
+	// IssueConnection, so the nodes are Issue objects themselves — not the
+	// `{issue{…}}` wrapper a reference connection would carry.
+	QueryClosingIssues = `
+      query($owner:String!, $name:String!, $pr:Int!) {
+        repository(owner:$owner, name:$name) {
+          pullRequest(number:$pr) {
+            closingIssuesReferences(first:20) {
+              totalCount
+              pageInfo { hasNextPage }
+              nodes { number title body url state repository { nameWithOwner } }
+            }
+          }
+        }
+      }`
+)
+
+// ghCmdAPI and ghSubGraphQL are the gh subcommand pair every graphql read
+// spells.
+const (
+	ghCmdAPI     = "api"
+	ghSubGraphQL = "graphql"
 )
 
 var errGhFailed = errors.New("gh call failed")
@@ -117,7 +139,7 @@ func SplitOwner(repo string) (owner, name string) {
 // ThreadsArgv builds the shared graphql thread-read argv for owner/name/pr.
 func ThreadsArgv(owner, name, pr, query string) []string {
 	return []string{
-		"api", "graphql", "--paginate",
+		ghCmdAPI, ghSubGraphQL, "--paginate",
 		"-F", "owner=" + owner, "-F", "name=" + name, "-F", "pr=" + pr,
 		"-f", "query=" + query,
 	}
@@ -128,7 +150,7 @@ func ThreadsArgv(owner, name, pr, query string) []string {
 // nullable String), so the walk needs no sentinel cursor.
 func ReviewThreadsArgv(owner, name, pr, cursor string) []string {
 	args := []string{
-		"api", "graphql",
+		ghCmdAPI, ghSubGraphQL,
 		flagF, "owner=" + owner, flagF, "name=" + name, flagF, "pr=" + pr,
 	}
 	if cursor != "" {
@@ -159,6 +181,59 @@ func ThreadsPage(stdout string) (nodes []any, next string, more bool, err error)
 		}
 	}
 	return jq.Elements(threads["nodes"]), next, more, nil
+}
+
+// ClosingIssuesArgv builds the linked-issue read's argv for owner/name/pr.
+func ClosingIssuesArgv(owner, name, pr string) []string {
+	return []string{
+		ghCmdAPI, ghSubGraphQL,
+		flagF, "owner=" + owner, flagF, "name=" + name, flagF, "pr=" + pr,
+		"-f", "query=" + QueryClosingIssues,
+	}
+}
+
+// ClosingIssuesPage decodes the linked-issue payload into its node list and
+// whether the host held more than one page. A payload without the connection
+// is an error, never an empty list: reading a failed call as "this PR links
+// nothing" would drop the issue the review was asked to check against.
+func ClosingIssuesPage(stdout string) (nodes []any, more bool, err error) {
+	doc, err := jq.Decode([]byte(stdout))
+	if err != nil {
+		return nil, false, jq.Sealed("slurp closing issues", err)
+	}
+	connection := closingIssuesNode(doc)
+	if connection == nil {
+		return nil, false, jq.Sealed("slurp closing issues", errors.New("payload carries no closingIssuesReferences data"))
+	}
+	pageInfo, _ := jq.AsMap(connection["pageInfo"])
+	if b, ok := pageInfo["hasNextPage"].(bool); ok {
+		more = b
+	}
+	return jq.Elements(connection["nodes"]), more, nil
+}
+
+func closingIssuesNode(doc any) map[string]any {
+	m, ok := jq.AsMap(doc)
+	if !ok {
+		return nil
+	}
+	data, ok := jq.AsMap(m["data"])
+	if !ok {
+		return nil
+	}
+	repository, ok := jq.AsMap(data["repository"])
+	if !ok {
+		return nil
+	}
+	pull, ok := jq.AsMap(repository["pullRequest"])
+	if !ok {
+		return nil
+	}
+	issues, ok := jq.AsMap(pull["closingIssuesReferences"])
+	if !ok {
+		return nil
+	}
+	return issues
 }
 
 func reviewThreadsNode(doc any) map[string]any {

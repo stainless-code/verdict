@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fetch",
+  "repo": "acme/app",
+  "pr": 4701,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "issue-invalid",
+    "message": "--issue wat: unrecognized issue reference (want owner/repo#12, #12, or a GitHub issue URL)\ntry: pass --issue owner/repo#12, #12, or a GitHub issue URL, then re-run"
+  }
+}
+--- stderr ---
+
+--- files ---

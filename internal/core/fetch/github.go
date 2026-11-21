@@ -36,6 +36,7 @@ func runGitHub(
 	if ref := githubFetch(ctx, ctx2, r, dir, repo, pr); ref != nil {
 		return nil, "", ref
 	}
+	collectLinkedIssues(ctx, ctx2)
 	if ref := resolveControls(ctx, ctx2, repo, req.RepoRootPath(), readcommon.PrField(dir, keyBaseSHA), f.HeadControls); ref != nil {
 		return nil, "", ref
 	}

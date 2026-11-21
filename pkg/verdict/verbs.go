@@ -423,6 +423,7 @@ type FetchRequest struct {
 	Invocation
 	BaseSHA, Provider                 string
 	Context                           []string
+	Issue                             []string
 	Ignore                            []string
 	NoDefaultExcludes                 bool
 	BudgetConsent, ShowPrompts, Chunk bool
@@ -438,7 +439,7 @@ func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error) 
 	resp, err := fetchcore.Run(ctx, &fetchcore.Request{
 		ReadRequest: rr,
 		Flags: fetchcore.Flags{
-			Context: req.Context, Ignore: req.Ignore, NoDefaultExcludes: req.NoDefaultExcludes,
+			Context: req.Context, Issue: req.Issue, Ignore: req.Ignore, NoDefaultExcludes: req.NoDefaultExcludes,
 			BaseSHA: req.BaseSHA, Provider: req.Provider, BudgetConsent: req.BudgetConsent,
 			ShowPrompts: req.ShowPrompts, ChunkFlag: req.Chunk, HeadControls: req.HeadControls,
 			HasBase: req.BaseSHA != "", HasProvider: req.Provider != "",

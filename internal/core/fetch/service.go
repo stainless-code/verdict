@@ -84,6 +84,10 @@ func (st *state) dispatch(ctx context.Context, s *session, req *Request) (*Respo
 	if err != nil {
 		return nil, st.fail(ctx, err, s)
 	}
+	files, err = appendExplicitIssues(ctx, ctx2, f, files)
+	if err != nil {
+		return nil, st.fail(ctx, err, s)
+	}
 	ctx2.contextFiles, ctx2.contextLoaded = files, true
 	budget, _, err := fetchPrepare(ctx2, req, f)
 	if err != nil {
@@ -94,6 +98,29 @@ func (st *state) dispatch(ctx context.Context, s *session, req *Request) (*Respo
 		return nil, st.fail(ctx, err, s)
 	}
 	return st.response(ctx2, req, data, next)
+}
+
+// appendExplicitIssues folds the --issue sources into the context set. The
+// flag sources were already collected and capped, so only the combined set is
+// re-checked: an explicit issue shares --spec's posture, and --spec refusals
+// still land before any bundle write. A canceled context travels as its own
+// error, so the cancel refusal wins over a warning-only set.
+func appendExplicitIssues(ctx context.Context, ctx2 *fetchRunCtx, f *Flags, files []contextFile) ([]contextFile, error) {
+	issueFiles, err := collectExplicitIssues(ctx, ctx2, f)
+	if err != nil {
+		return nil, err
+	}
+	if len(issueFiles) == 0 {
+		return files, nil
+	}
+	files = dedupeContextFiles(append(files, issueFiles...))
+	if err := checkIssueCaps(files); err != nil {
+		return nil, err
+	}
+	if err := checkSpecItemCap(files); err != nil {
+		return nil, err
+	}
+	return files, nil
 }
 
 func (st *state) provider(f *Flags) (*Flags, *core.RefusalError) {
@@ -426,7 +453,7 @@ func (s *session) ghFetch(ctx context.Context, args ...string) (core.Result, err
 // owns the error sidecars and the warn-or-refuse posture.
 func (s *session) curlFetch(ctx context.Context, auth curlauth.Credential, flags ...string) (core.Result, error) {
 	argv, stdin := auth.StdinArgv(flags...)
-	return s.fetchWithRetry(ctx, "curl", argv, stdin)
+	return s.fetchWithRetry(ctx, binCurl, argv, stdin)
 }
 
 // fetchWithRetry runs one tool with the shared bounded transient retry:

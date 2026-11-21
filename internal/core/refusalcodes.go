@@ -145,6 +145,7 @@ var refusalCodes = []string{
 	"ingest-failed",
 	"init-failed",
 	"internal",
+	"issue-invalid",
 	"learn-failed",
 	"ledger-too-large",
 	"manager-failed",

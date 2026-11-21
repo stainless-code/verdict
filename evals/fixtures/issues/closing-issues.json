@@ -1,0 +1,22 @@
+{
+  "data": {
+    "repository": {
+      "pullRequest": {
+        "closingIssuesReferences": {
+          "totalCount": 1,
+          "pageInfo": { "hasNextPage": false },
+          "nodes": [
+            {
+              "number": 12,
+              "title": "Add retry budget",
+              "body": "Retries stop at three per host.",
+              "url": "https://github.com/acme/app/issues/12",
+              "state": "OPEN",
+              "repository": { "nameWithOwner": "acme/app" }
+            }
+          ]
+        }
+      }
+    }
+  }
+}

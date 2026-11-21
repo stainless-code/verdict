@@ -31,6 +31,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -89,6 +90,10 @@ const ghStub = "#!/usr/bin/env bash\necho \"CALL: $*\" >> \"$PWD/.gh-calls.log\"
 	"  *pr\\ diff*) if [ \"${GH_DIFF_FAIL:-0}\" = 1 ]; then echo \"gh: diff unavailable\" >&2; exit 1; fi\n" +
 	"    cat \"$PWD/canned/full.diff\"; exit 0;;\n" +
 	"  *files*) cat \"$PWD\"/canned/files-page-*.json 2>/dev/null || printf '[]'; exit 0;;\n" +
+	"  *closingIssuesReferences*) if [ \"${GH_LINKED_FAIL:-0}\" = 1 ]; then echo \"gh: Server Error (HTTP 500)\" >&2; exit 1; fi\n" +
+	"    cat \"$PWD/canned/gh-issues.json\" 2>/dev/null || printf '%s' '{\"data\":{\"repository\":{\"pullRequest\":{\"closingIssuesReferences\":{\"totalCount\":0,\"pageInfo\":{\"hasNextPage\":false},\"nodes\":[]}}}}}'; exit 0;;\n" +
+	"  *api\\ repos/*/issues/*) if [ \"${GH_ISSUES_FAIL:-0}\" = 1 ]; then echo \"gh: Not Found (HTTP 404)\" >&2; exit 1; fi\n" +
+	"    cat \"$PWD/canned/gh-issue.json\" 2>/dev/null || printf '%s' '{}'; exit 0;;\n" +
 	"  *api\\ graphql*) if [ \"${GH_THREADS_FAIL:-0}\" = 1 ]; then echo \"gh: threads down\" >&2; exit 1; fi\n" +
 	"    cat \"$PWD/canned/gh-threads.json\" 2>/dev/null || printf '%s' '{\"data\":{\"repository\":{\"pullRequest\":{\"reviewThreads\":{\"pageInfo\":{\"hasNextPage\":false,\"endCursor\":null},\"nodes\":[]}}}}}'; exit 0;;\n" +
 	"  *reviews*|*comments*) if [ \"${GH_THREADS_FAIL:-0}\" = 1 ]; then echo \"gh: threads down\" >&2; exit 1; fi\n" +
@@ -445,6 +450,98 @@ func TestFetchGoldenGitHub(t *testing.T) {
 		stubPR(t, dir)
 		writeCanned(t, dir, "full.diff", "")
 	}, nil, "fetch", "acme/app", "4701", "--json")
+}
+
+// cannedIssueNode renders one closingIssuesReferences node.
+func cannedIssueNode(number, title, body string) string {
+	return `{"number":` + number + `,"title":"` + title + `","body":"` + body + `",` +
+		`"url":"https://github.com/acme/app/issues/` + number + `","state":"OPEN",` +
+		`"repository":{"nameWithOwner":"acme/app"}}`
+}
+
+// cannedIssueDoc is the REST issue payload every `api repos/.../issues/<n>`
+// read answers with.
+const cannedIssueDoc = `{"number":12,"title":"Add retry budget",` +
+	`"body":"Retries stop at three per host.","html_url":"https://github.com/acme/app/issues/12"}`
+
+// stubIssueDoc plants the REST issue payload alone, for the cases whose PR
+// body carries no closing keyword.
+func stubIssueDoc(t *testing.T, dir string) {
+	t.Helper()
+	writeCanned(t, dir, "gh-issue.json", cannedIssueDoc)
+}
+
+// stubLinkedIssues plants the closingIssuesReferences answer and the REST
+// issue payload beside the canned GitHub PR.
+func stubLinkedIssues(t *testing.T, dir string, nodes ...string) {
+	t.Helper()
+	writeCanned(t, dir, "gh-issues.json", `{"data":{"repository":{"pullRequest":{"closingIssuesReferences":{`+
+		`"totalCount":`+strconv.Itoa(len(nodes))+`,"pageInfo":{"hasNextPage":false},`+
+		`"nodes":[`+strings.Join(nodes, ",")+`]}}}}}`)
+	stubIssueDoc(t, dir)
+}
+
+// stubLinkedPR writes the standard canned PR with a body that names issues.
+func stubLinkedPR(t *testing.T, dir, body string) {
+	t.Helper()
+	stubPR(t, dir)
+	writeCanned(t, dir, "pr.json", `{"state":"OPEN","headRefOid":"`+headA+`","baseRefOid":"`+headB+`",`+
+		`"title":"Harden the retry budget","body":"`+body+`","author":{"login":"teammate"},`+
+		`"files":[{"path":"notes.txt","additions":3,"deletions":1}],"additions":3,"deletions":1}`)
+}
+
+// TestFetchGoldenLinkedIssues proves the linked-issue surfaces byte for byte:
+// the bundle a linked or explicit issue writes, the typed warnings an
+// unreadable or over-cap candidate raises, the issue-invalid refusal, and the
+// non-GitHub degradation note.
+func TestFetchGoldenLinkedIssues(t *testing.T) {
+	t.Parallel()
+	linked := func(t *testing.T, dir, _ string) {
+		t.Helper()
+		stubLinkedPR(t, dir, "Fixes #12")
+		stubLinkedIssues(t, dir, cannedIssueNode("12", "Add retry budget", "Retries stop at three per host."))
+	}
+	golden.Pin(t, harness, "issue-linked", linked, nil,
+		"fetch", "acme/app", "4701", "--json")
+	// One page of closing issues that the host says continues, and a
+	// keyword-only reference the REST read cannot answer: both are warnings,
+	// never a refused fetch.
+	golden.Pin(t, harness, "issue-linked-warn", func(t *testing.T, dir, _ string) {
+		t.Helper()
+		stubLinkedPR(t, dir, "Fixes #12 and Fixes #99")
+		stubLinkedIssues(t, dir, cannedIssueNode("12", "Add retry budget", "Retries stop at three per host."))
+		writeCanned(t, dir, "gh-issues.json",
+			strings.Replace(readCanned(t, dir, "gh-issues.json"), `"hasNextPage":false`, `"hasNextPage":true`, 1))
+	}, map[string]string{"GH_ISSUES_FAIL": "1"}, "fetch", "acme/app", "4701", "--json")
+	// A bare reference resolves against the reviewed repository through the
+	// REST read, on a PR whose body links nothing.
+	golden.Pin(t, harness, "issue-explicit-github", func(t *testing.T, dir, _ string) {
+		t.Helper()
+		stubLinkedPR(t, dir, "Retries stop at three per host.")
+		stubIssueDoc(t, dir)
+	}, nil, "fetch", "acme/app", "4701", "--issue", "#12", "--json")
+	golden.Pin(t, harness, "issue-invalid", linked, nil,
+		"fetch", "acme/app", "4701", "--issue", "wat", "--json")
+	// Six closing keywords cross the five-issue cap: the fetch keeps five and
+	// says so.
+	golden.Pin(t, harness, "issue-over-cap", func(t *testing.T, dir, _ string) {
+		t.Helper()
+		stubLinkedPR(t, dir, "Fixes #11 Fixes #12 Fixes #13 Fixes #14 Fixes #15 Fixes #16")
+		var nodes []string
+		for number := 11; number <= 16; number++ {
+			n := strconv.Itoa(number)
+			nodes = append(nodes, cannedIssueNode(n, "Issue "+n, "Body "+n+"."))
+		}
+		stubLinkedIssues(t, dir, nodes...)
+	}, nil, "fetch", "acme/app", "4701", "--json")
+	// A non-GitHub PR whose body carries a closing keyword keeps its bundle
+	// and warns once: this build has no linked-issue read for that host.
+	golden.Pin(t, harness, "issue-unsupported", func(t *testing.T, dir, _ string) {
+		t.Helper()
+		stubGitLab(t, dir)
+		writeCanned(t, dir, "gl-meta.json", strings.Replace(readCanned(t, dir, "gl-meta.json"),
+			`"description":"body"`, `"description":"Fixes #12"`, 1))
+	}, nil, "fetch", "acme/app", "4706", "--provider", "gitlab", "--json")
 }
 
 // TestFetchGoldenShowPrompts proves the prompt-dump parity by shape plus
@@ -844,6 +941,33 @@ func bigLocalPair() (base, changed string) {
 	return b.String(), c.String()
 }
 
+// stubGitLab plants the canned GitLab payloads one provider fetch reads.
+func stubGitLab(t *testing.T, dir string) {
+	t.Helper()
+	promptFiles(t, dir)
+	writeCanned(t, dir, "gl-meta.json", `{"iid":5,"title":"MR five","description":"body","target_branch":"main",`+
+		`"source_branch":"feat","diff_refs":{"base_sha":"`+headB+`","head_sha":"`+headA+`"},`+
+		`"author":{"username":"mate"},"web_url":"https://example.invalid/5","state":"opened","draft":false}`)
+	writeCanned(t, dir, "gl-changes.json", `{"changes":[{"old_path":"a.txt","new_path":"a.txt","new_file":false,`+
+		`"deleted_file":false,"renamed_file":false}]}`)
+	writeCanned(t, dir, "gl-compare.json", `{"diffs":[{"old_path":"a.txt","new_path":"a.txt",`+
+		`"new_file":false,"renamed_file":false,"deleted_file":false,`+
+		`"diff":"@@ -1 +1 @@\n-a\n+b\n"}]}`)
+	writeCanned(t, dir, "full.diff", "diff --git a/a.txt b/a.txt\nindex 1111111..2222222 100644\n"+
+		"--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n")
+	writeCanned(t, dir, "gl-notes.json", `[{"type":"DiffNote"},{"type":"Note"}]`)
+	writeCanned(t, dir, "gl-discussions.json", `[{"id":"d1","notes":[`+
+		`{"id":201,"body":"Please rename.","author":{"username":"ana"},"created_at":"2026-11-01T10:00:00Z",`+
+		`"resolved":false,"resolvable":true,"position":{"position_type":"text","new_path":"a.txt","old_path":"a.txt",`+
+		`"new_line":1,"old_line":null,"head_sha":"`+headA+`"}},`+
+		`{"id":202,"body":"Fixed.","author":{"username":"verdict"},"created_at":"2026-11-01T11:00:00Z"},`+
+		`{"id":203,"system":true,"body":"added label"}]},`+
+		`{"id":"d2","notes":[{"id":204,"body":"Old note","author":{"username":"bo"},"created_at":"2026-10-01T09:00:00Z",`+
+		`"resolved":true,"resolvable":true,"position":{"position_type":"text","new_path":"a.txt","old_path":"a.txt",`+
+		`"new_line":1,"old_line":null,"head_sha":"`+headB+`"}}]},`+
+		`{"id":"d3","notes":[{"id":205,"body":"LGTM","author":{"username":"rev"},"created_at":"2026-11-02T09:00:00Z"}]}]`)
+}
+
 // TestFetchGoldenProviders proves the --provider backends byte parity: the
 // normalized PR.json shape, the thread splits, the advisory manifests, and
 // the auth/mode refusals.
@@ -851,28 +975,7 @@ func TestFetchGoldenProviders(t *testing.T) {
 	t.Parallel()
 	gitlab := func(t *testing.T, dir, _ string) {
 		t.Helper()
-		promptFiles(t, dir)
-		writeCanned(t, dir, "gl-meta.json", `{"iid":5,"title":"MR five","description":"body","target_branch":"main",`+
-			`"source_branch":"feat","diff_refs":{"base_sha":"`+headB+`","head_sha":"`+headA+`"},`+
-			`"author":{"username":"mate"},"web_url":"https://example.invalid/5","state":"opened","draft":false}`)
-		writeCanned(t, dir, "gl-changes.json", `{"changes":[{"old_path":"a.txt","new_path":"a.txt","new_file":false,`+
-			`"deleted_file":false,"renamed_file":false}]}`)
-		writeCanned(t, dir, "gl-compare.json", `{"diffs":[{"old_path":"a.txt","new_path":"a.txt",`+
-			`"new_file":false,"renamed_file":false,"deleted_file":false,`+
-			`"diff":"@@ -1 +1 @@\n-a\n+b\n"}]}`)
-		writeCanned(t, dir, "full.diff", "diff --git a/a.txt b/a.txt\nindex 1111111..2222222 100644\n"+
-			"--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n")
-		writeCanned(t, dir, "gl-notes.json", `[{"type":"DiffNote"},{"type":"Note"}]`)
-		writeCanned(t, dir, "gl-discussions.json", `[{"id":"d1","notes":[`+
-			`{"id":201,"body":"Please rename.","author":{"username":"ana"},"created_at":"2026-11-01T10:00:00Z",`+
-			`"resolved":false,"resolvable":true,"position":{"position_type":"text","new_path":"a.txt","old_path":"a.txt",`+
-			`"new_line":1,"old_line":null,"head_sha":"`+headA+`"}},`+
-			`{"id":202,"body":"Fixed.","author":{"username":"verdict"},"created_at":"2026-11-01T11:00:00Z"},`+
-			`{"id":203,"system":true,"body":"added label"}]},`+
-			`{"id":"d2","notes":[{"id":204,"body":"Old note","author":{"username":"bo"},"created_at":"2026-10-01T09:00:00Z",`+
-			`"resolved":true,"resolvable":true,"position":{"position_type":"text","new_path":"a.txt","old_path":"a.txt",`+
-			`"new_line":1,"old_line":null,"head_sha":"`+headB+`"}}]},`+
-			`{"id":"d3","notes":[{"id":205,"body":"LGTM","author":{"username":"rev"},"created_at":"2026-11-02T09:00:00Z"}]}]`)
+		stubGitLab(t, dir)
 	}
 	golden.Pin(t, harness, "gitlab-happy", gitlab, nil,
 		"fetch", "acme/app", "4706", "--provider", "gitlab", "--json")

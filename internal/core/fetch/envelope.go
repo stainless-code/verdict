@@ -55,7 +55,7 @@ func fetchTailAfterSource(ctx context.Context, ctx2 *fetchRunCtx, req *Request, 
 	hint := authorRoutingHint(dir)
 	next := "feed " + dir + "/procedure.md + " +
 		dir + "/PR.json + " + diffFeed(dir, chunkJSON != nil, fullDiffFile) + impactFeed(dir, f.Index) +
-		contextFeed(dir, f.Context, f.Spec) +
+		contextFeed(dir) +
 		" to any agent; ask it to write " + dir + "/review.json" +
 		threadsHint(dir) + hint
 	if req.JSONMode {
@@ -113,12 +113,17 @@ func stageDump(ctx2 *fetchRunCtx, show bool) (string, bool, error) {
 	return d, true, nil
 }
 
+// writeFetchDone streams the human tail. Its next line names the same feed
+// the envelope's next carries, context.txt included: an issue-only bundle
+// reaches the agent through that file, so a human-driven run must be told
+// about it too.
 func writeFetchDone(r *session, dir, filesStr string, chunked bool, index string, hint string) {
 	shown := r.display(dir)
 	fmt.Fprintf(r.Human, "done: %s/PR.json %s/full.diff %s/toc.txt %s/roles.txt (%s files)\n", shown, shown, shown, shown, filesStr)
 	fmt.Fprintf(r.Human, "next: feed %s/procedure.md + "+
-		"%s/PR.json + %s%s (+ %s/roles.txt) to any agent; ask it to write %s/review.json%s%s\n",
-		dir, dir, diffFeed(dir, chunked, dir+"/full.diff"), impactFeed(dir, index), dir, dir, threadsHint(dir), hint)
+		"%s/PR.json + %s%s%s (+ %s/roles.txt) to any agent; ask it to write %s/review.json%s%s\n",
+		dir, dir, diffFeed(dir, chunked, dir+"/full.diff"), impactFeed(dir, index), contextFeed(dir),
+		dir, dir, threadsHint(dir), hint)
 }
 
 // threadsHint names the normalized conversation feed when the PR carries
@@ -474,7 +479,7 @@ func fetchTailLocal(
 	writeTailReceipt(ctx2, budget)
 	next := "feed " + ctx2.dir + "/procedure.md + " +
 		ctx2.dir + "/source.json + " + diffFeed(ctx2.dir, chunkJSON != nil, fullDiffFile) + impactFeed(ctx2.dir, f.Index) +
-		contextFeed(ctx2.dir, f.Context, f.Spec) +
+		contextFeed(ctx2.dir) +
 		" to any agent; ask it to write " + ctx2.dir + "/review.json"
 	dump, hasDump, err := localDumpPtr(ctx2, req, f)
 	if err != nil {

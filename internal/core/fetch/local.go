@@ -356,9 +356,11 @@ func localFinish(
 	}
 	shown := r.display(dir)
 	fmt.Fprintf(r.Human, "done: %s/source.json %s/full.diff %s/toc.txt %s/roles.txt (%d files)\n", shown, shown, shown, shown, total)
+	// The human next line names context.txt exactly as the envelope's next
+	// does: --context and --spec reach the agent through that file.
 	fmt.Fprintf(r.Human, "next: feed %s/procedure.md + "+
-		"%s/source.json + %s%s to any agent; ask it to write %s/review.json\n",
-		dir, dir, diffFeed(dir, chunkActive, fullDiffFile), impactFeed(dir, f.Index), dir)
+		"%s/source.json + %s%s%s to any agent; ask it to write %s/review.json\n",
+		dir, dir, diffFeed(dir, chunkActive, fullDiffFile), impactFeed(dir, f.Index), contextFeed(dir), dir)
 	return data, next, nil
 }
 

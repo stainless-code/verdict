@@ -1,7 +1,7 @@
 deps 0
-darwin/amd64 18780000
-darwin/arm64 17060000
-linux/amd64 18470000
-linux/arm64 16660000
-windows/amd64 18900000
-windows/arm64 16810000
+darwin/amd64 18870000
+darwin/arm64 17120000
+linux/amd64 18550000
+linux/arm64 16730000
+windows/amd64 18970000
+windows/arm64 16890000

@@ -40,6 +40,8 @@ var hintRules = []HintRule{
 	{codes: []string{"auth-missing"}, hint: "try: export the credential named above, then re-run"},
 	{codes: []string{"context-invalid"}, hint: "try: check each --context path (relative paths resolve against " +
 		"the current directory), then re-run"},
+	{codes: []string{"issue-invalid"}, hint: "try: pass --issue owner/repo#12, #12, or a GitHub issue URL, " +
+		"then re-run"},
 	{codes: []string{"spec-too-large"}, hint: "try: narrow the --spec file under 150 checklist items or split the PR, then re-fetch"},
 	{
 		codes: []string{"fetch-failed", "pr-read-failed", "threads-failed"},

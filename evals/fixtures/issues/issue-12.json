@@ -1,0 +1,7 @@
+{
+  "number": 12,
+  "title": "Add retry budget",
+  "body": "Retries stop at three per host.",
+  "html_url": "https://github.com/acme/app/issues/12",
+  "state": "open"
+}
