@@ -49,16 +49,20 @@ func TestResumeOptionsCiteAgentDocs(t *testing.T) {
 	}
 	declared := 0
 	for _, agent := range All() {
-		if agent.Launch == nil || len(agent.Launch.ResumeArgs) == 0 {
-			continue
-		}
-		declared++
-		line := manualLaunchRow(string(raw), agent.Name, agent.Launch.Citation)
-		if agent.Launch.ResumeCitation == "" || !strings.Contains(line, agent.Launch.ResumeCitation) {
-			t.Fatalf("%s declares continuation options without a cited row: %q", agent.Name, line)
+		if agent.Launch != nil && len(agent.Launch.ResumeArgs) > 0 {
+			declared++
+			checkManualResume(t, string(raw), agent)
 		}
 	}
 	if declared != 2 {
 		t.Fatalf("rows declaring continuation options = %d", declared)
+	}
+}
+
+func checkManualResume(t *testing.T, manual string, agent Agent) {
+	t.Helper()
+	line := manualLaunchRow(manual, agent.Name, agent.Launch.Citation)
+	if agent.Launch.ResumeCitation == "" || !strings.Contains(line, agent.Launch.ResumeCitation) {
+		t.Fatalf("%s declares continuation options without a cited row: %q", agent.Name, line)
 	}
 }

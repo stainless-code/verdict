@@ -350,23 +350,27 @@ func TestCoordinatorRefusesSessionResumePerAgent(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			req, commander := coordinatorFixture(t)
-			req.Agent = tc.agent
-			req.PassThrough = tc.passThrough
-			_, ref := TwoFinders(t.Context(), req)
-			if tc.refused {
-				if ref == nil || ref.Code != "bad-flags" || len(commander.phases) != 0 {
-					t.Fatalf("refusal = %v, phases = %v", ref, commander.phases)
-				}
-				return
-			}
-			if ref != nil {
-				t.Fatalf("pass-through refused: %v", ref)
-			}
-			if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1,x-cross-2" {
-				t.Fatalf("phases = %s", got)
-			}
+			assertResumePassThrough(t, tc.agent, tc.passThrough, tc.refused)
 		})
+	}
+}
+
+func assertResumePassThrough(t *testing.T, agent string, passThrough []string, refused bool) {
+	t.Helper()
+	req, commander := coordinatorFixture(t)
+	req.Agent, req.PassThrough = agent, passThrough
+	_, ref := TwoFinders(t.Context(), req)
+	if refused {
+		if ref == nil || ref.Code != "bad-flags" || len(commander.phases) != 0 {
+			t.Fatalf("refusal = %v, phases = %v", ref, commander.phases)
+		}
+		return
+	}
+	if ref != nil {
+		t.Fatalf("pass-through refused: %v", ref)
+	}
+	if got := strings.Join(commander.phases, ","); got != "x-finder-1,x-finder-2,x-cross-1,x-cross-2" {
+		t.Fatalf("phases = %s", got)
 	}
 }
 

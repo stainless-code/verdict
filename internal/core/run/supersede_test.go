@@ -190,6 +190,29 @@ func automaticArtifacts() []string {
 	return []string{"launcher.json", "review.json", "verification", "x-finder-1", "x-finder-2", "x-cross-1", "x-cross-2"}
 }
 
+// retiredFixture turns the completed fixture into the capture a retirement
+// leaves behind: no execution reference, the retirement location recorded, and
+// none of the artifacts it moved still live.
+func retiredFixture(t *testing.T, dir string, retired bool) {
+	t.Helper()
+	capture, _, err := config.ReadRunState(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	capture.Execution = nil
+	if retired {
+		capture.Superseded = "x-superseded/legacy"
+	}
+	if err := config.WriteRunState(dir, capture); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range automaticArtifacts() {
+		if err := os.RemoveAll(filepath.Join(dir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 // TestCoordinatorRefusesResumeBeforeRetirement proves a retry that cannot
 // launch leaves the completed execution alone: the refusal arrives before the
 // retirement moves anything.
@@ -220,19 +243,7 @@ func TestCoordinatorRefusesResumeBeforeRetirement(t *testing.T) {
 // instead of wedging the bundle.
 func TestCoordinatorRecoversARetiredCapture(t *testing.T) {
 	req, commander := completedExecution(t)
-	capture, _, err := config.ReadRunState(commander.dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	capture.Execution, capture.Superseded = nil, "x-superseded/legacy"
-	if err := config.WriteRunState(commander.dir, capture); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range automaticArtifacts() {
-		if err := os.RemoveAll(filepath.Join(commander.dir, name)); err != nil {
-			t.Fatal(err)
-		}
-	}
+	retiredFixture(t, commander.dir, true)
 	commander.phases = nil
 	if _, ref := Run(t.Context(), req); ref != nil {
 		t.Fatalf("retired capture refused: %v", ref)
@@ -247,19 +258,7 @@ func TestCoordinatorRecoversARetiredCapture(t *testing.T) {
 // is damaged, not retired, and still refuses.
 func TestCoordinatorRefusesADamagedCapture(t *testing.T) {
 	req, commander := completedExecution(t)
-	capture, _, err := config.ReadRunState(commander.dir)
-	if err != nil {
-		t.Fatal(err)
-	}
-	capture.Execution = nil
-	if err := config.WriteRunState(commander.dir, capture); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range automaticArtifacts() {
-		if err := os.RemoveAll(filepath.Join(commander.dir, name)); err != nil {
-			t.Fatal(err)
-		}
-	}
+	retiredFixture(t, commander.dir, false)
 	commander.phases = nil
 	_, ref := Run(t.Context(), req)
 	if ref == nil || ref.Code != "agent-record-failed" || !strings.Contains(ref.Message, "restore run.json") {

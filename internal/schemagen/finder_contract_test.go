@@ -56,11 +56,11 @@ func TestNullableCostSchema(t *testing.T) {
 	}
 	validateWire(t, schema, "report cost", defOf(t, schema, "reportCost"), decodeWire(t, data))
 	for _, cost := range []struct {
-		def string
 		doc any
+		def string
 	}{
-		{"costTier", decodeWire(t, core.CostTier{})},
-		{"costTiers", decodeWire(t, core.CostTiers{})},
+		{decodeWire(t, core.CostTier{}), "costTier"},
+		{decodeWire(t, core.CostTiers{}), "costTiers"},
 	} {
 		validateWire(t, schema, cost.def, defOf(t, schema, cost.def), cost.doc)
 	}

@@ -302,15 +302,20 @@ func TestCheckReviewRepairHintUsesSelectedVersion(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			res := recordcore.CheckReview([]byte(tc.review), checkDiff)
-			problem, ok := findProblem(res, tc.path, tc.code)
-			if !ok {
-				t.Fatalf("problems = %+v, want %s at %s", res.Problems, tc.code, tc.path)
-			}
-			if problem.Example != "2" {
-				t.Fatalf("example = %#v, want the selected version \"2\"", problem.Example)
-			}
+			assertRepairHint(t, tc.review, tc.path, tc.code)
 		})
+	}
+}
+
+func assertRepairHint(t *testing.T, review, path, code string) {
+	t.Helper()
+	res := recordcore.CheckReview([]byte(review), checkDiff)
+	problem, ok := findProblem(res, path, code)
+	if !ok {
+		t.Fatalf("problems = %+v, want %s at %s", res.Problems, code, path)
+	}
+	if problem.Example != "2" {
+		t.Fatalf("example = %#v, want the selected version \"2\"", problem.Example)
 	}
 }
 

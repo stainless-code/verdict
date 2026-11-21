@@ -336,16 +336,16 @@ func TestExecutionCapturedTopologyCannotBecomeManual(t *testing.T) {
 
 func TestStampRefusesAReceiptChangedAfterCheck(t *testing.T) {
 	cases := []struct {
-		name   string
 		tamper func(t *testing.T, dir string)
+		name   string
 	}{
-		{"removed", func(t *testing.T, dir string) {
+		{name: "removed", tamper: func(t *testing.T, dir string) {
 			t.Helper()
 			if err := os.Remove(filepath.Join(dir, "verification", "verdicts.json")); err != nil {
 				t.Fatal(err)
 			}
 		}},
-		{"replaced", func(t *testing.T, dir string) {
+		{name: "replaced", tamper: func(t *testing.T, dir string) {
 			t.Helper()
 			path := filepath.Join(dir, "verification", "verdicts.json")
 			if err := os.WriteFile(path, []byte(`{}`), 0o600); err != nil {
@@ -355,20 +355,25 @@ func TestStampRefusesAReceiptChangedAfterCheck(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
-			state := CheckExecution(dir, nil)
-			if state.Problem() != "" {
-				t.Fatalf("fixture problem = %q", state.Problem())
-			}
-			tc.tamper(t, dir)
-			entry := executionEntry()
-			state.Stamp([]any{entry})
-			if cross := readCross(entry); readcommon.FieldOf(cross, "status") == "confirmed" {
-				t.Fatalf("stamped confirmed cross after the receipt changed: %v", cross)
-			}
-			if state.Problem() != "execution: execution panel receipt changed before applying cross checks" {
-				t.Fatalf("problem = %q", state.Problem())
-			}
+			assertReceiptChangeRefused(t, tc.tamper)
 		})
+	}
+}
+
+func assertReceiptChangeRefused(t *testing.T, tamper func(t *testing.T, dir string)) {
+	t.Helper()
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	state := CheckExecution(dir, nil)
+	if state.Problem() != "" {
+		t.Fatalf("fixture problem = %q", state.Problem())
+	}
+	tamper(t, dir)
+	entry := executionEntry()
+	state.Stamp([]any{entry})
+	if cross := readCross(entry); readcommon.FieldOf(cross, "status") == "confirmed" {
+		t.Fatalf("stamped confirmed cross after the receipt changed: %v", cross)
+	}
+	if state.Problem() != "execution: execution panel receipt changed before applying cross checks" {
+		t.Fatalf("problem = %q", state.Problem())
 	}
 }
