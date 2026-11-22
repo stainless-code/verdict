@@ -63,14 +63,14 @@ func builtinRows() []builtinRow {
 			noModel:   true,
 			probeArgs: []string{"run", "--help"}, probeMatch: "--disable-tool-groups",
 			install:       "curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash",
-			wantArgv:      []string{"bob", "run", "--x", "PROMPT"},
-			wantPrintArgv: []string{"bob", "run", "--model", "M", "PROMPT"},
+			wantArgv:      []string{"bob", "run", "--disable-tool-groups", "execute,mcp", "--x", "PROMPT"},
+			wantPrintArgv: []string{"bob", "run", "--disable-tool-groups", "execute,mcp", "--model", "M", "PROMPT"},
 		},
 		{
 			name: "claude", binary: "claude", args: []string{"-p"}, promptFlag: "",
 			install:       "curl -fsSL https://claude.ai/install.sh | bash",
-			wantArgv:      []string{"claude", "-p", "--model", "M", "--x", "PROMPT"},
-			wantPrintArgv: []string{"claude", "-p", "--model", "M", "PROMPT"},
+			wantArgv:      []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", "--model", "M", "--x", "PROMPT"},
+			wantPrintArgv: []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", "--model", "M", "PROMPT"},
 		},
 		{
 			name: "cline", binary: "cline", args: []string{}, promptFlag: "",
@@ -274,8 +274,8 @@ func builtinRows() []builtinRow {
 		{
 			name: "pi", binary: "pi", args: []string{"-p"}, promptFlag: "",
 			install:       "curl -fsSL https://pi.dev/install.sh | sh",
-			wantArgv:      []string{"pi", "-p", "--model", "M", "--x", "PROMPT"},
-			wantPrintArgv: []string{"pi", "-p", "--model", "M", "PROMPT"},
+			wantArgv:      []string{"pi", "-p", "--exclude-tools", "bash,powershell", "--model", "M", "--x", "PROMPT"},
+			wantPrintArgv: []string{"pi", "-p", "--exclude-tools", "bash,powershell", "--model", "M", "PROMPT"},
 		},
 		{
 			name: "qoder", binary: "qoder", args: []string{"-p"}, promptFlag: "",
@@ -375,7 +375,9 @@ func assertRowArgv(t *testing.T, tc *builtinRow, def *agentcatalog.Launch) {
 	if def.ModelFlag != wantModel {
 		t.Errorf("model flag = %q, want %q", def.ModelFlag, wantModel)
 	}
-	got := argvFor(def, "M", []string{"--x"}, "PROMPT")
+	// The row's own documented discovery restriction is what `run` emits by
+	// default, so the table pins it beside the definition flags.
+	got := argvFor(def, "M", def.DiscoveryArgs, []string{"--x"}, "PROMPT")
 	if !slices.Equal(got, tc.wantArgv) {
 		t.Errorf("argv = %q, want %q", got, tc.wantArgv)
 	}
@@ -453,7 +455,7 @@ func TestArgvForPromptPlacement(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			def := tc.def
-			got := argvFor(&def, "M", []string{"--x"}, "PROMPT")
+			got := argvFor(&def, "M", nil, []string{"--x"}, "PROMPT")
 			if !slices.Equal(got, tc.want) {
 				t.Fatalf("argv = %q, want %q", got, tc.want)
 			}
@@ -479,7 +481,7 @@ func TestArgvForOmitsEmptyFields(t *testing.T) {
 	}
 	for _, tc := range tests {
 		def := tc.def
-		if got := argvFor(&def, "", nil, "PROMPT"); !slices.Equal(got, tc.want) {
+		if got := argvFor(&def, "", nil, nil, "PROMPT"); !slices.Equal(got, tc.want) {
 			t.Errorf("%s argv = %q, want %q", def.Name, got, tc.want)
 		}
 	}

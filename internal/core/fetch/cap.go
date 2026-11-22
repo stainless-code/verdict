@@ -169,12 +169,19 @@ type fileSlice struct {
 	size    int64
 }
 
+// chunkFileTable reads one diff file into its slice table.
 func chunkFileTable(fullDiff string) []fileSlice {
 	raw, err := os.ReadFile(fullDiff)
 	if err != nil {
 		return nil
 	}
-	sections := hunks.Files(string(raw))
+	return chunkFileTableText(string(raw))
+}
+
+// chunkFileTableText derives the slice table from diff bytes already in hand,
+// so a caller that filtered the diff reads it once instead of twice.
+func chunkFileTableText(diffText string) []fileSlice {
+	sections := hunks.Files(diffText)
 	out := make([]fileSlice, 0, len(sections))
 	for i := range sections {
 		out = append(out, fileSlice{path: sections[i].Path, oldPath: sections[i].OldPath, size: sections[i].Size})

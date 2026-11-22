@@ -218,9 +218,13 @@ if cmp -s "$EVAL_OUT" "$EVAL_SANDBOX/cenv-expected.txt"; then
 else
   bad "chunked dump differs from the manifest-order fenced assembly"
 fi
+# This fixture's files all live in one package, so semantic ordering leaves the
+# diff's own order alone and the two concatenations coincide. A multi-package
+# diff may regroup them: the surviving guarantee there is per-section (graded in
+# the chunk-manifest case), not a byte-equal ordered concat.
 dump_expected_full ".verdict/state/local-cenvfix" "$EVAL_SANDBOX/cenv-fullconcat.txt" "$(dump_nonce "$EVAL_OUT")" "$EVAL_OUT"
 if cmp -s "$EVAL_SANDBOX/cenv-expected.txt" "$EVAL_SANDBOX/cenv-fullconcat.txt"; then
-  good "manifest-order chunk concat is byte-equal to the full.diff concatenation"
+  good "one-package fixture: manifest-order chunk concat is byte-equal to the full.diff concatenation"
 else
   bad "chunk concat differs from full.diff bytes"
 fi

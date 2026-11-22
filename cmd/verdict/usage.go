@@ -80,7 +80,7 @@ func usageText() string {
 		"        vibe|zcode>\n" +
 		"      [--finders <1|2, default 2>] [--budget <auto|light|standard|deep>] [--recipe <slug>]\n" +
 		"      [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 2>]\n" +
-		"      [--print] [--resume] [-- <agent args>...] [--json]\n" +
+		"      [--print] [--resume] [--allow-shell] [-- <agent args>...] [--json]\n" +
 		"    launch YOUR agent as two isolated whole-diff finders with opposite-finder cross-checks.\n" +
 		"    --finders 1 restores one finder; --print/--stage require it. Recipes supply declarative context.\n" +
 		"    --resume continues the two-finder execution launcher.json records instead of\n" +
@@ -88,6 +88,12 @@ func usageText() string {
 		"    controls it seals, prompts_hash, agent, finder count) and the bound artifacts, reuses\n" +
 		"    every finder and cross-check that still passes, re-runs only the incomplete phases,\n" +
 		"    and fails closed with resume-drift or cannot-resume before launching anything.\n" +
+		"    Discovery is read-only: every launch -- finders, cross-checks, repair rounds, drain --\n" +
+		"    carries the row's documented tool restrictions (claude: --disallowedTools=Bash,PowerShell, bob:\n" +
+		"    --disable-tool-groups execute,mcp, pi: --exclude-tools bash,powershell), which block shell\n" +
+		"    execution while leaving file reads and the review.json write. --allow-shell restores the\n" +
+		"    row's own tools; your own tool flag after '--' replaces the restriction rather than\n" +
+		"    duplicating it. verify --sandbox is untouched.\n" +
 		"    --budget auto classifies the diff before launching: light runs one finder, standard and\n" +
 		"    deep run two with cross-checks, and a sensitive path escalates to deep. --finders N always\n" +
 		"    wins; the tier and its reasons land in launcher.json and --json data.budget.\n" +

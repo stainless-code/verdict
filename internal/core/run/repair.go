@@ -150,7 +150,7 @@ func (st *state) repairRound(ctx context.Context, args *launchArgs, rec *launche
 		return roundOutcome{stop: true, ref: ref}
 	}
 	prompt := st.roundPrompt(args, rep, in, k, n)
-	argv := argvFor(&args.def, args.model(), st.req.PassThrough, prompt)
+	argv := argvFor(&args.def, args.model(), args.restriction, st.req.PassThrough, prompt)
 	st.human(fmt.Sprintf("» round %d/%d: %s (timeout %ds)", k, n, strings.Join(rec.Argv, " "), args.timeout))
 	roundStarted := st.now()
 	roundRes, spawnErr := st.spawn(ctx, argv, args.timeout)

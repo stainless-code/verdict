@@ -1,12 +1,14 @@
 package recordcore
 
 import (
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -21,7 +23,8 @@ func (st *state) validateChunkMerge() (string, error) {
 		return dir + "/hunks.tsv", nil
 	}
 	refetch := chunkRefetch(st)
-	chunks, names, ref := readChunkManifest(manifest, refetch)
+	exclusions := privacyExclusions(dir)
+	chunks, names, ref := readChunkManifest(manifest, refetch, noRetainedSections(dir, exclusions))
 	if ref != nil {
 		return "", ref
 	}
@@ -39,7 +42,7 @@ func (st *state) validateChunkMerge() (string, error) {
 			return "", &core.RefusalError{Code: codeRecordFailed, Message: fmt.Sprintf("could not write %s: %v", chunkHunks, err)}
 		}
 	}
-	if !concatEquals(diffs, dir+"/full.diff") {
+	if !concatEquals(diffs, dir+"/full.diff", exclusions) {
 		st.warn(fmt.Sprintf(msgChunkDrifted, dir))
 	}
 	if st.inputChecked {
@@ -63,7 +66,11 @@ type chunk struct {
 	files []string
 }
 
-func readChunkManifest(manifest, refetch string) ([]chunk, []string, error) {
+// readChunkManifest parses the chunk list. An empty list is valid only when
+// the privacy exclusions left no section to slice (allowEmpty), which is the
+// empty manifest a fetch writes after withholding everything; any other empty
+// list is the missing snapshot it claims to be.
+func readChunkManifest(manifest, refetch string, allowEmpty bool) ([]chunk, []string, error) {
 	schema, manMap := manifestSchema(manifest)
 	if schema != "1" {
 		if schema == "" {
@@ -74,10 +81,22 @@ func readChunkManifest(manifest, refetch string) ([]chunk, []string, error) {
 	chunks := parseChunks(jq.Elements(manMap[fieldChunks]))
 	sortChunks(chunks)
 	names := chunkNames(chunks)
-	if len(names) == 0 {
+	if len(names) == 0 && !allowEmpty {
 		return nil, nil, &core.RefusalError{Code: codeMissingChunkSnap, Message: fmt.Sprintf(msgChunkNoChunks, manifest, refetch)}
 	}
 	return chunks, names, nil
+}
+
+// noRetainedSections reports whether the privacy exclusions leave full.diff
+// with no file section at all, so the empty chunk list a fetch wrote is the
+// whole truth. A missing or unreadable diff keeps the strict reading.
+func noRetainedSections(dir string, exclusions []string) bool {
+	raw, err := os.ReadFile(dir + "/full.diff")
+	if err != nil {
+		return false
+	}
+	_, sections := hunks.Sections(config.WithoutExcludedSections(string(raw), exclusions))
+	return len(sections) == 0
 }
 
 func manifestSchema(manifest string) (string, map[string]any) {
@@ -308,20 +327,64 @@ func fileNonEmpty(path string) bool {
 	return err == nil && fi.Size() > 0
 }
 
-func concatEquals(paths []string, target string) bool {
+func concatEquals(paths []string, target string, exclusions []string) bool {
 	want, err := os.ReadFile(target)
 	if err != nil {
 		return false
 	}
+	// The chunk payloads carry the diff the privacy exclusions already
+	// filtered, so the comparison reads that same view: full.diff keeps every
+	// section for patch identity, and a withheld one is not drift.
+	kept := config.WithoutExcludedSections(string(want), exclusions)
 	total, ok := concatSize(paths)
-	if !ok || total != len(want) {
+	if !ok || total != len(kept) {
 		return false
 	}
 	got, ok := concatRead(paths, total)
 	if !ok {
 		return false
 	}
-	return got == string(want)
+	return sameDiffSections(got, kept)
+}
+
+// privacyExclusions reads the personal exclusion globs the fetch withheld from
+// every model-facing export. A bundle with no captured run state records none,
+// so its chunks are compared against full.diff unchanged.
+func privacyExclusions(dir string) []string {
+	rs, found, err := config.ReadRunState(dir)
+	if err != nil || !found || rs == nil || rs.Resolved == nil {
+		return nil
+	}
+	return rs.Resolved.Privacy.Exclusions
+}
+
+// sameDiffSections compares two diffs as their leading bytes plus the multiset
+// of file sections: chunk membership follows the semantic file order (a
+// package's files and their tests share a chunk), so the ordered concatenation
+// is not the diff's own order — what the record still proves is that every
+// section appears exactly as often, and byte-identically. A lost, doubled, or
+// edited section fails; the total byte count is compared by the caller.
+func sameDiffSections(got, want string) bool {
+	if got == want {
+		return true
+	}
+	gotPreamble, gotSections := hunks.Sections(got)
+	wantPreamble, wantSections := hunks.Sections(want)
+	if gotPreamble != wantPreamble || len(gotSections) != len(wantSections) {
+		return false
+	}
+	counts := make(map[[sha256.Size]byte]int, len(wantSections))
+	for i := range wantSections {
+		counts[sha256.Sum256([]byte(wantSections[i]))]++
+	}
+	for i := range gotSections {
+		sum := sha256.Sum256([]byte(gotSections[i]))
+		if counts[sum] == 0 {
+			return false
+		}
+		counts[sum]--
+	}
+	return true
 }
 
 func concatSize(paths []string) (int, bool) {

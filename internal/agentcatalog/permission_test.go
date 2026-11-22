@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -97,5 +98,98 @@ func checkManualResume(t *testing.T, manual string, agent Agent) {
 	line := manualLaunchRow(manual, agent.Name, agent.Launch.Citation)
 	if agent.Launch.ResumeCitation == "" || !strings.Contains(line, agent.Launch.ResumeCitation) {
 		t.Fatalf("%s declares continuation options without a cited row: %q", agent.Name, line)
+	}
+}
+
+// discoveryRow is the literal a restricted row must declare: the exact flags
+// the child receives, the doc that spells them, and the operator spellings
+// that suppress them instead of duplicating them.
+type discoveryRow struct {
+	args      []string
+	citation  string
+	overrides []string
+}
+
+// TestDiscoveryRestrictionsCiteAgentDocs pins the discovery-phase tool
+// restrictions: only rows whose own CLI documents the exact spelling carry one,
+// every one of them cites that doc, names the operator spellings that decide
+// the same question, and appears in the manual's discovery table. The literals
+// are the expectation — a fabricated or re-spelled flag has to change this
+// table first.
+func TestDiscoveryRestrictionsCiteAgentDocs(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "..", "docs", "manual.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]discoveryRow{
+		"bob": {
+			args:      []string{"--disable-tool-groups", "execute,mcp"},
+			citation:  docBobShell,
+			overrides: []string{"--disable-tool-groups"},
+		},
+		"claude": {
+			args:     []string{"--disallowedTools=Bash,PowerShell"},
+			citation: docClaudeCLI,
+			overrides: []string{
+				"--disallowedTools", "--disallowed-tools", "--allowedTools", "--allowed-tools", "--tools",
+			},
+		},
+		"pi": {
+			args:     []string{"--exclude-tools", "bash,powershell"},
+			citation: docPiCLI,
+			overrides: []string{
+				"--exclude-tools", "-xt", "--tools", "-t", "--no-builtin-tools", "-nbt", "--no-tools", "-nt",
+			},
+		},
+	}
+	declared := 0
+	for _, agent := range All() {
+		if agent.Launch == nil || len(agent.Launch.DiscoveryArgs) == 0 {
+			continue
+		}
+		declared++
+		checkDiscoveryRow(t, string(raw), agent, want[agent.Name])
+	}
+	if declared != len(want) {
+		t.Fatalf("rows declaring a discovery restriction = %d; want the %d documented ones", declared, len(want))
+	}
+}
+
+// checkDiscoveryRow pins one row's discovery restriction to its citation and to
+// the manual table that documents it.
+func checkDiscoveryRow(t *testing.T, manual string, agent Agent, want discoveryRow) {
+	t.Helper()
+	launch := agent.Launch
+	if !slices.Equal(launch.DiscoveryArgs, want.args) {
+		t.Errorf("%s discovery args = %q, want %q", agent.Name, launch.DiscoveryArgs, want.args)
+	}
+	if launch.DiscoveryCitation != want.citation {
+		t.Errorf("%s discovery citation = %q, want %q", agent.Name, launch.DiscoveryCitation, want.citation)
+	}
+	if !slices.Equal(launch.DiscoveryOverrideFlags, want.overrides) {
+		t.Errorf("%s discovery override flags = %q, want %q", agent.Name, launch.DiscoveryOverrideFlags, want.overrides)
+	}
+	checkDiscoveryManualRow(t, manual, agent)
+}
+
+// checkDiscoveryManualRow proves the manual's discovery table names the row
+// with the exact flags and the cited source, so an operator reads the same
+// words the launcher emits.
+func checkDiscoveryManualRow(t *testing.T, manual string, agent Agent) {
+	t.Helper()
+	row := ""
+	for candidate := range strings.SplitSeq(manual, "\n") {
+		if strings.HasPrefix(candidate, "| `"+agent.Name+"`") &&
+			strings.Contains(candidate, "`"+strings.Join(agent.Launch.DiscoveryArgs, " ")+"`") {
+			row = candidate
+			break
+		}
+	}
+	if row == "" {
+		t.Fatalf("%s discovery flags absent from the manual: want a row carrying %q",
+			agent.Name, strings.Join(agent.Launch.DiscoveryArgs, " "))
+	}
+	if !strings.Contains(row, agent.Launch.DiscoveryCitation) {
+		t.Fatalf("%s discovery row cites no source: %s", agent.Name, row)
 	}
 }

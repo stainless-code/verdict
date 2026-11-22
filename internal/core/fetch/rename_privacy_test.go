@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/hunks"
 )
 
@@ -112,8 +113,8 @@ func TestRenamePrivacyChunkTableDropsRename(t *testing.T) {
 		t.Fatal(err)
 	}
 	assertRenameChunkEndpoints(t, chunkFileTable(path))
-	assertChunkWithholdKeepsNotes(t, func() []fileSlice { return chunkFileTable(path) })
-	if kept := withholdChunkFiles(chunkFileTable(path), nil); len(kept) != 2 {
+	assertChunkWithholdKeepsNotes(t, renamePrivacyDiff)
+	if kept := chunkFileTableText(config.WithoutExcludedSections(renamePrivacyDiff, nil)); len(kept) != 2 {
 		t.Fatalf("empty exclusions dropped chunk files: %+v", kept)
 	}
 }
@@ -131,12 +132,12 @@ func assertRenameChunkEndpoints(t *testing.T, table []fileSlice) {
 }
 
 // assertChunkWithholdKeepsNotes pins the chunk choke point: an exclusion
-// matching either rename endpoint drops the renamed section before any
-// chunk byte is written, keeping only the unrelated file.
-func assertChunkWithholdKeepsNotes(t *testing.T, fresh func() []fileSlice) {
+// matching either rename endpoint drops the renamed section from the bytes the
+// table is derived from, keeping only the unrelated file.
+func assertChunkWithholdKeepsNotes(t *testing.T, diff string) {
 	t.Helper()
 	for _, exclusions := range [][]string{{"old/**"}, {"new/**"}} {
-		kept := withholdChunkFiles(fresh(), exclusions)
+		kept := chunkFileTableText(config.WithoutExcludedSections(diff, exclusions))
 		if len(kept) != 1 || kept[0].path != "notes.txt" {
 			t.Fatalf("kept = %+v for %q, want only notes.txt", kept, exclusions)
 		}

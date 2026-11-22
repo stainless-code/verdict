@@ -315,23 +315,6 @@ func warnDegradedWidth(ctx *fetchRunCtx, wide int) {
 		"and were withheld whole — the model-facing diff covers less than the rest of the bundle", wide))
 }
 
-// excludedEndpoint reports whether a privacy exclusion glob covers either
-// rename endpoint of one diff section: the b-side path, or the a-side path
-// when the section renamed it. A rename out of an excluded path withholds
-// the whole section — matching one endpoint can never disclose the other
-// endpoint's bytes.
-func excludedEndpoint(path, oldPath string, exclusions []string) bool {
-	for _, glob := range exclusions {
-		if config.Match(glob, path) {
-			return true
-		}
-		if oldPath != "" && oldPath != path && config.Match(glob, oldPath) {
-			return true
-		}
-	}
-	return false
-}
-
 // withholdDiffPaths names the diff files the privacy exclusions cover,
 // in diff order: the dump note proves what was withheld without
 // carrying its content.
@@ -343,7 +326,7 @@ func withholdDiffPaths(ctx *fetchRunCtx, raw []byte) []string {
 	files := hunks.Files(string(raw))
 	var out []string
 	for i := range files {
-		if excludedEndpoint(files[i].Path, files[i].OldPath, exclusions) {
+		if config.ExcludedEndpoint(files[i].Path, files[i].OldPath, exclusions) {
 			out = append(out, files[i].Path)
 		}
 	}
@@ -423,7 +406,7 @@ func filterDiffBytes(raw []byte, exclusions []string) []byte {
 func withheldPaths(files []hunks.File, exclusions []string) map[string]bool {
 	withheld := map[string]bool{}
 	for i := range files {
-		if excludedEndpoint(files[i].Path, files[i].OldPath, exclusions) {
+		if config.ExcludedEndpoint(files[i].Path, files[i].OldPath, exclusions) {
 			withheld[files[i].Path] = true
 		}
 	}

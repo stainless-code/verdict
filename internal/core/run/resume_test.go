@@ -967,25 +967,48 @@ func TestResumeRefusesChangedLaunchDefinition(t *testing.T) {
 }
 
 // TestLaunchDefDigestTracksEveryField proves the digest covers the binary, its
-// argv prefix, and its probe argv: a row that differs in any of them is a
-// different launch definition.
+// argv prefix, its probe argv, the row's documented discovery restriction, and
+// the restriction one attempt actually applied: a row or an attempt that
+// differs in any of them is a different launch definition.
 func TestLaunchDefDigestTracksEveryField(t *testing.T) {
-	base := agentcatalog.Launch{Binary: "agent", Args: []string{"exec"}, ProbeArgs: []string{"--version"}}
-	digest := launchDefDigest(&base)
-	if digest == "" || digest != launchDefDigest(&base) {
+	base := agentcatalog.Launch{
+		Binary: "agent", Args: []string{"exec"}, ProbeArgs: []string{"--version"},
+		DiscoveryArgs: []string{"--exclude-tools", "bash"},
+	}
+	restriction := []string{"--exclude-tools", "bash"}
+	digest := launchDefDigest(&base, restriction)
+	if digest == "" || digest != launchDefDigest(&base, restriction) {
 		t.Fatalf("digest is not stable: %q", digest)
 	}
 	for _, change := range []func(*agentcatalog.Launch){
 		func(def *agentcatalog.Launch) { def.Binary = "other-agent" },
 		func(def *agentcatalog.Launch) { def.Args = []string{"run"} },
 		func(def *agentcatalog.Launch) { def.ProbeArgs = nil },
+		func(def *agentcatalog.Launch) { def.DiscoveryArgs = []string{"--exclude-tools", "bash,powershell"} },
 	} {
 		changed := base
 		change(&changed)
-		if launchDefDigest(&changed) == digest {
+		if launchDefDigest(&changed, restriction) == digest {
 			t.Fatalf("digest ignored a launch definition change: %+v", changed)
 		}
 	}
+	if launchDefDigest(&base, nil) == digest {
+		t.Fatal("digest ignored an attempt that dropped the discovery restriction")
+	}
+}
+
+// TestResumeDetectsDiscoveryRestrictionDrift proves the read-only discovery
+// shape is sealed: continuing an interrupted execution with --allow-shell, so
+// the remaining phases would spend a tool set the record never sealed, fails
+// closed before any agent starts.
+func TestResumeDetectsDiscoveryRestrictionDrift(t *testing.T) {
+	req, commander := resumeFixture(t, "local-resume-discovery")
+	interruptRun(t, req, commander, "x-finder-2")
+	path := filepath.Join(commander.dir, launcherFile)
+	before := readFixtureFile(t, path)
+	req.AllowShell = true
+	req.Resume = true
+	assertResumeRefused(t, req, commander, path, before, codeResumeDrift, "launch definition")
 }
 
 // interruptWith runs one attempt through WithAgents, so a test can interrupt a

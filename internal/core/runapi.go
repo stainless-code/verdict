@@ -42,6 +42,14 @@ import (
 // the bundle, its artifact, and every recorded path stay anchored to
 // RepoRoot, and the directive names them absolutely so a relative path can
 // never resolve inside the checkout.
+//
+// AllowShell is --allow-shell: the discovery launch keeps the row's documented
+// tool restriction off. Every launch `run` makes — finders, cross-checks,
+// repair rounds, drain — reads files and writes the JSON artifact with no
+// shell, because a harness left unconstrained spends its budget on builds and
+// tests that `verify --sandbox` runs better; the flag restores the row's own
+// tool set for an operator who wants one. `verify` is a separate verb with its
+// own sandbox and reads nothing here.
 type RunRequest struct { //nolint:govet // field grouping documents the request surface
 	ReadRequest
 	SpendPlan         []spend.Phase
@@ -63,6 +71,7 @@ type RunRequest struct { //nolint:govet // field grouping documents the request 
 	ProbeTimeout time.Duration
 	Print        bool
 	Resume       bool
+	AllowShell   bool
 	JSONMode     bool
 	Warnings     []string
 }
