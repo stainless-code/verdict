@@ -1,0 +1,3 @@
+{
+  "rules": ["sh-unquoted-expansion"]
+}

@@ -1,0 +1,7 @@
+diff --git a/migrations/0002_drop.sql b/migrations/0002_drop.sql
+index 1111111..2222222 100644
+--- a/migrations/0002_drop.sql
++++ b/migrations/0002_drop.sql
+@@ -1 +1 @@
+-ALTER TABLE accounts DROP COLUMN legacy_id;
+DROP TABLE accounts_legacy;

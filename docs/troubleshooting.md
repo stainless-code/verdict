@@ -264,6 +264,12 @@ Cause: `verification/verdicts.json` has malformed results, duplicate `(sig, mode
 
 Fix: use schema version `1`, unique full signatures, named models, and verdicts `confirmed`, `refuted`, or `insufficient` with evidence. Correct `verification/verdicts.json` and retry.
 
+## `bad-path`
+
+Cause: `pack check` got a path that is not a repository-relative slash path (absolute, `..`, a backslash, a drive-letter spelling, or a control character such as a stray NUL).
+
+Fix: pass the path as git spells it, for example `verdict pack check internal/core/pack/pack.go`.
+
 ## `bad-preset`
 
 Cause: `--preset` is not a known preset.

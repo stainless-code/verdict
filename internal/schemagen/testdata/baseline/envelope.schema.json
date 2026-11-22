@@ -3388,6 +3388,81 @@
       ],
       "additionalProperties": true
     },
+    "packCheckData": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "config": { "type": "string" },
+        "disabled": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "packs": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/packCheckPack" }
+        },
+        "lenses": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/packCheckLens" }
+        },
+        "rules": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/packCheckRule" }
+        }
+      },
+      "required": ["path", "config", "disabled", "packs", "lenses", "rules"],
+      "additionalProperties": true
+    },
+    "packCheckPack": {
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "version": { "type": "string" },
+        "layer": { "enum": ["builtin", "org", "repo"] },
+        "source": { "type": "string" },
+        "hash": { "type": "string" },
+        "replace": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["name", "version", "layer", "source", "hash", "replace"],
+      "additionalProperties": true
+    },
+    "packCheckLens": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "pack": { "type": "string" },
+        "layer": { "enum": ["builtin", "org", "repo"] },
+        "hash": { "type": "string" },
+        "replaced": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["id", "pack", "layer", "hash", "replaced"],
+      "additionalProperties": true
+    },
+    "packCheckRule": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "severity": { "enum": ["critical", "important", "informational"] },
+        "pack": { "type": "string" },
+        "layer": { "enum": ["builtin", "org", "repo"] },
+        "globs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "replaced": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["id", "severity", "pack", "layer", "globs", "replaced"],
+      "additionalProperties": true
+    },
     "packAddData": {
       "description": "pack add --json data: the added pack row as it now lists from the repo layer, whether it replaced an existing entry, and the previous tree hash (null on a first add).",
       "type": "object",

@@ -100,9 +100,6 @@ func localPolicy(
 		r.Warn(warn)
 	}
 	r.privacy = rc.resolved.Privacy
-	if ref := resolveLensPacks(ctx2); ref != nil {
-		return ref
-	}
 	return nil
 }
 
@@ -117,6 +114,9 @@ func localResolve(
 		ctx, ctx2.runner.commander, mode.baseSHA, f.ChunkFlag, listedInputs(ctx2.dir, listed), req.SettingsPath,
 	); err != nil {
 		return err
+	}
+	if ref := resolveLensPacks(ctx2); ref != nil {
+		return ref
 	}
 	ctx2.runner.privacy = rc.resolved.Privacy
 	return filterExcluded(ctx2)
@@ -335,7 +335,7 @@ func localStores(ctx2 *fetchRunCtx, r *session, dir, slug, listed, numstat strin
 	}
 	writeKBRecall(ctx2, dir, listed)
 	writeRevertsNote(ctx2, dir, listed)
-	writeLensBodies(ctx2)
+	writeLensBodies(ctx2, listed)
 	return nil
 }
 

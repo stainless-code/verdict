@@ -24,9 +24,8 @@ func TestListRefusesFIFOUnderRepoPacks(t *testing.T) {
 		t.Skipf("this platform cannot create a FIFO here: %v", err)
 	}
 	_, ref := RunList(t.Context(), &Request{
-		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
-		settings,
-		true,
+		Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root,
+		SettingsPath: settings, List: true,
 	})
 	if ref == nil || ref.Code != CodePackUnsafePath {
 		t.Fatalf("FIFO pack root = %v, want pack-unsafe-path", ref)

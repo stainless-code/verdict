@@ -39,7 +39,9 @@ that lower pack in `replace`, so an override is always a declaration rather
 than an accident.
 
 `verdict pack test` runs the pack's offline cases from `evals/` against a diff
-and checks that findings cite the expected rules.
+and checks that findings cite the expected rules. `verdict pack check <path>`
+resolves one path the way a review would — the packs in precedence order, the
+lenses offered for it, and the rules whose globs match — and writes nothing.
 
 **Panel.** The pinned model roster a review runs with, from `REVIEW_PANEL` or
 the typed `panel` default in `.verdict/config.json`. `fetch` resolves it into `.verdict/state/<pr>/panel`;

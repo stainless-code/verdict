@@ -25,13 +25,193 @@ exit: 0
         "drift": null
       },
       {
+        "name": "verdict/dockerfile",
+        "version": "1.0.0",
+        "layer": "builtin",
+        "source": "builtin:dockerfile",
+        "hash": "7d581fb62fce9be5e8a7efe8fe27fdb2e6dc89ae31405cdcb87141fa3aabd6fe",
+        "lenses": [
+          "dockerfile"
+        ],
+        "rules": [
+          "docker-root-runtime",
+          "docker-secret-layer",
+          "docker-unpinned-base"
+        ],
+        "drift": null
+      },
+      {
+        "name": "verdict/github-workflows",
+        "version": "1.0.0",
+        "layer": "builtin",
+        "source": "builtin:github-workflows",
+        "hash": "c88406fc11596d7f400b90a408e7d3d09467c1f09f59b86d82bb1bd2a01ad1ee",
+        "lenses": [
+          "github-workflows"
+        ],
+        "rules": [
+          "gha-code-exec-from-pr",
+          "gha-script-injection",
+          "gha-unpinned-action"
+        ],
+        "drift": null
+      },
+      {
+        "name": "verdict/go",
+        "version": "1.0.0",
+        "layer": "builtin",
+        "source": "builtin:go",
+        "hash": "415c9bbf8d027a9e565ba43b6bafa573933eb9a3c3f3e3b3987acef0d53f21a5",
+        "lenses": [
+          "go"
+        ],
+        "rules": [
+          "go-context-lifecycle",
+          "go-error-loss",
+          "go-resource-release",
+          "go-shared-state"
+        ],
+        "drift": null
+      },
+      {
+        "name": "verdict/java",
+        "version": "1.0.0",
+        "layer": "builtin",
+        "source": "builtin:java",
+        "hash": "7006c606cf107c5063b58fd902dc58a3621a4c2c53f422c609d830339dfcdccb",
+        "lenses": [
+          "java"
+        ],
+        "rules": [
+          "java-resource-close",
+          "java-shared-state",
+          "java-unsafe-deserialization"
+        ],
+        "drift": null
+      },
+      {
+        "name": "verdict/python",
+        "version": "1.0.0",
+        "layer": "builtin",
+        "source": "builtin:python",
+        "hash": "d046975f7d85bf2346d76c26429bf43708cc528e5acaeca11782e517ff2c4058",
+        "lenses": [
+          "python"
+        ],
+        "rules": [
+          "python-async-blocking",
+          "python-mutable-default",
+          "python-resource-close",
+          "python-unsafe-exec"
+        ],
+        "drift": null
+      },
+      {
+        "name": "verdict/rust",
+        "version": "1.0.0",
+        "layer": "builtin",
+        "source": "builtin:rust",
+        "hash": "faefb6ef299c03f7b0fe6e7d40fdeab1d0323eb188ba9323beb868e9a1e8680c",
+        "lenses": [
+          "rust"
+        ],
+        "rules": [
+          "rust-lock-across-await",
+          "rust-unsafe-invariant",
+          "rust-unwrap-boundary"
+        ],
+        "drift": null
+      },
+      {
+        "name": "verdict/security",
+        "version": "1.0.0",
+        "layer": "builtin",
+        "source": "builtin:security",
+        "hash": "f2812e8fcaaac325251d7d77cdc9c5d01e32bb6fc96fd6aa1377a930763ee2f9",
+        "lenses": [
+          "security"
+        ],
+        "rules": [
+          "sec-broken-authz",
+          "sec-injection",
+          "sec-ssrf",
+          "sec-unsafe-deserialization"
+        ],
+        "drift": null
+      },
+      {
+        "name": "verdict/shell",
+        "version": "1.0.0",
+        "layer": "builtin",
+        "source": "builtin:shell",
+        "hash": "83a533c74e7fe7227d33ce91ff43d2775fa34cd11c0f7d11f31c617766031748",
+        "lenses": [
+          "shell"
+        ],
+        "rules": [
+          "sh-destructive-path",
+          "sh-pipe-masking",
+          "sh-unquoted-expansion"
+        ],
+        "drift": null
+      },
+      {
+        "name": "verdict/sql",
+        "version": "1.0.0",
+        "layer": "builtin",
+        "source": "builtin:sql",
+        "hash": "df0af9c4b1c5cb5967f7e5ae5054ab6f7f2ca4d7d7bc3370eea40d5c6b229263",
+        "lenses": [
+          "sql"
+        ],
+        "rules": [
+          "sql-destructive-ddl",
+          "sql-dynamic-string",
+          "sql-lock-heavy-migration"
+        ],
+        "drift": null
+      },
+      {
+        "name": "verdict/terraform",
+        "version": "1.0.0",
+        "layer": "builtin",
+        "source": "builtin:terraform",
+        "hash": "13ad59feebb4667815801292d28a435f32775e9316f2228203ee41293a908d3b",
+        "lenses": [
+          "terraform"
+        ],
+        "rules": [
+          "tf-destructive-replace",
+          "tf-secret-in-state",
+          "tf-wildcard-iam"
+        ],
+        "drift": null
+      },
+      {
+        "name": "verdict/ts-js",
+        "version": "1.0.0",
+        "layer": "builtin",
+        "source": "builtin:ts-js",
+        "hash": "160e005fc1fcff3cef699cd490c0b18cbd319ecf49d027bfdb0eba3d24986426",
+        "lenses": [
+          "ts-js"
+        ],
+        "rules": [
+          "ts-js-boundary-validation",
+          "ts-js-effect-cleanup",
+          "ts-js-floating-async",
+          "ts-js-prototype-pollution"
+        ],
+        "drift": null
+      },
+      {
         "name": "acme/org",
         "version": "2.0.0",
         "layer": "org",
         "source": "dir:org-packs",
-        "hash": "eb88c75d42456dfedbe79b87c9b5dfdf918ddc7a116e8940b28b9372a1061aa1",
+        "hash": "f9bde8f8e6cddc596cdb6c18e2ed2774cf086fe1c9780e66fd46b97777dcc130",
         "lenses": [
-          "security"
+          "scan"
         ],
         "rules": [
           "no-secrets"
@@ -43,9 +223,9 @@ exit: 0
         "version": "0.1.0",
         "layer": "repo",
         "source": ".verdict/packs/repo",
-        "hash": "ae6c1dde5272f074fb9c4c70c63da86019018a34497315fad9e25f35ddaa70a3",
+        "hash": "3807d265381ccee6dcbe1e918f58f6a541cb39d96df0baf08a9076f9aa37b512",
         "lenses": [
-          "security",
+          "scan",
           "style"
         ],
         "rules": [

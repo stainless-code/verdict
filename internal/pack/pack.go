@@ -28,13 +28,16 @@ const (
 	subList         = "list"
 	subAdd          = "add"
 	subTest         = "test"
+	subCheck        = "check"
 	testDirArgCount = 3
+	checkArgCount   = 2
 )
 
-const packUsage = "usage: verdict pack <list|add|test> [--json]\n" +
+const packUsage = "usage: verdict pack <list|add|test|check> [--json]\n" +
 	"       verdict pack add <dir|git-url>[@ref] [--json]\n" +
 	"       verdict pack test <name> [--json]\n" +
 	"       verdict pack test --dir <path> [--json]\n" +
+	"       verdict pack check <path> [--json]\n" +
 	"       git sources: https://host/path (no userinfo), ssh://user@host/path, or user@host:path"
 
 // Run executes a pack command and renders its result.
@@ -58,6 +61,9 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if inv.sub == subTest {
 		return runTest(ctx, r, read, inv.name, inv.dir)
 	}
+	if inv.sub == subCheck {
+		return runCheck(ctx, r, read, inv.path)
+	}
 	return runAdd(ctx, r, read, inv.source)
 }
 
@@ -67,6 +73,7 @@ type invocation struct {
 	source string
 	name   string
 	dir    string
+	path   string
 }
 
 // runList executes the read-only inventory.
@@ -120,9 +127,11 @@ func checkArgs(r *cli.Runner, args []string) (invocation, int, bool) {
 		return checkAddArgs(r, args)
 	case subTest:
 		return checkTestArgs(r, args)
+	case subCheck:
+		return checkCheckArgs(r, args)
 	default:
 		return invocation{}, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
-			"unknown pack subcommand '%s' (want list, add, or test)", args[0])}), true
+			"unknown pack subcommand '%s' (want list, add, test, or check)", args[0])}), true
 	}
 }
 
@@ -150,6 +159,20 @@ func checkTestArgs(r *cli.Runner, args []string) (invocation, int, bool) {
 	}
 	if len(args) == testDirArgCount && args[1] == "--dir" && args[2] != "" {
 		return invocation{sub: subTest, dir: args[2]}, 0, false
+	}
+	return packUsageError(r)
+}
+
+// checkCheckArgs requires exactly one repository-relative path; a
+// flag-shaped argument names itself in the usage error instead of being read
+// as a path.
+func checkCheckArgs(r *cli.Runner, args []string) (invocation, int, bool) {
+	if len(args) == checkArgCount && args[1] != "" && !strings.HasPrefix(args[1], "-") {
+		return invocation{sub: subCheck, path: args[1]}, 0, false
+	}
+	if len(args) == checkArgCount {
+		return invocation{}, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+			"pack check takes a repository-relative path, not %q\n%s", args[1], packUsage)}), true
 	}
 	return packUsageError(r)
 }

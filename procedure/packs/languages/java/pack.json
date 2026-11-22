@@ -1,0 +1,33 @@
+{
+  "schema_version": "1",
+  "name": "verdict/java",
+  "version": "1.0.0",
+  "severity": {
+    "critical": "critical",
+    "important": "important"
+  },
+  "lenses": [
+    {
+      "id": "java",
+      "globs": ["**/*.java"],
+      "max_files": 12
+    }
+  ],
+  "rules": [
+    {
+      "id": "java-resource-close",
+      "severity": "important",
+      "globs": ["**/*.java"]
+    },
+    {
+      "id": "java-shared-state",
+      "severity": "critical",
+      "globs": ["**/*.java"]
+    },
+    {
+      "id": "java-unsafe-deserialization",
+      "severity": "critical",
+      "globs": ["**/*.java"]
+    }
+  ]
+}

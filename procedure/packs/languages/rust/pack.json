@@ -1,0 +1,33 @@
+{
+  "schema_version": "1",
+  "name": "verdict/rust",
+  "version": "1.0.0",
+  "severity": {
+    "critical": "critical",
+    "important": "important"
+  },
+  "lenses": [
+    {
+      "id": "rust",
+      "globs": ["**/*.rs"],
+      "max_files": 12
+    }
+  ],
+  "rules": [
+    {
+      "id": "rust-unwrap-boundary",
+      "severity": "important",
+      "globs": ["**/*.rs"]
+    },
+    {
+      "id": "rust-lock-across-await",
+      "severity": "critical",
+      "globs": ["**/*.rs"]
+    },
+    {
+      "id": "rust-unsafe-invariant",
+      "severity": "critical",
+      "globs": ["**/*.rs"]
+    }
+  ]
+}

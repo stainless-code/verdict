@@ -1,0 +1,57 @@
+{
+  "schema_version": "1",
+  "name": "verdict/dockerfile",
+  "version": "1.0.0",
+  "severity": {
+    "critical": "critical",
+    "important": "important"
+  },
+  "lenses": [
+    {
+      "id": "dockerfile",
+      "globs": [
+        "Dockerfile",
+        "**/Dockerfile",
+        "Dockerfile.*",
+        "**/Dockerfile.*",
+        "**/*.dockerfile"
+      ],
+      "max_files": 12
+    }
+  ],
+  "rules": [
+    {
+      "id": "docker-unpinned-base",
+      "severity": "important",
+      "globs": [
+        "Dockerfile",
+        "**/Dockerfile",
+        "Dockerfile.*",
+        "**/Dockerfile.*",
+        "**/*.dockerfile"
+      ]
+    },
+    {
+      "id": "docker-secret-layer",
+      "severity": "critical",
+      "globs": [
+        "Dockerfile",
+        "**/Dockerfile",
+        "Dockerfile.*",
+        "**/Dockerfile.*",
+        "**/*.dockerfile"
+      ]
+    },
+    {
+      "id": "docker-root-runtime",
+      "severity": "important",
+      "globs": [
+        "Dockerfile",
+        "**/Dockerfile",
+        "Dockerfile.*",
+        "**/Dockerfile.*",
+        "**/*.dockerfile"
+      ]
+    }
+  ]
+}

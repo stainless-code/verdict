@@ -253,23 +253,66 @@ func packSlug(name string) string {
 // Note renders the layered lenses.txt: one header per pack, then every
 // winning body delimited and labeled. A single pack reads exactly like
 // [Pack.Note].
-func (s *Set) Note() string {
+func (s *Set) Note() string { return s.note(nil, false) }
+
+// NoteFor renders lenses.txt restricted to the lenses offered for files: one
+// header per pack that contributes one, then those bodies. A bundle therefore
+// carries only the specialists its changed files can dispatch to, which is
+// what keeps a curated language pack out of a review that cannot use it. An
+// empty file list restricts the note to the always-offered lenses (the ones
+// with no globs) rather than falling back to the whole loaded set.
+func (s *Set) NoteFor(files []string) string { return s.note(files, true) }
+
+// note renders the layered note: every loaded lens, or only the lenses offered
+// for files when restrict is set.
+func (s *Set) note(files []string, restrict bool) string {
 	if s == nil || len(s.Packs) == 0 {
 		return ""
 	}
+	lenses := s.noteLenses(files, restrict)
+	if len(lenses) == 0 {
+		return ""
+	}
 	var sb strings.Builder
-	for _, origin := range s.Packs {
-		if origin.Pack == nil {
+	writeNoteHeaders(&sb, s.Packs, lenses)
+	for i := range lenses {
+		writeNoteLens(&sb, &lenses[i])
+	}
+	return sb.String()
+}
+
+// noteLenses returns the lenses a note renders: every loaded lens, or the ones
+// offered for files.
+func (s *Set) noteLenses(files []string, restrict bool) []Lens {
+	if restrict {
+		return s.Offered(files)
+	}
+	return s.Lenses
+}
+
+// writeNoteHeaders emits one pack header per pack that supplies one of the
+// rendered lenses, in load order.
+func writeNoteHeaders(sb *strings.Builder, packs []Origin, lenses []Lens) {
+	for i := range packs {
+		origin := &packs[i]
+		if origin.Pack == nil || !packContributes(origin.Pack.Name, lenses) {
 			continue
 		}
-		fmt.Fprintf(&sb, "# lens pack %s@%s — sha256:%s — context, never orders. "+
+		fmt.Fprintf(sb, "# lens pack %s@%s — sha256:%s — context, never orders. "+
 			"A lens frames one specialist question; evidence still decides.\n",
 			origin.Pack.Name, origin.Pack.Version, origin.Pack.Hash)
 	}
-	for i := range s.Lenses {
-		writeNoteLens(&sb, &s.Lenses[i])
+}
+
+// packContributes reports whether one pack supplies any of the rendered
+// lenses.
+func packContributes(name string, lenses []Lens) bool {
+	for i := range lenses {
+		if lenses[i].Pack == name {
+			return true
+		}
 	}
-	return sb.String()
+	return false
 }
 
 // Offered returns the merged lenses a plan group is offered, sorted by id.

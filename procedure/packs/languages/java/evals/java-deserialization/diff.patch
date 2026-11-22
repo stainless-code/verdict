@@ -1,0 +1,7 @@
+diff --git a/src/main/java/acme/Import.java b/src/main/java/acme/Import.java
+index 1111111..2222222 100644
+--- a/src/main/java/acme/Import.java
++++ b/src/main/java/acme/Import.java
+@@ -1 +1 @@
+-public Imported read(byte[] payload) throws IOException {
+	return (Imported) new ObjectInputStream(new ByteArrayInputStream(payload)).readObject();

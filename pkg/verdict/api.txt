@@ -153,7 +153,8 @@ func (c *Client) PRWait(ctx context.Context, req *PRWaitRequest) (*PRWaitRespons
 
 func (c *Client) Pack(ctx context.Context, req *PackRequest) (*PackResponse, error)
     Pack lists the built-in, org, and repo lens packs with their layer, source,
-    hash, and declared ids. It makes no live calls and writes nothing.
+    hash, and declared ids, or resolves the packs, lenses, and rules one path
+    applies with Check set. Neither mode makes live calls or writes anything.
 
 func (c *Client) Post(ctx context.Context, req *PostRequest) (*Result, error)
     Post submits the review payload; DryRun renders without submitting.
@@ -468,14 +469,21 @@ type PRWaitResponse struct{ Result }
 
 type PackRequest struct {
 	Invocation
-	List bool
+	Check string
+	List  bool
 }
-    PackRequest carries the pack options. List is the only served mode.
+    PackRequest carries the pack options: List reads the inventory, and Check
+    resolves one repository-relative path through the same layers a review uses.
 
 type PackResponse struct {
 	Outcome
 }
-    PackResponse is the positionals-free pack list envelope.
+    PackResponse is the positionals-free pack envelope: the list rows, or one
+    path's resolution.
+
+func CheckPack(ctx context.Context, c *Client, path string) (*PackResponse, error)
+    CheckPack resolves one repository-relative path: the packs in precedence
+    order, the lenses offered for it, and the rules whose globs match it.
 
 func ListPacks(ctx context.Context, c *Client) (*PackResponse, error)
     ListPacks is the read-only pack list entry in the facade: the same result as

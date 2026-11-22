@@ -1,0 +1,73 @@
+{
+  "schema_version": "1",
+  "name": "verdict/ts-js",
+  "version": "1.0.0",
+  "severity": {
+    "critical": "critical",
+    "important": "important"
+  },
+  "lenses": [
+    {
+      "id": "ts-js",
+      "globs": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.mjs",
+        "**/*.cjs"
+      ],
+      "max_files": 12
+    }
+  ],
+  "rules": [
+    {
+      "id": "ts-js-floating-async",
+      "severity": "critical",
+      "globs": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.mjs",
+        "**/*.cjs"
+      ]
+    },
+    {
+      "id": "ts-js-boundary-validation",
+      "severity": "important",
+      "globs": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.mjs",
+        "**/*.cjs"
+      ]
+    },
+    {
+      "id": "ts-js-effect-cleanup",
+      "severity": "important",
+      "globs": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.mjs",
+        "**/*.cjs"
+      ]
+    },
+    {
+      "id": "ts-js-prototype-pollution",
+      "severity": "important",
+      "globs": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.mjs",
+        "**/*.cjs"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,33 @@
+{
+  "schema_version": "1",
+  "name": "verdict/shell",
+  "version": "1.0.0",
+  "severity": {
+    "critical": "critical",
+    "important": "important"
+  },
+  "lenses": [
+    {
+      "id": "shell",
+      "globs": ["**/*.sh", "**/*.bash"],
+      "max_files": 12
+    }
+  ],
+  "rules": [
+    {
+      "id": "sh-unquoted-expansion",
+      "severity": "critical",
+      "globs": ["**/*.sh", "**/*.bash"]
+    },
+    {
+      "id": "sh-pipe-masking",
+      "severity": "critical",
+      "globs": ["**/*.sh", "**/*.bash"]
+    },
+    {
+      "id": "sh-destructive-path",
+      "severity": "critical",
+      "globs": ["**/*.sh", "**/*.bash"]
+    }
+  ]
+}

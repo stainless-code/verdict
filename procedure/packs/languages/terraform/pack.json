@@ -1,0 +1,33 @@
+{
+  "schema_version": "1",
+  "name": "verdict/terraform",
+  "version": "1.0.0",
+  "severity": {
+    "critical": "critical",
+    "important": "important"
+  },
+  "lenses": [
+    {
+      "id": "terraform",
+      "globs": ["**/*.tf", "**/*.tfvars"],
+      "max_files": 12
+    }
+  ],
+  "rules": [
+    {
+      "id": "tf-destructive-replace",
+      "severity": "critical",
+      "globs": ["**/*.tf", "**/*.tfvars"]
+    },
+    {
+      "id": "tf-secret-in-state",
+      "severity": "critical",
+      "globs": ["**/*.tf", "**/*.tfvars"]
+    },
+    {
+      "id": "tf-wildcard-iam",
+      "severity": "critical",
+      "globs": ["**/*.tf", "**/*.tfvars"]
+    }
+  ]
+}

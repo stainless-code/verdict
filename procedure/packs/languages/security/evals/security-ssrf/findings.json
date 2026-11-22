@@ -1,0 +1,9 @@
+[
+  {
+    "path": "src/fetch/proxy.go",
+    "line": 1,
+    "body": "The new proxy fetches a caller-supplied URL with no host allowlist.",
+    "rigor": "walked",
+    "kb": ["sec-ssrf"]
+  }
+]

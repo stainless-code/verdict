@@ -1,0 +1,7 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index 1111111..2222222 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -1 +1 @@
+-- uses: actions/checkout@v4
+	pull_request_target:

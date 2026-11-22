@@ -190,6 +190,62 @@ func planGroupString(t *testing.T, out string) string {
 	return ""
 }
 
+// TestWriteLensBodiesOffersOnlyGloblessLensesForAnEmptyDiff proves an empty
+// bundle diff does not dump every loaded lens: with no changed file, only the
+// lenses a group is always offered (those with no globs) reach lenses.txt, and
+// a globbed lens stays out. Without the restriction, every lens — the curated
+// language bodies included — would land in a bundle that changed nothing.
+func TestWriteLensBodiesOffersOnlyGloblessLensesForAnEmptyDiff(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeLensBodies(&fetchRunCtx{
+		runner: &session{Human: io.Discard, Diag: io.Discard},
+		dir:    dir,
+		packs:  lensTestSet(t),
+	}, "")
+	body, err := os.ReadFile(dir + suffixLensesTxt)
+	if err != nil {
+		t.Fatalf("read lenses.txt: %v", err)
+	}
+	for _, want := range []string{"# lens api-contract", "# lens perf", "# lens test"} {
+		if !strings.Contains(string(body), want) {
+			t.Errorf("lenses.txt lacks the always-offered %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(string(body), "# lens docs") {
+		t.Errorf("a globbed lens reached an empty diff:\n%s", body)
+	}
+	if strings.Contains(string(body), "# lens pack") == false {
+		t.Errorf("lenses.txt lost its pack header:\n%s", body)
+	}
+}
+
+// TestWriteLensBodiesOffersOnlyGloblessLensesForAnAllExcludedDiff proves the
+// same restriction holds when the exclusion pass emptied the diff: the PR
+// carried one file, the receipt excluded it, and the filtered diff names
+// nothing, so the globbed lens that would match that file is not offered.
+func TestWriteLensBodiesOffersOnlyGloblessLensesForAnAllExcludedDiff(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	writeLensBodies(&fetchRunCtx{
+		runner:        &session{Human: io.Discard, Diag: io.Discard},
+		dir:           dir,
+		packs:         lensTestSet(t),
+		receipt:       &ExcludedFile{Excluded: []ExcludedPath{{Path: "docs/guide.md"}}},
+		receiptLoaded: true,
+	}, "docs/guide.md")
+	body, err := os.ReadFile(dir + suffixLensesTxt)
+	if err != nil {
+		t.Fatalf("read lenses.txt: %v", err)
+	}
+	if strings.Contains(string(body), "# lens docs") {
+		t.Errorf("an excluded file's lens reached lenses.txt:\n%s", body)
+	}
+	if !strings.Contains(string(body), "# lens perf") {
+		t.Errorf("lenses.txt lost the always-offered lens:\n%s", body)
+	}
+}
+
 // TestLensTxtFencedAndNonceBound proves lenses.txt joins the fenced bundle
 // files exactly like kb.txt: one real-nonce section, and a body carrying a
 // forged closer stays inside it.

@@ -1,0 +1,9 @@
+[
+  {
+    "path": "src/state.rs",
+    "line": 1,
+    "body": "The guard from `state.lock()` stays alive across `refresh().await`.",
+    "rigor": "walked",
+    "kb": ["rust-lock-across-await"]
+  }
+]

@@ -1,0 +1,38 @@
+{
+  "schema_version": "1",
+  "name": "verdict/go",
+  "version": "1.0.0",
+  "severity": {
+    "critical": "critical",
+    "important": "important"
+  },
+  "lenses": [
+    {
+      "id": "go",
+      "globs": ["**/*.go"],
+      "max_files": 12
+    }
+  ],
+  "rules": [
+    {
+      "id": "go-context-lifecycle",
+      "severity": "critical",
+      "globs": ["**/*.go"]
+    },
+    {
+      "id": "go-error-loss",
+      "severity": "important",
+      "globs": ["**/*.go"]
+    },
+    {
+      "id": "go-resource-release",
+      "severity": "important",
+      "globs": ["**/*.go"]
+    },
+    {
+      "id": "go-shared-state",
+      "severity": "critical",
+      "globs": ["**/*.go"]
+    }
+  ]
+}

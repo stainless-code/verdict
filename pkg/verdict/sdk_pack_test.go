@@ -2,15 +2,18 @@ package verdict_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	verdict "github.com/stainless-code/verdict/pkg/verdict"
 )
 
 // TestClientPackList proves the positionals-free pack read through the SDK:
-// the embedded built-in plus a repo pack, and the ListPacks convenience
+// the twelve embedded built-in packs (the core pack plus the eleven curated
+// language packs) ahead of a repo pack, and the ListPacks convenience
 // returning the same profile.
 //
 //nolint:revive // the fixture/wire/convenience sequence reads as one scenario
@@ -33,10 +36,14 @@ func TestClientPackList(t *testing.T) {
 		t.Errorf("at = %q, want %q", resp.At, sdkAt)
 	}
 	packs, ok := decodeData(t, resp.Data)["packs"].([]any)
-	if !ok || len(packs) != 2 {
-		t.Fatalf("packs = %v, want builtin + repo", decodeData(t, resp.Data)["packs"])
+	if !ok || len(packs) != 13 {
+		t.Fatalf("packs = %v, want the 12 builtin packs and 1 repo pack", decodeData(t, resp.Data)["packs"])
 	}
-	repo := asMap(t, packs[1], "repo row")
+	core := asMap(t, packs[0], "core row")
+	if core["name"] != "verdict/builtin" || core["layer"] != "builtin" {
+		t.Errorf("core row = %v", core)
+	}
+	repo := asMap(t, packs[12], "repo row")
 	if repo["name"] != "acme/repo" || repo["layer"] != "repo" {
 		t.Errorf("repo row = %v", repo)
 	}
@@ -48,6 +55,60 @@ func TestClientPackList(t *testing.T) {
 	if _, err := c.Pack(context.Background(), &verdict.PackRequest{}); err == nil {
 		t.Fatal("pack without list was accepted")
 	}
+}
+
+// TestClientCheckPack proves the SDK resolves one path through the shipped
+// layers: the Go lens and its rules for a Go file, the TypeScript lens and
+// none of the Go rules for a TypeScript file, and a refusal for a path that
+// escapes the repository.
+func TestClientCheckPack(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	c := newSDKClient(nil, nil)
+	defer c.Close()
+	goPack, err := verdict.CheckPack(context.Background(), c, "internal/store/store.go")
+	requireNoError(t, err)
+	data := decodeData(t, goPack.Data)
+	if data["path"] != "internal/store/store.go" {
+		t.Errorf("path = %v", data["path"])
+	}
+	if got, want := ids(data["lenses"]), "api-contract,go,perf,security,test"; got != want {
+		t.Errorf("go lenses = %q, want %q", got, want)
+	}
+	if got, want := ids(data["rules"]), "go-context-lifecycle,go-error-loss,go-resource-release,go-shared-state,"+
+		"sec-broken-authz,sec-injection,sec-ssrf,sec-unsafe-deserialization"; got != want {
+		t.Errorf("go rules = %q, want %q", got, want)
+	}
+	tsPack, err := verdict.CheckPack(context.Background(), c, "src/app.tsx")
+	requireNoError(t, err)
+	if got, want := ids(decodeData(t, tsPack.Data)["lenses"]), "api-contract,perf,security,test,ts-js"; got != want {
+		t.Errorf("ts lenses = %q, want %q", got, want)
+	}
+	_, err = verdict.CheckPack(context.Background(), c, "../outside.go")
+	if err == nil {
+		t.Fatal("an escaping path was accepted")
+	}
+	refusal := &verdict.RefusalError{}
+	if !errors.As(err, &refusal) || refusal.Code != "bad-path" {
+		t.Fatalf("escape refusal = %v, want bad-path", err)
+	}
+}
+
+// ids joins the id field of one wire row list.
+func ids(value any) string {
+	rows, ok := value.([]any)
+	if !ok {
+		return ""
+	}
+	out := make([]string, 0, len(rows))
+	for _, row := range rows {
+		if m, ok := row.(map[string]any); ok {
+			if id, ok := m["id"].(string); ok {
+				out = append(out, id)
+			}
+		}
+	}
+	return strings.Join(out, ",")
 }
 
 // writeSDKFile writes one fixture file, creating parents.

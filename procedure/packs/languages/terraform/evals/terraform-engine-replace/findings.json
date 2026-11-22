@@ -1,0 +1,9 @@
+[
+  {
+    "path": "infra/database.tf",
+    "line": 1,
+    "body": "Changing the engine forces a replace of the primary database instance.",
+    "rigor": "walked",
+    "kb": ["tf-destructive-replace"]
+  }
+]

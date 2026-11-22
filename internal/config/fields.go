@@ -19,7 +19,7 @@ const requirementsKey = "requirements"
 var (
 	topFields = []string{
 		"$schema", "schema_version", "defaults", "requirements", "trigger", "scopes", "profiles", "default_profile",
-		"index", "severity_weights", "rigor_policy",
+		"index", "severity_weights", "rigor_policy", "packs",
 	}
 	defaultsFields = []string{
 		keyPanel, keyBudgetUSD, keyMaxBytes, keyChunk, keyKBPolicy, keyEffort,
@@ -34,6 +34,7 @@ var (
 	scopeFields        = []string{"name", "include", "exclude", "profile", "defaults", "requirements"}
 	profileFields      = []string{"depth", "checks", "max_lenses"}
 	indexFields        = []string{"files", "file_bytes", "tree_bytes", "shards_bytes", "keep_trees", "refs_per_file"}
+	packsFields        = []string{"merge_builtin", "disable_packs", "disable_lenses", "disable_rules"}
 	// personalTopFields lists the recognized operator-settings keys: the
 	// typed personal sections plus the CLI prefs keys the prefs layer
 	// owns (output, layout, color, publish), which parse but never feed
@@ -78,6 +79,7 @@ func checkUnknownFields(root map[string]any) *core.RefusalError {
 		{key: "severity_weights", check: checkKeysSection(severityEnum)},
 		{key: "index", check: checkKeysSection(indexFields)},
 		{key: "rigor_policy", check: checkKeysSection(rigorPolicyFields)},
+		{key: "packs", check: checkKeysSection(packsFields)},
 	} {
 		if ref := checkSectionUnknown(root, section.key, section.check); ref != nil {
 			return ref

@@ -1,0 +1,3 @@
+{
+  "rules": ["go-context-lifecycle"]
+}

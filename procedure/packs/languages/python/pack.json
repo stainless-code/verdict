@@ -1,0 +1,38 @@
+{
+  "schema_version": "1",
+  "name": "verdict/python",
+  "version": "1.0.0",
+  "severity": {
+    "critical": "critical",
+    "important": "important"
+  },
+  "lenses": [
+    {
+      "id": "python",
+      "globs": ["**/*.py"],
+      "max_files": 12
+    }
+  ],
+  "rules": [
+    {
+      "id": "python-mutable-default",
+      "severity": "critical",
+      "globs": ["**/*.py"]
+    },
+    {
+      "id": "python-async-blocking",
+      "severity": "critical",
+      "globs": ["**/*.py"]
+    },
+    {
+      "id": "python-resource-close",
+      "severity": "important",
+      "globs": ["**/*.py"]
+    },
+    {
+      "id": "python-unsafe-exec",
+      "severity": "critical",
+      "globs": ["**/*.py"]
+    }
+  ]
+}
