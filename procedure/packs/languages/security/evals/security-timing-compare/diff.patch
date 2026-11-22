@@ -1,0 +1,13 @@
+diff --git a/src/auth/verify.go b/src/auth/verify.go
+index 1111111..2222222 100644
+--- a/src/auth/verify.go
++++ b/src/auth/verify.go
+@@ -1,1 +1,8 @@
+ package auth
++func validSignature(expected, provided []byte) bool {
++	return string(expected) == string(provided)
++}
++
++func validToken(expected, provided string) bool {
++	return expected == provided
++}

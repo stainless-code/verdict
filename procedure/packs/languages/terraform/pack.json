@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "name": "verdict/terraform",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "severity": {
     "critical": "critical",
     "important": "important"
@@ -26,6 +26,16 @@
     },
     {
       "id": "tf-wildcard-iam",
+      "severity": "critical",
+      "globs": ["**/*.tf", "**/*.tfvars"]
+    },
+    {
+      "id": "tf-public-admin-ingress",
+      "severity": "critical",
+      "globs": ["**/*.tf", "**/*.tfvars"]
+    },
+    {
+      "id": "tf-unencrypted-storage",
       "severity": "critical",
       "globs": ["**/*.tf", "**/*.tfvars"]
     }

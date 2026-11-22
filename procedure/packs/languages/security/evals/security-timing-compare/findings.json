@@ -1,0 +1,9 @@
+[
+  {
+    "path": "src/auth/verify.go",
+    "line": 3,
+    "body": "The HMAC check compares the signature with string equality, which returns at the first differing byte and leaks the correct prefix.",
+    "rigor": "walked",
+    "kb": ["sec-timing-compare"]
+  }
+]

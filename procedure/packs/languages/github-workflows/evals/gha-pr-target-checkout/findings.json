@@ -1,7 +1,7 @@
 [
   {
     "path": ".github/workflows/ci.yml",
-    "line": 1,
+    "line": 2,
     "body": "The workflow adds a `pull_request_target` trigger beside a checkout of the PR head.",
     "rigor": "walked",
     "kb": ["gha-code-exec-from-pr"]

@@ -36,8 +36,9 @@ packs in **this checkout** — a pack the PR adds or edits is listed there but i
 never used by the review it accompanies.
 
 A new curated language pack is a directory under
-`procedure/packs/languages/<stack>/`. The shipped set is the eleven stacks
-listed in `docs/manual.md` § Lens packs; a twelfth follows the same shape.
+`procedure/packs/languages/<stack>/`. The shipped set is the twelve stacks
+listed in `docs/manual.md` § Lens packs (thirteen built-in packs including the
+core pack); a thirteenth follows the same shape.
 
 ### The directory layout
 
@@ -102,24 +103,34 @@ not declare the same lens or rule id.
 
 ### Writing the rule body
 
-The rule body is the reviewer's instruction. Every shipped body is a single
-paragraph of positive instruction — `procedure/packs/languages/go/rules/go-error-loss.md`
-is the template — and none of them carries a "do not flag" clause. That is not
-an accident to copy: state the boundaries anyway. Prose in a rule body is not a
-gate — `pack test` grades selection and citation coverage, and a judgement-level
-false positive is graded by measurement (see the eval case below) — so a body
-that names only the hazard leaves the safe pattern beside it to the reviewer's
-decisions:
+The rule body is the reviewer's instruction. Every shipped body carries three
+sections, and `requireRuleSections` in `internal/packtest/shipped_test.go`
+enforces all three: `## When to flag` (the concrete, reachable defect and the
+version/runtime precondition that decides it), `## Do NOT flag` (the safe
+idioms, modern defaults, and linter findings it must not restate), and
+`## Evidence` (what to quote and what to name). A shipped body is the example:
 
 ```markdown
-Report <the concrete failure> when <the trigger criteria>. A <the deliberate
-pattern that looks like the hazard>, a <the idiom that handles it correctly>,
-and code outside the changed hunks are not findings.
+## When to flag
+
+- <the concrete failure> when <the trigger criteria, including the version or
+  runtime precondition that decides it>.
+
+## Do NOT flag
+
+- <the deliberate pattern that looks like the hazard>, <the idiom that handles
+  it correctly>, and <the linter finding this rule must not restate>.
+
+## Evidence
+
+Quote <the sink> and name <the value or the request it takes down>.
 ```
 
 Name the failure concretely ("an error discarded with `_`", not "error
 handling"), and prefer the pattern a reviewer can point at over the property
-they have to reason about.
+they have to reason about. Prose is not a gate: `pack test` grades selection and
+citation coverage, and a judgement-level false positive is a measurement
+question (see the eval case below).
 
 ### Writing the lens body
 
@@ -132,11 +143,16 @@ write "review the code" but to name the concrete failure.
 
 ### The eval case: what `pack test` actually grades
 
-Every curated pack ships at least one case so its rules are graded offline.
-`verdict pack test` runs no model: `selectRules` matches each manifest rule's
-`globs` against the file paths in `diff.patch`, and the expectation and findings
-are then checked against that selection (`internal/packtest/test.go`). Three
-files per case:
+Every curated pack ships at least two cases: a positive case whose rules are
+selected and cited, and a negative-trap case whose safe-idiom fixture carries
+`{"rules": []}` and `findings.json` `[]`. `verdict pack test` runs no model:
+`selectRules` matches each manifest rule's `globs` against the file paths in
+`diff.patch`, and the expectation and findings are then checked against that
+selection (`internal/packtest/test.go`). The negative-trap fixture is pinned,
+not model-graded; `TestShippedPacksCarryPositiveAndNegativeTrapCases` in
+`internal/packtest/shipped_test.go` asserts every curated pack has the pair and
+that the negative-trap diff still selects at least one of the pack's rules.
+Three files per case:
 
 | File            | What it must contain                                                                                                                                      |
 | --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -211,12 +227,13 @@ Checklist before opening the PR:
 
 - [ ] `pack.json` validates against `schemas/pack.schema.json`; no unknown fields, and every rule row carries at least one glob
 - [ ] every lens and rule id has its `<id>.md` body, and every body is non-empty
-- [ ] each rule body names the failure and the patterns it must not flag
-- [ ] at least one eval case whose `rules[]` ids are also cited in `findings.json` `kb[]`
+- [ ] every rule body carries `## When to flag`, `## Do NOT flag`, and `## Evidence` (enforced by `requireRuleSections`)
+- [ ] at least one positive eval case whose `rules[]` ids are also cited in `findings.json` `kb[]`
+- [ ] at least one negative-trap case with a safe-idiom `diff.patch`, `{"rules": []}`, and `findings.json` `[]` whose paths still select the pack's rules (enforced by `TestShippedPacksCarryPositiveAndNegativeTrapCases`)
 - [ ] any `not_rules[]` names only a rule whose globs do not match that case diff
 - [ ] `bin/verdict pack test <name>` passes with zero skips (after `make build`, so it grades the embedded copy)
 - [ ] `go test ./internal/packtest/...` passes
-- [ ] a new curated stack is registered in three places: the `12` count in `TestShippedPacksPassTheirOwnCases`, the `want` list in `TestShippedLanguagePacksCarryALensAndARule` (`internal/packtest/shipped_test.go`), and `evals/cases/pack-layers.sh` (the `12` builtin count, `14` total, and the org/repo row indices that follow)
+- [ ] a new curated stack is registered in four places: the `13` count in `TestShippedPacksPassTheirOwnCases`, the `12` entries in `TestShippedLanguagePacksCarryALensAndARule` (`internal/packtest/shipped_test.go`), `shippedLanguagePacks` in `internal/core/pack/builtin_test.go`, and `evals/cases/pack-layers.sh` (the `13` builtin count, `15` total, and the org/repo row indices that follow)
 - [ ] `docs/manual.md` § Lens packs updated only if the layout or limits move
 - [ ] a changeset if the pack ships to users (`.changeset/<name>.md`)
 

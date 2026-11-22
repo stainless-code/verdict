@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "name": "verdict/shell",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "severity": {
     "critical": "critical",
     "important": "important"
@@ -27,6 +27,16 @@
     {
       "id": "sh-destructive-path",
       "severity": "critical",
+      "globs": ["**/*.sh", "**/*.bash"]
+    },
+    {
+      "id": "sh-eval-untrusted",
+      "severity": "critical",
+      "globs": ["**/*.sh", "**/*.bash"]
+    },
+    {
+      "id": "sh-tmp-mktemp",
+      "severity": "important",
       "globs": ["**/*.sh", "**/*.bash"]
     }
   ]

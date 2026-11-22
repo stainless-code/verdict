@@ -1,0 +1,9 @@
+[
+  {
+    "path": "apps/web/src/Clock.tsx",
+    "line": 5,
+    "body": "The effect starts an interval and returns no cleanup, so the timer keeps ticking after `Clock` unmounts.",
+    "rigor": "walked",
+    "kb": ["react-effect-cleanup"]
+  }
+]

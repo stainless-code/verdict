@@ -1,0 +1,53 @@
+{
+  "schema_version": "1",
+  "name": "verdict/react",
+  "version": "1.0.0",
+  "severity": {
+    "critical": "critical",
+    "important": "important"
+  },
+  "lenses": [
+    {
+      "id": "react",
+      "globs": ["**/*.tsx", "**/*.jsx"],
+      "max_files": 12
+    }
+  ],
+  "rules": [
+    {
+      "id": "react-effect-cleanup",
+      "severity": "important",
+      "globs": ["**/*.tsx", "**/*.jsx"]
+    },
+    {
+      "id": "react-effect-deps",
+      "severity": "important",
+      "globs": ["**/*.tsx", "**/*.jsx"]
+    },
+    {
+      "id": "react-key-index",
+      "severity": "important",
+      "globs": ["**/*.tsx", "**/*.jsx"]
+    },
+    {
+      "id": "react-derived-state",
+      "severity": "important",
+      "globs": ["**/*.tsx", "**/*.jsx"]
+    },
+    {
+      "id": "react-hooks-order",
+      "severity": "critical",
+      "globs": ["**/*.tsx", "**/*.jsx"]
+    },
+    {
+      "id": "react-dangerous-html",
+      "severity": "critical",
+      "globs": ["**/*.tsx", "**/*.jsx"]
+    },
+    {
+      "id": "react-server-client-boundary",
+      "severity": "critical",
+      "globs": ["**/*.tsx", "**/*.jsx"]
+    }
+  ]
+}

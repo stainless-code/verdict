@@ -58,7 +58,7 @@ omitted: (none)
 <<<END UNTRUSTED nonce=NONCE>>>
 <<<UNTRUSTED nonce=NONCE source=plan.txt>>>
 plan status: pending
-- group 1: id=3d31006af0e2525ec9250ddb7e893dc8e1613bab708ef688b33eb5c7efa36893 profile=- depth=standard max_lenses=unset checks=[] files=[notes.txt] scopes=[] panel=[] panel_from=built-in effort=standard cap_bytes=512000 cap_from=built-in chunk=false lens_pack=verdict/builtin@1.0.0,verdict/dockerfile@1.0.0,verdict/github-workflows@1.0.0,verdict/go@1.0.0,verdict/java@1.0.0,verdict/python@1.0.0,verdict/rust@1.0.0,verdict/security@1.0.0,verdict/shell@1.0.0,verdict/sql@1.0.0,verdict/terraform@1.0.0,verdict/ts-js@1.0.0 lenses=[api-contract@verdict/builtin:62c9ccf8,perf@verdict/builtin:6225fd98,test@verdict/builtin:efd2eb4e]
+- group 1: id=3d31006af0e2525ec9250ddb7e893dc8e1613bab708ef688b33eb5c7efa36893 profile=- depth=standard max_lenses=unset checks=[] files=[notes.txt] scopes=[] panel=[] panel_from=built-in effort=standard cap_bytes=512000 cap_from=built-in chunk=false lens_pack=verdict/builtin@1.0.0,verdict/dockerfile@1.1.0,verdict/github-workflows@1.1.0,verdict/go@1.1.0,verdict/java@1.1.0,verdict/python@1.1.0,verdict/react@1.0.0,verdict/rust@1.1.0,verdict/security@1.1.0,verdict/shell@1.1.0,verdict/sql@1.1.0,verdict/terraform@1.1.0,verdict/ts-js@1.1.0 lenses=[api-contract@verdict/builtin:62c9ccf8,perf@verdict/builtin:6225fd98,test@verdict/builtin:efd2eb4e]
 effort: standard
 <<<END UNTRUSTED nonce=NONCE>>>
 <<<UNTRUSTED nonce=NONCE source=full.diff>>>

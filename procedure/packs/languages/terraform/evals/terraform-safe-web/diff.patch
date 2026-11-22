@@ -1,0 +1,24 @@
+diff --git a/infra/web.tf b/infra/web.tf
+index 1111111..2222222 100644
+--- a/infra/web.tf
++++ b/infra/web.tf
+@@ -1,2 +1,18 @@
+ resource "aws_security_group" "web" {
+-  name = "web"
++  name = "web"
++  ingress {
++    from_port   = 443
++    to_port     = 443
++    protocol    = "tcp"
++    cidr_blocks = ["0.0.0.0/0"]
++  }
++}
++
++resource "aws_s3_bucket_server_side_encryption_configuration" "assets" {
++  bucket = aws_s3_bucket.assets.id
++  rule {
++    apply_server_side_encryption_by_default {
++      sse_algorithm = "AES256"
++    }
++  }
++}

@@ -1,0 +1,19 @@
+diff --git a/go.mod b/go.mod
+index 1111111..2222222 100644
+--- a/go.mod
++++ b/go.mod
+@@ -1 +1 @@
+-go 1.21
++go 1.22
+diff --git a/cmd/worker/worker.go b/cmd/worker/worker.go
+index 1111111..2222222 100644
+--- a/cmd/worker/worker.go
++++ b/cmd/worker/worker.go
+@@ -1,1 +1,7 @@
+ package worker
++func start(items []string) {
++	for _, item := range items {
++		go func() { use(item) }()
++	}
++}
++

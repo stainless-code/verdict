@@ -19,7 +19,7 @@ export GIT_COMMITTER_NAME=verdict-test
 export GIT_COMMITTER_EMAIL=test@verdict.invalid
 # GO_HASH is the first 12 hex digits of the shipped verdict/go pack tree hash;
 # a manifest edit moves it, so it pins the curated pack the layer ships.
-GO_HASH="415c9bbf8d02"
+GO_HASH="0df05aa03881"
 export HOME="$EVAL_SANDBOX/home"
 mkdir -p "$HOME/.config/verdict"
 
@@ -45,8 +45,8 @@ run_review pack list --json
 assert_exit "pack list exits 0" 0
 assert_envelope "pack list envelope"
 assert_json_field "verb" "pack" '.verb'
-assert_json_field "every layer's packs load" 14 '.data.packs | length'
-assert_json_field "the builtin layer ships the core and eleven stacks" 12 \
+assert_json_field "every layer's packs load" 15 '.data.packs | length'
+assert_json_field "the builtin layer ships the core and twelve stacks" 13 \
   '[.data.packs[] | select(.layer == "builtin")] | length'
 assert_json_field "the core pack leads" "verdict/builtin" '.data.packs[0].name'
 assert_json_field "builtin layer" "builtin" '.data.packs[0].layer'
@@ -54,25 +54,25 @@ assert_json_field "core hash" "120173839a932dde740ff69014e9659669818dbedfc8f3612
   '.data.packs[] | select(.name == "verdict/builtin") | .hash'
 assert_json_field "core lenses" "api-contract,perf,test" '.data.packs[0].lenses | join(",")'
 assert_json_field "core drift is null" "null" '.data.packs[0].drift'
-assert_json_field "the go pack ships its lens and rules" "go:go-context-lifecycle,go-error-loss,go-resource-release,go-shared-state" \
+assert_json_field "the go pack ships its lens and rules" "go:go-context-lifecycle,go-defer-loop,go-error-loss,go-mutex-misuse,go-resource-release,go-shared-state,go-slice-aliasing" \
   '.data.packs[] | select(.name == "verdict/go") | "\(.lenses | join(",")):\(.rules | join(","))"'
 assert_json_field "the go pack source names its directory" "builtin:go" \
   '.data.packs[] | select(.name == "verdict/go") | .source'
-assert_json_field "org row" "acme/org" '.data.packs[12].name'
-assert_json_field "org source" "dir:org-packs" '.data.packs[12].source'
-assert_json_field "org hash" "f9bde8f8e6cddc596cdb6c18e2ed2774cf086fe1c9780e66fd46b97777dcc130" '.data.packs[12].hash'
-assert_json_field "org rule" "no-secrets" '.data.packs[12].rules | join(",")'
-assert_json_field "repo row" "acme/repo" '.data.packs[13].name'
-assert_json_field "repo layer" "repo" '.data.packs[13].layer'
-assert_json_field "repo source" ".verdict/packs/repo" '.data.packs[13].source'
-assert_json_field "repo hash" "3807d265381ccee6dcbe1e918f58f6a541cb39d96df0baf08a9076f9aa37b512" '.data.packs[13].hash'
-assert_json_field "repo declares both lenses" "scan,style" '.data.packs[13].lenses | join(",")'
-assert_json_field "repo drift is missing until locked" "pack-lock-missing" '.data.packs[13].drift'
+assert_json_field "org row" "acme/org" '.data.packs[13].name'
+assert_json_field "org source" "dir:org-packs" '.data.packs[13].source'
+assert_json_field "org hash" "f9bde8f8e6cddc596cdb6c18e2ed2774cf086fe1c9780e66fd46b97777dcc130" '.data.packs[13].hash'
+assert_json_field "org rule" "no-secrets" '.data.packs[13].rules | join(",")'
+assert_json_field "repo row" "acme/repo" '.data.packs[14].name'
+assert_json_field "repo layer" "repo" '.data.packs[14].layer'
+assert_json_field "repo source" ".verdict/packs/repo" '.data.packs[14].source'
+assert_json_field "repo hash" "3807d265381ccee6dcbe1e918f58f6a541cb39d96df0baf08a9076f9aa37b512" '.data.packs[14].hash'
+assert_json_field "repo declares both lenses" "scan,style" '.data.packs[14].lenses | join(",")'
+assert_json_field "repo drift is missing until locked" "pack-lock-missing" '.data.packs[14].drift'
 
 run_review pack list
 assert_exit "human pack list exits 0" 0
 assert_file_grep "human line names the builtin layer" "$EVAL_OUT" '^builtin  verdict/builtin@1.0.0  source=builtin  sha256:120173839a93  lenses=api-contract,perf,test  rules=-$'
-assert_file_grep "human line names a curated pack" "$EVAL_OUT" '^builtin  verdict/go@1.0.0  source=builtin:go  sha256:'"$GO_HASH"'  lenses=go  rules=go-context-lifecycle,go-error-loss,go-resource-release,go-shared-state$'
+assert_file_grep "human line names a curated pack" "$EVAL_OUT" '^builtin  verdict/go@1.1.0  source=builtin:go  sha256:'"$GO_HASH"'  lenses=go  rules=go-context-lifecycle,go-defer-loop,go-error-loss,go-mutex-misuse,go-resource-release,go-shared-state,go-slice-aliasing$'
 assert_file_grep "human line names the org layer" "$EVAL_OUT" '^org      acme/org@2.0.0  source=dir:org-packs  sha256:f9bde8f8e6cd  lenses=scan  rules=no-secrets$'
 assert_file_grep "human line names the repo layer" "$EVAL_OUT" '^repo     acme/repo@0.1.0  source=.verdict/packs/repo  sha256:3807d265381c  lenses=scan,style  rules=repo-style  drift=pack-lock-missing$'
 

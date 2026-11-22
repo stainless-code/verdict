@@ -1,0 +1,17 @@
+diff --git a/apps/web/src/Legend.tsx b/apps/web/src/Legend.tsx
+index 1111111..2222222 100644
+--- a/apps/web/src/Legend.tsx
++++ b/apps/web/src/Legend.tsx
+@@ -1,2 +1,11 @@
+ export function Legend() {
+-  return <ul>{items.map((item) => <li>{item.label}</li>)}</ul>;
++  const links = ["Docs", "Pricing", "Security"];
++  return (
++    <ul>
++      {links.map((label, index) => (
++        <li key={index}>{label}</li>
++      ))}
++    </ul>
++  );
++}
++

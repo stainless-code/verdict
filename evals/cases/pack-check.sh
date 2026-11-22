@@ -52,22 +52,22 @@ assert_json_field "the branch cannot merge the builtin layer off" "1" \
 assert_json_field "the base turns one pack off" "pack:verdict/shell" '.data.disabled | join(",")'
 assert_json_field "the disabled pack is gone" "0" \
   '[.data.packs[] | select(.name == "verdict/shell")] | length'
-assert_json_field "every remaining builtin pack merges" "11" \
+assert_json_field "every remaining builtin pack merges" "12" \
   '[.data.packs[] | select(.layer == "builtin")] | length'
 assert_json_field "the go lens is offered for a Go file" "1" \
   '[.data.lenses[] | select(.id == "go" and .pack == "verdict/go" and .layer == "builtin")] | length'
 assert_json_field "the security lens rides beside it" "1" \
   '[.data.lenses[] | select(.id == "security" and .pack == "verdict/security")] | length'
 assert_json_field "the go rules apply by glob" \
-  "go-context-lifecycle,go-error-loss,go-resource-release,go-shared-state" \
+  "go-context-lifecycle,go-defer-loop,go-error-loss,go-mutex-misuse,go-resource-release,go-shared-state,go-slice-aliasing" \
   '[.data.rules[] | select(.pack == "verdict/go") | .id] | join(",")'
-assert_json_field "the go rules resolve their severity" "critical,important,important,critical" \
+assert_json_field "the go rules resolve their severity" "critical,important,important,critical,important,critical,critical" \
   '[.data.rules[] | select(.pack == "verdict/go") | .severity] | join(",")'
 assert_json_field "a rust rule stays out of a Go path" "0" \
   '[.data.rules[] | select(.pack == "verdict/rust")] | length'
 
 # A TypeScript path resolves the TypeScript pack and none of the Go rules.
-run_review pack check app/view.tsx --json
+run_review pack check app/view.ts --json
 assert_exit "pack check resolves a second stack" 0
 assert_json_field "ts-js lens offered" "1" \
   '[.data.lenses[] | select(.id == "ts-js" and .pack == "verdict/ts-js")] | length'
@@ -75,6 +75,18 @@ assert_json_field "ts-js rules apply" "1" \
   '[.data.rules[] | select(.id == "ts-js-floating-async")] | length'
 assert_json_field "no Go rule reaches a TypeScript path" "0" \
   '[.data.rules[] | select(.pack == "verdict/go")] | length'
+assert_json_field "react stays out of a backend TypeScript path" "0" \
+  '[.data.lenses[] | select(.id == "react")] | length'
+assert_json_field "no react rule reaches a .ts file" "0" \
+  '[.data.rules[] | select(.pack == "verdict/react")] | length'
+
+# A JSX path additionally resolves the React pack, scoped to .tsx/.jsx.
+run_review pack check app/view.tsx --json
+assert_exit "pack check resolves the React pack" 0
+assert_json_field "react lens offered for JSX" "1" \
+  '[.data.lenses[] | select(.id == "react" and .pack == "verdict/react")] | length'
+assert_json_field "react rules apply to JSX" "1" \
+  '[.data.rules[] | select(.id == "react-effect-cleanup")] | length'
 
 # The human rows read the same resolution.
 run_review pack check scripts/deploy.sh

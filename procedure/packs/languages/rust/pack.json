@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "name": "verdict/rust",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "severity": {
     "critical": "critical",
     "important": "important"
@@ -15,11 +15,6 @@
   ],
   "rules": [
     {
-      "id": "rust-unwrap-boundary",
-      "severity": "important",
-      "globs": ["**/*.rs"]
-    },
-    {
       "id": "rust-lock-across-await",
       "severity": "critical",
       "globs": ["**/*.rs"]
@@ -27,6 +22,21 @@
     {
       "id": "rust-unsafe-invariant",
       "severity": "critical",
+      "globs": ["**/*.rs"]
+    },
+    {
+      "id": "rust-unwrap-boundary",
+      "severity": "important",
+      "globs": ["**/*.rs"]
+    },
+    {
+      "id": "rust-blocking-in-async",
+      "severity": "critical",
+      "globs": ["**/*.rs"]
+    },
+    {
+      "id": "rust-cast-truncation",
+      "severity": "important",
       "globs": ["**/*.rs"]
     }
   ]

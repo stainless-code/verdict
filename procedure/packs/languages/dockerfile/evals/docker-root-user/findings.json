@@ -1,7 +1,7 @@
 [
   {
     "path": "Dockerfile",
-    "line": 1,
+    "line": 2,
     "body": "The final stage adds a `CMD` but no `USER`, so the container runs as root.",
     "rigor": "walked",
     "kb": ["docker-root-runtime"]

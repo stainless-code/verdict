@@ -13,9 +13,9 @@ import (
 // review carries rules and a lens for without any repository configuration.
 var shippedLanguagePacks = []string{
 	"verdict/builtin", "verdict/dockerfile", "verdict/github-workflows",
-	"verdict/go", "verdict/java", "verdict/python", "verdict/rust",
-	"verdict/security", "verdict/shell", "verdict/sql", "verdict/terraform",
-	"verdict/ts-js",
+	"verdict/go", "verdict/java", "verdict/python", "verdict/react",
+	"verdict/rust", "verdict/security", "verdict/shell", "verdict/sql",
+	"verdict/terraform", "verdict/ts-js",
 }
 
 // TestBuiltinOriginsShipsCoreAndLanguagePacks proves the embedded builtin
@@ -57,7 +57,8 @@ func TestShippedPacksDispatchRepresentativeFiles(t *testing.T) {
 		rules []string
 	}{
 		{"cmd/verdict/main.go", "go", []string{"go-context-lifecycle", "go-shared-state"}},
-		{"apps/web/src/App.tsx", "ts-js", []string{"ts-js-floating-async"}},
+		{"apps/web/src/App.tsx", "react", []string{"react-effect-cleanup", "react-dangerous-html"}},
+		{"apps/web/src/api/client.ts", "ts-js", []string{"ts-js-floating-async"}},
 		{"services/api/worker.py", "python", []string{"python-mutable-default"}},
 		{"crates/core/src/lib.rs", "rust", []string{"rust-lock-across-await"}},
 		{"src/main/java/acme/Service.java", "java", []string{"java-shared-state"}},
@@ -92,6 +93,25 @@ func TestShippedPacksStayOutOfUnrelatedDiffs(t *testing.T) {
 	if got, want := offeredIDs(set, "Dockerfile"), "api-contract,dockerfile,perf,test"; got != want {
 		t.Errorf("Dockerfile lenses = %q, want %q", got, want)
 	}
+	requireReactScoped(t, set)
+}
+
+// requireReactScoped proves the React lens is scoped to JSX/TSX: a backend
+// TypeScript file is offered the general TypeScript lens and no React lens or
+// React rule, while a component file is offered both.
+func requireReactScoped(t *testing.T, set *Set) {
+	t.Helper()
+	if got, want := offeredIDs(set, "src/api/client.ts"), "api-contract,perf,security,test,ts-js"; got != want {
+		t.Errorf("TypeScript lenses = %q, want %q", got, want)
+	}
+	if got, want := offeredIDs(set, "src/App.tsx"), "api-contract,perf,react,security,test,ts-js"; got != want {
+		t.Errorf("TSX lenses = %q, want %q", got, want)
+	}
+	for _, id := range ruleIDs(set.RulesFor([]string{"src/api/client.ts"})) {
+		if strings.HasPrefix(id, "react-") {
+			t.Errorf("React rule %s reached a backend TypeScript path", id)
+		}
+	}
 }
 
 // TestSetNoteForCarriesOnlyOfferedLenses proves lenses.txt stays scoped to the
@@ -105,7 +125,7 @@ func TestSetNoteForCarriesOnlyOfferedLenses(t *testing.T) {
 			t.Errorf("NoteFor lacks %q for a Go diff:\n%s", want, note)
 		}
 	}
-	for _, unwanted := range []string{"# lens rust", "# lens python", "# lens terraform", "verdict/rust@"} {
+	for _, unwanted := range []string{"# lens rust", "# lens python", "# lens react", "# lens terraform", "verdict/rust@"} {
 		if strings.Contains(note, unwanted) {
 			t.Errorf("NoteFor carried %q for a Go-only diff", unwanted)
 		}

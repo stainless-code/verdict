@@ -1,7 +1,7 @@
 [
   {
     "path": "scripts/deploy.sh",
-    "line": 1,
+    "line": 4,
     "body": "The new `rm -rf` expands `$TARGET` unquoted, so splitting changes the deleted path.",
     "rigor": "walked",
     "kb": ["sh-unquoted-expansion"]

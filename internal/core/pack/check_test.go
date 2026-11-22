@@ -46,7 +46,7 @@ func TestRunCheckResolvesGoStack(t *testing.T) {
 		"path     internal/store/store.go",
 		"config   none",
 		"packs:",
-		"  builtin  verdict/go@1.0.0  source=builtin:go  sha256:",
+		"  builtin  verdict/go@1.1.0  source=builtin:go  sha256:",
 		"  go  pack=verdict/go  layer=builtin  sha256:",
 		"  go-shared-state                   severity=critical  pack=verdict/go  layer=builtin  globs=**/*.go",
 	} {
@@ -91,8 +91,11 @@ func requireCheckRules(t *testing.T, rules []CheckRule) {
 		ids = append(ids, rules[i].ID)
 	}
 	want := []string{
-		"go-context-lifecycle", "go-error-loss", "go-resource-release", "go-shared-state",
-		"sec-broken-authz", "sec-injection", "sec-ssrf", "sec-unsafe-deserialization",
+		"go-context-lifecycle", "go-defer-loop", "go-error-loss", "go-mutex-misuse",
+		"go-resource-release", "go-shared-state", "go-slice-aliasing",
+		"sec-broken-authz", "sec-injection", "sec-jwt-validation",
+		"sec-path-traversal", "sec-ssrf", "sec-timing-compare",
+		"sec-unsafe-deserialization", "sec-weak-random",
 	}
 	if !slices.Equal(ids, want) {
 		t.Errorf("rules = %v, want %v", ids, want)

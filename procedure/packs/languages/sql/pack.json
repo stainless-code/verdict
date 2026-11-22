@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "name": "verdict/sql",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "severity": {
     "critical": "critical",
     "important": "important"
@@ -26,6 +26,16 @@
     },
     {
       "id": "sql-dynamic-string",
+      "severity": "critical",
+      "globs": ["**/*.sql"]
+    },
+    {
+      "id": "sql-unbounded-write",
+      "severity": "critical",
+      "globs": ["**/*.sql"]
+    },
+    {
+      "id": "sql-unbounded-select",
       "severity": "important",
       "globs": ["**/*.sql"]
     }

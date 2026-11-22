@@ -2,7 +2,11 @@ diff --git a/src/state.rs b/src/state.rs
 index 1111111..2222222 100644
 --- a/src/state.rs
 +++ b/src/state.rs
-@@ -1 +1 @@
--async fn bump(state: Arc<Mutex<State>>) {
-	let guard = state.lock().unwrap();
-	refresh().await;
+@@ -1,4 +1,5 @@
+ async fn bump(state: Arc<Mutex<State>>) {
+-	let value = state.lock().unwrap();
+-	value.count += 1;
++	let guard = state.lock().unwrap();
++	refresh().await;
++	guard.count += 1;
+ }

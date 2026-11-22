@@ -1,5 +1,5 @@
 exit: 0
---- stdout (size=1005406 sha256=94e1d6acb8d968ed1768af0b3aba089fd2c2194a56356eef1de62a57a01bfc55) ---
+--- stdout (size=1005426 sha256=344d44f79ab297fe21d695334b50a15100f6d2fd9e408a00e1648823d07e0081) ---
 --- stderr ---
 » estimate: no comparable past runs — cost unknown (no usable .verdict/state/*/cost.json records yet)
 » chunking opted in for group ec11a9b04f31a575e049e290eed08a392af88a7521e423b524bc85baea6f5220 — slicing that group's over-cap diff (999309 bytes, cap 512000)

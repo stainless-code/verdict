@@ -1,0 +1,20 @@
+diff --git a/src/main/java/acme/Report.java b/src/main/java/acme/Report.java
+index 1111111..2222222 100644
+--- a/src/main/java/acme/Report.java
++++ b/src/main/java/acme/Report.java
+@@ -1,1 +1,15 @@
+ package acme;
++import java.io.IOException;
++import java.nio.file.Files;
++import java.nio.file.Path;
++import java.time.format.DateTimeFormatter;
++import java.util.Optional;
++
++final class Report {
++  private static final DateTimeFormatter FORMAT = DateTimeFormatter.ISO_DATE;
++  String head(Path path, Optional<String> owner) throws IOException {
++    try (var reader = Files.newBufferedReader(path)) {
++      return reader.readLine() + FORMAT + owner.orElseThrow();
++    }
++  }
++}

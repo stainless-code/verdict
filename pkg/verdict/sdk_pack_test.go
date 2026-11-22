@@ -12,7 +12,7 @@ import (
 )
 
 // TestClientPackList proves the positionals-free pack read through the SDK:
-// the twelve embedded built-in packs (the core pack plus the eleven curated
+// the thirteen embedded built-in packs (the core pack plus the twelve curated
 // language packs) ahead of a repo pack, and the ListPacks convenience
 // returning the same profile.
 //
@@ -36,14 +36,14 @@ func TestClientPackList(t *testing.T) {
 		t.Errorf("at = %q, want %q", resp.At, sdkAt)
 	}
 	packs, ok := decodeData(t, resp.Data)["packs"].([]any)
-	if !ok || len(packs) != 13 {
-		t.Fatalf("packs = %v, want the 12 builtin packs and 1 repo pack", decodeData(t, resp.Data)["packs"])
+	if !ok || len(packs) != 14 {
+		t.Fatalf("packs = %v, want the 13 builtin packs and 1 repo pack", decodeData(t, resp.Data)["packs"])
 	}
 	core := asMap(t, packs[0], "core row")
 	if core["name"] != "verdict/builtin" || core["layer"] != "builtin" {
 		t.Errorf("core row = %v", core)
 	}
-	repo := asMap(t, packs[12], "repo row")
+	repo := asMap(t, packs[13], "repo row")
 	if repo["name"] != "acme/repo" || repo["layer"] != "repo" {
 		t.Errorf("repo row = %v", repo)
 	}
@@ -75,13 +75,15 @@ func TestClientCheckPack(t *testing.T) {
 	if got, want := ids(data["lenses"]), "api-contract,go,perf,security,test"; got != want {
 		t.Errorf("go lenses = %q, want %q", got, want)
 	}
-	if got, want := ids(data["rules"]), "go-context-lifecycle,go-error-loss,go-resource-release,go-shared-state,"+
-		"sec-broken-authz,sec-injection,sec-ssrf,sec-unsafe-deserialization"; got != want {
+	if got, want := ids(data["rules"]), "go-context-lifecycle,go-defer-loop,go-error-loss,go-mutex-misuse,"+
+		"go-resource-release,go-shared-state,go-slice-aliasing,sec-broken-authz,sec-injection,"+
+		"sec-jwt-validation,sec-path-traversal,sec-ssrf,sec-timing-compare,sec-unsafe-deserialization,"+
+		"sec-weak-random"; got != want {
 		t.Errorf("go rules = %q, want %q", got, want)
 	}
 	tsPack, err := verdict.CheckPack(context.Background(), c, "src/app.tsx")
 	requireNoError(t, err)
-	if got, want := ids(decodeData(t, tsPack.Data)["lenses"]), "api-contract,perf,security,test,ts-js"; got != want {
+	if got, want := ids(decodeData(t, tsPack.Data)["lenses"]), "api-contract,perf,react,security,test,ts-js"; got != want {
 		t.Errorf("ts lenses = %q, want %q", got, want)
 	}
 	_, err = verdict.CheckPack(context.Background(), c, "../outside.go")

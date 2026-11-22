@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "name": "verdict/ts-js",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "severity": {
     "critical": "critical",
     "important": "important"
@@ -46,7 +46,7 @@
       ]
     },
     {
-      "id": "ts-js-effect-cleanup",
+      "id": "ts-js-prototype-pollution",
       "severity": "important",
       "globs": [
         "**/*.ts",
@@ -58,7 +58,31 @@
       ]
     },
     {
-      "id": "ts-js-prototype-pollution",
+      "id": "ts-js-sort-comparator",
+      "severity": "important",
+      "globs": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.mjs",
+        "**/*.cjs"
+      ]
+    },
+    {
+      "id": "ts-js-regex-injection",
+      "severity": "critical",
+      "globs": [
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.mjs",
+        "**/*.cjs"
+      ]
+    },
+    {
+      "id": "ts-js-cleanup",
       "severity": "important",
       "globs": [
         "**/*.ts",

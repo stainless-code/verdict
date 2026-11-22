@@ -1,17 +1,18 @@
 exit: 0
 --- stdout ---
 builtin  verdict/builtin@1.0.0  source=builtin  sha256:120173839a93  lenses=api-contract,perf,test  rules=-
-builtin  verdict/dockerfile@1.0.0  source=builtin:dockerfile  sha256:7d581fb62fce  lenses=dockerfile  rules=docker-root-runtime,docker-secret-layer,docker-unpinned-base
-builtin  verdict/github-workflows@1.0.0  source=builtin:github-workflows  sha256:c88406fc1159  lenses=github-workflows  rules=gha-code-exec-from-pr,gha-script-injection,gha-unpinned-action
-builtin  verdict/go@1.0.0  source=builtin:go  sha256:415c9bbf8d02  lenses=go  rules=go-context-lifecycle,go-error-loss,go-resource-release,go-shared-state
-builtin  verdict/java@1.0.0  source=builtin:java  sha256:7006c606cf10  lenses=java  rules=java-resource-close,java-shared-state,java-unsafe-deserialization
-builtin  verdict/python@1.0.0  source=builtin:python  sha256:d046975f7d85  lenses=python  rules=python-async-blocking,python-mutable-default,python-resource-close,python-unsafe-exec
-builtin  verdict/rust@1.0.0  source=builtin:rust  sha256:faefb6ef299c  lenses=rust  rules=rust-lock-across-await,rust-unsafe-invariant,rust-unwrap-boundary
-builtin  verdict/security@1.0.0  source=builtin:security  sha256:f2812e8fcaaa  lenses=security  rules=sec-broken-authz,sec-injection,sec-ssrf,sec-unsafe-deserialization
-builtin  verdict/shell@1.0.0  source=builtin:shell  sha256:83a533c74e7f  lenses=shell  rules=sh-destructive-path,sh-pipe-masking,sh-unquoted-expansion
-builtin  verdict/sql@1.0.0  source=builtin:sql  sha256:df0af9c4b1c5  lenses=sql  rules=sql-destructive-ddl,sql-dynamic-string,sql-lock-heavy-migration
-builtin  verdict/terraform@1.0.0  source=builtin:terraform  sha256:13ad59feebb4  lenses=terraform  rules=tf-destructive-replace,tf-secret-in-state,tf-wildcard-iam
-builtin  verdict/ts-js@1.0.0  source=builtin:ts-js  sha256:160e005fc1fc  lenses=ts-js  rules=ts-js-boundary-validation,ts-js-effect-cleanup,ts-js-floating-async,ts-js-prototype-pollution
+builtin  verdict/dockerfile@1.1.0  source=builtin:dockerfile  sha256:158b802db55b  lenses=dockerfile  rules=docker-curl-pipe-sh,docker-root-runtime,docker-secret-layer,docker-unpinned-base
+builtin  verdict/github-workflows@1.1.0  source=builtin:github-workflows  sha256:e5147aeb283f  lenses=github-workflows  rules=gha-code-exec-from-pr,gha-permissions,gha-script-injection,gha-unpinned-action
+builtin  verdict/go@1.1.0  source=builtin:go  sha256:0df05aa03881  lenses=go  rules=go-context-lifecycle,go-defer-loop,go-error-loss,go-mutex-misuse,go-resource-release,go-shared-state,go-slice-aliasing
+builtin  verdict/java@1.1.0  source=builtin:java  sha256:d17cd9234fbb  lenses=java  rules=java-interrupt-swallow,java-optional-get,java-resource-close,java-shared-state,java-sql-concat,java-unsafe-deserialization
+builtin  verdict/python@1.1.0  source=builtin:python  sha256:09663a1802cc  lenses=python  rules=python-async-blocking,python-bare-except,python-late-binding,python-mutable-default,python-resource-close,python-sql-format,python-unsafe-exec
+builtin  verdict/react@1.0.0  source=builtin:react  sha256:b77628c7a875  lenses=react  rules=react-dangerous-html,react-derived-state,react-effect-cleanup,react-effect-deps,react-hooks-order,react-key-index,react-server-client-boundary
+builtin  verdict/rust@1.1.0  source=builtin:rust  sha256:d723fab0e530  lenses=rust  rules=rust-blocking-in-async,rust-cast-truncation,rust-lock-across-await,rust-unsafe-invariant,rust-unwrap-boundary
+builtin  verdict/security@1.1.0  source=builtin:security  sha256:2457816adbfd  lenses=security  rules=sec-broken-authz,sec-injection,sec-jwt-validation,sec-path-traversal,sec-ssrf,sec-timing-compare,sec-unsafe-deserialization,sec-weak-random
+builtin  verdict/shell@1.1.0  source=builtin:shell  sha256:9e599aa2a562  lenses=shell  rules=sh-destructive-path,sh-eval-untrusted,sh-pipe-masking,sh-tmp-mktemp,sh-unquoted-expansion
+builtin  verdict/sql@1.1.0  source=builtin:sql  sha256:20a2d03333e4  lenses=sql  rules=sql-destructive-ddl,sql-dynamic-string,sql-lock-heavy-migration,sql-unbounded-select,sql-unbounded-write
+builtin  verdict/terraform@1.1.0  source=builtin:terraform  sha256:9bd992fb9e39  lenses=terraform  rules=tf-destructive-replace,tf-public-admin-ingress,tf-secret-in-state,tf-unencrypted-storage,tf-wildcard-iam
+builtin  verdict/ts-js@1.1.0  source=builtin:ts-js  sha256:264ac28bfd2d  lenses=ts-js  rules=ts-js-boundary-validation,ts-js-cleanup,ts-js-floating-async,ts-js-prototype-pollution,ts-js-regex-injection,ts-js-sort-comparator
 org      acme/org@2.0.0  source=dir:org-packs  sha256:f9bde8f8e6cd  lenses=scan  rules=no-secrets
 repo     acme/repo@0.1.0  source=.verdict/packs/repo  sha256:3807d265381c  lenses=scan,style  rules=repo-style  drift=pack-lock-missing
 --- stderr ---
