@@ -173,13 +173,14 @@ func (st *state) argsForTarget(def *agentcatalog.Launch, timeout int, target lau
 		return nil, ref
 	}
 	args.bin = bin
+	args.restriction = discoveryRestriction(def, st.req.PassThrough, st.req.AllowShell)
 	artifact := st.promptPath(args.abs, args.artifact)
 	st.compose(args, st.req, st.promptBundle(dir), artifact, readcommon.IsLocalBundleDir(dir))
 	if target.procedure != "" {
 		procedure := st.promptPath(target.procedure, readcommon.DisplayPath(st.req.RepoRootPath(), target.procedure))
 		args.prompt = strings.ReplaceAll(args.prompt, st.promptBundle(dir)+"/procedure.md", procedure)
 	}
-	args.argv = argvFor(&args.def, args.model(), st.req.PassThrough, args.prompt)
+	args.argv = argvFor(&args.def, args.model(), args.restriction, st.req.PassThrough, args.prompt)
 	return args, nil
 }
 
@@ -200,7 +201,7 @@ func (st *state) compose(a *launchArgs, req *core.RunRequest, bundle, artifact s
 	default:
 		a.prompt = stageDirective(req.Repo, req.Pr, bundle, artifact, local, hasContext, a.plan, a.staged)
 	}
-	a.argv = argvFor(&a.def, a.model(), req.PassThrough, a.prompt)
+	a.argv = argvFor(&a.def, a.model(), a.restriction, req.PassThrough, a.prompt)
 }
 
 // contextInBundle reports whether the bundle carries the handed context text.
@@ -468,22 +469,24 @@ type launchTarget struct {
 
 // launchArgs is the resolved invocation one launch works from: the definition,
 // the declared pipeline, the one stage a render covers (nil otherwise), the
-// bundle and its review path, the timeout, and the exact argv.
+// bundle and its review path, the timeout, the discovery restriction this argv
+// carries, and the exact argv.
 type launchArgs struct {
-	guard    func() *core.RefusalError
-	target   launchTarget
-	def      agentcatalog.Launch
-	bin      string
-	probe    *launcherProbe
-	plan     *recipe.Plan
-	staged   *staged
-	dir      string
-	bundle   string
-	artifact string
-	abs      string
-	prompt   string
-	argv     []string
-	timeout  int
+	guard       func() *core.RefusalError
+	target      launchTarget
+	def         agentcatalog.Launch
+	bin         string
+	probe       *launcherProbe
+	plan        *recipe.Plan
+	staged      *staged
+	dir         string
+	bundle      string
+	artifact    string
+	abs         string
+	prompt      string
+	argv        []string
+	restriction []string
+	timeout     int
 }
 
 // carry replays the accumulated warnings onto the refusal or the response, so a

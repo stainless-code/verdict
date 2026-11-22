@@ -763,11 +763,14 @@ func (c *coordinator) checkResumeCapture(record *launcherResume, captured *confi
 }
 
 // launchDefDigest seals the resolved launch definition: the binary, its own
-// argv prefix, and its identity probe. A row redefined between attempts under
-// the same name (a prefs agent pointed at another executable, or given another
-// argument shape) is a different reviewer, so a resume refuses it. Only the
-// digest is recorded: the record has no reason to repeat the argv.
-func launchDefDigest(def *agentcatalog.Launch) string {
+// argv prefix, its identity probe, and the tool shape of a discovery launch. A
+// row redefined between attempts under the same name (a prefs agent pointed at
+// another executable, or given another argument shape) is a different
+// reviewer, so a resume refuses it. So is a row whose documented discovery
+// restriction changed, or an attempt that flipped --allow-shell: the two would
+// spend the interruption's phases under a tool set the record never sealed.
+// Only the digest is recorded: the record has no reason to repeat the argv.
+func launchDefDigest(def *agentcatalog.Launch, restriction []string) string {
 	var sb strings.Builder
 	sb.WriteString("binary=")
 	sb.WriteString(def.Binary)
@@ -779,6 +782,16 @@ func launchDefDigest(def *agentcatalog.Launch) string {
 	}
 	for _, arg := range def.ProbeArgs {
 		sb.WriteString("probe=")
+		sb.WriteString(arg)
+		sb.WriteByte('\n')
+	}
+	for _, arg := range def.DiscoveryArgs {
+		sb.WriteString("discovery=")
+		sb.WriteString(arg)
+		sb.WriteByte('\n')
+	}
+	for _, arg := range restriction {
+		sb.WriteString("restrict=")
 		sb.WriteString(arg)
 		sb.WriteByte('\n')
 	}
@@ -842,7 +855,7 @@ func (c *coordinator) fingerprintNow(captured *config.RunState, source string) (
 		AgentSource:       c.base.def.Source,
 		ContextTXTSHA256:  contextTXT,
 		ThreadsJSONSHA256: threadsJSON,
-		LaunchDefSHA256:   launchDefDigest(&c.base.def),
+		LaunchDefSHA256:   launchDefDigest(&c.base.def, c.base.restriction),
 		PassThroughSHA256: passThroughDigest(c.st.req.PassThrough),
 		Finders:           finderCount,
 		FinderSource:      source,

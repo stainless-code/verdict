@@ -970,14 +970,15 @@ func TestReplayUnpricedReviewReportsUnknownSpend(t *testing.T) {
 }
 
 // TestReplayPassThroughReachesTheAgent proves the operator's `--` arguments end
-// up in the agent's own argv, ahead of the directive.
+// up in the agent's own argv: after the row's discovery restriction, so the
+// replay reviews read-only like every other launch, and ahead of the directive.
 func TestReplayPassThroughReachesTheAgent(t *testing.T) {
 	f := newReplayFixture(t)
 	f.plant(t, "write", "0.6")
 	runReplayOK(t, f.request(t, func(r *ReplayRequest) { r.PassThrough = []string{"--model", "fast"} }))
 	lines := f.launchLines(t)
-	if !strings.Contains(lines[0][2], "claude -p --model fast") {
-		t.Errorf("agent argv = %q; want the pass-through after the agent's own flags", lines[0][2])
+	if !strings.Contains(lines[0][2], "claude -p --disallowedTools=Bash,PowerShell --model fast") {
+		t.Errorf("agent argv = %q; want the pass-through after the discovery restriction", lines[0][2])
 	}
 }
 

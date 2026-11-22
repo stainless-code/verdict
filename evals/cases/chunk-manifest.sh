@@ -127,6 +127,26 @@ if cmp -s "$EVAL_SANDBOX/cman-concat.diff" "$BUNDLE/full.diff"; then
 else
   bad "chunk concat differs from full.diff"
 fi
+# Every chunk payload lists its sections in the order its manifest entry names
+# them: chunk membership follows the semantic file order (package, then
+# implementation and test stem), so the payload is the checklist, not the diff's
+# own order. Each section is carried byte-identically; chunk-coverage grades the
+# hunks and chunk-envelope the fenced assembly.
+order_bad=0
+while IFS= read -r cname; do
+  [ -n "$cname" ] || continue
+  payload="$(grep '^diff --git ' "$BUNDLE/chunks/$cname.diff" 2>/dev/null \
+    | sed -E 's|^diff --git a/(.*) b/.*$|\1|' | paste -sd' ' - || true)"
+  listed="$(jq -r --arg n "$cname" '.chunks[] | select(.name == $n) | .files | join(" ")' <"$MAN" 2>/dev/null)"
+  if [ "$payload" != "$listed" ]; then
+    order_bad=$((order_bad + 1))
+  fi
+done < <(jq -r '.chunks[].name' <"$MAN" 2>/dev/null)
+if [ "$order_bad" -eq 0 ]; then
+  good "each chunk diff carries its manifest files in manifest order"
+else
+  bad "$order_bad chunk(s) list their files differently from the manifest"
+fi
 if [ "$(cd "$EVAL_SANDBOX" && git diff --name-only HEAD -- $CMAN_FILES | LC_ALL=C sort | tr '\n' ' ')" = "$(jq -r '[.chunks[].files[]] | sort | join(" ") | . + " "' <"$MAN" 2>/dev/null)" ]; then
   good "every diff file appears in exactly one chunk"
 else

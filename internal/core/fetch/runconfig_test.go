@@ -227,21 +227,24 @@ func TestBudgetGateEnforceCap(t *testing.T) {
 	}
 }
 
-// TestWithholdChunkFiles pins the privacy choke point with a
-// hand-authored table: excluded paths never reach a chunk payload,
-// included paths pass through untouched.
+// TestWithholdChunkFiles pins the privacy choke point with a hand-authored
+// diff: excluded sections never reach the bytes a chunk payload is sliced
+// from, included sections pass through untouched, and an empty exclusion set
+// changes nothing.
 func TestWithholdChunkFiles(t *testing.T) {
-	table := []fileSlice{
-		{path: "notes.txt", size: 10},
-		{path: "secret/plan.md", size: 20},
-		{path: "secret/keys/env.txt", size: 30},
+	diff := "diff --git a/secret/plan.md b/secret/plan.md\n--- a/secret/plan.md\n+++ b/secret/plan.md\n@@ -1 +1 @@\n-a\n+b\n" +
+		"diff --git a/secret/keys/env.txt b/secret/keys/env.txt\n--- a/secret/keys/env.txt\n+++ b/secret/keys/env.txt\n@@ -1 +1 @@\n-c\n+d\n" +
+		"diff --git a/notes.txt b/notes.txt\n--- a/notes.txt\n+++ b/notes.txt\n@@ -1 +1 @@\n-e\n+f\n"
+	kept := config.WithoutExcludedSections(diff, []string{"secret/**"})
+	if strings.Contains(kept, "secret/") {
+		t.Fatalf("kept = %q, want no excluded section", kept)
 	}
-	kept := withholdChunkFiles(table, []string{"secret/**"})
-	if len(kept) != 1 || kept[0].path != "notes.txt" {
-		t.Fatalf("kept = %+v, want only notes.txt", kept)
+	table := chunkFileTableText(kept)
+	if len(table) != 1 || table[0].path != "notes.txt" {
+		t.Fatalf("kept = %+v, want only notes.txt", table)
 	}
-	if kept := withholdChunkFiles(table, nil); len(kept) != 3 {
-		t.Fatalf("empty exclusions dropped files: %+v", kept)
+	if table := chunkFileTableText(config.WithoutExcludedSections(diff, nil)); len(table) != 3 {
+		t.Fatalf("empty exclusions dropped files: %+v", table)
 	}
 }
 

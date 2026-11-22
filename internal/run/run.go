@@ -53,23 +53,24 @@ const DefaultRounds = "2"
 // roundsFlag, recipeFlag, and stageFlag are named once for the parser and the
 // usage line.
 const (
-	roundsFlag  = "--rounds"
-	recipeFlag  = "--recipe"
-	stageFlag   = "--stage"
-	findersFlag = "--finders"
-	budgetFlag  = "--budget"
+	roundsFlag     = "--rounds"
+	recipeFlag     = "--recipe"
+	stageFlag      = "--stage"
+	findersFlag    = "--finders"
+	budgetFlag     = "--budget"
+	allowShellFlag = "--allow-shell"
 )
 
 // verbsWanted is the flag list the unknown-flag usage error names.
 const verbsWanted = "--agent <name>, --recipe <slug>, --stage <n>, --timeout <secs>, --rounds <n>, " +
 	"--finders <1|2>, --budget <" + budget.RequestAuto + "|" + budget.TierLight + "|" + budget.TierStandard + "|" +
-	budget.TierDeep + ">, --consent-over-budget, --resume, --print, -- <agent args>, --json"
+	budget.TierDeep + ">, --consent-over-budget, --resume, --allow-shell, --print, -- <agent args>, --json"
 
 // Run executes `run <owner/repo> <pr|local-name> --agent <name> [--recipe
-// <slug>] [--stage <n>] [--timeout <secs>] [--rounds <n>] [--print] [--
-// <agent args>...] [--json]`, returning the process exit code. A non-zero agent
-// exit is preserved as this process's exit code after the typed refusal is
-// rendered, so CI surfaces the real failure.
+// <slug>] [--stage <n>] [--timeout <secs>] [--rounds <n>] [--allow-shell]
+// [--print] [-- <agent args>...] [--json]`, returning the process exit code. A
+// non-zero agent exit is preserved as this process's exit code after the typed
+// refusal is rendered, so CI surfaces the real failure.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	flags, code, done := parseFlags(r, args)
@@ -144,6 +145,7 @@ func runRequest(r *cli.Runner, req Request, flags *flags) *core.RunRequest {
 		BudgetRaw:         flags.budget,
 		Print:             flags.print,
 		Resume:            flags.resume,
+		AllowShell:        flags.allowShell,
 		ConsentOverBudget: flags.consent,
 		JSONMode:          r.JSONMode,
 		Warnings:          append([]string{}, r.Warnings...),
@@ -166,18 +168,19 @@ func requestedRounds(f *flags) string {
 // the default so the re-run line can omit it, while the service has to know a
 // render was not asked for a loop it cannot run.
 type flags struct {
-	finders   string
-	budget    string
-	agent     string
-	recipe    string
-	stage     string
-	timeout   string
-	rounds    string
-	pass      []string
-	consent   bool
-	print     bool
-	resume    bool
-	roundsSet bool
+	finders    string
+	budget     string
+	agent      string
+	recipe     string
+	stage      string
+	timeout    string
+	rounds     string
+	pass       []string
+	consent    bool
+	print      bool
+	resume     bool
+	allowShell bool
+	roundsSet  bool
 }
 
 // parseFlags strips run's flags, reporting unknown ones. Every argument after a
@@ -219,6 +222,9 @@ func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) 
 		return i, 0, false
 	case "--resume":
 		f.resume = true
+		return i, 0, false
+	case allowShellFlag:
+		f.allowShell = true
 		return i, 0, false
 	case "--print":
 		f.print = true
@@ -304,7 +310,7 @@ func rentry(req Request, f *flags, jsonMode bool) string {
 // this line exactly as typed — a refusal names the value it could not read —
 // and the line exists to be pasted back into a shell.
 func flagTail(f *flags) string {
-	s := findersTail(f.finders) + budgetTail(f.budget) + resumeTail(f)
+	s := findersTail(f.finders) + budgetTail(f.budget) + resumeTail(f) + allowShellTail(f)
 	if f.agent != "" {
 		s += " --agent " + f.agent
 	}
@@ -399,6 +405,15 @@ func resumeTail(f *flags) string {
 		return ""
 	}
 	return " --resume"
+}
+
+// allowShellTail renders --allow-shell for the re-entry line when the
+// invocation opted out of the discovery restriction.
+func allowShellTail(f *flags) string {
+	if !f.allowShell {
+		return ""
+	}
+	return " " + allowShellFlag
 }
 
 func findersTail(raw string) string {

@@ -123,7 +123,7 @@ func TestOperatorAgentCollisionRefusesSettings(t *testing.T) {
 // model argument, rather than an empty argument the binary would misread.
 func TestOperatorAgentWithoutModelFlag(t *testing.T) {
 	def := agentcatalog.Launch{Name: "local", Binary: "local-agent", ModelFlag: "", PromptFlag: "-t"}
-	if got := argvFor(&def, "M", []string{"--x"}, "PROMPT"); !slices.Equal(got,
+	if got := argvFor(&def, "M", nil, []string{"--x"}, "PROMPT"); !slices.Equal(got,
 		[]string{"local-agent", "--x", "-t", "PROMPT"}) {
 		t.Errorf("argv = %q, want no model argument", got)
 	}

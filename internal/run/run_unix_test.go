@@ -288,7 +288,7 @@ func TestRunLaunchesAndHandsOff(t *testing.T) {
 		t.Fatalf("exit = %d\nstdout: %s\nstderr: %s", code, out, errOut)
 	}
 	for _, want := range []string{
-		"» round 1/2: claude -p <prompt>", "» wrote .verdict/state/local-work/review.json",
+		"» round 1/2: claude -p --disallowedTools=Bash,PowerShell <prompt>", "» wrote .verdict/state/local-work/review.json",
 		"» recorded .verdict/state/local-work/launcher.json",
 	} {
 		if !strings.Contains(out, want) {
@@ -373,7 +373,7 @@ func TestRunPrintMatchesTheRealInvocation(t *testing.T) {
 	}
 	argv := readArgv(t, argvFile)
 	assertPrintedMatchesSpawned(t, printed, argv)
-	assertArgvPrefix(t, argv, []string{"claude", "-p", "--model", "opus"})
+	assertArgvPrefix(t, argv, []string{"claude", "-p", "--disallowedTools=Bash,PowerShell", "--model", "opus"})
 }
 
 // TestRunRefusalsWithFakeBinaries covers the six failure modes with a real

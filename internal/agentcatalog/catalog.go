@@ -57,6 +57,19 @@ type Launch struct {
 	// ProbeArgs runs the binary's harmless one-shot help before a launch; a
 	// row declares it only when another tool shares the binary name.
 	ProbeArgs []string
+	// DiscoveryArgs are this row's documented discovery-phase restrictions:
+	// options that block shell and command execution while leaving file reads
+	// and the artifact write (`review.json`, `verdicts.json`, `drain.replies.json`)
+	// intact. A row declares them only when its own CLI documents the exact
+	// spelling, and never with a flag that would stop that write. `verify
+	// --sandbox` is a separate surface and reads none of this.
+	DiscoveryArgs []string
+	// DiscoveryCitation names the doc that spells those options for this row.
+	DiscoveryCitation string
+	// DiscoveryOverrideFlags are the operator spellings that already decide
+	// tool selection. One of them after `--` suppresses DiscoveryArgs, so one
+	// argv never carries two answers to the same question.
+	DiscoveryOverrideFlags []string
 }
 
 // modelFlag is the argument every shipped row takes a model name on; a row
@@ -66,9 +79,11 @@ const modelFlag = "--model"
 // The docs each row cites for its CLI facts, shared by the launch citation and
 // the permission or continuation claim beside it.
 const (
+	docBobShell     = "https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive"
 	docClaudeCLI    = "https://code.claude.com/docs/en/cli-reference.md"
 	docCodexReadme  = "https://github.com/openai/codex/blob/main/README.md"
 	docOpenCodeCLI  = "https://opencode.ai/docs/cli/"
+	docPiCLI        = "https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md"
 	docPiQuickstart = "https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/quickstart.md"
 )
 
@@ -81,6 +96,11 @@ const (
 	argsAsk      = "ask"
 	argsHelp     = "--help"
 )
+
+// flagDisableToolGroups is Bob's tool-group switch, spelled once for the row's
+// probe match, its discovery restriction, and the operator spelling that
+// replaces it.
+const flagDisableToolGroups = "--disable-tool-groups"
 
 // agyLaunchWarning flags Antigravity CLI's headless write soft-denial before
 // launch: outside trustedWorkspaces, `agy -p` auto-denies file edits and exits
@@ -158,11 +178,15 @@ var catalog = []Agent{
 	{
 		Name: "bob",
 		Launch: &Launch{
-			Citation:  "https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive",
+			Citation:  docBobShell,
 			Binary:    "bob",
 			Args:      []string{argsRun},
-			ProbeArgs: []string{argsRun, argsHelp}, ProbeMatch: "--disable-tool-groups",
-			Install: "curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash",
+			ProbeArgs: []string{argsRun, argsHelp}, ProbeMatch: flagDisableToolGroups,
+			// The execute group is the shell; the write path stays open.
+			DiscoveryArgs:          []string{flagDisableToolGroups, "execute,mcp"},
+			DiscoveryCitation:      docBobShell,
+			DiscoveryOverrideFlags: []string{flagDisableToolGroups},
+			Install:                "curl -fsSL https://bob.ibm.com/download/bobshell.sh | bash",
 		},
 	},
 	// https://code.claude.com/docs/en/cli-reference.md — read 2026-11-17
@@ -178,7 +202,17 @@ var catalog = []Agent{
 			Args:           []string{"-p"},
 			ResumeArgs:     []string{"-c"},
 			ResumeCitation: docClaudeCLI,
-			Install:        "curl -fsSL https://claude.ai/install.sh | bash",
+			// `--disallowedTools` takes `<tools...>`, so the joined `=` form is
+			// the one that cannot swallow the directive as a tool name. Bash and
+			// PowerShell are both denied — a Windows Claude Code reaches the
+			// shell through either — which leaves Read/Glob/Grep/Write for
+			// review.json.
+			DiscoveryArgs:     []string{"--disallowedTools=Bash,PowerShell"},
+			DiscoveryCitation: docClaudeCLI,
+			DiscoveryOverrideFlags: []string{
+				"--disallowedTools", "--disallowed-tools", "--allowedTools", "--allowed-tools", "--tools",
+			},
+			Install: "curl -fsSL https://claude.ai/install.sh | bash",
 		},
 		Skills: &Skills{
 			Base:     valueHome,
@@ -633,7 +667,14 @@ var catalog = []Agent{
 			Args:           []string{"-p"},
 			ResumeArgs:     []string{"-c", "--fork"},
 			ResumeCitation: docPiQuickstart,
-			Install:        "curl -fsSL https://pi.dev/install.sh | sh",
+			// A denylist, so read/edit/write stay and only the two shell tools
+			// go: `bash` on Unix, `powershell` on Windows.
+			DiscoveryArgs:     []string{"--exclude-tools", "bash,powershell"},
+			DiscoveryCitation: docPiCLI,
+			DiscoveryOverrideFlags: []string{
+				"--exclude-tools", "-xt", "--tools", "-t", "--no-builtin-tools", "-nbt", "--no-tools", "-nt",
+			},
+			Install: "curl -fsSL https://pi.dev/install.sh | sh",
 		},
 	},
 	// --agent 'qoder' is the product slug.
@@ -752,6 +793,8 @@ func All() []Agent {
 			v.Name = a.Name
 			v.Args = slices.Clone(v.Args)
 			v.ProbeArgs = slices.Clone(v.ProbeArgs)
+			v.DiscoveryArgs = slices.Clone(v.DiscoveryArgs)
+			v.DiscoveryOverrideFlags = slices.Clone(v.DiscoveryOverrideFlags)
 			a.Launch = &v
 		}
 		if a.Skills != nil {

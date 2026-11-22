@@ -2868,6 +2868,31 @@ and Ultra subscriptions use `agy`. Qwen Code's positional prompt is the
 supported one-shot form (`-p` is deprecated). `cursor` keeps `cursor-agent`
 because that is the binary its installer still puts on `PATH`.
 
+### Discovery restrictions
+
+Discovery is read-only. An external harness handed an unconstrained shell spends
+its budget on builds, tests, and cross-compiles, so `run` adds the row's own
+documented tool flags to every launch it makes — finders, opposite-finder
+cross-checks, repair rounds, and drain — while leaving file reads and the
+artifact write (`review.json`, `verdicts.json`, `drain.replies.json`) intact.
+Only rows whose CLI documents the exact spelling carry one; a row without one is
+launched unchanged. `--allow-shell` restores the row's own tool set, and a
+pass-through spelling of a flag below suppresses the restriction instead of
+sitting beside it, so one argv never carries two answers to the same question.
+The restriction reaches `run` alone: `verify --sandbox` runs your `verifyCmd`
+under its own enforced sandbox and never reads this table.
+
+| Name     | Discovery flags                     | Flags that decide the same question                              | Source                                                                                     |
+| -------- | ----------------------------------- | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `bob`    | `--disable-tool-groups execute,mcp` | `--disable-tool-groups`                                          | [Bob shell](https://bob.ibm.com/docs/shell/getting-started/start-bobshell-non-interactive) |
+| `claude` | `--disallowedTools=Bash,PowerShell` | `--disallowedTools`, `--allowedTools`, `--tools`                 | [Claude CLI reference](https://code.claude.com/docs/en/cli-reference.md)                   |
+| `pi`     | `--exclude-tools bash,powershell`   | `--exclude-tools`, `--tools`, `--no-builtin-tools`, `--no-tools` | [Pi CLI](https://github.com/badlogic/pi-mono/blob/main/packages/coding-agent/docs/cli.md)  |
+
+`claude` spells the joined `--disallowedTools=Bash,PowerShell` form because its
+option takes `<tools...>`: the spaced form swallows the directive as a tool
+name. PowerShell is denied beside Bash because Windows Claude Code can reach the
+shell through either tool.
+
 `cline` has known hangs when stdout is piped (cline#14544) or stdin stays open (cline#14570); `run --timeout` bounds both.
 
 `agy` print mode (`-p`) soft-denies file edits (`Edit` / `write_file`) outside
@@ -4306,16 +4331,31 @@ Under-cap fetches succeed with identical bytes whether chunking is on or not
 (the opt-in is never consulted under the cap).
 
 An opted-in over-cap fetch is machine-sliced on file boundaries (greedy
-next-fit in diff order, deterministic — re-fetch reproduces the map):
-`<dir>/chunks/` holds `chunk-NN.diff` (each at or under the cap, concatenating
-byte-identically to `full.diff`), `chunk-NN.toc.txt` (per-chunk coverage
-checklist), and `chunk-NN.roles.txt`, plus `chunks/manifest.json` (`schema_version
-"1"`, fetched HEAD/base SHAs, cap bytes + source, total bytes, and the ordered
-chunk list with member files, sizes, and diff/toc/roles refs). The top-level
+next-fit over a semantic file order, deterministic — re-fetch reproduces the
+map): files are grouped by package directory, then by implementation and test
+stem (`foo.go` beside `foo_test.go`, `bar.ts` beside `bar.test.ts`, `baz.py`
+beside `test_baz.py`), then by path bytes, so a package's files and the tests
+under them share a chunk whenever they fit. `<dir>/chunks/` holds
+`chunk-NN.diff` (each at or under the cap, carrying `full.diff`'s sections
+byte-identically in the manifest's order — nothing lost, doubled, or edited,
+though the regrouped order is not the diff's own), `chunk-NN.toc.txt`
+(per-chunk coverage checklist), and `chunk-NN.roles.txt`, plus
+`chunks/manifest.json` (`schema_version "1"`, fetched HEAD/base SHAs, the cap
+and its source, total bytes, and the ordered chunk list with member files,
+sizes, and diff/toc/roles refs). A per-group run packs one group at a time at
+that group's own cap and never mixes two groups in one chunk; a diff that must
+keep its own order packs contiguous runs of each group instead, so no section
+moves past an intervening group's. A diff whose last section has no trailing
+newline keeps the diff's own order, so no section line is ever glued to the
+next header. Privacy-excluded sections never reach a chunk
+payload: the chunks are sliced from the diff the exclusions already filtered, so
+`chunk-NN.diff` and its checklist carry only kept files, and `record` reads the
+same view, so a withheld section is never reported as drift. The top-level
 bundle keeps `full.diff` for anchor pinning and drift detection; the `--json`
 envelope gains additive `data.chunk` (`count`/`manifest`/`total_bytes`);
-`--show-prompts` fences the chunk diffs in manifest order (one ordered
-document, byte-equal to `full.diff`, labeled `source=full.diff`).
+`--show-prompts` fences the chunk diffs in manifest order (one ordered document
+carrying every `full.diff` section, labeled `source=full.diff`). `record` warns
+`chunk snapshots drifted` when a section is missing, doubled, or edited.
 
 Review from the chunks: read the manifest first, then each chunk diff
 end-to-end against its own checklist — an unread chunk is as visible as an

@@ -50,7 +50,7 @@ func printablePassThrough(args, environ []string) bool {
 func (st *state) displayArgv(args *launchArgs) ([]string, []string) {
 	shape, secrets := recordArgv(args.argv, args.prompt, st.req.Environ)
 	displayed, _ := displayPassThrough(st.req.PassThrough, st.req.Environ)
-	offset := 1 + len(args.def.Args)
+	offset := argvPrefixLen(&args.def, args.model(), args.restriction)
 	for i, value := range displayed {
 		if value == redactedValue {
 			secrets = append(secrets, st.req.PassThrough[i])

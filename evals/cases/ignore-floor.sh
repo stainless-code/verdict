@@ -47,7 +47,40 @@ assert_file_grep 'sensitive path survives exclusion' "$BUNDLE/sensitive.txt" 've
 assert_eq 'base exclusions use no host calls' 0 "$(wc -l < "$EVAL_STUBLOG" | tr -d ' ')"
 assert_file_grep 'TOC names receipt' "$BUNDLE/toc.txt" 'vendor/gen.go (ignore:1,'
 cat "$BUNDLE"/chunks/*.diff > concatenated.diff
-if cmp -s concatenated.diff "$BUNDLE/full.diff"; then good 'chunks concatenate byte-exactly'; else bad 'chunks differ'; fi
+# Chunks pack in semantic file order (package directory, then implementation and
+# test pairs), not diff order, so the ordered concatenation no longer equals
+# `full.diff`. The invariant is per section: every file section is carried
+# exactly once, byte for byte, and the preamble is unchanged.
+if python3 - "$BUNDLE/full.diff" concatenated.diff <<'PY'
+import hashlib
+import sys
+
+
+def split(path):
+    with open(path, "rb") as handle:
+        data = handle.read()
+    preamble, sections = [], []
+    for line in data.splitlines(keepends=True):
+        if line.startswith(b"diff --git "):
+            sections.append([line])
+        elif sections:
+            sections[-1].append(line)
+        else:
+            preamble.append(line)
+    return b"".join(preamble), sorted(sections)
+
+
+def digest(sections):
+    return sorted(hashlib.sha256(b"".join(s)).hexdigest() for s in sections)
+
+
+full_preamble, full_sections = split(sys.argv[1])
+got_preamble, got_sections = split(sys.argv[2])
+ok = full_sections and full_preamble == got_preamble and digest(full_sections) == digest(got_sections)
+sys.exit(0 if ok else 1)
+PY
+then good 'chunks carry every full.diff section exactly once, byte-exactly'
+else bad 'chunks lose, duplicate, or edit a diff section'; fi
 run_review fetch-local acme/app defaults-off --staged --chunk --no-default-excludes --json
 assert_exit 'disable defaults preserves file rules' 0
 assert_eq 'base ignore still applies without defaults' ignore:1 "$(jq -r '.excluded[]|select(.path=="vendor/gen.go")|.rule_id' .verdict/state/local-defaults-off/excluded.json)"
