@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	generatedSection = "diff --git a/vendor/.env b/vendor/.env\n--- a/vendor/.env\n+++ b/vendor/.env\n@@ -1 +1 @@\n-a\n+b\n"
-	keptSection      = "diff --git a/app_test.go b/app_test.go\n--- a/app_test.go\n+++ b/app_test.go\n@@ -1 +1 @@\n-a\n+b"
+	generatedSection  = "diff --git a/vendor/.env b/vendor/.env\n--- a/vendor/.env\n+++ b/vendor/.env\n@@ -1 +1 @@\n-a\n+b\n"
+	vendoredGoSection = "diff --git a/vendor/lib.go b/vendor/lib.go\n--- a/vendor/lib.go\n+++ b/vendor/lib.go\n@@ -1 +1 @@\n-a\n+b\n"
+	keptSection       = "diff --git a/app_test.go b/app_test.go\n--- a/app_test.go\n+++ b/app_test.go\n@@ -1 +1 @@\n-a\n+b"
 )
 
 func TestExcludedDiffReceipts(t *testing.T) {
@@ -26,7 +27,7 @@ func TestExcludedDiffReceipts(t *testing.T) {
 	if filtered != keptSection {
 		t.Fatalf("filtered = %q; want test section byte-exact", filtered)
 	}
-	if len(receipt.Excluded) != 1 || receipt.Excluded[0].Path != "vendor/.env" || receipt.Excluded[0].RuleID != "default:generated" {
+	if len(receipt.Excluded) != 1 || receipt.Excluded[0].Path != "vendor/.env" || receipt.Excluded[0].RuleID != "default:secret" {
 		t.Fatalf("receipt = %+v", receipt)
 	}
 	if receipt.Excluded[0].Bytes != 93 || receipt.ExcludedBytes != 93 {
@@ -52,8 +53,8 @@ func TestAttributeExclusionsAndReinclude(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	filtered, _ = excludedDiff(generatedSection, exclude.Defaults(), rules, nil)
-	if filtered != generatedSection {
+	filtered, _ = excludedDiff(vendoredGoSection, exclude.Defaults(), rules, nil)
+	if filtered != vendoredGoSection {
 		t.Fatal("explicit negation failed to override default")
 	}
 }
@@ -77,7 +78,7 @@ func TestRawDiffPreservedAndFilteredChunks(t *testing.T) {
 	if err != nil || string(got) != keptSection {
 		t.Fatalf("filtered = %q, %v", got, err)
 	}
-	if !strings.Contains(exclusionTOC(fc), "vendor/.env (default:generated, 93 bytes)") {
+	if !strings.Contains(exclusionTOC(fc), "vendor/.env (default:secret, 93 bytes)") {
 		t.Fatal("TOC lacks receipt")
 	}
 	checkFilteredChunks(t, dir)
@@ -126,9 +127,11 @@ func TestFetchExclusionOverrides(t *testing.T) {
 		ignore     []string
 		off        bool
 	}{
-		{name: "no-defaults", want: generatedSection + keptSection, off: true},
+		// A built-in secret path stays out even with the policy defaults off:
+		// .env is the withholding floor, not a default.
+		{name: "no-defaults", want: keptSection, off: true},
 		{name: "ordered-cli", ignore: []string{"**", "!app_test.go"}, want: keptSection},
-		{name: "cli-without-defaults", ignore: []string{"app_test.go"}, off: true, want: generatedSection},
+		{name: "cli-without-defaults", ignore: []string{"app_test.go"}, off: true, want: ""},
 	} {
 		t.Run(tc.name, func(t *testing.T) { checkFetchExclusionOverride(t, tc.ignore, tc.off, tc.want) })
 	}
@@ -162,9 +165,9 @@ func assertOverrideReceipt(t *testing.T, dir string, ignore []string, off bool) 
 	if err := json.Unmarshal(raw, &receipt); err != nil {
 		t.Fatal(err)
 	}
-	wantDefaults := "default:generated,default:attribute"
+	wantDefaults := "default:secret,default:generated,default:attribute"
 	if off {
-		wantDefaults = ""
+		wantDefaults = "default:secret"
 	}
 	if strings.Join(receipt.Defaults, ",") != wantDefaults {
 		t.Fatalf("defaults = %v; want %s", receipt.Defaults, wantDefaults)
@@ -176,9 +179,11 @@ func assertOverrideReceipt(t *testing.T, dir string, ignore []string, off bool) 
 
 func TestExclusionRuleExplanation(t *testing.T) {
 	cases := []exclusionExample{
-		{"default", generatedSection, "", "ignore", "", "default:generated", "vendor/**", "default"},
-		{"ignore", generatedSection, "vendor/*", "ignore", "", "ignore:1", "vendor/*", "ignore"},
-		{"cli", generatedSection, "vendor/*", "cli", "", "cli:1", "vendor/*", "cli"},
+		{"default", vendoredGoSection, "", "ignore", "", "default:generated", "vendor/**", "default"},
+		{"secret", generatedSection, "", "ignore", "", "default:secret", "*/.env", "secret-builtin"},
+		{"secret-over-ignore", generatedSection, "vendor/*", "ignore", "", "default:secret", "*/.env", "secret-builtin"},
+		{"ignore", vendoredGoSection, "vendor/*", "ignore", "", "ignore:1", "vendor/*", "ignore"},
+		{"cli", vendoredGoSection, "vendor/*", "cli", "", "cli:1", "vendor/*", "cli"},
 		{"attribute", keptSection, "", "ignore", "*.go linguist-generated\napp_test.go linguist-vendored\n*.go -linguist-generated\n", "attribute:app_test.go", "app_test.go", "attribute"},
 	}
 	for i := range cases {

@@ -228,6 +228,7 @@ f00.txt
   "schema_version": "1",
   "patterns_source": ".verdict/ignore@base",
   "defaults": [
+    "default:secret",
     "default:generated",
     "default:attribute"
   ],
@@ -511,8 +512,8 @@ rather than becoming ground truth.
       "kind": "bundle",
       "name": "excluded.json",
       "status": "included",
-      "sha256": "861f8cd323a7768fb037ea12f3818e716e5c2fc54f1830730123e5eb1648a708",
-      "bytes": 426
+      "sha256": "b8202d672ddda1674ceae24fdae4e9314a838905229083d18133c6e85cfd5bc7",
+      "bytes": 448
     },
     {
       "kind": "bundle",
@@ -750,8 +751,8 @@ rather than becoming ground truth.
       "kind": "exclusions",
       "name": "excluded.json",
       "status": "included",
-      "sha256": "861f8cd323a7768fb037ea12f3818e716e5c2fc54f1830730123e5eb1648a708",
-      "bytes": 426,
+      "sha256": "b8202d672ddda1674ceae24fdae4e9314a838905229083d18133c6e85cfd5bc7",
+      "bytes": 448,
       "source": ".verdict/ignore@base",
       "excluded": 0,
       "excluded_bytes": 0,

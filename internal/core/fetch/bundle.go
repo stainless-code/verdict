@@ -368,22 +368,27 @@ func writeIdentityFile(ctx context.Context, cmdr Commander, dir, head, base stri
 }
 
 // fetchRunCtx carries the shared fetch run state across the bundle writers.
-type fetchRunCtx struct {
-	runner            *session
-	env               map[string]string
-	runCfg            *runConfig
-	packs             *pack.Set
-	receipt           *ExcludedFile
-	kbOutcome         *provenance.KBRecallInput
-	repo              string
-	pr                string
-	dir               string
-	root              string
-	panelSrc          string
-	ignore            []string
-	panelList         []string
-	contextFiles      []contextFile
+type fetchRunCtx struct { //nolint:govet // field grouping documents the run state
+	runner       *session
+	env          map[string]string
+	runCfg       *runConfig
+	packs        *pack.Set
+	receipt      *ExcludedFile
+	kbOutcome    *provenance.KBRecallInput
+	repo         string
+	pr           string
+	dir          string
+	root         string
+	panelSrc     string
+	ignore       []string
+	panelList    []string
+	contextFiles []contextFile
+	previewData  *core.PreviewData
+	// scratch is the throwaway directory a preview stages its reads in; the
+	// run removes it on every path, so a preview leaves no bundle behind.
+	scratch           string
 	noDefaultExcludes bool
+	preview           bool
 	receiptLoaded     bool
 	contextLoaded     bool
 }

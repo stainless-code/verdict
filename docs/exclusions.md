@@ -19,6 +19,24 @@ negation such as `!vendor/keep/**` overrides a default. Root attributes setting
 `linguist-generated` or `linguist-vendored` also exclude matching paths.
 Negated attributes and `=false` clear their respective attribute.
 
+Built-in secret paths are different: they are the withholding floor, rule id
+`default:secret` with reason `secret-builtin`, and nothing overrides them —
+not a `.verdict/ignore` negation, not `--ignore`, not `--no-default-excludes`.
+The set is `.env` and the `.env.*` family at any depth, private keys
+(`*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.jks`, `*.ppk`, `*.keystore`, `id_rsa`,
+`id_ed25519`, `id_ecdsa`, `id_dsa`), credential documents (`credentials.json`,
+`kubeconfig`, `.netrc`, `.npmrc`, `.pypirc`, `.envrc`, `.pgpass`, `.htpasswd`),
+and Terraform state (`*.tfstate`, `*.tfstate.*`). Both sides of a rename are
+probed, so renaming `.env` to `notes.txt` keeps the section out of the review.
+Matching is ASCII case-insensitive over the cleaned path, so `Server.PEM`,
+`ID_RSA`, `.Env.local`, and `./keys//id_rsa` are withheld like their canonical
+spellings — the floor is the file's identity, not its name's letter case.
+`.env.example`, `.env.sample`, `.env.template`, `.env.dist`, and
+`.env.defaults` carry key names instead of values and stay reviewable in any
+case; they are the same five spellings the advisory `sensitive.txt` scan
+exempts, and the exemption names the basename exactly, so a state document such
+as `prod.tfstate.env.example` is still withheld.
+
 `full.raw.diff` preserves the fetched bytes. `full.diff` contains the reviewed
 subset. Cap calculations and chunking use that subset. Concatenated chunks
 preserve its bytes, including an unterminated final line. Patch identity uses
@@ -99,7 +117,21 @@ disables generated and attribute defaults while the ignore file still applies.
 (`cli` when run overrides are present).
 
 Each receipt row carries the matched `pattern` and a `reason` of `default`,
-`attribute`, `ignore`, or `cli`. `defaults` lists the active built-in rule ids
-(or an empty array when disabled). `patterns_source` records `.verdict/ignore@base`,
-`.verdict/ignore@head` for the recorded opt-out, or `cli` when CLI rules win.
-Attribute rows retain the active pattern after false/negated settings are applied.
+`attribute`, `ignore`, `cli`, or `secret-builtin`. `defaults` lists the active
+built-in rule ids: `default:secret` always, plus `default:generated` and
+`default:attribute` unless they are disabled, so
+`["default:secret","default:generated","default:attribute"]` is a full run and
+`["default:secret"]` alone is a `--no-default-excludes` run. `patterns_source`
+records `.verdict/ignore@base`, `.verdict/ignore@head` for the recorded opt-out,
+or `cli` when CLI rules win. Attribute rows retain the active pattern after
+false/negated settings are applied.
+
+`fetch --preview` and `fetch-local --preview` apply every rule above and stop
+before any bundle write: they print the reviewed file list, each withheld section
+with its rule and reason, the included and excluded byte totals, and the review
+budget tier the classifier resolves from those measurements. Both lists and the
+tier describe the filtered diff only, never the PR's file list, so a withheld
+path can appear in `excluded` and nowhere else. `--json` carries the same payload
+as `data.preview`, typed in `schemas/envelope.schema.json` under `previewData`. A
+preview writes no bundle directory, and its built-in secret protection is the
+same floor a real run applies.

@@ -428,6 +428,9 @@ type FetchRequest struct {
 	NoDefaultExcludes                 bool
 	BudgetConsent, ShowPrompts, Chunk bool
 	HeadControls                      bool
+	// Preview returns the reviewed and withheld file lists plus the resolved
+	// review budget tier without writing a bundle or launching an agent.
+	Preview bool
 }
 
 // Fetch fetches a pull request into .verdict/state/<pr>.
@@ -442,6 +445,7 @@ func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error) 
 			Context: req.Context, Issue: req.Issue, Ignore: req.Ignore, NoDefaultExcludes: req.NoDefaultExcludes,
 			BaseSHA: req.BaseSHA, Provider: req.Provider, BudgetConsent: req.BudgetConsent,
 			ShowPrompts: req.ShowPrompts, ChunkFlag: req.Chunk, HeadControls: req.HeadControls,
+			Preview: req.Preview,
 			HasBase: req.BaseSHA != "", HasProvider: req.Provider != "",
 		},
 		Effective: core.Defaults(),
@@ -467,6 +471,9 @@ type FetchLocalRequest struct {
 	Staged, HasStash, BudgetConsent, ShowPrompts, Chunk bool
 	Worktree, HeadControls                              bool
 	NoDefaultExcludes                                   bool
+	// Preview returns the reviewed and withheld file lists plus the resolved
+	// review budget tier without writing a bundle or launching an agent.
+	Preview bool
 }
 
 // FetchLocal fetches a local git diff into .verdict/state/local-<name>.
@@ -482,7 +489,7 @@ func (c *Client) FetchLocal(ctx context.Context, req *FetchLocalRequest) (*Resul
 			RangeSpec: req.Range, BaseRef: req.BaseRef, StashN: req.Stash, Paths: req.Paths,
 			Staged: req.Staged, HasStash: req.HasStash, BudgetConsent: req.BudgetConsent,
 			ShowPrompts: req.ShowPrompts, ChunkFlag: req.Chunk, Worktree: req.Worktree,
-			HeadControls: req.HeadControls,
+			HeadControls: req.HeadControls, Preview: req.Preview,
 		},
 		Effective: core.Defaults(),
 		Human:     c.streamWriter(true),

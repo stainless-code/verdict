@@ -252,6 +252,9 @@ type FetchLocalRequest struct {
 	Staged, HasStash, BudgetConsent, ShowPrompts, Chunk bool
 	Worktree, HeadControls                              bool
 	NoDefaultExcludes                                   bool
+	// Preview returns the reviewed and withheld file lists plus the resolved
+	// review budget tier without writing a bundle or launching an agent.
+	Preview bool
 }
     FetchLocalRequest carries the local-diff fetch options. Worktree builds
     the bundle from a temporary isolated checkout of the review target,
@@ -267,6 +270,9 @@ type FetchRequest struct {
 	NoDefaultExcludes                 bool
 	BudgetConsent, ShowPrompts, Chunk bool
 	HeadControls                      bool
+	// Preview returns the reviewed and withheld file lists plus the resolved
+	// review budget tier without writing a bundle or launching an agent.
+	Preview bool
 }
     FetchRequest carries the fetch options: base/provider overrides and flags.
     HeadControls reads the review controls from HEAD/the worktree instead of the

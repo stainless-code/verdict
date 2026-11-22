@@ -55,6 +55,7 @@ type FetchData struct { //nolint:govet // field order is the published property 
 	Budget          any     `json:"-"`
 	Cap             any     `json:"-"`
 	Chunk           any     `json:"-"`
+	Preview         *PreviewData
 	PromptDump      *string `json:"-"`
 }
 
@@ -62,6 +63,16 @@ type FetchData struct { //nolint:govet // field order is the published property 
 // together when a budget is set, cap and chunk follow only when armed, and
 // the prompt dump lands last.
 func (d *FetchData) Wire() *jq.Obj {
+	// A preview writes no bundle, so its data is the preview payload alone:
+	// every other key on this profile describes artifacts that do not exist.
+	if o, ok := d.previewOnly(); ok {
+		return o
+	}
+	return d.bundleWire()
+}
+
+// bundleWire renders the bundle profile's keys in published order.
+func (d *FetchData) bundleWire() *jq.Obj {
 	o := jq.NewObj("dir", d.Dir)
 	if d.Local {
 		o.Set("kind", d.Kind)
@@ -96,6 +107,15 @@ func (d *FetchData) Wire() *jq.Obj {
 	}
 	d.wireTail(o)
 	return d.Receipt.Apply(o)
+}
+
+// previewOnly reports the preview payload as the whole data object; a run that
+// wrote a bundle reports false.
+func (d *FetchData) previewOnly() (*jq.Obj, bool) {
+	if d.Preview == nil {
+		return nil, false
+	}
+	return jq.NewObj("preview", d.Preview.Wire()), true
 }
 
 // wireCosts renders the cost summary pair: the estimate whenever one exists (a

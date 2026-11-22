@@ -79,7 +79,9 @@ func (st *state) dispatch(ctx context.Context, s *session, req *Request) (*Respo
 	ctx2 := &fetchRunCtx{
 		runner: s, env: s.env, repo: req.Repo, pr: req.Pr, root: req.RootPath(),
 		ignore: req.Flags.Ignore, noDefaultExcludes: req.Flags.NoDefaultExcludes,
+		preview: req.Flags.Preview,
 	}
+	defer ctx2.cleanScratch()
 	files, err := collectContextInputs(f.Context, f.Spec)
 	if err != nil {
 		return nil, st.fail(ctx, err, s)
@@ -96,6 +98,9 @@ func (st *state) dispatch(ctx context.Context, s *session, req *Request) (*Respo
 	data, next, err := st.backend(ctx, ctx2, req, f, budget)
 	if err != nil {
 		return nil, st.fail(ctx, err, s)
+	}
+	if ctx2.previewData != nil {
+		return previewResponse(ctx2, st.warnings, req.Repo, req.Pr, req.TimeUTC()), nil
 	}
 	return st.response(ctx2, req, data, next)
 }
@@ -164,7 +169,9 @@ func RunLocal(ctx context.Context, req *LocalRequest) (*Response, error) {
 	ctx2 := &fetchRunCtx{
 		runner: s, env: s.env, repo: req.Repo, pr: req.Pr, root: req.RootPath(),
 		ignore: req.Flags.Ignore, noDefaultExcludes: req.Flags.NoDefaultExcludes,
+		preview: req.Flags.Preview,
 	}
+	defer ctx2.cleanScratch()
 	files, err := collectContextInputs(req.Flags.Context, req.Flags.Spec)
 	if err != nil {
 		return nil, st.fail(ctx, err, s)
@@ -173,6 +180,9 @@ func RunLocal(ctx context.Context, req *LocalRequest) (*Response, error) {
 	data, next, err := runLocalTail(ctx, ctx2, req)
 	if err != nil {
 		return nil, st.fail(ctx, err, s)
+	}
+	if ctx2.previewData != nil {
+		return previewResponse(ctx2, st.warnings, req.Repo, req.Pr, req.TimeUTC()), nil
 	}
 	if err := finishTruncation(data); err != nil {
 		return nil, err

@@ -6031,6 +6031,23 @@ disables generated and attribute defaults while the ignore file still applies.
 `excluded.json` records `ignore`, `no_default_excludes`, and `patterns_source`
 (`cli` when run overrides are present).
 
+Built-in secret paths are withheld unconditionally: rule id `default:secret`,
+reason `secret-builtin`, applied before every other rule and to both sides of a
+rename, so neither a negation, `--ignore`, nor `--no-default-excludes` can
+re-include one. The set, and the five `.env` template spellings that stay
+reviewable, are listed in [exclusions](exclusions.md). `excluded.json` lists
+`default:secret` in `defaults` even under `--no-default-excludes`.
+
+`fetch --preview` and `fetch-local --preview` print the exact reviewed file
+list, every withheld section with its rule and reason, the byte totals, and the
+review budget tier (`light`, `standard`, or `deep`) the deterministic classifier
+resolves, then stop: no bundle directory is written, the host reads stage in a
+scratch directory outside the repository (`--worktree` included), the spend gate
+never refuses a run that spends nothing, and no agent runs. Both lists and the
+tier describe the filtered diff, never the PR's own file list, so a withheld path
+is reported as withheld and never as reviewed. `--json` carries the same payload
+under `data.preview`.
+
 When `--provider` is absent, `fetch` and `doctor` infer the provider
 from `git remote get-url origin`. Recognized hosts are `github.com`, `gitlab.com`,
 `gitcafe.com`, `codeberg.org` (Forgejo), `bitbucket.org`, `dev.azure.com`, and

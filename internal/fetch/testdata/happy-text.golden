@@ -157,6 +157,7 @@ notes.txt
   "schema_version": "1",
   "patterns_source": ".verdict/ignore@base",
   "defaults": [
+    "default:secret",
     "default:generated",
     "default:attribute"
   ],
@@ -441,8 +442,8 @@ rather than becoming ground truth.
       "kind": "bundle",
       "name": "excluded.json",
       "status": "included",
-      "sha256": "d890fa75b6607a6cf5b52cda5c3ca9f6b92dba40a3619d7e59ff47b8525bf402",
-      "bytes": 427
+      "sha256": "226df120006e4f3fbdd88dd4ea6e43bc463cffccbbf8e679a8f9b61544c096f7",
+      "bytes": 449
     },
     {
       "kind": "bundle",
@@ -673,8 +674,8 @@ rather than becoming ground truth.
       "kind": "exclusions",
       "name": "excluded.json",
       "status": "included",
-      "sha256": "d890fa75b6607a6cf5b52cda5c3ca9f6b92dba40a3619d7e59ff47b8525bf402",
-      "bytes": 427,
+      "sha256": "226df120006e4f3fbdd88dd4ea6e43bc463cffccbbf8e679a8f9b61544c096f7",
+      "bytes": 449,
       "source": ".verdict/ignore@base",
       "excluded": 0,
       "excluded_bytes": 0,
