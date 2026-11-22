@@ -11,6 +11,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/testkit"
 )
 
@@ -257,6 +258,42 @@ func TestRecordEvidenceFullReceiptsApprove(t *testing.T) {
 	requireGaps(t, ev)
 	if lines := evidenceLines(resp.Warnings); len(lines) != 0 {
 		t.Errorf("warnings = %q, want no evidence line on a receipted review", lines)
+	}
+	if approval := requireApproval(t, storedRecord(t, dir), true, false); approval.Reason != "no gating findings" {
+		t.Errorf("reason = %q, want the clean reason", approval.Reason)
+	}
+}
+
+// TestRecordEvidenceEveryHunksRowReceipted proves a review that copies every
+// row fetch writes into hunks.tsv — the OLD row and the NEW row of a modified
+// hunk — records as a sufficient, approved review. hunks.tsv prints both rows
+// and the manual tells the reviewer to copy them verbatim, so both must name
+// the same hunk and count once toward coverage.
+func TestRecordEvidenceEveryHunksRowReceipted(t *testing.T) {
+	rows := "notes.txt\tOLD\t1\t3\nnotes.txt\tNEW\t1\t3\n"
+	if got := hunks.Snapshot(evidenceDiff); got != rows {
+		t.Fatalf("hunks.tsv = %q, want the fixture's two rows %q", got, rows)
+	}
+	receipts := `"receipts":[` +
+		`{"hunk":"notes.txt\tOLD\t1\t3","quote":"old line"},` +
+		`{"hunk":"notes.txt\tNEW\t1\t3","quote":"new line"}]`
+	review := `{"schema_version":"1","summary":"A short summary of the clean review.",` +
+		receipts + `,"findings":[]}`
+	dir := evidenceBundle(t, review, map[string]string{"hunks.tsv": rows})
+	resp, ref := recordEvidence(t, false)
+	if ref != nil {
+		t.Fatalf("record refusal: %v", ref)
+	}
+	ev := evidenceOf(t, resp)
+	if want := (core.EvidenceReceipts{Total: 1, Covered: 1, Exempt: 0, Complete: true}); ev.Receipts != want {
+		t.Errorf("receipts = %+v, want %+v", ev.Receipts, want)
+	}
+	if ev.Insufficient {
+		t.Errorf("evidence = %+v, want sufficient with no gaps", ev)
+	}
+	requireGaps(t, ev)
+	if lines := evidenceLines(resp.Warnings); len(lines) != 0 {
+		t.Errorf("warnings = %q, want no evidence line when every hunks.tsv row is receipted", lines)
 	}
 	if approval := requireApproval(t, storedRecord(t, dir), true, false); approval.Reason != "no gating findings" {
 		t.Errorf("reason = %q, want the clean reason", approval.Reason)
