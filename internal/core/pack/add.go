@@ -622,7 +622,7 @@ func secretShaped(s string) bool {
 // placeholder so no refusal can echo a credential.
 func displaySource(raw string) string {
 	switch {
-	case raw == "builtin" || strings.HasPrefix(raw, RepoPacksDir+"/"):
+	case raw == "builtin" || strings.HasPrefix(raw, "builtin:") || strings.HasPrefix(raw, RepoPacksDir+"/"):
 		return raw
 	case strings.HasPrefix(raw, sourceDirPrefix):
 		return displayDirSource(raw)

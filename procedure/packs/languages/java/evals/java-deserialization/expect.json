@@ -1,0 +1,3 @@
+{
+  "rules": ["java-unsafe-deserialization"]
+}

@@ -1,8 +1,19 @@
 exit: 0
 --- stdout ---
 builtin  verdict/builtin@1.0.0  source=builtin  sha256:120173839a93  lenses=api-contract,perf,test  rules=-
-org      acme/org@2.0.0  source=dir:org-packs  sha256:eb88c75d4245  lenses=security  rules=no-secrets
-repo     acme/repo@0.1.0  source=.verdict/packs/repo  sha256:ae6c1dde5272  lenses=security,style  rules=repo-style  drift=pack-lock-missing
+builtin  verdict/dockerfile@1.0.0  source=builtin:dockerfile  sha256:7d581fb62fce  lenses=dockerfile  rules=docker-root-runtime,docker-secret-layer,docker-unpinned-base
+builtin  verdict/github-workflows@1.0.0  source=builtin:github-workflows  sha256:c88406fc1159  lenses=github-workflows  rules=gha-code-exec-from-pr,gha-script-injection,gha-unpinned-action
+builtin  verdict/go@1.0.0  source=builtin:go  sha256:415c9bbf8d02  lenses=go  rules=go-context-lifecycle,go-error-loss,go-resource-release,go-shared-state
+builtin  verdict/java@1.0.0  source=builtin:java  sha256:7006c606cf10  lenses=java  rules=java-resource-close,java-shared-state,java-unsafe-deserialization
+builtin  verdict/python@1.0.0  source=builtin:python  sha256:d046975f7d85  lenses=python  rules=python-async-blocking,python-mutable-default,python-resource-close,python-unsafe-exec
+builtin  verdict/rust@1.0.0  source=builtin:rust  sha256:faefb6ef299c  lenses=rust  rules=rust-lock-across-await,rust-unsafe-invariant,rust-unwrap-boundary
+builtin  verdict/security@1.0.0  source=builtin:security  sha256:f2812e8fcaaa  lenses=security  rules=sec-broken-authz,sec-injection,sec-ssrf,sec-unsafe-deserialization
+builtin  verdict/shell@1.0.0  source=builtin:shell  sha256:83a533c74e7f  lenses=shell  rules=sh-destructive-path,sh-pipe-masking,sh-unquoted-expansion
+builtin  verdict/sql@1.0.0  source=builtin:sql  sha256:df0af9c4b1c5  lenses=sql  rules=sql-destructive-ddl,sql-dynamic-string,sql-lock-heavy-migration
+builtin  verdict/terraform@1.0.0  source=builtin:terraform  sha256:13ad59feebb4  lenses=terraform  rules=tf-destructive-replace,tf-secret-in-state,tf-wildcard-iam
+builtin  verdict/ts-js@1.0.0  source=builtin:ts-js  sha256:160e005fc1fc  lenses=ts-js  rules=ts-js-boundary-validation,ts-js-effect-cleanup,ts-js-floating-async,ts-js-prototype-pollution
+org      acme/org@2.0.0  source=dir:org-packs  sha256:f9bde8f8e6cd  lenses=scan  rules=no-secrets
+repo     acme/repo@0.1.0  source=.verdict/packs/repo  sha256:3807d265381c  lenses=scan,style  rules=repo-style  drift=pack-lock-missing
 --- stderr ---
 
 --- files ---

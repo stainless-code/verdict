@@ -35,8 +35,19 @@ const (
 // Request wires one pack list read. List is the only served mode.
 type Request struct {
 	core.ReadRequest
-	SettingsPath string `json:"-"`
+	SettingsPath string  `json:"-"`
+	ConfigSource string  `json:"-"`
+	Toggles      Toggles `json:"-"`
 	List         bool
+}
+
+// loadedLayers is one resolution's built layer list: the origins in
+// precedence order, the toggles that fired, and every warning collected while
+// reading them.
+type loadedLayers struct {
+	Origins  []Origin
+	Applied  []string
+	Warnings []string
 }
 
 // Entry is one pack list row: identity, layer, source, tree hash, the ids it
@@ -130,28 +141,37 @@ func Resolve(ctx context.Context, req *Request) (*Set, []string, *core.RefusalEr
 	return set, warnings, nil
 }
 
-// loadOrigins reads the three layers in precedence order.
+// loadOrigins reads the three layers in precedence order, applying the
+// trusted-base pack toggles to the builtin layer before the merge.
 func loadOrigins(ctx context.Context, req *Request) ([]Origin, []string, *core.RefusalError) {
-	origins := []Origin{}
-	if packFS := req.builtinFS(); packFS != nil {
-		p, ref := Load(packFS, BuiltinRoot)
-		if ref != nil {
-			return nil, nil, ref
-		}
-		if p != nil {
-			origins = append(origins, Origin{Layer: LayerBuiltin, Source: "builtin", Pack: p})
-		}
-	}
-	org, ref := orgOrigins(req)
+	layers, ref := loadLayers(ctx, req)
 	if ref != nil {
 		return nil, nil, ref
+	}
+	return layers.Origins, layers.Warnings, nil
+}
+
+// loadLayers is loadOrigins with the applied toggles reported too.
+func loadLayers(ctx context.Context, req *Request) (*loadedLayers, *core.RefusalError) {
+	builtin, ref := BuiltinOrigins(req.builtinFS())
+	if ref != nil {
+		return nil, ref
+	}
+	toggled := ApplyToggles(builtin, req.Toggles)
+	org, ref := orgOrigins(req)
+	if ref != nil {
+		return nil, ref
 	}
 	repo, warnings, ref := repoOrigins(ctx, req.RepoRootPath())
 	if ref != nil {
-		return nil, nil, ref
+		return nil, ref
 	}
-	origins = append(origins, org...)
-	return append(origins, repo...), warnings, nil
+	out := &loadedLayers{Applied: toggled.Applied}
+	out.Origins = append(out.Origins, toggled.Origins...)
+	out.Origins = append(out.Origins, org...)
+	out.Origins = append(out.Origins, repo...)
+	out.Warnings = append(append(out.Warnings, toggled.Warnings...), warnings...)
+	return out, nil
 }
 
 // builtinFS returns the injected skill FS, or nil for a caller that supplied

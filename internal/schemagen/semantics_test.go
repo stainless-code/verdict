@@ -54,7 +54,10 @@ var publishedSemantics = map[string]string{
 	// review budget: additive optional defaults enum budget (auto|light|
 	// standard|deep) and defaults.sensitive_paths (>= 1 portable glob), both
 	// global-only. No existing property, required key, enum, or type changed.
-	"config.schema.json": "de555bd98345cf1a86aff68adc3aa02d3ed4e0212476d7b3f4eb589fb257d277",
+	// packs: additive optional top-level object with a merge_builtin boolean
+	// and three >= 1 id arrays, closed shape; no existing property, required
+	// key, enum, or type changed.
+	"config.schema.json": "472a44a23a9e9fa8aba885a6892b76e7eeca56f9cc876dd3210e794105d3cad5",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -325,7 +328,10 @@ var publishedSemantics = map[string]string{
 	// review budget: additive optional data.budget on $defs/runData and its new
 	// $defs/reviewBudget shape. No existing property, required key, enum, or
 	// type changed; a run that names no depth omits the key entirely.
-	"envelope.schema.json": "5c3a07d8b03dc0f2a157f21583215a2b12e6bb6f609bc0ca1b99b1f2ff7bc69a",
+	// pack check: additive $defs/packCheckData plus its three row shapes, and
+	// "bad-path" and the widened pack union in the refusal enum. No existing
+	// property, required key, or type moved.
+	"envelope.schema.json": "8d353033d1000fa95ec711e81ccd9de8504da2f2c2858e2dd599e0ff635a57cb",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

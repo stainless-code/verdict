@@ -28,7 +28,10 @@ ACCEPT_ID="$(jq -r '.data.rules[0].id' "$EVAL_OUT")"
 REJECT_ID="$(jq -r '.data.rules[1].id' "$EVAL_OUT")"
 run_review fetch-local acme/widget before --json -- src/main.go
 assert_exit "fetch before acceptance" 0
-if [ -f "$EVAL_SANDBOX/.verdict/state/local-before/kb.txt" ]; then bad "inactive proposal recalled"; else good "inactive proposal not recalled"; fi
+# The builtin packs cite their own rules for a Go file, so the absence check
+# is about the proposal's ids, not the file's existence.
+assert_stream_nogrep "inactive proposal never recalled" "$EVAL_SANDBOX/.verdict/state/local-before/kb.txt" "$ACCEPT_ID" '-F'
+assert_stream_nogrep "inactive rejection never recalled" "$EVAL_SANDBOX/.verdict/state/local-before/kb.txt" "$REJECT_ID" '-F'
 run_review learn --accept "$ACCEPT_ID" --dry-run --json
 assert_exit "accept preview succeeds" 0
 if [ -f "$EVAL_SANDBOX/.verdict/kb.jsonl" ]; then bad "accept preview wrote KB"; else good "accept preview writes nothing"; fi

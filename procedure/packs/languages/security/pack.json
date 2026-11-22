@@ -1,0 +1,108 @@
+{
+  "schema_version": "1",
+  "name": "verdict/security",
+  "version": "1.0.0",
+  "severity": {
+    "critical": "critical",
+    "important": "important"
+  },
+  "lenses": [
+    {
+      "id": "security",
+      "globs": [
+        "**/*.go",
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.py",
+        "**/*.rs",
+        "**/*.java",
+        "**/*.kt",
+        "**/*.rb",
+        "**/*.php",
+        "**/*.cs",
+        "**/*.sql"
+      ],
+      "max_files": 12
+    }
+  ],
+  "rules": [
+    {
+      "id": "sec-ssrf",
+      "severity": "critical",
+      "globs": [
+        "**/*.go",
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.py",
+        "**/*.rs",
+        "**/*.java",
+        "**/*.kt",
+        "**/*.rb",
+        "**/*.php",
+        "**/*.cs",
+        "**/*.sql"
+      ]
+    },
+    {
+      "id": "sec-broken-authz",
+      "severity": "critical",
+      "globs": [
+        "**/*.go",
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.py",
+        "**/*.rs",
+        "**/*.java",
+        "**/*.kt",
+        "**/*.rb",
+        "**/*.php",
+        "**/*.cs",
+        "**/*.sql"
+      ]
+    },
+    {
+      "id": "sec-injection",
+      "severity": "critical",
+      "globs": [
+        "**/*.go",
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.py",
+        "**/*.rs",
+        "**/*.java",
+        "**/*.kt",
+        "**/*.rb",
+        "**/*.php",
+        "**/*.cs",
+        "**/*.sql"
+      ]
+    },
+    {
+      "id": "sec-unsafe-deserialization",
+      "severity": "critical",
+      "globs": [
+        "**/*.go",
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.py",
+        "**/*.rs",
+        "**/*.java",
+        "**/*.kt",
+        "**/*.rb",
+        "**/*.php",
+        "**/*.cs",
+        "**/*.sql"
+      ]
+    }
+  ]
+}

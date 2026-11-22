@@ -1,0 +1,3 @@
+{
+  "rules": ["tf-destructive-replace"]
+}

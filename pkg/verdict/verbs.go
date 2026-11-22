@@ -1071,28 +1071,60 @@ type InitResponse struct {
 	ExitCode int
 }
 
-// PackRequest carries the pack options. List is the only served mode.
+// PackRequest carries the pack options: List reads the inventory, and Check
+// resolves one repository-relative path through the same layers a review uses.
 type PackRequest struct {
 	Invocation
-	List bool
+	Check string
+	List  bool
 }
 
-// PackResponse is the positionals-free pack list envelope.
+// PackResponse is the positionals-free pack envelope: the list rows, or one
+// path's resolution.
 type PackResponse struct {
 	Outcome
 }
 
 // Pack lists the built-in, org, and repo lens packs with their layer,
-// source, hash, and declared ids. It makes no live calls and writes nothing.
+// source, hash, and declared ids, or resolves the packs, lenses, and rules
+// one path applies with Check set. Neither mode makes live calls or writes
+// anything.
 func (c *Client) Pack(ctx context.Context, req *PackRequest) (*PackResponse, error) {
 	rr, err := c.requestBare(ctx)
 	if err != nil {
 		return nil, err
 	}
+	settings := config.SettingsPath(c.env["HOME"], c.env["XDG_CONFIG_HOME"])
+	if req.Check != "" {
+		return checkPack(ctx, rr, settings, req.Check)
+	}
 	resp, ref := packcore.RunList(ctx, &packcore.Request{
 		ReadRequest:  rr,
-		SettingsPath: config.SettingsPath(c.env["HOME"], c.env["XDG_CONFIG_HOME"]),
+		SettingsPath: settings,
 		List:         req.List,
+	})
+	if ref != nil {
+		return nil, refusalErr(ref)
+	}
+	return &PackResponse{
+		Outcome: outcomeOf(resp.At, resp.Next, resp.Warnings, resp.Data),
+	}, nil
+}
+
+// checkPack resolves one path, reading the built-in pack composition from the
+// trusted base configuration the same way fetch does. It is a free function on
+// purpose: the facade's verb surface is its *Client methods, and `pack check`
+// is a subcommand of Pack, not a verb of its own.
+func checkPack(
+	ctx context.Context, rr core.ReadRequest, settings, path string,
+) (*PackResponse, error) {
+	toggles, source, ref := packcore.BaseToggles(ctx, rr.Commander, rr.RepoRootPath())
+	if ref != nil {
+		return nil, refusalErr(ref)
+	}
+	resp, ref := packcore.RunCheck(ctx, &packcore.CheckRequest{
+		ReadRequest: rr, SettingsPath: settings, Toggles: toggles, ConfigSource: source,
+		Path: path,
 	})
 	if ref != nil {
 		return nil, refusalErr(ref)
@@ -1106,6 +1138,12 @@ func (c *Client) Pack(ctx context.Context, req *PackRequest) (*PackResponse, err
 // as Pack with List set, named for the command it serves.
 func ListPacks(ctx context.Context, c *Client) (*PackResponse, error) {
 	return c.Pack(ctx, &PackRequest{List: true})
+}
+
+// CheckPack resolves one repository-relative path: the packs in precedence
+// order, the lenses offered for it, and the rules whose globs match it.
+func CheckPack(ctx context.Context, c *Client, path string) (*PackResponse, error) {
+	return c.Pack(ctx, &PackRequest{Check: path})
 }
 
 // Init scaffolds .verdict control files from a style preset.

@@ -193,6 +193,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[ConfigRequirements](), name: "requirements", closed: true},
 				{typ: reflect.TypeFor[ConfigTrigger](), name: "trigger", closed: true},
 				{typ: reflect.TypeFor[ConfigRigorPolicy](), name: "rigorPolicy", closed: true},
+				{typ: reflect.TypeFor[ConfigPacks](), name: "configPacks", closed: true},
 				{typ: reflect.TypeFor[BlockClause](), name: "blockClause", closed: true},
 				{typ: reflect.TypeFor[ConfigScope](), name: "scope", closed: true, constraints: []member{
 					{keyAnyOf, array(
@@ -694,6 +695,10 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[TrendIncidentBundle](), name: "trendIncidentBundle"},
 		{typ: reflect.TypeFor[PackData](), name: "packData"},
 		{typ: reflect.TypeFor[PackEntry](), name: "packEntry"},
+		{typ: reflect.TypeFor[PackCheckData](), name: "packCheckData"},
+		{typ: reflect.TypeFor[PackCheckPack](), name: "packCheckPack"},
+		{typ: reflect.TypeFor[PackCheckLens](), name: "packCheckLens"},
+		{typ: reflect.TypeFor[PackCheckRule](), name: "packCheckRule"},
 		{typ: reflect.TypeFor[PackAddData](), name: "packAddData"},
 		{typ: reflect.TypeFor[PackTestData](), name: "packTestData"},
 		{typ: reflect.TypeFor[PackTestCase](), name: "packTestCase"},

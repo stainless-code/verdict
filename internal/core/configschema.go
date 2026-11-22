@@ -25,6 +25,20 @@ type Config struct { //nolint:govet // field order is the published property ord
 	SeverityWeights *ConfigSeverityWeights   `json:"severity_weights,omitempty" nonnull:"true"`
 	Index           *ConfigIndex             `json:"index,omitempty"            nonnull:"true"`
 	RigorPolicy     *ConfigRigorPolicy       `json:"rigor_policy,omitempty"     nonnull:"true"`
+	Packs           *ConfigPacks             `json:"packs,omitempty"            nonnull:"true"`
+}
+
+// ConfigPacks is the repository's built-in pack composition: whether the
+// built-in layer merges at all, and which built-in pack, lens, or rule ids are
+// turned off. It is read from the trusted base configuration, never the PR
+// head, so a branch cannot disable the built-in rules that review it. Org and
+// repo packs are the operator's and the repository's own choice and are not
+// reachable from here.
+type ConfigPacks struct {
+	MergeBuiltin  *bool    `json:"merge_builtin,omitempty"  nonnull:"true"`
+	DisablePacks  []string `json:"disable_packs,omitempty"  minItems:"1"   nonnull:"true"`
+	DisableLenses []string `json:"disable_lenses,omitempty" minItems:"1"   nonnull:"true"`
+	DisableRules  []string `json:"disable_rules,omitempty"  minItems:"1"   nonnull:"true"`
 }
 
 // ConfigRigorPolicy is the repository's publication floor: the mode and the

@@ -60,6 +60,9 @@ func buildConfigViews(cfg *core.Config, root map[string]any) *core.RefusalError 
 	if cfg.RigorPolicy, ref = presentNested(root, "rigor_policy", rootLocation, buildRigorPolicy); ref != nil {
 		return ref
 	}
+	if cfg.Packs, ref = presentNested(root, "packs", rootLocation, buildPacks); ref != nil {
+		return ref
+	}
 	return buildConfigTail(cfg, root)
 }
 

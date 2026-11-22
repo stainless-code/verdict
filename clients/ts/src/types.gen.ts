@@ -1750,6 +1750,45 @@ export interface PackEntry {
   [key: string]: unknown;
 }
 
+export interface PackCheckData {
+  path: string;
+  config: string;
+  disabled: Array<string>;
+  packs: Array<PackCheckPack>;
+  lenses: Array<PackCheckLens>;
+  rules: Array<PackCheckRule>;
+  [key: string]: unknown;
+}
+
+export interface PackCheckPack {
+  name: string;
+  version: string;
+  layer: "builtin" | "org" | "repo";
+  source: string;
+  hash: string;
+  replace: Array<string>;
+  [key: string]: unknown;
+}
+
+export interface PackCheckLens {
+  id: string;
+  pack: string;
+  layer: "builtin" | "org" | "repo";
+  hash: string;
+  replaced: Array<string>;
+  [key: string]: unknown;
+}
+
+export interface PackCheckRule {
+  id: string;
+  severity: "critical" | "important" | "informational";
+  pack: string;
+  layer: "builtin" | "org" | "repo";
+  globs: Array<string>;
+  replaced: Array<string>;
+  [key: string]: unknown;
+}
+
 /** pack add --json data: the added pack row as it now lists from the repo layer, whether it replaced an existing entry, and the previous tree hash (null on a first add). */
 export interface PackAddData {
   pack: PackEntry;

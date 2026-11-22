@@ -26,10 +26,14 @@ import (
 // guards the spend before any provider call; phase two (base known)
 // resolves the full policy for the bundle build.
 type runConfig struct {
-	resolved   *config.Resolved
-	inputs     *config.Inputs
-	base       *config.BaseConfig
-	personal   *config.PersonalSettings
+	resolved *config.Resolved
+	inputs   *config.Inputs
+	base     *config.BaseConfig
+	personal *config.PersonalSettings
+	// repo is the trusted-base repository configuration: the parsed
+	// `.verdict/config.json` at the base commit, never the head. It carries
+	// the built-in pack composition the pack layer reads.
+	repo       *core.Config
 	root       string
 	baseSHA    string
 	raw        []byte
@@ -116,6 +120,7 @@ func (rc *runConfig) resolvePhaseTwo(
 	if ref != nil {
 		return ref
 	}
+	rc.repo = cfg
 	if base.Present {
 		rc.raw = base.Raw
 		rc.trusted = true
@@ -195,6 +200,7 @@ func (rc *runConfig) readBasePolicy(ctx context.Context, cmd Commander, baseSHA 
 	if ref != nil {
 		return nil, ref
 	}
+	rc.repo = cfg
 	if base.Present {
 		rc.raw = base.Raw
 		rc.trusted = true

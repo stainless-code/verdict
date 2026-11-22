@@ -59,9 +59,8 @@ func TestListThreeLayers(t *testing.T) {
 	t.Parallel()
 	root, settings := listFixtures(t, `"replace":["acme/org"],`)
 	resp, ref := RunList(t.Context(), &Request{
-		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
-		settings,
-		true,
+		Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root,
+		SettingsPath: settings, List: true,
 	})
 	if ref != nil {
 		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
@@ -107,9 +106,8 @@ func TestListReportsLockDrift(t *testing.T) {
 		`"name":"acme/repo","source":"dir:repo-packs","version":"0.1.0",` +
 		`"hash":"` + repoHash + `","sig":"8173ff898f6e93caad0be4881981b27eefcdf7e1263aaec47d95957798c25735"}]}`})
 	resp, ref := RunList(t.Context(), &Request{
-		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
-		settings,
-		true,
+		Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root,
+		SettingsPath: settings, List: true,
 	})
 	if ref != nil {
 		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
@@ -128,9 +126,8 @@ func TestListReportsLockDrift(t *testing.T) {
 		`"name":"acme/repo","source":"dir:repo-packs","version":"0.1.0",` +
 		`"hash":"` + wrong + `","sig":"` + sig + `"}]}`})
 	resp, ref = RunList(t.Context(), &Request{
-		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
-		settings,
-		true,
+		Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root,
+		SettingsPath: settings, List: true,
 	})
 	if ref != nil {
 		t.Fatalf("drifted RunList: %s: %s", ref.Code, ref.Message)
@@ -148,9 +145,8 @@ func TestListReportsLockDrift(t *testing.T) {
 		t.Fatal(err)
 	}
 	resp, ref = RunList(t.Context(), &Request{
-		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
-		settings,
-		true,
+		Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root,
+		SettingsPath: settings, List: true,
 	})
 	if ref != nil {
 		t.Fatalf("unlocked RunList: %s: %s", ref.Code, ref.Message)
@@ -172,7 +168,8 @@ func TestListReportsDriftOutsideLockedSlug(t *testing.T) {
 		LockFile:                               lockSourceBody("dir:src-packs/lenses"),
 	})
 	resp, ref := RunList(t.Context(), &Request{
-		core.ReadRequest{RepoRoot: root}, "", true,
+		RepoRoot:     root,
+		SettingsPath: "", List: true,
 	})
 	if ref != nil {
 		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
@@ -198,7 +195,8 @@ func TestListShowsLockRowWithoutPack(t *testing.T) {
 	root := t.TempDir()
 	writeFixture(t, root, map[string]string{LockFile: lockBody(lockHash, lockSigDir)})
 	resp, ref := RunList(t.Context(), &Request{
-		core.ReadRequest{RepoRoot: root}, "", true,
+		RepoRoot:     root,
+		SettingsPath: "", List: true,
 	})
 	if ref != nil {
 		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
@@ -227,7 +225,8 @@ func TestListMasksDirURLSource(t *testing.T) {
 		LockFile: lockSourceBody("dir:http://user:S3CRET@host/x"),
 	})
 	resp, ref := RunList(t.Context(), &Request{
-		core.ReadRequest{RepoRoot: root}, "", true,
+		RepoRoot:     root,
+		SettingsPath: "", List: true,
 	})
 	if ref != nil {
 		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
@@ -251,7 +250,8 @@ func TestListMasksDirURLSource(t *testing.T) {
 func TestListWithoutRuntime(t *testing.T) {
 	t.Parallel()
 	resp, ref := RunList(t.Context(), &Request{
-		core.ReadRequest{RepoRoot: t.TempDir()}, "", true,
+		RepoRoot:     t.TempDir(),
+		SettingsPath: "", List: true,
 	})
 	if ref != nil {
 		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
@@ -269,9 +269,8 @@ func TestListMissingOrgPathRefuses(t *testing.T) {
 	settings := config.SettingsPath(home, "")
 	writeJSON(t, settings, `{"packs":["absent"]}`)
 	_, ref := RunList(t.Context(), &Request{
-		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: t.TempDir()},
-		settings,
-		true,
+		Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: t.TempDir(),
+		SettingsPath: settings, List: true,
 	})
 	if ref == nil || ref.Code != CodeBadPack {
 		t.Fatalf("missing org path = %v, want bad-pack", ref)
@@ -288,9 +287,8 @@ func TestListRefusesOrgEntryInsideRepoPacks(t *testing.T) {
 	settings := config.SettingsPath(home, "")
 	writeJSON(t, settings, `{"packs":[".verdict/packs/repo"]}`)
 	_, ref := RunList(t.Context(), &Request{
-		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
-		settings,
-		true,
+		Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root,
+		SettingsPath: settings, List: true,
 	})
 	if ref == nil || ref.Code != CodeBadPack {
 		t.Fatalf("org entry inside repo packs = %v, want bad-pack", ref)
@@ -320,9 +318,8 @@ func TestListUndeclaredOverrideRefuses(t *testing.T) {
 		"lenses/perf.md": "repo perf\n",
 	})
 	_, ref := RunList(t.Context(), &Request{
-		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
-		settings,
-		true,
+		Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root,
+		SettingsPath: settings, List: true,
 	})
 	if ref == nil || ref.Code != CodePackConflict {
 		t.Fatalf("undeclared override = %v, want pack-conflict", ref)
@@ -337,9 +334,8 @@ func TestListIgnoresStrayFileUnderRepoPacks(t *testing.T) {
 	root, settings := listFixtures(t, `"replace":["acme/org"],`)
 	writeFixture(t, root, map[string]string{".verdict/packs/README.md": "not a pack\n"})
 	resp, ref := RunList(t.Context(), &Request{
-		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
-		settings,
-		true,
+		Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root,
+		SettingsPath: settings, List: true,
 	})
 	if ref != nil {
 		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
@@ -363,9 +359,8 @@ func TestListIgnoresStagingSiblings(t *testing.T) {
 		".verdict/packs/.lenses.old-crash/junk": "old\n",
 	})
 	resp, ref := RunList(t.Context(), &Request{
-		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
-		settings,
-		true,
+		Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root,
+		SettingsPath: settings, List: true,
 	})
 	if ref != nil {
 		t.Fatalf("RunList: %s: %s", ref.Code, ref.Message)
@@ -390,9 +385,8 @@ func TestListRefusesSymlinkedPackRoot(t *testing.T) {
 		t.Skipf("this platform cannot create symlinks here: %v", err)
 	}
 	_, ref := RunList(t.Context(), &Request{
-		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
-		settings,
-		true,
+		Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root,
+		SettingsPath: settings, List: true,
 	})
 	if ref == nil || ref.Code != CodePackUnsafePath {
 		t.Fatalf("symlinked pack root = %v, want pack-unsafe-path", ref)
@@ -422,9 +416,8 @@ func TestListRefusesSymlinkedPacksRoot(t *testing.T) {
 		t.Skipf("this platform cannot create symlinks here: %v", err)
 	}
 	_, ref := RunList(t.Context(), &Request{
-		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
-		"",
-		true,
+		Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root,
+		SettingsPath: "", List: true,
 	})
 	if ref == nil || ref.Code != CodePackUnsafePath {
 		t.Fatalf("symlinked packs root = %v, want pack-unsafe-path", ref)
@@ -443,9 +436,8 @@ func TestListRefusesFilePacksRoot(t *testing.T) {
 	writeFixture(t, root, map[string]string{".verdict/packs": "not a directory\n"})
 	packs := filepath.Join(root, ".verdict", "packs")
 	_, ref := RunList(t.Context(), &Request{
-		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
-		"",
-		true,
+		Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root,
+		SettingsPath: "", List: true,
 	})
 	if ref == nil || ref.Code != CodePackUnsafePath {
 		t.Fatalf("file packs root = %v, want pack-unsafe-path", ref)
@@ -465,9 +457,8 @@ func TestListRefusalCarriesScanWarnings(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, ref := RunList(t.Context(), &Request{
-		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
-		"",
-		true,
+		Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root,
+		SettingsPath: "", List: true,
 	})
 	if ref == nil || ref.Code != CodeBadPack {
 		t.Fatalf("packless repo dir = %v, want bad-pack", ref)
@@ -505,9 +496,8 @@ func TestListRefusesOversizedPackRoot(t *testing.T) {
 	}
 	writeFixture(t, root, stray)
 	_, ref := RunList(t.Context(), &Request{
-		core.ReadRequest{Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root},
-		"",
-		true,
+		Runtime: &core.Runtime{PackFS: listBuiltin()}, RepoRoot: root,
+		SettingsPath: "", List: true,
 	})
 	if ref == nil || ref.Code != CodePackTooLarge {
 		t.Fatalf("oversized pack root = %v, want pack-too-large", ref)

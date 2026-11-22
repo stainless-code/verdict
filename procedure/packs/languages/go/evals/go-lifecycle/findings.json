@@ -1,0 +1,9 @@
+[
+  {
+    "path": "internal/store/store.go",
+    "line": 1,
+    "body": "The new `Close` helper cancels a context it does not own, so the caller's request context dies under it.",
+    "rigor": "walked",
+    "kb": ["go-context-lifecycle"]
+  }
+]

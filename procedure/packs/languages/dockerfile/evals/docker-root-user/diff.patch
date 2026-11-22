@@ -1,0 +1,7 @@
+diff --git a/Dockerfile b/Dockerfile
+index 1111111..2222222 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1 +1 @@
+-FROM node:20-alpine
+	CMD ["node", "server.js"]

@@ -186,6 +186,8 @@ var hintRules = []HintRule{
 	{codes: []string{"bad-until"}, hint: "try: pass --until <ref> that is an ancestor of HEAD"},
 	{codes: []string{"bad-pack"}, hint: "try: fix pack.json against schemas/pack.schema.json " +
 		"(exact lowercase keys, every id paired with its markdown file), then re-run"},
+	{codes: []string{"bad-path"}, hint: "try: pass the path as Git spells it — repository-relative, " +
+		"forward slashes, no '..' segment"},
 	{codes: []string{"bad-pack-source"}, hint: "try: use https://host/path with no userinfo, " +
 		"ssh://user@host/path, or user@host:path — a token in the URL, ref, or path is recorded " +
 		"in the committed lock; use an ssh key or a public https URL"},

@@ -1,0 +1,9 @@
+[
+  {
+    "path": "src/main/java/acme/Import.java",
+    "line": 1,
+    "body": "The new `read` deserializes the client payload with `ObjectInputStream`.",
+    "rigor": "walked",
+    "kb": ["java-unsafe-deserialization"]
+  }
+]

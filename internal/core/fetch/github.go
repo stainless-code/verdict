@@ -40,10 +40,10 @@ func runGitHub(
 	if ref := resolveControls(ctx, ctx2, repo, req.RepoRootPath(), readcommon.PrField(dir, keyBaseSHA), f.HeadControls); ref != nil {
 		return nil, "", ref
 	}
-	if ref := resolveLensPacks(ctx2); ref != nil {
+	if ref := phaseTwoFiltered(ctx, ctx2, req, f, dir, budget); ref != nil {
 		return nil, "", ref
 	}
-	if ref := phaseTwoFiltered(ctx, ctx2, req, f, dir, budget); ref != nil {
+	if ref := resolveLensPacks(ctx2); ref != nil {
 		return nil, "", ref
 	}
 	fc := resolveFetchCap(r, ctx2.runCfg.resolved)
@@ -174,7 +174,7 @@ func githubMiddle(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) 
 	}
 	writeKBRecall(ctx2, dir, extra)
 	writeRevertsNote(ctx2, dir, extra)
-	writeLensBodies(ctx2)
+	writeLensBodies(ctx2, extra)
 	if ref := githubReviews(ctx, r, dir, repo, pr); ref != nil {
 		return ref
 	}

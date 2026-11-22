@@ -17,9 +17,12 @@ import (
 // The repo layer comes from the trusted-base controls snapshot, never the
 // worktree: a PR cannot edit the pack that reviews it.
 func resolveLensPacks(ctx2 *fetchRunCtx) *core.RefusalError {
-	origins, ref := builtinPackOrigins(ctx2)
+	origins, warnings, ref := builtinPackOrigins(ctx2)
 	if ref != nil {
 		return ref
+	}
+	for _, warning := range warnings {
+		ctx2.runner.Warn(warning)
 	}
 	org, ref := orgPackOrigins(ctx2)
 	if ref != nil {
@@ -42,16 +45,24 @@ func resolveLensPacks(ctx2 *fetchRunCtx) *core.RefusalError {
 	return nil
 }
 
-// builtinPackOrigins reads the embedded pack through the injected skill FS.
-func builtinPackOrigins(ctx2 *fetchRunCtx) ([]pack.Origin, *core.RefusalError) {
+// builtinPackOrigins reads the embedded core and language packs through the
+// injected skill FS and applies the trusted-base composition: a repository can
+// turn a builtin pack, lens, or rule off from its base `.verdict/config.json`,
+// while a head edit to that file never reaches this read.
+func builtinPackOrigins(ctx2 *fetchRunCtx) ([]pack.Origin, []string, *core.RefusalError) {
 	if ctx2.runner.packFS == nil {
-		return nil, nil
+		return nil, nil, nil
 	}
-	p, ref := pack.Load(ctx2.runner.packFS, pack.BuiltinRoot)
-	if ref != nil || p == nil {
-		return nil, ref
+	origins, ref := pack.BuiltinOrigins(ctx2.runner.packFS)
+	if ref != nil {
+		return nil, nil, ref
 	}
-	return []pack.Origin{{Layer: pack.LayerBuiltin, Source: "builtin", Pack: p}}, nil
+	var cfg *core.Config
+	if ctx2.runCfg != nil {
+		cfg = ctx2.runCfg.repo
+	}
+	toggled := pack.ApplyToggles(origins, pack.TogglesFromConfig(cfg))
+	return toggled.Origins, toggled.Warnings, nil
 }
 
 // orgPackOrigins reads the explicit org paths from personal settings.
@@ -129,16 +140,24 @@ func repoPackOrigin(snap *controls.Snapshot, name string) (pack.Origin, *core.Re
 	return pack.Origin{Layer: pack.LayerRepo, Source: pack.RepoPacksDir + "/" + name, Pack: p}, nil
 }
 
-// writeLensBodies writes lenses.txt: every lens body delimited and labeled
-// with its id and hash8. A pack that cannot be written is advisory context,
-// so the run warns and keeps the bundle.
-func writeLensBodies(ctx2 *fetchRunCtx) {
+// writeLensBodies writes lenses.txt: the bodies of the lenses offered for the
+// bundle's changed files, delimited and labeled with their id and hash8. A
+// curated language lens therefore reaches only a bundle whose diff can dispatch
+// to it. A pack that cannot be written is advisory context, so the run warns
+// and keeps the bundle.
+func writeLensBodies(ctx2 *fetchRunCtx, extra string) {
 	path := ctx2.dir + suffixLensesTxt
 	if ctx2.packs == nil || len(ctx2.packs.Lenses) == 0 {
 		_ = os.Remove(path)
 		return
 	}
-	if err := atomic.WriteFile(path, []byte(ctx2.packs.Note())); err != nil {
+	files := recallFiles(ctx2.dir, withoutExcluded(ctx2, extra))
+	note := ctx2.packs.NoteFor(files)
+	if note == "" {
+		_ = os.Remove(path)
+		return
+	}
+	if err := atomic.WriteFile(path, []byte(note)); err != nil {
 		ctx2.runner.Warn(fmt.Sprintf("lens pack skipped: could not write %s (%v)", path, err))
 	}
 }

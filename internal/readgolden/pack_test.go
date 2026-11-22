@@ -5,20 +5,22 @@ import (
 )
 
 // packLayers plants a built-in override fixture: an org pack the repo pack
-// replaces, with one rule per layer in the fenced KB section.
+// replaces, with one rule per layer in the fenced KB section. The lens id is
+// `scan` rather than a language-pack id, so the row pins layer precedence
+// instead of colliding with a shipped lens.
 func packLayers(t *testing.T, dir, home string) {
 	t.Helper()
 	writeFiles(t, dir, map[string]string{
 		"org-packs/pack.json": `{"schema_version":"1","name":"acme/org","version":"2.0.0",` +
-			`"severity":{"security":"critical"},"lenses":[{"id":"security"}],` +
+			`"severity":{"security":"critical"},"lenses":[{"id":"scan"}],` +
 			`"rules":[{"id":"no-secrets","severity":"security","globs":["**/*.go"]}]}`,
-		"org-packs/lenses/security.md":  "security body\n",
+		"org-packs/lenses/scan.md":      "scan body\n",
 		"org-packs/rules/no-secrets.md": "never log a secret\n",
 		".verdict/packs/repo/pack.json": `{"schema_version":"1","name":"acme/repo","version":"0.1.0",` +
 			`"replace":["acme/org"],"severity":{"style":"important"},` +
-			`"lenses":[{"id":"security"},{"id":"style"}],` +
+			`"lenses":[{"id":"scan"},{"id":"style"}],` +
 			`"rules":[{"id":"repo-style","severity":"style","globs":["**/*.go"],"tools":["gofmt"]}]}`,
-		".verdict/packs/repo/lenses/security.md":  "repo security body\n",
+		".verdict/packs/repo/lenses/scan.md":      "repo scan body\n",
 		".verdict/packs/repo/lenses/style.md":     "repo style body\n",
 		".verdict/packs/repo/rules/repo-style.md": "run gofmt\n",
 	})

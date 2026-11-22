@@ -1,0 +1,3 @@
+{
+  "rules": ["rust-lock-across-await"]
+}

@@ -633,10 +633,18 @@ list); the other providers contribute the title, body, and head ref.
 ### Lens packs
 
 A lens pack is data, not a verb: `pack.json` names each lens and
-`lenses/<id>.md` carries its body. The built-in pack ships at
-`procedure/packs/builtin/` (`name` `verdict/builtin`, `version` `1.0.0`)
-and `fetch`/`fetch-local` load it from the embedded skill payload. The format
-is strict JSON (unknown fields refuse), versioned by `schema_version: "1"`,
+`lenses/<id>.md` carries its body. The built-in layer ships the core pack at
+`procedure/packs/builtin/` (`name` `verdict/builtin`, `version` `1.0.0`) plus
+eleven curated language and ecosystem packs under
+`procedure/packs/languages/`, one directory per stack: `verdict/go`,
+`verdict/ts-js`, `verdict/python`, `verdict/rust`, `verdict/java`,
+`verdict/sql`, `verdict/terraform`, `verdict/github-workflows`,
+`verdict/dockerfile`, `verdict/shell`, and the cross-language
+`verdict/security`. `fetch`/`fetch-local` load all of them from the embedded
+skill payload, in directory order, as one builtin layer; every curated pack
+carries one stack lens scoped to its file globs and three or four rules, and
+each ships an eval case so `pack test <name>` grades it offline. The format is
+strict JSON (unknown fields refuse), versioned by `schema_version: "1"`,
 and published as `schemas/pack.schema.json`. The fixed layout is `pack.json`,
 `lenses/` (loaded), `rules/` (loaded when the manifest declares a rule), and
 the reserved `examples/` and `evals/` payload trees: those two are capped,
@@ -665,9 +673,12 @@ is sha256 over the canonical loaded tree (sorted slash paths, each fed as
 newline); each lens also carries the first
 eight hex digits of its body's sha256.
 
-`fetch` writes the loaded bodies to `.verdict/state/<bundle>/lenses.txt`, one
+`fetch` writes the offered bodies to `.verdict/state/<bundle>/lenses.txt`, one
 delimiter/label pair per lens (`# lens <id> — sha256:<hash8>` … `# end lens
-<id>`), and adds `lenses.txt` to `data.artifacts`. Every `plan.txt` group line
+<id>`), and adds `lenses.txt` to `data.artifacts`. Only the lenses offered for
+the bundle's changed files appear, so a curated language lens reaches a review
+only when its stack is in the diff; a pack header appears when the pack
+contributes one of them. Every `plan.txt` group line
 appends `lens_pack=<name>@<version>` and `lenses=[<id>:<hash8>,…]` after its
 cap fields, sorted by id. A layered set tags each lens with the pack that
 supplied it — `lenses=[<id>@<pack name>:<hash8>,…]` — so two packs sharing a
@@ -713,6 +724,30 @@ with its severity and `source=pack:<name>@<version>`; `kb-recall.json`
 mirrors those two fields machine-readably. Rules never enter the trusted
 prompt, and the shipped prompt hash does not move.
 
+A repository composes the built-in layer from its trusted-base
+`.verdict/config.json`:
+
+```json
+{
+  "schema_version": "1",
+  "packs": {
+    "merge_builtin": true,
+    "disable_packs": ["verdict/shell"],
+    "disable_lenses": ["go"],
+    "disable_rules": ["sec-ssrf"]
+  }
+}
+```
+
+`merge_builtin` false drops the whole built-in layer; the three arrays name
+built-in pack names (or bare slugs), lens ids, and rule ids to drop, and only
+the built-in layer is reachable — org and repo packs stay the operator's and
+the repository's own choice. A pack left with no lens and no rule stops
+existing. The read is anchored at the merge base of `HEAD` and the default
+branch, never the working tree and never a branch commit, so a PR cannot
+disable the built-in rules that review it; an id no built-in pack declares is a
+warning, never a refusal. Absent keys merge every built-in pack.
+
 `verdict pack list [--json]` reports every loaded pack (built-in, org, repo)
 in precedence order: `name`, `version`, `layer`, `source` (`builtin`,
 `dir:<path>`, or `.verdict/packs/<name>`), the canonical tree `hash`, the
@@ -732,6 +767,22 @@ as `controls-unavailable` — so neither surface calls one ignorable. Conflict
 refusals surface here too, so a bad layering fails before a review spends
 anything. The MCP `pack` tool serves the same read-only list and repeats the
 same warning list in its result.
+
+`verdict pack check <path> [--json]` resolves one repository-relative path
+through the same loader, layering, and globs a review uses, and writes nothing.
+The data profile carries `path`, `config` (the trusted base commit read, as
+`base@<12 hex>`, or `none`), `disabled` (the toggles that fired, as
+`pack:<name>`, `lens:<id>`, or `rule:<id>`), `packs` (every loaded pack in
+precedence order with its layer, source, tree hash, and `replace` list),
+`lenses` (the ids offered for the path, each with its winning pack, layer, body
+hash, and the packs it shadowed), and `rules` (the ids whose globs match the
+path with their severity, globs, winning pack, and shadowed packs). The human
+rows print the same resolution one row per pack, lens, and rule, and say
+`no lens is offered for this path` or `no rule's globs match this path` rather
+than printing nothing. The toggles come from the trusted base configuration, so
+the report is what a review would apply; a path that is absolute, carries `..`,
+a backslash, or a drive letter refuses `bad-path`, and a missing path or an
+unknown flag is a usage error.
 
 `verdict pack test <name>` runs the named installed pack's eval cases through
 the same built-in, org, and repo layering used by review. Use

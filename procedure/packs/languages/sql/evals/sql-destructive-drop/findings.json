@@ -1,0 +1,9 @@
+[
+  {
+    "path": "migrations/0002_drop.sql",
+    "line": 1,
+    "body": "The migration drops a table outright, with no reversible path.",
+    "rigor": "walked",
+    "kb": ["sql-destructive-ddl"]
+  }
+]

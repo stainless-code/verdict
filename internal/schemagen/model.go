@@ -132,6 +132,9 @@ type ConfigSeverityWeights = core.ConfigSeverityWeights
 // ConfigIndex is the configuration's local code index caps.
 type ConfigIndex = core.ConfigIndex
 
+// ConfigPacks is the configuration's built-in pack composition.
+type ConfigPacks = core.ConfigPacks
+
 // ConfigRigorPolicy is the configuration's validator mode and per-tier
 // evidence floors.
 type ConfigRigorPolicy = core.ConfigRigorPolicy
@@ -417,6 +420,19 @@ type PackData = pack.ListData
 
 // PackEntry is one pack list row.
 type PackEntry = pack.Entry
+
+// PackCheckData is the pack check --json data profile: the ordered resolution
+// of one repository-relative path through the built-in, org, and repo layers.
+type PackCheckData = pack.CheckData
+
+// PackCheckPack is one pack row in the pack check profile.
+type PackCheckPack = pack.CheckPack
+
+// PackCheckLens is one offered lens row in the pack check profile.
+type PackCheckLens = pack.CheckLens
+
+// PackCheckRule is one matching rule row in the pack check profile.
+type PackCheckRule = pack.CheckRule
 
 // PackAddData is the pack add --json data profile.
 type PackAddData = pack.AddData

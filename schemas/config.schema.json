@@ -31,7 +31,8 @@
     "default_profile": { "type": "string" },
     "severity_weights": { "$ref": "#/$defs/configSeverityWeights" },
     "index": { "$ref": "#/$defs/configIndex" },
-    "rigor_policy": { "$ref": "#/$defs/rigorPolicy" }
+    "rigor_policy": { "$ref": "#/$defs/rigorPolicy" },
+    "packs": { "$ref": "#/$defs/configPacks" }
   },
   "required": ["schema_version"],
   "additionalProperties": false,
@@ -175,6 +176,29 @@
         },
         "informational": {
           "enum": ["said", "pointed", "walked", "ran", "reproduced"]
+        }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "configPacks": {
+      "type": "object",
+      "properties": {
+        "merge_builtin": { "type": "boolean" },
+        "disable_packs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "disable_lenses": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
+        },
+        "disable_rules": {
+          "type": "array",
+          "items": { "type": "string" },
+          "minItems": 1
         }
       },
       "required": [],

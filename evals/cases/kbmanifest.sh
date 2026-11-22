@@ -51,10 +51,17 @@ else
   bad "m1recall1 exit $EVAL_STATUS (both files?)"
 fi
 
+# The manifest carries the ranked learnings first, then every builtin pack
+# rule whose globs match the changed .ts file; kb.txt cites the same ids in the
+# same order.
 man_ids="$(jq -r '.[].id' "$EVAL_SANDBOX/.verdict/state/local-m1recall1/kb-recall.json" 2>/dev/null | tr '\n' ',' || true)"
-txt_ids="$(grep '^# m1-' "$EVAL_SANDBOX/.verdict/state/local-m1recall1/kb.txt" 2>/dev/null | cut -d' ' -f2 | tr '\n' ',' || true)"
-if [ "$man_ids" = "m1-a,m1-b,m1-c," ] && [ "$txt_ids" = "$man_ids" ]; then
-  good "manifest + kb.txt agree on ids/order (m1-a,m1-b,m1-c)"
+txt_ids="$(sed -n 's/^# \([a-z0-9-]*\) — .*/\1/p' "$EVAL_SANDBOX/.verdict/state/local-m1recall1/kb.txt" 2>/dev/null | tr '\n' ',' || true)"
+case "$man_ids" in
+  m1-a,m1-b,m1-c,*) leads="yes" ;;
+  *) leads="no" ;;
+esac
+if [ -n "$man_ids" ] && [ "$txt_ids" = "$man_ids" ] && [ "$leads" = "yes" ]; then
+  good "manifest + kb.txt agree on ids/order, learnings first"
 else
   bad "ids differ manifest='$man_ids' kb.txt='$txt_ids'"
 fi
@@ -63,10 +70,13 @@ if head -n 1 "$EVAL_SANDBOX/.verdict/state/local-m1recall1/kb.txt" | matches "^#
 else
   bad "kb.txt header changed"
 fi
-if [ "$(jq 'length' "$EVAL_SANDBOX/.verdict/state/local-m1recall1/kb-recall.json" 2>/dev/null)" = "3" ]; then
-  good "manifest top-3 caps"
+m1_manifest="$EVAL_SANDBOX/.verdict/state/local-m1recall1/kb-recall.json"
+learned="$(jq -r '[.[] | select(.id | startswith("m1-"))] | length' "$m1_manifest" 2>/dev/null || true)"
+packed="$(jq -r '[.[] | select((.source // "") | startswith("pack:"))] | length' "$m1_manifest" 2>/dev/null || true)"
+if [ "$learned" = "3" ] && [ "${packed:-0}" -gt 0 ]; then
+  good "manifest top-3 caps the learnings and carries the pack rules"
 else
-  bad "manifest length is $(jq 'length' "$EVAL_SANDBOX/.verdict/state/local-m1recall1/kb-recall.json" 2>/dev/null)"
+  bad "manifest learnings=$learned pack=$packed"
 fi
 if [ -f "$EVAL_SANDBOX/.verdict/state/local-m1recall1/findings.json" ] \
   || [ -f "$EVAL_SANDBOX/.verdict/state/local-m1recall1/review.json" ]; then
@@ -75,12 +85,13 @@ else
   good "recall writes only tool-owned files"
 fi
 
-if [ "$(jq -c '[.[] | .score]' "$EVAL_SANDBOX/.verdict/state/local-m1recall1/kb-recall.json" 2>/dev/null)" = "[1,0.5,0.5]" ]; then
+if [ "$(jq -c '[.[] | .score] | unique' "$EVAL_SANDBOX/.verdict/state/local-m1recall1/kb-recall.json" 2>/dev/null)" = "[0.5,1]" ] \
+  && [ "$(jq -c '[.[0:3][].score]' "$EVAL_SANDBOX/.verdict/state/local-m1recall1/kb-recall.json" 2>/dev/null)" = "[1,0.5,0.5]" ]; then
   good "manifest scores read 1 then neutral 0.5 prior"
 else
   bad "manifest scores: $(jq -c '[.[] | .score]' "$EVAL_SANDBOX/.verdict/state/local-m1recall1/kb-recall.json" 2>/dev/null)"
 fi
-if [ "$(jq -r '[.[] | "\(.id) \(.hits)/\(.judged)"] | join(",")' "$EVAL_SANDBOX/.verdict/state/local-m1recall1/kb-recall.json" 2>/dev/null)" = "m1-a 2/2,m1-b 0/0,m1-c 0/0" ]; then
+if [ "$(jq -r '[.[] | select(.id | startswith("m1-")) | "\(.id) \(.hits)/\(.judged)"] | join(",")' "$EVAL_SANDBOX/.verdict/state/local-m1recall1/kb-recall.json" 2>/dev/null)" = "m1-a 2/2,m1-b 0/0,m1-c 0/0" ]; then
   good "manifest hits/judged match the credited counts"
 else
   bad "manifest counts: $(jq -c '.' "$EVAL_SANDBOX/.verdict/state/local-m1recall1/kb-recall.json" 2>/dev/null)"

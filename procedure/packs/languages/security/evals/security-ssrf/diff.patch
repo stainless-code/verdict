@@ -1,0 +1,7 @@
+diff --git a/src/fetch/proxy.go b/src/fetch/proxy.go
+index 1111111..2222222 100644
+--- a/src/fetch/proxy.go
++++ b/src/fetch/proxy.go
+@@ -1 +1 @@
+-func Proxy(ctx context.Context, target string) (*http.Response, error) {
+	return http.Get(target)

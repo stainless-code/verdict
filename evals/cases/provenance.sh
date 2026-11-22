@@ -51,8 +51,16 @@ kb_om="$(jq -r '.inputs[] | select(.kind == "kb") | .omitted' "$receipt_file" 2>
 learn_status="$(jq -r '.inputs[] | select(.kind == "learnings") | .status' "$receipt_file" 2>/dev/null)"
 top_n_count="$(jq -r '[.inputs[] | select(.kind == "kb_candidate" and .reason == "top_n")] | length' "$receipt_file" 2>/dev/null)"
 
+# The receipt counts every candidate the review carried: the three ranked
+# learnings plus every builtin pack rule whose globs match the path.
+run_review pack check src/a.ts --json
+assert_exit "pack check resolves the same path" 0
+pack_rules="$(jq -r '.data.rules | length' "$EVAL_OUT")"
+expect_inc=$((3 + pack_rules))
+
 if [ -n "$run_id_1" ] && [ "$kb_status" = "truncated" ] && [ "$kb_reason" = "cap" ] && [ "$kb_cap" = "120" ] \
-  && [ "$kb_inc" = "3" ] && [ "$kb_om" = "1" ] && [ "$learn_status" = "included" ] && [ "$top_n_count" = "1" ]; then
+  && [ "$kb_inc" = "$expect_inc" ] && [ "$kb_om" = "1" ] && [ "$learn_status" = "included" ] \
+  && [ "$top_n_count" = "1" ]; then
   good "provenance.json records kb cap truncation, top_n omission, and included learnings"
 else
   bad "provenance.json fields unexpected: run=$run_id_1 kb=$kb_status/$kb_reason/$kb_cap($kb_inc/$kb_om) learn=$learn_status topn=$top_n_count"

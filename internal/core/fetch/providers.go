@@ -33,10 +33,10 @@ func runProvider(
 	if ref := resolveControls(ctx, ctx2, "", req.RepoRootPath(), readcommon.PrField(ctx2.dir, keyBaseSHA), f.HeadControls); ref != nil {
 		return nil, "", ref
 	}
-	if ref := resolveLensPacks(ctx2); ref != nil {
+	if ref := phaseTwoFiltered(ctx, ctx2, req, f, ctx2.dir, budget); ref != nil {
 		return nil, "", ref
 	}
-	if ref := phaseTwoFiltered(ctx, ctx2, req, f, ctx2.dir, budget); ref != nil {
+	if ref := resolveLensPacks(ctx2); ref != nil {
 		return nil, "", ref
 	}
 	fc, chunkActive, err := providerCap(ctx2.runner, ctx2.runCfg.resolved, ctx2.dir, f.ChunkFlag)
@@ -113,7 +113,7 @@ func writeProviderBundle(ctx2 *fetchRunCtx) error {
 	}
 	writeKBRecall(ctx2, dir, extra)
 	writeRevertsNote(ctx2, dir, extra)
-	writeLensBodies(ctx2)
+	writeLensBodies(ctx2, extra)
 	return nil
 }
 

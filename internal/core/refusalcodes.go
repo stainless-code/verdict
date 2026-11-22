@@ -68,6 +68,7 @@ var refusalCodes = []string{
 	"bad-pack",
 	"bad-pack-source",
 	"bad-panel",
+	"bad-path",
 	"bad-preset",
 	"bad-provider",
 	"bad-range",
