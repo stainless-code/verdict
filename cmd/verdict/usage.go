@@ -52,15 +52,22 @@ func usageText() string {
 		"    runs unless --consent-over-budget is given (consent lands in budget.json,\n" +
 		"    surfaced by report --cost). Unset: estimate off, fetch as today.\n" +
 		"  fetch-local <owner/repo> <name> [--staged] [--range A[..|...]B] [--base R]\n" +
-		"        [--stash [n]] [--worktree] [--index <ref|dir>] [--context <file|dir>] [--spec <file>] " +
+		"        [--stash [n]] [--worktree] [--scan <path>] [--index <ref|dir>] [--context <file|dir>] [--spec <file>] " +
 		"[--ignore <glob>] [--no-default-excludes] [--preview]\n" +
-		"        [--consent-over-budget] [--show-prompts] [--chunk]\n" +
+		"        [--consent-over-budget] [--allow-head-controls] [--show-prompts] [--chunk]\n" +
 		"        [-- paths...] [--json]\n" +
 		"    local review bundle from git (no GitHub, no PR): writes\n" +
 		"    .verdict/state/local-<name>/{source.json,full.diff,toc.txt,roles.txt}.\n" +
 		"    --worktree checks the review target into a temporary isolated worktree and\n" +
 		"    builds the bundle from that checkout (removed on exit, even on refusal); without\n" +
 		"    it the bundle builds from the live tree exactly as before.\n" +
+		"    --scan <path> (repeatable) reviews files instead of a git diff: a file or a\n" +
+		"    directory inside the repository becomes an added-file diff, so a clean tree needs\n" +
+		"    no change to review (--scan . reads the whole repository). .git/, .verdict/,\n" +
+		"    symlinks, and binary content are skipped, while the built-in secret paths, ignore\n" +
+		"    layers, and cap/chunk gates apply exactly as in a diff run. It refuses a path\n" +
+		"    outside the repository or through a symlink, and cannot combine with a diff\n" +
+		"    source, --worktree, or -- paths.\n" +
 		"    Same diff cap as fetch (512000 bytes, overridable as above); untracked/binary exclusions warn, never fail.\n" +
 		"    Same budget gate as fetch (estimate + --consent-over-budget); unset: as today.\n" +
 		"    downstream verbs address it as local-<name>; post and live calibrate refuse it, while\n" +

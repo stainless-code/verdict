@@ -30,7 +30,8 @@ func runProvider(
 		return nil, "", err
 	}
 	warnUnsupportedLinkedIssues(ctx2, f.Provider)
-	if ref := resolveControls(ctx, ctx2, "", req.RepoRootPath(), readcommon.PrField(ctx2.dir, keyBaseSHA), f.HeadControls); ref != nil {
+	baseSHA := readcommon.PrField(ctx2.dir, keyBaseSHA)
+	if ref := resolveControls(ctx, ctx2, "", req.RepoRootPath(), baseSHA, f.HeadControls, false); ref != nil {
 		return nil, "", ref
 	}
 	if ref := phaseTwoFiltered(ctx, ctx2, req, f, ctx2.dir, budget); ref != nil {

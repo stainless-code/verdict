@@ -97,6 +97,7 @@ const (
 	gitCmdWorktree    = "worktree"
 	gitCmdCommitTree  = "commit-tree"
 	gitCmdStash       = "stash"
+	gitCmdStatus      = "status"
 	gitWorktreeAdd    = "add"
 	gitWorktreeRemove = "remove"
 	gitStashCreate    = "create"

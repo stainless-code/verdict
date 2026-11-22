@@ -47,6 +47,9 @@ func runLocalTail(ctx context.Context, ctx2 *fetchRunCtx, req *LocalRequest) (*c
 	return runLocalBuild(ctx, ctx2, req, f, r, dir, slug, &mode)
 }
 
+// runLocalBuild owns the source read and the exclusion filter before the
+// shared tail: a scan synthesizes its diff from the filesystem, every other
+// mode reads git.
 func runLocalBuild(
 	ctx context.Context, ctx2 *fetchRunCtx, req *LocalRequest, f *LocalFlags,
 	r *session, dir, slug string, mode *localMode,
@@ -54,14 +57,38 @@ func runLocalBuild(
 	if ref := localPolicy(ctx, ctx2, req, f, r, mode); ref != nil {
 		return nil, "", ref
 	}
-	if ref := localDiff(ctx, r, dir, mode, f.Paths); ref != nil {
+	listed, numstat, staged, ref := localDiffStage(ctx, req, f, r, dir, mode)
+	if ref != nil {
 		return nil, "", ref
 	}
-	listed, numstat := localFileStats(ctx, r, mode, f.Paths)
-	if ref := localResolve(ctx, ctx2, req, f, mode, listed); ref != nil {
+	if ref := localResolve(ctx, ctx2, req, f, mode, listed, staged); ref != nil {
 		return nil, "", ref
 	}
 	return localBundleTail(ctx, ctx2, req, f, r, dir, slug, mode, listed, numstat)
+}
+
+// localDiffStage resolves the bundle's diff source and returns the file list
+// and numstat every downstream gate reads, plus the staged diff text for a
+// source that synthesizes it in memory (a scan). A diff mode writes full.diff
+// itself; a scan's bytes stay staged until the exclusion filter publishes
+// them, so a refusal between the two can never leave unfiltered content in the
+// bundle.
+func localDiffStage(
+	ctx context.Context, req *LocalRequest, f *LocalFlags,
+	r *session, dir string, mode *localMode,
+) (string, string, *string, error) {
+	if len(f.Scan) > 0 {
+		raw, listed, numstat, ref := localScan(ctx, r, req, f)
+		if ref != nil {
+			return "", "", nil, ref
+		}
+		return listed, numstat, &raw, nil
+	}
+	if ref := localDiff(ctx, r, dir, mode, f.Paths); ref != nil {
+		return "", "", nil, ref
+	}
+	listed, numstat := localFileStats(ctx, r, mode, f.Paths)
+	return listed, numstat, nil, nil
 }
 
 // localBundleTail owns everything after the exclusion filter: the spend gate,
@@ -82,7 +109,7 @@ func localBundleTail(
 	if capErr != nil {
 		return nil, "", capErr
 	}
-	total, adds, dels, diffSHA, serr := localStats(ctx, r, dir, listed, numstat, f.Paths)
+	total, adds, dels, diffSHA, serr := localStats(ctx, r, dir, listed, numstat, len(f.Scan) > 0, f.Paths)
 	if serr != nil {
 		return nil, "", serr
 	}
@@ -104,7 +131,7 @@ func localPolicy(
 	if r.iso != nil {
 		controlsRoot = r.iso.dir
 	}
-	if ref := resolveControls(ctx, ctx2, "", controlsRoot, mode.baseSHA, f.HeadControls); ref != nil {
+	if ref := resolveControls(ctx, ctx2, "", controlsRoot, mode.baseSHA, f.HeadControls, mode.kind == modeScan); ref != nil {
 		return ref
 	}
 	rc, ref := resolvePhaseOne(ctx2.env, req.SettingsPath, f.ChunkFlag)
@@ -124,7 +151,7 @@ func localPolicy(
 // chunking, or any model-facing export.
 func localResolve(
 	ctx context.Context, ctx2 *fetchRunCtx, req *LocalRequest,
-	f *LocalFlags, mode *localMode, listed string,
+	f *LocalFlags, mode *localMode, listed string, staged *string,
 ) error {
 	rc := ctx2.runCfg
 	if err := rc.resolveLocalPhaseTwo(
@@ -136,6 +163,7 @@ func localResolve(
 		return ref
 	}
 	ctx2.runner.privacy = rc.resolved.Privacy
+	ctx2.stagedDiff = staged
 	return filterExcluded(ctx2)
 }
 
@@ -166,9 +194,13 @@ func localSlugGate(pr, slug string) *core.RefusalError {
 	return nil
 }
 
-// localModeCount counts the selected diff modes for the exclusivity gate.
+// localModeCount counts the selected diff sources for the exclusivity gate.
+// A scan is a source of its own: it selects files, not a git change.
 func localModeCount(f *LocalFlags) int {
 	modes := 0
+	if len(f.Scan) > 0 {
+		modes++
+	}
 	if f.RangeSpec != "" {
 		modes++
 	}
@@ -213,20 +245,58 @@ func localSetup(
 		return localMode{}, "", "", &core.RefusalError{Code: "not-a-repo", Message: "fetch-local runs inside a git worktree"}
 	}
 	branch := ctx2.runner.gitLineOrEmpty(ctx, modeBranch, "--show-current")
-	if localModeCount(f) > 1 {
-		return localMode{}, "", "", &core.RefusalError{Code: "bad-flags", Message: "--range/--base/--staged/--stash are mutually exclusive"}
+	if ref := localSelectorGate(f); ref != nil {
+		return localMode{}, "", "", ref
 	}
-	mode, err := resolveLocalMode(ctx, ctx2.runner, f, branch)
+	mode, err := localModeStage(ctx, ctx2, f, branch)
 	if err != nil {
-		return localMode{}, "", "", err
-	}
-	if _, err := measuredUsage(ctx2.runner); err != nil {
 		return localMode{}, "", "", err
 	}
 	if ref := localStateDir(ctx2, req); ref != nil {
 		return localMode{}, "", "", ref
 	}
 	return mode, dir, slug, nil
+}
+
+// localModeStage resolves the one diff source a run reads and refuses a second
+// selector, then proves the spend ledger is readable before any bytes are read.
+func localModeStage(ctx context.Context, ctx2 *fetchRunCtx, f *LocalFlags, branch string) (localMode, error) {
+	if localModeCount(f) > 1 {
+		return localMode{}, &core.RefusalError{
+			Code:    core.CodeBadFlags,
+			Message: "--range/--base/--staged/--stash/--scan are mutually exclusive",
+		}
+	}
+	mode, err := resolveLocalMode(ctx, ctx2.runner, f, branch)
+	if err != nil {
+		return localMode{}, err
+	}
+	if _, err := measuredUsage(ctx2.runner); err != nil {
+		return localMode{}, err
+	}
+	return mode, nil
+}
+
+// localSelectorGate refuses the selector combinations the count cannot see: a
+// scan reads the live tree (no isolated checkout) and already selects its own
+// files (no pathspec filter).
+func localSelectorGate(f *LocalFlags) *core.RefusalError {
+	if len(f.Scan) == 0 {
+		return nil
+	}
+	if f.Worktree {
+		return &core.RefusalError{
+			Code:    core.CodeBadFlags,
+			Message: "--scan and --worktree are mutually exclusive — a scan reads the live tree",
+		}
+	}
+	if len(f.Paths) > 0 {
+		return &core.RefusalError{
+			Code:    core.CodeBadFlags,
+			Message: "--scan and -- <paths> are mutually exclusive — --scan already selects the files",
+		}
+	}
+	return nil
 }
 
 // localStateDir prepares the state directory a real fetch-local run writes
@@ -331,8 +401,11 @@ func localCap(ctx2 *fetchRunCtx, dir string, chunkFlag bool) (fetchCap, bool, er
 	return fc, chunkActive, nil
 }
 
+// localStats derives the bundle measurements and the advisory warnings. A scan
+// already reviewed the working tree, so the untracked-files warning (which says
+// those files were left out of a diff) would be false for it.
 func localStats(
-	ctx context.Context, r *session, dir, listed, numstat string, paths []string,
+	ctx context.Context, r *session, dir, listed, numstat string, scan bool, paths []string,
 ) (total, adds, dels int, diffSHA string, err error) {
 	if herr := buildHunksTSV(dir+suffixFullDiff, dir+"/hunks.tsv"); herr != nil {
 		return 0, 0, 0, "", herr
@@ -343,7 +416,9 @@ func localStats(
 	}
 	diffSHA = sha256Hex(dir + suffixFullDiff)
 	total, adds, dels = localCounts(listed, numstat)
-	writeLocalUntrackedWarns(ctx, r, paths)
+	if !scan {
+		writeLocalUntrackedWarns(ctx, r, paths)
+	}
 	writeLocalBinaryWarns(r, numstat)
 	if len(paths) > 0 && !hasNonEmptyLine(listed) {
 		shown := strings.Join(paths, spaceSep) + " "
@@ -475,6 +550,8 @@ func (m *localMode) diffArgs() []string {
 // resolveLocalMode owns the fetch-local mode resolution.
 func resolveLocalMode(ctx context.Context, s *session, f *LocalFlags, branch string) (localMode, error) {
 	switch {
+	case len(f.Scan) > 0:
+		return resolveScanMode(ctx, s)
 	case f.HasStash:
 		return resolveStashMode(ctx, s, f)
 	case f.RangeSpec != "":
@@ -486,6 +563,71 @@ func resolveLocalMode(ctx context.Context, s *session, f *LocalFlags, branch str
 	default:
 		return resolveWorktreeMode(ctx, s, branch), nil
 	}
+}
+
+// resolveScanMode is the scan source's mode. No commit describes the diff, so
+// the head stays empty like a dirty worktree's, while HEAD remains the trusted
+// base the review controls and the run bundle are read from. Only an unborn
+// HEAD git positively confirms reads no base: any other failure to resolve it —
+// a detached HEAD with its commit gone, a corrupt object store, a transient git
+// failure — refuses rather than reviewing with the controls silently skipped.
+func resolveScanMode(ctx context.Context, s *session) (localMode, error) {
+	base, err := s.gitLine(ctx, gitCmdRevParse, flagVerify, gitHeadRef)
+	if err == nil {
+		return localMode{kind: modeScan, baseSHA: base, headRef: modeScan, dirty: true}, nil
+	}
+	if s.missing(err) {
+		return localMode{}, err
+	}
+	if ref := scanUnbornRefusal(ctx, s); ref != nil {
+		return localMode{}, ref
+	}
+	return localMode{kind: modeScan, headRef: modeScan, dirty: true}, nil
+}
+
+// scanUnbornRefusal returns nil only when git confirms HEAD is a symbolic ref
+// to a branch that holds no commit yet. A detached HEAD, an unreadable branch,
+// a branch that resolves after all (so the first read was transient), or a
+// status read that never reports the unborn marker refuses: a scan may skip the
+// base only when git says there is none, never because a read happened to fail.
+func scanUnbornRefusal(ctx context.Context, s *session) *core.RefusalError {
+	branch, err := s.gitLine(ctx, "symbolic-ref", "-q", gitHeadRef)
+	if err != nil || branch == "" {
+		return &core.RefusalError{
+			Code:    CodeFetchFailed,
+			Message: "could not resolve HEAD: --scan needs a commit to review against, or an unborn branch",
+		}
+	}
+	res, rerr := s.run(ctx, gitCmdRevParse, flagVerify, "-q", branch)
+	if rerr == nil && strings.TrimSpace(res.Stdout) != "" {
+		return &core.RefusalError{
+			Code:    CodeFetchFailed,
+			Message: "HEAD resolved on a second read — re-run the scan",
+		}
+	}
+	if !scanUnbornBranch(ctx, s) {
+		return &core.RefusalError{
+			Code:    CodeFetchFailed,
+			Message: "could not confirm HEAD is unborn: --scan needs a commit to review against, or an unborn branch",
+		}
+	}
+	return nil
+}
+
+// scanUnbornBranch asks git status for the porcelain-v2 branch oid marker that
+// only an unborn HEAD produces. A status that fails, or that names a commit,
+// is not positive proof, so the caller refuses instead of skipping the base.
+func scanUnbornBranch(ctx context.Context, s *session) bool {
+	res, err := s.run(ctx, gitCmdStatus, "--porcelain=v2", "--branch")
+	if err != nil {
+		return false
+	}
+	for line := range strings.SplitSeq(res.Stdout, newline) {
+		if strings.TrimSpace(line) == scanUnbornOID {
+			return true
+		}
+	}
+	return false
 }
 
 func resolveStashMode(ctx context.Context, s *session, f *LocalFlags) (localMode, error) {

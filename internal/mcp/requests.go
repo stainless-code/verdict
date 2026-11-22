@@ -193,6 +193,7 @@ func decodeFetchLocal(req *fetchcore.LocalRequest, a *args) {
 		f.strings("context", &req.Flags.Context)
 		f.strings("spec", &req.Flags.Spec)
 		f.strings("ignore", &req.Flags.Ignore)
+		f.stringsStrict("scan", &req.Flags.Scan)
 		f.boolean("noDefaultExcludes", &req.Flags.NoDefaultExcludes)
 		f.boolean("preview", &req.Flags.Preview)
 		f.strings("paths", &req.Flags.Paths)

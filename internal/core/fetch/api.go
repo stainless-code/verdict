@@ -87,11 +87,16 @@ type LocalFlags struct {
 	RepoLayerRoot string `json:"-"`
 	// Index is the operator's explicit index hand-off, exactly as fetch takes
 	// it; empty means no impact section is written.
-	Index             string
-	Context           []string
-	Spec              []string
-	Ignore            []string
-	Paths             []string
+	Index   string
+	Context []string
+	Spec    []string
+	Ignore  []string
+	Paths   []string
+	// Scan selects files rather than a git change: each operand is a file or
+	// directory inside the repository, and the bundle reviews their contents as
+	// added files. It needs no diff and is mutually exclusive with every diff
+	// source.
+	Scan              []string
 	Staged            bool
 	HasStash          bool `json:"-"`
 	Worktree          bool

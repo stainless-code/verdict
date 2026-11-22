@@ -207,6 +207,25 @@ func (a *args) integerBounded(key string, dst *int, lo, hi int) {
 	}
 }
 
+// stringsStrict reads an optional string array and refuses an explicit null: an
+// omitted key keeps the default, while null is not an array of strings.
+func (a *args) stringsStrict(key string, dst *[]string) {
+	if a.err != nil {
+		return
+	}
+	raw, ok := a.take(key)
+	if !ok {
+		return
+	}
+	if string(raw) == jsonNull {
+		a.fail(paramErrorf("argument %q must be an array of strings, not null", key))
+		return
+	}
+	if err := json.Unmarshal(raw, dst); err != nil {
+		a.fail(paramErrorf(msgArgument, key, err))
+	}
+}
+
 func (a *args) strings(key string, dst *[]string) {
 	if a.err != nil {
 		return

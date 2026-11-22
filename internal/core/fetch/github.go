@@ -37,7 +37,7 @@ func runGitHub(
 		return nil, "", ref
 	}
 	collectLinkedIssues(ctx, ctx2)
-	if ref := resolveControls(ctx, ctx2, repo, req.RepoRootPath(), readcommon.PrField(dir, keyBaseSHA), f.HeadControls); ref != nil {
+	if ref := resolveControls(ctx, ctx2, repo, req.RepoRootPath(), readcommon.PrField(dir, keyBaseSHA), f.HeadControls, false); ref != nil {
 		return nil, "", ref
 	}
 	if ref := phaseTwoFiltered(ctx, ctx2, req, f, dir, budget); ref != nil {

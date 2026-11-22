@@ -32,9 +32,9 @@ func filterExcluded(ctx2 *fetchRunCtx) error {
 	if err != nil {
 		return err
 	}
-	raw, err := readcommon.ReadConfined(dir+suffixFullDiff, maxFetchRead)
-	if err != nil {
-		return &core.RefusalError{Code: CodeFetchFailed, Message: err.Error()}
+	raw, ref := ctx2.rawDiff()
+	if ref != nil {
+		return ref
 	}
 	filtered, receipt := excludedDiff(string(raw), policy.defaults, policy.explicit, policy.attrs)
 	receipt.Ignore = append([]string{}, ctx2.ignore...)
@@ -265,4 +265,19 @@ func exclusionSource(fc *fetchRunCtx) string {
 		return ".verdict/ignore@head"
 	}
 	return ".verdict/ignore@base"
+}
+
+// rawDiff returns the diff the exclusion pass filters: the in-memory text a
+// scan synthesized, else the full.diff a diff mode already wrote. Staging the
+// scan keeps unfiltered bytes out of the bundle until the filter publishes
+// them.
+func (c *fetchRunCtx) rawDiff() ([]byte, *core.RefusalError) {
+	if c.stagedDiff != nil {
+		return []byte(*c.stagedDiff), nil
+	}
+	raw, err := readcommon.ReadConfined(c.dir+suffixFullDiff, maxFetchRead)
+	if err != nil {
+		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: err.Error()}
+	}
+	return raw, nil
 }

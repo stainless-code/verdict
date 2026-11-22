@@ -3925,6 +3925,7 @@ bundle from the worktree instead of the API:
 | `fetch-local owner/repo x --base R`                  | `git diff $(merge-base R HEAD) HEAD`         | `HEAD`               |
 | `fetch-local owner/repo x --stash [n]`               | `git diff stash@{n}^ stash@{n}`              | stash commit         |
 | `fetch-local owner/repo x -- <paths>`                | any of the above, pathspec-filtered          | as above             |
+| `fetch-local owner/repo x --scan <path>`             | synthesized added-file diff from the files   | none, marked dirty   |
 
 Flags are mutually exclusive (one diff source per bundle); an empty diff,
 including a paths filter that matches nothing, exits 0 with an `empty diff (0 bytes)` warning and the bundle kept: the review proceeds on the empty diff.
@@ -3938,6 +3939,33 @@ never collide with a numeric PR dir; downstream verbs address the bundle as
 `.verdict/state/local-work/` when no exact `.verdict/state/work/` has a
 `PR.json`; `local-<name>` stays canonical. `config` accepts the same local
 bundle.
+
+`--scan <path>` (repeatable) reviews files instead of a git change: a file
+operand selects that file, a directory operand selects every regular file
+beneath it, and the bundle carries them as added files, so a tree with nothing
+uncommitted still produces a reviewable bundle. A relative operand resolves
+from the current directory and must stay inside the repository root; a `.git`
+or `.verdict` entry is never read at any depth and whatever its mode (a linked
+worktree's `.git` is a regular file), symlinks are neither followed nor
+selected, and a link anywhere between the root and an operand refuses the run.
+Each spelling is validated component by component, so a `..` never collapses
+away a link it crossed, and on a case-insensitive volume a `.GIT` / `.VERDICT`
+spelling that aliases the managed entry refuses too.
+Binary files contribute git's `Binary files ... differ` marker line and no
+content, and paths carrying a tab or newline are skipped with a warning. The
+withholding floor, the ignore layers, generated and attribute exclusions,
+personal privacy exclusions, and the cap/chunk gates apply exactly as on a diff
+run, so `.env`, `*.pem`, and their siblings stay out of `full.diff` and are
+receipted in `excluded.json` as `default:secret` / `secret-builtin`. A scan
+refuses `bad-scan` for a path outside the root, a symlink on the path, a
+managed directory, an unreadable file, or a tree past the bundle read cap, and
+`bad-flags` when combined with a diff source, `--worktree`, or `-- paths`.
+`source.json` records `kind: "scan"`, `head_sha: null`, and the checked-out
+commit as `base_sha`; only an honestly unborn HEAD (a branch with no commit
+yet) records `null`, and any other failure to resolve HEAD refuses the run
+instead of reviewing with the controls skipped. With that record,
+`record`, `report` (including `--sarif`), `gate`, and `serve` read the bundle
+unchanged; its coverage receipt keys to the bundle's own diff digest.
 
 `record owner/repo local-<name>` runs the validate+merge half of `post` with no
 POST: hunk index, keep-biased anchor partition, sig merge with append-only history,

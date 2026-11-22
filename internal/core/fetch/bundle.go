@@ -384,6 +384,10 @@ type fetchRunCtx struct { //nolint:govet // field grouping documents the run sta
 	panelList    []string
 	contextFiles []contextFile
 	previewData  *core.PreviewData
+	// stagedDiff is the diff a scan synthesized in memory. The exclusion pass
+	// filters it and publishes full.diff, so unfiltered bytes never land in the
+	// bundle before the filter runs; nil reads full.diff from disk instead.
+	stagedDiff *string
 	// scratch is the throwaway directory a preview stages its reads in; the
 	// run removes it on every path, so a preview leaves no bundle behind.
 	scratch           string

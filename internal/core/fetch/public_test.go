@@ -645,7 +645,7 @@ func TestNoRepoLayerReadsAbsentControls(t *testing.T) {
 	cmdr := failGit(t, dir, base)
 	s, _ := newTestSession(cmdr)
 	ctx2 := &fetchRunCtx{runner: s, dir: dir, runCfg: &runConfig{optional: true}}
-	if err := resolveControls(context.Background(), ctx2, "", dir, base, false); err != nil {
+	if err := resolveControls(context.Background(), ctx2, "", dir, base, false, false); err != nil {
 		t.Fatalf("optional controls: %v", err)
 	}
 	assertAbsentControls(t, s, "an unreadable base")
@@ -654,7 +654,7 @@ func TestNoRepoLayerReadsAbsentControls(t *testing.T) {
 	}
 	strict, _ := newTestSession(failGit(t, dir, base))
 	ctx2 = &fetchRunCtx{runner: strict, dir: dir, runCfg: &runConfig{}}
-	err := resolveControls(context.Background(), ctx2, "", dir, base, false)
+	err := resolveControls(context.Background(), ctx2, "", dir, base, false, false)
 	ref, ok := errors.AsType[*core.RefusalError](err)
 	if !ok || ref.Code != controls.CodeUnavailable {
 		t.Fatalf("strict controls err = %v, want %s", err, controls.CodeUnavailable)
@@ -677,7 +677,7 @@ func TestOptionalControlsIgnoreACloneHoldingTheBase(t *testing.T) {
 	}}
 	s, _ := newTestSession(cmdr)
 	ctx2 := &fetchRunCtx{runner: s, dir: dir, runCfg: &runConfig{optional: true}}
-	if err := resolveControls(context.Background(), ctx2, "", dir, base, false); err != nil {
+	if err := resolveControls(context.Background(), ctx2, "", dir, base, false, false); err != nil {
 		t.Fatalf("optional controls: %v", err)
 	}
 	assertAbsentControls(t, s, "a clone holding the base commit")
@@ -723,7 +723,7 @@ func TestNoRepoLayerCancelIsNotAnAbsentLayer(t *testing.T) {
 	ctx2 := &fetchRunCtx{runner: s, dir: dir, runCfg: &runConfig{optional: true}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	err := resolveControls(ctx, ctx2, "", dir, base, false)
+	err := resolveControls(ctx, ctx2, "", dir, base, false, false)
 	ref, ok := errors.AsType[*core.RefusalError](err)
 	if !ok {
 		t.Fatalf("err = %v, want a typed refusal", err)

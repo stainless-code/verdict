@@ -210,6 +210,8 @@ var hintRules = []HintRule{
 		"(exact lowercase keys, every id paired with its markdown file), then re-run"},
 	{codes: []string{"bad-path"}, hint: "try: pass the path as Git spells it — repository-relative, " +
 		"forward slashes, no '..' segment"},
+	{codes: []string{"bad-scan"}, hint: "try: pass --scan <path> for a file or directory inside the repository " +
+		"(no symlink, and .git/.verdict are never scanned), or narrow --scan so the tree fits the cap"},
 	{codes: []string{"bad-pack-source"}, hint: "try: use https://host/path with no userinfo, " +
 		"ssh://user@host/path, or user@host:path — a token in the URL, ref, or path is recorded " +
 		"in the committed lock; use an ssh key or a public https URL"},
