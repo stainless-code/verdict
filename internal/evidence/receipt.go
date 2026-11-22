@@ -34,24 +34,27 @@ type ReceiptCoverage struct {
 	Complete bool
 }
 
-// VerifyReceipts checks receipts against idx under A3 rules: each hunk is
-// keyed by its NEW hunks.tsv row when its NEW side is non-empty, else its OLD
-// row, and a receipt quote matches any line of that hunk on either side via
-// the A2 matcher. Coverage requires 100% of non-exempt hunks.
+// VerifyReceipts checks receipts against idx under A3 rules. A receipt's hunk
+// key is one of the rows hunks.tsv prints: the canonical key — the NEW row when
+// that side is non-empty, else the OLD row of a pure deletion — or the OLD row
+// of a modified hunk, which names the same change. A receipt quote matches any
+// line of the resolved hunk on either side via the A2 matcher. Coverage counts
+// canonical keys only, so supplying both rows for one hunk counts it once, and
+// it requires 100% of non-exempt hunks.
 func VerifyReceipts(idx *DiffIndex, receipts []ReceiptInput, exempt func(string) bool) ReceiptCoverage {
 	required, exemptCount := idx.partitionReceiptKeys(exempt)
 	checks := make([]ReceiptCheck, len(receipts))
 	coveredKeys := make(map[string]struct{}, len(required))
 
 	for i, r := range receipts {
-		chk := verifyOneReceipt(idx, i, r)
+		chk, h := verifyOneReceipt(idx, i, r)
 		checks[i] = chk
-		if chk.Matched {
-			coveredKeys[chk.Hunk] = struct{}{}
+		if chk.Matched && h != nil {
+			coveredKeys[h.Key()] = struct{}{}
 		}
 	}
 
-	markDuplicateMismatches(checks, coveredKeys)
+	markDuplicateMismatches(idx, checks, coveredKeys)
 	missing := missingReceiptKeys(required, coveredKeys)
 	total := len(required)
 	covered := total - len(missing)
@@ -67,15 +70,17 @@ func VerifyReceipts(idx *DiffIndex, receipts []ReceiptInput, exempt func(string)
 	}
 }
 
-// verifyOneReceipt validates a single receipt against its canonical hunk.
-func verifyOneReceipt(idx *DiffIndex, index int, r ReceiptInput) ReceiptCheck {
-	h, ok := idx.HunkByKey(r.Hunk)
+// verifyOneReceipt validates a single receipt against the hunk its key names,
+// returning that hunk alongside the check so coverage can count its canonical
+// key. The check always echoes the key the receipt supplied.
+func verifyOneReceipt(idx *DiffIndex, index int, r ReceiptInput) (ReceiptCheck, *DiffHunk) {
+	h, ok := idx.hunkForReceipt(r.Hunk)
 	if !ok {
 		return ReceiptCheck{
 			Index:  index,
 			Hunk:   r.Hunk,
 			Reason: ReasonReceiptHunkUnknown,
-		}
+		}, nil
 	}
 	normText, quoteLines := NormalizeQuote(r.Quote)
 	if len(quoteLines) > MaxQuoteLines || len(normText) > MaxQuoteBytes {
@@ -83,7 +88,7 @@ func verifyOneReceipt(idx *DiffIndex, index int, r ReceiptInput) ReceiptCheck {
 			Index:  index,
 			Hunk:   r.Hunk,
 			Reason: ReasonQuoteTooLarge,
-		}
+		}, h
 	}
 	if side, matched := matchReceiptInHunk(h, quoteLines); matched {
 		return ReceiptCheck{
@@ -91,13 +96,13 @@ func verifyOneReceipt(idx *DiffIndex, index int, r ReceiptInput) ReceiptCheck {
 			Hunk:    r.Hunk,
 			Side:    side,
 			Matched: true,
-		}
+		}, h
 	}
 	return ReceiptCheck{
 		Index:  index,
 		Hunk:   r.Hunk,
 		Reason: ReasonReceiptMismatch,
-	}
+	}, h
 }
 
 // matchReceiptInHunk tries the A2 matcher over the entire hunk on NEW first,
@@ -123,15 +128,28 @@ func matchReceiptInHunk(h *DiffHunk, quoteLines []string) (string, bool) {
 
 // markDuplicateMismatches flags non-matching receipts for hunks that already
 // have another matched receipt, so callers can report them as warnings instead
-// of errors (§3.2).
-func markDuplicateMismatches(checks []ReceiptCheck, covered map[string]struct{}) {
+// of errors (§3.2). The covered set holds canonical keys, so an OLD row is
+// resolved to its hunk before the lookup.
+func markDuplicateMismatches(idx *DiffIndex, checks []ReceiptCheck, covered map[string]struct{}) {
 	for i := range checks {
-		if !checks[i].Matched && checks[i].Reason == ReasonReceiptMismatch {
-			if _, ok := covered[checks[i].Hunk]; ok {
-				checks[i].DuplicateMismatch = true
-			}
+		if duplicateMismatch(idx, &checks[i], covered) {
+			checks[i].DuplicateMismatch = true
 		}
 	}
+}
+
+// duplicateMismatch reports whether check is a quote mismatch whose canonical
+// hunk another receipt already covered.
+func duplicateMismatch(idx *DiffIndex, check *ReceiptCheck, covered map[string]struct{}) bool {
+	if check.Matched || check.Reason != ReasonReceiptMismatch {
+		return false
+	}
+	h, ok := idx.hunkForReceipt(check.Hunk)
+	if !ok {
+		return false
+	}
+	_, alreadyCovered := covered[h.Key()]
+	return alreadyCovered
 }
 
 // missingReceiptKeys returns the required keys not present in covered,

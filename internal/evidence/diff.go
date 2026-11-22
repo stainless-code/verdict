@@ -105,6 +105,7 @@ func (f *DiffFile) AbsentAtHead() bool {
 type DiffIndex struct {
 	byPath    map[string][]*DiffFile
 	byHunkKey map[string]*DiffHunk
+	byOldRow  map[string]*DiffHunk
 	files     []*DiffFile
 }
 
@@ -116,6 +117,7 @@ func IndexDiff(diff []byte) *DiffIndex {
 	idx := &DiffIndex{
 		byPath:    make(map[string][]*DiffFile),
 		byHunkKey: make(map[string]*DiffHunk),
+		byOldRow:  make(map[string]*DiffHunk),
 	}
 	if len(diff) == 0 {
 		return idx
@@ -180,6 +182,22 @@ func (d *DiffIndex) HunkByKey(key string) (*DiffHunk, bool) {
 	return h, ok
 }
 
+// hunkForReceipt resolves a receipt's key to the hunk it names. The canonical
+// A3 key is checked first, then the OLD row of a modified hunk: hunks.tsv
+// prints both rows for such a hunk, and a reviewer copying rows verbatim names
+// the same change either way. Coverage still counts the canonical key alone, so
+// both rows together never double-count.
+func (d *DiffIndex) hunkForReceipt(key string) (*DiffHunk, bool) {
+	if h, ok := d.HunkByKey(key); ok {
+		return h, true
+	}
+	if d == nil {
+		return nil, false
+	}
+	h, ok := d.byOldRow[key]
+	return h, ok
+}
+
 // ReceiptKeys returns the deduplicated A3 canonical receipt keys for all
 // non-exempt hunks, ordered by (file, side, start, end).
 func (d *DiffIndex) ReceiptKeys(exempt func(string) bool) []string {
@@ -215,6 +233,19 @@ func (d *DiffIndex) addFile(df *DiffFile) {
 		if _, exists := d.byHunkKey[key]; !exists {
 			d.byHunkKey[key] = &df.Hunks[i]
 		}
+		d.aliasOldRow(&df.Hunks[i], key)
+	}
+}
+
+// aliasOldRow registers h's OLD row as a second name for the hunk whose
+// canonical key is key. It keeps the first hunk seen for a row and never
+// touches byHunkKey, so a canonical key always resolves to itself.
+func (d *DiffIndex) aliasOldRow(h *DiffHunk, key string) {
+	if h.OldRow == "" || h.OldRow == key {
+		return
+	}
+	if _, exists := d.byOldRow[h.OldRow]; !exists {
+		d.byOldRow[h.OldRow] = h
 	}
 }
 
