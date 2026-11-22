@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "name": "verdict/github-workflows",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "severity": {
     "critical": "critical",
     "important": "important"
@@ -26,6 +26,11 @@
     },
     {
       "id": "gha-unpinned-action",
+      "severity": "important",
+      "globs": [".github/workflows/*.yml", ".github/workflows/*.yaml"]
+    },
+    {
+      "id": "gha-permissions",
       "severity": "important",
       "globs": [".github/workflows/*.yml", ".github/workflows/*.yaml"]
     }

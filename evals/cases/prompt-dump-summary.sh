@@ -71,7 +71,7 @@ EOF
     if [ -n "$plan_files" ]; then
       group_id="$(jq -r '.resolved.plan.groups[0].id' "$dir/run.json")"
       printf '<<<UNTRUSTED nonce=%s source=plan.txt>>>\n' "$nonce" >> "$out"
-      printf 'plan status: pending\n- group 1: id=%s profile=- depth=standard max_lenses=unset checks=[] files=[%s] scopes=[] panel=[] panel_from=built-in effort=standard cap_bytes=512000 cap_from=built-in chunk=false lens_pack=verdict/builtin@1.0.0,verdict/dockerfile@1.0.0,verdict/github-workflows@1.0.0,verdict/go@1.0.0,verdict/java@1.0.0,verdict/python@1.0.0,verdict/rust@1.0.0,verdict/security@1.0.0,verdict/shell@1.0.0,verdict/sql@1.0.0,verdict/terraform@1.0.0,verdict/ts-js@1.0.0 lenses=[api-contract@verdict/builtin:62c9ccf8,perf@verdict/builtin:6225fd98,test@verdict/builtin:efd2eb4e]\neffort: standard\n' "$group_id" "$plan_files" >> "$out"
+      printf 'plan status: pending\n- group 1: id=%s profile=- depth=standard max_lenses=unset checks=[] files=[%s] scopes=[] panel=[] panel_from=built-in effort=standard cap_bytes=512000 cap_from=built-in chunk=false lens_pack=verdict/builtin@1.0.0,verdict/dockerfile@1.1.0,verdict/github-workflows@1.1.0,verdict/go@1.1.0,verdict/java@1.1.0,verdict/python@1.1.0,verdict/react@1.0.0,verdict/rust@1.1.0,verdict/security@1.1.0,verdict/shell@1.1.0,verdict/sql@1.1.0,verdict/terraform@1.1.0,verdict/ts-js@1.1.0 lenses=[api-contract@verdict/builtin:62c9ccf8,perf@verdict/builtin:6225fd98,test@verdict/builtin:efd2eb4e]\neffort: standard\n' "$group_id" "$plan_files" >> "$out"
       printf '<<<END UNTRUSTED nonce=%s>>>\n' "$nonce" >> "$out"
     fi
     if [ -f "$dir/full.diff" ]; then fence_file "full.diff" "$dir/full.diff"; fi

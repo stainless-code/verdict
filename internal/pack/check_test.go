@@ -38,7 +38,7 @@ func TestCheckHumanRows(t *testing.T) {
 	for _, want := range []string{
 		"path     cmd/verdict/main.go",
 		"config   none",
-		"  builtin  verdict/go@1.0.0  source=builtin:go  sha256:",
+		"  builtin  verdict/go@1.1.0  source=builtin:go  sha256:",
 		"  go  pack=verdict/go  layer=builtin  sha256:",
 		"  go-context-lifecycle              severity=critical  pack=verdict/go  layer=builtin  globs=**/*.go",
 	} {
@@ -68,7 +68,7 @@ func TestCheckJSONEnvelope(t *testing.T) {
 	if env.Verb != "pack" || env.Data.Path != "app.tsx" || env.Data.Config != "none" {
 		t.Fatalf("envelope = %+v", env)
 	}
-	if len(env.Data.Packs) != 12 || env.Data.Packs[0].Name != "verdict/builtin" {
+	if len(env.Data.Packs) != 13 || env.Data.Packs[0].Name != "verdict/builtin" {
 		t.Errorf("packs = %+v, want the shipped builtin layer", env.Data.Packs)
 	}
 	if len(env.Data.Disabled) != 0 {

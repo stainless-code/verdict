@@ -635,15 +635,22 @@ list); the other providers contribute the title, body, and head ref.
 A lens pack is data, not a verb: `pack.json` names each lens and
 `lenses/<id>.md` carries its body. The built-in layer ships the core pack at
 `procedure/packs/builtin/` (`name` `verdict/builtin`, `version` `1.0.0`) plus
-eleven curated language and ecosystem packs under
+twelve curated language and ecosystem packs under
 `procedure/packs/languages/`, one directory per stack: `verdict/go`,
-`verdict/ts-js`, `verdict/python`, `verdict/rust`, `verdict/java`,
-`verdict/sql`, `verdict/terraform`, `verdict/github-workflows`,
-`verdict/dockerfile`, `verdict/shell`, and the cross-language
-`verdict/security`. `fetch`/`fetch-local` load all of them from the embedded
-skill payload, in directory order, as one builtin layer; every curated pack
-carries one stack lens scoped to its file globs and three or four rules, and
-each ships an eval case so `pack test <name>` grades it offline. The format is
+`verdict/ts-js`, `verdict/python`, `verdict/react`, `verdict/rust`,
+`verdict/java`, `verdict/sql`, `verdict/terraform`,
+`verdict/github-workflows`, `verdict/dockerfile`, `verdict/shell`, and the
+cross-language `verdict/security`. `fetch`/`fetch-local` load all of them from
+the embedded skill payload, in directory order, as one builtin layer; every
+curated pack carries one stack lens scoped to its file globs and four to
+eight rules, and each ships a positive eval case and a negative-trap safe
+fixture; `pack test <name>` validates rule selection and finding citations
+offline and pins the safe fixture, without running a model. `verdict/react` is scoped to `**/*.tsx` and `**/*.jsx`
+alone, so a backend or CLI TypeScript repository receives the general
+`verdict/ts-js` rules and no React advice. Every rule body carries a
+`## When to flag` section with its version/runtime preconditions, a
+`## Do NOT flag` section listing the safe idioms and linter findings it must
+not restate, and an `## Evidence` section naming what to quote. The format is
 strict JSON (unknown fields refuse), versioned by `schema_version: "1"`,
 and published as `schemas/pack.schema.json`. The fixed layout is `pack.json`,
 `lenses/` (loaded), `rules/` (loaded when the manifest declares a rule), and
@@ -796,7 +803,10 @@ the changed paths and the pack's `globs`; the format has no separate language
 field. Each finding must validate and anchor inside the diff, cite a rule in
 the pack selected for its path, and the cited ids must cover `rules`. The
 selected rules' `tools` entries are required command names; `pack test` checks
-that each is available on `PATH` without running it.
+that each is available on `PATH` without running it. `pack test` never runs a
+model: a negative-trap case is a pinned safe fixture (`rules: []`,
+`findings: []`) whose diff still selects the pack's rules, so it proves the
+globs and diff parse, not that a reviewer stayed quiet.
 
 The command prints one `PASS`, `SKIP`, or `FAIL` line per case and a summary.
 Incomplete cases and cases whose selected rules name a command missing from

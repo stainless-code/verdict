@@ -1,0 +1,19 @@
+diff --git a/.github/workflows/comment.yml b/.github/workflows/comment.yml
+index 1111111..2222222 100644
+--- a/.github/workflows/comment.yml
++++ b/.github/workflows/comment.yml
+@@ -1,2 +1,13 @@
+ name: comment
+-permissions: write-all
++permissions:
++  contents: read
++  pull-requests: write
++on: pull_request_target
++jobs:
++  label:
++    runs-on: ubuntu-latest
++    steps:
++      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
++      - env:
++          TITLE: ${{ github.event.pull_request.title }}
++        run: printf '%s\n' "$TITLE"

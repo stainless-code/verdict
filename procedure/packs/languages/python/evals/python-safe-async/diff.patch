@@ -1,0 +1,15 @@
+diff --git a/app/services/report.py b/app/services/report.py
+index 1111111..2222222 100644
+--- a/app/services/report.py
++++ b/app/services/report.py
+@@ -1,2 +1,9 @@
+ async def build_report(rows=None):
+-    return render(rows)
++    rows = [] if rows is None else rows
++    text = await asyncio.to_thread(Path("template.html").read_text)
++    query = "SELECT id FROM reports WHERE owner = :owner"
++    result = await session.execute(text(query), {"owner": owner_id})
++    with open(tmp_path, "w") as out:
++        out.write(text)
++    return render(rows, result.scalars().all())
++

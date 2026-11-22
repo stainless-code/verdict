@@ -1,0 +1,14 @@
+diff --git a/apps/web/src/Clock.tsx b/apps/web/src/Clock.tsx
+index 1111111..2222222 100644
+--- a/apps/web/src/Clock.tsx
++++ b/apps/web/src/Clock.tsx
+@@ -1,1 +1,9 @@
+ import { useEffect, useState } from "react";
++export function Clock() {
++  const [now, setNow] = useState(Date.now());
++  useEffect(() => {
++    const id = setInterval(() => setNow(Date.now()), 1000);
++  }, []);
++  return <time>{now}</time>;
++}
++

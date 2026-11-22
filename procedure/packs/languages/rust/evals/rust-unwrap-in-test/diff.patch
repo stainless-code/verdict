@@ -1,0 +1,20 @@
+diff --git a/src/parse.rs b/src/parse.rs
+index 1111111..2222222 100644
+--- a/src/parse.rs
++++ b/src/parse.rs
+@@ -1,2 +1,14 @@
+ pub fn parse(input: &str) -> Result<Config, Error> {
+-    serde_json::from_str(input)
++    serde_json::from_str(input)
++}
++
++#[cfg(test)]
++mod tests {
++    use super::*;
++
++    #[test]
++    fn parses_a_config() {
++        let cfg = parse("{}").unwrap();
++        assert!(cfg.enabled.is_none());
++    }
++}

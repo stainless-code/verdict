@@ -1,7 +1,7 @@
 [
   {
     "path": "app/worker.py",
-    "line": 1,
+    "line": 2,
     "body": "`enqueue` appends to a shared list default, so queued tasks accumulate across calls.",
     "rigor": "walked",
     "kb": ["python-mutable-default"]

@@ -1,0 +1,17 @@
+diff --git a/scripts/deploy.sh b/scripts/deploy.sh
+index 1111111..2222222 100644
+--- a/scripts/deploy.sh
++++ b/scripts/deploy.sh
+@@ -1,2 +1,11 @@
+ #!/usr/bin/env bash
+-set -e
++set -euo pipefail
++target=${1:?target is required}
++cd "$target" || exit 1
++staging="$(mktemp -d)"
++trap 'rm -rf -- "$staging"' EXIT
++if ! build | tee "$staging/build.log"; then
++  printf 'build failed\n' >&2
++  exit 1
++fi
++rm -rf -- "${staging:?}"/*

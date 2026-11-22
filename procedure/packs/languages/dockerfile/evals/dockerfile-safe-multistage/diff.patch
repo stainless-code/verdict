@@ -1,0 +1,17 @@
+diff --git a/Dockerfile b/Dockerfile
+index 1111111..2222222 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -1,1 +1,11 @@
+-FROM node:20-alpine
++FROM node:20.11.1-alpine AS build
++WORKDIR /app
++COPY package.json ./
++RUN --mount=type=secret,id=npmrc,target=/root/.npmrc npm ci
++COPY . .
++RUN npm run build
++
++FROM gcr.io/distroless/nodejs20-debian12@sha256:0000000000000000000000000000000000000000000000000000000000000000
++COPY --from=build /app/dist /app/dist
++USER 10001:10001
++CMD ["node", "/app/dist/server.js"]

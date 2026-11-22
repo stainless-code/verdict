@@ -1,7 +1,7 @@
 {
   "schema_version": "1",
   "name": "verdict/security",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "severity": {
     "critical": "critical",
     "important": "important"
@@ -28,25 +28,6 @@
     }
   ],
   "rules": [
-    {
-      "id": "sec-ssrf",
-      "severity": "critical",
-      "globs": [
-        "**/*.go",
-        "**/*.ts",
-        "**/*.tsx",
-        "**/*.js",
-        "**/*.jsx",
-        "**/*.py",
-        "**/*.rs",
-        "**/*.java",
-        "**/*.kt",
-        "**/*.rb",
-        "**/*.php",
-        "**/*.cs",
-        "**/*.sql"
-      ]
-    },
     {
       "id": "sec-broken-authz",
       "severity": "critical",
@@ -86,7 +67,102 @@
       ]
     },
     {
+      "id": "sec-ssrf",
+      "severity": "critical",
+      "globs": [
+        "**/*.go",
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.py",
+        "**/*.rs",
+        "**/*.java",
+        "**/*.kt",
+        "**/*.rb",
+        "**/*.php",
+        "**/*.cs",
+        "**/*.sql"
+      ]
+    },
+    {
       "id": "sec-unsafe-deserialization",
+      "severity": "critical",
+      "globs": [
+        "**/*.go",
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.py",
+        "**/*.rs",
+        "**/*.java",
+        "**/*.kt",
+        "**/*.rb",
+        "**/*.php",
+        "**/*.cs",
+        "**/*.sql"
+      ]
+    },
+    {
+      "id": "sec-timing-compare",
+      "severity": "important",
+      "globs": [
+        "**/*.go",
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.py",
+        "**/*.rs",
+        "**/*.java",
+        "**/*.kt",
+        "**/*.rb",
+        "**/*.php",
+        "**/*.cs",
+        "**/*.sql"
+      ]
+    },
+    {
+      "id": "sec-weak-random",
+      "severity": "critical",
+      "globs": [
+        "**/*.go",
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.py",
+        "**/*.rs",
+        "**/*.java",
+        "**/*.kt",
+        "**/*.rb",
+        "**/*.php",
+        "**/*.cs",
+        "**/*.sql"
+      ]
+    },
+    {
+      "id": "sec-jwt-validation",
+      "severity": "critical",
+      "globs": [
+        "**/*.go",
+        "**/*.ts",
+        "**/*.tsx",
+        "**/*.js",
+        "**/*.jsx",
+        "**/*.py",
+        "**/*.rs",
+        "**/*.java",
+        "**/*.kt",
+        "**/*.rb",
+        "**/*.php",
+        "**/*.cs",
+        "**/*.sql"
+      ]
+    },
+    {
+      "id": "sec-path-traversal",
       "severity": "critical",
       "globs": [
         "**/*.go",

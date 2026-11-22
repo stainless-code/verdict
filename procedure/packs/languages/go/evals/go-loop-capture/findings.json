@@ -1,0 +1,9 @@
+[
+  {
+    "path": "cmd/worker/worker.go",
+    "line": 4,
+    "body": "The goroutine captures `item`, and `go.mod` now declares `go 1.21`, so every iteration shares one variable and `use` usually sees the last item.",
+    "rigor": "walked",
+    "kb": ["go-shared-state"]
+  }
+]

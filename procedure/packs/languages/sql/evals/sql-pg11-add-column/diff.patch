@@ -1,0 +1,12 @@
+diff --git a/migrations/0003_add_active.sql b/migrations/0003_add_active.sql
+index 1111111..2222222 100644
+--- a/migrations/0003_add_active.sql
++++ b/migrations/0003_add_active.sql
+@@ -1,2 +1,6 @@
+ -- PostgreSQL 11+ metadata-only add: non-volatile default, no rewrite.
+-ALTER TABLE accounts ADD COLUMN active boolean;
++ALTER TABLE accounts ADD COLUMN active boolean NOT NULL DEFAULT false;
++CREATE INDEX CONCURRENTLY accounts_active_idx ON accounts (active);
++CREATE INDEX CONCURRENTLY accounts_owner_idx ON accounts (owner_id);
++ALTER TABLE accounts VALIDATE CONSTRAINT accounts_owner_fk;
++

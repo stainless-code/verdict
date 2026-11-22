@@ -49,9 +49,9 @@ body:
       label: Boundaries the rule must not flag
       description: |
         The deliberate patterns that look like the hazard but are correct, written
-        into the rule body so the reviewer has them at hand. A body with no
-        boundaries leaves the safe pattern to judgement; pack test grades rule
-        selection and citation coverage, never judgement, so say it in prose.
+        into the rule body's ## Do NOT flag section so the reviewer has them at
+        hand. Every shipped rule also carries ## When to flag and ## Evidence;
+        pack test grades rule selection and citation coverage, never judgement.
       placeholder: |
         Do not flag GlobalScope.launch guarded by an operator-owned lifecycle,
         or suspend functions that never touch a dispatcher.
@@ -75,17 +75,19 @@ body:
   - type: textarea
     id: negative_case
     attributes:
-      label: Path-scope case (optional)
+      label: Negative-trap safe fixture (required for a curated pack)
       description: |
-        not_rules[] proves a rule's globs do not reach this diff's paths: it fails as
-        "not_rules hit" as soon as the rule is selected, so it can only name a rule
-        the diff genuinely cannot match. It cannot hold a **/*.kt rule against a .kt
-        diff, and it is not a false-positive trap. A same-language safe-pattern
-        fixture belongs in evals/ as a model-judgement case instead.
+        A curated pack ships a safe-idiom fixture whose diff paths still match the
+        pack's globs, with expect.json {"rules": []} and findings.json []. This
+        pins the fixture offline; pack test runs no model, so it does not grade
+        judgement. Separately, not_rules[] is an optional path-scope assertion for
+        a rule whose globs genuinely do not reach this diff; it cannot hold a
+        **/*.kt rule against a .kt diff.
       placeholder: |
-        evals/<case>/diff.patch touches src/Foo.kt
-        evals/<case>/expect.json: {"rules": [], "not_rules": ["kotlin-test-naming"]}
-        # kotlin-test-naming is scoped to **/*Test.kt, which this diff does not touch
+        evals/<case>/diff.patch: a coroutine already scoped to its caller
+        evals/<case>/expect.json: {"rules": []}
+        evals/<case>/findings.json: []
+        # optional path-scope: {"rules": [], "not_rules": ["kotlin-test-naming"]}
   - type: textarea
     id: verification
     attributes:
@@ -102,7 +104,8 @@ body:
       options:
         - label: pack.json validates against schemas/pack.schema.json, and every rule row carries at least one glob
         - label: every lens and rule id has a non-empty <id>.md body
-        - label: each rule body names the failure and the patterns it must not flag
-        - label: the eval case cites every rules[] id in findings.json kb[]
+        - label: each rule body carries ## When to flag, ## Do NOT flag, and ## Evidence
+        - label: the positive case cites every rules[] id in findings.json kb[]
+        - label: a negative-trap safe fixture has rules [] and findings [] and still matches the pack globs
         - label: any not_rules[] entry names only a rule this case diff cannot match
         - label: bin/verdict pack test passes with zero skips

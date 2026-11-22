@@ -1,0 +1,15 @@
+diff --git a/src/config/load.ts b/src/config/load.ts
+index 1111111..2222222 100644
+--- a/src/config/load.ts
++++ b/src/config/load.ts
+@@ -1,2 +1,9 @@
+ export function load(raw: unknown): Config {
+-  return raw as Config;
++  const parsed = configSchema.safeParse(raw);
++  if (!parsed.success) {
++    throw new Error("invalid config");
++  }
++  const ids = parsed.data.ids.sort((a, b) => a.localeCompare(b));
++  const matcher = new RegExp(escapeRegExp(parsed.data.prefix));
++  return { ...parsed.data, ids, matcher };
++}

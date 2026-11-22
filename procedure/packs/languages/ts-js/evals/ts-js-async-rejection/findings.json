@@ -1,7 +1,7 @@
 [
   {
     "path": "src/api/client.ts",
-    "line": 1,
+    "line": 2,
     "body": "The new `load` drops the fetch promise, so a rejected request becomes an unhandled rejection.",
     "rigor": "walked",
     "kb": ["ts-js-floating-async"]
