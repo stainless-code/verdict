@@ -72,17 +72,31 @@ func sarifResult(entry any) *jq.Obj {
 	if path == nil {
 		path = "PR"
 	}
+	properties := jq.NewObj("category", sarifCategory(entry))
+	addProvenance(properties, entry)
 	return jq.NewObj(
 		"ruleId", "verdict/"+sarifKind(entry),
 		"level", sarifLevel(readcommon.FieldOf(entry, "severity")),
 		"message", jq.NewObj("text", message),
-		"properties", jq.NewObj("category", sarifCategory(entry)),
+		"properties", properties,
 		"locations", []any{jq.NewObj("physicalLocation", jq.NewObj(
 			"artifactLocation", jq.NewObj("uri", path),
 			"region", region,
 		))},
 		"partialFingerprints", jq.NewObj("verdict/sig", readcommon.FieldOf(entry, "sig")),
 	)
+}
+
+// addProvenance carries an ingested finding's tool, rule, and fingerprint into
+// the export under properties: `report --sarif` fed back to
+// `ingest --from sarif` then round-trips the finding instead of relabeling it
+// as verdict's own. A model finding carries none of the three and adds nothing.
+func addProvenance(properties *jq.Obj, entry any) {
+	for _, key := range []string{"tool", "rule_id", "fingerprint"} {
+		if s, ok := readcommon.FieldOf(entry, key).(string); ok && s != "" {
+			properties.Set(key, s)
+		}
+	}
 }
 
 func sarifMessage(entry any) string {

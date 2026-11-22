@@ -955,13 +955,19 @@ func (c *Client) Adopt(ctx context.Context, req *AdoptRequest) (*AdoptResponse, 
 	}, nil
 }
 
-// IngestRequest imports SARIF 2.1.0 tool results into the target bundle's
-// findings store. Set SARIF to a file path, or SARIFData for in-memory bytes.
+// IngestRequest imports OASIS SARIF 2.1.0 results into the target bundle's
+// findings store. From names the source format (SourceSARIF, or empty for the
+// same thing); SARIF is a file path and SARIFData carries pre-read bytes
+// instead. Every document is capped at 8 MiB and read offline.
 type IngestRequest struct {
 	Invocation
+	From      string
 	SARIF     string
 	SARIFData []byte
 }
+
+// SourceSARIF is the one source format Ingest reads; From defaults to it.
+const SourceSARIF = ingestcore.SourceSARIF
 
 // IngestResponse carries the ingest summary and the human line.
 type IngestResponse struct { //nolint:govet // field order is the public API surface
@@ -970,7 +976,11 @@ type IngestResponse struct { //nolint:govet // field order is the public API sur
 }
 
 // Ingest maps SARIF 2.1.0 results into the bundle's findings store, sharing the
-// deduplication, hunk anchoring, and path-exclusion withholding paths.
+// deduplication, hunk anchoring, and path-exclusion withholding paths. Each
+// result is graded against the bundle's pinned diff: an anchored finding
+// carries the verified diff line and pointed rigor, and a result the diff
+// cannot anchor is published in the response data's skipped[] with its typed
+// reason instead of being dropped or stored at line 0.
 func (c *Client) Ingest(ctx context.Context, req *IngestRequest) (*IngestResponse, error) {
 	rr, err := c.request(ctx, req.Repo, req.PR)
 	if err != nil {
@@ -978,6 +988,7 @@ func (c *Client) Ingest(ctx context.Context, req *IngestRequest) (*IngestRespons
 	}
 	creq := &ingestcore.Request{
 		ReadRequest: rr,
+		From:        req.From,
 		SARIF:       req.SARIF,
 	}
 	if len(req.SARIFData) > 0 {

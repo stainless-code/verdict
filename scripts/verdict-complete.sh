@@ -35,7 +35,7 @@ _verdict_flags() { # $1 = verb
     learn) printf '%s\n' --propose --from-bundle --accept --reject --dry-run --pack --incident --sha --path --note --url --at --rule --scope --id --provenance --rigor --status --retire --restore --reason --json;;
     pack) printf '%s\n' list add test --dir --json;;
     adopt) printf '%s\n' --from --json;;
-    ingest) printf '%s\n' --sarif --json;;
+    ingest) printf '%s\n' --from --sarif --json;;
     fix) printf '%s\n' --sig --all --selected --min-severity --verify-cmd --paths --json;;
     pr-wait) printf '%s\n' --until --timeout --once --interval --json --provider ;;
     ready) printf '%s\n' --json --check --filter --wait-for --timeout;;
@@ -75,6 +75,11 @@ _verdict_values() { # $1 = verb, $2 = flag
     --min-severity) printf '%s\n' critical important informational off;;
     --max-severity) printf '%s\n' critical important informational;;
     --live) printf '%s\n' auto strict skip;;
+    --from)
+      case "$1" in
+        ingest) printf '%s\n' sarif;;
+        *) return 0;;
+      esac;;
     --status)
       case "$1" in
         triage) printf '%s\n' open addressed wont-fix false-positive deferred;;

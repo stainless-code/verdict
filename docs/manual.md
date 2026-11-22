@@ -3910,19 +3910,80 @@ refuses `provider-unimplemented` naming it. From there `post`
 and `calibrate` proceed normally — predictions recorded offline get settled against
 live ground truth.
 
-Static-analysis ingestion: `ingest owner/repo N --sarif <file|->` maps SARIF 2.1.0
-results into `.verdict/state/<bundle>/findings.json` with `source: "tool"`,
-sharing one store, one dedupe path, and one suppression/withheld path with model
-reviews. Severity is mapped via `schemas/sarif-map.json`
-(`security-severity` threshold or SARIF `level`), anchors are resolved against
-the bundle diff (`anchored: false` when outside hunks so out-of-diff results
-never fail inline posting), excluded paths land withheld with `source: "exclusion"`,
-and tool findings never gain `"verified"` rigor (`rigor: "said"`, `rigor_source: "default"`).
-Re-ingesting unchanged SARIF is idempotent (`added: 0, updated: 0, unchanged: N`),
-matching a model finding preserves the model entry, and changed tool results
-update in place by `(tool, fingerprint)`. SARIF inputs are capped at 8 MiB and
-validated offline without following URIs on disk or over the network. `report` and
-`trend` report `by_source` (`model` and `tool`) alongside tier and status counts.
+### Static-analysis ingestion (`--from sarif`)
+
+`ingest owner/repo N --from sarif <file|-> [--json]` maps an OASIS SARIF 2.1.0
+document from any static analyzer into `.verdict/state/<bundle>/findings.json`.
+The flag names a format, never a vendor: `Semgrep`, `Opengrep`, `CodeQL`,
+`golangci-lint`, `Ruff`, `Trivy`, and `verdict report --sarif` all produce input
+this reads. `--sarif <file|->` is the same source under its older spelling; one
+call takes exactly one source. `-` reads stdin under the same 8 MiB cap a file
+reads under, and an empty or oversize stream refuses typed (`missing-sarif`,
+`sarif-too-large`), never silently ingests nothing.
+
+**Validation.** The document must be UTF-8 JSON with `version: "2.1.0"` and a
+`runs` array whose every run carries `tool.driver.name` and non-empty result
+messages; a wrong version, a missing or non-array `runs`, invalid JSON, or
+trailing data refuses `bad-sarif` before any store write. `--from` with a format
+this build cannot read refuses `bad-from`. Nothing here follows a URI on disk or
+over the network.
+
+**Normalization.** `artifactLocation.uri` becomes a repository-relative POSIX
+path: a path-only `file:` URI (`file:src/a.go`) keeps its repo-relative path,
+Windows separators become `/`, and percent escapes are decoded once. Everything
+that names a location outside the checkout is skipped (`path-escapes-repo`) for
+that result, never mapped into the tree and never turned into a finding: an
+absolute path, a Windows drive path, a colon in any segment, a foreign scheme,
+`..` traversal raw or encoded, a control byte, invalid UTF-8 after decoding, and
+every authority-bearing `file://` reference. RFC 8089 gives `file://<authority>`
+its authority component (empty only in `file:///`), so `file:///abs`,
+`file://localhost/etc/passwd`, and `file://host/share/a.go` all escape this
+repository rather than naming a directory inside it.
+
+**Anchoring.** Every result is graded against the bundle's pinned `full.diff`
+and `hunks.tsv`, never against the scanner's claim alone:
+
+- `hunks.tsv` must carry the line on the NEW side, and `full.diff` must carry
+  its text; the diff line becomes the finding's `quote`, so the recorded
+  evidence is the code under review.
+- A result with no physical location, no usable line (`startLine <= 0`), a path
+  outside the repository, a path the diff names twice, or a line outside the
+  changed hunks is **skipped** with a typed reason — `no-location`,
+  `invalid-line`, `path-escapes-repo`, `out-of-diff`, `ambiguous-path` — and
+  published in `data.skipped[]` with `reason`, `tool`, `rule_id`, `path`, and
+  `line`. Nothing is dropped silently and no finding is stored at line 0.
+- A reported `region.snippet.text` is evidence to check, not text to trust: its
+  first line, trimmed, must equal the diff line at `path:line`. A disagreement
+  means the scan ran against different content, so the result is skipped
+  (`snippet-mismatch`) rather than re-pointed.
+
+An anchored finding grades `rigor: "pointed"` with `rigor_source: "default"`:
+the line is proven against the pinned diff, and the finding never claims
+`walked`, `ran`, `reproduced`, or `"verified"`. Severity comes from
+`schemas/sarif-map.json`: SARIF `error` → `critical`, `warning` → `important`,
+`note`/`none` → `informational`, with a numeric `security-severity` taking
+precedence and a rule's `defaultConfiguration.level` read when a result omits
+`level`. Provenance rides in `source: "tool"` plus `tool`, `rule_id`, and
+`fingerprint`; excluded paths land withheld with `source: "exclusion"`, and the
+exclusion, dedupe, and store paths are the ones model findings use.
+
+**Dedupe and counts.** Results fold by the stable finding signature (the same
+`internal/sig` digest model findings carry) and by `(tool, fingerprint)`, both
+within one document and against the store, so a scanner that reports a site
+twice or a second time adds nothing. Re-ingesting unchanged SARIF is idempotent
+(`added: 0, updated: 0, unchanged: N`), matching a model finding preserves the
+model entry, and changed tool results update in place. `data.ingested` is
+`added + updated + unchanged`, so the withheld result a trusted exclusion
+suppressed is counted there too (it is recorded, not posted);
+`data.skipped` lists what could not be anchored;
+`report` and `trend` report `by_source` (`model` and `tool`) alongside tier and
+status counts.
+
+**Round trip.** `report --sarif` writes each finding with `verdict/sig` as the
+partial fingerprint and the original `tool`, `rule_id`, and `fingerprint` under
+`properties`, so `verdict report --sarif out.sarif` followed by
+`verdict ingest --from sarif out.sarif` re-anchors the same findings and reports
+them unchanged instead of adding duplicates.
 
 ### Patch identity (`identity.json`)
 

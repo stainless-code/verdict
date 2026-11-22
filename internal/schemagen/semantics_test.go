@@ -345,7 +345,11 @@ var publishedSemantics = map[string]string{
 	// $defs/runData, naming the continued execution, its fingerprint, and the
 	// phases reused or executed. No existing property, required key, enum, or
 	// type changed; only a resumed run carries the key.
-	"envelope.schema.json": "b8c3e0bc7bb9b5473e019802144abbc63bfecb44b8ed3730d704b83d845b7a51",
+	// ingest skips: additive data.skipped ($defs/ingestData) and the new
+	// $defs/ingestSkip shape carrying the typed reason a SARIF result could not
+	// be anchored. No existing property, required key, enum, or type changed;
+	// an ingest with nothing to skip publishes [].
+	"envelope.schema.json": "bdfe621175b887d075a4be3c3e3bbdac9cd7de63c54f02477d85be6692e047d3",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

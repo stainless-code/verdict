@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/evidence"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -24,14 +25,15 @@ const (
 	VerbIngest = "ingest"
 
 	codeMissingSARIF  = "missing-sarif"
+	codeBadFrom       = "bad-from"
 	codeSARIFTooLarge = "sarif-too-large"
 	codeIngestFailed  = "ingest-failed"
 	codeMissingBundle = "missing-bundle"
+	keyTool           = "tool"
 	codeMissingDiff   = "missing-diff"
 	codeCorruptStore  = "corrupt-store"
 	codeCanceled      = "canceled"
 
-	rigorSaid          = "said"
 	rigorSourceDefault = "default"
 	sourceTool         = "tool"
 	sourceExclusion    = "exclusion"
@@ -39,20 +41,38 @@ const (
 	statusOpen         = "open"
 	actorPrefix        = "sarif:"
 	newlineSep         = "\n"
+	kindInline         = "inline"
+	sideRight          = "RIGHT"
+	sideNew            = "NEW"
 )
 
-// Request carries the resolved ingest invocation: target bundle, SARIF source
-// (either file path in SARIF or pre-read bytes in SARIFData when SARIFInline),
-// and clock/runtime overrides.
+// Request carries the resolved ingest invocation: target bundle, the source
+// format named by --from (SourceSARIF, or empty for the legacy --sarif form),
+// the SARIF source (either a file path in SARIF or pre-read bytes in SARIFData
+// when SARIFInline), and clock/runtime overrides.
 type Request struct {
 	core.ReadRequest
+	From        string `json:"from"`
 	SARIF       string `json:"sarif"`
 	SARIFData   []byte `json:"-"`
 	SARIFInline bool   `json:"-"`
 }
 
-// Data is the ingest envelope's data profile.
-type Data struct {
+// Skip is one SARIF result the ingest did not merge, with the reason and the
+// locator it reported. Every result that cannot be anchored is published here
+// instead of being dropped silently or stored at line 0.
+type Skip struct {
+	Reason string `enum:"no-location|invalid-line|path-escapes-repo|out-of-diff|ambiguous-path|snippet-mismatch" json:"reason"`
+	Tool   string `json:"tool"`
+	RuleID string `json:"rule_id"`
+	Path   string `json:"path"`
+	Line   int    `json:"line"`
+}
+
+// Data is the ingest envelope's data profile. Field order is the published
+// property order Wire renders, so the schema and the generated types read the
+// same sequence the store writes.
+type Data struct { //nolint:govet // field order is the published property order
 	Dir       string   `json:"dir"`
 	Tools     []string `json:"tools"`
 	Ingested  int      `json:"ingested"  min:"0"`
@@ -61,6 +81,7 @@ type Data struct {
 	Unchanged int      `json:"unchanged" min:"0"`
 	Anchored  int      `json:"anchored"  min:"0"`
 	Withheld  int      `json:"withheld"  min:"0"`
+	Skipped   []Skip   `json:"skipped"`
 	Open      int      `json:"open"      min:"0"`
 }
 
@@ -69,6 +90,16 @@ func (d *Data) Wire() *jq.Obj {
 	tools := make([]any, 0, len(d.Tools))
 	for _, t := range d.Tools {
 		tools = append(tools, t)
+	}
+	skipped := make([]any, 0, len(d.Skipped))
+	for _, s := range d.Skipped {
+		skipped = append(skipped, jq.NewObj(
+			"reason", s.Reason,
+			"tool", s.Tool,
+			"rule_id", s.RuleID,
+			"path", s.Path,
+			"line", s.Line,
+		))
 	}
 	return jq.NewObj(
 		"dir", d.Dir,
@@ -79,6 +110,7 @@ func (d *Data) Wire() *jq.Obj {
 		"unchanged", d.Unchanged,
 		"anchored", d.Anchored,
 		"withheld", d.Withheld,
+		"skipped", skipped,
 		"open", d.Open,
 	)
 }
@@ -98,6 +130,7 @@ type ingestState struct {
 	now          string
 	headShort    string
 	hunks        []hunks.Hunk
+	diff         *evidence.DiffIndex
 	entries      []any
 	bySig        map[string]int
 	byToolFP     map[string]int
@@ -133,6 +166,9 @@ func prepareIngest(ctx context.Context, req *Request) (*ingestState, *parseOutpu
 	if ctx != nil && ctx.Err() != nil {
 		return nil, nil, &core.RefusalError{Code: codeCanceled, Message: "ingest canceled"}
 	}
+	if ref := validateSource(req.From); ref != nil {
+		return nil, nil, ref
+	}
 	dir, ref := readcommon.ResolveWritableBundleDir(req.RepoRootPath(), req.Pr)
 	if ref != nil {
 		return nil, nil, ref
@@ -152,6 +188,20 @@ func prepareIngest(ctx context.Context, req *Request) (*ingestState, *parseOutpu
 	return st, parsed, nil
 }
 
+// validateSource accepts the one source format this build reads. An empty value
+// is the legacy `--sarif <file|->` form of the same thing.
+func validateSource(from string) *core.RefusalError {
+	switch strings.ToLower(strings.TrimSpace(from)) {
+	case "", SourceSARIF:
+		return nil
+	default:
+		return &core.RefusalError{
+			Code:    codeBadFrom,
+			Message: fmt.Sprintf("unknown --from %q for ingest (want %s)", from, SourceSARIF),
+		}
+	}
+}
+
 func persistStore(st *ingestState, data *Data) error {
 	if data.Added == 0 && data.Updated == 0 && st.existed {
 		return nil
@@ -169,7 +219,7 @@ func readSARIFInput(req *Request) ([]byte, *core.RefusalError) {
 	}
 	path := strings.TrimSpace(req.SARIF)
 	if path == "" {
-		return nil, &core.RefusalError{Code: codeMissingSARIF, Message: "--sarif <file|-> is required"}
+		return nil, &core.RefusalError{Code: codeMissingSARIF, Message: "--from sarif <file|-> is required"}
 	}
 	// ReadRegularCapped opens via O_NONBLOCK without O_NOFOLLOW, so check Lstat first.
 	if linfo, err := os.Lstat(path); err == nil && linfo.Mode()&os.ModeSymlink != 0 {
@@ -231,6 +281,10 @@ func initState(req *Request, dir string, parseWarnings []string) (*ingestState, 
 	if ref != nil {
 		return nil, ref
 	}
+	diff, ref := loadDiffIndex(dir)
+	if ref != nil {
+		return nil, ref
+	}
 	entries, existed, ref := loadStore(dir)
 	if ref != nil {
 		return nil, ref
@@ -251,6 +305,7 @@ func initState(req *Request, dir string, parseWarnings []string) (*ingestState, 
 		now:          rt.TimeUTC(),
 		headShort:    resolveHeadShort(dir),
 		hunks:        hs,
+		diff:         diff,
 		entries:      entries,
 		warnings:     append([]string{}, parseWarnings...),
 		existed:      existed,
@@ -299,6 +354,17 @@ func loadHunks(dir string) ([]hunks.Hunk, *core.RefusalError) {
 		return hunks.Parse(string(diffRaw)), nil
 	}
 	return hunks.ParseTSV(string(raw)), nil
+}
+
+// loadDiffIndex indexes the bundle's pinned full.diff so an ingested line can
+// be proven against the bytes the review is anchored to, never against the
+// scanner's own snippet alone.
+func loadDiffIndex(dir string) (*evidence.DiffIndex, *core.RefusalError) {
+	raw, err := readcommon.ReadRegularCapped(filepath.Join(dir, "full.diff"), jq.MaxFindingsBytes)
+	if err != nil {
+		return nil, &core.RefusalError{Code: codeIngestFailed, Message: fmt.Sprintf("reading %s/full.diff: %v", dir, err)}
+	}
+	return evidence.IndexDiff(raw), nil
 }
 
 func loadStore(dir string) (entries []any, existed bool, ref *core.RefusalError) {
@@ -397,21 +463,67 @@ func toolFPKey(tool, fp string) string {
 }
 
 func (st *ingestState) mergeResults(parsed *parseOutput) *Data {
-	deduped := deduplicateBatch(parsed.Results)
 	tools := parsed.Tools
 	if tools == nil {
 		tools = []string{}
 	}
-	data := &Data{Dir: st.dir, Tools: tools, Ingested: len(deduped)}
-	for i := range deduped {
-		st.mergeOne(&deduped[i], data)
+	data := &Data{Dir: st.dir, Tools: tools, Skipped: []Skip{}}
+	seenSkip := make(map[string]bool)
+	seenSig := make(map[string]bool)
+	seenFP := make(map[string]bool)
+	for i := range parsed.Results {
+		res := &parsed.Results[i]
+		cand, reason := st.gradeResult(res)
+		if reason != "" {
+			// A skipped result never claims its identity, so a later duplicate
+			// the pinned diff can anchor still lands.
+			addSkip(data, res, reason, seenSkip)
+			continue
+		}
+		// Two anchorable results that resolve to the same stable finding
+		// signature, or that the scanner gives the same identity, are one
+		// finding: the first wins, so an input that repeats itself never
+		// doubles the store.
+		if seenSig[cand.Entry.Sig] || claimsIdentity(seenFP, res) {
+			continue
+		}
+		seenSig[cand.Entry.Sig] = true
+		st.mergeOne(res, cand, data)
 	}
+	data.Ingested = data.Added + data.Updated + data.Unchanged
 	data.Open = countOpen(st.entries)
 	return data
 }
 
-func (st *ingestState) mergeOne(res *parsedResult, data *Data) {
-	cand := st.buildCandidate(res)
+// gradeResult turns one parsed result into a candidate, or names the typed
+// reason it cannot become one. Parse-stage skips (no location, an unusable
+// line, a URI outside the repository) pass through unchanged.
+func (st *ingestState) gradeResult(res *parsedResult) (candidate, string) {
+	if res.SkipReason != "" {
+		return candidate{}, res.SkipReason
+	}
+	return st.buildCandidate(res)
+}
+
+// addSkip records one unmergeable result, deduplicated so the same scanner
+// repeating itself does not repeat its skip rows.
+func addSkip(data *Data, res *parsedResult, reason string, seen map[string]bool) {
+	skip := Skip{
+		Reason: reason,
+		Tool:   res.Tool,
+		RuleID: res.RuleID,
+		Path:   res.Path,
+		Line:   max(res.StartLine, 0),
+	}
+	key := fmt.Sprintf("%s\x00%s\x00%s\x00%s\x00%d", skip.Reason, skip.Tool, skip.RuleID, skip.Path, skip.Line)
+	if seen[key] {
+		return
+	}
+	seen[key] = true
+	data.Skipped = append(data.Skipped, skip)
+}
+
+func (st *ingestState) mergeOne(res *parsedResult, cand candidate, data *Data) {
 	if cand.Anchored {
 		data.Anchored++
 	}
@@ -433,6 +545,11 @@ func (st *ingestState) mergeOne(res *parsedResult, data *Data) {
 
 func (st *ingestState) appendCandidate(res *parsedResult, cand candidate) {
 	wire := cand.Entry.Wire()
+	// Wire renders the store's fixed key order and leaves quote to the writer:
+	// the verified diff line rides beside the finding it proves.
+	if cand.Entry.Quote != "" {
+		wire.Set("quote", cand.Entry.Quote)
+	}
 	newIdx := len(st.entries)
 	st.entries = append(st.entries, wire)
 	st.bySig[cand.Entry.Sig] = newIdx
@@ -441,22 +558,20 @@ func (st *ingestState) appendCandidate(res *parsedResult, cand candidate) {
 	}
 }
 
-// deduplicateBatch keeps the first occurrence per (tool, fingerprint) within a
-// single SARIF document so intra-file duplicates stay idempotent.
-func deduplicateBatch(results []parsedResult) []parsedResult {
-	seen := make(map[string]bool, len(results))
-	out := make([]parsedResult, 0, len(results))
-	for i := range results {
-		key := toolFPKey(results[i].Tool, results[i].Fingerprint)
-		if results[i].Fingerprint != "" {
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-		}
-		out = append(out, results[i])
+// claimsIdentity records a graded result's (tool, fingerprint) identity,
+// reporting whether an anchorable result already claimed it. Only anchorable
+// results reach this: a skipped duplicate is recorded in skipped[] and leaves
+// the identity free for a later copy the diff can place.
+func claimsIdentity(seen map[string]bool, res *parsedResult) bool {
+	if res.Tool == "" || res.Fingerprint == "" {
+		return false
 	}
-	return out
+	key := toolFPKey(res.Tool, res.Fingerprint)
+	if seen[key] {
+		return true
+	}
+	seen[key] = true
+	return false
 }
 
 type candidate struct {
@@ -465,62 +580,67 @@ type candidate struct {
 	Anchored bool
 }
 
-func (st *ingestState) buildCandidate(r *parsedResult) candidate {
-	var (
-		kind        string
-		path        any
-		heading     any
-		line        any
-		side        any
-		entryAnchor any
-		anchored    bool
-		inBounds    bool
-		sigKey      string
-	)
-	if r.Path != "" {
-		kind = "inline"
-		path = r.Path
-		side = "RIGHT"
-		if r.StartLine > 0 {
-			line = r.StartLine
-			anchored = hunks.Contains(st.hunks, r.Path, "NEW", r.StartLine, r.EndLine)
-			inBounds = anchored
-		}
-		entryAnchor = anchored
-		sigKey = r.Path + "\n\n" + r.Body
-	} else {
-		kind = "section"
-		h := sectionHeading(r.Tool, r.RuleID)
-		heading = h
-		entryAnchor = "body"
-		inBounds = true
-		sigKey = newlineSep + h + newlineSep + r.Body
+// buildCandidate grades one parsed result against the bundle's pinned diff. A
+// result that cannot be anchored returns the typed skip reason instead of a
+// candidate: the store never holds a finding at line 0 or at a line the diff
+// does not carry, and the recorded quote is the changed line the diff proves,
+// not the scanner's unchecked text. Parse-stage skips (no location, no usable
+// line, a URI outside the repository) were already returned by gradeResult, so
+// an excluded path only reaches this with a usable line. The one unanchored
+// entry ingest writes is a withheld one: a path the trusted exclusion control
+// suppressed from the diff is recorded, never posted, and never claimed as
+// proven.
+func (st *ingestState) buildCandidate(r *parsedResult) (candidate, string) {
+	withheld, history := st.buildExclusionWithheld(r, st.reportedHistory(r))
+	quote, reason := st.anchorQuote(r)
+	anchored := reason == ""
+	if !anchored && withheld == nil {
+		return candidate{}, reason
 	}
-	entrySig := sig.Of(sigKey)
-	kb := []string{}
-	history := []core.HistoryEvent{{
+	entry := st.newFinding(r, quote, anchored, withheld, history)
+	return candidate{Entry: entry, Withheld: withheld, Anchored: anchored}, ""
+}
+
+// reportedHistory is the one reported event every ingested finding starts from.
+func (st *ingestState) reportedHistory(r *parsedResult) []core.HistoryEvent {
+	return []core.HistoryEvent{{
 		At:    st.now,
 		Event: "reported",
 		Actor: actorPrefix + r.Tool,
 		Note:  r.RuleID,
 		SHA:   st.headShort,
 	}}
-	withheld, history := st.buildExclusionWithheld(r, history)
-	entry := &core.FindingEntry{
-		Sig:         entrySig,
+}
+
+// newFinding renders the shared finding shape: an anchored result grades
+// pointed on the verified diff line, while a withheld-but-unanchored one stays
+// said. Both carry the line the scanner reported, because a result without a
+// usable line was skipped as invalid-line before this runs — a file-level
+// result (startLine: 0) on an excluded path is therefore a skip, never a
+// withheld finding.
+func (st *ingestState) newFinding(
+	r *parsedResult, quote string, anchored bool, withheld *core.Withheld, history []core.HistoryEvent,
+) *core.FindingEntry {
+	rigor := core.RungSaid
+	if anchored {
+		rigor = core.RungPointed
+	}
+	kb := []string{}
+	return &core.FindingEntry{
+		Sig:         sig.Of(r.Path + "\n\n" + r.Body),
 		SigVersion:  "1",
-		Kind:        kind,
-		Path:        path,
-		Heading:     heading,
-		Line:        line,
-		Side:        side,
-		Anchored:    entryAnchor,
+		Kind:        kindInline,
+		Path:        r.Path,
+		Line:        r.StartLine,
+		Side:        sideRight,
+		Anchored:    anchored,
 		Body:        r.Body,
 		KB:          &kb,
-		InBounds:    inBounds,
-		Rigor:       rigorSaid,
+		InBounds:    anchored,
+		Rigor:       rigor,
 		RigorSource: rigorSourceDefault,
 		Severity:    r.Severity,
+		Quote:       quote,
 		Withheld:    withheld,
 		Status:      statusOpen,
 		FirstSeen:   st.headShort,
@@ -531,7 +651,59 @@ func (st *ingestState) buildCandidate(r *parsedResult) candidate {
 		Fingerprint: r.Fingerprint,
 		History:     history,
 	}
-	return candidate{Entry: entry, Withheld: withheld, Anchored: anchored}
+}
+
+// anchorQuote proves a result's line against the bundle's pinned hunks and diff
+// and returns the exact changed-line text as the finding's quote. A line the
+// changed hunks do not carry is out-of-diff; a reported snippet that disagrees
+// with the diff line is a stale location, so it is skipped rather than
+// re-pointed at text the scanner never saw.
+func (st *ingestState) anchorQuote(r *parsedResult) (string, string) {
+	// The path lookup decides first: a file the diff names twice is ambiguous
+	// wherever the reported line sits, and saying so beats reporting out-of-diff.
+	df, why := st.diff.File(r.Path)
+	if why != "" {
+		return "", skipForIndexReason(why)
+	}
+	if !hunks.Contains(st.hunks, r.Path, sideNew, r.StartLine, r.EndLine) {
+		return "", SkipOutOfDiff
+	}
+	quote, ok := df.NewLines[r.StartLine]
+	if !ok || !rangeIndexed(df.NewLines, r.StartLine+1, r.EndLine) {
+		return "", SkipOutOfDiff
+	}
+	if r.Snippet != "" && !snippetMatches(r.Snippet, quote) {
+		return "", SkipSnippetMismatch
+	}
+	return quote, ""
+}
+
+// skipForIndexReason names the skip a refused diff lookup earns: the diff
+// naming one path twice is ambiguous (we will not guess), anything else is
+// simply outside the diff.
+func skipForIndexReason(why string) string {
+	if why == evidence.ReasonAmbiguousPath {
+		return SkipAmbiguousPath
+	}
+	return SkipOutOfDiff
+}
+
+// rangeIndexed reports whether every line in [from, to] has diff text.
+func rangeIndexed(lines map[int]string, from, to int) bool {
+	for line := from; line <= to; line++ {
+		if _, ok := lines[line]; !ok {
+			return false
+		}
+	}
+	return true
+}
+
+// snippetMatches compares a scanner's reported snippet with the diff line: the
+// first line of each, trimmed, because a tool may pad, indent, or report a
+// multi-line region while the anchor itself is one line.
+func snippetMatches(snippet, diffLine string) bool {
+	first, _, _ := strings.Cut(snippet, newlineSep)
+	return strings.TrimSpace(first) == strings.TrimSpace(diffLine)
 }
 
 func (st *ingestState) buildExclusionWithheld(r *parsedResult, history []core.HistoryEvent) (*core.Withheld, []core.HistoryEvent) {
@@ -555,13 +727,6 @@ func (st *ingestState) buildExclusionWithheld(r *parsedResult, history []core.Hi
 		Note:  reason,
 	})
 	return withheld, history
-}
-
-func sectionHeading(tool, ruleID string) string {
-	if ruleID != "" {
-		return "### " + ruleID + " (" + tool + ")"
-	}
-	return "### " + tool
 }
 
 func (st *ingestState) lookupExisting(verdictSig, entrySig, tool, fp string) (int, bool) {
@@ -589,6 +754,8 @@ func (st *ingestState) updateExisting(idx int, cand candidate) bool {
 	}
 	updated := pm.Clone()
 	oldSig := jq.StrOf(readcommon.FieldOf(pm, "sig"))
+	oldTool := jq.StrOf(readcommon.FieldOf(pm, keyTool))
+	oldFP := jq.StrOf(readcommon.FieldOf(pm, "fingerprint"))
 	e := cand.Entry
 	updated.Set("sig", e.Sig)
 	updated.Set("kind", e.Kind)
@@ -598,17 +765,13 @@ func (st *ingestState) updateExisting(idx int, cand candidate) bool {
 	setOrDelete(updated, "side", e.Side)
 	updated.Set("anchored", e.Anchored)
 	updated.Set("body", e.Body)
-	if e.Kind == "inline" {
-		updated.Set("inBounds", e.InBounds)
-		updated.Set("rigor", rigorSaid)
-	} else {
-		updated.Delete("inBounds")
-		updated.Delete("rigor")
-	}
-	updated.Set("rigor_source", rigorSourceDefault)
+	updated.Set("inBounds", e.InBounds)
+	updated.Set("rigor", e.Rigor)
+	updated.Set("rigor_source", e.RigorSource)
+	setOrDelete(updated, "quote", e.Quote)
 	updated.Set("severity", e.Severity)
 	updated.Set("source", sourceTool)
-	setOrDelete(updated, "tool", e.Tool)
+	setOrDelete(updated, keyTool, e.Tool)
 	setOrDelete(updated, "rule_id", e.RuleID)
 	setOrDelete(updated, "fingerprint", e.Fingerprint)
 	syncExclusionWithheld(updated, cand.Withheld, st.now, actorPrefix+e.Tool)
@@ -621,8 +784,21 @@ func (st *ingestState) updateExisting(idx int, cand candidate) bool {
 		delete(st.bySig, oldSig)
 		st.bySig[e.Sig] = idx
 	}
+	st.reindexToolFP(idx, oldTool, oldFP, e.Tool, e.Fingerprint)
 	st.entries[idx] = updated
 	return true
+}
+
+// reindexToolFP keeps the (tool, fingerprint) index pointing at the entry after
+// an update that relabeled it, so a later result carrying the old identity is
+// never folded into the wrong finding.
+func (st *ingestState) reindexToolFP(idx int, oldTool, oldFP, tool, fp string) {
+	if oldTool != "" && oldFP != "" && (oldTool != tool || oldFP != fp) {
+		delete(st.byToolFP, toolFPKey(oldTool, oldFP))
+	}
+	if tool != "" && fp != "" {
+		st.byToolFP[toolFPKey(tool, fp)] = idx
+	}
 }
 
 func syncExclusionWithheld(m *jq.Obj, desired *core.Withheld, now, actor string) {
@@ -709,8 +885,10 @@ func renderHuman(dir string, d *Data) string {
 	if len(d.Tools) > 0 {
 		tools = strings.Join(d.Tools, ",")
 	}
-	return fmt.Sprintf("ingested %d result(s) from %s into %s (%d added, %d updated, %d unchanged; %d anchored, %d withheld; %d open)",
-		d.Ingested, tools, dir, d.Added, d.Updated, d.Unchanged, d.Anchored, d.Withheld, d.Open)
+	return fmt.Sprintf(
+		"ingested %d result(s) from %s into %s (%d added, %d updated, %d unchanged; "+
+			"%d anchored, %d withheld, %d skipped; %d open)",
+		d.Ingested, tools, dir, d.Added, d.Updated, d.Unchanged, d.Anchored, d.Withheld, len(d.Skipped), d.Open)
 }
 
 func renderNext(pr string, open int) string {

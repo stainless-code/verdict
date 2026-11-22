@@ -29,7 +29,7 @@ bad-color	try: re-run with one of the valid values named above
 bad-config	try: re-run with one of the valid values named above
 bad-config-credentials	try: re-run with one of the valid values named above
 bad-flags	try: re-run with one of the valid values named above
-bad-from	try: re-run with one of the valid values named above
+bad-from	try: name a supported source (ingest: sarif; adopt: a local bundle slug)
 bad-group-validation	try: re-run with one of the valid values named above
 bad-id	try: re-run with one of the valid values named above
 bad-ignore	try: use one glob per line, # comments and ! to re-include, then re-fetch
@@ -142,7 +142,7 @@ missing-index	try: run 'verdict index build' first
 missing-patch	try: run the fetch/record step named above first, then re-run
 missing-post	try: run the fetch/record step named above first, then re-run
 missing-review-file	try: run the fetch/record step named above first, then re-run
-missing-sarif	try: pass an existing SARIF 2.1.0 file with --sarif <file|->
+missing-sarif	try: pass an existing SARIF 2.1.0 file with --from sarif <file|->
 missing-selection	try: run the fetch/record step named above first, then re-run
 missing-sig	try: run the fetch/record step named above first, then re-run
 missing-source	try: run the fetch/record step named above first, then re-run
