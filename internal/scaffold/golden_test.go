@@ -233,6 +233,15 @@ func testTreeEdges(t *testing.T) {
 		"init", "", "", "--preset", "standard", "--yes")
 	initBoth(t, "unknown-flag", emptyRepo,
 		"init", "", "", "--bogus")
+	// A bare init with no terminal on either end writes the defaults and asks
+	// nothing: the picker is a terminal affordance, never a script blocker.
+	initBoth(t, "bare-noninteractive", emptyRepo, "init", "", "")
+	// The comment trigger is a GitHub event, so naming it elsewhere is a usage
+	// error that writes nothing, with or without --ci.
+	initBoth(t, "comment-trigger-needs-ci", emptyRepo,
+		"init", "", "", "--comment-trigger")
+	initBoth(t, "comment-trigger-needs-github", emptyRepo,
+		"init", "", "", "--ci", "gitlab", "--comment-trigger")
 }
 
 // testGeneratedWorkflow covers every provider: create, refuse, force, and both
@@ -251,6 +260,12 @@ func testGeneratedWorkflow(t *testing.T) {
 		"init", "", "", "--ci", "github", "--print")
 	initBoth(t, "ci-github-print-json", emptyRepo,
 		"init", "", "", "--ci", "github", "--print", "--json")
+	// The opt-in /verdict comment trigger: one extra event, a shared guard, and
+	// a concurrency key an unrelated comment cannot join.
+	initBoth(t, "ci-github-comment-trigger-create", emptyRepo,
+		"init", "", "", "--ci", "github", "--comment-trigger")
+	initBoth(t, "ci-github-comment-trigger-print", emptyRepo,
+		"init", "", "", "--ci", "github", "--comment-trigger", "--print")
 	initBoth(t, "ci-forgejo-create", emptyRepo,
 		"init", "", "", "--ci", "forgejo")
 	initBoth(t, "ci-forgejo-refuse", seedStaleForgejoWorkflow,

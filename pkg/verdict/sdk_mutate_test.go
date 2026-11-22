@@ -2,6 +2,7 @@ package verdict_test
 
 import (
 	"context"
+	"errors"
 	"os"
 	"slices"
 	"strings"
@@ -284,6 +285,56 @@ func TestClientInit(t *testing.T) {
 	writeFile(".verdict/config.json", "{\"schema_version\":\"1\",\"defaults\":{\"budget_usd\":9.99}}\n")
 	_, err = c.Init(context.Background(), &verdict.InitRequest{Preset: "standard"})
 	requireRefusal(t, err, "needs-confirm", "try: re-run with --yes after reviewing the preview, then re-run")
+
+	// A workflow setting with no provider is refused, never dropped: the CLI
+	// rejects it from argv, and the facade hands the fields over directly.
+	_, err = c.Init(context.Background(), &verdict.InitRequest{
+		Preset: "standard", CommentTrigger: true, Yes: true,
+	})
+	ref, ok := errors.AsType[*verdict.RefusalError](err)
+	if !ok || ref.Code != "bad-settings" ||
+		!strings.Contains(ref.Message, "--comment-trigger needs --ci github") {
+		t.Fatalf("Init without --ci = %v, want bad-settings naming the flag", err)
+	}
+}
+
+// TestClientInitCommentTrigger proves the facade forwards the CI scaffolding
+// flags: the workflow lands with the opt-in /verdict event, and the same
+// trigger on a host without that event refuses typed instead of writing a file
+// the host would ignore.
+func TestClientInitCommentTrigger(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	sdkGitRepo(t, dir, map[string]string{"notes.txt": "line1\n"})
+	c := newSDKClient(nil, nil)
+	defer c.Close()
+
+	if _, err := c.Init(context.Background(), &verdict.InitRequest{
+		Preset: "standard", CI: "github", CommentTrigger: true, Yes: true,
+	}); err != nil {
+		t.Fatalf("Init(ci github, comment trigger): %v", err)
+	}
+	workflow := readText(t, ".github/workflows/verdict-review.yml")
+	for _, want := range []string{
+		"  issue_comment:",
+		"    types: [created]",
+		"format('verdict-noop-{0}', github.run_id)",
+		"github.event.comment.author_association",
+	} {
+		if !strings.Contains(workflow, want) {
+			t.Errorf("the workflow carries no %q", want)
+		}
+	}
+	if strings.Contains(workflow, "pull_request_target") {
+		t.Error("the workflow names pull_request_target")
+	}
+
+	_, err := c.Init(context.Background(), &verdict.InitRequest{
+		Preset: "standard", CI: "gitlab", CommentTrigger: true, Yes: true,
+	})
+	requireRefusal(t, err, "bad-settings",
+		"try: keep only $schema/output/layout/color/publish/review/spend/privacy/packs/agents keys "+
+			"(see docs/manual.md), then re-run")
 }
 
 // requireInitArtifacts proves init wrote every shared control and warned

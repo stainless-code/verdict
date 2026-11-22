@@ -516,11 +516,15 @@ func usageText() string {
 		"    miss rate over those rows. A repeat attach reports existing and moves no\n" +
 		"    byte; --dry-run writes nothing.\n" +
 		"  init [--preset chill|standard|strict] [--ci github|forgejo|gitlab] [--agent <name>]\n" +
-		"      [--key-secret <NAME>] [--print] [--yes] [--force] [--json]\n" +
+		"      [--key-secret <NAME>] [--comment-trigger] [--print] [--yes] [--force] [--json]\n" +
 		"    guided offline scaffolder: writes the typed controls (tracked\n" +
 		"    .verdict/config.json defaults, .verdict/kb.jsonl starter, and the\n" +
 		"    .verdict/.gitignore /state/ line) with style presets, then runs\n" +
-		"    check-tree validation.\n" +
+		"    check-tree validation. Bare on a terminal, it asks three questions\n" +
+		"    (preset, workflow, agent) with the detected host and the installed agent\n" +
+		"    CLIs that document a key variable as the defaults; Enter keeps each\n" +
+		"    default. Any selection flag, --json, or a redirected stream keeps it\n" +
+		"    non-interactive.\n" +
 		"    Presets map to panel strictness + KB retirement thresholds:\n" +
 		"    chill (no pinned panel, MIN_JUDGED=10 MAX_FP_RATE=0.7),\n" +
 		"    standard (one pinned member, 5 / 0.5), strict (lead + 2 lenses, 3 / 0.3).\n" +
@@ -537,6 +541,10 @@ func usageText() string {
 		"    pipeline and, only when the project has no root pipeline, a minimal\n" +
 		"    .gitlab-ci.yml that includes it. An existing root is never touched,\n" +
 		"    with or without --force; the include to add is printed instead.\n" +
+		"    --comment-trigger adds GitHub's opt-in `/verdict` pull-request comment\n" +
+		"    re-run: issue_comment on a pull request, gated on a maintainer's\n" +
+		"    comment body and keyed so any other comment cancels nothing. It needs\n" +
+		"    --ci github (the event is GitHub's) and never checks out a fork head.\n" +
 		"    --agent names the agent to launch (default claude, any run --agent\n" +
 		"    name); --key-secret overrides the secret name, which defaults to the\n" +
 		"    agent's documented key variable. --print prints the workflow and\n" +

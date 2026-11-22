@@ -57,9 +57,13 @@ var (
 	omitPositionals = map[string]bool{fieldRepo: true, fieldPr: true}
 	// omitWorkflow is omitPositionals plus the CI scaffolding flags: generating
 	// a workflow file is a once-per-repo setup step the operator runs from the
-	// CLI, so the published init tool keeps writing controls only.
+	// CLI, so the published init tool keeps writing controls only. The opt-in
+	// comment trigger is one of those workflow flags, so it is named here too —
+	// a published argument the tool would ignore is worse than one it never
+	// offers.
 	omitWorkflow = map[string]bool{
 		fieldRepo: true, fieldPr: true, "CI": true, "Agent": true, "KeySecret": true, "Print": true,
+		"CommentTrigger": true,
 	}
 )
 

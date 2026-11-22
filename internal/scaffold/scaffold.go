@@ -1,7 +1,8 @@
-// Package scaffold is the init verb's CLI adapter: argv parsing, the stdin
-// confirm seam, one call into the initcore service, envelope rendering, and
-// exit mapping. Domain logic — the preset matrix, control-file writes, and
-// check-tree validation — lives in internal/core/init.
+// Package scaffold is the init verb's CLI adapter: argv parsing, the guided
+// interactive picker, the stdin confirm seam, one call into the initcore
+// service, envelope rendering, and exit mapping. Domain logic — the preset
+// matrix, control-file writes, and check-tree validation — lives in
+// internal/core/init.
 package scaffold
 
 import (
@@ -19,24 +20,46 @@ import (
 
 // Request carries the resolved init invocation (init takes no positionals).
 type Request struct {
+	// Picker overrides the interactive picker's terminal seam: tests script the
+	// answers, the PATH probe, and the origin remote instead of reading a real
+	// terminal. A nil picker installs the production one.
+	Picker   *Picker
 	Env      map[string]string
 	RepoRoot string
 }
 
 // Run executes
-// `init [--preset <chill|standard|strict>] [--ci github|forgejo
-// [--agent <name>] [--key-secret <NAME>] [--print]] [--yes] [--json]`,
-// returning the process exit code.
+// `init [--preset <chill|standard|strict>] [--ci github|forgejo|gitlab
+// [--agent <name>] [--key-secret <NAME>] [--print] [--comment-trigger]]
+// [--yes] [--json]`, returning the process exit code.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = "", ""
 	flags, code, done := parseFlags(r, args)
 	if done {
 		return code
 	}
+	return runResolved(ctx, r, req, flags)
+}
+
+// runResolved finishes one invocation whose argv is parsed: the picker may
+// still answer a bare terminal, then the service runs and the plan renders.
+func runResolved(ctx context.Context, r *cli.Runner, req Request, flags flags) int {
+	if code, done := pickIfInteractive(ctx, r, req, &flags); done {
+		return code
+	}
+	if code, done := revalidate(r, &flags); done {
+		return code
+	}
 	r.Rentry = flags.rentry(flags.yes, r.JSONMode)
 	if code, done := r.Canceled(ctx, "init"); done {
 		return code
 	}
+	return runService(ctx, r, req, flags)
+}
+
+// runService calls the init service and maps its refusal, abort, and envelope
+// onto the process exit code.
+func runService(ctx context.Context, r *cli.Runner, req Request, flags flags) int {
 	resp, ref := initcore.Run(ctx, initRequest(r, req, flags))
 	if ref != nil {
 		if ref.Code == initcore.CodeNeedsConfirm {
@@ -53,21 +76,32 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	return cli.ExitOK
 }
 
+// revalidate re-runs the --ci-scoped checks after the picker may have answered
+// them: the parser sees the argv alone, and a picked provider needs the same
+// default agent and the same fail-closed trigger rule an explicit flag gets.
+func revalidate(r *cli.Runner, f *flags) (int, bool) {
+	if u := scopedFlagError(f); u != nil {
+		return r.ReportUsage(u), true
+	}
+	return 0, false
+}
+
 // initRequest injects the runner's clock, streams, stdin seam, and the
 // production commander into the typed service request.
 func initRequest(r *cli.Runner, req Request, f flags) *initcore.Request {
 	out := &initcore.Request{
-		Preset:      f.preset,
-		CI:          f.ci,
-		Agent:       f.agent,
-		KeySecret:   f.keySecret,
-		Yes:         f.yes,
-		Interactive: !r.JSONMode && cli.IsTerminal(os.Stdin),
-		Print:       f.print,
-		Machine:     r.JSONMode,
-		Human:       r.Human,
-		Diag:        r.Diag,
-		ReadAnswer:  readAnswer,
+		Preset:         f.preset,
+		CI:             f.ci,
+		Agent:          f.agent,
+		KeySecret:      f.keySecret,
+		Yes:            f.yes,
+		Interactive:    !r.JSONMode && cli.IsTerminal(os.Stdin),
+		Print:          f.print,
+		CommentTrigger: f.commentTrigger,
+		Machine:        r.JSONMode,
+		Human:          r.Human,
+		Diag:           r.Diag,
+		ReadAnswer:     readAnswer,
 	}
 	out.ReadRequest = r.Read(core.ReadRequest{
 		Runtime: &core.Runtime{
@@ -89,14 +123,18 @@ func readAnswer() string {
 	return strings.TrimSuffix(line, "\n")
 }
 
-// flags carries the parsed init options.
+// flags carries the parsed init options. given records that the operator named
+// at least one of them: the picker only asks a question the invocation left
+// open, so any selection flag keeps the run non-interactive from argv to disk.
 type flags struct {
-	preset    string
-	ci        string
-	agent     string
-	keySecret string
-	yes       bool
-	print     bool
+	preset         string
+	ci             string
+	agent          string
+	keySecret      string
+	yes            bool
+	print          bool
+	commentTrigger bool
+	given          bool
 }
 
 // rentry rebuilds the invocation for a refusal's re-enter line: the same
@@ -112,6 +150,9 @@ func (f flags) rentry(confirm, machine bool) string {
 	if f.keySecret != "" {
 		out += " --key-secret " + f.keySecret
 	}
+	if f.commentTrigger {
+		out += " " + flagCommentTrigger
+	}
 	if f.print {
 		out += " --print"
 	}
@@ -124,11 +165,19 @@ func (f flags) rentry(confirm, machine bool) string {
 	return out
 }
 
-// The flag names the --ci-scoped parser reads, spelled once so the parser and
-// the hints it prints cannot drift apart.
+// The flag names the parser reads and the hints print, spelled once so the
+// parser, the completion script, and the usage text cannot drift apart.
 const (
-	flagAgent     = "--agent"
-	flagKeySecret = "--key-secret"
+	flagPreset         = "--preset"
+	flagCI             = "--ci"
+	flagAgent          = "--agent"
+	flagKeySecret      = "--key-secret"
+	flagCommentTrigger = "--comment-trigger"
+	flagPrint          = "--print"
+	flagYes            = "--yes"
+	flagForce          = "--force"
+	// providerGithub is the one provider that carries an issue_comment event.
+	providerGithub = "github"
 )
 
 // parseFlags strips init's flags, reporting unknown ones. The --ci-scoped
@@ -156,18 +205,37 @@ func parseFlags(r *cli.Runner, args []string) (flags, int, bool) {
 func unknownInitFlag(name string) *cli.UsageError {
 	return &cli.UsageError{Message: fmt.Sprintf(
 		"unknown flag '%s' for init (want --preset <chill|standard|strict>, "+
-			"--ci "+initcore.CIValues()+", --agent <name>, --key-secret <NAME>, --print, "+
-			"--yes, --force, --json)", name)}
+			"--ci "+initcore.CIValues()+", --agent <name>, --key-secret <NAME>, "+
+			flagCommentTrigger+", --print, --yes, --force, --json)", name)}
+}
+
+// selectionFlag reports whether one argv token pins an answer: any of them
+// makes the invocation explicit, so the picker never re-asks what the operator
+// already said.
+func selectionFlag(token string) bool {
+	name, _, _ := strings.Cut(token, "=")
+	switch name {
+	case flagPreset, flagCI, flagAgent, flagKeySecret, flagCommentTrigger,
+		flagPrint, flagYes, "-y", flagForce:
+		return true
+	default:
+		return false
+	}
 }
 
 // parseOne consumes the flag at args[i] and answers the next index; handled is
 // false for a name no init flag carries.
 func parseOne(args []string, i int, f *flags) (int, *cli.UsageError, bool) {
 	a := args[i]
+	if selectionFlag(a) {
+		f.given = true
+	}
 	switch a {
-	case "--print":
+	case flagPrint:
 		f.print = true
-	case "--yes", "-y", "--force":
+	case flagCommentTrigger:
+		f.commentTrigger = true
+	case flagYes, "-y", flagForce:
 		f.yes = true
 	default:
 		if name, value, ok := strings.Cut(a, "="); ok {
@@ -185,9 +253,9 @@ func parseOne(args []string, i int, f *flags) (int, *cli.UsageError, bool) {
 // `--ci=` used to run a plain init, and `--ci ""` still would.
 func equalFlag(name, value string, f *flags) (u *cli.UsageError, known bool) {
 	switch name {
-	case "--preset":
+	case flagPreset:
 		return storeEqual(value, name, "chill|standard|strict", &f.preset), true
-	case "--ci":
+	case flagCI:
 		return storeEqual(value, name, initcore.CIValues(), &f.ci), true
 	case flagAgent:
 		return storeEqual(value, name, "<name>", &f.agent), true
@@ -212,10 +280,10 @@ func storeEqual(value, name, want string, dst *string) *cli.UsageError {
 // usage error cli.FlagValue raises.
 func parseValueFlag(args []string, i int, f *flags) (int, *cli.UsageError, bool) {
 	switch args[i] {
-	case "--preset":
-		return flagValue(args, i, "--preset", "chill|standard|strict", &f.preset)
-	case "--ci":
-		return flagValue(args, i, "--ci", initcore.CIValues(), &f.ci)
+	case flagPreset:
+		return flagValue(args, i, flagPreset, "chill|standard|strict", &f.preset)
+	case flagCI:
+		return flagValue(args, i, flagCI, initcore.CIValues(), &f.ci)
 	case flagAgent:
 		return flagValue(args, i, flagAgent, "<name>", &f.agent)
 	case flagKeySecret:
@@ -240,7 +308,9 @@ func flagValue(args []string, i int, name, want string, dst *string) (int, *cli.
 }
 
 // scopedFlagError rejects the --ci-scoped flags on their own and fills the
-// default agent: they describe a workflow nothing else would render.
+// default agent: they describe a workflow nothing else would render. The
+// comment trigger is GitHub's event, so naming it beside another provider is a
+// usage error rather than a file that host would silently ignore.
 func scopedFlagError(f *flags) *cli.UsageError {
 	if f.ci == "" {
 		return unscopeError(f)
@@ -249,18 +319,25 @@ func scopedFlagError(f *flags) *cli.UsageError {
 		return &cli.UsageError{Message: fmt.Sprintf(
 			"unknown --ci '%s' for init (want %s)", f.ci, initcore.CIValues())}
 	}
+	if f.commentTrigger && f.ci != providerGithub {
+		return &cli.UsageError{Message: flagCommentTrigger + " needs --ci github: " +
+			"the /verdict trigger is a GitHub issue comment"}
+	}
 	if f.agent == "" {
-		f.agent = "claude"
+		f.agent = defaultAgentName
 	}
 	return nil
 }
 
 // unscopeError names the first --ci-scoped flag given without --ci.
 func unscopeError(f *flags) *cli.UsageError {
+	if f.commentTrigger {
+		return &cli.UsageError{Message: flagCommentTrigger + " needs --ci github"}
+	}
 	for _, scoped := range []struct {
 		name  string
 		given bool
-	}{{flagAgent, f.agent != ""}, {flagKeySecret, f.keySecret != ""}, {"--print", f.print}} {
+	}{{flagAgent, f.agent != ""}, {flagKeySecret, f.keySecret != ""}, {flagPrint, f.print}} {
 		if scoped.given {
 			return &cli.UsageError{Message: scoped.name + " needs --ci " + initcore.CIValues()}
 		}

@@ -18,6 +18,47 @@ import (
 // secret: the enforcement behind STA-465's untrusted-PR criterion.
 const generatedForkGuard = "    if: github.event.pull_request.head.repo.full_name == github.repository"
 
+// commentTriggerRender is the opt-in /verdict variant of the GitHub workflow,
+// the second shape the generator produces.
+func commentTriggerRender(t *testing.T) string {
+	t.Helper()
+	body, ref := initcore.RenderWorkflowSpec(initcore.WorkflowSpec{
+		CI: "github", Agent: "claude", CommentTrigger: true,
+	})
+	if ref != nil {
+		t.Fatalf("render the github comment trigger: %s: %s", ref.Code, ref.Message)
+	}
+	return string(body)
+}
+
+// TestCommentTriggerWorkflowKeepsTheSecurityLenses grades the opt-in shape with
+// the same lenses as the default: pinned actions, no pull_request_target, no
+// expression in a script body, every secret an env assignment, and one extra
+// event whose concurrency key an unrelated comment cannot join. A comment event
+// carries no pull request head, so nothing from a fork is ever checked out.
+func TestCommentTriggerWorkflowKeepsTheSecurityLenses(t *testing.T) {
+	t.Parallel()
+	workflow := commentTriggerRender(t)
+	assertUsesLines(t, "github comment trigger", workflow)
+	assertNoPullRequestTarget(t, "github comment trigger", workflow)
+	assertNoExpressionInRunBodies(t, "github comment trigger", workflow)
+	assertSecretsStayInEnv(t, "github comment trigger", workflow)
+	for _, want := range []string{"  issue_comment:", "    types: [created]"} {
+		assertLineIn(t, "github comment trigger", workflow, want)
+	}
+	for _, want := range []string{"github.event.issue.pull_request != null"} {
+		if !strings.Contains(workflow, want) {
+			t.Errorf("the comment trigger carries no %q", want)
+		}
+	}
+	assertTriggerConcurrencyRoutes(t, workflow)
+	for _, forbidden := range []string{"push:", "workflow_run", "pull_request_target"} {
+		if strings.Contains(workflow, forbidden) {
+			t.Errorf("the comment trigger declares %q", forbidden)
+		}
+	}
+}
+
 // generatedStepNames is each generated job's step order, literally. Forgejo
 // omits the readiness step because `ready --check` refuses
 // provider-unimplemented on a Forgejo bundle (STA-472 D2). GitLab has no steps
@@ -183,6 +224,33 @@ func TestGeneratedWorkflowPinsMatchShippedActions(t *testing.T) {
 		"        uses: actions/checkout@"+initcore.CheckoutPin+" # "+initcore.CheckoutVersion)
 	assertLineIn(t, "examples/verdict-review.yml", example,
 		"        uses: stainless-code/verdict@"+initcore.SetupVerdictPin+" # "+initcore.SetupVerdictVersion)
+}
+
+// assertTriggerConcurrencyRoutes pins the three concurrency routes the trigger
+// renders. The required pull_request check reports against the PR head SHA, a
+// comment run against the default branch SHA, so one shared key would let a
+// `/verdict` comment cancel the required check until the next push.
+func assertTriggerConcurrencyRoutes(t *testing.T, workflow string) {
+	t.Helper()
+	group := ""
+	for line := range strings.SplitSeq(workflow, "\n") {
+		if strings.HasPrefix(line, "  group: ") {
+			group = line
+			break
+		}
+	}
+	if group == "" {
+		t.Fatal("the comment trigger carries no concurrency group")
+	}
+	for _, want := range []string{
+		"format('verdict-{0}', github.event.pull_request.number)",
+		"format('verdict-comment-{0}', github.event.issue.number)",
+		"format('verdict-noop-{0}', github.run_id)",
+	} {
+		if !strings.Contains(group, want) {
+			t.Errorf("the concurrency key carries no %q: %s", want, group)
+		}
+	}
 }
 
 // TestGeneratedWorkflowShape pins each provider's top-level contract: the

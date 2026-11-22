@@ -373,10 +373,23 @@ type IngestResponse struct {
 
 type InitRequest struct {
 	Preset string
-	Yes    bool
+	// CI names the host to write a workflow for: github, forgejo, or gitlab.
+	CI string
+	// Agent names the shipped agent the workflow launches; empty means the
+	// default claude on a CI run.
+	Agent string
+	// KeySecret overrides the repository secret holding the agent's model key.
+	KeySecret string
+	// CommentTrigger adds GitHub's opt-in /verdict pull-request comment re-run.
+	CommentTrigger bool
+	// Print renders the workflow without writing it.
+	Print bool
+	Yes   bool
 }
-    InitRequest scaffolds .verdict control files from a style preset.
-    Non-interactive only: pass Yes to confirm.
+    InitRequest scaffolds .verdict control files from a style preset, and
+    with CI set, the every-PR workflow too. Non-interactive only: pass Yes to
+    confirm. The fields mirror the CLI flags of the same name, so a facade call
+    writes the bytes the explicit `verdict init` invocation writes.
 
 type InitResponse struct {
 	Outcome

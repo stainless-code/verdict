@@ -20,6 +20,21 @@ includes it, and never touches a root pipeline you already have (see the
 manual's _GitLab CI_ section; `--print` is the preview that writes nothing).
 Copy the example by hand only when you want to change the shape yourself.
 
+`--comment-trigger` is the opt-in re-run: it adds `issue_comment` to the
+generated workflow, so a maintainer's `/verdict` comment on a pull request
+re-runs the pipeline for that pull request. The job gate requires a comment on a
+pull request from an `OWNER`, `MEMBER`, or `COLLABORATOR` whose body is exactly
+`/verdict` (or starts with `/verdict `). The concurrency key has three routes:
+the `pull_request` run keeps `verdict-<number>`, a `/verdict` comment gets
+`verdict-comment-<number>`, and any other comment gets `verdict-noop-<run_id>` —
+so a comment refreshes the review without ever canceling the required
+`pull_request` check on the pull request head. Two prerequisites come from
+GitHub, not verdict: the workflow file must exist on the **default branch**
+before `issue_comment` fires at all, and a comment run's check reports against
+that default branch commit, so it does not replace the required check. It needs
+`--ci github` — the event is GitHub's — and it never checks out a pull request
+head, so no fork code runs beside your secrets (see the manual's _Every PR_).
+
 ## The pipeline
 
 1. **Install** — the `setup-verdict` action installs a pinned, signature-

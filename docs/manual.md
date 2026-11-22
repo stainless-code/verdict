@@ -3305,6 +3305,18 @@ verdict init --preset standard --yes   # chill|standard|strict, default standard
 Add `--ci github` or `--ci forgejo` to write the every-PR workflow as well
 (see _The runner is your CI_ → _Every PR_ and _Forgejo Actions_).
 
+Bare `verdict init` on a terminal is a guided run: three questions — presets
+(`chill|standard|strict`), the workflow (`none`, or a provider defaulted from the
+`origin` remote's host), and the agent (defaulted to the first installed agent
+CLI whose catalog row documents a key variable, so the workflow renders without
+a `--key-secret`) — each of which Enter answers with its default. It resolves flags, so the
+files are byte-identical to the explicit invocation that spells the same answers.
+Any selection flag (`--preset`, `--ci`, `--agent`, `--key-secret`,
+`--comment-trigger`, `--print`, `--yes`), `--json`, or a redirected stdin or
+stdout keeps the run non-interactive: nothing asks a question when nothing can
+answer it, which is what keeps CI, evals, and scripts on the frozen contract.
+Ctrl-D aborts before anything is written.
+
 `init` writes the standard local control files, then runs check-tree
 validation (same filter: own `.verdict/state/` scratch ignored). Existing files
 print a preview and need `--yes`/`--force` (or, in human mode, an
@@ -5742,7 +5754,7 @@ review is posted to GitHub before the merge gate runs.
 For the every-PR path, one offline command renders the whole workflow:
 
 ```bash
-verdict init --ci github            # --agent <name>, --key-secret <NAME>, --print
+verdict init --ci github            # --agent <name>, --key-secret <NAME>, --comment-trigger, --print
 ```
 
 It writes `.github/workflows/verdict-review.yml` beside the usual controls: the
@@ -5791,6 +5803,46 @@ token and key you control for untrusted code.
 Commit the workflow with the controls, set the repository variable
 `VERDICT_VERSION` to a release containing `run --agent` (`v0.7.0` or newer), and
 require the `review + merge gate` check in branch protection.
+
+#### The `/verdict` comment re-run (opt-in)
+
+`verdict init --ci github --comment-trigger` adds one event to the generated
+workflow: `issue_comment: types: [created]`. A comment on a pull request whose
+body is exactly `/verdict` — or `/verdict` followed by a space and anything else
+— re-runs the pipeline for that pull request, so a review can be refreshed
+without pushing a commit. `/verdicts` is not a command.
+
+GitHub only starts an `issue_comment` workflow once that workflow file exists on
+the repository's **default branch**. A workflow file that still lives only on an
+unmerged pull request branch never reacts to `/verdict`; merge it first. A
+comment run also does not replace the required `pull_request` status check: its
+check run reports against the default branch commit, not the pull request head,
+so branch protection still grades the review that the `pull_request` event ran.
+
+Three guards keep it safe:
+
+- **The job gate is one two-clause expression.** The `pull_request` clause keeps
+  the fork guard; the `issue_comment` clause requires a comment on a pull request,
+  written by someone whose `comment.author_association` is `OWNER`, `MEMBER`, or
+  `COLLABORATOR`, with the `/verdict` body. Everything else skips the job.
+- **The concurrency key has three routes, and never one shared across events.**
+  GitHub applies a `concurrency` group before any job-level `if:` runs, so a run
+  that will be skipped still cancels whatever shares its group. A `pull_request`
+  run keeps the pull request's `verdict-<number>` group, because its check run is
+  the required one pinned to the pull request head. A `/verdict` comment gets
+  `verdict-comment-<number>`: a second command supersedes the older comment run,
+  and a comment run — which reports against the default branch commit — can never
+  cancel the required check. Every other comment lands in
+  `verdict-noop-<run_id>` and cancels nothing.
+- **No head checkout, ever.** There is still no `pull_request_target`: an
+  `issue_comment` event carries no pull request head, so the checkout is this
+  repository's default branch — the commit whose controls the review reads — and a
+  fork's code never runs beside your secrets. The comment body is read only inside
+  expressions (`if:` and the group), never interpolated into a script.
+
+The flag needs `--ci github`, because the event is GitHub's: naming it with
+`--ci forgejo` or `--ci gitlab` is a usage error that writes nothing. A workflow
+generated without the flag keeps its exact bytes.
 
 ### Forgejo Actions
 
