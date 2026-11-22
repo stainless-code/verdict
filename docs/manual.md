@@ -2506,9 +2506,9 @@ R1 outranks the cheap rules: a one-file `docs` change inside a sensitive tree
 is still `deep`, which is the point of the glob. A rename is matched at both
 ends, so moving a file out of `auth/` still selects `deep`. R3 keeps a lockfile
 or documentation avalanche at `standard` — size alone, with no source row
-changed, never buys the escalated tier. A bundle whose diff measured no bytes
-reads `standard`, never `light`, even when its file rows exist: missing
-evidence never drops risk. The three-file / 4096-byte tiny bound is a package
+changed, never buys the escalated tier. With no measured bytes R5 cannot match, so it
+reads `standard` when R1–R4 skip it (R2: all-docs under the threshold → `light`; R3/R4
+still fire on file count alone). The three-file / 4096-byte tiny bound is a package
 constant, deliberately not configurable, so a second knob set for "small"
 cannot drift from the gate's.
 

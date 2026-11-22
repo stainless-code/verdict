@@ -5,7 +5,8 @@ search:
   tags: ["quickstart", "getting-started", "install"]
 ---
 
-Three steps: install the binary, add the skill, review a PR. The
+Three steps: install the binary, add the skill, review a PR. Right after step 1,
+`verdict demo` runs the whole loop with no other setup. The
 [introduction](/docs/introduction) states the loop those steps implement.
 
 <Callout type="info" title="Requirements">
@@ -13,6 +14,17 @@ Three steps: install the binary, add the skill, review a PR. The
   auth login`) with `repo` scope. Run `verdict doctor` after installing to check
   your setup.
 </Callout>
+
+## Try it first, with no setup
+
+`verdict demo` reviews one change with no configuration: it writes nothing in
+your repository and cannot post. It reads with `gh` when you are signed in, over the
+anonymous GitHub API otherwise, and launches the first agent CLI on `PATH`.
+
+```bash
+verdict demo https://github.com/owner/repo/pull/123   # any public GitHub PR
+verdict demo                                          # your own working tree
+```
 
 <Steps>
   <Step title="Install">
@@ -24,17 +36,15 @@ Three steps: install the binary, add the skill, review a PR. The
     The install scripts take `VERDICT_VERSION=vX.Y.Z` to pin a version — on the
     script half of the pipe:
     `curl -fsSL https://stainless-code.com/verdict/install.sh | VERDICT_VERSION=vX.Y.Z sh`
-    (Windows: `-Version vX.Y.Z`). Both verify the archive's SHA-256 and, when
-    `cosign` is installed, the release signature; the script routes install to
-    `~/.verdict/bin` with no root or admin rights. Update later with
-    `verdict upgrade`. It runs only when you type it. In CI, the
-    [`setup-verdict` action](https://github.com/stainless-code/verdict#ci-setup-verdict-action)
+    (Windows: `-Version vX.Y.Z`). Both verify the archive's SHA-256 and, with
+    `cosign`, the release signature, and install to
+    `~/.verdict/bin` with no root rights. Update later with `verdict upgrade`;
+    it runs only when you type it. In CI, the
+    [`setup-verdict` action](https://github.com/stainless-code/verdict#ci)
     installs a pinned, verified binary.
 
-    Two footnotes for the package managers: `npx @stainless-code/verdict --help`
-    and `bunx @stainless-code/verdict --help` run once without installing, and
-    pnpm's release-age gate can serve the previous release for a day after a new
-    one ships — pin the exact version, or add
+    `npx` and `bunx` run it once without installing; pnpm's release-age gate can
+    serve the previous release for a day, so pin the exact version or add
     `--config.minimumReleaseAge=0`.
 
   </Step>
@@ -62,10 +72,18 @@ Three steps: install the binary, add the skill, review a PR. The
     This writes `.verdict/state/123/` with the diff, metadata, threads, and file roles.
     On GitHub it needs no clone.
 
-    Then ask your agent to review `.verdict/state/123/`. The skill tells it how: read
-    the whole diff first, ask read-only lens subagents one falsifiable question
-    each when the answer could change the verdict, and write exactly one
-    `.verdict/state/123/review.json`.
+    Then launch your agent on the bundle:
+
+    ```bash
+    verdict run owner/repo 123 --agent claude --budget auto
+    ```
+
+    `--agent` takes any of the 46 names in `verdict run --help`; `--budget auto`
+    sizes the depth from the diff (`light` one finder, `standard` and `deep` two).
+
+    The skill tells the agent how to work: read the whole diff first, ask
+    read-only lens subagents one falsifiable question each when the answer could
+    change the verdict, and write exactly one `.verdict/state/123/review.json`.
 
     Post the review:
 
@@ -73,9 +91,9 @@ Three steps: install the binary, add the skill, review a PR. The
     verdict post owner/repo 123
     ```
 
-    This checks every anchor against the diff hunks, turns suggestions into real
-    GitHub suggestion blocks, and submits one review. Add `--dry-run` to
-    validate and preview the payload without posting.
+    This checks every anchor against the diff hunks, turns suggestions into
+    GitHub suggestion blocks, and submits one review. `--dry-run` validates and
+    previews the payload without posting.
 
   </Step>
   <Step title="Read the report">
@@ -118,22 +136,22 @@ Three steps: install the binary, add the skill, review a PR. The
 ## Optional: scaffold repo defaults
 
 ```bash
-verdict init --preset standard
+verdict init --preset standard     # chill|standard|strict
+verdict init --ci github           # or --ci forgejo, --ci gitlab; --print previews
 ```
 
-This writes starter control files under `.verdict/`: a budget, a panel, and
-knowledge-base rules. It then runs `check-tree` to validate them. Presets are
-`chill`, `standard`, and `strict`. Reviews work without it.
+This writes starter control files under `.verdict/` — a budget, a panel, and
+knowledge-base rules — and validates them. Reviews work without it. `--ci` adds
+the every-PR workflow; [Gate a PR in CI](/docs/ci-gate) covers each host.
 
 ## Other hosts
 
-`fetch --provider` also reads GitLab, GitCafe, Forgejo, Bitbucket, and Azure
-DevOps (`gitlab|gitcafe|forgejo|bitbucket|azure`). `record`, `report`,
-`triage`, `show`, and `next` work on those bundles. `post` submits to GitHub,
-GitLab, and Forgejo. GitLab has no request-changes event, so that verdict posts
-as a comment; the live `calibrate` join and `ready` run on GitHub and GitLab,
-while `calibrate --probe` runs offline on any bundle. Each host's auth and gaps
-are in the [manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#providers-non-github-hosts).
+`fetch --provider` also reads `gitlab`, `gitcafe`, `forgejo`, `bitbucket`, and
+`azure`; `post` submits to GitHub, GitLab, and Forgejo. GitLab has no
+request-changes event, so that verdict posts as a comment. `record`, `report`,
+`triage`, `show`, and `next` run on any bundle, `ready` and live `calibrate` on
+GitHub and GitLab, `calibrate --probe` anywhere. Auth and gaps per host are in
+the [manual](https://github.com/stainless-code/verdict/blob/main/docs/manual.md#providers-non-github-hosts).
 
 <CardGroup cols={3}>
   <Card title="Agents" href="/agents">

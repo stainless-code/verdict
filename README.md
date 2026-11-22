@@ -7,11 +7,14 @@
 Verdict splits code review into steps your agent runs on your machine: fetch, review, gate, post. It fetches the change, your agent writes the findings, and `verdict post` submits exactly one review. No remote servers, no accounts, no daemon; `verdict serve` is an opt-in, read-only surface, loopback by default.
 
 - **Evidence-graded findings.** Every finding carries an evidence rung, from `said` to `reproduced`, plus a severity. Unproven claims are labeled, never posted as fact.
+- **A fix prompt, not just a complaint.** Every open, verified, unrefuted `critical` or `important` finding with a structured brief renders a collapsed `Prompt for AI agent` block in the posted body, computed from settled finding data — no extra model call.
+- **The topology, computed.** `post` draws the change's file topology from the bundle's own file list, hunk counts, and roles: a Mermaid block in the review body, never an agent drawing.
+- **The PR against its intent.** `fetch` pulls a linked GitHub issue into the bundle as a spec source, so the review checks the change against the intent the pull request claims.
 - **Guarded posting.** Anchors are validated before posting. One bad anchor never fails a post. Stale-SHA and duplicate-post guards refuse to post over a moved head or a repeat.
-- **Any model, any agent.** The agent you run is the review model. Verdict pins no models.
-- **Your agent runs only when you ask.** `verdict run --agent <name>` launches two isolated whole-diff finders and opposite-finder cross-checks. `--finders 1` restores the single-finder workflow; `--rounds N` caps repairs per finder. No daemon, queue, scheduler, webhook, or model selection.
+- **Any model, any agent.** The agent you run is the review model; verdict pins no models. `verdict run --agent <name>` launches two isolated whole-diff finders with opposite-finder cross-checks across 46 built-in agent CLIs — `--finders 1` restores the single-finder workflow, `--rounds N` caps repairs per finder, `--budget auto` sizes the depth from the diff — and `settings.json` adds your own. No daemon, queue, scheduler, webhook, or model selection.
+- **Try it with no setup.** `verdict demo` reviews a public pull request URL or your own working tree with zero configuration, writes nothing in your repository, and cannot post; `fetch-local` bundles your working tree and never posts either.
+- **CI in one command.** `verdict init --ci github|forgejo|gitlab` writes the every-PR workflow: `fetch`, `run --agent`, `post`, advisory `report`, composed `gate` — with `ready --check` first on GitHub and GitLab.
 - **Machine-readable.** Review verbs print one `--json` envelope. `report` also exports SARIF for scanners and CI.
-- **No PR needed.** `fetch-local` reviews your working tree and never posts.
 
 ## Who it's for
 
@@ -101,7 +104,10 @@ verdict post owner/repo 123 --dry-run       # validate anchors, post nothing
 verdict post owner/repo 123                 # post exactly one review
 ```
 
-`run` knows `claude`, `codex`, `cursor`, and `opencode`. For any other agent CLI,
+`run --agent` launches any of 46 built-in agent CLIs — `claude`, `codex`, `cursor`,
+`opencode`, and 42 more, listed in `verdict run --help` — plus the names you define
+under `agents` in `settings.json`. `--budget auto` classifies the diff first and
+launches one finder on a `light` tier, two with cross-checks on `standard` or `deep`.
 `--print` renders the exact command to run yourself, and everything after `--` is
 passed to the agent unchanged (`verdict run owner/repo 123 --agent claude -- --model opus`).
 The agent authenticates with your key on your machine; verdict makes no network
@@ -119,7 +125,7 @@ verdict record owner/repo local-work               # validate anchors, save the 
 
 | You want                   | Run                                                                                                                                               |
 | -------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Try it once                | `npx @stainless-code/verdict --help` or `bunx @stainless-code/verdict --help`                                                                     |
+| Try it once                | `npx @stainless-code/verdict demo <pr-url>` or `bunx @stainless-code/verdict demo <pr-url>`                                                       |
 | Pin a version (npm)        | `npm i -g @stainless-code/verdict@X.Y.Z`                                                                                                          |
 | Pin a version (shell)      | `curl -fsSL https://stainless-code.com/verdict/install.sh \| VERDICT_VERSION=vX.Y.Z sh`                                                           |
 | Pin a version (PowerShell) | `$env:VERDICT_VERSION = 'vX.Y.Z'; irm https://stainless-code.com/verdict/install.ps1 \| iex`                                                      |
@@ -136,23 +142,9 @@ If the docs site is down, both installers are also release assets: `https://gith
 
 Releases are built from tagged commits, and each release publishes `commit.txt` with the commit its signature was minted for. `checksums.txt` is signed with cosign (keyless), and the installers verify the signature — identity, issuer, push trigger, and the workflow-SHA pin to that commit — when `cosign` is on your PATH, then the archive SHA-256 always. A release without `commit.txt` is refused rather than installed unpinned. Set `VERDICT_REQUIRE_SIGNATURE=1` to fail instead of falling back to checksum-only. To check by hand, use the `cosign verify-blob` command in [Release train](CONTRIBUTING.md#release-train).
 
-### CI
-
-[`setup-verdict`](setup-verdict/action.yml) installs a pinned, verified binary on Ubuntu, macOS, and Windows runners.
-
-```yaml
-- uses: stainless-code/verdict/setup-verdict@vX.Y.Z # pin a release tag or commit
-  id: verdict
-  with:
-    version: vX.Y.Z
-- run: ${{ steps.verdict.outputs.path }} --version
-```
-
-Inputs are `version` (default `latest`) and `require-signature` (default `true`). Outputs are `path` and `version`. A full workflow is in [`examples/verdict-review.yml`](examples/verdict-review.yml) and the [CI recipe](docs/ci-recipe.md).
-
 ## Use it with your agent
 
-- **Skill and CLI.** The skill from step 2 drives the CLI. It works with Claude Code, Cursor, Codex, OpenCode, Copilot, Gemini, Goose, Qwen, Windsurf, and any agent that reads an `agents` skills directory.
+- **Skill and CLI.** The skill from step 3 drives the CLI. It works with Claude Code, Cursor, Codex, OpenCode, Copilot, Gemini, Goose, Qwen, Windsurf, and any agent that reads an `agents` skills directory.
 - **MCP.** `verdict mcp` serves the review verbs as tools over stdio. `verdict mcp config --agent claude` prints the config entry, and `--write` merges it into the file. It supports `claude`, `cursor`, and `codex`, and is experimental until 1.0. See the [manual](docs/manual.md#mcp-server-stdio-experimental-until-10).
 - **Go SDK.** [`pkg/verdict`](pkg/verdict) runs the verbs in-process for Go programs, with typed requests and responses — no `verdict` subprocess, no `--json` parsing.
 - **TypeScript client.** `import { createClient } from "@stainless-code/verdict/client"`. It ships in the npm package. See [`clients/ts`](clients/ts/README.md).
@@ -186,6 +178,66 @@ On the other three hosts, `record`, `report`, `show`, `next`, `triage`, and `thr
 
 Report vulnerabilities through [`SECURITY.md`](SECURITY.md).
 
+## CI
+
+One offline command writes the every-PR workflow for your host:
+
+```bash
+verdict init --ci github            # .github/workflows/verdict-review.yml
+verdict init --ci forgejo           # .forgejo/workflows/verdict-review.yml
+verdict init --ci gitlab            # .gitlab/ci/verdict-review.yml
+```
+
+Every file runs the same review pipeline — `fetch`, `run --agent`, `post`, the
+advisory `report`, then `gate` — and the GitHub and GitLab files put `ready --check`
+first; Forgejo has no live readiness read yet. Post runs before the gate because
+the gate's freshness and coverage dimensions read the receipt post writes. `--agent` takes any of
+the 46 built-in launchable agents — `init --ci` resolves against the catalog, not your
+`settings.json` — `--key-secret` names the repository secret, and `--print` prints
+the file and writes nothing. GitLab gets a merge-request pipeline beside a minimal
+root `.gitlab-ci.yml` include; an existing root pipeline is never touched.
+
+### `setup-verdict`
+
+[`setup-verdict`](setup-verdict/action.yml) installs a pinned, verified binary on Ubuntu, macOS, and Windows runners.
+
+```yaml
+- uses: stainless-code/verdict/setup-verdict@vX.Y.Z # pin a release tag or commit
+  id: verdict
+  with:
+    version: vX.Y.Z
+- run: ${{ steps.verdict.outputs.path }} --version
+```
+
+Inputs are `version` (default `latest`) and `require-signature` (default `true`). Outputs are `path` and `version`. A full workflow is in [`examples/verdict-review.yml`](examples/verdict-review.yml) and the [CI recipe](docs/ci-recipe.md).
+
+### The runner is your CI
+
+The first-party [GitHub Action](action.yml) runs the review and merge gate
+on your runner with the keys you pass. Copy [the workflow](examples/verdict-review.yml),
+install your agent CLI before the Action, and keep checkout `fetch-depth: 0` and
+`persist-credentials: false`. Give the job `contents: read` and
+`pull-requests: write`, then require its `review + merge gate` check in branch protection.
+
+Pass `repository`, `pull-request`, and `github-token` explicitly. Choose `agent`
+and pass `anthropic-api-key` or `openai-api-key` from your secrets. That four-name
+ceiling — `claude`, `codex`, `cursor`, `opencode` — belongs to the composite
+Action's own input validation; a workflow from `init --ci` takes any built-in
+`run --agent` name. Inputs are strings — Actions composite
+metadata does not support input `type` declarations. Empty key inputs overwrite
+ambient provider key variables; the agent step clears `GH_TOKEN` and `GITHUB_TOKEN`.
+Use a clean CI runner without preconfigured agent login credentials. Verdict
+never proxies your key; the agent contacts its model provider directly.
+
+`version` is required and accepts only pinned stable releases. Set the repository
+variable `VERDICT_VERSION` to a release containing `run --agent` before enabling
+the workflow — the `v0.7.0` tag is the first release with that command. The Action
+reuses `setup-verdict` for checksum and signature verification and exports the
+installed `version`. Pin the Action to a full commit SHA, as the example does.
+The Action owns fetch → ready → run → post → report → gate; `run` makes no
+network call of its own and refuses missing or stale `review.json`. A successful
+review is posted to GitHub before the merge gate runs.
+
 ## Docs
 
 - [Docs site](https://stainless-code.com/verdict): quickstart, how it reviews, comparison, ROI, glossary.
@@ -201,28 +253,3 @@ Build from source, run the evals, and ship a change: see [`CONTRIBUTING.md`](CON
 ## License
 
 MIT. See [LICENSE](LICENSE).
-
-## The runner is your CI
-
-The first-party [GitHub Action](action.yml) runs the review and merge gate
-on your runner with the keys you pass. Copy [the workflow](examples/verdict-review.yml),
-install your agent CLI before the Action, and keep checkout `fetch-depth: 0` and
-`persist-credentials: false`. Give the job `contents: read` and
-`pull-requests: write`, then require its `review + merge gate` check in branch protection.
-
-Pass `repository`, `pull-request`, and `github-token` explicitly. Choose `agent`
-(`claude`, `codex`, `cursor`, or `opencode`) and pass `anthropic-api-key` or
-`openai-api-key` from your secrets. Inputs are strings — Actions composite
-metadata does not support input `type` declarations. Empty key inputs overwrite
-ambient provider key variables; the agent step clears `GH_TOKEN` and `GITHUB_TOKEN`.
-Use a clean CI runner without preconfigured agent login credentials. Verdict
-never proxies your key; the agent contacts its model provider directly.
-
-`version` is required and accepts only pinned stable releases. Set the repository
-variable `VERDICT_VERSION` to a release containing `run --agent` before enabling
-the workflow — the `v0.7.0` tag is the first release with that command. The Action
-reuses `setup-verdict` for checksum and signature verification and exports the
-installed `version`. Pin the Action to a full commit SHA, as the example does.
-The Action owns fetch → ready → run → post → report → gate; `run` makes no
-network call of its own and refuses missing or stale `review.json`. A successful
-review is posted to GitHub before the merge gate runs.
