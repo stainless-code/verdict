@@ -144,6 +144,23 @@ func (a *args) str(key string, dst *string) {
 	}
 }
 
+// strPresent reads an optional string and reports whether the key was given,
+// so a caller can tell an absent flag from an explicitly empty value.
+func (a *args) strPresent(key string, dst *string) bool {
+	if a.err != nil {
+		return false
+	}
+	raw, ok := a.take(key)
+	if !ok {
+		return false
+	}
+	if err := json.Unmarshal(raw, dst); err != nil {
+		a.fail(paramErrorf(msgArgument, key, err))
+		return false
+	}
+	return true
+}
+
 func (a *args) boolean(key string, dst *bool) {
 	if a.err != nil {
 		return

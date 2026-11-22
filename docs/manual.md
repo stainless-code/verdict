@@ -1768,6 +1768,90 @@ anchor, or rigor. The category is agent-supplied evidence on each inline
 comment (never inferred, never part of the finding's `sig`); absent and
 `null` both read untagged in `report`, `calibrate`, and `trend`.
 
+`report --compare <baseline>` answers a third question from the same read:
+which finding signatures did this run add, keep, or lose since a prior run?
+It takes the reported bundle's `findings.json` and the baseline's, matches on
+the stable full `sig` (the same identity `report`, `show`, `triage`, and
+`adopt` use), and groups every signature into one of four buckets:
+
+| bucket         | rule                                                                                                                                                                                                                                                         |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `new`          | the signature is in the reported bundle, absent from the baseline (`reason: not-in-baseline`).                                                                                                                                                               |
+| `persisting`   | the signature is in both (`reason: in-both`); the row carries the current finding plus `changes` for a severity or status move (`severity: important→critical`, `status: open→addressed`).                                                                   |
+| `resolved`     | the signature is baseline-only **and** the reported bundle proves the reviewer saw its location and the bug is gone (`reason: covered-and-absent`), or a provider PR's full diff no longer touches the finding's file or hunk (`reason: removed-from-diff`). |
+| `not reviewed` | the signature is baseline-only and the reported bundle cannot prove it was seen (`reason: uncovered-hunk`, `excluded`, `not-in-incremental-diff`, `no-location`, or `partial-review`).                                                                       |
+
+Resolution rules for `<baseline>`: a value that names an existing directory
+is a bundle path (the working directory first, then the repository root); a
+value carrying a path separator or a dot-relative prefix is a path and
+refuses when missing; any other value is a bundle identifier resolved in the
+same `.verdict/state` directory as the positional — a PR number, a
+`local-<name>`/`corpus-<name>` slug, or a bare name that falls back to
+`local-<name>` (the same `ResolveBundleDir` rules the positional follows).
+Trailing separators are stripped before any symlink check, so
+`--compare <symlink>/` refuses like the bare spelling. The comparison reads
+local files only and never calls the network.
+
+The two bundles must name the same repository. A local bundle's `repo` and a
+fetched PR's review-URL project path both fold to one `<owner/repo>`, so a
+local bundle and a real PR bundle in the same repository compare; a different
+project refuses `bad-compare`, and so do two PR bundles whose URLs name
+different hosts even when the project path matches. A PR bundle without a URL
+falls back to the positional's repository.
+
+The resolved/not-reviewed split is deliberately strict, because a false
+`resolved` hides a real bug. A baseline-only signature reaches `resolved`
+only through one of these proofs:
+
+- **`covered-and-absent`** — the reported bundle's `review.json` attests the
+  finding's file and line in `coverage[]` (or its claimed chunks cover the
+  line, or a stored `record.json`/`post.json` receipt reports 100% of hunk
+  spans for the bundle's current head) **and** the line still sits inside a
+  reviewed hunk on the finding's side. The reviewer read that hunk and did not
+  report the finding again. A stored receipt stands in only when
+  `review.json` is genuinely absent: a corrupt, symlinked, or explicitly
+  empty `review.json` attests nothing. A chunked bundle ignores `coverage[]`
+  and reads its claimed chunks only, and its chunk hunks must match the
+  finding's side. A finding with a path but no line resolves only under a
+  whole-file or complete claim — never from a line-range claim, and never as
+  `removed-from-diff` while its file is still reviewed.
+- **`removed-from-diff`** — the reported bundle is a provider PR bundle
+  (it carries `PR.json`), is not an incremental `--base-sha`/`--since` run,
+  and its full diff no longer touches the finding's file or hunk (the change
+  was reverted to the base, or the file was deleted), while `excluded.json`
+  does not name the path. The bug cannot live in a changed hunk that no
+  longer exists.
+
+Everything else stays `not reviewed`: an incremental delta that never
+touched the file, or touched it only outside the finding's line
+(`not-in-incremental-diff`), a path named by the reported bundle's
+`excluded.json` (`excluded`), a hunk the review did not attest
+(`uncovered-hunk`), a section finding with no path (`no-location`), and any
+bundle whose reviewed diff, exclusion receipt, or coverage attestation is
+missing or unreadable (`partial-review`). A local bundle's diff — which
+`fetch-local -- <paths>`, `--range`, `--staged`, and `--stash` can narrow —
+is never treated as a complete PR diff, so a missing path, or a line outside
+its hunks, stays `not reviewed` with `partial-review` rather than reading as
+resolved.
+
+`--json` adds `data.compare`, carrying the baseline's `dir`, `name`,
+`head_sha`, `base_sha`, `recorded_at`, and identity-bearing `findings` count;
+the four `counts`; and the four sorted arrays (`new`, `persisting`,
+`resolved`, `not_reviewed`) with one row per finding — `sig`, `status`,
+`severity`, `path`, `line`, `claim`, `reason`, and `changes` on a persisting
+row. The human block prints the same four counts on one line, then each
+non-empty bucket with its rows. `--compare` is advisory: it composes no gate
+dimension, never changes an exit code, and ignores the display filters
+(`--status`, `--kind`, `--category`), which narrow the ranked list only.
+
+A comparison baseline that is missing, a symlink or non-directory, corrupt,
+unrecorded (no `findings.json`), the reported bundle itself, recorded for a
+different repository or host, or passed as an explicitly empty
+`--compare ""` refuses typed — `missing-compare-bundle`,
+`unsafe-compare-bundle`, `corrupt-compare-bundle`,
+`unrecorded-compare-bundle`, or `bad-compare` — instead of reading as an
+empty comparison.
+
 `report --completeness` answers a second question from the same read — "is
 HEAD reviewed?" — by comparing the bundle's fetched HEAD against the local
 completed-post record (`post.json`, written only by a real `post`):

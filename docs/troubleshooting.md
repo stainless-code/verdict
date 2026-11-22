@@ -174,6 +174,12 @@ Cause: `--color` is not a known mode.
 
 Fix: pass `--color auto|always|never`.
 
+## `bad-compare`
+
+Cause: `report --compare` names the bundle being reported, a baseline from a different repository or review host, an explicitly empty value, or a value that is neither a bundle directory nor a valid bundle name.
+
+Fix: pass a different baseline — a bundle directory, or a PR or `local-<name>` under the same `.verdict/state` — with `--compare <bundle-dir|pr|slug>`.
+
 ## `bad-config`
 
 Cause: the repository configuration (or a fragment of it) is malformed or semantically invalid — the message names the exact key.
@@ -533,6 +539,12 @@ Cause: the benchmark case manifest is invalid, or a real bundle's reviewed `full
 
 Fix: for a manifest, fix the file named above and re-run. For a `full.diff` that cannot grade, rebuild the bundle (`fetch-local` or `fetch` for a fetched bundle, `backtest replay` for a replay bundle, which the message names), then re-run the verb. An empty or prose diff is a failed capture, not a valid review of no changes.
 
+## `corrupt-compare-bundle`
+
+Cause: the `--compare` baseline's `findings.json` is present but unreadable, is not a findings array, or carries an invalid finding entry.
+
+Fix: re-run `record` or `post` on the baseline bundle, or restore its `findings.json` from backup, then re-run `report --compare`.
+
 ## `corrupt-store`
 
 Cause: `findings.json` (or the knowledge-base store, or the incident ledger `.verdict/incidents.jsonl`) is present but unreadable, or a bundle home (`.verdict/state`) is not a directory so a listing cannot read it.
@@ -878,6 +890,12 @@ Fix: re-fetch the bundle with `--chunk`, then re-synthesize across all chunks an
 Cause: the bundle lacks the chunk hunk snapshot.
 
 Fix: re-fetch the bundle with `--chunk`, then re-synthesize across all chunks and re-run.
+
+## `missing-compare-bundle`
+
+Cause: `report --compare` names no bundle: the directory does not exist, or a PR/local slug has no directory under `.verdict/state`.
+
+Fix: pass an existing bundle directory, or the PR number or `local-<name>` the prior run wrote under `.verdict/state`, then re-run.
 
 ## `missing-diff`
 
@@ -1449,6 +1467,18 @@ Fix: copy the full sig prefix from `report` output.
 Cause: no thread with that id sits in `threads.json`.
 
 Fix: refresh threads first, then re-run with an id from the list.
+
+## `unrecorded-compare-bundle`
+
+Cause: the `--compare` baseline has no `findings.json`, so it was never recorded or posted and has nothing to compare.
+
+Fix: `record` or `post` the baseline bundle first, then re-run `report --compare`.
+
+## `unsafe-compare-bundle`
+
+Cause: the `--compare` baseline or one of its inputs (the directory — with or without a trailing separator — `findings.json`, or a chunk diff) is a symlink, a file, or a device; the comparison reads regular files only.
+
+Fix: pass the bundle directory itself — not a symlink, a file, or a device — then re-run.
 
 ## `unsupported-cap`
 

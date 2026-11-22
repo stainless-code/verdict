@@ -11,13 +11,19 @@ type Flags struct {
 	// all, which is what keeps `report` advisory. It stays out of the MCP tool
 	// schema (`json:"-"`) for the same reason: gate composes the dimension,
 	// and the MCP report tool is the advisory read.
-	Coverage        string `enum:"require|warn"                                                            json:"-"`
-	Status          string `enum:"all|open|addressed|wont-fix|false-positive|deferred"`
-	Kind            string `enum:"all|inline|section"`
-	Category        string `enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other"`
-	Output          string
-	Sarif           string
-	Check           string `enum:"critical|important|informational"`
+	Coverage string `enum:"require|warn"                                                            json:"-"`
+	Status   string `enum:"all|open|addressed|wont-fix|false-positive|deferred"`
+	Kind     string `enum:"all|inline|section"`
+	Category string `enum:"logic|edge-case|security|performance|accidental-commit|style|docs|other"`
+	Output   string
+	Sarif    string
+	Check    string `enum:"critical|important|informational"`
+	// Compare names a baseline bundle to compare the reported one against: a
+	// bundle directory, or a PR/local slug resolved in the same repository
+	// state directory. CompareSet records that a caller named the flag at all,
+	// so an explicit empty value refuses instead of silently disabling the
+	// comparison; it is transport bookkeeping and stays out of the tool schema.
+	Compare         string
 	Live            string `enum:"auto|strict|skip"`
 	MaxRisk         string `enum:"low|medium|high|critical"`
 	IncludeWithheld bool
@@ -25,6 +31,7 @@ type Flags struct {
 	Completeness    bool
 	Provenance      bool
 	Risk            bool
+	CompareSet      bool `json:"-"`
 	// Validation projects the trusted pass: the receipt a post or record run
 	// stored, else a tally of validation.json. It stays out of the MCP tool
 	// schema (`json:"-"`), like Coverage, because the MCP report tool is the

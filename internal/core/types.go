@@ -321,6 +321,7 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Filters             ReportFilters            `json:"filters"`
 	Items               []FindingItem            `json:"items"`
 	Cost                *ReportCost              `json:"cost,omitempty"`
+	Compare             *ReportCompare           `anyOf:"null"                     json:"compare,omitempty"      optional:"true"`
 	Completeness        *ReportCompleteness      `json:"completeness,omitempty"`
 	Compliance          *ReportCompliance        `json:"compliance,omitempty"`
 	Validation          *ValidationData          `json:"validation,omitempty"      optional:"true"`

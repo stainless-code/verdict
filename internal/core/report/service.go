@@ -90,6 +90,7 @@ type state struct { // field grouping documents the loaded dimensions; alignment
 	panel        []any
 	patch        any
 	comp         *core.ReportCompleteness
+	compare      *core.ReportCompare
 	risk         *core.ReportRisk
 	validation   *core.ValidationData
 	judgements   []core.ValidationResult
@@ -147,6 +148,9 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if err := loadState(ctx, st); err != nil {
 		return nil, err
 	}
+	if ref := loadCompareState(st); ref != nil {
+		return nil, ref
+	}
 	if ref := loadGatePolicy(ctx, st); ref != nil {
 		return nil, ref
 	}
@@ -162,6 +166,17 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	warnReproductions(st)
 	runLiveProbe(ctx, st)
 	return buildResponse(st), nil
+}
+
+// loadCompareState composes --compare when the operator asked for it: the
+// baseline read and the four-bucket classification run before any gate
+// dimension touches the network, so a bad baseline refuses early. A flag that
+// was named with an empty value refuses rather than reading as "off".
+func loadCompareState(st *state) *core.RefusalError {
+	if !st.flags.CompareSet && st.flags.Compare == "" {
+		return nil
+	}
+	return loadCompare(st)
 }
 
 // specFailuresWithExecution reads the stored record's failing spec checks, and

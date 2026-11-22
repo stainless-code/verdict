@@ -679,6 +679,9 @@
           "items": { "$ref": "#/$defs/findingItem" }
         },
         "cost": { "$ref": "#/$defs/reportCost" },
+        "compare": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportCompare" }]
+        },
         "completeness": { "$ref": "#/$defs/reportCompleteness" },
         "compliance": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportCompliance" }]
@@ -822,6 +825,115 @@
         "cached_input_tokens",
         "est_usd",
         "by_tier"
+      ],
+      "additionalProperties": true
+    },
+    "reportCompare": {
+      "type": "object",
+      "properties": {
+        "baseline": { "$ref": "#/$defs/compareBaseline" },
+        "counts": { "$ref": "#/$defs/compareCounts" },
+        "new": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/compareFinding" }
+        },
+        "persisting": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/compareFinding" }
+        },
+        "resolved": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/compareFinding" }
+        },
+        "not_reviewed": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/compareFinding" }
+        }
+      },
+      "required": [
+        "baseline",
+        "counts",
+        "new",
+        "persisting",
+        "resolved",
+        "not_reviewed"
+      ],
+      "additionalProperties": true
+    },
+    "compareBaseline": {
+      "type": "object",
+      "properties": {
+        "dir": { "type": "string" },
+        "name": { "type": "string" },
+        "head_sha": { "type": ["string", "null"] },
+        "base_sha": { "type": ["string", "null"] },
+        "recorded_at": { "type": ["string", "null"] },
+        "findings": { "type": "integer", "minimum": 0 }
+      },
+      "required": [
+        "dir",
+        "name",
+        "head_sha",
+        "base_sha",
+        "recorded_at",
+        "findings"
+      ],
+      "additionalProperties": true
+    },
+    "compareCounts": {
+      "type": "object",
+      "properties": {
+        "new": { "type": "integer", "minimum": 0 },
+        "persisting": { "type": "integer", "minimum": 0 },
+        "resolved": { "type": "integer", "minimum": 0 },
+        "not_reviewed": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["new", "persisting", "resolved", "not_reviewed"],
+      "additionalProperties": true
+    },
+    "compareFinding": {
+      "type": "object",
+      "properties": {
+        "sig": { "type": "string" },
+        "status": {
+          "enum": [
+            "open",
+            "addressed",
+            "wont-fix",
+            "false-positive",
+            "deferred"
+          ]
+        },
+        "severity": { "type": ["string", "null"] },
+        "path": { "type": ["string", "null"] },
+        "line": { "type": ["integer", "null"], "minimum": 0 },
+        "claim": { "type": "string" },
+        "reason": {
+          "enum": [
+            "not-in-baseline",
+            "in-both",
+            "covered-and-absent",
+            "removed-from-diff",
+            "uncovered-hunk",
+            "excluded",
+            "not-in-incremental-diff",
+            "no-location",
+            "partial-review"
+          ]
+        },
+        "changes": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": [
+        "sig",
+        "status",
+        "severity",
+        "path",
+        "line",
+        "claim",
+        "reason"
       ],
       "additionalProperties": true
     },

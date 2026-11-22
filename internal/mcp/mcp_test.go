@@ -627,6 +627,20 @@ func TestNegotiate(t *testing.T) {
 	}
 }
 
+// assertComparePresence pins the compare flag's presence bit: absent is off,
+// an explicit empty value is set (so the service refuses it).
+func assertComparePresence(t *testing.T, report *tool) {
+	t.Helper()
+	empty, err := decodeArgs(report, json.RawMessage(`{"repo":"a/b","pr":"1","flags":{"compare":""}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req, ok := empty.(*reportcore.Request)
+	if !ok || !req.Flags.CompareSet || req.Flags.Compare != "" {
+		t.Errorf("empty compare decode = %+v, want CompareSet with an empty value", empty)
+	}
+}
+
 // TestArgsDecode proves the reflector decodes nested flags and initialism
 // names into the concrete core request type.
 //
@@ -645,6 +659,7 @@ func TestArgsDecode(t *testing.T) {
 	if req.Flags.Status != "open" || !req.Flags.Cost {
 		t.Fatalf("flags = %+v", req.Flags)
 	}
+	assertComparePresence(t, report)
 	learn := findTool(t, "learn")
 	decoded, err := decodeArgs(learn, json.RawMessage(`{"id":"x","rule":"r","scope":"repo"}`))
 	if err != nil {

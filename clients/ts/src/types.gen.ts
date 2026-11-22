@@ -342,6 +342,7 @@ export interface ReportData {
   filters: ReportFilters;
   items: Array<FindingItem>;
   cost?: ReportCost;
+  compare?: ReportCompare | null;
   completeness?: ReportCompleteness;
   compliance?: ReportCompliance | null;
   risk?: ReportRisk | null;
@@ -411,6 +412,55 @@ export interface ReportCost {
   est_usd: number | null;
   by_tier: CostTiers;
   receipts?: unknown[];
+  [key: string]: unknown;
+}
+
+export interface ReportCompare {
+  baseline: CompareBaseline;
+  counts: CompareCounts;
+  new: Array<CompareFinding>;
+  persisting: Array<CompareFinding>;
+  resolved: Array<CompareFinding>;
+  not_reviewed: Array<CompareFinding>;
+  [key: string]: unknown;
+}
+
+export interface CompareBaseline {
+  dir: string;
+  name: string;
+  head_sha: string | null;
+  base_sha: string | null;
+  recorded_at: string | null;
+  findings: number;
+  [key: string]: unknown;
+}
+
+export interface CompareCounts {
+  new: number;
+  persisting: number;
+  resolved: number;
+  not_reviewed: number;
+  [key: string]: unknown;
+}
+
+export interface CompareFinding {
+  sig: string;
+  status: "open" | "addressed" | "wont-fix" | "false-positive" | "deferred";
+  severity: string | null;
+  path: string | null;
+  line: number | null;
+  claim: string;
+  reason:
+    | "not-in-baseline"
+    | "in-both"
+    | "covered-and-absent"
+    | "removed-from-diff"
+    | "uncovered-hunk"
+    | "excluded"
+    | "not-in-incremental-diff"
+    | "no-location"
+    | "partial-review";
+  changes?: Array<string>;
   [key: string]: unknown;
 }
 

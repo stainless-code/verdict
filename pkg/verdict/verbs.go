@@ -42,7 +42,10 @@ const (
 type ReportRequest struct {
 	Invocation
 	Status, Kind, Output, Sarif, Check, Live, MaxRisk string
-	Cost, Completeness, IncludeWithheld, Risk         bool
+	// Compare names a baseline bundle (a directory, or a PR/local slug in the
+	// same state directory) to compare signature-matched findings against.
+	Compare                                   string
+	Cost, Completeness, IncludeWithheld, Risk bool
 }
 
 // ReportResponse is the offline review report with render inputs and the
@@ -67,7 +70,8 @@ func (c *Client) Report(ctx context.Context, req *ReportRequest) (*ReportRespons
 		Flags: reportcore.Flags{
 			Status: req.Status, Kind: req.Kind, Output: req.Output, Sarif: req.Sarif,
 			Check: req.Check, Live: req.Live, MaxRisk: req.MaxRisk,
-			Cost: req.Cost, Completeness: req.Completeness,
+			Compare: req.Compare,
+			Cost:    req.Cost, Completeness: req.Completeness,
 			IncludeWithheld: req.IncludeWithheld, Risk: req.Risk,
 		},
 		Effective: core.Defaults(),

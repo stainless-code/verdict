@@ -349,7 +349,10 @@ var publishedSemantics = map[string]string{
 	// $defs/ingestSkip shape carrying the typed reason a SARIF result could not
 	// be anchored. No existing property, required key, enum, or type changed;
 	// an ingest with nothing to skip publishes [].
-	"envelope.schema.json": "bdfe621175b887d075a4be3c3e3bbdac9cd7de63c54f02477d85be6692e047d3",
+	// report --compare: additive optional data.compare ($defs/reportCompare and
+	// its baseline/counts/finding definitions). No existing property, required
+	// key, enum, or type changed; only a --compare run carries the key.
+	"envelope.schema.json": "1614f7bebe3d93fd3a5677c5ea3ece5c7050a1e3e212ae3d2e987e07f4ffe4f7",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

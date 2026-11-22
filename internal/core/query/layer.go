@@ -10,7 +10,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	urlpkg "net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -391,62 +390,10 @@ func (l *Layer) capBundles(names []string) ([]string, bool) {
 	return names[:l.maxBundles], true
 }
 
-// bundleRepo names the repository a bundle belongs to: a local source.json's
-// repo, else the review URL's project path. GitHub and Forgejo put owner/repo
-// before /pull/, /pulls/, or /issues/; GitLab puts every subgroup before /-/.
+// bundleRepo names the repository a bundle belongs to. The parsing lives in
+// readcommon so every surface folds a review URL the same way.
 func bundleRepo(dir string) string {
-	if repo := readcommon.JSONStr(dir+"/source.json", "repo"); repo != "" {
-		return repo
-	}
-	url := readcommon.OpenBundle(dir).StrField("url")
-	if url == "" {
-		return ""
-	}
-	parsed, err := urlpkg.Parse(url)
-	if err != nil {
-		return ""
-	}
-	parts := strings.Split(strings.Trim(parsed.Path, slashSep), slashSep)
-	if len(parts) < 2 {
-		return ""
-	}
-	if end := projectPathEnd(parts); end > 0 {
-		return path.Join(parts[:end]...)
-	}
-	return path.Join(parts[:2]...)
-}
-
-// projectPathEnd finds the segment that ends the project path: GitLab's /-/
-// separator or another host's PR route with its numeric id.
-func projectPathEnd(parts []string) int {
-	for i := 2; i+1 < len(parts); i++ {
-		if isProjectSeparator(parts, i) {
-			return i
-		}
-	}
-	return 0
-}
-
-// isProjectSeparator reports whether parts[i] starts a host route tail.
-func isProjectSeparator(parts []string, i int) bool {
-	if parts[i] == "-" {
-		return parts[i+1] == "merge_requests"
-	}
-	if !repoRouteSegment(parts[i]) {
-		return false
-	}
-	_, err := strconv.Atoi(parts[i+1])
-	return err == nil
-}
-
-// repoRouteSegment reports one host route segment that ends the project path.
-func repoRouteSegment(segment string) bool {
-	switch segment {
-	case "pull", "pulls", "issues", "merge_requests":
-		return true
-	default:
-		return false
-	}
+	return readcommon.BundleProject(dir)
 }
 
 // numericPr reads a bundle name as the envelope's numeric pr, null when the
@@ -489,20 +436,48 @@ func nullableString(value *string) any {
 // stays byte-identical.
 func normalizeReportData(root string, data *core.ReportData) *jq.Obj {
 	wire := data.Wire()
-	dir, ok := wire.Get("dir")
-	if !ok {
-		return wire
+	normalizeRootPath(root, wire, "dir")
+	if baseline, ok := fieldOf(wire, "compare", "baseline"); ok {
+		normalizeRootPath(root, baseline, "dir")
 	}
-	text, ok := dir.(string)
+	return wire
+}
+
+// fieldOf walks a nested comparison object down a key path, reporting the
+// final object when every step is one.
+func fieldOf(obj *jq.Obj, keys ...string) (*jq.Obj, bool) {
+	current := obj
+	for _, key := range keys {
+		value, ok := current.Get(key)
+		if !ok {
+			return nil, false
+		}
+		next, ok := value.(*jq.Obj)
+		if !ok || next == nil {
+			return nil, false
+		}
+		current = next
+	}
+	return current, true
+}
+
+// normalizeRootPath rewrites one object's path field to root-relative form
+// when it lives under root, so a served run from another directory prints the
+// same spelling a CLI run from the root does.
+func normalizeRootPath(root string, obj *jq.Obj, key string) {
+	value, ok := obj.Get(key)
 	if !ok {
-		return wire
+		return
+	}
+	text, ok := value.(string)
+	if !ok {
+		return
 	}
 	rel, err := filepath.Rel(root, filepath.FromSlash(text))
 	if err != nil || rel == "." || rel == parentDir || strings.HasPrefix(rel, parentDir+string(filepath.Separator)) {
-		return wire
+		return
 	}
-	wire.Set("dir", filepath.ToSlash(rel))
-	return wire
+	obj.Set(key, filepath.ToSlash(rel))
 }
 
 // sourceWire renders one source in the published key order.

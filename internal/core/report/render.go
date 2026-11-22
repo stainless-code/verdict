@@ -93,6 +93,7 @@ func buildData(st *state) *core.ReportData {
 		},
 		QuietByPolicy: quietEntries(st),
 		Items:         envelopeItems(viewRanked(st)),
+		Compare:       st.compare,
 	}
 	if st.cost != nil {
 		data.Cost = costFromObj(st.cost)
@@ -291,6 +292,7 @@ func buildHuman(st *state) []string {
 	lines = append(lines, readcommon.ContextLine(st.dir)...)
 	lines = append(lines, cleanHeadline(st)...)
 	lines = append(lines, verificationHuman(st.entries)...)
+	lines = append(lines, compareHuman(st)...)
 	if line := reviewdoc.FinderLine(st.execution.Attach(nil)); line != "" {
 		lines = append(lines, strings.TrimPrefix(line, "> "))
 	}
