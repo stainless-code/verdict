@@ -1065,11 +1065,24 @@ func (c *Client) Learn(ctx context.Context, req *LearnRequest) (*Outcome, error)
 	return outcomePtr(resp.At, resp.Next, resp.Warnings, resp.Data), nil
 }
 
-// InitRequest scaffolds .verdict control files from a style preset.
-// Non-interactive only: pass Yes to confirm.
+// InitRequest scaffolds .verdict control files from a style preset, and with CI
+// set, the every-PR workflow too. Non-interactive only: pass Yes to confirm.
+// The fields mirror the CLI flags of the same name, so a facade call writes the
+// bytes the explicit `verdict init` invocation writes.
 type InitRequest struct {
 	Preset string
-	Yes    bool
+	// CI names the host to write a workflow for: github, forgejo, or gitlab.
+	CI string
+	// Agent names the shipped agent the workflow launches; empty means the
+	// default claude on a CI run.
+	Agent string
+	// KeySecret overrides the repository secret holding the agent's model key.
+	KeySecret string
+	// CommentTrigger adds GitHub's opt-in /verdict pull-request comment re-run.
+	CommentTrigger bool
+	// Print renders the workflow without writing it.
+	Print bool
+	Yes   bool
 }
 
 // InitResponse carries the scaffold plan and exit code.
@@ -1160,12 +1173,17 @@ func (c *Client) Init(ctx context.Context, req *InitRequest) (*InitResponse, err
 		return nil, err
 	}
 	resp, ref := initcore.Run(ctx, &initcore.Request{
-		ReadRequest: rr,
-		Preset:      req.Preset,
-		Yes:         req.Yes,
-		Human:       c.streamWriter(true),
-		Diag:        c.streamWriter(false),
-		ReadAnswer:  func() string { return "" },
+		ReadRequest:    rr,
+		Preset:         req.Preset,
+		CI:             req.CI,
+		Agent:          req.Agent,
+		KeySecret:      req.KeySecret,
+		CommentTrigger: req.CommentTrigger,
+		Print:          req.Print,
+		Yes:            req.Yes,
+		Human:          c.streamWriter(true),
+		Diag:           c.streamWriter(false),
+		ReadAnswer:     func() string { return "" },
 	})
 	if ref != nil {
 		return nil, refusalErr(ref)

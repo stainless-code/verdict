@@ -203,6 +203,24 @@ func assertWritesUnderAncestor(t *testing.T, ci *ciProvider) {
 	}
 }
 
+// TestCIRunDefaultsTheAgent proves the service, not only the CLI, wires claude
+// when --agent names none: the facade and any later adapter get the same bytes
+// from the same request.
+func TestCIRunDefaultsTheAgent(t *testing.T) {
+	t.Parallel()
+	repo := t.TempDir()
+	req := ciRequest(repo, githubTarget(t))
+	req.Agent = ""
+	mustRunInit(t, req)
+	wrote, err := os.ReadFile(filepath.Join(repo, ".github", "workflows", "verdict-review.yml"))
+	if err != nil {
+		t.Fatalf("the workflow did not land: %v", err)
+	}
+	if !bytes.Contains(wrote, []byte("          VERDICT_AGENT: claude\n")) {
+		t.Fatalf("the render wires no default agent:\n%s", wrote)
+	}
+}
+
 // gitlabTarget is the one provider that plans a second file at the repository
 // root, so the cases below can name it once.
 func gitlabTarget(t *testing.T) *ciProvider {

@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+--comment-trigger needs --ci github
+--- files ---

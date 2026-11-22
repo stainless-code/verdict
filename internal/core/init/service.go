@@ -21,6 +21,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -46,6 +47,12 @@ const (
 	// the operator exactly as the render produced them.
 	humanRaw        = "%s"
 	scaffoldDirPerm = 0o777
+	// The workflow flags an unscoped request can carry, spelled as the CLI
+	// spells them: the refusal a facade caller reads matches the argv one.
+	flagCommentTrigger = "--comment-trigger"
+	flagPrint          = "--print"
+	flagAgent          = "--agent"
+	flagKeySecret      = "--key-secret"
 	// The four answers a scaffold path can give: absent, already current,
 	// written by an older run, or — for a root pipeline only — the operator's
 	// own file, which init reports and never writes.
@@ -67,6 +74,10 @@ type Request struct { //nolint:govet // the transport contract keeps its field o
 	Yes         bool
 	Interactive bool
 	Print       bool
+	// CommentTrigger adds the opt-in `/verdict` pull-request comment re-run to
+	// a GitHub workflow. It is a GitHub `issue_comment` event, so any other
+	// provider refuses rather than rendering a file that host would ignore.
+	CommentTrigger bool
 	// Machine is the --json mode: stdout carries exactly one envelope, so a
 	// --print payload goes only in the data slot.
 	Machine    bool
@@ -220,6 +231,18 @@ var presets = map[string]presetVals{
 	"strict":   {budget: "0.10", kbMin: "3", kbRate: "0.3", panel: "lead\nlens-1\nlens-2"},
 }
 
+// PresetValues lists every --preset value in the order the hints print them,
+// read from the preset table itself so the picker and the usage text cannot
+// offer a value init would refuse.
+func PresetValues() []string {
+	names := make([]string, 0, len(presets))
+	for name := range presets {
+		names = append(names, name)
+	}
+	slices.Sort(names)
+	return names
+}
+
 // configName is the typed control file init scaffolds first.
 const configName = "config.json"
 
@@ -255,7 +278,7 @@ func (st *state) plan() (presetVals, []byte, *core.RefusalError) {
 		return presetVals{}, nil, ref
 	}
 	if st.req.CI == "" {
-		return vals, nil, nil
+		return vals, nil, st.unscopedRefusal()
 	}
 	ci, ok := LookupCI(st.req.CI)
 	if !ok {
@@ -271,6 +294,31 @@ func (st *state) plan() (presetVals, []byte, *core.RefusalError) {
 		st.rootBody = root
 	}
 	return vals, workflow, nil
+}
+
+// unscopedRefusal is the service-side twin of the CLI's --ci-scoped usage
+// error: a workflow setting without a provider describes a file nothing would
+// render, so it refuses instead of being dropped. The CLI rejects it from argv,
+// but the facade and any later adapter hand these fields over directly; a
+// silently ignored `CommentTrigger: true` would be a promise the run never
+// kept.
+func (st *state) unscopedRefusal() *core.RefusalError {
+	if st.req.CommentTrigger {
+		return st.refuse(codeBadSettings, flagCommentTrigger+" needs --ci github")
+	}
+	for _, scoped := range []struct {
+		name  string
+		given bool
+	}{
+		{flagPrint, st.req.Print},
+		{flagAgent, st.req.Agent != ""},
+		{flagKeySecret, st.req.KeySecret != ""},
+	} {
+		if scoped.given {
+			return st.refuse(codeBadSettings, scoped.name+" needs --ci "+CIValues())
+		}
+	}
+	return nil
 }
 
 // writeScaffold previews, confirms, writes the controls and the workflow, then
@@ -661,7 +709,8 @@ func (st *state) printBytes(body []byte) {
 
 // writeCommand is the --print line that reproduces these exact bytes: the same
 // --ci run, carrying the agent and key secret only when they differ from the
-// defaults a bare `verdict init --ci github` already renders.
+// defaults a bare `verdict init --ci github` already renders, plus the opt-in
+// comment trigger when the render carries it.
 func (st *state) writeCommand() string {
 	out := "verdict init --ci " + st.req.CI
 	if st.req.Agent != "" && st.req.Agent != defaultAgent {
@@ -669,6 +718,9 @@ func (st *state) writeCommand() string {
 	}
 	if st.req.KeySecret != "" {
 		out += " --key-secret " + st.req.KeySecret
+	}
+	if st.req.CommentTrigger {
+		out += " --comment-trigger"
 	}
 	return out
 }
