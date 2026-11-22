@@ -296,7 +296,9 @@ var fieldDocs = map[string]string{
 	"Expect":     "Comma-separated allowlist of paths that may be dirty.",
 	"adopt.From": "Local bundle slug to adopt findings from.",
 	"Check":      "Gate tier (critical, important, informational); empty disables the gate.",
-	"Live":       "Live-thread posture (auto, strict, skip).",
+	"Compare": "Baseline bundle to compare against (a bundle directory, or a PR/local slug in the same " +
+		"state directory): groups signature-matched findings into new, persisting, resolved, not reviewed.",
+	"Live": "Live-thread posture (auto, strict, skip).",
 	"Risk": "Include the advisory risk score (claimed level or unknown, deterministic store floor, " +
 		"and reported = max(claimed, floor)).",
 	"MaxRisk":      "Fail the risk gate when reported risk exceeds this level (low, medium, high, critical) or is unknown.",

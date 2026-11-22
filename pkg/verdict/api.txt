@@ -595,7 +595,10 @@ func (e *RefusalError) Error() string
 type ReportRequest struct {
 	Invocation
 	Status, Kind, Output, Sarif, Check, Live, MaxRisk string
-	Cost, Completeness, IncludeWithheld, Risk         bool
+	// Compare names a baseline bundle (a directory, or a PR/local slug in the
+	// same state directory) to compare signature-matched findings against.
+	Compare                                   string
+	Cost, Completeness, IncludeWithheld, Risk bool
 }
     ReportRequest carries the report options. Output/Sarif name files whose
     bytes return in the response instead of being written.

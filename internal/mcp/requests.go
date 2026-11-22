@@ -431,6 +431,7 @@ func decodeReport(req *reportcore.Request, a *args) {
 		f.str("output", &req.Flags.Output)
 		f.str("sarif", &req.Flags.Sarif)
 		f.str("check", &req.Flags.Check)
+		req.Flags.CompareSet = f.strPresent("compare", &req.Flags.Compare)
 		f.str("live", &req.Flags.Live)
 		f.boolean("cost", &req.Flags.Cost)
 		f.boolean("includeWithheld", &req.Flags.IncludeWithheld)

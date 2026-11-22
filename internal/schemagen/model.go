@@ -274,6 +274,7 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Filters      ReportFilters      `json:"filters"`
 	Items        []FindingItem      `json:"items"`
 	Cost         ReportCost         `json:"cost"         optional:"true"`
+	Compare      *ReportCompare     `anyOf:"null"        json:"compare"                optional:"true"`
 	Completeness ReportCompleteness `json:"completeness" optional:"true"`
 	Compliance   *ReportCompliance  `anyOf:"null"        json:"compliance"             optional:"true"`
 	Risk         *ReportRisk        `anyOf:"null"        json:"risk"                   optional:"true"`
@@ -304,6 +305,46 @@ type CostTiers = core.CostTiers
 
 // CostTier is core's one-tier token rollup.
 type CostTier = core.CostTier
+
+// ReportCompare is `report --compare`'s four-bucket comparison.
+type ReportCompare struct { //nolint:govet // field order is the published property order
+	Baseline    CompareBaseline  `json:"baseline"`
+	Counts      CompareCounts    `json:"counts"`
+	New         []CompareFinding `json:"new"`
+	Persisting  []CompareFinding `json:"persisting"`
+	Resolved    []CompareFinding `json:"resolved"`
+	NotReviewed []CompareFinding `json:"not_reviewed"`
+}
+
+// CompareBaseline names the comparison bundle and the run it recorded.
+type CompareBaseline struct { //nolint:govet // field order is the published property order
+	Dir        string  `json:"dir"`
+	Name       string  `json:"name"`
+	HeadSHA    *string `json:"head_sha"`
+	BaseSHA    *string `json:"base_sha"`
+	RecordedAt *string `json:"recorded_at"`
+	Findings   int     `json:"findings"    min:"0"`
+}
+
+// CompareCounts tallies the four buckets.
+type CompareCounts struct {
+	New         int `json:"new"          min:"0"`
+	Persisting  int `json:"persisting"   min:"0"`
+	Resolved    int `json:"resolved"     min:"0"`
+	NotReviewed int `json:"not_reviewed" min:"0"`
+}
+
+// CompareFinding is one bucket row.
+type CompareFinding struct {
+	Sig      string   `json:"sig"`
+	Status   string   `json:"status"`
+	Severity *string  `json:"severity"`
+	Path     *string  `json:"path"`
+	Line     *int     `json:"line"              min:"0"`
+	Claim    string   `json:"claim"`
+	Reason   string   `json:"reason"`
+	Changes  []string `json:"changes,omitempty" optional:"true"`
+}
 
 // ReportCompleteness is core's head comparison.
 type ReportCompleteness = core.ReportCompleteness

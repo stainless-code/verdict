@@ -586,6 +586,10 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[ReportPanel](), name: "reportPanel"},
 		{typ: reflect.TypeFor[ReportFilters](), name: "reportFilters"},
 		{typ: reflect.TypeFor[ReportCost](), name: "reportCost"},
+		{typ: reflect.TypeFor[ReportCompare](), name: "reportCompare"},
+		{typ: reflect.TypeFor[CompareBaseline](), name: "compareBaseline"},
+		{typ: reflect.TypeFor[CompareCounts](), name: "compareCounts"},
+		{typ: reflect.TypeFor[CompareFinding](), name: "compareFinding"},
 		{typ: reflect.TypeFor[CostTiers](), name: "costTiers"},
 		{typ: reflect.TypeFor[CostTier](), name: "costTier"},
 		{typ: reflect.TypeFor[ReportCompleteness](), name: "reportCompleteness"},
@@ -867,7 +871,51 @@ func (b *builder) defNode(def *definition) (*node, error) {
 	}
 	schema.members = append(schema.members, def.constraints...)
 	addVerbWireMembers(def.name, schema)
+	addCompareVocabulary(def.name, schema)
 	return schema, nil
+}
+
+// The compare vocabularies are published here rather than as struct tags: the
+// reason family is longer than a readable field line allows, and the schema is
+// the one consumer of either list.
+const (
+	compareStatuses = "open|addressed|wont-fix|false-positive|deferred"
+	compareReasons  = "not-in-baseline|in-both|covered-and-absent|removed-from-diff|" +
+		"uncovered-hunk|excluded|not-in-incremental-diff|no-location|partial-review"
+)
+
+// addCompareVocabulary attaches the published status and reason enums to the
+// compareFinding definition.
+func addCompareVocabulary(name string, schema *node) {
+	if name != "compareFinding" {
+		return
+	}
+	props := propertiesNode(schema)
+	if props == nil {
+		return
+	}
+	setEnum(props, "status", compareStatuses)
+	setEnum(props, "reason", compareReasons)
+}
+
+// propertiesNode returns a schema object's properties node.
+func propertiesNode(schema *node) *node {
+	for i := range schema.members {
+		if schema.members[i].key == keyProperties {
+			return schema.members[i].value
+		}
+	}
+	return nil
+}
+
+// setEnum replaces one property's node with the given enum.
+func setEnum(props *node, key, spec string) {
+	for i := range props.members {
+		if props.members[i].key == key {
+			props.members[i].value = enumNode(spec)
+			return
+		}
+	}
 }
 
 // requireAlternatives replaces a definition's single required list with an

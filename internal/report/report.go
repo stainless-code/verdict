@@ -210,6 +210,7 @@ var reportValueWants = map[string]string{
 	"--live":     "auto|strict|skip",
 	"--category": "logic|edge-case|security|performance|accidental-commit|style|docs|other",
 	"--max-risk": "low|medium|high|critical",
+	"--compare":  "<bundle-dir|pr|slug>",
 }
 
 var reportBoolSetters = map[string]func(*reportcore.Flags){
@@ -268,6 +269,9 @@ func parseReportValue(r *cli.Runner, flags *reportcore.Flags, args []string, i i
 		return parseLiveFlag(r, flags, v)
 	case "--max-risk":
 		return parseMaxRiskFlag(r, flags, v)
+	case "--compare":
+		flags.Compare, flags.CompareSet = v, true
+		return next - i + 1, 0, false
 	default: // --output, --sarif
 		setReportPath(flags, args[i], v)
 		return next - i + 1, 0, false

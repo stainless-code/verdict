@@ -22,7 +22,7 @@ func TestUnknownFlagListsAllReportFlags(t *testing.T) {
 	got := diag.String()
 	for _, flag := range []string{
 		"--status", "--kind", "--category", "--output", "--sarif",
-		"--include-withheld", "--cost", "--risk", "--max-risk", "--check", "--completeness", "--live", "--json",
+		"--include-withheld", "--cost", "--risk", "--max-risk", "--check", "--compare", "--completeness", "--live", "--json",
 	} {
 		if !strings.Contains(got, flag) {
 			t.Errorf("unknown-flag message %q missing %s", got, flag)
@@ -158,5 +158,110 @@ func TestJSONValidationUsesStoredReceiptWithoutTableWarning(t *testing.T) {
 	}
 	if strings.Contains(out.String(), "the table lists no per-finding results") {
 		t.Errorf("JSON contains a table warning: %s", &out)
+	}
+}
+
+// setupCompareCLIBundles writes a reported local bundle and a recorded
+// baseline beside it, enough for `report --compare`.
+func setupCompareCLIBundles(t *testing.T) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	for name, body := range map[string]string{
+		".verdict/state/local-head/source.json":    `{"repo":"acme/app","head_sha":"` + testRiskHeadSHA + `"}`,
+		".verdict/state/local-head/findings.json":  `[{"kind":"inline","path":"a.go","side":"RIGHT","line":3,"body":"current bug","severity":"important","sig":"` + strings.Repeat("a", 40) + `","status":"open"}]`,
+		".verdict/state/local-prior/findings.json": `[{"kind":"inline","path":"b.go","side":"RIGHT","line":4,"body":"prior bug","severity":"important","sig":"` + strings.Repeat("b", 40) + `","status":"open"}]`,
+	} {
+		if err := os.MkdirAll(filepath.Dir(name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(name, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// runCompareCLI drives one report invocation and returns its exit code and
+// both streams.
+func runCompareCLI(t *testing.T, jsonMode bool, args ...string) (int, string, string) {
+	t.Helper()
+	var out, diag bytes.Buffer
+	r := &cli.Runner{
+		Out: &out, Human: &out, Diag: &diag, JSONMode: jsonMode,
+		Cmd: "report", Repo: "acme/app", Pr: "local-head", Effective: cli.Defaults(),
+		Now: func() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) },
+	}
+	code := Run(context.Background(), r, args, Request{Repo: "acme/app", Pr: "local-head"})
+	return code, out.String(), diag.String()
+}
+
+// TestReportCompareHumanAndJSON proves the adapter parses --compare and both
+// surfaces carry the four buckets.
+//
+//nolint:revive // both surfaces read as one block
+func TestReportCompareHumanAndJSON(t *testing.T) {
+	setupCompareCLIBundles(t)
+	code, out, diag := runCompareCLI(t, false, "--compare", "local-prior")
+	if code != cli.ExitOK {
+		t.Fatalf("exit = %d, want 0; diag=%s", code, diag)
+	}
+	for _, want := range []string{
+		"compare: .verdict/state/local-prior @ unrecorded — new=1 persisting=0 resolved=0 not-reviewed=1",
+		"new (1)",
+		"not reviewed (1)",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("human output missing %q:\n%s", want, out)
+		}
+	}
+	code, out, diag = runCompareCLI(t, true, "--compare", "local-prior")
+	if code != cli.ExitOK {
+		t.Fatalf("json exit = %d, want 0; diag=%s", code, diag)
+	}
+	for _, want := range []string{`"compare"`, `"not_reviewed": 1`, `"reason": "partial-review"`} {
+		if !strings.Contains(out, want) {
+			t.Errorf("json output missing %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestReportCompareRefusesMissingBaseline proves a bad baseline is a typed
+// refusal (exit 1) with the hint, not a usage error.
+func TestReportCompareRefusesMissingBaseline(t *testing.T) {
+	setupCompareCLIBundles(t)
+	code, out, diag := runCompareCLI(t, true, "--compare", "local-absent")
+	if code != cli.ExitRefused {
+		t.Fatalf("exit = %d, want 1; out=%s diag=%s", code, out, diag)
+	}
+	if !strings.Contains(out, `"missing-compare-bundle"`) {
+		t.Errorf("json refusal missing the typed code: %s", out)
+	}
+	code, _, diag = runCompareCLI(t, false, "--compare", "local-absent")
+	if code != cli.ExitRefused || !strings.Contains(diag, "try: pass an existing bundle directory") {
+		t.Errorf("human refusal = exit %d, diag %q; want exit 1 and the hint", code, diag)
+	}
+}
+
+// TestReportCompareEmptyValueRefuses proves an explicitly empty operand
+// refuses typed instead of silently disabling the comparison.
+func TestReportCompareEmptyValueRefuses(t *testing.T) {
+	setupCompareCLIBundles(t)
+	code, out, diag := runCompareCLI(t, true, "--compare", "")
+	if code != cli.ExitRefused {
+		t.Fatalf("exit = %d, want 1; out=%s diag=%s", code, out, diag)
+	}
+	if !strings.Contains(out, `"bad-compare"`) {
+		t.Errorf("json refusal missing bad-compare: %s", out)
+	}
+}
+
+// TestReportCompareNeedsAValue proves the flag's operand is required (exit 2,
+// no envelope), like every other report value flag.
+func TestReportCompareNeedsAValue(t *testing.T) {
+	code, out, diag := runCompareCLI(t, false, "--compare")
+	if code != cli.ExitUsage {
+		t.Fatalf("exit = %d, want 2; out=%s diag=%s", code, out, diag)
+	}
+	if !strings.Contains(diag, "--compare") || !strings.Contains(diag, "<bundle-dir|pr|slug>") {
+		t.Errorf("usage error missing the operand name: %q", diag)
 	}
 }

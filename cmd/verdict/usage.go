@@ -200,7 +200,8 @@ func usageText() string {
 		"[--kind inline|section|all]\n" +
 		"[--category logic|edge-case|security|performance|accidental-commit|style|docs|other]\n" +
 		"        [--output <path>] [--sarif <path>] [--include-withheld] [--cost] [--risk] " +
-		"[--check <critical|important|informational>] [--completeness] [--max-risk <low|medium|high|critical>] " +
+		"[--check <critical|important|informational>] [--compare <bundle-dir|pr|slug>] [--completeness] " +
+		"[--max-risk <low|medium|high|critical>] " +
 		"[--live auto|strict|skip] [--json]\n" +
 		"    pure read over the store: ranked findings + verdict + counts. Advisory runs\n" +
 		"    touch no network; gate runs (--check/--completeness) end with one live-thread recheck read.\n" +
@@ -224,6 +225,15 @@ func usageText() string {
 		"    gate counts open findings only, whatever --status/--kind show. Without\n" +
 		"    --check the run stays advisory: exit 0 with findings listed (typed\n" +
 		"    errors exit 1, usage exits 2).\n" +
+		"    --compare groups the same stable finding signatures against a prior bundle (a directory, or\n" +
+		"    a PR/local-<name> in the same state directory) into new, persisting, resolved, and not\n" +
+		"    reviewed. A missing finding reads resolved only when the current bundle proves the reviewer\n" +
+		"    saw it (attested coverage of its hunk) or a provider PR's full diff no longer touches its\n" +
+		"    file; an incremental --since delta, an excluded file, an unattested hunk, a path-filtered\n" +
+		"    local bundle, and a missing snapshot all read not reviewed, and each row names its reason.\n" +
+		"    A baseline that is missing, symlinked, corrupt, unrecorded, the same bundle, or from another\n" +
+		"    repository refuses typed (bad-compare, missing/unsafe/corrupt/unrecorded-compare-bundle).\n" +
+		"    Advisory only: it never changes the gate or the exit code.\n" +
 		"    --completeness opts into a second gate dimension answering \"is HEAD\n" +
 		"    reviewed?\" from the local completed-post record (local post-record\n" +
 		"    read): pass iff post.json exists, parses, and carries a non-empty\n" +

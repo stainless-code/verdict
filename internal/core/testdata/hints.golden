@@ -26,6 +26,7 @@ bad-budget	try: re-run with one of the valid values named above
 bad-by	try: use one of the dimensions named in the message
 bad-category	try: re-run with one of the valid values named above
 bad-color	try: re-run with one of the valid values named above
+bad-compare	try: pass a different non-empty baseline (--compare <bundle-dir|pr|local-name>): not the bundle being reported, and not one from another repository or review host
 bad-config	try: re-run with one of the valid values named above
 bad-config-credentials	try: re-run with one of the valid values named above
 bad-flags	try: re-run with one of the valid values named above
@@ -85,6 +86,7 @@ controls-stale	try: re-fetch the bundle (controls changed under it), then re-run
 controls-too-large	try: trim the named control file under its cap, commit it at base, then re-fetch
 controls-unavailable	try: check out the PR base (actions/checkout fetch-depth: 0, or git fetch --depth=1 origin <base>), then re-fetch; fetch --allow-head-controls is the explicit opt-out
 corpus-invalid	try: address the cause above, then re-run the same command
+corrupt-compare-bundle	try: re-run record or post on the baseline bundle, or restore its findings.json from backup, then re-run
 corrupt-store	try: restore the file or directory the message names from backup (permissions included), or move it aside and rebuild the store, then re-run
 cost-entry-contradicts-panel	try: pass the panel in the order it ran (synthesizer first), or fix the entry's name, then re-run
 cost-entry-unnamed	try: pass every model that ran: --cost-names=<lead>,<lens-1>,<lens-2>
@@ -136,6 +138,7 @@ mcp-config-write-failed	try: check the config path and permissions named above, 
 missing-bundle	try: run the fetch/record step named above first, then re-run
 missing-chunk-coverage	try: re-fetch the bundle with --chunk, then re-synthesize across all chunks and re-run
 missing-chunk-snapshot	try: re-fetch the bundle with --chunk, then re-synthesize across all chunks and re-run
+missing-compare-bundle	try: pass an existing bundle directory, or the PR or local-<name> the prior run left under .verdict/state
 missing-diff	try: run the fetch/record step named above first, then re-run
 missing-findings	try: run the fetch/record step named above first, then re-run
 missing-index	try: run 'verdict index build' first
@@ -224,6 +227,8 @@ unknown-recipe	try: pass --recipe <name> from the list above; recipes live in .v
 unknown-rule	try: list rules with learn --status, then re-run
 unknown-sig	try: copy the full sig prefix from report output
 unknown-thread	try: address the cause above, then re-run the same command
+unrecorded-compare-bundle	try: record or post the baseline bundle first, then re-run report --compare
+unsafe-compare-bundle	try: pass the bundle directory itself, not a symlink, a file, or a device
 unsupported-cap	try: address the cause above, then re-run the same command
 unsupported-platform	try: address the cause above, then re-run the same command
 upgrade-bad-method	try: address the cause above, then re-run the same command

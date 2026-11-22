@@ -79,6 +79,27 @@ var hintRules = []HintRule{
 	{codes: []string{"bad-sarif"}, hint: "try: pass a valid UTF-8 SARIF 2.1.0 JSON file with repository-relative URIs"},
 	{codes: []string{"sarif-too-large"}, hint: "try: split or trim the SARIF report under 8 MiB before ingesting"},
 	{codes: []string{"ingest-failed"}, hint: "try: confirm the bundle path and SARIF file readability, then re-run"},
+	{
+		codes: []string{"bad-compare"},
+		hint: "try: pass a different non-empty baseline (--compare <bundle-dir|pr|local-name>): not the " +
+			"bundle being reported, and not one from another repository or review host",
+	},
+	{
+		codes: []string{"missing-compare-bundle"},
+		hint:  "try: pass an existing bundle directory, or the PR or local-<name> the prior run left under .verdict/state",
+	},
+	{
+		codes: []string{"unsafe-compare-bundle"},
+		hint:  "try: pass the bundle directory itself, not a symlink, a file, or a device",
+	},
+	{
+		codes: []string{"corrupt-compare-bundle"},
+		hint:  "try: re-run record or post on the baseline bundle, or restore its findings.json from backup, then re-run",
+	},
+	{
+		codes: []string{"unrecorded-compare-bundle"},
+		hint:  "try: record or post the baseline bundle first, then re-run report --compare",
+	},
 	{prefix: "missing-", hint: "try: run the fetch/record step named above first, then re-run"},
 	{
 		codes: []string{"no-selected-findings"},
