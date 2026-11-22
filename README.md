@@ -176,7 +176,12 @@ On the other three hosts, `record`, `report`, `show`, `next`, `triage`, and `thr
 - **Diffs and comments are untrusted input.** The prompts treat them as evidence, never as instructions.
 - **Secrets stay local.** `GH_TOKEN` never leaves your machine, and provider tokens go only to their own hosts. Nothing phones home: no telemetry, no background updater.
 
-Report vulnerabilities through [`SECURITY.md`](SECURITY.md).
+Report vulnerabilities through [`SECURITY.md`](SECURITY.md). The assurance case —
+threat model, base-owned controls, evidence gating, sandbox, and supply chain,
+boundary by boundary — is [`ASSURANCE_CASE.md`](ASSURANCE_CASE.md), and
+[`docs/openssf-best-practices.md`](docs/openssf-best-practices.md) audits the
+project against the OpenSSF Best Practices criteria and records what is still
+outstanding.
 
 ## CI
 
@@ -249,6 +254,8 @@ review is posted to GitHub before the merge gate runs.
 ## Contributing
 
 Build from source, run the evals, and ship a change: see [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Packs, offline eval fixtures, and host adapters have their own copy-pasteable
+guide: [`docs/contributing-packs.md`](docs/contributing-packs.md).
 
 ## License
 
