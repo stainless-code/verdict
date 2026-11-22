@@ -557,6 +557,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[core.RecipeStageRender](), name: "runRecipeStageRender"},
 		{typ: reflect.TypeFor[core.RecipeLens](), name: "runRecipeLens"},
 		{typ: reflect.TypeFor[core.RunExecution](), name: "runExecution"},
+		{typ: reflect.TypeFor[core.RunResume](), name: "runResume"},
 		{typ: reflect.TypeFor[core.RunPhaseFailure](), name: "runPhaseFailure"},
 		{typ: reflect.TypeFor[core.RunRepair](), name: "runRepair"},
 		{typ: reflect.TypeFor[core.ReviewBudget](), name: "reviewBudget"},

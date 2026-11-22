@@ -20,15 +20,27 @@ func (st *state) launchSelected(ctx context.Context, args *launchArgs, rounds in
 	if st.twoFinders && resumeArguments(&args.def, st.req.PassThrough) {
 		return nil, st.refuse(codeBadFlags, "two finders require fresh processes — remove session-resume options")
 	}
-	if !st.req.Print && st.drainDigest == "" {
-		if ref := st.supersede(args.target.evidence); ref != nil {
-			return nil, ref
-		}
+	if ref := st.reuseRefusal(); ref != nil {
+		return nil, ref
+	}
+	if ref := st.maybeSupersede(args); ref != nil {
+		return nil, ref
 	}
 	if st.twoFinders {
 		return st.coordinate(ctx, args, rounds)
 	}
 	return st.invoke(ctx, args, rounds)
+}
+
+// maybeSupersede retires a prior execution before a replacement launch writes
+// its own phases. A render continues nothing, a drain launch writes its own
+// artifact, and a --resume invocation continues the recorded execution in
+// place, so none of the three retires anything.
+func (st *state) maybeSupersede(args *launchArgs) *core.RefusalError {
+	if st.req.Print || st.drainDigest != "" || st.req.Resume {
+		return nil
+	}
+	return st.supersede(args.target.evidence)
 }
 
 // supersede retires whatever a previous execution left before a replacement

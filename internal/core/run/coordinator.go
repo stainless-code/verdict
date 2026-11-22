@@ -24,20 +24,23 @@ import (
 // only between phases: a parallel phase works from its own state clone and
 // outcome, and the fan-in merges those in index order.
 type coordinator struct {
-	st       *state
-	base     *launchArgs
-	snapshot executionSnapshot
-	review   *jq.Obj
-	plan     *jq.Obj
-	binding  *jq.Obj
-	response *core.RunResponse
-	dir      string
-	source   string
-	id       string
-	reviews  []*jq.Obj
-	failures []any
-	snapMu   sync.RWMutex
-	rounds   int
+	st          *state
+	base        *launchArgs
+	snapshot    executionSnapshot
+	resume      *resumePlan
+	fingerprint resumeFingerprint
+	record      *jq.Obj
+	review      *jq.Obj
+	plan        *jq.Obj
+	binding     *jq.Obj
+	response    *core.RunResponse
+	dir         string
+	source      string
+	id          string
+	reviews     []*jq.Obj
+	failures    []any
+	snapMu      sync.RWMutex
+	rounds      int
 }
 
 // check is the snapshot checkpoint. It takes the read lock, so a phase can
@@ -101,16 +104,56 @@ func (c *coordinator) run(ctx context.Context) *core.RefusalError {
 	return c.finish()
 }
 
+// initialize reads the capture, starts the execution, and pins the snapshot
+// every checkpoint compares against.
 func (c *coordinator) initialize(ctx context.Context) *core.RefusalError {
-	if ref := c.capture(); ref != nil {
+	captured, ref := readFinderCapture(c.dir)
+	if ref != nil {
 		return ref
 	}
-	if ref := c.st.authorizeSpend(ctx, c.dir, c.rounds); ref != nil {
+	if captured == nil {
+		return c.st.refuse(codeMissingBundle, "two finders require a captured run")
+	}
+	if ref := c.start(ctx, captured); ref != nil {
 		return ref
 	}
-	var ref *core.RefusalError
 	c.snapshot, ref = captureSnapshot(c.dir)
-	return ref
+	if ref != nil {
+		return ref
+	}
+	return c.seedSealed()
+}
+
+// start records the execution and authorizes its spend. A resumed execution
+// already carries the record every resume check reads, so its spend — and every
+// refusal the resume earned — is decided before the launcher file is touched
+// and before a single agent starts. A fresh execution records itself first,
+// because the spend projection reads its execution id out of run.json.
+func (c *coordinator) start(ctx context.Context, captured *config.RunState) *core.RefusalError {
+	if c.st.req.Resume {
+		return c.startResume(ctx, captured)
+	}
+	if ref := c.captureExecution(captured); ref != nil {
+		return ref
+	}
+	return c.st.authorizeSpend(ctx, c.dir, c.rounds)
+}
+
+// startResume continues the recorded execution. The spend guard runs only when
+// this attempt will launch something: a resume that reuses every phase of a
+// finished execution spends nothing, so a tight budget must not stop it.
+func (c *coordinator) startResume(ctx context.Context, captured *config.RunState) *core.RefusalError {
+	plan, ref := c.planResume(captured)
+	if ref != nil {
+		return ref
+	}
+	c.resume = plan
+	if plan.launchesPlanned() {
+		if ref := c.st.authorizeSpend(ctx, c.dir, c.rounds); ref != nil {
+			return ref
+		}
+	}
+	return c.captureResumed()
 }
 
 // sessionFlags is the shared session-continuation vocabulary: flag names every
@@ -137,24 +180,68 @@ func resumeArguments(def *agentcatalog.Launch, args []string) bool {
 // consumer of the launcher record already knows.
 func finderPhase(index int) string { return fmt.Sprintf("x-finder-%d", index+1) }
 
+// openPhase resolves one phase directory, reusing the interrupted execution's
+// own directory when this invocation continues it.
+func (c *coordinator) openPhase(name string) (string, *core.RefusalError) {
+	return phaseDirectory(c.dir, name, c.resume != nil)
+}
+
 // prepareDiscovery creates both phase directories and pins their procedures and
 // the evidence inventory in index order before either agent starts, so the two
-// launches begin from the same bytes and neither can see the other's writes.
+// launches begin from the same bytes and neither can see the other's writes. A
+// finder a resumed run verified in place is pinned here instead, and its launch
+// is left out.
 func (c *coordinator) prepareDiscovery() ([]*launchArgs, *core.RefusalError) {
 	args := make([]*launchArgs, finderCount)
 	for i := range finderCount {
-		output, ref := phaseDirectory(c.dir, finderPhase(i))
+		arg, ref := c.prepareFinder(i)
 		if ref != nil {
 			return nil, ref
 		}
-		if args[i], ref = c.discoveryArgs(output, i); ref != nil {
-			return nil, ref
-		}
+		args[i] = arg
 	}
 	if ref := c.check(); ref != nil {
 		return nil, ref
 	}
 	return args, nil
+}
+
+// prepareFinder opens one finder phase: a phase a resumed run verified is
+// pinned in place, and a phase this run must launch gets its procedure and
+// argv.
+func (c *coordinator) prepareFinder(index int) (*launchArgs, *core.RefusalError) {
+	output, ref := c.openPhase(finderPhase(index))
+	if ref != nil {
+		return nil, ref
+	}
+	if c.reusedFinder(index) {
+		return nil, c.reuseDiscovery(index)
+	}
+	if c.resume != nil {
+		if ref := c.clearStaleArtifact(finderPhase(index), reviewFile); ref != nil {
+			return nil, ref
+		}
+	}
+	return c.discoveryArgs(output, index)
+}
+
+// reusedFinder reports whether this invocation continues finder index from the
+// interrupted execution instead of launching it again.
+func (c *coordinator) reusedFinder(index int) bool {
+	return c.resume != nil && c.resume.reusableFinder(index)
+}
+
+// reuseDiscovery continues one verified finder phase in place, so the fan-in
+// reads it exactly as it reads a phase this invocation launched. The review
+// comes from the bytes the plan sealed, and the phase is checked against that
+// seal first, so the run never consumes or binds an artifact other than the one
+// it verified.
+func (c *coordinator) reuseDiscovery(index int) *core.RefusalError {
+	if ref := c.sealedBytes(c.resume.finderBytes[index], filepath.Join(finderPhase(index), reviewFile)); ref != nil {
+		return ref
+	}
+	c.reviews[index] = discoveryObject(c.resume.finderBytes[index])
+	return c.bindPhase(finderPhase(index))
 }
 
 // discoveryOutcome is one finder's contribution to the fan-in: its review, the
@@ -203,6 +290,12 @@ func readDiscovery(path string) *jq.Obj {
 	if !ok {
 		return nil
 	}
+	return discoveryObject(raw)
+}
+
+// discoveryObject normalizes and decodes the review bytes one phase left, which
+// a resumed run reads from its own sealed copy rather than from disk again.
+func discoveryObject(raw []byte) *jq.Obj {
 	normalized, _ := recordcore.NormalizeReview(raw)
 	value, err := jq.DecodeOrdered(normalized)
 	if err != nil {
@@ -226,7 +319,28 @@ func (c *coordinator) failed(phase, code string) {
 	c.failures = append(c.failures, jq.NewObj("phase", phase, "code", code))
 }
 
-func (c *coordinator) freeze() *core.RefusalError {
+// resolveFailure records what this attempt saw of one phase: a phase that
+// failed replaces the interruption's row for it, and a phase that succeeded
+// clears that row, so the record names each failing phase once and never keeps
+// a failure this attempt has already repaired.
+func (c *coordinator) resolveFailure(phase, code string) {
+	kept := make([]any, 0, len(c.failures)+1)
+	for _, row := range c.failures {
+		if jq.StrOf(readcommon.FieldOf(row, "phase")) != phase {
+			kept = append(kept, row)
+		}
+	}
+	c.failures = kept
+	if code != "" {
+		c.failed(phase, code)
+	}
+}
+
+// deriveUnion builds this execution's aggregate review, plan, and binding from
+// the finder reviews in memory. It writes nothing, so a resume can validate its
+// recorded cross checks against exactly the batch the run would ask about
+// before the record or the plan is published.
+func (c *coordinator) deriveUnion() *core.RefusalError {
 	diff, err := os.ReadFile(filepath.Join(c.dir, "full.diff"))
 	if err != nil {
 		return c.st.refuse(codeMissingBundle, "diff missing")
@@ -236,24 +350,34 @@ func (c *coordinator) freeze() *core.RefusalError {
 	if unionErr != nil {
 		return c.st.refuse(codeBadFlags, unionErr.Error())
 	}
-	if _, ref := phaseDirectory(c.dir, "verification"); ref != nil {
+	head := readcommon.OpenBundle(c.dir).Head()
+	c.plan.Set("schema_version", "2")
+	c.plan.Set("execution_id", c.id)
+	c.plan.Set("head_sha", head)
+	c.plan.Set("diff_sha256", shaHex(diff))
+	c.plan.Set("review_sha256", shaHex(coordinatorBytes(c.review)))
+	c.binding = jq.NewObj("schema_version", "2", "execution_id", c.id, "head_sha", head,
+		"diff_sha256", shaHex(diff), "review_sha256", shaHex(coordinatorBytes(c.review)),
+		"plan_sha256", shaHex(coordinatorBytes(c.plan)), "results", []any{})
+	return nil
+}
+
+// freeze publishes the derived union: the aggregate review, the plan, and the
+// binding this execution reports through.
+func (c *coordinator) freeze() *core.RefusalError {
+	if ref := c.deriveUnion(); ref != nil {
+		return ref
+	}
+	if _, ref := c.openPhase(verificationDir); ref != nil {
 		return ref
 	}
 	if ref := writeCoordinator(c.dir, reviewFile, c.review); ref != nil {
 		return ref
 	}
-	c.plan.Set("schema_version", "2")
-	c.plan.Set("execution_id", c.id)
-	c.plan.Set("head_sha", readcommon.OpenBundle(c.dir).Head())
-	c.plan.Set("diff_sha256", shaHex(diff))
-	c.plan.Set("review_sha256", shaHex(coordinatorBytes(c.review)))
 	planPath := filepath.Join(verificationDir, "plan.json")
 	if ref := writeCoordinator(c.dir, planPath, c.plan); ref != nil {
 		return ref
 	}
-	c.binding = jq.NewObj("schema_version", "2", "execution_id", c.id, "head_sha", readcommon.OpenBundle(c.dir).Head(),
-		"diff_sha256", shaHex(diff), "review_sha256", shaHex(coordinatorBytes(c.review)),
-		"plan_sha256", shaHex(coordinatorBytes(c.plan)), "results", []any{})
 	return c.bind(reviewFile, planPath)
 }
 
@@ -262,11 +386,11 @@ func (c *coordinator) finish() *core.RefusalError {
 		return ref
 	}
 	manifest := cloneUnionRow(c.binding)
-	manifest.Set("finders", 2)
-	manifest.Set("finder_source", c.source)
+	manifest.Set(keyFinders, finderCount)
+	manifest.Set(keyFinderSource, c.source)
 	setManifestBudget(manifest, c.st.budget)
 	manifest.Set("results", nil)
-	manifest.Set("failures", c.failures)
+	manifest.Set(keyFailures, c.failures)
 	manifest.Set("artifacts", c.artifacts())
 	manifest.Set("profiles", []any{
 		jq.NewObj("finder", "finder-1", "profile", "contract-first"),
@@ -276,10 +400,11 @@ func (c *coordinator) finish() *core.RefusalError {
 	if len(c.failures) > 0 {
 		status = "partial"
 	}
-	manifest.Set("status", status)
+	manifest.Set(keyStatus, status)
 	if ref := c.check(); ref != nil {
 		return ref
 	}
+	manifest.Set(resumeRecordKey, c.resumeRecord(true))
 	if ref := writeCoordinator(c.dir, launcherFile, manifest); ref != nil {
 		return ref
 	}
@@ -325,52 +450,64 @@ func (c *coordinator) runDiscovery(ctx context.Context) *core.RefusalError {
 	}
 	progress := &syncProgress{}
 	workers := make([]*state, finderCount)
+	skipped := make([]bool, finderCount)
 	for i := range finderCount {
 		workers[i] = c.st.phaseState(progress)
+		skipped[i] = args[i] == nil
 	}
 	outcomes := make([]discoveryOutcome, finderCount)
 	phaseCtx, phaseCancel := context.WithCancel(ctx)
 	defer phaseCancel()
 	var wg sync.WaitGroup
 	for i := range finderCount {
+		if skipped[i] {
+			continue
+		}
 		wg.Go(func() {
 			outcomes[i] = c.discoverPhase(phaseCtx, i, args[i], workers[i], phaseCancel)
 		})
 	}
 	wg.Wait()
-	return c.mergeDiscovery(ctx, outcomes)
+	return c.mergeDiscovery(ctx, outcomes, skipped)
 }
 
 // mergeDiscovery folds both finders' outcomes in index order: warnings first,
 // then the cancel, the failures, the reviews, and the response the run reports,
-// and one final checkpoint over everything both agents wrote.
-func (c *coordinator) mergeDiscovery(ctx context.Context, outcomes []discoveryOutcome) *core.RefusalError {
+// and one final checkpoint over everything both agents wrote. A finder a
+// resumed run reused has no outcome, because it launched nothing.
+func (c *coordinator) mergeDiscovery(ctx context.Context, outcomes []discoveryOutcome,
+	skipped []bool,
+) *core.RefusalError {
 	for i := range outcomes {
 		c.st.replay(outcomes[i].worker)
 	}
 	if ref := canceledRefusal(ctx, c.st); ref != nil {
 		return ref
 	}
-	fatal := c.recordDiscoveries(outcomes)
+	fatal := c.recordDiscoveries(outcomes, skipped)
 	if fatal != nil {
 		return fatal
 	}
 	return c.check()
 }
 
-// recordDiscoveries folds both finders' outcomes in index order and reports the
-// refusal that ends the run, if any.
-func (c *coordinator) recordDiscoveries(outcomes []discoveryOutcome) *core.RefusalError {
+// recordDiscoveries folds the launched finders' outcomes in index order and
+// reports the refusal that ends the run, if any.
+func (c *coordinator) recordDiscoveries(outcomes []discoveryOutcome, skipped []bool) *core.RefusalError {
 	var fatal *core.RefusalError
 	for i := range outcomes {
+		if skipped[i] {
+			continue
+		}
 		fatal = mergeFatal(fatal, outcomes[i].ref)
 		c.reviews[i] = outcomes[i].review
-		if outcomes[i].failure != "" {
-			c.failed(finderPhase(i), outcomes[i].failure)
-		}
+		c.resolveFailure(finderPhase(i), outcomes[i].failure)
 		if outcomes[i].response != nil {
 			c.response = outcomes[i].response
 		}
+	}
+	if ref := c.persistProgress(); ref != nil {
+		return ref
 	}
 	return fatal
 }
@@ -397,29 +534,72 @@ func mergeFatal(current, next *core.RefusalError) *core.RefusalError {
 	return current
 }
 
-func (c *coordinator) capture() *core.RefusalError {
-	captured, readRef := readFinderCapture(c.dir)
-	if readRef != nil {
-		return readRef
-	}
-	if captured == nil {
-		return c.st.refuse(codeMissingBundle, "two finders require a captured run")
-	}
+// captureExecution records a fresh execution in run.json and pins the
+// launcher's resume fingerprint before any phase runs, so an interruption at
+// any point leaves a record a later --resume can verify.
+func (c *coordinator) captureExecution(captured *config.RunState) *core.RefusalError {
 	_, source, ref := c.st.finderPolicy(captured)
 	if ref != nil {
 		return ref
 	}
 	c.source = source
-	captured.Finders = 2
+	captured.Finders = finderCount
 	captured.FinderSource = source
 	captured.Execution = &core.ExecutionReference{ID: c.id, Finders: finderCount}
 	if err := config.WriteRunState(c.dir, captured); err != nil {
 		return c.st.refuse(codeRecordFailed, fmt.Sprintf("capture execution: %v", err))
 	}
-	manifest := jq.NewObj("schema_version", "2", "execution_id", c.id, "status", "in-progress",
-		"finders", 2, "finder_source", captured.FinderSource)
+	fingerprint, ref := c.fingerprintNow(captured, c.source)
+	if ref != nil {
+		return ref
+	}
+	c.fingerprint = fingerprint
+	manifest := jq.NewObj("schema_version", "2", keyExecutionID, c.id, keyStatus, statusInProgress,
+		keyFinders, finderCount, keyFinderSource, c.source)
 	setManifestBudget(manifest, c.st.budget)
-	return writeCoordinator(c.dir, launcherFile, manifest)
+	manifest.Set(keyFailures, c.failures)
+	return c.publish(manifest)
+}
+
+// captureResumed rewrites the launcher record for the execution this invocation
+// continues. Every bound digest and every unresolved failure the interrupted
+// run published is carried over unchanged until finish() replaces them, so a
+// kill during this attempt leaves the next --resume the same fail-closed
+// bindings: a phase whose bytes nobody sealed is re-run, never reused on trust.
+// run.json is left exactly as the record verified it, because its bytes are
+// part of the fingerprint.
+func (c *coordinator) captureResumed() *core.RefusalError {
+	manifest := c.resume.manifest.Clone()
+	c.failures = priorFailures(manifest)
+	manifest.Set(keyFailures, c.failures)
+	manifest.Set(keyExecutionID, c.id)
+	manifest.Set(keyStatus, statusInProgress)
+	manifest.Set(keyFinders, finderCount)
+	manifest.Set(keyFinderSource, c.source)
+	return c.publish(manifest)
+}
+
+// publish writes the in-progress launcher record and keeps it in hand, so a
+// later progress write updates the same object rather than re-reading it.
+func (c *coordinator) publish(manifest *jq.Obj) *core.RefusalError {
+	manifest.Set(resumeRecordKey, c.resumeRecord(false))
+	if ref := writeCoordinator(c.dir, launcherFile, manifest); ref != nil {
+		return ref
+	}
+	c.record = manifest
+	return nil
+}
+
+// persistProgress publishes the artifacts bound so far and the phases still
+// failing. Without it an interrupted attempt leaves only the pre-launch record,
+// and the next --resume cannot tell a finished phase from one that never ran.
+func (c *coordinator) persistProgress() *core.RefusalError {
+	if c.record == nil {
+		return nil
+	}
+	c.record.Set("artifacts", c.artifacts())
+	c.record.Set(keyFailures, c.failures)
+	return c.publish(c.record)
 }
 
 func (c *coordinator) discoveryArgs(output string, index int) (*launchArgs, *core.RefusalError) {
@@ -490,8 +670,9 @@ func (c *coordinator) executionResponse() {
 		})
 	}
 	c.response.Data.Execution = &core.RunExecution{
-		ID: c.id, Status: readcommon.JSONStr(filepath.Join(c.dir, launcherFile), "status"),
+		ID: c.id, Status: readcommon.JSONStr(filepath.Join(c.dir, launcherFile), keyStatus),
 		Counts: counts, Failures: failures,
 	}
+	c.response.Data.Resume = c.resumeData()
 	c.aggregateResponse()
 }

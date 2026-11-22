@@ -25,7 +25,7 @@ func TestSnapshotCheckStreamsPhaseArtifacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	ref := snapshot.check(dir)
-	if ref == nil || ref.Code != "stale-review-artifact" || ref.Message != "execution snapshot changed: "+filepath.Join(phase, "aux.txt") {
+	if ref == nil || ref.Code != "stale-review-artifact" || ref.Message != "execution snapshot changed: x-finder-1/aux.txt" {
 		t.Fatalf("changed artifact = %v", ref)
 	}
 }

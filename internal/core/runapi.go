@@ -29,6 +29,13 @@ import (
 // bad-flags refusal. It names one stage of the resolved plan to render instead
 // of launching, which is why it is only meaningful with Print.
 //
+// Resume is --resume: continue the two-finder execution recorded in the
+// bundle's launcher.json instead of starting a new one. The service verifies
+// the recorded fingerprint (full.diff, run.json, the captured controls and
+// config, the Procedure prompts, the agent, and the finder topology) and the
+// bound artifacts before it launches anything, reuses every verified finder and
+// cross-check, and fails closed with resume-drift or cannot-resume otherwise.
+//
 // Checkout is the working directory the agent process starts in, for callers
 // whose review target is a historical tree (backtest replay) rather than the
 // live one: an empty value keeps RepoRoot. It moves the child's cwd only —
@@ -55,6 +62,7 @@ type RunRequest struct { //nolint:govet // field grouping documents the request 
 	// the shipped default.
 	ProbeTimeout time.Duration
 	Print        bool
+	Resume       bool
 	JSONMode     bool
 	Warnings     []string
 }
@@ -108,6 +116,7 @@ type RunData struct { //nolint:govet // field order is the published property or
 	Printed    bool               `json:"printed,omitempty"`
 	Record     string             `json:"record,omitempty"`
 	Execution  *RunExecution      `anyOf:"null"                 json:"execution,omitempty"`
+	Resume     *RunResume         `anyOf:"null"                 json:"resume,omitempty"`
 	Repair     *RunRepair         `anyOf:"null"                 json:"repair,omitempty"`
 	Budget     *ReviewBudget      `anyOf:"null"                 json:"budget,omitempty"`
 }
@@ -187,6 +196,19 @@ type RunExecution struct {
 	Status   string            `enum:"in-progress|complete|partial" json:"status"`
 	Counts   *FinderSummary    `anyOf:"null"                        json:"counts"`
 	Failures []RunPhaseFailure `json:"failures"`
+}
+
+// RunResume is the --resume provenance: which execution was continued, the
+// fingerprint that proved the bundle unchanged, and which phases this
+// invocation reused instead of launching. It is present only on a resumed run.
+type RunResume struct {
+	ExecutionID string   `json:"execution_id"`
+	PriorStatus string   `enum:"in-progress|complete|partial" json:"prior_status"`
+	Fingerprint string   `json:"fingerprint"`
+	PromptsHash string   `json:"prompts_hash"`
+	Reused      []string `json:"reused"`
+	Executed    []string `json:"executed"`
+	Attempts    int      `json:"attempts"                     min:"1"`
 }
 
 // RunPhaseFailure identifies an incomplete phase without exposing raw logs.

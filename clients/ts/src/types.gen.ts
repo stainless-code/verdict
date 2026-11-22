@@ -18,6 +18,7 @@ export interface RunData {
   printed?: boolean;
   record?: string;
   execution?: RunExecution | null;
+  resume?: RunResume | null;
   repair?: RunRepair | null;
   /** The resolved review-depth decision, present only when --budget or defaults.budget participated; a run that named no depth omits it, so its envelope stays byte-identical. The same object is launcher.json's budget key. */
   budget?: ReviewBudget | null;
@@ -61,6 +62,17 @@ export interface RunExecution {
   status: "in-progress" | "complete" | "partial";
   counts: FinderSummary | null;
   failures: Array<RunPhaseFailure>;
+  [key: string]: unknown;
+}
+
+export interface RunResume {
+  execution_id: string;
+  prior_status: "in-progress" | "complete" | "partial";
+  fingerprint: string;
+  prompts_hash: string;
+  reused: Array<string>;
+  executed: Array<string>;
+  attempts: number;
   [key: string]: unknown;
 }
 

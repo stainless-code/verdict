@@ -239,6 +239,11 @@ var hintRules = []HintRule{
 		"fix the invocation (the agent's own flags go after '--'), then re-run"},
 	{codes: []string{"agent-record-failed"}, hint: "try: make the bundle directory writable " +
 		"(or re-fetch the bundle), then re-run"},
+	{codes: []string{"cannot-resume"}, hint: "try: re-run without --resume with --finders 2 to " +
+		"start a two-finder execution (the interrupted one is retired to x-superseded/), then pass " +
+		"the same --finders 2 when you resume that"},
+	{codes: []string{"resume-drift"}, hint: "try: re-run without --resume to retire the interrupted " +
+		"execution and review the bundle as it stands; --resume only continues unchanged inputs"},
 	{codes: []string{"record-stale"}, hint: "try: run 'verdict record <repo> <slug>' again on the " +
 		"current review, then post — record.json's decision predates the review or the bundle"},
 	{codes: []string{"repair-exhausted"}, hint: "try: fix every error named in error.problems, " +

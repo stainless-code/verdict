@@ -20,6 +20,9 @@ import (
 type phaseCommander struct {
 	t           *testing.T
 	dir         string
+	cancel      context.CancelFunc
+	failPhase   string
+	cancelOn    string
 	calls       map[string]int
 	phases      []string
 	mu          sync.Mutex
@@ -43,7 +46,12 @@ func (p *phaseCommander) Run(_ context.Context, cmd *core.Command) (core.Result,
 		p.t.Errorf("unexpected argv: %q", cmd.Argv)
 		return core.Result{ExitCode: 2}, nil
 	}
-	return p.writePhase(phase, p.record(phase), cmd), nil
+	attempt := p.record(phase)
+	if p.cancelOn == phase && attempt == 1 {
+		p.cancel()
+		return core.Result{ExitCode: 7}, nil
+	}
+	return p.writePhase(phase, attempt, cmd), nil
 }
 
 // record logs one launch and reports how many times that phase has launched.
@@ -97,6 +105,9 @@ func (p *phaseCommander) writePhase(phase string, attempt int, cmd *core.Command
 		p.makeOutputPathADirectory(phase)
 	}
 	if p.fail && phase == "x-finder-1" {
+		return core.Result{ExitCode: 7}
+	}
+	if p.failPhase == phase && p.phaseCalls(phase) == 1 {
 		return core.Result{ExitCode: 7}
 	}
 	writeUnder(p.t, filepath.Join(p.dir, phase), p.artifactName(phase), p.artifactBytes(phase, attempt))
@@ -364,7 +375,9 @@ func TestCoordinatorManifestBindsPrivateRepairArtifacts(t *testing.T) {
 	}
 	manifest := readPhaseObject(t, filepath.Join(commander.dir, "launcher.json"))
 	artifacts := readcommon.FieldOf(manifest, "artifacts")
-	key := filepath.Join("x-finder-1", ".run.rounds", "01.review.json")
+	// The record binds bundle paths with forward slashes on every platform, and
+	// the key is a published string, so the assertion spells it out.
+	key := "x-finder-1/.run.rounds/01.review.json"
 	if got := readcommon.FieldOf(artifacts, key); got != "770bb888faf96d0ccaea1b97d2e1e7693b2dc270b53d5413f68d25d85e31c088" {
 		t.Fatalf("repair artifact digest = %v", got)
 	}
