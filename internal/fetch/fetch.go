@@ -9,6 +9,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"strings"
 
 	skillfs "github.com/stainless-code/verdict"
@@ -138,10 +139,35 @@ func renderFetch(r *cli.Runner, resp *fetchcore.Response, verb string) int {
 			resp.Warnings, resp.Data.Wire())
 		return cli.ExitOK
 	}
+	if resp.Data != nil && resp.Data.Preview != nil {
+		writePreview(r.Out, resp.Data.Preview)
+		return cli.ExitOK
+	}
 	if resp.Data != nil && resp.Data.PromptDump != nil {
 		fmt.Fprint(r.Out, *resp.Data.PromptDump)
 	}
 	return cli.ExitOK
+}
+
+// writePreview renders the human preview: one header carrying the byte totals,
+// one line per included file in diff order, one line per withheld section with
+// its rule and reason, and the resolved review budget last so an operator reads
+// the cost before the list grows.
+func writePreview(out io.Writer, p *core.PreviewData) {
+	fmt.Fprintf(out, "preview: %d included, %d excluded (%d bytes reviewed, %d excluded)\n",
+		len(p.Included), len(p.Excluded), p.IncludedBytes, p.ExcludedBytes)
+	for _, f := range p.Included {
+		fmt.Fprintf(out, "  include %s (%s, %d bytes)\n", f.Path, f.Role, f.Bytes)
+	}
+	for _, e := range p.Excluded {
+		fmt.Fprintf(out, "  exclude %s (%s, %s, %s, %d bytes)\n", e.Path, e.RuleID, e.Pattern, e.Reason, e.Bytes)
+	}
+	fmt.Fprintf(out, "budget: %s — %d finder(s), cross-check %s", p.Budget.Tier, p.Budget.Finders, p.Budget.CrossCheck)
+	if len(p.Budget.Reasons) > 0 {
+		fmt.Fprintf(out, " (%s)", strings.Join(p.Budget.Reasons, ", "))
+	}
+	fmt.Fprintln(out)
+	fmt.Fprintf(out, "no bundle written: preview stops before the bundle directory\n")
 }
 
 // refuseFetch renders a fetch failure: the missing-tool kind prints its
@@ -200,6 +226,8 @@ func parseFetchToken(r *cli.Runner, f *fetchcore.Flags, args []string, i int) (i
 		f.BudgetConsent = true
 	case "--no-default-excludes":
 		f.NoDefaultExcludes = true
+	case flagPreview:
+		f.Preview = true
 	case "--allow-head-controls":
 		f.HeadControls = true
 	case "--show-prompts":
@@ -209,7 +237,7 @@ func parseFetchToken(r *cli.Runner, f *fetchcore.Flags, args []string, i int) (i
 	default:
 		msg := fmt.Sprintf("unknown flag '%s' for fetch (want --base-sha|--since <sha>, "+
 			"--provider <name>, --index <ref|dir>, --issue <ref>, --consent-over-budget, --allow-head-controls, "+
-			"--ignore <glob>, --no-default-excludes, --show-prompts, --chunk, --json)", a)
+			"--ignore <glob>, --no-default-excludes, --preview, --show-prompts, --chunk, --json)", a)
 		return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
 	}
 	return i, 0, false
@@ -279,21 +307,20 @@ func parseLocalToken(r *cli.Runner, f *fetchcore.LocalFlags, args []string, i in
 		f.Worktree = true
 	case "--consent-over-budget":
 		f.BudgetConsent = true
+	case flagPreview:
+		f.Preview = true
 	case "--allow-head-controls":
 		f.HeadControls = true
 	case "--show-prompts":
 		f.ShowPrompts = true
 	case flagChunk:
 		f.ChunkFlag = true
-	case "--":
-		f.Paths = append(f.Paths, args[i+1:]...)
-		return len(args), 0, false
 	default:
 		if strings.HasPrefix(a, "-") {
 			msg := fmt.Sprintf("unknown flag '%s' for fetch-local (want --staged, "+
 				"--range <A..B>, --base <ref>, --stash [n], --worktree, --index <ref|dir>, "+
 				"--consent-over-budget, --allow-head-controls, --ignore <glob>, --no-default-excludes, "+
-				"--show-prompts, --chunk, -- <paths>, --json)", a)
+				"--preview, --show-prompts, --chunk, -- <paths>, --json)", a)
 			return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
 		}
 		f.Paths = append(f.Paths, a)
@@ -322,6 +349,11 @@ func parseLocalOption(f *fetchcore.LocalFlags, a string, args []string, i int) (
 		}
 		setLocalValue(f, a, v)
 		return next, nil, true
+	}
+	if a == "--" {
+		// Everything after `--` is a path filter: it selects, never excludes.
+		f.Paths = append(f.Paths, args[i+1:]...)
+		return len(args), nil, true
 	}
 	switch a {
 	case "--no-default-excludes":
@@ -393,4 +425,5 @@ const (
 	providerGitHub = "github"
 	flagChunk      = "--chunk"
 	flagIndex      = "--index"
+	flagPreview    = "--preview"
 )

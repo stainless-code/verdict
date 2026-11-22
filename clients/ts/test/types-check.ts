@@ -33,6 +33,7 @@ import {
 } from "../src/index.js";
 import type {
   FetchGroupEstimate,
+  PreviewData,
   ShowFix,
   VerifyHint,
 } from "../src/types.gen.js";
@@ -163,8 +164,17 @@ export async function typeChecks(): Promise<void> {
   void status;
 
   const fetch: Envelope<FetchData> = await client.fetch([]);
-  const counted: number = fetch.data.files + fetch.data.hunks;
-  void counted;
+  if (fetch.data.files !== undefined && fetch.data.hunks !== undefined) {
+    const counted: number = fetch.data.files + fetch.data.hunks;
+    void counted;
+  }
+  if (fetch.data.preview) {
+    const preview: PreviewData = fetch.data.preview;
+    const previewFetch: FetchData = { preview };
+    const previewLocal: FetchLocalData = { preview };
+    void previewFetch;
+    void previewLocal;
+  }
   // The v2 estimate keeps its documented shape: the fields stay reachable
   // without a cast, and the grouped variant keeps its own types. `unknown`
   // (what a bare-required anyOf used to generate) would fail both reads.
@@ -179,8 +189,10 @@ export async function typeChecks(): Promise<void> {
   }
 
   const local: Envelope<FetchLocalData> = await client.fetchLocal([]);
-  const kind: string = local.data.kind;
-  void kind;
+  if (local.data.kind !== undefined) {
+    const kind: string = local.data.kind;
+    void kind;
+  }
 
   const exactThreads: Exact<
     DataFor["threads"],

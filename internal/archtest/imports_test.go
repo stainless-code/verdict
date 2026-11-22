@@ -82,6 +82,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/core":           true,
 	"internal/core/adopt":     true,
 	"internal/core/approval":  true,
+	"internal/core/budget":    true,
 	"internal/core/calibrate": true,
 	"internal/core/checktree": true,
 	"internal/core/corpus":    true,

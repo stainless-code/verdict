@@ -46,12 +46,25 @@ func runGitHub(
 	if ref := resolveLensPacks(ctx2); ref != nil {
 		return nil, "", ref
 	}
+	return githubTail(ctx, ctx2, req, f, dir, budget)
+}
+
+// githubTail owns everything after the exclusion filter: the cap gate, the
+// bundle build, and the envelope tail. A preview already has its payload, so
+// the tail stops here — no bundle, no model, nothing written.
+func githubTail(
+	ctx context.Context, ctx2 *fetchRunCtx, req *Request, f *Flags, dir string, budget *budgetState,
+) (*core.FetchData, string, error) {
+	if ctx2.previewData != nil {
+		return nil, "", nil
+	}
+	r := ctx2.runner
 	fc := resolveFetchCap(r, ctx2.runCfg.resolved)
 	chunkActive, ref := checkDiffSize(r, ctx2.runCfg.resolved, dir+suffixFullDiff, fc, f.ChunkFlag)
 	if ref != nil {
 		return nil, "", ref
 	}
-	chunkJSON, incBase, ref := githubBundle(ctx, ctx2, req, f, dir, repo, pr, fc, chunkActive)
+	chunkJSON, incBase, ref := githubBundle(ctx, ctx2, req, f, dir, req.Repo, req.Pr, fc, chunkActive)
 	if ref != nil {
 		return nil, "", ref
 	}
@@ -340,19 +353,34 @@ func fetchPrepare(ctx2 *fetchRunCtx, req *Request, f *Flags) (*budgetState, stri
 	// the whole-run guard would silently not arm. phaseTwo fills this state in
 	// over the resolved plan before gating.
 	budget := budgetState{}
-	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	dir, ref := bundleStageDir(ctx2, req)
 	if ref != nil {
-		//nolint:wrapcheck // typed refusal passes through untouched so the edge renders its code/message
 		return nil, "", ref
 	}
 	ctx2.dir = dir
-	if ref := ensureBundleDir(req.RepoRootPath(), dir); ref != nil {
-		return nil, "", ref
-	}
-	if ref := ensureBundleState(req.RepoRootPath()); ref != nil {
-		return nil, "", ref
-	}
 	return &budget, dir, nil
+}
+
+// bundleStageDir prepares where a run stages its reads: the throwaway preview
+// directory, or the bundle directory the state store owns. A preview creates
+// neither the state directory nor the bundle directory.
+func bundleStageDir(ctx2 *fetchRunCtx, req *Request) (string, *core.RefusalError) {
+	if ctx2.preview {
+		scratch, ref := previewScratch()
+		if ref != nil {
+			return "", ref
+		}
+		ctx2.scratch = scratch
+		return scratch, nil
+	}
+	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	if ref != nil {
+		return "", ref
+	}
+	if ref := ensureBundleDir(req.RepoRootPath(), dir); ref != nil {
+		return "", ref
+	}
+	return dir, ensureBundleState(req.RepoRootPath())
 }
 
 // phaseTwo resolves the full repository policy over the actual captured file
@@ -375,6 +403,13 @@ func phaseTwo(
 		return nil
 	}
 	*budget = resolveBudget(ctx2.runner, resolved)
+	// A preview reports the budget tier its own classification resolves; it
+	// never spends, so the spend gate's refusal would only hide the preview
+	// behind an estimate for a run the operator asked not to start. This is
+	// the remote twin of the local preview's localBudgetGates skip.
+	if ctx2.preview {
+		return nil
+	}
 	if gateErr := budgetGate(ctx2.runner, budget, resolved, f.BudgetConsent); gateErr != nil {
 		return budgetRefusal(gateErr)
 	}

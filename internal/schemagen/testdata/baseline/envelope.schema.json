@@ -4047,7 +4047,7 @@
       "additionalProperties": true
     },
     "fetchData": {
-      "description": "fetch --json data: the bundle location, the diff statistics the toc counted, the panel, and the conditional summaries the run armed. estimate and budget travel together, cap and chunk follow only when armed, and prompt_dump lands last when staged.",
+      "description": "fetch --json data: the bundle location, the diff statistics the toc counted, the panel, and the conditional summaries the run armed. estimate and budget travel together, cap and chunk follow only when armed, prompt_dump lands last when staged, and preview replaces every one of them when the run stopped before writing a bundle.",
       "type": "object",
       "properties": {
         "truncated": { "type": "boolean" },
@@ -4097,26 +4097,43 @@
         "prompt_dump": {
           "description": "Where the staged prompt was written; absent unless a dump was requested.",
           "type": ["string", "null"]
+        },
+        "preview": {
+          "description": "The preview payload: the reviewed file list, the withheld sections, the byte totals, and the resolved budget. Present only under --preview, where it is the whole data object: a preview writes no bundle directory, so no other key has a value to carry.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/previewData" }]
         }
       },
-      "required": [
-        "dir",
-        "head_sha",
-        "base_sha",
-        "files",
-        "additions",
-        "deletions",
-        "hunks",
-        "omitted",
-        "diff_bytes",
-        "panel",
-        "artifacts",
-        "incremental_base"
+      "anyOf": [
+        {
+          "required": [
+            "dir",
+            "head_sha",
+            "base_sha",
+            "files",
+            "additions",
+            "deletions",
+            "hunks",
+            "omitted",
+            "diff_bytes",
+            "panel",
+            "artifacts",
+            "incremental_base"
+          ]
+        },
+        {
+          "required": ["preview"],
+          "properties": {
+            "preview": {
+              "$ref": "#/$defs/previewData"
+            }
+          },
+          "additionalProperties": true
+        }
       ],
       "additionalProperties": true
     },
     "fetchLocalData": {
-      "description": "fetch-local --json data: the same statistics without a remote base, plus the worktree kind and no incremental_base.",
+      "description": "fetch-local --json data: the same statistics without a remote base, plus the worktree kind and no incremental_base. preview replaces the statistics the same way it does for fetch.",
       "type": "object",
       "properties": {
         "truncated": { "type": "boolean" },
@@ -4166,21 +4183,38 @@
         "prompt_dump": {
           "description": "Where the staged prompt was written; absent unless a dump was requested.",
           "type": ["string", "null"]
+        },
+        "preview": {
+          "description": "The preview payload: the reviewed file list, the withheld sections, the byte totals, and the resolved budget. Present only under --preview, where it is the whole data object: a preview writes no bundle directory, so no other key has a value to carry.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/previewData" }]
         }
       },
-      "required": [
-        "dir",
-        "kind",
-        "head_sha",
-        "base_sha",
-        "files",
-        "additions",
-        "deletions",
-        "hunks",
-        "omitted",
-        "diff_bytes",
-        "panel",
-        "artifacts"
+      "anyOf": [
+        {
+          "required": [
+            "dir",
+            "kind",
+            "head_sha",
+            "base_sha",
+            "files",
+            "additions",
+            "deletions",
+            "hunks",
+            "omitted",
+            "diff_bytes",
+            "panel",
+            "artifacts"
+          ]
+        },
+        {
+          "required": ["preview"],
+          "properties": {
+            "preview": {
+              "$ref": "#/$defs/previewData"
+            }
+          },
+          "additionalProperties": true
+        }
       ],
       "additionalProperties": true
     },
@@ -4219,6 +4253,112 @@
         }
       },
       "required": ["source", "members"],
+      "additionalProperties": true
+    },
+    "previewData": {
+      "description": "--preview data: the exact files the review would read, every section the exclusion stack withheld with its rule, the byte totals either side of the filter, and the review budget the deterministic classifier resolves for that filtered diff. Rows come from the filtered diff, never from the PR's file list, so a withheld path can appear only under excluded.",
+      "type": "object",
+      "properties": {
+        "schema_version": { "const": "1" },
+        "included": {
+          "description": "One row per changed file the filter kept, in diff order.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/previewFile" }
+        },
+        "excluded": {
+          "description": "One row per withheld diff section, with the rule that removed it and the bytes it carried.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/excludedPath" }
+        },
+        "included_bytes": {
+          "description": "Bytes of the filtered diff the review would read.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "excluded_bytes": {
+          "description": "Bytes the filter withheld, measured on the raw sections.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "files": {
+          "description": "How many files the filter kept; the same count the budget saw.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "budget": {
+          "description": "The resolved review depth for the filtered diff.",
+          "$ref": "#/$defs/previewBudget"
+        }
+      },
+      "required": [
+        "schema_version",
+        "included",
+        "excluded",
+        "included_bytes",
+        "excluded_bytes",
+        "files",
+        "budget"
+      ],
+      "additionalProperties": true
+    },
+    "previewFile": {
+      "description": "One file a preview would send for review: its path, the role the bundle would assign, and the bytes its sections carry.",
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "role": {
+          "description": "The role the bundle would assign from the path's shape; a preview writes no roles.txt, so the shape decides.",
+          "enum": ["source", "test", "docs", "config", "generated"]
+        },
+        "bytes": {
+          "description": "Section bytes, each line counting its newline.",
+          "type": "integer",
+          "minimum": 0
+        }
+      },
+      "required": ["path", "role", "bytes"],
+      "additionalProperties": true
+    },
+    "previewBudget": {
+      "description": "The advisory review depth: the tier, why it was chosen, the finders the tier buys, and the cross-check mode derived from it.",
+      "type": "object",
+      "properties": {
+        "tier": {
+          "description": "light runs one finder, standard and deep run two with cross-checks.",
+          "enum": ["light", "standard", "deep"]
+        },
+        "reasons": {
+          "description": "The classifier's own reasons, in its order; empty when no rule fired.",
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "finders": {
+          "description": "The finder count the tier buys.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "cross_check": {
+          "description": "The cross-check mode derived from the finder count.",
+          "type": "string"
+        }
+      },
+      "required": ["tier", "reasons", "finders", "cross_check"],
+      "additionalProperties": true
+    },
+    "excludedPath": {
+      "description": "One withheld diff section: its path, the rule id and pattern that removed it, the reason the rule carries, and the bytes it held. The same row appears in excluded.json, so one reading covers the preview and the bundle receipt.",
+      "type": "object",
+      "properties": {
+        "path": { "type": "string" },
+        "old_path": { "type": "string" },
+        "rule_id": { "type": "string" },
+        "pattern": { "type": "string" },
+        "reason": {
+          "enum": ["default", "attribute", "ignore", "cli", "secret-builtin"]
+        },
+        "bytes": { "type": "integer", "minimum": 0 }
+      },
+      "required": ["path", "rule_id", "pattern", "reason", "bytes"],
       "additionalProperties": true
     }
   }

@@ -19,12 +19,16 @@ type Flags struct {
 	Issue             []string
 	Ignore            []string
 	NoDefaultExcludes bool
-	BudgetConsent     bool
-	ShowPrompts       bool
-	ChunkFlag         bool
-	HeadControls      bool
-	HasBase           bool `json:"-"`
-	HasProvider       bool `json:"-"`
+	// Preview computes the diff file list, applies every exclusion, and
+	// resolves the review budget without writing a bundle or launching an
+	// agent.
+	Preview       bool
+	BudgetConsent bool
+	ShowPrompts   bool
+	ChunkFlag     bool
+	HeadControls  bool
+	HasBase       bool `json:"-"`
+	HasProvider   bool `json:"-"`
 	// PublicRead reads a public GitHub pull request over the anonymous REST
 	// API (curl) instead of gh. Adapter-injected: no CLI flag, no MCP field,
 	// no schema; verdict demo is its only caller.
@@ -96,6 +100,10 @@ type LocalFlags struct {
 	ChunkFlag         bool
 	HeadControls      bool
 	NoDefaultExcludes bool
+	// Preview computes the diff file list, applies every exclusion, and
+	// resolves the review budget without writing a bundle or launching an
+	// agent.
+	Preview bool
 }
 
 // LocalRequest is the fetch-local service invocation. SettingsPath

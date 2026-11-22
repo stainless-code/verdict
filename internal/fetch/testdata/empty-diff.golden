@@ -218,6 +218,7 @@ reverts.jsonl.lock
   "schema_version": "1",
   "patterns_source": ".verdict/ignore@base",
   "defaults": [
+    "default:secret",
     "default:generated",
     "default:attribute"
   ],
@@ -485,8 +486,8 @@ rather than becoming ground truth.
       "kind": "bundle",
       "name": "excluded.json",
       "status": "included",
-      "sha256": "5d3d0c1d9fef5407be3b83c0320ca03566f89e71a3c66c668a59fb8dbfb64164",
-      "bytes": 425
+      "sha256": "fbccbcae21a7588a3086df6fd4590d9745aa10a55f39a9ef34550b36ebda3b0d",
+      "bytes": 447
     },
     {
       "kind": "bundle",
@@ -717,8 +718,8 @@ rather than becoming ground truth.
       "kind": "exclusions",
       "name": "excluded.json",
       "status": "included",
-      "sha256": "5d3d0c1d9fef5407be3b83c0320ca03566f89e71a3c66c668a59fb8dbfb64164",
-      "bytes": 425,
+      "sha256": "fbccbcae21a7588a3086df6fd4590d9745aa10a55f39a9ef34550b36ebda3b0d",
+      "bytes": 447,
       "source": ".verdict/ignore@base",
       "excluded": 0,
       "excluded_bytes": 0,

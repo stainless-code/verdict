@@ -989,6 +989,7 @@ type FetchData struct { //nolint:govet // field order is the published property 
 	Cap             any               `json:"cap"                      optional:"true"`
 	Chunk           any               `json:"chunk"                    optional:"true"`
 	PromptDump      *string           `json:"prompt_dump"              optional:"true"`
+	Preview         *PreviewData      `anyOf:"null"                    json:"preview"  optional:"true"`
 }
 
 // FetchLocalData is the fetch-local verb's --json data profile: the same
@@ -1016,6 +1017,39 @@ type FetchLocalData struct { //nolint:govet // field order is the published prop
 	Cap          any               `json:"cap"                      optional:"true"`
 	Chunk        any               `json:"chunk"                    optional:"true"`
 	PromptDump   *string           `json:"prompt_dump"              optional:"true"`
+	Preview      *PreviewData      `anyOf:"null"                    json:"preview"  optional:"true"`
+}
+
+// PreviewData is the `--preview` payload both fetch verbs publish: the exact
+// reviewed file list, every withheld section with its rule, the byte totals,
+// and the resolved review budget. A preview stops before the bundle directory,
+// so the profile carries no `dir` and every other fetch key stays absent.
+// `optional` keeps the bundle profile valid without it.
+type PreviewData struct { //nolint:govet // field order is the published property order
+	SchemaVersion string         `const:"1"             json:"schema_version"`
+	Included      []PreviewFile  `json:"included"`
+	Excluded      []ExcludedPath `json:"excluded"`
+	IncludedBytes int            `json:"included_bytes" min:"0"`
+	ExcludedBytes int            `json:"excluded_bytes" min:"0"`
+	Files         int            `json:"files"          min:"0"`
+	Budget        PreviewBudget  `json:"budget"`
+}
+
+// PreviewFile is one changed file a preview would send for review.
+type PreviewFile struct {
+	Path  string `json:"path"`
+	Role  string `enum:"source|test|docs|config|generated" json:"role"`
+	Bytes int    `json:"bytes"                             min:"0"`
+}
+
+// PreviewBudget is the depth the deterministic classifier resolves for the
+// previewed diff: the tier, the reasons that selected it, the finder count the
+// tier buys, and the cross-check mode derived from it.
+type PreviewBudget struct { //nolint:govet // field order is the published property order
+	Tier       string   `enum:"light|standard|deep" json:"tier"`
+	Reasons    []string `json:"reasons"`
+	Finders    int      `json:"finders"             min:"0"`
+	CrossCheck string   `json:"cross_check"`
 }
 
 // FetchPanel is the panel source and member list written into the bundle.

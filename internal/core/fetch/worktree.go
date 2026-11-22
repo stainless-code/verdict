@@ -30,7 +30,11 @@ type isolation struct {
 // prints nothing), so the run proceeds classically with no checkout and
 // no cleanup. A worktree that cannot be created refuses typed
 // worktree-failed and writes nothing.
-func setupIsolation(ctx context.Context, s *session, slug string, mode *localMode) (*isolation, bool, error) {
+// stage is the directory the checkout is reserved under, empty for the
+// repository's own state directory; a preview passes its scratch dir so an
+// isolated checkout never creates `.verdict/state` inside a repository it
+// promised not to write.
+func setupIsolation(ctx context.Context, s *session, slug string, mode *localMode, stage string) (*isolation, bool, error) {
 	target, skip, ref := isolationTarget(ctx, s, mode)
 	if ref != nil {
 		return nil, false, ref
@@ -38,7 +42,7 @@ func setupIsolation(ctx context.Context, s *session, slug string, mode *localMod
 	if skip {
 		return nil, false, nil
 	}
-	dir, ref := resolveIsolationDir(s.repoRoot, slug)
+	dir, ref := resolveIsolationDir(s.repoRoot, slug, stage)
 	if ref != nil {
 		return nil, false, ref
 	}
@@ -150,8 +154,11 @@ func dirtyTarget(ctx context.Context, s *session) (string, bool, error) {
 // excerpt instead of sharing a checkout. The joined name needs no bundle-name
 // guard: slug is localSlug's output, `[a-z0-9-]` and never empty, so it is one
 // path element by construction.
-func resolveIsolationDir(root, slug string) (string, error) {
-	state := readcommon.StateDir(root)
+func resolveIsolationDir(root, slug, stage string) (string, error) {
+	state := stage
+	if state == "" {
+		state = readcommon.StateDir(root)
+	}
 	if err := os.MkdirAll(state, dirPerm); err != nil {
 		return "", &core.RefusalError{
 			Code:    codeWorktreeFailed,

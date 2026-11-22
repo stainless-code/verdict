@@ -39,6 +39,9 @@ func runProvider(
 	if ref := resolveLensPacks(ctx2); ref != nil {
 		return nil, "", ref
 	}
+	if ctx2.previewData != nil {
+		return nil, "", nil
+	}
 	fc, chunkActive, err := providerCap(ctx2.runner, ctx2.runCfg.resolved, ctx2.dir, f.ChunkFlag)
 	if err != nil {
 		return nil, "", err

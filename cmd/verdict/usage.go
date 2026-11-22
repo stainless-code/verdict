@@ -14,11 +14,15 @@ func usageText() string {
 		"    typed refusal, 3 a cancel.\n" +
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--index <ref|dir>] [--context <file|dir>] [--spec <file>] [--issue <ref>] [--ignore <glob>] [--no-default-excludes] " +
-		"[--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
+		"[--preview] [--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
 		"    --index <ref|dir> hands one index the operator built to the bundle: impact.json plus a\n" +
 		"    capped \"## impact\" section on toc.txt (nothing is built or discovered; omit for no section).\n" +
+		"    --preview prints the reviewed file list, every withheld section with its rule, the byte\n" +
+		"    totals, and the resolved review budget tier (light|standard|deep), then stops: no bundle\n" +
+		"    directory is written and no agent runs. Built-in secret paths stay withheld whatever\n" +
+		"    --ignore and --no-default-excludes say.\n" +
 		"    Provider scope: record/report/triage/show/next run on any provider bundle; post submits to GitHub,\n" +
 		"    GitLab, and Forgejo (GitLab takes an approval but has no request-changes event — a bound\n" +
 		"    request-changes posts as a comment; post.json records the withheld capability in withheld[]); live\n" +
@@ -49,7 +53,7 @@ func usageText() string {
 		"    surfaced by report --cost). Unset: estimate off, fetch as today.\n" +
 		"  fetch-local <owner/repo> <name> [--staged] [--range A[..|...]B] [--base R]\n" +
 		"        [--stash [n]] [--worktree] [--index <ref|dir>] [--context <file|dir>] [--spec <file>] " +
-		"[--ignore <glob>] [--no-default-excludes]\n" +
+		"[--ignore <glob>] [--no-default-excludes] [--preview]\n" +
 		"        [--consent-over-budget] [--show-prompts] [--chunk]\n" +
 		"        [-- paths...] [--json]\n" +
 		"    local review bundle from git (no GitHub, no PR): writes\n" +

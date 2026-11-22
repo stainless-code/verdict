@@ -208,24 +208,32 @@ func fetchTestDiff() string {
 	return "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n"
 }
 
+// fetchTestViewArgv is the PR record read every github fetch opens with.
+func fetchTestViewArgv() string {
+	return "pr\x00view\x007\x00--repo\x00o/r\x00--json\x00" +
+		"number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits," +
+		"files,additions,deletions,isDraft,reviewDecision,state"
+}
+
+// fetchTestStatArgv is the per-file stat re-read the toc counts.
+func fetchTestStatArgv() string {
+	return "pr\x00view\x007\x00--repo\x00o/r\x00--json\x00files\x00--jq\x00" +
+		".files[] | \"\\(.path) (+\\(.additions)/-\\(.deletions))\""
+}
+
 // fetchHappyCommander scripts the GitHub happy path: view, diff, the stat
 // re-view, and the two thread reads.
 func fetchHappyCommander(t *testing.T) *scriptCommander {
 	t.Helper()
-	view := "pr\x00view\x007\x00--repo\x00o/r\x00--json\x00" +
-		"number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits," +
-		"files,additions,deletions,isDraft,reviewDecision,state"
-	stat := "pr\x00view\x007\x00--repo\x00o/r\x00--json\x00files\x00--jq\x00" +
-		".files[] | \"\\(.path) (+\\(.additions)/-\\(.deletions))\""
 	return &scriptCommander{
 		t: t,
 		out: map[string]scriptResult{
-			"gh\x00" + view:                          {stdout: fetchTestPR()},
-			"gh\x00pr\x00diff\x007\x00--repo\x00o/r": {stdout: fetchTestDiff()},
-			"gh\x00" + stat:                          {stdout: "a.txt (+1/-1)\n"},
+			"gh\x00" + fetchTestViewArgv():                          {stdout: fetchTestPR()},
+			"gh\x00pr\x00diff\x007\x00--repo\x00o/r":                {stdout: fetchTestDiff()},
+			"gh\x00" + fetchTestStatArgv():                          {stdout: "a.txt (+1/-1)\n"},
 			"gh\x00api\x00repos/o/r/pulls/7/reviews\x00--paginate":  {stdout: "[]\n"},
 			"gh\x00api\x00repos/o/r/pulls/7/comments\x00--paginate": {stdout: "[]\n"},
-			githubThreadCall(""): {stdout: emptyThreadPage},
+			githubThreadCall(""):                                    {stdout: emptyThreadPage},
 			// The typed configuration reads empty at the base (no
 			// repository policy), and no override fragments exist:
 			// the run follows the no-init rule.

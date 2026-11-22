@@ -238,6 +238,7 @@ f13.txt
   "schema_version": "1",
   "patterns_source": ".verdict/ignore@base",
   "defaults": [
+    "default:secret",
     "default:generated",
     "default:attribute"
   ],
@@ -528,8 +529,8 @@ rather than becoming ground truth.
       "kind": "bundle",
       "name": "excluded.json",
       "status": "included",
-      "sha256": "faf89429a13b44eae1803601d49c2cc9aca6780dbf7af75d1346230030c8596a",
-      "bytes": 430
+      "sha256": "05da19cac9b1ec1d38c2d6bc69117e7d7076340b43a5258d975795795ff1c71b",
+      "bytes": 452
     },
     {
       "kind": "bundle",
@@ -760,8 +761,8 @@ rather than becoming ground truth.
       "kind": "exclusions",
       "name": "excluded.json",
       "status": "included",
-      "sha256": "faf89429a13b44eae1803601d49c2cc9aca6780dbf7af75d1346230030c8596a",
-      "bytes": 430,
+      "sha256": "05da19cac9b1ec1d38c2d6bc69117e7d7076340b43a5258d975795795ff1c71b",
+      "bytes": 452,
       "source": ".verdict/ignore@base",
       "excluded": 0,
       "excluded_bytes": 0,

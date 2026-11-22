@@ -46,7 +46,9 @@
         "old_path": { "type": "string" },
         "rule_id": { "type": "string" },
         "pattern": { "type": "string" },
-        "reason": { "enum": ["default", "attribute", "ignore", "cli"] },
+        "reason": {
+          "enum": ["default", "attribute", "ignore", "cli", "secret-builtin"]
+        },
         "bytes": { "type": "integer", "minimum": 0 }
       },
       "required": ["path", "rule_id", "pattern", "reason", "bytes"],

@@ -1,11 +1,13 @@
 package schemagen
 
 import (
+	"reflect"
 	"testing"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/schemacheck"
 )
 
 // TestRuntimeFetchOutputValidates proves the fetch service response (a)
@@ -148,5 +150,81 @@ func TestGroupedFetchEstimateValidatesWithoutBudget(t *testing.T) {
 	unmarshalWire(t, env, &modeled)
 	if modeled.Data == nil {
 		t.Fatal("modeled envelope lost the fetch data")
+	}
+}
+
+// TestRuntimeFetchPreviewOutputValidates proves the --preview payload the
+// service renders (a) rides a valid envelope, (b) validates against the pinned
+// previewData profile AND against both fetch data profiles — a preview data
+// object carries no bundle key, so those profiles must accept the payload alone
+// — and (c) round-trips through the modeled shape. The second withheld row
+// carries no rename source, so the wire's omitted old_path is pinned against
+// the profile too.
+func TestRuntimeFetchPreviewOutputValidates(t *testing.T) {
+	doc := loadSchemaDocument(t, "envelope.schema.json")
+	now := time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC)
+	data := &core.FetchData{Preview: &core.PreviewData{
+		SchemaVersion: "1",
+		Included:      []core.PreviewFile{{Path: "a.txt", Role: "docs", Bytes: 69}},
+		Excluded: []core.ExcludedPath{
+			{Path: ".env", OldPath: ".env", RuleID: "default:secret", Pattern: ".env", Reason: "secret-builtin", Bytes: 69},
+			{Path: "vendor/lib.go", RuleID: "default:generated", Pattern: "vendor/**", Reason: "default", Bytes: 120},
+		},
+		IncludedBytes: 69,
+		ExcludedBytes: 189,
+		Files:         1,
+		Budget:        core.PreviewBudget{Tier: "light", Reasons: []string{"docs-or-test-only"}, Finders: 1, CrossCheck: "off"},
+	}}
+	env := core.RenderEnvelope("fetch", "acme/app", "7",
+		core.NowUTC(now), "preview only", nil, data.Wire(), nil)
+	validateWire(t, doc, "$", doc, decodeWire(t, env))
+	validateWire(t, doc, "preview data", defOf(t, doc, "previewData"), decodeWire(t, data.Preview.Wire()))
+	validateWire(t, doc, "preview fetch data", defOf(t, doc, "fetchData"), decodeWire(t, data.Wire()))
+	validateWire(t, doc, "preview fetch-local data", defOf(t, doc, "fetchLocalData"), decodeWire(t, data.Wire()))
+	assertDataProfileRejectsIncomplete(t, doc)
+
+	var modeled struct {
+		Preview PreviewData `json:"preview"`
+	}
+	unmarshalWire(t, data.Wire(), &modeled)
+	assertModeledPreview(t, &modeled.Preview)
+}
+
+// assertDataProfileRejectsIncomplete proves the fetch data profiles still
+// refuse a payload that satisfies neither shape. Moving the required list into
+// an anyOf must not turn the profiles into accept-anything: an object with no
+// bundle key and no preview names no run this binary can produce, and a partial
+// one would let a consumer read an absent field as a bundle's.
+func assertDataProfileRejectsIncomplete(t *testing.T, doc map[string]any) {
+	t.Helper()
+	for _, def := range []string{"fetchData", "fetchLocalData"} {
+		for _, payload := range []string{`{}`, `{"dir": ".verdict/state/1"}`} {
+			var value map[string]any
+			unmarshalJSON(t, []byte(payload), &value)
+			if failures := schemacheck.Validate(doc, defOf(t, doc, def), value); len(failures) == 0 {
+				t.Errorf("$defs/%s accepts %s; want both branches to refuse it", def, payload)
+			}
+		}
+	}
+}
+
+// assertModeledPreview proves the payload round-trips field for field, dropped
+// rename source included.
+func assertModeledPreview(t *testing.T, p *PreviewData) {
+	t.Helper()
+	want := PreviewData{
+		SchemaVersion: "1",
+		Included:      []PreviewFile{{Path: "a.txt", Role: "docs", Bytes: 69}},
+		Excluded: []ExcludedPath{
+			{Path: ".env", OldPath: ".env", RuleID: "default:secret", Pattern: ".env", Reason: "secret-builtin", Bytes: 69},
+			{Path: "vendor/lib.go", RuleID: "default:generated", Pattern: "vendor/**", Reason: "default", Bytes: 120},
+		},
+		IncludedBytes: 69,
+		ExcludedBytes: 189,
+		Files:         1,
+		Budget:        PreviewBudget{Tier: "light", Reasons: []string{"docs-or-test-only"}, Finders: 1, CrossCheck: "off"},
+	}
+	if !reflect.DeepEqual(*p, want) {
+		t.Fatalf("modeled preview = %+v; want %+v", *p, want)
 	}
 }

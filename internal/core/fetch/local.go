@@ -30,7 +30,11 @@ func runLocalTail(ctx context.Context, ctx2 *fetchRunCtx, req *LocalRequest) (*c
 	if !f.Worktree {
 		return runLocalBuild(ctx, ctx2, req, f, r, dir, slug, &mode)
 	}
-	iso, created, iref := setupIsolation(ctx, r, slug, &mode)
+	stage, sref := ctx2.previewStage()
+	if sref != nil {
+		return nil, "", sref
+	}
+	iso, created, iref := setupIsolation(ctx, r, slug, &mode, stage)
 	if iref != nil {
 		return nil, "", iref
 	}
@@ -56,6 +60,19 @@ func runLocalBuild(
 	listed, numstat := localFileStats(ctx, r, mode, f.Paths)
 	if ref := localResolve(ctx, ctx2, req, f, mode, listed); ref != nil {
 		return nil, "", ref
+	}
+	return localBundleTail(ctx, ctx2, req, f, r, dir, slug, mode, listed, numstat)
+}
+
+// localBundleTail owns everything after the exclusion filter: the spend gate,
+// the cap gate, the measurements, the stores, and the tail. A preview already
+// has its payload, so the tail stops here — no bundle, no model.
+func localBundleTail(
+	ctx context.Context, ctx2 *fetchRunCtx, req *LocalRequest, f *LocalFlags,
+	r *session, dir, slug string, mode *localMode, listed, numstat string,
+) (*core.FetchData, string, error) {
+	if ctx2.previewData != nil {
+		return nil, "", nil
 	}
 	budget, budgetErr := localBudgetGates(ctx2, f, req.RepoRootPath(), dir)
 	if budgetErr != nil {
@@ -186,7 +203,7 @@ func localSetup(
 	if ref := localSlugGate(req.Pr, slug); ref != nil {
 		return localMode{}, "", "", ref
 	}
-	dir, ref := localBundleDir(req.RepoRootPath(), slug)
+	dir, ref := localPreviewDir(ctx2, req, slug)
 	if ref != nil {
 		return localMode{}, "", "", ref
 	}
@@ -206,10 +223,29 @@ func localSetup(
 	if _, err := measuredUsage(ctx2.runner); err != nil {
 		return localMode{}, "", "", err
 	}
-	if ref := ensureBundleState(req.RepoRootPath()); ref != nil {
+	if ref := localStateDir(ctx2, req); ref != nil {
 		return localMode{}, "", "", ref
 	}
 	return mode, dir, slug, nil
+}
+
+// localStateDir prepares the state directory a real fetch-local run writes
+// into. A preview writes none.
+func localStateDir(ctx2 *fetchRunCtx, req *LocalRequest) *core.RefusalError {
+	if ctx2.preview {
+		return nil
+	}
+	return ensureBundleState(req.RepoRootPath())
+}
+
+// localPreviewDir resolves where a fetch-local run stages its reads: the
+// throwaway preview directory when previewing, else the bundle directory the
+// state store owns.
+func localPreviewDir(ctx2 *fetchRunCtx, req *LocalRequest, slug string) (string, *core.RefusalError) {
+	if !ctx2.preview {
+		return localBundleDir(req.RepoRootPath(), slug)
+	}
+	return ctx2.previewStage()
 }
 
 // localBudgetGates runs the single spend gate over the full plan, then

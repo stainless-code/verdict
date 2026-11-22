@@ -40,12 +40,20 @@ func filterExcluded(ctx2 *fetchRunCtx) error {
 	receipt.Ignore = append([]string{}, ctx2.ignore...)
 	receipt.NoDefaultExcludes = ctx2.noDefaultExcludes
 	receipt.PatternsSource = exclusionSource(ctx2)
-	receipt.Defaults = []string{}
+	// default:secret is the withholding floor: it is never disabled, so it is
+	// recorded even under --no-default-excludes.
+	receipt.Defaults = []string{exclude.SecretID}
 	if !ctx2.noDefaultExcludes {
-		receipt.Defaults = []string{"default:generated", "default:attribute"}
+		receipt.Defaults = append(receipt.Defaults, "default:generated", "default:attribute")
 	}
 	if err := writeExcludedDiff(dir, raw, filtered, &receipt); err != nil {
 		return err
+	}
+	if ctx2.preview {
+		// The staged copy is what the bundle reader classifies; the scratch
+		// directory is removed before the run returns, so no bundle survives.
+		ctx2.previewData = buildPreview(ctx2, filtered, &receipt)
+		return nil
 	}
 	if len(raw) > 0 && filtered == "" {
 		r.Warn("all changed files excluded — review diff is empty (re-include with ! or --no-default-excludes)")
@@ -55,6 +63,9 @@ func filterExcluded(ctx2 *fetchRunCtx) error {
 
 func excludedDiff(raw string, defaults, explicit []exclude.Rule, attrs []byte) (string, ExcludedFile) {
 	receipt := ExcludedFile{SchemaVersion: "1", Excluded: []ExcludedPath{}}
+	// One copy of the built-in secret set per pass, so the per-section match
+	// below allocates nothing.
+	secrets := exclude.Secrets()
 	lines := strings.SplitAfter(raw, "\n")
 	var kept strings.Builder
 	cursor := 0
@@ -64,7 +75,7 @@ func excludedDiff(raw string, defaults, explicit []exclude.Rule, attrs []byte) (
 		start, end := f.StartLine-1, min(f.EndLine, len(lines))
 		kept.WriteString(strings.Join(lines[cursor:start], ""))
 		section := strings.Join(lines[start:end], "")
-		rule, drop := exclusionRule(defaults, explicit, attrs, f.Path, f.OldPath)
+		rule, drop := exclusionRule(secrets, defaults, explicit, attrs, f.Path, f.OldPath)
 		if drop {
 			receipt.Excluded = append(receipt.Excluded, ExcludedPath{
 				Path: f.Path, OldPath: f.OldPath, RuleID: rule.ID, Pattern: rule.Pattern, Reason: rule.Reason, Bytes: len(section),
@@ -144,7 +155,15 @@ func writeExcludedReceipt(dir string, receipt *ExcludedFile) error {
 	return nil
 }
 
-func exclusionRule(defaults, explicit []exclude.Rule, attrs []byte, file, old string) (exclude.Rule, bool) {
+func exclusionRule(
+	secrets, defaults, explicit []exclude.Rule, attrs []byte, file, old string,
+) (exclude.Rule, bool) {
+	// The built-in secret set outranks every other rule, including an explicit
+	// negation and the --no-default-excludes opt-out: a private key is never
+	// reviewable evidence.
+	if secret, secretDrop := exclude.SecretRule(secrets, file, old); secretDrop {
+		return secret, true
+	}
 	rule, drop := exclude.Excluded(defaults, file, old)
 	if attr, ok := exclude.AttributeRule(attrs, file); ok {
 		rule, drop = attr, true

@@ -211,6 +211,7 @@ a.txt
   "schema_version": "1",
   "patterns_source": ".verdict/ignore@base",
   "defaults": [
+    "default:secret",
     "default:generated",
     "default:attribute"
   ],
@@ -498,8 +499,8 @@ rather than becoming ground truth.
       "kind": "bundle",
       "name": "excluded.json",
       "status": "included",
-      "sha256": "11ee2feb0492c61eb27c7d6e806596bf9cea654990c487f4623451013437c968",
-      "bytes": 426
+      "sha256": "8e774296f3ee16cc3276de91cab1a408b4450487e2d6aa21674d1de286b2272e",
+      "bytes": 448
     },
     {
       "kind": "bundle",
@@ -730,8 +731,8 @@ rather than becoming ground truth.
       "kind": "exclusions",
       "name": "excluded.json",
       "status": "included",
-      "sha256": "11ee2feb0492c61eb27c7d6e806596bf9cea654990c487f4623451013437c968",
-      "bytes": 426,
+      "sha256": "8e774296f3ee16cc3276de91cab1a408b4450487e2d6aa21674d1de286b2272e",
+      "bytes": 448,
       "source": ".verdict/ignore@base",
       "excluded": 0,
       "excluded_bytes": 0,

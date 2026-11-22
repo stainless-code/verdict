@@ -2148,7 +2148,7 @@ export interface WithheldSummary {
   [key: string]: unknown;
 }
 
-/** fetch --json data: the bundle location, the diff statistics the toc counted, the panel, and the conditional summaries the run armed. estimate and budget travel together, cap and chunk follow only when armed, and prompt_dump lands last when staged. */
+/** fetch --json data: the bundle location, the diff statistics the toc counted, the panel, and the conditional summaries the run armed. estimate and budget travel together, cap and chunk follow only when armed, prompt_dump lands last when staged, and preview replaces every one of them when the run stopped before writing a bundle. */
 export interface FetchData {
   truncated?: boolean;
   truncation_reason?:
@@ -2156,23 +2156,23 @@ export interface FetchData {
   returned?: number;
   total?: number | null;
   next_offset?: number | null;
-  dir: string;
-  head_sha: string;
-  base_sha: string;
-  files: number;
-  additions: number;
-  deletions: number;
-  hunks: number;
-  omitted: unknown[];
+  dir?: string;
+  head_sha?: string;
+  base_sha?: string;
+  files?: number;
+  additions?: number;
+  deletions?: number;
+  hunks?: number;
+  omitted?: unknown[];
   raw_diff_bytes?: number | null;
-  diff_bytes: number;
-  panel: FetchPanel;
+  diff_bytes?: number;
+  panel?: FetchPanel;
   capabilities?: FetchCapabilities;
   /** The review controls the run read from controls.json; shape owned by the controls document. */
   controls?: unknown;
   /** Bundle file paths by name (PR.json, full.diff, toc.txt, roles.txt, reviews.json, inline.json, threads.json, sensitive.txt, incremental.diff, plus kb.txt and kb-recall.json when present); files the run did not write read null. */
-  artifacts: unknown;
-  incremental_base: string | null;
+  artifacts?: unknown;
+  incremental_base?: string | null;
   estimate?: FetchEstimate;
   /** The resolved budget summary; present when the run resolved an ordinary budget (a grouped run reports its per-group guards and personal ceiling under estimate instead). */
   budget?: unknown;
@@ -2182,10 +2182,12 @@ export interface FetchData {
   chunk?: unknown;
   /** Where the staged prompt was written; absent unless a dump was requested. */
   prompt_dump?: string | null;
+  /** The preview payload: the reviewed file list, the withheld sections, the byte totals, and the resolved budget. Present only under --preview, where it is the whole data object: a preview writes no bundle directory, so no other key has a value to carry. */
+  preview?: PreviewData | null;
   [key: string]: unknown;
 }
 
-/** fetch-local --json data: the same statistics without a remote base, plus the worktree kind and no incremental_base. */
+/** fetch-local --json data: the same statistics without a remote base, plus the worktree kind and no incremental_base. preview replaces the statistics the same way it does for fetch. */
 export interface FetchLocalData {
   truncated?: boolean;
   truncation_reason?:
@@ -2193,23 +2195,23 @@ export interface FetchLocalData {
   returned?: number;
   total?: number | null;
   next_offset?: number | null;
-  dir: string;
-  kind: string;
-  head_sha: string;
-  base_sha: string;
-  files: number;
-  additions: number;
-  deletions: number;
-  hunks: number;
-  omitted: unknown[];
+  dir?: string;
+  kind?: string;
+  head_sha?: string;
+  base_sha?: string;
+  files?: number;
+  additions?: number;
+  deletions?: number;
+  hunks?: number;
+  omitted?: unknown[];
   raw_diff_bytes?: number | null;
-  diff_bytes: number;
-  panel: FetchPanel;
+  diff_bytes?: number;
+  panel?: FetchPanel;
   capabilities?: FetchCapabilities;
   /** The review controls the run read from controls.json; shape owned by the controls document. */
   controls?: unknown;
   /** Bundle file paths by name (PR.json, full.diff, toc.txt, roles.txt, reviews.json, inline.json, threads.json, sensitive.txt, incremental.diff, plus kb.txt and kb-recall.json when present); files the run did not write read null. */
-  artifacts: unknown;
+  artifacts?: unknown;
   estimate?: FetchEstimate;
   /** The resolved budget summary; present when the run resolved an ordinary budget (a grouped run reports its per-group guards and personal ceiling under estimate instead). */
   budget?: unknown;
@@ -2219,6 +2221,8 @@ export interface FetchLocalData {
   chunk?: unknown;
   /** Where the staged prompt was written; absent unless a dump was requested. */
   prompt_dump?: string | null;
+  /** The preview payload: the reviewed file list, the withheld sections, the byte totals, and the resolved budget. Present only under --preview, where it is the whole data object: a preview writes no bundle directory, so no other key has a value to carry. */
+  preview?: PreviewData | null;
   [key: string]: unknown;
 }
 
@@ -2242,6 +2246,58 @@ export interface FetchCapabilities {
 export interface FetchPanel {
   source: string | null;
   members: Array<string>;
+  [key: string]: unknown;
+}
+
+/** --preview data: the exact files the review would read, every section the exclusion stack withheld with its rule, the byte totals either side of the filter, and the review budget the deterministic classifier resolves for that filtered diff. Rows come from the filtered diff, never from the PR's file list, so a withheld path can appear only under excluded. */
+export interface PreviewData {
+  schema_version: "1";
+  /** One row per changed file the filter kept, in diff order. */
+  included: Array<PreviewFile>;
+  /** One row per withheld diff section, with the rule that removed it and the bytes it carried. */
+  excluded: Array<ExcludedPath>;
+  /** Bytes of the filtered diff the review would read. */
+  included_bytes: number;
+  /** Bytes the filter withheld, measured on the raw sections. */
+  excluded_bytes: number;
+  /** How many files the filter kept; the same count the budget saw. */
+  files: number;
+  /** The resolved review depth for the filtered diff. */
+  budget: PreviewBudget;
+  [key: string]: unknown;
+}
+
+/** One file a preview would send for review: its path, the role the bundle would assign, and the bytes its sections carry. */
+export interface PreviewFile {
+  path: string;
+  /** The role the bundle would assign from the path's shape; a preview writes no roles.txt, so the shape decides. */
+  role: "source" | "test" | "docs" | "config" | "generated";
+  /** Section bytes, each line counting its newline. */
+  bytes: number;
+  [key: string]: unknown;
+}
+
+/** The advisory review depth: the tier, why it was chosen, the finders the tier buys, and the cross-check mode derived from it. */
+export interface PreviewBudget {
+  /** light runs one finder, standard and deep run two with cross-checks. */
+  tier: "light" | "standard" | "deep";
+  /** The classifier's own reasons, in its order; empty when no rule fired. */
+  reasons: Array<string>;
+  /** The finder count the tier buys. */
+  finders: number;
+  /** The cross-check mode derived from the finder count. */
+  cross_check: string;
+  [key: string]: unknown;
+}
+
+/** One withheld diff section: its path, the rule id and pattern that removed it, the reason the rule carries, and the bytes it held. The same row appears in excluded.json, so one reading covers the preview and the bundle receipt. */
+export interface ExcludedPath {
+  path: string;
+  old_path?: string;
+  rule_id: string;
+  pattern: string;
+  reason: "default" | "attribute" | "ignore" | "cli" | "secret-builtin";
+  bytes: number;
   [key: string]: unknown;
 }
 

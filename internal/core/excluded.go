@@ -6,8 +6,8 @@ type ExcludedPath struct {
 	OldPath string `json:"old_path,omitempty"`
 	RuleID  string `json:"rule_id"`
 	Pattern string `json:"pattern"`
-	Reason  string `enum:"default|attribute|ignore|cli" json:"reason"`
-	Bytes   int    `json:"bytes"                        min:"0"`
+	Reason  string `enum:"default|attribute|ignore|cli|secret-builtin" json:"reason"`
+	Bytes   int    `json:"bytes"                                       min:"0"`
 }
 
 // ExcludedFile records every removed byte and both diff hashes.

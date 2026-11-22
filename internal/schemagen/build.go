@@ -123,7 +123,12 @@ type definition struct {
 	typ         reflect.Type
 	name        string
 	constraints []member
-	closed      bool
+	// alternatives are extra whole-object shapes the definition also accepts,
+	// joined to the struct's own required list through anyOf. A fetch data
+	// object is the one user: a --preview run writes no bundle, so its data is
+	// the preview payload and nothing else.
+	alternatives []*node
+	closed       bool
 }
 
 // document is one published schema: its file stem, title, root shape and
@@ -731,10 +736,14 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[CalibrateCounts](), name: "calibrateCounts"},
 		{typ: reflect.TypeFor[CalibrateJudgment](), name: "calibrateJudgment"},
 		{typ: reflect.TypeFor[core.WithheldSummary](), name: "withheldSummary"},
-		{typ: reflect.TypeFor[FetchData](), name: "fetchData"},
-		{typ: reflect.TypeFor[FetchLocalData](), name: "fetchLocalData"},
+		{typ: reflect.TypeFor[FetchData](), name: "fetchData", alternatives: []*node{previewOnlyAlternative()}},
+		{typ: reflect.TypeFor[FetchLocalData](), name: "fetchLocalData", alternatives: []*node{previewOnlyAlternative()}},
 		{typ: reflect.TypeFor[FetchCapabilities](), name: "fetchCapabilities"},
 		{typ: reflect.TypeFor[FetchPanel](), name: "fetchPanel"},
+		{typ: reflect.TypeFor[PreviewData](), name: "previewData"},
+		{typ: reflect.TypeFor[PreviewFile](), name: "previewFile"},
+		{typ: reflect.TypeFor[PreviewBudget](), name: "previewBudget"},
+		{typ: reflect.TypeFor[ExcludedPath](), name: "excludedPath"},
 	}
 }
 
@@ -830,18 +839,68 @@ func (b *builder) anyOfRoot(types []reflect.Type) (*node, error) {
 
 func (b *builder) defsNode(defs []definition) (*node, error) {
 	members := make([]member, 0, len(defs))
-	for _, def := range defs {
-		schema, err := b.structNode(def.typ, !def.closed)
+	for i := range defs {
+		schema, err := b.defNode(&defs[i])
 		if err != nil {
 			return nil, err
 		}
-		if len(def.constraints) > 0 {
-			schema.members = append(schema.members, def.constraints...)
-		}
-		addVerbWireMembers(def.name, schema)
-		members = append(members, member{def.name, schema})
+		members = append(members, member{defs[i].name, schema})
 	}
 	return object(true, members...), nil
+}
+
+// defNode renders one named definition: the struct's object, the alternative
+// required sets it also accepts, its extra constraints, and the verb-wire
+// members every data profile shares.
+func (b *builder) defNode(def *definition) (*node, error) {
+	schema, err := b.structNode(def.typ, !def.closed)
+	if err != nil {
+		return nil, err
+	}
+	if len(def.alternatives) > 0 {
+		if err := requireAlternatives(schema, def.alternatives); err != nil {
+			return nil, err
+		}
+	}
+	schema.members = append(schema.members, def.constraints...)
+	addVerbWireMembers(def.name, schema)
+	return schema, nil
+}
+
+// requireAlternatives replaces a definition's single required list with an
+// anyOf of required sets: the object's own keys, or each alternative shape.
+// A payload satisfying neither — an empty object, or a partial one — still
+// fails, which making the keys optional could not enforce. Every branch is a
+// bare required-set (plus, for an alternative, the shape that key must take),
+// the form clients/ts/scripts/gen-ts-types.mjs documents: an anyOf on a node
+// that declares its own shape renders the declared object, because TypeScript
+// cannot express "at least one of".
+func requireAlternatives(schema *node, alternatives []*node) error {
+	branches := make([]*node, 0, len(alternatives)+1)
+	for i := range schema.members {
+		if schema.members[i].key != keyRequired {
+			continue
+		}
+		branches = append(branches, object(false, schema.members[i]))
+		branches = append(branches, alternatives...)
+		schema.members[i] = member{keyAnyOf, array(branches...)}
+		return nil
+	}
+	return errorf("a definition with alternatives needs a required list to replace")
+}
+
+// previewOnlyAlternative is the other shape a fetch data object takes: a
+// --preview run stops before the bundle directory, so its data is the preview
+// payload alone and no bundle key exists to require.
+func previewOnlyAlternative() *node {
+	return object(true,
+		member{keyRequired, array(stringNode("preview"))},
+		member{keyProperties, object(true, member{
+			key:   "preview",
+			value: object(true, member{keyRef, stringNode(defsPrefix + "previewData")}),
+		})},
+		member{keyAdditionalProperties, boolNode(true)},
+	)
 }
 
 func (b *builder) structNode(typ reflect.Type, additional bool) (*node, error) {

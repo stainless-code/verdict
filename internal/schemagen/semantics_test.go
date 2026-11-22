@@ -23,8 +23,11 @@ var publishedSemantics = map[string]string{
 	// additive author.schema.json (new bundle document; the advisory author
 	// fingerprint fetch detects). No existing schema property, required key,
 	// enum, or type changed.
-	"author.schema.json":      "0773058075a17e2d53e2d8c6a1bdfad2150bcb41a64c76e24ef4cc88cf4ef6d9",
-	"excluded.schema.json":    "0d2646d108ddc5d13c2718b4e5d7f66084e5f5f2ee29883cf375d29ef8b112c4",
+	"author.schema.json": "0773058075a17e2d53e2d8c6a1bdfad2150bcb41a64c76e24ef4cc88cf4ef6d9",
+	// STA-478 adds "secret-builtin" to the exclusion reason enum: the
+	// built-in secret floor records its own reason, and the published schema
+	// must name it.
+	"excluded.schema.json":    "1c7e6952ebc53b1d27760617e410383e5f0757dd430280add64dea1935502aa4",
 	"panel-plan.schema.json":  "0c07f920a8b899d683a8e344d1ed9d5ba707c745c8335ef9db88a94704ff4dd6",
 	"panel.schema.json":       "cc9b5ddf39449f0ab03c0152bcb00f26a9d6754d326511a9c345391d4d012c25",
 	"calibration.schema.json": "053bb6495d947663278044fa75308c89e0b72a93b8dbc0c0e84710cf17357f85",
@@ -331,7 +334,14 @@ var publishedSemantics = map[string]string{
 	// pack check: additive $defs/packCheckData plus its three row shapes, and
 	// "bad-path" and the widened pack union in the refusal enum. No existing
 	// property, required key, or type moved.
-	"envelope.schema.json": "8d353033d1000fa95ec711e81ccd9de8504da2f2c2858e2dd599e0ff635a57cb",
+	// fetch preview: additive optional data.preview on $defs/fetchData and
+	// $defs/fetchLocalData plus the new $defs/previewData, previewFile,
+	// previewBudget, and excludedPath shapes. The two fetch data profiles then
+	// move their required list into an anyOf of required sets — the bundle keys,
+	// or `preview` alone — because a preview writes no bundle and its data is
+	// the payload and nothing else. No property, enum, or type changed, and a
+	// partial object still fails both branches.
+	"envelope.schema.json": "db1668f36062408b739b3af4a912be4209319c8232ed3963738a71b3f36d502a",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

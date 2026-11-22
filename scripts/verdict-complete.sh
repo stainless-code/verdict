@@ -9,7 +9,7 @@ _verdict_verbs() {
 _verdict_flags() { # $1 = verb
   case "$1" in
     demo) printf '%s\n' --agent --keep --json;;
-    fetch) printf '%s\n' --base-sha --since --provider --context --spec --issue --ignore --no-default-excludes --index --consent-over-budget --show-prompts --chunk --json;;
+    fetch) printf '%s\n' --base-sha --since --provider --context --spec --issue --ignore --no-default-excludes --preview --index --consent-over-budget --show-prompts --chunk --json;;
     post) printf '%s\n' --approve --request-changes --bind --force --review-file --summary --dry-run --require-coverage --min-severity --allow-secret-values --json;;
     triage) printf '%s\n' --sig --status --rationale --force --dry-run --json;;
     report) printf '%s\n' --html --root --status --kind --category --output --sarif --include-withheld --cost --risk --max-risk --check --completeness --live --json;;
@@ -30,7 +30,7 @@ _verdict_flags() { # $1 = verb
     backtest) printf '%s\n' mine replay score fixtures --since --until --run --agent --max-reviews --budget-usd --timeout --rounds --fixture --recordings --json;;
     threads) printf '%s\n' --provider --thread --dry-run --json;;
     drain) printf '%s\n' --provider --max-threads --agent --timeout --post --dry-run --json --;;
-    fetch-local) printf '%s\n' --staged --range --base --stash --worktree --context --spec --ignore --no-default-excludes --index --consent-over-budget --show-prompts --chunk --json;;
+    fetch-local) printf '%s\n' --staged --range --base --stash --worktree --context --spec --ignore --no-default-excludes --preview --index --consent-over-budget --show-prompts --chunk --json;;
     run) printf '%s\n' --agent --recipe --stage --timeout --finders --budget --rounds --print --json --;;
     learn) printf '%s\n' --propose --from-bundle --accept --reject --dry-run --pack --incident --sha --path --note --url --at --rule --scope --id --provenance --rigor --status --retire --restore --reason --json;;
     pack) printf '%s\n' list add test --dir --json;;
