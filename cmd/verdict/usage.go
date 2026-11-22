@@ -145,11 +145,15 @@ func usageText() string {
 		"    carry a local bundle's findings into a fresh PR fetch for posting (re-anchors, stamps handoff).\n" +
 		"    Adopt-into needs a bundle verdict can post to (forgejo, github, gitlab): other hosts refuse\n" +
 		"    typed (provider-unimplemented, naming the host).\n" +
-		"  ingest <owner/repo> <pr> --sarif <file|-> [--json]\n" +
-		"    import SARIF 2.1.0 tool findings into .verdict/state/<pr>/findings.json using the shared\n" +
-		"    dedupe, hunk anchoring, and path-exclusion withholding paths. No network. Tool findings\n" +
-		"    carry said rigor with default provenance (never verified); results outside the diff stay\n" +
-		"    unanchored and never post inline.\n" +
+		"  ingest <owner/repo> <pr> --from sarif <file|-> [--json]\n" +
+		"    import OASIS SARIF 2.1.0 results from any static analyzer into the target bundle's\n" +
+		"    findings.json through the shared dedupe, hunk anchoring, and path-exclusion\n" +
+		"    withholding paths. No network, no URI followed, input capped at 8 MiB. A result the\n" +
+		"    pinned diff cannot anchor (no location, no usable line, a path outside the\n" +
+		"    repository, or a line the changed hunks do not carry) comes back in data.skipped[]\n" +
+		"    with a typed reason instead of being dropped or stored at line 0; an anchored\n" +
+		"    finding grades pointed against the verified diff line, never verified.\n" +
+		"    --sarif <file|-> is the same source under its older spelling.\n" +
 		"  fix <owner/repo> <local-slug|pr> [--sig <s> | --all|--selected [--min-severity <s>]\n" +
 		"        [--verify-cmd <cmd>] [--paths <glob>]...] [--json]\n" +
 		"    one bounded pass over a local bundle: picks the top open inline sig\n" +

@@ -194,9 +194,9 @@ Fix: re-run with a valid combination — the message names the clash.
 
 ## `bad-from`
 
-Cause: `adopt` got no (or a bad) `--from` local slug.
+Cause: `adopt` got no (or a bad) `--from` local slug, or `ingest --from` named a source format this build cannot read.
 
-Fix: pass `--from <local-slug>` pointing at a `.verdict/state/local-*` directory carrying `findings.json`.
+Fix: for `adopt`, pass `--from <local-slug>` pointing at a `.verdict/state/local-*` directory carrying `findings.json`. For `ingest`, pass `--from sarif <file|->`; that is the one format it reads.
 
 ## `bad-group-validation`
 
@@ -344,9 +344,9 @@ Fix: pass the one-line rule text to `--rule`.
 
 ## `bad-sarif`
 
-Cause: the SARIF input is not valid UTF-8 JSON conforming to SARIF 2.1.0, or carries an unsafe or unparseable `artifactLocation.uri`.
+Cause: the document is not valid UTF-8 JSON conforming to SARIF 2.1.0 — a non-object root, trailing data, a `version` other than `"2.1.0"`, a missing or non-array `runs`, a run without `tool.driver.name`, a result without a message, or a `ruleIndex` outside the driver's rules. A single result with an unsafe URI does not refuse the file: that result is skipped (`path-escapes-repo`) instead.
 
-Fix: supply valid SARIF 2.1.0 JSON (`"version": "2.1.0"`, `runs[]` array) with relative repository file paths, then re-run `verdict ingest`.
+Fix: supply valid SARIF 2.1.0 JSON (`"version": "2.1.0"`, a `runs[]` array, one driver name and message per run/result), then re-run `verdict ingest --from sarif <file|->`. Read `data.skipped[]` to see which results the pinned diff could not anchor and why.
 
 ## `bad-scope`
 
@@ -760,7 +760,7 @@ re-run.
 
 Cause: reading the SARIF input or writing the updated `findings.json` failed (for example, a symlinked or unreadable SARIF file, or a non-writable bundle directory).
 
-Fix: confirm the `--sarif` path is a readable regular file (not a symlink) or valid stdin stream and that `.verdict/state/<bundle>` is writable, then re-run `verdict ingest`.
+Fix: confirm the `--from sarif <file|->` path is a readable regular file (not a symlink) or valid stdin stream and that `.verdict/state/<bundle>` is writable, then re-run `verdict ingest`.
 
 ## `init-failed`
 
@@ -920,9 +920,9 @@ Fix: have the agent write `{schema_version: "1", findings: [...]}` to the review
 
 ## `missing-sarif`
 
-Cause: `ingest` was invoked without `--sarif <file|->` or with an empty SARIF path.
+Cause: `ingest` was invoked without a source — no `--from sarif <file|->` (or legacy `--sarif <file|->`) — or with an empty path or stdin stream.
 
-Fix: pass `--sarif <file>` (or `--sarif -` to read stdin), then re-run `verdict ingest`.
+Fix: pass `--from sarif <file>`, or `--from sarif -` (or `--sarif -`) to read stdin, then re-run `verdict ingest`.
 
 ## `missing-selection`
 
@@ -1265,9 +1265,9 @@ unwrapped.
 
 ## `sarif-too-large`
 
-Cause: the SARIF input exceeds the 8 MiB size cap.
+Cause: the SARIF input — file or stdin — exceeds the 8 MiB size cap.
 
-Fix: split or filter the SARIF output per tool or target under 8 MiB, then re-run `verdict ingest`.
+Fix: split or filter the SARIF output per tool or target under 8 MiB, then re-run `verdict ingest --from sarif <file|->`. Narrowing the analyzer's rules is usually cheaper than splitting the document.
 
 ## `scope-escape`
 
@@ -1637,3 +1637,21 @@ condition held. Exit 1 carries data with `error: null`.
 
 Fix: inspect the snapshot, or remove `--once` and supply a bounded timeout.
 For `review-changed`, each invocation starts a new baseline.
+
+## When `ingest` skips a result
+
+Cause: this is not a refusal. A SARIF result the bundle's pinned diff cannot
+anchor is published in `data.skipped[]` with `reason`, `tool`, `rule_id`,
+`path`, and `line`, and nothing is written for it: `no-location` (no physical
+location or artifact URI), `invalid-line` (absent, zero, or negative line),
+`path-escapes-repo` (absolute path, drive path, a colon, `..` traversal, control
+byte, invalid UTF-8, a foreign scheme, or an authority-bearing `file://`
+reference such as `file://localhost/etc/passwd`), `out-of-diff` (a path or line
+the changed hunks do not carry),
+`ambiguous-path` (the diff names the path twice), or `snippet-mismatch` (the
+reported `region.snippet.text` disagrees with the diff line at `path:line`).
+
+Fix: run the analyzer against the reviewed head and keep its paths
+repository-relative POSIX (`src/a.go`, not `C:/repo/src/a.go`). A result pointing
+outside the diff means the scanner saw a different checkout, so re-run it on the
+reviewed head rather than widening the diff.

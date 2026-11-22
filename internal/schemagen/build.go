@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
 	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/repro"
@@ -664,6 +665,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[ReadyCI](), name: "readyCI"},
 		{typ: reflect.TypeFor[AdoptData](), name: "adoptData"},
 		{typ: reflect.TypeFor[IngestData](), name: "ingestData"},
+		{typ: reflect.TypeFor[ingestcore.Skip](), name: "ingestSkip"},
 		{typ: reflect.TypeFor[NextData](), name: "nextData"},
 		{typ: reflect.TypeFor[FixData](), name: "fixData"},
 		{typ: reflect.TypeFor[FixAnchors](), name: "fixAnchors"},

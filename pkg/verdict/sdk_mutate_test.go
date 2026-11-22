@@ -186,7 +186,7 @@ func TestClientAdopt(t *testing.T) {
 	_, err = c.Adopt(context.Background(), &verdict.AdoptRequest{
 		Invocation: sdkInvocation("4311"),
 	})
-	requireRefusal(t, err, "bad-from", "try: re-run with one of the valid values named above")
+	requireRefusal(t, err, "bad-from", "try: name a supported source (ingest: sarif; adopt: a local bundle slug)")
 }
 
 // fixRepoFiles is the scratch worktree the fix scope audit reads.
@@ -477,5 +477,5 @@ func TestClientIngest(t *testing.T) {
 	_, err = c.Ingest(t.Context(), &verdict.IngestRequest{
 		Invocation: sdkInvocation("4312"),
 	})
-	requireRefusal(t, err, "missing-sarif", "try: pass an existing SARIF 2.1.0 file with --sarif <file|->")
+	requireRefusal(t, err, "missing-sarif", "try: pass an existing SARIF 2.1.0 file with --from sarif <file|->")
 }

@@ -14,6 +14,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"unicode/utf8"
 
 	skillfs "github.com/stainless-code/verdict"
 )
@@ -23,6 +24,9 @@ const (
 	defaultTier      = "important"
 	floatBitSize     = 64
 	maxSecurityScore = 10
+	fileScheme       = "file:"
+	pathSeparator    = "/"
+	windowsSeparator = `\`
 )
 
 // Table describes schemas/sarif-map.json: level -> tier, numeric
@@ -149,30 +153,78 @@ func decodeScore(v any) (float64, bool) {
 }
 
 // CleanURI validates and normalizes a SARIF artifactLocation.uri into a
-// repository-relative POSIX path, rejecting NUL bytes, ASCII control chars,
-// leading or trailing whitespace, backslashes, Windows drive prefixes, URL
-// schemes, leading slashes, and ".." traversal segments (both raw and
-// percent-decoded).
+// repository-relative POSIX path. A plain relative URI, or a path-only `file:`
+// URI (`file:src/a.go`), keeps its repo-relative path; Windows separators
+// become `/` and percent escapes are decoded once. Everything that names a
+// location outside the checkout is refused: NUL bytes, ASCII control chars,
+// invalid UTF-8, leading or trailing whitespace, an absolute path, a Windows
+// drive path, any colon, a foreign scheme, a `..` traversal segment, and every
+// authority-bearing `file://` reference. RFC 8089 gives `file://<authority>`
+// its authority component (empty only in `file:///`), so `file:///abs/path`,
+// `file://localhost/etc/passwd`, `file://[::1]/x`, and `file://host/share/x`
+// all escape this repository and are never read as repo-relative paths.
 func CleanURI(raw string) (string, error) {
 	if raw == "" {
 		return "", nil
 	}
-	if reason := unsafeURIReason(raw); reason != "" {
+	body := normalizeSeparators(raw)
+	if rest, ok := fileReferenceBody(body); ok {
+		body = rest
+	}
+	if reason := unsafeURIReason(body); reason != "" {
 		return "", unsafeURIError(raw, reason)
 	}
-	unescaped, err := url.PathUnescape(raw)
+	unescaped, err := url.PathUnescape(body)
 	if err != nil {
 		//nolint:wrapcheck // local URI syntax rejection
 		return "", fmt.Errorf("invalid SARIF URI escape in %q: %w", raw, err)
 	}
+	unescaped = normalizeSeparators(unescaped)
+	if !utf8.ValidString(unescaped) {
+		return "", unsafeURIError(raw, "invalid UTF-8")
+	}
 	if reason := unsafeURIReason(unescaped); reason != "" {
 		return "", unsafeURIError(unescaped, reason)
 	}
-	cleaned := strings.TrimPrefix(path.Clean(unescaped), "./")
-	if cleaned == "." || cleaned == "" || strings.HasPrefix(cleaned, "/") || strings.HasPrefix(cleaned, "..") {
+	cleaned, ok := cleanRelative(unescaped)
+	if !ok {
 		return "", errors.New("unsafe SARIF artifact URI " + strconv.Quote(raw)) //nolint:wrapcheck // local validation failure
 	}
 	return cleaned, nil
+}
+
+// cleanRelative reduces an already-graded path to its cleaned repository form,
+// reporting false when cleaning leaves nothing readable (the current directory
+// itself or a parent of it).
+func cleanRelative(s string) (string, bool) {
+	cleaned := strings.TrimPrefix(path.Clean(s), "./")
+	if cleaned == "." || cleaned == "" || strings.HasPrefix(cleaned, pathSeparator) || strings.HasPrefix(cleaned, "..") {
+		return "", false
+	}
+	return cleaned, true
+}
+
+// normalizeSeparators turns Windows separators into the POSIX one so a
+// scanner that reports `pkg\\auth.go` anchors on the same file as
+// `pkg/auth.go`. Traversal is judged after this normalization, so `..\\..` is
+// refused rather than read as a file name.
+func normalizeSeparators(s string) string {
+	if !strings.Contains(s, windowsSeparator) {
+		return s
+	}
+	return strings.ReplaceAll(s, windowsSeparator, pathSeparator)
+}
+
+// fileReferenceBody strips a `file:` scheme so the path after it is graded like
+// any other: `file:src/a.go` is the one repo-relative file form this build
+// reads. Every `file://` reference keeps its `//` and is refused as an absolute
+// path (RFC 8089 authority), so no host or share name is ever read as a
+// directory inside the checkout.
+func fileReferenceBody(s string) (string, bool) {
+	if len(s) < len(fileScheme) || !strings.EqualFold(s[:len(fileScheme)], fileScheme) {
+		return s, false
+	}
+	return s[len(fileScheme):], true
 }
 
 func unsafeURIError(uri, reason string) error {
@@ -188,15 +240,18 @@ func unsafeURIReason(s string) string {
 		return "control character"
 	case strings.TrimSpace(s) != s:
 		return "leading or trailing whitespace"
-	case strings.Contains(s, "\\"):
-		return "backslash"
-	case strings.HasPrefix(s, "/"):
+	case strings.HasPrefix(s, pathSeparator):
 		return "absolute path"
 	case len(s) >= 2 && isASCIIAlpha(s[0]) && s[1] == ':':
 		return "drive path"
 	case hasURIScheme(s):
 		return "URI scheme"
-	case slices.Contains(strings.Split(s, "/"), ".."):
+	case strings.ContainsRune(s, ':'):
+		// A colon never appears in a repository path this build accepts: left in
+		// place it would smuggle a drive letter (`localhost/C:/x`) or a scheme
+		// past the checks above.
+		return "colon in path segment"
+	case slices.Contains(strings.Split(s, pathSeparator), ".."):
 		return "parent traversal"
 	default:
 		return ""

@@ -81,6 +81,7 @@ func wireAdopt(ctx context.Context, b *bindings, req *adoptcore.Request) error {
 func decodeIngest(req *ingestcore.Request, a *args) {
 	a.str(argRepo, &req.Repo)
 	a.str(argPr, &req.Pr)
+	a.str("from", &req.From)
 	a.str("sarif", &req.SARIF)
 }
 

@@ -16,6 +16,12 @@ and warnings flow through Options.Progress.
 Distribution surfaces (install, upgrade, skill) stay CLI-only on purpose and are
 not exposed here.
 
+CONSTANTS
+
+const SourceSARIF = ingestcore.SourceSARIF
+    SourceSARIF is the one source format Ingest reads; From defaults to it.
+
+
 TYPES
 
 type AdoptRequest struct {
@@ -134,6 +140,10 @@ func (c *Client) Index(ctx context.Context, req *IndexRequest) (*IndexResponse, 
 func (c *Client) Ingest(ctx context.Context, req *IngestRequest) (*IngestResponse, error)
     Ingest maps SARIF 2.1.0 results into the bundle's findings store, sharing
     the deduplication, hunk anchoring, and path-exclusion withholding paths.
+    Each result is graded against the bundle's pinned diff: an anchored finding
+    carries the verified diff line and pointed rigor, and a result the diff
+    cannot anchor is published in the response data's skipped[] with its typed
+    reason instead of being dropped or stored at line 0.
 
 func (c *Client) Init(ctx context.Context, req *InitRequest) (*InitResponse, error)
     Init scaffolds .verdict control files from a style preset.
@@ -359,11 +369,14 @@ type IndexResponse struct {
 
 type IngestRequest struct {
 	Invocation
+	From      string
 	SARIF     string
 	SARIFData []byte
 }
-    IngestRequest imports SARIF 2.1.0 tool results into the target bundle's
-    findings store. Set SARIF to a file path, or SARIFData for in-memory bytes.
+    IngestRequest imports OASIS SARIF 2.1.0 results into the target bundle's
+    findings store. From names the source format (SourceSARIF, or empty for
+    the same thing); SARIF is a file path and SARIFData carries pre-read bytes
+    instead. Every document is capped at 8 MiB and read offline.
 
 type IngestResponse struct {
 	Outcome

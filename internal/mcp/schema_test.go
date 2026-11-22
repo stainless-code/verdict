@@ -123,3 +123,37 @@ func TestSchemaBounds(t *testing.T) {
 		t.Error("untagged field gained a minimum")
 	}
 }
+
+// TestIngestSourceDescriptions proves the ingest tool describes its own two
+// source fields: a shared field name must never borrow another tool's text, so
+// `from` cannot read as adopt's local bundle slug and `sarif` names the file it
+// reads.
+func TestIngestSourceDescriptions(t *testing.T) {
+	t.Parallel()
+	ingest := inputSchema(findTool(t, "ingest"))
+	props, ok := ingest[schemaProperties].(map[string]any)
+	if !ok {
+		t.Fatalf("ingest properties = %T, want an object", ingest[schemaProperties])
+	}
+	assertDescription(t, props, "from", "Source format to import; sarif is the one this build reads.")
+	assertDescription(t, props, "sarif",
+		"Path to the SARIF 2.1.0 report file to import. Read offline, capped at 8 MiB.")
+	adopt := inputSchema(findTool(t, "adopt"))
+	adoptProps, ok := adopt[schemaProperties].(map[string]any)
+	if !ok {
+		t.Fatalf("adopt properties = %T, want an object", adopt[schemaProperties])
+	}
+	assertDescription(t, adoptProps, "from", "Local bundle slug to adopt findings from.")
+}
+
+// assertDescription checks one property's published description.
+func assertDescription(t *testing.T, props map[string]any, name, want string) {
+	t.Helper()
+	field, ok := props[name].(map[string]any)
+	if !ok {
+		t.Fatalf("property %q = %T, want an object", name, props[name])
+	}
+	if got := field[schemaDescription]; got != want {
+		t.Fatalf("property %q description = %v, want %q", name, got, want)
+	}
+}

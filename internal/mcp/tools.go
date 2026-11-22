@@ -220,8 +220,9 @@ func allTools(readOnly, operator bool) []*tool {
 		}, toolDeps{commander: coreexec.Runner{}}, decodeIndex, wireIndex, invokeIndex),
 		dataTool(&toolSpec{
 			name: "ingest",
-			description: "Import SARIF 2.1.0 tool results into the target bundle's findings store. " +
-				"Call after a static scanner run to merge results with review findings. " +
+			description: "Import OASIS SARIF 2.1.0 results from any static analyzer into the target " +
+				"bundle's findings store (from: sarif). Call after a scanner run to merge results " +
+				"with review findings; results the pinned diff cannot anchor come back in skipped[]. " +
 				"Writes findings.json; no network.",
 			required: []string{argRepo, argPr, "sarif"},
 			meta:     toolMeta{title: "Ingest SARIF findings", mutates: localWrites, idempotent: true},

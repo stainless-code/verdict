@@ -27,6 +27,22 @@ const (
 
 	sarifVersion210 = "2.1.0"
 	codeBadSARIF    = "bad-sarif"
+
+	// SourceSARIF names the one ingest source format this build reads. The
+	// flag is `--from sarif` so a caller names a format, never a vendor.
+	SourceSARIF = "sarif"
+)
+
+// Skip reasons published on the ingest envelope's skipped[] rows: one honest
+// label per result that could not be anchored, so nothing is dropped silently
+// and no finding is stored at line 0.
+const (
+	SkipNoLocation      = "no-location"
+	SkipInvalidLine     = "invalid-line"
+	SkipPathEscapesRepo = "path-escapes-repo"
+	SkipOutOfDiff       = "out-of-diff"
+	SkipAmbiguousPath   = "ambiguous-path"
+	SkipSnippetMismatch = "snippet-mismatch"
 )
 
 type sarifDocument struct {
@@ -45,8 +61,9 @@ type sarifTool struct {
 }
 
 type sarifDriver struct {
-	Name  string      `json:"name"`
-	Rules []sarifRule `json:"rules"`
+	Name    string      `json:"name"`
+	Version string      `json:"version"`
+	Rules   []sarifRule `json:"rules"`
 }
 
 type sarifRule struct {
@@ -89,9 +106,17 @@ type sarifArtifactLocation struct {
 }
 
 type sarifRegion struct {
-	StartLine   int `json:"startLine"`
-	EndLine     int `json:"endLine"`
-	StartColumn int `json:"startColumn"`
+	Snippet     *sarifSnippet `json:"snippet"`
+	StartLine   int           `json:"startLine"`
+	EndLine     int           `json:"endLine"`
+	StartColumn int           `json:"startColumn"`
+}
+
+// sarifSnippet is the region's reported source text. It is evidence to check
+// against the pinned diff, never text to trust: a result whose snippet
+// disagrees with the diff line it names is skipped, not re-pointed.
+type sarifSnippet struct {
+	Text string `json:"text"`
 }
 
 type parsedResult struct {
@@ -100,6 +125,8 @@ type parsedResult struct {
 	Severity    string
 	Path        string
 	Body        string
+	Snippet     string
+	SkipReason  string
 	Fingerprint string
 	VerdictSig  string
 	StartLine   int
@@ -128,28 +155,54 @@ func parseSARIF(raw []byte) (*parseOutput, *core.RefusalError) {
 		return nil, ref
 	}
 	out := &parseOutput{}
-	seenTools := map[string]bool{}
+	var drivers []string
 	seenWarnings := map[string]bool{}
 	for i := range doc.Runs {
-		if ref := appendRunResults(i, &doc.Runs[i], out, seenTools, seenWarnings); ref != nil {
+		if ref := appendRunResults(i, &doc.Runs[i], out, &drivers, seenWarnings); ref != nil {
 			return nil, ref
 		}
 	}
-	slices.Sort(out.Tools)
+	out.Tools = ingestedTools(out.Results, drivers)
 	return out, nil
 }
 
+// ingestedTools names the analyzers whose results landed: the effective tool of
+// each result, so a `report --sarif` round trip reports the tool its provenance
+// restored (`semgrep`) instead of the driver it arrived under (`verdict`). A
+// document with no results still names its drivers, so an empty scan says who
+// ran.
+func ingestedTools(results []parsedResult, drivers []string) []string {
+	seen := make(map[string]bool, len(results)+len(drivers))
+	names := make([]string, 0, len(results))
+	for i := range results {
+		names = appendTool(names, seen, results[i].Tool)
+	}
+	if len(names) == 0 {
+		for _, driver := range drivers {
+			names = appendTool(names, seen, driver)
+		}
+	}
+	slices.Sort(names)
+	return names
+}
+
+// appendTool adds one tool name once, ignoring an empty one.
+func appendTool(names []string, seen map[string]bool, name string) []string {
+	if name == "" || seen[name] {
+		return names
+	}
+	seen[name] = true
+	return append(names, name)
+}
+
 func appendRunResults(
-	idx int, run *sarifRun, out *parseOutput, seenTools, seenWarnings map[string]bool,
+	idx int, run *sarifRun, out *parseOutput, drivers *[]string, seenWarnings map[string]bool,
 ) *core.RefusalError {
 	tool, results, warns, ref := parseRun(idx, run)
 	if ref != nil {
 		return ref
 	}
-	if !seenTools[tool] {
-		seenTools[tool] = true
-		out.Tools = append(out.Tools, tool)
-	}
+	*drivers = append(*drivers, tool)
 	for _, w := range warns {
 		if !seenWarnings[w] {
 			seenWarnings[w] = true
@@ -263,23 +316,26 @@ func parseResultItem(runIdx, resIdx int, tool string, rules []sarifRule, raw *sa
 	if ref != nil {
 		return parsedResult{}, "", ref
 	}
+	tool, ruleID = provenanceLabels(tool, ruleID, raw.Properties)
 	body, ref := extractMessage(runIdx, resIdx, raw.Message)
 	if ref != nil {
 		return parsedResult{}, "", ref
 	}
-	cleanPath, startLine, endLine, startCol, ref := extractLocation(runIdx, resIdx, raw.Locations)
-	if ref != nil {
-		return parsedResult{}, "", ref
-	}
+	cleanPath, startLine, endLine, startCol, snippet, skipReason := extractLocation(raw.Locations)
 	level, secSev := effectiveSeverityInputs(raw, rule)
 	tier, warn := sarif.TierForResult(level, secSev)
 	verdictSig, fp := deriveFingerprint(tool, ruleID, cleanPath, startLine, startCol, body, raw.PartialFingerprints, raw.Fingerprints)
+	if reported := propertyString(raw.Properties, "fingerprint"); reported != "" {
+		fp = reported
+	}
 	return parsedResult{
 		Tool:        tool,
 		RuleID:      ruleID,
 		Severity:    tier,
 		Path:        cleanPath,
 		Body:        body,
+		Snippet:     snippet,
+		SkipReason:  skipReason,
 		Fingerprint: fp,
 		VerdictSig:  verdictSig,
 		StartLine:   startLine,
@@ -330,43 +386,100 @@ func extractMessage(runIdx, resIdx int, msg *sarifMessage) (string, *core.Refusa
 	return untrusted.NeutralizeMentions(text), nil
 }
 
+// extractLocation reads the first location as a candidate anchor: the
+// repo-relative path, the line range, and the reported snippet. A location the
+// bundle cannot anchor is not fatal — a bad URI in one result must not refuse a
+// whole scan — so the caller receives a typed skip reason instead of a
+// refusal: no location, an unusable line, or a URI that escapes the repository.
+// Nothing here touches the filesystem, opens a URI, or trusts a scheme.
 func extractLocation(
-	runIdx, resIdx int, locs []sarifLocation,
-) (cleanPath string, startLine, endLine, startCol int, ref *core.RefusalError) {
-	if len(locs) == 0 || locs[0].PhysicalLocation == nil {
-		return "", 0, 0, 0, nil
+	locs []sarifLocation,
+) (cleanPath string, startLine, endLine, startCol int, snippet, skipReason string) {
+	pl := firstPhysicalLocation(locs)
+	if pl == nil {
+		return "", 0, 0, 0, "", SkipNoLocation
 	}
-	pl := locs[0].PhysicalLocation
-	cleanPath, ref = cleanPhysicalURI(runIdx, resIdx, pl.ArtifactLocation)
-	if ref != nil {
-		return "", 0, 0, 0, ref
+	cleanPath, skipReason = cleanLocationPath(pl.ArtifactLocation)
+	startLine, endLine, startCol = regionBounds(pl.Region)
+	snippet = regionSnippet(pl.Region)
+	if skipReason == "" && unusableRegion(pl.Region, startLine, startCol) {
+		skipReason = SkipInvalidLine
 	}
-	startLine, endLine, startCol, ref = extractRegionBounds(runIdx, resIdx, pl.Region)
-	if ref != nil {
-		return "", 0, 0, 0, ref
-	}
-	return cleanPath, startLine, endLine, startCol, nil
+	return cleanPath, startLine, endLine, startCol, snippet, skipReason
 }
 
-func cleanPhysicalURI(runIdx, resIdx int, loc *sarifArtifactLocation) (string, *core.RefusalError) {
-	if loc == nil || loc.URI == "" {
-		return "", nil
+// firstPhysicalLocation returns the first location's physical location, the
+// only one SARIF orders as primary.
+func firstPhysicalLocation(locs []sarifLocation) *sarifPhysicalLocation {
+	if len(locs) == 0 {
+		return nil
+	}
+	return locs[0].PhysicalLocation
+}
+
+// cleanLocationPath normalizes the artifact URI. A refused URI keeps its raw
+// text so the skip row names what the scanner reported.
+func cleanLocationPath(loc *sarifArtifactLocation) (string, string) {
+	if loc == nil || strings.TrimSpace(loc.URI) == "" {
+		return "", SkipNoLocation
 	}
 	cleaned, err := sarif.CleanURI(loc.URI)
 	if err != nil {
-		return "", badSARIF(fmt.Sprintf("SARIF runs[%d].results[%d]: %v", runIdx, resIdx, err))
+		return loc.URI, SkipPathEscapesRepo
 	}
-	return cleaned, nil
+	return cleaned, ""
 }
 
-func extractRegionBounds(runIdx, resIdx int, reg *sarifRegion) (startLine, endLine, startCol int, ref *core.RefusalError) {
+// regionSnippet reads the reported source text, trimmed; it is evidence to
+// check against the diff, never text to trust.
+func regionSnippet(reg *sarifRegion) string {
+	if reg == nil || reg.Snippet == nil {
+		return ""
+	}
+	return strings.TrimSpace(reg.Snippet.Text)
+}
+
+// unusableRegion reports a region no finding can point at: absent, a
+// non-positive start line, a negative column, or a negative end line.
+func unusableRegion(reg *sarifRegion, startLine, startCol int) bool {
+	return reg == nil || startLine <= 0 || startCol < 0 || reg.EndLine < 0
+}
+
+// regionBounds reads a region's line span, clamping an absent or inverted end
+// line to the start line. It reports raw negatives; the caller grades them.
+func regionBounds(reg *sarifRegion) (startLine, endLine, startCol int) {
 	if reg == nil {
-		return 0, 0, 0, nil
+		return 0, 0, 0
 	}
-	if reg.StartLine < 0 || reg.EndLine < 0 || reg.StartColumn < 0 {
-		return 0, 0, 0, badSARIF(fmt.Sprintf("SARIF runs[%d].results[%d].region line/column must be non-negative", runIdx, resIdx))
+	endLine = max(reg.EndLine, reg.StartLine)
+	return reg.StartLine, endLine, reg.StartColumn
+}
+
+// provenanceLabels reads the labels verdict's own `report --sarif` export
+// writes under properties, so a round-tripped finding keeps the tool and rule
+// that reported it instead of being relabeled as verdict's. Every other
+// scanner's properties are read for these exact keys only; they carry
+// provenance, never path or line authority.
+func provenanceLabels(tool, ruleID string, props map[string]any) (string, string) {
+	if v := propertyString(props, keyTool); v != "" {
+		tool = v
 	}
-	return reg.StartLine, max(reg.EndLine, reg.StartLine), reg.StartColumn, nil
+	if v := propertyString(props, "rule_id"); v != "" {
+		ruleID = v
+	}
+	return tool, ruleID
+}
+
+func propertyString(props map[string]any, key string) string {
+	v, ok := props[key]
+	if !ok {
+		return ""
+	}
+	s, ok := v.(string)
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(s)
 }
 
 func effectiveSeverityInputs(raw *sarifResult, rule *sarifRule) (level string, secSev any) {

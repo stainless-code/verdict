@@ -2510,6 +2510,10 @@
         "unchanged": { "type": "integer", "minimum": 0 },
         "anchored": { "type": "integer", "minimum": 0 },
         "withheld": { "type": "integer", "minimum": 0 },
+        "skipped": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/ingestSkip" }
+        },
         "open": { "type": "integer", "minimum": 0 }
       },
       "required": [
@@ -2521,8 +2525,30 @@
         "unchanged",
         "anchored",
         "withheld",
+        "skipped",
         "open"
       ],
+      "additionalProperties": true
+    },
+    "ingestSkip": {
+      "type": "object",
+      "properties": {
+        "reason": {
+          "enum": [
+            "no-location",
+            "invalid-line",
+            "path-escapes-repo",
+            "out-of-diff",
+            "ambiguous-path",
+            "snippet-mismatch"
+          ]
+        },
+        "tool": { "type": "string" },
+        "rule_id": { "type": "string" },
+        "path": { "type": "string" },
+        "line": { "type": "integer" }
+      },
+      "required": ["reason", "tool", "rule_id", "path", "line"],
       "additionalProperties": true
     },
     "nextData": {

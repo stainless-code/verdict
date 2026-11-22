@@ -79,6 +79,14 @@ func TestCleanURIValid(t *testing.T) {
 		{"a/./b/c.go", "a/b/c.go"},
 		{"src/my file.go", "src/my file.go"},
 		{"src/my%20file.go", "src/my file.go"},
+		{`pkg\auth.go`, "pkg/auth.go"},
+		{`pkg\sub\auth.go`, "pkg/sub/auth.go"},
+		{"a%5cb.go", "a/b.go"},
+		{"a/%5c/b.go", "a/b.go"},
+		{"file:src/a.go", "src/a.go"},
+		{"file:./src/a.go", "src/a.go"},
+		{"FILE:src/a.go", "src/a.go"},
+		{`file:src\a.go`, "src/a.go"},
 		{"", ""},
 	}
 	for _, tc := range valid {
@@ -100,11 +108,27 @@ func TestCleanURIUnsafe(t *testing.T) {
 		"a/../b",
 		"a/%2e%2e/b",
 		"%2fetc/passwd",
+		// Every RFC 8089 `file://` reference carries an authority: an empty one
+		// (`file:///abs`) names an absolute path and a non-empty one names a host
+		// or share, so none of them is a repository-relative path.
 		"file:///etc/passwd",
+		"file:///repo/../../etc/passwd",
+		"file://localhost/etc/passwd",
+		"file://localhost/C:/repo/a.go",
+		"file://127.0.0.1/etc/passwd",
+		"file://[::1]/etc/passwd",
+		"file://host/share/a.go",
+		"file://src/a.go",
+		"file://../secret",
+		"file://",
+		"file:",
+		"file:/etc/passwd",
+		"file:C:/repo/a.go",
 		"https://example.com/a.go",
 		`C:\repo\a.go`,
 		"C:/repo/a.go",
-		`a\b.go`,
+		`..\..\etc\passwd`,
+		`\\server\share\a.go`,
 		"a\x00b.go",
 		".",
 		" ../etc/passwd",
@@ -118,6 +142,13 @@ func TestCleanURIUnsafe(t *testing.T) {
 		"a/..%09/b",
 		"a/\nb.go",
 		"a/\x7fb.go",
+		// A colon can smuggle a drive letter or a scheme past the segment checks.
+		"dir/a:b.go",
+		"pkg/a%3Ab.go",
+		"file:dir/C:/x.go",
+		// Percent escapes must decode to valid UTF-8.
+		"pkg/%ff%fe.go",
+		"pkg/\xff.go",
 	}
 	for _, u := range unsafe {
 		if got, err := CleanURI(u); err == nil {

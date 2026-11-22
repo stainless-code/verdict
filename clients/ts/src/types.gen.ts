@@ -1298,7 +1298,23 @@ export interface IngestData {
   unchanged: number;
   anchored: number;
   withheld: number;
+  skipped: Array<IngestSkip>;
   open: number;
+  [key: string]: unknown;
+}
+
+export interface IngestSkip {
+  reason:
+    | "no-location"
+    | "invalid-line"
+    | "path-escapes-repo"
+    | "out-of-diff"
+    | "ambiguous-path"
+    | "snippet-mismatch";
+  tool: string;
+  rule_id: string;
+  path: string;
+  line: number;
   [key: string]: unknown;
 }
 
