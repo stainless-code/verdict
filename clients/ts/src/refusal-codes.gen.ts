@@ -60,6 +60,7 @@ export type RefusalCode =
   | "bad-root"
   | "bad-rule"
   | "bad-sarif"
+  | "bad-scan"
   | "bad-scope"
   | "bad-settings"
   | "bad-settings-credentials"

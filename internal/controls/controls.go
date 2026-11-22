@@ -80,6 +80,12 @@ const RecipesPath = VerdictDir + "/recipes.json"
 const (
 	packSep       = "/"
 	controlPrefix = "control "
+	// localBundlePrefix names the local-bundle namespace a headless base may
+	// belong to (the same `local-` prefix readcommon.IsLocalBundleDir reads; a
+	// copy here keeps this package off readcommon, which imports config).
+	localBundlePrefix = "local-"
+	// sourceRecordCap bounds the source.json read the headless check performs.
+	sourceRecordCap = 64 << 10
 )
 
 // Inventory is the closed control set (v1); new controls add rows.
@@ -118,6 +124,11 @@ type Request struct {
 	Env map[string]string
 	// AllowHead reads the worktree instead of the base commit.
 	AllowHead bool
+	// AllowEmptyBase reads no controls at all: a local bundle built before the
+	// repository has a commit (an unborn HEAD) has no base to read, so the
+	// snapshot records an empty base and empty SHA. Only the same headless
+	// local bundle can verify against it; a PR bundle always carries a base.
+	AllowEmptyBase bool
 	// Optional reads an absent repository layer as no controls at all: the run
 	// has no checkout to read (verdict demo's URL form), so a base git cannot
 	// supply is not a refusal. Adapter-injected; no CLI flag reaches it.
@@ -141,10 +152,15 @@ func Resolve(ctx context.Context, cmd core.Commander, req *Request) (*Snapshot, 
 	}}
 	var contents map[string][]byte
 	var ref *core.RefusalError
-	if req.AllowHead {
+	switch {
+	case req.AllowHead:
 		snap.File.Policy, snap.File.SHA = PolicyHead, ""
 		contents, ref = readWorktree(req.Root)
-	} else {
+	case req.AllowEmptyBase && req.BaseSHA == "":
+		// A local bundle built before the repository has a commit reads no
+		// repository controls: the empty base is recorded, never the head.
+		contents = map[string][]byte{}
+	default:
 		contents, ref = readBase(ctx, cmd, req.Repo, req.Root, req.BaseSHA, req.Optional)
 	}
 	if ref == nil {
@@ -373,12 +389,78 @@ func (s *Snapshot) verify(bundleBase string) *core.RefusalError {
 }
 
 // verifyBase checks the recorded base against the bundle base the caller holds.
+// A headless local bundle records no commit on either side; that pair verifies
+// only when the bundle is local and its source record agrees the base is
+// absent, so a PR bundle or a tampered record still fails closed.
 func (s *Snapshot) verifyBase(bundleBase string) *core.RefusalError {
+	if s.headlessBase(bundleBase) {
+		return nil
+	}
 	f := s.File
 	if bundleBase == "" || f.BaseSHA != bundleBase || (f.Policy == PolicyBase && f.SHA != bundleBase) {
 		return refuse(CodeStale, fmt.Sprintf("controls base %q does not match the bundle base %q — re-fetch", f.BaseSHA, bundleBase))
 	}
 	return nil
+}
+
+// headlessBase reports a base-less local bundle: both sides record no commit,
+// the policy is one a fetch writes, and the bundle's own source record names no
+// base, no head, and no PR. Nothing else matches, so a missing or emptied base
+// can never pass for a bundle that should carry one, and a PR bundle renamed
+// under a local name keeps failing.
+func (s *Snapshot) headlessBase(bundleBase string) bool {
+	f := s.File
+	if bundleBase != "" || f.BaseSHA != "" || f.SHA != "" {
+		return false
+	}
+	if f.Policy != PolicyBase && f.Policy != PolicyHead {
+		return false
+	}
+	bundle := filepath.Dir(s.Dir)
+	if !strings.HasPrefix(filepath.Base(bundle), localBundlePrefix) {
+		return false
+	}
+	return headlessSourceBase(filepath.Join(bundle, "source.json"))
+}
+
+// headlessSourceBase reports a local source record with no commit on either
+// side: base_sha is explicitly null or empty, head_sha is absent, null, or
+// empty, and no PR identity rides along. The read is capped like every other
+// store read, and a missing record, an absent base key, a PR identity, or any
+// other shape reads false, so a tampered bundle cannot lose its base — or wear
+// a local name over a PR's identity — and still pass the gate.
+func headlessSourceBase(path string) bool {
+	raw, err := jq.CappedFile(path, sourceRecordCap)
+	if err != nil {
+		return false
+	}
+	var doc struct {
+		BaseSHA json.RawMessage `json:"base_sha"`
+		HeadSHA json.RawMessage `json:"head_sha"`
+		PR      json.RawMessage `json:"pr"`
+		URL     json.RawMessage `json:"url"`
+	}
+	if json.Unmarshal(raw, &doc) != nil {
+		return false
+	}
+	return sourceBaseAbsent(doc.BaseSHA) && sourceFieldEmpty(doc.HeadSHA) &&
+		sourceFieldEmpty(doc.PR) && sourceFieldEmpty(doc.URL)
+}
+
+// sourceBaseAbsent reports a base_sha that is present and explicitly names no
+// commit. An absent key never counts: a record that lost its base must stay
+// refused, while a base fetched from an unborn HEAD is written as null.
+func sourceBaseAbsent(raw json.RawMessage) bool {
+	value := strings.TrimSpace(string(raw))
+	return value == "null" || value == `""`
+}
+
+// sourceFieldEmpty reports a source record field that names nothing: absent,
+// null, an empty string, or a zero number. Anything else — a commit, a PR
+// number, a URL — is identity the headless check refuses to ignore.
+func sourceFieldEmpty(raw json.RawMessage) bool {
+	value := strings.TrimSpace(string(raw))
+	return value == "" || value == "null" || value == `""` || value == "0" || value == `"0"`
 }
 
 // staleFile is the frozen drift diagnostic for one control path.

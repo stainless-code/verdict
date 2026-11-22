@@ -56,7 +56,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 }
 
 // RunLocal executes `fetch-local <owner/repo> <name> [--staged]
-// [--range A[..|...]B] [--base R] [--stash [n]] [--worktree]
+// [--range A[..|...]B] [--base R] [--stash [n]] [--worktree] [--scan <path>]
 // [--index <ref|dir>] [--consent-over-budget] [--allow-head-controls]
 // [--show-prompts] [--chunk] [-- paths...] [--json]`, returning the process
 // exit code.
@@ -318,7 +318,7 @@ func parseLocalToken(r *cli.Runner, f *fetchcore.LocalFlags, args []string, i in
 	default:
 		if strings.HasPrefix(a, "-") {
 			msg := fmt.Sprintf("unknown flag '%s' for fetch-local (want --staged, "+
-				"--range <A..B>, --base <ref>, --stash [n], --worktree, --index <ref|dir>, "+
+				"--range <A..B>, --base <ref>, --stash [n], --worktree, --scan <path>, --index <ref|dir>, "+
 				"--consent-over-budget, --allow-head-controls, --ignore <glob>, --no-default-excludes, "+
 				"--preview, --show-prompts, --chunk, -- <paths>, --json)", a)
 			return i, r.ReportUsage(&cli.UsageError{Message: msg}), true
@@ -334,6 +334,7 @@ var localValueWants = map[string]string{
 	flagIgnore:  "<glob>",
 	flagContext: "<file|dir>",
 	flagSpec:    "<file>",
+	flagScan:    "<path>",
 	"--range":   "A[..|...]B",
 	"--base":    "<ref>",
 	flagIndex:   "<ref|dir>",
@@ -377,6 +378,8 @@ func setLocalValue(f *fetchcore.LocalFlags, name, value string) {
 		f.Context = append(f.Context, value)
 	case flagSpec:
 		f.Spec = append(f.Spec, value)
+	case flagScan:
+		f.Scan = append(f.Scan, value)
 	case "--range":
 		f.RangeSpec = value
 	case "--base":
@@ -422,6 +425,7 @@ const (
 	flagContext    = "--context"
 	flagSpec       = "--spec"
 	flagIssue      = "--issue"
+	flagScan       = "--scan"
 	providerGitHub = "github"
 	flagChunk      = "--chunk"
 	flagIndex      = "--index"

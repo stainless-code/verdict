@@ -127,7 +127,7 @@ func CoverageIdentity(dir, headSHA string) string {
 
 func worktreeDiffIdentity(dir string) string {
 	source := dir + "/source.json"
-	if readcommon.JSONStr(source, "kind") != "worktree" || readcommon.JSONRaw(source, "dirty") != "true" {
+	if !diffKeyedLocalKind(readcommon.JSONStr(source, "kind")) || readcommon.JSONRaw(source, "dirty") != "true" {
 		return ""
 	}
 	expected := readcommon.JSONStr(source, "diff_sha256")
@@ -135,6 +135,14 @@ func worktreeDiffIdentity(dir string) string {
 		return ""
 	}
 	return "diff:" + expected
+}
+
+// diffKeyedLocalKind reports whether a local bundle's content is keyed to its
+// own diff bytes rather than a commit: a dirty worktree and a scan both carry
+// no head to key a coverage receipt to, so the recorded diff digest is the one
+// identity the receipt and the bundle can each reproduce.
+func diffKeyedLocalKind(kind string) bool {
+	return kind == "worktree" || kind == "scan"
 }
 
 func fileSHA256Hex(path string) string {

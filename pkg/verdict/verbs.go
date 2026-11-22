@@ -3,6 +3,7 @@ package verdict
 import (
 	"context"
 	"encoding/json"
+	"slices"
 
 	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/config"
@@ -465,13 +466,14 @@ func (c *Client) Fetch(ctx context.Context, req *FetchRequest) (*Result, error) 
 // FetchLocalRequest carries the local-diff fetch options. Worktree builds
 // the bundle from a temporary isolated checkout of the review target, and
 // HeadControls reads the review controls from HEAD/the worktree instead of
-// the base commit.
+// the base commit. Scan (repeatable) reviews files inside the repository
+// instead of a git diff, so a clean tree needs no change to review.
 type FetchLocalRequest struct {
 	Invocation
 	Context                                             []string
 	Ignore                                              []string
 	Range, BaseRef, Stash                               string
-	Paths                                               []string
+	Paths, Scan                                         []string
 	Staged, HasStash, BudgetConsent, ShowPrompts, Chunk bool
 	Worktree, HeadControls                              bool
 	NoDefaultExcludes                                   bool
@@ -491,6 +493,7 @@ func (c *Client) FetchLocal(ctx context.Context, req *FetchLocalRequest) (*Resul
 		Flags: fetchcore.LocalFlags{
 			Context: req.Context, Ignore: req.Ignore, NoDefaultExcludes: req.NoDefaultExcludes,
 			RangeSpec: req.Range, BaseRef: req.BaseRef, StashN: req.Stash, Paths: req.Paths,
+			Scan:   slices.Clone(req.Scan),
 			Staged: req.Staged, HasStash: req.HasStash, BudgetConsent: req.BudgetConsent,
 			ShowPrompts: req.ShowPrompts, ChunkFlag: req.Chunk, Worktree: req.Worktree,
 			HeadControls: req.HeadControls, Preview: req.Preview,

@@ -56,6 +56,7 @@ bad-rigor-policy	try: pass --require-rigor <tier>=<said|pointed|walked|ran|repro
 bad-root	try: pass --root <existing-directory>, or run serve inside a checkout
 bad-rule	try: re-run with one of the valid values named above
 bad-sarif	try: pass a valid UTF-8 SARIF 2.1.0 JSON file with repository-relative URIs
+bad-scan	try: pass --scan <path> for a file or directory inside the repository (no symlink, and .git/.verdict are never scanned), or narrow --scan so the tree fits the cap
 bad-scope	try: re-run with one of the valid values named above
 bad-settings	try: keep only $schema/output/layout/color/publish/review/spend/privacy/packs/agents keys (see docs/manual.md), then re-run
 bad-settings-credentials	try: remove the credential key from the settings file (credentials never live there), then re-run

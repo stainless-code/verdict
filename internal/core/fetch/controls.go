@@ -13,12 +13,13 @@ import (
 // resolution, never through legacy knob files; the REVIEW_BUDGET_USD env
 // layer already gated before any provider call.
 func resolveControls(
-	ctx context.Context, ctx2 *fetchRunCtx, repo, root, baseSHA string, allowHead bool,
+	ctx context.Context, ctx2 *fetchRunCtx, repo, root, baseSHA string, allowHead, allowEmptyBase bool,
 ) error {
 	r := ctx2.runner
 	snap, ref := controls.Resolve(ctx, r.commander, &controls.Request{
 		BundleDir: ctx2.dir, Repo: repo, BaseSHA: baseSHA, AllowHead: allowHead,
-		Env: ctx2.env, Root: root, Optional: optionalRepoLayer(ctx2.runCfg),
+		AllowEmptyBase: allowEmptyBase,
+		Env:            ctx2.env, Root: root, Optional: optionalRepoLayer(ctx2.runCfg),
 	})
 	if ref != nil {
 		return ref //nolint:wrapcheck // the typed refusal passes through unchanged

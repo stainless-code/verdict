@@ -354,6 +354,12 @@ Cause: the document is not valid UTF-8 JSON conforming to SARIF 2.1.0 — a non-
 
 Fix: supply valid SARIF 2.1.0 JSON (`"version": "2.1.0"`, a `runs[]` array, one driver name and message per run/result), then re-run `verdict ingest --from sarif <file|->`. Read `data.skipped[]` to see which results the pinned diff could not anchor and why.
 
+## `bad-scan`
+
+Cause: a `fetch-local --scan <path>` operand is not reviewable: it does not exist, it resolves outside the repository root (`../` or an absolute path), it is a symlink or a link sits between the root and the operand (a scan never follows a link, whatever it points at, and components are validated before any `..` collapses them), it names a managed `.git` or `.verdict` entry at any depth (or a case variant that aliases one on a case-insensitive volume), a file could not be read, or the scanned tree would synthesize more diff bytes than a bundle read can load.
+
+Fix: pass a file or directory inside the repository (a relative path resolves from the current directory) and name the real path rather than a link. Narrow `--scan` to a subdirectory when the tree is too large for one bundle, and re-run on a quiet tree if a file changed while it was being read.
+
 ## `bad-scope`
 
 Cause: `--scope` is empty, malformed, or belongs to a different mode (or the scope config key is invalid). Learning proposals also refuse unsafe cited paths or comment identifiers.

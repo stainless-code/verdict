@@ -258,7 +258,7 @@ type FetchLocalRequest struct {
 	Context                                             []string
 	Ignore                                              []string
 	Range, BaseRef, Stash                               string
-	Paths                                               []string
+	Paths, Scan                                         []string
 	Staged, HasStash, BudgetConsent, ShowPrompts, Chunk bool
 	Worktree, HeadControls                              bool
 	NoDefaultExcludes                                   bool
@@ -267,9 +267,10 @@ type FetchLocalRequest struct {
 	Preview bool
 }
     FetchLocalRequest carries the local-diff fetch options. Worktree builds
-    the bundle from a temporary isolated checkout of the review target,
-    and HeadControls reads the review controls from HEAD/the worktree instead of
-    the base commit.
+    the bundle from a temporary isolated checkout of the review target, and
+    HeadControls reads the review controls from HEAD/the worktree instead of the
+    base commit. Scan (repeatable) reviews files inside the repository instead
+    of a git diff, so a clean tree needs no change to review.
 
 type FetchRequest struct {
 	Invocation

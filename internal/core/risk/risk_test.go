@@ -344,3 +344,25 @@ func TestDirtyWorktreeDigestMismatchMarksCoverageMissing(t *testing.T) {
 		t.Fatalf("BundleBand on mismatched worktree digest = %q, want medium", band)
 	}
 }
+
+// TestScanBundleKeysCoverageToItsDiffDigest pins the scan kind's coverage
+// identity: a scan records no head, so the receipt keys to its own diff digest
+// and a changed diff re-keys to nothing (never to the stale receipt).
+func TestScanBundleKeysCoverageToItsDiffDigest(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	const scanDiff = "diff --git a/a.go b/a.go\n+scanned\n"
+	const scanSHA = "774c26f78e51a6c6e7baffc4c67880692e5f514ffac5ab6533a6c2cb7d417415"
+	writeTestReceipt(t, dir, "source.json",
+		`{"kind":"scan","dirty":true,"head_sha":null,"base_sha":null,"diff_sha256":"`+scanSHA+`"}`)
+	writeTestReceipt(t, dir, "full.diff", scanDiff)
+
+	if got := risk.CoverageIdentity(dir, ""); got != "diff:"+scanSHA {
+		t.Fatalf("CoverageIdentity on a matching scan = %q, want diff:%s", got, scanSHA)
+	}
+
+	writeTestReceipt(t, dir, "full.diff", scanDiff+"+tampered\n")
+	if got := risk.CoverageIdentity(dir, ""); got != "" {
+		t.Fatalf("CoverageIdentity on a mismatched scan = %q, want empty", got)
+	}
+}

@@ -139,6 +139,80 @@ func TestGateRefusals(t *testing.T) {
 	}
 }
 
+// TestGateAcceptsOnlyAHeadlessLocalBase proves the empty-base pairing is
+// narrow: a local bundle with no commit verifies at the empty base, while the
+// same snapshot under a PR name, a local record naming a commit, or a local
+// record that dropped the key still refuses controls-stale.
+func TestGateAcceptsOnlyAHeadlessLocalBase(t *testing.T) {
+	t.Chdir(t.TempDir())
+	const base = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	cases := []struct {
+		name    string
+		bundle  string
+		source  string
+		want    string
+		headOpt bool
+	}{
+		{
+			name: "headless local", bundle: "local-scan",
+			source: `{"kind":"scan","dirty":true,"head_sha":null,"base_sha":null}`,
+		},
+		{
+			name: "headless local with --allow-head-controls", bundle: "local-head", headOpt: true,
+			source: `{"kind":"scan","dirty":true,"head_sha":null,"base_sha":null}`,
+		},
+		{
+			name: "PR name", bundle: "acme#1", want: CodeStale,
+			source: `{"kind":"pr","head_sha":null,"base_sha":null}`,
+		},
+		{
+			name: "local record naming a commit", bundle: "local-named", want: CodeStale,
+			source: `{"kind":"scan","dirty":true,"base_sha":"` + base + `"}`,
+		},
+		{
+			name: "local record naming a head", bundle: "local-headed", want: CodeStale,
+			source: `{"kind":"scan","dirty":true,"base_sha":null,"head_sha":"` + base + `"}`,
+		},
+		{
+			name: "local name over a PR identity", bundle: "local-pr", want: CodeStale,
+			source: `{"kind":"scan","dirty":true,"base_sha":null,"head_sha":null,"pr":12,"url":"https://example.test/acme/repo/pull/12"}`,
+		},
+		{
+			name: "local record naming a PR", bundle: "local-prn", want: CodeStale,
+			source: `{"kind":"scan","dirty":true,"base_sha":null,"head_sha":null,"pr":12}`,
+		},
+		{
+			name: "local record without the key", bundle: "local-keyless", want: CodeStale,
+			source: `{"kind":"scan","dirty":true}`,
+		},
+	}
+	for _, tc := range cases {
+		dir := filepath.Join(".verdict", "state", tc.bundle)
+		writeAll(t, map[string]string{filepath.Join(dir, "source.json"): tc.source})
+		req := &Request{BundleDir: dir, AllowEmptyBase: true, AllowHead: tc.headOpt}
+		if _, ref := Resolve(t.Context(), cmdr, req); ref != nil {
+			t.Fatalf("%s: resolve: %v", tc.name, ref)
+		}
+		assertHeadlessGate(t, tc.name, dir, tc.want)
+	}
+}
+
+// assertHeadlessGate pins one headless-base verdict: an empty want is the
+// accepting local bundle, any other want is the refusal code.
+func assertHeadlessGate(t *testing.T, name, dir, want string) {
+	t.Helper()
+	_, ref := Gate(dir, "")
+	if want == "" {
+		if ref != nil {
+			t.Errorf("%s: Gate refused a headless local bundle: %v", name, ref)
+		}
+		return
+	}
+	if ref == nil || ref.Code != want {
+		t.Errorf("%s: Gate = %v, want %s", name, ref, want)
+	}
+}
+
 // TestGateRefusesAPolicyBaseSnapshotOfAnotherCommit proves the commit a base
 // policy snapshot names is part of the contract: a manifest stamped policy base
 // whose sha is not the bundle's base refuses controls-stale even though every
