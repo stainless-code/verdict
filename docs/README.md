@@ -23,6 +23,7 @@ publishing a page adds a route in `apps/docs/sources/`, not a second copy.
 - [Benchmark corpus](benchmark.md): how the measured review rates are built and graded offline, and what the comparison page may cite.
 - [CI and test rules](ci-and-tests.md): the skip-token ban on commit messages, and the rules that keep the suite deterministic.
 - [CI recipe](ci-recipe.md): the copy-paste workflow that runs fetch, review, gate and post on your own runner.
+- [Contributing packs](contributing-packs.md): language packs, offline eval fixtures, and host adapters, with the verification checklist for each.
 - [Typed configuration](config.md): strict parsing, cascading defaults, scoped plans, captured provenance, and configuration explain/preview.
 - [Exclusions and withholding](exclusions.md): trusted ignore patterns, byte receipts, finding suppression, severity floors, and quiet reports.
 - [Glossary](glossary.md): the vocabulary the help, prompts and reports use, grouped by where you meet it.
@@ -30,6 +31,7 @@ publishing a page adds a route in `apps/docs/sources/`, not a second copy.
 - [Go knowledge base](go-kb/knowledge-base.md): the 131 cards the `go-*` skills are built from: Rule, Why, Enforce, Since, Sources.
 - [Go rules](go-rules.md): the adopted rules, one per line with their `GO-<TOPIC>-<NN>` IDs and enforcement markers.
 - [Landing claims](landing-claims.md): every factual claim on the home page, and the manual line that checks it.
+- [OpenSSF Best Practices audit](openssf-best-practices.md): the Passing-level criteria audited against this repository, what is met, and what is outstanding.
 - [Policy contract](policy-contract.md): requirement gates, evidence, consent, privacy constraints, and publication outcomes.
 - [Reactions and rule trends](reactions-trend.md): `calibrate --reactions` proposals from votes on posted comments, and `trend --rules` per-rule acceptance and false-hit rates.
 - [Vision](vision.md): what Verdict is, what it refuses to be, and where its craft comes from.

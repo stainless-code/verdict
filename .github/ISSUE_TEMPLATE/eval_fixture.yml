@@ -1,0 +1,84 @@
+name: Offline eval fixture
+description: Submit a hermetic eval or backtest fixture that pins a verb's behavior
+labels: [enhancement]
+body:
+  - type: input
+    id: case_name
+    attributes:
+      label: Case name
+      description: The evals/cases/<name>.sh stem, lowercase kebab-case
+      placeholder: fetch-preview-scope
+    validations:
+      required: true
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Surface
+      description: The verb or contract the fixture pins
+      options:
+        - fetch / fetch-local
+        - post / record
+        - verify / gate
+        - run / panel
+        - report / show / next
+        - triage / threads / adopt
+        - learn / backtest / trend / calibrate
+        - pack
+        - init / doctor / skill / upgrade
+        - config / exclusions / evidence
+        - schema contract
+        - something else
+    validations:
+      required: true
+  - type: textarea
+    id: fixture
+    attributes:
+      label: Fixture contents
+      description: Every file the case needs, and where it lives under evals/fixtures/
+      placeholder: |
+        evals/fixtures/fetch-preview-scope/PR.json — stubbed gh response
+        evals/fixtures/fetch-preview-scope/diff.patch — three files, one .env
+    validations:
+      required: true
+  - type: textarea
+    id: contract
+    attributes:
+      label: Contract pinned
+      description: The behavior that must fail the suite if it regresses, stated as an assertion
+      placeholder: |
+        fetch-local --preview prints the .env path under excluded with reason
+        secret-builtin, writes no bundle directory, and exits 0.
+    validations:
+      required: true
+  - type: textarea
+    id: hermetic
+    attributes:
+      label: How the case stays hermetic
+      description: |
+        Name the stubs and the temp-dir discipline. The suite is network-dead and
+        never uses /tmp: host CLIs go through evals/lib/hoststub.sh, files go in the
+        case sandbox, and post is only ever --dry-run.
+      placeholder: |
+        hoststub_init gh; hoststub_route gh 'pr view 1 -R acme/app --json number' PR.json
+        All paths inside $EVAL_SANDBOX, which evals/one.sh and evals/run.sh export. No post.
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification already run
+      description: Paste what you ran and what it printed
+      placeholder: |
+        make build
+        ./evals/one.sh fetch-preview-scope
+        make evals
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Fixture checklist (docs/contributing-packs.md)
+      options:
+        - label: the case fails when the behavior regresses (proved once by mutation)
+        - label: every host CLI call goes through evals/lib/hoststub.sh
+        - label: there is a row for the case in evals/README.md
+        - label: no hardcoded /tmp path, and no real post
+        - label: shellcheck -S warning is clean on the new case

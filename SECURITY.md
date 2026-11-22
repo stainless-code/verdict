@@ -79,6 +79,16 @@ vulnerabilities in `apps/docs` build-time dependencies that never
 reach the published static site (still reportable, assessed by
 reachability).
 
+## Assurance case and audit
+
+The structural argument behind this policy is
+[`ASSURANCE_CASE.md`](ASSURANCE_CASE.md): the threat model, the base-owned
+review controls, the secret shield and scope preview, the evidence gates, the
+sandbox, and the supply chain, each paired with the file, refusal code, or test
+that enforces it. The OpenSSF Best Practices audit, including the criteria this
+repository does not yet meet, is
+[`docs/openssf-best-practices.md`](docs/openssf-best-practices.md).
+
 ## Child process environment
 
 Verdict spawns two kinds of child, and their environments differ on purpose.

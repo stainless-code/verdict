@@ -1,0 +1,108 @@
+name: Language or ecosystem pack
+description: Propose or contribute review rules for a stack (built-in, org, or repo pack)
+labels: [enhancement]
+body:
+  - type: input
+    id: stack
+    attributes:
+      label: Stack
+      description: The language or ecosystem the pack covers, and where it should live
+      placeholder: Kotlin (built-in), or acme/tailwind (repo pack)
+    validations:
+      required: true
+  - type: input
+    id: globs
+    attributes:
+      label: File globs
+      description: The paths the lens and rules dispatch on
+      placeholder: "**/*.kt, **/*.kts"
+    validations:
+      required: true
+  - type: dropdown
+    id: layer
+    attributes:
+      label: Pack layer
+      description: Where the pack is loaded from (see docs/manual.md § Lens packs)
+      options:
+        - built-in (procedure/packs/languages/<stack>/)
+        - repo (.verdict/packs/<name>/, read from the PR base)
+        - org (a packs[] entry in personal settings)
+    validations:
+      required: true
+  - type: textarea
+    id: rules
+    attributes:
+      label: Rules to add
+      description: |
+        One rule id per line with its severity, the file globs that decide when it
+        is recalled, and the concrete hazard it names. Ids follow
+        ^[a-z0-9][a-z0-9-]{0,64}$; severities are critical, important, or
+        informational; globs are required on every rule row.
+      placeholder: |
+        kotlin-scope-cancel (important, **/*.kt): a launched coroutine whose scope outlives its caller
+        kotlin-test-naming (informational, **/*Test.kt): a test class that no runner can discover
+    validations:
+      required: true
+  - type: textarea
+    id: do_not_flag
+    attributes:
+      label: Boundaries the rule must not flag
+      description: |
+        The deliberate patterns that look like the hazard but are correct, written
+        into the rule body so the reviewer has them at hand. A body with no
+        boundaries leaves the safe pattern to judgement; pack test grades rule
+        selection and citation coverage, never judgement, so say it in prose.
+      placeholder: |
+        Do not flag GlobalScope.launch guarded by an operator-owned lifecycle,
+        or suspend functions that never touch a dispatcher.
+    validations:
+      required: true
+  - type: textarea
+    id: positive_case
+    attributes:
+      label: Positive eval case
+      description: |
+        evals/<case>/diff.patch, findings.json, and expect.json rules[]. Each id in
+        rules[] must be BOTH selected for the diff's paths and cited by a finding's
+        kb[]; a rules[] id with no citation fails as "missing finding coverage".
+        findings.json is a JSON array of findings, not an object wrapper.
+      placeholder: |
+        evals/<case>/diff.patch: a coroutine launched without a scope
+        evals/<case>/findings.json: [{"path": "src/A.kt", "line": 1, "body": "...", "rigor": "walked", "kb": ["kotlin-scope-cancel"]}]
+        evals/<case>/expect.json: {"rules": ["kotlin-scope-cancel"]}
+    validations:
+      required: true
+  - type: textarea
+    id: negative_case
+    attributes:
+      label: Path-scope case (optional)
+      description: |
+        not_rules[] proves a rule's globs do not reach this diff's paths: it fails as
+        "not_rules hit" as soon as the rule is selected, so it can only name a rule
+        the diff genuinely cannot match. It cannot hold a **/*.kt rule against a .kt
+        diff, and it is not a false-positive trap. A same-language safe-pattern
+        fixture belongs in evals/ as a model-judgement case instead.
+      placeholder: |
+        evals/<case>/diff.patch touches src/Foo.kt
+        evals/<case>/expect.json: {"rules": [], "not_rules": ["kotlin-test-naming"]}
+        # kotlin-test-naming is scoped to **/*Test.kt, which this diff does not touch
+  - type: textarea
+    id: verification
+    attributes:
+      label: Verification already run
+      description: Paste what you ran and what it printed
+      placeholder: |
+        bin/verdict pack test --dir procedure/packs/languages/kotlin
+        go test ./internal/packtest/...
+        ./evals/one.sh pack-layers
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Pack checklist (docs/contributing-packs.md)
+      options:
+        - label: pack.json validates against schemas/pack.schema.json, and every rule row carries at least one glob
+        - label: every lens and rule id has a non-empty <id>.md body
+        - label: each rule body names the failure and the patterns it must not flag
+        - label: the eval case cites every rules[] id in findings.json kb[]
+        - label: any not_rules[] entry names only a rule this case diff cannot match
+        - label: bin/verdict pack test passes with zero skips

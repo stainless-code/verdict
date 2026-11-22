@@ -8,6 +8,7 @@
 - [ ] `bun fmt --check` on touched md/json/yml (never reflowed `procedure/prompts/` examples)
 - [ ] Changeset added (`.changeset/<name>.md`) — or docs-only / eval-only / comment-only, so none needed
 - [ ] Golden diff reviewed (`-update` regenerations explained line-by-line, committed separately from unrelated changes)
+- [ ] Pack, eval-fixture, or host-adapter change ticked its checklist in [`docs/contributing-packs.md`](../blob/main/docs/contributing-packs.md)
 
 ## Tested on
 

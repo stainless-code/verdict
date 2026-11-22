@@ -284,7 +284,13 @@ in the message ([`docs/ci-and-tests.md`](docs/ci-and-tests.md)).
 
 Use the issue templates (bug reports name the verb and paste the
 `--json` envelope; features name the surface they touch) and fill in
-the PR template checklist. Verbs are: `demo`, `fetch`, `post`, `triage`,
+the PR template checklist. A language pack, an offline eval fixture, and a host
+adapter each have their own template — `language_pack.yml` and
+`eval_fixture.yml` — and their own guide:
+[`docs/contributing-packs.md`](docs/contributing-packs.md) has the copy-pasteable
+layout, the eval-case contract, and the verification checklist for each.
+
+Verbs are: `demo`, `fetch`, `post`, `triage`,
 `report`, `next`, `show`, `verify`, `doctor`, `calibrate`,
 `fetch-local`, `run`, `record`, `panel`, `adopt`, `ingest`, `fix`, `handoff`, `check-tree`, `ready`, `pr-wait`,
 `trend`, `risk`, `index`, `journal`, `backtest`, `learn`, `pack`, `init`, `threads`, `skill`, `upgrade`, `uninstall`,
