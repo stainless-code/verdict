@@ -442,3 +442,29 @@ func assertBudgetUsageRefusal(t *testing.T, raw string) {
 		t.Fatalf("budget %q: done=%v code=%d", raw, done, code)
 	}
 }
+
+// TestResumeFlagAndReentry pins the --resume surface: a bare boolean flag that
+// reaches the service, appears in the re-entry line only when typed, and never
+// swallows the following argument.
+func TestResumeFlagAndReentry(t *testing.T) {
+	r, _, _ := testRunner()
+	parsed, code, done := parseFlags(r, []string{"--resume", "--agent", "claude"})
+	if done || code != 0 || !parsed.resume || parsed.agent != "claude" {
+		t.Fatalf("parsed=%+v code=%d done=%v", parsed, code, done)
+	}
+	want := "verdict run acme/app 42 --resume --agent claude"
+	if got := rentry(Request{Repo: "acme/app", Pr: "42"}, &parsed, false); got != want {
+		t.Fatalf("re-entry = %s; want %s", got, want)
+	}
+	if request := runRequest(r, Request{Repo: "acme/app", Pr: "42"}, &parsed); !request.Resume {
+		t.Fatal("run request did not carry --resume")
+	}
+
+	plain, _, _ := parseFlags(r, []string{"--agent", "claude"})
+	if plain.resume {
+		t.Fatal("a run without --resume set the resume request")
+	}
+	if got := rentry(Request{Repo: "acme/app", Pr: "42"}, &plain, false); got != "verdict run acme/app 42 --agent claude" {
+		t.Fatalf("re-entry = %s", got)
+	}
+}

@@ -341,7 +341,11 @@ var publishedSemantics = map[string]string{
 	// or `preview` alone — because a preview writes no bundle and its data is
 	// the payload and nothing else. No property, enum, or type changed, and a
 	// partial object still fails both branches.
-	"envelope.schema.json": "db1668f36062408b739b3af4a912be4209319c8232ed3963738a71b3f36d502a",
+	// run --resume: additive optional data.resume ($defs/runResume) on
+	// $defs/runData, naming the continued execution, its fingerprint, and the
+	// phases reused or executed. No existing property, required key, enum, or
+	// type changed; only a resumed run carries the key.
+	"envelope.schema.json": "b8c3e0bc7bb9b5473e019802144abbc63bfecb44b8ed3730d704b83d845b7a51",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

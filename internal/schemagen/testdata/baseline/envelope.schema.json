@@ -93,6 +93,9 @@
         "execution": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/runExecution" }]
         },
+        "resume": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/runResume" }]
+        },
         "repair": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/runRepair" }]
         },
@@ -180,6 +183,34 @@
         }
       },
       "required": ["id", "status", "counts", "failures"],
+      "additionalProperties": true
+    },
+    "runResume": {
+      "type": "object",
+      "properties": {
+        "execution_id": { "type": "string" },
+        "prior_status": { "enum": ["in-progress", "complete", "partial"] },
+        "fingerprint": { "type": "string" },
+        "prompts_hash": { "type": "string" },
+        "reused": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "executed": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "attempts": { "type": "integer", "minimum": 1 }
+      },
+      "required": [
+        "execution_id",
+        "prior_status",
+        "fingerprint",
+        "prompts_hash",
+        "reused",
+        "executed",
+        "attempts"
+      ],
       "additionalProperties": true
     },
     "runPhaseFailure": {

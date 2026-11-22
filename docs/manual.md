@@ -2711,6 +2711,86 @@ a shape-only repeat stays `repair-exhausted`. `--json` carries the loop in
 round's evidence summary); each round's bytes, check, and evidence receipt stay
 in the bundle's `.run.rounds/` files.
 
+### Resuming an interrupted execution (`--resume`)
+
+A two-finder run is four barriers: both finders, the union and plan, both cross
+checks, then the aggregate. A process that dies mid-way — a finder timeout, a
+killed terminal, a cross check that exhausted its rounds — leaves phases that
+cost real agent time and are still correct. `--resume` continues that execution
+instead of starting a new one, and it never re-invokes a finder whose artifact
+it can verify.
+
+```bash
+verdict run acme/app 123 --agent claude            # interrupted mid-way
+verdict run acme/app 123 --agent claude --resume   # continue it
+```
+
+Before the first phase, `launcher.json` gains a `resume` block: the execution
+id, `attempts`, and a fingerprint over `full.diff`, `run.json` (which seals the
+captured base controls, the config, and the resolved policy through
+`inputs_sha256`/`config_sha256`), `context.txt` (or the literal `absent`),
+`threads.json` (or `absent`), the bundle's `prompts_hash` (from
+`provenance.json`, else this binary's embedded digest), the running binary's
+own `binary_prompts_hash`, the reviewed head, the agent, its definition source,
+a digest of its resolved launch definition (the binary and its own argv prefix,
+never the raw argv), a digest of the pass-through arguments after `--` (never
+the raw arguments), and the finder count and source. Every value is a hash the
+bundle already carries, so the record adds a seal rather than a second copy of
+the inputs.
+
+`--resume` recomputes that fingerprint from the bundle as it stands and compares
+it field by field. Anything that is not the interrupted invocation refuses
+`resume-drift` naming the input that moved, before anything is launched or
+written: a changed diff, run state, handed context, thread feed, or Procedure;
+a different agent, launch definition, pass-through argument list, head, or
+finder count; and a different finder source or review depth, so `--resume`
+re-resolves the same `--finders`/`--budget` layers the interrupted run recorded
+rather than inheriting whatever this shell would default to. The same code also
+covers a bound finder or cross artifact that disappeared, changed, or stopped
+passing the check a fresh launch gets, and a phase path that is no longer a
+plain directory. A changed control file is caught one step earlier by the
+captured-state gate (`controls-stale`). `--resume` also refuses `cannot-resume`
+when there is no recorded execution (no `launcher.json`, a record predating the
+fingerprint, a `run.json` that lost its execution reference) or the resolved
+shape is one finder. Neither refusal starts an agent, and neither rewrites
+`launcher.json`: the interrupted execution, its bound artifacts, and its
+failures stay exactly as they were, so a refused retry (an unaffordable launch,
+say) leaves the next attempt the same record to read.
+
+Reuse is per phase, and the record says which: `resume.reused` and
+`resume.executed` in `launcher.json`, and the same two lists plus the
+`fingerprint` under `data.resume` in `--json`. A finder is reused only when the
+recorded manifest does not name it failed, its `review.json` is present, still
+matches the digest the manifest bound, and still passes `CheckDiscovery`; an
+artifact no attempt bound is re-run rather than trusted. A cross check is reused
+only when every finder was reused (a recomputed finder changes the union and
+therefore both batches) and its `verdicts.json` still validates against the new
+batch. The union is always re-derived locally — it launches nothing — so
+`resume.executed` names it, and `record` remains the operator's next step
+exactly as it does for a fresh run: `run` still never records or posts. A
+resumed execution keeps its original id, so `review.json`,
+`verification/plan.json`, and the run state reference the same execution they
+always did; a plain (non-resume) re-run still retires the interrupted execution
+to `x-superseded/<id>` as before.
+
+Because a resumed attempt continues the record it read, an interruption at any
+point is resumable again: each barrier publishes the artifacts it bound and the
+phases still failing, and the next attempt carries both forward. Only a
+_published_ binding is sealed: a finder that finished before its barrier
+published the binding re-runs on the next resume, because no record vouches for
+its bytes yet. A published binding permits reuse only when the conditions above
+also pass — the manifest does not name the phase failed, its artifact still
+validates, and for a cross check every finder was reused.
+
+`--resume` on an execution that already completed verifies the same fingerprint
+and launches nothing: both finders and both checks are reused, `executed` names
+only the union, and the bundle answers with the same handoff. Nothing launches,
+so no spend guard runs and a tight `REVIEW_BUDGET_USD` cannot fail the retry;
+a resume that still has a phase to run asks the guard first, as a fresh launch
+does. It is safe to put in a retry loop. Incompatible combinations refuse before reading the bundle:
+`--resume` with `--print`/`--stage` is `bad-flags` (a render continues nothing),
+and `--resume` where the run would launch one finder is `cannot-resume`.
+
 ### Agents, arguments, and `--print`
 
 `run --print` accepts only `--model`, `-m`, `--max-budget-usd`, `--max-cost`, and `--max-turns` with simple model identifiers or numeric values. Other arguments refuse printing; launch them directly. Credentials belong in the environment. Provenance hides arguments outside this allowlist. Missing agent binaries are checked before directive assembly and report an install step.

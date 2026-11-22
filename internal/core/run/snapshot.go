@@ -67,12 +67,26 @@ func (snapshot executionSnapshot) check(dir string) *core.RefusalError {
 	return nil
 }
 
-func phaseDirectory(dir, name string) (string, *core.RefusalError) {
+// phaseDirectory resolves one phase directory. A run that starts its own
+// execution needs a fresh directory, so a surviving one refuses rather than
+// mixing two executions' bytes. A resumed run continues in the directory the
+// interrupted execution left, because its pinned inputs and any artifact it
+// already bound must stay where the recorded manifest names them.
+func phaseDirectory(dir, name string, reuse bool) (string, *core.RefusalError) {
 	path := filepath.Join(dir, name)
-	if err := os.Mkdir(path, roundsDirMode); err == nil {
+	err := os.Mkdir(path, roundsDirMode)
+	if err == nil {
 		return path, nil
 	}
-
+	if reuse && errors.Is(err, fs.ErrExist) {
+		if info, statErr := os.Lstat(path); statErr == nil && info.Mode().IsDir() {
+			return path, nil
+		}
+		return "", &core.RefusalError{
+			Code:    codeRecordFailed,
+			Message: "phase path is not a plain directory: " + name,
+		}
+	}
 	return "", &core.RefusalError{Code: codeRecordFailed, Message: "cannot create fresh phase directory: " + name}
 }
 
@@ -176,7 +190,7 @@ func (snapshot executionSnapshot) bind(dir string, names ...string) *core.Refusa
 		if ref != nil {
 			return ref
 		}
-		snapshot[name] = digest
+		snapshot[portableKey(name)] = digest
 	}
 	return nil
 }
@@ -186,6 +200,12 @@ func outputNamespace(name string) bool {
 	return strings.HasPrefix(first, "x-") || first == verificationDir || first == launcherFile ||
 		first == reviewFile || first == budgetPath || strings.HasPrefix(first, ".run")
 }
+
+// portableKey spells one bundle-relative artifact the way the launcher record
+// and every reader of it spell it: with forward slashes, whatever separator the
+// platform builds a path with. A Windows bundle therefore binds
+// "x-finder-1/review.json", which the forward-slash lookup finds.
+func portableKey(name string) string { return filepath.ToSlash(name) }
 
 // bindInputs records the digest of every pinned input the bundle carries. The
 // walk skips an output namespace at its own depth instead of descending into it
@@ -255,7 +275,7 @@ func (w *inputWalk) bind(rel string) error {
 		return jq.Sealed("evidence inventory", ref)
 	}
 	if digest != snapshotAbsent {
-		w.snapshot[rel] = digest
+		w.snapshot[portableKey(rel)] = digest
 	}
 	return nil
 }
@@ -266,7 +286,7 @@ func (snapshot executionSnapshot) bindPhase(dir, name string) *core.RefusalError
 		return &core.RefusalError{Code: codeRecordFailed, Message: "cannot bind phase artifacts"}
 	}
 	for _, file := range files.Files {
-		snapshot[filepath.Join(name, filepath.FromSlash(file.Path))] = file.SHA256
+		snapshot[portableKey(filepath.Join(name, filepath.FromSlash(file.Path)))] = file.SHA256
 	}
 	return rejectPhaseLinks(filepath.Join(dir, name))
 }

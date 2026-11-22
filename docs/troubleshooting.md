@@ -468,6 +468,12 @@ Cause: the run was canceled (`SIGINT`/`SIGTERM`) before the verb completed.
 
 Fix: re-run the same command (a cancel exits 3, never 0).
 
+## `cannot-resume`
+
+Cause: `run --resume` found no interrupted two-finder execution to continue: the bundle has no `launcher.json`, its record predates the resume fingerprint, its `run.json` lost the captured execution reference, or the resolved shape is one finder.
+
+Fix: re-run `verdict run` without `--resume` and pass `--finders 2` explicitly — a fresh two-finder execution retires the interrupted one to `x-superseded/` — then pass the same `--finders 2` when you `--resume` that execution.
+
 ## `chunk-write-failed`
 
 Cause: a chunk diff went missing while slicing `full.diff`.
@@ -1208,6 +1214,12 @@ Fix: address it, narrow the clause, or re-fetch without the policy.
 Cause: a required typed check has no passing evidence for the reviewed head.
 
 Fix: record the evidence named above (`verify --group <id> --command <cmd>`), then re-run — `--force` cannot satisfy a trusted requirement.
+
+## `resume-drift`
+
+Cause: `run --resume` proved the bundle no longer matches the inputs the interrupted execution recorded (`full.diff`, `run.json` and the controls and config it seals, `prompts_hash`, `context.txt`, the reviewed head, the agent and its launch definition, the finder topology, the resolved finder source or review depth), or a bound finder or cross artifact moved or stopped passing its checks, or a phase path is no longer a plain directory.
+
+Fix: re-run `verdict run` without `--resume` to retire the interrupted execution and review the bundle as it stands; `--resume` only ever continues unchanged inputs with intact bound outputs.
 
 ## `review-insufficient`
 

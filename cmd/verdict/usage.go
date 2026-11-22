@@ -80,9 +80,14 @@ func usageText() string {
 		"        vibe|zcode>\n" +
 		"      [--finders <1|2, default 2>] [--budget <auto|light|standard|deep>] [--recipe <slug>]\n" +
 		"      [--stage <n>] [--timeout <secs, default 300>] [--rounds <n, default 2>]\n" +
-		"      [--print] [-- <agent args>...] [--json]\n" +
+		"      [--print] [--resume] [-- <agent args>...] [--json]\n" +
 		"    launch YOUR agent as two isolated whole-diff finders with opposite-finder cross-checks.\n" +
 		"    --finders 1 restores one finder; --print/--stage require it. Recipes supply declarative context.\n" +
+		"    --resume continues the two-finder execution launcher.json records instead of\n" +
+		"    starting a new one: it verifies the recorded fingerprint (full.diff, run.json and the\n" +
+		"    controls it seals, prompts_hash, agent, finder count) and the bound artifacts, reuses\n" +
+		"    every finder and cross-check that still passes, re-runs only the incomplete phases,\n" +
+		"    and fails closed with resume-drift or cannot-resume before launching anything.\n" +
 		"    --budget auto classifies the diff before launching: light runs one finder, standard and\n" +
 		"    deep run two with cross-checks, and a sensitive path escalates to deep. --finders N always\n" +
 		"    wins; the tier and its reasons land in launcher.json and --json data.budget.\n" +

@@ -13,6 +13,11 @@ import (
 	"github.com/stainless-code/verdict/internal/overrides"
 )
 
+// overriddenByFinders is the published overridden_by value naming --finders as
+// the layer that set the finder count. It is not the resume record's finder
+// key: the two spellings are separate contracts.
+const overriddenByFinders = "finders"
+
 // budgetFinderSource labels the finder count a review budget decided, so
 // finder_source never claims a flag or a captured layer supplied a count the
 // classifier chose. The budget object beside it carries the flag/config detail.
@@ -51,7 +56,7 @@ func (st *state) resolveBudget(dir string, captured *config.RunState) (*core.Rev
 		Reasons:    decision.Reasons,
 	}
 	if st.req.FindersRaw != "" {
-		recorded.OverriddenBy = "finders"
+		recorded.OverriddenBy = overriddenByFinders
 	}
 	return recorded, nil
 }

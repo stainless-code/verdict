@@ -63,7 +63,7 @@ const (
 // verbsWanted is the flag list the unknown-flag usage error names.
 const verbsWanted = "--agent <name>, --recipe <slug>, --stage <n>, --timeout <secs>, --rounds <n>, " +
 	"--finders <1|2>, --budget <" + budget.RequestAuto + "|" + budget.TierLight + "|" + budget.TierStandard + "|" +
-	budget.TierDeep + ">, --consent-over-budget, --print, -- <agent args>, --json"
+	budget.TierDeep + ">, --consent-over-budget, --resume, --print, -- <agent args>, --json"
 
 // Run executes `run <owner/repo> <pr|local-name> --agent <name> [--recipe
 // <slug>] [--stage <n>] [--timeout <secs>] [--rounds <n>] [--print] [--
@@ -143,6 +143,7 @@ func runRequest(r *cli.Runner, req Request, flags *flags) *core.RunRequest {
 		FindersRaw:        flags.finders,
 		BudgetRaw:         flags.budget,
 		Print:             flags.print,
+		Resume:            flags.resume,
 		ConsentOverBudget: flags.consent,
 		JSONMode:          r.JSONMode,
 		Warnings:          append([]string{}, r.Warnings...),
@@ -175,6 +176,7 @@ type flags struct {
 	pass      []string
 	consent   bool
 	print     bool
+	resume    bool
 	roundsSet bool
 }
 
@@ -214,6 +216,9 @@ func parseToken(r *cli.Runner, f *flags, args []string, i int) (int, int, bool) 
 		return parseCountedFlag(r, f, args, i)
 	case "--consent-over-budget":
 		f.consent = true
+		return i, 0, false
+	case "--resume":
+		f.resume = true
 		return i, 0, false
 	case "--print":
 		f.print = true
@@ -299,7 +304,7 @@ func rentry(req Request, f *flags, jsonMode bool) string {
 // this line exactly as typed — a refusal names the value it could not read —
 // and the line exists to be pasted back into a shell.
 func flagTail(f *flags) string {
-	s := findersTail(f.finders) + budgetTail(f.budget)
+	s := findersTail(f.finders) + budgetTail(f.budget) + resumeTail(f)
 	if f.agent != "" {
 		s += " --agent " + f.agent
 	}
@@ -385,6 +390,15 @@ func parseFindersFlag(r *cli.Runner, f *flags, args []string, i int) (int, int, 
 	}
 	f.finders = value
 	return next, 0, false
+}
+
+// resumeTail renders --resume for the re-entry line when the invocation asked
+// to continue an execution.
+func resumeTail(f *flags) string {
+	if !f.resume {
+		return ""
+	}
+	return " --resume"
 }
 
 func findersTail(raw string) string {

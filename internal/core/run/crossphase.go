@@ -26,14 +26,17 @@ func crossPhase(index int) string { return fmt.Sprintf("x-cross-%d", index+1) }
 
 // crossPlan is one cross check ready to launch: the batch it asks about, the
 // phase directory, and the argv. Both plans are written before either worker
-// starts, so the two checks read the same pinned evidence.
+// starts, so the two checks read the same pinned evidence. A resumed run whose
+// recorded check still validates reuses its rows instead of launching.
 type crossPlan struct {
 	args    *launchArgs
 	checker string
 	name    string
 	output  string
+	rows    []any
 	batch   []any
 	skip    bool
+	reuse   bool
 }
 
 // prepareCross writes both cross requests in index order. A finder with no
@@ -58,7 +61,7 @@ func (c *coordinator) planCross(index int) (crossPlan, *core.RefusalError) {
 		return crossPlan{skip: true}, nil
 	}
 	name := crossPhase(index)
-	output, ref := phaseDirectory(c.dir, name)
+	output, ref := c.openPhase(name)
 	if ref != nil {
 		return crossPlan{}, ref
 	}
@@ -79,7 +82,17 @@ func (c *coordinator) planCross(index int) (crossPlan, *core.RefusalError) {
 		return crossPlan{}, ref
 	}
 	args.prompt = crossDirective(c.dir, output, args.abs)
-	return crossPlan{args: args, checker: checker, name: name, output: output, batch: batch}, nil
+	rows, reuse, ref := c.crossReuse(index, checker, batch)
+	if ref != nil {
+		return crossPlan{}, ref
+	}
+	if ref := c.clearRelaunched(reuse, name, "verdicts.json"); ref != nil {
+		return crossPlan{}, ref
+	}
+	return crossPlan{
+		args: args, checker: checker, name: name, output: output, rows: rows,
+		batch: batch, reuse: reuse,
+	}, nil
 }
 
 // crossOutcome is one cross check's contribution to the fan-in: the accepted
@@ -93,12 +106,17 @@ type crossOutcome struct {
 	fatal    bool
 }
 
-// crossPhase runs one cross check. A fatal refusal cancels the sibling at once;
-// an exhausted or failed check is this phase's own failure and lets the sibling
-// finish.
+// crossPhase runs one cross check, or reuses the one a resumed run verified. A
+// fatal refusal cancels the sibling at once; an exhausted or failed check is
+// this phase's own failure and lets the sibling finish.
 func (c *coordinator) crossPhase(ctx context.Context, plan *crossPlan, worker *state,
 	cancel context.CancelFunc,
 ) crossOutcome {
+	if plan.reuse {
+		out := crossOutcome{worker: worker, rows: plan.rows}
+		c.bindCrossOutcome(&out, plan)
+		return out
+	}
 	accepted := c.crossChecker(plan.args, plan.checker, plan.batch)
 	out := c.crossAttempts(ctx, plan, worker, accepted)
 	if out.fatal {
@@ -309,19 +327,31 @@ func (c *coordinator) bindCross(name string) *core.RefusalError {
 
 // runCross dispatches both cross checks at once, then folds their outcomes in
 // index order: warnings, the cancel, the accepted rows, the failures, and the
-// response the run reports.
+// response the run reports. A check a resumed run reused joins the fold without
+// a worker, because it launched nothing.
 func (c *coordinator) runCross(ctx context.Context) *core.RefusalError {
 	plans, ref := c.prepareCross()
 	if ref != nil {
 		return ref
 	}
-	progress := &syncProgress{}
+	c.recordCrossPlans(plans)
+	return c.mergeCross(ctx, c.crossOutcomes(ctx, plans))
+}
+
+// crossOutcomes runs every dispatched check: a check a resumed run verified
+// joins in place, and the rest launch together within the barrier.
+func (c *coordinator) crossOutcomes(ctx context.Context, plans []crossPlan) []crossOutcome {
 	outcomes := make([]crossOutcome, finderCount)
+	progress := &syncProgress{}
 	phaseCtx, phaseCancel := context.WithCancel(ctx)
 	defer phaseCancel()
 	var wg sync.WaitGroup
 	for i := range finderCount {
 		if plans[i].skip {
+			continue
+		}
+		if plans[i].reuse {
+			outcomes[i] = c.crossPhase(ctx, &plans[i], nil, phaseCancel)
 			continue
 		}
 		worker := c.st.phaseState(progress)
@@ -330,7 +360,21 @@ func (c *coordinator) runCross(ctx context.Context) *core.RefusalError {
 		})
 	}
 	wg.Wait()
-	return c.mergeCross(ctx, outcomes)
+	return outcomes
+}
+
+// recordCrossPlans pins the reuse decision of every dispatched check, so the
+// resume record can say which cross phases this invocation reused.
+func (c *coordinator) recordCrossPlans(plans []crossPlan) {
+	if c.resume == nil {
+		return
+	}
+	for i := range plans {
+		if plans[i].skip {
+			continue
+		}
+		c.resume.crossPlanned[i], c.resume.reuseCross[i] = true, plans[i].reuse
+	}
 }
 
 func (c *coordinator) mergeCross(ctx context.Context, outcomes []crossOutcome) *core.RefusalError {
@@ -355,12 +399,13 @@ func (c *coordinator) recordCross(outcomes []crossOutcome) *core.RefusalError {
 	for i := range outcomes {
 		fatal = mergeFatal(fatal, outcomes[i].ref)
 		c.appendResults(outcomes[i].rows)
-		if outcomes[i].failure != "" {
-			c.failed(crossPhase(i), outcomes[i].failure)
-		}
+		c.resolveFailure(crossPhase(i), outcomes[i].failure)
 		if outcomes[i].response != nil {
 			c.response = outcomes[i].response
 		}
+	}
+	if ref := c.persistProgress(); ref != nil {
+		return ref
 	}
 	return fatal
 }
