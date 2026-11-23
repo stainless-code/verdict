@@ -2088,6 +2088,8 @@ Compose it where `report --check --completeness` used to go; the flag set is
 the same dimensions (plus the coverage receipt and the captured compliance
 verdict), and the flagless form remains advisory `report`.
 
+Runnable examples: [ExampleClient_Gate](../pkg/verdict/example_test.go) — and [gate.ts](../examples/typescript-client/gate.ts).
+
 ### MCP server (stdio, experimental until 1.0)
 
 `verdict mcp` serves the review verbs as MCP tools over stdio: newline-delimited
@@ -4293,6 +4295,8 @@ id, or a GitHub, Slack, Stripe, Google, Anthropic, or OpenAI token refuses
 `fix-patch-secret` naming the shape, writes no patch, and records no pass, so a
 secret never reaches the bundle every later agent run reads.
 
+Runnable examples: [ExampleClient_Fix](../pkg/verdict/example_test.go) — and [fix.ts](../examples/typescript-client/fix.ts).
+
 ### Handoff (the fix brief, for someone else)
 
 `handoff owner/repo <pr> [--min-severity <s>] [--paths <glob>]...
@@ -4784,6 +4788,8 @@ The repeat guard is the same on every host: the body's
 `reviews.json`, so a re-fetch restores it after a post, and the marker keys on
 the exact payload — body, anchors, and reviewed head — never on a diff
 position, which shifts as the branch gains commits.
+
+Runnable examples: [ExampleClient_Post](../pkg/verdict/example_test.go) — and [post-dry-run.ts](../examples/typescript-client/post-dry-run.ts).
 
 ## Calibration (predictions vs ground truth)
 
