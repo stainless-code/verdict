@@ -88,14 +88,12 @@ func New(cfg *Config) *Server {
 	if cfg.Stderr == nil {
 		cfg.Stderr = io.Discard
 	}
+	cfg.Stderr = &diagWriter{dst: cfg.Stderr}
 	layer := cfg.Layer
-	rootID := ""
 	if layer == nil {
 		layer = productionLayer(cfg)
 	}
-	if cfg.Root != "" {
-		rootID = query.RootID(absRoot(cfg.Root))
-	}
+	rootID := query.RootID(absRoot(cfg.Root))
 	return &Server{
 		cfg:    *cfg,
 		layer:  layer,
@@ -326,6 +324,27 @@ func (s *Server) writeFrame(resp rpcResponse) {
 
 func (s *Server) logf(format string, args ...any) {
 	fmt.Fprintf(s.cfg.Stderr, "acp: "+format+"\n", args...)
+}
+
+// diagWriter serializes one session's diagnostic stream. Every concurrent
+// query shares stderr through this writer, so each log write takes the same
+// lock and no line interleaves. Stdout frames keep their own path and ordering.
+type diagWriter struct {
+	dst io.Writer
+	mu  sync.Mutex
+}
+
+func (w *diagWriter) Write(p []byte) (int, error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	n, err := w.dst.Write(p)
+	if err != nil {
+		// Diagnostics are best effort: no log caller can act on a failed
+		// stderr write, so the error stops here rather than failing the
+		// request whose result is already being produced.
+		return n, nil
+	}
+	return n, nil
 }
 
 type rpcRequest struct {

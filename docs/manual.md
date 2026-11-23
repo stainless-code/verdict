@@ -2252,7 +2252,7 @@ bundle history is touched beyond the composed reads.
 
 The handshake is the ACP v1 one: `initialize` carries `protocolVersion: 1`
 (only version 1 is spoken, so any requested integer answers 1), and the
-response advertises `agentCapabilities` holding `loadSession: false` plus
+response advertises `capabilities` holding `loadSession: false` plus
 disabled `promptCapabilities` and `mcpCapabilities`, the identity under both
 `agentInfo` and `serverInfo` (`name: verdict`, `version: <build>`), and an
 empty `authMethods`. `ping` answers with an empty result, `$/cancel_request`
@@ -2297,7 +2297,7 @@ command with `--root` beside it:
 
 ```json
 {
-  "mcpServers": {
+  "agentServers": {
     "verdict": {
       "command": "verdict",
       "args": ["acp", "--root", "/path/to/checkout"]
@@ -2307,7 +2307,7 @@ command with `--root` beside it:
 ```
 
 Zed's ACP config is the same `command` + `args` pair under its agent server
-table — point `args[1]` at the checked-out repository and send `initialize`
+table — point `args[2]` at the checked-out repository and send `initialize`
 with `protocolVersion: 1` before any `verdict/` query. In Neovim, register a
 stdio client that spawns `verdict acp` with the same argv; the wire is
 newline-delimited JSON-RPC, so a manual smoke test is one line per request:

@@ -1,14 +1,21 @@
 package acp
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"io"
+	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core/query"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // TestInitializeNegotiatesVersionOne proves the handshake answers protocol 1
@@ -66,6 +73,28 @@ func TestInitializeRejectsMissingVersion(t *testing.T) {
 			t.Fatalf("initialize %s = %+v, want -32602", id, f.Error)
 		}
 		if f.Error == nil || !strings.Contains(f.Error.Message, "protocolVersion") {
+			t.Errorf("initialize %s message = %q, want it to name protocolVersion", id, f.Error.Message)
+		}
+	}
+}
+
+// TestInitializeRejectsNonPositiveAndNullVersion proves null and non-positive
+// protocol versions are invalid params, not silently accepted.
+func TestInitializeRejectsNonPositiveAndNullVersion(t *testing.T) {
+	t.Parallel()
+	dir := fixture(t)
+	cfg := testConfig(dir)
+	frames := serveFrames(t, &cfg,
+		`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":null}}`,
+		`{"jsonrpc":"2.0","id":2,"method":"initialize","params":{"protocolVersion":0}}`,
+		`{"jsonrpc":"2.0","id":3,"method":"initialize","params":{"protocolVersion":-1}}`,
+	)
+	for _, id := range []string{"1", "2", "3"} {
+		f := frames[id]
+		if f.Error == nil || f.Error.Code != codeBadParams {
+			t.Fatalf("initialize %s = %+v, want -32602 for null/non-positive version", id, f.Error)
+		}
+		if !strings.Contains(f.Error.Message, "protocolVersion") {
 			t.Errorf("initialize %s message = %q, want it to name protocolVersion", id, f.Error.Message)
 		}
 	}
@@ -421,19 +450,20 @@ func TestCancelRequestStopsAnInflightCall(t *testing.T) {
 }
 
 // TestContextCancelShutsDownServe proves canceling the parent context ends
-// Serve even when stdin stays open.
+// Serve even when stdin stays open: the read loop is still blocked on the
+// pipe and Serve must return without waiting for the host to close it. The
+// writer stays open until cleanup so this test really proves cancellation,
+// not EOF.
 func TestContextCancelShutsDownServe(t *testing.T) {
 	t.Parallel()
 	cfg := testConfig(t.TempDir())
 	ctx, cancel := context.WithCancel(context.Background())
 	reader, writer := io.Pipe()
+	t.Cleanup(func() { _ = writer.Close() })
 	done := make(chan error, 1)
 	var out strings.Builder
 	go func() { done <- New(&cfg).Serve(ctx, reader, &out) }()
 	cancel()
-	if err := writer.Close(); err != nil {
-		t.Fatal(err)
-	}
 	select {
 	case serveErr := <-done:
 		if serveErr != nil {
@@ -441,5 +471,179 @@ func TestContextCancelShutsDownServe(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("Serve did not return after context cancel")
+	}
+}
+
+type closableBlockingReader struct {
+	entered      chan struct{}
+	closed       chan struct{}
+	enterOnce    sync.Once
+	closeOnce    sync.Once
+	readFinished atomic.Bool
+}
+
+func newClosableBlockingReader() *closableBlockingReader {
+	return &closableBlockingReader{
+		entered: make(chan struct{}),
+		closed:  make(chan struct{}),
+	}
+}
+
+func (r *closableBlockingReader) Read([]byte) (int, error) {
+	r.enterOnce.Do(func() { close(r.entered) })
+	<-r.closed
+	time.Sleep(20 * time.Millisecond)
+	r.readFinished.Store(true)
+	return 0, io.ErrClosedPipe
+}
+
+func (r *closableBlockingReader) Close() error {
+	r.closeOnce.Do(func() { close(r.closed) })
+	return nil
+}
+
+// TestServeInterruptibleCancel proves a canceled context interrupts a
+// blocked reader cleanly through ServeInterruptible with no goroutine leak:
+// Serve returns only after the read loop has exited.
+func TestServeInterruptibleCancel(t *testing.T) {
+	t.Parallel()
+	cfg := testConfig(t.TempDir())
+	server := New(&cfg)
+	reader := newClosableBlockingReader()
+	t.Cleanup(func() { _ = reader.Close() })
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var out bytes.Buffer
+	done := make(chan error, 1)
+	go func() { done <- server.ServeInterruptible(ctx, reader, &out) }()
+	testenv.Until(t, func() bool {
+		select {
+		case <-reader.entered:
+			return true
+		default:
+			return false
+		}
+	})
+	cancel()
+	var serveErr error
+	testenv.Until(t, func() bool {
+		select {
+		case serveErr = <-done:
+			return true
+		default:
+			return false
+		}
+	})
+	if serveErr != nil {
+		t.Fatalf("ServeInterruptible = %v, want nil", serveErr)
+	}
+	if !reader.readFinished.Load() {
+		t.Fatal("ServeInterruptible returned before the readLoop goroutine exited")
+	}
+}
+
+// failingLayer is a query layer whose Bundles logs and fails with an internal
+// error, so concurrent in-flight queries exercise s.logf concurrently.
+type failingLayer struct{}
+
+func (failingLayer) Bundles(context.Context, string) (*query.View, error) {
+	return nil, errors.New("synthetic internal failure")
+}
+
+func (failingLayer) Detail(context.Context, string, string) (*query.View, error) {
+	return nil, query.ErrNotFound
+}
+
+func (failingLayer) Show(context.Context, string, string, string) (*query.View, error) {
+	return nil, query.ErrNotFound
+}
+
+func (failingLayer) Copy(context.Context, string, string, string) (*query.View, error) {
+	return nil, query.ErrNotFound
+}
+
+// TestConcurrentStderrWritesAreSerialized drives many requests in flight at
+// once over an [io.Pipe] and proves every response is whole and that concurrent
+// s.logf writes to a [bytes.Buffer] Stderr never interleave or race. Under
+// -race this fails without the diagWriter mutex wrapper.
+func TestConcurrentStderrWritesAreSerialized(t *testing.T) {
+	t.Parallel()
+	dir := fixture(t)
+	var stderr bytes.Buffer
+	cfg := testConfig(dir)
+	cfg.Stderr = &stderr
+	cfg.Layer = failingLayer{}
+	ctx := t.Context()
+	reader, writer := io.Pipe()
+	t.Cleanup(func() { _ = writer.Close() })
+	var out bytes.Buffer
+	done := make(chan error, 1)
+	server := New(&cfg)
+	go func() { done <- server.Serve(ctx, reader, &out) }()
+	const calls = 48
+	writeConcurrentRequests(t, writer, calls)
+	_ = writer.Close()
+	waitServe(t, done)
+	assertConcurrentResponses(t, out.Bytes(), stderr.String(), calls)
+}
+
+func writeConcurrentRequests(t *testing.T, writer *io.PipeWriter, calls int) {
+	t.Helper()
+	written := make(chan struct{})
+	go func() {
+		defer close(written)
+		for i := range calls {
+			line := fmt.Sprintf(`{"jsonrpc":"2.0","id":%d,"method":"verdict/bundles/list"}`+"\n", i)
+			if _, err := io.WriteString(writer, line); err != nil {
+				return
+			}
+		}
+	}()
+	select {
+	case <-written:
+	case <-time.After(5 * time.Second):
+		t.Fatal("writes blocked; Serve is not reading")
+	}
+}
+
+func waitServe(t *testing.T, done <-chan error) {
+	t.Helper()
+	var serveErr error
+	testenv.Until(t, func() bool {
+		select {
+		case serveErr = <-done:
+			return true
+		default:
+			return false
+		}
+	})
+	if serveErr != nil {
+		t.Fatalf("Serve = %v, want nil", serveErr)
+	}
+}
+
+func assertConcurrentResponses(t *testing.T, raw []byte, logs string, calls int) {
+	t.Helper()
+	frames := decodeFrames(t, raw)
+	if len(frames) != calls {
+		t.Fatalf("got %d response frames, want %d", len(frames), calls)
+	}
+	for i := range calls {
+		assertOneConcurrentResponse(t, frames, strconv.Itoa(i))
+	}
+	if got := strings.Count(logs, "acp: "); got != calls {
+		t.Errorf("stderr log lines = %d, want %d (one per query)", got, calls)
+	}
+}
+
+func assertOneConcurrentResponse(t *testing.T, frames map[string]frame, id string) {
+	t.Helper()
+	f, ok := frames[id]
+	if !ok {
+		t.Errorf("missing response for id %s", id)
+		return
+	}
+	if f.Error == nil || f.Error.Code != codeInternal {
+		t.Errorf("id %s error = %+v, want -32603 (internal)", id, f.Error)
 	}
 }

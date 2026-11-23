@@ -84,11 +84,14 @@ func decodeInitialize(raw json.RawMessage) (initializeParams, bool) {
 		return params, false
 	}
 	versionRaw, ok := wire["protocolVersion"]
-	if !ok || len(versionRaw) == 0 {
+	if !ok || len(versionRaw) == 0 || string(versionRaw) == jsonNull {
 		return params, false
 	}
 	var version int
 	if err := json.Unmarshal(versionRaw, &version); err != nil {
+		return params, false
+	}
+	if version <= 0 {
 		return params, false
 	}
 	params.ProtocolVersion = version
