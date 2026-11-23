@@ -26,11 +26,11 @@ the one that runs.
 
 ## What each example proves
 
-| Example           | Contract it exercises                                                                                                                                                                                                                                                                              |
-| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `record.ts`       | `record --dry-run` runs the whole merge and writes nothing (`data.dry_run`, `data.check`, `data.evidence`); a real `record` writes `findings.json` and `record.json` and reports where; a GitHub PR bundle refuses `not-local`, because `post` owns that target.                                   |
-| `post-dry-run.ts` | `post --dry-run` previews one payload — `data.payload_hash`, `data.event`, `data.findings.file` = `findings.dryrun.json` — performs exactly one host call (the live head read behind the stale-head guard), and writes no `post.json`; a local bundle refuses `no-pr-target` before any host call. |
-| `config.ts`       | `config --explain` renders the stored policy with each value's origin; `--preview --file` resolves a proposed `.verdict/config.json` and writes nothing; an invalid proposal refuses `bad-config` naming the JSONPath; asking for neither mode is an exit-2 usage error with no envelope.          |
+| Example           | Contract it exercises                                                                                                                                                                                                                                                                                                                                            |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `record.ts`       | `record --dry-run` runs the whole merge and writes nothing (`data.dry_run`, `data.check`, `data.evidence`); a real `record` writes `findings.json` and `record.json` and reports where; a GitHub PR bundle refuses `not-local`, because `post` owns that target; a malformed review refuses `bad-review-input` naming the broken JSONPath in `error.problems[]`. |
+| `post-dry-run.ts` | `post --dry-run` previews one payload — `data.payload_hash`, `data.event`, `data.findings.file` = `findings.dryrun.json` — performs exactly one host call (the live head read behind the stale-head guard), and writes no `post.json`; a local bundle refuses `no-pr-target` before any host call.                                                               |
+| `config.ts`       | `config --explain` renders the stored policy with each value's origin; `--preview --file` resolves a proposed `.verdict/config.json` and writes nothing; an invalid proposal refuses `bad-config` naming the JSONPath; asking for neither mode is an exit-2 usage error with no envelope.                                                                        |
 
 ## `record.ts`
 
@@ -51,6 +51,10 @@ record acme/app 4243
   code                not-local
   hint                try: run the fetch/record step named above first, then re-run
 ok: record refuses a provider PR bundle with a typed not-local
+record acme/app local-demo --dry-run (malformed review)
+  code                bad-review-input
+  problem path        $.findings[0].path
+ok: record refuses a malformed review with typed problems
 ```
 
 The dry run is the one to reach for in an agent loop: it runs the same
@@ -148,15 +152,6 @@ it lands. It never writes, and it never approves.
 
 The example that only needs `post` still uses the same sandbox, so all three
 report the same fixture.
-
-## Known gap
-
-`VerdictRefusalError` carries `code`, `message`, `hint` and `warnings`. The
-review-input refusal's `error.problems[]` and `error.problems_truncated` —
-every problem `record` finds in `review.json`, which is the detail an agent
-needs to fix one — are not exposed, so `record`'s refusal path here is
-`not-local`, which is fully expressible. Reading `problems[]` today means
-running `verdict record … --json` yourself and parsing the envelope.
 
 The `post` example needs a POSIX shell for `fixtures/gh`; it is graded on
 Ubuntu in CI and runs under `sh` on macOS. On Windows, use WSL or run `post`

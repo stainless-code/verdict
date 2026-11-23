@@ -28,9 +28,12 @@ console.log(report.data.verdict.open, "open findings");
 ```
 
 The binary resolves through `VERDICT_BIN`, then the platform package beside
-the wrapper, then `PATH`. A refusal throws `VerdictRefusalError` with `code`
-and `hint`; a failed gate throws `VerdictGateError` carrying the envelope. The
-shape is pinned in [JSON envelope and exit codes](/docs/json-envelope), and
+the wrapper, then `PATH`. A refusal throws `VerdictRefusalError` with `code`,
+`hint`, the full refusal `body`, and the review-input detail — `problems`,
+`problems_truncated`, `candidates`, `retry_at` — so a caller can fix one
+without re-parsing stdout; a failed gate throws `VerdictGateError` carrying
+the envelope. The shape is pinned in
+[JSON envelope and exit codes](/docs/json-envelope), and
 [Build a client](/docs/build-a-client) is the protocol for any other language.
 Experimental until 1.0.
 
@@ -42,7 +45,8 @@ builds, and a stubbed `gh` on `PATH`:
 
 - `record.ts`: `--dry-run` runs every check and writes nothing; a real `record`
   writes `findings.json` and `record.json`; a provider PR bundle refuses
-  `not-local`, because `post` owns that target.
+  `not-local`, because `post` owns that target; a malformed review refuses
+  `bad-review-input` with the broken JSONPath in `error.problems[]`.
 - `post-dry-run.ts`: previews one payload, makes exactly one host call (the
   live head read behind the stale-head guard), and writes `findings.dryrun.json`
   but never `post.json`; a local bundle refuses `no-pr-target` before any host

@@ -6,6 +6,7 @@ import {
   writeFileSync,
   readFileSync,
   accessSync,
+  chmodSync,
   constants,
   existsSync,
   realpathSync,
@@ -87,6 +88,32 @@ function runFake(mode, verb = "report", args = [], opts = {}, env = {}) {
     ...opts,
     env: { ...process.env, FAKE_MODE: mode, ...env },
   });
+}
+
+// Spawns a one-off fake binary emitting a refusal envelope whose `error`
+// body is exactly `errorBody`, so the throw/envelope boundary is exercised
+// with payloads the shared fake-verdict.mjs does not know.
+function runInlineRefusal(errorBody) {
+  const dir = mkdtempSync(join(tmpdir(), "verdict-refusal-"));
+  const fake = join(dir, "fake-verdict.mjs");
+  const envelope = {
+    schema_version: "1",
+    verb: "report",
+    repo: "acme/app",
+    pr: 4243,
+    at: "2026-01-01T00:00:00Z",
+    next: "address open threads",
+    warnings: [],
+    data: null,
+    error: errorBody,
+  };
+  writeFileSync(
+    fake,
+    `#!/usr/bin/env node\nprocess.stdout.write(${JSON.stringify(JSON.stringify(envelope))} + "\\n");\nprocess.exit(1);\n`,
+  );
+  chmodSync(fake, 0o755);
+  const client = createClient({ bin: fake, stderr: "pipe" });
+  return client.run("report", []);
 }
 
 describe("unit: fake binary exit paths", () => {
@@ -280,8 +307,116 @@ describe("unit: fake binary exit paths", () => {
         "try: run the fetch/record step named above first, then re-run",
       );
       assert.ok(Array.isArray(error.warnings));
+      // No optional fields: the getters fall back to empty/zero.
+      assert.deepEqual(error.problems, []);
+      assert.deepEqual(error.candidates, []);
+      assert.equal(error.problems_truncated, 0);
+      assert.equal(error.retry_at, undefined);
+      assert.equal(error.body.code, "missing-findings");
       return true;
     });
+  });
+
+  it("refusal carries problems, truncated count, candidates and retry_at", async () => {
+    await assert.rejects(
+      runInlineRefusal({
+        code: "bad-review-input",
+        message: "review.json has 1 problem(s); fix every one, then re-run",
+        problems: [
+          {
+            path: "$.findings[0].anchor",
+            code: "bad-enum",
+            level: "error",
+            message: "anchor is outside its hunk",
+            fix: "move the anchor inside the hunk",
+          },
+        ],
+        problems_truncated: 0,
+        candidates: [{ kind: "oversize-fetch", suggestion: "app/handler.go" }],
+        retry_at: "2026-01-02T00:00:00Z",
+      }),
+      (error) => {
+        assert.ok(error instanceof VerdictRefusalError);
+        assert.equal(error.body.code, "bad-review-input");
+        assert.equal(error.problems.length, 1);
+        assert.equal(error.problems[0].path, "$.findings[0].anchor");
+        assert.equal(error.problems_truncated, 0);
+        assert.equal(error.candidates[0].suggestion, "app/handler.go");
+        assert.equal(error.retry_at, "2026-01-02T00:00:00Z");
+        return true;
+      },
+    );
+  });
+
+  it("malformed problems item throws VerdictSchemaError", async () => {
+    await assert.rejects(
+      runInlineRefusal({
+        code: "bad-review-input",
+        message: "review.json has 1 problem(s)",
+        problems: [{ path: "$.findings[0].path", code: "wrong-type" }],
+      }),
+      (error) => {
+        assert.ok(error instanceof VerdictSchemaError);
+        assert.ok(!(error instanceof VerdictRefusalError));
+        return true;
+      },
+    );
+  });
+
+  it("non-array problems throws VerdictSchemaError", async () => {
+    await assert.rejects(
+      runInlineRefusal({
+        code: "bad-review-input",
+        message: "review.json has 1 problem(s)",
+        problems: "x",
+      }),
+      (error) => {
+        assert.ok(error instanceof VerdictSchemaError);
+        return true;
+      },
+    );
+  });
+
+  it("negative problems_truncated throws VerdictSchemaError", async () => {
+    await assert.rejects(
+      runInlineRefusal({
+        code: "bad-review-input",
+        message: "review.json has 1 problem(s)",
+        problems_truncated: -1,
+      }),
+      (error) => {
+        assert.ok(error instanceof VerdictSchemaError);
+        return true;
+      },
+    );
+  });
+
+  it("malformed candidates throws VerdictSchemaError", async () => {
+    await assert.rejects(
+      runInlineRefusal({
+        code: "oversize-fetch",
+        message: "bundle too large",
+        candidates: [{ kind: "oversize-fetch" }],
+      }),
+      (error) => {
+        assert.ok(error instanceof VerdictSchemaError);
+        return true;
+      },
+    );
+  });
+
+  it("non-string retry_at throws VerdictSchemaError", async () => {
+    await assert.rejects(
+      runInlineRefusal({
+        code: "oversize-fetch",
+        message: "bundle too large",
+        retry_at: 5,
+      }),
+      (error) => {
+        assert.ok(error instanceof VerdictSchemaError);
+        return true;
+      },
+    );
   });
 
   it("usage error throws VerdictUsageError with stderr", async () => {

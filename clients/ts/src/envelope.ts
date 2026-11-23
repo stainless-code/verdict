@@ -144,6 +144,64 @@ export function assertRefusalEnvelope(
       stdout,
     );
   }
+  assertRefusalErrorBody(error as Record<string, unknown>, stdout);
+}
+
+function assertRefusalErrorBody(
+  body: Record<string, unknown>,
+  stdout: string,
+): void {
+  if ("problems" in body) {
+    const problems = body["problems"];
+    if (
+      !Array.isArray(problems) ||
+      problems.some(
+        (item) =>
+          typeof item !== "object" ||
+          item === null ||
+          typeof (item as Record<string, unknown>)["path"] !== "string" ||
+          typeof (item as Record<string, unknown>)["fix"] !== "string",
+      )
+    ) {
+      throw new VerdictSchemaError(
+        "refusal envelope error problems must be an array of { path, fix } objects",
+        stdout,
+      );
+    }
+  }
+  if ("problems_truncated" in body) {
+    const count = body["problems_truncated"];
+    if (typeof count !== "number" || !Number.isInteger(count) || count < 0) {
+      throw new VerdictSchemaError(
+        "refusal envelope error problems_truncated must be a non-negative integer",
+        stdout,
+      );
+    }
+  }
+  if ("candidates" in body) {
+    const candidates = body["candidates"];
+    if (
+      !Array.isArray(candidates) ||
+      candidates.some(
+        (item) =>
+          typeof item !== "object" ||
+          item === null ||
+          typeof (item as Record<string, unknown>)["kind"] !== "string" ||
+          typeof (item as Record<string, unknown>)["suggestion"] !== "string",
+      )
+    ) {
+      throw new VerdictSchemaError(
+        "refusal envelope error candidates must be an array of { kind, suggestion } objects",
+        stdout,
+      );
+    }
+  }
+  if ("retry_at" in body && typeof body["retry_at"] !== "string") {
+    throw new VerdictSchemaError(
+      "refusal envelope error retry_at must be a string",
+      stdout,
+    );
+  }
 }
 
 function assertEnvelopeShape(

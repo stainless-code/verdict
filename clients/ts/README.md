@@ -74,16 +74,16 @@ Building a client in another language? The [Build a client guide](https://stainl
 
 ## Error handling
 
-| Outcome             | Class                 | Notes                                                |
-| ------------------- | --------------------- | ---------------------------------------------------- |
-| Exit 0              | returns `Envelope<T>` | `schema_version` must be `"1"`                       |
-| Exit 1 (refusal)    | `VerdictRefusalError` | `code`, `message`, `hint`, `warnings`                |
-| Exit 1 (gate/check) | `VerdictGateError`    | `envelope` carries the failing `data` and `warnings` |
-| Exit 2 (usage)      | `VerdictUsageError`   | no envelope; `stderr` carries usage                  |
-| Exit 3 / crash      | `VerdictProcessError` | `exitCode`, `signal`, `stdout`, `stderr`             |
-| Timeout             | `VerdictTimeoutError` | extends `VerdictProcessError`; the child is killed   |
-| Missing binary      | `VerdictSpawnError`   | `repair` is the reinstall command                    |
-| Wrong envelope      | `VerdictSchemaError`  | version drift fails loud, never misreads             |
+| Outcome             | Class                 | Notes                                                                                                     |
+| ------------------- | --------------------- | --------------------------------------------------------------------------------------------------------- |
+| Exit 0              | returns `Envelope<T>` | `schema_version` must be `"1"`                                                                            |
+| Exit 1 (refusal)    | `VerdictRefusalError` | `code`, `message`, `hint`, `warnings`, `body`, `problems`, `problems_truncated`, `candidates`, `retry_at` |
+| Exit 1 (gate/check) | `VerdictGateError`    | `envelope` carries the failing `data` and `warnings`                                                      |
+| Exit 2 (usage)      | `VerdictUsageError`   | no envelope; `stderr` carries usage                                                                       |
+| Exit 3 / crash      | `VerdictProcessError` | `exitCode`, `signal`, `stdout`, `stderr`                                                                  |
+| Timeout             | `VerdictTimeoutError` | extends `VerdictProcessError`; the child is killed                                                        |
+| Missing binary      | `VerdictSpawnError`   | `repair` is the reinstall command                                                                         |
+| Wrong envelope      | `VerdictSchemaError`  | version drift fails loud, never misreads                                                                  |
 
 `VerdictGateError` covers the success-shaped exit 1 a gate or `--check` run
 returns when the verdict is no; read `error.envelope.data` for the failing
