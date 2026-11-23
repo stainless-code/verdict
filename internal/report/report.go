@@ -77,8 +77,8 @@ func runReplay(ctx context.Context, r *cli.Runner, req Request, flags *reportcor
 	if flags.Output != "" || flags.Sarif != "" {
 		return r.ReportUsage(&cli.UsageError{Message: "--policy is read-only; it writes no --output or --sarif"})
 	}
-	if flags.Check != "" || flags.Completeness || flags.MaxRisk != "" {
-		return r.ReportUsage(&cli.UsageError{Message: "--policy reports a comparison and exits 0; a gate flag (--check, --completeness, --coverage, --max-risk) would have its exit code swallowed, so drop it and read gate_passed instead"})
+	if flags.Check != "" || flags.Completeness || flags.MaxRisk != "" || flags.CompareSet {
+		return r.ReportUsage(&cli.UsageError{Message: "--policy reports a comparison and exits 0; --check, --completeness, and --max-risk would have their exit code swallowed and --compare would be ignored, so drop them and read gate_passed instead"})
 	}
 	replay, ref := reportcore.Replay(ctx, reportRequest(r, req, flags))
 	if ref != nil {

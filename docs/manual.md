@@ -1814,8 +1814,18 @@ dimension and re-checks no threads, so a `--live` posture from the original run
 is not re-run here. It exits 0 whatever the candidate decides, because it
 reports a comparison rather than gating this run, and it therefore refuses the
 gate flags (`--check`, `--completeness`, `--max-risk`): accepting one would
-swallow the exit code a caller gates CI on. `--output` and `--sarif` are
-refused for the same reason — a replay writes nothing.
+swallow the exit code a caller gates CI on. `--compare` is refused as well —
+the replay already prints two decisions, so a second baseline would be dropped
+silently. `--output` and `--sarif` are refused for the same reason — a replay
+writes nothing.
+
+Both decisions carry their own root requirement set: the candidate's root
+`block_clauses` and `require_checks` replace the captured ones, so a requirement
+the candidate drops stops failing it and one it adds starts failing it. The
+evidence dimension is the part of the decision a candidate cannot move —
+sufficiency is the stored receipt's `insufficient` verdict, recorded while the
+review ran, so a `spec_coverage_min` in the candidate file does not re-decide
+it. A replay re-decides policy; it does not re-verify a review.
 
 The candidate is resolved from its repository layer over the recorded file set.
 The original run's personal settings, environment overrides, and invocation

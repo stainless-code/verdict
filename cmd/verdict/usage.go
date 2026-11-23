@@ -218,7 +218,8 @@ func usageText() string {
 		"    checks, and receipts, so only the policy differs. Prints the gate and approval under the\n" +
 		"    captured policy and under the candidate, plus every dimension the candidate added,\n" +
 		"    removed, or moved. Writes no artifact, contacts no host, and exits 0 whatever the\n" +
-		"    candidate decides — so the gate flags are refused rather than silently swallowed.\n" +
+		"    candidate decides — so the gate flags and --compare are refused rather than silently\n" +
+		"    swallowed.\n" +
 		"    --cost adds spend by effort tier. Captured two-finder runs sum bound phase usage;\n" +
 		"    missing phase tokens or USD stay null (unknown), never zero.\n" +
 		"    Consented over-budget receipts from .verdict/state/<pr>/budget.json surface here when present.\n" +

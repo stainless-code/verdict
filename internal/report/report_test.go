@@ -36,6 +36,31 @@ func TestUnknownFlagListsAllReportFlags(t *testing.T) {
 // TestPolicyReplayRefusesGateFlags proves a gate flag cannot ride along with
 // --policy: the replay exits 0 by contract, so accepting --check would swallow
 // the very exit code a caller gates CI on.
+// TestPolicyReplayRefusesCompare pins that --compare cannot ride along with
+// --policy: the replay prints its own two-sided comparison and would drop the
+// second bundle silently, so an empty and a named baseline alike are usage
+// errors rather than a replay that answers a different question.
+func TestPolicyReplayRefusesCompare(t *testing.T) {
+	for _, baseline := range []string{"", "other-bundle"} {
+		t.Run(baseline, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			var out, diag bytes.Buffer
+			r := &cli.Runner{
+				Out: &out, Human: &out, Diag: &diag,
+				Cmd: "report", Repo: "acme/app", Pr: "1", Effective: cli.Defaults(),
+				Now: func() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) },
+			}
+			args := []string{"--policy", "p.json", "--compare", baseline}
+			if code := Run(context.Background(), r, args, Request{Repo: "acme/app", Pr: "1"}); code != cli.ExitUsage {
+				t.Fatalf("exit = %d; want %d", code, cli.ExitUsage)
+			}
+			if !strings.Contains(diag.String(), "--compare would be ignored") {
+				t.Fatalf("usage text does not name the ignored flag: %q", diag.String())
+			}
+		})
+	}
+}
+
 func TestPolicyReplayRefusesGateFlags(t *testing.T) {
 	for _, args := range [][]string{
 		{"--policy", "p.json", "--check", "critical"},
