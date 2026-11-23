@@ -267,11 +267,13 @@ func splitLines(s string) []string {
 }
 
 // gitRun runs one git command in dir with the harness's pinned config. The
-// subprocess carries a finite WaitDelay (GO-CONC-06), mirroring the git
-// example bound in example_test.go.
+// subprocess carries a finite timeout and a WaitDelay (GO-CONC-06), mirroring
+// the git example bound in example_test.go.
 func gitRun(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	cmd := exec.CommandContext(t.Context(), "git", args...)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.WaitDelay = time.Minute
 	cmd.Dir = dir
 	cmd.Env = testenv.Base(map[string]string{
