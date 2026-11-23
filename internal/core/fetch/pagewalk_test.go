@@ -14,7 +14,7 @@ import (
 )
 
 // testBitbucketFirst is the trusted first page URL bitbucketPages builds.
-const testBitbucketFirst = "https://api.bitbucket.org/2.0/repos/o/r/pullrequests/7/comments?pagelen=100"
+const testBitbucketFirst = "https://api.bitbucket.org/2.0/repositories/o/r/pullrequests/7/comments?pagelen=100"
 
 // bitbucketBearer is the credential the bitbucket reads attach.
 func bitbucketBearer(t *testing.T) curlauth.Credential {
@@ -42,7 +42,7 @@ func newTestSession(cmdr Commander) (*session, *[]string) {
 // and every other scheme, host, or port refuses.
 func TestSameOrigin(t *testing.T) {
 	t.Parallel()
-	base := "https://api.bitbucket.org/2.0/repos/o/r"
+	base := "https://api.bitbucket.org/2.0/repositories/o/r"
 	for _, tc := range []struct {
 		name string
 		raw  string

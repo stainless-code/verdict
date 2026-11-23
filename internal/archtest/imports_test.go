@@ -75,6 +75,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/agentcatalog":   true,
 	"internal/argvshape":      true,
 	"internal/atomic":         true,
+	"internal/bitbucket":      true,
 	"internal/brief":          true,
 	"internal/config":         true,
 	"internal/controls":       true,

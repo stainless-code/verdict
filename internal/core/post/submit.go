@@ -327,6 +327,8 @@ func hostLabel(provider string) string {
 		return "GitLab"
 	case providerForgejo:
 		return "Forgejo"
+	case providerBitbucket:
+		return "Bitbucket"
 	default:
 		return provider
 	}
