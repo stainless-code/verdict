@@ -99,6 +99,15 @@ func coverageReport(sum *coverage.Summary) *core.CoverageReport {
 	return out
 }
 
+// incrementalHumanSuffix names a delta round whose percent credits carried
+// prior lines, mirroring the record surface's body-line suffix.
+func incrementalHumanSuffix(sum *coverage.Summary) string {
+	if sum.Incremental && sum.PriorLines > 0 {
+		return " (incremental)"
+	}
+	return ""
+}
+
 // coverageHuman renders the two blocks: the summary line, then the gaps. A
 // chunked bundle names its chunk count and stops — chunks[] is its attestation.
 func coverageHuman(sum *coverage.Summary, noReview bool) string {
@@ -116,6 +125,7 @@ func coverageHuman(sum *coverage.Summary, noReview bool) string {
 			exempt = fmt.Sprintf(msgCoverageExempt, sum.Exempt)
 		}
 		fmt.Fprintf(&b, msgCoverageHuman, *sum.Percent, sum.Attested, sum.Total, sum.Files, exempt)
+		b.WriteString(incrementalHumanSuffix(sum))
 	}
 	if len(sum.Unattested) == 0 {
 		b.WriteString("\n" + msgCoverageNone)

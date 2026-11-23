@@ -1539,12 +1539,19 @@ more than was written.
 An incremental (`fetch --base-sha`/`--since`) bundle grades the full hunk
 snapshot against the agent's current `coverage[]` unioned with the prior
 round's recorded attestation in `prior-coverage.json` (the same
-`file`/`ranges` shape, saved by every successful non-chunked `record`).
-Ranges the recorded prior already covered stay credited, so the agent
-attests only the delta; ranges the prior never covered remain gaps unless
-the agent attests them now. Credit comes only from the recorded file —
-an absent or unreadable one credits nothing, and grading fails closed
-against the full hunks. Full-diff rounds ignore the file entirely.
+`file`/`ranges` shape). `record` persists the attested union as the next
+round's `prior-coverage.json` on every successful non-chunked `record`
+run with at least one attested line; a chunked run or a run with no line
+attested leaves any earlier `prior-coverage.json` untouched. Ranges the
+recorded prior already covered stay credited, so the agent attests only
+the delta; ranges the prior never covered remain gaps unless the agent
+attests them now. Lines the delta re-modifies are the exception — their
+prior credit is invalidated, so they must be re-attested even within the
+delta. Credit comes only from the recorded file — an absent or unreadable
+one credits nothing, and grading fails closed against the full hunks.
+Fetching without `--base-sha`/`--since` clears any leftover
+`incremental.diff` and its note, so the new full-diff round cannot credit
+stale prior lines. Full-diff rounds ignore the file entirely.
 
 ## Bounded foreground waits
 

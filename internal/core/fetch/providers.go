@@ -78,9 +78,14 @@ func providerTail(
 }
 
 // providerIncrementalNote writes the unsupported-host note when a provider
-// that did not own the compare still received --base-sha/--since.
+// that did not own the compare still received --base-sha/--since. A
+// non-delta fetch clears any leftover delta and note instead.
 func providerIncrementalNote(r *session, dir string, f *Flags, incremental bool) *core.RefusalError {
-	if !f.HasBase || f.BaseSHA == "" || incremental {
+	if !f.HasBase || f.BaseSHA == "" {
+		clearStaleIncremental(dir)
+		return nil
+	}
+	if incremental {
 		return nil
 	}
 	return writeIncrementalNote(r, dir, "--base-sha/--since is not supported for provider "+f.Provider)
@@ -260,6 +265,7 @@ func gitlabDiffFail(dir, stderr string) error {
 // continues with the unavailability note GitHub writes.
 func gitlabIncremental(ctx context.Context, r *session, dir, pid string, f *Flags) (string, error) {
 	if !f.HasBase || f.BaseSHA == "" {
+		clearStaleIncremental(dir)
 		return nullStr, nil
 	}
 	headSHA := readcommon.PrField(dir, keyHeadSHA)

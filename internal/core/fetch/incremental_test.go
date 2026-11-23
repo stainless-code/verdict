@@ -175,3 +175,71 @@ func TestUnsupportedIncrementalNote(t *testing.T) {
 		t.Errorf("the note left a stale incremental.diff (err=%v)", statErr)
 	}
 }
+
+// seedStaleDelta plants a stale delta and note for the non-delta clears.
+func seedStaleDelta(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "incremental.diff"), []byte("stale delta\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "incremental.diff.note"), []byte("stale note\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// assertStaleCleared fails if a non-delta fetch left either stale file.
+func assertStaleCleared(t *testing.T, dir string) {
+	t.Helper()
+	if _, err := os.Stat(filepath.Join(dir, "incremental.diff")); !os.IsNotExist(err) {
+		t.Errorf("non-delta fetch left incremental.diff (err=%v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "incremental.diff.note")); !os.IsNotExist(err) {
+		t.Errorf("non-delta fetch left incremental.diff.note (err=%v)", err)
+	}
+}
+
+// TestGitHubNonDeltaClearsStaleIncremental proves a GitHub compare without
+// --base-sha removes a stale delta and note from the bundle directory.
+func TestGitHubNonDeltaClearsStaleIncremental(t *testing.T) {
+	t.Parallel()
+	dir := seedStaleDelta(t)
+	s, _ := newTestSession(&scriptCommander{t: t})
+	got, err := githubIncremental(context.Background(), s, dir, "acme/app", &Flags{HasBase: false})
+	if err != nil {
+		t.Fatalf("githubIncremental: %v", err)
+	}
+	if got != nullStr {
+		t.Errorf("incremental base = %q, want null", got)
+	}
+	assertStaleCleared(t, dir)
+}
+
+// TestGitLabNonDeltaClearsStaleIncremental proves a GitLab compare without
+// --base-sha removes a stale delta and note from the bundle directory.
+func TestGitLabNonDeltaClearsStaleIncremental(t *testing.T) {
+	t.Parallel()
+	dir := seedStaleDelta(t)
+	s, _ := newTestSession(&scriptCommander{t: t})
+	got, err := gitlabIncremental(context.Background(), s, dir, "11", &Flags{HasBase: false, BaseSHA: ""})
+	if err != nil {
+		t.Fatalf("gitlabIncremental: %v", err)
+	}
+	if got != nullStr {
+		t.Errorf("incremental base = %q, want null", got)
+	}
+	assertStaleCleared(t, dir)
+}
+
+// TestProviderNoteNonDeltaClearsStaleIncremental proves the shared
+// unsupported-host path without --base-sha removes a stale delta and note.
+func TestProviderNoteNonDeltaClearsStaleIncremental(t *testing.T) {
+	t.Parallel()
+	dir := seedStaleDelta(t)
+	s, _ := newTestSession(&scriptCommander{t: t})
+	if ref := providerIncrementalNote(s, dir, &Flags{HasBase: false, Provider: "forgejo"}, false); ref != nil {
+		t.Fatalf("providerIncrementalNote: %v", ref)
+	}
+	assertStaleCleared(t, dir)
+}

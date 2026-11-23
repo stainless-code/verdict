@@ -1,11 +1,13 @@
 package recordcore_test
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"strings"
 	"testing"
 
+	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/testkit"
 )
@@ -47,6 +49,43 @@ func incrementalBundle(t *testing.T, review, prior string) {
 	testkit.WriteFile(t, dir+"/full.diff", incrementalFullDiff)
 	testkit.WriteFile(t, dir+"/hunks.tsv", hunks.Format(hunks.Parse(incrementalFullDiff)))
 	testkit.WriteFile(t, dir+"/incremental.diff", incrementalDeltaDiff)
+	testkit.WriteFile(t, dir+"/review.json", review)
+	if prior != "" {
+		testkit.WriteFile(t, dir+"/prior-coverage.json", prior)
+	}
+	seedControls(t, dir)
+}
+
+// overlapFullDiff is the single-file overlap snapshot: overlap.txt 1-10,
+// ten changed lines under the full snapshot.
+const overlapFullDiff = "diff --git a/overlap.txt b/overlap.txt\nindex 1111111..2222222 100644\n" +
+	"--- a/overlap.txt\n+++ b/overlap.txt\n@@ -1,10 +1,10 @@\n top\n-old line\n+new line\n bottom\n"
+
+// overlapDeltaDiff re-modifies only overlap.txt 5-7. Its OLD side is 3-7,
+// so crediting 7 carried lines proves only the NEW side invalidates.
+const overlapDeltaDiff = "diff --git a/overlap.txt b/overlap.txt\n" +
+	"@@ -3,5 +5,3 @@\n top\n-old line\n+new line\n bottom\n"
+
+// overlapReview is one finding on the re-modified range plus the single
+// receipt for the 1-10 hunk; extra carries coverage[].
+func overlapReview(extra string) string {
+	return `{"schema_version":"1","body":"> [!IMPORTANT]\n> Overlap gate fixture body with enough length.","approved":false,` +
+		extra + `"receipts":[{"hunk":"overlap.txt\tNEW\t1\t10","quote":"new line"}],` +
+		`"comments":[{"path":"overlap.txt","line":6,"side":"RIGHT",` +
+		`"body":"Cited finding here with enough substance.","rigor":"walked","severity":"important"}]}`
+}
+
+// overlapBundle writes the single-file overlap fixture with the given delta
+// marker and recorded prior (possibly empty).
+func overlapBundle(t *testing.T, review, delta, prior string) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	dir := ".verdict/state/" + coverageSlug
+	testkit.WriteFile(t, dir+"/source.json", `{"head_sha":"`+coverageHead+
+		`","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`)
+	testkit.WriteFile(t, dir+"/full.diff", overlapFullDiff)
+	testkit.WriteFile(t, dir+"/hunks.tsv", hunks.Format(hunks.Parse(overlapFullDiff)))
+	testkit.WriteFile(t, dir+"/incremental.diff", delta)
 	testkit.WriteFile(t, dir+"/review.json", review)
 	if prior != "" {
 		testkit.WriteFile(t, dir+"/prior-coverage.json", prior)
@@ -163,5 +202,86 @@ func TestRecordIncrementalRefusalKeepsPrior(t *testing.T) {
 	}
 	if _, err := os.Stat(".verdict/state/" + coverageSlug + "/record.json"); !os.IsNotExist(err) {
 		t.Error("a refused run wrote record.json")
+	}
+}
+
+// TestMergeIncrementalFullOverlapRefuses proves the C1 fix at the merge
+// gate: the prior attested exactly the re-modified 5-7, the delta
+// re-modifies 5-7, and an empty attestation cannot claim that stale credit —
+// --require-coverage refuses coverage-incomplete naming 0% over the whole
+// file. Without the subtraction this would read 30% from the prior alone.
+func TestMergeIncrementalFullOverlapRefuses(t *testing.T) {
+	overlapBundle(t, overlapReview(`"coverage":[],`), overlapDeltaDiff, `[{"file":"overlap.txt","ranges":"5-7"}]`)
+	_, warns, err := mergeCoverage(t, true)
+	ref := coverageRefusal(t, err)
+	if !strings.Contains(ref.Message, "0%") {
+		t.Errorf("message = %q, want 0%% (nothing validly credited)", ref.Message)
+	}
+	if !strings.Contains(ref.Message, "overlap.txt:1-10") {
+		t.Errorf("message = %q, want the whole-file gap", ref.Message)
+	}
+	if got := coverageWarnings(warns); len(got) != 0 {
+		t.Errorf("coverage warnings = %v, want none (nothing carried over)", got)
+	}
+}
+
+// TestMergeIncrementalPartialOverlapCarriesUnchanged proves the C1 fix's
+// precision at the merge gate: prior 1-10 with the delta re-modifying only
+// 5-7 carries 1-4,8-10 (7 lines) while 5-7 stays the gap under an empty
+// attestation, and re-attesting 5-7 then passes --require-coverage naming
+// the 7 carried lines.
+func TestMergeIncrementalPartialOverlapCarriesUnchanged(t *testing.T) {
+	overlapBundle(t, overlapReview(`"coverage":[],`), overlapDeltaDiff, `[{"file":"overlap.txt","ranges":"1-10"}]`)
+	_, warns, err := mergeCoverage(t, true)
+	ref := coverageRefusal(t, err)
+	if !strings.Contains(ref.Message, "70%") {
+		t.Errorf("message = %q, want 70%% (7 of 4,8-10 credited)", ref.Message)
+	}
+	if !strings.Contains(ref.Message, "overlap.txt:5-7") {
+		t.Errorf("message = %q, want the gap to be exactly 5-7", ref.Message)
+	}
+	if got := coverageWarnings(warns); len(got) != 1 || !strings.Contains(got[0], "carried 7 line(s)") {
+		t.Errorf("coverage warnings = %v, want one naming the 7 carried prior lines", got)
+	}
+	overlapBundle(t, overlapReview(`"coverage":[{"file":"overlap.txt","ranges":"5-7"}],`), overlapDeltaDiff, `[{"file":"overlap.txt","ranges":"1-10"}]`)
+	_, warns, err = mergeCoverage(t, true)
+	if err != nil {
+		t.Fatalf("merge refused a re-attested delta with carried prior: %v", err)
+	}
+	if got := coverageWarnings(warns); len(got) != 1 || !strings.Contains(got[0], "carried 7 line(s)") {
+		t.Errorf("coverage warnings = %v, want one naming the 7 carried prior lines", got)
+	}
+}
+
+// TestRecordPersistPriorFailureWarns proves the A5 contract: record.json is
+// already durable when the prior write fails, so the run succeeds with a
+// warning naming the failure instead of refusing as record-failed. The
+// prior path is a directory so the atomic write cannot land; the full
+// attestation needs no prior credit, so the coverage gate itself passes.
+func TestRecordPersistPriorFailureWarns(t *testing.T) {
+	incrementalBundle(t,
+		incrementalReview(`"coverage":[{"file":"notes.txt","ranges":"all"},{"file":"delta.txt","ranges":"all"}],`), "")
+	if err := os.Mkdir(".verdict/state/"+coverageSlug+"/prior-coverage.json", 0o750); err != nil {
+		t.Fatalf("mkdir prior path: %v", err)
+	}
+	c := &testkit.Collector{}
+	req := recordRequest(t, c, coverageSlug)
+	req.Flags.RequireCoverage = true
+	resp, ref := recordcore.Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("Run refusal: %v, want success with a prior-write warning", ref)
+	}
+	want := ".verdict/state/" + coverageSlug + "/prior-coverage.json (record already written)"
+	found := false
+	for _, w := range resp.Warnings {
+		if strings.Contains(w, want) {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("warnings = %v, want one naming the failed prior write", resp.Warnings)
+	}
+	if _, err := os.Stat(".verdict/state/" + coverageSlug + "/record.json"); err != nil {
+		t.Errorf("record.json missing after a committed record: %v", err)
 	}
 }

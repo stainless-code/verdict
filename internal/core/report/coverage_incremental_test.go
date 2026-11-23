@@ -96,10 +96,12 @@ func TestRunNextCoverageIncrementalFailsClosedWithoutPrior(t *testing.T) {
 	}
 }
 
-// gatedIncremental runs the merge gate over an incremental bundle whose
-// stored receipt is the fixture's coverage object. The gate reads the
-// store record computed, so these cases grade the stored receipt the way
-// record persisted it — including any prior credit it carries.
+// gatedIncremental runs the merge gate over a stored receipt. The gate
+// reads the store record's coverage object directly, so these cases grade
+// the stored receipt the way record persisted it — including any prior
+// credit it carries. No incremental.diff or prior-coverage.json is written:
+// the gate never re-reads them, and writing them would pretend the verdict
+// drives off files the gate ignores.
 func gatedIncremental(t *testing.T, coverage string) (bool, string) {
 	t.Helper()
 	req := fixture(t, "[]")
@@ -109,8 +111,6 @@ func gatedIncremental(t *testing.T, coverage string) (bool, string) {
 			`"receipts":{"total":0,"covered":0,"exempt":0,"complete":true},`+
 			`"spec":{"total":0,"covered":0,"min":80,"met":true},"insufficient":false},`+
 			`"coverage":`+coverage+`}`)
-	writeFile(t, ".verdict/state/5101/incremental.diff", incrementalDeltaDiff)
-	writeFile(t, ".verdict/state/5101/prior-coverage.json", incrementalPrior)
 	resp, ref := reportcore.Run(context.Background(), &reportcore.Request{
 		ReadRequest: req,
 		Flags:       reportcore.Flags{Check: "informational", Coverage: "require", Live: "skip"},
@@ -125,6 +125,33 @@ func gatedIncremental(t *testing.T, coverage string) (bool, string) {
 		}
 	}
 	return resp.GateFailed, line
+}
+
+// TestRunNextCoverageIncrementalMarkerFlipsVerdict proves the incremental
+// read grades live: the same delta-only attestation reports 100% while the
+// delta marker and recorded prior are present, and drops to the full-diff
+// 50% the moment the marker is absent — deleting incremental.diff flips
+// the verdict instead of leaving it pinned.
+func TestRunNextCoverageIncrementalMarkerFlipsVerdict(t *testing.T) {
+	review := coverageReview("delta.txt", `"coverage":[{"file":"delta.txt","ranges":"all"}],`)
+	withDelta := incrementalNextFiles(review, incrementalPrior)
+	resp, ref := reportcore.RunNextCoverage(coverageNextRequest(t, withDelta))
+	if ref != nil {
+		t.Fatalf("RunNextCoverage refusal: %v", ref)
+	}
+	if got := percentOf(resp.Coverage); got != "100" {
+		t.Errorf("with delta percent = %s, want 100 (prior credited)", got)
+	}
+	withoutDelta := incrementalNextFiles(review, incrementalPrior)
+	delete(withoutDelta, "incremental.diff")
+	req := coverageNextRequest(t, withoutDelta)
+	resp, ref = reportcore.RunNextCoverage(req)
+	if ref != nil {
+		t.Fatalf("RunNextCoverage refusal: %v", ref)
+	}
+	if got := percentOf(resp.Coverage); got != "50" {
+		t.Errorf("without delta percent = %s, want 50 (full grading, prior ignored)", got)
+	}
 }
 
 // TestRunGateCoverageIncrementalPassesWithPrior proves the gate honors the

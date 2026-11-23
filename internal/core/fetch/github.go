@@ -245,11 +245,21 @@ func githubInline(ctx context.Context, r *session, dir, repo, pr string) (bool, 
 	return true, writeSelected(ctx, r, dir, repo, pr, body)
 }
 
+// clearStaleIncremental drops a leftover delta and its note on a non-delta
+// fetch: a subsequent full-diff round must grade against the full hunks
+// alone, never credit stale prior line numbers against shifted hunks.
+// Removals that fail with not-exist are the expected case.
+func clearStaleIncremental(dir string) {
+	_ = os.Remove(dir + "/incremental.diff")
+	_ = os.Remove(dir + "/incremental.diff.note")
+}
+
 // githubIncremental owns the --base-sha compare: the incremental diff
 // and its note land beside the bundle, or the run continues without one.
 func githubIncremental(ctx context.Context, r *session, dir, repo string, f *Flags) (string, error) {
 	incBase := nullStr
 	if !f.HasBase || f.BaseSHA == "" {
+		clearStaleIncremental(dir)
 		return incBase, nil
 	}
 	headSHA := readcommon.PrField(dir, keyHeadSHA)
@@ -358,6 +368,9 @@ func fetchPrepare(ctx2 *fetchRunCtx, req *Request, f *Flags) (*budgetState, stri
 		return nil, "", ref
 	}
 	ctx2.dir = dir
+	if !f.HasBase || f.BaseSHA == "" {
+		clearStaleIncremental(dir)
+	}
 	return &budget, dir, nil
 }
 

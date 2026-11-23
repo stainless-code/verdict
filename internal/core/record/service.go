@@ -469,10 +469,11 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 			Code: codeRecordFailed, Message: fmt.Sprintf("could not write %s/record.json: %v", dir, err),
 		})
 	}
+	// The receipt above is already durable: a prior-coverage.json write
+	// failure must not fail a committed record, so it warns instead of
+	// refusing. The next round then fails closed (no recorded prior).
 	if err := coverage.PersistPrior(dir, res.Coverage); err != nil {
-		return nil, st.withWarnings(&core.RefusalError{
-			Code: codeRecordFailed, Message: fmt.Sprintf("could not write %s/prior-coverage.json: %v", dir, err),
-		})
+		st.addWarning(fmt.Sprintf("could not write %s/prior-coverage.json (record already written): %v", dir, err))
 	}
 	if st.req.Runtime != nil {
 		st.req.Human(strings.TrimSuffix(fmt.Sprintf(msgRecorded, dir, nOpen, dir), "\n"))

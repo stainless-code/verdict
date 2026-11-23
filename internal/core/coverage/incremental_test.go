@@ -1,6 +1,7 @@
 package coverage
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -102,22 +103,24 @@ func TestEvaluateIncrementalRefusesUnattestedDelta(t *testing.T) {
 // recorded prior measures 50% here, because nothing was ever recorded.
 func TestEvaluateIncrementalFailsClosedWithoutPrior(t *testing.T) {
 	for _, tc := range []struct {
-		name  string
-		prior string
+		name   string
+		prior  string
+		needle string
 	}{
-		{name: "absent", prior: ""},
-		{name: "empty-array", prior: "[]"},
-		{name: "unreadable", prior: "{broken"},
+		{name: "absent", prior: "", needle: "coverage: incremental bundle has no recorded prior coverage — grading against full hunks"},
+		{name: "empty-array", prior: "[]", needle: "coverage: incremental bundle has no recorded prior coverage — grading against full hunks"},
+		{name: "unreadable", prior: "{broken", needle: "coverage: recorded prior coverage unreadable — no prior ranges credited"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			assertFailsClosed(t, tc.prior)
+			assertFailsClosed(t, tc.prior, tc.needle)
 		})
 	}
 }
 
 // assertFailsClosed grades one delta-only attestation that must earn no
-// credit: 3 of 6 lines at 50% plus the no-prior or unreadable warning.
-func assertFailsClosed(t *testing.T, prior string) {
+// credit: 3 of 6 lines at 50% plus the expected warning, asserted as a
+// full literal so mutating the warning text fails the test.
+func assertFailsClosed(t *testing.T, prior, needle string) {
 	t.Helper()
 	dir := writeIncrementalBundle(t, `{"coverage":[{"file":"src/delta.ts","ranges":"10-12"}]}`, prior)
 	got, warns, ref := Evaluate(dir, mustReview(t, `{"coverage":[{"file":"src/delta.ts","ranges":"10-12"}]}`), notGenerated)
@@ -130,19 +133,7 @@ func assertFailsClosed(t *testing.T, prior string) {
 	if pct(&got) != "50" {
 		t.Fatalf("percent = %v, want 50", pct(&got))
 	}
-	if len(warns) == 0 {
-		t.Fatalf("warnings = %v, want the no-prior or unreadable warning", warns)
-	}
-	assertWarnContains(t, warns, priorWarnNeedle(warns[0]))
-}
-
-// priorWarnNeedle picks the expected needle for one warning: an undecodable
-// prior names itself, every other unrecorded shape names the missing record.
-func priorWarnNeedle(w string) string {
-	if strings.Contains(w, "unreadable") {
-		return "unreadable"
-	}
-	return "no recorded prior coverage"
+	assertWarnContains(t, warns, needle)
 }
 
 // TestEvaluateFullIgnoresPrior proves full-diff rounds are unchanged: with
@@ -206,5 +197,173 @@ func TestPersistPriorRoundTrips(t *testing.T) {
 	}
 	if pct(&next) != "100" {
 		t.Fatalf("next percent = %v, want 100 from the round-tripped prior", pct(&next))
+	}
+}
+
+// writeOverlapBundle lays out a single-file snapshot with the given hunk
+// rows, the delta marker, and the recorded prior (possibly empty) beside
+// them, for the prior∩delta overlap cases.
+func writeOverlapBundle(t *testing.T, rows []hunks.Hunk, delta, review, prior string) string {
+	t.Helper()
+	dir := writeBundle(t, rows)
+	writeFile(t, dir+"/review.json", review)
+	writeFile(t, dir+"/incremental.diff", delta)
+	if prior != "" {
+		writeFile(t, dir+"/prior-coverage.json", prior)
+	}
+	return dir
+}
+
+// assertCounts grades one overlap summary's four numbers.
+func assertCounts(t *testing.T, got *Summary, attested, total int, percent string, priorLines int) {
+	t.Helper()
+	if got.Attested != attested || got.Total != total {
+		t.Fatalf("attested/total = %d/%d, want %d/%d", got.Attested, got.Total, attested, total)
+	}
+	if pct(got) != percent {
+		t.Fatalf("percent = %v, want %v", pct(got), percent)
+	}
+	if got.PriorLines != priorLines {
+		t.Fatalf("prior credited = %d lines, want %d", got.PriorLines, priorLines)
+	}
+}
+
+// assertGap grades one overlap summary's gap for a single file.
+func assertGap(t *testing.T, got *Summary, file, want string) {
+	t.Helper()
+	if gaps := gapMap(got); gaps[file] != want {
+		t.Fatalf("gap for %s = %q, want %q", file, gaps[file], want)
+	}
+}
+
+// assertNoCarriedWarn fails if any warning names carried prior credit.
+func assertNoCarriedWarn(t *testing.T, warns []string) {
+	t.Helper()
+	for _, w := range warns {
+		if strings.Contains(w, "carried ") {
+			t.Fatalf("warnings = %v, want no carried-credit line when nothing carried", warns)
+		}
+	}
+}
+
+// TestEvaluateIncrementalFullOverlapInvalidatesPrior proves the C1 fix: when
+// the delta re-modifies exactly the lines the prior round attested, none of
+// that credit survives. The prior covers src/overlap.ts 10-12, the delta
+// re-modifies 10-12, and an empty attestation leaves the whole file as a gap
+// with zero prior lines carried.
+func TestEvaluateIncrementalFullOverlapInvalidatesPrior(t *testing.T) {
+	rows := []hunks.Hunk{{File: "src/overlap.ts", Side: "NEW", Start: 10, End: 12}}
+	delta := "diff --git a/src/overlap.ts b/src/overlap.ts\n" +
+		"@@ -10,3 +10,3 @@\n top\n-old line\n+new line\n bottom\n"
+	prior := `[{"file":"src/overlap.ts","ranges":"10-12"}]`
+	dir := writeOverlapBundle(t, rows, delta, `{"coverage":[]}`, prior)
+	got, warns, ref := Evaluate(dir, mustReview(t, `{"coverage":[]}`), notGenerated)
+	if ref != nil {
+		t.Fatalf("Evaluate refused: %v", ref)
+	}
+	assertCounts(t, &got, 0, 3, "0", 0)
+	assertGap(t, &got, "src/overlap.ts", "10-12")
+	assertNoCarriedWarn(t, warns)
+}
+
+// TestEvaluateIncrementalPartialOverlapCarriesUnchanged proves the C1 fix's
+// precision: prior 1-10 with the delta re-modifying only 5-7 carries 1-4
+// and 8-10 (7 lines) while 5-7 stays a gap under an empty attestation, and
+// re-attesting 5-7 reaches 100%. The delta's OLD side is 3-7 — subtracting
+// OLD as well would drop to 5 carried lines, so 7 proves only the NEW side
+// invalidates.
+func TestEvaluateIncrementalPartialOverlapCarriesUnchanged(t *testing.T) {
+	rows := []hunks.Hunk{{File: "src/overlap.ts", Side: "NEW", Start: 1, End: 10}}
+	delta := "diff --git a/src/overlap.ts b/src/overlap.ts\n" +
+		"@@ -3,5 +5,3 @@\n top\n-old line\n+new line\n bottom\n"
+	prior := `[{"file":"src/overlap.ts","ranges":"1-10"}]`
+	dir := writeOverlapBundle(t, rows, delta, `{"coverage":[]}`, prior)
+	got, _, ref := Evaluate(dir, mustReview(t, `{"coverage":[]}`), notGenerated)
+	if ref != nil {
+		t.Fatalf("Evaluate refused: %v", ref)
+	}
+	assertCounts(t, &got, 7, 10, "70", 7)
+	assertGap(t, &got, "src/overlap.ts", "5-7")
+	re := writeOverlapBundle(t, rows, delta, `{"coverage":[{"file":"src/overlap.ts","ranges":"5-7"}]}`, prior)
+	full, _, ref := Evaluate(re, mustReview(t, `{"coverage":[{"file":"src/overlap.ts","ranges":"5-7"}]}`), notGenerated)
+	if ref != nil {
+		t.Fatalf("Evaluate refused: %v", ref)
+	}
+	assertCounts(t, &full, 10, 10, "100", 7)
+}
+
+// assertWrongPriorCase grades one delta-only attestation over a corrupt
+// prior: no credit, 3 of 6 at 50%, and the expected literal warning.
+func assertWrongPriorCase(t *testing.T, prior, needle string) {
+	t.Helper()
+	dir := writeIncrementalBundle(t, `{"coverage":[{"file":"src/delta.ts","ranges":"10-12"}]}`, prior)
+	got, warns, ref := Evaluate(dir, mustReview(t, `{"coverage":[{"file":"src/delta.ts","ranges":"10-12"}]}`), notGenerated)
+	if ref != nil {
+		t.Fatalf("Evaluate refused: %v", ref)
+	}
+	if got.Attested != 3 || got.Total != 6 || pct(&got) != "50" {
+		t.Fatalf("attested/total/percent = %d/%d/%v, want 3/6/50 (corrupt prior credits nothing)",
+			got.Attested, got.Total, pct(&got))
+	}
+	if got.PriorLines != 0 {
+		t.Fatalf("prior credited = %d lines, want 0", got.PriorLines)
+	}
+	assertWarnContains(t, warns, needle)
+}
+
+// TestEvaluateIncrementalWrongPriorShapesFailClosed proves a corrupt or
+// off-snapshot prior credits nothing: each malformed file still leaves the
+// delta-only attestation at 50% with its own literal warning. The missing,
+// empty, and "all" ranges cases also prove the old whole-file expansion is
+// gone — a machine-written file never widens that way.
+func TestEvaluateIncrementalWrongPriorShapesFailClosed(t *testing.T) {
+	for _, tc := range []struct {
+		name   string
+		prior  string
+		needle string
+	}{
+		{name: "object", prior: "{}", needle: "coverage: recorded prior coverage unreadable — no prior ranges credited"},
+		{name: "null", prior: "null", needle: "coverage: recorded prior coverage unreadable — no prior ranges credited"},
+		{name: "string", prior: `"str"`, needle: "coverage: recorded prior coverage unreadable — no prior ranges credited"},
+		{name: "missing-ranges", prior: `[{"file":"src/prior.ts"}]`, needle: "coverage: prior entry 0 has no ranges — ignored"},
+		{name: "empty-ranges", prior: `[{"file":"src/prior.ts","ranges":""}]`, needle: "coverage: prior entry 0 has no ranges — ignored"},
+		{name: "all-ranges", prior: `[{"file":"src/prior.ts","ranges":"all"}]`, needle: "coverage: prior entry 0 has no ranges — ignored"},
+		{name: "unknown-file", prior: `[{"file":"src/gone.ts","ranges":"1-3"}]`, needle: `coverage: prior entry 0 names "src/gone.ts" with no hunks — ignored`},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			assertWrongPriorCase(t, tc.prior, tc.needle)
+		})
+	}
+}
+
+// TestPersistPriorChunkedLeavesPriorUntouched proves a chunked round never
+// rewrites the recorded prior: chunks[] is its attestation, and chain state
+// stays untouched even when the chunked summary carries attested ranges.
+// The chunked guard and the empty guard both leave the literal bytes alone.
+func TestPersistPriorChunkedLeavesPriorUntouched(t *testing.T) {
+	dir := writeBundle(t, incrementalRows())
+	const literal = `[{"file":"src/prior.ts","ranges":"1-3"}]`
+	writeFile(t, dir+"/prior-coverage.json", literal+"\n")
+	chunked := &Summary{Chunked: true, AttestedRanges: []Gap{{File: "src/prior.ts", Ranges: "1-3"}}}
+	if err := PersistPrior(dir, chunked); err != nil {
+		t.Fatalf("PersistPrior chunked: %v", err)
+	}
+	raw, err := os.ReadFile(dir + "/prior-coverage.json")
+	if err != nil {
+		t.Fatalf("read prior after chunked persist: %v", err)
+	}
+	if string(raw) != literal+"\n" {
+		t.Errorf("prior after chunked persist = %q, want the chunked round to leave it untouched", raw)
+	}
+	empty := &Summary{}
+	if err := PersistPrior(dir, empty); err != nil {
+		t.Fatalf("PersistPrior empty: %v", err)
+	}
+	raw, err = os.ReadFile(dir + "/prior-coverage.json")
+	if err != nil {
+		t.Fatalf("read prior after empty persist: %v", err)
+	}
+	if string(raw) != literal+"\n" {
+		t.Errorf("prior after empty persist = %q, want an empty attestation to leave it untouched", raw)
 	}
 }
