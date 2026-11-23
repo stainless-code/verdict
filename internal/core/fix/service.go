@@ -305,6 +305,19 @@ func (st *state) runFix(ctx context.Context) *core.RefusalError {
 	now, fixOpen, fixOpenInline := st.printReadiness(dir, entries)
 	ledgerPath := dir + suffixFixJSON
 	store := st.loadLedger(ledgerPath)
+	return st.runDispatch(ctx, dir, ledgerPath, store, entries,
+		fixOpen, fixOpenInline, now)
+}
+
+// runDispatch routes a loaded bundle to promotion, batch, or single pass.
+func (st *state) runDispatch(
+	ctx context.Context,
+	dir, ledgerPath string,
+	store *ledgerDoc,
+	entries []any,
+	fixOpen, fixOpenInline int,
+	now string,
+) *core.RefusalError {
 	if st.req.Test != "" {
 		return st.runPromotion(ctx, dir, ledgerPath, store, entries,
 			fixOpen, fixOpenInline)

@@ -345,9 +345,8 @@ func setupMissing(t *testing.T, dir, _ string) {
 }
 
 // seedReproBundle captures a real artifact for sig in the local-<slug> bundle
-// and stores a reproduced finding whose receipt names it. It returns the
-// retained artifact bytes and the bundle directory.
-func seedReproBundle(t *testing.T, dir, slug, sig string, artifact []byte) ([]byte, string) {
+// and stores a reproduced finding whose receipt names it.
+func seedReproBundle(t *testing.T, dir, slug, sig string, artifact []byte) {
 	t.Helper()
 	bdir := filepath.Join(dir, ".verdict", "state", "local-"+slug)
 	if err := os.MkdirAll(bdir, 0o755); err != nil {
@@ -367,7 +366,6 @@ func seedReproBundle(t *testing.T, dir, slug, sig string, artifact []byte) ([]by
 	if err := os.WriteFile(filepath.Join(bdir, "findings.json"), []byte("["+entry+"]"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	return artifact, bdir
 }
 
 // setupTestPromote is the promotion fixture: one reproduced inline finding
@@ -392,9 +390,15 @@ func setupTestCommit(t *testing.T, dir, _ string) {
 func setupTestConflict(t *testing.T, dir, _ string) {
 	t.Helper()
 	mkRepo(t, dir)
-	_, bdir := seedReproBundle(t, dir, "test", sigBatch, []byte("assert False\n"))
-	_ = bdir
+	seedReproBundle(t, dir, "test", sigBatch, []byte("assert False\n"))
 	// The artifact hash names the destination; pre-place different bytes there.
+	preplaceConflict(t, dir)
+}
+
+// preplaceConflict copies each retained artifact name to the promoted
+// directory with different bytes, skipping command receipts.
+func preplaceConflict(t *testing.T, dir string) {
+	t.Helper()
 	seeded := filepath.Join(dir, ".verdict", "state", "local-test", "tests")
 	entries, err := os.ReadDir(seeded)
 	if err != nil {
@@ -404,13 +408,20 @@ func setupTestConflict(t *testing.T, dir, _ string) {
 		if strings.HasSuffix(e.Name(), ".command.json") {
 			continue
 		}
-		destDir := filepath.Join(dir, ".verdict", "tests")
-		if err := os.MkdirAll(destDir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(filepath.Join(destDir, e.Name()), []byte("different bytes\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
+		preplaceEntry(t, dir, e.Name())
+	}
+}
+
+// preplaceEntry writes one artifact name with different bytes at the
+// promoted destination.
+func preplaceEntry(t *testing.T, dir, name string) {
+	t.Helper()
+	destDir := filepath.Join(dir, ".verdict", "tests")
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(destDir, name), []byte("different bytes\n"), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }
 

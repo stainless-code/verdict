@@ -191,7 +191,7 @@ func (st *state) writePromoted(destAbs, destRel string, artifact []byte) *core.R
 
 // promotedCommand rewrites the retained receipt command from the bundle
 // artifact path to the promoted worktree path.
-func promotedCommand(receiptCmd, receiptPath, destRel string) string {
+func promotedCommand(receiptCmd, receiptPath string, _ string) string {
 	base := filepath.Base(receiptPath)
 	bundleRef := "tests/" + base
 	promotedRef := promotedDir + "/" + base
