@@ -228,7 +228,7 @@ func decodeFix(req *fixcore.Request, a *args) {
 	a.str(argMinSeverity, &req.MinSeverity)
 	a.str("verifyCmd", &req.VerifyCmd)
 	a.strings(argPaths, &req.Paths)
-	a.str("test", &req.Test)
+	req.TestSet = a.strPresent("test", &req.Test)
 	a.boolean("commit", &req.Commit)
 }
 

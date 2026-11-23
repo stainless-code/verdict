@@ -46,6 +46,9 @@ var internalFieldNames = map[string]bool{
 	"JSONMode":    true,
 	"Interactive": true,
 	"Machine":     true,
+	// TestSet is the adapter's present-versus-empty witness for --test, never
+	// an argument: a caller sets test, and an empty value refuses.
+	"TestSet": true,
 }
 
 type schemaSource = reflect.Type

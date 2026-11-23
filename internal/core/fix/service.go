@@ -30,7 +30,10 @@ type Request struct { //nolint:govet // the transport contract keeps its field o
 	Paths       []string
 	Test        string
 	Commit      bool
-	Human       io.Writer
+	// TestSet records that --test was passed, so an empty value refuses
+	// instead of silently running an ordinary fix pass.
+	TestSet bool
+	Human   io.Writer
 }
 
 // Response carries the completed pass, batch, or completion summary.
@@ -235,8 +238,13 @@ func (r *Request) comboFault() string {
 	return ""
 }
 
-// modeFault refuses a pick that names two scopes at once.
+// modeFault refuses a pick that names two scopes at once, and an explicitly
+// empty --test, which would otherwise fall through to an ordinary fix pass.
 func (r *Request) modeFault() string {
+	if r.TestSet && r.Test == "" {
+		return "fix --test needs a sig (an empty value would run an ordinary pass): " +
+			"pass --test <sig>"
+	}
 	switch {
 	case r.All && r.Sig != "":
 		return "fix takes --sig or --all, not both (--all selects every open inline finding)"

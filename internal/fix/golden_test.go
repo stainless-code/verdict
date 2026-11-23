@@ -348,14 +348,21 @@ func setupMissing(t *testing.T, dir, _ string) {
 // and stores a reproduced finding whose receipt names it.
 func seedReproBundle(t *testing.T, dir, slug, sig string, artifact []byte) {
 	t.Helper()
-	bdir := filepath.Join(dir, ".verdict", "state", "local-"+slug)
+	seedReproBundleCmd(t, dir, slug, sig, artifact, "python3 {artifact}")
+}
+
+// seedReproBundleCmd is seedReproBundle with the capture command spelled by the
+// fixture, so the receipt-rewrite legs can vary the reference.
+func seedReproBundleCmd(t *testing.T, dir, slug, sig string, artifact []byte, command string) {
+	t.Helper()
+	bdir := localBundleDir(dir, slug)
 	if err := os.MkdirAll(bdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(bdir, "probe.py"), artifact, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	receipt, err := repro.Capture(bdir, sig, "probe.py", "python3 {artifact}", false)
+	receipt, err := repro.Capture(bdir, sig, "probe.py", command, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -384,6 +391,29 @@ func setupTestCommit(t *testing.T, dir, _ string) {
 	if err := os.WriteFile(filepath.Join(dir, "other.txt"), []byte("other1\ndirty\nother2\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// setupTestDotSlash spells the receipt reference with a leading ./ so the
+// promotion golden proves that spelling rewrites to the promoted path.
+func setupTestDotSlash(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	seedReproBundleCmd(t, dir, "test", sigBatch, []byte("assert False\n"), "sh ./{artifact}")
+}
+
+// localBundleDir is the bundle seedReproBundle captures into.
+func localBundleDir(dir, slug string) string {
+	return filepath.Join(dir, ".verdict", "state", "local-"+slug)
+}
+
+// setupTestAbsoluteCmd spells the receipt reference as an absolute path into
+// the bundle, which promotion leaves alone: only the relative spelling moves.
+func setupTestAbsoluteCmd(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	const slug = "test"
+	seedReproBundleCmd(t, dir, slug, sigBatch, []byte("assert False\n"),
+		"sh "+localBundleDir(dir, slug)+"/{artifact}")
 }
 
 // setupTestConflict pre-places different bytes at the promoted destination.
@@ -467,6 +497,12 @@ func testFixPromotion(t *testing.T) {
 		"fix", "acme/app", "local-test", "--test", sigBatch, "--all", "--json")
 	golden.Pin(t, harness, "test-commit-without-test", setupTestPromote, nil,
 		"fix", "acme/app", "local-test", "--commit", "--json")
+	golden.Pin(t, harness, "test-empty", setupTestPromote, nil,
+		"fix", "acme/app", "local-test", "--test", "", "--json")
+	golden.Pin(t, harness, "test-dot-slash", setupTestDotSlash, nil,
+		"fix", "acme/app", "local-test", "--test", sigBatch, "--json")
+	golden.Pin(t, harness, "test-absolute", setupTestAbsoluteCmd, nil,
+		"fix", "acme/app", "local-test", "--test", sigBatch)
 }
 
 func testFixPatch(t *testing.T) {

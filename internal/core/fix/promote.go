@@ -21,8 +21,10 @@ const (
 	codeTestConflict   = "test-conflict"
 
 	// promotedDir is the worktree-relative promotion directory: promoted
-	// regression tests live under .verdict/tests.
+	// regression tests live under .verdict/tests, inside the worktree state
+	// directory promotion refuses to reach through a symlink.
 	promotedDir     = ".verdict/tests"
+	worktreeState   = ".verdict"
 	keyRigor        = "rigor"
 	promotedDirPerm = 0o755
 	promotedFileMs  = 0o644
@@ -168,8 +170,16 @@ func (st *state) existingPromotedRefusal(info os.FileInfo, destAbs, destRel stri
 
 // writePromoted lands the artifact bytes at the worktree destination: an
 // identical existing file is a no-op success, different bytes refuse, and a
-// symlink or directory at the target refuses without following it.
+// symlink or directory at the target refuses without following it. The write
+// itself runs through an [os.Root] confined to the worktree, and a symlinked
+// .verdict or .verdict/tests refuses before anything is created, exactly as
+// the reproduction writer confines its own bundle writes.
 func (st *state) writePromoted(destAbs, destRel string, artifact []byte) *core.RefusalError {
+	root, ref := st.promotedRoot()
+	if ref != nil {
+		return ref
+	}
+	defer func() { _ = root.Close() }()
 	info, err := os.Lstat(destAbs)
 	if err == nil {
 		return st.existingPromotedRefusal(info, destAbs, destRel, artifact)
@@ -178,33 +188,112 @@ func (st *state) writePromoted(destAbs, destRel string, artifact []byte) *core.R
 		return st.refuse(codeFixFailed, fmt.Sprintf(
 			"fix --test: could not stat %s: %v", destRel, err))
 	}
-	if err := os.MkdirAll(filepath.Dir(destAbs), promotedDirPerm); err != nil {
+	if err := root.MkdirAll(promotedDir, promotedDirPerm); err != nil {
 		return st.refuse(codeFixFailed, fmt.Sprintf(
 			"fix --test: could not create %s: %v", promotedDir, err))
 	}
-	if err := atomic.WriteFileMode(destAbs, artifact, promotedFileMs); err != nil {
+	if err := atomic.WriteFileModeIn(root, destRel, artifact, promotedFileMs); err != nil {
 		return st.refuse(codeFixFailed, fmt.Sprintf(
 			"fix --test: could not write %s: %v", destRel, err))
 	}
 	return nil
 }
 
-// promotedCommand rewrites the retained receipt command from the bundle
-// artifact path to the promoted worktree path.
-func promotedCommand(receiptCmd, receiptPath string, _ string) string {
-	base := filepath.Base(receiptPath)
-	bundleRef := "tests/" + base
-	promotedRef := promotedDir + "/" + base
-	if strings.Contains(receiptCmd, bundleRef) {
-		return strings.ReplaceAll(receiptCmd, bundleRef, promotedRef)
+// promotedRoot opens the worktree as an [os.Root] and refuses a symlink on the
+// promotion path: .verdict or .verdict/tests pointing outside the worktree
+// would land the promoted test outside it.
+func (st *state) promotedRoot() (*os.Root, *core.RefusalError) {
+	root, err := os.OpenRoot(st.req.RepoRootPath())
+	if err != nil {
+		return nil, st.refuse(codeFixFailed, fmt.Sprintf(
+			"fix --test: could not open the worktree root: %v", err))
 	}
-	return receiptCmd
+	for _, rel := range []string{worktreeState, promotedDir} {
+		if ref := st.checkPromotedComponent(root, rel); ref != nil {
+			_ = root.Close()
+			return nil, ref
+		}
+	}
+	return root, nil
 }
 
-// commitPromoted stages only the promoted file and commits it as
-// `test: regression for <sig>`, leaving every unrelated dirty file
-// untouched and uncommitted. An already-committed identical file reports
-// committed without a new commit.
+// checkPromotedComponent refuses a symlink or non-directory at one promotion
+// path component; an absent component is the ordinary first promotion.
+func (st *state) checkPromotedComponent(root *os.Root, rel string) *core.RefusalError {
+	info, err := root.Lstat(rel)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return st.refuse(codeFixFailed, fmt.Sprintf(
+			"fix --test: could not inspect %s: %v", rel, err))
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return st.refuse(codeTestConflict, fmt.Sprintf(
+			"fix --test: %s is a symlink — refusing to write outside the worktree", rel))
+	}
+	if !info.IsDir() {
+		return st.refuse(codeTestConflict, fmt.Sprintf(
+			"fix --test: %s is not a directory — refusing to promote into it", rel))
+	}
+	return nil
+}
+
+// promotedCommand rewrites the retained receipt command from the bundle
+// artifact path to the promoted worktree path. Both the bare `tests/<base>` and
+// the `./tests/<base>` spelling rewrite; a reference inside an absolute path is
+// left alone because that spelling names the retained bundle copy, which stays
+// runnable from the bundle.
+func promotedCommand(receiptCmd, receiptPath, destRel string) string {
+	ref := "tests/" + filepath.Base(receiptPath)
+	return rewriteBundleRef(rewriteBundleRef(receiptCmd, "./"+ref, destRel), ref, destRel)
+}
+
+// rewriteBundleRef replaces every bundle-relative occurrence of from with to.
+// A match only counts at a path-token boundary, so the `tests/<base>` inside
+// `.verdict/tests/<base>` or an absolute bundle path is never rewritten twice.
+func rewriteBundleRef(cmd, from, to string) string {
+	var sb strings.Builder
+	for idx := 0; idx < len(cmd); {
+		i := strings.Index(cmd[idx:], from)
+		if i < 0 {
+			sb.WriteString(cmd[idx:])
+			break
+		}
+		start := idx + i
+		if !refBoundary(cmd, start) {
+			sb.WriteString(cmd[idx : start+len(from)])
+			idx = start + len(from)
+			continue
+		}
+		sb.WriteString(cmd[idx:start])
+		sb.WriteString(to)
+		idx = start + len(from)
+	}
+	return sb.String()
+}
+
+// refBoundary reports whether a match at start begins a path token: the byte
+// before it is absent or is not part of a path.
+func refBoundary(cmd string, start int) bool {
+	if start == 0 {
+		return true
+	}
+	switch prev := cmd[start-1]; {
+	case prev >= 'a' && prev <= 'z', prev >= 'A' && prev <= 'Z', prev >= '0' && prev <= '9':
+		return false
+	case prev == '/', prev == '.', prev == '-', prev == '_', prev == '+':
+		return false
+	default:
+		return true
+	}
+}
+
+// commitPromoted stages the promoted file and commits it as
+// `test: regression for <sig>` through a pathspec commit: an unrelated file
+// already staged in the index stays staged and out of the commit, and every
+// unrelated dirty file stays untouched. An already-committed identical file
+// reports committed without a new commit.
 func (st *state) commitPromoted(ctx context.Context, destRel, full string) (bool, *core.RefusalError) {
 	if _, err := st.runGit(ctx, "git", "add", "--", destRel); err != nil {
 		return false, st.refuse(codeFixFailed, fmt.Sprintf(
@@ -219,7 +308,7 @@ func (st *state) commitPromoted(ctx context.Context, destRel, full string) (bool
 		return true, nil
 	}
 	msg := "test: regression for " + full
-	if _, err := st.runGit(ctx, "git", "commit", "-m", msg); err != nil {
+	if _, err := st.runGit(ctx, "git", "commit", "-m", msg, "--", destRel); err != nil {
 		return false, st.refuse(codeFixFailed, fmt.Sprintf(
 			"fix --test: could not commit %s: %v", destRel, err))
 	}

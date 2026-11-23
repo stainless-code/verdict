@@ -194,8 +194,9 @@ func allTools(readOnly, operator bool) []*tool {
 			name: "fix",
 			description: "Run one bounded, verify-gated fix pass over an inline finding " +
 				"or a batch scope (all, or selected: the sigs a human reacted to). " +
-				"The ledger caps passes per sig. Writes the fix ledger and runs the " +
-				"recorded verify command.",
+				"It writes the fix ledger and runs the verify command, capped per sig. " +
+				"Set test to a reproduced sig to promote its artifact to .verdict/tests; " +
+				"commit commits only that file.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Prepare a fix", mutates: localWrites},
 		}, toolDeps{commander: fetchRunner}, decodeFix, wireFix, fixcore.Run,

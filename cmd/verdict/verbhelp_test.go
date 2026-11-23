@@ -72,3 +72,19 @@ func TestFetchUsageNamesAllThreeOverCapExits(t *testing.T) {
 		t.Fatalf("fetch usage over-cap hint = %q, want %q", usageText(), want)
 	}
 }
+
+// TestFixUsageNamesPromotion proves `fix --help` documents the promotion pair
+// the adapter parses: a caller reading help never has to learn --test or
+// --commit from the source.
+func TestFixUsageNamesPromotion(t *testing.T) {
+	hermeticEnv(t)
+	code, out, derr := runCapture(t, []string{"fix", "--help"})
+	if code != 0 || derr != "" {
+		t.Fatalf("fix --help = exit %d stderr %q", code, derr)
+	}
+	for _, want := range []string{"--test <sig> [--commit]", "writes no ledger", "test: regression for <sig>"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("fix --help misses %q:\n%s", want, out)
+		}
+	}
+}

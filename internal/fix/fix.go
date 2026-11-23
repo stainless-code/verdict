@@ -67,7 +67,7 @@ func fixRequest(r *cli.Runner, req Request, f *flags) *fixcore.Request {
 	out := &fixcore.Request{
 		Sig: f.sig, All: f.all, Selected: f.selected, MinSeverity: f.minSeverity,
 		VerifyCmd: f.verifyCmd, Paths: f.paths, Test: f.test, Commit: f.commit,
-		Human: r.Human,
+		TestSet: f.testSet, Human: r.Human,
 	}
 	out.ReadRequest = r.Read(core.ReadRequest{
 		Runtime: &core.Runtime{
@@ -84,9 +84,12 @@ type flags struct {
 	verifyCmd   string
 	test        string
 	paths       []string
-	commit      bool
 	all         bool
 	selected    bool
+	commit      bool
+	// testSet records that --test was passed, so `--test ""` refuses
+	// instead of running an ordinary fix pass.
+	testSet bool
 }
 
 func (f *flags) rentry() string {
@@ -170,6 +173,7 @@ func setFixValue(f *flags, flag, val string) {
 		f.paths = append(f.paths, val)
 	case testFlag:
 		f.test = val
+		f.testSet = true
 	default:
 		f.verifyCmd = val
 	}
