@@ -5,11 +5,14 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
+	reportcore "github.com/stainless-code/verdict/internal/core/report"
 )
 
 func TestUnknownFlagListsAllReportFlags(t *testing.T) {
@@ -30,24 +33,21 @@ func TestUnknownFlagListsAllReportFlags(t *testing.T) {
 	}
 }
 
-// TestPolicyReplayRefusesArtifactAndJSONPaths proves the replay stays a
-// read-only question: it refuses the artifact paths instead of silently
-// ignoring them, and refuses --json until the replay envelope has its schema.
-func TestPolicyReplayRefusesArtifactAndJSONPaths(t *testing.T) {
+// TestPolicyReplayRefusesArtifactPaths proves the replay stays a read-only
+// question: it refuses the artifact paths instead of silently ignoring them.
+func TestPolicyReplayRefusesArtifactPaths(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		args []string
-		json bool
 	}{
 		{name: "output", args: []string{"--policy", "p.json", "--output", "out.json"}},
 		{name: "sarif", args: []string{"--policy", "p.json", "--sarif", "out.sarif"}},
-		{name: "json", args: []string{"--policy", "p.json"}, json: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Chdir(t.TempDir())
 			var out, diag bytes.Buffer
 			r := &cli.Runner{
-				Out: &out, Human: &out, Diag: &diag, JSONMode: tc.json,
+				Out: &out, Human: &out, Diag: &diag,
 				Cmd: "report", Repo: "acme/app", Pr: "1", Effective: cli.Defaults(),
 				Now: func() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) },
 			}
@@ -76,6 +76,30 @@ func TestPolicyReplayRefusesWithoutABundle(t *testing.T) {
 	code := Run(context.Background(), r, []string{"--policy", "p.json"}, Request{Repo: "acme/app", Pr: "1"})
 	if code != cli.ExitRefused {
 		t.Fatalf("exit = %d; want %d (refusal)", code, cli.ExitRefused)
+	}
+}
+
+// TestReplayWireKeepsGateOrder pins the published replay shape: only the
+// dimension the candidate moves is listed, in the captured gate order, and the
+// reason rides the side it belongs to.
+func TestReplayWireKeepsGateOrder(t *testing.T) {
+	replay := &reportcore.PolicyReplay{
+		Captured: reportcore.Decision{GatePassed: true, Approved: true, Dimensions: []core.GateDimension{
+			{ID: "spec", Status: "pass"}, {ID: "compliance", Status: "pass"}, {ID: "evidence", Status: "pass"},
+		}},
+		Candidate: reportcore.Decision{GatePassed: false, Reason: "open critical finding", Dimensions: []core.GateDimension{
+			{ID: "spec", Status: "pass"}, {ID: "compliance", Status: "fail"}, {ID: "evidence", Status: "pass"},
+		}},
+	}
+	got := replayWire("candidate.json", replay)
+	want := &core.ReportReplay{
+		PolicyPath: "candidate.json",
+		Captured:   core.ReportReplaySide{GatePassed: true, Approved: true},
+		Candidate:  core.ReportReplaySide{GatePassed: false, Reason: "open critical finding"},
+		Changed:    []core.ReportReplayMove{{ID: "compliance", Before: "pass", After: "fail"}},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("replay wire = %#v; want %#v", got, want)
 	}
 }
 

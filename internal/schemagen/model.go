@@ -280,6 +280,7 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Risk         *ReportRisk        `anyOf:"null"        json:"risk"                   optional:"true"`
 	Validation   *ValidationData    `anyOf:"null"        json:"validation"             optional:"true"`
 	Gate         *ReportGate        `anyOf:"null"        json:"gate"                   optional:"true"`
+	Replay       *ReportReplay      `anyOf:"null"        json:"replay"                 optional:"true"`
 }
 
 // ReportHead is core's fetched/base/live head triple.
@@ -367,6 +368,16 @@ type ReportGate = core.ReportGate
 
 // GateDimension is core's one gate dimension verdict.
 type GateDimension = core.GateDimension
+
+// ReportReplay is `report --policy`'s comparison profile: the decision each
+// policy derives over one stored bundle.
+type ReportReplay = core.ReportReplay
+
+// ReportReplaySide is one policy's gate and approval.
+type ReportReplaySide = core.ReportReplaySide
+
+// ReportReplayMove is one gate dimension the candidate moved.
+type ReportReplayMove = core.ReportReplayMove
 
 // ReportRisk is core's advisory risk block on report --risk / --max-risk.
 type ReportRisk = core.ReportRisk

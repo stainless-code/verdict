@@ -49,7 +49,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		return code
 	}
 	if flags.Policy != "" {
-		return runReplay(r, req, &flags)
+		return runReplay(ctx, r, req, &flags)
 	}
 	gate := flags.Check != "" || flags.Completeness || flags.Coverage != "" || flags.MaxRisk != ""
 	resp, ref := reportcore.Run(ctx, reportRequest(r, req, &flags))
@@ -73,19 +73,60 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // findings. A replay writes nothing, so it refuses the artifact paths rather
 // than silently ignore them; it exits 0 whatever the candidate decides, because
 // it reports a comparison and does not gate this run.
-func runReplay(r *cli.Runner, req Request, flags *reportcore.Flags) int {
+func runReplay(ctx context.Context, r *cli.Runner, req Request, flags *reportcore.Flags) int {
 	if flags.Output != "" || flags.Sarif != "" {
 		return r.ReportUsage(&cli.UsageError{Message: "--policy is read-only; it writes no --output or --sarif"})
-	}
-	if r.JSONMode {
-		return r.ReportUsage(&cli.UsageError{Message: "--policy with --json needs the replay envelope schema; run without --json"})
 	}
 	replay, ref := reportcore.Replay(reportRequest(r, req, flags))
 	if ref != nil {
 		return refuseGate(r, ref, false)
 	}
+	if r.JSONMode {
+		return emitReplayEnvelope(ctx, r, req, flags, replay)
+	}
 	renderReplay(r, flags.Policy, replay)
 	return cli.ExitOK
+}
+
+// emitReplayEnvelope prints the ordinary report envelope for the captured
+// policy with the comparison attached under `replay`, so a replay stays a
+// schema-valid report and can never be mistaken for it: the key is absent
+// unless --policy named a file.
+func emitReplayEnvelope(ctx context.Context, r *cli.Runner, req Request, flags *reportcore.Flags, replay *reportcore.PolicyReplay) int {
+	resp, ref := reportcore.Run(ctx, reportRequest(r, req, flags))
+	if ref != nil {
+		return refuseGate(r, ref, false)
+	}
+	r.Warnings = resp.Warnings
+	if resp.Data != nil {
+		resp.Data.Replay = replayWire(flags.Policy, replay)
+	}
+	r.Emit("report", req.Repo, req.Pr, resp.At, resp.Next, resp.Warnings, resp.Data.Wire())
+	return cli.ExitOK
+}
+
+// replayWire maps the replay onto the published envelope shape, keeping the
+// captured-side dimension order so the `changed` list reads in gate order.
+func replayWire(path string, replay *reportcore.PolicyReplay) *core.ReportReplay {
+	moves := make([]core.ReportReplayMove, 0, len(replay.Captured.Dimensions))
+	for _, dim := range replay.Captured.Dimensions {
+		after, ok := dimensionStatus(replay.Candidate.Dimensions, dim.ID)
+		if !ok || after == dim.Status {
+			continue
+		}
+		moves = append(moves, core.ReportReplayMove{ID: dim.ID, Before: dim.Status, After: after})
+	}
+	return &core.ReportReplay{
+		PolicyPath: path,
+		Captured:   replaySide(replay.Captured),
+		Candidate:  replaySide(replay.Candidate),
+		Changed:    moves,
+	}
+}
+
+// replaySide maps one decision onto its wire side.
+func replaySide(d reportcore.Decision) core.ReportReplaySide {
+	return core.ReportReplaySide{Reason: d.Reason, GatePassed: d.GatePassed, Approved: d.Approved}
 }
 
 // renderReplay prints the two decisions and the dimensions whose status moved.

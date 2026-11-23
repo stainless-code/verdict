@@ -1810,8 +1810,11 @@ the gate dimensions whose status changed.
 The replay writes no bundle artifact and calls no host: a live dimension the
 run recorded is carried, never re-checked. It exits 0 whatever the candidate
 decides, because it reports a comparison rather than gating this run.
-`--output` and `--sarif` are refused, since a replay writes nothing; `--json` is
-refused until the replay payload has its own envelope schema.
+`--output` and `--sarif` are refused, since a replay writes nothing. Under
+`--json` the run keeps the ordinary report envelope for the captured policy and
+adds one `replay` object — `policy_path`, `captured`, `candidate`, and the
+`changed` dimensions — so a consumer reads a replay by that key rather than by
+guessing from the decisions.
 
 The resolved/not-reviewed split is deliberately strict, because a false
 `resolved` hides a real bug. A baseline-only signature reaches `resolved`
