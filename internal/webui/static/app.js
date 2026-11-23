@@ -174,12 +174,13 @@
     const base = `#/r/${encodeHashSegment(parts[1])}/${encodeHashSegment(parts[2])}`;
     const nav = node("nav", undefined, "section-nav");
     nav.setAttribute("aria-label", "Review sections");
-    for (const [suffix, label] of [
+    const links = [
       ["", "Detail"],
       ["/threads", "Threads"],
       ["/gate", "Gate"],
-      ["/compare", "Compare"],
-    ]) {
+    ];
+    if (mode !== "static") links.push(["/compare", "Compare"]);
+    for (const [suffix, label] of links) {
       const link = node("a", label);
       link.href = `${base}${suffix}`;
       const page = suffix.slice(1) || "detail";

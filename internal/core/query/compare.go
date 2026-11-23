@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
@@ -197,22 +198,40 @@ func copyableRecord(resp *core.ShowResponse) (*jq.Obj, error) {
 	return rec, nil
 }
 
+// triageRationaleFloor is the triage service's rationale floor (rationaleMin
+// in internal/core/triage): a copied command carrying fewer runes refuses
+// rationale-required unless --force is present.
+const triageRationaleFloor = 30
+
+// defaultTriageRationale is the rationale a copied command carries when the
+// finding's own claim text is absent or below the floor: 45 runes, above the
+// floor, so the pasted command runs as printed without --force.
+const defaultTriageRationale = "Finding reviewed and addressed in repository."
+
+// triageRationale makes a finding's claim text safe to paste as triage's
+// --rationale: triage needs at least triageRationaleFloor runes unless
+// --force is passed, so a short or absent claim reads as the default instead
+// of emitting a command that refuses on paste.
+func triageRationale(rec *jq.Obj) string {
+	text := firstText(rec, "claim", "body")
+	if utf8.RuneCountInString(text) < triageRationaleFloor {
+		return defaultTriageRationale
+	}
+	return text
+}
+
 // triageCommand renders the one pastable triage invocation for a finding:
 // `verdict triage <repo> <pr> --sig <sig> --status addressed --rationale
 // <claim>`. The verb takes the repo and pr positionals, so the copied line runs
 // as printed from the repository root. Every value is shell-quoted, so an
-// untrusted claim pastes back safe. A finding with no claim text still pastes:
-// the rationale names the action.
+// untrusted claim pastes back safe. The rationale always meets the service
+// floor (see triageRationale), so the pasted command runs without --force.
 func triageCommand(repo, bundle, sig string, rec *jq.Obj) string {
-	rationale := firstText(rec, "claim", "body")
-	if rationale == "" {
-		rationale = "reviewed and addressed"
-	}
 	words := []string{
 		"verdict", "triage", repoArg(repo), shellquote.Arg(bundle),
 		"--sig", shellquote.Arg(sig),
 		"--status", "addressed",
-		"--rationale", shellquote.Arg(rationale),
+		"--rationale", shellquote.Arg(triageRationale(rec)),
 	}
 	return strings.Join(words, " ")
 }

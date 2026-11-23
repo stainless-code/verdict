@@ -4,12 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 const (
@@ -208,6 +212,124 @@ func TestCopyPromptIsEmptyWithoutABrief(t *testing.T) {
 	}
 }
 
+// wantFallbackTriage is the one pastable line a finding without a usable
+// claim text copies: the default rationale is 45 runes, so the line runs
+// without --force (see triageRationale).
+const wantFallbackTriage = "verdict triage acme/app 1234 --sig " + sigCrit +
+	" --status addressed --rationale 'Finding reviewed and addressed in repository.'"
+
+// TestTriageCommandMeetsTheRationaleFloor proves every emitted triage line
+// carries a rationale of at least the triage service's 30-rune floor: an
+// absent or short claim reads as the default, while boundary-length claim
+// text passes through unchanged. The floor counts runes, so a multibyte body
+// under 30 runes still falls back.
+func TestTriageCommandMeetsTheRationaleFloor(t *testing.T) {
+	t.Parallel()
+	longBody := "Usable body here with enough substance."
+	for _, tc := range []struct {
+		name string
+		rec  *jq.Obj
+		want string
+	}{
+		{"no claim keys", jq.NewObj(), wantFallbackTriage},
+		{"empty claim and body", jq.NewObj("claim", "", "body", ""), wantFallbackTriage},
+		{"short body", jq.NewObj("body", "Fix bug."), wantFallbackTriage},
+		{"short claim over a long body", jq.NewObj("claim", "Fix this now.", "body", longBody), wantFallbackTriage},
+		{"29-rune body", jq.NewObj("body", strings.Repeat("x", 29)), wantFallbackTriage},
+		{
+			"30-rune body", jq.NewObj("body", strings.Repeat("x", 30)),
+			"verdict triage acme/app 1234 --sig " + sigCrit + " --status addressed --rationale " + strings.Repeat("x", 30),
+		},
+		{"multibyte under 30 runes", jq.NewObj("body", strings.Repeat("é", 15)), wantFallbackTriage},
+		{
+			"multibyte at 30 runes", jq.NewObj("body", strings.Repeat("é", 30)),
+			"verdict triage acme/app 1234 --sig " + sigCrit + " --status addressed --rationale '" + strings.Repeat("é", 30) + "'",
+		},
+		{
+			"long body", jq.NewObj("body", longBody),
+			"verdict triage acme/app 1234 --sig " + sigCrit + " --status addressed --rationale '" + longBody + "'",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			got := triageCommand("acme/app", "1234", sigCrit, tc.rec)
+			if got != tc.want {
+				t.Errorf("triage = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// shortBodyFinding is one store entry whose body is shorter than the triage
+// rationale floor, so the copied command must fall back.
+func shortBodyFinding(sig string) string {
+	return `{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,` +
+		`"body":"Fix bug.","suggestion":null,` +
+		`"severity":"important","sig":` + strconv.Quote(sig) + `,` +
+		`"status":"open","rationale":"","history":[]}`
+}
+
+// bodylessFinding is one store entry with no claim or body text at all.
+func bodylessFinding(sig string) string {
+	return `{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,` +
+		`"suggestion":null,"severity":"important","sig":` + strconv.Quote(sig) + `,` +
+		`"status":"open","rationale":"","history":[]}`
+}
+
+// copyFallbackFixture builds one bundle holding a short-body and a bodyless
+// finding, both without a brief.
+func copyFallbackFixture(t *testing.T) string {
+	t.Helper()
+	files := map[string]string{
+		".verdict/state/1234/PR.json":   prDoc(),
+		".verdict/state/1234/full.diff": fullDiff,
+		".verdict/state/1234/post.json": postDoc(headA, 7),
+		".verdict/state/1234/findings.json": "[" + strings.Join([]string{
+			shortBodyFinding(sigImp),
+			bodylessFinding(sigAddr),
+		}, ",") + "]",
+	}
+	dir := t.TempDir()
+	writeFiles(t, dir, files)
+	return dir
+}
+
+// TestCopyFallsBackWhenTheFindingHasNoUsableClaim proves the copy payload of
+// a finding whose claim text is absent or shorter than the triage floor
+// still pastes a runnable command: the rationale is the 45-rune default,
+// never the 22-rune legacy fallback or the short claim itself.
+func TestCopyFallsBackWhenTheFindingHasNoUsableClaim(t *testing.T) {
+	t.Parallel()
+	if n := utf8.RuneCountInString(defaultTriageRationale); n < triageRationaleFloor {
+		t.Fatalf("defaultTriageRationale = %d runes, want at least %d", n, triageRationaleFloor)
+	}
+	dir := copyFallbackFixture(t)
+	layer := newLayer(dir)
+	rootID := RootID(mustAbs(t, dir))
+	for _, sig := range []string{sigImp, sigAddr} {
+		assertCopyFallback(t, layer, rootID, sig)
+	}
+}
+
+// assertCopyFallback proves one finding's copy payload carries the default
+// rationale and no prompt.
+func assertCopyFallback(t *testing.T, layer *Layer, rootID, sig string) {
+	t.Helper()
+	view, err := layer.Copy(context.Background(), rootID, "1234", sig)
+	if err != nil {
+		t.Fatalf("Copy(%s): %v", sig, err)
+	}
+	data := wireMap(t, view.Data)
+	want := "verdict triage acme/app 1234 --sig " + sig +
+		" --status addressed --rationale 'Finding reviewed and addressed in repository.'"
+	if data["triage"] != want {
+		t.Errorf("Copy(%s) triage = %q, want %q", sig, data["triage"], want)
+	}
+	if data["prompt"] != "" {
+		t.Errorf("Copy(%s) prompt = %q, want empty", sig, data["prompt"])
+	}
+}
+
 // TestCopyUnknownSigIsNotFound proves a sig outside the store is 404.
 func TestCopyUnknownSigIsNotFound(t *testing.T) {
 	t.Parallel()
@@ -357,6 +479,42 @@ func confinedBaselineRoots(t *testing.T) (dir, outsidePath, corruptPath string) 
 	return dir,
 		filepath.Join(outside, ".verdict", "state", cmpOutside),
 		filepath.Join(corrupt, ".verdict", "state", "local-broken")
+}
+
+// TestCompareRefusesASymlinkedBaselineOutsideTheRoot proves a bundle whose
+// physical directory lies outside the served root refuses bad-baseline before
+// any comparison is composed. The escape arrives through the served root's
+// own state directory (a directly-symlinked bundle directory is skipped by
+// bundle discovery instead, so it never reaches the boundary check): the
+// outside store below composes cleanly when read, and its baseline findings
+// are corrupt on purpose, so a composition attempt would answer
+// corrupt-compare-bundle instead of the boundary refusal — a bad-baseline
+// answer with no view proves nothing outside was read.
+func TestCompareRefusesASymlinkedBaselineOutsideTheRoot(t *testing.T) {
+	t.Parallel()
+	if runtime.GOOS == "windows" {
+		t.Skip("symlinks are unavailable in this Windows test environment")
+	}
+	outside := t.TempDir()
+	writeFiles(t, outside, map[string]string{
+		".verdict/state/1234/PR.json":   prDoc(),
+		".verdict/state/1234/full.diff": fullDiff,
+		".verdict/state/1234/post.json": postDoc(headA, 7),
+		".verdict/state/1234/findings.json": "[" + strings.Join([]string{
+			finding(cmpNew, "open", "important", "pointed"),
+			finding(cmpKept, "open", "critical", "walked"),
+		}, ",") + "]",
+		".verdict/state/local-link/source.json":   sourceDoc(),
+		".verdict/state/local-link/findings.json": "{not a findings array",
+	})
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ".verdict"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, ".verdict", "state"), filepath.Join(root, ".verdict", "state")); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+	assertCompareRefusal(t, newLayer(root), RootID(mustAbs(t, root)), "local-link", "bad-baseline")
 }
 
 // TestCompareCacheTracksTheBaselineBundle proves the cached composition is

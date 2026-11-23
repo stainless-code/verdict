@@ -225,6 +225,68 @@ func TestCopyTriageCommandRuns(t *testing.T) {
 	}
 }
 
+// shortBodyFinding is one store entry whose body is below the triage
+// rationale floor, so the copied command must fall back.
+func shortBodyFinding(sig string) string {
+	return `{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,` +
+		`"body":"Fix bug.","suggestion":null,` +
+		`"severity":"important","sig":` + strconv.Quote(sig) + `,` +
+		`"status":"open","rationale":"","history":[]}`
+}
+
+// bodylessFinding is one store entry with no claim or body text at all.
+func bodylessFinding(sig string) string {
+	return `{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,` +
+		`"suggestion":null,"severity":"important","sig":` + strconv.Quote(sig) + `,` +
+		`"status":"open","rationale":"","history":[]}`
+}
+
+// TestCopyTriageCommandRunsForFindingsWithoutAUsableClaim proves the pasted
+// line for a finding whose claim text is absent or below the triage service's
+// 30-rune rationale floor still runs: the emitted rationale is the 45-rune
+// default, and that line, executed by the real binary in the served root,
+// records the addressed status without --force. Before the floor fix the
+// emitted rationale refused rationale-required here.
+func TestCopyTriageCommandRunsForFindingsWithoutAUsableClaim(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, map[string]string{
+		".verdict/state/1234/PR.json":   prDoc(),
+		".verdict/state/1234/post.json": postDoc(headB, 7),
+		".verdict/state/1234/findings.json": "[" + strings.Join([]string{
+			shortBodyFinding(sigImp),
+			bodylessFinding(sigAddr),
+		}, ",") + "]",
+	})
+	for _, sig := range []string{sigImp, sigAddr} {
+		runFallbackTriage(t, root, sig)
+	}
+}
+
+// runFallbackTriage proves one stale-claim finding's copied line runs: the
+// payload's literal line, executed by the real binary in the served root,
+// records the addressed status without --force.
+func runFallbackTriage(t *testing.T, root, sig string) {
+	t.Helper()
+	view, err := testLayer(root, nil).Copy(t.Context(), query.RootID(mustAbs(t, root)), "1234", sig)
+	if err != nil {
+		t.Fatalf("Copy(%s): %v", sig, err)
+	}
+	wantTriage := "verdict triage acme/app 1234 --sig " + sig +
+		" --status addressed --rationale 'Finding reviewed and addressed in repository.'"
+	if data := wire(t, view.Data); data["triage"] != wantTriage {
+		t.Fatalf("Copy(%s) triage = %q, want %q", sig, data["triage"], wantTriage)
+	}
+	out := harness.Run(t, root, t.TempDir(), nil, "triage", "acme/app", "1234",
+		"--sig", sig, "--status", "addressed",
+		"--rationale", "Finding reviewed and addressed in repository.")
+	if out.Status != 0 {
+		t.Fatalf("Copy(%s) triage exited %d\nstdout: %s\nstderr: %s", sig, out.Status, out.Stdout, out.Stderr)
+	}
+	if want := "triaged " + sig[:8] + " -> addressed"; !strings.Contains(out.Stdout, want) {
+		t.Errorf("Copy(%s) triage stdout = %q, want %q", sig, out.Stdout, want)
+	}
+}
+
 // TestCompareRouteRefusesABaselineOutsideTheRoot proves the route answers the
 // traversal spellings with the typed bad-baseline refusal and no data: the
 // baseline is a bundle name in this root or it is refused.

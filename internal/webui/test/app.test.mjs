@@ -764,6 +764,39 @@ test("static refresh reloads data.json and displays the newer bundle", async () 
   assert.ok(!ui.elements.get("content").textContent.includes("local-old"));
 });
 
+test("static mode omits the Compare tab the export cannot serve", async () => {
+  const staticFile = {
+    "/v1/bundles": inbox,
+    "/v1/roots/root-123/bundles/local-good": detail,
+  };
+  const staticUI = await createUI({
+    mode: "static",
+    baseURL: "https://example.test/export/index.html",
+    respond: async (path) => ({
+      body: path === "/export/data.json" ? staticFile : envelope({}),
+    }),
+  });
+  await staticUI.navigate("#/r/root-123/local-good");
+  const labels = descendants(staticUI.elements.get("content"))
+    .filter((element) => element.tagName === "A")
+    .map((link) => link.textContent);
+  assert.deepEqual(labels, ["Detail", "Threads", "Gate"]);
+
+  const liveUI = await createUI({
+    respond: respondFrom(
+      new Map([
+        ["/v1/bundles", inbox],
+        ["/v1/roots/root-123/bundles/local-good", detail],
+      ]),
+    ),
+  });
+  await liveUI.navigate("#/r/root-123/local-good");
+  const liveLabels = descendants(liveUI.elements.get("content"))
+    .filter((element) => element.tagName === "A")
+    .map((link) => link.textContent);
+  assert.deepEqual(liveLabels, ["Detail", "Threads", "Gate", "Compare"]);
+});
+
 if (process.env.VERDICT_EXPORT) {
   test("export renders all six views from its data.json", async () => {
     const data = JSON.parse(
