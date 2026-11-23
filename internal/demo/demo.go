@@ -26,19 +26,25 @@ import (
 const (
 	// verb is the CLI verb name, used for the envelope and the entries.
 	verb = "demo"
-	// agentFlag and keepFlag are the two verb-local flags.
-	agentFlag = "--agent"
-	keepFlag  = "--keep"
+	// agentFlag, keepFlag, and timeoutFlag are the verb-local flags.
+	agentFlag   = "--agent"
+	keepFlag    = "--keep"
+	timeoutFlag = "--timeout"
 	// flagSeparator ends flag parsing, so a positional never reads as a flag.
 	flagSeparator = "--"
+	// flagAssign is the inline-value spelling `--flag=value`.
+	flagAssign = "="
 	// codeMissingTool is the shared refusal for a binary that is not installed;
 	// the adapter renders its frozen line with no hint, like every other verb.
 	codeMissingTool = "missing-tool"
 	// msgUnknownFlag is the usage refusal for a flag demo does not take.
-	msgUnknownFlag = "unknown flag '%s' for demo (want --agent <name>, --keep, --json)"
+	msgUnknownFlag = "unknown flag '%s' for demo (want --agent <name>, --keep, --timeout <secs>, --json)"
 	// msgEmptyAgent refuses an empty --agent value, which would otherwise read
 	// as "no override" and silently fall back to auto-detection.
 	msgEmptyAgent = "flag '--agent' needs a value (want a name from the agent catalog)"
+	// msgEmptyTimeout refuses an empty --timeout value, which would otherwise
+	// read as the default and hide the typo.
+	msgEmptyTimeout = "flag '--timeout' needs a value (want a positive number of seconds)"
 	// msgTooMany names the single-positional contract.
 	msgTooMany = "demo takes one <public-github-pr-url> positional, not %d (want %s)"
 	// urlShape is the one accepted positional spelling the usage refusal names.
@@ -55,13 +61,14 @@ type Request struct {
 // flags is demo's parsed surface: the optional URL, the agent override, and
 // whether the disposable directory is kept.
 type flags struct {
-	target string
-	agent  string
-	keep   bool
+	target  string
+	agent   string
+	timeout string
+	keep    bool
 }
 
 // Run executes `demo [<public-github-pr-url>] [--agent <name>] [--keep]
-// [--json]`, returning the process exit code.
+// [--timeout <secs>] [--json]`, returning the process exit code.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	// The review body owns stdout; every composed verb's progress moves to the
 	// diagnostic stream so the render is the only thing a pipe reads.
@@ -109,22 +116,18 @@ func parseToken(
 ) (next, code int, done bool) {
 	a := args[i]
 	switch {
-	case a == agentFlag:
-		v, next, u := cli.FlagValue(args, i, a, "<name>")
-		if u != nil {
-			return i, r.ReportUsage(u), true
+	case a == agentFlag || strings.HasPrefix(a, agentFlag+flagAssign):
+		v, next, code, done := parseValueToken(r, args, i, agentFlag, "<name>", msgEmptyAgent)
+		if !done {
+			f.agent = v
 		}
-		if v == "" {
-			return i, r.ReportUsage(&cli.UsageError{Message: msgEmptyAgent}), true
+		return next, code, done
+	case a == timeoutFlag || strings.HasPrefix(a, timeoutFlag+flagAssign):
+		v, next, code, done := parseValueToken(r, args, i, timeoutFlag, "<secs>", msgEmptyTimeout)
+		if !done {
+			f.timeout = v
 		}
-		f.agent = v
-		return next, 0, false
-	case strings.HasPrefix(a, agentFlag+"="):
-		v := strings.TrimPrefix(a, agentFlag+"=")
-		if v == "" {
-			return i, r.ReportUsage(&cli.UsageError{Message: msgEmptyAgent}), true
-		}
-		f.agent = v
+		return next, code, done
 	case a == keepFlag:
 		f.keep = true
 	case a == flagSeparator:
@@ -136,6 +139,32 @@ func parseToken(
 		*positionals = append(*positionals, a)
 	}
 	return i, 0, false
+}
+
+// parseValueToken consumes one value flag in both spellings, `--flag value`
+// and `--flag=value`, refusing a lost or empty value with emptyMsg.
+func parseValueToken(
+	r *cli.Runner, args []string, i int, name, operand, emptyMsg string,
+) (value string, next, code int, done bool) {
+	if a := args[i]; a == name {
+		v, n, u := cli.FlagValue(args, i, a, operand)
+		if u != nil {
+			return "", i, r.ReportUsage(u), true
+		}
+		// A following option is a lost value, not a value: demo's operands are
+		// a number and an agent name, so a token starting with the separator
+		// can only be the next flag. Taking it would consume that flag and
+		// report bad-timeout after a fetch instead of a usage error here.
+		if v == "" || strings.HasPrefix(v, flagSeparator) {
+			return "", i, r.ReportUsage(&cli.UsageError{Message: emptyMsg}), true
+		}
+		return v, n, 0, false
+	}
+	v := strings.TrimPrefix(args[i], name+flagAssign)
+	if v == "" {
+		return "", i, r.ReportUsage(&cli.UsageError{Message: emptyMsg}), true
+	}
+	return v, i, 0, false
 }
 
 // finishFlags settles the one optional positional and refuses a second.
@@ -168,6 +197,7 @@ func demoRequest(ctx context.Context, r *cli.Runner, req Request, f flags) *demo
 	out := &democore.Request{
 		Target:         f.target,
 		Agent:          f.agent,
+		TimeoutRaw:     f.timeout,
 		Checkout:       checkout,
 		CallerRoot:     callerRoot,
 		LookPath:       exec.LookPath,

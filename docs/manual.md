@@ -126,7 +126,7 @@ re-fetch to pin it.
 
 ## Demo (zero-config first review)
 
-`verdict demo [<public-github-pr-url>] [--agent <name>] [--keep] [--json]`
+`verdict demo [<public-github-pr-url>] [--agent <name>] [--keep] [--timeout <secs>] [--json]`
 reviews one change with no setup and no risk: it writes nothing in your
 repository and it cannot post.
 
@@ -184,7 +184,9 @@ shortlist with its install command. Detection is a presence probe, not an
 authentication check, so an installed-but-unauthenticated agent fails later as
 its own typed refusal with its stderr recorded. The launch is one finder
 (`--finders 1` equivalent), the round count defaults to two so one repair round
-still applies, and the watchdog budget is 300 s.
+still applies, and the watchdog budget is 300 s unless `--timeout <secs>`
+names another; the run service validates it the same way `run --timeout` does
+(a non-positive or non-numeric value refuses `bad-timeout`).
 
 The printed next steps name the full equivalent the operator would type —
 `fetch` (or `fetch-local`), `run`, then `record` (with `--dry-run` for a URL
@@ -1134,6 +1136,7 @@ the behavior stays off until a layer above turns it on.
 
 | Verb                  | Knob                           | Built-in default |
 | --------------------- | ------------------------------ | ---------------- |
+| demo                  | --timeout                      | 300              |
 | fetch, fetch-local    | defaults.budget_usd            | unset            |
 | fetch, fetch-local    | defaults.chunk                 | off              |
 | fetch, fetch-local    | defaults.effort                | standard         |

@@ -13,6 +13,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
+	runcore "github.com/stainless-code/verdict/internal/core/run"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/testkit"
 )
@@ -825,5 +826,21 @@ func TestDataWireShape(t *testing.T) {
 	}
 	if got := strings.Join(wire.Keys, " "); got != strings.Join(want, " ") {
 		t.Errorf("data keys = %v, want %v", wire.Keys, want)
+	}
+}
+
+// TestWatchdogBudget proves the launcher budget: an absent --timeout keeps the
+// run verb's default, and the raw operator value rides through untouched so the
+// run service refuses anything that is not a positive number.
+func TestWatchdogBudget(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct{ raw, want string }{
+		{raw: "", want: runcore.DefaultTimeoutS},
+		{raw: "900", want: "900"},
+		{raw: "abc", want: "abc"},
+	} {
+		if got := watchdogBudget(tc.raw); got != tc.want {
+			t.Fatalf("watchdogBudget(%q) = %q; want %q", tc.raw, got, tc.want)
+		}
 	}
 }

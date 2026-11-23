@@ -43,7 +43,7 @@ type Request struct {
 
 // DefaultTimeoutS is the watchdog budget when --timeout is absent: the same
 // default verify gives the commands it spawns.
-const DefaultTimeoutS = "300"
+const DefaultTimeoutS = runcore.DefaultTimeoutS
 
 // DefaultRounds is the launch-to-check round count when --rounds is absent:
 // two, so a wrong quote or a missing hunk receipt always gets the one repair

@@ -4,7 +4,7 @@ func usageText() string {
 	return "usage: verdict demo|fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
 		"fetch-local|run|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|" +
 		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain [opts]\n" +
-		"  demo [<public-github-pr-url>] [--agent <name>] [--keep] [--json]\n" +
+		"  demo [<public-github-pr-url>] [--agent <name>] [--keep] [--timeout <secs>] [--json]\n" +
 		"    one review, zero setup: a public GitHub pull request by URL (gh when signed in for\n" +
 		"    github.com, the anonymous API otherwise) or your own working tree when the argument\n" +
 		"    is omitted. Every artifact lands in one disposable temp directory, removed on exit\n" +

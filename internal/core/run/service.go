@@ -28,6 +28,10 @@ import (
 )
 
 const (
+	// DefaultTimeoutS is the launcher's watchdog budget for a caller that names
+	// none: the run verb's --timeout default, and demo's, which may be widened
+	// with the same flag.
+	DefaultTimeoutS = "300"
 	// The launcher's own refusal family. Each names its remedy in the hint table.
 	codeAgentMissing     = "agent-missing"
 	codeAgentSpawnFailed = "agent-spawn-failed"
