@@ -60,10 +60,11 @@ func prDoc() string {
 		headA, headB)
 }
 
-// sourceDoc renders a local bundle source.json.
-func sourceDoc(head string) string {
+// sourceDoc renders a local bundle source.json for the prior range review: the
+// fixture's baseline bundle sits at headB.
+func sourceDoc() string {
 	return fmt.Sprintf(`{"schema_version":"1","kind":"range","repo":"acme/app","slug":"work",`+
-		`"head_ref":"v2","base_sha":%q,"head_sha":%q,"dirty":false}`, headB, head)
+		`"head_ref":"v2","base_sha":%q,"head_sha":%q,"dirty":false}`, headB, headB)
 }
 
 // postDoc renders a completed post receipt.
@@ -106,7 +107,7 @@ func fixture(t *testing.T) (string, map[string]string) {
 		".verdict/state/1234/PR.json":        prDoc(),
 		".verdict/state/1234/full.diff":      fullDiff,
 		".verdict/state/1234/post.json":      postDoc(headA, 7),
-		".verdict/state/local-1/source.json": sourceDoc(headB),
+		".verdict/state/local-1/source.json": sourceDoc(),
 		".verdict/state/local-1/full.diff":   fullDiff,
 		".verdict/state/local-1/post.json":   postDoc(headB, 8),
 		".verdict/state/1234/findings.json": "[" + strings.Join([]string{
@@ -1019,7 +1020,7 @@ func TestCanceledComposeSkipsInventory(t *testing.T) {
 	layer := newLayer(dir)
 	flags := layer.detailFlags()
 	_, ref, inv := layer.cached(canceledContext(), Root{ID: RootID(mustAbs(t, dir)), Path: mustAbs(t, dir)},
-		"1234", filepath.Join(dir, ".verdict", "state", "1234"), &flags)
+		"1234", filepath.Join(dir, ".verdict", "state", "1234"), "", &flags)
 	if ref == nil || ref.Code != "canceled" {
 		t.Fatalf("canceled compose = %v, want canceled", ref)
 	}
@@ -1128,11 +1129,11 @@ func TestCacheEvictsByBundleAtTheCap(t *testing.T) {
 	}, Options{Check: "critical", MaxBundles: 1})
 	flags := inboxFlags()
 	if _, ref, _ := layer.cached(context.Background(), rootA, "1234",
-		filepath.Join(dirA, ".verdict", "state", "1234"), &flags); ref != nil {
+		filepath.Join(dirA, ".verdict", "state", "1234"), "", &flags); ref != nil {
 		t.Fatalf("cache root A: %v", ref)
 	}
 	if _, ref, _ := layer.cached(context.Background(), rootB, "1234",
-		filepath.Join(dirB, ".verdict", "state", "1234"), &flags); ref != nil {
+		filepath.Join(dirB, ".verdict", "state", "1234"), "", &flags); ref != nil {
 		t.Fatalf("cache root B: %v", ref)
 	}
 	if got := layer.cacheEntries(); got != 1 {

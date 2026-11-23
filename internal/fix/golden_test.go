@@ -428,7 +428,7 @@ func setupTestAbsoluteCmd(t *testing.T, dir, _ string) {
 	mkRepo(t, dir)
 	const slug = "test"
 	seedReproBundleCmd(t, dir, slug, sigBatch, []byte("assert False\n"),
-		"sh "+localBundleDir(dir, slug)+"/{artifact}")
+		"sh "+filepath.ToSlash(localBundleDir(dir, slug))+"/{artifact}")
 }
 
 // setupTestConflict pre-places different bytes at the promoted destination.

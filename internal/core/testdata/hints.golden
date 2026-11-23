@@ -22,6 +22,7 @@ bad-approve	try: pass --approve=true|false
 bad-at	try: re-run with one of the valid values named above
 bad-attribution	try: re-run with one of the valid values named above
 bad-base	try: re-run with one of the valid values named above
+bad-baseline	try: pass exactly one baseline query parameter naming a bundle in the same root
 bad-budget	try: re-run with one of the valid values named above
 bad-by	try: use one of the dimensions named in the message
 bad-category	try: re-run with one of the valid values named above

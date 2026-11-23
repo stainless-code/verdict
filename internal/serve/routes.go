@@ -35,6 +35,14 @@ func (s *Server) routes() []route {
 			Method: http.MethodGet, Pattern: "/v1/roots/{root}/bundles/{bundle}/findings/{sig}/reproduction",
 			Handler: s.guard(s.handleReproduction),
 		},
+		{
+			Method: http.MethodGet, Pattern: "/v1/roots/{root}/bundles/{bundle}/compare",
+			Handler: s.guard(s.handleCompare),
+		},
+		{
+			Method: http.MethodGet, Pattern: "/v1/roots/{root}/bundles/{bundle}/findings/{sig}/copy",
+			Handler: s.guard(s.handleCopy),
+		},
 		{Method: http.MethodGet, Pattern: "/v1/health", Handler: s.guard(s.handleHealth)},
 		{Method: http.MethodGet, Pattern: "/v1/roots", Handler: s.guard(s.handleRoots)},
 		{Method: http.MethodGet, Pattern: "/v1/bundles", Handler: s.guard(s.handleBundles)},
@@ -164,10 +172,65 @@ func (s *Server) handleBundles(w http.ResponseWriter, r *http.Request) {
 	s.writeView(w, verbServe, view)
 }
 
+// handleCompare serves one bundle's comparison against a baseline bundle: the
+// report service's data under the compare flags, at
+// GET /v1/roots/{root}/bundles/{bundle}/compare?baseline=<bundle>. Both
+// bundles are resolved inside the route's own served root.
+func (s *Server) handleCompare(w http.ResponseWriter, r *http.Request) {
+	baseline, ok := s.baselineParam(w, r)
+	if !ok {
+		return
+	}
+	bundle := r.PathValue(bundlePathKey)
+	view, err := s.layer.Compare(r.Context(), r.PathValue(rootPathKey), bundle, baseline)
+	if err != nil {
+		s.writeViewError(w, verbServe, bundle, err)
+		return
+	}
+	s.writeView(w, verbServe, view)
+}
+
+// baselineParam reads the compare endpoint's one query parameter. The route
+// accepts exactly one, `baseline`, and nothing beside it: an unrelated second
+// parameter refuses like a second baseline, so one comparison has one
+// spelling. The query layer resolves the value and confines it to a bundle in
+// the same served root; this function checks the parameter's shape only.
+func (s *Server) baselineParam(
+	w http.ResponseWriter, r *http.Request,
+) (string, bool) {
+	values, err := url.ParseQuery(r.URL.RawQuery)
+	if err != nil || len(values) != 1 || len(values["baseline"]) != 1 {
+		s.writeRefusal(w, verbServe, "", "", &core.RefusalError{
+			Code:    "bad-baseline",
+			Message: "serve compare accepts exactly one baseline query parameter naming a bundle in the same root",
+		})
+		return "", false
+	}
+	return values.Get("baseline"), true
+}
+
+// handleCopy publishes one finding's copy payloads: the deterministic
+// `Prompt for AI agent` block and the ready-to-run `verdict triage` command.
+// A finding the store does not hold, and a policy-withheld one, have no copy.
+func (s *Server) handleCopy(w http.ResponseWriter, r *http.Request) {
+	bundle := r.PathValue(bundlePathKey)
+	sig := r.PathValue("sig")
+	if !query.ValidSig(sig) {
+		s.problem(w, http.StatusNotFound, "not-found", "no such bundle or sig")
+		return
+	}
+	view, err := s.layer.Copy(r.Context(), r.PathValue(rootPathKey), bundle, sig)
+	if err != nil {
+		s.writeViewError(w, verbServe, bundle, err)
+		return
+	}
+	s.writeView(w, verbServe, view)
+}
+
 // handleDetail publishes one bundle's report, gate, threads, and ledger.
 func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 	bundle := r.PathValue(bundlePathKey)
-	view, err := s.layer.Detail(r.Context(), r.PathValue("root"), bundle)
+	view, err := s.layer.Detail(r.Context(), r.PathValue(rootPathKey), bundle)
 	if err != nil {
 		s.writeViewError(w, verbServe, bundle, err)
 		return
@@ -183,7 +246,7 @@ func (s *Server) handleShow(w http.ResponseWriter, r *http.Request) {
 		s.problem(w, http.StatusNotFound, "not-found", "no such bundle or sig")
 		return
 	}
-	view, err := s.layer.Show(r.Context(), r.PathValue("root"), bundle, sig)
+	view, err := s.layer.Show(r.Context(), r.PathValue(rootPathKey), bundle, sig)
 	if err != nil {
 		s.writeViewError(w, verbShow, bundle, err)
 		return
@@ -192,7 +255,7 @@ func (s *Server) handleShow(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleReproduction(w http.ResponseWriter, r *http.Request) {
-	raw, err := s.layer.Reproduction(r.Context(), r.PathValue("root"), r.PathValue(bundlePathKey), r.PathValue("sig"))
+	raw, err := s.layer.Reproduction(r.Context(), r.PathValue(rootPathKey), r.PathValue(bundlePathKey), r.PathValue("sig"))
 	if err != nil {
 		s.writeViewError(w, verbShow, r.PathValue(bundlePathKey), err)
 		return
@@ -204,4 +267,7 @@ func (s *Server) handleReproduction(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-const bundlePathKey = "bundle"
+const (
+	rootPathKey   = "root"
+	bundlePathKey = "bundle"
+)
