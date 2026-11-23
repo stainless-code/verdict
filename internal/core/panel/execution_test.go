@@ -446,6 +446,18 @@ func TestExecutionUsesLargestStoredFinderCapture(t *testing.T) {
 	}
 }
 
+func TestExecutionStaleReviewReferenceKeepsOneFinderPolicyManual(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	retireBoundArtifacts(t, dir)
+	writeExecutionFile(t, dir, "run.json", []byte(`{"schema_version":"1","finders":0,"resolved":{"defaults":{"values":{"finders":1}}}}`))
+	writeExecutionFile(t, dir, "review.json", []byte(`{"schema_version":"1","findings":[],"execution":{"id":"stale-execution","finders":2}}`))
+
+	state := CheckExecution(dir, nil)
+	if state.CrossRequired || state.Gap != "" {
+		t.Fatalf("state = %+v; want the explicit one-finder policy to ignore a stale review reference", state)
+	}
+}
+
 func TestExecutionFailsClosedOnOutOfRangeFinderCount(t *testing.T) {
 	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
 	retireBoundArtifacts(t, dir)

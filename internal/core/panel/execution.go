@@ -148,6 +148,12 @@ func storedFinders(dir string) int {
 // largest count wins, so a receipt for a retired execution cannot override a
 // live one, and a capture that states nothing leaves the mode undecided.
 func (s *Execution) captureFinders(count int) {
+	// A capture that declares one finder is manual by decision: every later
+	// statement is a leftover reference, so folding two into it would re-arm a
+	// cross check the policy never asked for.
+	if s.oneFinder && count > 1 {
+		return
+	}
 	s.finders = max(s.finders, count)
 	// At least two finders require a cross check. An out-of-range count fails
 	// closed: treating it as manual would clear the stamp and let a
@@ -188,7 +194,7 @@ func (s *Execution) readReferences(docs ...*jq.Obj) {
 }
 
 func (s *Execution) readReference(doc *jq.Obj) {
-	if doc == nil {
+	if doc == nil || s.oneFinder {
 		return
 	}
 	value, exists := doc.Get("execution")
