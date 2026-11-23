@@ -10,6 +10,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/approval"
+	"github.com/stainless-code/verdict/internal/evidence"
 )
 
 // PolicyReplay is one stored bundle decided twice: once under the policy the
@@ -186,7 +187,7 @@ func deriveDecision(st *state, resolved *config.Resolved, root *config.Requireme
 	derived.policy = &policy
 	evaluateCompliance(&derived)
 	derived.approval = approval.Evaluate(derived.entries, st.flags.Check, st.flags.Category,
-		derived.decisionCompliance, st.specFailures, st.evidenceInput())
+		derived.decisionCompliance, st.specFailures, candidateCoverage(st.evidenceInput(), resolved))
 	failed, _, gate := gateTail(&derived)
 	return Decision{
 		Dimensions: gate.Dimensions,
@@ -234,6 +235,28 @@ func capturedFiles(captured *config.Resolved) []config.FileInput {
 		out = append(out, config.FileInput{Path: captured.Files[i].Path, OldPath: captured.Files[i].OldPath})
 	}
 	return out
+}
+
+// candidateCoverage re-decides the receipt's spec-coverage flag under the
+// candidate policy's minimum. Sufficiency stays the captured verdict — the
+// evidence gate and approval read only Insufficient, and the review that
+// measured the coverage already ran — but `spec.min` and `spec.met` describe
+// the threshold they were measured against, so a candidate that raises the
+// minimum must report the flag that threshold produces. The receipt is copied,
+// because the captured decision and the stored bundle keep their values.
+func candidateCoverage(ev approval.Evidence, resolved *config.Resolved) approval.Evidence {
+	if ev.Receipt == nil || ev.Receipt.Spec.Total == 0 {
+		return ev
+	}
+	minimum := evidence.DefaultSpecCoverageMin
+	if captured := resolved.Defaults.Values.SpecCoverageMin; captured > 0 {
+		minimum = captured
+	}
+	receipt := *ev.Receipt
+	receipt.Spec.Min = minimum
+	receipt.Spec.Met = evidence.MeetsSpecCoverage(receipt.Spec.Covered, receipt.Spec.Total, minimum)
+	ev.Receipt = &receipt
+	return ev
 }
 
 // candidateOutcomes re-keys the captured check observations onto the

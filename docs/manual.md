@@ -1825,7 +1825,9 @@ the candidate drops stops failing it and one it adds starts failing it. The
 evidence dimension is the part of the decision a candidate cannot move —
 sufficiency is the stored receipt's `insufficient` verdict, recorded while the
 review ran, so a `spec_coverage_min` in the candidate file does not re-decide
-it. A replay re-decides policy; it does not re-verify a review.
+it. It does re-decide the descriptive `evidence.spec.min` and `spec.met` pair,
+which no gate or approval reads: the candidate side reports the threshold its
+own policy names and the coverage verdict that threshold produces. A replay re-decides policy; it does not re-verify a review.
 
 The candidate is resolved from its repository layer over the recorded file set.
 The original run's personal settings, environment overrides, and invocation
