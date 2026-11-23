@@ -363,6 +363,54 @@ describe("unit: fake binary exit paths", () => {
     );
   });
 
+  it("problems item missing code throws VerdictSchemaError", async () => {
+    await assert.rejects(
+      runInlineRefusal({
+        code: "bad-review-input",
+        message: "review.json has 1 problem(s)",
+        problems: [
+          {
+            path: "$.findings[0].path",
+            level: "error",
+            message: "wrong type",
+            fix: "use a string",
+          },
+        ],
+      }),
+      (error) => {
+        assert.ok(error instanceof VerdictSchemaError);
+        assert.ok(!(error instanceof VerdictRefusalError));
+        return true;
+      },
+    );
+  });
+
+  it("problems item missing level or message throws VerdictSchemaError", async () => {
+    const base = {
+      path: "$.findings[0].path",
+      code: "wrong-type",
+      fix: "use a string",
+    };
+    for (const bad of [
+      { ...base, level: "error" },
+      { ...base, message: "wrong type" },
+      { ...base, level: "error", message: "wrong type", code: 5 },
+    ]) {
+      await assert.rejects(
+        runInlineRefusal({
+          code: "bad-review-input",
+          message: "review.json has 1 problem(s)",
+          problems: [bad],
+        }),
+        (error) => {
+          assert.ok(error instanceof VerdictSchemaError);
+          assert.ok(!(error instanceof VerdictRefusalError));
+          return true;
+        },
+      );
+    }
+  });
+
   it("non-array problems throws VerdictSchemaError", async () => {
     await assert.rejects(
       runInlineRefusal({

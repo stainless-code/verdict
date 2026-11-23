@@ -160,11 +160,14 @@ function assertRefusalErrorBody(
           typeof item !== "object" ||
           item === null ||
           typeof (item as Record<string, unknown>)["path"] !== "string" ||
+          typeof (item as Record<string, unknown>)["code"] !== "string" ||
+          typeof (item as Record<string, unknown>)["level"] !== "string" ||
+          typeof (item as Record<string, unknown>)["message"] !== "string" ||
           typeof (item as Record<string, unknown>)["fix"] !== "string",
       )
     ) {
       throw new VerdictSchemaError(
-        "refusal envelope error problems must be an array of { path, fix } objects",
+        "refusal envelope error problems must be an array of { path, code, level, message, fix } objects",
         stdout,
       );
     }
