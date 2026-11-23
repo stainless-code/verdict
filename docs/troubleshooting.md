@@ -1007,6 +1007,12 @@ Cause: the verb needs a PR bundle (local bundles never post).
 
 Fix: `fetch` the PR first; local bundles use `record` and `report`.
 
+## `no-reproduction`
+
+Cause: `fix --test` needs a reproduced finding's retained artifact, and the sig carries no reproduction receipt or the retained file cannot be read.
+
+Fix: re-run `record` with a reproduction block so the bundle retains the artifact, then re-run `verdict fix <owner/repo> <local-slug|pr> --test <sig>`.
+
 ## `no-review-artifact`
 
 Cause: the agent exited `0` but wrote no `review.json` (or a non-file).
@@ -1407,6 +1413,12 @@ Fix: delete the stale `review.json` (or let the agent overwrite it), then re-run
 Cause: another write held the store's lock — `.verdict/incidents.jsonl.lock` for `--incident`, `.verdict/kb.jsonl.lock` for `--rule`, `--pack`, `--retire`, and `--restore`, the same `kb.jsonl.lock` for the credit rewrite a `record` or `triage` flip performs, and `.verdict/reverts.jsonl.lock` for `backtest reverts` — for the whole five-second wait, so this write did nothing. The lock is the operating system's and its holder is alive, so nothing is stale to clear.
 
 Fix: re-run the write once the other one finishes; a holder that crashed or was killed already released the lock, so a retry succeeds at once. Deleting the lock file never helps — it carries no state, and the next write creates it again.
+
+## `test-conflict`
+
+Cause: `fix --test` would overwrite a promoted target at `.verdict/tests/` that already holds different bytes (or is not a regular file), or `.verdict` / `.verdict/tests` is a symlink — the refusal names the target.
+
+Fix: resolve the named target or symlink by hand (promote the retained bytes, or remove the divergent file or link), then re-run `verdict fix <owner/repo> <local-slug|pr> --test <sig>`.
 
 ## `threads-failed`
 

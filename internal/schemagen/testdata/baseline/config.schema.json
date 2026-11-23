@@ -32,7 +32,8 @@
     "severity_weights": { "$ref": "#/$defs/configSeverityWeights" },
     "index": { "$ref": "#/$defs/configIndex" },
     "rigor_policy": { "$ref": "#/$defs/rigorPolicy" },
-    "packs": { "$ref": "#/$defs/configPacks" }
+    "packs": { "$ref": "#/$defs/configPacks" },
+    "tests": { "$ref": "#/$defs/tests" }
   },
   "required": ["schema_version"],
   "additionalProperties": false,
@@ -200,6 +201,14 @@
           "items": { "type": "string" },
           "minItems": 1
         }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "tests": {
+      "type": "object",
+      "properties": {
+        "draft": { "enum": ["off", "on-reproduce"] }
       },
       "required": [],
       "additionalProperties": false

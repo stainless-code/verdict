@@ -162,7 +162,7 @@ func usageText() string {
 		"    finding grades pointed against the verified diff line, never verified.\n" +
 		"    --sarif <file|-> is the same source under its older spelling.\n" +
 		"  fix <owner/repo> <local-slug|pr> [--sig <s> | --all|--selected [--min-severity <s>]\n" +
-		"        [--verify-cmd <cmd>] [--paths <glob>]...] [--json]\n" +
+		"        [--verify-cmd <cmd>] [--paths <glob>]... | --test <sig> [--commit]] [--json]\n" +
 		"    one bounded pass over a local bundle: picks the top open inline sig\n" +
 		"    (or --sig), prints finding + kb.txt context with verify/land/re-run\n" +
 		"    instructions. Max 3 passes per sig (ledger .verdict/state/<bundle>/fix.json);\n" +
@@ -178,6 +178,14 @@ func usageText() string {
 		"    absent selected.json refuses missing-selection, and a selection that names no\n" +
 		"    open inline finding refuses no-selected-findings. Its default floor is off, so\n" +
 		"    the reaction, not the severity, decides; --min-severity narrows it.\n" +
+		"    --test <sig> promotes instead of passing: it copies one reproduced inline\n" +
+		"    finding's retained artifact into the worktree at\n" +
+		"    .verdict/tests/<sig>-<hash>.<ext> with the receipt command rewritten, and\n" +
+		"    writes no ledger. --commit stages that one file and commits it as\n" +
+		"    'test: regression for <sig>' through a pathspec commit, so work already\n" +
+		"    staged in the index stays staged and out of the commit. It needs --test.\n" +
+		"    An existing target holding different bytes refuses (test-conflict), and so\n" +
+		"    does a .verdict or .verdict/tests that is a symlink.\n" +
 		"    Every pass writes fix.patch beside the ledger — the worktree's diff against HEAD,\n" +
 		"    never applied and never pushed — and refuses (fix-patch-secret) rather than write\n" +
 		"    a secret-shaped value into the bundle.\n" +

@@ -5,6 +5,7 @@
 package fix_test
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/golden"
+	"github.com/stainless-code/verdict/internal/repro"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
 
@@ -343,6 +345,141 @@ func setupMissing(t *testing.T, dir, _ string) {
 	}
 }
 
+// seedReproBundle captures a real artifact for sig in the local-<slug> bundle
+// and stores a reproduced finding whose receipt names it.
+func seedReproBundle(t *testing.T, dir, slug, sig string, artifact []byte) {
+	t.Helper()
+	seedReproBundleCmd(t, dir, slug, sig, artifact, "python3 {artifact}")
+}
+
+// seedReproBundleCmd is seedReproBundle with the capture command spelled by the
+// fixture, so the receipt-rewrite legs can vary the reference.
+func seedReproBundleCmd(t *testing.T, dir, slug, sig string, artifact []byte, command string) {
+	t.Helper()
+	bdir := localBundleDir(dir, slug)
+	if err := os.MkdirAll(bdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bdir, "probe.py"), artifact, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := repro.Capture(bdir, sig, "probe.py", command, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receiptJSON, err := json.Marshal(receiptDoc{
+		Path: receipt.Path, Command: receipt.Command, Redacted: receipt.Redacted,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := strings.Replace(findingJSON(sig, "open", "important", "app.txt", "Reproduced bug here."),
+		`"rigor":"pointed"`, `"rigor":"reproduced"`, 1)
+	entry = entry[:len(entry)-1] + `,"reproduction":` + string(receiptJSON) + `}`
+	if err := os.WriteFile(filepath.Join(bdir, "findings.json"), []byte("["+entry+"]"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// receiptDoc is the reproduction receipt as the store spells it, marshaled
+// rather than concatenated so a Windows bundle path escapes its backslashes
+// instead of breaking the JSON.
+type receiptDoc struct {
+	Path     string `json:"path"`
+	Command  string `json:"command"`
+	Redacted bool   `json:"redacted"`
+}
+
+// setupTestPromote is the promotion fixture: one reproduced inline finding
+// with a retained artifact.
+func setupTestPromote(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	seedReproBundle(t, dir, "test", sigBatch, []byte("assert False\n"))
+}
+
+// setupTestCommit dirties an unrelated tracked file so the commit fixture
+// proves only the promoted file is staged and committed.
+func setupTestCommit(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupTestPromote(t, dir, "")
+	if err := os.WriteFile(filepath.Join(dir, "other.txt"), []byte("other1\ndirty\nother2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// setupTestDotSlash spells the receipt reference with a leading ./ so the
+// promotion golden proves that spelling rewrites to the promoted path.
+func setupTestDotSlash(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	seedReproBundleCmd(t, dir, "test", sigBatch, []byte("assert False\n"), "sh ./{artifact}")
+}
+
+// localBundleDir is the bundle seedReproBundle captures into.
+func localBundleDir(dir, slug string) string {
+	return filepath.Join(dir, ".verdict", "state", "local-"+slug)
+}
+
+// setupTestAbsoluteCmd spells the receipt reference as an absolute path into
+// the bundle, which promotion leaves alone: only the relative spelling moves.
+func setupTestAbsoluteCmd(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	const slug = "test"
+	seedReproBundleCmd(t, dir, slug, sigBatch, []byte("assert False\n"),
+		"sh "+filepath.ToSlash(localBundleDir(dir, slug))+"/{artifact}")
+}
+
+// setupTestConflict pre-places different bytes at the promoted destination.
+func setupTestConflict(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	seedReproBundle(t, dir, "test", sigBatch, []byte("assert False\n"))
+	// The artifact hash names the destination; pre-place different bytes there.
+	preplaceConflict(t, dir)
+}
+
+// preplaceConflict copies each retained artifact name to the promoted
+// directory with different bytes, skipping command receipts.
+func preplaceConflict(t *testing.T, dir string) {
+	t.Helper()
+	seeded := filepath.Join(dir, ".verdict", "state", "local-test", "tests")
+	entries, err := os.ReadDir(seeded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".command.json") {
+			continue
+		}
+		preplaceEntry(t, dir, e.Name())
+	}
+}
+
+// preplaceEntry writes one artifact name with different bytes at the
+// promoted destination.
+func preplaceEntry(t *testing.T, dir, name string) {
+	t.Helper()
+	destDir := filepath.Join(dir, ".verdict", "tests")
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(destDir, name), []byte("different bytes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// setupTestUnreproduced stores an open inline finding at rigor=ran with no
+// reproduction receipt.
+func setupTestUnreproduced(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	entry := strings.Replace(findingJSON(sigInfo, "open", "important", "app.txt", "Unreproduced bug here."),
+		`"rigor":"pointed"`, `"rigor":"ran"`, 1)
+	mkLocal(t, dir, "test", "["+entry+"]")
+}
+
 // TestFixGolden proves byte parity across the default pick, explicit sigs,
 // the completion and ledger gate exits, and every typed refusal.
 func TestFixGolden(t *testing.T) {
@@ -353,6 +490,34 @@ func TestFixGolden(t *testing.T) {
 	t.Run("batch", testFixBatch)
 	t.Run("patch", testFixPatch)
 	t.Run("selected", testFixSelected)
+	t.Run("promotion", testFixPromotion)
+}
+
+// testFixPromotion pins the --test promotion surface: the promote and commit
+// writes, the different-bytes refusal, the unreproduced refusal, and the
+// flag-combination refusals.
+func testFixPromotion(t *testing.T) {
+	t.Helper()
+	golden.Pin(t, harness, "test-json", setupTestPromote, nil,
+		"fix", "acme/app", "local-test", "--test", sigBatch, "--json")
+	golden.Pin(t, harness, "test-human", setupTestPromote, nil,
+		"fix", "acme/app", "local-test", "--test", sigBatch)
+	golden.Pin(t, harness, "test-commit", setupTestCommit, nil,
+		"fix", "acme/app", "local-test", "--test", sigBatch, "--commit", "--json")
+	golden.Pin(t, harness, "test-conflict", setupTestConflict, nil,
+		"fix", "acme/app", "local-test", "--test", sigBatch, "--json")
+	golden.Pin(t, harness, "test-unreproduced", setupTestUnreproduced, nil,
+		"fix", "acme/app", "local-test", "--test", sigInfo, "--json")
+	golden.Pin(t, harness, "test-all-conflict", setupTestPromote, nil,
+		"fix", "acme/app", "local-test", "--test", sigBatch, "--all", "--json")
+	golden.Pin(t, harness, "test-commit-without-test", setupTestPromote, nil,
+		"fix", "acme/app", "local-test", "--commit", "--json")
+	golden.Pin(t, harness, "test-empty", setupTestPromote, nil,
+		"fix", "acme/app", "local-test", "--test", "", "--json")
+	golden.Pin(t, harness, "test-dot-slash", setupTestDotSlash, nil,
+		"fix", "acme/app", "local-test", "--test", sigBatch, "--json")
+	golden.Pin(t, harness, "test-absolute", setupTestAbsoluteCmd, nil,
+		"fix", "acme/app", "local-test", "--test", sigBatch)
 }
 
 func testFixPatch(t *testing.T) {
