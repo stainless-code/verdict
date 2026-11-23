@@ -150,6 +150,12 @@ Cause: the checkout shares no merge-base with `--base`.
 
 Fix: pass a `--base` reachable from this checkout, or run in the right repository.
 
+## `bad-baseline`
+
+Cause: a `serve` compare route received no baseline, or more than one `baseline` query parameter.
+
+Fix: pass exactly one `baseline` query parameter naming another bundle.
+
 ## `bad-budget`
 
 Cause: `REVIEW_BUDGET_USD` (or the typed `budget_usd` default) is not above 0, or the scaffolded config fails validation.

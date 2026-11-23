@@ -12,6 +12,8 @@
   let reconnecting = false;
   let costBy = "repo";
   let precisionBy = "category";
+  let compareBaseline = "";
+  let inboxNames = [];
 
   function node(tag, text, className) {
     const element = document.createElement(tag);
@@ -57,13 +59,18 @@
       const tr = node("tr");
       for (const column of columns) {
         const td = node("td");
-        const value = row?.[column.key];
-        if (column.link && typeof value === "string" && row.root) {
-          const link = node("a", value);
-          link.href = `#/r/${encodeURIComponent(row.root)}/${encodeURIComponent(value)}`;
+        if (column.action) {
+          column.action(row, td);
+        } else if (
+          column.link &&
+          typeof row?.[column.key] === "string" &&
+          row.root
+        ) {
+          const link = node("a", row[column.key]);
+          link.href = `#/r/${encodeURIComponent(row.root)}/${encodeURIComponent(row[column.key])}`;
           td.append(link);
         } else {
-          td.append(cell(value));
+          td.append(cell(row?.[column.key]));
         }
         tr.append(td);
       }
@@ -168,6 +175,7 @@
       ["", "Detail"],
       ["/threads", "Threads"],
       ["/gate", "Gate"],
+      ["/compare", "Compare"],
     ]) {
       const link = node("a", label);
       link.href = `${base}${suffix}`;
@@ -176,6 +184,157 @@
       nav.append(link);
     }
     return nav;
+  }
+
+  async function writeClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return;
+    }
+    const area = node("textarea");
+    area.value = text;
+    document.body.append(area);
+    area.select();
+    document.execCommand("copy");
+    area.remove();
+  }
+
+  async function copyPayload(button, root, bundle, sig, kind) {
+    const path =
+      `/v1/roots/${encodeURIComponent(root)}/bundles/` +
+      `${encodeURIComponent(bundle)}/findings/${encodeURIComponent(sig)}/copy`;
+    try {
+      const response = await fetch(path, {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (!response.ok) throw new Error(`Request returned ${response.status}`);
+      const body = await response.json();
+      const payload = envelopeData(body);
+      const text = payload?.[kind];
+      if (!text) {
+        button.textContent = "No prompt for this finding";
+        return;
+      }
+      await writeClipboard(text);
+      const idle = kind === "prompt" ? "Copy prompt" : "Copy triage";
+      button.textContent =
+        kind === "prompt" ? "Prompt copied" : "Command copied";
+      setTimeout(() => {
+        button.textContent = idle;
+      }, 2000);
+    } catch (error) {
+      message.textContent =
+        error instanceof Error ? error.message : String(error);
+      message.className = "error";
+    }
+  }
+
+  function copyButton(label, root, bundle, sig, kind) {
+    const button = node("button", label);
+    button.type = "button";
+    button.addEventListener("click", () =>
+      copyPayload(button, root, bundle, sig, kind),
+    );
+    return button;
+  }
+
+  function compareBuckets(root, bundle) {
+    const columns = [
+      { key: "sig", label: "Signature" },
+      { key: "status", label: "Status" },
+      { key: "severity", label: "Severity" },
+      { key: "path", label: "Path" },
+      { key: "line", label: "Line" },
+      { key: "claim", label: "Claim" },
+      { key: "reason", label: "Reason" },
+    ];
+    const actionable = [
+      ...columns,
+      {
+        label: "Copy",
+        action: (row, td) => {
+          td.append(
+            copyButton("Copy prompt", root, bundle, row.sig, "prompt"),
+            " ",
+            copyButton("Copy triage", root, bundle, row.sig, "triage"),
+          );
+        },
+      },
+    ];
+    return { columns, actionable };
+  }
+
+  async function renderComparePicker(container, root, bundle) {
+    if (!inboxNames.length) {
+      try {
+        const response = await fetch("/v1/bundles", {
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+        if (!response.ok)
+          throw new Error(`Request returned ${response.status}`);
+        const data = envelopeData(await response.json());
+        const rows = Array.isArray(data.rows) ? data.rows : [];
+        inboxNames = rows.map((row) => row.bundle);
+      } catch (error) {
+        message.textContent =
+          error instanceof Error ? error.message : String(error);
+        message.className = "error";
+        return;
+      }
+    }
+    const choices = inboxNames.filter((name) => name !== bundle);
+    if (!choices.length) return;
+    if (!compareBaseline || !choices.includes(compareBaseline))
+      compareBaseline = choices[0];
+    container.append(
+      dimensionPicker(
+        "Compare against",
+        "compare-by",
+        choices,
+        compareBaseline,
+        (value) => {
+          compareBaseline = value;
+          fetchView();
+        },
+      ),
+    );
+  }
+
+  function renderCompare(data, root, bundle) {
+    const compare = data.compare || {};
+    const counts = compare.counts || {};
+    const buckets = compareBuckets(root, bundle);
+    content.append(
+      objectPanel("Baseline", {
+        bundle: compare.baseline?.name,
+        dir: compare.baseline?.dir,
+        head_sha: compare.baseline?.head_sha,
+        recorded_at: compare.baseline?.recorded_at,
+        findings: compare.baseline?.findings,
+      }),
+    );
+    content.append(
+      objectPanel("Counts", {
+        new: counts.new,
+        persisting: counts.persisting,
+        resolved: counts.resolved,
+        not_reviewed: counts.not_reviewed,
+      }),
+    );
+    const pickerHost = node("div");
+    content.append(pickerHost);
+    renderComparePicker(pickerHost, root, bundle);
+    const sections = [
+      ["New", compare.new, buckets.actionable],
+      ["Persisting", compare.persisting, buckets.actionable],
+      ["Resolved", compare.resolved, buckets.columns],
+      ["Not reviewed", compare.not_reviewed, buckets.columns],
+    ];
+    for (const [caption, rows, columns] of sections) {
+      content.append(table(caption, columns, Array.isArray(rows) ? rows : []));
+    }
   }
 
   function dimensionPicker(label, id, values, selected, update) {
@@ -293,23 +452,52 @@
       message.textContent = "Gate status is unknown.";
   }
 
-  function render(view, data) {
+  function decodeHashSegment(segment) {
+    try {
+      return decodeURIComponent(segment || "");
+    } catch (_) {
+      return segment || "";
+    }
+  }
+
+  function render(view, data, routeInfo) {
     content.replaceChildren();
     message.textContent = "";
     message.className = "";
     if (view === "inbox") {
       title.textContent = "Inbox";
       renderInbox(data);
-    } else if (view === "detail" || view === "gate" || view === "threads") {
+    } else if (
+      view === "detail" ||
+      view === "gate" ||
+      view === "threads" ||
+      view === "compare" ||
+      view === "compare-pick"
+    ) {
       title.textContent =
         view === "gate"
           ? "Gate"
           : view === "threads"
             ? "Threads"
-            : "Review detail";
+            : view === "compare" || view === "compare-pick"
+              ? "Compare"
+              : "Review detail";
       content.append(detailNavigation(view));
       if (view === "threads") {
         content.append(threadTable("Review threads", data.threads));
+      } else if (view === "compare-pick") {
+        const rows = Array.isArray(data.rows) ? data.rows : [];
+        inboxNames = rows.map((row) => row.bundle);
+        const choices = inboxNames.filter((name) => name !== routeInfo?.bundle);
+        if (!choices.length) {
+          message.textContent = "No other bundle to compare against.";
+        } else {
+          if (!compareBaseline || !choices.includes(compareBaseline))
+            compareBaseline = choices[0];
+          fetchView();
+        }
+      } else if (view === "compare") {
+        renderCompare(data, routeInfo?.root || "", routeInfo?.bundle || "");
       } else {
         renderDetail(data, view === "gate");
       }
@@ -395,6 +583,22 @@
         path: `/v1/precision?by=${encodeURIComponent(precisionBy)}`,
       };
     if (parts[0] === "r" && parts.length >= 3) {
+      const root = encodeHashSegment(parts[1]);
+      const bundle = encodeHashSegment(parts[2]);
+      const decoded = {
+        root: decodeHashSegment(parts[1]),
+        bundle: decodeHashSegment(parts[2]),
+      };
+      if (parts[3] === "compare") {
+        if (parts[4]) compareBaseline = decodeHashSegment(parts[4]);
+        if (!compareBaseline)
+          return { view: "compare-pick", path: "/v1/bundles", ...decoded };
+        return {
+          view: "compare",
+          path: `/v1/roots/${root}/bundles/${bundle}/compare?baseline=${encodeURIComponent(compareBaseline)}`,
+          ...decoded,
+        };
+      }
       const view =
         parts[3] === "threads"
           ? "threads"
@@ -403,7 +607,8 @@
             : "detail";
       return {
         view,
-        path: `/v1/roots/${encodeHashSegment(parts[1])}/bundles/${encodeHashSegment(parts[2])}`,
+        path: `/v1/roots/${root}/bundles/${bundle}`,
+        ...decoded,
       };
     }
     return { view: "inbox", path: "/v1/bundles" };
@@ -434,7 +639,7 @@
         body = await response.json();
       }
       const data = envelopeData(body);
-      if (data) render(current.view, data);
+      if (data) render(current.view, data, current);
     } catch (error) {
       content.replaceChildren();
       title.textContent = "Unable to load view";

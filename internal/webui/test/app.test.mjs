@@ -571,6 +571,7 @@ test("decodes a bundle hash segment once before requesting and linking it", asyn
     "#/r/root-123/local%20space%20name",
     "#/r/root-123/local%20space%20name/threads",
     "#/r/root-123/local%20space%20name/gate",
+    "#/r/root-123/local%20space%20name/compare",
   ]);
 });
 

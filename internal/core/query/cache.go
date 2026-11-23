@@ -36,21 +36,25 @@ type stamp [sha256.Size]byte
 // cacheKey names one composed view: the bundle plus the flags that change
 // the composition. Check separates an inbox row (no gate) from a detail.
 type cacheKey struct {
-	root   string
-	bundle string
-	check  string
-	live   string
-	cost   bool
+	root       string
+	bundle     string
+	check      string
+	live       string
+	compare    string
+	cost       bool
+	compareSet bool
 }
 
 // keyFor derives the cache key for one composition.
 func keyFor(root Root, bundle string, flags *reportcore.Flags) cacheKey {
 	return cacheKey{
-		root:   root.ID,
-		bundle: bundle,
-		check:  flags.Check,
-		live:   flags.Live,
-		cost:   flags.Cost,
+		root:       root.ID,
+		bundle:     bundle,
+		check:      flags.Check,
+		live:       flags.Live,
+		cost:       flags.Cost,
+		compare:    flags.Compare,
+		compareSet: flags.CompareSet,
 	}
 }
 
@@ -199,7 +203,7 @@ func (l *Layer) cached(
 	l.mu.Lock()
 	hit, ok := l.cache[key]
 	if cacheable && ok && hit.stamp == current {
-		l.touchLocked(key, &hit)
+		l.touchLocked(&key, &hit)
 		l.mu.Unlock()
 		return hit.resp, hit.ref, hit.inv
 	}
@@ -221,16 +225,16 @@ func (l *Layer) cached(
 	if !bundlePresentLocked(l.cache, bundleID) && bundleCountLocked(l.cache) >= l.maxBundles {
 		evictOldestBundleLocked(l.cache)
 	}
-	l.touchLocked(key, &entry{resp: resp, ref: ref, inv: inv, stamp: current})
+	l.touchLocked(&key, &entry{resp: resp, ref: ref, inv: inv, stamp: current})
 	l.mu.Unlock()
 	return resp, ref, inv
 }
 
 // touchLocked stores one entry as the most recently used composition.
-func (l *Layer) touchLocked(key cacheKey, item *entry) {
+func (l *Layer) touchLocked(key *cacheKey, item *entry) {
 	l.seq++
 	item.used = l.seq
-	l.cache[key] = *item
+	l.cache[*key] = *item
 }
 
 // bundlePresentLocked reports whether the cache already holds a composition of

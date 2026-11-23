@@ -26,6 +26,7 @@ export type RefusalCode =
   | "bad-at"
   | "bad-attribution"
   | "bad-base"
+  | "bad-baseline"
   | "bad-budget"
   | "bad-by"
   | "bad-category"
