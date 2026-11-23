@@ -1,5 +1,5 @@
 ---
-"@stainless-code/verdict": patch
+"@stainless-code/verdict": minor
 ---
 
 Panel receipts use version 2 with invoker-assigned checker identities. S5 receipts bind the execution, head, diff, frozen review and dispatch plan, and every confirmation or refutation quote passes the S4 matcher. Approval, spec, compliance, post, report, gate and ready require all assigned other-finder checks. Missing or disputed blocking checks withhold approval as insufficient. Manual panel decisions remain unchanged when no S5 execution is captured.
