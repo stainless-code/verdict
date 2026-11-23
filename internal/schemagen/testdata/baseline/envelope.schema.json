@@ -678,6 +678,9 @@
           "type": "array",
           "items": { "$ref": "#/$defs/findingItem" }
         },
+        "org_pack": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/orgPackInfo" }]
+        },
         "cost": { "$ref": "#/$defs/reportCost" },
         "compare": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportCompare" }]
@@ -716,6 +719,20 @@
         "filters",
         "items"
       ],
+      "additionalProperties": true
+    },
+    "orgPackInfo": {
+      "type": "object",
+      "properties": {
+        "repo": { "type": "string" },
+        "ref": { "type": "string" },
+        "path": { "type": "string" },
+        "sha": { "type": "string" },
+        "hash": { "type": "string" },
+        "name": { "type": "string" },
+        "version": { "type": "string" }
+      },
+      "required": ["repo", "ref", "path"],
       "additionalProperties": true
     },
     "reportHead": {
@@ -3678,6 +3695,20 @@
         "replaced": { "type": "boolean" }
       },
       "required": ["pack", "previous_hash", "replaced"],
+      "additionalProperties": true
+    },
+    "packSyncData": {
+      "type": "object",
+      "properties": {
+        "pack": { "$ref": "#/$defs/packEntry" },
+        "repo": { "type": "string" },
+        "ref": { "type": "string" },
+        "path": { "type": "string" },
+        "sha": { "type": ["string", "null"] },
+        "hash": { "type": "string" },
+        "version": { "type": "string" }
+      },
+      "required": ["pack", "repo", "ref", "path", "sha", "hash", "version"],
       "additionalProperties": true
     },
     "packTestData": {

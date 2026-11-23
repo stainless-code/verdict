@@ -1083,15 +1083,15 @@ Fix: check the source spelling, the `@ref`, your access (an ssh key for an ssh s
 
 ## `pack-lock-drift`
 
-Cause: `.verdict/verdict.lock` no longer matches the vendored repo pack: its tree hash differs, its pack directory is gone, or its `sig` does not match the entry's name, source, version, and hash.
+Cause: `.verdict/verdict.lock` no longer matches the vendored repo pack: its tree hash differs, its pack directory is gone, or its `sig` does not match the entry's name, source, version, and hash. When a base-owned `org_pack` pin governs, the vendored central pack was edited (or deleted) after `pack sync`.
 
-Fix: re-add the pack with `verdict pack add <dir|git-url>[@ref]` so the lock records the current tree, or restore the pack the lock pins, then re-run. A bundle keeps the lock controls captured at fetch, so repair the trusted base and fetch a fresh bundle before repeating `post` or `record`.
+Fix: re-add the pack with `verdict pack add <dir|git-url>[@ref]` so the lock records the current tree, or restore the pack the lock pins, then re-run. For a central pack, re-sync it with `verdict pack sync` instead. A bundle keeps the lock controls captured at fetch, so repair the trusted base and fetch a fresh bundle before repeating `post` or `record`.
 
 ## `pack-lock-missing`
 
-Cause: a repo pack under `.verdict/packs/` has no `.verdict/verdict.lock` entry, or the lock file is absent while repo packs exist.
+Cause: a repo pack under `.verdict/packs/` has no `.verdict/verdict.lock` entry, or the lock file is absent while repo packs exist. When a base-owned `org_pack` pin governs, no row synced from the pinned repository exists yet.
 
-Fix: run `verdict pack add <dir|git-url>[@ref]` to vendor the pack and write its lock entry, commit both, then re-run. A bundle keeps the lock controls captured at fetch, so repair the trusted base and fetch a fresh bundle before repeating `post` or `record`.
+Fix: run `verdict pack add <dir|git-url>[@ref]` to vendor the pack and write its lock entry, commit both, then re-run. For a central pack, run `verdict pack sync` to vendor the pinned `repo@ref` and lock it. A bundle keeps the lock controls captured at fetch, so repair the trusted base and fetch a fresh bundle before repeating `post` or `record`.
 
 ## `pack-staging-stale`
 

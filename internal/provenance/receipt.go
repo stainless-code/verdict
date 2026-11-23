@@ -36,6 +36,7 @@ const (
 	kindKB          = "kb"
 	kindBundle      = "bundle"
 	kindExclusions  = "exclusions"
+	dotPath         = "."
 	layerBuiltIn    = "built-in"
 	runShortLen     = 12
 	hashShortLen    = 7
@@ -108,7 +109,22 @@ type ExclusionsInput struct {
 	Present        bool
 }
 
+// OrgPackInput describes the governing central pack: the base-owned pin
+// (repo, ref, path) beside the locked content it resolved to. Zero value
+// means no pin governed the run.
+type OrgPackInput struct {
+	Repo    string
+	Ref     string
+	Path    string
+	SHA     string
+	Hash    string
+	Name    string
+	Version string
+}
+
 // ReceiptBuildInput holds fetch-time inputs for building provenance.json.
+//
+//nolint:govet // the input fields read in the order fetch fills them
 type ReceiptBuildInput struct {
 	Learnings    *ControlInput
 	KB           *KBRecallInput
@@ -124,6 +140,10 @@ type ReceiptBuildInput struct {
 	Controls     []ControlInput
 	Overrides    []ControlInput
 	Exclusions   ExclusionsInput
+	// OrgPack is the governing central pack, when the base config pins
+	// one. Nil means: read the bundle's controls snapshot (config pin
+	// plus lock) so the receipt still records the governing pack.
+	OrgPack *OrgPackInput
 }
 
 // BuildReceipt builds the deterministic ProvenanceReceipt for a bundle.
@@ -149,6 +169,7 @@ func BuildReceipt(in *ReceiptBuildInput) *core.ProvenanceReceipt {
 	inputs = append(inputs, ctrlEntries...)
 	inputs = append(inputs, cfgEntries...)
 	inputs = append(inputs, exclEntries...)
+	inputs = append(inputs, orgPackEntries(in)...)
 
 	truncated := append([]core.ProvenanceTruncatedRow{}, kbTruncRows...)
 	if in.BundleTrunc != nil && in.BundleTrunc.Truncated {
@@ -331,7 +352,7 @@ func collectBundleEntry(dir, path string, d fs.DirEntry, rels *[]string) error {
 	if err != nil {
 		return wrapReceiptErr("relpath", err)
 	}
-	if rel == "." {
+	if rel == dotPath {
 		return nil
 	}
 	relSlash := filepath.ToSlash(rel)
@@ -345,14 +366,14 @@ func collectBundleEntry(dir, path string, d fs.DirEntry, rels *[]string) error {
 }
 
 func isIncludedBundleFile(relSlash, name string) bool {
-	if strings.HasPrefix(name, ".") {
+	if strings.HasPrefix(name, dotPath) {
 		return false
 	}
 	return relSlash != ReceiptFile
 }
 
 func skipBundleDirIfNeeded(relSlash, name string) error {
-	if relSlash == "controls" || strings.HasPrefix(name, ".") {
+	if relSlash == "controls" || strings.HasPrefix(name, dotPath) {
 		return filepath.SkipDir
 	}
 	return nil
@@ -505,6 +526,146 @@ func configInputEntries(in *ReceiptBuildInput) []core.ProvenanceInput {
 	}}
 }
 
+// kindOrgPack is the provenance input kind for the governing central pack.
+const kindOrgPack = "org_pack"
+
+// orgPackEntries renders the governing central pack, if any: an explicit
+// input wins; otherwise the bundle's controls snapshot (the base config
+// pin plus the lock row it synced to) supplies it. A bundle with no pin
+// carries no org_pack row, so legacy receipts stay byte-identical.
+func orgPackEntries(in *ReceiptBuildInput) []core.ProvenanceInput {
+	pin := in.OrgPack
+	if pin == nil {
+		found := orgPackFromBundle(in.Dir)
+		pin = &found
+	}
+	if pin.Repo == "" {
+		return nil
+	}
+	status := statusAbsent
+	if pin.Hash != "" {
+		status = statusIncluded
+	}
+	return []core.ProvenanceInput{{
+		Kind: kindOrgPack, Name: pin.Repo, ID: pin.Ref, Status: status,
+		SHA256: pin.Hash, Detail: orgPackDetail(pin),
+	}}
+}
+
+// orgPackDetail renders one org_pack row's detail: the pin path, the
+// resolved commit, and the locked pack identity.
+func orgPackDetail(pin *OrgPackInput) string {
+	path := pin.Path
+	if path == "" {
+		path = dotPath
+	}
+	return fmt.Sprintf("path=%s sha=%s pack=%s version=%s", path, pin.SHA, pin.Name, pin.Version)
+}
+
+// OrgPackFromBundle reports the governing central pack a bundle's controls
+// snapshot pins: the base config's org pin beside its locked content.
+// An empty Repo reads as no pin.
+func OrgPackFromBundle(dir string) OrgPackInput {
+	return orgPackFromBundle(dir)
+}
+
+// orgPackFromBundle reads the governing pin and its locked row out of the
+// bundle's controls snapshot. Anything unreadable reads as no pin: the
+// receipt degrades rather than refusing a fetch for its garnish.
+func orgPackFromBundle(dir string) OrgPackInput {
+	if dir == "" {
+		return OrgPackInput{}
+	}
+	pin := readBundleOrgPin(filepath.Join(dir, "controls", "config.json"))
+	if pin.Repo == "" {
+		return OrgPackInput{}
+	}
+	row := readBundleLockRow(filepath.Join(dir, "controls", "verdict.lock"), pin.Repo)
+	pin.Hash, pin.Name, pin.Version, pin.SHA = row.Hash, row.Name, row.Version, lockSHA(row.Source)
+	return pin
+}
+
+// bundleOrgPinFile is the snapshotted base configuration's pinned shape.
+type bundleOrgPinFile struct {
+	Packs *struct {
+		OrgPack *struct {
+			Repo string `json:"repo"`
+			Ref  string `json:"ref"`
+			Path string `json:"path"`
+		} `json:"org_pack"`
+	} `json:"packs"`
+}
+
+// readBundleOrgPin parses one snapshotted config's org pin.
+func readBundleOrgPin(path string) OrgPackInput {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return OrgPackInput{}
+	}
+	var doc bundleOrgPinFile
+	if json.Unmarshal(raw, &doc) != nil || doc.Packs == nil || doc.Packs.OrgPack == nil {
+		return OrgPackInput{}
+	}
+	pin := doc.Packs.OrgPack
+	if pin.Repo == "" {
+		return OrgPackInput{}
+	}
+	if pin.Path == "" {
+		pin.Path = dotPath
+	}
+	return OrgPackInput{Repo: pin.Repo, Ref: pin.Ref, Path: pin.Path}
+}
+
+// bundleLockRow is one row of the snapshotted verdict.lock.
+type bundleLockRow struct {
+	Name    string `json:"name"`
+	Source  string `json:"source"`
+	Version string `json:"version"`
+	Hash    string `json:"hash"`
+}
+
+// readBundleLockRow finds the lock row synced from repo: a `git:<repo>@…`
+// source for a git pin, a `dir:<repo>` source for a local one.
+func readBundleLockRow(path, repo string) bundleLockRow {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return bundleLockRow{}
+	}
+	var lock struct {
+		Packs []bundleLockRow `json:"packs"`
+	}
+	if json.Unmarshal(raw, &lock) != nil {
+		return bundleLockRow{}
+	}
+	for _, row := range lock.Packs {
+		if lockSourceRepo(row.Source) == repo {
+			return row
+		}
+	}
+	return bundleLockRow{}
+}
+
+// lockSourceRepo strips one lock source to its repository spelling.
+func lockSourceRepo(source string) string {
+	if rest, ok := strings.CutPrefix(source, "git:"); ok {
+		if at := strings.LastIndex(rest, "@"); at > 0 {
+			return rest[:at]
+		}
+		return rest
+	}
+	return strings.TrimPrefix(source, "dir:")
+}
+
+// lockSHA extracts the resolved commit from one lock source.
+func lockSHA(source string) string {
+	if rest, ok := strings.CutPrefix(source, "git:"); ok {
+		if at := strings.LastIndex(rest, "@"); at > 0 {
+			return rest[at+1:]
+		}
+	}
+	return ""
+}
+
 func exclusionsInputEntries(dir string, ex *ExclusionsInput) []core.ProvenanceInput {
 	if !ex.Present {
 		return []core.ProvenanceInput{{
@@ -533,6 +694,7 @@ func exclusionsInputEntries(dir string, ex *ExclusionsInput) []core.ProvenanceIn
 func computeRunID(in *ReceiptBuildInput, promptsHash string, learn *core.ProvenanceInput) string {
 	h := sha256.New()
 	writeKV(h, "prompts_hash", promptsHash)
+	writeKV(h, "org_pack", orgPackHashValue(in))
 	writeKV(h, "head_sha", in.HeadSHA)
 	writeKV(h, "base_sha", in.BaseSHA)
 	if raw, err := os.ReadFile(filepath.Join(in.Dir, "full.diff")); err == nil {
@@ -547,6 +709,20 @@ func computeRunID(in *ReceiptBuildInput, promptsHash string, learn *core.Provena
 	writeKV(h, "learnings", learn.Status+sepColon+learn.SHA256)
 	writeExclAndKBToHash(h, in)
 	return hex.EncodeToString(h.Sum(nil))
+}
+
+// orgPackHashValue binds the governing central pack into the run id: the
+// explicit input wins, else the bundle snapshot's pin and locked hash.
+func orgPackHashValue(in *ReceiptBuildInput) string {
+	pin := in.OrgPack
+	var repo, ref, path, hash string
+	if pin != nil {
+		repo, ref, path, hash = pin.Repo, pin.Ref, pin.Path, pin.Hash
+	} else {
+		found := orgPackFromBundle(in.Dir)
+		repo, ref, path, hash = found.Repo, found.Ref, found.Path, found.Hash
+	}
+	return fmt.Sprintf("%s:%s:%s:%s", repo, ref, path, hash)
 }
 
 // sortedConfigValues returns the winning config origins in key order.

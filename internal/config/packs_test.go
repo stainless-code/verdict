@@ -3,6 +3,8 @@ package config
 import (
 	"strings"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 // TestParsePacksSection proves the built-in pack composition parses: the
@@ -76,6 +78,68 @@ func requirePacksRefusal(t *testing.T, body, want string) {
 	}
 	if !strings.Contains(ref.Message, want) {
 		t.Errorf("message = %q, want it to contain %q", ref.Message, want)
+	}
+}
+
+// TestParseOrgPackPin proves the central-pack pin parses: a commit SHA or a
+// semver tag ref, with an optional confined path.
+//
+//nolint:revive // the table rows read as one contract block
+func TestParseOrgPackPin(t *testing.T) {
+	t.Parallel()
+	sha := strings.Repeat("a", 40)
+	cases := []struct {
+		name string
+		body string
+		want core.ConfigOrgPack
+	}{
+		{"sha ref no path", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"` + sha + `"}}}`, core.ConfigOrgPack{Repo: "central", Ref: sha}},
+		{"tag ref with path", `{"schema_version":"1","packs":{"org_pack":{"repo":"https://example.invalid/acme/packs.git","ref":"v1.2.3","path":"packs/org"}}}`, core.ConfigOrgPack{Repo: "https://example.invalid/acme/packs.git", Ref: "v1.2.3", Path: "packs/org"}},
+		{"bare tag", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"2.0.0"}}}`, core.ConfigOrgPack{Repo: "central", Ref: "2.0.0"}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			cfg, ref := Parse([]byte(tc.body))
+			if ref != nil {
+				t.Fatalf("Parse: %s: %s", ref.Code, ref.Message)
+			}
+			if cfg.Packs == nil || cfg.Packs.OrgPack == nil {
+				t.Fatal("org_pack missing")
+			}
+			if got := *cfg.Packs.OrgPack; got != tc.want {
+				t.Errorf("org_pack = %+v, want %+v", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestParseOrgPackRefusals pins one diagnostic per broken pin shape: a
+// mutable branch ref, an empty or dash-led repo, a traversal or absolute
+// path, and an unknown pin key.
+func TestParseOrgPackRefusals(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name string
+		body string
+		want string
+	}{
+		{"branch ref", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"main"}}}`, "$.packs.org_pack.ref"},
+		{"missing ref", `{"schema_version":"1","packs":{"org_pack":{"repo":"central"}}}`, "ref"},
+		{"empty repo", `{"schema_version":"1","packs":{"org_pack":{"repo":"","ref":"v1.2.3"}}}`, "$.packs.org_pack.repo"},
+		{"dash repo", `{"schema_version":"1","packs":{"org_pack":{"repo":"-central","ref":"v1.2.3"}}}`, "$.packs.org_pack.repo"},
+		{"query repo", `{"schema_version":"1","packs":{"org_pack":{"repo":"https://h/p?token=x","ref":"v1.2.3"}}}`, "$.packs.org_pack.repo"},
+		{"traversal path", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"v1.2.3","path":"../escape"}}}`, "$.packs.org_pack.path"},
+		{"nested traversal", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"v1.2.3","path":"a/../../escape"}}}`, "$.packs.org_pack.path"},
+		{"absolute path", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"v1.2.3","path":"/etc"}}}`, "$.packs.org_pack.path"},
+		{"unknown pin key", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"v1.2.3","branch":"main"}}}`, "$.packs.org_pack.branch: unknown field"},
+		{"pin not object", `{"schema_version":"1","packs":{"org_pack":[]}}`, "$.packs.org_pack"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			requirePacksRefusal(t, tc.body, tc.want)
+		})
 	}
 }
 

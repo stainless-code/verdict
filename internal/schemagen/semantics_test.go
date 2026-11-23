@@ -60,7 +60,10 @@ var publishedSemantics = map[string]string{
 	// packs: additive optional top-level object with a merge_builtin boolean
 	// and three >= 1 id arrays, closed shape; no existing property, required
 	// key, enum, or type changed.
-	"config.schema.json": "472a44a23a9e9fa8aba885a6892b76e7eeca56f9cc876dd3210e794105d3cad5",
+	// packs.org_pack: additive optional closed object (repo, ref required;
+	// path optional) pinning one org-wide central pack set. No existing
+	// property, required key, enum, or type changed.
+	"config.schema.json": "e5837cd630aec9d0878cc44308878465bf0a24b239581600b8ba0c71c2d3ccac",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -352,7 +355,11 @@ var publishedSemantics = map[string]string{
 	// report --compare: additive optional data.compare ($defs/reportCompare and
 	// its baseline/counts/finding definitions). No existing property, required
 	// key, enum, or type changed; only a --compare run carries the key.
-	"envelope.schema.json": "23667aae9840383a7347fd4992cf8bf906cef1558bac4a1858a3e6d8a925b6b7",
+	// org packs: additive optional data.org_pack ($defs/orgPackInfo) naming the
+	// governing central pack version on report, and additive $defs/packSyncData
+	// beside packAddData. No existing property, required key, enum, or type
+	// changed; only a pinned run and `pack sync` carry the keys.
+	"envelope.schema.json": "64e1fda246a48474474be34652697034952b2a69ea65c9be1d63997b02742da7",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

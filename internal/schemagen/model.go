@@ -135,6 +135,9 @@ type ConfigIndex = core.ConfigIndex
 // ConfigPacks is the configuration's built-in pack composition.
 type ConfigPacks = core.ConfigPacks
 
+// ConfigOrgPack is the configuration's central-pack pin.
+type ConfigOrgPack = core.ConfigOrgPack
+
 // ConfigRigorPolicy is the configuration's validator mode and per-tier
 // evidence floors.
 type ConfigRigorPolicy = core.ConfigRigorPolicy
@@ -273,6 +276,7 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Output       *string            `json:"output"`
 	Filters      ReportFilters      `json:"filters"`
 	Items        []FindingItem      `json:"items"`
+	OrgPack      *OrgPackInfo       `anyOf:"null"        json:"org_pack,omitempty"     optional:"true"`
 	Cost         ReportCost         `json:"cost"         optional:"true"`
 	Compare      *ReportCompare     `anyOf:"null"        json:"compare"                optional:"true"`
 	Completeness ReportCompleteness `json:"completeness" optional:"true"`
@@ -282,6 +286,9 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Gate         *ReportGate        `anyOf:"null"        json:"gate"                   optional:"true"`
 	Replay       *ReportReplay      `anyOf:"null"        json:"replay"                 optional:"true"`
 }
+
+// OrgPackInfo is the governing central pack version on a report.
+type OrgPackInfo = core.OrgPackInfo
 
 // ReportHead is core's fetched/base/live head triple.
 type ReportHead = core.ReportHead
@@ -488,6 +495,9 @@ type PackCheckRule = pack.CheckRule
 
 // PackAddData is the pack add --json data profile.
 type PackAddData = pack.AddData
+
+// PackSyncData is the pack sync --json data profile.
+type PackSyncData = pack.SyncData
 
 // PackTestData is the pack test --json data profile.
 type PackTestData struct {

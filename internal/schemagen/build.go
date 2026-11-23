@@ -200,6 +200,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[ConfigTrigger](), name: "trigger", closed: true},
 				{typ: reflect.TypeFor[ConfigRigorPolicy](), name: "rigorPolicy", closed: true},
 				{typ: reflect.TypeFor[ConfigPacks](), name: "configPacks", closed: true},
+				{typ: reflect.TypeFor[ConfigOrgPack](), name: "configOrgPack", closed: true},
 				{typ: reflect.TypeFor[BlockClause](), name: "blockClause", closed: true},
 				{typ: reflect.TypeFor[ConfigScope](), name: "scope", closed: true, constraints: []member{
 					{keyAnyOf, array(
@@ -580,6 +581,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[core.PanelSummary](), name: verificationSummaryType},
 		{typ: reflect.TypeFor[core.FinderSummary](), name: finderSummaryType},
 		{typ: reflect.TypeFor[ReportData](), name: "reportData"},
+		{typ: reflect.TypeFor[OrgPackInfo](), name: "orgPackInfo"},
 		{typ: reflect.TypeFor[ReportHead](), name: "reportHead"},
 		{typ: reflect.TypeFor[ReportVerdict](), name: "reportVerdict"},
 		{typ: reflect.TypeFor[ReportCounts](), name: "reportCounts"},
@@ -715,6 +717,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[PackCheckLens](), name: "packCheckLens"},
 		{typ: reflect.TypeFor[PackCheckRule](), name: "packCheckRule"},
 		{typ: reflect.TypeFor[PackAddData](), name: "packAddData"},
+		{typ: reflect.TypeFor[PackSyncData](), name: "packSyncData"},
 		{typ: reflect.TypeFor[PackTestData](), name: "packTestData"},
 		{typ: reflect.TypeFor[PackTestCase](), name: "packTestCase"},
 		{typ: reflect.TypeFor[PackTestSummary](), name: "packTestSummary"},

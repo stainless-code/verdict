@@ -199,9 +199,20 @@
           "type": "array",
           "items": { "type": "string" },
           "minItems": 1
-        }
+        },
+        "org_pack": { "$ref": "#/$defs/configOrgPack" }
       },
       "required": [],
+      "additionalProperties": false
+    },
+    "configOrgPack": {
+      "type": "object",
+      "properties": {
+        "repo": { "type": "string" },
+        "ref": { "type": "string" },
+        "path": { "type": "string" }
+      },
+      "required": ["repo", "ref"],
       "additionalProperties": false
     },
     "blockClause": {

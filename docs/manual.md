@@ -757,6 +757,34 @@ branch, never the working tree and never a branch commit, so a PR cannot
 disable the built-in rules that review it; an id no built-in pack declares is a
 warning, never a refusal. Absent keys merge every built-in pack.
 
+One central rules pack set can be pinned from the same base-owned file:
+
+```json
+{
+  "schema_version": "1",
+  "packs": {
+    "org_pack": {
+      "repo": "https://example.invalid/stainless/rules.git",
+      "ref": "v1.2.3",
+      "path": "packs/org"
+    }
+  }
+}
+```
+
+`repo` is the central repository — one of the allowlisted git remote forms
+`pack add` accepts, or a local directory for offline mirrors; `ref` is the
+immutable version, a 40-hex commit SHA or a semver tag such as `v1.2.3` (a
+branch name like `main` is refused `bad-config`, so the governed rule set can
+never float); `path` is the pack root inside that repository (default `.`),
+confined to a repository-relative slash path — an absolute spelling, a
+backslash, or any `..` segment is refused. `verdict pack sync` vendors that
+pack and hash-locks it (below), `report` names the governing `org_pack`
+version in its human line and `data.org_pack`, and the provenance receipt
+records it as an `org_pack` input beside the locked content hash. The pin is
+read from the trusted base exactly like `merge_builtin`, so a PR branch — and
+personal settings — can never change or drop it.
+
 `verdict pack list [--json]` reports every loaded pack (built-in, org, repo)
 in precedence order: `name`, `version`, `layer`, `source` (`builtin`,
 `dir:<path>`, or `.verdict/packs/<name>`), the canonical tree `hash`, the
@@ -865,6 +893,17 @@ backup is a warning that names the leftover path, not a refusal: the add has
 succeeded and the loader skips the dotted sibling. A source inside
 `.verdict/packs/` refuses `bad-pack`: it is already vendored.
 
+`verdict pack sync [--json]` wires the org pin into that same vendoring
+step: it reads `packs.org_pack` from the trusted base (never the worktree),
+fetches that one repository — a hermetic clone exactly like `add`'s, or a
+local directory read in place — loads the pack at `path`, and vendors and
+locks it the way `add` would. It is the only fetch: `pack list`, `pack
+check`, and every review path only ever re-verify the vendored tree against
+`verdict.lock` and never touch the network. With no pin the command refuses
+`bad-pack`; an unreachable source refuses `pack-git-failed` (git) or
+`bad-pack` (a local path that carries no pack), and a path that escapes the
+central repository refuses before any write.
+
 `verdict.lock` is strict JSON (unknown or differently-cased keys refuse,
 exactly as `pack.json`), with `schema_version: "1"` and `packs` sorted by
 name: `{name, source, version, hash, sig}`. `source` is `dir:<path>` or
@@ -878,8 +917,10 @@ like a URL is listed as `<invalid source>`. `hash` is the canonical tree hash
 `pack list` prints. `sig` is an integrity digest, not a signature: sha256
 over `name=`, `source=`, `version=`, and `hash=` lines in that order, so a
 hand-edited row is caught. The lock covers the repo layer only: the built-in
-pack is pinned by the binary, and org packs live in per-operator settings, so
-neither is locked. `pack add` writes the file atomically and keeps every
+pack is pinned by the binary, and personal-settings org packs live outside
+the lock, so neither is locked — but a base-owned `org_pack` pin vendors its
+pack into the repo layer, and that pack locks like any repo pack.
+`pack add` (and `pack sync`) write the file atomically and keep every
 other row.
 
 `fetch`, `fetch-local`, `post`, and `record` run one shared check where packs
@@ -891,7 +932,16 @@ not match its fields refuses `pack-lock-drift` naming the pack and both
 hashes. The check runs at fetch and again at post/record, with no bypass
 flag. `.verdict/verdict.lock` also joins the `controls` inventory, so it is
 read at the PR base: a PR cannot edit the lock that guards its own review,
-and editing the captured copy refuses `controls-stale` at post/record.
+and editing the captured copy refuses `controls-stale` at post/record. When
+a base-owned `org_pack` pin governs, the pack verbs additionally verify the
+vendored central pack against the pin and the lock on every resolution —
+with zero network access — and refuse `pack-lock-missing` (no row synced
+from the pinned repository) or `pack-lock-drift` (the vendored tree no
+longer hashes to the locked content) instead of falling back to a previous
+pack set; `run` and `record` inherit the same protection through the lock.
+`report` shows the governing version as `org_pack` (human line and
+`data.org_pack`; see the config example above), and the provenance receipt
+carries it as an `org_pack` input.
 
 ### Evidence ledger
 

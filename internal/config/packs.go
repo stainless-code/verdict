@@ -1,9 +1,20 @@
 package config
 
 import (
+	"encoding/hex"
 	"regexp"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+)
+
+// Org pin validation bounds: a commit SHA is 40 hex characters and a
+// control rune ends the printable range.
+const (
+	orgSHAHexLen = 40
+	controlFloor = 0x20
+	controlDEL   = 0x7f
+	rootDot      = "."
 )
 
 // The built-in pack toggle grammars: a pack entry is a full
@@ -42,8 +53,124 @@ func buildPacks(raw any, path string) (*core.ConfigPacks, *core.RefusalError) {
 	}); err != nil {
 		return nil, err
 	}
+	if out.OrgPack, err = presentNested(obj, "org_pack", path, buildOrgPack); err != nil {
+		return nil, err
+	}
 	return out, nil
 }
+
+// buildOrgPack validates the central-pack pin: repo and ref are required,
+// path defaults to the repository root. Every value is carried verbatim
+// into the typed pin; the pack layer re-validates before any vendoring.
+func buildOrgPack(raw any, path string) (*core.ConfigOrgPack, *core.RefusalError) {
+	obj, ref := asObject(raw, path)
+	if ref != nil {
+		return nil, ref
+	}
+	repo, ref := requiredString(obj, "repo", path, CodeBadConfig)
+	if ref != nil {
+		return nil, ref
+	}
+	if err := checkOrgRepo(repo, path); err != nil {
+		return nil, err
+	}
+	pinRef, ref := requiredString(obj, "ref", path, CodeBadConfig)
+	if ref != nil {
+		return nil, ref
+	}
+	if err := checkOrgRef(pinRef, path); err != nil {
+		return nil, err
+	}
+	pinPath, ref := orgPinPath(obj, path)
+	if ref != nil {
+		return nil, ref
+	}
+	return &core.ConfigOrgPack{Repo: repo, Ref: pinRef, Path: pinPath}, nil
+}
+
+// orgPinPath reads the optional pack root: absent reads empty (the pack
+// layer normalizes it to the repository root), present must be confined.
+func orgPinPath(obj map[string]any, path string) (string, *core.RefusalError) {
+	present, ok := obj["path"]
+	if !ok {
+		return "", nil
+	}
+	parsed, err := nonEmptyString(present, path+".path")
+	if err != nil {
+		return "", err
+	}
+	if err := checkOrgPath(parsed, path); err != nil {
+		return "", err
+	}
+	return parsed, nil
+}
+
+// checkOrgRepo refuses an unusable central repository spelling: empty was
+// already refused, and what remains must carry no control character, no
+// leading option dash, and no query or fragment — the pin is recorded in
+// provenance, so nothing after the path may carry a token.
+func checkOrgRepo(repo, path string) *core.RefusalError {
+	if strings.HasPrefix(repo, "-") {
+		return refuse(CodeBadConfig, "%s.repo: %q starts with '-'", path, repo)
+	}
+	if strings.ContainsAny(repo, "?#") || !cleanOrgString(repo) {
+		return refuse(CodeBadConfig, "%s.repo: %q is not a repository spelling", path, repo)
+	}
+	return nil
+}
+
+// checkOrgRef refuses any ref that is not an immutable pin: only a 40-hex
+// commit SHA or a semver tag (such as `v1.2.3`) is accepted, so a branch
+// name like `main` can never float the governed rule set.
+func checkOrgRef(ref, path string) *core.RefusalError {
+	if hex40Ref(ref) || orgTagRE.MatchString(ref) {
+		return nil
+	}
+	return refuse(CodeBadConfig,
+		"%s.ref: %q is not immutable — use a 40-hex commit SHA or a semver tag like v1.2.3, never a branch name",
+		path, ref)
+}
+
+// checkOrgPath refuses a pack root that could escape the central
+// repository: absolute spellings, backslashes, and `..` segments are
+// refused; `.` names the repository root.
+func checkOrgPath(pinPath, base string) *core.RefusalError {
+	if strings.HasPrefix(pinPath, "/") || strings.HasPrefix(pinPath, "-") ||
+		strings.Contains(pinPath, `\`) || !cleanOrgString(pinPath) {
+		return refuse(CodeBadConfig, "%s.path: %q is not a repository-relative slash path", base, pinPath)
+	}
+	if pinPath == rootDot {
+		return nil
+	}
+	for seg := range strings.SplitSeq(pinPath, "/") {
+		if seg == "" || seg == "." || seg == ".." {
+			return refuse(CodeBadConfig, "%s.path: %q escapes the central repository root", base, pinPath)
+		}
+	}
+	return nil
+}
+
+// cleanOrgString reports whether s carries no C0 or DEL control character.
+func cleanOrgString(s string) bool {
+	for _, r := range s {
+		if r < controlFloor || r == controlDEL {
+			return false
+		}
+	}
+	return true
+}
+
+// hex40Ref reports whether s is a lowercase 40-hex commit SHA.
+func hex40Ref(s string) bool {
+	if len(s) != orgSHAHexLen {
+		return false
+	}
+	_, err := hex.DecodeString(s)
+	return err == nil && s == strings.ToLower(s)
+}
+
+// orgTagRE matches the accepted semver tags, with an optional `v` prefix.
+var orgTagRE = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$`)
 
 // toggleList reads one non-empty array of ids, each matching at least one of
 // the grammars the list accepts, with no duplicates: a repeated id would make

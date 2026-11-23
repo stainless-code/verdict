@@ -56,25 +56,71 @@ func TogglesFromConfig(cfg *core.Config) Toggles {
 // that was read (`base@<12 hex>`; an absent document at that commit turns
 // nothing off), or [ConfigSourceNone] when no base could be resolved.
 func BaseToggles(ctx context.Context, cmdr core.Commander, root string) (Toggles, string, *core.RefusalError) {
+	cfg, source, ref := baseConfig(ctx, cmdr, root)
+	if ref != nil {
+		return Toggles{}, "", ref
+	}
+	return TogglesFromConfig(cfg), source, nil
+}
+
+// baseConfig reads and parses the trusted-base configuration once, shared by
+// every base-owned pack read. A missing base reads nil config with
+// [ConfigSourceNone]; a present but malformed document refuses.
+func baseConfig(ctx context.Context, cmdr core.Commander, root string) (*core.Config, string, *core.RefusalError) {
 	if cmdr == nil {
-		return Toggles{}, ConfigSourceNone, nil
+		return nil, ConfigSourceNone, nil
 	}
 	sha, ref := baseCommit(ctx, cmdr, root)
 	if ref != nil {
-		return Toggles{}, "", ref
+		return nil, "", ref
 	}
 	if sha == "" {
-		return Toggles{}, ConfigSourceNone, nil
+		return nil, ConfigSourceNone, nil
 	}
 	base, ref := config.ReadBase(ctx, cmdr, "", root, sha)
 	if ref != nil {
-		return Toggles{}, "", ref
+		return nil, "", ref
 	}
 	cfg, ref := config.ParseBase(base)
 	if ref != nil {
-		return Toggles{}, "", ref
+		return nil, "", ref
 	}
-	return TogglesFromConfig(cfg), BaseConfigPrefix + shortHash(sha), nil
+	return cfg, BaseConfigPrefix + shortHash(sha), nil
+}
+
+// OrgPin is the base-owned central-pack pin: the repository, the immutable
+// ref (a 40-hex commit SHA or a semver tag), and the pack root inside it.
+// It is read from the trusted base exactly like [Toggles], so a PR branch —
+// or personal settings — can never change or drop it.
+type OrgPin struct {
+	Repo string
+	Ref  string
+	Path string
+}
+
+// OrgPinFromConfig reads the org pin out of a parsed configuration, or nil
+// when the base declares none.
+func OrgPinFromConfig(cfg *core.Config) *OrgPin {
+	if cfg == nil || cfg.Packs == nil || cfg.Packs.OrgPack == nil {
+		return nil
+	}
+	pin := cfg.Packs.OrgPack
+	path := pin.Path
+	if path == "" {
+		path = rootSelf
+	}
+	return &OrgPin{Repo: pin.Repo, Ref: pin.Ref, Path: path}
+}
+
+// BaseOrgPin reads the org pin `.verdict/config.json` declares at the
+// checkout's trusted base, never the working tree and never a branch commit.
+// A checkout with no pin reads nil with [ConfigSourceNone].
+func BaseOrgPin(ctx context.Context, cmdr core.Commander, root string) (*OrgPin, string, *core.RefusalError) {
+	cfg, source, ref := baseConfig(ctx, cmdr, root)
+	if ref != nil {
+		return nil, "", ref
+	}
+	return OrgPinFromConfig(cfg), source, nil
 }
 
 // baseCommit resolves the trusted base commit: the merge base of HEAD and the
