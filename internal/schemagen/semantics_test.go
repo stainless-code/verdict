@@ -60,7 +60,10 @@ var publishedSemantics = map[string]string{
 	// packs: additive optional top-level object with a merge_builtin boolean
 	// and three >= 1 id arrays, closed shape; no existing property, required
 	// key, enum, or type changed.
-	"config.schema.json": "472a44a23a9e9fa8aba885a6892b76e7eeca56f9cc876dd3210e794105d3cad5",
+	// tests: additive optional top-level object with a draft enum
+	// (off|on-reproduce), closed shape; STA-346 regression-test drafting.
+	// No existing property, required key, enum, or type changed.
+	"config.schema.json": "4f518cdd09952f8f97c28ebde51bbf36a84ee3eb0ad5057427f63dfb23458a36",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets

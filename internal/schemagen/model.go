@@ -139,6 +139,9 @@ type ConfigPacks = core.ConfigPacks
 // evidence floors.
 type ConfigRigorPolicy = core.ConfigRigorPolicy
 
+// ConfigTests is the regression-test drafting policy.
+type ConfigTests = core.ConfigTests
+
 // ConfigRequirements is the configuration's conjunctive requirements.
 type ConfigRequirements = core.ConfigRequirements
 

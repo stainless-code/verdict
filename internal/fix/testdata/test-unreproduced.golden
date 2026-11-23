@@ -1,0 +1,20 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fix",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "bad-sig",
+    "message": "fix --test: sig 11234567 is ran (--test promotes reproduced findings only)\ntry: list open inline sigs with report --status open --kind inline, then re-run with the full prefix"
+  }
+}
+--- stderr ---
+» readiness: .verdict/state/local-test — findings 1 open (1 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+re-enter: verdict fix acme/app local-test --test 1123456789abcdef0123456789abcdef01234567 --json
+--- files ---

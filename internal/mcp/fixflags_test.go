@@ -46,6 +46,11 @@ func TestToolFixCombos(t *testing.T) {
 			args: `"repo":"acme/app","pr":"1","paths":["internal/**"]`,
 			want: "--paths scopes a batch: pass it with --all or --selected",
 		},
+		{
+			name: "empty-test",
+			args: `"repo":"acme/app","pr":"1","test":""`,
+			want: "fix --test needs a sig (an empty value would run an ordinary pass): pass --test <sig>",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

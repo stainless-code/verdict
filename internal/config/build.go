@@ -63,6 +63,9 @@ func buildConfigViews(cfg *core.Config, root map[string]any) *core.RefusalError 
 	if cfg.Packs, ref = presentNested(root, "packs", rootLocation, buildPacks); ref != nil {
 		return ref
 	}
+	if cfg.Tests, ref = presentNested(root, "tests", rootLocation, buildTests); ref != nil {
+		return ref
+	}
 	return buildConfigTail(cfg, root)
 }
 
@@ -193,6 +196,22 @@ func buildRigorPolicy(raw any, path string) (*core.ConfigRigorPolicy, *core.Refu
 		}
 		*tier.dst = floor
 	}
+	return out, nil
+}
+
+var testsDraftEnum = []string{"off", "on-reproduce"}
+
+func buildTests(raw any, path string) (*core.ConfigTests, *core.RefusalError) {
+	obj, ref := asObject(raw, path)
+	if ref != nil {
+		return nil, ref
+	}
+	out := &core.ConfigTests{}
+	draft, ref := readEnumString(obj, "draft", path, testsDraftEnum)
+	if ref != nil {
+		return nil, ref
+	}
+	out.Draft = draft
 	return out, nil
 }
 

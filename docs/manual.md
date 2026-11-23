@@ -1395,9 +1395,14 @@ path again. A `reproduced` finding without usable evidence warns
 `has no runnable artifact`; the claim stays recorded. `record --dry-run`
 validates the draft without saving it. `post` also retains artifacts during its
 local merge, including `post --dry-run`, which writes `findings.dryrun.json`.
-These artifacts are drafts — Verdict
-never runs them, promotes them into the reviewed worktree, commits them, or
-includes them in a posted comment.
+Verdict never runs a retained artifact and never includes one in a posted
+comment. Promotion is an explicit operator step: `fix --test <sig>` copies one
+reproduced finding's artifact into the reviewed worktree at
+`.verdict/tests/<sig>-<hash>.<ext>` and rewrites the receipt command to that
+path; `--commit` then commits that one file as `test: regression for <sig>`.
+`tests.draft` in `.verdict/config.json` decides whether `record` retains the
+draft at all: empty or `on-reproduce` (the default) keeps it, `off` refuses the
+capture.
 
 A trusted pass over the candidates writes `validation.json` beside
 `review.json` — one `CONFIRMED`, `REJECTED`, or `DOWNGRADED` result per finding
@@ -4253,7 +4258,8 @@ and remove it when done — the working tree stays untouched throughout.
 ### Fix loops (bounded, verify-gated)
 
 `fix owner/repo local-<name> [--sig <s> | --all [--min-severity <s>]
-[--verify-cmd <cmd>] [--paths <glob>]...] [--json]` runs one bounded pass over a local bundle: it
+[--verify-cmd <cmd>] [--paths <glob>]... | --test <sig> [--commit]] [--json]`
+runs one bounded pass over a local bundle: it
 picks the top open inline sig (severity `critical` above
 `important` above `informational`, then path) or the `--sig` prefix (must be open
 and inline; non-open, section, and unknown sigs refuse), prints the finding
@@ -4321,6 +4327,22 @@ it is the one batch that runs on a PR bundle — `.verdict/state/<pr>` as readil
 as `local-<name>` — because that is where `selected.json` comes from: the
 instructions then say to push the fix, re-fetch, and land with `post`, since a PR
 bundle has no `record` path.
+
+`--test <sig>` promotes instead of passing: it resolves one open inline finding
+at rigor `reproduced` that carries a usable reproduction receipt, copies the
+retained artifact out of the bundle to the reviewed worktree at
+`.verdict/tests/<sig>-<hash>.<ext>`, and prints the rewritten receipt command.
+Both `tests/<name>` and `./tests/<name>` in that command become the promoted
+path; a reference inside an absolute path is left alone, because it names the
+retained bundle copy, which stays runnable there. Promotion consumes no pass
+and writes no ledger, an identical existing file is a no-op, and a target
+already holding different bytes refuses `test-conflict`. It is
+worktree-confined, exactly as `record` confines its own writes: a `.verdict` or
+`.verdict/tests` that is a symlink refuses instead of landing the test outside
+the checkout. `--commit` commits that one file as `test: regression for <sig>`
+through a pathspec commit, so a file already staged in the index stays staged
+and out of the commit, and it needs `--test`. `tests.draft: off` in
+`.verdict/config.json` stops `record` from retaining the draft to begin with.
 
 Each pass also writes `fix.patch` beside the ledger: the worktree's unified
 diff against `HEAD`, captured before the pass consumes its budget, so the change
