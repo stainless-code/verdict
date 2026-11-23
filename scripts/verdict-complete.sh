@@ -8,7 +8,7 @@ _verdict_verbs() {
 
 _verdict_flags() { # $1 = verb
   case "$1" in
-    demo) printf '%s\n' --agent --keep --json;;
+    demo) printf '%s\n' --agent --keep --timeout --json;;
     fetch) printf '%s\n' --base-sha --since --provider --context --spec --issue --ignore --no-default-excludes --preview --index --consent-over-budget --show-prompts --chunk --json;;
     post) printf '%s\n' --approve --request-changes --bind --force --review-file --summary --dry-run --require-coverage --min-severity --allow-secret-values --json;;
     triage) printf '%s\n' --sig --status --rationale --force --dry-run --json;;

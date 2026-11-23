@@ -51,6 +51,18 @@ func TestParseFlagsSurface(t *testing.T) {
 			want: flags{agent: "codex"},
 		},
 		{
+			name: "timeout before the url", args: []string{"--timeout", "900", "https://github.com/acme/app/pull/7"},
+			want: flags{target: "https://github.com/acme/app/pull/7", timeout: "900"},
+		},
+		{
+			name: "inline timeout", args: []string{"--timeout=45"},
+			want: flags{timeout: "45"},
+		},
+		{
+			name: "negative timeout rides to the validator", args: []string{"--timeout", "-1"},
+			want: flags{timeout: "-1"},
+		},
+		{
 			name: "separator ends flags", args: []string{"--", "--keep"},
 			want: flags{target: "--keep"},
 		},
@@ -95,7 +107,7 @@ type usageRefusal struct {
 	args []string
 }
 
-// usageRefusals are the three usage refusals the surface owns.
+// usageRefusals are the usage refusals the surface owns.
 func usageRefusals() []usageRefusal {
 	return []usageRefusal{
 		{name: "unknown flag", args: []string{"--bogus"}, want: "unknown flag '--bogus' for demo"},
@@ -108,6 +120,31 @@ func usageRefusals() []usageRefusal {
 		{
 			name: "empty separated agent",
 			args: []string{"--agent", ""},
+			want: "flag '--agent' needs a value",
+		},
+		{
+			name: "missing timeout value",
+			args: []string{"--timeout"},
+			want: "--timeout",
+		},
+		{
+			name: "empty inline timeout",
+			args: []string{"--timeout="},
+			want: "flag '--timeout' needs a value",
+		},
+		{
+			name: "empty separated timeout",
+			args: []string{"--timeout", ""},
+			want: "flag '--timeout' needs a value",
+		},
+		{
+			name: "timeout does not eat the next flag",
+			args: []string{"--timeout", "--keep"},
+			want: "flag '--timeout' needs a value",
+		},
+		{
+			name: "agent does not eat the next flag",
+			args: []string{"--agent", "--keep"},
 			want: "flag '--agent' needs a value",
 		},
 		{
@@ -243,5 +280,17 @@ func TestRentry(t *testing.T) {
 		if got := rentry(tc.target, tc.agent); got != tc.want {
 			t.Errorf("%s: rentry = %q, want %q", tc.name, got, tc.want)
 		}
+	}
+}
+
+// TestDemoRequestCarriesTheTimeout proves the parsed --timeout reaches the
+// service request the launcher reads: parsing it and dropping it would leave
+// the watchdog at the default while the operator believes it moved.
+func TestDemoRequestCarriesTheTimeout(t *testing.T) {
+	t.Parallel()
+	r, _, _ := newRunner(t, false)
+	got := demoRequest(t.Context(), r, Request{Env: map[string]string{}, Root: t.TempDir()}, flags{timeout: "900"})
+	if got.TimeoutRaw != "900" {
+		t.Fatalf("TimeoutRaw = %q; want 900", got.TimeoutRaw)
 	}
 }
