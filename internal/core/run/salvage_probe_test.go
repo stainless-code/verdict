@@ -76,12 +76,20 @@ func TestSalvageParserProbes(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 			got, ok := lastFindingsBlock(tt.stdout)
-			if !ok {
-				t.Fatalf("lastFindingsBlock(%q) found no document, want %q", tt.stdout, tt.want)
-			}
-			if string(got) != tt.want {
-				t.Errorf("lastFindingsBlock(%q) = %q, want %q", tt.stdout, got, tt.want)
-			}
+			assertSalvagedDocument(t, tt.stdout, got, ok, tt.want)
 		})
+	}
+}
+
+// assertSalvagedDocument pins the exact bytes the scanner returns. A boolean
+// alone cannot tell a first-block scanner from a last-block one, so the
+// document itself is the assertion.
+func assertSalvagedDocument(t *testing.T, stdout string, got []byte, ok bool, want string) {
+	t.Helper()
+	if !ok {
+		t.Fatalf("lastFindingsBlock(%q) found no document, want %q", stdout, want)
+	}
+	if string(got) != want {
+		t.Errorf("lastFindingsBlock(%q) = %q, want %q", stdout, got, want)
 	}
 }
