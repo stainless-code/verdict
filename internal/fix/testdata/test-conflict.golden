@@ -1,0 +1,20 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fix",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "test-conflict",
+    "message": "fix --test: target .verdict/tests/6123456789abcdef0123456789abcdef01234567-161139e764cc.py already exists with different bytes — refusing to overwrite it\ntry: address the cause above, then re-run the same command"
+  }
+}
+--- stderr ---
+» readiness: .verdict/state/local-test — findings 1 open (1 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+re-enter: verdict fix acme/app local-test --test 6123456789abcdef0123456789abcdef01234567 --json
+--- files ---

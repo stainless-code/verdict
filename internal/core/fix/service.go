@@ -28,6 +28,8 @@ type Request struct { //nolint:govet // the transport contract keeps its field o
 	MinSeverity string
 	VerifyCmd   string
 	Paths       []string
+	Test        string
+	Commit      bool
 	Human       io.Writer
 }
 
@@ -64,6 +66,8 @@ type Data struct { //nolint:govet // field order is the published property order
 	Paths       []string
 	Selection   *string
 	Batch       []BatchRow
+	TestPath    *string
+	Committed   bool
 }
 
 // BatchRow is one sig's outcome in a fix batch.
@@ -162,6 +166,10 @@ func (d *Data) wireCounts(o *jq.Obj) {
 		o.Set("paths", core.WireStrings(d.Paths))
 	}
 	setString(o, "selection", d.Selection)
+	if d.TestPath != nil {
+		o.Set("test_path", *d.TestPath)
+		o.Set("committed", d.Committed)
+	}
 }
 
 // setString publishes an optional string key; absence is the contract for a
@@ -210,6 +218,9 @@ func (r *Request) comboFault() string {
 	if msg := r.modeFault(); msg != "" {
 		return msg
 	}
+	if r.Commit && r.Test == "" {
+		return "--commit commits the promoted regression test: pass it with --test"
+	}
 	if r.All || r.Selected {
 		return ""
 	}
@@ -233,6 +244,12 @@ func (r *Request) modeFault() string {
 		return "fix takes --sig or --selected, not both (--selected addresses the sigs a human reacted 👍 to)"
 	case r.All && r.Selected:
 		return "fix takes --all or --selected, not both (--selected is a batch scoped by fetch's selected.json)"
+	case r.Test != "" && r.All:
+		return "fix takes --test or --all, not both (--test promotes one reproduced finding's artifact)"
+	case r.Test != "" && r.Selected:
+		return "fix takes --test or --selected, not both (--test promotes one reproduced finding's artifact)"
+	case r.Test != "" && r.Sig != "":
+		return "fix takes --sig or --test, not both (--test promotes one reproduced finding's artifact)"
 	}
 	return ""
 }
@@ -281,6 +298,10 @@ func (st *state) runFix(ctx context.Context) *core.RefusalError {
 	now, fixOpen, fixOpenInline := st.printReadiness(dir, entries)
 	ledgerPath := dir + suffixFixJSON
 	store := st.loadLedger(ledgerPath)
+	if st.req.Test != "" {
+		return st.runPromotion(ctx, dir, ledgerPath, store, entries,
+			fixOpen, fixOpenInline)
+	}
 	if st.req.All || st.req.Selected {
 		return st.runBatch(ctx, dir, ledgerPath, store, entries,
 			fixOpen, fixOpenInline, now)

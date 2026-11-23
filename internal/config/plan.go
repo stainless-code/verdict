@@ -28,14 +28,17 @@ type Inputs struct {
 }
 
 // Resolved is the effective configuration: merged defaults, per-file
-// resolutions with clause provenance, the combined plan, and the spend
-// and privacy constraints.
+// resolutions with clause provenance, the combined plan, the spend
+// and privacy constraints, and the regression-test drafting policy.
 type Resolved struct {
 	Spend    SpendView        `json:"spend"`
 	Plan     Plan             `json:"plan"`
 	Files    []FileResolution `json:"files"`
 	Privacy  PrivacyView      `json:"privacy"`
 	Defaults ResolvedDefaults `json:"defaults"`
+	// Tests carries the repository's regression-test drafting policy:
+	// nil or empty draft means on-reproduce (the shipped behavior).
+	Tests *core.ConfigTests `json:"tests,omitempty"`
 }
 
 // SpendView separates the two evaluations: the ordinary estimate guard
@@ -131,7 +134,18 @@ func Resolve(in *Inputs) (*Resolved, *core.RefusalError) {
 		EnforceCap:           personal.Spend.EnforceCap,
 	}
 	out.Privacy = PrivacyView{Exclusions: slices.Clone(personal.Privacy.Exclusions)}
+	out.Tests = testsOf(in.Repo)
 	return out, nil
+}
+
+// testsOf lifts the repository's regression-test drafting policy out of the
+// trusted configuration. The policy is repository-only: flags, environment,
+// and personal layers never override it.
+func testsOf(cfg *core.Config) *core.ConfigTests {
+	if cfg == nil {
+		return nil
+	}
+	return cfg.Tests
 }
 
 // globalLayers orders the invocation and shared layers: flags, then each

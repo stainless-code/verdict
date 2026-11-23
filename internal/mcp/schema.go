@@ -289,6 +289,8 @@ var fieldDocs = map[string]string{
 	"Pr":         "Pull-request number or bundle slug (local-<name> for local bundles).",
 	"Sig":        "Finding signature or unique prefix.",
 	"All":        "Batch every open inline finding at or above the severity floor.",
+	"Test":       "Promote one reproduced finding's retained artifact to .verdict/tests/<sig>-<hash>.<ext>.",
+	"Commit":     "Commit the promoted regression test alone as test: regression for <sig>; requires test.",
 	"Selected":   "Batch only the sigs a GitHub fetch recorded in selected.json as reacted to by a human.",
 	"Status":     "Status filter (all, open, addressed, wont-fix, false-positive, deferred).",
 	"Kind":       "Kind filter (inline, section, all).",
