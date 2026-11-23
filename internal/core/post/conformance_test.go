@@ -180,7 +180,7 @@ func conformanceForgejoEnv() map[string]string {
 // both the inline anchors and the summary, so the row classifies by
 // stdin, not by argv.
 const (
-	conformanceBitbucketBase   = "https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/7"
+	conformanceBitbucketBase   = "https://api.bitbucket.org/2.0/repositories/acme/app/pullrequests/7"
 	conformanceBitbucketRead   = "curl\x00--config\x00-\x00-sf\x00"
 	conformanceBitbucketFollow = "curl\x00--config\x00-\x00-sfL\x00"
 

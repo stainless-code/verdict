@@ -9,6 +9,7 @@ package bitbucket
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 
@@ -30,6 +31,16 @@ const (
 // code fetch already returns for the same variables, so one operator
 // story spans both verbs.
 const CodeAuthMissing = "auth-missing"
+
+// CodeBadTarget is the refusal code for a pull position that is not a
+// `workspace/slug` repo plus a numeric pull-request number. It is already
+// in the closed refusal set (`no-pr-target` names the absent target; this
+// one names the malformed one).
+const CodeBadTarget = "bad-target"
+
+// slash joins the workspace and slug in a `workspace/slug` repo and marks
+// the segment boundary everywhere one is spliced.
+const slash = "/"
 
 const apiRoot = "https://api.bitbucket.org/2.0"
 
@@ -79,13 +90,42 @@ func APIBase(env map[string]string) (auth curlauth.Credential, api string, err *
 }
 
 // Resolve gates the environment and returns the pull-scoped API base the
-// read and write paths share.
+// read and write paths share: the Bitbucket Cloud REST v2.0 pull-request
+// endpoint `/2.0/repositories/{workspace}/{repo_slug}/pullrequests/{id}`.
+// The repo must be one `workspace/slug` pair and the pull number must be
+// numeric, so a value like `--pr 7/../../user` cannot traverse to another
+// API endpoint; each segment is path-escaped before it is spliced in.
 func Resolve(env map[string]string, repo, pr string) (auth curlauth.Credential, base string, err *core.RefusalError) {
 	auth, api, ref := APIBase(env)
 	if ref != nil {
 		return curlauth.Credential{}, "", ref
 	}
-	return auth, api + "/repos/" + repo + "/pullrequests/" + pr, nil
+	ws, slug, ok := splitRepo(repo)
+	if !ok {
+		return curlauth.Credential{}, "", &core.RefusalError{
+			Code:    CodeBadTarget,
+			Message: fmt.Sprintf("bitbucket needs a workspace/repo slug, got %q", repo),
+		}
+	}
+	n, aerr := strconv.Atoi(pr)
+	if aerr != nil || n <= 0 {
+		return curlauth.Credential{}, "", &core.RefusalError{
+			Code:    CodeBadTarget,
+			Message: fmt.Sprintf("bitbucket needs a numeric pull-request number, got %q", pr),
+		}
+	}
+	return auth, api + "/repositories/" + url.PathEscape(ws) + slash + url.PathEscape(slug) +
+		"/pullrequests/" + strconv.Itoa(n), nil
+}
+
+// splitRepo splits one `workspace/slug` repo into its two non-empty
+// segments.
+func splitRepo(repo string) (string, string, bool) {
+	ws, slug, ok := strings.Cut(repo, slash)
+	if !ok || ws == "" || slug == "" || strings.Contains(slug, slash) {
+		return "", "", false
+	}
+	return ws, slug, true
 }
 
 // Auth gates the environment alone, for a caller that has not resolved a
@@ -260,9 +300,9 @@ func SameOrigin(base, next string) bool {
 	if next == "" {
 		return false
 	}
-	origin, _, _ := strings.Cut(base, "/repos/")
+	origin, _, _ := strings.Cut(base, "/repositories/")
 	if origin == "" {
 		origin = apiRoot
 	}
-	return strings.HasPrefix(next, origin+"/") || next == origin
+	return strings.HasPrefix(next, origin+slash) || next == origin
 }

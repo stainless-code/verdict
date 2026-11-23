@@ -61,7 +61,8 @@ const (
 		"re-fetch and re-run"
 	msgBitbucketNoCommit = "post failed: the payload carries no commit_id — bitbucket would approve the " +
 		"current head instead of the reviewed one; re-fetch to record the head"
-	msgBitbucketEvent = "post failed: bitbucket has no review event named %q — post a comment, an approval, " +
+	msgBitbucketNoHunks = "post failed: bitbucket could not read the bundle hunk index — nothing was written"
+	msgBitbucketEvent   = "post failed: bitbucket has no review event named %q — post a comment, an approval, " +
 		"or nothing; a request for changes posts as findings plus a summary note"
 )
 
@@ -122,7 +123,11 @@ func (bitbucketHost) post(ctx context.Context, cmdr Commander, env map[string]st
 	if ref != nil {
 		return postRefusal(dir, ref.Message, nil)
 	}
-	part, ok := parseBitbucketPayload(dir, payload)
+	newSide, lerr := bitbucketNewSidePaths(dir)
+	if lerr != nil {
+		return postRefusal(dir, msgBitbucketNoHunks, nil)
+	}
+	part, ok := parseBitbucketPayload(payload, newSide)
 	if !ok {
 		return postFailure(dir, msgBitbucketPayload, false, nil)
 	}
@@ -615,7 +620,9 @@ func (bitbucketHost) recheck(ctx context.Context, cmdr Commander, env map[string
 	return open, "", nil
 }
 
-// countBitbucketOpen counts the unresolved inline threads.
+// countBitbucketOpen counts the unresolved inline threads. A general
+// comment carries no anchor and is never a thread: verdict's own summary
+// comment must not read as an unresolved thread and block an approval.
 func countBitbucketOpen(ctx context.Context, cmdr Commander, auth curlauth.Credential, base string) (int, error) {
 	items, err := bitbucketCommentList(ctx, cmdr, auth, base)
 	if err != nil {
@@ -623,6 +630,9 @@ func countBitbucketOpen(ctx context.Context, cmdr Commander, auth curlauth.Crede
 	}
 	open := 0
 	for _, root := range bitbucketThreadRoots(items) {
+		if !bitbucket.IsInline(root) {
+			continue
+		}
 		if !bitbucketCommentResolved(root) {
 			open++
 		}
@@ -849,11 +859,8 @@ func bitbucketReceiptObject(pr *bitbucketPR, summary *bitbucket.Comment, approve
 	}
 	id := summary.RemoteID
 	html := pr.htmlURL
-	if summary.Links.HTML.Href != "" {
-		html = pr.htmlURL
-		if html == "" {
-			html = summary.Links.HTML.Href
-		}
+	if summary.Links.HTML.Href != "" && html == "" {
+		html = summary.Links.HTML.Href
 	}
 	obj := jq.NewObj(
 		fieldID, id,
@@ -992,8 +999,11 @@ func (bitbucketHost) postedInlineURLs(ctx context.Context, cmdr Commander, env m
 // is withheld, a LEFT anchor on a file the change deletes is withheld,
 // and a multi-line range is flattened to its end line. Every loss is
 // counted into an envelope warning, so a shorter review never lands
-// silently.
-func parseBitbucketPayload(dir, payload string) (bitbucketPostPayload, bool) {
+// silently. newSide is the set of paths the change leaves at head; the
+// caller reads it first and refuses an unreadable bundle hunk index
+// before any write, rather than withholding every LEFT anchor as a
+// deleted file.
+func parseBitbucketPayload(payload string, newSide map[string]bool) (bitbucketPostPayload, bool) {
 	doc, err := jq.DecodeOrdered([]byte(payload))
 	if err != nil {
 		return bitbucketPostPayload{}, false
@@ -1015,7 +1025,7 @@ func parseBitbucketPayload(dir, payload string) (bitbucketPostPayload, bool) {
 		part.event = ""
 	}
 	comments, _ := obj.Get(fieldComments)
-	kept, losses := bitbucketKeptComments(jq.Elements(comments), bitbucketNewSidePaths(dir))
+	kept, losses := bitbucketKeptComments(jq.Elements(comments), newSide)
 	part.comments = kept
 	part.warnings = bitbucketAnchorWarnings(losses)
 	return part, true
@@ -1113,11 +1123,12 @@ func bitbucketPath(path string) string {
 
 // bitbucketNewSidePaths is the set of paths the change leaves at head,
 // read from the bundle's hunk index: a path with no NEW row exists only
-// on the old side.
-func bitbucketNewSidePaths(dir string) map[string]bool {
+// on the old side. An unreadable index is an error, never an empty set:
+// an empty set would withhold every LEFT anchor as a deleted file.
+func bitbucketNewSidePaths(dir string) (map[string]bool, error) {
 	hs, err := hunks.Load(dir)
 	if err != nil {
-		return nil
+		return nil, jq.Sealed("read bitbucket hunk index", err)
 	}
 	paths := make(map[string]bool, len(hs))
 	for _, h := range hs {
@@ -1125,7 +1136,7 @@ func bitbucketNewSidePaths(dir string) map[string]bool {
 			paths[h.File] = true
 		}
 	}
-	return paths
+	return paths, nil
 }
 
 // bitbucketAnchorWarnings states the anchor losses this payload takes,

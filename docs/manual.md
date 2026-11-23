@@ -4683,9 +4683,11 @@ split, and carries no reason of its own — the two flags explain it; new reader
 branch on those two flags. `thread_resolution` is true on GitHub and GitLab:
 `threads resolve` closes a verdict-authored thread through `resolveReviewThread`
 or GitLab's discussion resolved flag.
-Forgejo and Bitbucket have no documented resolve endpoint, so it reads false there and on
-every fetch-only host; resolution stays a host-CLI step the prompts hand back
-to the agent. `unsupported` carries
+Forgejo has no documented resolve endpoint, so it reads false there and on every
+fetch-only host. Bitbucket does publish a resolve endpoint —
+`/2.0/repositories/{workspace}/{repo_slug}/pullrequests/{id}/comments/{comment_id}/resolve` —
+but verdict has not wired thread resolution for it yet, so it reads false there
+too; resolution stays a host-CLI step the prompts hand back to the agent. `unsupported` carries
 one machine-readable code per absent capability, keyed by capability name:
 
 | Code                       | Meaning                                                                         |
@@ -4786,7 +4788,7 @@ landed to observe; that case is the same lost-response shape GitHub documents.
 | `github`    | one `repos/<owner>/<repo>/pulls/<n>/reviews` POST carrying `body`, `event`, and every inline comment (`gh api … --method POST --input -`)                                                                                                                                                          | —                                                                                                                                                                                                |
 | `gitlab`    | one MR discussion per finding — a `position` with the MR's `base_sha`/`start_sha`/`head_sha`, both paths, `new_line` for an added line, both numbers for an unchanged one, `old_line` for a deletion — then one summary note, then `approve` (pinned by `sha`) only when the review is an approval | approve-only (GitLab has no `request-changes` event — the comments still post, with a warning); a multi-line anchor lands on its end line; `request_changes` and `review_verdicts` stay false    |
 | `forgejo`   | one `api/v1/repos/<owner>/<repo>/pulls/<n>/reviews` POST over `curl` carrying `body`, `event` (`APPROVED` for an approval), `commit_id`, and every comment (`new_position` or `old_position`, both file line numbers)                                                                              | —                                                                                                                                                                                                |
-| `bitbucket` | one `api.bitbucket.org/2.0/repos/<workspace>/<repo>/pullrequests/<n>/comments` POST per finding (`inline: {path, to}` for a new-side line, `{path, from}` for an old-side line), then one general comment carrying the body, then `approve` (only when the review is an approval)                  | approve-only (Bitbucket has no `request-changes` event — the comments still post, with a warning); a multi-line anchor lands on its end line; `request_changes` and `review_verdicts` stay false |
+| `bitbucket` | one `api.bitbucket.org/2.0/repositories/<workspace>/<repo>/pullrequests/<n>/comments` POST per finding (`inline: {path, to}` for a new-side line, `{path, from}` for an old-side line), then one general comment carrying the body, then `approve` (only when the review is an approval)           | approve-only (Bitbucket has no `request-changes` event — the comments still post, with a warning); a multi-line anchor lands on its end line; `request_changes` and `review_verdicts` stay false |
 
 Forgejo has no CLI, so both directions are one `curl` call against
 `$FORGEJO_HOST/api/v1`; the write is GitHub-shaped — one atomic review POST

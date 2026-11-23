@@ -24,8 +24,48 @@ func TestResolve(t *testing.T) {
 	if want := "header = \"Authorization: Bearer test-token\"\n"; auth.Stdin() != want {
 		t.Errorf("config = %q, want %q", auth.Stdin(), want)
 	}
-	if want := "https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/7"; base != want {
+	if want := "https://api.bitbucket.org/2.0/repositories/acme/app/pullrequests/7"; base != want {
 		t.Errorf("base = %q, want %q", base, want)
+	}
+}
+
+// TestResolveRefusesTraversal proves a pull number that tries to escape the
+// pull-scoped base, and a repo that is not one workspace/slug pair, refuse
+// before any URL is built.
+func TestResolveRefusesTraversal(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		repo, pr, want string
+	}{
+		{"acme/app", "7/../../user", `bitbucket needs a numeric pull-request number, got "7/../../user"`},
+		{"acme/app", "0", `bitbucket needs a numeric pull-request number, got "0"`},
+		{"acme/app", "-1", `bitbucket needs a numeric pull-request number, got "-1"`},
+		{"acme/app", "seven", `bitbucket needs a numeric pull-request number, got "seven"`},
+		{"acme", "7", `bitbucket needs a workspace/repo slug, got "acme"`},
+		{"acme/a/b", "7", `bitbucket needs a workspace/repo slug, got "acme/a/b"`},
+		{"/app", "7", `bitbucket needs a workspace/repo slug, got "/app"`},
+		{"acme/", "7", `bitbucket needs a workspace/repo slug, got "acme/"`},
+		{"", "7", `bitbucket needs a workspace/repo slug, got ""`},
+		{"acme/../app", "7", `bitbucket needs a workspace/repo slug, got "acme/../app"`},
+	} {
+		assertBadTarget(t, tc.repo, tc.pr, tc.want)
+	}
+}
+
+// assertBadTarget pins one refused pull position: the bad-target code, the
+// operator sentence, and no built base to follow.
+func assertBadTarget(t *testing.T, repo, pr, want string) {
+	t.Helper()
+	_, base, ref := bitbucket.Resolve(env(), repo, pr)
+	if ref == nil {
+		t.Errorf("Resolve(%q, %q) built %q, want a refusal", repo, pr, base)
+		return
+	}
+	if ref.Code != "bad-target" || ref.Message != want {
+		t.Errorf("Resolve(%q, %q) refusal = %q: %q, want bad-target: %q", repo, pr, ref.Code, ref.Message, want)
+	}
+	if base != "" {
+		t.Errorf("Resolve(%q, %q) refused but built base %q", repo, pr, base)
 	}
 }
 
@@ -191,7 +231,7 @@ func TestCommentHelpers(t *testing.T) {
 // refuses.
 func TestSameOrigin(t *testing.T) {
 	t.Parallel()
-	base := "https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/7"
+	base := "https://api.bitbucket.org/2.0/repositories/acme/app/pullrequests/7"
 	next := base + "/comments?pagelen=100&cursor=2"
 	if !bitbucket.SameOrigin(base, next) {
 		t.Error("same-origin next refused")
@@ -212,8 +252,8 @@ func TestCredentialNeverOnArgv(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("APIBase refusal: %v", ref)
 	}
-	argv, stdin := auth.StdinArgv("-sf", "https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/7")
-	if want := []string{"--config", "-", "-sf", "https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/7"}; !equal(argv, want) {
+	argv, stdin := auth.StdinArgv("-sf", "https://api.bitbucket.org/2.0/repositories/acme/app/pullrequests/7")
+	if want := []string{"--config", "-", "-sf", "https://api.bitbucket.org/2.0/repositories/acme/app/pullrequests/7"}; !equal(argv, want) {
 		t.Errorf("argv = %q, want %q", argv, want)
 	}
 	if want := "header = \"Authorization: Bearer test-token\"\n"; stdin != want {

@@ -3,6 +3,7 @@ package postcore
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"strings"
 	"testing"
 
@@ -12,7 +13,7 @@ import (
 
 const (
 	bitbucketHead = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	bitbucketAPI  = "https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/7"
+	bitbucketAPI  = "https://api.bitbucket.org/2.0/repositories/acme/app/pullrequests/7"
 
 	// The exact argv a Bitbucket post fires. Every one is a literal: a
 	// rename in the submit path fails here instead of following the
@@ -432,6 +433,47 @@ func TestBitbucketMultiLineFlattens(t *testing.T) {
 	assertBitbucketInline(t, second, "to", 3)
 }
 
+// TestBitbucketCommentPagination proves the comment list walks every page:
+// page one carries a same-origin next URL whose page holds a second open
+// thread, and a next URL off origin refuses instead of following it.
+func TestBitbucketCommentPagination(t *testing.T) {
+	t.Parallel()
+	dir := bitbucketPostDir(t)
+	next := bitbucketAPI + "/comments?pagelen=100&page=2"
+	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{
+		bitbucketListRoute: {stdout: `{"values":[` +
+			`{"id":1,"content":{"raw":"open one"},"inline":{"path":"a.go","to":4}}` +
+			`],"next":"` + next + `"}`},
+		bitbucketFollowPrefix + next: {stdout: `{"values":[` +
+			`{"id":2,"content":{"raw":"open two"},"inline":{"path":"a.go","to":5}}` +
+			`],"next":null}`},
+	}}
+	host := bitbucketHost{}
+	open, _, err := host.recheck(context.Background(), cmdr, bitbucketEnv(), "acme/app", "7", dir)
+	if err != nil {
+		t.Fatalf("recheck: %v", err)
+	}
+	if open != 2 {
+		t.Errorf("open threads = %d, want one per page", open)
+	}
+	if got := countCalls(cmdr, bitbucketFollowPrefix+next); got != 1 {
+		t.Errorf("second page reads = %d, want 1: %q", got, callKeys(cmdr))
+	}
+
+	off := &scriptCommander{t: t, out: map[string]scriptResult{
+		bitbucketListRoute: {stdout: `{"values":[` +
+			`{"id":1,"content":{"raw":"open one"},"inline":{"path":"a.go","to":4}}` +
+			`],"next":"https://evil.invalid/comments"}`},
+	}}
+	_, _, offErr := host.recheck(context.Background(), off, bitbucketEnv(), "acme/app", "7", dir)
+	if offErr == nil || !strings.Contains(offErr.Error(), "off origin") {
+		t.Errorf("off-origin next error = %v, want the off-origin refusal", offErr)
+	}
+	if got := countCalls(off, bitbucketFollowPrefix+"https://evil.invalid/comments"); got != 0 {
+		t.Errorf("off-origin page reads = %d, want 0", got)
+	}
+}
+
 // TestBitbucketReads proves the drift read, the token-user read, and the
 // open-thread recheck.
 func TestBitbucketReads(t *testing.T) {
@@ -443,7 +485,8 @@ func TestBitbucketReads(t *testing.T) {
 		bitbucketListRoute: {stdout: `{"values":[` +
 			`{"id":1,"content":{"raw":"open"},"inline":{"path":"a.go","to":4}},` +
 			`{"id":2,"content":{"raw":"done"},"inline":{"path":"a.go","to":5},"resolution":{"user":{"nickname":"rev"}}},` +
-			`{"id":3,"parent":{"id":1},"content":{"raw":"reply"},"inline":{"path":"a.go","to":4}}` +
+			`{"id":3,"parent":{"id":1},"content":{"raw":"reply"},"inline":{"path":"a.go","to":4}},` +
+			`{"id":4,"content":{"raw":"summary"},"resolution":null}` +
 			`],"next":null}`},
 	}}
 	host := bitbucketHost{}
@@ -461,6 +504,33 @@ func TestBitbucketReads(t *testing.T) {
 	}
 	if open != 1 {
 		t.Errorf("open threads = %d, want the one unresolved root", open)
+	}
+}
+
+// TestBitbucketUnreadableHunkIndex proves an unreadable bundle hunk
+// index refuses before any write, rather than withholding every LEFT
+// anchor as a deleted file.
+func TestBitbucketUnreadableHunkIndex(t *testing.T) {
+	t.Parallel()
+	dir := bitbucketPostDir(t)
+	if err := os.Remove(dir + "/hunks.tsv"); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(dir+"/hunks.tsv", 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cmdr := bitbucketCommander(t, bitbucketAnswer("201 Created", bitbucketCreated(10)))
+	comment := `{"path":"notes.txt","body":"x","line":2,"side":"LEFT"}`
+	attempt := bitbucketPost(t, cmdr, dir, bitbucketPayload(eventComment, comment))
+	if attempt.ok {
+		t.Fatal("post landed with an unreadable hunk index")
+	}
+	want := "post failed: bitbucket could not read the bundle hunk index — nothing was written"
+	if attempt.message != want {
+		t.Errorf("message = %q, want %q", attempt.message, want)
+	}
+	if got := countCalls(cmdr, bitbucketWriteRoute); got != 0 {
+		t.Errorf("comment writes = %d, want 0: %q", got, callKeys(cmdr))
 	}
 }
 
