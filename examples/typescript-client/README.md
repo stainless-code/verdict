@@ -1,6 +1,6 @@
 # TypeScript client examples
 
-Three examples that call the mutating verbs through
+Five examples that call the mutating verbs through
 `@stainless-code/verdict/client` and run end to end: no network, no mock of the
 client's own return value, and no hand-made bundle. Each one builds a throwaway
 git checkout, has the real `fetch-local` producer write the bundle, and calls
@@ -13,10 +13,12 @@ make build && make clients-ts           # bin/verdict, then clients/ts/dist
 node examples/typescript-client/record.ts
 node examples/typescript-client/post-dry-run.ts
 node examples/typescript-client/config.ts
+node examples/typescript-client/gate.ts
+node examples/typescript-client/fix.ts
 ```
 
 `make clients-ts` also runs `clients/ts/test/examples.test.mjs`, which executes
-all three and compares the `ok:` lines they print, so a stale example fails the
+all five and compares the `ok:` lines they print, so a stale example fails the
 TS client gate instead of rotting in the tree.
 
 Node ≥ 22.18 runs the `.ts` files directly (type stripping); this repository
@@ -31,6 +33,9 @@ the one that runs.
 | `record.ts`       | `record --dry-run` runs the whole merge and writes nothing (`data.dry_run`, `data.check`, `data.evidence`); a real `record` writes `findings.json` and `record.json` and reports where; a GitHub PR bundle refuses `not-local`, because `post` owns that target; a malformed review refuses `bad-review-input` naming the broken JSONPath in `error.problems[]`. |
 | `post-dry-run.ts` | `post --dry-run` previews one payload — `data.payload_hash`, `data.event`, `data.findings.file` = `findings.dryrun.json` — performs exactly one host call (the live head read behind the stale-head guard), and writes no `post.json`; a local bundle refuses `no-pr-target` before any host call.                                                               |
 | `config.ts`       | `config --explain` renders the stored policy with each value's origin; `--preview --file` resolves a proposed `.verdict/config.json` and writes nothing; an invalid proposal refuses `bad-config` naming the JSONPath; asking for neither mode is an exit-2 usage error with no envelope.                                                                        |
+| `gate.ts`         | `gate --max-severity <tier> --live skip --coverage warn` runs the composed local verdict over the recorded bundle and stays offline; the important tier fails the open finding while the critical tier passes; asking for no dimension is an exit-2 usage error with no envelope.                  |
+| `fix.ts`          | A single `fix` prints the top open inline finding with its KB context and writes the pass ledger; `fix --all --verify-cmd` hands out one `ready` row per open finding and consumes the next pass; a batch without a verify command refuses `no-verify-cmd`.                                        |
+
 
 ## `record.ts`
 
@@ -121,6 +126,60 @@ it resolves the file through the same strict parser `fetch` uses and returns
 the values with their layer and file, so a policy change can be checked before
 it lands. It never writes, and it never approves.
 
+## `gate.ts`
+
+```text
+gate acme/app local-demo --max-severity important --live skip --coverage warn
+  passed              false
+  findings            {"id":"findings","status":"fail","detail":"1 open finding(s) at-or-above important","count":1}
+  spec                {"id":"spec","status":"pass","detail":"no violated spec check","count":0}
+  evidence            {"id":"evidence","status":"pass","detail":"evidence checks satisfied (1 quotes verified, 1/1 hunks receipted, 0/0 spec items checked)","count":0}
+  next                address or triage the open findings
+ok: gate fails on one open finding at the important tier
+gate acme/app local-demo --max-severity critical --live skip --coverage warn
+  passed              true
+  findings            {"id":"findings","status":"pass","detail":"no open findings at-or-above critical","count":0}
+  next                none — every requested dimension passed
+ok: gate passes when the floor sits above every open finding
+gate acme/app local-demo
+  usage               gate needs at least one dimension (want --max-severity critical|important|informational or --require-head; --live only sets the offline posture)
+ok: gate with no dimension is an exit-2 usage error, not an envelope
+```
+
+A failing gate is exit 1 with `error` null and the verdict in `data`, so the
+client raises `VerdictGateError` carrying the envelope — the example reads the
+failing dimension off the error instead of guessing from a message. `--live
+skip` makes zero network calls and `--coverage warn` keeps the absent
+attestation advisory, so the run is fully offline; a gate with no tier or
+`--require-head` is an exit-2 usage error rather than a verdict.
+
+## `fix.ts`
+
+```text
+fix acme/app local-demo
+  sig                 ecd88617e7f5f9b32a4681a395a813e9cff0f877
+  locator             app/handler.go:5
+  severity            important
+  pass                1
+  ledger              .verdict/state/local-demo/fix.json
+  next                patch the anchor file, write verification.json, run record to land it, then re-run fix
+ok: fix prints one pass over the open finding and writes the ledger
+fix acme/app local-demo --all --verify-cmd true
+  open_inline         1
+  batch               [{"sig":"ecd88617e7f5f9b32a4681a395a813e9cff0f877","locator":"app/handler.go:5","severity":"important","pass":2,"outcome":"ready","reason":""}]
+  next                patch each anchor, run the verify command yourself, write one verification.json claim per sig, land with record, then re-run fix --all
+ok: fix --all hands out one ready pass per open finding
+fix acme/app local-demo --all
+  code                no-verify-cmd
+  hint                try: write verifyCmd in the bundle's patch.json (the command verify and fix --all hand back), or pass --verify-cmd <cmd> to a fix batch, then re-run
+ok: fix --all without a verify command refuses typed
+```
+
+`fix` writes `fix.json` — the pass ledger — and, once the tree is dirty,
+`fix.patch` beside it; the fixture tree is clean, so no patch is written. The
+single pass consumes pass 1, and the `--all` batch consumes pass 2. Both read
+the recorded store, which is why each example records before it fixes.
+
 ## Files
 
 | File                            | Purpose                                                                                                      |
@@ -150,8 +209,17 @@ it lands. It never writes, and it never approves.
    `XDG_CONFIG_HOME` point into the sandbox) and the `REVIEW_*` knobs emptied,
    so a developer's own environment cannot change the output.
 
-The example that only needs `post` still uses the same sandbox, so all three
-report the same fixture.
+The example that only needs `post` still uses the same sandbox, so every
+example reports the same fixture.
+
+## Why `fetch` has no example
+
+`fetch <owner/repo> <pr>` needs a live PR: it reads the provider through
+`gh` (and `--preview` does too). The sandbox `gh` stub answers exactly one
+argv and refuses everything else, so a fetch example could only pass by
+stubbing the PR reads — covering the stub, not the verb. No runnable offline
+example exists for `fetch`; `fetch-local`, its offline half, is what produces
+these bundles.
 
 The `post` example needs a POSIX shell for `fixtures/gh`; it is graded on
 Ubuntu in CI and runs under `sh` on macOS. On Windows, use WSL or run `post`

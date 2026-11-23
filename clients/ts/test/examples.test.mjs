@@ -25,6 +25,16 @@ const CHECKPOINTS = {
     "config --preview refuses a bad proposal with a typed bad-config",
     "config without a mode is an exit-2 usage error, not an envelope",
   ],
+  "fix.ts": [
+    "fix prints one pass over the open finding and writes the ledger",
+    "fix --all hands out one ready pass per open finding",
+    "fix --all without a verify command refuses typed",
+  ],
+  "gate.ts": [
+    "gate fails on one open finding at the important tier",
+    "gate passes when the floor sits above every open finding",
+    "gate with no dimension is an exit-2 usage error, not an envelope",
+  ],
   "post-dry-run.ts": [
     "post --dry-run previews one payload and posts nothing",
     "post refuses a local bundle with a typed no-pr-target and zero writes",
