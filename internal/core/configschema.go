@@ -26,6 +26,7 @@ type Config struct { //nolint:govet // field order is the published property ord
 	Index           *ConfigIndex             `json:"index,omitempty"            nonnull:"true"`
 	RigorPolicy     *ConfigRigorPolicy       `json:"rigor_policy,omitempty"     nonnull:"true"`
 	Packs           *ConfigPacks             `json:"packs,omitempty"            nonnull:"true"`
+	Tests           *ConfigTests             `json:"tests,omitempty"            nonnull:"true"`
 }
 
 // ConfigPacks is the repository's built-in pack composition: whether the
@@ -39,6 +40,13 @@ type ConfigPacks struct {
 	DisablePacks  []string `json:"disable_packs,omitempty"  minItems:"1"   nonnull:"true"`
 	DisableLenses []string `json:"disable_lenses,omitempty" minItems:"1"   nonnull:"true"`
 	DisableRules  []string `json:"disable_rules,omitempty"  minItems:"1"   nonnull:"true"`
+}
+
+// ConfigTests controls regression-test drafting: whether a reproduced
+// finding's artifact is retained as draft evidence. Empty defaults to
+// on-reproduce (the shipped behavior); off disables drafting.
+type ConfigTests struct {
+	Draft string `enum:"off|on-reproduce" json:"draft,omitempty"`
 }
 
 // ConfigRigorPolicy is the repository's publication floor: the mode and the

@@ -1,0 +1,10 @@
+exit: 0
+--- stdout ---
+» readiness: .verdict/state/local-test — findings 1 open (1 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+» test: .verdict/tests/6123456789abcdef0123456789abcdef01234567-161139e764cc.py (13 bytes)
+run: sh ROOT/.verdict/state/local-test/tests/6123456789abcdef0123456789abcdef01234567-161139e764cc.py
+--- stderr ---
+
+--- files ---
+--- file C/.verdict/tests/6123456789abcdef0123456789abcdef01234567-161139e764cc.py ---
+assert False

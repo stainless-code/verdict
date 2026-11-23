@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+fix --test needs a sig (an empty value would run an ordinary pass): pass --test <sig>
+--- files ---

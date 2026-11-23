@@ -178,6 +178,8 @@ var hintRules = []HintRule{
 		hint:  "try: list open inline sigs with report --status open --kind inline, then re-run with the full prefix",
 	},
 	{codes: []string{"conflicted-tree"}, hint: "try: resolve the conflicts (or abort the merge), then re-run"},
+	{codes: []string{"no-reproduction"}, hint: "try: re-run record with a reproduction block, then re-run fix --test"},
+	{codes: []string{"test-conflict"}, hint: "try: resolve the named target or symlink by hand, then re-run fix --test"},
 	{codes: []string{"fix-ceiling"}, hint: "try: triage the sig or split the fix — the 3-pass ceiling is hard-coded"},
 	{codes: []string{"scope-escape"}, hint: "try: revert or stash files outside the anchor path, then re-run fix"},
 	{codes: []string{"rationale-required"}, hint: "try: add --rationale with 30+ chars, or --force"},
