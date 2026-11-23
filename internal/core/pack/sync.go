@@ -2,7 +2,10 @@ package pack
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
+	"os"
 	"path"
 	"path/filepath"
 	"strings"
@@ -60,8 +63,6 @@ type SyncResponse struct {
 // pins it in .verdict/verdict.lock. This is the only path that touches
 // the network (a git clone, with the caller's commander); every review path
 // below merely re-verifies the vendored tree against the lock.
-//
-//nolint:revive // resolve, load, vendor, and lock read as one pipeline
 func RunSync(ctx context.Context, req *SyncRequest) (*SyncResponse, *core.RefusalError) {
 	if err := ctx.Err(); err != nil {
 		return nil, &core.RefusalError{Code: canceledCode, Message: "canceled before pack sync completed"}
@@ -79,16 +80,36 @@ func RunSync(ctx context.Context, req *SyncRequest) (*SyncResponse, *core.Refusa
 		return nil, ref
 	}
 	defer src.cleanup()
+	if ref := confinePinPath(src.dir, pin); ref != nil {
+		return nil, ref
+	}
+	pinPath := orgPinPath(pin)
 	packDir := src.dir
-	if pinPath := orgPinPath(pin); pinPath != rootSelf {
+	if pinPath != rootSelf {
 		packDir = filepath.Join(src.dir, filepath.FromSlash(pinPath))
 	}
-	lock, p, ref := loadSync(root, src, packDir)
+	// Load through the confined root so an intermediate symlink cannot
+	// escape src.dir during the walk.
+	p, lock, ref := loadSyncConfined(root, src, pinPath)
 	if ref != nil {
 		return nil, ref
 	}
+	return vendorAndLock(ctx, req, root, src, pin, pinPath, packDir, p, lock)
+}
+
+func vendorAndLock(
+	ctx context.Context, req *SyncRequest, root string, src *packSource, pin *OrgPin, pinPath, packDir string, p *Pack, lock *Lock,
+) (*SyncResponse, *core.RefusalError) {
+	if ctx.Err() != nil {
+		return nil, &core.RefusalError{Code: canceledCode, Message: "canceled before pack sync completed"}
+	}
 	slug := packSlug(p.Name)
-	entry := LockEntry{Name: p.Name, Source: src.label, Version: p.Version, Hash: p.Hash}
+	entry := LockEntry{
+		Name: p.Name, Source: src.label, Version: p.Version, Hash: p.Hash, OrgPath: pinPath,
+	}
+	if pinPath == rootSelf {
+		entry.OrgPath = ""
+	}
 	entry.Sig = LockSig(&entry)
 	next := upsertLock(lock, &entry)
 	if _, ref := encodeLock(next); ref != nil {
@@ -98,8 +119,12 @@ func RunSync(ctx context.Context, req *SyncRequest) (*SyncResponse, *core.Refusa
 	if ref != nil {
 		return nil, ref
 	}
-	if _, ref := commitAdd(root, slug, backup, next); ref != nil {
+	warning, ref := commitAdd(root, slug, backup, next)
+	if ref != nil {
 		return nil, ref
+	}
+	if warning != "" {
+		req.Warn(warning)
 	}
 	return syncResponse(pin, p, slug, src), nil
 }
@@ -110,6 +135,9 @@ func RunSync(ctx context.Context, req *SyncRequest) (*SyncResponse, *core.Refusa
 func syncSource(ctx context.Context, req *SyncRequest, pin *OrgPin, root string) (*packSource, *core.RefusalError) {
 	if g, ok := parseGitSource(pin.Repo); ok {
 		return cloneSource(ctx, &AddRequest{ReadRequest: req.ReadRequest}, g.url, pin.Ref)
+	}
+	if looksLikeGitSource(pin.Repo) || secretShaped(pin.Repo) {
+		return nil, badPackSource(fmt.Sprintf("org pack repo %q is not an allowlisted git remote", displaySource(pin.Repo)))
 	}
 	if strings.HasPrefix(pin.Repo, "-") {
 		return nil, badPack(fmt.Sprintf("org pack repo %q starts with '-'", pin.Repo))
@@ -125,15 +153,23 @@ func syncSource(ctx context.Context, req *SyncRequest, pin *OrgPin, root string)
 	return &packSource{dir: dir, label: label, cleanup: func() {}}, nil
 }
 
-// loadSync loads the central pack at its pin path and the current lock.
-func loadSync(root string, src *packSource, packDir string) (*Lock, *Pack, *core.RefusalError) {
-	p, ref := LoadDir(packDir)
+// loadSyncConfined loads the central pack through a confined root at
+// src.dir, so an intermediate symlink in the pin path cannot escape.
+func loadSyncConfined(root string, src *packSource, pinPath string) (*Pack, *Lock, *core.RefusalError) {
+	// Same-tree check from pack add: refuse when the source is already
+	// inside the vendored tree.
+	joined := filepath.Join(root, filepath.FromSlash(RepoPacksDir))
+	if sameTree(joined, src.dir) {
+		return nil, nil, badPack(fmt.Sprintf(
+			"pack source %q is inside %s — it is already vendored", displaySource(src.label), RepoPacksDir))
+	}
+	p, ref := LoadAt(src.dir, pinPath)
 	if ref != nil {
 		return nil, nil, ref
 	}
 	if p == nil {
 		return nil, nil, badPack(fmt.Sprintf("org pack source %q carries no %s at path %q",
-			pinLabel(src), ManifestFile, packDir))
+			pinLabel(src), ManifestFile, pinPath))
 	}
 	lock, ref := loadLock(root)
 	if ref != nil {
@@ -142,7 +178,51 @@ func loadSync(root string, src *packSource, packDir string) (*Lock, *Pack, *core
 	if ref := checkSlugOwner(root, lock, p.Name, packSlug(p.Name)); ref != nil {
 		return nil, nil, ref
 	}
-	return lock, p, nil
+	return p, lock, nil
+}
+
+const symlinkMode = fs.ModeSymlink
+
+func splitSlash(p string) []string {
+	return strings.Split(p, "/")
+}
+
+// confinePinPath refuses an intermediate symlink inside src.dir along the
+// pin path and a symlinked source directory itself.
+//
+//nolint:revive // intermediate symlink walk necessarily iterates pin segments
+func confinePinPath(srcDir string, pin *OrgPin) *core.RefusalError {
+	if info, err := os.Lstat(srcDir); err == nil {
+		if info.Mode()&symlinkMode != 0 {
+			return unsafePath(srcDir)
+		}
+	} else if !errors.Is(err, fs.ErrNotExist) {
+		return badPack(fmt.Sprintf("inspect %q: %v", srcDir, err))
+	}
+	pinPath := orgPinPath(pin)
+	if pinPath == rootSelf {
+		return nil
+	}
+	if !confinedRoot(pinPath) {
+		return badPack(fmt.Sprintf("org pack path %q escapes the central repository", pin.Path))
+	}
+	cur := srcDir
+	for _, seg := range splitSlash(pinPath) {
+		cur = filepath.Join(cur, filepath.FromSlash(seg))
+		info, err := os.Lstat(cur)
+		if err != nil {
+			if errors.Is(err, fs.ErrNotExist) {
+				// Missing intermediate is not a symlink escape; LoadAt will
+				// report the missing pack later.
+				break
+			}
+			return badPack(fmt.Sprintf("inspect %q: %v", cur, err))
+		}
+		if info.Mode()&symlinkMode != 0 {
+			return unsafePath(cur)
+		}
+	}
+	return nil
 }
 
 // pinLabel renders the sync source label for refusal messages.

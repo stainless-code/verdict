@@ -66,7 +66,7 @@ var publishedSemantics = map[string]string{
 	// tests: additive optional top-level object with a draft enum
 	// (off|on-reproduce), closed shape; STA-346 regression-test drafting.
 	// No existing property, required key, enum, or type changed.
-	"config.schema.json": "merged-placeholder-will-be-regenerated",
+	"config.schema.json": "305ffe2c887c8033b6c3100548e5607cb3870e17bdf5b066692d206066dd7830",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -470,7 +470,7 @@ var publishedSemantics = map[string]string{
 	// (the maxHostLabel cap the loader enforces) and refuses a "://" inside an
 	// scp path (the loader's scheme guard). One pattern narrowed to the
 	// loader's own grammar; no property, required key, enum, or type changed.
-	"lock.schema.json": "da19e41786cc9ff295a88a68929a8c76b5fbd44a7cbd9c5579fd57b316b16db2",
+	"lock.schema.json": "7d63d2b6b6ff34d8009e514847ce41889fa9ced91928fefde9edf6edef102909",
 	// findings cap: the lens max_findings description now says the built-in
 	// pack declares none, so a shipped lens states no return cap and returns
 	// what its evidence supports. Prose only; no property, required key, enum,

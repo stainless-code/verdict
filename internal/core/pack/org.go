@@ -35,16 +35,21 @@ func VerifyOrgPin(root string, pin *OrgPin) *core.RefusalError {
 			"org pack %s@%s has no %s entry — run 'verdict pack sync' to vendor and lock it",
 			pin.Repo, pin.Ref, LockFile)}
 	}
-	return verifyOrgEntry(root, entry)
+	return verifyOrgEntry(root, entry, pin)
 }
 
 // validatePin re-checks one pin's shape, so a caller that built the struct
 // directly cannot smuggle a traversal path or a floating ref past the
 // config parser.
+//
+//nolint:revive // pin shape validation necessarily branches over repo, ref, path
 func validatePin(pin *OrgPin) *core.RefusalError {
 	if strings.TrimSpace(pin.Repo) == "" || strings.HasPrefix(pin.Repo, "-") ||
 		strings.ContainsAny(pin.Repo, "?#") || !cleanSource(pin.Repo) {
 		return badPack(fmt.Sprintf("org pack repo %q is not a repository spelling", pin.Repo))
+	}
+	if _, ok := parseGitSource(pin.Repo); !ok && (looksLikeGitSource(pin.Repo) || secretShaped(pin.Repo)) {
+		return badPackSource(fmt.Sprintf("org pack repo %q is not an allowlisted git remote", displaySource(pin.Repo)))
 	}
 	if !hex40(pin.Ref) && !orgTagPattern.MatchString(pin.Ref) {
 		return badPack(fmt.Sprintf(
@@ -118,7 +123,7 @@ func orgDirSourceMatch(source, repo string) bool {
 // verifyOrgEntry proves the vendored tree under one lock row still hashes
 // to the locked content: the tree exists, its name matches, its tree hash
 // matches, and the row's signature covers its recorded fields.
-func verifyOrgEntry(root string, entry *LockEntry) *core.RefusalError {
+func verifyOrgEntry(root string, entry *LockEntry, pin *OrgPin) *core.RefusalError {
 	p, ref := LoadDir(filepath.Join(root, filepath.FromSlash(RepoPacksDir), packSlug(entry.Name)))
 	if ref != nil {
 		return ref
@@ -138,7 +143,23 @@ func verifyOrgEntry(root string, entry *LockEntry) *core.RefusalError {
 			"org pack %s drift: %s records %s %s, found %s — run 'verdict pack sync'",
 			entry.Name, LockFile, "sig", entry.Sig, want)}
 	}
+	if !orgPathMatch(entry, pin) {
+		return &core.RefusalError{Code: CodeLockMissing, Message: fmt.Sprintf(
+			"org pack %s@%s path %q does not match lock — run 'verdict pack sync'",
+			pin.Repo, pin.Ref, orgPinPath(pin))}
+	}
 	return nil
+}
+
+// orgPathMatch reports whether one lock row's recorded org path matches the
+// pin. Legacy rows with no org_path read as the repository root.
+func orgPathMatch(entry *LockEntry, pin *OrgPin) bool {
+	want := orgPinPath(pin)
+	got := entry.OrgPath
+	if got == "" {
+		got = rootSelf
+	}
+	return want == got
 }
 
 // filepathSlash renders one path spelling with forward slashes.

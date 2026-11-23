@@ -42,7 +42,8 @@
         "sig": {
           "description": "sha256 over the entry's name, source, version, and hash in that order, one `key=value` line each. Integrity only: a hand edit breaks it; it is not a signature.",
           "type": "string"
-        }
+        },
+        "org_path": { "type": "string" }
       },
       "required": ["name", "source", "version", "hash", "sig"],
       "additionalProperties": false

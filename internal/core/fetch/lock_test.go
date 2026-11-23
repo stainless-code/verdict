@@ -43,6 +43,31 @@ func TestFetchRefusesMissingLock(t *testing.T) {
 	}
 }
 
+// TestFetchRefusesUnsyncedOrgPin proves fetch refuses when the base-owned
+// packs.org_pack pin has no verdict.lock entry — never silently runs
+// without the central packs.
+func TestFetchRefusesUnsyncedOrgPin(t *testing.T) {
+	t.Parallel()
+	root := t.TempDir()
+	sha := strings.Repeat("a", 40)
+	cfg := `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"` + sha + `","path":"packs/org"}}}`
+	writeFixtureFile(t, filepath.Join(root, ".verdict", "config.json"), cfg)
+	// No repo packs and no lock: the org pin alone must refuse.
+	bundleDir := t.TempDir()
+	snap, ref := controls.Resolve(t.Context(), nil, &controls.Request{BundleDir: bundleDir, AllowHead: true, Root: root})
+	if ref != nil {
+		t.Fatalf("controls.Resolve: %s: %s", ref.Code, ref.Message)
+	}
+	ctx2 := &fetchRunCtx{runner: &session{controls: snap}}
+	ref2 := resolveLensPacks(ctx2)
+	if ref2 == nil || ref2.Code != pack.CodeLockMissing {
+		t.Fatalf("resolveLensPacks = %v, want pack-lock-missing", ref2)
+	}
+	if !strings.Contains(ref2.Message, "central") {
+		t.Fatalf("message = %q, want org pin repo", ref2.Message)
+	}
+}
+
 // TestFetchRefusesLockDrift proves the same resolver refuses a lock whose
 // recorded hash no longer matches the vendored tree.
 func TestFetchRefusesLockDrift(t *testing.T) {

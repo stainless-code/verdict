@@ -684,6 +684,8 @@ func isSchemeByte(c byte) bool {
 	return isSchemeLetter(c) || c >= '0' && c <= '9' || c == '+' || c == '-' || c == '.'
 }
 
+const checkoutSub = "checkout"
+
 // gitFatalExit is git's generic fatal exit status: a clone that reaches the
 // remote and fails there (not found, auth, network) exits with it.
 const gitFatalExit = 128
@@ -700,7 +702,7 @@ func gitFailure(sub string, exit int) string {
 		return fmt.Sprintf("the clone exited %d — check the source and your access", exit)
 	case sub == "rev-parse":
 		return "the clone carries no resolvable HEAD commit"
-	case sub == "checkout":
+	case sub == checkoutSub:
 		return "the resolved commit could not be checked out"
 	}
 	return fmt.Sprintf("exit %d", exit)
@@ -755,7 +757,7 @@ func resolveClone(
 		return "", badPack(fmt.Sprintf("git remote %q resolved HEAD to %q, not a 40-hex commit",
 			displaySource(url), sha))
 	}
-	if ref := runGitPackOK(ctx, cmdr, env, clone, tmp, "checkout", "--detach", sha); ref != nil {
+	if ref := runGitPackOK(ctx, cmdr, env, clone, tmp, checkoutSub, "--detach", sha); ref != nil {
 		return "", ref
 	}
 	if err := os.RemoveAll(filepath.Join(clone, ".git")); err != nil {
@@ -775,10 +777,15 @@ func prepareGitEnv(tmp string) *core.RefusalError {
 	return nil
 }
 
-// gitClone runs the hermetic clone with the resolved hooks path.
+// gitClone runs the hermetic clone with the resolved hooks path. A 40-hex
+// commit SHA is not a branch or tag name — git clone --branch refuses it —
+// so a SHA pin goes through fetch-by-SHA: init, remote, fetch, checkout.
 func gitClone(
 	ctx context.Context, cmdr core.Commander, env []string, tmp, url, refName, clone string,
 ) *core.RefusalError {
+	if hex40(refName) {
+		return gitCloneBySHA(ctx, cmdr, env, tmp, url, refName, clone)
+	}
 	args := []string{"--depth=1", "--no-tags", "--no-recurse-submodules"}
 	if refName != "" {
 		args = append(args, "--branch", refName)
@@ -786,6 +793,29 @@ func gitClone(
 	args = append(args, url, clone)
 	_, ref := runGitPack(ctx, cmdr, env, "", tmp, "clone", args...)
 	return ref
+}
+
+// gitCloneBySHA fetches one immutable 40-hex commit by SHA: a hermetic
+// init, remote registration, shallow fetch of that object, and detached
+// checkout. The same env and prefix as clone apply.
+func gitCloneBySHA(
+	ctx context.Context, cmdr core.Commander, env []string, tmp, url, ref, clone string,
+) *core.RefusalError {
+	if _, ref := runGitPack(ctx, cmdr, env, "", tmp, "init", clone); ref != nil {
+		return ref
+	}
+	if ref := runGitPackOK(ctx, cmdr, env, clone, tmp, "remote", "add", "origin", url); ref != nil {
+		return ref
+	}
+	if _, ref := runGitPack(ctx, cmdr, env, clone, tmp, "fetch",
+		"--depth=1", "--no-tags", "--no-recurse-submodules", "origin", ref); ref != nil {
+		return ref
+	}
+	if ref := runGitPackOK(ctx, cmdr, env, clone, tmp, checkoutSub, "--detach", ref); ref != nil {
+		// Fetch puts the tip in FETCH_HEAD; fall back to it.
+		return runGitPackOK(ctx, cmdr, env, clone, tmp, checkoutSub, "--detach", "FETCH_HEAD")
+	}
+	return nil
 }
 
 // gitPrefix is the one argv prefix every pack-add git call carries, so no

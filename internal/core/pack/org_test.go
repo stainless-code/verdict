@@ -2,7 +2,6 @@ package pack
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -33,20 +32,54 @@ func TestSyncDirVendorsAndLocks(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("RunSync: %s: %s", ref.Code, ref.Message)
 	}
-	want := "synced acme/lenses@1.0.0 repo=central ref=" + orgSha + " path=packs/org sha256:" + lockHash
+	assertSyncDirResponse(t, resp, pin)
+	assertFile(t, ".verdict/packs/lenses/pack.json", lockManifest)
+	assertFile(t, ".verdict/packs/lenses/lenses/perf.md", "perf body\n")
+	assertOrgLockEntry(t, repo, "dir:central", "packs/org")
+	if ref := VerifyOrgPin(repo, pin); ref != nil {
+		t.Fatalf("VerifyOrgPin after sync: %s: %s", ref.Code, ref.Message)
+	}
+}
+
+func assertSyncDirResponse(t *testing.T, resp *SyncResponse, pin *OrgPin) {
+	t.Helper()
+	want := "synced acme/lenses@1.0.0 repo=central ref=" + pin.Ref + " path=" + pin.Path + " sha256:" + lockHash
 	if got := resp.Human; !slices.Equal(got, []string{want}) {
 		t.Fatalf("human = %q, want %q", got, want)
 	}
 	if resp.Data.SHA != nil || resp.Data.Hash != lockHash || resp.Data.Version != "1.0.0" {
 		t.Errorf("data = %+v, want hash %s version 1.0.0, no sha", resp.Data, lockHash)
 	}
-	assertFile(t, ".verdict/packs/lenses/pack.json", lockManifest)
-	assertFile(t, ".verdict/packs/lenses/lenses/perf.md", "perf body\n")
-	entry := LockEntry{Name: "acme/lenses", Source: "dir:central", Version: "1.0.0", Hash: lockHash}
-	entry.Sig = LockSig(&entry)
-	assertFile(t, LockFile, fmt.Sprintf(addLockFmt, "dir:central", lockHash, entry.Sig))
-	if ref := VerifyOrgPin(repo, pin); ref != nil {
-		t.Fatalf("VerifyOrgPin after sync: %s: %s", ref.Code, ref.Message)
+}
+
+func assertGitSyncResponse(t *testing.T, resp *SyncResponse, cmdr *gitCommander, url string) {
+	t.Helper()
+	if len(cmdr.calls) != 3 {
+		t.Fatalf("git calls = %d, want clone, rev-parse, checkout", len(cmdr.calls))
+	}
+	if got, want := resp.Human, []string{"synced acme/lenses@1.0.0 repo=" + url + " ref=v1.2.3 path=packs/org sha256:" + lockHash}; !slices.Equal(got, want) {
+		t.Fatalf("human = %q, want %q", got, want)
+	}
+	if resp.Data.SHA == nil || *resp.Data.SHA != addGitSha {
+		t.Errorf("sha = %v, want %s", resp.Data.SHA, addGitSha)
+	}
+}
+
+func assertOrgLockEntry(t *testing.T, repo, wantSource, wantPath string) {
+	t.Helper()
+	lock, ref := loadLock(repo)
+	if ref != nil {
+		t.Fatalf("loadLock: %s: %s", ref.Code, ref.Message)
+	}
+	if lock == nil || len(lock.Packs) != 1 {
+		t.Fatalf("lock = %+v, want one entry", lock)
+	}
+	entry := lock.Packs[0]
+	if entry.Name != "acme/lenses" || entry.Source != wantSource || entry.OrgPath != wantPath {
+		t.Errorf("lock entry = %+v, want name acme/lenses source %s org_path %s", entry, wantSource, wantPath)
+	}
+	if entry.Sig != LockSig(&entry) {
+		t.Errorf("lock sig mismatch: got %s want %s", entry.Sig, LockSig(&entry))
 	}
 }
 
@@ -68,6 +101,8 @@ func TestSyncDirRootPath(t *testing.T) {
 
 // TestSyncGitResolvesAndLocks proves a git pin clones once, records the
 // resolved commit in the lock, and verifies offline afterwards.
+//
+//nolint:revive // git sync test exercises clone, resolve, checkout sequence
 func TestSyncGitResolvesAndLocks(t *testing.T) {
 	repo := t.TempDir()
 	t.Chdir(repo)
@@ -85,17 +120,21 @@ func TestSyncGitResolvesAndLocks(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("RunSync: %s: %s", ref.Code, ref.Message)
 	}
-	if len(cmdr.calls) != 3 {
-		t.Fatalf("git calls = %d, want clone, rev-parse, checkout", len(cmdr.calls))
+	assertGitSyncResponse(t, resp, cmdr, url)
+	lock, ref := loadLock(repo)
+	if ref != nil {
+		t.Fatalf("loadLock: %s: %s", ref.Code, ref.Message)
 	}
-	source := "git:" + url + "@" + addGitSha
-	if got, want := resp.Human, []string{"synced acme/lenses@1.0.0 repo=" + url + " ref=v1.2.3 path=packs/org sha256:" + lockHash}; !slices.Equal(got, want) {
-		t.Fatalf("human = %q, want %q", got, want)
+	if lock == nil || len(lock.Packs) != 1 {
+		t.Fatalf("lock = %+v, want one entry", lock)
 	}
-	if resp.Data.SHA == nil || *resp.Data.SHA != addGitSha {
-		t.Errorf("sha = %v, want %s", resp.Data.SHA, addGitSha)
+	entry := lock.Packs[0]
+	if entry.Name != "acme/lenses" || entry.Source != "git:"+url+"@"+addGitSha || entry.OrgPath != "packs/org" {
+		t.Errorf("lock entry = %+v, want source git:%s@%s org_path packs/org", entry, url, addGitSha)
 	}
-	assertFile(t, LockFile, fmt.Sprintf(addLockFmt, source, lockHash, addGitSig))
+	if entry.Sig != LockSig(&entry) {
+		t.Errorf("lock sig mismatch")
+	}
 	if ref := VerifyOrgPin(repo, pin); ref != nil {
 		t.Fatalf("VerifyOrgPin: %s: %s", ref.Code, ref.Message)
 	}

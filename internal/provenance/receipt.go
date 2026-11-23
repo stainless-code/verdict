@@ -625,7 +625,9 @@ type bundleLockRow struct {
 }
 
 // readBundleLockRow finds the lock row synced from repo: a `git:<repo>@…`
-// source for a git pin, a `dir:<repo>` source for a local one.
+// source for a git pin, a `dir:<repo>` source for a local one. Repo
+// matching normalizes case in the scheme and backslashes to slashes, so an
+// uppercase HTTPS:// or a Windows packs\org still matches the base spelling.
 func readBundleLockRow(path, repo string) bundleLockRow {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -637,12 +639,21 @@ func readBundleLockRow(path, repo string) bundleLockRow {
 	if json.Unmarshal(raw, &lock) != nil {
 		return bundleLockRow{}
 	}
+	want := normalizeLockRepo(repo)
 	for _, row := range lock.Packs {
-		if lockSourceRepo(row.Source) == repo {
+		if normalizeLockRepo(lockSourceRepo(row.Source)) == want {
 			return row
 		}
 	}
 	return bundleLockRow{}
+}
+
+func normalizeLockRepo(s string) string {
+	s = strings.ReplaceAll(s, `\`, "/")
+	if i := strings.Index(s, "://"); i > 0 {
+		s = strings.ToLower(s[:i]) + s[i:]
+	}
+	return s
 }
 
 // lockSourceRepo strips one lock source to its repository spelling.
@@ -694,7 +705,9 @@ func exclusionsInputEntries(dir string, ex *ExclusionsInput) []core.ProvenanceIn
 func computeRunID(in *ReceiptBuildInput, promptsHash string, learn *core.ProvenanceInput) string {
 	h := sha256.New()
 	writeKV(h, "prompts_hash", promptsHash)
-	writeKV(h, "org_pack", orgPackHashValue(in))
+	if v := orgPackHashValue(in); v != "" {
+		writeKV(h, "org_pack", v)
+	}
 	writeKV(h, "head_sha", in.HeadSHA)
 	writeKV(h, "base_sha", in.BaseSHA)
 	if raw, err := os.ReadFile(filepath.Join(in.Dir, "full.diff")); err == nil {
@@ -713,16 +726,28 @@ func computeRunID(in *ReceiptBuildInput, promptsHash string, learn *core.Provena
 
 // orgPackHashValue binds the governing central pack into the run id: the
 // explicit input wins, else the bundle snapshot's pin and locked hash.
+// A pin-less bundle returns empty, so legacy run_ids stay bit-identical.
+//
+//nolint:revive // run-id binding needs both explicit and bundle fallbacks
 func orgPackHashValue(in *ReceiptBuildInput) string {
-	pin := in.OrgPack
-	var repo, ref, path, hash string
-	if pin != nil {
-		repo, ref, path, hash = pin.Repo, pin.Ref, pin.Path, pin.Hash
-	} else {
+	if in.OrgPack == nil {
 		found := orgPackFromBundle(in.Dir)
-		repo, ref, path, hash = found.Repo, found.Ref, found.Path, found.Hash
+		if found.Repo == "" && found.Ref == "" && found.Path == "" && found.Hash == "" {
+			// No pin and no bundle snapshot pin: keep legacy IDs stable.
+			if found.Repo == "" {
+				return ""
+			}
+		}
+		if found.Repo == "" {
+			return ""
+		}
+		return fmt.Sprintf("%s:%s:%s:%s", found.Repo, found.Ref, found.Path, found.Hash)
 	}
-	return fmt.Sprintf("%s:%s:%s:%s", repo, ref, path, hash)
+	pin := in.OrgPack
+	if pin.Repo == "" && pin.Ref == "" {
+		return ""
+	}
+	return fmt.Sprintf("%s:%s:%s:%s", pin.Repo, pin.Ref, pin.Path, pin.Hash)
 }
 
 // sortedConfigValues returns the winning config origins in key order.

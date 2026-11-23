@@ -84,6 +84,9 @@ type invocation struct {
 // runList executes the read-only inventory.
 func runList(ctx context.Context, r *cli.Runner, read Request) int {
 	read.PackFS = skillfs.FS
+	if read.Commander == nil {
+		read.Commander = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
+	}
 	pin, ref := orgPinFor(ctx, read)
 	if ref != nil {
 		return r.RefuseTyped(ref)
@@ -269,7 +272,11 @@ func resolveDirectoryPack(dir string) (*packcore.Pack, *packcore.Set, []string, 
 	return p, set, nil, ref
 }
 
+//nolint:revive // resolution error path is one cohesive block
 func resolveInstalledPack(ctx context.Context, read Request, name string) (*packcore.Pack, *packcore.Set, []string, *core.RefusalError) {
+	if read.Commander == nil {
+		read.Commander = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
+	}
 	pin, ref := orgPinFor(ctx, read)
 	if ref != nil {
 		return nil, nil, nil, ref

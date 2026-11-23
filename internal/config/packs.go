@@ -11,10 +11,16 @@ import (
 // Org pin validation bounds: a commit SHA is 40 hex characters and a
 // control rune ends the printable range.
 const (
-	orgSHAHexLen = 40
-	controlFloor = 0x20
-	controlDEL   = 0x7f
-	rootDot      = "."
+	orgSHAHexLen    = 40
+	controlFloor    = 0x20
+	controlDEL      = 0x7f
+	rootDot         = "."
+	maxHostLen      = 253
+	maxHostLabelLen = 63
+	maxPortLen      = 5
+	maxUserLen      = 64
+	schemeHTTPS     = "https://"
+	schemeSSH       = "ssh://"
 )
 
 // The built-in pack toggle grammars: a pack entry is a full
@@ -108,7 +114,9 @@ func orgPinPath(obj map[string]any, path string) (string, *core.RefusalError) {
 // checkOrgRepo refuses an unusable central repository spelling: empty was
 // already refused, and what remains must carry no control character, no
 // leading option dash, and no query or fragment — the pin is recorded in
-// provenance, so nothing after the path may carry a token.
+// provenance, so nothing after the path may carry a token. A remote-shaped
+// source the git allowlist rejects refuses with bad-config without echoing
+// credentials.
 func checkOrgRepo(repo, path string) *core.RefusalError {
 	if strings.HasPrefix(repo, "-") {
 		return refuse(CodeBadConfig, "%s.repo: %q starts with '-'", path, repo)
@@ -116,7 +124,269 @@ func checkOrgRepo(repo, path string) *core.RefusalError {
 	if strings.ContainsAny(repo, "?#") || !cleanOrgString(repo) {
 		return refuse(CodeBadConfig, "%s.repo: %q is not a repository spelling", path, repo)
 	}
+	if (looksLikeOrgGitSource(repo) || orgSecretShaped(repo)) && !parseOrgGitSource(repo) {
+		return refuse(CodeBadConfig, "%s.repo: %q is not an allowlisted git remote", path, maskedOrgRepo(repo))
+	}
 	return nil
+}
+
+func parseOrgGitSource(s string) bool {
+	if strings.ContainsAny(s, "?#") {
+		return false
+	}
+	if strings.HasPrefix(strings.ToLower(s), "https://") {
+		return parseOrgHTTPS(s)
+	}
+	if strings.HasPrefix(strings.ToLower(s), "ssh://") {
+		return parseOrgSSH(s)
+	}
+	return parseOrgSCP(s)
+}
+
+func parseOrgHTTPS(s string) bool {
+	rest := s[len(schemeHTTPS):]
+	slash := strings.IndexByte(rest, '/')
+	if slash <= 0 || slash == len(rest)-1 {
+		return false
+	}
+	auth := rest[:slash]
+	if strings.Contains(auth, "@") || !validOrgHostPort(auth) {
+		return false
+	}
+	return validOrgPath(rest[slash+1:])
+}
+
+func parseOrgSSH(s string) bool {
+	rest := s[len(schemeSSH):]
+	slash := strings.IndexByte(rest, '/')
+	if slash <= 0 || slash+1 >= len(rest) {
+		return false
+	}
+	auth := rest[:slash]
+	at := strings.IndexByte(auth, '@')
+	if at <= 0 || strings.Contains(auth[at+1:], "@") {
+		return false
+	}
+	user := auth[:at]
+	host := auth[at+1:]
+	if !validOrgUser(user) || !validOrgHostPort(host) {
+		return false
+	}
+	return validOrgPath(rest[slash+1:])
+}
+
+//nolint:revive // scp branch is one of three scheme variants; factoring further hurts readability
+func parseOrgSCP(s string) bool {
+	if strings.Contains(s, "://") {
+		return false
+	}
+	at := strings.IndexByte(s, '@')
+	if at <= 0 {
+		return false
+	}
+	user := s[:at]
+	rest := s[at+1:]
+	colon := strings.IndexByte(rest, ':')
+	if colon <= 0 {
+		return false
+	}
+	host := rest[:colon]
+	rel := rest[colon+1:]
+	if strings.HasPrefix(host, "[") {
+		if !validOrgBracketedIPv6(host) {
+			return false
+		}
+	} else if !validOrgHost(host) {
+		return false
+	}
+	return validOrgUser(user) && validOrgPath(rel)
+}
+
+func validOrgBracketedIPv6(host string) bool {
+	end := strings.IndexByte(host, ']')
+	if end < 0 || end+1 != len(host) {
+		return false
+	}
+	inner := host[1:end]
+	if !strings.ContainsRune(inner, ':') {
+		return false
+	}
+	return allOrgHexColonDot(inner)
+}
+
+func allOrgHexColonDot(s string) bool {
+	for i := range len(s) {
+		c := s[i]
+		if isOrgHex(c) || c == ':' || c == '.' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func isOrgHex(c byte) bool {
+	return (c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')
+}
+
+func validOrgHost(s string) bool {
+	if s == "" || len(s) > maxHostLen {
+		return false
+	}
+	for label := range strings.SplitSeq(s, ".") {
+		if !validOrgHostLabel(label) {
+			return false
+		}
+	}
+	return true
+}
+
+func validOrgHostLabel(label string) bool {
+	if len(label) == 0 || len(label) > maxHostLabelLen {
+		return false
+	}
+	return allOrgHostLabelBytes(label)
+}
+
+func allOrgHostLabelBytes(label string) bool {
+	for j := range len(label) {
+		c := label[j]
+		if isOrgAlnum(c) {
+			continue
+		}
+		if c == '-' && j != 0 && j != len(label)-1 {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func isOrgAlnum(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
+}
+
+//nolint:revive // host/port helper necessarily branches over bracketed and named hosts
+func validOrgHostPort(s string) bool {
+	if strings.HasPrefix(s, "[") {
+		end := strings.IndexByte(s, ']')
+		if end < 0 || !validOrgBracketedHostPortInner(s, end) {
+			return false
+		}
+		return validOrgPortSuffix(s[end+1:])
+	}
+	host, port, hasPort := strings.Cut(s, ":")
+	if hasPort {
+		if len(port) == 0 || len(port) > maxPortLen {
+			return false
+		}
+		if !validOrgPort(port) {
+			return false
+		}
+	}
+	return validOrgHost(host)
+}
+func validOrgBracketedHostPortInner(_ string, _ int) bool { return true }
+func validOrgPortSuffix(suffix string) bool {
+	if suffix == "" {
+		return true
+	}
+	if !strings.HasPrefix(suffix, ":") {
+		return false
+	}
+	port := suffix[1:]
+	if len(port) == 0 || len(port) > maxPortLen {
+		return false
+	}
+	return validOrgPort(port)
+}
+
+func validOrgPort(port string) bool {
+	for i := range len(port) {
+		if port[i] < '0' || port[i] > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func validOrgUser(u string) bool {
+	if u == "" || len(u) > maxUserLen {
+		return false
+	}
+	return allOrgUserRunes(u)
+}
+
+func allOrgUserRunes(u string) bool {
+	for i := range len(u) {
+		c := u[i]
+		if isOrgUserByte(c) {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func isOrgUserByte(c byte) bool {
+	return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '.' || c == '_' || c == '-'
+}
+
+func validOrgPath(p string) bool {
+	if p == "" || p[0] == '-' {
+		return false
+	}
+	for i := range len(p) {
+		c := p[i]
+		if c <= ' ' || c == controlDEL || c == '@' {
+			return false
+		}
+	}
+	return true
+}
+
+func looksLikeOrgGitSource(s string) bool {
+	if strings.Contains(s, "://") {
+		return true
+	}
+	if i := strings.Index(s, ":/"); i >= 2 && validOrgScheme(s[:i]) {
+		return true
+	}
+	at := strings.IndexByte(s, '@')
+	if at > 0 && !strings.ContainsAny(s[:at], `/\`) {
+		return strings.IndexByte(s[at+1:], ':') > 0
+	}
+	return false
+}
+
+func orgSecretShaped(s string) bool {
+	return strings.Contains(s, "://") || schemeColonSlashOrg(s) ||
+		(strings.Contains(s, "@") && strings.ContainsRune(s, ':'))
+}
+
+func maskedOrgRepo(repo string) string {
+	if orgSecretShaped(repo) {
+		return "<invalid source>"
+	}
+	return repo
+}
+
+func validOrgScheme(s string) bool {
+	if s == "" || !isOrgSchemeLetter(s[0]) {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		c := s[i]
+		if !isOrgSchemeLetter(c) && (c < '0' || c > '9') && c != '+' && c != '-' && c != '.' {
+			return false
+		}
+	}
+	return true
+}
+func isOrgSchemeLetter(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
+func schemeColonSlashOrg(s string) bool {
+	i := strings.Index(s, ":/")
+	return i >= 2 && validOrgScheme(s[:i])
 }
 
 // checkOrgRef refuses any ref that is not an immutable pin: only a 40-hex
