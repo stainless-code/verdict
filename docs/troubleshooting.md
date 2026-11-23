@@ -1005,7 +1005,7 @@ Fix: `fetch` the PR first; local bundles use `record` and `report`.
 
 Cause: `fix --test` needs a reproduced finding's retained artifact, and the sig carries no reproduction receipt or the retained file cannot be read.
 
-Fix: re-run `record` with a reproduction block so the bundle retains the artifact, then re-run `verdict fix --test <sig>`.
+Fix: re-run `record` with a reproduction block so the bundle retains the artifact, then re-run `verdict fix <owner/repo> <local-slug|pr> --test <sig>`.
 
 ## `no-review-artifact`
 
@@ -1412,7 +1412,7 @@ Fix: re-run the write once the other one finishes; a holder that crashed or was 
 
 Cause: `fix --test` would overwrite a promoted target at `.verdict/tests/` that already holds different bytes (or is not a regular file), or `.verdict` / `.verdict/tests` is a symlink — the refusal names the target.
 
-Fix: resolve the named target or symlink by hand (promote the retained bytes, or remove the divergent file or link), then re-run `verdict fix --test <sig>`.
+Fix: resolve the named target or symlink by hand (promote the retained bytes, or remove the divergent file or link), then re-run `verdict fix <owner/repo> <local-slug|pr> --test <sig>`.
 
 ## `threads-failed`
 

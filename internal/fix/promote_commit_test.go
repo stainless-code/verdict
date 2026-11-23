@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/testenv"
 )
@@ -14,10 +15,12 @@ import (
 const promotedTestPath = ".verdict/tests/" + sigBatch + "-161139e764cc.py"
 
 // gitIn runs one git command in dir with the fixture identity and returns its
-// stdout.
+// stdout. The subprocess carries a WaitDelay (GO-CONC-06) so a stray child
+// holding the pipes cannot hang the test.
 func gitIn(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", args...)
+	cmd.WaitDelay = 5 * time.Second
 	cmd.Dir = dir
 	cmd.Env = testenv.Base(map[string]string{
 		"GIT_AUTHOR_NAME":     "fix",
@@ -81,5 +84,28 @@ func TestPromoteCommitLeavesStagedWorkAlone(t *testing.T) {
 	}
 	if want := "line1\ndirty edit\nline3\n"; string(raw) != want {
 		t.Errorf("notes.txt = %q, want %q", raw, want)
+	}
+}
+
+// TestPromoteCommitFromSubdirectory proves --commit resolves its repo-relative
+// destination from the repository root, so an invocation from a checkout
+// subdirectory commits the promoted test instead of refusing on a pathspec the
+// subdirectory cannot match.
+func TestPromoteCommitFromSubdirectory(t *testing.T) {
+	dir := t.TempDir()
+	setupTestPromote(t, dir, "")
+	sub := filepath.Join(dir, "sub")
+	if err := os.MkdirAll(sub, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	out := harness.Run(t, sub, testHome(t), nil,
+		"fix", "acme/app", "local-test", "--test", sigBatch, "--commit", "--json")
+	if out.Status != 0 {
+		t.Fatalf("fix --test --commit from a subdirectory = exit %d\nstdout:\n%s\nstderr:\n%s",
+			out.Status, out.Stdout, out.Stderr)
+	}
+	if got := gitIn(t, dir, "show", "--name-only", "--format=", "HEAD"); got != promotedTestPath+"\n" {
+		t.Errorf("new commit touches %q, want only %q", got, promotedTestPath)
 	}
 }

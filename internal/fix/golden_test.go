@@ -5,6 +5,7 @@
 package fix_test
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -366,13 +367,27 @@ func seedReproBundleCmd(t *testing.T, dir, slug, sig string, artifact []byte, co
 	if err != nil {
 		t.Fatal(err)
 	}
+	receiptJSON, err := json.Marshal(receiptDoc{
+		Path: receipt.Path, Command: receipt.Command, Redacted: receipt.Redacted,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	entry := strings.Replace(findingJSON(sig, "open", "important", "app.txt", "Reproduced bug here."),
 		`"rigor":"pointed"`, `"rigor":"reproduced"`, 1)
-	entry = entry[:len(entry)-1] + `,"reproduction":{"path":"` + receipt.Path +
-		`","command":"` + receipt.Command + `","redacted":false}}`
+	entry = entry[:len(entry)-1] + `,"reproduction":` + string(receiptJSON) + `}`
 	if err := os.WriteFile(filepath.Join(bdir, "findings.json"), []byte("["+entry+"]"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// receiptDoc is the reproduction receipt as the store spells it, marshaled
+// rather than concatenated so a Windows bundle path escapes its backslashes
+// instead of breaking the JSON.
+type receiptDoc struct {
+	Path     string `json:"path"`
+	Command  string `json:"command"`
+	Redacted bool   `json:"redacted"`
 }
 
 // setupTestPromote is the promotion fixture: one reproduced inline finding

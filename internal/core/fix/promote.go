@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -56,8 +55,7 @@ func (st *state) runPromotion(
 			readcommon.Prefix(full), err.Error()))
 	}
 	destRel := promotedDir + "/" + filepath.Base(receiptPath)
-	destAbs := filepath.Join(st.req.RepoRootPath(), filepath.FromSlash(destRel))
-	if ref := st.writePromoted(destAbs, destRel, artifact); ref != nil {
+	if ref := st.writePromoted(destRel, artifact); ref != nil {
 		return ref
 	}
 	promotedCmd := promotedCommand(receiptCmd, receiptPath, destRel)
@@ -149,13 +147,15 @@ func (st *state) testReceipt(rec *jq.Obj, full string) (string, string, *core.Re
 }
 
 // existingPromotedRefusal checks an existing target: a non-regular file or
-// different bytes refuse, identical bytes are a no-op success.
-func (st *state) existingPromotedRefusal(info os.FileInfo, destAbs, destRel string, artifact []byte) *core.RefusalError {
+// different bytes refuse, identical bytes are a no-op success. The read goes
+// through the same [os.Root] handle as the install, so the bytes compared are
+// the bytes inside the confined worktree.
+func (st *state) existingPromotedRefusal(root *os.Root, info os.FileInfo, destRel string, artifact []byte) *core.RefusalError {
 	if !info.Mode().IsRegular() {
 		return st.refuse(codeTestConflict, fmt.Sprintf(
 			"fix --test: target %s is not a regular file — refusing to overwrite it", destRel))
 	}
-	existing, err := os.ReadFile(destAbs)
+	existing, err := root.ReadFile(destRel)
 	if err != nil {
 		return st.refuse(codeFixFailed, fmt.Sprintf(
 			"fix --test: could not read existing %s: %v", destRel, err))
@@ -170,21 +170,19 @@ func (st *state) existingPromotedRefusal(info os.FileInfo, destAbs, destRel stri
 
 // writePromoted lands the artifact bytes at the worktree destination: an
 // identical existing file is a no-op success, different bytes refuse, and a
-// symlink or directory at the target refuses without following it. The write
-// itself runs through an [os.Root] confined to the worktree, and a symlinked
-// .verdict or .verdict/tests refuses before anything is created, exactly as
-// the reproduction writer confines its own bundle writes.
-func (st *state) writePromoted(destAbs, destRel string, artifact []byte) *core.RefusalError {
+// symlink or directory at the target refuses without following it. Every read
+// and write runs through an [os.Root] confined to the worktree, and a symlinked
+// .verdict or .verdict/tests refuses before anything is created, exactly as the
+// reproduction writer confines its own bundle writes.
+func (st *state) writePromoted(destRel string, artifact []byte) *core.RefusalError {
 	root, ref := st.promotedRoot()
 	if ref != nil {
 		return ref
 	}
 	defer func() { _ = root.Close() }()
-	info, err := os.Lstat(destAbs)
-	if err == nil {
-		return st.existingPromotedRefusal(info, destAbs, destRel, artifact)
-	}
-	if !errors.Is(err, os.ErrNotExist) {
+	if info, err := root.Lstat(destRel); err == nil {
+		return st.existingPromotedRefusal(root, info, destRel, artifact)
+	} else if !errors.Is(err, os.ErrNotExist) {
 		return st.refuse(codeFixFailed, fmt.Sprintf(
 			"fix --test: could not stat %s: %v", destRel, err))
 	}
@@ -192,11 +190,55 @@ func (st *state) writePromoted(destAbs, destRel string, artifact []byte) *core.R
 		return st.refuse(codeFixFailed, fmt.Sprintf(
 			"fix --test: could not create %s: %v", promotedDir, err))
 	}
-	if err := atomic.WriteFileModeIn(root, destRel, artifact, promotedFileMs); err != nil {
+	return st.installPromoted(root, destRel, artifact)
+}
+
+// installPromoted creates the destination exclusively inside root and writes
+// artifact. The exclusive create is the install-time guard: a destination that
+// appeared after the check above costs an [os.ErrExist] here, which resolves
+// exactly like that check — identical bytes are an idempotent success, anything
+// else refuses test-conflict — so no window between check and write can
+// overwrite a file.
+func (st *state) installPromoted(root *os.Root, destRel string, artifact []byte) *core.RefusalError {
+	f, err := root.OpenFile(destRel, os.O_WRONLY|os.O_CREATE|os.O_EXCL, promotedFileMs)
+	switch {
+	case errors.Is(err, os.ErrExist):
+		return st.existingPromoted(root, destRel, artifact)
+	case err != nil:
 		return st.refuse(codeFixFailed, fmt.Sprintf(
 			"fix --test: could not write %s: %v", destRel, err))
 	}
+	if _, err := f.Write(artifact); err != nil {
+		_ = f.Close() // write error already rules; close adds nothing
+		return st.abandonPromoted(root, destRel, err)
+	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close() // sync error already rules; close adds nothing
+		return st.abandonPromoted(root, destRel, err)
+	}
+	if err := f.Close(); err != nil {
+		return st.abandonPromoted(root, destRel, err)
+	}
 	return nil
+}
+
+// existingPromoted re-checks a destination the exclusive create found present
+// and answers it exactly as the earlier stat would.
+func (st *state) existingPromoted(root *os.Root, destRel string, artifact []byte) *core.RefusalError {
+	info, err := root.Lstat(destRel)
+	if err != nil {
+		return st.refuse(codeFixFailed, fmt.Sprintf(
+			"fix --test: could not stat %s: %v", destRel, err))
+	}
+	return st.existingPromotedRefusal(root, info, destRel, artifact)
+}
+
+// abandonPromoted drops a half-written install and refuses, so a failed write
+// never lingers as a different-bytes conflict on the next retry.
+func (st *state) abandonPromoted(root *os.Root, destRel string, err error) *core.RefusalError {
+	_ = root.Remove(destRel) //nolint:errcheck // the partial bytes are dead; the refusal carries the failure
+	return st.refuse(codeFixFailed, fmt.Sprintf(
+		"fix --test: could not write %s: %v", destRel, err))
 }
 
 // promotedRoot opens the worktree as an [os.Root] and refuses a symlink on the
@@ -250,8 +292,10 @@ func promotedCommand(receiptCmd, receiptPath, destRel string) string {
 }
 
 // rewriteBundleRef replaces every bundle-relative occurrence of from with to.
-// A match only counts at a path-token boundary, so the `tests/<base>` inside
-// `.verdict/tests/<base>` or an absolute bundle path is never rewritten twice.
+// A match counts only as a whole path token — neither the byte before it nor
+// the byte after it may continue a path — so the `tests/<base>` inside
+// `.verdict/tests/<base>` or an absolute bundle path is never rewritten twice,
+// and a sibling file such as `tests/<base>.expected` keeps its own spelling.
 func rewriteBundleRef(cmd, from, to string) string {
 	var sb strings.Builder
 	for idx := 0; idx < len(cmd); {
@@ -261,16 +305,30 @@ func rewriteBundleRef(cmd, from, to string) string {
 			break
 		}
 		start := idx + i
-		if !refBoundary(cmd, start) {
-			sb.WriteString(cmd[idx : start+len(from)])
-			idx = start + len(from)
+		end := start + len(from)
+		if !refBoundary(cmd, start) || !refEndBoundary(cmd, end) {
+			sb.WriteString(cmd[idx:end])
+			idx = end
 			continue
 		}
 		sb.WriteString(cmd[idx:start])
 		sb.WriteString(to)
-		idx = start + len(from)
+		idx = end
 	}
 	return sb.String()
+}
+
+// pathByte reports whether b can continue a path token, so a bundle reference
+// touching it names a longer path instead of the token itself.
+func pathByte(b byte) bool {
+	switch {
+	case b >= 'a' && b <= 'z', b >= 'A' && b <= 'Z', b >= '0' && b <= '9':
+		return true
+	case b == '/', b == '.', b == '-', b == '_', b == '+':
+		return true
+	default:
+		return false
+	}
 }
 
 // refBoundary reports whether a match at start begins a path token: the byte
@@ -279,27 +337,34 @@ func refBoundary(cmd string, start int) bool {
 	if start == 0 {
 		return true
 	}
-	switch prev := cmd[start-1]; {
-	case prev >= 'a' && prev <= 'z', prev >= 'A' && prev <= 'Z', prev >= '0' && prev <= '9':
-		return false
-	case prev == '/', prev == '.', prev == '-', prev == '_', prev == '+':
-		return false
-	default:
+	return !pathByte(cmd[start-1])
+}
+
+// refEndBoundary reports whether a match ending at end ends a path token: the
+// byte after it is absent or is not part of a path. A pytest `::test_case`
+// selector, a quote, whitespace, and a shell separator all end the token; a
+// `.expected` suffix, a `_2` variant, or a `/inner` path do not.
+func refEndBoundary(cmd string, end int) bool {
+	if end >= len(cmd) {
 		return true
 	}
+	return !pathByte(cmd[end])
 }
 
 // commitPromoted stages the promoted file and commits it as
 // `test: regression for <sig>` through a pathspec commit: an unrelated file
 // already staged in the index stays staged and out of the commit, and every
 // unrelated dirty file stays untouched. An already-committed identical file
-// reports committed without a new commit.
+// reports committed without a new commit. Each command names the repository
+// root with `-C`, so the repo-relative destination resolves the same from a
+// checkout subdirectory as from the root.
 func (st *state) commitPromoted(ctx context.Context, destRel, full string) (bool, *core.RefusalError) {
-	if _, err := st.runGit(ctx, "git", "add", "--", destRel); err != nil {
+	root := st.req.RepoRootPath()
+	if _, err := st.runGit(ctx, "git", "-C", root, "add", "--", destRel); err != nil {
 		return false, st.refuse(codeFixFailed, fmt.Sprintf(
 			"fix --test: could not stage %s: %v", destRel, err))
 	}
-	cached, err := st.runGit(ctx, "git", "diff", "--cached", "--name-only", "--", destRel)
+	cached, err := st.runGit(ctx, "git", "-C", root, "diff", "--cached", "--name-only", "--", destRel)
 	if err != nil {
 		return false, st.refuse(codeFixFailed, fmt.Sprintf(
 			"fix --test: could not inspect staged %s: %v", destRel, err))
@@ -308,7 +373,7 @@ func (st *state) commitPromoted(ctx context.Context, destRel, full string) (bool
 		return true, nil
 	}
 	msg := "test: regression for " + full
-	if _, err := st.runGit(ctx, "git", "commit", "-m", msg, "--", destRel); err != nil {
+	if _, err := st.runGit(ctx, "git", "-C", root, "commit", "-m", msg, "--", destRel); err != nil {
 		return false, st.refuse(codeFixFailed, fmt.Sprintf(
 			"fix --test: could not commit %s: %v", destRel, err))
 	}
