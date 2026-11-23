@@ -33,7 +33,10 @@ review flow (arm `C2`: default `verdict run` with 2 rounds, `record`, and
 [`bench/quality/results/2026-11-20/`](https://github.com/stainless-code/verdict/tree/main/bench/quality/results/2026-11-20):
 
 - **0 / 16 false greens** (`0/8` on `fx1`, `0/8` on `fx2`, `0` unknown gate
-  outcomes) — no approval or passing gate without verified evidence.
+  outcomes) — no approval or passing gate without verified evidence. This is a
+  false-green count on these two fixtures, not a measure of gate strength: the
+  gate constrains the findings it is handed, and none of the armed dimensions
+  asks whether the review found any.
 - **0 / 46 hallucinated quotes** (`0.0000` measured rate across `36` gating
   findings on `fx1` and `10` on `fx2`, `0` unverifiable) — every gating finding
   quote verified against the pinned diff.
