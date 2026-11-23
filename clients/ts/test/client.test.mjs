@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
 import {
   mkdtempSync,
@@ -10,6 +10,7 @@ import {
   constants,
   existsSync,
   realpathSync,
+  rmSync,
 } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -90,11 +91,21 @@ function runFake(mode, verb = "report", args = [], opts = {}, env = {}) {
   });
 }
 
+// One-off refusal fakes live in a temp dir each; collect them and remove
+// them once the file's tests have run.
+const refusalDirs = [];
+after(() => {
+  for (const dir of refusalDirs) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 // Spawns a one-off fake binary emitting a refusal envelope whose `error`
 // body is exactly `errorBody`, so the throw/envelope boundary is exercised
 // with payloads the shared fake-verdict.mjs does not know.
 function runInlineRefusal(errorBody) {
   const dir = mkdtempSync(join(tmpdir(), "verdict-refusal-"));
+  refusalDirs.push(dir);
   const fake = join(dir, "fake-verdict.mjs");
   const envelope = {
     schema_version: "1",
@@ -331,7 +342,7 @@ describe("unit: fake binary exit paths", () => {
             fix: "move the anchor inside the hunk",
           },
         ],
-        problems_truncated: 0,
+        problems_truncated: 7,
         candidates: [{ kind: "oversize-fetch", suggestion: "app/handler.go" }],
         retry_at: "2026-01-02T00:00:00Z",
       }),
@@ -340,7 +351,7 @@ describe("unit: fake binary exit paths", () => {
         assert.equal(error.body.code, "bad-review-input");
         assert.equal(error.problems.length, 1);
         assert.equal(error.problems[0].path, "$.findings[0].anchor");
-        assert.equal(error.problems_truncated, 0);
+        assert.equal(error.problems_truncated, 7);
         assert.equal(error.candidates[0].suggestion, "app/handler.go");
         assert.equal(error.retry_at, "2026-01-02T00:00:00Z");
         return true;
@@ -358,6 +369,11 @@ describe("unit: fake binary exit paths", () => {
       (error) => {
         assert.ok(error instanceof VerdictSchemaError);
         assert.ok(!(error instanceof VerdictRefusalError));
+        assert.ok(
+          error.message.includes(
+            "refusal envelope error problems must be an array of { path, code, level, message, fix } objects",
+          ),
+        );
         return true;
       },
     );
@@ -380,6 +396,11 @@ describe("unit: fake binary exit paths", () => {
       (error) => {
         assert.ok(error instanceof VerdictSchemaError);
         assert.ok(!(error instanceof VerdictRefusalError));
+        assert.ok(
+          error.message.includes(
+            "refusal envelope error problems must be an array of { path, code, level, message, fix } objects",
+          ),
+        );
         return true;
       },
     );
@@ -405,6 +426,11 @@ describe("unit: fake binary exit paths", () => {
         (error) => {
           assert.ok(error instanceof VerdictSchemaError);
           assert.ok(!(error instanceof VerdictRefusalError));
+          assert.ok(
+            error.message.includes(
+              "refusal envelope error problems must be an array of { path, code, level, message, fix } objects",
+            ),
+          );
           return true;
         },
       );
@@ -420,6 +446,11 @@ describe("unit: fake binary exit paths", () => {
       }),
       (error) => {
         assert.ok(error instanceof VerdictSchemaError);
+        assert.ok(
+          error.message.includes(
+            "refusal envelope error problems must be an array of { path, code, level, message, fix } objects",
+          ),
+        );
         return true;
       },
     );
@@ -434,6 +465,11 @@ describe("unit: fake binary exit paths", () => {
       }),
       (error) => {
         assert.ok(error instanceof VerdictSchemaError);
+        assert.ok(
+          error.message.includes(
+            "refusal envelope error problems_truncated must be a non-negative integer",
+          ),
+        );
         return true;
       },
     );
@@ -448,6 +484,11 @@ describe("unit: fake binary exit paths", () => {
       }),
       (error) => {
         assert.ok(error instanceof VerdictSchemaError);
+        assert.ok(
+          error.message.includes(
+            "refusal envelope error candidates must be an array of { kind, suggestion } objects",
+          ),
+        );
         return true;
       },
     );
@@ -462,6 +503,11 @@ describe("unit: fake binary exit paths", () => {
       }),
       (error) => {
         assert.ok(error instanceof VerdictSchemaError);
+        assert.ok(
+          error.message.includes(
+            "refusal envelope error retry_at must be a string",
+          ),
+        );
         return true;
       },
     );
