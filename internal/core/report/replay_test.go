@@ -147,3 +147,37 @@ func TestReplayMovesIncludesAddedAndRemovedDimensions(t *testing.T) {
 		t.Fatalf("removed-dimension moves = %#v; want %#v", removed, want)
 	}
 }
+
+// TestReplayRefusesACandidateItCannotUse pins the three ways a candidate can be
+// unusable. Each must refuse rather than fall back to the captured policy: a
+// replay that quietly answers for the wrong file is worse than no answer, and a
+// strict parse is what keeps a typo'd key from being ignored.
+func TestReplayRefusesACandidateItCannotUse(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		path      string
+		candidate string
+		wantCode  string
+	}{
+		{name: "malformed", path: "candidate.json", candidate: "{not json", wantCode: config.CodeBadConfig},
+		{name: "unknown-key", path: "candidate.json", candidate: `{"typo":true}`, wantCode: config.CodeBadConfig},
+		{name: "unreadable", path: "missing.json", wantCode: "bad-flags"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			req := fixture(t, "["+securityFinding+"]")
+			writeCapturedPolicy(t, &core.Config{})
+			if tc.candidate != "" {
+				writeFile(t, tc.path, tc.candidate)
+			}
+			_, ref := reportcore.Replay(context.Background(), &reportcore.Request{
+				ReadRequest: req, Flags: reportcore.Flags{Policy: tc.path},
+			})
+			if ref == nil {
+				t.Fatal("replay accepted an unusable candidate; want a refusal")
+			}
+			if ref.Code != tc.wantCode {
+				t.Fatalf("code = %q; want %q (%s)", ref.Code, tc.wantCode, ref.Message)
+			}
+		})
+	}
+}
