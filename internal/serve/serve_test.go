@@ -417,9 +417,28 @@ func TestNonLoopbackWarningNamesPlainHTTP(t *testing.T) {
 	}
 }
 
+// TestNonLoopbackWarningNamesInteractive pins the interactive exposure
+// warning: it names the write posture, never the read-only surface.
+func TestNonLoopbackWarningNamesInteractive(t *testing.T) {
+	t.Parallel()
+	out := &syncBuffer{}
+	runner := &cli.Runner{Out: out, Human: out, Diag: out, Effective: cli.Defaults()}
+	warnExposure(runner, &serveOptions{host: "0.0.0.0", interactive: true})
+	const want = "serve: binding 0.0.0.0 exposes the interactive (local triage & KB writes) surface " +
+		"beyond loopback over plain HTTP; the token and session cookie are not encrypted"
+	if !slices.Contains(runner.Warnings, want) {
+		t.Errorf("warnings = %v, want %q", runner.Warnings, want)
+	}
+	for _, warning := range runner.Warnings {
+		if strings.Contains(warning, "read-only surface") {
+			t.Errorf("interactive warnings name the read-only surface: %v", runner.Warnings)
+		}
+	}
+}
+
 // TestRouteTableIsGetOnlyByDefault walks the one registration point: the
 // default table is GET only, and only an interactive server adds the two
-// POST rows.
+// POST rows (and drops the GET placeholders).
 func TestRouteTableIsGetOnly(t *testing.T) {
 	t.Parallel()
 	root := writeFixture(t, fixtureFiles())
@@ -427,15 +446,32 @@ func TestRouteTableIsGetOnly(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
+	get := map[string]bool{}
 	for _, item := range server.routes() {
 		if item.Method != http.MethodGet {
 			t.Errorf("route %s %s is not GET", item.Method, item.Pattern)
+		}
+		get[item.Pattern] = true
+	}
+	if !get["/v1/triage"] || !get["/v1/kb/promote"] {
+		t.Errorf("default GET placeholders = %v, want /v1/triage and /v1/kb/promote", get)
+	}
+}
+
+// assertNoGetPlaceholder proves one write path carries no GET row on an
+// interactive server.
+func assertNoGetPlaceholder(t *testing.T, server *Server, pattern string) {
+	t.Helper()
+	for _, item := range server.routes() {
+		if item.Method == http.MethodGet && item.Pattern == pattern {
+			t.Errorf("interactive GET placeholder on %s", pattern)
 		}
 	}
 }
 
 // TestRouteTableInteractiveAddsTwoPosts pins the interactive table: the two
-// POST rows join the GET rows, and no other POST row exists.
+// POST rows join the GET rows, no other POST row exists, and the write paths
+// carry no GET placeholder.
 func TestRouteTableInteractiveAddsTwoPosts(t *testing.T) {
 	t.Parallel()
 	root := writeFixture(t, fixtureFiles())
@@ -445,15 +481,17 @@ func TestRouteTableInteractiveAddsTwoPosts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	got := map[string]bool{}
+	post := map[string]bool{}
 	for _, item := range server.routes() {
 		if item.Method == http.MethodPost {
-			got[item.Pattern] = true
+			post[item.Pattern] = true
 		}
 	}
-	if len(got) != 2 || !got["/v1/triage"] || !got["/v1/kb/promote"] {
-		t.Errorf("POST rows = %v, want /v1/triage and /v1/kb/promote only", got)
+	if len(post) != 2 || !post["/v1/triage"] || !post["/v1/kb/promote"] {
+		t.Errorf("POST rows = %v, want /v1/triage and /v1/kb/promote only", post)
 	}
+	assertNoGetPlaceholder(t, server, "/v1/triage")
+	assertNoGetPlaceholder(t, server, "/v1/kb/promote")
 }
 
 // TestConfigRejectsSubminimumWatchDurations covers the resolved Config bounds.

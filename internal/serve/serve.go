@@ -458,7 +458,11 @@ func warnExposure(r *cli.Runner, opts *serveOptions) {
 		r.Warn("serve: --token is visible in your process list and shell history")
 	}
 	if !isLoopback(opts.host) {
-		r.Warn("serve: binding " + opts.host + " exposes the read-only surface beyond loopback " +
+		surface := "read-only"
+		if opts.interactive {
+			surface = "interactive (local triage & KB writes)"
+		}
+		r.Warn("serve: binding " + opts.host + " exposes the " + surface + " surface beyond loopback " +
 			"over plain HTTP; the token and session cookie are not encrypted")
 	}
 }

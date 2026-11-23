@@ -68,11 +68,14 @@ func (s *Server) routes() []route {
 	// The two write paths exist as GET placeholders so the mux answers a
 	// non-GET method with 405 and an Allow header instead of a port-scan
 	// 404: without --interactive the writes are refused, never silently
-	// absent. Interactive adds the POST rows beside the placeholders.
-	routes = append(routes,
-		route{Method: http.MethodGet, Pattern: "/v1/triage", Handler: http.HandlerFunc(s.handleWriteGone)},
-		route{Method: http.MethodGet, Pattern: "/v1/kb/promote", Handler: http.HandlerFunc(s.handleWriteGone)},
-	)
+	// absent. Interactive registers POST only, so the mux answers every
+	// other method with 405 and Allow: POST.
+	if !s.cfg.Interactive {
+		routes = append(routes,
+			route{Method: http.MethodGet, Pattern: "/v1/triage", Handler: http.HandlerFunc(s.handleWriteGone)},
+			route{Method: http.MethodGet, Pattern: "/v1/kb/promote", Handler: http.HandlerFunc(s.handleWriteGone)},
+		)
+	}
 	if s.cfg.Interactive {
 		routes = append(routes,
 			route{Method: http.MethodPost, Pattern: "/v1/triage", Handler: s.guardWrite(s.handleTriage)},
@@ -176,6 +179,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 // no health view.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	view := s.layer.Health(r.Context())
+	view.Data.Set("read_only", !s.cfg.Interactive)
 	if s.cfg.Interactive {
 		view.Data.Set("interactive", true)
 		view.Data.Set("csrf", s.csrf)

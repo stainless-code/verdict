@@ -1,6 +1,7 @@
 package serve
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"io"
@@ -11,6 +12,8 @@ import (
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	"github.com/stainless-code/verdict/internal/core/query"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
+	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // Interactive write endpoints: local-only triage and KB promotion over the
@@ -23,6 +26,10 @@ const (
 	csrfBodyCap = 64 * 1024
 	// kbDefaultRigor mirrors the learn CLI's --rigor default.
 	kbDefaultRigor = "pointed"
+	// badBodyReason is the one transport reason for a malformed write body.
+	badBodyReason = "bad-body"
+	// badBodyMessage is the one sentence every malformed write body answers with.
+	badBodyMessage = "writes accept one bounded JSON object"
 )
 
 // triageBody is the POST /v1/triage wire shape: the same status vocabulary
@@ -89,19 +96,35 @@ func hasJSONContentType(r *http.Request) bool {
 
 // decodeJSON reads one bounded JSON object body with no unknown fields and
 // no trailing value; a malformed body refuses before any store is touched.
+// The top-level value must be an object: a literal `null` (or any other
+// non-object) decodes into a zero struct without an error, so it is checked
+// explicitly instead of flowing on as an empty write.
 func decodeJSON[T any](w http.ResponseWriter, r *http.Request, s *Server, out *T) bool {
 	r.Body = http.MaxBytesReader(w, r.Body, csrfBodyCap)
 	decoder := json.NewDecoder(r.Body)
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(out); err != nil {
-		s.problem(w, http.StatusBadRequest, "bad-body",
-			"writes accept one bounded JSON object")
+	var raw json.RawMessage
+	if err := decoder.Decode(&raw); err != nil {
+		s.problem(w, http.StatusBadRequest, badBodyReason,
+			badBodyMessage)
+		return false
+	}
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || trimmed[0] != '{' {
+		s.problem(w, http.StatusBadRequest, badBodyReason,
+			badBodyMessage)
+		return false
+	}
+	strict := json.NewDecoder(bytes.NewReader(raw))
+	strict.DisallowUnknownFields()
+	if err := strict.Decode(out); err != nil {
+		s.problem(w, http.StatusBadRequest, badBodyReason,
+			badBodyMessage)
 		return false
 	}
 	var extra any
 	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
-		s.problem(w, http.StatusBadRequest, "bad-body",
-			"writes accept one bounded JSON object")
+		s.problem(w, http.StatusBadRequest, badBodyReason,
+			badBodyMessage)
 		return false
 	}
 	return true
@@ -114,8 +137,17 @@ func (s *Server) handleTriage(w http.ResponseWriter, r *http.Request) {
 	if !decodeJSON(w, r, s, &body) {
 		return
 	}
-	rootPath, ok := s.resolveWrite(w, body.Root, body.Bundle)
+	if !query.ValidSig(body.Sig) {
+		s.problem(w, http.StatusBadRequest, "bad-sig",
+			"triage requires a valid finding sig")
+		return
+	}
+	rootPath, bundleDir, ok := s.resolveWrite(w, body.Root, body.Bundle)
 	if !ok {
+		return
+	}
+	if withheldFinding(bundleDir, body.Sig) {
+		s.problem(w, http.StatusNotFound, "not-found", "no such finding")
 		return
 	}
 	resp, ref := triagecore.Run(r.Context(), &triagecore.Request{
@@ -175,20 +207,47 @@ func (s *Server) writeRuntime() *core.Runtime {
 	return &core.Runtime{Now: s.now}
 }
 
+// withheldFinding reports whether the bundle's store carries sig as a
+// policy-withheld finding. An unreadable store, an unknown sig, and an
+// ambiguous prefix are not withheld — the caller proceeds and the triage
+// service answers those the CLI way, so no write has happened yet.
+func withheldFinding(bundleDir, sig string) bool {
+	entries, err := readcommon.LoadFindings(bundleDir)
+	if err != nil {
+		return false
+	}
+	full := readcommon.ResolveSig(entries, sig)
+	if full == "NONE" || full == "MANY" {
+		return false
+	}
+	for _, entry := range entries {
+		if jq.StrOf(readcommon.FieldOf(entry, "sig")) == full {
+			return readcommon.WithheldSource(entry) != ""
+		}
+	}
+	return false
+}
+
 // resolveWrite confines a triage write to a served root and bundle, with
 // the same answer a read gives for a name outside the served set. The
-// problem is already written when ok is false.
-func (s *Server) resolveWrite(w http.ResponseWriter, rootID, bundle string) (string, bool) {
-	rootPath, _, err := s.layer.ResolveBundle(rootID, bundle)
+// problem is already written when ok is false. An unexpected resolution
+// failure fails closed with a 500: an empty root must never reach the
+// triage service as a success.
+func (s *Server) resolveWrite(w http.ResponseWriter, rootID, bundle string) (string, string, bool) {
+	rootPath, dir, err := s.layer.ResolveBundle(rootID, bundle)
 	if errors.Is(err, query.ErrNotFound) {
 		s.problem(w, http.StatusNotFound, "not-found", "no such root or bundle")
-		return "", false
+		return "", "", false
 	}
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
 		s.writeRefusal(w, verbServe, bundle, ref)
-		return "", false
+		return "", "", false
 	}
-	return rootPath, true
+	if err != nil || rootPath == "" {
+		s.problem(w, http.StatusInternalServerError, "internal", "bundle resolution failed")
+		return "", "", false
+	}
+	return rootPath, dir, true
 }
 
 // resolveRootOnly confines a KB promotion to a served root; the store it

@@ -2571,20 +2571,20 @@ than from history.
 
 **Routes** (GET, plus HEAD from the mux):
 
-| Route                                                       | Envelope                                                                                                                                      |
-| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /v1/health`                                            | `serve` — version, roots, watch state, interval, cache counters, `read_only: true`; with `--interactive`, also `interactive: true` and `csrf` |
-| `GET /v1/roots`                                             | `serve` — the served roots with counts, `truncated`, `skipped`, `discovery`                                                                   |
-| `GET /v1/bundles`                                           | `serve` — inbox rows, portfolio counts, `partial`, `sources[]`, `errors[]`                                                                    |
-| `GET /v1/cost?by=repo\|week\|model`                         | `serve` — cost buckets and totals, with `partial`, `sources[]`, `errors[]`                                                                    |
-| `GET /v1/precision?by=category\|tier`                       | `serve` — stored-join outcomes; `fixed` is `null` and no rate is printed                                                                      |
-| `GET /v1/roots/{root}/bundles/{bundle}`                     | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                                                                               |
-| `GET /v1/roots/{root}/bundles/{bundle}/compare`             | `serve` — `data.compare` against `?baseline={bundle}`; `bad-baseline` refuses                                                                 |
-| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}`      | `show` — byte-identical `data` to `show --json`                                                                                               |
-| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}/copy` | `serve` — `data.{prompt,triage}` copy payloads (read-only)                                                                                    |
-| `GET /v1/events`                                            | SSE invalidations; absent with `--no-watch`                                                                                                   |
-| `POST /v1/triage`                                           | `serve` — `data.{sig,status}`; interactive only (see below)                                                                                   |
-| `POST /v1/kb/promote`                                       | `serve` — `data.rule` appends one learn rule; interactive only (see below)                                                                    |
+| Route                                                       | Envelope                                                                                                                                                             |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /v1/health`                                            | `serve` — version, roots, watch state, interval, cache counters, `read_only: true` (`false` with `--interactive`, which also carries `interactive: true` and `csrf`) |
+| `GET /v1/roots`                                             | `serve` — the served roots with counts, `truncated`, `skipped`, `discovery`                                                                                          |
+| `GET /v1/bundles`                                           | `serve` — inbox rows, portfolio counts, `partial`, `sources[]`, `errors[]`                                                                                           |
+| `GET /v1/cost?by=repo\|week\|model`                         | `serve` — cost buckets and totals, with `partial`, `sources[]`, `errors[]`                                                                                           |
+| `GET /v1/precision?by=category\|tier`                       | `serve` — stored-join outcomes; `fixed` is `null` and no rate is printed                                                                                             |
+| `GET /v1/roots/{root}/bundles/{bundle}`                     | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                                                                                                      |
+| `GET /v1/roots/{root}/bundles/{bundle}/compare`             | `serve` — `data.compare` against `?baseline={bundle}`; `bad-baseline` refuses                                                                                        |
+| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}`      | `show` — byte-identical `data` to `show --json`                                                                                                                      |
+| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}/copy` | `serve` — `data.{prompt,triage}` copy payloads (read-only)                                                                                                           |
+| `GET /v1/events`                                            | SSE invalidations; absent with `--no-watch`                                                                                                                          |
+| `POST /v1/triage`                                           | `serve` — `data.{sig,status}`; interactive only (see below)                                                                                                          |
+| `POST /v1/kb/promote`                                       | `serve` — `data.rule` appends one learn rule; interactive only (see below)                                                                                           |
 
 The `bundles` SSE event carries one compact envelope with the root, detector
 (`tick` or `sweep`), changed and removed bundle names, and `truncated`. Events
