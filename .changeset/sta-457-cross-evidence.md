@@ -1,10 +1,13 @@
 ---
-"@stainless-code/verdict": minor
+"@stainless-code/verdict": patch
 ---
 
 Panel receipts use version 2 with invoker-assigned checker identities. S5 receipts bind the execution, head, diff, frozen review and dispatch plan, and every confirmation or refutation quote passes the S4 matcher. Approval, spec, compliance, post, report, gate and ready require all assigned other-finder checks. Missing or disputed blocking checks withhold approval as insufficient. Manual panel decisions remain unchanged when no S5 execution is captured.
 
 This is a deliberate pre-v1 break — version 1 panel receipts are refused, with no compatibility decoder. Finder review input remains version 1; execution-bound aggregate review input uses version 2. Execution fields are inactive until a coordinator captures an S5 execution.
+Stored finder receipts now use the largest completed count across `record.json`
+and `post.json`; a captured one-finder policy in `run.json`'s resolved defaults
+takes precedence over stale two-finder receipts when its top-level count is zero.
 
 Changed schemas (with matching generated baselines and semantic pins):
 

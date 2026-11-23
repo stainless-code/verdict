@@ -30,6 +30,7 @@ const (
 	twoFinders            = 2
 	recordFile            = "record.json"
 	postFile              = "post.json"
+	fieldFinders          = "finders"
 )
 
 // CodeQuote locates the checker evidence independently of the finding.
@@ -131,7 +132,7 @@ func storedFinders(dir string) int {
 	largest := 0
 	for _, name := range []string{recordFile, postFile} {
 		doc, _ := readObject(dir, name)
-		finders := readcommon.FieldOf(readcommon.FieldOf(doc, "verification"), "finders")
+		finders := readcommon.FieldOf(readcommon.FieldOf(doc, "verification"), fieldFinders)
 		if count, _ := jq.IntOf(readcommon.FieldOf(finders, "completed")); count > largest {
 			largest = count
 		}
@@ -190,7 +191,7 @@ func (s *Execution) readReference(doc *jq.Obj) {
 	s.Active = true
 	s.captureFinders(twoFinders)
 	id := jq.StrOf(readcommon.FieldOf(value, "id"))
-	if jq.R(readcommon.FieldOf(value, "finders")) != "2" {
+	if jq.R(readcommon.FieldOf(value, fieldFinders)) != "2" {
 		s.Gap = "execution requires two finders"
 	}
 	if id == "" || (s.ID != "" && s.ID != id) {
@@ -636,7 +637,17 @@ func clearCross(entries []any) {
 }
 
 func (s *Execution) readTopology(captured any) {
-	count, _ := jq.IntOf(readcommon.FieldOf(captured, "finders"))
+	count, _ := jq.IntOf(readcommon.FieldOf(captured, fieldFinders))
+	if count == 0 {
+		defaults := readcommon.FieldOf(readcommon.FieldOf(captured, "resolved"), "defaults")
+		values := readcommon.FieldOf(defaults, "values")
+		// Only an explicit one-finder policy lowers the count: the resolved
+		// default is two, so honoring it here would arm cross checks on a
+		// capture that never ran two finders.
+		if policy, _ := jq.IntOf(readcommon.FieldOf(values, fieldFinders)); policy == 1 {
+			count = policy
+		}
+	}
 	s.Retired = count == 1 && jq.StrOf(readcommon.FieldOf(captured, "superseded")) != ""
 	s.captureFinders(count)
 	if count == twoFinders {

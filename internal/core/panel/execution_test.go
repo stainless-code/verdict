@@ -446,6 +446,31 @@ func TestExecutionUsesLargestStoredFinderCapture(t *testing.T) {
 	}
 }
 
+func TestExecutionHonorsCapturedOneFinderDefault(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	retireBoundArtifacts(t, dir)
+	writeExecutionFile(t, dir, "run.json", []byte(`{"schema_version":"1","finders":0,"resolved":{"defaults":{"values":{"finders":1}}}}`))
+	writeStoredFinders(t, dir, 2)
+	writeExecutionFile(t, dir, "post.json", []byte(`{"verification":{"finders":{"completed":2}}}`))
+
+	state := CheckExecution(dir, nil)
+	if state.CrossRequired {
+		t.Fatalf("CrossRequired = true; want the captured one-finder policy to remain manual (state=%+v)", state)
+	}
+	entry := executionEntry()
+	verification, _ := entry.Get("verification")
+	stamp, ok := verification.(*jq.Obj)
+	if !ok {
+		t.Fatal("fixture verification is not an object")
+	}
+	stamp.Set("cross", jq.NewObj("execution_id", "execution-A", "status", "confirmed",
+		"expected", []any{"finder-2"}, "checks", []any{jq.NewObj("checker", "finder-2", "verdict", "confirmed", "quote_status", "verified")}))
+	state.Stamp([]any{entry})
+	if cross := readCross(entry); cross != nil {
+		t.Fatalf("manual capture kept stale cross = %v", cross)
+	}
+}
+
 func TestExecutionManualCaptureClearsStoredCross(t *testing.T) {
 	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
 	retireBoundArtifacts(t, dir)
