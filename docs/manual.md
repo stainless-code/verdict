@@ -4024,6 +4024,8 @@ resolved/verification/triage claims, writes `findings.json` + `record.json`.
 Add `--dry-run` to run every check and write nothing; `--strict` promotes
 review-input warnings to errors.
 
+Runnable examples: [ExampleClient_Record](../pkg/verdict/example_test.go) — and [record.ts](../examples/typescript-client/record.ts).
+
 `--cost-names[=<names>]` names the `models[]` entries of the bundle's
 `cost.json` and its `chunks/*.cost.json` in place, so spend carries the panel
 seat that produced it. `<names>` is a comma-separated list in panel order —
@@ -4623,6 +4625,8 @@ verdict fetch-local owner/repo slice-a --range <base>..<mid>   # or --base <R>
 verdict fetch owner/repo 123 --base-sha <sha>                  # or --since <sha>
 verdict fetch-local owner/repo slice-b -- <paths...>           # narrow to a file subset
 ```
+
+Runnable examples: [ExampleClient_Fetch](../pkg/verdict/example_test.go) — no TypeScript example; fetch needs a live PR.
 
 ## Providers (non-GitHub hosts)
 
