@@ -659,16 +659,10 @@ func (s *Execution) readTopology(captured any) {
 		// capture that never ran two finders.
 		if policy, _ := jq.IntOf(readcommon.FieldOf(values, fieldFinders)); policy == 1 {
 			count = policy
+			s.oneFinder = true
 		}
 	}
 	s.Retired = count == 1 && jq.StrOf(readcommon.FieldOf(captured, "superseded")) != ""
-	if count == 1 {
-		// run.json declares the capture. One finder is manual by decision, so
-		// a stale launcher, receipt or reference cannot raise it afterwards.
-		s.oneFinder = true
-		s.finders = 0
-		s.CrossRequired = false
-	}
 	s.captureFinders(count)
 	if count == twoFinders {
 		s.Active = true
