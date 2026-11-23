@@ -26,17 +26,14 @@ exit: 0
     "capabilities": {
       "provider": "bitbucket",
       "fetch": true,
-      "post": false,
-      "inline_anchors": false,
-      "approve": false,
+      "post": true,
+      "inline_anchors": true,
+      "approve": true,
       "request_changes": false,
       "thread_resolution": false,
       "review_verdicts": false,
       "unsupported": {
-        "post": "fetch-only",
-        "inline_anchors": "fetch-only",
-        "approve": "fetch-only",
-        "request_changes": "fetch-only",
+        "request_changes": "no-request-changes-event",
         "thread_resolution": "no-resolve-mutation"
       }
     },
@@ -78,11 +75,11 @@ done: .verdict/state/4717/PR.json .verdict/state/4717/full.diff .verdict/state/4
 next: feed .verdict/state/4717/procedure.md + .verdict/state/4717/PR.json + .verdict/state/4717/full.diff (+ .verdict/state/4717/roles.txt) to any agent; ask it to write .verdict/state/4717/review.json
 --- files ---
 --- file C/.curl-calls.log ---
-CALL: --config - -sf https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717
-CALL: --config - -sfL https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717/diff
-CALL: --config - -sfL https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717/diffstat?pagelen=100
-CALL: --config - -sfL https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717/diffstat?cursor=cursor2
-CALL: --config - -sfL https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717/comments?pagelen=100
+CALL: --config - -sf https://api.bitbucket.org/2.0/repositories/acme/app/pullrequests/4717
+CALL: --config - -sfL https://api.bitbucket.org/2.0/repositories/acme/app/pullrequests/4717/diff
+CALL: --config - -sfL https://api.bitbucket.org/2.0/repositories/acme/app/pullrequests/4717/diffstat?pagelen=100
+CALL: --config - -sfL https://api.bitbucket.org/2.0/repositories/acme/app/pullrequests/4717/diffstat?cursor=cursor2
+CALL: --config - -sfL https://api.bitbucket.org/2.0/repositories/acme/app/pullrequests/4717/comments?pagelen=100
 --- file C/.verdict/.gitignore ---
 /state/
 /backtest/

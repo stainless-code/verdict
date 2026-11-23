@@ -1166,7 +1166,7 @@ func fetchBitbucket(ctx context.Context, ctx2 *fetchRunCtx, req *Request) error 
 	if ref != nil {
 		return ref
 	}
-	base := "https://api.bitbucket.org/2.0/repos/" + repo + "/pullrequests/" + pr
+	base := "https://api.bitbucket.org/2.0/repositories/" + repo + "/pullrequests/" + pr
 	meta, ref := bitbucketMeta(ctx, r, dir, auth, base)
 	if ref != nil {
 		return ref

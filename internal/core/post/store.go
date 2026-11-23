@@ -18,6 +18,11 @@ const providerGitLab = "gitlab"
 // the REST API, because Forgejo ships no CLI.
 const providerForgejo = "forgejo"
 
+// providerBitbucket is the fourth host with a submit path: inline comments,
+// the summary comment, then the approval last, because Bitbucket Cloud
+// takes no atomic review.
+const providerBitbucket = "bitbucket"
+
 func typedPostItems(entries []any) []core.FindingItem {
 	items := make([]core.FindingItem, 0, len(entries))
 	for _, e := range entries {

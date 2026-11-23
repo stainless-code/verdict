@@ -1442,7 +1442,7 @@ func TestFetchGoldenBitbucketPaging(t *testing.T) {
 		writeCanned(t, dir, "full.diff", "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-a\n+b\n"+
 			"diff --git a/b.txt b/b.txt\n--- a/b.txt\n+++ b/b.txt\n@@ -1 +1 @@\n-c\n+d\n")
 		writeCanned(t, dir, "bb-page1.json", `{"values":[{"new":{"path":"a.txt"},"old":{"path":"a.txt"},`+
-			`"status":"modified","lines_added":1,"lines_removed":1}],"next":"https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/4717/diffstat?cursor=cursor2"}`)
+			`"status":"modified","lines_added":1,"lines_removed":1}],"next":"https://api.bitbucket.org/2.0/repositories/acme/app/pullrequests/4717/diffstat?cursor=cursor2"}`)
 		// The stub serves page2 only when the URL carries cursor2.
 		writeCanned(t, dir, "bb-page2.json", `{"values":[{"new":{"path":"b.txt"},"old":{"path":"b.txt"},`+
 			`"status":"modified","lines_added":1,"lines_removed":0}],"next":null}`)
