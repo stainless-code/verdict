@@ -25,15 +25,6 @@ const (
 	jsonNull                = "null"
 )
 
-// MethodNames lists every ACP method the server answers, in dispatch order.
-func MethodNames() []string {
-	return []string{
-		methodInitialize, methodPing,
-		methodBundlesList, methodFindingsList, methodFindingsGet, methodFindingsCopy,
-		methodCancelACP, methodCancelMCP, methodInitializedNotice,
-	}
-}
-
 // negotiationVersion answers one initialize request: only protocol 1 is
 // spoken, so any requested integer answers 1 (the latest the agent supports).
 func negotiationVersion(_ int) int { return latestProtocol }
