@@ -128,14 +128,15 @@ func executionState(dir string) *Execution {
 // the receipt keeps a captured execution legible after its run capture and
 // bound artifacts are gone, so those findings never become manual again.
 func storedFinders(dir string) int {
+	largest := 0
 	for _, name := range []string{recordFile, postFile} {
 		doc, _ := readObject(dir, name)
 		finders := readcommon.FieldOf(readcommon.FieldOf(doc, "verification"), "finders")
-		if count, _ := jq.IntOf(readcommon.FieldOf(finders, "completed")); count != 0 {
-			return count
+		if count, _ := jq.IntOf(readcommon.FieldOf(finders, "completed")); count > largest {
+			largest = count
 		}
 	}
-	return 0
+	return largest
 }
 
 // captureFinders folds one capture statement into the recorded topology: the

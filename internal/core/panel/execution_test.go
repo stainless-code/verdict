@@ -429,6 +429,23 @@ func TestExecutionReceiptKeepsCaptureWithoutArtifacts(t *testing.T) {
 	}
 }
 
+func TestExecutionUsesLargestStoredFinderCapture(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	retireBoundArtifacts(t, dir)
+	writeStoredFinders(t, dir, 1)
+	writeExecutionFile(t, dir, "post.json", []byte(`{"verification":{"finders":{"completed":2}}}`))
+
+	state := CheckExecution(dir, nil)
+	if !state.CrossRequired {
+		t.Fatalf("CrossRequired = false; want the post receipt's two-finder capture (state=%+v)", state)
+	}
+	entry := executionEntry()
+	state.Stamp([]any{entry})
+	if cross := readCross(entry); readcommon.FieldOf(cross, "status") != "pending" || EligibleCross(cross) {
+		t.Fatalf("cross = %v; want a two-finder pending, ineligible capture", cross)
+	}
+}
+
 func TestExecutionManualCaptureClearsStoredCross(t *testing.T) {
 	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
 	retireBoundArtifacts(t, dir)
