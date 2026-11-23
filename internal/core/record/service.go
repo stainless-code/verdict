@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/coverage"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/hunks"
@@ -466,6 +467,11 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 	if err := atomic.WriteFile(dir+"/record.json", []byte(jq.PrettyOrdered(record.Wire()))); err != nil {
 		return nil, st.withWarnings(&core.RefusalError{
 			Code: codeRecordFailed, Message: fmt.Sprintf("could not write %s/record.json: %v", dir, err),
+		})
+	}
+	if err := coverage.PersistPrior(dir, res.Coverage); err != nil {
+		return nil, st.withWarnings(&core.RefusalError{
+			Code: codeRecordFailed, Message: fmt.Sprintf("could not write %s/prior-coverage.json: %v", dir, err),
 		})
 	}
 	if st.req.Runtime != nil {

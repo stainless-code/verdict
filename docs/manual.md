@@ -1536,6 +1536,16 @@ claimed, keyed to the same head. A claim the manifest cannot name never counts,
 and a review with no `chunks[]` key stores `0`, so the receipt never attests
 more than was written.
 
+An incremental (`fetch --base-sha`/`--since`) bundle grades the full hunk
+snapshot against the agent's current `coverage[]` unioned with the prior
+round's recorded attestation in `prior-coverage.json` (the same
+`file`/`ranges` shape, saved by every successful non-chunked `record`).
+Ranges the recorded prior already covered stay credited, so the agent
+attests only the delta; ranges the prior never covered remain gaps unless
+the agent attests them now. Credit comes only from the recorded file —
+an absent or unreadable one credits nothing, and grading fails closed
+against the full hunks. Full-diff rounds ignore the file entirely.
+
 ## Bounded foreground waits
 
 ```sh
