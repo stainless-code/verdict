@@ -236,7 +236,7 @@ var hintRules = []HintRule{
 	{codes: []string{"bad-recipe"}, hint: "try: fix the key named above in " +
 		".verdict/recipes.json, commit it at the base, then re-fetch"},
 	{codes: []string{"bad-by"}, hint: "try: use one of the dimensions named in the message"},
-	{codes: []string{"bad-baseline"}, hint: "try: pass exactly one baseline query parameter"},
+	{codes: []string{"bad-baseline"}, hint: "try: pass exactly one baseline query parameter naming a bundle in the same root"},
 	{codes: []string{"bad-adjudication"}, hint: "try: fix the record entry named above, then re-run " +
 		"bench/runner -render <report> -adjudication <record>"},
 	{prefix: "bad-", hint: "try: re-run with one of the valid values named above"},

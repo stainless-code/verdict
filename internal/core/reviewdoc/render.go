@@ -683,10 +683,13 @@ func renderDetailsBlock(summary, lang, inner, indent string) string {
 
 // fixPromptEligible is the one predicate the block and its tests share: a
 // still-open, verified critical/important finding carrying a brief with a
-// usable outcome. Withholding is not re-tested — the renderer only ever sees
-// findings filterVisibleObjects kept, so the exclusion is structural.
+// usable outcome. Withholding is re-tested here and filtered upstream: the
+// posted body only ever sees findings filterVisibleObjects kept, while a copy
+// caller reads one raw store record, and neither may render a prompt the policy
+// withheld.
 func fixPromptEligible(m *jq.Obj, b *core.Brief) bool {
-	if b == nil || isUnverifiedQuote(m) || crossExcluded(m) || readcommon.StatusOf(m) != statusOpen {
+	if b == nil || isUnverifiedQuote(m) || crossExcluded(m) || readcommon.WithheldSource(m) != "" ||
+		readcommon.StatusOf(m) != statusOpen {
 		return false
 	}
 	if sev := jq.StrOf(fieldVal(m, "severity")); sev != severityCritical && sev != severityImportant {

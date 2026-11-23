@@ -179,27 +179,47 @@ func appendMode(out *strings.Builder, info os.FileInfo) {
 	out.WriteByte(' ')
 }
 
-// fingerprint reads one bundle's cache stamp, skipping the read when the
-// request is already canceled.
-func (l *Layer) fingerprint(ctx context.Context, root Root, dir string) (stamp, bool) {
+// fingerprint reads one composition's cache stamp over every bundle directory
+// it read: the reported bundle's, plus the baseline's for a comparison. One
+// directory's stamp is that directory's own fingerprint, so a detail keeps the
+// exact stamp it always had.
+func (l *Layer) fingerprint(ctx context.Context, root Root, dirs ...string) (stamp, bool) {
 	if ctx.Err() != nil {
 		return stamp{}, false
 	}
-	return l.stampFn(root, dir)
+	prints := make([]byte, 0, len(dirs)*sha256.Size)
+	for _, dir := range dirs {
+		if dir == "" {
+			continue
+		}
+		sum, ok := l.stampFn(root, dir)
+		if !ok {
+			return stamp{}, false
+		}
+		prints = append(prints, sum[:]...)
+	}
+	if len(prints) == sha256.Size {
+		var single stamp
+		copy(single[:], prints)
+		return single, true
+	}
+	return sha256.Sum256(prints), true
 }
 
 // cached composes one bundle's report, reusing the in-memory entry while its
-// stamp holds. A canceled request fingerprints no files. A request whose stamp
+// stamp holds. The stamp covers every bundle directory the composition read, so
+// editing either side of a comparison rebuilds it instead of serving stale
+// buckets. A canceled request fingerprints no files. A request whose stamp
 // could not be built reads and writes no entry, so the next request still sees
 // the reader's refusal. A composition whose inventory was skipped is never
 // stored, so a later request cannot read an incomplete sources[] from the
 // cache. The cache is bounded by the bundle cap and never written anywhere: a
 // stale entry is a bug, not data loss.
 func (l *Layer) cached(
-	ctx context.Context, root Root, bundle, dir string, flags *reportcore.Flags,
+	ctx context.Context, root Root, bundle, dir, baseline string, flags *reportcore.Flags,
 ) (*reportcore.Response, *core.RefusalError, inventoryReport) {
 	key := keyFor(root, bundle, flags)
-	current, cacheable := l.fingerprint(ctx, root, dir)
+	current, cacheable := l.fingerprint(ctx, root, dir, baseline)
 	l.mu.Lock()
 	hit, ok := l.cache[key]
 	if cacheable && ok && hit.stamp == current {

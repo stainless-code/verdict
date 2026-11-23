@@ -172,9 +172,10 @@ func (s *Server) handleBundles(w http.ResponseWriter, r *http.Request) {
 	s.writeView(w, verbServe, view)
 }
 
-// handleDetail publishes one bundle's report, gate, threads, and ledger.
-// handleCompare publishes one bundle's comparison against a baseline bundle:
-// the report service's data under the compare flags.
+// handleCompare serves one bundle's comparison against a baseline bundle: the
+// report service's data under the compare flags, at
+// GET /v1/roots/{root}/bundles/{bundle}/compare?baseline=<bundle>. Both
+// bundles are resolved inside the route's own served root.
 func (s *Server) handleCompare(w http.ResponseWriter, r *http.Request) {
 	baseline, ok := s.baselineParam(w, r)
 	if !ok {
@@ -189,7 +190,11 @@ func (s *Server) handleCompare(w http.ResponseWriter, r *http.Request) {
 	s.writeView(w, verbServe, view)
 }
 
-// baselineParam reads the compare endpoint's one baseline query parameter.
+// baselineParam reads the compare endpoint's one query parameter. The route
+// accepts exactly one, `baseline`, and nothing beside it: an unrelated second
+// parameter refuses like a second baseline, so one comparison has one
+// spelling. The query layer resolves the value and confines it to a bundle in
+// the same served root; this function checks the parameter's shape only.
 func (s *Server) baselineParam(
 	w http.ResponseWriter, r *http.Request,
 ) (string, bool) {
@@ -197,7 +202,7 @@ func (s *Server) baselineParam(
 	if err != nil || len(values) != 1 || len(values["baseline"]) != 1 {
 		s.writeRefusal(w, verbServe, "", "", &core.RefusalError{
 			Code:    "bad-baseline",
-			Message: "serve compare accepts one baseline query parameter",
+			Message: "serve compare accepts exactly one baseline query parameter naming a bundle in the same root",
 		})
 		return "", false
 	}
@@ -206,6 +211,7 @@ func (s *Server) baselineParam(
 
 // handleCopy publishes one finding's copy payloads: the deterministic
 // `Prompt for AI agent` block and the ready-to-run `verdict triage` command.
+// A finding the store does not hold, and a policy-withheld one, have no copy.
 func (s *Server) handleCopy(w http.ResponseWriter, r *http.Request) {
 	bundle := r.PathValue(bundlePathKey)
 	sig := r.PathValue("sig")
@@ -221,6 +227,7 @@ func (s *Server) handleCopy(w http.ResponseWriter, r *http.Request) {
 	s.writeView(w, verbServe, view)
 }
 
+// handleDetail publishes one bundle's report, gate, threads, and ledger.
 func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 	bundle := r.PathValue(bundlePathKey)
 	view, err := s.layer.Detail(r.Context(), r.PathValue(rootPathKey), bundle)

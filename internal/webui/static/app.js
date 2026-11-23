@@ -12,8 +12,11 @@
   let reconnecting = false;
   let costBy = "repo";
   let precisionBy = "category";
+  // The compare baseline belongs to one root and one bundle: a selection made
+  // on one review must never be spent on another root's comparison.
   let compareBaseline = "";
-  let inboxNames = [];
+  let compareScope = "";
+  let inboxRows = [];
 
   function node(tag, text, className) {
     const element = document.createElement(tag);
@@ -186,17 +189,29 @@
     return nav;
   }
 
+  // writeClipboard reports whether the text really reached the clipboard. The
+  // selection fallback is the only path left when the async clipboard API is
+  // absent, and document.execCommand answers false (or throws) when the copy
+  // did not happen — a caller that ignored the answer would claim "Copied" for
+  // a no-op.
   async function writeClipboard(text) {
     if (navigator.clipboard && navigator.clipboard.writeText) {
       await navigator.clipboard.writeText(text);
-      return;
+      return true;
     }
+    if (typeof document.execCommand !== "function") return false;
     const area = node("textarea");
     area.value = text;
     document.body.append(area);
     area.select();
-    document.execCommand("copy");
+    let copied = false;
+    try {
+      copied = document.execCommand("copy") === true;
+    } catch (_) {
+      copied = false;
+    }
     area.remove();
+    return copied;
   }
 
   async function copyPayload(button, root, bundle, sig, kind) {
@@ -208,6 +223,12 @@
         credentials: "same-origin",
         cache: "no-store",
       });
+      if (response.status === 404) {
+        // No payload exists for this finding: the store does not hold it, or
+        // policy withheld it from every published body.
+        button.textContent = "No copy for this finding";
+        return;
+      }
       if (!response.ok) throw new Error(`Request returned ${response.status}`);
       const body = await response.json();
       const payload = envelopeData(body);
@@ -216,7 +237,10 @@
         button.textContent = "No prompt for this finding";
         return;
       }
-      await writeClipboard(text);
+      if (!(await writeClipboard(text))) {
+        button.textContent = "Not copied — clipboard unavailable";
+        return;
+      }
       const idle = kind === "prompt" ? "Copy prompt" : "Copy triage";
       button.textContent =
         kind === "prompt" ? "Prompt copied" : "Command copied";
@@ -265,8 +289,17 @@
     return { columns, actionable };
   }
 
+  // compareChoices names the baselines one comparison may name: the inbox rows
+  // of the same served root, minus the bundle being compared. A cross-root row
+  // is another repository's review, and the compare route refuses it.
+  function compareChoices(root, bundle) {
+    return inboxRows
+      .filter((row) => row.root === root && row.bundle !== bundle)
+      .map((row) => row.bundle);
+  }
+
   async function renderComparePicker(container, root, bundle) {
-    if (!inboxNames.length) {
+    if (!inboxRows.length) {
       try {
         const response = await fetch("/v1/bundles", {
           credentials: "same-origin",
@@ -275,8 +308,7 @@
         if (!response.ok)
           throw new Error(`Request returned ${response.status}`);
         const data = envelopeData(await response.json());
-        const rows = Array.isArray(data.rows) ? data.rows : [];
-        inboxNames = rows.map((row) => row.bundle);
+        inboxRows = Array.isArray(data.rows) ? data.rows : [];
       } catch (error) {
         message.textContent =
           error instanceof Error ? error.message : String(error);
@@ -284,7 +316,7 @@
         return;
       }
     }
-    const choices = inboxNames.filter((name) => name !== bundle);
+    const choices = compareChoices(root, bundle);
     if (!choices.length) return;
     if (!compareBaseline || !choices.includes(compareBaseline))
       compareBaseline = choices[0];
@@ -486,11 +518,14 @@
       if (view === "threads") {
         content.append(threadTable("Review threads", data.threads));
       } else if (view === "compare-pick") {
-        const rows = Array.isArray(data.rows) ? data.rows : [];
-        inboxNames = rows.map((row) => row.bundle);
-        const choices = inboxNames.filter((name) => name !== routeInfo?.bundle);
+        inboxRows = Array.isArray(data.rows) ? data.rows : [];
+        const choices = compareChoices(
+          routeInfo?.root || "",
+          routeInfo?.bundle || "",
+        );
         if (!choices.length) {
-          message.textContent = "No other bundle to compare against.";
+          message.textContent =
+            "No other bundle in this root to compare against.";
         } else {
           if (!compareBaseline || !choices.includes(compareBaseline))
             compareBaseline = choices[0];
@@ -568,6 +603,20 @@
       message.textContent = "Partial view: some values are unknown.";
   }
 
+  // selectBaseline keeps the compare selection inside the review it was made
+  // for: a hash that names a bundle and no baseline starts from nothing when the
+  // active comparison moved to another root or bundle, so one root's baseline is
+  // never requested from another root. An explicit hash segment always wins.
+  function selectBaseline(root, bundle, explicit) {
+    const scope = `${root}\u0000${bundle}`;
+    if (scope !== compareScope) {
+      compareBaseline = "";
+      compareScope = scope;
+    }
+    if (explicit) compareBaseline = explicit;
+    return compareBaseline;
+  }
+
   function route() {
     const parts = location.hash.slice(1).split("/").filter(Boolean);
     if (!parts.length || parts[0] === "bundles")
@@ -590,12 +639,16 @@
         bundle: decodeHashSegment(parts[2]),
       };
       if (parts[3] === "compare") {
-        if (parts[4]) compareBaseline = decodeHashSegment(parts[4]);
-        if (!compareBaseline)
+        const baseline = selectBaseline(
+          decoded.root,
+          decoded.bundle,
+          parts[4] ? decodeHashSegment(parts[4]) : "",
+        );
+        if (!baseline)
           return { view: "compare-pick", path: "/v1/bundles", ...decoded };
         return {
           view: "compare",
-          path: `/v1/roots/${root}/bundles/${bundle}/compare?baseline=${encodeURIComponent(compareBaseline)}`,
+          path: `/v1/roots/${root}/bundles/${bundle}/compare?baseline=${encodeURIComponent(baseline)}`,
           ...decoded,
         };
       }

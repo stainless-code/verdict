@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -42,7 +43,7 @@ func compareFixture(t *testing.T) string {
 			finding(cmpKept, "open", "critical", "walked"),
 			finding(cmpNew, "open", "important", "pointed"),
 		}, ",") + "]",
-		".verdict/state/local-prior/source.json": sourceDoc(headB),
+		".verdict/state/local-prior/source.json": sourceDoc(),
 		".verdict/state/local-prior/post.json":   postDoc(headB, 8),
 		".verdict/state/local-prior/findings.json": "[" + strings.Join([]string{
 			finding(cmpKept, "open", "critical", "walked"),
@@ -177,7 +178,7 @@ func TestCopyPayloadsAreLiterals(t *testing.T) {
 	if data["prompt"] != wantPrompt {
 		t.Errorf("prompt =\n%s\nwant:\n%s", data["prompt"], wantPrompt)
 	}
-	wantTriage := "verdict triage .verdict/state/1234 --sig " + sigCrit +
+	wantTriage := "verdict triage acme/app 1234 --sig " + sigCrit +
 		" --status addressed --rationale 'Usable body here with enough substance.'"
 	if data["triage"] != wantTriage {
 		t.Errorf("triage = %q, want %q", data["triage"], wantTriage)
@@ -200,7 +201,7 @@ func TestCopyPromptIsEmptyWithoutABrief(t *testing.T) {
 	if data["prompt"] != "" {
 		t.Errorf("prompt = %q, want empty", data["prompt"])
 	}
-	wantTriage := "verdict triage .verdict/state/1234 --sig " + sigImp +
+	wantTriage := "verdict triage acme/app 1234 --sig " + sigImp +
 		" --status addressed --rationale 'Usable body here with enough substance.'"
 	if data["triage"] != wantTriage {
 		t.Errorf("triage = %q, want %q", data["triage"], wantTriage)
@@ -227,10 +228,11 @@ func mustDetail(t *testing.T, layer *Layer, rootID, bundle string) *View {
 	return view
 }
 
-// mustCompare composes one comparison, failing unless it succeeds.
-func mustCompare(t *testing.T, layer *Layer, rootID, bundle, baseline string) *View {
+// mustCompare composes the fixture bundle's comparison against its prior
+// bundle, failing unless it succeeds.
+func mustCompare(t *testing.T, layer *Layer, rootID string) *View {
 	t.Helper()
-	view, err := layer.Compare(context.Background(), rootID, bundle, baseline)
+	view, err := layer.Compare(context.Background(), rootID, "1234", "local-prior")
 	if err != nil {
 		t.Fatalf("Compare: %v", err)
 	}
@@ -245,10 +247,10 @@ func TestCompareCacheIsSeparateFromDetail(t *testing.T) {
 	layer := newLayer(dir)
 	rootID := RootID(mustAbs(t, dir))
 	detail := mustDetail(t, layer, rootID, "1234")
-	if wireMap(t, mustCompare(t, layer, rootID, "1234", "local-prior").Data)["compare"] == nil {
+	if wireMap(t, mustCompare(t, layer, rootID).Data)["compare"] == nil {
 		t.Error("Compare data has no compare object after a Detail")
 	}
-	again := mustCompare(t, layer, rootID, "1234", "local-prior")
+	again := mustCompare(t, layer, rootID)
 	if wireMap(t, again.Data)["compare"] == nil {
 		t.Error("cached Compare data lost its compare object")
 	}
@@ -258,5 +260,198 @@ func TestCompareCacheIsSeparateFromDetail(t *testing.T) {
 	}
 	if got := wireMap(t, detailAgain.Data)["compare"]; got != nil {
 		t.Errorf("Detail data grew a compare key: %v", got)
+	}
+}
+
+// compareCounts reads the four bucket counts of one composed comparison.
+func compareCounts(t *testing.T, view *View) map[string]any {
+	t.Helper()
+	return asMap(t, asMap(t, wireMap(t, view.Data)["compare"])["counts"])
+}
+
+// assertCounts pins the four bucket counts to literals.
+func assertCounts(t *testing.T, counts map[string]any, want map[string]string) {
+	t.Helper()
+	for key, value := range want {
+		if counts[key] != json.Number(value) {
+			t.Errorf("counts.%s = %v, want %s", key, counts[key], value)
+		}
+	}
+}
+
+// TestCompareConfinesTheBaselineToTheServedRoot proves the baseline query
+// value can only name a bundle the route's own root holds. An absolute path, a
+// `..` segment, and a separator refuse with bad-baseline before any bundle is
+// read, so a served comparison cannot be turned into a reader of another tree:
+// the outside stores below compose cleanly when read, and one of them is
+// corrupt, so a composition attempt would answer buckets or
+// corrupt-compare-bundle instead of the boundary refusal.
+func TestCompareConfinesTheBaselineToTheServedRoot(t *testing.T) {
+	t.Parallel()
+	dir, outsidePath, corruptPath := confinedBaselineRoots(t)
+	layer := newLayer(dir)
+	rootID := RootID(mustAbs(t, dir))
+	for _, tc := range []struct{ name, baseline, code string }{
+		{"absolute path", outsidePath, "bad-baseline"},
+		{"absolute path beside a corrupt store", corruptPath, "bad-baseline"},
+		{"parent segment", "../../etc", "bad-baseline"},
+		{"dot-dot", "..", "bad-baseline"},
+		{"separator", ".verdict/state/local-prior", "bad-baseline"},
+		{"trailing separator", "local-prior/", "bad-baseline"},
+		{"root subdirectory", "nested", "missing-compare-bundle"},
+		{"another root's bundle name", cmpOutside, "missing-compare-bundle"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertCompareRefusal(t, layer, rootID, tc.baseline, tc.code)
+		})
+	}
+}
+
+// assertCompareRefusal proves one baseline value refuses typed and composes
+// nothing.
+func assertCompareRefusal(t *testing.T, layer *Layer, rootID, baseline, code string) {
+	t.Helper()
+	view, err := layer.Compare(context.Background(), rootID, "1234", baseline)
+	if view != nil {
+		t.Fatalf("Compare(%q) composed a view against a baseline outside the root", baseline)
+	}
+	var refusal *core.RefusalError
+	if !errors.As(err, &refusal) {
+		t.Fatalf("Compare(%q) err = %v, want *core.RefusalError", baseline, err)
+	}
+	if refusal.Code != code {
+		t.Errorf("Compare(%q) code = %q, want %q", baseline, refusal.Code, code)
+	}
+}
+
+// cmpOutside names the bundle another root holds, so the same spelling is a
+// valid bundle name that this root does not carry.
+const cmpOutside = "local-outside"
+
+// confinedBaselineRoots builds the served root plus the trees a traversal would
+// reach: one sibling root whose bundle composes cleanly when read, one whose
+// store is corrupt (so a read attempt is distinguishable from a boundary
+// refusal), and a bundle-shaped store under a subdirectory of the served root.
+func confinedBaselineRoots(t *testing.T) (dir, outsidePath, corruptPath string) {
+	t.Helper()
+	dir = compareFixture(t)
+	outside := t.TempDir()
+	writeFiles(t, outside, map[string]string{
+		".verdict/state/" + cmpOutside + "/source.json": sourceDoc(),
+		".verdict/state/" + cmpOutside + "/post.json":   postDoc(headB, 9),
+		".verdict/state/" + cmpOutside + "/findings.json": "[" + strings.Join([]string{
+			finding(cmpNew, "open", "important", "pointed"),
+			finding(cmpKept, "open", "critical", "walked"),
+		}, ",") + "]",
+	})
+	corrupt := t.TempDir()
+	writeFiles(t, corrupt, map[string]string{
+		".verdict/state/local-broken/source.json":   sourceDoc(),
+		".verdict/state/local-broken/findings.json": "{not a findings array",
+	})
+	writeFiles(t, dir, map[string]string{
+		"nested/.verdict/state/local-nested/source.json":   sourceDoc(),
+		"nested/.verdict/state/local-nested/findings.json": "[" + finding(cmpNew, "open", "important", "pointed") + "]",
+	})
+	return dir,
+		filepath.Join(outside, ".verdict", "state", cmpOutside),
+		filepath.Join(corrupt, ".verdict", "state", "local-broken")
+}
+
+// TestCompareCacheTracksTheBaselineBundle proves the cached composition is
+// invalidated by a baseline edit: a stamp over the reported bundle alone served
+// the first comparison's buckets forever.
+func TestCompareCacheTracksTheBaselineBundle(t *testing.T) {
+	t.Parallel()
+	dir := compareFixture(t)
+	layer := newLayer(dir)
+	rootID := RootID(mustAbs(t, dir))
+	assertCounts(t, compareCounts(t, mustCompare(t, layer, rootID)), map[string]string{
+		"new": "1", "persisting": "1", "resolved": "1", "not_reviewed": "1",
+	})
+	// The baseline now holds only the signature both stores carry: the
+	// persisting row survives, and the resolved and not-reviewed rows lose
+	// their baseline finding.
+	writeFiles(t, dir, map[string]string{
+		".verdict/state/local-prior/findings.json": "[" + finding(cmpNew, "open", "important", "pointed") + "]",
+	})
+	assertCounts(t, compareCounts(t, mustCompare(t, layer, rootID)), map[string]string{
+		"new": "1", "persisting": "1", "resolved": "0", "not_reviewed": "0",
+	})
+}
+
+// TestCompareNextIsTheMirroredCommand pins the view's next hint to the one
+// command whose data the comparison serves: the positionals and the flags the
+// layer composes with, so the printed line runs as printed.
+func TestCompareNextIsTheMirroredCommand(t *testing.T) {
+	t.Parallel()
+	dir := compareFixture(t)
+	view := mustCompare(t, newLayer(dir), RootID(mustAbs(t, dir)))
+	want := "verdict report acme/app 1234 --compare local-prior --cost --check critical --live skip --json"
+	if view.Next != want {
+		t.Errorf("next = %q, want %q", view.Next, want)
+	}
+}
+
+// withheldBriefFinding is briefFinding carrying a valid policy withholding
+// receipt, so every published surface must leave it out.
+func withheldBriefFinding(sig, severity string) string {
+	receipt := `,"withheld":{"source":"agent","reason":"operator suppressed",` +
+		`"at":"2026-01-01T00:00:00Z"}`
+	return strings.TrimSuffix(briefFinding(sig, "open", severity), "}") + receipt + "}"
+}
+
+// TestCopyOfAWithheldFindingHasNoPayload proves a policy-withheld finding
+// copies nothing: the posted body never carries one, so a payload here would
+// publish review prose the policy withheld.
+func TestCopyOfAWithheldFindingHasNoPayload(t *testing.T) {
+	t.Parallel()
+	files := map[string]string{
+		".verdict/state/1234/PR.json":       prDoc(),
+		".verdict/state/1234/full.diff":     fullDiff,
+		".verdict/state/1234/post.json":     postDoc(headA, 7),
+		".verdict/state/1234/findings.json": "[" + withheldBriefFinding(sigCrit, "critical") + "]",
+	}
+	dir := t.TempDir()
+	writeFiles(t, dir, files)
+	view, err := newLayer(dir).Copy(context.Background(), RootID(mustAbs(t, dir)), "1234", sigCrit)
+	if view != nil {
+		t.Fatalf("Copy returned a payload for a withheld finding: %v", view.Data)
+	}
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("err = %v, want ErrNotFound", err)
+	}
+}
+
+// TestCompareListsAWithheldRowWithoutACopy proves the two halves of the
+// withheld rule meet: the comparison row stays exactly what the CLI prints
+// (withheld findings ride reportcore's buckets, so parity forbids dropping it),
+// while the copy of that same finding answers not-found.
+func TestCompareListsAWithheldRowWithoutACopy(t *testing.T) {
+	t.Parallel()
+	files := map[string]string{
+		".verdict/state/1234/PR.json":   prDoc(),
+		".verdict/state/1234/full.diff": fullDiff,
+		".verdict/state/1234/post.json": postDoc(headA, 7),
+		".verdict/state/1234/findings.json": "[" + strings.Join([]string{
+			withheldBriefFinding(sigCrit, "critical"),
+		}, ",") + "]",
+		".verdict/state/local-prior/source.json":   sourceDoc(),
+		".verdict/state/local-prior/findings.json": "[]",
+	}
+	dir := t.TempDir()
+	writeFiles(t, dir, files)
+	layer := newLayer(dir)
+	rootID := RootID(mustAbs(t, dir))
+	rows := asList(t, asMap(t, wireMap(t, mustCompare(t, layer, rootID).Data)["compare"])["new"])
+	if len(rows) != 1 {
+		t.Fatalf("compare new rows = %v, want the CLI's one row", rows)
+	}
+	if got := asMap(t, rows[0])["sig"]; got != sigCrit {
+		t.Errorf("row sig = %v, want %s", got, sigCrit)
+	}
+	if _, err := layer.Copy(context.Background(), rootID, "1234", sigCrit); !errors.Is(err, ErrNotFound) {
+		t.Errorf("Copy of the withheld row = %v, want ErrNotFound", err)
 	}
 }

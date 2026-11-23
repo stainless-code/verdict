@@ -152,9 +152,9 @@ Fix: pass a `--base` reachable from this checkout, or run in the right repositor
 
 ## `bad-baseline`
 
-Cause: a `serve` compare route received no baseline, or more than one `baseline` query parameter.
+Cause: `GET /v1/roots/{root}/bundles/{bundle}/compare` received no `baseline` query parameter, a second query parameter beside it, or a baseline that cannot name a bundle inside the route's own served root — an absolute path, a `..` segment, a path separator, or a path that resolves outside the root.
 
-Fix: pass exactly one `baseline` query parameter naming another bundle.
+Fix: pass exactly one `baseline` query parameter naming another bundle in the same root, as a bare bundle name (`?baseline=local-previous`, `?baseline=1234`). A name this root does not hold refuses `missing-compare-bundle` instead.
 
 ## `bad-budget`
 
