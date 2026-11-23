@@ -301,7 +301,7 @@ func fixFinding(sig, severity string) string {
 
 // gitExample runs one git command in the temp checkout with a pinned identity.
 // The subprocess carries a finite timeout and a WaitDelay (GO-CONC-06,
-// GO-EXEC-02), mirroring the git fixture bound (gitWaitDelay = time.Minute,
+// GO-EXEC-02), mirroring the git fixture bound (gitWaitDelay = [time.Minute],
 // internal/core/index/index_test.go): a stalled git or hook fails the example
 // instead of hanging the package tests.
 func gitExample(args ...string) {
