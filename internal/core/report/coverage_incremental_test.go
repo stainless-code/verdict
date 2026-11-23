@@ -154,6 +154,56 @@ func TestRunNextCoverageIncrementalMarkerFlipsVerdict(t *testing.T) {
 	}
 }
 
+// humanForNext runs the coverage read over the bundle files and returns
+// its human block, failing the test on any refusal.
+func humanForNext(t *testing.T, files map[string]string) string {
+	t.Helper()
+	resp, ref := reportcore.RunNextCoverage(coverageNextRequest(t, files))
+	if ref != nil {
+		t.Fatalf("RunNextCoverage refusal: %v", ref)
+	}
+	return resp.Human
+}
+
+// TestRunNextCoverageIncrementalHumanSuffix pins the A1 human suffix on
+// the report surface: a delta round that carried prior credit names
+// `(incremental)` in its summary line. Exact literal, so a missing suffix
+// fails the case.
+func TestRunNextCoverageIncrementalHumanSuffix(t *testing.T) {
+	deltaOnly := coverageReview("delta.txt", `"coverage":[{"file":"delta.txt","ranges":"all"}],`)
+	want := "coverage: 100% of full hunk spans, both sides and context (6/6 lines, 2 files) (incremental)\nunattested: (none)"
+	if got := humanForNext(t, incrementalNextFiles(deltaOnly, incrementalPrior)); got != want {
+		t.Errorf("human = %q, want %q", got, want)
+	}
+}
+
+// TestRunNextCoverageFullRoundHasNoHumanSuffix pins the suffix guard: a
+// full bundle grades the prior away, so the same full attestation without
+// the delta marker reads the identical numbers with no suffix — full
+// rounds never shift.
+func TestRunNextCoverageFullRoundHasNoHumanSuffix(t *testing.T) {
+	full := coverageReview("notes.txt", `"coverage":[{"file":"notes.txt","ranges":"all"},{"file":"delta.txt","ranges":"all"}],`)
+	files := incrementalNextFiles(full, incrementalPrior)
+	delete(files, "incremental.diff")
+	want := "coverage: 100% of full hunk spans, both sides and context (6/6 lines, 2 files)\nunattested: (none)"
+	if got := humanForNext(t, files); got != want {
+		t.Errorf("human = %q, want %q", got, want)
+	}
+}
+
+// TestRunNextCoverageIncrementalWithoutCarriedCreditHasNoSuffix pins the
+// suffix guard's other leg: a delta bundle whose attestation already
+// covered everything carries zero prior lines, so the suffix stays off
+// even though Incremental is true — the guard is the credit, not the
+// marker.
+func TestRunNextCoverageIncrementalWithoutCarriedCreditHasNoSuffix(t *testing.T) {
+	full := coverageReview("notes.txt", `"coverage":[{"file":"notes.txt","ranges":"all"},{"file":"delta.txt","ranges":"all"}],`)
+	want := "coverage: 100% of full hunk spans, both sides and context (6/6 lines, 2 files)\nunattested: (none)"
+	if got := humanForNext(t, incrementalNextFiles(full, "")); got != want {
+		t.Errorf("human = %q, want %q", got, want)
+	}
+}
+
 // TestRunGateCoverageIncrementalPassesWithPrior proves the gate honors the
 // incremental-aware stored receipt: a 100% receipt whose prior ranges came
 // from the recorded round passes --coverage require.

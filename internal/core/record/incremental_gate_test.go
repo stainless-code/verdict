@@ -285,3 +285,52 @@ func TestRecordPersistPriorFailureWarns(t *testing.T) {
 		t.Errorf("record.json missing after a committed record: %v", err)
 	}
 }
+
+// TestMergeIncrementalSuffixOnWarnAndBodyLine pins the A1 human suffix on
+// the record surface: an incomplete delta round that carried prior credit
+// names `(incremental)` on both its summary warning and its body line.
+// Full-diff absence is pinned exactly by
+// TestMergeCoveragePartialWarnsOnceAndAddsOneLine.
+func TestMergeIncrementalSuffixOnWarnAndBodyLine(t *testing.T) {
+	// Prior credits 3 of 6, the delta stays unattested: 50% with a suffix.
+	incrementalBundle(t, incrementalReview(`"coverage":[],`), incrementalPrior)
+	body, warns, err := mergeCoverage(t, false)
+	if err != nil {
+		t.Fatalf("default posture refused a carried partial: %v", err)
+	}
+	got := coverageWarnings(warns)
+	wantCarried := "coverage: incremental — prior attestation carried 3 line(s) over from the recorded prior round"
+	wantWarn := "coverage: 50% of full hunk spans, both sides and context attested (3/6; 1 file(s) with gaps) (incremental)"
+	if len(got) != 2 || got[0] != wantCarried || got[1] != wantWarn {
+		t.Errorf("coverage warnings = %v, want [%q %q]", got, wantCarried, wantWarn)
+	}
+	lines := coverageBodyLines(body)
+	wantLine := "> ⚠️ coverage: 50% of changed lines attested (unattested: delta.txt:1-3) (incremental)"
+	if len(lines) != 1 || lines[0] != wantLine {
+		t.Errorf("coverage body lines = %v, want exactly [%q]", lines, wantLine)
+	}
+}
+
+// TestMergeIncrementalNoSuffixWithoutPriorCredit pins the suffix guard on
+// the record surface: the same delta marker with no recorded prior carries
+// nothing, so the identical posture warns without `(incremental)` even
+// though the bundle is incremental — the guard is the credit, not the
+// marker.
+func TestMergeIncrementalNoSuffixWithoutPriorCredit(t *testing.T) {
+	incrementalBundle(t, incrementalReview(`"coverage":[],`), "")
+	body, warns, err := mergeCoverage(t, false)
+	if err != nil {
+		t.Fatalf("default posture refused an uncredited delta: %v", err)
+	}
+	got := coverageWarnings(warns)
+	wantNoPrior := "coverage: incremental bundle has no recorded prior coverage — grading against full hunks"
+	wantWarn := "coverage: 0% of full hunk spans, both sides and context attested (0/6; 2 file(s) with gaps)"
+	if len(got) != 2 || got[0] != wantNoPrior || got[1] != wantWarn {
+		t.Errorf("coverage warnings = %v, want [%q %q]", got, wantNoPrior, wantWarn)
+	}
+	lines := coverageBodyLines(body)
+	wantLine := "> ⚠️ coverage: 0% of changed lines attested (unattested: delta.txt:1-3, notes.txt:1-3)"
+	if len(lines) != 1 || lines[0] != wantLine {
+		t.Errorf("coverage body lines = %v, want exactly [%q]", lines, wantLine)
+	}
+}
