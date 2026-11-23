@@ -456,6 +456,104 @@ func TestCoordinatorPublishesPartialFailures(t *testing.T) {
 	}
 }
 
+// missingExecutionCoordinator builds the state coordinate reaches when a
+// bundle no longer records an execution: the snapshot is pinned, but run.json
+// names no execution or finder count and the launcher carries no execution id.
+func missingExecutionCoordinator(t *testing.T, launcher func(t *testing.T, dir string)) *coordinator {
+	t.Helper()
+	req, commander := coordinatorFixture(t)
+	// The documented re-fetch shape: no execution reference and no finder count,
+	// so CheckExecution cannot call the run active.
+	writeUnder(t, commander.dir, "run.json", `{"schema_version":"1","finders":0}`)
+	launcher(t, commander.dir)
+	return &coordinator{
+		st: &state{req: req}, dir: commander.dir, id: "execution-A",
+		snapshot: executionSnapshot{}, failures: []any{},
+		response: &core.RunResponse{
+			Repo: req.Repo, Pr: req.Pr, At: "2026-01-01T00:00:00Z",
+			Data: &core.RunData{Agent: "claude", Bundle: commander.dir},
+		},
+	}
+}
+
+// assertMissingExecutionResponse proves the response never claims an execution
+// it cannot count, and names the missing record as a phase failure.
+func assertMissingExecutionResponse(t *testing.T, c *coordinator) {
+	t.Helper()
+	execution := c.response.Data.Execution
+	if execution == nil {
+		t.Fatal("response carries no execution envelope")
+	}
+	if execution.Counts != nil {
+		t.Fatalf("counts = %+v, want null for an execution the bundle no longer records", execution.Counts)
+	}
+	if execution.Status != "partial" {
+		t.Fatalf("status = %q, want partial: a run without an execution marker is not complete", execution.Status)
+	}
+	want := core.RunPhaseFailure{Phase: "execution", Code: "agent-record-failed"}
+	if !slices.Contains(execution.Failures, want) {
+		t.Fatalf("failures = %+v, want %+v", execution.Failures, want)
+	}
+}
+
+// launcherCase shapes a bundle's launcher record for the missing-execution
+// fixtures. The function field comes first because it carries a pointer.
+type launcherCase struct {
+	launcher func(t *testing.T, dir string)
+	name     string
+}
+
+// TestCoordinatorReportsMissingExecutionWithoutPanicking drives the response
+// tail coordinate always runs, with a bundle that no longer records an
+// execution: a launcher killed before its first write leaves a record with no
+// execution id, and a re-fetch can reset run.json to no finder count. The old
+// code dereferenced the nil summary Attach returns for an inactive execution
+// and died with a stack trace instead of refusing.
+//
+// The test calls executionResponse directly because every fan-in rewrites
+// launcher.json from the coordinator's in-memory record, so a stub agent alone
+// cannot leave the marker absent by the time coordinate reaches this call.
+func TestCoordinatorReportsMissingExecutionWithoutPanicking(t *testing.T) {
+	cases := []launcherCase{
+		{name: "launcher keeps a complete status but loses the execution id", launcher: func(t *testing.T, dir string) {
+			t.Helper()
+			writeUnder(t, dir, "launcher.json", `{"schema_version":"2","status":"complete"}`)
+		}},
+		{name: "launcher is gone", launcher: func(t *testing.T, dir string) {
+			t.Helper()
+			writeUnder(t, dir, "launcher.json", `{"schema_version":"2","execution_id":"execution-A","status":"complete"}`)
+			if err := os.Remove(filepath.Join(dir, "launcher.json")); err != nil {
+				t.Fatal(err)
+			}
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			c := missingExecutionCoordinator(t, tc.launcher)
+			c.executionResponse()
+			assertMissingExecutionResponse(t, c)
+		})
+	}
+}
+
+// TestCoordinatorRefusesMissingExecution proves the tail returns an operator
+// refusal rather than a bare null when no earlier phase refused first.
+func TestCoordinatorRefusesMissingExecution(t *testing.T) {
+	c := missingExecutionCoordinator(t, func(t *testing.T, dir string) {
+		t.Helper()
+		writeUnder(t, dir, "launcher.json", `{"schema_version":"2","status":"complete"}`)
+	})
+	c.executionResponse()
+	ref := c.executionRefusal()
+	if ref == nil || ref.Code != "agent-record-failed" {
+		t.Fatalf("refusal = %v, want agent-record-failed", ref)
+	}
+	if !strings.Contains(ref.Message, "recorded no execution") || !strings.Contains(ref.Message, "re-run the launch") {
+		t.Fatalf("message = %q, want the missing execution and its remedy", ref.Message)
+	}
+	assertMissingExecutionResponse(t, c)
+}
+
 func TestCoordinatorRefusesSessionResumePerAgent(t *testing.T) {
 	cases := []struct {
 		name        string

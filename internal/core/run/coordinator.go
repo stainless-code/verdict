@@ -85,6 +85,9 @@ func (st *state) coordinate(ctx context.Context, base *launchArgs, rounds int) (
 	}
 	ref := c.run(ctx)
 	c.executionResponse()
+	if ref == nil {
+		ref = c.executionRefusal()
+	}
 	return c.response, ref
 }
 
@@ -396,9 +399,9 @@ func (c *coordinator) finish() *core.RefusalError {
 		jq.NewObj("finder", "finder-1", "profile", "contract-first"),
 		jq.NewObj("finder", "finder-2", "profile", "behavior-first"),
 	})
-	status := "complete"
+	status := statusComplete
 	if len(c.failures) > 0 {
-		status = "partial"
+		status = statusPartial
 	}
 	manifest.Set(keyStatus, status)
 	if ref := c.check(); ref != nil {
@@ -661,8 +664,7 @@ func (c *coordinator) executionResponse() {
 			Budget: c.st.budget,
 		}
 	}
-	execution := panelcore.CheckExecution(c.dir, nil)
-	counts := execution.Attach(nil).Finders
+	counts, status := c.executionCounts()
 	failures := make([]core.RunPhaseFailure, 0, len(c.failures))
 	for _, row := range c.failures {
 		failures = append(failures, core.RunPhaseFailure{
@@ -670,9 +672,39 @@ func (c *coordinator) executionResponse() {
 		})
 	}
 	c.response.Data.Execution = &core.RunExecution{
-		ID: c.id, Status: readcommon.JSONStr(filepath.Join(c.dir, launcherFile), keyStatus),
+		ID: c.id, Status: status,
 		Counts: counts, Failures: failures,
 	}
 	c.response.Data.Resume = c.resumeData()
 	c.aggregateResponse()
+}
+
+// executionCounts publishes the finder summary and status the bundle supports.
+// Attach returns its nil summary unchanged when the execution is not Active, so
+// a launch that died before writing its marker must not read .Finders off that
+// nil. The schema already allows null counts, and "partial" is the honest
+// status for a bundle with no execution to call complete.
+func (c *coordinator) executionCounts() (*core.FinderSummary, string) {
+	summary := panelcore.CheckExecution(c.dir, nil).Attach(nil)
+	if summary == nil {
+		c.failed("execution", codeRecordFailed)
+		return nil, statusPartial
+	}
+	status := readcommon.JSONStr(filepath.Join(c.dir, launcherFile), keyStatus)
+	if status == "" {
+		return summary.Finders, statusPartial
+	}
+	return summary.Finders, status
+}
+
+// executionRefusal reports the refusal a response owes when the bundle records
+// no execution: every phase may still look valid, but there is no captured
+// execution to report, so the launch must not read as success.
+func (c *coordinator) executionRefusal() *core.RefusalError {
+	if c.response == nil || c.response.Data == nil || c.response.Data.Execution == nil ||
+		c.response.Data.Execution.Counts != nil {
+		return nil
+	}
+	return c.st.refuse(codeRecordFailed, "the bundle recorded no execution: launcher.json carries no execution id "+
+		"and run.json names no execution — the launch died before it recorded one; re-run the launch")
 }
