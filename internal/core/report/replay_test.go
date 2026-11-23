@@ -191,35 +191,40 @@ func TestReplayRefusesACandidateItCannotUse(t *testing.T) {
 		{name: "unreadable", path: "missing.json", wantCode: "bad-flags"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			// The path is absolute on purpose: fixture() chdirs, and a parallel
-			// test in this package resuming mid-test must not be able to shadow
-			// a relative name with a valid file of its own.
-			policy := filepath.Join(t.TempDir(), tc.path)
-			req := fixture(t, "["+securityFinding+"]")
-			writeCapturedPolicy(t, &core.Config{})
-			if tc.candidate != "" {
-				if err := os.WriteFile(policy, []byte(tc.candidate), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
-			replay, ref := reportcore.Replay(context.Background(), &reportcore.Request{
-				ReadRequest: req, Flags: reportcore.Flags{Policy: policy},
-			})
-			if ref == nil {
-				b, rerr := os.ReadFile(policy)
-				cfg, pref := config.Parse(b)
-				st, serr := os.Stat(policy)
-				t.Fatalf("accepted: policy=%q readerr=%v bytes=%q parseerr=%v cfg=%v staterr=%v size=%v replay=%+v",
-					policy, rerr, string(b), pref, cfg, serr, func() any {
-						if st != nil {
-							return st.Size()
-						}
-						return nil
-					}(), replay)
-			}
+			ref := refusedCandidate(t, tc.path, tc.candidate)
 			if ref.Code != tc.wantCode {
 				t.Fatalf("code = %q; want %q (%s)", ref.Code, tc.wantCode, ref.Message)
 			}
 		})
 	}
+}
+
+// refusedCandidate requires a replay over the named candidate file to refuse,
+// and returns the refusal. When it is accepted the diagnostic dumps what the
+// path actually held, so a path or permission mistake in the test reads as one.
+func refusedCandidate(t *testing.T, path, candidate string) *core.RefusalError {
+	t.Helper()
+	// The path is absolute on purpose: fixture() chdirs, and a parallel test in
+	// this package resuming mid-test must not be able to shadow a relative name
+	// with a valid file of its own.
+	policy := filepath.Join(t.TempDir(), path)
+	req := fixture(t, "["+securityFinding+"]")
+	writeCapturedPolicy(t, &core.Config{})
+	if candidate != "" {
+		if err := os.WriteFile(policy, []byte(candidate), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	replay, ref := reportcore.Replay(context.Background(), &reportcore.Request{
+		ReadRequest: req, Flags: reportcore.Flags{Policy: policy},
+	})
+	if ref != nil {
+		return ref
+	}
+	b, rerr := os.ReadFile(policy)
+	cfg, pref := config.Parse(b)
+	_, serr := os.Stat(policy)
+	t.Fatalf("accepted: policy=%q readerr=%v bytes=%q parseerr=%v cfg=%v staterr=%v replay=%+v",
+		policy, rerr, string(b), pref, cfg, serr, replay)
+	return nil
 }

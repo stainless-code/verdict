@@ -328,7 +328,7 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Approval            *ApprovalReceipt         `anyOf:"null"                     json:"approval,omitempty"     optional:"true"`
 	Risk                *ReportRisk              `json:"risk,omitempty"`
 	Gate                *ReportGate              `json:"gate,omitempty"`
-	Replay              *ReportReplay            `anyOf:"null"     json:"replay,omitempty" optional:"true"`
+	Replay              *ReportReplay            `anyOf:"null"                     json:"replay,omitempty"       optional:"true"`
 	CostRaw             *jq.Obj                  `json:"-"`
 	ProvenanceEnabled   bool                     `json:"-"`
 	ProvenanceReceipt   *ProvenanceReceipt       `json:"-"`

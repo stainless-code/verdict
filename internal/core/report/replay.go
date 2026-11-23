@@ -22,8 +22,8 @@ type PolicyReplay struct {
 
 // Decision is the gate and approval one policy produces over a stored bundle.
 type Decision struct {
-	Dimensions []core.GateDimension `json:"dimensions,omitempty"`
 	Reason     string               `json:"reason,omitempty"`
+	Dimensions []core.GateDimension `json:"dimensions,omitempty"`
 	GatePassed bool                 `json:"gate_passed"`
 	Approved   bool                 `json:"approved"`
 }
@@ -49,14 +49,9 @@ func (r *PolicyReplay) Moves() []DimensionMove {
 	seen := make(map[string]bool, len(r.Captured.Dimensions))
 	for _, dim := range r.Captured.Dimensions {
 		seen[dim.ID] = true
-		after, ok := dimensionStatus(r.Candidate.Dimensions, dim.ID)
-		if !ok {
-			after = AbsentDimension
+		if move := r.moveOf(dim); move != nil {
+			moves = append(moves, *move)
 		}
-		if after == dim.Status {
-			continue
-		}
-		moves = append(moves, DimensionMove{ID: dim.ID, Before: dim.Status, After: after})
 	}
 	for _, dim := range r.Candidate.Dimensions {
 		if seen[dim.ID] {
@@ -65,6 +60,19 @@ func (r *PolicyReplay) Moves() []DimensionMove {
 		moves = append(moves, DimensionMove{ID: dim.ID, Before: AbsentDimension, After: dim.Status})
 	}
 	return moves
+}
+
+// moveOf reports the move one captured dimension took, or nil when the
+// candidate holds it at the captured status.
+func (r *PolicyReplay) moveOf(dim core.GateDimension) *DimensionMove {
+	after, ok := dimensionStatus(r.Candidate.Dimensions, dim.ID)
+	if !ok {
+		after = AbsentDimension
+	}
+	if after == dim.Status {
+		return nil
+	}
+	return &DimensionMove{ID: dim.ID, Before: dim.Status, After: after}
 }
 
 // dimensionStatus finds one dimension's status by wire ID.
@@ -110,8 +118,8 @@ func Replay(ctx context.Context, req *Request) (*PolicyReplay, *core.RefusalErro
 		return nil, ref
 	}
 	return &PolicyReplay{
-		Captured:  deriveDecision(st, st.policy.Resolved, st.policy.Root),
-		Candidate: deriveDecision(st, candidate, candidateRoot),
+		Captured:  deriveDecision(st, st.policy.Resolved, &st.policy.Root),
+		Candidate: deriveDecision(st, candidate, &candidateRoot),
 	}, nil
 }
 
@@ -119,7 +127,7 @@ func Replay(ctx context.Context, req *Request) (*PolicyReplay, *core.RefusalErro
 // copy of the loaded state with one policy resolution substituted. The copy
 // keeps every recorded input — findings, checks, receipts, spec failures — so
 // the replay cannot quietly invent a different bundle.
-func deriveDecision(st *state, resolved *config.Resolved, root config.RequirementSet) Decision {
+func deriveDecision(st *state, resolved *config.Resolved, root *config.RequirementSet) Decision {
 	derived := *st
 	derived.warnings = nil
 	// Silence the operator's observer on the copy: a derivation that warns
@@ -136,7 +144,7 @@ func deriveDecision(st *state, resolved *config.Resolved, root config.Requiremen
 	// The root set is the candidate's own: the compliance dimension reads root
 	// clauses and required checks from here, so a captured set left in place
 	// would keep failing the candidate on requirements it dropped.
-	policy.Root = root
+	policy.Root = *root
 	derived.policy = &policy
 	evaluateCompliance(&derived)
 	derived.approval = approval.Evaluate(derived.entries, st.flags.Check, st.flags.Category,
@@ -153,7 +161,9 @@ func deriveDecision(st *state, resolved *config.Resolved, root config.Requiremen
 // resolveCandidatePolicy parses and resolves a candidate policy file against
 // the file set the captured run recorded, so path-scoped defaults and clauses
 // land on the same paths they would have on the original run.
-func resolveCandidatePolicy(path string, captured *config.Resolved, baseSHA string) (*config.Resolved, config.RequirementSet, *core.RefusalError) {
+func resolveCandidatePolicy(
+	path string, captured *config.Resolved, baseSHA string,
+) (*config.Resolved, config.RequirementSet, *core.RefusalError) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, config.RequirementSet{}, replayRefusal("cannot read candidate policy " + path)
@@ -176,8 +186,8 @@ func resolveCandidatePolicy(path string, captured *config.Resolved, baseSHA stri
 // each recorded path and its rename source.
 func capturedFiles(captured *config.Resolved) []config.FileInput {
 	out := make([]config.FileInput, 0, len(captured.Files))
-	for _, file := range captured.Files {
-		out = append(out, config.FileInput{Path: file.Path, OldPath: file.OldPath})
+	for i := range captured.Files {
+		out = append(out, config.FileInput{Path: captured.Files[i].Path, OldPath: captured.Files[i].OldPath})
 	}
 	return out
 }

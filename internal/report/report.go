@@ -33,6 +33,8 @@ const (
 	kindSection    = "section"
 	liveAuto       = "auto"
 	reportFilePerm = 0o600
+	cmdReport      = "report"
+	pathOperand    = "<path>"
 )
 
 // Run executes `report <owner/repo> <pr> [flags]`, returning the exit code.
@@ -40,12 +42,12 @@ const (
 // exactly one envelope to stdout.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	setupRunner(r, req)
-	setRentry(r, "report", req, args)
+	setRentry(r, cmdReport, req, args)
 	flags, code, done := parseFlags(r, args)
 	if done {
 		return code
 	}
-	if code, done := r.Canceled(ctx, "report"); done {
+	if code, done := r.Canceled(ctx, cmdReport); done {
 		return code
 	}
 	if flags.Policy != "" {
@@ -68,6 +70,13 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	return cli.ExitOK
 }
 
+// replayFlagRefusal explains the flags a replay refuses: it reports a
+// comparison and exits 0, so a gate flag's exit code would be swallowed and a
+// second baseline would be ignored.
+const replayFlagRefusal = "--policy reports a comparison and exits 0; --check, --completeness, and " +
+	"--max-risk would have their exit code swallowed and --compare would be ignored, " +
+	"so drop them and read gate_passed instead"
+
 // runReplay answers `report --policy`: it prints the decision the captured
 // policy derives and the one the candidate file derives over the same stored
 // findings. A replay writes nothing, so it refuses the artifact paths rather
@@ -78,7 +87,7 @@ func runReplay(ctx context.Context, r *cli.Runner, req Request, flags *reportcor
 		return r.ReportUsage(&cli.UsageError{Message: "--policy is read-only; it writes no --output or --sarif"})
 	}
 	if flags.Check != "" || flags.Completeness || flags.MaxRisk != "" || flags.CompareSet {
-		return r.ReportUsage(&cli.UsageError{Message: "--policy reports a comparison and exits 0; --check, --completeness, and --max-risk would have their exit code swallowed and --compare would be ignored, so drop them and read gate_passed instead"})
+		return r.ReportUsage(&cli.UsageError{Message: replayFlagRefusal})
 	}
 	replay, ref := reportcore.Replay(ctx, reportRequest(r, req, flags))
 	if ref != nil {
@@ -105,7 +114,7 @@ func emitReplayEnvelope(ctx context.Context, r *cli.Runner, req Request, flags *
 	}
 	r.Warnings = resp.Warnings
 	resp.Data.Replay = replayWire(flags.Policy, replay)
-	r.Emit("report", req.Repo, req.Pr, resp.At, resp.Next, resp.Warnings, resp.Data.Wire())
+	r.Emit(cmdReport, req.Repo, req.Pr, resp.At, resp.Next, resp.Warnings, resp.Data.Wire())
 	return cli.ExitOK
 }
 
@@ -179,7 +188,7 @@ func emitReport(r *cli.Runner, req Request, resp *reportcore.Response) {
 		if resp.Output != nil {
 			fmt.Fprintf(r.Human, "wrote %s\n", resp.Output.Path)
 		}
-		r.Emit("report", req.Repo, req.Pr, resp.At, resp.Next,
+		r.Emit(cmdReport, req.Repo, req.Pr, resp.At, resp.Next,
 			resp.Warnings, resp.Data.Wire())
 		return
 	}
@@ -299,14 +308,14 @@ const (
 var reportValueWants = map[string]string{
 	flagStatus:   "all|open|addressed|deferred|wont-fix|false-positive",
 	"--kind":     "all|inline|section",
-	"--output":   "<path>",
-	"--sarif":    "<path>",
+	"--output":   pathOperand,
+	"--sarif":    pathOperand,
 	"--check":    "critical|important|informational",
 	"--live":     "auto|strict|skip",
 	"--category": "logic|edge-case|security|performance|accidental-commit|style|docs|other",
 	"--max-risk": "low|medium|high|critical",
 	"--compare":  "<bundle-dir|pr|slug>",
-	"--policy":   "<path>",
+	"--policy":   pathOperand,
 }
 
 var reportBoolSetters = map[string]func(*reportcore.Flags){
@@ -370,7 +379,9 @@ func parseReportValue(r *cli.Runner, flags *reportcore.Flags, args []string, i i
 		return next - i + 1, 0, false
 	case "--policy":
 		if v == "" {
-			return 0, r.ReportUsage(&cli.UsageError{Message: "--policy needs a policy file path (an empty value would silently run an ordinary report)"}), true
+			return 0, r.ReportUsage(&cli.UsageError{
+				Message: "--policy needs a policy file path (an empty value would run an ordinary report)",
+			}), true
 		}
 		flags.Policy = v
 		return next - i + 1, 0, false

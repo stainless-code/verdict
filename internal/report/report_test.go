@@ -33,9 +33,24 @@ func TestUnknownFlagListsAllReportFlags(t *testing.T) {
 	}
 }
 
-// TestPolicyReplayRefusesGateFlags proves a gate flag cannot ride along with
-// --policy: the replay exits 0 by contract, so accepting --check would swallow
-// the very exit code a caller gates CI on.
+// replayUsage runs one report argv that must be refused on usage and returns
+// the diagnostic text, so each refusal test states only its flag and the words
+// the operator has to read.
+func replayUsage(t *testing.T, args ...string) string {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	var out, diag bytes.Buffer
+	r := &cli.Runner{
+		Out: &out, Human: &out, Diag: &diag,
+		Cmd: "report", Repo: "acme/app", Pr: "1", Effective: cli.Defaults(),
+		Now: func() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) },
+	}
+	if code := Run(context.Background(), r, args, Request{Repo: "acme/app", Pr: "1"}); code != cli.ExitUsage {
+		t.Fatalf("exit = %d; want %d", code, cli.ExitUsage)
+	}
+	return diag.String()
+}
+
 // TestPolicyReplayRefusesCompare pins that --compare cannot ride along with
 // --policy: the replay prints its own two-sided comparison and would drop the
 // second bundle silently, so an empty and a named baseline alike are usage
@@ -43,24 +58,17 @@ func TestUnknownFlagListsAllReportFlags(t *testing.T) {
 func TestPolicyReplayRefusesCompare(t *testing.T) {
 	for _, baseline := range []string{"", "other-bundle"} {
 		t.Run(baseline, func(t *testing.T) {
-			t.Chdir(t.TempDir())
-			var out, diag bytes.Buffer
-			r := &cli.Runner{
-				Out: &out, Human: &out, Diag: &diag,
-				Cmd: "report", Repo: "acme/app", Pr: "1", Effective: cli.Defaults(),
-				Now: func() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) },
-			}
-			args := []string{"--policy", "p.json", "--compare", baseline}
-			if code := Run(context.Background(), r, args, Request{Repo: "acme/app", Pr: "1"}); code != cli.ExitUsage {
-				t.Fatalf("exit = %d; want %d", code, cli.ExitUsage)
-			}
-			if !strings.Contains(diag.String(), "--compare would be ignored") {
-				t.Fatalf("usage text does not name the ignored flag: %q", diag.String())
+			got := replayUsage(t, "--policy", "p.json", "--compare", baseline)
+			if !strings.Contains(got, "--compare would be ignored") {
+				t.Fatalf("usage text does not name the ignored flag: %q", got)
 			}
 		})
 	}
 }
 
+// TestPolicyReplayRefusesGateFlags proves a gate flag cannot ride along with
+// --policy: the replay exits 0 by contract, so accepting --check would swallow
+// the very exit code a caller gates CI on.
 func TestPolicyReplayRefusesGateFlags(t *testing.T) {
 	for _, args := range [][]string{
 		{"--policy", "p.json", "--check", "critical"},
@@ -68,18 +76,8 @@ func TestPolicyReplayRefusesGateFlags(t *testing.T) {
 		{"--policy", "p.json", "--max-risk", "high"},
 	} {
 		t.Run(strings.Join(args[2:], ""), func(t *testing.T) {
-			t.Chdir(t.TempDir())
-			var out, diag bytes.Buffer
-			r := &cli.Runner{
-				Out: &out, Human: &out, Diag: &diag,
-				Cmd: "report", Repo: "acme/app", Pr: "1", Effective: cli.Defaults(),
-				Now: func() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) },
-			}
-			if code := Run(context.Background(), r, args, Request{Repo: "acme/app", Pr: "1"}); code != cli.ExitUsage {
-				t.Fatalf("exit = %d; want %d", code, cli.ExitUsage)
-			}
-			if !strings.Contains(diag.String(), "swallowed") {
-				t.Fatalf("usage text does not explain the refusal: %q", diag.String())
+			if got := replayUsage(t, args...); !strings.Contains(got, "swallowed") {
+				t.Fatalf("usage text does not explain the refusal: %q", got)
 			}
 		})
 	}
@@ -89,15 +87,8 @@ func TestPolicyReplayRefusesGateFlags(t *testing.T) {
 // usage error, not a silent fall back to an ordinary report: a caller passing
 // an unset variable must not believe it replayed.
 func TestPolicyReplayRefusesAnEmptyPath(t *testing.T) {
-	t.Chdir(t.TempDir())
-	var out, diag bytes.Buffer
-	r := &cli.Runner{
-		Out: &out, Human: &out, Diag: &diag,
-		Cmd: "report", Repo: "acme/app", Pr: "1", Effective: cli.Defaults(),
-		Now: func() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) },
-	}
-	if code := Run(context.Background(), r, []string{"--policy", ""}, Request{Repo: "acme/app", Pr: "1"}); code != cli.ExitUsage {
-		t.Fatalf("exit = %d; want %d", code, cli.ExitUsage)
+	if got := replayUsage(t, "--policy", ""); !strings.Contains(got, "--policy needs a policy file path") {
+		t.Fatalf("usage text does not name the missing path: %q", got)
 	}
 }
 
@@ -112,19 +103,8 @@ func TestPolicyReplayRefusesArtifactPaths(t *testing.T) {
 		{name: "sarif", args: []string{"--policy", "p.json", "--sarif", "out.sarif"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Chdir(t.TempDir())
-			var out, diag bytes.Buffer
-			r := &cli.Runner{
-				Out: &out, Human: &out, Diag: &diag,
-				Cmd: "report", Repo: "acme/app", Pr: "1", Effective: cli.Defaults(),
-				Now: func() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) },
-			}
-			code := Run(context.Background(), r, tc.args, Request{Repo: "acme/app", Pr: "1"})
-			if code != cli.ExitUsage {
-				t.Fatalf("exit = %d; want %d", code, cli.ExitUsage)
-			}
-			if !strings.Contains(diag.String(), "--policy") {
-				t.Fatalf("usage text does not name --policy: %q", diag.String())
+			if got := replayUsage(t, tc.args...); !strings.Contains(got, "--policy") {
+				t.Fatalf("usage text does not name --policy: %q", got)
 			}
 		})
 	}
