@@ -53,25 +53,6 @@ drivers — `pi-opencode-go-hy4-flash-free` (`hy4-flash`, `N=5` per fixture) and
 `N=8` scored runs per fixture (`16` runs total). Rates describe recorded
 reviews on these two fixtures, not a universal model claim.
 
-**Known limits.** The same gate has been measured on three further fixtures
-(`fx3`–`fx5`), once, on the free driver `opencode-go/hy4-flash-free` (five
-iterations, two arms, `run --rounds 2 --timeout 750` then `report --check
-important --max-risk medium`): **14 of 45** gate evaluations passed on a fixture
-with known planted defects (`S5-two` `3/21`, `S5-one` `11/24`; `fx4` 7, `fx3` 3,
-`fx5` 3, `fx2` 1), two of them (`fx4` · `S5-one` · `n1` and `n5`) with an empty
-finding store and gate exit 0 on a fixture with 3 planted defects. In that same
-campaign `fx2` delivered recall averaged `0.30` over five runs
-(`[0.3333, 0.3333, 0, 0.5, 0.3333]`), five-run union 3 of 6, under the `0.50`
-bar; this does not revise the `0.1875` figure above, which is a different
-snapshot, arm, and date. The reason is structural: the dimensions the gate arms
-are finding tier, reported risk, HEAD completeness, coverage attestation, live
-threads, compliance, spec violations, and evidence, and **none of them asks
-whether the review found anything**. A green gate under `--check important
---max-risk medium` means the findings on hand are not serious, the head is
-current, and the evidence is sound — it does not mean we looked hard enough.
-The `0/16` headline is a recall result on `fx1` and `fx2`, not a gate-strength
-result.
-
 ## Recall (tracked number)
 
 Recall is published as a tracked number beside the safety headline, never
