@@ -245,6 +245,7 @@ function throwForExit<T>(
       parsed.error.code,
       parsed.error.message,
       parsed.warnings,
+      parsed.error,
     );
   }
   if (result.code === 2) {

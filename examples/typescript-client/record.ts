@@ -1,11 +1,12 @@
 // record: the local merge. `--dry-run` runs every check and writes nothing; a
 // real record writes findings.json and record.json; a provider PR bundle is
-// not record's target and refuses typed.
+// not record's target and refuses typed; a malformed review refuses with the
+// typed problems the fix needs.
 //
 //   make build && make clients-ts
 //   node examples/typescript-client/record.ts
 
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createClient } from "../../clients/ts/dist/index.js";
 import {
@@ -117,6 +118,29 @@ try {
   );
   expectMatch(refusal.hint, /^try: /, "the refusal carries its re-run hint");
   ok("record refuses a provider PR bundle with a typed not-local");
+
+  console.log(`record ${REPO} ${LOCAL_SLUG} --dry-run (malformed review)`);
+  const reviewPath = join(bundle, "review.json");
+  const review = JSON.parse(readFileSync(reviewPath, "utf8"));
+  review.findings[0].path = 5;
+  writeFileSync(reviewPath, `${JSON.stringify(review, null, 2)}\n`);
+  const badReview = await expectRefusal("record on a malformed review", () =>
+    verdict.record([REPO, LOCAL_SLUG, "--dry-run"]),
+  );
+  line("code", badReview.code);
+  line("problem path", badReview.problems[0]?.path);
+  expect(
+    badReview.code,
+    "bad-review-input",
+    "a malformed review refuses as bad-review-input",
+  );
+  expect(
+    badReview.problems[0]?.path,
+    "$.findings[0].path",
+    "the refusal names the broken JSONPath",
+  );
+  expect(badReview.problems_truncated, 0, "the problem list is complete");
+  ok("record refuses a malformed review with typed problems");
 } finally {
   sandbox.cleanup();
 }

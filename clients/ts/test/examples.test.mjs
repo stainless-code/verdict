@@ -33,6 +33,7 @@ const CHECKPOINTS = {
     "record --dry-run previews the merge and writes nothing",
     "record writes findings.json and record.json",
     "record refuses a provider PR bundle with a typed not-local",
+    "record refuses a malformed review with typed problems",
   ],
 };
 
