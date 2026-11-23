@@ -1799,6 +1799,52 @@ project refuses `bad-compare`, and so do two PR bundles whose URLs name
 different hosts even when the project path matches. A PR bundle without a URL
 falls back to the positional's repository.
 
+`report --policy <file>` answers a fourth question from the same read: what
+would this bundle decide under a different policy? It parses the candidate with
+the same schema and resolver as `.verdict/config.json`, then derives the gate
+and the approval twice — once under the policy the run captured, once under the
+candidate — from the same stored findings, checks, and receipts, so every
+difference comes from the policy alone. The replay prints both decisions and
+every gate dimension the candidate added, removed, or moved — a policy that
+introduces a requirement turns compliance from `absent` into a dimension, and
+that counts as a change even though the shared dimensions never moved.
+
+The replay writes no bundle artifact and calls no host: it composes no live
+dimension and re-checks no threads, so a `--live` posture from the original run
+is not re-run here. It exits 0 whatever the candidate decides, because it
+reports a comparison rather than gating this run, and it therefore refuses the
+gate flags (`--check`, `--completeness`, `--max-risk`): accepting one would
+swallow the exit code a caller gates CI on. `--compare` is refused as well —
+the replay already prints two decisions, so a second baseline would be dropped
+silently. `--output` and `--sarif` are refused for the same reason — a replay
+writes nothing.
+
+Both decisions carry their own root requirement set: the candidate's root
+`block_clauses` and `require_checks` replace the captured ones, so a requirement
+the candidate drops stops failing it and one it adds starts failing it. The
+evidence dimension is the part of the decision a candidate cannot move —
+sufficiency is the stored receipt's `insufficient` verdict, recorded while the
+review ran, so a `spec_coverage_min` in the candidate file does not re-decide
+it. It does re-decide the descriptive `evidence.spec.min` and `spec.met` pair,
+which no gate or approval reads: the candidate side reports the threshold its
+own policy names and the coverage verdict that threshold produces. A replay re-decides policy; it does not re-verify a review.
+
+The candidate is resolved from its repository layer over the recorded file set.
+The original run's personal settings, environment overrides, and invocation
+flags are not re-applied, with two exceptions that would otherwise move a
+decision without the policy moving. The personal privacy exclusions are carried
+over: repository scopes and flags can never remove them, the files they withheld
+are still withheld, and the candidate's own clauses decide whether a conflict
+still applies. Recorded check observations are matched to the candidate's scopes
+by their file set rather than by the captured group id, which is a digest of the
+effective defaults: an identical policy under different personal defaults keeps
+its completed checks, while a candidate that regroups the files leaves them
+pending, because the work those checks covered changed. Under
+`--json` the run keeps the ordinary report envelope for the captured policy and
+adds one `replay` object — `policy_path`, `captured`, `candidate`, and the
+`changed` dimensions — so a consumer reads a replay by that key rather than by
+guessing from the decisions.
+
 The resolved/not-reviewed split is deliberately strict, because a false
 `resolved` hides a real bug. A baseline-only signature reaches `resolved`
 only through one of these proofs:

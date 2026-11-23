@@ -23,9 +23,15 @@ type Flags struct {
 	// state directory. CompareSet records that a caller named the flag at all,
 	// so an explicit empty value refuses instead of silently disabling the
 	// comparison; it is transport bookkeeping and stays out of the tool schema.
-	Compare         string
-	Live            string `enum:"auto|strict|skip"`
-	MaxRisk         string `enum:"low|medium|high|critical"`
+	Compare string
+	Live    string `enum:"auto|strict|skip"`
+	MaxRisk string `enum:"low|medium|high|critical"`
+	// Policy names a candidate policy file to replay the store under: the
+	// report derives its gate and approval twice, once under the captured
+	// policy and once under this one, and writes nothing. It stays out of the
+	// MCP tool schema (`json:"-"`) because the replay is a CLI question about
+	// a file on disk, not a stored artifact the tool can read.
+	Policy          string `json:"-"`
 	IncludeWithheld bool
 	Cost            bool
 	Completeness    bool

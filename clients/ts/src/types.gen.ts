@@ -348,6 +348,7 @@ export interface ReportData {
   risk?: ReportRisk | null;
   validation?: ValidationData | null;
   gate?: ReportGate | null;
+  replay?: ReportReplay | null;
   receipt?: ProvenanceReceipt;
   truncated?: boolean | Array<ProvenanceTruncatedRow>;
   [key: string]: unknown;
@@ -505,6 +506,28 @@ export interface ReportCompliance {
   /** Accepted conflicts and pending required work counted together as the standing gap tally; never negative. */
   gaps: number;
   satisfied: boolean;
+  [key: string]: unknown;
+}
+
+export interface ReportReplay {
+  policy_path: string;
+  captured: ReportReplaySide;
+  candidate: ReportReplaySide;
+  changed: Array<ReportReplayMove>;
+  [key: string]: unknown;
+}
+
+export interface ReportReplaySide {
+  reason?: string;
+  gate_passed: boolean;
+  approved: boolean;
+  [key: string]: unknown;
+}
+
+export interface ReportReplayMove {
+  id: string;
+  before: string;
+  after: string;
   [key: string]: unknown;
 }
 

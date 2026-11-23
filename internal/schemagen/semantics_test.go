@@ -352,7 +352,7 @@ var publishedSemantics = map[string]string{
 	// report --compare: additive optional data.compare ($defs/reportCompare and
 	// its baseline/counts/finding definitions). No existing property, required
 	// key, enum, or type changed; only a --compare run carries the key.
-	"envelope.schema.json": "1614f7bebe3d93fd3a5677c5ea3ece5c7050a1e3e212ae3d2e987e07f4ffe4f7",
+	"envelope.schema.json": "23667aae9840383a7347fd4992cf8bf906cef1558bac4a1858a3e6d8a925b6b7",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
