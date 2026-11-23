@@ -237,7 +237,7 @@ func gatePendingCross(st *state) int {
 		if readcommon.StatusOf(entry) == statusOpen &&
 			(st.flags.Category == "" || core.CategoryOf(entry) == st.flags.Category) &&
 			core.TierRank(readcommon.FieldOf(entry, "severity")) <= threshold &&
-			approval.QuoteStatus(entry) == "verified" && !approval.CrossEligible(entry) {
+			!approval.CrossEligible(entry) {
 			pending++
 		}
 	}

@@ -50,6 +50,20 @@ func TestPendingCrossFailsGateWithoutLiveExecution(t *testing.T) {
 	}
 }
 
+// TestPendingCrossCountsEveryQuoteStatus proves an unverified quote does not
+// exempt a finding from its assigned cross check: the captured execution gave
+// it a cross stamp, so an unconfirmed one fails the gate whatever the quote
+// status says.
+func TestPendingCrossCountsEveryQuoteStatus(t *testing.T) {
+	for _, quote := range []string{"verified", "unverified"} {
+		t.Run(quote, func(t *testing.T) {
+			entry := jq.NewObj("sig", "abc", "status", "open", "severity", "important", "verification",
+				jq.NewObj("quote", quote, "cross", jq.NewObj("execution_id", "execution-A", "expected", []any{"finder-2"}, "checks", []any{})))
+			assertCrossGateFails(t, nil, entry)
+		})
+	}
+}
+
 // assertCrossGateFails decides one pending cross with the given execution in
 // hand and requires the gate to fail on it by name.
 func assertCrossGateFails(t *testing.T, execution *panelcore.Execution, entry *jq.Obj) {
