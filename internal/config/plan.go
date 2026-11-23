@@ -31,14 +31,14 @@ type Inputs struct {
 // resolutions with clause provenance, the combined plan, the spend
 // and privacy constraints, and the regression-test drafting policy.
 type Resolved struct {
-	Spend    SpendView        `json:"spend"`
-	Plan     Plan             `json:"plan"`
-	Files    []FileResolution `json:"files"`
-	Privacy  PrivacyView      `json:"privacy"`
-	Defaults ResolvedDefaults `json:"defaults"`
 	// Tests carries the repository's regression-test drafting policy:
 	// nil or empty draft means on-reproduce (the shipped behavior).
-	Tests *core.ConfigTests `json:"tests,omitempty"`
+	Tests    *core.ConfigTests `json:"tests,omitempty"`
+	Spend    SpendView         `json:"spend"`
+	Plan     Plan              `json:"plan"`
+	Files    []FileResolution  `json:"files"`
+	Privacy  PrivacyView       `json:"privacy"`
+	Defaults ResolvedDefaults  `json:"defaults"`
 }
 
 // SpendView separates the two evaluations: the ordinary estimate guard

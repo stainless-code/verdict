@@ -82,8 +82,8 @@ type flags struct {
 	sig         string
 	minSeverity string
 	verifyCmd   string
-	paths       []string
 	test        string
+	paths       []string
 	commit      bool
 	all         bool
 	selected    bool

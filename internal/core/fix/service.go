@@ -244,6 +244,13 @@ func (r *Request) modeFault() string {
 		return "fix takes --sig or --selected, not both (--selected addresses the sigs a human reacted 👍 to)"
 	case r.All && r.Selected:
 		return "fix takes --all or --selected, not both (--selected is a batch scoped by fetch's selected.json)"
+	}
+	return r.testModeFault()
+}
+
+// testModeFault refuses a --test pick that names another scope.
+func (r *Request) testModeFault() string {
+	switch {
 	case r.Test != "" && r.All:
 		return "fix takes --test or --all, not both (--test promotes one reproduced finding's artifact)"
 	case r.Test != "" && r.Selected:

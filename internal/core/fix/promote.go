@@ -146,27 +146,33 @@ func (st *state) testReceipt(rec *jq.Obj, full string) (string, string, *core.Re
 	return pathStr, cmdStr, nil
 }
 
+// existingPromotedRefusal checks an existing target: a non-regular file or
+// different bytes refuse, identical bytes are a no-op success.
+func (st *state) existingPromotedRefusal(info os.FileInfo, destAbs, destRel string, artifact []byte) *core.RefusalError {
+	if !info.Mode().IsRegular() {
+		return st.refuse(codeTestConflict, fmt.Sprintf(
+			"fix --test: target %s is not a regular file — refusing to overwrite it", destRel))
+	}
+	existing, err := os.ReadFile(destAbs)
+	if err != nil {
+		return st.refuse(codeFixFailed, fmt.Sprintf(
+			"fix --test: could not read existing %s: %v", destRel, err))
+	}
+	if bytes.Equal(existing, artifact) {
+		return nil
+	}
+	return st.refuse(codeTestConflict, fmt.Sprintf(
+		"fix --test: target %s already exists with different bytes — refusing to overwrite it",
+		destRel))
+}
+
 // writePromoted lands the artifact bytes at the worktree destination: an
 // identical existing file is a no-op success, different bytes refuse, and a
 // symlink or directory at the target refuses without following it.
 func (st *state) writePromoted(destAbs, destRel string, artifact []byte) *core.RefusalError {
 	info, err := os.Lstat(destAbs)
 	if err == nil {
-		if !info.Mode().IsRegular() {
-			return st.refuse(codeTestConflict, fmt.Sprintf(
-				"fix --test: target %s is not a regular file — refusing to overwrite it", destRel))
-		}
-		existing, err := os.ReadFile(destAbs)
-		if err != nil {
-			return st.refuse(codeFixFailed, fmt.Sprintf(
-				"fix --test: could not read existing %s: %v", destRel, err))
-		}
-		if bytes.Equal(existing, artifact) {
-			return nil
-		}
-		return st.refuse(codeTestConflict, fmt.Sprintf(
-			"fix --test: target %s already exists with different bytes — refusing to overwrite it",
-			destRel))
+		return st.existingPromotedRefusal(info, destAbs, destRel, artifact)
 	}
 	if !errors.Is(err, os.ErrNotExist) {
 		return st.refuse(codeFixFailed, fmt.Sprintf(
@@ -212,7 +218,7 @@ func (st *state) commitPromoted(ctx context.Context, destRel, full string) (bool
 	if strings.TrimSpace(cached.Stdout) == "" {
 		return true, nil
 	}
-	msg := fmt.Sprintf("test: regression for %s", full)
+	msg := "test: regression for " + full
 	if _, err := st.runGit(ctx, "git", "commit", "-m", msg); err != nil {
 		return false, st.refuse(codeFixFailed, fmt.Sprintf(
 			"fix --test: could not commit %s: %v", destRel, err))
