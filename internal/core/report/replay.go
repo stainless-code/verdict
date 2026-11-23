@@ -105,13 +105,13 @@ func Replay(ctx context.Context, req *Request) (*PolicyReplay, *core.RefusalErro
 		return nil, replayRefusal("run bundle carries no typed policy to replay against — re-fetch or re-run the bundle")
 	}
 	st.specFailures = specFailuresWithExecution(st)
-	candidate, ref := resolveCandidatePolicy(req.Flags.Policy, st.policy.Resolved)
+	candidate, candidateRoot, ref := resolveCandidatePolicy(req.Flags.Policy, st.policy.Resolved, st.policy.BaseSHA)
 	if ref != nil {
 		return nil, ref
 	}
 	return &PolicyReplay{
-		Captured:  deriveDecision(st, st.policy.Resolved),
-		Candidate: deriveDecision(st, candidate),
+		Captured:  deriveDecision(st, st.policy.Resolved, st.policy.Root),
+		Candidate: deriveDecision(st, candidate, candidateRoot),
 	}, nil
 }
 
@@ -119,7 +119,7 @@ func Replay(ctx context.Context, req *Request) (*PolicyReplay, *core.RefusalErro
 // copy of the loaded state with one policy resolution substituted. The copy
 // keeps every recorded input — findings, checks, receipts, spec failures — so
 // the replay cannot quietly invent a different bundle.
-func deriveDecision(st *state, resolved *config.Resolved) Decision {
+func deriveDecision(st *state, resolved *config.Resolved, root config.RequirementSet) Decision {
 	derived := *st
 	derived.warnings = nil
 	// Silence the operator's observer on the copy: a derivation that warns
@@ -133,6 +133,10 @@ func deriveDecision(st *state, resolved *config.Resolved) Decision {
 	derived.requiredGaps = nil
 	policy := *st.policy
 	policy.Resolved = resolved
+	// The root set is the candidate's own: the compliance dimension reads root
+	// clauses and required checks from here, so a captured set left in place
+	// would keep failing the candidate on requirements it dropped.
+	policy.Root = root
 	derived.policy = &policy
 	evaluateCompliance(&derived)
 	derived.approval = approval.Evaluate(derived.entries, st.flags.Check, st.flags.Category,
@@ -149,23 +153,23 @@ func deriveDecision(st *state, resolved *config.Resolved) Decision {
 // resolveCandidatePolicy parses and resolves a candidate policy file against
 // the file set the captured run recorded, so path-scoped defaults and clauses
 // land on the same paths they would have on the original run.
-func resolveCandidatePolicy(path string, captured *config.Resolved) (*config.Resolved, *core.RefusalError) {
+func resolveCandidatePolicy(path string, captured *config.Resolved, baseSHA string) (*config.Resolved, config.RequirementSet, *core.RefusalError) {
 	raw, err := os.ReadFile(path)
 	if err != nil {
-		return nil, replayRefusal("cannot read candidate policy " + path)
+		return nil, config.RequirementSet{}, replayRefusal("cannot read candidate policy " + path)
 	}
 	cfg, ref := config.Parse(raw)
 	if ref != nil {
-		return nil, ref
+		return nil, config.RequirementSet{}, ref
 	}
 	resolved, ref := config.Resolve(&config.Inputs{
 		Repo:  cfg,
 		Files: capturedFiles(captured),
 	})
 	if ref != nil {
-		return nil, ref
+		return nil, config.RequirementSet{}, ref
 	}
-	return resolved, nil
+	return resolved, config.RootSet(cfg, baseSHA), nil
 }
 
 // capturedFiles rebuilds the resolver's file inputs from the capture, keeping

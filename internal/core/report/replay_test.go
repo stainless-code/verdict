@@ -28,6 +28,9 @@ func writeCapturedPolicy(t *testing.T, cfg *core.Config) {
 		BaseSHA:  "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		Trusted:  true,
 		Resolved: resolved,
+		// A real capture carries the root requirement set beside the
+		// resolution (fetch/runconfig.go), so a replay has to replace it.
+		Root: config.RootSet(cfg, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
 	}
 	dir := filepath.Join(".", ".verdict", "state", "5101")
 	if serr := config.WriteRunState(dir, rs); serr != nil {
@@ -146,6 +149,29 @@ func TestReplayMovesIncludesAddedAndRemovedDimensions(t *testing.T) {
 	}).Moves()
 	if want := []reportcore.DimensionMove{{ID: "compliance", Before: "fail", After: reportcore.AbsentDimension}}; !slices.Equal(removed, want) {
 		t.Fatalf("removed-dimension moves = %#v; want %#v", removed, want)
+	}
+}
+
+// TestReplayDropsCapturedRootChecksTheCandidateRemoved proves the candidate's
+// own root requirement set decides: the compliance dimension reads root checks
+// from RunState.Root, so leaving the captured set in place would keep failing a
+// candidate on a check it dropped.
+func TestReplayDropsCapturedRootChecksTheCandidateRemoved(t *testing.T) {
+	captured := &core.Config{SchemaVersion: "1", Requirements: &core.ConfigRequirements{
+		RequireChecks: []string{"head-current"},
+	}}
+	replay := replayOver(t, captured, `{"schema_version":"1"}`)
+
+	if got := dimension(t, replay.Captured, "compliance"); got.Status != "unknown" {
+		t.Fatalf("captured compliance status = %q; want unknown on a pending head-current check", got.Status)
+	}
+	if !replay.Candidate.GatePassed {
+		t.Fatalf("candidate that dropped the required check still fails the gate: %+v", replay.Candidate)
+	}
+	for _, dim := range replay.Candidate.Dimensions {
+		if dim.ID == "compliance" {
+			t.Fatalf("candidate carries a compliance dimension with no policy in force: %+v", dim)
+		}
 	}
 }
 
