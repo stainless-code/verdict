@@ -1,0 +1,7 @@
+{
+  "schema_version": "1",
+  "defaults": {
+    "budget_usd": 3,
+    "effort": "deep"
+  }
+}

@@ -184,6 +184,10 @@ release-dry-run:
 # Two gates: gen-ts-types.mjs --check covers the schema/codegen sources (Go
 # free, Node only), `go run ./cmd/tsgen` covers the refusal codes rendered
 # from the Go refusal-code registry (internal/core/refusalcodes.go).
+#
+# The runnable examples (examples/typescript-client) run here too: they import
+# clients/ts/dist, so the tsc build above must land first, and
+# clients/ts/test/examples.test.mjs executes all three against this binary.
 .PHONY: clients-ts
 clients-ts: build
 	go run ./cmd/tsgen
@@ -192,6 +196,7 @@ clients-ts: build
 	node --test internal/webui/test/*.test.mjs
 	VERDICT_BIN="$(CURDIR)/$(BIN)" node --test clients/ts/test/*.test.mjs
 	node_modules/.bin/tsc --noEmit -p clients/ts/tsconfig.types.json
+	node_modules/.bin/tsc --noEmit -p examples/typescript-client
 
 # clients-python runs the dependency-free Python example against the built
 # binary: one success, one typed refusal, one exit-2 usage error, and the demo

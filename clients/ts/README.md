@@ -105,6 +105,22 @@ createClient({
 });
 ```
 
+## Runnable examples
+
+The mutating verbs have runnable examples in
+[`examples/typescript-client/`](../../examples/typescript-client): `record`
+(including `--dry-run`), `post --dry-run`, and `config` validation, each run
+end to end against the built binary, a bundle the real `fetch-local` producer
+wrote, and a network-dead `gh` stub on `PATH`.
+
+```sh
+make build && make clients-ts
+node examples/typescript-client/record.ts
+```
+
+`make clients-ts` executes all three through `test/examples.test.mjs` and
+checks the `ok:` checkpoints they print, so a stale example fails this gate.
+
 ## Regenerating the generated sources
 
 `src/types.gen.ts` (envelope `$defs`) and the platform → npm package map
