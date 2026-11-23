@@ -41,7 +41,7 @@ _verdict_flags() { # $1 = verb
     ready) printf '%s\n' --json --check --filter --wait-for --timeout;;
     gate) printf '%s\n' --max-severity --require-head --live --coverage --json;;
     mcp) printf '%s\n' --read-only --operator --agent --write --dry-run --json;;
-    serve) printf '%s\n' --root --depth --max-visits --max-repos --rediscover --no-registry --host --port --token --check --max-bundles --interval --sweep --no-watch --json;;
+    serve) printf '%s\n' --root --depth --max-visits --max-repos --rediscover --no-registry --host --port --token --check --max-bundles --interval --sweep --no-watch --interactive --json;;
     init) printf '%s\n' --preset --yes --force --json --ci --agent --key-secret --print --comment-trigger;;
     skill) printf '%s\n' show files status install uninstall --format --dir --detect --diff --agent --force --dry-run --json;;
     upgrade) printf '%s\n' --version --dry-run --json;;

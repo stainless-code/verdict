@@ -70,3 +70,5 @@ reverts.jsonl.lock
     "triagedBy": "human"
   }
 ]
+--- file C/.verdict/state/local-k6/findings.json.lock ---
+
