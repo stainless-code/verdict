@@ -114,6 +114,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/envsecret":      true,
 	"internal/evidence":       true,
 	"internal/fence":          true,
+	"internal/bitbucket":      true,
 	"internal/forgejo":        true,
 	"internal/hunks":          true,
 	"internal/identity":       true,

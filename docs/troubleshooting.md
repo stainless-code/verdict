@@ -1189,7 +1189,7 @@ Fix: reinstall verdict from a signed release, then re-run.
 
 Cause: the provider documents no path for this verb.
 
-Fix: use the verb named above for this bundle kind (`post` reaches GitHub, GitLab, and Forgejo; the other hosts use `record` and `report`).
+Fix: use the verb named above for this bundle kind (`post` reaches GitHub, GitLab, Forgejo, and Bitbucket; the other hosts use `record` and `report`).
 
 ## `provider-unknown`
 

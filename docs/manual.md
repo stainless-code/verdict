@@ -2361,7 +2361,7 @@ the newest matching comment authored by the authenticated token user (noting
 any duplicates in `post.json` without deleting them): a first post creates
 the summary comment linking to the submitted review and inline comments where
 the host supplies URLs, and a later post updates that comment in place (`PATCH`
-on GitHub and Forgejo, `PUT` on GitLab) with empty bodies refused.
+on GitHub and Forgejo, `PUT` on GitLab and Bitbucket) with empty bodies refused.
 `--dry-run` reports the planned summary action (`create`, `update`, or `none`)
 without writing. The summary is best effort: if its write fails after the
 review is accepted, `post` still records the review in `post.json`, sets
@@ -4639,10 +4639,10 @@ shape from another host (`PR.json` normalized to one schema: `provider`,
 `write_toc_roles` and the whole validate+merge path run unchanged — anchors
 validate against `full.diff` hunks regardless of host. `record`, `report`,
 `triage`, `show`, `next` work on provider bundles as-is. `post` submits to
-GitHub, GitLab, and Forgejo; `ready` advises on GitHub and GitLab, plain
+GitHub, GitLab, Forgejo, and Bitbucket; `ready` advises on GitHub and GitLab, plain
 `calibrate` joins live threads on both, and `adopt` merges into any bundle
 verdict can post to (its re-anchor reads the stored hunks and never shells a
-host CLI). `post` on `gitcafe`, `bitbucket`, and `azure`, and `ready` and plain
+host CLI). `post` on `gitcafe` and `azure`, and `ready` and plain
 `calibrate` on any host but GitHub and GitLab, refuse typed, while `adopt` into
 a host without a submit path refuses `provider-unimplemented` naming the host,
 and `calibrate --probe` grades any bundle offline. The refusal names the gap
@@ -4661,7 +4661,7 @@ split, and carries no reason of its own — the two flags explain it; new reader
 branch on those two flags. `thread_resolution` is true on GitHub and GitLab:
 `threads resolve` closes a verdict-authored thread through `resolveReviewThread`
 or GitLab's discussion resolved flag.
-Forgejo has no documented resolve endpoint, so it reads false there and on
+Forgejo and Bitbucket have no documented resolve endpoint, so it reads false there and on
 every fetch-only host; resolution stays a host-CLI step the prompts hand back
 to the agent. `unsupported` carries
 one machine-readable code per absent capability, keyed by capability name:
@@ -4686,13 +4686,13 @@ the issue lands, or one warning names why it did not. A third-party tracker
 `--issue` shape — its issue text reaches a review through `--spec <file>` (see
 [Forge-native linked issues](adr-forge-native-issues.md)).
 
-| Provider    | Fetch reads                                                                                                                                                              | Auth                                                             | Gaps (v1)                                                                                                  |
-| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `gitlab`    | `glab mr view/diff/note list/discussions` + changes/compare API; `ready` adds the MR, pipelines, and discussions reads, `calibrate` the discussions + repository compare | `glab auth login` (or `GITLAB_TOKEN`)                            | experimental note commands; incremental via repository compare; `post` approves but cannot request changes |
-| `gitcafe`   | `cafe pr view/diff/reviews/comments`                                                                                                                                     | `cafe auth login` (or `CAFE_TOKEN`)                              | reads `.data.*` envelope; threads paged via `--cursor`; hunks render only when `.patch` text ships         |
-| `forgejo`   | REST `curl` (`$FORGEJO_HOST/api/v1`, `$FORGEJO_TOKEN`) — neither `fj` nor `tea` exposes JSON review reads                                                                | token env                                                        | inline threads aggregated per review id; a review comment anchors on a file line number                    |
-| `bitbucket` | REST `curl` (`$BITBUCKET_TOKEN` Bearer or user+password Basic)                                                                                                           | token env                                                        | diffstat/comments paginated server-side; no grouped submit                                                 |
-| `azure`     | `az repos pr show` + `az rest` threads/iterations; diff via temp-clone `git fetch` of the two SHAs                                                                       | `az login` / `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG` required | needs git reachability to the repo remote; no org/project auto-detect                                      |
+| Provider    | Fetch reads                                                                                                                                                              | Auth                                                             | Gaps (v1)                                                                                                                                                    |
+| ----------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `gitlab`    | `glab mr view/diff/note list/discussions` + changes/compare API; `ready` adds the MR, pipelines, and discussions reads, `calibrate` the discussions + repository compare | `glab auth login` (or `GITLAB_TOKEN`)                            | experimental note commands; incremental via repository compare; `post` approves but cannot request changes                                                   |
+| `gitcafe`   | `cafe pr view/diff/reviews/comments`                                                                                                                                     | `cafe auth login` (or `CAFE_TOKEN`)                              | reads `.data.*` envelope; threads paged via `--cursor`; hunks render only when `.patch` text ships; no submit path — `post` refuses `provider-unimplemented` |
+| `forgejo`   | REST `curl` (`$FORGEJO_HOST/api/v1`, `$FORGEJO_TOKEN`) — neither `fj` nor `tea` exposes JSON review reads                                                                | token env                                                        | inline threads aggregated per review id; a review comment anchors on a file line number                                                                      |
+| `bitbucket` | REST `curl` (`$BITBUCKET_TOKEN` Bearer or user+password Basic)                                                                                                           | token env                                                        | diffstat/comments paginated server-side; approve-only (no request-changes event)                                                                             |
+| `azure`     | `az repos pr show` + `az rest` threads/iterations; diff via temp-clone `git fetch` of the two SHAs                                                                       | `az login` / `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG` required | needs git reachability to the repo remote; no org/project auto-detect                                                                                        |
 
 Neither `curl` host takes its credential on the command line, where `ps` and
 argv logs would show it: the client reads a one-directive config document from
@@ -4750,7 +4750,7 @@ the `anchors` tally counts).
 
 ### Submit (`post`) per host
 
-GitHub and Forgejo each take one atomic review; GitLab has no such call, so its
+GitHub and Forgejo each take one atomic review; GitLab and Bitbucket have no such call, so their
 submit replays three primitives in that order. GitLab posts the summary body
 last, and no host replays a payload whose first write landed: a mid-way failure
 refuses typed `post-failed`, names what landed in the envelope `warnings`, and
@@ -4759,11 +4759,12 @@ discussions. On GitLab a review with no comments posts only the summary note,
 and a summary write whose response was lost can be retried because nothing
 landed to observe; that case is the same lost-response shape GitHub documents.
 
-| Provider  | Submit writes, in order                                                                                                                                                                                                                                                                            | Gaps                                                                                                                                                                                          |
-| --------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `github`  | one `repos/<owner>/<repo>/pulls/<n>/reviews` POST carrying `body`, `event`, and every inline comment (`gh api … --method POST --input -`)                                                                                                                                                          | —                                                                                                                                                                                             |
-| `gitlab`  | one MR discussion per finding — a `position` with the MR's `base_sha`/`start_sha`/`head_sha`, both paths, `new_line` for an added line, both numbers for an unchanged one, `old_line` for a deletion — then one summary note, then `approve` (pinned by `sha`) only when the review is an approval | approve-only (GitLab has no `request-changes` event — the comments still post, with a warning); a multi-line anchor lands on its end line; `request_changes` and `review_verdicts` stay false |
-| `forgejo` | one `api/v1/repos/<owner>/<repo>/pulls/<n>/reviews` POST over `curl` carrying `body`, `event` (`APPROVED` for an approval), `commit_id`, and every comment (`new_position` or `old_position`, both file line numbers)                                                                              | —                                                                                                                                                                                             |
+| Provider    | Submit writes, in order                                                                                                                                                                                                                                                                            | Gaps                                                                                                                                                                                             |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `github`    | one `repos/<owner>/<repo>/pulls/<n>/reviews` POST carrying `body`, `event`, and every inline comment (`gh api … --method POST --input -`)                                                                                                                                                          | —                                                                                                                                                                                                |
+| `gitlab`    | one MR discussion per finding — a `position` with the MR's `base_sha`/`start_sha`/`head_sha`, both paths, `new_line` for an added line, both numbers for an unchanged one, `old_line` for a deletion — then one summary note, then `approve` (pinned by `sha`) only when the review is an approval | approve-only (GitLab has no `request-changes` event — the comments still post, with a warning); a multi-line anchor lands on its end line; `request_changes` and `review_verdicts` stay false    |
+| `forgejo`   | one `api/v1/repos/<owner>/<repo>/pulls/<n>/reviews` POST over `curl` carrying `body`, `event` (`APPROVED` for an approval), `commit_id`, and every comment (`new_position` or `old_position`, both file line numbers)                                                                              | —                                                                                                                                                                                                |
+| `bitbucket` | one `api.bitbucket.org/2.0/repos/<workspace>/<repo>/pullrequests/<n>/comments` POST per finding (`inline: {path, to}` for a new-side line, `{path, from}` for an old-side line), then one general comment carrying the body, then `approve` (only when the review is an approval)                  | approve-only (Bitbucket has no `request-changes` event — the comments still post, with a warning); a multi-line anchor lands on its end line; `request_changes` and `review_verdicts` stay false |
 
 Forgejo has no CLI, so both directions are one `curl` call against
 `$FORGEJO_HOST/api/v1`; the write is GitHub-shaped — one atomic review POST
@@ -4788,6 +4789,20 @@ unverified: whether a left-side anchor on a deleted file resolves at all — `po
 withholds it — and whether the review list returns another user's draft. The
 draft check reads that list and refuses when the read breaks, but a host that
 filters other users' drafts out of the list would hide one.
+
+Bitbucket Cloud has no CLI, so both directions are one `curl` call against
+`https://api.bitbucket.org/2.0`: the live head is `source.commit.hash`.
+A RIGHT anchor becomes `inline: {path, to: <line>}` and a LEFT anchor
+`inline: {path, from: <line>}`. A finding with no placeable anchor is
+withheld (Bitbucket would accept an unanchored comment), a LEFT anchor on a
+path the change deletes is withheld, and a multi-line range lands on its end
+line — each loss is counted in the envelope `warnings`. The approval is
+`POST .../pullrequests/<n>/approve` with no commit pin, so `post` reads the
+PR head before approving and refuses the approval when the head moved since
+the review — a comment post on a moved head still proceeds with the drift
+warning. Like GitLab, Bitbucket has no request-changes review event, so a
+bound request-changes posts the inline comments plus the summary comment,
+warns that the verdict did not bind, and records `withheld` in `post.json`.
 
 The repeat guard is the same on every host: the body's
 `<!-- verdict-review payload=… -->` marker is read from the fetched

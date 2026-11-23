@@ -26,17 +26,14 @@ exit: 0
     "capabilities": {
       "provider": "bitbucket",
       "fetch": true,
-      "post": false,
-      "inline_anchors": false,
-      "approve": false,
+      "post": true,
+      "inline_anchors": true,
+      "approve": true,
       "request_changes": false,
       "thread_resolution": false,
       "review_verdicts": false,
       "unsupported": {
-        "post": "fetch-only",
-        "inline_anchors": "fetch-only",
-        "approve": "fetch-only",
-        "request_changes": "fetch-only",
+        "request_changes": "no-request-changes-event",
         "thread_resolution": "no-resolve-mutation"
       }
     },
