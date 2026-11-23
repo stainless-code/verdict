@@ -2,6 +2,7 @@ package verdict_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -275,10 +276,17 @@ func ExampleClient_Fix() {
 		fmt.Println("error:", err)
 		return
 	}
+	var doc map[string]any
+	if err := json.Unmarshal(out.Data, &doc); err != nil {
+		fmt.Println("error:", err)
+		return
+	}
 	fmt.Println(out.At)
+	fmt.Println("selected:", doc["sig"])
 	fmt.Println(out.Next)
 	// Output:
 	// 2026-11-02T12:00:00Z
+	// selected: c123456789abcdef0123456789abcdef01234567
 	// patch the anchor file, write verification.json, run record to land it, then re-run fix
 }
 
@@ -344,7 +352,7 @@ type exampleRule struct {
 	result verdict.CommandResult
 }
 
-// exampleCommander scripts the public Commander seam without a *testing.T.
+// exampleCommander scripts the public Commander seam without a [testing.T].
 type exampleCommander struct {
 	rules []exampleRule
 	got   [][]string
@@ -356,14 +364,7 @@ func (e *exampleCommander) Run(_ context.Context, cmd *verdict.Command) (verdict
 	e.got = append(e.got, cmd.Argv)
 	joined := strings.Join(cmd.Argv, " ")
 	for _, rule := range e.rules {
-		matched := true
-		for _, token := range rule.tokens {
-			if !strings.Contains(joined, token) {
-				matched = false
-				break
-			}
-		}
-		if matched {
+		if containsAll(joined, rule.tokens) {
 			return rule.result, nil
 		}
 	}

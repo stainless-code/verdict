@@ -14,13 +14,7 @@ import {
   VerdictUsageError,
   type DataFor,
 } from "../../clients/ts/dist/index.js";
-import {
-  expect,
-  expectIncludes,
-  expectPresent,
-  line,
-  ok,
-} from "./lib/expect.ts";
+import { expect, expectIncludes, line, ok } from "./lib/expect.ts";
 import { LOCAL_SLUG, REPO, createSandbox } from "./lib/sandbox.ts";
 
 /** The one dimension `id`, or a failure naming what is missing. */
