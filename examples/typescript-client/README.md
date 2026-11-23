@@ -217,8 +217,9 @@ example reports the same fixture.
 `gh` (and `--preview` does too). The sandbox `gh` stub answers exactly one
 argv and refuses everything else, so a fetch example could only pass by
 stubbing the PR reads — covering the stub, not the verb. No runnable offline
-example exists for `fetch`; `fetch-local`, its offline half, is what produces
-these bundles.
+TypeScript example exists for `fetch`; `fetch-local`, its offline half, is
+what produces these bundles. The Go `ExampleClient_Fetch` covers `fetch`
+through the scripted commander instead.
 
 The `post` example needs a POSIX shell for `fixtures/gh`; it is graded on
 Ubuntu in CI and runs under `sh` on macOS. On Windows, use WSL or run `post`
