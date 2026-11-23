@@ -1,0 +1,23 @@
+#!/bin/sh
+# Network-dead stub for the GitHub CLI, installed first on PATH by the
+# TypeScript post example (examples/typescript-client/lib/sandbox.ts).
+#
+# It answers exactly one argv — the live head read `post --dry-run` performs —
+# from $GH_STUB_HEAD, and logs every call to $GH_STUB_LOG. Anything else exits
+# 64 with an UNRECOGNISED line, so a run that reaches a host some other way
+# fails loudly instead of passing quietly. Same shape as the eval suite's
+# stubs (evals/lib/hoststub.sh), so one habit covers both.
+set -eu
+
+: "${GH_STUB_LOG:?GH_STUB_LOG must name the call log}"
+printf '%s\n' "$*" >>"$GH_STUB_LOG"
+
+if [ "$*" = "api repos/acme/app/pulls/4243 --jq .head.sha" ]; then
+  printf '%s\n' "${GH_STUB_HEAD:?GH_STUB_HEAD must carry the fixture head}"
+  exit 0
+fi
+
+printf 'UNRECOGNISED %s\n' "$*" >>"$GH_STUB_LOG"
+printf 'gh-stub: refusing unrecognised argv (this example is offline): %s\n' \
+  "$*" >&2
+exit 64
