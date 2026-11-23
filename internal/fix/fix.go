@@ -30,6 +30,8 @@ const (
 	minSeverityFlag = "--min-severity"
 	verifyCmdFlag   = "--verify-cmd"
 	pathsFlag       = "--paths"
+	testFlag        = "--test"
+	commitFlag      = "--commit"
 	flagSep         = " "
 )
 
@@ -64,7 +66,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 func fixRequest(r *cli.Runner, req Request, f *flags) *fixcore.Request {
 	out := &fixcore.Request{
 		Sig: f.sig, All: f.all, Selected: f.selected, MinSeverity: f.minSeverity,
-		VerifyCmd: f.verifyCmd, Paths: f.paths, Human: r.Human,
+		VerifyCmd: f.verifyCmd, Paths: f.paths, Test: f.test, Commit: f.commit,
+		TestSet: f.testSet, Human: r.Human,
 	}
 	out.ReadRequest = r.Read(core.ReadRequest{
 		Runtime: &core.Runtime{
@@ -79,9 +82,14 @@ type flags struct {
 	sig         string
 	minSeverity string
 	verifyCmd   string
+	test        string
 	paths       []string
 	all         bool
 	selected    bool
+	commit      bool
+	// testSet records that --test was passed, so `--test ""` refuses
+	// instead of running an ordinary fix pass.
+	testSet bool
 }
 
 func (f *flags) rentry() string {
@@ -93,6 +101,8 @@ func (f *flags) rentry() string {
 		{flagSep + sigFlag + flagSep + f.sig, f.sig != ""},
 		{flagSep + "--all", f.all},
 		{flagSep + "--selected", f.selected},
+		{flagSep + testFlag + flagSep + f.test, f.test != ""},
+		{flagSep + commitFlag, f.commit},
 		{flagSep + minSeverityFlag + flagSep + f.minSeverity, f.minSeverity != ""},
 		{flagSep + verifyCmdFlag + flagSep + shellquote.Arg(f.verifyCmd), f.verifyCmd != ""},
 		{pathEntry(f.paths), len(f.paths) > 0},
@@ -109,7 +119,7 @@ func parseFlags(r *cli.Runner, args []string) (*flags, int, bool) {
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		switch a {
-		case sigFlag, minSeverityFlag, verifyCmdFlag, pathsFlag:
+		case sigFlag, minSeverityFlag, verifyCmdFlag, pathsFlag, testFlag:
 			v, next, u := cli.FlagValue(args, i, a, wantOf(a))
 			if u != nil {
 				return f, r.ReportUsage(u), true
@@ -120,10 +130,12 @@ func parseFlags(r *cli.Runner, args []string) (*flags, int, bool) {
 			f.all = true
 		case "--selected":
 			f.selected = true
+		case commitFlag:
+			f.commit = true
 		default:
 			msg := fmt.Sprintf("unknown flag '%s' for fix (want %s <sig>, --all|--selected "+
-				"[%s <s>] [%s <cmd>] [%s <glob>], --json)",
-				a, sigFlag, minSeverityFlag, verifyCmdFlag, pathsFlag)
+				"[%s <sig>] [%s] [%s <s>] [%s <cmd>] [%s <glob>], --json)",
+				a, sigFlag, testFlag, commitFlag, minSeverityFlag, verifyCmdFlag, pathsFlag)
 			return f, r.ReportUsage(&cli.UsageError{Message: msg}), true
 		}
 	}
@@ -159,6 +171,9 @@ func setFixValue(f *flags, flag, val string) {
 		f.minSeverity = val
 	case pathsFlag:
 		f.paths = append(f.paths, val)
+	case testFlag:
+		f.test = val
+		f.testSet = true
 	default:
 		f.verifyCmd = val
 	}

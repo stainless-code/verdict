@@ -201,6 +201,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[ConfigRigorPolicy](), name: "rigorPolicy", closed: true},
 				{typ: reflect.TypeFor[ConfigPacks](), name: "configPacks", closed: true},
 				{typ: reflect.TypeFor[ConfigOrgPack](), name: "configOrgPack", closed: true},
+				{typ: reflect.TypeFor[ConfigTests](), name: "tests", closed: true},
 				{typ: reflect.TypeFor[BlockClause](), name: "blockClause", closed: true},
 				{typ: reflect.TypeFor[ConfigScope](), name: "scope", closed: true, constraints: []member{
 					{keyAnyOf, array(

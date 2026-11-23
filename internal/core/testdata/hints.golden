@@ -156,6 +156,7 @@ needs-confirm	try: re-run with --yes after reviewing the preview, then re-run
 no-open-findings	try: lower --min-severity, widen --paths, or read the bundle with report
 no-patch-match	try: pass --from <local-slug>, or re-fetch the target bundle so identity.json exists
 no-pr-target	try: run the fetch/record step named above first, then re-run
+no-reproduction	try: re-run record with a reproduction block, then re-run fix --test
 no-review-artifact	try: run the printed command yourself (--print) to see why no review.json appeared, then re-run
 no-run-bundle	try: address the cause above, then re-run the same command
 no-selected-findings	try: re-fetch the PR for current reactions, widen --min-severity/--paths, or triage the selected sigs, then re-run
@@ -217,6 +218,7 @@ spec-too-large	try: narrow the --spec file under 150 checklist items or split th
 spend-capped	try: re-run with --consent-over-budget once the spend is approved, or raise the personal spend ceiling (spend.budget_usd) in the operator settings, then re-run
 stale-review-artifact	try: delete the stale review.json (or let the agent overwrite it), then re-run
 store-busy	try: wait for the write holding the store's lock (the OS drops the lock when its holder exits, so a retry after a crash succeeds), then re-run
+test-conflict	try: resolve the named target or symlink by hand, then re-run fix --test
 threads-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
 triage-failed	try: address the cause above, then re-run the same command
 trigger-failed	try: re-fetch the bundle so its base-snapshot policy is complete, then re-run

@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+fix takes --test or --all, not both (--test promotes one reproduced finding's artifact)
+--- files ---

@@ -63,7 +63,10 @@ var publishedSemantics = map[string]string{
 	// packs.org_pack: additive optional closed object (repo, ref required;
 	// path optional) pinning one org-wide central pack set. No existing
 	// property, required key, enum, or type changed.
-	"config.schema.json": "e5837cd630aec9d0878cc44308878465bf0a24b239581600b8ba0c71c2d3ccac",
+	// tests: additive optional top-level object with a draft enum
+	// (off|on-reproduce), closed shape; STA-346 regression-test drafting.
+	// No existing property, required key, enum, or type changed.
+	"config.schema.json": "merged-placeholder-will-be-regenerated",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets

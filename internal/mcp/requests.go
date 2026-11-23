@@ -228,6 +228,8 @@ func decodeFix(req *fixcore.Request, a *args) {
 	a.str(argMinSeverity, &req.MinSeverity)
 	a.str("verifyCmd", &req.VerifyCmd)
 	a.strings(argPaths, &req.Paths)
+	req.TestSet = a.strPresent("test", &req.Test)
+	a.boolean("commit", &req.Commit)
 }
 
 func decodeHandoff(req *handoffcore.Request, a *args) {

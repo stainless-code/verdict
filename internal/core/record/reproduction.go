@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/envsecret"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/repro"
@@ -55,7 +56,7 @@ func (st *state) captureEntryReproduction(entry *jq.Obj, remaining int) int {
 	raw, _ := entry.Get(fieldReproduction)
 	entry.Delete(fieldReproduction)
 	rung, _ := entry.Get(fieldRigor)
-	if rung != rungReproduced {
+	if rung != rungReproduced || !st.draftsEnabled() {
 		return 0
 	}
 	sig, _ := sigString(entry)
@@ -67,6 +68,34 @@ func (st *state) captureEntryReproduction(entry *jq.Obj, remaining int) int {
 
 	entry.Set(fieldReproduction, receipt)
 	return used
+}
+
+// draftsEnabled reports whether regression-test drafting retains reproduced
+// artifacts: tests.draft off disables drafting, on-reproduce (and the unset
+// default) keeps the shipped behavior. The fetch-captured resolution is
+// authoritative; bundles without one fall back to the live base config.
+func (st *state) draftsEnabled() bool {
+	if st.run != nil && st.run.Resolved != nil {
+		return st.run.Resolved.Tests == nil || st.run.Resolved.Tests.Draft != "off"
+	}
+	return st.liveDraftsEnabled()
+}
+
+func (st *state) liveDraftsEnabled() bool {
+	if st.controls == nil {
+		return true
+	}
+	raw, present := st.controls.ReadFile(config.ConfigPath)
+	if !present {
+		return true
+	}
+	cfg, ref := config.ParseBase(&config.BaseConfig{Raw: raw, Present: true})
+	if ref != nil {
+		// An unparsable base config already refused on its own path;
+		// drafting keeps the default rather than adding a second refusal.
+		return true
+	}
+	return cfg.Tests == nil || cfg.Tests.Draft != "off"
 }
 
 func retainedCommand(dir, sig, path, command string, retained bool) (string, error) {
