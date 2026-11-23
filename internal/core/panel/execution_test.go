@@ -446,6 +446,29 @@ func TestExecutionUsesLargestStoredFinderCapture(t *testing.T) {
 	}
 }
 
+func TestExecutionFailsClosedOnOutOfRangeFinderCount(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	retireBoundArtifacts(t, dir)
+	writeStoredFinders(t, dir, 3)
+
+	state := CheckExecution(dir, nil)
+	if !state.CrossRequired {
+		t.Fatalf("CrossRequired = false; want an out-of-range stored count to stay cross-required (state=%+v)", state)
+	}
+}
+
+func TestExecutionStaleReceiptKeepsOneFinderPolicyManual(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	retireBoundArtifacts(t, dir)
+	writeExecutionFile(t, dir, "run.json", []byte(`{"schema_version":"1","finders":0,"resolved":{"defaults":{"values":{"finders":1}}}}`))
+	writeExecutionFile(t, dir, filepath.Join(executionVerification, "verdicts.json"), []byte(`{"execution_id":"stale-execution"}`))
+
+	state := CheckExecution(dir, nil)
+	if state.CrossRequired {
+		t.Fatalf("CrossRequired = true; want an explicit one-finder policy to stay manual over a stale receipt (state=%+v)", state)
+	}
+}
+
 func TestExecutionHonorsCapturedOneFinderDefault(t *testing.T) {
 	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
 	retireBoundArtifacts(t, dir)

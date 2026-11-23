@@ -6,8 +6,11 @@ Panel receipts use version 2 with invoker-assigned checker identities. S5 receip
 
 This is a deliberate pre-v1 break — version 1 panel receipts are refused, with no compatibility decoder. Finder review input remains version 1; execution-bound aggregate review input uses version 2. Execution fields are inactive until a coordinator captures an S5 execution.
 Stored finder receipts now use the largest completed count across `record.json`
-and `post.json`; a captured one-finder policy in `run.json`'s resolved defaults
-takes precedence over stale two-finder receipts when its top-level count is zero.
+and `post.json`, and any capture stating two or more finders requires a cross
+check: an out-of-range count fails closed rather than reading as manual. A
+captured one-finder policy in `run.json`'s resolved defaults takes precedence
+over stale two-finder receipts, including a leftover panel receipt reference,
+when its top-level count is zero.
 
 Changed schemas (with matching generated baselines and semantic pins):
 

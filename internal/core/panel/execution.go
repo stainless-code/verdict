@@ -74,6 +74,10 @@ type Execution struct {
 	// outlives the artifacts the capture bound: a receipt that still states
 	// the execution forbids reading its findings as a manual review.
 	CrossRequired bool
+	// oneFinder records that the resolved capture states a one-finder policy
+	// and no live marker stated a count. Such a capture is manual by
+	// declaration: a leftover receipt must not re-arm cross checks on it.
+	oneFinder bool
 	// finders is the captured count, largest seen first, so a stale receipt
 	// can never downgrade a live two-finder capture, and a one-finder policy
 	// captured over a retired execution reads manual.
@@ -145,7 +149,10 @@ func storedFinders(dir string) int {
 // live one, and a capture that states nothing leaves the mode undecided.
 func (s *Execution) captureFinders(count int) {
 	s.finders = max(s.finders, count)
-	s.CrossRequired = s.finders == twoFinders
+	// At least two finders require a cross check. An out-of-range count fails
+	// closed: treating it as manual would clear the stamp and let a
+	// quote-only finding pass as an unreviewed capture.
+	s.CrossRequired = s.finders >= twoFinders
 }
 
 // liveCapture settles the capture mode from the stored receipt when no live
@@ -164,7 +171,7 @@ func (s *Execution) liveCapture() bool {
 }
 
 func (s *Execution) readReceiptReference() {
-	if s.Active {
+	if s.Active || s.oneFinder {
 		return
 	}
 	receipt, _ := readObject(s.dir, filepath.Join(executionVerification, "verdicts.json"))
@@ -646,6 +653,7 @@ func (s *Execution) readTopology(captured any) {
 		// capture that never ran two finders.
 		if policy, _ := jq.IntOf(readcommon.FieldOf(values, fieldFinders)); policy == 1 {
 			count = policy
+			s.oneFinder = true
 		}
 	}
 	s.Retired = count == 1 && jq.StrOf(readcommon.FieldOf(captured, "superseded")) != ""
