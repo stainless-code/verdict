@@ -1273,6 +1273,16 @@ func (l *blockingLayer) Detail(context.Context, string, string) (*query.View, er
 	return nil, query.ErrNotFound
 }
 
+// Compare reports the bundle missing.
+func (l *blockingLayer) Compare(context.Context, string, string, string) (*query.View, error) {
+	return nil, query.ErrNotFound
+}
+
+// Copy reports the finding missing.
+func (l *blockingLayer) Copy(context.Context, string, string, string) (*query.View, error) {
+	return nil, query.ErrNotFound
+}
+
 // Show reports the finding missing.
 func (l *blockingLayer) Show(context.Context, string, string, string) (*query.View, error) {
 	return nil, query.ErrNotFound

@@ -17,6 +17,15 @@ const pageSource = readFileSync(
   "utf8",
 );
 
+// TextNode stands in for the DOM text node Element.append creates from a
+// string, so a cell that appends label text beside a button keeps its text.
+class TextNode {
+  constructor(text) {
+    this.textContent = String(text);
+    this.children = [];
+  }
+}
+
 class Element {
   constructor(tagName) {
     this.tagName = tagName.toUpperCase();
@@ -42,7 +51,8 @@ class Element {
   }
 
   append(...nodes) {
-    for (const child of nodes) {
+    for (const node of nodes) {
+      const child = typeof node === "string" ? new TextNode(node) : node;
       child.parentNode = this;
       this.children.push(child);
       if (
@@ -63,6 +73,19 @@ class Element {
 
   setAttribute(name, value) {
     this.attributes[name] = String(value);
+  }
+
+  // select and remove are the two calls the clipboard fallback makes on its
+  // scratch textarea; neither carries behaviour the page can observe.
+  select() {
+    this.selected = true;
+  }
+
+  remove() {
+    if (!this.parentNode) return;
+    const at = this.parentNode.children.indexOf(this);
+    if (at >= 0) this.parentNode.children.splice(at, 1);
+    this.parentNode = null;
   }
 
   addEventListener(name, listener) {
@@ -233,6 +256,8 @@ async function createUI({
   hash = "",
   baseURL = "https://example.test/",
   respond,
+  clipboard,
+  execCommand,
 } = {}) {
   const elements = new Map(
     ["title", "message", "content", "live-status", "refresh"].map((id) => [
@@ -274,8 +299,10 @@ async function createUI({
       return windowListeners.get(name)?.(event);
     },
   };
+  const timers = [];
   const document = {
     baseURI: baseURL,
+    body: new Element("body"),
     getElementById(id) {
       return elements.get(id);
     },
@@ -286,6 +313,7 @@ async function createUI({
       return { content: mode };
     },
   };
+  if (execCommand) document.execCommand = execCommand;
   const fetch = async (path, options) => {
     const url = new URL(path, document.baseURI);
     const requestPath = `${url.pathname}${url.search}`;
@@ -303,9 +331,24 @@ async function createUI({
       json: async () => response.body,
     };
   };
+  // The clipboard API is absent unless a test installs it, so the selection
+  // fallback is the path under test by default.
+  const navigator = clipboard ? { clipboard: { writeText: clipboard } } : {};
   vm.runInNewContext(
     appSource,
-    { document, window, location, fetch, EventSource: FakeEventSource, Error },
+    {
+      document,
+      window,
+      location,
+      fetch,
+      EventSource: FakeEventSource,
+      Error,
+      navigator,
+      setTimeout: (fn, ms) => {
+        timers.push({ fn, ms });
+        return timers.length;
+      },
+    },
     { filename: fileURLToPath(new URL("../static/app.js", import.meta.url)) },
   );
   const flush = async () => new Promise((resolve) => setImmediate(resolve));
@@ -320,6 +363,7 @@ async function createUI({
     fetches,
     sources,
     location,
+    timers,
     flush,
     navigate,
   };
@@ -571,6 +615,7 @@ test("decodes a bundle hash segment once before requesting and linking it", asyn
     "#/r/root-123/local%20space%20name",
     "#/r/root-123/local%20space%20name/threads",
     "#/r/root-123/local%20space%20name/gate",
+    "#/r/root-123/local%20space%20name/compare",
   ]);
 });
 
@@ -719,6 +764,39 @@ test("static refresh reloads data.json and displays the newer bundle", async () 
   assert.ok(!ui.elements.get("content").textContent.includes("local-old"));
 });
 
+test("static mode omits the Compare tab the export cannot serve", async () => {
+  const staticFile = {
+    "/v1/bundles": inbox,
+    "/v1/roots/root-123/bundles/local-good": detail,
+  };
+  const staticUI = await createUI({
+    mode: "static",
+    baseURL: "https://example.test/export/index.html",
+    respond: async (path) => ({
+      body: path === "/export/data.json" ? staticFile : envelope({}),
+    }),
+  });
+  await staticUI.navigate("#/r/root-123/local-good");
+  const labels = descendants(staticUI.elements.get("content"))
+    .filter((element) => element.tagName === "A")
+    .map((link) => link.textContent);
+  assert.deepEqual(labels, ["Detail", "Threads", "Gate"]);
+
+  const liveUI = await createUI({
+    respond: respondFrom(
+      new Map([
+        ["/v1/bundles", inbox],
+        ["/v1/roots/root-123/bundles/local-good", detail],
+      ]),
+    ),
+  });
+  await liveUI.navigate("#/r/root-123/local-good");
+  const liveLabels = descendants(liveUI.elements.get("content"))
+    .filter((element) => element.tagName === "A")
+    .map((link) => link.textContent);
+  assert.deepEqual(liveLabels, ["Detail", "Threads", "Gate", "Compare"]);
+});
+
 if (process.env.VERDICT_EXPORT) {
   test("export renders all six views from its data.json", async () => {
     const data = JSON.parse(
@@ -795,4 +873,168 @@ test("links a retained reproduction to its download", async () => {
     "/v1/roots/root-123/bundles/local-good/findings/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/reproduction",
   );
   assert.equal(link?.download, "reproduction.txt");
+});
+
+// compare is one four-bucket comparison envelope, with a row in every bucket
+// the copy column reaches.
+const compare = envelope({
+  compare: {
+    baseline: {
+      name: "local-other",
+      dir: ".verdict/state/local-other",
+      head_sha: null,
+      base_sha: null,
+      recorded_at: null,
+      findings: 1,
+    },
+    counts: { new: 1, persisting: 1, resolved: 0, not_reviewed: 0 },
+    new: [
+      {
+        sig: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        status: "open",
+        severity: "critical",
+        path: "src/app.js",
+        line: 3,
+        claim: "Claim text.",
+        reason: "not-in-baseline",
+      },
+    ],
+    persisting: [],
+    resolved: [],
+    not_reviewed: [],
+  },
+});
+
+const copyPath =
+  "/v1/roots/root-123/bundles/local-good/findings/" +
+  "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/copy";
+
+const copyPayload = envelope({
+  sig: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+  prompt: "Fix the finding below in this repository.",
+  triage:
+    "verdict triage acme/app 9 --sig aaaa --status addressed --rationale 'x'",
+});
+
+// firstButton names the first rendered button carrying one label.
+function firstButton(root, label) {
+  return descendants(root).find(
+    (element) => element.tagName === "BUTTON" && element.textContent === label,
+  );
+}
+
+test("compare lists only same-root baselines and never reuses another root's selection", async () => {
+  const multiRootInbox = envelope({
+    rows: [
+      { root: "root-999", bundle: "local-foreign" },
+      { root: "root-123", bundle: "local-good" },
+      { root: "root-123", bundle: "local-other" },
+      { root: "root-999", bundle: "local-family" },
+    ],
+    counts: { bundles: 4, open: 0, deferred: 0, addressed: 0, terminal: 0 },
+  });
+  const ui = await createUI({
+    respond: async (path) => {
+      if (path === "/v1/bundles") return { body: multiRootInbox };
+      if (path.includes("/compare?")) return { body: compare };
+      return { body: envelope({}) };
+    },
+  });
+
+  await ui.navigate("#/r/root-123/local-good/compare");
+  assert.deepEqual(
+    ui.fetches
+      .map((item) => item.path)
+      .filter((path) => path.includes("/compare?")),
+    ["/v1/roots/root-123/bundles/local-good/compare?baseline=local-other"],
+  );
+  const picker = descendants(ui.elements.get("content")).find(
+    (element) => element.tagName === "SELECT",
+  );
+  assert.deepEqual(
+    picker?.children.map((option) => option.value),
+    ["local-other"],
+  );
+
+  const before = ui.fetches.length;
+  await ui.navigate("#/r/root-999/local-foreign/compare");
+  assert.deepEqual(
+    ui.fetches.slice(before).map((item) => item.path),
+    [
+      "/v1/bundles",
+      "/v1/roots/root-999/bundles/local-foreign/compare?baseline=local-family",
+    ],
+  );
+});
+
+test("clipboard fallback reports copied only when execCommand copied", async () => {
+  for (const [name, execCommand, want] of [
+    ["refused", () => false, "Not copied — clipboard unavailable"],
+    [
+      "throwing",
+      () => {
+        throw new Error("denied");
+      },
+      "Not copied — clipboard unavailable",
+    ],
+    ["accepted", () => true, "Prompt copied"],
+  ]) {
+    const ui = await createUI({
+      hash: "#/r/root-123/local-good/compare/local-other",
+      execCommand,
+      respond: async (path) => {
+        if (path === "/v1/bundles") return { body: inbox };
+        if (path === copyPath) return { body: copyPayload };
+        return { body: compare };
+      },
+    });
+    const button = firstButton(ui.elements.get("content"), "Copy prompt");
+    assert.ok(button, `${name}: no copy button rendered`);
+    await button.dispatch("click");
+    assert.equal(button.textContent, want, name);
+  }
+});
+
+test("clipboard API success writes the payload and reports copied", async () => {
+  const written = [];
+  const ui = await createUI({
+    hash: "#/r/root-123/local-good/compare/local-other",
+    clipboard: async (text) => {
+      written.push(text);
+    },
+    respond: async (path) => {
+      if (path === "/v1/bundles") return { body: inbox };
+      if (path === copyPath) return { body: copyPayload };
+      return { body: compare };
+    },
+  });
+  const button = firstButton(ui.elements.get("content"), "Copy prompt");
+  await button.dispatch("click");
+  assert.deepEqual(written, ["Fix the finding below in this repository."]);
+  assert.equal(button.textContent, "Prompt copied");
+});
+
+test("a finding with no copy payload reports that instead of copying", async () => {
+  const ui = await createUI({
+    hash: "#/r/root-123/local-good/compare/local-other",
+    clipboard: async () => {
+      throw new Error("clipboard must not be written");
+    },
+    respond: async (path) => {
+      if (path === "/v1/bundles") return { body: inbox };
+      if (path === copyPath)
+        return {
+          status: 404,
+          body: {
+            status: 404,
+            reason: "not-found",
+            message: "no such root or bundle",
+          },
+        };
+      return { body: compare };
+    },
+  });
+  const button = firstButton(ui.elements.get("content"), "Copy prompt");
+  await button.dispatch("click");
+  assert.equal(button.textContent, "No copy for this finding");
 });

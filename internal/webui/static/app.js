@@ -12,6 +12,11 @@
   let reconnecting = false;
   let costBy = "repo";
   let precisionBy = "category";
+  // The compare baseline belongs to one root and one bundle: a selection made
+  // on one review must never be spent on another root's comparison.
+  let compareBaseline = "";
+  let compareScope = "";
+  let inboxRows = [];
 
   function node(tag, text, className) {
     const element = document.createElement(tag);
@@ -57,13 +62,18 @@
       const tr = node("tr");
       for (const column of columns) {
         const td = node("td");
-        const value = row?.[column.key];
-        if (column.link && typeof value === "string" && row.root) {
-          const link = node("a", value);
-          link.href = `#/r/${encodeURIComponent(row.root)}/${encodeURIComponent(value)}`;
+        if (column.action) {
+          column.action(row, td);
+        } else if (
+          column.link &&
+          typeof row?.[column.key] === "string" &&
+          row.root
+        ) {
+          const link = node("a", row[column.key]);
+          link.href = `#/r/${encodeURIComponent(row.root)}/${encodeURIComponent(row[column.key])}`;
           td.append(link);
         } else {
-          td.append(cell(value));
+          td.append(cell(row?.[column.key]));
         }
         tr.append(td);
       }
@@ -164,11 +174,13 @@
     const base = `#/r/${encodeHashSegment(parts[1])}/${encodeHashSegment(parts[2])}`;
     const nav = node("nav", undefined, "section-nav");
     nav.setAttribute("aria-label", "Review sections");
-    for (const [suffix, label] of [
+    const links = [
       ["", "Detail"],
       ["/threads", "Threads"],
       ["/gate", "Gate"],
-    ]) {
+    ];
+    if (mode !== "static") links.push(["/compare", "Compare"]);
+    for (const [suffix, label] of links) {
       const link = node("a", label);
       link.href = `${base}${suffix}`;
       const page = suffix.slice(1) || "detail";
@@ -176,6 +188,186 @@
       nav.append(link);
     }
     return nav;
+  }
+
+  // writeClipboard reports whether the text really reached the clipboard. The
+  // selection fallback is the only path left when the async clipboard API is
+  // absent, and document.execCommand answers false (or throws) when the copy
+  // did not happen — a caller that ignored the answer would claim "Copied" for
+  // a no-op.
+  async function writeClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+    if (typeof document.execCommand !== "function") return false;
+    const area = node("textarea");
+    area.value = text;
+    document.body.append(area);
+    area.select();
+    let copied = false;
+    try {
+      copied = document.execCommand("copy") === true;
+    } catch (_) {
+      copied = false;
+    }
+    area.remove();
+    return copied;
+  }
+
+  async function copyPayload(button, root, bundle, sig, kind) {
+    const path =
+      `/v1/roots/${encodeURIComponent(root)}/bundles/` +
+      `${encodeURIComponent(bundle)}/findings/${encodeURIComponent(sig)}/copy`;
+    try {
+      const response = await fetch(path, {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (response.status === 404) {
+        // No payload exists for this finding: the store does not hold it, or
+        // policy withheld it from every published body.
+        button.textContent = "No copy for this finding";
+        return;
+      }
+      if (!response.ok) throw new Error(`Request returned ${response.status}`);
+      const body = await response.json();
+      const payload = envelopeData(body);
+      const text = payload?.[kind];
+      if (!text) {
+        button.textContent = "No prompt for this finding";
+        return;
+      }
+      if (!(await writeClipboard(text))) {
+        button.textContent = "Not copied — clipboard unavailable";
+        return;
+      }
+      const idle = kind === "prompt" ? "Copy prompt" : "Copy triage";
+      button.textContent =
+        kind === "prompt" ? "Prompt copied" : "Command copied";
+      setTimeout(() => {
+        button.textContent = idle;
+      }, 2000);
+    } catch (error) {
+      message.textContent =
+        error instanceof Error ? error.message : String(error);
+      message.className = "error";
+    }
+  }
+
+  function copyButton(label, root, bundle, sig, kind) {
+    const button = node("button", label);
+    button.type = "button";
+    button.addEventListener("click", () =>
+      copyPayload(button, root, bundle, sig, kind),
+    );
+    return button;
+  }
+
+  function compareBuckets(root, bundle) {
+    const columns = [
+      { key: "sig", label: "Signature" },
+      { key: "status", label: "Status" },
+      { key: "severity", label: "Severity" },
+      { key: "path", label: "Path" },
+      { key: "line", label: "Line" },
+      { key: "claim", label: "Claim" },
+      { key: "reason", label: "Reason" },
+    ];
+    const actionable = [
+      ...columns,
+      {
+        label: "Copy",
+        action: (row, td) => {
+          td.append(
+            copyButton("Copy prompt", root, bundle, row.sig, "prompt"),
+            " ",
+            copyButton("Copy triage", root, bundle, row.sig, "triage"),
+          );
+        },
+      },
+    ];
+    return { columns, actionable };
+  }
+
+  // compareChoices names the baselines one comparison may name: the inbox rows
+  // of the same served root, minus the bundle being compared. A cross-root row
+  // is another repository's review, and the compare route refuses it.
+  function compareChoices(root, bundle) {
+    return inboxRows
+      .filter((row) => row.root === root && row.bundle !== bundle)
+      .map((row) => row.bundle);
+  }
+
+  async function renderComparePicker(container, root, bundle) {
+    if (!inboxRows.length) {
+      try {
+        const response = await fetch("/v1/bundles", {
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+        if (!response.ok)
+          throw new Error(`Request returned ${response.status}`);
+        const data = envelopeData(await response.json());
+        inboxRows = Array.isArray(data.rows) ? data.rows : [];
+      } catch (error) {
+        message.textContent =
+          error instanceof Error ? error.message : String(error);
+        message.className = "error";
+        return;
+      }
+    }
+    const choices = compareChoices(root, bundle);
+    if (!choices.length) return;
+    if (!compareBaseline || !choices.includes(compareBaseline))
+      compareBaseline = choices[0];
+    container.append(
+      dimensionPicker(
+        "Compare against",
+        "compare-by",
+        choices,
+        compareBaseline,
+        (value) => {
+          compareBaseline = value;
+          fetchView();
+        },
+      ),
+    );
+  }
+
+  function renderCompare(data, root, bundle) {
+    const compare = data.compare || {};
+    const counts = compare.counts || {};
+    const buckets = compareBuckets(root, bundle);
+    content.append(
+      objectPanel("Baseline", {
+        bundle: compare.baseline?.name,
+        dir: compare.baseline?.dir,
+        head_sha: compare.baseline?.head_sha,
+        recorded_at: compare.baseline?.recorded_at,
+        findings: compare.baseline?.findings,
+      }),
+    );
+    content.append(
+      objectPanel("Counts", {
+        new: counts.new,
+        persisting: counts.persisting,
+        resolved: counts.resolved,
+        not_reviewed: counts.not_reviewed,
+      }),
+    );
+    const pickerHost = node("div");
+    content.append(pickerHost);
+    renderComparePicker(pickerHost, root, bundle);
+    const sections = [
+      ["New", compare.new, buckets.actionable],
+      ["Persisting", compare.persisting, buckets.actionable],
+      ["Resolved", compare.resolved, buckets.columns],
+      ["Not reviewed", compare.not_reviewed, buckets.columns],
+    ];
+    for (const [caption, rows, columns] of sections) {
+      content.append(table(caption, columns, Array.isArray(rows) ? rows : []));
+    }
   }
 
   function dimensionPicker(label, id, values, selected, update) {
@@ -293,23 +485,55 @@
       message.textContent = "Gate status is unknown.";
   }
 
-  function render(view, data) {
+  function decodeHashSegment(segment) {
+    try {
+      return decodeURIComponent(segment || "");
+    } catch (_) {
+      return segment || "";
+    }
+  }
+
+  function render(view, data, routeInfo) {
     content.replaceChildren();
     message.textContent = "";
     message.className = "";
     if (view === "inbox") {
       title.textContent = "Inbox";
       renderInbox(data);
-    } else if (view === "detail" || view === "gate" || view === "threads") {
+    } else if (
+      view === "detail" ||
+      view === "gate" ||
+      view === "threads" ||
+      view === "compare" ||
+      view === "compare-pick"
+    ) {
       title.textContent =
         view === "gate"
           ? "Gate"
           : view === "threads"
             ? "Threads"
-            : "Review detail";
+            : view === "compare" || view === "compare-pick"
+              ? "Compare"
+              : "Review detail";
       content.append(detailNavigation(view));
       if (view === "threads") {
         content.append(threadTable("Review threads", data.threads));
+      } else if (view === "compare-pick") {
+        inboxRows = Array.isArray(data.rows) ? data.rows : [];
+        const choices = compareChoices(
+          routeInfo?.root || "",
+          routeInfo?.bundle || "",
+        );
+        if (!choices.length) {
+          message.textContent =
+            "No other bundle in this root to compare against.";
+        } else {
+          if (!compareBaseline || !choices.includes(compareBaseline))
+            compareBaseline = choices[0];
+          fetchView();
+        }
+      } else if (view === "compare") {
+        renderCompare(data, routeInfo?.root || "", routeInfo?.bundle || "");
       } else {
         renderDetail(data, view === "gate");
       }
@@ -380,6 +604,20 @@
       message.textContent = "Partial view: some values are unknown.";
   }
 
+  // selectBaseline keeps the compare selection inside the review it was made
+  // for: a hash that names a bundle and no baseline starts from nothing when the
+  // active comparison moved to another root or bundle, so one root's baseline is
+  // never requested from another root. An explicit hash segment always wins.
+  function selectBaseline(root, bundle, explicit) {
+    const scope = `${root}\u0000${bundle}`;
+    if (scope !== compareScope) {
+      compareBaseline = "";
+      compareScope = scope;
+    }
+    if (explicit) compareBaseline = explicit;
+    return compareBaseline;
+  }
+
   function route() {
     const parts = location.hash.slice(1).split("/").filter(Boolean);
     if (!parts.length || parts[0] === "bundles")
@@ -395,6 +633,26 @@
         path: `/v1/precision?by=${encodeURIComponent(precisionBy)}`,
       };
     if (parts[0] === "r" && parts.length >= 3) {
+      const root = encodeHashSegment(parts[1]);
+      const bundle = encodeHashSegment(parts[2]);
+      const decoded = {
+        root: decodeHashSegment(parts[1]),
+        bundle: decodeHashSegment(parts[2]),
+      };
+      if (parts[3] === "compare") {
+        const baseline = selectBaseline(
+          decoded.root,
+          decoded.bundle,
+          parts[4] ? decodeHashSegment(parts[4]) : "",
+        );
+        if (!baseline)
+          return { view: "compare-pick", path: "/v1/bundles", ...decoded };
+        return {
+          view: "compare",
+          path: `/v1/roots/${root}/bundles/${bundle}/compare?baseline=${encodeURIComponent(baseline)}`,
+          ...decoded,
+        };
+      }
       const view =
         parts[3] === "threads"
           ? "threads"
@@ -403,7 +661,8 @@
             : "detail";
       return {
         view,
-        path: `/v1/roots/${encodeHashSegment(parts[1])}/bundles/${encodeHashSegment(parts[2])}`,
+        path: `/v1/roots/${root}/bundles/${bundle}`,
+        ...decoded,
       };
     }
     return { view: "inbox", path: "/v1/bundles" };
@@ -434,7 +693,7 @@
         body = await response.json();
       }
       const data = envelopeData(body);
-      if (data) render(current.view, data);
+      if (data) render(current.view, data, current);
     } catch (error) {
       content.replaceChildren();
       title.textContent = "Unable to load view";

@@ -962,3 +962,20 @@ func hasAnyPrefix(s string, prefixes []string) bool {
 	}
 	return false
 }
+
+// TestRenderFixPromptRefusesAWithheldRecord proves the copy path cannot render
+// a policy-withheld finding: the posted body drops such a finding before the
+// renderer, but a copy caller reads one raw store record, so the predicate
+// itself must answer no.
+func TestRenderFixPromptRefusesAWithheldRecord(t *testing.T) {
+	t.Parallel()
+	brief := jq.NewObj("outcome", "Reject expired tokens regardless of leeway.")
+	record := fixPromptFinding("sig-copy", "critical", "open", "verified", "src/auth.go", 44, brief)
+	if got := reviewdoc.RenderFixPrompt(record); !strings.Contains(got, "Fix the finding below in this repository.") {
+		t.Fatalf("eligible record rendered no prompt:\n%q", got)
+	}
+	record.Set("withheld", jq.NewObj("source", "agent", "reason", "operator suppressed", "at", testNow))
+	if got := reviewdoc.RenderFixPrompt(record); got != "" {
+		t.Fatalf("withheld record rendered a prompt:\n%s", got)
+	}
+}

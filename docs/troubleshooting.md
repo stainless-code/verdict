@@ -150,6 +150,12 @@ Cause: the checkout shares no merge-base with `--base`.
 
 Fix: pass a `--base` reachable from this checkout, or run in the right repository.
 
+## `bad-baseline`
+
+Cause: `GET /v1/roots/{root}/bundles/{bundle}/compare` received no `baseline` query parameter, a second query parameter beside it, or a baseline that cannot name a bundle inside the route's own served root — an absolute path, a `..` segment, a path separator, or a path that resolves outside the root.
+
+Fix: pass exactly one `baseline` query parameter naming another bundle in the same root, as a bare bundle name (`?baseline=local-previous`, `?baseline=1234`). A name this root does not hold refuses `missing-compare-bundle` instead.
+
 ## `bad-budget`
 
 Cause: `REVIEW_BUDGET_USD` (or the typed `budget_usd` default) is not above 0, or the scaffolded config fails validation.
