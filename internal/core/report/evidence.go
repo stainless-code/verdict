@@ -186,12 +186,16 @@ func warnEvidence(st *state) {
 // gateEvidenceCheck evaluates the evidence dimension every gate mode carries.
 // Pass requires a current-head receipt with insufficient=false; insufficient
 // fails; missing, stale, or unreadable reads unknown (which fails the gate).
+// A finding the captured execution left cross-ineligible fails first: it may
+// not certify a merge as a confirmed finding, and the check names it instead
+// of leaving the review body's exclusion label to speak alone.
 func gateEvidenceCheck(st *state) gateCheck {
-	if st.flags.Check != "" && st.execution != nil && st.execution.Active && gateHasPendingCross(st) {
-		detail := "a finding within the requested tier lacks a confirmed cross check"
-		return gateCheck{
-			dim:  core.GateDimension{ID: dimEvidence, Status: dimFail, Detail: detail},
-			line: checkPrefix + detail + gateFailSuffix,
+	if st.flags.Check != "" {
+		if detail := pendingCrossDetail(gatePendingCross(st)); detail != "" {
+			return gateCheck{
+				dim:  core.GateDimension{ID: dimEvidence, Status: dimFail, Detail: detail},
+				line: checkPrefix + detail + gateFailSuffix,
+			}
 		}
 	}
 	kind := evidenceMissing
@@ -222,17 +226,35 @@ func gateEvidenceCheck(st *state) gateCheck {
 	}
 }
 
-func gateHasPendingCross(st *state) bool {
+// gatePendingCross counts the visible, open findings inside the gated tier
+// that still owe a cross check. It reads the findings alone: the panel derived
+// their standing from the captured execution, so a nil, finished, or retired
+// execution object must not hide the ones it left unresolved.
+func gatePendingCross(st *state) int {
 	threshold := core.TierRank(st.flags.Check)
+	pending := 0
 	for _, entry := range readcommon.VisibleFindings(st.entries) {
 		if readcommon.StatusOf(entry) == statusOpen &&
 			(st.flags.Category == "" || core.CategoryOf(entry) == st.flags.Category) &&
 			core.TierRank(readcommon.FieldOf(entry, "severity")) <= threshold &&
 			approval.QuoteStatus(entry) == "verified" && !approval.CrossEligible(entry) {
-			return true
+			pending++
 		}
 	}
-	return false
+	return pending
+}
+
+// pendingCrossDetail words the pending-cross failure: one finding keeps the
+// sentence the gate has always carried, and a tally names itself.
+func pendingCrossDetail(pending int) string {
+	switch pending {
+	case 0:
+		return ""
+	case 1:
+		return "a finding within the requested tier lacks a confirmed cross check"
+	default:
+		return fmt.Sprintf("%d findings within the requested tier lack a confirmed cross check", pending)
+	}
 }
 
 func gatePresentEvidence(ev *core.EvidenceReceipt) gateCheck {

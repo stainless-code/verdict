@@ -1984,9 +1984,13 @@ checks at all: the
 
 derived approval withholds on a violation, so a gate passing over one would
 certify a review the decision refuses. `evidence` `pass`
-needs the current head's evidence receipt with `insufficient: false`: an
-insufficient receipt fails, and a missing, stale, or unreadable one reads
-`unknown` — so no gate passes without a receipt for the head it certifies.
+needs the current head's evidence receipt with `insufficient: false` and no
+finding in the requested tier left cross-ineligible: an insufficient receipt
+fails, a pending, unverified, or refuted cross check on a gating finding fails
+(`check: N findings within the requested tier lack a confirmed cross check —
+gate fails`), and a missing, stale, or unreadable receipt reads `unknown` — so
+no gate passes without a receipt, or over a finding whose cross check the
+captured execution left unresolved, even after that execution finished.
 Exit codes mirror `report --check`: 0 pass, 1 fail-or-unknown, 2 usage, 3 tool
 error.
 
@@ -2728,9 +2732,15 @@ both directed checks.
 The S3 body reports completed finders and confirmed, contested, and pending checks.
 Each finding names its origins and checker standing. A potentially blocking
 finding with missing, refuted, or unverified cross evidence does not gate as
-confirmed, and approval is insufficient. Refutations remain visible as bounded
-quoted evidence. `verification.cross` is derived output: removing or forging it
-cannot replace the bound receipts. Finder ids identify processes, not providers.
+confirmed, and approval is insufficient — that holds after the execution
+finishes, and after its artifacts are gone, not only while it is live.
+Refutations remain visible as bounded quoted evidence. `verification.cross` is
+derived output: removing or forging it cannot replace the bound receipts, and a
+stored receipt that still states two completed finders keeps the requirement
+alive when `run.json` is re-fetched. A manual or one-finder capture carries no
+stamp and keeps quote-only eligibility; re-fetching under `--finders 1`
+discards one instead of reading it as a confirmation. Finder ids identify
+processes, not providers.
 
 Cost handoffs identify each launch by execution, finder, phase, and launch id.
 The report sums those phases once, ignoring a root aggregate claim beside them.

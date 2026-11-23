@@ -377,3 +377,76 @@ func assertReceiptChangeRefused(t *testing.T, tamper func(t *testing.T, dir stri
 		t.Fatalf("problem = %q", state.Problem())
 	}
 }
+
+// writeStoredFinders records the finder summary a stored receipt states, the
+// capture that outlives the execution it summarized.
+func writeStoredFinders(t *testing.T, dir string, completed int) {
+	t.Helper()
+	raw, err := json.Marshal(map[string]any{
+		"verification": map[string]any{"finders": map[string]any{"completed": completed}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeExecutionFile(t, dir, "record.json", raw)
+}
+
+// retireBoundArtifacts leaves the shape a finished execution can reach: the
+// run capture and the bound artifacts are gone, and the stored receipt is the
+// only record that two finders ran.
+func retireBoundArtifacts(t *testing.T, dir string) {
+	t.Helper()
+	for _, name := range []string{"launcher.json", filepath.Join("verification", "verdicts.json"), filepath.Join("verification", "plan.json")} {
+		if err := os.Remove(filepath.Join(dir, name)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeExecutionFile(t, dir, "run.json", []byte(`{"schema_version":"1"}`))
+	writeExecutionFile(t, dir, "review.json", []byte(`{"schema_version":"1","findings":[]}`))
+}
+
+func TestExecutionReceiptKeepsCaptureWithoutArtifacts(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	retireBoundArtifacts(t, dir)
+	writeStoredFinders(t, dir, 2)
+	state := CheckExecution(dir, nil)
+	if state.Active || !state.CrossRequired {
+		t.Fatalf("state = %+v, want a captured execution with no live artifacts", state)
+	}
+	entry := executionEntry()
+	state.Stamp([]any{entry})
+	cross := readCross(entry)
+	if readcommon.FieldOf(cross, "status") != "pending" || EligibleCross(cross) {
+		t.Fatalf("stripped cross with no bound artifact = %v, want pending and ineligible", cross)
+	}
+	receipt := &core.EvidenceReceipt{}
+	state.ApplyEvidence(receipt)
+	if !receipt.Insufficient {
+		t.Fatalf("receipt = %+v, want insufficient", receipt)
+	}
+	if problem := state.Problem(); problem != "execution: captured execution artifacts missing" {
+		t.Fatalf("problem = %q", problem)
+	}
+}
+
+func TestExecutionManualCaptureClearsStoredCross(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	retireBoundArtifacts(t, dir)
+	writeExecutionFile(t, dir, "run.json", []byte(`{"schema_version":"1","finders":1}`))
+	entry := executionEntry()
+	verification, _ := entry.Get("verification")
+	stamp, ok := verification.(*jq.Obj)
+	if !ok {
+		t.Fatal("fixture verification is not an object")
+	}
+	stamp.Set("cross", jq.NewObj("execution_id", "execution-A", "status", "confirmed",
+		"expected", []any{"finder-2"}, "checks", []any{jq.NewObj("checker", "finder-2", "verdict", "confirmed", "quote_status", "verified")}))
+	state := CheckExecution(dir, nil)
+	if state.Active || state.CrossRequired {
+		t.Fatalf("state = %+v, want a manual capture", state)
+	}
+	state.Stamp([]any{entry})
+	if cross := readCross(entry); cross != nil {
+		t.Fatalf("manual capture kept cross = %v", cross)
+	}
+}
