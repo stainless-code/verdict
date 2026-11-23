@@ -77,7 +77,10 @@ func runReplay(ctx context.Context, r *cli.Runner, req Request, flags *reportcor
 	if flags.Output != "" || flags.Sarif != "" {
 		return r.ReportUsage(&cli.UsageError{Message: "--policy is read-only; it writes no --output or --sarif"})
 	}
-	replay, ref := reportcore.Replay(reportRequest(r, req, flags))
+	if flags.Check != "" || flags.Completeness || flags.MaxRisk != "" {
+		return r.ReportUsage(&cli.UsageError{Message: "--policy reports a comparison and exits 0; a gate flag (--check, --completeness, --coverage, --max-risk) would have its exit code swallowed, so drop it and read gate_passed instead"})
+	}
+	replay, ref := reportcore.Replay(ctx, reportRequest(r, req, flags))
 	if ref != nil {
 		return refuseGate(r, ref, false)
 	}
@@ -97,10 +100,11 @@ func emitReplayEnvelope(ctx context.Context, r *cli.Runner, req Request, flags *
 	if ref != nil {
 		return refuseGate(r, ref, false)
 	}
-	r.Warnings = resp.Warnings
-	if resp.Data != nil {
-		resp.Data.Replay = replayWire(flags.Policy, replay)
+	if resp.Data == nil {
+		return refuseGate(r, &core.RefusalError{Code: "internal", Message: "report built no data to carry the replay"}, false)
 	}
+	r.Warnings = resp.Warnings
+	resp.Data.Replay = replayWire(flags.Policy, replay)
 	r.Emit("report", req.Repo, req.Pr, resp.At, resp.Next, resp.Warnings, resp.Data.Wire())
 	return cli.ExitOK
 }
@@ -109,12 +113,8 @@ func emitReplayEnvelope(ctx context.Context, r *cli.Runner, req Request, flags *
 // captured-side dimension order so the `changed` list reads in gate order.
 func replayWire(path string, replay *reportcore.PolicyReplay) *core.ReportReplay {
 	moves := make([]core.ReportReplayMove, 0, len(replay.Captured.Dimensions))
-	for _, dim := range replay.Captured.Dimensions {
-		after, ok := dimensionStatus(replay.Candidate.Dimensions, dim.ID)
-		if !ok || after == dim.Status {
-			continue
-		}
-		moves = append(moves, core.ReportReplayMove{ID: dim.ID, Before: dim.Status, After: after})
+	for _, move := range replay.Moves() {
+		moves = append(moves, core.ReportReplayMove{ID: move.ID, Before: move.Before, After: move.After})
 	}
 	return &core.ReportReplay{
 		PolicyPath: path,
@@ -139,12 +139,8 @@ func renderReplay(r *cli.Runner, path string, replay *reportcore.PolicyReplay) {
 	if replay.Candidate.Reason != "" {
 		fmt.Fprintf(r.Human, "  reason    %s\n", replay.Candidate.Reason)
 	}
-	for _, dim := range replay.Captured.Dimensions {
-		after, ok := dimensionStatus(replay.Candidate.Dimensions, dim.ID)
-		if !ok || after == dim.Status {
-			continue
-		}
-		fmt.Fprintf(r.Human, "  changed   %s %s -> %s\n", dim.ID, dim.Status, after)
+	for _, move := range replay.Moves() {
+		fmt.Fprintf(r.Human, "  changed   %s %s -> %s\n", move.ID, move.Before, move.After)
 	}
 }
 
@@ -162,16 +158,6 @@ func approvalLabel(decision reportcore.Decision) string {
 		return "approved"
 	}
 	return "withheld"
-}
-
-// dimensionStatus finds one dimension's status by wire ID.
-func dimensionStatus(dims []core.GateDimension, id string) (string, bool) {
-	for _, dim := range dims {
-		if dim.ID == id {
-			return dim.Status, true
-		}
-	}
-	return "", false
 }
 
 // writeOutputs writes the requested artifacts in shell order: --output
@@ -383,6 +369,9 @@ func parseReportValue(r *cli.Runner, flags *reportcore.Flags, args []string, i i
 		flags.Compare, flags.CompareSet = v, true
 		return next - i + 1, 0, false
 	case "--policy":
+		if v == "" {
+			return 0, r.ReportUsage(&cli.UsageError{Message: "--policy needs a policy file path (an empty value would silently run an ordinary report)"}), true
+		}
 		flags.Policy = v
 		return next - i + 1, 0, false
 	default: // --output, --sarif

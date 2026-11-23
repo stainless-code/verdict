@@ -1,7 +1,9 @@
 package reportcore_test
 
 import (
+	"context"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -45,7 +47,7 @@ func replayOver(t *testing.T, cfg *core.Config, candidate string) *reportcore.Po
 	req := fixture(t, "["+securityFinding+"]")
 	writeCapturedPolicy(t, cfg)
 	writeFile(t, "candidate.json", candidate)
-	replay, ref := reportcore.Replay(&reportcore.Request{ReadRequest: req, Flags: reportcore.Flags{Policy: "candidate.json"}})
+	replay, ref := reportcore.Replay(context.Background(), &reportcore.Request{ReadRequest: req, Flags: reportcore.Flags{Policy: "candidate.json"}})
 	if ref != nil {
 		t.Fatalf("Replay refusal: %v", ref)
 	}
@@ -121,5 +123,27 @@ func TestReplayIdenticalPolicyKeepsDecision(t *testing.T) {
 	if replay.Captured.Approved != replay.Candidate.Approved {
 		t.Fatalf("identical policies disagree on approval: captured=%v candidate=%v",
 			replay.Captured.Approved, replay.Candidate.Approved)
+	}
+}
+
+// TestReplayMovesIncludesAddedAndRemovedDimensions pins the two directions the
+// captured-side-only walk used to hide: a policy that adds a compliance
+// requirement, and one that removes it. Both flip the gate while the shared
+// dimension still reads pass, so an empty change list would contradict the
+// decisions printed beside it.
+func TestReplayMovesIncludesAddedAndRemovedDimensions(t *testing.T) {
+	added := (&reportcore.PolicyReplay{
+		Captured:  reportcore.Decision{GatePassed: true, Approved: true, Dimensions: []core.GateDimension{{ID: "spec", Status: "pass"}}},
+		Candidate: reportcore.Decision{GatePassed: false, Dimensions: []core.GateDimension{{ID: "spec", Status: "pass"}, {ID: "compliance", Status: "fail"}}},
+	}).Moves()
+	if want := []reportcore.DimensionMove{{ID: "compliance", Before: reportcore.AbsentDimension, After: "fail"}}; !slices.Equal(added, want) {
+		t.Fatalf("added-dimension moves = %#v; want %#v", added, want)
+	}
+	removed := (&reportcore.PolicyReplay{
+		Captured:  reportcore.Decision{GatePassed: false, Dimensions: []core.GateDimension{{ID: "spec", Status: "pass"}, {ID: "compliance", Status: "fail"}}},
+		Candidate: reportcore.Decision{GatePassed: true, Dimensions: []core.GateDimension{{ID: "spec", Status: "pass"}}},
+	}).Moves()
+	if want := []reportcore.DimensionMove{{ID: "compliance", Before: "fail", After: reportcore.AbsentDimension}}; !slices.Equal(removed, want) {
+		t.Fatalf("removed-dimension moves = %#v; want %#v", removed, want)
 	}
 }

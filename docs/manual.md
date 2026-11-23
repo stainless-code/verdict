@@ -1805,12 +1805,23 @@ the same schema and resolver as `.verdict/config.json`, then derives the gate
 and the approval twice — once under the policy the run captured, once under the
 candidate — from the same stored findings, checks, and receipts, so every
 difference comes from the policy alone. The replay prints both decisions and
-the gate dimensions whose status changed.
+every gate dimension the candidate added, removed, or moved — a policy that
+introduces a requirement turns compliance from `absent` into a dimension, and
+that counts as a change even though the shared dimensions never moved.
 
-The replay writes no bundle artifact and calls no host: a live dimension the
-run recorded is carried, never re-checked. It exits 0 whatever the candidate
-decides, because it reports a comparison rather than gating this run.
-`--output` and `--sarif` are refused, since a replay writes nothing. Under
+The replay writes no bundle artifact and calls no host: it composes no live
+dimension and re-checks no threads, so a `--live` posture from the original run
+is not re-run here. It exits 0 whatever the candidate decides, because it
+reports a comparison rather than gating this run, and it therefore refuses the
+gate flags (`--check`, `--completeness`, `--max-risk`): accepting one would
+swallow the exit code a caller gates CI on. `--output` and `--sarif` are
+refused for the same reason — a replay writes nothing.
+
+The candidate is resolved from its repository layer over the recorded file set.
+The original run's personal settings, environment overrides, and invocation
+flags are not re-applied, so a capture made with those layers replays as if it
+had none. Those layers carry no requirements — only defaults such as panel or
+budget — so the decisions do not move because of them. Under
 `--json` the run keeps the ordinary report envelope for the captured policy and
 adds one `replay` object — `policy_path`, `captured`, `candidate`, and the
 `changed` dimensions — so a consumer reads a replay by that key rather than by

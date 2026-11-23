@@ -28,12 +28,61 @@ type Decision struct {
 	Approved   bool                 `json:"approved"`
 }
 
+// DimensionMove is one gate dimension whose status differs between the captured
+// and candidate derivations.
+type DimensionMove struct {
+	ID     string `json:"id"`
+	Before string `json:"before"`
+	After  string `json:"after"`
+}
+
+// AbsentDimension names a side that carries no such dimension at all: a policy
+// that adds a requirement turns compliance from nothing into a dimension, and
+// skipping it would print "nothing changed" over a gate that flipped.
+const AbsentDimension = "absent"
+
+// Moves lists every dimension whose status differs, captured order first and
+// then candidate-only dimensions, so a consumer reads the comparison in gate
+// order and never misses the dimension a policy added or removed.
+func (r *PolicyReplay) Moves() []DimensionMove {
+	moves := make([]DimensionMove, 0, len(r.Captured.Dimensions))
+	seen := make(map[string]bool, len(r.Captured.Dimensions))
+	for _, dim := range r.Captured.Dimensions {
+		seen[dim.ID] = true
+		after, ok := dimensionStatus(r.Candidate.Dimensions, dim.ID)
+		if !ok {
+			after = AbsentDimension
+		}
+		if after == dim.Status {
+			continue
+		}
+		moves = append(moves, DimensionMove{ID: dim.ID, Before: dim.Status, After: after})
+	}
+	for _, dim := range r.Candidate.Dimensions {
+		if seen[dim.ID] {
+			continue
+		}
+		moves = append(moves, DimensionMove{ID: dim.ID, Before: AbsentDimension, After: dim.Status})
+	}
+	return moves
+}
+
+// dimensionStatus finds one dimension's status by wire ID.
+func dimensionStatus(dims []core.GateDimension, id string) (string, bool) {
+	for _, dim := range dims {
+		if dim.ID == id {
+			return dim.Status, true
+		}
+	}
+	return "", false
+}
+
 // Replay derives the bundle's decision under its captured policy and under the
 // candidate policy named by Flags.Policy. The candidate is parsed and resolved
 // by the same code that resolves a repository config, so a malformed file
 // refuses with the parser's own codes; an unreadable file refuses as a bad
 // flag value.
-func Replay(req *Request) (*PolicyReplay, *core.RefusalError) {
+func Replay(ctx context.Context, req *Request) (*PolicyReplay, *core.RefusalError) {
 	if req.Flags.Policy == "" {
 		return nil, replayRefusal("--policy needs a policy file to replay")
 	}
@@ -46,7 +95,7 @@ func Replay(req *Request) (*PolicyReplay, *core.RefusalError) {
 		flags:    flags,
 		warnings: append([]string{}, req.Warnings...),
 	}
-	if ref := loadState(context.Background(), st); ref != nil {
+	if ref := loadState(ctx, st); ref != nil {
 		return nil, ref
 	}
 	if ref := loadRunPolicy(st); ref != nil {
@@ -73,6 +122,12 @@ func Replay(req *Request) (*PolicyReplay, *core.RefusalError) {
 func deriveDecision(st *state, resolved *config.Resolved) Decision {
 	derived := *st
 	derived.warnings = nil
+	// Silence the operator's observer on the copy: a derivation that warns
+	// would otherwise print each warning twice, once per policy, and leave the
+	// adapter's own warning list holding duplicates.
+	req := *st.req
+	req.Progress = nil
+	derived.req = &req
 	derived.compliance = nil
 	derived.decisionCompliance = nil
 	derived.requiredGaps = nil

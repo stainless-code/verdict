@@ -5,7 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
-	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -30,6 +30,49 @@ func TestUnknownFlagListsAllReportFlags(t *testing.T) {
 		if !strings.Contains(got, flag) {
 			t.Errorf("unknown-flag message %q missing %s", got, flag)
 		}
+	}
+}
+
+// TestPolicyReplayRefusesGateFlags proves a gate flag cannot ride along with
+// --policy: the replay exits 0 by contract, so accepting --check would swallow
+// the very exit code a caller gates CI on.
+func TestPolicyReplayRefusesGateFlags(t *testing.T) {
+	for _, args := range [][]string{
+		{"--policy", "p.json", "--check", "critical"},
+		{"--policy", "p.json", "--completeness"},
+		{"--policy", "p.json", "--max-risk", "high"},
+	} {
+		t.Run(strings.Join(args[2:], ""), func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			var out, diag bytes.Buffer
+			r := &cli.Runner{
+				Out: &out, Human: &out, Diag: &diag,
+				Cmd: "report", Repo: "acme/app", Pr: "1", Effective: cli.Defaults(),
+				Now: func() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) },
+			}
+			if code := Run(context.Background(), r, args, Request{Repo: "acme/app", Pr: "1"}); code != cli.ExitUsage {
+				t.Fatalf("exit = %d; want %d", code, cli.ExitUsage)
+			}
+			if !strings.Contains(diag.String(), "swallowed") {
+				t.Fatalf("usage text does not explain the refusal: %q", diag.String())
+			}
+		})
+	}
+}
+
+// TestPolicyReplayRefusesAnEmptyPath proves an explicitly empty --policy is a
+// usage error, not a silent fall back to an ordinary report: a caller passing
+// an unset variable must not believe it replayed.
+func TestPolicyReplayRefusesAnEmptyPath(t *testing.T) {
+	t.Chdir(t.TempDir())
+	var out, diag bytes.Buffer
+	r := &cli.Runner{
+		Out: &out, Human: &out, Diag: &diag,
+		Cmd: "report", Repo: "acme/app", Pr: "1", Effective: cli.Defaults(),
+		Now: func() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) },
+	}
+	if code := Run(context.Background(), r, []string{"--policy", ""}, Request{Repo: "acme/app", Pr: "1"}); code != cli.ExitUsage {
+		t.Fatalf("exit = %d; want %d", code, cli.ExitUsage)
 	}
 }
 
@@ -98,8 +141,28 @@ func TestReplayWireKeepsGateOrder(t *testing.T) {
 		Candidate:  core.ReportReplaySide{GatePassed: false, Reason: "open critical finding"},
 		Changed:    []core.ReportReplayMove{{ID: "compliance", Before: "pass", After: "fail"}},
 	}
-	if !reflect.DeepEqual(got, want) {
+	if got.PolicyPath != want.PolicyPath || got.Captured != want.Captured || got.Candidate != want.Candidate {
 		t.Fatalf("replay wire = %#v; want %#v", got, want)
+	}
+	if !slices.Equal(got.Changed, want.Changed) {
+		t.Fatalf("replay wire changed = %#v; want %#v", got.Changed, want.Changed)
+	}
+}
+
+// TestReplayWireSerializesAnEmptyChangeList pins the unchanged replay: the
+// schema requires `changed` to be an array, so an identical candidate must
+// serialize `[]` rather than a nil list the encoder would render as null.
+func TestReplayWireSerializesAnEmptyChangeList(t *testing.T) {
+	dims := []core.GateDimension{{ID: "spec", Status: "pass"}, {ID: "compliance", Status: "pass"}}
+	got := replayWire("candidate.json", &reportcore.PolicyReplay{
+		Captured:  reportcore.Decision{GatePassed: true, Approved: true, Dimensions: dims},
+		Candidate: reportcore.Decision{GatePassed: true, Approved: true, Dimensions: dims},
+	})
+	if got.Changed == nil {
+		t.Fatal("changed is nil; an unchanged replay must serialize [] so the schema's array requirement holds")
+	}
+	if len(got.Changed) != 0 {
+		t.Fatalf("changed = %#v; want empty", got.Changed)
 	}
 }
 
