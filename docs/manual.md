@@ -1799,6 +1799,20 @@ project refuses `bad-compare`, and so do two PR bundles whose URLs name
 different hosts even when the project path matches. A PR bundle without a URL
 falls back to the positional's repository.
 
+`report --policy <file>` answers a fourth question from the same read: what
+would this bundle decide under a different policy? It parses the candidate with
+the same schema and resolver as `.verdict/config.json`, then derives the gate
+and the approval twice — once under the policy the run captured, once under the
+candidate — from the same stored findings, checks, and receipts, so every
+difference comes from the policy alone. The replay prints both decisions and
+the gate dimensions whose status changed.
+
+The replay writes no bundle artifact and calls no host: a live dimension the
+run recorded is carried, never re-checked. It exits 0 whatever the candidate
+decides, because it reports a comparison rather than gating this run.
+`--output` and `--sarif` are refused, since a replay writes nothing; `--json` is
+refused until the replay payload has its own envelope schema.
+
 The resolved/not-reviewed split is deliberately strict, because a false
 `resolved` hides a real bug. A baseline-only signature reaches `resolved`
 only through one of these proofs:
