@@ -44,6 +44,8 @@ const (
 	resumeRecordKey   = "resume"
 	unionPhase        = "union"
 	statusInProgress  = "in-progress"
+	statusComplete    = "complete"
+	statusPartial     = "partial"
 	keyFullDiffSHA256 = "full_diff_sha256"
 	keyRunJSONSHA256  = "run_json_sha256"
 	keyInputsSHA256   = "inputs_sha256"
@@ -720,7 +722,7 @@ func (c *coordinator) checkResumeRecord(manifest *jq.Obj, record *launcherResume
 		return c.st.refuse(codeCannotResume,
 			"the launcher record names no status, so there is no execution to continue — "+
 				"re-run without --resume")
-	case status != statusInProgress && status != "complete" && status != "partial":
+	case status != statusInProgress && status != statusComplete && status != statusPartial:
 		return c.st.refuse(codeCannotResume, fmt.Sprintf(
 			"the launcher record status %q is not a resumable execution — re-run without --resume", status))
 	case record.ExecutionID != jq.StrOf(readcommon.FieldOf(manifest, keyExecutionID)):
