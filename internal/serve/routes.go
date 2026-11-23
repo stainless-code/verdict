@@ -15,8 +15,9 @@ const (
 	verbShow  = "show"
 )
 
-// route is one table row. The table registers GET only; ServeMux adds HEAD
-// and answers every other method with 405 and an Allow header.
+// route is one table row. The table registers GET only by default; an
+// interactive server adds two POST rows. ServeMux adds HEAD and answers
+// every other method with 405 and an Allow header.
 type route struct { //nolint:govet // method/pattern/handler reads as the table row
 	Method  string
 	Pattern string
@@ -64,7 +65,30 @@ func (s *Server) routes() []route {
 			Method: http.MethodGet, Pattern: "/v1/events", Handler: s.guard(s.handleEvents),
 		})
 	}
+	// The two write paths exist as GET placeholders so the mux answers a
+	// non-GET method with 405 and an Allow header instead of a port-scan
+	// 404: without --interactive the writes are refused, never silently
+	// absent. Interactive adds the POST rows beside the placeholders.
+	routes = append(routes,
+		route{Method: http.MethodGet, Pattern: "/v1/triage", Handler: http.HandlerFunc(s.handleWriteGone)},
+		route{Method: http.MethodGet, Pattern: "/v1/kb/promote", Handler: http.HandlerFunc(s.handleWriteGone)},
+	)
+	if s.cfg.Interactive {
+		routes = append(routes,
+			route{Method: http.MethodPost, Pattern: "/v1/triage", Handler: s.guardWrite(s.handleTriage)},
+			route{Method: http.MethodPost, Pattern: "/v1/kb/promote", Handler: s.guardWrite(s.handleKBPromote)},
+		)
+	}
 	return routes
+}
+
+// handleWriteGone is the placeholder behind the two write paths on a
+// non-interactive server: the writes stay refused with the default 405 and
+// an Allow header, and a GET there gets the same refusal.
+func (s *Server) handleWriteGone(w http.ResponseWriter, _ *http.Request) {
+	w.Header().Set("Allow", "GET, HEAD")
+	s.problem(w, http.StatusMethodNotAllowed, "method-not-allowed",
+		"this server is read-only; restart with --interactive to enable local writes")
 }
 
 func (s *Server) handleCost(w http.ResponseWriter, r *http.Request) {
@@ -96,7 +120,7 @@ func (s *Server) handlePrecision(w http.ResponseWriter, r *http.Request) {
 func (s *Server) aggregateDimension(w http.ResponseWriter, r *http.Request, view string) (string, bool) {
 	values, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil || len(values) != 1 || len(values["by"]) != 1 {
-		s.writeRefusal(w, verbServe, "", "", &core.RefusalError{
+		s.writeRefusal(w, verbServe, "", &core.RefusalError{
 			Code: "bad-by", Message: fmt.Sprintf("serve %s accepts one by query parameter", view),
 		})
 		return "", false
@@ -146,9 +170,17 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	s.serveIndex(w)
 }
 
-// handleHealth publishes the process posture.
+// handleHealth publishes the process posture. In interactive mode it also
+// advertises the mode and the per-session CSRF token the UI writes with.
+// The token never rides a URL or the static data.json export, which reads
+// no health view.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
-	s.writeView(w, verbServe, s.layer.Health(r.Context()))
+	view := s.layer.Health(r.Context())
+	if s.cfg.Interactive {
+		view.Data.Set("interactive", true)
+		view.Data.Set("csrf", s.csrf)
+	}
+	s.writeView(w, verbServe, view)
 }
 
 // handleRoots publishes the served roots.
@@ -200,7 +232,7 @@ func (s *Server) baselineParam(
 ) (string, bool) {
 	values, err := url.ParseQuery(r.URL.RawQuery)
 	if err != nil || len(values) != 1 || len(values["baseline"]) != 1 {
-		s.writeRefusal(w, verbServe, "", "", &core.RefusalError{
+		s.writeRefusal(w, verbServe, "", &core.RefusalError{
 			Code:    "bad-baseline",
 			Message: "serve compare accepts exactly one baseline query parameter naming a bundle in the same root",
 		})

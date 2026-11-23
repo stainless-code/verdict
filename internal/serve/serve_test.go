@@ -417,8 +417,9 @@ func TestNonLoopbackWarningNamesPlainHTTP(t *testing.T) {
 	}
 }
 
-// TestRouteTableIsGetOnly walks the one registration point: a non-GET row
-// must fail the table's contract.
+// TestRouteTableIsGetOnlyByDefault walks the one registration point: the
+// default table is GET only, and only an interactive server adds the two
+// POST rows.
 func TestRouteTableIsGetOnly(t *testing.T) {
 	t.Parallel()
 	root := writeFixture(t, fixtureFiles())
@@ -430,6 +431,28 @@ func TestRouteTableIsGetOnly(t *testing.T) {
 		if item.Method != http.MethodGet {
 			t.Errorf("route %s %s is not GET", item.Method, item.Pattern)
 		}
+	}
+}
+
+// TestRouteTableInteractiveAddsTwoPosts pins the interactive table: the two
+// POST rows join the GET rows, and no other POST row exists.
+func TestRouteTableInteractiveAddsTwoPosts(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	server, err := New(&Config{
+		Root: root, Port: testPort, Token: testToken, Now: fixedNow, Interactive: true,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	got := map[string]bool{}
+	for _, item := range server.routes() {
+		if item.Method == http.MethodPost {
+			got[item.Pattern] = true
+		}
+	}
+	if len(got) != 2 || !got["/v1/triage"] || !got["/v1/kb/promote"] {
+		t.Errorf("POST rows = %v, want /v1/triage and /v1/kb/promote only", got)
 	}
 }
 
@@ -1295,6 +1318,17 @@ func (l *blockingLayer) Cost(context.Context, string) (*query.View, error) {
 func (l *blockingLayer) Precision(context.Context, string) (*query.View, error) {
 	return nil, query.ErrNotFound
 }
+
+// RootByID refuses every id.
+func (l *blockingLayer) RootByID(string) (string, bool) { return "", false }
+
+// ResolveBundle reports the bundle missing.
+func (l *blockingLayer) ResolveBundle(string, string) (string, string, error) {
+	return "", "", query.ErrNotFound
+}
+
+// Invalidate is a no-op: the stub holds no cache.
+func (l *blockingLayer) Invalidate() {}
 
 // TestShutdownExpiryClosesActiveConnections proves a drain that outlasts its
 // bound terminates the in-flight request, so Serve returns instead of leaving

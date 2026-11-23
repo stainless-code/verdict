@@ -2488,10 +2488,13 @@ Each `start` line records `repo` (the canonical repository root), `verb`, `chann
 
 `verdict serve` starts one read-only HTTP surface over the current repository's
 bundles. With `--root`, it discovers every repository below that directory.
-The server binds `127.0.0.1` on a kernel-assigned port by default. Pass `--port`
-to pin the port or `--host` to bind another interface. The server prints one
-tokenised start URL and stops on Ctrl-C (exit 3). It never fetches, posts, runs
-a model, or writes a store.
+With `--interactive`, it adds two local-only write endpoints — `POST
+/v1/triage` and `POST /v1/kb/promote` — through the same triage and learn
+services the CLI calls. The server binds `127.0.0.1` on a kernel-assigned
+port by default. Pass `--port` to pin the port or `--host` to bind another
+interface. The server prints one tokenised start URL and stops on Ctrl-C
+(exit 3). It never fetches, posts, runs a model, or reaches the network;
+without `--interactive`, it writes no store at all.
 
 The browser UI has an inbox, review detail with its evidence ledger, threads,
 cost, precision, and a gate panel. It reads the same `/v1` envelopes as other
@@ -2535,8 +2538,10 @@ HTTP, with the token and session cookie unencrypted), `--port <n>` (default
 start; the flag warns it is visible in `ps` and shell history), `--check
 <tier>` (the gate tier the bundle detail composes; default `critical`),
 `--max-bundles <n>` (default 500), `--interval <duration>` (default `1s`, minimum
-`100ms`), `--sweep <duration>` (default `30s`, at least `--interval`), and
-`--no-watch` (disable polling and remove `/v1/events`). Atomic writes are visible
+`100ms`), `--sweep <duration>` (default `30s`, at least `--interval`),
+`--no-watch` (disable polling and remove `/v1/events`), and `--interactive`
+(register the two local-only write endpoints; default off, and the default
+surface stays GET-only). Atomic writes are visible
 within one tick; non-atomic in-place edits are visible within one sweep. A tick
 checks the state directory, each bundle directory, existing `chunks/`
 directories, and `.verdict/overrides/`; a sweep fingerprints directory entries.
@@ -2561,18 +2566,20 @@ than from history.
 
 **Routes** (GET, plus HEAD from the mux):
 
-| Route                                                       | Envelope                                                                           |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `GET /v1/health`                                            | `serve` — version, roots, watch state, interval, cache counters, `read_only: true` |
-| `GET /v1/roots`                                             | `serve` — the served roots with counts, `truncated`, `skipped`, `discovery`        |
-| `GET /v1/bundles`                                           | `serve` — inbox rows, portfolio counts, `partial`, `sources[]`, `errors[]`         |
-| `GET /v1/cost?by=repo\|week\|model`                         | `serve` — cost buckets and totals, with `partial`, `sources[]`, `errors[]`         |
-| `GET /v1/precision?by=category\|tier`                       | `serve` — stored-join outcomes; `fixed` is `null` and no rate is printed           |
-| `GET /v1/roots/{root}/bundles/{bundle}`                     | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                    |
-| `GET /v1/roots/{root}/bundles/{bundle}/compare`             | `serve` — `data.compare` against `?baseline={bundle}`; `bad-baseline` refuses      |
-| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}`      | `show` — byte-identical `data` to `show --json`                                    |
-| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}/copy` | `serve` — `data.{prompt,triage}` copy payloads (read-only)                         |
-| `GET /v1/events`                                            | SSE invalidations; absent with `--no-watch`                                        |
+| Route                                                       | Envelope                                                                                                                                      |
+| ----------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /v1/health`                                            | `serve` — version, roots, watch state, interval, cache counters, `read_only: true`; with `--interactive`, also `interactive: true` and `csrf` |
+| `GET /v1/roots`                                             | `serve` — the served roots with counts, `truncated`, `skipped`, `discovery`                                                                   |
+| `GET /v1/bundles`                                           | `serve` — inbox rows, portfolio counts, `partial`, `sources[]`, `errors[]`                                                                    |
+| `GET /v1/cost?by=repo\|week\|model`                         | `serve` — cost buckets and totals, with `partial`, `sources[]`, `errors[]`                                                                    |
+| `GET /v1/precision?by=category\|tier`                       | `serve` — stored-join outcomes; `fixed` is `null` and no rate is printed                                                                      |
+| `GET /v1/roots/{root}/bundles/{bundle}`                     | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                                                                               |
+| `GET /v1/roots/{root}/bundles/{bundle}/compare`             | `serve` — `data.compare` against `?baseline={bundle}`; `bad-baseline` refuses                                                                 |
+| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}`      | `show` — byte-identical `data` to `show --json`                                                                                               |
+| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}/copy` | `serve` — `data.{prompt,triage}` copy payloads (read-only)                                                                                    |
+| `GET /v1/events`                                            | SSE invalidations; absent with `--no-watch`                                                                                                   |
+| `POST /v1/triage`                                           | `serve` — `data.{sig,status}`; interactive only (see below)                                                                                   |
+| `POST /v1/kb/promote`                                       | `serve` — `data.rule` appends one learn rule; interactive only (see below)                                                                    |
 
 The `bundles` SSE event carries one compact envelope with the root, detector
 (`tick` or `sweep`), changed and removed bundle names, and `truncated`. Events
@@ -2591,8 +2598,10 @@ listing keeps its row with `null` counts and an `errors[]` entry, and any total
 over it is `null` and `partial: true` — never `0`. A root whose `.verdict/state`
 is not a directory, or will not list, adds one `corrupt-store` row naming it
 rather than reading as a root with no bundles. Transport errors are a
-separate vocabulary: `400` (`token-in-query`, `bad-glob`), `401`, `403`
-(Host/Origin), `404`, and `405` with `Allow: GET, HEAD`. Every response carries
+separate vocabulary: `400` (`token-in-query`, `bad-glob`, `bad-content-type`,
+`bad-body`), `401`, `403` (Host/Origin, and `bad-csrf` on a write with a
+missing, empty, or wrong `X-Verdict-CSRF` token), `404`, and `405` with `Allow:
+GET, HEAD` (and `method-not-allowed` on the write paths' own GET). Every response carries
 the strict CSP (`default-src 'self'`, no inline script or style), no referrer,
 `nosniff`, same-origin resource and opener policies, and `no-store`; no CORS
 header is ever emitted, and only loopback `Host`/`Origin` spellings are
@@ -2600,6 +2609,31 @@ accepted (the DNS-rebinding gate). A wildcard bind (`--host 0.0.0.0` or `::`)
 still allowlists only the loopback names, so a LAN client needs a concrete
 interface address such as `--host 192.168.1.10`. `/v1` is the only version: a
 breaking change becomes `/v2`.
+
+**Interactive writes.** With `--interactive`, the two write endpoints are
+exact local mirrors of the CLI: `POST /v1/triage` accepts `root`, `bundle`,
+`sig`, `status` (`open|addressed|wont-fix|false-positive|deferred`),
+`rationale`, and `force`, and runs the triage service over the bundle's
+`findings.json` (including its KB credit); `POST /v1/kb/promote` accepts
+`root`, `rule`, `scope`, `rigor` (default `pointed`), `provenance`, and
+`id`, and runs the learn service's append over the root's `.verdict/kb.jsonl`.
+Same validation, same atomic store locking, byte-identical files — the
+transport adds no business logic. Every write is gated, in order, by the
+session cookie or bearer token, a per-session `X-Verdict-CSRF` header
+(constant-time compared; minted per process start, published only in the
+`GET /v1/health` envelope under `csrf`, never in a URL and never in the static
+`data.json` export, which reads no health view), a present allowlisted
+`Origin` (an absent Origin is refused on writes, though reads accept it), and
+a strict `Content-Type: application/json` with a 64 KiB body cap and no unknown
+fields. Any failed gate is a transport refusal before any store is read or
+written, and a confined `root`/`bundle` is resolved through the same
+path-traversal, symlink, and served-set confinement as a read — an unserved
+root is `404 not-found`, a traversal bundle is the shared bundle-name refusal.
+A triage or promote refusal the service raises is the usual `200` typed
+envelope (`error.code`), never a `5xx`. The embedded UI shows triage controls
+on Detail and Compare findings and a KB promotion form only when `/v1/health`
+advertises `interactive: true` — never in `static` mode — and reads the
+operator's result or refusal back from the status line.
 
 A path carrying a traversal segment, a backslash, or a line break — a control
 rune, U+2028, or U+2029 — is refused before routing with the `404` `no such

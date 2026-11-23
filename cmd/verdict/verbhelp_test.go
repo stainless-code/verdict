@@ -54,7 +54,11 @@ func TestVerifyHelpNamesGroupValidationFlags(t *testing.T) {
 
 // TestServeUsageListsEventsRoute pins the route in the usage text.
 func TestServeUsageListsEventsRoute(t *testing.T) {
-	const want = "    .../findings/{sig}, /v1/events (--no-watch removes it). GET only, no CORS, no writes; Ctrl-C exits 3.\n"
+	const want = "    .../findings/{sig}, /v1/events (--no-watch removes it). GET plus HEAD only, no CORS,\n" +
+		"    no writes unless --interactive adds POST /v1/triage and POST /v1/kb/promote (local\n" +
+		"    triage and KB promotion through the same services the CLI calls, gated by the\n" +
+		"    per-session X-Verdict-CSRF token /v1/health publishes, a present allowlisted Origin,\n" +
+		"    and strict application/json bodies); Ctrl-C exits 3.\n"
 	if !strings.Contains(usageText(), want) {
 		t.Fatalf("serve usage route line = %q, want %q", usageText(), want)
 	}
