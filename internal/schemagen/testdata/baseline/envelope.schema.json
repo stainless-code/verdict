@@ -695,6 +695,9 @@
         "gate": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportGate" }]
         },
+        "replay": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportReplay" }]
+        },
         "receipt": { "$ref": "#/$defs/provenanceReceipt" },
         "truncated": {
           "type": ["boolean", "array"],
@@ -1017,6 +1020,40 @@
         "gaps",
         "satisfied"
       ],
+      "additionalProperties": true
+    },
+    "reportReplay": {
+      "type": "object",
+      "properties": {
+        "policy_path": { "type": "string" },
+        "captured": { "$ref": "#/$defs/reportReplaySide" },
+        "candidate": { "$ref": "#/$defs/reportReplaySide" },
+        "changed": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reportReplayMove" }
+        }
+      },
+      "required": ["policy_path", "captured", "candidate", "changed"],
+      "additionalProperties": true
+    },
+    "reportReplaySide": {
+      "type": "object",
+      "properties": {
+        "reason": { "type": "string" },
+        "gate_passed": { "type": "boolean" },
+        "approved": { "type": "boolean" }
+      },
+      "required": ["gate_passed", "approved"],
+      "additionalProperties": true
+    },
+    "reportReplayMove": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "before": { "type": "string" },
+        "after": { "type": "string" }
+      },
+      "required": ["id", "before", "after"],
       "additionalProperties": true
     },
     "reportRisk": {

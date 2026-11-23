@@ -52,9 +52,6 @@ const (
 	// findersOne is the hard-locked finder topology: a demo is one fast pass,
 	// and there is no flag to widen it.
 	findersOne = "1"
-	// launchTimeoutS is the launcher's watchdog budget, the same 300 s the run
-	// verb gives a launch by default. A demo never waits longer than that.
-	launchTimeoutS = "300"
 	// ghHostname is the host whose login the demo probes.
 	ghHostname = "github.com"
 	// ghNoRefresh keeps the login probe from refreshing stored credentials, so
@@ -113,6 +110,10 @@ type Request struct { //nolint:govet // field grouping documents the request sur
 	Target string
 	// Agent is the operator's --agent override; empty auto-detects.
 	Agent string
+	// TimeoutRaw is --timeout: the launcher's watchdog budget in seconds. Empty
+	// keeps the run verb's default; the run service refuses a value that is not
+	// a positive number.
+	TimeoutRaw string
 	// Checkout is the reviewed checkout: the caller's git top level for the
 	// local form, "" for a URL review.
 	Checkout string `json:"-"`
@@ -679,6 +680,16 @@ func present(look func(string) (string, error), tool string) bool {
 	return err == nil
 }
 
+// watchdogBudget is the launcher's budget: the seconds --timeout named, else
+// the run verb's default. The raw value rides to the run service, which refuses
+// a non-positive or non-numeric value as bad-timeout.
+func watchdogBudget(raw string) string {
+	if raw == "" {
+		return runcore.DefaultTimeoutS
+	}
+	return raw
+}
+
 // launch runs the operator's agent against the bundle with a single finder.
 func launch(
 	ctx context.Context, req *Request, b *bundle, agent string, warnings []string,
@@ -693,7 +704,7 @@ func launch(
 		ReadRequest: read,
 		Agent:       agent,
 		FindersRaw:  findersOne,
-		TimeoutRaw:  launchTimeoutS,
+		TimeoutRaw:  watchdogBudget(req.TimeoutRaw),
 		Checkout:    b.checkout,
 		LookPath:    req.LookPath,
 		Environ:     req.Environ,

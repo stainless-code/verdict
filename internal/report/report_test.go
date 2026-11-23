@@ -5,11 +5,14 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
+	reportcore "github.com/stainless-code/verdict/internal/core/report"
 )
 
 func TestUnknownFlagListsAllReportFlags(t *testing.T) {
@@ -22,11 +25,149 @@ func TestUnknownFlagListsAllReportFlags(t *testing.T) {
 	got := diag.String()
 	for _, flag := range []string{
 		"--status", "--kind", "--category", "--output", "--sarif",
-		"--include-withheld", "--cost", "--risk", "--max-risk", "--check", "--compare", "--completeness", "--live", "--json",
+		"--include-withheld", "--cost", "--risk", "--max-risk", "--check", "--compare", "--completeness", "--live", "--json", "--policy",
 	} {
 		if !strings.Contains(got, flag) {
 			t.Errorf("unknown-flag message %q missing %s", got, flag)
 		}
+	}
+}
+
+// replayUsage runs one report argv that must be refused on usage and returns
+// the diagnostic text, so each refusal test states only its flag and the words
+// the operator has to read.
+func replayUsage(t *testing.T, args ...string) string {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	var out, diag bytes.Buffer
+	r := &cli.Runner{
+		Out: &out, Human: &out, Diag: &diag,
+		Cmd: "report", Repo: "acme/app", Pr: "1", Effective: cli.Defaults(),
+		Now: func() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) },
+	}
+	if code := Run(context.Background(), r, args, Request{Repo: "acme/app", Pr: "1"}); code != cli.ExitUsage {
+		t.Fatalf("exit = %d; want %d", code, cli.ExitUsage)
+	}
+	return diag.String()
+}
+
+// TestPolicyReplayRefusesCompare pins that --compare cannot ride along with
+// --policy: the replay prints its own two-sided comparison and would drop the
+// second bundle silently, so an empty and a named baseline alike are usage
+// errors rather than a replay that answers a different question.
+func TestPolicyReplayRefusesCompare(t *testing.T) {
+	for _, baseline := range []string{"", "other-bundle"} {
+		t.Run(baseline, func(t *testing.T) {
+			got := replayUsage(t, "--policy", "p.json", "--compare", baseline)
+			if !strings.Contains(got, "--compare would be ignored") {
+				t.Fatalf("usage text does not name the ignored flag: %q", got)
+			}
+		})
+	}
+}
+
+// TestPolicyReplayRefusesGateFlags proves a gate flag cannot ride along with
+// --policy: the replay exits 0 by contract, so accepting --check would swallow
+// the very exit code a caller gates CI on.
+func TestPolicyReplayRefusesGateFlags(t *testing.T) {
+	for _, args := range [][]string{
+		{"--policy", "p.json", "--check", "critical"},
+		{"--policy", "p.json", "--completeness"},
+		{"--policy", "p.json", "--max-risk", "high"},
+	} {
+		t.Run(strings.Join(args[2:], ""), func(t *testing.T) {
+			if got := replayUsage(t, args...); !strings.Contains(got, "swallowed") {
+				t.Fatalf("usage text does not explain the refusal: %q", got)
+			}
+		})
+	}
+}
+
+// TestPolicyReplayRefusesAnEmptyPath proves an explicitly empty --policy is a
+// usage error, not a silent fall back to an ordinary report: a caller passing
+// an unset variable must not believe it replayed.
+func TestPolicyReplayRefusesAnEmptyPath(t *testing.T) {
+	if got := replayUsage(t, "--policy", ""); !strings.Contains(got, "--policy needs a policy file path") {
+		t.Fatalf("usage text does not name the missing path: %q", got)
+	}
+}
+
+// TestPolicyReplayRefusesArtifactPaths proves the replay stays a read-only
+// question: it refuses the artifact paths instead of silently ignoring them.
+func TestPolicyReplayRefusesArtifactPaths(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+	}{
+		{name: "output", args: []string{"--policy", "p.json", "--output", "out.json"}},
+		{name: "sarif", args: []string{"--policy", "p.json", "--sarif", "out.sarif"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := replayUsage(t, tc.args...); !strings.Contains(got, "--policy") {
+				t.Fatalf("usage text does not name --policy: %q", got)
+			}
+		})
+	}
+}
+
+// TestPolicyReplayRefusesWithoutABundle proves a replay over a missing bundle
+// refuses through the same typed path as report, rather than inventing a
+// decision from nothing.
+func TestPolicyReplayRefusesWithoutABundle(t *testing.T) {
+	t.Chdir(t.TempDir())
+	var out, diag bytes.Buffer
+	r := &cli.Runner{
+		Out: &out, Human: &out, Diag: &diag,
+		Cmd: "report", Repo: "acme/app", Pr: "1", Effective: cli.Defaults(),
+		Now: func() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) },
+	}
+	code := Run(context.Background(), r, []string{"--policy", "p.json"}, Request{Repo: "acme/app", Pr: "1"})
+	if code != cli.ExitRefused {
+		t.Fatalf("exit = %d; want %d (refusal)", code, cli.ExitRefused)
+	}
+}
+
+// TestReplayWireKeepsGateOrder pins the published replay shape: only the
+// dimension the candidate moves is listed, in the captured gate order, and the
+// reason rides the side it belongs to.
+func TestReplayWireKeepsGateOrder(t *testing.T) {
+	replay := &reportcore.PolicyReplay{
+		Captured: reportcore.Decision{GatePassed: true, Approved: true, Dimensions: []core.GateDimension{
+			{ID: "spec", Status: "pass"}, {ID: "compliance", Status: "pass"}, {ID: "evidence", Status: "pass"},
+		}},
+		Candidate: reportcore.Decision{GatePassed: false, Reason: "open critical finding", Dimensions: []core.GateDimension{
+			{ID: "spec", Status: "pass"}, {ID: "compliance", Status: "fail"}, {ID: "evidence", Status: "pass"},
+		}},
+	}
+	got := replayWire("candidate.json", replay)
+	want := &core.ReportReplay{
+		PolicyPath: "candidate.json",
+		Captured:   core.ReportReplaySide{GatePassed: true, Approved: true},
+		Candidate:  core.ReportReplaySide{GatePassed: false, Reason: "open critical finding"},
+		Changed:    []core.ReportReplayMove{{ID: "compliance", Before: "pass", After: "fail"}},
+	}
+	if got.PolicyPath != want.PolicyPath || got.Captured != want.Captured || got.Candidate != want.Candidate {
+		t.Fatalf("replay wire = %#v; want %#v", got, want)
+	}
+	if !slices.Equal(got.Changed, want.Changed) {
+		t.Fatalf("replay wire changed = %#v; want %#v", got.Changed, want.Changed)
+	}
+}
+
+// TestReplayWireSerializesAnEmptyChangeList pins the unchanged replay: the
+// schema requires `changed` to be an array, so an identical candidate must
+// serialize `[]` rather than a nil list the encoder would render as null.
+func TestReplayWireSerializesAnEmptyChangeList(t *testing.T) {
+	dims := []core.GateDimension{{ID: "spec", Status: "pass"}, {ID: "compliance", Status: "pass"}}
+	got := replayWire("candidate.json", &reportcore.PolicyReplay{
+		Captured:  reportcore.Decision{GatePassed: true, Approved: true, Dimensions: dims},
+		Candidate: reportcore.Decision{GatePassed: true, Approved: true, Dimensions: dims},
+	})
+	if got.Changed == nil {
+		t.Fatal("changed is nil; an unchanged replay must serialize [] so the schema's array requirement holds")
+	}
+	if len(got.Changed) != 0 {
+		t.Fatalf("changed = %#v; want empty", got.Changed)
 	}
 }
 

@@ -328,10 +328,36 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Approval            *ApprovalReceipt         `anyOf:"null"                     json:"approval,omitempty"     optional:"true"`
 	Risk                *ReportRisk              `json:"risk,omitempty"`
 	Gate                *ReportGate              `json:"gate,omitempty"`
+	Replay              *ReportReplay            `anyOf:"null"                     json:"replay,omitempty"       optional:"true"`
 	CostRaw             *jq.Obj                  `json:"-"`
 	ProvenanceEnabled   bool                     `json:"-"`
 	ProvenanceReceipt   *ProvenanceReceipt       `json:"-"`
 	ProvenanceTruncated []ProvenanceTruncatedRow `json:"-"`
+}
+
+// ReportReplay is the `report --policy` comparison: the decision the captured
+// policy derives and the one the candidate file derives over the same stored
+// findings. It is present only on a replay, so an ordinary report carries
+// neither the key nor an empty object.
+type ReportReplay struct {
+	PolicyPath string             `json:"policy_path"`
+	Captured   ReportReplaySide   `json:"captured"`
+	Candidate  ReportReplaySide   `json:"candidate"`
+	Changed    []ReportReplayMove `json:"changed"`
+}
+
+// ReportReplaySide is one policy's gate and approval over the stored bundle.
+type ReportReplaySide struct {
+	Reason     string `json:"reason,omitempty"`
+	GatePassed bool   `json:"gate_passed"`
+	Approved   bool   `json:"approved"`
+}
+
+// ReportReplayMove is one gate dimension whose status the candidate moved.
+type ReportReplayMove struct {
+	ID     string `json:"id"`
+	Before string `json:"before"`
+	After  string `json:"after"`
 }
 
 // Wire renders the data object in wire order. CostRaw wins over the typed
