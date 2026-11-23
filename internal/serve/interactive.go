@@ -12,8 +12,6 @@ import (
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	"github.com/stainless-code/verdict/internal/core/query"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
-	"github.com/stainless-code/verdict/internal/jq"
-	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // Interactive write endpoints: local-only triage and KB promotion over the
@@ -131,7 +129,11 @@ func decodeJSON[T any](w http.ResponseWriter, r *http.Request, s *Server, out *T
 }
 
 // handleTriage flips one finding's status through the triage service the
-// CLI calls, confined to a served root and bundle.
+// CLI calls, confined to a served root and bundle. The service refuses a
+// policy-withheld finding (RefuseWithheld, evaluated on the exact snapshot
+// the flip mutates under the bundle lock) with unknown-sig — the read
+// surface's 404 for a finding that is not visible — and a genuinely unknown
+// sig reads the same way, so both map to the transport 404 here.
 func (s *Server) handleTriage(w http.ResponseWriter, r *http.Request) {
 	var body triageBody
 	if !decodeJSON(w, r, s, &body) {
@@ -142,24 +144,25 @@ func (s *Server) handleTriage(w http.ResponseWriter, r *http.Request) {
 			"triage requires a valid finding sig")
 		return
 	}
-	rootPath, bundleDir, ok := s.resolveWrite(w, body.Root, body.Bundle)
+	rootPath, _, ok := s.resolveWrite(w, body.Root, body.Bundle)
 	if !ok {
 		return
 	}
-	if withheldFinding(bundleDir, body.Sig) {
-		s.problem(w, http.StatusNotFound, "not-found", "no such finding")
-		return
-	}
 	resp, ref := triagecore.Run(r.Context(), &triagecore.Request{
-		Runtime:   s.writeRuntime(),
-		Pr:        body.Bundle,
-		RepoRoot:  rootPath,
-		Sig:       body.Sig,
-		Status:    body.Status,
-		Rationale: body.Rationale,
-		Force:     body.Force,
+		Runtime:        s.writeRuntime(),
+		Pr:             body.Bundle,
+		RepoRoot:       rootPath,
+		Sig:            body.Sig,
+		Status:         body.Status,
+		Rationale:      body.Rationale,
+		Force:          body.Force,
+		RefuseWithheld: true,
 	})
 	if ref != nil {
+		if ref.Code == "unknown-sig" {
+			s.problem(w, http.StatusNotFound, "not-found", "no such finding")
+			return
+		}
 		s.writeRefusal(w, verbServe, body.Bundle, ref)
 		return
 	}
@@ -205,27 +208,6 @@ func (s *Server) handleKBPromote(w http.ResponseWriter, r *http.Request) {
 // stream.
 func (s *Server) writeRuntime() *core.Runtime {
 	return &core.Runtime{Now: s.now}
-}
-
-// withheldFinding reports whether the bundle's store carries sig as a
-// policy-withheld finding. An unreadable store, an unknown sig, and an
-// ambiguous prefix are not withheld — the caller proceeds and the triage
-// service answers those the CLI way, so no write has happened yet.
-func withheldFinding(bundleDir, sig string) bool {
-	entries, err := readcommon.LoadFindings(bundleDir)
-	if err != nil {
-		return false
-	}
-	full := readcommon.ResolveSig(entries, sig)
-	if full == "NONE" || full == "MANY" {
-		return false
-	}
-	for _, entry := range entries {
-		if jq.StrOf(readcommon.FieldOf(entry, "sig")) == full {
-			return readcommon.WithheldSource(entry) != ""
-		}
-	}
-	return false
 }
 
 // resolveWrite confines a triage write to a served root and bundle, with

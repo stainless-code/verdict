@@ -58,3 +58,5 @@ triaged 01234567 -> deferred
     "history": []
   }
 ]
+--- file C/.verdict/state/4251/findings.json.lock ---
+

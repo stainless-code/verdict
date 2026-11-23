@@ -3,6 +3,7 @@ package serve
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"maps"
@@ -12,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -689,6 +691,134 @@ func TestInteractiveTriageWithheldRefused(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(root, ".verdict/kb.jsonl")); !os.IsNotExist(err) {
 		t.Errorf("kb.jsonl = %v, want no store written", err)
+	}
+}
+
+// postConcurrent performs one POST without touching `[testing.T]`, so driver
+// goroutines can fire it. The result is collected and asserted by the test
+// goroutine instead.
+func postConcurrent(ts *httptest.Server, path, body string, headers map[string]string) (int, error) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, ts.URL+path, strings.NewReader(body))
+	if err != nil {
+		return 0, err
+	}
+	req.Host = testHost
+	for name, value := range headers {
+		req.Header.Set(name, value)
+	}
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+		return 0, err
+	}
+	return resp.StatusCode, nil
+}
+
+// statusesBySig flattens one decoded store to its sig-to-status view.
+func statusesBySig(entries []map[string]any) map[string]string {
+	got := map[string]string{}
+	for _, entry := range entries {
+		sig, ok := entry["sig"].(string)
+		if !ok {
+			continue
+		}
+		status, ok := entry["status"].(string)
+		if !ok {
+			continue
+		}
+		got[sig] = status
+	}
+	return got
+}
+
+// assertFlipped proves every wanted sig carries its flipped status in the
+// bundle's findings store, with the entry count intact.
+func assertFlipped(t *testing.T, root string, want map[string]string) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(root, ".verdict/state/1234/findings.json"))
+	if err != nil {
+		t.Fatalf("findings: %v", err)
+	}
+	var entries []map[string]any
+	if err := json.Unmarshal(raw, &entries); err != nil {
+		t.Fatalf("findings decode: %v", err)
+	}
+	if len(entries) != 3 {
+		t.Fatalf("findings entries = %d, want 3 (%s)", len(entries), raw)
+	}
+	got := statusesBySig(entries)
+	for sig, status := range want {
+		if got[sig] != status {
+			t.Errorf("findings: sig %s status = %q, want %q (all: %v)", sig, got[sig], status, got)
+		}
+	}
+}
+
+// TestInteractiveTriageConcurrentFlipsPreserved proves two concurrent triage
+// flips of different findings in one bundle both survive: the service
+// serializes the findings read-modify-write, so neither write overwrites the
+// other. Four rounds re-flip both findings on the same bundle, so a lost
+// update has four chances to land.
+func TestInteractiveTriageConcurrentFlipsPreserved(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	ts, server := interactiveServer(t, testLayer(root, nil))
+	rootID := rootIDOf(t, ts, bearer())
+	hdrs := writeHeaders(server)
+	payload := func(sig, status string) string {
+		return `{"root":"` + rootID + `","bundle":"1234","sig":"` + sig +
+			`","status":"` + status + `","rationale":"` + interactiveRationale + `"}`
+	}
+	for round := range 4 {
+		awaitTriagePair(t, round, ts, hdrs, payload)
+		assertFlipped(t, root, map[string]string{
+			sigCrit: "false-positive",
+			sigImp:  "addressed",
+		})
+	}
+}
+
+// awaitTriagePair fires one concurrent pair of flips — one for each finding —
+// and proves both answered 200.
+func awaitTriagePair(
+	t *testing.T,
+	round int,
+	ts *httptest.Server,
+	hdrs map[string]string,
+	payload func(sig, status string) string,
+) {
+	t.Helper()
+	type outcome struct {
+		err    error
+		status int
+	}
+	start := make(chan struct{})
+	results := make(chan outcome, 2)
+	var wg sync.WaitGroup
+	for _, req := range []struct{ sig, status string }{
+		{sigCrit, "false-positive"},
+		{sigImp, "addressed"},
+	} {
+		wg.Go(func() {
+			<-start
+			status, err := postConcurrent(ts, "/v1/triage",
+				payload(req.sig, req.status), hdrs)
+			results <- outcome{err: err, status: status}
+		})
+	}
+	close(start)
+	wg.Wait()
+	close(results)
+	for out := range results {
+		if out.err != nil {
+			t.Fatalf("round %d POST: %v", round, out.err)
+		}
+		if out.status != http.StatusOK {
+			t.Fatalf("round %d POST = %d, want 200", round, out.status)
+		}
 	}
 }
 

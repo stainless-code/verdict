@@ -2605,8 +2605,11 @@ is not a directory, or will not list, adds one `corrupt-store` row naming it
 rather than reading as a root with no bundles. Transport errors are a
 separate vocabulary: `400` (`token-in-query`, `bad-glob`, `bad-content-type`,
 `bad-body`), `401`, `403` (Host/Origin, and `bad-csrf` on a write with a
-missing, empty, or wrong `X-Verdict-CSRF` token), `404`, and `405` with `Allow:
-GET, HEAD` (and `method-not-allowed` on the write paths' own GET). Every response carries
+missing, empty, or wrong `X-Verdict-CSRF` token), `404`, and `405`. Without
+`--interactive` the two write paths accept no method and answer `405` with
+`Allow: GET, HEAD` (and `method-not-allowed` on the write paths' own GET);
+with `--interactive` they accept `POST` only, and every other method —
+including `GET` — answers `405` with `Allow: POST`. Every response carries
 the strict CSP (`default-src 'self'`, no inline script or style), no referrer,
 `nosniff`, same-origin resource and opener policies, and `no-store`; no CORS
 header is ever emitted, and only loopback `Host`/`Origin` spellings are
