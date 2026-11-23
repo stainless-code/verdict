@@ -173,6 +173,48 @@ func TestReplayDropsCapturedRootChecksTheCandidateRemoved(t *testing.T) {
 			t.Fatalf("candidate carries a compliance dimension with no policy in force: %+v", dim)
 		}
 	}
+	want := []reportcore.DimensionMove{{ID: "compliance", Before: "unknown", After: reportcore.AbsentDimension}}
+	if got := replay.Moves(); !slices.Equal(got, want) {
+		t.Fatalf("moves = %+v; want %+v (the removed requirement must read as a change)", got, want)
+	}
+}
+
+// refusedReplay requires a replay over a minimal bundle to refuse and returns
+// the refusal.
+func refusedReplay(t *testing.T, flags *reportcore.Flags) *core.RefusalError {
+	t.Helper()
+	req := fixture(t, "["+securityFinding+"]")
+	writeCapturedPolicy(t, &core.Config{})
+	flags.Policy = "candidate.json"
+	writeFile(t, "candidate.json", `{"schema_version":"1"}`)
+	_, ref := reportcore.Replay(context.Background(), &reportcore.Request{ReadRequest: req, Flags: *flags})
+	if ref == nil {
+		t.Fatalf("replay accepted flags it must refuse: %+v", *flags)
+	}
+	return ref
+}
+
+// TestReplayRefusesGateFlagsAtTheCore pins the core boundary the adapter also
+// enforces: a Go caller naming a gate flag or a baseline gets a typed refusal,
+// never a silently gated comparison.
+func TestReplayRefusesGateFlagsAtTheCore(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		flags reportcore.Flags
+	}{
+		{name: "check", flags: reportcore.Flags{Check: "critical"}},
+		{name: "completeness", flags: reportcore.Flags{Completeness: true}},
+		{name: "coverage", flags: reportcore.Flags{Coverage: "require"}},
+		{name: "max-risk", flags: reportcore.Flags{MaxRisk: "high"}},
+		{name: "compare", flags: reportcore.Flags{CompareSet: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ref := refusedReplay(t, &tc.flags)
+			if ref.Code != "bad-flags" {
+				t.Fatalf("code = %q; want bad-flags (%s)", ref.Code, ref.Message)
+			}
+		})
+	}
 }
 
 // TestReplayRefusesACandidateItCannotUse pins the three ways a candidate can be

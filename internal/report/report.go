@@ -86,7 +86,7 @@ func runReplay(ctx context.Context, r *cli.Runner, req Request, flags *reportcor
 	if flags.Output != "" || flags.Sarif != "" {
 		return r.ReportUsage(&cli.UsageError{Message: "--policy is read-only; it writes no --output or --sarif"})
 	}
-	if flags.Check != "" || flags.Completeness || flags.MaxRisk != "" || flags.CompareSet {
+	if reportcore.GateFlagsNamed(flags) {
 		return r.ReportUsage(&cli.UsageError{Message: replayFlagRefusal})
 	}
 	replay, ref := reportcore.Replay(ctx, reportRequest(r, req, flags))

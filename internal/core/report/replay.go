@@ -85,14 +85,44 @@ func dimensionStatus(dims []core.GateDimension, id string) (string, bool) {
 	return "", false
 }
 
+// GateFlagsNamed reports whether the invocation names a flag a replay refuses:
+// a gate flag would have its exit code swallowed, and --compare would be
+// dropped. The adapter refuses this combination as a usage error and Replay
+// refuses it as a typed one, so they share the predicate rather than the list —
+// a gate flag added later cannot be honored on one boundary and refused on
+// the other.
+func GateFlagsNamed(f *Flags) bool {
+	return f.Check != "" || f.Completeness || f.Coverage != "" || f.MaxRisk != "" || f.CompareSet
+}
+
+// replayGateRefusal is the core-side wording: the adapter refuses the same
+// combination as a usage error naming the flag to drop, while a Go caller gets
+// this typed refusal.
+const replayGateRefusal = "a replay reports a comparison and exits 0: gate flags would have " +
+	"their exit code swallowed and --compare would be ignored"
+
+// validateReplayRequest refuses a replay that named no candidate file, and one
+// that named a gate flag or a baseline: the adapter refuses the second as a
+// usage error first, so a Go caller reading this typed refusal sees the same
+// rule instead of a silently gated comparison.
+func validateReplayRequest(req *Request) *core.RefusalError {
+	if req.Flags.Policy == "" {
+		return replayRefusal("--policy needs a policy file to replay")
+	}
+	if GateFlagsNamed(&req.Flags) {
+		return replayRefusal(replayGateRefusal)
+	}
+	return nil
+}
+
 // Replay derives the bundle's decision under its captured policy and under the
 // candidate policy named by Flags.Policy. The candidate is parsed and resolved
 // by the same code that resolves a repository config, so a malformed file
 // refuses with the parser's own codes; an unreadable file refuses as a bad
 // flag value.
 func Replay(ctx context.Context, req *Request) (*PolicyReplay, *core.RefusalError) {
-	if req.Flags.Policy == "" {
-		return nil, replayRefusal("--policy needs a policy file to replay")
+	if ref := validateReplayRequest(req); ref != nil {
+		return nil, ref
 	}
 	flags := normalizeFlags(req)
 	if ref := validateReportFlags(&flags); ref != nil {
