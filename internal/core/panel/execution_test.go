@@ -446,6 +446,30 @@ func TestExecutionUsesLargestStoredFinderCapture(t *testing.T) {
 	}
 }
 
+func TestExecutionDeclaredOneFinderResistsStaleReceipt(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	retireBoundArtifacts(t, dir)
+	writeExecutionFile(t, dir, "run.json", []byte(`{"schema_version":"1","finders":1}`))
+	writeExecutionFile(t, dir, filepath.Join(executionVerification, "verdicts.json"), []byte(`{"execution_id":"stale-execution"}`))
+
+	state := CheckExecution(dir, nil)
+	if state.CrossRequired {
+		t.Fatalf("CrossRequired = true; want a declared one-finder capture to stay manual (state=%+v)", state)
+	}
+}
+
+func TestExecutionDeclaredOneFinderOutranksStaleLauncher(t *testing.T) {
+	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
+	retireBoundArtifacts(t, dir)
+	writeExecutionFile(t, dir, "launcher.json", []byte(`{"execution_id":"old-execution"}`))
+	writeExecutionFile(t, dir, "run.json", []byte(`{"schema_version":"1","finders":1}`))
+
+	state := CheckExecution(dir, nil)
+	if state.CrossRequired {
+		t.Fatalf("CrossRequired = true; want the run declaration to outrank a stale launcher (state=%+v)", state)
+	}
+}
+
 func TestExecutionStaleReviewReferenceKeepsOneFinderPolicyManual(t *testing.T) {
 	dir := executionFixture(t, "confirmed", "finder-2", "return unsafeValue", false)
 	retireBoundArtifacts(t, dir)
