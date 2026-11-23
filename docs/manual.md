@@ -1829,9 +1829,15 @@ it. A replay re-decides policy; it does not re-verify a review.
 
 The candidate is resolved from its repository layer over the recorded file set.
 The original run's personal settings, environment overrides, and invocation
-flags are not re-applied, so a capture made with those layers replays as if it
-had none. Those layers carry no requirements — only defaults such as panel or
-budget — so the decisions do not move because of them. Under
+flags are not re-applied, with two exceptions that would otherwise move a
+decision without the policy moving. The personal privacy exclusions are carried
+over: repository scopes and flags can never remove them, the files they withheld
+are still withheld, and the candidate's own clauses decide whether a conflict
+still applies. Recorded check observations are matched to the candidate's scopes
+by their file set rather than by the captured group id, which is a digest of the
+effective defaults: an identical policy under different personal defaults keeps
+its completed checks, while a candidate that regroups the files leaves them
+pending, because the work those checks covered changed. Under
 `--json` the run keeps the ordinary report envelope for the captured policy and
 adds one `replay` object — `policy_path`, `captured`, `candidate`, and the
 `changed` dimensions — so a consumer reads a replay by that key rather than by

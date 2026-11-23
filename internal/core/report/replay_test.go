@@ -17,9 +17,17 @@ import (
 // reads a real typed policy instead of a hand-built one.
 func writeCapturedPolicy(t *testing.T, cfg *core.Config) {
 	t.Helper()
+	captureRun(t, cfg, nil)
+}
+
+// captureRun persists a run capture resolved from cfg and one personal layer,
+// so a replay sees the layers a real fetch recorded.
+func captureRun(t *testing.T, cfg *core.Config, personal *config.PersonalSettings) {
+	t.Helper()
 	resolved, ref := config.Resolve(&config.Inputs{
-		Repo:  cfg,
-		Files: []config.FileInput{{Path: "notes.txt"}},
+		Repo:     cfg,
+		Personal: personal,
+		Files:    []config.FileInput{{Path: "notes.txt"}},
 	})
 	if ref != nil {
 		t.Fatalf("Resolve: %v", ref)
@@ -58,15 +66,15 @@ func replayOver(t *testing.T, cfg *core.Config, candidate string) *reportcore.Po
 	return replay
 }
 
-// dimension finds one gate dimension by its wire ID.
-func dimension(t *testing.T, decision reportcore.Decision, id string) core.GateDimension {
+// complianceDimension finds the compliance dimension of one decision.
+func complianceDimension(t *testing.T, decision reportcore.Decision) core.GateDimension {
 	t.Helper()
 	for _, dim := range decision.Dimensions {
-		if dim.ID == id {
+		if dim.ID == "compliance" {
 			return dim
 		}
 	}
-	t.Fatalf("decision has no %q dimension: %+v", id, decision.Dimensions)
+	t.Fatalf("decision has no compliance dimension: %+v", decision.Dimensions)
 	return core.GateDimension{}
 }
 
@@ -85,7 +93,7 @@ func TestReplayStricterPolicyFailsTheGate(t *testing.T) {
 	if replay.Candidate.GatePassed {
 		t.Fatalf("candidate block clause passed the gate over an open critical security finding: %+v", replay.Candidate)
 	}
-	if got := dimension(t, replay.Candidate, "compliance"); got.Status != "fail" {
+	if got := complianceDimension(t, replay.Candidate); got.Status != "fail" {
 		t.Fatalf("candidate compliance status = %q; want fail (dimension %+v)", got.Status, got)
 	}
 }
@@ -162,7 +170,7 @@ func TestReplayDropsCapturedRootChecksTheCandidateRemoved(t *testing.T) {
 	}}
 	replay := replayOver(t, captured, `{"schema_version":"1"}`)
 
-	if got := dimension(t, replay.Captured, "compliance"); got.Status != "unknown" {
+	if got := complianceDimension(t, replay.Captured); got.Status != "unknown" {
 		t.Fatalf("captured compliance status = %q; want unknown on a pending head-current check", got.Status)
 	}
 	if !replay.Candidate.GatePassed {
@@ -269,4 +277,40 @@ func refusedCandidate(t *testing.T, path, candidate string) *core.RefusalError {
 	t.Fatalf("accepted: policy=%q readerr=%v bytes=%q parseerr=%v cfg=%v staterr=%v replay=%+v",
 		policy, rerr, string(b), pref, cfg, serr, replay)
 	return nil
+}
+
+// TestReplayKeepsTheCapturedPrivacyConflict proves the candidate inherits the
+// personal privacy exclusions the capture recorded: they are personal-only, so
+// resolving the candidate without them erased a conflict that still holds. The
+// captured clause decides whether the conflict applies, so a candidate that
+// drops the clause still clears it.
+func TestReplayKeepsTheCapturedPrivacyConflict(t *testing.T) {
+	// The clause names a category no stored finding carries, so the only way it
+	// can fail compliance is the withheld file: a clause firing on the finding
+	// itself would make this test pass without the exclusions.
+	clause := `"requirements":{"block_clauses":[` +
+		`{"name":"docs-block","threshold":"critical","categories":["docs"]}]}`
+	req := fixture(t, "["+securityFinding+"]")
+	captureRun(t, &core.Config{SchemaVersion: "1", Requirements: &core.ConfigRequirements{
+		BlockClauses: []core.BlockClause{{
+			Name: "docs-block", Threshold: "critical", Categories: []string{"docs"},
+		}},
+	}}, &config.PersonalSettings{
+		Privacy: config.PersonalPrivacy{Exclusions: []string{"notes.txt"}},
+	})
+	writeFile(t, "candidate.json", `{"schema_version":"1",`+clause+`}`)
+	replay, ref := reportcore.Replay(context.Background(), &reportcore.Request{
+		ReadRequest: req, Flags: reportcore.Flags{Policy: "candidate.json"},
+	})
+	if ref != nil {
+		t.Fatalf("Replay refusal: %v", ref)
+	}
+	captured := complianceDimension(t, replay.Captured)
+	if captured.Status != "fail" {
+		t.Fatalf("captured compliance status = %q; want fail on the withheld notes.txt (%+v)", captured.Status, captured)
+	}
+	candidate := complianceDimension(t, replay.Candidate)
+	if candidate.Status != captured.Status {
+		t.Fatalf("candidate compliance status = %q; want %q — the personal exclusion withheld the same file", candidate.Status, captured.Status)
+	}
 }

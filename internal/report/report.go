@@ -104,6 +104,12 @@ func runReplay(ctx context.Context, r *cli.Runner, req Request, flags *reportcor
 // policy with the comparison attached under `replay`, so a replay stays a
 // schema-valid report and can never be mistaken for it: the key is absent
 // unless --policy named a file.
+//
+// The envelope re-reads the bundle where Replay already did. That is a second
+// read, not a second decision: the store has no snapshot handle to share, and a
+// re-fetch landing between the two reads can only make the envelope's rows
+// newer than the decisions beside them, never the reverse. A caller that needs
+// both from one revision replays after the fetch settles.
 func emitReplayEnvelope(ctx context.Context, r *cli.Runner, req Request, flags *reportcore.Flags, replay *reportcore.PolicyReplay) int {
 	resp, ref := reportcore.Run(ctx, reportRequest(r, req, flags))
 	if ref != nil {

@@ -3,6 +3,9 @@ package reportcore
 import (
 	"context"
 	"os"
+	"slices"
+	"strconv"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
@@ -175,6 +178,11 @@ func deriveDecision(st *state, resolved *config.Resolved, root *config.Requireme
 	// clauses and required checks from here, so a captured set left in place
 	// would keep failing the candidate on requirements it dropped.
 	policy.Root = *root
+	// Group ids are digests of the effective defaults, so the same files under
+	// a candidate resolved without the captured personal layer carry different
+	// ids; leaving the captured ids in place would read a completed check as
+	// pending.
+	policy.Outcomes = candidateOutcomes(st.policy.Resolved, resolved, st.policy.Outcomes)
 	derived.policy = &policy
 	evaluateCompliance(&derived)
 	derived.approval = approval.Evaluate(derived.entries, st.flags.Check, st.flags.Category,
@@ -209,6 +217,12 @@ func resolveCandidatePolicy(
 	if ref != nil {
 		return nil, config.RequirementSet{}, ref
 	}
+	// Privacy exclusions are personal-only — repository scopes and flags can
+	// never narrow or remove them — and the content they withheld is still
+	// withheld at replay time. A candidate resolved without them would erase
+	// every conflict the capture recorded, so it inherits the captured set and
+	// lets its own clauses decide whether a conflict still applies.
+	resolved.Privacy = captured.Privacy
 	return resolved, config.RootSet(cfg, baseSHA), nil
 }
 
@@ -220,6 +234,73 @@ func capturedFiles(captured *config.Resolved) []config.FileInput {
 		out = append(out, config.FileInput{Path: captured.Files[i].Path, OldPath: captured.Files[i].OldPath})
 	}
 	return out
+}
+
+// candidateOutcomes re-keys the captured check observations onto the
+// candidate's scopes. Group ids are digests of the effective defaults, so the
+// same files resolved without the captured personal layer carry a different
+// id, and a completed check would read as pending. An observation whose file
+// set the candidate groups differently keeps its captured id and stays
+// pending: the work it covered genuinely changed.
+func candidateOutcomes(captured, candidate *config.Resolved, outcomes []config.CheckObservation) []config.CheckObservation {
+	if captured == nil || candidate == nil || len(outcomes) == 0 {
+		return outcomes
+	}
+	capturedSets := groupFileSets(captured)
+	candidateIDs := groupIDs(candidate)
+	out := make([]config.CheckObservation, len(outcomes))
+	for i := range outcomes {
+		out[i] = outcomes[i]
+		out[i].Group = rekey(capturedSets, candidateIDs, outcomes[i].Group)
+	}
+	return out
+}
+
+// rekey returns the candidate id of a scope with the same file set, or the
+// captured id when the candidate groups those files differently.
+func rekey(capturedSets, candidateIDs map[string]string, group string) string {
+	key, ok := capturedSets[group]
+	if !ok {
+		return group
+	}
+	if id, ok := candidateIDs[key]; ok {
+		return id
+	}
+	return group
+}
+
+// groupFileSets maps each plan group id to its file-set key.
+func groupFileSets(resolved *config.Resolved) map[string]string {
+	out := make(map[string]string, len(resolved.Plan.Groups))
+	for i := range resolved.Plan.Groups {
+		group := &resolved.Plan.Groups[i]
+		out[group.ID] = groupFilesKey(group.Files)
+	}
+	return out
+}
+
+// groupIDs maps each plan group's file-set key to its id.
+func groupIDs(resolved *config.Resolved) map[string]string {
+	out := make(map[string]string, len(resolved.Plan.Groups))
+	for i := range resolved.Plan.Groups {
+		group := &resolved.Plan.Groups[i]
+		out[groupFilesKey(group.Files)] = group.ID
+	}
+	return out
+}
+
+// groupFilesKey names one scope by its sorted file set, length-prefixed so two
+// different sets cannot encode alike.
+func groupFilesKey(files []string) string {
+	sorted := slices.Clone(files)
+	slices.Sort(sorted)
+	var b strings.Builder
+	for _, file := range sorted {
+		b.WriteString(strconv.Itoa(len(file)))
+		b.WriteByte(':')
+		b.WriteString(file)
+	}
+	return b.String()
 }
 
 // replayRefusal is the typed refusal for a policy that cannot be read at all;
