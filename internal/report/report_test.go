@@ -22,11 +22,60 @@ func TestUnknownFlagListsAllReportFlags(t *testing.T) {
 	got := diag.String()
 	for _, flag := range []string{
 		"--status", "--kind", "--category", "--output", "--sarif",
-		"--include-withheld", "--cost", "--risk", "--max-risk", "--check", "--compare", "--completeness", "--live", "--json",
+		"--include-withheld", "--cost", "--risk", "--max-risk", "--check", "--compare", "--completeness", "--live", "--json", "--policy",
 	} {
 		if !strings.Contains(got, flag) {
 			t.Errorf("unknown-flag message %q missing %s", got, flag)
 		}
+	}
+}
+
+// TestPolicyReplayRefusesArtifactAndJSONPaths proves the replay stays a
+// read-only question: it refuses the artifact paths instead of silently
+// ignoring them, and refuses --json until the replay envelope has its schema.
+func TestPolicyReplayRefusesArtifactAndJSONPaths(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		args []string
+		json bool
+	}{
+		{name: "output", args: []string{"--policy", "p.json", "--output", "out.json"}},
+		{name: "sarif", args: []string{"--policy", "p.json", "--sarif", "out.sarif"}},
+		{name: "json", args: []string{"--policy", "p.json"}, json: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Chdir(t.TempDir())
+			var out, diag bytes.Buffer
+			r := &cli.Runner{
+				Out: &out, Human: &out, Diag: &diag, JSONMode: tc.json,
+				Cmd: "report", Repo: "acme/app", Pr: "1", Effective: cli.Defaults(),
+				Now: func() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) },
+			}
+			code := Run(context.Background(), r, tc.args, Request{Repo: "acme/app", Pr: "1"})
+			if code != cli.ExitUsage {
+				t.Fatalf("exit = %d; want %d", code, cli.ExitUsage)
+			}
+			if !strings.Contains(diag.String(), "--policy") {
+				t.Fatalf("usage text does not name --policy: %q", diag.String())
+			}
+		})
+	}
+}
+
+// TestPolicyReplayRefusesWithoutABundle proves a replay over a missing bundle
+// refuses through the same typed path as report, rather than inventing a
+// decision from nothing.
+func TestPolicyReplayRefusesWithoutABundle(t *testing.T) {
+	t.Chdir(t.TempDir())
+	var out, diag bytes.Buffer
+	r := &cli.Runner{
+		Out: &out, Human: &out, Diag: &diag,
+		Cmd: "report", Repo: "acme/app", Pr: "1", Effective: cli.Defaults(),
+		Now: func() time.Time { return time.Date(2026, 11, 2, 12, 0, 0, 0, time.UTC) },
+	}
+	code := Run(context.Background(), r, []string{"--policy", "p.json"}, Request{Repo: "acme/app", Pr: "1"})
+	if code != cli.ExitRefused {
+		t.Fatalf("exit = %d; want %d (refusal)", code, cli.ExitRefused)
 	}
 }
 

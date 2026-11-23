@@ -208,12 +208,16 @@ func usageText() string {
 		"[--category logic|edge-case|security|performance|accidental-commit|style|docs|other]\n" +
 		"        [--output <path>] [--sarif <path>] [--include-withheld] [--cost] [--risk] " +
 		"[--check <critical|important|informational>] [--compare <bundle-dir|pr|slug>] [--completeness] " +
-		"[--max-risk <low|medium|high|critical>] " +
+		"[--max-risk <low|medium|high|critical>] [--policy <path>] " +
 		"[--live auto|strict|skip] [--json]\n" +
 		"    pure read over the store: ranked findings + verdict + counts. Advisory runs\n" +
 		"    touch no network; gate runs (--check/--completeness) end with one live-thread recheck read.\n" +
 		"    --sarif writes a SARIF 2.1.0 file (severity→level, category in properties, sig as\n" +
 		"    fingerprint) for scanners/CI.\n" +
+		"    --policy replays the store under an alternative policy file: the same findings, recorded\n" +
+		"    checks, and receipts, so only the policy differs. Prints the gate and approval under the\n" +
+		"    captured policy and under the candidate, plus the dimensions that changed. Writes no\n" +
+		"    artifact, contacts no host, and exits 0 whatever the candidate decides.\n" +
 		"    --cost adds spend by effort tier. Captured two-finder runs sum bound phase usage;\n" +
 		"    missing phase tokens or USD stay null (unknown), never zero.\n" +
 		"    Consented over-budget receipts from .verdict/state/<pr>/budget.json surface here when present.\n" +

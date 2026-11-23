@@ -48,6 +48,9 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if code, done := r.Canceled(ctx, "report"); done {
 		return code
 	}
+	if flags.Policy != "" {
+		return runReplay(r, req, &flags)
+	}
 	gate := flags.Check != "" || flags.Completeness || flags.Coverage != "" || flags.MaxRisk != ""
 	resp, ref := reportcore.Run(ctx, reportRequest(r, req, &flags))
 	if ref != nil {
@@ -63,6 +66,71 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		return cli.ExitRefused
 	}
 	return cli.ExitOK
+}
+
+// runReplay answers `report --policy`: it prints the decision the captured
+// policy derives and the one the candidate file derives over the same stored
+// findings. A replay writes nothing, so it refuses the artifact paths rather
+// than silently ignore them; it exits 0 whatever the candidate decides, because
+// it reports a comparison and does not gate this run.
+func runReplay(r *cli.Runner, req Request, flags *reportcore.Flags) int {
+	if flags.Output != "" || flags.Sarif != "" {
+		return r.ReportUsage(&cli.UsageError{Message: "--policy is read-only; it writes no --output or --sarif"})
+	}
+	if r.JSONMode {
+		return r.ReportUsage(&cli.UsageError{Message: "--policy with --json needs the replay envelope schema; run without --json"})
+	}
+	replay, ref := reportcore.Replay(reportRequest(r, req, flags))
+	if ref != nil {
+		return refuseGate(r, ref, false)
+	}
+	renderReplay(r, flags.Policy, replay)
+	return cli.ExitOK
+}
+
+// renderReplay prints the two decisions and the dimensions whose status moved.
+func renderReplay(r *cli.Runner, path string, replay *reportcore.PolicyReplay) {
+	fmt.Fprintf(r.Human, "policy replay (read-only): captured policy vs %s\n", path)
+	fmt.Fprintf(r.Human, "  gate      %s -> %s\n",
+		passLabel(replay.Captured.GatePassed), passLabel(replay.Candidate.GatePassed))
+	fmt.Fprintf(r.Human, "  approval  %s -> %s\n",
+		approvalLabel(replay.Captured), approvalLabel(replay.Candidate))
+	if replay.Candidate.Reason != "" {
+		fmt.Fprintf(r.Human, "  reason    %s\n", replay.Candidate.Reason)
+	}
+	for _, dim := range replay.Captured.Dimensions {
+		after, ok := dimensionStatus(replay.Candidate.Dimensions, dim.ID)
+		if !ok || after == dim.Status {
+			continue
+		}
+		fmt.Fprintf(r.Human, "  changed   %s %s -> %s\n", dim.ID, dim.Status, after)
+	}
+}
+
+// passLabel names a gate decision.
+func passLabel(passed bool) string {
+	if passed {
+		return "pass"
+	}
+	return "fail"
+}
+
+// approvalLabel names an approval decision.
+func approvalLabel(decision reportcore.Decision) string {
+	if decision.Approved {
+		return "approved"
+	}
+	return "withheld"
+}
+
+// dimensionStatus finds one dimension's status by wire ID.
+func dimensionStatus(dims []core.GateDimension, id string) (string, bool) {
+	for _, dim := range dims {
+		if dim.ID == id {
+			return dim.Status, true
+		}
+	}
+	return "", false
 }
 
 // writeOutputs writes the requested artifacts in shell order: --output
@@ -211,6 +279,7 @@ var reportValueWants = map[string]string{
 	"--category": "logic|edge-case|security|performance|accidental-commit|style|docs|other",
 	"--max-risk": "low|medium|high|critical",
 	"--compare":  "<bundle-dir|pr|slug>",
+	"--policy":   "<path>",
 }
 
 var reportBoolSetters = map[string]func(*reportcore.Flags){
@@ -271,6 +340,9 @@ func parseReportValue(r *cli.Runner, flags *reportcore.Flags, args []string, i i
 		return parseMaxRiskFlag(r, flags, v)
 	case "--compare":
 		flags.Compare, flags.CompareSet = v, true
+		return next - i + 1, 0, false
+	case "--policy":
+		flags.Policy = v
 		return next - i + 1, 0, false
 	default: // --output, --sarif
 		setReportPath(flags, args[i], v)

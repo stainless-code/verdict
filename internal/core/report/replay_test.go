@@ -45,7 +45,7 @@ func replayOver(t *testing.T, cfg *core.Config, candidate string) *reportcore.Po
 	req := fixture(t, "["+securityFinding+"]")
 	writeCapturedPolicy(t, cfg)
 	writeFile(t, "candidate.json", candidate)
-	replay, ref := reportcore.Replay(&reportcore.Request{ReadRequest: req}, "candidate.json")
+	replay, ref := reportcore.Replay(&reportcore.Request{ReadRequest: req, Flags: reportcore.Flags{Policy: "candidate.json"}})
 	if ref != nil {
 		t.Fatalf("Replay refusal: %v", ref)
 	}

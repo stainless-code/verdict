@@ -29,10 +29,14 @@ type Decision struct {
 }
 
 // Replay derives the bundle's decision under its captured policy and under the
-// candidate policy at candidatePath. The candidate is parsed and resolved by
-// the same code that resolves a repository config, so a malformed file refuses
-// with the parser's own codes; an unreadable file refuses as a bad flag value.
-func Replay(req *Request, candidatePath string) (*PolicyReplay, *core.RefusalError) {
+// candidate policy named by Flags.Policy. The candidate is parsed and resolved
+// by the same code that resolves a repository config, so a malformed file
+// refuses with the parser's own codes; an unreadable file refuses as a bad
+// flag value.
+func Replay(req *Request) (*PolicyReplay, *core.RefusalError) {
+	if req.Flags.Policy == "" {
+		return nil, replayRefusal("--policy needs a policy file to replay")
+	}
 	flags := normalizeFlags(req)
 	if ref := validateReportFlags(&flags); ref != nil {
 		return nil, ref
@@ -52,7 +56,7 @@ func Replay(req *Request, candidatePath string) (*PolicyReplay, *core.RefusalErr
 		return nil, replayRefusal("run bundle carries no typed policy to replay against — re-fetch or re-run the bundle")
 	}
 	st.specFailures = specFailuresWithExecution(st)
-	candidate, ref := resolveCandidatePolicy(candidatePath, st.policy.Resolved)
+	candidate, ref := resolveCandidatePolicy(req.Flags.Policy, st.policy.Resolved)
 	if ref != nil {
 		return nil, ref
 	}
