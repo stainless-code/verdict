@@ -585,12 +585,13 @@ func (c *coordinator) allFindersFailed(outcomes []discoveryOutcome, skipped []bo
 }
 
 // agentFailure reports whether a phase's failure code is the agent itself
-// failing: it never ran, died, ran out of time, or wrote nothing. A review that
+// failing: it was not the agent asked for or is not installed, never ran, died,
+// ran out of time, or wrote nothing. A review that
 // exists but fails its check (stale, malformed) is evidence for the union and
 // keeps flowing through it.
 func agentFailure(code string) bool {
 	switch code {
-	case codeAgentFailed, codeAgentTimeout, codeAgentSpawnFailed, codeNoArtifact:
+	case codeAgentFailed, codeAgentTimeout, codeAgentSpawnFailed, codeAgentMissing, codeAgentMismatch, codeNoArtifact:
 		return true
 	}
 	return false

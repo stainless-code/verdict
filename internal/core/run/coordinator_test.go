@@ -759,7 +759,10 @@ func TestCoordinatorSanitizesTheAgentOutput(t *testing.T) {
 		"whole":       leak,
 		"cut":         leak + strings.Repeat("y", messageTailCap-30),
 		"url":         "fetch https://user:hunter2pass@host.example/path failed",
-		"long-before": strings.Repeat("z", 3*messageWindow) + leak,
+		"long-before": strings.Repeat("z", 64<<10) + leak,
+		// The old 16 KiB window began inside this key; collapsing the long
+		// header after it left the key's tail as the message's first bytes.
+		"left-edge": "sk-ant-api03-12345678901234567890Authorization: " + strings.Repeat("A", 16343),
 	} {
 		t.Run(name, func(t *testing.T) { checkSanitized(t, output) })
 	}
@@ -777,5 +780,54 @@ func checkSanitized(t *testing.T, output string) {
 		if strings.Contains(ref.Message, bad) {
 			t.Fatalf("message leaks %q: %q", bad, ref.Message)
 		}
+	}
+}
+
+// failedOutcome is one finder that failed with code, as the fan-in sees it.
+func failedOutcome(code string) discoveryOutcome {
+	return discoveryOutcome{failure: code, cause: &core.RefusalError{Code: code, Message: code + " cause"}}
+}
+
+type allFailedCase struct {
+	name, want string
+	outcomes   []discoveryOutcome
+	skipped    []bool
+}
+
+// TestAllFindersFailedCountsOnlyAgentFailures pins the class of failure that
+// turns an execution into the agent's own refusal: a review that exists but is
+// stale or malformed still feeds the union, a reused finder is a survivor, and
+// the pre-spawn and process failures count.
+func TestAllFindersFailedCountsOnlyAgentFailures(t *testing.T) {
+	pair := func(a, b string) []discoveryOutcome { return []discoveryOutcome{failedOutcome(a), failedOutcome(b)} }
+	tests := []allFailedCase{
+		{"both stale", "", pair("stale-review-artifact", "stale-review-artifact"), nil},
+		{"both malformed", "", pair("bad-review-input", "bad-review-input"), nil},
+		{"one stale one dead", "", pair("stale-review-artifact", "agent-failed"), nil},
+		{"one survived", "", []discoveryOutcome{{}, failedOutcome("agent-failed")}, nil},
+		{"one reused", "", pair("agent-failed", "agent-failed"), []bool{true, false}},
+		{"both dead", "agent-failed", pair("agent-failed", "agent-failed"), nil},
+		{"agent error leads a missing artifact", "agent-timeout", pair("no-review-artifact", "agent-timeout"), nil},
+		{"both wrote nothing", "no-review-artifact", pair("no-review-artifact", "no-review-artifact"), nil},
+		{"identity probe failed", "agent-mismatch", pair("agent-mismatch", "agent-mismatch"), nil},
+		{"not installed", "agent-missing", pair("agent-missing", "agent-missing"), nil},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) { checkAllFailed(t, &tc) })
+	}
+}
+
+func checkAllFailed(t *testing.T, tc *allFailedCase) {
+	t.Helper()
+	skipped := tc.skipped
+	if skipped == nil {
+		skipped = make([]bool, len(tc.outcomes))
+	}
+	ref := (&coordinator{}).allFindersFailed(tc.outcomes, skipped)
+	if tc.want == "" && ref != nil {
+		t.Fatalf("refusal = %v, want none: the execution still has a review to judge", ref)
+	}
+	if tc.want != "" && (ref == nil || ref.Code != tc.want) {
+		t.Fatalf("refusal = %v, want %s", ref, tc.want)
 	}
 }

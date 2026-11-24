@@ -35,6 +35,7 @@ const (
 	DefaultTimeoutS = "300"
 	// The launcher's own refusal family. Each names its remedy in the hint table.
 	codeAgentMissing     = "agent-missing"
+	codeAgentMismatch    = "agent-mismatch"
 	codeAgentSpawnFailed = "agent-spawn-failed"
 	codeAgentTimeout     = "agent-timeout"
 	codeAgentFailed      = "agent-failed"
@@ -374,7 +375,7 @@ func (st *state) probe(ctx context.Context, args *launchArgs) *core.RefusalError
 	}
 	commander := st.commander()
 	if commander == nil {
-		return st.refuse("agent-mismatch", fmt.Sprintf(
+		return st.refuse(codeAgentMismatch, fmt.Sprintf(
 			"agent '%s' at %s could not be probed: no commander in runtime", args.def.Name, args.bin))
 	}
 	pctx, cancel := context.WithTimeout(ctx, st.probeBudget())
@@ -394,7 +395,7 @@ func (st *state) probe(ctx context.Context, args *launchArgs) *core.RefusalError
 		out = out[:probeOutputCap]
 	}
 	if result := probeFailure(pctx, out, res, err, args.def.ProbeMatch); result != "" {
-		return st.refuse("agent-mismatch", fmt.Sprintf(
+		return st.refuse(codeAgentMismatch, fmt.Sprintf(
 			"agent '%s' at %s failed its identity probe: %s", args.def.Name, args.bin, result))
 	}
 	args.probe = &launcherProbe{Args: slices.Clone(args.def.ProbeArgs), OK: true}
@@ -951,23 +952,20 @@ func (st *state) verdict(ctx context.Context, args *launchArgs, res *core.Result
 // only has to name the cause (an HTTP 402, a refused write) at a glance.
 const messageTailCap = 600
 
-// messageWindow is how much of the stream's end is sanitized before the final
-// cut. The window is far wider than the tail, so a token the window's own start
-// splits can never reach the tail: whatever the tail keeps was sanitized whole.
-const messageWindow = 16 << 10
-
 // agentOutput is the tail of what the agent printed, formatted to append to a
 // refusal message. The agent's own error — a provider's out-of-credit reply, a
 // refused write — is printed there, and without it every failure reads as the
-// same bare exit code. It is empty when the agent printed nothing. The text is
-// scrubbed of the operator's credentials, then run through the same sanitizer
-// verify's tail uses (token shapes, bearer and authorization headers, userinfo
-// URLs, terminal escapes), and only then cut, so no cut can leave a
-// recognizable half of a credential.
+// same bare exit code. It is empty when the agent printed nothing. The whole
+// capture (the watchdog caps it at 1 MiB) is scrubbed of the operator's
+// credentials, then run through the same sanitizer verify's tail uses (token
+// shapes, bearer and authorization headers, userinfo URLs, terminal escapes),
+// and only then cut. Cutting first would let a credential split by the cut keep
+// a recognizable half, and a bounded window is no safer: sanitizing the rest of
+// it can shrink the text until a token at the window's left edge lands in the
+// tail.
 func (st *state) agentOutput(args *launchArgs, res *core.Result) string {
 	_, argSecrets := st.displayArgv(args)
-	window := tailOf(res.Stdout+res.Stderr, messageWindow)
-	clean := verifycore.SanitizeTail(scrubSecrets(window, st.req.Environ, argSecrets), st.req.Environ)
+	clean := verifycore.SanitizeTail(scrubSecrets(res.Stdout+res.Stderr, st.req.Environ, argSecrets), st.req.Environ)
 	tail := strings.TrimSpace(strings.ToValidUTF8(tailOf(clean, messageTailCap), ""))
 	if tail == "" {
 		return ""
