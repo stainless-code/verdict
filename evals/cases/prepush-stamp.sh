@@ -50,11 +50,16 @@ push() {
   return 0
 }
 stamp() { (cd "$REPO" && sh scripts/verify-stamp.sh write "$@" >"$EVAL_OUT" 2>"$EVAL_ERR"); }
-ran_full() { [ -s "$LOG" ]; }
+# ran_full: the stub suite ran and the hook did not claim a stamp skip. EVAL_OUT
+# is always written by push(), so a missing file fails instead of passing.
+ran_full() {
+  [ -s "$LOG" ] && [ -e "$EVAL_OUT" ] || return 1
+  if grep -q 'already verified' "$EVAL_OUT"; then return 1; fi
+}
 skipped() { [ ! -s "$LOG" ] && grep -q 'already verified by `make verify-stamp` at .*; skipping the full suite' "$EVAL_OUT"; }
 
 push "$SHA_B"
-if [ "$EVAL_STATUS" -eq 0 ] && ran_full && ! grep -q 'already verified' "$EVAL_OUT"; then
+if [ "$EVAL_STATUS" -eq 0 ] && ran_full; then
   good "an unstamped sha runs the full suite"
 else
   bad "unstamped leg: exit $EVAL_STATUS, log $(cat "$LOG")"
@@ -105,7 +110,7 @@ else
 fi
 
 VERDICT_PREPUSH_FULL=1 push "$SHA_B"
-if [ "$EVAL_STATUS" -eq 0 ] && ran_full && ! grep -q 'already verified' "$EVAL_OUT"; then
+if [ "$EVAL_STATUS" -eq 0 ] && ran_full; then
   good "VERDICT_PREPUSH_FULL=1 forces the full suite for a stamped sha"
 else
   bad "forced leg: exit $EVAL_STATUS, log $(cat "$LOG")"
@@ -113,7 +118,7 @@ fi
 
 printf 'dirty\n' >>"$REPO/a.txt"
 push "$SHA_B"
-if [ "$EVAL_STATUS" -eq 0 ] && ran_full && ! grep -q 'already verified' "$EVAL_OUT"; then
+if [ "$EVAL_STATUS" -eq 0 ] && ran_full; then
   good "a modified tree runs the full suite for a stamped sha"
 else
   bad "dirty leg: exit $EVAL_STATUS, log $(cat "$LOG")"
