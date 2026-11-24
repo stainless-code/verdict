@@ -2485,6 +2485,241 @@ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol
 The server is experimental until 1.0: method names may still move, while the
 envelope keeps answering only the reads the query layer composes.
 
+### LSP server (stdio, experimental until 1.0)
+
+`verdict lsp` publishes a review bundle's findings as editor diagnostics: a
+Language Server Protocol 3.17 server over stdio (JSON-RPC 2.0 with
+`Content-Length` framing, capped at 16 MiB per frame). Like `verdict acp`, it
+has no daemon, listener, or remote auth, makes no model calls, writes nothing,
+and reads no workspace file: document text arrives from the editor, and every
+finding comes from the typed core query layer (`internal/core/query`), so a
+diagnostic says exactly what `report`, `serve`, and `acp` say. `verdict lsp
+--help` documents it.
+
+```text
+verdict lsp [--root <dir>]... [--bundle <name>] [--check <tier>] [--max-bundles <n>]
+            [--max-roots <n>] [--interval <duration>] [--sweep <duration>] [--no-watch] [--json]
+```
+
+- `--root <dir>` serves the bundles under one directory, which must sit inside
+  a git checkout (a `.git` entry in it or an ancestor), or the start refuses
+  `not-a-repo`. Repeat it for a multi-root workspace (at most `--max-roots`,
+  default 8, never more than 16). With `--root` the operator's roots are
+  authoritative: the client's workspace folders are ignored, and a log line
+  says so.
+- With no `--root` the client's roots are served: `initialize`'s
+  `workspaceFolders`, else its `rootUri`, else its `rootPath`, else, when the
+  client names none at all, the checkout the server was started in. Each
+  client root passes the same confinement as a document URI (an absolute,
+  local or UNC `file://` URI, decoded once) and must be an existing directory
+  inside a git checkout; one that is not is dropped with a Warning log line, so
+  `cd /tmp && verdict lsp` serves nothing rather than a non-repository.
+  `--max-roots` bounds them too. Only in this mode does `initialize` advertise
+  `workspace.workspaceFolders` (`supported`, `changeNotifications`), and
+  `workspace/didChangeWorkspaceFolders` adds roots (validated the same way)
+  and removes them (their diagnostics clear unless another root still
+  reaches the file). A change is queued and returns at once: one background
+  worker applies changes strictly in arrival order, validating and
+  resolving the added folders, installing the new set, re-keying documents
+  opened meanwhile (so the end state is the one in-order processing gives),
+  then composing the added roots and rebuilding the watcher over the new
+  set.
+- `--bundle <name>` publishes that bundle. With `--root` it must resolve under
+  at least one root, or the start refuses `missing-bundle` (the message names
+  `verdict fetch-local` as the remedy); with client roots a miss is a Warning
+  log line instead. Without it, each root picks its
+  own: the client's `initializationOptions.bundle`, else the `local-` bundle
+  whose `findings.json` is newest, else the newest PR bundle. Corpus bundles
+  are never picked, and a tie breaks by name.
+- `--check <tier>` is the gate tier the detail composes (default
+  `informational`); it never filters findings.
+- `--max-bundles <n>` caps each root's bundle listing (default 500).
+- `--interval <duration>` and `--sweep <duration>` tune the bundle watcher
+  (default `1s` and `30s`, each at least `100ms`, the sweep at least the
+  interval); `--no-watch` turns it off. Without the watcher a bundle recorded
+  after the server started is picked up by `verdict.refresh`: a save re-reads
+  only the bundle already selected.
+- `--json` is accepted for CLI-convention parity and changes nothing: stdout
+  is LSP either way.
+
+`initialize` advertises exactly what ships: `positionEncoding: "utf-16"`,
+`textDocumentSync` with `openClose`, `change: 1` (full), and `save.includeText`,
+and `executeCommandProvider.commands: ["verdict.refresh"]`, plus the
+`workspace` capability above when the client's folders are the roots. Hover, code
+actions (the suggestion quick-fix and the AI fix prompt), and local triage
+from the editor are coming in a follow-up and are not advertised. Two optional
+`initializationOptions` keys are read: `bundle` (above) and `showDeferred`
+(default `false`); every other key is ignored.
+
+Diagnostics move on four triggers and never on a keystroke:
+
+1. `initialized` composes every root and publishes every path carrying a
+   finding, so the editor's problem list fills before a file is opened.
+2. `textDocument/didOpen` publishes that document's set with its version.
+   Every open file document is tracked (text and version, bounded below),
+   under a served root or not, so a root a later workspace-folder change adds
+   publishes it with its version and tightened ranges.
+3. `textDocument/didSave` records the document's version when the client
+   sends one and re-reads the selected bundle of every root that reaches the
+   file; an unchanged bundle republishes only that document, and nothing at
+   all when the set is byte-identical to the last one sent. A bundle that
+   moved republishes everything it reaches.
+4. A bundle watch change (an out-of-band `record`, `fetch-local`, or
+   `triage` in a terminal) and the `verdict.refresh` command recompose the
+   root and republish. `verdict.refresh` also drops every cached view (use it
+   where the filesystem hides modification times) and answers
+   `{at, roots: [{root, bundle, findings, truncated}], published}`, where
+   `published` counts the frames it sent.
+
+`textDocument/didChange` only keeps the buffer and its version current: it
+never reads a bundle and never publishes. A path that loses its last finding
+is published once with an empty set, which clears it. Bundle reads never
+stall the read loop: a composition reads without the session lock, and a
+`didOpen` or `didSave` that meets one in flight (a slow `verdict.refresh`)
+publishes from the current state and queues its own re-read, so
+`$/cancelRequest` and `exit` behind it are read at once.
+
+Publishing is per file, not per root. Nested roots (`--root /repo --root
+/repo/sub`) can both reach one file; its set is the union of what every root
+says, each diagnostic keeping its own `data.root` (one finding both roots
+carry on the same range appears once), and it clears only when no root
+contributes any more. A document opened under a different URI spelling than
+the one already published (a `localhost` authority, an encoded drive colon)
+clears the old spelling and takes over, and the set is always published in
+the spelling the client used.
+
+A bundle read that fails keeps the last good diagnostics: a store caught
+mid-write (`corrupt-store`), an unreadable diff, or a failed listing logs a
+Warning (`window/logMessage` and stderr) and changes nothing, so an
+unreadable bundle never reads as "no findings". The set clears only when the
+selection really changes (the bundle lost its `findings.json`, or another
+bundle now wins) or the bundle directory is gone.
+
+Bounds, each a refusal or a cut with a log line, never a silent drop: 16
+requests run at once and 256 more wait in FIFO order (one past that answers
+`-32802`); 512 open documents (the next is not tracked until one closes), 4
+MiB of text per document and 32 MiB across them (a larger buffer is tracked
+by version only and keeps whole-line ranges); 20,000 findings per bundle
+(past it the highest-ranked publish, each with `data.truncated: true`, and
+`verdict.refresh` reports `truncated`), though the 8 MiB cap on the findings
+store itself (`jq.MaxFindingsBytes`) usually binds first: an oversized store
+fails to read, which keeps the last good diagnostics (or publishes none for a
+bundle never read); and one `publishDiagnostics` frame
+never exceeds the 16 MiB frame cap (the set is cut to the longest prefix
+that fits, marked the same way).
+
+Each finding maps to one `Diagnostic`. `severity` is `1` (Error) for
+`critical`, `2` (Warning) for `important`, `3` (Information) for
+`informational`, and `4` (Hint) for an untagged finding. Only `open` findings
+publish; `deferred` ones publish as a Hint when `showDeferred` is true;
+`addressed`, `wont-fix`, `false-positive`, and policy-withheld findings never
+publish. `source` is `verdict`, `code` is the finding's full sig, and
+`message` is the body's first line as plain text (control characters, line
+and paragraph separators, bidirectional formatting, zero-width spaces and
+joiners, the word joiner, and soft hyphens dropped; 160 characters at most)
+with the evidence rung and any quote status other than `verified`. The range
+is the finding's whole line; with the document text in hand and an exact
+anchor, its end tightens to the line's end, and any range is clamped to the
+document's last line. `data` carries `sig`, `bundle`, `root`, `status`, `severity`, `rigor`,
+`quote_status`, `lens`, `category`, `side`, `anchor` (`exact` for a NEW-side
+line of the reviewed diff, `hunk` for a deleted line mapped onto its hunk's
+NEW side, or, for a hunk that only deletes (`+N,0`), onto line N+1, the line
+now standing where the deleted code was, moved back onto the last line when
+the document's text shows the deletion was at the end of the file (without
+the text, N+1 is published and the editor clamps it), `unmapped` otherwise), `span`, `hunk_sha256` (the reviewed text),
+`span_sha256` and `span_matches` (whether the editor's text still matches what
+was reviewed), `suggestion`, `deferred`, and `truncated` when a bound cut the
+set.
+
+Confinement is total: a document URI that is not an absolute `file://` URI
+strictly under a served root (after exactly one percent-decode, with
+Windows paths and UNC hosts compared case-insensitively) receives no
+diagnostics. A document is matched against each root lexically first, then
+by the physical spellings of both, so a client that spells the same tree
+through another path (macOS `/private/var` for `/var`, a symlinked checkout,
+a Windows 8.3 short name such as `RUNNER~1`) still gets its findings: the
+document path is resolved when it opens (a save reuses it, and resolves again
+when it never resolved), and a root's when it is served. Resolution is lstat
+only, never a read, and never runs under the session lock. Each walk runs on
+its own goroutine with a 250 ms budget (at most 8 at once, one per path): a
+notification waits at most that budget, so a hung volume (NFS, an unmounted
+disk) delays the one `didOpen`, `didSave`, or `initialize` that touches it
+and never stalls `didChange`, `$/cancelRequest`, `exit`, or anything else.
+A walk that misses the budget is logged once per path, the document is
+matched by the spelling the client gave, and a later save resolves it again;
+a root whose checkout probe misses the budget is dropped with a warning. A
+walk stuck in the kernel cannot be canceled and lingers until the volume
+answers. One file open under two spellings stays tracked until both close,
+each with its own version: publishes use the spelling changed most
+recently. A finding whose `path` is absolute,
+drive-qualified, backslashed, or carries `..` is never published (one
+warning names the count). A `workspace/executeCommand` other than
+`verdict.refresh` answers `-32602` with `bad-params` in `error.data`; a request
+before `initialize` answers `-32002`, an unknown request `-32601`, a request
+after `shutdown` `-32600`, and `$/cancelRequest` answers a canceled request
+`-32800`. Unknown notifications are ignored. `shutdown` refuses new requests
+at once but lets the ones already sent finish for up to 5 seconds, on a
+background goroutine, so `$/cancelRequest` and `exit` are still read
+meanwhile; what is still running then is canceled (`-32800`), and the
+`shutdown` answer follows the last of them. An `exit` read during that drain
+ends the session once the drain does. Exit 0 after `shutdown` then `exit` or
+on stdin EOF, 1 on `exit` without `shutdown` or a start refusal (`bad-root`,
+`not-a-repo`, `missing-bundle`), 2 on argv shape, 3 on a caught signal that
+interrupted a running session (a signal after the session already ended keeps
+its own code). A frame body is read as it arrives, so a declared length
+costs only the bytes actually sent.
+
+#### Editor setup
+
+Every editor launches the same argv: `verdict lsp`. Let the editor pass its
+workspace root (most clients send `workspaceFolders` or `rootUri`), or pin
+roots with `--root`. In Neovim (0.10+), `root_dir` becomes the client's
+`rootUri` and its only workspace folder, so the server serves exactly the
+checkout of the buffer being edited:
+
+```lua
+vim.api.nvim_create_autocmd("FileType", {
+  callback = function(args)
+    local root = vim.fs.root(args.buf, ".git")
+    if root then
+      vim.lsp.start({ name = "verdict", cmd = { "verdict", "lsp" }, root_dir = root })
+    end
+  end,
+})
+```
+
+VS Code has no built-in client for an arbitrary language server: install any
+generic stdio LSP client extension and give it the command `verdict` with the
+arguments `["lsp"]`. Zed registers language servers through extensions; an
+extension that declares a `verdict` server takes the same binary and
+arguments under `lsp.verdict.binary` in `settings.json`:
+
+```json
+{
+  "lsp": {
+    "verdict": {
+      "binary": { "path": "verdict", "arguments": ["lsp"] }
+    }
+  }
+}
+```
+
+A manual smoke test frames each message by hand:
+
+```sh
+frame() { printf 'Content-Length: %d\r\n\r\n%s' "${#1}" "$1"; }
+{
+  frame '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}'
+  frame '{"jsonrpc":"2.0","method":"initialized","params":{}}'
+  frame '{"jsonrpc":"2.0","id":2,"method":"shutdown"}'
+  frame '{"jsonrpc":"2.0","method":"exit"}'
+} | verdict lsp --root /path/to/checkout --no-watch
+```
+
+The server is experimental until 1.0: the `data` payload and the command set
+may still grow, while a diagnostic keeps saying only what the query layer
+composes.
+
 ### Pre-push probe (local gate before CI burns)
 
 Drop the combined gate into `.git/hooks/pre-push` (executable) so a stale HEAD
@@ -2721,7 +2956,7 @@ static-page marker refuses `html-not-export`. Recovery and I/O failures use
 
 ## Journal
 
-Every bundle-writing CLI or MCP invocation (`fetch`, `fetch-local`, `run`, `record` including `--dry-run`, `post`, `verify`, `fix`, `triage`, `adopt`, `ingest`, `threads`, `calibrate`, `report`, `drain`) appends two compact JSON lines to an external, local-only journal file under `<state>/verdict/journal/<repo-key>/<pr>.jsonl` under `storelock` (`<pr>.jsonl.lock` beside the file, mode `0600`): a `start` line when the call begins and an `end` line when it returns, paired by `step` (`<started_at>-<pid>-<n>`, unique per invocation, so two overlapping calls never fold into one pair). Read-only verbs (`show`, `next`, `handoff`, `config`, `risk`, `pack`, `index`, `check-tree`, `doctor`, `pr-wait`, `ready`, `gate`, `journal`), multi-bundle verbs (`trend`, `panel`, `backtest`), non-bundle verbs (`init`, `learn`, `skill`, `upgrade`, `uninstall`, `serve`, `mcp`, `acp`), and calls refused by a `--read-only` MCP server never write a journal line.
+Every bundle-writing CLI or MCP invocation (`fetch`, `fetch-local`, `run`, `record` including `--dry-run`, `post`, `verify`, `fix`, `triage`, `adopt`, `ingest`, `threads`, `calibrate`, `report`, `drain`) appends two compact JSON lines to an external, local-only journal file under `<state>/verdict/journal/<repo-key>/<pr>.jsonl` under `storelock` (`<pr>.jsonl.lock` beside the file, mode `0600`): a `start` line when the call begins and an `end` line when it returns, paired by `step` (`<started_at>-<pid>-<n>`, unique per invocation, so two overlapping calls never fold into one pair). Read-only verbs (`show`, `next`, `handoff`, `config`, `risk`, `pack`, `index`, `check-tree`, `doctor`, `pr-wait`, `ready`, `gate`, `journal`), multi-bundle verbs (`trend`, `panel`, `backtest`), non-bundle verbs (`init`, `learn`, `skill`, `upgrade`, `uninstall`, `serve`, `mcp`, `acp`, `lsp`), and calls refused by a `--read-only` MCP server never write a journal line.
 
 **Location, scope, and cleanup.** `<state>` is `$XDG_STATE_HOME` when set, else `~/.local/state` (on Windows, `%LOCALAPPDATA%` when `$XDG_STATE_HOME` is unset). `<repo-key>` is the first 16 hex characters of `sha256` of the canonical absolute repository root, and `<pr>` is the resolved bundle name (`5101`, `local-7`, `corpus-3`). Nothing journal-related is written inside the repository or `.verdict/` — unless `$XDG_STATE_HOME` (or `%LOCALAPPDATA%`) itself points inside the repository, in which case the journal lands wherever that variable points — so dry runs, refusals, and bundle receipts (`provenance.json`, `run.json`) stay completely untouched. The journal is local to your machine — never committed or uploaded. Delete one bundle's journal by removing `<state>/verdict/journal/<repo-key>/<pr>.jsonl` (and its `.lock` file), or wipe every journal for a repository with `rm -rf <state>/verdict/journal/<repo-key>`.
 
