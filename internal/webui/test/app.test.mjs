@@ -94,6 +94,18 @@ class Element {
     return false;
   }
 
+  // isConnected is true while every ancestor still lists this node as a child
+  // and the chain ends at the document body, as a browser's tree does.
+  get isConnected() {
+    let at = this;
+    while (at.parentNode) {
+      if (!at.parentNode.children.includes(at)) return false;
+      at = at.parentNode;
+    }
+    const doc = this.ownerDocument;
+    return at === doc?.body || doc?.isPageRoot(at) === true;
+  }
+
   remove() {
     if (!this.parentNode) return;
     // A browser drops focus to the body when the focused node leaves the tree.
@@ -111,6 +123,8 @@ class Element {
   }
 
   dispatch(name, event = {}) {
+    // A browser never delivers a click to a disabled control.
+    if (name === "click" && this.disabled) return undefined;
     return this.listeners.get(name)?.(event);
   }
 }
@@ -322,11 +336,44 @@ async function createUI({
   };
   const timers = [];
   const delays = [];
+  // clock is virtual elapsed time: it advances by a timer's delay as the timer
+  // fires, and every AbortSignal.timeout the page armed aborts once it passes,
+  // so the two-minute preview deadline is crossed without real time passing.
+  let clock = 0;
+  const deadlines = [];
+  const AbortSignal = {
+    timeout(ms) {
+      const listeners = [];
+      const signal = {
+        aborted: false,
+        at: clock + ms,
+        addEventListener: (name, listener) => listeners.push(listener),
+        abort() {
+          signal.aborted = true;
+          for (const listener of listeners) listener();
+        },
+      };
+      deadlines.push(signal);
+      return signal;
+    },
+  };
+  const fireTimer = (timer) => {
+    clock += timer.ms;
+    for (const signal of deadlines) {
+      if (!signal.aborted && signal.at <= clock) signal.abort();
+    }
+    timer.fn();
+  };
   const document = {
     baseURI: baseURL,
     body: new Element("body"),
     getElementById(id) {
       return elements.get(id);
+    },
+    // isPageRoot reports the page's own mount points (content, status line),
+    // which the real document holds under its body.
+    isPageRoot(node) {
+      return [...elements.values()].includes(node);
     },
     createElement(tagName) {
       const element = new Element(tagName);
@@ -367,6 +414,16 @@ async function createUI({
     const url = new URL(path, document.baseURI);
     const requestPath = `${url.pathname}${url.search}`;
     fetches.push({ path: requestPath, options });
+    // A request carrying a deadline signal rejects as soon as it aborts, as a
+    // browser's fetch does, so a response that would land after the deadline
+    // never reaches the page.
+    const signal = options?.signal;
+    if (signal?.aborted) throw new Error("aborted");
+    const aborted = signal
+      ? new Promise((_, reject) =>
+          signal.addEventListener("abort", () => reject(new Error("aborted"))),
+        )
+      : null;
     if (requestPath === "/v1/health") {
       const health = { watch };
       if (interactive) {
@@ -376,10 +433,13 @@ async function createUI({
       }
       return { ok: true, json: async () => ({ data: health }) };
     }
-    const response = await respond(
+    const answering = respond(
       requestPath,
       fetches.filter((item) => item.path === requestPath).length,
     );
+    const response = await (aborted
+      ? Promise.race([answering, aborted])
+      : answering);
     if (response instanceof Error) throw response;
     return {
       ok: response.status === undefined || response.status < 400,
@@ -399,6 +459,7 @@ async function createUI({
       fetch,
       EventSource: FakeEventSource,
       Error,
+      AbortSignal,
       navigator,
       setTimeout: (fn, ms) => {
         delays.push(ms);
@@ -417,7 +478,7 @@ async function createUI({
       await flush();
       if (!timers.length) continue;
       const pending = timers.splice(0, timers.length);
-      for (const timer of pending) timer.fn();
+      for (const timer of pending) fireTimer(timer);
     }
     await flush();
   };
@@ -432,7 +493,7 @@ async function createUI({
       await flush();
       if (done) break;
       const pending = timers.splice(0, timers.length);
-      for (const timer of pending) timer.fn();
+      for (const timer of pending) fireTimer(timer);
     }
     return running;
   };
@@ -449,6 +510,7 @@ async function createUI({
     location,
     timers,
     delays,
+    deadlines,
     flush,
     advance,
     settle,
@@ -1732,8 +1794,11 @@ test("allow_post renders Submit Review and confirms after several preview polls"
         findings: { open: 1, deferred: 0, addressed: 0 },
         preview_digest: digest,
         preview_nonce: nonce,
-        review_body: "## Review\n\nOne open finding.",
-        review_body_truncated: false,
+        review_comments: [
+          comment("Review body", "## Review\n\nOne open finding."),
+        ],
+        review_comment_count: 1,
+        review_omitted: [],
       },
     },
     error: null,
@@ -1868,7 +1933,9 @@ test("Cancel on the Submit Review modal posts nothing", async () => {
                 findings: { open: 1, deferred: 0, addressed: 0 },
                 preview_digest: "c".repeat(64),
                 preview_nonce: "d".repeat(32),
-                review_body: "text",
+                review_comments: [comment("Review body", "text")],
+                review_comment_count: 1,
+                review_omitted: [],
               },
             },
             error: null,
@@ -1897,6 +1964,11 @@ test("Cancel on the Submit Review modal posts nothing", async () => {
 });
 
 // previewSnapshot builds one post-preview job snapshot for the modal tests.
+// comment is one preview wire entry whose text is shown whole.
+function comment(label, text, size = Buffer.byteLength(text)) {
+  return { label, text, shown_bytes: Buffer.byteLength(text), bytes: size };
+}
+
 function previewSnapshot(id, status, digest = "", nonce = "", extra = {}) {
   const data = {
     id,
@@ -1913,8 +1985,10 @@ function previewSnapshot(id, status, digest = "", nonce = "", extra = {}) {
       findings: { open: 1, deferred: 0, addressed: 0 },
       preview_digest: digest,
       preview_nonce: nonce,
-      review_body: "## Review\n\nLooks fine.",
-      review_body_truncated: false,
+      review_comments: [comment("Review body", "## Review\n\nLooks fine.")],
+      review_comment_count: 1,
+      review_omitted: [],
+      target_repo: "acme/app",
       ...(extra.result || {}),
     };
     if (extra.warnings) data.warnings = extra.warnings;
@@ -2135,7 +2209,7 @@ test("focus starts on Cancel and stays there when the preview settles", async ()
   );
 });
 
-test("Tab and Shift-Tab stay inside the dialog", async () => {
+test("Tab and Shift-Tab stay inside the dialog and reach the review text", async () => {
   const { ui, releasePreview, opening } = await dialogUI();
   const cancel = firstButton(ui.body, "Cancel");
   const confirm = firstButton(ui.body, "Confirm & Submit Review");
@@ -2146,17 +2220,54 @@ test("Tab and Shift-Tab stay inside the dialog", async () => {
   assert.equal(ui.active(), cancel);
   releasePreview();
   await ui.settle(opening);
-  assert.equal(ui.active(), cancel, "focus stays on Cancel");
+  const review = descendants(ui.body).find(
+    (e) => e.className === "submit-review-list",
+  );
+  assert.ok(review, "the review text is one scrollable region");
+  assert.equal(review.attributes.tabindex, "0");
+  assert.equal(ui.active(), cancel, "focus stays on Cancel, not Confirm");
   ui.press("Tab");
-  assert.equal(ui.active(), confirm, "Tab reaches the enabled Confirm");
+  assert.equal(ui.active(), review, "Tab wraps from Cancel to the review text");
+  ui.press("Tab");
+  assert.equal(ui.active(), confirm, "Tab then reaches the enabled Confirm");
   ui.press("Tab");
   assert.equal(ui.active(), cancel, "Tab wraps from the last control");
   ui.press("Tab", { shiftKey: true });
-  assert.equal(ui.active(), confirm, "Shift-Tab wraps from the first control");
+  assert.equal(ui.active(), confirm, "Shift-Tab steps back to Confirm");
+  ui.press("Tab", { shiftKey: true });
+  assert.equal(ui.active(), review, "Shift-Tab reaches the review text");
+  ui.press("Tab", { shiftKey: true });
+  assert.equal(ui.active(), cancel, "Shift-Tab wraps from the first control");
   // Focus that escaped the dialog is pulled back in.
   ui.body.focus();
   ui.press("Tab");
-  assert.equal(ui.active(), confirm);
+  assert.equal(ui.active(), review);
+});
+
+test("scrolling keys are left to the review region", async () => {
+  const { ui, releasePreview, opening } = await dialogUI();
+  releasePreview();
+  await ui.settle(opening);
+  const review = descendants(ui.body).find(
+    (e) => e.className === "submit-review-list",
+  );
+  review.focus();
+  for (const key of [
+    "ArrowDown",
+    "ArrowUp",
+    "PageDown",
+    "PageUp",
+    "Home",
+    "End",
+    " ",
+  ]) {
+    assert.equal(
+      ui.press(key),
+      false,
+      `${key} must reach the scrolling region`,
+    );
+    assert.equal(ui.active(), review);
+  }
 });
 
 test("Escape closes the preview stage like Cancel and returns focus to the trigger", async () => {
@@ -2270,13 +2381,13 @@ test("the dialog shows the review text and warnings as text, never markup", asyn
   const markup = "## Review\n<img src=x onerror=alert(1)> **bold**";
   const { ui } = await settledDialog({
     extra: {
-      result: { review_body: markup, review_body_truncated: true },
+      result: { review_comments: [comment("Review body", markup)] },
       warnings: ["PR state unknown"],
     },
     submitResponse: () => ({ body: envelope({ commit_id: "c0ffee" }) }),
   });
   const box = descendants(ui.body).find((e) => e.className === "submit-review");
-  assert.ok(box, "the review text has its own scrolling box");
+  assert.ok(box, "the review text has its own box");
   assert.equal(box.tagName, "PRE");
   assert.equal(box.textContent, markup, "the text is shown verbatim");
   assert.equal(
@@ -2285,19 +2396,284 @@ test("the dialog shows the review text and warnings as text, never markup", asyn
     "review text must never become markup",
   );
   assert.ok(ui.body.textContent.includes("PR state unknown"));
+  assert.ok(!ui.body.textContent.includes("Not all of the review is shown"));
   assert.ok(
-    ui.body.textContent.includes("Only the start of the review is shown"),
+    ui.body.textContent.includes("Posts to acme/app, pull request 1234."),
   );
   assert.equal(firstButton(ui.body, "Confirm & Submit Review").disabled, false);
 });
 
-test("a preview without review text stays unconfirmable", async () => {
+test("a preview that lists no comments stays unconfirmable", async () => {
   const { ui } = await settledDialog({
-    extra: { result: { review_body: "" } },
+    extra: { result: { review_comments: [] } },
     submitResponse: () => ({ body: envelope({}) }),
   });
   assert.equal(firstButton(ui.body, "Confirm & Submit Review").disabled, true);
   assert.ok(ui.body.textContent.includes("no review text"));
+});
+
+test("an empty review comment is shown as empty and stays confirmable", async () => {
+  const { ui } = await settledDialog({
+    extra: { result: { review_comments: [comment("Review body", "")] } },
+    submitResponse: () => ({ body: envelope({}) }),
+  });
+  const box = descendants(ui.body).find((e) => e.className === "submit-review");
+  assert.equal(box.textContent, "(empty comment)");
+  assert.equal(firstButton(ui.body, "Confirm & Submit Review").disabled, false);
+});
+
+test("a split review shows every comment, in order, as text under its own label", async () => {
+  const { ui } = await settledDialog({
+    extra: {
+      result: {
+        review_comments: [
+          comment("Review body, part 1 of 2", "HEAD <b>text</b>"),
+          comment("Follow-up review comment, part 2 of 2", "SECOND text"),
+          comment("Inline comment on a.go:3", "INLINE text"),
+        ],
+        review_comment_count: 3,
+      },
+    },
+    submitResponse: () => ({ body: envelope({ commit_id: "c0ffee" }) }),
+  });
+  const labels = descendants(ui.body)
+    .filter((e) => e.className === "submit-review-label")
+    .map((e) => e.textContent);
+  assert.deepEqual(labels, [
+    "Comment 1 of 3 — Review body, part 1 of 2",
+    "Comment 2 of 3 — Follow-up review comment, part 2 of 2",
+    "Comment 3 of 3 — Inline comment on a.go:3",
+  ]);
+  const texts = descendants(ui.body)
+    .filter((e) => e.className === "submit-review")
+    .map((e) => e.textContent);
+  assert.deepEqual(texts, ["HEAD <b>text</b>", "SECOND text", "INLINE text"]);
+  assert.ok(
+    ui.body.textContent.includes("3 comments will be posted, in this order."),
+  );
+  assert.ok(!ui.body.textContent.includes("Not all of the review is shown"));
+  assert.equal(firstButton(ui.body, "Confirm & Submit Review").disabled, false);
+});
+
+// truncatedDialog is a preview whose bound cut the second comment and left the
+// fourth out entirely.
+async function truncatedDialog(submitResponse) {
+  return settledDialog({
+    extra: {
+      result: {
+        review_comments: [
+          comment("Review body, part 1 of 4", "FIRST"),
+          comment("Follow-up review comment, part 2 of 4", "SEC", 500),
+          comment("Follow-up review comment, part 3 of 4", "THIRD"),
+        ],
+        review_comment_count: 4,
+        review_omitted: ["Inline comment on a.go:3"],
+      },
+    },
+    submitResponse,
+  });
+}
+
+test("a review the preview cut says exactly what was not shown and needs an acknowledgement to confirm", async () => {
+  let posts = 0;
+  const { ui } = await truncatedDialog(() => {
+    posts++;
+    return { body: envelope({ commit_id: "c0ffee" }) };
+  });
+  const text = ui.body.textContent;
+  assert.ok(
+    text.includes(
+      "Comment 2 of 4 — Follow-up review comment, part 2 of 4 — cut after 3 of 500 bytes",
+    ),
+  );
+  assert.ok(text.includes("comment 2 (3 of 500 bytes shown)"));
+  assert.ok(text.includes("not shown at all: Inline comment on a.go:3"));
+  assert.ok(
+    text.includes(
+      "The preview digest pins the full content, and all of it posts.",
+    ),
+  );
+  const confirm = firstButton(ui.body, "Confirm & Submit Review");
+  const ack = descendants(ui.body).find(
+    (e) => e.tagName === "INPUT" && e.type === "checkbox",
+  );
+  assert.ok(ack, "the cut review offers an acknowledgement");
+  assert.equal(confirm.disabled, true, "Confirm waits for the acknowledgement");
+  await confirm.dispatch("click");
+  await ui.flush();
+  assert.equal(posts, 0, "a disabled Confirm sends nothing");
+  ack.checked = true;
+  await ack.dispatch("change");
+  assert.equal(
+    confirm.disabled,
+    false,
+    "ticking the acknowledgement enables Confirm",
+  );
+  ack.checked = false;
+  await ack.dispatch("change");
+  assert.equal(confirm.disabled, true, "unticking it disables Confirm again");
+  ack.checked = true;
+  await ack.dispatch("change");
+  await ui.settle(confirm.dispatch("click"));
+  assert.equal(posts, 1);
+  assert.equal(
+    ack.disabled,
+    true,
+    "the acknowledgement locks once the post starts",
+  );
+});
+
+test("the acknowledgement sits in the dialog's Tab order between the review and Confirm", async () => {
+  const { ui } = await truncatedDialog(() => ({ body: envelope({}) }));
+  const review = descendants(ui.body).find(
+    (e) => e.className === "submit-review-list",
+  );
+  const ack = descendants(ui.body).find((e) => e.tagName === "INPUT");
+  const cancel = firstButton(ui.body, "Cancel");
+  cancel.focus();
+  ui.press("Tab");
+  assert.equal(ui.active(), review);
+  ui.press("Tab");
+  assert.equal(ui.active(), ack);
+  ui.press("Tab");
+  assert.equal(ui.active(), cancel, "the disabled Confirm is skipped");
+});
+
+test("a status request still pending at the two-minute deadline is aborted and never enables Confirm", async () => {
+  let releaseLate;
+  const late = new Promise((resolve) => {
+    releaseLate = resolve;
+  });
+  const ui = await createUI({
+    interactive: true,
+    allowPost: true,
+    csrf: "csrf-test-token",
+    respond: async (path, count) => {
+      if (path === "/v1/jobs/post-preview") {
+        return { body: previewSnapshot("job-1", "queued") };
+      }
+      if (path === "/v1/jobs/job-1") {
+        if (count < 3) return { body: previewSnapshot("job-1", "queued") };
+        await late;
+        return {
+          body: previewSnapshot(
+            "job-1",
+            "succeeded",
+            "a".repeat(64),
+            "b".repeat(32),
+          ),
+        };
+      }
+      return { body: prDetailFixtures().get(path) || envelope({}) };
+    },
+  });
+  await ui.navigate("#/r/root-123/1234");
+  const opening = submitButton(ui.elements.get("content")).dispatch("click");
+  await ui.advance(8);
+  const status = ui.fetches.filter((item) => item.path === "/v1/jobs/job-1");
+  assert.ok(status.length >= 3, "the poll is parked on a status request");
+  assert.ok(
+    status.every((item) => item.options.signal),
+    "every status request carries the deadline",
+  );
+  const start = ui.fetches.find(
+    (item) => item.path === "/v1/jobs/post-preview",
+  );
+  assert.ok(start.options.signal, "the preview start carries it too");
+  assert.equal(ui.deadlines.length, 1, "one deadline bounds the whole preview");
+  ui.deadlines[0].abort();
+  releaseLate();
+  await ui.settle(opening);
+  assert.ok(ui.body.textContent.includes("did not finish"));
+  assert.ok(!ui.body.textContent.includes("Preview digest"));
+  assert.equal(firstButton(ui.body, "Confirm & Submit Review").disabled, true);
+});
+
+test("a status response that finishes parsing after the deadline is not accepted", async () => {
+  let ui;
+  ui = await createUI({
+    interactive: true,
+    allowPost: true,
+    csrf: "csrf-test-token",
+    respond: async (path) => {
+      if (path === "/v1/jobs/post-preview") {
+        return { body: previewSnapshot("job-1", "queued") };
+      }
+      if (path === "/v1/jobs/job-1") {
+        return {
+          // Reading the body is the step the deadline lands in.
+          get body() {
+            ui.deadlines[0].abort();
+            return previewSnapshot(
+              "job-1",
+              "succeeded",
+              "a".repeat(64),
+              "b".repeat(32),
+            );
+          },
+        };
+      }
+      return { body: prDetailFixtures().get(path) || envelope({}) };
+    },
+  });
+  await ui.navigate("#/r/root-123/1234");
+  await ui.settle(submitButton(ui.elements.get("content")).dispatch("click"));
+  assert.ok(ui.body.textContent.includes("did not finish"));
+  assert.ok(!ui.body.textContent.includes("Preview digest"));
+  assert.equal(firstButton(ui.body, "Confirm & Submit Review").disabled, true);
+});
+
+test("the submit and its page report are not bound by the preview deadline", async () => {
+  const { ui } = await settledDialog({
+    submitResponse: () => ({ body: envelope({ commit_id: "c0ffee" }) }),
+  });
+  await ui.settle(
+    firstButton(ui.body, "Confirm & Submit Review").dispatch("click"),
+  );
+  const sent = ui.fetches.find((item) => item.path === "/v1/post/submit");
+  assert.equal(
+    sent.options.signal,
+    undefined,
+    "the confirmed submit carries no abort signal",
+  );
+});
+
+test("a submit that lands after the operator moved on names its bundle and root on the page", async () => {
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const { ui } = await settledDialog({
+    submitResponse: async () => {
+      await gate;
+      return { body: envelope({ commit_id: "c0ffee" }) };
+    },
+  });
+  const sending = firstButton(ui.body, "Confirm & Submit Review").dispatch(
+    "click",
+  );
+  await ui.advance(4);
+  assert.equal(ui.press("Escape"), true);
+  release();
+  await ui.settle(sending);
+  const message = ui.elements.get("message").textContent;
+  assert.ok(message.includes("bundle 1234 in root root-123"), message);
+});
+
+test("closing the dialog after the Detail view re-rendered focuses the Submit Review that replaced the trigger", async () => {
+  const { ui, trigger } = await settledDialog({
+    submitResponse: () => ({ body: envelope({}) }),
+  });
+  await ui.navigate("#/r/root-123/1234");
+  const replacement = submitButton(ui.elements.get("content"));
+  assert.notEqual(replacement, trigger, "the re-render built a new button");
+  assert.equal(trigger.isConnected, false);
+  assert.equal(ui.press("Escape"), true);
+  assert.equal(
+    ui.active(),
+    replacement,
+    "focus lands on the connected control",
+  );
 });
 
 test("a failed status poll is a request error, not an unfinished preview", async () => {

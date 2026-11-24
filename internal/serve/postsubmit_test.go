@@ -55,8 +55,18 @@ func postServer(
 func dryRunResponse(req *postcore.Request) *postcore.Response {
 	return &postcore.Response{
 		Repo: req.Repo, Pr: req.Pr, At: "2026-11-12T09:00:00Z",
-		Data:     &core.PostData{DryRun: true, Event: "COMMENT", CommitID: headA},
+		Data:     renderedData(),
 		Warnings: []string{}, Next: "payload NOT posted (dry-run)",
+	}
+}
+
+// renderedData is a dry-run payload that carries the one comment and the
+// digest every confirmable preview has: a preview without a digest is refused.
+func renderedData() *core.PostData {
+	return &core.PostData{
+		DryRun: true, Event: "COMMENT", CommitID: headA,
+		RenderedComments: []core.RenderedComment{{Label: "Review body", Text: "the review"}},
+		RenderedHash:     "hash-default",
 	}
 }
 
@@ -239,7 +249,7 @@ func TestForgejoAuthGateRefusesAnEmptyEnv(t *testing.T) {
 func TestPreviewStoreConcurrentConsume(t *testing.T) {
 	t.Parallel()
 	store := &previewStore{entries: map[string]*previewEntry{}, now: fixedNow, ttl: previewTTL}
-	nonce, err := store.mint("root", "1234", "digest", "fingerprint", "rendered")
+	nonce, err := store.mint("root", "1234", "digest", "fingerprint", "rendered", "o/r")
 	if err != nil {
 		t.Fatalf("mint: %v", err)
 	}
@@ -464,7 +474,7 @@ func TestPostSubmitStoreBusyIs503(t *testing.T) {
 	preview, submit := okPostRunners()
 	ts, server := postServer(t, &Config{Layer: testLayer(root, nil), LockWait: 50 * time.Millisecond}, preview, submit)
 	rootID := rootIDOf(t, ts, bearer())
-	digest, nonce := mintPreviewSnapshotPair(t, ts, server, rootID, "1234")
+	digest, nonce := mintPreviewSnapshotPair(t, ts, server, rootID)
 	store := filepath.Join(mustAbs(t, root), ".verdict", "state", "1234", "findings.json")
 	unlock, err := storelock.Acquire(store, storelock.DefaultWait)
 	if err != nil {
@@ -479,16 +489,20 @@ func TestPostSubmitStoreBusyIs503(t *testing.T) {
 }
 
 // mintPreviewSnapshotPair mints one preview and returns its digest and nonce.
-func mintPreviewSnapshotPair(t *testing.T, ts *httptest.Server, server *Server, rootID, bundle string) (digest, nonce string) {
+func mintPreviewSnapshotPair(t *testing.T, ts *httptest.Server, server *Server, rootID string) (digest, nonce string) {
 	t.Helper()
-	digest, nonce, _ = mintPreviewSnapshot(t, ts, server, rootID, bundle)
+	digest, nonce, _ = mintPreviewSnapshot(t, ts, server, rootID, "1234")
 	return digest, nonce
 }
 
 // TestPostSubmitDefinitiveRefusalSurvivesTheDeadline pins the post-timeout
 // rewrite as narrow: a definitive refusal (already-posted) the runner returns
 // right at the boundary keeps its code, while the transport failure and the
-// cancellation a killed host call surface as still read post-timeout.
+// cancellation a killed host call surface as still read post-timeout. It drives
+// the host-call phase directly with a deadline the test fires after the runner
+// is entered, so no wall-clock bound races the lock, the fingerprint, or the
+// re-render that precede it over HTTP; the HTTP lock-wait deadline is its own
+// test.
 func TestPostSubmitDefinitiveRefusalSurvivesTheDeadline(t *testing.T) { //nolint:revive // one matrix of boundary refusals
 	t.Parallel()
 	cases := []struct{ name, code, want string }{
@@ -500,20 +514,35 @@ func TestPostSubmitDefinitiveRefusalSurvivesTheDeadline(t *testing.T) { //nolint
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			root := writeFixture(t, fixtureFiles())
+			deadline := newManualDeadline(t.Context())
+			entered := make(chan struct{})
 			preview, _ := okPostRunners()
 			submit := PostSubmitRunner(func(ctx context.Context, _ *postcore.Request) (*postcore.Response, *core.RefusalError) {
+				close(entered)
 				<-ctx.Done()
 				return nil, &core.RefusalError{Code: tc.code, Message: "refused at the boundary"}
 			})
-			ts, server := postServer(t, &Config{Layer: testLayer(root, nil), PostTimeout: 100 * time.Millisecond}, preview, submit)
-			rootID := rootIDOf(t, ts, bearer())
-			digest, nonce := mintPreviewSnapshotPair(t, ts, server, rootID, "1234")
-			got := post(t, ts, postSubmitPath, submitBody(rootID, "1234", digest, nonce, new(true)), writeHeaders(server))
-			if got.status != http.StatusOK {
-				t.Fatalf("submit = %d %s, want 200 refusal envelope", got.status, got.body)
-			}
-			if code := asString(t, asMap(t, decode(t, got.body)["error"])["code"]); code != tc.want {
-				t.Errorf("error code = %q, want %q", code, tc.want)
+			_, server := postServer(t, &Config{Layer: testLayer(root, nil)}, preview, submit)
+			bundleDir := filepath.Join(mustAbs(t, root), ".verdict", "state", "1234")
+			answered := make(chan *core.RefusalError, 1)
+			go func() {
+				_, ref := server.invokePostSubmit(deadline, &postSubmitBody{Bundle: "1234"}, mustAbs(t, root), bundleDir,
+					&previewEntry{repo: "acme/app", rendered: "digest"})
+				answered <- ref
+			}()
+			awaitClosed(t, entered)
+			deadline.fire()
+			var ref *core.RefusalError
+			testenv.Until(t, func() bool {
+				select {
+				case ref = <-answered:
+					return true
+				default:
+					return false
+				}
+			})
+			if ref == nil || ref.Code != tc.want {
+				t.Errorf("refusal = %+v, want code %q", ref, tc.want)
 			}
 		})
 	}
@@ -586,7 +615,7 @@ func TestPreviewStoreEvictsTheOldestWhenFull(t *testing.T) { //nolint:revive // 
 	}
 	nonces := make([]string, 0, maxPreviews+1)
 	for range maxPreviews + 1 {
-		nonce, err := store.mint("root", "1234", "digest", "fingerprint", "rendered")
+		nonce, err := store.mint("root", "1234", "digest", "fingerprint", "rendered", "o/r")
 		if err != nil {
 			t.Fatalf("mint: %v", err)
 		}
@@ -810,7 +839,7 @@ func TestPostSubmitWriteDuringPreviewIsStale(t *testing.T) {
 	})
 	ts, server := postServer(t, &Config{Layer: testLayer(root, nil)}, preview, submit)
 	rootID := rootIDOf(t, ts, bearer())
-	digest, nonce := mintPreviewSnapshotPair(t, ts, server, rootID, "1234")
+	digest, nonce := mintPreviewSnapshotPair(t, ts, server, rootID)
 	got := post(t, ts, postSubmitPath, submitBody(rootID, "1234", digest, nonce, new(true)), writeHeaders(server))
 	if got.status != http.StatusConflict || !strings.Contains(string(got.body), `"reason":"stale-preview"`) {
 		t.Errorf("write during the preview = %d %s, want 409 stale-preview", got.status, got.body)
@@ -827,7 +856,9 @@ func renderingPreview(render func(n int) (body, hash string)) PostPreviewRunner 
 	var calls atomic.Int32
 	return func(_ context.Context, req *postcore.Request) (*postcore.Response, *core.RefusalError) {
 		resp := dryRunResponse(req)
-		resp.Data.RenderedBody, resp.Data.RenderedHash = render(int(calls.Add(1)))
+		body, hash := render(int(calls.Add(1)))
+		resp.Data.RenderedComments = []core.RenderedComment{{Label: "Review body", Text: body}}
+		resp.Data.RenderedHash = hash
 		return resp, nil
 	}
 }
@@ -918,9 +949,9 @@ func pinCheckingSubmit(t *testing.T, review string, posts *atomic.Int32) PostSub
 // window: the re-render matched the preview, then review.json changed (a writer
 // that ignores the advisory lock) before the post's own read. The submit runner
 // models core/post's contract (digest the review it is about to send, refuse a
-// pin it does not match before any host call), so this proves the server pins
-// the previewed digest on the real request and answers the refusal as a stale
-// preview, not as a post.
+// pin it does not match before any host write), so this proves the server pins
+// the previewed digest on the real request and answers the refusal as the
+// 409 post-content-changed it is, not as a post and not as a stale preview.
 func TestPostSubmitPinsThePostToTheVerifiedContent(t *testing.T) {
 	t.Parallel()
 	root := writeFixture(t, fixtureFiles())
@@ -932,8 +963,11 @@ func TestPostSubmitPinsThePostToTheVerifiedContent(t *testing.T) {
 	rootID := rootIDOf(t, ts, bearer())
 	digest, nonce, _ := mintPreviewSnapshot(t, ts, server, rootID, "1234")
 	got := post(t, ts, postSubmitPath, submitBody(rootID, "1234", digest, nonce, new(true)), writeHeaders(server))
-	if got.status != http.StatusConflict || !strings.Contains(string(got.body), `"reason":"stale-preview"`) {
-		t.Fatalf("a review changed after the verified render = %d %s, want 409 stale-preview", got.status, got.body)
+	if got.status != http.StatusConflict || !strings.Contains(string(got.body), `"reason":"post-content-changed"`) {
+		t.Fatalf("a review changed after the verified render = %d %s, want 409 post-content-changed", got.status, got.body)
+	}
+	if strings.Contains(string(got.body), "stale-preview") {
+		t.Errorf("the pin's refusal reads as a stale preview: %s", got.body)
 	}
 	if n := posts.Load(); n != 0 {
 		t.Errorf("posted reviews = %d, want 0", n)
@@ -959,11 +993,15 @@ func TestPostSubmitPostsTheReviewTheDialogShowed(t *testing.T) {
 	rootID := rootIDOf(t, ts, bearer())
 	digest, nonce, snap := mintPreviewSnapshot(t, ts, server, rootID, "1234")
 	result := asMap(t, snap["result"])
-	if got := asString(t, result["review_body"]); got != "## Review\n\n<b>raw</b> text" {
-		t.Errorf("review_body = %q, want the rendered text verbatim", got)
+	shown := asList(t, result["review_comments"])
+	if len(shown) != 1 {
+		t.Fatalf("review_comments = %v, want the one comment", shown)
 	}
-	if result["review_body_truncated"] != false {
-		t.Errorf("review_body_truncated = %v, want false", result["review_body_truncated"])
+	if got := asString(t, asMap(t, shown[0])["text"]); got != "## Review\n\n<b>raw</b> text" {
+		t.Errorf("review comment text = %q, want the rendered text verbatim", got)
+	}
+	if len(asList(t, result["review_omitted"])) != 0 {
+		t.Errorf("review_omitted = %v, want none", result["review_omitted"])
 	}
 	got := post(t, ts, postSubmitPath, submitBody(rootID, "1234", digest, nonce, new(true)), writeHeaders(server))
 	if got.status != http.StatusOK || !strings.Contains(string(got.body), `"error": null`) {
@@ -974,14 +1012,15 @@ func TestPostSubmitPostsTheReviewTheDialogShowed(t *testing.T) {
 	}
 }
 
-// TestPreviewBodyIsBoundedAtARuneBoundary pins the cap on the published text:
-// a body over [maxReviewBodyBytes] is cut at a rune boundary (never mid
-// character, so the wire stays valid UTF-8) and flagged truncated.
-func TestPreviewBodyIsBoundedAtARuneBoundary(t *testing.T) {
+// TestPreviewTextIsBoundedAtARuneBoundary pins the cap on the published text:
+// a comment over [maxReviewPreviewBytes] (256 KiB) is cut at a rune boundary
+// (never mid character, so the wire stays valid UTF-8), and its entry still
+// carries the full size so the dialog can say it was cut.
+func TestPreviewTextIsBoundedAtARuneBoundary(t *testing.T) {
 	t.Parallel()
 	root := writeFixture(t, fixtureFiles())
 	// "é" is two bytes: an odd prefix puts the cap in the middle of one.
-	long := "x" + strings.Repeat("é", maxReviewBodyBytes)
+	long := "x" + strings.Repeat("é", 262144)
 	preview := renderingPreview(func(int) (string, string) { return long, "hash" })
 	ts, server := postServer(t, &Config{Layer: testLayer(root, nil)}, preview,
 		PostSubmitRunner(func(_ context.Context, req *postcore.Request) (*postcore.Response, *core.RefusalError) {
@@ -990,15 +1029,16 @@ func TestPreviewBodyIsBoundedAtARuneBoundary(t *testing.T) {
 	rootID := rootIDOf(t, ts, bearer())
 	_, _, snap := mintPreviewSnapshot(t, ts, server, rootID, "1234")
 	result := asMap(t, snap["result"])
-	text := asString(t, result["review_body"])
-	if len(text) != maxReviewBodyBytes-1 {
-		t.Errorf("published %d bytes, want %d: the cut must back up to the rune start", len(text), maxReviewBodyBytes-1)
+	entry := asMap(t, asList(t, result["review_comments"])[0])
+	text := asString(t, entry["text"])
+	if len(text) != 262143 {
+		t.Errorf("published %d bytes, want 262143 (the 256 KiB bound, backed up to the rune start)", len(text))
 	}
 	if !utf8.ValidString(text) {
 		t.Error("the truncated text is not valid UTF-8")
 	}
-	if result["review_body_truncated"] != true {
-		t.Errorf("review_body_truncated = %v, want true", result["review_body_truncated"])
+	if got := asNumber(t, entry["bytes"]); got != len(long) {
+		t.Errorf("entry bytes = %d, want the full %d", got, len(long))
 	}
 }
 

@@ -480,6 +480,12 @@ Cause: a served bundle name resolves to a different directory than the discovere
 
 Fix: address the local bundle explicitly as `local-<name>`, or restore the PR bundle's `PR.json` so the bare name resolves to it.
 
+## `bundle-unreadable`
+
+Cause: `verdict serve --allow-post` could not fingerprint the bundle for a preview or a confirmed submit, because a bundle file is unreadable or is not a regular file (a FIFO or device is refused without waiting for a writer). Nothing was posted, and a refused submit leaves its preview usable.
+
+Fix: make every bundle file a regular, readable file, then re-run the preview.
+
 ## `calibrate-failed`
 
 Cause: `calibrate --probe` could not write its grades file.
@@ -1161,7 +1167,7 @@ Fix: re-clone without `--filter=blob:none`, or unset the remote's `promisor` and
 
 ## `post-content-changed`
 
-Cause: a confirmed `verdict serve --allow-post` submit rendered a review different from the one the preview showed, because `review.json` changed after the preview read it. Nothing was posted.
+Cause: a confirmed `verdict serve --allow-post` submit built a review different from the one the preview pinned, because a bundle file changed after the verified re-render. The server answers `409 post-content-changed`. Nothing was posted: the check runs before any host write.
 
 Fix: re-run the preview to see the review as it is now, then submit again.
 

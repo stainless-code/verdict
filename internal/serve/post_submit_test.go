@@ -37,7 +37,7 @@ func postSubmitServer(t *testing.T, layer Layer, allowPost bool) (*httptest.Serv
 		if err := ctx.Err(); err != nil {
 			return nil, &core.RefusalError{Code: "canceled", Message: "canceled before post completed"}
 		}
-		data := &core.PostData{DryRun: true, Event: "COMMENT", CommitID: headA}
+		data := renderedData()
 		return &postcore.Response{
 			Repo: req.Repo, Pr: req.Pr, At: "2026-11-12T09:00:00Z", Data: data,
 			Warnings: []string{}, Next: "payload NOT posted (dry-run)",
@@ -337,7 +337,7 @@ func TestPostSubmitExpiredNonce(t *testing.T) {
 		counts.mu.Lock()
 		counts.preview++
 		counts.mu.Unlock()
-		data := &core.PostData{DryRun: true, Event: "COMMENT", CommitID: headA}
+		data := renderedData()
 		return &postcore.Response{Repo: req.Repo, Pr: req.Pr, At: "2026-11-12T09:00:00Z", Data: data}, nil
 	})
 	submit := PostSubmitRunner(func(_ context.Context, req *postcore.Request) (*postcore.Response, *core.RefusalError) {
@@ -853,20 +853,21 @@ func TestPostSubmitToolVersionIgnoresWorkingDirectory(t *testing.T) { //nolint:r
 // TestPostSubmitTimeoutRefusesAndReleasesLock pins that a host call that
 // outlives the submit bound is stopped and answered with the typed
 // post-timeout refusal, and that the bundle storelock is released so a triage
-// on the same bundle succeeds afterwards. The bound is injected: the shipped
-// five minutes never decides the test.
-func TestPostSubmitTimeoutRefusesAndReleasesLock(t *testing.T) { //nolint:revive // one flow asserts the refusal, the host state, and the lock
+// on the same bundle succeeds afterwards. The bound is the test's own: it
+// fires the deadline once the host stub reports it was entered, so the time the
+// fingerprint, the re-render, and the preflight take on a slow machine never
+// decides whether the host-call phase is the one that timed out.
+func TestPostSubmitTimeoutRefusesAndReleasesLock(t *testing.T) {
 	t.Parallel()
 	cmdr := &stubPostCommander{t: t, head: postHeadA, stall: make(chan struct{})}
-	ts, server, rootID, root := realPostServer(t, cmdr, &Config{PostTimeout: 500 * time.Millisecond})
+	ts, server, rootID, root := realPostServer(t, cmdr, &Config{})
 	digest, nonce, _ := mintPreviewSnapshot(t, ts, server, rootID, "7")
+	deadline := installDeadline(t, server)
 
-	got := post(t, ts, postSubmitPath, submitBody(rootID, "7", digest, nonce, new(true)), writeHeaders(server))
-	select {
-	case <-cmdr.stall:
-	default:
-		t.Fatal("the stalled host POST was never reached: the refusal came from somewhere else")
-	}
+	answered := submitAsync(t, ts, server, submitBody(rootID, "7", digest, nonce, new(true)))
+	awaitClosed(t, cmdr.stall)
+	deadline.fire()
+	got := awaitResult(t, answered)
 	if got.status != http.StatusOK {
 		t.Fatalf("submit = %d %s, want 200 refusal envelope", got.status, got.body)
 	}

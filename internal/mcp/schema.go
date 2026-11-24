@@ -59,6 +59,9 @@ var internalFieldNames = map[string]bool{
 	// PinnedContentHash is the serve transport's pin of a confirmed post to its
 	// previewed digest, never an argument: MCP/CLI callers leave it empty.
 	"PinnedContentHash": true,
+	// NoPersist makes the confirmed submit's re-render stage nothing, never an
+	// argument: the serve transport sets it.
+	"NoPersist": true,
 }
 
 type schemaSource = reflect.Type

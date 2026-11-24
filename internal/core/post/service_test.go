@@ -892,6 +892,37 @@ func previewedHash(t *testing.T) string {
 	return preview.Data.RenderedHash
 }
 
+// TestPinnedDigestIsTheDigestOfTheBytesTheHostReceived proves the preview pins
+// what the host is handed: the digest the dry run reports equals the digest of
+// the exact review POST body the commander received, marker and all.
+func TestPinnedDigestIsTheDigestOfTheBytesTheHostReceived(t *testing.T) {
+	t.Chdir(t.TempDir())
+	postBundle(t, postReview)
+	var warnings, human []string
+	dry := postTestReq(postCommander(t), Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true}, &warnings, &human)
+	preview, ref := Run(context.Background(), dry)
+	if ref != nil {
+		t.Fatalf("dry-run = %v", ref)
+	}
+	cmdr := postCommander(t)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	if _, ref := Run(context.Background(), req); ref != nil {
+		t.Fatalf("post = %v", ref)
+	}
+	var posted []string
+	for _, in := range cmdr.stdin {
+		if strings.Contains(in, `"event"`) {
+			posted = append(posted, strings.TrimSuffix(in, "\n"))
+		}
+	}
+	if len(posted) != 1 {
+		t.Fatalf("the host received %d review bodies, want 1", len(posted))
+	}
+	if got := payloadsDigest(posted); got != preview.Data.RenderedHash {
+		t.Errorf("digest of the bytes the host received = %q, preview pinned %q", got, preview.Data.RenderedHash)
+	}
+}
+
 // TestRunSubmitPostsThePinnedContent proves a real post renders to the same
 // digest the dry-run did, so pinning the preview's hash does not refuse it.
 func TestRunSubmitPostsThePinnedContent(t *testing.T) {

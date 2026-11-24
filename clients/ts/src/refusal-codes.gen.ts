@@ -81,6 +81,7 @@ export type RefusalCode =
   | "budget-exceeded"
   | "budget-unknown"
   | "bundle-ambiguous"
+  | "bundle-unreadable"
   | "calibrate-failed"
   | "canceled"
   | "cannot-resume"

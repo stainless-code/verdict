@@ -36,15 +36,17 @@ const recordCommand = "record"
 // hook), persisting to different findings files (dry runs stage to
 // findings.dryrun.json).
 type MergeParams struct { //nolint:govet // field grouping documents the merge contract
-	Dir          string
-	Prov         string
-	HeadFull     string
-	Review       *jq.Obj
-	ReviewFile   string
-	Root         string
-	RepoRoot     string
-	Banners      []string
-	DryRun       bool
+	Dir        string
+	Prov       string
+	HeadFull   string
+	Review     *jq.Obj
+	ReviewFile string
+	Root       string
+	RepoRoot   string
+	Banners    []string
+	DryRun     bool
+	// NoPersist writes nothing: no findings file, no knowledge-base stage.
+	NoPersist    bool
 	MinSeverity  string
 	FindingsFile string
 	Effective    core.Effective
@@ -131,6 +133,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		headShort:       readcommon.ShortSHA(in.HeadFull),
 		prov:            in.Prov,
 		dryRun:          in.DryRun,
+		noPersist:       in.NoPersist,
 		controls:        in.Controls,
 		run:             in.Run,
 		minSeverity:     in.MinSeverity,
@@ -507,5 +510,5 @@ func (st *state) executionPanel(execution *panelcore.Execution, file *panelcore.
 }
 
 func (st *state) persistsFindings() bool {
-	return !st.dryRun || st.cmd != recordCommand
+	return !st.noPersist && (!st.dryRun || st.cmd != recordCommand)
 }

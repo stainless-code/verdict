@@ -32,6 +32,10 @@
   // closing the dialog hands focus back to it. submitKeydown is the document
   // handler that traps Tab and closes on Escape while the dialog is open.
   let submitReturnFocus = null;
+  // submitControl is the Submit Review button the current Detail view renders:
+  // a bundles event rebuilds the view under an open dialog, which detaches the
+  // button that opened it, so focus goes back to the one that replaced it.
+  let submitControl = null;
   let submitKeydown = null;
   // submitGeneration numbers each open of the confirmation modal; a preview
   // acts only while its own generation is still the current one.
@@ -296,8 +300,9 @@
   // writeJSON posts one JSON body with the per-session CSRF header. The
   // response body is returned for the caller to render honestly: a refusal
   // envelope is not thrown.
-  async function writeJSON(path, payload) {
+  async function writeJSON(path, payload, signal) {
     const response = await fetch(path, {
+      signal,
       method: "POST",
       credentials: "same-origin",
       cache: "no-store",
@@ -442,15 +447,16 @@
   const afterDelay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   // The confirmation modal waits for a preview job on a bounded backoff: it
-  // starts a quarter second apart and doubles to a two-second cap, and gives up
-  // once the waits add up to two minutes. A preview runs a whole dry-run post,
-  // host reads and gate checks included, so a healthy one can outlast a short
-  // window, while an unpaced burst of fetches measures only how fast a
-  // rejection is delivered. The ceiling counts the waits, not the wall clock,
-  // so a test that advances the timer seam sees the same bound.
+  // starts a quarter second apart and doubles to a two-second cap. A preview
+  // runs a whole dry-run post, host reads and gate checks included, so a
+  // healthy one can outlast a short window, while an unpaced burst of fetches
+  // measures only how fast a rejection is delivered. The whole preview, the
+  // start request and every status request included, has two minutes of
+  // elapsed time: the deadline is one abort signal that every preview request
+  // carries, so a response that arrives after it is never accepted.
   const previewPollStartMs = 250;
   const previewPollCapMs = 2000;
-  const previewPollCeilingMs = 120000;
+  const previewDeadlineMs = 120000;
 
   // startJob posts one Tier B action and keeps its snapshot for the
   // drawer. The response is rendered honestly: a refusal envelope and a
@@ -594,6 +600,7 @@
       submit.addEventListener("click", () =>
         openSubmitModal(root, bundle, submit),
       );
+      submitControl = submit;
       wrapper.append(submit);
     }
     jobDrawer = node("div", undefined, "job-drawer");
@@ -613,44 +620,63 @@
 
   // fetchPreview runs one dry-run preview and polls its job with bounded
   // backoff until it settles, returning the snapshot whose result carries the
-  // digest and nonce. A job still queued when the ceiling passes returns
-  // un-settled, and the modal reports that instead of confirming nothing.
-  // live() says whether the dialog that asked for this preview is still the
-  // open one: once it is not, the poll stops at its next step and returns
-  // null, so a cancelled preview neither keeps fetching nor reaches a newer
-  // dialog. waiting() fires before each wait on an unsettled job.
+  // digest and nonce. A preview still unsettled at the deadline returns an
+  // "expired" snapshot, and the modal reports that instead of confirming
+  // nothing. live() says whether the dialog that asked for this preview is
+  // still the open one: once it is not, the poll stops at its next step and
+  // returns null, so a cancelled preview neither keeps fetching nor reaches a
+  // newer dialog. waiting() fires before each wait on an unsettled job.
   async function fetchPreview(root, bundle, live, waiting) {
-    const { response, body } = await writeJSON("/v1/jobs/post-preview", {
-      root,
-      bundle,
-    });
+    const deadline = AbortSignal.timeout(previewDeadlineMs);
+    try {
+      return await pollPreview(root, bundle, live, waiting, deadline);
+    } catch (error) {
+      if (deadline.aborted) return { status: "expired" };
+      throw error;
+    }
+  }
+
+  async function pollPreview(root, bundle, live, waiting, deadline) {
+    // expired throws at every step a late response could pass: fetchPreview
+    // turns it into the expired snapshot, never into an accepted preview.
+    const expired = () => {
+      if (deadline.aborted) throw new Error("The preview deadline passed.");
+    };
+    const { response, body } = await writeJSON(
+      "/v1/jobs/post-preview",
+      { root, bundle },
+      deadline,
+    );
     if (!live()) return null;
+    expired();
     if (!response.ok) {
       throw new Error(body?.message || `Request returned ${response.status}`);
     }
     if (body?.error) throw new Error(body.error.message || "Preview refused.");
     let snap = body?.data || {};
     let delay = previewPollStartMs;
-    let waited = 0;
-    while (snap?.id && waited < previewPollCeilingMs) {
+    while (snap?.id) {
       if (["succeeded", "failed", "cancelled"].includes(snap.status)) break;
       waiting();
       await afterDelay(delay);
-      waited += delay;
       delay = Math.min(delay * 2, previewPollCapMs);
       if (!live()) return null;
+      expired();
       const got = await fetch(`/v1/jobs/${encodeURIComponent(snap.id)}`, {
         credentials: "same-origin",
         cache: "no-store",
+        signal: deadline,
       });
       if (!live()) return null;
+      expired();
       if (!got.ok) {
         // A failed poll is a request error, not an unfinished preview: only
-        // an exhausted polling budget earns the "did not finish" message.
+        // an exhausted deadline earns the "did not finish" message.
         throw new Error(`Preview status check returned ${got.status}.`);
       }
       const next = await got.json();
       if (!live()) return null;
+      expired();
       snap = next?.data || snap;
     }
     return snap;
@@ -668,14 +694,20 @@
     submitOverlay = null;
     const returnTo = submitReturnFocus;
     submitReturnFocus = null;
-    returnTo?.focus();
+    // A re-render can detach the button that opened the dialog; focusing it
+    // would do nothing and drop focus to the page, so the button that replaced
+    // it takes the focus.
+    if (returnTo?.isConnected) returnTo.focus();
+    else if (submitControl?.isConnected) submitControl.focus();
   }
 
   // trapSubmitKeys keeps focus inside the open dialog: Tab and Shift-Tab wrap
-  // over its enabled buttons, and Escape closes it like its Cancel/Close
-  // button. The handler lives on the document so it still hears keys when a
-  // click on the backdrop has dropped focus out of the dialog.
-  function trapSubmitKeys(overlay, buttons) {
+  // over its enabled controls, in the order of the live `controls` array (the
+  // review text and the acknowledgement join it once the preview settles), and
+  // Escape closes it like its Cancel/Close button. The handler lives on the
+  // document so it still hears keys when a click on the backdrop has dropped
+  // focus out of the dialog.
+  function trapSubmitKeys(controls) {
     const handler = (event) => {
       if (event.key === "Escape") {
         event.preventDefault?.();
@@ -683,7 +715,7 @@
         return;
       }
       if (event.key !== "Tab") return;
-      const enabled = buttons.filter((button) => !button.disabled);
+      const enabled = controls.filter((control) => !control.disabled);
       if (!enabled.length) return;
       event.preventDefault?.();
       const at = enabled.indexOf(document.activeElement);
@@ -728,7 +760,8 @@
     document.body.append(overlay);
     submitOverlay = overlay;
     submitReturnFocus = trigger || null;
-    trapSubmitKeys(overlay, [confirm, cancel]);
+    const focusOrder = [confirm, cancel];
+    trapSubmitKeys(focusOrder);
     // Cancel is the only enabled control while the preview loads, so focus
     // starts there and stays: Confirm is enabled without taking focus, so a
     // keypress aimed at Cancel can never activate it (WAI-ARIA: don't steal
@@ -767,48 +800,117 @@
     }
     const digest = result.preview_digest;
     const nonce = result.preview_nonce || "";
-    const reviewText =
-      typeof result.review_body === "string" ? result.review_body : "";
-    if (!reviewText) {
-      // The nonce authorizes posting this text; with none shown there is
-      // nothing for the operator to confirm.
+    const comments = Array.isArray(result.review_comments)
+      ? result.review_comments.filter(
+          (entry) => entry && typeof entry.text === "string",
+        )
+      : [];
+    if (!comments.length) {
+      // The nonce authorizes posting these comments; with none listed there is
+      // nothing for the operator to confirm. (A comment whose text is empty is
+      // listed as such below, and stays confirmable.)
       status.textContent =
         "The preview carried no review text to show; cancel and try again.";
       status.className = "error";
       return;
     }
+    const omitted = Array.isArray(result.review_omitted)
+      ? result.review_omitted.map(String)
+      : [];
+    const total = Number.isInteger(result.review_comment_count)
+      ? result.review_comment_count
+      : comments.length + omitted.length;
     const findings = result.findings || {};
     const anchors = result.anchors || {};
     // Untrusted text only ever reaches the page through textContent (node()),
-    // never innerHTML: the review is model output.
-    const reviewBox = node("pre", reviewText, "submit-review");
+    // never innerHTML: the review is model output. Every comment the post will
+    // send is listed in posting order, each under its own label, inside one
+    // scrollable region that is a Tab stop, so a keyboard operator can read
+    // all of it.
+    const reviewBox = node("div", undefined, "submit-review-list");
     reviewBox.setAttribute("tabindex", "0");
     reviewBox.setAttribute("role", "region");
     reviewBox.setAttribute("aria-label", "Review text to be posted");
+    const cut = [];
+    comments.forEach((entry, index) => {
+      const shown = Number.isInteger(entry.shown_bytes)
+        ? entry.shown_bytes
+        : null;
+      const size = Number.isInteger(entry.bytes) ? entry.bytes : null;
+      const isCut = shown !== null && size !== null && shown < size;
+      if (isCut)
+        cut.push(`comment ${index + 1} (${shown} of ${size} bytes shown)`);
+      reviewBox.append(
+        node(
+          "p",
+          `Comment ${index + 1} of ${total} — ${entry.label || "review comment"}${isCut ? ` — cut after ${shown} of ${size} bytes` : ""}`,
+          "submit-review-label",
+        ),
+        node(
+          "pre",
+          entry.text === "" ? "(empty comment)" : entry.text,
+          "submit-review",
+        ),
+      );
+    });
     details.append(
       node(
         "p",
         `Event ${result.event || "COMMENT"} — ${findings.open ?? 0} open, ${findings.addressed ?? 0} addressed, ${anchors.kept ?? 0} anchors kept.`,
       ),
     );
+    if (typeof result.target_repo === "string" && result.target_repo) {
+      details.append(
+        node("p", `Posts to ${result.target_repo}, pull request ${bundle}.`),
+      );
+    }
     const warnings = Array.isArray(snap.warnings) ? snap.warnings : [];
     if (warnings.length) {
       const list = node("ul", undefined, "submit-warnings");
       for (const warning of warnings) list.append(node("li", warning));
       details.append(node("p", "Preview warnings:"), list);
     }
-    details.append(reviewBox);
-    if (result.review_body_truncated === true) {
+    details.append(
+      node(
+        "p",
+        total === 1
+          ? "1 comment will be posted."
+          : `${total} comments will be posted, in this order.`,
+      ),
+      reviewBox,
+    );
+    const unseen = [...cut];
+    if (omitted.length) unseen.push(`not shown at all: ${omitted.join("; ")}`);
+    let ack = null;
+    if (unseen.length) {
       details.append(
         node(
           "p",
-          "Only the start of the review is shown; the whole review posts.",
+          `Not all of the review is shown: ${unseen.join("; ")}. The preview digest pins the full content, and all of it posts.`,
+          "submit-truncated",
         ),
       );
+      // Confirming text that was not shown takes an explicit acknowledgement.
+      ack = node("input");
+      ack.type = "checkbox";
+      ack.setAttribute("id", "submit-ack");
+      const ackLabel = node(
+        "label",
+        "I understand that part of the review was not shown here and will post anyway.",
+      );
+      ackLabel.setAttribute("for", "submit-ack");
+      ack.addEventListener("change", () => {
+        if (!confirming) confirm.disabled = !ack.checked;
+      });
+      details.append(ack, ackLabel);
     }
     details.append(node("p", `Preview digest ${digest}`));
-    status.textContent = "Review the text above, then confirm to submit.";
-    confirm.disabled = false;
+    focusOrder.unshift(reviewBox);
+    if (ack) focusOrder.splice(1, 0, ack);
+    status.textContent = ack
+      ? "Review the text above, tick the acknowledgement, then confirm to submit."
+      : "Review the text above, then confirm to submit.";
+    confirm.disabled = ack !== null;
     // The dialog is still the open one: a submit that settles after the
     // operator closed it reports on the page instead of a detached element.
     const open = () => submitOverlay === overlay;
@@ -816,12 +918,15 @@
       status.textContent = text;
       status.className = failed ? "error" : "";
       if (!open()) {
-        message.textContent = `Submit review for bundle ${bundle}: ${text}`;
+        message.textContent = `Submit review for bundle ${bundle} in root ${root}: ${text}`;
         message.className = failed ? "error" : "";
       }
     };
+    let confirming = false;
     confirm.addEventListener("click", async () => {
+      confirming = true;
       confirm.disabled = true;
+      if (ack) ack.disabled = true;
       // The server keeps posting after the dialog goes away, so this button
       // stops promising a cancel: it closes the dialog, nothing more.
       cancel.textContent = "Close";
@@ -849,7 +954,9 @@
               true,
             );
             confirm.textContent = "Retry submit";
+            confirming = false;
             confirm.disabled = false;
+            if (ack) ack.disabled = false;
             cancel.textContent = "Cancel";
             return;
           }
@@ -865,7 +972,7 @@
         details.append(receipt);
         status.textContent = "Submitted.";
         status.className = "";
-        message.textContent = "Review submitted from the confirmation modal.";
+        message.textContent = `Review submitted for bundle ${bundle} in root ${root}.`;
         message.className = "";
       } catch (error) {
         report(error instanceof Error ? error.message : String(error), true);

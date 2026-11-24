@@ -54,10 +54,17 @@ func (st *state) buildPayloads() {
 			splitFollowHead(i+2, n)+extra, eventComment, commitIDValue(st.commitID), []any{}))
 	}
 	st.phash = contentDigest(strings.Join(append([]string{st.body}, st.extraParts...), "\n"), st.commitID, st.comments)
+	// marked is the first comment exactly as a real post sends it: the body and
+	// the hidden review marker. A dry run builds it too, so the digest a preview
+	// pins is taken over the final payloads, never over the body before the
+	// marker is appended.
+	st.marked = st.body + paragraphBreak + fmt.Sprintf(reviewMarkerFormat, st.phash, st.commitID)
 	if !st.flags.DryRun {
-		st.body += paragraphBreak + fmt.Sprintf(reviewMarkerFormat, st.phash, st.commitID)
+		st.body = st.marked
 		st.payloads[0] = postPayload(st.body, st.event, commitIDValue(st.commitID), st.comments)
 	}
+	final := append([]string{postPayload(st.marked, st.event, commitIDValue(st.commitID), st.comments)}, st.payloads[1:]...)
+	st.postedHash = payloadsDigest(final)
 	st.payload = st.payloads[0]
 }
 
@@ -578,17 +585,17 @@ func (st *state) dryRunResponse(ctx context.Context) (*Response, *core.RefusalEr
 		Findings: core.PostFindings{
 			Open: nOpen, Deferred: nDeferred, Addressed: nAddressed, File: st.findingsFile,
 		},
-		Items:           typedPostItems(payload),
-		Coverage:        st.merged.Coverage.Receipt(),
-		Summary:         st.summary,
-		Confidence:      intOrNilPost(st.merged.Confidence),
-		SecuritySummary: strOrNilPost(st.merged.Security),
-		Risk:            st.merged.Risk,
-		PayloadHash:     payloadHash,
-		Validation:      st.validationData(),
-		ItemsRaw:        recordcore.EnvelopeItems(payload),
-		RenderedBody:    st.body,
-		RenderedHash:    st.phash,
+		Items:            typedPostItems(payload),
+		Coverage:         st.merged.Coverage.Receipt(),
+		Summary:          st.summary,
+		Confidence:       intOrNilPost(st.merged.Confidence),
+		SecuritySummary:  strOrNilPost(st.merged.Security),
+		Risk:             st.merged.Risk,
+		PayloadHash:      payloadHash,
+		Validation:       st.validationData(),
+		ItemsRaw:         recordcore.EnvelopeItems(payload),
+		RenderedComments: st.renderedComments(),
+		RenderedHash:     st.postedHash,
 	}
 	prov := decodeProvenanceTyped(st.req.RootPath(), st.dir)
 	if prov != nil {

@@ -130,6 +130,8 @@ type state struct { //nolint:govet // field grouping documents the post run stat
 	remoteInline      []map[string]any
 	previousHead      string
 	phash             string
+	postedHash        string
+	marked            string
 	dir               string
 	body              string
 	banners           []string
@@ -325,15 +327,16 @@ func (st *state) publish(ctx context.Context) (*Response, *core.RefusalError) {
 }
 
 // pinnedContentGate refuses a real post whose settled content is not the one
-// the caller pinned. It runs on the same body, comments, and head the payloads
-// were just built from and before any host call, so the digest it checks is
-// the digest of what is about to be sent, not of an earlier read.
+// the caller pinned. It runs on the payloads just built, the exact bytes a
+// post hands the host, and before any host write, so the digest it checks is
+// the digest of what is about to be sent, not of an earlier read. (It runs
+// after prepare's host reads, the auth and drift checks.)
 func (st *state) pinnedContentGate() *core.RefusalError {
 	pinned := st.req.PinnedContentHash
-	if st.flags.DryRun || pinned == "" || pinned == st.phash {
+	if st.flags.DryRun || pinned == "" || pinned == st.postedHash {
 		return nil
 	}
-	return &core.RefusalError{Code: codePostContentChanged, Message: fmt.Sprintf(msgPostContentChanged, pinned, st.phash)}
+	return &core.RefusalError{Code: codePostContentChanged, Message: fmt.Sprintf(msgPostContentChanged, pinned, st.postedHash)}
 }
 
 func (st *state) checkBundle() *core.RefusalError {
@@ -475,7 +478,7 @@ func (st *state) merge() *core.RefusalError {
 		Review:   st.review, ReviewFile: st.flags.ReviewFile,
 		Root: st.req.RootPath(), RepoRoot: st.req.RepoRootPath(),
 		Banners: st.banners,
-		DryRun:  st.flags.DryRun, FindingsFile: st.findingsFile,
+		DryRun:  st.flags.DryRun, FindingsFile: st.findingsFile, NoPersist: st.req.NoPersist,
 		Effective: st.req.Effective, Forces: st.req.Forces,
 		Repo: st.req.Repo, Pr: st.req.Pr, Cmd: "post", Controls: st.controls,
 		RequireCoverage: st.flags.RequireCoverage,

@@ -237,15 +237,25 @@ noscript {
 .submit-details {
   margin: 0.6rem 0;
 }
-.submit-review {
+.submit-review-list {
   max-height: 40vh;
   overflow: auto;
   margin: 0.6rem 0;
-  padding: 0.6rem 0.8rem;
+  padding: 0.2rem 0.8rem;
   border: 1px solid var(--line);
   border-radius: 0.4rem;
+}
+.submit-review-label {
+  margin: 0.6rem 0 0.2rem;
+  font-weight: 600;
+}
+.submit-review {
+  margin: 0.2rem 0 0.6rem;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+.submit-truncated {
+  font-weight: 600;
 }
 .triage input[type="text"],
 .triage input:not([type]),

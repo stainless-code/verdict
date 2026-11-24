@@ -166,8 +166,12 @@ type Server struct { //nolint:govet // grouped by listener, allowlists, and inje
 	verifyRunner      VerifyRunner
 	postPreviewRunner PostPreviewRunner
 	postSubmitRunner  PostSubmitRunner
-	previews          *previewStore
-	jobs              *jobManager
+	// submitDeadline, when set, replaces the submit's wall-clock bound so a
+	// test can end it at a moment it chooses (after the host stub is entered)
+	// instead of racing a timer against the machine. Nil in production.
+	submitDeadline func(context.Context) (context.Context, context.CancelFunc)
+	previews       *previewStore
+	jobs           *jobManager
 	// stopping closes when shutdown begins ([Server.Serve] on cancel, or
 	// [Server.Close]), so a confirmed host submit, detached from its request
 	// on purpose, still ends with the server instead of outliving it.

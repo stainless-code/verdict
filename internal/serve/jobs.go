@@ -52,6 +52,9 @@ const (
 	// codeBundleUnreadable refuses a preview whose bundle cannot be read
 	// back for the staleness fingerprint.
 	codeBundleUnreadable = "bundle-unreadable"
+	// codePreviewUnpinnable refuses a preview whose rendered review carries no
+	// content digest, so no nonce is minted and no post could be pinned.
+	codePreviewUnpinnable = "preview-unpinnable"
 	// codeNonceFailed refuses a preview when the CSPRNG cannot mint a nonce.
 	codeNonceFailed = "nonce-failed"
 	// jobPathVerify is the POST verify job route.
@@ -425,7 +428,11 @@ func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 		m.setStatus(current, jobStatusFailed, nil, failure, nil)
 		return
 	}
-	resp, ref := runner(ctx, m.server.previewRequest(current.bundleDir, current.bundle, current.rootPath))
+	// The target repository is resolved once, after the fingerprint has read
+	// source.json without blocking, and the dry-run and the minted entry both
+	// carry that value.
+	repo := bundleRepo(current.bundleDir)
+	resp, ref := runner(ctx, m.server.previewRequest(current.bundleDir, current.bundle, current.rootPath, repo))
 	if ctx.Err() != nil {
 		m.setStatus(current, jobStatusCancelled, nil, nil, nil)
 		return
@@ -439,8 +446,9 @@ func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 	if m.server.previews != nil {
 		// The text goes onto the wire before the digest is taken, so the digest
 		// binds exactly what the confirm dialog shows.
-		setReviewBody(result, resp.Data.RenderedBody)
-		if failure := m.bindPreview(current, fingerprint, resp.Data.RenderedHash, result); failure != nil {
+		result.Set("target_repo", repo)
+		setReviewComments(result, resp.Data.RenderedComments)
+		if failure := m.bindPreview(current, fingerprint, repo, resp.Data.RenderedHash, result); failure != nil {
 			m.setStatus(current, jobStatusFailed, nil, failure, nil)
 			return
 		}
@@ -450,31 +458,57 @@ func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 
 // previewRequest is the dry-run request a preview job and a submit's re-render
 // share, so both render the review identically. DryRun is hardcoded true.
-func (s *Server) previewRequest(bundleDir, bundle, rootPath string) *postcore.Request {
+func (s *Server) previewRequest(bundleDir, bundle, rootPath, repo string) *postcore.Request {
 	return &postcore.Request{
-		ReadRequest: s.postReadRequest(bundleDir, bundle, rootPath),
+		ReadRequest: s.postReadRequest(bundle, rootPath, repo),
 		Flags:       postcore.Flags{Approve: approveFalse, ReviewFile: bundleDir + "/review.json", DryRun: true},
 		Effective:   s.cfg.Effective,
 	}
 }
 
-// maxReviewBodyBytes bounds the review text a preview publishes for the
-// confirm dialog: the hosts' own comment limit, so a normal review fits whole.
-const maxReviewBodyBytes = 64 << 10
+// maxReviewPreviewBytes bounds the review text a preview publishes for the
+// confirm dialog, summed over every comment the post sends. A split review is
+// over the hosts' 64 KiB comment limit by definition, so the bound is four
+// such comments: a normal review, split or not, shows whole, and a larger one
+// is cut with the cut named on the wire.
+const maxReviewPreviewBytes = 256 << 10
 
-// setReviewBody publishes the rendered review text beside the preview wire,
-// cut at a rune boundary when it exceeds [maxReviewBodyBytes].
-func setReviewBody(result *jq.Obj, text string) {
-	truncated := len(text) > maxReviewBodyBytes
-	if truncated {
-		cut := maxReviewBodyBytes
-		for cut > 0 && !utf8.RuneStart(text[cut]) {
-			cut--
+// setReviewComments publishes every comment the post will send beside the
+// preview wire, in posting order, so the dialog shows all of what the digest
+// pins. Each entry carries its label, its text (cut at a rune boundary when
+// the running total reaches [maxReviewPreviewBytes]), the bytes of it shown,
+// and its full byte size, so a cut is explicit per comment. Comments the
+// bound leaves out entirely are named in review_omitted;
+// review_comment_count is the full count.
+func setReviewComments(result *jq.Obj, comments []core.RenderedComment) {
+	shown := make([]any, 0, len(comments))
+	omitted := make([]any, 0)
+	budget := maxReviewPreviewBytes
+	for _, c := range comments {
+		if budget <= 0 {
+			omitted = append(omitted, c.Label)
+			continue
 		}
-		text = text[:cut]
+		text := cutAtRune(c.Text, budget)
+		budget -= len(text)
+		shown = append(shown, jq.NewObj("label", c.Label, "text", text, "shown_bytes", len(text), "bytes", len(c.Text)))
 	}
-	result.Set("review_body", text)
-	result.Set("review_body_truncated", truncated)
+	result.Set("review_comments", shown)
+	result.Set("review_comment_count", len(comments))
+	result.Set("review_omitted", omitted)
+}
+
+// cutAtRune returns text cut to at most limit bytes, backed up to a rune start
+// so the cut never lands inside a character.
+func cutAtRune(text string, limit int) string {
+	if len(text) <= limit {
+		return text
+	}
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+	return text[:cut]
 }
 
 // previewFingerprint fingerprints the bundle before the dry-run when the
@@ -498,9 +532,12 @@ func (m *jobManager) previewFingerprint(current *job) (string, *jobError) {
 // bindPreview mints the confirmation nonce for one succeeded preview and
 // publishes the digest and nonce on its wire. A nonce the CSPRNG cannot mint
 // refuses the preview: there is nothing confirmable to hand the operator.
-func (m *jobManager) bindPreview(current *job, fingerprint, rendered string, result *jq.Obj) *jobError {
+func (m *jobManager) bindPreview(current *job, fingerprint, repo, rendered string, result *jq.Obj) *jobError {
 	digest := previewDigest(current.rootID, current.bundle, fingerprint, []byte(result.MarshalCompact()))
-	nonce, err := m.server.previews.mint(current.rootID, current.bundle, digest, fingerprint, rendered)
+	nonce, err := m.server.previews.mint(current.rootID, current.bundle, digest, fingerprint, rendered, repo)
+	if errors.Is(err, errUnpinnable) {
+		return &jobError{code: codePreviewUnpinnable, message: err.Error()}
+	}
 	if err != nil {
 		return &jobError{code: codeNonceFailed, message: err.Error()}
 	}

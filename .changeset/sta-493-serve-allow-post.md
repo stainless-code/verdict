@@ -30,7 +30,18 @@ network, is gated by `--allow-post`. The served post
 also resolves the tool version from the install root exactly as `verdict
 post` does, so a `package.json` in the server's working directory can no
 longer stamp its version into a posted review.
-The confirmation modal shows the rendered review text and the preview's
-warnings before it enables Confirm, and the submit re-renders the review under
-the bundle lock and refuses `409 stale-preview` unless it matches the preview,
-so the posted review is the text the operator confirmed.
+The confirmation modal shows every comment the post will send (the review
+body, each follow-up comment a split adds, each inline comment, in posting
+order) and the preview's warnings before it enables Confirm, and the submit
+re-renders the review under the bundle lock, read-only, and refuses
+`409 stale-preview` unless it matches the preview. The confirmed post is
+pinned to a digest of the exact payloads the host receives, so the posted
+review is the text the operator confirmed; a change after the re-render refuses
+`409 post-content-changed` before any host write. The preview shows at most
+256 KiB of text in total, cut at a rune boundary: the pin covers the full
+payloads, not the shown text, so a matching digest does not mean the whole
+review was on screen. When the preview cut any of it the modal names what was
+cut and what was left out, and Confirm needs an explicit acknowledgement. The
+target repository is bound to the preview, a bundle input swapped for a FIFO
+refuses without blocking, and the preview deadline of two minutes covers its
+requests.

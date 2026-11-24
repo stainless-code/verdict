@@ -66,6 +66,7 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	nKept           int
 	nMoved          int
 	dryRun          bool
+	noPersist       bool
 	inputChecked    bool
 	requireCoverage bool
 	requireRigor    []string

@@ -2798,9 +2798,10 @@ start; the flag warns it is visible in `ps` and shell history), `--check
 `--no-watch` (disable polling and remove `/v1/events`), `--interactive`
 (register the local write endpoints and the `verify`/preview job routes;
 default off, and the default surface stays GET-only), and `--allow-post`
-(register the Tier C host
-posting route; requires `--interactive`, default off, and never implied by
-`--interactive` alone). Atomic writes are visible
+(enable host posting through the interactive Tier C endpoint,
+`POST /v1/post/submit`: with `--interactive` alone the endpoint answers
+`403 post-disabled` and posts nothing; requires `--interactive`, default off,
+and never implied by `--interactive` alone). Atomic writes are visible
 within one tick; non-atomic in-place edits are visible within one sweep. A tick
 checks the state directory, each bundle directory, existing `chunks/`
 directories, and `.verdict/overrides/`; a sweep fingerprints directory entries.
@@ -2938,8 +2939,9 @@ retained history (64), each holding a bundle-scoped `storelock` on
 a job that cannot take the lock fails as a typed `store-busy` refusal without
 running. A succeeded `post-preview` additionally mints the Tier C nonce below;
 a preview whose bundle cannot be read back for its staleness fingerprint fails
-`bundle-unreadable`, and one whose nonce the CSPRNG cannot mint fails
-`nonce-failed`, both without publishing a digest. A running verify job holds
+`bundle-unreadable`, one whose render carries no content digest fails
+`preview-unpinnable`, and one whose nonce the CSPRNG cannot mint fails
+`nonce-failed`, all without publishing a digest. A running verify job holds
 that bundle lock for its whole run, so
 concurrent triage or a second job on the same bundle also answers
 `store-busy` until the first job settles. Status flows `queued`, `running`,
@@ -2962,11 +2964,12 @@ without `--interactive` every job path fails closed as read-only.
 duplicate-post, anchor-validation, own-PR, and binding-approval guard the
 CLI `verdict post` inherits applies unchanged and the `post.json` and
 `findings.json` receipts are byte-identical. It is the only host write in
-serve, and it is doubly gated: without `--allow-post` it never exists, and
-`--allow-post` without `--interactive` refuses at startup with `bad-flags`
+serve, and it is doubly gated: without `--allow-post` posting is never enabled,
+and `--allow-post` without `--interactive` refuses at startup with `bad-flags`
 (`--allow-post requires --interactive`). With `--interactive` alone,
 `POST /v1/post/submit` answers `403 post-disabled` before any host client
-is touched; without `--interactive` it is the read-only `405` placeholder.
+is touched; without `--interactive` the read-only server answers the `405`
+placeholder.
 With `--interactive --allow-post`, `GET /v1/health` advertises
 `allow_post: true` and the route is gated exactly like the Tier A/B writes
 (session, CSRF, Origin, JSON), plus a fresh preview and explicit
@@ -2975,31 +2978,49 @@ publishes `result.preview_digest` (SHA-256 over the preview wire plus the
 bundle fingerprint, taken before the dry-run reads the bundle, so a write that
 lands during the preview refuses `409 stale-preview` at submit) and
 `result.preview_nonce` (CSPRNG, single-use, 10-minute TTL, bounded store that
-evicts the oldest) beside the preview wire, plus `result.review_body` (the
-rendered review text the dry-run produced, cut at a rune boundary to 64 KiB,
-with `result.review_body_truncated`), which the digest covers. A server without
+evicts the oldest) beside the preview wire, plus the review itself:
+`result.review_comments` lists every comment the post will send, in posting
+order (the review body with its hidden review marker, each follow-up comment a
+split over the host's 65,536-byte limit adds, then each inline comment), each
+as `{label, text, shown_bytes, bytes}`, with `result.review_comment_count`
+(all of them) and `result.target_repo` (the repository the post goes to). The
+digest covers that text. The text shown is bounded to 256 KiB in total, cut at a
+rune boundary: a comment the bound lands in carries `shown_bytes` below `bytes`,
+and every comment after it is named in `result.review_omitted`. The content pin
+below is over the full payloads, not the shown text, so a review the preview
+cut still posts whole, and the dialog says exactly which comment was cut after
+how many bytes and which were not shown. A mint refuses (`preview-unpinnable`)
+a preview whose render carries no content digest, because an empty pin would
+pin nothing. A server without
 `--allow-post` mints none of these: its preview result is the bare dry-run wire. The submit requires
 `confirm: true` (missing or `false` refuses `400 needs-confirm`), then
 validates `(preview_nonce, root, bundle, preview_digest)` without spending it —
 unknown, mismatched, expired, or replayed nonces refuse `409 stale-preview` —
-takes the bundle's `storelock`, and re-hashes the bundle. It refuses
+takes the bundle's `storelock`, and re-hashes the bundle (every input is
+opened without waiting for a writer, so a FIFO swapped in for any of them
+refuses `bundle-unreadable` at `200` with the nonce unspent, as the preview
+does). It refuses
 `409 stale-preview` when any bundle file `core/post` decides from changed since
 the preview — `findings.json`, `PR.json`, `source.json`, `review.json`,
 `post.json` (the duplicate-post receipt), `controls.json`, `record.json`,
-`identity.json`, `provenance.json`, or `full.diff` (a `full.diff` that is not a
-regular file refuses without ever waiting for a writer, and a symlink to a
-regular file is followed as every other bundle read follows it) — and spends the nonce there, because
-that preview is invalid anyway. It then re-renders the review under the same
-lock and refuses `409 stale-preview` unless it renders to the content digest the
-preview recorded, so the posted review is the text the operator saw even when
-`review.json` was swapped for the dry-run and restored. Otherwise it atomically
-spends the nonce and runs `core/post` with the previewed content digest pinned:
-`core/post` digests the body, inline comments, and head it has just built the
-payload from and refuses `post-content-changed` before any host call unless that
-is the pinned digest, which the server answers `409 stale-preview`. So even a
-writer that ignores the advisory lock and changes `review.json` between the
-re-render and the post cannot make the host receive anything but the previewed
-review. Two submits racing on one nonce therefore post
+`identity.json`, `provenance.json`, or `full.diff` (a symlink to a regular
+file is followed as every other bundle read follows it) — and spends the nonce
+there, because that preview is invalid anyway. It resolves the target
+repository again and refuses `409 stale-preview` when it is not the one the
+preview resolved, then posts to the previewed value. It then re-renders the
+review under the same lock, read-only (the submit stages nothing beyond the
+post and its receipts), and refuses `409 stale-preview` unless it renders to the
+digest the preview recorded, so the posted review is the text the operator saw
+even when `review.json` was swapped for the dry-run and restored. Otherwise it
+atomically spends the nonce and runs `core/post` with the previewed digest
+pinned: `core/post` digests the exact payloads it has just built to hand the
+host (every body, the review marker, each follow-up comment, the event, the
+head, and the inline comments) and refuses `post-content-changed` before any
+host write unless that is the pinned digest (prepare's host reads, the
+authentication and head checks, run first), which the server answers
+`409 post-content-changed`, distinct from `stale-preview`. So even a writer that
+ignores the advisory lock and changes `review.json` between the re-render and
+the post cannot make the host receive anything but the previewed review. Two submits racing on one nonce therefore post
 once. A failure before the spend leaves the nonce usable: a held lock answers
 `503 store-busy` ("retry in a moment" is true — retry with the same preview),
 and a submit whose five-minute bound or a shutdown ends the wait for the lock
@@ -3025,11 +3046,16 @@ state and dies with the process. The Detail view renders the bundle-level
 `Submit Review` button only when `allow_post` is advertised and the bundle is a
 PR number — a `local-*` bundle has no pull request to post to, so the control
 never appears there. Clicking it
-previews, opens a confirmation modal with the target, counts, any preview
-warnings, the rendered review text (read-only, as text, scrolling past a
-maximum height), and the digest, and enables `Confirm & Submit Review` only once
-that text is shown; it posts only on an explicit click, and focus never moves to
-Confirm on its own. A `503 store-busy` keeps the dialog open and offers
+previews (the whole preview, its requests included, has two minutes; a response
+after that is never accepted), opens a confirmation modal with the target
+repository, counts, any preview warnings, every comment the post will send (as
+text, in posting order, each under its label, in one scrolling region that is a
+Tab stop), and the digest, and enables `Confirm & Submit Review` only once that
+text is shown. When the preview cut any of it, the modal says exactly what was
+not shown (the comment cut and after how many bytes, the comments left out) and
+that the digest pins the full content, and Confirm stays disabled until the
+operator ticks an acknowledgement. It posts only on an explicit click, and focus
+never moves to Confirm on its own. A `503 store-busy` keeps the dialog open and offers
 `Retry submit` with the same preview; a refusal that lands after the dialog was
 closed is reported in the page status.
 

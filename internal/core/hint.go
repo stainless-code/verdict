@@ -137,6 +137,11 @@ var hintRules = []HintRule{
 			"directory than the discovered one",
 	},
 	{
+		codes: []string{"bundle-unreadable"},
+		hint: "try: make every bundle file a regular, readable file (a FIFO or device cannot be " +
+			"fingerprinted), then re-run the preview",
+	},
+	{
 		codes: []string{"serve-listen-failed"},
 		hint:  "try: pass --port 0 for a kernel-assigned port, or free the named address, then re-run",
 	},
