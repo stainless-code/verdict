@@ -2228,7 +2228,7 @@ exposed under `--read-only`.
 
 `--read-only` exposes the read tools (`report`, `next`, `show`, `risk`, `trend`, `query-bundles`, `query-copy`,
 `query-cost`, `query-finding`, `query-findings`, `query-health`,
-`ready`, `doctor`, `check-tree`, `config`, `index`, `pack`, `pr_wait`) plus `record` limited to its `dry_run: true`
+`ready`, `doctor`, `check-tree`, `config`, `index`, `pack`, `pr_wait`, `handoff`, `journal`) plus `record` limited to its `dry_run: true`
 form, and is mutually exclusive with `--operator`. A non-dry `record` call
 there is an `isError` `bad-flags` result naming `dry_run`; the tool keeps
 `readOnlyHint: false` because the same tool writes by default. `report` writes
