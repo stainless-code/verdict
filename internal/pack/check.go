@@ -19,10 +19,15 @@ func runCheck(ctx context.Context, r *cli.Runner, read Request, path string) int
 	if ref != nil {
 		return r.RefuseTyped(ref)
 	}
+	pin, _, ref := packcore.BaseOrgPin(ctx, read.Commander, read.RepoRootPath())
+	if ref != nil {
+		return r.RefuseTyped(ref)
+	}
 	resp, ref := packcore.RunCheck(ctx, &packcore.CheckRequest{
 		ReadRequest:  read,
 		SettingsPath: settingsPath(read),
 		Toggles:      toggles,
+		OrgPin:       pin,
 		ConfigSource: source,
 		Path:         path,
 	})

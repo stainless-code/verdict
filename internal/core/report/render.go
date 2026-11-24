@@ -48,6 +48,25 @@ func buildResponse(st *state) *Response {
 	return resp
 }
 
+// orgPackHuman renders the governing central pack version, empty when no
+// org pin governed the run.
+func orgPackHuman(org *core.OrgPackInfo) string {
+	if org == nil {
+		return ""
+	}
+	line := fmt.Sprintf("org pack: %s@%s path=%s", org.Repo, org.Ref, org.Path)
+	if org.Name != "" {
+		line += fmt.Sprintf(" pack=%s@%s", org.Name, org.Version)
+	}
+	if org.Hash != "" {
+		line += " sha256:" + org.Hash
+	}
+	if org.SHA != "" {
+		line += " commit:" + org.SHA
+	}
+	return line
+}
+
 func nextStep(st *state, open int) string {
 	if st.flags.Check != "" && st.gatePassed {
 		return "merge — gate passes"
@@ -93,6 +112,7 @@ func buildData(st *state) *core.ReportData {
 		},
 		QuietByPolicy: quietEntries(st),
 		Items:         envelopeItems(viewRanked(st)),
+		OrgPack:       st.orgPack,
 		Compare:       st.compare,
 	}
 	if st.cost != nil {
@@ -289,6 +309,9 @@ func buildHuman(st *state) []string {
 	view := viewRanked(st)
 	lines := []string{fmt.Sprintf("report: %s (%d shown) open=%d head=%s",
 		st.dir, len(view), viewOpen(view), readcommon.ShortSHA(st.headSHA))}
+	if line := orgPackHuman(st.orgPack); line != "" {
+		lines = append(lines, line)
+	}
 	lines = append(lines, readcommon.ContextLine(st.dir)...)
 	lines = append(lines, cleanHeadline(st)...)
 	lines = append(lines, verificationHuman(st.entries)...)

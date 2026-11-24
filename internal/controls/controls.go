@@ -536,6 +536,31 @@ func (s *Snapshot) ReadFile(rel string) ([]byte, bool) {
 	return raw, err == nil
 }
 
+// ReadUsed reads one inventory row the snapshot recorded as used, telling an
+// absent control from a failed read: a row recorded missing reports ok=false
+// with no refusal (the source has no such control), while a used row whose
+// captured file cannot be read or has grown past its cap refuses. A caller
+// enforcing a control must never read a captured but unreadable file as "the
+// base declares nothing".
+func (s *Snapshot) ReadUsed(rel string) ([]byte, bool, *core.RefusalError) {
+	entry := s.Entry(rel)
+	if entry == nil || entry.Status != statusUsed {
+		return nil, false, nil
+	}
+	path := s.Path(rel)
+	if path == "" {
+		return nil, false, refuse(CodeUnavailable, controlPrefix+rel+" has no captured file in this snapshot")
+	}
+	raw, err := jq.CappedFile(path, MaxFileBytes)
+	if err != nil {
+		return nil, false, refuse(CodeUnavailable, controlPrefix+rel+" is unreadable or over its size cap")
+	}
+	if int64(len(raw)) != entry.Bytes || hash(raw) != entry.SHA256 {
+		return nil, false, staleFile(entry.Path)
+	}
+	return raw, true, nil
+}
+
 // StrictInput reports the snapshot's strict_input control: warnings in the
 // agent's review.json become errors, and record refuses when any remain.
 func (s *Snapshot) StrictInput() bool { return s != nil && s.File.StrictInput }
