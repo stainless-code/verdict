@@ -115,7 +115,12 @@ func OrgPinFromConfig(cfg *core.Config) *OrgPin {
 
 // BaseOrgPin reads the org pin `.verdict/config.json` declares at the
 // checkout's trusted base, never the working tree and never a branch commit.
-// A checkout with no pin reads nil with [ConfigSourceNone].
+// The outcome is carried by the value, not the source label: a resolved base
+// whose config declares no org pin returns `(nil, "base@<sha>", nil)`,
+// whereas a checkout with no resolvable base returns
+// `(nil, ConfigSourceNone, nil)`. Callers must inspect the returned
+// [*OrgPin] pointer to know whether a pin was declared — the source label
+// names the commit that was read, never whether it carried a pin.
 func BaseOrgPin(ctx context.Context, cmdr core.Commander, root string) (*OrgPin, string, *core.RefusalError) {
 	cfg, source, ref := baseConfig(ctx, cmdr, root)
 	if ref != nil {
@@ -132,14 +137,19 @@ func BaseOrgPin(ctx context.Context, cmdr core.Commander, root string) (*OrgPin,
 // and then has no merge base with HEAD refuses instead: the base branch is
 // there, so a missing merge base is a broken read (a shallow or partial
 // clone), and reading it as "nothing is disabled" would let a clone that
-// cannot prove its base skip every base-owned pin. A canceled context refuses
-// instead too: an interrupted read must never read as "nothing is disabled".
+// cannot prove its base skip every base-owned pin. A canceled context, or a
+// git runner that cannot execute at all, refuses instead too: an
+// interrupted or impossible read must never read as "nothing is disabled".
 func baseCommit(ctx context.Context, cmdr core.Commander, root string) (string, *core.RefusalError) {
 	for _, ref := range baseRefCandidates {
 		if ref := baseRefusal(ctx); ref != nil {
 			return "", ref
 		}
-		if !resolves(ctx, cmdr, root, ref) {
+		ok, refErr := resolves(ctx, cmdr, root, ref)
+		if refErr != nil {
+			return "", refErr
+		}
+		if !ok {
 			continue
 		}
 		return baseAgainst(ctx, cmdr, root, ref)
@@ -151,9 +161,12 @@ func baseCommit(ctx context.Context, cmdr core.Commander, root string) (string, 
 // exists. A candidate with no merge base with HEAD refuses: the base branch is
 // there, so the read is broken, not absent.
 func baseAgainst(ctx context.Context, cmdr core.Commander, root, candidate string) (string, *core.RefusalError) {
-	sha, ok := gitLine(ctx, cmdr, root, "merge-base", gitHeadRef, candidate)
+	sha, ok, ref := gitLine(ctx, cmdr, root, "merge-base", gitHeadRef, candidate)
 	if ok {
 		return sha, nil
+	}
+	if ref != nil {
+		return "", ref
 	}
 	if ref := baseRefusal(ctx); ref != nil {
 		return "", ref
@@ -184,25 +197,41 @@ func baseRefusal(ctx context.Context) *core.RefusalError {
 }
 
 // resolves reports whether one revision name peels to a commit in this
-// checkout.
-func resolves(ctx context.Context, cmdr core.Commander, root, ref string) bool {
-	_, ok := gitLine(ctx, cmdr, root, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
-	return ok
+// checkout. A runner failure refuses: the caller cannot prove the ref is
+// absent when git cannot run at all.
+func resolves(ctx context.Context, cmdr core.Commander, root, ref string) (bool, *core.RefusalError) {
+	_, ok, refErr := gitLine(ctx, cmdr, root, "rev-parse", "--verify", "--quiet", ref+"^{commit}")
+	if refErr != nil {
+		return false, refErr
+	}
+	return ok, nil
 }
 
 // gitLine runs one read-only git command and returns its trimmed single line.
-// Any failure — a canceled context, a missing git, a non-zero exit, an empty
-// answer — reports false, so the caller decides between degrading and
-// refusing.
-func gitLine(ctx context.Context, cmdr core.Commander, root string, args ...string) (string, bool) {
+// A non-zero exit or an empty answer reports false with no refusal, so the
+// caller skips the candidate as absent; a canceled context reports the
+// cancellation refusal, so an interrupted read never degrades either; and a
+// runner error — a missing git binary or any exec failure reported as an
+// error rather than a completed process — instead refuses with
+// [CodePackGitFailed], so an unrunnable Git never degrades to "no base".
+func gitLine(ctx context.Context, cmdr core.Commander, root string, args ...string) (string, bool, *core.RefusalError) {
 	if ctx.Err() != nil {
-		return "", false
+		return "", false, baseRefusal(ctx)
 	}
 	argv := append([]string{"git"}, args...)
 	res, err := cmdr.Run(ctx, &core.Command{Dir: root, Argv: argv, OutputCap: baseCommandCap})
-	if err != nil || res.ExitCode != 0 {
-		return "", false
+	if err != nil {
+		return "", false, baseGitFailed()
+	}
+	if res.ExitCode != 0 {
+		return "", false, nil
 	}
 	line := strings.TrimSpace(res.Stdout)
-	return line, line != ""
+	return line, line != "", nil
+}
+
+// baseGitFailed refuses a base read whose git runner could not execute at
+// all: the checkout is unreadable, not base-less.
+func baseGitFailed() *core.RefusalError {
+	return &core.RefusalError{Code: CodePackGitFailed, Message: "git could not run — check that git works in this shell, then re-run"}
 }

@@ -138,9 +138,12 @@ func looksLikeOrgGitSource(s string) bool { return gitsource.LooksLike(s) }
 func orgSecretShaped(s string) bool { return gitsource.SecretShaped(s) }
 
 // maskedOrgRepo renders one repo value for a refusal: a secret-shaped value
-// becomes a fixed placeholder so no refusal can echo a credential.
+// becomes a fixed placeholder so no refusal can echo a credential. A value
+// carrying a query or fragment is masked too: local-path-shaped values such
+// as `central?token=…` are refused by checkOrgRepo on the `?`/`#` arm, and
+// the refusal beside that arm must never echo the query text.
 func maskedOrgRepo(repo string) string {
-	if orgSecretShaped(repo) {
+	if orgSecretShaped(repo) || strings.ContainsAny(repo, "?#") {
 		return "<invalid source>"
 	}
 	return repo
@@ -150,7 +153,7 @@ func maskedOrgRepo(repo string) string {
 // commit SHA or a semver tag (such as `v1.2.3`) is accepted, so a branch
 // name like `main` can never float the governed rule set.
 func checkOrgRef(ref, path string) *core.RefusalError {
-	if hex40Ref(ref) || orgTagRE.MatchString(ref) {
+	if hex40Ref(ref) || validOrgTag(ref) {
 		return nil
 	}
 	return refuse(CodeBadConfig,
@@ -199,7 +202,26 @@ func hex40Ref(s string) bool {
 }
 
 // orgTagRE matches the accepted semver tags, with an optional `v` prefix.
-var orgTagRE = regexp.MustCompile(`^v?[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\+[0-9A-Za-z.-]+)?$`)
+// The pattern is strict SemVer 2.0.0: each core component is `0` or a
+// non-zero digit run (no leading zero); a prerelease identifier is `0`, a
+// non-zero numeric run, or an alphanumeric/dash run containing at least one
+// non-digit (so a numeric identifier never carries a leading zero); a
+// build identifier is a non-empty alphanumeric/dash run. Identifiers are
+// dot-separated and non-empty, so `v1.2.3-alpha..1` never matches.
+var orgTagRE = regexp.MustCompile(`^v?(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)` +
+	`(?:-(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*` +
+	`)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$`)
+
+// validOrgTag reports whether ref is a strict SemVer tag Git can carry as a
+// tag: orgTagRE must match and the value must not end in `.lock`, the suffix
+// Git forbids on any ref. The suffix check is separate because the build
+// grammar above admits `v1.2.3+build.lock` as SemVer while Git refuses it.
+func validOrgTag(ref string) bool {
+	if strings.HasSuffix(ref, ".lock") {
+		return false
+	}
+	return orgTagRE.MatchString(ref)
+}
 
 // toggleList reads one non-empty array of ids, each matching at least one of
 // the grammars the list accepts, with no duplicates: a repeated id would make

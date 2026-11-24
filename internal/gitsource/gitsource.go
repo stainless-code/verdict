@@ -18,6 +18,8 @@ const (
 	maxHostLen    = 253
 	maxHostLabel  = 63
 	maxPortLen    = 5
+	maxPort       = 65535
+	decimalBase   = 10
 	controlDEL    = 0x7f
 	schemeSep     = "://"
 	schemeSlash   = ":/"
@@ -310,17 +312,21 @@ func validPath(rel string) bool {
 	return true
 }
 
-// validPort accepts 1..5 decimal digits.
+// validPort accepts a TCP/UDP port number: 1..5 decimal digits whose value
+// is in 1..65535. The length bound keeps the accumulation tiny; the range
+// check refuses `0`, `65536`, and anything larger.
 func validPort(port string) bool {
 	if port == "" || len(port) > maxPortLen {
 		return false
 	}
+	n := 0
 	for i := range len(port) {
 		if port[i] < '0' || port[i] > '9' {
 			return false
 		}
+		n = n*decimalBase + int(port[i]-'0')
 	}
-	return true
+	return n >= 1 && n <= maxPort
 }
 
 func isAlnum(c byte) bool {

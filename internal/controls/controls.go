@@ -555,6 +555,9 @@ func (s *Snapshot) ReadUsed(rel string) ([]byte, bool, *core.RefusalError) {
 	if err != nil {
 		return nil, false, refuse(CodeUnavailable, controlPrefix+rel+" is unreadable or over its size cap")
 	}
+	if int64(len(raw)) != entry.Bytes || hash(raw) != entry.SHA256 {
+		return nil, false, staleFile(entry.Path)
+	}
 	return raw, true, nil
 }
 

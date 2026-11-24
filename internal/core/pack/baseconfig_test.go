@@ -2,12 +2,14 @@ package pack
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
@@ -240,6 +242,33 @@ func TestBaseTogglesWithoutACommanderOrBase(t *testing.T) {
 	}
 	if _, source, ref := BaseToggles(t.Context(), coreexec.Runner{}, t.TempDir()); ref != nil || source != ConfigSourceNone {
 		t.Errorf("no checkout = %q / %v, want none", source, ref)
+	}
+}
+
+// failingCommander is a runner that cannot execute anything: every call
+// reports an error, as a missing git binary would.
+type failingCommander struct{}
+
+// Run always fails.
+func (failingCommander) Run(context.Context, *core.Command) (core.Result, error) {
+	return core.Result{}, errors.New("git is not on PATH")
+}
+
+// TestBaseRefusesWhenGitCannotRun proves the read fails closed: a runner that
+// cannot execute at all refuses pack-git-failed instead of degrading to no
+// base configuration, which would drop every base-owned pin. A runnable
+// checkout with no default branch still degrades (see
+// TestBaseTogglesWithoutACommanderOrBase).
+func TestBaseRefusesWhenGitCannotRun(t *testing.T) {
+	pin, source, ref := BaseOrgPin(t.Context(), failingCommander{}, t.TempDir())
+	if ref == nil || ref.Code != CodePackGitFailed {
+		t.Fatalf("BaseOrgPin = %+v / %q / %v, want %s", pin, source, ref, CodePackGitFailed)
+	}
+	if source != "" {
+		t.Errorf("source = %q, want no source label beside a refusal", source)
+	}
+	if pin != nil {
+		t.Errorf("pin = %+v, want nil beside a refusal", pin)
 	}
 }
 

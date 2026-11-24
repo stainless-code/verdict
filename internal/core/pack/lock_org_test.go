@@ -210,6 +210,29 @@ func TestOrgPinFromSnapshotRefusesAnUnreadableCapturedConfig(t *testing.T) {
 	}
 }
 
+// TestOrgPinFromSnapshotRefusesAMutatedCapturedConfig proves the hash gate
+// fails closed: a captured config.json edited after the gate ran — bytes or
+// hash no longer matching the snapshot row — refuses controls-stale instead
+// of reading as whatever the edit says (here, a pin-less document that would
+// drop org-pin enforcement for the review).
+func TestOrgPinFromSnapshotRefusesAMutatedCapturedConfig(t *testing.T) {
+	_, repo := orgPinFixture(t, orgSha)
+	snap := lockSnapshot(t, repo)
+	path := snap.Path(config.ConfigPath)
+	if path == "" {
+		t.Fatal("the snapshot captured no config.json to mutate")
+	}
+	if err := os.WriteFile(path, []byte(`{"schema_version":"1"}`), 0o644); err != nil {
+		t.Fatalf("mutate the captured config: %v", err)
+	}
+	if _, ref := orgPinFromSnapshot(snap); ref == nil || ref.Code != controls.CodeStale {
+		t.Fatalf("orgPinFromSnapshot = %v, want %s", ref, controls.CodeStale)
+	}
+	if ref := CheckOrgPin(snap); ref == nil || ref.Code != controls.CodeStale {
+		t.Fatalf("CheckOrgPin = %v, want %s", ref, controls.CodeStale)
+	}
+}
+
 // TestOrgPinFromSnapshotReadsAnAbsentRowAsNoPin proves the other arm: a base
 // that declares no config.json at all still reads as no pin, so the fail-closed
 // read does not turn every pin-less repository into a refusal.

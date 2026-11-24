@@ -62,6 +62,11 @@ var refusedSources = []struct {
 	{"fragment", "https://host/x.git#TOK"},
 	{"invalid ref", "https://host/x.git@-bad"},
 	{"path scheme", "git@host://acme/packs.git"},
+	{"port zero", "https://host:0/x.git"},
+	{"port overflow", "https://host:65536/x.git"},
+	{"port large", "https://host:99999/x.git"},
+	{"ipv6 port overflow", "https://[2001:db8::1]:65536/x.git"},
+	{"ipv6 port zero", "https://[2001:db8::1]:0/x.git"},
 }
 
 // TestParseAllows proves every accepted shape parses to its canonical URL and
