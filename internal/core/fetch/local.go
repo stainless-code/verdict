@@ -242,7 +242,9 @@ func localSetup(
 	ctx2.dir = dir
 	// A fetch-local run never owns --base-sha, so it is always non-delta:
 	// drop any leftover delta from an earlier remote fetch into this bundle.
-	clearStaleIncremental(dir)
+	if ref := clearStaleIncremental(dir); ref != nil {
+		return localMode{}, "", "", ref
+	}
 	if res, err := ctx2.runner.run(ctx, gitCmdRevParse, "--is-inside-work-tree"); err != nil {
 		_ = res
 		return localMode{}, "", "", &core.RefusalError{Code: "not-a-repo", Message: "fetch-local runs inside a git worktree"}

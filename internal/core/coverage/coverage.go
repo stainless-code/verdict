@@ -77,13 +77,15 @@ const (
 	msgNoAttestation   = "coverage: no coverage[] attestation present"
 
 	msgIncrementalNoPrior = "coverage: incremental bundle has no recorded prior coverage — grading against full hunks"
-	msgPriorUnreadable    = "coverage: recorded prior coverage unreadable — no prior ranges credited"
-	msgPriorBadRanges     = "coverage: prior entry %d has malformed ranges %q — ignored"
-	msgPriorNotObject     = "coverage: prior entry %d is not an object — ignored"
-	msgPriorNoFile        = "coverage: prior entry %d has no file — ignored"
-	msgPriorNoRanges      = "coverage: prior entry %d has no ranges — ignored"
-	msgPriorUnknownFile   = "coverage: prior entry %d names %q with no hunks — ignored"
-	msgPriorCarried       = "coverage: incremental — prior attestation carried %d line(s) over from the recorded prior round"
+	msgPriorUnmappable    = "coverage: incremental diff for %q cannot be mapped " +
+		"(binary, rename, or malformed hunk) — prior credit withheld for that file"
+	msgPriorUnreadable  = "coverage: recorded prior coverage unreadable — no prior ranges credited"
+	msgPriorBadRanges   = "coverage: prior entry %d has malformed ranges %q — ignored"
+	msgPriorNotObject   = "coverage: prior entry %d is not an object — ignored"
+	msgPriorNoFile      = "coverage: prior entry %d has no file — ignored"
+	msgPriorNoRanges    = "coverage: prior entry %d has no ranges — ignored"
+	msgPriorUnknownFile = "coverage: prior entry %d names %q with no hunks — ignored"
+	msgPriorCarried     = "coverage: incremental — prior attestation carried %d line(s) over from the recorded prior round"
 )
 
 // Range is one 1-based inclusive source-line interval.
@@ -232,17 +234,18 @@ func unknownClaims(claims []claim, files map[string][]Range) []string {
 // claims when incremental.diff marks a delta bundle, then scores the union
 // against the full hunk snapshot: the agent must attest the delta, ranges
 // the prior round already covered stay credited, and ranges it never
-// covered remain gaps unless the agent attests them now. Lines the delta
-// re-modifies (its NEW side) invalidate any prior credit on them — the
-// prior coordinates for those lines are round-1-head, not the current
-// head — so they must be re-attested. A full-diff bundle ignores the
-// recorded prior entirely, so its grading is unchanged.
+// covered remain gaps unless the agent attests them now. The recorded prior
+// holds round-1-head line numbers, so it is translated through the delta's
+// hunks into current-head coordinates first; a line the delta re-modifies has
+// no current-head counterpart, so it loses its credit and must be re-attested.
+// A full-diff bundle ignores the recorded prior entirely, so its grading is
+// unchanged.
 func summarizeIncremental(dir string, files map[string][]Range, claims []claim,
 	generated func(string) bool, warns *[]string,
 ) (Summary, []string) {
 	current := attestation(files, claims)
 	attested := current
-	deltaNew, ok := loadIncrementalDelta(dir)
+	shifts, ok := loadIncrementalShifts(dir)
 	if !ok {
 		sum := summarize(files, attested, generated)
 		sum.AttestedRanges = attestedGaps(files, attested, generated)
@@ -255,7 +258,7 @@ func summarizeIncremental(dir string, files map[string][]Range, claims []claim,
 	case !found:
 		*warns = append(*warns, msgIncrementalNoPrior)
 	default:
-		effectivePrior = subtractMaps(prior, deltaNew)
+		effectivePrior = translatePrior(prior, shifts, warns)
 		attested = unionMaps(current, effectivePrior)
 	}
 	sum := summarize(files, attested, generated)
@@ -338,50 +341,37 @@ func unionMaps(a, b map[string][]Range) map[string][]Range {
 	return out
 }
 
-// subtractMaps removes b's per-file intervals from a's: |a| minus |b|.
-// Files only in b contribute nothing; files only in a pass through.
-func subtractMaps(a, b map[string][]Range) map[string][]Range {
-	out := maps.Clone(a)
-	for f, cut := range b {
-		cur, ok := out[f]
-		if !ok {
-			continue
+// translatePrior moves the recorded prior into current-head coordinates: a file
+// the delta does not touch keeps its numbers, and a file whose credit does not
+// survive loses it.
+func translatePrior(prior map[string][]Range, shifts map[string]*fileShift,
+	warns *[]string,
+) map[string][]Range {
+	out := make(map[string][]Range, len(prior))
+	for _, file := range slices.Sorted(maps.Keys(prior)) {
+		if moved, keep := movedPrior(prior[file], shifts[file], file, warns); keep {
+			out[file] = moved
 		}
-		out[f] = subtract(cur, cut)
 	}
 	return out
 }
 
-// loadIncrementalDelta reads the bundle's delta marker and returns its
-// NEW-side intervals per file. Only the NEW side invalidates prior credit:
-// the delta's OLD side is round-1-head coordinates, whereas full.diff's
-// OLD side is PR-base — subtracting OLD would remove lines the prior never
-// judged in the current head's numbering. A marker that carries no hunk
-// (or no NEW hunk) still marks a delta bundle: the caller decides whether
-// a delta exists from ok, and an empty deltaNew subtracts nothing. The
-// full snapshot stays the denominator; the delta is a subset of it, so
-// scoring the prior-plus-current union against the full snapshot enforces
-// the delta without re-reading the delta for a second denominator.
-func loadIncrementalDelta(dir string) (map[string][]Range, bool) {
-	raw, err := os.ReadFile(dir + incrementalFile)
-	if err != nil {
-		return nil, false
+// movedPrior maps one file's prior intervals into the current head. keep is
+// false when the credit does not survive: a section that cannot be mapped, or
+// a delta that re-modified every attested line. The unmappable case warns,
+// because a coordinate guess would credit lines nobody read.
+func movedPrior(ranges []Range, shift *fileShift, file string, warns *[]string) ([]Range, bool) {
+	if shift == nil {
+		return ranges, true
 	}
-	parsed := hunks.Parse(string(raw))
-	if len(parsed) == 0 {
-		return nil, false
-	}
-	deltaNew := map[string][]Range{}
-	for _, h := range parsed {
-		if h.Side != "NEW" {
-			continue
+	if shift.failed {
+		if warns != nil {
+			*warns = append(*warns, fmt.Sprintf(msgPriorUnmappable, file))
 		}
-		deltaNew[h.File] = append(deltaNew[h.File], Range{Start: h.Start, End: h.End})
+		return nil, false
 	}
-	for f, rs := range deltaNew {
-		deltaNew[f] = merge(rs)
-	}
-	return deltaNew, true
+	moved := shift.translate(ranges)
+	return moved, len(moved) > 0
 }
 
 // priorClaim is one persisted attested interval set, the prior-coverage.json
@@ -477,16 +467,109 @@ func priorRanges(m map[string]any, i int, warns *[]string) ([]Range, bool) {
 	return parsed, true
 }
 
-// PersistPrior saves one run's attested union as the next round's recorded
-// prior credit. It never writes a chunked or empty attestation: both leave
-// chain state untouched, so an unattested round can neither forge nor erase
-// the credit earlier rounds recorded.
+// PersistPrior keeps prior-coverage.json honest for the next round. A
+// non-chunked round writes the attested union it just graded, which already
+// includes the prior credit that survived the delta: unchanged lines keep their
+// credit and re-modified lines lose it. An empty union removes the file, since
+// nothing is validly attested for this head and an older round's numbers would
+// credit lines this round re-modified. A chunked round carries no ranges of its
+// own — chunks[] is its attestation — so an incremental one translates the
+// recorded prior through its delta, and a full one drops the file.
 func PersistPrior(dir string, sum *Summary) error {
-	if sum == nil || sum.Chunked || len(sum.AttestedRanges) == 0 {
+	if sum == nil {
 		return nil
 	}
-	entries := make([]priorClaim, 0, len(sum.AttestedRanges))
-	for _, g := range sum.AttestedRanges {
+	if sum.Chunked {
+		return persistChunkedPrior(dir)
+	}
+	if len(sum.AttestedRanges) == 0 {
+		return ClearPrior(dir)
+	}
+	return writePrior(dir, sum.AttestedRanges)
+}
+
+// persistChunkedPrior rewrites the recorded prior for a chunked round: only the
+// delta can say which recorded lines outlived this head, so a full chunked
+// round drops the file rather than let an earlier head's credit leak into the
+// next grading.
+func persistChunkedPrior(dir string) error {
+	shifts, incremental := loadIncrementalShifts(dir)
+	prior, readable := readPrior(dir)
+	if !incremental || !readable {
+		return ClearPrior(dir)
+	}
+	gaps := priorGaps(translatePrior(prior, shifts, nil))
+	if len(gaps) == 0 {
+		return ClearPrior(dir)
+	}
+	return writePrior(dir, gaps)
+}
+
+// readPrior reads prior-coverage.json into per-file intervals without the
+// current snapshot filter, because the persistence path rewrites the whole
+// file: a file the delta deleted has to be translated away rather than skipped.
+// An absent, unreadable, or malformed file reports false, so the caller drops
+// it instead of crediting a partial reading.
+func readPrior(dir string) (map[string][]Range, bool) {
+	raw, err := os.ReadFile(dir + priorFile)
+	if err != nil {
+		return nil, false
+	}
+	doc, derr := jq.Decode(raw)
+	if derr != nil {
+		return nil, false
+	}
+	items, ok := doc.([]any)
+	if !ok {
+		return nil, false
+	}
+	out := make(map[string][]Range, len(items))
+	for _, item := range items {
+		file, ranges, ok := readPriorEntry(item)
+		if !ok {
+			return nil, false
+		}
+		out[file] = merge(append(out[file], ranges...))
+	}
+	return out, len(out) > 0
+}
+
+// readPriorEntry reads one stored entry into its file's intervals. A missing
+// path or ranges field fails closed the whole file: a machine-written prior
+// never carries the review attestation's whole-file shorthand.
+func readPriorEntry(item any) (string, []Range, bool) {
+	m, isMap := jq.AsMap(item)
+	if !isMap {
+		return "", nil, false
+	}
+	file := strings.TrimSpace(jq.Str(m[FieldFile]))
+	stored, isStr := m[FieldRanges].(string)
+	if file == "" || !isStr {
+		return "", nil, false
+	}
+	parsed, err := ParseRanges(strings.TrimSpace(stored))
+	if err != nil || len(parsed) == 0 {
+		return "", nil, false
+	}
+	return file, parsed, true
+}
+
+// priorGaps renders per-file intervals as the sorted entries PersistPrior
+// writes.
+func priorGaps(ranges map[string][]Range) []Gap {
+	var out []Gap
+	for _, file := range slices.Sorted(maps.Keys(ranges)) {
+		if len(ranges[file]) > 0 {
+			out = append(out, Gap{File: file, Ranges: Format(ranges[file])})
+		}
+	}
+	return out
+}
+
+// writePrior encodes the gaps as prior-coverage.json.
+func writePrior(dir string, gaps []Gap) error {
+	entries := make([]priorClaim, 0, len(gaps))
+	for _, g := range gaps {
 		entries = append(entries, priorClaim(g))
 	}
 	raw, err := json.MarshalIndent(entries, "", "  ")
@@ -495,6 +578,17 @@ func PersistPrior(dir string, sum *Summary) error {
 		return fmt.Errorf("could not encode prior coverage: %w", err)
 	}
 	return atomic.WriteFile(dir+priorFile, append(raw, '\n'))
+}
+
+// ClearPrior drops the recorded prior attribution, so the next round grades
+// against the full hunks instead of crediting ranges this head no longer holds.
+// A prior that is already gone is the expected case.
+func ClearPrior(dir string) error {
+	err := os.Remove(dir + priorFile)
+	if err == nil || os.IsNotExist(err) {
+		return nil
+	}
+	return fmt.Errorf("could not remove prior coverage: %w", err) //nolint:wrapcheck // the caller seals it
 }
 
 // attestation unions the valid claims per file. A whole-file claim expands to

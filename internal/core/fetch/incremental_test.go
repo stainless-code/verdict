@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -242,4 +243,44 @@ func TestProviderNoteNonDeltaClearsStaleIncremental(t *testing.T) {
 		t.Fatalf("providerIncrementalNote: %v", ref)
 	}
 	assertStaleCleared(t, dir)
+}
+
+// seedUnremovableDelta plants a delta path that is a non-empty directory, so
+// the removal fails with something other than not-exist.
+func seedUnremovableDelta(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "incremental.diff")
+	if err := os.MkdirAll(path, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "keep"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// TestClearStaleIncrementalRefuses proves a delta the run cannot remove refuses
+// the fetch instead of leaving the marker behind: a stale delta makes
+// the next full round grade as incremental, crediting prior lines against
+// hunks that moved. The refusal is refused-fetch-failed, never a silent skip,
+// and it propagates out of the caller.
+func TestClearStaleIncrementalRefuses(t *testing.T) {
+	t.Parallel()
+	dir := seedUnremovableDelta(t)
+	ref := clearStaleIncremental(dir)
+	if ref == nil {
+		t.Fatal("clearStaleIncremental = nil, want a fetch-failed refusal")
+	}
+	if ref.Code != CodeFetchFailed {
+		t.Errorf("code = %q, want %q", ref.Code, CodeFetchFailed)
+	}
+	want := "could not clear " + dir + "/incremental.diff"
+	if !strings.Contains(ref.Message, want) {
+		t.Errorf("message = %q, want it to name %q", ref.Message, want)
+	}
+	s, _ := newTestSession(&scriptCommander{t: t})
+	if _, err := githubIncremental(context.Background(), s, dir, "acme/app", &Flags{HasBase: false}); err == nil {
+		t.Fatal("githubIncremental = nil, want the clear refusal propagated")
+	}
 }

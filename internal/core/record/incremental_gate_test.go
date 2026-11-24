@@ -61,10 +61,11 @@ func incrementalBundle(t *testing.T, review, prior string) {
 const overlapFullDiff = "diff --git a/overlap.txt b/overlap.txt\nindex 1111111..2222222 100644\n" +
 	"--- a/overlap.txt\n+++ b/overlap.txt\n@@ -1,10 +1,10 @@\n top\n-old line\n+new line\n bottom\n"
 
-// overlapDeltaDiff re-modifies only overlap.txt 5-7. Its OLD side is 3-7,
-// so crediting 7 carried lines proves only the NEW side invalidates.
+// overlapDeltaDiff re-modifies only overlap.txt 5-7, inside one well-formed
+// hunk that rewrites 3-9 line for line: the context lines 3-4 and 8-9 are the
+// prior credit that must survive, and 5-7 is the credit the delta invalidates.
 const overlapDeltaDiff = "diff --git a/overlap.txt b/overlap.txt\n" +
-	"@@ -3,5 +5,3 @@\n top\n-old line\n+new line\n bottom\n"
+	"@@ -3,7 +3,7 @@\n c3\n c4\n-o5\n-o6\n-o7\n+n5\n+n6\n+n7\n c8\n c9\n"
 
 // overlapReview is one finding on the re-modified range plus the single
 // receipt for the 1-10 hunk; extra carries coverage[].
@@ -255,13 +256,17 @@ func TestMergeIncrementalPartialOverlapCarriesUnchanged(t *testing.T) {
 
 // TestRecordPersistPriorFailureWarns proves the A5 contract: record.json is
 // already durable when the prior write fails, so the run succeeds with a
-// warning naming the failure instead of refusing as record-failed. The
-// prior path is a directory so the atomic write cannot land; the full
-// attestation needs no prior credit, so the coverage gate itself passes.
+// warning naming the failure instead of refusing as record-failed. The recorded
+// prior is then discarded — a stale file would credit lines this head
+// re-modified — and the warning says the next round grades without it. The
+// prior path is an empty directory, so the atomic write cannot land while the
+// discard can; the full attestation needs no prior credit, so the coverage gate
+// itself passes.
 func TestRecordPersistPriorFailureWarns(t *testing.T) {
 	incrementalBundle(t,
 		incrementalReview(`"coverage":[{"file":"notes.txt","ranges":"all"},{"file":"delta.txt","ranges":"all"}],`), "")
-	if err := os.Mkdir(".verdict/state/"+coverageSlug+"/prior-coverage.json", 0o750); err != nil {
+	priorPath := ".verdict/state/" + coverageSlug + "/prior-coverage.json"
+	if err := os.Mkdir(priorPath, 0o750); err != nil {
 		t.Fatalf("mkdir prior path: %v", err)
 	}
 	c := &testkit.Collector{}
@@ -271,15 +276,16 @@ func TestRecordPersistPriorFailureWarns(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Run refusal: %v, want success with a prior-write warning", ref)
 	}
-	want := ".verdict/state/" + coverageSlug + "/prior-coverage.json (record already written)"
-	found := false
-	for _, w := range resp.Warnings {
-		if strings.Contains(w, want) {
-			found = true
-		}
-	}
-	if !found {
+	want := priorPath + " (record already written)"
+	wants := "the recorded prior was discarded, so the next round grades without prior credit"
+	if !hasWarning(resp.Warnings, want) {
 		t.Errorf("warnings = %v, want one naming the failed prior write", resp.Warnings)
+	}
+	if !hasWarning(resp.Warnings, wants) {
+		t.Errorf("warnings = %v, want one saying the prior was discarded", resp.Warnings)
+	}
+	if _, err := os.Stat(priorPath); !os.IsNotExist(err) {
+		t.Errorf("prior-coverage.json survived a failed prior write (err=%v), want it discarded", err)
 	}
 	if _, err := os.Stat(".verdict/state/" + coverageSlug + "/record.json"); err != nil {
 		t.Errorf("record.json missing after a committed record: %v", err)
@@ -332,5 +338,78 @@ func TestMergeIncrementalNoSuffixWithoutPriorCredit(t *testing.T) {
 	wantLine := "> ⚠️ coverage: 0% of changed lines attested (unattested: delta.txt:1-3, notes.txt:1-3)"
 	if len(lines) != 1 || lines[0] != wantLine {
 		t.Errorf("coverage body lines = %v, want exactly [%q]", lines, wantLine)
+	}
+}
+
+// rewriteFullDiff changes a.ts and b.ts, three lines each: six changed lines
+// under the full snapshot.
+const rewriteFullDiff = "diff --git a/a.ts b/a.ts\nindex 1111111..2222222 100644\n" +
+	"--- a/a.ts\n+++ b/a.ts\n@@ -1,3 +1,3 @@\n-a1\n-a2\n-a3\n+a1new\n+a2new\n+a3new\n" +
+	"diff --git a/b.ts b/b.ts\nindex 3333333..4444444 100644\n" +
+	"--- a/b.ts\n+++ b/b.ts\n@@ -1,3 +1,3 @@\n-b1\n-b2\n-b3\n+b1new\n+b2new\n+b3new\n"
+
+// rewriteDeltaDiff re-modifies every line of a.ts and leaves b.ts alone, so a
+// recorded prior on both files survives on one and dies on the other.
+const rewriteDeltaDiff = "diff --git a/a.ts b/a.ts\n" +
+	"@@ -1,3 +1,3 @@\n-a1\n-a2\n-a3\n+a1new\n+a2new\n+a3new\n"
+
+// rewriteReview is one finding plus one receipt per changed hunk; extra carries
+// coverage[] (empty, or the full attestation).
+func rewriteReview(extra string) string {
+	return `{"schema_version":"1","body":"> [!IMPORTANT]\n> Rewrite gate fixture body with enough length.","approved":false,` +
+		extra + `"receipts":[{"hunk":"a.ts\tNEW\t1\t3","quote":"a1new"},` +
+		`{"hunk":"b.ts\tNEW\t1\t3","quote":"b1new"}],` +
+		`"comments":[{"path":"b.ts","line":2,"side":"RIGHT",` +
+		`"body":"Cited finding here with enough substance.","rigor":"walked","severity":"important"}]}`
+}
+
+// rewriteBundle writes the two-file rewrite fixture with the delta marker and
+// the recorded prior (possibly empty), mirroring incrementalBundle.
+func rewriteBundle(t *testing.T, review, prior string) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	dir := ".verdict/state/" + coverageSlug
+	testkit.WriteFile(t, dir+"/source.json", `{"head_sha":"`+coverageHead+
+		`","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`)
+	testkit.WriteFile(t, dir+"/full.diff", rewriteFullDiff)
+	testkit.WriteFile(t, dir+"/hunks.tsv", hunks.Format(hunks.Parse(rewriteFullDiff)))
+	testkit.WriteFile(t, dir+"/incremental.diff", rewriteDeltaDiff)
+	testkit.WriteFile(t, dir+"/review.json", review)
+	if prior != "" {
+		testkit.WriteFile(t, dir+"/prior-coverage.json", prior)
+	}
+	seedControls(t, dir)
+}
+
+// TestRecordEmptyIncrementalRoundKeepsUnchangedPrior proves an empty
+// attestation on an incremental round does not freeze the whole recorded prior:
+// a.ts was re-modified, so its credit is gone, while b.ts — untouched by the
+// delta — keeps its credit for the next round. Before the discard, round C read
+// round A's stale a.ts credit.
+func TestRecordEmptyIncrementalRoundKeepsUnchangedPrior(t *testing.T) {
+	rewriteBundle(t, rewriteReview(`"coverage":[],`),
+		`[{"file":"a.ts","ranges":"1-3"},{"file":"b.ts","ranges":"1-3"}]`)
+	if ref := runCoverage(t, false, false); ref != nil {
+		t.Fatalf("record refused: %v", ref)
+	}
+	byFile := decodePrior(t)
+	if byFile["b.ts"] != "1-3" {
+		t.Errorf("prior = %v, want b.ts:1-3 kept (the delta never touched it)", byFile)
+	}
+	if _, ok := byFile["a.ts"]; ok {
+		t.Errorf("prior = %v, want a.ts credit dropped (the delta re-modified it)", byFile)
+	}
+}
+
+// TestRecordEmptyIncrementalRoundDropsFullyInvalidatedPrior proves the same
+// round removes prior-coverage.json outright when the delta invalidated every
+// recorded line: the file would otherwise credit lines this head re-modified.
+func TestRecordEmptyIncrementalRoundDropsFullyInvalidatedPrior(t *testing.T) {
+	rewriteBundle(t, rewriteReview(`"coverage":[],`), `[{"file":"a.ts","ranges":"1-3"}]`)
+	if ref := runCoverage(t, false, false); ref != nil {
+		t.Fatalf("record refused: %v", ref)
+	}
+	if _, err := os.Stat(".verdict/state/" + coverageSlug + "/prior-coverage.json"); !os.IsNotExist(err) {
+		t.Errorf("prior-coverage.json survived (err=%v), want it removed", err)
 	}
 }

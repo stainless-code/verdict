@@ -1539,19 +1539,41 @@ more than was written.
 An incremental (`fetch --base-sha`/`--since`) bundle grades the full hunk
 snapshot against the agent's current `coverage[]` unioned with the prior
 round's recorded attestation in `prior-coverage.json` (the same
-`file`/`ranges` shape). `record` persists the attested union as the next
-round's `prior-coverage.json` on every successful non-chunked `record`
-run with at least one attested line; a chunked run or a run with no line
-attested leaves any earlier `prior-coverage.json` untouched. Ranges the
-recorded prior already covered stay credited, so the agent attests only
-the delta; ranges the prior never covered remain gaps unless the agent
-attests them now. Lines the delta re-modifies are the exception — their
-prior credit is invalidated, so they must be re-attested even within the
-delta. Credit comes only from the recorded file — an absent or unreadable
-one credits nothing, and grading fails closed against the full hunks.
+`file`/`ranges` shape). That file holds the previous head's line numbers, so
+the evaluator first translates it into current-head coordinates through
+`incremental.diff`'s own hunks: a context line maps to where the delta puts
+it, a deleted or re-modified line has no counterpart and loses its credit, an
+added line is new and unattested, and a file the delta never names keeps its
+numbers. A delta section that cannot be mapped — binary content, a rename, or
+a hunk whose body disagrees with its header — withholds that file's prior
+credit, with one warning, rather than guessing. One line inserted above a
+prior range therefore moves the credit with it: the range stays attested and
+the line the insertion covered is not.
+
+Ranges the recorded prior already covered stay credited, so the agent attests
+only the delta; ranges the prior never covered remain gaps unless the agent
+attests them now. Lines the delta re-modifies are the exception — their prior
+credit is invalidated, so they must be re-attested even within the delta.
+Credit comes only from the recorded file — an absent or unreadable one credits
+nothing, and grading fails closed against the full hunks.
+
+`record` persists the attested union as the next round's
+`prior-coverage.json` on every successful non-chunked run, which keeps
+unchanged lines credited and drops re-modified ones. A non-chunked run with no
+attested line removes the file: an empty union means nothing is validly
+attested for this head, and an earlier round's numbers would credit exactly
+the lines this one re-modified. A chunked run carries no line ranges, so it
+translates the recorded prior through its delta and writes back what survives
+(or removes the file when nothing does); a chunked run without a delta removes
+it, so an earlier head's credit cannot leak into the next grading. A
+`prior-coverage.json` write that fails after `record.json` is durable discards
+the stale prior and warns that the next incremental round grades without prior
+credit.
+
 Fetching without `--base-sha`/`--since` clears any leftover
 `incremental.diff` and its note, so the new full-diff round cannot credit
-stale prior lines. Full-diff rounds ignore the file entirely.
+stale prior lines; a delta the run cannot remove refuses the fetch instead of
+leaving the marker behind. Full-diff rounds ignore the file entirely.
 
 ## Bounded foreground waits
 

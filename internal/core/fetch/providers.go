@@ -82,8 +82,7 @@ func providerTail(
 // non-delta fetch clears any leftover delta and note instead.
 func providerIncrementalNote(r *session, dir string, f *Flags, incremental bool) *core.RefusalError {
 	if !f.HasBase || f.BaseSHA == "" {
-		clearStaleIncremental(dir)
-		return nil
+		return clearNonDeltaDelta(dir, f)
 	}
 	if incremental {
 		return nil
@@ -265,7 +264,9 @@ func gitlabDiffFail(dir, stderr string) error {
 // continues with the unavailability note GitHub writes.
 func gitlabIncremental(ctx context.Context, r *session, dir, pid string, f *Flags) (string, error) {
 	if !f.HasBase || f.BaseSHA == "" {
-		clearStaleIncremental(dir)
+		if ref := clearStaleIncremental(dir); ref != nil {
+			return nullStr, ref
+		}
 		return nullStr, nil
 	}
 	headSHA := readcommon.PrField(dir, keyHeadSHA)
@@ -302,10 +303,10 @@ func gitlabIncrementalWrite(r *session, dir, base, payload string) (string, erro
 		}
 		return nullStr, nil
 	}
-	if werr := atomic.WriteFile(dir+"/incremental.diff", []byte(gitlabCompareDiff(entries))); werr != nil {
+	if werr := atomic.WriteFile(dir+suffixIncremental, []byte(gitlabCompareDiff(entries))); werr != nil {
 		return nullStr, &core.RefusalError{
 			Code:    CodeFetchFailed,
-			Message: fmt.Sprintf("could not write %s/incremental.diff: %v", dir, werr),
+			Message: fmt.Sprintf("could not write %s%s: %v", dir, suffixIncremental, werr),
 		}
 	}
 	return base, nil
