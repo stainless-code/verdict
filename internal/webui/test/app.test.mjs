@@ -33,6 +33,7 @@ class Element {
     this.attributes = {};
     this.listeners = new Map();
     this.parentNode = null;
+    this.ownerDocument = null;
     this.className = "";
     this.hidden = false;
     this.value = "";
@@ -81,8 +82,25 @@ class Element {
     this.selected = true;
   }
 
+  // focus moves the owning document's active element here, as a browser does
+  // for a focusable, enabled control.
+  focus() {
+    if (this.disabled || !this.ownerDocument) return;
+    this.ownerDocument.activeElement = this;
+  }
+
+  contains(other) {
+    for (let at = other; at; at = at.parentNode) if (at === this) return true;
+    return false;
+  }
+
   remove() {
     if (!this.parentNode) return;
+    // A browser drops focus to the body when the focused node leaves the tree.
+    const doc = this.ownerDocument;
+    if (doc?.activeElement && this.contains(doc.activeElement)) {
+      doc.activeElement = doc.body;
+    }
     const at = this.parentNode.children.indexOf(this);
     if (at >= 0) this.parentNode.children.splice(at, 1);
     this.parentNode = null;
@@ -311,12 +329,39 @@ async function createUI({
       return elements.get(id);
     },
     createElement(tagName) {
-      return new Element(tagName);
+      const element = new Element(tagName);
+      element.ownerDocument = document;
+      return element;
+    },
+    activeElement: null,
+    keyListeners: new Set(),
+    addEventListener(name, listener) {
+      if (name === "keydown") document.keyListeners.add(listener);
+    },
+    removeEventListener(name, listener) {
+      if (name === "keydown") document.keyListeners.delete(listener);
+    },
+    // press delivers one key to the listeners and reports whether the page
+    // called preventDefault on it.
+    press(key, init = {}) {
+      let prevented = false;
+      const event = {
+        key,
+        shiftKey: false,
+        ...init,
+        preventDefault() {
+          prevented = true;
+        },
+      };
+      for (const listener of [...document.keyListeners]) listener(event);
+      return prevented;
     },
     querySelector() {
       return { content: mode };
     },
   };
+  document.body.ownerDocument = document;
+  document.activeElement = document.body;
   if (execCommand) document.execCommand = execCommand;
   const fetch = async (path, options) => {
     const url = new URL(path, document.baseURI);
@@ -408,6 +453,8 @@ async function createUI({
     advance,
     settle,
     navigate,
+    press: document.press,
+    active: () => document.activeElement,
     body: document.body,
   };
 }
@@ -1718,7 +1765,7 @@ test("allow_post renders Submit Review and confirms after several preview polls"
   assert.equal(previewReads, 3);
   assert.deepEqual(ui.delays, [250, 500, 1000]);
   const dialog = descendants(ui.body).find(
-    (e) => e.attributes && e.attributes["aria-label"] === "Submit Review",
+    (e) => e.attributes && e.attributes.role === "dialog",
   );
   assert.ok(dialog, "click must open the confirmation modal");
   assert.ok(dialog.textContent.includes(`Bundle 1234`));
@@ -1780,7 +1827,7 @@ test("a preview job that fails leaves the modal unconfirmable", async () => {
   await ui.navigate("#/r/root-123/1234");
   await ui.settle(submitButton(ui.elements.get("content")).dispatch("click"));
   const dialog = descendants(ui.body).find(
-    (e) => e.attributes && e.attributes["aria-label"] === "Submit Review",
+    (e) => e.attributes && e.attributes.role === "dialog",
   );
   assert.ok(dialog, "click must open the confirmation modal");
   assert.ok(dialog.textContent.includes("forgejo needs FORGEJO_TOKEN set"));
@@ -1836,7 +1883,7 @@ test("Cancel on the Submit Review modal posts nothing", async () => {
   );
   assert.equal(
     descendants(ui.body).filter(
-      (e) => e.attributes && e.attributes["aria-label"] === "Submit Review",
+      (e) => e.attributes && e.attributes.role === "dialog",
     ).length,
     0,
   );
@@ -1994,4 +2041,184 @@ test("a slow preview shows a waiting message and backs off to a two-minute ceili
   assert.ok(total >= 120000 && total < 122000, `total wait ${total} ms`);
   assert.ok(ui.body.textContent.includes("did not finish"));
   assert.equal(firstButton(ui.body, "Confirm & Submit Review").disabled, true);
+});
+
+// dialogUI opens the Submit Review dialog over a gated preview and an optional
+// gated submit, returning the pieces the focus tests drive. releasePreview
+// settles the preview; releaseSubmit settles the host post.
+async function dialogUI() {
+  let releasePreview;
+  const previewGate = new Promise((resolve) => {
+    releasePreview = resolve;
+  });
+  let releaseSubmit;
+  const submitGate = new Promise((resolve) => {
+    releaseSubmit = resolve;
+  });
+  const ui = await createUI({
+    interactive: true,
+    allowPost: true,
+    csrf: "csrf-test-token",
+    respond: async (path) => {
+      if (path === "/v1/jobs/post-preview") {
+        return { body: previewSnapshot("job-1", "queued") };
+      }
+      if (path === "/v1/jobs/job-1") {
+        await previewGate;
+        return {
+          body: previewSnapshot(
+            "job-1",
+            "succeeded",
+            "e".repeat(64),
+            "f".repeat(32),
+          ),
+        };
+      }
+      if (path === "/v1/post/submit") {
+        await submitGate;
+        return { body: envelope({ commit_id: "c0ffee" }) };
+      }
+      return { body: prDetailFixtures().get(path) || envelope({}) };
+    },
+  });
+  await ui.navigate("#/r/root-123/1234");
+  const trigger = submitButton(ui.elements.get("content"));
+  trigger.focus();
+  const opening = trigger.dispatch("click");
+  await ui.advance(4);
+  const submits = () =>
+    ui.fetches.filter((item) => item.path === "/v1/post/submit").length;
+  return { ui, trigger, opening, releasePreview, releaseSubmit, submits };
+}
+
+test("the dialog declares itself modal and names its heading", async () => {
+  const { ui, releasePreview, opening } = await dialogUI();
+  const dialog = descendants(ui.body).find(
+    (e) => e.attributes && e.attributes.role === "dialog",
+  );
+  assert.ok(dialog, "the click opens a dialog");
+  assert.equal(dialog.attributes["aria-modal"], "true");
+  const heading = descendants(dialog).find((e) => e.tagName === "H2");
+  assert.ok(heading.attributes.id, "the heading carries an id");
+  assert.equal(dialog.attributes["aria-labelledby"], heading.attributes.id);
+  releasePreview();
+  await ui.settle(opening);
+});
+
+test("focus moves to Cancel while the preview loads, then to Confirm", async () => {
+  const { ui, releasePreview, opening } = await dialogUI();
+  assert.equal(
+    ui.active(),
+    firstButton(ui.body, "Cancel"),
+    "Cancel holds focus while Confirm is still disabled",
+  );
+  releasePreview();
+  await ui.settle(opening);
+  assert.equal(
+    ui.active(),
+    firstButton(ui.body, "Confirm & Submit Review"),
+    "Confirm takes focus once the preview settles",
+  );
+});
+
+test("Tab and Shift-Tab stay inside the dialog", async () => {
+  const { ui, releasePreview, opening } = await dialogUI();
+  const cancel = firstButton(ui.body, "Cancel");
+  const confirm = firstButton(ui.body, "Confirm & Submit Review");
+  // Only Cancel is enabled: both directions stay on it.
+  assert.equal(ui.press("Tab"), true);
+  assert.equal(ui.active(), cancel);
+  assert.equal(ui.press("Tab", { shiftKey: true }), true);
+  assert.equal(ui.active(), cancel);
+  releasePreview();
+  await ui.settle(opening);
+  assert.equal(ui.active(), confirm);
+  ui.press("Tab");
+  assert.equal(ui.active(), cancel, "Tab moves on to Cancel");
+  ui.press("Tab");
+  assert.equal(ui.active(), confirm, "Tab wraps from the last control");
+  ui.press("Tab", { shiftKey: true });
+  assert.equal(ui.active(), cancel, "Shift-Tab wraps from the first control");
+  // Focus that escaped the dialog is pulled back in.
+  ui.body.focus();
+  ui.press("Tab");
+  assert.equal(ui.active(), confirm);
+});
+
+test("Escape closes the preview stage like Cancel and returns focus to the trigger", async () => {
+  const { ui, trigger, submits, releasePreview, opening } = await dialogUI();
+  assert.ok(firstButton(ui.body, "Cancel"));
+  assert.equal(ui.press("Escape"), true);
+  assert.equal(
+    descendants(ui.body).filter(
+      (e) => e.attributes && e.attributes.role === "dialog",
+    ).length,
+    0,
+    "Escape removes the dialog",
+  );
+  assert.equal(ui.active(), trigger, "focus returns to Submit Review");
+  assert.equal(submits(), 0, "Escape posts nothing");
+  // The key listener is gone with the dialog.
+  assert.equal(ui.press("Escape"), false);
+  releasePreview();
+  await ui.settle(opening);
+});
+
+test("Cancel returns focus to the trigger too", async () => {
+  const { ui, trigger, releasePreview, opening } = await dialogUI();
+  releasePreview();
+  await ui.settle(opening);
+  await firstButton(ui.body, "Cancel").dispatch("click");
+  assert.equal(ui.active(), trigger);
+});
+
+test("after Confirm the dialog says posting continues and offers Close, not Cancel", async () => {
+  const { ui, trigger, releasePreview, releaseSubmit, submits, opening } =
+    await dialogUI();
+  releasePreview();
+  await ui.settle(opening);
+  assert.ok(firstButton(ui.body, "Cancel"), "the preview stage offers Cancel");
+  const note =
+    "Posting continues on the server; closing this dialog does not cancel it.";
+  assert.ok(!ui.body.textContent.includes(note));
+  const confirming = firstButton(ui.body, "Confirm & Submit Review").dispatch(
+    "click",
+  );
+  await ui.advance(4);
+  assert.equal(submits(), 1);
+  assert.equal(firstButton(ui.body, "Cancel"), undefined);
+  const close = firstButton(ui.body, "Close");
+  assert.ok(close, "Cancel is relabelled Close while the post is pending");
+  assert.ok(ui.body.textContent.includes(note));
+  assert.equal(ui.active(), close);
+  // Escape is Close: it removes the dialog and leaves the post running.
+  assert.equal(ui.press("Escape"), true);
+  assert.equal(ui.active(), trigger);
+  assert.equal(
+    descendants(ui.body).some(
+      (e) => e.attributes && e.attributes.role === "dialog",
+    ),
+    false,
+  );
+  releaseSubmit();
+  await ui.settle(confirming);
+  assert.equal(submits(), 1, "closing the dialog never re-sends the post");
+});
+
+test("the pending note leaves once the submit settles", async () => {
+  const { ui, releasePreview, releaseSubmit, opening } = await dialogUI();
+  releasePreview();
+  await ui.settle(opening);
+  const confirming = firstButton(ui.body, "Confirm & Submit Review").dispatch(
+    "click",
+  );
+  await ui.advance(4);
+  releaseSubmit();
+  await ui.settle(confirming);
+  assert.ok(ui.body.textContent.includes("Submitted."));
+  assert.ok(!ui.body.textContent.includes("Posting continues on the server"));
+  assert.ok(
+    firstButton(ui.body, "Close"),
+    "the settled dialog still offers Close",
+  );
 });

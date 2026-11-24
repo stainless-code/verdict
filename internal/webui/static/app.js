@@ -28,6 +28,11 @@
   let activeJob = null;
   let jobDrawer = null;
   let submitOverlay = null;
+  // submitReturnFocus is the Submit Review control that opened the dialog;
+  // closing the dialog hands focus back to it. submitKeydown is the document
+  // handler that traps Tab and closes on Escape while the dialog is open.
+  let submitReturnFocus = null;
+  let submitKeydown = null;
   // submitGeneration numbers each open of the confirmation modal; a preview
   // acts only while its own generation is still the current one.
   let submitGeneration = 0;
@@ -586,7 +591,9 @@
     if (submitEnabled(bundle)) {
       const submit = node("button", "Submit Review");
       submit.type = "button";
-      submit.addEventListener("click", () => openSubmitModal(root, bundle));
+      submit.addEventListener("click", () =>
+        openSubmitModal(root, bundle, submit),
+      );
       wrapper.append(submit);
     }
     jobDrawer = node("div", undefined, "job-drawer");
@@ -650,21 +657,54 @@
   // stop and keeps it from touching whatever dialog opens next.
   function closeSubmitModal() {
     submitGeneration++;
-    submitOverlay?.remove();
+    if (submitKeydown) document.removeEventListener("keydown", submitKeydown);
+    submitKeydown = null;
+    if (!submitOverlay) return;
+    submitOverlay.remove();
     submitOverlay = null;
+    const returnTo = submitReturnFocus;
+    submitReturnFocus = null;
+    returnTo?.focus();
+  }
+
+  // trapSubmitKeys keeps focus inside the open dialog: Tab and Shift-Tab wrap
+  // over its enabled buttons, and Escape closes it like its Cancel/Close
+  // button. The handler lives on the document so it still hears keys when a
+  // click on the backdrop has dropped focus out of the dialog.
+  function trapSubmitKeys(overlay, buttons) {
+    const handler = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault?.();
+        closeSubmitModal();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const enabled = buttons.filter((button) => !button.disabled);
+      if (!enabled.length) return;
+      event.preventDefault?.();
+      const at = enabled.indexOf(document.activeElement);
+      const step = event.shiftKey ? -1 : 1;
+      const next = at < 0 ? (step > 0 ? 0 : enabled.length - 1) : at + step;
+      enabled[(next + enabled.length) % enabled.length].focus();
+    };
+    submitKeydown = handler;
+    document.addEventListener("keydown", handler);
   }
 
   // openSubmitModal previews the bundle, then waits for an explicit
   // Confirm & Submit Review click before any host write.
-  async function openSubmitModal(root, bundle) {
+  async function openSubmitModal(root, bundle, trigger) {
     closeSubmitModal();
     const generation = submitGeneration;
     const live = () => submitGeneration === generation;
     const overlay = node("div", undefined, "submit-modal");
     const dialog = node("div", undefined, "submit-dialog");
+    const heading = node("h2", "Submit Review");
+    heading.setAttribute("id", "submit-dialog-title");
     dialog.setAttribute("role", "dialog");
-    dialog.setAttribute("aria-label", "Submit Review");
-    dialog.append(node("h2", "Submit Review"));
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "submit-dialog-title");
+    dialog.append(heading);
     const target = node(
       "p",
       `Bundle ${bundle} in root ${root} — previewing the PR post.`,
@@ -683,6 +723,11 @@
     overlay.append(dialog);
     document.body.append(overlay);
     submitOverlay = overlay;
+    submitReturnFocus = trigger || null;
+    trapSubmitKeys(overlay, [confirm, cancel]);
+    // Cancel is the only enabled control while the preview loads, so focus
+    // starts there; Confirm takes it once the preview settles.
+    cancel.focus();
     let preview = null;
     try {
       preview = await fetchPreview(root, bundle, live, () => {
@@ -727,8 +772,19 @@
     );
     status.textContent = "Review the preview, then confirm to submit.";
     confirm.disabled = false;
+    confirm.focus();
     confirm.addEventListener("click", async () => {
       confirm.disabled = true;
+      // The server keeps posting after the dialog goes away, so this button
+      // stops promising a cancel: it closes the dialog, nothing more.
+      cancel.textContent = "Close";
+      const pending = node(
+        "p",
+        "Posting continues on the server; closing this dialog does not cancel it.",
+        "submit-status",
+      );
+      details.append(pending);
+      cancel.focus();
       try {
         const { response, body } = await writeJSON("/v1/post/submit", {
           root,
@@ -759,6 +815,8 @@
         status.textContent =
           error instanceof Error ? error.message : String(error);
         status.className = "error";
+      } finally {
+        pending.remove();
       }
     });
   }

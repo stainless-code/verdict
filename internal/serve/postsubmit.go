@@ -298,11 +298,13 @@ func (s *Server) handlePostSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	// A host write already under way is not abandoned because the tab closed:
 	// the nonce was spent above, and the CLI post this mirrors is not
-	// cancellable from a browser either. It is still bounded, so a stalled
-	// host cannot hold the bundle lock forever.
-	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), s.postTimeout())
+	// cancellable from a browser either. It derives from the server's
+	// lifetime instead of the request's, so shutdown still cancels it (and
+	// the exec layer kills the host process tree, GO-CLI-05), and it is
+	// bounded, so a stalled host cannot hold the bundle lock forever.
+	ctx, cancel := context.WithTimeout(s.lifeCtx, s.postTimeout())
 	defer cancel()
-	s.runConfirmedPost(ctx, w, &body, rootPath, bundleDir, entry)
+	s.runConfirmedPost(ctx, w, &body, rootPath, bundleDir, entry) //nolint:contextcheck // bound to the server lifetime on purpose
 }
 
 // validateSubmitBody checks confirmation and preview presence; the problem
@@ -447,6 +449,11 @@ func (s *Server) invokePostSubmit(
 		ref = &core.RefusalError{Code: codePostTimeout, Message: fmt.Sprintf(
 			"the host post did not finish within %s and was stopped; the host may or may not have recorded the review",
 			s.postTimeout()), Warnings: ref.Warnings}
+	}
+	if ref != nil && errors.Is(ctx.Err(), context.Canceled) && contextOwned(ref) {
+		// Shutdown, not the host, ended the call.
+		ref = &core.RefusalError{Code: codeCanceled, Message: "the server shut down while the host post was in flight " +
+			"and the host call was stopped; the host may or may not have recorded the review", Warnings: ref.Warnings}
 	}
 	return resp, ref
 }

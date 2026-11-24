@@ -22,7 +22,11 @@ The confirmation modal polls its preview job with a bounded 250 ms backoff
 instead of an unpaced burst.
 The confirmed submit is bounded to five minutes: a stalled host call is
 stopped, the bundle lock is released, and the route refuses `post-timeout`
-instead of blocking every triage and job on the bundle. The served post
+instead of blocking every triage and job on the bundle; shutting the server
+down (Ctrl-C) also stops an in-flight host call and answers `canceled`,
+while a closed tab still does not abort it. The post preview reads live host
+state (the pull request head) through the host CLI, so only posting, not the
+network, is gated by `--allow-post`. The served post
 also resolves the tool version from the install root exactly as `verdict
 post` does, so a `package.json` in the server's working directory can no
 longer stamp its version into a posted review.

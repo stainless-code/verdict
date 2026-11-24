@@ -867,3 +867,108 @@ func TestPostSubmitTimeoutRefusesAndReleasesLock(t *testing.T) { //nolint:revive
 		t.Fatalf("triage after the timeout = %d %s, want success (the bundle lock leaked)", res.status, res.body)
 	}
 }
+
+// submitAsync fires one confirmed submit and delivers its answer; a transport
+// failure delivers the zero result, which the caller's status check rejects.
+func submitAsync(ts *httptest.Server, server *Server, body string) <-chan result {
+	answered := make(chan result, 1)
+	go func() {
+		got, err := submitOnce(ts, server, body)
+		if err != nil {
+			got = result{}
+		}
+		answered <- got
+	}()
+	return answered
+}
+
+// submitOnce is the blocking request submitAsync runs off the test goroutine,
+// so it reports an error instead of failing the test.
+func submitOnce(ts *httptest.Server, server *Server, body string) (result, error) {
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
+		ts.URL+postSubmitPath, strings.NewReader(body))
+	if err != nil {
+		return result{}, err
+	}
+	req.Host = testHost
+	for name, value := range writeHeaders(server) {
+		req.Header.Set(name, value)
+	}
+	resp, err := ts.Client().Do(req)
+	if err != nil {
+		return result{}, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	raw, err := io.ReadAll(resp.Body)
+	return result{status: resp.StatusCode, body: raw}, err
+}
+
+// serveForShutdown binds a real listener for [Server.Serve] on a
+// kernel-assigned port, then restores the fixed port the test host header
+// names so the httptest handler keeps its allowlist. It returns the Serve
+// result channel and the cancel that begins shutdown.
+func serveForShutdown(t *testing.T, server *Server) (served <-chan error, shutdown func()) {
+	t.Helper()
+	server.cfg.Port = 0
+	if err := server.Listen(t.Context()); err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	t.Cleanup(func() { _ = server.Close() })
+	server.port = testPort
+	server.refreshAllowlists()
+	rootCtx, cancelRoot := context.WithCancel(context.Background())
+	t.Cleanup(cancelRoot)
+	done := make(chan error, 1)
+	go func() { done <- server.Serve(rootCtx) }()
+	return done, cancelRoot
+}
+
+// TestPostSubmitShutdownCancelsInFlightHostPost pins GO-CLI-05 for the served
+// submit: canceling the server's root context reaches the host call through
+// the submit context, so a post that is mid-flight is stopped promptly and
+// answered with the typed canceled refusal that says the host may have
+// recorded the review. The submit bound is a minute, so only the shutdown can
+// end the call within the test's deadline; the submit derives from the server
+// lifetime, never the request, so a closed tab still does not abort it.
+func TestPostSubmitShutdownCancelsInFlightHostPost(t *testing.T) { //nolint:revive // one flow asserts the host stop, the answer, and the join
+	t.Parallel()
+	cmdr := &stubPostCommander{t: t, head: postHeadA, stall: make(chan struct{})}
+	ts, server, rootID, _ := realPostServer(t, cmdr, &Config{PostTimeout: time.Minute})
+	digest, nonce, _ := mintPreviewSnapshot(t, ts, server, rootID, "7")
+	served, shutdown := serveForShutdown(t, server)
+	answered := submitAsync(ts, server, submitBody(rootID, "7", digest, nonce, new(true)))
+
+	select {
+	case <-cmdr.stall:
+	case <-time.After(10 * time.Second):
+		t.Fatal("the host POST was never reached")
+	}
+	shutdown()
+	var got result
+	select {
+	case got = <-answered:
+	case <-time.After(10 * time.Second):
+		t.Fatal("shutdown did not cancel the in-flight host post: the submit is bound to the request, not the server")
+	}
+	if got.status != http.StatusOK {
+		t.Fatalf("submit = %d %s, want a 200 refusal envelope", got.status, got.body)
+	}
+	errObj := asMap(t, decode(t, got.body)["error"])
+	if errObj["code"] != codeCanceled {
+		t.Fatalf("submit error = %v, want code %s", errObj, codeCanceled)
+	}
+	if !strings.Contains(asString(t, errObj["message"]), "may or may not have recorded the review") {
+		t.Errorf("cancel message lacks the may-have-recorded warning: %v", errObj["message"])
+	}
+	if cmdr.postedFlag() {
+		t.Error("a canceled submit must not report the host POST as completed")
+	}
+	select {
+	case err := <-served:
+		if err != nil {
+			t.Errorf("Serve = %v, want a clean shutdown", err)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("Serve did not return after shutdown")
+	}
+}

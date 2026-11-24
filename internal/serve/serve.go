@@ -168,6 +168,11 @@ type Server struct { //nolint:govet // grouped by listener, allowlists, and inje
 	postSubmitRunner  PostSubmitRunner
 	previews          *previewStore
 	jobs              *jobManager
+	// lifeCtx is the server-lifetime context a confirmed host submit derives
+	// from, so shutdown (not a closed tab) cancels an in-flight host post.
+	// [Server.Serve] cancels it as shutdown begins; [Server.Close] does too.
+	lifeCtx    context.Context //nolint:containedctx // the server's lifetime is the one thing a detached submit is bound to
+	lifeCancel context.CancelFunc
 }
 
 // New builds a server over one root (or the injected layer) and mints its
@@ -189,7 +194,10 @@ func New(cfg *Config) (*Server, error) {
 	if cfg.Interactive {
 		csrf = newToken()
 	}
+	lifeCtx, lifeCancel := context.WithCancel(context.Background())
 	server := &Server{
+		lifeCtx:           lifeCtx,
+		lifeCancel:        lifeCancel,
 		cfg:               *cfg,
 		token:             token,
 		csrf:              csrf,
@@ -351,6 +359,7 @@ func (s *Server) URL() string {
 
 // Close releases the listener; an already-closed listener is not an error.
 func (s *Server) Close() error {
+	s.lifeCancel()
 	s.mu.RLock()
 	listener := s.listener
 	s.mu.RUnlock()
@@ -385,6 +394,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		}()
 	}
 	defer func() {
+		s.lifeCancel()
 		cancelWatch()
 		<-watchDone
 		s.jobs.stop()
@@ -393,6 +403,10 @@ func (s *Server) Serve(ctx context.Context) error {
 	go func() { serveErr <- server.Serve(listener) }()
 	select {
 	case <-ctx.Done():
+		// A detached host submit is bound to the server's lifetime, not the
+		// request's: cancel it first so its host process tree is killed
+		// while the drain waits, instead of outliving the listener.
+		s.lifeCancel()
 		return s.drain(ctx, server)
 	case err := <-serveErr:
 		s.stopEventStreams()

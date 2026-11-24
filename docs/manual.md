@@ -2729,8 +2729,11 @@ route, `POST /v1/post/submit`, which posts a review to the code host (see
 port by default. Pass `--port` to pin the port or `--host` to bind another
 interface. The server prints one tokenised start URL and stops on Ctrl-C
 (exit 3). It never fetches or runs a model, and without `--allow-post` it never
-posts or reaches the network; without `--interactive`, it writes no store at
-all.
+posts to the host; without `--interactive`, it writes no store at all. The
+post preview (`--interactive`) is not network-free: it runs `post`'s dry-run,
+which reads live host state through the host CLI (the pull request head, for
+the drift check) before anything is shown. It never posts. A served post does
+not enable `--summary=comment`, so the preview reads no summary comments.
 
 The browser UI has an inbox, review detail with its evidence ledger, a `Diff` tab, threads,
 cost, precision, and a gate panel. It reads the same `/v1` envelopes as other
@@ -2963,8 +2966,10 @@ changed since the preview — `findings.json`, `PR.json`, `source.json`,
 re-check and the post is narrowed by the fingerprint but not excluded. The
 submit keeps running if the tab closes, but is bounded to five minutes
 (lock wait included): a host call that outlives it is stopped and refuses
-`post-timeout` at `200`, releasing the lock. The host may or may not have
-recorded the review, so check the pull request before previewing again. The
+`post-timeout` at `200`, releasing the lock. Shutting the server down (Ctrl-C)
+also stops an in-flight host call, which refuses `canceled`. The host may or
+may not have recorded the review in either case, so check the pull request
+before previewing again. The
 tool version in the footer and payload resolves from the install root, as in
 `verdict post`, never from the server's working directory. A refusal `core/post`
 raises stays the usual `200` envelope; the preview store is the only Tier C
