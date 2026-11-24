@@ -99,34 +99,43 @@ func stateDirWarning(stateDir string, err error) string {
 	}
 }
 
-// aggregateBundle counts one bundle from a single authoritative source:
-// recorded cost when the bundle carries month-identified recorded cost,
-// else the budget.json ledger. Both sources never add together — one
-// run's spend must not be counted twice.
+// aggregateBundle counts one bundle's spend for month from two sources with
+// execution-level single-source within that month: recorded cost files are
+// always counted for their own month, and the budget.json ledger is counted
+// only for rows that are not the pre-run projection of already-counted
+// recorded cost in the same month. A recorded file from another month never
+// suppresses the requested month's ledger rows.
 func aggregateBundle(bundleDir, month string, sum *big.Rat, known, unknown *int) {
-	if aggregateRecorded(bundleDir, month, sum, known, unknown) {
-		return
-	}
-	aggregateLedger(bundleDir, month, sum, known, unknown)
+	meta := aggregateRecorded(bundleDir, month, sum, known, unknown)
+	aggregateLedger(bundleDir, month, sum, known, unknown, meta)
+}
+
+// recordedMeta carries the in-month recorded-cost identity that decides
+// which ledger rows are pre-run projections of already-counted spend:
+// execIDs and hasUnidentified cover the execution-level match, and maxAt is
+// the latest timestamp among in-month recorded receipts. Records from other
+// months are excluded from meta, so they cannot suppress the requested
+// month's ledger.
+type recordedMeta struct {
+	maxAt           time.Time
+	execIDs         map[string]bool
+	hasAny          bool
+	hasUnidentified bool
 }
 
 // aggregateRecorded counts the bundle's recorded cost files — cost.json
 // plus the chunk cost files — mirroring the report rollup's selection:
 // manifest chunk names plus the chunk-*.cost.json glob, deduplicated so
-// a chunk named by both is counted once. It reports whether any recorded
-// record carries a parseable timestamp in any month: one such record
-// marks the bundle recorded-cost authoritative and suppresses its
-// budget.json ledger rows, even when every recorded timestamp falls
-// outside the current month. Records without a parseable timestamp are
-// unbucketable, name no month's spend, and never suppress the ledger.
-func aggregateRecorded(bundleDir, month string, sum *big.Rat, known, unknown *int) bool {
-	bucketable := false
+// a chunk named by both is counted once. It counts only receipts whose
+// timestamp falls in month and returns the meta describing those in-month
+// recorded receipts; records outside month, and records without a parseable
+// timestamp, name no month's spend and never suppress the ledger.
+func aggregateRecorded(bundleDir, month string, sum *big.Rat, known, unknown *int) *recordedMeta {
+	meta := &recordedMeta{execIDs: map[string]bool{}}
 	for _, name := range recordedCostNames(bundleDir) {
-		if countRecordedFile(bundleDir, name, month, sum, known, unknown) {
-			bucketable = true
-		}
+		countRecordedFile(bundleDir, name, month, sum, known, unknown, meta)
 	}
-	return bucketable
+	return meta
 }
 
 func recordedCostNames(bundleDir string) []string {
@@ -224,58 +233,65 @@ func globChunkNames(bundleDir string) []string {
 	return names
 }
 
-// countRecordedFile counts one recorded cost file and reports whether
-// any of its records is month-identified.
-func countRecordedFile(bundleDir, name, month string, sum *big.Rat, known, unknown *int) bool {
+// countRecordedFile counts one recorded cost file for month into sum and
+// records its in-month identity in meta. Files without a parseable record
+// contribute nothing.
+func countRecordedFile(bundleDir, name, month string, sum *big.Rat, known, unknown *int, meta *recordedMeta) {
 	raw := openBundleFile(bundleDir, name)
 	if raw == nil {
-		return false
+		return
 	}
 	doc, err := jq.DecodeOrdered(raw)
 	if err != nil {
-		return false
+		return
 	}
-	bucketable := false
 	for _, rec := range sliceDoc(doc) {
-		if processCostRecord(rec, month, sum, known, unknown) {
-			bucketable = true
-		}
+		processCostRecord(rec, month, sum, known, unknown, meta)
 	}
-	return bucketable
 }
 
 // processCostRecord counts one cost record when its timestamp falls in
-// month, and reports whether the record is month-identified at all.
-// Legacy records without "at" name no month and are excluded.
-func processCostRecord(rec any, month string, sum *big.Rat, known, unknown *int) bool {
+// month and updates meta for that in-month record. Legacy records without
+// "at" name no month and are excluded.
+func processCostRecord(rec any, month string, sum *big.Rat, known, unknown *int, meta *recordedMeta) {
 	obj, ok := rec.(*jq.Obj)
 	if !ok {
-		return false
+		return
 	}
 	at, _ := obj.Get("at")
 	recordMonth, ok := monthOf(at)
 	if !ok {
-		return false
+		return
 	}
 	if recordMonth != month {
-		return true
+		return
+	}
+	meta.hasAny = true
+	atTime, _ := atTimeOf(at)
+	if atTime.After(meta.maxAt) {
+		meta.maxAt = atTime
+	}
+	if exec := stringFieldOf(obj, "execution_id"); exec != "" {
+		meta.execIDs[exec] = true
+	} else {
+		meta.hasUnidentified = true
 	}
 	est, _ := obj.Get("est_usd")
 	if rat, ok := ratOfJSONNumber(est); ok {
 		sum.Add(sum, rat)
 		*known++
-		return true
+		return
 	}
 	*unknown++
-	return true
 }
 
-// aggregateLedger counts a bundle's budget.json receipt ledger.
+// aggregateLedger counts a bundle's budget.json receipt ledger for month.
 // Repeated authorizations of one run (a --print plus a real launch, a
 // re-run) share an execution_id — or a projection_sha256 when no
 // execution_id was recorded — and count once, so the ledger cannot
-// double-count a retried authorization.
-func aggregateLedger(bundleDir, month string, sum *big.Rat, known, unknown *int) {
+// double-count a retried authorization. Rows already represented by
+// in-month recorded cost are suppressed via meta.
+func aggregateLedger(bundleDir, month string, sum *big.Rat, known, unknown *int, meta *recordedMeta) {
 	raw := openBundleFile(bundleDir, "budget.json")
 	if raw == nil {
 		return
@@ -286,26 +302,71 @@ func aggregateLedger(bundleDir, month string, sum *big.Rat, known, unknown *int)
 	}
 	seen := map[string]bool{}
 	for _, receipt := range sliceDoc(doc) {
-		countLedgerReceipt(receipt, month, seen, sum, known, unknown)
+		countLedgerReceipt(receipt, month, seen, sum, known, unknown, meta)
 	}
 }
 
-func countLedgerReceipt(receipt any, month string, seen map[string]bool, sum *big.Rat, known, unknown *int) {
+func countLedgerReceipt(receipt any, month string, seen map[string]bool, sum *big.Rat, known, unknown *int, meta *recordedMeta) {
 	obj, ok := receipt.(*jq.Obj)
 	if !ok {
 		return
 	}
 	at, _ := obj.Get("at")
-	if !sameMonth(at, month) {
+	if !isInMonth(at, month) {
 		return
 	}
-	if key := budgetDedupeKey(obj); key != "" {
-		if seen[key] {
-			return
-		}
-		seen[key] = true
+	if shouldSuppress(obj, at, meta) {
+		return
+	}
+	if isDuplicate(obj, seen) {
+		return
 	}
 	countLedgerValue(obj, sum, known, unknown)
+}
+
+func isInMonth(at any, month string) bool { return sameMonth(at, month) }
+
+func shouldSuppress(obj *jq.Obj, at any, meta *recordedMeta) bool {
+	if meta == nil || !meta.hasAny {
+		return false
+	}
+	return isLedgerSuppressed(obj, at, meta)
+}
+
+func isDuplicate(obj *jq.Obj, seen map[string]bool) bool {
+	key := budgetDedupeKey(obj)
+	if key == "" {
+		return false
+	}
+	if seen[key] {
+		return true
+	}
+	seen[key] = true
+	return false
+}
+
+// isLedgerSuppressed reports whether one in-month ledger row is the pre-run
+// projection of already-counted in-month recorded cost. A direct
+// execution_id match suppresses unconditionally; when a recorded receipt in
+// the month carries no execution_id, an unmatched row is suppressed only
+// when it is not strictly later than the latest recorded timestamp — so an
+// earlier projection never double-counts, and a later consented run after
+// the recorded timestamp is counted.
+func isLedgerSuppressed(obj *jq.Obj, at any, meta *recordedMeta) bool {
+	exec := stringFieldOf(obj, "execution_id")
+	if exec != "" && meta.execIDs[exec] {
+		return true
+	}
+	if meta.hasUnidentified {
+		ledgerAt, ok := atTimeOf(at)
+		if !ok {
+			return true
+		}
+		if !ledgerAt.After(meta.maxAt) {
+			return true
+		}
+	}
+	return false
 }
 
 func countLedgerValue(obj *jq.Obj, sum *big.Rat, known, unknown *int) {
@@ -399,6 +460,22 @@ func monthOf(at any) (string, bool) {
 		return MonthFor(t), true
 	}
 	return "", false
+}
+
+// atTimeOf parses a timestamp to its UTC instant. It reports false for
+// unparseable timestamps, so suppression comparisons never guess.
+func atTimeOf(at any) (time.Time, bool) {
+	atStr := atString(at)
+	if atStr == "" {
+		return time.Time{}, false
+	}
+	if t, err := time.Parse(time.RFC3339Nano, atStr); err == nil {
+		return t.UTC(), true
+	}
+	if t, err := time.Parse("2006-01-02", atStr); err == nil {
+		return t.UTC(), true
+	}
+	return time.Time{}, false
 }
 
 // sameMonth reports whether the timestamp's UTC calendar month is month.

@@ -261,3 +261,70 @@ func TestMonthlyExceedsExact(t *testing.T) {
 		t.Fatal("smaller exceeds larger")
 	}
 }
+
+func writeBundleFiles(t *testing.T, root string, files map[string]string) {
+	t.Helper()
+	dir := filepath.Join(root, ".verdict", "state", "42")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for name, body := range files {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// Prior-month recorded cost must not suppress current-month ledger rows.
+func TestMTDPriorMonthCostDoesNotSuppressCurrentLedger(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	writeBundleFiles(t, root, map[string]string{
+		"cost.json":   `[{"at":"2026-04-15T12:00:00Z","est_usd":99}]`,
+		"budget.json": `[{"at":"2026-05-02T12:00:00Z","projected_usd":5}]`,
+	})
+	got := spend.AggregateMTD(stateDirOf(root), now)
+	if got.KnownUSD != "5" || got.KnownCount != 1 {
+		t.Fatalf("prior-month suppression = %+v, want known 5 count 1 from current-month ledger", got)
+	}
+}
+
+// Same-month recorded cost with exec-1 suppresses only the matching ledger
+// row; a distinct exec-2 row is counted once.
+func TestMTDSameMonthExecLevelSuppression(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	writeBundleFiles(t, root, map[string]string{
+		"cost.json":   `[{"at":"2026-05-02T12:00:00Z","est_usd":5,"execution_id":"exec-1"}]`,
+		"budget.json": `[{"at":"2026-05-02T12:00:00Z","projected_usd":5,"execution_id":"exec-1"},{"at":"2026-05-03T12:00:00Z","projected_usd":3,"execution_id":"exec-2"}]`,
+	})
+	got := spend.AggregateMTD(stateDirOf(root), now)
+	if got.KnownUSD != "8" || got.KnownCount != 2 {
+		t.Fatalf("exec-level MTD = %+v, want known 8 count 2 (exec-1 once from cost, exec-2 once from ledger)", got)
+	}
+}
+
+// Legacy recorded cost without execution_id uses the timestamp gate: an
+// earlier ledger row is the pre-run projection (not double-counted), a
+// later consented row is counted.
+func TestMTDLegacyCostUsesTimestampGate(t *testing.T) {
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	root := t.TempDir()
+	writeBundleFiles(t, root, map[string]string{
+		"cost.json":   `[{"at":"2026-05-02T12:00:00Z","est_usd":5}]`,
+		"budget.json": `[{"at":"2026-05-02T11:55:00Z","projected_usd":5}]`,
+	})
+	got := spend.AggregateMTD(stateDirOf(root), now)
+	if got.KnownUSD != "5" || got.KnownCount != 1 {
+		t.Fatalf("legacy earlier-gate = %+v, want known 5 (no double count)", got)
+	}
+	root = t.TempDir()
+	writeBundleFiles(t, root, map[string]string{
+		"cost.json":   `[{"at":"2026-05-02T12:00:00Z","est_usd":5}]`,
+		"budget.json": `[{"at":"2026-05-02T11:55:00Z","projected_usd":5},{"at":"2026-05-02T14:00:00Z","projected_usd":3}]`,
+	})
+	got = spend.AggregateMTD(stateDirOf(root), now)
+	if got.KnownUSD != "8" || got.KnownCount != 2 {
+		t.Fatalf("legacy later-gate = %+v, want known 8 (earlier suppressed, later counted)", got)
+	}
+}

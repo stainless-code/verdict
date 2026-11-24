@@ -69,7 +69,7 @@ var publishedSemantics = map[string]string{
 	// additive monthly_budget_usd and packs.org_pack (optional
 	// defaults.monthly_budget_usd, spend.mtd reporting, and packs.org_pack
 	// pin). No existing property, required key, enum, or type changed.
-	"config.schema.json": "f4fb3995801f41bbfc72b2bd918164d2347d5315f5a6c2c0bd9fe6b674307595",
+	"config.schema.json": "13ea823560ba7dcff37241b3eb28d5590693bcbfa81ef351cc07b38e1959a1a6",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets

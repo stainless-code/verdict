@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -329,5 +330,82 @@ func TestPerInvocationConsentNotPersisted(t *testing.T) {
 	st2 := monthlyState(t, root, &scripted{}, false)
 	if ref := st2.authorizeMonthlyCap(proj, spend.Policy{MonthlyCap: "3"}); ref == nil || ref.Code != "spend-capped" {
 		t.Fatalf("unconsented after consent = %v, want spend-capped (not persisted)", ref)
+	}
+}
+
+// TestMonthlyConcurrentBundlesSerialize proves the repo-wide monthly lock
+// serializes the MTD scan plus receipt append across different bundles:
+// with $8 already recorded and a $10 cap, two concurrent $2 projections
+// must not both authorize. One succeeds and the second refuses spend-capped.
+func seedMonthlyState(t *testing.T) string {
+	t.Helper()
+	root := fixtureRoot(t)
+	seedBundle(t, root, "42", `[{"at":"2026-05-01T12:00:00Z","projected_usd":8,"execution_id":"mtd-seed"}]`)
+	return root
+}
+
+func seedBundle(t *testing.T, root, pr, receipts string) {
+	t.Helper()
+	dir := filepath.Join(root, ".verdict", "state", pr)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if receipts != "" {
+		if err := os.WriteFile(filepath.Join(dir, "budget.json"), []byte(receipts), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.WriteFile(filepath.Join(dir, "PR.json"), []byte(`{"number":43,"state":"OPEN"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "full.diff"), []byte("diff --git a/a.go b/a.go\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func concurrentArgs(t *testing.T, root string) (string, string, spend.Projection, spend.Projection) {
+	t.Helper()
+	dirA := filepath.Join(root, ".verdict", "state", "43")
+	dirB := filepath.Join(root, ".verdict", "state", "44")
+	seedBundle(t, root, "43", "")
+	seedBundle(t, root, "44", "")
+	writeRunJSON(t, dirA, "execution-A", "10")
+	writeRunJSON(t, dirB, "execution-B", "10")
+	projA, _ := spend.Project("execution-A", []spend.Phase{{ExecutionID: "execution-A", LaunchID: "finder-1-discovery-1", Finder: "finder-1", Phase: "discovery", USD: new(2.0)}})
+	projB, _ := spend.Project("execution-B", []spend.Phase{{ExecutionID: "execution-B", LaunchID: "finder-1-discovery-1", Finder: "finder-1", Phase: "discovery", USD: new(2.0)}})
+	return dirA, dirB, projA, projB
+}
+
+func TestMonthlyConcurrentBundlesSerialize(t *testing.T) {
+	root := seedMonthlyState(t)
+	dirA, dirB, projA, projB := concurrentArgs(t, root)
+	stA := monthlyState(t, root, &scripted{}, false)
+	stB := monthlyState(t, root, &scripted{}, false)
+	capA := mustCaptured(t, dirA)
+	capB := mustCaptured(t, dirB)
+	results := make([]*core.RefusalError, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		results[0] = stA.authorizeProjection(t.Context(), dirA, capA, 1, []spend.Phase{{ExecutionID: "execution-A", LaunchID: "finder-1-discovery-1", Finder: "finder-1", Phase: "discovery", USD: new(2.0)}}, projA)
+	}()
+	go func() {
+		defer wg.Done()
+		results[1] = stB.authorizeProjection(t.Context(), dirB, capB, 1, []spend.Phase{{ExecutionID: "execution-B", LaunchID: "finder-1-discovery-1", Finder: "finder-1", Phase: "discovery", USD: new(2.0)}}, projB)
+	}()
+	wg.Wait()
+	assertConcurrentResult(t, results)
+}
+
+func assertConcurrentResult(t *testing.T, results []*core.RefusalError) {
+	t.Helper()
+	if (results[0] == nil) == (results[1] == nil) {
+		t.Fatalf("concurrent authorize results = %v / %v, want exactly one success", results[0], results[1])
+	}
+	for _, r := range results {
+		if r != nil && r.Code != "spend-capped" {
+			t.Fatalf("concurrent refusal = %+v, want spend-capped", r)
+		}
 	}
 }

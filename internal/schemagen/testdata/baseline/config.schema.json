@@ -295,6 +295,10 @@
           {
             "required": ["defaults"],
             "properties": { "defaults": { "required": ["finders"] } }
+          },
+          {
+            "required": ["defaults"],
+            "properties": { "defaults": { "required": ["monthly_budget_usd"] } }
           }
         ]
       }

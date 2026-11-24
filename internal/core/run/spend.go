@@ -25,6 +25,7 @@ import (
 const (
 	maxSpendReceiptBytes = 1 << 20
 	spendReceiptMode     = 0o600
+	stateDirMode         = 0o755
 )
 
 func (st *state) authorizeSpend(ctx context.Context, dir string, rounds int) *core.RefusalError {
@@ -70,15 +71,24 @@ func (st *state) authorizeProjection(ctx context.Context, dir string, captured *
 	if !spend.ValidLimit(policy.Budget) || !spend.ValidLimit(policy.Personal) || !spend.ValidLimit(policy.MonthlyCap) {
 		return st.refuse(codeBadFlags, "spend guards must be finite nonnegative USD amounts")
 	}
-	// Monthly ceiling is enforced before any subprocess: month-to-date
-	// recorded spend plus this run's projected cost is refused when it
-	// exceeds the cap, with the same per-invocation consent as the
-	// ordinary spend authorization. Unknown stays unknown — a strict
-	// posture refuses on any unknown in either leg; a lenient posture
-	// enforces against known spend and warns about unknown.
+	// Serialize the MTD scan and the receipt append under the repo-wide
+	// monthly lock: two concurrent runs in different bundles would
+	// otherwise both see the same month-to-date and both authorize. The
+	// lock is held through the receipt append for every return path.
+	unlock, ref := st.holdMonthlyLock(ctx, policy)
+	if ref != nil {
+		return ref
+	}
+	defer unlock()
 	if ref := st.authorizeMonthlyCap(projection, policy); ref != nil {
 		return ref
 	}
+	return st.checkAndRecord(ctx, dir, captured, rounds, phases, projection, policy)
+}
+
+func (st *state) checkAndRecord(ctx context.Context, dir string, captured *config.RunState, rounds int,
+	phases []spend.Phase, projection spend.Projection, policy spend.Policy,
+) *core.RefusalError {
 	authorization := spend.Authorize(projection, policy, st.req.ConsentOverBudget)
 	if authorization.Code == "unsupported-cap" {
 		return st.refuse(authorization.Code, "hard billing caps are unsupported — remove spend.enforce_cap")
@@ -87,6 +97,35 @@ func (st *state) authorizeProjection(ctx context.Context, dir string, captured *
 		return st.refuse(authorization.Code, "S5 spend authorization required — pass run --consent-over-budget for this invocation")
 	}
 	return st.spendReceipt(ctx, dir, captured.Execution.ID, rounds, phases, projection, policy)
+}
+
+// acquireMonthlyLock takes the repo-wide monthly-spend lock guarding the
+// month-to-date scan plus the receipt append. The lock is the file
+// monthly-spend.lock inside the per-repo state directory; the directory is
+// created when absent so a fresh repository still serializes, and holding it
+// across the whole authorizeProjection path keeps the lock order strict:
+// the repo-wide lock is always acquired before any bundle lock.
+func (st *state) acquireMonthlyLock(ctx context.Context) (func(), *core.RefusalError) {
+	stateDir := readcommon.StateDir(st.req.RepoRootPath())
+	if err := os.MkdirAll(stateDir, stateDirMode); err != nil {
+		return nil, st.refuse(codeRecordFailed, fmt.Sprintf("cannot lock monthly spend: %v", err))
+	}
+	unlock, err := storelock.AcquireContext(ctx, filepath.Join(stateDir, "monthly-spend"), storelock.DefaultWait)
+	if err != nil {
+		return nil, st.refuse(codeRecordFailed, fmt.Sprintf("cannot lock monthly spend: %v", err))
+	}
+	return unlock, nil
+}
+
+// holdMonthlyLock acquires the repo-wide lock when a monthly cap is active
+// and returns its unlock; otherwise it returns a no-op so every return path
+// releases the same way. Acquiring before any bundle lock keeps the order
+// strict.
+func (st *state) holdMonthlyLock(ctx context.Context, policy spend.Policy) (func(), *core.RefusalError) {
+	if policy.MonthlyCap == "" {
+		return func() {}, nil
+	}
+	return st.acquireMonthlyLock(ctx)
 }
 
 // authorizeMonthlyCap enforces the per-repo monthly spend ceiling against

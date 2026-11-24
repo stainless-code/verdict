@@ -1,6 +1,7 @@
 package config
 
 import (
+	"strings"
 	"testing"
 )
 
@@ -82,5 +83,16 @@ func TestMonthlyBudgetValidParses(t *testing.T) {
 	}
 	if personal.Spend.MonthlyBudgetUSD == nil || *personal.Spend.MonthlyBudgetUSD != 99.9 {
 		t.Fatalf("personal = %v, want 99.9", personal.Spend.MonthlyBudgetUSD)
+	}
+}
+
+func TestMonthlyBudgetScopeRefuses(t *testing.T) {
+	doc := `{"schema_version":"1","scopes":[{"name":"api","include":["*.go"],"defaults":{"monthly_budget_usd":10}}]}`
+	_, ref := Parse([]byte(doc))
+	if ref == nil || ref.Code != CodeBadConfig {
+		t.Fatalf("scope monthly_budget_usd Parse = %v, want bad-config", ref)
+	}
+	if !strings.Contains(ref.Message, "monthly_budget_usd") || !strings.Contains(ref.Message, "$.scopes[0].defaults.monthly_budget_usd") {
+		t.Fatalf("refusal = %q, want path $.scopes[0].defaults.monthly_budget_usd naming repo-wide default", ref.Message)
 	}
 }
