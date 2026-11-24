@@ -31,10 +31,43 @@ before reporting: many findings are already fixed on the latest tag.
 In scope (highest priority first):
 
 - `verify --sandbox`, the enforced boundary: mount and namespace isolation
-  under `bubblewrap` on Linux, network denial under `sandbox-exec` on macOS,
-  the credential-path hiding, and the `sandbox-unavailable` refusal that never
-  degrades to an unwrapped run. An escape from that sandbox, or a run that
-  records `"sandboxed": true` without the enforcement, is a vulnerability.
+  under `bubblewrap` on Linux; under `sandbox-exec` on macOS, the network and
+  Mach service denial (default-deny with one lookup-only allow, so no
+  keychain, preference, pasteboard, LaunchServices, AppleEvents, or launchd
+  channel acts for the command), the denial of the `lsopen`,
+  `appleevent-send`, `job-creation`, `distributed-notification-post`, and
+  cross-process `signal` operations, the denial of every write outside the
+  reviewed root and the per-run private `TMPDIR`, and the read denial of the
+  credential table and the shared host temp roots; the credential-path hiding
+  on both; and the `sandbox-unavailable` refusal that never degrades to an
+  unwrapped run or to the network-only mode. **`sandboxed` means exactly that
+  full shape** — `"sandboxed": true` in the patch record, the deep-group
+  receipt, or `--json` data asserts `bwrap` or `sandbox-exec` enforced it. An
+  escape from that sandbox, or a run that records `"sandboxed": true` without
+  the enforcement (or for the network-only mode), is a vulnerability.
+- `verify --sandbox-network-only`, the explicit Linux opt-in
+  (`unshare --user --map-root-user --net`): the promise is network isolation
+  alone, a `sandboxMechanism: "unshare-net"` record that never claims
+  `sandboxed`, the warning on every run, and the `sandbox-unavailable`
+  refusal on every other host. A route to the network that does not go
+  through a filesystem path is a vulnerability. Reaching the host
+  filesystem, the host `/proc`, or a filesystem unix socket (`docker.sock`,
+  the `ssh-agent` socket) is the documented boundary of this mode, not a
+  finding.
+- Under `--sandbox`, the reviewed repository's git control files are part of
+  the boundary: writes to `<root>/.git`, the git directory a `.git` file
+  names, and a linked worktree's common directory are denied on both
+  platforms; on macOS so is creating any `.git` path below the root, and on
+  Linux a root whose repository cannot be pinned read-only (no `.git`, a
+  symlinked `.git`, a git pointer that does not resolve, or a git location
+  whose walk passes through a symlink or a missing component inside the
+  root) refuses
+  `sandbox-unavailable`. A sandboxed command that plants a hook or a
+  `.git/config` key for the root's repository, or (on macOS) any nested
+  `.git`, is a vulnerability. Out of scope: the rest of the working tree is
+  the PR's content and writable by design, and on Linux a new nested `.git`
+  in a subdirectory is a documented residual of `bwrap`, which can only
+  protect paths that already exist.
 - The `verify` gate's own contract: `verify` executes the agent's claimed
   proof (`verifyCmd` via `bash -c`, 300s watchdog, tail recorded into the
   patch record). The pre-exec refusals are a **tripwire, not a boundary**: the

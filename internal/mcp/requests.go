@@ -556,6 +556,7 @@ func decodeVerify(req *verifycore.Request, a *args) {
 	a.str("group", &req.Group)
 	a.str("command", &req.Command)
 	a.boolean("sandbox", &req.Sandbox)
+	a.boolean("sandboxNetworkOnly", &req.SandboxNetworkOnly)
 	a.strings("envAllowlist", &req.EnvAllowlist)
 }
 

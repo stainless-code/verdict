@@ -286,7 +286,7 @@ func usageText() string {
 		"  check-tree [--expect <prefix,...>] [--json]\n" +
 		"    refuse on unexpected dirt (own .verdict/state/ scratch ignored). No network. Machine clean-tree gate for mutating modes.\n" +
 		"  verify <owner/repo> <pr> [--timeout <secs, default 300>] [--group <stableID> --command <cmd>]\n" +
-		"        [--sandbox] [--env-allowlist <name[,name...]>] [--json]\n" +
+		"        [--sandbox | --sandbox-network-only] [--env-allowlist <name[,name...]>] [--json]\n" +
 		"    With neither --group nor --command, execute patch.json verifyCmd with a watchdog and\n" +
 		"    record exit + tail in the patch record. --group and --command are required together:\n" +
 		"    --command runs for the named deep plan group at the reviewed head and writes\n" +
@@ -297,8 +297,21 @@ func usageText() string {
 		"    are redacted from the recorded tail.\n" +
 		"    --sandbox runs the command under an enforced sandbox: bwrap on Linux (no network,\n" +
 		"    empty ~/.aws and ~/.ssh, a writable reviewed root, a private /tmp), and\n" +
-		"    sandbox-exec on macOS (no network, loopback included; credentials stay visible).\n" +
-		"    A host that cannot enforce it refuses sandbox-unavailable and runs nothing.\n" +
+		"    sandbox-exec on macOS (no network, loopback included; no Mach services; writes\n" +
+		"    only to the reviewed root and a private TMPDIR; credential paths and host /tmp\n" +
+		"    denied; no mount or PID namespace).\n" +
+		"    --sandbox-network-only is the Linux unshare --net opt-in for hosts without bwrap:\n" +
+		"    network isolation alone — no mount, filesystem, or PID isolation, so credential\n" +
+		"    paths, /tmp, the host /proc, and unix sockets (docker.sock, ssh-agent) stay\n" +
+		"    reachable; it is never recorded as sandboxed. It refuses sandbox-unavailable on\n" +
+		"    every other host, and --sandbox plus --sandbox-network-only refuses bad-flags.\n" +
+		"    A host that cannot enforce the chosen mechanism, or a reviewed root whose shape it\n" +
+		"    cannot protect (Linux: no .git, a symlinked .git, a .git that is neither a directory\n" +
+		"    nor a gitdir: file, an unresolvable gitdir or commondir, a gitdir that is the root,\n" +
+		"    an unreadable pointer, or a pointer whose walk passes through a symlink or a\n" +
+		"    missing component inside the root),\n" +
+		"    refuses sandbox-unavailable and runs nothing; --json and patch.json name the\n" +
+		"    mechanism in sandboxMechanism.\n" +
 		"    Runs the agent's claimed proof — exit code becomes machine fact. No GitHub I/O.\n" +
 		"    Destructive, networked, credential-reading, and repo-escaping commands\n" +
 		"    refuse before execution as verify-destructive, verify-networked,\n" +
