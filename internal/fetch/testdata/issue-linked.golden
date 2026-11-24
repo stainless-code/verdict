@@ -712,7 +712,7 @@ A change the goal does not ask for is a finding with `category: "accidental-comm
       "name": "run.json",
       "status": "included",
       "sha256": "RUNTIME_SHA256",
-      "bytes": 7228
+      "bytes": 7454
     },
     {
       "kind": "bundle",
@@ -927,6 +927,10 @@ A change the goal does not ask for is a finding with `category: "accidental-comm
               "layer": "built-in",
               "source": "built-in"
             },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "panel": {
               "layer": "built-in",
               "source": "built-in"
@@ -994,6 +998,10 @@ A change the goal does not ask for is a finding with `category: "accidental-comm
           "layer": "built-in",
           "source": "built-in"
         },
+        "monthly_budget_usd": {
+          "layer": "built-in",
+          "source": "built-in"
+        },
         "panel": {
           "layer": "built-in",
           "source": "built-in"
@@ -1024,7 +1032,7 @@ A change the goal does not ask for is a finding with `category: "accidental-comm
   "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
   "captured_at": "0000-00-00T00:00:00Z",
   "config_sha256": "",
-  "inputs_sha256": "97c7cf33d30bd4d7927b334eb4eb26718634c337eb4be52b352b6a21c1013174",
+  "inputs_sha256": "39793521c5f4e4d8eeaa104999cab4e35ec33038a1ef299e402fea59ad01f47b",
   "evidence": {
     "plan": {
       "effort_tier": "standard",

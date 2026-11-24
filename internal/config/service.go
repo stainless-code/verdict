@@ -505,6 +505,12 @@ func resolvedValues(resolved *Resolved) []core.ConfigValue {
 	out := []core.ConfigValue{
 		{Key: keyPanel, Value: values.Panel, Layer: get(keyPanel).Layer, Source: get(keyPanel).Source},
 		{Key: keyBudgetUSD, Value: values.BudgetUSD, Layer: get(keyBudgetUSD).Layer, Source: get(keyBudgetUSD).Source},
+		{
+			Key:    keyMonthlyBudgetUSD,
+			Value:  values.MonthlyBudgetUSD,
+			Layer:  get(keyMonthlyBudgetUSD).Layer,
+			Source: get(keyMonthlyBudgetUSD).Source,
+		},
 		{Key: keyMaxBytes, Value: values.MaxBytes, Layer: get(keyMaxBytes).Layer, Source: get(keyMaxBytes).Source},
 		{Key: keyChunk, Value: values.Chunk, Layer: get(keyChunk).Layer, Source: get(keyChunk).Source},
 		{Key: keyFinders, Value: values.Finders, Layer: get(keyFinders).Layer, Source: get(keyFinders).Source},
@@ -556,6 +562,9 @@ func spendView(resolved *Resolved) core.ConfigSpend {
 		PersonalLimit:        resolved.Spend.PersonalLimit,
 		RequireKnownEstimate: resolved.Spend.RequireKnownEstimate,
 		EnforceCap:           resolved.Spend.EnforceCap,
+		MonthlyBudgetUSD:     resolved.Spend.MonthlyBudgetUSD,
+		MonthlyRepoCap:       resolved.Spend.MonthlyRepoCap,
+		MonthlyPersonalCap:   resolved.Spend.MonthlyPersonalCap,
 	}
 }
 

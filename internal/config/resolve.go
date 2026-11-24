@@ -47,6 +47,9 @@ const PendingStatus = "pending"
 // and evidence.
 const keyBudgetUSD = "budget_usd"
 
+// keyMonthlyBudgetUSD names the per-repo monthly ceiling.
+const keyMonthlyBudgetUSD = "monthly_budget_usd"
+
 // Default value keys shared by the field inventory, the evidence capture,
 // and the explain surface, so the three spell each key once.
 const (
@@ -76,6 +79,8 @@ type Partial struct { //nolint:govet // the field order is the order a layer aut
 	SensitiveSet       bool
 	BudgetUSD          *float64
 	BudgetDisplay      string
+	MonthlyBudgetUSD   *float64
+	MonthlyDisplay     string
 	MaxBytes           *int64
 	Chunk              *bool
 	KBMinJudged        *int
@@ -103,6 +108,10 @@ func partialFromDefaults(defaults *core.ConfigDefaults) Partial {
 	out.BudgetUSD = defaults.BudgetUSD
 	if defaults.BudgetUSD != nil {
 		out.BudgetDisplay = strconv.FormatFloat(*defaults.BudgetUSD, 'f', -1, floatBits)
+	}
+	out.MonthlyBudgetUSD = defaults.MonthlyBudgetUSD
+	if defaults.MonthlyBudgetUSD != nil {
+		out.MonthlyDisplay = strconv.FormatFloat(*defaults.MonthlyBudgetUSD, 'f', -1, floatBits)
 	}
 	out.MaxBytes = defaults.MaxBytes
 	out.Chunk = defaults.Chunk
@@ -165,6 +174,7 @@ func BuiltinDefaults() []BuiltinDefault {
 	return []BuiltinDefault{
 		{Key: keyPanel, Value: floor.Panel, Verbs: []string{verbFetch, verbFetchLocal}},
 		{Key: keyBudgetUSD, Value: builtinValue(floor.BudgetUSD), Verbs: []string{verbFetch, verbFetchLocal}},
+		{Key: keyMonthlyBudgetUSD, Value: builtinValue(floor.MonthlyBudgetUSD), Verbs: []string{verbRun}},
 		{Key: keyMaxBytes, Value: builtinValue(floor.MaxBytes), Verbs: []string{verbFetch, verbFetchLocal}},
 		{Key: keyChunk, Value: builtinValue(floor.Chunk), Verbs: []string{verbFetch, verbFetchLocal}},
 		{Key: keyEffort, Value: builtinValue(floor.Effort), Verbs: []string{verbFetch, verbFetchLocal}},
@@ -206,6 +216,8 @@ type ShadowedValue struct {
 type EffectiveDefaults struct { //nolint:govet // the field order is the published property order
 	BudgetUSD          *float64 `json:"budget_usd,omitempty"`
 	BudgetDisplay      string   `json:"-"`
+	MonthlyBudgetUSD   *float64 `json:"monthly_budget_usd,omitempty"`
+	MonthlyDisplay     string   `json:"-"`
 	DisplayMinSeverity *string  `json:"display_min_severity,omitempty"`
 	PostMinSeverity    *string  `json:"post_min_severity,omitempty"`
 	KBMaxChars         *int     `json:"kb_max_chars,omitempty"`
@@ -241,6 +253,15 @@ func firstBudgetDisplay(layers []layerValue) string {
 	return ""
 }
 
+func firstMonthlyDisplay(layers []layerValue) string {
+	for i := range layers {
+		if display := layers[i].partial.MonthlyDisplay; layers[i].partial.MonthlyBudgetUSD != nil && display != "" {
+			return display
+		}
+	}
+	return ""
+}
+
 // layerValue pairs one partial layer with its origin.
 type layerValue struct {
 	layer   string
@@ -258,6 +279,9 @@ func mergePartials(layers []layerValue) ResolvedDefaults {
 	out.Values.BudgetUSD, out.Origins[keyBudgetUSD], out.Shadowed = pickPointer(layers, keyBudgetUSD, out.Shadowed,
 		func(p Partial) (*float64, bool) { return p.BudgetUSD, p.BudgetUSD != nil })
 	out.Values.BudgetDisplay = firstBudgetDisplay(layers)
+	out.Values.MonthlyBudgetUSD, out.Origins[keyMonthlyBudgetUSD], out.Shadowed = pickPointer(layers, keyMonthlyBudgetUSD, out.Shadowed,
+		func(p Partial) (*float64, bool) { return p.MonthlyBudgetUSD, p.MonthlyBudgetUSD != nil })
+	out.Values.MonthlyDisplay = firstMonthlyDisplay(layers)
 	out.Values.MaxBytes, out.Origins["max_bytes"], out.Shadowed = pickInt64(layers, "max_bytes", out.Shadowed,
 		func(p Partial) (int64, bool) { return derefInt64(p.MaxBytes) })
 	out.Values.Chunk, out.Origins["chunk"], out.Shadowed = pickBool(layers, "chunk", out.Shadowed,

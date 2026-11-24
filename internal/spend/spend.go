@@ -117,6 +117,7 @@ func decimal(value float64) *big.Rat {
 type Policy struct {
 	Budget       string
 	Personal     string
+	MonthlyCap   string
 	RequireKnown bool
 	EnforceCap   bool
 }

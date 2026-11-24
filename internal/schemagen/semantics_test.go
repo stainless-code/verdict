@@ -66,7 +66,10 @@ var publishedSemantics = map[string]string{
 	// tests: additive optional top-level object with a draft enum
 	// (off|on-reproduce), closed shape; STA-346 regression-test drafting.
 	// No existing property, required key, enum, or type changed.
-	"config.schema.json": "305ffe2c887c8033b6c3100548e5607cb3870e17bdf5b066692d206066dd7830",
+	// additive monthly_budget_usd and packs.org_pack (optional
+	// defaults.monthly_budget_usd, spend.mtd reporting, and packs.org_pack
+	// pin). No existing property, required key, enum, or type changed.
+	"config.schema.json": "13ea823560ba7dcff37241b3eb28d5590693bcbfa81ef351cc07b38e1959a1a6",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -358,16 +361,17 @@ var publishedSemantics = map[string]string{
 	// report --compare: additive optional data.compare ($defs/reportCompare and
 	// its baseline/counts/finding definitions). No existing property, required
 	// key, enum, or type changed; only a --compare run carries the key.
-	// org packs: additive optional data.org_pack ($defs/orgPackInfo) naming the
-	// governing central pack version on report, and additive $defs/packSyncData
-	// beside packAddData. No existing property, required key, enum, or type
-	// changed; only a pinned run and `pack sync` carry the keys.
+	// monthly mtd block and org packs (additive optional reportData.mtd,
+	// data.org_pack ($defs/orgPackInfo), and $defs/packSyncData beside
+	// packAddData). No existing property, required key, enum, or type changed;
+	// the mtd and org-pack keys appear only on pinned runs, and pack sync
+	// carries the sync payload.
 	// Verify sandbox mechanism: additive optional verifyData.sandboxMechanism
 	// naming bwrap, sandbox-exec, or the network-only unshare-net, and the
 	// description now states that sandboxed means the full shape (the
 	// network-only mechanism never sets it). No existing property, required
 	// key, enum, or type changed; an unwrapped run omits both keys.
-	"envelope.schema.json": "d2e1a90c9f9a55dabe55d32497ff8089422830cb826482460f04cf5acfc4c786",
+	"envelope.schema.json": "128c69b166869a158f813892d6262b6aac062781d7110bf9f3fa454f3637143f",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

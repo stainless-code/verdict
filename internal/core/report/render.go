@@ -19,6 +19,9 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
+// strZero renders a zero count so every cost line spells it identically.
+const strZero = "0"
+
 func buildResponse(st *state) *Response {
 	var gateFailed bool
 	var checkLines []string
@@ -115,10 +118,7 @@ func buildData(st *state) *core.ReportData {
 		OrgPack:       st.orgPack,
 		Compare:       st.compare,
 	}
-	if st.cost != nil {
-		data.Cost = costFromObj(st.cost)
-		data.CostRaw = st.cost
-	}
+	applyCostToData(st, data)
 	if st.comp != nil {
 		data.Completeness = st.comp
 	}
@@ -141,6 +141,17 @@ func buildData(st *state) *core.ReportData {
 		data.ProvenanceReceipt = st.provenance
 	}
 	return data
+}
+
+func applyCostToData(st *state, data *core.ReportData) {
+	if st.cost == nil {
+		return
+	}
+	data.Cost = costFromObj(st.cost)
+	if st.mtd != nil {
+		data.Cost.Mtd = st.mtd
+	}
+	data.CostRaw = st.cost
 }
 
 func outputVal(output string) *string {
@@ -473,9 +484,13 @@ func costHuman(st *state) []string {
 		return nil
 	}
 	runs := jqStr(cost, keyRuns)
-	if runs == "0" {
-		return []string{fmt.Sprintf("cost: unrecorded (no usable %s/%s — the agent writes one per prompts/review.md)",
+	if runs == strZero {
+		lines := []string{fmt.Sprintf("cost: unrecorded (no usable %s/%s — the agent writes one per prompts/review.md)",
 			st.dir, readcommon.CostFile)}
+		if st.mtd != nil {
+			lines = append(lines, mtdHuman(st.mtd))
+		}
+		return lines
 	}
 	lines := []string{fmt.Sprintf("cost: %s run(s), %s with records — in=%s out=%s total=%s est_usd=%s cached=%s",
 		runs, jqStr(cost, "runs_with_cost"), jqStr(cost, "input_tokens"),
@@ -494,7 +509,39 @@ func costHuman(st *state) []string {
 			len(st.receipts), receiptField(latest, "projected_usd"),
 			receiptField(latest, "projected_tier"), receiptField(latest, "budget_usd"), receiptField(latest, "at")))
 	}
+	if st.mtd != nil {
+		lines = append(lines, mtdHuman(st.mtd))
+	}
 	return lines
+}
+
+func mtdHuman(mtd *core.ReportMTD) string {
+	spend := mtdSpend(mtd)
+	counts := fmt.Sprintf("(%d priced, %d unknown)", mtd.KnownCount, mtd.UnknownCount)
+	if mtd.MonthlyCapUSD == nil {
+		return fmt.Sprintf("mtd: %s %s %s — no ceiling", mtd.Month, spend, counts)
+	}
+	ceiling := strconv.FormatFloat(*mtd.MonthlyCapUSD, 'f', -1, mtdFloatBits)
+	if mtd.RemainingUSD != nil {
+		rem := strconv.FormatFloat(*mtd.RemainingUSD, 'f', -1, mtdFloatBits)
+		return fmt.Sprintf(
+			"mtd: %s %s of $%s ceiling, remaining $%s %s",
+			mtd.Month, spend, ceiling, rem, counts)
+	}
+	return fmt.Sprintf("mtd: %s %s of $%s ceiling %s", mtd.Month, spend, ceiling, counts)
+}
+
+// mtdSpend renders the month's known leg: a dollar amount when spend is
+// known, "unknown" when unpriced receipts exist, and $0 when nothing was
+// recorded.
+func mtdSpend(mtd *core.ReportMTD) string {
+	if mtd.KnownUSD != nil {
+		return "known $" + strconv.FormatFloat(*mtd.KnownUSD, 'f', -1, mtdFloatBits)
+	}
+	if mtd.UnknownCount > 0 {
+		return "known unknown"
+	}
+	return "known $" + strZero
 }
 
 func jqStr(obj *jq.Obj, key string) string {
@@ -510,7 +557,7 @@ func orNA(v any) string {
 
 func tierRuns(byTier *jq.Obj, tier string) string {
 	if byTier == nil {
-		return "0"
+		return strZero
 	}
 	raw, _ := byTier.Get(tier)
 	obj, ok := raw.(*jq.Obj)
@@ -518,7 +565,7 @@ func tierRuns(byTier *jq.Obj, tier string) string {
 		obj = nil
 	}
 	if obj == nil {
-		return "0"
+		return strZero
 	}
 	return jqStr(obj, keyRuns)
 }
