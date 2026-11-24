@@ -29,10 +29,22 @@ func gitlabAPIPath(repo, pr, suffix string) string {
 // the canonical keys the shared tail applies (isDraft, mergeable,
 // mergeStateStatus, body, state, headRefOid, mergedAt).
 func gitlabLive(ctx context.Context, st *state, dir string) *core.RefusalError {
-	stdout, stderr, ok := coreexec.Host(ctx, st.commander(), toolGlab, "api", gitlabAPIPath(st.repo, st.pr, ""))
+	stderr, ref := gitlabReadLive(ctx, st)
 	writeErrFile(st, dir+"/.ready.err", stderr)
+	if ref != nil {
+		return ref
+	}
+	applyLive(st, dir)
+	return nil
+}
+
+// gitlabReadLive is the glab read alone, with no bundle directory: `pr-wait`
+// shares it and must write no local file. It returns glab's stderr for the
+// caller that stages it.
+func gitlabReadLive(ctx context.Context, st *state) (string, *core.RefusalError) {
+	stdout, stderr, ok := coreexec.Host(ctx, st.commander(), toolGlab, "api", gitlabAPIPath(st.repo, st.pr, ""))
 	if !ok {
-		return st.withWarnings(&core.RefusalError{
+		return stderr, st.withWarnings(&core.RefusalError{
 			Code:    waitReadCode,
 			Message: "could not read live merge request state for " + st.repo + hashSep + st.pr + ": " + firstLine(stderr),
 		})
@@ -45,8 +57,7 @@ func gitlabLive(ctx context.Context, st *state, dir string) *core.RefusalError {
 	} else {
 		st.live = map[string]any{}
 	}
-	applyLive(st, dir)
-	return nil
+	return stderr, nil
 }
 
 // gitlabLiveMap folds a merge-request payload onto the advisory's
@@ -203,8 +214,7 @@ func headPipelineFail(st *state) (string, bool) {
 // non-system note's resolved flag decides, exactly like the fetch feed,
 // and a discussion without a readable flag counts unresolved fail-closed.
 func gitlabThreads(ctx context.Context, st *state) *core.RefusalError {
-	stdout, _, ok := coreexec.Host(ctx, st.commander(), toolGlab, "api",
-		gitlabAPIPath(st.repo, st.pr, "/discussions?per_page=100"), "--paginate")
+	stdout, ok := gitlabReadDiscussions(ctx, st)
 	if !ok {
 		return st.withWarnings(&core.RefusalError{
 			Code:    codeThreadsFailed,
@@ -222,23 +232,41 @@ func gitlabThreads(ctx context.Context, st *state) *core.RefusalError {
 	return nil
 }
 
+// gitlabReadDiscussions is the fetch `ready` and `pr-wait` both read.
+func gitlabReadDiscussions(ctx context.Context, st *state) (string, bool) {
+	stdout, _, ok := coreexec.Host(ctx, st.commander(), toolGlab, "api",
+		gitlabAPIPath(st.repo, st.pr, "/discussions?per_page=100"), "--paginate")
+	return stdout, ok
+}
+
 func gitlabThreadCounts(stdout string) (open, malformed int, err error) {
+	discussions, err := gitlabDiscussions(stdout)
+	if err != nil {
+		return 0, 0, err
+	}
+	for _, d := range discussions {
+		o, m := gitlabDiscussionState(d)
+		open += o
+		malformed += m
+	}
+	return open, malformed, nil
+}
+
+// gitlabDiscussions flattens the paginated discussions read into one list.
+func gitlabDiscussions(stdout string) ([]any, error) {
 	docs, derr := jq.DecodeSlurp(strings.NewReader(stdout))
 	if derr != nil {
-		return 0, 0, jq.Sealed("gitlab discussions", derr)
+		return nil, jq.Sealed("gitlab discussions", derr)
 	}
+	var all []any
 	for _, doc := range docs {
 		page, ok := doc.([]any)
 		if !ok {
-			return 0, 0, jq.Sealed("gitlab discussions", errGitLabThreadsShape)
+			return nil, jq.Sealed("gitlab discussions", errGitLabThreadsShape)
 		}
-		for _, d := range page {
-			o, m := gitlabDiscussionState(d)
-			open += o
-			malformed += m
-		}
+		all = append(all, page...)
 	}
-	return open, malformed, nil
+	return all, nil
 }
 
 func gitlabDiscussionState(d any) (open, malformed int) {

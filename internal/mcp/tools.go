@@ -286,7 +286,7 @@ func allTools(readOnly, operator bool) []*tool {
 		}, toolDeps{commander: fetchRunner}, decodePost, wirePost, postcore.Run,
 			func(resp *postcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
-			name: "pr_wait", description: "Bounded foreground GitHub PR wait. No local writes. Timeout defaults to 50s and cannot exceed 50s. Use instead of sleep loops.",
+			name: "pr_wait", description: "Bounded foreground PR wait. No local writes. Timeout defaults to 50s and cannot exceed 50s. Use instead of sleep loops.",
 			required: []string{argRepo, argPr, "until"},
 			meta:     toolMeta{title: "Wait for PR", mutates: noLocalWrites, readOnly: true, idempotent: true, openWorld: true},
 		}, toolDeps{commander: coreexec.Runner{}}, decodePRWait, wirePRWait, readycore.Wait,
