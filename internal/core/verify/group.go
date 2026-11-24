@@ -51,6 +51,9 @@ const (
 // the latest completion after a later failure.
 func RunGroup(ctx context.Context, req *Request, dir, now string) (*Response, *core.RefusalError) {
 	st := &state{req: req, warnings: append([]string{}, req.Warnings...)}
+	if ref := sandboxFlagsRefusal(req); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	run, ref := st.prepareValidation(ctx, dir, req)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
@@ -61,6 +64,7 @@ func RunGroup(ctx context.Context, req *Request, dir, now string) (*Response, *c
 	if ref := st.bindSandbox(ctx, run); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
+	defer run.sandbox.close()
 	return st.executeValidation(ctx, dir, now, req, run)
 }
 
@@ -186,7 +190,8 @@ func (st *state) executeValidation(ctx context.Context, dir, now string, req *Re
 	receipt := core.ValidationReceipt{
 		SchemaVersion: validationSchema, Run: run.rs.Name, InputsSHA256: run.rs.InputsSHA256,
 		Group: run.group.ID, ReviewedHead: run.reviewedHead, ExecutionHead: run.reviewedHead,
-		RepoRoot: run.root, Command: req.Command, At: now, Sandboxed: req.Sandbox,
+		RepoRoot: run.root, Command: req.Command, At: now, Sandboxed: run.sandbox != nil,
+		SandboxMechanism: run.sandbox.name(),
 	}
 	st.human(fmt.Sprintf("» group validation %s: %s in %s (timeout %ss)",
 		run.group.ID, req.Command, run.root, req.TimeoutRaw))
@@ -508,7 +513,7 @@ func (st *state) groupResponse(dir, receiptPath string, receipt *core.Validation
 		Data: &core.VerifyData{
 			Exit: receipt.Exit, TimedOut: receipt.TimedOut, OutputTail: receipt.OutputTail,
 			Group: receipt.Group, Head: receipt.ExecutionHead, Receipt: receiptPath,
-			Sandboxed: receipt.Sandboxed,
+			Sandboxed: receipt.Sandboxed, SandboxMechanism: receipt.SandboxMechanism,
 		},
 		Warnings: st.warnings,
 		Next:     next,

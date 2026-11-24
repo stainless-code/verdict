@@ -1337,13 +1337,14 @@ checked-out head, which must be that same commit (otherwise `head-mismatch`).
 
 The command runs once through the same allowlist and watchdog as patch
 verify, and every outcome leaves a receipt — a failure is never dropped.
-Add `--sandbox` to either form to run the command inside the enforced Linux
-`bwrap` sandbox; the receipt then records `"sandboxed": true`. The
+Add `--sandbox` (the full enforced shape) or `--sandbox-network-only` (the
+Linux `unshare --net` fallback, network isolation alone) to either form; the
+receipt then records `"sandboxed": true` and its `sandbox_mechanism`. The
 receipt is `<bundle>/validation-<group>.json` (group ids are lowercase
 `[a-z0-9-]`, at most 64 chars, so the path stays confined), read back through
 a 64 KiB cap and written atomically. It records the run name, `inputs_sha256`, group id,
 reviewed and execution heads, canonical repo root, command, timestamp, exit
-code, timeout and sandbox flags, `status` (`passed`, `failed`, `timeout`, `unavailable`,
+code, timeout and sandbox flags and mechanism, `status` (`passed`, `failed`, `timeout`, `unavailable`,
 `stale-head`), and a redacted output tail. Reads re-derive the verdict: a
 receipt claiming a pass while recording a nonzero exit, a timeout, or another
 status is contradictory evidence and never approves. A head that moves during
@@ -4694,9 +4695,10 @@ runs. The boundary is
 the enforced sandbox below, which runs after this gate — a refused spelling
 refuses with or without `--sandbox`: `verify --sandbox`
 runs the command under `bubblewrap` on Linux (the full mount and namespace
-shape) and under `sandbox-exec` on macOS (no network). A host that can
-enforce neither refuses `sandbox-unavailable` and runs nothing, so
-`--sandbox` never degrades to an unwrapped run.
+shape) and under `sandbox-exec` on macOS (no network, credential paths and the
+shared host temp roots denied, a private `TMPDIR`). A host that can enforce
+neither refuses `sandbox-unavailable` and runs nothing, so `--sandbox` never
+degrades to an unwrapped run.
 
 ### Enforced sandbox: `verify --sandbox`
 
@@ -4733,25 +4735,77 @@ read-only bind of `/dev/null`. A missing entry adds no mount. `/var/run` is
 shadowed too when the host ships it as a real directory; on the distros
 where it is a symlink to `/run`, the `/run` mount covers it.
 
-On macOS the whole enforced shape is the network half: `sandbox-exec`
-runs the command under `(version 1)(allow default)(deny network*)`, so every
-`bind()` and `connect()` is denied — loopback and unix sockets included —
-and a command that listens or connects fails. macOS has no
-filesystem namespace, so the mounts above, the private `/tmp`, the empty
-`/run`, and the credential hiding are Linux-only: on macOS the command still
-sees the host filesystem and your credential files. Filesystem isolation on a
-macOS host needs a Linux VM or container running the `bwrap` recipe below —
-there is no in-place macOS equivalent.
+On macOS `sandbox-exec` compiles a per-run Seatbelt profile. It keeps the
+network denial — `(version 1)(allow default)(deny network*)`, so every
+`bind()` and `connect()` fails, loopback and unix sockets included — and adds
+the filesystem half Seatbelt can express:
+
+- **Credentials denied.** Every path in the credential table above is denied
+  for reads and writes with `(deny file-read* file-write* (subpath ...))`,
+  under the literal `HOME`, its `realpath`, and every credential entry's own
+  `realpath`, so a symlinked home cannot slip past the policy. A quote or
+  backslash is escaped into the profile; a path carrying a control character
+  (a newline included) refuses `sandbox-unavailable` rather than build a
+  profile it cannot represent.
+- **A private `TMPDIR`.** Each run gets a fresh `0700` directory (created with
+  `MkdirTemp` and removed when the run ends), exported as `TMPDIR`, `TMP` and
+  `TEMP`, and allowed read/write. The profile denies the shared host temp
+  roots (`/tmp`, `/private/tmp`, `/var/tmp`, `/private/var/tmp`, and the host
+  `TMPDIR`); the private directory is allowed after them, so a sibling file in
+  the host temp trees stays unreadable and unwritable.
+- **The reviewed root stays writable.** The reviewed root and its `realpath`
+  are allowed read/write, and the credential denials come last, so a checkout
+  under `HOME` cannot re-expose one.
+
+Seatbelt is deprecated by Apple and has no mount or PID namespace. On macOS the
+child still sees the rest of the host filesystem, the host process tree, and
+`/run`-style sockets; those denials are policy, not private mounts. Full mount
+and PID isolation on a macOS host needs a Linux VM or container running the
+`bwrap` recipe below.
+
+#### Network-only Linux fallback: `--sandbox-network-only`
+
+On Linux without `bwrap` (a minimal image, or unprivileged user namespaces
+restricted for `bwrap`), `--sandbox` still refuses; it never downgrades. When
+network isolation alone is the boundary you accept, say so explicitly:
+
+```bash
+verdict verify owner/repo 123 --sandbox-network-only
+```
+
+Linux runs the command under
+`unshare --user --map-root-user --net -- bash -c <cmd>` after probing the same
+argv with `true`. It creates a user namespace and a network namespace and
+nothing else: **no mount, filesystem, or PID isolation**. The credential paths,
+the host `/tmp`, the host `/proc`, and `/run` sockets stay visible, so a
+network-only run is not the hostile-PR sandbox. Every such run warns
+`network-only … no mount, filesystem, or PID isolation` on the diagnostic
+stream (and in `warnings` under `--json`) and records
+`sandboxMechanism: "unshare-net"`, so a later reader never mistakes it for the
+full shape.
+
+`--sandbox` and `--sandbox-network-only` are mutually exclusive: passing both
+refuses `bad-flags` (exit 1) before anything runs, because the caller must
+state the boundary they accept. On macOS and Windows the flag refuses
+`sandbox-unavailable` naming it a Linux `unshare` opt-in; on macOS `--sandbox`
+is the stronger mechanism to use.
 
 Before anything executes it probes the same flags with a no-op; when the
 host is neither Linux nor macOS, `bwrap` or `sandbox-exec` is missing, the
-user-namespace restriction is on, or (on Linux) `HOME` is unset, `verify`
-refuses `sandbox-unavailable` naming the cause and runs nothing. It never
-silently falls back to an unsandboxed command.
-The patch record and the deep-group receipt carry `"sandboxed": true`, and
-the `--json` data adds `"sandboxed": true`; absent means the run was not
-sandboxed. The same opt-in reaches the MCP tool (`sandbox`), the Go facade
-(`Sandbox`), and the TypeScript client (raw `--sandbox` argv).
+user-namespace restriction is on, or (on Linux or macOS) `HOME` is unset,
+`verify` refuses `sandbox-unavailable` naming the cause and runs nothing. It
+never silently falls back to an unsandboxed command. On macOS the probe is a
+smoke script (`bash -c` with `mktemp` inside the private `TMPDIR` and a read
+of the working directory), so a profile that compiles but breaks `bash` is a
+refusal, not a broken run.
+
+The patch record carries `"sandboxed": true` plus its mechanism
+(`"sandboxMechanism": "bwrap" | "sandbox-exec" | "unshare-net"`); the deep-group
+receipt carries `"sandboxed": true` and `sandbox_mechanism`, and the `--json`
+data adds `sandboxed` and `sandboxMechanism`; absent means the run was not
+sandboxed. The same opt-in reaches the MCP tool (`sandbox`, and the Linux
+`sandboxNetworkOnly`), the Go facade (`Sandbox`), and the TypeScript client
+(raw `--sandbox` argv).
 
 ### Recipe for other OSes (and for wrapping the whole review)
 

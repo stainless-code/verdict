@@ -27,8 +27,8 @@ type Request struct {
 }
 
 // Run executes `verify <owner/repo> <slug> [--timeout <secs>]
-// [--group <stableID> --command <cmd>] [--sandbox] [--json]`,
-// returning the process exit code.
+// [--group <stableID> --command <cmd>] [--sandbox | --sandbox-network-only]
+// [--json]`, returning the process exit code.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	r.Rentry = ""
@@ -62,15 +62,16 @@ func verifyRequest(r *cli.Runner, req Request, flags *verifyFlags) *verifycore.R
 		Repo: req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
 	}, coreexec.Watchdog{})
 	return &verifycore.Request{
-		ReadRequest:  read,
-		TimeoutRaw:   flags.timeout,
-		Group:        flags.group,
-		Command:      flags.command,
-		Sandbox:      flags.sandbox,
-		EnvAllowlist: flags.envAllowlist,
-		Environ:      os.Environ(),
-		JSONMode:     r.JSONMode,
-		Warnings:     append([]string{}, r.Warnings...),
+		ReadRequest:        read,
+		TimeoutRaw:         flags.timeout,
+		Group:              flags.group,
+		Command:            flags.command,
+		Sandbox:            flags.sandbox,
+		SandboxNetworkOnly: flags.networkOnly,
+		EnvAllowlist:       flags.envAllowlist,
+		Environ:            os.Environ(),
+		JSONMode:           r.JSONMode,
+		Warnings:           append([]string{}, r.Warnings...),
 	}
 }
 
@@ -86,6 +87,7 @@ type verifyFlags struct {
 	command      string
 	envAllowlist []string
 	sandbox      bool
+	networkOnly  bool
 }
 
 // parseFlags strips verify's flags, reporting unknown ones. A value flag with
@@ -117,6 +119,9 @@ func parseToken(r *cli.Runner, args []string, i int, flags *verifyFlags) (int, i
 	case "--sandbox":
 		flags.sandbox = true
 		return i, 0, false
+	case "--sandbox-network-only":
+		flags.networkOnly = true
+		return i, 0, false
 	case "--env-allowlist":
 		v, next, u := cli.FlagValue(args, i, a, "<name[,name...]>")
 		if u != nil {
@@ -127,7 +132,7 @@ func parseToken(r *cli.Runner, args []string, i int, flags *verifyFlags) (int, i
 	}
 	return i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
 		"unknown flag '%s' for verify (want --timeout <secs>, --group <stableID>,"+
-			" --command <cmd>, --sandbox, --env-allowlist <names>, --json)", a)}), true
+			" --command <cmd>, --sandbox, --sandbox-network-only, --env-allowlist <names>, --json)", a)}), true
 }
 
 // takeValue consumes one value flag. An empty explicit timeout keeps the

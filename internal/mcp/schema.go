@@ -379,7 +379,11 @@ var fieldDocs = map[string]string{
 		"impact section.",
 	"Sandbox": "Run under an enforced sandbox — bwrap on Linux (no network, hidden credential dirs, " +
 		"a writable repo, a private /tmp), sandbox-exec on macOS (no network, loopback included; " +
-		"credentials stay visible); refuses sandbox-unavailable when the host cannot enforce it.",
+		"credential paths and shared host temp roots denied, a private TMPDIR); refuses " +
+		"sandbox-unavailable when the host cannot enforce it.",
+	"SandboxNetworkOnly": "Linux-only fallback for hosts without bwrap: unshare --user --map-root-user --net, " +
+		"network isolation alone with no mount, filesystem, or PID isolation (credential paths and /tmp stay " +
+		"visible); mutually exclusive with sandbox and refused as sandbox-unavailable on other hosts.",
 	"EnvAllowlist": "Additional parent environment variable names to pass through to the verification child process, " +
 		"overriding default-deny filtering and secret-name dropping.",
 }

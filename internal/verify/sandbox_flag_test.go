@@ -38,3 +38,20 @@ func TestEnvAllowlistFlagReachesTheRequest(t *testing.T) {
 		t.Errorf("req.EnvAllowlist = %v, want %v", req.EnvAllowlist, want)
 	}
 }
+
+// TestSandboxNetworkOnlyFlagReachesTheRequest proves the Linux-only opt-in
+// parses on its own and reaches the core request, where the mutual-exclusion
+// refusal lives.
+func TestSandboxNetworkOnlyFlagReachesTheRequest(t *testing.T) {
+	flags, code, done := parseFlags(&cli.Runner{}, []string{"--sandbox-network-only", "--timeout", "10"})
+	if done {
+		t.Fatalf("parseFlags refused with exit %d", code)
+	}
+	if flags.sandbox || !flags.networkOnly {
+		t.Fatalf("flags = %+v, want networkOnly alone", flags)
+	}
+	req := verifyRequest(&cli.Runner{}, Request{Repo: "acme/app", Pr: "7"}, &flags)
+	if req.Sandbox || !req.SandboxNetworkOnly {
+		t.Errorf("request sandbox/networkOnly = %v/%v, want false/true", req.Sandbox, req.SandboxNetworkOnly)
+	}
+}

@@ -362,7 +362,11 @@ var publishedSemantics = map[string]string{
 	// governing central pack version on report, and additive $defs/packSyncData
 	// beside packAddData. No existing property, required key, enum, or type
 	// changed; only a pinned run and `pack sync` carry the keys.
-	"envelope.schema.json": "64e1fda246a48474474be34652697034952b2a69ea65c9be1d63997b02742da7",
+	// Verify sandbox mechanism: additive optional verifyData.sandboxMechanism
+	// naming bwrap, sandbox-exec, or the network-only unshare-net. No existing
+	// property, required key, enum, or type changed; an unsandboxed run omits
+	// the key.
+	"envelope.schema.json": "cb119e0396c7fd69ece80f5e95b5a2225ced46f15df8379d4b9b5d1994038617",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

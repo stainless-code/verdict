@@ -757,7 +757,8 @@ type ThreadsData = fetchcore.ThreadsData
 
 // VerifyData is core's verify --json data profile: the command's exit status,
 // whether the watchdog timed it out, the redacted tail, the patch read back
-// from the bundle, and whether the run was sandboxed.
+// from the bundle, whether the run was sandboxed, and which mechanism
+// enforced it (bwrap, sandbox-exec, or the network-only unshare-net).
 type VerifyData = core.VerifyData
 
 // TrendData is the trend verb's --json data profile: the portfolio rollup,

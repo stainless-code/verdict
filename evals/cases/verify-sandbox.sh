@@ -17,6 +17,7 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 DIR="$EVAL_SANDBOX/.verdict/state/5201"
 UNIQ="$$"
 HITS="$EVAL_SANDBOX/listener-hits.log"
+HOST_SENTINEL="/tmp/verdict-host-sentinel.$$"
 READY="$EVAL_SANDBOX/listener-ready"
 SERVER="$EVAL_SANDBOX/listener.js"
 FAKEHOME="$EVAL_SANDBOX/fake-home"
@@ -53,7 +54,7 @@ listener_stop() {
   if [ -n "${SOCKRUN:-}" ]; then
     rm -rf "$SOCKRUN"
   fi
-  rm -f "$PAYLOAD_SRC" "$PAYLOAD_BIN"
+  rm -f "$PAYLOAD_SRC" "$PAYLOAD_BIN" "$HOST_SENTINEL"
 }
 trap listener_stop EXIT
 
@@ -217,9 +218,11 @@ rm -f "$DIR/.verify.out"
 run_review verify acme/app 5201 --sandbox --json --timeout 10
 assert_exit "sandboxed benign run" 0
 assert_json_field "sandboxed benign run records sandboxed" "true" '.data.sandboxed'
+assert_json_field "sandboxed benign run records the mechanism" "$MECH" '.data.sandboxMechanism'
 assert_json_field "sandboxed benign run exit" "0" '.data.exit'
 assert_json_field "sandboxed benign run tail" "ok" '.data.outputTail'
 assert_json_field "patch record carries sandboxed" "true" '.sandboxed' "$DIR/patch.json"
+assert_json_field "patch record carries the mechanism" "$MECH" '.sandboxMechanism' "$DIR/patch.json"
 assert_json_field "patch record carries exit" "0" '.verifyExit' "$DIR/patch.json"
 if [ -f "$DIR/.verify.out" ] && [ "$(cat "$DIR/.verify.out")" = "ok" ]; then
   good "sandboxed benign run writes .verify.out"
@@ -227,23 +230,29 @@ else
   bad "sandboxed benign run lost .verify.out"
 fi
 
-# Repo writes and /tmp scratch succeed; /tmp is private, so the host does not
-# see the file the child wrote.
-mkpatch "printf repo > sandbox-repo.txt && printf tmp > /tmp/sandbox-tmp.$UNIQ.txt && printf both > sandbox-both.txt"
-rm -f "$EVAL_SANDBOX/sandbox-repo.txt" "$EVAL_SANDBOX/sandbox-both.txt"
+# Repo writes succeed under both mechanisms: the reviewed root stays writable.
+mkpatch "printf repo > sandbox-repo.txt"
+rm -f "$EVAL_SANDBOX/sandbox-repo.txt"
 run_review verify acme/app 5201 --sandbox --json --timeout 10
-assert_exit "sandboxed writes run" 0
+assert_exit "sandboxed repo write run" 0
 if [ -f "$EVAL_SANDBOX/sandbox-repo.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-repo.txt")" = "repo" ]; then
   good "repo write succeeds inside the sandbox"
 else
   bad "repo write failed inside the sandbox"
 fi
-if [ -f "$EVAL_SANDBOX/sandbox-both.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-both.txt")" = "both" ]; then
-  good "/tmp write succeeds inside the sandbox"
-else
-  bad "/tmp write failed inside the sandbox"
-fi
+
 if [ "$MECH" = "bwrap" ]; then
+  # The full shape mounts a private tmpfs: the write works, the host cannot
+  # see the file.
+  mkpatch "printf tmp > /tmp/sandbox-tmp.$UNIQ.txt && printf both > sandbox-both.txt"
+  rm -f "$EVAL_SANDBOX/sandbox-both.txt"
+  run_review verify acme/app 5201 --sandbox --json --timeout 10
+  assert_exit "sandboxed /tmp write run" 0
+  if [ -f "$EVAL_SANDBOX/sandbox-both.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-both.txt")" = "both" ]; then
+    good "/tmp write succeeds inside the sandbox"
+  else
+    bad "/tmp write failed inside the sandbox"
+  fi
   if [ ! -e "/tmp/sandbox-tmp.$UNIQ.txt" ]; then
     good "/tmp is private (host does not see the child's file)"
   else
@@ -251,9 +260,74 @@ if [ "$MECH" = "bwrap" ]; then
     rm -f "/tmp/sandbox-tmp.$UNIQ.txt"
   fi
 else
-  # macOS enforces the network half only: the host /tmp is writable by design.
-  rm -f "/tmp/sandbox-tmp.$UNIQ.txt"
+  # Seatbelt denies the shared host /tmp and allows the per-run private
+  # TMPDIR, which the wrapper exports to the child.
+  mkpatch 'printf private > "$TMPDIR/verdict-eval-tmp.txt" && cat "$TMPDIR/verdict-eval-tmp.txt" > sandbox-tmpdir.txt'
+  rm -f "$EVAL_SANDBOX/sandbox-tmpdir.txt"
+  run_review verify acme/app 5201 --sandbox --json --timeout 10
+  assert_exit "sandboxed private TMPDIR run" 0
+  if [ -f "$EVAL_SANDBOX/sandbox-tmpdir.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-tmpdir.txt")" = "private" ]; then
+    good "the child writes and reads inside its private TMPDIR"
+  else
+    bad "the child could not use its private TMPDIR"
+  fi
+  printf 'host-secret\n' > "$HOST_SENTINEL"
+  mkpatch "cat $HOST_SENTINEL 2>/dev/null && printf leak > sandbox-hostread.txt || printf denied > sandbox-hostread.txt"
+  rm -f "$EVAL_SANDBOX/sandbox-hostread.txt"
+  run_review verify acme/app 5201 --sandbox --json --timeout 10
+  assert_exit "sandboxed host /tmp read run" 0
+  if [ -f "$EVAL_SANDBOX/sandbox-hostread.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-hostread.txt")" = "denied" ]; then
+    good "the shared host /tmp is not readable inside the sandbox"
+  else
+    bad "the shared host /tmp is readable inside the sandbox"
+  fi
+  rm -f "$HOST_SENTINEL"
+  mkpatch "printf nope > /tmp/sandbox-tmp.$UNIQ.txt 2>/dev/null && printf leak > sandbox-hosttmp.txt || printf denied > sandbox-hosttmp.txt"
+  rm -f "$EVAL_SANDBOX/sandbox-hosttmp.txt" "/tmp/sandbox-tmp.$UNIQ.txt"
+  run_review verify acme/app 5201 --sandbox --json --timeout 10
+  assert_exit "sandboxed host /tmp write run" 0
+  if [ -f "$EVAL_SANDBOX/sandbox-hosttmp.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-hosttmp.txt")" = "denied" ]; then
+    good "the shared host /tmp is not writable inside the sandbox"
+  else
+    bad "the shared host /tmp is writable inside the sandbox"
+  fi
+  if [ ! -e "/tmp/sandbox-tmp.$UNIQ.txt" ]; then
+    good "the host /tmp saw no sandboxed write"
+  else
+    bad "the host /tmp saw the sandboxed write"
+    rm -f "/tmp/sandbox-tmp.$UNIQ.txt"
+  fi
 fi
+
+# credential_legs proves the fake HOME's credential dirs and files stay
+# unreadable under both mechanisms.
+credential_legs() {
+
+# Credential paths exist on the host but not inside the sandbox. Names are
+# assembled from variables so the static gate stays out of the way: this leg
+# grades the sandbox, not the string scan.
+rm -f "$EVAL_SANDBOX/sandbox-cred.txt" "$EVAL_SANDBOX/sandbox-cred-files.txt"
+OLD_HOME="$HOME"
+HOME="$FAKEHOME"
+mkpatch 'h=$(printenv HOME); a=.aws; b=.ssh; c=.config; g=gh; [ -e "$h/$a/credentials" ] || [ -e "$h/$b/id_rsa" ] || [ -e "$h/$c/$g/hosts.yml" ] && printf leak > sandbox-cred.txt || printf hidden > sandbox-cred.txt'
+run_review verify acme/app 5201 --sandbox --json --timeout 10
+assert_exit "sandboxed credential dirs run" 0
+mkpatch 'h=$(printenv HOME); n=.netrc; g=.git-credentials; d=.docker; k=.kube; c=.config; cl=gcloud; az=.azure; gp=.gnupg; m=.npmrc; p=.pypirc; f=config.json; a=application_default_credentials.json; t=accessTokens.json; s=secring.gpg; [ -s "$h/$n" ] || [ -s "$h/$g" ] || [ -s "$h/$d/$f" ] || [ -s "$h/$k/$f" ] || [ -s "$h/$c/$cl/$a" ] || [ -s "$h/$az/$t" ] || [ -s "$h/$gp/$s" ] || [ -s "$h/$m" ] || [ -s "$h/$p" ] && printf leak > sandbox-cred-files.txt || printf hidden > sandbox-cred-files.txt'
+run_review verify acme/app 5201 --sandbox --json --timeout 10
+HOME="$OLD_HOME"
+assert_exit "sandboxed credential files run" 0
+if [ -f "$EVAL_SANDBOX/sandbox-cred.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-cred.txt")" = "hidden" ]; then
+  good "the credential dir is empty inside the sandbox"
+else
+  bad "the credential dir is visible inside the sandbox ($(cat "$EVAL_SANDBOX/sandbox-cred.txt" 2>/dev/null || echo missing))"
+fi
+if [ -f "$EVAL_SANDBOX/sandbox-cred-files.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-cred-files.txt")" = "hidden" ]; then
+  good "the credential files are empty inside the sandbox"
+else
+  bad "a credential file is visible inside the sandbox ($(cat "$EVAL_SANDBOX/sandbox-cred-files.txt" 2>/dev/null || echo missing))"
+fi
+
+}
 
 bwrap_legs() {
 
@@ -287,30 +361,6 @@ if [ -f "$EVAL_SANDBOX/sandbox-run.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-run
   good "/run is empty inside the sandbox"
 else
   bad "/run is shared with the host ($(cat "$EVAL_SANDBOX/sandbox-run.txt" 2>/dev/null || echo missing))"
-fi
-
-# Credential paths exist on the host but not inside the sandbox. Names are
-# assembled from variables so the static gate stays out of the way: this leg
-# grades the sandbox, not the string scan.
-rm -f "$EVAL_SANDBOX/sandbox-cred.txt" "$EVAL_SANDBOX/sandbox-cred-files.txt"
-OLD_HOME="$HOME"
-HOME="$FAKEHOME"
-mkpatch 'h=$(printenv HOME); a=.aws; b=.ssh; c=.config; g=gh; [ -e "$h/$a/credentials" ] || [ -e "$h/$b/id_rsa" ] || [ -e "$h/$c/$g/hosts.yml" ] && printf leak > sandbox-cred.txt || printf hidden > sandbox-cred.txt'
-run_review verify acme/app 5201 --sandbox --json --timeout 10
-assert_exit "sandboxed credential dirs run" 0
-mkpatch 'h=$(printenv HOME); n=.netrc; g=.git-credentials; d=.docker; k=.kube; c=.config; cl=gcloud; az=.azure; gp=.gnupg; m=.npmrc; p=.pypirc; f=config.json; a=application_default_credentials.json; t=accessTokens.json; s=secring.gpg; [ -s "$h/$n" ] || [ -s "$h/$g" ] || [ -s "$h/$d/$f" ] || [ -s "$h/$k/$f" ] || [ -s "$h/$c/$cl/$a" ] || [ -s "$h/$az/$t" ] || [ -s "$h/$gp/$s" ] || [ -s "$h/$m" ] || [ -s "$h/$p" ] && printf leak > sandbox-cred-files.txt || printf hidden > sandbox-cred-files.txt'
-run_review verify acme/app 5201 --sandbox --json --timeout 10
-HOME="$OLD_HOME"
-assert_exit "sandboxed credential files run" 0
-if [ -f "$EVAL_SANDBOX/sandbox-cred.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-cred.txt")" = "hidden" ]; then
-  good "the credential dir is empty inside the sandbox"
-else
-  bad "the credential dir is visible inside the sandbox ($(cat "$EVAL_SANDBOX/sandbox-cred.txt" 2>/dev/null || echo missing))"
-fi
-if [ -f "$EVAL_SANDBOX/sandbox-cred-files.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-cred-files.txt")" = "hidden" ]; then
-  good "the credential files are empty inside the sandbox"
-else
-  bad "a credential file is visible inside the sandbox ($(cat "$EVAL_SANDBOX/sandbox-cred-files.txt" 2>/dev/null || echo missing))"
 fi
 
 # A unix socket under /run is a route out --unshare-net does not close. The
@@ -417,6 +467,8 @@ while IFS="$TAB" read -r id _ mode cmd; do
 done < "$EVAL_ROOT/evals/fixtures/verify-fuzz-corpus.tsv"
 
 }
+
+credential_legs
 
 if [ "$MECH" = "bwrap" ]; then
   bwrap_legs

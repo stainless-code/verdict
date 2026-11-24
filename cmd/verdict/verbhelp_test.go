@@ -92,3 +92,26 @@ func TestFixUsageNamesPromotion(t *testing.T) {
 		}
 	}
 }
+
+// TestVerifyHelpNamesTheNetworkOnlyOptIn proves the weaker Linux boundary is
+// visible in help next to the full sandbox, including what it does not
+// isolate and the mutual-exclusion refusal.
+func TestVerifyHelpNamesTheNetworkOnlyOptIn(t *testing.T) {
+	hermeticEnv(t)
+	code, out, derr := runCapture(t, []string{"verify", "--help"})
+	if code != 0 || derr != "" {
+		t.Fatalf("verify --help = exit %d stderr %q", code, derr)
+	}
+	for _, want := range []string{
+		"--sandbox | --sandbox-network-only",
+		"--sandbox-network-only is the Linux unshare --net opt-in",
+		"no mount, filesystem, or PID isolation",
+		"paths and /tmp stay visible",
+		"refuses bad-flags",
+		"sandboxMechanism",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("verify --help misses %q:\n%s", want, out)
+		}
+	}
+}

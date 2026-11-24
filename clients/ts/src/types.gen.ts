@@ -1671,7 +1671,7 @@ export interface ThreadsResolveSkip {
   [key: string]: unknown;
 }
 
-/** verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, the patch read back from the bundle, and whether the run was sandboxed (absent means unsandboxed). A timed-out run is never proof. */
+/** verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, the patch read back from the bundle, whether the run was sandboxed, and which mechanism enforced it (bwrap, sandbox-exec, or the network-only unshare-net; absent means unsandboxed). A timed-out run is never proof. */
 export interface VerifyData {
   exit: number;
   timedOut: boolean;
@@ -1681,6 +1681,7 @@ export interface VerifyData {
   head?: string;
   receipt?: string;
   sandboxed?: boolean;
+  sandboxMechanism?: string;
   [key: string]: unknown;
 }
 
