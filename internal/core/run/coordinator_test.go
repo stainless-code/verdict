@@ -24,11 +24,13 @@ type phaseCommander struct {
 	failPhase   string
 	cancelOn    string
 	stderr      string
+	silentPhase string // this phase exits 0 and writes nothing
 	calls       map[string]int
 	phases      []string
 	mu          sync.Mutex
 	fail        bool
 	failFinders bool // every finder exits 7
+	placeholder bool // a failing finder first leaves the directive's empty review
 	silent      bool // every finder exits 0 and writes nothing
 	drift       bool
 	repair      bool
@@ -36,6 +38,7 @@ type phaseCommander struct {
 	crossBroken bool
 	tamper      bool
 	distinct    bool
+	empty       bool // finders find nothing, so no cross check is dispatched
 	outputDir   bool
 }
 
@@ -122,7 +125,12 @@ func (p *phaseCommander) failure(phase string) (core.Result, bool) {
 	finder := strings.HasPrefix(phase, "x-finder-")
 	switch {
 	case p.fail && phase == "x-finder-1", p.failFinders && finder:
+		if p.placeholder {
+			writeUnder(p.t, filepath.Join(p.dir, phase), reviewFile, `{"schema_version":"1","findings":[]}`)
+		}
 		return core.Result{ExitCode: 7, Stderr: p.stderr}, true
+	case p.silentPhase == phase:
+		return core.Result{}, true
 	case p.silent && finder:
 		return core.Result{Stdout: p.stderr}, true
 	case p.failPhase == phase && p.phaseCalls(phase) == 1:
@@ -150,6 +158,9 @@ func (p *phaseCommander) artifactBytes(phase string, attempt int) string {
 func (p *phaseCommander) finderReview(phase string, attempt int) string {
 	if p.repair && attempt == 1 {
 		return `{"schema_version":"1","findings":"broken"}`
+	}
+	if p.empty {
+		return `{"schema_version":"1","summary":"> ✅ no findings Reviewed the diff.","findings":[],` + fixtureReceipts + `}`
 	}
 	if p.distinct {
 		return strings.ReplaceAll(coordinatorReview, "Changed value breaks the caller.", distinctClaim(phase))
@@ -675,5 +686,96 @@ func TestCoordinatorPartialExecutionNamesTheFailedFinder(t *testing.T) {
 	}
 	if !strings.Contains(ref.Message, "x-finder-1 agent-failed: ") || !strings.Contains(ref.Message, "402 Credit balance") {
 		t.Fatalf("message hides the failed finder's cause: %q", ref.Message)
+	}
+}
+
+// TestCoordinatorPartialFailureNeverLeaksTheAgentExit pins that only an
+// agent-failed refusal carries the agent's exit status: a finished finder plus
+// a dead sibling is an evidence refusal, and its response must exit with
+// verdict's own code.
+func TestCoordinatorPartialFailureNeverLeaksTheAgentExit(t *testing.T) {
+	for _, phase := range []string{"x-finder-2", "x-cross-2"} {
+		t.Run(phase, func(t *testing.T) { checkPartialExit(t, phase) })
+	}
+}
+
+func checkPartialExit(t *testing.T, phase string) {
+	t.Helper()
+	req, commander := coordinatorFixture(t)
+	commander.failPhase = phase
+	// A finder's death is the last response only when no cross check follows
+	// it; a dead cross check needs candidates to dispatch.
+	commander.empty = phase == "x-finder-2"
+	commander.distinct = !commander.empty
+	response, ref := TwoFinders(t.Context(), req)
+	if ref == nil || ref.Code != "review-insufficient" {
+		t.Fatalf("refusal = %v, want review-insufficient", ref)
+	}
+	if response == nil || response.Exit != 0 {
+		t.Fatalf("response exit = %+v, want 0 for a non-agent-failed refusal", response)
+	}
+}
+
+// TestCoordinatorPlaceholderDoesNotHideAFailedFinder pins that a dead finder
+// counts as failed by its invoke outcome: the directive's empty review decodes,
+// so judging by the artifact alone read both dead finders as a survivor.
+func TestCoordinatorPlaceholderDoesNotHideAFailedFinder(t *testing.T) {
+	req, commander := coordinatorFixture(t)
+	commander.failFinders, commander.placeholder, commander.stderr = true, true, providerError
+	response, ref := TwoFinders(t.Context(), req)
+	if ref == nil || ref.Code != "agent-failed" {
+		t.Fatalf("refusal = %v, want agent-failed", ref)
+	}
+	if response == nil || response.Exit != 7 {
+		t.Fatalf("response = %+v, want the agent's exit 7", response)
+	}
+}
+
+// TestCoordinatorNamesEveryFailedFinderAndPrefersTheAgentError pins the
+// all-failed refusal when the finders died differently: the agent's failure
+// leads over a missing artifact, whichever finder had which, and the message
+// names both.
+func TestCoordinatorNamesEveryFailedFinderAndPrefersTheAgentError(t *testing.T) {
+	req, commander := coordinatorFixture(t)
+	commander.fail, commander.silentPhase, commander.stderr = false, "x-finder-1", providerError
+	commander.failPhase = "x-finder-2"
+	_, ref := TwoFinders(t.Context(), req)
+	if ref == nil || ref.Code != "agent-failed" {
+		t.Fatalf("refusal = %v, want agent-failed to lead no-review-artifact", ref)
+	}
+	for _, want := range []string{"x-finder-1 no-review-artifact: ", "x-finder-2 agent-failed: "} {
+		if !strings.Contains(ref.Message, want) {
+			t.Fatalf("message omits %q: %q", want, ref.Message)
+		}
+	}
+}
+
+// TestCoordinatorSanitizesTheAgentOutput feeds the failure message the shapes
+// an agent prints: escapes around an authorization header and a provider key.
+// None may reach the refusal, whole or cut in half by the tail.
+func TestCoordinatorSanitizesTheAgentOutput(t *testing.T) {
+	leak := "\x1b[31mAuthorization: Bearer eyJhbGciOiJIUzI1NiJ9.secret\x1b[0m key=sk-ant-api03-12345678901234567890"
+	for name, output := range map[string]string{
+		"whole":       leak,
+		"cut":         leak + strings.Repeat("y", messageTailCap-30),
+		"url":         "fetch https://user:hunter2pass@host.example/path failed",
+		"long-before": strings.Repeat("z", 3*messageWindow) + leak,
+	} {
+		t.Run(name, func(t *testing.T) { checkSanitized(t, output) })
+	}
+}
+
+func checkSanitized(t *testing.T, output string) {
+	t.Helper()
+	req, commander := coordinatorFixture(t)
+	commander.failFinders, commander.stderr = true, output
+	_, ref := TwoFinders(t.Context(), req)
+	if ref == nil || ref.Code != "agent-failed" {
+		t.Fatalf("refusal = %v", ref)
+	}
+	for _, bad := range []string{"eyJ", "api03", "12345678901234567890", "hunter2pass", "\x1b", "Bearer e"} {
+		if strings.Contains(ref.Message, bad) {
+			t.Fatalf("message leaks %q: %q", bad, ref.Message)
+		}
 	}
 }

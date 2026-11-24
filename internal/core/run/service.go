@@ -23,6 +23,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core/recipe"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/core/repair"
+	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -950,15 +951,24 @@ func (st *state) verdict(ctx context.Context, args *launchArgs, res *core.Result
 // only has to name the cause (an HTTP 402, a refused write) at a glance.
 const messageTailCap = 600
 
-// agentOutput is the tail of what the agent printed, scrubbed of the
-// operator's credentials, formatted to append to a refusal message. The agent's
-// own error — a provider's out-of-credit reply, a refused write — is printed
-// there, and without it every failure reads as the same bare exit code. It is
-// empty when the agent printed nothing.
+// messageWindow is how much of the stream's end is sanitized before the final
+// cut. The window is far wider than the tail, so a token the window's own start
+// splits can never reach the tail: whatever the tail keeps was sanitized whole.
+const messageWindow = 16 << 10
+
+// agentOutput is the tail of what the agent printed, formatted to append to a
+// refusal message. The agent's own error — a provider's out-of-credit reply, a
+// refused write — is printed there, and without it every failure reads as the
+// same bare exit code. It is empty when the agent printed nothing. The text is
+// scrubbed of the operator's credentials, then run through the same sanitizer
+// verify's tail uses (token shapes, bearer and authorization headers, userinfo
+// URLs, terminal escapes), and only then cut, so no cut can leave a
+// recognizable half of a credential.
 func (st *state) agentOutput(args *launchArgs, res *core.Result) string {
 	_, argSecrets := st.displayArgv(args)
-	scrubbed := scrubSecrets(res.Stdout+res.Stderr, st.req.Environ, argSecrets)
-	tail := strings.TrimSpace(strings.ToValidUTF8(tailOf(scrubbed, messageTailCap), ""))
+	window := tailOf(res.Stdout+res.Stderr, messageWindow)
+	clean := verifycore.SanitizeTail(scrubSecrets(window, st.req.Environ, argSecrets), st.req.Environ)
+	tail := strings.TrimSpace(strings.ToValidUTF8(tailOf(clean, messageTailCap), ""))
 	if tail == "" {
 		return ""
 	}

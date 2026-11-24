@@ -3978,13 +3978,15 @@ agent's own failure visible to CI:
 
 An agent exiting `1`, `2`, or `3` is indistinguishable on the exit code alone
 from verdict's own refusal, usage, and canceled codes; `--json` disambiguates
-them through `error.code`, and the envelope's `data.exit` records what the agent
-itself returned.
+them through `error.code`, and an `agent-failed` message names the status the
+agent itself returned (`<agent> exited <n>`). Only `agent-failed` passes that
+status through; every other refusal exits with verdict's own code.
 
 `agent-failed` and `no-review-artifact` carry the tail of what the agent printed
-(a provider's `402`, a refused write), scrubbed of your credentials and capped at
-600 bytes; `.run.out` keeps the full stream. When every finder of a two-finder
-launch fails, the run refuses with that finder's own code and exit status, not
+(a provider's `402`, a refused write), scrubbed of your credentials, token shapes, authorization headers, and terminal
+escapes, and capped at 600 bytes; `.run.out` keeps the full stream. When every finder of a two-finder
+launch fails, the run refuses with the agent's own code (`agent-failed` leads a
+missing artifact) and exit status, naming every failed finder, not
 `review-insufficient`; when only one finder fails, the survivor's evidence is
 still judged and the refusal names the failed finder's cause beside the gap.
 `no-review-artifact` prints the agent's permission flag from the table above as

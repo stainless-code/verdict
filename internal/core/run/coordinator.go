@@ -89,7 +89,18 @@ func (st *state) coordinate(ctx context.Context, base *launchArgs, rounds int) (
 	if ref == nil {
 		ref = c.executionRefusal()
 	}
+	c.settleExit(ref)
 	return c.response, ref
+}
+
+// settleExit keeps the agent's exit status on the response only when the run's
+// own refusal is the agent's failure. The response is whichever phase reported
+// last, so a finished sibling or a later phase's failure must not turn an
+// evidence refusal into the agent's exit code.
+func (c *coordinator) settleExit(ref *core.RefusalError) {
+	if c.response != nil && (ref == nil || ref.Code != codeAgentFailed) {
+		c.response.Exit = 0
+	}
 }
 
 func (c *coordinator) run(ctx context.Context) *core.RefusalError {
@@ -541,23 +552,58 @@ func (c *coordinator) recordDiscoveries(outcomes []discoveryOutcome, skipped []b
 	return fatal
 }
 
-// allFindersFailed reports the agent's own refusal when no finder left a
-// review. A partial execution still has evidence to judge, so it keeps its
+// allFindersFailed reports the agent's own refusal when every launched finder
+// failed. A partial execution still has evidence to judge, so it keeps its
 // review-insufficient verdict; an execution with nothing to judge is not an
-// evidence gap, it is the agent failing, and the operator needs that failure's
-// code, message, and exit status to act on it.
+// evidence gap, it is the agent failing, and the operator needs the failure's
+// code, message, and exit status to act on it. The decision rests on the
+// invoke outcomes, never on what a failed phase left behind: the directive
+// tells an agent to write a placeholder review first, so a dead finder's
+// artifact can still decode.
 func (c *coordinator) allFindersFailed(outcomes []discoveryOutcome, skipped []bool) *core.RefusalError {
-	if slices.ContainsFunc(c.reviews, func(review *jq.Obj) bool { return review != nil }) {
+	var failed []int
+	for i := range outcomes {
+		if skipped[i] || outcomes[i].failure == "" {
+			return nil
+		}
+		failed = append(failed, i)
+	}
+	if len(failed) == 0 {
 		return nil
 	}
-	for i := range outcomes {
-		if skipped[i] || outcomes[i].cause == nil {
-			continue
-		}
-		c.response = outcomes[i].response
-		return outcomes[i].cause
+	lead := leadFailure(outcomes, failed)
+	lines := make([]string, 0, len(failed))
+	for _, i := range failed {
+		cause := finderCause(&outcomes[i])
+		lines = append(lines, finderPhase(i)+" "+cause.Code+": "+cause.Message)
 	}
-	return nil
+	c.response = outcomes[lead].response
+	return &core.RefusalError{
+		Code:    finderCause(&outcomes[lead]).Code,
+		Message: "every finder failed:\n" + strings.Join(lines, "\n"),
+	}
+}
+
+// leadFailure picks the finder whose code names the refusal: the first one
+// that failed by process, since a process failure outranks a missing artifact
+// (the agent never got to write one, and its code is what the operator fixes).
+func leadFailure(outcomes []discoveryOutcome, failed []int) int {
+	for _, i := range failed {
+		if outcomes[i].failure != codeNoArtifact {
+			return i
+		}
+	}
+	return failed[0]
+}
+
+// finderCause is the refusal one failed finder earned. A finder whose invoke
+// succeeded but left an unreadable review has only its failure code, so the
+// refusal is built from that.
+func finderCause(out *discoveryOutcome) *core.RefusalError {
+	if out.cause != nil {
+		return out.cause
+	}
+	return &core.RefusalError{Code: out.failure, Message: "the finder left no readable review"}
 }
 
 // canceledRefusal reports the operator's cancel, which outranks every phase's

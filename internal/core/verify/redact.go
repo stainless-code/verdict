@@ -5,6 +5,13 @@ import (
 	"strings"
 )
 
+// SanitizeTail is the one output scrub every recorded tail shares: the secret
+// environment values, credential shapes (tokens, bearer and authorization
+// headers, userinfo URLs), and terminal control sequences. The launcher's
+// failure messages call it so a refusal never prints what verify's own tail
+// would hide.
+func SanitizeTail(tail string, environ []string) string { return sanitizeTail(tail, environ) }
+
 func sanitizeTail(tail string, environ []string) string {
 	return stripControlChars(redactShapes(redactSecrets(tail, environ)))
 }

@@ -115,11 +115,15 @@ func personalAgents(env map[string]string) ([]config.PersonalAgent, *spend.Polic
 	return prefs.Agents, personalPolicy(prefs.Spend), nil
 }
 
+// codeAgentFailed is the only refusal that carries the agent's exit code out
+// as the process exit; every other refusal exits with verdict's own code.
+const codeAgentFailed = "agent-failed"
+
 // refuse renders a run refusal, preserving the agent's own exit code when the
 // service reports one (only the agent-failed refusal carries it).
 func refuse(r *cli.Runner, resp *core.RunResponse, ref *core.RefusalError) int {
 	code := cli.ExitRefused
-	if resp != nil && resp.Exit != 0 {
+	if resp != nil && resp.Exit != 0 && ref.Code == codeAgentFailed {
 		code = resp.Exit
 	}
 	return r.RefuseExit(ref, code)
