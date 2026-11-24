@@ -26,6 +26,7 @@
   // stream published; null until one job has been started.
   let activeJob = null;
   let jobDrawer = null;
+  let diffMode = "unified";
   const triageStatuses = [
     "open",
     "addressed",
@@ -193,6 +194,7 @@
     nav.setAttribute("aria-label", "Review sections");
     const links = [
       ["", "Detail"],
+      ["/diff", "Diff"],
       ["/threads", "Threads"],
       ["/gate", "Gate"],
     ];
@@ -811,6 +813,197 @@
       message.textContent = "Gate status is unknown.";
   }
 
+  function diffCodeCell(line) {
+    const td = node("td", undefined, "diff-code");
+    const spans = Array.isArray(line.spans) ? line.spans : [];
+    if (!spans.length) {
+      td.textContent = line.text;
+      return td;
+    }
+    const cls = line.kind === "add" ? "diff-word-add" : "diff-word-del";
+    for (const span of spans) {
+      if (span.changed) {
+        const mark = node("span", span.text, cls);
+        td.append(mark);
+      } else {
+        td.append(span.text);
+      }
+    }
+    return td;
+  }
+
+  function diffFindingRow(finding, span) {
+    const tr = node("tr", undefined, "diff-finding-row");
+    const td = node("td", undefined, "diff-finding");
+    td.colSpan = span;
+    const head = node(
+      "strong",
+      `${finding.severity} ${finding.status} ${finding.category} ${finding.sig || ""}`.trim(),
+    );
+    td.append(head);
+    td.append(` ${finding.body || ""}`);
+    tr.append(td);
+    return tr;
+  }
+
+  function diffGapRow(count, span) {
+    const div = node("div", `… ${count} unchanged lines`, "diff-gap");
+    div.setAttribute("data-gap", String(count));
+    return div;
+  }
+
+  function renderDiffFile(file) {
+    const section = node("section", undefined, "diff-file");
+    section.setAttribute("data-path", file.path || "");
+    const head = node(
+      "h3",
+      `${file.path} ${file.lane} +${file.additions} -${file.deletions}`,
+    );
+    section.append(head);
+    const hunks = Array.isArray(file.hunks) ? file.hunks : [];
+    for (const hunk of hunks) {
+      if (hunk.gap_before) section.append(diffGapRow(hunk.gap_before, 3));
+      const tableEl = node("table");
+      tableEl.className =
+        diffMode === "split"
+          ? "diff-table diff-split"
+          : "diff-table diff-unified";
+      const tbody = node("tbody");
+      const lines = Array.isArray(hunk.lines) ? hunk.lines : [];
+      if (diffMode === "split") {
+        let i = 0;
+        while (i < lines.length) {
+          const line = lines[i];
+          if (line.kind === "context") {
+            const tr = node("tr", undefined, "diff-line-context");
+            tr.append(node("td", String(line.old_no ?? ""), "diff-no"));
+            tr.append(node("td", String(line.new_no ?? ""), "diff-no"));
+            tr.append(diffCodeCell(line));
+            tr.append(node("td", line.text, "diff-code"));
+            tbody.append(tr);
+            i++;
+          } else if (
+            line.kind === "del" &&
+            i + 1 < lines.length &&
+            lines[i + 1].kind === "add"
+          ) {
+            const next = lines[i + 1];
+            const tr = node("tr", undefined, "diff-line-change");
+            tr.append(node("td", String(line.old_no ?? ""), "diff-no"));
+            tr.append(node("td", String(next.new_no ?? ""), "diff-no"));
+            tr.append(diffCodeCell(line));
+            tr.append(diffCodeCell(next));
+            tbody.append(tr);
+            if (Array.isArray(line.findings))
+              for (const f of line.findings) tbody.append(diffFindingRow(f, 4));
+            if (Array.isArray(next.findings))
+              for (const f of next.findings) tbody.append(diffFindingRow(f, 4));
+            i += 2;
+          } else {
+            const tr = node("tr", undefined, "diff-line-single");
+            tr.append(
+              node("td", String(line.old_no ?? line.new_no ?? ""), "diff-no"),
+            );
+            tr.append(
+              node("td", String(line.new_no ?? line.old_no ?? ""), "diff-no"),
+            );
+            tr.append(diffCodeCell(line));
+            tr.append(
+              node("td", line.kind === "add" ? line.text : "", "diff-code"),
+            );
+            tbody.append(tr);
+            if (Array.isArray(line.findings))
+              for (const f of line.findings) tbody.append(diffFindingRow(f, 4));
+            i++;
+          }
+        }
+      } else {
+        for (const line of lines) {
+          const tr = node("tr", undefined, `diff-line-${line.kind}`);
+          tr.append(node("td", String(line.old_no ?? ""), "diff-no"));
+          tr.append(node("td", String(line.new_no ?? ""), "diff-no"));
+          const sign = node(
+            "td",
+            line.kind === "add" ? "+" : line.kind === "del" ? "−" : " ",
+            "diff-sign",
+          );
+          tr.append(sign);
+          tr.append(diffCodeCell(line));
+          tbody.append(tr);
+          if (Array.isArray(line.findings))
+            for (const f of line.findings) tbody.append(diffFindingRow(f, 4));
+        }
+      }
+      tableEl.append(tbody);
+      section.append(tableEl);
+    }
+    return section;
+  }
+
+  function renderDiff(data) {
+    const wrap = node("div", undefined, "diff-view");
+    const controls = node("div", undefined, "diff-controls");
+    const unifiedBtn = node("button", "Unified");
+    unifiedBtn.type = "button";
+    unifiedBtn.setAttribute("aria-pressed", String(diffMode === "unified"));
+    unifiedBtn.addEventListener("click", () => {
+      diffMode = "unified";
+      toggleDiff(data);
+    });
+    const splitBtn = node("button", "Side by side");
+    splitBtn.type = "button";
+    splitBtn.setAttribute("aria-pressed", String(diffMode === "split"));
+    splitBtn.addEventListener("click", () => {
+      diffMode = "split";
+      toggleDiff(data);
+    });
+    controls.append(unifiedBtn);
+    controls.append(splitBtn);
+    wrap.append(controls);
+    const lanes = Array.isArray(data.lanes) ? data.lanes : [];
+    const laneBox = node("div", undefined, "diff-lanes");
+    laneBox.append(node("h2", "Change lanes"));
+    const laneTable = node("table");
+    laneTable.append(node("caption", "Lanes"));
+    const head = node("thead");
+    const headerRow = node("tr");
+    for (const label of [
+      "Lane",
+      "Files",
+      "Additions",
+      "Deletions",
+      "Findings",
+    ]) {
+      headerRow.append(node("th", label));
+    }
+    head.append(headerRow);
+    laneTable.append(head);
+    const laneBody = node("tbody");
+    for (const lane of lanes) {
+      const row = node("tr", undefined, "diff-lane");
+      row.setAttribute("data-lane", lane.lane || "");
+      row.append(node("td", lane.lane || ""));
+      row.append(node("td", String(lane.file_count ?? 0)));
+      row.append(node("td", `+${lane.additions ?? 0}`));
+      row.append(node("td", `-${lane.deletions ?? 0}`));
+      row.append(node("td", String(lane.findings ?? 0)));
+      laneBody.append(row);
+    }
+    laneTable.append(laneBody);
+    laneBox.append(laneTable);
+    wrap.append(laneBox);
+    const files = Array.isArray(data.files) ? data.files : [];
+    for (const file of files) wrap.append(renderDiffFile(file));
+    content.append(wrap);
+  }
+
+  function toggleDiff(data) {
+    for (const child of [...content.children]) {
+      if ((child.className || "").includes("diff-view")) child.remove();
+    }
+    renderDiff(data);
+  }
+
   function decodeHashSegment(segment) {
     try {
       return decodeURIComponent(segment || "");
@@ -831,18 +1024,23 @@
       view === "gate" ||
       view === "threads" ||
       view === "compare" ||
-      view === "compare-pick"
+      view === "compare-pick" ||
+      view === "diff"
     ) {
       title.textContent =
         view === "gate"
           ? "Gate"
           : view === "threads"
             ? "Threads"
-            : view === "compare" || view === "compare-pick"
-              ? "Compare"
-              : "Review detail";
+            : view === "diff"
+              ? "Diff"
+              : view === "compare" || view === "compare-pick"
+                ? "Compare"
+                : "Review detail";
       content.append(detailNavigation(view));
-      if (view === "threads") {
+      if (view === "diff") {
+        renderDiff(data);
+      } else if (view === "threads") {
         content.append(threadTable("Review threads", data.threads));
       } else if (view === "compare-pick") {
         inboxRows = Array.isArray(data.rows) ? data.rows : [];
@@ -976,6 +1174,13 @@
         return {
           view: "compare",
           path: `/v1/roots/${root}/bundles/${bundle}/compare?baseline=${encodeURIComponent(baseline)}`,
+          ...decoded,
+        };
+      }
+      if (parts[3] === "diff") {
+        return {
+          view: "diff",
+          path: `/v1/roots/${root}/bundles/${bundle}/diff`,
           ...decoded,
         };
       }

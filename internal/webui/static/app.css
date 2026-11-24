@@ -7,6 +7,11 @@
   --line: #d7dde4;
   --accent: #075e9a;
   --danger: #9a2828;
+  --diff-word-add: #d9f2e2;
+  --diff-word-del: #f8d7d7;
+  --diff-line-add: #eefaf1;
+  --diff-line-del: #fdf0f0;
+  --diff-finding: #fffbe6;
   font:
     16px/1.5 system-ui,
     sans-serif;
@@ -20,6 +25,11 @@
     --line: #344453;
     --accent: #7dc4ff;
     --danger: #ff9b9b;
+    --diff-word-add: #1b3a28;
+    --diff-word-del: #3d2222;
+    --diff-line-add: #142a1c;
+    --diff-line-del: #2d1a1a;
+    --diff-finding: #3a341e;
   }
 }
 * {
@@ -217,4 +227,51 @@ noscript {
   main {
     margin-top: 1.25rem;
   }
+}
+.diff-controls {
+  display: flex;
+  gap: 0.5rem;
+  margin: 0.8rem 0;
+}
+.diff-file {
+  margin: 1rem 0;
+}
+.diff-no,
+.diff-sign {
+  color: var(--muted);
+  width: 2.5rem;
+  text-align: right;
+}
+.diff-code {
+  font-family: ui-monospace, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.diff-word-add {
+  background: var(--diff-word-add);
+}
+.diff-word-del {
+  background: var(--diff-word-del);
+}
+.diff-line-add {
+  background: var(--diff-line-add);
+}
+.diff-line-del {
+  background: var(--diff-line-del);
+}
+.diff-gap {
+  color: var(--muted);
+  text-align: center;
+  padding: 0.4rem;
+  border-top: 1px dashed var(--line);
+}
+.diff-finding {
+  background: var(--diff-finding);
+  border-left: 3px solid var(--accent);
+  padding: 0.4rem 0.6rem;
+  margin: 0.3rem 0;
+}
+.diff-lane td,
+.diff-lane th {
+  text-align: left;
 }

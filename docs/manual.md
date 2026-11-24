@@ -2727,7 +2727,7 @@ interface. The server prints one tokenised start URL and stops on Ctrl-C
 (exit 3). It never fetches, posts, runs a model, or reaches the network;
 without `--interactive`, it writes no store at all.
 
-The browser UI has an inbox, review detail with its evidence ledger, threads,
+The browser UI has an inbox, review detail with its evidence ledger, a `Diff` tab, threads,
 cost, precision, and a gate panel. It reads the same `/v1` envelopes as other
 clients. Updates arrive as invalidations, so the page fetches the visible view
 again; reconnecting also refreshes it. With `--no-watch`, the live indicator is
@@ -2805,6 +2805,7 @@ than from history.
 | `GET /v1/cost?by=repo\|week\|model`                         | `serve` — cost buckets and totals, with `partial`, `sources[]`, `errors[]`                                                                                                                 |
 | `GET /v1/precision?by=category\|tier`                       | `serve` — stored-join outcomes; `fixed` is `null` and no rate is printed                                                                                                                   |
 | `GET /v1/roots/{root}/bundles/{bundle}`                     | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                                                                                                                            |
+| `GET /v1/roots/{root}/bundles/{bundle}/diff`                | `serve` — `data.{lanes,files,sources,errors}` review diff grouped by change lane                                                                                                           |
 | `GET /v1/roots/{root}/bundles/{bundle}/compare`             | `serve` — `data.compare` against `?baseline={bundle}`; `bad-baseline` refuses                                                                                                              |
 | `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}`      | `show` — byte-identical `data` to `show --json`                                                                                                                                            |
 | `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}/copy` | `serve` — `data.{prompt,triage}` copy payloads (read-only)                                                                                                                                 |
@@ -2847,6 +2848,8 @@ accepted (the DNS-rebinding gate). A wildcard bind (`--host 0.0.0.0` or `::`)
 still allowlists only the loopback names, so a LAN client needs a concrete
 interface address such as `--host 192.168.1.10`. `/v1` is the only version: a
 breaking change becomes `/v2`.
+
+**Review diff.** `GET /v1/roots/{root}/bundles/{bundle}/diff` renders the bundle `full.diff` the way a dashboard does: files grouped by change lane in risk order (`schema`, `source`, `config`, `tests`, `docs`, `generated`, `lockfiles`, `renamed`, `whitespace`), each lane reporting file count, `+add / -del`, and finding counts by lens. Files show side-by-side and unified views with a toggle, changed words highlighted from server-computed spans, collapsed `… N unchanged lines` gaps between hunks, and findings anchored on their exact `path` + `line` + `side`. The diff is parsed from the confined bundle only; the view carries `data.sources[]` (`full.diff` plus blob/head SHAs from `PR.json`/`source.json`/index lines), while files carry anchored findings (`path` + `line` + `side`) and each lane carries lane-level `by_lens` counts. File-scoped (line-less) findings are excluded from both lane counts and row anchors: only line-bound findings increment lane counts, and inline rows anchor them. The line engine is a pure-Go histogram diff with Myers fallback and an indent heuristic; the word pass pairs adjacent lines and marks changed tokens without JavaScript diff math. Both are pinned by literal fixtures and mutation proofs (dropping the indent slide or the word pass fails a test). The static `report --html` export snapshots the diff route as `data.json` alongside the detail routes.
 
 **Interactive writes.** With `--interactive`, the two write endpoints are
 exact local mirrors of the CLI: `POST /v1/triage` accepts `root`, `bundle`,
