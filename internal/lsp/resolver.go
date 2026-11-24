@@ -1,6 +1,7 @@
 package lsp
 
 import (
+	"context"
 	"sync"
 	"time"
 )
@@ -22,10 +23,15 @@ const (
 // hung path costs one goroutine, not one per notification.
 type resolver struct {
 	inflight map[string]*walk
-	budget   time.Duration
-	limit    int
-	running  int
-	mu       sync.Mutex
+	// expire, when set, replaces the wall-clock budget: the wait for key's
+	// walk runs out when the returned channel closes, and a nil channel never
+	// runs out. Tests set it so a walk times out because it is hung, never
+	// because the machine is slow.
+	expire  func(key string) <-chan struct{}
+	budget  time.Duration
+	limit   int
+	running int
+	mu      sync.Mutex
 }
 
 // walk is one in-flight filesystem walk and, once done is closed, its result.
@@ -48,14 +54,24 @@ func (r *resolver) run(key string, fn func() (string, bool)) (result string, ok,
 	if !started {
 		return "", false, true
 	}
-	t := time.NewTimer(r.budget)
-	defer t.Stop()
+	expired, stop := r.deadline(key)
+	defer stop()
 	select {
 	case <-w.done:
 		return w.result, w.ok, false
-	case <-t.C:
+	case <-expired:
 		return "", false, true
 	}
+}
+
+// deadline starts the wait for key's walk: the channel closes when the
+// budget runs out, and stop releases its timer.
+func (r *resolver) deadline(key string) (<-chan struct{}, context.CancelFunc) {
+	if r.expire != nil {
+		return r.expire(key), func() {}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), r.budget)
+	return ctx.Done(), cancel
 }
 
 // start joins the walk in flight for key, or starts one when a slot is free.

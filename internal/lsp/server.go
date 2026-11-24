@@ -86,6 +86,9 @@ type Config struct { //nolint:govet // the grouping documents the injection surf
 	// eval resolves a path's physical spelling; tests fake it with
 	// Windows-shaped inputs. nil is filepath.EvalSymlinks.
 	eval func(string) (string, error)
+	// expire replaces the resolve budget's clock (see resolver.expire);
+	// nil is the wall-clock lim.resolve.
+	expire func(key string) <-chan struct{}
 }
 
 // limits are the session bounds a Server enforces.
@@ -214,6 +217,7 @@ func New(cfg *Config) *Server {
 	c.Stderr = &lockedWriter{dst: c.Stderr}
 	lim := c.lim.withDefaults()
 	res := newResolver(lim.resolve, maxResolvers)
+	res.expire = c.expire
 	s := &Server{
 		cfg:       c,
 		lim:       lim,
