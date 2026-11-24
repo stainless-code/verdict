@@ -28,6 +28,7 @@ const modulePath = "github.com/stainless-code/verdict/"
 var forbiddenDeps = []string{
 	"internal/cli",
 	"internal/acp",
+	"internal/lsp",
 	"internal/drain",
 	"internal/mcp",
 	"internal/schemagen",
@@ -201,6 +202,11 @@ var boundaries = []boundary{
 	{
 		name:    "acp",
 		pattern: "./internal/acp",
+		deny:    forbiddenDeps,
+	},
+	{
+		name:    "lsp",
+		pattern: "./internal/lsp",
 		deny:    forbiddenDeps,
 	},
 	{

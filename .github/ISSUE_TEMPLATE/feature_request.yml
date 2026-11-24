@@ -43,6 +43,7 @@ body:
         - uninstall
         - mcp
         - serve
+        - lsp
         - TS client
         - installer / upgrade channel
         - docs site
