@@ -3,7 +3,7 @@ package main
 func usageText() string {
 	return "usage: verdict demo|fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
 		"fetch-local|run|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|" +
-		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain|acp [opts]\n" +
+		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain|acp|lsp [opts]\n" +
 		"  demo [<public-github-pr-url>] [--agent <name>] [--keep] [--timeout <secs>] [--json]\n" +
 		"    one review, zero setup: a public GitHub pull request by URL (gh when signed in for\n" +
 		"    github.com, the anonymous API otherwise) or your own working tree when the argument\n" +
@@ -703,6 +703,11 @@ func usageText() string {
 		"    Protocol: initialize, ping, verdict/bundles/list, verdict/findings/list,\n" +
 		"    verdict/findings/get, verdict/findings/copy, $/cancel_request.\n" +
 		"    No daemon, no HTTP, no model calls, no writes; exits when stdin closes.\n" +
+		"  lsp [--root <dir>]... [--bundle <name>] [--check <tier>] [--max-bundles <n>] [--max-roots <n>]\n" +
+		"      [--interval <duration>] [--sweep <duration>] [--no-watch] [--json] (experimental)\n" +
+		"    publish a review bundle's findings as LSP 3.17 diagnostics over stdio (Content-Length\n" +
+		"    framed JSON-RPC 2.0). Diagnostics move on didOpen, didSave, a bundle watch change, and\n" +
+		"    the verdict.refresh command, never on didChange. No model calls, no writes.\n" +
 		"  Global presentation flags (any verb, before or after the verb, repo, and pr;\n" +
 		"  global flags are stripped before the positionals are read):\n" +
 		"  --color <auto|always|never>, --compact / --no-compact, --no-json.\n" +
@@ -723,7 +728,7 @@ func usageText() string {
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on demo/fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
 		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/index/journal/backtest/learn/pack/init/" +
-		"skill/upgrade/uninstall/serve/config/acp: " +
+		"skill/upgrade/uninstall/serve/config/acp/lsp: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
 		"  Glossary: https://stainless-code.com/verdict/docs/glossary\n"
@@ -745,6 +750,7 @@ var bareVerbs = map[string]bool{
 	"pack":       true,
 	"serve":      true,
 	verbACP:      true,
+	verbLSP:      true,
 }
 
 // repoOnlyVerbs take one <owner/repo> and nothing else positional: every other

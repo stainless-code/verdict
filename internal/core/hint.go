@@ -125,6 +125,10 @@ var hintRules = []HintRule{
 			"or move it aside and rebuild the store, then re-run",
 	},
 	{
+		codes: []string{"bad-params"},
+		hint:  "try: send a command the server listed in executeCommandProvider.commands, with the arguments docs/manual.md names",
+	},
+	{
 		codes: []string{"bad-root"},
 		hint:  "try: pass --root <existing-directory>, or run serve inside a checkout",
 	},

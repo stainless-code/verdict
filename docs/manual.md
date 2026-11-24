@@ -2465,6 +2465,142 @@ printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocol
 The server is experimental until 1.0: method names may still move, while the
 envelope keeps answering only the reads the query layer composes.
 
+### LSP server (stdio, experimental until 1.0)
+
+`verdict lsp` publishes a review bundle's findings as editor diagnostics: a
+Language Server Protocol 3.17 server over stdio (JSON-RPC 2.0 with
+`Content-Length` framing, capped at 16 MiB per frame). Like `verdict acp`, it
+has no daemon, listener, or remote auth, makes no model calls, writes nothing,
+and reads no workspace file: document text arrives from the editor, and every
+finding comes from the typed core query layer (`internal/core/query`), so a
+diagnostic says exactly what `report`, `serve`, and `acp` say. `verdict lsp
+--help` documents it.
+
+```text
+verdict lsp [--root <dir>]... [--bundle <name>] [--check <tier>] [--max-bundles <n>]
+            [--max-roots <n>] [--interval <duration>] [--sweep <duration>] [--no-watch] [--json]
+```
+
+- `--root <dir>` serves the bundles under one repository; repeat it for a
+  multi-root workspace (at most `--max-roots`, default 8, never more than 16).
+  With no `--root`, the current repository is served, through the probe the
+  read verbs share.
+- `--bundle <name>` publishes that bundle. It must resolve under at least one
+  root, or the start refuses `missing-bundle`. Without it, each root picks its
+  own: the client's `initializationOptions.bundle`, else the `local-` bundle
+  whose `findings.json` is newest, else the newest PR bundle. Corpus bundles
+  are never picked, and a tie breaks by name.
+- `--check <tier>` is the gate tier the detail composes (default
+  `informational`); it never filters findings.
+- `--max-bundles <n>` caps each root's bundle listing (default 500).
+- `--interval <duration>` and `--sweep <duration>` tune the bundle watcher
+  (default `1s` and `30s`, each at least `100ms`, the sweep at least the
+  interval); `--no-watch` turns it off.
+- `--json` is accepted for CLI-convention parity and changes nothing: stdout
+  is LSP either way.
+
+`initialize` advertises exactly what ships: `positionEncoding: "utf-16"`,
+`textDocumentSync` with `openClose`, `change: 1` (full), and `save.includeText`,
+and `executeCommandProvider.commands: ["verdict.refresh"]`. Hover, code
+actions (the suggestion quick-fix and the AI fix prompt), and local triage
+from the editor are coming in a follow-up and are not advertised. Two optional
+`initializationOptions` keys are read: `bundle` (above) and `showDeferred`
+(default `false`); every other key is ignored.
+
+Diagnostics move on four triggers and never on a keystroke:
+
+1. `initialized` composes every root and publishes every path carrying a
+   finding, so the editor's problem list fills before a file is opened.
+2. `textDocument/didOpen` publishes that document's set with its version.
+3. `textDocument/didSave` re-reads the selected bundle; an unchanged bundle
+   republishes only that document, and nothing at all when the set is
+   byte-identical to the last one sent. A bundle that moved republishes the
+   whole root.
+4. A bundle watch change (an out-of-band `record`, `fetch-local`, or
+   `triage` in a terminal) and the `verdict.refresh` command recompose the
+   root and republish. `verdict.refresh` also drops every cached view: use it
+   where the filesystem hides modification times.
+
+`textDocument/didChange` only keeps the buffer and its version current: it
+never reads a bundle and never publishes. A path that loses its last finding
+is published once with an empty set, which clears it.
+
+Each finding maps to one `Diagnostic`. `severity` is `1` (Error) for
+`critical`, `2` (Warning) for `important`, `3` (Information) for
+`informational`, and `4` (Hint) for an untagged finding. Only `open` findings
+publish; `deferred` ones publish as a Hint when `showDeferred` is true;
+`addressed`, `wont-fix`, `false-positive`, and policy-withheld findings never
+publish. `source` is `verdict`, `code` is the finding's full sig, and
+`message` is the body's first line as plain text (control and bidirectional
+characters dropped, 160 characters at most) with the evidence rung and any
+quote status other than `verified`. The range is the finding's whole line; with
+the document text in hand and an exact anchor, its end tightens to the line's
+end. `data` carries `sig`, `bundle`, `root`, `status`, `severity`, `rigor`,
+`quote_status`, `lens`, `category`, `side`, `anchor` (`exact` for a NEW-side
+line of the reviewed diff, `hunk` for a deleted line mapped onto its hunk's
+NEW side, `unmapped` otherwise), `span`, `hunk_sha256` (the reviewed text),
+`span_sha256` and `span_matches` (whether the editor's text still matches what
+was reviewed), `suggestion`, and `deferred`.
+
+Confinement is lexical and total: a document URI that is not an absolute
+`file://` URI strictly under a served root (after exactly one
+percent-decode, with Windows drive letters and UNC hosts compared
+case-insensitively) is never tracked, and a finding whose `path` is absolute,
+drive-qualified, backslashed, or carries `..` is never published (one
+warning names the count). A `workspace/executeCommand` other than
+`verdict.refresh` answers `-32602` with `bad-params` in `error.data`; a request
+before `initialize` answers `-32002`, an unknown request `-32601`, a request
+after `shutdown` `-32600`, and `$/cancelRequest` answers a cancelled refresh
+`-32800`. Unknown notifications are ignored. Exit 0 after `shutdown` then
+`exit` or on stdin EOF, 1 on `exit` without `shutdown` or a start refusal
+(`bad-root`, `not-a-repo`, `missing-bundle`), 2 on argv shape, 3 on a caught
+signal.
+
+#### Editor setup
+
+Every editor launches the same argv: `verdict lsp`, optionally with `--root`.
+In Neovim (0.10+), start it for any buffer in a repository:
+
+```lua
+vim.lsp.start({
+  name = "verdict",
+  cmd = { "verdict", "lsp" },
+  root_dir = vim.fs.root(0, ".git"),
+})
+```
+
+VS Code has no built-in client for an arbitrary language server: install any
+generic stdio LSP client extension and give it the command `verdict` with the
+arguments `["lsp"]`. Zed registers language servers through extensions; an
+extension that declares a `verdict` server takes the same binary and
+arguments under `lsp.verdict.binary` in `settings.json`:
+
+```json
+{
+  "lsp": {
+    "verdict": {
+      "binary": { "path": "verdict", "arguments": ["lsp"] }
+    }
+  }
+}
+```
+
+A manual smoke test frames each message by hand:
+
+```sh
+frame() { printf 'Content-Length: %d\r\n\r\n%s' "${#1}" "$1"; }
+{
+  frame '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}'
+  frame '{"jsonrpc":"2.0","method":"initialized","params":{}}'
+  frame '{"jsonrpc":"2.0","id":2,"method":"shutdown"}'
+  frame '{"jsonrpc":"2.0","method":"exit"}'
+} | verdict lsp --root /path/to/checkout --no-watch
+```
+
+The server is experimental until 1.0: the `data` payload and the command set
+may still grow, while a diagnostic keeps saying only what the query layer
+composes.
+
 ### Pre-push probe (local gate before CI burns)
 
 Drop the combined gate into `.git/hooks/pre-push` (executable) so a stale HEAD
@@ -2701,7 +2837,7 @@ static-page marker refuses `html-not-export`. Recovery and I/O failures use
 
 ## Journal
 
-Every bundle-writing CLI or MCP invocation (`fetch`, `fetch-local`, `run`, `record` including `--dry-run`, `post`, `verify`, `fix`, `triage`, `adopt`, `ingest`, `threads`, `calibrate`, `report`, `drain`) appends two compact JSON lines to an external, local-only journal file under `<state>/verdict/journal/<repo-key>/<pr>.jsonl` under `storelock` (`<pr>.jsonl.lock` beside the file, mode `0600`): a `start` line when the call begins and an `end` line when it returns, paired by `step` (`<started_at>-<pid>-<n>`, unique per invocation, so two overlapping calls never fold into one pair). Read-only verbs (`show`, `next`, `handoff`, `config`, `risk`, `pack`, `index`, `check-tree`, `doctor`, `pr-wait`, `ready`, `gate`, `journal`), multi-bundle verbs (`trend`, `panel`, `backtest`), non-bundle verbs (`init`, `learn`, `skill`, `upgrade`, `uninstall`, `serve`, `mcp`, `acp`), and calls refused by a `--read-only` MCP server never write a journal line.
+Every bundle-writing CLI or MCP invocation (`fetch`, `fetch-local`, `run`, `record` including `--dry-run`, `post`, `verify`, `fix`, `triage`, `adopt`, `ingest`, `threads`, `calibrate`, `report`, `drain`) appends two compact JSON lines to an external, local-only journal file under `<state>/verdict/journal/<repo-key>/<pr>.jsonl` under `storelock` (`<pr>.jsonl.lock` beside the file, mode `0600`): a `start` line when the call begins and an `end` line when it returns, paired by `step` (`<started_at>-<pid>-<n>`, unique per invocation, so two overlapping calls never fold into one pair). Read-only verbs (`show`, `next`, `handoff`, `config`, `risk`, `pack`, `index`, `check-tree`, `doctor`, `pr-wait`, `ready`, `gate`, `journal`), multi-bundle verbs (`trend`, `panel`, `backtest`), non-bundle verbs (`init`, `learn`, `skill`, `upgrade`, `uninstall`, `serve`, `mcp`, `acp`, `lsp`), and calls refused by a `--read-only` MCP server never write a journal line.
 
 **Location, scope, and cleanup.** `<state>` is `$XDG_STATE_HOME` when set, else `~/.local/state` (on Windows, `%LOCALAPPDATA%` when `$XDG_STATE_HOME` is unset). `<repo-key>` is the first 16 hex characters of `sha256` of the canonical absolute repository root, and `<pr>` is the resolved bundle name (`5101`, `local-7`, `corpus-3`). Nothing journal-related is written inside the repository or `.verdict/` — unless `$XDG_STATE_HOME` (or `%LOCALAPPDATA%`) itself points inside the repository, in which case the journal lands wherever that variable points — so dry runs, refusals, and bundle receipts (`provenance.json`, `run.json`) stay completely untouched. The journal is local to your machine — never committed or uploaded. Delete one bundle's journal by removing `<state>/verdict/journal/<repo-key>/<pr>.jsonl` (and its `.lock` file), or wipe every journal for a repository with `rm -rf <state>/verdict/journal/<repo-key>`.
 

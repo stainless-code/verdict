@@ -59,6 +59,7 @@ body:
         - uninstall
         - mcp
         - serve
+        - lsp
     validations:
       required: true
   - type: textarea
