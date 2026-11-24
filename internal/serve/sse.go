@@ -23,15 +23,21 @@ type eventFrame struct {
 	id     uint64
 }
 
+type jobFrame struct {
+	snapshot *jq.Obj
+	id       uint64
+}
+
 type eventBroker struct {
-	clients map[uint64]chan eventFrame
-	nextID  uint64
-	nextSub uint64
-	mu      sync.Mutex
+	clients    map[uint64]chan eventFrame
+	jobClients map[uint64]chan jobFrame
+	nextID     uint64
+	nextSub    uint64
+	mu         sync.Mutex
 }
 
 func newEventBroker() *eventBroker {
-	return &eventBroker{clients: map[uint64]chan eventFrame{}}
+	return &eventBroker{clients: map[uint64]chan eventFrame{}, jobClients: map[uint64]chan jobFrame{}}
 }
 
 func (b *eventBroker) subscribe() (uint64, <-chan eventFrame) {
@@ -49,6 +55,42 @@ func (b *eventBroker) unsubscribe(id uint64) {
 	if channel, ok := b.clients[id]; ok {
 		delete(b.clients, id)
 		close(channel)
+	}
+}
+
+func (b *eventBroker) subscribeJobs() (uint64, <-chan jobFrame) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.nextSub++
+	channel := make(chan jobFrame, eventBufferSize)
+	b.jobClients[b.nextSub] = channel
+	return b.nextSub, channel
+}
+
+func (b *eventBroker) unsubscribeJobs(id uint64) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if channel, ok := b.jobClients[id]; ok {
+		delete(b.jobClients, id)
+		close(channel)
+	}
+}
+
+func (b *eventBroker) publishJobs(snapshot *jq.Obj) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.nextID++
+	frame := jobFrame{id: b.nextID, snapshot: snapshot}
+	for _, channel := range b.jobClients {
+		select {
+		case channel <- frame:
+		default:
+			select {
+			case <-channel:
+			default:
+			}
+			channel <- frame
+		}
 	}
 }
 
@@ -106,18 +148,26 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	subscription, events := s.events.subscribe()
 	defer s.events.unsubscribe(subscription)
+	jobSubscription, jobEvents := s.events.subscribeJobs()
+	defer s.events.unsubscribeJobs(jobSubscription)
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
 	w.Header().Set("X-Accel-Buffering", "no")
 	w.WriteHeader(http.StatusOK)
 	flusher.Flush()
-	s.streamEvents(r, w, flusher, events)
+	s.streamEvents(r, w, flusher, events, jobEvents)
 }
 
-func (s *Server) streamEvents(r *http.Request, w http.ResponseWriter, flusher http.Flusher, events <-chan eventFrame) {
+func (s *Server) streamEvents(
+	r *http.Request,
+	w http.ResponseWriter,
+	flusher http.Flusher,
+	events <-chan eventFrame,
+	jobEvents <-chan jobFrame,
+) {
 	heartbeat := time.NewTicker(s.heartbeat)
 	defer heartbeat.Stop()
 	for {
-		if !s.streamEvent(r, w, flusher, events, heartbeat.C) {
+		if !s.streamEvent(r, w, flusher, events, jobEvents, heartbeat.C) {
 			return
 		}
 	}
@@ -128,6 +178,7 @@ func (s *Server) streamEvent(
 	w http.ResponseWriter,
 	flusher http.Flusher,
 	events <-chan eventFrame,
+	jobEvents <-chan jobFrame,
 	heartbeat <-chan time.Time,
 ) bool {
 	select {
@@ -137,6 +188,8 @@ func (s *Server) streamEvent(
 		return false
 	case frame, open := <-events:
 		return s.flushEvent(w, flusher, &frame, open)
+	case frame, open := <-jobEvents:
+		return s.flushJobEvent(w, flusher, &frame, open)
 	case <-heartbeat:
 		return s.flushHeartbeat(w, flusher)
 	}
@@ -144,6 +197,14 @@ func (s *Server) streamEvent(
 
 func (s *Server) flushEvent(w http.ResponseWriter, flusher http.Flusher, frame *eventFrame, open bool) bool {
 	if !open || !s.writeEvent(w, frame) {
+		return false
+	}
+	flusher.Flush()
+	return true
+}
+
+func (s *Server) flushJobEvent(w http.ResponseWriter, flusher http.Flusher, frame *jobFrame, open bool) bool {
+	if !open || !s.writeJobEvent(w, frame) {
 		return false
 	}
 	flusher.Flush()
@@ -170,6 +231,12 @@ func (s *Server) writeEvent(w http.ResponseWriter, frame *eventFrame) bool {
 	}
 	envelope := core.RenderEnvelope("serve", "", "", core.NowUTC(frame.change.At), "", nil, data, nil)
 	return s.writeSSE(w, fmt.Sprintf("event: bundles\nid: %d\nretry: 2000\ndata: %s\n\n",
+		frame.id, envelope.MarshalCompact()))
+}
+
+func (s *Server) writeJobEvent(w http.ResponseWriter, frame *jobFrame) bool {
+	envelope := core.RenderEnvelope("serve", "", "", s.at(), "", nil, frame.snapshot, nil)
+	return s.writeSSE(w, fmt.Sprintf("event: jobs\nid: %d\nretry: 2000\ndata: %s\n\n",
 		frame.id, envelope.MarshalCompact()))
 }
 

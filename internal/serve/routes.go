@@ -16,7 +16,7 @@ const (
 )
 
 // route is one table row. The table registers GET only by default; an
-// interactive server adds two POST rows. ServeMux adds HEAD and answers
+// interactive server adds POST rows. ServeMux adds HEAD and answers
 // every other method with 405 and an Allow header.
 type route struct { //nolint:govet // method/pattern/handler reads as the table row
 	Method  string
@@ -65,21 +65,31 @@ func (s *Server) routes() []route {
 			Method: http.MethodGet, Pattern: "/v1/events", Handler: s.guard(s.handleEvents),
 		})
 	}
-	// The two write paths exist as GET placeholders so the mux answers a
-	// non-GET method with 405 and an Allow header instead of a port-scan
-	// 404: without --interactive the writes are refused, never silently
-	// absent. Interactive registers POST only, so the mux answers every
-	// other method with 405 and Allow: POST.
+	// The write and job paths exist as GET placeholders so the mux
+	// answers a non-GET method with 405 and an Allow header instead of
+	// a port-scan 404: without --interactive the writes are refused,
+	// never silently absent. Interactive registers POST only, so the
+	// mux answers every other method with 405 and Allow: POST. The
+	// job status read is GET in interactive mode under the session
+	// guard; without --interactive it too fails closed as read-only.
 	if !s.cfg.Interactive {
 		routes = append(routes,
 			route{Method: http.MethodGet, Pattern: "/v1/triage", Handler: http.HandlerFunc(s.handleWriteGone)},
 			route{Method: http.MethodGet, Pattern: "/v1/kb/promote", Handler: http.HandlerFunc(s.handleWriteGone)},
+			route{Method: http.MethodGet, Pattern: jobPathVerify, Handler: http.HandlerFunc(s.handleWriteGone)},
+			route{Method: http.MethodGet, Pattern: jobPathPostPreview, Handler: http.HandlerFunc(s.handleWriteGone)},
+			route{Method: http.MethodGet, Pattern: "/v1/jobs/{id}/cancel", Handler: http.HandlerFunc(s.handleWriteGone)},
+			route{Method: http.MethodGet, Pattern: "/v1/jobs/{id}", Handler: http.HandlerFunc(s.handleWriteGone)},
 		)
 	}
 	if s.cfg.Interactive {
 		routes = append(routes,
 			route{Method: http.MethodPost, Pattern: "/v1/triage", Handler: s.guardWrite(s.handleTriage)},
 			route{Method: http.MethodPost, Pattern: "/v1/kb/promote", Handler: s.guardWrite(s.handleKBPromote)},
+			route{Method: http.MethodPost, Pattern: jobPathVerify, Handler: s.guardWrite(s.handleVerifyJob)},
+			route{Method: http.MethodPost, Pattern: jobPathPostPreview, Handler: s.guardWrite(s.handlePostPreviewJob)},
+			route{Method: http.MethodPost, Pattern: "/v1/jobs/{id}/cancel", Handler: s.guardWrite(s.handleCancelJob)},
+			route{Method: http.MethodGet, Pattern: "/v1/jobs/{id}", Handler: s.guard(s.handleGetJob)},
 		)
 	}
 	return routes
@@ -137,7 +147,24 @@ func (s *Server) Handler() http.Handler {
 	for _, item := range s.routes() {
 		mux.Handle(item.Method+" "+item.Pattern, item.Handler)
 	}
-	return s.middleware(mux)
+	return s.middleware(s.jobPostOnly(mux))
+}
+
+// jobPostOnly keeps the two POST job literals POST-only despite the GET
+// job-status wildcard that shares their prefix: without it
+// GET /v1/jobs/verify would read as a status lookup for id "verify"
+// and PUT would advertise GET beside POST in Allow.
+func (s *Server) jobPostOnly(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.Interactive && r.Method != http.MethodPost &&
+			(r.URL.Path == jobPathVerify || r.URL.Path == jobPathPostPreview) {
+			w.Header().Set("Allow", http.MethodPost)
+			s.problem(w, http.StatusMethodNotAllowed, "method-not-allowed",
+				"this action accepts POST only")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // guard refuses a URL token and then requires the cookie or bearer token.
@@ -174,15 +201,18 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleHealth publishes the process posture. In interactive mode it also
-// advertises the mode and the per-session CSRF token the UI writes with.
-// The token never rides a URL or the static data.json export, which reads
-// no health view.
+// advertises the mode, the per-session CSRF token the UI writes with,
+// and the Tier B job actions the running server can start. The token
+// never rides a URL or the static data.json export, which reads no
+// health view.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	view := s.layer.Health(r.Context())
 	view.Data.Set("read_only", !s.cfg.Interactive)
 	if s.cfg.Interactive {
 		view.Data.Set("interactive", true)
 		view.Data.Set("csrf", s.csrf)
+		view.Data.Set("jobs", true)
+		view.Data.Set("actions", []any{jobKindVerify, jobKindPostPreview})
 	}
 	s.writeView(w, verbServe, view)
 }
