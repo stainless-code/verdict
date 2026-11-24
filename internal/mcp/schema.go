@@ -49,6 +49,9 @@ var internalFieldNames = map[string]bool{
 	// TestSet is the adapter's present-versus-empty witness for --test, never
 	// an argument: a caller sets test, and an empty value refuses.
 	"TestSet": true,
+	// RefuseWithheld is the interactive surface's withholding posture, never
+	// an argument: the serve transport sets it, MCP/CLI callers leave it false.
+	"RefuseWithheld": true,
 }
 
 type schemaSource = reflect.Type

@@ -660,13 +660,17 @@ func usageText() string {
 		"    an absent journal on an existing bundle exits 0 with zero steps.\n" +
 		"  serve [--root <dir>] [--depth <n>] [--max-visits <n>] [--max-repos <n>]\n" +
 		"      [--rediscover | --no-registry] [--host <addr>] [--port <n>] [--token <s>] [--check <tier>]\n" +
-		"      [--max-bundles <n>] [--interval <duration>] [--sweep <duration>] [--no-watch] [--json]\n" +
+		"      [--max-bundles <n>] [--interval <duration>] [--sweep <duration>] [--no-watch] [--interactive] [--json]\n" +
 		"    read-only loopback HTTP surface over the current repository, or every repository below --root.\n" +
 		"    Binds 127.0.0.1 on a kernel-assigned port and prints one tokenised start URL.\n" +
 		"    GET /?token=<t> sets verdict_session_<port> (HttpOnly, SameSite=Strict, Path=/v1)\n" +
 		"    and 303s to /; /v1 refuses ?token= and requires that cookie or Authorization: Bearer.\n" +
 		"    Routes: /v1/health, /v1/roots, /v1/bundles, /v1/roots/{root}/bundles/{bundle},\n" +
-		"    .../findings/{sig}, /v1/events (--no-watch removes it). GET only, no CORS, no writes; Ctrl-C exits 3.\n" +
+		"    .../findings/{sig}, /v1/events (--no-watch removes it). GET plus HEAD only, no CORS,\n" +
+		"    no writes unless --interactive adds POST /v1/triage and POST /v1/kb/promote (local\n" +
+		"    triage and KB promotion through the same services the CLI calls, gated by the\n" +
+		"    per-session X-Verdict-CSRF token /v1/health publishes, a present allowlisted Origin,\n" +
+		"    and strict application/json bodies); Ctrl-C exits 3.\n" +
 		"    Discovery defaults to depth 6, 20000 directory visits, 500 repositories;\n" +
 		"    --rediscover forces a walk, --no-registry skips the 24-hour local cache.\n" +
 		"  mcp [--read-only | --operator] (experimental)\n" +

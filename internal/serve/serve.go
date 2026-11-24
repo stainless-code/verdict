@@ -39,21 +39,22 @@ const (
 	shutdownTimeout  = 5 * time.Second
 	minWatchInterval = 100 * time.Millisecond
 
-	flagRoot       = "--root"
-	flagHost       = "--host"
-	flagPort       = "--port"
-	flagToken      = "--token"
-	flagCheck      = "--check"
-	flagMaxBundles = "--max-bundles"
-	flagInterval   = "--interval"
-	flagSweep      = "--sweep"
-	flagNoWatch    = "--no-watch"
-	flagJSON       = "--json"
-	flagDepth      = "--depth"
-	flagMaxVisits  = "--max-visits"
-	flagMaxRepos   = "--max-repos"
-	flagRediscover = "--rediscover"
-	flagNoRegistry = "--no-registry"
+	flagRoot        = "--root"
+	flagHost        = "--host"
+	flagPort        = "--port"
+	flagToken       = "--token"
+	flagCheck       = "--check"
+	flagMaxBundles  = "--max-bundles"
+	flagInterval    = "--interval"
+	flagSweep       = "--sweep"
+	flagNoWatch     = "--no-watch"
+	flagJSON        = "--json"
+	flagDepth       = "--depth"
+	flagMaxVisits   = "--max-visits"
+	flagMaxRepos    = "--max-repos"
+	flagRediscover  = "--rediscover"
+	flagNoRegistry  = "--no-registry"
+	flagInteractive = "--interactive"
 
 	codeBadRoot           = "bad-root"
 	codeServeListenFailed = "serve-listen-failed"
@@ -91,6 +92,9 @@ type Layer interface {
 	Reproduction(ctx context.Context, rootID, bundle, sig string) ([]byte, error)
 	Cost(ctx context.Context, by string) (*query.View, error)
 	Precision(ctx context.Context, by string) (*query.View, error)
+	RootByID(id string) (string, bool)
+	ResolveBundle(rootID, bundle string) (string, string, error)
+	Invalidate()
 }
 
 type changeSource interface {
@@ -99,19 +103,20 @@ type changeSource interface {
 
 // Config is one server's resolved start state.
 type Config struct { //nolint:govet // start snapshot; field order mirrors the flag table
-	Root       string
-	Host       string
-	Port       int
-	Token      string
-	Check      string
-	MaxBundles int
-	Interval   time.Duration
-	Sweep      time.Duration
-	NoWatch    bool
-	Heartbeat  time.Duration
-	Version    string
-	Now        func() time.Time
-	Layer      Layer
+	Root        string
+	Host        string
+	Port        int
+	Token       string
+	Check       string
+	MaxBundles  int
+	Interval    time.Duration
+	Sweep       time.Duration
+	NoWatch     bool
+	Heartbeat   time.Duration
+	Version     string
+	Now         func() time.Time
+	Layer       Layer
+	Interactive bool
 }
 
 // Server is one bound (or about-to-bind) listener. Its route table is the
@@ -119,6 +124,7 @@ type Config struct { //nolint:govet // start snapshot; field order mirrors the f
 type Server struct { //nolint:govet // grouped by listener, allowlists, and injected seams
 	cfg          Config
 	token        string
+	csrf         string
 	now          func() time.Time
 	layer        Layer
 	mu           sync.RWMutex
@@ -145,9 +151,14 @@ func New(cfg *Config) (*Server, error) {
 	if token == "" {
 		token = newToken()
 	}
+	var csrf string
+	if cfg.Interactive {
+		csrf = newToken()
+	}
 	server := &Server{
 		cfg:          *cfg,
 		token:        token,
+		csrf:         csrf,
 		now:          cfg.Now,
 		layer:        layer,
 		port:         cfg.Port,
@@ -361,6 +372,7 @@ type serveOptions struct { //nolint:govet // field order mirrors the flag table
 	maxBundles                 int
 	depth, maxVisits, maxRepos int
 	rediscover, noRegistry     bool
+	interactive                bool
 	interval                   time.Duration
 	sweep                      time.Duration
 	noWatch                    bool
@@ -446,7 +458,11 @@ func warnExposure(r *cli.Runner, opts *serveOptions) {
 		r.Warn("serve: --token is visible in your process list and shell history")
 	}
 	if !isLoopback(opts.host) {
-		r.Warn("serve: binding " + opts.host + " exposes the read-only surface beyond loopback " +
+		surface := "read-only"
+		if opts.interactive {
+			surface = "interactive (local triage & KB writes)"
+		}
+		r.Warn("serve: binding " + opts.host + " exposes the " + surface + " surface beyond loopback " +
 			"over plain HTTP; the token and session cookie are not encrypted")
 	}
 }
@@ -459,7 +475,7 @@ func start(
 		Root: root, Host: opts.host, Port: opts.port, Token: opts.token,
 		Check: opts.check, MaxBundles: opts.maxBundles, Interval: opts.interval,
 		Sweep: opts.sweep, NoWatch: opts.noWatch, Version: req.Version, Now: r.Now,
-		Layer: opts.layer,
+		Layer: opts.layer, Interactive: opts.interactive,
 	})
 	if err != nil {
 		return nil, r.Refuse(&cli.RefusalError{Code: codeServeListenFailed, Message: err.Error()}), false
@@ -477,7 +493,7 @@ func announce(r *cli.Runner, server *Server) {
 		data := jq.NewObj(
 			"url", server.URL(),
 			"listen", server.Addr(),
-			"read_only", true,
+			"read_only", !server.cfg.Interactive,
 			"partial", false,
 			"sources", []any{},
 			"errors", []any{},
@@ -487,7 +503,11 @@ func announce(r *cli.Runner, server *Server) {
 		return
 	}
 	fmt.Fprintln(r.Human, "serve: "+server.URL())
-	fmt.Fprintln(r.Diag, "serve: listening on "+server.Addr()+" (read-only; Ctrl-C stops)")
+	posture := "read-only; Ctrl-C stops"
+	if server.cfg.Interactive {
+		posture = "interactive (local triage & KB writes enabled); Ctrl-C stops"
+	}
+	fmt.Fprintln(r.Diag, "serve: listening on "+server.Addr()+" ("+posture+")")
 }
 
 // resolveRoot resolves the served root: --root first (clean, absolute,
@@ -566,6 +586,9 @@ func parseFlag(r *cli.Runner, opts *serveOptions, args []string, i int) (int, in
 	case flagNoRegistry:
 		opts.noRegistry = true
 		return i, 0, false
+	case flagInteractive:
+		opts.interactive = true
+		return i, 0, false
 	case flagRoot, flagHost, flagPort, flagToken, flagCheck, flagMaxBundles, flagInterval, flagSweep,
 		flagDepth, flagMaxVisits, flagMaxRepos:
 		value, next, uerr := cli.FlagValue(args, i, name, flagWants(name))
@@ -578,7 +601,7 @@ func parseFlag(r *cli.Runner, opts *serveOptions, args []string, i int) (int, in
 		return i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
 			"unknown flag '%s' for serve (want --root, --depth, --max-visits, --max-repos, "+
 				"--rediscover, --no-registry, --host, --port, --token, --check, --max-bundles, "+
-				"--interval, --sweep, --no-watch, --json)", name)}), true
+				"--interval, --sweep, --no-watch, --interactive, --json)", name)}), true
 	}
 }
 

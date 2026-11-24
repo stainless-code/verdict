@@ -71,3 +71,5 @@ triaged 01234567 -> wont-fix
     "history": []
   }
 ]
+--- file C/.verdict/state/4251/findings.json.lock ---
+

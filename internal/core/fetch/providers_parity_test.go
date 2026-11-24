@@ -685,7 +685,7 @@ func assertBitbucketPartial(t *testing.T, out map[string]scriptResult, items int
 // threads.json, the artifact a re-review trusts, not only the envelope.
 func TestBitbucketFailedCommentsMarkThreadsTruncated(t *testing.T) {
 	t.Parallel()
-	const base = "https://api.bitbucket.org/2.0/repos/o/r/pullrequests/7"
+	const base = "https://api.bitbucket.org/2.0/repositories/o/r/pullrequests/7"
 	dir := t.TempDir()
 	s, _ := newTestSession(&scriptCommander{t: t, out: map[string]scriptResult{
 		bitbucketCall(base + "/diffstat?pagelen=100"): {stdout: `{"values":[]}`},

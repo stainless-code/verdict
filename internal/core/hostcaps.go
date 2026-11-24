@@ -83,16 +83,18 @@ type CapabilityGap struct {
 // hostCapabilities lists every supported host. Reading threads is part of
 // fetch, so fetch is true everywhere; posting — and with it inline anchors —
 // lands on GitHub (one atomic review), GitLab (one discussion per finding, then
-// the summary note, then the approval last), and Forgejo (one atomic review
-// over its REST API, because it ships no CLI). GitHub and Forgejo carry both
-// binding verdicts; GitLab carries the approval only, because it has no
-// request-changes review event, so request_changes reads false there and the
-// submit path posts the findings plus a warning instead of inventing a verdict
-// the host cannot record. review_verdicts is derived from that pair by
-// CapabilitiesFor, never declared here. Thread resolution reads true on GitHub
-// (resolveReviewThread) and GitLab (the discussion resolved flag); Forgejo has
-// no documented resolve endpoint, so it reads false there and on every
-// fetch-only host.
+// the summary note, then the approval last), Forgejo (one atomic review
+// over its REST API, because it ships no CLI), and Bitbucket Cloud (one
+// comment per finding, the summary comment, then the approval last, over
+// its REST API for the same reason). GitHub and Forgejo carry both
+// binding verdicts; GitLab and Bitbucket carry the approval only, because
+// they have no request-changes review event, so request_changes reads false
+// there and the submit path posts the findings plus a warning instead of
+// inventing a verdict the host cannot record. review_verdicts is derived
+// from that pair by CapabilitiesFor, never declared here. Thread resolution
+// reads true on GitHub (resolveReviewThread) and GitLab (the discussion
+// resolved flag); Forgejo and Bitbucket have no documented resolve endpoint,
+// so it reads false there and on every fetch-only host.
 var hostCapabilities = map[string]HostCapabilities{
 	providerGitHub: {
 		Provider: providerGitHub, Fetch: true, Post: true,
@@ -108,8 +110,11 @@ var hostCapabilities = map[string]HostCapabilities{
 		Provider: providerForgejo, Fetch: true, Post: true,
 		InlineAnchors: true, Approve: true, RequestChanges: true,
 	},
-	providerBitbucket: {Provider: providerBitbucket, Fetch: true},
-	providerAzure:     {Provider: providerAzure, Fetch: true},
+	providerBitbucket: {
+		Provider: providerBitbucket, Fetch: true, Post: true, InlineAnchors: true,
+		Approve: true,
+	},
+	providerAzure: {Provider: providerAzure, Fetch: true},
 }
 
 // CapabilitiesFor returns the declared capabilities for provider. Unknown
