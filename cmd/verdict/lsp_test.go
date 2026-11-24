@@ -98,3 +98,21 @@ func TestLSPStartRefusals(t *testing.T) {
 		t.Fatalf("lsp --bundle local-nope = exit %d\nstdout: %s\nstderr: %s", code, out, derr)
 	}
 }
+
+// TestLSPSymlinkedRootIsRefused pins that --root resolves symlinks before the
+// checkout guard: a link inside a checkout pointing outside every checkout
+// refuses not-a-repo instead of serving the outside tree.
+func TestLSPSymlinkedRootIsRefused(t *testing.T) {
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(repo, "escape")
+	if err := os.Symlink(t.TempDir(), link); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+	code, out, derr := runCapture(t, []string{"lsp", "--root", link, "--json"})
+	if code != cli.ExitRefused || !strings.Contains(out, `"code": "not-a-repo"`) || !strings.Contains(out, "it resolves to") {
+		t.Fatalf("lsp --root <link out> = exit %d\nstdout: %s\nstderr: %s", code, out, derr)
+	}
+}

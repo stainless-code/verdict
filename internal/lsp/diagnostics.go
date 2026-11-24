@@ -235,7 +235,8 @@ func message(rec *record) string {
 // editor shows next to code: control runes and line breaks (core.IsLineBreak,
 // including U+2028/U+2029), the line and paragraph separator categories (Zl,
 // Zp), bidirectional formatting, the zero-width space and joiners (U+200B
-// to U+200D), the word joiner (U+2060), and the soft hyphen (U+00AD). A tab
+// to U+200D), the word joiner (U+2060), the zero-width no-break space or
+// byte-order mark (U+FEFF), and the soft hyphen (U+00AD). A tab
 // becomes a space.
 func plainLine(s string) string {
 	var b strings.Builder
@@ -253,7 +254,7 @@ func plainLine(s string) string {
 
 func invisibleRune(c rune) bool {
 	switch c {
-	case '\u200B', '\u200C', '\u200D', '\u2060', '\u00AD':
+	case '\u200B', '\u200C', '\u200D', '\u2060', '\uFEFF', '\u00AD':
 		return true
 	}
 	return core.IsLineBreak(c) || unicode.In(c, unicode.Zl, unicode.Zp, unicode.Bidi_Control)

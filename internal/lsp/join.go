@@ -49,8 +49,9 @@ type diffFile struct {
 	IsDeleted bool       `json:"is_deleted"`
 }
 
-// indexNewSide maps every NEW-side line number to its text, once per file,
-// so a span lookup is one map read per line. Only add and context rows
+// indexNewSide maps every NEW-side line number to its text. diffFiles calls
+// it once per file as the diff is decoded, so a span lookup is one map read
+// per line. Only add and context rows
 // carry a new_no in the query diff wire.
 func (f *diffFile) indexNewSide() {
 	f.newSide = map[int]string{}
@@ -179,12 +180,10 @@ func newSideHash(file *diffFile, start, end int) (string, bool) {
 	return textHash(texts), true
 }
 
-// newSideLine finds NEW-side line n through the file's index, building the
-// index on first use for a file decoded elsewhere.
+// newSideLine finds NEW-side line n through the file's index. The index is
+// required: diffFiles builds it once per file when the diff is decoded, and
+// an unindexed file anchors nothing.
 func newSideLine(file *diffFile, n int) (string, bool) {
-	if file.newSide == nil {
-		file.indexNewSide()
-	}
 	text, ok := file.newSide[n]
 	return text, ok
 }

@@ -13,7 +13,7 @@ const hashNewLine = "42b2829d7d41d79a3da85c511abad81f784e00cb0ee3ed8cc568a52d91f
 const hashThreeLines = "263af04181a9f8dd061ded63e7c72adad7fa4ee663ef48403460051a3f1dd0cf"
 
 func fixtureFiles() map[string]diffFile {
-	return map[string]diffFile{
+	files := map[string]diffFile{
 		"notes.txt": {Path: "notes.txt", Hunks: []diffHunk{{
 			NewStart: 1, NewCount: 3,
 			Lines: []diffLine{
@@ -26,6 +26,11 @@ func fixtureFiles() map[string]diffFile {
 		"bin.png":  {Path: "bin.png", IsBinary: true},
 		"gone.txt": {Path: "gone.txt", IsDeleted: true, Hunks: []diffHunk{{Lines: []diffLine{{Kind: kindDel, Text: "x", OldNo: 1}}}}},
 	}
+	for path, f := range files {
+		f.indexNewSide()
+		files[path] = f
+	}
+	return files
 }
 
 // TestJoinFindingAnchors pins every anchor row: an exact RIGHT span hashes its
@@ -106,5 +111,31 @@ func TestSuggestionEligibility(t *testing.T) {
 		if f.suggestion != tc.want {
 			t.Errorf("%s: suggestion eligible = %v, want %v", tc.name, f.suggestion, tc.want)
 		}
+	}
+}
+
+// TestDiffFilesIndexesNewSideOnce pins that the NEW-side index is built when
+// diffFiles decodes the bundle's diff, not lazily by the join: the decoded
+// file carries the whole index, and the same file without it anchors
+// nothing, so no join path can rebuild it per lookup.
+func TestDiffFilesIndexesNewSideOnce(t *testing.T) {
+	t.Parallel()
+	root := fixtureRoot(t)
+	s := New(newConfig(root))
+	files, err := s.diffFiles(t.Context(), &s.roots[0], "local-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	notes := files["notes.txt"]
+	if len(notes.newSide) != 3 || notes.newSide[1] != "top" || notes.newSide[2] != "new line" || notes.newSide[3] != "bottom" {
+		t.Fatalf("decoded NEW-side index = %v, want lines 1-3 of the reviewed file", notes.newSide)
+	}
+	rec := record{Path: "notes.txt", Line: 2}
+	if f, _ := joinFinding(&rec, files); f.anchor != anchorExact {
+		t.Fatalf("indexed file anchored %s, want exact", f.anchor)
+	}
+	notes.newSide = nil
+	if f, _ := joinFinding(&rec, map[string]diffFile{"notes.txt": notes}); f.anchor != anchorUnmapped {
+		t.Fatalf("an unindexed file anchored %s; the join must not build its own index", f.anchor)
 	}
 }

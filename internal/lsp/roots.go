@@ -115,24 +115,34 @@ func clientRootPath(c rootCandidate, windows bool) (string, error) {
 
 // CheckoutProblem names why dir cannot be served, or returns "" when it is an
 // existing directory inside a git checkout. The CLI refuses an explicit
-// --root with it; the server drops a client root with it.
+// --root with it; the server drops a client root with it. Symlinks are
+// resolved first, so a root that is (or sits under) a link into a tree
+// outside any checkout is refused rather than served through the link.
 func CheckoutProblem(dir string) string {
 	return checkoutProblem(dir)
 }
 
 func checkoutProblem(dir string) string {
-	info, err := os.Stat(dir)
+	physical, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return "it is not an existing directory"
+	}
+	info, err := os.Stat(physical)
 	if err != nil || !info.IsDir() {
 		return "it is not an existing directory"
 	}
-	inside, err := readcommon.InsideCheckout(dir)
+	inside, err := readcommon.InsideCheckout(physical)
 	if err != nil {
 		return "its checkout could not be probed: " + err.Error()
 	}
-	if !inside {
-		return "it is not inside a git checkout"
+	if inside {
+		return ""
 	}
-	return ""
+	if lexical, lerr := readcommon.InsideCheckout(dir); lerr == nil && lexical {
+		// The spelling sits in a checkout but a link leads out of it.
+		return "it resolves to " + physical + ", which is not inside a git checkout"
+	}
+	return "it is not inside a git checkout"
 }
 
 // installRoots replaces the served roots and rebuilds the read model. The

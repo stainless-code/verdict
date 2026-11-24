@@ -123,6 +123,7 @@ type session struct {
 	t       *testing.T
 	in      *io.PipeWriter
 	done    chan error
+	drained chan struct{}
 	frames  []wireFrame
 	mu      sync.Mutex
 }
@@ -142,7 +143,10 @@ func startSession(t *testing.T, cfg *Config) *session {
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	server := New(cfg)
-	s := &session{t: t, in: inW, done: make(chan error, 1), server: server, writes: make(chan []byte, 4096)}
+	s := &session{
+		t: t, in: inW, done: make(chan error, 1), drained: make(chan struct{}),
+		server: server, writes: make(chan []byte, 4096),
+	}
 	go func() {
 		err := server.Serve(context.Background(), inR, outW)
 		_ = outW.Close()
@@ -156,7 +160,11 @@ func startSession(t *testing.T, cfg *Config) *session {
 	return s
 }
 
+// collect decodes every stdout frame into the log. It returns at stdout EOF,
+// which Serve's closing of the pipe guarantees comes after the last frame,
+// and closes drained so a wait can be sure the log is complete.
 func (s *session) collect(r io.Reader) {
+	defer close(s.drained)
 	br := bufio.NewReader(r)
 	for {
 		body, err := readFrame(br)
@@ -315,12 +323,24 @@ func (s *session) finish(id int) error {
 	return s.wait()
 }
 
+// wait returns Serve's result once Serve has returned and the collector has
+// read every frame it wrote, so a snapshot taken afterwards is complete.
+// Serve returning alone is not enough: the collector may still be decoding
+// the last body.
 func (s *session) wait() error {
 	s.t.Helper()
 	var err error
 	testenv.Until(s.t, func() bool {
 		select {
 		case err = <-s.done:
+			return true
+		default:
+			return false
+		}
+	})
+	testenv.Until(s.t, func() bool {
+		select {
+		case <-s.drained:
 			return true
 		default:
 			return false

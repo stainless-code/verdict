@@ -279,6 +279,7 @@ func TestPlainLineDropsInvisibleRunes(t *testing.T) {
 		"a\u2029b":                 "ab",
 		"a\u200bb\u200cc\u200dd":   "abcd",
 		"a\u2060b":                 "ab",
+		"\ufeffbom\ufeff":          "bom",
 		"soft\u00adhyphen":         "softhyphen",
 		"a\u202eb\u2066c":          "abc",
 		"a\x00b\x1fc\x7fd":         "abcd",

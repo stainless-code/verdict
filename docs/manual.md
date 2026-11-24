@@ -2568,7 +2568,10 @@ requests run at once and 256 more wait in FIFO order (one past that answers
 MiB of text per document and 32 MiB across them (a larger buffer is tracked
 by version only and keeps whole-line ranges); 20,000 findings per bundle
 (past it the highest-ranked publish, each with `data.truncated: true`, and
-`verdict.refresh` reports `truncated`); and one `publishDiagnostics` frame
+`verdict.refresh` reports `truncated`), though the 8 MiB cap on the findings
+store itself (`jq.MaxFindingsBytes`) usually binds first: an oversized store
+fails to read, which keeps the last good diagnostics (or publishes none for a
+bundle never read); and one `publishDiagnostics` frame
 never exceeds the 16 MiB frame cap (the set is cut to the longest prefix
 that fits, marked the same way).
 
