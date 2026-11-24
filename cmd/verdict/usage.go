@@ -582,7 +582,7 @@ func usageText() string {
 		"    non-interactive.\n" +
 		"    Presets map to panel strictness + KB retirement thresholds:\n" +
 		"    chill (no pinned panel, MIN_JUDGED=10 MAX_FP_RATE=0.7),\n" +
-		"    standard (one pinned member, 5 / 0.5), strict (lead + 2 lenses, 3 / 0.3).\n" +
+		"    standard (lead + 1 lens, 5 / 0.5), strict (lead + 2 lenses, 3 / 0.3).\n" +
 		"    Never touches network. Existing files print a preview and need\n" +
 		"    --yes/--force (or an interactive confirm) before overwrite.\n" +
 		"    --ci github also writes .github/workflows/verdict-review.yml and\n" +

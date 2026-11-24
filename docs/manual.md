@@ -4207,9 +4207,14 @@ starter is identical across presets):
 
 | preset     | `defaults.budget_usd` | `defaults.panel` members   | `defaults.kb_policy`                                  |
 | ---------- | --------------------- | -------------------------- | ----------------------------------------------------- |
-| `chill`    | `2.00` (lenient)      | none (comments only)       | `min_judged: 10`, `max_fp_rate: 0.7` (retires rarely) |
-| `standard` | `0.50` (default)      | `main` (one synthesizer)   | `min_judged: 5`, `max_fp_rate: 0.5` (code defaults)   |
-| `strict`   | `0.10` (tight)        | `lead`, `lens-1`, `lens-2` | `min_judged: 3`, `max_fp_rate: 0.3` (retires quickly) |
+| `chill`    | `0.10` (smallest)     | none (comments only)       | `min_judged: 10`, `max_fp_rate: 0.7` (retires rarely) |
+| `standard` | `0.50` (default)      | `lead`, `lens-1`           | `min_judged: 5`, `max_fp_rate: 0.5` (code defaults)   |
+| `strict`   | `2.00` (largest)      | `lead`, `lens-1`, `lens-2` | `min_judged: 3`, `max_fp_rate: 0.3` (retires quickly) |
+
+The budget guard grows with the panel it has to cover: every extra member is
+another model per review, so a tighter guard on a deeper preset would refuse
+its own runs. Each pinned roster is one synthesizer plus at least one verifier,
+which is the shape `verdict panel` requires.
 
 `.verdict/kb.jsonl` starts with two starter rules (`check-error-paths`,
 `verify-before-claim`, both `status: active`, counters zeroed) ready for
