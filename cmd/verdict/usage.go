@@ -305,8 +305,10 @@ func usageText() string {
 		"    paths, /tmp, the host /proc, and unix sockets (docker.sock, ssh-agent) stay\n" +
 		"    reachable; it is never recorded as sandboxed. It refuses sandbox-unavailable on\n" +
 		"    every other host, and --sandbox plus --sandbox-network-only refuses bad-flags.\n" +
-		"    A host that cannot enforce the chosen mechanism refuses sandbox-unavailable and\n" +
-		"    runs nothing; --json and patch.json name it in sandboxMechanism.\n" +
+		"    A host that cannot enforce the chosen mechanism, or a reviewed root whose shape it\n" +
+		"    cannot protect (Linux: no .git, a symlinked .git, or an unresolvable git pointer),\n" +
+		"    refuses sandbox-unavailable and runs nothing; --json and patch.json name the\n" +
+		"    mechanism in sandboxMechanism.\n" +
 		"    Runs the agent's claimed proof — exit code becomes machine fact. No GitHub I/O.\n" +
 		"    Destructive, networked, credential-reading, and repo-escaping commands\n" +
 		"    refuse before execution as verify-destructive, verify-networked,\n" +

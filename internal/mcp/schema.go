@@ -380,7 +380,8 @@ var fieldDocs = map[string]string{
 	"Sandbox": "Run under an enforced sandbox — bwrap on Linux (no network, hidden credential dirs, " +
 		"a writable repo, a private /tmp), sandbox-exec on macOS (no network, loopback included; no Mach " +
 		"services; writes only to the repo and a private TMPDIR; credential paths and shared host temp roots " +
-		"denied); refuses sandbox-unavailable when the host cannot enforce it.",
+		"denied); refuses sandbox-unavailable when the host cannot enforce it or the root's shape cannot be " +
+		"protected (Linux: no .git, a symlinked .git, or an unresolvable git pointer).",
 	"SandboxNetworkOnly": "Linux-only fallback for hosts without bwrap: unshare --user --map-root-user --net, " +
 		"network isolation alone with no mount, filesystem, or PID isolation (credential paths, /tmp, the host " +
 		"/proc, and unix sockets stay reachable; never recorded as sandboxed); mutually exclusive with sandbox " +

@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
 )
 
@@ -74,9 +75,56 @@ func TestSandboxArgvRefusesARootWithoutGitDir(t *testing.T) {
 	if ref.Message != want {
 		t.Errorf("message = %q, want %q", ref.Message, want)
 	}
-	if _, err := os.Lstat(filepath.Join(root, ".git")); !os.IsNotExist(err) {
-		t.Errorf("the refusal left %s/.git behind (%v)", root, err)
+}
+
+// TestSandboxArgvRefusesUnprotectableGitPointers pins every `.git` pointer
+// shape bwrap cannot make read-only: a `gitdir:` target or commondir that
+// does not exist (the command could create it, hooks included), a `.git`
+// file with no pointer line, and a git directory that is the root itself.
+// Each refuses with its own cause instead of being skipped.
+func TestSandboxArgvRefusesUnprotectableGitPointers(t *testing.T) {
+	t.Run("missing gitdir target", func(t *testing.T) {
+		root := t.TempDir()
+		writeGitPointer(t, filepath.Join(root, ".git"), "gitdir: meta\n")
+		requireGitRefusal(t, root, filepath.Join(root, ".git")+" names the git directory "+
+			filepath.Join(root, "meta")+", which does not exist as a directory")
+	})
+	t.Run("missing commondir target", func(t *testing.T) {
+		root := t.TempDir()
+		mustSandboxFS(t, os.MkdirAll(filepath.Join(root, "meta"), 0o755))
+		writeGitPointer(t, filepath.Join(root, ".git"), "gitdir: meta\n")
+		writeGitPointer(t, filepath.Join(root, "meta", "commondir"), "../common\n")
+		requireGitRefusal(t, root, filepath.Join(root, "meta", "commondir")+" names the git directory "+
+			filepath.Join(root, "common")+", which does not exist as a directory")
+	})
+	t.Run("no pointer line", func(t *testing.T) {
+		root := t.TempDir()
+		writeGitPointer(t, filepath.Join(root, ".git"), "not a pointer\n")
+		requireGitRefusal(t, root, filepath.Join(root, ".git")+" has no readable git pointer line")
+	})
+	t.Run("gitdir is the root", func(t *testing.T) {
+		root := t.TempDir()
+		writeGitPointer(t, filepath.Join(root, ".git"), "gitdir: .\n")
+		requireGitRefusal(t, root, "the git location "+root+" is the reviewed root itself")
+	})
+}
+
+// requireGitRefusal asserts the Linux argv refuses sandbox-unavailable with
+// the literal cause as its message prefix.
+func requireGitRefusal(t *testing.T, root, cause string) {
+	t.Helper()
+	argv, ref := bwrapArgv(root, homeInputs(t.TempDir()))
+	if ref == nil || ref.Code != codeSandboxUnavailable {
+		t.Fatalf("argv=%v ref=%v, want sandbox-unavailable", argv, ref)
 	}
+	if want := "sandbox unavailable: " + cause; !strings.HasPrefix(ref.Message, want) {
+		t.Errorf("message = %q, want prefix %q", ref.Message, want)
+	}
+}
+
+func writeGitPointer(t *testing.T, path, body string) {
+	t.Helper()
+	mustSandboxFS(t, os.WriteFile(path, []byte(body), 0o600))
 }
 
 // gitRoot is a reviewed root with a plain `.git` directory, the shape the

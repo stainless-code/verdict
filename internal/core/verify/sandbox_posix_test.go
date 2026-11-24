@@ -63,6 +63,8 @@ func requireSandboxExecPrefix(t *testing.T, mech *sandbox) {
 // write denial the later allows carve out of.
 const wantSeatbeltHeader = `(version 1)(allow default)(deny network*)` +
 	`(deny mach-lookup)(allow mach-lookup (global-name "com.apple.system.opendirectoryd.libinfo"))` +
+	`(deny lsopen)(deny appleevent-send)(deny job-creation)(deny distributed-notification-post)` +
+	`(deny signal)(allow signal (target same-sandbox))` +
 	`(deny file-write* (subpath "/"))`
 
 // checkSeatbeltProfileRules pins the literal rules the profile must carry.

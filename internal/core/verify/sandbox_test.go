@@ -169,6 +169,8 @@ func checkSeatbeltProfile(t *testing.T, profile, root, home string) {
 	t.Helper()
 	const header = `(version 1)(allow default)(deny network*)` +
 		`(deny mach-lookup)(allow mach-lookup (global-name "com.apple.system.opendirectoryd.libinfo"))` +
+		`(deny lsopen)(deny appleevent-send)(deny job-creation)(deny distributed-notification-post)` +
+		`(deny signal)(allow signal (target same-sandbox))` +
 		`(deny file-write* (subpath "/"))`
 	if !strings.HasPrefix(profile, header) {
 		t.Errorf("profile does not open with %q:\n%s", header, profile)

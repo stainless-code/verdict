@@ -375,8 +375,10 @@ type VerifyRequest struct {
 	// private /tmp), sandbox-exec on macOS (no network, loopback included; no
 	// Mach services; writes only to the reviewed root and a private TMPDIR;
 	// credential paths and the shared host temp roots denied). The call
-	// refuses with sandbox-unavailable when the host cannot enforce it instead
-	// of running unwrapped, and never falls back to SandboxNetworkOnly.
+	// refuses with sandbox-unavailable when the host cannot enforce it, or when
+	// the reviewed root's shape cannot be protected (Linux: no .git, a
+	// symlinked .git, or a git pointer that does not resolve), instead of
+	// running unwrapped, and never falls back to SandboxNetworkOnly.
 	Sandbox bool
 	// SandboxNetworkOnly is the explicit Linux opt-in for hosts without
 	// bubblewrap: `unshare --user --map-root-user --net`, network isolation

@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/testkit"
 	"github.com/stainless-code/verdict/pkg/verdict"
 )
 
@@ -59,10 +59,12 @@ func TestSDKVerifyReportsSandboxMechanism(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "patch.json"), []byte(`{"verifyCmd":"printf ok"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	// Linux refuses a root with no `.git`; the mechanism is what this pins.
-	if out, err := exec.CommandContext(t.Context(), "git", "-C", root, "init", "-q").CombinedOutput(); err != nil {
-		t.Fatalf("git init: %v: %s", err, out)
-	}
+	// Linux refuses a root with no `.git`; the mechanism is what this pins. The
+	// marker is the smallest repository git itself accepts (HEAD, objects,
+	// refs), which the facade's own root lookup needs.
+	testkit.WriteFile(t, filepath.Join(root, ".git", "HEAD"), "ref: refs/heads/main\n")
+	testkit.WriteFile(t, filepath.Join(root, ".git", "objects", ".keep"), "")
+	testkit.WriteFile(t, filepath.Join(root, ".git", "refs", ".keep"), "")
 	c := verdict.New(verdict.Options{Now: func() time.Time { return sdkNow }, Commander: &okCommander{}})
 	defer c.Close()
 	resp, err := c.Verify(context.Background(), &verdict.VerifyRequest{

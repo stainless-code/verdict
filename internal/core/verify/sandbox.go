@@ -73,8 +73,20 @@ const (
 	// applies the last matching rule, so the allows that follow re-open only
 	// what they name.
 	seatbeltHeader = `(version 1)(allow default)(deny network*)` +
-		`(deny mach-lookup)` + seatbeltMachAllow +
+		`(deny mach-lookup)` + seatbeltMachAllow + seatbeltServiceDenials +
 		`(deny file-write* (subpath "/"))`
+
+	// seatbeltServiceDenials closes the remaining operations `(allow
+	// default)` grants that reach outside the run without a file write:
+	// LaunchServices (lsopen, which alone stops `open` and `osascript ...
+	// launch`), AppleEvents (appleevent-send), launchd job submission
+	// (job-creation), distributed notifications, and signals to any process
+	// the command did not start. The first four also need a Mach lookup the
+	// default-deny refuses, so they are a second layer; the signal rule is
+	// the only guard against the command killing the operator's own
+	// processes, since Seatbelt has no PID namespace.
+	seatbeltServiceDenials = `(deny lsopen)(deny appleevent-send)(deny job-creation)` +
+		`(deny distributed-notification-post)(deny signal)(allow signal (target same-sandbox))`
 
 	// seatbeltMachAllow is the whole Mach allowlist, found by running git,
 	// go build/test, node/npm, python3, make, cc, perl, ruby, and a shell
@@ -521,7 +533,8 @@ func bwrapArgv(root string, in sandboxInputs) ([]string, *core.RefusalError) {
 	if ref != nil {
 		return nil, ref
 	}
-	if ref := sandboxGitRootRefusal(repo); ref != nil {
+	gitBinds, ref := sandboxGitBindTargets(repo)
+	if ref != nil {
 		return nil, ref
 	}
 	argv := []string{
@@ -535,7 +548,7 @@ func bwrapArgv(root string, in sandboxInputs) ([]string, *core.RefusalError) {
 	}
 	argv = append(argv, sandboxVarRunMount(lstatMode)...)
 	argv = append(argv, "--bind", repo, repo)
-	for _, dir := range sandboxGitBinds(repo) {
+	for _, dir := range gitBinds {
 		argv = append(argv, "--ro-bind", dir, dir)
 	}
 	for _, mount := range sandboxCredentialMounts(locations) {
@@ -544,26 +557,138 @@ func bwrapArgv(root string, in sandboxInputs) ([]string, *core.RefusalError) {
 	return append(argv, "--unshare-net", "--new-session", "--die-with-parent", "--"), nil
 }
 
-// sandboxGitBinds lists the reviewed root's git control directories that sit
-// inside the writable root bind, spelled under the root as bwrap mounts it,
-// so each gets a read-only bind over the writable one. A control directory
-// outside the root is already read-only under `--ro-bind / /`.
-func sandboxGitBinds(repo string) []string {
+// sandboxGitBindTargets validates the reviewed root's git control locations
+// for bwrap and returns the ones inside the writable root, spelled under the
+// root as bwrap mounts them, so each gets a read-only bind over the writable
+// one. bwrap can protect only a path that already exists, so every location
+// must exist and resolve; one that does not is a path the command could
+// create and git would honor later, and refuses. A location outside the root
+// is already read-only under `--ro-bind / /` (or private under the /tmp and
+// /run tmpfs mounts).
+func sandboxGitBindTargets(repo string) ([]string, *core.RefusalError) {
+	if ref := sandboxGitRootRefusal(repo); ref != nil {
+		return nil, ref
+	}
 	realRepo, err := filepath.EvalSymlinks(repo)
 	if err != nil {
-		realRepo = repo
+		return nil, sandboxUnavailable(fmt.Sprintf("could not resolve the reviewed root %s: %v", repo, err))
 	}
-	var binds []string
-	for _, dir := range sandboxGitDirs(repo) {
-		resolved, err := filepath.EvalSymlinks(dir)
-		if err != nil {
-			continue
+	locations, ref := sandboxGitLocationsStrict(repo)
+	if ref != nil {
+		return nil, ref
+	}
+	return sandboxGitBindList(repo, realRepo, locations)
+}
+
+// sandboxGitBindList keeps the locations inside the root, refusing the first
+// one that cannot be bound read-only.
+func sandboxGitBindList(repo, realRepo string, locations []string) ([]string, *core.RefusalError) {
+	binds := make([]string, 0, len(locations))
+	for _, location := range locations {
+		bind, inside, ref := sandboxGitBindTarget(repo, realRepo, location)
+		if ref != nil {
+			return nil, ref
 		}
-		if rel, ok := sandboxRelInside(realRepo, resolved); ok {
-			binds = append(binds, filepath.Join(repo, rel))
+		if inside {
+			binds = append(binds, bind)
 		}
 	}
-	return sandboxCleanUnique(binds)
+	return sandboxCleanUnique(binds), nil
+}
+
+// sandboxGitBindTarget resolves one git location against the root. A
+// location that is the root itself, or one reached through a symlink inside
+// the root (the link could be replaced), cannot be bound read-only and
+// refuses rather than being skipped.
+func sandboxGitBindTarget(repo, realRepo, location string) (string, bool, *core.RefusalError) {
+	resolved, err := filepath.EvalSymlinks(location)
+	if err != nil {
+		return "", false, sandboxUnavailable(fmt.Sprintf(
+			"the git location %s does not resolve (%v), so bwrap cannot make it read-only", location, err))
+	}
+	if resolved == realRepo {
+		return "", false, sandboxUnavailable(fmt.Sprintf(
+			"the git location %s is the reviewed root itself, so bwrap cannot make it read-only", location))
+	}
+	rel, inside := sandboxRelInside(realRepo, resolved)
+	if !inside {
+		return "", false, nil
+	}
+	if literalRel, ok := sandboxRelInside(repo, location); ok && literalRel != rel {
+		return "", false, sandboxUnavailable(fmt.Sprintf("the git location %s reaches %s through a symlink inside "+
+			"the reviewed root, and the link could be replaced — point the `gitdir:` line at the directory itself",
+			location, resolved))
+	}
+	return filepath.Join(repo, rel), true, nil
+}
+
+// sandboxGitLocationsStrict resolves the root's git control locations like
+// sandboxGitDirs, but every pointer must parse and name an existing
+// directory: a `.git` file's `gitdir:` target and, when present, the
+// commondir its git directory names.
+func sandboxGitLocationsStrict(root string) ([]string, *core.RefusalError) {
+	dotgit := filepath.Join(root, sandboxGitName)
+	info, err := os.Lstat(dotgit)
+	if err != nil {
+		return nil, sandboxGitInspectRefusal(dotgit, err)
+	}
+	locations := []string{dotgit}
+	gitdir := dotgit
+	switch {
+	case info.Mode().IsRegular():
+		target, ref := sandboxGitPointerDir(dotgit, "gitdir:", root)
+		if ref != nil {
+			return nil, ref
+		}
+		gitdir = target
+		locations = append(locations, gitdir)
+	case !info.IsDir():
+		return nil, sandboxUnavailable(dotgit + " is neither a directory nor a `gitdir:` file")
+	}
+	common, ref := sandboxGitCommondir(gitdir)
+	if ref != nil {
+		return nil, ref
+	}
+	if common != "" {
+		locations = append(locations, common)
+	}
+	return locations, nil
+}
+
+// sandboxGitCommondir resolves the commondir a linked worktree's git
+// directory names; a git directory without one returns empty.
+func sandboxGitCommondir(gitdir string) (string, *core.RefusalError) {
+	commondir := filepath.Join(gitdir, "commondir")
+	if _, err := os.Lstat(commondir); err != nil {
+		if os.IsNotExist(err) {
+			return "", nil
+		}
+		return "", sandboxGitInspectRefusal(commondir, err)
+	}
+	return sandboxGitPointerDir(commondir, "", gitdir)
+}
+
+// sandboxGitPointerDir reads one git pointer file and requires its target to
+// be an existing directory.
+func sandboxGitPointerDir(path, prefix, base string) (string, *core.RefusalError) {
+	target, ok := sandboxGitPointer(path, prefix, base)
+	if !ok {
+		return "", sandboxUnavailable(fmt.Sprintf("%s has no readable git pointer line, so the git directory it "+
+			"should name cannot be protected", path))
+	}
+	info, err := os.Stat(target)
+	if err != nil || !info.IsDir() {
+		return "", sandboxUnavailable(fmt.Sprintf("%s names the git directory %s, which does not exist as a "+
+			"directory, so the command could create it and git would run its hooks later — fix or remove the "+
+			"pointer, or verify a fresh clone", path, target))
+	}
+	return target, nil
+}
+
+// sandboxGitInspectRefusal names the real I/O error when a git location
+// cannot be inspected.
+func sandboxGitInspectRefusal(path string, err error) *core.RefusalError {
+	return sandboxUnavailable(fmt.Sprintf("could not inspect %s (%v), so it cannot be protected", path, err))
 }
 
 // sandboxGitRootRefusal refuses a reviewed root whose `.git` bwrap cannot
@@ -573,12 +698,15 @@ func sandboxGitBinds(repo string) []string {
 // no clean read-only shape: the command could create <root>/.git/hooks or
 // config that git runs later outside any sandbox. A symlinked `.git` is the
 // same gap, because only the link's target can be bound read-only and the
-// link itself stays replaceable. macOS needs neither refusal: its profile
-// denies writes to every `.git` path below the root, existing or not.
+// link itself stays replaceable. An error other than "does not exist" is
+// named as itself. macOS needs none of this: its profile denies writes to
+// every `.git` path below the root, existing or not.
 func sandboxGitRootRefusal(repo string) *core.RefusalError {
 	dotgit := filepath.Join(repo, sandboxGitName)
 	info, err := os.Lstat(dotgit)
 	switch {
+	case err != nil && !os.IsNotExist(err):
+		return sandboxGitInspectRefusal(dotgit, err)
 	case err != nil:
 		return sandboxUnavailable(fmt.Sprintf("the reviewed root %s has no %s, and bwrap can make only an "+
 			"existing path read-only, so the command could create git hooks or config there that run later "+
@@ -888,10 +1016,13 @@ func seatbeltRegexQuote(path string) string {
 	return b.String()
 }
 
-// sandboxExpandRealpaths cleans every path, adds its resolved realpath when
-// one exists, and removes duplicates while keeping first-seen order. Seatbelt
-// matches the resolved vnode path, so the /var -> /private/var spelling of a
-// temp root needs both forms.
+// sandboxExpandRealpaths cleans every path, adds its resolved realpath, and
+// removes duplicates while keeping first-seen order. Seatbelt matches the
+// resolved vnode path, so the /var -> /private/var spelling of a temp root
+// needs both forms. A path that does not exist yet (a git directory a `.git`
+// file names, a credential file not created) resolves through its deepest
+// existing ancestor, so a rule still matches the spelling the kernel will
+// see when the command tries to create it.
 func sandboxExpandRealpaths(paths []string) []string {
 	expanded := make([]string, 0, len(paths)*2)
 	for _, path := range paths {
@@ -899,11 +1030,26 @@ func sandboxExpandRealpaths(paths []string) []string {
 			continue
 		}
 		expanded = append(expanded, path)
-		if resolved, err := filepath.EvalSymlinks(path); err == nil {
+		if resolved, ok := sandboxRealpath(path); ok {
 			expanded = append(expanded, resolved)
 		}
 	}
 	return sandboxCleanUnique(expanded)
+}
+
+// sandboxRealpath resolves path, or the deepest existing ancestor of it with
+// the missing tail appended.
+func sandboxRealpath(path string) (string, bool) {
+	tail := ""
+	for current := filepath.Clean(path); ; current = filepath.Dir(current) {
+		if resolved, err := filepath.EvalSymlinks(current); err == nil {
+			return filepath.Join(resolved, tail), true
+		}
+		if filepath.Dir(current) == current {
+			return "", false
+		}
+		tail = filepath.Join(filepath.Base(current), tail)
+	}
 }
 
 // sandboxWriteRules renders one subpath rule per path, refusing a path whose

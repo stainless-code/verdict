@@ -219,16 +219,19 @@ the route out and nothing else, so the host filesystem, the host `/proc`, and
 filesystem unix sockets stay reachable. It records `sandboxMechanism:
 "unshare-net"`, never `sandboxed`, and warns on every run.
 
-**The reviewed root is writable; its git control files are not.** The
-working tree is the PR's own content, so writes there are by design. Writes
-to the repository's git directories (`.git`, a `.git` file's target, a
-linked worktree's common directory) are denied on both platforms, and macOS
-also denies creating any `.git` path below the root (`sandboxGitDirs`,
+**The reviewed root is writable; its git control files are not.** The working
+tree is the PR's own content, so writes there are by design. Writes to the
+repository's git directories (`.git`, a `.git` file's target, a linked
+worktree's common directory) are denied on both platforms, and macOS also
+denies creating any `.git` path below the root (`sandboxGitDirs`,
 `sandboxGitBinds`, `sandboxGitWriteDenials` in
 `internal/core/verify/sandbox.go`; `TestSandboxExecDeniesGitControlWrites`).
-On Linux a root with no `.git` (or a symlinked one) refuses, because `bwrap`
-could protect it only by writing a mount point into the host tree
-(`TestSandboxArgvRefusesARootWithoutGitDir`); a new nested `.git` in a
+On Linux a root whose repository cannot be pinned read-only refuses — no
+`.git`, a symlinked `.git`, a git pointer that does not resolve, or one
+reached through an in-root symlink — because `bwrap` could protect it only by
+writing a mount point into the host tree
+(`TestSandboxArgvRefusesARootWithoutGitDir`,
+`TestSandboxArgvRefusesUnprotectableGitPointers`); a new nested `.git` in a
 subdirectory remains possible there, and `docs/manual.md` § Enforced sandbox
 says so.
 

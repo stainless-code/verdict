@@ -5,15 +5,19 @@ package verifycore
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // requireSandboxExec keeps the real-macOS legs honest: they run the shipped
@@ -444,9 +448,18 @@ func assertUserLookupAllowed(t *testing.T, sb *sandbox, env []string, root strin
 // the sandbox and proves the host cannot read it back.
 func assertPreferencesNotPersisted(t *testing.T, sb *sandbox, env []string, root string) {
 	t.Helper()
-	domain := "dev.verdict.sandboxtest." + filepath.Base(root)
+	// A per-process, per-moment suffix: concurrent runs never share a domain,
+	// so one run's cleanup cannot delete another's probe.
+	domain := fmt.Sprintf("dev.verdict.sandboxtest.%d.%d", os.Getpid(), time.Now().UnixNano())
 	t.Cleanup(func() { removePreferenceDomain(t, domain) })
-	runWrapped(t, sb, env, root, `defaults write `+domain+` k v; defaults write -g `+domain+` v`)
+	// The per-domain write must itself fail for the right reason: cfprefsd is
+	// unreachable. `defaults write -g` exits 0 even when nothing persists, so
+	// only its absence on the host is asserted.
+	res := runWrapped(t, sb, env, root, `defaults write `+domain+` k v`)
+	if res.ExitCode == 0 || !strings.Contains(res.Stdout+res.Stderr, "Could not write domain") {
+		t.Errorf("sandboxed defaults write = exit %d %q, want the cfprefsd denial", res.ExitCode, res.Stdout+res.Stderr)
+	}
+	runWrapped(t, sb, env, root, `defaults write -g `+domain+` v`)
 	for _, args := range [][]string{{"read", domain, "k"}, {"read", "-g", domain}} {
 		if out, code := hostCommand(t, "", "/usr/bin/defaults", args...); code == 0 {
 			t.Errorf("defaults %v on the host = %q, want the sandboxed write absent", args, out)
@@ -482,7 +495,12 @@ func assertPasteboardUnreachable(t *testing.T, sb *sandbox, env []string, root s
 	t.Cleanup(func() { hostCommand(t, saved, "/usr/bin/pbcopy", "-pboard", "find") })
 	hostCommand(t, sentinel, "/usr/bin/pbcopy", "-pboard", "find")
 	if got, _ := hostCommand(t, "", "/usr/bin/pbpaste", "-pboard", "find"); got != sentinel {
-		t.Fatalf("host control read %q from the find pasteboard, want the sentinel", got)
+		// A headless or SSH session has no usable pasteboard server, so the
+		// leg cannot apply; the CI lanes that require the sandbox fail here.
+		if os.Getenv("EVAL_REQUIRE_SANDBOX") == "1" {
+			t.Fatalf("host control read %q from the find pasteboard, want the sentinel", got)
+		}
+		t.Skipf("no usable pasteboard on this host (control read %q); the leg cannot apply", got)
 	}
 	res := runWrapped(t, sb, env, root, `pbpaste -pboard find`)
 	if res.ExitCode == 0 || strings.Contains(res.Stdout+res.Stderr, sentinel) {
@@ -501,8 +519,11 @@ func assertPasteboardUnreachable(t *testing.T, sb *sandbox, env []string, root s
 // combined output and exit code; a spawn failure fails the test.
 func hostCommand(t *testing.T, stdin, name string, args ...string) (string, int) {
 	t.Helper()
-	// Cleanups run after the test context is canceled.
-	cmd := exec.CommandContext(context.Background(), name, args...)
+	// Cleanups run after the test context is canceled, so the bound is the
+	// helper's own, like runWrapped's.
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, name, args...)
 	cmd.Stdin = strings.NewReader(stdin)
 	out, err := cmd.CombinedOutput()
 	var exitErr *exec.ExitError
@@ -515,4 +536,147 @@ func hostCommand(t *testing.T, stdin, name string, args ...string) (string, int)
 		t.Fatalf("%s %v: %v", name, args, err)
 		return "", -1
 	}
+}
+
+// TestSandboxExecDeniesLaunchChannels proves the launch channels against the
+// real services: neither `open` nor `osascript ... launch` starts an app from
+// inside the sandbox, and `launchctl submit` and `bootstrap` load no job. The
+// app is a throwaway bundle whose executable only appends its arguments to a
+// marker, so a delivered launch is visible and harmless; an unsandboxed
+// control launch run afterwards proves the marker works and bounds the wait.
+func TestSandboxExecDeniesLaunchChannels(t *testing.T) {
+	requireSandboxExec(t)
+	root := t.TempDir()
+	sb, env := gitSandbox(t, root)
+	defer closeSandbox(t, sb)
+	app, marker := probeApp(t)
+	for _, cmd := range []string{
+		`open -n -g "` + app + `" --args sandboxed-open`,
+		`osascript -e 'tell application "` + app + `" to launch'`,
+	} {
+		if res := runWrapped(t, sb, env, root, cmd); res.ExitCode == 0 {
+			t.Errorf("%q exited 0 inside the sandbox, want the launch refused", cmd)
+		}
+	}
+	if _, code := hostCommand(t, "", "/usr/bin/open", "-n", "-g", app, "--args", "host-control"); code != 0 {
+		t.Fatalf("the unsandboxed control open exited %d", code)
+	}
+	testenv.Until(t, func() bool { return strings.Contains(readMarker(marker), "host-control") })
+	if got := readMarker(marker); strings.Contains(got, "sandboxed-open") || strings.Contains(got, "noargs") {
+		t.Errorf("marker = %q, want only the host control launch", got)
+	}
+	assertNoLaunchdJob(t, sb, env, root, marker)
+}
+
+// assertNoLaunchdJob proves launchd loads no job for the sandboxed command,
+// through `submit` and through `bootstrap` of a plist inside the root.
+func assertNoLaunchdJob(t *testing.T, sb *sandbox, env []string, root, marker string) {
+	t.Helper()
+	label := fmt.Sprintf("dev.verdict.sandboxtest.%d.%d", os.Getpid(), time.Now().UnixNano())
+	t.Cleanup(func() { removeLaunchdJob(t, label) })
+	writeSandboxFile(t, filepath.Join(root, "job.plist"), launchdPlist(label, marker))
+	for _, cmd := range []string{
+		`launchctl submit -l ` + label + ` -- /bin/sh -c 'echo launchd >> "` + marker + `"'`,
+		`launchctl bootstrap gui/$(id -u) job.plist`,
+	} {
+		if res := runWrapped(t, sb, env, root, cmd); res.ExitCode == 0 {
+			t.Errorf("%q exited 0 inside the sandbox, want the job refused", cmd)
+		}
+	}
+	if out, code := hostCommand(t, "", "/bin/launchctl", "list", label); code == 0 {
+		t.Errorf("launchctl list %s = %q, want no job loaded", label, out)
+	}
+	if strings.Contains(readMarker(marker), "launchd") {
+		t.Error("a launchd job ran the marker command")
+	}
+}
+
+// removeLaunchdJob unloads a job a failed run left behind.
+func removeLaunchdJob(t *testing.T, label string) {
+	t.Helper()
+	if _, code := hostCommand(t, "", "/bin/launchctl", "list", label); code == 0 {
+		hostCommand(t, "", "/bin/launchctl", "remove", label)
+	}
+}
+
+// launchdPlist is a RunAtLoad job that appends to the marker.
+func launchdPlist(label, marker string) string {
+	return `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>Label</key><string>` + label + `</string>
+<key>ProgramArguments</key><array><string>/bin/sh</string><string>-c</string>
+<string>echo launchd &gt;&gt; "` + marker + `"</string></array>
+<key>RunAtLoad</key><true/></dict></plist>
+`
+}
+
+// probeApp builds a background-only app bundle whose executable appends its
+// arguments (or "noargs") to a marker, and unregisters it from LaunchServices
+// when the test ends.
+func probeApp(t *testing.T) (string, string) {
+	t.Helper()
+	dir := t.TempDir()
+	marker := filepath.Join(dir, "marker")
+	app := filepath.Join(dir, "VerdictProbe.app")
+	writeSandboxFile(t, filepath.Join(app, "Contents", "Info.plist"), `<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>CFBundleExecutable</key><string>probe</string>
+<key>CFBundleIdentifier</key><string>dev.verdict.sandboxtest.`+filepath.Base(dir)+`</string>
+<key>CFBundlePackageType</key><string>APPL</string><key>LSBackgroundOnly</key><true/></dict></plist>
+`)
+	exe := filepath.Join(app, "Contents", "MacOS", "probe")
+	writeSandboxFile(t, exe, "#!/bin/sh\necho \"${*:-noargs}\" >> '"+marker+"'\n")
+	if err := os.Chmod(exe, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		hostCommand(t, "", "/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister", "-u", app)
+	})
+	return app, marker
+}
+
+func readMarker(path string) string {
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	return string(raw)
+}
+
+// TestSandboxExecDeniesSignalsToHostProcesses proves the command cannot signal
+// a process it did not start, while it still controls its own children.
+func TestSandboxExecDeniesSignalsToHostProcesses(t *testing.T) {
+	requireSandboxExec(t)
+	root := t.TempDir()
+	sb, env := gitSandbox(t, root)
+	defer closeSandbox(t, sb)
+	victim := exec.CommandContext(t.Context(), "/bin/sleep", "60")
+	if err := victim.Start(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = victim.Process.Kill() //nolint:errcheck // the sleeper may already be gone
+		_ = victim.Wait()         //nolint:errcheck // reaped for cleanup only
+	})
+	pid := strconv.Itoa(victim.Process.Pid)
+	requireDeniedWithErrno(t, sb, env, root, `kill -TERM `+pid)
+	if err := victim.Process.Signal(syscall.Signal(0)); err != nil {
+		t.Errorf("the host process did not survive the sandboxed kill: %v", err)
+	}
+	res := runWrapped(t, sb, env, root, `sleep 30 & c=$!; kill $c; wait $c; echo "child=$?"`)
+	if got := strings.TrimSpace(res.Stdout + res.Stderr); !strings.Contains(got, "child=143") {
+		t.Errorf("killing its own child = %q, want child=143", got)
+	}
+}
+
+// TestSandboxExecDeniesADanglingGitdirPointer proves macOS needs no refusal
+// for a `.git` file whose git directory does not exist yet: the profile denies
+// creating it, hooks included, by path.
+func TestSandboxExecDeniesADanglingGitdirPointer(t *testing.T) {
+	requireSandboxExec(t)
+	root := t.TempDir()
+	writeSandboxFile(t, filepath.Join(root, ".git"), "gitdir: meta\n")
+	sb, env := gitSandbox(t, root)
+	defer closeSandbox(t, sb)
+	requireDeniedWithErrno(t, sb, env, root, `mkdir -p meta/hooks`)
 }

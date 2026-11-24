@@ -34,7 +34,9 @@ In scope (highest priority first):
   under `bubblewrap` on Linux; under `sandbox-exec` on macOS, the network and
   Mach service denial (default-deny with one lookup-only allow, so no
   keychain, preference, pasteboard, LaunchServices, AppleEvents, or launchd
-  channel acts for the command), the denial of every write outside the
+  channel acts for the command), the denial of the `lsopen`,
+  `appleevent-send`, `job-creation`, `distributed-notification-post`, and
+  cross-process `signal` operations, the denial of every write outside the
   reviewed root and the per-run private `TMPDIR`, and the read denial of the
   credential table and the shared host temp roots; the credential-path hiding
   on both; and the `sandbox-unavailable` refusal that never degrades to an
@@ -56,7 +58,8 @@ In scope (highest priority first):
   the boundary: writes to `<root>/.git`, the git directory a `.git` file
   names, and a linked worktree's common directory are denied on both
   platforms; on macOS so is creating any `.git` path below the root, and on
-  Linux a root with no `.git` (or a symlinked one) refuses
+  Linux a root whose repository cannot be pinned read-only (no `.git`, a
+  symlinked `.git`, or a git pointer that does not resolve) refuses
   `sandbox-unavailable`. A sandboxed command that plants a hook or a
   `.git/config` key for the root's repository, or (on macOS) any nested
   `.git`, is a vulnerability. Out of scope: the rest of the working tree is

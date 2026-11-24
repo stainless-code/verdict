@@ -4909,6 +4909,8 @@ re-allows only what the command needs:
 ```text
 (version 1)(allow default)(deny network*)
 (deny mach-lookup)(allow mach-lookup (global-name "com.apple.system.opendirectoryd.libinfo"))
+(deny lsopen)(deny appleevent-send)(deny job-creation)(deny distributed-notification-post)
+(deny signal)(allow signal (target same-sandbox))
 (deny file-write* (subpath "/"))
 (deny file-read* file-write* (subpath "<each shared host temp root>"))
 (allow file-read* file-write* (subpath "<private TMPDIR>") (subpath "<reviewed root>"))
@@ -4927,9 +4929,10 @@ re-allows only what the command needs:
   `~/Library/Keychains` is in the credential table besides), `cfprefsd`
   (`defaults write` persists nothing), the pasteboard server (`pbcopy` and
   `pbpaste` fail, so the operator's clipboard can be neither read nor
-  overwritten), LaunchServices (`open` cannot start an app), AppleEvents
-  (`osascript` to another app fails at once instead of waiting on an
-  Automation prompt), and launchd (`launchctl submit` and `bootstrap` fail).
+  overwritten), LaunchServices (`open` and `osascript … launch` start no
+  app), AppleEvents (`osascript` to another app fails at once instead of
+  waiting on an Automation prompt), and launchd (`launchctl submit` and
+  `bootstrap` load no job).
   The single allow is `com.apple.system.opendirectoryd.libinfo`, the
   lookup-only endpoint behind `getpwuid`/`getgrgid`: without it `whoami`
   prints the uid and Go's `os/user.Current` fails, which test suites call.
@@ -4939,6 +4942,19 @@ re-allows only what the command needs:
   each works with nothing else. `cc` (through `xcrun`) prints two
   `xcodebuild` warnings about FSEvents and `DARWIN_USER_CACHE_DIR` on stderr
   and still compiles.
+- **No other channel `(allow default)` would leave open.** The profile also
+  denies the operations themselves: `lsopen` (LaunchServices; on its own it
+  stops `open` and `osascript … launch`), `appleevent-send`, `job-creation`
+  (launchd job submission, which launchd also refuses from any sandboxed
+  caller), and `distributed-notification-post`. Behind the Mach denial these
+  are a second layer. `signal` is denied for every process the command did
+  not start — Seatbelt has no PID namespace, so without it the command could
+  kill your editor or shell — while its own children stay signalable.
+  `user-preference-write` is not listed because denying it does not stop
+  `cfprefsd` from writing for the command; the Mach denial does. Reading
+  another process's environment needs no rule here: macOS 15 returns no
+  environment through `kern.procargs2` to a same-uid caller, and `ps` (setuid)
+  cannot run inside `sandbox-exec` at all.
 - **No writes outside the run.** Every write is denied except under the
   reviewed root (as written and as its `realpath`), the private `TMPDIR`,
   and `/dev/null`, `/dev/tty`, and `/dev/fd/*` (which `/dev/stdout` and
@@ -4993,11 +5009,18 @@ both mechanisms deny writes there:
   root — under the writable root bind, that is a write to your tree. With no
   `<root>/.git` there is no clean read-only shape, so the command could
   create `.git/hooks` or `.git/config` that git runs later; `--sandbox` on
-  Linux refuses `sandbox-unavailable` instead (verify from the top of a git
-  checkout). A symlinked `.git` refuses for the same reason: only the link's
-  target could be bound read-only, and the link stays replaceable. macOS
-  needs neither refusal, because the rule below covers paths that do not
-  exist yet.
+  Linux refuses `sandbox-unavailable` instead. That covers a subdirectory of
+  a checkout, an export or a tarball, and a bare clone alike: verify from the
+  top of a working checkout (group mode needs one anyway). The same holds for
+  every shape bwrap cannot pin: a symlinked `.git` (only the link's target
+  could be bound, and the link stays replaceable), a `.git` file whose
+  `gitdir:` line is missing or names a directory that does not exist, a
+  commondir that does not resolve, a git directory that is the root itself,
+  and a git directory reached through a symlink inside the root. Each refuses
+  with its own cause; none is skipped. An error inspecting `.git` other than
+  "does not exist" is reported as itself. macOS needs none of these refusals,
+  because its rules match by path — a git directory that does not exist yet is
+  denied under its resolved spelling — and the rule below covers any `.git`.
 - **Any new `.git` (macOS).** Seatbelt also denies writes to every path
   component named `.git` below the root, in any letter case, whether or not it
   exists yet: the command cannot create a nested repository, a `.git` file, or
@@ -5011,7 +5034,7 @@ refresh the index skips the write). Anything that writes the repository —
 
 What differs and what remains. macOS denies every `.git` below the root,
 existing or not. Linux protects exactly the root's own repository (and
-refuses a root without one, or with a symlinked one): a command can still
+refuses a root whose repository it cannot pin): a command can still
 create a **new** nested `.git` in a subdirectory, or rewrite a nested
 repository's existing `.git` file, because `bwrap` can make only existing
 paths read-only and a mount point for a missing path would itself be a write
@@ -5063,13 +5086,12 @@ Before anything executes it probes the same flags with a no-op; when the
 host is neither Linux nor macOS, `bwrap` or `sandbox-exec` is missing, the
 user-namespace restriction is on, (on Linux or macOS) the child's `HOME` is
 unset or not an absolute path, the reviewed root sits inside a credential
-path, or (on Linux) the root has no `.git` or a symlinked one — `bwrap`
-could protect `<root>/.git` only by creating a mount point in your tree, or
-only the link's target while the link stays replaceable — `verify` refuses `sandbox-unavailable` naming the cause and
-runs nothing; a
-runner that cannot spawn names the tool its mechanism needs (`bwrap` with the
-`--sandbox-network-only` alternative, `unshare`, or `/usr/bin/sandbox-exec`). It
-never silently falls back to an unsandboxed command. On macOS the probe is a
+path, or (on Linux) the root's git shape cannot be pinned read-only (no
+`.git`, a symlinked `.git`, or a git pointer that does not resolve), `verify`
+refuses `sandbox-unavailable`, names the cause, and runs nothing. A runner
+that cannot spawn names the tool its mechanism needs (`bwrap` with the
+`--sandbox-network-only` alternative, `unshare`, or `/usr/bin/sandbox-exec`).
+It never silently falls back to an unsandboxed command. On macOS the probe is a
 smoke script (`bash -c` with `mktemp` inside the private `TMPDIR` and a read
 of the working directory), so a profile that compiles but breaks `bash` is a
 refusal, not a broken run.
