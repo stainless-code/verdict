@@ -3,6 +3,8 @@ package lsp
 import (
 	"context"
 	"io"
+	"maps"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -193,25 +195,49 @@ func writeSaveBurst(w io.Writer, uri string, cancel func()) {
 // TestRekeyMergeReleasesText pins item 4: when a root change makes two open
 // documents name one file, the merged one's tracked text is released (the
 // session total stays exact), every spelling still maps to the survivor,
-// and one line says so.
+// and one line says so. The two spellings come from a real temp path (the
+// host OS's own URI and its localhost twin), so the case holds on Windows
+// too, where a drive-less file URI names nothing.
 func TestRekeyMergeReleasesText(t *testing.T) {
 	t.Parallel()
-	s := New(newConfig())
-	a := &document{uri: "file:///w/a.go", key: "k1", uris: map[string]bool{"file:///w/a.go": true}}
-	b := &document{uri: "file:///w/./a.go", key: "k2", uris: map[string]bool{"file:///w/./a.go": true}}
+	plain := fileURI(t.TempDir(), "a.go")
+	local := "file://localhost" + strings.TrimPrefix(plain, "file://")
+	checkRekeyMerge(t, New(newConfig()), plain, local, "", "")
+}
+
+// TestRekeyMergeWindowsSpellings pins the same merge on Windows-shaped
+// spellings on every OS: the 8.3 short name and the lower-cased long name of
+// one file under a short-named root collapse into the root's key.
+func TestRekeyMergeWindowsSpellings(t *testing.T) {
+	t.Parallel()
+	s, _ := windowsServer(t)
+	short := "file:///C:/Users/RUNNER~1/Temp/repo/a.go"
+	long := "file:///c:/users/runneradmin/temp/repo/a.go"
+	checkRekeyMerge(t, s, short, long, s.physicalOfURI(short), s.physicalOfURI(long))
+	if _, ok := s.docs["c:/users/runner~1/temp/repo/a.go"]; !ok {
+		t.Fatalf("the merged document is not under the root's key: %v", slices.Collect(maps.Keys(s.docs)))
+	}
+}
+
+// checkRekeyMerge files two documents for one file under different keys,
+// re-keys, and checks they merged with their text released exactly once.
+func checkRekeyMerge(t *testing.T, s *Server, uriA, uriB, physA, physB string) {
+	t.Helper()
+	a := &document{uri: uriA, physical: physA, key: "k1", uris: map[string]bool{uriA: true}}
+	b := &document{uri: uriB, physical: physB, key: "k2", uris: map[string]bool{uriB: true}}
 	text := "package a\n"
 	s.setText(a, &text)
 	s.setText(b, &text)
 	s.docs = map[string]*document{"k1": a, "k2": b}
-	s.uriKeys = map[string]string{a.uri: "k1", b.uri: "k2"}
+	s.uriKeys = map[string]string{uriA: "k1", uriB: "k2"}
 	s.stateMu.Lock()
 	s.rekeyDocs()
 	s.stateMu.Unlock()
 	if len(s.docs) != 1 || s.docBytes != len(text) {
 		t.Fatalf("after the merge: %d documents, %d tracked bytes; want 1 and %d", len(s.docs), s.docBytes, len(text))
 	}
-	survivor := s.docs[s.uriKeys[a.uri]]
-	if survivor == nil || s.uriKeys[a.uri] != s.uriKeys[b.uri] || !survivor.uris[a.uri] || !survivor.uris[b.uri] {
+	survivor := s.docs[s.uriKeys[uriA]]
+	if survivor == nil || s.uriKeys[uriA] != s.uriKeys[uriB] || !survivor.uris[uriA] || !survivor.uris[uriB] {
 		t.Fatalf("spellings after the merge: uriKeys %v, survivor %+v", s.uriKeys, survivor)
 	}
 }
