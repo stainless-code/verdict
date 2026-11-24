@@ -3639,7 +3639,12 @@ until consented; without it the ceiling is enforced against known spend only
 and unknown cost is warned, never summed as zero. `report --cost` shows the
 month-to-date block (`mtd` in JSON, `mtd:` in human) with the ceiling, remaining,
 and priced/unknown counts when a cap is configured, and omits it entirely when
-no cap is set.
+no cap is set. Shipped `verdict run` carries no built-in pricing table — the
+pending run's projection is estimated from comparable past runs' recorded costs,
+so a repo with no priced history has an unknown pending projection. The ceiling
+then enforces against month-to-date known spend alone and warns about the unknown
+pending leg, unless `require_known_estimate` refuses the run typed
+`budget-unknown` until consented.
 
 Lens evidence and group costs are read by two consumers with different
 strictness, and both are visible in `report --cost` and the typed refusals.

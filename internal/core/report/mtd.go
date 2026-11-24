@@ -61,16 +61,27 @@ func buildMTD(st *state, agg spend.MTD) *core.ReportMTD {
 	if sv.MonthlyPersonalCap != nil {
 		mtd.MonthlyPersonalCap = sv.MonthlyPersonalCap
 	}
-	mtd.RemainingUSD = remainingUSD(mtd.MonthlyCapUSD, agg.KnownUSD)
+	mtd.RemainingUSD = remainingUSD(mtd.MonthlyCapUSD, agg)
 	return mtd
 }
 
-func remainingUSD(ceiling *float64, known string) *float64 {
-	if ceiling == nil || known == "" {
+// remainingUSD returns ceiling minus known spend, clamped at zero. No
+// receipts at all (empty known with zero unknown) spent nothing, so the
+// full ceiling remains; unpriced receipts with no known spend leave the
+// remainder unknown, never the full ceiling.
+func remainingUSD(ceiling *float64, agg spend.MTD) *float64 {
+	if ceiling == nil {
 		return nil
 	}
+	if agg.KnownUSD == "" {
+		if agg.UnknownCount > 0 {
+			return nil
+		}
+		rem := *ceiling
+		return &rem
+	}
 	capRat, okCap := new(big.Rat).SetString(strconv.FormatFloat(*ceiling, 'f', -1, mtdFloatBits))
-	knownRat, okKnown := new(big.Rat).SetString(known)
+	knownRat, okKnown := new(big.Rat).SetString(agg.KnownUSD)
 	if !okCap || !okKnown {
 		return nil
 	}

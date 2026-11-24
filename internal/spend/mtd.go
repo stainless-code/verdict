@@ -98,10 +98,11 @@ func aggregateBundle(bundleDir, month string, sum *big.Rat, known, unknown *int)
 // plus the chunk cost files — mirroring the report rollup's selection:
 // manifest chunk names plus the chunk-*.cost.json glob, deduplicated so
 // a chunk named by both is counted once. It reports whether any recorded
-// record is month-identified (a parseable timestamp in any month): an
-// unbucketable record names no month's spend, so it never suppresses
-// the ledger fallback, and a bundle whose recorded cost is all in other
-// months still counts this month's ledger rows.
+// record carries a parseable timestamp in any month: one such record
+// marks the bundle recorded-cost authoritative and suppresses its
+// budget.json ledger rows, even when every recorded timestamp falls
+// outside the current month. Records without a parseable timestamp are
+// unbucketable, name no month's spend, and never suppress the ledger.
 func aggregateRecorded(bundleDir, month string, sum *big.Rat, known, unknown *int) bool {
 	bucketable := false
 	for _, name := range recordedCostNames(bundleDir) {

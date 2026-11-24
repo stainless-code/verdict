@@ -156,6 +156,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if ref := loadGatePolicy(ctx, st); ref != nil {
 		return nil, ref
 	}
+	attachCostMTD(st)
 
 	evaluateCompliance(st)
 	st.specFailures = specFailuresWithExecution(st)
@@ -413,6 +414,17 @@ func loadStateCost(st *state) {
 	}
 	st.cost = res.Cost
 	st.receipts = res.Receipts
+}
+
+// attachCostMTD attaches the month-to-date block for --cost runs. The
+// ceiling is captured run policy: loadGatePolicy verifies the bundle and
+// fills st.policy, which attachMTD reads, so Run calls this only after
+// loadGatePolicy. A bundle without a verified run keeps st.policy nil and
+// the block stays absent, as before.
+func attachCostMTD(st *state) {
+	if !st.flags.Cost {
+		return
+	}
 	attachMTD(st)
 }
 
