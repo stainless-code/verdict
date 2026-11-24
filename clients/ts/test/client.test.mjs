@@ -1164,7 +1164,7 @@ describe("integration: real binary", () => {
         ".gitignore:create",
       ]);
       const cfg = readFileSync(join(dir, ".verdict", "config.json"), "utf8");
-      assert.ok(cfg.includes("2.00"));
+      assert.ok(cfg.includes("0.10"));
     },
   );
 

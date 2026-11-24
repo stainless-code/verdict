@@ -5,7 +5,7 @@ init: preset chill (chill: unpinned/10/0.7, standard: 1 member/5/0.5, strict: le
 {
   "schema_version": "1",
   "defaults": {
-    "budget_usd": 2.00,
+    "budget_usd": 0.10,
     "kb_policy": {
       "min_judged": 10,
       "max_fp_rate": 0.7

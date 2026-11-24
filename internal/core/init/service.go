@@ -225,10 +225,13 @@ type presetVals struct {
 	panel  string
 }
 
+// presets pin a panel roster `verdict panel` accepts (a synthesizer plus at
+// least one verifier) and a budget guard that grows with strictness: a deeper
+// panel runs more models per review, so a tighter guard would refuse it.
 var presets = map[string]presetVals{
-	"chill":    {budget: "2.00", kbMin: "10", kbRate: "0.7", panel: ""},
-	"standard": {budget: "0.50", kbMin: "5", kbRate: "0.5", panel: "main"},
-	"strict":   {budget: "0.10", kbMin: "3", kbRate: "0.3", panel: "lead\nlens-1\nlens-2"},
+	"chill":    {budget: "0.10", kbMin: "10", kbRate: "0.7", panel: ""},
+	"standard": {budget: "0.50", kbMin: "5", kbRate: "0.5", panel: "lead\nlens-1"},
+	"strict":   {budget: "2.00", kbMin: "3", kbRate: "0.3", panel: "lead\nlens-1\nlens-2"},
 }
 
 // PresetValues lists every --preset value in the order the hints print them,
