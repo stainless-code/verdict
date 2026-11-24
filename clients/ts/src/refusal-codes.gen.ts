@@ -186,6 +186,7 @@ export type RefusalCode =
   | "partial-clone"
   | "post-failed"
   | "post-secret-shaped"
+  | "post-timeout"
   | "pr-not-open"
   | "pr-read-failed"
   | "privacy-unavailable"

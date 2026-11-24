@@ -2956,8 +2956,13 @@ refuses `409 stale-preview` when `findings.json`, `PR.json`/`source.json`,
 `review.json`, or `full.diff` changed
 since the preview, all before `core/post` runs. That re-check holds the
 `findings.json` `storelock` only: a change to another bundle file between the
-re-check and the post is narrowed by the fingerprint but not excluded. A
-refusal `core/post`
+re-check and the post is narrowed by the fingerprint but not excluded. The
+submit keeps running if the tab closes, but is bounded to five minutes
+(lock wait included): a host call that outlives it is stopped and refuses
+`post-timeout` at `200`, releasing the lock. The host may or may not have
+recorded the review, so check the pull request before previewing again. The
+tool version in the footer and payload resolves from the install root, as in
+`verdict post`, never from the server's working directory. A refusal `core/post`
 raises stays the usual `200` envelope; the preview store is the only Tier C
 state and dies with the process. The Detail view renders the bundle-level
 `Submit Review` button only when `allow_post` is advertised and the bundle is a

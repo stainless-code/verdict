@@ -53,6 +53,8 @@ var hintRules = []HintRule{
 	{codes: []string{"drain-incomplete"}, hint: "try: re-run the same drain --post command; the ledger skips replies already posted"},
 	{codes: []string{"prompt-dump-failed"}, hint: "try: reinstall verdict; an embedded Procedure file is missing"},
 	{codes: []string{"post-failed"}, hint: "try: narrow anchor drift or body size (see above), then re-run"},
+	{codes: []string{"post-timeout"}, hint: "try: check the pull request for the review, " +
+		"then re-run the preview and submit again only if it is absent"},
 	{codes: []string{"post-secret-shaped"}, hint: "try: remove the value from the draft and re-run; " +
 		"post can pass --allow-secret-values to publish it anyway"},
 	{codes: []string{"fix-patch-secret"}, hint: "try: remove the value from the worktree (rotate it " +

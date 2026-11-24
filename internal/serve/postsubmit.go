@@ -43,6 +43,18 @@ const (
 	approveFalse = "false"
 	// reasonStalePreview is the transport reason for a spent preview.
 	reasonStalePreview = "stale-preview"
+
+	// postSubmitTimeout bounds one confirmed host submit, lock wait included.
+	// The submit detaches from the browser connection (a started host write
+	// is not abandoned because the tab closed), so without a bound a stalled
+	// `gh` or `curl` would hold the bundle storelock, and answer every triage
+	// and job on that bundle `store-busy`, until the process exited. The repo
+	// has no host-call budget to reuse (`run` and `demo` budget agent runs, at
+	// 300 s), so this takes five minutes: far past a healthy review POST,
+	// short of a wedged host.
+	postSubmitTimeout = 5 * time.Minute
+	// codePostTimeout is the typed refusal a timed-out submit answers.
+	codePostTimeout = "post-timeout"
 )
 
 // PostSubmitRunner executes one real post. The production implementation
@@ -267,8 +279,11 @@ func (s *Server) handlePostSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	// A host write already under way is not abandoned because the tab closed:
 	// the nonce was spent above, and the CLI post this mirrors is not
-	// cancellable from a browser either.
-	s.runConfirmedPost(context.WithoutCancel(r.Context()), w, &body, rootPath, bundleDir, entry)
+	// cancellable from a browser either. It is still bounded, so a stalled
+	// host cannot hold the bundle lock forever.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), s.postTimeout())
+	defer cancel()
+	s.runConfirmedPost(ctx, w, &body, rootPath, bundleDir, entry)
 }
 
 // validateSubmitBody checks confirmation and preview presence; the problem
@@ -345,6 +360,29 @@ func (s *Server) runConfirmedPost(
 		resp.Warnings, resp.Data.Wire(), nil))
 }
 
+// postTimeout is the configured submit bound, [postSubmitTimeout] by default.
+func (s *Server) postTimeout() time.Duration {
+	if s.cfg.PostTimeout > 0 {
+		return s.cfg.PostTimeout
+	}
+	return postSubmitTimeout
+}
+
+// postReadRequest builds the post read request a preview and a confirmed
+// submit share, with the install root `verdict post` passes, so the tool
+// version in the footer and payload resolves from the install and never from
+// the server's working directory.
+func (s *Server) postReadRequest(bundleDir, bundle, repoRoot string) core.ReadRequest {
+	installRoot := s.cfg.InstallRoot
+	return core.ReadRequest{
+		Runtime:  s.runtime(),
+		Repo:     readcommon.BundleProject(bundleDir),
+		Pr:       bundle,
+		Root:     &installRoot,
+		RepoRoot: repoRoot,
+	}
+}
+
 // acquireBundleLock takes the bundle findings-store lock for one submit.
 func (s *Server) acquireBundleLock(ctx context.Context, storePath string) (func(), error) {
 	lockWait := s.cfg.LockWait
@@ -365,18 +403,20 @@ func (s *Server) invokePostSubmit(
 	ctx context.Context, body *postSubmitBody, rootPath, bundleDir string,
 ) (*postcore.Response, *core.RefusalError) {
 	runner := s.runnerPostSubmit()
-	read := core.ReadRequest{
-		Runtime:  s.runtime(),
-		Repo:     readcommon.BundleProject(bundleDir),
-		Pr:       body.Bundle,
-		RepoRoot: rootPath,
-	}
+	read := s.postReadRequest(bundleDir, body.Bundle, rootPath)
 	req := &postcore.Request{
 		ReadRequest: read,
 		Flags:       postcore.Flags{Approve: approveFalse, ReviewFile: bundleDir + "/review.json", DryRun: false},
 		Effective:   s.cfg.Effective,
 	}
-	return runner(ctx, req)
+	resp, ref := runner(ctx, req)
+	if ref != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		// The bound, not the host's own failure, ended the call.
+		ref = &core.RefusalError{Code: codePostTimeout, Message: fmt.Sprintf(
+			"the host post did not finish within %s and was stopped; the host may or may not have recorded the review",
+			s.postTimeout()), Warnings: ref.Warnings}
+	}
+	return resp, ref
 }
 
 // runnerPostSubmit returns the injected submit runner.

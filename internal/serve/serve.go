@@ -115,8 +115,13 @@ type Config struct { //nolint:govet // start snapshot; field order mirrors the f
 	// Effective is the resolved render configuration (footer, logo,
 	// attribution, fix prompt, diagrams). It travels with the preview and
 	// the confirmed post, so what the operator confirmed is what posts.
-	Effective         core.Effective
-	Root              string
+	Effective core.Effective
+	Root      string
+	// InstallRoot is the verdict install root the tool version resolves
+	// from (the CLI's `package.json` beside the binary), threaded into every
+	// served post exactly as `verdict post` threads it, so the footer and
+	// payload version never come from the process working directory.
+	InstallRoot       string
 	Host              string
 	Port              int
 	Token             string
@@ -135,6 +140,9 @@ type Config struct { //nolint:govet // start snapshot; field order mirrors the f
 	PostPreviewRunner PostPreviewRunner
 	PostSubmitRunner  PostSubmitRunner
 	LockWait          time.Duration
+	// PostTimeout bounds one confirmed host submit; zero means
+	// [postSubmitTimeout].
+	PostTimeout time.Duration
 }
 
 // Server is one bound (or about-to-bind) listener. Its route table is the
@@ -434,6 +442,9 @@ type Request struct {
 	// verb would.
 	Env     map[string]string
 	Version string
+	// InstallRoot is the CLI's install root, the same value `verdict post`
+	// resolves its tool version from.
+	InstallRoot string
 }
 
 // serveOptions contains the resolved server, discovery, and watch flags.
@@ -555,7 +566,7 @@ func start(
 		Check: opts.check, MaxBundles: opts.maxBundles, Interval: opts.interval,
 		Sweep: opts.sweep, NoWatch: opts.noWatch, Version: req.Version, Now: r.Now,
 		Layer: opts.layer, Interactive: opts.interactive, AllowPost: opts.allowPost,
-		Env: req.Env, Effective: r.Effective,
+		Env: req.Env, Effective: r.Effective, InstallRoot: req.InstallRoot,
 	})
 	if err != nil {
 		if errors.Is(err, errAllowPostNeedsInteractive) {

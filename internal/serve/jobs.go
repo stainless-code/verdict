@@ -414,12 +414,7 @@ func (m *jobManager) runVerify(ctx context.Context, current *job) {
 // fingerprint, published beside the preview wire.
 func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 	runner := m.runnerPostPreview()
-	read := core.ReadRequest{
-		Runtime:  m.server.runtime(),
-		Repo:     readcommon.BundleProject(current.bundleDir),
-		Pr:       current.bundle,
-		RepoRoot: current.rootPath,
-	}
+	read := m.server.postReadRequest(current.bundleDir, current.bundle, current.rootPath)
 	req := &postcore.Request{
 		ReadRequest: read,
 		Flags:       postcore.Flags{Approve: approveFalse, ReviewFile: current.bundleDir + "/review.json", DryRun: true},

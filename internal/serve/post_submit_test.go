@@ -411,9 +411,12 @@ type stubPostCommander struct { //nolint:govet // host stub grouping reads as th
 	comments []map[string]any
 	head     string
 	posted   bool
+	// stall, when non-nil, makes the reviews POST announce itself on the
+	// channel and then block until its context ends, like a wedged gh/curl.
+	stall chan struct{}
 }
 
-func (s *stubPostCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) { //nolint:gocognit,revive,cyclop // argv switch is the host seam's contract
+func (s *stubPostCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) { //nolint:gocognit,revive,cyclop // argv switch is the host seam's contract
 	s.t.Helper()
 	s.mu.Lock()
 	s.calls = append(s.calls, append([]string{}, cmd.Argv...))
@@ -427,6 +430,11 @@ func (s *stubPostCommander) Run(_ context.Context, cmd *core.Command) (core.Resu
 	case strings.Contains(joined, "reviewThreads"):
 		return core.Result{Stdout: `{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}`}, nil
 	case strings.Contains(joined, "--method POST") && strings.Contains(joined, "reviews"):
+		if s.stall != nil {
+			close(s.stall)
+			<-ctx.Done()
+			return core.Result{}, ctx.Err()
+		}
 		var raw []byte
 		if cmd.Stdin != nil {
 			var err error
@@ -589,9 +597,10 @@ func TestPostSubmitRealPostcoreParity(t *testing.T) { //nolint:gocognit,revive,c
 	seedPostBundle(t, root)
 	cmdr := &stubPostCommander{t: t, head: postHeadA}
 	preview, submit := realPostRunners(cmdr)
+	install := installRootAt(t, installVersion)
 	server, err := New(&Config{
 		Port: testPort, Token: testToken, Now: fixedNow, Layer: testLayer(root, nil),
-		Interactive: true, AllowPost: true,
+		Interactive: true, AllowPost: true, InstallRoot: install,
 		VerifyRunner: okVerifyRunner(), PostPreviewRunner: preview, PostSubmitRunner: submit,
 	})
 	if err != nil {
@@ -632,7 +641,10 @@ func TestPostSubmitRealPostcoreParity(t *testing.T) { //nolint:gocognit,revive,c
 		t.Errorf("posted body has no verdict footer (%d bytes): the render configuration was zero",
 			len(servedBodies[0]))
 	}
-	if cliBody := cliPostedBody(t); cliBody != servedBodies[0] {
+	if !strings.Contains(servedBodies[0], "**Verdict "+installVersion+"**") {
+		t.Errorf("posted footer does not carry the install version %s:\n%s", installVersion, servedBodies[0])
+	}
+	if cliBody := cliPostedBody(t, install); cliBody != servedBodies[0] {
 		t.Errorf("served post body (%d bytes) differs from the CLI render (%d bytes)\nserved:\n%s\nCLI:\n%s",
 			len(servedBodies[0]), len(cliBody), servedBodies[0], cliBody)
 	}
@@ -701,7 +713,7 @@ func decodeBodyJSON(t *testing.T, raw []byte, out any) error {
 // direct core/post run carrying the resolved render configuration — and
 // returns the body it posts. It is the reference the served post must match
 // byte for byte.
-func cliPostedBody(t *testing.T) string {
+func cliPostedBody(t *testing.T, installRoot string) string {
 	t.Helper()
 	root := mustAbs(t, writeFixture(t, fixtureFiles()))
 	seedPostBundle(t, root)
@@ -713,7 +725,7 @@ func cliPostedBody(t *testing.T) string {
 		},
 		Repo:     "acme/app",
 		Pr:       "7",
-		Root:     &root,
+		Root:     &installRoot,
 		RepoRoot: root,
 	}
 	req := &postcore.Request{
@@ -733,4 +745,125 @@ func cliPostedBody(t *testing.T) string {
 		t.Fatalf("CLI post sent %d bodies, want exactly 1", len(bodies))
 	}
 	return bodies[0]
+}
+
+// installVersion is the version the install-root fixture declares.
+const installVersion = "4.5.6"
+
+// decoyVersion is what a package.json in the process working directory
+// declares; a served post must never stamp it.
+const decoyVersion = "9.9.9-decoy"
+
+// installRootAt writes a directory holding a package.json of the given
+// version and returns it: the stand-in for the verdict install root.
+func installRootAt(t *testing.T, version string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name":"x","version":"`+version+`"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// realPostServer binds an allow-post server over one seeded bundle 7 with the
+// real postcore wired to cmdr, and returns it with its root id.
+func realPostServer(t *testing.T, cmdr *stubPostCommander, cfg *Config) (ts *httptest.Server, server *Server, rootID, root string) {
+	t.Helper()
+	root = mustAbs(t, writeFixture(t, fixtureFiles()))
+	seedPostBundle(t, root)
+	preview, submit := realPostRunners(cmdr)
+	cfg.Port, cfg.Token, cfg.Now, cfg.Layer = testPort, testToken, fixedNow, testLayer(root, nil)
+	cfg.Interactive, cfg.AllowPost = true, true
+	cfg.VerifyRunner, cfg.PostPreviewRunner, cfg.PostSubmitRunner = okVerifyRunner(), preview, submit
+	server, err := New(cfg)
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	ts = httptest.NewServer(server.Handler())
+	ts.Client().CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	t.Cleanup(ts.Close)
+	t.Cleanup(func() { server.jobs.stop() })
+	return ts, server, rootIDOf(t, ts, bearer()), root
+}
+
+// TestPostSubmitToolVersionIgnoresWorkingDirectory pins that a served post
+// resolves the tool version from the install root exactly as the CLI does: a
+// server started in a directory holding a foreign package.json must stamp the
+// install's version into both the preview and the posted comment, never the
+// decoy's. It changes the process working directory, so it cannot run parallel.
+func TestPostSubmitToolVersionIgnoresWorkingDirectory(t *testing.T) { //nolint:revive // one flow asserts the preview and the posted body
+	decoy := t.TempDir()
+	if err := os.WriteFile(filepath.Join(decoy, "package.json"), []byte(`{"version":"`+decoyVersion+`"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(decoy)
+	install := installRootAt(t, installVersion)
+	cmdr := &stubPostCommander{t: t, head: postHeadA}
+	ts, server, rootID, _ := realPostServer(t, cmdr, &Config{InstallRoot: install})
+
+	digest, nonce, snap := mintPreviewSnapshot(t, ts, server, rootID, "7")
+	previewBody, err := json.Marshal(asMap(t, snap["result"])["body"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(previewBody), "Verdict "+installVersion) || strings.Contains(string(previewBody), decoyVersion) {
+		t.Errorf("preview body does not stamp install version %s (decoy %s): %s", installVersion, decoyVersion, previewBody)
+	}
+	got := post(t, ts, postSubmitPath, submitBody(rootID, "7", digest, nonce, new(true)), writeHeaders(server))
+	if got.status != http.StatusOK || !strings.Contains(string(got.body), `"error": null`) {
+		t.Fatalf("submit = %d %s, want 200 success envelope", got.status, got.body)
+	}
+	bodies := cmdr.postedBodies()
+	if len(bodies) != 1 {
+		t.Fatalf("host POSTs = %d, want exactly 1", len(bodies))
+	}
+	if strings.Contains(bodies[0], decoyVersion) {
+		t.Errorf("posted body stamps the cwd package.json version %s:\n%s", decoyVersion, bodies[0])
+	}
+	if want := cliPostedBody(t, install); bodies[0] != want {
+		t.Errorf("served body differs from the CLI render\nserved:\n%s\nCLI:\n%s", bodies[0], want)
+	}
+}
+
+// TestPostSubmitTimeoutRefusesAndReleasesLock pins that a host call that
+// outlives the submit bound is stopped and answered with the typed
+// post-timeout refusal, and that the bundle storelock is released so a triage
+// on the same bundle succeeds afterwards. The bound is injected: the shipped
+// five minutes never decides the test.
+func TestPostSubmitTimeoutRefusesAndReleasesLock(t *testing.T) { //nolint:revive // one flow asserts the refusal, the host state, and the lock
+	t.Parallel()
+	cmdr := &stubPostCommander{t: t, head: postHeadA, stall: make(chan struct{})}
+	ts, server, rootID, root := realPostServer(t, cmdr, &Config{PostTimeout: 500 * time.Millisecond})
+	digest, nonce, _ := mintPreviewSnapshot(t, ts, server, rootID, "7")
+
+	got := post(t, ts, postSubmitPath, submitBody(rootID, "7", digest, nonce, new(true)), writeHeaders(server))
+	select {
+	case <-cmdr.stall:
+	default:
+		t.Fatal("the stalled host POST was never reached: the refusal came from somewhere else")
+	}
+	if got.status != http.StatusOK {
+		t.Fatalf("submit = %d %s, want 200 refusal envelope", got.status, got.body)
+	}
+	errObj := asMap(t, decode(t, got.body)["error"])
+	if errObj["code"] != codePostTimeout {
+		t.Fatalf("submit error = %v, want code %s", errObj, codePostTimeout)
+	}
+	if !strings.Contains(asString(t, errObj["message"]), "try: check the pull request") {
+		t.Errorf("post-timeout message carries no hint: %v", errObj["message"])
+	}
+	if cmdr.postedFlag() {
+		t.Error("a timed-out submit must not report the host POST as completed")
+	}
+	// The lock is released: a triage on the same bundle takes it and writes.
+	store := filepath.Join(root, ".verdict", "state", "7", "findings.json")
+	if err := os.WriteFile(store, []byte("["+finding(sigCrit, "open", "critical", "walked")+"]"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	triage := `{"root":"` + rootID + `","bundle":"7","sig":"` + sigCrit +
+		`","status":"false-positive","rationale":"` + interactiveRationale + `"}`
+	res := post(t, ts, "/v1/triage", triage, writeHeaders(server))
+	if res.status != http.StatusOK || !strings.Contains(string(res.body), `"error": null`) {
+		t.Fatalf("triage after the timeout = %d %s, want success (the bundle lock leaked)", res.status, res.body)
+	}
 }

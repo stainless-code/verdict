@@ -1171,6 +1171,12 @@ Cause: a review draft carries a secret-shaped value — `review.json` for `post`
 
 Fix: remove the value from the draft and re-run. `post` can pass `--allow-secret-values` to publish it anyway; `drain --post` has no override, and `drain --post --dry-run` refuses the same way before any write.
 
+## `post-timeout`
+
+Cause: a confirmed `verdict serve --allow-post` submit did not finish within its five-minute bound, so the stalled host call was stopped and the bundle lock released. The host may or may not have recorded the review.
+
+Fix: check the pull request for the review. Re-run the preview and submit again only if it is absent.
+
 ## `pr-not-open`
 
 Cause: the PR is not open (the bundle is stale).
