@@ -4,11 +4,16 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
+	"encoding/binary"
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"hash"
+	"io"
+	"io/fs"
 	"net/http"
 	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -34,8 +39,6 @@ const (
 	maxPreviews = 64
 	// previewNonceBytes is the CSPRNG nonce size in bytes.
 	previewNonceBytes = 16
-	// previewNonceLen is the hex nonce length the fallback token slices.
-	previewNonceLen = 32
 	// approveFalse is the post approval default the submit sends.
 	approveFalse = "false"
 	// reasonStalePreview is the transport reason for a spent preview.
@@ -59,26 +62,31 @@ type previewEntry struct {
 
 // previewStore is the bounded, mutex-protected, TTL-expiring single-use
 // nonce store. The lock is held only to look up, validate, and consume one
-// nonce atomically.
+// nonce atomically. The clock and the CSPRNG source are fixed once, before
+// the store is shared.
 type previewStore struct {
 	entries map[string]*previewEntry
 	now     func() time.Time
+	random  func([]byte) (int, error)
 	ttl     time.Duration
 	mu      sync.Mutex
 }
 
-// newPreviewStore builds an empty store.
-func newPreviewStore() *previewStore {
-	return &previewStore{entries: map[string]*previewEntry{}}
+// nonceReader names the CSPRNG source; nil means crypto/rand.
+func (st *previewStore) nonceReader() func([]byte) (int, error) {
+	if st.random == nil {
+		return rand.Read
+	}
+	return st.random
 }
 
 // mint binds one digest and fingerprint to a fresh nonce and stores it.
-func (st *previewStore) mint(root, bundle, digest, fingerprint string) string {
-	nonce := mintPreviewNonce()
-	now := time.Now()
-	if st.now != nil {
-		now = st.now()
+func (st *previewStore) mint(root, bundle, digest, fingerprint string) (string, error) {
+	nonce, err := mintPreviewNonce(st.nonceReader())
+	if err != nil {
+		return "", err
 	}
+	now := st.clock()
 	ttl := st.ttl
 	if ttl <= 0 {
 		ttl = previewTTL
@@ -93,17 +101,23 @@ func (st *previewStore) mint(root, bundle, digest, fingerprint string) string {
 		root: root, bundle: bundle, digest: digest,
 		fingerprint: fingerprint, expiresAt: now.Add(ttl),
 	}
-	return nonce
+	return nonce, nil
+}
+
+// clock reads the store's injected clock. The field is written once, before
+// the store is shared, so reading it here needs no lock.
+func (st *previewStore) clock() time.Time {
+	if st.now == nil {
+		return time.Now()
+	}
+	return st.now()
 }
 
 // consume validates one nonce against root, bundle, and digest and deletes
 // it in the same critical section, so a nonce can never be spent twice even
 // when the follow-up staleness check refuses.
 func (st *previewStore) consume(nonce, root, bundle, digest string) (*previewEntry, bool) {
-	now := time.Now()
-	if st.now != nil {
-		now = st.now()
-	}
+	now := st.clock()
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	entry, ok := st.entries[nonce]
@@ -138,40 +152,82 @@ func (st *previewStore) dropOneLocked() {
 	}
 }
 
-// mintPreviewNonce mints one CSPRNG nonce as lowercase hex.
-func mintPreviewNonce() string {
+// mintPreviewNonce mints one CSPRNG nonce as lowercase hex. There is no
+// fallback: a nonce the server cannot generate is a preview it must refuse.
+func mintPreviewNonce(read func([]byte) (int, error)) (string, error) {
 	var b [previewNonceBytes]byte
-	if _, err := rand.Read(b[:]); err == nil {
-		return hex.EncodeToString(b[:])
+	if _, err := read(b[:]); err != nil {
+		return "", jq.Sealed("serve: mint preview nonce", err)
 	}
-	// Fallback to the capability token shape when the CSPRNG fails.
-	return newToken()[:previewNonceLen]
+	return hex.EncodeToString(b[:]), nil
+}
+
+// hashField frames one hashed field as an 8-byte big-endian length plus its
+// bytes, so no two field sequences hash the same input. Bare concatenation
+// lets content move between neighbors and keep the same digest.
+func hashField(dst hash.Hash, field []byte) {
+	var size [8]byte
+	binary.BigEndian.PutUint64(size[:], uint64(len(field)))
+	dst.Write(size[:])
+	dst.Write(field)
 }
 
 // bundleFingerprint hashes the bundle state the preview read: findings,
-// the PR or local source, and the review draft. Any triage or re-fetch
-// after the preview moves it, and the submit refuses as stale.
-func bundleFingerprint(bundleDir string) string {
+// the PR or local source, the review draft, and the diff. Any triage or
+// re-fetch after the preview moves it, and the submit refuses as stale. A
+// file that is absent is not part of the state; a file that exists and
+// cannot be read is an error, never a silently skipped input.
+func bundleFingerprint(bundleDir string) (string, error) {
 	sum := sha256.New()
-	for _, name := range []string{"findings.json", "PR.json", "source.json", "review.json", "full.diff"} {
-		raw, err := os.ReadFile(bundleDir + "/" + name)
-		if err != nil {
+	for _, name := range []string{"findings.json", "PR.json", "source.json", "review.json"} {
+		raw, err := os.ReadFile(filepath.Join(bundleDir, name))
+		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
-		_, _ = sum.Write([]byte(name))
-		_, _ = sum.Write(raw)
+		if err != nil {
+			return "", jq.Sealed("serve: read "+name, err)
+		}
+		hashField(sum, []byte(name))
+		hashField(sum, raw)
 	}
-	return hex.EncodeToString(sum.Sum(nil))
+	if err := hashDiff(sum, filepath.Join(bundleDir, "full.diff")); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(sum.Sum(nil)), nil
+}
+
+// hashDiff streams full.diff through an inner digest and frames that digest
+// into the fingerprint, so a large diff never lands in memory whole and no
+// content can impersonate a following field. An absent diff contributes
+// nothing; an unreadable one is an error.
+func hashDiff(dst hash.Hash, path string) error {
+	file, err := os.Open(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return jq.Sealed("serve: open full.diff", err)
+	}
+	defer func() { _ = file.Close() }()
+	content := sha256.New()
+	if _, err := io.Copy(content, file); err != nil {
+		return jq.Sealed("serve: read full.diff", err)
+	}
+	hashField(dst, []byte("full.diff"))
+	hashField(dst, content.Sum(nil))
+	return nil
 }
 
 // previewDigest hashes the canonical preview wire plus the bundle identity
 // and fingerprint, so the digest binds exactly what the operator confirmed.
+// Every field is length-framed: root "ab" + bundle "c" must not hash like
+// root "a" + bundle "bc".
 func previewDigest(root, bundle, fingerprint string, wire []byte) string {
 	sum := sha256.New()
-	_, _ = sum.Write([]byte(root))
-	_, _ = sum.Write([]byte(bundle))
-	_, _ = sum.Write([]byte(fingerprint))
-	_, _ = sum.Write(wire)
+	hashField(sum, []byte(root))
+	hashField(sum, []byte(bundle))
+	hashField(sum, []byte(fingerprint))
+	hashField(sum, wire)
 	return hex.EncodeToString(sum.Sum(nil))
 }
 
@@ -209,7 +265,10 @@ func (s *Server) handlePostSubmit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.runConfirmedPost(w, r, &body, rootPath, bundleDir, entry)
+	// A host write already under way is not abandoned because the tab closed:
+	// the nonce was spent above, and the CLI post this mirrors is not
+	// cancellable from a browser either.
+	s.runConfirmedPost(context.WithoutCancel(r.Context()), w, &body, rootPath, bundleDir, entry)
 }
 
 // validateSubmitBody checks confirmation and preview presence; the problem
@@ -237,9 +296,6 @@ func (s *Server) consumePreview(w http.ResponseWriter, body *postSubmitBody) (*p
 	}
 	// Consume the nonce first so a replay, a mismatched digest, or a stale
 	// bundle can never be retried with the same nonce.
-	if s.previews.now == nil {
-		s.previews.now = s.now
-	}
 	entry, ok := s.previews.consume(body.PreviewNonce, body.Root, body.Bundle, body.PreviewDigest)
 	if !ok {
 		s.problem(w, http.StatusConflict, reasonStalePreview,
@@ -252,11 +308,11 @@ func (s *Server) consumePreview(w http.ResponseWriter, body *postSubmitBody) (*p
 // runConfirmedPost locks the bundle, re-checks staleness, and delegates to
 // core/post under the lock so a concurrent write cannot interleave.
 func (s *Server) runConfirmedPost(
-	w http.ResponseWriter, r *http.Request, body *postSubmitBody,
+	ctx context.Context, w http.ResponseWriter, body *postSubmitBody,
 	rootPath, bundleDir string, entry *previewEntry,
 ) {
 	storePath := bundleDir + "/findings.json"
-	unlock, lockErr := s.acquireBundleLock(r, storePath)
+	unlock, lockErr := s.acquireBundleLock(ctx, storePath)
 	if lockErr != nil {
 		if errors.Is(lockErr, storelock.ErrBusy) {
 			s.problem(w, http.StatusServiceUnavailable, "store-busy",
@@ -268,12 +324,18 @@ func (s *Server) runConfirmedPost(
 		return
 	}
 	defer unlock()
-	if current := bundleFingerprint(bundleDir); current != entry.fingerprint {
+	current, err := bundleFingerprint(bundleDir)
+	if err != nil {
+		s.problem(w, http.StatusInternalServerError, "internal",
+			"could not re-read the bundle before posting: "+err.Error())
+		return
+	}
+	if current != entry.fingerprint {
 		s.problem(w, http.StatusConflict, reasonStalePreview,
 			"the bundle changed since the preview; re-run the preview before submitting")
 		return
 	}
-	resp, ref := s.invokePostSubmit(r, body, rootPath, bundleDir)
+	resp, ref := s.invokePostSubmit(ctx, body, rootPath, bundleDir)
 	if ref != nil {
 		s.writeRefusal(w, verbServe, body.Bundle, ref)
 		return
@@ -284,25 +346,27 @@ func (s *Server) runConfirmedPost(
 }
 
 // acquireBundleLock takes the bundle findings-store lock for one submit.
-func (s *Server) acquireBundleLock(r *http.Request, storePath string) (func(), error) {
+func (s *Server) acquireBundleLock(ctx context.Context, storePath string) (func(), error) {
 	lockWait := s.cfg.LockWait
 	if lockWait <= 0 {
 		lockWait = storelock.DefaultWait
 	}
-	unlock, err := storelock.AcquireContext(r.Context(), storePath, lockWait)
+	unlock, err := storelock.AcquireContext(ctx, storePath, lockWait)
 	if err != nil {
 		return nil, jq.Sealed("serve: acquire bundle lock on "+storePath, err)
 	}
 	return unlock, nil
 }
 
-// invokePostSubmit builds the confirmed post request and runs it.
+// invokePostSubmit builds the confirmed post request and runs it. The request
+// carries the configured environment and render configuration, so the host
+// gate authenticates and the body renders exactly as the CLI's would.
 func (s *Server) invokePostSubmit(
-	r *http.Request, body *postSubmitBody, rootPath, bundleDir string,
+	ctx context.Context, body *postSubmitBody, rootPath, bundleDir string,
 ) (*postcore.Response, *core.RefusalError) {
 	runner := s.runnerPostSubmit()
 	read := core.ReadRequest{
-		Runtime:  &core.Runtime{Now: s.now, Env: map[string]string{}},
+		Runtime:  s.runtime(),
 		Repo:     readcommon.BundleProject(bundleDir),
 		Pr:       body.Bundle,
 		RepoRoot: rootPath,
@@ -310,8 +374,9 @@ func (s *Server) invokePostSubmit(
 	req := &postcore.Request{
 		ReadRequest: read,
 		Flags:       postcore.Flags{Approve: approveFalse, ReviewFile: bundleDir + "/review.json", DryRun: false},
+		Effective:   s.cfg.Effective,
 	}
-	return runner(r.Context(), req)
+	return runner(ctx, req)
 }
 
 // runnerPostSubmit returns the injected submit runner.
@@ -333,9 +398,11 @@ func prodPostSubmitRunner(
 		req.Flags.Approve = "false"
 	}
 	if req.Runtime == nil {
-		req.Runtime = &core.Runtime{Env: map[string]string{}}
+		req.Runtime = &core.Runtime{}
 	}
 	if req.Env == nil {
+		// The server supplies the configured map; a hand-built request still
+		// gets a writable one.
 		req.Env = map[string]string{}
 	}
 	if req.Commander == nil {

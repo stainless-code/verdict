@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -106,6 +107,15 @@ type changeSource interface {
 
 // Config is one server's resolved start state.
 type Config struct { //nolint:govet // start snapshot; field order mirrors the flag table
+	// Env is the environment every served service reads: the host
+	// credentials a post needs and the render preferences it resolves.
+	// The CLI adapter injects the same map it hands the CLI verbs, so a
+	// served post authenticates and renders exactly like `verdict post`.
+	Env map[string]string
+	// Effective is the resolved render configuration (footer, logo,
+	// attribution, fix prompt, diagrams). It travels with the preview and
+	// the confirmed post, so what the operator confirmed is what posts.
+	Effective         core.Effective
 	Root              string
 	Host              string
 	Port              int
@@ -185,7 +195,9 @@ func New(cfg *Config) (*Server, error) {
 		verifyRunner:      cfg.VerifyRunner,
 		postPreviewRunner: cfg.PostPreviewRunner,
 		postSubmitRunner:  cfg.PostSubmitRunner,
-		previews:          newPreviewStore(),
+		// The store's clock is fixed here, after applyServerDefaults, so no
+		// request ever lazily assigns it twice.
+		previews: &previewStore{entries: map[string]*previewEntry{}, now: cfg.Now, ttl: previewTTL},
 	}
 	if server.verifyRunner == nil {
 		server.verifyRunner = prodVerifyRunner
@@ -219,6 +231,7 @@ func applyServerDefaults(cfg *Config) {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
+	applyCarriedDefaults(cfg)
 	if cfg.Heartbeat <= 0 {
 		cfg.Heartbeat = defaultHeartbeat
 	}
@@ -227,6 +240,18 @@ func applyServerDefaults(cfg *Config) {
 	}
 	if cfg.Sweep <= 0 {
 		cfg.Sweep = query.DefaultSweep
+	}
+}
+
+// applyCarriedDefaults fills the two values every served service reads: the
+// environment (host credentials and render preferences) and the resolved
+// render configuration.
+func applyCarriedDefaults(cfg *Config) {
+	if cfg.Env == nil {
+		cfg.Env = map[string]string{}
+	}
+	if cfg.Effective == (core.Effective{}) {
+		cfg.Effective = core.Defaults()
 	}
 }
 
@@ -301,6 +326,13 @@ func (s *Server) Addr() string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	return net.JoinHostPort(s.cfg.Host, strconv.Itoa(s.port))
+}
+
+// runtime builds the per-call runtime every served service shares: the process
+// clock and a copy of the environment the CLI adapter injected. The copy keeps
+// a service that writes its map from moving the server's.
+func (s *Server) runtime() *core.Runtime {
+	return &core.Runtime{Now: s.now, Env: maps.Clone(s.cfg.Env)}
 }
 
 // URL is the token-bearing start URL. It is the only place the capability is
@@ -394,9 +426,13 @@ func newHTTPServer(handler http.Handler) *http.Server {
 	}
 }
 
-// Request carries the CLI's resolved build version into the adapter; the
-// root comes from the parsed flags.
+// Request carries the CLI's resolved build version and environment into the
+// adapter; the root comes from the parsed flags.
 type Request struct {
+	// Env is the CLI's injected environment map, forwarded to every served
+	// service so a post or verify job sees the host credentials the CLI
+	// verb would.
+	Env     map[string]string
 	Version string
 }
 
@@ -499,7 +535,10 @@ func warnExposure(r *cli.Runner, opts *serveOptions) {
 	}
 	if !isLoopback(opts.host) {
 		surface := "read-only"
-		if opts.interactive {
+		switch {
+		case opts.allowPost && opts.interactive:
+			surface = "interactive (local triage & KB writes) and host posting (--allow-post)"
+		case opts.interactive:
 			surface = "interactive (local triage & KB writes)"
 		}
 		r.Warn("serve: binding " + opts.host + " exposes the " + surface + " surface beyond loopback " +
@@ -516,6 +555,7 @@ func start(
 		Check: opts.check, MaxBundles: opts.maxBundles, Interval: opts.interval,
 		Sweep: opts.sweep, NoWatch: opts.noWatch, Version: req.Version, Now: r.Now,
 		Layer: opts.layer, Interactive: opts.interactive, AllowPost: opts.allowPost,
+		Env: req.Env, Effective: r.Effective,
 	})
 	if err != nil {
 		if errors.Is(err, errAllowPostNeedsInteractive) {
@@ -537,6 +577,7 @@ func announce(r *cli.Runner, server *Server) {
 			"url", server.URL(),
 			"listen", server.Addr(),
 			"read_only", !server.cfg.Interactive,
+			"allow_post", server.cfg.AllowPost,
 			"partial", false,
 			"sources", []any{},
 			"errors", []any{},

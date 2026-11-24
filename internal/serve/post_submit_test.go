@@ -92,6 +92,16 @@ func (c *submitCounts) submits() int {
 // published digest and nonce.
 func mintPreview(t *testing.T, ts *httptest.Server, server *Server, rootID, bundle string) (string, string) {
 	t.Helper()
+	digest, nonce, _ := mintPreviewSnapshot(t, ts, server, rootID, bundle)
+	return digest, nonce
+}
+
+// mintPreviewSnapshot drives one preview and returns its terminal snapshot
+// beside the digest and nonce it published.
+func mintPreviewSnapshot(
+	t *testing.T, ts *httptest.Server, server *Server, rootID, bundle string,
+) (string, string, map[string]any) {
+	t.Helper()
 	id := createPostPreviewJobOn(t, ts, server, rootID, bundle)
 	snap := awaitJobTerminal(t, ts, id)
 	if asString(t, snap["status"]) != jobStatusSucceeded {
@@ -109,7 +119,7 @@ func mintPreview(t *testing.T, ts *httptest.Server, server *Server, rootID, bund
 	if !ok || nonce == "" {
 		t.Fatalf("result lacks preview_nonce: %v", result)
 	}
-	return digest, nonce
+	return digest, nonce, snap
 }
 
 // createPostPreviewJobOn posts one preview on the named bundle.
@@ -487,6 +497,13 @@ func (s *stubPostCommander) Run(_ context.Context, cmd *core.Command) (core.Resu
 
 func (s *stubPostCommander) LookPath(string) error { return nil }
 
+// postedBodies returns the review bodies the stubbed host received.
+func (s *stubPostCommander) postedBodies() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return append([]string{}, s.bodies...)
+}
+
 func (s *stubPostCommander) postedFlag() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -586,7 +603,11 @@ func TestPostSubmitRealPostcoreParity(t *testing.T) { //nolint:gocognit,revive,c
 	t.Cleanup(func() { server.jobs.stop() })
 	rootID := rootIDOf(t, ts, bearer())
 
-	digest, nonce := mintPreview(t, ts, server, rootID, "7")
+	digest, nonce, previewSnap := mintPreviewSnapshot(t, ts, server, rootID, "7")
+	previewBody := asMap(t, asMap(t, previewSnap["result"])["body"])
+	if previewBody["footer"] == nil {
+		t.Errorf("preview body carries no footer: %v; the render configuration never reached the preview", previewBody)
+	}
 	got := post(t, ts, postSubmitPath, submitBody(rootID, "7", digest, nonce, new(true)), writeHeaders(server))
 	if got.status != http.StatusOK || !strings.Contains(string(got.body), `"error": null`) {
 		t.Fatalf("submit = %d %s, want 200 success envelope", got.status, got.body)
@@ -600,6 +621,20 @@ func TestPostSubmitRealPostcoreParity(t *testing.T) { //nolint:gocognit,revive,c
 	}
 	if !cmdr.postedFlag() {
 		t.Error("submit did not reach the stubbed host POST")
+	}
+	// The body the host received is the CLI render: same bytes as a direct
+	// core/post run with the CLI's resolved configuration, footer included.
+	servedBodies := cmdr.postedBodies()
+	if len(servedBodies) != 1 {
+		t.Fatalf("served host POSTs = %d, want exactly 1", len(servedBodies))
+	}
+	if !strings.Contains(servedBodies[0], "<!-- verdict-footer -->") {
+		t.Errorf("posted body has no verdict footer (%d bytes): the render configuration was zero",
+			len(servedBodies[0]))
+	}
+	if cliBody := cliPostedBody(t); cliBody != servedBodies[0] {
+		t.Errorf("served post body (%d bytes) differs from the CLI render (%d bytes)\nserved:\n%s\nCLI:\n%s",
+			len(servedBodies[0]), len(cliBody), servedBodies[0], cliBody)
 	}
 	// Receipt parity: the same findings.json post receipt the CLI writes.
 	receiptRaw, err := os.ReadFile(filepath.Join(mustAbs(t, root), ".verdict", "state", "7", "post.json"))
@@ -629,10 +664,6 @@ func TestPostSubmitRealPostcoreParity(t *testing.T) { //nolint:gocognit,revive,c
 	}
 	// A fresh preview + submit of the same payload hits core/post's
 	// duplicate-post refusal without a second host POST.
-	cmdr.mu.Lock()
-	callsBefore := len(cmdr.calls)
-	postedBefore := cmdr.posted
-	cmdr.mu.Unlock()
 	digest2, nonce2 := mintPreview(t, ts, server, rootID, "7")
 	got = post(t, ts, postSubmitPath, submitBody(rootID, "7", digest2, nonce2, new(true)), writeHeaders(server))
 	if got.status != http.StatusOK {
@@ -646,8 +677,6 @@ func TestPostSubmitRealPostcoreParity(t *testing.T) { //nolint:gocognit,revive,c
 	if code != "already-posted" && code != "duplicate-payload" {
 		t.Errorf("second submit code = %v, want already-posted or duplicate-payload", code)
 	}
-	_ = callsBefore
-	_ = postedBefore
 	// No second host POST fired: still exactly one POST argv.
 	posts := 0
 	cmdr.mu.Lock()
@@ -666,4 +695,42 @@ func TestPostSubmitRealPostcoreParity(t *testing.T) { //nolint:gocognit,revive,c
 func decodeBodyJSON(t *testing.T, raw []byte, out any) error {
 	t.Helper()
 	return json.Unmarshal(raw, out)
+}
+
+// cliPostedBody renders the same seeded bundle the way the CLI does — a
+// direct core/post run carrying the resolved render configuration — and
+// returns the body it posts. It is the reference the served post must match
+// byte for byte.
+func cliPostedBody(t *testing.T) string {
+	t.Helper()
+	root := mustAbs(t, writeFixture(t, fixtureFiles()))
+	seedPostBundle(t, root)
+	cmdr := &stubPostCommander{t: t, head: postHeadA}
+	read := core.ReadRequest{
+		Runtime: &core.Runtime{
+			Now: fixedNow, Env: map[string]string{},
+			Commander: cmdr,
+		},
+		Repo:     "acme/app",
+		Pr:       "7",
+		Root:     &root,
+		RepoRoot: root,
+	}
+	req := &postcore.Request{
+		ReadRequest: read,
+		Flags: postcore.Flags{
+			Approve:    approveFalse,
+			ReviewFile: filepath.Join(root, ".verdict", "state", "7", "review.json"),
+			DryRun:     false,
+		},
+		Effective: cli.Defaults(),
+	}
+	if _, ref := postcore.Run(t.Context(), req); ref != nil {
+		t.Fatalf("CLI post: %s: %s", ref.Code, ref.Message)
+	}
+	bodies := cmdr.postedBodies()
+	if len(bodies) != 1 {
+		t.Fatalf("CLI post sent %d bodies, want exactly 1", len(bodies))
+	}
+	return bodies[0]
 }

@@ -428,6 +428,19 @@
     return interactive && mode !== "static";
   }
 
+  // afterDelay is the one timer seam: the no-stream job poll and the
+  // preview poll both wait through it, so a test can advance the clock
+  // without real time passing.
+  const afterDelay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // previewPollDelayMs and previewPollAttempts bound the confirmation
+  // modal's wait for a preview job: forty polls a quarter second apart, ten
+  // seconds in all, then the modal says the preview did not settle. A preview
+  // runs a whole dry-run post, so an unpaced burst of fetches measures only
+  // how fast a rejection is delivered.
+  const previewPollDelayMs = 250;
+  const previewPollAttempts = 40;
+
   // startJob posts one Tier B action and keeps its snapshot for the
   // drawer. The response is rendered honestly: a refusal envelope and a
   // transport failure both land in the status line.
@@ -458,12 +471,11 @@
   // pollJob is the no-stream fallback: without /v1/events the drawer
   // reads the status until it settles.
   async function pollJob(id) {
-    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     while (
       activeJob?.id === id &&
       !["succeeded", "failed", "cancelled"].includes(activeJob.status)
     ) {
-      await delay(500);
+      await afterDelay(500);
       try {
         const response = await fetch(`/v1/jobs/${encodeURIComponent(id)}`, {
           credentials: "same-origin",
@@ -565,7 +577,7 @@
       startJob("/v1/jobs/post-preview", { root, bundle }),
     );
     wrapper.append(verify, preview);
-    if (submitEnabled()) {
+    if (submitEnabled(bundle)) {
       const submit = node("button", "Submit Review");
       submit.type = "button";
       submit.addEventListener("click", () => openSubmitModal(root, bundle));
@@ -579,12 +591,17 @@
   }
 
   // submitEnabled gates the Tier C control on the allow_post advertisement.
-  function submitEnabled() {
-    return interactive && allowPost && mode !== "static";
+  // A local bundle (local-1, local-good) has no pull request on any host, so
+  // the host write stays hidden there whatever the server advertises.
+  function submitEnabled(bundle) {
+    if (mode === "static" || !interactive || !allowPost) return false;
+    return !String(bundle || "").startsWith("local-");
   }
 
-  // fetchPreview runs one dry-run preview and polls its job until settled,
-  // returning the snapshot whose result carries digest and nonce.
+  // fetchPreview runs one dry-run preview and polls its job with bounded
+  // backoff until it settles, returning the snapshot whose result carries the
+  // digest and nonce. A job that is still queued after the last poll returns
+  // un-settled, and the modal reports that instead of confirming nothing.
   async function fetchPreview(root, bundle) {
     const { response, body } = await writeJSON("/v1/jobs/post-preview", {
       root,
@@ -595,8 +612,13 @@
     }
     if (body?.error) throw new Error(body.error.message || "Preview refused.");
     let snap = body?.data || {};
-    if (snap.status === "succeeded" || snap.status === "failed") return snap;
-    for (let i = 0; i < 40 && snap?.id; i++) {
+    for (
+      let attempt = 0;
+      attempt < previewPollAttempts && snap?.id;
+      attempt++
+    ) {
+      if (["succeeded", "failed", "cancelled"].includes(snap.status)) break;
+      await afterDelay(previewPollDelayMs);
       const got = await fetch(`/v1/jobs/${encodeURIComponent(snap.id)}`, {
         credentials: "same-origin",
         cache: "no-store",
@@ -604,7 +626,6 @@
       if (!got.ok) break;
       const next = await got.json();
       snap = next?.data || snap;
-      if (["succeeded", "failed", "cancelled"].includes(snap.status)) break;
     }
     return snap;
   }

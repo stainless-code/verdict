@@ -12,5 +12,11 @@ stale-SHA, duplicate-post, anchor, own-PR, and binding-approval guard and
 the CLI `post` receipts hold. With `--interactive` alone the route refuses
 `403 post-disabled` before any host client; without `--interactive` it is
 the read-only `405`. The Detail view renders `Submit Review` only when
-`/v1/health` advertises `allow_post: true`, previews through the Tier B
-job, and posts only from the confirmation modal.
+`/v1/health` advertises `allow_post: true` and the bundle is a PR number
+(`local-*` has no pull request to post to), previews through the Tier B
+job, and posts only from the confirmation modal. The preview and the
+confirmed post carry the server's environment and resolved render
+configuration, so a served post authenticates and renders exactly like the
+CLI's; the `--json` start envelope reports `read_only` and `allow_post`.
+The confirmation modal polls its preview job with a bounded 250 ms backoff
+instead of an unpaced burst.

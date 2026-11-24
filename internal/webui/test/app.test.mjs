@@ -303,6 +303,7 @@ async function createUI({
     },
   };
   const timers = [];
+  const delays = [];
   const document = {
     baseURI: baseURL,
     body: new Element("body"),
@@ -355,6 +356,7 @@ async function createUI({
       Error,
       navigator,
       setTimeout: (fn, ms) => {
+        delays.push(ms);
         timers.push({ fn, ms });
         return timers.length;
       },
@@ -362,6 +364,33 @@ async function createUI({
     { filename: fileURLToPath(new URL("../static/app.js", import.meta.url)) },
   );
   const flush = async () => new Promise((resolve) => setImmediate(resolve));
+  // advance fires every pending timer and drains the microtasks each release
+  // unblocks, so a bounded backoff loop steps forward without real time
+  // passing.
+  const advance = async (rounds = 64) => {
+    for (let i = 0; i < rounds; i++) {
+      await flush();
+      if (!timers.length) continue;
+      const pending = timers.splice(0, timers.length);
+      for (const timer of pending) timer.fn();
+    }
+    await flush();
+  };
+  // settle awaits one async action while firing the timers it waits on.
+  const settle = async (action) => {
+    let done = false;
+    const running = Promise.resolve(action).finally(() => {
+      done = true;
+    });
+    running.catch(() => {});
+    for (let i = 0; i < 256 && !done; i++) {
+      await flush();
+      if (done) break;
+      const pending = timers.splice(0, timers.length);
+      for (const timer of pending) timer.fn();
+    }
+    return running;
+  };
   const navigate = async (nextHash) => {
     location.hash = nextHash;
     window.emit("hashchange");
@@ -374,7 +403,10 @@ async function createUI({
     sources,
     location,
     timers,
+    delays,
     flush,
+    advance,
+    settle,
     navigate,
     body: document.body,
   };
@@ -1063,6 +1095,18 @@ function detailFixtures(extra = []) {
   return new Map([["/v1/bundles", inbox], [detailPath, detail], ...extra]);
 }
 
+// prDetailPath is the same review under a PR-number bundle: the only bundles
+// whose review has a pull request to post to.
+const prDetailPath = "/v1/roots/root-123/bundles/1234";
+
+function prDetailFixtures(extra = []) {
+  const prDetail = envelope({
+    ...detail.data,
+    report: { ...detail.data.report, dir: "1234" },
+  });
+  return new Map([["/v1/bundles", inbox], [prDetailPath, prDetail], ...extra]);
+}
+
 function findControl(root, label) {
   return descendants(root).find(
     (element) => element.attributes["aria-label"] === label,
@@ -1588,8 +1632,8 @@ test("a server without allow_post renders no Submit Review control", async () =>
   ]) {
     const ui = await createUI({
       ...setup,
-      hash: "#/r/root-123/local-good",
-      respond: respondFrom(detailFixtures()),
+      hash: "#/r/root-123/1234",
+      respond: respondFrom(prDetailFixtures()),
     });
     assert.equal(
       submitButton(ui.elements.get("content")),
@@ -1599,7 +1643,22 @@ test("a server without allow_post renders no Submit Review control", async () =>
   }
 });
 
-test("allow_post renders Submit Review and confirms with digest and nonce", async () => {
+test("a local bundle renders no Submit Review control even with allow_post", async () => {
+  const ui = await createUI({
+    interactive: true,
+    allowPost: true,
+    csrf: "csrf-test-token",
+    hash: "#/r/root-123/local-good",
+    respond: respondFrom(detailFixtures()),
+  });
+  assert.equal(
+    submitButton(ui.elements.get("content")),
+    undefined,
+    "a local bundle has no pull request to post to",
+  );
+});
+
+test("allow_post renders Submit Review and confirms after several preview polls", async () => {
   const digest = "a".repeat(64);
   const nonce = "b".repeat(32);
   const previewQueued = {
@@ -1607,7 +1666,7 @@ test("allow_post renders Submit Review and confirms with digest and nonce", asyn
       id: "job-preview",
       kind: "post-preview",
       root: "root-123",
-      bundle: "local-good",
+      bundle: "1234",
       status: "queued",
     },
     error: null,
@@ -1617,7 +1676,7 @@ test("allow_post renders Submit Review and confirms with digest and nonce", asyn
       id: "job-preview",
       kind: "post-preview",
       root: "root-123",
-      bundle: "local-good",
+      bundle: "1234",
       status: "succeeded",
       result: {
         dry_run: true,
@@ -1639,27 +1698,30 @@ test("allow_post renders Submit Review and confirms with digest and nonce", asyn
       if (path === "/v1/jobs/post-preview") return { body: previewQueued };
       if (path === "/v1/jobs/job-preview") {
         previewReads++;
-        return { body: previewReads === 1 ? previewQueued : previewDone };
+        return { body: previewReads < 3 ? previewQueued : previewDone };
       }
       if (path === "/v1/post/submit") {
         return {
           body: envelope({ commit_id: "a1b2c3d4", dry_run: false }),
         };
       }
-      return { body: detailFixtures().get(path) || envelope({}) };
+      return { body: prDetailFixtures().get(path) || envelope({}) };
     },
   });
-  await ui.navigate("#/r/root-123/local-good");
+  await ui.navigate("#/r/root-123/1234");
   const content = ui.elements.get("content");
   const trigger = submitButton(content);
   assert.ok(trigger, "allow_post must show Submit Review");
-  await trigger.dispatch("click");
-  await ui.flush();
+  await ui.settle(trigger.dispatch("click"));
+  // Every read waited a quarter second: three queued snapshots, then the
+  // settled one.
+  assert.equal(previewReads, 3);
+  assert.deepEqual(ui.delays, [250, 250, 250]);
   const dialog = descendants(ui.body).find(
     (e) => e.attributes && e.attributes["aria-label"] === "Submit Review",
   );
   assert.ok(dialog, "click must open the confirmation modal");
-  assert.ok(dialog.textContent.includes(`Bundle local-good`));
+  assert.ok(dialog.textContent.includes(`Bundle 1234`));
   assert.ok(dialog.textContent.includes(digest));
   const confirm = firstButton(ui.body, "Confirm & Submit Review");
   assert.ok(confirm, "modal must offer Confirm & Submit Review");
@@ -1672,12 +1734,63 @@ test("allow_post renders Submit Review and confirms with digest and nonce", asyn
   assert.equal(sent.options.headers["X-Verdict-CSRF"], "csrf-test-token");
   assert.deepEqual(JSON.parse(sent.options.body), {
     root: "root-123",
-    bundle: "local-good",
+    bundle: "1234",
     preview_digest: digest,
     preview_nonce: nonce,
     confirm: true,
   });
   assert.ok(ui.body.textContent.includes("Submitted."));
+});
+
+test("a preview job that fails leaves the modal unconfirmable", async () => {
+  const queued = {
+    data: {
+      id: "job-preview",
+      kind: "post-preview",
+      root: "root-123",
+      bundle: "1234",
+      status: "queued",
+    },
+    error: null,
+  };
+  const failed = {
+    data: {
+      id: "job-preview",
+      kind: "post-preview",
+      root: "root-123",
+      bundle: "1234",
+      status: "failed",
+      error: {
+        code: "auth-missing",
+        message: "forgejo needs FORGEJO_TOKEN set",
+      },
+    },
+    error: null,
+  };
+  const ui = await createUI({
+    interactive: true,
+    allowPost: true,
+    csrf: "csrf-test-token",
+    respond: async (path) => {
+      if (path === "/v1/jobs/post-preview") return { body: queued };
+      if (path === "/v1/jobs/job-preview") return { body: failed };
+      return { body: prDetailFixtures().get(path) || envelope({}) };
+    },
+  });
+  await ui.navigate("#/r/root-123/1234");
+  await ui.settle(submitButton(ui.elements.get("content")).dispatch("click"));
+  const dialog = descendants(ui.body).find(
+    (e) => e.attributes && e.attributes["aria-label"] === "Submit Review",
+  );
+  assert.ok(dialog, "click must open the confirmation modal");
+  assert.ok(dialog.textContent.includes("forgejo needs FORGEJO_TOKEN set"));
+  const confirm = firstButton(ui.body, "Confirm & Submit Review");
+  assert.ok(confirm, "the modal keeps its controls for a failed preview");
+  assert.equal(confirm.disabled, true);
+  assert.equal(
+    ui.fetches.filter((item) => item.path === "/v1/post/submit").length,
+    0,
+  );
 });
 
 test("Cancel on the Submit Review modal posts nothing", async () => {
@@ -1693,7 +1806,7 @@ test("Cancel on the Submit Review modal posts nothing", async () => {
               id: "job-preview",
               kind: "post-preview",
               root: "root-123",
-              bundle: "local-good",
+              bundle: "1234",
               status: "succeeded",
               result: {
                 dry_run: true,
@@ -1708,12 +1821,11 @@ test("Cancel on the Submit Review modal posts nothing", async () => {
           },
         };
       }
-      return { body: detailFixtures().get(path) || envelope({}) };
+      return { body: prDetailFixtures().get(path) || envelope({}) };
     },
   });
-  await ui.navigate("#/r/root-123/local-good");
-  await submitButton(ui.elements.get("content")).dispatch("click");
-  await ui.flush();
+  await ui.navigate("#/r/root-123/1234");
+  await ui.settle(submitButton(ui.elements.get("content")).dispatch("click"));
   const cancel = firstButton(ui.body, "Cancel");
   assert.ok(cancel, "modal must offer Cancel");
   await cancel.dispatch("click");

@@ -102,13 +102,16 @@ func (s *Server) routes() []route {
 	return routes
 }
 
-// handleWriteGone is the placeholder behind the two write paths on a
+// handleWriteGone is the placeholder behind the write paths on a
 // non-interactive server: the writes stay refused with the default 405 and
-// an Allow header, and a GET there gets the same refusal.
+// an Allow header, and a GET there gets the same refusal. The copy names the
+// flag that enables a local write; it never promises that --interactive
+// alone enables host posting, which also needs --allow-post.
 func (s *Server) handleWriteGone(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Allow", "GET, HEAD")
 	s.problem(w, http.StatusMethodNotAllowed, "method-not-allowed",
-		"this server is read-only; restart with --interactive to enable local writes")
+		"this server is read-only; restart with --interactive for local writes "+
+			"(host posting also needs --allow-post)")
 }
 
 func (s *Server) handleCost(w http.ResponseWriter, r *http.Request) {

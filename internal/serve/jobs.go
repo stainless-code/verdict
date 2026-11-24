@@ -48,6 +48,11 @@ const (
 	jobIDFallbackLen = 16
 	// reasonNotFound is the transport reason for an absent job or finding.
 	reasonNotFound = "not-found"
+	// codeBundleUnreadable refuses a preview whose bundle cannot be read
+	// back for the staleness fingerprint.
+	codeBundleUnreadable = "bundle-unreadable"
+	// codeNonceFailed refuses a preview when the CSPRNG cannot mint a nonce.
+	codeNonceFailed = "nonce-failed"
 	// jobPathVerify is the POST verify job route.
 	jobPathVerify = "/v1/jobs/verify"
 	// jobPathPostPreview is the POST post-preview job route.
@@ -375,7 +380,7 @@ func (m *jobManager) execute(ctx context.Context, current *job) {
 func (m *jobManager) runVerify(ctx context.Context, current *job) {
 	runner := m.runnerVerify()
 	read := core.ReadRequest{
-		Runtime:  &core.Runtime{Now: m.server.now, Env: map[string]string{}},
+		Runtime:  m.server.runtime(),
 		Repo:     readcommon.BundleProject(current.bundleDir),
 		Pr:       current.bundle,
 		RepoRoot: current.rootPath,
@@ -410,7 +415,7 @@ func (m *jobManager) runVerify(ctx context.Context, current *job) {
 func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 	runner := m.runnerPostPreview()
 	read := core.ReadRequest{
-		Runtime:  &core.Runtime{Now: m.server.now, Env: map[string]string{}},
+		Runtime:  m.server.runtime(),
 		Repo:     readcommon.BundleProject(current.bundleDir),
 		Pr:       current.bundle,
 		RepoRoot: current.rootPath,
@@ -418,6 +423,7 @@ func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 	req := &postcore.Request{
 		ReadRequest: read,
 		Flags:       postcore.Flags{Approve: approveFalse, ReviewFile: current.bundleDir + "/review.json", DryRun: true},
+		Effective:   m.server.cfg.Effective,
 	}
 	resp, ref := runner(ctx, req)
 	if ctx.Err() != nil {
@@ -431,16 +437,34 @@ func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 	}
 	result := resp.Data.Wire()
 	if m.server.previews != nil {
-		if m.server.previews.now == nil {
-			m.server.previews.now = m.server.now
+		if failure := m.bindPreview(current, result); failure != nil {
+			m.setStatus(current, jobStatusFailed, nil, failure, nil)
+			return
 		}
-		fingerprint := bundleFingerprint(current.bundleDir)
-		digest := previewDigest(current.rootID, current.bundle, fingerprint, []byte(result.MarshalCompact()))
-		nonce := m.server.previews.mint(current.rootID, current.bundle, digest, fingerprint)
-		result.Set("preview_digest", digest)
-		result.Set("preview_nonce", nonce)
 	}
 	m.setStatus(current, jobStatusSucceeded, result, nil, resp.Warnings)
+}
+
+// bindPreview mints the confirmation nonce for one succeeded preview and
+// publishes the digest and nonce on its wire. A bundle it cannot fingerprint
+// or a nonce the CSPRNG cannot mint refuses the preview: there is nothing
+// confirmable to hand the operator.
+func (m *jobManager) bindPreview(current *job, result *jq.Obj) *jobError {
+	fingerprint, err := bundleFingerprint(current.bundleDir)
+	if err != nil {
+		return &jobError{
+			code:    codeBundleUnreadable,
+			message: "could not fingerprint the bundle for a preview: " + err.Error(),
+		}
+	}
+	digest := previewDigest(current.rootID, current.bundle, fingerprint, []byte(result.MarshalCompact()))
+	nonce, err := m.server.previews.mint(current.rootID, current.bundle, digest, fingerprint)
+	if err != nil {
+		return &jobError{code: codeNonceFailed, message: err.Error()}
+	}
+	result.Set("preview_digest", digest)
+	result.Set("preview_nonce", nonce)
+	return nil
 }
 
 // runnerVerify returns the injected verify runner, defaulting to production.
@@ -471,9 +495,11 @@ func prodVerifyRunner(
 		req.Environ = os.Environ()
 	}
 	if req.Runtime == nil {
-		req.Runtime = &core.Runtime{Env: map[string]string{}}
+		req.Runtime = &core.Runtime{}
 	}
 	if req.Env == nil {
+		// The server supplies the configured map; a hand-built request still
+		// gets a writable one.
 		req.Env = map[string]string{}
 	}
 	if req.Commander == nil {
@@ -491,9 +517,11 @@ func prodPostPreviewRunner(
 		req.Flags.Approve = "false"
 	}
 	if req.Runtime == nil {
-		req.Runtime = &core.Runtime{Env: map[string]string{}}
+		req.Runtime = &core.Runtime{}
 	}
 	if req.Env == nil {
+		// The server supplies the configured map; a hand-built request still
+		// gets a writable one.
 		req.Env = map[string]string{}
 	}
 	if req.Commander == nil {

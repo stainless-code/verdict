@@ -2721,11 +2721,15 @@ Each `start` line records `repo` (the canonical repository root), `verb`, `chann
 bundles. With `--root`, it discovers every repository below that directory.
 With `--interactive`, it adds two local-only write endpoints — `POST
 /v1/triage` and `POST /v1/kb/promote` — through the same triage and learn
-services the CLI calls. The server binds `127.0.0.1` on a kernel-assigned
+services the CLI calls. `--interactive --allow-post` adds the one host-writing
+route, `POST /v1/post/submit`, which posts a review to the code host (see
+**Host posting (Tier C)** below). The server binds
+`127.0.0.1` on a kernel-assigned
 port by default. Pass `--port` to pin the port or `--host` to bind another
 interface. The server prints one tokenised start URL and stops on Ctrl-C
-(exit 3). It never fetches, posts, runs a model, or reaches the network;
-without `--interactive`, it writes no store at all.
+(exit 3). It never fetches or runs a model, and without `--allow-post` it never
+posts or reaches the network; without `--interactive`, it writes no store at
+all.
 
 The browser UI has an inbox, review detail with its evidence ledger, a `Diff` tab, threads,
 cost, precision, and a gate panel. It reads the same `/v1` envelopes as other
@@ -2771,15 +2775,18 @@ start; the flag warns it is visible in `ps` and shell history), `--check
 `--max-bundles <n>` (default 500), `--interval <duration>` (default `1s`, minimum
 `100ms`), `--sweep <duration>` (default `30s`, at least `--interval`),
 `--no-watch` (disable polling and remove `/v1/events`), `--interactive`
-(register the two local-only write endpoints; default off, and the default
-surface stays GET-only), and `--allow-post` (register the Tier C host
+(register the local write endpoints and the `verify`/preview job routes;
+default off, and the default surface stays GET-only), and `--allow-post`
+(register the Tier C host
 posting route; requires `--interactive`, default off, and never implied by
 `--interactive` alone). Atomic writes are visible
 within one tick; non-atomic in-place edits are visible within one sweep. A tick
 checks the state directory, each bundle directory, existing `chunks/`
 directories, and `.verdict/overrides/`; a sweep fingerprints directory entries.
 `--interval` controls the network-filesystem polling cost. `--json` prints one start envelope whose
-`data.url` is the tokenised URL and `data.listen` is `host:port`; the envelope
+`data.url` is the tokenised URL and `data.listen` is `host:port`, with
+`data.read_only` reporting the posture and `data.allow_post` reporting whether
+the Tier C host-posting route is registered; the envelope
 is the only machine-readable place a script learns where to connect, and a log
 that captures it captures a capability that dies with the process.
 
@@ -2838,9 +2845,15 @@ over it is `null` and `partial: true` — never `0`. A root whose `.verdict/stat
 is not a directory, or will not list, adds one `corrupt-store` row naming it
 rather than reading as a root with no bundles. Transport errors are a
 separate vocabulary: `400` (`token-in-query`, `bad-glob`, `bad-content-type`,
-`bad-body`), `401`, `403` (Host/Origin, and `bad-csrf` on a write with a
-missing, empty, or wrong `X-Verdict-CSRF` token), `404`, and `405`. Without
-`--interactive` the two write paths accept no method and answer `405` with
+`bad-body`, and `needs-confirm` on a Tier C submit that omits `confirm: true`),
+`401`, `403` (Host/Origin, `bad-csrf` on a write with a missing, empty, or wrong
+`X-Verdict-CSRF` token, and `post-disabled` on the Tier C submit when
+`--allow-post` is off), `404`, `405`, `409` (`stale-preview` on an unknown,
+mismatched, expired, replayed, or bundle-stale preview), `500` (`internal` on an
+unexpected store or read failure), and `503` (`store-busy` when a Tier C submit
+cannot take the bundle lock, and `job-capacity` when the job history is full of
+active jobs). Without
+`--interactive` the write paths accept no method and answer `405` with
 `Allow: GET, HEAD` (and `method-not-allowed` on the write paths' own GET);
 with `--interactive` they accept `POST` only, and every other method —
 including `GET` — answers `405` with `Allow: POST`. Every response carries
@@ -2900,7 +2913,11 @@ same snapshot shape. Jobs run with bounded concurrency (4) and bounded
 retained history (64), each holding a bundle-scoped `storelock` on
 `findings.json` (distinct from the knowledge-base lock, so no lock nesting);
 a job that cannot take the lock fails as a typed `store-busy` refusal without
-running. A running verify job holds that bundle lock for its whole run, so
+running. A succeeded `post-preview` additionally mints the Tier C nonce below;
+a preview whose bundle cannot be read back for its staleness fingerprint fails
+`bundle-unreadable`, and one whose nonce the CSPRNG cannot mint fails
+`nonce-failed`, both without publishing a digest. A running verify job holds
+that bundle lock for its whole run, so
 concurrent triage or a second job on the same bundle also answers
 `store-busy` until the first job settles. Status flows `queued`, `running`,
 then `succeeded`, `failed`, or `cancelled`, streamed on the existing
@@ -2934,11 +2951,17 @@ TTL, bounded store) beside the preview wire. The submit requires
 atomically validates and consumes `(preview_nonce, root, bundle,
 preview_digest)` — unknown, mismatched, expired, or replayed nonces refuse
 `409 stale-preview` — then re-hashes the bundle under its `storelock` and
-refuses `409 stale-preview` when `findings.json` or the PR/source changed
-since the preview, all before `core/post` runs. A refusal `core/post`
+refuses `409 stale-preview` when `findings.json`, `PR.json`/`source.json`,
+`review.json`, or `full.diff` changed
+since the preview, all before `core/post` runs. That re-check holds the
+`findings.json` `storelock` only: a change to another bundle file between the
+re-check and the post is narrowed by the fingerprint but not excluded. A
+refusal `core/post`
 raises stays the usual `200` envelope; the preview store is the only Tier C
 state and dies with the process. The Detail view renders the bundle-level
-`Submit Review` button only when `allow_post` is advertised; clicking it
+`Submit Review` button only when `allow_post` is advertised and the bundle is a
+PR number — a `local-*` bundle has no pull request to post to, so the control
+never appears there. Clicking it
 previews, opens a confirmation modal with the target, counts, and digest,
 and posts only on an explicit `Confirm & Submit Review` click.
 

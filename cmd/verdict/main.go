@@ -233,7 +233,7 @@ func dispatch(
 	case "uninstall":
 		return runUninstall(ctx, r, rest, env)
 	case "serve":
-		return serve.Run(ctx, r, rest, serve.Request{Version: cliVersion(root, readFile)})
+		return serve.Run(ctx, r, rest, serve.Request{Version: cliVersion(root, readFile), Env: env})
 	case verbACP:
 		return runACP(ctx, r, rest, cliVersion(root, readFile))
 	}
