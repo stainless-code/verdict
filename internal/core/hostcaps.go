@@ -84,17 +84,21 @@ type CapabilityGap struct {
 // fetch, so fetch is true everywhere; posting — and with it inline anchors —
 // lands on GitHub (one atomic review), GitLab (one discussion per finding, then
 // the summary note, then the approval last), Forgejo (one atomic review
-// over its REST API, because it ships no CLI), and Bitbucket Cloud (one
+// over its REST API, because it ships no CLI), Bitbucket Cloud (one
 // comment per finding, the summary comment, then the approval last, over
-// its REST API for the same reason). GitHub and Forgejo carry both
-// binding verdicts; GitLab and Bitbucket carry the approval only, because
-// they have no request-changes review event, so request_changes reads false
-// there and the submit path posts the findings plus a warning instead of
-// inventing a verdict the host cannot record. review_verdicts is derived
-// from that pair by CapabilitiesFor, never declared here. Thread resolution
-// reads true on GitHub (resolveReviewThread) and GitLab (the discussion
-// resolved flag); Forgejo and Bitbucket have no documented resolve endpoint,
-// so it reads false there and on every fetch-only host.
+// its REST API for the same reason), and Azure DevOps (one anchored thread per
+// finding, then the general thread carrying the body, over `az rest`).
+// GitHub and Forgejo carry both binding verdicts; GitLab and Bitbucket carry
+// the approval only, because they have no request-changes review event, so
+// request_changes reads false there and the submit path posts the findings plus
+// a warning instead of inventing a verdict the host cannot record. Azure posts
+// neither: it records a verdict as a reviewer vote keyed by an identity verdict
+// does not resolve, so approve and request_changes both read false and the
+// submit path comments instead. review_verdicts is derived from that pair by
+// CapabilitiesFor, never declared here. Thread resolution reads true on GitHub
+// (resolveReviewThread) and GitLab (the discussion resolved flag); Forgejo,
+// Bitbucket, and Azure have no wired resolve endpoint, so it reads false there
+// and on every fetch-only host.
 var hostCapabilities = map[string]HostCapabilities{
 	providerGitHub: {
 		Provider: providerGitHub, Fetch: true, Post: true,
@@ -114,7 +118,9 @@ var hostCapabilities = map[string]HostCapabilities{
 		Provider: providerBitbucket, Fetch: true, Post: true, InlineAnchors: true,
 		Approve: true,
 	},
-	providerAzure: {Provider: providerAzure, Fetch: true},
+	providerAzure: {
+		Provider: providerAzure, Fetch: true, Post: true, InlineAnchors: true,
+	},
 }
 
 // CapabilitiesFor returns the declared capabilities for provider. Unknown
