@@ -9,9 +9,11 @@ import (
 // speaks it, so the server never negotiates another.
 const positionEncodingUTF16 = "utf-16"
 
-// capabilities advertises exactly what this build implements.
-func capabilities() serverCapabilities {
-	return serverCapabilities{
+// capabilities advertises exactly what this build implements. Workspace
+// folder support is advertised only when the client's folders are the
+// served roots; with --root the operator's roots are authoritative.
+func capabilities(workspace bool) serverCapabilities {
+	caps := serverCapabilities{
 		PositionEncoding: positionEncodingUTF16,
 		TextDocumentSync: textDocumentSync{
 			OpenClose: true,
@@ -20,6 +22,12 @@ func capabilities() serverCapabilities {
 		},
 		ExecuteCommandProvider: executeCommandOptions{Commands: []string{CommandRefresh}},
 	}
+	if workspace {
+		caps.Workspace = &workspaceOptions{WorkspaceFolders: workspaceFoldersOptions{
+			Supported: true, ChangeNotifications: true,
+		}}
+	}
+	return caps
 }
 
 func (s *Server) handleInitialize(msg *rpcMessage, initialized, shutdown bool) {
@@ -37,17 +45,18 @@ func (s *Server) handleInitialize(msg *rpcMessage, initialized, shutdown bool) {
 			return
 		}
 	}
-	opts := decodeInitOptions(params.InitializationOptions)
 	s.stateMu.Lock()
-	s.initOpts = opts
+	s.initOpts = decodeInitOptions(params.InitializationOptions)
+	s.adoptClientRoots(&params)
 	s.stateMu.Unlock()
 	s.callMu.Lock()
 	s.initialized = true
 	s.callMu.Unlock()
 	s.writeResult(msg.ID, initializeResult{
-		Capabilities: capabilities(),
+		Capabilities: capabilities(s.workspace),
 		ServerInfo:   serverInfo{Name: serverName, Version: s.cfg.Version},
 	})
+	s.flushLogs()
 }
 
 // decodeInitOptions reads the optional session preferences leniently: an
@@ -77,24 +86,32 @@ func decodeOption[T any](wire map[string]json.RawMessage, key string, into *T) {
 func (s *Server) handleInitialized(ctx context.Context) {
 	s.stateMu.Lock()
 	for i := range s.roots {
-		root := &s.roots[i]
-		s.compose(ctx, root, true)
-		s.republishRoot(root)
+		s.compose(ctx, &s.roots[i], true)
 	}
+	s.republishAll()
 	s.stateMu.Unlock()
 	s.callMu.Lock()
 	defer s.callMu.Unlock()
-	if !s.shutdown {
-		s.startPump(ctx)
-	}
+	s.startPump(ctx)
 }
 
-// handleShutdown refuses new requests, lets every in-flight call answer,
-// stops the pump, then answers null. Every later request answers
-// InvalidRequest; only `exit` is honored.
+// handleShutdown refuses new requests at once, then lets in-flight calls
+// finish for the grace period on a background goroutine, so the read loop
+// keeps reading `$/cancelRequest` and `exit` meanwhile. Calls still running
+// when the grace period ends are canceled and answer RequestCancelled; the
+// shutdown answer (null) follows the last of them. An `exit` read during the
+// drain ends the read loop at once and the process leaves when the drain
+// does, so the wait is bounded by the grace period either way.
 func (s *Server) handleShutdown(msg *rpcMessage) {
-	s.stop(false)
-	s.writeResult(msg.ID, nil)
+	s.callMu.Lock()
+	s.shutdown = true
+	s.callMu.Unlock()
+	id := msg.ID
+	s.background.Go(func() {
+		s.drain()
+		s.stopPump()
+		s.writeResult(id, nil)
+	})
 }
 
 // exitResult is the session's result on `exit`: nil after shutdown, the LSP
@@ -102,6 +119,7 @@ func (s *Server) handleShutdown(msg *rpcMessage) {
 func (s *Server) exitResult() error {
 	s.callMu.Lock()
 	defer s.callMu.Unlock()
+	s.exited = true
 	if !s.shutdown {
 		return ErrExitWithoutShutdown
 	}

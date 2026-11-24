@@ -134,6 +134,9 @@ func (s *Server) dispatch(ctx context.Context, msg *rpcMessage) {
 	switch {
 	case msg.Method == methodInitialize:
 		s.handleInitialize(msg, initialized, shutdown)
+	case shutdown && msg.Method == methodCancel:
+		// A drain still honors cancellation of the calls it waits for.
+		s.handleCancel(msg)
 	case shutdown:
 		if isRequest {
 			s.writeError(msg.ID, rpcInvalidRequest, "server is shutting down", nil)
@@ -176,13 +179,16 @@ func (s *Server) dispatchNotification(ctx context.Context, msg *rpcMessage) {
 		s.handleDidSave(ctx, msg)
 	case methodDidClose:
 		s.handleDidClose(msg)
+	case methodDidChangeRoots:
+		s.handleDidChangeRoots(ctx, msg)
 	default:
 		// Unknown notifications are ignored by contract.
 	}
 }
 
-// goCall runs one request on its own goroutine with a context
-// `$/cancelRequest` can cancel.
+// goCall runs one request on the bounded dispatcher with a context
+// `$/cancelRequest` can cancel, queued or running. A request past both the
+// in-flight and queue bounds answers ServerCancelled at once.
 func (s *Server) goCall(ctx context.Context, msg *rpcMessage, fn func(context.Context, *rpcMessage)) {
 	callCtx, cancel := context.WithCancel(ctx)
 	key := string(msg.ID)
@@ -193,16 +199,29 @@ func (s *Server) goCall(ctx context.Context, msg *rpcMessage, fn func(context.Co
 		s.writeError(msg.ID, rpcInvalidRequest, "server is shutting down", nil)
 		return
 	}
-	s.calls[key] = cancel
-	s.inflight.Go(func() {
+	s.inflight.Add(1)
+	accepted := s.queue.submit(func() {
+		defer s.inflight.Done()
 		defer func() {
 			s.callMu.Lock()
 			delete(s.calls, key)
 			s.callMu.Unlock()
 		}()
 		defer cancel()
+		if callCtx.Err() != nil {
+			s.writeError(msg.ID, rpcRequestCancelled, "request canceled", nil)
+			return
+		}
 		fn(callCtx, msg)
 	})
+	if !accepted {
+		s.inflight.Done()
+		cancel()
+		s.writeError(msg.ID, rpcServerCancelled, fmt.Sprintf("server busy: %d requests running and %d queued",
+			s.lim.inflight, s.lim.queued), nil)
+		return
+	}
+	s.calls[key] = cancel
 }
 
 func (s *Server) handleCancel(msg *rpcMessage) {
@@ -237,14 +256,33 @@ func (s *Server) notify(method string, params any) {
 // remembered and returned from Serve. HTML escaping stays off so finding text
 // keeps the same bytes on every surface.
 func (s *Server) writeMessage(v any) {
+	body, err := marshalMessage(v)
+	if err != nil {
+		fmt.Fprintf(s.cfg.Stderr, "lsp: marshal message: %v\n", err)
+		return
+	}
+	s.writeFrame(body)
+}
+
+// marshalMessage renders one message body.
+func marshalMessage(v any) ([]byte, error) {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(v); err != nil {
-		fmt.Fprintf(s.cfg.Stderr, "lsp: marshal message: %v\n", err)
-		return
+		return nil, &ioError{op: "marshal message", err: err}
 	}
-	frame := encodeFrame(bytes.TrimSuffix(buf.Bytes(), []byte("\n")))
+	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
+}
+
+// marshalNotification renders one notification body.
+func marshalNotification(method string, params any) ([]byte, error) {
+	return marshalMessage(rpcNotification{JSONRPC: jsonRPCVersion, Method: method, Params: params})
+}
+
+// writeFrame frames and writes one rendered body under the write lock.
+func (s *Server) writeFrame(body []byte) {
+	frame := encodeFrame(body)
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()
 	if s.closed || s.out == nil {
@@ -260,4 +298,21 @@ func (s *Server) logf(kind int, format string, args ...any) {
 	text := fmt.Sprintf(format, args...)
 	fmt.Fprintln(s.cfg.Stderr, "lsp: "+strings.TrimPrefix(text, "verdict: "))
 	s.notify(methodLogMessage, logMessageParams{Type: kind, Message: text})
+}
+
+// queueLogf holds a log line until flushLogs: during initialize nothing may
+// precede the initialize answer. The caller holds stateMu.
+func (s *Server) queueLogf(kind int, format string, args ...any) {
+	s.pendLogs = append(s.pendLogs, logMessageParams{Type: kind, Message: fmt.Sprintf(format, args...)})
+}
+
+// flushLogs emits the queued log lines in order.
+func (s *Server) flushLogs() {
+	s.stateMu.Lock()
+	pending := s.pendLogs
+	s.pendLogs = nil
+	s.stateMu.Unlock()
+	for _, l := range pending {
+		s.logf(l.Type, "%s", l.Message)
+	}
 }

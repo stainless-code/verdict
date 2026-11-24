@@ -25,7 +25,7 @@ func (s *Server) handleExecuteCommand(ctx context.Context, msg *rpcMessage) {
 		s.handleRefresh(ctx, msg)
 	default:
 		s.refuseParams(msg.ID, "unknown command "+quote(params.Command)+
-			"; this server advertises "+strings.Join(capabilities().ExecuteCommandProvider.Commands, ", "))
+			"; this server advertises "+strings.Join(capabilities(false).ExecuteCommandProvider.Commands, ", "))
 	}
 }
 
@@ -33,9 +33,9 @@ func (s *Server) handleExecuteCommand(ctx context.Context, msg *rpcMessage) {
 // root, and republishes. It is the escape hatch for a filesystem whose
 // mtimes the watcher cannot see.
 func (s *Server) handleRefresh(ctx context.Context, msg *rpcMessage) {
-	s.layer.Invalidate()
 	s.stateMu.Lock()
 	defer s.stateMu.Unlock()
+	s.layer.Invalidate()
 	result := refreshResult{At: core.NowUTC(s.cfg.Now()), Roots: []refreshRow{}}
 	for i := range s.roots {
 		root := &s.roots[i]
@@ -44,12 +44,13 @@ func (s *Server) handleRefresh(ctx context.Context, msg *rpcMessage) {
 			s.writeError(msg.ID, rpcRequestCancelled, "request canceled", nil)
 			return
 		}
-		published := s.republishRoot(root)
-		state := s.states[root.ID]
-		result.Roots = append(result.Roots, refreshRow{
-			Root: root.ID, Bundle: state.bundle, Findings: len(state.items), Published: published,
-		})
+		row := refreshRow{Root: root.ID}
+		if state := s.states[root.ID]; state != nil {
+			row.Bundle, row.Findings, row.Truncated = state.bundle, len(state.items), state.truncated
+		}
+		result.Roots = append(result.Roots, row)
 	}
+	result.Published = s.republishAll()
 	s.writeResult(msg.ID, result)
 }
 

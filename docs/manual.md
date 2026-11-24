@@ -2481,12 +2481,29 @@ verdict lsp [--root <dir>]... [--bundle <name>] [--check <tier>] [--max-bundles 
             [--max-roots <n>] [--interval <duration>] [--sweep <duration>] [--no-watch] [--json]
 ```
 
-- `--root <dir>` serves the bundles under one repository; repeat it for a
-  multi-root workspace (at most `--max-roots`, default 8, never more than 16).
-  With no `--root`, the current repository is served, through the probe the
-  read verbs share.
-- `--bundle <name>` publishes that bundle. It must resolve under at least one
-  root, or the start refuses `missing-bundle`. Without it, each root picks its
+- `--root <dir>` serves the bundles under one directory, which must sit inside
+  a git checkout (a `.git` entry in it or an ancestor), or the start refuses
+  `not-a-repo`. Repeat it for a multi-root workspace (at most `--max-roots`,
+  default 8, never more than 16). With `--root` the operator's roots are
+  authoritative: the client's workspace folders are ignored, and a log line
+  says so.
+- With no `--root` the client's roots are served: `initialize`'s
+  `workspaceFolders`, else its `rootUri`, else its `rootPath`, else, when the
+  client names none at all, the checkout the server was started in. Each
+  client root passes the same confinement as a document URI (an absolute,
+  local or UNC `file://` URI, decoded once) and must be an existing directory
+  inside a git checkout; one that is not is dropped with a Warning log line, so
+  `cd /tmp && verdict lsp` serves nothing rather than a non-repository.
+  `--max-roots` bounds them too. Only in this mode does `initialize` advertise
+  `workspace.workspaceFolders` (`supported`, `changeNotifications`), and
+  `workspace/didChangeWorkspaceFolders` adds roots (validated the same way)
+  and removes them (their diagnostics clear unless another root still
+  reaches the file); the read model and its watcher are rebuilt over the new
+  set.
+- `--bundle <name>` publishes that bundle. With `--root` it must resolve under
+  at least one root, or the start refuses `missing-bundle` (the message names
+  `verdict fetch-local` as the remedy); with client roots a miss is a Warning
+  log line instead. Without it, each root picks its
   own: the client's `initializationOptions.bundle`, else the `local-` bundle
   whose `findings.json` is newest, else the newest PR bundle. Corpus bundles
   are never picked, and a tie breaks by name.
@@ -2501,7 +2518,8 @@ verdict lsp [--root <dir>]... [--bundle <name>] [--check <tier>] [--max-bundles 
 
 `initialize` advertises exactly what ships: `positionEncoding: "utf-16"`,
 `textDocumentSync` with `openClose`, `change: 1` (full), and `save.includeText`,
-and `executeCommandProvider.commands: ["verdict.refresh"]`. Hover, code
+and `executeCommandProvider.commands: ["verdict.refresh"]`, plus the
+`workspace` capability above when the client's folders are the roots. Hover, code
 actions (the suggestion quick-fix and the AI fix prompt), and local triage
 from the editor are coming in a follow-up and are not advertised. Two optional
 `initializationOptions` keys are read: `bundle` (above) and `showDeferred`
@@ -2512,18 +2530,46 @@ Diagnostics move on four triggers and never on a keystroke:
 1. `initialized` composes every root and publishes every path carrying a
    finding, so the editor's problem list fills before a file is opened.
 2. `textDocument/didOpen` publishes that document's set with its version.
-3. `textDocument/didSave` re-reads the selected bundle; an unchanged bundle
-   republishes only that document, and nothing at all when the set is
-   byte-identical to the last one sent. A bundle that moved republishes the
-   whole root.
+3. `textDocument/didSave` records the document's version when the client
+   sends one and re-reads the selected bundle of every root that reaches the
+   file; an unchanged bundle republishes only that document, and nothing at
+   all when the set is byte-identical to the last one sent. A bundle that
+   moved republishes everything it reaches.
 4. A bundle watch change (an out-of-band `record`, `fetch-local`, or
    `triage` in a terminal) and the `verdict.refresh` command recompose the
-   root and republish. `verdict.refresh` also drops every cached view: use it
-   where the filesystem hides modification times.
+   root and republish. `verdict.refresh` also drops every cached view (use it
+   where the filesystem hides modification times) and answers
+   `{at, roots: [{root, bundle, findings, truncated}], published}`, where
+   `published` counts the frames it sent.
 
 `textDocument/didChange` only keeps the buffer and its version current: it
 never reads a bundle and never publishes. A path that loses its last finding
 is published once with an empty set, which clears it.
+
+Publishing is per file, not per root. Nested roots (`--root /repo --root
+/repo/sub`) can both reach one file; its set is the union of what every root
+says, each diagnostic keeping its own `data.root` (one finding both roots
+carry on the same range appears once), and it clears only when no root
+contributes any more. A document opened under a different URI spelling than
+the one already published (a `localhost` authority, an encoded drive colon)
+clears the old spelling and takes over.
+
+A bundle read that fails keeps the last good diagnostics: a store caught
+mid-write (`corrupt-store`), an unreadable diff, or a failed listing logs a
+Warning (`window/logMessage` and stderr) and changes nothing, so an
+unreadable bundle never reads as "no findings". The set clears only when the
+selection really changes (the bundle lost its `findings.json`, or another
+bundle now wins) or the bundle directory is gone.
+
+Bounds, each a refusal or a cut with a log line, never a silent drop: 16
+requests run at once and 256 more wait in FIFO order (one past that answers
+`-32802`); 512 open documents (the next is not tracked until one closes), 4
+MiB of text per document and 32 MiB across them (a larger buffer is tracked
+by version only and keeps whole-line ranges); 20,000 findings per bundle
+(past it the highest-ranked publish, each with `data.truncated: true`, and
+`verdict.refresh` reports `truncated`); and one `publishDiagnostics` frame
+never exceeds the 16 MiB frame cap (the set is cut to the longest prefix
+that fits, marked the same way).
 
 Each finding maps to one `Diagnostic`. `severity` is `1` (Error) for
 `critical`, `2` (Warning) for `important`, `3` (Information) for
@@ -2531,16 +2577,19 @@ Each finding maps to one `Diagnostic`. `severity` is `1` (Error) for
 publish; `deferred` ones publish as a Hint when `showDeferred` is true;
 `addressed`, `wont-fix`, `false-positive`, and policy-withheld findings never
 publish. `source` is `verdict`, `code` is the finding's full sig, and
-`message` is the body's first line as plain text (control and bidirectional
-characters dropped, 160 characters at most) with the evidence rung and any
-quote status other than `verified`. The range is the finding's whole line; with
-the document text in hand and an exact anchor, its end tightens to the line's
-end. `data` carries `sig`, `bundle`, `root`, `status`, `severity`, `rigor`,
+`message` is the body's first line as plain text (control characters, line
+and paragraph separators, bidirectional formatting, zero-width spaces and
+joiners, the word joiner, and soft hyphens dropped; 160 characters at most)
+with the evidence rung and any quote status other than `verified`. The range
+is the finding's whole line; with the document text in hand and an exact
+anchor, its end tightens to the line's end, and any range is clamped to the
+document's last line. `data` carries `sig`, `bundle`, `root`, `status`, `severity`, `rigor`,
 `quote_status`, `lens`, `category`, `side`, `anchor` (`exact` for a NEW-side
 line of the reviewed diff, `hunk` for a deleted line mapped onto its hunk's
 NEW side, `unmapped` otherwise), `span`, `hunk_sha256` (the reviewed text),
 `span_sha256` and `span_matches` (whether the editor's text still matches what
-was reviewed), `suggestion`, and `deferred`.
+was reviewed), `suggestion`, `deferred`, and `truncated` when a bound cut the
+set.
 
 Confinement is lexical and total: a document URI that is not an absolute
 `file://` URI strictly under a served root (after exactly one
@@ -2550,22 +2599,32 @@ drive-qualified, backslashed, or carries `..` is never published (one
 warning names the count). A `workspace/executeCommand` other than
 `verdict.refresh` answers `-32602` with `bad-params` in `error.data`; a request
 before `initialize` answers `-32002`, an unknown request `-32601`, a request
-after `shutdown` `-32600`, and `$/cancelRequest` answers a cancelled refresh
-`-32800`. Unknown notifications are ignored. Exit 0 after `shutdown` then
-`exit` or on stdin EOF, 1 on `exit` without `shutdown` or a start refusal
-(`bad-root`, `not-a-repo`, `missing-bundle`), 2 on argv shape, 3 on a caught
-signal.
+after `shutdown` `-32600`, and `$/cancelRequest` answers a canceled request
+`-32800`. Unknown notifications are ignored. `shutdown` refuses new requests
+at once but lets the ones already sent finish for up to 5 seconds, on a
+background goroutine, so `$/cancelRequest` and `exit` are still read
+meanwhile; what is still running then is canceled (`-32800`), and the
+`shutdown` answer follows the last of them. An `exit` read during that drain
+ends the session once the drain does. Exit 0 after `shutdown` then `exit` or
+on stdin EOF, 1 on `exit` without `shutdown` or a start refusal (`bad-root`,
+`not-a-repo`, `missing-bundle`), 2 on argv shape, 3 on a caught signal.
 
 #### Editor setup
 
-Every editor launches the same argv: `verdict lsp`, optionally with `--root`.
-In Neovim (0.10+), start it for any buffer in a repository:
+Every editor launches the same argv: `verdict lsp`. Let the editor pass its
+workspace root (most clients send `workspaceFolders` or `rootUri`), or pin
+roots with `--root`. In Neovim (0.10+), `root_dir` becomes the client's
+`rootUri` and its only workspace folder, so the server serves exactly the
+checkout of the buffer being edited:
 
 ```lua
-vim.lsp.start({
-  name = "verdict",
-  cmd = { "verdict", "lsp" },
-  root_dir = vim.fs.root(0, ".git"),
+vim.api.nvim_create_autocmd("FileType", {
+  callback = function(args)
+    local root = vim.fs.root(args.buf, ".git")
+    if root then
+      vim.lsp.start({ name = "verdict", cmd = { "verdict", "lsp" }, root_dir = root })
+    end
+  end,
 })
 ```
 

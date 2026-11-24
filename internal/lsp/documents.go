@@ -5,41 +5,66 @@ import (
 	"encoding/json"
 )
 
-// rootFor maps one client URI onto the served root that confines it and the
-// root-relative path. ok is false for a URI under no served root: such a
-// document is tracked by nobody and never receives diagnostics.
-func (s *Server) rootFor(uri string) (*servedRoot, string, bool) {
+// rootsFor lists the served roots that confine one client URI. Nested roots
+// can each confine the same file; a URI under no root has none.
+func (s *Server) rootsFor(uri string) []*servedRoot {
+	var out []*servedRoot
 	for i := range s.roots {
-		if rel, err := s.roots[i].relFromURI(uri); err == nil {
-			return &s.roots[i], rel, true
+		if _, err := s.roots[i].relFromURI(uri); err == nil {
+			out = append(out, &s.roots[i])
 		}
 	}
-	return nil, "", false
+	return out
 }
 
-// handleDidOpen tracks the buffer and publishes its path's set.
+// handleDidOpen tracks the buffer and publishes its file's merged set. A
+// document under no served root is not tracked; past maxDocs open documents
+// a new one is refused with a log line rather than evicting another.
 func (s *Server) handleDidOpen(ctx context.Context, msg *rpcMessage) {
 	var params didOpenParams
 	if json.Unmarshal(msg.Params, &params) != nil {
 		return
 	}
 	item := params.TextDocument
-	root, rel, ok := s.rootFor(item.URI)
+	key, ok := fileKeyOfURI(item.URI, s.windows)
 	if !ok {
 		return
 	}
 	s.stateMu.Lock()
 	defer s.stateMu.Unlock()
-	doc := &document{uri: item.URI, rootID: root.ID, key: root.pathKey(rel), version: item.Version}
-	if s.trackedText(len(item.Text), item.URI) {
-		doc.text, doc.hasText = item.Text, true
+	roots := s.rootsFor(item.URI)
+	if len(roots) == 0 {
+		return
 	}
-	s.docs[item.URI] = doc
-	s.docKeys[root.ID+"\x00"+doc.key] = item.URI
-	if s.states[root.ID] == nil {
-		s.compose(ctx, root, true)
+	doc := s.admitDoc(key, item.URI)
+	if doc == nil {
+		return
 	}
-	s.publishKey(root, doc.key, rel)
+	doc.uri, doc.version = item.URI, item.Version
+	s.setText(doc, &item.Text)
+	for _, root := range roots {
+		if s.states[root.ID] == nil {
+			s.compose(ctx, root, true)
+		}
+	}
+	s.publishFile(key, item.URI)
+}
+
+// admitDoc returns the tracked document for key, tracking a new one when the
+// open-document bound allows; past it the open is refused with a log line
+// rather than evicting another document.
+func (s *Server) admitDoc(key, uri string) *document {
+	if doc := s.docs[key]; doc != nil {
+		return doc
+	}
+	if len(s.docs) >= s.lim.docs {
+		s.logf(msgWarning, "verdict: %d documents are open, the most this server tracks; %s gets no "+
+			"diagnostics until another closes", len(s.docs), quoteLog(uri))
+		return nil
+	}
+	doc := &document{key: key}
+	s.docs[key] = doc
+	return doc
 }
 
 // handleDidChange only keeps the buffer current. It never composes, never
@@ -50,9 +75,13 @@ func (s *Server) handleDidChange(msg *rpcMessage) {
 	if json.Unmarshal(msg.Params, &params) != nil {
 		return
 	}
+	key, ok := fileKeyOfURI(params.TextDocument.URI, s.windows)
+	if !ok {
+		return
+	}
 	s.stateMu.Lock()
 	defer s.stateMu.Unlock()
-	doc := s.docs[params.TextDocument.URI]
+	doc := s.docs[key]
 	if doc == nil {
 		return
 	}
@@ -60,49 +89,66 @@ func (s *Server) handleDidChange(msg *rpcMessage) {
 	// Full sync: the last whole-buffer change wins. A ranged change is an
 	// incremental edit this server never asked for, so the text is dropped
 	// rather than patched wrong.
-	doc.text, doc.hasText = "", false
-	for _, change := range params.ContentChanges {
-		if change.Range != nil {
-			doc.text, doc.hasText = "", false
+	var text *string
+	for i := range params.ContentChanges {
+		if params.ContentChanges[i].Range != nil {
+			text = nil
 			continue
 		}
-		if s.trackedText(len(change.Text), doc.uri) {
-			doc.text, doc.hasText = change.Text, true
-		} else {
-			doc.text, doc.hasText = "", false
-		}
+		text = &params.ContentChanges[i].Text
 	}
+	s.setText(doc, text)
 }
 
-// handleDidSave re-reads the selected bundle's cached detail. An unchanged
-// bundle republishes only this document (and nothing at all when its set is
-// byte-identical to the last one sent); a bundle that moved republishes the
-// whole root.
+// handleDidSave re-reads every confining root's selected bundle. An
+// unchanged bundle republishes only this file (and nothing at all when its
+// set is byte-identical to the last one sent); a bundle that moved
+// republishes everything it reaches.
 func (s *Server) handleDidSave(ctx context.Context, msg *rpcMessage) {
 	var params didSaveParams
 	if json.Unmarshal(msg.Params, &params) != nil {
 		return
 	}
 	uri := params.TextDocument.URI
-	root, rel, ok := s.rootFor(uri)
+	key, ok := fileKeyOfURI(uri, s.windows)
 	if !ok {
 		return
 	}
 	s.stateMu.Lock()
 	defer s.stateMu.Unlock()
-	doc := s.docs[uri]
-	if doc != nil && params.Text != nil {
-		if s.trackedText(len(*params.Text), uri) {
-			doc.text, doc.hasText = *params.Text, true
-		} else {
-			doc.text, doc.hasText = "", false
-		}
-	}
-	if s.compose(ctx, root, s.states[root.ID] == nil) {
-		s.republishRoot(root)
+	s.recordSave(key, &params)
+	if s.recomposeFile(ctx, uri) {
+		s.republishAll()
 		return
 	}
-	s.publishKey(root, root.pathKey(rel), rel)
+	s.publishFile(key, uri)
+}
+
+// recordSave applies a save's optional version and text to a tracked
+// document.
+func (s *Server) recordSave(key string, params *didSaveParams) {
+	doc := s.docs[key]
+	if doc == nil {
+		return
+	}
+	if params.TextDocument.Version != nil {
+		doc.version = *params.TextDocument.Version
+	}
+	if params.Text != nil {
+		s.setText(doc, params.Text)
+	}
+}
+
+// recomposeFile re-reads the bundle of every root that reaches uri and
+// reports whether any of them moved.
+func (s *Server) recomposeFile(ctx context.Context, uri string) bool {
+	moved := false
+	for _, root := range s.rootsFor(uri) {
+		if s.compose(ctx, root, s.states[root.ID] == nil) {
+			moved = true
+		}
+	}
+	return moved
 }
 
 // handleDidClose stops tracking the buffer. Its diagnostics stay: they
@@ -112,16 +158,14 @@ func (s *Server) handleDidClose(msg *rpcMessage) {
 	if json.Unmarshal(msg.Params, &params) != nil {
 		return
 	}
-	s.stateMu.Lock()
-	defer s.stateMu.Unlock()
-	uri := params.TextDocument.URI
-	doc := s.docs[uri]
-	if doc == nil {
+	key, ok := fileKeyOfURI(params.TextDocument.URI, s.windows)
+	if !ok {
 		return
 	}
-	delete(s.docs, uri)
-	k := doc.rootID + "\x00" + doc.key
-	if s.docKeys[k] == uri {
-		delete(s.docKeys, k)
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	if doc := s.docs[key]; doc != nil {
+		s.setText(doc, nil)
+		delete(s.docs, key)
 	}
 }

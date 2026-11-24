@@ -264,6 +264,15 @@ func checkoutEvidence() (bool, error) {
 	return gitEntryAbove(dir)
 }
 
+// InsideCheckout reports whether dir or one of its ancestors carries a .git
+// entry (a directory for a normal checkout, a file for a linked worktree).
+// It is lexical over the filesystem and runs no git: a transport validating
+// an operator- or client-supplied root uses it before serving that root. An
+// unreadable entry is an error, never absence.
+func InsideCheckout(dir string) (bool, error) {
+	return gitEntryAbove(dir)
+}
+
 // gitEntryAbove walks dir and its ancestors for a .git entry: a directory for a
 // normal checkout, a file for a linked worktree.
 func gitEntryAbove(dir string) (bool, error) {

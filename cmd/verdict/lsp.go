@@ -26,11 +26,10 @@ const (
 	flagLSPNoWatch    = "--no-watch"
 	flagLSPJSON       = "--json"
 	defaultLSPCheck   = "informational"
-	defaultLSPRoots   = 8
-	maxLSPRoots       = 16
 	minLSPInterval    = 100 * time.Millisecond
 	codeLSPBadRoot    = "bad-root"
 	codeLSPNotARepo   = "not-a-repo"
+	lspRootPrefix     = "lsp: --root "
 )
 
 // lspUsageText is `verdict lsp --help`: the stdio transport contract, its
@@ -46,14 +45,17 @@ func lspUsageText() string {
 		"  Diagnostics move on didOpen, didSave, a bundle watch change, and verdict.refresh;\n" +
 		"  never on didChange. No hover or code actions yet, no model calls, no writes,\n" +
 		"  no workspace file reads; the process exits on exit or when stdin closes.\n" +
-		"  --root <dir>  serve the bundles under <dir>; repeat for several roots\n" +
-		"                (default: the current repository)\n" +
+		"  --root <dir>  serve the bundles under <dir>, which must be inside a git checkout;\n" +
+		"                repeat for several roots. Without it the client's workspace folders\n" +
+		"                are served (each must be inside a checkout), else the checkout the\n" +
+		"                server started in; workspace folder changes are followed\n" +
 		"  --bundle <name>  publish this bundle (default: the newest local- bundle with findings,\n" +
 		"                   then the newest PR bundle)\n" +
 		"  --check <tier>  gate tier the detail composes (critical|important|informational;\n" +
 		"                  default informational); it never filters findings\n" +
 		"  --max-bundles <n>  bundle listing cap per root (default 500)\n" +
-		"  --max-roots <n>  refuse more than <n> --root values (default 8, at most 16)\n" +
+		"  --max-roots <n>  refuse more than <n> --root values and serve at most <n> workspace\n" +
+		"                   folders (default 8, at most 16)\n" +
 		"  --interval <duration>  watch tick (default 1s, at least 100ms)\n" +
 		"  --sweep <duration>  watch content sweep (default 30s, at least --interval)\n" +
 		"  --no-watch  publish on open, save, and verdict.refresh only\n" +
@@ -69,21 +71,27 @@ func runLSP(ctx context.Context, r *cli.Runner, args []string, version string) i
 	if done {
 		return code
 	}
-	roots, ref := resolveLSPRoots(ctx, opts.roots)
+	roots, ref := resolveLSPRoots(opts.roots)
 	if ref != nil {
 		return r.Refuse(ref)
 	}
+	fallback := ""
+	if len(roots) == 0 {
+		fallback = fallbackLSPRoot(ctx)
+	}
 	server := lsp.New(&lsp.Config{
-		Version:    version,
-		Roots:      roots,
-		Bundle:     opts.bundle,
-		Check:      opts.check,
-		MaxBundles: opts.maxBundles,
-		Interval:   opts.interval,
-		Sweep:      opts.sweep,
-		NoWatch:    opts.noWatch,
-		Now:        r.Now,
-		Stderr:     r.Diag,
+		Version:      version,
+		Roots:        roots,
+		FallbackRoot: fallback,
+		MaxRoots:     opts.maxRoots,
+		Bundle:       opts.bundle,
+		Check:        opts.check,
+		MaxBundles:   opts.maxBundles,
+		Interval:     opts.interval,
+		Sweep:        opts.sweep,
+		NoWatch:      opts.noWatch,
+		Now:          r.Now,
+		Stderr:       r.Diag,
 	})
 	if ref := server.Preflight(); ref != nil {
 		return r.Refuse(ref)
@@ -117,7 +125,7 @@ type lspOptions struct {
 // cross-flag bounds.
 func parseLSPFlags(r *cli.Runner, args []string) (lspOptions, int, bool) {
 	opts := lspOptions{
-		check: defaultLSPCheck, maxBundles: query.DefaultMaxBundles, maxRoots: defaultLSPRoots,
+		check: defaultLSPCheck, maxBundles: query.DefaultMaxBundles, maxRoots: lsp.DefaultMaxRoots,
 		interval: time.Second, sweep: query.DefaultSweep,
 	}
 	for i := 0; i < len(args); i++ {
@@ -194,7 +202,7 @@ func applyLSPFlag(r *cli.Runner, opts *lspOptions, name, value string) (int, boo
 	case flagLSPMaxBundles:
 		return applyLSPCount(r, name, value, 0, &opts.maxBundles)
 	case flagLSPMaxRoots:
-		return applyLSPCount(r, name, value, maxLSPRoots, &opts.maxRoots)
+		return applyLSPCount(r, name, value, lsp.MaxRoots, &opts.maxRoots)
 	case flagLSPInterval, flagLSPSweep:
 		return applyLSPDuration(r, opts, name, value)
 	}
@@ -232,16 +240,9 @@ func lspUsage(r *cli.Runner, message string) int {
 	return r.ReportUsage(&cli.UsageError{Message: message})
 }
 
-// resolveLSPRoots resolves every served root: each --root must be an
-// existing directory; with none, the repository probe the read verbs share.
-func resolveLSPRoots(ctx context.Context, given []string) ([]string, *cli.RefusalError) {
-	if len(given) == 0 {
-		root, ref := probeLSPRoot(ctx)
-		if ref != nil {
-			return nil, ref
-		}
-		given = []string{root}
-	}
+// resolveLSPRoots validates every explicit --root. With none, the session
+// serves the client's workspace folders instead (see lsp.Config).
+func resolveLSPRoots(given []string) ([]string, *cli.RefusalError) {
 	roots := make([]string, 0, len(given))
 	for _, g := range given {
 		abs, ref := resolveLSPRoot(g)
@@ -253,30 +254,40 @@ func resolveLSPRoots(ctx context.Context, given []string) ([]string, *cli.Refusa
 	return roots, nil
 }
 
-// probeLSPRoot finds the current repository, as every read verb does.
-func probeLSPRoot(ctx context.Context) (string, *cli.RefusalError) {
+// fallbackLSPRoot is the checkout the process started in, served only when
+// the client names no root at all. Outside a checkout there is none: the
+// server never serves a directory that is not a repository.
+func fallbackLSPRoot(ctx context.Context) string {
+	cwd, err := os.Getwd()
+	if err != nil || lsp.CheckoutProblem(cwd) != "" {
+		return ""
+	}
 	root, err := readcommon.RepoRoot(ctx)
-	if err == nil {
-		return root, nil
+	if err != nil {
+		return ""
 	}
-	if ctx.Err() != nil {
-		return "", &cli.RefusalError{Code: cli.CodeCanceled, Message: "canceled before lsp completed"}
+	abs, err := filepath.Abs(root)
+	if err != nil {
+		return ""
 	}
-	return "", &cli.RefusalError{Code: codeLSPNotARepo, Message: err.Error()}
+	return abs
 }
 
 // resolveLSPRoot validates one root: absolute, existing, directory.
 func resolveLSPRoot(given string) (string, *cli.RefusalError) {
 	abs, err := filepath.Abs(given)
 	if err != nil {
-		return "", &cli.RefusalError{Code: codeLSPBadRoot, Message: "lsp: --root " + given + " is not addressable: " + err.Error()}
+		return "", &cli.RefusalError{Code: codeLSPBadRoot, Message: lspRootPrefix + given + " is not addressable: " + err.Error()}
 	}
 	info, err := os.Stat(abs)
 	if err != nil {
-		return "", &cli.RefusalError{Code: codeLSPBadRoot, Message: "lsp: --root " + abs + " does not exist or is unreadable"}
+		return "", &cli.RefusalError{Code: codeLSPBadRoot, Message: lspRootPrefix + abs + " does not exist or is unreadable"}
 	}
 	if !info.IsDir() {
-		return "", &cli.RefusalError{Code: codeLSPBadRoot, Message: "lsp: --root " + abs + " is not a directory"}
+		return "", &cli.RefusalError{Code: codeLSPBadRoot, Message: lspRootPrefix + abs + " is not a directory"}
+	}
+	if problem := lsp.CheckoutProblem(abs); problem != "" {
+		return "", &cli.RefusalError{Code: codeLSPNotARepo, Message: lspRootPrefix + abs + " cannot be served: " + problem}
 	}
 	return abs, nil
 }

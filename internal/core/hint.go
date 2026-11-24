@@ -126,7 +126,7 @@ var hintRules = []HintRule{
 	},
 	{
 		codes: []string{"bad-params"},
-		hint:  "try: send a command the server listed in executeCommandProvider.commands, with the arguments docs/manual.md names",
+		hint:  "try: send one of the commands initialize advertised in executeCommandProvider.commands (this build: verdict.refresh)",
 	},
 	{
 		codes: []string{"bad-root"},

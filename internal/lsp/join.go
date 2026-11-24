@@ -37,14 +37,30 @@ type record struct {
 	Locator    string  `json:"locator"`
 	Line       int     `json:"line"`
 	StartLine  int     `json:"start_line"`
+	Rank       int     `json:"rank"`
 }
 
 // diffFile is the subset of one query.Diff file row the join reads.
 type diffFile struct {
+	newSide   map[int]string
 	Path      string     `json:"path"`
 	Hunks     []diffHunk `json:"hunks"`
 	IsBinary  bool       `json:"is_binary"`
 	IsDeleted bool       `json:"is_deleted"`
+}
+
+// indexNewSide maps every NEW-side line number to its text, once per file,
+// so a span lookup is one map read per line. Only add and context rows
+// carry a new_no in the query diff wire.
+func (f *diffFile) indexNewSide() {
+	f.newSide = map[int]string{}
+	for i := range f.Hunks {
+		for _, l := range f.Hunks[i].Lines {
+			if l.NewNo > 0 {
+				f.newSide[l.NewNo] = l.Text
+			}
+		}
+	}
 }
 
 type diffHunk struct {
@@ -71,6 +87,7 @@ type finding struct {
 	start      int
 	line       int
 	suggestion bool
+	truncated  bool
 }
 
 // joinFinding anchors one record. ok is false for a record no diagnostic can
@@ -162,17 +179,14 @@ func newSideHash(file *diffFile, start, end int) (string, bool) {
 	return textHash(texts), true
 }
 
-// newSideLine finds NEW-side line n. Only add and context rows carry a
-// new_no in the query diff wire, so the number alone selects the NEW side.
+// newSideLine finds NEW-side line n through the file's index, building the
+// index on first use for a file decoded elsewhere.
 func newSideLine(file *diffFile, n int) (string, bool) {
-	for i := range file.Hunks {
-		for _, l := range file.Hunks[i].Lines {
-			if l.NewNo == n {
-				return l.Text, true
-			}
-		}
+	if file.newSide == nil {
+		file.indexNewSide()
 	}
-	return "", false
+	text, ok := file.newSide[n]
+	return text, ok
 }
 
 // textHash is the span hash both sides of the drift check use.

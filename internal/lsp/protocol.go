@@ -14,6 +14,7 @@ const (
 	methodDidSave        = "textDocument/didSave"
 	methodDidClose       = "textDocument/didClose"
 	methodExecuteCommand = "workspace/executeCommand"
+	methodDidChangeRoots = "workspace/didChangeWorkspaceFolders"
 	methodPublish        = "textDocument/publishDiagnostics"
 	methodLogMessage     = "window/logMessage"
 	protocolPrefix       = "$/"
@@ -31,6 +32,9 @@ const (
 	rpcInternalError    = -32603
 	rpcNotInitialized   = -32002
 	rpcRequestCancelled = -32800
+	// rpcServerCancelled is LSP's ServerCancelled: the server dropped a
+	// request it could not queue.
+	rpcServerCancelled = -32802
 )
 
 // MessageType values for window/logMessage.
@@ -86,7 +90,22 @@ type rpcError struct { //nolint:govet // field order mirrors the wire frame
 }
 
 type initializeParams struct {
-	InitializationOptions json.RawMessage `json:"initializationOptions"`
+	RootURI               *string           `json:"rootUri"`
+	RootPath              *string           `json:"rootPath"`
+	InitializationOptions json.RawMessage   `json:"initializationOptions"`
+	WorkspaceFolders      []workspaceFolder `json:"workspaceFolders"`
+}
+
+type workspaceFolder struct {
+	URI  string `json:"uri"`
+	Name string `json:"name"`
+}
+
+type didChangeRootsParams struct {
+	Event struct {
+		Added   []workspaceFolder `json:"added"`
+		Removed []workspaceFolder `json:"removed"`
+	} `json:"event"`
 }
 
 // initOptions are the optional, non-security-relevant session preferences a
@@ -96,7 +115,7 @@ type initOptions struct {
 	ShowDeferred bool   `json:"showDeferred"`
 }
 
-type initializeResult struct { //nolint:govet // field order mirrors the wire frame
+type initializeResult struct {
 	Capabilities serverCapabilities `json:"capabilities"`
 	ServerInfo   serverInfo         `json:"serverInfo"`
 }
@@ -113,6 +132,18 @@ type serverCapabilities struct { //nolint:govet // field order mirrors the wire 
 	PositionEncoding       string                `json:"positionEncoding"`
 	TextDocumentSync       textDocumentSync      `json:"textDocumentSync"`
 	ExecuteCommandProvider executeCommandOptions `json:"executeCommandProvider"`
+	Workspace              *workspaceOptions     `json:"workspace,omitempty"`
+}
+
+// workspaceOptions is advertised only when the client's folders are the
+// served roots (no --root).
+type workspaceOptions struct {
+	WorkspaceFolders workspaceFoldersOptions `json:"workspaceFolders"`
+}
+
+type workspaceFoldersOptions struct {
+	Supported           bool `json:"supported"`
+	ChangeNotifications bool `json:"changeNotifications"`
 }
 
 type textDocumentSync struct { //nolint:govet // field order mirrors the wire frame
@@ -155,8 +186,11 @@ type contentChange struct {
 }
 
 type didSaveParams struct {
-	Text         *string           `json:"text"`
-	TextDocument versionedDocument `json:"textDocument"`
+	Text         *string `json:"text"`
+	TextDocument struct {
+		Version *int   `json:"version"`
+		URI     string `json:"uri"`
+	} `json:"textDocument"`
 }
 
 type didCloseParams struct {
@@ -211,6 +245,7 @@ type diagnosticData struct { //nolint:govet // field order mirrors the wire fram
 	SpanMatches *bool  `json:"span_matches,omitempty"`
 	Suggestion  bool   `json:"suggestion"`
 	Deferred    bool   `json:"deferred"`
+	Truncated   bool   `json:"truncated,omitempty"`
 }
 
 type span struct {
@@ -229,17 +264,19 @@ type logMessageParams struct {
 	Type    int    `json:"type"`
 }
 
-// refreshResult answers verdict.refresh.
+// refreshResult answers verdict.refresh: one row per served root and the
+// number of publishDiagnostics frames the refresh sent.
 type refreshResult struct {
-	At    string       `json:"at"`
-	Roots []refreshRow `json:"roots"`
+	At        string       `json:"at"`
+	Roots     []refreshRow `json:"roots"`
+	Published int          `json:"published"`
 }
 
 type refreshRow struct {
 	Root      string `json:"root"`
 	Bundle    string `json:"bundle"`
 	Findings  int    `json:"findings"`
-	Published int    `json:"published"`
+	Truncated bool   `json:"truncated"`
 }
 
 // errorData is the typed payload a refused request carries: the refusal code

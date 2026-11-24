@@ -88,7 +88,8 @@ func TestUTF16Len(t *testing.T) {
 
 // TestDiagnosticRangeAndDrift pins the range forms and the drift check: a
 // whole-line range without text; with text, an exact anchor tightens to the
-// last line's UTF-16 end and span_matches compares the reviewed hash.
+// last line's UTF-16 end, every range clamps to the document's last line,
+// and span_matches compares the reviewed hash.
 func TestDiagnosticRangeAndDrift(t *testing.T) {
 	t.Parallel()
 	exact, _ := joinFinding(&record{Sig: "s", Status: "open", Path: "notes.txt", Line: 2}, fixtureFiles())
@@ -99,16 +100,18 @@ func TestDiagnosticRangeAndDrift(t *testing.T) {
 		f       *finding
 		name    string
 		lines   []string
+		start   position
 		end     position
 	}{
-		{nil, &exact, "no text keeps the whole line", nil, position{Line: 2}},
-		{&yes, &exact, "matching text tightens", []string{"top", "new line", "bottom"}, position{Line: 1, Character: 8}},
-		{&no, &exact, "drifted text counts UTF-16", []string{"top", "new line 😀", "bottom"}, position{Line: 1, Character: 11}},
-		{&no, &exact, "a short document cannot match", []string{"top"}, position{Line: 2}},
-		{nil, &unmapped, "unmapped never tightens", []string{"a", "b"}, position{Line: 2}},
+		{nil, &exact, "no text keeps the whole line", nil, position{Line: 1}, position{Line: 2}},
+		{&yes, &exact, "matching text tightens", []string{"top", "new line", "bottom"}, position{Line: 1}, position{Line: 1, Character: 8}},
+		{&no, &exact, "drifted text counts UTF-16", []string{"top", "new line 😀", "bottom"}, position{Line: 1}, position{Line: 1, Character: 11}},
+		{&no, &exact, "a short document clamps to its last line", []string{"top"}, position{Line: 0, Character: 3}, position{Line: 0, Character: 3}},
+		{nil, &unmapped, "the next-line end clamps to the last line", []string{"a", "b"}, position{Line: 1}, position{Line: 1, Character: 1}},
+		{nil, &unmapped, "a trailing newline keeps the whole line", []string{"a", "b", ""}, position{Line: 1}, position{Line: 2}},
 	} {
 		d := diagnosticOf(tc.f, tc.lines)
-		checkDiagnosticRange(t, tc.name, &d, tc.end, tc.matches)
+		checkDiagnosticRange(t, tc.name, &d, lspRange{Start: tc.start, End: tc.end}, tc.matches)
 	}
 	same := diagnosticOf(&exact, []string{"top", "new line", "bottom"})
 	if same.Data.SpanSHA256 != hashNewLine || same.Code != "s" || same.Source != "verdict" || same.Data.Bundle != "local-1" {
@@ -121,10 +124,10 @@ func diagnosticOf(f *finding, lines []string) Diagnostic {
 	return diagnostic(&root, &bundleState{bundle: "local-1", digest: "d"}, f, severityError, lines)
 }
 
-func checkDiagnosticRange(t *testing.T, name string, d *Diagnostic, end position, matches *bool) {
+func checkDiagnosticRange(t *testing.T, name string, d *Diagnostic, want lspRange, matches *bool) {
 	t.Helper()
-	if d.Range.Start.Line != 1 || d.Range.End != end {
-		t.Errorf("%s: range %+v, want start line 1 end %+v", name, d.Range, end)
+	if d.Range != want {
+		t.Errorf("%s: range %+v, want %+v", name, d.Range, want)
 	}
 	switch {
 	case matches == nil && d.Data.SpanMatches != nil:

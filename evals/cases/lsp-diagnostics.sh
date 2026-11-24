@@ -4,8 +4,9 @@
 # capability set, publishDiagnostics on initialized and didOpen with the
 # exact severity, code, and range, no frame for an unchanged save or any
 # didChange (proved by frame order against a barrier request), a refresh
-# that clears a finding triaged out of band, the exit contract, and a store
-# the server never writes.
+# that clears a finding triaged out of band, the exit contract, a store the
+# server never writes, roots that must sit in a git checkout, client
+# workspace folders without --root, and nested roots merged per file.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
@@ -42,13 +43,19 @@ split_frames() {
   if lsp_bodies "$RAW" >"$OUT"; then :; else bad "stdout is not pure LSP frames"; fi
 }
 
+# The served root must be inside a git checkout.
+git -C "$EVAL_SANDBOX" init -q
 eval_mk_bundle local-lsp
 printf '[%s,%s,%s]' "$(finding "$SIG_CRIT" open critical 2)" "$(finding "$SIG_INFO" open informational 1)" \
   "$(finding "$SIG_FP" false-positive important 3)" | eval_write_findings local-lsp
 STORE="$EVAL_SANDBOX/.verdict/state/local-lsp/findings.json"
 store_sum() { { sha256sum "$STORE" 2>/dev/null || shasum -a 256 "$STORE"; } | cut -d' ' -f1; }
 BEFORE="$(store_sum)"
-URI="$(lsp_file_uri "$EVAL_SANDBOX/notes.txt")"
+# TMPDIR may end in a slash; the server spells URIs from the cleaned root,
+# so the client here does too (a different spelling is cleared and replaced,
+# which the unit tests pin).
+SANDBOX="$(printf '%s' "$EVAL_SANDBOX" | tr -s '/')"
+URI="$(lsp_file_uri "$SANDBOX/notes.txt")"
 TEXT="$(printf 'top\nnew line\nbottom\n')"
 open_msg="$(jq -cn --arg u "$URI" --arg t "$TEXT"$'\n' '{jsonrpc:"2.0",method:"textDocument/didOpen",
   params:{textDocument:{uri:$u,languageId:"plaintext",version:1,text:$t}}}')"
@@ -163,6 +170,67 @@ if [ "$EVAL_STATUS" -eq 1 ] && jq -e '.error.code == "missing-bundle"' <"$RAW" >
 else
   bad "--bundle local-nope = exit $EVAL_STATUS: $(head -c 300 "$RAW")"
 fi
+# A directory outside any checkout (the sandbox itself is one now).
+BARE="$(eval_fixture_scratch)/not-a-checkout"
+mkdir -p "$BARE"
+run_lsp --root "$BARE" --json </dev/null
+if [ "$EVAL_STATUS" -eq 1 ] && jq -e '.error.code == "not-a-repo"' <"$RAW" >/dev/null; then
+  good "a --root outside any git checkout refuses not-a-repo"
+else
+  bad "--root <non-checkout> = exit $EVAL_STATUS: $(head -c 300 "$RAW")"
+fi
+
+# Leg 4: no --root. The client's rootUri is the served root, the workspace
+# folder capability is advertised, and a folder outside a checkout is
+# dropped with a warning (served from a directory that is not one).
+ROOT_URI="$(lsp_file_uri "$SANDBOX")"
+BARE_URI="$(lsp_file_uri "$BARE")"
+{
+  lsp_frame "$(jq -cn --arg r "$ROOT_URI" --arg b "$BARE_URI" '{jsonrpc:"2.0",id:1,method:"initialize",
+    params:{capabilities:{},workspaceFolders:[{uri:$r,name:"w"},{uri:$b,name:"bare"}]}}')"
+  lsp_frame '{"jsonrpc":"2.0","method":"initialized","params":{}}'
+  lsp_frame '{"jsonrpc":"2.0","id":2,"method":"shutdown"}'
+  lsp_frame '{"jsonrpc":"2.0","method":"exit"}'
+} >"$EVAL_SANDBOX/leg4.frames"
+set +e
+(cd "$BARE" && "$EVAL_CLI" lsp --no-watch >"$RAW" 2>"$ERR") <"$EVAL_SANDBOX/leg4.frames"
+EVAL_STATUS=$?
+set -e
+split_frames
+if [ "$EVAL_STATUS" -eq 0 ] && jq -se --arg u "$URI" '
+  (.[] | select(.id == 1) | .result.capabilities.workspace.workspaceFolders == {supported: true, changeNotifications: true}) and
+  ([.[] | select(.method == "window/logMessage") | .params.message | select(contains("not inside a git checkout"))] | length == 1) and
+  ([.[] | select(.method == "textDocument/publishDiagnostics") | .params.uri] | index($u) != null)' <"$OUT" >/dev/null; then
+  good "without --root the client's workspace folders are served and a non-checkout folder is dropped"
+else
+  bad "workspace mode drifted (exit $EVAL_STATUS): $(jq -sc '[.[] | select(.id == 1 or .method)]' <"$OUT" | head -c 600)"
+fi
+
+# Leg 5: nested roots. A file both roots reach gets one merged set.
+mkdir -p "$EVAL_SANDBOX/inner/.verdict/state/local-in"
+printf '[%s]' "$(finding "$SIG_CRIT" open critical 1 | jq -c '.path = "inner/x.go"')" | eval_write_findings local-lsp
+printf '[%s]' "$(finding "$SIG_INFO" open informational 2 | jq -c '.path = "x.go"')" \
+  >"$EVAL_SANDBOX/inner/.verdict/state/local-in/findings.json"
+{
+  lsp_frame '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"capabilities":{}}}'
+  lsp_frame '{"jsonrpc":"2.0","method":"initialized","params":{}}'
+  lsp_frame '{"jsonrpc":"2.0","id":2,"method":"workspace/executeCommand","params":{"command":"verdict.refresh"}}'
+  lsp_frame '{"jsonrpc":"2.0","id":3,"method":"shutdown"}'
+  lsp_frame '{"jsonrpc":"2.0","method":"exit"}'
+} >"$EVAL_SANDBOX/leg5.frames"
+run_lsp --root "$EVAL_SANDBOX" --root "$EVAL_SANDBOX/inner" --no-watch <"$EVAL_SANDBOX/leg5.frames"
+split_frames
+INNER_URI="$(lsp_file_uri "$SANDBOX/inner/x.go")"
+if [ "$EVAL_STATUS" -eq 0 ] && jq -se --arg u "$INNER_URI" --arg c "$SIG_CRIT" --arg i "$SIG_INFO" '
+  [.[] | select(.method == "textDocument/publishDiagnostics" and .params.uri == $u)] as $p |
+  ($p | length == 1) and ($p[0].params.diagnostics | map(.code) == [$c, $i]) and
+  ($p[0].params.diagnostics | map(.data.root) | unique | length == 2) and
+  (.[] | select(.id == 2) | .result.published == 0)' <"$OUT" >/dev/null; then
+  good "nested roots merge one file into one publish carrying both roots, and a refresh sends nothing new"
+else
+  bad "nested roots drifted: $(jq -sc '[.[] | select(.method == "textDocument/publishDiagnostics" or .id == 2)]' <"$OUT" | head -c 900)"
+fi
+
 set +e
 "$EVAL_CLI" lsp --allow-run </dev/null >/dev/null 2>"$ERR"
 EVAL_STATUS=$?

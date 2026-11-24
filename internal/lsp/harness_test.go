@@ -69,12 +69,40 @@ func writeBundle(t *testing.T, root, name string, findings ...string) {
 // notes.txt:2 and an important one on other.go:4.
 func fixtureRoot(t *testing.T) string {
 	t.Helper()
-	root := t.TempDir()
+	root := checkout(t)
 	writeBundle(t, root, "local-1",
 		findingJSON(sigCrit, "open", "critical", "notes.txt", 2),
 		findingJSON(sigImp, "open", "important", "other.go", 4),
 	)
 	return root
+}
+
+// checkout is an empty directory that reads as a git checkout (it carries a
+// .git entry, which is all the root guard looks for).
+func checkout(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// logs returns the window/logMessage texts among frames.
+func logs(t *testing.T, frames []wireFrame) []string {
+	t.Helper()
+	var out []string
+	for i := range frames {
+		if frames[i].Method != methodLogMessage {
+			continue
+		}
+		var p logMessageParams
+		if err := json.Unmarshal(frames[i].Params, &p); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, p.Message)
+	}
+	return out
 }
 
 // wireFrame is one decoded server frame.
@@ -90,6 +118,7 @@ type wireFrame struct {
 // session drives one Serve over pipes and collects every frame it writes.
 type session struct {
 	readErr error
+	writes  chan []byte
 	server  *Server
 	t       *testing.T
 	in      *io.PipeWriter
@@ -113,13 +142,14 @@ func startSession(t *testing.T, cfg *Config) *session {
 	inR, inW := io.Pipe()
 	outR, outW := io.Pipe()
 	server := New(cfg)
-	s := &session{t: t, in: inW, done: make(chan error, 1), server: server}
+	s := &session{t: t, in: inW, done: make(chan error, 1), server: server, writes: make(chan []byte, 4096)}
 	go func() {
 		err := server.Serve(context.Background(), inR, outW)
 		_ = outW.Close()
 		s.done <- err
 	}()
 	go s.collect(outR)
+	go s.pump()
 	t.Cleanup(func() {
 		_ = inW.Close()
 	})
@@ -171,9 +201,31 @@ func wantError(t *testing.T, what string, f *wireFrame, code int) {
 }
 
 func (s *session) sendRaw(body string) {
-	s.t.Helper()
-	if _, err := s.in.Write(encodeFrame([]byte(body))); err != nil {
-		s.t.Fatalf("write frame: %v", err)
+	s.sendBytes(encodeFrame([]byte(body)))
+}
+
+// sendBytes queues raw stdin bytes. A writer goroutine owns the pipe, so a
+// server that stops reading (the bug a test hunts) fails the test's wait
+// instead of blocking the test goroutine on the write.
+func (s *session) sendBytes(raw []byte) {
+	s.writes <- raw
+}
+
+// closeInput queues stdin EOF after every pending write.
+func (s *session) closeInput() {
+	s.writes <- nil
+}
+
+// pump writes queued stdin bytes in order; nil closes stdin.
+func (s *session) pump() {
+	for raw := range s.writes {
+		if raw == nil {
+			_ = s.in.Close()
+			return
+		}
+		if _, err := s.in.Write(raw); err != nil {
+			return
+		}
 	}
 }
 

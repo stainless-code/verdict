@@ -89,7 +89,7 @@ func TestStdinEOFIsCleanExit(t *testing.T) {
 	t.Parallel()
 	s := startSession(t, newConfig(fixtureRoot(t)))
 	s.initialize(1, nil)
-	_ = s.in.Close()
+	s.closeInput()
 	if err := s.wait(); err != nil {
 		t.Fatalf("Serve on EOF = %v, want nil", err)
 	}
@@ -115,9 +115,7 @@ func TestMalformedFramesAnswerAndStop(t *testing.T) {
 	if string(frames[2].ID) != "2" {
 		t.Errorf("the invalid request's error carries id %s, want 2", frames[2].ID)
 	}
-	if _, err := s.in.Write([]byte("Content-Length: nope\r\n\r\n")); err != nil {
-		t.Fatal(err)
-	}
+	s.sendBytes([]byte("Content-Length: nope\r\n\r\n"))
 	err := s.wait()
 	var te *transportError
 	if !errors.As(err, &te) || !errors.Is(err, errFrameHeader) {
@@ -293,7 +291,7 @@ func TestRefreshCommandRecomposes(t *testing.T) {
 	s.request(3, methodExecuteCommand, map[string]any{"command": CommandRefresh})
 	before, resp := s.awaitResponse(3)
 	want := `{"at":"2026-11-02T12:00:00Z","roots":[{"root":"` + newServedRoot(root, false).ID +
-		`","bundle":"local-1","findings":1,"published":1}]}`
+		`","bundle":"local-1","findings":1,"truncated":false}],"published":1}`
 	if string(resp.Result) != want {
 		t.Fatalf("refresh result = %s, want %s", resp.Result, want)
 	}
@@ -318,8 +316,8 @@ func TestUnknownCommandRefusesBadParams(t *testing.T) {
 	want := `{"jsonrpc":"2.0","id":2,"error":{"code":-32602,"message":"bad-params: unknown command ` +
 		`\"verdict.reviewFile\"; this server advertises verdict.refresh","data":{"code":"bad-params",` +
 		`"message":"unknown command \"verdict.reviewFile\"; this server advertises verdict.refresh",` +
-		`"hint":"try: send a command the server listed in executeCommandProvider.commands, ` +
-		`with the arguments docs/manual.md names"}}}`
+		`"hint":"try: send one of the commands initialize advertised in executeCommandProvider.commands ` +
+		`(this build: verdict.refresh)"}}}`
 	if bad.raw != want {
 		t.Fatalf("unknown command answered\n%s\nwant\n%s", bad.raw, want)
 	}

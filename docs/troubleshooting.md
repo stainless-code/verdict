@@ -284,9 +284,9 @@ Fix: use schema version `1`, unique full signatures, named models, and verdicts 
 
 ## `bad-params`
 
-Cause: an editor sent `verdict lsp` a `workspace/executeCommand` it does not advertise, or arguments it cannot read. This build advertises `verdict.refresh` alone; the JSON-RPC error is `-32602` with this code in `error.data`.
+Cause: an editor sent `verdict lsp` a `workspace/executeCommand` it does not advertise, or params it cannot read. This build advertises `verdict.refresh` alone; the JSON-RPC error is `-32602` with this code in `error.data`.
 
-Fix: send only the commands `initialize` listed in `executeCommandProvider.commands`, then retry. An editor extension built for a newer `verdict lsp` needs that newer binary.
+Fix: send only a command `initialize` listed in `executeCommandProvider.commands` (this build: `verdict.refresh`), then retry. An editor extension built for a newer `verdict lsp` needs that newer binary.
 
 ## `bad-path`
 
@@ -356,7 +356,7 @@ Fix: pass `--require-rigor critical=walked` (repeatable, one tier per flag), or 
 
 ## `bad-root`
 
-Cause: `serve --root`, `acp --root`, or `lsp --root` names a path that is missing, not a directory, or unreadable.
+Cause: `serve --root`, `acp --root`, or `lsp --root` names a path that is missing, not a directory, or unreadable. (An `lsp --root` that exists but sits outside any git checkout refuses `not-a-repo` instead.)
 
 Fix: pass `--root <existing-directory>`, or start `verdict serve` inside a checkout with no `--root`.
 

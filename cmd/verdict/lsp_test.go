@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -80,8 +82,19 @@ func TestLSPStartRefusals(t *testing.T) {
 	if code != cli.ExitRefused || !strings.Contains(out, `"code": "bad-root"`) {
 		t.Fatalf("lsp --root <file> = exit %d\nstdout: %s\nstderr: %s", code, out, derr)
 	}
-	code, out, derr = runCapture(t, []string{"lsp", "--root", t.TempDir(), "--bundle", "local-nope", "--json"})
-	if code != cli.ExitRefused || !strings.Contains(out, `"code": "missing-bundle"`) {
+	bare := t.TempDir()
+	code, out, derr = runCapture(t, []string{"lsp", "--root", bare, "--json"})
+	if code != cli.ExitRefused || !strings.Contains(out, `"code": "not-a-repo"`) ||
+		!strings.Contains(out, "is not inside a git checkout") {
+		t.Fatalf("lsp --root <non-checkout> = exit %d\nstdout: %s\nstderr: %s", code, out, derr)
+	}
+	repo := t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	code, out, derr = runCapture(t, []string{"lsp", "--root", repo, "--bundle", "local-nope", "--json"})
+	if code != cli.ExitRefused || !strings.Contains(out, `"code": "missing-bundle"`) ||
+		!strings.Contains(out, "names no bundle under any served root — run verdict fetch-local") {
 		t.Fatalf("lsp --bundle local-nope = exit %d\nstdout: %s\nstderr: %s", code, out, derr)
 	}
 }

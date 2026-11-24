@@ -229,3 +229,64 @@ func osRoot(root string) string {
 	}
 	return abs
 }
+
+// fileKey is the root-independent identity of one file under the root: its
+// cleaned absolute slash path (UNC host included), case-folded on Windows.
+// Two nested roots that both reach a file agree on its key, so their
+// findings merge into one publish.
+func (r *servedRoot) fileKey(rel string) string {
+	return pathIdentity(r.host, strings.TrimSuffix(r.slash, slash)+slash+rel, r.windows)
+}
+
+func pathIdentity(host, p string, windows bool) string {
+	if host != "" {
+		p = uncPrefix + host + p
+	}
+	if windows {
+		return strings.ToLower(p)
+	}
+	return p
+}
+
+// absFromURI decodes one client `file://` URI into its host (UNC only) and
+// cleaned absolute slash path, refusing what relFromURI would refuse.
+func absFromURI(raw string, windows bool) (host, p string, err error) {
+	u, err := parseFileURI(raw)
+	if err != nil {
+		return "", "", err
+	}
+	if u.Host != "" && !strings.EqualFold(u.Host, hostLocal) {
+		if !windows {
+			return "", "", errOutsideRoot
+		}
+		host = u.Host
+	}
+	probe := servedRoot{windows: windows, host: host}
+	p = probe.osForm(u.Path)
+	if !probe.absolute(p) {
+		return "", "", errUnsupportedURI
+	}
+	return host, path.Clean(p), nil
+}
+
+// fileKeyOfURI is fileKey for a client URI.
+func fileKeyOfURI(raw string, windows bool) (string, bool) {
+	host, p, err := absFromURI(raw, windows)
+	if err != nil {
+		return "", false
+	}
+	return pathIdentity(host, p, windows), true
+}
+
+// osPathFromURI maps a client workspace-folder URI onto an absolute OS path,
+// with the same decoding and refusals as a document URI.
+func osPathFromURI(raw string, windows bool) (string, error) {
+	host, p, err := absFromURI(raw, windows)
+	if err != nil {
+		return "", err
+	}
+	if host != "" {
+		p = uncPrefix + host + p
+	}
+	return filepath.FromSlash(p), nil
+}
