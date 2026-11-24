@@ -324,7 +324,7 @@ func incrementalVal(dir, incBase string) any {
 	if incBase == nullStr {
 		return nil
 	}
-	return dir + "/incremental.diff"
+	return dir + suffixIncremental
 }
 
 // statFiles owns the file-count read: an array counts, a missing or

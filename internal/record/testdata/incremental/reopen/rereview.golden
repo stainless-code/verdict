@@ -13,7 +13,8 @@ exit: 0
     "evidence: hunk notes.txt\tNEW\t11\t17 has no matched receipt",
     "evidence: hunk notes.txt\tNEW\t21\t27 has no matched receipt",
     "evidence: hunk notes.txt\tNEW\t31\t37 has no matched receipt",
-    "evidence: +1 more gap(s) — see record.json evidence.gaps"
+    "evidence: +1 more gap(s) — see record.json evidence.gaps",
+    "coverage: incremental bundle has no recorded prior coverage — grading against full hunks"
   ],
   "data": {
     "dir": ".verdict/state/local-kb",
@@ -48,6 +49,7 @@ warn: evidence: hunk notes.txt	NEW	11	17 has no matched receipt
 warn: evidence: hunk notes.txt	NEW	21	27 has no matched receipt
 warn: evidence: hunk notes.txt	NEW	31	37 has no matched receipt
 warn: evidence: +1 more gap(s) — see record.json evidence.gaps
+warn: coverage: incremental bundle has no recorded prior coverage — grading against full hunks
 » anchors: 1 inline, 0 moved to body
 » findings: 1 sigs -> .verdict/state/local-kb/findings.json
   bfd750df  addressed  true  notes.txt

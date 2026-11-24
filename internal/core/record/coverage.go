@@ -91,6 +91,17 @@ func gapList(sum *coverage.Summary, limit int) string {
 	return out
 }
 
+// incrementalSuffix names a delta round whose percent credits carried prior
+// lines: the carried warning from the evaluator already counts them, and the
+// suffix keeps the run's own lines truthful about the credit. It stays empty
+// for full rounds, so full-bundle output never shifts.
+func incrementalSuffix(sum *coverage.Summary) string {
+	if sum != nil && sum.Incremental && sum.PriorLines > 0 {
+		return " (incremental)"
+	}
+	return ""
+}
+
 // AppendCoverageLine inserts the one machine-built coverage line before the
 // footer. An absent attestation and a complete one add nothing.
 func AppendCoverageLine(body string, sum *coverage.Summary) string {
@@ -101,7 +112,7 @@ func AppendCoverageLine(body string, sum *coverage.Summary) string {
 	if sum.Percent != nil {
 		percent = *sum.Percent
 	}
-	line := fmt.Sprintf(msgCoverageLine, percent, gapList(sum, lineGapCap))
+	line := fmt.Sprintf(msgCoverageLine, percent, gapList(sum, lineGapCap)) + incrementalSuffix(sum)
 	return body + "\n\n" + line
 }
 
@@ -116,5 +127,5 @@ func (st *state) reportCoverage() {
 	if sum.Percent != nil {
 		percent = *sum.Percent
 	}
-	st.warn(fmt.Sprintf(msgCoverageWarn, percent, sum.Attested, sum.Total, len(sum.Unattested)))
+	st.warn(fmt.Sprintf(msgCoverageWarn, percent, sum.Attested, sum.Total, len(sum.Unattested)) + incrementalSuffix(sum))
 }

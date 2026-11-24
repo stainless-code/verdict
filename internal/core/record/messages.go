@@ -60,4 +60,7 @@ const (
 	msgNonObjectVerifyClaim = "verification.json carries a non-object claim (want {sig, verdict, verifyCmd, resultHead})"
 
 	msgCorruptPrior = "%s is corrupt or not a JSON list (refusing to start fresh — restore it from backup, then re-run)"
+
+	msgPriorDiscarded = "could not write %s/prior-coverage.json (record already written): %v — " +
+		"the recorded prior was discarded, so the next round grades without prior credit"
 )

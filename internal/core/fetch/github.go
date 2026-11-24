@@ -245,11 +245,32 @@ func githubInline(ctx context.Context, r *session, dir, repo, pr string) (bool, 
 	return true, writeSelected(ctx, r, dir, repo, pr, body)
 }
 
+// clearStaleIncremental drops a leftover delta and its note on a non-delta
+// fetch: a subsequent full-diff round must grade against the full hunks
+// alone, never credit stale prior line numbers against shifted hunks.
+// A removal that fails with not-exist is the expected case; any other failure
+// refuses the fetch, because a delta left behind makes an ordinary round grade
+// as incremental. The note is best-effort: it explains a delta that is gone.
+func clearStaleIncremental(dir string) *core.RefusalError {
+	_ = os.Remove(dir + suffixIncrementalNote)
+	err := os.Remove(dir + suffixIncremental)
+	if err == nil || os.IsNotExist(err) {
+		return nil
+	}
+	return &core.RefusalError{
+		Code:    CodeFetchFailed,
+		Message: fmt.Sprintf("could not clear %s%s: %v", dir, suffixIncremental, err),
+	}
+}
+
 // githubIncremental owns the --base-sha compare: the incremental diff
 // and its note land beside the bundle, or the run continues without one.
 func githubIncremental(ctx context.Context, r *session, dir, repo string, f *Flags) (string, error) {
 	incBase := nullStr
 	if !f.HasBase || f.BaseSHA == "" {
+		if ref := clearStaleIncremental(dir); ref != nil {
+			return incBase, ref
+		}
 		return incBase, nil
 	}
 	headSHA := readcommon.PrField(dir, keyHeadSHA)
@@ -262,10 +283,10 @@ func githubIncremental(ctx context.Context, r *session, dir, repo string, f *Fla
 	if werr := writeErrFile(dir+"/.compare.err", ""); werr != nil {
 		return incBase, werr
 	}
-	if werr := atomic.WriteFile(dir+"/incremental.diff", []byte(res.Stdout)); werr != nil {
+	if werr := atomic.WriteFile(dir+suffixIncremental, []byte(res.Stdout)); werr != nil {
 		return incBase, &core.RefusalError{
 			Code:    CodeFetchFailed,
-			Message: fmt.Sprintf("could not write %s/incremental.diff: %v", dir, werr),
+			Message: fmt.Sprintf("could not write %s%s: %v", dir, suffixIncremental, werr),
 		}
 	}
 	return f.BaseSHA, nil
@@ -358,7 +379,19 @@ func fetchPrepare(ctx2 *fetchRunCtx, req *Request, f *Flags) (*budgetState, stri
 		return nil, "", ref
 	}
 	ctx2.dir = dir
+	if ref := clearNonDeltaDelta(dir, f); ref != nil {
+		return nil, "", ref
+	}
 	return &budget, dir, nil
+}
+
+// clearNonDeltaDelta drops a stale delta on a fetch that carries no --base-sha
+// compare; an incremental fetch keeps whatever the compare wrote.
+func clearNonDeltaDelta(dir string, f *Flags) *core.RefusalError {
+	if f.HasBase && f.BaseSHA != "" {
+		return nil
+	}
+	return clearStaleIncremental(dir)
 }
 
 // bundleStageDir prepares where a run stages its reads: the throwaway preview
