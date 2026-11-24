@@ -1547,9 +1547,15 @@ func azureDiffFail(dir, stderr string) error {
 	return &core.RefusalError{Code: CodeFetchFailed, Message: "azure diff failed: " + headBytes(stderr, numExcerpt)}
 }
 
+// azureResource is the Azure DevOps Entra application id `az rest` buys its
+// token for: `dev.azure.com` is not an Azure cloud endpoint, so `az` cannot
+// derive a resource from the URL and refuses to run without one stated.
+const azureResource = "499b84ac-1321-427f-aa17-267ca6975798"
+
+// azureAPI is one authenticated `az rest` read.
 func azureAPI(org, project, rname, pr, path, query, format string) []string {
 	return []string{
-		"rest", "--method", "get",
+		"rest", "--method", "get", flagResource, azureResource,
 		"--url", org + pathSep + project + "/_apis/git/repositories/" + rname + "/pullRequests/" + pr + path,
 		flagQuery, query, flagOut, format,
 	}

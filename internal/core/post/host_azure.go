@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -16,10 +17,13 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
-// Azure DevOps has no review CLI of its own, and its PAT cannot reach `curl`
-// without a second token read, so every call is one `az rest` invocation:
-// `az` carries the credential from `AZURE_DEVOPS_EXT_PAT` or `az login`,
-// which is why no token ever reaches an argv or an error sentence here.
+// Azure DevOps has no review CLI of its own, and verdict never reads its
+// credential, so every call is one `az rest` invocation: `az login` holds the
+// identity and `--resource` names the Azure DevOps Entra application, which
+// is the token `az` buys and sends to the organization's endpoints. The PAT
+// `AZURE_DEVOPS_EXT_PAT` is not read here — the `az devops` extension reads
+// it, core `az rest` does not — so no token ever reaches an argv or an error
+// sentence.
 //
 // One write primitive exists — create a thread — and the review reuses it
 // twice: one inline thread per finding (a `threadContext` with a side and a
@@ -31,10 +35,17 @@ const (
 	// toolAz is the CLI every Azure read and write goes through.
 	toolAz = "az"
 
-	azRestCmd    = "rest"
-	azFlagURL    = "--url"
-	azFlagBody   = "--body"
-	azFlagHeader = "--headers"
+	azRestCmd      = "rest"
+	azFlagURL      = "--url"
+	azFlagBody     = "--body"
+	azFlagHeader   = "--headers"
+	azFlagResource = "--resource"
+
+	// azResourceDevOps is the Azure DevOps Entra application id a token is
+	// bought for. `az` cannot derive a resource from a `dev.azure.com` URL,
+	// which is not an Azure cloud endpoint, so every call states it: without
+	// it `az rest` refuses to acquire a token at all.
+	azResourceDevOps = "499b84ac-1321-427f-aa17-267ca6975798"
 
 	azMethodGet   = "get"
 	azMethodPost  = "post"
@@ -205,9 +216,13 @@ type azureCreatedThread struct {
 	updated   string
 }
 
-// azureReadArgv is one authenticated read.
+// azureReadArgv is one authenticated read: the token is bought for the Azure
+// DevOps resource and sent to the one URL verdict built.
 func azureReadArgv(url string) []string {
-	return []string{toolAz, azRestCmd, "--method", azMethodGet, azFlagURL, url}
+	return []string{
+		toolAz, azRestCmd, "--method", azMethodGet,
+		azFlagResource, azResourceDevOps, azFlagURL, url,
+	}
 }
 
 // azureBodyArgv stages the JSON body in a private 0600 file and returns the
@@ -226,7 +241,7 @@ func azureBodyArgv(method, url, body string) (argv []string, cleanup func(), err
 		return nil, nil, jq.Sealed("azure body file", werr)
 	}
 	return []string{
-		toolAz, azRestCmd, "--method", method, azFlagURL, url,
+		toolAz, azRestCmd, "--method", method, azFlagResource, azResourceDevOps, azFlagURL, url,
 		azFlagHeader, azJSONHeader, azFlagBody, azBodyFilePrefix + path,
 	}, cleanup, nil
 }
@@ -367,7 +382,10 @@ func azureThreadWrite(
 	warnings []string, landed, total int,
 ) (azureCreatedThread, postAttempt, bool) {
 	partial := landed > 0
-	warnings = append(warnings, azureProgress(landed, total)...)
+	// slices.Clip caps the caller's slice, so this append allocates a fresh
+	// array: the progress line never lands in a backing array the payload's
+	// warnings still share.
+	warnings = append(slices.Clip(warnings), azureProgress(landed, total)...)
 	argv, cleanup, cerr := azureBodyArgv(azMethodPost, url, body)
 	if cerr != nil {
 		return azureCreatedThread{}, postRefusal(dir, msgAzureBody, warnings), false
@@ -890,13 +908,22 @@ func azureSummaryID(threadID, commentID string) string {
 	return threadID + azureSummaryIDJoin + commentID
 }
 
-// splitAzureSummaryID reads one summary comment handle.
+// splitAzureSummaryID reads one summary comment handle: two positive integer
+// ids joined by a slash, so a crafted handle cannot address another endpoint.
 func splitAzureSummaryID(id string) (threadID, commentID string, ok bool) {
 	threadID, commentID, ok = strings.Cut(id, azureSummaryIDJoin)
-	if !ok || threadID == "" || commentID == "" {
+	if !ok || !positiveID(threadID) || !positiveID(commentID) {
 		return "", "", false
 	}
 	return threadID, commentID, true
+}
+
+// positiveID reports one handle segment Azure reads as an id: a positive
+// integer, so `501/1` patches thread 501's first comment and `x/../../y`
+// refuses before any call.
+func positiveID(s string) bool {
+	n, err := strconv.Atoi(s)
+	return err == nil && n > 0
 }
 
 // createSummaryComment posts the one general thread that carries the verdict

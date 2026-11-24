@@ -7,9 +7,12 @@ other hosts: each finding lands as one review thread anchored on its file line
 (`threadContext.filePath` with the leading slash, `rightFileStart`/`rightFileEnd`
 for a new-side line and `leftFileStart`/`leftFileEnd` for a deleted one), then
 one general thread carries the review body. Every call is one `az rest`
-invocation, so `AZURE_DEVOPS_EXT_PAT` and `az login` stay inside `az`: no token
-reaches an argv or an error sentence, and each write stages its JSON body in a
-private `0600` file instead of the command line.
+invocation after `az login`, asking for the Azure DevOps Entra application with
+`--resource 499b84ac-1321-427f-aa17-267ca6975798`: no token reaches an argv or
+an error sentence, and each write stages its JSON body in a private `0600` file
+instead of the command line. Because that token is spent on the host the
+organization names, `AZURE_DEVOPS_ORG` must be `dev.azure.com` or
+`{org}.visualstudio.com` — anything else refuses before `az` runs.
 
 Azure takes no review event, so `approve` and `request_changes` stay false
 there and a bound verdict posts its threads plus the body thread, with a

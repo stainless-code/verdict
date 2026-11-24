@@ -1,8 +1,11 @@
 // Package azure is the Azure DevOps REST 7.1 wire contract both verbs
 // share. Azure DevOps ships no review CLI the way GitHub ships `gh`, and
 // its PAT cannot be handed to `curl` without a second token read, so every
-// call is one `az rest` invocation: `az` resolves the credential from
-// `AZURE_DEVOPS_EXT_PAT` or `az login` and verdict never sees it.
+// call is one `az rest` invocation: `az login` holds the identity, `az`
+// exchanges it for a token scoped to the Azure DevOps Entra application, and
+// verdict never sees that token. `AZURE_DEVOPS_EXT_PAT` belongs to the
+// `az devops` extension (and to the git clone on the fetch path); `az rest`
+// does not read it.
 //
 // The organization gate, the pull-scoped URLs, and the thread payload fields
 // live here once, so fetch and post cannot disagree about how a host is
@@ -75,10 +78,18 @@ func (t Target) ThreadWebURL(threadID string) string {
 	return t.WebURL() + "?discussionId=" + url.PathEscape(threadID)
 }
 
+// connectionDataQuery is the one preview api-version the identity read pins.
+// `connectionData` is a locations-service route with no released version:
+// `api-version=7.1` answers 400 `VssInvalidPreviewVersionException`, so this
+// read carries a preview version while the rest of the contract stays on 7.1.
+const connectionDataQuery = "api-version=7.1-preview.1"
+
 // ConnectionDataURL is the organization-scoped read of the authenticated
 // user, the one identity source both the authorship gate and the summary
 // comment lookup share.
-func ConnectionDataURL(org string) string { return org + "/_apis/connectionData?" + APIQuery }
+func ConnectionDataURL(org string) string {
+	return org + "/_apis/connectionData?" + connectionDataQuery
+}
 
 // Identity is the authenticated user one read attributes to: the account
 // name a comment author carries and the organization identity id.
@@ -116,17 +127,39 @@ func DecodeIdentity(raw string) (Identity, bool) {
 	return id, id.Name != ""
 }
 
+// The two hosts an organization URL may name. `az rest` buys one token for
+// the Azure DevOps Entra application and sends it to the host in `--url`, so
+// an organization that resolved anywhere else would hand that token to it:
+// the allowlist below is what keeps `AZURE_DEVOPS_ORG` from redirecting the
+// credential.
+const (
+	azureDevOpsHost   = "dev.azure.com"
+	azureLegacySuffix = ".visualstudio.com"
+)
+
+// allowedOrgHost reports one organization hostname the allowlist accepts: the
+// service host itself, or exactly one non-empty label in front of the legacy
+// `visualstudio.com` domain. A deeper name (`evil.dev.azure.com`), a lookalike
+// (`notvisualstudio.com`), and a bare suffix (`.visualstudio.com`) all fail.
+func allowedOrgHost(host string) bool {
+	if host == azureDevOpsHost {
+		return true
+	}
+	label, ok := strings.CutSuffix(host, azureLegacySuffix)
+	return ok && label != "" && !strings.Contains(label, ".")
+}
+
 // Org gates the environment and returns the organization URL. It refuses a
-// missing variable, a non-https URL, and a URL carrying userinfo, a query,
-// or a fragment: the credential belongs in `az login` or
-// `AZURE_DEVOPS_EXT_PAT`, and a URL that embeds one would put it in every
-// argv and every error the host prints. No refusal echoes the value.
+// missing variable, a non-https URL, a URL carrying userinfo, a query, or a
+// fragment, and a host outside the allowlist: the credential belongs in `az
+// login`, and a URL that embeds one — or names another host — would put it in
+// every argv and every error the host prints. No refusal echoes the value.
 func Org(env map[string]string) (string, *core.RefusalError) {
 	raw := strings.TrimSpace(env[EnvOrg])
 	if raw == "" {
 		return "", &core.RefusalError{
 			Code:    CodeAuthMissing,
-			Message: "azure needs AZURE_DEVOPS_ORG=https://dev.azure.com/{org} (and az login or AZURE_DEVOPS_EXT_PAT)",
+			Message: "azure needs AZURE_DEVOPS_ORG=https://dev.azure.com/{org} (and an az login that reaches it)",
 		}
 	}
 	u, err := url.Parse(raw)
@@ -138,8 +171,9 @@ func Org(env map[string]string) (string, *core.RefusalError) {
 	}
 	if u.User != nil || u.RawQuery != "" || u.Fragment != "" || u.Opaque != "" {
 		return "", &core.RefusalError{
-			Code:    CodeBadTarget,
-			Message: "AZURE_DEVOPS_ORG carries credentials, a query, or a fragment — put the token in AZURE_DEVOPS_EXT_PAT instead",
+			Code: CodeBadTarget,
+			Message: "AZURE_DEVOPS_ORG carries credentials, a query, or a fragment — " +
+				"sign in with az login instead of putting a token in the URL",
 		}
 	}
 	if hasControl(raw) {
@@ -148,7 +182,25 @@ func Org(env map[string]string) (string, *core.RefusalError) {
 			Message: "AZURE_DEVOPS_ORG carries a control character",
 		}
 	}
+	if ref := orgHostRefusal(u); ref != nil {
+		return "", ref
+	}
 	return strings.TrimRight(raw, slash), nil
+}
+
+// msgOrgHost is the allowlist refusal: it names the two hosts the `az login`
+// token reaches and never the value it rejected.
+const msgOrgHost = "AZURE_DEVOPS_ORG must name dev.azure.com or {org}.visualstudio.com — " +
+	"the az login token reaches those hosts and verdict will not send it to another"
+
+// orgHostRefusal refuses a parsed organization whose host the token may not be
+// sent to: an explicit port has no endpoint to buy a token for, and a host
+// outside the allowlist is where the token would leak.
+func orgHostRefusal(u *url.URL) *core.RefusalError {
+	if u.Port() == "" && allowedOrgHost(strings.ToLower(u.Hostname())) {
+		return nil
+	}
+	return &core.RefusalError{Code: CodeBadTarget, Message: msgOrgHost}
 }
 
 // Auth gates the environment alone, for a caller that has not resolved a

@@ -3,7 +3,10 @@ package postcore
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"os"
+	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -19,15 +22,16 @@ const (
 
 	// The exact argv an Azure post fires. Every one is a literal: a rename in
 	// the submit path fails here instead of following the helper that built
-	// it. Reads carry the URL alone; writes stage the body in a private 0600
-	// file, so its path is the BODY placeholder rather than a random temp name.
-	azureReadPrefix    = "az\x00rest\x00--method\x00get\x00--url\x00"
+	// it. Reads and writes both state the Azure DevOps resource a token is
+	// bought for; writes stage the body in a private 0600 file, so its path is
+	// the BODY placeholder rather than a random temp name.
+	azureReadPrefix    = "az\x00rest\x00--method\x00get\x00--resource\x00499b84ac-1321-427f-aa17-267ca6975798\x00--url\x00"
 	azurePullRoute     = azureReadPrefix + azureBase + "?api-version=7.1"
 	azureThreadsRoute  = azureReadPrefix + azureBase + "/threads?api-version=7.1"
-	azureIdentityRoute = azureReadPrefix + azureOrg + "/_apis/connectionData?api-version=7.1"
-	azureWritePrefix   = "az\x00rest\x00--method\x00post\x00--url\x00" + azureBase + "/threads?api-version=7.1" +
+	azureIdentityRoute = azureReadPrefix + azureOrg + "/_apis/connectionData?api-version=7.1-preview.1"
+	azureWritePrefix   = "az\x00rest\x00--method\x00post\x00--resource\x00499b84ac-1321-427f-aa17-267ca6975798\x00--url\x00" + azureBase + "/threads?api-version=7.1" +
 		"\x00--headers\x00Content-Type=application/json\x00--body\x00@" + bodyPlaceholder
-	azurePatchPrefix = "az\x00rest\x00--method\x00patch\x00--url\x00" + azureBase + "/threads/501/comments/1?api-version=7.1" +
+	azurePatchPrefix = "az\x00rest\x00--method\x00patch\x00--resource\x00499b84ac-1321-427f-aa17-267ca6975798\x00--url\x00" + azureBase + "/threads/501/comments/1?api-version=7.1" +
 		"\x00--headers\x00Content-Type=application/json\x00--body\x00@" + bodyPlaceholder
 )
 
@@ -337,6 +341,191 @@ func TestAzureBodyStagingRefuses(t *testing.T) {
 	}
 }
 
+// TestAzureAuthFailureBeforeWrite proves a 401 on the head read refuses with
+// the host's own words and no write: the review cannot exist, so the operator
+// is never sent looking for one.
+func TestAzureAuthFailureBeforeWrite(t *testing.T) {
+	t.Parallel()
+	dir := azurePostDir(t)
+	cmdr := azureCommander(t)
+	cmdr.out[azurePullRoute] = scriptResult{
+		stderr: "ERROR: Please run 'az login' to setup account.", fail: true,
+	}
+	comment := `{"path":"notes.txt","body":"x","line":2,"side":"RIGHT"}`
+	attempt := azurePost(t, cmdr, dir, azurePayload(eventComment, comment))
+	if attempt.ok {
+		t.Fatal("a 401 read was accepted")
+	}
+	want := "post failed: azure could not read the pull request head — nothing was written: " +
+		"ERROR: Please run 'az login' to setup account."
+	if attempt.errText != want {
+		t.Errorf("reason = %q, want %q", attempt.errText, want)
+	}
+	if attempt.partial {
+		t.Error("a pre-write failure read as partial")
+	}
+	if got := countCalls(cmdr, azureWritePrefix); got != 0 {
+		t.Errorf("thread writes = %d, want none after a failed head read", got)
+	}
+}
+
+// TestAzureMidwayFailureIsPartial proves a write that fails after an earlier
+// thread landed reports partial with the count: a replay is a known duplicate
+// instead of a surprise, and the host's own reason is the one recorded.
+func TestAzureMidwayFailureIsPartial(t *testing.T) {
+	t.Parallel()
+	dir := azurePostDir(t)
+	cmdr := &azureFailCommander{
+		scriptCommander: azureCommander(t), failAt: 2,
+		stderr: "ERROR: TF401019: The Git repository does not exist",
+	}
+	comments := `{"path":"notes.txt","body":"one","line":2,"side":"RIGHT"},` +
+		`{"path":"notes.txt","body":"two","line":3,"side":"RIGHT"}`
+	attempt := azurePost(t, cmdr, dir, azurePayload(eventComment, comments))
+	if attempt.ok || !attempt.partial {
+		t.Fatalf("attempt = %+v, want a partial failure", attempt)
+	}
+	if want := "ERROR: TF401019: The Git repository does not exist"; attempt.errText != want {
+		t.Errorf("reason = %q, want the host's own line %q", attempt.errText, want)
+	}
+	if stop := "azure post stopped after 1 of 2 anchored thread(s) — a re-run reposts them"; !slices.Contains(attempt.warnings, stop) {
+		t.Errorf("warnings = %q, want %q", attempt.warnings, stop)
+	}
+	if got := countCalls(cmdr.scriptCommander, azureWritePrefix); got != 2 {
+		t.Errorf("thread writes = %d, want the landed one plus the failed one", got)
+	}
+	if raw, err := os.ReadFile(dir + postErrSuffix); err != nil || string(raw) != attempt.errText {
+		t.Errorf("sidecar = %q, %v; want the reason", raw, err)
+	}
+}
+
+// TestAzureLostAnswerIsPartial proves a write that never answered reports the
+// may-exist warning once an earlier thread landed: `az` died, so the review
+// may be half-written and the operator checks the PR before re-running.
+func TestAzureLostAnswerIsPartial(t *testing.T) {
+	t.Parallel()
+	dir := azurePostDir(t)
+	cmdr := &azureFailCommander{scriptCommander: azureCommander(t), failAt: 2, spawn: true}
+	comments := `{"path":"notes.txt","body":"one","line":2,"side":"RIGHT"},` +
+		`{"path":"notes.txt","body":"two","line":3,"side":"RIGHT"}`
+	attempt := azurePost(t, cmdr, dir, azurePayload(eventComment, comments))
+	if attempt.ok || !attempt.partial {
+		t.Fatalf("attempt = %+v, want a partial lost answer", attempt)
+	}
+	want := "azure did not answer — the review may exist; check the PR before re-running"
+	if attempt.errText != want {
+		t.Errorf("reason = %q, want %q", attempt.errText, want)
+	}
+	if stop := "azure post stopped after 1 of 2 anchored thread(s) — a re-run reposts them"; !slices.Contains(attempt.warnings, stop) {
+		t.Errorf("warnings = %q, want %q", attempt.warnings, stop)
+	}
+}
+
+// azureFailCommander scripts the nth `az rest` write: the reads come from the
+// shared script, and the write at `failAt` answers with the given stderr or —
+// with spawn — with a spawn error, which is the path where `az` never
+// answered at all.
+type azureFailCommander struct {
+	*scriptCommander
+	stderr string
+	failAt int // 1-based write ordinal; 0 fails nothing
+	writes int
+	spawn  bool
+}
+
+func (c *azureFailCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
+	if routeKey(cmd.Argv) != azureWritePrefix {
+		return c.scriptCommander.Run(ctx, cmd)
+	}
+	c.writes++
+	if c.writes != c.failAt {
+		return c.scriptCommander.Run(ctx, cmd)
+	}
+	c.calls = append(c.calls, append([]string{}, cmd.Argv...))
+	if c.spawn {
+		return core.Result{}, errors.New(`exec: "az": executable file not found in $PATH`)
+	}
+	return core.Result{ExitCode: 1, Stderr: c.stderr}, nil
+}
+
+// TestAzureBodyFileIsPrivate proves the staged request body has mode 0600
+// while the write runs and is gone afterwards, and that no credential rides
+// an argv: the review text is readable only by its owner, and no path outlives
+// the call.
+func TestAzureBodyFileIsPrivate(t *testing.T) {
+	t.Parallel()
+	dir := azurePostDir(t)
+	const secret = "pat-topsecret-value"
+	watcher := &azureBodyWatcher{scriptCommander: azureCommander(t)}
+	env := azureEnv()
+	env["AZURE_DEVOPS_EXT_PAT"] = secret
+	comment := `{"path":"notes.txt","body":"x","line":2,"side":"RIGHT"}`
+	attempt := azureHost{}.post(context.Background(), watcher, env,
+		core.CapabilitiesFor(providerAzure), "acme/app", "7", dir,
+		azurePayload(eventComment, comment))
+	if !attempt.ok {
+		t.Fatalf("post refused: %q", attempt.errText)
+	}
+	assertAzureBodiesPrivate(t, watcher)
+	assertAzureArgvClean(t, watcher.calls, secret)
+}
+
+// assertAzureBodiesPrivate checks every staged body was 0600 while its write
+// ran and is gone afterwards.
+func assertAzureBodiesPrivate(t *testing.T, watcher *azureBodyWatcher) {
+	t.Helper()
+	if len(watcher.paths) == 0 {
+		t.Fatal("no write staged a body file")
+	}
+	for i, path := range watcher.paths {
+		if runtime.GOOS != "windows" && watcher.modes[i].Perm() != azureBodyFileMode {
+			t.Errorf("staged body %s mode = %v, want %v", path, watcher.modes[i].Perm(), azureBodyFileMode)
+		}
+		if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
+			t.Errorf("staged body %s survived the call: %v", path, err)
+		}
+	}
+}
+
+// assertAzureArgvClean checks no argv verdict fired carries the secret an
+// operator exported for the fetch path.
+func assertAzureArgvClean(t *testing.T, calls [][]string, secret string) {
+	t.Helper()
+	for _, call := range calls {
+		if strings.Contains(strings.Join(call, " "), secret) {
+			t.Errorf("argv carries the credential: %q", call)
+		}
+	}
+}
+
+// azureBodyWatcher records every staged body file's mode while its write runs.
+type azureBodyWatcher struct {
+	*scriptCommander
+	paths []string
+	modes []os.FileMode
+}
+
+//nolint:revive // one scripted exchange keeps the staged-file observation and the delegated answer together
+func (c *azureBodyWatcher) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
+	key := routeKey(cmd.Argv)
+	if key == azureWritePrefix || key == azurePatchPrefix {
+		for i := 0; i+1 < len(cmd.Argv); i++ {
+			if cmd.Argv[i] != azFlagBody || !strings.HasPrefix(cmd.Argv[i+1], azBodyFilePrefix) {
+				continue
+			}
+			path := strings.TrimPrefix(cmd.Argv[i+1], azBodyFilePrefix)
+			info, err := os.Stat(path)
+			if err != nil {
+				c.t.Errorf("stat staged body: %v", err)
+				break
+			}
+			c.paths = append(c.paths, path)
+			c.modes = append(c.modes, info.Mode())
+		}
+	}
+	return c.scriptCommander.Run(ctx, cmd)
+}
+
 // TestAzureStaleHeadRefuses proves the head guard: a thread carries no
 // commit pin, so a pull that moved since fetch refuses the whole post before
 // any write.
@@ -397,46 +586,72 @@ func TestAzureUnknownEventRefuses(t *testing.T) {
 	}
 }
 
+// azureTargetCase is one target-gate refusal: the environment and position the
+// gate reads, and the code and phrase the refusal must carry.
+type azureTargetCase struct {
+	name, org, repo, pr, code, contains string
+}
+
 // TestAzureTargetRefusals proves the organization and target gates refuse
-// typed before any call: no organization, a non-https or credential-bearing
-// URL, a traversing repo, and a non-numeric pull id.
-//
-//nolint:revive // the refusal matrix reads as one block
+// typed before any call: no organization, a non-https, credential-bearing, or
+// off-allowlist URL, a traversing repo, and a non-numeric pull id.
 func TestAzureTargetRefusals(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		name, org, repo, pr, code, contains string
-	}{
+	for _, tc := range azureTargetCases() {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertAzureTargetRefusal(t, &tc)
+		})
+	}
+}
+
+// azureTargetCases are the refusals the two gates owe the operator.
+func azureTargetCases() []azureTargetCase {
+	return []azureTargetCase{
 		{"missing org", "", "acme/app", "7", azure.CodeAuthMissing, "AZURE_DEVOPS_ORG"},
 		{"http org", "http://dev.azure.com/acme", "acme/app", "7", azure.CodeBadTarget, "https"},
-		{"credential org", "https://user:topsecret@dev.azure.com/acme", "acme/app", "7", azure.CodeBadTarget, "AZURE_DEVOPS_EXT_PAT"},
+		{"credential org", "https://user:topsecret@dev.azure.com/acme", "acme/app", "7", azure.CodeBadTarget, "az login"},
+		{"off host org", "https://evil.example/acme", "acme/app", "7", azure.CodeBadTarget, "dev.azure.com"},
 		{"traversal repo", azureOrg, "../..", "7", azure.CodeBadTarget, "../.."},
 		{"nested repo", azureOrg, "acme/app/extra", "7", azure.CodeBadTarget, "project/repository"},
 		{"non numeric pr", azureOrg, "acme/app", "seven", azure.CodeBadTarget, "numeric pull-request id"},
 		{"traversing pr", azureOrg, "acme/app", "7/../../user", azure.CodeBadTarget, "numeric pull-request id"},
-	} {
-		t.Run(tc.name, func(t *testing.T) {
-			t.Parallel()
-			dir := azurePostDir(t)
-			cmdr := azureCommander(t)
-			env := map[string]string{azure.EnvOrg: tc.org}
-			attempt := azureHost{}.post(context.Background(), cmdr, env,
-				core.CapabilitiesFor(providerAzure), tc.repo, tc.pr, dir,
-				azurePayload(eventComment, ""))
-			if attempt.ok || attempt.message == "" {
-				t.Fatalf("post = %+v, want a local refusal", attempt)
-			}
-			if !strings.Contains(attempt.message, tc.contains) {
-				t.Errorf("message = %q, want %q", attempt.message, tc.contains)
-			}
-			if strings.Contains(attempt.message, "topsecret") {
-				t.Errorf("refusal echoes the rejected secret: %q", attempt.message)
-			}
-			if len(cmdr.calls) != 0 {
-				t.Errorf("calls = %q, want none before the gate", callKeys(cmdr))
-			}
-			_ = tc.code
-		})
+	}
+}
+
+// assertAzureTargetRefusal drives one refusal through the shared gate and the
+// writer: the code is the gate's, the sentence the writer's, and no call fires.
+func assertAzureTargetRefusal(t *testing.T, tc *azureTargetCase) {
+	t.Helper()
+	dir := azurePostDir(t)
+	cmdr := azureCommander(t)
+	env := map[string]string{azure.EnvOrg: tc.org}
+	if _, ref := azure.Resolve(env, tc.repo, tc.pr); ref == nil || ref.Code != tc.code {
+		t.Fatalf("Resolve(%q, %q) code = %+v, want %s", tc.repo, tc.pr, ref, tc.code)
+	}
+	attempt := azureHost{}.post(context.Background(), cmdr, env,
+		core.CapabilitiesFor(providerAzure), tc.repo, tc.pr, dir,
+		azurePayload(eventComment, ""))
+	if attempt.ok || attempt.message == "" {
+		t.Fatalf("post = %+v, want a local refusal", attempt)
+	}
+	assertAzureRefusal(t, attempt.message, tc.contains)
+	if len(cmdr.calls) != 0 {
+		t.Errorf("calls = %q, want none before the gate", callKeys(cmdr))
+	}
+}
+
+// assertAzureRefusal checks one local refusal names the gap and echoes no
+// value it rejected.
+func assertAzureRefusal(t *testing.T, message, contains string) {
+	t.Helper()
+	if !strings.Contains(message, contains) {
+		t.Errorf("message = %q, want %q", message, contains)
+	}
+	for _, echoed := range []string{"topsecret", "evil.example"} {
+		if strings.Contains(message, echoed) {
+			t.Errorf("refusal echoes the rejected value %q: %q", echoed, message)
+		}
 	}
 }
 
@@ -583,8 +798,8 @@ func TestAzureDuplicatePayloadRefuses(t *testing.T) {
 //nolint:cyclop,revive // the summary matrix reads as one block
 func TestAzureSummaryCRUD(t *testing.T) {
 	t.Parallel()
-	dir := azurePostDir(t)
 	const marker = "<!-- verdict-summary head=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa -->"
+	const page = azureOrg + "/acme/_git/app/pullrequest/7?discussionId=501"
 	cmdr := azureCommander(t)
 	cmdr.out[azureThreadsRoute] = scriptResult{stdout: `{"count":3,"value":[` +
 		`{"id":501,"status":"active","threadContext":null,"publishedDate":"2026-11-02T12:00:00Z",` +
@@ -608,9 +823,8 @@ func TestAzureSummaryCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatalf("createSummaryComment: %v", err)
 	}
-	if created.ID != "501/1" || created.URL != azureBase+"/../_git/app/pullrequest/7?discussionId=501" &&
-		!strings.HasSuffix(created.URL, "pullrequest/7?discussionId=501") {
-		t.Errorf("created = %+v, want the created thread handle and page", created)
+	if created.ID != "501/1" || created.URL != page {
+		t.Errorf("created = %+v, want the created thread handle and page %q", created, page)
 	}
 	updated, err := host.updateSummaryComment(context.Background(), cmdr, azureEnv(), "acme/app", "7", "501/1", "new summary")
 	if err != nil {
@@ -622,7 +836,41 @@ func TestAzureSummaryCRUD(t *testing.T) {
 	if _, err := host.updateSummaryComment(context.Background(), cmdr, azureEnv(), "acme/app", "7", "501", "x"); err == nil {
 		t.Error("a summary handle without a comment id was patched")
 	}
-	_ = dir
+}
+
+// TestAzureSummaryIDGate proves the handle is two positive integer ids: a
+// crafted handle cannot address another endpoint or another comment.
+func TestAzureSummaryIDGate(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		id string
+		ok bool
+	}{
+		{"501/1", true},
+		{"1/501", true},
+		{"501", false},
+		{"501/", false},
+		{"/1", false},
+		{"501/1/2", false},
+		{"501/x", false},
+		{"x/1", false},
+		{"0/1", false},
+		{"501/0", false},
+		{"-1/1", false},
+		{"501/../../user", false},
+	} {
+		threadID, commentID, ok := splitAzureSummaryID(tc.id)
+		if ok != tc.ok {
+			t.Errorf("splitAzureSummaryID(%q) ok = %v, want %v", tc.id, ok, tc.ok)
+			continue
+		}
+		if !tc.ok {
+			continue
+		}
+		if threadID+azureSummaryIDJoin+commentID != tc.id {
+			t.Errorf("splitAzureSummaryID(%q) = %q/%q, want the two ids back", tc.id, threadID, commentID)
+		}
+	}
 }
 
 // TestAzurePublicationSplits proves the live-content read: an anchored

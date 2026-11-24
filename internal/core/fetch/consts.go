@@ -89,6 +89,7 @@ const (
 	flagJSON           = "--json"
 	flagPaginate       = "--paginate"
 	flagRepo           = "-R"
+	flagResource       = "--resource"
 	flagVerify         = "--verify"
 
 	// Subcommands and git nouns.

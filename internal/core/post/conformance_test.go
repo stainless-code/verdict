@@ -211,19 +211,20 @@ func conformanceBitbucketEnv() map[string]string {
 }
 
 // The exact argv an Azure DevOps post reads and writes with: `az rest`
-// against the organization URL, with the request body staged in a private file
-// (the BODY placeholder) that `az` reads through its `@file` convention. One
+// against the organization URL, with the token bought for the Azure DevOps
+// resource (`--resource`) and the request body staged in a private file (the
+// BODY placeholder) that `az` reads through its `@file` convention. One
 // endpoint — the pull request's threads — carries both the anchored threads and
 // the summary thread, so the row classifies a write by its body, not its argv.
 const (
 	conformanceAzureOrg  = "https://dev.azure.com/acme"
 	conformanceAzureBase = conformanceAzureOrg + "/acme/_apis/git/repositories/app/pullRequests/7"
-	conformanceAzureRead = "az\x00rest\x00--method\x00get\x00--url\x00"
+	conformanceAzureRead = "az\x00rest\x00--method\x00get\x00--resource\x00499b84ac-1321-427f-aa17-267ca6975798\x00--url\x00"
 
 	conformanceAzurePull     = conformanceAzureRead + conformanceAzureBase + "?api-version=7.1"
 	conformanceAzureThreads  = conformanceAzureRead + conformanceAzureBase + "/threads?api-version=7.1"
-	conformanceAzureIdentity = conformanceAzureRead + conformanceAzureOrg + "/_apis/connectionData?api-version=7.1"
-	conformanceAzureWrite    = "az\x00rest\x00--method\x00post\x00--url\x00" + conformanceAzureBase +
+	conformanceAzureIdentity = conformanceAzureRead + conformanceAzureOrg + "/_apis/connectionData?api-version=7.1-preview.1"
+	conformanceAzureWrite    = "az\x00rest\x00--method\x00post\x00--resource\x00499b84ac-1321-427f-aa17-267ca6975798\x00--url\x00" + conformanceAzureBase +
 		"/threads?api-version=7.1\x00--headers\x00Content-Type=application/json\x00--body\x00@" + bodyPlaceholder
 )
 

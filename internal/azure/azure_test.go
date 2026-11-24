@@ -101,7 +101,7 @@ func TestTargetURLs(t *testing.T) {
 		{"thread comment", target.ThreadCommentURL("501", "1"), base + "/threads/501/comments/1?api-version=7.1"},
 		{"web", target.WebURL(), testOrg + "/acme/_git/app/pullrequest/7"},
 		{"thread web", target.ThreadWebURL("501"), testOrg + "/acme/_git/app/pullrequest/7?discussionId=501"},
-		{"connection data", ConnectionDataURL(testOrg), testOrg + "/_apis/connectionData?api-version=7.1"},
+		{"connection data", ConnectionDataURL(testOrg), testOrg + "/_apis/connectionData?api-version=7.1-preview.1"},
 	} {
 		if tc.got != tc.want {
 			t.Errorf("%s = %q, want %q", tc.name, tc.got, tc.want)
@@ -109,16 +109,80 @@ func TestTargetURLs(t *testing.T) {
 	}
 }
 
+// TestOrgHostAllowlist proves the host gate `--resource` requires: `az rest`
+// buys one token for the Azure DevOps application and sends it to the host in
+// `--url`, so an organization naming any other host is refused before `az`
+// ever runs.
+func TestOrgHostAllowlist(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name, value string
+		ok          bool
+	}{
+		{"service host", "https://dev.azure.com/acme", true},
+		{"legacy host", "https://acme.visualstudio.com", true},
+		{"legacy host with a path", "https://acme.visualstudio.com/Collection", true},
+		{"off host", "https://evil.example/acme", false},
+		{"lookalike suffix", "https://notvisualstudio.com/acme", false},
+		{"service-host subdomain", "https://evil.dev.azure.com/acme", false},
+		{"nested legacy label", "https://a.b.visualstudio.com/acme", false},
+		{"bare legacy suffix", "https://.visualstudio.com/acme", false},
+		{"explicit port", "https://dev.azure.com:8443/acme", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			if tc.ok {
+				assertOrgAllowed(t, tc.value)
+				return
+			}
+			assertOrgHostRefused(t, tc.value)
+		})
+	}
+}
+
+// assertOrgAllowed checks one organization the allowlist accepts comes back
+// unchanged.
+func assertOrgAllowed(t *testing.T, value string) {
+	t.Helper()
+	org, ref := Org(map[string]string{EnvOrg: value})
+	if ref != nil {
+		t.Fatalf("Org(%q) refused: %s: %s", value, ref.Code, ref.Message)
+	}
+	if want := strings.TrimRight(value, "/"); org != want {
+		t.Errorf("org = %q, want %q", org, want)
+	}
+}
+
+// assertOrgHostRefused checks one off-allowlist organization refuses bad-target
+// without echoing the host it rejected.
+func assertOrgHostRefused(t *testing.T, value string) {
+	t.Helper()
+	_, ref := Org(map[string]string{EnvOrg: value})
+	if ref == nil {
+		t.Fatalf("Org(%q) accepted a host outside the allowlist", value)
+	}
+	if ref.Code != CodeBadTarget {
+		t.Errorf("code = %q, want %s", ref.Code, CodeBadTarget)
+	}
+	for _, host := range []string{"evil.example", "notvisualstudio.com", "a.b.visualstudio.com"} {
+		if strings.Contains(ref.Message, host) {
+			t.Errorf("refusal echoes the rejected host: %q", ref.Message)
+		}
+	}
+}
+
 // TestResolveEscapesSegments proves a segment that survives the gate cannot
-// splice a new path: the escape is what keeps a `?` or `#` inside the name.
+// splice a new path: both segments are path-escaped, so a `?` stays inside the
+// repository name and a space inside the project one.
 func TestResolveEscapesSegments(t *testing.T) {
 	t.Parallel()
 	target, ref := Resolve(testEnv(), "acme project/app?x", "7")
 	if ref != nil {
 		t.Fatalf("Resolve refusal: %s: %s", ref.Code, ref.Message)
 	}
-	if strings.Contains(target.Base(), "app?x") {
-		t.Errorf("base %q splices an unescaped segment", target.Base())
+	want := testOrg + "/acme%20project/_apis/git/repositories/app%3Fx/pullRequests/7"
+	if got := target.Base(); got != want {
+		t.Errorf("base = %q, want %q", got, want)
 	}
 }
 
