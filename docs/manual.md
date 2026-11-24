@@ -110,7 +110,11 @@ each path a changed file and each line inside a reviewed hunk), `approach`
 required-field, and range failures refuse the review; a site outside every
 hunk, a site/question past its cap, or a short approach/question warns and
 drops only that part. `brief` is outside the sig, so editing it never creates
-a finding.
+a finding. A finding may also carry an optional `lens`: a lowercase lens id
+(`^[a-z0-9][a-z0-9-]{0,63}$`) naming the lens that produced it. `record` stores
+it on the finding, a re-review that omits it keeps the prior value, and a
+non-string, empty, or malformed value refuses the review; absent reads as no
+provenance, never a refusal.
 `resolved` lists finding sigs (short ids from the prior `findings.json` table) the run addresses.
 
 The commentable set is pinned at fetch time: `fetch`/`fetch-local` writes
@@ -4522,7 +4526,8 @@ and remove it when done — the working tree stays untouched throughout.
 
 ### Fix loops (bounded, verify-gated)
 
-`fix owner/repo local-<name> [--sig <s> | --all [--min-severity <s>]
+`fix owner/repo local-<name> [--sig <s> | --all|--selected|--recipe <name>
+[--min-severity <s>]
 [--verify-cmd <cmd>] [--paths <glob>]... | --test <sig> [--commit]] [--json]`
 runs one bounded pass over a local bundle: it
 picks the top open inline sig (severity `critical` above
@@ -4568,10 +4573,17 @@ exclusive, and `--min-severity`/`--verify-cmd`/`--paths` belong to the batch.
 `--paths <glob>` (repeatable, portable globs as in `.verdict/config.json`) scopes
 a batch to the findings whose anchor path matches: two globs select the union,
 and a scoped batch with nothing above the floor says so with the globs in the
-message instead of claiming the store is empty. It is the batch's scope unit
-because a finding records no lens — a recipe declares lenses and model hints, not
-paths, so `--recipe` cannot select sigs until `record` stores per-finding lens
-provenance.
+message instead of claiming the store is empty.
+
+`--recipe <name>` is the batch whose scope a recipe declares: it resolves the
+named recipe from the bundle's base snapshot — the same trust boundary as
+`run --recipe`, never the live worktree — and selects the open inline findings
+whose stored `lens` matches the recipe's lens set. A recipe that declares no
+lenses owns nothing, so the run reports the empty scope rather than widening
+to every finding, and a finding without a `lens` never matches. It composes
+with `--selected`, `--paths`, and `--min-severity` (narrowing the lens set
+further) but refuses with `--sig` or `--test`; the batch carries the recipe
+name in `data.recipe`.
 
 `--selected` is the same batch over the sigs a human endorsed: it reads the
 `selected.json` a GitHub `fetch` wrote beside the bundle (see “Reaction-scoped

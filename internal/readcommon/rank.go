@@ -104,6 +104,7 @@ type Selector struct {
 	Floor  string
 	Paths  []string
 	Sigs   []string
+	Lenses []string
 }
 
 // Select returns the selector's findings in Rank order.
@@ -120,9 +121,13 @@ func Select(entries []any, sel *Selector) []Ranked {
 	for _, sig := range sel.Sigs {
 		wanted[sig] = true
 	}
+	wantedLenses := make(map[string]bool, len(sel.Lenses))
+	for _, lens := range sel.Lenses {
+		wantedLenses[lens] = true
+	}
 	var out []Ranked
 	for _, ranked := range Rank(entries, status, kind) {
-		if !selects(ranked.Entry, sel.Paths, wanted, floor) {
+		if !selects(ranked.Entry, sel.Paths, wanted, floor, wantedLenses) {
 			continue
 		}
 		out = append(out, ranked)
@@ -130,12 +135,15 @@ func Select(entries []any, sel *Selector) []Ranked {
 	return out
 }
 
-func selects(entry any, paths []string, wanted map[string]bool, floor int) bool {
+func selects(entry any, paths []string, wanted map[string]bool, floor int, wantedLenses map[string]bool) bool {
 	if len(wanted) > 0 {
 		sig, _ := entrySig(entry)
 		if !wanted[sig] {
 			return false
 		}
+	}
+	if !lensSelected(entry, wantedLenses) {
+		return false
 	}
 	if !aboveFloor(FieldOf(entry, "severity"), floor) {
 		return false
@@ -145,6 +153,17 @@ func selects(entry any, paths []string, wanted map[string]bool, floor int) bool 
 	}
 	path, ok := FieldOf(entry, "path").(string)
 	return ok && slices.ContainsFunc(paths, func(glob string) bool { return config.Match(glob, path) })
+}
+
+// lensSelected reports whether one entry carries the provenance a lens
+// filter demands: an empty filter passes every entry, and a finding without a
+// `lens` never matches one.
+func lensSelected(entry any, wantedLenses map[string]bool) bool {
+	if len(wantedLenses) == 0 {
+		return true
+	}
+	lens, ok := FieldOf(entry, "lens").(string)
+	return ok && lens != "" && wantedLenses[lens]
 }
 
 func aboveFloor(severity any, floor int) bool {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -26,14 +27,27 @@ const (
 		"lower --min-severity or fix one sig with --sig"
 	msgBatchEmptyPaths = "fix --all: no open inline finding at or above %s under %s — " +
 		"widen --paths, lower --min-severity, or fix one sig with --sig"
-	nextBatchEmpty      = "lower --min-severity or fix one sig with --sig"
-	nextBatchEmptyPaths = "widen --paths, lower --min-severity, or fix one sig with --sig"
-	nextBatchPasses     = "patch each anchor, run the verify command yourself, write one " +
+	msgBatchRecipeEmpty = "fix --recipe %s: no open inline finding at or above %s under " +
+		"lenses %s — findings need a matching lens value, or lower --min-severity, " +
+		"widen --paths, or pick another recipe"
+	msgBatchRecipeEmptyPaths = "fix --recipe %s: no open inline finding at or above %s under " +
+		"lenses %s under %s — findings need a matching lens value, or lower --min-severity, " +
+		"widen --paths, or pick another recipe"
+	msgBatchRecipeNoLenses = "fix --recipe %s: the recipe declares no lenses, so it owns " +
+		"no findings — pick a recipe that declares lenses or a different batch scope"
+	nextBatchEmpty          = "lower --min-severity or fix one sig with --sig"
+	nextBatchEmptyPaths     = "widen --paths, lower --min-severity, or fix one sig with --sig"
+	nextBatchRecipe         = "lower --min-severity, widen --paths, pick another recipe, or fix one sig with --sig"
+	nextBatchRecipeNoLenses = "pick a recipe that declares lenses or a different batch scope"
+	nextBatchPasses         = "patch each anchor, run the verify command yourself, write one " +
 		"verification.json claim per sig, land with record, then re-run fix --all"
 	nextBatchStopped  = "triage the stopped sigs, or re-run fix --all with another floor"
 	defaultBatchFloor = "important"
 	floorOff          = "off"
 )
+
+// commaSpace joins the sigs or lens ids a message names.
+const commaSpace = ", "
 
 const batchInstructionsFmt = "instructions: patch each anchor file (%s), run the " +
 	"verify command yourself (%s), then write %s/verification.json " +
@@ -79,6 +93,9 @@ func (st *state) runBatch(
 	sel, ref := st.batchSelector(dir, floor)
 	if ref != nil {
 		return ref
+	}
+	if st.recipeEmpty {
+		return st.recipeNothing(dir, ledgerPath, store, entries, fixOpen, fixOpenInline, now)
 	}
 	picks := readcommon.Select(entries, sel)
 	if len(picks) == 0 {
@@ -147,7 +164,9 @@ func (st *state) batchEnv(ctx context.Context, dir string) (string, *core.Refusa
 // batchNothing explains a batch that selected no sig: --all over an empty store
 // completes, --all over a floor that withheld everything names the scope, and
 // --selected refuses, because a selection that names no open finding is a stale
-// claim rather than an empty store.
+// claim rather than an empty store. A --recipe scope is checked first so a
+// composite --selected --recipe empty intersection names both scopes and
+// preserves data.recipe instead of pinning a bare no-selected refusal.
 func (st *state) batchNothing(
 	dir, ledgerPath string,
 	store *ledgerDoc,
@@ -155,6 +174,9 @@ func (st *state) batchNothing(
 	fixOpen, fixOpenInline int,
 	now string,
 ) *core.RefusalError {
+	if st.req.Recipe != "" {
+		return st.recipeNothing(dir, ledgerPath, store, entries, fixOpen, fixOpenInline, now)
+	}
 	if st.req.Selected {
 		return st.noSelected()
 	}
@@ -162,6 +184,102 @@ func (st *state) batchNothing(
 		return st.completeRun(dir, ledgerPath, store, entries, fixOpen)
 	}
 	return st.emptyBatch(dir, ledgerPath, store, entries, fixOpen, fixOpenInline, now)
+}
+
+// recipeNothing explains a recipe-scoped batch that selected no sig. A recipe
+// that resolves to no lenses owns nothing, so the run reports the empty scope
+// instead of widening to every open inline finding. Otherwise the message
+// names the recipe and its lens set and says findings need that provenance.
+func (st *state) recipeNothing(
+	dir, ledgerPath string,
+	store *ledgerDoc,
+	entries []any,
+	fixOpen, fixOpenInline int,
+	now string,
+) *core.RefusalError {
+	st.at = now
+	st.humanf("%s\n", st.recipeEmptyMsg())
+	st.next = st.batchNext(st.recipeEmptyNext())
+	st.data = &Data{
+		Dir:         dir,
+		Ledger:      ledgerPath,
+		MaxPasses:   maxPasses,
+		OpenInline:  fixOpenInline,
+		Fixed:       fixedCount(entries),
+		Open:        fixOpen,
+		Stopped:     stoppedCount(store),
+		Batch:       []BatchRow{},
+		MinSeverity: &st.req.MinSeverity,
+		Paths:       st.req.Paths,
+		Selection:   st.selectionPath(),
+		Recipe:      recipePtr(st.req.Recipe),
+	}
+	return nil
+}
+
+func (st *state) recipeEmptyNext() string {
+	if len(st.recipeLenses) == 0 {
+		return nextBatchRecipeNoLenses
+	}
+	return nextBatchRecipe
+}
+
+// recipePrefix names the scope the re-run text carries: a composite
+// --selected --recipe run reads "fix --selected --recipe <name>", so the
+// empty-scope message never widens the next pass by dropping either flag.
+func (st *state) recipePrefix() string {
+	if st.req.Selected {
+		return "fix --selected --recipe " + st.req.Recipe
+	}
+	return "fix --recipe " + st.req.Recipe
+}
+
+func (st *state) recipeEmptyMsg() string {
+	if len(st.recipeLenses) == 0 {
+		return st.recipeZeroLensMsg()
+	}
+	return st.recipeLensMismatchMsg()
+}
+
+func (st *state) recipeZeroLensMsg() string {
+	msg := st.recipePrefix() + ": the recipe declares no lenses, so it owns " +
+		"no findings — pick a recipe that declares lenses or a different batch scope"
+	if st.req.Selected && st.selection != nil {
+		msg = st.recipePrefix() + ": the recipe declares no lenses, so it owns " +
+			"no findings (selection " + st.selection.path + " names " +
+			strconv.Itoa(len(st.selection.sigs)) + " reacted sig(s)) — " +
+			"pick a recipe that declares lenses or a different batch scope"
+	}
+	return msg
+}
+
+func (st *state) recipeLensMismatchMsg() string {
+	lenses := strings.Join(st.recipeLenses, commaSpace)
+	if st.req.Selected && st.selection != nil {
+		selected := fmt.Sprintf("%s names %d reacted sig(s) and none is open inline under lenses %s",
+			st.selection.path, len(st.selection.sigs), lenses)
+		if len(st.req.Paths) > 0 {
+			return st.recipePrefix() + ": " + selected + " under " +
+				strings.Join(st.req.Paths, commaSpace) + " in the store — " +
+				"findings need a matching lens value, or lower --min-severity, " +
+				"widen --paths, or pick another recipe"
+		}
+		return st.recipePrefix() + ": " + selected + " in the store — " +
+			"findings need a matching lens value, or lower --min-severity, " +
+			"widen --paths, or pick another recipe"
+	}
+	if len(st.req.Paths) > 0 {
+		return fmt.Sprintf(msgBatchRecipeEmptyPaths, st.req.Recipe, st.req.MinSeverity,
+			lenses, strings.Join(st.req.Paths, commaSpace))
+	}
+	return fmt.Sprintf(msgBatchRecipeEmpty, st.req.Recipe, st.req.MinSeverity, lenses)
+}
+
+func recipePtr(name string) *string {
+	if name == "" {
+		return nil
+	}
+	return &name
 }
 
 func (st *state) batchPick(
@@ -241,12 +359,24 @@ func (st *state) printSelection() {
 	st.humanf("» selection: %s — %d reacted sig(s)\n", st.selection.path, len(st.selection.sigs))
 }
 
-// batchMode renders the flag that re-runs this batch.
+// batchMode renders the flag that re-runs this batch. A composite
+// scope re-runs with every flag it was run with: --selected --recipe <name>
+// keeps the next pass narrowed to both scopes instead of widening it.
 func (st *state) batchMode() string {
-	if st.req.Selected {
-		return "--selected"
+	var flags []string
+	if st.req.All {
+		flags = append(flags, "--all")
 	}
-	return "--all"
+	if st.req.Selected {
+		flags = append(flags, "--selected")
+	}
+	if st.req.Recipe != "" {
+		flags = append(flags, "--recipe "+st.req.Recipe)
+	}
+	if len(flags) == 0 {
+		return "--all"
+	}
+	return strings.Join(flags, " ")
 }
 
 // landVerb names the command that lands a pass in this bundle: a local bundle
@@ -381,6 +511,7 @@ func (st *state) fillBatchData(
 		Patch:       st.patch,
 		Paths:       st.req.Paths,
 		Selection:   st.selectionPath(),
+		Recipe:      recipePtr(st.req.Recipe),
 	}
 }
 
@@ -405,6 +536,7 @@ func (st *state) emptyBatch(
 		Batch:       []BatchRow{},
 		MinSeverity: &st.req.MinSeverity,
 		Paths:       st.req.Paths,
+		Recipe:      recipePtr(st.req.Recipe),
 	}
 	return nil
 }

@@ -1439,6 +1439,9 @@ func appendKeywords(schema *node, tag reflect.StructTag) {
 	if value := tag.Get(keyFormat); value != "" {
 		schema.members = append(schema.members, member{keyFormat, stringNode(value)})
 	}
+	if value := tag.Get(keyPattern); value != "" {
+		schema.members = append(schema.members, member{keyPattern, stringNode(value)})
+	}
 }
 
 func panelDefinitions(receipt bool) []definition {

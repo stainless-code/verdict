@@ -36,7 +36,7 @@ _verdict_flags() { # $1 = verb
     pack) printf '%s\n' list add sync test check --dir --json;;
     adopt) printf '%s\n' --from --json;;
     ingest) printf '%s\n' --from --sarif --json;;
-    fix) printf '%s\n' --sig --all --selected --min-severity --verify-cmd --paths --test --commit --json;;
+    fix) printf '%s\n' --sig --all --selected --recipe --min-severity --verify-cmd --paths --test --commit --json;;
     pr-wait) printf '%s\n' --until --timeout --once --interval --json --provider ;;
     ready) printf '%s\n' --json --check --filter --wait-for --timeout;;
     gate) printf '%s\n' --max-severity --require-head --live --coverage --json;;

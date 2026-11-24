@@ -40,6 +40,11 @@
         },
         "body": { "type": "string" },
         "suggestion": { "type": ["string", "null"] },
+        "lens": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+        },
         "brief": {
           "description": "Optional machine brief; excluded from the sig, and preserved across re-record when the fresh comment carries none.",
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/brief" }]

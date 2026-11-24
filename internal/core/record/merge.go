@@ -619,6 +619,7 @@ func buildInline(st *state, m *jq.Obj) freshEntry {
 		FinderConfidence: jq.R(finderConfidence),
 		Verification:     &core.Verify{Quote: entryQuoteStatus(m)},
 		Suggestion:       optString(jq.Alt(sugg, nil)),
+		Lens:             lensOf(m),
 		InBounds:         drop == nil,
 		Rigor:            rigorValue,
 		RigorSource:      rigorSource,
@@ -697,6 +698,20 @@ func optString(v any) *string {
 		return &s
 	}
 	return nil
+}
+
+// lensOf reads one comment's optional lens provenance, or "" when the
+// comment spells none. The checker has already refused a malformed value, so
+// a non-string here reads as absent, never as provenance.
+func lensOf(m *jq.Obj) string {
+	v, ok := m.Get(fieldLens)
+	if !ok {
+		return ""
+	}
+	if s, isStr := v.(string); isStr {
+		return s
+	}
+	return ""
 }
 
 func stampEntry(st *state, e *core.FindingEntry, kbRaw any, kbExists bool) *core.FindingEntry {
@@ -876,6 +891,7 @@ func mergeFields(st *state, pm, n *jq.Obj) *jq.Obj {
 	overlayAlt(m, n, pm, "reproduction")
 	overlayAlt(m, n, pm, fieldSeverity)
 	mergeCategory(m, n)
+	mergeLens(m, n)
 	overlayAlt(m, n, pm, fieldSuggestion)
 	if v, ok := n.Get(fieldSources); ok {
 		m.Set(fieldSources, v)
@@ -914,6 +930,14 @@ func mergeCategory(m, n *jq.Obj) {
 	if n.Has(fieldCategory) {
 		nv, _ := n.Get(fieldCategory)
 		m.Set(fieldCategory, nv)
+	}
+}
+
+// mergeLens carries the fresh lens onto the merged entry: a spelled fresh
+// lens wins, an absent one preserves the prior provenance.
+func mergeLens(m, n *jq.Obj) {
+	if nv, ok := n.Get(fieldLens); ok && nv != nil {
+		m.Set(fieldLens, nv)
 	}
 }
 

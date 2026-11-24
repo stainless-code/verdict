@@ -161,7 +161,7 @@ func usageText() string {
 		"    with a typed reason instead of being dropped or stored at line 0; an anchored\n" +
 		"    finding grades pointed against the verified diff line, never verified.\n" +
 		"    --sarif <file|-> is the same source under its older spelling.\n" +
-		"  fix <owner/repo> <local-slug|pr> [--sig <s> | --all|--selected [--min-severity <s>]\n" +
+		"  fix <owner/repo> <local-slug|pr> [--sig <s> | --all|--selected|--recipe <name> [--min-severity <s>]\n" +
 		"        [--verify-cmd <cmd>] [--paths <glob>]... | --test <sig> [--commit]] [--json]\n" +
 		"    one bounded pass over a local bundle: picks the top open inline sig\n" +
 		"    (or --sig), prints finding + kb.txt context with verify/land/re-run\n" +
@@ -178,6 +178,13 @@ func usageText() string {
 		"    absent selected.json refuses missing-selection, and a selection that names no\n" +
 		"    open inline finding refuses no-selected-findings. Its default floor is off, so\n" +
 		"    the reaction, not the severity, decides; --min-severity narrows it.\n" +
+		"    --recipe <name> takes the same batch shape over the findings a named recipe\n" +
+		"    owns: the recipe resolves from the bundle's base snapshot and selects the\n" +
+		"    findings whose stored `lens` matches the recipe's lens set. A recipe that\n" +
+		"    declares no lenses owns nothing, so the run reports the empty scope\n" +
+		"    instead of widening to every finding. Findings carry `lens` from record;\n" +
+		"    a finding without one never matches. --recipe composes with --selected,\n" +
+		"    --paths, and --min-severity, but not --sig or --test (bad-flags).\n" +
 		"    --test <sig> promotes instead of passing: it copies one reproduced inline\n" +
 		"    finding's retained artifact into the worktree at\n" +
 		"    .verdict/tests/<sig>-<hash>.<ext> with the receipt command rewritten, and\n" +
