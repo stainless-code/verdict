@@ -335,6 +335,7 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Output              *string                  `json:"output"`
 	Filters             ReportFilters            `json:"filters"`
 	Items               []FindingItem            `json:"items"`
+	OrgPack             *OrgPackInfo             `json:"org_pack,omitempty"`
 	Cost                *ReportCost              `json:"cost,omitempty"`
 	Compare             *ReportCompare           `anyOf:"null"                     json:"compare,omitempty"      optional:"true"`
 	Completeness        *ReportCompleteness      `json:"completeness,omitempty"`
@@ -348,6 +349,20 @@ type ReportData struct { //nolint:govet // field order is the published property
 	ProvenanceEnabled   bool                     `json:"-"`
 	ProvenanceReceipt   *ProvenanceReceipt       `json:"-"`
 	ProvenanceTruncated []ProvenanceTruncatedRow `json:"-"`
+}
+
+// OrgPackInfo names the central rules pack version that governed one run:
+// the base-owned pin beside the locked content hash it resolved to. Empty
+// fields name what the bundle snapshot could not prove; a nil pointer means
+// no org pin governed the run at all.
+type OrgPackInfo struct {
+	Repo    string `json:"repo"`
+	Ref     string `json:"ref"`
+	Path    string `json:"path"`
+	SHA     string `json:"sha,omitempty"`
+	Hash    string `json:"hash,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Version string `json:"version,omitempty"`
 }
 
 // ReportReplay is the `report --policy` comparison: the decision the captured

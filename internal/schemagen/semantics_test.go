@@ -60,12 +60,16 @@ var publishedSemantics = map[string]string{
 	// packs: additive optional top-level object with a merge_builtin boolean
 	// and three >= 1 id arrays, closed shape; no existing property, required
 	// key, enum, or type changed.
+	// packs.org_pack: additive optional closed object (repo, ref required;
+	// path optional) pinning one org-wide central pack set. No existing
+	// property, required key, enum, or type changed.
 	// tests: additive optional top-level object with a draft enum
 	// (off|on-reproduce), closed shape; STA-346 regression-test drafting.
 	// No existing property, required key, enum, or type changed.
-	// additive monthly_budget_usd (optional defaults.monthly_budget_usd and
-	// spend.mtd reporting). No existing property, required key, enum, or type changed.
-	"config.schema.json": "ffe9f24bc430d79c19f1d457066b35e00d738b9a4353c5671ed61c2ddbfea866",
+	// additive monthly_budget_usd and packs.org_pack (optional
+	// defaults.monthly_budget_usd, spend.mtd reporting, and packs.org_pack
+	// pin). No existing property, required key, enum, or type changed.
+	"config.schema.json": "f4fb3995801f41bbfc72b2bd918164d2347d5315f5a6c2c0bd9fe6b674307595",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -357,8 +361,12 @@ var publishedSemantics = map[string]string{
 	// report --compare: additive optional data.compare ($defs/reportCompare and
 	// its baseline/counts/finding definitions). No existing property, required
 	// key, enum, or type changed; only a --compare run carries the key.
-	// monthly mtd block (additive optional reportData.mtd). No existing property, required key, enum, or type changed.
-	"envelope.schema.json": "316ff31bd5d7e9ca2c675757c86dd3c58435f4b361db29cf336e89a45f520c02",
+	// monthly mtd block and org packs (additive optional reportData.mtd,
+	// data.org_pack ($defs/orgPackInfo), and $defs/packSyncData beside
+	// packAddData). No existing property, required key, enum, or type changed;
+	// the mtd and org-pack keys appear only on pinned runs, and pack sync
+	// carries the sync payload.
+	"envelope.schema.json": "d4e83e22c1024b78d0002042c65e88dcf0efaea063e7001195c2b1d240ab3831",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -466,7 +474,11 @@ var publishedSemantics = map[string]string{
 	// (the maxHostLabel cap the loader enforces) and refuses a "://" inside an
 	// scp path (the loader's scheme guard). One pattern narrowed to the
 	// loader's own grammar; no property, required key, enum, or type changed.
-	"lock.schema.json": "da19e41786cc9ff295a88a68929a8c76b5fbd44a7cbd9c5579fd57b316b16db2",
+	// org pin rows: additive org_ref, plus descriptions and confined-path /
+	// immutable-ref patterns on the optional org_path and org_ref fields. No
+	// existing property, required key, enum, or type changed; the sig and root
+	// descriptions now state the org fields they cover.
+	"lock.schema.json": "3b2a1adc106af517eb2304a9dc7684bb715d2971be4645756b812970ba1dd810",
 	// findings cap: the lens max_findings description now says the built-in
 	// pack declares none, so a shipped lens states no return cap and returns
 	// what its evidence supports. Prose only; no property, required key, enum,

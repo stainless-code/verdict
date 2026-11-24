@@ -35,7 +35,8 @@ var (
 	scopeFields        = []string{"name", "include", "exclude", "profile", "defaults", "requirements"}
 	profileFields      = []string{"depth", "checks", "max_lenses"}
 	indexFields        = []string{"files", "file_bytes", "tree_bytes", "shards_bytes", "keep_trees", "refs_per_file"}
-	packsFields        = []string{"merge_builtin", "disable_packs", "disable_lenses", "disable_rules"}
+	packsFields        = []string{"merge_builtin", "disable_packs", "disable_lenses", "disable_rules", "org_pack"}
+	orgPackFields      = []string{"repo", "ref", "path"}
 	// personalTopFields lists the recognized operator-settings keys: the
 	// typed personal sections plus the CLI prefs keys the prefs layer
 	// owns (output, layout, color, publish), which parse but never feed
@@ -80,7 +81,7 @@ func checkUnknownFields(root map[string]any) *core.RefusalError {
 		{key: "severity_weights", check: checkKeysSection(severityEnum)},
 		{key: "index", check: checkKeysSection(indexFields)},
 		{key: "rigor_policy", check: checkKeysSection(rigorPolicyFields)},
-		{key: "packs", check: checkKeysSection(packsFields)},
+		{key: "packs", check: checkPacksKeys},
 		{key: "tests", check: checkKeysSection(testsFields)},
 	} {
 		if ref := checkSectionUnknown(root, section.key, section.check); ref != nil {
@@ -99,6 +100,26 @@ func checkSectionUnknown(root map[string]any, key string, check func(any, string
 		return nil
 	}
 	return check(raw, "$."+key)
+}
+
+// checkPacksKeys walks the packs object and its nested org_pack pin.
+func checkPacksKeys(raw any, path string) *core.RefusalError {
+	obj, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
+	if ref := checkKeys(path, obj, packsFields); ref != nil {
+		return ref
+	}
+	pin, ok := obj["org_pack"]
+	if !ok {
+		return nil
+	}
+	pinObj, ok := pin.(map[string]any)
+	if !ok {
+		return nil // semantic pass names the misplaced null or wrong type
+	}
+	return checkKeys(path+".org_pack", pinObj, orgPackFields)
 }
 
 // checkKeysSection returns a section walker over a fixed field list.

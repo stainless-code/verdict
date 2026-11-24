@@ -412,6 +412,11 @@ func (c *gitCommander) Run(ctx context.Context, cmd *core.Command) (core.Result,
 		writeFixture(c.t, dest, c.files)
 		return core.Result{Stderr: c.cloneStderr, ExitCode: c.cloneExit}, nil
 	}
+	if slices.Contains(cmd.Argv, "init") {
+		dest := cmd.Argv[len(cmd.Argv)-1]
+		writeFixture(c.t, dest, c.files)
+		return core.Result{Stderr: c.cloneStderr, ExitCode: c.cloneExit}, nil
+	}
 	if slices.Contains(cmd.Argv, "rev-parse") {
 		return core.Result{Stdout: addGitSha + "\n"}, nil
 	}
@@ -594,5 +599,41 @@ func assertFile(t *testing.T, path, want string) {
 	}
 	if string(raw) != want {
 		t.Fatalf("%s =\n%d bytes\n%q\nwant\n%q", path, len(raw), string(raw), want)
+	}
+}
+
+// TestCheckCloneBoundsRefusesSymlinkedBound proves an intermediate symlink is
+// refused before the cap walk resolves it: the walk descends whatever
+// directory path it is handed, so a clone whose pack root links outside would
+// otherwise answer for a tree the caps never described — it reports the
+// outside tree's size instead of the unsafe path. The outside tree here is
+// over the file cap, so the old order refused with pack-too-large.
+func TestCheckCloneBoundsRefusesSymlinkedBound(t *testing.T) {
+	t.Parallel()
+	clone := t.TempDir()
+	outside := t.TempDir()
+	files := make(map[string]string, MaxFiles+1)
+	for i := range MaxFiles + 1 {
+		files[fmt.Sprintf("junk/%03d.txt", i)] = "x"
+	}
+	writeFixture(t, filepath.Join(outside, "org"), files)
+	symlinkOrSkip(t, filepath.Join(outside, "org"), filepath.Join(clone, "packs"))
+
+	ref := checkCloneBounds(clone, "packs/org")
+	if ref == nil || ref.Code != CodePackUnsafePath {
+		t.Fatalf("checkCloneBounds(symlinked bound) = %v, want %s", ref, CodePackUnsafePath)
+	}
+	if want := `the git clone's "packs/org" is not a real directory`; !strings.Contains(ref.Message, want) {
+		t.Fatalf("message = %q, want it to contain %q", ref.Message, want)
+	}
+}
+
+// TestCheckCloneBoundsKeepsTheMissingBoundDiagnostic proves an absent bound
+// still reads as no cap refusal, so the loader reports the missing pack.
+func TestCheckCloneBoundsKeepsTheMissingBoundDiagnostic(t *testing.T) {
+	t.Parallel()
+	clone := t.TempDir()
+	if ref := checkCloneBounds(clone, "packs/absent"); ref != nil {
+		t.Fatalf("checkCloneBounds(missing bound) = %v, want no refusal", ref)
 	}
 }

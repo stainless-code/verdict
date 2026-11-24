@@ -952,7 +952,10 @@ func globsHit(globs, files []string) bool {
 	return false
 }
 
-// confinedRoot reports whether root is a relative path inside the FS.
+// confinedRoot reports whether root is a confined, repository-relative slash
+// path: the root marker, or a valid slash path with no backslash, colon, or
+// control character. The published lock schema's org_path pattern states the
+// same grammar, so a schema-valid row never refuses here.
 func confinedRoot(root string) bool {
 	if root == rootSelf {
 		return true
@@ -960,7 +963,7 @@ func confinedRoot(root string) bool {
 	if !fs.ValidPath(root) || strings.ContainsAny(root, `\:`) {
 		return false
 	}
-	return true
+	return !strings.ContainsFunc(root, isControlRune)
 }
 
 // unsafePath builds the pack-unsafe-path refusal.

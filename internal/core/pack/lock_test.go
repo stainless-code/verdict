@@ -501,3 +501,73 @@ func TestCheckLockNoPacksNoLock(t *testing.T) {
 		t.Fatalf("CheckLock = %s: %s, want nil", ref.Code, ref.Message)
 	}
 }
+
+// TestLockOrgFieldSchemaMatchesLoader proves the published org_path and org_ref
+// patterns agree with the loader over the confined-path and immutable-ref
+// grammars, so a schema-valid row never refuses and a schema-invalid one never
+// loads.
+func TestLockOrgFieldSchemaMatchesLoader(t *testing.T) {
+	t.Parallel()
+	checker, err := schemacheck.Load(
+		filepath.Join("..", "..", "..", "schemas", "lock.schema.json"), "")
+	if err != nil {
+		t.Fatalf("load lock schema: %v", err)
+	}
+	sha := strings.Repeat("a", 40)
+	cases := []struct {
+		name    string
+		orgPath string
+		orgRef  string
+		want    bool
+	}{
+		{"no org fields", "", "", true},
+		{"repo root", ".", sha, true},
+		{"nested path", "packs/org", sha, true},
+		{"deeper path", "a/b/c", "v1.0.0", true},
+		{"hidden segment", ".hidden/x", sha, true},
+		{"dotted segment", "a.b/c", "2.0.0", true},
+		{"prerelease tag", "packs/org", "v1.0.0-rc.1", true},
+		{"build metadata tag", "packs/org", "1.0.0+build.5", true},
+		{"absolute path", "/packs", sha, false},
+		{"dot-dot segment", "a/../b", sha, false},
+		{"dot segment", "a/./b", sha, false},
+		{"bare dot-dot", "..", sha, false},
+		{"trailing slash", "a/", sha, false},
+		{"double slash", "a//b", sha, false},
+		{"backslash", `a\b`, sha, false},
+		{"colon", "a:b", sha, false},
+		{"control character", "a\x01b", sha, false},
+		{"branch ref", "packs/org", "main", false},
+		{"uppercase sha", "packs/org", strings.ToUpper(sha), false},
+		{"short sha", "packs/org", strings.Repeat("a", 39), false},
+		{"two-part tag", "packs/org", "v1.0", false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			body := orgFieldBody(t, tc.orgPath, tc.orgRef)
+			_, ref := parseLock([]byte(body))
+			loaded := ref == nil
+			checkLockPattern(t, checker, tc.name, body, tc.want)
+			if loaded != tc.want {
+				t.Fatalf("loader accepted=%v, want %v (%v): org_path %q org_ref %q",
+					loaded, tc.want, ref, tc.orgPath, tc.orgRef)
+			}
+		})
+	}
+}
+
+// orgFieldBody renders one lock document carrying the org fields under test.
+func orgFieldBody(t *testing.T, orgPath, orgRef string) string {
+	t.Helper()
+	entry := LockEntry{
+		Name: "acme/lenses", Source: "dir:src-packs/lenses", Version: "1.0.0",
+		Hash: lockHash, OrgPath: orgPath, OrgRef: orgRef,
+	}
+	entry.Sig = LockSig(&entry)
+	raw, err := json.Marshal(&Lock{SchemaVersion: LockSchemaVersion, Packs: []LockEntry{entry}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}

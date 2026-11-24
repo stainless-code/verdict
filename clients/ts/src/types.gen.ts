@@ -341,6 +341,7 @@ export interface ReportData {
   output: string | null;
   filters: ReportFilters;
   items: Array<FindingItem>;
+  org_pack?: OrgPackInfo | null;
   cost?: ReportCost;
   compare?: ReportCompare | null;
   completeness?: ReportCompleteness;
@@ -351,6 +352,17 @@ export interface ReportData {
   replay?: ReportReplay | null;
   receipt?: ProvenanceReceipt;
   truncated?: boolean | Array<ProvenanceTruncatedRow>;
+  [key: string]: unknown;
+}
+
+export interface OrgPackInfo {
+  repo: string;
+  ref: string;
+  path: string;
+  sha?: string;
+  hash?: string;
+  name?: string;
+  version?: string;
   [key: string]: unknown;
 }
 
@@ -1911,6 +1923,17 @@ export interface PackAddData {
   pack: PackEntry;
   previous_hash: string | null;
   replaced: boolean;
+  [key: string]: unknown;
+}
+
+export interface PackSyncData {
+  pack: PackEntry;
+  repo: string;
+  ref: string;
+  path: string;
+  sha: string | null;
+  hash: string;
+  version: string;
   [key: string]: unknown;
 }
 
