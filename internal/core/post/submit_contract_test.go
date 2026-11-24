@@ -267,37 +267,28 @@ func TestTypedPostItemsProjection(t *testing.T) {
 }
 
 // TestPostDiagramValue proves the dry-run diagram disposition: absent reads
-// null, and present carries the state with null keyword/note when unset.
-//
-//nolint:revive // legs assert the refusal, receipt, and projection fields inline
+// null, and a drawn or omitted block carries the state plus exactly the
+// fields evidence.diagram stores.
 func TestPostDiagramValue(t *testing.T) {
 	t.Parallel()
-	if got := postDiagramValue(&diagram.Status{State: "absent"}); got != nil {
-		t.Errorf("absent diagram = %v, want nil", got)
+	if got := postDiagramValue(&diagram.Status{State: diagram.StatusAbsent}); got != nil {
+		t.Errorf("absent diagram = %+v, want nil", got)
 	}
-	got, ok := postDiagramValue(&diagram.Status{
-		State: "rewritten", Blocks: 2, Keyword: "diagram", Note: "collapsed one block",
-		Wrapped: true, Collapsed: true, Detail: "kept",
-	}).(*jq.Obj)
-	if !ok {
-		t.Fatal("present diagram is not an ordered object")
+	rendered := postDiagramValue(&diagram.Status{
+		State: diagram.StatusRendered, Type: "sequence", Title: "Token refresh", Detail: "4/5 elements anchored",
+		Supplied: 5, Verified: 4, Dropped: 1,
+	})
+	want := core.PostDiagram{Status: "rendered", Type: "sequence", Title: "Token refresh", Supplied: 5, Verified: 4, Dropped: 1}
+	if rendered == nil || *rendered != want {
+		t.Errorf("rendered diagram = %+v, want %+v", rendered, want)
 	}
-	for key, want := range map[string]any{
-		"status": "rewritten", "blocks": 2, "keyword": "diagram",
-		"wrapped": true, "collapsed": true, "detail": "kept", "note": "collapsed one block",
-	} {
-		if v, _ := got.Get(key); v != want {
-			t.Errorf("diagram.%s = %v, want %v", key, v, want)
-		}
-	}
-	bare, ok := postDiagramValue(&diagram.Status{State: "added"}).(*jq.Obj)
-	if !ok {
-		t.Fatal("bare diagram is not an ordered object")
-	}
-	for _, key := range []string{"keyword", "note"} {
-		if v, _ := bare.Get(key); v != nil {
-			t.Errorf("diagram.%s = %v, want null when unset", key, v)
-		}
+	omitted := postDiagramValue(&diagram.Status{
+		State: diagram.StatusOmitted, Omitted: "type `gantt` is out of scope", Detail: "type `gantt` is out of scope",
+		Supplied: 2, Dropped: 2,
+	})
+	want = core.PostDiagram{Status: "omitted", Supplied: 2, Dropped: 2, Omitted: "type `gantt` is out of scope"}
+	if omitted == nil || *omitted != want {
+		t.Errorf("omitted diagram = %+v, want %+v", omitted, want)
 	}
 }
 
