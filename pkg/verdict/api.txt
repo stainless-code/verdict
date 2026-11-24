@@ -731,7 +731,7 @@ type VerifyRequest struct {
 	// Sandbox wraps the command in the host's enforced sandbox: bwrap on
 	// Linux (no network, empty credential dirs, a writable reviewed root, a
 	// private /tmp), sandbox-exec on macOS (no network, loopback included; no
-	// keychain broker; writes only to the reviewed root and a private TMPDIR;
+	// Mach services; writes only to the reviewed root and a private TMPDIR;
 	// credential paths and the shared host temp roots denied). The call
 	// refuses with sandbox-unavailable when the host cannot enforce it instead
 	// of running unwrapped, and never falls back to SandboxNetworkOnly.

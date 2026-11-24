@@ -108,7 +108,7 @@ func TestVerifyHelpNamesTheNetworkOnlyOptIn(t *testing.T) {
 		"no mount, filesystem, or PID isolation",
 		"unix sockets (docker.sock, ssh-agent) stay",
 		"it is never recorded as sandboxed",
-		"no keychain broker; writes",
+		"no Mach services; writes",
 		"refuses bad-flags",
 		"sandboxMechanism",
 	} {

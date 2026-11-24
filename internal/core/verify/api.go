@@ -24,8 +24,8 @@ type Request struct { //nolint:govet // field grouping documents the request sur
 	Command string
 	// Sandbox wraps the executed command in the host's enforced sandbox:
 	// bwrap on Linux (no network, empty credential dirs, a writable reviewed
-	// root, a private /tmp) and sandbox-exec on macOS (no network, no keychain
-	// broker, writes only to the reviewed root and a private TMPDIR, denied
+	// root, a private /tmp) and sandbox-exec on macOS (no network, no Mach
+	// services, writes only to the reviewed root and a private TMPDIR, denied
 	// credential paths and shared host temp roots). A host
 	// that cannot enforce it refuses sandbox-unavailable instead of running
 	// unwrapped; it never falls back to the network-only opt-in.

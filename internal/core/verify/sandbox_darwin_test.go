@@ -4,6 +4,7 @@ package verifycore
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -407,5 +408,111 @@ func assertGitStillWorks(t *testing.T, sb *sandbox, env []string, root string) {
 		if res.ExitCode != 0 || !strings.Contains(res.Stdout+res.Stderr, tc.want) {
 			t.Errorf("%q = exit %d %q, want %q", tc.cmd, res.ExitCode, res.Stdout+res.Stderr, tc.want)
 		}
+	}
+}
+
+// TestSandboxExecDeniesServiceMediatedChannels proves the Mach default-deny
+// against the real services: `defaults write` cannot get cfprefsd to persist
+// a preference, and the pasteboard can be neither read nor written. The
+// pasteboard leg uses the find pasteboard and restores it, so the operator's
+// clipboard is never touched.
+func TestSandboxExecDeniesServiceMediatedChannels(t *testing.T) {
+	requireSandboxExec(t)
+	root := t.TempDir()
+	sb, env := gitSandbox(t, root)
+	defer closeSandbox(t, sb)
+	assertPreferencesNotPersisted(t, sb, env, root)
+	assertPasteboardUnreachable(t, sb, env, root)
+	assertUserLookupAllowed(t, sb, env, root)
+}
+
+// assertUserLookupAllowed pins the one Mach allowlist entry: the passwd
+// lookup still resolves the account name, as os/user and `whoami` need.
+func assertUserLookupAllowed(t *testing.T, sb *sandbox, env []string, root string) {
+	t.Helper()
+	want, code := hostCommand(t, "", "/usr/bin/id", "-un")
+	if code != 0 {
+		t.Fatalf("host id -un exited %d", code)
+	}
+	res := runWrapped(t, sb, env, root, `id -un`)
+	if got := strings.TrimSpace(res.Stdout + res.Stderr); res.ExitCode != 0 || got != strings.TrimSpace(want) {
+		t.Errorf("sandboxed id -un = exit %d %q, want %q", res.ExitCode, got, strings.TrimSpace(want))
+	}
+}
+
+// assertPreferencesNotPersisted writes a fresh preference domain from inside
+// the sandbox and proves the host cannot read it back.
+func assertPreferencesNotPersisted(t *testing.T, sb *sandbox, env []string, root string) {
+	t.Helper()
+	domain := "dev.verdict.sandboxtest." + filepath.Base(root)
+	t.Cleanup(func() { removePreferenceDomain(t, domain) })
+	runWrapped(t, sb, env, root, `defaults write `+domain+` k v; defaults write -g `+domain+` v`)
+	for _, args := range [][]string{{"read", domain, "k"}, {"read", "-g", domain}} {
+		if out, code := hostCommand(t, "", "/usr/bin/defaults", args...); code == 0 {
+			t.Errorf("defaults %v on the host = %q, want the sandboxed write absent", args, out)
+		}
+	}
+}
+
+// removePreferenceDomain deletes whatever a failed run persisted.
+func removePreferenceDomain(t *testing.T, domain string) {
+	t.Helper()
+	if _, code := hostCommand(t, "", "/usr/bin/defaults", "read", domain); code == 0 {
+		hostCommand(t, "", "/usr/bin/defaults", "delete", domain)
+	}
+	if _, code := hostCommand(t, "", "/usr/bin/defaults", "read", "-g", domain); code == 0 {
+		hostCommand(t, "", "/usr/bin/defaults", "delete", "-g", domain)
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return
+	}
+	if err := os.Remove(filepath.Join(home, "Library", "Preferences", domain+".plist")); err != nil && !os.IsNotExist(err) {
+		t.Errorf("remove the probe preference file: %v", err)
+	}
+}
+
+// assertPasteboardUnreachable puts a sentinel on the find pasteboard from the
+// host, proves the sandbox can neither read nor overwrite it, and restores
+// the pasteboard's previous text.
+func assertPasteboardUnreachable(t *testing.T, sb *sandbox, env []string, root string) {
+	t.Helper()
+	const sentinel = "verdict-pasteboard-sentinel"
+	saved, _ := hostCommand(t, "", "/usr/bin/pbpaste", "-pboard", "find")
+	t.Cleanup(func() { hostCommand(t, saved, "/usr/bin/pbcopy", "-pboard", "find") })
+	hostCommand(t, sentinel, "/usr/bin/pbcopy", "-pboard", "find")
+	if got, _ := hostCommand(t, "", "/usr/bin/pbpaste", "-pboard", "find"); got != sentinel {
+		t.Fatalf("host control read %q from the find pasteboard, want the sentinel", got)
+	}
+	res := runWrapped(t, sb, env, root, `pbpaste -pboard find`)
+	if res.ExitCode == 0 || strings.Contains(res.Stdout+res.Stderr, sentinel) {
+		t.Errorf("sandboxed pbpaste = exit %d %q, want the pasteboard unreachable", res.ExitCode, res.Stdout+res.Stderr)
+	}
+	res = runWrapped(t, sb, env, root, `printf overwritten | pbcopy -pboard find`)
+	if res.ExitCode == 0 {
+		t.Errorf("sandboxed pbcopy exited 0, want the pasteboard unreachable")
+	}
+	if got, _ := hostCommand(t, "", "/usr/bin/pbpaste", "-pboard", "find"); got != sentinel {
+		t.Errorf("the find pasteboard reads %q after the sandboxed pbcopy, want the sentinel", got)
+	}
+}
+
+// hostCommand runs one unsandboxed host command with stdin and returns its
+// combined output and exit code; a spawn failure fails the test.
+func hostCommand(t *testing.T, stdin, name string, args ...string) (string, int) {
+	t.Helper()
+	// Cleanups run after the test context is canceled.
+	cmd := exec.CommandContext(context.Background(), name, args...)
+	cmd.Stdin = strings.NewReader(stdin)
+	out, err := cmd.CombinedOutput()
+	var exitErr *exec.ExitError
+	switch {
+	case err == nil:
+		return string(out), 0
+	case errors.As(err, &exitErr):
+		return string(out), exitErr.ExitCode()
+	default:
+		t.Fatalf("%s %v: %v", name, args, err)
+		return "", -1
 	}
 }

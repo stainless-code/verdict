@@ -159,7 +159,7 @@ enforced sandbox, then an honest statement of what the gate cannot see.
 | Hostile spellings are refused before anything spawns                                 | `internal/core/verify/gate.go` and the per-class gate files                                                                           | `verify-destructive`, `verify-networked`, `verify-credential-read`, `verify-repo-escape`, `verify-indirection`                                                                         |
 | `verify --sandbox` hides credential paths and denies the network on Linux            | `bubblewrap`: private `/tmp`, empty `/run`, `--unshare-pid`, `--unshare-net`, `--new-session`, `--die-with-parent`, credential mounts | `internal/core/verify/sandbox.go`; `docs/manual.md` § Enforced sandbox. `--ro-bind / /` leaves the rest of the host readable, so out-of-repo read scope still rests on the string gate |
 | Credential paths are mounted away, not merely unmentioned                            | `sandboxCredentialPaths` (dirs behind an empty tmpfs, files behind `/dev/null`)                                                       | `internal/core/verify/sandbox.go`                                                                                                                                                      |
-| macOS denies the network, the keychain broker, and every write outside the run       | `(deny network*)`, a keychain `mach-lookup` deny, `(deny file-write* (subpath "/"))`, then the allows, then credential denies         | `sandboxExecProfile` in `internal/core/verify/sandbox.go`; `TestSandboxExecDeniesKeychainAndPersistence` runs the real `sandbox-exec`                                                  |
+| macOS denies the network, every Mach service, and every write outside the run        | `(deny network*)`, `(deny mach-lookup)` with one lookup-only allow, `(deny file-write* (subpath "/"))`, allows, credential denies     | `sandboxExecProfile` in `internal/core/verify/sandbox.go`; `TestSandboxExecDeniesServiceMediatedChannels` runs the real `sandbox-exec`                                                 |
 | A host that cannot enforce refuses rather than degrading                             | `sandbox-unavailable`                                                                                                                 | `internal/core/verify/sandbox.go`; `docs/manual.md` § Enforced sandbox                                                                                                                 |
 | The sandbox shape is recorded in the artifact, not inferred                          | `"sandboxed": true` (full shape only) plus the mechanism name; network-only records `unshare-net`, never `sandboxed`                  | `internal/core/verifyapi.go` (`Sandboxed`, `SandboxMechanism`); `TestRecordOutcomeNetworkOnlyIsNotSandboxed`; `docs/manual.md` § Enforced sandbox                                      |
 | The gate's own ceiling is documented as a tripwire, not a boundary                   | re-execution cannot be proven by string matching                                                                                      | `SECURITY.md` § Scope; `docs/manual.md` § Known residuals (string-scan ceiling)                                                                                                        |
@@ -204,14 +204,14 @@ the operator runs the whole review in.
 
 **macOS has no filesystem namespace.** On macOS the sandbox is a Seatbelt
 policy, not a set of private mounts: `sandbox-exec` denies the network, the
-keychain broker, every write outside the reviewed root and the per-run private
-`TMPDIR`, and reads of the credential table and the shared host temp roots,
-while the command can still read the rest of the host filesystem and see the
-host process tree. The profile is built in `sandboxExecProfile`
-(`internal/core/verify/sandbox.go`) and stated in `docs/manual.md` § Enforced
-sandbox, which points full mount and PID isolation at a Linux VM or container.
-Windows, and any host with neither `bwrap` nor `sandbox-exec`, refuses
-`sandbox-unavailable` and runs nothing.
+Mach services (one lookup-only allow), every write outside the reviewed root
+and the per-run private `TMPDIR`, and reads of the credential table and the
+shared host temp roots, while the command can still read the rest of the host
+filesystem and see the host process tree. The profile is built in
+`sandboxExecProfile` (`internal/core/verify/sandbox.go`) and stated in
+`docs/manual.md` § Enforced sandbox, which points full mount and PID isolation
+at a Linux VM or container. Windows, and any host with neither `bwrap` nor
+`sandbox-exec`, refuses `sandbox-unavailable` and runs nothing.
 
 **The network-only mode is not the sandbox.** `verify --sandbox-network-only`
 is an explicit Linux opt-in for hosts without `bwrap`: `unshare --net` removes

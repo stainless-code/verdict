@@ -297,7 +297,7 @@ func usageText() string {
 		"    are redacted from the recorded tail.\n" +
 		"    --sandbox runs the command under an enforced sandbox: bwrap on Linux (no network,\n" +
 		"    empty ~/.aws and ~/.ssh, a writable reviewed root, a private /tmp), and\n" +
-		"    sandbox-exec on macOS (no network, loopback included; no keychain broker; writes\n" +
+		"    sandbox-exec on macOS (no network, loopback included; no Mach services; writes\n" +
 		"    only to the reviewed root and a private TMPDIR; credential paths and host /tmp\n" +
 		"    denied; no mount or PID namespace).\n" +
 		"    --sandbox-network-only is the Linux unshare --net opt-in for hosts without bwrap:\n" +

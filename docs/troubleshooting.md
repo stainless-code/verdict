@@ -1302,7 +1302,12 @@ Fix: pick another `--run <slug>`, or delete the existing run directory and mine 
 
 ## `sandbox-unavailable`
 
-Cause: the sandbox cannot be enforced — on Linux, no `bubblewrap` or no unprivileged user namespaces; on macOS, no working `sandbox-exec`; on any other host, no enforced mechanism at all.
+Cause: the sandbox cannot be enforced — on Linux, no `bubblewrap` or no unprivileged user namespaces; on macOS, no working `sandbox-exec`; on any other host, no enforced mechanism at all. The same code covers the inputs the sandbox must resolve before it can hide anything:
+
+- `HOME is unset in the child environment` — the credential paths under `HOME` cannot be named. Keep `HOME` in the child environment (it is on the default allowlist; a `--env-allowlist` or `.verdict/verify-env` setup must not drop it).
+- `HOME "<value>" in the child environment is not an absolute path` — a relative `HOME` names no fixed location to hide. Export an absolute `HOME`.
+- `the reviewed root <root> is inside the credential path <path>` — hiding the path would hide the code under review, and allowing the root would expose the credential. Verify from a checkout outside your credential stores.
+- `the reviewed root's <root>/.git is a symlink` (Linux) — `bwrap` can protect only the link's target, so the link could be replaced. Replace the link with the directory or a `gitdir:` file, or verify a fresh clone.
 
 Fix: install bubblewrap on Linux and allow unprivileged user namespaces (or, accepting network isolation alone, pass `--sandbox-network-only`, which needs `unshare`), or fix `sandbox-exec` on macOS (`/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' true` must exit 0), or re-run without `--sandbox` on a command you trust.
 
@@ -1646,7 +1651,7 @@ Cause: `verifyCmd` fetches the network or pipes to a shell.
 The gate is a tripwire, not a boundary: it refuses the spellings it knows,
 and a shape it has not learned executes. For a boundary, run the step
 under `verify --sandbox`: `bubblewrap` on Linux removes the route out, and
-`sandbox-exec` on macOS denies the network and the keychain broker; a host
+`sandbox-exec` on macOS denies the network and every Mach service; a host
 that can enforce neither refuses `sandbox-unavailable`.
 
 Fix: rewrite `verifyCmd` without network fetches or pipe-to-shell (fetch fixtures first, run offline), then re-run.

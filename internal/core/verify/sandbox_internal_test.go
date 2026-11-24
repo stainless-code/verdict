@@ -198,10 +198,10 @@ func homeInputs(home string) sandboxInputs {
 }
 
 // wantSeatbeltHeader is the literal start of every generated profile: the
-// network denial, the keychain broker denial, and the blanket write denial
-// the later allows carve out of.
+// network denial, the Mach default-deny with its one allow, and the blanket
+// write denial the later allows carve out of.
 const wantSeatbeltHeader = `(version 1)(allow default)(deny network*)` +
-	`(deny mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc"))` +
+	`(deny mach-lookup)(allow mach-lookup (global-name "com.apple.system.opendirectoryd.libinfo"))` +
 	`(deny file-write* (subpath "/"))`
 
 // checkSeatbeltProfileRules pins the literal rules the profile must carry.

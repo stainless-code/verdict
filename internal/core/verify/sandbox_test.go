@@ -161,13 +161,13 @@ func envValue(env []string, name string) string {
 }
 
 // checkSeatbeltProfile pins the generated macOS rules against literal inputs:
-// network, the keychain broker, and every write denied up front, the shared
-// host temp roots denied, the reviewed root and the private TMPDIR allowed,
-// and every credential path under HOME denied.
+// network, every Mach service but one, and every write denied up front, the
+// shared host temp roots denied, the reviewed root and the private TMPDIR
+// allowed, and every credential path under HOME denied.
 func checkSeatbeltProfile(t *testing.T, profile, root, home string) {
 	t.Helper()
 	const header = `(version 1)(allow default)(deny network*)` +
-		`(deny mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc"))` +
+		`(deny mach-lookup)(allow mach-lookup (global-name "com.apple.system.opendirectoryd.libinfo"))` +
 		`(deny file-write* (subpath "/"))`
 	if !strings.HasPrefix(profile, header) {
 		t.Errorf("profile does not open with %q:\n%s", header, profile)

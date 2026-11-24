@@ -32,15 +32,17 @@ In scope (highest priority first):
 
 - `verify --sandbox`, the enforced boundary: mount and namespace isolation
   under `bubblewrap` on Linux; under `sandbox-exec` on macOS, the network and
-  keychain-broker denial, the denial of every write outside the reviewed root
-  and the per-run private `TMPDIR`, and the read denial of the credential
-  table and the shared host temp roots; the credential-path hiding on both;
-  and the `sandbox-unavailable` refusal that never degrades to an unwrapped
-  run or to the network-only mode. **`sandboxed` means exactly that full
-  shape** — `"sandboxed": true` in the patch record, the deep-group receipt,
-  or `--json` data asserts `bwrap` or `sandbox-exec` enforced it. An escape
-  from that sandbox, or a run that records `"sandboxed": true` without the
-  enforcement (or for the network-only mode), is a vulnerability.
+  Mach service denial (default-deny with one lookup-only allow, so no
+  keychain, preference, pasteboard, LaunchServices, AppleEvents, or launchd
+  channel acts for the command), the denial of every write outside the
+  reviewed root and the per-run private `TMPDIR`, and the read denial of the
+  credential table and the shared host temp roots; the credential-path hiding
+  on both; and the `sandbox-unavailable` refusal that never degrades to an
+  unwrapped run or to the network-only mode. **`sandboxed` means exactly that
+  full shape** — `"sandboxed": true` in the patch record, the deep-group
+  receipt, or `--json` data asserts `bwrap` or `sandbox-exec` enforced it. An
+  escape from that sandbox, or a run that records `"sandboxed": true` without
+  the enforcement (or for the network-only mode), is a vulnerability.
 - `verify --sandbox-network-only`, the explicit Linux opt-in
   (`unshare --user --map-root-user --net`): the promise is network isolation
   alone, a `sandboxMechanism: "unshare-net"` record that never claims

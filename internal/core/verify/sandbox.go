@@ -61,16 +61,30 @@ const (
 	seatbeltFirstPrintable = ' '
 	seatbeltDelete         = 0x7f
 
-	// seatbeltHeader keeps the network denial and closes the two macOS
-	// escapes a path policy alone leaves open: the keychain broker (the
-	// `security` CLI reads stored tokens through it, never through a file
-	// path) and every write outside the paths allowed after it, so the
-	// command cannot plant a LaunchAgent or a shell rc file that runs
-	// unsandboxed later. Seatbelt applies the last matching rule, so the
-	// allows that follow re-open only what they name.
+	// seatbeltHeader keeps the network denial, denies every Mach service
+	// lookup but the allowlist after it, and denies every write outside the
+	// paths allowed later. A path policy alone leaves service-mediated
+	// channels open: cfprefsd writes ~/Library/Preferences for `defaults
+	// write`, the pasteboard server reads and writes the operator's clipboard,
+	// the keychain broker hands out stored tokens, LaunchServices and
+	// AppleEvents start other apps outside the sandbox. Every one of them is
+	// reached by a bootstrap lookup of a global name, so default-deny closes
+	// the whole class, including services nobody has listed yet. Seatbelt
+	// applies the last matching rule, so the allows that follow re-open only
+	// what they name.
 	seatbeltHeader = `(version 1)(allow default)(deny network*)` +
-		`(deny mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc"))` +
+		`(deny mach-lookup)` + seatbeltMachAllow +
 		`(deny file-write* (subpath "/"))`
+
+	// seatbeltMachAllow is the whole Mach allowlist, found by running git,
+	// go build/test, node/npm, python3, make, cc, perl, ruby, and a shell
+	// under a blanket deny: they all work with no service at all except the
+	// passwd and group lookups (getpwuid, getgrgid), which libinfo answers
+	// through opendirectoryd. Without it `whoami` prints the uid and Go's
+	// [os/user.Current] fails, which test suites call. The endpoint is
+	// lookup-only: record writes go through opendirectoryd's separate API
+	// service, which stays denied.
+	seatbeltMachAllow = `(allow mach-lookup (global-name "com.apple.system.opendirectoryd.libinfo"))`
 
 	// seatbeltDeviceWrites re-allows the device writes a shell needs after the
 	// blanket write denial: the bit bucket, the controlling terminal, and the
@@ -471,7 +485,7 @@ func networkOnlyRefusal(goos string) *core.RefusalError {
 	linuxOnly := " — --sandbox-network-only is a Linux unshare --net opt-in"
 	if goos == "darwin" {
 		return sandboxUnavailable(goos + " has no unshare network-only sandbox" + linuxOnly +
-			"; use --sandbox here for sandbox-exec (no network, no keychain, writes only to the reviewed root " +
+			"; use --sandbox here for sandbox-exec (no network, no Mach services, writes only to the reviewed root " +
 			"and a private TMPDIR, credential paths and host /tmp denied)")
 	}
 	return sandboxUnavailable(goos + " has no unshare network-only sandbox" + linuxOnly)
@@ -505,6 +519,9 @@ func bwrapArgv(root string, in sandboxInputs) ([]string, *core.RefusalError) {
 	}
 	locations, ref := in.credentialLocations(repo, false)
 	if ref != nil {
+		return nil, ref
+	}
+	if ref := sandboxGitSymlinkRefusal(repo); ref != nil {
 		return nil, ref
 	}
 	argv := []string{
@@ -547,6 +564,21 @@ func sandboxGitBinds(repo string) []string {
 		}
 	}
 	return sandboxCleanUnique(binds)
+}
+
+// sandboxGitSymlinkRefusal refuses a reviewed root whose `.git` is a
+// symlink: bwrap can make only the link's target read-only, and the link
+// itself lives in the writable root, so the command could replace it with a
+// git directory of its own. macOS needs no refusal, because its profile
+// denies writes to every `.git` path below the root, the link included.
+func sandboxGitSymlinkRefusal(repo string) *core.RefusalError {
+	dotgit := filepath.Join(repo, sandboxGitName)
+	if info, err := os.Lstat(dotgit); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		return nil //nolint:nilerr // no `.git` to protect is not a refusal
+	}
+	return sandboxUnavailable(fmt.Sprintf("the reviewed root's %s is a symlink, and bwrap can protect only its "+
+		"target, so the link could be replaced with a git directory that runs later — replace the link with the "+
+		"directory or a `gitdir:` file, or verify a fresh clone", dotgit))
 }
 
 // sandboxRelInside returns path relative to base when path is strictly below
@@ -661,13 +693,13 @@ func sandboxHome(env []string) (string, bool) {
 }
 
 // sandboxExecMechanism is the macOS shape: a generated Seatbelt profile that
-// denies the network, the keychain broker, and every write outside the
-// reviewed root and one per-run private directory, and denies reads of the
-// credential table and the shared host temp roots. Seatbelt has no mount
-// namespace, so this hides paths by policy rather than replacing them. The
-// child's TMPDIR/TMP/TEMP, GOTMPDIR, GOCACHE, and XDG_CACHE_HOME point into
-// the private directory so common toolchains keep a writable scratch and
-// cache.
+// denies the network, every Mach service but one lookup-only allow, and every
+// write outside the reviewed root and one per-run private directory, and
+// denies reads of the credential table and the shared host temp roots.
+// Seatbelt has no mount namespace, so this hides paths by policy rather than
+// replacing them. The child's TMPDIR/TMP/TEMP, GOTMPDIR, GOCACHE, and
+// XDG_CACHE_HOME point into the private directory so common toolchains keep
+// a writable scratch and cache.
 func sandboxExecMechanism(root string, in sandboxInputs, tmpBase string) (*sandbox, *core.RefusalError) {
 	if _, ref := in.homes(); ref != nil {
 		return nil, ref
@@ -757,7 +789,8 @@ func restoreOwnerDir(path string, d fs.DirEntry, walkErr error) error {
 // applies the last matching rule — so each later rule overrides the earlier
 // ones it overlaps:
 //
-//  1. the header: network, the keychain broker, and every write denied;
+//  1. the header: network, every Mach service but the allowlist, and every
+//     write denied;
 //  2. reads and writes denied under the shared host temp roots;
 //  3. reads and writes re-allowed for the private tree and the reviewed root
 //     (each as written and as its realpath), plus metadata reads of their

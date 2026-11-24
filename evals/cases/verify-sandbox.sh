@@ -119,6 +119,51 @@ hits() {
   wc -l < "$HITS" | tr -d ' '
 }
 
+# macos_service_legs proves the Mach default-deny end to end: cfprefsd cannot
+# persist a `defaults write` for the command, and the pasteboard can be
+# neither read nor written. The pasteboard leg uses the find pasteboard and
+# restores it, so the operator's clipboard is never touched.
+macos_service_legs() {
+  local domain="dev.verdict.eval.$UNIQ" saved
+  export VERDICT_SANDBOX_DOMAIN="$domain"
+  mkpatch 'defaults write "$VERDICT_SANDBOX_DOMAIN" k v; defaults write -g "$VERDICT_SANDBOX_DOMAIN" v; printf ran > sandbox-defaults.txt'
+  rm -f "$EVAL_SANDBOX/sandbox-defaults.txt"
+  run_review verify acme/app 5201 --sandbox --env-allowlist VERDICT_SANDBOX_DOMAIN --json --timeout 10
+  assert_exit "sandboxed defaults write run" 0
+  if [ "$(cat "$EVAL_SANDBOX/sandbox-defaults.txt" 2>/dev/null)" = "ran" ] \
+    && ! defaults read "$domain" k >/dev/null 2>&1 && ! defaults read -g "$domain" >/dev/null 2>&1; then
+    good "a defaults write inside the sandbox persists nothing on the host"
+  else
+    bad "a defaults write inside the sandbox reached the host preferences"
+  fi
+  defaults delete "$domain" >/dev/null 2>&1 || true
+  defaults delete -g "$domain" >/dev/null 2>&1 || true
+  rm -f "$HOME/Library/Preferences/$domain.plist"
+
+  saved="$(pbpaste -pboard find 2>/dev/null || true)"
+  if ! printf 'verdict-eval-sentinel' | pbcopy -pboard find 2>/dev/null \
+    || [ "$(pbpaste -pboard find 2>/dev/null)" != "verdict-eval-sentinel" ]; then
+    if [ "${EVAL_REQUIRE_SANDBOX:-0}" = "1" ]; then
+      bad "EVAL_REQUIRE_SANDBOX=1 but the host pasteboard control failed"
+    else
+      skip "no usable pasteboard server on this host for the pasteboard leg"
+    fi
+    return 0
+  fi
+  mkpatch 'pbpaste -pboard find > sandbox-pb-read.txt 2>/dev/null && printf read > sandbox-pb.txt || printf denied > sandbox-pb.txt; printf overwritten | pbcopy -pboard find 2>/dev/null && printf %s -wrote >> sandbox-pb.txt || printf %s -denied >> sandbox-pb.txt'
+  rm -f "$EVAL_SANDBOX/sandbox-pb.txt" "$EVAL_SANDBOX/sandbox-pb-read.txt"
+  run_review verify acme/app 5201 --sandbox --json --timeout 10
+  assert_exit "sandboxed pasteboard run" 0
+  if [ "$(cat "$EVAL_SANDBOX/sandbox-pb.txt" 2>/dev/null)" = "denied-denied" ] \
+    && [ "$(pbpaste -pboard find 2>/dev/null)" = "verdict-eval-sentinel" ] \
+    && [ -f "$EVAL_SANDBOX/sandbox-pb-read.txt" ] && [ ! -s "$EVAL_SANDBOX/sandbox-pb-read.txt" ]; then
+    good "the pasteboard can be neither read nor written inside the sandbox"
+  else
+    bad "the sandbox reached the pasteboard ($(cat "$EVAL_SANDBOX/sandbox-pb.txt" 2>/dev/null || echo missing))"
+  fi
+  printf '%s' "$saved" | pbcopy -pboard find 2>/dev/null || true
+}
+
 # The refusal leg runs wherever the sandbox cannot be enforced. The sentinel
 # would be written by the command, so its absence proves nothing executed.
 refusal_leg() {
@@ -324,6 +369,7 @@ else
     bad "a write outside the reviewed root landed ($(cat "$EVAL_SANDBOX/sandbox-outside.txt" 2>/dev/null || echo missing))"
     rm -f "$OUTSIDE"
   fi
+  macos_service_legs
 fi
 
 # credential_legs proves the fake HOME's credential dirs and files stay

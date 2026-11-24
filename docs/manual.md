@@ -4723,7 +4723,7 @@ runs. The boundary is
 the enforced sandbox below, which runs after this gate — a refused spelling
 refuses with or without `--sandbox`: `verify --sandbox`
 runs the command under `bubblewrap` on Linux (the full mount and namespace
-shape) and under `sandbox-exec` on macOS (no network, no keychain broker,
+shape) and under `sandbox-exec` on macOS (no network, no Mach services,
 writes only to the reviewed root and a private `TMPDIR`, credential paths and
 the shared host temp roots denied). A host that can enforce
 neither refuses `sandbox-unavailable` and runs nothing, so `--sandbox` never
@@ -4786,7 +4786,7 @@ re-allows only what the command needs:
 
 ```text
 (version 1)(allow default)(deny network*)
-(deny mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc"))
+(deny mach-lookup)(allow mach-lookup (global-name "com.apple.system.opendirectoryd.libinfo"))
 (deny file-write* (subpath "/"))
 (deny file-read* file-write* (subpath "<each shared host temp root>"))
 (allow file-read* file-write* (subpath "<private TMPDIR>") (subpath "<reviewed root>"))
@@ -4797,16 +4797,33 @@ re-allows only what the command needs:
 
 - **No network.** Every `bind()` and `connect()` fails, loopback and unix
   sockets included.
-- **No keychain.** The keychain broker (`com.apple.SecurityServer`) is
-  unreachable, so `security find-generic-password -w` — the way `gh`, `git`
-  credential helpers, and most CLIs keep tokens on a Mac — returns nothing,
-  and `~/Library/Keychains` is in the credential table besides.
+- **No Mach services.** Every bootstrap lookup of a Mach service is denied
+  except one. A path policy alone leaves the channels where a system service
+  acts for the command open, and default-deny closes them as one class,
+  including services nobody has listed: the keychain broker
+  (`security find-generic-password -w` returns nothing, and
+  `~/Library/Keychains` is in the credential table besides), `cfprefsd`
+  (`defaults write` persists nothing), the pasteboard server (`pbcopy` and
+  `pbpaste` fail, so the operator's clipboard can be neither read nor
+  overwritten), LaunchServices (`open` cannot start an app), AppleEvents
+  (`osascript` to another app fails at once instead of waiting on an
+  Automation prompt), and launchd (`launchctl submit` and `bootstrap` fail).
+  The single allow is `com.apple.system.opendirectoryd.libinfo`, the
+  lookup-only endpoint behind `getpwuid`/`getgrgid`: without it `whoami`
+  prints the uid and Go's `os/user.Current` fails, which test suites call.
+  Directory writes go through a separate opendirectoryd service, which stays
+  denied. The list comes from running git, `go build`/`go test`, node and
+  npm, python3, make, `cc`, perl, ruby, and a shell under a blanket deny:
+  each works with nothing else. `cc` (through `xcrun`) prints two
+  `xcodebuild` warnings about FSEvents and `DARWIN_USER_CACHE_DIR` on stderr
+  and still compiles.
 - **No writes outside the run.** Every write is denied except under the
   reviewed root (as written and as its `realpath`), the private `TMPDIR`,
   and `/dev/null`, `/dev/tty`, and `/dev/fd/*` (which `/dev/stdout` and
-  `/dev/stderr` resolve to). The command cannot plant a LaunchAgent, a shell
-  rc file, or anything else outside the run that would execute unsandboxed
-  later.
+  `/dev/stderr` resolve to). Together with the Mach denial, the command
+  cannot write outside the run directly or through a service acting for it:
+  no LaunchAgent, shell rc file, preference, or anything else that would
+  execute unsandboxed later.
 - **Credentials denied.** Every path in the credential table above is denied
   for reads and writes under every home, each entry as written and as its
   `realpath`, after every allow, so a checkout under `HOME` cannot re-expose
@@ -4862,11 +4879,12 @@ refresh the index skips the write). Anything that writes the repository —
 
 What remains: on Linux, `bwrap` can make only existing paths read-only, so a
 command can still create a **new** nested `.git` below the root (or rewrite a
-nested repository's existing `.git` file), and a repository nested in the
-checkout whose git directory sits under a non-`.git` name (`git init
---separate-git-dir` inside the tree) is not followed on either platform. Do
-not run git inside a nested directory of a hostile checkout, and discard the
-checkout after verifying a hostile PR.
+nested repository's existing `.git` file); a root whose own `.git` is a
+symlink refuses rather than run with a replaceable link. And a repository
+nested in the checkout whose git directory sits under a non-`.git` name (`git
+init --separate-git-dir` inside the tree) is not followed on either platform.
+Do not run git inside a nested directory of a hostile checkout, and discard
+the checkout after verifying a hostile PR.
 
 Seatbelt is deprecated by Apple and has no mount or PID namespace. On macOS the
 child can still read the rest of the host filesystem outside the denied paths
@@ -4907,8 +4925,12 @@ is the stronger mechanism to use.
 
 Before anything executes it probes the same flags with a no-op; when the
 host is neither Linux nor macOS, `bwrap` or `sandbox-exec` is missing, the
-user-namespace restriction is on, or (on Linux or macOS) `HOME` is unset,
-`verify` refuses `sandbox-unavailable` naming the cause and runs nothing; a
+user-namespace restriction is on, (on Linux or macOS) the child's `HOME` is
+unset or not an absolute path, the reviewed root sits inside a credential
+path, or (on Linux) the root's `.git` is a symlink — `bwrap` could protect
+only the link's target while the link itself stays replaceable in the
+writable root — `verify` refuses `sandbox-unavailable` naming the cause and
+runs nothing; a
 runner that cannot spawn names the tool its mechanism needs (`bwrap` with the
 `--sandbox-network-only` alternative, `unshare`, or `/usr/bin/sandbox-exec`). It
 never silently falls back to an unsandboxed command. On macOS the probe is a
