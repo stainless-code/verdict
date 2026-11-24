@@ -53,6 +53,8 @@ const (
 	// blockTail closes the mermaid fence and the <details> region. No node or
 	// edge may ever spend it, so the byte budget reserves it up front.
 	blockTail = newline + "```" + newline + newline + "</details>"
+	// newline joins every rendered line, in this file and the behavioral block.
+	newline = "\n"
 )
 
 // maxNoteBytes is the room the block reserves for its widest omission note,

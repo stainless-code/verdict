@@ -22,9 +22,13 @@ var infoWord = regexp.MustCompile(`^[A-Za-z0-9_+.-]*$`)
 // installed user's CWD: no procedure/ checkout, no prompt files on disk. The
 // built-in lens pack is not part of promptFiles, so shipping it must leave
 // this value byte-identical; a move here is a deliberate prompt edit.
+//
+// The last move is the behavioral diagram contract: prompts/diagrams.md now
+// documents the structured `diagram` field (anchored nodes and edges verdict
+// verifies and renders) instead of the retired raw-mermaid wrapper.
 func TestPromptsHashUnchanged(t *testing.T) {
 	t.Chdir(t.TempDir())
-	const want = "050a1937402e34fa9c0af2d443b26cb4961474d333a46e2bb22540681b74e02f"
+	const want = "08def3c1e0d1b50b97a0b7ab0f445cfbff0ab1535f77e1ac77b9819cb21330f5"
 	if got := PromptsHash(); got != want {
 		t.Fatalf("PromptsHash = %s, want %s from the embedded payload", got, want)
 	}

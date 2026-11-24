@@ -446,7 +446,7 @@ recorded: .verdict/state/local-mx/findings.json (9 open) + .verdict/state/local-
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "050a1937402e34fa9c0af2d443b26cb4961474d333a46e2bb22540681b74e02f",
+  "prompts_hash": "08def3c1e0d1b50b97a0b7ab0f445cfbff0ab1535f77e1ac77b9819cb21330f5",
   "model": null,
   "author": null,
   "review_models": [],

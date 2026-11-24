@@ -48,8 +48,8 @@ func assertListsEveryKey(t *testing.T, surface, message string, accepted []strin
 
 func TestRemovedDiagramSettings(t *testing.T) {
 	for _, tc := range []struct{ body, message string }{
-		{`{"publish":{"diagrams":{"behavioral":true}}}`, "unknown publish.diagrams key 'behavioral' (want only structural)"},
-		{`{"publish":{"diagrams":{"expanded":false}}}`, "unknown publish.diagrams key 'expanded' (want only structural)"},
+		{`{"publish":{"diagrams":{"behavioral":true}}}`, "unknown publish.diagrams key 'behavioral' (want only anchored, structural)"},
+		{`{"publish":{"diagrams":{"expanded":false}}}`, "unknown publish.diagrams key 'expanded' (want only anchored, structural)"},
 	} {
 		t.Run(tc.body, func(t *testing.T) {
 			ref := settingsRefusal(t, tc.body)

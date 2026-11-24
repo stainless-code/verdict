@@ -21,14 +21,29 @@ const (
 // EvidenceReceipt is the deterministic evidence verification summary stored
 // on record.json and record --json data. Head and DiffSHA256 pin the bundle
 // bytes the check read so report --check can detect stale receipts.
-type EvidenceReceipt struct {
+type EvidenceReceipt struct { //nolint:govet // field order is the published property order
 	Head         string           `json:"head"`
 	DiffSHA256   string           `json:"diff_sha256"`
 	Quotes       []EvidenceQuote  `json:"quotes,omitempty"`
 	Gaps         []string         `json:"gaps,omitempty"`
 	Receipts     EvidenceReceipts `json:"receipts"`
 	Spec         EvidenceSpec     `json:"spec"`
+	Diagram      *EvidenceDiagram `anyOf:"null"            json:"diagram,omitempty" optional:"true"`
 	Insufficient bool             `json:"insufficient"`
+}
+
+// EvidenceDiagram is the settled disposition of the review's behavioral
+// diagram: how many of the supplied nodes and edges the diff anchored, how many
+// therefore stayed out of the block, and why the whole diagram was left out
+// when it was. A diagram never withholds approval — the counts are published so
+// a reader can tell a complete picture from a partial or absent one.
+type EvidenceDiagram struct { //nolint:govet // field order is the published property order
+	Type     string `enum:"sequence|state|flow" json:"type,omitempty"`
+	Title    string `json:"title,omitempty"`
+	Supplied int    `json:"supplied"            min:"0"`
+	Verified int    `json:"verified"            min:"0"`
+	Dropped  int    `json:"dropped"             min:"0"`
+	Omitted  string `json:"omitted,omitempty"`
 }
 
 // EvidenceQuote records one finding's deterministic quote-check outcome.

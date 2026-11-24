@@ -438,6 +438,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[EvidenceQuote](), name: defsEvidenceQuote},
 				{typ: reflect.TypeFor[EvidenceReceipts](), name: defsEvidenceReceipts},
 				{typ: reflect.TypeFor[EvidenceSpec](), name: defsEvidenceSpec},
+				{typ: reflect.TypeFor[EvidenceDiagram](), name: defsEvidenceDiagram, closed: true},
 				{typ: reflect.TypeFor[SpecCheck](), name: defsSpecCheck},
 				{typ: reflect.TypeFor[SpecEvidence](), name: defsSpecEvidence},
 				{typ: reflect.TypeFor[Receipt](), name: defsReceipt},
@@ -473,6 +474,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[EvidenceQuote](), name: defsEvidenceQuote},
 				{typ: reflect.TypeFor[EvidenceReceipts](), name: defsEvidenceReceipts},
 				{typ: reflect.TypeFor[EvidenceSpec](), name: defsEvidenceSpec},
+				{typ: reflect.TypeFor[EvidenceDiagram](), name: defsEvidenceDiagram, closed: true},
 				{typ: reflect.TypeFor[SpecCheck](), name: defsSpecCheck},
 				{typ: reflect.TypeFor[SpecEvidence](), name: defsSpecEvidence},
 				{typ: reflect.TypeFor[Receipt](), name: defsReceipt},
@@ -624,6 +626,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[EvidenceQuote](), name: defsEvidenceQuote},
 		{typ: reflect.TypeFor[EvidenceReceipts](), name: defsEvidenceReceipts},
 		{typ: reflect.TypeFor[EvidenceSpec](), name: defsEvidenceSpec},
+		{typ: reflect.TypeFor[EvidenceDiagram](), name: defsEvidenceDiagram, closed: true},
 		{typ: reflect.TypeFor[SpecCheck](), name: defsSpecCheck},
 		{typ: reflect.TypeFor[SpecEvidence](), name: defsSpecEvidence},
 		{typ: reflect.TypeFor[Receipt](), name: defsReceipt},
@@ -771,6 +774,7 @@ const (
 	defsEvidenceQuote    = "evidenceQuote"
 	defsEvidenceReceipts = "evidenceReceipts"
 	defsEvidenceSpec     = "evidenceSpec"
+	defsEvidenceDiagram  = "evidenceDiagram"
 	defsSpecCheck        = "specCheck"
 	defsSpecEvidence     = "specEvidence"
 	defsReceipt          = "receipt"
@@ -792,6 +796,9 @@ func reviewDefs() []definition {
 		{typ: reflect.TypeFor[TriageClaim](), name: "triageClaim"},
 		{typ: reflect.TypeFor[CoverageClaim](), name: "coverageClaim"},
 		{typ: reflect.TypeFor[core.RiskClaim](), name: defsRiskClaim},
+		{typ: reflect.TypeFor[ReviewDiagram](), name: "diagram", closed: true},
+		{typ: reflect.TypeFor[core.DiagramNode](), name: "diagramNode", closed: true},
+		{typ: reflect.TypeFor[core.DiagramEdge](), name: "diagramEdge", closed: true},
 	}
 }
 

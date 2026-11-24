@@ -172,6 +172,7 @@ export interface Problem {
   code:
     | "anchor-outside-hunk"
     | "bad-enum"
+    | "diagram-invalid"
     | "empty-findings-needs-summary"
     | "enum-synonym"
     | "invalid-json"
@@ -817,6 +818,8 @@ export interface EvidenceReceipt {
   gaps?: Array<string>;
   receipts: EvidenceReceipts;
   spec: EvidenceSpec;
+  /** Settled behavioral-diagram disposition: how many supplied elements the diff anchored, how many were dropped, and why the block was left out when it was. It never withholds approval. */
+  diagram?: EvidenceDiagram | null;
   insufficient: boolean;
   [key: string]: unknown;
 }
@@ -847,6 +850,22 @@ export interface EvidenceSpec {
   min: number;
   met: boolean;
   [key: string]: unknown;
+}
+
+/** Settled behavioral-diagram disposition: how many supplied elements the diff anchored, how many were dropped, and why the block was left out when it was. It never withholds approval. */
+export interface EvidenceDiagram {
+  /** The rendered diagram type, absent when the supplied type was out of scope. */
+  type?: "sequence" | "state" | "flow";
+  /** The sanitized title the block carries, when it had one. */
+  title?: string;
+  /** Nodes and edges the review supplied. */
+  supplied: number;
+  /** Nodes and edges whose quotes the pinned diff anchored and whose endpoints survived; the node and edge caps may draw fewer, and an omitted block draws none. */
+  verified: number;
+  /** Supplied elements that did not verify: a quote the diff did not prove, a dangling endpoint, a missing or repeated id, or every element of an out-of-scope type. verified + dropped = supplied. */
+  dropped: number;
+  /** One-line reason the whole block was left out; absent when it rendered. */
+  omitted?: string;
 }
 
 export interface SpecCheck {

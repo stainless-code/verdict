@@ -68,25 +68,24 @@ func strOrNilPost(v any) *string {
 	return nil
 }
 
+// postDiagramValue projects the settled behavioral diagram into the dry-run
+// receipt: an absent diagram reads null, and a rendered or omitted one carries
+// its state, type, and the element counts the verification settled.
 func postDiagramValue(dstat *diagram.Status) any {
-	if dstat.State == "absent" {
+	if dstat.State == diagram.StatusAbsent {
 		return nil
 	}
-	var keyword, note any
-	if dstat.Keyword != "" {
-		keyword = dstat.Keyword
-	}
-	if dstat.Note != "" {
-		note = dstat.Note
+	var kind any
+	if dstat.Type != "" {
+		kind = dstat.Type
 	}
 	return jq.NewObj(
 		"status", dstat.State,
-		"blocks", dstat.Blocks,
-		"keyword", keyword,
-		"wrapped", dstat.Wrapped,
-		"collapsed", dstat.Collapsed,
+		"type", kind,
+		"supplied", dstat.Supplied,
+		"verified", dstat.Verified,
+		"dropped", dstat.Dropped,
 		"detail", dstat.Detail,
-		"note", note,
 	)
 }
 

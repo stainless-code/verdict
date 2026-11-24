@@ -11,6 +11,7 @@ import (
 	"github.com/stainless-code/verdict/internal/brief"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/recipe"
+	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
@@ -87,6 +88,10 @@ const (
 	problemSpecChecks    = "spec_checks"
 	problemReceipts      = "receipts"
 	problemSummary       = "summary"
+	problemDiagram       = "diagram"
+	msgUnknownField      = "unknown field %q"
+	msgNotString         = "value must be a string"
+	fixRemoveIt          = "remove it"
 	problemRationale     = "rationale"
 	problemPathSuffix    = ".path"
 	exampleFile          = "file.go"
@@ -108,6 +113,7 @@ var (
 	knownReviewKeys = []string{
 		"execution", fieldSchemaVersion, problemFindings, problemSpecChecks, problemReceipts, problemSummary, suppressedKey,
 		fieldResolved, fieldTriage, fieldChunks, fieldCoverage, fieldSecuritySummary, fieldRisk,
+		problemDiagram,
 	}
 	knownFindingKeys = []string{
 		fieldPath, fieldLine, fieldStartLine, fieldSide, fieldClaim, fieldQuote, fieldConfidenceInput,
@@ -244,7 +250,7 @@ func (c *checker) unknownRoot(key string) {
 		fix = fmt.Sprintf("remove it or rename it to the nearest known key %q", near)
 	}
 	c.add(c.problem(problemRoot+"."+key, core.ProblemCodeUnknownField, core.ProblemLevelError,
-		fmt.Sprintf("unknown field %q", key), fix))
+		fmt.Sprintf(msgUnknownField, key), fix))
 }
 
 func (c *checker) unknown(path, key string, known []string) {
@@ -253,7 +259,7 @@ func (c *checker) unknown(path, key string, known []string) {
 		fix = fmt.Sprintf("remove it or rename it to the nearest known key %q", near)
 	}
 	c.add(c.problem(path+"."+key, core.ProblemCodeUnknownField, core.ProblemLevelWarning,
-		fmt.Sprintf("unknown field %q", key), fix))
+		fmt.Sprintf(msgUnknownField, key), fix))
 }
 
 // checkReview walks the top-level object in document order.
@@ -275,6 +281,8 @@ func (c *checker) checkReview(obj *jq.Obj) {
 			c.checkReceipts(v)
 		case problemSummary:
 			c.checkSummary(v)
+		case problemDiagram:
+			c.checkDiagram(v)
 		case suppressedKey:
 		case fieldResolved:
 			c.checkStringArray("$.resolved", v, "list finding sigs as strings")
@@ -350,7 +358,7 @@ func (c *checker) checkString(path string, v any, required bool, fix string) {
 			c.missing(path, "missing required string", fix, "...")
 			return
 		}
-		c.wrongType(path, "value must be a string", fix, exampleEllipsis)
+		c.wrongType(path, msgNotString, fix, exampleEllipsis)
 	}
 }
 
@@ -366,7 +374,7 @@ func (c *checker) checkFilled(path string, v any, fix string) {
 		return
 	}
 	if !isString {
-		c.wrongType(path, "value must be a string", fix, exampleEllipsis)
+		c.wrongType(path, msgNotString, fix, exampleEllipsis)
 		return
 	}
 	c.outOfRange(path, "value must not be empty", fix, exampleEllipsis)
@@ -584,6 +592,224 @@ func (c *checker) requireKeys(base string, m *jq.Obj, keys []string) {
 	}
 }
 
+// checkDiagram validates the optional behavioral diagram: a type from the
+// supported vocabulary, a bounded title, and nodes and edges that each carry
+// the diff line they stand for. Every problem here is one warning, because the
+// block is decoration: a malformed element drops, an out-of-scope type omits
+// the block, and nothing here is a reason to refuse the review.
+func (c *checker) checkDiagram(v any) {
+	if v == nil {
+		return // the published schema admits null: no diagram
+	}
+	m, ok := v.(*jq.Obj)
+	if !ok {
+		c.diagramProblem("$.diagram", "diagram must be an object", "write {type, nodes, edges}")
+		return
+	}
+	for _, key := range m.Keys {
+		value, _ := m.Get(key)
+		c.checkDiagramKey(key, value)
+	}
+	for _, key := range []string{fieldType, fieldNodes} {
+		if _, has := m.Get(key); !has {
+			c.diagramProblem("$.diagram"+pathDot+key, prefixMissing+key, prefixWrite+key+` (the diagram is optional)`)
+		}
+	}
+}
+
+// checkDiagramKey checks one root key of the diagram object.
+func (c *checker) checkDiagramKey(key string, value any) {
+	switch key {
+	case fieldType:
+		c.checkDiagramType("$.diagram.type", value)
+	case fieldTitle:
+		c.checkDiagramTitle("$.diagram.title", value)
+	case fieldNodes:
+		c.checkDiagramNodes(value)
+	case fieldEdges:
+		c.checkDiagramEdges(value)
+	default:
+		c.diagramProblem("$.diagram"+pathDot+key, fmt.Sprintf(msgUnknownField, key), fixRemoveIt)
+	}
+}
+
+// diagramProblem records one diagram defect as a warning with the one code the
+// vocabulary gives it, so no diagram fault can withhold approval.
+func (c *checker) diagramProblem(path, message, fix string) {
+	c.add(c.problem(path, core.ProblemCodeDiagramInvalid, core.ProblemLevelWarning, message, fix))
+}
+
+// checkDiagramType checks the one required closed-set value.
+func (c *checker) checkDiagramType(path string, v any) {
+	name, ok := v.(string)
+	if !ok {
+		c.diagramProblem(path, "diagram.type must be a string", "use "+strings.Join(diagram.Types(), ", "))
+		return
+	}
+	if !slices.Contains(diagram.Types(), name) {
+		c.diagramProblem(path, fmt.Sprintf("diagram.type %q is out of scope", name),
+			"use "+strings.Join(diagram.Types(), ", ")+"; any other type is omitted")
+	}
+}
+
+// checkDiagramTitle checks the optional title's length only: an empty title is
+// the same as no title.
+func (c *checker) checkDiagramTitle(path string, v any) {
+	s, ok := v.(string)
+	if !ok {
+		c.diagramProblem(path, "diagram.title must be a string", "use a short title")
+		return
+	}
+	if runes := utf8.RuneCountInString(s); runes > diagram.Caps.TitleRunes {
+		c.diagramProblem(path, fmt.Sprintf("diagram.title must be at most %d characters (got %d)", diagram.Caps.TitleRunes, runes),
+			"shorten the title")
+	}
+}
+
+// checkDiagramNodes checks the node array: at least one node, at most the cap
+// the renderer draws, and every node's own closed shape.
+func (c *checker) checkDiagramNodes(v any) {
+	items, ok := v.([]any)
+	if !ok {
+		c.diagramProblem("$.diagram.nodes", "diagram.nodes must be an array", "write [{id, label, evidence}]")
+		return
+	}
+	if len(items) == 0 {
+		c.diagramProblem("$.diagram.nodes", "diagram.nodes must not be empty", "list at least one node")
+	}
+	c.checkDiagramCap("$.diagram.nodes", len(items), diagram.Caps.Nodes, "nodes")
+	for i, item := range items {
+		base := fmt.Sprintf("$.diagram.nodes[%d]", i)
+		m, ok := item.(*jq.Obj)
+		if !ok {
+			c.diagramProblem(base, "node must be an object", "write {id, label, evidence}")
+			continue
+		}
+		c.checkDiagramElement(base, m, []string{fieldID, fieldLabel, fieldEvidence}, []string{fieldID})
+	}
+}
+
+// checkDiagramEdges checks the optional edge array, its cap, and every edge's
+// own closed shape.
+func (c *checker) checkDiagramEdges(v any) {
+	items, ok := v.([]any)
+	if !ok {
+		c.diagramProblem("$.diagram.edges", "diagram.edges must be an array", "write [{from, to, label, evidence}]")
+		return
+	}
+	c.checkDiagramCap("$.diagram.edges", len(items), diagram.Caps.Edges, "edges")
+	for i, item := range items {
+		base := fmt.Sprintf("$.diagram.edges[%d]", i)
+		m, ok := item.(*jq.Obj)
+		if !ok {
+			c.diagramProblem(base, "edge must be an object", "write {from, to, label, evidence}")
+			continue
+		}
+		c.checkDiagramElement(base, m, []string{fieldFrom, fieldTo, fieldEvidence}, []string{fieldFrom, fieldTo})
+	}
+}
+
+// checkDiagramCap warns once when a list carries more elements than the block
+// draws: the tail is truncated, never drawn past the ceiling.
+func (c *checker) checkDiagramCap(path string, got, limit int, what string) {
+	if got <= limit {
+		return
+	}
+	c.diagramProblem(path, fmt.Sprintf("diagram carries %d %s (at most %d render)", got, what, limit),
+		fmt.Sprintf("keep at most %d %s", limit, what))
+}
+
+// checkDiagramElement checks one node or edge: its identifier fields, its
+// label, and its quote. required names the keys the element must publish and
+// ids the identifier fields capped at [diagram.Caps.IDRunes].
+func (c *checker) checkDiagramElement(base string, m *jq.Obj, required, ids []string) {
+	for _, key := range m.Keys {
+		value, _ := m.Get(key)
+		switch {
+		case slices.Contains(ids, key):
+			c.checkDiagramText(base+pathDot+key, value, diagram.Caps.IDRunes)
+		case key == fieldLabel:
+			c.checkDiagramText(base+pathDot+key, value, diagram.Caps.LabelRunes)
+		case key == fieldEvidence:
+			c.checkDiagramAnchor(base+pathDot+key, value)
+		default:
+			c.diagramProblem(base+pathDot+key, fmt.Sprintf(msgUnknownField, key), fixRemoveIt)
+		}
+	}
+	for _, key := range required {
+		if _, has := m.Get(key); !has {
+			c.diagramProblem(base+pathDot+key, prefixMissing+key, prefixWrite+key)
+		}
+	}
+}
+
+// checkDiagramText checks one required string field: non-empty and inside its
+// rune ceiling.
+func (c *checker) checkDiagramText(path string, v any, maxRunes int) {
+	s, ok := v.(string)
+	if !ok {
+		c.diagramProblem(path, msgNotString, "use a short line of text")
+		return
+	}
+	if strings.TrimSpace(s) == "" {
+		c.diagramProblem(path, "value must not be empty", "name what the element stands for")
+		return
+	}
+	if runes := utf8.RuneCountInString(s); runes > maxRunes {
+		c.diagramProblem(path, fmt.Sprintf("value must be at most %d characters (got %d)", maxRunes, runes),
+			fmt.Sprintf("shorten it to %d characters", maxRunes))
+	}
+}
+
+// checkDiagramAnchor checks the quoted diff line one element stands for. It is
+// the spec_checks evidence shape — `path`, `line`, `quote`, nothing else — so
+// the same A2 reading a spec check gets applies unchanged.
+func (c *checker) checkDiagramAnchor(path string, v any) {
+	m, ok := v.(*jq.Obj)
+	if !ok {
+		c.diagramProblem(path, "evidence must be an object", "write {path, line, quote}")
+		return
+	}
+	for _, key := range m.Keys {
+		value, _ := m.Get(key)
+		c.checkDiagramAnchorKey(path+pathDot+key, key, value)
+	}
+	for _, key := range knownEvidenceKeys {
+		if _, has := m.Get(key); !has {
+			c.diagramProblem(path+pathDot+key, prefixMissing+key, prefixWrite+key)
+		}
+	}
+}
+
+// checkDiagramAnchorKey checks one key of a diagram element's evidence.
+func (c *checker) checkDiagramAnchorKey(path, key string, value any) {
+	switch key {
+	case fieldPath:
+		c.checkFilledDiagram(path, value, "name the changed path")
+	case fieldQuote:
+		c.checkFilledDiagram(path, value, "quote the code line")
+	case fieldLine:
+		if _, ok := jq.IntOf(value); !ok {
+			c.diagramProblem(path, "line must be an integer", "use the code line number")
+		}
+	default:
+		c.diagramProblem(path, fmt.Sprintf(msgUnknownField, key), "remove it; evidence is {path, line, quote}")
+	}
+}
+
+// checkFilledDiagram checks a required string the quote matcher needs
+// non-empty; fix names what the field should carry.
+func (c *checker) checkFilledDiagram(path string, v any, fix string) {
+	s, ok := v.(string)
+	if !ok {
+		c.diagramProblem(path, msgNotString, fix)
+		return
+	}
+	if strings.TrimSpace(s) == "" {
+		c.diagramProblem(path, "value must not be empty", fix)
+	}
+}
+
 func (c *checker) checkSummary(v any) {
 	s, ok := v.(string)
 	if !ok {
@@ -690,7 +916,7 @@ func (c *checker) checkFindingShape(base, key string, v any) bool {
 func (c *checker) checkEnum(path string, v any, values []string, fix string) {
 	s, ok := v.(string)
 	if !ok {
-		c.wrongType(path, "value must be a string", fix, values[0])
+		c.wrongType(path, msgNotString, fix, values[0])
 		return
 	}
 	if !slices.Contains(values, s) {

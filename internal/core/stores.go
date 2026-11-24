@@ -41,6 +41,38 @@ type Review struct { //nolint:govet // field order is the published property ord
 	Suppressed      []Suppression       `json:"suppressed,omitempty"`
 	Risk            *RiskClaim          `anyOf:"null"                      json:"risk,omitempty"      optional:"true"`
 	SecuritySummary *string             `json:"security_summary,omitempty"`
+	Diagram         *ReviewDiagram      `anyOf:"null"                      json:"diagram,omitempty"   optional:"true"`
+}
+
+// ReviewDiagram is the optional behavioral diagram a review supplies: nodes
+// and edges that each carry the changed diff line they stand for. There is no
+// raw mermaid input — verdict verifies every quote against the pinned diff and
+// renders the block itself, dropping what the diff does not prove. `type` is
+// the only supported vocabulary: a sequence of steps, a state lifecycle, or a
+// flow of control.
+type ReviewDiagram struct {
+	Type  string        `enum:"sequence|state|flow" json:"type"`
+	Title string        `json:"title,omitempty"     maxLength:"120"`
+	Nodes []DiagramNode `json:"nodes"               minItems:"1"`
+	Edges []DiagramEdge `json:"edges,omitempty"`
+}
+
+// DiagramNode is one actor, state, or step, anchored to the diff line it
+// stands for. Evidence is the spec_checks evidence shape, byte for byte, so
+// one quote vocabulary covers every element of review.json an agent anchors.
+type DiagramNode struct {
+	ID       string       `json:"id"       maxLength:"40"  minLength:"1"`
+	Label    string       `json:"label"    maxLength:"120" minLength:"1"`
+	Evidence SpecEvidence `json:"evidence"`
+}
+
+// DiagramEdge is one transition between two nodes, anchored to its own line
+// so a drawn relation is as checked as the nodes it joins.
+type DiagramEdge struct {
+	From     string       `json:"from"            maxLength:"40"  minLength:"1"`
+	To       string       `json:"to"              maxLength:"40"  minLength:"1"`
+	Label    string       `json:"label,omitempty" maxLength:"120"`
+	Evidence SpecEvidence `json:"evidence"`
 }
 
 // Reproduction names a bundle-relative source and its rerun command.

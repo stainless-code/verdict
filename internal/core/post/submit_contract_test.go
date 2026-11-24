@@ -267,37 +267,35 @@ func TestTypedPostItemsProjection(t *testing.T) {
 }
 
 // TestPostDiagramValue proves the dry-run diagram disposition: absent reads
-// null, and present carries the state with null keyword/note when unset.
-//
-//nolint:revive // legs assert the refusal, receipt, and projection fields inline
+// null, and present carries the state, the type, and the settled counts.
 func TestPostDiagramValue(t *testing.T) {
 	t.Parallel()
-	if got := postDiagramValue(&diagram.Status{State: "absent"}); got != nil {
+	if got := postDiagramValue(&diagram.Status{State: diagram.StatusAbsent}); got != nil {
 		t.Errorf("absent diagram = %v, want nil", got)
 	}
 	got, ok := postDiagramValue(&diagram.Status{
-		State: "rewritten", Blocks: 2, Keyword: "diagram", Note: "collapsed one block",
-		Wrapped: true, Collapsed: true, Detail: "kept",
+		State: diagram.StatusRendered, Type: "sequence", Detail: "4/5 elements anchored",
+		Supplied: 5, Verified: 4, Dropped: 1,
 	}).(*jq.Obj)
 	if !ok {
 		t.Fatal("present diagram is not an ordered object")
 	}
 	for key, want := range map[string]any{
-		"status": "rewritten", "blocks": 2, "keyword": "diagram",
-		"wrapped": true, "collapsed": true, "detail": "kept", "note": "collapsed one block",
+		"status": "rendered", "type": "sequence", "supplied": 5, "verified": 4,
+		"dropped": 1, "detail": "4/5 elements anchored",
 	} {
 		if v, _ := got.Get(key); v != want {
 			t.Errorf("diagram.%s = %v, want %v", key, v, want)
 		}
 	}
-	bare, ok := postDiagramValue(&diagram.Status{State: "added"}).(*jq.Obj)
+	omitted, ok := postDiagramValue(&diagram.Status{
+		State: diagram.StatusOmitted, Detail: "none of the 2 supplied elements verified against the diff",
+	}).(*jq.Obj)
 	if !ok {
-		t.Fatal("bare diagram is not an ordered object")
+		t.Fatal("omitted diagram is not an ordered object")
 	}
-	for _, key := range []string{"keyword", "note"} {
-		if v, _ := bare.Get(key); v != nil {
-			t.Errorf("diagram.%s = %v, want null when unset", key, v)
-		}
+	if v, _ := omitted.Get("type"); v != nil {
+		t.Errorf("diagram.type = %v, want null when the type was out of scope", v)
 	}
 }
 

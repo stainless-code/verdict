@@ -310,8 +310,8 @@ rather than becoming ground truth.
 --- file C/.verdict/state/local-demo/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "a54c75244e36e0dc226eabf540b54ebb3fd5d0b9ffe0ba07ba3ee0b5e69c5794",
-  "prompts_hash": "050a1937402e34fa9c0af2d443b26cb4961474d333a46e2bb22540681b74e02f",
+  "run_id": "150d37e4cbc35e0fedaab2b1c81830f5f63eaeba155d19719ae6e45a76a0dd60",
+  "prompts_hash": "08def3c1e0d1b50b97a0b7ab0f445cfbff0ab1535f77e1ac77b9819cb21330f5",
   "inputs": [
     {
       "kind": "prompt",
@@ -331,8 +331,8 @@ rather than becoming ground truth.
       "kind": "prompt",
       "name": "prompts/diagrams.md",
       "status": "included",
-      "sha256": "d19183a969b0e131d7520f0d2fa82889b903c4878e5fcea5ca9f2f0901eacd2d",
-      "bytes": 3780
+      "sha256": "be8c6396eb232e9ab2a726721c378f1168558fba02f203b36239e3f0ca72b6a6",
+      "bytes": 3921
     },
     {
       "kind": "prompt",

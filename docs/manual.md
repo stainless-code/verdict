@@ -91,7 +91,19 @@ evidence rungs, keep-biased, and its sibling doctrines.
       "note": "No retry budget exists yet; the handler still retries unbounded."
     }
   ],
-  "receipts": [{ "hunk": "src/api.ts\tNEW\t40\t47", "quote": "retry(3)" }]
+  "receipts": [{ "hunk": "src/api.ts\tNEW\t40\t47", "quote": "retry(3)" }],
+  "diagram": {
+    "type": "sequence",
+    "title": "Retry flow",
+    "nodes": [
+      {
+        "id": "handler",
+        "label": "Handler",
+        "evidence": { "path": "src/api.ts", "line": 42, "quote": "retry(3)" }
+      }
+    ],
+    "edges": []
+  }
 }
 ```
 
@@ -116,6 +128,10 @@ it on the finding, a re-review that omits it keeps the prior value, and a
 non-string, empty, or malformed value refuses the review; absent reads as no
 provenance, never a refusal.
 `resolved` lists finding sigs (short ids from the prior `findings.json` table) the run addresses.
+`diagram` is the optional behavioral picture: nodes and edges that each quote a
+changed line, which verdict verifies and renders itself (see "Behavioral
+diagrams" below). A malformed block warns `diagram-invalid` and never refuses
+the review unless `--strict` promotes the warning.
 
 The commentable set is pinned at fetch time: `fetch`/`fetch-local` writes
 `.verdict/state/<bundle>/hunks.tsv` (per-file, side-aware `NEW`/`OLD` ranges from
@@ -385,6 +401,7 @@ used `[ev-N]` reference definitions so links stay self-contained.
 | `path-not-in-diff`             | mixed   | Error for a finding path; warning for a brief site outside the diff.                                                                              |
 | `unknown-field`                | mixed   | Error at the document root, where the shape is closed; warning inside a finding. The fix names the nearest known key.                             |
 | `risk-stale-head`              | warning | `review.json.risk.assessed_head` disagrees with the bundle's current HEAD SHA; the stored claim is marked `stale: true`.                          |
+| `diagram-invalid`              | warning | A `diagram` field is malformed: the element drops or the block is omitted, never the review.                                                      |
 | `anchor-outside-hunk`          | warning | The line is provably outside every hunk; `record` moves the finding out of the inline set into the body.                                          |
 | `rigor-unset`                  | warning | A finding carries no evidence rung; it records as `said` with `rigor_source: default`.                                                            |
 | `normalized-fence`             | warning | One whole-document code fence was unwrapped.                                                                                                      |
@@ -3810,7 +3827,8 @@ presentation sample:
     "logo_url": "https://raw.githubusercontent.com/stainless-code/verdict/main/apps/docs/public/logo.svg",
     "fix_prompt": true,
     "diagrams": {
-      "structural": true
+      "structural": true,
+      "anchored": false
     }
   }
 }
@@ -3827,6 +3845,7 @@ Precedence is flags > file > env (`REVIEW_OUTPUT_FORMAT`,
 `REVIEW_LAYOUT_COMPACT`, `REVIEW_COLOR_MODE`, plus `REVIEW_PUBLISH_FOOTER`,
 `REVIEW_PUBLISH_ATTRIBUTION` (`off`|`product`|`full`), `REVIEW_PUBLISH_ATTRIBUTION_TEXT`,
 `REVIEW_PUBLISH_COPYRIGHT`, `REVIEW_PUBLISH_LOGO`, `REVIEW_PUBLISH_LOGO_URL`,
+`REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL`, `REVIEW_PUBLISH_DIAGRAMS_ANCHORED`,
 `REVIEW_PUBLISH_FIX_PROMPT`
 for the footer and prompt block below) > defaults; global flags
 `--color <mode>`, `--compact`/`--no-compact`, `--no-json` work on any verb and
@@ -4218,7 +4237,7 @@ brief cannot forge a tag, and the posted-body splitter treats the whole
 value warns and is ignored). With the knob off the body is byte-identical to a
 render from before the block existed.
 
-## Behavioral diagrams (retired from agent reviews)
+## Behavioral diagrams (retired from agent-authored mermaid)
 
 Agent-drawn behavioral mermaid diagrams are retired from agent-authored
 `review.json`: verdict renders the review body deterministically from structured
@@ -4226,6 +4245,74 @@ findings, and `summary` neutralizes raw HTML comments and code fences. The
 structural half survives as the computed topology above — verdict draws it from
 the diff, the agent never does — and `publish.diagrams.structural` (bool,
 default `true`) still gates that block.
+
+What replaces the raw fence is structure, not freedom. A review may carry one
+optional `diagram` object whose every node and every edge quotes a changed diff
+line:
+
+```json
+"diagram": {
+  "type": "sequence",
+  "title": "Token refresh",
+  "nodes": [
+    {"id": "caller", "label": "Caller", "evidence": {"path": "src/auth.go", "line": 42, "quote": "func Refresh(ctx context.Context) error {"}},
+    {"id": "service", "label": "Service", "evidence": {"path": "src/auth.go", "line": 58, "quote": "return s.store.Rotate(ctx, token)"}}
+  ],
+  "edges": [
+    {"from": "caller", "to": "service", "label": "refresh", "evidence": {"path": "src/auth.go", "line": 42, "quote": "func Refresh(ctx context.Context) error {"}}
+  ]
+}
+```
+
+`type` is one of `sequence`, `state`, or `flow`; anything else is out of scope.
+`evidence` is exactly the `spec_checks` evidence shape — `path`, `line`, and the
+exact `quote` text, nothing else — and is verified the way a spec check's is: the
+A2 matcher on the NEW side of the pinned diff.
+
+verdict verifies every element and draws the picture itself:
+
+- A node whose quote does not verify against `full.diff` is dropped. An edge is
+  dropped when its own quote fails or when either endpoint was dropped, so the
+  block never points at a node it did not prove.
+- A node with no `id`, or with an `id` an earlier node already took, is dropped;
+  so is an element whose fields have the wrong JSON type — it still counts as
+  supplied, so `verified + dropped = supplied` always holds.
+- The block renders only when at least **50%** of the supplied elements verify
+  (`diagram.MinVerifiedPercent`; exactly half renders). Below that it is omitted
+  whole with one line, because a mostly-forged diagram is not a picture of this
+  change:
+  `> Behavioral diagram omitted: N of M elements failed quote verification (min 50% anchored)`.
+  An out-of-scope or missing `type`, and a `diagram` value that is not an
+  object, are omitted the same way with their own reason.
+- Caps bound the block: at most 24 nodes, 40 edges, 120 characters per label,
+  120 for the title, and 8,000 bytes; whole nodes and edges are dropped before
+  the ceiling is crossed, and one legal `%%` comment inside the fence names what
+  the caps left out.
+- Every label and title is reduced to letters, digits, spaces, and the closed
+  punctuation set `.,:!?'()+_-/@`, and dash runs collapse, so no backtick,
+  double quote, bracket, brace, pipe, semicolon, percent sign, angle bracket,
+  ampersand, hash, equals sign, newline, or arrow survives. Node identifiers are
+  generated (`n1`, `n2`, …) and every label follows fixed syntax inside one line,
+  so a word like `click` or `style` stays text: no agent byte chooses the syntax
+  of a line, opens a directive, or leaves the fence. A label the sanitizer
+  empties shows its generated identifier.
+- The block lands right after the computed topology, collapsed:
+  `<summary>Behavior flow (verified against the diff — 3/3 elements anchored)</summary>`.
+
+A diagram never withholds approval and never fails a review. Its outcome is
+published: the `evidence.diagram` receipt in `record.json` (and in `post.json`
+for a posted PR) carries the type, title, `supplied` / `verified` / `dropped`
+counts, and the omission reason when there is one, and `post --dry-run`
+reports the same disposition in `data.body.diagram`. `verified` counts what the
+diff proved; the caps may draw fewer. The body is a pure function of
+`review.json` and the pinned `full.diff`, so every render of the same bundle
+carries the same block. A malformed block (an unknown key, a missing field, a
+value past its cap) is a `diagram-invalid` warning — the element or value is
+dropped or truncated, never the review — and `--strict` promotes it like every
+other warning. Knobs: `publish.diagrams.anchored` (bool, default `false`),
+`REVIEW_PUBLISH_DIAGRAMS_ANCHORED` (`true`|`false`), and `--diagram-anchored` /
+`--no-diagram-anchored`; with the knob off the body keeps exactly the bytes it
+had before, though the receipt still records what the diff proved.
 
 ## Section overrides (per-block template fragments)
 

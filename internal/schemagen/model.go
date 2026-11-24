@@ -187,6 +187,12 @@ type EvidenceQuote = core.EvidenceQuote
 // EvidenceReceipts is core's changed-hunk reading receipt coverage summary.
 type EvidenceReceipts = core.EvidenceReceipts
 
+// EvidenceDiagram is core's settled behavioral-diagram disposition.
+type EvidenceDiagram = core.EvidenceDiagram
+
+// ReviewDiagram is core's optional evidence-checked behavioral diagram input.
+type ReviewDiagram = core.ReviewDiagram
+
 // EvidenceSpec is core's specification checklist coverage summary.
 type EvidenceSpec = core.EvidenceSpec
 

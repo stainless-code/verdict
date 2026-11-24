@@ -110,7 +110,9 @@ func TestLegacyRunIDIsBitIdenticalWithoutAnOrgPack(t *testing.T) {
 	const ctrlV1 = `{"defaults":{"kb_policy":{"max_chars":120}}}`
 	_, dir := seedReceiptFixture(t, ctrlV1)
 	r := BuildReceipt(baseBuildInput(dir, ctrlV1))
-	if got, want := r.RunID, "4038796ee5a6c5aa4e4bc8fe6bd2372412f0378920228e2c13d6b39b850f3a96"; got != want {
+	// The digest folds prompts_hash, so a deliberate prompt edit moves this pin
+	// with it: the org binding still adds nothing when no pin is active.
+	if got, want := r.RunID, "2aedb51afcb3c2c93d1569abe0668a2bc5f9a043e24e6ae432e9951629776685"; got != want {
 		t.Fatalf("run_id = %s, want the legacy digest %s", got, want)
 	}
 }

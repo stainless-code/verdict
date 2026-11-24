@@ -253,6 +253,10 @@
         },
         "receipts": { "$ref": "#/$defs/evidenceReceipts" },
         "spec": { "$ref": "#/$defs/evidenceSpec" },
+        "diagram": {
+          "description": "Settled behavioral-diagram disposition: how many supplied elements the diff anchored, how many were dropped, and why the block was left out when it was. It never withholds approval.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/evidenceDiagram" }]
+        },
         "insufficient": { "type": "boolean" }
       },
       "required": ["head", "diff_sha256", "receipts", "spec", "insufficient"],
@@ -291,6 +295,41 @@
       },
       "required": ["total", "covered", "min", "met"],
       "additionalProperties": true
+    },
+    "evidenceDiagram": {
+      "description": "Settled behavioral-diagram disposition: how many supplied elements the diff anchored, how many were dropped, and why the block was left out when it was. It never withholds approval.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "description": "The rendered diagram type, absent when the supplied type was out of scope.",
+          "enum": ["sequence", "state", "flow"]
+        },
+        "title": {
+          "description": "The sanitized title the block carries, when it had one.",
+          "type": "string"
+        },
+        "supplied": {
+          "description": "Nodes and edges the review supplied.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "verified": {
+          "description": "Nodes and edges whose quotes the pinned diff anchored and whose endpoints survived; the node and edge caps may draw fewer, and an omitted block draws none.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "dropped": {
+          "description": "Supplied elements that did not verify: a quote the diff did not prove, a dangling endpoint, a missing or repeated id, or every element of an out-of-scope type. verified + dropped = supplied.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "omitted": {
+          "description": "One-line reason the whole block was left out; absent when it rendered.",
+          "type": "string"
+        }
+      },
+      "required": ["supplied", "verified", "dropped"],
+      "additionalProperties": false
     },
     "specCheck": {
       "type": "object",

@@ -362,7 +362,12 @@ var publishedSemantics = map[string]string{
 	// governing central pack version on report, and additive $defs/packSyncData
 	// beside packAddData. No existing property, required key, enum, or type
 	// changed; only a pinned run and `pack sync` carry the keys.
-	"envelope.schema.json": "64e1fda246a48474474be34652697034952b2a69ea65c9be1d63997b02742da7",
+	// behavioral diagram: additive optional review.diagram ($defs/diagram,
+	// diagramNode, diagramEdge, whose evidence reuses $defs/specEvidence), the
+	// settled $defs/evidenceDiagram on the evidence receipt, and the
+	// diagram-invalid warning joining the problem-code enum. Additions only: no
+	// existing property, required key, or type moved.
+	"envelope.schema.json": "fefacf9211e4196d9f27d34cf3ad4f998092945e8a532d66b4d4ba91b274532d",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -413,7 +418,12 @@ var publishedSemantics = map[string]string{
 	// with no diff line cites none; met/violated still require it in the checker).
 	// Three new problem codes join the published enum. No existing property,
 	// required key, or type moved.
-	"post.schema.json": "0e78e7558ddb8983133c2e7cfb9a96fa55a1cfa110247f7892254407e764f540",
+	// behavioral diagram: additive optional review.diagram ($defs/diagram,
+	// diagramNode, diagramEdge, whose evidence reuses $defs/specEvidence), the
+	// settled $defs/evidenceDiagram on the evidence receipt, and the
+	// diagram-invalid warning joining the problem-code enum. Additions only: no
+	// existing property, required key, or type moved.
+	"post.schema.json": "66d7cad7e6a98e8ac113ff0155d3ab496ab7f3a02d0bc2b0e84d981e37a07fcb",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	// fixtures.schema.json descriptions only: hallucination now names the pinned
@@ -539,7 +549,12 @@ var publishedSemantics = map[string]string{
 	// with no diff line cites none; met/violated still require it in the checker).
 	// Three new problem codes join the published enum. No existing property,
 	// required key, or type moved.
-	"record.schema.json": "8b3510c48c26f104ee3a26fc155ebed57549e14c4c8ff8a165a508109cc9ce6e",
+	// behavioral diagram: additive optional review.diagram ($defs/diagram,
+	// diagramNode, diagramEdge, whose evidence reuses $defs/specEvidence), the
+	// settled $defs/evidenceDiagram on the evidence receipt, and the
+	// diagram-invalid warning joining the problem-code enum. Additions only: no
+	// existing property, required key, or type moved.
+	"record.schema.json": "fd5850b03ffbdd73abd1dd49d1c21881338f5fcadbab332058ab48efe878d31a",
 
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
@@ -577,7 +592,12 @@ var publishedSemantics = map[string]string{
 	// lens grammar: finding.lens carries the lowercase slug pattern a recipe
 	// selects by. Constraint on an existing property only: no property,
 	// required key, enum, or type changed.
-	"review.schema.json": "1b10d81a8679b4d2b58e63a991c42ff76cb3e07a87800e967100ee6385c742bf",
+	// behavioral diagram: additive optional review.diagram ($defs/diagram,
+	// diagramNode, diagramEdge, whose evidence reuses $defs/specEvidence), the
+	// settled $defs/evidenceDiagram on the evidence receipt, and the
+	// diagram-invalid warning joining the problem-code enum. Additions only: no
+	// existing property, required key, or type moved.
+	"review.schema.json": "870ac65da49518db06b5d8dfa873d9a19efa65594a34bd2efb8060166f2faf0b",
 	// additive selected.schema.json (new bundle document: the reaction-scoped
 	// fix selection fetch writes and fix --selected reads). A new document
 	// only: no existing schema property, required key, enum, or type changed.
