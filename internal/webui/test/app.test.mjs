@@ -253,6 +253,8 @@ const precision = envelope({
 async function createUI({
   mode = "live",
   watch = true,
+  interactive = false,
+  csrf = "",
   hash = "",
   baseURL = "https://example.test/",
   respond,
@@ -318,8 +320,14 @@ async function createUI({
     const url = new URL(path, document.baseURI);
     const requestPath = `${url.pathname}${url.search}`;
     fetches.push({ path: requestPath, options });
-    if (requestPath === "/v1/health")
-      return { ok: true, json: async () => ({ data: { watch } }) };
+    if (requestPath === "/v1/health") {
+      const health = { watch };
+      if (interactive) {
+        health.interactive = true;
+        health.csrf = csrf;
+      }
+      return { ok: true, json: async () => ({ data: health }) };
+    }
     const response = await respond(
       requestPath,
       fetches.filter((item) => item.path === requestPath).length,
@@ -1037,4 +1045,190 @@ test("a finding with no copy payload reports that instead of copying", async () 
   const button = firstButton(ui.elements.get("content"), "Copy prompt");
   await button.dispatch("click");
   assert.equal(button.textContent, "No copy for this finding");
+});
+
+const detailPath = "/v1/roots/root-123/bundles/local-good";
+
+function detailFixtures(extra = []) {
+  return new Map([["/v1/bundles", inbox], [detailPath, detail], ...extra]);
+}
+
+function findControl(root, label) {
+  return descendants(root).find(
+    (element) => element.attributes["aria-label"] === label,
+  );
+}
+
+function writeButtons(root) {
+  return descendants(root).filter(
+    (element) =>
+      element.tagName === "BUTTON" &&
+      ["Triage", "Promote to KB"].includes(element.textContent),
+  );
+}
+
+test("a read-only server renders no write controls", async () => {
+  const ui = await createUI({
+    hash: "#/r/root-123/local-good",
+    respond: respondFrom(detailFixtures()),
+  });
+  assert.deepEqual(writeButtons(ui.elements.get("content")), []);
+  assert.equal(
+    findControl(ui.elements.get("content"), "Triage status"),
+    undefined,
+  );
+});
+
+test("static mode never renders write controls, even when the server advertises them", async () => {
+  const ui = await createUI({
+    mode: "static",
+    interactive: true,
+    csrf: "csrf-test-token",
+    hash: "#/r/root-123/local-good",
+    respond: respondFrom(new Map([["/data.json", { [detailPath]: detail }]])),
+  });
+  assert.deepEqual(writeButtons(ui.elements.get("content")), []);
+  assert.equal(
+    findControl(ui.elements.get("content"), "Triage status"),
+    undefined,
+  );
+});
+
+test("interactive mode posts triage with the CSRF header and renders the result", async () => {
+  const rationale = "Verified against the diff: this is a false alarm here.";
+  const ui = await createUI({
+    interactive: true,
+    csrf: "csrf-test-token",
+    respond: respondFrom(
+      detailFixtures([
+        ["/v1/triage", envelope({ sig: "sig-123", status: "false-positive" })],
+      ]),
+    ),
+  });
+  await ui.navigate("#/r/root-123/local-good");
+  const content = ui.elements.get("content");
+  const status = findControl(content, "Triage status");
+  assert.deepEqual(
+    status.children.map((option) => option.textContent),
+    ["open", "addressed", "wont-fix", "false-positive", "deferred"],
+  );
+  const rationaleInput = findControl(content, "Rationale");
+  const force = findControl(content, "Force");
+  const button = firstButton(content, "Triage");
+  status.value = "false-positive";
+  rationaleInput.value = rationale;
+  await button.dispatch("click");
+  const sent = ui.fetches.find((item) => item.path === "/v1/triage");
+  assert.ok(sent, "triage was not posted");
+  assert.equal(sent.options.method, "POST");
+  assert.equal(sent.options.headers["Content-Type"], "application/json");
+  assert.equal(sent.options.headers["X-Verdict-CSRF"], "csrf-test-token");
+  assert.deepEqual(JSON.parse(sent.options.body), {
+    root: "root-123",
+    bundle: "local-good",
+    sig: "sig-123",
+    status: "false-positive",
+    rationale,
+    force: false,
+  });
+  assert.equal(
+    ui.elements.get("message").textContent,
+    "Triaged sig-123 -> false-positive.",
+  );
+  assert.equal(
+    ui.fetches.filter((item) => item.options?.method === "POST").length,
+    1,
+  );
+});
+
+test("interactive triage renders a refusal envelope honestly", async () => {
+  const ui = await createUI({
+    interactive: true,
+    csrf: "csrf-test-token",
+    respond: respondFrom(
+      detailFixtures([
+        [
+          "/v1/triage",
+          {
+            data: null,
+            error: {
+              code: "rationale-required",
+              message: "refusing triage: rationale required",
+            },
+          },
+        ],
+      ]),
+    ),
+  });
+  await ui.navigate("#/r/root-123/local-good");
+  await firstButton(ui.elements.get("content"), "Triage").dispatch("click");
+  assert.equal(
+    ui.elements.get("message").textContent,
+    "refusing triage: rationale required",
+  );
+  assert.equal(ui.elements.get("message").className, "error");
+});
+
+test("interactive triage renders a transport refusal honestly", async () => {
+  const ui = await createUI({
+    interactive: true,
+    csrf: "csrf-test-token",
+    respond: async (path) => {
+      if (path === "/v1/triage")
+        return {
+          status: 403,
+          body: {
+            status: 403,
+            reason: "bad-csrf",
+            message: "writes require the per-session X-Verdict-CSRF token",
+          },
+        };
+      return { body: detailFixtures().get(path) || envelope({}) };
+    },
+  });
+  await ui.navigate("#/r/root-123/local-good");
+  await firstButton(ui.elements.get("content"), "Triage").dispatch("click");
+  assert.equal(
+    ui.elements.get("message").textContent,
+    "writes require the per-session X-Verdict-CSRF token",
+  );
+});
+
+test("interactive mode promotes a KB rule with the CSRF header", async () => {
+  const ui = await createUI({
+    interactive: true,
+    csrf: "csrf-test-token",
+    respond: respondFrom(
+      detailFixtures([
+        ["/v1/kb/promote", envelope({ rule: { id: "never-log-secrets" } })],
+      ]),
+    ),
+  });
+  await ui.navigate("#/r/root-123/local-good");
+  const content = ui.elements.get("content");
+  const rule = findControl(content, "KB rule text");
+  const scope = findControl(content, "KB scope");
+  const rigor = findControl(content, "KB rigor");
+  assert.deepEqual(
+    rigor.children.map((option) => option.textContent),
+    ["said", "pointed", "walked", "ran", "reproduced"],
+  );
+  assert.equal(rigor.value, "pointed");
+  rule.value = "Never log secrets in error paths";
+  scope.value = "src/*.go";
+  await firstButton(content, "Promote to KB").dispatch("click");
+  const sent = ui.fetches.find((item) => item.path === "/v1/kb/promote");
+  assert.ok(sent, "promotion was not posted");
+  assert.equal(sent.options.method, "POST");
+  assert.equal(sent.options.headers["X-Verdict-CSRF"], "csrf-test-token");
+  assert.deepEqual(JSON.parse(sent.options.body), {
+    root: "root-123",
+    rule: "Never log secrets in error paths",
+    scope: "src/*.go",
+    rigor: "pointed",
+  });
+  assert.equal(
+    ui.elements.get("message").textContent,
+    "Promoted rule never-log-secrets to KB.",
+  );
 });

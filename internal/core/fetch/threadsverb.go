@@ -284,7 +284,7 @@ func bitbucketThreadFeed(ctx context.Context, s *session, repo, pr string) ([]th
 	if ref != nil {
 		return nil, true, ref
 	}
-	base := "https://api.bitbucket.org/2.0/repos/" + repo + "/pullrequests/" + pr
+	base := "https://api.bitbucket.org/2.0/repositories/" + repo + "/pullrequests/" + pr
 	comments, truncated, ref := bitbucketPages(ctx, s, auth, base+"/comments?pagelen=100")
 	if ref != nil {
 		return nil, true, ref

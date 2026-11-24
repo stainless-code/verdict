@@ -21,7 +21,7 @@ PASS="eval-pass"
 CONFIG="header = \"Authorization: Bearer $TOKEN\""
 USER_CONFIG="user = \"$USER:$PASS\""
 DIR="$EVAL_SANDBOX/.verdict/state/$PR"
-BASE="https://api.bitbucket.org/2.0/repos/acme/app/pullrequests/$PR"
+BASE="https://api.bitbucket.org/2.0/repositories/acme/app/pullrequests/$PR"
 
 routes() {
   local config="$1"
