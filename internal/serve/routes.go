@@ -56,6 +56,11 @@ func (s *Server) routes() []route {
 		},
 		{
 			Method:  http.MethodGet,
+			Pattern: "/v1/roots/{root}/bundles/{bundle}/diff",
+			Handler: s.guard(s.handleDiff),
+		},
+		{
+			Method:  http.MethodGet,
 			Pattern: "/v1/roots/{root}/bundles/{bundle}/findings/{sig}",
 			Handler: s.guard(s.handleShow),
 		},
@@ -297,6 +302,19 @@ func (s *Server) handleCopy(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 	bundle := r.PathValue(bundlePathKey)
 	view, err := s.layer.Detail(r.Context(), r.PathValue(rootPathKey), bundle)
+	if err != nil {
+		s.writeViewError(w, verbServe, bundle, err)
+		return
+	}
+	s.writeView(w, verbServe, view)
+}
+
+// handleDiff publishes one bundle's review diff: parsed hunks with
+// word-level spans, collapsed gaps, anchored findings, and lanes grouped
+// in risk order. Read-only GET, available without --interactive.
+func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
+	bundle := r.PathValue(bundlePathKey)
+	view, err := s.layer.Diff(r.Context(), r.PathValue(rootPathKey), bundle)
 	if err != nil {
 		s.writeViewError(w, verbServe, bundle, err)
 		return

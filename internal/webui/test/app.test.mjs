@@ -621,6 +621,7 @@ test("decodes a bundle hash segment once before requesting and linking it", asyn
     .map((element) => element.href);
   assert.deepEqual(sectionLinks, [
     "#/r/root-123/local%20space%20name",
+    "#/r/root-123/local%20space%20name/diff",
     "#/r/root-123/local%20space%20name/threads",
     "#/r/root-123/local%20space%20name/gate",
     "#/r/root-123/local%20space%20name/compare",
@@ -788,7 +789,7 @@ test("static mode omits the Compare tab the export cannot serve", async () => {
   const labels = descendants(staticUI.elements.get("content"))
     .filter((element) => element.tagName === "A")
     .map((link) => link.textContent);
-  assert.deepEqual(labels, ["Detail", "Threads", "Gate"]);
+  assert.deepEqual(labels, ["Detail", "Diff", "Threads", "Gate"]);
 
   const liveUI = await createUI({
     respond: respondFrom(
@@ -802,7 +803,13 @@ test("static mode omits the Compare tab the export cannot serve", async () => {
   const liveLabels = descendants(liveUI.elements.get("content"))
     .filter((element) => element.tagName === "A")
     .map((link) => link.textContent);
-  assert.deepEqual(liveLabels, ["Detail", "Threads", "Gate", "Compare"]);
+  assert.deepEqual(liveLabels, [
+    "Detail",
+    "Diff",
+    "Threads",
+    "Gate",
+    "Compare",
+  ]);
 });
 
 if (process.env.VERDICT_EXPORT) {
@@ -1418,4 +1425,146 @@ test("interactive job cancellation posts cancel with CSRF and renders cancelled"
   assert.equal(sent.options.headers["X-Verdict-CSRF"], "csrf-test-token");
   assert.deepEqual(JSON.parse(sent.options.body), {});
   assert.ok(content.textContent.includes("cancelled"));
+});
+
+const diffPath = "/v1/roots/root-123/bundles/local-good/diff";
+const diffPayload = envelope({
+  lanes: [
+    {
+      lane: "schema",
+      file_count: 1,
+      additions: 5,
+      deletions: 1,
+      findings: 1,
+      by_lens: { logic: 1 },
+      files: ["migrations/001.sql"],
+    },
+    {
+      lane: "source",
+      file_count: 1,
+      additions: 2,
+      deletions: 1,
+      findings: 0,
+      files: ["src/app.go"],
+    },
+  ],
+  files: [
+    {
+      path: "src/app.go",
+      old_path: "src/app.go",
+      new_path: "src/app.go",
+      lane: "source",
+      additions: 2,
+      deletions: 1,
+      hunks: [
+        {
+          header: "@@ -1,2 +1,3 @@",
+          old_start: 1,
+          old_count: 2,
+          new_start: 1,
+          new_count: 3,
+          gap_before: 4,
+          lines: [
+            { kind: "context", text: "package main", old_no: 1, new_no: 1 },
+            {
+              kind: "del",
+              text: "hello world",
+              old_no: 2,
+              spans: [
+                { text: "hello ", start: 0, end: 6, changed: false },
+                { text: "world", start: 6, end: 11, changed: true },
+              ],
+            },
+            {
+              kind: "add",
+              text: "hello there",
+              new_no: 2,
+              spans: [
+                { text: "hello ", start: 0, end: 6, changed: false },
+                { text: "there", start: 6, end: 11, changed: true },
+              ],
+              findings: [
+                {
+                  sig: "s1",
+                  severity: "important",
+                  category: "logic",
+                  body: "fix greeting",
+                  status: "open",
+                  path: "src/app.go",
+                  line: 2,
+                  side: "RIGHT",
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    },
+  ],
+});
+
+function diffFixtures() {
+  return new Map([
+    ["/v1/bundles", inbox],
+    [detailPath, detail],
+    [diffPath, diffPayload],
+  ]);
+}
+
+test("diff renders lanes in risk order with counts", async () => {
+  const ui = await createUI({ respond: respondFrom(diffFixtures()) });
+  await ui.navigate("#/r/root-123/local-good/diff");
+  assert.equal(ui.elements.get("title").textContent, "Diff");
+  const content = ui.elements.get("content");
+  const laneRows = descendants(content).filter(
+    (e) => e.className === "diff-lane",
+  );
+  assert.equal(laneRows.length, 2);
+  assert.equal(
+    laneRows[0].attributes["data-lane"] || laneRows[0].children[0].textContent,
+    "schema",
+  );
+  assert.equal(laneRows[0].children[0].textContent, "schema");
+  assert.equal(laneRows[1].children[0].textContent, "source");
+  assert.ok(content.textContent.includes("hello"));
+});
+
+test("diff renders unified by default with word spans and gap", async () => {
+  const ui = await createUI({ respond: respondFrom(diffFixtures()) });
+  await ui.navigate("#/r/root-123/local-good/diff");
+  const content = ui.elements.get("content");
+  assert.ok(
+    descendants(content).some(
+      (e) => e.className && e.className.includes("diff-unified"),
+    ),
+  );
+  assert.ok(descendants(content).some((e) => e.className === "diff-word-add"));
+  assert.ok(descendants(content).some((e) => e.className === "diff-word-del"));
+  const gap = descendants(content).find((e) => e.className === "diff-gap");
+  assert.ok(gap);
+  assert.ok(gap.textContent.includes("4 unchanged"));
+  // Anchored finding under its anchor line.
+  assert.ok(content.textContent.includes("fix greeting"));
+  assert.ok(content.textContent.includes("important"));
+});
+
+test("diff side-by-side toggle switches the table", async () => {
+  const ui = await createUI({ respond: respondFrom(diffFixtures()) });
+  await ui.navigate("#/r/root-123/local-good/diff");
+  const content = ui.elements.get("content");
+  await firstButton(content, "Side by side").dispatch("click");
+  await ui.flush();
+  const updated = ui.elements.get("content");
+  assert.ok(
+    descendants(updated).some(
+      (e) => e.className && e.className.includes("diff-split"),
+    ),
+  );
+  await firstButton(updated, "Unified").dispatch("click");
+  await ui.flush();
+  assert.ok(
+    descendants(ui.elements.get("content")).some(
+      (e) => e.className && e.className.includes("diff-unified"),
+    ),
+  );
 });
