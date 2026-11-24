@@ -141,24 +141,25 @@ func TestDiffFilesIndexesNewSideOnce(t *testing.T) {
 }
 
 // TestPureDeletionAnchors pins the `+N,0` case: git's N is the line before
-// the deletion. The anchor is N+1 (the line now standing where the deleted
-// code was) when the diff shows that line; at the end of the file, or in a
-// zero-context diff that cannot tell, it is N, never a line past the end;
-// at the top of a file it is line 1. Every case is marked hunk.
+// the deletion, so a LEFT finding anchors on line N+1 (the line now standing
+// where the deleted code was), marked hunk, whether or not the diff shows
+// that line; line 1 at the top of a file. The reviewed-text hash is the
+// shown line's when the diff carries it and absent when it does not.
 func TestPureDeletionAnchors(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name     string
+		hash     string
 		next     []diffHunk
 		newStart int
 		want     int
 	}{
-		{"mid-file, the next line shown by the following hunk", []diffHunk{{
+		{"mid-file, zero-context diff", "", nil, 4, 5},
+		{"mid-file, the next line shown by the following hunk", hashNext, []diffHunk{{
 			NewStart: 5, NewCount: 1,
 			Lines: []diffLine{{Kind: "context", Text: "next", OldNo: 7, NewNo: 5}},
 		}}, 4, 5},
-		{"end of file", nil, 4, 4},
-		{"top of file", nil, 0, 1},
+		{"top of file", "", nil, 0, 1},
 	} {
 		deletion := diffHunk{NewStart: tc.newStart, NewCount: 0, Lines: []diffLine{
 			{Kind: kindDel, Text: "gone one", OldNo: 5},
@@ -167,8 +168,31 @@ func TestPureDeletionAnchors(t *testing.T) {
 		file := diffFile{Path: "a.go", Hunks: append([]diffHunk{deletion}, tc.next...)}
 		file.indexNewSide()
 		f, _ := joinFinding(&record{Path: "a.go", Side: "LEFT", Line: 6}, map[string]diffFile{"a.go": file})
-		if f.anchor != anchorHunk || f.start != tc.want || f.line != tc.want {
-			t.Errorf("%s: anchor %s span %d..%d, want hunk %d..%d", tc.name, f.anchor, f.start, f.line, tc.want, tc.want)
+		if f.anchor != anchorHunk || f.start != tc.want || f.line != tc.want || f.hunkSHA256 != tc.hash || !f.afterDeletion {
+			t.Errorf("%s: anchor %s span %d..%d hash %q, want hunk %d..%d hash %q",
+				tc.name, f.anchor, f.start, f.line, f.hunkSHA256, tc.want, tc.want, tc.hash)
 		}
+	}
+}
+
+// hashNext is sha256("next"), the shown line after the deletion.
+const hashNext = "c6c1c9a9c8543f1e4cd980064cf1625eeb61a90703b2464fff039f21682508b3"
+
+// TestDeletionAtEndOfFileAnchorsTheLastLine pins the end-of-file case through
+// the file's own text: a `+4,0` deletion in a four-line file anchors line 4,
+// never line 5 past the end; in a longer file it stays on line 5.
+func TestDeletionAtEndOfFileAnchorsTheLastLine(t *testing.T) {
+	t.Parallel()
+	deletion := diffHunk{NewStart: 4, NewCount: 0, Lines: []diffLine{{Kind: kindDel, Text: "gone", OldNo: 5}}}
+	file := diffFile{Path: "a.go", Hunks: []diffHunk{deletion}}
+	file.indexNewSide()
+	f, _ := joinFinding(&record{Path: "a.go", Side: "LEFT", Line: 5}, map[string]diffFile{"a.go": file})
+	atEnd := diagnosticOf(&f, []string{"one", "two", "three", "four", ""})
+	if atEnd.Range.Start.Line != 3 || atEnd.Data.Span != (span{StartLine: 4, Line: 4}) {
+		t.Errorf("end-of-file deletion: range %+v span %+v, want line 4", atEnd.Range, atEnd.Data.Span)
+	}
+	midFile := diagnosticOf(&f, []string{"one", "two", "three", "four", "five", "six"})
+	if midFile.Range.Start.Line != 4 || midFile.Data.Span != (span{StartLine: 5, Line: 5}) {
+		t.Errorf("mid-file deletion: range %+v span %+v, want line 5", midFile.Range, midFile.Data.Span)
 	}
 }

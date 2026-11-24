@@ -271,7 +271,7 @@ func TestDidSaveRecordsVersion(t *testing.T) {
 func TestDocBytesRunningTotal(t *testing.T) {
 	t.Parallel()
 	s := New(newConfig("/r"))
-	a, b := &document{key: "a"}, &document{key: "b"}
+	a, b := &buffer{}, &buffer{}
 	five, three := "12345", "123"
 	s.setText(a, &five)
 	s.setText(b, &three)

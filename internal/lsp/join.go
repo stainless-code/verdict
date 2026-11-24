@@ -89,6 +89,10 @@ type finding struct {
 	line       int
 	suggestion bool
 	truncated  bool
+	// afterDeletion marks an anchor on the line after a pure deletion,
+	// which a diagnostic moves back onto the last line when the file's
+	// text shows the deletion was at its end.
+	afterDeletion bool
 }
 
 // joinFinding anchors one record. ok is false for a record no diagnostic can
@@ -148,8 +152,9 @@ func anchorLeft(f *finding, file *diffFile) {
 		if !deletes(h, f.line) {
 			continue
 		}
-		start, end := hunkSpan(h, file)
+		start, end := hunkSpan(h)
 		f.start, f.line, f.anchor = start, end, anchorHunk
+		f.afterDeletion = h.NewCount == 0
 		if hash, ok := newSideHash(file, start, end); ok {
 			f.hunkSHA256 = hash
 		}
@@ -159,18 +164,14 @@ func anchorLeft(f *finding, file *diffFile) {
 
 // hunkSpan is the NEW-side line span a LEFT finding in h anchors to. A
 // pure-deletion hunk (`+N,0`) has no NEW side, and git's N there is the line
-// before the deletion. The anchor is line N+1, the line now standing where
-// the deleted code was, when the diff shows that line exists; otherwise
-// (a deletion at the end of the file, or a zero-context diff that cannot
-// tell) it is line N, the last line known to exist. A deletion at the top
-// of a file (`+0,0`) anchors on line 1.
-func hunkSpan(h *diffHunk, file *diffFile) (int, int) {
+// before the deletion, so the anchor is line N+1: the line now standing
+// where the deleted code was (line 1 for a deletion at the top of a file,
+// `+0,0`). A diff without context cannot say whether N was the file's last
+// line; the file's own text can, so a diagnostic with the document in hand
+// moves an anchor past the end back onto the last line (see diagnostic).
+func hunkSpan(h *diffHunk) (int, int) {
 	if h.NewCount == 0 {
-		line := max(h.NewStart, 1)
-		if _, ok := newSideLine(file, h.NewStart+1); ok && h.NewStart > 0 {
-			line = h.NewStart + 1
-		}
-		return line, line
+		return h.NewStart + 1, h.NewStart + 1
 	}
 	start := max(h.NewStart, 1)
 	return start, max(h.NewStart+h.NewCount-1, start)

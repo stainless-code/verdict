@@ -220,14 +220,16 @@ func TestRekeyMergeWindowsSpellings(t *testing.T) {
 }
 
 // checkRekeyMerge files two documents for one file under different keys,
-// re-keys, and checks they merged with their text released exactly once.
+// re-keys, and checks they merged: one document holding both spellings,
+// each with its own version, publishing under the one changed last (B), whose
+// text is kept while A's is released, so the session total counts it once.
 func checkRekeyMerge(t *testing.T, s *Server, uriA, uriB, physA, physB string) {
 	t.Helper()
-	a := &document{uri: uriA, physical: physA, key: "k1", uris: map[string]bool{uriA: true}}
-	b := &document{uri: uriB, physical: physB, key: "k2", uris: map[string]bool{uriB: true}}
 	text := "package a\n"
-	s.setText(a, &text)
-	s.setText(b, &text)
+	a := &document{uri: uriA, physical: physA, key: "k1", bufs: map[string]*buffer{uriA: {version: 9, seq: 1}}}
+	b := &document{uri: uriB, physical: physB, key: "k2", bufs: map[string]*buffer{uriB: {version: 2, seq: 2}}}
+	s.setText(a.bufs[uriA], &text)
+	s.setText(b.bufs[uriB], &text)
 	s.docs = map[string]*document{"k1": a, "k2": b}
 	s.uriKeys = map[string]string{uriA: "k1", uriB: "k2"}
 	s.stateMu.Lock()
@@ -237,8 +239,13 @@ func checkRekeyMerge(t *testing.T, s *Server, uriA, uriB, physA, physB string) {
 		t.Fatalf("after the merge: %d documents, %d tracked bytes; want 1 and %d", len(s.docs), s.docBytes, len(text))
 	}
 	survivor := s.docs[s.uriKeys[uriA]]
-	if survivor == nil || s.uriKeys[uriA] != s.uriKeys[uriB] || !survivor.uris[uriA] || !survivor.uris[uriB] {
+	if survivor == nil || s.uriKeys[uriA] != s.uriKeys[uriB] || survivor.bufs[uriA] == nil || survivor.bufs[uriB] == nil {
 		t.Fatalf("spellings after the merge: uriKeys %v, survivor %+v", s.uriKeys, survivor)
+	}
+	if survivor.uri != uriB || !survivor.bufs[uriB].hasText || survivor.bufs[uriA].hasText ||
+		survivor.bufs[uriA].version != 9 || survivor.bufs[uriB].version != 2 {
+		t.Fatalf("after the merge: publish %s, A %+v, B %+v; want B (changed last) with its text, A's released, "+
+			"both versions kept", survivor.uri, *survivor.bufs[uriA], *survivor.bufs[uriB])
 	}
 }
 
@@ -294,5 +301,50 @@ func TestUNCRootIsNeverProbed(t *testing.T) {
 	root := newServedRoot(`\\server\share\repo`, true)
 	if got := s.physicalRoot(&root); got != "" || spy.calls.Load() != 0 {
 		t.Fatalf("a UNC root resolved to %q after %d probes", got, spy.calls.Load())
+	}
+}
+
+// TestShutdownAnsweredAfterTeardown pins item 2: a shutdown request
+// dispatched after teardown closed the background gate (the plain Serve's
+// read goroutine can still deliver one) is answered, never dropped.
+func TestShutdownAnsweredAfterTeardown(t *testing.T) {
+	t.Parallel()
+	var out strings.Builder
+	s := New(newConfig(fixtureRoot(t)))
+	s.out = &out
+	s.closeBackground()
+	s.handleShutdown(&rpcMessage{JSONRPC: jsonRPCVersion, ID: []byte("7"), Method: methodShutdown})
+	if want := `{"jsonrpc":"2.0","id":7,"result":null}`; !strings.HasSuffix(out.String(), want) {
+		t.Fatalf("shutdown after teardown wrote %q, want an answer ending %s", out.String(), want)
+	}
+}
+
+// TestSurvivingSpellingKeepsItsOwnVersion pins item 8: with one file open
+// under two spellings, closing the publish spelling leaves the other
+// publishing with its own version stream, never the closed buffer's.
+func TestSurvivingSpellingKeepsItsOwnVersion(t *testing.T) {
+	t.Parallel()
+	root := fixtureRoot(t)
+	s := startSession(t, newConfig(root))
+	s.initialize(1, nil)
+	s.notify(methodInitialized, map[string]any{})
+	plain := fileURI(root, "notes.txt")
+	local := "file://localhost" + strings.TrimPrefix(plain, "file://")
+	openDoc(s, plain, 3, notesText)
+	openDoc(s, local, 40, notesText)
+	s.notify(methodDidClose, map[string]any{"textDocument": map[string]any{"uri": local}})
+	s.barrier(2, 0)
+	// A bundle change republishes without any message touching the
+	// surviving spelling first.
+	writeBundle(t, root, "local-1", findingJSON(sigImp, "open", "important", "notes.txt", 1))
+	mark := len(s.snapshot())
+	s.request(3, methodExecuteCommand, map[string]any{"command": CommandRefresh})
+	before, _ := s.awaitResponse(3)
+	got := lastPublishFor(t, before[mark:], plain)
+	if got == nil || got.Version == nil || *got.Version != 3 || sigsOf(got) != sigImp {
+		t.Fatalf("the surviving spelling published %+v, want its own version 3", got)
+	}
+	if err := s.finish(4); err != nil {
+		t.Fatal(err)
 	}
 }

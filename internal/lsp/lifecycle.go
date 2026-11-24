@@ -103,6 +103,11 @@ func decodeOption[T any](wire map[string]json.RawMessage, key string, into *T) {
 // handleInitialized composes every root, publishes every path that carries
 // a finding, and starts the watch pump.
 func (s *Server) handleInitialized(ctx context.Context) {
+	// The watcher starts before the first compose, so a bundle write lands
+	// on one side or the other (see settleRoots).
+	s.callMu.Lock()
+	s.startPump(ctx)
+	s.callMu.Unlock()
 	s.composeMu.Lock()
 	s.stateMu.Lock()
 	roots := s.rootsSnapshot()
@@ -114,9 +119,6 @@ func (s *Server) handleInitialized(ctx context.Context) {
 	s.republishAll()
 	s.stateMu.Unlock()
 	s.composeMu.Unlock()
-	s.callMu.Lock()
-	defer s.callMu.Unlock()
-	s.startPump(ctx)
 }
 
 // handleShutdown refuses new requests at once, then lets in-flight calls
@@ -131,11 +133,17 @@ func (s *Server) handleShutdown(msg *rpcMessage) {
 	s.shutdown = true
 	s.callMu.Unlock()
 	id := msg.ID
-	s.goDrain(func() {
+	if s.goDrain(func() {
 		s.drain()
 		s.stopPump()
 		s.writeResult(id, nil)
-	})
+	}) {
+		return
+	}
+	// The session is already tearing down (a frame the plain Serve's read
+	// goroutine dispatched late): teardown cancels and awaits every call, so
+	// there is nothing left to drain, but the request is still answered.
+	s.writeResult(id, nil)
 }
 
 // exitResult is the session's result on `exit`: nil after shutdown, the LSP

@@ -68,10 +68,7 @@ func (s *Server) physicalOfURI(uri string) string {
 	if err != nil || host != "" {
 		return ""
 	}
-	phys, ok := physicalPath(p, s.windows, s.cfg.eval)
-	if !ok {
-		return ""
-	}
+	phys, _ := s.physicalOf(p)
 	return phys
 }
 
@@ -79,9 +76,10 @@ func (s *Server) physicalOfURI(uri string) string {
 // open file document is tracked, under a served root or not, so a root a
 // later workspace-folder change adds finds its text and version; past
 // maxDocs open documents a new one is refused with a log line rather than
-// evicting another. The path is resolved before stateMu is taken; nothing
-// can change the roots or the document table in between, because only the
-// read loop (which is running this handler) writes them.
+// evicting another. The path is resolved before stateMu is taken, through
+// the bounded resolver, so a hung volume delays this notification by at most
+// the resolve budget; the apply then reads the roots as they are under the
+// lock.
 func (s *Server) handleDidOpen(ctx context.Context, msg *rpcMessage) {
 	var params didOpenParams
 	if json.Unmarshal(msg.Params, &params) != nil {
@@ -89,6 +87,7 @@ func (s *Server) handleDidOpen(ctx context.Context, msg *rpcMessage) {
 	}
 	item := params.TextDocument
 	physical := s.physicalOfURI(item.URI)
+	defer s.flushLogs()
 	s.stateMu.Lock()
 	ref, ok := s.refFor(item.URI, physical)
 	var doc *document
@@ -99,10 +98,16 @@ func (s *Server) handleDidOpen(ctx context.Context, msg *rpcMessage) {
 		s.stateMu.Unlock()
 		return
 	}
-	doc.open(item.URI)
-	doc.uri, doc.version, doc.physical = item.URI, item.Version, physical
+	if physical != "" || doc.physical == "" {
+		// A miss (a slow walk, or a file that does not exist yet) never
+		// overwrites a spelling an earlier open resolved.
+		doc.physical = physical
+	}
+	buf := doc.spelling(item.URI)
+	buf.version = item.Version
+	s.setText(buf, &item.Text)
+	s.touch(doc, item.URI)
 	s.uriKeys[item.URI] = ref.key
-	s.setText(doc, &item.Text)
 	unread := s.unreadRoots(ref.roots)
 	s.stateMu.Unlock()
 	if len(unread) > 0 {
@@ -157,8 +162,10 @@ func (s *Server) stateOf(id string) *bundleState {
 // joins the file key a new root publishes. It uses each document's stored
 // physical spelling, so it does no I/O; the caller holds stateMu. Two
 // documents that now share a key (one file the old roots keyed apart) merge
-// into one: the survivor keeps every open spelling, the other's tracked
-// text is released, and one line says so.
+// into one that keeps every open spelling's version; the most recently
+// changed spelling becomes the publish spelling and keeps its text, the
+// others release theirs. The line saying so is queued, never written under
+// the lock.
 func (s *Server) rekeyDocs() {
 	docs := s.docs
 	s.docs = map[string]*document{}
@@ -169,19 +176,19 @@ func (s *Server) rekeyDocs() {
 		}
 	}
 	for key, doc := range s.docs {
-		for uri := range doc.uris {
+		for uri := range doc.bufs {
 			s.uriKeys[uri] = key
 		}
 	}
 	if merged > 0 {
-		s.logf(msgInfo, "verdict: %d open document(s) now name a file another open document names; "+
+		s.queueLogf(msgInfo, "verdict: %d open document(s) now name a file another open document names; "+
 			"each file publishes once", merged)
 	}
 }
 
-// rekeyDoc files one document under its new key, merging it into a document
-// already there (and releasing its text) or dropping it when it no longer
-// keys at all. It reports a merge.
+// rekeyDoc files one document under its current key, merging it into a
+// document already there or dropping it when it no longer keys at all. It
+// reports a merge. The caller holds stateMu.
 func (s *Server) rekeyDoc(doc *document) bool {
 	ref, ok := s.refFor(doc.uri, doc.physical)
 	if !ok {
@@ -189,20 +196,43 @@ func (s *Server) rekeyDoc(doc *document) bool {
 		return false
 	}
 	doc.key = ref.key
-	if kept := s.docs[ref.key]; kept != nil {
-		kept.absorb(doc)
-		s.setText(doc, nil)
-		return true
+	kept := s.docs[ref.key]
+	if kept == nil {
+		s.docs[ref.key] = doc
+		return false
 	}
-	s.docs[ref.key] = doc
-	return false
+	s.mergeDocs(kept, doc)
+	return true
+}
+
+// mergeDocs folds other into kept: every spelling (with its own version)
+// joins kept, the most recently changed spelling becomes the publish
+// spelling and keeps its text, and every other spelling's text is released.
+func (s *Server) mergeDocs(kept, other *document) {
+	for uri, b := range other.bufs {
+		if kept.bufs[uri] == nil {
+			kept.spelling(uri)
+			kept.bufs[uri] = b
+			continue
+		}
+		s.setText(b, nil)
+	}
+	if kept.physical == "" {
+		kept.physical = other.physical
+	}
+	kept.uri = kept.latest()
+	for uri, b := range kept.bufs {
+		if uri != kept.uri {
+			s.setText(b, nil)
+		}
+	}
 }
 
 // forgetDoc drops a document the server can no longer key: its text is
 // released and none of its spellings stay mapped. The caller holds stateMu.
 func (s *Server) forgetDoc(doc *document) {
-	s.setText(doc, nil)
-	for uri := range doc.uris {
+	s.dropText(doc)
+	for uri := range doc.bufs {
 		delete(s.uriKeys, uri)
 	}
 }
@@ -219,26 +249,28 @@ func (s *Server) admitDoc(key, uri string) *document {
 			"diagnostics until another closes", len(s.docs), quoteLog(uri))
 		return nil
 	}
-	doc := &document{key: key, uris: map[string]bool{}}
+	doc := &document{key: key}
 	s.docs[key] = doc
 	return doc
 }
 
-// handleDidChange only keeps the buffer current. It never composes, never
-// calls the read model, and never publishes: no keystroke reaches the
-// diagnostics path.
+// handleDidChange only keeps the changed spelling's buffer current. It never
+// composes, never calls the read model, never touches the filesystem, and
+// never publishes: no keystroke reaches the diagnostics path.
 func (s *Server) handleDidChange(msg *rpcMessage) {
 	var params didChangeParams
 	if json.Unmarshal(msg.Params, &params) != nil {
 		return
 	}
+	uri := params.TextDocument.URI
 	s.stateMu.Lock()
 	defer s.stateMu.Unlock()
-	doc := s.docs[s.uriKeys[params.TextDocument.URI]]
-	if doc == nil {
+	doc := s.docs[s.uriKeys[uri]]
+	if doc == nil || doc.bufs[uri] == nil {
 		return
 	}
-	doc.version = params.TextDocument.Version
+	buf := doc.bufs[uri]
+	buf.version = params.TextDocument.Version
 	// Full sync: the last whole-buffer change wins. A ranged change is an
 	// incremental edit this server never asked for, so the text is dropped
 	// rather than patched wrong.
@@ -250,15 +282,18 @@ func (s *Server) handleDidChange(msg *rpcMessage) {
 		}
 		text = &params.ContentChanges[i].Text
 	}
-	s.setText(doc, text)
+	s.setText(buf, text)
+	s.touch(doc, uri)
 }
 
 // handleDidSave re-reads every confining root's selected bundle. An
 // unchanged bundle republishes only this file (and nothing at all when its
 // set is byte-identical to the last one sent); a bundle that moved
 // republishes everything it reaches. An open document reuses the physical
-// spelling resolved when it opened; an unopened one is resolved here, before
-// stateMu is taken.
+// spelling resolved when it opened; one whose spelling never resolved (a
+// slow walk, or a file opened before it existed) is resolved again here,
+// through the bounded resolver and before stateMu is taken, and joins its
+// root's key on a hit.
 func (s *Server) handleDidSave(ctx context.Context, msg *rpcMessage) {
 	var params didSaveParams
 	if json.Unmarshal(msg.Params, &params) != nil {
@@ -266,16 +301,17 @@ func (s *Server) handleDidSave(ctx context.Context, msg *rpcMessage) {
 	}
 	uri := params.TextDocument.URI
 	physical, open := s.openPhysical(uri)
-	if !open {
+	if physical == "" {
 		physical = s.physicalOfURI(uri)
 	}
+	defer s.flushLogs()
 	s.stateMu.Lock()
 	ref, ok := s.refFor(uri, physical)
-	if key, isOpen := s.uriKeys[uri]; isOpen {
-		ref.key = key
+	if open {
+		ref.key = s.adoptPhysical(uri, physical)
 	}
 	if ok {
-		s.recordSave(ref.key, &params)
+		s.recordSave(ref.key, uri, &params)
 	}
 	s.stateMu.Unlock()
 	if !ok || len(ref.roots) == 0 {
@@ -305,26 +341,47 @@ func (s *Server) openPhysical(uri string) (string, bool) {
 	return "", false
 }
 
-// recordSave applies a save's optional version and text to a tracked
-// document.
-func (s *Server) recordSave(key string, params *didSaveParams) {
+// adoptPhysical stores a newly resolved physical spelling on an open
+// document that had none and re-files it under the key that spelling
+// gives, returning the document's key. The caller holds stateMu.
+func (s *Server) adoptPhysical(uri, physical string) string {
+	key := s.uriKeys[uri]
 	doc := s.docs[key]
-	if doc == nil {
+	if doc == nil || physical == "" || doc.physical != "" {
+		return key
+	}
+	doc.physical = physical
+	delete(s.docs, key)
+	s.rekeyDoc(doc)
+	for spelled := range doc.bufs {
+		s.uriKeys[spelled] = doc.key
+	}
+	return s.uriKeys[uri]
+}
+
+// recordSave applies a save's optional version and text to the saved
+// spelling's buffer.
+func (s *Server) recordSave(key, uri string, params *didSaveParams) {
+	doc := s.docs[key]
+	if doc == nil || doc.bufs[uri] == nil {
 		return
 	}
+	buf := doc.bufs[uri]
 	if params.TextDocument.Version != nil {
-		doc.version = *params.TextDocument.Version
+		buf.version = *params.TextDocument.Version
 	}
 	if params.Text != nil {
-		s.setText(doc, params.Text)
+		s.setText(buf, params.Text)
 	}
+	s.touch(doc, uri)
 }
 
 // handleDidClose stops tracking one spelling of the buffer. The document
-// stays while another spelling of the same file is still open (its
-// didChange keeps landing), publishing under a remaining spelling; it goes
-// when the last spelling closes. Its diagnostics stay: they describe the
-// bundle, not the buffer.
+// stays while another spelling of the same file is still open: it then
+// publishes under the remaining spelling changed most recently, with that
+// spelling's own version and text (never the closed one's). It goes when the
+// last spelling closes. Its diagnostics stay: they describe the bundle, not
+// the buffer.
 func (s *Server) handleDidClose(msg *rpcMessage) {
 	var params didCloseParams
 	if json.Unmarshal(msg.Params, &params) != nil {
@@ -339,16 +396,14 @@ func (s *Server) handleDidClose(msg *rpcMessage) {
 	}
 	delete(s.uriKeys, uri)
 	doc := s.docs[key]
-	if doc == nil {
+	if doc == nil || doc.bufs[uri] == nil {
 		return
 	}
-	delete(doc.uris, uri)
-	if len(doc.uris) > 0 {
-		if doc.uri == uri {
-			doc.uri = slices.Min(slices.Collect(maps.Keys(doc.uris)))
-		}
+	s.setText(doc.bufs[uri], nil)
+	delete(doc.bufs, uri)
+	if len(doc.bufs) > 0 {
+		doc.uri = doc.latest()
 		return
 	}
-	s.setText(doc, nil)
 	delete(s.docs, key)
 }

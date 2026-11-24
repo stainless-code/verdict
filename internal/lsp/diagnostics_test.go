@@ -140,7 +140,7 @@ func checkDiagnosticRange(t *testing.T, name string, d *Diagnostic, want lspRang
 // TestDocumentLinesStripCR pins that a CRLF buffer hashes like an LF one.
 func TestDocumentLinesStripCR(t *testing.T) {
 	t.Parallel()
-	doc := document{text: "top\r\nnew line\r\nbottom\r\n", hasText: true}
+	doc := document{uri: "u", bufs: map[string]*buffer{"u": {text: "top\r\nnew line\r\nbottom\r\n", hasText: true}}}
 	if got := strings.Join(doc.lines(), "|"); got != "top|new line|bottom|" {
 		t.Fatalf("lines = %q", got)
 	}

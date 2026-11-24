@@ -2515,11 +2515,13 @@ verdict lsp [--root <dir>]... [--bundle <name>] [--check <tier>] [--max-bundles 
   `--max-roots` bounds them too. Only in this mode does `initialize` advertise
   `workspace.workspaceFolders` (`supported`, `changeNotifications`), and
   `workspace/didChangeWorkspaceFolders` adds roots (validated the same way)
-  and removes them (their diagnostics clear at once unless another root
-  still reaches the file). The new set takes effect in order with every
-  other notification, without waiting on a composition in flight; the
-  added roots are then composed, and the watcher rebuilt over the new set,
-  in the background.
+  and removes them (their diagnostics clear unless another root still
+  reaches the file). A change is queued and returns at once: one background
+  worker applies changes strictly in arrival order, validating and
+  resolving the added folders, installing the new set, re-keying documents
+  opened meanwhile (so the end state is the one in-order processing gives),
+  then composing the added roots and rebuilding the watcher over the new
+  set.
 - `--bundle <name>` publishes that bundle. With `--root` it must resolve under
   at least one root, or the start refuses `missing-bundle` (the message names
   `verdict fetch-local` as the remedy); with client roots a miss is a Warning
@@ -2619,9 +2621,10 @@ anchor, its end tightens to the line's end, and any range is clamped to the
 document's last line. `data` carries `sig`, `bundle`, `root`, `status`, `severity`, `rigor`,
 `quote_status`, `lens`, `category`, `side`, `anchor` (`exact` for a NEW-side
 line of the reviewed diff, `hunk` for a deleted line mapped onto its hunk's
-NEW side, or, for a hunk that only deletes, onto the line now standing where
-the deleted code was when the diff shows it, else the last line before the
-deletion (never past the end of the file), `unmapped` otherwise), `span`, `hunk_sha256` (the reviewed text),
+NEW side, or, for a hunk that only deletes (`+N,0`), onto line N+1, the line
+now standing where the deleted code was, moved back onto the last line when
+the document's text shows the deletion was at the end of the file (without
+the text, N+1 is published and the editor clamps it), `unmapped` otherwise), `span`, `hunk_sha256` (the reviewed text),
 `span_sha256` and `span_matches` (whether the editor's text still matches what
 was reviewed), `suggestion`, `deferred`, and `truncated` when a bound cut the
 set.
@@ -2633,11 +2636,20 @@ diagnostics. A document is matched against each root lexically first, then
 by the physical spellings of both, so a client that spells the same tree
 through another path (macOS `/private/var` for `/var`, a symlinked checkout,
 a Windows 8.3 short name such as `RUNNER~1`) still gets its findings: the
-document path is resolved once when it opens (a save reuses it; a file saved
-without being opened is resolved then), and a root's once when it is served.
-Resolution is lstat only, never a read, and never runs under the session
-lock, so a hung volume cannot stall publishes or keystrokes. One file open
-under two spellings stays tracked until both close. A finding whose `path` is absolute,
+document path is resolved when it opens (a save reuses it, and resolves again
+when it never resolved), and a root's when it is served. Resolution is lstat
+only, never a read, and never runs under the session lock. Each walk runs on
+its own goroutine with a 250 ms budget (at most 8 at once, one per path): a
+notification waits at most that budget, so a hung volume (NFS, an unmounted
+disk) delays the one `didOpen`, `didSave`, or `initialize` that touches it
+and never stalls `didChange`, `$/cancelRequest`, `exit`, or anything else.
+A walk that misses the budget is logged once per path, the document is
+matched by the spelling the client gave, and a later save resolves it again;
+a root whose checkout probe misses the budget is dropped with a warning. A
+walk stuck in the kernel cannot be canceled and lingers until the volume
+answers. One file open under two spellings stays tracked until both close,
+each with its own version: publishes use the spelling changed most
+recently. A finding whose `path` is absolute,
 drive-qualified, backslashed, or carries `..` is never published (one
 warning names the count). A `workspace/executeCommand` other than
 `verdict.refresh` answers `-32602` with `bad-params` in `error.data`; a request

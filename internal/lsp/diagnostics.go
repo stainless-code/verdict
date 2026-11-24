@@ -61,39 +61,65 @@ func publishable(status, severity string, showDeferred bool) (int, bool) {
 	}
 }
 
-// document is one client-tracked buffer. Its text arrives only from the
-// client: the server never reads a workspace file.
+// document is one file the client has open, under one or more URI
+// spellings. Its text arrives only from the client: the server never reads
+// a workspace file.
 type document struct {
-	// uris is every spelling the client has this file open under; uri is
-	// the one publishes go out under.
-	uris     map[string]bool
+	// bufs is every open spelling's buffer; uri is the spelling publishes go
+	// out under, always the most recently changed one.
+	bufs     map[string]*buffer
 	uri      string
 	physical string
 	key      string
-	text     string
-	version  int
-	hasText  bool
 }
 
-// open records one more open spelling.
-func (d *document) open(uri string) {
-	if d.uris == nil {
-		d.uris = map[string]bool{}
+// buffer is one open spelling's state. LSP versions are per URI, so each
+// spelling keeps its own; text is tracked only while it fits the bounds,
+// and a merge may release it (keeping the version).
+type buffer struct {
+	text    string
+	version int
+	seq     uint64
+	hasText bool
+}
+
+// spelling returns the buffer for one open spelling, creating it.
+func (d *document) spelling(uri string) *buffer {
+	if d.bufs == nil {
+		d.bufs = map[string]*buffer{}
 	}
-	d.uris[uri] = true
-}
-
-// absorb takes over another document's open spellings when two documents
-// turn out to name one file.
-func (d *document) absorb(other *document) {
-	for uri := range other.uris {
-		d.open(uri)
+	b := d.bufs[uri]
+	if b == nil {
+		b = &buffer{}
+		d.bufs[uri] = b
 	}
+	return b
 }
 
-// lines splits the tracked text into lines without their `\r\n` or `\n`.
+// current is the publish spelling's buffer.
+func (d *document) current() *buffer {
+	return d.bufs[d.uri]
+}
+
+// latest is the spelling whose buffer changed last (ties break by URI).
+func (d *document) latest() string {
+	best := ""
+	for _, uri := range slices.Sorted(maps.Keys(d.bufs)) {
+		if best == "" || d.bufs[uri].seq > d.bufs[best].seq {
+			best = uri
+		}
+	}
+	return best
+}
+
+// lines splits the publish buffer's text into lines without their `\r\n` or
+// `\n`; nil when its text is not tracked.
 func (d *document) lines() []string {
-	out := strings.Split(d.text, "\n")
+	b := d.current()
+	if b == nil || !b.hasText {
+		return nil
+	}
+	out := strings.Split(b.text, "\n")
 	for i, l := range out {
 		out[i] = strings.TrimSuffix(l, "\r")
 	}
@@ -122,7 +148,7 @@ func (s *Server) rootDiagnostics(root *servedRoot, key string, docLines []string
 // (start line, start character, code, root).
 func (s *Server) fileDiagnostics(uri string, doc *document) []Diagnostic {
 	var docLines []string
-	if doc != nil && doc.hasText {
+	if doc != nil {
 		docLines = doc.lines()
 	}
 	physical := ""
@@ -183,23 +209,23 @@ func compareDiagnostics(a, b Diagnostic) int {
 // the last line's UTF-16 length, and any range is clamped to the document's
 // last line so a shorter buffer never receives a position past its end.
 func diagnostic(root *servedRoot, state *bundleState, f *finding, severity int, docLines []string) Diagnostic {
+	start, line := anchoredSpan(f, docLines)
 	rng := lspRange{
-		Start: position{Line: f.start - 1},
-		End:   position{Line: f.line},
+		Start: position{Line: start - 1},
+		End:   position{Line: line},
 	}
 	data := diagnosticData{
 		Sig: f.rec.Sig, Bundle: state.bundle, Root: root.ID,
 		Status: f.rec.Status, Severity: f.rec.Severity, Rigor: f.rec.Rigor,
 		QuoteStatus: f.rec.Verification.Quote, Lens: f.rec.Lens, Category: f.rec.Category,
-		Side: f.side, Anchor: f.anchor, Span: span{StartLine: f.start, Line: f.line},
+		Side: f.side, Anchor: f.anchor, Span: span{StartLine: start, Line: line},
 		HunkSHA256: f.hunkSHA256, Suggestion: f.suggestion,
 		Deferred: f.rec.Status == statusDeferred, Truncated: f.truncated,
 	}
-	if docLines != nil && f.line <= len(docLines) {
-		spanText := docLines[f.start-1 : f.line]
-		data.SpanSHA256 = textHash(spanText)
+	if docLines != nil && line <= len(docLines) {
+		data.SpanSHA256 = textHash(docLines[start-1 : line])
 		if f.anchor == anchorExact {
-			rng.End = position{Line: f.line - 1, Character: utf16Len(docLines[f.line-1])}
+			rng.End = position{Line: line - 1, Character: utf16Len(docLines[line-1])}
 		}
 	}
 	if docLines != nil {
@@ -217,6 +243,26 @@ func diagnostic(root *servedRoot, state *bundleState, f *finding, severity int, 
 		Message:  message(&f.rec),
 		Data:     data,
 	}
+}
+
+// anchoredSpan is a finding's line span against the document: the joined
+// span, except that the line after a pure deletion moves back onto the last
+// line when the document's text shows the deletion was at its end.
+func anchoredSpan(f *finding, docLines []string) (int, int) {
+	if f.afterDeletion && docLines != nil && f.start > fileLines(docLines) {
+		last := max(fileLines(docLines), 1)
+		return last, last
+	}
+	return f.start, f.line
+}
+
+// fileLines counts a text's lines: a final newline ends the last line rather
+// than starting an empty one.
+func fileLines(lines []string) int {
+	if n := len(lines); n > 0 && lines[n-1] == "" {
+		return n - 1
+	}
+	return len(lines)
 }
 
 // clampRange keeps a range inside the tracked text: a position past the last
@@ -329,8 +375,8 @@ func (s *Server) publish(key, uri string, doc *document, diags []Diagnostic) int
 		return frames
 	}
 	params := publishParams{URI: uri, Diagnostics: diags}
-	if doc != nil {
-		v := doc.version
+	if b := docBuffer(doc); b != nil {
+		v := b.version
 		params.Version = &v
 	}
 	total := len(params.Diagnostics)
@@ -451,17 +497,40 @@ func (s *Server) publishTargets() map[string]string {
 	return targets
 }
 
-// setText stores one document's text when it fits the per-document and
-// session bounds, else tracks the document by version only. The session
-// total is kept as a running sum, so a keystroke never walks the table.
-func (s *Server) setText(doc *document, text *string) {
-	if doc.hasText {
-		s.docBytes -= len(doc.text)
+// docBuffer is a document's publish buffer, or nil for no document.
+func docBuffer(doc *document) *buffer {
+	if doc == nil {
+		return nil
 	}
-	doc.text, doc.hasText = "", false
+	return doc.current()
+}
+
+// setText stores one buffer's text when it fits the per-document and session
+// bounds, else tracks the buffer by version only. The session total is kept
+// as a running sum, so a keystroke never walks the table.
+func (s *Server) setText(b *buffer, text *string) {
+	if b.hasText {
+		s.docBytes -= len(b.text)
+	}
+	b.text, b.hasText = "", false
 	if text == nil || len(*text) > maxDocBytes || s.docBytes+len(*text) > maxDocBytesTotal {
 		return
 	}
-	doc.text, doc.hasText = *text, true
+	b.text, b.hasText = *text, true
 	s.docBytes += len(*text)
+}
+
+// touch marks a buffer as the document's most recent change, making its
+// spelling the publish spelling.
+func (s *Server) touch(doc *document, uri string) {
+	s.seq++
+	doc.spelling(uri).seq = s.seq
+	doc.uri = uri
+}
+
+// dropText releases every tracked buffer of a document.
+func (s *Server) dropText(doc *document) {
+	for _, b := range doc.bufs {
+		s.setText(b, nil)
+	}
 }

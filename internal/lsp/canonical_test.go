@@ -118,7 +118,7 @@ func TestLongNameDocumentGetsShortRootFindings(t *testing.T) {
 		paths: map[string]string{root.pathKey("a.go"): "a.go"}, items: []finding{f},
 	}
 	uri := "file:///c:/users/runneradmin/temp/repo/a.go"
-	doc := &document{uri: uri, physical: s.physicalOfURI(uri)}
+	doc := &document{uri: uri, physical: s.physicalOfURI(uri), bufs: map[string]*buffer{uri: {}}}
 	if got := s.fileDiagnostics(uri, doc); len(got) != 1 || got[0].Code != sigCrit {
 		t.Fatalf("long-name document diagnostics = %+v", got)
 	}

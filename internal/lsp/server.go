@@ -91,6 +91,7 @@ type Config struct { //nolint:govet // the grouping documents the injection surf
 // limits are the session bounds a Server enforces.
 type limits struct {
 	grace      time.Duration
+	resolve    time.Duration
 	docs       int
 	findings   int
 	frameBytes int
@@ -105,6 +106,10 @@ func (l limits) withDefaults() limits {
 	}
 	if l.grace > 0 {
 		def.grace = l.grace
+	}
+	def.resolve = resolveBudget
+	if l.resolve > 0 {
+		def.resolve = l.resolve
 	}
 	for _, pair := range []struct{ src, dst *int }{
 		{&l.docs, &def.docs},
@@ -132,9 +137,11 @@ type Server struct { //nolint:govet // the grouping separates config, protocol s
 	writeErr error
 	closed   bool
 
-	// logMu guards the log lines queued during initialize.
+	// logMu guards the queued log lines and the paths already reported slow.
 	logMu    sync.Mutex
 	pendLogs []logMessageParams
+	slow     map[string]bool
+	resolver *resolver
 
 	// bgMu and bgClosed gate the background group: work starts only while
 	// the gate is open, and teardown closes it before the final Wait, so an
@@ -142,6 +149,12 @@ type Server struct { //nolint:govet // the grouping separates config, protocol s
 	bgMu     sync.Mutex
 	bgClosed bool
 	drains   sync.WaitGroup
+
+	// rootMu guards the queued workspace-folder changes and whether their
+	// worker is running.
+	rootMu      sync.Mutex
+	rootQueue   []didChangeRootsParams
+	rootWorking bool
 
 	callMu      sync.Mutex
 	calls       map[string]context.CancelFunc
@@ -173,6 +186,7 @@ type Server struct { //nolint:govet // the grouping separates config, protocol s
 	states   map[string]*bundleState
 	docs     map[string]*document
 	docBytes int
+	seq      uint64
 	sent     map[string]published
 
 	workspace bool
@@ -199,11 +213,14 @@ func New(cfg *Config) *Server {
 	}
 	c.Stderr = &lockedWriter{dst: c.Stderr}
 	lim := c.lim.withDefaults()
+	res := newResolver(lim.resolve, maxResolvers)
 	s := &Server{
 		cfg:       c,
 		lim:       lim,
 		windows:   runtime.GOOS == "windows",
 		calls:     map[string]context.CancelFunc{},
+		slow:      map[string]bool{},
+		resolver:  res,
 		queue:     jobQueue{limit: lim.inflight, capacity: lim.queued},
 		states:    map[string]*bundleState{},
 		docs:      map[string]*document{},
@@ -241,11 +258,35 @@ func (s *Server) physicalRoot(root *servedRoot) string {
 	if root.host != "" {
 		return ""
 	}
-	phys, ok := physicalPath(root.slash, s.windows, s.cfg.eval)
-	if !ok {
-		return ""
-	}
+	phys, _ := s.physicalOf(root.slash)
 	return phys
+}
+
+// physicalOf resolves one absolute slash path through the bounded resolver.
+// A walk that misses its budget (a hung volume) is logged once per path and
+// reads as unresolved: the caller matches by the spelling it was given and a
+// later save resolves again. It never blocks longer than the budget.
+func (s *Server) physicalOf(p string) (string, bool) {
+	phys, ok, timedOut := s.resolver.run("path\x00"+p, func() (string, bool) {
+		return physicalPath(p, s.windows, s.cfg.eval)
+	})
+	if timedOut {
+		s.noteSlow(p)
+	}
+	return phys, ok
+}
+
+// noteSlow queues one log line the first time a path's walk misses the
+// budget.
+func (s *Server) noteSlow(p string) {
+	s.logMu.Lock()
+	first := !s.slow[p]
+	s.slow[p] = true
+	s.logMu.Unlock()
+	if first {
+		s.queueLogf(msgWarning, "verdict: resolving %s took longer than %s; it is matched by the spelling "+
+			"given until a later save resolves it", p, s.lim.resolve)
+	}
 }
 
 // goBackground starts fn on the background group unless teardown has closed

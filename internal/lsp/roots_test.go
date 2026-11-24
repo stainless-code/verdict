@@ -3,6 +3,7 @@ package lsp
 import (
 	"encoding/json"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -160,16 +161,15 @@ func TestDidChangeWorkspaceFolders(t *testing.T) {
 	s.notify(methodDidChangeRoots, map[string]any{"event": map[string]any{
 		"added": []any{folder(second), folder(t.TempDir())}, "removed": []any{folder(first)},
 	}})
-	// The removed root clears at once (in order, before the barrier); the
-	// added root is composed in the background and publishes after it.
-	frames := s.barrier(3, mark)
-	cleared := fileURI(first, "notes.txt") + " v- \n" + fileURI(first, "other.go") + " v- "
-	if got := publishes(t, frames); summarize(got) != cleared {
-		t.Fatalf("folder change cleared\n%s\nwant\n%s", summarize(got), cleared)
+	// The change applies in the background, in order: the removed root's
+	// files clear, the added non-checkout folder is reported, and the added
+	// root publishes.
+	for _, line := range []string{fileURI(first, "notes.txt") + " v- ", fileURI(first, "other.go") + " v- "} {
+		testenv.Until(t, func() bool { return hasLine(summarize(publishes(t, s.snapshot()[mark:])), line) })
 	}
-	if !strings.Contains(strings.Join(logs(t, frames), "\n"), "not inside a git checkout") {
-		t.Fatalf("the added non-checkout folder was not reported: %q", logs(t, frames))
-	}
+	testenv.Until(t, func() bool {
+		return strings.Contains(strings.Join(logs(t, s.snapshot()[mark:]), "\n"), "not inside a git checkout")
+	})
 	added := fileURI(second, "b.go") + " v- " + sigInfo
 	testenv.Until(t, func() bool { return strings.Contains(summarize(publishes(t, s.snapshot())), added) })
 	if err := s.finish(4); err != nil {
@@ -255,4 +255,9 @@ func lastPublishFor(t *testing.T, frames []wireFrame, uri string) *publishParams
 		}
 	}
 	return got
+}
+
+// hasLine reports whether text contains line as a whole line.
+func hasLine(text, line string) bool {
+	return slices.Contains(strings.Split(text, "\n"), line)
 }

@@ -96,7 +96,7 @@ func (s *Server) acceptClientRoot(c rootCandidate) (string, bool) {
 		s.queueLogf(msgWarning, "verdict: workspace root %s dropped: %v", quoteLog(c.String()), err)
 		return "", false
 	}
-	if reason := checkoutProblem(p); reason != "" {
+	if reason := s.boundedCheckout(p); reason != "" {
 		s.queueLogf(msgWarning, "verdict: workspace root %s dropped: %s", p, reason)
 		return "", false
 	}
@@ -111,6 +111,19 @@ func clientRootPath(c rootCandidate, windows bool) (string, error) {
 		return "", errUnsupportedURI
 	}
 	return filepath.Clean(c.path), nil
+}
+
+// boundedCheckout runs the checkout guard through the bounded resolver: a
+// root whose probe misses the budget (a hung volume) is dropped rather than
+// stalling the session.
+func (s *Server) boundedCheckout(dir string) string {
+	problem, _, timedOut := s.resolver.run("root\x00"+dir, func() (string, bool) {
+		return checkoutProblem(dir), true
+	})
+	if timedOut {
+		return "its checkout could not be probed within " + s.lim.resolve.String()
+	}
+	return problem
 }
 
 // CheckoutProblem names why dir cannot be served, or returns "" when it is an
@@ -185,14 +198,13 @@ func distinctRoots(paths []string, windows bool) int {
 	return len(seen)
 }
 
-// handleDidChangeRoots applies a workspace-folder change: removed roots
-// stop contributing (their diagnostics clear at once unless another root
-// still reaches the file), added roots are validated, and the read model is
-// rebuilt over the new set. It never waits on the read loop: the new set is
-// installed here, in order with every other notification (a didOpen right
-// after it sees the new roots), while composing the added roots and
-// restarting the watcher run in the background, behind any composition in
-// flight. It is ignored under --root, which never advertised the capability.
+// handleDidChangeRoots queues a workspace-folder change and returns at
+// once: validating added folders and resolving their spellings walk the
+// filesystem, so none of it runs on the read loop. One background worker
+// applies queued changes strictly in arrival order (see applyRootChange).
+// Documents opened meanwhile are re-keyed when the change lands, so the end
+// state is the one in-order processing gives. It is ignored under --root,
+// which never advertised the capability.
 func (s *Server) handleDidChangeRoots(ctx context.Context, msg *rpcMessage) {
 	if !s.workspace {
 		return
@@ -201,10 +213,42 @@ func (s *Server) handleDidChangeRoots(ctx context.Context, msg *rpcMessage) {
 	if json.Unmarshal(msg.Params, &params) != nil {
 		return
 	}
+	s.rootMu.Lock()
+	defer s.rootMu.Unlock()
+	s.rootQueue = append(s.rootQueue, params)
+	if s.rootWorking {
+		return
+	}
+	s.rootWorking = s.goBackground(func() { s.drainRootChanges(ctx) })
+}
+
+// drainRootChanges applies queued folder changes one at a time, in order,
+// until the queue is empty.
+func (s *Server) drainRootChanges(ctx context.Context) {
+	for {
+		s.rootMu.Lock()
+		if len(s.rootQueue) == 0 || ctx.Err() != nil {
+			s.rootQueue, s.rootWorking = nil, false
+			s.rootMu.Unlock()
+			return
+		}
+		next := s.rootQueue[0]
+		s.rootQueue = s.rootQueue[1:]
+		s.rootMu.Unlock()
+		s.applyRootChange(ctx, &next)
+	}
+}
+
+// applyRootChange validates and resolves the new root set (bounded walks,
+// no lock held), installs it under stateMu (removed roots clear at once
+// unless another root still reaches the file; open documents re-key), and
+// then composes the added roots and moves the watcher to the rebuilt read
+// model, behind any composition in flight.
+func (s *Server) applyRootChange(ctx context.Context, params *didChangeRootsParams) {
 	s.stateMu.Lock()
 	current := s.rootsSnapshot()
 	s.stateMu.Unlock()
-	plan := s.planRoots(s.nextRootPaths(current, &params))
+	plan := s.planRoots(s.nextRootPaths(current, params))
 	s.stateMu.Lock()
 	s.installRoots(plan)
 	s.rekeyDocs()
@@ -212,7 +256,7 @@ func (s *Server) handleDidChangeRoots(ctx context.Context, msg *rpcMessage) {
 	s.republishAll()
 	s.stateMu.Unlock()
 	s.flushLogs()
-	s.goBackground(func() { s.settleRoots(ctx, added) })
+	s.settleRoots(ctx, added)
 }
 
 // newRoots lists the roots in next that before did not serve.
@@ -231,21 +275,24 @@ func newRoots(before, next []servedRoot) []servedRoot {
 }
 
 // settleRoots finishes a root change in the background: the watcher moves
-// to the rebuilt read model, the added roots are composed (after any
-// composition in flight), and everything republishes.
+// to the rebuilt read model, then the added roots are composed (after any
+// composition in flight) and everything republishes. The watcher starts
+// first so a bundle write lands on one side or the other: after the
+// watcher's baseline it is reported as a change, before it the compose
+// reads it.
 func (s *Server) settleRoots(ctx context.Context, added []servedRoot) {
 	s.stopPump()
+	s.callMu.Lock()
+	s.startPump(ctx)
+	s.callMu.Unlock()
 	s.composeMu.Lock()
+	defer s.composeMu.Unlock()
 	for i := range added {
 		s.compose(ctx, &added[i], true)
 	}
 	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
 	s.republishAll()
-	s.stateMu.Unlock()
-	s.composeMu.Unlock()
-	s.callMu.Lock()
-	defer s.callMu.Unlock()
-	s.startPump(ctx)
 }
 
 // nextRootPaths applies one change event to the current root paths,
