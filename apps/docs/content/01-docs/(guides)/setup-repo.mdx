@@ -24,9 +24,9 @@ this flow touches the network.
 
     | preset     | `defaults.budget_usd` | `defaults.panel`       | `defaults.kb_policy`              |
     | ---------- | --------------------- | ---------------------- | --------------------------------- |
-    | `chill`    | `2.00` (lenient)      | none (comments only)   | `min_judged: 10`, `max_fp_rate: 0.7` |
-    | `standard` | `0.50` (default)      | `main` (one synthesizer) | `min_judged: 5`, `max_fp_rate: 0.5` |
-    | `strict`   | `0.10` (tight)        | `lead`, `lens-1`, `lens-2` | `min_judged: 3`, `max_fp_rate: 0.3` |
+    | `chill`    | `0.10` (smallest)     | none (comments only)   | `min_judged: 10`, `max_fp_rate: 0.7` |
+    | `standard` | `0.50` (default)      | `lead`, `lens-1`         | `min_judged: 5`, `max_fp_rate: 0.5` |
+    | `strict`   | `2.00` (largest)      | `lead`, `lens-1`, `lens-2` | `min_judged: 3`, `max_fp_rate: 0.3` |
 
     Existing files print a preview and need `--yes` before overwrite;
     re-running the same preset reads `keep` and exits 0 (idempotent).
