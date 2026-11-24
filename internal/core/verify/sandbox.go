@@ -597,9 +597,11 @@ func sandboxGitBindList(repo, realRepo string, locations []string) ([]string, *c
 }
 
 // sandboxGitBindTarget resolves one git location against the root. A
-// location that is the root itself, or one reached through a symlink inside
-// the root (the link could be replaced), cannot be bound read-only and
-// refuses rather than being skipped.
+// location that is the root itself, or one whose literal spelling sits in the
+// writable root but passes through a symlink there, cannot be bound
+// read-only and refuses rather than being skipped: the command could replace
+// the link — even one pointing outside the root, which binds nothing — with
+// a directory of its own, and git would follow the same spelling later.
 func sandboxGitBindTarget(repo, realRepo, location string) (string, bool, *core.RefusalError) {
 	resolved, err := filepath.EvalSymlinks(location)
 	if err != nil {
@@ -610,16 +612,43 @@ func sandboxGitBindTarget(repo, realRepo, location string) (string, bool, *core.
 		return "", false, sandboxUnavailable(fmt.Sprintf(
 			"the git location %s is the reviewed root itself, so bwrap cannot make it read-only", location))
 	}
+	if link, ok := sandboxInRootSymlink(location, repo, realRepo); ok {
+		return "", false, sandboxUnavailable(fmt.Sprintf("the git location %s passes through the symlink %s "+
+			"inside the reviewed root, and the link could be replaced — point the pointer at the directory itself",
+			location, link))
+	}
 	rel, inside := sandboxRelInside(realRepo, resolved)
 	if !inside {
 		return "", false, nil
 	}
-	if literalRel, ok := sandboxRelInside(repo, location); ok && literalRel != rel {
-		return "", false, sandboxUnavailable(fmt.Sprintf("the git location %s reaches %s through a symlink inside "+
-			"the reviewed root, and the link could be replaced — point the `gitdir:` line at the directory itself",
-			location, resolved))
-	}
 	return filepath.Join(repo, rel), true, nil
+}
+
+// sandboxInRootSymlink returns the first symlink among the path components
+// between the root (in either of its spellings) and location, when the
+// literal location sits below the root.
+func sandboxInRootSymlink(location string, roots ...string) (string, bool) {
+	for _, root := range roots {
+		if rel, ok := sandboxRelInside(root, location); ok {
+			if link, found := sandboxFirstSymlinkBelow(root, rel); found {
+				return link, true
+			}
+		}
+	}
+	return "", false
+}
+
+// sandboxFirstSymlinkBelow walks rel from base one component at a time and
+// returns the first component that is a symlink.
+func sandboxFirstSymlinkBelow(base, rel string) (string, bool) {
+	current := base
+	for part := range strings.SplitSeq(rel, string(filepath.Separator)) {
+		current = filepath.Join(current, part)
+		if info, err := os.Lstat(current); err == nil && info.Mode()&os.ModeSymlink != 0 {
+			return current, true
+		}
+	}
+	return "", false
 }
 
 // sandboxGitLocationsStrict resolves the root's git control locations like
@@ -1022,9 +1051,12 @@ func seatbeltRegexQuote(path string) string {
 // needs both forms. A path that does not exist yet (a git directory a `.git`
 // file names, a credential file not created) resolves through its deepest
 // existing ancestor, so a rule still matches the spelling the kernel will
-// see when the command tries to create it.
+// see when the command tries to create it. A path that is itself a symlink
+// also gets its own node's spelling (its resolved parent plus its name), not
+// only its target's: Seatbelt checks an unlink or rename against the link's
+// canonical path, so without it the link could be replaced.
 func sandboxExpandRealpaths(paths []string) []string {
-	expanded := make([]string, 0, len(paths)*2)
+	expanded := make([]string, 0, len(paths))
 	for _, path := range paths {
 		if path == "" {
 			continue
@@ -1032,6 +1064,9 @@ func sandboxExpandRealpaths(paths []string) []string {
 		expanded = append(expanded, path)
 		if resolved, ok := sandboxRealpath(path); ok {
 			expanded = append(expanded, resolved)
+		}
+		if parent, ok := sandboxRealpath(filepath.Dir(path)); ok {
+			expanded = append(expanded, filepath.Join(parent, filepath.Base(path)))
 		}
 	}
 	return sandboxCleanUnique(expanded)

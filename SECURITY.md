@@ -59,7 +59,8 @@ In scope (highest priority first):
   names, and a linked worktree's common directory are denied on both
   platforms; on macOS so is creating any `.git` path below the root, and on
   Linux a root whose repository cannot be pinned read-only (no `.git`, a
-  symlinked `.git`, or a git pointer that does not resolve) refuses
+  symlinked `.git`, a git pointer that does not resolve, or a git location
+  reached through an in-root symlink) refuses
   `sandbox-unavailable`. A sandboxed command that plants a hook or a
   `.git/config` key for the root's repository, or (on macOS) any nested
   `.git`, is a vulnerability. Out of scope: the rest of the working tree is

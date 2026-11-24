@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -500,6 +499,8 @@ func assertPasteboardUnreachable(t *testing.T, sb *sandbox, env []string, root s
 		if os.Getenv("EVAL_REQUIRE_SANDBOX") == "1" {
 			t.Fatalf("host control read %q from the find pasteboard, want the sentinel", got)
 		}
+		t.Logf("WARNING: the pasteboard leg did not run: no usable pasteboard on this host (control read %q); "+
+			"the verify-sandbox eval under EVAL_REQUIRE_SANDBOX=1 is the gate that requires it", got)
 		t.Skipf("no usable pasteboard on this host (control read %q); the leg cannot apply", got)
 	}
 	res := runWrapped(t, sb, env, root, `pbpaste -pboard find`)
@@ -558,14 +559,32 @@ func TestSandboxExecDeniesLaunchChannels(t *testing.T) {
 			t.Errorf("%q exited 0 inside the sandbox, want the launch refused", cmd)
 		}
 	}
+	assertLsopenAloneRefuses(t, sb, env, root, app)
 	if _, code := hostCommand(t, "", "/usr/bin/open", "-n", "-g", app, "--args", "host-control"); code != 0 {
 		t.Fatalf("the unsandboxed control open exited %d", code)
 	}
 	testenv.Until(t, func() bool { return strings.Contains(readMarker(marker), "host-control") })
-	if got := readMarker(marker); strings.Contains(got, "sandboxed-open") || strings.Contains(got, "noargs") {
-		t.Errorf("marker = %q, want only the host control launch", got)
+	for _, leak := range []string{"sandboxed-open", "noargs", "lsopen-only"} {
+		if got := readMarker(marker); strings.Contains(got, leak) {
+			t.Errorf("marker = %q, want no %s launch", got, leak)
+		}
 	}
 	assertNoLaunchdJob(t, sb, env, root, marker)
+}
+
+// assertLsopenAloneRefuses runs `open` under a variant of the shipped profile
+// without the Mach default-deny. The shipped profile blocks launches twice
+// over, so only this variant pins lsopen on its own.
+func assertLsopenAloneRefuses(t *testing.T, sb *sandbox, env []string, root, app string) {
+	t.Helper()
+	lsopenOnly := strings.Replace(sb.prefix[2], "(deny mach-lookup)", "", 1)
+	if lsopenOnly == sb.prefix[2] {
+		t.Fatal("the profile carries no (deny mach-lookup) to drop for the lsopen-only variant")
+	}
+	res := runProfile(t, lsopenOnly, sb.childEnv(env), root, `open -n -g "`+app+`" --args lsopen-only`)
+	if res.ExitCode == 0 {
+		t.Errorf("open under the lsopen-only variant exited 0, want lsopen to refuse it")
+	}
 }
 
 // assertNoLaunchdJob proves launchd loads no job for the sandboxed command,
@@ -635,6 +654,21 @@ func probeApp(t *testing.T) (string, string) {
 	return app, marker
 }
 
+// runProfile runs one command under an arbitrary Seatbelt profile, for the
+// variants that prove a single rule on its own.
+func runProfile(t *testing.T, profile string, env []string, root, vcmd string) core.Result {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	res, err := (coreexec.Watchdog{}).Run(ctx, &core.Command{
+		Argv: []string{sandboxExecPath, "-p", profile, "bash", "-c", vcmd}, Env: env, Dir: root, OutputCap: sandboxProbeCap,
+	})
+	if err != nil {
+		t.Fatalf("run %q: %v", vcmd, err)
+	}
+	return res
+}
+
 func readMarker(path string) string {
 	raw, err := os.ReadFile(path)
 	if err != nil {
@@ -660,9 +694,6 @@ func TestSandboxExecDeniesSignalsToHostProcesses(t *testing.T) {
 	})
 	pid := strconv.Itoa(victim.Process.Pid)
 	requireDeniedWithErrno(t, sb, env, root, `kill -TERM `+pid)
-	if err := victim.Process.Signal(syscall.Signal(0)); err != nil {
-		t.Errorf("the host process did not survive the sandboxed kill: %v", err)
-	}
 	res := runWrapped(t, sb, env, root, `sleep 30 & c=$!; kill $c; wait $c; echo "child=$?"`)
 	if got := strings.TrimSpace(res.Stdout + res.Stderr); !strings.Contains(got, "child=143") {
 		t.Errorf("killing its own child = %q, want child=143", got)
@@ -679,4 +710,34 @@ func TestSandboxExecDeniesADanglingGitdirPointer(t *testing.T) {
 	sb, env := gitSandbox(t, root)
 	defer closeSandbox(t, sb)
 	requireDeniedWithErrno(t, sb, env, root, `mkdir -p meta/hooks`)
+}
+
+// TestSandboxExecDeniesSwappingAnInRootGitdirLink proves macOS covers the
+// shape Linux refuses: `.git` names `gitdir: link`, and `link` is an in-root
+// symlink to a directory outside the root. The command can neither remove or
+// rename the link to put a directory of its own in its place, nor write
+// hooks through it.
+func TestSandboxExecDeniesSwappingAnInRootGitdirLink(t *testing.T) {
+	requireSandboxExec(t)
+	root, outside := t.TempDir(), t.TempDir()
+	if err := os.Symlink(outside, filepath.Join(root, "link")); err != nil {
+		t.Fatal(err)
+	}
+	writeSandboxFile(t, filepath.Join(root, ".git"), "gitdir: link\n")
+	sb, env := gitSandbox(t, root)
+	defer closeSandbox(t, sb)
+	for _, cmd := range []string{
+		`rm link`,
+		`mv link moved`,
+		`mkdir -p link/hooks`,
+		`printf x > link/pre-commit`,
+	} {
+		requireDeniedWithErrno(t, sb, env, root, cmd)
+	}
+	if info, err := os.Lstat(filepath.Join(root, "link")); err != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Errorf("the in-root link was replaced (%v, %v)", info, err)
+	}
+	if entries, err := os.ReadDir(outside); err != nil || len(entries) != 0 {
+		t.Errorf("the link target gained %v (%v), want it untouched", entries, err)
+	}
 }

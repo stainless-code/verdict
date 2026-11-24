@@ -734,9 +734,13 @@ type VerifyRequest struct {
 	// Mach services; writes only to the reviewed root and a private TMPDIR;
 	// credential paths and the shared host temp roots denied). The call
 	// refuses with sandbox-unavailable when the host cannot enforce it, or when
-	// the reviewed root's shape cannot be protected (Linux: no .git, a
-	// symlinked .git, or a git pointer that does not resolve), instead of
-	// running unwrapped, and never falls back to SandboxNetworkOnly.
+	// the reviewed root's shape cannot be protected, instead of running
+	// unwrapped, and never falls back to SandboxNetworkOnly. The Linux shapes:
+	// no .git; a symlinked .git; a .git that is neither a directory nor a
+	// gitdir: file; a gitdir or commondir that does not resolve to an existing
+	// directory; a gitdir that is the root itself; and a git location whose
+	// path passes through a symlink inside the root, even one pointing
+	// outside it.
 	Sandbox bool
 	// SandboxNetworkOnly is the explicit Linux opt-in for hosts without
 	// bubblewrap: `unshare --user --map-root-user --net`, network isolation

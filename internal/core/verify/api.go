@@ -27,10 +27,13 @@ type Request struct { //nolint:govet // field grouping documents the request sur
 	// root, a private /tmp) and sandbox-exec on macOS (no network, no Mach
 	// services, writes only to the reviewed root and a private TMPDIR, denied
 	// credential paths and shared host temp roots). A host that cannot
-	// enforce it, or a reviewed root whose shape it cannot protect (Linux: no
-	// .git, a symlinked .git, or a git pointer that does not resolve), refuses
+	// enforce it, or a reviewed root whose shape it cannot protect, refuses
 	// sandbox-unavailable instead of running unwrapped; it never falls back
-	// to the network-only opt-in.
+	// to the network-only opt-in. The Linux shapes: no .git; a symlinked
+	// .git; a .git that is neither a directory nor a gitdir: file; a gitdir or
+	// commondir that does not resolve to an existing directory; a gitdir that
+	// is the root itself; and a git location whose path passes through a
+	// symlink inside the root, even one pointing outside it.
 	Sandbox bool
 	// SandboxNetworkOnly is the explicit Linux fallback for hosts without
 	// bubblewrap: a user and network namespace from unshare, and nothing else.

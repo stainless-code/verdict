@@ -381,7 +381,9 @@ var fieldDocs = map[string]string{
 		"a writable repo, a private /tmp), sandbox-exec on macOS (no network, loopback included; no Mach " +
 		"services; writes only to the repo and a private TMPDIR; credential paths and shared host temp roots " +
 		"denied); refuses sandbox-unavailable when the host cannot enforce it or the root's shape cannot be " +
-		"protected (Linux: no .git, a symlinked .git, or an unresolvable git pointer).",
+		"protected (Linux: no .git; a symlinked .git; a .git that is neither a directory nor a gitdir: file; " +
+		"a gitdir or commondir that does not resolve; a gitdir that is the root itself; or a git location " +
+		"reached through a symlink inside the root).",
 	"SandboxNetworkOnly": "Linux-only fallback for hosts without bwrap: unshare --user --map-root-user --net, " +
 		"network isolation alone with no mount, filesystem, or PID isolation (credential paths, /tmp, the host " +
 		"/proc, and unix sockets stay reachable; never recorded as sandboxed); mutually exclusive with sandbox " +

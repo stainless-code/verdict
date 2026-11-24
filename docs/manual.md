@@ -4947,7 +4947,10 @@ re-allows only what the command needs:
   stops `open` and `osascript … launch`), `appleevent-send`, `job-creation`
   (launchd job submission, which launchd also refuses from any sandboxed
   caller), and `distributed-notification-post`. Behind the Mach denial these
-  are a second layer. `signal` is denied for every process the command did
+  are a second layer. Only `lsopen` is proven on its own: a test drops the
+  Mach rule from the profile and `open` still fails. The other three are
+  pinned by the profile text, because isolating a delivered AppleEvent would
+  need a scriptable target app and an Automation consent prompt. `signal` is denied for every process the command did
   not start — Seatbelt has no PID namespace, so without it the command could
   kill your editor or shell — while its own children stay signalable.
   `user-preference-write` is not listed because denying it does not stop
@@ -5015,12 +5018,17 @@ both mechanisms deny writes there:
   every shape bwrap cannot pin: a symlinked `.git` (only the link's target
   could be bound, and the link stays replaceable), a `.git` file whose
   `gitdir:` line is missing or names a directory that does not exist, a
-  commondir that does not resolve, a git directory that is the root itself,
-  and a git directory reached through a symlink inside the root. Each refuses
-  with its own cause; none is skipped. An error inspecting `.git` other than
-  "does not exist" is reported as itself. macOS needs none of these refusals,
-  because its rules match by path — a git directory that does not exist yet is
-  denied under its resolved spelling — and the rule below covers any `.git`.
+  commondir that does not resolve, a `.git` that is neither a directory nor a
+  `gitdir:` file, a git directory that is the root itself, and any git
+  location whose path passes through a symlink inside the root — even a link
+  that points outside it, because the link itself sits in the writable root
+  and could be swapped for a directory with hooks. Each refuses with its own
+  cause; none is skipped. An error inspecting `.git` other than "does not
+  exist" is reported as itself. macOS needs none of these refusals, because
+  its rules match by path: a git directory that does not exist yet is denied
+  under its resolved spelling, a symlinked location under its link's own
+  spelling as well as its target's (so the link cannot be removed or
+  renamed), and the rule below covers any `.git`.
 - **Any new `.git` (macOS).** Seatbelt also denies writes to every path
   component named `.git` below the root, in any letter case, whether or not it
   exists yet: the command cannot create a nested repository, a `.git` file, or
@@ -5087,7 +5095,7 @@ host is neither Linux nor macOS, `bwrap` or `sandbox-exec` is missing, the
 user-namespace restriction is on, (on Linux or macOS) the child's `HOME` is
 unset or not an absolute path, the reviewed root sits inside a credential
 path, or (on Linux) the root's git shape cannot be pinned read-only (no
-`.git`, a symlinked `.git`, or a git pointer that does not resolve), `verify`
+`.git`, or any of the git-pointer shapes listed above), `verify`
 refuses `sandbox-unavailable`, names the cause, and runs nothing. A runner
 that cannot spawn names the tool its mechanism needs (`bwrap` with the
 `--sandbox-network-only` alternative, `unshare`, or `/usr/bin/sandbox-exec`).
