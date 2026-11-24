@@ -9,6 +9,7 @@ import (
 
 func resolvePublishEnv(env map[string]string, eff *Effective, warn func(string)) {
 	resolveOnOffEnv(env, "REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL", &eff.DiagramsStructural, warn)
+	resolveOnOffEnv(env, "REVIEW_PUBLISH_DIAGRAMS_ANCHORED", &eff.DiagramsAnchored, warn)
 	resolveOnOffEnv(env, "REVIEW_PUBLISH_FOOTER", &eff.PublishFooter, warn)
 	resolveAttributionEnv(env, eff, warn)
 	if v := env["REVIEW_PUBLISH_ATTRIBUTION_TEXT"]; v != "" {
@@ -217,7 +218,7 @@ func resolveDiagrams(path string, raw any, eff *Effective) error {
 	}
 	for _, k := range SortedKeys(d) {
 		switch k {
-		case "structural":
+		case "structural", "anchored":
 		default:
 			return &RefusalError{Code: codeBadSettings, Message: fmt.Sprintf(msgDiagramsKey, path, k)}
 		}
@@ -227,6 +228,7 @@ func resolveDiagrams(path string, raw any, eff *Effective) error {
 		key string
 	}{
 		{&eff.DiagramsStructural, "structural"},
+		{&eff.DiagramsAnchored, "anchored"},
 	} {
 		if ref := setDiagramBool(path, d, kb.key, kb.dst); ref != nil {
 			return ref

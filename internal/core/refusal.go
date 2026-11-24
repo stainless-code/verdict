@@ -91,6 +91,10 @@ const (
 	ProblemCodeSpecNAUnjustified         = "spec-na-unjustified"
 	ProblemCodeSpecEvidenceNotCode       = "spec-evidence-not-code"
 	ProblemCodeSpecEvidenceMismatch      = "spec-evidence-mismatch"
+	// ProblemCodeDiagramInvalid reports a malformed optional `diagram` block.
+	// It is a warning: a diagram is decoration, so a defect in it is reported
+	// and never withholds approval.
+	ProblemCodeDiagramInvalid = "diagram-invalid"
 
 	ProblemLevelError   = "error"
 	ProblemLevelWarning = "warning"
@@ -102,8 +106,8 @@ const (
 type Problem struct { //nolint:govet // field order is the published property order
 	Path string `json:"path"`
 	//nolint:revive // published enum tag exceeds the line limit
-	Code    string `enum:"anchor-outside-hunk|bad-enum|empty-findings-needs-summary|enum-synonym|invalid-json|key-alias|missing-field|normalized-extracted|normalized-fence|normalized-trivia|out-of-range|path-not-in-diff|quote-mismatch|quote-not-checkable|receipt-hunk-unknown|receipt-mismatch|receipt-missing|rigor-unset|risk-stale-head|scalar-to-array|spec-check-missing|spec-check-unmet|spec-evidence-mismatch|spec-evidence-not-code|spec-item-unknown|spec-na-unjustified|spec-note-missing|unknown-field|wrong-type" json:"code"`
-	Level   string `enum:"error|warning"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             json:"level"` //nolint:revive // published enum tag exceeds the line limit
+	Code    string `enum:"anchor-outside-hunk|bad-enum|diagram-invalid|empty-findings-needs-summary|enum-synonym|invalid-json|key-alias|missing-field|normalized-extracted|normalized-fence|normalized-trivia|out-of-range|path-not-in-diff|quote-mismatch|quote-not-checkable|receipt-hunk-unknown|receipt-mismatch|receipt-missing|rigor-unset|risk-stale-head|scalar-to-array|spec-check-missing|spec-check-unmet|spec-evidence-mismatch|spec-evidence-not-code|spec-item-unknown|spec-na-unjustified|spec-note-missing|unknown-field|wrong-type" json:"code"`
+	Level   string `enum:"error|warning"                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             json:"level"` //nolint:revive // published enum tag exceeds the line limit
 	Message string `json:"message"`
 	Fix     string `json:"fix"`
 	Example any    `json:"example,omitempty"`
@@ -141,6 +145,7 @@ var problemCodeLevels = map[string]string{
 	ProblemCodeSpecNAUnjustified:         ProblemLevelWarning,
 	ProblemCodeSpecEvidenceNotCode:       ProblemLevelError,
 	ProblemCodeSpecEvidenceMismatch:      ProblemLevelError,
+	ProblemCodeDiagramInvalid:            ProblemLevelWarning,
 }
 
 // ProblemCodes returns the published problem-code enum in lexical order.
