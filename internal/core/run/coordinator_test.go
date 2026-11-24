@@ -23,10 +23,13 @@ type phaseCommander struct {
 	cancel      context.CancelFunc
 	failPhase   string
 	cancelOn    string
+	stderr      string
 	calls       map[string]int
 	phases      []string
 	mu          sync.Mutex
 	fail        bool
+	failFinders bool // every finder exits 7
+	silent      bool // every finder exits 0 and writes nothing
 	drift       bool
 	repair      bool
 	crossRepair bool
@@ -104,17 +107,28 @@ func (p *phaseCommander) writePhase(phase string, attempt int, cmd *core.Command
 	if p.outputDir {
 		p.makeOutputPathADirectory(phase)
 	}
-	if p.fail && phase == "x-finder-1" {
-		return core.Result{ExitCode: 7}
-	}
-	if p.failPhase == phase && p.phaseCalls(phase) == 1 {
-		return core.Result{ExitCode: 7}
+	if res, failed := p.failure(phase); failed {
+		return res
 	}
 	writeUnder(p.t, filepath.Join(p.dir, phase), p.artifactName(phase), p.artifactBytes(phase, attempt))
 	if cmd.Dir != filepath.Dir(filepath.Dir(filepath.Dir(p.dir))) {
 		p.t.Errorf("cwd = %q", cmd.Dir)
 	}
 	return core.Result{}
+}
+
+// failure is the scripted result of a phase told to fail or to write nothing.
+func (p *phaseCommander) failure(phase string) (core.Result, bool) {
+	finder := strings.HasPrefix(phase, "x-finder-")
+	switch {
+	case p.fail && phase == "x-finder-1", p.failFinders && finder:
+		return core.Result{ExitCode: 7, Stderr: p.stderr}, true
+	case p.silent && finder:
+		return core.Result{Stdout: p.stderr}, true
+	case p.failPhase == phase && p.phaseCalls(phase) == 1:
+		return core.Result{ExitCode: 7}, true
+	}
+	return core.Result{}, false
 }
 
 // artifactName is the file one phase writes.
@@ -606,5 +620,60 @@ func TestCoordinatorHandsOffTheAggregateBundle(t *testing.T) {
 	}
 	if want := "record the review with verdict record acme/app local-supersede"; response.Next != want {
 		t.Fatalf("next = %q, want %q", response.Next, want)
+	}
+}
+
+const providerError = "API Error: 402 Credit balance is too low sk-live-abcdef0123456789"
+
+// TestCoordinatorSurfacesTheAgentErrorWhenEveryFinderFails pins the refusal an
+// operator reads when both finders die: the agent's own code, exit status, and
+// redacted output, not a review-insufficient evidence gap.
+func TestCoordinatorSurfacesTheAgentErrorWhenEveryFinderFails(t *testing.T) {
+	req, commander := coordinatorFixture(t)
+	commander.failFinders, commander.stderr = true, providerError
+	req.Environ = []string{"ANTHROPIC_API_KEY=sk-live-abcdef0123456789"}
+	response, ref := TwoFinders(t.Context(), req)
+	if ref == nil || ref.Code != "agent-failed" {
+		t.Fatalf("refusal = %v, want agent-failed", ref)
+	}
+	if !strings.Contains(ref.Message, "exited 7") || !strings.Contains(ref.Message, "402 Credit balance is too low") {
+		t.Fatalf("message hides the cause: %q", ref.Message)
+	}
+	if strings.Contains(ref.Message, "sk-live-abcdef0123456789") {
+		t.Fatalf("message leaks the key: %q", ref.Message)
+	}
+	if response == nil || response.Exit != 7 {
+		t.Fatalf("response = %+v, want the agent's exit 7 preserved", response)
+	}
+}
+
+// TestCoordinatorKeepsNoArtifactWhenEveryFinderWritesNothing is the claude
+// write-refused case: both finders exit 0 and print the refusal. The code
+// must be the one the permission hint keys on, with the agent's words in the
+// message.
+func TestCoordinatorKeepsNoArtifactWhenEveryFinderWritesNothing(t *testing.T) {
+	req, commander := coordinatorFixture(t)
+	commander.silent, commander.stderr = true, "I could not write review.json: permission to use Write was denied"
+	_, ref := TwoFinders(t.Context(), req)
+	if ref == nil || ref.Code != "no-review-artifact" {
+		t.Fatalf("refusal = %v, want no-review-artifact", ref)
+	}
+	if !strings.Contains(ref.Message, "permission to use Write was denied") {
+		t.Fatalf("message hides the cause: %q", ref.Message)
+	}
+}
+
+// TestCoordinatorPartialExecutionNamesTheFailedFinder keeps the partial
+// verdict (one finder survived, so evidence is merely insufficient) but names
+// the failed finder's cause beside it.
+func TestCoordinatorPartialExecutionNamesTheFailedFinder(t *testing.T) {
+	req, commander := coordinatorFixture(t)
+	commander.fail, commander.stderr = true, providerError
+	_, ref := TwoFinders(t.Context(), req)
+	if ref == nil || ref.Code != "review-insufficient" {
+		t.Fatalf("refusal = %v", ref)
+	}
+	if !strings.Contains(ref.Message, "x-finder-1 agent-failed: ") || !strings.Contains(ref.Message, "402 Credit balance") {
+		t.Fatalf("message hides the failed finder's cause: %q", ref.Message)
 	}
 }

@@ -3981,6 +3981,15 @@ from verdict's own refusal, usage, and canceled codes; `--json` disambiguates
 them through `error.code`, and the envelope's `data.exit` records what the agent
 itself returned.
 
+`agent-failed` and `no-review-artifact` carry the tail of what the agent printed
+(a provider's `402`, a refused write), scrubbed of your credentials and capped at
+600 bytes; `.run.out` keeps the full stream. When every finder of a two-finder
+launch fails, the run refuses with that finder's own code and exit status, not
+`review-insufficient`; when only one finder fails, the survivor's evidence is
+still judged and the refusal names the failed finder's cause beside the gap.
+`no-review-artifact` prints the agent's permission flag from the table above as
+a re-run line; verdict never adds it to the argv itself.
+
 Plus the shared codes: `missing-bundle` (fetch first), `bad-flags` (no
 `--agent`, a `--rounds` outside 1–5, `--print` with `--rounds` greater than 1, or
 `--stage` without `--print` and `--recipe`, outside the plan's stages, or
@@ -5647,7 +5656,9 @@ repeatable `--ignore <glob>`, or a `.verdict/ignore` pattern committed on the
 base revision, because the ignore file is read from the base snapshot and a rule
 added on the head never governs its own review. The cap is measured after those
 exclusions. Nothing auto-narrows, and paths after `--` on `fetch-local` are git
-pathspecs that select the files to review: they narrow, they never exclude.
+pathspecs that select the files to review: they narrow, they never exclude. A
+bare word before `--` is a usage error (exit 2), so an unquoted glob or variable
+the shell expanded cannot narrow a review silently.
 Deliberate exceptions only: `REVIEW_MAX_BYTES=<n>` env
 or the typed `max_bytes` default in `.verdict/config.json` (env wins, then the
 typed default, then 512000; either override disables chunking outright and the

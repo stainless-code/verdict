@@ -34,6 +34,7 @@ type coordinator struct {
 	plan        *jq.Obj
 	binding     *jq.Obj
 	response    *core.RunResponse
+	causes      map[string]*core.RefusalError
 	dir         string
 	source      string
 	id          string
@@ -252,6 +253,7 @@ func (c *coordinator) reuseDiscovery(index int) *core.RefusalError {
 // only its own outcome, so no two goroutines share a field.
 type discoveryOutcome struct {
 	ref      *core.RefusalError
+	cause    *core.RefusalError
 	response *core.RunResponse
 	review   *jq.Obj
 	worker   *state
@@ -275,7 +277,7 @@ func (c *coordinator) discoverPhase(ctx context.Context, index int, args *launch
 		return out
 	}
 	if out.ref != nil {
-		out.failure, out.ref = out.ref.Code, nil
+		out.failure, out.cause, out.ref = out.ref.Code, out.ref, nil
 	}
 	out.review = readDiscovery(args.abs)
 	if out.review == nil && out.failure == "" {
@@ -319,17 +321,24 @@ func (c *coordinator) phaseEnded(ctx context.Context) *core.RefusalError {
 }
 
 func (c *coordinator) failed(phase, code string) {
-	c.failures = append(c.failures, jq.NewObj("phase", phase, "code", code))
+	c.failures = append(c.failures, jq.NewObj(keyPhase, phase, "code", code))
 }
 
 // resolveFailure records what this attempt saw of one phase: a phase that
 // failed replaces the interruption's row for it, and a phase that succeeded
 // clears that row, so the record names each failing phase once and never keeps
 // a failure this attempt has already repaired.
-func (c *coordinator) resolveFailure(phase, code string) {
+func (c *coordinator) resolveFailure(phase, code string, cause *core.RefusalError) {
+	delete(c.causes, phase)
+	if cause != nil {
+		if c.causes == nil {
+			c.causes = map[string]*core.RefusalError{}
+		}
+		c.causes[phase] = cause
+	}
 	kept := make([]any, 0, len(c.failures)+1)
 	for _, row := range c.failures {
-		if jq.StrOf(readcommon.FieldOf(row, "phase")) != phase {
+		if jq.StrOf(readcommon.FieldOf(row, keyPhase)) != phase {
 			kept = append(kept, row)
 		}
 	}
@@ -424,10 +433,24 @@ func setManifestBudget(manifest *jq.Obj, recorded *core.ReviewBudget) {
 	manifest.Set("budget", core.Wire(recorded))
 }
 
+// causeLines names why each failed phase failed, in phase order, so a partial
+// execution's refusal carries the agent's own error beside the evidence gap it
+// left behind.
+func (c *coordinator) causeLines() string {
+	var sb strings.Builder
+	for _, row := range c.failures {
+		phase := jq.StrOf(readcommon.FieldOf(row, keyPhase))
+		if cause := c.causes[phase]; cause != nil {
+			sb.WriteString("\n" + phase + " " + cause.Code + ": " + cause.Message)
+		}
+	}
+	return sb.String()
+}
+
 func (c *coordinator) validateAggregate() *core.RefusalError {
 	execution := panelcore.CheckExecution(c.dir, nil)
 	if execution.Problem() != "" {
-		return c.st.refuse("review-insufficient", execution.Problem())
+		return c.st.refuse("review-insufficient", execution.Problem()+c.causeLines())
 	}
 	check, ref := repair.Check(c.dir, coordinatorBytes(c.review))
 	if ref != nil {
@@ -504,7 +527,7 @@ func (c *coordinator) recordDiscoveries(outcomes []discoveryOutcome, skipped []b
 		}
 		fatal = mergeFatal(fatal, outcomes[i].ref)
 		c.reviews[i] = outcomes[i].review
-		c.resolveFailure(finderPhase(i), outcomes[i].failure)
+		c.resolveFailure(finderPhase(i), outcomes[i].failure, outcomes[i].cause)
 		if outcomes[i].response != nil {
 			c.response = outcomes[i].response
 		}
@@ -512,7 +535,29 @@ func (c *coordinator) recordDiscoveries(outcomes []discoveryOutcome, skipped []b
 	if ref := c.persistProgress(); ref != nil {
 		return ref
 	}
+	if fatal == nil {
+		fatal = c.allFindersFailed(outcomes, skipped)
+	}
 	return fatal
+}
+
+// allFindersFailed reports the agent's own refusal when no finder left a
+// review. A partial execution still has evidence to judge, so it keeps its
+// review-insufficient verdict; an execution with nothing to judge is not an
+// evidence gap, it is the agent failing, and the operator needs that failure's
+// code, message, and exit status to act on it.
+func (c *coordinator) allFindersFailed(outcomes []discoveryOutcome, skipped []bool) *core.RefusalError {
+	if slices.ContainsFunc(c.reviews, func(review *jq.Obj) bool { return review != nil }) {
+		return nil
+	}
+	for i := range outcomes {
+		if skipped[i] || outcomes[i].cause == nil {
+			continue
+		}
+		c.response = outcomes[i].response
+		return outcomes[i].cause
+	}
+	return nil
 }
 
 // canceledRefusal reports the operator's cancel, which outranks every phase's
@@ -668,7 +713,7 @@ func (c *coordinator) executionResponse() {
 	failures := make([]core.RunPhaseFailure, 0, len(c.failures))
 	for _, row := range c.failures {
 		failures = append(failures, core.RunPhaseFailure{
-			Phase: jq.StrOf(readcommon.FieldOf(row, "phase")), Code: jq.StrOf(readcommon.FieldOf(row, "code")),
+			Phase: jq.StrOf(readcommon.FieldOf(row, keyPhase)), Code: jq.StrOf(readcommon.FieldOf(row, "code")),
 		})
 	}
 	c.response.Data.Execution = &core.RunExecution{

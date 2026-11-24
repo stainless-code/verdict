@@ -940,18 +940,38 @@ func (st *state) verdict(ctx context.Context, args *launchArgs, res *core.Result
 			"%s ran past the %ds watchdog and was killed (raise --timeout, or pass its fast flags after '--')",
 			args.def.Name, args.timeout))
 	case res.ExitCode != 0:
-		return st.refuse(codeAgentFailed, fmt.Sprintf("%s exited %d", args.def.Name, res.ExitCode))
+		return st.refuse(codeAgentFailed, fmt.Sprintf("%s exited %d", args.def.Name, res.ExitCode)+st.agentOutput(args, res))
 	}
-	return st.artifactRefusal(args, art)
+	return st.artifactRefusal(args, art, res)
+}
+
+// messageTailCap bounds the agent output a refusal message carries. The full
+// stream stays in .run.out and the recorded tail in launcher.json; the message
+// only has to name the cause (an HTTP 402, a refused write) at a glance.
+const messageTailCap = 600
+
+// agentOutput is the tail of what the agent printed, scrubbed of the
+// operator's credentials, formatted to append to a refusal message. The agent's
+// own error — a provider's out-of-credit reply, a refused write — is printed
+// there, and without it every failure reads as the same bare exit code. It is
+// empty when the agent printed nothing.
+func (st *state) agentOutput(args *launchArgs, res *core.Result) string {
+	_, argSecrets := st.displayArgv(args)
+	scrubbed := scrubSecrets(res.Stdout+res.Stderr, st.req.Environ, argSecrets)
+	tail := strings.TrimSpace(strings.ToValidUTF8(tailOf(scrubbed, messageTailCap), ""))
+	if tail == "" {
+		return ""
+	}
+	return "\nagent output (tail, redacted):\n" + tail
 }
 
 // artifactRefusal is the artifact contract: exactly one fresh review file,
 // at the bundle's review path, written after the launch record.
-func (st *state) artifactRefusal(args *launchArgs, art artifactState) *core.RefusalError {
+func (st *state) artifactRefusal(args *launchArgs, art artifactState, res *core.Result) *core.RefusalError {
 	switch {
 	case !art.exists:
 		return st.refuse(codeNoArtifact, fmt.Sprintf(
-			"%s exited 0 but wrote no %s", args.def.Name, args.artifact))
+			"%s exited 0 but wrote no %s", args.def.Name, args.artifact)+st.agentOutput(args, res))
 	case !art.regular:
 		return st.refuse(codeNoArtifact, args.artifact+" is not a regular file — the artifact must be one JSON file")
 	case !art.fresh:
