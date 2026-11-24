@@ -2903,7 +2903,11 @@ concurrent triage or a second job on the same bundle also answers
 `store-busy` until the first job settles. Status flows `queued`, `running`,
 then `succeeded`, `failed`, or `cancelled`, streamed on the existing
 `/v1/events` channel as `jobs` SSE events and rendered in the Detail drawer
-with a `Cancel` while active and the result or refusal once settled. The
+with a `Cancel` while active and the result or refusal once settled.
+The stream carries the latest job state, not every transition: each client
+holds one buffered frame and a slower reader loses the older one, so `queued`
+or `running` can be skipped, and with several jobs active even a terminal frame
+can be replaced. Fetch the job for its current snapshot. The
 Detail view shows the bundle-level `Reproduce in sandbox` and
 `Preview PR post` buttons with the live drawer only when `interactive` is
 advertised and the page is not `static`. Every `POST` job route is gated
