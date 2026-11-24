@@ -64,7 +64,6 @@ func RunGroup(ctx context.Context, req *Request, dir, now string) (*Response, *c
 	if ref := st.bindSandbox(ctx, run); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	defer run.sandbox.close()
 	return st.executeValidation(ctx, dir, now, req, run)
 }
 
@@ -190,12 +189,13 @@ func (st *state) executeValidation(ctx context.Context, dir, now string, req *Re
 	receipt := core.ValidationReceipt{
 		SchemaVersion: validationSchema, Run: run.rs.Name, InputsSHA256: run.rs.InputsSHA256,
 		Group: run.group.ID, ReviewedHead: run.reviewedHead, ExecutionHead: run.reviewedHead,
-		RepoRoot: run.root, Command: req.Command, At: now, Sandboxed: run.sandbox != nil,
+		RepoRoot: run.root, Command: req.Command, At: now, Sandboxed: run.sandbox.full(),
 		SandboxMechanism: run.sandbox.name(),
 	}
 	st.human(fmt.Sprintf("» group validation %s: %s in %s (timeout %ss)",
 		run.group.ID, req.Command, run.root, req.TimeoutRaw))
 	res, runRef := runCommand(ctx, run.commander, req.Command, run.timeout, run.root, st.childEnv(), run.sandbox)
+	st.releaseSandbox(run.sandbox)
 	st.applyExecution(ctx, req, &receipt, res, runRef)
 	after, headRef := gitHead(ctx, run.commander, run.root)
 	st.applyPostChecks(dir, run, &receipt, after, headRef)

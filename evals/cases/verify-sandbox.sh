@@ -2,7 +2,8 @@
 #
 # verify --sandbox: on a host that can enforce a mechanism the command runs
 # contained — bubblewrap on Linux (no network, hidden credentials, writable
-# repo, private /tmp), sandbox-exec on macOS (no network, loopback included) —
+# repo, private /tmp), sandbox-exec on macOS (no network, loopback included;
+# hidden credentials, no writes outside the repo and a private TMPDIR) —
 # and on every other host the run refuses sandbox-unavailable and executes
 # nothing. The refusal leg is a real leg, never a skip.
 #
@@ -15,18 +16,23 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 . "$HERE/../lib/common.sh"
 
 DIR="$EVAL_SANDBOX/.verdict/state/5201"
-UNIQ="$$"
+# Every path this case puts in the shared host /tmp lives under one fresh
+# mktemp directory (or carries its random suffix), never a PID a parallel run
+# could reuse.
+HOSTTMPDIR="$(mktemp -d /tmp/verdict-sandbox.XXXXXX)"
+UNIQ="${HOSTTMPDIR##*.}"
 HITS="$EVAL_SANDBOX/listener-hits.log"
-HOST_SENTINEL="/tmp/verdict-host-sentinel.$$"
+HOST_SENTINEL="$HOSTTMPDIR/host-sentinel"
 READY="$EVAL_SANDBOX/listener-ready"
 SERVER="$EVAL_SANDBOX/listener.js"
 FAKEHOME="$EVAL_SANDBOX/fake-home"
-PAYLOAD_SRC="/tmp/verify-fuzz-src.$UNIQ"
-PAYLOAD_BIN="/tmp/verify-fuzz-fetched.$UNIQ"
+MOVEDGH="$EVAL_SANDBOX/moved-gh"
+PAYLOAD_SRC="$HOSTTMPDIR/verify-fuzz-src"
+PAYLOAD_BIN="$HOSTTMPDIR/verify-fuzz-fetched"
 mkdir -p "$DIR" \
   "$FAKEHOME/.aws" "$FAKEHOME/.ssh" "$FAKEHOME/.config/gh" \
   "$FAKEHOME/.docker" "$FAKEHOME/.kube" "$FAKEHOME/.config/gcloud" \
-  "$FAKEHOME/.azure" "$FAKEHOME/.gnupg"
+  "$FAKEHOME/.azure" "$FAKEHOME/.gnupg" "$FAKEHOME/.terraform.d" "$FAKEHOME/.cargo" "$MOVEDGH"
 : > "$HITS"
 printf 'aws_secret_access_key = sandbox-sentinel\n' > "$FAKEHOME/.aws/credentials"
 printf 'ssh-rsa sandbox-sentinel\n' > "$FAKEHOME/.ssh/id_rsa"
@@ -40,6 +46,12 @@ printf '{"accessToken":"sandbox-sentinel"}\n' > "$FAKEHOME/.azure/accessTokens.j
 printf 'sandbox-sentinel\n' > "$FAKEHOME/.gnupg/secring.gpg"
 printf '//registry.npmjs.org/:_authToken=sandbox-sentinel\n' > "$FAKEHOME/.npmrc"
 printf '[pypi]\nusername = sandbox-sentinel\n' > "$FAKEHOME/.pypirc"
+printf '{"credentials":{"app.terraform.io":{"token":"sandbox-sentinel"}}}\n' > "$FAKEHOME/.terraform.d/credentials.tfrc.json"
+printf '[registry]\ntoken = "sandbox-sentinel"\n' > "$FAKEHOME/.cargo/credentials.toml"
+printf 'sandbox-sentinel\n' > "$FAKEHOME/.vault-token"
+# A store moved by an environment variable the child never receives: only the
+# verdict process sees GH_CONFIG_DIR, and the sandbox must still hide it.
+printf 'github.com:\n  oauth_token: sandbox-sentinel\n' > "$MOVEDGH/hosts.yml"
 
 listener_stop() {
   if [ -n "${LISTENER_PID:-}" ]; then
@@ -54,7 +66,8 @@ listener_stop() {
   if [ -n "${SOCKRUN:-}" ]; then
     rm -rf "$SOCKRUN"
   fi
-  rm -f "$PAYLOAD_SRC" "$PAYLOAD_BIN" "$HOST_SENTINEL"
+  rm -rf "$HOSTTMPDIR"
+  rm -f "/tmp/sandbox-tmp.$UNIQ.txt"
 }
 trap listener_stop EXIT
 
@@ -282,8 +295,8 @@ else
     bad "the shared host /tmp is readable inside the sandbox"
   fi
   rm -f "$HOST_SENTINEL"
-  mkpatch "printf nope > /tmp/sandbox-tmp.$UNIQ.txt 2>/dev/null && printf leak > sandbox-hosttmp.txt || printf denied > sandbox-hosttmp.txt"
-  rm -f "$EVAL_SANDBOX/sandbox-hosttmp.txt" "/tmp/sandbox-tmp.$UNIQ.txt"
+  mkpatch "printf nope > $HOSTTMPDIR/written.txt 2>/dev/null && printf leak > sandbox-hosttmp.txt || printf denied > sandbox-hosttmp.txt"
+  rm -f "$EVAL_SANDBOX/sandbox-hosttmp.txt" "$HOSTTMPDIR/written.txt"
   run_review verify acme/app 5201 --sandbox --json --timeout 10
   assert_exit "sandboxed host /tmp write run" 0
   if [ -f "$EVAL_SANDBOX/sandbox-hosttmp.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-hosttmp.txt")" = "denied" ]; then
@@ -291,11 +304,25 @@ else
   else
     bad "the shared host /tmp is writable inside the sandbox"
   fi
-  if [ ! -e "/tmp/sandbox-tmp.$UNIQ.txt" ]; then
+  if [ ! -e "$HOSTTMPDIR/written.txt" ]; then
     good "the host /tmp saw no sandboxed write"
   else
     bad "the host /tmp saw the sandboxed write"
-    rm -f "/tmp/sandbox-tmp.$UNIQ.txt"
+  fi
+  # Every write outside the reviewed root and the private TMPDIR is denied,
+  # not only the temp roots: a sibling of the repo is the persistence shape (a
+  # LaunchAgent, a shell rc file) the profile closes.
+  OUTSIDE="$(dirname "$EVAL_SANDBOX")/verdict-outside-$UNIQ.txt"
+  export VERDICT_SANDBOX_OUTSIDE="$OUTSIDE"
+  mkpatch 'printf nope > "$VERDICT_SANDBOX_OUTSIDE" 2>/dev/null && printf leak > sandbox-outside.txt || printf denied > sandbox-outside.txt'
+  rm -f "$EVAL_SANDBOX/sandbox-outside.txt" "$OUTSIDE"
+  run_review verify acme/app 5201 --sandbox --env-allowlist VERDICT_SANDBOX_OUTSIDE --json --timeout 10
+  assert_exit "sandboxed write outside the root" 0
+  if [ -f "$EVAL_SANDBOX/sandbox-outside.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-outside.txt")" = "denied" ] && [ ! -e "$OUTSIDE" ]; then
+    good "a write outside the reviewed root is denied inside the sandbox"
+  else
+    bad "a write outside the reviewed root landed ($(cat "$EVAL_SANDBOX/sandbox-outside.txt" 2>/dev/null || echo missing))"
+    rm -f "$OUTSIDE"
   fi
 fi
 
@@ -312,10 +339,16 @@ HOME="$FAKEHOME"
 mkpatch 'h=$(printenv HOME); a=.aws; b=.ssh; c=.config; g=gh; [ -e "$h/$a/credentials" ] || [ -e "$h/$b/id_rsa" ] || [ -e "$h/$c/$g/hosts.yml" ] && printf leak > sandbox-cred.txt || printf hidden > sandbox-cred.txt'
 run_review verify acme/app 5201 --sandbox --json --timeout 10
 assert_exit "sandboxed credential dirs run" 0
-mkpatch 'h=$(printenv HOME); n=.netrc; g=.git-credentials; d=.docker; k=.kube; c=.config; cl=gcloud; az=.azure; gp=.gnupg; m=.npmrc; p=.pypirc; f=config.json; a=application_default_credentials.json; t=accessTokens.json; s=secring.gpg; [ -s "$h/$n" ] || [ -s "$h/$g" ] || [ -s "$h/$d/$f" ] || [ -s "$h/$k/$f" ] || [ -s "$h/$c/$cl/$a" ] || [ -s "$h/$az/$t" ] || [ -s "$h/$gp/$s" ] || [ -s "$h/$m" ] || [ -s "$h/$p" ] && printf leak > sandbox-cred-files.txt || printf hidden > sandbox-cred-files.txt'
+mkpatch 'h=$(printenv HOME); n=.netrc; g=.git-credentials; d=.docker; k=.kube; c=.config; cl=gcloud; az=.azure; gp=.gnupg; m=.npmrc; p=.pypirc; f=config.json; a=application_default_credentials.json; t=accessTokens.json; s=secring.gpg; tf=.terraform.d; tfc=credentials.tfrc.json; cg=.cargo; cgc=credentials.toml; v=.vault-token; [ -s "$h/$n" ] || [ -s "$h/$g" ] || [ -s "$h/$d/$f" ] || [ -s "$h/$k/$f" ] || [ -s "$h/$c/$cl/$a" ] || [ -s "$h/$az/$t" ] || [ -s "$h/$gp/$s" ] || [ -s "$h/$m" ] || [ -s "$h/$p" ] || [ -s "$h/$tf/$tfc" ] || [ -s "$h/$cg/$cgc" ] || [ -s "$h/$v" ] && printf leak > sandbox-cred-files.txt || printf hidden > sandbox-cred-files.txt'
 run_review verify acme/app 5201 --sandbox --json --timeout 10
-HOME="$OLD_HOME"
 assert_exit "sandboxed credential files run" 0
+# GH_CONFIG_DIR rides only the verdict process environment (it is not on the
+# child allowlist), so the hidden store proves the host environment is read.
+mkpatch 'm=moved-gh; y=hosts.yml; [ -s "$m/$y" ] && printf leak > sandbox-cred-moved.txt || printf hidden > sandbox-cred-moved.txt'
+rm -f "$EVAL_SANDBOX/sandbox-cred-moved.txt"
+GH_CONFIG_DIR="$MOVEDGH" run_review verify acme/app 5201 --sandbox --json --timeout 10
+HOME="$OLD_HOME"
+assert_exit "sandboxed relocated credential run" 0
 if [ -f "$EVAL_SANDBOX/sandbox-cred.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-cred.txt")" = "hidden" ]; then
   good "the credential dir is empty inside the sandbox"
 else
@@ -325,6 +358,11 @@ if [ -f "$EVAL_SANDBOX/sandbox-cred-files.txt" ] && [ "$(cat "$EVAL_SANDBOX/sand
   good "the credential files are empty inside the sandbox"
 else
   bad "a credential file is visible inside the sandbox ($(cat "$EVAL_SANDBOX/sandbox-cred-files.txt" 2>/dev/null || echo missing))"
+fi
+if [ -f "$EVAL_SANDBOX/sandbox-cred-moved.txt" ] && [ "$(cat "$EVAL_SANDBOX/sandbox-cred-moved.txt")" = "hidden" ]; then
+  good "a store moved by a host-only GH_CONFIG_DIR is hidden inside the sandbox"
+else
+  bad "the GH_CONFIG_DIR store is visible inside the sandbox ($(cat "$EVAL_SANDBOX/sandbox-cred-moved.txt" 2>/dev/null || echo missing))"
 fi
 
 }
@@ -452,8 +490,8 @@ while IFS="$TAB" read -r id _ mode cmd; do
   case "$id" in F-X1[2-8]) ;; *) continue ;; esac
   [ "$mode" = "xfail" ] || continue
   cmd="${cmd//127.0.0.1:9/127.0.0.1:$PORT}"
-  cmd="${cmd//verify-fuzz-src/verify-fuzz-src.$UNIQ}"
-  cmd="${cmd//verify-fuzz-fetched/verify-fuzz-fetched.$UNIQ}"
+  cmd="${cmd//\/tmp\/verify-fuzz-src/$PAYLOAD_SRC}"
+  cmd="${cmd//\/tmp\/verify-fuzz-fetched/$PAYLOAD_BIN}"
   : > "$HITS"
   mkpatch "$cmd"
   run_review verify acme/app 5201 --sandbox --json --timeout 10

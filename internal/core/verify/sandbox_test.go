@@ -41,20 +41,22 @@ func (c *sandboxCommander) Run(_ context.Context, cmd *core.Command) (core.Resul
 	return core.Result{}, nil
 }
 
-// sandboxHomeFixture builds every credential path the wrapper hides and
-// returns their home.
+// sandboxHomeFixture builds credential paths of both kinds the wrapper hides
+// and returns their home.
 func sandboxHomeFixture(t *testing.T) string {
 	t.Helper()
 	home := t.TempDir()
 	for _, rel := range []string{
 		".aws", ".ssh", filepath.Join(".config", "gh"), ".docker", ".kube",
-		filepath.Join(".config", "gcloud"), ".azure", ".gnupg",
+		filepath.Join(".config", "gcloud"), ".azure", ".gnupg", ".terraform.d", ".cargo",
 	} {
 		if err := os.MkdirAll(filepath.Join(home, rel), 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
-	for _, rel := range []string{".netrc", ".git-credentials", ".npmrc", ".pypirc"} {
+	for _, rel := range []string{
+		".netrc", ".git-credentials", ".npmrc", ".pypirc", filepath.Join(".cargo", "credentials.toml"), ".vault-token",
+	} {
 		if err := os.WriteFile(filepath.Join(home, rel), []byte("sandbox-sentinel\n"), 0o600); err != nil {
 			t.Fatal(err)
 		}
@@ -67,13 +69,17 @@ func sandboxRequest(env []string, cmdr core.Commander) *verifycore.Request {
 		Runtime: &core.Runtime{Now: testkit.FixedNow, Progress: &testkit.Collector{}, Commander: cmdr},
 		Repo:    "acme/app", Pr: "5201",
 	}
-	return &verifycore.Request{
+	// The account home is pinned to the fake HOME so the credential mounts
+	// stay a literal expectation on every host.
+	req := &verifycore.Request{
 		ReadRequest: read,
 		TimeoutRaw:  "10",
 		Sandbox:     true,
 		Environ:     env,
 		JSONMode:    true,
 	}
+	verifycore.SetAccountHomeForTest(req, envValue(env, "HOME"))
+	return req
 }
 
 // wantVarRunMount mirrors the host fact the wrapper reads, so a supported
@@ -129,6 +135,9 @@ func wantProbeArgv(root, home string) []string {
 		"--ro-bind", "/dev/null", filepath.Join(home, ".git-credentials"),
 		"--ro-bind", "/dev/null", filepath.Join(home, ".npmrc"),
 		"--ro-bind", "/dev/null", filepath.Join(home, ".pypirc"),
+		"--tmpfs", filepath.Join(home, ".terraform.d"),
+		"--ro-bind", "/dev/null", filepath.Join(home, ".cargo", "credentials.toml"),
+		"--ro-bind", "/dev/null", filepath.Join(home, ".vault-token"),
 		"--unshare-net",
 		"--new-session",
 		"--die-with-parent",
@@ -152,12 +161,19 @@ func envValue(env []string, name string) string {
 }
 
 // checkSeatbeltProfile pins the generated macOS rules against literal inputs:
-// network denied, the shared host temp roots denied, the reviewed root and the
-// private TMPDIR allowed, and every credential path under HOME denied.
+// network, the keychain broker, and every write denied up front, the shared
+// host temp roots denied, the reviewed root and the private TMPDIR allowed,
+// and every credential path under HOME denied.
 func checkSeatbeltProfile(t *testing.T, profile, root, home string) {
 	t.Helper()
+	const header = `(version 1)(allow default)(deny network*)` +
+		`(deny mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc"))` +
+		`(deny file-write* (subpath "/"))`
+	if !strings.HasPrefix(profile, header) {
+		t.Errorf("profile does not open with %q:\n%s", header, profile)
+	}
 	for _, want := range []string{
-		"(version 1)(allow default)(deny network*)",
+		`(deny file-read* file-write* (subpath "` + home + `/.vault-token"))`,
 		`(deny file-read* file-write* (subpath "` + home + `/.ssh"))`,
 		`(deny file-read* file-write* (subpath "` + home + `/.aws"))`,
 		`(deny file-read* file-write* (subpath "` + home + `/.netrc"))`,
@@ -213,10 +229,13 @@ func requireSeatbeltPrivateEnv(t *testing.T, probe, run *core.Command, profile s
 	if private == "" || private == "/tmp" || private == os.TempDir() {
 		t.Fatalf("probe TMPDIR = %q, want a per-run private directory", private)
 	}
-	for _, name := range []string{"TMPDIR", "TMP", "TEMP"} {
+	for _, name := range []string{"TMPDIR", "TMP", "TEMP", "GOTMPDIR"} {
 		if got := envValue(run.Env, name); got != private {
 			t.Errorf("run %s = %q, want %q", name, got, private)
 		}
+	}
+	if got := envValue(run.Env, "GOCACHE"); got != private+"/go-build" {
+		t.Errorf("run GOCACHE = %q, want %q", got, private+"/go-build")
 	}
 	if !strings.Contains(profile, `(allow file-read* file-write* (subpath "`+private+`"))`) {
 		t.Errorf("profile does not allow the private TMPDIR %q:\n%s", private, profile)
@@ -524,11 +543,12 @@ func requireUnshareArgv(t *testing.T, cmdr *sandboxCommander) {
 }
 
 // requireNetworkOnlyRecord pins the data fields and the warning a reader needs
-// to tell the network-only run from the full shape.
+// to tell the network-only run from the full shape: the mechanism is named,
+// and `sandboxed` stays false because it means the full shape.
 func requireNetworkOnlyRecord(t *testing.T, resp *verifycore.Response) {
 	t.Helper()
-	if !resp.Data.Sandboxed || resp.Data.SandboxMechanism != "unshare-net" {
-		t.Errorf("data sandboxed/mechanism = %v/%q, want true/unshare-net", resp.Data.Sandboxed, resp.Data.SandboxMechanism)
+	if resp.Data.Sandboxed || resp.Data.SandboxMechanism != "unshare-net" {
+		t.Errorf("data sandboxed/mechanism = %v/%q, want false/unshare-net", resp.Data.Sandboxed, resp.Data.SandboxMechanism)
 	}
 	if !hasNetworkOnlyWarning(resp.Warnings) {
 		t.Errorf("warnings = %v, want the no-mount network-only warning", resp.Warnings)
@@ -542,8 +562,8 @@ func requireNetworkOnlyPatch(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(raw), `"sandboxMechanism": "unshare-net"`) {
-		t.Errorf("patch.json does not record unshare-net: %s", raw)
+	if !strings.Contains(string(raw), `"sandboxMechanism": "unshare-net"`) || strings.Contains(string(raw), `"sandboxed"`) {
+		t.Errorf("patch.json = %s, want unshare-net recorded without sandboxed", raw)
 	}
 }
 
@@ -587,6 +607,7 @@ func runSandboxedGroup(t *testing.T) (string, string, *verifycore.Response, *gro
 	req := groupRequest(root, "group-a1", "go test ./...", cmdr)
 	req.Sandbox = true
 	req.Environ = []string{"PATH=/bin", "HOME=" + home}
+	verifycore.SetAccountHomeForTest(req, home)
 	resp, ref := verifycore.Run(context.Background(), req)
 	if ref != nil {
 		t.Fatalf("Run: %v", ref)

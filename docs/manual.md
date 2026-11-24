@@ -1339,7 +1339,8 @@ The command runs once through the same allowlist and watchdog as patch
 verify, and every outcome leaves a receipt — a failure is never dropped.
 Add `--sandbox` (the full enforced shape) or `--sandbox-network-only` (the
 Linux `unshare --net` fallback, network isolation alone) to either form; the
-receipt then records `"sandboxed": true` and its `sandbox_mechanism`. The
+receipt then records its `sandbox_mechanism`, plus `"sandboxed": true` for the
+full shape only. The
 receipt is `<bundle>/validation-<group>.json` (group ids are lowercase
 `[a-z0-9-]`, at most 64 chars, so the path stays confined), read back through
 a 64 KiB cap and written atomically. It records the run name, `inputs_sha256`, group id,
@@ -4695,8 +4696,9 @@ runs. The boundary is
 the enforced sandbox below, which runs after this gate — a refused spelling
 refuses with or without `--sandbox`: `verify --sandbox`
 runs the command under `bubblewrap` on Linux (the full mount and namespace
-shape) and under `sandbox-exec` on macOS (no network, credential paths and the
-shared host temp roots denied, a private `TMPDIR`). A host that can enforce
+shape) and under `sandbox-exec` on macOS (no network, no keychain broker,
+writes only to the reviewed root and a private `TMPDIR`, credential paths and
+the shared host temp roots denied). A host that can enforce
 neither refuses `sandbox-unavailable` and runs nothing, so `--sandbox` never
 degrades to an unwrapped run.
 
@@ -4727,41 +4729,95 @@ its own PID namespace, and no route out:
   `verdict` dies.
 
 Each credential path below, when it exists on the host, is replaced before
-the command runs:
-directories (`~/.aws`, `~/.ssh`, `~/.config/gh`, `~/.docker`, `~/.kube`,
-`~/.config/gcloud`, `~/.azure`, `~/.gnupg`) with an empty `--tmpfs`, and
-files (`~/.netrc`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`) with a
-read-only bind of `/dev/null`. A missing entry adds no mount. `/var/run` is
-shadowed too when the host ships it as a real directory; on the distros
-where it is a symlink to `/run`, the `/run` mount covers it.
+the command runs: a directory with an empty `--tmpfs`, a file with a
+read-only bind of `/dev/null`. One table serves both platforms:
 
-On macOS `sandbox-exec` compiles a per-run Seatbelt profile. It keeps the
-network denial — `(version 1)(allow default)(deny network*)`, so every
-`bind()` and `connect()` fails, loopback and unix sockets included — and adds
-the filesystem half Seatbelt can express:
+- **Under every home** — the child's `HOME`, the `HOME` of the `verdict`
+  process when it differs, and the account home from the passwd database
+  (`os/user`), so pointing `HOME` elsewhere never leaves the real stores
+  readable: `~/.aws`, `~/.ssh`, `~/.config/gh`, `~/.docker`, `~/.kube`,
+  `~/.config/gcloud`, `~/.azure`, `~/.gnupg`, `~/.netrc`,
+  `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`, `~/.terraform.d`,
+  `~/.cargo/credentials.toml`, `~/.cargo/credentials`, `~/.vault-token`, and
+  `~/Library/Keychains`.
+- **Where the environment moves a store** — read from both the child
+  environment and the `verdict` process environment, so a variable the
+  allowlist drops still names a store on disk: `$XDG_CONFIG_HOME/gh`,
+  `$GH_CONFIG_DIR`, `$AWS_SHARED_CREDENTIALS_FILE`, `$AWS_CONFIG_FILE`,
+  `$DOCKER_CONFIG`, every `:`-separated entry of `$KUBECONFIG`, and
+  `$CLOUDSDK_CONFIG`. A relative value names nothing.
 
+A missing entry adds no mount. A reviewed root inside one of these paths
+refuses `sandbox-unavailable`, because hiding the path would hide the code
+and allowing the root would expose the credential. `/var/run` is shadowed
+too when the host ships it as a real directory; on the distros where it is
+a symlink to `/run`, the `/run` mount covers it.
+
+On macOS `sandbox-exec` compiles a per-run Seatbelt profile. Seatbelt applies
+the last matching rule, so the profile opens with three denials and then
+re-allows only what the command needs:
+
+```text
+(version 1)(allow default)(deny network*)
+(deny mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc"))
+(deny file-write* (subpath "/"))
+(deny file-read* file-write* (subpath "<each shared host temp root>"))
+(allow file-read* file-write* (subpath "<private TMPDIR>") (subpath "<reviewed root>"))
+(allow file-read-metadata (literal "<each ancestor of those two>"))
+(allow file-write* (literal "/dev/null") (literal "/dev/tty") (regex #"^/dev/fd/"))
+(deny file-read* file-write* (subpath "<each credential path>"))
+```
+
+- **No network.** Every `bind()` and `connect()` fails, loopback and unix
+  sockets included.
+- **No keychain.** The keychain broker (`com.apple.SecurityServer`) is
+  unreachable, so `security find-generic-password -w` — the way `gh`, `git`
+  credential helpers, and most CLIs keep tokens on a Mac — returns nothing,
+  and `~/Library/Keychains` is in the credential table besides.
+- **No writes outside the run.** Every write is denied except under the
+  reviewed root (as written and as its `realpath`), the private `TMPDIR`,
+  and `/dev/null`, `/dev/tty`, and `/dev/fd/*` (which `/dev/stdout` and
+  `/dev/stderr` resolve to). The command cannot plant a LaunchAgent, a shell
+  rc file, or anything else outside the run that would execute unsandboxed
+  later.
 - **Credentials denied.** Every path in the credential table above is denied
-  for reads and writes with `(deny file-read* file-write* (subpath ...))`,
-  under the literal `HOME`, its `realpath`, and every credential entry's own
-  `realpath`, so a symlinked home cannot slip past the policy. A quote or
-  backslash is escaped into the profile; a path carrying a control character
-  (a newline included) refuses `sandbox-unavailable` rather than build a
-  profile it cannot represent.
+  for reads and writes under every home, each entry as written and as its
+  `realpath`, after every allow, so a checkout under `HOME` cannot re-expose
+  one. A quote or backslash is escaped into the profile; a path carrying a
+  control character (a newline included) refuses `sandbox-unavailable` rather
+  than build a profile it cannot represent.
 - **A private `TMPDIR`.** Each run gets a fresh `0700` directory (created with
-  `MkdirTemp` and removed when the run ends), exported as `TMPDIR`, `TMP` and
-  `TEMP`, and allowed read/write. The profile denies the shared host temp
-  roots (`/tmp`, `/private/tmp`, `/var/tmp`, `/private/var/tmp`, and the host
-  `TMPDIR`); the private directory is allowed after them, so a sibling file in
-  the host temp trees stays unreadable and unwritable.
-- **The reviewed root stays writable.** The reviewed root and its `realpath`
-  are allowed read/write, and the credential denials come last, so a checkout
-  under `HOME` cannot re-expose one.
+  `MkdirTemp`), exported as `TMPDIR`, `TMP`, `TEMP`, and `GOTMPDIR`, with
+  `GOCACHE` at `<TMPDIR>/go-build` and `XDG_CACHE_HOME` at `<TMPDIR>/cache`,
+  so `go build`/`go test` and XDG-aware tools keep a writable cache. The shared
+  host temp roots (`/tmp`, `/private/tmp`, `/var/tmp`, `/private/var/tmp`, and
+  the host `TMPDIR`) stay denied for reads and writes; only the bare `stat`
+  of the directories above the root and the private directory is allowed, so
+  `realpath` and git's repository discovery work for a checkout under `/tmp`
+  while listing it stays denied. When the run ends the directory is
+  re-permissioned (directories only, symlinks never followed) and removed; a
+  removal that fails surfaces as a `sandbox cleanup:` warning (and in
+  `warnings` under `--json`) instead of being dropped.
+
+A toolchain whose cache lives elsewhere under `HOME` (npm, pip, cargo,
+gradle) fails with `Operation not permitted` on its first write. Point it
+into the private directory from the command itself, for example
+`npm_config_cache="$TMPDIR/npm" npm test` or
+`PIP_CACHE_DIR="$TMPDIR/pip" pytest`, or keep the cache inside the reviewed
+root.
+
+**The reviewed root stays writable on both platforms.** Whatever the command
+writes there — `.git/hooks/*`, `.git/config` (`core.hooksPath`,
+`core.fsmonitor`), a `Makefile`, a `package.json` script — runs later, outside
+any sandbox, when you or your tools act on that checkout, and `git status`
+does not show changes under `.git/`. Verify a hostile PR in a throwaway
+checkout or worktree, and discard it afterwards instead of reusing it.
 
 Seatbelt is deprecated by Apple and has no mount or PID namespace. On macOS the
-child still sees the rest of the host filesystem, the host process tree, and
-`/run`-style sockets; those denials are policy, not private mounts. Full mount
-and PID isolation on a macOS host needs a Linux VM or container running the
-`bwrap` recipe below.
+child can still read the rest of the host filesystem outside the denied paths
+and see the host process tree; those denials are policy, not private mounts.
+Full mount and PID isolation on a macOS host needs a Linux VM or container
+running the `bwrap` recipe below.
 
 #### Network-only Linux fallback: `--sandbox-network-only`
 
@@ -4776,13 +4832,17 @@ verdict verify owner/repo 123 --sandbox-network-only
 Linux runs the command under
 `unshare --user --map-root-user --net -- bash -c <cmd>` after probing the same
 argv with `true`. It creates a user namespace and a network namespace and
-nothing else: **no mount, filesystem, or PID isolation**. The credential paths,
-the host `/tmp`, the host `/proc`, and `/run` sockets stay visible, so a
-network-only run is not the hostile-PR sandbox. Every such run warns
-`network-only … no mount, filesystem, or PID isolation` on the diagnostic
-stream (and in `warnings` under `--json`) and records
-`sandboxMechanism: "unshare-net"`, so a later reader never mistakes it for the
-full shape.
+nothing else: **no mount, filesystem, or PID isolation**. The whole host
+filesystem stays readable and writable as you (credential paths and the host
+`/tmp` included), the host `/proc` exposes every same-uid process's
+environment, and a filesystem unix socket — `/run/docker.sock`, the
+`ssh-agent` socket in `$SSH_AUTH_SOCK`, a session bus — bypasses the network
+namespace entirely, because `connect()` on a path is a filesystem operation.
+A network-only run is not the hostile-PR sandbox. Every such run warns
+`network-only … no mount, filesystem, or PID isolation` (naming the sockets
+and `/proc`) on the diagnostic stream (and in `warnings` under `--json`) and
+records `sandboxMechanism: "unshare-net"` without `sandboxed`, so a later
+reader never mistakes it for the full shape.
 
 `--sandbox` and `--sandbox-network-only` are mutually exclusive: passing both
 refuses `bad-flags` (exit 1) before anything runs, because the caller must
@@ -4793,19 +4853,33 @@ is the stronger mechanism to use.
 Before anything executes it probes the same flags with a no-op; when the
 host is neither Linux nor macOS, `bwrap` or `sandbox-exec` is missing, the
 user-namespace restriction is on, or (on Linux or macOS) `HOME` is unset,
-`verify` refuses `sandbox-unavailable` naming the cause and runs nothing. It
+`verify` refuses `sandbox-unavailable` naming the cause and runs nothing; a
+runner that cannot spawn names the tool its mechanism needs (`bwrap` with the
+`--sandbox-network-only` alternative, `unshare`, or `/usr/bin/sandbox-exec`). It
 never silently falls back to an unsandboxed command. On macOS the probe is a
 smoke script (`bash -c` with `mktemp` inside the private `TMPDIR` and a read
 of the working directory), so a profile that compiles but breaks `bash` is a
 refusal, not a broken run.
 
-The patch record carries `"sandboxed": true` plus its mechanism
-(`"sandboxMechanism": "bwrap" | "sandbox-exec" | "unshare-net"`); the deep-group
-receipt carries `"sandboxed": true` and `sandbox_mechanism`, and the `--json`
-data adds `sandboxed` and `sandboxMechanism`; absent means the run was not
-sandboxed. The same opt-in reaches the MCP tool (`sandbox`, and the Linux
-`sandboxNetworkOnly`), the Go facade (`Sandbox`), and the TypeScript client
-(raw `--sandbox` argv).
+The records name the wrapper and say whether it was the full shape.
+`"sandboxed": true` means exactly the full shape — `bwrap` or `sandbox-exec` —
+and nothing weaker; `sandboxMechanism` names the wrapper that ran
+(`"bwrap" | "sandbox-exec" | "unshare-net"`). A network-only run records the
+mechanism and never `sandboxed`. The patch record carries `sandboxed` and
+`sandboxMechanism`, the deep-group receipt `sandboxed` and `sandbox_mechanism`,
+and the `--json` data `sandboxed` and `sandboxMechanism`; absent means the run
+was not wrapped. Each run rewrites both keys of the patch record, so neither
+survives from an earlier run; a refusal leaves the record byte-identical, so
+the keys it holds still describe the run whose `verifyExit` sits beside them.
+The same opt-in reaches the MCP tool (`sandbox`, and the Linux
+`sandboxNetworkOnly`), the Go facade (`Sandbox` and `SandboxNetworkOnly` in,
+`SandboxMechanism` out), and the TypeScript client (raw `--sandbox` argv).
+
+A deep-group receipt that carries `sandbox_mechanism` is newer than the
+release that introduced the key: an older `verdict` decodes receipts strictly
+and refuses it as unreadable. `schema_version` stays `"1"` because the key is
+optional and additive; re-run the group validation with the binary that will
+read the receipt.
 
 ### Recipe for other OSes (and for wrapping the whole review)
 

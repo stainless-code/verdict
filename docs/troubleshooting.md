@@ -1304,7 +1304,7 @@ Fix: pick another `--run <slug>`, or delete the existing run directory and mine 
 
 Cause: the sandbox cannot be enforced — on Linux, no `bubblewrap` or no unprivileged user namespaces; on macOS, no working `sandbox-exec`; on any other host, no enforced mechanism at all.
 
-Fix: install bubblewrap on Linux and allow unprivileged user namespaces, or fix `sandbox-exec` on macOS (`/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' true` must exit 0), or re-run without `--sandbox` on a command you trust.
+Fix: install bubblewrap on Linux and allow unprivileged user namespaces (or, accepting network isolation alone, pass `--sandbox-network-only`, which needs `unshare`), or fix `sandbox-exec` on macOS (`/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' true` must exit 0), or re-run without `--sandbox` on a command you trust.
 
 `--sandbox` is the enforced half of the split: the static gate is a
 tripwire (see `verify-networked`), and this flag is the boundary. A host
@@ -1646,8 +1646,8 @@ Cause: `verifyCmd` fetches the network or pipes to a shell.
 The gate is a tripwire, not a boundary: it refuses the spellings it knows,
 and a shape it has not learned executes. For a boundary, run the step
 under `verify --sandbox`: `bubblewrap` on Linux removes the route out, and
-`sandbox-exec` on macOS denies the network; a host that can enforce
-neither refuses `sandbox-unavailable`.
+`sandbox-exec` on macOS denies the network and the keychain broker; a host
+that can enforce neither refuses `sandbox-unavailable`.
 
 Fix: rewrite `verifyCmd` without network fetches or pipe-to-shell (fetch fixtures first, run offline), then re-run.
 

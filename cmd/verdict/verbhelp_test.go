@@ -106,7 +106,9 @@ func TestVerifyHelpNamesTheNetworkOnlyOptIn(t *testing.T) {
 		"--sandbox | --sandbox-network-only",
 		"--sandbox-network-only is the Linux unshare --net opt-in",
 		"no mount, filesystem, or PID isolation",
-		"paths and /tmp stay visible",
+		"unix sockets (docker.sock, ssh-agent) stay",
+		"it is never recorded as sandboxed",
+		"no keychain broker; writes",
 		"refuses bad-flags",
 		"sandboxMechanism",
 	} {

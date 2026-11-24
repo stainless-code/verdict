@@ -363,10 +363,11 @@ var publishedSemantics = map[string]string{
 	// beside packAddData. No existing property, required key, enum, or type
 	// changed; only a pinned run and `pack sync` carry the keys.
 	// Verify sandbox mechanism: additive optional verifyData.sandboxMechanism
-	// naming bwrap, sandbox-exec, or the network-only unshare-net. No existing
-	// property, required key, enum, or type changed; an unsandboxed run omits
-	// the key.
-	"envelope.schema.json": "cb119e0396c7fd69ece80f5e95b5a2225ced46f15df8379d4b9b5d1994038617",
+	// naming bwrap, sandbox-exec, or the network-only unshare-net, and the
+	// description now states that sandboxed means the full shape (the
+	// network-only mechanism never sets it). No existing property, required
+	// key, enum, or type changed; an unwrapped run omits both keys.
+	"envelope.schema.json": "d2e1a90c9f9a55dabe55d32497ff8089422830cb826482460f04cf5acfc4c786",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

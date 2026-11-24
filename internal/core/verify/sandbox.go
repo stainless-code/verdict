@@ -2,8 +2,11 @@ package verifycore
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
+	"os/user"
 	"path/filepath"
 	"runtime"
 	"slices"
@@ -11,6 +14,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 const (
@@ -36,6 +40,17 @@ const (
 	// shared host temp roots around it.
 	sandboxPrivateDirPrefix = "verdict-sandbox-"
 
+	// sandboxPrivateDirMode restores owner access to every directory under
+	// the private tree before removal, so a child that dropped its own
+	// permissions cannot strand the tree on the host.
+	sandboxPrivateDirMode = 0o700
+
+	// sandboxGoCacheDir and sandboxCacheDir are the toolchain caches the
+	// macOS child is pointed at inside its private directory: the profile
+	// denies writes everywhere else, so the default caches under HOME fail.
+	sandboxGoCacheDir = "go-build"
+	sandboxCacheDir   = "cache"
+
 	// sandboxHostTmpDir is the shared host temp root the bwrap shape replaces
 	// and the macOS profile denies.
 	sandboxHostTmpDir = "/tmp"
@@ -44,6 +59,22 @@ const (
 	// Seatbelt string literal can represent; anything below or DEL refuses.
 	seatbeltFirstPrintable = ' '
 	seatbeltDelete         = 0x7f
+
+	// seatbeltHeader keeps the network denial and closes the two macOS
+	// escapes a path policy alone leaves open: the keychain broker (the
+	// `security` CLI reads stored tokens through it, never through a file
+	// path) and every write outside the paths allowed after it, so the
+	// command cannot plant a LaunchAgent or a shell rc file that runs
+	// unsandboxed later. Seatbelt applies the last matching rule, so the
+	// allows that follow re-open only what they name.
+	seatbeltHeader = `(version 1)(allow default)(deny network*)` +
+		`(deny mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc"))` +
+		`(deny file-write* (subpath "/"))`
+
+	// seatbeltDeviceWrites re-allows the device writes a shell needs after the
+	// blanket write denial: the bit bucket, the controlling terminal, and the
+	// descriptor aliases (/dev/stdout and /dev/stderr resolve under /dev/fd).
+	seatbeltDeviceWrites = `(allow file-write* (literal "/dev/null") (literal "/dev/tty") (regex #"^/dev/fd/"))`
 
 	// sandboxProbeScript is the macOS probe body: it proves Seatbelt permits
 	// bash, mktemp, a write and read inside the private TMPDIR, and a read of
@@ -55,14 +86,23 @@ const (
 	// opt-in exists because bwrap may be absent, and it must never read as the
 	// full sandbox.
 	msgSandboxNetworkOnly = "sandbox network-only: unshare --net isolates the network alone — " +
-		"no mount, filesystem, or PID isolation; credential paths and /tmp stay visible. " +
-		"Use --sandbox with bubblewrap for the full shape."
+		"no mount, filesystem, or PID isolation; the host filesystem (credential paths, /tmp), " +
+		"the host /proc (other processes' environments), and filesystem unix sockets " +
+		"(docker.sock, the ssh-agent socket) stay reachable, and a unix socket bypasses the " +
+		"network namespace. Use --sandbox with bubblewrap for the full shape."
+
+	// envSeparator splits one environment entry into its name and value.
+	envSeparator = "="
+
+	msgSandboxHomeUnset = "HOME is unset in the child environment, so the credential paths under it cannot be hidden"
 )
 
-// sandboxCredentialPaths are every host credential path the wrapper hides:
-// directories behind an empty tmpfs, files behind a read-only /dev/null bind
-// on Linux, and denied reads and writes under Seatbelt on macOS. Only entries
-// that exist are mounted on Linux; macOS denies the whole table.
+// sandboxCredentialPaths is the one credential table both platforms hide,
+// relative to every home the account answers to: directories behind an empty
+// tmpfs, files behind a read-only /dev/null bind on Linux, and denied reads
+// and writes under Seatbelt on macOS. Only entries that exist are mounted on
+// Linux; macOS denies the whole table. New entries go at the end so the
+// mount order of the existing ones never moves.
 var sandboxCredentialPaths = []string{
 	".aws",
 	".ssh",
@@ -76,6 +116,35 @@ var sandboxCredentialPaths = []string{
 	".git-credentials",
 	".npmrc",
 	".pypirc",
+	".terraform.d",
+	filepath.Join(".cargo", "credentials.toml"),
+	filepath.Join(".cargo", "credentials"),
+	".vault-token",
+	filepath.Join("Library", "Keychains"),
+}
+
+// sandboxCredentialVar is one environment variable that relocates a
+// credential store away from its home-relative default: the path it names
+// (joined with suffix), or every entry of a path list.
+type sandboxCredentialVar struct {
+	name   string
+	suffix string
+	list   bool
+}
+
+// sandboxCredentialEnv is the relocation half of the table, read from both
+// the child environment and the verdict process environment, so a store
+// moved by the operator's shell is hidden even when the child never sees the
+// variable. Relative values are skipped: they resolve against the reviewed
+// root the command may already read.
+var sandboxCredentialEnv = []sandboxCredentialVar{
+	{name: "XDG_CONFIG_HOME", suffix: "gh"},
+	{name: "GH_CONFIG_DIR"},
+	{name: "AWS_SHARED_CREDENTIALS_FILE"},
+	{name: "AWS_CONFIG_FILE"},
+	{name: "DOCKER_CONFIG"},
+	{name: "KUBECONFIG", list: true},
+	{name: "CLOUDSDK_CONFIG"},
 }
 
 // sandboxHostTempDirs are the shared host temp roots macOS denies outside the
@@ -91,6 +160,146 @@ const sandboxRuntimeDir = "/run"
 
 // sandboxVarRunDir is /var/run, a symlink to /run on most distros.
 const sandboxVarRunDir = "/var/run"
+
+// sandboxInputs is what a mechanism resolves the credential table against:
+// the environment the child runs with, the verdict process environment the
+// request snapshotted, and the account home from the passwd database. A
+// child HOME that differs from the account home still leaves the account's
+// real credential stores on disk, so both are hidden.
+type sandboxInputs struct {
+	accountHome string
+	childEnv    []string
+	hostEnv     []string
+}
+
+// homes lists every home the credential table resolves under, the child's
+// first. An unset child HOME is the one refusal: its paths cannot be named.
+func (in sandboxInputs) homes() ([]string, *core.RefusalError) {
+	home, ok := sandboxHome(in.childEnv)
+	if !ok {
+		return nil, sandboxUnavailable(msgSandboxHomeUnset)
+	}
+	if !filepath.IsAbs(home) {
+		return nil, sandboxUnavailable(fmt.Sprintf(
+			"HOME %q in the child environment is not an absolute path, so the credential paths under it cannot be hidden", home))
+	}
+	homes := []string{home}
+	if host := envLookup(in.hostEnv, "HOME"); filepath.IsAbs(host) {
+		homes = append(homes, host)
+	}
+	if filepath.IsAbs(in.accountHome) {
+		homes = append(homes, in.accountHome)
+	}
+	return sandboxCleanUnique(homes), nil
+}
+
+// credentialLocations resolves the shared table: every home-relative entry
+// under every home, then every relocation variable from the child and host
+// environments. A reviewed root inside a credential location refuses, since
+// hiding the location would hide the code under review and allowing the root
+// would expose the credential. expandHomes adds each home's realpath first
+// (Seatbelt matches resolved vnodes; bwrap follows the literal path itself).
+func (in sandboxInputs) credentialLocations(root string, expandHomes bool) ([]string, *core.RefusalError) {
+	homes, ref := in.homes()
+	if ref != nil {
+		return nil, ref
+	}
+	if expandHomes {
+		homes = sandboxExpandRealpaths(homes)
+	}
+	locations := sandboxHomeCredentials(homes)
+	for _, env := range [][]string{in.childEnv, in.hostEnv} {
+		for _, v := range sandboxCredentialEnv {
+			locations = append(locations, v.paths(env)...)
+		}
+	}
+	locations = sandboxCleanUnique(locations)
+	if location, ok := sandboxEnclosing(locations, root); ok {
+		return nil, sandboxUnavailable(fmt.Sprintf(
+			"the reviewed root %s is inside the credential path %s; refusing to expose or hide it", root, location))
+	}
+	return locations, nil
+}
+
+// sandboxHomeCredentials joins the home-relative table under every home.
+func sandboxHomeCredentials(homes []string) []string {
+	locations := make([]string, 0, len(homes)*len(sandboxCredentialPaths)+len(sandboxCredentialEnv))
+	for _, home := range homes {
+		for _, rel := range sandboxCredentialPaths {
+			locations = append(locations, filepath.Join(home, rel))
+		}
+	}
+	return locations
+}
+
+// sandboxEnclosing returns the first location that is root or one of its
+// ancestors.
+func sandboxEnclosing(locations []string, root string) (string, bool) {
+	for _, location := range locations {
+		if root == location || strings.HasPrefix(root, location+string(filepath.Separator)) {
+			return location, true
+		}
+	}
+	return "", false
+}
+
+// paths returns the absolute credential paths one environment's value of the
+// variable names; an unset, empty, or relative value names nothing.
+func (v sandboxCredentialVar) paths(env []string) []string {
+	value := envLookup(env, v.name)
+	values := []string{value}
+	if v.list {
+		values = filepath.SplitList(value)
+	}
+	var paths []string
+	for _, path := range values {
+		if filepath.IsAbs(path) {
+			paths = append(paths, filepath.Join(path, v.suffix))
+		}
+	}
+	return paths
+}
+
+// envLookup reads one name from an environment snapshot; the last entry wins,
+// as it does for a spawned child.
+func envLookup(env []string, name string) string {
+	value := ""
+	for _, kv := range env {
+		if key, v, ok := strings.Cut(kv, envSeparator); ok && key == name {
+			value = v
+		}
+	}
+	return value
+}
+
+// sandboxCleanUnique cleans every path and drops empties and duplicates while
+// keeping first-seen order.
+func sandboxCleanUnique(paths []string) []string {
+	seen := make(map[string]bool, len(paths))
+	out := make([]string, 0, len(paths))
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		path = filepath.Clean(path)
+		if seen[path] {
+			continue
+		}
+		seen[path] = true
+		out = append(out, path)
+	}
+	return out
+}
+
+// sandboxAccountHome is the passwd-database home of the current uid, or
+// empty when the lookup fails; HOME alone can point anywhere.
+func sandboxAccountHome() string {
+	u, err := user.Current()
+	if err != nil {
+		return ""
+	}
+	return u.HomeDir
+}
 
 // sandboxMount is one path the wrapper replaces; dir mounts an empty tmpfs,
 // a file binds /dev/null read-only over it.
@@ -110,7 +319,7 @@ func (m sandboxMount) argv() []string {
 // the child-environment overrides the mechanism needs, the stable mechanism
 // name the records carry, and the cleanup its private state requires.
 type sandbox struct {
-	cleanup     func()
+	cleanup     func() error
 	tool        string
 	mechanism   string
 	prefix      []string
@@ -144,12 +353,12 @@ func (sb *sandbox) childEnv(base []string) []string {
 	}
 	overridden := make(map[string]bool, len(sb.env))
 	for _, kv := range sb.env {
-		name, _, _ := strings.Cut(kv, "=")
+		name, _, _ := strings.Cut(kv, envSeparator)
 		overridden[name] = true
 	}
 	env := make([]string, 0, len(base)+len(sb.env))
 	for _, kv := range base {
-		if name, _, ok := strings.Cut(kv, "="); ok && overridden[name] {
+		if name, _, ok := strings.Cut(kv, envSeparator); ok && overridden[name] {
 			continue
 		}
 		env = append(env, kv)
@@ -157,14 +366,15 @@ func (sb *sandbox) childEnv(base []string) []string {
 	return append(env, sb.env...)
 }
 
-// close removes the mechanism's private state. It is safe on nil and runs at
-// most once.
-func (sb *sandbox) close() {
+// close removes the mechanism's private state and reports what survived. It
+// is safe on nil and runs at most once.
+func (sb *sandbox) close() error {
 	if sb == nil || sb.cleanup == nil {
-		return
+		return nil
 	}
-	sb.cleanup()
+	cleanup := sb.cleanup
 	sb.cleanup = nil
+	return cleanup()
 }
 
 // name is the stable mechanism name the records carry, empty when unsandboxed.
@@ -175,20 +385,27 @@ func (sb *sandbox) name() string {
 	return sb.mechanism
 }
 
+// full reports whether the run had the full sandbox shape — bwrap or
+// sandbox-exec — which is what a recorded `sandboxed: true` means. The
+// network-only opt-in names its mechanism but is never `sandboxed`.
+func (sb *sandbox) full() bool {
+	return sb != nil && !sb.networkOnly
+}
+
 // prepareSandbox builds the wrapper and probes it with a no-op command using
 // the same flags before anything executes. A nil sandbox with a nil refusal
 // means the run is unsandboxed; every enforcement failure is
-// sandbox-unavailable.
+// sandbox-unavailable. A failed probe returns the prepared sandbox beside the
+// refusal so the caller releases its private state and reports the cleanup.
 func prepareSandbox(
-	ctx context.Context, commander core.Commander, workDir, root string, env []string, networkOnly bool,
+	ctx context.Context, commander core.Commander, workDir, root string, in sandboxInputs, networkOnly bool,
 ) (*sandbox, *core.RefusalError) {
-	sb, ref := sandboxMechanism(runtime.GOOS, root, env, networkOnly)
+	sb, ref := sandboxMechanism(runtime.GOOS, root, in, networkOnly)
 	if ref != nil {
 		return nil, ref
 	}
-	if ref := sb.probe(ctx, commander, workDir, env); ref != nil {
-		sb.close()
-		return nil, ref
+	if ref := sb.probe(ctx, commander, workDir, in.childEnv); ref != nil {
+		return sb, ref
 	}
 	return sb, nil
 }
@@ -197,15 +414,15 @@ func prepareSandbox(
 // explicit Linux unshare opt-in for hosts without bubblewrap; it never turns
 // --sandbox into a weaker mechanism, because the two flags are exclusive and
 // the full flag still requires bwrap.
-func sandboxMechanism(goos, root string, env []string, networkOnly bool) (*sandbox, *core.RefusalError) {
+func sandboxMechanism(goos, root string, in sandboxInputs, networkOnly bool) (*sandbox, *core.RefusalError) {
 	switch goos {
 	case "linux":
-		return linuxSandboxMechanism(root, env, networkOnly)
+		return linuxSandboxMechanism(root, in, networkOnly)
 	case "darwin":
 		if networkOnly {
 			return nil, networkOnlyRefusal(goos)
 		}
-		return sandboxExecMechanism(root, env, "")
+		return sandboxExecMechanism(root, in, "")
 	default:
 		return unsupportedMechanism(goos, networkOnly)
 	}
@@ -213,11 +430,11 @@ func sandboxMechanism(goos, root string, env []string, networkOnly bool) (*sandb
 
 // linuxSandboxMechanism keeps the full bwrap shape on --sandbox and the
 // unshare opt-in on --sandbox-network-only; neither falls back to the other.
-func linuxSandboxMechanism(root string, env []string, networkOnly bool) (*sandbox, *core.RefusalError) {
+func linuxSandboxMechanism(root string, in sandboxInputs, networkOnly bool) (*sandbox, *core.RefusalError) {
 	if networkOnly {
 		return unshareNetMechanism(), nil
 	}
-	prefix, ref := bwrapArgv(root, env)
+	prefix, ref := bwrapArgv(root, in)
 	if ref != nil {
 		return nil, ref
 	}
@@ -240,7 +457,8 @@ func networkOnlyRefusal(goos string) *core.RefusalError {
 	linuxOnly := " — --sandbox-network-only is a Linux unshare --net opt-in"
 	if goos == "darwin" {
 		return sandboxUnavailable(goos + " has no unshare network-only sandbox" + linuxOnly +
-			"; use --sandbox here for sandbox-exec (no network, credential paths and host /tmp denied)")
+			"; use --sandbox here for sandbox-exec (no network, no keychain, writes only to the reviewed root " +
+			"and a private TMPDIR, credential paths and host /tmp denied)")
 	}
 	return sandboxUnavailable(goos + " has no unshare network-only sandbox" + linuxOnly)
 }
@@ -262,7 +480,7 @@ func unshareNetMechanism() *sandbox {
 // /proc under a private PID namespace, empty credential paths, and no
 // network. The repo bind is last so a checkout under /tmp or /run survives
 // the tmpfs that replaces its parent.
-func bwrapArgv(root string, env []string) ([]string, *core.RefusalError) {
+func bwrapArgv(root string, in sandboxInputs) ([]string, *core.RefusalError) {
 	repo, err := filepath.Abs(root)
 	if err != nil {
 		return nil, sandboxUnavailable(fmt.Sprintf("could not resolve the reviewed root %s: %v", root, err))
@@ -271,10 +489,9 @@ func bwrapArgv(root string, env []string) ([]string, *core.RefusalError) {
 		return nil, sandboxUnavailable(
 			fmt.Sprintf("the reviewed root is the filesystem root %s; refusing to bind the whole host writable", repo))
 	}
-	home, ok := sandboxHome(env)
-	if !ok {
-		return nil, sandboxUnavailable(
-			"HOME is unset in the child environment, so the credential paths under it cannot be hidden")
+	locations, ref := in.credentialLocations(repo, false)
+	if ref != nil {
+		return nil, ref
 	}
 	argv := []string{
 		bwrapTool,
@@ -287,18 +504,17 @@ func bwrapArgv(root string, env []string) ([]string, *core.RefusalError) {
 	}
 	argv = append(argv, sandboxVarRunMount(lstatMode)...)
 	argv = append(argv, "--bind", repo, repo)
-	for _, mount := range sandboxCredentialMounts(home) {
+	for _, mount := range sandboxCredentialMounts(locations) {
 		argv = append(argv, mount.argv()...)
 	}
 	return append(argv, "--unshare-net", "--new-session", "--die-with-parent", "--"), nil
 }
 
-// sandboxCredentialMounts resolves the table against the host, so a missing
-// entry adds no mount and a file never gets a directory's tmpfs.
-func sandboxCredentialMounts(home string) []sandboxMount {
-	mounts := make([]sandboxMount, 0, len(sandboxCredentialPaths))
-	for _, rel := range sandboxCredentialPaths {
-		dest := filepath.Join(home, rel)
+// sandboxCredentialMounts resolves the locations against the host, so a
+// missing entry adds no mount and a file never gets a directory's tmpfs.
+func sandboxCredentialMounts(locations []string) []sandboxMount {
+	mounts := make([]sandboxMount, 0, len(locations))
+	for _, dest := range locations {
 		info, err := os.Stat(dest)
 		if err != nil {
 			continue
@@ -331,7 +547,7 @@ func lstatMode(path string) (os.FileMode, bool) {
 // resolves to. An explicit snapshot without HOME cannot be hidden.
 func sandboxHome(env []string) (string, bool) {
 	for _, kv := range env {
-		name, value, ok := strings.Cut(kv, "=")
+		name, value, ok := strings.Cut(kv, envSeparator)
 		if ok && name == "HOME" {
 			return value, value != ""
 		}
@@ -344,15 +560,16 @@ func sandboxHome(env []string) (string, bool) {
 }
 
 // sandboxExecMechanism is the macOS shape: a generated Seatbelt profile that
-// keeps the network denial, denies the credential table and the shared host
-// temp roots, and allows the reviewed root plus one per-run private TMPDIR.
-// Seatbelt has no mount namespace, so this hides paths by policy rather than
-// replacing them.
-func sandboxExecMechanism(root string, env []string, tmpBase string) (*sandbox, *core.RefusalError) {
-	home, ok := sandboxHome(env)
-	if !ok {
-		return nil, sandboxUnavailable(
-			"HOME is unset in the child environment, so the credential paths under it cannot be hidden")
+// denies the network, the keychain broker, and every write outside the
+// reviewed root and one per-run private directory, and denies reads of the
+// credential table and the shared host temp roots. Seatbelt has no mount
+// namespace, so this hides paths by policy rather than replacing them. The
+// child's TMPDIR/TMP/TEMP, GOTMPDIR, GOCACHE, and XDG_CACHE_HOME point into
+// the private directory so common toolchains keep a writable scratch and
+// cache.
+func sandboxExecMechanism(root string, in sandboxInputs, tmpBase string) (*sandbox, *core.RefusalError) {
+	if _, ref := in.homes(); ref != nil {
+		return nil, ref
 	}
 	repo, err := filepath.Abs(root)
 	if err != nil {
@@ -366,58 +583,110 @@ func sandboxExecMechanism(root string, env []string, tmpBase string) (*sandbox, 
 	if err != nil {
 		return nil, sandboxUnavailable(fmt.Sprintf("could not create the private temporary directory: %v", err))
 	}
-	profile, ref := sandboxExecProfile(home, repo, private, tmpBase)
+	profile, ref := sandboxExecPrivateProfile(in, repo, private, tmpBase)
 	if ref != nil {
-		_ = os.RemoveAll(private)
+		if err := removePrivateDir(private); err != nil {
+			ref.Message += fmt.Sprintf(" (the private directory %s could not be removed: %v)", private, err)
+		}
 		return nil, ref
 	}
 	return &sandbox{
 		tool:      sandboxExecTool,
 		mechanism: sandboxMechanismSandboxExec,
 		prefix:    []string{sandboxExecPath, "-p", profile},
-		env:       []string{"TMPDIR=" + private, "TMP=" + private, "TEMP=" + private},
-		cleanup:   func() { _ = os.RemoveAll(private) },
+		env:       sandboxPrivateEnv(private),
+		cleanup:   func() error { return removePrivateDir(private) },
 	}, nil
 }
 
-// sandboxExecProfile builds the profile in precedence order: network denial,
-// the shared host temp roots, the allows for the private directory and the
-// reviewed root, then the credential denials last so a checkout under HOME
-// cannot re-expose a credential path.
-func sandboxExecProfile(home, root, private, tmpBase string) (string, *core.RefusalError) {
+// sandboxExecPrivateProfile creates the private cache directory, then builds
+// the profile around the private tree.
+func sandboxExecPrivateProfile(in sandboxInputs, repo, private, tmpBase string) (string, *core.RefusalError) {
+	if err := os.Mkdir(filepath.Join(private, sandboxCacheDir), sandboxPrivateDirMode); err != nil {
+		return "", sandboxUnavailable(fmt.Sprintf("could not create the private cache directory: %v", err))
+	}
+	locations, ref := in.credentialLocations(repo, true)
+	if ref != nil {
+		return "", ref
+	}
+	return sandboxExecProfile(locations, repo, private, tmpBase)
+}
+
+// sandboxPrivateEnv is the child-environment override that keeps scratch and
+// caches inside the one writable private tree.
+func sandboxPrivateEnv(private string) []string {
+	return []string{
+		"TMPDIR=" + private, "TMP=" + private, "TEMP=" + private, "GOTMPDIR=" + private,
+		"GOCACHE=" + filepath.Join(private, sandboxGoCacheDir),
+		"XDG_CACHE_HOME=" + filepath.Join(private, sandboxCacheDir),
+	}
+}
+
+// removePrivateDir restores owner access to every directory in the private
+// tree, then removes it, so a child that ran `chmod 0` on its own scratch
+// cannot strand the tree. Symlinks are never followed: the walk reports them
+// as non-directories, and only directories are re-permissioned.
+func removePrivateDir(private string) error {
+	var restoreErrs []error
+	walkErr := filepath.WalkDir(private, func(path string, d fs.DirEntry, err error) error {
+		restoreErrs = append(restoreErrs, restoreOwnerDir(path, d, err))
+		return nil
+	})
+	if err := os.RemoveAll(private); err != nil {
+		return jq.Sealed("remove "+private, errors.Join(append([]error{err, walkErr}, restoreErrs...)...))
+	}
+	return nil
+}
+
+// restoreOwnerDir gives one walked directory back its owner access; a walk
+// error or a non-directory (a symlink included) is left as found.
+func restoreOwnerDir(path string, d fs.DirEntry, walkErr error) error {
+	if walkErr != nil {
+		return walkErr
+	}
+	if !d.IsDir() {
+		return nil
+	}
+	return os.Chmod(path, sandboxPrivateDirMode) //nolint:wrapcheck // joined and sealed by removePrivateDir
+}
+
+// sandboxExecProfile builds the profile in precedence order — Seatbelt
+// applies the last matching rule — so each later rule overrides the earlier
+// ones it overlaps:
+//
+//  1. the header: network, the keychain broker, and every write denied;
+//  2. reads and writes denied under the shared host temp roots;
+//  3. reads and writes re-allowed for the private tree and the reviewed root
+//     (each as written and as its realpath), plus metadata reads of their
+//     ancestor directories alone, so realpath and git's repository discovery
+//     work for a root under a denied temp root while listing it stays denied;
+//  4. the device writes a shell needs re-allowed;
+//  5. the credential locations denied last, so a reviewed root under HOME
+//     cannot re-expose one.
+func sandboxExecProfile(credentials []string, root, private, tmpBase string) (string, *core.RefusalError) {
 	hostTemp := tmpBase
 	if hostTemp == "" {
 		hostTemp = os.TempDir()
 	}
 	denyTemp := sandboxExpandRealpaths(append(slices.Clone(sandboxHostTempDirs), hostTemp))
 	allow := sandboxExpandRealpaths([]string{private, root})
-	denyCredential := sandboxCredentialTargets(home)
+	denyCredential := sandboxExpandRealpaths(credentials)
 	var b strings.Builder
-	b.WriteString("(version 1)(allow default)(deny network*)")
+	b.WriteString(seatbeltHeader)
 	if ref := sandboxWriteRules(&b, "deny", denyTemp); ref != nil {
 		return "", ref
 	}
 	if ref := sandboxWriteRules(&b, "allow", allow); ref != nil {
 		return "", ref
 	}
+	if ref := sandboxAncestorMetadata(&b, allow); ref != nil {
+		return "", ref
+	}
+	b.WriteString(seatbeltDeviceWrites)
 	if ref := sandboxWriteRules(&b, "deny", denyCredential); ref != nil {
 		return "", ref
 	}
 	return b.String(), nil
-}
-
-// sandboxCredentialTargets resolves the credential table under both the HOME
-// the child sees and its realpath, so a symlinked home or credential entry
-// cannot slip past the policy.
-func sandboxCredentialTargets(home string) []string {
-	homes := sandboxExpandRealpaths([]string{home})
-	targets := make([]string, 0, len(homes)*len(sandboxCredentialPaths))
-	for _, h := range homes {
-		for _, rel := range sandboxCredentialPaths {
-			targets = append(targets, filepath.Join(h, rel))
-		}
-	}
-	return sandboxExpandRealpaths(targets)
 }
 
 // sandboxExpandRealpaths cleans every path, adds its resolved realpath when
@@ -425,26 +694,17 @@ func sandboxCredentialTargets(home string) []string {
 // matches the resolved vnode path, so the /var -> /private/var spelling of a
 // temp root needs both forms.
 func sandboxExpandRealpaths(paths []string) []string {
-	seen := make(map[string]bool, len(paths)*2)
 	expanded := make([]string, 0, len(paths)*2)
-	add := func(path string) {
-		if path == "" {
-			return
-		}
-		path = filepath.Clean(path)
-		if seen[path] {
-			return
-		}
-		seen[path] = true
-		expanded = append(expanded, path)
-	}
 	for _, path := range paths {
-		add(path)
+		if path == "" {
+			continue
+		}
+		expanded = append(expanded, path)
 		if resolved, err := filepath.EvalSymlinks(path); err == nil {
-			add(resolved)
+			expanded = append(expanded, resolved)
 		}
 	}
-	return expanded
+	return sandboxCleanUnique(expanded)
 }
 
 // sandboxWriteRules renders one subpath rule per path, refusing a path whose
@@ -458,6 +718,41 @@ func sandboxWriteRules(b *strings.Builder, action string, paths []string) *core.
 		fmt.Fprintf(b, "(%s file-read* file-write* (subpath %s))", action, literal)
 	}
 	return nil
+}
+
+// sandboxAncestorMetadata renders one rule allowing metadata reads (stat,
+// never a listing or a file's contents) of every proper ancestor of the
+// allowed paths, matched literally.
+func sandboxAncestorMetadata(b *strings.Builder, paths []string) *core.RefusalError {
+	ancestors := sandboxAncestors(paths)
+	if len(ancestors) == 0 {
+		return nil
+	}
+	b.WriteString("(allow file-read-metadata")
+	for _, dir := range ancestors {
+		literal, ref := seatbeltLiteral(dir)
+		if ref != nil {
+			return ref
+		}
+		b.WriteString(" (literal " + literal + ")")
+	}
+	b.WriteString(")")
+	return nil
+}
+
+// sandboxAncestors lists every proper ancestor of the paths, nearest first,
+// without duplicates.
+func sandboxAncestors(paths []string) []string {
+	var ancestors []string
+	for _, path := range paths {
+		for dir := filepath.Dir(path); ; dir = filepath.Dir(dir) {
+			ancestors = append(ancestors, dir)
+			if filepath.Dir(dir) == dir {
+				break
+			}
+		}
+	}
+	return sandboxCleanUnique(ancestors)
 }
 
 // seatbeltLiteral quotes one path for the Seatbelt profile. Backslashes and
@@ -484,9 +779,7 @@ func (sb *sandbox) probe(ctx context.Context, commander core.Commander, workDir 
 		return canceledRefusal()
 	}
 	if err != nil {
-		return sandboxUnavailable(fmt.Sprintf(
-			"%s could not start (%v) — --sandbox needs Linux with bubblewrap, or macOS with sandbox-exec; "+
-				"install it, or use the manual recipe on another OS", sb.tool, err))
+		return sandboxUnavailable(fmt.Sprintf("%s could not start (%v) — %s", sb.tool, err, sb.startRemedy()))
 	}
 	if res.TimedOut {
 		return sandboxUnavailable(fmt.Sprintf("%s did not finish its sandbox probe within %s", sb.tool, sandboxProbeTimeout))
@@ -497,6 +790,23 @@ func (sb *sandbox) probe(ctx context.Context, commander core.Commander, workDir 
 			sb.tool, res.ExitCode, sandboxDetail(res), sb.probeRemedy()))
 	}
 	return nil
+}
+
+// startRemedy names the tool the requested boundary needs when its runner
+// could not even spawn, per mechanism, instead of one generic sentence.
+func (sb *sandbox) startRemedy() string {
+	switch sb.tool {
+	case bwrapTool:
+		return "--sandbox on Linux needs bubblewrap (bwrap) on PATH; install it, " +
+			"or pass --sandbox-network-only to accept network isolation alone"
+	case unshareTool:
+		return "--sandbox-network-only needs util-linux unshare on PATH; install it, " +
+			"or use --sandbox with bubblewrap for the full shape"
+	case sandboxExecTool:
+		return "--sandbox on macOS needs the built-in " + sandboxExecPath +
+			"; restore it, or run the bwrap recipe in a Linux VM or container"
+	}
+	return "install the sandbox runner, or use the manual recipe on another OS"
 }
 
 // probeRemedy is the cause a failed probe names, per mechanism: only the

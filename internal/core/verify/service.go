@@ -148,10 +148,10 @@ func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	defer sb.close()
 	outPath, timeoutPath := dir+"/.verify.out", dir+"/.verify.timeout"
 	st.human(fmt.Sprintf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
 	res, ref := runCommand(ctx, commander, vcmd, timeout, "", st.childEnv(), sb)
+	st.releaseSandbox(sb)
 	if ctx.Err() != nil {
 		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: msgCanceled})
 	}
@@ -179,8 +179,9 @@ func (st *state) sandboxed(ctx context.Context, commander core.Commander, workDi
 	if !st.req.Sandbox && !st.req.SandboxNetworkOnly {
 		return nil, nil
 	}
-	sb, ref := prepareSandbox(ctx, commander, workDir, root, st.childEnv(), st.req.SandboxNetworkOnly)
+	sb, ref := prepareSandbox(ctx, commander, workDir, root, st.sandboxInputs(), st.req.SandboxNetworkOnly)
 	if ref != nil {
+		st.releaseSandbox(sb)
 		return nil, ref
 	}
 	if sb.networkOnly {
@@ -188,6 +189,27 @@ func (st *state) sandboxed(ctx context.Context, commander core.Commander, workDi
 		st.warn(msgSandboxNetworkOnly)
 	}
 	return sb, nil
+}
+
+// sandboxInputs is what the credential table resolves against: the child
+// environment, the snapshotted verdict environment (a relocation variable the
+// allowlist drops still names a store on disk), and the account home.
+func (st *state) sandboxInputs() sandboxInputs {
+	account := st.req.accountHome
+	if account == "" {
+		account = sandboxAccountHome()
+	}
+	return sandboxInputs{childEnv: st.childEnv(), hostEnv: st.req.Environ, accountHome: account}
+}
+
+// releaseSandbox removes the mechanism's private state as soon as the command
+// is done, and warns when any of it survived, so a stranded directory is
+// visible in the same response instead of silently left behind.
+func (st *state) releaseSandbox(sb *sandbox) {
+	if err := sb.close(); err != nil {
+		st.warn("sandbox cleanup: the private directory could not be fully removed (" + err.Error() +
+			"); remove it by hand")
+	}
 }
 
 // sandboxFlagsRefusal keeps the two sandbox opt-ins mutually exclusive: the
@@ -251,7 +273,7 @@ func (st *state) response(dir, now string, exit int, timedOut bool, tail string,
 	}
 	data := &core.VerifyData{
 		Exit: exit, TimedOut: timedOut, OutputTail: tail, Patch: dir,
-		Sandboxed: sb != nil, SandboxMechanism: sb.name(),
+		Sandboxed: sb.full(), SandboxMechanism: sb.name(),
 	}
 	return &Response{
 		Repo:     st.req.Repo,
@@ -329,11 +351,16 @@ func recordOutcome(dir, now string, exit int, timedOut bool, tail string, sb *sa
 	m.Set("verifiedAt", now)
 	m.Set("timedOut", timedOut)
 	m.Set("verifiedTail", tail)
-	if sb != nil {
+	// Both keys describe this run alone: `sandboxed` only for the full shape,
+	// the mechanism for any wrapper, and neither survives from an earlier run.
+	if sb.full() {
 		m.Set("sandboxed", true)
-		m.Set("sandboxMechanism", sb.mechanism)
 	} else {
 		m.Delete("sandboxed")
+	}
+	if name := sb.name(); name != "" {
+		m.Set("sandboxMechanism", name)
+	} else {
 		m.Delete("sandboxMechanism")
 	}
 	if err := atomic.WriteFile(dir+"/"+patchFile, []byte(m.MarshalPretty()+"\n")); err != nil {

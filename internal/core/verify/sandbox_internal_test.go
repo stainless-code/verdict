@@ -23,7 +23,7 @@ func wantVarRunMount() []string {
 // TestSandboxArgvRefusesTheFilesystemRoot keeps the writable bind from ever
 // covering the whole host.
 func TestSandboxArgvRefusesTheFilesystemRoot(t *testing.T) {
-	_, ref := bwrapArgv(string(filepath.Separator), []string{"HOME=" + t.TempDir()})
+	_, ref := bwrapArgv(string(filepath.Separator), sandboxInputs{childEnv: []string{"HOME=" + t.TempDir()}})
 	if ref == nil || ref.Code != codeSandboxUnavailable {
 		t.Fatalf("ref = %v, want sandbox-unavailable", ref)
 	}
@@ -40,7 +40,7 @@ func TestSandboxArgvMasksCredentialFiles(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".netrc"), []byte("machine example"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	argv, ref := bwrapArgv(root, []string{"HOME=" + home})
+	argv, ref := bwrapArgv(root, sandboxInputs{childEnv: []string{"HOME=" + home}})
 	if ref != nil {
 		t.Fatalf("bwrapArgv: %v", ref)
 	}
@@ -69,7 +69,7 @@ func TestSandboxArgvMasksCredentialFiles(t *testing.T) {
 
 func TestSandboxMechanismRefusesHostsWithoutOne(t *testing.T) {
 	for _, goos := range []string{"windows", "freebsd"} {
-		mech, ref := sandboxMechanism(goos, t.TempDir(), []string{"HOME=" + t.TempDir()}, false)
+		mech, ref := sandboxMechanism(goos, t.TempDir(), homeInputs(t.TempDir()), false)
 		if mech != nil || ref == nil || ref.Code != codeSandboxUnavailable {
 			t.Fatalf("%s: mech=%v ref=%v, want sandbox-unavailable", goos, mech, ref)
 		}
@@ -83,7 +83,7 @@ func TestSandboxMechanismRefusesHostsWithoutOne(t *testing.T) {
 // network-only opt-in is a separate flag and never a fallback.
 func TestSandboxMechanismRoutesLinuxToBwrap(t *testing.T) {
 	root := t.TempDir()
-	mech, ref := sandboxMechanism("linux", root, []string{"HOME=" + t.TempDir()}, false)
+	mech, ref := sandboxMechanism("linux", root, homeInputs(t.TempDir()), false)
 	if ref != nil {
 		t.Fatalf("sandboxMechanism: %v", ref)
 	}
@@ -96,7 +96,7 @@ func TestSandboxMechanismRoutesLinuxToBwrap(t *testing.T) {
 // argv: a user namespace mapped to root inside it, then a network namespace,
 // and no bwrap mount flags at all.
 func TestSandboxMechanismUnshareNetIsAnExplicitOptIn(t *testing.T) {
-	mech, ref := sandboxMechanism("linux", t.TempDir(), []string{"HOME=" + t.TempDir()}, true)
+	mech, ref := sandboxMechanism("linux", t.TempDir(), homeInputs(t.TempDir()), true)
 	if ref != nil {
 		t.Fatalf("sandboxMechanism: %v", ref)
 	}
@@ -127,7 +127,7 @@ func TestSandboxNetworkOnlyRefusesOtherHosts(t *testing.T) {
 // its own name and the Linux mechanism.
 func checkNetworkOnlyRefusal(t *testing.T, goos string) {
 	t.Helper()
-	mech, ref := sandboxMechanism(goos, t.TempDir(), []string{"HOME=" + t.TempDir()}, true)
+	mech, ref := sandboxMechanism(goos, t.TempDir(), homeInputs(t.TempDir()), true)
 	if mech != nil || ref == nil || ref.Code != codeSandboxUnavailable {
 		t.Fatalf("%s: mech=%v ref=%v, want sandbox-unavailable", goos, mech, ref)
 	}
@@ -144,7 +144,7 @@ func checkNetworkOnlyRefusal(t *testing.T, goos string) {
 func TestSandboxMechanismBuildsTheSeatbeltProfile(t *testing.T) {
 	home := t.TempDir()
 	root := t.TempDir()
-	mech, ref := sandboxMechanism("darwin", root, []string{"HOME=" + home}, false)
+	mech, ref := sandboxMechanism("darwin", root, homeInputs(home), false)
 	if ref != nil {
 		t.Fatalf("sandboxMechanism: %v", ref)
 	}
@@ -155,7 +155,7 @@ func TestSandboxMechanismBuildsTheSeatbeltProfile(t *testing.T) {
 // TMPDIR lifecycle of one prepared macOS mechanism.
 func checkSeatbeltMechanism(t *testing.T, mech *sandbox, root, home string) {
 	t.Helper()
-	defer mech.close()
+	defer closeSandbox(t, mech)
 	requireSandboxExecPrefix(t, mech)
 	checkSeatbeltProfileRules(t, mech.prefix[2], root, home)
 	private := checkPrivateTempEnv(t, mech)
@@ -165,7 +165,7 @@ func checkSeatbeltMechanism(t *testing.T, mech *sandbox, root, home string) {
 	if info, err := os.Stat(private); err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 {
 		t.Fatalf("private TMPDIR %q = %v, %v; want an existing 0700 directory", private, info, err)
 	}
-	mech.close()
+	closeSandbox(t, mech)
 	if _, err := os.Stat(private); !os.IsNotExist(err) {
 		t.Errorf("private TMPDIR %q survived close (%v)", private, err)
 	}
@@ -182,12 +182,41 @@ func requireSandboxExecPrefix(t *testing.T, mech *sandbox) {
 	}
 }
 
+// closeSandbox releases one prepared mechanism and fails the test when its
+// private state survives.
+func closeSandbox(t *testing.T, sb *sandbox) {
+	t.Helper()
+	if err := sb.close(); err != nil {
+		t.Errorf("close: %v", err)
+	}
+}
+
+// homeInputs is the minimal mechanism input: a child environment carrying
+// HOME alone, no host snapshot, and no account home.
+func homeInputs(home string) sandboxInputs {
+	return sandboxInputs{childEnv: []string{"HOME=" + home}}
+}
+
+// wantSeatbeltHeader is the literal start of every generated profile: the
+// network denial, the keychain broker denial, and the blanket write denial
+// the later allows carve out of.
+const wantSeatbeltHeader = `(version 1)(allow default)(deny network*)` +
+	`(deny mach-lookup (global-name "com.apple.SecurityServer") (global-name "com.apple.securityd.xpc"))` +
+	`(deny file-write* (subpath "/"))`
+
 // checkSeatbeltProfileRules pins the literal rules the profile must carry.
 func checkSeatbeltProfileRules(t *testing.T, profile, root, home string) {
 	t.Helper()
+	if !strings.HasPrefix(profile, wantSeatbeltHeader) {
+		t.Errorf("profile does not open with the network, keychain, and write denials:\n%s", profile)
+	}
 	for _, want := range []string{
-		"(version 1)(allow default)(deny network*)",
+		`(allow file-write* (literal "/dev/null") (literal "/dev/tty") (regex #"^/dev/fd/"))`,
 		`(deny file-read* file-write* (subpath "` + home + `/.ssh"))`,
+		`(deny file-read* file-write* (subpath "` + home + `/.vault-token"))`,
+		`(deny file-read* file-write* (subpath "` + home + `/.cargo/credentials.toml"))`,
+		`(deny file-read* file-write* (subpath "` + home + `/.terraform.d"))`,
+		`(deny file-read* file-write* (subpath "` + home + `/Library/Keychains"))`,
 		`(deny file-read* file-write* (subpath "` + home + `/.aws"))`,
 		`(deny file-read* file-write* (subpath "` + home + `/.netrc"))`,
 		`(deny file-read* file-write* (subpath "/private/tmp"))`,
@@ -200,15 +229,18 @@ func checkSeatbeltProfileRules(t *testing.T, profile, root, home string) {
 	}
 }
 
-// checkPrivateTempEnv proves TMPDIR/TMP/TEMP point at one fresh per-run
-// directory and returns it.
+// checkPrivateTempEnv proves TMPDIR/TMP/TEMP/GOTMPDIR and the toolchain
+// caches point into one fresh per-run directory and returns it.
 func checkPrivateTempEnv(t *testing.T, mech *sandbox) string {
 	t.Helper()
-	if len(mech.env) != 3 {
-		t.Fatalf("env = %v, want TMPDIR/TMP/TEMP pointing at one private dir", mech.env)
+	if len(mech.env) == 0 {
+		t.Fatalf("env = %v, want the private TMPDIR overrides", mech.env)
 	}
 	private := strings.TrimPrefix(mech.env[0], "TMPDIR=")
-	wantEnv := []string{"TMPDIR=" + private, "TMP=" + private, "TEMP=" + private}
+	wantEnv := []string{
+		"TMPDIR=" + private, "TMP=" + private, "TEMP=" + private, "GOTMPDIR=" + private,
+		"GOCACHE=" + private + "/go-build", "XDG_CACHE_HOME=" + private + "/cache",
+	}
 	if !slices.Equal(mech.env, wantEnv) {
 		t.Fatalf("env = %v, want %v", mech.env, wantEnv)
 	}
@@ -222,18 +254,24 @@ func checkPrivateTempEnv(t *testing.T, mech *sandbox) string {
 // under HOME cannot re-expose a credential path: the deny rules come after
 // every allow, so the last matching rule wins.
 func TestSandboxExecProfileOrdersCredentialDenialsLast(t *testing.T) {
-	home := t.TempDir()
-	profile, ref := sandboxExecProfile(home, filepath.Join(home, "repo"), "/private/var/tmp/private", "/private/var/tmp")
+	profile, ref := sandboxExecProfile([]string{"/nonexistent-home/.ssh"}, "/nonexistent-home/repo",
+		"/nonexistent-tmp/private", "/nonexistent-tmp")
 	if ref != nil {
 		t.Fatalf("sandboxExecProfile: %v", ref)
 	}
-	allow := strings.Index(profile, `(allow file-read* file-write* (subpath "`+filepath.Join(home, "repo")+`"))`)
-	deny := strings.Index(profile, `(deny file-read* file-write* (subpath "`+home+`/.ssh"))`)
-	if allow < 0 || deny < 0 {
-		t.Fatalf("profile misses root allow (%d) or credential deny (%d):\n%s", allow, deny, profile)
-	}
-	if deny < allow {
-		t.Errorf("credential deny at %d precedes root allow at %d; the allow would win:\n%s", deny, allow, profile)
+	want := wantSeatbeltHeader +
+		`(deny file-read* file-write* (subpath "/tmp"))` +
+		`(deny file-read* file-write* (subpath "/private/tmp"))` +
+		`(deny file-read* file-write* (subpath "/var/tmp"))` +
+		`(deny file-read* file-write* (subpath "/private/var/tmp"))` +
+		`(deny file-read* file-write* (subpath "/nonexistent-tmp"))` +
+		`(allow file-read* file-write* (subpath "/nonexistent-tmp/private"))` +
+		`(allow file-read* file-write* (subpath "/nonexistent-home/repo"))` +
+		`(allow file-read-metadata (literal "/nonexistent-tmp") (literal "/") (literal "/nonexistent-home"))` +
+		`(allow file-write* (literal "/dev/null") (literal "/dev/tty") (regex #"^/dev/fd/"))` +
+		`(deny file-read* file-write* (subpath "/nonexistent-home/.ssh"))`
+	if profile != want {
+		t.Errorf("profile =\n%s\nwant\n%s", profile, want)
 	}
 }
 
@@ -261,15 +299,15 @@ func TestSeatbeltLiteralEscapesQuotesAndBackslashes(t *testing.T) {
 // being spliced into the profile.
 func TestSandboxExecRefusesUnrepresentablePaths(t *testing.T) {
 	home := t.TempDir()
-	if _, ref := sandboxExecMechanism(t.TempDir(), []string{"HOME=" + home + "\n"}, ""); ref == nil ||
+	if _, ref := sandboxExecMechanism(t.TempDir(), homeInputs(home+"\n"), ""); ref == nil ||
 		ref.Code != codeSandboxUnavailable || !strings.Contains(ref.Message, "control character") {
 		t.Fatalf("newline HOME ref = %v, want a control-character refusal", ref)
 	}
-	if _, ref := sandboxExecMechanism(string(filepath.Separator), []string{"HOME=" + home}, ""); ref == nil ||
+	if _, ref := sandboxExecMechanism(string(filepath.Separator), homeInputs(home), ""); ref == nil ||
 		ref.Code != codeSandboxUnavailable || !strings.Contains(ref.Message, "filesystem root") {
 		t.Fatalf("filesystem root ref = %v, want a filesystem-root refusal", ref)
 	}
-	if _, ref := sandboxExecMechanism(t.TempDir(), []string{"PATH=/bin"}, ""); ref == nil ||
+	if _, ref := sandboxExecMechanism(t.TempDir(), sandboxInputs{childEnv: []string{"PATH=/bin"}}, t.TempDir()); ref == nil ||
 		ref.Code != codeSandboxUnavailable || !strings.Contains(ref.Message, "HOME") {
 		t.Fatalf("missing HOME ref = %v, want the HOME cause", ref)
 	}

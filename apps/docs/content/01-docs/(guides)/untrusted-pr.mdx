@@ -24,7 +24,9 @@ Use this when the diff is untrusted: an unknown author, a drive-by fork PR, or a
     verdict verify owner/repo 123 --sandbox
     ```
 
-    On Linux with `bubblewrap` installed, `verify` builds the sandbox itself: the command gets its own PID namespace and loopback, no route out, an empty `/run`, a private `/tmp`, and every credential path on the host (`~/.aws`, `~/.ssh`, `~/.config/gh`, and the rest) replaced before the command runs. On macOS it builds a `sandbox-exec` profile instead, which denies the network — every `bind()` and `connect()`, loopback included — and leaves the host filesystem and credential paths untouched, so filesystem isolation on a Mac needs a Linux VM or container running the bubblewrap recipe. The patch record carries `"sandboxed": true`, and the `--json` envelope reports it the same way.
+    On Linux with `bubblewrap` installed, `verify` builds the sandbox itself: the command gets its own PID namespace and loopback, no route out, an empty `/run`, a private `/tmp`, and every credential path on the host (`~/.aws`, `~/.ssh`, `~/.config/gh`, and the rest) replaced before the command runs. On macOS it builds a `sandbox-exec` profile instead: it denies the network — every `bind()` and `connect()`, loopback included — and the keychain broker, denies every write outside the reviewed root and a private per-run `TMPDIR` (so no LaunchAgent or shell rc file can be planted), and denies reads of the credential paths and the shared host temp roots. It is a policy, not a mount namespace: the rest of the host filesystem stays readable, so full isolation on a Mac needs a Linux VM or container running the bubblewrap recipe. The patch record carries `"sandboxed": true` and `sandboxMechanism`, and the `--json` envelope reports both the same way. On either platform the command can write the checkout itself, `.git/` included, so run a hostile PR in a throwaway checkout.
+
+    Linux hosts without `bubblewrap` can opt into `--sandbox-network-only` instead. It removes the network and nothing else — the host filesystem, other processes' environments, and filesystem unix sockets such as `docker.sock` stay reachable — so it records `sandboxMechanism: "unshare-net"` and never `"sandboxed": true`.
 
   </Step>
 
@@ -35,7 +37,7 @@ Use this when the diff is untrusted: an unknown author, a drive-by fork PR, or a
 
 ## What success looks like
 
-On Linux and macOS the claimed command runs contained and the patch record notes `"sandboxed": true`. Anywhere else you get `sandbox-unavailable`, the patch file stays byte-identical, no `.verify.out` is written, and exit `1` tells the caller the proof did not run. Either way, nothing untrusted reached your network; on Linux your credentials are hidden too, and on macOS filesystem isolation needs a Linux VM or container running the bubblewrap recipe. Once the proof runs, the normal merge protection still applies: [Gate a PR in CI](/docs/ci-gate).
+On Linux and macOS the claimed command runs contained and the patch record notes `"sandboxed": true` with its `sandboxMechanism`. Anywhere else you get `sandbox-unavailable`, the patch file stays byte-identical, no `.verify.out` is written, and exit `1` tells the caller the proof did not run. Either way, nothing untrusted reached your network; your credential paths are hidden on both platforms, the keychain is unreachable on macOS, and full mount isolation on macOS needs a Linux VM or container running the bubblewrap recipe. Once the proof runs, the normal merge protection still applies: [Gate a PR in CI](/docs/ci-gate).
 
 ## Full detail
 

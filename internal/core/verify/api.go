@@ -24,18 +24,25 @@ type Request struct { //nolint:govet // field grouping documents the request sur
 	Command string
 	// Sandbox wraps the executed command in the host's enforced sandbox:
 	// bwrap on Linux (no network, empty credential dirs, a writable reviewed
-	// root, a private /tmp) and sandbox-exec on macOS (no network, denied
-	// credential paths and shared host temp roots, a private TMPDIR). A host
+	// root, a private /tmp) and sandbox-exec on macOS (no network, no keychain
+	// broker, writes only to the reviewed root and a private TMPDIR, denied
+	// credential paths and shared host temp roots). A host
 	// that cannot enforce it refuses sandbox-unavailable instead of running
 	// unwrapped; it never falls back to the network-only opt-in.
 	Sandbox bool
 	// SandboxNetworkOnly is the explicit Linux fallback for hosts without
 	// bubblewrap: a user and network namespace from unshare, and nothing else.
-	// It provides no mount, filesystem, or PID isolation — credential paths
-	// and /tmp stay visible — and every run says so in its warnings and
-	// records sandboxMechanism "unshare-net". It refuses sandbox-unavailable on
+	// It provides no mount, filesystem, or PID isolation — credential paths,
+	// /tmp, the host /proc, and filesystem unix sockets stay reachable — and
+	// every run says so in its warnings and records sandboxMechanism
+	// "unshare-net" without `sandboxed`. It refuses sandbox-unavailable on
 	// every other host and is mutually exclusive with Sandbox (bad-flags).
 	SandboxNetworkOnly bool
+	// accountHome replaces the passwd-database lookup of the home the sandbox
+	// also hides the credential table under. It is unexported on purpose: no
+	// adapter (CLI, MCP, serve, the Go facade) can point it elsewhere, and
+	// only tests pin it through SetAccountHomeForTest.
+	accountHome string
 	// EnvAllowlist explicitly permits additional child environment variable
 	// names (even if secret-named) on top of the default allowlist and any
 	// base-snapshotted .verdict/verify-env entries.

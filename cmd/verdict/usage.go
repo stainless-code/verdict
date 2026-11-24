@@ -297,12 +297,14 @@ func usageText() string {
 		"    are redacted from the recorded tail.\n" +
 		"    --sandbox runs the command under an enforced sandbox: bwrap on Linux (no network,\n" +
 		"    empty ~/.aws and ~/.ssh, a writable reviewed root, a private /tmp), and\n" +
-		"    sandbox-exec on macOS (no network, loopback included; credential paths and host\n" +
-		"    /tmp denied, a private TMPDIR; no mount or PID namespace).\n" +
+		"    sandbox-exec on macOS (no network, loopback included; no keychain broker; writes\n" +
+		"    only to the reviewed root and a private TMPDIR; credential paths and host /tmp\n" +
+		"    denied; no mount or PID namespace).\n" +
 		"    --sandbox-network-only is the Linux unshare --net opt-in for hosts without bwrap:\n" +
 		"    network isolation alone — no mount, filesystem, or PID isolation, so credential\n" +
-		"    paths and /tmp stay visible. It refuses sandbox-unavailable on every other host,\n" +
-		"    and --sandbox plus --sandbox-network-only refuses bad-flags (pass one boundary).\n" +
+		"    paths, /tmp, the host /proc, and unix sockets (docker.sock, ssh-agent) stay\n" +
+		"    reachable; it is never recorded as sandboxed. It refuses sandbox-unavailable on\n" +
+		"    every other host, and --sandbox plus --sandbox-network-only refuses bad-flags.\n" +
 		"    A host that cannot enforce the chosen mechanism refuses sandbox-unavailable and\n" +
 		"    runs nothing; --json and patch.json name it in sandboxMechanism.\n" +
 		"    Runs the agent's claimed proof — exit code becomes machine fact. No GitHub I/O.\n" +

@@ -56,7 +56,7 @@ func TestSandboxExecHidesCredentialsAndHostTemp(t *testing.T) {
 	root, home, hostTmp, sibling := sandboxExecHostFixture(t)
 	env := sandboxTestEnv(home)
 	sb, private := prepareHostSandbox(t, root, env)
-	defer sb.close()
+	defer closeSandbox(t, sb)
 	checkSandboxedCommands(t, sb, env, root, hostTmp, sibling)
 	requireDeniedWithErrno(t, sb, env, root, `cat "$HOME/.ssh/id_rsa"`)
 	requireDeniedWithErrno(t, sb, env, root, `cat "$HOME/.aws/credentials"`)
@@ -64,7 +64,7 @@ func TestSandboxExecHidesCredentialsAndHostTemp(t *testing.T) {
 	requireDeniedWithErrno(t, sb, env, root, `( printf x > "`+hostTmp+`/errno.txt" )`)
 	requireHostTmpUntouched(t, hostTmp)
 	assertGoRunsUnderSeatbelt(t, sb, env, root)
-	sb.close()
+	closeSandbox(t, sb)
 	assertPathGone(t, private)
 }
 
@@ -96,7 +96,7 @@ func prepareHostSandbox(t *testing.T, root string, env []string) (*sandbox, stri
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	sb, ref := prepareSandbox(ctx, coreexec.Watchdog{}, root, root, env, false)
+	sb, ref := prepareSandbox(ctx, coreexec.Watchdog{}, root, root, sandboxInputs{childEnv: env}, false)
 	if ref != nil {
 		t.Fatalf("prepareSandbox: %v", ref)
 	}
@@ -164,16 +164,20 @@ func assertPathGone(t *testing.T, path string) {
 }
 
 // assertGoRunsUnderSeatbelt keeps the profile from breaking the toolchain the
-// reviewed repo runs: `go version` must exit 0 inside the sandbox.
+// reviewed repo runs: with every write outside the root and the private tree
+// denied, `go build` must still succeed through the GOCACHE and GOTMPDIR the
+// wrapper points into the private directory.
 func assertGoRunsUnderSeatbelt(t *testing.T, sb *sandbox, env []string, root string) {
 	t.Helper()
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Log("go is not installed; skipping the toolchain leg")
 		return
 	}
-	res := runWrapped(t, sb, env, root, "go version")
-	if res.ExitCode != 0 || !strings.Contains(res.Stdout+res.Stderr, "go version") {
-		t.Errorf("go version under the sandbox = exit %d %q, want a version line", res.ExitCode, res.Stdout+res.Stderr)
+	writeSandboxFile(t, filepath.Join(root, "gomod", "go.mod"), "module sandboxprobe\n\ngo 1.21\n")
+	writeSandboxFile(t, filepath.Join(root, "gomod", "main.go"), "package main\n\nfunc main() { println(\"built\") }\n")
+	res := runWrapped(t, sb, env, root, `cd gomod && go build -o probe-bin . && ./probe-bin`)
+	if res.ExitCode != 0 || !strings.Contains(res.Stdout+res.Stderr, "built") {
+		t.Errorf("go build under the sandbox = exit %d %q, want a built binary", res.ExitCode, res.Stdout+res.Stderr)
 	}
 }
 
@@ -184,11 +188,11 @@ func TestSandboxExecPrivateTmpInsideDeniedHostTmp(t *testing.T) {
 	home := t.TempDir()
 	root := t.TempDir()
 	env := sandboxTestEnv(home)
-	sb, ref := sandboxExecMechanism(root, env, "/private/tmp")
+	sb, ref := sandboxExecMechanism(root, sandboxInputs{childEnv: env}, "/private/tmp")
 	if ref != nil {
 		t.Fatalf("sandboxExecMechanism: %v", ref)
 	}
-	defer sb.close()
+	defer closeSandbox(t, sb)
 	res := runWrapped(t, sb, env, root, `printf ok > "$TMPDIR/x" && cat "$TMPDIR/x"`)
 	if got := strings.TrimSpace(res.Stdout + res.Stderr); got != "ok" {
 		t.Errorf("private TMPDIR under /private/tmp = %q (exit %d), want ok", got, res.ExitCode)
@@ -210,11 +214,11 @@ func TestSandboxExecEscapesAdversarialPaths(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	sb, ref := prepareSandbox(ctx, coreexec.Watchdog{}, root, root, env, false)
+	sb, ref := prepareSandbox(ctx, coreexec.Watchdog{}, root, root, sandboxInputs{childEnv: env}, false)
 	if ref != nil {
 		t.Fatalf("prepareSandbox with quoted paths: %v", ref)
 	}
-	defer sb.close()
+	defer closeSandbox(t, sb)
 	for _, tc := range []struct{ cmd, want string }{
 		{`cat "$HOME/.ssh/id_rsa" 2>/dev/null && printf LEAK || printf DENIED`, "DENIED"},
 		{`cat readable.txt`, "readable"},
@@ -225,9 +229,91 @@ func TestSandboxExecEscapesAdversarialPaths(t *testing.T) {
 		}
 	}
 
-	if _, ref := sandboxExecMechanism(root, []string{"HOME=" + home + "\n"}, ""); ref == nil ||
+	if _, ref := sandboxExecMechanism(root, homeInputs(home+"\n"), ""); ref == nil ||
 		ref.Code != codeSandboxUnavailable || !strings.Contains(ref.Message, "control character") {
 		t.Errorf("newline HOME ref = %v, want a control-character refusal", ref)
+	}
+}
+
+// TestSandboxExecDeniesKeychainAndPersistence proves the two macOS escapes a
+// read-deny profile leaves open are closed against the real Seatbelt engine:
+// the keychain broker is unreachable, and a write anywhere outside the
+// reviewed root and the private tree — a LaunchAgent, a shell rc file, a
+// sibling directory — fails, while a write inside the root still succeeds.
+// The fake HOME and the sibling live outside every denied temp root (the
+// mechanism's host temp root is a separate directory), so only the keychain
+// and write rules can be what stops them.
+func TestSandboxExecDeniesKeychainAndPersistence(t *testing.T) {
+	requireSandboxExec(t)
+	root, home, sibling := t.TempDir(), t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, "Library", "LaunchAgents"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	env := sandboxTestEnv(home)
+	sb, ref := sandboxExecMechanism(root, sandboxInputs{childEnv: env}, t.TempDir())
+	if ref != nil {
+		t.Fatalf("sandboxExecMechanism: %v", ref)
+	}
+	defer closeSandbox(t, sb)
+	assertKeychainUnreachable(t, sb, env, root)
+	assertPersistenceDenied(t, sb, env, root, home, sibling)
+	res := runWrapped(t, sb, env, root, `printf inside > inside.txt && cat inside.txt`)
+	if got := strings.TrimSpace(res.Stdout + res.Stderr); res.ExitCode != 0 || got != "inside" {
+		t.Errorf("write inside the root = exit %d %q, want inside", res.ExitCode, got)
+	}
+}
+
+// assertPersistenceDenied proves each write outside the root fails with the
+// kernel's EPERM and lands nowhere.
+func assertPersistenceDenied(t *testing.T, sb *sandbox, env []string, root, home, sibling string) {
+	t.Helper()
+	for _, tc := range []struct{ name, cmd, path string }{
+		{
+			"LaunchAgent plist", `printf x > "$HOME/Library/LaunchAgents/dev.verdict.probe.plist"`,
+			filepath.Join(home, "Library", "LaunchAgents", "dev.verdict.probe.plist"),
+		},
+		{"shell rc file", `printf x >> "$HOME/.zshrc"`, filepath.Join(home, ".zshrc")},
+		{"sibling outside the root", `printf x > "` + sibling + `/outside.txt"`, filepath.Join(sibling, "outside.txt")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			requireDeniedWithErrno(t, sb, env, root, tc.cmd)
+			if _, err := os.Stat(tc.path); !os.IsNotExist(err) {
+				t.Errorf("%s exists after the denied write (%v)", tc.path, err)
+			}
+		})
+	}
+}
+
+// assertKeychainUnreachable stores a sentinel in a throwaway keychain file
+// inside the reviewed root — readable by path, so only the keychain broker
+// denial can stop the read — proves the unsandboxed control reads it, and
+// proves the sandboxed read does not.
+func assertKeychainUnreachable(t *testing.T, sb *sandbox, env []string, root string) {
+	t.Helper()
+	const sentinel = "verdict-keychain-sentinel"
+	keychain := filepath.Join(root, "probe.keychain-db")
+	security := func(args ...string) string {
+		t.Helper()
+		out, err := exec.CommandContext(t.Context(), "/usr/bin/security", args...).CombinedOutput()
+		if err != nil {
+			t.Fatalf("security %v: %v: %s", args, err, out)
+		}
+		return strings.TrimSpace(string(out))
+	}
+	security("create-keychain", "-p", "verdict-probe", keychain)
+	t.Cleanup(func() {
+		// The test context is already canceled when cleanup runs.
+		if out, err := exec.CommandContext(context.Background(), "/usr/bin/security", "delete-keychain", keychain).CombinedOutput(); err != nil {
+			t.Errorf("security delete-keychain: %v: %s", err, out)
+		}
+	})
+	security("add-generic-password", "-s", "verdict-sandbox-probe", "-a", "probe", "-w", sentinel, keychain)
+	if got := security("find-generic-password", "-s", "verdict-sandbox-probe", "-w", keychain); got != sentinel {
+		t.Fatalf("unsandboxed control read %q, want the sentinel", got)
+	}
+	res := runWrapped(t, sb, env, root, `security find-generic-password -s verdict-sandbox-probe -w "`+keychain+`"`)
+	if res.ExitCode == 0 || strings.Contains(res.Stdout+res.Stderr, sentinel) {
+		t.Errorf("sandboxed keychain read = exit %d %q, want the broker denied", res.ExitCode, res.Stdout+res.Stderr)
 	}
 }
 
