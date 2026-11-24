@@ -47,6 +47,7 @@ const (
 	fieldRisk            = "risk"
 	fieldLevel           = "level"
 	fieldAssessedHead    = "assessed_head"
+	fieldLens            = "lens"
 	// fieldRigorSource is the provenance of the recorded rung.
 	fieldRigorSource = "rigor_source"
 )

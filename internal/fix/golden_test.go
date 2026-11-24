@@ -210,6 +210,64 @@ func setupBatchBelowFloor(t *testing.T, dir, _ string) {
 		findingJSON(sigInfo2, "open", "informational", "app.txt", "Another nit here.")+"]")
 }
 
+// findingLensJSON renders one valid store entry carrying lens provenance.
+func findingLensJSON(sig, severity, path, body, lens string) string {
+	return `{"kind":"inline","path":"` + path + `",` +
+		`"heading":null,"side":"RIGHT","line":2,"anchored":true,` +
+		`"body":"` + body + `","suggestion":null,"inBounds":true,` +
+		`"rigor":"pointed","severity":"` + severity + `","kb":[],` +
+		`"lens":"` + lens + `",` +
+		`"sig":"` + sig + `","sig_version":"1",` +
+		`"firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open",` +
+		`"rationale":"","history":[]}`
+}
+
+// setupRecipe is the lens-provocation fixture: the bundle loads two lenses
+// and three findings carry one each — one perf, one security, one without.
+func setupRecipe(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	lenses := "# lens perf — sha256:abc\nperf body\n# end lens perf\n" +
+		"# lens security — sha256:def\nsecurity body\n# end lens security\n"
+	bdir := filepath.Join(dir, ".verdict", "state", "local-recipe")
+	if err := os.MkdirAll(bdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bdir, "lenses.txt"), []byte(lenses), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mkLocal(t, dir, "recipe", "["+
+		findingLensJSON(sigBatch, "important", "other.txt", "Important perf bug here.", "perf")+","+
+		findingLensJSON(sigInfo, "important", "app.txt", "Important security bug here.", "security")+","+
+		findingJSON(sigCritical, "open", "critical", "notes.txt", "Critical unprovenanced bug.")+"]")
+}
+
+// setupRecipeEmpty is the zero-lens fixture: no bundle lenses and no
+// committed recipes anywhere, so the built-in default resolves lens-less.
+func setupRecipeEmpty(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	mkLocal(t, dir, "emptylens", "["+
+		findingLensJSON(sigBatch, "important", "other.txt", "Important perf bug here.", "perf")+"]")
+}
+
+// setupRecipeSelected is the composite fixture: the reaction selection
+// names two sigs, one inside the recipe lens set and one outside it.
+func setupRecipeSelected(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupRecipe(t, dir, "")
+	seedSelected(t, dir, "local-recipe", sigBatch, sigCritical)
+}
+
+// setupRecipeSelectedEmpty is the composite empty-intersection fixture: the
+// selection names only the unprovenanced finding, which sits outside every
+// lens the bundle loads.
+func setupRecipeSelectedEmpty(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupRecipe(t, dir, "")
+	seedSelected(t, dir, "local-recipe", sigCritical)
+}
+
 const patchedAnchorContent = "alpha\nbeta fixed\ngamma\n"
 
 func setupPatch(t *testing.T, dir, _ string) {
@@ -491,6 +549,41 @@ func TestFixGolden(t *testing.T) {
 	t.Run("patch", testFixPatch)
 	t.Run("selected", testFixSelected)
 	t.Run("promotion", testFixPromotion)
+	t.Run("recipe", testFixRecipe)
+}
+
+// testFixRecipe pins the --recipe batch surface: selection by stored lens,
+// the empty-scope report for a lens-less recipe, and the flag refusals.
+func testFixRecipe(t *testing.T) {
+	t.Helper()
+	golden.Pin(t, harness, "recipe-json", setupRecipe, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "recipe-human", setupRecipe, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--verify-cmd", batchVerifyCmd)
+	golden.Pin(t, harness, "recipe-paths", setupRecipe, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--verify-cmd", batchVerifyCmd,
+		"--paths", "other.txt", "--json")
+	golden.Pin(t, harness, "recipe-empty", setupRecipeEmpty, nil,
+		"fix", "acme/app", "local-emptylens", "--recipe", "default", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "recipe-paths-empty", setupRecipe, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--verify-cmd", batchVerifyCmd,
+		"--paths", "docs/**", "--json")
+	golden.Pin(t, harness, "recipe-selected-json", setupRecipeSelected, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--selected", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "recipe-selected-human", setupRecipeSelected, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--selected", "--verify-cmd", batchVerifyCmd)
+	golden.Pin(t, harness, "recipe-selected-empty-json", setupRecipeSelectedEmpty, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--selected", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "recipe-selected-empty-human", setupRecipeSelectedEmpty, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--selected", "--verify-cmd", batchVerifyCmd)
+	golden.Pin(t, harness, "recipe-unknown", setupRecipe, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "nope", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "recipe-with-sig", setupRecipe, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--sig", sigInfo, "--json")
+	golden.Pin(t, harness, "recipe-with-test", setupRecipe, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--test", sigInfo, "--json")
+	golden.Pin(t, harness, "recipe-empty-name", setupRecipe, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "", "--json")
 }
 
 // testFixPromotion pins the --test promotion surface: the promote and commit

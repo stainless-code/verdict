@@ -10,6 +10,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/brief"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/recipe"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
@@ -110,7 +111,7 @@ var (
 	}
 	knownFindingKeys = []string{
 		fieldPath, fieldLine, fieldStartLine, fieldSide, fieldClaim, fieldQuote, fieldConfidenceInput,
-		fieldRigor, fieldSeverity, fieldCategory, fieldSources, fieldSuggestion, fieldBrief, fieldKB, "reproduction",
+		fieldRigor, fieldSeverity, fieldCategory, fieldSources, fieldSuggestion, fieldBrief, fieldKB, fieldLens, "reproduction",
 	}
 	knownSpecCheckKeys = []string{fieldItem, fieldStatus, specNoteKey, fieldEvidence}
 	knownEvidenceKeys  = []string{fieldPath, fieldLine, fieldQuote}
@@ -652,6 +653,8 @@ func (c *checker) checkFindingText(base, key string, v any) bool {
 		c.checkFilled(base+pathDot+fieldQuote, v, "quote the code at path:line")
 	case fieldConfidenceInput:
 		c.checkEnum(base+pathDot+fieldConfidenceInput, v, finderConfidence, "use high, medium or low")
+	case fieldLens:
+		c.checkLens(base+pathDot+fieldLens, v)
 	case fieldSeverity:
 		c.checkSeverity(base+pathDot+fieldSeverity, v)
 	case fieldCategory:
@@ -722,6 +725,29 @@ func (c *checker) checkSuggestion(path string, v any) {
 		c.add(c.problem(path, core.ProblemCodeWrongType, core.ProblemLevelWarning,
 			"suggestion contains a fence — demoting it to body",
 			"use an unfenced code suggestion"))
+	}
+}
+
+// checkLens validates one finding's optional lens provenance: a non-empty
+// lowercase slug the recipe grammar accepts. The key is optional — an
+// absent lens is fine — but a spelled one must name a lens a recipe can
+// select by, so a non-string, empty, or malformed value refuses.
+func (c *checker) checkLens(path string, v any) {
+	if v == nil {
+		return
+	}
+	s, ok := v.(string)
+	if !ok {
+		c.wrongType(path, "lens must be a string", "use a lowercase lens id such as \"correctness\"", exampleEllipsis)
+		return
+	}
+	if s == "" {
+		c.outOfRange(path, "lens must not be empty", "use a lowercase lens id such as \"correctness\"", exampleEllipsis)
+		return
+	}
+	if !recipe.ValidLensID(s) {
+		c.badEnum(path, fmt.Sprintf("lens %q is not a lowercase slug", s),
+			"use ^[a-z0-9][a-z0-9-]{0,63}$", exampleEllipsis)
 	}
 }
 

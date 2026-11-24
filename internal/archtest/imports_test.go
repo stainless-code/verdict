@@ -104,6 +104,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/core/panel":     true,
 	"internal/core/post":      true,
 	"internal/core/ready":     true,
+	"internal/core/recipe":    true,
 	"internal/core/record":    true,
 	"internal/core/report":    true,
 	"internal/core/reviewdoc": true,

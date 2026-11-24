@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+fix takes --test or --recipe, not both (--recipe selects the findings a named recipe owns)
+--- files ---

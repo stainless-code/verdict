@@ -1,0 +1,20 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fix",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "unknown-recipe",
+    "message": "no recipe \"nope\"; available: default\ntry: pass --recipe <name> from the list above; recipes live in .verdict/recipes.json at the base, so commit the entry there and re-fetch"
+  }
+}
+--- stderr ---
+» readiness: .verdict/state/local-recipe — findings 3 open (3 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+re-enter: verdict fix acme/app local-recipe --recipe nope --verify-cmd 'go test ./...' --json
+--- files ---

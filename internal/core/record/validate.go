@@ -95,7 +95,7 @@ func priorElementOK(item any) bool {
 }
 
 func priorScalarsOK(m *jq.Obj) bool {
-	for _, key := range []string{fieldSig, fieldBody, fieldHeading, "kind", fieldSuggestion} {
+	for _, key := range []string{fieldSig, fieldBody, fieldHeading, "kind", fieldSuggestion, fieldLens} {
 		if v, has := m.Get(key); has && v != nil && v != false {
 			if _, ok := v.(string); !ok {
 				return false
