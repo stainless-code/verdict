@@ -89,6 +89,7 @@ type state struct { // field grouping documents the loaded dimensions; alignment
 	requiredGaps []string
 	panel        []any
 	patch        any
+	orgPack      *core.OrgPackInfo
 	comp         *core.ReportCompleteness
 	compare      *core.ReportCompare
 	risk         *core.ReportRisk
@@ -326,6 +327,7 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 	st.counts.CheckedFiles = countNonEmpty(strings.Split(checkedFiles(st.dir), newline))
 	loadStateCost(st)
 	loadStateCompleteness(ctx, st)
+	loadStateOrgPack(st)
 	loadStateProvenance(st)
 	loadStateRisk(st)
 	loadStateValidation(st)
@@ -419,6 +421,24 @@ func loadStateCompleteness(ctx context.Context, st *state) {
 	st.comp, st.compOK, st.compPosted = completeness(ctx, st.commander(), st.dir, st.headSHA, st.baseSHA)
 	if _, ok := identity.Verify(ctx, st.commander(), st.dir, st.headSHA, st.baseSHA); !ok {
 		st.warn("patch identity unavailable — completeness compares heads")
+	}
+}
+
+// loadStateOrgPack reads the governing central pack out of the bundle's
+// controls snapshot — the base config pin beside its locked row — so every
+// report names the pack version that governed the run. No pin reads nil.
+func loadStateOrgPack(st *state) {
+	pin := provenance.OrgPackFromBundle(st.dir)
+	if pin.Repo == "" {
+		return
+	}
+	path := pin.Path
+	if path == "" {
+		path = "."
+	}
+	st.orgPack = &core.OrgPackInfo{
+		Repo: pin.Repo, Ref: pin.Ref, Path: path,
+		SHA: pin.SHA, Hash: pin.Hash, Name: pin.Name, Version: pin.Version,
 	}
 }
 

@@ -1095,21 +1095,21 @@ Fix: add `"replace": ["<lower pack name>"]` to the higher pack's manifest (repla
 
 ## `pack-git-failed`
 
-Cause: the hermetic `git clone`, the HEAD resolution, or the detached checkout `pack add` runs could not complete: the remote or the ref was not found, the credential was refused, the network is down, or the five-minute clone budget ran out. git's own error text is never printed, because it can carry the source URL, its query, or the ref.
+Cause: the hermetic `git clone`, the HEAD resolution, the detached checkout `pack add` runs, the pinned `refs/tags/<tag>` or commit `pack sync` fetches, or the `git merge-base` the trusted-base read runs on a default branch that resolves, could not complete: the remote or the ref was not found, the credential was refused, the network is down, the five-minute clone budget ran out, or the default branch shares no merge base with `HEAD` (a shallow or partial clone). git's own error text is never printed, because it can carry the source URL, its query, or the ref.
 
-Fix: check the source spelling, the `@ref`, your access (an ssh key for an ssh source), and the network, then re-run. For a private remote, use ssh with a key rather than a token in the URL.
+Fix: check the source spelling, the `@ref`, your access (an ssh key for an ssh source), and the network, then re-run. For a private remote, use ssh with a key rather than a token in the URL. A merge-base refusal names the branch: fetch the default branch and its history (`git fetch origin <branch>`) so `HEAD` and the branch meet, then re-run.
 
 ## `pack-lock-drift`
 
-Cause: `.verdict/verdict.lock` no longer matches the vendored repo pack: its tree hash differs, its pack directory is gone, or its `sig` does not match the entry's name, source, version, and hash.
+Cause: `.verdict/verdict.lock` no longer matches the vendored repo pack: its tree hash differs, its pack directory is gone, or its `sig` does not match the entry's name, source, version, and hash (plus `org_path` and `org_ref` on a row `pack sync` wrote). When a base-owned `org_pack` pin governs, the vendored central pack was edited (or deleted) after `pack sync`.
 
-Fix: re-add the pack with `verdict pack add <dir|git-url>[@ref]` so the lock records the current tree, or restore the pack the lock pins, then re-run. A bundle keeps the lock controls captured at fetch, so repair the trusted base and fetch a fresh bundle before repeating `post` or `record`.
+Fix: re-add the pack with `verdict pack add <dir|git-url>[@ref]` so the lock records the current tree, or restore the pack the lock pins, then re-run. For a central pack, re-sync it with `verdict pack sync` instead. A bundle keeps the lock controls captured at fetch, so repair the trusted base and fetch a fresh bundle before repeating `post` or `record`.
 
 ## `pack-lock-missing`
 
-Cause: a repo pack under `.verdict/packs/` has no `.verdict/verdict.lock` entry, or the lock file is absent while repo packs exist.
+Cause: a repo pack under `.verdict/packs/` has no `.verdict/verdict.lock` entry, or the lock file is absent while repo packs exist. When a base-owned `org_pack` pin governs, no row synced from the pinned repository exists yet, or the row that exists was synced at another `ref` — a bumped tag such as `v1.0.0` to `v1.1.0` repins the pack, and the vendored tree is still the old ref's.
 
-Fix: run `verdict pack add <dir|git-url>[@ref]` to vendor the pack and write its lock entry, commit both, then re-run. A bundle keeps the lock controls captured at fetch, so repair the trusted base and fetch a fresh bundle before repeating `post` or `record`.
+Fix: run `verdict pack add <dir|git-url>[@ref]` to vendor the pack and write its lock entry, commit both, then re-run. For a central pack, run `verdict pack sync` to vendor the pinned `repo@ref` and lock it. A bundle keeps the lock controls captured at fetch, so repair the trusted base and fetch a fresh bundle before repeating `post` or `record`.
 
 ## `pack-staging-stale`
 
