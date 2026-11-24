@@ -34,6 +34,7 @@ func SettingsPath(home, xdg string) string {
 // constraint, never a default.
 type PersonalSpend struct {
 	BudgetUSD            *float64
+	MonthlyBudgetUSD     *float64
 	RequireKnownEstimate bool
 	EnforceCap           bool
 }
@@ -295,6 +296,9 @@ func buildPersonalSpend(raw any) (PersonalSpend, *core.RefusalError) {
 	out := PersonalSpend{}
 	var err *core.RefusalError
 	if out.BudgetUSD, err = presentValue(obj, "budget_usd", spendPath, positiveFloat); err != nil {
+		return zero, err
+	}
+	if out.MonthlyBudgetUSD, err = presentValue(obj, "monthly_budget_usd", spendPath, positiveFloat); err != nil {
 		return zero, err
 	}
 	if out.RequireKnownEstimate, err = presentBool(obj, "require_known_estimate", spendPath); err != nil {

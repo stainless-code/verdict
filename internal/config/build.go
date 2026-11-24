@@ -280,6 +280,9 @@ func buildDefaultsHead(obj map[string]any, path string, out *core.ConfigDefaults
 	if out.BudgetUSD, err = presentValue(obj, keyBudgetUSD, path, positiveFloat); err != nil {
 		return err
 	}
+	if out.MonthlyBudgetUSD, err = presentValue(obj, keyMonthlyBudgetUSD, path, positiveFloat); err != nil {
+		return err
+	}
 	if out.MaxBytes, err = presentValue(obj, "max_bytes", path, positiveInt); err != nil {
 		return err
 	}

@@ -87,10 +87,15 @@ type ConfigPlanGroup struct {
 }
 
 // ConfigSpend separates the two spend evaluations: the ordinary
-// estimate guard and the personal authorization limit.
+// estimate guard and the personal authorization limit. MonthlyBudget
+// is the effective monthly ceiling after precedence (stricter wins);
+// MonthlyRepoCap and MonthlyPersonalCap show each layer's own cap.
 type ConfigSpend struct {
 	GuardUSD             *float64 `json:"guard_usd,omitempty"`
 	PersonalLimit        *float64 `json:"personal_limit_usd,omitempty"`
+	MonthlyBudgetUSD     *float64 `json:"monthly_budget_usd,omitempty"`
+	MonthlyRepoCap       *float64 `json:"monthly_repo_cap,omitempty"`
+	MonthlyPersonalCap   *float64 `json:"monthly_personal_cap,omitempty"`
 	RequireKnownEstimate bool     `json:"require_known_estimate"`
 	EnforceCap           bool     `json:"enforce_cap"`
 }
@@ -237,13 +242,24 @@ func WireStrings(items []string) []any {
 }
 
 func wireSpend(s ConfigSpend) *jq.Obj {
-	var guard, limit any
+	var guard, limit, monthly, monthlyRepo, monthlyPersonal any
 	if s.GuardUSD != nil {
 		guard = *s.GuardUSD
 	}
 	if s.PersonalLimit != nil {
 		limit = *s.PersonalLimit
 	}
-	return jq.NewObj("guard_usd", guard, "personal_limit_usd", limit,
-		"require_known_estimate", s.RequireKnownEstimate, "enforce_cap", s.EnforceCap)
+	if s.MonthlyBudgetUSD != nil {
+		monthly = *s.MonthlyBudgetUSD
+	}
+	if s.MonthlyRepoCap != nil {
+		monthlyRepo = *s.MonthlyRepoCap
+	}
+	if s.MonthlyPersonalCap != nil {
+		monthlyPersonal = *s.MonthlyPersonalCap
+	}
+	o := jq.NewObj("guard_usd", guard, "personal_limit_usd", limit,
+		"require_known_estimate", s.RequireKnownEstimate, "enforce_cap", s.EnforceCap,
+		"monthly_budget_usd", monthly, "monthly_repo_cap", monthlyRepo, "monthly_personal_cap", monthlyPersonal)
+	return o
 }

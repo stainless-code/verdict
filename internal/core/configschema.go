@@ -101,8 +101,13 @@ type ConfigDefaults struct { //nolint:govet // field order is the published prop
 	// remove one.
 	SensitivePaths []string `json:"sensitive_paths,omitempty" minItems:"1" nonnull:"true"`
 
-	Panel              []string        `json:"panel,omitempty"                  minItems:"1"                          nonnull:"true"`
-	BudgetUSD          *float64        `exclusiveMin:"0"                        json:"budget_usd,omitempty"           nonnull:"true"`
+	Panel     []string `json:"panel,omitempty" minItems:"1"                nonnull:"true"`
+	BudgetUSD *float64 `exclusiveMin:"0"       json:"budget_usd,omitempty" nonnull:"true"`
+	// MonthlyBudgetUSD is the per-repo monthly spend ceiling: month-to-date
+	// recorded spend plus the pending run's projected cost is refused
+	// before launch when it exceeds the cap. The personal spend section
+	// carries a second ceiling; the stricter (smaller) wins.
+	MonthlyBudgetUSD   *float64        `exclusiveMin:"0"                        json:"monthly_budget_usd,omitempty"   nonnull:"true"`
 	MaxBytes           *int64          `json:"max_bytes,omitempty"              min:"1"                               nonnull:"true"`
 	Chunk              *bool           `json:"chunk,omitempty"                  nonnull:"true"`
 	KBPolicy           *ConfigKBPolicy `json:"kb_policy,omitempty"              nonnull:"true"`
