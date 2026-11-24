@@ -68,9 +68,10 @@ In scope (highest priority first):
   platforms a symlinked `.git` or git pointer file, a git directory that is
   the reviewed root or holds it, a pointer that reaches inside the root
   under another spelling (letter case, a macOS firmlink), a git control file
-  with a second hard link (object files in the git directory's own
-  `objects/` excepted), and a git control file outside `hooks/` that is a
-  symlink into the root refuse `sandbox-unavailable` ("inside the root" is
+  with a second hard link (object payload — loose objects, packs, and the
+  commit-graph and pack-list caches of each git directory, submodules'
+  included — excepted; `objects/info/alternates` is not payload), and a git
+  control file outside `hooks/` that is a symlink into the root refuse `sandbox-unavailable` ("inside the root" is
   decided by file identity); on Linux
   so does a root whose repository cannot be pinned read-only (no `.git`, a
   git pointer that does not resolve, or a git location whose walk passes

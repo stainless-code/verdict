@@ -5,11 +5,14 @@ package verifycore
 import (
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"slices"
 	"strings"
 	"syscall"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // TestSandboxArgvRefusesASymlinkedGitDir keeps the Linux shape from binding
@@ -290,10 +293,12 @@ func TestSandboxRefusesAHardlinkedGitControlFile(t *testing.T) {
 // never executes or configures from them.
 func TestSandboxAcceptsHardlinkedGitObjects(t *testing.T) {
 	root, elsewhere := gitRoot(t), t.TempDir()
-	objects := filepath.Join(root, ".git", "objects", "ab")
-	mustSandboxFS(t, os.MkdirAll(objects, 0o755))
-	writeGitPointer(t, filepath.Join(elsewhere, "obj"), "x")
-	mustSandboxFS(t, os.Link(filepath.Join(elsewhere, "obj"), filepath.Join(objects, "cdef")))
+	for _, rel := range []string{"ab/cdef", "pack/pack-1.pack", "info/commit-graph", "info/commit-graphs/graph-1.graph", "info/packs"} {
+		payload := filepath.Join(root, ".git", "objects", filepath.FromSlash(rel))
+		mustSandboxFS(t, os.MkdirAll(filepath.Dir(payload), 0o755))
+		writeGitPointer(t, payload, "x")
+		mustSandboxFS(t, os.Link(payload, filepath.Join(elsewhere, filepath.Base(payload))))
+	}
 	if _, ref := bwrapArgv(root, homeInputs(t.TempDir())); ref != nil {
 		t.Errorf("linux ref = %v, want hard-linked objects accepted", ref)
 	}
@@ -437,5 +442,127 @@ func requireGitAccepted(t *testing.T, root string) {
 	}
 	if _, ref := sandboxGitDirs(root); ref != nil {
 		t.Errorf("macOS ref = %v, want accepted", ref)
+	}
+}
+
+// TestSandboxGitScanVisitWalkErrors pins the walk-error policy at the
+// callback itself: a walk error that is "does not exist" (the location, or
+// an entry that vanished) is nothing to alias, and any other walk error
+// refuses, naming the path.
+func TestSandboxGitScanVisitWalkErrors(t *testing.T) {
+	scan := &sandboxGitScanner{location: "/loc", gitdirs: []string{"/loc"}}
+	if ref := scan.visit("/loc/gone", nil, fs.ErrNotExist); ref != nil {
+		t.Errorf("vanished entry ref = %v, want nil", ref)
+	}
+	ref := scan.visit("/loc/locked", nil, fs.ErrPermission)
+	if want := "sandbox unavailable: could not inspect /loc/locked"; ref == nil || !strings.HasPrefix(ref.Message, want) {
+		t.Errorf("permission error ref = %v, want prefix %q", ref, want)
+	}
+}
+
+// TestSandboxRefusesAHardlinkedAlternatesFile keeps `objects/info/` out of
+// the clone --local exemption except for its caches: `alternates` (which
+// clone copies, never links) redirects where git finds objects, so a second
+// name for it in the tree would let the command repoint object lookup.
+func TestSandboxRefusesAHardlinkedAlternatesFile(t *testing.T) {
+	for _, name := range []string{"alternates", "http-alternates"} {
+		t.Run(name, func(t *testing.T) {
+			root := gitRoot(t)
+			file := filepath.Join(root, ".git", "objects", "info", name)
+			mustSandboxFS(t, os.MkdirAll(filepath.Dir(file), 0o755))
+			writeGitPointer(t, file, "/elsewhere/objects\n")
+			mustSandboxFS(t, os.Link(file, filepath.Join(root, "alias")))
+			cause := "the git control file " + file + " has another hard link"
+			requireGitRefusal(t, root, cause)
+			requireGitDirsRefusal(t, root, cause)
+		})
+	}
+}
+
+// TestSandboxRefusesAControlFileReachingAGitDirThroughAnInRootLink pins
+// protection by node, not by resolution: `.git/config -> ../configs/gitconfig`
+// with `configs -> .git` resolves into the git directory, but `configs` is
+// an in-root link the command can swap for a directory of its own, and
+// then it controls the config git reads.
+func TestSandboxRefusesAControlFileReachingAGitDirThroughAnInRootLink(t *testing.T) {
+	root := gitRoot(t)
+	writeGitPointer(t, filepath.Join(root, ".git", "gitconfig"), "[core]\n")
+	mustSandboxFS(t, os.Symlink(".git", filepath.Join(root, "configs")))
+	link := filepath.Join(root, ".git", "config")
+	mustSandboxFS(t, os.Symlink("../configs/gitconfig", link))
+	cause := "the git control file " + link + " is a symlink to ../configs/gitconfig"
+	requireGitRefusal(t, root, cause)
+	requireGitDirsRefusal(t, root, cause)
+}
+
+// TestSandboxAcceptsALocalCloneWithASubmodule reproduces the regression on
+// a real repository: `git clone --local` hardlinks the object payload of
+// the clone and of every absorbed submodule git directory
+// (`.git/modules/<name>/objects`, commit-graph included), and the scan must
+// treat each `modules/<name>` as a git directory of its own — payload
+// exempt, `hooks/` links allowed — while its control files stay checked.
+func TestSandboxAcceptsALocalCloneWithASubmodule(t *testing.T) {
+	base := t.TempDir()
+	git := func(dir string, args ...string) {
+		t.Helper()
+		argv := append([]string{
+			"-c", "user.email=t@example.com", "-c", "user.name=t", "-c", "commit.gpgsign=false",
+			"-c", "protocol.file.allow=always", "-c", "init.defaultBranch=main",
+		}, args...)
+		cmd := exec.CommandContext(t.Context(), "git", argv...)
+		cmd.Dir = dir
+		cmd.Env = testenv.Base(nil) // pinned git config, no harness or secret leaks
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	sub, super, clone := filepath.Join(base, "sub"), filepath.Join(base, "super"), filepath.Join(base, "clone")
+	for _, repo := range []string{sub, super} {
+		mustSandboxFS(t, os.Mkdir(repo, 0o755))
+		git(repo, "init", "-q")
+		writeGitPointer(t, filepath.Join(repo, "f"), repo+"\n")
+		git(repo, "add", "f")
+		git(repo, "commit", "-q", "-m", "c")
+	}
+	git(super, "submodule", "add", "-q", sub, "sub")
+	git(super, "commit", "-q", "-m", "sm")
+	git(super, "commit-graph", "write", "--reachable")
+	git(base, "clone", "-q", "--local", super, clone)
+	git(clone, "submodule", "update", "-q", "--init")
+	modules := filepath.Join(clone, ".git", "modules", "sub")
+	requireSubmoduleObjectsHardlinked(t, modules)
+	requireGitAccepted(t, clone)
+
+	t.Run("a submodule hook linked into the tree", func(t *testing.T) {
+		hook := filepath.Join(modules, "hooks", "pre-commit")
+		mustSandboxFS(t, os.Symlink("../../../../scripts/pre-commit", hook))
+		t.Cleanup(func() { mustSandboxFS(t, os.Remove(hook)) })
+		requireGitAccepted(t, clone)
+	})
+	t.Run("a hard-linked submodule config", func(t *testing.T) {
+		alias := filepath.Join(clone, "cfg")
+		mustSandboxFS(t, os.Link(filepath.Join(modules, "config"), alias))
+		t.Cleanup(func() { mustSandboxFS(t, os.Remove(alias)) })
+		cause := "the git control file " + filepath.Join(modules, "config") + " has another hard link"
+		requireGitRefusal(t, clone, cause)
+		requireGitDirsRefusal(t, clone, cause)
+	})
+}
+
+// requireSubmoduleObjectsHardlinked proves the fixture exercises the
+// regression: the submodule git directory's objects really are hard-linked.
+func requireSubmoduleObjectsHardlinked(t *testing.T, gitdir string) {
+	t.Helper()
+	linked := false
+	err := filepath.WalkDir(filepath.Join(gitdir, "objects"), func(_ string, d fs.DirEntry, err error) error {
+		if err != nil || !d.Type().IsRegular() {
+			return err
+		}
+		info, err := d.Info()
+		linked = linked || (err == nil && sandboxHasLinks(info))
+		return err
+	})
+	if err != nil || !linked {
+		t.Fatalf("no hard-linked object under %s (%v); the fixture no longer reproduces clone --local", gitdir, err)
 	}
 }

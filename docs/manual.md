@@ -5428,12 +5428,15 @@ a/../g` therefore visits `a`, though it cleans to `g` — and a command that
   volume, or the macOS firmlink spelling `/System/Volumes/Data/private/var/…`),
   because a rule or bind in that spelling would not protect it; a git
   control file with a second hard link (`cfg` linked to `.git/config` would
-  write it past every path rule — only the object files in a git
-  directory's own top-level `objects/`, which `git clone --local` links by
-  design, are exempt); a file in a git location, outside `hooks/`, that is a
-  symlink into the root (`config -> ../cfg`; the refusal names the link and
-  its target, and a target outside the root or inside a git location is
-  fine); and any pointer whose
+  write it past every path rule — only object payload, which `git clone
+--local` links by design, is exempt: `objects/<2 hex>/…`, `objects/pack/…`,
+  and the `objects/info/commit-graph`, `commit-graphs/`, and `packs` caches
+  of each git directory, a submodule's `.git/modules/<name>` included;
+  `objects/info/alternates`, which redirects object lookup, is checked like
+  any control file); a file in a git directory, outside its `hooks/`, that is
+  a symlink into the root (`config -> ../cfg`; the refusal names the link and
+  its target, and a target outside the root, or inside a git location
+  reached through real directories rather than an in-root link, is fine); and any pointer whose
   walk passes, inside the root, through a symlink (it could be swapped) or a
   component that does not exist yet (it could be created as a link). Links
   are followed one hop at a time, so an in-root link reached only through a
