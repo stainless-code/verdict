@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -59,7 +60,7 @@ func azurePostDir(t *testing.T) string {
 		"hunks.tsv": "added.txt\tNEW\t1\t2\ngone.txt\tOLD\t1\t2\nnotes.txt\tOLD\t1\t3\nnotes.txt\tNEW\t1\t3\n",
 	}
 	for name, body := range files {
-		if err := writeTestFile(dir+"/"+name, body); err != nil {
+		if err := writeTestFile(filepath.Join(dir, name), body); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -321,11 +322,14 @@ func TestAzureWithheldAndFlattened(t *testing.T) {
 // write would send the operator looking for one.
 func TestAzureBodyStagingRefuses(t *testing.T) {
 	dir := azurePostDir(t)
-	blocked := dir + "/not-a-dir"
+	blocked := filepath.Join(dir, "not-a-dir")
 	if err := writeTestFile(blocked, "file"); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("TMPDIR", blocked)
+	t.Setenv("TMP", blocked)
+	t.Setenv("TEMP", blocked)
+	t.Setenv("USERPROFILE", blocked)
 	cmdr := azureCommander(t)
 	comment := `{"path":"notes.txt","body":"x","line":2,"side":"RIGHT"}`
 	attempt := azurePost(t, cmdr, dir, azurePayload(eventComment, comment))
@@ -741,10 +745,10 @@ func TestAzureRecheckUnreadable(t *testing.T) {
 func TestAzureUnreadableHunkIndex(t *testing.T) {
 	t.Parallel()
 	dir := azurePostDir(t)
-	if err := os.Remove(dir + "/hunks.tsv"); err != nil {
+	if err := os.Remove(filepath.Join(dir, "hunks.tsv")); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.Mkdir(dir+"/hunks.tsv", 0o755); err != nil {
+	if err := os.Mkdir(filepath.Join(dir, "hunks.tsv"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	cmdr := azureCommander(t)
