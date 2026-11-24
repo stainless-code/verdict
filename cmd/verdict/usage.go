@@ -3,7 +3,7 @@ package main
 func usageText() string {
 	return "usage: verdict demo|fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
 		"fetch-local|run|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|" +
-		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain [opts]\n" +
+		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain|acp [opts]\n" +
 		"  demo [<public-github-pr-url>] [--agent <name>] [--keep] [--timeout <secs>] [--json]\n" +
 		"    one review, zero setup: a public GitHub pull request by URL (gh when signed in for\n" +
 		"    github.com, the anonymous API otherwise) or your own working tree when the argument\n" +
@@ -671,13 +671,17 @@ func usageText() string {
 		"    an absent journal on an existing bundle exits 0 with zero steps.\n" +
 		"  serve [--root <dir>] [--depth <n>] [--max-visits <n>] [--max-repos <n>]\n" +
 		"      [--rediscover | --no-registry] [--host <addr>] [--port <n>] [--token <s>] [--check <tier>]\n" +
-		"      [--max-bundles <n>] [--interval <duration>] [--sweep <duration>] [--no-watch] [--json]\n" +
+		"      [--max-bundles <n>] [--interval <duration>] [--sweep <duration>] [--no-watch] [--interactive] [--json]\n" +
 		"    read-only loopback HTTP surface over the current repository, or every repository below --root.\n" +
 		"    Binds 127.0.0.1 on a kernel-assigned port and prints one tokenised start URL.\n" +
 		"    GET /?token=<t> sets verdict_session_<port> (HttpOnly, SameSite=Strict, Path=/v1)\n" +
 		"    and 303s to /; /v1 refuses ?token= and requires that cookie or Authorization: Bearer.\n" +
 		"    Routes: /v1/health, /v1/roots, /v1/bundles, /v1/roots/{root}/bundles/{bundle},\n" +
-		"    .../findings/{sig}, /v1/events (--no-watch removes it). GET only, no CORS, no writes; Ctrl-C exits 3.\n" +
+		"    .../findings/{sig}, /v1/events (--no-watch removes it). GET plus HEAD only, no CORS,\n" +
+		"    no writes unless --interactive adds POST /v1/triage and POST /v1/kb/promote (local\n" +
+		"    triage and KB promotion through the same services the CLI calls, gated by the\n" +
+		"    per-session X-Verdict-CSRF token /v1/health publishes, a present allowlisted Origin,\n" +
+		"    and strict application/json bodies); Ctrl-C exits 3.\n" +
 		"    Discovery defaults to depth 6, 20000 directory visits, 500 repositories;\n" +
 		"    --rediscover forces a walk, --no-registry skips the 24-hour local cache.\n" +
 		"  mcp [--read-only | --operator] (experimental)\n" +
@@ -686,6 +690,12 @@ func usageText() string {
 		"  mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>\n" +
 		"       [--write] [--dry-run] [--json] [--read-only] [--operator] (experimental)\n" +
 		"    print or idempotently merge the exact host config snippet; never prompts.\n" +
+		"  acp [--root <dir>] [--check <tier>] [--max-bundles <n>] [--json]\n" +
+		"    serve read-only queries as ACP v1 over stdio (JSON-RPC 2.0, one frame per line).\n" +
+		"    stdout is the protocol channel; progress and warnings go to stderr.\n" +
+		"    Protocol: initialize, ping, verdict/bundles/list, verdict/findings/list,\n" +
+		"    verdict/findings/get, verdict/findings/copy, $/cancel_request.\n" +
+		"    No daemon, no HTTP, no model calls, no writes; exits when stdin closes.\n" +
 		"  Global presentation flags (any verb, before or after the verb, repo, and pr;\n" +
 		"  global flags are stripped before the positionals are read):\n" +
 		"  --color <auto|always|never>, --compact / --no-compact, --no-json.\n" +
@@ -706,7 +716,7 @@ func usageText() string {
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on demo/fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
 		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/index/journal/backtest/learn/pack/init/" +
-		"skill/upgrade/uninstall/serve/config: " +
+		"skill/upgrade/uninstall/serve/config/acp: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
 		"  Glossary: https://stainless-code.com/verdict/docs/glossary\n"
@@ -727,6 +737,7 @@ var bareVerbs = map[string]bool{
 	"index":      true,
 	"pack":       true,
 	"serve":      true,
+	verbACP:      true,
 }
 
 // repoOnlyVerbs take one <owner/repo> and nothing else positional: every other

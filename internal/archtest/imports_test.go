@@ -27,6 +27,7 @@ const modulePath = "github.com/stainless-code/verdict/"
 // subpackage prefix.
 var forbiddenDeps = []string{
 	"internal/cli",
+	"internal/acp",
 	"internal/drain",
 	"internal/mcp",
 	"internal/schemagen",
@@ -75,6 +76,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/agentcatalog":   true,
 	"internal/argvshape":      true,
 	"internal/atomic":         true,
+	"internal/bitbucket":      true,
 	"internal/brief":          true,
 	"internal/config":         true,
 	"internal/controls":       true,
@@ -191,6 +193,11 @@ var boundaries = []boundary{
 	{
 		name:    "mcp",
 		pattern: "./internal/mcp",
+		deny:    forbiddenDeps,
+	},
+	{
+		name:    "acp",
+		pattern: "./internal/acp",
 		deny:    forbiddenDeps,
 	},
 	{

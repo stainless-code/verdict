@@ -57,6 +57,7 @@ var VerbTable = map[string]VerbPolicy{
 	"init":      {Journals: false, Reason: "scaffolds repo-level .verdict/ controls; owns no bundle"},
 	"learn":     {Journals: false, Reason: "writes repo-level .verdict/learnings.md; owns no bundle"},
 	"mcp":       {Journals: false, Reason: "stdio transport entry point; each tool call journals individually"},
+	"acp":       {Journals: false, Reason: "stdio ACP transport; read-only queries journal nothing"},
 	"serve":     {Journals: false, Reason: "local HTTP listener; owns no bundle"},
 	"skill":     {Journals: false, Reason: reasonDistribution},
 	"uninstall": {Journals: false, Reason: reasonDistribution},

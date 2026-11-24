@@ -17,6 +17,19 @@
   let compareBaseline = "";
   let compareScope = "";
   let inboxRows = [];
+  // The server advertises interactive mode and its per-session CSRF token on
+  // /v1/health; both stay unset in static mode and on a read-only server,
+  // so no write control can render there.
+  let interactive = false;
+  let csrfToken = "";
+  const triageStatuses = [
+    "open",
+    "addressed",
+    "wont-fix",
+    "false-positive",
+    "deferred",
+  ];
+  const kbRigors = ["said", "pointed", "walked", "ran", "reproduced"];
 
   function node(tag, text, className) {
     const element = document.createElement(tag);
@@ -264,6 +277,143 @@
     return button;
   }
 
+  // writeJSON posts one JSON body with the per-session CSRF header. The
+  // response body is returned for the caller to render honestly: a refusal
+  // envelope is not thrown.
+  async function writeJSON(path, payload) {
+    const response = await fetch(path, {
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Verdict-CSRF": csrfToken,
+      },
+      body: JSON.stringify(payload),
+    });
+    return { response, body: await response.json() };
+  }
+
+  // submitTriage writes one finding's status and renders the server's
+  // answer in the status line. It never refetches: the operator reads the
+  // result, then refreshes to see the updated store.
+  async function submitTriage(payload) {
+    try {
+      const { response, body } = await writeJSON("/v1/triage", payload);
+      if (!response.ok) {
+        message.textContent =
+          body?.message || `Request returned ${response.status}`;
+        message.className = "error";
+        return;
+      }
+      if (body?.error) {
+        message.textContent = body.error.message || "Triage refused.";
+        message.className = "error";
+        return;
+      }
+      const data = body?.data || {};
+      message.textContent = `Triaged ${data.sig || payload.sig} -> ${
+        data.status || payload.status
+      }.`;
+      message.className = "";
+    } catch (error) {
+      message.textContent =
+        error instanceof Error ? error.message : String(error);
+      message.className = "error";
+    }
+  }
+
+  // submitKBPromote appends one KB rule and renders the server's answer.
+  async function submitKBPromote(payload) {
+    try {
+      const { response, body } = await writeJSON("/v1/kb/promote", payload);
+      if (!response.ok) {
+        message.textContent =
+          body?.message || `Request returned ${response.status}`;
+        message.className = "error";
+        return;
+      }
+      if (body?.error) {
+        message.textContent = body.error.message || "Promotion refused.";
+        message.className = "error";
+        return;
+      }
+      const rule = body?.data?.rule || {};
+      message.textContent = `Promoted rule ${rule.id || payload.rule} to KB.`;
+      message.className = "";
+    } catch (error) {
+      message.textContent =
+        error instanceof Error ? error.message : String(error);
+      message.className = "error";
+    }
+  }
+
+  // triageControl is one finding's inline write control: the triage
+  // service's status vocabulary, a rationale field, and the CLI's force
+  // escape. It renders only in interactive live mode.
+  function triageControl(root, bundle, sig) {
+    const wrapper = node("div", undefined, "triage");
+    const status = node("select");
+    status.setAttribute("aria-label", "Triage status");
+    for (const value of triageStatuses) {
+      const option = node("option", value);
+      option.value = value;
+      status.append(option);
+    }
+    const rationale = node("input");
+    rationale.placeholder = "Rationale (30+ characters, or check Force)";
+    rationale.setAttribute("aria-label", "Rationale");
+    const force = node("input");
+    force.type = "checkbox";
+    force.setAttribute("aria-label", "Force");
+    const button = node("button", "Triage");
+    button.type = "button";
+    button.addEventListener("click", () =>
+      submitTriage({
+        root,
+        bundle,
+        sig,
+        status: status.value,
+        rationale: rationale.value,
+        force: force.checked === true,
+      }),
+    );
+    wrapper.append(status, rationale, force, button);
+    return wrapper;
+  }
+
+  // kbPromoteForm is the detail view's KB promotion control: one appended
+  // learn rule with the CLI's rigor vocabulary (pointed is its default).
+  function kbPromoteForm(root) {
+    const wrapper = node("div", undefined, "kb-promote");
+    const rule = node("input");
+    rule.placeholder = "New KB rule text";
+    rule.setAttribute("aria-label", "KB rule text");
+    const scope = node("input");
+    scope.placeholder = "Scope, e.g. src/*.go";
+    scope.setAttribute("aria-label", "KB scope");
+    const rigor = node("select");
+    rigor.setAttribute("aria-label", "KB rigor");
+    for (const value of kbRigors) {
+      const option = node("option", value);
+      option.value = value;
+      option.selected = value === "pointed";
+      rigor.append(option);
+    }
+    const button = node("button", "Promote to KB");
+    button.type = "button";
+    button.addEventListener("click", () =>
+      submitKBPromote({
+        root,
+        rule: rule.value,
+        scope: scope.value,
+        rigor: rigor.value,
+      }),
+    );
+    wrapper.append(rule, scope, rigor, button);
+    return wrapper;
+  }
+
   function compareBuckets(root, bundle) {
     const columns = [
       { key: "sig", label: "Signature" },
@@ -287,6 +437,14 @@
         },
       },
     ];
+    if (interactive && mode !== "static") {
+      actionable.push({
+        label: "Triage",
+        action: (row, td) => {
+          td.append(triageControl(root, bundle, row.sig));
+        },
+      });
+    }
     return { columns, actionable };
   }
 
@@ -432,10 +590,12 @@
     );
   }
 
-  function renderDetail(data, gateOnly) {
+  function renderDetail(data, gateOnly, routeInfo) {
     const report = data.report || {};
     const gate = data.gate;
     const items = Array.isArray(report.items) ? report.items : [];
+    const root = routeInfo?.root || "";
+    const bundle = routeInfo?.bundle || "";
     if (!gateOnly) {
       content.append(objectPanel("Review summary", reviewSummary(report)));
       for (const item of items) {
@@ -450,22 +610,29 @@
         link.download = "reproduction.txt";
         content.append(link);
       }
-      content.append(
-        table(
-          "Findings",
-          [
-            { key: "sig", label: "Signature" },
-            { key: "status", label: "Status" },
-            { key: "severity", label: "Severity" },
-            { key: "rigor", label: "Evidence" },
-            { key: "path", label: "Path" },
-            { key: "line", label: "Line" },
-            { key: "body", label: "Finding" },
-            { key: "suggestion", label: "Suggestion" },
-          ],
-          items,
-        ),
-      );
+      const findingColumns = [
+        { key: "sig", label: "Signature" },
+        { key: "status", label: "Status" },
+        { key: "severity", label: "Severity" },
+        { key: "rigor", label: "Evidence" },
+        { key: "path", label: "Path" },
+        { key: "line", label: "Line" },
+        { key: "body", label: "Finding" },
+        { key: "suggestion", label: "Suggestion" },
+      ];
+      if (interactive && mode !== "static") {
+        findingColumns.push({
+          label: "Triage",
+          action: (row, td) => {
+            td.append(triageControl(root, bundle, row.sig));
+          },
+        });
+      }
+      content.append(table("Findings", findingColumns, items));
+      if (interactive && mode !== "static") {
+        content.append(node("h2", "Promote to KB rule"));
+        content.append(kbPromoteForm(root));
+      }
       content.append(
         table(
           "Evidence ledger",
@@ -535,7 +702,7 @@
       } else if (view === "compare") {
         renderCompare(data, routeInfo?.root || "", routeInfo?.bundle || "");
       } else {
-        renderDetail(data, view === "gate");
+        renderDetail(data, view === "gate", routeInfo);
       }
     } else if (view === "cost" || view === "precision") {
       title.textContent = view === "cost" ? "Cost" : "Precision";
@@ -715,6 +882,11 @@
         cache: "no-store",
       });
       const health = await response.json();
+      if (health.data?.interactive === true) {
+        interactive = true;
+        csrfToken =
+          typeof health.data?.csrf === "string" ? health.data.csrf : "";
+      }
       if (health.data?.watch === false) {
         live.hidden = true;
         refresh.hidden = false;
@@ -748,6 +920,10 @@
   });
   window.addEventListener("hashchange", fetchView);
   window.addEventListener("beforeunload", () => eventSource?.close());
-  fetchView();
-  startLive();
+  // Health arrives first so the interactive advertisement lands before the
+  // first render: a write control can never flash on a read-only server.
+  (async () => {
+    await startLive();
+    fetchView();
+  })();
 })();
