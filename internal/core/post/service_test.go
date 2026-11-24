@@ -29,6 +29,7 @@ type scriptCommander struct {
 	calls   [][]string
 	stdin   []string
 	configs []string
+	bodies  []string
 }
 
 type scriptResult struct {
@@ -38,16 +39,24 @@ type scriptResult struct {
 }
 
 // configPlaceholder stands in for the one curl config path a write stages under
-// a fresh private temp dir, whose name changes every call.
-const configPlaceholder = "CONFIG"
+// a fresh private temp dir, whose name changes every call. bodyPlaceholder does
+// the same for the request body file an `az rest` write stages.
+const (
+	configPlaceholder = "CONFIG"
+	bodyPlaceholder   = "BODY"
+)
 
 // routeKey renders one argv for the canned lookup, replacing a `--config`
-// file operand with [configPlaceholder].
+// credential file operand with [configPlaceholder] and a `--body @file` operand
+// with [bodyPlaceholder].
 func routeKey(argv []string) string {
 	out := append([]string{}, argv...)
 	for i := 0; i+1 < len(out); i++ {
-		if out[i] == "--config" && out[i+1] != "-" {
+		switch {
+		case out[i] == "--config" && out[i+1] != "-":
 			out[i+1] = configPlaceholder
+		case out[i] == "--body" && strings.HasPrefix(out[i+1], "@") && out[i+1] != "@-":
+			out[i+1] = "@" + bodyPlaceholder
 		}
 	}
 	return strings.Join(out, "\x00")
@@ -65,6 +74,7 @@ func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result
 	}
 	s.stdin = append(s.stdin, stdin)
 	s.configs = append(s.configs, s.readConfig(cmd.Argv))
+	s.bodies = append(s.bodies, s.readBody(cmd.Argv))
 	key := routeKey(cmd.Argv)
 	res, ok := s.result(key)
 	if !ok {
@@ -89,6 +99,24 @@ func (s *scriptCommander) readConfig(argv []string) string {
 		raw, err := os.ReadFile(argv[i+1])
 		if err != nil {
 			s.t.Errorf("read curl config: %v", err)
+			return ""
+		}
+		return string(raw)
+	}
+	return ""
+}
+
+// readBody reads the request body file a call names, so a test can assert its
+// content while the call is still running.
+func (s *scriptCommander) readBody(argv []string) string {
+	s.t.Helper()
+	for i := 0; i+1 < len(argv); i++ {
+		if argv[i] != "--body" || !strings.HasPrefix(argv[i+1], "@") {
+			continue
+		}
+		raw, err := os.ReadFile(strings.TrimPrefix(argv[i+1], "@"))
+		if err != nil {
+			s.t.Errorf("read request body: %v", err)
 			return ""
 		}
 		return string(raw)

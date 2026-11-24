@@ -132,7 +132,7 @@ func TestAdoptTargetHostGate(t *testing.T) {
 		{"gitcafe", false},
 		{"forgejo", true},
 		{"bitbucket", true},
-		{"azure", false},
+		{"azure", true},
 	}
 	for _, tc := range cases {
 		t.Run(tc.provider, func(t *testing.T) {
