@@ -14,17 +14,22 @@ import (
 
 // gatedEval is a resolver that, while armed, blocks forever on paths
 // containing needle (a hung volume) until the test releases it at cleanup.
+// Its expire is the session's budget: the wait for a gated walk runs out
+// once the walk is hung, and no other walk ever runs out, so which walks
+// miss is decided by the test, never by how loaded the machine is.
 type gatedEval struct {
-	release chan struct{}
-	needle  string
-	once    sync.Once
-	armed   atomic.Bool
-	blocked atomic.Int64
+	release  chan struct{}
+	hung     chan struct{}
+	needle   string
+	once     sync.Once
+	hungOnce sync.Once
+	armed    atomic.Bool
+	blocked  atomic.Int64
 }
 
 func newGatedEval(t *testing.T, needle string) *gatedEval {
 	t.Helper()
-	g := &gatedEval{release: make(chan struct{}), needle: needle}
+	g := &gatedEval{release: make(chan struct{}), hung: make(chan struct{}), needle: needle}
 	t.Cleanup(g.unblock)
 	return g
 }
@@ -37,9 +42,51 @@ func (g *gatedEval) unblock() {
 func (g *gatedEval) eval(p string) (string, error) {
 	if g.armed.Load() && strings.Contains(p, g.needle) {
 		g.blocked.Add(1)
+		g.hungOnce.Do(func() { close(g.hung) })
 		<-g.release
 	}
 	return evalOS(p)
+}
+
+// expire runs a walk's budget out once a gated walk is hung; every other
+// walk waits for its result.
+func (g *gatedEval) expire(key string) <-chan struct{} {
+	if g.armed.Load() && strings.Contains(key, g.needle) {
+		return g.hung
+	}
+	return nil
+}
+
+// TestResolverBudgetRunsOut pins the wall-clock budget the session tests
+// replace: a walk that never answers times out after the budget, and with
+// every walk slot held a new walk is not started and times out at once.
+func TestResolverBudgetRunsOut(t *testing.T) {
+	t.Parallel()
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) })
+	r := newResolver(time.Millisecond, 1)
+	hung := func() (string, bool) { <-release; return "/never", true }
+	done := make(chan bool, 2)
+	go func() {
+		_, _, timedOut := r.run("hung", hung)
+		done <- timedOut
+		_, _, timedOut = r.run("other", hung)
+		done <- timedOut
+	}()
+	for i, what := range []string{"a hung walk", "a walk past the slot cap"} {
+		var timedOut bool
+		testenv.Until(t, func() bool {
+			select {
+			case timedOut = <-done:
+				return true
+			default:
+				return false
+			}
+		})
+		if !timedOut {
+			t.Fatalf("result %d: %s did not time out", i, what)
+		}
+	}
 }
 
 // TestHungVolumeNeverStallsKeystrokes pins item 1's keystroke property: with
@@ -52,7 +99,7 @@ func TestHungVolumeNeverStallsKeystrokes(t *testing.T) {
 	gate := newGatedEval(t, "hang.txt")
 	gate.armed.Store(true)
 	cfg := newConfig(root)
-	cfg.eval = gate.eval
+	cfg.eval, cfg.expire = gate.eval, gate.expire
 	cfg.lim.resolve = 20 * time.Millisecond
 	s := startSession(t, cfg)
 	s.initialize(1, nil)
@@ -82,8 +129,7 @@ func TestMissedResolutionKeepsTheGoodOne(t *testing.T) {
 	root := fixtureRoot(t)
 	gate := newGatedEval(t, "notes.txt")
 	cfg := newConfig(root)
-	cfg.eval = gate.eval
-	cfg.lim.resolve = 20 * time.Millisecond
+	cfg.eval, cfg.expire = gate.eval, gate.expire
 	s := startSession(t, cfg)
 	s.initialize(1, nil)
 	s.notify(methodInitialized, map[string]any{})
@@ -119,8 +165,7 @@ func TestSaveResolvesAMissedSpelling(t *testing.T) {
 	}
 	gate := newGatedEval(t, "notes.txt")
 	cfg := newConfig(link)
-	cfg.eval = gate.eval
-	cfg.lim.resolve = 20 * time.Millisecond
+	cfg.eval, cfg.expire = gate.eval, gate.expire
 	s := startSession(t, cfg)
 	s.initialize(1, nil)
 	s.notify(methodInitialized, map[string]any{})
