@@ -1,12 +1,12 @@
 exit: 0
 --- stdout ---
-init: preset strict (chill: unpinned/10/0.7, standard: 1 member/5/0.5, strict: lead+2 lenses/3/0.3)
+init: preset strict (chill: unpinned/10/0.7, standard: lead+1 lens/5/0.5, strict: lead+2 lenses/3/0.3)
 --- .verdict/config.json (create) ---
 {
   "schema_version": "1",
   "defaults": {
     "panel": ["lead", "lens-1", "lens-2"],
-    "budget_usd": 0.10,
+    "budget_usd": 2.00,
     "kb_policy": {
       "min_judged": 3,
       "max_fp_rate": 0.3
@@ -46,7 +46,7 @@ reverts.jsonl.lock
   "schema_version": "1",
   "defaults": {
     "panel": ["lead", "lens-1", "lens-2"],
-    "budget_usd": 0.10,
+    "budget_usd": 2.00,
     "kb_policy": {
       "min_judged": 3,
       "max_fp_rate": 0.3

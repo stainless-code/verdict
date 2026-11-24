@@ -1,11 +1,11 @@
 exit: 0
 --- stdout ---
-init: preset chill (chill: unpinned/10/0.7, standard: 1 member/5/0.5, strict: lead+2 lenses/3/0.3)
+init: preset chill (chill: unpinned/10/0.7, standard: lead+1 lens/5/0.5, strict: lead+2 lenses/3/0.3)
 --- .verdict/config.json (overwrite) ---
 {
   "schema_version": "1",
   "defaults": {
-    "budget_usd": 2.00,
+    "budget_usd": 0.10,
     "kb_policy": {
       "min_judged": 10,
       "max_fp_rate": 0.7
@@ -44,7 +44,7 @@ reverts.jsonl.lock
 {
   "schema_version": "1",
   "defaults": {
-    "budget_usd": 2.00,
+    "budget_usd": 0.10,
     "kb_policy": {
       "min_judged": 10,
       "max_fp_rate": 0.7
