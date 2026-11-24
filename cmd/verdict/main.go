@@ -65,11 +65,12 @@ const envHome = "HOME"
 const (
 	verbSkill  = "skill"
 	verbDoctor = "doctor"
+	verbACP    = "acp"
 )
 
 const verbsHint = "demo|fetch|fetch-local|run|panel|record|adopt|ingest|fix|post|triage|report|next|show|" +
 	"check-tree|verify|doctor|calibrate|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|backtest|" +
-	"learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain"
+	"learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain|acp"
 
 func main() {
 	//nolint:forbidigo // GO-LAYOUT-02: main is the only os.Exit caller by design
@@ -233,6 +234,8 @@ func dispatch(
 		return runUninstall(ctx, r, rest, env)
 	case "serve":
 		return serve.Run(ctx, r, rest, serve.Request{Version: cliVersion(root, readFile)})
+	case verbACP:
+		return runACP(ctx, r, rest, cliVersion(root, readFile))
 	}
 	repoRoot, code, ok := resolveRepoRoot(ctx, r, cmd)
 	if !ok {

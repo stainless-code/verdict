@@ -3,7 +3,7 @@ package main
 func usageText() string {
 	return "usage: verdict demo|fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
 		"fetch-local|run|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|" +
-		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain [opts]\n" +
+		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain|acp [opts]\n" +
 		"  demo [<public-github-pr-url>] [--agent <name>] [--keep] [--timeout <secs>] [--json]\n" +
 		"    one review, zero setup: a public GitHub pull request by URL (gh when signed in for\n" +
 		"    github.com, the anonymous API otherwise) or your own working tree when the argument\n" +
@@ -679,6 +679,12 @@ func usageText() string {
 		"  mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>\n" +
 		"       [--write] [--dry-run] [--json] [--read-only] [--operator] (experimental)\n" +
 		"    print or idempotently merge the exact host config snippet; never prompts.\n" +
+		"  acp [--root <dir>] [--check <tier>] [--max-bundles <n>] [--json]\n" +
+		"    serve read-only queries as ACP v1 over stdio (JSON-RPC 2.0, one frame per line).\n" +
+		"    stdout is the protocol channel; progress and warnings go to stderr.\n" +
+		"    Protocol: initialize, ping, verdict/bundles/list, verdict/findings/list,\n" +
+		"    verdict/findings/get, verdict/findings/copy, $/cancel_request.\n" +
+		"    No daemon, no HTTP, no model calls, no writes; exits when stdin closes.\n" +
 		"  Global presentation flags (any verb, before or after the verb, repo, and pr;\n" +
 		"  global flags are stripped before the positionals are read):\n" +
 		"  --color <auto|always|never>, --compact / --no-compact, --no-json.\n" +
@@ -699,7 +705,7 @@ func usageText() string {
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on demo/fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
 		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/index/journal/backtest/learn/pack/init/" +
-		"skill/upgrade/uninstall/serve/config: " +
+		"skill/upgrade/uninstall/serve/config/acp: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
 		"  Glossary: https://stainless-code.com/verdict/docs/glossary\n"
@@ -720,6 +726,7 @@ var bareVerbs = map[string]bool{
 	"index":      true,
 	"pack":       true,
 	"serve":      true,
+	verbACP:      true,
 }
 
 // repoOnlyVerbs take one <owner/repo> and nothing else positional: every other
