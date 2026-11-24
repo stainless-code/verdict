@@ -369,8 +369,8 @@ func TestParseDiffOfDiff(t *testing.T) {
 }
 
 func TestParseNoNewlineMarkerSingleBackslash(t *testing.T) {
-	// The real marker is a single backslash "\ No newline at end of file".
-	// The previous raw literal "\\" (two backslashes) never matched it.
+	// Style/parser pin: the marker line is a single backslash
+	// "\ No newline at end of file" and must never become a content line.
 	text := "diff --git a/nl.txt b/nl.txt\n" +
 		"--- a/nl.txt\n" +
 		"+++ b/nl.txt\n" +
@@ -435,6 +435,28 @@ func TestHistogramDeterminism(t *testing.T) {
 	}
 	if firstStr != "EQ[a,b,a,b] DEL[x] INS[y] EQ[a,b]" {
 		t.Fatalf("literal script = %q", firstStr)
+	}
+}
+
+// TestHistogramDeterminismAnchorSensitive is the falsifiable tie-break pin: a
+// and b tie on total occurrences (a=6, b=6), so only the earliest-position
+// rule picks the anchor. Under the old map-iteration scan the anchor was
+// random; here it must be "a" every run and the script its exact literal.
+func TestHistogramDeterminismAnchorSensitive(t *testing.T) {
+	a := []string{"a", "a", "a", "a", "a", "b"}
+	b := []string{"b", "a", "b", "b", "b", "b"}
+	if anchor, ok := histogramAnchor(a, b); !ok || anchor != "a" {
+		t.Fatalf("histogramAnchor = %q ok=%v, want %q", anchor, ok, "a")
+	}
+	const runs = 64
+	const want = "INS[b] EQ[a] DEL[a,a,a,a] EQ[b] INS[b,b,b]"
+	for i := range runs {
+		if got := editsString(DiffLines(a, b)); got != want {
+			t.Fatalf("run %d script = %q, want %q", i, got, want)
+		}
+	}
+	if got := reconstruct(DiffLines(a, b)); !reflect.DeepEqual(got, b) {
+		t.Fatalf("reconstruct = %v want %v", got, b)
 	}
 }
 

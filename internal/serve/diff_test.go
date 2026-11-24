@@ -3,6 +3,7 @@ package serve
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core/query"
@@ -10,6 +11,8 @@ import (
 
 // diffFixtureFiles is the two-bundle root with a real full.diff and a
 // findings.json anchored on a.txt line 1 RIGHT (json.Number via UseNumber).
+// The diff carries two hunks so hunks[1].gap_before is non-zero, and the
+// findings use two lenses (alpha, zeta) so by_lens key order is testable.
 func diffFixtureFiles() map[string]string {
 	files := fixtureFiles()
 	files[".verdict/state/1234/full.diff"] = "diff --git a/a.txt b/a.txt\n" +
@@ -20,11 +23,18 @@ func diffFixtureFiles() map[string]string {
 		" hello\n" +
 		"-old\n" +
 		"+new\n" +
-		"+extra\n"
+		"+extra\n" +
+		"@@ -40,2 +40,3 @@\n" +
+		" mid\n" +
+		"-old2\n" +
+		"+new2\n" +
+		"+extra2\n"
 	// Keep the finding anchored on notes.txt vs a.txt? For anchoring we
 	// need a finding on a.txt line 1 RIGHT so it lands on the diff line.
-	// Overwrite findings.json with an anchored one.
-	files[".verdict/state/1234/findings.json"] = `[{"sig":"` + sigCrit + `","path":"a.txt","line":1,"side":"RIGHT","severity":"important","category":"logic","body":"fix this","status":"open"}]`
+	// Overwrite findings.json with two anchored findings on two lenses.
+	files[".verdict/state/1234/findings.json"] = "[" +
+		`{"sig":"` + sigCrit + `","path":"a.txt","line":1,"side":"RIGHT","severity":"important","category":"alpha","body":"fix this","status":"open"},` +
+		`{"sig":"` + sigImp + `","path":"a.txt","line":1,"side":"RIGHT","severity":"important","category":"zeta","body":"fix that","status":"open"}]`
 	return files
 }
 
@@ -116,6 +126,27 @@ func TestDiffRoute(t *testing.T) { //nolint:gocognit,revive,cyclop // route pari
 	}
 	if !anchored {
 		t.Errorf("no anchored finding on a.txt:1 RIGHT in lines %v", lines)
+	}
+	// Second hunk carries the exact collapsed gap: 40 - (1+2) = 37.
+	if len(hunks) < 2 {
+		t.Fatalf("hunks = %d, want 2", len(hunks))
+	}
+	h1 := asMap(t, hunks[1])
+	if gap, ok := h1["gap_before"].(json.Number); !ok || gap.String() != "37" {
+		t.Errorf("hunks[1].gap_before = %v, want 37", h1["gap_before"])
+	}
+	// by_lens keys render in deterministic sorted order (alpha before zeta);
+	// the pretty envelope keeps key order, so compare positions in raw body.
+	raw := string(got.body)
+	lensAt := strings.Index(raw, `"by_lens"`)
+	if lensAt < 0 {
+		t.Fatal("body missing by_lens")
+	}
+	rest := raw[lensAt:]
+	alphaAt := strings.Index(rest, `"alpha"`)
+	zetaAt := strings.Index(rest, `"zeta"`)
+	if alphaAt < 0 || zetaAt < 0 || alphaAt > zetaAt {
+		t.Errorf("by_lens key order not sorted: alpha at %d, zeta at %d", alphaAt, zetaAt)
 	}
 
 	badOrigin := map[string]string{
