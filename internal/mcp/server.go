@@ -272,7 +272,7 @@ func (s *Server) dispatch(ctx context.Context, req *rpcRequest) {
 		s.writeResult(req.ID, s.listTools())
 	case methodToolsCall:
 		s.handleToolsCall(ctx, req)
-	case methodPromptsList, methodPromptsGet, methodResourcesList, methodResourcesRead:
+	case methodPromptsList, methodPromptsGet, methodResourcesList, methodResourcesRead, methodResourcesTemplatesList:
 		s.handleProcedure(ctx, req)
 	case methodCancelled:
 		s.handleCancelled(req)
@@ -294,6 +294,8 @@ func (s *Server) handleProcedure(ctx context.Context, req *rpcRequest) {
 		s.handleResourcesList(ctx, req)
 	case methodResourcesRead:
 		s.handleResourcesRead(ctx, req)
+	case methodResourcesTemplatesList:
+		s.handleResourcesTemplatesList(req)
 	}
 }
 
@@ -456,6 +458,7 @@ func (s *Server) writeHiddenToolError(id json.RawMessage, name string) {
 
 func (s *Server) bindings(t *tool) *bindings {
 	return &bindings{
+		version:   s.cfg.Version,
 		env:       s.cfg.Env,
 		now:       s.cfg.Now,
 		progress:  stderrProgress{w: s.cfg.Stderr},

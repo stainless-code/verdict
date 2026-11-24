@@ -163,6 +163,7 @@ no-selected-findings	try: re-fetch the PR for current reactions, widen --min-sev
 no-threads	try: run the fetch/record step named above first, then re-run
 no-verify-cmd	try: write verifyCmd in the bundle's patch.json (the command verify and fix --all hand back), or pass --verify-cmd <cmd> to a fix batch, then re-run
 not-a-repo	try: run the fetch/record step named above first, then re-run
+not-found	try: address the cause above, then re-run the same command
 not-local	try: run the fetch/record step named above first, then re-run
 not-retired	try: check the rule status with learn --status, then re-run
 not-verdict-authored	try: address the cause above, then re-run the same command

@@ -29,10 +29,16 @@ var wantAnnotations = map[string]toolAnnotations{
 	"init": {
 		Title: "Scaffold controls", DestructiveHint: true, IdempotentHint: true,
 	},
-	"journal": {Title: "Read bundle journal", ReadOnlyHint: true, IdempotentHint: true},
-	"learn":   {Title: "Manage knowledge base", IdempotentHint: true},
-	"next":    {Title: "Next finding", ReadOnlyHint: true, IdempotentHint: true},
-	"pack":    {Title: "List lens packs", ReadOnlyHint: true, IdempotentHint: true},
+	"journal":        {Title: "Read bundle journal", ReadOnlyHint: true, IdempotentHint: true},
+	"learn":          {Title: "Manage knowledge base", IdempotentHint: true},
+	"next":           {Title: "Next finding", ReadOnlyHint: true, IdempotentHint: true},
+	"pack":           {Title: "List lens packs", ReadOnlyHint: true, IdempotentHint: true},
+	"query-bundles":  {Title: "List dashboard bundles", ReadOnlyHint: true, IdempotentHint: true},
+	"query-findings": {Title: "List bundle findings", ReadOnlyHint: true, IdempotentHint: true},
+	"query-finding":  {Title: "Read one finding", ReadOnlyHint: true, IdempotentHint: true},
+	"query-copy":     {Title: "Copy a finding prompt", ReadOnlyHint: true, IdempotentHint: true},
+	"query-cost":     {Title: "Summarize review cost", ReadOnlyHint: true, IdempotentHint: true},
+	"query-health":   {Title: "Dashboard health", ReadOnlyHint: true, IdempotentHint: true},
 	"post": {
 		Title: "Post review", DestructiveHint: true, IdempotentHint: true, OpenWorldHint: true,
 	},
@@ -105,14 +111,15 @@ func TestSurfaceSets(t *testing.T) {
 	defaults := names(allTools(false, false))
 	wantDefaults := []string{
 		"adopt", "calibrate", "check-tree", "config", "doctor", "fetch", "fetch-local", "fix",
-		"handoff", "index", "ingest", "init", "journal", "learn", "next", "pack", "post", "pr_wait", "ready", "record", "report", "risk", "show",
-		"threads", "trend", "verify",
+		"handoff", "index", "ingest", "init", "journal", "learn", "next", "pack", "post", "pr_wait",
+		"query-bundles", "query-copy", "query-cost", "query-finding", "query-findings", "query-health",
+		"ready", "record", "report", "risk", "show", "threads", "trend", "verify",
 	}
 	if !reflect.DeepEqual(defaults, wantDefaults) {
 		t.Errorf("default tools = %v, want %v", defaults, wantDefaults)
 	}
 	readOnly := names(allTools(true, false))
-	wantReadOnly := []string{"check-tree", "config", "doctor", "handoff", "index", "journal", "next", "pack", "pr_wait", "ready", "record", "report", "risk", "show", "trend"}
+	wantReadOnly := []string{"check-tree", "config", "doctor", "handoff", "index", "journal", "next", "pack", "pr_wait", "query-bundles", "query-copy", "query-cost", "query-finding", "query-findings", "query-health", "ready", "record", "report", "risk", "show", "trend"}
 	if !reflect.DeepEqual(readOnly, wantReadOnly) {
 		t.Errorf("read-only tools = %v, want %v", readOnly, wantReadOnly)
 	}
@@ -200,8 +207,10 @@ func TestInitializeInstructions(t *testing.T) {
 func TestMutationDeclarations(t *testing.T) {
 	t.Parallel()
 	want := map[string]mutationClass{
-		"pr_wait": noLocalWrites,
-		"adopt":   localWrites, "calibrate": localWrites, "check-tree": noLocalWrites,
+		"pr_wait":       noLocalWrites,
+		"query-bundles": noLocalWrites, "query-findings": noLocalWrites, "query-finding": noLocalWrites,
+		"query-copy": noLocalWrites, "query-cost": noLocalWrites, "query-health": noLocalWrites,
+		"adopt": localWrites, "calibrate": localWrites, "check-tree": noLocalWrites,
 		"config": noLocalWrites, "doctor": noLocalWrites, "fetch": localWrites,
 		"fetch-local": localWrites, "fix": localWrites, "handoff": noLocalWrites,
 		"index":  noLocalWrites,

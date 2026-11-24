@@ -58,13 +58,29 @@ func TestResourcesListInventory(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := append(slices.Clone(paths), handoffRefPaths()...)
-	if len(result.Resources) != len(want) {
-		t.Fatalf("resources = %d, want the %d served paths", len(result.Resources), len(want))
+	if len(result.Resources) != len(want)+len(queryResourceURIs()) {
+		t.Fatalf("resources = %d, want the %d served paths plus %d query resources",
+			len(result.Resources), len(want), len(queryResourceURIs()))
 	}
 	for i, path := range want {
 		checkResourceDescriptor(t, i, path, result.Resources[i])
 	}
+	checkQueryDescriptors(t, result.Resources[len(want):])
 	checkLiteralMIMEs(t, result.Resources)
+}
+
+// checkQueryDescriptors pins the trailing dashboard reads resources/list
+// serves beside the skill payloads, in served order.
+func checkQueryDescriptors(t *testing.T, got []resourceDescriptorFrame) {
+	t.Helper()
+	if len(got) != len(queryStaticResources) {
+		t.Fatalf("query resources = %d, want %d", len(got), len(queryStaticResources))
+	}
+	for i, want := range queryStaticResources {
+		if got[i].URI != want.URI || got[i].Name != want.Name || got[i].MIMEType != want.MIMEType {
+			t.Errorf("query resource %d = %+v, want %+v", i, got[i], want)
+		}
+	}
 }
 
 func checkResourceDescriptor(t *testing.T, i int, path string, got resourceDescriptorFrame) {
@@ -122,12 +138,14 @@ func TestResourcesListIncludesHandoffRefs(t *testing.T) {
 	}
 	refs := handoffRefPaths()
 	want := append(slices.Clone(paths), refs...)
-	if len(result.Resources) != len(want) {
-		t.Fatalf("resources = %d, want %d payload and ref paths", len(result.Resources), len(want))
+	if len(result.Resources) != len(want)+len(queryResourceURIs()) {
+		t.Fatalf("resources = %d, want %d payload and ref paths plus %d query resources",
+			len(result.Resources), len(want), len(queryResourceURIs()))
 	}
 	for i, path := range want {
 		checkResourceDescriptor(t, i, path, result.Resources[i])
 	}
+	checkQueryDescriptors(t, result.Resources[len(want):])
 }
 
 // TestResourcesReadServesHandoffRefBytes pins the same source and slicing as

@@ -98,6 +98,19 @@ func readSurfaceVerbs(t *testing.T) surfaceVerbs {
 	}
 }
 
+// mcpQuerySurface are the MCP tools with no CLI twin: read-only queries
+// over the shared dashboard query layer (internal/core/query), the same
+// reads `verdict serve` and `verdict acp` serve. They are the one MCP
+// surface deliberately outside the CLI-verb parity below.
+var mcpQuerySurface = map[string]string{
+	"query-bundles":  "dashboard bundle listing over the shared query layer (no CLI verb)",
+	"query-findings": "dashboard finding listing over the shared query layer (no CLI verb)",
+	"query-finding":  "dashboard single-finding read over the shared query layer (no CLI verb)",
+	"query-copy":     "dashboard copy prompt over the shared query layer (no CLI verb)",
+	"query-cost":     "dashboard cost rollup over the shared query layer (no CLI verb)",
+	"query-health":   "dashboard health over the shared query layer (no CLI verb)",
+}
+
 // TestSurfaceParityCLI proves the CLI synopsis is well formed and that every
 // verb it offers reaches MCP or is omitted from that surface.
 func TestSurfaceParityCLI(t *testing.T) {
@@ -107,7 +120,7 @@ func TestSurfaceParityCLI(t *testing.T) {
 	if len(verbs.cli) < 10 {
 		t.Errorf("cli synopsis lists %d verbs; the usage line did not parse", len(verbs.cli))
 	}
-	checkSubset(t, "mcp tool", verbs.mcp, "cli verb", verbs.cli)
+	checkSubset(t, "mcp tool", without(verbs.mcp, names(mcpQuerySurface)), "cli verb", verbs.cli)
 	checkIncludes(t, "mcp surface", verbs.mcp, "cli verb", without(verbs.cli, names(mcpOmittedVerbs)))
 }
 
@@ -141,6 +154,12 @@ func TestSurfaceParityAllowlistsStayHonest(t *testing.T) {
 	t.Parallel()
 	verbs := readSurfaceVerbs(t)
 	checkSubset(t, "mcp-omitted verb", names(mcpOmittedVerbs), "cli verb", verbs.cli)
+	checkSubset(t, "mcp query tool", names(mcpQuerySurface), "mcp tool", verbs.mcp)
+	for _, verb := range names(mcpQuerySurface) {
+		if slices.Contains(verbs.cli, verb) {
+			t.Errorf("mcp query tool %q has a CLI twin; it should leave the query surface", verb)
+		}
+	}
 	checkSubset(t, "sdk-omitted verb", names(sdkOmittedVerbs), "cli verb", verbs.cli)
 	checkSubset(t, "sdk gap", names(sdkGaps), "cli verb", verbs.cli)
 	checkMcpOmissions(t, &verbs)

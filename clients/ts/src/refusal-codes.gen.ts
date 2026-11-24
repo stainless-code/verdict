@@ -167,6 +167,7 @@ export type RefusalCode =
   | "no-threads"
   | "no-verify-cmd"
   | "not-a-repo"
+  | "not-found"
   | "not-local"
   | "not-retired"
   | "not-verdict-authored"

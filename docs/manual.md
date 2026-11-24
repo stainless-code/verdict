@@ -2144,8 +2144,11 @@ exits when stdin closes. It is listed as experimental in the usage block, and
 
 Tools are named after the verbs and take the core request shape: `adopt`,
 `calibrate`, `check-tree`, `config`, `doctor`, `fetch`, `fetch-local`, `fix`, `index`, `ingest`, `init`,
-`learn`, `next`, `pack`, `post`, `pr_wait`, `ready`, `record`, `report`, `risk`, `show`,
-`threads`, `trend`, `verify`. That is 24 tools. `upgrade` and `skill` are distribution surfaces,
+`handoff`, `journal`, `learn`, `next`, `pack`, `post`, `pr_wait`, `query-bundles`, `query-copy`, `query-cost`,
+`query-finding`, `query-findings`, `query-health`, `ready`, `record`, `report`, `risk`, `show`,
+`threads`, `trend`, `verify`. That is 32 tools. The six `query-*` tools are the dashboard reads over the
+shared query layer (no CLI twin), not verbs — they compose through `internal/core/query`, the same layer
+`verdict serve` and `verdict acp` share, so there is no duplicate counting or finding logic. `upgrade` and `skill` are distribution surfaces,
 never tools; `triage` is human-owned and joins the surface only with
 `--operator`, so an agent proposes status changes through `triage[]` in
 `review.json` instead. Input schemas are generated from the Go request structs,
@@ -2157,7 +2160,8 @@ error the model sees before calling instead of a runtime refusal. `post` writes
 a review and sends it to the host (GitHub, GitLab, or Forgejo), so it is not
 exposed under `--read-only`.
 
-`--read-only` exposes the read tools (`report`, `next`, `show`, `risk`, `trend`,
+`--read-only` exposes the read tools (`report`, `next`, `show`, `risk`, `trend`, `query-bundles`, `query-copy`,
+`query-cost`, `query-finding`, `query-findings`, `query-health`,
 `ready`, `doctor`, `check-tree`, `config`, `index`, `pack`, `pr_wait`) plus `record` limited to its `dry_run: true`
 form, and is mutually exclusive with `--operator`. A non-dry `record` call
 there is an `isError` `bad-flags` result naming `dry_run`; the tool keeps
@@ -2177,7 +2181,7 @@ with the constrained `record` and `report` forms above. A tool hidden by
 that exposes it (`triage` without `--operator`), so
 a hidden verb is never reported as an unknown one; a truly unknown name still
 answers `unknown tool`.
-`--operator` adds `triage` (20 tools) for an operator's own assistant that is
+`--operator` adds `triage` (33 tools) for an operator's own assistant that is
 allowed to flip statuses, and it unlocks the `threads` resolve mode; it is
 never the default. Each `tools/list` entry
 carries a short `title` plus the four MCP behavior hints (`readOnlyHint`,
@@ -2220,6 +2224,35 @@ Prompts and resources are read-only in every server mode, including
 `--read-only` and `--operator`, and `skill` remains a distribution surface,
 never a tool. `initialize` advertises both capabilities
 and points hosts at the `review` prompt or `verdict://skill/PROCEDURE.md`.
+
+**Dashboard query tools and resources.** Six read-only tools answer dashboard
+questions ("open findings in this repo", "list bundles", "cost this week by
+model", "get one finding plus its fix prompt") straight from `internal/core/query`,
+with the same envelope (`at`, `repo`, `pr`, `next`, `warnings` plus the view
+data) `verdict serve` renders:
+
+- `query-bundles` (`pattern?`) — every bundle under the served root with counts and head.
+- `query-findings` (`bundle`) — one bundle's ranked findings with evidence rungs.
+- `query-finding` (`bundle`, `sig`) — one finding with its fix, byte-identical to `show --json`'s data.
+- `query-copy` (`bundle`, `sig`) — the deterministic fix prompt plus the runnable `verdict triage` command.
+- `query-cost` (`by?`: `repo`, `week`, `model`; empty defaults to `model`) — spend rollup with totals.
+- `query-health` — version, served roots, and bundle counts.
+
+All six are strictly read-only (`readOnlyHint: true`, no local writes, no
+journal entries) and are served in every mode, including `--read-only`; like
+the ACP extension methods they never write the disk, spawn a process, or call
+the network. Bundle names resolve inside the served root through the same
+guard every verb shares, so a traversal name refuses `bad-flags` and a missing
+bundle refuses `not-found`. The same reads are addressable as resources:
+`resources/list` adds `verdict://roots`, `verdict://bundles`, `verdict://health`,
+and `verdict://cost` (model) beside the skill payloads, `resources/templates/list`
+offers `verdict://findings/{bundle}`, `verdict://finding/{bundle}/{sig}`,
+`verdict://compare/{bundle}/{baseline}`, `verdict://cost/{by}`, and
+`verdict://precision/{by}`, and `resources/read` returns each view as one
+`application/json` content block. A URI outside the `verdict://` grammar and a
+bundle the root does not hold answer `-32002` (resource not found); an
+addressable but missing finding answers `-32602` with the refusal code in
+`error.data`.
 
 #### Host config
 

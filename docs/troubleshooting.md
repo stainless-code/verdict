@@ -1054,6 +1054,12 @@ Cause: the command needs a git worktree and this directory is not one.
 
 Fix: run inside a git worktree, then re-run.
 
+## `not-found`
+
+Cause: the MCP dashboard query named a bundle this served root does not hold.
+
+Fix: list bundles with `query-bundles` first, then re-issue the call with the right bundle name.
+
 ## `not-local`
 
 Cause: the verb got the wrong bundle kind (`record` on a GitHub PR, or `fix` on a PR bundle

@@ -25,9 +25,9 @@ type procedureModeCase struct {
 func TestProcedureSurfacesIgnoreModes(t *testing.T) {
 	t.Parallel()
 	cases := []procedureModeCase{
-		{name: "default", tools: 26},
-		{name: "read-only", tools: 15, readOnly: true},
-		{name: "operator", tools: 27, operator: true},
+		{name: "default", tools: 32},
+		{name: "read-only", tools: 21, readOnly: true},
+		{name: "operator", tools: 33, operator: true},
 	}
 	paths, wantPrompt, wantResource := procedureFixtures(t)
 
@@ -38,7 +38,7 @@ func TestProcedureSurfacesIgnoreModes(t *testing.T) {
 			cfg.ReadOnly = tc.readOnly
 			cfg.Operator = tc.operator
 			frames := procedureFrames(t, &cfg)
-			checkProcedureSurface(t, tc, frames, len(paths)+len(handoffRefPaths()), len(skillfs.Tasks()), wantPrompt, wantResource)
+			checkProcedureSurface(t, tc, frames, len(paths)+len(handoffRefPaths())+len(queryResourceURIs()), len(skillfs.Tasks()), wantPrompt, wantResource)
 			wire := procedureWireFrom(frames)
 			if i == 0 {
 				baseline = wire
