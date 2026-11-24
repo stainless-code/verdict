@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# The Go bar CI runs, before the push. Escape hatch: SKIP_PRE_PUSH=1.
+# The Go bar CI runs, before the push (scripts/prepush-checks.sh). Escape hatches:
+# SKIP_PRE_PUSH=1 skips it. A commit that `make verify-stamp` already verified
+# (stamp for every pushed sha, clean tree) skips it too; VERDICT_PREPUSH_FULL=1
+# forces the full run anyway.
 set -euo pipefail
 
 # git exports GIT_DIR for its hooks; without this the tests' own `git -C <tmp>`
@@ -18,6 +21,8 @@ if [ -t 0 ]; then
 fi
 
 # git hands over one line per pushed ref: local-ref local-sha remote-ref remote-sha.
+refs="$(cat)"
+
 range_paths() {
   local _local_ref local_sha _remote_ref remote_sha base
   while read -r _local_ref local_sha _remote_ref remote_sha; do
@@ -36,7 +41,7 @@ range_paths() {
   done
 }
 
-paths="$(range_paths)"
+paths="$(printf '%s\n' "$refs" | range_paths)"
 
 full=true
 if [ -n "$paths" ]; then
@@ -49,52 +54,19 @@ if [ "$full" != true ]; then
   exit 0
 fi
 
-if ! command -v go >/dev/null 2>&1; then
-  echo "pre-push: go not found — the Go gates are required (SKIP_PRE_PUSH=1 overrides)" >&2
-  exit 1
-fi
-
-failed=0
-fail() { printf 'pre-push: %s\n' "$1" >&2; failed=1; }
-
-go build ./... || fail "go build ./... failed"
-go vet ./... || fail "go vet ./... failed"
-go test ./... || fail "go test ./... failed"
-
-if command -v make >/dev/null 2>&1 && grep -q '^deadcode:' Makefile; then
-  make deadcode || fail "make deadcode failed"
-fi
-
-if command -v make >/dev/null 2>&1 && grep -q '^cross:' Makefile; then
-  make cross || fail "make cross failed"
-fi
-
-pinned="$(awk '/golangci-lint-action/ { found = 1 } found && /^[[:space:]]*version:/ {
-  sub(/#.*/, ""); sub(/^[[:space:]]*version:[[:space:]]*/, ""); sub(/[[:space:]]*$/, ""); print; exit
-}' .github/workflows/ci.yml)"
-lint="$(command -v golangci-lint || true)"
-if [ -z "$lint" ] && [ -x "$(go env GOPATH)/bin/golangci-lint" ]; then
-  lint="$(go env GOPATH)/bin/golangci-lint"
-fi
-if [ -z "$pinned" ]; then
-  echo "pre-push: no golangci-lint version pinned in .github/workflows/ci.yml — lint skipped"
-elif [ -z "$lint" ]; then
-  echo "pre-push: golangci-lint $pinned not installed — lint skipped"
-  echo "pre-push: install the pinned release binary (a go install build reports phantom revive findings):"
-  echo "  curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/$pinned/install.sh | sh -s -- -b \"\$(go env GOPATH)/bin\" \"$pinned\""
-else
-  have="$("$lint" version --short 2>/dev/null | head -1 || true)"
-  if [ -z "$have" ]; then
-    have="$("$lint" --version 2>/dev/null | awk '{ print $NF }' || true)"
-  fi
-  case "$have" in v*) ;; *) have="v$have" ;; esac
-  if [ "$have" = "$pinned" ]; then
-    "$lint" run --timeout=10m || fail "golangci-lint found issues"
-  else
-    echo "pre-push: golangci-lint $pinned pinned, found $have — lint skipped (versions disagree)"
-    echo "pre-push: install the pinned release binary (a go install build reports phantom revive findings):"
-    echo "  curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/$pinned/install.sh | sh -s -- -b \"\$(go env GOPATH)/bin\" \"$pinned\""
+# Skip the heavy suite only for commits already verified locally: every pushed
+# sha carries a valid stamp and the tree is clean (scripts/verify-stamp.sh).
+# The docs-only classification above is cheap and always runs first.
+shas="$(printf '%s\n' "$refs" | awk '$2 !~ /^0+$/ && NF >= 2 { print $2 }' | sort -u)"
+if [ "${VERDICT_PREPUSH_FULL:-0}" != 1 ] && [ -n "$shas" ]; then
+  # shellcheck disable=SC2086 # one word per sha; shas are hex
+  if stamped="$(sh scripts/verify-stamp.sh check $shas 2>/dev/null)"; then
+    printf '%s\n' "$stamped" | while read -r sha epoch; do
+      when="$(date -u -r "$epoch" '+%Y-%m-%d %H:%M:%SZ' 2>/dev/null || date -u -d "@$epoch" '+%Y-%m-%d %H:%M:%SZ' 2>/dev/null || echo "epoch $epoch")"
+      echo "pre-push: $(printf %.12s "$sha") already verified by \`make verify-stamp\` at $when; skipping the full suite"
+    done
+    exit 0
   fi
 fi
 
-exit "$failed"
+exec sh scripts/prepush-checks.sh
