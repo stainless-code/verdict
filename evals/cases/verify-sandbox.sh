@@ -34,6 +34,10 @@ mkdir -p "$DIR" \
   "$FAKEHOME/.docker" "$FAKEHOME/.kube" "$FAKEHOME/.config/gcloud" \
   "$FAKEHOME/.azure" "$FAKEHOME/.gnupg" "$FAKEHOME/.terraform.d" "$FAKEHOME/.cargo" "$MOVEDGH"
 : > "$HITS"
+# The reviewed root is a git checkout from the start: on Linux, --sandbox
+# refuses a root with no .git, because bwrap could make <root>/.git read-only
+# only by creating a mount point in the host tree.
+(cd "$EVAL_SANDBOX" && { [ -d .git ] || git init -q; })
 printf 'aws_secret_access_key = sandbox-sentinel\n' > "$FAKEHOME/.aws/credentials"
 printf 'ssh-rsa sandbox-sentinel\n' > "$FAKEHOME/.ssh/id_rsa"
 printf 'github.com:\n  oauth_token: sandbox-sentinel\n' > "$FAKEHOME/.config/gh/hosts.yml"
@@ -558,7 +562,6 @@ credential_legs
 # PR cannot plant itself, and git runs them later outside any sandbox: a hook
 # write must fail under both mechanisms while `git status` keeps working.
 git_legs() {
-  (cd "$EVAL_SANDBOX" && { [ -d .git ] || git init -q; })
   rm -f "$EVAL_SANDBOX/.git/hooks/pre-commit"
   mkpatch 'printf x > .git/hooks/pre-commit 2>/dev/null && printf leak > sandbox-git-hook.txt || printf denied > sandbox-git-hook.txt; git status --short >/dev/null && printf ok > sandbox-git-status.txt'
   rm -f "$EVAL_SANDBOX/sandbox-git-hook.txt" "$EVAL_SANDBOX/sandbox-git-status.txt"

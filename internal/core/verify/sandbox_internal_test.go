@@ -35,7 +35,7 @@ func TestSandboxArgvRefusesTheFilesystemRoot(t *testing.T) {
 // TestSandboxArgvMasksCredentialFiles pins a file credential behind a
 // read-only /dev/null bind and leaves every missing entry out.
 func TestSandboxArgvMasksCredentialFiles(t *testing.T) {
-	root := t.TempDir()
+	root := gitRoot(t)
 	home := t.TempDir()
 	if err := os.WriteFile(filepath.Join(home, ".netrc"), []byte("machine example"), 0o600); err != nil {
 		t.Fatal(err)
@@ -56,6 +56,7 @@ func TestSandboxArgvMasksCredentialFiles(t *testing.T) {
 	want = append(want, wantVarRunMount()...)
 	want = append(want,
 		"--bind", root, root,
+		"--ro-bind", filepath.Join(root, ".git"), filepath.Join(root, ".git"),
 		"--ro-bind", "/dev/null", filepath.Join(home, ".netrc"),
 		"--unshare-net",
 		"--new-session",
@@ -82,7 +83,7 @@ func TestSandboxMechanismRefusesHostsWithoutOne(t *testing.T) {
 // TestSandboxMechanismRoutesLinuxToBwrap keeps --sandbox on bubblewrap: the
 // network-only opt-in is a separate flag and never a fallback.
 func TestSandboxMechanismRoutesLinuxToBwrap(t *testing.T) {
-	root := t.TempDir()
+	root := gitRoot(t)
 	mech, ref := sandboxMechanism("linux", root, homeInputs(t.TempDir()), false)
 	if ref != nil {
 		t.Fatalf("sandboxMechanism: %v", ref)
@@ -138,145 +139,10 @@ func checkNetworkOnlyRefusal(t *testing.T, goos string) {
 	}
 }
 
-// TestSandboxMechanismBuildsTheSeatbeltProfile pins the macOS shape: the
-// network denial survives, the credential table and shared host temp roots
-// are denied, and the private TMPDIR plus the reviewed root are allowed.
-func TestSandboxMechanismBuildsTheSeatbeltProfile(t *testing.T) {
-	home := t.TempDir()
-	root := t.TempDir()
-	mech, ref := sandboxMechanism("darwin", root, homeInputs(home), false)
-	if ref != nil {
-		t.Fatalf("sandboxMechanism: %v", ref)
-	}
-	checkSeatbeltMechanism(t, mech, root, home)
-}
-
-// checkSeatbeltMechanism asserts the tool, the profile rules, and the private
-// TMPDIR lifecycle of one prepared macOS mechanism.
-func checkSeatbeltMechanism(t *testing.T, mech *sandbox, root, home string) {
-	t.Helper()
-	defer closeSandbox(t, mech)
-	requireSandboxExecPrefix(t, mech)
-	checkSeatbeltProfileRules(t, mech.prefix[2], root, home)
-	private := checkPrivateTempEnv(t, mech)
-	if !strings.Contains(mech.prefix[2], `(allow file-read* file-write* (subpath "`+private+`"))`) {
-		t.Errorf("profile does not allow the private TMPDIR %q:\n%s", private, mech.prefix[2])
-	}
-	if info, err := os.Stat(private); err != nil || !info.IsDir() || info.Mode().Perm() != 0o700 {
-		t.Fatalf("private TMPDIR %q = %v, %v; want an existing 0700 directory", private, info, err)
-	}
-	closeSandbox(t, mech)
-	if _, err := os.Stat(private); !os.IsNotExist(err) {
-		t.Errorf("private TMPDIR %q survived close (%v)", private, err)
-	}
-}
-
-// requireSandboxExecPrefix pins the shipped executable and profile argv.
-func requireSandboxExecPrefix(t *testing.T, mech *sandbox) {
-	t.Helper()
-	if mech.tool != "sandbox-exec" || mech.mechanism != sandboxMechanismSandboxExec {
-		t.Fatalf("mechanism = %+v, want sandbox-exec", mech)
-	}
-	if len(mech.prefix) != 3 || mech.prefix[0] != sandboxExecPath || mech.prefix[1] != "-p" {
-		t.Fatalf("prefix = %v, want %s -p <profile>", mech.prefix, sandboxExecPath)
-	}
-}
-
-// closeSandbox releases one prepared mechanism and fails the test when its
-// private state survives.
-func closeSandbox(t *testing.T, sb *sandbox) {
-	t.Helper()
-	if err := sb.close(); err != nil {
-		t.Errorf("close: %v", err)
-	}
-}
-
 // homeInputs is the minimal mechanism input: a child environment carrying
 // HOME alone, no host snapshot, and no account home.
 func homeInputs(home string) sandboxInputs {
 	return sandboxInputs{childEnv: []string{"HOME=" + home}}
-}
-
-// wantSeatbeltHeader is the literal start of every generated profile: the
-// network denial, the Mach default-deny with its one allow, and the blanket
-// write denial the later allows carve out of.
-const wantSeatbeltHeader = `(version 1)(allow default)(deny network*)` +
-	`(deny mach-lookup)(allow mach-lookup (global-name "com.apple.system.opendirectoryd.libinfo"))` +
-	`(deny file-write* (subpath "/"))`
-
-// checkSeatbeltProfileRules pins the literal rules the profile must carry.
-func checkSeatbeltProfileRules(t *testing.T, profile, root, home string) {
-	t.Helper()
-	if !strings.HasPrefix(profile, wantSeatbeltHeader) {
-		t.Errorf("profile does not open with the network, keychain, and write denials:\n%s", profile)
-	}
-	for _, want := range []string{
-		`(allow file-write* (literal "/dev/null") (literal "/dev/tty") (regex #"^/dev/fd/"))`,
-		`(deny file-read* file-write* (subpath "` + home + `/.ssh"))`,
-		`(deny file-read* file-write* (subpath "` + home + `/.vault-token"))`,
-		`(deny file-read* file-write* (subpath "` + home + `/.cargo/credentials.toml"))`,
-		`(deny file-read* file-write* (subpath "` + home + `/.terraform.d"))`,
-		`(deny file-read* file-write* (subpath "` + home + `/Library/Keychains"))`,
-		`(deny file-read* file-write* (subpath "` + home + `/.aws"))`,
-		`(deny file-read* file-write* (subpath "` + home + `/.netrc"))`,
-		`(deny file-read* file-write* (subpath "/private/tmp"))`,
-		`(deny file-read* file-write* (subpath "/tmp"))`,
-		`(allow file-read* file-write* (subpath "` + root + `"))`,
-	} {
-		if !strings.Contains(profile, want) {
-			t.Errorf("profile misses %q:\n%s", want, profile)
-		}
-	}
-}
-
-// checkPrivateTempEnv proves TMPDIR/TMP/TEMP/GOTMPDIR and the toolchain
-// caches point into one fresh per-run directory and returns it.
-func checkPrivateTempEnv(t *testing.T, mech *sandbox) string {
-	t.Helper()
-	if len(mech.env) == 0 {
-		t.Fatalf("env = %v, want the private TMPDIR overrides", mech.env)
-	}
-	private := strings.TrimPrefix(mech.env[0], "TMPDIR=")
-	wantEnv := []string{
-		"TMPDIR=" + private, "TMP=" + private, "TEMP=" + private, "GOTMPDIR=" + private,
-		"GOCACHE=" + private + "/go-build", "XDG_CACHE_HOME=" + private + "/cache",
-	}
-	if !slices.Equal(mech.env, wantEnv) {
-		t.Fatalf("env = %v, want %v", mech.env, wantEnv)
-	}
-	if private == "" || private == "/tmp" || private == os.TempDir() {
-		t.Fatalf("private TMPDIR = %q, want a per-run directory", private)
-	}
-	return private
-}
-
-// TestSandboxExecProfileOrdersCredentialDenialsLast proves a reviewed root
-// under HOME cannot re-expose a credential path: the deny rules come after
-// every allow, so the last matching rule wins.
-func TestSandboxExecProfileOrdersCredentialDenialsLast(t *testing.T) {
-	profile, ref := sandboxExecProfile(&sandboxProfileInputs{
-		credentials: []string{"/nonexistent-home/.ssh"}, gitDirs: []string{"/nonexistent-home/repo/.git"},
-		root: "/nonexistent-home/repo", private: "/nonexistent-tmp/private", tmpBase: "/nonexistent-tmp",
-	})
-	if ref != nil {
-		t.Fatalf("sandboxExecProfile: %v", ref)
-	}
-	want := wantSeatbeltHeader +
-		`(deny file-read* file-write* (subpath "/tmp"))` +
-		`(deny file-read* file-write* (subpath "/private/tmp"))` +
-		`(deny file-read* file-write* (subpath "/var/tmp"))` +
-		`(deny file-read* file-write* (subpath "/private/var/tmp"))` +
-		`(deny file-read* file-write* (subpath "/nonexistent-tmp"))` +
-		`(allow file-read* file-write* (subpath "/nonexistent-tmp/private"))` +
-		`(allow file-read* file-write* (subpath "/nonexistent-home/repo"))` +
-		`(allow file-read-metadata (literal "/nonexistent-tmp") (literal "/") (literal "/nonexistent-home"))` +
-		`(allow file-write* (literal "/dev/null") (literal "/dev/tty") (regex #"^/dev/fd/"))` +
-		`(deny file-write* (regex "^/nonexistent-home/repo/(.*/)?\\.[Gg][Ii][Tt](/|$)"))` +
-		`(deny file-write* (subpath "/nonexistent-home/repo/.git"))` +
-		`(deny file-read* file-write* (subpath "/nonexistent-home/.ssh"))`
-	if profile != want {
-		t.Errorf("profile =\n%s\nwant\n%s", profile, want)
-	}
 }
 
 // TestSeatbeltLiteralEscapesQuotesAndBackslashes pins the exact literal for a

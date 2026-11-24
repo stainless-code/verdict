@@ -58,6 +58,36 @@ func TestSandboxArgvMakesGitControlReadOnly(t *testing.T) {
 	}
 }
 
+// TestSandboxArgvRefusesARootWithoutGitDir pins the Linux refusal for a root
+// with no `.git`: bwrap could protect `<root>/.git` only by creating a mount
+// point in the host tree, so the run refuses instead of leaving the path
+// creatable.
+func TestSandboxArgvRefusesARootWithoutGitDir(t *testing.T) {
+	root := t.TempDir()
+	argv, ref := bwrapArgv(root, homeInputs(t.TempDir()))
+	if ref == nil || ref.Code != codeSandboxUnavailable {
+		t.Fatalf("argv=%v ref=%v, want sandbox-unavailable", argv, ref)
+	}
+	want := "sandbox unavailable: the reviewed root " + root + " has no .git, and bwrap can make only an existing " +
+		"path read-only, so the command could create git hooks or config there that run later outside the " +
+		"sandbox — verify from the top of a git checkout, or run the whole review in a throwaway VM or container"
+	if ref.Message != want {
+		t.Errorf("message = %q, want %q", ref.Message, want)
+	}
+	if _, err := os.Lstat(filepath.Join(root, ".git")); !os.IsNotExist(err) {
+		t.Errorf("the refusal left %s/.git behind (%v)", root, err)
+	}
+}
+
+// gitRoot is a reviewed root with a plain `.git` directory, the shape the
+// Linux mechanism accepts.
+func gitRoot(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	mustSandboxFS(t, os.Mkdir(filepath.Join(root, ".git"), 0o755))
+	return root
+}
+
 func mustSandboxFS(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {

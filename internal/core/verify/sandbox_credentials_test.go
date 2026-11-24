@@ -12,57 +12,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 )
 
-// TestSandboxCredentialLocationsCoverEveryHomeAndRelocation pins the shared
-// table both platforms hide: the full home-relative list under the child
-// HOME, the host HOME, and the account home, then every relocation variable
-// from the child and the host environments (a relative or empty value names
-// nothing). Paths are literals, never rebuilt from the table.
-func TestSandboxCredentialLocationsCoverEveryHomeAndRelocation(t *testing.T) {
-	in := sandboxInputs{
-		childEnv: []string{
-			"HOME=/h/child", "XDG_CONFIG_HOME=/x/cfg", "KUBECONFIG=/x/k1:relative/k:/x/k2",
-			"AWS_SHARED_CREDENTIALS_FILE=/x/aws/credentials", "DOCKER_CONFIG=",
-		},
-		hostEnv: []string{
-			"HOME=/h/host", "GH_CONFIG_DIR=/x/gh", "AWS_CONFIG_FILE=/x/aws/config",
-			"DOCKER_CONFIG=/x/docker", "CLOUDSDK_CONFIG=/x/gcloud", "XDG_CONFIG_HOME=/x/cfg",
-		},
-		accountHome: "/h/account",
-	}
-	got, ref := in.credentialLocations("/r/repo", false)
-	if ref != nil {
-		t.Fatalf("credentialLocations: %v", ref)
-	}
-	table := []string{
-		".aws", ".ssh", ".config/gh", ".docker", ".kube", ".config/gcloud", ".azure", ".gnupg",
-		".netrc", ".git-credentials", ".npmrc", ".pypirc", ".terraform.d",
-		".cargo/credentials.toml", ".cargo/credentials", ".vault-token", "Library/Keychains",
-	}
-	var want []string
-	for _, home := range []string{"/h/child", "/h/host", "/h/account"} {
-		for _, rel := range table {
-			want = append(want, home+"/"+rel)
-		}
-	}
-	want = append(want,
-		"/x/cfg/gh", "/x/aws/credentials", "/x/k1", "/x/k2",
-		"/x/gh", "/x/aws/config", "/x/docker", "/x/gcloud",
-	)
-	if !slices.Equal(got, want) {
-		t.Errorf("locations =\n%s\nwant\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
-	}
-}
-
-// TestSandboxCredentialHomesDedupe keeps one home answered three ways to one
-// set of locations, so the Linux argv carries no duplicate mount.
-func TestSandboxCredentialHomesDedupe(t *testing.T) {
-	in := sandboxInputs{childEnv: []string{"HOME=/h/same/"}, hostEnv: []string{"HOME=/h/same"}, accountHome: "/h/same"}
-	homes, ref := in.homes()
-	if ref != nil || !slices.Equal(homes, []string{"/h/same"}) {
-		t.Errorf("homes = %v, %v; want [/h/same]", homes, ref)
-	}
-}
-
 // TestSandboxRefusesARootInsideACredentialPath keeps a reviewed root under a
 // credential store from being either exposed or hidden: both platforms
 // refuse before any profile or argv exists.
@@ -89,7 +38,7 @@ func TestSandboxRefusesARootInsideACredentialPath(t *testing.T) {
 // past the child HOME: an existing store under the account home and one moved
 // by a host-only relocation variable are both mounted away.
 func TestSandboxArgvMasksAccountHomeAndRelocations(t *testing.T) {
-	root, child, account, moved := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+	root, child, account, moved := gitRoot(t), t.TempDir(), t.TempDir(), t.TempDir()
 	if err := os.Mkdir(filepath.Join(account, ".ssh"), 0o700); err != nil {
 		t.Fatal(err)
 	}
@@ -106,6 +55,7 @@ func TestSandboxArgvMasksAccountHomeAndRelocations(t *testing.T) {
 	}
 	want := []string{
 		"--bind", root, root,
+		"--ro-bind", filepath.Join(root, ".git"), filepath.Join(root, ".git"),
 		"--tmpfs", filepath.Join(account, ".ssh"),
 		"--ro-bind", "/dev/null", filepath.Join(account, ".vault-token"),
 		"--tmpfs", moved,

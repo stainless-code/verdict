@@ -4866,6 +4866,16 @@ both mechanisms deny writes there:
   inside the root gets a `--ro-bind` over the writable root bind; one outside
   the root is already read-only under `--ro-bind / /`. On macOS each is a
   `(deny file-write* (subpath …))` after the root allow.
+- **A root without a `.git` (Linux refuses).** `bwrap` protects a path only
+  by mounting over it, and it creates a missing mount point inside the new
+  root — under the writable root bind, that is a write to your tree. With no
+  `<root>/.git` there is no clean read-only shape, so the command could
+  create `.git/hooks` or `.git/config` that git runs later; `--sandbox` on
+  Linux refuses `sandbox-unavailable` instead (verify from the top of a git
+  checkout). A symlinked `.git` refuses for the same reason: only the link's
+  target could be bound read-only, and the link stays replaceable. macOS
+  needs neither refusal, because the rule below covers paths that do not
+  exist yet.
 - **Any new `.git` (macOS).** Seatbelt also denies writes to every path
   component named `.git` below the root, in any letter case, whether or not it
   exists yet: the command cannot create a nested repository, a `.git` file, or
@@ -4877,12 +4887,16 @@ refresh the index skips the write). Anything that writes the repository —
 `git commit`, `git stash`, `git checkout`, `git fetch`, `git submodule update`
 — fails inside the sandbox; run those outside it.
 
-What remains: on Linux, `bwrap` can make only existing paths read-only, so a
-command can still create a **new** nested `.git` below the root (or rewrite a
-nested repository's existing `.git` file); a root whose own `.git` is a
-symlink refuses rather than run with a replaceable link. And a repository
-nested in the checkout whose git directory sits under a non-`.git` name (`git
-init --separate-git-dir` inside the tree) is not followed on either platform.
+What differs and what remains. macOS denies every `.git` below the root,
+existing or not. Linux protects exactly the root's own repository (and
+refuses a root without one, or with a symlinked one): a command can still
+create a **new** nested `.git` in a subdirectory, or rewrite a nested
+repository's existing `.git` file, because `bwrap` can make only existing
+paths read-only and a mount point for a missing path would itself be a write
+to your tree. Git honors such a nested repository only when it runs inside
+that subdirectory. On both platforms, a repository nested in the checkout
+whose git directory sits under a non-`.git` name (`git init
+--separate-git-dir` inside the tree) is not followed.
 Do not run git inside a nested directory of a hostile checkout, and discard
 the checkout after verifying a hostile PR.
 
@@ -4927,9 +4941,9 @@ Before anything executes it probes the same flags with a no-op; when the
 host is neither Linux nor macOS, `bwrap` or `sandbox-exec` is missing, the
 user-namespace restriction is on, (on Linux or macOS) the child's `HOME` is
 unset or not an absolute path, the reviewed root sits inside a credential
-path, or (on Linux) the root's `.git` is a symlink — `bwrap` could protect
-only the link's target while the link itself stays replaceable in the
-writable root — `verify` refuses `sandbox-unavailable` naming the cause and
+path, or (on Linux) the root has no `.git` or a symlinked one — `bwrap`
+could protect `<root>/.git` only by creating a mount point in your tree, or
+only the link's target while the link stays replaceable — `verify` refuses `sandbox-unavailable` naming the cause and
 runs nothing; a
 runner that cannot spawn names the tool its mechanism needs (`bwrap` with the
 `--sandbox-network-only` alternative, `unshare`, or `/usr/bin/sandbox-exec`). It

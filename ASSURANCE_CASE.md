@@ -226,8 +226,11 @@ linked worktree's common directory) are denied on both platforms, and macOS
 also denies creating any `.git` path below the root (`sandboxGitDirs`,
 `sandboxGitBinds`, `sandboxGitWriteDenials` in
 `internal/core/verify/sandbox.go`; `TestSandboxExecDeniesGitControlWrites`).
-On Linux a newly created nested `.git` remains possible, because `bwrap` can
-only protect existing paths; `docs/manual.md` § Enforced sandbox says so.
+On Linux a root with no `.git` (or a symlinked one) refuses, because `bwrap`
+could protect it only by writing a mount point into the host tree
+(`TestSandboxArgvRefusesARootWithoutGitDir`); a new nested `.git` in a
+subdirectory remains possible there, and `docs/manual.md` § Enforced sandbox
+says so.
 
 **The review agent's egress is the operator's choice.** Verdict pins no models,
 proxies no key, and makes no network call of its own for a review. The agent CLI

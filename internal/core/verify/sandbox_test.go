@@ -123,6 +123,7 @@ func wantProbeArgv(root, home string) []string {
 	argv = append(argv, wantVarRunMount()...)
 	return append(argv,
 		"--bind", root, root,
+		"--ro-bind", filepath.Join(root, ".git"), filepath.Join(root, ".git"),
 		"--tmpfs", filepath.Join(home, ".aws"),
 		"--tmpfs", filepath.Join(home, ".ssh"),
 		"--tmpfs", filepath.Join(home, ".config", "gh"),
@@ -274,6 +275,7 @@ func runSandboxedVerify(t *testing.T, vcmd string, results []core.Result) (strin
 	t.Helper()
 	root := t.TempDir()
 	t.Chdir(root)
+	testkit.WriteFile(t, ".git/HEAD", "ref: refs/heads/main\n")
 	raw, err := json.Marshal(map[string]string{"verifyCmd": vcmd})
 	if err != nil {
 		t.Fatal(err)
@@ -364,6 +366,7 @@ func runProbeFailure(t *testing.T) ([]byte, *sandboxCommander, *core.RefusalErro
 	root := t.TempDir()
 	t.Chdir(root)
 	testkit.WriteFile(t, ".verdict/state/5201/patch.json", `{"verifyCmd":"printf created > sentinel.txt"}`)
+	testkit.WriteFile(t, ".git/HEAD", "ref: refs/heads/main\n")
 	before, err := os.ReadFile(".verdict/state/5201/patch.json")
 	if err != nil {
 		t.Fatal(err)
@@ -602,6 +605,7 @@ func TestSandboxGroupValidationWrapsTheOperatorCommand(t *testing.T) {
 func runSandboxedGroup(t *testing.T) (string, string, *verifycore.Response, *groupSandboxCommander) {
 	t.Helper()
 	root := groupBundle(t)
+	testkit.WriteFile(t, filepath.Join(root, ".git", "HEAD"), "ref: refs/heads/main\n")
 	home := sandboxHomeFixture(t)
 	cmdr := &groupSandboxCommander{}
 	req := groupRequest(root, "group-a1", "go test ./...", cmdr)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -57,6 +58,10 @@ func TestSDKVerifyReportsSandboxMechanism(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(dir, "patch.json"), []byte(`{"verifyCmd":"printf ok"}`), 0o600); err != nil {
 		t.Fatal(err)
+	}
+	// Linux refuses a root with no `.git`; the mechanism is what this pins.
+	if out, err := exec.CommandContext(t.Context(), "git", "-C", root, "init", "-q").CombinedOutput(); err != nil {
+		t.Fatalf("git init: %v: %s", err, out)
 	}
 	c := verdict.New(verdict.Options{Now: func() time.Time { return sdkNow }, Commander: &okCommander{}})
 	defer c.Close()

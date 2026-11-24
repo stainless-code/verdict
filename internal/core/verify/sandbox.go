@@ -521,7 +521,7 @@ func bwrapArgv(root string, in sandboxInputs) ([]string, *core.RefusalError) {
 	if ref != nil {
 		return nil, ref
 	}
-	if ref := sandboxGitSymlinkRefusal(repo); ref != nil {
+	if ref := sandboxGitRootRefusal(repo); ref != nil {
 		return nil, ref
 	}
 	argv := []string{
@@ -566,19 +566,30 @@ func sandboxGitBinds(repo string) []string {
 	return sandboxCleanUnique(binds)
 }
 
-// sandboxGitSymlinkRefusal refuses a reviewed root whose `.git` is a
-// symlink: bwrap can make only the link's target read-only, and the link
-// itself lives in the writable root, so the command could replace it with a
-// git directory of its own. macOS needs no refusal, because its profile
-// denies writes to every `.git` path below the root, the link included.
-func sandboxGitSymlinkRefusal(repo string) *core.RefusalError {
+// sandboxGitRootRefusal refuses a reviewed root whose `.git` bwrap cannot
+// make read-only. bwrap protects a path only by mounting over it, and it
+// creates a missing mount point inside the new root — under the writable
+// root bind that is a write to the host tree — so a root with no `.git` has
+// no clean read-only shape: the command could create <root>/.git/hooks or
+// config that git runs later outside any sandbox. A symlinked `.git` is the
+// same gap, because only the link's target can be bound read-only and the
+// link itself stays replaceable. macOS needs neither refusal: its profile
+// denies writes to every `.git` path below the root, existing or not.
+func sandboxGitRootRefusal(repo string) *core.RefusalError {
 	dotgit := filepath.Join(repo, sandboxGitName)
-	if info, err := os.Lstat(dotgit); err != nil || info.Mode()&os.ModeSymlink == 0 {
-		return nil //nolint:nilerr // no `.git` to protect is not a refusal
+	info, err := os.Lstat(dotgit)
+	switch {
+	case err != nil:
+		return sandboxUnavailable(fmt.Sprintf("the reviewed root %s has no %s, and bwrap can make only an "+
+			"existing path read-only, so the command could create git hooks or config there that run later "+
+			"outside the sandbox — verify from the top of a git checkout, or run the whole review in a "+
+			"throwaway VM or container", repo, sandboxGitName))
+	case info.Mode()&os.ModeSymlink != 0:
+		return sandboxUnavailable(fmt.Sprintf("the reviewed root's %s is a symlink, and bwrap can protect only its "+
+			"target, so the link could be replaced with a git directory that runs later — replace the link with the "+
+			"directory or a `gitdir:` file, or verify a fresh clone", dotgit))
 	}
-	return sandboxUnavailable(fmt.Sprintf("the reviewed root's %s is a symlink, and bwrap can protect only its "+
-		"target, so the link could be replaced with a git directory that runs later — replace the link with the "+
-		"directory or a `gitdir:` file, or verify a fresh clone", dotgit))
+	return nil
 }
 
 // sandboxRelInside returns path relative to base when path is strictly below

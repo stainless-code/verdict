@@ -55,12 +55,14 @@ In scope (highest priority first):
 - Under `--sandbox`, the reviewed repository's git control files are part of
   the boundary: writes to `<root>/.git`, the git directory a `.git` file
   names, and a linked worktree's common directory are denied on both
-  platforms, and on macOS so is creating any `.git` path below the root. A
-  sandboxed command that plants a hook, a `.git/config` key, or (on macOS) a
-  nested `.git` is a vulnerability. Out of scope: the rest of the working tree
-  is the PR's content and writable by design, and on Linux a newly created
-  nested `.git` below the root is a documented residual of `bwrap`, which can
-  only protect paths that already exist.
+  platforms; on macOS so is creating any `.git` path below the root, and on
+  Linux a root with no `.git` (or a symlinked one) refuses
+  `sandbox-unavailable`. A sandboxed command that plants a hook or a
+  `.git/config` key for the root's repository, or (on macOS) any nested
+  `.git`, is a vulnerability. Out of scope: the rest of the working tree is
+  the PR's content and writable by design, and on Linux a new nested `.git`
+  in a subdirectory is a documented residual of `bwrap`, which can only
+  protect paths that already exist.
 - The `verify` gate's own contract: `verify` executes the agent's claimed
   proof (`verifyCmd` via `bash -c`, 300s watchdog, tail recorded into the
   patch record). The pre-exec refusals are a **tripwire, not a boundary**: the
