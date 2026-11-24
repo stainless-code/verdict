@@ -66,7 +66,10 @@ var publishedSemantics = map[string]string{
 	// tests: additive optional top-level object with a draft enum
 	// (off|on-reproduce), closed shape; STA-346 regression-test drafting.
 	// No existing property, required key, enum, or type changed.
-	"config.schema.json": "305ffe2c887c8033b6c3100548e5607cb3870e17bdf5b066692d206066dd7830",
+	// additive monthly_budget_usd and packs.org_pack (optional
+	// defaults.monthly_budget_usd, spend.mtd reporting, and packs.org_pack
+	// pin). No existing property, required key, enum, or type changed.
+	"config.schema.json": "13ea823560ba7dcff37241b3eb28d5590693bcbfa81ef351cc07b38e1959a1a6",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -358,11 +361,12 @@ var publishedSemantics = map[string]string{
 	// report --compare: additive optional data.compare ($defs/reportCompare and
 	// its baseline/counts/finding definitions). No existing property, required
 	// key, enum, or type changed; only a --compare run carries the key.
-	// org packs: additive optional data.org_pack ($defs/orgPackInfo) naming the
-	// governing central pack version on report, and additive $defs/packSyncData
-	// beside packAddData. No existing property, required key, enum, or type
-	// changed; only a pinned run and `pack sync` carry the keys.
-	"envelope.schema.json": "64e1fda246a48474474be34652697034952b2a69ea65c9be1d63997b02742da7",
+	// monthly mtd block and org packs (additive optional reportData.mtd,
+	// data.org_pack ($defs/orgPackInfo), and $defs/packSyncData beside
+	// packAddData). No existing property, required key, enum, or type changed;
+	// the mtd and org-pack keys appear only on pinned runs, and pack sync
+	// carries the sync payload.
+	"envelope.schema.json": "d4e83e22c1024b78d0002042c65e88dcf0efaea063e7001195c2b1d240ab3831",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

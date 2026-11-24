@@ -1225,6 +1225,7 @@ the behavior stays off until a layer above turns it on.
 | run                   | --timeout                      | 300              |
 | run                   | defaults.budget                | unset            |
 | run                   | defaults.finders               | 2                |
+| run                   | defaults.monthly_budget_usd    | unset            |
 
 <!-- defaults-at-a-glance:end -->
 
@@ -3640,10 +3641,17 @@ they rot; the skill stays name-free.
 
 Cost accounting (`report --cost`, per-run `cost.json` with effort tiers) grows teeth
 only when a spend guard is set: `REVIEW_BUDGET_USD` env (wins) or the typed
-`budget_usd` default in `.verdict/config.json`, resolved per file group. Unset
-leaves a group with no ordinary monetary guard; the personal `spend.budget_usd`
-authorization limit still applies. No guard, no ceiling, and no explicit effort
-plane means no estimate line and no receipts.
+`budget_usd` default in `.verdict/config.json`, resolved per file group. The
+monthly spend ceiling (`monthly_budget_usd` in `defaults` and `spend.monthly_budget_usd`
+in personal settings) caps month-to-date recorded spend plus the pending run's
+projected cost. Precedence is stricter wins: the effective ceiling is the smaller
+of the repo and personal caps, the personal layer can never raise the repo ceiling,
+and both are exposed in the config spend view (`monthly_budget_usd`,
+`monthly_repo_cap`, `monthly_personal_cap`). A ceiling set in either layer is
+validated strictly: a positive finite number, refusing `bad-config` for negative,
+`NaN`, `Inf`, or non-numeric values. Unset leaves a group with no ordinary monetary
+guard; the personal `spend.budget_usd` authorization limit still applies. No guard,
+no ceiling, and no explicit effort plane means no estimate line and no receipts.
 
 Each resolved file group has its own projection from comparable past runs
 (every `.verdict/state/*/cost.json` record, same tier rules as the rollup; ties
@@ -3661,6 +3669,25 @@ total unknown: with `require_known_estimate` the run refuses typed
 unenforced. `enforce_cap: true` refuses typed `unsupported-cap` before any
 budget check, force, or consent — the guard is a pre-run projection, never a
 billing cap. Estimates cover the review run about to start, not the fetch reads.
+
+The monthly ceiling (`monthly_budget_usd`) is month-to-date spend — exact
+decimal sum of cost receipts in `.verdict/state/*/budget.json` and `cost.json`
+whose `at` timestamp is in the current UTC `YYYY-MM` — plus the pending run's
+projected cost. When the sum exceeds `monthly_budget_usd`, `run` refuses typed
+`spend-capped` before launching any agent process. The per-invocation
+`--consent-over-budget` flag is the sole consent and is never persisted. With
+`require_known_estimate`, an unknown leg (either an unpriced receipt in the
+month or an unpriced phase of the pending run) refuses typed `budget-unknown`
+until consented; without it the ceiling is enforced against known spend only
+and unknown cost is warned, never summed as zero. `report --cost` shows the
+month-to-date block (`mtd` in JSON, `mtd:` in human) with the ceiling, remaining,
+and priced/unknown counts when a cap is configured, and omits it entirely when
+no cap is set. Shipped `verdict run` carries no built-in pricing table — the
+pending run's projection is estimated from comparable past runs' recorded costs,
+so a repo with no priced history has an unknown pending projection. The ceiling
+then enforces against month-to-date known spend alone and warns about the unknown
+pending leg, unless `require_known_estimate` refuses the run typed
+`budget-unknown` until consented.
 
 Lens evidence and group costs are read by two consumers with different
 strictness, and both are visible in `report --cost` and the typed refusals.
