@@ -379,7 +379,11 @@ func (st *state) gateControls() *core.RefusalError {
 }
 
 func (st *state) loadReview() *core.RefusalError {
-	review, err := recordcore.LoadReview(st.flags.ReviewFile)
+	load := recordcore.LoadReview // an operator --review-file keeps normal read semantics
+	if recordcore.IsBundleReview(st.dir, st.flags.ReviewFile) {
+		load = recordcore.LoadBundleReview
+	}
+	review, err := load(st.flags.ReviewFile)
 	if err != nil {
 		return refusalOrFailed(err)
 	}

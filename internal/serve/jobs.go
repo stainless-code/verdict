@@ -444,16 +444,27 @@ func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 	}
 	result := resp.Data.Wire()
 	if m.server.previews != nil {
-		// The text goes onto the wire before the digest is taken, so the digest
-		// binds exactly what the confirm dialog shows.
-		result.Set("target_repo", repo)
-		setReviewComments(result, resp.Data.RenderedComments)
-		if failure := m.bindPreview(current, fingerprint, repo, resp.Data.RenderedHash, result); failure != nil {
+		if failure := m.pinPreview(current, fingerprint, repo, resp, result); failure != nil {
 			m.setStatus(current, jobStatusFailed, nil, failure, nil)
 			return
 		}
 	}
 	m.setStatus(current, jobStatusSucceeded, result, nil, resp.Warnings)
+}
+
+// pinPreview publishes the review text on result and mints the confirmation
+// pin for it. The text goes onto the wire before the digest is taken, so the
+// digest binds exactly what the confirm dialog shows. A preview that omitted
+// any posted text mints no nonce or digest: the operator cannot confirm what
+// was not shown, so a submit can never spend a pin for it, whatever the client.
+func (m *jobManager) pinPreview(
+	current *job, fingerprint, repo string, resp *postcore.Response, result *jq.Obj,
+) *jobError {
+	result.Set("target_repo", repo)
+	if setReviewComments(result, resp.Data.RenderedComments, repo, current.bundle) {
+		return nil
+	}
+	return m.bindPreview(current, fingerprint, repo, resp.Data.RenderedHash, result)
 }
 
 // previewRequest is the dry-run request a preview job and a submit's re-render
@@ -479,23 +490,43 @@ const maxReviewPreviewBytes = 256 << 10
 // the running total reaches [maxReviewPreviewBytes]), the bytes of it shown,
 // and its full byte size, so a cut is explicit per comment. Comments the
 // bound leaves out entirely are named in review_omitted;
-// review_comment_count is the full count.
-func setReviewComments(result *jq.Obj, comments []core.RenderedComment) {
+// review_comment_count is the full count. It reports whether any posted text
+// was left out; when it was, review_truncated carries the bytes cut, the
+// comments omitted, and the CLI command that prints the whole payload.
+func setReviewComments(result *jq.Obj, comments []core.RenderedComment, repo, bundle string) bool {
 	shown := make([]any, 0, len(comments))
 	omitted := make([]any, 0)
 	budget := maxReviewPreviewBytes
+	bytesCut := 0
 	for _, c := range comments {
 		if budget <= 0 {
 			omitted = append(omitted, c.Label)
+			bytesCut += len(c.Text)
 			continue
 		}
 		text := cutAtRune(c.Text, budget)
 		budget -= len(text)
+		bytesCut += len(c.Text) - len(text)
 		shown = append(shown, jq.NewObj("label", c.Label, "text", text, "shown_bytes", len(text), "bytes", len(c.Text)))
 	}
 	result.Set("review_comments", shown)
 	result.Set("review_comment_count", len(comments))
 	result.Set("review_omitted", omitted)
+	if bytesCut == 0 && len(omitted) == 0 {
+		return false
+	}
+	target := repo
+	if target == "" {
+		target = "<repo>"
+	}
+	result.Set("review_truncated", jq.NewObj(
+		"bytes_cut", bytesCut,
+		"comments_omitted", len(omitted),
+		"message", fmt.Sprintf("The preview did not show the whole review (%d bytes cut, %d comments omitted), "+
+			"so it cannot be confirmed here. Inspect the full payload with `verdict post %s %s --dry-run` "+
+			"and post it from the CLI.", bytesCut, len(omitted), target, bundle),
+	))
+	return true
 }
 
 // cutAtRune returns text cut to at most limit bytes, backed up to a rune start

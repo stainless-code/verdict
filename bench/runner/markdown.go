@@ -57,7 +57,7 @@ func applyRecord(rep *Report, path string) error {
 
 // readPublication parses the JSON a run wrote.
 func readPublication(path string) (*Report, error) {
-	raw, err := jq.CappedFile(path, maxPublicationBytes)
+	raw, err := jq.CappedOperatorFile(path, maxPublicationBytes)
 	if err != nil {
 		return nil, jq.NewErrf("publication: %s", err)
 	}

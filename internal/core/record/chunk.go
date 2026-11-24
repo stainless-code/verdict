@@ -207,7 +207,7 @@ func readChunkDiff(dir string, c chunk) ([]byte, bool) {
 
 func checkChunkCoverage(st *state, manifest string, chunks []chunk, names []string, refetch string) (string, error) {
 	chunkHunks := st.dir + chunkHunksSuffix
-	reviewRaw, err := noblock.ReadFile(st.reviewFile)
+	reviewRaw, err := ReadReview(st.dir, st.reviewFile)
 	if err != nil {
 		return "", &core.RefusalError{Code: codeMissingReviewFile, Message: fmt.Sprintf(msgReviewMissing, st.reviewFile)}
 	}

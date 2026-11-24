@@ -40,10 +40,11 @@ review is the text the operator confirmed; a change after the re-render refuses
 `409 post-content-changed` before any host write. The preview shows at most
 256 KiB of text in total, cut at a rune boundary: the pin covers the full
 payloads, not the shown text, so a matching digest does not mean the whole
-review was on screen. When the preview cut any of it the modal names what was
-cut and what was left out, keeps Confirm disabled (there is no acknowledgement),
-and points at `verdict post <repo> <pr> --dry-run` to inspect the full payload
-and post it from the CLI. The
+review was on screen. When the preview cut any of it the server mints no
+digest or nonce (the job result carries `review_truncated` and points at
+`verdict post <repo> <pr> --dry-run`), a submit for that bundle refuses
+`409 stale-preview`, and the modal keeps Confirm disabled with no
+acknowledgement. The
 target repository is bound to the preview, a bundle input swapped for a FIFO
 refuses without blocking, and the preview deadline of two minutes covers its
 requests.

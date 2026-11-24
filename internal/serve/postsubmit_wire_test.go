@@ -164,7 +164,10 @@ func TestPreviewNamesWhatTheBoundLeavesOut(t *testing.T) {
 	}
 	ts, server := postServer(t, &Config{Layer: testLayer(root, nil)}, commentsPreview(comments, &repoLog{}), okSubmit())
 	rootID := rootIDOf(t, ts, bearer())
-	_, _, snap := mintPreviewSnapshot(t, ts, server, rootID, "1234")
+	snap := awaitJobTerminal(t, ts, createPostPreviewJobOn(t, ts, server, rootID, "1234"))
+	if asString(t, snap["status"]) != jobStatusSucceeded {
+		t.Fatalf("preview status = %v, want succeeded (%v)", snap["status"], snap)
+	}
 	result := decode(t, mustJSON(t, snap["result"]))
 	shown := asList(t, result["review_comments"])
 	if len(shown) != 2 {
@@ -180,6 +183,68 @@ func TestPreviewNamesWhatTheBoundLeavesOut(t *testing.T) {
 	}
 	if asNumber(t, result["review_comment_count"]) != 4 {
 		t.Errorf("review_comment_count = %v, want the full 4", result["review_comment_count"])
+	}
+	requireCutNote(t, result)
+}
+
+// requireCutNote pins the server's statement of a cut: the bytes cut, the
+// comments omitted, and the CLI command that prints the whole payload.
+func requireCutNote(t *testing.T, result map[string]any) {
+	t.Helper()
+	cutNote := asMap(t, result["review_truncated"])
+	if asNumber(t, cutNote["bytes_cut"]) != 90+2 || asNumber(t, cutNote["comments_omitted"]) != 2 {
+		t.Errorf("review_truncated = %v, want 92 bytes cut and 2 comments omitted", cutNote)
+	}
+	if want := "verdict post acme/app 1234 --dry-run"; !strings.Contains(asString(t, cutNote["message"]), want) {
+		t.Errorf("review_truncated message = %q, want it to point at %q", cutNote["message"], want)
+	}
+}
+
+// TestTruncatedPreviewMintsNoNonceAndCannotBeConfirmed pins the server-side
+// half of "you post only what you saw": a preview that omits any posted text
+// publishes no preview_digest or preview_nonce and stores no pin, so a crafted
+// submit (any nonce, any digest) for that bundle refuses 409 stale-preview and
+// reaches no host write, whatever client sent it.
+//
+// Break killed: binding the preview whatever its truncation (dropping the early
+// return after setReviewComments) mints a nonce and the first assertion fails.
+func TestTruncatedPreviewMintsNoNonceAndCannotBeConfirmed(t *testing.T) { //nolint:revive // one flat run of independent assertions on one wire
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	var submits atomic.Int32
+	submit := func(ctx context.Context, req *postcore.Request) (*postcore.Response, *core.RefusalError) {
+		submits.Add(1)
+		return okSubmit()(ctx, req)
+	}
+	comments := []core.RenderedComment{
+		{Label: "first", Text: strings.Repeat("a", 262144)},
+		{Label: "second", Text: "left out"},
+	}
+	ts, server := postServer(t, &Config{Layer: testLayer(root, nil)}, commentsPreview(comments, &repoLog{}), submit)
+	rootID := rootIDOf(t, ts, bearer())
+	snap := awaitJobTerminal(t, ts, createPostPreviewJobOn(t, ts, server, rootID, "1234"))
+	result := asMap(t, snap["result"])
+	for _, key := range []string{"preview_digest", "preview_nonce"} {
+		if _, present := result[key]; present {
+			t.Errorf("a truncated preview carries %s = %v; want none", key, result[key])
+		}
+	}
+	if _, present := result["review_truncated"]; !present {
+		t.Fatalf("a truncated preview states no truncation: %v", result)
+	}
+	server.previews.mu.Lock()
+	pins := len(server.previews.entries)
+	server.previews.mu.Unlock()
+	if pins != 0 {
+		t.Errorf("preview store holds %d pins after a truncated preview; want none", pins)
+	}
+	craftedDigest, craftedNonce := strings.Repeat("ab", 32), strings.Repeat("cd", 16)
+	got := post(t, ts, postSubmitPath, submitBody(rootID, "1234", craftedDigest, craftedNonce, new(true)), writeHeaders(server))
+	if got.status != http.StatusConflict || !strings.Contains(string(got.body), `"reason":"stale-preview"`) {
+		t.Errorf("crafted submit = %d %s; want 409 stale-preview", got.status, got.body)
+	}
+	if n := submits.Load(); n != 0 {
+		t.Errorf("host submits = %d after a crafted confirm; want 0", n)
 	}
 }
 

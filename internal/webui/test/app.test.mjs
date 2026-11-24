@@ -2456,22 +2456,30 @@ test("a split review shows every comment, in order, as text under its own label"
 });
 
 // truncatedDialog is a preview whose bound cut the second comment and left the
-// fourth out entirely.
-async function truncatedDialog(submitResponse) {
-  return settledDialog({
-    extra: {
-      result: {
-        review_comments: [
-          comment("Review body, part 1 of 4", "FIRST"),
-          comment("Follow-up review comment, part 2 of 4", "SEC", 500),
-          comment("Follow-up review comment, part 3 of 4", "THIRD"),
-        ],
-        review_comment_count: 4,
-        review_omitted: ["Inline comment on a.go:3"],
-      },
-    },
-    submitResponse,
-  });
+// fourth out entirely. The server mints no digest or nonce for it (serverCut),
+// and states the cut itself; withServerCut false models a preview that still
+// carries a digest, which the dialog refuses to confirm on its own count.
+async function truncatedDialog(submitResponse, withServerCut = true) {
+  const result = {
+    review_comments: [
+      comment("Review body, part 1 of 4", "FIRST"),
+      comment("Follow-up review comment, part 2 of 4", "SEC", 500),
+      comment("Follow-up review comment, part 3 of 4", "THIRD"),
+    ],
+    review_comment_count: 4,
+    review_omitted: ["Inline comment on a.go:3"],
+  };
+  if (withServerCut) {
+    result.preview_digest = "";
+    result.preview_nonce = "";
+    result.review_truncated = {
+      bytes_cut: 497,
+      comments_omitted: 1,
+      message:
+        "The preview did not show the whole review (497 bytes cut, 1 comments omitted), so it cannot be confirmed here. Inspect the full payload with `verdict post acme/app 1234 --dry-run` and post it from the CLI.",
+    };
+  }
+  return settledDialog({ extra: { result }, submitResponse });
 }
 
 test("a review the preview cut says what was left out and can never be confirmed", async () => {
@@ -2489,13 +2497,17 @@ test("a review the preview cut says what was left out and can never be confirmed
   assert.ok(text.includes("comment 2 (3 of 500 bytes shown)"));
   assert.ok(text.includes("not shown at all: Inline comment on a.go:3"));
   assert.ok(
-    text.includes("Left out in total: 497 bytes cut, 1 comment omitted."),
+    text.includes(
+      "(497 bytes cut, 1 comments omitted), so it cannot be confirmed",
+    ),
+    "the dialog shows the server's statement of the cut",
   );
   assert.ok(
     text.includes(
       "`verdict post acme/app 1234 --dry-run` and post it from the CLI",
     ),
   );
+  assert.ok(!text.includes("Preview digest"), "a cut preview has no digest");
   assert.ok(
     !text.includes("all of it posts"),
     "the dialog no longer promises to post unseen text",
@@ -2510,6 +2522,15 @@ test("a review the preview cut says what was left out and can never be confirmed
   await confirm.dispatch("click");
   await ui.flush();
   assert.equal(posts, 0, "a disabled Confirm sends nothing");
+});
+
+test("a cut preview that still carries a digest is refused on the dialog's own count", async () => {
+  const { ui } = await truncatedDialog(() => ({ body: envelope({}) }), false);
+  const text = ui.body.textContent;
+  assert.ok(
+    text.includes("Left out in total: 497 bytes cut, 1 comment omitted."),
+  );
+  assert.equal(firstButton(ui.body, "Confirm & Submit Review").disabled, true);
 });
 
 test("a cut review keeps only the review and Cancel in the dialog's Tab order", async () => {

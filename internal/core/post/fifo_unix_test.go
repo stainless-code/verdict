@@ -4,12 +4,14 @@ package postcore
 
 import (
 	"context"
+	"errors"
 	"os"
 	"syscall"
 	"testing"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // fifoDeadline bounds a Run that must refuse at once: every bundle read opens
@@ -68,7 +70,7 @@ func TestRunRefusesAFIFOBundleInputWithoutBlocking(t *testing.T) {
 	// want is the refusal code the swapped input yields; "" means the input is
 	// optional and the dry run completes without it.
 	for name, want := range map[string]string{
-		"PR.json": "controls-stale", "full.diff": "missing-diff", "record.json": "",
+		"PR.json": "controls-stale", "full.diff": "missing-diff", "record.json": "", "review.json": "missing-review-file",
 	} {
 		t.Run(name, func(t *testing.T) {
 			ref := runWithFIFO(t, name)
@@ -96,5 +98,51 @@ func releaseFIFO[T any](t *testing.T, fifo string, done <-chan T) {
 			return
 		case <-time.After(10 * time.Millisecond):
 		}
+	}
+}
+
+// TestRunReadsAnOperatorReviewFileFromAFIFO pins the other half of the rule: a
+// path the operator names with --review-file keeps normal read semantics, so a
+// pipe with a writer (the shape of /dev/stdin and <(cmd)) is read, not refused
+// as not-regular. The bundle's own review.json, by contrast, is refused without
+// blocking (see the review.json leg above).
+//
+// Break killed: routing the operator path through noblock refuses the FIFO as
+// not-regular and the dry run fails.
+func TestRunReadsAnOperatorReviewFileFromAFIFO(t *testing.T) {
+	t.Chdir(t.TempDir())
+	postBundle(t, postReview)
+	fifo := "operator-review.fifo"
+	if err := syscall.Mkfifo(fifo, 0o600); err != nil {
+		t.Fatalf("mkfifo: %v", err)
+	}
+	writeErr := make(chan error, 1)
+	go func() {
+		w, err := os.OpenFile(fifo, os.O_WRONLY, 0)
+		if err != nil {
+			writeErr <- err
+			return
+		}
+		_, err = w.WriteString(testenv.MaybeFindingsReview("review.json", postReview))
+		writeErr <- errors.Join(err, w.Close())
+	}()
+	done := make(chan *core.RefusalError, 1)
+	go func() {
+		var warnings, human []string
+		req := postTestReq(postCommander(t), Flags{Approve: "false", ReviewFile: fifo, DryRun: true}, &warnings, &human)
+		_, ref := Run(context.Background(), req)
+		done <- ref
+	}()
+	select {
+	case ref := <-done:
+		if ref != nil {
+			t.Fatalf("Run with --review-file as a FIFO = %v; want a clean dry run", ref)
+		}
+	case <-time.After(fifoDeadline):
+		releaseFIFO(t, fifo, done)
+		t.Fatal("Run blocked reading an operator --review-file FIFO")
+	}
+	if err := <-writeErr; err != nil {
+		t.Fatalf("FIFO writer: %v", err)
 	}
 }

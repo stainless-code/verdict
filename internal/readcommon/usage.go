@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
-	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 // Explicit-usage handoff. The core never discovers usage on its own: the
@@ -140,7 +139,7 @@ func readUsageFile(path string) ([]ContractUsage, error) {
 		return nil, &core.RefusalError{Code: codeBadUsage, Message: fmt.Sprintf(
 			"VERDICT_USAGE %q is not a readable usage file (want a regular file under %d bytes)", path, maxUsageFileBytes)}
 	}
-	raw, err := noblock.ReadFile(path)
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, usageUnreadable(path, err)
 	}

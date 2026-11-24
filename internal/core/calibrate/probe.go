@@ -87,7 +87,7 @@ func readJudgeDocs(path string) ([]any, error) {
 	if !isRegular(path) || !readable(path) {
 		return nil, judgeUnreadable(path)
 	}
-	raw, err := noblock.ReadFile(path)
+	raw, err := os.ReadFile(path)
 	if err != nil {
 		return nil, judgeUnreadable(path)
 	}
@@ -117,7 +117,7 @@ func slurpJudgeDocs(path string, raw []byte) ([]any, error) {
 }
 
 func readable(path string) bool {
-	f, err := noblock.OpenRegular(path)
+	f, err := os.Open(path)
 	if err != nil {
 		return false
 	}

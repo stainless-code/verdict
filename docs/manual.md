@@ -2553,7 +2553,10 @@ from: `post` still runs the same guarded path — review-input checks
 suggestion rendering, stale-head and duplicate-payload guards, the typed
 policy gates, and the severity floors. A missing path refuses
 `missing-review-file`; `--dry-run` prints the validation and payload summary,
-writes `findings.dryrun.json`, and posts nothing.
+writes `findings.dryrun.json`, and posts nothing. The bundle's own files open
+without waiting for a writer, so a FIFO swapped in for `<bundle>/review.json`
+refuses instead of hanging; a path named with `--review-file` reads like any
+file, a pipe or `/dev/stdin` included.
 
 Approval is derived by verdict, not asked for by the agent. With no
 repository policy, `important_default` is the named threshold: any open,
@@ -2988,9 +2991,14 @@ digest covers that text. The text shown is bounded to 256 KiB in total, cut at a
 rune boundary: a comment the bound lands in carries `shown_bytes` below `bytes`,
 and every comment after it is named in `result.review_omitted`. The content pin
 below is over the full payloads, not the shown text, so a matching digest does
-not mean the whole review was on screen: the web UI therefore never offers
-Confirm for a review the preview cut, and the dialog says exactly which comment
-was cut after how many bytes and which were not shown. A mint refuses (`preview-unpinnable`)
+not mean the whole review was on screen. The server therefore mints no
+`preview_digest` or `preview_nonce` for a preview that cut or omitted any of the
+text: its job still succeeds and carries the shown text plus
+`result.review_truncated` (`bytes_cut`, `comments_omitted`, and a `message`
+pointing at `verdict post <repo> <pr> --dry-run`, which prints the whole
+payload), and a submit for that bundle, with any nonce, refuses
+`409 stale-preview`. The dialog says exactly which comment was cut after how
+many bytes and which were not shown. A mint refuses (`preview-unpinnable`)
 a preview whose render carries no content digest, because an empty pin would
 pin nothing. A server without
 `--allow-post` mints none of these: its preview result is the bare dry-run wire. The submit requires
@@ -3057,7 +3065,7 @@ not shown (the comment cut and after how many bytes, the comments left out, and
 the total), keeps Confirm disabled with no acknowledgement to tick past it, and
 points at `verdict post <repo> <pr> --dry-run`, which prints the whole payload,
 to inspect it and post it from the CLI. Text the operator never saw is never
-confirmable here. It posts only on an explicit click, and focus
+confirmable: the server mints no nonce for it, whatever the client. It posts only on an explicit click, and focus
 never moves to Confirm on its own. A `503 store-busy` keeps the dialog open and offers
 `Retry submit` with the same preview; a refusal that lands after the dialog was
 closed is reported in the page status.

@@ -1027,7 +1027,9 @@ func TestPreviewTextIsBoundedAtARuneBoundary(t *testing.T) {
 			return submittedResponse(req), nil
 		}))
 	rootID := rootIDOf(t, ts, bearer())
-	_, _, snap := mintPreviewSnapshot(t, ts, server, rootID, "1234")
+	// The comment is cut, so the preview is refused a pin by design; the job
+	// still succeeds and carries the cut text.
+	snap := awaitJobTerminal(t, ts, createPostPreviewJobOn(t, ts, server, rootID, "1234"))
 	result := asMap(t, snap["result"])
 	entry := asMap(t, asList(t, result["review_comments"])[0])
 	text := asString(t, entry["text"])

@@ -793,12 +793,18 @@
       status.className = "error";
       return;
     }
-    if (snap.status !== "succeeded" || !result.preview_digest) {
+    // A preview the server cut carries no digest or nonce by design: the dialog
+    // still shows the review text, but there is nothing to confirm.
+    const serverCut =
+      result.review_truncated && typeof result.review_truncated === "object"
+        ? result.review_truncated
+        : null;
+    if (snap.status !== "succeeded" || (!result.preview_digest && !serverCut)) {
       status.textContent = "Preview did not succeed; no digest to confirm.";
       status.className = "error";
       return;
     }
-    const digest = result.preview_digest;
+    const digest = result.preview_digest || "";
     const nonce = result.preview_nonce || "";
     const comments = Array.isArray(result.review_comments)
       ? result.review_comments.filter(
@@ -885,21 +891,27 @@
     const leftOut = `${cutBytes} bytes cut, ${omitted.length} ${omitted.length === 1 ? "comment" : "comments"} omitted`;
     const unseen = [...cut];
     if (omitted.length) unseen.push(`not shown at all: ${omitted.join("; ")}`);
-    // Posting text the operator never saw is never confirmable here: Confirm
-    // stays disabled, with no acknowledgement to tick past it, and the dialog
-    // points at the CLI, which prints the whole payload.
-    const blocked = unseen.length > 0;
+    // Posting text the operator never saw is never confirmable: the server mints
+    // no nonce for a cut preview, and here Confirm stays disabled with no
+    // acknowledgement to tick past it, pointing at the CLI, which prints the
+    // whole payload.
+    const blocked = unseen.length > 0 || serverCut !== null;
     if (blocked) {
+      const serverMessage =
+        typeof serverCut?.message === "string" ? serverCut.message : "";
       details.append(
         node(
           "p",
-          `Confirm is disabled: the preview did not show the whole review (${unseen.join("; ")}). Left out in total: ${leftOut}. ` +
-            `Inspect the full payload with \`verdict post ${result.target_repo || "<repo>"} ${bundle} --dry-run\` and post it from the CLI.`,
+          (serverMessage
+            ? `${serverMessage}${unseen.length ? ` Not shown: ${unseen.join("; ")}.` : ""}`
+            : null) ||
+            `Confirm is disabled: the preview did not show the whole review (${unseen.join("; ")}). Left out in total: ${leftOut}. ` +
+              `Inspect the full payload with \`verdict post ${result.target_repo || "<repo>"} ${bundle} --dry-run\` and post it from the CLI.`,
           "submit-truncated",
         ),
       );
     }
-    details.append(node("p", `Preview digest ${digest}`));
+    if (digest) details.append(node("p", `Preview digest ${digest}`));
     focusOrder.unshift(reviewBox);
     status.textContent = blocked
       ? "The preview did not show the whole review, so it cannot be confirmed here."
