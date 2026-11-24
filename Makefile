@@ -109,6 +109,15 @@ vuln:
 deadcode:
 	sh scripts/deadcode.sh $(DEADCODE_VERSION)
 
+# verify-stamp runs the full bar hooks/pre-push runs, then records HEAD in
+# <git-dir>/verdict-verified so a push of that exact clean commit skips the
+# repeat. A dirty tree is refused before the run, and HEAD moving during it
+# refuses the stamp.
+.PHONY: verify-stamp
+verify-stamp:
+	sh scripts/verify-stamp.sh clean
+	head=$$(git rev-parse HEAD) && sh scripts/prepush-checks.sh && sh scripts/verify-stamp.sh write "$$head"
+
 .PHONY: ci-go
 ci-go: gofmt-check schemas-check ts-types-check vet deadcode test-race vuln
 
