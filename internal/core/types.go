@@ -133,15 +133,30 @@ type ReportFilters struct { //nolint:govet // field order is the published prope
 
 // ReportCost is the summed cost rollup carried by report --cost.
 type ReportCost struct { //nolint:govet // field order is the published property order
-	Runs              int       `json:"runs"                min:"0"`
-	RunsWithCost      int       `json:"runs_with_cost"      min:"0"`
-	InputTokens       *int      `json:"input_tokens"        min:"0"`
-	OutputTokens      *int      `json:"output_tokens"       min:"0"`
-	TotalTokens       *int      `json:"total_tokens"        min:"0"`
-	CachedInputTokens *int      `json:"cached_input_tokens" min:"0"`
-	EstUSD            *float64  `json:"est_usd"`
-	ByTier            CostTiers `json:"by_tier"`
-	Receipts          []any     `json:"receipts,omitempty"`
+	Runs              int        `json:"runs"                min:"0"`
+	RunsWithCost      int        `json:"runs_with_cost"      min:"0"`
+	InputTokens       *int       `json:"input_tokens"        min:"0"`
+	OutputTokens      *int       `json:"output_tokens"       min:"0"`
+	TotalTokens       *int       `json:"total_tokens"        min:"0"`
+	CachedInputTokens *int       `json:"cached_input_tokens" min:"0"`
+	EstUSD            *float64   `json:"est_usd"`
+	ByTier            CostTiers  `json:"by_tier"`
+	Receipts          []any      `json:"receipts,omitempty"`
+	Mtd               *ReportMTD `anyOf:"null"               json:"mtd,omitempty"`
+}
+
+// ReportMTD is the month-to-date spend aggregate carried by report --cost
+// when a monthly ceiling is configured. It keeps existing cost fields
+// backwards-compatible: the object appears only when Flags.Cost is set.
+type ReportMTD struct {
+	KnownUSD           *float64 `json:"known_usd,omitempty"`
+	MonthlyCapUSD      *float64 `json:"monthly_cap_usd,omitempty"`
+	RemainingUSD       *float64 `json:"remaining_usd,omitempty"`
+	MonthlyRepoCap     *float64 `json:"monthly_repo_cap,omitempty"`
+	MonthlyPersonalCap *float64 `json:"monthly_personal_cap,omitempty"`
+	Month              string   `json:"month"`
+	KnownCount         int      `json:"known_count"`
+	UnknownCount       int      `json:"unknown_count"`
 }
 
 // CostTiers carries the three named effort-tier rollups.

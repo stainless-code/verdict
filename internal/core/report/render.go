@@ -95,10 +95,7 @@ func buildData(st *state) *core.ReportData {
 		Items:         envelopeItems(viewRanked(st)),
 		Compare:       st.compare,
 	}
-	if st.cost != nil {
-		data.Cost = costFromObj(st.cost)
-		data.CostRaw = st.cost
-	}
+	applyCostToData(st, data)
 	if st.comp != nil {
 		data.Completeness = st.comp
 	}
@@ -121,6 +118,17 @@ func buildData(st *state) *core.ReportData {
 		data.ProvenanceReceipt = st.provenance
 	}
 	return data
+}
+
+func applyCostToData(st *state, data *core.ReportData) {
+	if st.cost == nil {
+		return
+	}
+	data.Cost = costFromObj(st.cost)
+	if st.mtd != nil {
+		data.Cost.Mtd = st.mtd
+	}
+	data.CostRaw = st.cost
 }
 
 func outputVal(output string) *string {
@@ -471,7 +479,32 @@ func costHuman(st *state) []string {
 			len(st.receipts), receiptField(latest, "projected_usd"),
 			receiptField(latest, "projected_tier"), receiptField(latest, "budget_usd"), receiptField(latest, "at")))
 	}
+	if st.mtd != nil {
+		lines = append(lines, mtdHuman(st.mtd))
+	}
 	return lines
+}
+
+func mtdHuman(mtd *core.ReportMTD) string {
+	known := "n/a"
+	if mtd.KnownUSD != nil {
+		known = strconv.FormatFloat(*mtd.KnownUSD, 'f', -1, mtdFloatBits)
+	}
+	if mtd.MonthlyCapUSD == nil {
+		return fmt.Sprintf(
+			"mtd: %s known $%s (%d priced, %d unknown) — no ceiling",
+			mtd.Month, known, mtd.KnownCount, mtd.UnknownCount)
+	}
+	ceiling := strconv.FormatFloat(*mtd.MonthlyCapUSD, 'f', -1, mtdFloatBits)
+	if mtd.RemainingUSD != nil {
+		rem := strconv.FormatFloat(*mtd.RemainingUSD, 'f', -1, mtdFloatBits)
+		return fmt.Sprintf(
+			"mtd: %s known $%s/%s remaining $%s (%d priced, %d unknown)",
+			mtd.Month, known, ceiling, rem, mtd.KnownCount, mtd.UnknownCount)
+	}
+	return fmt.Sprintf(
+		"mtd: %s known $%s/%s (%d priced, %d unknown)",
+		mtd.Month, known, ceiling, mtd.KnownCount, mtd.UnknownCount)
 }
 
 func jqStr(obj *jq.Obj, key string) string {

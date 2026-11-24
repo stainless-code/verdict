@@ -63,7 +63,9 @@ var publishedSemantics = map[string]string{
 	// tests: additive optional top-level object with a draft enum
 	// (off|on-reproduce), closed shape; STA-346 regression-test drafting.
 	// No existing property, required key, enum, or type changed.
-	"config.schema.json": "4f518cdd09952f8f97c28ebde51bbf36a84ee3eb0ad5057427f63dfb23458a36",
+	// additive monthly_budget_usd (optional defaults.monthly_budget_usd and
+	// spend.mtd reporting). No existing property, required key, enum, or type changed.
+	"config.schema.json": "ffe9f24bc430d79c19f1d457066b35e00d738b9a4353c5671ed61c2ddbfea866",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -355,7 +357,8 @@ var publishedSemantics = map[string]string{
 	// report --compare: additive optional data.compare ($defs/reportCompare and
 	// its baseline/counts/finding definitions). No existing property, required
 	// key, enum, or type changed; only a --compare run carries the key.
-	"envelope.schema.json": "23667aae9840383a7347fd4992cf8bf906cef1558bac4a1858a3e6d8a925b6b7",
+	// monthly mtd block (additive optional reportData.mtd). No existing property, required key, enum, or type changed.
+	"envelope.schema.json": "316ff31bd5d7e9ca2c675757c86dd3c58435f4b361db29cf336e89a45f520c02",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

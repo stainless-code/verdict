@@ -22,7 +22,7 @@ var (
 		"index", "severity_weights", "rigor_policy", "packs", "tests",
 	}
 	defaultsFields = []string{
-		keyPanel, keyBudgetUSD, keyMaxBytes, keyChunk, keyKBPolicy, keyEffort,
+		keyPanel, keyBudgetUSD, keyMonthlyBudgetUSD, keyMaxBytes, keyChunk, keyKBPolicy, keyEffort,
 		keyDisplayFloor, keyPostFloor, keySpecCoverageMin, keyFinders, keyBudget,
 		keySensitivePaths,
 	}
@@ -41,7 +41,7 @@ var (
 	// owns (output, layout, color, publish), which parse but never feed
 	// the resolver.
 	personalTopFields     = core.SettingsTopKeys()
-	personalSpendFields   = []string{"budget_usd", "require_known_estimate", "enforce_cap"}
+	personalSpendFields   = []string{"budget_usd", "monthly_budget_usd", "require_known_estimate", "enforce_cap"}
 	personalPrivacyFields = []string{"exclusions"}
 	personalAgentFields   = []string{"binary", "args", "prompt_flag", "model_flag", "install", "probe_args", "probe_match"}
 )

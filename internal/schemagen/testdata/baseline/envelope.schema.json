@@ -817,6 +817,9 @@
         "by_tier": { "$ref": "#/$defs/costTiers" },
         "receipts": {
           "type": "array"
+        },
+        "mtd": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportMTD" }]
         }
       },
       "required": [
@@ -959,6 +962,21 @@
         "runs": { "type": "integer", "minimum": 0 }
       },
       "required": ["input_tokens", "output_tokens", "total_tokens", "runs"],
+      "additionalProperties": true
+    },
+    "reportMTD": {
+      "type": "object",
+      "properties": {
+        "known_usd": { "type": ["number", "null"] },
+        "monthly_cap_usd": { "type": ["number", "null"] },
+        "remaining_usd": { "type": ["number", "null"] },
+        "monthly_repo_cap": { "type": ["number", "null"] },
+        "monthly_personal_cap": { "type": ["number", "null"] },
+        "month": { "type": "string" },
+        "known_count": { "type": "integer" },
+        "unknown_count": { "type": "integer" }
+      },
+      "required": ["month", "known_count", "unknown_count"],
       "additionalProperties": true
     },
     "reportCompleteness": {
@@ -2308,6 +2326,9 @@
       "properties": {
         "guard_usd": { "type": ["number", "null"] },
         "personal_limit_usd": { "type": ["number", "null"] },
+        "monthly_budget_usd": { "type": ["number", "null"] },
+        "monthly_repo_cap": { "type": ["number", "null"] },
+        "monthly_personal_cap": { "type": ["number", "null"] },
         "require_known_estimate": { "type": "boolean" },
         "enforce_cap": { "type": "boolean" }
       },
