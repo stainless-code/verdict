@@ -48,6 +48,13 @@ type PostData struct { //nolint:govet // field order is the published property o
 	ProvenanceEnabled   bool                     `json:"-"`
 	ProvenanceReceipt   *ProvenanceReceipt       `json:"-"`
 	ProvenanceTruncated []ProvenanceTruncatedRow `json:"-"`
+
+	// RenderedBody and RenderedHash are the dry-run's settled review text and
+	// the content digest over it, its inline comments, and the head: not wire
+	// fields, so the CLI envelope and the schema keep their bytes. The serve
+	// confirm dialog shows the text and binds the confirmed post to the hash.
+	RenderedBody string `json:"-"`
+	RenderedHash string `json:"-"`
 }
 
 // ValidationData is the applied validator pass a post reports: the exact-file

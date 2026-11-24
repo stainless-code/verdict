@@ -587,6 +587,8 @@ func (st *state) dryRunResponse(ctx context.Context) (*Response, *core.RefusalEr
 		PayloadHash:     payloadHash,
 		Validation:      st.validationData(),
 		ItemsRaw:        recordcore.EnvelopeItems(payload),
+		RenderedBody:    st.body,
+		RenderedHash:    st.phash,
 	}
 	prov := decodeProvenanceTyped(st.req.RootPath(), st.dir)
 	if prov != nil {

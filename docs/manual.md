@@ -2975,8 +2975,10 @@ publishes `result.preview_digest` (SHA-256 over the preview wire plus the
 bundle fingerprint, taken before the dry-run reads the bundle, so a write that
 lands during the preview refuses `409 stale-preview` at submit) and
 `result.preview_nonce` (CSPRNG, single-use, 10-minute TTL, bounded store that
-evicts the oldest) beside the preview wire. A server without `--allow-post`
-mints neither: its preview result is the bare dry-run wire. The submit requires
+evicts the oldest) beside the preview wire, plus `result.review_body` (the
+rendered review text the dry-run produced, cut at a rune boundary to 64 KiB,
+with `result.review_body_truncated`), which the digest covers. A server without
+`--allow-post` mints none of these: its preview result is the bare dry-run wire. The submit requires
 `confirm: true` (missing or `false` refuses `400 needs-confirm`), then
 validates `(preview_nonce, root, bundle, preview_digest)` without spending it —
 unknown, mismatched, expired, or replayed nonces refuse `409 stale-preview` —
@@ -2984,13 +2986,19 @@ takes the bundle's `storelock`, and re-hashes the bundle. It refuses
 `409 stale-preview` when any bundle file `core/post` decides from changed since
 the preview — `findings.json`, `PR.json`, `source.json`, `review.json`,
 `post.json` (the duplicate-post receipt), `controls.json`, `record.json`,
-`identity.json`, `provenance.json`, or `full.diff` — and spends the nonce
-there, because that preview is invalid anyway. Otherwise it atomically spends
-the nonce and runs `core/post`. Two submits racing on one nonce therefore post
+`identity.json`, `provenance.json`, or `full.diff` (a `full.diff` that is not a
+regular file refuses before it is opened) — and spends the nonce there, because
+that preview is invalid anyway. It then re-renders the review under the same
+lock and refuses `409 stale-preview` unless it renders to the content digest the
+preview recorded, so the posted review is the text the operator saw even when
+`review.json` was swapped for the dry-run and restored. Otherwise it atomically
+spends the nonce and runs `core/post`. Two submits racing on one nonce therefore post
 once. A failure before the spend leaves the nonce usable: a held lock answers
 `503 store-busy` ("retry in a moment" is true — retry with the same preview),
 and a submit whose five-minute bound or a shutdown ends the wait for the lock
-refuses `post-timeout` or `canceled` at `200` with nothing posted. The re-check
+refuses `post-timeout` or `canceled` at `200` with nothing posted and this
+attempt's nonce unspent (the same preview may be retried only while it has not
+expired). The re-check
 holds the `findings.json` `storelock` only: a change to another bundle file
 between the re-check and the post is narrowed by the fingerprint but not
 excluded. The submit keeps running if the tab closes, but is bounded to five
@@ -3009,8 +3017,13 @@ state and dies with the process. The Detail view renders the bundle-level
 `Submit Review` button only when `allow_post` is advertised and the bundle is a
 PR number — a `local-*` bundle has no pull request to post to, so the control
 never appears there. Clicking it
-previews, opens a confirmation modal with the target, counts, and digest,
-and posts only on an explicit `Confirm & Submit Review` click.
+previews, opens a confirmation modal with the target, counts, any preview
+warnings, the rendered review text (read-only, as text, scrolling past a
+maximum height), and the digest, and enables `Confirm & Submit Review` only once
+that text is shown; it posts only on an explicit click, and focus never moves to
+Confirm on its own. A `503 store-busy` keeps the dialog open and offers
+`Retry submit` with the same preview; a refusal that lands after the dialog was
+closed is reported in the page status.
 
 A path carrying a traversal segment, a backslash, or a line break — a control
 rune, U+2028, or U+2029 — is refused before routing with the `404` `no such

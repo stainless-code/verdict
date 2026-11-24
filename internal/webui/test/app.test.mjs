@@ -1732,6 +1732,8 @@ test("allow_post renders Submit Review and confirms after several preview polls"
         findings: { open: 1, deferred: 0, addressed: 0 },
         preview_digest: digest,
         preview_nonce: nonce,
+        review_body: "## Review\n\nOne open finding.",
+        review_body_truncated: false,
       },
     },
     error: null,
@@ -1770,6 +1772,10 @@ test("allow_post renders Submit Review and confirms after several preview polls"
   assert.ok(dialog, "click must open the confirmation modal");
   assert.ok(dialog.textContent.includes(`Bundle 1234`));
   assert.ok(dialog.textContent.includes(digest));
+  assert.ok(
+    dialog.textContent.includes("One open finding."),
+    "the dialog shows the review text the nonce authorizes",
+  );
   const confirm = firstButton(ui.body, "Confirm & Submit Review");
   assert.ok(confirm, "modal must offer Confirm & Submit Review");
   assert.equal(confirm.disabled, false);
@@ -1862,6 +1868,7 @@ test("Cancel on the Submit Review modal posts nothing", async () => {
                 findings: { open: 1, deferred: 0, addressed: 0 },
                 preview_digest: "c".repeat(64),
                 preview_nonce: "d".repeat(32),
+                review_body: "text",
               },
             },
             error: null,
@@ -1890,7 +1897,7 @@ test("Cancel on the Submit Review modal posts nothing", async () => {
 });
 
 // previewSnapshot builds one post-preview job snapshot for the modal tests.
-function previewSnapshot(id, status, digest = "", nonce = "") {
+function previewSnapshot(id, status, digest = "", nonce = "", extra = {}) {
   const data = {
     id,
     kind: "post-preview",
@@ -1906,7 +1913,11 @@ function previewSnapshot(id, status, digest = "", nonce = "") {
       findings: { open: 1, deferred: 0, addressed: 0 },
       preview_digest: digest,
       preview_nonce: nonce,
+      review_body: "## Review\n\nLooks fine.",
+      review_body_truncated: false,
+      ...(extra.result || {}),
     };
+    if (extra.warnings) data.warnings = extra.warnings;
   }
   return { data, error: null };
 }
@@ -2105,19 +2116,22 @@ test("the dialog declares itself modal and names its heading", async () => {
   await ui.settle(opening);
 });
 
-test("focus moves to Cancel while the preview loads, then to Confirm", async () => {
+test("focus starts on Cancel and stays there when the preview settles", async () => {
   const { ui, releasePreview, opening } = await dialogUI();
+  const cancel = firstButton(ui.body, "Cancel");
   assert.equal(
     ui.active(),
-    firstButton(ui.body, "Cancel"),
+    cancel,
     "Cancel holds focus while Confirm is still disabled",
   );
   releasePreview();
   await ui.settle(opening);
+  const confirm = firstButton(ui.body, "Confirm & Submit Review");
+  assert.equal(confirm.disabled, false, "Confirm is enabled");
   assert.equal(
     ui.active(),
-    firstButton(ui.body, "Confirm & Submit Review"),
-    "Confirm takes focus once the preview settles",
+    cancel,
+    "focus is not stolen: a keypress aimed at Cancel must not activate Confirm",
   );
 });
 
@@ -2132,13 +2146,13 @@ test("Tab and Shift-Tab stay inside the dialog", async () => {
   assert.equal(ui.active(), cancel);
   releasePreview();
   await ui.settle(opening);
-  assert.equal(ui.active(), confirm);
+  assert.equal(ui.active(), cancel, "focus stays on Cancel");
   ui.press("Tab");
-  assert.equal(ui.active(), cancel, "Tab moves on to Cancel");
+  assert.equal(ui.active(), confirm, "Tab reaches the enabled Confirm");
   ui.press("Tab");
-  assert.equal(ui.active(), confirm, "Tab wraps from the last control");
+  assert.equal(ui.active(), cancel, "Tab wraps from the last control");
   ui.press("Tab", { shiftKey: true });
-  assert.equal(ui.active(), cancel, "Shift-Tab wraps from the first control");
+  assert.equal(ui.active(), confirm, "Shift-Tab wraps from the first control");
   // Focus that escaped the dialog is pulled back in.
   ui.body.focus();
   ui.press("Tab");
@@ -2221,4 +2235,164 @@ test("the pending note leaves once the submit settles", async () => {
     firstButton(ui.body, "Close"),
     "the settled dialog still offers Close",
   );
+});
+
+// gatedDialog opens the dialog over a preview built from extra and a submit
+// answered by submitResponse, with the preview already settled.
+async function settledDialog({ extra, submitResponse }) {
+  const ui = await createUI({
+    interactive: true,
+    allowPost: true,
+    csrf: "csrf-test-token",
+    respond: async (path, count) => {
+      if (path === "/v1/jobs/post-preview") {
+        return {
+          body: previewSnapshot(
+            "job-1",
+            "succeeded",
+            "e".repeat(64),
+            "f".repeat(32),
+            extra,
+          ),
+        };
+      }
+      if (path === "/v1/post/submit") return submitResponse(count);
+      return { body: prDetailFixtures().get(path) || envelope({}) };
+    },
+  });
+  await ui.navigate("#/r/root-123/1234");
+  const trigger = submitButton(ui.elements.get("content"));
+  await ui.settle(trigger.dispatch("click"));
+  return { ui, trigger };
+}
+
+test("the dialog shows the review text and warnings as text, never markup", async () => {
+  const markup = "## Review\n<img src=x onerror=alert(1)> **bold**";
+  const { ui } = await settledDialog({
+    extra: {
+      result: { review_body: markup, review_body_truncated: true },
+      warnings: ["PR state unknown"],
+    },
+    submitResponse: () => ({ body: envelope({ commit_id: "c0ffee" }) }),
+  });
+  const box = descendants(ui.body).find((e) => e.className === "submit-review");
+  assert.ok(box, "the review text has its own scrolling box");
+  assert.equal(box.tagName, "PRE");
+  assert.equal(box.textContent, markup, "the text is shown verbatim");
+  assert.equal(
+    descendants(ui.body).some((e) => e.tagName === "IMG"),
+    false,
+    "review text must never become markup",
+  );
+  assert.ok(ui.body.textContent.includes("PR state unknown"));
+  assert.ok(
+    ui.body.textContent.includes("Only the start of the review is shown"),
+  );
+  assert.equal(firstButton(ui.body, "Confirm & Submit Review").disabled, false);
+});
+
+test("a preview without review text stays unconfirmable", async () => {
+  const { ui } = await settledDialog({
+    extra: { result: { review_body: "" } },
+    submitResponse: () => ({ body: envelope({}) }),
+  });
+  assert.equal(firstButton(ui.body, "Confirm & Submit Review").disabled, true);
+  assert.ok(ui.body.textContent.includes("no review text"));
+});
+
+test("a failed status poll is a request error, not an unfinished preview", async () => {
+  const ui = await createUI({
+    interactive: true,
+    allowPost: true,
+    csrf: "csrf-test-token",
+    respond: async (path) => {
+      if (path === "/v1/jobs/post-preview") {
+        return { body: previewSnapshot("job-1", "queued") };
+      }
+      if (path === "/v1/jobs/job-1") return { status: 404, body: {} };
+      return { body: prDetailFixtures().get(path) || envelope({}) };
+    },
+  });
+  await ui.navigate("#/r/root-123/1234");
+  await ui.settle(submitButton(ui.elements.get("content")).dispatch("click"));
+  assert.ok(ui.body.textContent.includes("status check returned 404"));
+  assert.ok(!ui.body.textContent.includes("did not finish"));
+  assert.equal(firstButton(ui.body, "Confirm & Submit Review").disabled, true);
+});
+
+test("a submit that fails after the dialog closed is reported on the page", async () => {
+  let release;
+  const gate = new Promise((resolve) => {
+    release = resolve;
+  });
+  const { ui } = await settledDialog({
+    extra: {},
+    submitResponse: async () => {
+      await gate;
+      return {
+        body: {
+          data: null,
+          error: { code: "canceled", message: "the server shut down" },
+        },
+      };
+    },
+  });
+  const confirming = firstButton(ui.body, "Confirm & Submit Review").dispatch(
+    "click",
+  );
+  await ui.advance(4);
+  assert.equal(ui.press("Escape"), true, "the operator closes the dialog");
+  release();
+  await ui.settle(confirming);
+  const message = ui.elements.get("message");
+  assert.ok(message.textContent.includes("the server shut down"));
+  assert.ok(message.textContent.includes("1234"), "it names the bundle");
+  assert.equal(message.className, "error");
+});
+
+test("store-busy keeps the dialog open and retries with the same preview", async () => {
+  const { ui } = await settledDialog({
+    extra: {},
+    submitResponse: (count) =>
+      count === 1
+        ? {
+            status: 503,
+            body: {
+              reason: "store-busy",
+              message: "another write holds the store lock",
+            },
+          }
+        : { body: envelope({ commit_id: "c0ffee" }) },
+  });
+  await firstButton(ui.body, "Confirm & Submit Review").dispatch("click");
+  await ui.flush();
+  assert.ok(ui.body.textContent.includes("another write holds the store lock"));
+  const retry = firstButton(ui.body, "Retry submit");
+  assert.ok(retry, "the busy refusal offers Retry");
+  assert.equal(retry.disabled, false);
+  assert.ok(firstButton(ui.body, "Cancel"), "nothing posted, so Cancel again");
+  await retry.dispatch("click");
+  await ui.flush();
+  const sent = ui.fetches.filter((item) => item.path === "/v1/post/submit");
+  assert.equal(sent.length, 2);
+  assert.deepEqual(
+    JSON.parse(sent[1].options.body),
+    JSON.parse(sent[0].options.body),
+    "the retry reuses the same digest and nonce",
+  );
+  assert.ok(ui.body.textContent.includes("Submitted."));
+});
+
+test("any other refusal leaves Confirm disabled", async () => {
+  const { ui } = await settledDialog({
+    extra: {},
+    submitResponse: () => ({
+      status: 409,
+      body: { reason: "stale-preview", message: "preview is stale" },
+    }),
+  });
+  await firstButton(ui.body, "Confirm & Submit Review").dispatch("click");
+  await ui.flush();
+  assert.equal(firstButton(ui.body, "Confirm & Submit Review").disabled, true);
+  assert.equal(firstButton(ui.body, "Retry submit"), undefined);
 });

@@ -75,6 +75,10 @@ type previewEntry struct {
 	bundle      string
 	digest      string
 	fingerprint string
+	// rendered is the content digest of the review text the dry-run rendered
+	// (body, inline comments, head): the submit re-renders under the lock and
+	// refuses unless it still matches, so the confirmed post is the text shown.
+	rendered string
 }
 
 // previewStore is the bounded, mutex-protected, TTL-expiring single-use
@@ -109,8 +113,9 @@ func (st *previewStore) nonceReader() func([]byte) (int, error) {
 	return st.random
 }
 
-// mint binds one digest and fingerprint to a fresh nonce and stores it.
-func (st *previewStore) mint(root, bundle, digest, fingerprint string) (string, error) {
+// mint binds one digest, bundle fingerprint, and rendered-content digest to a
+// fresh nonce and stores it.
+func (st *previewStore) mint(root, bundle, digest, fingerprint, rendered string) (string, error) {
 	nonce, err := mintPreviewNonce(st.nonceReader())
 	if err != nil {
 		return "", err
@@ -128,7 +133,7 @@ func (st *previewStore) mint(root, bundle, digest, fingerprint string) (string, 
 	}
 	st.entries[nonce] = &previewEntry{
 		root: root, bundle: bundle, digest: digest,
-		fingerprint: fingerprint, expiresAt: now.Add(ttl),
+		fingerprint: fingerprint, rendered: rendered, expiresAt: now.Add(ttl),
 	}
 	return nonce, nil
 }
@@ -255,11 +260,26 @@ func bundleFingerprint(bundleDir string) (string, error) {
 	return hex.EncodeToString(sum.Sum(nil)), nil
 }
 
+// errNotRegular names a bundle entry that must be a regular file and is not.
+var errNotRegular = errors.New("not a regular file")
+
 // hashDiff streams full.diff through an inner digest and frames that digest
 // into the fingerprint, so a large diff never lands in memory whole and no
 // content can impersonate a following field. An absent diff contributes
 // nothing; an unreadable one is an error.
 func hashDiff(dst hash.Hash, path string) error {
+	// A FIFO or device opens (and reads) forever, and this runs while the
+	// findings-store lock is held, so only a regular file is ever opened.
+	info, err := os.Lstat(path)
+	if errors.Is(err, fs.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return jq.Sealed("serve: stat full.diff", err)
+	}
+	if !info.Mode().IsRegular() {
+		return jq.Sealed("serve: full.diff", errNotRegular)
+	}
 	file, err := os.Open(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
@@ -326,13 +346,20 @@ func (s *Server) handlePostSubmit(w http.ResponseWriter, r *http.Request) {
 	}
 	// A host write already under way is not abandoned because the tab closed:
 	// the nonce is spent under the lock below, and the CLI post this mirrors is not
-	// cancellable from a browser either. It derives from the server's
-	// lifetime instead of the request's, so shutdown still cancels it (and
-	// the exec layer kills the host process tree, GO-CLI-05), and it is
-	// bounded, so a stalled host cannot hold the bundle lock forever.
-	ctx, cancel := context.WithTimeout(s.lifeCtx, s.postTimeout())
+	// cancellable from a browser either. The context is therefore detached from
+	// the request, but shutdown still ends it (and the exec layer kills the host
+	// process tree, GO-CLI-05), and it is bounded, so a stalled host cannot hold
+	// the bundle lock forever.
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), s.postTimeout())
 	defer cancel()
-	s.runConfirmedPost(ctx, w, &body, rootPath, bundleDir, entry) //nolint:contextcheck // bound to the server lifetime on purpose
+	go func() {
+		select {
+		case <-s.stopping:
+			cancel()
+		case <-ctx.Done():
+		}
+	}()
+	s.runConfirmedPost(ctx, w, &body, rootPath, bundleDir, entry)
 }
 
 // validateSubmitBody checks confirmation and preview presence; the problem
@@ -399,19 +426,9 @@ func (s *Server) runConfirmedPost(
 		return
 	}
 	defer unlock()
-	current, err := bundleFingerprint(bundleDir)
-	if err != nil {
-		s.problem(w, http.StatusInternalServerError, "internal",
-			"could not re-read the bundle before posting: "+err.Error())
-		return
-	}
-	if current != entry.fingerprint {
-		_, _ = s.previews.consume(body.PreviewNonce, body.Root, body.Bundle, body.PreviewDigest)
-		s.problem(w, http.StatusConflict, reasonStalePreview,
-			"the bundle changed since the preview; re-run the preview before submitting")
-		return
-	}
-	if !s.spendPreview(w, body) {
+	if !s.bundleUnchanged(w, body, bundleDir, entry) ||
+		!s.sameRenderedReview(ctx, w, body, rootPath, bundleDir, entry) ||
+		!s.spendPreview(w, body) {
 		return
 	}
 	resp, ref := s.invokePostSubmit(ctx, body, rootPath, bundleDir)
@@ -422,6 +439,55 @@ func (s *Server) runConfirmedPost(
 	s.layer.Invalidate()
 	s.writeEnvelope(w, core.RenderEnvelope(verbServe, "", body.Bundle, resp.At, resp.Next,
 		resp.Warnings, resp.Data.Wire(), nil))
+}
+
+// bundleUnchanged re-hashes the bundle under the lock and refuses unless it is
+// the state the preview read; a changed bundle spends the nonce, because that
+// preview is invalid. The problem is already written when false.
+func (s *Server) bundleUnchanged(
+	w http.ResponseWriter, body *postSubmitBody, bundleDir string, entry *previewEntry,
+) bool {
+	current, err := bundleFingerprint(bundleDir)
+	if err != nil {
+		s.problem(w, http.StatusInternalServerError, "internal",
+			"could not re-read the bundle before posting: "+err.Error())
+		return false
+	}
+	if current != entry.fingerprint {
+		_, _ = s.previews.consume(body.PreviewNonce, body.Root, body.Bundle, body.PreviewDigest)
+		s.problem(w, http.StatusConflict, reasonStalePreview,
+			"the bundle changed since the preview; re-run the preview before submitting")
+		return false
+	}
+	return true
+}
+
+// sameRenderedReview re-renders the review the way the preview did, under the
+// bundle lock, and refuses unless it is the content the operator confirmed. The
+// fingerprint alone matches the bytes at submit time, so a review.json swapped
+// for the dry-run and restored before the submit would still pass it; the
+// rendered digest ties the post to the text the preview showed. A render that
+// refuses leaves the nonce unspent; a different render spends it, because that
+// preview is invalid. The problem is already written when false.
+func (s *Server) sameRenderedReview(
+	ctx context.Context, w http.ResponseWriter, body *postSubmitBody,
+	rootPath, bundleDir string, entry *previewEntry,
+) bool {
+	resp, ref := s.jobs.runnerPostPreview()(ctx, s.previewRequest(bundleDir, body.Bundle, rootPath))
+	if ref != nil {
+		if typed := s.lockWaitRefusal(ctx); typed != nil {
+			ref = typed
+		}
+		s.writeRefusal(w, verbServe, body.Bundle, ref)
+		return false
+	}
+	if resp.Data.RenderedHash != entry.rendered {
+		_, _ = s.previews.consume(body.PreviewNonce, body.Root, body.Bundle, body.PreviewDigest)
+		s.problem(w, http.StatusConflict, reasonStalePreview,
+			"the review text changed since the preview; re-run the preview before submitting")
+		return false
+	}
+	return true
 }
 
 // postTimeout is the configured submit bound, [postSubmitTimeout] by default.
@@ -487,13 +553,16 @@ func (s *Server) acquireBundleLock(ctx context.Context, storePath string) (func(
 
 // lockWaitRefusal maps a submit context that ended while waiting for the
 // bundle lock to the typed refusals the host-call phase uses. Nothing was
-// posted and the nonce is unspent, so the message says the retry is safe.
+// posted and this attempt left the nonce unspent; the message does not promise
+// the preview is still valid, because it may have expired or been spent by a
+// concurrent submit during the wait.
 func (s *Server) lockWaitRefusal(ctx context.Context) *core.RefusalError {
 	switch {
 	case errors.Is(ctx.Err(), context.DeadlineExceeded):
 		return &core.RefusalError{Code: codePostTimeout, Message: fmt.Sprintf(
 			"the submit did not finish within %s while waiting for the bundle lock; nothing was posted and "+
-				"the preview is still valid, so retry", s.postTimeout())}
+				"this attempt did not spend the preview, so retry with the same preview if it has not expired, "+
+				"or run a new preview", s.postTimeout())}
 	case errors.Is(ctx.Err(), context.Canceled):
 		return &core.RefusalError{Code: codeCanceled, Message: "the server shut down while the submit waited " +
 			"for the bundle lock; nothing was posted"}

@@ -30,3 +30,7 @@ network, is gated by `--allow-post`. The served post
 also resolves the tool version from the install root exactly as `verdict
 post` does, so a `package.json` in the server's working directory can no
 longer stamp its version into a posted review.
+The confirmation modal shows the rendered review text and the preview's
+warnings before it enables Confirm, and the submit re-renders the review under
+the bundle lock and refuses `409 stale-preview` unless it matches the preview,
+so the posted review is the text the operator confirmed.

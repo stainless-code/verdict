@@ -237,6 +237,16 @@ noscript {
 .submit-details {
   margin: 0.6rem 0;
 }
+.submit-review {
+  max-height: 40vh;
+  overflow: auto;
+  margin: 0.6rem 0;
+  padding: 0.6rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 0.4rem;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .triage input[type="text"],
 .triage input:not([type]),
 .kb-promote input {

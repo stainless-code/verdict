@@ -644,7 +644,11 @@
         cache: "no-store",
       });
       if (!live()) return null;
-      if (!got.ok) break;
+      if (!got.ok) {
+        // A failed poll is a request error, not an unfinished preview: only
+        // an exhausted polling budget earns the "did not finish" message.
+        throw new Error(`Preview status check returned ${got.status}.`);
+      }
       const next = await got.json();
       if (!live()) return null;
       snap = next?.data || snap;
@@ -726,7 +730,9 @@
     submitReturnFocus = trigger || null;
     trapSubmitKeys(overlay, [confirm, cancel]);
     // Cancel is the only enabled control while the preview loads, so focus
-    // starts there; Confirm takes it once the preview settles.
+    // starts there and stays: Confirm is enabled without taking focus, so a
+    // keypress aimed at Cancel can never activate it (WAI-ARIA: don't steal
+    // focus). Tab still reaches it, because the trap includes it.
     cancel.focus();
     let preview = null;
     try {
@@ -761,18 +767,59 @@
     }
     const digest = result.preview_digest;
     const nonce = result.preview_nonce || "";
+    const reviewText =
+      typeof result.review_body === "string" ? result.review_body : "";
+    if (!reviewText) {
+      // The nonce authorizes posting this text; with none shown there is
+      // nothing for the operator to confirm.
+      status.textContent =
+        "The preview carried no review text to show; cancel and try again.";
+      status.className = "error";
+      return;
+    }
     const findings = result.findings || {};
     const anchors = result.anchors || {};
+    // Untrusted text only ever reaches the page through textContent (node()),
+    // never innerHTML: the review is model output.
+    const reviewBox = node("pre", reviewText, "submit-review");
+    reviewBox.setAttribute("tabindex", "0");
+    reviewBox.setAttribute("role", "region");
+    reviewBox.setAttribute("aria-label", "Review text to be posted");
     details.append(
       node(
         "p",
         `Event ${result.event || "COMMENT"} — ${findings.open ?? 0} open, ${findings.addressed ?? 0} addressed, ${anchors.kept ?? 0} anchors kept.`,
       ),
-      node("p", `Preview digest ${digest}`),
     );
-    status.textContent = "Review the preview, then confirm to submit.";
+    const warnings = Array.isArray(snap.warnings) ? snap.warnings : [];
+    if (warnings.length) {
+      const list = node("ul", undefined, "submit-warnings");
+      for (const warning of warnings) list.append(node("li", warning));
+      details.append(node("p", "Preview warnings:"), list);
+    }
+    details.append(reviewBox);
+    if (result.review_body_truncated === true) {
+      details.append(
+        node(
+          "p",
+          "Only the start of the review is shown; the whole review posts.",
+        ),
+      );
+    }
+    details.append(node("p", `Preview digest ${digest}`));
+    status.textContent = "Review the text above, then confirm to submit.";
     confirm.disabled = false;
-    confirm.focus();
+    // The dialog is still the open one: a submit that settles after the
+    // operator closed it reports on the page instead of a detached element.
+    const open = () => submitOverlay === overlay;
+    const report = (text, failed) => {
+      status.textContent = text;
+      status.className = failed ? "error" : "";
+      if (!open()) {
+        message.textContent = `Submit review for bundle ${bundle}: ${text}`;
+        message.className = failed ? "error" : "";
+      }
+    };
     confirm.addEventListener("click", async () => {
       confirm.disabled = true;
       // The server keeps posting after the dialog goes away, so this button
@@ -794,14 +841,23 @@
           confirm: true,
         });
         if (!response.ok) {
-          status.textContent =
-            body?.message || `Request returned ${response.status}`;
-          status.className = "error";
+          if (response.status === 503 && body?.reason === "store-busy") {
+            // The server refused before spending the nonce, so the same
+            // preview can go again: offer Retry instead of a dead end.
+            report(
+              `${body.message || "The bundle is busy."} Nothing was posted; retry with this preview.`,
+              true,
+            );
+            confirm.textContent = "Retry submit";
+            confirm.disabled = false;
+            cancel.textContent = "Cancel";
+            return;
+          }
+          report(body?.message || `Request returned ${response.status}`, true);
           return;
         }
         if (body?.error) {
-          status.textContent = body.error.message || "Submit refused.";
-          status.className = "error";
+          report(body.error.message || "Submit refused.", true);
           return;
         }
         const data = body?.data || {};
@@ -812,9 +868,7 @@
         message.textContent = "Review submitted from the confirmation modal.";
         message.className = "";
       } catch (error) {
-        status.textContent =
-          error instanceof Error ? error.message : String(error);
-        status.className = "error";
+        report(error instanceof Error ? error.message : String(error), true);
       } finally {
         pending.remove();
       }

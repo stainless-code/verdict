@@ -10,6 +10,7 @@ import (
 	"os"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
@@ -424,13 +425,7 @@ func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 		m.setStatus(current, jobStatusFailed, nil, failure, nil)
 		return
 	}
-	read := m.server.postReadRequest(current.bundleDir, current.bundle, current.rootPath)
-	req := &postcore.Request{
-		ReadRequest: read,
-		Flags:       postcore.Flags{Approve: approveFalse, ReviewFile: current.bundleDir + "/review.json", DryRun: true},
-		Effective:   m.server.cfg.Effective,
-	}
-	resp, ref := runner(ctx, req)
+	resp, ref := runner(ctx, m.server.previewRequest(current.bundleDir, current.bundle, current.rootPath))
 	if ctx.Err() != nil {
 		m.setStatus(current, jobStatusCancelled, nil, nil, nil)
 		return
@@ -442,12 +437,44 @@ func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 	}
 	result := resp.Data.Wire()
 	if m.server.previews != nil {
-		if failure := m.bindPreview(current, fingerprint, result); failure != nil {
+		// The text goes onto the wire before the digest is taken, so the digest
+		// binds exactly what the confirm dialog shows.
+		setReviewBody(result, resp.Data.RenderedBody)
+		if failure := m.bindPreview(current, fingerprint, resp.Data.RenderedHash, result); failure != nil {
 			m.setStatus(current, jobStatusFailed, nil, failure, nil)
 			return
 		}
 	}
 	m.setStatus(current, jobStatusSucceeded, result, nil, resp.Warnings)
+}
+
+// previewRequest is the dry-run request a preview job and a submit's re-render
+// share, so both render the review identically. DryRun is hardcoded true.
+func (s *Server) previewRequest(bundleDir, bundle, rootPath string) *postcore.Request {
+	return &postcore.Request{
+		ReadRequest: s.postReadRequest(bundleDir, bundle, rootPath),
+		Flags:       postcore.Flags{Approve: approveFalse, ReviewFile: bundleDir + "/review.json", DryRun: true},
+		Effective:   s.cfg.Effective,
+	}
+}
+
+// maxReviewBodyBytes bounds the review text a preview publishes for the
+// confirm dialog: the hosts' own comment limit, so a normal review fits whole.
+const maxReviewBodyBytes = 64 << 10
+
+// setReviewBody publishes the rendered review text beside the preview wire,
+// cut at a rune boundary when it exceeds [maxReviewBodyBytes].
+func setReviewBody(result *jq.Obj, text string) {
+	truncated := len(text) > maxReviewBodyBytes
+	if truncated {
+		cut := maxReviewBodyBytes
+		for cut > 0 && !utf8.RuneStart(text[cut]) {
+			cut--
+		}
+		text = text[:cut]
+	}
+	result.Set("review_body", text)
+	result.Set("review_body_truncated", truncated)
 }
 
 // previewFingerprint fingerprints the bundle before the dry-run when the
@@ -471,9 +498,9 @@ func (m *jobManager) previewFingerprint(current *job) (string, *jobError) {
 // bindPreview mints the confirmation nonce for one succeeded preview and
 // publishes the digest and nonce on its wire. A nonce the CSPRNG cannot mint
 // refuses the preview: there is nothing confirmable to hand the operator.
-func (m *jobManager) bindPreview(current *job, fingerprint string, result *jq.Obj) *jobError {
+func (m *jobManager) bindPreview(current *job, fingerprint, rendered string, result *jq.Obj) *jobError {
 	digest := previewDigest(current.rootID, current.bundle, fingerprint, []byte(result.MarshalCompact()))
-	nonce, err := m.server.previews.mint(current.rootID, current.bundle, digest, fingerprint)
+	nonce, err := m.server.previews.mint(current.rootID, current.bundle, digest, fingerprint, rendered)
 	if err != nil {
 		return &jobError{code: codeNonceFailed, message: err.Error()}
 	}

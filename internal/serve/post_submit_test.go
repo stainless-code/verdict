@@ -895,10 +895,11 @@ func TestPostSubmitTimeoutRefusesAndReleasesLock(t *testing.T) { //nolint:revive
 
 // submitAsync fires one confirmed submit and delivers its answer; a transport
 // failure delivers the zero result, which the caller's status check rejects.
-func submitAsync(ts *httptest.Server, server *Server, body string) <-chan result {
+func submitAsync(t *testing.T, ts *httptest.Server, server *Server, body string) <-chan result {
+	t.Helper()
 	answered := make(chan result, 1)
 	go func() {
-		got, err := submitOnce(ts, server, body)
+		got, err := submitOnce(t.Context(), ts, server, body)
 		if err != nil {
 			got = result{}
 		}
@@ -909,8 +910,9 @@ func submitAsync(ts *httptest.Server, server *Server, body string) <-chan result
 
 // submitOnce is the blocking request submitAsync runs off the test goroutine,
 // so it reports an error instead of failing the test.
-func submitOnce(ts *httptest.Server, server *Server, body string) (result, error) {
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost,
+// The test-owned context cancels a request the test stopped waiting for.
+func submitOnce(ctx context.Context, ts *httptest.Server, server *Server, body string) (result, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost,
 		ts.URL+postSubmitPath, strings.NewReader(body))
 	if err != nil {
 		return result{}, err
@@ -961,7 +963,7 @@ func TestPostSubmitShutdownCancelsInFlightHostPost(t *testing.T) { //nolint:revi
 	ts, server, rootID, _ := realPostServer(t, cmdr, &Config{PostTimeout: time.Minute})
 	digest, nonce, _ := mintPreviewSnapshot(t, ts, server, rootID, "7")
 	served, shutdown := serveForShutdown(t, server)
-	answered := submitAsync(ts, server, submitBody(rootID, "7", digest, nonce, new(true)))
+	answered := submitAsync(t, ts, server, submitBody(rootID, "7", digest, nonce, new(true)))
 
 	select {
 	case <-cmdr.stall:

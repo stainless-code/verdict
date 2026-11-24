@@ -14,12 +14,14 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
 	"github.com/stainless-code/verdict/internal/forgejo"
 	"github.com/stainless-code/verdict/internal/storelock"
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 // postServer starts one allow-post server over cfg with the given post
@@ -130,16 +132,26 @@ func TestServedPostRequestsCarryConfigEnvAndEffective(t *testing.T) {
 	}
 	mu.Lock()
 	defer mu.Unlock()
-	if len(seen) != 2 {
-		t.Fatalf("post requests = %d, want one preview and one submit", len(seen))
+	if len(seen) != 3 {
+		t.Fatalf("post requests = %d, want the preview, the submit's re-render, and the submit", len(seen))
 	}
 	for i, req := range seen {
-		if !maps.Equal(env, req.Env) {
-			t.Errorf("request %d Env = %v, want %v", i, req.Env, env)
-		}
-		if req.Effective != effective {
-			t.Errorf("request %d Effective = %+v, want %+v", i, req.Effective, effective)
-		}
+		requireCarried(t, i, req, env, &effective, i < 2)
+	}
+}
+
+// requireCarried checks one captured post request: its dry-run flag and the
+// environment and render configuration the server started with.
+func requireCarried(t *testing.T, i int, req *postcore.Request, env map[string]string, effective *core.Effective, dryRun bool) {
+	t.Helper()
+	if req.Flags.DryRun != dryRun {
+		t.Errorf("request %d DryRun = %v, want %v", i, req.Flags.DryRun, dryRun)
+	}
+	if !maps.Equal(env, req.Env) {
+		t.Errorf("request %d Env = %v, want %v", i, req.Env, env)
+	}
+	if req.Effective != *effective {
+		t.Errorf("request %d Effective = %+v, want %+v", i, req.Effective, *effective)
 	}
 }
 
@@ -227,7 +239,7 @@ func TestForgejoAuthGateRefusesAnEmptyEnv(t *testing.T) {
 func TestPreviewStoreConcurrentConsume(t *testing.T) {
 	t.Parallel()
 	store := &previewStore{entries: map[string]*previewEntry{}, now: fixedNow, ttl: previewTTL}
-	nonce, err := store.mint("root", "1234", "digest", "fingerprint")
+	nonce, err := store.mint("root", "1234", "digest", "fingerprint", "rendered")
 	if err != nil {
 		t.Fatalf("mint: %v", err)
 	}
@@ -427,6 +439,10 @@ func TestPostSubmitSurvivesACanceledRequest(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("submit = %d %s, want 200 with the tab closed", recorder.Code, recorder.Body)
 	}
+	// A refusal envelope is 200 too: only a null error proves the post ran.
+	if !strings.Contains(recorder.Body.String(), `"error": null`) {
+		t.Errorf("submit = %s, want a success envelope: the closed tab aborted the post", recorder.Body)
+	}
 }
 
 // okPostRunners are the minimal succeeding preview and submit runners.
@@ -570,7 +586,7 @@ func TestPreviewStoreEvictsTheOldestWhenFull(t *testing.T) { //nolint:revive // 
 	}
 	nonces := make([]string, 0, maxPreviews+1)
 	for range maxPreviews + 1 {
-		nonce, err := store.mint("root", "1234", "digest", "fingerprint")
+		nonce, err := store.mint("root", "1234", "digest", "fingerprint", "rendered")
 		if err != nil {
 			t.Fatalf("mint: %v", err)
 		}
@@ -639,6 +655,15 @@ func TestPostSubmitBusyLockKeepsTheNonce(t *testing.T) {
 	}
 }
 
+// requireNoValidityPromise fails when a lock-wait refusal promises the preview
+// is still valid: it may have expired or been spent during the wait.
+func requireNoValidityPromise(t *testing.T, message string) {
+	t.Helper()
+	if strings.Contains(message, "still valid") {
+		t.Errorf("message promises the preview is still valid: %q", message)
+	}
+}
+
 // TestPostSubmitLockWaitEndedByTheContext pins a submit whose deadline or
 // shutdown ends the wait for the bundle lock: it answers the same typed
 // refusal the host-call phase uses, not 500 internal, posts nothing, and
@@ -651,7 +676,7 @@ func TestPostSubmitLockWaitEndedByTheContext(t *testing.T) { //nolint:revive // 
 		want  string
 	}{
 		{name: "deadline", want: codePostTimeout, setup: func(*Server) {}},
-		{name: "shutdown", want: codeCanceled, setup: func(s *Server) { s.lifeCancel() }},
+		{name: "shutdown", want: codeCanceled, setup: func(s *Server) { s.beginStop() }},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -668,9 +693,11 @@ func TestPostSubmitLockWaitEndedByTheContext(t *testing.T) { //nolint:revive // 
 			if got.status != http.StatusOK {
 				t.Fatalf("submit = %d %s, want 200 typed refusal, not 500", got.status, got.body)
 			}
-			if code := asString(t, asMap(t, decode(t, got.body)["error"])["code"]); code != tc.want {
+			errObj := asMap(t, decode(t, got.body)["error"])
+			if code := asString(t, errObj["code"]); code != tc.want {
 				t.Errorf("error code = %q, want %q (%s)", code, tc.want, got.body)
 			}
+			requireNoValidityPromise(t, asString(t, errObj["message"]))
 			if submits := counts.submits(); submits != 0 {
 				t.Errorf("postcore submits = %d, want 0", submits)
 			}
@@ -693,10 +720,10 @@ func TestPostSubmitConcurrentSameNonceOnePost(t *testing.T) {
 	digest, nonce := mintPreview(t, ts, server, rootID, "1234")
 	release := heldBundleLock(t, root, "1234")
 	body := submitBody(rootID, "1234", digest, nonce, new(true))
-	first, second := submitAsync(ts, server, body), submitAsync(ts, server, body)
+	first, second := submitAsync(t, ts, server, body), submitAsync(t, ts, server, body)
 	release()
 	var ok, stale int
-	for _, got := range []result{<-first, <-second} {
+	for _, got := range []result{awaitResult(t, first), awaitResult(t, second)} {
 		switch {
 		case got.status == http.StatusOK && strings.Contains(string(got.body), `"error": null`):
 			ok++
@@ -714,6 +741,22 @@ func TestPostSubmitConcurrentSameNonceOnePost(t *testing.T) {
 	}
 }
 
+// awaitResult waits for one async submit answer within the polling bound, so a
+// request that never answers fails the test instead of hanging the suite.
+func awaitResult(t *testing.T, answered <-chan result) result {
+	t.Helper()
+	var got result
+	testenv.Until(t, func() bool {
+		select {
+		case got = <-answered:
+			return true
+		default:
+			return false
+		}
+	})
+	return got
+}
+
 // TestPostSubmitStaleBundleSpendsTheNonce pins that a stale fingerprint burns
 // the nonce: that preview is invalid, so no retry with it may succeed.
 func TestPostSubmitStaleBundleSpendsTheNonce(t *testing.T) {
@@ -723,6 +766,10 @@ func TestPostSubmitStaleBundleSpendsTheNonce(t *testing.T) {
 	rootID := rootIDOf(t, ts, bearer())
 	digest, nonce := mintPreview(t, ts, server, rootID, "1234")
 	receipt := filepath.Join(mustAbs(t, root), ".verdict", "state", "1234", "post.json")
+	original, err := os.ReadFile(receipt)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if err := os.WriteFile(receipt, []byte(`{"head":"`+headA+`"}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -730,7 +777,9 @@ func TestPostSubmitStaleBundleSpendsTheNonce(t *testing.T) {
 	if got := post(t, ts, postSubmitPath, body, writeHeaders(server)); got.status != http.StatusConflict {
 		t.Fatalf("stale submit = %d %s, want 409", got.status, got.body)
 	}
-	if err := os.Remove(receipt); err != nil {
+	// Restore the previewed bytes: the fingerprint matches again, so only a
+	// spent nonce can make the replay refuse.
+	if err := os.WriteFile(receipt, original, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if got := post(t, ts, postSubmitPath, body, writeHeaders(server)); got.status != http.StatusConflict {
@@ -768,5 +817,126 @@ func TestPostSubmitWriteDuringPreviewIsStale(t *testing.T) {
 	}
 	if n := submits.Load(); n != 0 {
 		t.Errorf("postcore submits = %d, want 0", n)
+	}
+}
+
+// renderingPreview is a dry-run runner whose rendered review text and hash come
+// from render, called once per dry-run (the preview, then the submit's
+// re-render): n is the 1-based call number.
+func renderingPreview(render func(n int) (body, hash string)) PostPreviewRunner {
+	var calls atomic.Int32
+	return func(_ context.Context, req *postcore.Request) (*postcore.Response, *core.RefusalError) {
+		resp := dryRunResponse(req)
+		resp.Data.RenderedBody, resp.Data.RenderedHash = render(int(calls.Add(1)))
+		return resp, nil
+	}
+}
+
+// TestPostSubmitRefusesAReviewThatRendersDifferently pins the binding to the
+// rendered review: the bundle fingerprint is a content hash of the current
+// bytes, so a review.json swapped while the dry-run read it and restored before
+// the submit passes the fingerprint; the submit's own re-render does not match
+// the one the operator saw, so it refuses, posts nothing, and spends the nonce.
+func TestPostSubmitRefusesAReviewThatRendersDifferently(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	var submits atomic.Int32
+	submit := PostSubmitRunner(func(_ context.Context, req *postcore.Request) (*postcore.Response, *core.RefusalError) {
+		submits.Add(1)
+		return submittedResponse(req), nil
+	})
+	preview := renderingPreview(func(n int) (string, string) {
+		if n == 1 {
+			return "the text the operator saw", "hash-shown"
+		}
+		return "a different review", "hash-swapped"
+	})
+	ts, server := postServer(t, &Config{Layer: testLayer(root, nil)}, preview, submit)
+	rootID := rootIDOf(t, ts, bearer())
+	digest, nonce, _ := mintPreviewSnapshot(t, ts, server, rootID, "1234")
+	body := submitBody(rootID, "1234", digest, nonce, new(true))
+	got := post(t, ts, postSubmitPath, body, writeHeaders(server))
+	if got.status != http.StatusConflict || !strings.Contains(string(got.body), `"reason":"stale-preview"`) {
+		t.Fatalf("a review that renders differently = %d %s, want 409 stale-preview", got.status, got.body)
+	}
+	if n := submits.Load(); n != 0 {
+		t.Errorf("postcore submits = %d, want 0", n)
+	}
+	if _, ok := server.previews.peek(nonce, rootID, "1234", digest); ok {
+		t.Error("the refused submit left the nonce spendable")
+	}
+}
+
+// TestPostSubmitPostsTheReviewTheDialogShowed pins the matching path of the
+// binding: when the re-render equals the preview's, the submit posts once, and
+// the preview wire carries the exact text the confirm dialog renders.
+func TestPostSubmitPostsTheReviewTheDialogShowed(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	var submits atomic.Int32
+	submit := PostSubmitRunner(func(_ context.Context, req *postcore.Request) (*postcore.Response, *core.RefusalError) {
+		submits.Add(1)
+		return submittedResponse(req), nil
+	})
+	preview := renderingPreview(func(int) (string, string) { return "## Review\n\n<b>raw</b> text", "hash-stable" })
+	ts, server := postServer(t, &Config{Layer: testLayer(root, nil)}, preview, submit)
+	rootID := rootIDOf(t, ts, bearer())
+	digest, nonce, snap := mintPreviewSnapshot(t, ts, server, rootID, "1234")
+	result := asMap(t, snap["result"])
+	if got := asString(t, result["review_body"]); got != "## Review\n\n<b>raw</b> text" {
+		t.Errorf("review_body = %q, want the rendered text verbatim", got)
+	}
+	if result["review_body_truncated"] != false {
+		t.Errorf("review_body_truncated = %v, want false", result["review_body_truncated"])
+	}
+	got := post(t, ts, postSubmitPath, submitBody(rootID, "1234", digest, nonce, new(true)), writeHeaders(server))
+	if got.status != http.StatusOK || !strings.Contains(string(got.body), `"error": null`) {
+		t.Fatalf("submit = %d %s, want 200 success", got.status, got.body)
+	}
+	if n := submits.Load(); n != 1 {
+		t.Errorf("postcore submits = %d, want 1", n)
+	}
+}
+
+// TestPreviewBodyIsBoundedAtARuneBoundary pins the cap on the published text:
+// a body over [maxReviewBodyBytes] is cut at a rune boundary (never mid
+// character, so the wire stays valid UTF-8) and flagged truncated.
+func TestPreviewBodyIsBoundedAtARuneBoundary(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	// "é" is two bytes: an odd prefix puts the cap in the middle of one.
+	long := "x" + strings.Repeat("é", maxReviewBodyBytes)
+	preview := renderingPreview(func(int) (string, string) { return long, "hash" })
+	ts, server := postServer(t, &Config{Layer: testLayer(root, nil)}, preview,
+		PostSubmitRunner(func(_ context.Context, req *postcore.Request) (*postcore.Response, *core.RefusalError) {
+			return submittedResponse(req), nil
+		}))
+	rootID := rootIDOf(t, ts, bearer())
+	_, _, snap := mintPreviewSnapshot(t, ts, server, rootID, "1234")
+	result := asMap(t, snap["result"])
+	text := asString(t, result["review_body"])
+	if len(text) != maxReviewBodyBytes-1 {
+		t.Errorf("published %d bytes, want %d: the cut must back up to the rune start", len(text), maxReviewBodyBytes-1)
+	}
+	if !utf8.ValidString(text) {
+		t.Error("the truncated text is not valid UTF-8")
+	}
+	if result["review_body_truncated"] != true {
+		t.Errorf("review_body_truncated = %v, want true", result["review_body_truncated"])
+	}
+}
+
+// TestNewClonesTheCallerEnv pins the snapshot: a credential the caller changes
+// after New must not reach the next submit through the shared map.
+func TestNewClonesTheCallerEnv(t *testing.T) {
+	t.Parallel()
+	env := map[string]string{"GH_TOKEN": "before"}
+	server, err := New(&Config{Port: testPort, Token: testToken, Now: fixedNow, Layer: testLayer(t.TempDir(), nil), Env: env})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	env["GH_TOKEN"] = "after"
+	if got := server.cfg.Env["GH_TOKEN"]; got != "before" {
+		t.Errorf("server env GH_TOKEN = %q, want the value at New (%q)", got, "before")
 	}
 }
