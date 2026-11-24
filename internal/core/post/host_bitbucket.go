@@ -769,7 +769,7 @@ func translateBitbucketInline(m map[string]any, head string) (map[string]any, bo
 	}
 	translated := map[string]any{
 		fieldPath: path, fieldSide: side, fieldLine: line,
-		"body": bitbucket.CommentBody(m), "commit_id": head,
+		fieldBody: bitbucket.CommentBody(m), "commit_id": head,
 		fieldID: m[fieldID],
 	}
 	if url := bitbucketCommentURL(m); url != "" {
@@ -1132,7 +1132,7 @@ func bitbucketNewSidePaths(dir string) (map[string]bool, error) {
 	}
 	paths := make(map[string]bool, len(hs))
 	for _, h := range hs {
-		if h.Side == "NEW" {
+		if h.Side == hunkSideNew {
 			paths[h.File] = true
 		}
 	}

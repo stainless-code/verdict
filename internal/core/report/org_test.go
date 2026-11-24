@@ -18,7 +18,7 @@ func TestReportShowsGoverningOrgPack(t *testing.T) {
 	writeFile(t, reportBundleDir+"/controls/config.json",
 		`{"schema_version":"1","packs":{"org_pack":{"repo":"https://example.invalid/acme/packs.git","ref":"v1.2.3","path":"packs/org"}}}`)
 	writeFile(t, reportBundleDir+"/controls/verdict.lock",
-		`{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://example.invalid/acme/packs.git@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","version":"1.0.0","hash":"`+strings.Repeat("abcd", 16)+`","sig":"`+strings.Repeat("efef", 16)+`"}]}`)
+		`{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://example.invalid/acme/packs.git@aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","version":"1.0.0","hash":"`+strings.Repeat("abcd", 16)+`","org_path":"packs/org","org_ref":"v1.2.3","sig":"`+strings.Repeat("efef", 16)+`"}]}`)
 
 	resp := runReportChecked(t, req, &reportcore.Flags{})
 	org := resp.Data.OrgPack

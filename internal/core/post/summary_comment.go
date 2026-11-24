@@ -71,6 +71,8 @@ func summaryHostFor(provider string) (hostSummary, error) {
 		return forgejoHost{}, nil
 	case providerBitbucket:
 		return bitbucketHost{}, nil
+	case providerAzure:
+		return azureHost{}, nil
 	default:
 		return nil, &core.RefusalError{
 			Code:    codeProviderUnimplemented,

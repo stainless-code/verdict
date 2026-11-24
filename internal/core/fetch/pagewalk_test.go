@@ -356,10 +356,11 @@ func TestGitLabNotesFailureWarns(t *testing.T) {
 func TestAzureChangesPages(t *testing.T) {
 	t.Parallel()
 	conn := &azureConn{org: "https://example.invalid", project: "acme", rname: "app"}
-	iter := "az\x00rest\x00--method\x00get\x00--url\x00https://example.invalid/acme/_apis/git/repositories/app" +
+	iter := "az\x00rest\x00--method\x00get\x00--resource\x00499b84ac-1321-427f-aa17-267ca6975798\x00--url\x00https://example.invalid/acme/_apis/git/repositories/app" +
 		"/pullRequests/7/iterations?api-version=7.1\x00--query\x00max_by(value, &id).id\x00-o\x00tsv"
 	changes := func(skip int) string {
-		return fmt.Sprintf("az\x00rest\x00--method\x00get\x00--url\x00https://example.invalid/acme/_apis/git/repositories/app"+
+		return fmt.Sprintf("az\x00rest\x00--method\x00get\x00--resource\x00499b84ac-1321-427f-aa17-267ca6975798\x00--url\x00"+
+			"https://example.invalid/acme/_apis/git/repositories/app"+
 			"/pullRequests/7/iterations/3/changes?api-version=7.1&$top=1000&$skip=%d\x00--query\x00changeEntries\x00-o\x00json", skip)
 	}
 	cmdr := &scriptCommander{t: t, out: map[string]scriptResult{
