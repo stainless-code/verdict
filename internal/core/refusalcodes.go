@@ -207,6 +207,7 @@ var refusalCodes = []string{
 	"panel-stale",
 	"panel-too-large",
 	"partial-clone",
+	"post-content-changed",
 	"post-failed",
 	"post-secret-shaped",
 	"post-timeout",

@@ -39,6 +39,13 @@ type Request struct { //nolint:govet // field grouping documents the request sur
 	Effective    core.Effective
 	JSONMode     bool
 	Warnings     []string
+	// PinnedContentHash is the content digest a previewed review rendered to
+	// (the dry-run's RenderedHash). A real post whose own settled body,
+	// comments, and head digest differently refuses post-content-changed
+	// before any host call, so the posted bytes are the ones that were
+	// verified even if review.json changed after the preview read it. Empty
+	// pins nothing: the CLI never sets it.
+	PinnedContentHash string
 }
 
 // Response carries the post outcome: the envelope identity, the typed

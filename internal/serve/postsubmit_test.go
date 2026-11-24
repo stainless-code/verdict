@@ -867,6 +867,82 @@ func TestPostSubmitRefusesAReviewThatRendersDifferently(t *testing.T) {
 	}
 }
 
+// overwrite replaces path's bytes, failing the test on a write error.
+func overwrite(t *testing.T, path, content string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
+		t.Error(err)
+	}
+}
+
+// readText returns path's content, failing the test on a read error.
+func readText(t *testing.T, path string) string {
+	t.Helper()
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Error(err)
+	}
+	return string(raw)
+}
+
+// swapAfterReRender is a dry-run runner whose rendered hash is review's text
+// and which, on its second call (the submit's verified re-render), changes the
+// review after reading it: a writer that ignores the advisory lock.
+func swapAfterReRender(t *testing.T, review string) PostPreviewRunner {
+	t.Helper()
+	var calls atomic.Int32
+	return func(_ context.Context, req *postcore.Request) (*postcore.Response, *core.RefusalError) {
+		resp := dryRunResponse(req)
+		resp.Data.RenderedHash = readText(t, review)
+		if calls.Add(1) == 2 {
+			defer overwrite(t, review, `{"body":"swapped after the check"}`)
+		}
+		return resp, nil
+	}
+}
+
+// pinCheckingSubmit models core/post's contract: it digests the review it is
+// about to send and refuses a pin it does not match before counting a post.
+func pinCheckingSubmit(t *testing.T, review string, posts *atomic.Int32) PostSubmitRunner {
+	t.Helper()
+	return func(_ context.Context, req *postcore.Request) (*postcore.Response, *core.RefusalError) {
+		if req.PinnedContentHash != "" && req.PinnedContentHash != readText(t, review) {
+			return nil, &core.RefusalError{Code: postcore.CodePostContentChanged, Message: "not the previewed content"}
+		}
+		posts.Add(1)
+		return submittedResponse(req), nil
+	}
+}
+
+// TestPostSubmitPinsThePostToTheVerifiedContent pins the closing of the last
+// window: the re-render matched the preview, then review.json changed (a writer
+// that ignores the advisory lock) before the post's own read. The submit runner
+// models core/post's contract (digest the review it is about to send, refuse a
+// pin it does not match before any host call), so this proves the server pins
+// the previewed digest on the real request and answers the refusal as a stale
+// preview, not as a post.
+func TestPostSubmitPinsThePostToTheVerifiedContent(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	review := filepath.Join(mustAbs(t, root), ".verdict", "state", "1234", "review.json")
+	overwrite(t, review, `{"body":"as previewed"}`)
+	var posts atomic.Int32
+	ts, server := postServer(t, &Config{Layer: testLayer(root, nil)},
+		swapAfterReRender(t, review), pinCheckingSubmit(t, review, &posts))
+	rootID := rootIDOf(t, ts, bearer())
+	digest, nonce, _ := mintPreviewSnapshot(t, ts, server, rootID, "1234")
+	got := post(t, ts, postSubmitPath, submitBody(rootID, "1234", digest, nonce, new(true)), writeHeaders(server))
+	if got.status != http.StatusConflict || !strings.Contains(string(got.body), `"reason":"stale-preview"`) {
+		t.Fatalf("a review changed after the verified render = %d %s, want 409 stale-preview", got.status, got.body)
+	}
+	if n := posts.Load(); n != 0 {
+		t.Errorf("posted reviews = %d, want 0", n)
+	}
+	if _, ok := server.previews.peek(nonce, rootID, "1234", digest); ok {
+		t.Error("the refused submit left the nonce spendable")
+	}
+}
+
 // TestPostSubmitPostsTheReviewTheDialogShowed pins the matching path of the
 // binding: when the re-render equals the preview's, the submit posts once, and
 // the preview wire carries the exact text the confirm dialog renders.

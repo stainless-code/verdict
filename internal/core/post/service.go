@@ -36,6 +36,10 @@ type Commander interface {
 // CodePostFailed is the typed refusal for every post-internal failure.
 const CodePostFailed = codePostFailed
 
+// CodePostContentChanged is the typed refusal for a real post whose settled
+// content is not the digest the caller pinned ([Request.PinnedContentHash]).
+const CodePostContentChanged = codePostContentChanged
+
 const codeCanceled = "canceled"
 
 const msgCanceledPost = "canceled before post completed"
@@ -300,6 +304,9 @@ func (st *state) publish(ctx context.Context) (*Response, *core.RefusalError) {
 	st.finalizeBody()
 	st.preflight()
 	st.buildPayloads()
+	if ref := st.pinnedContentGate(); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	st.eventLine()
 	if st.flags.DryRun {
 		return st.dryRunResponse(ctx)
@@ -315,6 +322,18 @@ func (st *state) publish(ctx context.Context) (*Response, *core.RefusalError) {
 		return nil, st.withWarnings(ref)
 	}
 	return st.submit(ctx)
+}
+
+// pinnedContentGate refuses a real post whose settled content is not the one
+// the caller pinned. It runs on the same body, comments, and head the payloads
+// were just built from and before any host call, so the digest it checks is
+// the digest of what is about to be sent, not of an earlier read.
+func (st *state) pinnedContentGate() *core.RefusalError {
+	pinned := st.req.PinnedContentHash
+	if st.flags.DryRun || pinned == "" || pinned == st.phash {
+		return nil
+	}
+	return &core.RefusalError{Code: codePostContentChanged, Message: fmt.Sprintf(msgPostContentChanged, pinned, st.phash)}
 }
 
 func (st *state) checkBundle() *core.RefusalError {

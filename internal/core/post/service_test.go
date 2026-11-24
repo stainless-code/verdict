@@ -853,6 +853,71 @@ func TestRunSubmit(t *testing.T) {
 	}
 }
 
+// postedReviews counts the review POSTs the commander saw.
+func postedReviews(cmdr *scriptCommander) int {
+	n := 0
+	for _, c := range cmdr.calls {
+		if strings.Contains(strings.Join(c, " "), "--method POST") {
+			n++
+		}
+	}
+	return n
+}
+
+// pinnedPost runs one real post of the postReview bundle, with review text
+// optionally edited, pinned to hash, and counts the host POSTs it made.
+func pinnedPost(t *testing.T, review, hash string) (*core.RefusalError, int) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	postBundle(t, review)
+	cmdr := postCommander(t)
+	var warnings, human []string
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	req.PinnedContentHash = hash
+	_, ref := Run(context.Background(), req)
+	return ref, postedReviews(cmdr)
+}
+
+// previewedHash is the dry-run content digest of the postReview bundle.
+func previewedHash(t *testing.T) string {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	postBundle(t, postReview)
+	var warnings, human []string
+	dry := postTestReq(postCommander(t), Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true}, &warnings, &human)
+	preview, ref := Run(context.Background(), dry)
+	if ref != nil || preview.Data.RenderedHash == "" {
+		t.Fatalf("dry-run = %+v, %v", preview, ref)
+	}
+	return preview.Data.RenderedHash
+}
+
+// TestRunSubmitPostsThePinnedContent proves a real post renders to the same
+// digest the dry-run did, so pinning the preview's hash does not refuse it.
+func TestRunSubmitPostsThePinnedContent(t *testing.T) {
+	ref, posted := pinnedPost(t, postReview, previewedHash(t))
+	if ref != nil || posted != 1 {
+		t.Fatalf("pinned post = %v, host reviews = %d, want a post of 1", ref, posted)
+	}
+}
+
+// TestRunSubmitRefusesChangedContent proves the pin binds the post: the review
+// text changed after the preview read it, so the post refuses
+// post-content-changed before any host call and leaves no receipt.
+func TestRunSubmitRefusesChangedContent(t *testing.T) {
+	hash := previewedHash(t)
+	ref, posted := pinnedPost(t, strings.Replace(postReview, "Looks good", "Looks bad", 1), hash)
+	if ref == nil || ref.Code != CodePostContentChanged {
+		t.Fatalf("a post of changed content = %v, want %s", ref, CodePostContentChanged)
+	}
+	if posted != 0 {
+		t.Errorf("changed-content reviews posted = %d, want 0", posted)
+	}
+	if _, err := os.Stat(".verdict/state/7/post.json"); err == nil {
+		t.Error("a refused post wrote a post receipt")
+	}
+}
+
 func (s *scriptCommander) result(key string) (scriptResult, bool) {
 	res, ok := s.out[key]
 	if !ok && strings.HasSuffix(key, "/comments?limit=50&page=1") {

@@ -56,6 +56,9 @@ var internalFieldNames = map[string]bool{
 	// RefuseWithheld is the interactive surface's withholding posture, never
 	// an argument: the serve transport sets it, MCP/CLI callers leave it false.
 	"RefuseWithheld": true,
+	// PinnedContentHash is the serve transport's pin of a confirmed post to its
+	// previewed digest, never an argument: MCP/CLI callers leave it empty.
+	"PinnedContentHash": true,
 }
 
 type schemaSource = reflect.Type

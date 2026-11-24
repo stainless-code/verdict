@@ -6,6 +6,9 @@
 package postcore
 
 const (
+	msgPostContentChanged = "refusing post: the review as it renders now is not the one that was previewed " +
+		"(pinned content %s, rendering %s) — nothing was posted"
+
 	msgNoPRTarget = "post needs a PR bundle (fetch owner/repo N first); local bundles record + report, they never post"
 
 	msgProviderUnimplemented = "post to %s is not implemented yet — fetch, record, report and triage work on it; the manual lists the gaps"
@@ -94,6 +97,7 @@ const (
 	unknownTime               = "unknown time"
 	prSuffix                  = "/PR.json"
 	codePostFailed            = "post-failed"
+	codePostContentChanged    = "post-content-changed"
 	codeMissingDiff           = "missing-diff"
 	codeMissingBundle         = "missing-bundle"
 	codeProviderUnimplemented = "provider-unimplemented"

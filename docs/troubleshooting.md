@@ -1159,6 +1159,12 @@ Cause: `backtest mine` ran in a partial clone (`git clone --filter=blob:none`). 
 
 Fix: re-clone without `--filter=blob:none`, or unset the remote's `promisor` and `partialclonefilter` settings and run `git fetch --refetch`, then re-run.
 
+## `post-content-changed`
+
+Cause: a confirmed `verdict serve --allow-post` submit rendered a review different from the one the preview showed, because `review.json` changed after the preview read it. Nothing was posted.
+
+Fix: re-run the preview to see the review as it is now, then submit again.
+
 ## `post-failed`
 
 Cause: the post submission failed (anchor drift or body size — the message says which).

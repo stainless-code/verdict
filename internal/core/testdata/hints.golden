@@ -180,6 +180,7 @@ panel-empty	try: configure defaults.panel with a synthesizer and verifiers, re-f
 panel-stale	try: re-run verification/dispatch.md against the current bundle head and rewrite verification/verdicts.json
 panel-too-large	try: narrow the review or roster (100 findings, 4 verifiers maximum), then re-run panel
 partial-clone	try: re-clone without --filter=blob:none, then re-run
+post-content-changed	try: re-run the preview to see the review as it is now, then submit again
 post-failed	try: narrow anchor drift or body size (see above), then re-run
 post-secret-shaped	try: remove the value from the draft and re-run; post can pass --allow-secret-values to publish it anyway
 post-timeout	try: check the pull request for the review, then re-run the preview and submit again only if it is absent

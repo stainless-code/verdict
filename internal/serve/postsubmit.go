@@ -260,27 +260,19 @@ func bundleFingerprint(bundleDir string) (string, error) {
 	return hex.EncodeToString(sum.Sum(nil)), nil
 }
 
-// errNotRegular names a bundle entry that must be a regular file and is not.
-var errNotRegular = errors.New("not a regular file")
-
 // hashDiff streams full.diff through an inner digest and frames that digest
 // into the fingerprint, so a large diff never lands in memory whole and no
 // content can impersonate a following field. An absent diff contributes
 // nothing; an unreadable one is an error.
+//
+// The open is the check. A FIFO or device opens (and reads) forever, and this
+// runs while the findings-store lock is held, so the file is opened without
+// waiting for a writer and its descriptor, not an earlier stat of the path,
+// decides whether it is a regular file. A symlink to a regular file is
+// followed, as every other bundle reader and the fingerprint's own
+// [os.ReadFile] do.
 func hashDiff(dst hash.Hash, path string) error {
-	// A FIFO or device opens (and reads) forever, and this runs while the
-	// findings-store lock is held, so only a regular file is ever opened.
-	info, err := os.Lstat(path)
-	if errors.Is(err, fs.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
-		return jq.Sealed("serve: stat full.diff", err)
-	}
-	if !info.Mode().IsRegular() {
-		return jq.Sealed("serve: full.diff", errNotRegular)
-	}
-	file, err := os.Open(path)
+	file, err := readcommon.OpenNoBlock(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
@@ -288,6 +280,13 @@ func hashDiff(dst hash.Hash, path string) error {
 		return jq.Sealed("serve: open full.diff", err)
 	}
 	defer func() { _ = file.Close() }()
+	info, err := file.Stat()
+	if err != nil {
+		return jq.Sealed("serve: stat full.diff", err)
+	}
+	if !info.Mode().IsRegular() {
+		return jq.Sealed("serve: full.diff", readcommon.ErrNotRegular)
+	}
 	content := sha256.New()
 	if _, err := io.Copy(content, file); err != nil {
 		return jq.Sealed("serve: read full.diff", err)
@@ -431,14 +430,27 @@ func (s *Server) runConfirmedPost(
 		!s.spendPreview(w, body) {
 		return
 	}
-	resp, ref := s.invokePostSubmit(ctx, body, rootPath, bundleDir)
+	resp, ref := s.invokePostSubmit(ctx, body, rootPath, bundleDir, entry.rendered)
 	if ref != nil {
-		s.writeRefusal(w, verbServe, body.Bundle, ref)
+		s.writePostRefusal(w, body.Bundle, ref)
 		return
 	}
 	s.layer.Invalidate()
 	s.writeEnvelope(w, core.RenderEnvelope(verbServe, "", body.Bundle, resp.At, resp.Next,
 		resp.Warnings, resp.Data.Wire(), nil))
+}
+
+// writePostRefusal answers a refused confirmed post. A review that changed
+// between the verified re-render and the post's own read (a writer past the
+// advisory lock) was refused before any host call, so it is a stale preview,
+// not a post failure.
+func (s *Server) writePostRefusal(w http.ResponseWriter, bundle string, ref *core.RefusalError) {
+	if ref.Code == postcore.CodePostContentChanged {
+		s.problem(w, http.StatusConflict, reasonStalePreview,
+			"the review text changed while the post was being prepared; re-run the preview before submitting")
+		return
+	}
+	s.writeRefusal(w, verbServe, bundle, ref)
 }
 
 // bundleUnchanged re-hashes the bundle under the lock and refuses unless it is
@@ -572,9 +584,11 @@ func (s *Server) lockWaitRefusal(ctx context.Context) *core.RefusalError {
 
 // invokePostSubmit builds the confirmed post request and runs it. The request
 // carries the configured environment and render configuration, so the host
-// gate authenticates and the body renders exactly as the CLI's would.
+// gate authenticates and the body renders exactly as the CLI's would. The
+// request pins the previewed content digest, so the post refuses unless the
+// bytes it is about to send are the ones the operator confirmed.
 func (s *Server) invokePostSubmit(
-	ctx context.Context, body *postSubmitBody, rootPath, bundleDir string,
+	ctx context.Context, body *postSubmitBody, rootPath, bundleDir, pinnedContent string,
 ) (*postcore.Response, *core.RefusalError) {
 	runner := s.runnerPostSubmit()
 	read := s.postReadRequest(bundleDir, body.Bundle, rootPath)
@@ -582,6 +596,8 @@ func (s *Server) invokePostSubmit(
 		ReadRequest: read,
 		Flags:       postcore.Flags{Approve: approveFalse, ReviewFile: bundleDir + "/review.json", DryRun: false},
 		Effective:   s.cfg.Effective,
+
+		PinnedContentHash: pinnedContent,
 	}
 	resp, ref := runner(ctx, req)
 	if ref != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) && contextOwned(ref) {

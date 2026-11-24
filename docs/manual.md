@@ -2987,12 +2987,19 @@ takes the bundle's `storelock`, and re-hashes the bundle. It refuses
 the preview — `findings.json`, `PR.json`, `source.json`, `review.json`,
 `post.json` (the duplicate-post receipt), `controls.json`, `record.json`,
 `identity.json`, `provenance.json`, or `full.diff` (a `full.diff` that is not a
-regular file refuses before it is opened) — and spends the nonce there, because
+regular file refuses without ever waiting for a writer, and a symlink to a
+regular file is followed as every other bundle read follows it) — and spends the nonce there, because
 that preview is invalid anyway. It then re-renders the review under the same
 lock and refuses `409 stale-preview` unless it renders to the content digest the
 preview recorded, so the posted review is the text the operator saw even when
 `review.json` was swapped for the dry-run and restored. Otherwise it atomically
-spends the nonce and runs `core/post`. Two submits racing on one nonce therefore post
+spends the nonce and runs `core/post` with the previewed content digest pinned:
+`core/post` digests the body, inline comments, and head it has just built the
+payload from and refuses `post-content-changed` before any host call unless that
+is the pinned digest, which the server answers `409 stale-preview`. So even a
+writer that ignores the advisory lock and changes `review.json` between the
+re-render and the post cannot make the host receive anything but the previewed
+review. Two submits racing on one nonce therefore post
 once. A failure before the spend leaves the nonce usable: a held lock answers
 `503 store-busy` ("retry in a moment" is true — retry with the same preview),
 and a submit whose five-minute bound or a shutdown ends the wait for the lock
@@ -3000,8 +3007,9 @@ refuses `post-timeout` or `canceled` at `200` with nothing posted and this
 attempt's nonce unspent (the same preview may be retried only while it has not
 expired). The re-check
 holds the `findings.json` `storelock` only: a change to another bundle file
-between the re-check and the post is narrowed by the fingerprint but not
-excluded. The submit keeps running if the tab closes, but is bounded to five
+between the re-check and the post is caught by the pinned digest when it alters
+the posted review; one that does not (the duplicate-post receipt, say) is
+narrowed by the fingerprint but not excluded. The submit keeps running if the tab closes, but is bounded to five
 minutes (lock wait included): a host call that outlives it is stopped and
 refuses `post-timeout` at `200`, releasing the lock. Shutting the server down
 (Ctrl-C) also stops an in-flight host call, which refuses `canceled`. A
