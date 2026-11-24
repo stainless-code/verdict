@@ -26,17 +26,15 @@ exit: 0
     "capabilities": {
       "provider": "azure",
       "fetch": true,
-      "post": false,
-      "inline_anchors": false,
+      "post": true,
+      "inline_anchors": true,
       "approve": false,
       "request_changes": false,
       "thread_resolution": false,
       "review_verdicts": false,
       "unsupported": {
-        "post": "fetch-only",
-        "inline_anchors": "fetch-only",
-        "approve": "fetch-only",
-        "request_changes": "fetch-only",
+        "approve": "no-approve-verdict",
+        "request_changes": "no-request-changes-event",
         "thread_resolution": "no-resolve-mutation"
       }
     },
@@ -78,9 +76,9 @@ next: feed .verdict/state/4716/procedure.md + .verdict/state/4716/PR.json + .ver
 --- files ---
 --- file C/.az-calls.log ---
 CALL: repos pr show --id 4716 --org https://example.invalid --project acme --repository app -o json
-CALL: rest --method get --url https://example.invalid/acme/_apis/git/repositories/app/pullRequests/4716/threads?api-version=7.1 --query value -o json
-CALL: rest --method get --url https://example.invalid/acme/_apis/git/repositories/app/pullRequests/4716/iterations?api-version=7.1 --query max_by(value, &id).id -o tsv
-CALL: rest --method get --url https://example.invalid/acme/_apis/git/repositories/app/pullRequests/4716/iterations/3/changes?api-version=7.1&$top=1000&$skip=0 --query changeEntries -o json
+CALL: rest --method get --resource 499b84ac-1321-427f-aa17-267ca6975798 --url https://example.invalid/acme/_apis/git/repositories/app/pullRequests/4716/threads?api-version=7.1 --query value -o json
+CALL: rest --method get --resource 499b84ac-1321-427f-aa17-267ca6975798 --url https://example.invalid/acme/_apis/git/repositories/app/pullRequests/4716/iterations?api-version=7.1 --query max_by(value, &id).id -o tsv
+CALL: rest --method get --resource 499b84ac-1321-427f-aa17-267ca6975798 --url https://example.invalid/acme/_apis/git/repositories/app/pullRequests/4716/iterations/3/changes?api-version=7.1&$top=1000&$skip=0 --query changeEntries -o json
 --- file C/.verdict/.gitignore ---
 /state/
 /backtest/

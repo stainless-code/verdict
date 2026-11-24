@@ -474,7 +474,7 @@ func forgejoNewSidePaths(dir string) map[string]bool {
 	}
 	paths := make(map[string]bool, len(hs))
 	for _, h := range hs {
-		if h.Side == "NEW" {
+		if h.Side == hunkSideNew {
 			paths[h.File] = true
 		}
 	}

@@ -25,11 +25,13 @@ func allProviders() []string {
 
 // postsTo lists the hosts whose submit path is implemented: GitHub's and
 // Forgejo's single atomic review POST, GitLab's discussion-per-finding
-// replay, and Bitbucket's comment-per-finding replay. It is the
+// replay, Bitbucket's comment-per-finding replay, and Azure DevOps's
+// thread-per-finding replay. It is the
 // independent half of TestCapabilitiesMatchPostGate: an advertised bit, not a
 // table this file restates.
 func postsTo(provider string) bool {
-	return provider == providerGitHub || provider == providerGitLab || provider == "forgejo" || provider == "bitbucket"
+	return provider == providerGitHub || provider == providerGitLab || provider == "forgejo" ||
+		provider == "bitbucket" || provider == "azure"
 }
 
 // TestCapabilityWire proves the envelope's capability object is the capability

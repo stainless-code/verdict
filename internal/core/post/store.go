@@ -23,6 +23,11 @@ const providerForgejo = "forgejo"
 // takes no atomic review.
 const providerBitbucket = "bitbucket"
 
+// providerAzure is the fifth host with a submit path: one anchored thread per
+// finding, then the general thread carrying the body, over `az rest`. Azure
+// takes no review event, so it carries no verdict write.
+const providerAzure = "azure"
+
 func typedPostItems(entries []any) []core.FindingItem {
 	items := make([]core.FindingItem, 0, len(entries))
 	for _, e := range entries {

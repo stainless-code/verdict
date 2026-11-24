@@ -13,11 +13,11 @@ func contentDigest(body, head string, comments []any) string {
 			continue
 		}
 		fields := jq.NewObj()
-		for _, key := range []string{"path", "side", "line", "body"} {
+		for _, key := range []string{fieldPath, fieldSide, fieldLine, fieldBody} {
 			value, _ := obj.Get(key)
 			fields.Set(key, value)
 		}
 		projected = append(projected, fields)
 	}
-	return sigsum.Sum([]byte(jq.NewObj("body", body, "head", head, "comments", projected).MarshalPretty()))
+	return sigsum.Sum([]byte(jq.NewObj(fieldBody, body, "head", head, "comments", projected).MarshalPretty()))
 }
