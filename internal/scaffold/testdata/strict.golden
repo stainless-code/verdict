@@ -1,6 +1,6 @@
 exit: 0
 --- stdout ---
-init: preset strict (chill: unpinned/10/0.7, standard: 1 member/5/0.5, strict: lead+2 lenses/3/0.3)
+init: preset strict (chill: unpinned/10/0.7, standard: lead+1 lens/5/0.5, strict: lead+2 lenses/3/0.3)
 --- .verdict/config.json (create) ---
 {
   "schema_version": "1",

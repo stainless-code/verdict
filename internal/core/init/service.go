@@ -785,7 +785,7 @@ func (st *state) collectStatuses(wants map[string]string) ([]string, bool) {
 
 func (st *state) previewScaffold(wants map[string]string, workflow []byte, wfStatus string) {
 	st.humanf("init: preset %s (chill: unpinned/10/0.7, standard: "+
-		"1 member/5/0.5, strict: lead+2 lenses/3/0.3)\n", st.req.Preset)
+		"lead+1 lens/5/0.5, strict: lead+2 lenses/3/0.3)\n", st.req.Preset)
 	for _, t := range targets {
 		st.humanf("--- .verdict/%s (%s) ---\n", t, st.targetStatus(t, wants[t]))
 		st.humanf("%s\n", wants[t])
