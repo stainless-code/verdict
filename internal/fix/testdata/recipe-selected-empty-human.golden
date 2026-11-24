@@ -1,0 +1,7 @@
+exit: 0
+--- stdout ---
+» readiness: .verdict/state/local-recipe — findings 3 open (3 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+fix --selected --recipe default: .verdict/state/local-recipe/selected.json names 1 reacted sig(s) and none is open inline under lenses perf, security in the store — findings need a matching lens value, or lower --min-severity, widen --paths, or pick another recipe
+--- stderr ---
+
+--- files ---

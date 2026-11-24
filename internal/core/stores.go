@@ -58,7 +58,7 @@ type Finding struct {
 	Path       string    `json:"path"`
 	StartLine  *int      `json:"start_line,omitempty"`
 	Suggestion *string   `json:"suggestion,omitempty"`
-	Lens       string    `json:"lens,omitempty"                                                          maxLength:"64"`
+	Lens       string    `json:"lens,omitempty"                                                          maxLength:"64"            pattern:"^[a-z0-9][a-z0-9-]{0,63}$"` //nolint:revive // the wire contract needs the full lens grammar on one tag line
 	Brief      *Brief    `anyOf:"null"                                                                   json:"brief,omitempty"`
 	Sources    *[]string `json:"sources,omitempty"`
 	KB         *[]string `json:"kb,omitempty"`
@@ -149,7 +149,7 @@ type FindingEntry struct { //nolint:govet // field order is the published proper
 	Anchored         any            `json:"anchored,omitempty"                      type:"boolean|string|null"`
 	Body             string         `json:"body,omitempty"`
 	Suggestion       *string        `json:"suggestion,omitempty"`
-	Lens             string         `json:"lens,omitempty"                          maxLength:"64"`
+	Lens             string         `json:"lens,omitempty"                          maxLength:"64"                     pattern:"^[a-z0-9][a-z0-9-]{0,63}$"` //nolint:revive // the wire contract needs the full lens grammar on one tag line
 	Brief            *Brief         `anyOf:"null"                                   json:"brief,omitempty"`
 	Sources          *[]string      `json:"sources,omitempty"`
 	KB               *[]string      `json:"kb,omitempty"`
@@ -358,9 +358,6 @@ func (e *FindingEntry) Wire() *jq.Obj {
 	return o
 }
 
-// wireTail appends the lifecycle stamps, history, and unknown keys: the
-// section kb rides here (after rationale), then triage attribution,
-// history, then Extra in file order.
 // wireLens writes the optional lens provenance: absent reads as no key at
 // all, never a null, so a store written before lens provenance existed keeps
 // its bytes.
@@ -401,6 +398,9 @@ func panelEntryWire(v *Verification) *jq.Obj {
 	return o
 }
 
+// wireTail appends the lifecycle stamps, history, and unknown keys: the
+// section kb rides here (after rationale), then triage attribution,
+// history, then Extra in file order.
 func wireTail(e *FindingEntry, o *jq.Obj) {
 	wireVerificationAndTriage(e, o)
 	wireProvenance(e, o)

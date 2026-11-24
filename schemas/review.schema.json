@@ -104,7 +104,11 @@
           "description": "A fenced suggestion warns and demotes to the body (a fence inside would break rendering); a non-string value refuses.",
           "type": ["string", "null"]
         },
-        "lens": { "type": "string", "maxLength": 64 },
+        "lens": {
+          "type": "string",
+          "maxLength": 64,
+          "pattern": "^[a-z0-9][a-z0-9-]{0,63}$"
+        },
         "brief": {
           "description": "Optional machine brief. Shape, type, required-field, and range failures refuse; a site outside every hunk, past a cap, or a short approach/question warns and drops only that part.",
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/brief" }]

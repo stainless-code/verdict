@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -133,6 +134,27 @@ func recipeFinding(sig, path, lens string) string {
 		`"rationale":"","history":[]}`
 }
 
+// recipeBundle builds a recipe repo, writes the bundle files, and resolves
+// the control snapshot. lenses and selected are optional: an empty string
+// writes no file.
+func recipeBundle(t *testing.T, declared, prepared, lenses, findings, selected string) string {
+	t.Helper()
+	root, base := recipeRepo(t, declared, prepared)
+	bundleDir := filepath.Join(root, ".verdict", "state", "local-fix")
+	if err := os.MkdirAll(bundleDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if lenses != "" {
+		writeFixFile(t, root, ".verdict/state/local-fix/lenses.txt", lenses)
+	}
+	writeFixFile(t, root, ".verdict/state/local-fix/findings.json", findings)
+	if selected != "" {
+		writeFixFile(t, root, ".verdict/state/local-fix/selected.json", selected)
+	}
+	snapshotRecipes(t, bundleDir, base)
+	return root
+}
+
 // snapshotRecipes resolves the bundle's control snapshot from the base.
 func snapshotRecipes(t *testing.T, bundleDir, base string) {
 	t.Helper()
@@ -156,6 +178,36 @@ func recipeRequest(t *testing.T, root, name string, human *strings.Builder) *Req
 		VerifyCmd:   "go test ./...",
 		Human:       human,
 	}
+}
+
+// TestBatchModeComposesSelectedRecipe proves the re-run text carries both
+// flags for a composite --selected --recipe run instead of widening it.
+func TestBatchModeComposesSelectedRecipe(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		req  *Request
+		want string
+	}{
+		{"selected recipe", &Request{Selected: true, Recipe: "quick"}, "--selected --recipe quick"},
+		{"all recipe", &Request{All: true, Recipe: "quick"}, "--all --recipe quick"},
+		{"recipe only", &Request{Recipe: "quick"}, "--recipe quick"},
+		{"selected only", &Request{Selected: true}, "--selected"},
+		{"all only", &Request{All: true}, "--all"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := (&state{req: tc.req}).batchMode(); got != tc.want {
+				t.Errorf("batchMode = %q; want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// ptrValue reads an optional string, empty when absent.
+func ptrValue(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }
 
 func batchSigs(t *testing.T, resp *Response) []string {
@@ -231,6 +283,9 @@ func TestRunRecipeZeroLensesReportsEmpty(t *testing.T) {
 	if resp.Data.Recipe == nil || *resp.Data.Recipe != "quick" {
 		t.Fatalf("data.recipe = %v; want quick", resp.Data.Recipe)
 	}
+	if resp.Next != "pick a recipe that declares lenses or a different batch scope" {
+		t.Fatalf("data.next = %q; want the lens-less hint, not a severity hint", resp.Next)
+	}
 }
 
 // TestRunRecipeUnknownRefuses proves a missing name surfaces the loader's
@@ -251,6 +306,146 @@ func TestRunRecipeUnknownRefuses(t *testing.T) {
 	_, ref := Run(t.Context(), recipeRequest(t, root, "nope", &human))
 	if ref == nil || ref.Code != recipe.CodeUnknown {
 		t.Fatalf("ref = %+v; want %s", ref, recipe.CodeUnknown)
+	}
+}
+
+// TestRunRecipeSelectedIntersection proves the composite --selected --recipe
+// run selects the intersection and keeps both flags in the re-run text.
+func TestRunRecipeSelectedIntersection(t *testing.T) {
+	findings := "[" + recipeFinding("perf-a", "perf.go", "perf") + "," +
+		recipeFinding("sec-a", "sec.go", "security") + "]"
+	root := recipeBundle(t,
+		`{"schema_version":"1","recipes":{"quick":{"version":"1.0.0","lenses":[{"id":"perf"}],"synthesize":{}}}}`,
+		`{"schema_version":"1","recipes":{"quick":{"version":"1.0.0","lenses":[{"id":"perf"}],"synthesize":{}}}}`,
+		"# lens perf — sha256:abc\nperf body\n# end lens perf\n# lens security — sha256:def\nsecurity body\n# end lens security\n",
+		findings,
+		`{"schema_version":"1","repo":"acme/app","pr":"1",`+
+			`"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
+			`"selected_at":"2026-01-01T00:00:00Z","sigs":["perf-a","sec-a"]}`+"\n")
+
+	var human strings.Builder
+	req := recipeRequest(t, root, "quick", &human)
+	req.Selected = true
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("Run: %+v", ref)
+	}
+	if got := batchSigs(t, resp); !slices.Equal(got, []string{"perf-a"}) {
+		t.Fatalf("batch sigs = %v; want [perf-a] from the intersection", got)
+	}
+	if ptrValue(resp.Data.Recipe) != "quick" {
+		t.Fatalf("data.recipe = %v; want quick", resp.Data.Recipe)
+	}
+	if ptrValue(resp.Data.Selection) == "" {
+		t.Fatalf("data.selection = %v; want the selected.json path", resp.Data.Selection)
+	}
+	if !strings.Contains(human.String(), "--selected --recipe quick") {
+		t.Fatalf("human output = %q; want the re-run text to carry both flags", human.String())
+	}
+	if !strings.Contains(resp.Next, "--selected --recipe quick") {
+		t.Fatalf("data.next = %q; want both flags", resp.Next)
+	}
+}
+
+// TestRunRecipeSelectedEmptyIntersection proves a composite run whose
+// selection matches no lens reports both scopes and preserves data.recipe.
+func TestRunRecipeSelectedEmptyIntersection(t *testing.T) {
+	root := recipeBundle(t,
+		`{"schema_version":"1","recipes":{"quick":{"version":"1.0.0","lenses":[{"id":"perf"}],"synthesize":{}}}}`,
+		`{"schema_version":"1","recipes":{"quick":{"version":"1.0.0","lenses":[{"id":"perf"}],"synthesize":{}}}}`,
+		"# lens perf — sha256:abc\nperf body\n# end lens perf\n",
+		"["+recipeFinding("sec-a", "sec.go", "security")+"]",
+		`{"schema_version":"1","repo":"acme/app","pr":"1",`+
+			`"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",`+
+			`"selected_at":"2026-01-01T00:00:00Z","sigs":["sec-a"]}`+"\n")
+
+	var human strings.Builder
+	req := recipeRequest(t, root, "quick", &human)
+	req.Selected = true
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("Run: %+v; want a completion naming both scopes, not a refusal", ref)
+	}
+	if len(resp.Data.Batch) != 0 {
+		t.Fatalf("batch = %v; want zero rows for an empty intersection", resp.Data.Batch)
+	}
+	if ptrValue(resp.Data.Recipe) != "quick" {
+		t.Fatalf("data.recipe = %v; want quick", resp.Data.Recipe)
+	}
+	if ptrValue(resp.Data.Selection) == "" {
+		t.Fatalf("data.selection = %v; want the selected.json path", resp.Data.Selection)
+	}
+	if !strings.Contains(human.String(), "fix --selected --recipe quick") {
+		t.Fatalf("human output = %q; want both flags named", human.String())
+	}
+	if !strings.Contains(human.String(), "under lenses perf") {
+		t.Fatalf("human output = %q; want the lens set named", human.String())
+	}
+	if !strings.Contains(human.String(), "selected.json") {
+		t.Fatalf("human output = %q; want the selection named", human.String())
+	}
+}
+
+// TestRunRecipeForwardsPlanWarnings proves a lens the bundle does not load
+// surfaces as a warning instead of vanishing.
+func TestRunRecipeForwardsPlanWarnings(t *testing.T) {
+	root, base := recipeRepo(t,
+		`{"schema_version":"1","recipes":{"quick":{"version":"1.0.0","lenses":[{"id":"perf"}],"synthesize":{}}}}`,
+		`{"schema_version":"1","recipes":{"quick":{"version":"1.0.0","lenses":[{"id":"perf"}],"synthesize":{}}}}`)
+	bundleDir := filepath.Join(root, ".verdict", "state", "local-fix")
+	if err := os.MkdirAll(bundleDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixFile(t, root, ".verdict/state/local-fix/lenses.txt",
+		"# lens security — sha256:def\nsecurity body\n# end lens security\n")
+	writeFixFile(t, root, ".verdict/state/local-fix/findings.json",
+		"["+recipeFinding("nolen", "plain.go", "")+"]")
+	snapshotRecipes(t, bundleDir, base)
+
+	var human strings.Builder
+	resp, ref := Run(t.Context(), recipeRequest(t, root, "quick", &human))
+	if ref != nil {
+		t.Fatalf("Run: %+v", ref)
+	}
+	found := false
+	for _, w := range resp.Warnings {
+		if strings.Contains(w, `"perf"`) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("warnings = %v; want one naming the lens the bundle does not load", resp.Warnings)
+	}
+}
+
+// TestRunRecipeNoMatchNamesPathsScope proves the empty recipe message names
+// the --paths scope alongside the lens set.
+func TestRunRecipeNoMatchNamesPathsScope(t *testing.T) {
+	root, base := recipeRepo(t,
+		`{"schema_version":"1","recipes":{"quick":{"version":"1.0.0","lenses":[{"id":"perf"}],"synthesize":{}}}}`,
+		`{"schema_version":"1","recipes":{"quick":{"version":"1.0.0","lenses":[{"id":"perf"}],"synthesize":{}}}}`)
+	bundleDir := filepath.Join(root, ".verdict", "state", "local-fix")
+	if err := os.MkdirAll(bundleDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeFixFile(t, root, ".verdict/state/local-fix/lenses.txt",
+		"# lens perf — sha256:abc\nperf body\n# end lens perf\n")
+	writeFixFile(t, root, ".verdict/state/local-fix/findings.json",
+		"["+recipeFinding("nolen", "plain.go", "")+"]")
+	snapshotRecipes(t, bundleDir, base)
+
+	var human strings.Builder
+	req := recipeRequest(t, root, "quick", &human)
+	req.Paths = []string{"docs/**"}
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("Run: %+v", ref)
+	}
+	if len(resp.Data.Batch) != 0 {
+		t.Fatalf("batch = %v; want zero rows", resp.Data.Batch)
+	}
+	if !strings.Contains(human.String(), "under lenses perf under docs/**") {
+		t.Fatalf("human output = %q; want the paths scope named", human.String())
 	}
 }
 

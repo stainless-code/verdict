@@ -19,9 +19,17 @@ func lensReview(extra string) string {
 // TestCheckReviewLensAcceptsValidLens proves one optional lens spelled in
 // the canonical grammar checks clean: no error, no warning.
 func TestCheckReviewLensAcceptsValidLens(t *testing.T) {
-	res := recordcore.CheckReview([]byte(lensReview(`,"rigor":"pointed","lens":"perf"`)), checkDiff)
-	if res.Errors != 0 || res.Warnings != 0 {
-		t.Fatalf("CheckReview = %+v, want a clean review", res.Problems)
+	for _, tc := range []struct{ name, lens string }{
+		{"short slug", "perf"},
+		{"max length", strings.Repeat("a", 64)},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			res := recordcore.CheckReview(
+				[]byte(lensReview(`,"rigor":"pointed","lens":"`+tc.lens+`"`)), checkDiff)
+			if res.Errors != 0 || res.Warnings != 0 {
+				t.Fatalf("CheckReview = %+v, want a clean review", res.Problems)
+			}
+		})
 	}
 }
 
@@ -35,6 +43,7 @@ func TestCheckReviewLensRefusesMalformedLens(t *testing.T) {
 		{"uppercase", `,"lens":"Perf"`, core.ProblemCodeBadEnum},
 		{"separator", `,"lens":"perf_test"`, core.ProblemCodeBadEnum},
 		{"overlong", `,"lens":"` + strings.Repeat("a", 65) + `"`, core.ProblemCodeBadEnum},
+		{"traversal", `,"lens":"../evil"`, core.ProblemCodeBadEnum},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			res := recordcore.CheckReview([]byte(lensReview(`,"rigor":"pointed"`+tc.extra)), checkDiff)

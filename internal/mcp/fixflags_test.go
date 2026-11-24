@@ -51,6 +51,11 @@ func TestToolFixCombos(t *testing.T) {
 			args: `"repo":"acme/app","pr":"1","test":""`,
 			want: "fix --test needs a sig (an empty value would run an ordinary pass): pass --test <sig>",
 		},
+		{
+			name: "empty-recipe",
+			args: `"repo":"acme/app","pr":"1","recipe":""`,
+			want: "fix --recipe needs a name (an empty value would run an ordinary pass): pass --recipe <name>",
+		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -67,5 +72,20 @@ func TestToolFixCombos(t *testing.T) {
 					refusal.Code, refusal.Message, tc.want)
 			}
 		})
+	}
+}
+
+// TestToolFixRecipeAccepted proves a named recipe passes the flag gate the
+// CLI enforces: the call fails later at the bundle gate, never as bad-flags.
+func TestToolFixRecipeAccepted(t *testing.T) {
+	fixture(t)
+	cfg := testConfig()
+	cfg.Operator = true
+	cfg.Commanders = map[string]core.Commander{"fix": spawnlessCommander{}}
+	line := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"fix","arguments":{"repo":"acme/app","pr":"1","recipe":"default"}}}`
+	refusal := toolRefusal(t, serve(t, &cfg, line)["1"])
+	if refusal.Code == "bad-flags" {
+		t.Fatalf("fix refusal = %s: %q; want the bundle gate, not bad-flags",
+			refusal.Code, refusal.Message)
 	}
 }

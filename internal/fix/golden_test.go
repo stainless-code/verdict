@@ -251,6 +251,23 @@ func setupRecipeEmpty(t *testing.T, dir, _ string) {
 		findingLensJSON(sigBatch, "important", "other.txt", "Important perf bug here.", "perf")+"]")
 }
 
+// setupRecipeSelected is the composite fixture: the reaction selection
+// names two sigs, one inside the recipe lens set and one outside it.
+func setupRecipeSelected(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupRecipe(t, dir, "")
+	seedSelected(t, dir, "local-recipe", sigBatch, sigCritical)
+}
+
+// setupRecipeSelectedEmpty is the composite empty-intersection fixture: the
+// selection names only the unprovenanced finding, which sits outside every
+// lens the bundle loads.
+func setupRecipeSelectedEmpty(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupRecipe(t, dir, "")
+	seedSelected(t, dir, "local-recipe", sigCritical)
+}
+
 const patchedAnchorContent = "alpha\nbeta fixed\ngamma\n"
 
 func setupPatch(t *testing.T, dir, _ string) {
@@ -548,6 +565,17 @@ func testFixRecipe(t *testing.T) {
 		"--paths", "other.txt", "--json")
 	golden.Pin(t, harness, "recipe-empty", setupRecipeEmpty, nil,
 		"fix", "acme/app", "local-emptylens", "--recipe", "default", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "recipe-paths-empty", setupRecipe, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--verify-cmd", batchVerifyCmd,
+		"--paths", "docs/**", "--json")
+	golden.Pin(t, harness, "recipe-selected-json", setupRecipeSelected, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--selected", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "recipe-selected-human", setupRecipeSelected, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--selected", "--verify-cmd", batchVerifyCmd)
+	golden.Pin(t, harness, "recipe-selected-empty-json", setupRecipeSelectedEmpty, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--selected", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "recipe-selected-empty-human", setupRecipeSelectedEmpty, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--selected", "--verify-cmd", batchVerifyCmd)
 	golden.Pin(t, harness, "recipe-unknown", setupRecipe, nil,
 		"fix", "acme/app", "local-recipe", "--recipe", "nope", "--verify-cmd", batchVerifyCmd, "--json")
 	golden.Pin(t, harness, "recipe-with-sig", setupRecipe, nil,

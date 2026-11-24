@@ -6,7 +6,7 @@ exit: 0
   "repo": "acme/app",
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
-  "next": "lower --min-severity, widen --paths, pick another recipe, or fix one sig with --sig",
+  "next": "pick a recipe that declares lenses or a different batch scope",
   "warnings": [],
   "data": {
     "dir": ".verdict/state/local-emptylens",

@@ -372,7 +372,10 @@ var publishedSemantics = map[string]string{
 	// additions: an optional panelVerification checker, crossVerification
 	// origins with the contested status, and an optional crossCheck quote
 	// with its $defs/crossQuote.
-	"findings.schema.json": "5f57fab025c300f21b22a93701e12aa6d435a1c074ccff1384af1865f6dd713d",
+	// lens grammar: entry.lens carries the lowercase slug pattern a recipe
+	// selects by. Constraint on an existing property only: no property,
+	// required key, enum, or type changed.
+	"findings.schema.json": "29522c0d3191772e370a6effabeb925ae8643de74bbde70fd2f0c7bb486d0a8a",
 	// post_floor_scoped: additive optional per-path posting floor list with its
 	// $defs/floorScope entry (required path, enum floor). No existing
 	// property, required key, or type changed.
@@ -560,7 +563,10 @@ var publishedSemantics = map[string]string{
 	// with no diff line cites none; met/violated still require it in the checker).
 	// Three new problem codes join the published enum. No existing property,
 	// required key, or type moved.
-	"review.schema.json": "c2d60fddb9fc8410d9e4c4dc169b0aecb77ea44e6b480657c1913dbd98803fa8",
+	// lens grammar: finding.lens carries the lowercase slug pattern a recipe
+	// selects by. Constraint on an existing property only: no property,
+	// required key, enum, or type changed.
+	"review.schema.json": "1b10d81a8679b4d2b58e63a991c42ff76cb3e07a87800e967100ee6385c742bf",
 	// additive selected.schema.json (new bundle document: the reaction-scoped
 	// fix selection fetch writes and fix --selected reads). A new document
 	// only: no existing schema property, required key, enum, or type changed.

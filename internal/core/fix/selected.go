@@ -124,6 +124,9 @@ func (st *state) applyRecipe(dir string, sel *readcommon.Selector) *core.Refusal
 	if ref != nil {
 		return ref
 	}
+	for _, w := range plan.Warnings {
+		st.warn(w)
+	}
 	st.recipeLenses = planLensIDs(plan)
 	if len(st.recipeLenses) == 0 {
 		st.recipeEmpty = true
