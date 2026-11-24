@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/coverage"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/hunks"
@@ -468,6 +469,14 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 			Code: codeRecordFailed, Message: fmt.Sprintf("could not write %s/record.json: %v", dir, err),
 		})
 	}
+	// The receipt above is already durable: a prior-coverage.json write
+	// failure must not fail a committed record, so it warns instead of
+	// refusing. The stale prior is then discarded, because the next
+	// incremental round must grade against the full hunks rather than credit
+	// ranges this record could not save.
+	if err := coverage.PersistPrior(dir, res.Coverage); err != nil {
+		st.addWarning(discardPriorWarning(dir, err))
+	}
 	if st.req.Runtime != nil {
 		st.req.Human(strings.TrimSuffix(fmt.Sprintf(msgRecorded, dir, nOpen, dir), "\n"))
 	}
@@ -542,6 +551,18 @@ func normalizedObject(raw []byte) any {
 		return nil
 	}
 	return doc
+}
+
+// discardPriorWarning describes a failed prior write and the discard that
+// follows it: the record stands, and the next incremental round grades against
+// the full hunks with no prior credit. A prior the discard could not remove is
+// named too, since that stale file is what the next round would trust.
+func discardPriorWarning(dir string, err error) string {
+	msg := fmt.Sprintf(msgPriorDiscarded, dir, err)
+	if cerr := coverage.ClearPrior(dir); cerr != nil {
+		msg += fmt.Sprintf("; the stale prior could not be discarded: %v", cerr)
+	}
+	return msg
 }
 
 func repairList(problems []Problem) []core.Repair {
