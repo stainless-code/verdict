@@ -3,6 +3,7 @@
 package verifycore
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -382,7 +383,10 @@ func sandboxGitRepo(t *testing.T, root string, initArgs ...string) {
 	git(append([]string{"init", "-q"}, initArgs...)...)
 	writeSandboxFile(t, filepath.Join(root, "f.txt"), "one\n")
 	git("add", "f.txt")
-	git("-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "-m", "c")
+	// Signing is pinned off so a developer's commit.gpgsign cannot fail the
+	// fixture before any assertion runs.
+	git("-c", "user.email=t@example.com", "-c", "user.name=t", "-c", "commit.gpgsign=false",
+		"commit", "-q", "-m", "c")
 	writeSandboxFile(t, filepath.Join(root, "f.txt"), "two\n")
 }
 
@@ -779,5 +783,106 @@ func TestSandboxExecDeniesTheDotDotPointerEscape(t *testing.T) {
 	requireDeniedWithErrno(t, sb, env, root, `mkdir a`)
 	if _, err := os.Lstat(filepath.Join(root, "a")); !os.IsNotExist(err) {
 		t.Errorf("the walked component a exists after the denied writes (%v)", err)
+	}
+}
+
+// TestSandboxExecDeniesSwappingAnInRootLinkBehindAnOutsideLink proves the
+// hop-by-hop walk against the real Seatbelt engine: `.git` reaches its git
+// directory through an outside-root link whose target is the in-root link
+// `inlink`. The command must not be able to remove or repoint `inlink` at a
+// directory of its own, where git would run its hooks.
+func TestSandboxExecDeniesSwappingAnInRootLinkBehindAnOutsideLink(t *testing.T) {
+	requireSandboxExec(t)
+	root, outside := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "real", "gitdir"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "real"), filepath.Join(root, "inlink")); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(root, "inlink"), filepath.Join(outside, "hop")); err != nil {
+		t.Fatal(err)
+	}
+	writeSandboxFile(t, filepath.Join(root, ".git"), "gitdir: "+filepath.Join(outside, "hop", "gitdir")+"\n")
+	sb, env := gitSandbox(t, root)
+	defer closeSandbox(t, sb)
+	if res := runWrapped(t, sb, env, root, `mkdir -p evil/gitdir/hooks`); res.ExitCode != 0 {
+		t.Fatalf("setup inside the root = exit %d %q", res.ExitCode, res.Stdout+res.Stderr)
+	}
+	requireDeniedWithErrno(t, sb, env, root, `rm inlink`)
+	requireDeniedWithErrno(t, sb, env, root, `mv inlink moved`)
+	if target, err := os.Readlink(filepath.Join(root, "inlink")); err != nil || target != filepath.Join(root, "real") {
+		t.Errorf("inlink = %q (%v), want it still pointing at %s", target, err, filepath.Join(root, "real"))
+	}
+}
+
+// TestSandboxRefusesAFirmlinkSpelledGitDir pins the identity check against
+// the macOS firmlink alias: `/System/Volumes/Data/private/var/…` names the
+// same directory as `/private/var/…`, but Seatbelt matches only the
+// firmlink-resolved spelling, so a git directory named under the Data
+// volume spelling was neither denied nor refused. It refuses on both paths.
+func TestSandboxRefusesAFirmlinkSpelledGitDir(t *testing.T) {
+	root := t.TempDir()
+	mustSandboxFS(t, os.MkdirAll(filepath.Join(root, "meta", "git"), 0o755))
+	realRoot, err := filepath.EvalSymlinks(root)
+	mustSandboxFS(t, err)
+	alias := "/System/Volumes/Data" + realRoot
+	if a, errA := os.Stat(alias); errA != nil || !sandboxSameFile(realRoot, a) {
+		t.Skipf("no Data-volume firmlink spelling for %s (%v)", realRoot, errA)
+	}
+	writeSandboxFile(t, filepath.Join(root, ".git"), "gitdir: "+alias+"/meta/git\n")
+	cause := "the git pointer " + filepath.Join(root, ".git") + " reaches " + alias + "/meta, which is inside the " +
+		"reviewed root " + root + " under another spelling"
+	requireGitRefusal(t, root, cause)
+	requireGitDirsRefusal(t, root, cause)
+}
+
+// TestSandboxExecDeniesGitWritesThroughACaseVariantPointer proves, against
+// the real Seatbelt engine, the shape the identity check accepts: a pointer
+// spelled in another letter case below the root's own spelling (`gitdir:
+// meta/GIT` for `meta/git`). Seatbelt matches path rules case-insensitively
+// on a case-insensitive volume, so the rule in the pointer's spelling denies
+// hooks and config written through the directory's on-disk spelling.
+func TestSandboxExecDeniesGitWritesThroughACaseVariantPointer(t *testing.T) {
+	requireSandboxExec(t)
+	root := t.TempDir()
+	mustSandboxFS(t, os.Mkdir(filepath.Join(root, "meta"), 0o755))
+	sandboxGitRepo(t, root, "--separate-git-dir="+filepath.Join(root, "meta", "git"))
+	if _, err := os.Stat(filepath.Join(root, "meta", "GIT")); err != nil {
+		t.Skip("the temp volume is case-sensitive")
+	}
+	writeSandboxFile(t, filepath.Join(root, ".git"), "gitdir: meta/GIT\n")
+	sb, env := gitSandbox(t, root)
+	defer closeSandbox(t, sb)
+	requireDeniedWithErrno(t, sb, env, root, `printf '#!/bin/sh\n' > `+filepath.Join(root, "meta", "git", "hooks", "pre-commit"))
+	requireDeniedWithErrno(t, sb, env, root, `printf x >> `+filepath.Join(root, "meta", "git", "config"))
+	assertGitStillWorks(t, sb, env, root)
+}
+
+// TestSandboxExecDeniesHardlinkingGitControlFiles keeps the hardlink gap a
+// setup-time one: inside the real sandbox `ln .git/config cfg` is denied
+// (Seatbelt checks a new link against the source's write rules), so the
+// command cannot mint a second name for a protected file at run time, and a
+// checkout that already carries one refuses before anything runs.
+func TestSandboxExecDeniesHardlinkingGitControlFiles(t *testing.T) {
+	requireSandboxExec(t)
+	root := t.TempDir()
+	sandboxGitRepo(t, root)
+	config := filepath.Join(root, ".git", "config")
+	before, err := os.ReadFile(config)
+	mustSandboxFS(t, err)
+	sb, env := gitSandbox(t, root)
+	defer closeSandbox(t, sb)
+	requireDeniedWithErrno(t, sb, env, root, `ln .git/config cfg`)
+	if _, err := os.Lstat(filepath.Join(root, "cfg")); !os.IsNotExist(err) {
+		t.Errorf("cfg exists after the denied link (%v)", err)
+	}
+	if after, err := os.ReadFile(config); err != nil || !bytes.Equal(after, before) {
+		t.Errorf(".git/config changed (%v)", err)
+	}
+	mustSandboxFS(t, os.Link(config, filepath.Join(root, "cfg")))
+	if _, ref := sandboxExecMechanism(root, sandboxInputs{childEnv: env}, t.TempDir()); ref == nil ||
+		!strings.Contains(ref.Message, "the git control file "+config+" has another hard link") {
+		t.Errorf("ref = %v, want the hardlink refusal for %s", ref, config)
 	}
 }

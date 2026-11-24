@@ -5329,10 +5329,25 @@ re-allows only what the command needs:
   namespace, so without it the command could kill your editor or shell —
   while its own children stay signalable.
   `user-preference-write` is not listed because denying it does not stop
-  `cfprefsd` from writing for the command; the Mach denial does. Reading
-  another process's environment needs no rule here: macOS 15 returns no
-  environment through `kern.procargs2` to a same-uid caller, and `ps` (setuid)
-  cannot run inside `sandbox-exec` at all.
+  `cfprefsd` from writing for the command; the Mach denial does.
+- **Other processes' environments stay readable (macOS residual).** The
+  `kern.procargs2` sysctl returns the arguments and the environment of any
+  same-uid process that is not hardened (`CS_RESTRICT`), and no Seatbelt
+  operation gates it: on macOS 15 a command under a `(deny default)` profile,
+  or one that denies `sysctl-read`, still reads it by MIB. `ps` (setuid) cannot run inside
+  `sandbox-exec`, but a direct `sysctl(3)` call needs no `ps`. Apple's
+  platform binaries (`/bin/zsh`, `/bin/bash`) run restricted, so the kernel
+  returns only their arguments; everything else is readable: a third-party
+  editor or IDE, an agent CLI, `node` or `python` processes, and a shell
+  installed outside the system (Homebrew `bash` or `zsh`). A sandboxed
+  command can therefore read a token exported into one of those
+  (`GH_TOKEN`, `AWS_SECRET_ACCESS_KEY`). It cannot send it out
+  over the network, but it can print it into the verify output or write it
+  into the reviewed root. Before verifying a hostile PR on macOS, keep
+  credentials out of the environment of your long-lived processes (use the
+  credential stores the table above hides), or run the `bwrap` recipe in a
+  Linux VM, where `--unshare-pid` and a fresh `/proc` hide every host
+  process.
 - **No writes outside the run.** Every write is denied except under the
   reviewed root (as written and as its `realpath`), the private `TMPDIR`,
   and `/dev/null`, `/dev/tty`, and `/dev/fd/*` (which `/dev/stdout` and
@@ -5398,19 +5413,35 @@ a/../g` therefore visits `a`, though it cleans to `g` — and a command that
   creates `a` as a link would send git wherever the link points. Refused: a
   symlinked `.git` (only the link's target could be bound, and the link stays
   replaceable); a `.git` that is neither a directory nor a `gitdir:` file; a
-  pointer file that is not regular (a FIFO is refused without waiting),
+  pointer file that is a symlink (its bytes come from a file the command
+  could rewrite), is not regular (a FIFO is refused without waiting),
   cannot be read, exceeds 4 KiB, or has no `gitdir: ` line; a `gitdir:` or
   commondir target that is not an existing directory; a git directory that
-  is the root itself; and any pointer whose walk passes, inside the root,
-  through a symlink (it could be swapped) or a component that does not exist
-  yet (it could be created as a link). Each refuses with its own cause; none
+  is the root itself or holds it (a checkout inside its own git directory);
+  a walk that reaches inside the root under another spelling (`gitdir:
+../proberoot/meta/git` for a root named `ProbeRoot` on a case-insensitive
+  volume, or the macOS firmlink spelling `/System/Volumes/Data/private/var/…`),
+  because a rule or bind in that spelling would not protect it; a git
+  control file with a second hard link (`cfg` linked to `.git/config` would
+  write it past every path rule — object files under `objects/`, which
+  `git clone --local` links by design, are exempt); and any pointer whose
+  walk passes, inside the root, through a symlink (it could be swapped) or a
+  component that does not exist yet (it could be created as a link). Links
+  are followed one hop at a time, so an in-root link reached only through a
+  link outside the root counts too, and whether a path is inside the root is
+  decided by file identity, not by its spelling. Each refuses with its own cause; none
   is skipped. An error inspecting `.git` other than "does not exist" is
   reported as itself. What passes is pinned at the top: every top-level entry
   of the root that holds a path the walks visit gets the read-only bind (a
   mount point cannot be renamed, and its subtree is read-only), so no
-  directory on the walk can be replaced later. macOS needs none of these
-  refusals, because its rules match by path: every in-root path the walks
-  visit — missing ones and links included — is write-denied under its
+  directory on the walk can be replaced later. A hard link made at run time
+  is not a gap: `link(2)` from the read-only bind into the writable root
+  fails `EXDEV`. macOS refuses the same symlinked `.git` or pointer file,
+  git directory that is or holds the root, other-spelling walk, and
+  hard-linked control file (Seatbelt denies a new link at run time), but needs
+  none of the other refusals, because its rules
+  match by path: every in-root path the walks visit — missing ones and links
+  included, links behind other links too — is write-denied under its
   literal, resolved, and link-node spellings, so none of them can be
   created, removed, or renamed, and the rule below covers any `.git`.
 - **Any new `.git` (macOS).** Seatbelt also denies writes to every path
