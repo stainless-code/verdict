@@ -202,6 +202,7 @@ fi
 
 PR=4291
 eval_mk_bundle "$PR"
+eval_pin_head "$PR"
 eval_write_findings "$PR" <<'EOF'
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"PR finding.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"0123456789abcdef0123456789abcdef01234567","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF

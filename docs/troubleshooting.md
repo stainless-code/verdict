@@ -750,7 +750,8 @@ outcome, not a pass.
 
 Cause: the bundle carries no reviewed head, or the checked-out head is not the reviewed head.
 
-Fix: check out the reviewed commit (or re-fetch the bundle), then re-run validation.
+Fix: check out the reviewed commit (or re-fetch the bundle), then re-run validation or
+`fix` — on a PR bundle `fix` refuses until the checkout is on the bundle's head.
 
 ## `html-not-export`
 

@@ -394,7 +394,40 @@ func (st *state) bundleGates(ctx context.Context, dir string) *core.RefusalError
 	if ref := st.checkPrGate(dir); ref != nil {
 		return ref
 	}
-	return st.checkTreeGate(ctx)
+	if ref := st.checkTreeGate(ctx); ref != nil {
+		return ref
+	}
+	return st.checkHeadGate(ctx, dir)
+}
+
+// checkHeadGate binds a PR bundle's fix to its reviewed head. The anchors, the
+// patch diff, the ledger baseline, and `--test --commit` all act on the
+// operator's checkout, so a checkout on another commit (main, a stale branch)
+// would diff, record, and commit against the wrong tree. Local bundles review
+// the working tree itself and the loop may commit between passes, so they skip.
+func (st *state) checkHeadGate(ctx context.Context, dir string) *core.RefusalError {
+	if !st.providerBundle() {
+		return nil
+	}
+	reviewed := readcommon.OpenBundle(dir).Head()
+	if reviewed == "" {
+		return st.refuse(codeHeadMismatch, fmt.Sprintf(
+			"bundle %s carries no reviewed head to bind fix to (re-fetch it)", dir))
+	}
+	if st.req.Commander == nil {
+		return st.refuse("not-a-repo", "fix runs inside a git worktree (audits files vs anchor)")
+	}
+	head, exit, err := readcommon.CheckoutHead(ctx, st.req.Commander, st.req.RepoRootPath())
+	if err != nil || exit != 0 {
+		return st.refuse("not-a-repo", "fix runs inside a git worktree (audits files vs anchor)")
+	}
+	if head != reviewed {
+		return st.refuse(codeHeadMismatch, fmt.Sprintf(
+			"checked-out head %s is not the head %s this bundle reviewed — fix patches the "+
+				"checkout, so check out the PR head (git checkout %s) and re-run",
+			readcommon.ShortSHA(head), readcommon.ShortSHA(reviewed), reviewed))
+	}
+	return nil
 }
 
 func (st *state) checkPrGate(dir string) *core.RefusalError {
@@ -424,7 +457,7 @@ func (st *state) checkTreeGate(ctx context.Context) *core.RefusalError {
 func (st *state) loadFindings(dir string) ([]any, *core.RefusalError) {
 	if !readcommon.IsFile(dir + suffixFindings) {
 		return nil, st.refuse("missing-findings", fmt.Sprintf(
-			"missing %s/findings.json (run record first, then fix)", dir))
+			"missing %s/findings.json (run %s first, then fix)", dir, st.landVerb()))
 	}
 	raw, err := noblock.ReadFile(dir + suffixFindings)
 	if err != nil {
@@ -492,13 +525,13 @@ func (st *state) resolveTop(entries []any, dir string) (string, *jq.Obj, *core.R
 	if full == "" {
 		return "", nil, st.refuse("report-failed", fmt.Sprintf(
 			"fix: open-inline count disagrees with the store "+
-				"(re-run record to rebuild %s/findings.json)", dir))
+				"(re-run %s to rebuild %s/findings.json)", st.landVerb(), dir))
 	}
 	rec, ok := picked.(*jq.Obj)
 	if !ok || rec == nil {
 		return "", nil, st.refuse("report-failed", fmt.Sprintf(
 			"fix: open-inline pick is not a finding object "+
-				"(re-run record to rebuild %s/findings.json)", dir))
+				"(re-run %s to rebuild %s/findings.json)", st.landVerb(), dir))
 	}
 	return full, rec, nil
 }
@@ -547,8 +580,8 @@ func (st *state) runPass(
 func (st *state) corruptStore(dir string) *core.RefusalError {
 	return st.refuse("corrupt-store", fmt.Sprintf(
 		"findings store %s/findings.json is unreadable or not a "+
-			"findings array (re-run record to rebuild, or restore the file)",
-		dir))
+			"findings array (re-run %s to rebuild, or restore the file)",
+		dir, st.landVerb()))
 }
 
 func decodeEntries(raw []byte) ([]any, error) {

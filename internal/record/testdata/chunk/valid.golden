@@ -59,7 +59,7 @@ c1.txt	NEW	1	2
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "afa41909afb8f579ae42b062a9c9235188bcc9431842ae4429fdfc8856cfe4e4",
+  "prompts_hash": "0b7644f63b5389dc664de494d4ade52c5b8897ab9c825f0c8d64d2870ef7f3fd",
   "model": null,
   "author": null,
   "review_models": [],

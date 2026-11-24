@@ -1,6 +1,6 @@
 exit: 0
 --- stdout ---
-» readiness: .verdict/state/4291 — findings 1 open (1 inline open); threads (stored): none stored; PR n/a (local bundle, PR check skipped)
+» readiness: .verdict/state/4291 — findings 1 open (1 inline open); threads (stored): none stored; PR state open
 » ledger: .verdict/state/4291/fix.json — sig 11234567 pass 1/3
 fix: 11234567 [informational] notes.txt:2 (pass 1/3, ledger .verdict/state/4291/fix.json)
 finding: PR finding.

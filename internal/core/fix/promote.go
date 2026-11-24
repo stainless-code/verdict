@@ -17,6 +17,7 @@ import (
 
 const (
 	codeNoReproduction = "no-reproduction"
+	codeHeadMismatch   = "head-mismatch"
 	codeTestConflict   = "test-conflict"
 
 	// promotedDir is the worktree-relative promotion directory: promoted

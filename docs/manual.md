@@ -5065,12 +5065,16 @@ picks the top open inline sig (severity `critical` above
 and inline; non-open, section, and unknown sigs refuse), prints the finding
 (plus its stored `brief` block when one is present and the full `kb.txt` context
 when present) with patch → verify → land → re-run instructions, and records the
-pass in `.verdict/state/local-<name>/fix.json`. The agent patches the anchor file,
+pass in `.verdict/state/<bundle>/fix.json`. The agent patches the anchor file,
 runs the verify command itself, writes `verification.json`, lands via `record`,
 and re-runs `fix`; the loop ends when no open inline sigs remain (completion
 summary with fixed/open/stopped counts plus the ledger path). On a PR bundle
 the instructions say to push the fix, re-fetch, and land with `post`
-instead, since a PR bundle has no `record` path. A ceiling-exhausted
+instead, since a PR bundle has no `record` path. A PR bundle also requires the
+checkout to be on the head the bundle reviewed (`git rev-parse HEAD` equal to
+the bundle's head); any other commit refuses `head-mismatch` before anything is
+written, so a pass, a patch, or `--test --commit` never lands on main or a stale
+branch. Local bundles review the working tree itself and skip the check. A ceiling-exhausted
 top sig keeps getting picked — pass `--sig` for another sig or triage the stuck
 one. Ceilings are
 hard-coded, not configurable: max 3 passes per sig (the 4th refuses with
