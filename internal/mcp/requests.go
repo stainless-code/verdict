@@ -229,6 +229,7 @@ func decodeFix(req *fixcore.Request, a *args) {
 	a.str("verifyCmd", &req.VerifyCmd)
 	a.strings(argPaths, &req.Paths)
 	req.TestSet = a.strPresent("test", &req.Test)
+	req.RecipeSet = a.strPresent("recipe", &req.Recipe)
 	a.boolean("commit", &req.Commit)
 }
 

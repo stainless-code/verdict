@@ -58,6 +58,7 @@ type Finding struct {
 	Path       string    `json:"path"`
 	StartLine  *int      `json:"start_line,omitempty"`
 	Suggestion *string   `json:"suggestion,omitempty"`
+	Lens       string    `json:"lens,omitempty"                                                          maxLength:"64"`
 	Brief      *Brief    `anyOf:"null"                                                                   json:"brief,omitempty"`
 	Sources    *[]string `json:"sources,omitempty"`
 	KB         *[]string `json:"kb,omitempty"`
@@ -148,6 +149,7 @@ type FindingEntry struct { //nolint:govet // field order is the published proper
 	Anchored         any            `json:"anchored,omitempty"                      type:"boolean|string|null"`
 	Body             string         `json:"body,omitempty"`
 	Suggestion       *string        `json:"suggestion,omitempty"`
+	Lens             string         `json:"lens,omitempty"                          maxLength:"64"`
 	Brief            *Brief         `anyOf:"null"                                   json:"brief,omitempty"`
 	Sources          *[]string      `json:"sources,omitempty"`
 	KB               *[]string      `json:"kb,omitempty"`
@@ -359,6 +361,15 @@ func (e *FindingEntry) Wire() *jq.Obj {
 // wireTail appends the lifecycle stamps, history, and unknown keys: the
 // section kb rides here (after rationale), then triage attribution,
 // history, then Extra in file order.
+// wireLens writes the optional lens provenance: absent reads as no key at
+// all, never a null, so a store written before lens provenance existed keeps
+// its bytes.
+func wireLens(e *FindingEntry, o *jq.Obj) {
+	if e.Lens != "" {
+		o.Set("lens", e.Lens)
+	}
+}
+
 // verificationWire renders the panel verification block as jq values, the shape
 // every stored entry and every panel merge already use: approval reads the
 // quote standing off this object, and a panel merge keeps the standing it
@@ -393,6 +404,7 @@ func panelEntryWire(v *Verification) *jq.Obj {
 func wireTail(e *FindingEntry, o *jq.Obj) {
 	wireVerificationAndTriage(e, o)
 	wireProvenance(e, o)
+	wireLens(e, o)
 	o.Set("history", historyWire(e.History))
 	wireExtra(e, o)
 }
@@ -757,7 +769,7 @@ var findingKeys = map[string]bool{
 	"sig": true, "sig_version": true, "kind": true, "path": true,
 	"heading": true, "line": true, "side": true, keyAnchored: true,
 	keyBody: true, "suggestion": true, "kb": true, "sources": true, "inBounds": true,
-	"quote": true, "finder_confidence": true, "verification": true,
+	"lens": true, "quote": true, "finder_confidence": true, "verification": true,
 	"rigor": true, "rigor_source": true, "severity": true, keyCategory: true, keyStatus: true, "firstSeen": true,
 	"lastSeen": true, "rationale": true, "triagedAt": true, "triagedBy": true,
 	"source": true, "tool": true, "rule_id": true, "fingerprint": true,
@@ -805,6 +817,7 @@ func entryOptions(e *FindingEntry, obj *jq.Obj) {
 	e.Severity, _ = obj.Get("severity")
 	e.Category, _ = obj.Get(keyCategory)
 	e.CategorySet = obj.Has(keyCategory)
+	e.Lens, _ = fieldString(obj, "lens")
 	e.Quote, _ = fieldString(obj, "quote")
 	e.FinderConfidence, _ = fieldString(obj, "finder_confidence")
 	e.Verification = verifyOf(obj)

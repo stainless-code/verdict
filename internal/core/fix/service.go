@@ -30,10 +30,14 @@ type Request struct { //nolint:govet // the transport contract keeps its field o
 	Paths       []string
 	Test        string
 	Commit      bool
+	Recipe      string
 	// TestSet records that --test was passed, so an empty value refuses
 	// instead of silently running an ordinary fix pass.
 	TestSet bool
-	Human   io.Writer
+	// RecipeSet records that --recipe was passed, so an empty value refuses
+	// instead of silently running an ordinary fix pass.
+	RecipeSet bool
+	Human     io.Writer
 }
 
 // Response carries the completed pass, batch, or completion summary.
@@ -71,6 +75,7 @@ type Data struct { //nolint:govet // field order is the published property order
 	Batch       []BatchRow
 	TestPath    *string
 	Committed   bool
+	Recipe      *string
 }
 
 // BatchRow is one sig's outcome in a fix batch.
@@ -173,6 +178,7 @@ func (d *Data) wireCounts(o *jq.Obj) {
 		o.Set("test_path", *d.TestPath)
 		o.Set("committed", d.Committed)
 	}
+	setString(o, "recipe", d.Recipe)
 }
 
 // setString publishes an optional string key; absence is the contract for a
@@ -190,7 +196,7 @@ func (d *Data) wireBatch(o *jq.Obj) {
 	}
 }
 
-type state struct { //nolint:govet // fix service state is allocated once per invocation
+type state struct { // fix service state is allocated once per invocation
 	req       *Request
 	warnings  []string
 	at        string
@@ -199,6 +205,11 @@ type state struct { //nolint:govet // fix service state is allocated once per in
 	patch     *string
 	selection *selection
 	dir       string
+	// recipeLenses is the lens set --recipe resolved from the bundle's base
+	// snapshot; recipeEmpty marks a recipe that owns no lens, so the batch
+	// reports the empty scope instead of widening to every open finding.
+	recipeLenses []string
+	recipeEmpty  bool
 }
 
 // Run executes one fix pass, one batch pass, or reports completion.
@@ -224,26 +235,30 @@ func (r *Request) comboFault() string {
 	if r.Commit && r.Test == "" {
 		return "--commit commits the promoted regression test: pass it with --test"
 	}
-	if r.All || r.Selected {
+	if r.All || r.Selected || r.Recipe != "" {
 		return ""
 	}
 	switch {
 	case r.MinSeverity != "":
-		return "--min-severity narrows a batch: pass it with --all or --selected"
+		return "--min-severity narrows a batch: pass it with --all, --selected, or --recipe"
 	case r.VerifyCmd != "":
-		return "--verify-cmd proves a batch: pass it with --all or --selected"
+		return "--verify-cmd proves a batch: pass it with --all, --selected, or --recipe"
 	case len(r.Paths) > 0:
-		return "--paths scopes a batch: pass it with --all or --selected"
+		return "--paths scopes a batch: pass it with --all, --selected, or --recipe"
 	}
 	return ""
 }
 
 // modeFault refuses a pick that names two scopes at once, and an explicitly
-// empty --test, which would otherwise fall through to an ordinary fix pass.
+// empty --test or --recipe, which would otherwise fall through to an
+// ordinary fix pass.
 func (r *Request) modeFault() string {
 	if r.TestSet && r.Test == "" {
 		return "fix --test needs a sig (an empty value would run an ordinary pass): " +
 			"pass --test <sig>"
+	}
+	if msg := r.recipeModeFault(); msg != "" {
+		return msg
 	}
 	switch {
 	case r.All && r.Sig != "":
@@ -254,6 +269,21 @@ func (r *Request) modeFault() string {
 		return "fix takes --all or --selected, not both (--selected is a batch scoped by fetch's selected.json)"
 	}
 	return r.testModeFault()
+}
+
+// recipeModeFault refuses a --recipe pick that is empty or names another scope.
+func (r *Request) recipeModeFault() string {
+	if r.RecipeSet && r.Recipe == "" {
+		return "fix --recipe needs a name (an empty value would run an ordinary pass): " +
+			"pass --recipe <name>"
+	}
+	switch {
+	case r.Recipe != "" && r.Sig != "":
+		return "fix takes --sig or --recipe, not both (--recipe selects the findings a named recipe owns)"
+	case r.Recipe != "" && r.Test != "":
+		return "fix takes --test or --recipe, not both (--recipe selects the findings a named recipe owns)"
+	}
+	return ""
 }
 
 // testModeFault refuses a --test pick that names another scope.
@@ -330,7 +360,7 @@ func (st *state) runDispatch(
 		return st.runPromotion(ctx, dir, ledgerPath, store, entries,
 			fixOpen, fixOpenInline)
 	}
-	if st.req.All || st.req.Selected {
+	if st.req.All || st.req.Selected || st.req.Recipe != "" {
 		return st.runBatch(ctx, dir, ledgerPath, store, entries,
 			fixOpen, fixOpenInline, now)
 	}

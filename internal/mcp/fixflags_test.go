@@ -34,17 +34,17 @@ func TestToolFixCombos(t *testing.T) {
 		{
 			name: "min-severity-without-all",
 			args: `"repo":"acme/app","pr":"1","minSeverity":"critical"`,
-			want: "--min-severity narrows a batch: pass it with --all or --selected",
+			want: "--min-severity narrows a batch: pass it with --all, --selected, or --recipe",
 		},
 		{
 			name: "verify-cmd-without-all",
 			args: `"repo":"acme/app","pr":"1","verifyCmd":"go test ./..."`,
-			want: "--verify-cmd proves a batch: pass it with --all or --selected",
+			want: "--verify-cmd proves a batch: pass it with --all, --selected, or --recipe",
 		},
 		{
 			name: "paths-without-all",
 			args: `"repo":"acme/app","pr":"1","paths":["internal/**"]`,
-			want: "--paths scopes a batch: pass it with --all or --selected",
+			want: "--paths scopes a batch: pass it with --all, --selected, or --recipe",
 		},
 		{
 			name: "empty-test",

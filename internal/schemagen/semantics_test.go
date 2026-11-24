@@ -372,7 +372,7 @@ var publishedSemantics = map[string]string{
 	// additions: an optional panelVerification checker, crossVerification
 	// origins with the contested status, and an optional crossCheck quote
 	// with its $defs/crossQuote.
-	"findings.schema.json": "ea97f241b1f5087fe262b43ca363700df26c9513cfffa5e73f4463631f4b8476",
+	"findings.schema.json": "5f57fab025c300f21b22a93701e12aa6d435a1c074ccff1384af1865f6dd713d",
 	// post_floor_scoped: additive optional per-path posting floor list with its
 	// $defs/floorScope entry (required path, enum floor). No existing
 	// property, required key, or type changed.
@@ -560,7 +560,7 @@ var publishedSemantics = map[string]string{
 	// with no diff line cites none; met/violated still require it in the checker).
 	// Three new problem codes join the published enum. No existing property,
 	// required key, or type moved.
-	"review.schema.json": "a2172a2c8318c9dd3a699c20f2e8d0e44bec77ca2812d6c21b5be97346699bbd",
+	"review.schema.json": "c2d60fddb9fc8410d9e4c4dc169b0aecb77ea44e6b480657c1913dbd98803fa8",
 	// additive selected.schema.json (new bundle document: the reaction-scoped
 	// fix selection fetch writes and fix --selected reads). A new document
 	// only: no existing schema property, required key, enum, or type changed.

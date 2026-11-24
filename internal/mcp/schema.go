@@ -49,6 +49,9 @@ var internalFieldNames = map[string]bool{
 	// TestSet is the adapter's present-versus-empty witness for --test, never
 	// an argument: a caller sets test, and an empty value refuses.
 	"TestSet": true,
+	// RecipeSet is the adapter's present-versus-empty witness for --recipe,
+	// never an argument: a caller sets recipe, and an empty value refuses.
+	"RecipeSet": true,
 	// RefuseWithheld is the interactive surface's withholding posture, never
 	// an argument: the serve transport sets it, MCP/CLI callers leave it false.
 	"RefuseWithheld": true,
@@ -298,6 +301,7 @@ var fieldDocs = map[string]string{
 	"Test":       "Promote one reproduced finding's retained artifact to .verdict/tests/<sig>-<hash>.<ext>.",
 	"Commit":     "Commit the promoted regression test alone as test: regression for <sig>; requires test.",
 	"Selected":   "Batch only the sigs a GitHub fetch recorded in selected.json as reacted to by a human.",
+	"Recipe":     "Batch the open inline findings whose stored lens matches the named recipe's lens set.",
 	"Status":     "Status filter (all, open, addressed, wont-fix, false-positive, deferred).",
 	"Kind":       "Kind filter (inline, section, all).",
 	"Category":   "Finding category filter; empty disables the filter.",

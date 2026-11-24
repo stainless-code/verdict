@@ -26,14 +26,23 @@ const (
 		"lower --min-severity or fix one sig with --sig"
 	msgBatchEmptyPaths = "fix --all: no open inline finding at or above %s under %s — " +
 		"widen --paths, lower --min-severity, or fix one sig with --sig"
+	msgBatchRecipeEmpty = "fix --recipe %s: no open inline finding at or above %s under " +
+		"lenses %s — findings need a matching lens value, or lower --min-severity, " +
+		"widen --paths, or pick another recipe"
+	msgBatchRecipeNoLenses = "fix --recipe %s: the recipe declares no lenses, so it owns " +
+		"no findings — pick a recipe that declares lenses or a different batch scope"
 	nextBatchEmpty      = "lower --min-severity or fix one sig with --sig"
 	nextBatchEmptyPaths = "widen --paths, lower --min-severity, or fix one sig with --sig"
+	nextBatchRecipe     = "lower --min-severity, widen --paths, pick another recipe, or fix one sig with --sig"
 	nextBatchPasses     = "patch each anchor, run the verify command yourself, write one " +
 		"verification.json claim per sig, land with record, then re-run fix --all"
 	nextBatchStopped  = "triage the stopped sigs, or re-run fix --all with another floor"
 	defaultBatchFloor = "important"
 	floorOff          = "off"
 )
+
+// commaSpace joins the sigs or lens ids a message names.
+const commaSpace = ", "
 
 const batchInstructionsFmt = "instructions: patch each anchor file (%s), run the " +
 	"verify command yourself (%s), then write %s/verification.json " +
@@ -79,6 +88,9 @@ func (st *state) runBatch(
 	sel, ref := st.batchSelector(dir, floor)
 	if ref != nil {
 		return ref
+	}
+	if st.recipeEmpty {
+		return st.recipeNothing(dir, ledgerPath, store, entries, fixOpen, fixOpenInline, now)
 	}
 	picks := readcommon.Select(entries, sel)
 	if len(picks) == 0 {
@@ -158,10 +170,58 @@ func (st *state) batchNothing(
 	if st.req.Selected {
 		return st.noSelected()
 	}
+	if st.req.Recipe != "" {
+		return st.recipeNothing(dir, ledgerPath, store, entries, fixOpen, fixOpenInline, now)
+	}
 	if fixOpenInline == 0 {
 		return st.completeRun(dir, ledgerPath, store, entries, fixOpen)
 	}
 	return st.emptyBatch(dir, ledgerPath, store, entries, fixOpen, fixOpenInline, now)
+}
+
+// recipeNothing explains a recipe-scoped batch that selected no sig. A recipe
+// that resolves to no lenses owns nothing, so the run reports the empty scope
+// instead of widening to every open inline finding. Otherwise the message
+// names the recipe and its lens set and says findings need that provenance.
+func (st *state) recipeNothing(
+	dir, ledgerPath string,
+	store *ledgerDoc,
+	entries []any,
+	fixOpen, fixOpenInline int,
+	now string,
+) *core.RefusalError {
+	st.at = now
+	st.humanf("%s\n", st.recipeEmptyMsg())
+	st.next = st.batchNext(nextBatchRecipe)
+	st.data = &Data{
+		Dir:         dir,
+		Ledger:      ledgerPath,
+		MaxPasses:   maxPasses,
+		OpenInline:  fixOpenInline,
+		Fixed:       fixedCount(entries),
+		Open:        fixOpen,
+		Stopped:     stoppedCount(store),
+		Batch:       []BatchRow{},
+		MinSeverity: &st.req.MinSeverity,
+		Paths:       st.req.Paths,
+		Recipe:      recipePtr(st.req.Recipe),
+	}
+	return nil
+}
+
+func (st *state) recipeEmptyMsg() string {
+	if len(st.recipeLenses) == 0 {
+		return fmt.Sprintf(msgBatchRecipeNoLenses, st.req.Recipe)
+	}
+	return fmt.Sprintf(msgBatchRecipeEmpty, st.req.Recipe, st.req.MinSeverity,
+		strings.Join(st.recipeLenses, commaSpace))
+}
+
+func recipePtr(name string) *string {
+	if name == "" {
+		return nil
+	}
+	return &name
 }
 
 func (st *state) batchPick(
@@ -245,6 +305,9 @@ func (st *state) printSelection() {
 func (st *state) batchMode() string {
 	if st.req.Selected {
 		return "--selected"
+	}
+	if st.req.Recipe != "" {
+		return "--recipe " + st.req.Recipe
 	}
 	return "--all"
 }
@@ -381,6 +444,7 @@ func (st *state) fillBatchData(
 		Patch:       st.patch,
 		Paths:       st.req.Paths,
 		Selection:   st.selectionPath(),
+		Recipe:      recipePtr(st.req.Recipe),
 	}
 }
 
@@ -405,6 +469,7 @@ func (st *state) emptyBatch(
 		Batch:       []BatchRow{},
 		MinSeverity: &st.req.MinSeverity,
 		Paths:       st.req.Paths,
+		Recipe:      recipePtr(st.req.Recipe),
 	}
 	return nil
 }
