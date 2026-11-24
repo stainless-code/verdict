@@ -134,7 +134,7 @@ func vendorAndLock(
 // repository root) is read in place. An unreachable source refuses typed.
 func syncSource(ctx context.Context, req *SyncRequest, pin *OrgPin, root string) (*packSource, *core.RefusalError) {
 	if g, ok := parseGitSource(pin.Repo); ok {
-		return cloneSource(ctx, &AddRequest{ReadRequest: req.ReadRequest}, g.url, pin.Ref, orgPinPath(pin))
+		return cloneSource(ctx, &AddRequest{ReadRequest: req.ReadRequest}, g.url, pin.Ref, refByGitRef, orgPinPath(pin))
 	}
 	if looksLikeGitSource(pin.Repo) || secretShaped(pin.Repo) {
 		return nil, badPackSource(fmt.Sprintf("org pack repo %q is not an allowlisted git remote", displaySource(pin.Repo)))

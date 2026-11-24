@@ -7,6 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/config"
+	"github.com/stainless-code/verdict/internal/controls"
 )
 
 // orgPinFixture syncs one central pack and writes the pin into the worktree's
@@ -181,5 +184,46 @@ func TestCheckOrgPinSurfacesCorruptConfig(t *testing.T) {
 	ref := CheckLock(lockSnapshot(t, repo))
 	if ref == nil || ref.Code != "bad-config" {
 		t.Fatalf("CheckLock = %v, want bad-config", ref)
+	}
+}
+
+// TestOrgPinFromSnapshotRefusesAnUnreadableCapturedConfig proves the snapshot
+// gate fails closed: a base config the snapshot recorded as used but cannot
+// read (its captured file is gone, or has grown past the control cap) refuses
+// instead of reading as "no pin", which would drop org-pin enforcement for the
+// whole review. A row recorded missing still reads as no pin.
+func TestOrgPinFromSnapshotRefusesAnUnreadableCapturedConfig(t *testing.T) {
+	_, repo := orgPinFixture(t, orgSha)
+	snap := lockSnapshot(t, repo)
+	path := snap.Path(config.ConfigPath)
+	if path == "" {
+		t.Fatal("the snapshot captured no config.json to remove")
+	}
+	if err := os.Remove(path); err != nil {
+		t.Fatalf("remove the captured config: %v", err)
+	}
+	if _, ref := orgPinFromSnapshot(snap); ref == nil || ref.Code != controls.CodeUnavailable {
+		t.Fatalf("orgPinFromSnapshot = %v, want %s", ref, controls.CodeUnavailable)
+	}
+	if ref := CheckOrgPin(snap); ref == nil || ref.Code != controls.CodeUnavailable {
+		t.Fatalf("CheckOrgPin = %v, want %s", ref, controls.CodeUnavailable)
+	}
+}
+
+// TestOrgPinFromSnapshotReadsAnAbsentRowAsNoPin proves the other arm: a base
+// that declares no config.json at all still reads as no pin, so the fail-closed
+// read does not turn every pin-less repository into a refusal.
+func TestOrgPinFromSnapshotReadsAnAbsentRowAsNoPin(t *testing.T) {
+	snap, ref := controls.Resolve(t.Context(), nil, &controls.Request{
+		BundleDir: t.TempDir(), AllowHead: true, Root: t.TempDir(),
+	})
+	if ref != nil {
+		t.Fatalf("controls.Resolve: %s: %s", ref.Code, ref.Message)
+	}
+	if entry := snap.Entry(config.ConfigPath); entry == nil || entry.Status != "missing" {
+		t.Fatalf("config.json row = %+v, want a missing row", entry)
+	}
+	if pin, ref := orgPinFromSnapshot(snap); pin != nil || ref != nil {
+		t.Fatalf("orgPinFromSnapshot = %+v / %v, want no pin", pin, ref)
 	}
 }

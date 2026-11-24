@@ -6,6 +6,7 @@
 package gitsource
 
 import (
+	"net/netip"
 	"regexp"
 	"strings"
 )
@@ -268,19 +269,16 @@ func validHostLabel(label string) bool {
 	return true
 }
 
-// validIPv6 accepts the inside of a bracketed IPv6 literal: hex digits,
-// colons, and dots, with at least one colon.
+// validIPv6 accepts the inside of a bracketed IPv6 literal only when it is a
+// syntactically valid IPv6 address with no zone: the grammar guards an argv,
+// so a shape a resolver would refuse (`2001:::1`) or one that names an
+// interface (`fe80::1%eth0`) must not reach git.
 func validIPv6(inner string) bool {
-	if inner == "" || !strings.ContainsRune(inner, ':') {
+	if inner == "" {
 		return false
 	}
-	for i := range len(inner) {
-		c := inner[i]
-		if !isHex(c) && c != ':' && c != '.' {
-			return false
-		}
-	}
-	return true
+	addr, err := netip.ParseAddr(inner)
+	return err == nil && addr.Is6() && addr.Zone() == ""
 }
 
 // validSourceUser accepts the bare ssh user grammar: 1..64 of [A-Za-z0-9._-].
@@ -327,10 +325,6 @@ func validPort(port string) bool {
 
 func isAlnum(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
-}
-
-func isHex(c byte) bool {
-	return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F'
 }
 
 // schemeColonSlash matches a scheme and a single slash, the mangled URL shape

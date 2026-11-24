@@ -270,7 +270,7 @@ type packSource struct {
 func addSource(ctx context.Context, req *AddRequest) (*packSource, *core.RefusalError) {
 	source := strings.TrimSpace(req.Source)
 	if src, ok := parseGitSource(source); ok {
-		return cloneSource(ctx, req, src.url, src.ref, rootSelf)
+		return cloneSource(ctx, req, src.url, src.ref, refByName, rootSelf)
 	}
 	if strings.HasPrefix(source, "-") {
 		return nil, badPack(fmt.Sprintf("pack source %q starts with '-'", displaySource(source)))
@@ -398,12 +398,26 @@ func gitFailure(sub string, exit int) string {
 	return fmt.Sprintf("exit %d", exit)
 }
 
+// refMode says how a clone resolves the requested ref. An ordinary `pack add`
+// source keeps `git clone --branch`, which resolves a branch before a tag of
+// the same name and is what an operator expects from a mutable source ref. An
+// org pin is immutable, so it is fetched by its full Git ref instead.
+type refMode int
+
+const (
+	// refByName clones with `git clone --branch <ref>`.
+	refByName refMode = iota
+	// refByGitRef fetches the exact Git ref a pin names: refs/tags/<tag> for a
+	// semver tag, the object id for a 40-hex commit.
+	refByGitRef
+)
+
 // cloneSource fetches one git URL hermetically into a temp directory and
 // checks out the resolved HEAD commit before loading the pack. bound is the
 // pin path the caller vendors out of that clone: "." caps the whole tree,
 // a subdirectory caps only the pack it will actually load.
 func cloneSource(
-	ctx context.Context, req *AddRequest, url, refName, bound string,
+	ctx context.Context, req *AddRequest, url, refName string, mode refMode, bound string,
 ) (*packSource, *core.RefusalError) {
 	cmdr := req.Commander
 	if cmdr == nil {
@@ -419,10 +433,10 @@ func cloneSource(
 		return nil, ref
 	}
 	env := gitEnv(runtimeEnv(req), tmp)
-	clone := filepath.Join(tmp, "repo")
+	clone := cloneDir(tmp)
 	gctx, cancel := context.WithTimeout(ctx, packCloneTimeout)
 	defer cancel()
-	if ref := gitClone(gctx, cmdr, env, tmp, url, refName, clone); ref != nil {
+	if ref := gitClone(gctx, cmdr, env, tmp, url, refName, bound, mode); ref != nil {
 		cleanup()
 		return nil, ref
 	}
@@ -469,14 +483,15 @@ func prepareGitEnv(tmp string) *core.RefusalError {
 	return nil
 }
 
-// gitClone runs the hermetic clone with the resolved hooks path. A 40-hex
-// commit SHA is not a branch or tag name — git clone --branch refuses it —
-// so a SHA pin goes through fetch-by-SHA: init, remote, fetch, checkout.
+// gitClone runs the hermetic clone with the resolved hooks path. A pinned
+// source — an org pin's semver tag or SHA — and a 40-hex commit, which is not a
+// branch or tag name `--branch` could take, go through the fetch path.
 func gitClone(
-	ctx context.Context, cmdr core.Commander, env []string, tmp, url, refName, clone string,
+	ctx context.Context, cmdr core.Commander, env []string, tmp, url, refName, bound string, mode refMode,
 ) *core.RefusalError {
-	if hex40(refName) {
-		return gitCloneBySHA(ctx, cmdr, env, tmp, url, refName, clone)
+	clone := cloneDir(tmp)
+	if mode == refByGitRef || hex40(refName) {
+		return gitClonePinned(ctx, cmdr, env, tmp, url, refName, bound, clone)
 	}
 	args := []string{"--depth=1", "--no-tags", "--no-recurse-submodules"}
 	if refName != "" {
@@ -487,27 +502,63 @@ func gitClone(
 	return ref
 }
 
-// gitCloneBySHA fetches one immutable 40-hex commit by SHA: a hermetic
-// init, remote registration, shallow fetch of that object, and detached
-// checkout. The same env and prefix as clone apply.
-func gitCloneBySHA(
-	ctx context.Context, cmdr core.Commander, env []string, tmp, url, ref, clone string,
+// gitClonePinned fetches one immutable ref by its exact Git ref: a hermetic
+// init, remote registration, a shallow fetch of that one ref, an optional
+// sparse checkout of the pin's own subtree, and a detached checkout of
+// FETCH_HEAD.
+//
+// The full ref matters: `git clone --branch v1.2.3` resolves refs/heads/v1.2.3
+// before refs/tags/v1.2.3, so a branch named after the pin hijacks it. A tag
+// pin is fetched as refs/tags/<tag> and cannot.
+func gitClonePinned(
+	ctx context.Context, cmdr core.Commander, env []string, tmp, url, ref, bound, clone string,
 ) *core.RefusalError {
-	if _, ref := runGitPack(ctx, cmdr, env, "", tmp, "init", clone); ref != nil {
+	if _, got := runGitPack(ctx, cmdr, env, "", tmp, "init", clone); got != nil {
+		return got
+	}
+	if got := runGitPackOK(ctx, cmdr, env, clone, tmp, "remote", "add", "origin", url); got != nil {
+		return got
+	}
+	if _, got := runGitPack(ctx, cmdr, env, clone, tmp, "fetch",
+		"--depth=1", "--no-tags", "--no-recurse-submodules", "origin", pinRefspec(ref)); got != nil {
+		return got
+	}
+	if got := sparseCheckoutBound(ctx, cmdr, env, clone, tmp, bound); got != nil {
+		return got
+	}
+	return runGitPackOK(ctx, cmdr, env, clone, tmp, checkoutSub, "--detach", "FETCH_HEAD")
+}
+
+// cloneDir is the one clone directory under the pack work dir.
+func cloneDir(tmp string) string { return filepath.Join(tmp, "repo") }
+
+// tagsPrefix is the Git ref namespace a tag pin resolves under.
+const tagsPrefix = "refs/tags/"
+
+// pinRefspec renders the exact Git ref a pinned fetch asks for: a 40-hex commit
+// by its object id, and the pin's semver tag under refs/tags/ so a branch of
+// the same name can never answer for it.
+func pinRefspec(ref string) string {
+	if hex40(ref) {
 		return ref
 	}
-	if ref := runGitPackOK(ctx, cmdr, env, clone, tmp, "remote", "add", "origin", url); ref != nil {
+	return tagsPrefix + ref
+}
+
+// sparseCheckoutBound narrows the working tree to the pin's own subtree before
+// the checkout materializes it, so a large central repository's unrelated packs
+// never land on disk. A root pin, and an ordinary `pack add`, check out the
+// whole tree. Cone mode needs git 2.26; every other step here needs less.
+func sparseCheckoutBound(
+	ctx context.Context, cmdr core.Commander, env []string, clone, tmp, bound string,
+) *core.RefusalError {
+	if bound == "" || bound == rootSelf {
+		return nil
+	}
+	if _, ref := runGitPack(ctx, cmdr, env, clone, tmp, "sparse-checkout", "init", "--cone"); ref != nil {
 		return ref
 	}
-	if _, ref := runGitPack(ctx, cmdr, env, clone, tmp, "fetch",
-		"--depth=1", "--no-tags", "--no-recurse-submodules", "origin", ref); ref != nil {
-		return ref
-	}
-	if ref := runGitPackOK(ctx, cmdr, env, clone, tmp, checkoutSub, "--detach", ref); ref != nil {
-		// Fetch puts the tip in FETCH_HEAD; fall back to it.
-		return runGitPackOK(ctx, cmdr, env, clone, tmp, checkoutSub, "--detach", "FETCH_HEAD")
-	}
-	return nil
+	return runGitPackOK(ctx, cmdr, env, clone, tmp, "sparse-checkout", "set", bound)
 }
 
 // gitPrefix is the one argv prefix every pack-add git call carries, so no
@@ -621,6 +672,9 @@ func runGitPackOK(
 // vendors, so a large central repository's unrelated sibling packs do not
 // refuse the sync; the loader caps that pack again on the way in.
 func checkCloneBounds(dir, bound string) *core.RefusalError {
+	if ref := checkBoundComponents(dir, bound); ref != nil {
+		return ref
+	}
 	root, ok, ref := cloneBoundRoot(dir, bound)
 	if ref != nil {
 		return ref
@@ -658,6 +712,44 @@ func cloneBoundRoot(dir, bound string) (string, bool, *core.RefusalError) {
 		return "", false, badPack(fmt.Sprintf("inspect the git clone: %v", err))
 	}
 	return root, true, nil
+}
+
+// checkBoundComponents proves every component of the bound is a real directory
+// inside the clone before the cap walk resolves it: the walk descends whatever
+// directory it is handed, so a symlinked intermediate component would let a
+// hostile clone point its pack root outside the clone and read a size refusal
+// for a tree the caps were never meant to describe. An absent component stays
+// the loader's missing-pack refusal, not a cap one.
+func checkBoundComponents(dir, bound string) *core.RefusalError {
+	if bound == "" || bound == rootSelf {
+		return nil
+	}
+	cur := dir
+	for seg := range strings.SplitSeq(bound, "/") {
+		cur = filepath.Join(cur, seg)
+		if ref, stop := checkBoundComponent(cur, bound); stop {
+			return ref
+		}
+	}
+	return nil
+}
+
+// checkBoundComponent proves one bound component is a real directory. stop
+// reports that the walk ends here: with a refusal, or with none because the
+// component is absent and the loader names the missing pack.
+func checkBoundComponent(component, bound string) (*core.RefusalError, bool) {
+	info, err := os.Lstat(component)
+	switch {
+	case err != nil && errors.Is(err, fs.ErrNotExist):
+		return nil, true
+	case err != nil:
+		return badPack(fmt.Sprintf("inspect the git clone: %v", err)), true
+	case !info.IsDir():
+		return &core.RefusalError{Code: CodePackUnsafePath, Message: fmt.Sprintf(
+			"the git clone's %q is not a real directory under the clone root — "+
+				"symlinked and special pack roots are refused", filepath.ToSlash(bound))}, true
+	}
+	return nil, false
 }
 
 // chargeCloneEntry spends one walked clone entry against the pack caps.

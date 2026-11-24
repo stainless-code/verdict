@@ -1083,9 +1083,9 @@ Fix: add `"replace": ["<lower pack name>"]` to the higher pack's manifest (repla
 
 ## `pack-git-failed`
 
-Cause: the hermetic `git clone`, the HEAD resolution, or the detached checkout `pack add` runs could not complete: the remote or the ref was not found, the credential was refused, the network is down, or the five-minute clone budget ran out. git's own error text is never printed, because it can carry the source URL, its query, or the ref.
+Cause: the hermetic `git clone`, the HEAD resolution, the detached checkout `pack add` runs, the pinned `refs/tags/<tag>` or commit `pack sync` fetches, or the `git merge-base` the trusted-base read runs on a default branch that resolves, could not complete: the remote or the ref was not found, the credential was refused, the network is down, the five-minute clone budget ran out, or the default branch shares no merge base with `HEAD` (a shallow or partial clone). git's own error text is never printed, because it can carry the source URL, its query, or the ref.
 
-Fix: check the source spelling, the `@ref`, your access (an ssh key for an ssh source), and the network, then re-run. For a private remote, use ssh with a key rather than a token in the URL.
+Fix: check the source spelling, the `@ref`, your access (an ssh key for an ssh source), and the network, then re-run. For a private remote, use ssh with a key rather than a token in the URL. A merge-base refusal names the branch: fetch the default branch and its history (`git fetch origin <branch>`) so `HEAD` and the branch meet, then re-run.
 
 ## `pack-lock-drift`
 

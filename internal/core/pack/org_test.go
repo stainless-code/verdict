@@ -55,8 +55,9 @@ func assertSyncDirResponse(t *testing.T, resp *SyncResponse, pin *OrgPin) {
 
 func assertGitSyncResponse(t *testing.T, resp *SyncResponse, cmdr *gitCommander, url string) {
 	t.Helper()
-	if len(cmdr.calls) != 3 {
-		t.Fatalf("git calls = %d, want clone, rev-parse, checkout", len(cmdr.calls))
+	if len(cmdr.calls) != 8 {
+		t.Fatalf("git calls = %d, want init, remote, fetch, sparse init, sparse set, checkout, rev-parse, checkout",
+			len(cmdr.calls))
 	}
 	if got, want := resp.Human, []string{"synced acme/lenses@1.0.0 repo=" + url + " ref=v1.2.3 path=packs/org sha256:" + lockHash}; !slices.Equal(got, want) {
 		t.Fatalf("human = %q, want %q", got, want)

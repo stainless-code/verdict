@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 )
 
@@ -14,18 +15,19 @@ import (
 func seedOrgBundle(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
-	controls := filepath.Join(dir, "controls")
-	if err := os.MkdirAll(controls, 0o755); err != nil {
+	snapshot := filepath.Join(dir, "controls")
+	if err := os.MkdirAll(snapshot, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	config := `{"schema_version":"1","packs":{"org_pack":{"repo":"https://example.invalid/acme/packs.git","ref":"v1.2.3","path":"packs/org"}}}`
-	if err := os.WriteFile(filepath.Join(controls, "config.json"), []byte(config), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(snapshot, "config.json"), []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	lock := `{"schema_version":"1","packs":[{"name":"acme/lenses","source":"git:https://example.invalid/acme/packs.git@` +
 		"cccccccccccccccccccccccccccccccccccccccc" +
-		`","version":"1.0.0","hash":"abcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcd","sig":"efefefefefefefefefefefefefefefefefefefefefefefefefefefefefef` + `"}]}`
-	if err := os.WriteFile(filepath.Join(controls, "verdict.lock"), []byte(lock), 0o644); err != nil {
+		`","version":"1.0.0","hash":"abcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcd",` +
+		`"org_path":"packs/org","org_ref":"v1.2.3","sig":"efefefefefefefefefefefefefefefefefefefefefefefefefefefefefef` + `"}]}`
+	if err := os.WriteFile(filepath.Join(snapshot, "verdict.lock"), []byte(lock), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	return dir
@@ -119,11 +121,92 @@ func TestLegacyRunIDIsBitIdenticalWithoutAnOrgPack(t *testing.T) {
 func TestReadBundleLockRowFoldsHostCase(t *testing.T) {
 	dir := seedOrgBundle(t)
 	path := filepath.Join(dir, "controls", "verdict.lock")
-	row := readBundleLockRow(path, "HTTPS://EXAMPLE.INVALID/acme/packs.git")
+	row := readBundleLockRow(path, &OrgPackInput{
+		Repo: "HTTPS://EXAMPLE.INVALID/acme/packs.git", Ref: "v1.2.3", Path: "packs/org",
+	})
 	if row.Name != "acme/lenses" || row.Hash != "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcd" {
 		t.Fatalf("row = %+v, want the locked acme/lenses row", row)
 	}
-	if row := readBundleLockRow(path, "https://example.invalid/Acme/packs.git"); row.Name != "" {
-		t.Fatalf("row = %+v, want a case-sensitive path to miss", row)
+	miss := readBundleLockRow(path, &OrgPackInput{
+		Repo: "https://example.invalid/Acme/packs.git", Ref: "v1.2.3", Path: "packs/org",
+	})
+	if miss.Name != "" {
+		t.Fatalf("row = %+v, want a case-sensitive path to miss", miss)
+	}
+}
+
+// TestReadBundleLockRowMatchesPathAndRef proves one central repository's rows
+// are told apart: the row must carry the pin's own org_path and org_ref, so a
+// pin at another path or another tag never reports a sibling row's locked
+// hash as its own.
+func TestReadBundleLockRowMatchesPathAndRef(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "verdict.lock")
+	lock := `{"schema_version":"1","packs":[` +
+		`{"name":"acme/other","source":"git:https://example.invalid/acme/packs.git@` + strings.Repeat("1", 40) +
+		`","version":"9.9.9","hash":"1111","org_path":"packs/other","org_ref":"v1.2.3"},` +
+		`{"name":"acme/older","source":"git:https://example.invalid/acme/packs.git@` + strings.Repeat("2", 40) +
+		`","version":"0.9.0","hash":"2222","org_path":"packs/org","org_ref":"v1.0.0"},` +
+		`{"name":"acme/root","source":"git:https://example.invalid/acme/packs.git@` + strings.Repeat("3", 40) +
+		`","version":"1.0.0","hash":"3333","org_ref":"v1.2.3"},` +
+		`{"name":"acme/lenses","source":"git:https://example.invalid/acme/packs.git@` + strings.Repeat("4", 40) +
+		`","version":"1.0.0","hash":"4444","org_path":"packs/org","org_ref":"v1.2.3"}]}`
+	if err := os.WriteFile(path, []byte(lock), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	subdir := readBundleLockRow(path, &OrgPackInput{
+		Repo: "https://example.invalid/acme/packs.git", Ref: "v1.2.3", Path: "packs/org",
+	})
+	if subdir.Name != "acme/lenses" || subdir.Hash != "4444" {
+		t.Fatalf("subdir row = %+v, want the packs/org @ v1.2.3 row", subdir)
+	}
+	root := readBundleLockRow(path, &OrgPackInput{
+		Repo: "https://example.invalid/acme/packs.git", Ref: "v1.2.3", Path: ".",
+	})
+	if root.Name != "acme/root" || root.Hash != "3333" {
+		t.Fatalf("root row = %+v, want the repository-root row: an absent org_path reads as .", root)
+	}
+	stale := readBundleLockRow(path, &OrgPackInput{
+		Repo: "https://example.invalid/acme/packs.git", Ref: "v1.3.0", Path: "packs/org",
+	})
+	if stale.Name != "" {
+		t.Fatalf("row = %+v, want a bumped ref to match no row", stale)
+	}
+}
+
+// TestOrgPackFromBundleCapsTheSnapshotReads proves the snapshot reads are
+// capped like the controls they mirror (GO-JSON-01): an oversized config.json
+// or verdict.lock degrades to no pin instead of being read whole.
+func TestOrgPackFromBundleCapsTheSnapshotReads(t *testing.T) {
+	t.Run("config", assertOversizedConfigReadsAsNoPin)
+	t.Run("lock", assertOversizedLockReadsAsNoRow)
+}
+
+// assertOversizedConfigReadsAsNoPin proves an oversized captured config.json
+// degrades like any other unreadable one: the receipt carries no pin.
+func assertOversizedConfigReadsAsNoPin(t *testing.T) {
+	dir := seedOrgBundle(t)
+	writeOversize(t, filepath.Join(dir, "controls", "config.json"))
+	if pin := OrgPackFromBundle(dir); pin.Repo != "" {
+		t.Fatalf("pin = %+v, want no pin from an oversized config", pin)
+	}
+}
+
+// assertOversizedLockReadsAsNoRow proves an oversized captured verdict.lock
+// leaves the pin intact with no locked content beside it.
+func assertOversizedLockReadsAsNoRow(t *testing.T) {
+	dir := seedOrgBundle(t)
+	writeOversize(t, filepath.Join(dir, "controls", "verdict.lock"))
+	pin := OrgPackFromBundle(dir)
+	if pin.Repo == "" || pin.Hash != "" {
+		t.Fatalf("pin = %+v, want the pin with no locked row from an oversized lock", pin)
+	}
+}
+
+// writeOversize replaces path with a document one byte over the control cap.
+func writeOversize(t *testing.T, path string) {
+	t.Helper()
+	if err := os.WriteFile(path, []byte(strings.Repeat(" ", controls.MaxFileBytes+1)), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

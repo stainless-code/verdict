@@ -2,6 +2,7 @@ package pack
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -127,8 +128,12 @@ func BaseOrgPin(ctx context.Context, cmdr core.Commander, root string) (*OrgPin,
 // first default-branch candidate that exists. An empty result means the
 // checkout has no resolvable default branch, which reads as no base
 // configuration rather than a refusal — a repository with no base branch has
-// no head-versus-base distinction to protect. A canceled context refuses
-// instead: an interrupted read must never read as "nothing is disabled".
+// no head-versus-base distinction to protect. A candidate that does resolve
+// and then has no merge base with HEAD refuses instead: the base branch is
+// there, so a missing merge base is a broken read (a shallow or partial
+// clone), and reading it as "nothing is disabled" would let a clone that
+// cannot prove its base skip every base-owned pin. A canceled context refuses
+// instead too: an interrupted read must never read as "nothing is disabled".
 func baseCommit(ctx context.Context, cmdr core.Commander, root string) (string, *core.RefusalError) {
 	for _, ref := range baseRefCandidates {
 		if ref := baseRefusal(ctx); ref != nil {
@@ -137,12 +142,33 @@ func baseCommit(ctx context.Context, cmdr core.Commander, root string) (string, 
 		if !resolves(ctx, cmdr, root, ref) {
 			continue
 		}
-		sha, ok := gitLine(ctx, cmdr, root, "merge-base", gitHeadRef, ref)
-		if ok {
-			return sha, nil
-		}
+		return baseAgainst(ctx, cmdr, root, ref)
 	}
 	return "", baseRefusal(ctx)
+}
+
+// baseAgainst resolves the merge base with one default-branch candidate that
+// exists. A candidate with no merge base with HEAD refuses: the base branch is
+// there, so the read is broken, not absent.
+func baseAgainst(ctx context.Context, cmdr core.Commander, root, candidate string) (string, *core.RefusalError) {
+	sha, ok := gitLine(ctx, cmdr, root, "merge-base", gitHeadRef, candidate)
+	if ok {
+		return sha, nil
+	}
+	if ref := baseRefusal(ctx); ref != nil {
+		return "", ref
+	}
+	return "", baseUnresolved(candidate)
+}
+
+// baseUnresolved refuses a base branch that resolves but has no merge base
+// with HEAD, naming the branch and the read that failed without echoing git's
+// own text.
+func baseUnresolved(ref string) *core.RefusalError {
+	return &core.RefusalError{Code: CodePackGitFailed, Message: fmt.Sprintf(
+		"git merge-base failed: %q resolves but shares no merge base with %s — "+
+			"check that the checkout is a full clone of its default branch, then re-run",
+		ref, gitHeadRef)}
 }
 
 // baseRefusal reports whether the base read was canceled, so the caller refuses

@@ -116,10 +116,10 @@ func orgPinPath(obj map[string]any, path string) (string, *core.RefusalError) {
 // its own field, so no @suffix is read as one here.
 func checkOrgRepo(repo, path string) *core.RefusalError {
 	if strings.HasPrefix(repo, "-") {
-		return refuse(CodeBadConfig, "%s.repo: %q starts with '-'", path, repo)
+		return refuse(CodeBadConfig, "%s.repo: %q starts with '-'", path, maskedOrgRepo(repo))
 	}
 	if strings.ContainsAny(repo, "?#") || !cleanOrgString(repo) {
-		return refuse(CodeBadConfig, "%s.repo: %q is not a repository spelling", path, repo)
+		return refuse(CodeBadConfig, "%s.repo: %q is not a repository spelling", path, maskedOrgRepo(repo))
 	}
 	if looksLikeOrgGitSource(repo) || orgSecretShaped(repo) {
 		if _, ok := gitsource.ParseURL(repo); !ok {
@@ -159,11 +159,13 @@ func checkOrgRef(ref, path string) *core.RefusalError {
 }
 
 // checkOrgPath refuses a pack root that could escape the central
-// repository: absolute spellings, backslashes, and `..` segments are
-// refused; `.` names the repository root.
+// repository: absolute spellings, backslashes, and `..` segments are refused,
+// and so is a colon, which the clone-side grammar ([confinedRoot]) refuses too
+// — no config can name a path the vendoring step would then reject; `.` names
+// the repository root.
 func checkOrgPath(pinPath, base string) *core.RefusalError {
 	if strings.HasPrefix(pinPath, "/") || strings.HasPrefix(pinPath, "-") ||
-		strings.Contains(pinPath, `\`) || !cleanOrgString(pinPath) {
+		strings.ContainsAny(pinPath, `\:`) || !cleanOrgString(pinPath) {
 		return refuse(CodeBadConfig, "%s.path: %q is not a repository-relative slash path", base, pinPath)
 	}
 	if pinPath == rootDot {

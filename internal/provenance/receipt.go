@@ -18,7 +18,9 @@ import (
 
 	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // ReceiptFile is the per-bundle provenance receipt file name.
@@ -580,9 +582,20 @@ func orgPackFromBundle(dir string) OrgPackInput {
 	if pin.Repo == "" {
 		return OrgPackInput{}
 	}
-	row := readBundleLockRow(filepath.Join(dir, "controls", "verdict.lock"), pin.Repo)
+	row := readBundleLockRow(filepath.Join(dir, "controls", "verdict.lock"), &pin)
 	pin.Hash, pin.Name, pin.Version, pin.SHA = row.Hash, row.Name, row.Version, lockSHA(row.Source)
 	return pin
+}
+
+// readBundleSnapshot reads one snapshot JSON document through the control-size
+// cap, so a hostile or corrupted bundle cannot stream an unbounded file into
+// the receipt. Anything unreadable or oversized reads as no document.
+func readBundleSnapshot(path string) (raw []byte, ok bool) {
+	raw, err := jq.CappedFile(path, controls.MaxFileBytes)
+	if err != nil {
+		return nil, false
+	}
+	return raw, true
 }
 
 // bundleOrgPinFile is the snapshotted base configuration's pinned shape.
@@ -598,8 +611,8 @@ type bundleOrgPinFile struct {
 
 // readBundleOrgPin parses one snapshotted config's org pin.
 func readBundleOrgPin(path string) OrgPackInput {
-	raw, err := os.ReadFile(path)
-	if err != nil {
+	raw, ok := readBundleSnapshot(path)
+	if !ok {
 		return OrgPackInput{}
 	}
 	var doc bundleOrgPinFile
@@ -622,15 +635,21 @@ type bundleLockRow struct {
 	Source  string `json:"source"`
 	Version string `json:"version"`
 	Hash    string `json:"hash"`
+	OrgPath string `json:"org_path"`
+	OrgRef  string `json:"org_ref"`
 }
 
-// readBundleLockRow finds the lock row synced from repo: a `git:<repo>@…`
-// source for a git pin, a `dir:<repo>` source for a local one. Repo
-// matching normalizes case in the scheme and backslashes to slashes, so an
-// uppercase HTTPS:// or a Windows packs\org still matches the base spelling.
-func readBundleLockRow(path, repo string) bundleLockRow {
-	raw, err := os.ReadFile(path)
-	if err != nil {
+// readBundleLockRow finds the lock row synced from this pin: a `git:<repo>@…`
+// source for a git pin, a `dir:<repo>` source for a local one, plus the row's
+// own `org_path` (empty reads as the repository root, like the pack layer) and
+// `org_ref`. A central repository holds many packs, so matching the repository
+// alone would report another path's or another ref's row as this pin's locked
+// content. Repo matching normalizes case in the scheme and backslashes to
+// slashes, so an uppercase HTTPS:// or a Windows packs\org still matches the
+// base spelling.
+func readBundleLockRow(path string, pin *OrgPackInput) bundleLockRow {
+	raw, ok := readBundleSnapshot(path)
+	if !ok {
 		return bundleLockRow{}
 	}
 	var lock struct {
@@ -639,13 +658,32 @@ func readBundleLockRow(path, repo string) bundleLockRow {
 	if json.Unmarshal(raw, &lock) != nil {
 		return bundleLockRow{}
 	}
-	want := normalizeLockRepo(repo)
-	for _, row := range lock.Packs {
-		if normalizeLockRepo(lockSourceRepo(row.Source)) == want {
-			return row
+	return matchLockRow(lock.Packs, pin)
+}
+
+// matchLockRow returns the row synced from pin's repository at the pin's own
+// path and ref, or the zero row when none matches.
+func matchLockRow(rows []bundleLockRow, pin *OrgPackInput) bundleLockRow {
+	wantRepo, wantPath := normalizeLockRepo(pin.Repo), normalizeOrgPath(pin.Path)
+	for _, row := range rows {
+		if normalizeLockRepo(lockSourceRepo(row.Source)) != wantRepo {
+			continue
 		}
+		if normalizeOrgPath(row.OrgPath) != wantPath || row.OrgRef != pin.Ref {
+			continue
+		}
+		return row
 	}
 	return bundleLockRow{}
+}
+
+// normalizeOrgPath renders one recorded org path for comparison: an empty
+// path is the repository root, exactly as the pack layer reads it.
+func normalizeOrgPath(path string) string {
+	if path == "" {
+		return dotPath
+	}
+	return path
 }
 
 func normalizeLockRepo(s string) string {

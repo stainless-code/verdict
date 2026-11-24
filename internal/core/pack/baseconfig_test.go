@@ -255,3 +255,26 @@ func equalStrings(a, b []string) bool {
 	}
 	return true
 }
+
+// TestBaseTogglesRefusesAMissingMergeBase proves the read fails closed: a
+// default branch that resolves but shares no merge base with HEAD (an orphan
+// branch, an unrelated history) refuses instead of reading as "no base
+// configuration", which would drop every base-owned pack toggle and pin.
+func TestBaseTogglesRefusesAMissingMergeBase(t *testing.T) {
+	t.Chdir(t.TempDir())
+	baseGit(t, "init", "-q", "-b", "main")
+	commitConfig(t, `{"schema_version":"1","packs":{"disable_packs":["verdict/shell"]}}`, "base")
+	baseGit(t, "checkout", "-q", "--orphan", "unrelated")
+	commitConfig(t, `{"schema_version":"1"}`, "unrelated head")
+
+	toggles, source, ref := BaseToggles(t.Context(), coreexec.Runner{}, ".")
+	if ref == nil || ref.Code != CodePackGitFailed {
+		t.Fatalf("BaseToggles = %+v / %q / %v, want %s", toggles, source, ref, CodePackGitFailed)
+	}
+	if want := "git merge-base failed"; !strings.Contains(ref.Message, want) {
+		t.Errorf("message = %q, want it to contain %q", ref.Message, want)
+	}
+	if source != "" {
+		t.Errorf("source = %q, want no source label beside a refusal", source)
+	}
+}

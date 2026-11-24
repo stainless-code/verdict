@@ -13,10 +13,16 @@ import (
 	"github.com/stainless-code/verdict/internal/testenv"
 )
 
+// orgGitWaitDelay bounds the fixture's git command, which captures a pipe
+// (GO-CONC-06): a descendant that keeps the pipe open costs a wait, not a hung
+// test.
+const orgGitWaitDelay = 5 * time.Second
+
 func orgGit(t *testing.T, repo string, args ...string) {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = repo
+	cmd.WaitDelay = orgGitWaitDelay
 	cmd.Env = testenv.Base(map[string]string{
 		"GIT_AUTHOR_NAME":     "pack",
 		"GIT_AUTHOR_EMAIL":    "pack@example.invalid",

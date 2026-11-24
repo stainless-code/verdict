@@ -66,8 +66,9 @@ func TestParsePacksSectionRefusals(t *testing.T) {
 }
 
 // requirePacksRefusal proves one document refuses bad-config with a message
-// naming the offending key.
-func requirePacksRefusal(t *testing.T, body, want string) {
+// naming the offending key, and echoes none of the hide fragments — a refusal
+// is a published diagnostic, so a credential-bearing value must never reach it.
+func requirePacksRefusal(t *testing.T, body, want string, hide ...string) {
 	t.Helper()
 	_, ref := Parse([]byte(body))
 	if ref == nil {
@@ -78,6 +79,11 @@ func requirePacksRefusal(t *testing.T, body, want string) {
 	}
 	if !strings.Contains(ref.Message, want) {
 		t.Errorf("message = %q, want it to contain %q", ref.Message, want)
+	}
+	for _, fragment := range hide {
+		if fragment != "" && strings.Contains(ref.Message, fragment) {
+			t.Errorf("message = %q echoes %q", ref.Message, fragment)
+		}
 	}
 }
 
@@ -96,6 +102,8 @@ func TestParseOrgPackPin(t *testing.T) {
 		{"sha ref no path", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"` + sha + `"}}}`, core.ConfigOrgPack{Repo: "central", Ref: sha}},
 		{"tag ref with path", `{"schema_version":"1","packs":{"org_pack":{"repo":"https://example.invalid/acme/packs.git","ref":"v1.2.3","path":"packs/org"}}}`, core.ConfigOrgPack{Repo: "https://example.invalid/acme/packs.git", Ref: "v1.2.3", Path: "packs/org"}},
 		{"bare tag", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"2.0.0"}}}`, core.ConfigOrgPack{Repo: "central", Ref: "2.0.0"}},
+		{"stable path", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"v1.2.3","path":"packs/stable"}}}`, core.ConfigOrgPack{Repo: "central", Ref: "v1.2.3", Path: "packs/stable"}},
+		{"root dot path", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"v1.2.3","path":"."}}}`, core.ConfigOrgPack{Repo: "central", Ref: "v1.2.3", Path: "."}},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -116,29 +124,33 @@ func TestParseOrgPackPin(t *testing.T) {
 
 // TestParseOrgPackRefusals pins one diagnostic per broken pin shape: a
 // mutable branch ref, an empty or dash-led repo, a traversal or absolute
-// path, and an unknown pin key.
+// path, a colon-bearing path, and an unknown pin key. A repo carrying a query
+// credential refuses without echoing the token.
 func TestParseOrgPackRefusals(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		name string
 		body string
 		want string
+		hide string
 	}{
-		{"branch ref", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"main"}}}`, "$.packs.org_pack.ref"},
-		{"missing ref", `{"schema_version":"1","packs":{"org_pack":{"repo":"central"}}}`, "ref"},
-		{"empty repo", `{"schema_version":"1","packs":{"org_pack":{"repo":"","ref":"v1.2.3"}}}`, "$.packs.org_pack.repo"},
-		{"dash repo", `{"schema_version":"1","packs":{"org_pack":{"repo":"-central","ref":"v1.2.3"}}}`, "$.packs.org_pack.repo"},
-		{"query repo", `{"schema_version":"1","packs":{"org_pack":{"repo":"https://h/p?token=x","ref":"v1.2.3"}}}`, "$.packs.org_pack.repo"},
-		{"traversal path", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"v1.2.3","path":"../escape"}}}`, "$.packs.org_pack.path"},
-		{"nested traversal", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"v1.2.3","path":"a/../../escape"}}}`, "$.packs.org_pack.path"},
-		{"absolute path", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"v1.2.3","path":"/etc"}}}`, "$.packs.org_pack.path"},
-		{"unknown pin key", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"v1.2.3","branch":"main"}}}`, "$.packs.org_pack.branch: unknown field"},
-		{"pin not object", `{"schema_version":"1","packs":{"org_pack":[]}}`, "$.packs.org_pack"},
+		{"branch ref", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"main"}}}`, "$.packs.org_pack.ref", ""},
+		{"missing ref", `{"schema_version":"1","packs":{"org_pack":{"repo":"central"}}}`, "ref", ""},
+		{"empty repo", `{"schema_version":"1","packs":{"org_pack":{"repo":"","ref":"v1.2.3"}}}`, "$.packs.org_pack.repo", ""},
+		{"dash repo", `{"schema_version":"1","packs":{"org_pack":{"repo":"-central","ref":"v1.2.3"}}}`, "$.packs.org_pack.repo", ""},
+		{"query repo", `{"schema_version":"1","packs":{"org_pack":{"repo":"https://h/p?token=ghp_DUMMYTOKEN","ref":"v1.2.3"}}}`, "$.packs.org_pack.repo", "ghp_DUMMYTOKEN"},
+		{"fragment repo", `{"schema_version":"1","packs":{"org_pack":{"repo":"https://h/p#ghp_DUMMYTOKEN","ref":"v1.2.3"}}}`, "$.packs.org_pack.repo", "ghp_DUMMYTOKEN"},
+		{"traversal path", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"v1.2.3","path":"../escape"}}}`, "$.packs.org_pack.path", ""},
+		{"nested traversal", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"v1.2.3","path":"a/../../escape"}}}`, "$.packs.org_pack.path", ""},
+		{"absolute path", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"v1.2.3","path":"/etc"}}}`, "$.packs.org_pack.path", ""},
+		{"colon path", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"v1.2.3","path":"packs/release:stable"}}}`, "$.packs.org_pack.path", ""},
+		{"unknown pin key", `{"schema_version":"1","packs":{"org_pack":{"repo":"central","ref":"v1.2.3","branch":"main"}}}`, "$.packs.org_pack.branch: unknown field", ""},
+		{"pin not object", `{"schema_version":"1","packs":{"org_pack":[]}}`, "$.packs.org_pack", ""},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			requirePacksRefusal(t, tc.body, tc.want)
+			requirePacksRefusal(t, tc.body, tc.want, tc.hide)
 		})
 	}
 }

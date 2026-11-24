@@ -506,11 +506,15 @@ func lockMissingOrg(pin *OrgPin) *core.RefusalError {
 }
 
 // orgPinFromSnapshot reads the base-owned pin out of the snapshot's captured
-// config.json. A missing file reads as no pin; a file the parser refuses
-// surfaces that refusal instead of reading as no pin, so a corrupt base
-// configuration fails closed rather than dropping org-pin enforcement.
+// config.json. A row the snapshot recorded missing reads as no pin; a captured
+// file that cannot be read refuses, and so does a file the parser rejects — a
+// corrupt or unreadable base configuration fails closed rather than dropping
+// org-pin enforcement.
 func orgPinFromSnapshot(snap *controls.Snapshot) (*OrgPin, *core.RefusalError) {
-	raw, ok := snap.ReadFile(config.ConfigPath)
+	raw, ok, ref := snap.ReadUsed(config.ConfigPath)
+	if ref != nil {
+		return nil, ref
+	}
 	if !ok {
 		return nil, nil
 	}

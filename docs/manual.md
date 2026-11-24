@@ -778,7 +778,8 @@ immutable version, a 40-hex commit SHA or a semver tag such as `v1.2.3` (a
 branch name like `main` is refused `bad-config`, so the governed rule set can
 never float); `path` is the pack root inside that repository (default `.`),
 confined to a repository-relative slash path — an absolute spelling, a
-backslash, or any `..` segment is refused. `verdict pack sync` vendors that
+backslash, a colon, or any `..` segment is refused, the same grammar the
+vendoring step applies to a clone. `verdict pack sync` vendors that
 pack and hash-locks it (below), `report` names the governing `org_pack`
 version in its human line and `data.org_pack`, and the provenance receipt
 records it as an `org_pack` input beside the locked content hash. The pin is
@@ -897,12 +898,19 @@ succeeded and the loader skips the dotted sibling. A source inside
 step: it reads `packs.org_pack` from the trusted base (never the worktree),
 fetches that one repository — a hermetic clone exactly like `add`'s, or a
 local directory read in place — loads the pack at `path`, and vendors and
-locks it the way `add` would. It is the only fetch: `pack list`, `pack
-check`, and every review path only ever re-verify the vendored tree against
-`verdict.lock` and never touch the network. With no pin the command refuses
-`bad-pack`; an unreachable source refuses `pack-git-failed` (git) or
-`bad-pack` (a local path that carries no pack), and a path that escapes the
-central repository refuses before any write.
+locks it the way `add` would. A git pin differs from `add`'s fetch in two
+ways, both because the pin is immutable: the fetch asks for the pin's exact
+Git ref — `refs/tags/<tag>` for a semver tag, never `clone --branch`, which
+resolves `refs/heads/<tag>` first and so lets a branch of the pin's name
+answer for it, or the 40-hex commit itself for a SHA pin — and a `path` below
+the root first narrows the working tree with `git sparse-checkout` in cone
+mode (git 2.26 or newer), so only the pinned subtree lands on disk. It is the
+only fetch: `pack list`, `pack check`, and every review path only ever
+re-verify the vendored tree against `verdict.lock` and never touch the
+network. With no pin the command refuses `bad-pack`; an unreachable source
+refuses `pack-git-failed` (git) or `bad-pack` (a local path that carries no
+pack), and a path that escapes the central repository refuses before any
+write.
 
 `verdict.lock` is strict JSON (unknown or differently-cased keys refuse,
 exactly as `pack.json`), with `schema_version: "1"` and `packs` sorted by
@@ -944,8 +952,10 @@ with zero network access — and refuse `pack-lock-missing` (no row synced
 from the pinned repository, or a row synced at another `ref`) or
 `pack-lock-drift` (the vendored tree no longer hashes to the locked content)
 instead of falling back to a previous pack set; `run` and `record` inherit the
-same protection through the lock.
-`report` shows the governing version as `org_pack` (human line and
+same protection through the lock. The pin is read from the captured base
+configuration, so a captured `config.json` that cannot be read (deleted, or
+over the control size cap) refuses `controls-unavailable` rather than reading
+as no pin. `report` shows the governing version as `org_pack` (human line and
 `data.org_pack`; see the config example above), and the provenance receipt
 carries it as an `org_pack` input.
 
