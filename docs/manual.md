@@ -2692,20 +2692,24 @@ than from history.
 
 **Routes** (GET, plus HEAD from the mux):
 
-| Route                                                       | Envelope                                                                                                                                                             |
-| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /v1/health`                                            | `serve` — version, roots, watch state, interval, cache counters, `read_only: true` (`false` with `--interactive`, which also carries `interactive: true` and `csrf`) |
-| `GET /v1/roots`                                             | `serve` — the served roots with counts, `truncated`, `skipped`, `discovery`                                                                                          |
-| `GET /v1/bundles`                                           | `serve` — inbox rows, portfolio counts, `partial`, `sources[]`, `errors[]`                                                                                           |
-| `GET /v1/cost?by=repo\|week\|model`                         | `serve` — cost buckets and totals, with `partial`, `sources[]`, `errors[]`                                                                                           |
-| `GET /v1/precision?by=category\|tier`                       | `serve` — stored-join outcomes; `fixed` is `null` and no rate is printed                                                                                             |
-| `GET /v1/roots/{root}/bundles/{bundle}`                     | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                                                                                                      |
-| `GET /v1/roots/{root}/bundles/{bundle}/compare`             | `serve` — `data.compare` against `?baseline={bundle}`; `bad-baseline` refuses                                                                                        |
-| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}`      | `show` — byte-identical `data` to `show --json`                                                                                                                      |
-| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}/copy` | `serve` — `data.{prompt,triage}` copy payloads (read-only)                                                                                                           |
-| `GET /v1/events`                                            | SSE invalidations; absent with `--no-watch`                                                                                                                          |
-| `POST /v1/triage`                                           | `serve` — `data.{sig,status}`; interactive only (see below)                                                                                                          |
-| `POST /v1/kb/promote`                                       | `serve` — `data.rule` appends one learn rule; interactive only (see below)                                                                                           |
+| Route                                                       | Envelope                                                                                                                                                                                   |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /v1/health`                                            | `serve` — version, roots, watch state, interval, cache counters, `read_only: true` (`false` with `--interactive`, which also carries `interactive: true`, `csrf`, `jobs: true`, `actions`) |
+| `GET /v1/roots`                                             | `serve` — the served roots with counts, `truncated`, `skipped`, `discovery`                                                                                                                |
+| `GET /v1/bundles`                                           | `serve` — inbox rows, portfolio counts, `partial`, `sources[]`, `errors[]`                                                                                                                 |
+| `GET /v1/cost?by=repo\|week\|model`                         | `serve` — cost buckets and totals, with `partial`, `sources[]`, `errors[]`                                                                                                                 |
+| `GET /v1/precision?by=category\|tier`                       | `serve` — stored-join outcomes; `fixed` is `null` and no rate is printed                                                                                                                   |
+| `GET /v1/roots/{root}/bundles/{bundle}`                     | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                                                                                                                            |
+| `GET /v1/roots/{root}/bundles/{bundle}/compare`             | `serve` — `data.compare` against `?baseline={bundle}`; `bad-baseline` refuses                                                                                                              |
+| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}`      | `show` — byte-identical `data` to `show --json`                                                                                                                                            |
+| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}/copy` | `serve` — `data.{prompt,triage}` copy payloads (read-only)                                                                                                                                 |
+| `GET /v1/events`                                            | SSE invalidations; absent with `--no-watch`                                                                                                                                                |
+| `POST /v1/triage`                                           | `serve` — `data.{sig,status}`; interactive only (see below)                                                                                                                                |
+| `POST /v1/kb/promote`                                       | `serve` — `data.rule` appends one learn rule; interactive only (see below)                                                                                                                 |
+| `POST /v1/jobs/verify`                                      | `serve` — queued sandbox verify snapshot; interactive only (see below)                                                                                                                     |
+| `POST /v1/jobs/post-preview`                                | `serve` — queued dry-run preview snapshot; interactive only (see below)                                                                                                                    |
+| `POST /v1/jobs/{id}/cancel`                                 | `serve` — cancelled job snapshot; interactive only (see below)                                                                                                                             |
+| `GET /v1/jobs/{id}`                                         | `serve` — job snapshot; interactive only (see below)                                                                                                                                       |
 
 The `bundles` SSE event carries one compact envelope with the root, detector
 (`tick` or `sweep`), changed and removed bundle names, and `truncated`. Events
@@ -2763,6 +2767,39 @@ envelope (`error.code`), never a `5xx`. The embedded UI shows triage controls
 on Detail and Compare findings and a KB promotion form only when `/v1/health`
 advertises `interactive: true` — never in `static` mode — and reads the
 operator's result or refusal back from the status line.
+
+**Interactive jobs (Tier B).** With `--interactive`, `GET /v1/health` also
+advertises `jobs: true` and `actions: ["verify", "post-preview"]`. Three
+`POST` job routes queue background work, and one `GET` route reads it back:
+`POST /v1/jobs/verify` accepts `root` and `bundle` only, then runs
+bundle-scoped `verify --sandbox` over the whole bundle, strictly sandboxed
+(`Sandbox: true` is hardcoded, the CLI default 300-second watchdog,
+`patch.json` write, query-cache invalidation on completion); verify has no
+single-finding filter, so a `sig` field is an unknown field and refuses
+`400 bad-body` before anything is queued; `POST /v1/jobs/post-preview`
+accepts `root` and `bundle`, then runs `post --dry-run` strictly
+`DryRun: true`, so no host write can ever ship (`post --dry-run` performs
+zero host writes but may issue read-only host CLI calls, e.g. checking the PR
+head SHA, using ambient credentials); `POST /v1/jobs/{id}/cancel` cancels a
+queued or running job through its context and answers idempotently;
+`GET /v1/jobs/{id}` looks up one job under the session guard. A `POST` job
+route answers `202` with the queued snapshot (`id`, `kind`, `root`,
+`bundle`, `status`, timestamps); `GET` and `cancel` answer `200` with the
+same snapshot shape. Jobs run with bounded concurrency (4) and bounded
+retained history (64), each holding a bundle-scoped `storelock` on
+`findings.json` (distinct from the knowledge-base lock, so no lock nesting);
+a job that cannot take the lock fails as a typed `store-busy` refusal without
+running. A running verify job holds that bundle lock for its whole run, so
+concurrent triage or a second job on the same bundle also answers
+`store-busy` until the first job settles. Status flows `queued`, `running`,
+then `succeeded`, `failed`, or `cancelled`, streamed on the existing
+`/v1/events` channel as `jobs` SSE events and rendered in the Detail drawer
+with a `Cancel` while active and the result or refusal once settled. The
+Detail view shows the bundle-level `Reproduce in sandbox` and
+`Preview PR post` buttons with the live drawer only when `interactive` is
+advertised and the page is not `static`. Every `POST` job route is gated
+exactly like the triage and KB writes (session, CSRF, Origin, JSON);
+without `--interactive` every job path fails closed as read-only.
 
 A path carrying a traversal segment, a backslash, or a line break — a control
 rune, U+2028, or U+2029 — is refused before routing with the `404` `no such
@@ -4840,10 +4877,11 @@ shape from another host (`PR.json` normalized to one schema: `provider`,
 `write_toc_roles` and the whole validate+merge path run unchanged — anchors
 validate against `full.diff` hunks regardless of host. `record`, `report`,
 `triage`, `show`, `next` work on provider bundles as-is. `post` submits to
-GitHub, GitLab, Forgejo, and Bitbucket; `ready` advises on GitHub and GitLab, plain
+GitHub, GitLab, Forgejo, Bitbucket, and Azure DevOps; `ready` advises on GitHub
+and GitLab, plain
 `calibrate` joins live threads on both, and `adopt` merges into any bundle
 verdict can post to (its re-anchor reads the stored hunks and never shells a
-host CLI). `post` on `gitcafe` and `azure`, and `ready` and plain
+host CLI). `post` on `gitcafe`, and `ready` and plain
 `calibrate` on any host but GitHub and GitLab, refuse typed, while `adopt` into
 a host without a submit path refuses `provider-unimplemented` naming the host,
 and `calibrate --probe` grades any bundle offline. The refusal names the gap
@@ -4856,27 +4894,31 @@ so an agent can plan before it writes a review. `approve` and
 `request_changes` split the binding verdicts because hosts differ: GitHub
 carries both, while GitLab approves a merge request but has no request-changes
 review event, so a bound request-changes posts the discussions plus the summary
-note and warns that the verdict did not bind. `review_verdicts` stays as the
+note and warns that the verdict did not bind. Azure DevOps records a verdict as
+a reviewer vote keyed by an identity verdict does not resolve, so `approve` and
+`request_changes` both read false there and a bound verdict posts its anchored
+threads plus the body thread, with a warning. `review_verdicts` stays as the
 compatibility sum `approve && request_changes` for consumers written before the
 split, and carries no reason of its own — the two flags explain it; new readers
 branch on those two flags. `thread_resolution` is true on GitHub and GitLab:
 `threads resolve` closes a verdict-authored thread through `resolveReviewThread`
 or GitLab's discussion resolved flag.
-Forgejo has no documented resolve endpoint, so it reads false there and on every
+Forgejo has no documented resolve endpoint and Azure DevOps's thread-status
+write is not wired yet, so `thread_resolution` reads false there and on every
 fetch-only host. Bitbucket does publish a resolve endpoint —
 `/2.0/repositories/{workspace}/{repo_slug}/pullrequests/{id}/comments/{comment_id}/resolve` —
 but verdict has not wired thread resolution for it yet, so it reads false there
 too; resolution stays a host-CLI step the prompts hand back to the agent. `unsupported` carries
 one machine-readable code per absent capability, keyed by capability name:
 
-| Code                       | Meaning                                                                         |
-| -------------------------- | ------------------------------------------------------------------------------- |
-| `fetch-only`               | no submit path for the host, so no post, anchors, or binding verdicts           |
-| `no-request-changes-event` | the host has no request-changes review event; the post degrades, with a warning |
-| `no-approve-verdict`       | the host posts but cannot record an approval                                    |
-| `no-inline-anchors`        | the host takes a body but no anchored comment                                   |
-| `no-resolve-mutation`      | verdict has no thread-resolve call for this host                                |
-| `unknown-host`             | the provider is not one verdict reads                                           |
+| Code                       | Meaning                                                                                           |
+| -------------------------- | ------------------------------------------------------------------------------------------------- |
+| `fetch-only`               | no submit path for the host, so no post, anchors, or binding verdicts                             |
+| `no-request-changes-event` | the host has no request-changes review event; the post degrades, with a warning                   |
+| `no-approve-verdict`       | the host posts but cannot record an approval (no approve review event); the post comments instead |
+| `no-inline-anchors`        | the host takes a body but no anchored comment                                                     |
+| `no-resolve-mutation`      | verdict has no thread-resolve call for this host                                                  |
+| `unknown-host`             | the provider is not one verdict reads                                                             |
 
 **Linked issues are GitHub-only in this build.** A GitLab, GitCafe, Forgejo,
 Bitbucket, or Azure PR whose title or body carries a closing keyword keeps its
@@ -4895,7 +4937,7 @@ the issue lands, or one warning names why it did not. A third-party tracker
 | `gitcafe`   | `cafe pr view/diff/reviews/comments`                                                                                                                                     | `cafe auth login` (or `CAFE_TOKEN`)                              | reads `.data.*` envelope; threads paged via `--cursor`; hunks render only when `.patch` text ships; no submit path — `post` refuses `provider-unimplemented` |
 | `forgejo`   | REST `curl` (`$FORGEJO_HOST/api/v1`, `$FORGEJO_TOKEN`) — neither `fj` nor `tea` exposes JSON review reads                                                                | token env                                                        | inline threads aggregated per review id; a review comment anchors on a file line number                                                                      |
 | `bitbucket` | REST `curl` (`$BITBUCKET_TOKEN` Bearer or user+password Basic)                                                                                                           | token env                                                        | diffstat/comments paginated server-side; approve-only (no request-changes event)                                                                             |
-| `azure`     | `az repos pr show` + `az rest` threads/iterations; diff via temp-clone `git fetch` of the two SHAs                                                                       | `az login` / `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG` required | needs git reachability to the repo remote; no org/project auto-detect                                                                                        |
+| `azure`     | `az repos pr show` + `az rest` threads/iterations; diff via temp-clone `git fetch` of the two SHAs                                                                       | `az login` / `AZURE_DEVOPS_EXT_PAT`, `AZURE_DEVOPS_ORG` required | needs git reachability to the repo remote; no org/project auto-detect; `post` anchors threads but records no verdict (no vote write)                         |
 
 Neither `curl` host takes its credential on the command line, where `ps` and
 argv logs would show it: the client reads a one-directive config document from
@@ -4962,12 +5004,13 @@ discussions. On GitLab a review with no comments posts only the summary note,
 and a summary write whose response was lost can be retried because nothing
 landed to observe; that case is the same lost-response shape GitHub documents.
 
-| Provider    | Submit writes, in order                                                                                                                                                                                                                                                                            | Gaps                                                                                                                                                                                             |
-| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `github`    | one `repos/<owner>/<repo>/pulls/<n>/reviews` POST carrying `body`, `event`, and every inline comment (`gh api … --method POST --input -`)                                                                                                                                                          | —                                                                                                                                                                                                |
-| `gitlab`    | one MR discussion per finding — a `position` with the MR's `base_sha`/`start_sha`/`head_sha`, both paths, `new_line` for an added line, both numbers for an unchanged one, `old_line` for a deletion — then one summary note, then `approve` (pinned by `sha`) only when the review is an approval | approve-only (GitLab has no `request-changes` event — the comments still post, with a warning); a multi-line anchor lands on its end line; `request_changes` and `review_verdicts` stay false    |
-| `forgejo`   | one `api/v1/repos/<owner>/<repo>/pulls/<n>/reviews` POST over `curl` carrying `body`, `event` (`APPROVED` for an approval), `commit_id`, and every comment (`new_position` or `old_position`, both file line numbers)                                                                              | —                                                                                                                                                                                                |
-| `bitbucket` | one `api.bitbucket.org/2.0/repositories/<workspace>/<repo>/pullrequests/<n>/comments` POST per finding (`inline: {path, to}` for a new-side line, `{path, from}` for an old-side line), then one general comment carrying the body, then `approve` (only when the review is an approval)           | approve-only (Bitbucket has no `request-changes` event — the comments still post, with a warning); a multi-line anchor lands on its end line; `request_changes` and `review_verdicts` stay false |
+| Provider    | Submit writes, in order                                                                                                                                                                                                                                                                                                                                                                                                                                              | Gaps                                                                                                                                                                                                                                               |
+| ----------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `github`    | one `repos/<owner>/<repo>/pulls/<n>/reviews` POST carrying `body`, `event`, and every inline comment (`gh api … --method POST --input -`)                                                                                                                                                                                                                                                                                                                            | —                                                                                                                                                                                                                                                  |
+| `gitlab`    | one MR discussion per finding — a `position` with the MR's `base_sha`/`start_sha`/`head_sha`, both paths, `new_line` for an added line, both numbers for an unchanged one, `old_line` for a deletion — then one summary note, then `approve` (pinned by `sha`) only when the review is an approval                                                                                                                                                                   | approve-only (GitLab has no `request-changes` event — the comments still post, with a warning); a multi-line anchor lands on its end line; `request_changes` and `review_verdicts` stay false                                                      |
+| `forgejo`   | one `api/v1/repos/<owner>/<repo>/pulls/<n>/reviews` POST over `curl` carrying `body`, `event` (`APPROVED` for an approval), `commit_id`, and every comment (`new_position` or `old_position`, both file line numbers)                                                                                                                                                                                                                                                | —                                                                                                                                                                                                                                                  |
+| `bitbucket` | one `api.bitbucket.org/2.0/repositories/<workspace>/<repo>/pullrequests/<n>/comments` POST per finding (`inline: {path, to}` for a new-side line, `{path, from}` for an old-side line), then one general comment carrying the body, then `approve` (only when the review is an approval)                                                                                                                                                                             | approve-only (Bitbucket has no `request-changes` event — the comments still post, with a warning); a multi-line anchor lands on its end line; `request_changes` and `review_verdicts` stay false                                                   |
+| `azure`     | one `{org}/{project}/_apis/git/repositories/{repo}/pullRequests/<n>/threads` POST per finding — `threadContext.filePath` carries the leading slash, `rightFileStart`/`rightFileEnd` for a new-side line and `leftFileStart`/`leftFileEnd` for a deleted one — then one general thread carrying the body (`az rest --resource 499b84ac-… --method post --body @file` after `az login`, the body staged in a private `0600` file so no token or body reaches the argv) | `approve` and `request_changes` stay false (Azure records a verdict as a reviewer vote on an identity verdict does not resolve — the threads still post, with a warning); a multi-line anchor lands on its end line; a moved head refuses the post |
 
 Forgejo has no CLI, so both directions are one `curl` call against
 `$FORGEJO_HOST/api/v1`; the write is GitHub-shaped — one atomic review POST
@@ -5006,6 +5049,40 @@ the review — a comment post on a moved head still proceeds with the drift
 warning. Like GitLab, Bitbucket has no request-changes review event, so a
 bound request-changes posts the inline comments plus the summary comment,
 warns that the verdict did not bind, and records `withheld` in `post.json`.
+
+Azure DevOps has no review CLI, so both directions are one `az rest` call
+against `https://dev.azure.com/{org}/{project}/_apis/git/repositories/{repo}`:
+`verdict post --provider azure` authenticates through `az login`, and every call
+asks for the Azure DevOps Entra application with `--resource
+499b84ac-1321-427f-aa17-267ca6975798` — `az` cannot derive a resource from a
+`dev.azure.com` URL and refuses to run without one, and `az rest` does not read
+`AZURE_DEVOPS_EXT_PAT` (that variable belongs to the `az devops` extension and
+to the git clone on the fetch path). No token ever reaches an argv or an error
+sentence, and every write stages its JSON body in a private `0600` file passed
+as `--body @file`. Because that token is spent on whatever host the
+organization names, `AZURE_DEVOPS_ORG` is held to `dev.azure.com` or
+`{org}.visualstudio.com`: any other host refuses `bad-target` before `az` runs,
+and the refusal never echoes the value. A RIGHT anchor becomes
+`rightFileStart`/`rightFileEnd` and a LEFT anchor `leftFileStart`/`leftFileEnd`,
+both at offset 1 on the anchor line, with `filePath` carrying the leading slash
+the API requires. A finding with no placeable anchor is withheld, an anchor
+whose side the change does not have on that file is withheld, and a multi-line
+range lands on its end line — each loss is counted in the envelope `warnings`,
+and an unreadable bundle hunk index refuses before any write. A thread carries
+**no commit pin**, so `post` reads `lastMergeSourceCommit.commitId` before the
+first write and refuses the whole post when the head moved since fetch: an
+anchor would otherwise land on code the review never covered.
+
+The head read is the only pre-write call; the duplicate guards stay in the
+shared path. Rechecking threads counts **anchored** threads that are still
+active or pending and skips the general threads Azure mixes into the same
+list — a merge notice, a vote, and verdict's own summary thread are not review
+threads, so a second run is never blocked by the summary this tool wrote. The
+summary upsert patches the opening comment of the thread it wrote
+(`.../threads/{threadId}/comments/{commentId}`), so a re-run rewrites one
+summary instead of stacking a new one. Azure takes no review event: `approve`
+and `request_changes` read false, and a bound verdict posts its threads and
+body thread with a warning plus a `withheld` entry in `post.json`.
 
 The repeat guard is the same on every host: the body's
 `<!-- verdict-review payload=… -->` marker is read from the fetched
