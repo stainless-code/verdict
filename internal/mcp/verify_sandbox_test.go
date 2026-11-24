@@ -23,3 +23,20 @@ func TestVerifySandboxArgumentDecodes(t *testing.T) {
 		t.Error("req.Sandbox = false, want true")
 	}
 }
+
+// TestVerifySandboxNetworkOnlyArgumentDecodes proves the Linux network-only
+// opt-in reaches the core request with its own field.
+func TestVerifySandboxNetworkOnlyArgumentDecodes(t *testing.T) {
+	a, err := newArgs(json.RawMessage(`{"sandboxNetworkOnly":true}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := &verifycore.Request{}
+	decodeVerify(req, a)
+	if err := a.done(); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if req.Sandbox || !req.SandboxNetworkOnly {
+		t.Errorf("req sandbox/networkOnly = %v/%v, want false/true", req.Sandbox, req.SandboxNetworkOnly)
+	}
+}

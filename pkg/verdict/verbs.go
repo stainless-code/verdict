@@ -372,10 +372,26 @@ type VerifyRequest struct {
 	EnvAllowlist []string
 	// Sandbox wraps the command in the host's enforced sandbox: bwrap on
 	// Linux (no network, empty credential dirs, a writable reviewed root, a
-	// private /tmp), sandbox-exec on macOS (no network, loopback included;
-	// credentials stay visible). The call refuses with sandbox-unavailable
-	// when the host cannot enforce it instead of running unwrapped.
+	// private /tmp), sandbox-exec on macOS (no network, loopback included; no
+	// Mach services; writes only to the reviewed root and a private TMPDIR;
+	// credential paths and the shared host temp roots denied). The call
+	// refuses with sandbox-unavailable when the host cannot enforce it, or when
+	// the reviewed root's shape cannot be protected, instead of running
+	// unwrapped, and never falls back to SandboxNetworkOnly. The Linux shapes:
+	// no .git; a symlinked .git; a .git that is neither a directory nor a
+	// gitdir: file; a gitdir or commondir that does not resolve to an existing
+	// directory; a gitdir that is the root itself; a pointer file that is not
+	// regular, unreadable, or over its cap; and a pointer whose walk (git's
+	// own, `..` included) passes through a symlink or a missing component
+	// inside the root.
 	Sandbox bool
+	// SandboxNetworkOnly is the explicit Linux opt-in for hosts without
+	// bubblewrap: `unshare --user --map-root-user --net`, network isolation
+	// alone. The host filesystem, the host /proc, and filesystem unix sockets
+	// stay reachable, so the run is never reported Sandboxed; its
+	// SandboxMechanism is "unshare-net". It refuses sandbox-unavailable on
+	// every other host and bad-flags together with Sandbox.
+	SandboxNetworkOnly bool
 }
 
 // VerifyResponse carries the verify outcome and the recorded proof.
@@ -388,6 +404,10 @@ type VerifyResponse struct { //nolint:govet // field order is the public API sur
 	Group    string // deep validation: the group the receipt certifies
 	Head     string // deep validation: the head the command ran on
 	Receipt  string // deep validation: the recorded receipt path
+	// SandboxMechanism names the wrapper the command ran under: "bwrap" or
+	// "sandbox-exec" (the full shape), "unshare-net" (network-only), or empty
+	// when the run was not wrapped.
+	SandboxMechanism string
 }
 
 // Verify runs the recorded verifyCmd with the watchdog and records proof.
@@ -397,13 +417,14 @@ func (c *Client) Verify(ctx context.Context, req *VerifyRequest) (*VerifyRespons
 		return nil, err
 	}
 	resp, ref := verifycore.Run(ctx, &verifycore.Request{
-		ReadRequest:  rr,
-		TimeoutRaw:   req.Timeout,
-		Group:        req.Group,
-		Command:      req.Command,
-		Sandbox:      req.Sandbox,
-		EnvAllowlist: req.EnvAllowlist,
-		Environ:      req.Env,
+		ReadRequest:        rr,
+		TimeoutRaw:         req.Timeout,
+		Group:              req.Group,
+		Command:            req.Command,
+		Sandbox:            req.Sandbox,
+		SandboxNetworkOnly: req.SandboxNetworkOnly,
+		EnvAllowlist:       req.EnvAllowlist,
+		Environ:            req.Env,
 	})
 	if ref != nil {
 		return nil, refusalErr(ref)
@@ -418,6 +439,9 @@ func (c *Client) Verify(ctx context.Context, req *VerifyRequest) (*VerifyRespons
 		Group:    data.Group,
 		Head:     data.Head,
 		Receipt:  data.Receipt,
+		// The mechanism rides beside the deep-validation fields because a
+		// patch run and a group run both carry it.
+		SandboxMechanism: data.SandboxMechanism,
 	}, nil
 }
 
