@@ -110,6 +110,29 @@ func TestMTDShownWhenCapConfigured(t *testing.T) {
 	assertMTDEnvelope(t, st)
 }
 
+// TestMTDShownWhenRunsZero proves the human --cost output keeps the
+// mtd: line even when no usable cost record was recorded for the bundle.
+func TestMTDShownWhenRunsZero(t *testing.T) {
+	root := t.TempDir()
+	dir := filepath.Join(root, ".verdict", "state", "42")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeCostless(t, dir, "budget.json", `[{"at":"2026-05-10T12:00:00Z","projected_usd":2}]`)
+	writeCostless(t, dir, "findings.json", `[]`)
+	st := makeMTDState(root, dir)
+	loadStateCost(st)
+	assertMTD(t, st)
+	assertMTDEnvelope(t, st)
+}
+
+func writeCostless(t *testing.T, dir, name, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestMTDOmittedWhenNoCap(t *testing.T) {
 	dir := t.TempDir()
 	st := &state{

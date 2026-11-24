@@ -25,9 +25,6 @@ import (
 const (
 	maxSpendReceiptBytes = 1 << 20
 	spendReceiptMode     = 0o600
-	spendDecimalFrac     = 6
-	spendTwo             = 2
-	spendFive            = 5
 )
 
 func (st *state) authorizeSpend(ctx context.Context, dir string, rounds int) *core.RefusalError {
@@ -79,7 +76,7 @@ func (st *state) authorizeProjection(ctx context.Context, dir string, captured *
 	// ordinary spend authorization. Unknown stays unknown — a strict
 	// posture refuses on any unknown in either leg; a lenient posture
 	// enforces against known spend and warns about unknown.
-	if ref := st.authorizeMonthlyCap(ctx, dir, captured, projection, policy); ref != nil {
+	if ref := st.authorizeMonthlyCap(projection, policy); ref != nil {
 		return ref
 	}
 	authorization := spend.Authorize(projection, policy, st.req.ConsentOverBudget)
@@ -93,10 +90,11 @@ func (st *state) authorizeProjection(ctx context.Context, dir string, captured *
 }
 
 // authorizeMonthlyCap enforces the per-repo monthly spend ceiling against
-// month-to-date recorded spend plus this run's projection.
-func (st *state) authorizeMonthlyCap(
-	_ context.Context, _ string, _ *config.RunState, projection spend.Projection, policy spend.Policy,
-) *core.RefusalError {
+// month-to-date recorded spend plus this run's projection. When the
+// pending projection is unknown, month-to-date known spend alone is
+// enforced: if it already exceeds the ceiling the run refuses rather
+// than launching unpriced.
+func (st *state) authorizeMonthlyCap(projection spend.Projection, policy spend.Policy) *core.RefusalError {
 	if policy.MonthlyCap == "" {
 		return nil
 	}
@@ -105,64 +103,70 @@ func (st *state) authorizeMonthlyCap(
 	}
 	now := st.now()
 	repoRoot := st.req.RepoRootPath()
-	mtd := spend.AggregateMTD(repoRoot, now)
+	mtd := spend.AggregateMTD(readcommon.StateDir(repoRoot), now)
+	if mtd.Warning != "" {
+		st.warn(mtd.Warning)
+	}
 	projected := projectedString(projection)
-	hasUnknown := monthlyHasUnknown(mtd, projection)
-	if refusal := st.checkMonthlyUnknown(policy, hasUnknown); refusal != nil {
+	projUnknown := projectionUnknown(projection, projected)
+	if refusal := st.checkMonthlyUnknown(policy, mtd.UnknownCount > 0, projUnknown); refusal != nil {
 		return refusal
 	}
 	combined := sumExact(mtd.KnownUSD, projected)
-	return st.checkMonthlyExceeds(policy, mtd, projected, combined, hasUnknown)
+	return st.checkMonthlyExceeds(policy, mtd, projected, combined, projUnknown)
 }
 
-func (st *state) checkMonthlyUnknown(policy spend.Policy, hasUnknown bool) *core.RefusalError {
-	if !policy.RequireKnown || !hasUnknown {
+// projectionUnknown reports whether the pending run's price is not fully
+// known: unknown phases, or no known projection amount at all (the
+// production no-pricing path carries no known amount).
+func projectionUnknown(projection spend.Projection, projected string) bool {
+	return len(projection.Unknown) > 0 || projected == ""
+}
+
+func (st *state) checkMonthlyUnknown(policy spend.Policy, mtdUnknown, projUnknown bool) *core.RefusalError {
+	if !policy.RequireKnown {
+		return nil
+	}
+	if !mtdUnknown && !projUnknown {
 		return nil
 	}
 	if st.req.ConsentOverBudget {
 		return nil
 	}
-	msg := "monthly spend unknown — month-to-date has unknown-cost receipts and the operator "
-	msg += "settings require a known estimate — consent before this run starts or price the receipts"
+	culprit := "the pending projection has unknown phases"
+	if mtdUnknown && projUnknown {
+		culprit = "month-to-date has unknown-cost receipts and the pending projection has unknown phases"
+	} else if mtdUnknown {
+		culprit = "month-to-date has unknown-cost receipts"
+	}
+	msg := "monthly spend unknown — " + culprit +
+		" — the operator settings require a known estimate — consent before this run starts or price the receipts"
 	return st.refuse("budget-unknown", msg)
 }
 
-func (st *state) checkMonthlyExceeds(policy spend.Policy, mtd spend.MTD, projected, combined string, hasUnknown bool) *core.RefusalError {
-	if combined == "" {
-		st.warnIfEmptyCombined(policy, mtd, hasUnknown)
-		return nil
+func (st *state) checkMonthlyExceeds(policy spend.Policy, mtd spend.MTD, projected, combined string, projUnknown bool) *core.RefusalError {
+	if combined != "" && spend.Exceeds(combined, policy.MonthlyCap) && !st.req.ConsentOverBudget {
+		return st.refuse("spend-capped", monthlyExceedsMessage(policy, mtd, projected, combined))
 	}
-	if refusal := st.checkExceedsConsent(policy, mtd, projected, combined); refusal != nil {
-		return refusal
+	if mtd.UnknownCount > 0 || projUnknown {
+		st.warnMonthlyUnknown(mtd, projUnknown)
 	}
-	st.warnIfUnknownOnly(policy, mtd, hasUnknown)
 	return nil
 }
 
-func (st *state) warnIfEmptyCombined(policy spend.Policy, mtd spend.MTD, hasUnknown bool) {
-	if hasUnknown && !policy.RequireKnown && policy.MonthlyCap != "" {
-		st.warnMonthlyUnknown(mtd)
+// monthlyExceedsMessage names the known month-to-date spend, the
+// effective ceiling, and — when the pending projection is unknown —
+// that known spend alone already exceeded it.
+func monthlyExceedsMessage(policy spend.Policy, mtd spend.MTD, projected, combined string) string {
+	if projected == "" {
+		return "monthly spend ceiling $" + policy.MonthlyCap + " exceeded — month-to-date " +
+			"$" + displayOrZero(mtd.KnownUSD) + " exceeds it alone, with the pending projection unknown — " +
+			"pass run --consent-over-budget for this invocation or raise monthly_budget_usd"
 	}
-}
-
-func (st *state) checkExceedsConsent(policy spend.Policy, mtd spend.MTD, projected, combined string) *core.RefusalError {
-	if !spend.Exceeds(combined, policy.MonthlyCap) {
-		return nil
-	}
-	if st.req.ConsentOverBudget {
-		return nil
-	}
-	msg := "monthly spend ceiling $" + policy.MonthlyCap + " exceeded — month-to-date " +
+	return "monthly spend ceiling $" + policy.MonthlyCap + " exceeded — month-to-date " +
 		"$" + displayOrZero(mtd.KnownUSD) + " plus projected $" + displayOrZero(projected) +
 		" = $" + combined + " — pass run --consent-over-budget for this invocation " +
 		"or raise monthly_budget_usd"
-	return st.refuse("spend-capped", msg)
-}
-
-func (st *state) warnIfUnknownOnly(policy spend.Policy, mtd spend.MTD, hasUnknown bool) {
-	if hasUnknown && !policy.RequireKnown {
-		st.warnMonthlyUnknown(mtd)
-	}
 }
 
 func projectedString(p spend.Projection) string {
@@ -175,13 +179,10 @@ func projectedString(p spend.Projection) string {
 	return ""
 }
 
-func monthlyHasUnknown(mtd spend.MTD, p spend.Projection) bool {
-	if mtd.UnknownCount > 0 {
-		return true
-	}
-	return len(p.Unknown) > 0
-}
-
+// sumExact adds two exact decimals. An empty leg reads as zero when the
+// other leg is known — the lower bound for just the known side — while
+// two empty legs stay "" (nothing known at all): an unknown projection
+// never hides known month-to-date spend.
 func sumExact(a, b string) string {
 	if a == "" && b == "" {
 		return ""
@@ -190,21 +191,15 @@ func sumExact(a, b string) string {
 		a = "0"
 	}
 	if b == "" {
-		// If only MTD is known and the projection is unknown, the lower
-		// bound is still the MTD alone — but the caller only reaches this
-		// when there is a known projection or a known MTD to compare.
-		// For the combined check we need both legs; with an unknown
-		// projection we must not treat the MTD alone as over-cap.
-		return ""
+		b = "0"
 	}
-	// Both known.
 	sumRat, okA := new(big.Rat).SetString(a)
 	sumRatB, okB := new(big.Rat).SetString(b)
 	if !okA || !okB {
 		return ""
 	}
 	sumRat.Add(sumRat, sumRatB)
-	return formatRatForSpend(sumRat)
+	return spend.FormatRat(sumRat)
 }
 
 func displayOrZero(s string) string {
@@ -214,47 +209,20 @@ func displayOrZero(s string) string {
 	return s
 }
 
-func (st *state) warnMonthlyUnknown(mtd spend.MTD) {
-	if mtd.UnknownCount == 0 {
+// warnMonthlyUnknown names the unknown legs it enforced against: the
+// unknown-cost month-to-date receipts, the unknown pending projection,
+// or both. The caller guarantees at least one is unknown.
+func (st *state) warnMonthlyUnknown(mtd spend.MTD, projectionUnknown bool) {
+	tail := " — enforced against known spend only ($" + displayOrZero(mtd.KnownUSD) + ")"
+	if mtd.UnknownCount > 0 {
+		msg := "monthly spend has " + strconv.Itoa(mtd.UnknownCount) + " unknown-cost receipt(s) in " + mtd.Month
+		if projectionUnknown {
+			msg += " and the pending projection is unknown"
+		}
+		st.warn(msg + tail)
 		return
 	}
-	msg := "monthly spend has " + strconv.Itoa(mtd.UnknownCount) + " unknown-cost receipt(s) in "
-	msg += mtd.Month + " — enforced against known spend only ($" + displayOrZero(mtd.KnownUSD) + ")"
-	st.warn(msg)
-}
-
-// formatRat renders exact decimal.
-func formatRatForSpend(r *big.Rat) string {
-	if r.IsInt() {
-		return r.Num().String()
-	}
-	if scale, ok := decimalScaleForSpend(r.Denom()); ok {
-		return r.FloatString(scale)
-	}
-	return r.FloatString(spendDecimalFrac)
-}
-
-func decimalScaleForSpend(den *big.Int) (int, bool) {
-	rest := new(big.Int).Set(den)
-	twos, fives := 0, 0
-	two, five := big.NewInt(spendTwo), big.NewInt(spendFive)
-	zero := big.NewInt(0)
-	one := big.NewInt(1)
-	for new(big.Int).Rem(rest, two).Cmp(zero) == 0 {
-		rest.Div(rest, two)
-		twos++
-	}
-	for new(big.Int).Rem(rest, five).Cmp(zero) == 0 {
-		rest.Div(rest, five)
-		fives++
-	}
-	if rest.Cmp(one) != 0 {
-		return 0, false
-	}
-	if twos > fives {
-		return twos, true
-	}
-	return fives, true
+	st.warn("monthly spend's pending projection is unknown" + tail)
 }
 
 func (st *state) spendPolicy(captured *config.RunState) spend.Policy {
@@ -262,6 +230,7 @@ func (st *state) spendPolicy(captured *config.RunState) spend.Policy {
 	if st.req.SpendPolicy != nil {
 		current := *st.req.SpendPolicy
 		current.Budget = policy.Budget
+		current.MonthlyCap = policy.MonthlyCap
 		policy = current
 	}
 	if value := st.req.Env["REVIEW_BUDGET_USD"]; value != "" {
@@ -286,12 +255,18 @@ func capturedSpendPolicy(captured *config.RunState) spend.Policy {
 	return policy
 }
 
+// monthlyCapString is the enforced monthly literal: the effective
+// (post-precedence) ceiling. The repository layer's display literal is
+// used only when that cap is the effective value — a stricter personal
+// cap must not be enforced at the looser displayed one.
 func monthlyCapString(settings *config.Resolved) string {
 	if settings.Spend.MonthlyBudgetUSD == nil {
 		return ""
 	}
-	if settings.Spend.MonthlyRepoCap != nil && settings.Defaults.Values.MonthlyDisplay != "" {
-		return settings.Defaults.Values.MonthlyDisplay
+	if repo := settings.Spend.MonthlyRepoCap; repo != nil && *repo == *settings.Spend.MonthlyBudgetUSD {
+		if display := settings.Defaults.Values.MonthlyDisplay; display != "" {
+			return display
+		}
 	}
 	return formatUSD(*settings.Spend.MonthlyBudgetUSD)
 }

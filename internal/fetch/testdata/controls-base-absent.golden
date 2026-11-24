@@ -659,7 +659,7 @@ api-base-panel
       "name": "run.json",
       "status": "included",
       "sha256": "RUNTIME_SHA256",
-      "bytes": 7677
+      "bytes": 7903
     },
     {
       "kind": "bundle",
@@ -877,6 +877,10 @@ api-base-panel
               "layer": "built-in",
               "source": "built-in"
             },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "panel": {
               "layer": "repo",
               "source": ".verdict/config.json"
@@ -947,6 +951,10 @@ api-base-panel
           "layer": "built-in",
           "source": "built-in"
         },
+        "monthly_budget_usd": {
+          "layer": "built-in",
+          "source": "built-in"
+        },
         "panel": {
           "layer": "repo",
           "source": ".verdict/config.json"
@@ -980,7 +988,7 @@ api-base-panel
   "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
   "captured_at": "0000-00-00T00:00:00Z",
   "config_sha256": "58e27b3168ec974a8b85e537eb76211975aee57cb18183d8b9ee42bc7b28b874",
-  "inputs_sha256": "a72297d1ccc956948b1457d1eb9b1f6ffc1472648c2a75c3a44f3fb00d991d10",
+  "inputs_sha256": "e105777e821ee89af4cdff9cb0229771ae8034e177ae9a81cd54add3a1ff0e56",
   "inventory": {
     "config.json": "58e27b3168ec974a8b85e537eb76211975aee57cb18183d8b9ee42bc7b28b874"
   },

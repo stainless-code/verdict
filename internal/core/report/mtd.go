@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/spend"
 )
 
@@ -20,7 +21,10 @@ func monthToDate(st *state) *core.ReportMTD {
 	}
 	now := parseNow(st.now)
 	repoRoot := st.req.RepoRootPath()
-	agg := spend.AggregateMTD(repoRoot, now)
+	agg := spend.AggregateMTD(readcommon.StateDir(repoRoot), now)
+	if agg.Warning != "" {
+		st.warn(agg.Warning)
+	}
 	return buildMTD(st, agg)
 }
 
