@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -18,6 +19,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
 	"github.com/stainless-code/verdict/internal/forgejo"
+	"github.com/stainless-code/verdict/internal/storelock"
 )
 
 // postServer starts one allow-post server over cfg with the given post
@@ -424,5 +426,165 @@ func TestPostSubmitSurvivesACanceledRequest(t *testing.T) {
 	server.handlePostSubmit(recorder, req)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("submit = %d %s, want 200 with the tab closed", recorder.Code, recorder.Body)
+	}
+}
+
+// okPostRunners are the minimal succeeding preview and submit runners.
+func okPostRunners() (PostPreviewRunner, PostSubmitRunner) {
+	return func(_ context.Context, req *postcore.Request) (*postcore.Response, *core.RefusalError) {
+			return dryRunResponse(req), nil
+		}, func(_ context.Context, req *postcore.Request) (*postcore.Response, *core.RefusalError) {
+			return submittedResponse(req), nil
+		}
+}
+
+// TestPostSubmitStoreBusyIs503 pins the lock collision: a submit that finds the
+// bundle's findings.json lock held (a verify job holds the same lock for its
+// whole run) answers the documented 503 store-busy, never 500 internal. The
+// busy sentinel must survive the lock-acquire boundary for [errors.Is].
+func TestPostSubmitStoreBusyIs503(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	preview, submit := okPostRunners()
+	ts, server := postServer(t, &Config{Layer: testLayer(root, nil), LockWait: 50 * time.Millisecond}, preview, submit)
+	rootID := rootIDOf(t, ts, bearer())
+	digest, nonce := mintPreviewSnapshotPair(t, ts, server, rootID, "1234")
+	store := filepath.Join(mustAbs(t, root), ".verdict", "state", "1234", "findings.json")
+	unlock, err := storelock.Acquire(store, storelock.DefaultWait)
+	if err != nil {
+		t.Fatalf("hold the bundle lock: %v", err)
+	}
+	t.Cleanup(unlock)
+
+	got := post(t, ts, postSubmitPath, submitBody(rootID, "1234", digest, nonce, new(true)), writeHeaders(server))
+	if got.status != http.StatusServiceUnavailable || !strings.Contains(string(got.body), `"reason":"store-busy"`) {
+		t.Fatalf("submit under a held lock = %d %s, want 503 store-busy", got.status, got.body)
+	}
+}
+
+// mintPreviewSnapshotPair mints one preview and returns its digest and nonce.
+func mintPreviewSnapshotPair(t *testing.T, ts *httptest.Server, server *Server, rootID, bundle string) (digest, nonce string) {
+	t.Helper()
+	digest, nonce, _ = mintPreviewSnapshot(t, ts, server, rootID, bundle)
+	return digest, nonce
+}
+
+// TestPostSubmitDefinitiveRefusalSurvivesTheDeadline pins the post-timeout
+// rewrite as narrow: a definitive refusal (already-posted) the runner returns
+// right at the boundary keeps its code, while the transport failure and the
+// cancellation a killed host call surface as still read post-timeout.
+func TestPostSubmitDefinitiveRefusalSurvivesTheDeadline(t *testing.T) { //nolint:revive // one matrix of boundary refusals
+	t.Parallel()
+	cases := []struct{ name, code, want string }{
+		{"already-posted keeps its code", "already-posted", "already-posted"},
+		{"post-failed at the deadline is the timeout", postcore.CodePostFailed, codePostTimeout},
+		{"canceled at the deadline is the timeout", "canceled", codePostTimeout},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			root := writeFixture(t, fixtureFiles())
+			preview, _ := okPostRunners()
+			submit := PostSubmitRunner(func(ctx context.Context, _ *postcore.Request) (*postcore.Response, *core.RefusalError) {
+				<-ctx.Done()
+				return nil, &core.RefusalError{Code: tc.code, Message: "refused at the boundary"}
+			})
+			ts, server := postServer(t, &Config{Layer: testLayer(root, nil), PostTimeout: 100 * time.Millisecond}, preview, submit)
+			rootID := rootIDOf(t, ts, bearer())
+			digest, nonce := mintPreviewSnapshotPair(t, ts, server, rootID, "1234")
+			got := post(t, ts, postSubmitPath, submitBody(rootID, "1234", digest, nonce, new(true)), writeHeaders(server))
+			if got.status != http.StatusOK {
+				t.Fatalf("submit = %d %s, want 200 refusal envelope", got.status, got.body)
+			}
+			if code := asString(t, asMap(t, decode(t, got.body)["error"])["code"]); code != tc.want {
+				t.Errorf("error code = %q, want %q", code, tc.want)
+			}
+		})
+	}
+}
+
+// TestBundleFingerprintCoversEveryPostInput pins the fingerprint to each bundle
+// file core/post decides from: changing any one after the preview must move it.
+func TestBundleFingerprintCoversEveryPostInput(t *testing.T) { //nolint:revive // one loop asserts each input moves the fingerprint
+	t.Parallel()
+	want := []string{
+		"findings.json", "PR.json", "source.json", "review.json", "post.json",
+		"controls.json", "record.json", "identity.json", "provenance.json",
+	}
+	if !slices.Equal(fingerprintFiles, want) {
+		t.Fatalf("fingerprintFiles = %v, want %v", fingerprintFiles, want)
+	}
+	dir := t.TempDir()
+	base, err := bundleFingerprint(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range want {
+		path := filepath.Join(dir, name)
+		if err := os.WriteFile(path, []byte("{}"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		got, err := bundleFingerprint(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got == base {
+			t.Errorf("creating %s left the fingerprint unchanged", name)
+		}
+		if err := os.Remove(path); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+// TestPostSubmitPostJSONAfterPreviewIsStale pins the duplicate-post receipt: a
+// post.json written between preview and submit (another poster beat this one)
+// refuses 409 stale-preview before core/post runs.
+func TestPostSubmitPostJSONAfterPreviewIsStale(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	ts, server, counts := postSubmitServer(t, testLayer(root, nil), true)
+	rootID := rootIDOf(t, ts, bearer())
+	digest, nonce := mintPreview(t, ts, server, rootID, "1234")
+	receipt := filepath.Join(mustAbs(t, root), ".verdict", "state", "1234", "post.json")
+	if err := os.WriteFile(receipt, []byte(`{"head":"`+headA+`"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := post(t, ts, postSubmitPath, submitBody(rootID, "1234", digest, nonce, new(true)), writeHeaders(server))
+	if got.status != http.StatusConflict || !strings.Contains(string(got.body), `"reason":"stale-preview"`) {
+		t.Errorf("post.json after preview = %d %s, want 409 stale-preview", got.status, got.body)
+	}
+	if submits := counts.submits(); submits != 0 {
+		t.Errorf("postcore submits = %d, want 0", submits)
+	}
+}
+
+// TestPreviewStoreEvictsTheOldestWhenFull pins the bound: a full store of live
+// nonces drops the entry nearest expiry, never an arbitrary one.
+func TestPreviewStoreEvictsTheOldestWhenFull(t *testing.T) { //nolint:revive // mint loop and the eviction asserts read as one flow
+	t.Parallel()
+	tick := time.Date(2026, 11, 12, 9, 0, 0, 0, time.UTC)
+	store := &previewStore{
+		entries: map[string]*previewEntry{}, ttl: previewTTL,
+		now: func() time.Time { tick = tick.Add(time.Second); return tick },
+	}
+	nonces := make([]string, 0, maxPreviews+1)
+	for range maxPreviews + 1 {
+		nonce, err := store.mint("root", "1234", "digest", "fingerprint")
+		if err != nil {
+			t.Fatalf("mint: %v", err)
+		}
+		nonces = append(nonces, nonce)
+	}
+	if len(store.entries) != maxPreviews {
+		t.Fatalf("store holds %d entries, want %d", len(store.entries), maxPreviews)
+	}
+	if _, ok := store.entries[nonces[0]]; ok {
+		t.Error("the oldest nonce survived a full store; an arbitrary entry was evicted")
+	}
+	for _, nonce := range nonces[1:] {
+		if _, ok := store.entries[nonce]; !ok {
+			t.Fatalf("a newer nonce %s was evicted instead of the oldest", nonce)
+		}
 	}
 }

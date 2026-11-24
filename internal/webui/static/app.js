@@ -28,6 +28,9 @@
   let activeJob = null;
   let jobDrawer = null;
   let submitOverlay = null;
+  // submitGeneration numbers each open of the confirmation modal; a preview
+  // acts only while its own generation is still the current one.
+  let submitGeneration = 0;
   let diffMode = "unified";
   const triageStatuses = [
     "open",
@@ -433,13 +436,16 @@
   // without real time passing.
   const afterDelay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-  // previewPollDelayMs and previewPollAttempts bound the confirmation
-  // modal's wait for a preview job: forty polls a quarter second apart, ten
-  // seconds in all, then the modal says the preview did not settle. A preview
-  // runs a whole dry-run post, so an unpaced burst of fetches measures only
-  // how fast a rejection is delivered.
-  const previewPollDelayMs = 250;
-  const previewPollAttempts = 40;
+  // The confirmation modal waits for a preview job on a bounded backoff: it
+  // starts a quarter second apart and doubles to a two-second cap, and gives up
+  // once the waits add up to two minutes. A preview runs a whole dry-run post,
+  // host reads and gate checks included, so a healthy one can outlast a short
+  // window, while an unpaced burst of fetches measures only how fast a
+  // rejection is delivered. The ceiling counts the waits, not the wall clock,
+  // so a test that advances the timer seam sees the same bound.
+  const previewPollStartMs = 250;
+  const previewPollCapMs = 2000;
+  const previewPollCeilingMs = 120000;
 
   // startJob posts one Tier B action and keeps its snapshot for the
   // drawer. The response is rendered honestly: a refusal envelope and a
@@ -600,38 +606,50 @@
 
   // fetchPreview runs one dry-run preview and polls its job with bounded
   // backoff until it settles, returning the snapshot whose result carries the
-  // digest and nonce. A job that is still queued after the last poll returns
+  // digest and nonce. A job still queued when the ceiling passes returns
   // un-settled, and the modal reports that instead of confirming nothing.
-  async function fetchPreview(root, bundle) {
+  // live() says whether the dialog that asked for this preview is still the
+  // open one: once it is not, the poll stops at its next step and returns
+  // null, so a cancelled preview neither keeps fetching nor reaches a newer
+  // dialog. waiting() fires before each wait on an unsettled job.
+  async function fetchPreview(root, bundle, live, waiting) {
     const { response, body } = await writeJSON("/v1/jobs/post-preview", {
       root,
       bundle,
     });
+    if (!live()) return null;
     if (!response.ok) {
       throw new Error(body?.message || `Request returned ${response.status}`);
     }
     if (body?.error) throw new Error(body.error.message || "Preview refused.");
     let snap = body?.data || {};
-    for (
-      let attempt = 0;
-      attempt < previewPollAttempts && snap?.id;
-      attempt++
-    ) {
+    let delay = previewPollStartMs;
+    let waited = 0;
+    while (snap?.id && waited < previewPollCeilingMs) {
       if (["succeeded", "failed", "cancelled"].includes(snap.status)) break;
-      await afterDelay(previewPollDelayMs);
+      waiting();
+      await afterDelay(delay);
+      waited += delay;
+      delay = Math.min(delay * 2, previewPollCapMs);
+      if (!live()) return null;
       const got = await fetch(`/v1/jobs/${encodeURIComponent(snap.id)}`, {
         credentials: "same-origin",
         cache: "no-store",
       });
+      if (!live()) return null;
       if (!got.ok) break;
       const next = await got.json();
+      if (!live()) return null;
       snap = next?.data || snap;
     }
     return snap;
   }
 
-  // closeSubmitModal removes the confirmation overlay.
+  // closeSubmitModal removes the confirmation overlay and retires its open:
+  // bumping the generation is what tells that open's in-flight preview poll to
+  // stop and keeps it from touching whatever dialog opens next.
   function closeSubmitModal() {
+    submitGeneration++;
     submitOverlay?.remove();
     submitOverlay = null;
   }
@@ -640,6 +658,8 @@
   // Confirm & Submit Review click before any host write.
   async function openSubmitModal(root, bundle) {
     closeSubmitModal();
+    const generation = submitGeneration;
+    const live = () => submitGeneration === generation;
     const overlay = node("div", undefined, "submit-modal");
     const dialog = node("div", undefined, "submit-dialog");
     dialog.setAttribute("role", "dialog");
@@ -665,14 +685,17 @@
     submitOverlay = overlay;
     let preview = null;
     try {
-      preview = await fetchPreview(root, bundle);
+      preview = await fetchPreview(root, bundle, live, () => {
+        status.textContent = "Still preparing preview…";
+      });
     } catch (error) {
+      if (!live()) return;
       status.textContent =
         error instanceof Error ? error.message : String(error);
       status.className = "error";
       return;
     }
-    if (!submitOverlay) return;
+    if (!live() || !preview) return;
     if (preview?.error) {
       status.textContent = preview.error.message || "Preview refused.";
       status.className = "error";
@@ -680,6 +703,12 @@
     }
     const snap = preview || {};
     const result = snap.result || {};
+    if (!["succeeded", "failed", "cancelled"].includes(snap.status)) {
+      status.textContent =
+        "The preview did not finish within two minutes; cancel and try again.";
+      status.className = "error";
+      return;
+    }
     if (snap.status !== "succeeded" || !result.preview_digest) {
       status.textContent = "Preview did not succeed; no digest to confirm.";
       status.className = "error";

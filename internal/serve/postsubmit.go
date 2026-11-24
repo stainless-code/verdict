@@ -17,10 +17,12 @@ import (
 	"sync"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/storelock"
 )
@@ -55,6 +57,8 @@ const (
 	postSubmitTimeout = 5 * time.Minute
 	// codePostTimeout is the typed refusal a timed-out submit answers.
 	codePostTimeout = "post-timeout"
+	// codeCanceled is core/post's cancellation refusal code.
+	codeCanceled = "canceled"
 )
 
 // PostSubmitRunner executes one real post. The production implementation
@@ -155,13 +159,18 @@ func (st *previewStore) evictLocked(now time.Time) {
 	}
 }
 
-// dropOneLocked drops one entry to keep the store bounded when it is full
-// of live nonces. The caller holds st.mu.
+// dropOneLocked drops the live entry nearest its expiry to keep the store
+// bounded when it is full of live nonces: the oldest preview is the one the
+// operator is least likely to still confirm. The caller holds st.mu.
 func (st *previewStore) dropOneLocked() {
-	for nonce := range st.entries {
-		delete(st.entries, nonce)
-		return
+	var victim string
+	var soonest time.Time
+	for nonce, entry := range st.entries {
+		if victim == "" || entry.expiresAt.Before(soonest) {
+			victim, soonest = nonce, entry.expiresAt
+		}
 	}
+	delete(st.entries, victim)
 }
 
 // mintPreviewNonce mints one CSPRNG nonce as lowercase hex. There is no
@@ -184,14 +193,24 @@ func hashField(dst hash.Hash, field []byte) {
 	dst.Write(field)
 }
 
-// bundleFingerprint hashes the bundle state the preview read: findings,
-// the PR or local source, the review draft, and the diff. Any triage or
-// re-fetch after the preview moves it, and the submit refuses as stale. A
-// file that is absent is not part of the state; a file that exists and
-// cannot be read is an error, never a silently skipped input.
+// fingerprintFiles are the bundle files core/post decides from, so a change
+// to any of them after the preview moves the fingerprint: the findings, the PR
+// or local source, the review draft, the duplicate-post receipt (post.json),
+// the controls manifest whose pinned bytes the gate re-verifies, the stored
+// decision record, the patch identity, and the provenance receipt.
+var fingerprintFiles = []string{
+	"findings.json", "PR.json", "source.json", "review.json", "post.json",
+	controls.FileName, "record.json", "identity.json", provenance.ReceiptFile,
+}
+
+// bundleFingerprint hashes the bundle state the preview read: every file in
+// [fingerprintFiles] plus the diff. Any triage or re-fetch after the preview
+// moves it, and the submit refuses as stale. A file that is absent is not part
+// of the state; a file that exists and cannot be read is an error, never a
+// silently skipped input.
 func bundleFingerprint(bundleDir string) (string, error) {
 	sum := sha256.New()
-	for _, name := range []string{"findings.json", "PR.json", "source.json", "review.json"} {
+	for _, name := range fingerprintFiles {
 		raw, err := os.ReadFile(filepath.Join(bundleDir, name))
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
@@ -327,15 +346,9 @@ func (s *Server) runConfirmedPost(
 	rootPath, bundleDir string, entry *previewEntry,
 ) {
 	storePath := bundleDir + "/findings.json"
-	unlock, lockErr := s.acquireBundleLock(ctx, storePath)
-	if lockErr != nil {
-		if errors.Is(lockErr, storelock.ErrBusy) {
-			s.problem(w, http.StatusServiceUnavailable, "store-busy",
-				"another write holds the store lock on "+storePath+" (retry in a moment)")
-			return
-		}
-		s.problem(w, http.StatusInternalServerError, "internal",
-			fmt.Sprintf("could not take the store lock on %s: %v", storePath, lockErr))
+	unlock, refusal := s.acquireBundleLock(ctx, storePath)
+	if refusal != nil {
+		s.problem(w, refusal.status, refusal.reason, refusal.message)
 		return
 	}
 	defer unlock()
@@ -383,17 +396,36 @@ func (s *Server) postReadRequest(bundleDir, bundle, repoRoot string) core.ReadRe
 	}
 }
 
-// acquireBundleLock takes the bundle findings-store lock for one submit.
-func (s *Server) acquireBundleLock(ctx context.Context, storePath string) (func(), error) {
+// lockRefusal is the transport problem a failed bundle-lock acquire answers.
+type lockRefusal struct {
+	reason  string
+	message string
+	status  int
+}
+
+// acquireBundleLock takes the bundle findings-store lock for one submit. It
+// classifies the failure where the error is still inspectable: the busy
+// sentinel ([storelock.ErrBusy], held by a verify job or a triage) must reach
+// [errors.Is] unsealed, so a collision answers 503 store-busy, not 500.
+func (s *Server) acquireBundleLock(ctx context.Context, storePath string) (func(), *lockRefusal) {
 	lockWait := s.cfg.LockWait
 	if lockWait <= 0 {
 		lockWait = storelock.DefaultWait
 	}
 	unlock, err := storelock.AcquireContext(ctx, storePath, lockWait)
-	if err != nil {
-		return nil, jq.Sealed("serve: acquire bundle lock on "+storePath, err)
+	if err == nil {
+		return unlock, nil
 	}
-	return unlock, nil
+	if errors.Is(err, storelock.ErrBusy) {
+		return nil, &lockRefusal{
+			status: http.StatusServiceUnavailable, reason: "store-busy",
+			message: "another write holds the store lock on " + storePath + " (retry in a moment)",
+		}
+	}
+	return nil, &lockRefusal{
+		status: http.StatusInternalServerError, reason: "internal",
+		message: fmt.Sprintf("could not take the store lock on %s: %v", storePath, err),
+	}
 }
 
 // invokePostSubmit builds the confirmed post request and runs it. The request
@@ -410,13 +442,21 @@ func (s *Server) invokePostSubmit(
 		Effective:   s.cfg.Effective,
 	}
 	resp, ref := runner(ctx, req)
-	if ref != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+	if ref != nil && errors.Is(ctx.Err(), context.DeadlineExceeded) && contextOwned(ref) {
 		// The bound, not the host's own failure, ended the call.
 		ref = &core.RefusalError{Code: codePostTimeout, Message: fmt.Sprintf(
 			"the host post did not finish within %s and was stopped; the host may or may not have recorded the review",
 			s.postTimeout()), Warnings: ref.Warnings}
 	}
 	return resp, ref
+}
+
+// contextOwned reports whether a refusal is the shape a call killed by its own
+// deadline takes: the cancellation code, or the transport failure a stopped
+// host command surfaces. A definitive host or gate refusal (already-posted,
+// a stale record, an auth refusal) that lands at the boundary keeps its code.
+func contextOwned(ref *core.RefusalError) bool {
+	return ref.Code == codeCanceled || ref.Code == postcore.CodePostFailed
 }
 
 // runnerPostSubmit returns the injected submit runner.

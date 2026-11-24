@@ -1713,10 +1713,10 @@ test("allow_post renders Submit Review and confirms after several preview polls"
   const trigger = submitButton(content);
   assert.ok(trigger, "allow_post must show Submit Review");
   await ui.settle(trigger.dispatch("click"));
-  // Every read waited a quarter second: three queued snapshots, then the
+  // The waits back off from a quarter second: two queued snapshots, then the
   // settled one.
   assert.equal(previewReads, 3);
-  assert.deepEqual(ui.delays, [250, 250, 250]);
+  assert.deepEqual(ui.delays, [250, 500, 1000]);
   const dialog = descendants(ui.body).find(
     (e) => e.attributes && e.attributes["aria-label"] === "Submit Review",
   );
@@ -1840,4 +1840,158 @@ test("Cancel on the Submit Review modal posts nothing", async () => {
     ).length,
     0,
   );
+});
+
+// previewSnapshot builds one post-preview job snapshot for the modal tests.
+function previewSnapshot(id, status, digest = "", nonce = "") {
+  const data = {
+    id,
+    kind: "post-preview",
+    root: "root-123",
+    bundle: "1234",
+    status,
+  };
+  if (status === "succeeded") {
+    data.result = {
+      dry_run: true,
+      event: "COMMENT",
+      anchors: { kept: 1, moved: 0 },
+      findings: { open: 1, deferred: 0, addressed: 0 },
+      preview_digest: digest,
+      preview_nonce: nonce,
+    };
+  }
+  return { data, error: null };
+}
+
+test("a cancelled preview that resolves late never touches the reopened dialog", async () => {
+  let opened = 0;
+  let releaseFirst;
+  const firstGate = new Promise((resolve) => {
+    releaseFirst = resolve;
+  });
+  const ui = await createUI({
+    interactive: true,
+    allowPost: true,
+    csrf: "csrf-test-token",
+    respond: async (path) => {
+      if (path === "/v1/jobs/post-preview") {
+        opened++;
+        return { body: previewSnapshot(`job-${opened}`, "queued") };
+      }
+      if (path === "/v1/jobs/job-1") {
+        await firstGate;
+        return {
+          body: previewSnapshot(
+            "job-1",
+            "succeeded",
+            "1".repeat(64),
+            "a".repeat(32),
+          ),
+        };
+      }
+      if (path === "/v1/jobs/job-2") {
+        return {
+          body: previewSnapshot(
+            "job-2",
+            "succeeded",
+            "2".repeat(64),
+            "b".repeat(32),
+          ),
+        };
+      }
+      if (path === "/v1/post/submit")
+        return { body: envelope({ commit_id: "c0ffee" }) };
+      return { body: prDetailFixtures().get(path) || envelope({}) };
+    },
+  });
+  await ui.navigate("#/r/root-123/1234");
+  const trigger = submitButton(ui.elements.get("content"));
+  const first = trigger.dispatch("click");
+  await ui.advance(4);
+  const staleConfirm = firstButton(ui.body, "Confirm & Submit Review");
+  await firstButton(ui.body, "Cancel").dispatch("click");
+  await ui.settle(trigger.dispatch("click"));
+  // The first preview finally resolves, after the newer dialog is up.
+  releaseFirst();
+  await ui.advance();
+  await first;
+  const overlays = descendants(ui.body).filter(
+    (e) => e.className && e.className.includes("submit-modal"),
+  );
+  assert.equal(overlays.length, 1, "exactly one dialog is open");
+  const confirms = descendants(ui.body).filter(
+    (e) =>
+      e.tagName === "BUTTON" && e.textContent === "Confirm & Submit Review",
+  );
+  assert.equal(confirms.length, 1);
+  assert.equal(
+    staleConfirm.listeners.has("click"),
+    false,
+    "the cancelled dialog got a Confirm handler",
+  );
+  assert.equal(staleConfirm.disabled, true);
+  assert.ok(ui.body.textContent.includes("2".repeat(64)));
+  assert.ok(!ui.body.textContent.includes("1".repeat(64)));
+  await confirms[0].dispatch("click");
+  await ui.flush();
+  const sent = ui.fetches.filter((item) => item.path === "/v1/post/submit");
+  assert.equal(sent.length, 1, "exactly one submit");
+  const body = JSON.parse(sent[0].options.body);
+  assert.equal(body.preview_digest, "2".repeat(64));
+  assert.equal(body.preview_nonce, "b".repeat(32));
+});
+
+test("Cancel stops the preview poll", async () => {
+  const ui = await createUI({
+    interactive: true,
+    allowPost: true,
+    csrf: "csrf-test-token",
+    respond: async (path) => {
+      if (path === "/v1/jobs/post-preview" || path === "/v1/jobs/job-1") {
+        return { body: previewSnapshot("job-1", "queued") };
+      }
+      return { body: prDetailFixtures().get(path) || envelope({}) };
+    },
+  });
+  await ui.navigate("#/r/root-123/1234");
+  const running = submitButton(ui.elements.get("content")).dispatch("click");
+  await ui.advance(4);
+  const polls = () =>
+    ui.fetches.filter((item) => item.path === "/v1/jobs/job-1").length;
+  assert.ok(polls() > 0, "the preview was polling before the cancel");
+  await firstButton(ui.body, "Cancel").dispatch("click");
+  const after = polls();
+  await ui.advance(64);
+  await running;
+  assert.equal(polls(), after, "polling continued after Cancel");
+  assert.equal(ui.timers.length, 0, "a poll timer is still armed after Cancel");
+});
+
+test("a slow preview shows a waiting message and backs off to a two-minute ceiling", async () => {
+  const ui = await createUI({
+    interactive: true,
+    allowPost: true,
+    csrf: "csrf-test-token",
+    respond: async (path) => {
+      if (path === "/v1/jobs/post-preview" || path === "/v1/jobs/job-1") {
+        return { body: previewSnapshot("job-1", "queued") };
+      }
+      return { body: prDetailFixtures().get(path) || envelope({}) };
+    },
+  });
+  await ui.navigate("#/r/root-123/1234");
+  const running = submitButton(ui.elements.get("content")).dispatch("click");
+  await ui.advance(4);
+  assert.ok(
+    ui.body.textContent.includes("Still preparing preview…"),
+    "the modal says it is still preparing, not failed",
+  );
+  await ui.settle(running);
+  assert.deepEqual(ui.delays.slice(0, 5), [250, 500, 1000, 2000, 2000]);
+  assert.ok(Math.max(...ui.delays) <= 2000);
+  const total = ui.delays.reduce((sum, ms) => sum + ms, 0);
+  assert.ok(total >= 120000 && total < 122000, `total wait ${total} ms`);
+  assert.ok(ui.body.textContent.includes("did not finish"));
+  assert.equal(firstButton(ui.body, "Confirm & Submit Review").disabled, true);
 });

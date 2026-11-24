@@ -2787,7 +2787,9 @@ directories, and `.verdict/overrides/`; a sweep fingerprints directory entries.
 `--interval` controls the network-filesystem polling cost. `--json` prints one start envelope whose
 `data.url` is the tokenised URL and `data.listen` is `host:port`, with
 `data.read_only` reporting the posture and `data.allow_post` reporting whether
-the Tier C host-posting route is registered; the envelope
+host posting is enabled (`--allow-post`; the Tier C route itself answers on
+every interactive server and refuses `403 post-disabled` while this is
+`false`); the envelope
 is the only machine-readable place a script learns where to connect, and a log
 that captures it captures a capability that dies with the process.
 
@@ -2947,14 +2949,16 @@ With `--interactive --allow-post`, `GET /v1/health` advertises
 confirmation. A succeeded `POST /v1/jobs/post-preview` publishes
 `result.preview_digest` (SHA-256 over the preview wire plus the bundle
 fingerprint) and `result.preview_nonce` (CSPRNG, single-use, 10-minute
-TTL, bounded store) beside the preview wire. The submit requires
+TTL, bounded store that evicts the oldest) beside the preview wire. The submit requires
 `confirm: true` (missing or `false` refuses `400 needs-confirm`), then
 atomically validates and consumes `(preview_nonce, root, bundle,
 preview_digest)` — unknown, mismatched, expired, or replayed nonces refuse
 `409 stale-preview` — then re-hashes the bundle under its `storelock` and
-refuses `409 stale-preview` when `findings.json`, `PR.json`/`source.json`,
-`review.json`, or `full.diff` changed
-since the preview, all before `core/post` runs. That re-check holds the
+refuses `409 stale-preview` when any bundle file `core/post` decides from
+changed since the preview — `findings.json`, `PR.json`, `source.json`,
+`review.json`, `post.json` (the duplicate-post receipt), `controls.json`,
+`record.json`, `identity.json`, `provenance.json`, or `full.diff` — all before
+`core/post` runs. That re-check holds the
 `findings.json` `storelock` only: a change to another bundle file between the
 re-check and the post is narrowed by the fingerprint but not excluded. The
 submit keeps running if the tab closes, but is bounded to five minutes
