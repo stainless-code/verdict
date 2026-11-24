@@ -119,6 +119,7 @@ type Config struct { //nolint:govet // start snapshot; field order mirrors the f
 	Interactive       bool
 	VerifyRunner      VerifyRunner
 	PostPreviewRunner PostPreviewRunner
+	LockWait          time.Duration
 }
 
 // Server is one bound (or about-to-bind) listener. Its route table is the

@@ -1234,16 +1234,16 @@ test("interactive mode promotes a KB rule with the CSRF header", async () => {
 });
 
 // jobButtons names every rendered Tier B control by its button label.
+// Verify is bundle-scoped, so the only verify control is the bundle-level
+// button: there is no per-finding `Reproduce` that claims a single finding
+// was isolated.
 function jobButtons(root) {
   return descendants(root).filter(
     (element) =>
       element.tagName === "BUTTON" &&
-      [
-        "Reproduce in sandbox",
-        "Preview PR post",
-        "Reproduce",
-        "Cancel",
-      ].includes(element.textContent),
+      ["Reproduce in sandbox", "Preview PR post", "Cancel"].includes(
+        element.textContent,
+      ),
   );
 }
 
@@ -1294,6 +1294,8 @@ test("interactive mode posts a sandbox verify with CSRF and renders SSE status a
   const content = ui.elements.get("content");
   assert.ok(firstButton(content, "Reproduce in sandbox"));
   assert.ok(firstButton(content, "Preview PR post"));
+  assert.equal(firstButton(content, "Reproduce"), undefined);
+  assert.equal(findControl(content, "Reproduce sig-123 in sandbox"), undefined);
   await firstButton(content, "Reproduce in sandbox").dispatch("click");
   const sent = ui.fetches.find((item) => item.path === "/v1/jobs/verify");
   assert.ok(sent, "verify job was not posted");

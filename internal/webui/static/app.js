@@ -773,26 +773,14 @@
         { key: "body", label: "Finding" },
         { key: "suggestion", label: "Suggestion" },
       ];
+      // Verify is bundle-scoped: the Detail view carries one bundle-level
+      // reproduction button in the job-actions panel, never a per-finding
+      // filter that claims a single finding was isolated.
       if (jobEnabled()) {
         findingColumns.push({
           label: "Triage",
           action: (row, td) => {
             td.append(triageControl(root, bundle, row.sig));
-          },
-        });
-        findingColumns.push({
-          label: "Sandbox",
-          action: (row, td) => {
-            const button = node("button", "Reproduce");
-            button.type = "button";
-            button.setAttribute(
-              "aria-label",
-              `Reproduce ${row.sig} in sandbox`,
-            );
-            button.addEventListener("click", () =>
-              startJob("/v1/jobs/verify", { root, bundle, sig: row.sig }),
-            );
-            td.append(button);
           },
         });
       }

@@ -2650,30 +2650,35 @@ operator's result or refusal back from the status line.
 **Interactive jobs (Tier B).** With `--interactive`, `GET /v1/health` also
 advertises `jobs: true` and `actions: ["verify", "post-preview"]`. Three
 `POST` job routes queue background work, and one `GET` route reads it back:
-`POST /v1/jobs/verify` accepts `root`, `bundle`, and an optional `sig`, then
-runs `verify --sandbox` strictly sandboxed (`Sandbox: true` is hardcoded, the
-CLI default 300-second watchdog, `patch.json` write, query-cache invalidation
-on completion); `POST /v1/jobs/post-preview` accepts `root` and `bundle`,
-then runs `post --dry-run` strictly `DryRun: true`, so no host write can ever
-ship; `POST /v1/jobs/{id}/cancel` cancels a queued or running job through its
-context and answers idempotently; `GET /v1/jobs/{id}` looks up one job under
-the session guard. A `POST` job route answers `202` with the queued snapshot
-(`id`, `kind`, `root`, `bundle`, `sig`, `status`, timestamps); `GET` and
-`cancel` answer `200` with the same snapshot shape. The optional `sig` is
-refused `400 bad-sig` when malformed, and `404 not-found` when it names a
-policy-withheld or absent finding, before any job is queued. Jobs run with
-bounded concurrency (4) and bounded retained history (64), each holding a
-bundle-scoped `storelock` on `findings.json` (distinct from the knowledge-base
-lock, so no lock nesting); a job that cannot take the lock fails as a typed
-`store-busy` refusal without running. Status flows `queued`, `running`, then
-`succeeded`, `failed`, or `cancelled`, streamed on the existing `/v1/events`
-channel as `jobs` SSE events and rendered in the Detail drawer with a `Cancel`
-while active and the result or refusal once settled. The Detail view shows
-`Reproduce in sandbox` (bundle-level, plus a per-finding `Reproduce` carrying
-`sig`) and `Preview PR post` buttons with the live drawer only when
-`interactive` is advertised and the page is not `static`. Every `POST` job
-route is gated exactly like the triage and KB writes (session, CSRF, Origin,
-JSON); without `--interactive` every job path fails closed as read-only.
+`POST /v1/jobs/verify` accepts `root` and `bundle` only, then runs
+bundle-scoped `verify --sandbox` over the whole bundle, strictly sandboxed
+(`Sandbox: true` is hardcoded, the CLI default 300-second watchdog,
+`patch.json` write, query-cache invalidation on completion); verify has no
+single-finding filter, so a `sig` field is an unknown field and refuses
+`400 bad-body` before anything is queued; `POST /v1/jobs/post-preview`
+accepts `root` and `bundle`, then runs `post --dry-run` strictly
+`DryRun: true`, so no host write can ever ship (`post --dry-run` performs
+zero host writes but may issue read-only host CLI calls, e.g. checking the PR
+head SHA, using ambient credentials); `POST /v1/jobs/{id}/cancel` cancels a
+queued or running job through its context and answers idempotently;
+`GET /v1/jobs/{id}` looks up one job under the session guard. A `POST` job
+route answers `202` with the queued snapshot (`id`, `kind`, `root`,
+`bundle`, `status`, timestamps); `GET` and `cancel` answer `200` with the
+same snapshot shape. Jobs run with bounded concurrency (4) and bounded
+retained history (64), each holding a bundle-scoped `storelock` on
+`findings.json` (distinct from the knowledge-base lock, so no lock nesting);
+a job that cannot take the lock fails as a typed `store-busy` refusal without
+running. A running verify job holds that bundle lock for its whole run, so
+concurrent triage or a second job on the same bundle also answers
+`store-busy` until the first job settles. Status flows `queued`, `running`,
+then `succeeded`, `failed`, or `cancelled`, streamed on the existing
+`/v1/events` channel as `jobs` SSE events and rendered in the Detail drawer
+with a `Cancel` while active and the result or refusal once settled. The
+Detail view shows the bundle-level `Reproduce in sandbox` and
+`Preview PR post` buttons with the live drawer only when `interactive` is
+advertised and the page is not `static`. Every `POST` job route is gated
+exactly like the triage and KB writes (session, CSRF, Origin, JSON);
+without `--interactive` every job path fails closed as read-only.
 
 A path carrying a traversal segment, a backslash, or a line break — a control
 rune, U+2028, or U+2029 — is refused before routing with the `404` `no such

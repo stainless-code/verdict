@@ -9,11 +9,11 @@ import (
 	"net/http"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
-	"github.com/stainless-code/verdict/internal/core/query"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -72,7 +72,6 @@ type job struct {
 	err       *jobError
 	bundleDir string
 	status    string
-	sig       string
 	createdAt string
 	updatedAt string
 	rootPath  string
@@ -92,22 +91,33 @@ type jobError struct {
 
 // jobManager is the in-memory job store the interactive routes share.
 type jobManager struct {
-	server  *Server
-	jobs    map[string]*job
-	sem     chan struct{}
-	order   []string
-	wg      sync.WaitGroup
-	stopOne sync.Once
-	mu      sync.Mutex
+	server        *Server
+	jobs          map[string]*job
+	sem           chan struct{}
+	order         []string
+	wg            sync.WaitGroup
+	lockWait      time.Duration
+	maxConcurrent int
+	maxRetained   int
+	stopOne       sync.Once
+	mu            sync.Mutex
+	stopped       bool
 }
 
 // newJobManager builds the bounded in-memory manager. Shutdown cancels
 // every active job through its own context and joins the workers.
 func newJobManager(server *Server) *jobManager {
+	lockWait := server.cfg.LockWait
+	if lockWait <= 0 {
+		lockWait = storelock.DefaultWait
+	}
 	return &jobManager{
-		server: server,
-		jobs:   map[string]*job{},
-		sem:    make(chan struct{}, maxConcurrentJobs),
+		server:        server,
+		jobs:          map[string]*job{},
+		sem:           make(chan struct{}, maxConcurrentJobs),
+		lockWait:      lockWait,
+		maxConcurrent: maxConcurrentJobs,
+		maxRetained:   maxRetainedJobs,
 	}
 }
 
@@ -126,11 +136,14 @@ func newJobID() string {
 // job context; the handler passes a background context so a job outlives
 // its POST.
 func (m *jobManager) create(
-	parent context.Context, kind, rootID, bundle, sig, rootPath, bundleDir string,
+	parent context.Context, kind, rootID, bundle, rootPath, bundleDir string,
 ) (*job, bool) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if len(m.jobs) >= maxRetainedJobs {
+	if m.stopped {
+		return nil, false
+	}
+	if len(m.jobs) >= m.maxRetained {
 		if !m.evictLocked() {
 			return nil, false
 		}
@@ -142,7 +155,6 @@ func (m *jobManager) create(
 		kind:      kind,
 		rootID:    rootID,
 		bundle:    bundle,
-		sig:       sig,
 		status:    jobStatusQueued,
 		createdAt: now,
 		updatedAt: now,
@@ -220,9 +232,6 @@ func (m *jobManager) snapshotLocked(current *job) *jq.Obj {
 		"root", current.rootID,
 		"bundle", current.bundle,
 	)
-	if current.sig != "" {
-		snap.Set("sig", current.sig)
-	}
 	snap.Set("status", current.status)
 	snap.Set("created_at", current.createdAt)
 	snap.Set("updated_at", current.updatedAt)
@@ -282,6 +291,7 @@ func (m *jobManager) setStatus(
 func (m *jobManager) stop() {
 	m.stopOne.Do(func() {
 		m.mu.Lock()
+		m.stopped = true
 		for _, current := range m.jobs {
 			if !isTerminal(current.status) {
 				current.cancel()
@@ -336,7 +346,7 @@ func (m *jobManager) acquireSlot(ctx context.Context, current *job) bool {
 // without lock nesting.
 func (m *jobManager) takeBundleLock(ctx context.Context, current *job) (func(), *jobError) {
 	store := current.bundleDir + "/findings.json"
-	unlock, err := storelock.AcquireContext(ctx, store, storelock.DefaultWait)
+	unlock, err := storelock.AcquireContext(ctx, store, m.lockWait)
 	if err == nil {
 		return unlock, nil
 	}
@@ -377,19 +387,19 @@ func (m *jobManager) runVerify(ctx context.Context, current *job) {
 		Sandbox:     true,
 	}
 	resp, ref := runner(ctx, req)
+	if ref == nil {
+		result := resp.Data.Wire()
+		m.server.layer.Invalidate()
+		m.setStatus(current, jobStatusSucceeded, result, nil, resp.Warnings)
+		return
+	}
+	m.server.layer.Invalidate()
 	if ctx.Err() != nil {
 		m.setStatus(current, jobStatusCancelled, nil, nil, nil)
 		return
 	}
-	if ref != nil {
-		m.server.layer.Invalidate()
-		m.setStatus(current, jobStatusFailed, nil,
-			&jobError{code: ref.Code, message: ref.Message}, ref.Warnings)
-		return
-	}
-	result := resp.Data.Wire()
-	m.server.layer.Invalidate()
-	m.setStatus(current, jobStatusSucceeded, result, nil, resp.Warnings)
+	m.setStatus(current, jobStatusFailed, nil,
+		&jobError{code: ref.Code, message: ref.Message}, ref.Warnings)
 }
 
 // runPostPreview runs the dry-run post preview through the injected
@@ -480,12 +490,12 @@ func prodPostPreviewRunner(
 	return postcore.Run(ctx, req)
 }
 
-// verifyJobBody is the POST /v1/jobs/verify wire shape. Sig is optional:
-// an absent or empty sig verifies the whole bundle.
+// verifyJobBody is the POST /v1/jobs/verify wire shape. Verify is
+// bundle-scoped: it runs verify --sandbox over the whole bundle, so the
+// shape carries only root and bundle.
 type verifyJobBody struct {
 	Root   string `json:"root"`
 	Bundle string `json:"bundle"`
-	Sig    string `json:"sig,omitempty"`
 }
 
 // postPreviewBody is the POST /v1/jobs/post-preview wire shape.
@@ -494,26 +504,19 @@ type postPreviewBody struct {
 	Bundle string `json:"bundle"`
 }
 
-// handleVerifyJob queues a sandboxed verify: strictly Sandbox true, with
-// an optional sig validated for format and policy withholding before
-// anything runs.
+// handleVerifyJob queues a bundle-scoped sandboxed verify: strictly
+// Sandbox true, over the whole bundle. Verify has no single-finding
+// filter, so the wire shape names only root and bundle.
 func (s *Server) handleVerifyJob(w http.ResponseWriter, r *http.Request) {
 	var body verifyJobBody
 	if !decodeJSON(w, r, s, &body) {
-		return
-	}
-	if body.Sig != "" && !query.ValidSig(body.Sig) {
-		s.problem(w, http.StatusBadRequest, "bad-sig", "verify requires a valid finding sig when given")
 		return
 	}
 	rootPath, bundleDir, ok := s.resolveWrite(w, body.Root, body.Bundle)
 	if !ok {
 		return
 	}
-	if body.Sig != "" && !s.sigVisible(w, bundleDir, body.Sig) {
-		return
-	}
-	s.queueJob(context.WithoutCancel(r.Context()), w, jobKindVerify, body.Root, body.Bundle, body.Sig, rootPath, bundleDir)
+	s.queueJob(context.WithoutCancel(r.Context()), w, jobKindVerify, body.Root, body.Bundle, rootPath, bundleDir)
 }
 
 // handlePostPreviewJob queues a post preview: strictly DryRun true, so
@@ -527,7 +530,7 @@ func (s *Server) handlePostPreviewJob(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	s.queueJob(context.WithoutCancel(r.Context()), w, jobKindPostPreview, body.Root, body.Bundle, "", rootPath, bundleDir)
+	s.queueJob(context.WithoutCancel(r.Context()), w, jobKindPostPreview, body.Root, body.Bundle, rootPath, bundleDir)
 }
 
 // handleCancelJob cancels one running job through its context; a settled
@@ -554,9 +557,9 @@ func (s *Server) handleGetJob(w http.ResponseWriter, r *http.Request) {
 
 // queueJob creates one queued job and answers 202 with its snapshot.
 func (s *Server) queueJob(
-	parent context.Context, w http.ResponseWriter, kind, rootID, bundle, sig, rootPath, bundleDir string,
+	parent context.Context, w http.ResponseWriter, kind, rootID, bundle, rootPath, bundleDir string,
 ) {
-	current, ok := s.jobs.create(parent, kind, rootID, bundle, sig, rootPath, bundleDir)
+	current, ok := s.jobs.create(parent, kind, rootID, bundle, rootPath, bundleDir)
 	if !ok {
 		s.problem(w, http.StatusServiceUnavailable, "job-capacity", "job history is full of active jobs; retry later")
 		return
@@ -568,67 +571,6 @@ func (s *Server) queueJob(
 func (s *Server) writeJob(w http.ResponseWriter, current *job, status int) {
 	snapshot := s.jobs.snapshot(current)
 	s.writeEnvelopeStatus(w, status, core.RenderEnvelope(verbServe, "", "", s.at(), "", nil, snapshot, nil))
-}
-
-// sigVisible reports whether sig names a visible finding in the bundle.
-// A withheld or absent sig answers 404, the read surface's not-found for
-// a finding that is not visible.
-func (s *Server) sigVisible(w http.ResponseWriter, bundleDir, sig string) bool {
-	entries, err := readFindings(bundleDir + "/findings.json")
-	if err != nil {
-		s.problem(w, http.StatusNotFound, reasonNotFound, "no such finding")
-		return false
-	}
-	full, ok := resolveSig(entries, sig)
-	if !ok {
-		s.problem(w, http.StatusNotFound, reasonNotFound, "no such finding")
-		return false
-	}
-	if isWithheld(entries, full) {
-		s.problem(w, http.StatusNotFound, reasonNotFound, "no such finding")
-		return false
-	}
-	return true
-}
-
-// readFindings decodes one bundle findings store.
-func readFindings(path string) ([]any, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		//nolint:wrapcheck // the caller maps every failure to not-found.
-		return nil, err
-	}
-	doc, err := jq.DecodeOrdered(raw)
-	if err != nil {
-		//nolint:wrapcheck // the caller maps every failure to not-found.
-		return nil, err
-	}
-	entries, ok := doc.([]any)
-	if !ok {
-		//nolint:wrapcheck // the caller maps every failure to not-found.
-		return nil, errors.New("findings store is not an array")
-	}
-	return entries, nil
-}
-
-// resolveSig resolves one sig prefix to its full sig.
-func resolveSig(entries []any, prefix string) (string, bool) {
-	full := readcommon.ResolveSig(entries, prefix)
-	if full == "NONE" || full == "MANY" {
-		return "", false
-	}
-	return full, true
-}
-
-// isWithheld reports whether the resolved entry carries a valid
-// policy-withholding receipt.
-func isWithheld(entries []any, full string) bool {
-	for _, entry := range entries {
-		if jq.StrOf(readcommon.FieldOf(entry, "sig")) == full {
-			return readcommon.WithheldSource(entry) != ""
-		}
-	}
-	return false
 }
 
 // writeEnvelopeStatus writes one envelope body at status.

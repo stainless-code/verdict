@@ -11,9 +11,11 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
@@ -78,10 +80,17 @@ func okPostPreviewRunner() PostPreviewRunner {
 	}
 }
 
-// createVerifyJob posts one verify job and returns its id.
+// createVerifyJob posts one verify job on bundle 1234 and returns its id.
 func createVerifyJob(t *testing.T, ts *httptest.Server, server *Server, rootID string) string {
 	t.Helper()
-	got := post(t, ts, "/v1/jobs/verify", `{"root":"`+rootID+`","bundle":"1234"}`, writeHeaders(server))
+	return createVerifyJobOn(t, ts, server, rootID, "1234")
+}
+
+// createVerifyJobOn posts one verify job on the named bundle and
+// returns its id.
+func createVerifyJobOn(t *testing.T, ts *httptest.Server, server *Server, rootID, bundle string) string {
+	t.Helper()
+	got := post(t, ts, "/v1/jobs/verify", `{"root":"`+rootID+`","bundle":"`+bundle+`"}`, writeHeaders(server))
 	if got.status != http.StatusAccepted {
 		t.Fatalf("POST verify = %d, want 202 (%s)", got.status, got.body)
 	}
@@ -90,6 +99,21 @@ func createVerifyJob(t *testing.T, ts *httptest.Server, server *Server, rootID s
 		t.Fatalf("error = %v, want null (%s)", env["error"], got.body)
 	}
 	return asString(t, asMap(t, env["data"])["id"])
+}
+
+// distinctBundles creates n empty bundle directories for parallel job
+// submission: each job needs its own bundle lock to reach its runner.
+func distinctBundles(t *testing.T, root string, n int) []string {
+	t.Helper()
+	names := make([]string, 0, n)
+	for i := range n {
+		name := "j" + strconv.Itoa(i)
+		if err := os.MkdirAll(filepath.Join(root, ".verdict", "state", name), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		names = append(names, name)
+	}
+	return names
 }
 
 // createPostPreviewJob posts one post-preview job and returns its id.
@@ -263,57 +287,21 @@ func TestJobsMethodNotAllowed(t *testing.T) {
 	}
 }
 
-// TestVerifyJobBadSig pins a malformed sig refusing before any job exists.
-func TestVerifyJobBadSig(t *testing.T) {
+// TestVerifyJobRejectsSig pins the honest bundle-scoped shape: verify runs
+// over the whole bundle, so a sig field is an unknown field and refuses
+// as bad-body before any job exists.
+func TestVerifyJobRejectsSig(t *testing.T) {
 	t.Parallel()
 	root := writeFixture(t, fixtureFiles())
 	ts, server := interactiveJobServer(t, testLayer(root, nil), okVerifyRunner(), okPostPreviewRunner())
 	rootID := rootIDOf(t, ts, bearer())
-	hdrs := writeHeaders(server)
-	for _, sig := range []string{"ABCDEF12", "abc", "zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz"} {
+	for _, sig := range []string{"ABCDEF12", strings.Repeat("f", 40), sigCrit} {
 		before := snapshotState(t, root)
-		got := post(t, ts, "/v1/jobs/verify", `{"root":"`+rootID+`","bundle":"1234","sig":"`+sig+`"}`, hdrs)
-		if got.status != http.StatusBadRequest || !strings.Contains(string(got.body), `"reason":"bad-sig"`) {
-			t.Errorf("sig %q = %d %s, want 400 bad-sig", sig, got.status, got.body)
+		got := post(t, ts, "/v1/jobs/verify", `{"root":"`+rootID+`","bundle":"1234","sig":"`+sig+`"}`, writeHeaders(server))
+		if got.status != http.StatusBadRequest || !strings.Contains(string(got.body), `"reason":"bad-body"`) {
+			t.Errorf("sig %q = %d %s, want 400 bad-body", sig, got.status, got.body)
 		}
 		assertNoJobs(t, server, root, before)
-	}
-}
-
-// TestVerifyJobUnknownSig pins a well-formed but absent sig refusing 404.
-func TestVerifyJobUnknownSig(t *testing.T) {
-	t.Parallel()
-	root := writeFixture(t, fixtureFiles())
-	ts, server := interactiveJobServer(t, testLayer(root, nil), okVerifyRunner(), okPostPreviewRunner())
-	rootID := rootIDOf(t, ts, bearer())
-	before := snapshotState(t, root)
-	got := post(t, ts, "/v1/jobs/verify", `{"root":"`+rootID+`","bundle":"1234","sig":"`+strings.Repeat("f", 40)+`"}`, writeHeaders(server))
-	if got.status != http.StatusNotFound || !strings.Contains(string(got.body), `"reason":"not-found"`) {
-		t.Fatalf("unknown sig = %d %s, want 404 not-found", got.status, got.body)
-	}
-	assertNoJobs(t, server, root, before)
-}
-
-// TestVerifyJobWithheldRefused proves a policy-withheld sig never queues.
-func TestVerifyJobWithheldRefused(t *testing.T) {
-	t.Parallel()
-	files := fixtureFiles()
-	files[".verdict/state/1234/findings.json"] = "[" + withheldTriageFinding(sigCrit) + "]"
-	root := writeFixture(t, files)
-	ts, server := interactiveJobServer(t, testLayer(root, nil), okVerifyRunner(), okPostPreviewRunner())
-	rootID := rootIDOf(t, ts, bearer())
-	before := snapshotState(t, root)
-	got := post(t, ts, "/v1/jobs/verify", `{"root":"`+rootID+`","bundle":"1234","sig":"`+sigCrit+`"}`, writeHeaders(server))
-	if got.status != http.StatusNotFound || !strings.Contains(string(got.body), `"reason":"not-found"`) {
-		t.Fatalf("status = %d, want 404 not-found (%s)", got.status, got.body)
-	}
-	assertNoJobs(t, server, root, before)
-	raw, err := os.ReadFile(filepath.Join(root, ".verdict/state/1234/findings.json"))
-	if err != nil {
-		t.Fatalf("findings: %v", err)
-	}
-	if strings.Contains(string(raw), "false-positive") {
-		t.Errorf("findings = %s, want the withheld finding still open", raw)
 	}
 }
 
@@ -645,7 +633,8 @@ func TestJobCancelUnknown(t *testing.T) {
 }
 
 // TestJobStoreBusy proves a held bundle lock refuses the job as
-// store-busy without running the runner.
+// store-busy without running the runner. A short lock wait keeps the
+// busy path under 100ms instead of the production multi-second wait.
 func TestJobStoreBusy(t *testing.T) {
 	t.Parallel()
 	root := writeFixture(t, fixtureFiles())
@@ -661,6 +650,7 @@ func TestJobStoreBusy(t *testing.T) {
 		return &verifycore.Response{Pr: req.Pr, Data: data}, nil
 	})
 	ts, server := interactiveJobServer(t, testLayer(root, nil), runner, okPostPreviewRunner())
+	server.jobs.lockWait = 20 * time.Millisecond
 	rootID := rootIDOf(t, ts, bearer())
 	id := createVerifyJob(t, ts, server, rootID)
 	snapshot := awaitJobTerminal(t, ts, id)
@@ -724,7 +714,6 @@ func TestJobsConcurrentAndShutdown(t *testing.T) {
 	start := make(chan struct{})
 	var idsMu sync.Mutex
 	ids := make([]string, 0, jobs)
-	results := make(chan string, jobs)
 	wg.Add(jobs)
 	for range jobs {
 		go func() {
@@ -734,18 +723,11 @@ func TestJobsConcurrentAndShutdown(t *testing.T) {
 			idsMu.Lock()
 			ids = append(ids, id)
 			idsMu.Unlock()
-			results <- id
 		}()
 	}
 	close(start)
 	wg.Wait()
-	close(results)
-	for id := range results {
-		snapshot := awaitJobTerminal(t, ts, id)
-		if asString(t, snapshot["status"]) != jobStatusSucceeded {
-			t.Fatalf("job %s status = %v, want succeeded (%v)", id, snapshot["status"], snapshot)
-		}
-	}
+	awaitAllSucceeded(t, ts, ids)
 	mu.Lock()
 	defer mu.Unlock()
 	if entered != jobs {
@@ -760,5 +742,400 @@ func TestJobsConcurrentAndShutdown(t *testing.T) {
 	}
 	// A second stop is idempotent: the WaitGroup stays joined.
 	server.jobs.stop()
-	_ = jq.NewObj("jobs", len(ids))
+}
+
+// jobStatusOf polls one job until its status equals want.
+func jobStatusOf(t *testing.T, ts *httptest.Server, id, want string) {
+	t.Helper()
+	testenv.Until(t, func() bool {
+		got := call(t, ts, http.MethodGet, "/v1/jobs/"+id, "", bearer())
+		if got.status != http.StatusOK {
+			return false
+		}
+		snapshot := asMap(t, decode(t, got.body)["data"])
+		return asString(t, snapshot["status"]) == want
+	})
+}
+
+// blockedVerifyRunner builds a verify runner that entries, then waits
+// for release. Entered counts invocations guarded by mu; maxActive and
+// active track the number of concurrently executing runners.
+func blockedVerifyRunner(release chan struct{}, mu *sync.Mutex, entered, active, maxActive *int) VerifyRunner {
+	return func(ctx context.Context, req *verifycore.Request) (*verifycore.Response, *core.RefusalError) {
+		mu.Lock()
+		*entered++
+		*active++
+		if *active > *maxActive {
+			*maxActive = *active
+		}
+		mu.Unlock()
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		mu.Lock()
+		*active--
+		mu.Unlock()
+		data := &core.VerifyData{Exit: 0, Sandboxed: true}
+		return &verifycore.Response{Pr: req.Pr, Data: data}, nil
+	}
+}
+
+// countLocked reads the shared counters under mu for a polling predicate.
+func countLocked(mu *sync.Mutex, value *int) int {
+	mu.Lock()
+	defer mu.Unlock()
+	return *value
+}
+
+// awaitAllSucceeded awaits each id to succeeded.
+func awaitAllSucceeded(t *testing.T, ts *httptest.Server, ids []string) {
+	t.Helper()
+	for _, id := range ids {
+		snapshot := awaitJobTerminal(t, ts, id)
+		if asString(t, snapshot["status"]) != jobStatusSucceeded {
+			t.Fatalf("job %s status = %v, want succeeded (%v)", id, snapshot["status"], snapshot)
+		}
+	}
+}
+
+// cancelJob posts the cancel for one id and asserts the 200.
+func cancelJob(t *testing.T, ts *httptest.Server, hdrs map[string]string, id string) {
+	t.Helper()
+	got := post(t, ts, "/v1/jobs/"+id+"/cancel", `{}`, hdrs)
+	if got.status != http.StatusOK {
+		t.Fatalf("POST cancel = %d, want 200 (%s)", got.status, got.body)
+	}
+}
+
+// assertTerminalCanceled awaits terminal and asserts canceled.
+func assertTerminalCanceled(t *testing.T, ts *httptest.Server, id string) {
+	t.Helper()
+	snapshot := awaitJobTerminal(t, ts, id)
+	if asString(t, snapshot["status"]) != jobStatusCancelled {
+		t.Fatalf("status = %v, want canceled (%v)", snapshot["status"], snapshot)
+	}
+}
+
+// assertBoundHeld asserts the concurrency bound while all slots block.
+func assertBoundHeld(t *testing.T, mu *sync.Mutex, entered, maxActive int) {
+	t.Helper()
+	mu.Lock()
+	defer mu.Unlock()
+	if entered != maxConcurrentJobs {
+		t.Fatalf("entered = %d, want %d while all slots blocked", entered, maxConcurrentJobs)
+	}
+	if maxActive != maxConcurrentJobs {
+		t.Fatalf("maxActive = %d, want %d; concurrency exceeds the bound", maxActive, maxConcurrentJobs)
+	}
+}
+
+// assertBoundFinal asserts the bound after release.
+func assertBoundFinal(t *testing.T, mu *sync.Mutex, entered, maxActive int) {
+	t.Helper()
+	mu.Lock()
+	defer mu.Unlock()
+	if entered != 6 {
+		t.Errorf("entered = %d, want 6 after release", entered)
+	}
+	if maxActive != maxConcurrentJobs {
+		t.Errorf("maxActive = %d, want %d; concurrency exceeds the bound", maxActive, maxConcurrentJobs)
+	}
+}
+
+// assertFastDrained asserts one frame arrives for one publish round.
+func assertFastDrained(t *testing.T, fast <-chan jobFrame, i int) {
+	t.Helper()
+	select {
+	case frame := <-fast:
+		if frame.id == 0 {
+			t.Fatalf("publish %d delivered an unnumbered frame", i)
+		}
+	default:
+		t.Fatalf("healthy subscriber missed publish %d", i)
+	}
+}
+
+// assertSlowBounded asserts the slow channel never overflows its slot.
+func assertSlowBounded(t *testing.T, slow <-chan jobFrame) {
+	t.Helper()
+	if count := len(slow); count > eventBufferSize {
+		t.Fatalf("slow subscriber buffered %d frames, want at most %d", count, eventBufferSize)
+	}
+}
+
+// assertSlowHeld asserts the slow channel still holds one frame.
+func assertSlowHeld(t *testing.T, slow <-chan jobFrame) {
+	t.Helper()
+	select {
+	case frame := <-slow:
+		if frame.id == 0 {
+			t.Fatal("slow subscriber delivered an unnumbered frame")
+		}
+	default:
+		t.Fatal("slow subscriber held no frame after 10 publishes")
+	}
+}
+
+// publishRound publishes one frame and checks both subscribers.
+func publishRound(t *testing.T, broker *eventBroker, slow, fast <-chan jobFrame, i int) {
+	t.Helper()
+	broker.publishJobs(jq.NewObj("id", "job-slow", "seq", i))
+	assertFastDrained(t, fast, i)
+	assertSlowBounded(t, slow)
+}
+
+// TestJobCancelWhileQueued proves cancellation while waiting for a
+// concurrency slot transitions to canceled and the runner never runs.
+// Mutation: dropping the ctx.Done case in acquireSlot leaves the fifth
+// job queued instead of canceled, so the terminal wait fails.
+func TestJobCancelWhileQueued(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	release := make(chan struct{})
+	var mu sync.Mutex
+	entered, active, maxActive := 0, 0, 0
+	runner := blockedVerifyRunner(release, &mu, &entered, &active, &maxActive)
+	ts, server := interactiveJobServer(t, testLayer(root, nil), runner, okPostPreviewRunner())
+	rootID := rootIDOf(t, ts, bearer())
+	bundles := distinctBundles(t, root, 5)
+	hdrs := writeHeaders(server)
+	ids := make([]string, 0, 4)
+	for _, bundle := range bundles[:4] {
+		ids = append(ids, createVerifyJobOn(t, ts, server, rootID, bundle))
+	}
+	testenv.Until(t, func() bool { return countLocked(&mu, &entered) == 4 })
+	queuedID := createVerifyJobOn(t, ts, server, rootID, bundles[4])
+	jobStatusOf(t, ts, queuedID, jobStatusQueued)
+	cancelJob(t, ts, hdrs, queuedID)
+	assertTerminalCanceled(t, ts, queuedID)
+	if got := countLocked(&mu, &entered); got != 4 {
+		t.Fatalf("runner entered = %d, want 4; the queued runner must never execute", got)
+	}
+	close(release)
+	awaitAllSucceeded(t, ts, ids)
+	if got := countLocked(&mu, &entered); got != 4 {
+		t.Fatalf("runner entered after release = %d, want 4; the canceled job never ran", got)
+	}
+}
+
+// TestJobCancelWhileWaitingOnLock proves cancellation while waiting on
+// the bundle lock cancels promptly instead of waiting out the lock
+// timeout, and the runner never runs.
+func TestJobCancelWhileWaitingOnLock(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	store := filepath.ToSlash(filepath.Join(mustAbs(t, root), ".verdict", "state", "1234", "findings.json"))
+	unlock, err := storelock.Acquire(store, storelock.DefaultWait)
+	if err != nil {
+		t.Fatalf("Acquire: %v", err)
+	}
+	called := false
+	var calledMu sync.Mutex
+	runner := VerifyRunner(func(_ context.Context, req *verifycore.Request) (*verifycore.Response, *core.RefusalError) {
+		calledMu.Lock()
+		called = true
+		calledMu.Unlock()
+		data := &core.VerifyData{Exit: 0, Sandboxed: true}
+		return &verifycore.Response{Pr: req.Pr, Data: data}, nil
+	})
+	ts, server := interactiveJobServer(t, testLayer(root, nil), runner, okPostPreviewRunner())
+	rootID := rootIDOf(t, ts, bearer())
+	id := createVerifyJob(t, ts, server, rootID)
+	jobStatusOf(t, ts, id, jobStatusRunning)
+	start := time.Now()
+	got := post(t, ts, "/v1/jobs/"+id+"/cancel", `{}`, writeHeaders(server))
+	if got.status != http.StatusOK {
+		t.Fatalf("POST cancel = %d, want 200 (%s)", got.status, got.body)
+	}
+	snapshot := awaitJobTerminal(t, ts, id)
+	elapsed := time.Since(start)
+	unlock()
+	if asString(t, snapshot["status"]) != jobStatusCancelled {
+		t.Fatalf("status = %v, want canceled (%v)", snapshot["status"], snapshot)
+	}
+	if elapsed >= storelock.DefaultWait {
+		t.Fatalf("cancel waited %s, want prompt cancellation inside the lock wait", elapsed)
+	}
+	calledMu.Lock()
+	defer calledMu.Unlock()
+	if called {
+		t.Fatal("the runner ran while the job waited on the store lock")
+	}
+}
+
+// TestJobMaxConcurrentBound proves at most four runners execute at
+// once: six blocked jobs hold four active and two queued, then all six
+// finish after release. Mutation: enlarging the semaphore lets all six
+// enter, so the maxActive assertion fires; shrinking it leaves entered
+// below four, so the bound wait fails.
+func TestJobMaxConcurrentBound(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	release := make(chan struct{})
+	var mu sync.Mutex
+	entered, active, maxActive := 0, 0, 0
+	runner := blockedVerifyRunner(release, &mu, &entered, &active, &maxActive)
+	ts, server := interactiveJobServer(t, testLayer(root, nil), runner, okPostPreviewRunner())
+	rootID := rootIDOf(t, ts, bearer())
+	bundles := distinctBundles(t, root, 6)
+	ids := make([]string, 0, 6)
+	for _, bundle := range bundles {
+		ids = append(ids, createVerifyJobOn(t, ts, server, rootID, bundle))
+	}
+	testenv.Until(t, func() bool { return countLocked(&mu, &entered) >= maxConcurrentJobs })
+	for range 100 {
+		runtime.Gosched()
+	}
+	assertBoundHeld(t, &mu, entered, maxActive)
+	close(release)
+	awaitAllSucceeded(t, ts, ids)
+	assertBoundFinal(t, &mu, entered, maxActive)
+}
+
+// TestJobEvictionCapsHistory proves retained history stays capped at
+// the retained limit: the oldest terminal jobs evict first.
+func TestJobEvictionCapsHistory(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	ts, server := interactiveJobServer(t, testLayer(root, nil), okVerifyRunner(), okPostPreviewRunner())
+	rootID := rootIDOf(t, ts, bearer())
+	ids := make([]string, 0, 70)
+	for range 70 {
+		id := createVerifyJob(t, ts, server, rootID)
+		awaitJobTerminal(t, ts, id)
+		ids = append(ids, id)
+	}
+	if count := jobCount(server); count != maxRetainedJobs {
+		t.Fatalf("retained jobs = %d, want %d", count, maxRetainedJobs)
+	}
+	for _, id := range ids[:6] {
+		got := call(t, ts, http.MethodGet, "/v1/jobs/"+id, "", bearer())
+		if got.status != http.StatusNotFound {
+			t.Fatalf("GET evicted job %s = %d, want 404 (%s)", id, got.status, got.body)
+		}
+	}
+	got := call(t, ts, http.MethodGet, "/v1/jobs/"+ids[len(ids)-1], "", bearer())
+	if got.status != http.StatusOK {
+		t.Fatalf("GET newest job = %d, want 200 (%s)", got.status, got.body)
+	}
+}
+
+// TestJobCapacityRefusesFullHistory proves a create that cannot evict
+// refuses 503 job-capacity. A small retained cap on the manager keeps
+// the full-history state reachable without 64 blocked workers.
+func TestJobCapacityRefusesFullHistory(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	release := make(chan struct{})
+	var mu sync.Mutex
+	entered, active, maxActive := 0, 0, 0
+	runner := blockedVerifyRunner(release, &mu, &entered, &active, &maxActive)
+	ts, server := interactiveJobServer(t, testLayer(root, nil), runner, okPostPreviewRunner())
+	server.jobs.maxRetained = 3
+	rootID := rootIDOf(t, ts, bearer())
+	bundles := distinctBundles(t, root, 4)
+	ids := make([]string, 0, 3)
+	for _, bundle := range bundles[:3] {
+		ids = append(ids, createVerifyJobOn(t, ts, server, rootID, bundle))
+	}
+	testenv.Until(t, func() bool { return countLocked(&mu, &entered) == 3 })
+	before := snapshotState(t, root)
+	got := post(t, ts, "/v1/jobs/verify", `{"root":"`+rootID+`","bundle":"`+bundles[3]+`"}`, writeHeaders(server))
+	if got.status != http.StatusServiceUnavailable || !strings.Contains(string(got.body), `"reason":"job-capacity"`) {
+		t.Fatalf("POST full history = %d %s, want 503 job-capacity", got.status, got.body)
+	}
+	close(release)
+	for _, id := range ids {
+		terminal := awaitJobTerminal(t, ts, id)
+		if asString(t, terminal["status"]) != jobStatusSucceeded {
+			t.Fatalf("job %s status = %v, want succeeded (%v)", id, terminal["status"], terminal)
+		}
+	}
+	if after := snapshotState(t, root); !maps.Equal(before, after) {
+		t.Fatalf("a capacity refusal changed the tree:\nbefore: %v\nafter:  %v", before, after)
+	}
+}
+
+// TestStopCancelsRunningJob proves stop cancels an actively running
+// job and joins it: the runner observes cancellation and exits before
+// stop returns. Mutation: dropping the cancel or Wait in stop leaves
+// the runner blocked, so the exited check after stop returns fails.
+func TestStopCancelsRunningJob(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	started := make(chan struct{})
+	exited := make(chan struct{})
+	var once sync.Once
+	runner := VerifyRunner(func(ctx context.Context, _ *verifycore.Request) (*verifycore.Response, *core.RefusalError) {
+		once.Do(func() { close(started) })
+		defer close(exited)
+		<-ctx.Done()
+		return nil, &core.RefusalError{Code: "canceled", Message: "canceled before verify completed"}
+	})
+	ts, server := interactiveJobServer(t, testLayer(root, nil), runner, okPostPreviewRunner())
+	rootID := rootIDOf(t, ts, bearer())
+	id := createVerifyJob(t, ts, server, rootID)
+	<-started
+	server.jobs.stop()
+	select {
+	case <-exited:
+	default:
+		t.Fatal("the runner had not exited when stop returned; stop did not join")
+	}
+	current, ok := server.jobs.get(id)
+	if !ok {
+		t.Fatalf("job %s missing after stop", id)
+	}
+	if current.status != jobStatusCancelled {
+		t.Fatalf("status after stop = %v, want canceled", current.status)
+	}
+	select {
+	case <-current.done:
+	default:
+		t.Fatal("the job worker had not finished when stop returned")
+	}
+}
+
+// TestJobCreateAfterStopRefused proves a late create after stop cannot
+// race wg.Wait: it refuses cleanly with 503 and queues nothing.
+func TestJobCreateAfterStopRefused(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	ts, server := interactiveJobServer(t, testLayer(root, nil), okVerifyRunner(), okPostPreviewRunner())
+	rootID := rootIDOf(t, ts, bearer())
+	server.jobs.stop()
+	before := snapshotState(t, root)
+	got := post(t, ts, "/v1/jobs/verify", `{"root":"`+rootID+`","bundle":"1234"}`, writeHeaders(server))
+	if got.status != http.StatusServiceUnavailable || !strings.Contains(string(got.body), `"reason":"job-capacity"`) {
+		t.Fatalf("POST after stop = %d %s, want 503 job-capacity", got.status, got.body)
+	}
+	if count := jobCount(server); count != 0 {
+		t.Fatalf("retained jobs = %d, want 0 after a refused create", count)
+	}
+	if after := snapshotState(t, root); !maps.Equal(before, after) {
+		t.Fatalf("a refused create changed the tree:\nbefore: %v\nafter:  %v", before, after)
+	}
+}
+
+// TestSlowSSEDoesNotBlock proves a subscriber that never reads does
+// not stall publishJobs: publications return immediately while a
+// healthy subscriber still receives each frame.
+func TestSlowSSEDoesNotBlock(t *testing.T) {
+	t.Parallel()
+	broker := newEventBroker()
+	slowID, slow := broker.subscribeJobs()
+	defer broker.unsubscribeJobs(slowID)
+	fastID, fast := broker.subscribeJobs()
+	defer broker.unsubscribeJobs(fastID)
+	start := time.Now()
+	for i := range 10 {
+		publishRound(t, broker, slow, fast, i)
+	}
+	if elapsed := time.Since(start); elapsed > 2*time.Second {
+		t.Fatalf("publishing with a slow subscriber took %s, want immediate returns", elapsed)
+	}
+	// The slow channel never drained, so publishes kept replacing its
+	// single slot instead of blocking: it still holds a frame.
+	assertSlowHeld(t, slow)
 }
