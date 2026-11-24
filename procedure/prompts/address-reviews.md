@@ -40,7 +40,9 @@
    resolving. Hand it `patch.json`'s `verifyCmd` + `filesChanged` as the lead; VERIFIED still
    requires its own independent re-run. It appends one `{sig, verdict, verifyCmd, resultHead}`
    entry per thread to `.verdict/state/N/verification.json` (creating it); only `VERIFIED` with a
-   matching HEAD flips `addressed`. Prefer a machine `verify` result when present. Otherwise reply without resolving.
+   matching HEAD flips `addressed`, and only beside a passing receipt from
+   `verdict verify owner/repo N` (run after the push and re-fetch, so its `verifiedHead` in
+   `patch.json` is the HEAD `post` grades) — a claim without one only logs. Otherwise reply without resolving.
 7. Finalize ONLY if code changed → land it as a single commit (amend as you iterate, push
    once at the end); on push failure report exact error and STOP (don't
    claim fix or resolve threads). Reply ONCE per relevant thread: on GitHub the reply takes

@@ -30,6 +30,9 @@ type sandboxCommander struct {
 }
 
 func (c *sandboxCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
+	if isHeadProbe(cmd) {
+		return core.Result{Stdout: patchHead + "\n"}, nil
+	}
 	c.calls = append(c.calls, cmd)
 	i := len(c.calls) - 1
 	if i < len(c.errs) && c.errs[i] != nil {

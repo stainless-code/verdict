@@ -1,0 +1,7 @@
+---
+"@stainless-code/verdict": minor
+---
+
+**Behavior change:** a `VERIFIED` claim in `verification.json` no longer flips a finding to `addressed` on its own. `record` and `post` now also require the receipt `verdict verify` writes into the bundle's `patch.json`: `verifyExit` 0, not timed out, and a `verifiedHead` equal to the HEAD being graded. Before, a hand-written claim with a matching `resultHead` was enough, and a failing or timed-out `patch.json` only drew a warning while the flip stood. Since `gate`, `report --check`, `post --approve`, MCP and `serve` all read the status this merge settles, none of them can pass a finding on a claim nobody observed anymore. A claim without a receipt, or with a failed, timed-out, headless, or stale one, leaves the finding's status unchanged. It logs a `revalidation` history event and warns `VERIFIED claim for <sig> not applied (<reason>)`, naming the HEAD a stale receipt covered and the HEAD to re-run `verdict verify` on. `NOT VERIFIED` still reopens without a receipt.
+
+`verdict verify` now records the checked-out commit it ran against as `verifiedHead` in `patch.json` and as `data.head` in `--json`. It reads `git rev-parse HEAD` before and after the command. When either read fails or the head moves, it records no head and warns. Re-run `verdict verify` with this release before landing claims: older receipts carry no head, so they cannot back a claim. The `fix` instructions and the review procedure now route the proof through `verdict verify`.

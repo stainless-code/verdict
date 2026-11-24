@@ -1151,10 +1151,10 @@ func (st *state) printKB(dir string) {
 
 func (st *state) printInstructions(dir, anchor string) {
 	st.humanf(instructionsFmt,
-		anchor, dir, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr)
+		anchor, dir, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr)
 	st.humanRaw(gateMsg)
 	st.humanRaw(budgetMsg)
-	st.humanf("next: patch %s, write verification.json, "+
+	st.humanf("next: patch %s, run verdict verify, write verification.json, "+
 		"run record to land it, then re-run fix\n", anchor)
 }
 
@@ -1332,7 +1332,7 @@ const (
 	// stoppedCeiling tombstones ceiling stops.
 	stoppedCeiling = "ceiling"
 	// nextPass is the envelope next hint for passes.
-	nextPass = "patch the anchor file, write verification.json, " +
+	nextPass = "patch the anchor file, run verdict verify, write verification.json, " +
 		"run record to land it, then re-run fix"
 	// nextDone is the human next hint when done.
 	nextDone = "next: done — no open findings"
@@ -1355,18 +1355,19 @@ const (
 const (
 	// instructionsFmt guides the next manual pass.
 	instructionsFmt = "instructions: patch the anchor file (%s), " +
-		"then run its verify command yourself and write %s/verification.json " +
+		"then run its verify command (verifyCmd in %s/patch.json) through " +
+		"verdict verify %s %s and write verification.json beside it " +
 		"[{sig, verdict, resultHead, verifyCmd}] with verdict VERIFIED and " +
-		"resultHead matching HEAD (this script never runs it — the " +
-		"resultHead==HEAD match in the record/post verification gate is the " +
-		"freshness proof); land it with record %s %s; re-run fix %s %s " +
-		"for the next pass\n"
+		"resultHead matching HEAD (fix itself runs nothing — a claim flips " +
+		"only on the receipt verify writes into patch.json: exit 0 at this " +
+		"HEAD); land it with record %s %s; re-run fix %s %s for the next pass\n"
 	// gateMsg constrains verify commands to safe shapes.
 	gateMsg = "gate: keep the verify command repo-scoped, non-destructive, " +
 		"and offline — the verify verb refuses " +
 		"destructive/networked/credential-reading/repo-escaping shapes " +
 		"before running anything (typed verify-* errors with a try: hint), " +
-		"so run anything stronger in your own shell instead\n"
+		"so run anything stronger in your own shell — it writes no receipt, " +
+		"so settle that finding with verdict triage\n"
 	// budgetMsg caps review spend.
 	budgetMsg = "loops multiply agent spend — cap review spend with " +
 		"REVIEW_BUDGET_USD or the typed budget_usd default (see docs/manual.md)\n"

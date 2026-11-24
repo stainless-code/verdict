@@ -1724,7 +1724,7 @@ export interface ThreadsResolveSkip {
   [key: string]: unknown;
 }
 
-/** verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, the patch read back from the bundle, whether the run had the full sandbox shape (sandboxed: bwrap or sandbox-exec), and which wrapper it ran under (sandboxMechanism: bwrap, sandbox-exec, or the network-only unshare-net, which never sets sandboxed; absent means unwrapped). A timed-out run is never proof. */
+/** verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, the patch read back from the bundle, whether the run had the full sandbox shape (sandboxed: bwrap or sandbox-exec), and which wrapper it ran under (sandboxMechanism: bwrap, sandbox-exec, or the network-only unshare-net, which never sets sandboxed; absent means unwrapped). head is the checked-out commit the run is bound to: the deep group's execution head, or on the patch path the verifiedHead written to patch.json, absent when the head could not be read or moved during the run. A timed-out run is never proof. */
 export interface VerifyData {
   exit: number;
   timedOut: boolean;

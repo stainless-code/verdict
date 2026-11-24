@@ -76,7 +76,7 @@ func TestRecordOutcomeNetworkOnlyIsNotSandboxed(t *testing.T) {
 	if err := os.WriteFile(patchPath(dir), []byte(`{"verifyCmd":"true","sandboxed":true,"sandboxMechanism":"bwrap"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if ref := recordOutcome(dir, "2026-01-01T00:00:00Z", 0, false, "", unshareNetMechanism()); ref != nil {
+	if ref := recordOutcome(dir, "2026-01-01T00:00:00Z", "", 0, false, "", unshareNetMechanism()); ref != nil {
 		t.Fatalf("recordOutcome: %v", ref)
 	}
 	const wantNetworkOnly = `{
@@ -92,7 +92,7 @@ func TestRecordOutcomeNetworkOnlyIsNotSandboxed(t *testing.T) {
 		t.Errorf("network-only record =\n%s\nwant\n%s", got, wantNetworkOnly)
 	}
 	full := &sandbox{tool: sandboxExecTool, mechanism: sandboxMechanismSandboxExec}
-	if ref := recordOutcome(dir, "2026-01-01T00:00:01Z", 0, false, "", full); ref != nil {
+	if ref := recordOutcome(dir, "2026-01-01T00:00:01Z", "", 0, false, "", full); ref != nil {
 		t.Fatalf("recordOutcome: %v", ref)
 	}
 	if got := readPatchRecord(t, dir); !strings.Contains(got, `"sandboxMechanism": "sandbox-exec"`) || !strings.Contains(got, `"sandboxed": true`) {

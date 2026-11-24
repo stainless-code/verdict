@@ -382,7 +382,7 @@ var publishedSemantics = map[string]string{
 	// description now states that sandboxed means the full shape (the
 	// network-only mechanism never sets it). No existing property, required
 	// key, enum, or type changed; an unwrapped run omits both keys.
-	"envelope.schema.json": "451f8ccdfb7a207b39ae96859a33d0b8eb4c3b8e5ecd369b7972582fd01b7897",
+	"envelope.schema.json": "c612bfe0a37958c0382cf76726fbf923c8c6dd58f14180ef33858a0882d68ad4",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

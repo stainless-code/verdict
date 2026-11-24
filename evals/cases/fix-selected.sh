@@ -212,11 +212,13 @@ if [ "$EVAL_STATUS" -eq 0 ]; then
 else
   bad "PR bundle --selected gave exit $EVAL_STATUS code '$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)'"
 fi
-if grep -q "push the fix, re-fetch with fetch acme/app $PR, then land it with post acme/app $PR" "$EVAL_OUT"; then
-  good "a PR bundle's instructions land through fetch and post, not record"
+if grep -q "push the fix, re-fetch with fetch acme/app $PR, then run it through verdict verify acme/app $PR" "$EVAL_OUT" \
+  && grep -q "; land it with post acme/app $PR;" "$EVAL_OUT"; then
+  good "a PR bundle's instructions verify after the re-fetch and land through post"
 else
   bad "PR instructions: $(grep -o 'instructions: .*' "$EVAL_OUT" | head -c 400)"
 fi
+assert_stream_nogrep "a PR bundle's instructions never land through record" "$EVAL_OUT" "land it with record"
 run_review fix acme/app "$PR" --json
 code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
 if [ "$EVAL_STATUS" -ne 0 ] && [ "$code" = "not-local" ]; then

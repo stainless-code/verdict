@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -16,10 +17,32 @@ import (
 type scriptCommander struct {
 	got []*core.Command
 	err error
-	res core.Result
+	// heads answers the checked-out-HEAD probes in order (the last repeats);
+	// empty answers patchHead. Probes never land in got, which keeps the
+	// spawned verify command at got[0].
+	heads  []string
+	res    core.Result
+	probes int
+}
+
+// patchHead is the commit a scriptCommander reports as checked out.
+const patchHead = "fedcba9876543210fedcba9876543210fedcba98"
+
+// isHeadProbe reports whether cmd is verify's `git -C <root> rev-parse HEAD`.
+func isHeadProbe(cmd *core.Command) bool {
+	a := cmd.Argv
+	return len(a) == 5 && a[0] == "git" && a[1] == "-C" && a[3] == "rev-parse" && a[4] == "HEAD"
 }
 
 func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
+	if isHeadProbe(cmd) {
+		head := patchHead
+		if len(s.heads) > 0 {
+			head = s.heads[min(s.probes, len(s.heads)-1)]
+		}
+		s.probes++
+		return core.Result{Stdout: head + "\n"}, nil
+	}
 	s.got = append(s.got, cmd)
 	if s.err != nil {
 		return core.Result{}, s.err
@@ -81,7 +104,8 @@ func checkVerifyResponse(t *testing.T, c *testkit.Collector, resp *verifycore.Re
 	if resp.Exit != 0 || resp.TimedOut || resp.Tail != "ok" {
 		t.Errorf("response = %+v", resp)
 	}
-	if resp.Data.Exit != 0 || resp.Data.TimedOut || resp.Data.OutputTail != "ok" || resp.Data.Patch != ".verdict/state/5201" {
+	if resp.Data.Exit != 0 || resp.Data.TimedOut || resp.Data.OutputTail != "ok" || resp.Data.Patch != ".verdict/state/5201" ||
+		resp.Data.Head != "fedcba9876543210fedcba9876543210fedcba98" {
 		t.Errorf("data = %+v", resp.Data)
 	}
 	joined := strings.Join(c.HumanLines, "\n")
@@ -104,13 +128,22 @@ func checkVerifyStores(t *testing.T) {
 			order = append(order, strings.SplitN(ln[1:], `"`, 2)[0])
 		}
 	}
-	wantOrder := []string{"verifyCmd", "verifyExit", "verifiedAt", "timedOut", "verifiedTail"}
+	wantOrder := []string{"verifyCmd", "verifyExit", "verifiedAt", "timedOut", "verifiedTail", "verifiedHead"}
 	if strings.Join(order, ",") != strings.Join(wantOrder, ",") {
 		t.Errorf("patch keys = %v, want %v", order, wantOrder)
 	}
+	checkVerifiedHead(t, raw)
 	out, err := os.ReadFile(".verdict/state/5201/.verify.out")
 	if err != nil || string(out) != "ok" {
 		t.Errorf(".verify.out = %q, %v", out, err)
+	}
+}
+
+// checkVerifiedHead proves patch.json binds the probed checked-out head.
+func checkVerifiedHead(t *testing.T, raw []byte) {
+	t.Helper()
+	if !strings.Contains(string(raw), `"verifiedHead": "fedcba9876543210fedcba9876543210fedcba98"`) {
+		t.Errorf("patch.json does not bind the checked-out head:\n%s", raw)
 	}
 }
 
@@ -253,6 +286,53 @@ func TestVerifyCancelKeepsPriorProof(t *testing.T) {
 	if !bytes.Equal(after.patch, before.patch) || !bytes.Equal(after.out, before.out) || !bytes.Equal(after.marker, before.marker) {
 		t.Errorf("a canceled run mutated the proof: out %q -> %q, marker %q -> %q, patch changed %t",
 			before.out, after.out, before.marker, after.marker, !bytes.Equal(after.patch, before.patch))
+	}
+}
+
+// TestVerifyHeadUnbound pins the runs that cannot bind a head: a HEAD that
+// moves during the command, and a probe git refuses. Each still records the
+// exit, drops the earlier run's verifiedHead instead of keeping it, and warns,
+// because record/post flip a VERIFIED claim only on a receipt whose head
+// equals the gated head.
+func TestVerifyHeadUnbound(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		warn  string
+		heads []string
+	}{
+		{
+			"moved", "checked-out HEAD moved from fedcba9 to 0123456 during verify",
+			[]string{patchHead, "0123456789012345678901234567890123456789"},
+		},
+		{"unreadable", "could not read the checked-out HEAD at . (git printed none)", []string{""}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			checkHeadUnbound(t, tc.heads, tc.warn)
+		})
+	}
+}
+
+func checkHeadUnbound(t *testing.T, heads []string, warn string) {
+	t.Helper()
+	bundle(t, `{"verifyCmd":"printf ok","verifiedHead":"1111111111111111111111111111111111111111"}`)
+	c, cmdr := &testkit.Collector{}, &scriptCommander{res: core.Result{Stdout: "ok"}, heads: heads}
+	resp, ref := verifycore.Run(context.Background(), verifyRequest(c, cmdr, "10", []string{"PATH=/bin"}, true))
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if cmdr.probes != 2 {
+		t.Errorf("head probes = %d, want one before and one after the command", cmdr.probes)
+	}
+	if resp.Data.Head != "" || resp.Exit != 0 {
+		t.Errorf("data = %+v, want exit 0 and no head", resp.Data)
+	}
+	want := warn + " — patch.json records no verifiedHead, so this run cannot back a VERIFIED claim"
+	if !slices.Contains(resp.Warnings, want) {
+		t.Errorf("warnings = %q, want %q", resp.Warnings, want)
+	}
+	raw := readProofFile(t, ".verdict/state/5201/patch.json")
+	if strings.Contains(string(raw), "verifiedHead") || !strings.Contains(string(raw), `"verifyExit": 0`) {
+		t.Errorf("patch.json = %s, want the exit recorded and no verifiedHead", raw)
 	}
 }
 

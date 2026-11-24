@@ -309,12 +309,22 @@ cannot reach the network warns and proceeds — the nudge never refuses.
 Authority rule: **the script disposes, the agent proposes, the human vetoes.**
 Bare `resolved[]` sigs record a claim but never flip status. `addressed` requires
 a `.verdict/state/N/verification.json` claim (`{sig, verdict: VERIFIED, verifyCmd, resultHead}`
-with `resultHead` matching HEAD). The operator or agent writes that claim —
-`verify` writes `patch.json`, not `verification.json`; a claim is attestation,
-not tool proof. `record`/`post` cross-check the bundle's `patch.json` when
-present and warn on a nonzero exit or timeout, but the flip stands; inspect
-`patch.json` for the tool's machine result. `NOT VERIFIED` reopens,
-`INCONCLUSIVE` only logs. `triage[]` claims other states with rationale (unknown enum or
+with `resultHead` matching HEAD) **and** the receipt `verdict verify` wrote into the
+bundle's `patch.json`. The operator or agent writes the claim — it is attestation;
+`verify` writes the receipt — it is the tool's observation: `verifyExit` 0,
+`timedOut` false, and `verifiedHead`, the checked-out commit `verify` read before
+and after the command, equal to the HEAD `record`/`post` grades. A claim without
+that receipt — no `patch.json`, a receipt that failed or timed out, one from a
+`verify` that could not read the head, or one for another HEAD (stale) — does not
+flip: the finding keeps its status, the claim is logged as a `revalidation`
+history event, and the run warns `VERIFIED claim for <sig> not applied (<reason>)`,
+naming the HEAD the receipt covered when it is stale and the HEAD to re-run
+`verdict verify` on. The receipt lives in the bundle, so it is bound to that bundle
+and its root by location; the head is the binding it can go stale on. `NOT VERIFIED` reopens
+without a receipt (a self-reported failure only tightens the gate),
+`INCONCLUSIVE` only logs. Every grade of a finding's status — `gate`,
+`report --check`/`--completeness`, `post --approve`, and the MCP and `serve` routes
+over them — reads the status this merge settled, so all of them agree. `triage[]` claims other states with rationale (unknown enum or
 unknown sig refused/ignored; short rationale keeps prior status). The operator mutates the
 store directly between runs with `verdict triage … --sig … --status … --rationale …`
 (human supremacy, every override history-logged).
@@ -5061,7 +5071,8 @@ and inline; non-open, section, and unknown sigs refuse), prints the finding
 (plus its stored `brief` block when one is present and the full `kb.txt` context
 when present) with patch → verify → land → re-run instructions, and records the
 pass in `.verdict/state/local-<name>/fix.json`. The agent patches the anchor file,
-runs the verify command itself, writes `verification.json`, lands via `record`,
+runs the verify command through `verdict verify` (the receipt a VERIFIED claim
+needs), writes `verification.json`, lands via `record`,
 and re-runs `fix`; the loop ends when no open inline sigs remain (completion
 summary with fixed/open/stopped counts plus the ledger path). A ceiling-exhausted
 top sig keeps getting picked — pass `--sig` for another sig or triage the stuck

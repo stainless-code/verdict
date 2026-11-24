@@ -340,6 +340,9 @@ EOF
 cat > "$EVAL_SANDBOX/.verdict/state/local-k6/verification.json" <<EOF
 [{"sig":"$sigA","verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"true"}]
 EOF
+# The claim flips only beside the receipt verify leaves at the bundle head.
+jq -n --arg h "$EVAL_FIXTURE_HEAD" '{verifyCmd:"true",verifyExit:0,timedOut:false,verifiedHead:$h}' \
+  > "$EVAL_SANDBOX/.verdict/state/local-k6/patch.json"
 run_review record acme/local-k6 local-k6 --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "second record with verification + triage exits 0"

@@ -402,7 +402,7 @@ type VerifyResponse struct { //nolint:govet // field order is the public API sur
 	TimedOut bool
 	Tail     string
 	Group    string // deep validation: the group the receipt certifies
-	Head     string // deep validation: the head the command ran on
+	Head     string // the checked-out head the run is bound to (patch verifiedHead or the deep group's execution head)
 	Receipt  string // deep validation: the recorded receipt path
 	// SandboxMechanism names the wrapper the command ran under: "bwrap" or
 	// "sandbox-exec" (the full shape), "unshare-net" (network-only), or empty

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -34,6 +35,14 @@ func writeStoreBundle(t *testing.T, slug, review string) {
 		`{"head_sha":"`+storeHead+`","base_sha":"`+storeBase+`","head_ref":"work"}`)
 	testkit.WriteFile(t, ".verdict/state/"+slug+"/full.diff", storeDiff)
 	testkit.WriteFile(t, ".verdict/state/"+slug+"/review.json", review)
+}
+
+// writeVerifyReceipt writes the patch.json a passing `verdict verify` run
+// leaves at head: the receipt a VERIFIED claim needs before it flips.
+func writeVerifyReceipt(t *testing.T, dir, head string) {
+	t.Helper()
+	testkit.WriteFile(t, dir+"/patch.json", `{"verifyCmd":"go test ./...","verifyExit":0,`+
+		`"verifiedAt":"2026-01-01T00:00:00Z","timedOut":false,"verifiedTail":"ok","verifiedHead":"`+head+`"}`)
 }
 
 func storeEntries(t *testing.T, slug string) []map[string]any {
@@ -563,6 +572,7 @@ func TestRunRecordAuthorityClaims(t *testing.T) {
 		wantStatus string
 		wantEvent  string
 		wantNote   string
+		receipt    bool
 	}{
 		{
 			name: "bare-resolved-records-a-claim-only", resolved: `,"resolved":["` + sig + `"]`,
@@ -571,13 +581,22 @@ func TestRunRecordAuthorityClaims(t *testing.T) {
 		{
 			name:       "verified-with-matching-head-addresses",
 			claims:     `[{"sig":"` + sig + `","verdict":"VERIFIED","verifyCmd":"go test ./...","resultHead":"aaaaaaa"}]`,
+			receipt:    true,
 			wantStatus: "addressed", wantEvent: "addressed", wantNote: "go test ./...",
+		},
+		{
+			// A hand-written claim with no verify receipt is attestation
+			// nobody observed: it only logs, however well-formed it is.
+			name:       "verified-without-receipt-only-logs",
+			claims:     `[{"sig":"` + sig + `","verdict":"VERIFIED","verifyCmd":"go test ./...","resultHead":"aaaaaaa"}]`,
+			wantStatus: "open", wantEvent: "revalidation", wantNote: "VERIFIED: go test ./...",
 		},
 		{
 			// The head must match: a claim about another HEAD is evidence
 			// about another tree, so it only logs.
 			name:       "verified-wrong-head-only-logs",
 			claims:     `[{"sig":"` + sig + `","verdict":"VERIFIED","verifyCmd":"go test ./...","resultHead":"ccccccc"}]`,
+			receipt:    true,
 			wantStatus: "open", wantEvent: "revalidation", wantNote: "VERIFIED: go test ./...",
 		},
 		{
@@ -586,6 +605,7 @@ func TestRunRecordAuthorityClaims(t *testing.T) {
 			// reproducible, so it only logs even when the head matches.
 			name:       "verified-without-verify-cmd-only-logs",
 			claims:     `[{"sig":"` + sig + `","verdict":"VERIFIED","resultHead":"aaaaaaa"}]`,
+			receipt:    true,
 			wantStatus: "open", wantEvent: "revalidation", wantNote: "VERIFIED",
 		},
 		{
@@ -609,6 +629,9 @@ func TestRunRecordAuthorityClaims(t *testing.T) {
 			}
 			if tc.claims != "" {
 				testkit.WriteFile(t, ".verdict/state/"+slug+"/verification.json", tc.claims)
+			}
+			if tc.receipt {
+				writeVerifyReceipt(t, ".verdict/state/"+slug, storeHead)
 			}
 			c := &testkit.Collector{}
 			if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, slug)); ref != nil {
@@ -670,6 +693,7 @@ func TestRunRecordClaimsAllApplyInOneRun(t *testing.T) {
 	testkit.WriteFile(t, ".verdict/state/local-cc/verification.json",
 		`[{"sig":"`+verifiedSig+`","verdict":"VERIFIED","verifyCmd":"go test ./...","resultHead":"aaaaaaa"},`+
 			`{"sig":"`+secondVerifiedSig+`","verdict":"VERIFIED","verifyCmd":"go test ./...","resultHead":"aaaaaaa"}]`)
+	writeVerifyReceipt(t, ".verdict/state/local-cc", storeHead)
 
 	c := &testkit.Collector{}
 	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, "local-cc")); ref != nil {
@@ -772,44 +796,95 @@ func TestRunRecordTriageClaimsCompose(t *testing.T) {
 	}
 }
 
-// TestRunRecordVerifiedContradiction pins the machine-verify contradiction
-// warns: a VERIFIED claim whose patch record says the verify command exited
-// nonzero (or timed out) still flips, and lands loudly instead of silently.
-//
-//nolint:revive // both contradiction sources assert inline
-func TestRunRecordVerifiedContradiction(t *testing.T) {
+// TestRunRecordVerifiedNeedsReceipt pins the receipt rule: a VERIFIED claim
+// with a verify command and a matching resultHead flips only when patch.json
+// carries the receipt `verdict verify` writes — exit 0, not timed out, and a
+// verifiedHead equal to the gated head. Every other receipt keeps the finding
+// open, logs the claim, and warns with the reason and the head to verify.
+func TestRunRecordVerifiedNeedsReceipt(t *testing.T) {
 	const (
 		// sha1("notes.txt Cited finding here with enough substance.")
 		sig    = "101d0761051f365731b9b857810c9b3603c50208"
 		claims = `[{"sig":"` + sig + `","verdict":"VERIFIED","verifyCmd":"go test ./...","resultHead":"aaaaaaa"}]`
+		head   = `"verifiedHead":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"`
+		tail   = " — run verdict verify on HEAD aaaaaaa, then land the claim again"
 	)
 	tests := []struct {
-		name     string
-		patch    string
-		wantWarn string
+		name       string
+		patch      string // "" writes no patch.json
+		wantStatus string
+		wantWarn   string // full warning; "" wants no unbacked-claim warning
 	}{
-		{"nonzero-exit-warns", `{"verifyExit":"1"}`, "contradicts machine verify exit=1"},
-		{"timed-out-warns", `{"timedOut":"true"}`, "contradicts machine verify timedOut=true"},
+		{"receipt-at-head-flips", `{"verifyExit":0,"timedOut":false,` + head + `}`, "addressed", ""},
+		{
+			"hand-written-only", "", "open",
+			"VERIFIED claim for 101d0761 not applied (no verify receipt: patch.json is missing or unreadable)" + tail,
+		},
+		{
+			"patch-without-receipt", `{"verifyCmd":"go test ./..."}`, "open",
+			"VERIFIED claim for 101d0761 not applied (no verify receipt in patch.json)" + tail,
+		},
+		{
+			"nonzero-exit", `{"verifyExit":1,"timedOut":false,` + head + `}`, "open",
+			"VERIFIED claim for 101d0761 not applied (the verify receipt failed with exit=1)" + tail,
+		},
+		{
+			"timed-out", `{"verifyExit":0,"timedOut":true,` + head + `}`, "open",
+			"VERIFIED claim for 101d0761 not applied (the verify receipt timed out)" + tail,
+		},
+		{
+			"stale-head", `{"verifyExit":0,"timedOut":false,"verifiedHead":"cccccccccccccccccccccccccccccccccccccccc"}`, "open",
+			"VERIFIED claim for 101d0761 not applied (the verify receipt covers HEAD ccccccc)" + tail,
+		},
+		{
+			"receipt-without-head", `{"verifyExit":0,"timedOut":false}`, "open",
+			"VERIFIED claim for 101d0761 not applied (the verify receipt records no HEAD)" + tail,
+		},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			slug := "local-vc"
-			review := `{"schema_version":"1","body":"` + storeBody + `","approved":false,` +
-				`"comments":[{"path":"notes.txt","line":2,"body":"Cited finding here with enough substance."}]}`
-			writeStoreBundle(t, slug, review)
-			testkit.WriteFile(t, ".verdict/state/"+slug+"/verification.json", claims)
-			testkit.WriteFile(t, ".verdict/state/"+slug+"/patch.json", tc.patch)
-			c := &testkit.Collector{}
-			if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, slug)); ref != nil {
-				t.Fatalf("Run refusal: %v", ref)
-			}
-			if got := bySig(t, storeEntries(t, slug))[sig]["status"]; got != "addressed" {
-				t.Errorf("status = %v, want addressed (the flip stands)", got)
-			}
-			if !hasWarning(c.Warnings, tc.wantWarn) {
-				t.Errorf("warnings = %v, want %q", c.Warnings, tc.wantWarn)
-			}
+			checkReceiptLeg(t, sig, claims, tc.patch, tc.wantStatus, tc.wantWarn)
 		})
+	}
+}
+
+// checkReceiptLeg records one VERIFIED claim over the given patch.json ("" for
+// none) and checks the status, the warning, and the logged claim.
+func checkReceiptLeg(t *testing.T, sig, claims, patch, wantStatus, wantWarn string) {
+	t.Helper()
+	slug := "local-vc"
+	writeStoreBundle(t, slug, `{"schema_version":"1","body":"`+storeBody+`","approved":false,`+
+		`"comments":[{"path":"notes.txt","line":2,"body":"Cited finding here with enough substance."}]}`)
+	testkit.WriteFile(t, ".verdict/state/"+slug+"/verification.json", claims)
+	if patch != "" {
+		testkit.WriteFile(t, ".verdict/state/"+slug+"/patch.json", patch)
+	}
+	c := &testkit.Collector{}
+	if _, ref := recordcore.Run(context.Background(), recordRequest(t, c, slug)); ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	entry := bySig(t, storeEntries(t, slug))[sig]
+	if got := entry["status"]; got != wantStatus {
+		t.Errorf("status = %v, want %v", got, wantStatus)
+	}
+	checkReceiptWarn(t, c.Warnings, entry, wantWarn)
+}
+
+// checkReceiptWarn proves an unbacked claim warns with its reason and lands
+// in history as a revalidation, and a backed one does not warn.
+func checkReceiptWarn(t *testing.T, warnings []string, entry map[string]any, wantWarn string) {
+	t.Helper()
+	if wantWarn == "" {
+		if hasWarning(warnings, "not applied") {
+			t.Errorf("warnings = %v, want no unbacked-claim warning", warnings)
+		}
+		return
+	}
+	if !slices.Contains(warnings, wantWarn) {
+		t.Errorf("warnings = %q, want %q", warnings, wantWarn)
+	}
+	if event, note := lastHistory(t, historyOf(t, entry)); event != "revalidation" || note != "VERIFIED: go test ./..." {
+		t.Errorf("last history = %q/%q, want the claim logged as a revalidation", event, note)
 	}
 }
 

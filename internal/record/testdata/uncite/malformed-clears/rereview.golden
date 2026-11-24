@@ -100,7 +100,7 @@ recorded: .verdict/state/local-kb/findings.json (1 open) + .verdict/state/local-
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "afa41909afb8f579ae42b062a9c9235188bcc9431842ae4429fdfc8856cfe4e4",
+  "prompts_hash": "2ba7ecaa38ab18ee9455c3c70d754ac4d4d4a12eec8507e63536ba35981199d8",
   "model": null,
   "author": null,
   "review_models": [],

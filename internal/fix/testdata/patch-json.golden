@@ -6,7 +6,7 @@ exit: 0
   "repo": "acme/app",
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
-  "next": "patch the anchor file, write verification.json, run record to land it, then re-run fix",
+  "next": "patch the anchor file, run verdict verify, write verification.json, run record to land it, then re-run fix",
   "warnings": [],
   "data": {
     "dir": ".verdict/state/local-patched",
@@ -42,10 +42,10 @@ exit: 0
 fix: 61234567 [important] app.txt:2 (pass 2/3, ledger .verdict/state/local-patched/fix.json)
 finding: Important scoping bug here.
 anchors: app.txt:2-2 side=RIGHT anchored=true
-instructions: patch the anchor file (app.txt), then run its verify command yourself and write .verdict/state/local-patched/verification.json [{sig, verdict, resultHead, verifyCmd}] with verdict VERIFIED and resultHead matching HEAD (this script never runs it — the resultHead==HEAD match in the record/post verification gate is the freshness proof); land it with record acme/app local-patched; re-run fix acme/app local-patched for the next pass
-gate: keep the verify command repo-scoped, non-destructive, and offline — the verify verb refuses destructive/networked/credential-reading/repo-escaping shapes before running anything (typed verify-* errors with a try: hint), so run anything stronger in your own shell instead
+instructions: patch the anchor file (app.txt), then run its verify command (verifyCmd in .verdict/state/local-patched/patch.json) through verdict verify acme/app local-patched and write verification.json beside it [{sig, verdict, resultHead, verifyCmd}] with verdict VERIFIED and resultHead matching HEAD (fix itself runs nothing — a claim flips only on the receipt verify writes into patch.json: exit 0 at this HEAD); land it with record acme/app local-patched; re-run fix acme/app local-patched for the next pass
+gate: keep the verify command repo-scoped, non-destructive, and offline — the verify verb refuses destructive/networked/credential-reading/repo-escaping shapes before running anything (typed verify-* errors with a try: hint), so run anything stronger in your own shell — it writes no receipt, so settle that finding with verdict triage
 loops multiply agent spend — cap review spend with REVIEW_BUDGET_USD or the typed budget_usd default (see docs/manual.md)
-next: patch app.txt, write verification.json, run record to land it, then re-run fix
+next: patch app.txt, run verdict verify, write verification.json, run record to land it, then re-run fix
 --- files ---
 --- file C/.verdict/state/local-patched/fix.json ---
 {"sigs":{"6123456789abcdef0123456789abcdef01234567":{"passes":2,"last_at":"0000-00-00T00:00:00Z","baseline":["app.txt","notes.txt","other.txt"]}}}

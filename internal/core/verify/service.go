@@ -149,6 +149,8 @@ func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int
 		return nil, st.withWarnings(ref)
 	}
 	outPath, timeoutPath := dir+"/.verify.out", dir+"/.verify.timeout"
+	root := st.req.RepoRootPath()
+	before, beforeRef := gitHead(ctx, commander, root)
 	st.human(fmt.Sprintf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
 	res, ref := runCommand(ctx, commander, vcmd, timeout, "", st.childEnv(), sb)
 	st.releaseSandbox(sb)
@@ -158,7 +160,32 @@ func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	return st.record(dir, now, outPath, timeoutPath, res, sb)
+	after, afterRef := gitHead(ctx, commander, root)
+	return st.record(dir, now, outPath, timeoutPath, res, sb, st.verifiedHead(root, before, after, beforeRef, afterRef))
+}
+
+// verifiedHead is the checked-out commit the run is bound to: both reads must
+// succeed and agree, because record/post flip a VERIFIED claim only on a
+// receipt whose head equals the gated head. Anything else records no head and
+// says why, so a run that cannot back a claim never looks like one that can.
+func (st *state) verifiedHead(root, before, after string, beforeRef, afterRef *core.RefusalError) string {
+	const cannotBack = " — patch.json records no verifiedHead, so this run cannot back a VERIFIED claim"
+	for _, ref := range []*core.RefusalError{beforeRef, afterRef} {
+		if ref != nil {
+			st.warn(fmt.Sprintf("could not read the checked-out HEAD at %s (%s)", root, ref.Message) + cannotBack)
+			return ""
+		}
+	}
+	if before == "" || after == "" {
+		st.warn(fmt.Sprintf("could not read the checked-out HEAD at %s (git printed none)", root) + cannotBack)
+		return ""
+	}
+	if before != after {
+		st.warn(fmt.Sprintf("checked-out HEAD moved from %s to %s during verify",
+			readcommon.ShortSHA(before), readcommon.ShortSHA(after)) + cannotBack)
+		return ""
+	}
+	return before
 }
 
 func (st *state) commander() core.Commander {
@@ -249,7 +276,7 @@ func failed(err error) *core.RefusalError {
 	return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(msgVerifyFailed, err)}
 }
 
-func (st *state) record(dir, now, outPath, timeoutPath string, res core.Result, sb *sandbox) (*Response, *core.RefusalError) {
+func (st *state) record(dir, now, outPath, timeoutPath string, res core.Result, sb *sandbox, head string) (*Response, *core.RefusalError) {
 	combined := res.Stdout + res.Stderr
 	tail := sanitizeTail(coreexec.TrimTail(lastBytes(combined, tailCap)), st.req.Environ)
 	st.human(fmt.Sprintf("» exit=%d timed_out=%s", res.ExitCode, strconv.FormatBool(res.TimedOut)))
@@ -260,10 +287,12 @@ func (st *state) record(dir, now, outPath, timeoutPath string, res core.Result, 
 	if ref := recordTimeoutMarker(timeoutPath, timeoutMarker(st.req.TimeoutRaw, res.TimedOut, res.Decoy)); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	if ref := recordOutcome(dir, now, res.ExitCode, res.TimedOut, tail, sb); ref != nil {
+	if ref := recordOutcome(dir, now, head, res.ExitCode, res.TimedOut, tail, sb); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	return st.response(dir, now, res.ExitCode, res.TimedOut, tail, sb), nil
+	resp := st.response(dir, now, res.ExitCode, res.TimedOut, tail, sb)
+	resp.Data.Head = head
+	return resp, nil
 }
 
 func (st *state) response(dir, now string, exit int, timedOut bool, tail string, sb *sandbox) *Response {
@@ -334,7 +363,7 @@ func parseTimeout(s string) (int, bool) {
 
 // recordOutcome merges the watchdog result into patch.json, preserving key
 // order (existing keys keep position, new keys append).
-func recordOutcome(dir, now string, exit int, timedOut bool, tail string, sb *sandbox) *core.RefusalError {
+func recordOutcome(dir, now, head string, exit int, timedOut bool, tail string, sb *sandbox) *core.RefusalError {
 	raw, err := noblock.ReadFile(patchPath(dir))
 	if err != nil {
 		return missingPatchRefusal(dir)
@@ -351,6 +380,13 @@ func recordOutcome(dir, now string, exit int, timedOut bool, tail string, sb *sa
 	m.Set("verifiedAt", now)
 	m.Set("timedOut", timedOut)
 	m.Set("verifiedTail", tail)
+	// The head binds the receipt to one commit; like the sandbox keys it
+	// describes this run alone, so an earlier run's head never survives.
+	if head != "" {
+		m.Set("verifiedHead", head)
+	} else {
+		m.Delete("verifiedHead")
+	}
 	// Both keys describe this run alone: `sandboxed` only for the full shape,
 	// the mechanism for any wrapper, and neither survives from an earlier run.
 	if sb.full() {

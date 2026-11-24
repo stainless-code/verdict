@@ -27,11 +27,8 @@ const (
 		"missing %s — re-fetch with '%s', re-synthesize across all chunks, then re-run " +
 		"(partial coverage never posts as complete)"
 
-	msgContradictExit = "VERIFIED claim for %s contradicts machine verify exit=%s — " +
-		"flip stands, contradiction recorded"
-
-	msgContradictTimeout = "VERIFIED claim for %s contradicts machine verify timedOut=true (exit=%s) — " +
-		"flip stands, contradiction recorded"
+	msgClaimUnbacked = "VERIFIED claim for %s not applied (%s) — run verdict verify on HEAD %s, " +
+		"then land the claim again"
 
 	msgBadTriage = "refusing post: unknown triage status '%s' " +
 		"(want open|addressed|wont-fix|false-positive|deferred)"

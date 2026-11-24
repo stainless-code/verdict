@@ -143,6 +143,11 @@ fi
 sig="$(jq -r '.[0].sig' "$EVAL_SANDBOX/.verdict/state/local-vallow/findings.json" 2>/dev/null || true)"
 jq -n --arg s "$sig" '[{sig:$s,verdict:"VERIFIED",resultHead:"aaaaaaa",verifyCmd:"rm -rf ./record-probe"}]' \
   > "$EVAL_SANDBOX/.verdict/state/local-vallow/verification.json"
+# The flip still needs a verify receipt at the bundle head; record never
+# re-gates the command shape that receipt names.
+jq -n --arg h "$EVAL_FIXTURE_HEAD" \
+  '{verifyCmd:"rm -rf ./record-probe",verifyExit:0,timedOut:false,verifiedHead:$h}' \
+  > "$EVAL_SANDBOX/.verdict/state/local-vallow/patch.json"
 run_review record acme/app local-vallow --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(jq -r '.[0].status' "$EVAL_SANDBOX/.verdict/state/local-vallow/findings.json")" = "addressed" ] \

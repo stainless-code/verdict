@@ -80,6 +80,12 @@ func (st *state) applyVerdict(target *jq.Obj, full string, claim verifyClaim) {
 		(st.headFull == claim.vrh || hasPrefix(st.headFull, claim.vrh) || hasPrefix(claim.vrh, st.headFull))
 	switch {
 	case claim.verdict == "VERIFIED" && shaOK && claim.vcmd != "":
+		// The claim is attestation; only the receipt verify wrote is proof.
+		if gap := verifyReceiptGap(st.dir, st.headFull); gap != "" {
+			st.warn(fmt.Sprintf(msgClaimUnbacked, readcommon.Prefix(full), gap, readcommon.ShortSHA(st.headFull)))
+			st.recordRevalidation(target, claim)
+			return
+		}
 		st.applyVerified(target, full, claim.vcmd)
 	case claim.verdict == "NOT VERIFIED":
 		st.applyNotVerified(target, claim.vcmd)
@@ -100,7 +106,6 @@ func (st *state) applyVerified(target *jq.Obj, full, vcmd string) {
 		st.kb.ApplyCredit(st.entries, full, outcomeAddressed, revalidatorForced, st.cmd, st.now, st.controls.Has(kb.File))
 		stampCredit(st, target)
 	}
-	st.checkVerifyContradiction(full)
 }
 
 func (st *state) applyNotVerified(target *jq.Obj, vcmd string) {
@@ -124,17 +129,6 @@ func (st *state) recordRevalidation(target *jq.Obj, claim verifyClaim) {
 		fieldAt, st.now, fieldEvent, "revalidation", fieldActor, revalidatorForced,
 		fieldNote, note, fieldSHA, st.headShort,
 	)))
-}
-
-func (st *state) checkVerifyContradiction(full string) {
-	vexit := jq.R(jq.Alt(patchField(st.dir, "verifyExit"), ""))
-	if vexit != "" && vexit != "0" && vexit != "null" {
-		st.warn(fmt.Sprintf(msgContradictExit, readcommon.Prefix(full), vexit))
-		return
-	}
-	if jq.R(jq.Alt(patchField(st.dir, "timedOut"), "")) == core.FlagOn {
-		st.warn(fmt.Sprintf(msgContradictTimeout, readcommon.Prefix(full), vexit))
-	}
 }
 
 func (st *state) applyTriage() error {
@@ -261,19 +255,60 @@ func hasPrefix(s, prefix string) bool {
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }
 
-func patchField(dir, field string) any {
+// verifyReceiptGap names why patch.json's verify receipt does not prove the
+// gated head, or returns "" when it does: an exit of 0, no timeout, and the
+// verifiedHead verify probed equal to head. The bundle owns patch.json, so a
+// receipt read here was written for this bundle and its root; the head is the
+// one binding a receipt can go stale on.
+func verifyReceiptGap(dir, head string) string {
+	receipt, gap := readVerifyReceipt(dir)
+	if gap != "" {
+		return gap
+	}
+	if gap := receiptOutcomeGap(receipt); gap != "" {
+		return gap
+	}
+	recorded, ok := getField(receipt, "verifiedHead").(string)
+	if !ok || recorded == "" {
+		return "the verify receipt records no HEAD"
+	}
+	if recorded != head {
+		return "the verify receipt covers HEAD " + readcommon.ShortSHA(recorded)
+	}
+	return ""
+}
+
+// readVerifyReceipt reads patch.json and proves verify wrote an outcome into
+// it; an agent-written patch.json without verifyExit is no receipt at all.
+func readVerifyReceipt(dir string) (*jq.Obj, string) {
 	raw, err := noblock.ReadFile(dir + "/patch.json")
 	if err != nil {
-		return nil
+		return nil, "no verify receipt: patch.json is missing or unreadable"
 	}
 	doc, err := jq.DecodeOrdered(raw)
-	if err != nil {
-		return nil
+	receipt, ok := doc.(*jq.Obj)
+	if err != nil || !ok {
+		return nil, "no verify receipt: patch.json is not a JSON object"
 	}
-	m, ok := doc.(*jq.Obj)
-	if !ok {
-		return nil
+	if getField(receipt, "verifyExit") == nil {
+		return nil, "no verify receipt in patch.json"
 	}
-	v, _ := m.Get(field)
+	return receipt, ""
+}
+
+// receiptOutcomeGap rejects a receipt whose run failed or timed out.
+func receiptOutcomeGap(receipt *jq.Obj) string {
+	if exit := jq.R(getField(receipt, "verifyExit")); exit != "0" {
+		return "the verify receipt failed with exit=" + exit
+	}
+	if jq.R(jq.Alt(getField(receipt, "timedOut"), "")) == core.FlagOn {
+		return "the verify receipt timed out"
+	}
+	return ""
+}
+
+// getField reads one key, nil when absent.
+func getField(m *jq.Obj, key string) any {
+	v, _ := m.Get(key)
 	return v
 }

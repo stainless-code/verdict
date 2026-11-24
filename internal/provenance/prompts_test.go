@@ -28,7 +28,7 @@ var infoWord = regexp.MustCompile(`^[A-Za-z0-9_+.-]*$`)
 // verifies and renders) instead of the retired raw-mermaid wrapper.
 func TestPromptsHashUnchanged(t *testing.T) {
 	t.Chdir(t.TempDir())
-	const want = "afa41909afb8f579ae42b062a9c9235188bcc9431842ae4429fdfc8856cfe4e4"
+	const want = "2ba7ecaa38ab18ee9455c3c70d754ac4d4d4a12eec8507e63536ba35981199d8"
 	if got := PromptsHash(); got != want {
 		t.Fatalf("PromptsHash = %s, want %s from the embedded payload", got, want)
 	}

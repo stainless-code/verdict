@@ -223,6 +223,7 @@ func TestGoldenClaimsSequence(t *testing.T) {
 			".verdict/state/local-kb/verification.json": fmt.Sprintf(
 				`[{"sig":"%s","verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"true"},{"sig":"deadbeef","verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"true"},{"sig":"%s","verdict":"NOT VERIFIED","resultHead":"aaaaaaa","verifyCmd":"make check"}]`,
 				sigs[0], sigs[0]),
+			".verdict/state/local-kb/patch.json": kbReceipt,
 		})
 	}, "--json")
 }

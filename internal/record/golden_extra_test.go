@@ -17,14 +17,24 @@ func claimsSetup(t *testing.T, dir string) {
 }
 
 // claimMutate replaces the review with the given verification claims,
-// keeping comments empty so the second pass merges against phase-1 entries.
+// keeping comments empty so the second pass merges against phase-1 entries,
+// beside the passing verify receipt at the bundle head that a VERIFIED claim
+// needs before it flips.
 func claimMutate(t *testing.T, dir string, claims string) {
 	t.Helper()
 	writeFiles(t, dir, map[string]string{
 		".verdict/state/local-kb/review.json":       `{"schema_version":"1","body":"> [!IMPORTANT]\n> Second pass with evidence.","approved":false,"comments":[]}`,
 		".verdict/state/local-kb/verification.json": claims,
+		".verdict/state/local-kb/patch.json":        kbReceipt,
 	})
 }
+
+// kbHead is the head every local-kb fixture's source.json records.
+const kbHead = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+
+// kbReceipt is the patch.json a passing `verdict verify` run leaves at kbHead.
+const kbReceipt = `{"verifyCmd":"make check","verifyExit":0,"verifiedAt":"2026-01-01T00:00:00Z",` +
+	`"timedOut":false,"verifiedTail":"ok","verifiedHead":"` + kbHead + `"}`
 
 // claimsOf builds verification claims for every phase-1 sig.
 func claimsOf(t *testing.T, dir string, fn func(sig string) string) string {
@@ -110,14 +120,17 @@ func verifyLegs() []verifyLeg {
 		{claimsSetup, mutateClaims("VERIFIED", "bbbbbbb", "make check"), "verify/bad-head"},
 		{claimsSetup, mutateClaims("VERIFIED", "aaaaaaa", ""), "verify/empty-cmd"},
 		{claimsSetup, mutateClaims("INCONCLUSIVE", "aaaaaaa", "make check"), "verify/inconclusive"},
-		{claimsSetup, mutatePatchClaims(`{"verifyExit":1}`), "verify/contradict-exit"},
-		{claimsSetup, mutatePatchClaims(`{"timedOut":true}`), "verify/contradict-timeout"},
+		{claimsSetup, mutatePatchClaims(`{"verifyExit":1,"timedOut":false,"verifiedHead":"` + kbHead + `"}`), "verify/receipt-exit"},
+		{claimsSetup, mutatePatchClaims(`{"verifyExit":0,"timedOut":true,"verifiedHead":"` + kbHead + `"}`), "verify/receipt-timeout"},
+		{claimsSetup, mutatePatchClaims(`{"verifyExit":0,"timedOut":false,"verifiedHead":"cccccccccccccccccccccccccccccccccccccccc"}`), "verify/receipt-stale"},
+		{claimsSetup, mutatePatchClaims(`{"verifyCmd":"make check"}`), "verify/receipt-missing"},
 		{claimsSetup, mutateAddressed, "verify/on-addressed"},
 		{setupMany, mutateAmbiguous, "verify/ambiguous-prefix"},
 	}
 }
 
-// mutatePatchClaims applies VERIFIED-for-every-sig plus a patch.json.
+// mutatePatchClaims applies VERIFIED-for-every-sig over the given patch.json
+// in place of the passing receipt.
 func mutatePatchClaims(patch string) func(t *testing.T, dir string) {
 	return func(t *testing.T, dir string) {
 		t.Helper()
@@ -140,6 +153,7 @@ func mutateAddressed(t *testing.T, dir string) {
 			sigs[0]),
 		".verdict/state/local-kb/verification.json": fmt.Sprintf(
 			`[{"sig":%q,"verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"make check"}]`, sigs[0]),
+		".verdict/state/local-kb/patch.json": kbReceipt,
 	})
 }
 
@@ -178,6 +192,7 @@ func mutateAmbiguous(t *testing.T, dir string) {
 	writeFiles(t, dir, map[string]string{
 		".verdict/state/local-kb/review.json":       `{"schema_version":"1","body":"> [!IMPORTANT]\n> Second pass with evidence.","approved":false,"comments":[]}`,
 		".verdict/state/local-kb/verification.json": fmt.Sprintf(`[{"sig":%q,"verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"make check"}]`, prefix),
+		".verdict/state/local-kb/patch.json":        kbReceipt,
 	})
 }
 
