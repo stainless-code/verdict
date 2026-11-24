@@ -650,10 +650,18 @@ func readBundleLockRow(path, repo string) bundleLockRow {
 
 func normalizeLockRepo(s string) string {
 	s = strings.ReplaceAll(s, `\`, "/")
-	if i := strings.Index(s, "://"); i > 0 {
-		s = strings.ToLower(s[:i]) + s[i:]
+	i := strings.Index(s, "://")
+	if i <= 0 {
+		return s
 	}
-	return s
+	// Fold the scheme and the authority only: a host is case-insensitive, a
+	// repository path is not.
+	scheme, rest := s[:i], s[i+len("://"):]
+	authority, tail := rest, ""
+	if slash := strings.IndexByte(rest, '/'); slash >= 0 {
+		authority, tail = rest[:slash], rest[slash:]
+	}
+	return strings.ToLower(scheme) + "://" + strings.ToLower(authority) + tail
 }
 
 // lockSourceRepo strips one lock source to its repository spelling.
@@ -727,17 +735,9 @@ func computeRunID(in *ReceiptBuildInput, promptsHash string, learn *core.Provena
 // orgPackHashValue binds the governing central pack into the run id: the
 // explicit input wins, else the bundle snapshot's pin and locked hash.
 // A pin-less bundle returns empty, so legacy run_ids stay bit-identical.
-//
-//nolint:revive // run-id binding needs both explicit and bundle fallbacks
 func orgPackHashValue(in *ReceiptBuildInput) string {
 	if in.OrgPack == nil {
 		found := orgPackFromBundle(in.Dir)
-		if found.Repo == "" && found.Ref == "" && found.Path == "" && found.Hash == "" {
-			// No pin and no bundle snapshot pin: keep legacy IDs stable.
-			if found.Repo == "" {
-				return ""
-			}
-		}
 		if found.Repo == "" {
 			return ""
 		}

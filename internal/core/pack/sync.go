@@ -105,7 +105,7 @@ func vendorAndLock(
 	}
 	slug := packSlug(p.Name)
 	entry := LockEntry{
-		Name: p.Name, Source: src.label, Version: p.Version, Hash: p.Hash, OrgPath: pinPath,
+		Name: p.Name, Source: src.label, Version: p.Version, Hash: p.Hash, OrgPath: pinPath, OrgRef: pin.Ref,
 	}
 	if pinPath == rootSelf {
 		entry.OrgPath = ""
@@ -134,7 +134,7 @@ func vendorAndLock(
 // repository root) is read in place. An unreachable source refuses typed.
 func syncSource(ctx context.Context, req *SyncRequest, pin *OrgPin, root string) (*packSource, *core.RefusalError) {
 	if g, ok := parseGitSource(pin.Repo); ok {
-		return cloneSource(ctx, &AddRequest{ReadRequest: req.ReadRequest}, g.url, pin.Ref)
+		return cloneSource(ctx, &AddRequest{ReadRequest: req.ReadRequest}, g.url, pin.Ref, orgPinPath(pin))
 	}
 	if looksLikeGitSource(pin.Repo) || secretShaped(pin.Repo) {
 		return nil, badPackSource(fmt.Sprintf("org pack repo %q is not an allowlisted git remote", displaySource(pin.Repo)))

@@ -470,7 +470,11 @@ var publishedSemantics = map[string]string{
 	// (the maxHostLabel cap the loader enforces) and refuses a "://" inside an
 	// scp path (the loader's scheme guard). One pattern narrowed to the
 	// loader's own grammar; no property, required key, enum, or type changed.
-	"lock.schema.json": "7d63d2b6b6ff34d8009e514847ce41889fa9ced91928fefde9edf6edef102909",
+	// org pin rows: additive org_ref, plus descriptions and confined-path /
+	// immutable-ref patterns on the optional org_path and org_ref fields. No
+	// existing property, required key, enum, or type changed; the sig and root
+	// descriptions now state the org fields they cover.
+	"lock.schema.json": "3b2a1adc106af517eb2304a9dc7684bb715d2971be4645756b812970ba1dd810",
 	// findings cap: the lens max_findings description now says the built-in
 	// pack declares none, so a shipped lens states no return cap and returns
 	// what its evidence supports. Prose only; no property, required key, enum,

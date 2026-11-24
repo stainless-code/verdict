@@ -155,3 +155,83 @@ func TestParsePacksSectionIsOptional(t *testing.T) {
 		t.Errorf("packs = %+v, want absent", cfg.Packs)
 	}
 }
+
+// TestOrgPackRepoGitAllowlist proves the pin's repo runs through the shared
+// git allowlist: a malformed bracketed host, a credential-bearing URL, and
+// every scheme the allowlist does not publish refuse bad-config, and no
+// refusal echoes a secret.
+func TestOrgPackRepoGitAllowlist(t *testing.T) {
+	t.Parallel()
+	refused := []struct {
+		name string
+		repo string
+		hide string
+	}{
+		{"bracketed host text", "https://[not a host]:443/packs.git", "not a host"},
+		{"bracketed host empty", "https://[]/packs.git", "[]"},
+		{"bracketed ssh host", "ssh://git@[garbage]/packs.git", "garbage"},
+		{"http scheme", "http://example.invalid/packs.git", ""},
+		{"file scheme", "file:///etc/packs", ""},
+		{"git scheme", "git://example.invalid/packs.git", ""},
+		{"credentialed https", "https://oauth2:ghp_SECRET@example.invalid/packs.git", "ghp_SECRET"},
+		{"credentialed ssh", "ssh://user:S3CRET@example.invalid/packs.git", "S3CRET"},
+	}
+	for _, tc := range refused {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertOrgRepoRefused(t, tc.repo, tc.hide)
+		})
+	}
+}
+
+// assertOrgRepoRefused proves one repo spelling refuses bad-config by the
+// allowlist, without echoing the secret it may carry.
+func assertOrgRepoRefused(t *testing.T, repo, hide string) {
+	t.Helper()
+	sha := strings.Repeat("a", 40)
+	body := `{"schema_version":"1","packs":{"org_pack":{"repo":"` + repo + `","ref":"` + sha + `"}}}`
+	_, ref := Parse([]byte(body))
+	if ref == nil || ref.Code != CodeBadConfig {
+		t.Fatalf("Parse(%q) = %v, want %s", repo, ref, CodeBadConfig)
+	}
+	if !strings.Contains(ref.Message, "allowlisted git remote") {
+		t.Fatalf("message = %q, want the allowlist named", ref.Message)
+	}
+	if hide != "" && strings.Contains(ref.Message, hide) {
+		t.Fatalf("message = %q echoes %q", ref.Message, hide)
+	}
+}
+
+// TestOrgPackRepoGitAllowlistAccepts proves every published remote form and a
+// local mirror path still parse with the pin's repo carried verbatim.
+func TestOrgPackRepoGitAllowlistAccepts(t *testing.T) {
+	t.Parallel()
+	accepted := []string{
+		"https://example.invalid/acme/packs.git",
+		"ssh://git@example.invalid/acme/packs.git",
+		"git@example.invalid:org/repo.git",
+		"central",
+		"./mirrors/packs",
+	}
+	for _, repo := range accepted {
+		t.Run(repo, func(t *testing.T) {
+			t.Parallel()
+			assertOrgRepoAccepted(t, repo)
+		})
+	}
+}
+
+// assertOrgRepoAccepted proves one published remote form parses with its repo
+// carried verbatim into the typed pin.
+func assertOrgRepoAccepted(t *testing.T, repo string) {
+	t.Helper()
+	sha := strings.Repeat("a", 40)
+	body := `{"schema_version":"1","packs":{"org_pack":{"repo":"` + repo + `","ref":"` + sha + `"}}}`
+	cfg, ref := Parse([]byte(body))
+	if ref != nil {
+		t.Fatalf("Parse(%q) = %s: %s, want accepted", repo, ref.Code, ref.Message)
+	}
+	if cfg.Packs.OrgPack.Repo != repo {
+		t.Fatalf("repo = %q, want the verbatim pin %q", cfg.Packs.OrgPack.Repo, repo)
+	}
+}

@@ -41,8 +41,6 @@ func VerifyOrgPin(root string, pin *OrgPin) *core.RefusalError {
 // validatePin re-checks one pin's shape, so a caller that built the struct
 // directly cannot smuggle a traversal path or a floating ref past the
 // config parser.
-//
-//nolint:revive // pin shape validation necessarily branches over repo, ref, path
 func validatePin(pin *OrgPin) *core.RefusalError {
 	if strings.TrimSpace(pin.Repo) == "" || strings.HasPrefix(pin.Repo, "-") ||
 		strings.ContainsAny(pin.Repo, "?#") || !cleanSource(pin.Repo) {
@@ -51,7 +49,7 @@ func validatePin(pin *OrgPin) *core.RefusalError {
 	if _, ok := parseGitSource(pin.Repo); !ok && (looksLikeGitSource(pin.Repo) || secretShaped(pin.Repo)) {
 		return badPackSource(fmt.Sprintf("org pack repo %q is not an allowlisted git remote", displaySource(pin.Repo)))
 	}
-	if !hex40(pin.Ref) && !orgTagPattern.MatchString(pin.Ref) {
+	if !orgRefShape(pin.Ref) {
 		return badPack(fmt.Sprintf(
 			"org pack ref %q is not immutable — use a 40-hex commit SHA or a semver tag like v1.2.3, never a branch name",
 			pin.Ref))
@@ -148,6 +146,9 @@ func verifyOrgEntry(root string, entry *LockEntry, pin *OrgPin) *core.RefusalErr
 			"org pack %s@%s path %q does not match lock — run 'verdict pack sync'",
 			pin.Repo, pin.Ref, orgPinPath(pin))}
 	}
+	if !orgRefMatch(entry, pin) {
+		return orgRefRefusal(entry, pin)
+	}
 	return nil
 }
 
@@ -160,6 +161,32 @@ func orgPathMatch(entry *LockEntry, pin *OrgPin) bool {
 		got = rootSelf
 	}
 	return want == got
+}
+
+// orgRefMatch reports whether one lock row was synced from the pin's exact
+// ref. A semver tag may resolve to any locked commit, so the recorded ref is
+// the only thing that proves the pin still names the synced content: without
+// it, bumping v1.0.0 to v1.1.0 would silently keep verifying the old tree.
+func orgRefMatch(entry *LockEntry, pin *OrgPin) bool {
+	return entry.OrgRef == pin.Ref
+}
+
+// orgRefRefusal names the ref the lock was synced at and the ref the pin now
+// reads, so the operator knows the sync is what has to move.
+func orgRefRefusal(entry *LockEntry, pin *OrgPin) *core.RefusalError {
+	locked := entry.OrgRef
+	if locked == "" {
+		locked = "none"
+	}
+	return &core.RefusalError{Code: CodeLockMissing, Message: fmt.Sprintf(
+		"org pack %s drift: %s records org_ref %s, the pin reads %s — run 'verdict pack sync' to vendor and lock the new ref",
+		entry.Name, LockFile, locked, pin.Ref)}
+}
+
+// orgRefShape reports whether one ref is an immutable pin: a 40-hex commit or
+// a semver tag, never a branch name.
+func orgRefShape(ref string) bool {
+	return hex40(ref) || orgTagPattern.MatchString(ref)
 }
 
 // filepathSlash renders one path spelling with forward slashes.

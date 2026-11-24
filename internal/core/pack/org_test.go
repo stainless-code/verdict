@@ -2,6 +2,7 @@ package pack
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"slices"
@@ -312,5 +313,49 @@ func TestResolveVerifiesOrgPin(t *testing.T) {
 	req := &Request{OrgPin: pin, List: true}
 	if _, _, ref := Resolve(context.Background(), req); ref == nil || ref.Code != CodeLockMissing {
 		t.Fatalf("refusal = %v, want %s", ref, CodeLockMissing)
+	}
+}
+
+// TestSyncSubdirPinBoundsOnlyThePackSubtree proves the clone caps apply to the
+// subtree a subdirectory pin vendors: a large central repository whose sibling
+// packs exceed the file cap still syncs the one pack it pinned.
+func TestSyncSubdirPinBoundsOnlyThePackSubtree(t *testing.T) {
+	repo := t.TempDir()
+	t.Chdir(repo)
+	files := map[string]string{
+		"packs/org/pack.json":      lockManifest,
+		"packs/org/lenses/perf.md": "perf body\n",
+	}
+	for i := range MaxFiles {
+		files[fmt.Sprintf("packs/sibling/junk/%03d.txt", i)] = "x"
+	}
+	cmdr := &gitCommander{t: t, files: files}
+	pin := &OrgPin{Repo: "https://example.invalid/acme/packs.git", Ref: "v1.2.3", Path: "packs/org"}
+	if _, ref := RunSync(context.Background(), &SyncRequest{ReadRequest: syncReadFor(cmdr), OrgPin: pin}); ref != nil {
+		t.Fatalf("RunSync = %s: %s, want the pinned subtree accepted", ref.Code, ref.Message)
+	}
+	assertFile(t, ".verdict/packs/lenses/lenses/perf.md", "perf body\n")
+	if ref := VerifyOrgPin(repo, pin); ref != nil {
+		t.Fatalf("VerifyOrgPin = %s: %s", ref.Code, ref.Message)
+	}
+}
+
+// TestSyncSubdirPinRefusesOversizedPackSubtree proves the same bound still
+// refuses a pinned subtree that is itself over the cap.
+func TestSyncSubdirPinRefusesOversizedPackSubtree(t *testing.T) {
+	repo := t.TempDir()
+	t.Chdir(repo)
+	files := map[string]string{
+		"packs/org/pack.json":      lockManifest,
+		"packs/org/lenses/perf.md": "perf body\n",
+	}
+	for i := range MaxFiles {
+		files[fmt.Sprintf("packs/org/junk/%03d.txt", i)] = "x"
+	}
+	cmdr := &gitCommander{t: t, files: files}
+	pin := &OrgPin{Repo: "https://example.invalid/acme/packs.git", Ref: "v1.2.3", Path: "packs/org"}
+	_, ref := RunSync(context.Background(), &SyncRequest{ReadRequest: syncReadFor(cmdr), OrgPin: pin})
+	if ref == nil || ref.Code != CodePackTooLarge {
+		t.Fatalf("RunSync = %v, want %s", ref, CodePackTooLarge)
 	}
 }

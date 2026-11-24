@@ -100,3 +100,30 @@ func TestOrgPackFromBundleWithoutSnapshot(t *testing.T) {
 		t.Errorf("pin = %+v, want empty", pin)
 	}
 }
+
+// TestLegacyRunIDIsBitIdenticalWithoutAnOrgPack pins the run id a bundle with
+// no governing org pack produces: the org binding must add nothing when no pin
+// is active, so run ids written before org packs existed still match.
+func TestLegacyRunIDIsBitIdenticalWithoutAnOrgPack(t *testing.T) {
+	const ctrlV1 = `{"defaults":{"kb_policy":{"max_chars":120}}}`
+	_, dir := seedReceiptFixture(t, ctrlV1)
+	r := BuildReceipt(baseBuildInput(dir, ctrlV1))
+	if got, want := r.RunID, "4038796ee5a6c5aa4e4bc8fe6bd2372412f0378920228e2c13d6b39b850f3a96"; got != want {
+		t.Fatalf("run_id = %s, want the legacy digest %s", got, want)
+	}
+}
+
+// TestReadBundleLockRowFoldsHostCase proves the repo match folds the URL
+// scheme and host, so an upper-case HOST in the pin still finds the canonical
+// row, while the repository path stays case-sensitive.
+func TestReadBundleLockRowFoldsHostCase(t *testing.T) {
+	dir := seedOrgBundle(t)
+	path := filepath.Join(dir, "controls", "verdict.lock")
+	row := readBundleLockRow(path, "HTTPS://EXAMPLE.INVALID/acme/packs.git")
+	if row.Name != "acme/lenses" || row.Hash != "abcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcdabcd" {
+		t.Fatalf("row = %+v, want the locked acme/lenses row", row)
+	}
+	if row := readBundleLockRow(path, "https://example.invalid/Acme/packs.git"); row.Name != "" {
+		t.Fatalf("row = %+v, want a case-sensitive path to miss", row)
+	}
+}

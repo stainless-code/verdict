@@ -915,13 +915,18 @@ one-slash scheme, or any userinfo password refuses `bad-lock-source`. A
 `dir:` label that looks
 like a URL is listed as `<invalid source>`. `hash` is the canonical tree hash
 `pack list` prints. `sig` is an integrity digest, not a signature: sha256
-over `name=`, `source=`, `version=`, and `hash=` lines in that order, so a
-hand-edited row is caught. The lock covers the repo layer only: the built-in
-pack is pinned by the binary, and personal-settings org packs live outside
-the lock, so neither is locked — but a base-owned `org_pack` pin vendors its
-pack into the repo layer, and that pack locks like any repo pack.
-`pack add` (and `pack sync`) write the file atomically and keep every
-other row.
+over `name=`, `source=`, `version=`, and `hash=` lines in that order, then
+`org_path=` and `org_ref=` on a row that records them, so a hand-edited row
+is caught. The lock covers the repo layer, the built-in pack is pinned by the
+binary, and personal-settings org packs live outside the lock — but a
+base-owned `org_pack` pin vendors its pack into the repo layer, and that pack
+locks like any repo pack: its row also carries `org_path` (the central path it
+came from, absent when the pin names the repository root) and `org_ref` (the
+immutable SHA or semver tag the pin read at sync time). Both are part of the
+`sig`, and `pack sync` is the only writer: moving the path or bumping the ref
+without re-syncing refuses `pack-lock-missing` and names `pack sync` as the
+fix, because the vendored tree belongs to the old pin. `pack add` (and `pack
+sync`) write the file atomically and keep every other row.
 
 `fetch`, `fetch-local`, `post`, and `record` run one shared check where packs
 are resolved. With no repo packs and no lock, nothing changes. A repo pack
@@ -936,9 +941,10 @@ and editing the captured copy refuses `controls-stale` at post/record. When
 a base-owned `org_pack` pin governs, the pack verbs additionally verify the
 vendored central pack against the pin and the lock on every resolution —
 with zero network access — and refuse `pack-lock-missing` (no row synced
-from the pinned repository) or `pack-lock-drift` (the vendored tree no
-longer hashes to the locked content) instead of falling back to a previous
-pack set; `run` and `record` inherit the same protection through the lock.
+from the pinned repository, or a row synced at another `ref`) or
+`pack-lock-drift` (the vendored tree no longer hashes to the locked content)
+instead of falling back to a previous pack set; `run` and `record` inherit the
+same protection through the lock.
 `report` shows the governing version as `org_pack` (human line and
 `data.org_pack`; see the config example above), and the provenance receipt
 carries it as an `org_pack` input.

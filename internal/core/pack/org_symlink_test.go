@@ -4,51 +4,50 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
-//nolint:revive // symlink test necessarily sets up filesystem states
+// TestSyncRejectsIntermediateSymlink proves a pin whose path walks through a
+// symlink refuses pack-unsafe-path before anything is vendored: the central
+// repository's own tree cannot redirect the sync outside itself.
 func TestSyncRejectsIntermediateSymlink(t *testing.T) {
-	t.Parallel()
-	if testing.Short() {
-		t.Skip("skip symlinks on short")
-	}
 	repo := t.TempDir()
+	t.Chdir(repo)
 	outside := t.TempDir()
-	// Build central repo with real pack at outside/pack, but symlink packs -> outside
+	writeFixture(t, outside, map[string]string{
+		"org/pack.json":      lockManifest,
+		"org/lenses/perf.md": "perf body\n",
+	})
 	central := filepath.Join(repo, "central")
-	if err := os.MkdirAll(filepath.Join(central, "packs"), 0o755); err != nil {
+	if err := os.MkdirAll(central, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Join(outside, "org"), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	writeFixture := func(path, body string) {
-		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-			t.Fatal(err)
-		}
-		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-	writeFixture(filepath.Join(outside, "org", "pack.json"), lockManifest)
-	writeFixture(filepath.Join(outside, "org", "lenses", "perf.md"), "perf body\n")
-	// central/packs/org will be via symlink to outside/org? Instead make central/packs a symlink to outside, so pinPath packs/org traverses symlink
-	if err := os.RemoveAll(filepath.Join(central, "packs")); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(outside, filepath.Join(central, "packs")); err != nil {
-		t.Skipf("symlink not allowed: %v", err)
-	}
-	sha := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	pin := &OrgPin{Repo: "central", Ref: sha, Path: "packs/org"}
+	symlinkOrSkip(t, filepath.Join(outside, "org"), filepath.Join(central, "packs"))
+	pin := &OrgPin{Repo: central, Ref: orgSha, Path: "packs/lenses"}
 	_, ref := RunSync(context.Background(), &SyncRequest{OrgPin: pin})
 	if ref == nil {
-		t.Fatalf("expected refusal for intermediate symlink, got nil")
+		t.Fatal("RunSync accepted a symlinked pin path")
 	}
-	if ref.Code != CodeBadPack && ref.Code != "pack-unsafe-path" && ref.Code != CodePackUnsafePath {
-		// Accept any typed refusal that mentions symlink or path
-		t.Logf("refused with %s: %s", ref.Code, ref.Message)
+	if ref.Code != CodePackUnsafePath {
+		t.Fatalf("refusal = %s: %s, want %s", ref.Code, ref.Message, CodePackUnsafePath)
 	}
-	// Ensure no outside read happened beyond refusal - we just check refusal not nil
+	if _, err := os.Stat(filepath.Join(repo, ".verdict", "packs")); !os.IsNotExist(err) {
+		t.Fatalf("refused sync wrote %s (stat err %v)", RepoPacksDir, err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, filepath.FromSlash(LockFile))); !os.IsNotExist(err) {
+		t.Fatalf("refused sync wrote %s (stat err %v)", LockFile, err)
+	}
+}
+
+// symlinkOrSkip creates one fixture symlink, skipping only on the platform
+// that refuses the call without a privilege.
+func symlinkOrSkip(t *testing.T, target, link string) {
+	t.Helper()
+	if err := os.Symlink(target, link); err != nil {
+		if runtime.GOOS == "windows" {
+			t.Skipf("this OS refuses symlink creation without a privilege: %v", err)
+		}
+		t.Fatalf("symlink fixture: %v", err)
+	}
 }

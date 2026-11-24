@@ -115,6 +115,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/evidence":       true,
 	"internal/fence":          true,
 	"internal/forgejo":        true,
+	"internal/gitsource":      true,
 	"internal/hunks":          true,
 	"internal/identity":       true,
 	"internal/incident":       true,
@@ -143,7 +144,9 @@ var facadeAllowedDeps = map[string]bool{
 // stay a leaf, so a new internal dependency is a deliberate boundary change
 // the facade allowlist would otherwise hide (a leaf that imports another
 // allowlisted package changes no facade dep).
-var leafHelpers = []string{"internal/exclude", "internal/shellquote", "internal/storelock", "internal/strictjson"}
+var leafHelpers = []string{
+	"internal/exclude", "internal/gitsource", "internal/shellquote", "internal/storelock", "internal/strictjson",
+}
 
 // coreSubpackages classifies every package under internal/core. A new package
 // must be added here deliberately, so the core boundary is never widened

@@ -8,13 +8,13 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitsource"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -22,26 +22,17 @@ const (
 	sourceDirPrefix = "dir:"
 	sourceGitPrefix = "git:"
 	refSep          = "@"
-	schemeSep       = "://"
-	schemeSlash     = ":/"
 	invalidSource   = "<invalid source>"
 	packDirPerm     = 0o755
 	shaHexLen       = 40
 	stagingDot      = "."
 	revParseArgs    = 3
 	revParseIndex   = 1
-	maxSourceUser   = 64
-	maxHostLen      = 253
-	maxHostLabel    = 63
-	maxPortLen      = 5
 )
 
 // packCloneTimeout bounds the clone, rev-parse, and checkout group so a slow
 // remote cannot hold pack add open indefinitely.
 const packCloneTimeout = 5 * time.Minute
-
-// gitRef gates the optional @ref before it reaches a git argv.
-var gitRef = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/+-]*$`)
 
 // CodeBadPackSource is the refusal for a remote-shaped source the git
 // allowlist rejects.
@@ -279,7 +270,7 @@ type packSource struct {
 func addSource(ctx context.Context, req *AddRequest) (*packSource, *core.RefusalError) {
 	source := strings.TrimSpace(req.Source)
 	if src, ok := parseGitSource(source); ok {
-		return cloneSource(ctx, req, src.url, src.ref)
+		return cloneSource(ctx, req, src.url, src.ref, rootSelf)
 	}
 	if strings.HasPrefix(source, "-") {
 		return nil, badPack(fmt.Sprintf("pack source %q starts with '-'", displaySource(source)))
@@ -309,313 +300,33 @@ func badPackSource(reason string) *core.RefusalError {
 	return &core.RefusalError{Code: CodeBadPackSource, Message: reason}
 }
 
-// gitSource is one allowlisted git remote and its optional @ref.
+// gitSource is one allowlisted git remote and its optional @ref, in the shape
+// the pack layer reads: the canonical URL a lock row records plus the @ref the
+// source carried.
 type gitSource struct {
 	url string
 	ref string
 }
 
-// parseGitSource accepts exactly the published git sources: https://host/path
-// with no userinfo, ssh://user@host/path, and user@host:path, each with an
-// optional @ref. The scheme is matched case-insensitively and stored
-// lower-case. A query or fragment refuses: a source is recorded in the
-// committed lock, so nothing after the path may carry a token.
+// parseGitSource parses one source through the shared git-remote allowlist.
+// The grammar itself lives in internal/gitsource, so pack add, pack sync, and
+// the base-owned org pin cannot drift from the config parser.
 func parseGitSource(s string) (gitSource, bool) {
-	if strings.ContainsAny(s, "?#") {
-		return gitSource{}, false
-	}
-	if base, ref, ok := splitSourceRef(s); ok {
-		url, ok := parseSourceURL(base)
-		if !ok {
-			return gitSource{}, false
-		}
-		return gitSource{url: url, ref: ref}, true
-	}
-	url, ok := parseSourceURL(s)
+	src, ok := gitsource.Parse(s)
 	if !ok {
 		return gitSource{}, false
 	}
-	return gitSource{url: url}, true
+	return gitSource{url: src.URL, ref: src.Ref}, true
 }
 
-// splitSourceRef cuts the optional @ref at the first @ after a URL authority,
-// or at the last @ of a possible scp source. The suffix must match the ref
-// grammar, so a bare git@host:path stays one source.
-func splitSourceRef(s string) (string, string, bool) {
-	if schemeEnd := strings.Index(s, schemeSep); schemeEnd > 0 {
-		return splitURLRef(s, schemeEnd)
-	}
-	at := strings.LastIndexByte(s, '@')
-	if at <= 0 || !gitRef.MatchString(s[at+1:]) {
-		return s, "", false
-	}
-	return s[:at], s[at+1:], true
-}
-
-// splitURLRef cuts a URL source at the first @ after its authority.
-func splitURLRef(s string, schemeEnd int) (string, string, bool) {
-	rest := schemeEnd + len(schemeSep)
-	slash := strings.IndexByte(s[rest:], '/')
-	if slash < 0 {
-		return s, "", false
-	}
-	rest += slash
-	at := strings.IndexByte(s[rest:], '@')
-	if at < 0 {
-		return s, "", false
-	}
-	at += rest
-	if !gitRef.MatchString(s[at+1:]) {
-		return s, "", false
-	}
-	return s[:at], s[at+1:], true
-}
-
-// parseSourceURL parses one allowlisted git URL without its @ref.
-func parseSourceURL(s string) (string, bool) {
-	if scheme, rest, ok := sourceScheme(s); ok {
-		switch strings.ToLower(scheme) {
-		case "https":
-			return parseHTTPSource(rest)
-		case "ssh":
-			return parseSSHSource(rest)
-		}
-		return "", false
-	}
-	return parseSCPSource(s)
-}
-
-// sourceScheme splits one scheme:// prefix.
-func sourceScheme(s string) (string, string, bool) {
-	i := strings.Index(s, schemeSep)
-	if i <= 0 {
-		return "", "", false
-	}
-	scheme := s[:i]
-	if !validScheme(scheme) {
-		return "", "", false
-	}
-	return scheme, s[i+len(schemeSep):], true
-}
-
-// parseHTTPSource accepts https://HOST[:PORT]/PATH with no userinfo.
-func parseHTTPSource(rest string) (string, bool) {
-	authority, rel, ok := splitAuthorityPath(rest)
-	if !ok || strings.Contains(authority, refSep) || !validHostPort(authority) || !validPath(rel) {
-		return "", false
-	}
-	return "https://" + authority + "/" + rel, true
-}
-
-// parseSSHSource accepts ssh://USER@HOST[:PORT]/PATH.
-func parseSSHSource(rest string) (string, bool) {
-	authority, rel, ok := splitAuthorityPath(rest)
-	if !ok {
-		return "", false
-	}
-	user, hostPort, ok := splitSourceUser(authority)
-	if !ok || !validSourceUser(user) || !validHostPort(hostPort) || !validPath(rel) {
-		return "", false
-	}
-	return "ssh://" + user + "@" + hostPort + "/" + rel, true
-}
-
-// splitAuthorityPath cuts a URL authority at its first slash; both sides must
-// be non-empty.
-func splitAuthorityPath(rest string) (string, string, bool) {
-	slash := strings.IndexByte(rest, '/')
-	if slash <= 0 || slash == len(rest)-1 {
-		return "", "", false
-	}
-	return rest[:slash], rest[slash+1:], true
-}
-
-// splitSourceUser splits one user@host authority at its single @.
-func splitSourceUser(authority string) (string, string, bool) {
-	at := strings.IndexByte(authority, '@')
-	if at <= 0 || at == len(authority)-1 || strings.Contains(authority[at+1:], refSep) {
-		return "", "", false
-	}
-	return authority[:at], authority[at+1:], true
-}
-
-// parseSCPSource accepts the scp form USER@HOST:PATH.
-func parseSCPSource(s string) (string, bool) {
-	if strings.Contains(s, schemeSep) {
-		return "", false
-	}
-	at := strings.IndexByte(s, '@')
-	if at <= 0 {
-		return "", false
-	}
-	user, rest := s[:at], s[at+1:]
-	host, rel, ok := splitSCPHost(rest)
-	if !ok || !validSourceUser(user) || !validHost(host) || !validPath(rel) {
-		return "", false
-	}
-	return user + "@" + host + ":" + rel, true
-}
-
-// splitSCPHost cuts one scp destination at the colon after its host, or after
-// a bracketed IPv6 literal.
-func splitSCPHost(rest string) (string, string, bool) {
-	if strings.HasPrefix(rest, "[") {
-		end := strings.IndexByte(rest, ']')
-		if end < 0 || end+1 >= len(rest) || rest[end+1] != ':' {
-			return "", "", false
-		}
-		return rest[:end+1], rest[end+2:], true
-	}
-	colon := strings.IndexByte(rest, ':')
-	if colon <= 0 {
-		return "", "", false
-	}
-	return rest[:colon], rest[colon+1:], true
-}
-
-// validHostPort validates HOST or HOST:PORT, with a bracketed IPv6 host.
-func validHostPort(s string) bool {
-	if strings.HasPrefix(s, "[") {
-		return validBracketedHostPort(s)
-	}
-	host, port, hasPort := strings.Cut(s, ":")
-	return (!hasPort || validPort(port)) && validHost(host)
-}
-
-// validBracketedHostPort validates [ipv6] with its optional :port.
-func validBracketedHostPort(s string) bool {
-	end := strings.IndexByte(s, ']')
-	if end < 0 || !validHost(s[:end+1]) {
-		return false
-	}
-	rest := s[end+1:]
-	return rest == "" || (strings.HasPrefix(rest, ":") && validPort(rest[1:]))
-}
-
-// validHost accepts a DNS name, an IPv4 address, or a bracketed IPv6 literal.
-func validHost(host string) bool {
-	if strings.HasPrefix(host, "[") {
-		return strings.HasSuffix(host, "]") && validIPv6(host[1:len(host)-1])
-	}
-	if host == "" || len(host) > maxHostLen {
-		return false
-	}
-	for label := range strings.SplitSeq(host, ".") {
-		if !validHostLabel(label) {
-			return false
-		}
-	}
-	return true
-}
-
-// validHostLabel accepts one DNS label: 1..63 bytes, alphanumeric at both
-// ends, hyphen inside.
-func validHostLabel(label string) bool {
-	if label == "" || len(label) > maxHostLabel {
-		return false
-	}
-	for i := range len(label) {
-		c := label[i]
-		if !isAlnum(c) && (c != '-' || i == 0 || i == len(label)-1) {
-			return false
-		}
-	}
-	return true
-}
-
-// validIPv6 accepts the inside of a bracketed IPv6 literal: hex digits,
-// colons, and dots, with at least one colon.
-func validIPv6(inner string) bool {
-	if inner == "" || !strings.ContainsRune(inner, ':') {
-		return false
-	}
-	for i := range len(inner) {
-		c := inner[i]
-		if !isHex(c) && c != ':' && c != '.' {
-			return false
-		}
-	}
-	return true
-}
-
-// validSourceUser accepts the bare ssh user grammar: 1..64 of [A-Za-z0-9._-].
-func validSourceUser(user string) bool {
-	if user == "" || len(user) > maxSourceUser {
-		return false
-	}
-	for i := range len(user) {
-		c := user[i]
-		if !isAlnum(c) && c != '.' && c != '_' && c != '-' {
-			return false
-		}
-	}
-	return true
-}
-
-// validPath accepts a source path with no whitespace, control character, @,
-// or leading '-'.
-func validPath(rel string) bool {
-	if rel == "" || rel[0] == '-' {
-		return false
-	}
-	for i := range len(rel) {
-		c := rel[i]
-		if c <= ' ' || c == controlDEL || c == '@' {
-			return false
-		}
-	}
-	return true
-}
-
-// validPort accepts 1..5 decimal digits.
-func validPort(port string) bool {
-	if port == "" || len(port) > maxPortLen {
-		return false
-	}
-	for i := range len(port) {
-		if port[i] < '0' || port[i] > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-func isAlnum(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
-}
-
-func isHex(c byte) bool {
-	return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F'
-}
-
-// looksLikeGitSource reports whether s asks to be a git remote. Anything that
-// does refuses when the allowlist rejects it, instead of falling through to a
-// directory label.
-func looksLikeGitSource(s string) bool {
-	if strings.Contains(s, schemeSep) || schemeColonSlash(s) {
-		return true
-	}
-	at := strings.IndexByte(s, '@')
-	if at <= 0 || strings.ContainsAny(s[:at], `/\`) {
-		return false
-	}
-	return strings.IndexByte(s[at+1:], ':') > 0
-}
-
-// schemeColonSlash matches a scheme and a single slash, the mangled URL shape
-// that would otherwise read as a directory path. Two-letter-plus schemes keep
-// a Windows drive prefix ("C:/packs") a path.
-func schemeColonSlash(s string) bool {
-	i := strings.Index(s, schemeSlash)
-	return i >= 2 && validScheme(s[:i])
-}
+// looksLikeGitSource reports whether a source asks to be a git remote, so a
+// rejected remote shape refuses instead of falling through to a directory
+// label.
+func looksLikeGitSource(s string) bool { return gitsource.LooksLike(s) }
 
 // secretShaped reports whether a label carries a URL or userinfo shape that
 // must never be echoed, including inside a dir: label.
-func secretShaped(s string) bool {
-	return strings.Contains(s, schemeSep) || schemeColonSlash(s) ||
-		(strings.Contains(s, refSep) && strings.ContainsRune(s, ':'))
-}
+func secretShaped(s string) bool { return gitsource.SecretShaped(s) }
 
 // displaySource renders one source for output. It prints only a source the
 // grammar accepts, canonicalising a git URL; anything else becomes a fixed
@@ -663,27 +374,6 @@ func displayGitSource(raw string) string {
 	return raw
 }
 
-// validScheme reports whether s is an RFC 3986 URL scheme.
-func validScheme(s string) bool {
-	if s == "" || !isSchemeLetter(s[0]) {
-		return false
-	}
-	for i := 1; i < len(s); i++ {
-		if !isSchemeByte(s[i]) {
-			return false
-		}
-	}
-	return true
-}
-
-func isSchemeLetter(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
-}
-
-func isSchemeByte(c byte) bool {
-	return isSchemeLetter(c) || c >= '0' && c <= '9' || c == '+' || c == '-' || c == '.'
-}
-
 const checkoutSub = "checkout"
 
 // gitFatalExit is git's generic fatal exit status: a clone that reaches the
@@ -709,9 +399,11 @@ func gitFailure(sub string, exit int) string {
 }
 
 // cloneSource fetches one git URL hermetically into a temp directory and
-// checks out the resolved HEAD commit before loading the pack.
+// checks out the resolved HEAD commit before loading the pack. bound is the
+// pin path the caller vendors out of that clone: "." caps the whole tree,
+// a subdirectory caps only the pack it will actually load.
 func cloneSource(
-	ctx context.Context, req *AddRequest, url, refName string,
+	ctx context.Context, req *AddRequest, url, refName, bound string,
 ) (*packSource, *core.RefusalError) {
 	cmdr := req.Commander
 	if cmdr == nil {
@@ -734,7 +426,7 @@ func cloneSource(
 		cleanup()
 		return nil, ref
 	}
-	sha, ref := resolveClone(gctx, cmdr, env, clone, tmp, url)
+	sha, ref := resolveClone(gctx, cmdr, env, clone, tmp, url, bound)
 	if ref != nil {
 		cleanup()
 		return nil, ref
@@ -747,7 +439,7 @@ func cloneSource(
 // resolveClone pins the clone to its resolved HEAD and checks the working tree
 // before the loader walks it.
 func resolveClone(
-	ctx context.Context, cmdr core.Commander, env []string, clone, tmp, url string,
+	ctx context.Context, cmdr core.Commander, env []string, clone, tmp, url, bound string,
 ) (string, *core.RefusalError) {
 	sha, ref := runGitPack(ctx, cmdr, env, clone, tmp, "rev-parse", "HEAD")
 	if ref != nil {
@@ -763,7 +455,7 @@ func resolveClone(
 	if err := os.RemoveAll(filepath.Join(clone, ".git")); err != nil {
 		return "", badPack(fmt.Sprintf("clean the pack clone metadata: %v", err))
 	}
-	return sha, checkCloneBounds(clone)
+	return sha, checkCloneBounds(clone, bound)
 }
 
 // prepareGitEnv creates the scrubbed HOME/XDG tree and the hooks directory a
@@ -925,11 +617,21 @@ func runGitPackOK(
 
 // checkCloneBounds refuses a clone that already exceeds the pack caps before
 // the loader walks it: the clone is on disk by then, but a hostile tree should
-// not reach the parse path at all.
-func checkCloneBounds(dir string) *core.RefusalError {
+// not reach the parse path at all. A subdirectory pin caps only the subtree it
+// vendors, so a large central repository's unrelated sibling packs do not
+// refuse the sync; the loader caps that pack again on the way in.
+func checkCloneBounds(dir, bound string) *core.RefusalError {
+	root, ok, ref := cloneBoundRoot(dir, bound)
+	if ref != nil {
+		return ref
+	}
+	if !ok {
+		// A missing bound is the loader's missing-pack refusal, not a cap one.
+		return nil
+	}
 	count := 0
 	var total int64
-	err := filepath.WalkDir(dir, func(_ string, entry fs.DirEntry, walkErr error) error {
+	err := filepath.WalkDir(root, func(_ string, entry fs.DirEntry, walkErr error) error {
 		return chargeCloneEntry(entry, walkErr, &count, &total)
 	})
 	if err == nil {
@@ -939,6 +641,23 @@ func checkCloneBounds(dir string) *core.RefusalError {
 		return ref
 	}
 	return badPack(fmt.Sprintf("inspect the git clone: %v", err))
+}
+
+// cloneBoundRoot resolves the subtree the clone caps apply to: the whole
+// clone for a root pin, or the pin's own directory. A bound that is absent
+// answers ok=false: the loader reports the missing pack, not the cap.
+func cloneBoundRoot(dir, bound string) (string, bool, *core.RefusalError) {
+	root := dir
+	if bound != "" && bound != rootSelf {
+		root = filepath.Join(dir, filepath.FromSlash(bound))
+	}
+	if _, err := os.Lstat(root); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", false, nil
+		}
+		return "", false, badPack(fmt.Sprintf("inspect the git clone: %v", err))
+	}
+	return root, true, nil
 }
 
 // chargeCloneEntry spends one walked clone entry against the pack caps.

@@ -48,8 +48,9 @@ const (
 
 // LockEntry pins one vendored pack: the manifest identity, where it came from,
 // the canonical tree hash, and an integrity digest over those fields. A
-// central org pack also records the pin path it was sourced from, so moving
-// the pack root without re-syncing is detected.
+// central org pack also records the pin it was synced from — the repository
+// path and the immutable ref — so moving the pack root or bumping the ref
+// without re-syncing is detected.
 type LockEntry struct {
 	Name    string `json:"name"`
 	Source  string `json:"source"`
@@ -57,6 +58,7 @@ type LockEntry struct {
 	Hash    string `json:"hash"`
 	Sig     string `json:"sig"`
 	OrgPath string `json:"org_path,omitempty"`
+	OrgRef  string `json:"org_ref,omitempty"`
 }
 
 // Lock is the published verdict.lock document: strict JSON, entries sorted by
@@ -69,14 +71,17 @@ type Lock struct {
 // LockSig digests one entry's identity fields. The encoding is
 // "key=value" lines in name, source, version, hash order, so a hand edit to
 // any field breaks the digest while the tree hash stays recomputable. An
-// org pack adds its pin path after hash; legacy rows without it hash
-// exactly as before.
+// org pack adds its pin path and ref after hash; a row with neither hashes
+// exactly as it did before they existed.
 func LockSig(entry *LockEntry) string {
 	h := sha256.New()
 	fmt.Fprintf(h, "name=%s\nsource=%s\nversion=%s\nhash=%s\n",
 		entry.Name, entry.Source, entry.Version, entry.Hash)
 	if entry.OrgPath != "" {
 		fmt.Fprintf(h, "org_path=%s\n", entry.OrgPath)
+	}
+	if entry.OrgRef != "" {
+		fmt.Fprintf(h, "org_ref=%s\n", entry.OrgRef)
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -261,7 +266,7 @@ func checkLockKeys(raw []byte) *core.RefusalError {
 		return nil
 	}
 	for _, row := range shape.Packs {
-		if ref := checkExactKeys(row, []string{"name", "source", "version", "hash", "sig", "org_path"}, LockFile); ref != nil {
+		if ref := checkExactKeys(row, []string{"name", "source", "version", "hash", "sig", "org_path", "org_ref"}, LockFile); ref != nil {
 			return ref
 		}
 	}
@@ -288,8 +293,8 @@ func validateLock(lock *Lock) *core.RefusalError {
 
 // validateLockEntry checks one row's name, source, version, hash, and sig.
 func validateLockEntry(entry *LockEntry) *core.RefusalError {
-	if entry.OrgPath != "" && !confinedRoot(entry.OrgPath) {
-		return badLock(fmt.Sprintf("%s pack %q org_path %q escapes the central repository", LockFile, entry.Name, entry.OrgPath))
+	if ref := checkLockOrgFields(entry); ref != nil {
+		return ref
 	}
 	if !nameRE.MatchString(entry.Name) {
 		return badLock(fmt.Sprintf("%s pack name %q is not <namespace>/<slug>", LockFile, entry.Name))
@@ -307,6 +312,19 @@ func validateLockEntry(entry *LockEntry) *core.RefusalError {
 	}
 	if !hex64(entry.Sig) {
 		return badLock(fmt.Sprintf("%s pack %q sig %q is not a sha256", LockFile, entry.Name, entry.Sig))
+	}
+	return nil
+}
+
+// checkLockOrgFields validates the optional org pin fields a synced row
+// records: a confined central path and an immutable ref.
+func checkLockOrgFields(entry *LockEntry) *core.RefusalError {
+	if entry.OrgPath != "" && !confinedRoot(entry.OrgPath) {
+		return badLock(fmt.Sprintf("%s pack %q org_path %q escapes the central repository", LockFile, entry.Name, entry.OrgPath))
+	}
+	if entry.OrgRef != "" && !orgRefShape(entry.OrgRef) {
+		return badLock(fmt.Sprintf("%s pack %q org_ref %q is not a 40-hex commit or a semver tag",
+			LockFile, entry.Name, entry.OrgRef))
 	}
 	return nil
 }
@@ -454,17 +472,19 @@ func upsertLock(lock *Lock, entry *LockEntry) *Lock {
 // CheckOrgPin proves the base-owned org pin read from snap's config.json is
 // vendored and hash-locked in snap's verdict.lock. A missing pin is clean;
 // a present pin with no matching lock row, a drifted tree, or a pin/lock
-// mismatch all refuse — never a silent fallback.
+// mismatch all refuse — never a silent fallback. A base config the parser
+// rejects refuses here too, so a corrupt pin cannot read as no pin.
 func CheckOrgPin(snap *controls.Snapshot) *core.RefusalError {
-	pin := orgPinFromSnapshot(snap)
+	pin, ref := orgPinFromSnapshot(snap)
+	if ref != nil {
+		return ref
+	}
 	if pin == nil {
 		return nil
 	}
 	raw, ok := snap.ReadFile(LockFile)
 	if !ok {
-		return &core.RefusalError{Code: CodeLockMissing, Message: fmt.Sprintf(
-			"org pack %s@%s has no %s entry — run 'verdict pack sync' to vendor and lock it",
-			pin.Repo, pin.Ref, LockFile)}
+		return lockMissingOrg(pin)
 	}
 	lock, ref := parseLock(raw)
 	if ref != nil {
@@ -472,35 +492,46 @@ func CheckOrgPin(snap *controls.Snapshot) *core.RefusalError {
 	}
 	entry := findOrgEntry(lock, pin)
 	if entry == nil {
-		return &core.RefusalError{Code: CodeLockMissing, Message: fmt.Sprintf(
-			"org pack %s@%s has no %s entry — run 'verdict pack sync' to vendor and lock it",
-			pin.Repo, pin.Ref, LockFile)}
+		return lockMissingOrg(pin)
 	}
 	return verifyOrgEntryFromSnapshot(snap, entry, pin)
 }
 
-func orgPinFromSnapshot(snap *controls.Snapshot) *OrgPin {
+// lockMissingOrg refuses a pin the lock holds no row for, naming the sync that
+// would create one.
+func lockMissingOrg(pin *OrgPin) *core.RefusalError {
+	return &core.RefusalError{Code: CodeLockMissing, Message: fmt.Sprintf(
+		"org pack %s@%s has no %s entry — run 'verdict pack sync' to vendor and lock it",
+		pin.Repo, pin.Ref, LockFile)}
+}
+
+// orgPinFromSnapshot reads the base-owned pin out of the snapshot's captured
+// config.json. A missing file reads as no pin; a file the parser refuses
+// surfaces that refusal instead of reading as no pin, so a corrupt base
+// configuration fails closed rather than dropping org-pin enforcement.
+func orgPinFromSnapshot(snap *controls.Snapshot) (*OrgPin, *core.RefusalError) {
 	raw, ok := snap.ReadFile(config.ConfigPath)
 	if !ok {
-		return nil
+		return nil, nil
 	}
-	cfg, ref := configFromSnapshotRow(raw)
-	if ref != nil || cfg == nil {
-		return nil
+	cfg, ref := config.Parse(raw)
+	if ref != nil {
+		return nil, ref
 	}
-	return OrgPinFromConfig(cfg)
+	return OrgPinFromConfig(cfg), nil
 }
 
-func configFromSnapshotRow(raw []byte) (*core.Config, *core.RefusalError) {
-	return config.Parse(raw)
-}
-
+// verifyOrgEntryFromSnapshot proves the snapshot's vendored org pack still
+// hashes to the locked content. The pack is read at the snapshot's own
+// packs/<slug> layout — the same spelling CheckLock uses — so a correctly
+// synced pin verifies instead of refusing against a path the snapshot never
+// has.
 func verifyOrgEntryFromSnapshot(snap *controls.Snapshot, entry *LockEntry, pin *OrgPin) *core.RefusalError {
-	p, ref := LoadAt(snap.Dir, RepoPacksDir+"/"+packSlug(entry.Name))
+	p, ref := lockedPack(snap, entry.Name)
 	if ref != nil {
 		return ref
 	}
-	if p == nil || p.Name != entry.Name {
+	if p == nil {
 		return &core.RefusalError{Code: CodeLockDrift, Message: fmt.Sprintf(
 			"org pack %s drift: %s records %s %s, found no vendored pack — run 'verdict pack sync'",
 			entry.Name, LockFile, lockTreeField, entry.Hash)}
@@ -519,6 +550,9 @@ func verifyOrgEntryFromSnapshot(snap *controls.Snapshot, entry *LockEntry, pin *
 		return &core.RefusalError{Code: CodeLockMissing, Message: fmt.Sprintf(
 			"org pack %s@%s path %q does not match lock for %q:%s — run 'verdict pack sync'",
 			pin.Repo, pin.Ref, orgPinPath(pin), pin.Repo, pin.Ref)}
+	}
+	if !orgRefMatch(entry, pin) {
+		return orgRefRefusal(entry, pin)
 	}
 	return nil
 }
