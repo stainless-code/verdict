@@ -35,8 +35,9 @@ one-shot call only returns that baseline. No state is saved between calls.
 to finish, including failure, then reports readiness. Timeout returns not-ready
 with a `wait-timeout` blocker and `data.wait.outcome`; advisory exit 0 becomes
 exit 1 with `--check`. MCP `ready` accepts `wait_for: "build"` and a timeout
-up to 50s. GitHub waits are supported; GitLab and Forgejo refuse explicitly
-with `provider-unimplemented`. Saved provider metadata is honored, or select
+up to 50s. GitHub and GitLab waits are supported; other hosts (Forgejo,
+Bitbucket, Azure) refuse with `provider-unimplemented` before any host command.
+Saved provider metadata is honored, or select
 `pr-wait --provider` explicitly; the default without a bundle is GitHub.
 
 These are bounded foreground reads — no watch feed, daemon, persisted cursor,

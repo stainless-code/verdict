@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
@@ -339,7 +340,7 @@ func allTools(readOnly, operator bool) []*tool {
 		dataTool(&toolSpec{
 			name: "ready",
 			description: "Report merge readiness (checks, threads, draft, conflict) or gate on " +
-				"it. Call before merging. Reads GitHub; writes nothing.",
+				"it. Call before merging. Reads " + strings.Join(core.ReadyProviders(), " and ") + " live; writes nothing.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Merge readiness", mutates: noLocalWrites, readOnly: true, idempotent: true, openWorld: true},
 		}, toolDeps{commander: coreexec.Runner{}}, decodeReady, wireReady, readycore.Run,

@@ -25,6 +25,11 @@ func gitlabAPIPath(repo, pr, suffix string) string {
 	return "projects/" + url.PathEscape(repo) + "/merge_requests/" + pr + suffix
 }
 
+// gitlabCommitPath renders one commit read in the MR's project.
+func gitlabCommitPath(repo, sha string) string {
+	return "projects/" + url.PathEscape(repo) + "/repository/commits/" + url.PathEscape(sha)
+}
+
 // gitlabLive reads the live merge request through glab and folds it onto
 // the canonical keys the shared tail applies (isDraft, mergeable,
 // mergeStateStatus, body, state, headRefOid, mergedAt).
@@ -117,7 +122,11 @@ func gitlabState(m map[string]any) string {
 		return stateOpen
 	case untilMerged:
 		return waitMerged
-	case untilClosed, "locked":
+	case "locked":
+		// A locked MR is mid-merge, not closed: it can still become merged, so
+		// `pr-wait --until closed` must not fire and `ready` must not call it closed.
+		return stateOpen
+	case untilClosed:
 		return stateClosed
 	default:
 		return mergeUnknown
@@ -214,7 +223,7 @@ func headPipelineFail(st *state) (string, bool) {
 // non-system note's resolved flag decides, exactly like the fetch feed,
 // and a discussion without a readable flag counts unresolved fail-closed.
 func gitlabThreads(ctx context.Context, st *state) *core.RefusalError {
-	stdout, ok := gitlabReadDiscussions(ctx, st)
+	stdout, _, ok := gitlabReadDiscussions(ctx, st)
 	if !ok {
 		return st.withWarnings(&core.RefusalError{
 			Code:    codeThreadsFailed,
@@ -233,10 +242,9 @@ func gitlabThreads(ctx context.Context, st *state) *core.RefusalError {
 }
 
 // gitlabReadDiscussions is the fetch `ready` and `pr-wait` both read.
-func gitlabReadDiscussions(ctx context.Context, st *state) (string, bool) {
-	stdout, _, ok := coreexec.Host(ctx, st.commander(), toolGlab, "api",
+func gitlabReadDiscussions(ctx context.Context, st *state) (stdout, stderr string, ok bool) {
+	return coreexec.Host(ctx, st.commander(), toolGlab, "api",
 		gitlabAPIPath(st.repo, st.pr, "/discussions?per_page=100"), "--paginate")
-	return stdout, ok
 }
 
 func gitlabThreadCounts(stdout string) (open, malformed int, err error) {

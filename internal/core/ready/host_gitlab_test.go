@@ -157,3 +157,20 @@ func TestReadyGitLabHeadPipelineFallback(t *testing.T) {
 		t.Errorf("ci detail = %q, want the head pipeline named", got)
 	}
 }
+
+// TestReadyGitLabLockedIsNotClosed proves a merge in progress reads as open:
+// the advisory used to call a locked MR CLOSED, which it is not.
+func TestReadyGitLabLockedIsNotClosed(t *testing.T) {
+	writeGitLabReadyBundle(t)
+	resp := runGitLabReady(t, &gitlabReadyCommander{
+		mr: `{"id":9001,"iid":5201,"title":"Retry count off by one",` +
+			`"description":"` + gitlabLongDescription + `",` +
+			`"state":"locked","draft":false,"has_conflicts":false,` +
+			`"sha":"` + gitlabHead + `","merged_at":null,"head_pipeline":null}`,
+		pipelines: `[]`,
+		discuss:   `[]`,
+	})
+	if resp.Data.State != "OPEN" {
+		t.Fatalf("state = %q, want OPEN for a locked MR", resp.Data.State)
+	}
+}
