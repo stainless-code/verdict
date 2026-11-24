@@ -84,7 +84,10 @@ func classifyPath(f *FileDiff) Lane {
 	if f.Generated || isGeneratedPath(f) {
 		return LaneGenerated
 	}
-	lower := strings.ToLower(effectivePath(f))
+	raw := effectivePath(f)
+	// Normalize Windows separators so path lanes classify identically.
+	norm := strings.ReplaceAll(raw, `\`, "/")
+	lower := strings.ToLower(norm)
 	if lockfiles[strings.ToLower(path.Base(lower))] {
 		return LaneLockfiles
 	}
@@ -160,11 +163,12 @@ func hasWhitespaceDiff(dels, adds []string) bool {
 }
 
 func stripSpace(s string) string {
-	return strings.Join(strings.Fields(s), "")
+	return strings.Join(strings.Fields(s), " ")
 }
 
 func isGeneratedPath(f *FileDiff) bool {
-	p := strings.ToLower(effectivePath(f))
+	raw := strings.ReplaceAll(effectivePath(f), `\`, "/")
+	p := strings.ToLower(raw)
 	return strings.HasSuffix(p, ".pb.go") || strings.Contains(p, ".gen.") || strings.Contains(p, "_generated.")
 }
 
@@ -254,7 +258,12 @@ func inGitHubDir(p string) bool {
 }
 
 func isConfigBase(base string) bool {
-	return base == "Makefile" || base == "Dockerfile" || strings.HasPrefix(base, "Dockerfile.") || strings.HasPrefix(base, ".gitlab-ci")
+	lowerBase := strings.ToLower(base)
+	switch lowerBase {
+	case "makefile", "dockerfile":
+		return true
+	}
+	return strings.HasPrefix(lowerBase, "dockerfile.") || strings.HasPrefix(lowerBase, ".gitlab-ci")
 }
 
 func hasConfigSuffix(p string) bool {

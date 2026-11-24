@@ -180,3 +180,194 @@ func TestDiffWordPassMutation(t *testing.T) {
 		t.Fatal("no word spans on changed lines; word pass dropped?")
 	}
 }
+
+func TestDiffAnchorsFindings(t *testing.T) { //nolint:gocognit,revive,cyclop // anchor + lane + by_lens checks need exhaustive branching
+	l, rootID := testDiffLayer(t)
+	view, err := l.Diff(t.Context(), rootID, "local-1")
+	must(t, err)
+	// Anchored finding must appear on the exact diff line (new_no=1).
+	lines := firstHunkLines(t, view)
+	var anchored *jq.Obj
+	for _, v := range lines {
+		obj, ok := v.(*jq.Obj)
+		if !ok {
+			continue
+		}
+		if kindV, _ := obj.Get("kind"); kindV == "add" {
+			if noV, _ := obj.Get("new_no"); noV != nil {
+				// toInt handles json.Number via UseNumber; check via String
+				if isOne(noV) {
+					anchored = obj
+				}
+			}
+		}
+	}
+	if anchored == nil {
+		t.Fatal("no add line with new_no 1")
+	}
+	fsV, ok := anchored.Get("findings")
+	if !ok {
+		t.Fatalf("anchored line has no findings: %v", anchored.MarshalCompact())
+	}
+	fs, ok := fsV.([]any)
+	if !ok || len(fs) == 0 {
+		t.Fatalf("findings = %v", fsV)
+	}
+	f0, ok := fs[0].(*jq.Obj)
+	if !ok {
+		t.Fatalf("finding is %T", fs[0])
+	}
+	pathV, _ := f0.Get("path")
+	lineV, _ := f0.Get("line")
+	sideV, _ := f0.Get("side")
+	if pathV != "a.txt" {
+		t.Fatalf("path = %v want a.txt", pathV)
+	}
+	if !isOne(lineV) {
+		t.Fatalf("line = %v want 1", lineV)
+	}
+	if sideV != "RIGHT" {
+		t.Fatalf("side = %v want RIGHT", sideV)
+	}
+	// Lane must report non-zero findings and by_lens for the logic category.
+	lanes := dataList(t, view.Data, "lanes")
+	if len(lanes) == 0 {
+		t.Fatal("no lanes")
+	}
+	found := false
+	for _, lv := range lanes {
+		laneObj, ok := lv.(*jq.Obj)
+		if !ok {
+			continue
+		}
+		fcV, _ := laneObj.Get("findings")
+		if !isOne(fcV) && !isNonZero(fcV) {
+			continue
+		}
+		byLensV, ok := laneObj.Get("by_lens")
+		if !ok {
+			t.Fatal("lane has findings but no by_lens")
+		}
+		byLens, ok := byLensV.(*jq.Obj)
+		if !ok {
+			t.Fatal("by_lens not object")
+		}
+		v, ok := byLens.Get("logic")
+		if !ok || !isOne(v) {
+			t.Fatalf("by_lens = %v", byLens.MarshalCompact())
+		}
+		found = true
+	}
+	if !found {
+		t.Fatal("no lane with non-zero findings/by_lens")
+	}
+	// Sources are view-level, not per-row.
+	if len(view.Sources) == 0 {
+		t.Fatal("view must carry sources[]")
+	}
+}
+
+func isOne(v any) bool {
+	// findings.json line decodes as json.Number (UseNumber).
+	switch n := v.(type) {
+	case int:
+		return n == 1
+	case int64:
+		return n == 1
+	case float64:
+		return n == 1
+	case string:
+		return n == "1"
+	case jq.Number:
+		return string(n) == "1"
+	default:
+		// json.Number
+		if s, ok := v.(interface{ String() string }); ok {
+			return s.String() == "1"
+		}
+		return false
+	}
+}
+
+func isNonZero(v any) bool {
+	switch n := v.(type) {
+	case int:
+		return n != 0
+	case int64:
+		return n != 0
+	case float64:
+		return n != 0
+	case jq.Number:
+		return string(n) != "0"
+	default:
+		if s, ok := v.(interface{ String() string }); ok {
+			return s.String() != "0"
+		}
+		return false
+	}
+}
+
+func TestDiffOversizedMarksPartial(t *testing.T) {
+	root := t.TempDir()
+	full := filepath.Join(root, config.VerdictDir, config.StateDirName, "local-big")
+	must(t, os.MkdirAll(full, 0o700))
+	must(t, os.WriteFile(filepath.Join(full, "full.diff"), oversizedDiff(t), 0o600))
+	view := diffLayerView(t, root, "local-big")
+	assertPartial(t, view, "oversized")
+}
+
+func oversizedDiff(t *testing.T) []byte {
+	t.Helper()
+	big := make([]byte, 11<<20)
+	for i := range big {
+		big[i] = 'x'
+	}
+	return big
+}
+
+func diffLayerView(t *testing.T, root, bundle string) *View {
+	t.Helper()
+	clock := func() time.Time { return time.Unix(0, 0).UTC() }
+	l := New(Snapshot{Version: "1", Roots: []Root{{Path: root}}, Runtime: &core.Runtime{Now: clock}}, Options{Clock: clock, NoWatch: true})
+	view, err := l.Diff(t.Context(), RootID(root), bundle)
+	must(t, err)
+	return view
+}
+
+func assertPartial(t *testing.T, view *View, what string) {
+	t.Helper()
+	partialV, ok := view.Data.Get("partial")
+	if !ok || partialV != true {
+		t.Fatalf("partial for %s = %v want true", what, partialV)
+	}
+	errsV, ok := view.Data.Get("errors")
+	if !ok || errsV == nil {
+		t.Fatal("missing errors")
+	}
+	errs, ok := errsV.([]any)
+	if !ok || len(errs) == 0 {
+		t.Fatalf("errors for %s = %v want non-empty", what, errsV)
+	}
+	if len(view.Errors) == 0 {
+		t.Fatal("view.Errors empty")
+	}
+}
+
+func TestDiffUnreadableMarksPartial(t *testing.T) {
+	root := t.TempDir()
+	full := filepath.Join(root, config.VerdictDir, config.StateDirName, "local-missing")
+	must(t, os.MkdirAll(full, 0o700))
+	// No full.diff file at all is unreadable -> partial.
+	must(t, os.WriteFile(filepath.Join(full, "findings.json"), []byte("[]"), 0o600))
+	clock := func() time.Time { return time.Unix(0, 0).UTC() }
+	l := New(Snapshot{Version: "1", Roots: []Root{{Path: root}}, Runtime: &core.Runtime{Now: clock}}, Options{Clock: clock, NoWatch: true})
+	view, err := l.Diff(t.Context(), RootID(root), "local-missing")
+	must(t, err)
+	partialV, _ := view.Data.Get("partial")
+	if partialV != true {
+		t.Fatalf("partial = %v want true for missing full.diff", partialV)
+	}
+	if len(view.Errors) == 0 {
+		t.Fatal("errors must be non-empty")
+	}
+}

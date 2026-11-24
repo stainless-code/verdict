@@ -2,8 +2,12 @@ package query
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"io/fs"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -11,10 +15,6 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
-
-// DiffView is the composed diff read: the envelope [View] with a diff
-// payload. The alias keeps the shipped Diff accessor name from the ticket.
-type DiffView = View
 
 // Risk boost weights for the optional risk signal.
 const (
@@ -78,9 +78,9 @@ func (l *Layer) Diff(ctx context.Context, rootID, bundle string) (*View, error) 
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	files := loadDiffFiles(dir)
+	files, errs := loadDiffFiles(root, bundle, dir)
 	idx := loadDiffFindings(dir)
-	return buildDiffView(l, root, bundle, dir, files, idx), nil
+	return buildDiffView(l, root, bundle, dir, files, idx, errs), nil
 }
 
 func resolveDiffBundle(l *Layer, rootID, bundle string) (Root, string, error) {
@@ -98,46 +98,103 @@ func resolveDiffBundle(l *Layer, rootID, bundle string) (Root, string, error) {
 	return root, dir, nil
 }
 
-func loadDiffFiles(dir string) []diff.FileDiff {
-	raw := readDiffText(dir)
+func loadDiffFiles(root Root, bundle, dir string) ([]diff.FileDiff, []ErrRow) {
+	raw, rerr := readDiffText(dir)
+	if rerr != nil {
+		return nil, []ErrRow{errRow(root, bundle, readErrCode(rerr), rerr.Error())}
+	}
+	return parseDiffText(root, bundle, raw)
+}
+
+func readErrCode(err error) string {
+	if errors.Is(err, jq.ErrTooLarge) || errors.Is(err, diff.ErrTooLarge) {
+		return "diff-too-large"
+	}
+	if isNotExist(err) {
+		return "diff-missing"
+	}
+	return "diff-unreadable"
+}
+
+func parseDiffText(root Root, bundle, raw string) ([]diff.FileDiff, []ErrRow) {
 	files, perr := diff.Parse(raw)
-	if perr != nil && !errors.Is(perr, diff.ErrTooLarge) {
-		return nil
+	errs := diffParseErrs(root, bundle, perr)
+	if perr != nil && !errors.Is(perr, diff.ErrTooLarge) && len(files) == 0 {
+		return nil, append(errs, errRow(root, bundle, "diff-parse-error", perr.Error()))
 	}
 	diff.ComputeGaps(files)
-	return files
+	errs = appendParseFallback(errs, root, bundle, perr, len(files), raw)
+	return files, errs
 }
 
-func readDiffText(dir string) string {
+func appendParseFallback(errs []ErrRow, root Root, bundle string, perr error, nFiles int, raw string) []ErrRow {
+	if errors.Is(perr, diff.ErrTooLarge) && len(errs) == 0 {
+		errs = append(errs, errRow(root, bundle, "diff-too-large", perr.Error()))
+	}
+	if nFiles == 0 && perr == nil && raw != "" {
+		errs = append(errs, errRow(root, bundle, "diff-parse-error", "no diff sections parsed"))
+	}
+	return errs
+}
+
+func diffParseErrs(root Root, bundle string, perr error) []ErrRow {
+	if perr == nil {
+		return nil
+	}
+	code := "diff-parse-error"
+	if errors.Is(perr, diff.ErrTooLarge) {
+		code = "diff-too-large"
+	}
+	return []ErrRow{errRow(root, bundle, code, perr.Error())}
+}
+
+func isNotExist(err error) bool {
+	return errors.Is(err, fs.ErrNotExist)
+}
+
+func readDiffText(dir string) (string, error) {
 	raw, err := readcommon.ReadRegularCapped(dir+"/full.diff", diff.MaxDiffBytes)
 	if err != nil {
-		return ""
+		return "", fmt.Errorf("read full.diff: %w", err) //nolint:wrapcheck // preserves documented missing-file contract
 	}
-	return string(raw)
+	return string(raw), nil
 }
 
-func buildDiffView(l *Layer, root Root, bundle, dir string, files []diff.FileDiff, idx findingIndex) *View {
+func buildDiffView(l *Layer, root Root, bundle, dir string, files []diff.FileDiff, idx findingIndex, errs []ErrRow) *View {
 	boost := loadRiskBoost(dir)
 	sources := inventoryDiffSources(root, bundle, dir)
-	data := diffPayload(root, bundle, files, idx, boost, sources)
+	data := diffPayload(root, bundle, files, idx, boost, sources, errs)
 	return &View{
-		At:      l.newView().At,
-		Repo:    bundleRepo(dir),
-		Pr:      bundle,
-		Data:    data,
-		Sources: sources,
+		At:       l.newView().At,
+		Repo:     bundleRepo(dir),
+		Pr:       bundle,
+		Data:     data,
+		Sources:  sources,
+		Errors:   errs,
+		Warnings: diffViewWarnings(errs),
 	}
 }
 
-func diffPayload(root Root, bundle string, files []diff.FileDiff, idx findingIndex, boost int, sources []Source) *jq.Obj {
+func diffViewWarnings(errs []ErrRow) []string {
+	if len(errs) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(errs))
+	for _, e := range errs {
+		out = append(out, e.Code+": "+e.Message)
+	}
+	return out
+}
+
+func diffPayload(root Root, bundle string, files []diff.FileDiff, idx findingIndex, boost int, sources []Source, errs []ErrRow) *jq.Obj {
 	return jq.NewObj(
 		keyRoot, root.ID,
 		keyBundle, bundle,
 		"lanes", buildDiffLanes(files, idx, boost),
 		"files", buildDiffFiles(files, idx),
-		keyPartial, false,
+		keyPartial, len(errs) > 0,
 		keySources, sourcesWire(sources),
-		keyErrors, []any{},
+		keyErrors, errorsWire(errs),
 	)
 }
 
@@ -226,6 +283,10 @@ func toInt(v any) int {
 		return n
 	case jq.Number:
 		return numToInt(string(n))
+	case json.Number:
+		return numToInt(string(n))
+	case float64:
+		return int(n)
 	default:
 		return 0
 	}
@@ -476,9 +537,9 @@ func attachFindings(row *jq.Obj, l *diff.Line, path string, idx findingIndex) {
 	if lineNo == 0 {
 		return
 	}
-	fs, ok := idx[idx.key(path, lineNo, side)]
+	entries, ok := idx[idx.key(path, lineNo, side)]
 	if ok {
-		row.Set("findings", findingWires(fs))
+		row.Set("findings", findingWires(entries))
 	}
 }
 
@@ -489,10 +550,10 @@ func anchorPoint(l *diff.Line) (int, string) {
 	return l.NewNo, "RIGHT"
 }
 
-func findingWires(fs []diffFinding) []any {
+func findingWires(entries []diffFinding) []any {
 	var out []any
-	for i := range fs {
-		f := fs[i]
+	for i := range entries {
+		f := entries[i]
 		out = append(out, jq.NewObj(
 			"sig", f.Sig, "severity", f.Severity, "category", f.Category,
 			"body", f.Body, "status", f.Status, "path", f.Path, "line", f.Line, "side", f.Side,
@@ -534,11 +595,11 @@ func countFileFindings(f *diff.FileDiff, idx findingIndex, counts *laneCounts) {
 	lane := diff.Classify(f)
 	lenses := lanesFor(counts, lane)
 	n := 0
-	for _, fs := range idx {
-		for j := range fs {
-			if fs[j].Path == path {
+	for _, entries := range idx {
+		for j := range entries {
+			if entries[j].Path == path {
 				n++
-				lenses[lensKey(&fs[j])]++
+				lenses[lensKey(&entries[j])]++
 			}
 		}
 	}
@@ -607,9 +668,19 @@ func addLens(obj *jq.Obj, lenses map[string]int) {
 	if len(lenses) == 0 {
 		return
 	}
+	keys := mapsKeys(lenses)
+	slices.Sort(keys)
 	inner := jq.NewObj()
-	for k, v := range lenses {
-		inner.Set(k, v)
+	for _, k := range keys {
+		inner.Set(k, lenses[k])
 	}
 	obj.Set("by_lens", inner)
+}
+
+func mapsKeys(m map[string]int) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
 }

@@ -7,6 +7,11 @@
   --line: #d7dde4;
   --accent: #075e9a;
   --danger: #9a2828;
+  --diff-word-add: #d9f2e2;
+  --diff-word-del: #f8d7d7;
+  --diff-line-add: #eefaf1;
+  --diff-line-del: #fdf0f0;
+  --diff-finding: #fffbe6;
   font:
     16px/1.5 system-ui,
     sans-serif;
@@ -20,6 +25,11 @@
     --line: #344453;
     --accent: #7dc4ff;
     --danger: #ff9b9b;
+    --diff-word-add: #1b3a28;
+    --diff-word-del: #3d2222;
+    --diff-line-add: #142a1c;
+    --diff-line-del: #2d1a1a;
+    --diff-finding: #3a341e;
   }
 }
 * {
@@ -238,16 +248,16 @@ noscript {
   overflow-wrap: anywhere;
 }
 .diff-word-add {
-  background: #d9f2e2;
+  background: var(--diff-word-add);
 }
 .diff-word-del {
-  background: #f8d7d7;
+  background: var(--diff-word-del);
 }
 .diff-line-add {
-  background: #eefaf1;
+  background: var(--diff-line-add);
 }
 .diff-line-del {
-  background: #fdf0f0;
+  background: var(--diff-line-del);
 }
 .diff-gap {
   color: var(--muted);
@@ -256,7 +266,7 @@ noscript {
   border-top: 1px dashed var(--line);
 }
 .diff-finding {
-  background: #fffbe6;
+  background: var(--diff-finding);
   border-left: 3px solid var(--accent);
   padding: 0.4rem 0.6rem;
   margin: 0.3rem 0;

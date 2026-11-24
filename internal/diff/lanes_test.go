@@ -69,6 +69,16 @@ func TestIndentationHeuristicSlides(t *testing.T) {
 	if !reflect.DeepEqual(reconstructWithHeuristic(withHeuristic), b) {
 		t.Fatalf("heuristic reconstruction want %q", b)
 	}
+	// The production call site must use the heuristic: DiffLines must equal
+	// the heuristic script. Flipping linesDiff to false inside DiffLines
+	// would make this fail (mutation proof).
+	prod := DiffLines(a, b)
+	if !reflect.DeepEqual(prod, withHeuristic) {
+		t.Fatalf("DiffLines = %v want heuristic %v (was heuristic disabled?)", prod, withHeuristic)
+	}
+	if reflect.DeepEqual(prod, without) {
+		t.Fatalf("DiffLines equals no-heuristic %v; heuristic was disabled in prod", prod)
+	}
 }
 
 func insertIndex(edits []Edit) int {
@@ -107,9 +117,11 @@ func TestClassifyLanes(t *testing.T) {
 }
 
 func TestClassifyWhitespaceOnly(t *testing.T) {
+	// Indentation-only edits are whitespace; see TestClassifyWhitespaceIndentation
+	// for the collapsed-run rule. This case pins the baseline.
 	f := FileDiff{NewPath: "a.go", Hunks: []Hunk{{Lines: []Line{
 		{Kind: KindDel, Text: "x := 1"},
-		{Kind: KindAdd, Text: "x:=1"},
+		{Kind: KindAdd, Text: "    x := 1"},
 	}}}}
 	if got := Classify(&f); got != LaneWhitespace {
 		t.Fatalf("whitespace-only got %s", got)
@@ -145,5 +157,146 @@ func TestPairWordSpansBounded(t *testing.T) {
 	oldM, newM := PairWordSpans(lines)
 	if len(oldM) != 1 || len(newM) != 1 {
 		t.Fatalf("paired spans = %d/%d", len(oldM), len(newM))
+	}
+	// The word pass must have tokenized: "hello" unchanged, world/there changed.
+	if !unchangedSpan(oldM[0], "hello") || !changedSpan(oldM[0], "world") {
+		t.Fatalf("word pass not tokenizing old=%v", oldM[0])
+	}
+}
+
+func unchangedSpan(spans []WordSpan, text string) bool {
+	for _, s := range spans {
+		if s.Text == text {
+			return !s.Changed
+		}
+	}
+	return false
+}
+
+func changedSpan(spans []WordSpan, text string) bool {
+	for _, s := range spans {
+		if s.Text == text {
+			return s.Changed
+		}
+	}
+	return false
+}
+
+func TestPairWordSpansNotAcrossContext(t *testing.T) {
+	lines := []Line{
+		{Kind: KindDel, Text: "alpha one"},
+		{Kind: KindContext, Text: "separator", OldNo: 1, NewNo: 1},
+		{Kind: KindAdd, Text: "beta two"},
+	}
+	oldM, newM := PairWordSpans(lines)
+	// Neither line may be paired: a del in one block and an add in the next
+	// block are separate. The implementation star-unpairs each side, which
+	// yields a single whole-line span (not a token comparison).
+	if _, ok := oldM[0]; !ok {
+		t.Fatal("del line expected at least an unpaired span")
+	}
+	if _, ok := newM[2]; !ok {
+		t.Fatal("add line expected at least an unpaired span")
+	}
+	delSpans := oldM[0]
+	addSpans := newM[2]
+	// Token pairing would split "alpha one" into "alpha"+" "+"one" spans;
+	// star-unpaired is a single whole-line span.
+	if len(delSpans) != 1 || delSpans[0].Text != "alpha one" {
+		t.Fatalf("del spans = %v, want single unpaired span", delSpans)
+	}
+	if len(addSpans) != 1 || addSpans[0].Text != "beta two" {
+		t.Fatalf("add spans = %v, want single unpaired span", addSpans)
+	}
+	// No pairing means "alpha" is not retained as an unchanged token.
+	if unchangedSpan(delSpans, "alpha") {
+		t.Fatalf("cross-boundary pairing kept alpha: %v", delSpans)
+	}
+}
+
+func TestClassifyConfigBasesCaseInsensitive(t *testing.T) {
+	cases := []struct {
+		path string
+		want Lane
+	}{
+		{"Makefile", LaneConfig},
+		{"makefile", LaneConfig},
+		{"Dockerfile", LaneConfig},
+		{"dockerfile", LaneConfig},
+		{"Dockerfile.dev", LaneConfig},
+		{"cmd/Makefile", LaneConfig},
+		{"cmd\\Makefile", LaneConfig},
+		{"DOCKERFILE.PROD", LaneConfig},
+	}
+	for _, c := range cases {
+		f := FileDiff{NewPath: c.path}
+		if got := Classify(&f); got != c.want {
+			t.Errorf("path %q: got %s want %s", c.path, got, c.want)
+		}
+	}
+}
+
+func TestClassifyWhitespaceTokenMergeStaysSource(t *testing.T) {
+	// The old stripSpace deleted all whitespace, so `msg := "a b"` ->
+	// `msg := "ab"` landed in whitespace. The collapsed-run fix keeps it
+	// in source.
+	f := FileDiff{NewPath: "a.go", Hunks: []Hunk{{Lines: []Line{
+		{Kind: KindDel, Text: `msg := "a b"`},
+		{Kind: KindAdd, Text: `msg := "ab"`},
+	}}}}
+	if got := Classify(&f); got != LaneSource {
+		t.Fatalf("token merge got %s want source", got)
+	}
+}
+
+func TestClassifyWhitespaceIndentation(t *testing.T) {
+	// Indentation-only changes stay whitespace.
+	f := FileDiff{NewPath: "a.go", Hunks: []Hunk{{Lines: []Line{
+		{Kind: KindDel, Text: "x := 1"},
+		{Kind: KindAdd, Text: "    x := 1"},
+	}}}}
+	if got := Classify(&f); got != LaneWhitespace {
+		t.Fatalf("indent-only got %s want whitespace", got)
+	}
+	f2 := FileDiff{NewPath: "a.go", Hunks: []Hunk{{Lines: []Line{
+		{Kind: KindDel, Text: "x  :=  1"},
+		{Kind: KindAdd, Text: "x := 1"},
+	}}}}
+	if got := Classify(&f2); got != LaneWhitespace {
+		t.Fatalf("multi-space got %s want whitespace", got)
+	}
+	f3 := FileDiff{NewPath: "a.go", Hunks: []Hunk{{Lines: []Line{
+		{Kind: KindDel, Text: "x := 1"},
+		{Kind: KindAdd, Text: "x := 1 "},
+	}}}}
+	if got := Classify(&f3); got != LaneWhitespace {
+		t.Fatalf("trailing-space got %s want whitespace", got)
+	}
+	// But a real token change is source.
+	f4 := FileDiff{NewPath: "a.go", Hunks: []Hunk{{Lines: []Line{
+		{Kind: KindDel, Text: "x := 1"},
+		{Kind: KindAdd, Text: "x := 2"},
+	}}}}
+	if got := Classify(&f4); got != LaneSource {
+		t.Fatalf("real change got %s want source", got)
+	}
+}
+
+func TestClassifyWindowsPaths(t *testing.T) {
+	cases := []struct {
+		path string
+		want Lane
+	}{
+		{`internal\foo.go`, LaneSource},
+		{`docs\guide.md`, LaneDocs},
+		{`migrations\001.sql`, LaneSchema},
+		{`foo_test.go`, LaneTests},
+		{`.github/workflows/ci.yaml`, LaneConfig},
+	}
+	for _, c := range cases {
+		f := FileDiff{NewPath: c.path}
+		if got := Classify(&f); got != c.want {
+			t.Errorf("windows path %q: got %s want %s", c.path, got, c.want)
+		}
 	}
 }

@@ -166,14 +166,20 @@ func lineGenerated(text string) bool {
 // parser carries the section scan state across diff lines. Field order
 // mirrors hunks/fileScan grouping so the GC scans the fewest pointer bytes.
 type parser struct { //nolint:govet // scanner state order mirrors hunks/fileScan
-	files []FileDiff
-	hunk  *Hunk
-	cur   int
-	oldNo int
-	newNo int
+	files  []FileDiff
+	hunk   *Hunk
+	cur    int
+	oldNo  int
+	newNo  int
+	oldRem int
+	newRem int
 }
 
 func (p *parser) feed(ln string) {
+	if p.inHunk() && isHunkContentPrefix(ln) {
+		p.contentLine(ln)
+		return
+	}
 	if p.openFile(ln) {
 		return
 	}
@@ -189,6 +195,18 @@ func (p *parser) feed(ln string) {
 	p.contentLine(ln)
 }
 
+func (p *parser) inHunk() bool {
+	return p.hunk != nil && (p.oldRem > 0 || p.newRem > 0)
+}
+
+func isHunkContentPrefix(ln string) bool {
+	if ln == "" {
+		return true
+	}
+	c := ln[0]
+	return c == '+' || c == '-' || c == ' ' || c == '\\'
+}
+
 func (p *parser) openFile(ln string) bool {
 	if !strings.HasPrefix(ln, "diff --git ") {
 		return false
@@ -196,6 +214,7 @@ func (p *parser) openFile(ln string) bool {
 	p.files = append(p.files, FileDiff{})
 	p.cur = len(p.files) - 1
 	p.hunk = nil
+	p.oldRem, p.newRem = 0, 0
 	oldP, newP := headerPaths(ln)
 	p.files[p.cur].OldPath = oldP
 	p.files[p.cur].NewPath = newP
@@ -334,11 +353,12 @@ func (p *parser) hunkLine(ln string) bool {
 	p.files[p.cur].Hunks = append(p.files[p.cur].Hunks, next)
 	p.hunk = &p.files[p.cur].Hunks[len(p.files[p.cur].Hunks)-1]
 	p.oldNo, p.newNo = hs, ns
+	p.oldRem, p.newRem = hc, nc
 	return true
 }
 
 func (p *parser) contentLine(ln string) {
-	if strings.HasPrefix(ln, `\\`) {
+	if strings.HasPrefix(ln, `\`) {
 		return
 	}
 	if p.hunk == nil || !isContentLine(ln) {
@@ -367,12 +387,18 @@ func (p *parser) appendAdded(body string) {
 	p.hunk.Lines = append(p.hunk.Lines, Line{Kind: KindAdd, Text: body, NewNo: p.newNo})
 	p.newNo++
 	p.files[p.cur].Additions++
+	if p.newRem > 0 {
+		p.newRem--
+	}
 }
 
 func (p *parser) appendDeleted(body string) {
 	p.hunk.Lines = append(p.hunk.Lines, Line{Kind: KindDel, Text: body, OldNo: p.oldNo})
 	p.oldNo++
 	p.files[p.cur].Deletions++
+	if p.oldRem > 0 {
+		p.oldRem--
+	}
 }
 
 func (p *parser) appendContext(ln string) {
@@ -383,6 +409,12 @@ func (p *parser) appendContext(ln string) {
 	p.hunk.Lines = append(p.hunk.Lines, Line{Kind: KindContext, Text: body, OldNo: p.oldNo, NewNo: p.newNo})
 	p.oldNo++
 	p.newNo++
+	if p.oldRem > 0 {
+		p.oldRem--
+	}
+	if p.newRem > 0 {
+		p.newRem--
+	}
 }
 
 func stripAB(path string) string {

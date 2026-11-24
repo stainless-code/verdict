@@ -99,19 +99,55 @@ func anchoredDiff(a, b []string) []Edit {
 	return coalesce(out)
 }
 
-func histogramAnchor(a, b []string) (string, bool) {
+func histogramAnchor(a, b []string) (string, bool) { //nolint:revive // single-loop anchor search is inherently linear
 	countA, countB := countLines(a), countLines(b)
-	best, bestTotal := "", -1
-	for line, ca := range countA {
-		cb, ok := countB[line]
-		if !ok || strings.TrimSpace(line) == "" {
+	firstA, firstB := firstPositions(a), firstPositions(b)
+	best, bestTotal, bestPA, bestPB := "", -1, 0, 0
+	seen := map[string]bool{}
+	for _, line := range a {
+		if seen[line] || isBlank(line) {
 			continue
 		}
-		if total := ca + cb; bestTotal < 0 || total < bestTotal {
-			best, bestTotal = line, total
+		seen[line] = true
+		total, ok := anchorTotal(line, countA, countB)
+		if !ok {
+			continue
+		}
+		pa, pb := firstA[line], firstB[line]
+		if isBetter(total, pa, pb, bestTotal, bestPA, bestPB) {
+			best, bestTotal, bestPA, bestPB = line, total, pa, pb
 		}
 	}
 	return best, bestTotal >= 0
+}
+
+func anchorTotal(line string, countA, countB map[string]int) (int, bool) {
+	ca, okA := countA[line]
+	cb, okB := countB[line]
+	if !okA || !okB {
+		return 0, false
+	}
+	return ca + cb, true
+}
+
+func isBetter(total, pa, pb, bestTotal, bestPA, bestPB int) bool {
+	if bestTotal < 0 || total < bestTotal {
+		return true
+	}
+	if total != bestTotal {
+		return false
+	}
+	return pa < bestPA || (pa == bestPA && pb < bestPB)
+}
+
+func firstPositions(lines []string) map[string]int {
+	m := map[string]int{}
+	for i, s := range lines {
+		if _, ok := m[s]; !ok {
+			m[s] = i
+		}
+	}
+	return m
 }
 
 func countLines(lines []string) map[string]int {
@@ -519,31 +555,66 @@ func spansFrom(tokens []token, keep []bool) []WordSpan {
 }
 
 // PairWordSpans pairs adjacent deleted and added lines inside a hunk.
+// Only a contiguous deletion run immediately followed by a contiguous
+// addition run pairs; a context line breaks the block and any unpaired
+// line across it is never paired.
 func PairWordSpans(lines []Line) (map[int][]WordSpan, map[int][]WordSpan) {
-	delIdx, addIdx := collectChanges(lines)
-	delIdx, addIdx = bounded(delIdx, MaxWordLines), bounded(addIdx, MaxWordLines)
 	oldOut, newOut := map[int][]WordSpan{}, map[int][]WordSpan{}
-	pairs := min(len(delIdx), len(addIdx))
-	for k := range pairs {
-		o, nw := WordSpans(lines[delIdx[k]].Text, lines[addIdx[k]].Text)
-		oldOut[delIdx[k]] = o
-		newOut[addIdx[k]] = nw
+	var delIdx, addIdx []int
+	flush := func() {
+		if len(delIdx) == 0 && len(addIdx) == 0 {
+			return
+		}
+		pairBlock(lines, delIdx, addIdx, oldOut, newOut)
+		delIdx, addIdx = nil, nil
 	}
-	starUnpaired(oldOut, lines, delIdx[pairs:])
-	starUnpaired(newOut, lines, addIdx[pairs:])
+	for i := range lines {
+		switch lines[i].Kind {
+		case KindDel:
+			delIdx = append(delIdx, i)
+		case KindAdd:
+			addIdx = append(addIdx, i)
+		default:
+			flush()
+		}
+	}
+	flush()
 	return oldOut, newOut
 }
 
-func collectChanges(lines []Line) (delIdx, addIdx []int) {
-	for i := range lines {
-		if lines[i].Kind == KindDel {
-			delIdx = append(delIdx, i)
-		}
-		if lines[i].Kind == KindAdd {
-			addIdx = append(addIdx, i)
+func pairBlock(lines []Line, delIdx, addIdx []int, oldOut, newOut map[int][]WordSpan) {
+	dels := bounded(delIdx, MaxWordLines)
+	adds := bounded(addIdx, MaxWordLines)
+	eligibleAdds := addsAfterFirstDel(dels, adds)
+	pairs := min(len(dels), len(eligibleAdds))
+	for k := range pairs {
+		o, nw := WordSpans(lines[dels[k]].Text, lines[eligibleAdds[k]].Text)
+		oldOut[dels[k]] = o
+		newOut[eligibleAdds[k]] = nw
+	}
+	if len(eligibleAdds) > pairs {
+		starUnpaired(newOut, lines, eligibleAdds[pairs:])
+	}
+	// Adds that appear before any del in the block stay unpaired.
+	if len(adds) > len(eligibleAdds) {
+		prefix := adds[:len(adds)-len(eligibleAdds)]
+		starUnpaired(newOut, lines, prefix)
+	}
+	starUnpaired(oldOut, lines, dels[pairs:])
+}
+
+func addsAfterFirstDel(dels, adds []int) []int {
+	if len(dels) == 0 || len(adds) == 0 {
+		return nil
+	}
+	firstDel := dels[0]
+	var out []int
+	for _, idx := range adds {
+		if idx > firstDel {
+			out = append(out, idx)
 		}
 	}
-	return delIdx, addIdx
+	return out
 }
 
 func starUnpaired(out map[int][]WordSpan, lines []Line, idx []int) {
