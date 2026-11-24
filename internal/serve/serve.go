@@ -211,10 +211,8 @@ func New(cfg *Config) (*Server, error) {
 		verifyRunner:      cfg.VerifyRunner,
 		postPreviewRunner: cfg.PostPreviewRunner,
 		postSubmitRunner:  cfg.PostSubmitRunner,
-		// The store's clock is fixed here, after applyServerDefaults, so no
-		// request ever lazily assigns it twice.
-		previews: &previewStore{entries: map[string]*previewEntry{}, now: cfg.Now, ttl: previewTTL},
 	}
+	server.previews = newPreviewStore(cfg)
 	if server.verifyRunner == nil {
 		server.verifyRunner = prodVerifyRunner
 	}

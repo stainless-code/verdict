@@ -409,11 +409,21 @@ func (m *jobManager) runVerify(ctx context.Context, current *job) {
 
 // runPostPreview runs the dry-run post preview through the injected
 // runner. DryRun is hardcoded true here and again in the production
-// runner, so no host write can ship through this path. A succeeded preview
-// mints the Tier C single-use nonce bound to its digest and the bundle
-// fingerprint, published beside the preview wire.
+// runner, so no host write can ship through this path. On an --allow-post
+// server a succeeded preview mints the Tier C single-use nonce bound to its
+// digest and the bundle fingerprint, published beside the preview wire; a
+// plain --interactive server mints nothing and its result is the bare wire.
 func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 	runner := m.runnerPostPreview()
+	// The fingerprint is taken before the dry-run reads the bundle, under the
+	// findings-store lock this job already holds, so a write that lands during
+	// the preview moves the live fingerprint off this one and the submit
+	// refuses 409 stale-preview instead of baking the write into a "fresh" one.
+	fingerprint, failure := m.previewFingerprint(current)
+	if failure != nil {
+		m.setStatus(current, jobStatusFailed, nil, failure, nil)
+		return
+	}
 	read := m.server.postReadRequest(current.bundleDir, current.bundle, current.rootPath)
 	req := &postcore.Request{
 		ReadRequest: read,
@@ -432,7 +442,7 @@ func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 	}
 	result := resp.Data.Wire()
 	if m.server.previews != nil {
-		if failure := m.bindPreview(current, result); failure != nil {
+		if failure := m.bindPreview(current, fingerprint, result); failure != nil {
 			m.setStatus(current, jobStatusFailed, nil, failure, nil)
 			return
 		}
@@ -440,18 +450,28 @@ func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 	m.setStatus(current, jobStatusSucceeded, result, nil, resp.Warnings)
 }
 
-// bindPreview mints the confirmation nonce for one succeeded preview and
-// publishes the digest and nonce on its wire. A bundle it cannot fingerprint
-// or a nonce the CSPRNG cannot mint refuses the preview: there is nothing
-// confirmable to hand the operator.
-func (m *jobManager) bindPreview(current *job, result *jq.Obj) *jobError {
+// previewFingerprint fingerprints the bundle before the dry-run when the
+// server can confirm a post; otherwise there is nothing to bind and it
+// returns the empty fingerprint. A bundle it cannot fingerprint refuses the
+// preview: there is nothing confirmable to hand the operator.
+func (m *jobManager) previewFingerprint(current *job) (string, *jobError) {
+	if m.server.previews == nil {
+		return "", nil
+	}
 	fingerprint, err := bundleFingerprint(current.bundleDir)
 	if err != nil {
-		return &jobError{
+		return "", &jobError{
 			code:    codeBundleUnreadable,
 			message: "could not fingerprint the bundle for a preview: " + err.Error(),
 		}
 	}
+	return fingerprint, nil
+}
+
+// bindPreview mints the confirmation nonce for one succeeded preview and
+// publishes the digest and nonce on its wire. A nonce the CSPRNG cannot mint
+// refuses the preview: there is nothing confirmable to hand the operator.
+func (m *jobManager) bindPreview(current *job, fingerprint string, result *jq.Obj) *jobError {
 	digest := previewDigest(current.rootID, current.bundle, fingerprint, []byte(result.MarshalCompact()))
 	nonce, err := m.server.previews.mint(current.rootID, current.bundle, digest, fingerprint)
 	if err != nil {

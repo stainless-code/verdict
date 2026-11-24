@@ -588,3 +588,185 @@ func TestPreviewStoreEvictsTheOldestWhenFull(t *testing.T) { //nolint:revive // 
 		}
 	}
 }
+
+// heldBundleLock holds the findings-store lock of one fixture bundle until the
+// returned release runs (or the test ends), standing in for a verify job or a
+// triage that has the bundle.
+func heldBundleLock(t *testing.T, root, bundle string) (release func()) {
+	t.Helper()
+	store := filepath.Join(mustAbs(t, root), ".verdict", "state", bundle, "findings.json")
+	unlock, err := storelock.Acquire(store, storelock.DefaultWait)
+	if err != nil {
+		t.Fatalf("hold the bundle lock: %v", err)
+	}
+	var once sync.Once
+	release = func() { once.Do(unlock) }
+	t.Cleanup(release)
+	return release
+}
+
+// TestPostSubmitBusyLockKeepsTheNonce pins the retry the 503 store-busy message
+// invites: a submit refused for a held bundle lock has not spent its nonce, so
+// the same preview submits successfully once the lock is released and posts
+// once.
+func TestPostSubmitBusyLockKeepsTheNonce(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	ts, server, counts := postSubmitServer(t, testLayer(root, nil), true)
+	server.cfg.LockWait = 50 * time.Millisecond
+	rootID := rootIDOf(t, ts, bearer())
+	digest, nonce := mintPreview(t, ts, server, rootID, "1234")
+	release := heldBundleLock(t, root, "1234")
+
+	got := post(t, ts, postSubmitPath, submitBody(rootID, "1234", digest, nonce, new(true)), writeHeaders(server))
+	if got.status != http.StatusServiceUnavailable || !strings.Contains(string(got.body), `"reason":"store-busy"`) {
+		t.Fatalf("submit under a held lock = %d %s, want 503 store-busy", got.status, got.body)
+	}
+	if submits := counts.submits(); submits != 0 {
+		t.Fatalf("postcore submits under a held lock = %d, want 0", submits)
+	}
+	release()
+	got = post(t, ts, postSubmitPath, submitBody(rootID, "1234", digest, nonce, new(true)), writeHeaders(server))
+	if got.status != http.StatusOK || !strings.Contains(string(got.body), `"error": null`) {
+		t.Fatalf("retry with the same nonce = %d %s, want 200 success", got.status, got.body)
+	}
+	if submits := counts.submits(); submits != 1 {
+		t.Errorf("postcore submits = %d, want exactly 1", submits)
+	}
+	got = post(t, ts, postSubmitPath, submitBody(rootID, "1234", digest, nonce, new(true)), writeHeaders(server))
+	if got.status != http.StatusConflict {
+		t.Errorf("replay after the post = %d %s, want 409", got.status, got.body)
+	}
+}
+
+// TestPostSubmitLockWaitEndedByTheContext pins a submit whose deadline or
+// shutdown ends the wait for the bundle lock: it answers the same typed
+// refusal the host-call phase uses, not 500 internal, posts nothing, and
+// leaves the nonce usable.
+func TestPostSubmitLockWaitEndedByTheContext(t *testing.T) { //nolint:revive // one matrix of lock-wait endings
+	t.Parallel()
+	cases := []struct {
+		setup func(*Server)
+		name  string
+		want  string
+	}{
+		{name: "deadline", want: codePostTimeout, setup: func(*Server) {}},
+		{name: "shutdown", want: codeCanceled, setup: func(s *Server) { s.lifeCancel() }},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			root := writeFixture(t, fixtureFiles())
+			ts, server, counts := postSubmitServer(t, testLayer(root, nil), true)
+			server.cfg.PostTimeout = 100 * time.Millisecond
+			rootID := rootIDOf(t, ts, bearer())
+			digest, nonce := mintPreview(t, ts, server, rootID, "1234")
+			release := heldBundleLock(t, root, "1234")
+			tc.setup(server)
+
+			got := post(t, ts, postSubmitPath, submitBody(rootID, "1234", digest, nonce, new(true)), writeHeaders(server))
+			if got.status != http.StatusOK {
+				t.Fatalf("submit = %d %s, want 200 typed refusal, not 500", got.status, got.body)
+			}
+			if code := asString(t, asMap(t, decode(t, got.body)["error"])["code"]); code != tc.want {
+				t.Errorf("error code = %q, want %q (%s)", code, tc.want, got.body)
+			}
+			if submits := counts.submits(); submits != 0 {
+				t.Errorf("postcore submits = %d, want 0", submits)
+			}
+			if _, ok := server.previews.peek(nonce, rootID, "1234", digest); !ok {
+				t.Error("the lock-wait refusal spent the nonce")
+			}
+			release()
+		})
+	}
+}
+
+// TestPostSubmitConcurrentSameNonceOnePost pins single use across two submits
+// racing on one nonce behind a held lock: exactly one posts, the other is
+// stale.
+func TestPostSubmitConcurrentSameNonceOnePost(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	ts, server, counts := postSubmitServer(t, testLayer(root, nil), true)
+	rootID := rootIDOf(t, ts, bearer())
+	digest, nonce := mintPreview(t, ts, server, rootID, "1234")
+	release := heldBundleLock(t, root, "1234")
+	body := submitBody(rootID, "1234", digest, nonce, new(true))
+	first, second := submitAsync(ts, server, body), submitAsync(ts, server, body)
+	release()
+	var ok, stale int
+	for _, got := range []result{<-first, <-second} {
+		switch {
+		case got.status == http.StatusOK && strings.Contains(string(got.body), `"error": null`):
+			ok++
+		case got.status == http.StatusConflict:
+			stale++
+		default:
+			t.Errorf("submit = %d %s, want 200 success or 409 stale-preview", got.status, got.body)
+		}
+	}
+	if ok != 1 || stale != 1 {
+		t.Errorf("outcomes = %d success, %d stale, want exactly 1 and 1", ok, stale)
+	}
+	if submits := counts.submits(); submits != 1 {
+		t.Errorf("postcore submits = %d, want exactly 1", submits)
+	}
+}
+
+// TestPostSubmitStaleBundleSpendsTheNonce pins that a stale fingerprint burns
+// the nonce: that preview is invalid, so no retry with it may succeed.
+func TestPostSubmitStaleBundleSpendsTheNonce(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	ts, server, counts := postSubmitServer(t, testLayer(root, nil), true)
+	rootID := rootIDOf(t, ts, bearer())
+	digest, nonce := mintPreview(t, ts, server, rootID, "1234")
+	receipt := filepath.Join(mustAbs(t, root), ".verdict", "state", "1234", "post.json")
+	if err := os.WriteFile(receipt, []byte(`{"head":"`+headA+`"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	body := submitBody(rootID, "1234", digest, nonce, new(true))
+	if got := post(t, ts, postSubmitPath, body, writeHeaders(server)); got.status != http.StatusConflict {
+		t.Fatalf("stale submit = %d %s, want 409", got.status, got.body)
+	}
+	if err := os.Remove(receipt); err != nil {
+		t.Fatal(err)
+	}
+	if got := post(t, ts, postSubmitPath, body, writeHeaders(server)); got.status != http.StatusConflict {
+		t.Errorf("replay after a stale refusal = %d %s, want 409: the stale preview kept a live nonce", got.status, got.body)
+	}
+	if submits := counts.submits(); submits != 0 {
+		t.Errorf("postcore submits = %d, want 0", submits)
+	}
+}
+
+// TestPostSubmitWriteDuringPreviewIsStale pins the fingerprint's moment: it is
+// taken before the dry-run reads the bundle, so a write that lands while the
+// preview runs is not baked into a "fresh" fingerprint and the submit refuses.
+func TestPostSubmitWriteDuringPreviewIsStale(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	receipt := filepath.Join(mustAbs(t, root), ".verdict", "state", "1234", "post.json")
+	preview := PostPreviewRunner(func(_ context.Context, req *postcore.Request) (*postcore.Response, *core.RefusalError) {
+		if err := os.WriteFile(receipt, []byte(`{"head":"`+headA+`"}`), 0o644); err != nil {
+			return nil, &core.RefusalError{Code: "test-assert", Message: err.Error()}
+		}
+		return dryRunResponse(req), nil
+	})
+	var submits atomic.Int32
+	submit := PostSubmitRunner(func(_ context.Context, req *postcore.Request) (*postcore.Response, *core.RefusalError) {
+		submits.Add(1)
+		return submittedResponse(req), nil
+	})
+	ts, server := postServer(t, &Config{Layer: testLayer(root, nil)}, preview, submit)
+	rootID := rootIDOf(t, ts, bearer())
+	digest, nonce := mintPreviewSnapshotPair(t, ts, server, rootID, "1234")
+	got := post(t, ts, postSubmitPath, submitBody(rootID, "1234", digest, nonce, new(true)), writeHeaders(server))
+	if got.status != http.StatusConflict || !strings.Contains(string(got.body), `"reason":"stale-preview"`) {
+		t.Errorf("write during the preview = %d %s, want 409 stale-preview", got.status, got.body)
+	}
+	if n := submits.Load(); n != 0 {
+		t.Errorf("postcore submits = %d, want 0", n)
+	}
+}

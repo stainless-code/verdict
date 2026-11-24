@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -160,13 +161,19 @@ func TestPostSubmitRefusedWithoutInteractive(t *testing.T) {
 }
 
 // TestPostSubmitDisabledWithoutAllowPost pins 403 post-disabled with zero
-// postcore calls when only --interactive is set.
+// postcore calls when only --interactive is set, and that such a server
+// publishes the bare Tier B preview: no digest, no nonce, and no store to fill.
 func TestPostSubmitDisabledWithoutAllowPost(t *testing.T) {
 	t.Parallel()
 	root := writeFixture(t, fixtureFiles())
 	ts, server, counts := postSubmitServer(t, testLayer(root, nil), false)
 	rootID := rootIDOf(t, ts, bearer())
-	digest, nonce := mintPreview(t, ts, server, rootID, "1234")
+	snap := awaitJobTerminal(t, ts, createPostPreviewJobOn(t, ts, server, rootID, "1234"))
+	if asString(t, snap["status"]) != jobStatusSucceeded {
+		t.Fatalf("preview status = %v, want succeeded (%v)", snap["status"], snap)
+	}
+	assertBareTierBPreview(t, server, asMap(t, snap["result"]))
+	digest, nonce := strings.Repeat("a", 64), strings.Repeat("b", 32)
 	got := post(t, ts, postSubmitPath, submitBody(rootID, "1234", digest, nonce, new(true)), writeHeaders(server))
 	if got.status != http.StatusForbidden {
 		t.Fatalf("POST submit = %d, want 403 (%s)", got.status, got.body)
@@ -176,6 +183,24 @@ func TestPostSubmitDisabledWithoutAllowPost(t *testing.T) {
 	}
 	if submits := counts.submits(); submits != 0 {
 		t.Errorf("postcore submit calls = %d, want 0", submits)
+	}
+}
+
+// assertBareTierBPreview pins the Tier B preview result shape: the dry-run wire
+// alone, with no confirmation fields and no store behind a server that cannot
+// accept a submit.
+func assertBareTierBPreview(t *testing.T, server *Server, result map[string]any) {
+	t.Helper()
+	got := slices.Sorted(maps.Keys(result))
+	want := []string{
+		"anchors", "body", "commit_id", "confidence", "dry_run", "event", "findings",
+		"items", "payload_hash", "provenance", "security_summary", "suggestions",
+	}
+	if !slices.Equal(got, want) {
+		t.Errorf("Tier B preview keys = %v, want %v", got, want)
+	}
+	if server.previews != nil {
+		t.Error("a server without --allow-post holds a preview store")
 	}
 }
 

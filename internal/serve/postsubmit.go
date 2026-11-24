@@ -29,7 +29,8 @@ import (
 
 // Tier C host posting: an explicit --allow-post opt-in beyond --interactive.
 // A fresh post-preview mints a single-use nonce bound to a preview digest;
-// the submit route consumes it under the bundle lock before delegating to
+// the submit route validates it, takes the bundle lock, re-checks the bundle
+// fingerprint, spends the nonce under that lock, and only then delegates to
 // core/post exactly like the CLI `verdict post` does.
 const (
 	// postSubmitPath is the POST host-submit route.
@@ -88,6 +89,18 @@ type previewStore struct {
 	mu      sync.Mutex
 }
 
+// newPreviewStore builds the store for an --allow-post server and nil for any
+// other: without a submit route there is no nonce to spend, so no preview
+// mints one, the Tier B job result keeps its shape, and nothing fills the
+// store. The clock is fixed here, after applyServerDefaults, so no request
+// ever lazily assigns it twice.
+func newPreviewStore(cfg *Config) *previewStore {
+	if !cfg.AllowPost {
+		return nil
+	}
+	return &previewStore{entries: map[string]*previewEntry{}, now: cfg.Now, ttl: previewTTL}
+}
+
 // nonceReader names the CSPRNG source; nil means crypto/rand.
 func (st *previewStore) nonceReader() func([]byte) (int, error) {
 	if st.random == nil {
@@ -129,10 +142,24 @@ func (st *previewStore) clock() time.Time {
 	return st.now()
 }
 
+// peek validates one nonce against root, bundle, and digest without spending
+// it, so a retryable failure after validation (a busy store lock, a lock wait
+// that timed out) leaves the nonce usable. An expired or mismatched entry is
+// removed on the attempt, exactly as before: only a valid nonce survives.
+func (st *previewStore) peek(nonce, root, bundle, digest string) (*previewEntry, bool) {
+	return st.take(nonce, root, bundle, digest, false)
+}
+
 // consume validates one nonce against root, bundle, and digest and deletes
-// it in the same critical section, so a nonce can never be spent twice even
-// when the follow-up staleness check refuses.
+// it in the same critical section, so a nonce can never be spent twice: of
+// two concurrent submits with one nonce, exactly one gets the entry.
 func (st *previewStore) consume(nonce, root, bundle, digest string) (*previewEntry, bool) {
+	return st.take(nonce, root, bundle, digest, true)
+}
+
+// take is the shared lookup. It removes the entry when spend is set or when
+// the entry is expired or mismatched, all under one hold of the store mutex.
+func (st *previewStore) take(nonce, root, bundle, digest string, spend bool) (*previewEntry, bool) {
 	now := st.clock()
 	st.mu.Lock()
 	defer st.mu.Unlock()
@@ -140,11 +167,12 @@ func (st *previewStore) consume(nonce, root, bundle, digest string) (*previewEnt
 	if !ok {
 		return nil, false
 	}
-	delete(st.entries, nonce)
-	if !entry.expiresAt.After(now) {
-		return nil, false
+	valid := entry.expiresAt.After(now) &&
+		entry.root == root && entry.bundle == bundle && entry.digest == digest
+	if spend || !valid {
+		delete(st.entries, nonce)
 	}
-	if entry.root != root || entry.bundle != bundle || entry.digest != digest {
+	if !valid {
 		return nil, false
 	}
 	return entry, true
@@ -292,12 +320,12 @@ func (s *Server) handlePostSubmit(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	entry, ok := s.consumePreview(w, &body)
+	entry, ok := s.checkPreview(w, &body)
 	if !ok {
 		return
 	}
 	// A host write already under way is not abandoned because the tab closed:
-	// the nonce was spent above, and the CLI post this mirrors is not
+	// the nonce is spent under the lock below, and the CLI post this mirrors is not
 	// cancellable from a browser either. It derives from the server's
 	// lifetime instead of the request's, so shutdown still cancels it (and
 	// the exec layer kills the host process tree, GO-CLI-05), and it is
@@ -323,16 +351,15 @@ func (s *Server) validateSubmitBody(w http.ResponseWriter, body *postSubmitBody)
 	return true
 }
 
-// consumePreview atomically validates and consumes the nonce; the problem
-// is already written when false.
-func (s *Server) consumePreview(w http.ResponseWriter, body *postSubmitBody) (*previewEntry, bool) {
+// checkPreview validates the nonce without spending it; the problem is
+// already written when false. The nonce is spent later, under the bundle lock
+// ([Server.spendPreview]), so a busy store or a lock timeout stays retryable.
+func (s *Server) checkPreview(w http.ResponseWriter, body *postSubmitBody) (*previewEntry, bool) {
 	if s.previews == nil {
 		s.problem(w, http.StatusConflict, reasonStalePreview, "no preview is stored for this session")
 		return nil, false
 	}
-	// Consume the nonce first so a replay, a mismatched digest, or a stale
-	// bundle can never be retried with the same nonce.
-	entry, ok := s.previews.consume(body.PreviewNonce, body.Root, body.Bundle, body.PreviewDigest)
+	entry, ok := s.previews.peek(body.PreviewNonce, body.Root, body.Bundle, body.PreviewDigest)
 	if !ok {
 		s.problem(w, http.StatusConflict, reasonStalePreview,
 			"preview is unknown, mismatched, expired, or already used; re-run the preview")
@@ -341,8 +368,22 @@ func (s *Server) consumePreview(w http.ResponseWriter, body *postSubmitBody) (*p
 	return entry, true
 }
 
-// runConfirmedPost locks the bundle, re-checks staleness, and delegates to
-// core/post under the lock so a concurrent write cannot interleave.
+// spendPreview atomically consumes the validated nonce; the problem is
+// already written when false (a concurrent submit already spent it).
+func (s *Server) spendPreview(w http.ResponseWriter, body *postSubmitBody) bool {
+	if _, ok := s.previews.consume(body.PreviewNonce, body.Root, body.Bundle, body.PreviewDigest); !ok {
+		s.problem(w, http.StatusConflict, reasonStalePreview,
+			"preview is unknown, mismatched, expired, or already used; re-run the preview")
+		return false
+	}
+	return true
+}
+
+// runConfirmedPost locks the bundle, re-checks staleness, spends the nonce,
+// and delegates to core/post under the lock so a concurrent write cannot
+// interleave. A failure before the spend (a busy or timed-out lock wait)
+// leaves the nonce usable; a stale bundle spends it, because that preview is
+// invalid anyway.
 func (s *Server) runConfirmedPost(
 	ctx context.Context, w http.ResponseWriter, body *postSubmitBody,
 	rootPath, bundleDir string, entry *previewEntry,
@@ -350,6 +391,10 @@ func (s *Server) runConfirmedPost(
 	storePath := bundleDir + "/findings.json"
 	unlock, refusal := s.acquireBundleLock(ctx, storePath)
 	if refusal != nil {
+		if refusal.typed != nil {
+			s.writeRefusal(w, verbServe, body.Bundle, refusal.typed)
+			return
+		}
 		s.problem(w, refusal.status, refusal.reason, refusal.message)
 		return
 	}
@@ -361,8 +406,12 @@ func (s *Server) runConfirmedPost(
 		return
 	}
 	if current != entry.fingerprint {
+		_, _ = s.previews.consume(body.PreviewNonce, body.Root, body.Bundle, body.PreviewDigest)
 		s.problem(w, http.StatusConflict, reasonStalePreview,
 			"the bundle changed since the preview; re-run the preview before submitting")
+		return
+	}
+	if !s.spendPreview(w, body) {
 		return
 	}
 	resp, ref := s.invokePostSubmit(ctx, body, rootPath, bundleDir)
@@ -400,6 +449,9 @@ func (s *Server) postReadRequest(bundleDir, bundle, repoRoot string) core.ReadRe
 
 // lockRefusal is the transport problem a failed bundle-lock acquire answers.
 type lockRefusal struct {
+	// typed is set when the submit's own deadline or a shutdown ended the
+	// wait: the same typed refusal the host-call phase answers, at 200.
+	typed   *core.RefusalError
 	reason  string
 	message string
 	status  int
@@ -418,6 +470,9 @@ func (s *Server) acquireBundleLock(ctx context.Context, storePath string) (func(
 	if err == nil {
 		return unlock, nil
 	}
+	if typed := s.lockWaitRefusal(ctx); typed != nil {
+		return nil, &lockRefusal{typed: typed}
+	}
 	if errors.Is(err, storelock.ErrBusy) {
 		return nil, &lockRefusal{
 			status: http.StatusServiceUnavailable, reason: "store-busy",
@@ -428,6 +483,22 @@ func (s *Server) acquireBundleLock(ctx context.Context, storePath string) (func(
 		status: http.StatusInternalServerError, reason: "internal",
 		message: fmt.Sprintf("could not take the store lock on %s: %v", storePath, err),
 	}
+}
+
+// lockWaitRefusal maps a submit context that ended while waiting for the
+// bundle lock to the typed refusals the host-call phase uses. Nothing was
+// posted and the nonce is unspent, so the message says the retry is safe.
+func (s *Server) lockWaitRefusal(ctx context.Context) *core.RefusalError {
+	switch {
+	case errors.Is(ctx.Err(), context.DeadlineExceeded):
+		return &core.RefusalError{Code: codePostTimeout, Message: fmt.Sprintf(
+			"the submit did not finish within %s while waiting for the bundle lock; nothing was posted and "+
+				"the preview is still valid, so retry", s.postTimeout())}
+	case errors.Is(ctx.Err(), context.Canceled):
+		return &core.RefusalError{Code: codeCanceled, Message: "the server shut down while the submit waited " +
+			"for the bundle lock; nothing was posted"}
+	}
+	return nil
 }
 
 // invokePostSubmit builds the confirmed post request and runs it. The request
@@ -462,6 +533,15 @@ func (s *Server) invokePostSubmit(
 // deadline takes: the cancellation code, or the transport failure a stopped
 // host command surfaces. A definitive host or gate refusal (already-posted,
 // a stale record, an auth refusal) that lands at the boundary keeps its code.
+//
+// Known limit: core/post gives a post-failed refusal no typed cause. Its
+// message is the head of the host's stderr, or the exit text, so a command
+// the context killed cannot be told from a genuine host failure that
+// happened to land after the context ended. Matching message text would
+// guess, so the code only treats post-failed as context-caused once the
+// context is already done; a genuine failure in that window reads as
+// post-timeout or canceled, whose text already says the host may or may not
+// have recorded the review.
 func contextOwned(ref *core.RefusalError) bool {
 	return ref.Code == codeCanceled || ref.Code == postcore.CodePostFailed
 }

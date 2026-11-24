@@ -2949,27 +2949,38 @@ is touched; without `--interactive` it is the read-only `405` placeholder.
 With `--interactive --allow-post`, `GET /v1/health` advertises
 `allow_post: true` and the route is gated exactly like the Tier A/B writes
 (session, CSRF, Origin, JSON), plus a fresh preview and explicit
-confirmation. A succeeded `POST /v1/jobs/post-preview` publishes
-`result.preview_digest` (SHA-256 over the preview wire plus the bundle
-fingerprint) and `result.preview_nonce` (CSPRNG, single-use, 10-minute
-TTL, bounded store that evicts the oldest) beside the preview wire. The submit requires
+confirmation. A succeeded `POST /v1/jobs/post-preview` on such a server
+publishes `result.preview_digest` (SHA-256 over the preview wire plus the
+bundle fingerprint, taken before the dry-run reads the bundle, so a write that
+lands during the preview refuses `409 stale-preview` at submit) and
+`result.preview_nonce` (CSPRNG, single-use, 10-minute TTL, bounded store that
+evicts the oldest) beside the preview wire. A server without `--allow-post`
+mints neither: its preview result is the bare dry-run wire. The submit requires
 `confirm: true` (missing or `false` refuses `400 needs-confirm`), then
-atomically validates and consumes `(preview_nonce, root, bundle,
-preview_digest)` — unknown, mismatched, expired, or replayed nonces refuse
-`409 stale-preview` — then re-hashes the bundle under its `storelock` and
-refuses `409 stale-preview` when any bundle file `core/post` decides from
-changed since the preview — `findings.json`, `PR.json`, `source.json`,
-`review.json`, `post.json` (the duplicate-post receipt), `controls.json`,
-`record.json`, `identity.json`, `provenance.json`, or `full.diff` — all before
-`core/post` runs. That re-check holds the
-`findings.json` `storelock` only: a change to another bundle file between the
-re-check and the post is narrowed by the fingerprint but not excluded. The
-submit keeps running if the tab closes, but is bounded to five minutes
-(lock wait included): a host call that outlives it is stopped and refuses
-`post-timeout` at `200`, releasing the lock. Shutting the server down (Ctrl-C)
-also stops an in-flight host call, which refuses `canceled`. The host may or
-may not have recorded the review in either case, so check the pull request
-before previewing again. The
+validates `(preview_nonce, root, bundle, preview_digest)` without spending it —
+unknown, mismatched, expired, or replayed nonces refuse `409 stale-preview` —
+takes the bundle's `storelock`, and re-hashes the bundle. It refuses
+`409 stale-preview` when any bundle file `core/post` decides from changed since
+the preview — `findings.json`, `PR.json`, `source.json`, `review.json`,
+`post.json` (the duplicate-post receipt), `controls.json`, `record.json`,
+`identity.json`, `provenance.json`, or `full.diff` — and spends the nonce
+there, because that preview is invalid anyway. Otherwise it atomically spends
+the nonce and runs `core/post`. Two submits racing on one nonce therefore post
+once. A failure before the spend leaves the nonce usable: a held lock answers
+`503 store-busy` ("retry in a moment" is true — retry with the same preview),
+and a submit whose five-minute bound or a shutdown ends the wait for the lock
+refuses `post-timeout` or `canceled` at `200` with nothing posted. The re-check
+holds the `findings.json` `storelock` only: a change to another bundle file
+between the re-check and the post is narrowed by the fingerprint but not
+excluded. The submit keeps running if the tab closes, but is bounded to five
+minutes (lock wait included): a host call that outlives it is stopped and
+refuses `post-timeout` at `200`, releasing the lock. Shutting the server down
+(Ctrl-C) also stops an in-flight host call, which refuses `canceled`. A
+`post-failed` that lands once that bound or shutdown has ended the call reads as
+`post-timeout` or `canceled`, because `core/post` types no cause for it: a
+genuine host failure in that window is indistinguishable and reads the same. The
+host may or may not have recorded the review in any of these cases, so check
+the pull request before previewing again. The
 tool version in the footer and payload resolves from the install root, as in
 `verdict post`, never from the server's working directory. A refusal `core/post`
 raises stays the usual `200` envelope; the preview store is the only Tier C
