@@ -1080,12 +1080,11 @@ Fix: list bundles with `query-bundles` first, then re-issue the call with the ri
 
 ## `not-local`
 
-Cause: the verb got the wrong bundle kind (`record` on a GitHub PR, or `fix` on a PR bundle
-without `--selected`).
+Cause: the verb got the wrong bundle kind (`record` on a GitHub PR, or `fix` on a corpus bundle).
 
 Fix: `fetch-local` for local work first; GitHub PRs use `post`, and local bundles use `record` and `report`.
-`fix --selected` is the one batch that reads a PR bundle, because that is where
-`selected.json` comes from.
+`fix` runs on PR bundles too — the instructions name the `post` landing there — but
+never on a `corpus-*` bundle, which is a benchmark input, not review work.
 
 ## `not-retired`
 

@@ -349,11 +349,11 @@ func setupSelectedEmpty(t *testing.T, dir, _ string) {
 	writeSelected(t, dir, "local-snone", `{"sigs":[]}`)
 }
 
-// setupSelectedPR is the PR-bundle fixture: --selected is the one batch that
+// setupSelectedPR is the PR-bundle fixture: --selected is the batch that
 // reads a bundle fetch wrote, so it runs here and lands through post.
 func setupSelectedPR(t *testing.T, dir, _ string) {
 	t.Helper()
-	setupNotLocal(t, dir, "")
+	setupPRBundle(t, dir, "")
 	seedSelected(t, dir, "4291", sigInfo)
 }
 
@@ -380,8 +380,9 @@ func writeSelected(t *testing.T, dir, bundle, doc string) {
 	}
 }
 
-// setupNotLocal is the PR-bundle refusal fixture.
-func setupNotLocal(t *testing.T, dir, _ string) {
+// setupPRBundle is the PR-bundle fixture: a bundle fetch wrote, with findings
+// but no PR.json, so a default fix pass runs on it and lands through post.
+func setupPRBundle(t *testing.T, dir, _ string) {
 	t.Helper()
 	mkRepo(t, dir)
 	bdir := filepath.Join(dir, ".verdict", "state", "4291")
@@ -390,6 +391,20 @@ func setupNotLocal(t *testing.T, dir, _ string) {
 	}
 	if err := os.WriteFile(filepath.Join(bdir, "findings.json"), []byte("["+
 		findingJSON(sigInfo, "open", "informational", "notes.txt", "PR finding.")+"]"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// setupCorpus is the corpus-bundle fixture: fix refuses benchmark bundles.
+func setupCorpus(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	bdir := filepath.Join(dir, ".verdict", "state", "corpus-x")
+	if err := os.MkdirAll(bdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bdir, "findings.json"), []byte("["+
+		findingJSON(sigInfo, "open", "informational", "notes.txt", "Corpus finding.")+"]"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -702,8 +717,12 @@ func testFixRefusals(t *testing.T) {
 		"fix", "acme/app", "local-bad", "--sig", sigDone, "--json")
 	golden.Pin(t, harness, "bad-sig-unknown", setupBadSig, nil,
 		"fix", "acme/app", "local-bad", "--sig", "deadbeef", "--json")
-	golden.Pin(t, harness, "not-local", setupNotLocal, nil,
+	golden.Pin(t, harness, "pr-bundle-json", setupPRBundle, nil,
 		"fix", "acme/app", "4291", "--json")
+	golden.Pin(t, harness, "pr-bundle-human", setupPRBundle, nil,
+		"fix", "acme/app", "4291")
+	golden.Pin(t, harness, "corpus-bundle", setupCorpus, nil,
+		"fix", "acme/app", "corpus-x", "--json")
 	golden.Pin(t, harness, "missing-findings", setupMissing, nil,
 		"fix", "acme/app", "local-empty", "--json")
 	golden.Pin(t, harness, "unknown-flag", setupPass, nil,

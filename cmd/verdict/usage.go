@@ -163,10 +163,12 @@ func usageText() string {
 		"    --sarif <file|-> is the same source under its older spelling.\n" +
 		"  fix <owner/repo> <local-slug|pr> [--sig <s> | --all|--selected|--recipe <name> [--min-severity <s>]\n" +
 		"        [--verify-cmd <cmd>] [--paths <glob>]... | --test <sig> [--commit]] [--json]\n" +
-		"    one bounded pass over a local bundle: picks the top open inline sig\n" +
+		"    one bounded pass over a bundle: picks the top open inline sig\n" +
 		"    (or --sig), prints finding + kb.txt context with verify/land/re-run\n" +
-		"    instructions. Max 3 passes per sig (ledger .verdict/state/<bundle>/fix.json);\n" +
-		"    touching files outside the anchor stops the loop (scope-escape).\n" +
+		"    instructions (on a PR bundle the landing is push, re-fetch, then post;\n" +
+		"    corpus bundles refuse not-local). Max 3 passes per sig\n" +
+		"    (ledger .verdict/state/<bundle>/fix.json); touching files outside the\n" +
+		"    anchor stops the loop (scope-escape).\n" +
 		"    --all takes one pass on every open inline finding at or above --min-severity\n" +
 		"    (default important; off reads no floor) and names each sig's outcome: ready,\n" +
 		"    ceiling, scope-escape, or no-anchor. It needs the command that proves the\n" +
@@ -174,7 +176,7 @@ func usageText() string {
 		"    --paths <glob> (repeatable) scopes the batch to matching finding paths.\n" +
 		"    --selected takes the same batch shape over the sigs a github fetch recorded in\n" +
 		"    the bundle's selected.json — the root review comments a human reacted 👍 to —\n" +
-		"    and prints the selection it read. It is the one batch that runs on a PR bundle:\n" +
+		"    and prints the selection it read, which only a github fetch writes:\n" +
 		"    absent selected.json refuses missing-selection, and a selection that names no\n" +
 		"    open inline finding refuses no-selected-findings. Its default floor is off, so\n" +
 		"    the reaction, not the severity, decides; --min-severity narrows it.\n" +

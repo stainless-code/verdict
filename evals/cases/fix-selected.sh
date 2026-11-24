@@ -208,7 +208,7 @@ EOF
 write_selected "$PR" "0123456789abcdef0123456789abcdef01234567"
 run_review fix acme/app "$PR" --selected --verify-cmd "go test ./..."
 if [ "$EVAL_STATUS" -eq 0 ]; then
-  good "--selected is the one batch that runs on a PR bundle"
+  good "--selected runs a batch on a PR bundle"
 else
   bad "PR bundle --selected gave exit $EVAL_STATUS code '$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null)'"
 fi
@@ -218,11 +218,11 @@ else
   bad "PR instructions: $(grep -o 'instructions: .*' "$EVAL_OUT" | head -c 400)"
 fi
 run_review fix acme/app "$PR" --json
-code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
-if [ "$EVAL_STATUS" -ne 0 ] && [ "$code" = "not-local" ]; then
-  good "the same PR bundle still refuses not-local without --selected"
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && jq -e '.data.pass == 2 and (.next | contains("run post to land it"))' <"$EVAL_OUT" >/dev/null 2>&1; then
+  good "the same PR bundle runs a default pass without --selected (pass 2 after the batch's pass 1)"
 else
-  bad "PR bundle without the flag gave exit $EVAL_STATUS code '$code'"
+  bad "PR bundle without the flag gave exit $EVAL_STATUS code '$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)'"
 fi
 
 eval_end

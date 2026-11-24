@@ -131,8 +131,8 @@ func (st *state) testReceipt(rec *jq.Obj, full string) (string, string, *core.Re
 	if !ok || obj == nil {
 		return "", "", st.refuse(codeNoReproduction, fmt.Sprintf(
 			"fix --test: sig %s carries no reproduction receipt "+
-				"(re-run record with a reproduction block)",
-			readcommon.Prefix(full)))
+				"(re-run %s with a reproduction block)",
+			readcommon.Prefix(full), st.landVerb()))
 	}
 	pathRaw, _ := obj.Get("path")
 	cmdRaw, _ := obj.Get("command")

@@ -1,6 +1,6 @@
 // Package fixcore is the fix verb's domain service: the bounded, verify-gated
-// fix loop over a local bundle. It writes the ledger and the patch output and
-// never writes findings.json; internal/fix owns argv parsing, re-entry,
+// fix loop over a local or PR bundle. It writes the ledger and the patch output
+// and never writes findings.json; internal/fix owns argv parsing, re-entry,
 // envelope rendering, and exit mapping.
 package fixcore
 
@@ -375,13 +375,17 @@ func (st *state) runDispatch(
 		fixOpen, fixOpenInline, now)
 }
 
+// fixBundleDir resolves the bundle dir. Local and PR bundles both run: fix
+// only writes its ledger and patch beside the bundle and issues read-only git
+// commands, and the instructions name the landing verb each bundle owns. Corpus
+// bundles refuse: they are benchmark measurement inputs, not review worktrees.
 func (st *state) fixBundleDir() (string, *core.RefusalError) {
 	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
 	if ref != nil {
 		return "", st.refuse(ref.Code, ref.Message)
 	}
-	if !readcommon.IsLocalBundleDir(dir) && !st.req.Selected {
-		return "", st.refuse("not-local", "fix works on local bundles; fetch-local first")
+	if readcommon.IsCorpusBundleDir(dir) {
+		return "", st.refuse("not-local", "fix does not run on corpus bundles (benchmark inputs)")
 	}
 	return dir, nil
 }
@@ -1056,6 +1060,9 @@ func (st *state) passOutput(
 	st.printKB(dir)
 	st.printInstructions(dir, anchor)
 	st.next = nextPass
+	if st.providerBundle() {
+		st.next = nextPassPR
+	}
 	st.data = &Data{
 		Dir:        dir,
 		Ledger:     ledgerPath,
@@ -1150,12 +1157,17 @@ func (st *state) printKB(dir string) {
 }
 
 func (st *state) printInstructions(dir, anchor string) {
-	st.humanf(instructionsFmt,
-		anchor, dir, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr)
+	if st.providerBundle() {
+		st.humanf(instructionsPRFmt, anchor, dir,
+			st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr)
+	} else {
+		st.humanf(instructionsFmt,
+			anchor, dir, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr)
+	}
 	st.humanRaw(gateMsg)
 	st.humanRaw(budgetMsg)
 	st.humanf("next: patch %s, write verification.json, "+
-		"run record to land it, then re-run fix\n", anchor)
+		"run %s to land it, then re-run fix\n", anchor, st.landVerb())
 }
 
 // printBrief writes the stored brief between the anchor line and the kb
@@ -1193,10 +1205,10 @@ func (st *state) completeRun(
 	if fixOpen > 0 {
 		next = fmt.Sprintf(
 			"next: %d open finding(s) left are non-inline or "+
-				"dispositioned — triage or record to settle them", fixOpen)
+				"dispositioned — triage or %s to settle them", fixOpen, st.landVerb())
 	}
 	st.humanf("%s\n", next)
-	st.next = nextTriage
+	st.next = strings.ReplaceAll(nextTriage, "record", st.landVerb())
 	if fixOpen == 0 {
 		st.next = nextDoneShort
 	}
@@ -1334,6 +1346,9 @@ const (
 	// nextPass is the envelope next hint for passes.
 	nextPass = "patch the anchor file, write verification.json, " +
 		"run record to land it, then re-run fix"
+	// nextPassPR is nextPass for a PR bundle, which lands through post.
+	nextPassPR = "patch the anchor file, write verification.json, " +
+		"push the fix, re-fetch, and run post to land it, then re-run fix"
 	// nextDone is the human next hint when done.
 	nextDone = "next: done — no open findings"
 	// nextTriage is the envelope next hint when open remains.
@@ -1361,6 +1376,15 @@ const (
 		"resultHead==HEAD match in the record/post verification gate is the " +
 		"freshness proof); land it with record %s %s; re-run fix %s %s " +
 		"for the next pass\n"
+	// instructionsPRFmt is instructionsFmt for a PR bundle, whose landing path
+	// is a push and a re-fetch followed by post — record refuses a PR bundle.
+	instructionsPRFmt = "instructions: patch the anchor file (%s), " +
+		"then run its verify command yourself and write %s/verification.json " +
+		"[{sig, verdict, resultHead, verifyCmd}] with verdict VERIFIED and " +
+		"resultHead matching HEAD (this script never runs it — the " +
+		"resultHead==HEAD match in the record/post verification gate is the " +
+		"freshness proof); push the fix, re-fetch with fetch %s %s, then land it with " +
+		"post %s %s; re-run fix %s %s for the next pass\n"
 	// gateMsg constrains verify commands to safe shapes.
 	gateMsg = "gate: keep the verify command repo-scoped, non-destructive, " +
 		"and offline — the verify verb refuses " +

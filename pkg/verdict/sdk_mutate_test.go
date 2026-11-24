@@ -232,8 +232,20 @@ func TestClientFix(t *testing.T) {
 
 	writeFindings(t, "4291", "["+
 		sdkFinding("1123456789abcdef0123456789abcdef01234567", "open", "informational", "pointed")+"]")
-	_, err = c.Fix(context.Background(), &verdict.FixRequest{
+	// A PR bundle runs a pass too, landing through post; a corpus bundle is a
+	// benchmark input and still refuses.
+	pr, err := c.Fix(context.Background(), &verdict.FixRequest{
 		Invocation: sdkInvocation("4291"),
+	})
+	requireNoError(t, err)
+	if !strings.Contains(pr.Next, "run post to land it") {
+		t.Errorf("PR bundle next = %q, want the post landing", pr.Next)
+	}
+
+	writeFindings(t, "corpus-x", "["+
+		sdkFinding("1123456789abcdef0123456789abcdef01234567", "open", "informational", "pointed")+"]")
+	_, err = c.Fix(context.Background(), &verdict.FixRequest{
+		Invocation: sdkInvocation("corpus-x"),
 	})
 	requireRefusal(t, err, "not-local", "try: run the fetch/record step named above first, then re-run")
 }
