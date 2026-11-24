@@ -2515,9 +2515,11 @@ verdict lsp [--root <dir>]... [--bundle <name>] [--check <tier>] [--max-bundles 
   `--max-roots` bounds them too. Only in this mode does `initialize` advertise
   `workspace.workspaceFolders` (`supported`, `changeNotifications`), and
   `workspace/didChangeWorkspaceFolders` adds roots (validated the same way)
-  and removes them (their diagnostics clear unless another root still
-  reaches the file); the read model and its watcher are rebuilt over the new
-  set.
+  and removes them (their diagnostics clear at once unless another root
+  still reaches the file). The new set takes effect in order with every
+  other notification, without waiting on a composition in flight; the
+  added roots are then composed, and the watcher rebuilt over the new set,
+  in the background.
 - `--bundle <name>` publishes that bundle. With `--root` it must resolve under
   at least one root, or the start refuses `missing-bundle` (the message names
   `verdict fetch-local` as the remedy); with client roots a miss is a Warning
@@ -2618,7 +2620,8 @@ document's last line. `data` carries `sig`, `bundle`, `root`, `status`, `severit
 `quote_status`, `lens`, `category`, `side`, `anchor` (`exact` for a NEW-side
 line of the reviewed diff, `hunk` for a deleted line mapped onto its hunk's
 NEW side, or, for a hunk that only deletes, onto the line now standing where
-the deleted code was, `unmapped` otherwise), `span`, `hunk_sha256` (the reviewed text),
+the deleted code was when the diff shows it, else the last line before the
+deletion (never past the end of the file), `unmapped` otherwise), `span`, `hunk_sha256` (the reviewed text),
 `span_sha256` and `span_matches` (whether the editor's text still matches what
 was reviewed), `suggestion`, `deferred`, and `truncated` when a bound cut the
 set.
@@ -2630,8 +2633,11 @@ diagnostics. A document is matched against each root lexically first, then
 by the physical spellings of both, so a client that spells the same tree
 through another path (macOS `/private/var` for `/var`, a symlinked checkout,
 a Windows 8.3 short name such as `RUNNER~1`) still gets its findings: the
-document path is resolved once when it opens or saves (lstat only, never
-read), and a root's once when it is served. A finding whose `path` is absolute,
+document path is resolved once when it opens (a save reuses it; a file saved
+without being opened is resolved then), and a root's once when it is served.
+Resolution is lstat only, never a read, and never runs under the session
+lock, so a hung volume cannot stall publishes or keystrokes. One file open
+under two spellings stays tracked until both close. A finding whose `path` is absolute,
 drive-qualified, backslashed, or carries `..` is never published (one
 warning names the count). A `workspace/executeCommand` other than
 `verdict.refresh` answers `-32602` with `bad-params` in `error.data`; a request

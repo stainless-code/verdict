@@ -64,12 +64,31 @@ func publishable(status, severity string, showDeferred bool) (int, bool) {
 // document is one client-tracked buffer. Its text arrives only from the
 // client: the server never reads a workspace file.
 type document struct {
+	// uris is every spelling the client has this file open under; uri is
+	// the one publishes go out under.
+	uris     map[string]bool
 	uri      string
 	physical string
 	key      string
 	text     string
 	version  int
 	hasText  bool
+}
+
+// open records one more open spelling.
+func (d *document) open(uri string) {
+	if d.uris == nil {
+		d.uris = map[string]bool{}
+	}
+	d.uris[uri] = true
+}
+
+// absorb takes over another document's open spellings when two documents
+// turn out to name one file.
+func (d *document) absorb(other *document) {
+	for uri := range other.uris {
+		d.open(uri)
+	}
 }
 
 // lines splits the tracked text into lines without their `\r\n` or `\n`.

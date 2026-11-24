@@ -140,29 +140,35 @@ func TestDiffFilesIndexesNewSideOnce(t *testing.T) {
 	}
 }
 
-// TestPureDeletionAnchorsAfterTheDeletion pins the `+N,0` case: git's N is
-// the line before the deletion, so a LEFT finding anchors on line N+1 (the
-// line now standing where the deleted code was), marked hunk; a deletion at
-// the top of a file (`+0,0`) anchors on line 1.
-func TestPureDeletionAnchorsAfterTheDeletion(t *testing.T) {
+// TestPureDeletionAnchors pins the `+N,0` case: git's N is the line before
+// the deletion. The anchor is N+1 (the line now standing where the deleted
+// code was) when the diff shows that line; at the end of the file, or in a
+// zero-context diff that cannot tell, it is N, never a line past the end;
+// at the top of a file it is line 1. Every case is marked hunk.
+func TestPureDeletionAnchors(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name     string
+		next     []diffHunk
 		newStart int
 		want     int
 	}{
-		{"mid-file", 4, 5},
-		{"top of file", 0, 1},
+		{"mid-file, the next line shown by the following hunk", []diffHunk{{
+			NewStart: 5, NewCount: 1,
+			Lines: []diffLine{{Kind: "context", Text: "next", OldNo: 7, NewNo: 5}},
+		}}, 4, 5},
+		{"end of file", nil, 4, 4},
+		{"top of file", nil, 0, 1},
 	} {
-		file := diffFile{Path: "a.go", Hunks: []diffHunk{{NewStart: tc.newStart, NewCount: 0, Lines: []diffLine{
+		deletion := diffHunk{NewStart: tc.newStart, NewCount: 0, Lines: []diffLine{
 			{Kind: kindDel, Text: "gone one", OldNo: 5},
 			{Kind: kindDel, Text: "gone two", OldNo: 6},
-		}}}}
+		}}
+		file := diffFile{Path: "a.go", Hunks: append([]diffHunk{deletion}, tc.next...)}
 		file.indexNewSide()
 		f, _ := joinFinding(&record{Path: "a.go", Side: "LEFT", Line: 6}, map[string]diffFile{"a.go": file})
-		if f.anchor != anchorHunk || f.start != tc.want || f.line != tc.want || f.hunkSHA256 != "" {
-			t.Errorf("%s: anchor %s span %d..%d hash %q, want hunk %d..%d with no hash",
-				tc.name, f.anchor, f.start, f.line, f.hunkSHA256, tc.want, tc.want)
+		if f.anchor != anchorHunk || f.start != tc.want || f.line != tc.want {
+			t.Errorf("%s: anchor %s span %d..%d, want hunk %d..%d", tc.name, f.anchor, f.start, f.line, tc.want, tc.want)
 		}
 	}
 }

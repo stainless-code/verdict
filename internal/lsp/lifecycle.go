@@ -38,17 +38,23 @@ func (s *Server) handleInitialize(msg *rpcMessage, initialized, shutdown bool) {
 		s.writeError(msg.ID, rpcInvalidRequest, "initialize was already received", nil)
 		return
 	}
-	var params initializeParams
-	if len(msg.Params) > 0 && string(msg.Params) != jsonNull {
-		if err := json.Unmarshal(msg.Params, &params); err != nil {
-			s.writeError(msg.ID, rpcInvalidParams, "invalid initialize params: "+err.Error(), nil)
-			return
-		}
+	params, err := decodeInitialize(msg.Params)
+	if err != nil {
+		s.writeError(msg.ID, rpcInvalidParams, "invalid initialize params: "+err.Error(), nil)
+		return
 	}
+	// Client roots are validated and resolved (filesystem walks) before
+	// stateMu is taken; only the install happens under it.
+	plan, adopt := s.clientRootPlan(&params)
 	s.stateMu.Lock()
 	s.initOpts = decodeInitOptions(params.InitializationOptions)
-	s.adoptClientRoots(&params)
+	if adopt {
+		s.installRoots(plan)
+	}
 	s.stateMu.Unlock()
+	if adopt {
+		s.warnRoots()
+	}
 	s.callMu.Lock()
 	s.initialized = true
 	s.callMu.Unlock()
@@ -57,6 +63,19 @@ func (s *Server) handleInitialize(msg *rpcMessage, initialized, shutdown bool) {
 		ServerInfo:   serverInfo{Name: serverName, Version: s.cfg.Version},
 	})
 	s.flushLogs()
+}
+
+// decodeInitialize reads initialize params; absent or null params are an
+// empty request.
+func decodeInitialize(raw json.RawMessage) (initializeParams, error) {
+	var params initializeParams
+	if len(raw) == 0 || string(raw) == jsonNull {
+		return params, nil
+	}
+	if err := json.Unmarshal(raw, &params); err != nil {
+		return params, &ioError{op: "decode initialize", err: err}
+	}
+	return params, nil
 }
 
 // decodeInitOptions reads the optional session preferences leniently: an
@@ -112,7 +131,7 @@ func (s *Server) handleShutdown(msg *rpcMessage) {
 	s.shutdown = true
 	s.callMu.Unlock()
 	id := msg.ID
-	s.background.Go(func() {
+	s.goDrain(func() {
 		s.drain()
 		s.stopPump()
 		s.writeResult(id, nil)

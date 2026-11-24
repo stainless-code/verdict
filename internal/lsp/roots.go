@@ -10,27 +10,26 @@ import (
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
-// adoptClientRoots resolves the served roots at initialize. With --root the
-// operator's roots stand and any client folder is ignored (and said so).
-// Without it the client's workspaceFolders are served, else its rootUri,
-// else its rootPath, else the checkout the process started in. Every
-// client root passes the same confinement as a document URI and must sit
-// inside a git checkout; one that does not is dropped with a warning. The
-// caller holds stateMu.
-func (s *Server) adoptClientRoots(params *initializeParams) {
+// clientRootPlan resolves the served roots at initialize. With --root the
+// operator's roots stand and any client folder is ignored (and said so):
+// adopt is false. Without it the client's workspaceFolders are served, else
+// its rootUri, else its rootPath, else the checkout the process started in.
+// Every client root passes the same confinement as a document URI and must
+// sit inside a git checkout; one that does not is dropped with a warning. It
+// walks the filesystem, so it runs before stateMu is taken.
+func (s *Server) clientRootPlan(params *initializeParams) (rootPlan, bool) {
 	candidates := clientRootCandidates(params)
 	if !s.workspace {
 		if len(candidates) > 0 {
 			s.queueLogf(msgInfo, "verdict: --root is set, so the client's workspace folders are ignored")
 		}
-		return
+		return rootPlan{}, false
 	}
 	paths := s.acceptedRoots(candidates)
 	if len(candidates) == 0 && s.cfg.FallbackRoot != "" {
 		paths = []string{s.cfg.FallbackRoot}
 	}
-	s.installRoots(paths)
-	s.warnRoots()
+	return s.planRoots(paths), true
 }
 
 // acceptedRoots keeps the candidates that pass confinement and the checkout
@@ -46,7 +45,8 @@ func (s *Server) acceptedRoots(candidates []rootCandidate) []string {
 }
 
 // warnRoots logs a root set that will publish nothing, and a pinned
-// --bundle no served root carries.
+// --bundle no served root carries. It runs on the read loop (the only writer
+// of the root set) without stateMu: resolving the bundle touches the disk.
 func (s *Server) warnRoots() {
 	if len(s.roots) == 0 {
 		s.queueLogf(msgWarning, "verdict: no workspace root inside a git checkout; nothing will be published "+
@@ -145,23 +145,36 @@ func checkoutProblem(dir string) string {
 	return "it is not inside a git checkout"
 }
 
-// installRoots replaces the served roots and rebuilds the read model. The
-// caller holds stateMu; a root beyond MaxRoots is dropped with a warning.
-func (s *Server) installRoots(paths []string) {
+// rootPlan is a root set ready to install: the served roots with their
+// physical spellings resolved, and how many the --max-roots bound dropped.
+type rootPlan struct {
+	roots   []servedRoot
+	dropped int
+}
+
+// planRoots resolves a root set. It walks the filesystem, so it runs before
+// stateMu is taken.
+func (s *Server) planRoots(paths []string) rootPlan {
 	roots := s.rootsOf(paths)
-	if dropped := distinctRoots(paths, s.windows) - len(roots); dropped > 0 {
-		s.queueLogf(msgWarning, "verdict: %d workspace root(s) beyond --max-roots %d dropped", dropped, s.cfg.MaxRoots)
+	return rootPlan{roots: roots, dropped: distinctRoots(paths, s.windows) - len(roots)}
+}
+
+// installRoots replaces the served roots and rebuilds the read model. It
+// does no I/O; the caller holds stateMu.
+func (s *Server) installRoots(plan rootPlan) {
+	if plan.dropped > 0 {
+		s.queueLogf(msgWarning, "verdict: %d workspace root(s) beyond --max-roots %d dropped", plan.dropped, s.cfg.MaxRoots)
 	}
 	kept := map[string]bool{}
-	for i := range roots {
-		kept[roots[i].ID] = true
+	for i := range plan.roots {
+		kept[plan.roots[i].ID] = true
 	}
 	for id := range s.states {
 		if !kept[id] {
 			delete(s.states, id)
 		}
 	}
-	s.setRoots(roots)
+	s.setRoots(plan.roots)
 }
 
 func distinctRoots(paths []string, windows bool) int {
@@ -173,10 +186,13 @@ func distinctRoots(paths []string, windows bool) int {
 }
 
 // handleDidChangeRoots applies a workspace-folder change: removed roots
-// stop contributing (their diagnostics clear unless another root still
-// reaches the file), added roots are validated and composed, and the read
-// model and its watcher are rebuilt over the new set. It is ignored under
-// --root, which never advertised the capability.
+// stop contributing (their diagnostics clear at once unless another root
+// still reaches the file), added roots are validated, and the read model is
+// rebuilt over the new set. It never waits on the read loop: the new set is
+// installed here, in order with every other notification (a didOpen right
+// after it sees the new roots), while composing the added roots and
+// restarting the watcher run in the background, behind any composition in
+// flight. It is ignored under --root, which never advertised the capability.
 func (s *Server) handleDidChangeRoots(ctx context.Context, msg *rpcMessage) {
 	if !s.workspace {
 		return
@@ -185,23 +201,41 @@ func (s *Server) handleDidChangeRoots(ctx context.Context, msg *rpcMessage) {
 	if json.Unmarshal(msg.Params, &params) != nil {
 		return
 	}
-	s.stopPump()
-	s.composeMu.Lock()
 	s.stateMu.Lock()
-	paths := s.nextRootPaths(&params)
-	before := map[string]bool{}
-	for i := range s.roots {
-		before[s.roots[i].ID] = true
-	}
-	s.installRoots(paths)
+	current := s.rootsSnapshot()
+	s.stateMu.Unlock()
+	plan := s.planRoots(s.nextRootPaths(current, &params))
+	s.stateMu.Lock()
+	s.installRoots(plan)
 	s.rekeyDocs()
-	var added []servedRoot
-	for i := range s.roots {
-		if !before[s.roots[i].ID] {
-			added = append(added, s.roots[i])
+	added := newRoots(current, s.roots)
+	s.republishAll()
+	s.stateMu.Unlock()
+	s.flushLogs()
+	s.goBackground(func() { s.settleRoots(ctx, added) })
+}
+
+// newRoots lists the roots in next that before did not serve.
+func newRoots(before, next []servedRoot) []servedRoot {
+	had := map[string]bool{}
+	for i := range before {
+		had[before[i].ID] = true
+	}
+	var out []servedRoot
+	for i := range next {
+		if !had[next[i].ID] {
+			out = append(out, next[i])
 		}
 	}
-	s.stateMu.Unlock()
+	return out
+}
+
+// settleRoots finishes a root change in the background: the watcher moves
+// to the rebuilt read model, the added roots are composed (after any
+// composition in flight), and everything republishes.
+func (s *Server) settleRoots(ctx context.Context, added []servedRoot) {
+	s.stopPump()
+	s.composeMu.Lock()
 	for i := range added {
 		s.compose(ctx, &added[i], true)
 	}
@@ -209,19 +243,19 @@ func (s *Server) handleDidChangeRoots(ctx context.Context, msg *rpcMessage) {
 	s.republishAll()
 	s.stateMu.Unlock()
 	s.composeMu.Unlock()
-	s.flushLogs()
 	s.callMu.Lock()
 	defer s.callMu.Unlock()
 	s.startPump(ctx)
 }
 
-// nextRootPaths applies one change event to the current root paths.
-func (s *Server) nextRootPaths(params *didChangeRootsParams) []string {
+// nextRootPaths applies one change event to the current root paths,
+// validating the added folders (a filesystem walk, run without stateMu).
+func (s *Server) nextRootPaths(current []servedRoot, params *didChangeRootsParams) []string {
 	removed := s.folderIDs(params.Event.Removed)
 	var paths []string
-	for i := range s.roots {
-		if !removed[s.roots[i].ID] {
-			paths = append(paths, s.roots[i].Path)
+	for i := range current {
+		if !removed[current[i].ID] {
+			paths = append(paths, current[i].Path)
 		}
 	}
 	return append(paths, s.acceptedRoots(folderCandidates(params.Event.Added))...)

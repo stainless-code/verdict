@@ -313,17 +313,20 @@ func (s *Server) logf(kind int, format string, args ...any) {
 }
 
 // queueLogf holds a log line until flushLogs: during initialize nothing may
-// precede the initialize answer. The caller holds stateMu.
+// precede the initialize answer. It takes only logMu, so root validation can
+// queue lines without holding stateMu.
 func (s *Server) queueLogf(kind int, format string, args ...any) {
+	s.logMu.Lock()
+	defer s.logMu.Unlock()
 	s.pendLogs = append(s.pendLogs, logMessageParams{Type: kind, Message: fmt.Sprintf(format, args...)})
 }
 
 // flushLogs emits the queued log lines in order.
 func (s *Server) flushLogs() {
-	s.stateMu.Lock()
+	s.logMu.Lock()
 	pending := s.pendLogs
 	s.pendLogs = nil
-	s.stateMu.Unlock()
+	s.logMu.Unlock()
 	for _, l := range pending {
 		s.logf(l.Type, "%s", l.Message)
 	}

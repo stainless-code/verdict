@@ -158,8 +158,15 @@ func TestShutdownDrainsInFlightRequests(t *testing.T) {
 func TestSlowComposeNeverStallsTheReadLoop(t *testing.T) {
 	t.Parallel()
 	s, _ := blockedRefresh(t, time.Hour)
-	uri := fileURI(s.server.cfg.Roots[0], "notes.txt")
+	root := s.server.cfg.Roots[0]
+	uri := fileURI(root, "notes.txt")
 	openDoc(s, uri, 2, notesText)
+	// The save's re-read must happen: the bundle moved under it, so the
+	// queued recompose is observable as notes.txt clearing.
+	writeBundle(t, root, "local-1",
+		findingJSON(sigCrit, "false-positive", "critical", "notes.txt", 2),
+		findingJSON(sigImp, "open", "important", "other.go", 4),
+	)
 	s.notify(methodDidSave, map[string]any{"textDocument": map[string]any{"uri": uri}})
 	s.notify(methodCancel, map[string]any{"id": 3})
 	_, refresh := s.awaitResponse(3)
@@ -170,9 +177,13 @@ func TestSlowComposeNeverStallsTheReadLoop(t *testing.T) {
 			got = summarize([]publishParams{p})
 		}
 	}
-	if got != uri+" v2 "+sigCrit {
+	if !strings.HasPrefix(got, uri+" v2 ") {
 		t.Fatalf("the didOpen behind a blocked compose published %q", got)
 	}
+	testenv.Until(t, func() bool {
+		ps := publishes(t, s.snapshot())
+		return len(ps) > 0 && summarize(ps[len(ps)-1:]) == uri+" v2 "
+	})
 	if err := s.finish(4); err != nil {
 		t.Fatal(err)
 	}

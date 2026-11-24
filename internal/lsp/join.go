@@ -141,16 +141,14 @@ func anchorRight(f *finding, file *diffFile) {
 
 // anchorLeft maps a LEFT-side (deleted-line) finding onto the NEW-side span
 // of the hunk that deleted it: the working tree has no old line to point at.
-// A pure-deletion hunk (`+N,0`) has no NEW side; git's N there is the line
-// before the deletion, so the anchor is line N+1, the line that now stands
-// where the deleted code was (line 1 for a deletion at the top of a file).
+// A pure-deletion hunk (`+N,0`) has no NEW side; see hunkSpan.
 func anchorLeft(f *finding, file *diffFile) {
 	for i := range file.Hunks {
 		h := &file.Hunks[i]
 		if !deletes(h, f.line) {
 			continue
 		}
-		start, end := hunkSpan(h)
+		start, end := hunkSpan(h, file)
 		f.start, f.line, f.anchor = start, end, anchorHunk
 		if hash, ok := newSideHash(file, start, end); ok {
 			f.hunkSHA256 = hash
@@ -159,10 +157,19 @@ func anchorLeft(f *finding, file *diffFile) {
 	}
 }
 
-// hunkSpan is the NEW-side line span a LEFT finding in h anchors to.
-func hunkSpan(h *diffHunk) (int, int) {
+// hunkSpan is the NEW-side line span a LEFT finding in h anchors to. A
+// pure-deletion hunk (`+N,0`) has no NEW side, and git's N there is the line
+// before the deletion. The anchor is line N+1, the line now standing where
+// the deleted code was, when the diff shows that line exists; otherwise
+// (a deletion at the end of the file, or a zero-context diff that cannot
+// tell) it is line N, the last line known to exist. A deletion at the top
+// of a file (`+0,0`) anchors on line 1.
+func hunkSpan(h *diffHunk, file *diffFile) (int, int) {
 	if h.NewCount == 0 {
-		line := h.NewStart + 1
+		line := max(h.NewStart, 1)
+		if _, ok := newSideLine(file, h.NewStart+1); ok && h.NewStart > 0 {
+			line = h.NewStart + 1
+		}
 		return line, line
 	}
 	start := max(h.NewStart, 1)

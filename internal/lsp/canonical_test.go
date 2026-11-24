@@ -79,8 +79,10 @@ func windowsServer(t *testing.T) (*Server, *servedRoot) {
 // share its key; a sibling directory and a remote authority do not.
 func TestResolveURIAcrossSpellings(t *testing.T) {
 	t.Parallel()
-	s, root := windowsServer(t)
-	want := root.fileKey("a.go")
+	s, _ := windowsServer(t)
+	// The key is the root's own spelling of the file, case-folded: written
+	// out literally, never derived through fileKey (the helper under test).
+	const want = "c:/users/runner~1/temp/repo/a.go"
 	for _, uri := range []string{
 		"file:///C:/Users/RUNNER~1/Temp/repo/a.go",
 		"file:///C:/Users/runneradmin/Temp/repo/a.go",
@@ -88,9 +90,9 @@ func TestResolveURIAcrossSpellings(t *testing.T) {
 		"file:///c%3A/Users/runneradmin/Temp/repo/a.go",
 		"file:///C:%5CUsers%5Crunneradmin%5CTemp%5Crepo%5Ca.go",
 	} {
-		ref, ok := s.resolveURI(uri)
+		ref, ok := s.refFor(uri, s.physicalOfURI(uri))
 		if !ok || len(ref.roots) != 1 || ref.key != want {
-			t.Errorf("resolveURI(%s) = %q, %v; want key %q", uri, ref.key, ok, want)
+			t.Errorf("refFor(%s) = %q, %v; want key %q", uri, ref.key, ok, want)
 		}
 	}
 	for _, uri := range []string{
@@ -98,8 +100,8 @@ func TestResolveURIAcrossSpellings(t *testing.T) {
 		"file://C:%5CUsers%5Crunneradmin%5CTemp%5Crepo%5Ca.go",
 		"file://server/share/repo/a.go",
 	} {
-		if ref, _ := s.resolveURI(uri); len(ref.roots) != 0 {
-			t.Errorf("resolveURI(%s) confined under the root as %q", uri, ref.key)
+		if ref, _ := s.refFor(uri, s.physicalOfURI(uri)); len(ref.roots) != 0 {
+			t.Errorf("refFor(%s) confined under the root as %q", uri, ref.key)
 		}
 	}
 }

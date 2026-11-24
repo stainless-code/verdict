@@ -62,7 +62,8 @@ func lspUsageText() string {
 		"              after start is then picked up by verdict.refresh\n" +
 		"  --json  accepted for CLI-convention parity; stdio is LSP either way\n" +
 		"  Exit 0 after shutdown+exit or on stdin EOF, 1 on exit without shutdown or a start\n" +
-		"  refusal, 2 on argv shape, 3 on a caught signal."
+		"  refusal, 2 on argv shape, 3 on a signal that interrupted a running session (a signal\n" +
+		"  after the session already ended keeps its code)."
 }
 
 // runLSP executes `verdict lsp [flags]`: parse the transport flags, resolve

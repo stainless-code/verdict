@@ -16,6 +16,10 @@ const (
 	// maxHeaderBytes caps one header block. LSP headers are two short lines;
 	// a block past this is a desynchronized or hostile stream.
 	maxHeaderBytes = 8 << 10
+	// initialBodyBytes is the most a body buffer reserves before bytes
+	// arrive: enough that a typical frame never reallocates, never so much
+	// that a declared length an attacker never sends costs its size.
+	initialBodyBytes = 64 << 10
 	// maxLengthDigits is the widest Content-Length the cap admits.
 	maxLengthDigits = 8
 	headerLength    = "content-length"
@@ -72,6 +76,7 @@ func readFrame(r *bufio.Reader) ([]byte, error) {
 	// The body grows as bytes arrive: a declared 16 MiB that never comes
 	// costs what was sent, not the declaration.
 	var body bytes.Buffer
+	body.Grow(min(length, initialBodyBytes))
 	n, err := io.CopyN(&body, r, int64(length))
 	if err != nil {
 		if errors.Is(err, io.EOF) && n < int64(length) {

@@ -1,12 +1,12 @@
 package lsp
 
 import (
-	"cmp"
 	"encoding/json"
 	"runtime"
-	"slices"
 	"strings"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/testenv"
 )
 
 const workspaceCaps = `"workspace":{"workspaceFolders":{"supported":true,"changeNotifications":true}}`
@@ -21,9 +21,13 @@ func newServedRootURI(root string) string {
 
 // workspaceSession starts a session with no --root and initializes it with
 // the given client params.
-func workspaceSession(t *testing.T, params map[string]any) (*session, wireFrame) {
+func workspaceSession(t *testing.T, params map[string]any, cfgs ...*Config) (*session, wireFrame) {
 	t.Helper()
-	s := startSession(t, newConfig())
+	cfg := newConfig()
+	if len(cfgs) > 0 {
+		cfg = cfgs[0]
+	}
+	s := startSession(t, cfg)
 	params["capabilities"] = map[string]any{}
 	s.request(1, methodInitialize, params)
 	_, resp := s.awaitResponse(1)
@@ -156,17 +160,18 @@ func TestDidChangeWorkspaceFolders(t *testing.T) {
 	s.notify(methodDidChangeRoots, map[string]any{"event": map[string]any{
 		"added": []any{folder(second), folder(t.TempDir())}, "removed": []any{folder(first)},
 	}})
+	// The removed root clears at once (in order, before the barrier); the
+	// added root is composed in the background and publishes after it.
 	frames := s.barrier(3, mark)
-	want := fileURI(first, "notes.txt") + " v- \n" + fileURI(first, "other.go") + " v- \n" +
-		fileURI(second, "b.go") + " v- " + sigInfo
-	got := publishes(t, frames)
-	sortPublishes(got)
-	if summarize(got) != sortedLines(want) {
-		t.Fatalf("folder change published\n%s\nwant\n%s", summarize(got), sortedLines(want))
+	cleared := fileURI(first, "notes.txt") + " v- \n" + fileURI(first, "other.go") + " v- "
+	if got := publishes(t, frames); summarize(got) != cleared {
+		t.Fatalf("folder change cleared\n%s\nwant\n%s", summarize(got), cleared)
 	}
 	if !strings.Contains(strings.Join(logs(t, frames), "\n"), "not inside a git checkout") {
 		t.Fatalf("the added non-checkout folder was not reported: %q", logs(t, frames))
 	}
+	added := fileURI(second, "b.go") + " v- " + sigInfo
+	testenv.Until(t, func() bool { return strings.Contains(summarize(publishes(t, s.snapshot())), added) })
 	if err := s.finish(4); err != nil {
 		t.Fatal(err)
 	}
@@ -186,16 +191,6 @@ func TestDidChangeWorkspaceFolders(t *testing.T) {
 	if err := explicit.finish(4); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func sortPublishes(ps []publishParams) {
-	slices.SortFunc(ps, func(a, b publishParams) int { return cmp.Compare(a.URI, b.URI) })
-}
-
-func sortedLines(s string) string {
-	lines := strings.Split(s, "\n")
-	slices.Sort(lines)
-	return strings.Join(lines, "\n")
 }
 
 // TestClientRootConfinement pins the confinement a client root passes: a
@@ -237,11 +232,10 @@ func TestDocumentOpenedBeforeItsRoot(t *testing.T) {
 	mark := len(s.barrier(2, 0)) + 1
 	s.notify(methodDidChangeRoots, map[string]any{"event": map[string]any{"added": []any{folder(later)}}})
 	var got *publishParams
-	for _, p := range publishes(t, s.barrier(3, mark)) {
-		if p.URI == uri {
-			got = &p
-		}
-	}
+	testenv.Until(t, func() bool {
+		got = lastPublishFor(t, s.snapshot()[mark:], uri)
+		return got != nil
+	})
 	if got == nil || got.Version == nil || *got.Version != 5 || sigsOf(got) != sigCrit ||
 		got.Diagnostics[0].Range.End != (position{Line: 1, Character: 8}) {
 		t.Fatalf("the earlier-opened document published %+v, want version 5 with a tightened range", got)
@@ -249,4 +243,16 @@ func TestDocumentOpenedBeforeItsRoot(t *testing.T) {
 	if err := s.finish(4); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// lastPublishFor returns the last publish for uri among frames, or nil.
+func lastPublishFor(t *testing.T, frames []wireFrame, uri string) *publishParams {
+	t.Helper()
+	var got *publishParams
+	for _, p := range publishes(t, frames) {
+		if p.URI == uri {
+			got = &p
+		}
+	}
+	return got
 }

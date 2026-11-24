@@ -132,6 +132,17 @@ type Server struct { //nolint:govet // the grouping separates config, protocol s
 	writeErr error
 	closed   bool
 
+	// logMu guards the log lines queued during initialize.
+	logMu    sync.Mutex
+	pendLogs []logMessageParams
+
+	// bgMu and bgClosed gate the background group: work starts only while
+	// the gate is open, and teardown closes it before the final Wait, so an
+	// Add can never race that Wait.
+	bgMu     sync.Mutex
+	bgClosed bool
+	drains   sync.WaitGroup
+
 	callMu      sync.Mutex
 	calls       map[string]context.CancelFunc
 	inflight    sync.WaitGroup
@@ -153,17 +164,17 @@ type Server struct { //nolint:govet // the grouping separates config, protocol s
 	// stateMu guards everything below: the read loop, the watch pump, and a
 	// refresh call publish under it, so frames for one trigger never
 	// interleave with another's. It is only ever held briefly.
-	stateMu   sync.Mutex
-	pending   map[string]bool
-	uriKeys   map[string]string
-	layer     ReadModel
-	roots     []servedRoot
-	initOpts  initOptions
-	states    map[string]*bundleState
-	docs      map[string]*document
-	docBytes  int
-	sent      map[string]published
-	pendLogs  []logMessageParams
+	stateMu  sync.Mutex
+	pending  map[string]bool
+	uriKeys  map[string]string
+	layer    ReadModel
+	roots    []servedRoot
+	initOpts initOptions
+	states   map[string]*bundleState
+	docs     map[string]*document
+	docBytes int
+	sent     map[string]published
+
 	workspace bool
 }
 
@@ -215,13 +226,58 @@ func (s *Server) rootsOf(paths []string) []servedRoot {
 		if seen[root.ID] || len(roots) >= s.cfg.MaxRoots {
 			continue
 		}
-		if phys, ok := physicalPath(root.slash, s.windows, s.cfg.eval); ok && root.host == "" {
-			root.physical = phys
-		}
+		root.physical = s.physicalRoot(&root)
 		seen[root.ID] = true
 		roots = append(roots, root)
 	}
 	return roots
+}
+
+// physicalRoot resolves a root's physical spelling. A UNC root is never
+// probed: its slash spelling has the host stripped, so probing it would
+// resolve an unrelated local path. It walks the filesystem; it never runs
+// under stateMu.
+func (s *Server) physicalRoot(root *servedRoot) string {
+	if root.host != "" {
+		return ""
+	}
+	phys, ok := physicalPath(root.slash, s.windows, s.cfg.eval)
+	if !ok {
+		return ""
+	}
+	return phys
+}
+
+// goBackground starts fn on the background group unless teardown has closed
+// the gate, reporting whether it started. Checking the gate and adding to the
+// group share bgMu with closeBackground, so no Add can race the final Wait.
+func (s *Server) goBackground(fn func()) bool {
+	s.bgMu.Lock()
+	defer s.bgMu.Unlock()
+	if s.bgClosed {
+		return false
+	}
+	s.background.Go(fn)
+	return true
+}
+
+// goDrain starts a shutdown drain under the same gate as goBackground.
+func (s *Server) goDrain(fn func()) bool {
+	s.bgMu.Lock()
+	defer s.bgMu.Unlock()
+	if s.bgClosed {
+		return false
+	}
+	s.drains.Go(fn)
+	return true
+}
+
+// closeBackground shuts the gate: work already started finishes, nothing new
+// starts.
+func (s *Server) closeBackground() {
+	s.bgMu.Lock()
+	s.bgClosed = true
+	s.bgMu.Unlock()
 }
 
 // setRoots installs a root set and the read model over it.
@@ -324,13 +380,22 @@ func (s *Server) serve(ctx context.Context, in io.Reader, out io.Writer, interru
 		}
 	}
 	readErr = s.noteCancel(ctx, readErr)
+	// Nothing new may start in the background from here: with the plain
+	// Serve the read goroutine can outlive this point and still dispatch a
+	// buffered frame, so the gate, not the read loop's end, bounds the group.
+	s.closeBackground()
 	if s.exitedClean() {
 		// `exit` after `shutdown`: the drain still answers what the client
 		// sent before shutdown, bounded by the grace period.
-		s.background.Wait()
+		s.drains.Wait()
 	}
+	// Background compositions (a deferred re-read, a root change settling)
+	// stop at their next read: the session is over, and a hung read must not
+	// hang the exit.
+	cancel()
 	s.stop()
 	s.background.Wait()
+	s.drains.Wait()
 	s.writeMu.Lock()
 	s.closed = true
 	writeErr := s.writeErr
@@ -484,7 +549,7 @@ func (s *Server) deferCompose(ctx context.Context, roots []servedRoot) {
 	if len(queued) == 0 {
 		return
 	}
-	s.background.Go(func() {
+	s.goBackground(func() {
 		s.composeMu.Lock()
 		defer s.composeMu.Unlock()
 		reselect := s.releasePending(queued)
