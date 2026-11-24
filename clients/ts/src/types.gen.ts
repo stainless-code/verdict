@@ -426,6 +426,7 @@ export interface ReportCost {
   est_usd: number | null;
   by_tier: CostTiers;
   receipts?: unknown[];
+  mtd?: ReportMTD | null;
   [key: string]: unknown;
 }
 
@@ -490,6 +491,18 @@ export interface CostTier {
   output_tokens: number | null;
   total_tokens: number | null;
   runs: number;
+  [key: string]: unknown;
+}
+
+export interface ReportMTD {
+  known_usd?: number | null;
+  monthly_cap_usd?: number | null;
+  remaining_usd?: number | null;
+  monthly_repo_cap?: number | null;
+  monthly_personal_cap?: number | null;
+  month: string;
+  known_count: number;
+  unknown_count: number;
   [key: string]: unknown;
 }
 
@@ -1214,6 +1227,9 @@ export interface ConfigPlanGroup {
 export interface ConfigSpend {
   guard_usd?: number | null;
   personal_limit_usd?: number | null;
+  monthly_budget_usd?: number | null;
+  monthly_repo_cap?: number | null;
+  monthly_personal_cap?: number | null;
   require_known_estimate: boolean;
   enforce_cap: boolean;
   [key: string]: unknown;

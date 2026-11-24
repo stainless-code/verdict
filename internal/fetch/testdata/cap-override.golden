@@ -649,7 +649,7 @@ rather than becoming ground truth.
       "name": "run.json",
       "status": "included",
       "sha256": "RUNTIME_SHA256",
-      "bytes": 36858
+      "bytes": 38657
     },
     {
       "kind": "bundle",
@@ -877,6 +877,10 @@ rather than becoming ground truth.
               "layer": "env",
               "source": "REVIEW_MAX_BYTES"
             },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "panel": {
               "layer": "built-in",
               "source": "built-in"
@@ -957,6 +961,10 @@ rather than becoming ground truth.
             "max_bytes": {
               "layer": "env",
               "source": "REVIEW_MAX_BYTES"
+            },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
             },
             "panel": {
               "layer": "built-in",
@@ -1039,6 +1047,10 @@ rather than becoming ground truth.
               "layer": "env",
               "source": "REVIEW_MAX_BYTES"
             },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "panel": {
               "layer": "built-in",
               "source": "built-in"
@@ -1119,6 +1131,10 @@ rather than becoming ground truth.
             "max_bytes": {
               "layer": "env",
               "source": "REVIEW_MAX_BYTES"
+            },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
             },
             "panel": {
               "layer": "built-in",
@@ -1201,6 +1217,10 @@ rather than becoming ground truth.
               "layer": "env",
               "source": "REVIEW_MAX_BYTES"
             },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "panel": {
               "layer": "built-in",
               "source": "built-in"
@@ -1281,6 +1301,10 @@ rather than becoming ground truth.
             "max_bytes": {
               "layer": "env",
               "source": "REVIEW_MAX_BYTES"
+            },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
             },
             "panel": {
               "layer": "built-in",
@@ -1363,6 +1387,10 @@ rather than becoming ground truth.
               "layer": "env",
               "source": "REVIEW_MAX_BYTES"
             },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "panel": {
               "layer": "built-in",
               "source": "built-in"
@@ -1443,6 +1471,10 @@ rather than becoming ground truth.
             "max_bytes": {
               "layer": "env",
               "source": "REVIEW_MAX_BYTES"
+            },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
             },
             "panel": {
               "layer": "built-in",
@@ -1525,6 +1557,10 @@ rather than becoming ground truth.
               "layer": "env",
               "source": "REVIEW_MAX_BYTES"
             },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "panel": {
               "layer": "built-in",
               "source": "built-in"
@@ -1605,6 +1641,10 @@ rather than becoming ground truth.
             "max_bytes": {
               "layer": "env",
               "source": "REVIEW_MAX_BYTES"
+            },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
             },
             "panel": {
               "layer": "built-in",
@@ -1687,6 +1727,10 @@ rather than becoming ground truth.
               "layer": "env",
               "source": "REVIEW_MAX_BYTES"
             },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "panel": {
               "layer": "built-in",
               "source": "built-in"
@@ -1767,6 +1811,10 @@ rather than becoming ground truth.
             "max_bytes": {
               "layer": "env",
               "source": "REVIEW_MAX_BYTES"
+            },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
             },
             "panel": {
               "layer": "built-in",
@@ -1849,6 +1897,10 @@ rather than becoming ground truth.
               "layer": "env",
               "source": "REVIEW_MAX_BYTES"
             },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "panel": {
               "layer": "built-in",
               "source": "built-in"
@@ -1930,6 +1982,10 @@ rather than becoming ground truth.
               "layer": "env",
               "source": "REVIEW_MAX_BYTES"
             },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "panel": {
               "layer": "built-in",
               "source": "built-in"
@@ -2004,6 +2060,10 @@ rather than becoming ground truth.
           "layer": "env",
           "source": "REVIEW_MAX_BYTES"
         },
+        "monthly_budget_usd": {
+          "layer": "built-in",
+          "source": "built-in"
+        },
         "panel": {
           "layer": "built-in",
           "source": "built-in"
@@ -2041,7 +2101,7 @@ rather than becoming ground truth.
   "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
   "captured_at": "0000-00-00T00:00:00Z",
   "config_sha256": "",
-  "inputs_sha256": "d7d4661667f7aea81f6fa429751c987b2447b6b0ee684491c0f6ace7c2fa106b",
+  "inputs_sha256": "8680bb24cff7822d7ce1138a16b6d5dd2a6d8648b1b9863d1c0b4895c76cd588",
   "evidence": {
     "plan": {
       "effort_tier": "standard",

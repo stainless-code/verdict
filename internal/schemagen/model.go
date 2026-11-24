@@ -317,6 +317,9 @@ type ReportFilters = core.ReportFilters
 // ReportCost is core's cost rollup.
 type ReportCost = core.ReportCost
 
+// ReportMTD is core's month-to-date spend block.
+type ReportMTD = core.ReportMTD
+
 // CostTiers is core's three tier rollups.
 type CostTiers = core.CostTiers
 

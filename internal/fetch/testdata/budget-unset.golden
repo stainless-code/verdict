@@ -624,7 +624,7 @@ rather than becoming ground truth.
       "name": "run.json",
       "status": "included",
       "sha256": "RUNTIME_SHA256",
-      "bytes": 7228
+      "bytes": 7454
     },
     {
       "kind": "bundle",
@@ -839,6 +839,10 @@ rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "panel": {
               "layer": "built-in",
               "source": "built-in"
@@ -906,6 +910,10 @@ rather than becoming ground truth.
           "layer": "built-in",
           "source": "built-in"
         },
+        "monthly_budget_usd": {
+          "layer": "built-in",
+          "source": "built-in"
+        },
         "panel": {
           "layer": "built-in",
           "source": "built-in"
@@ -936,7 +944,7 @@ rather than becoming ground truth.
   "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
   "captured_at": "0000-00-00T00:00:00Z",
   "config_sha256": "",
-  "inputs_sha256": "83ae71d9c1889ac7b0633e28b94c4e58715ecf865d6bf8e3721f87029847a5a8",
+  "inputs_sha256": "a335a849160e0e8b19ae3b30ceff2c41d8e22d3b26f553f3bf6419bc9f0e1b14",
   "evidence": {
     "plan": {
       "effort_tier": "standard",

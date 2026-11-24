@@ -68,6 +68,7 @@ type state struct { // field grouping documents the loaded dimensions; alignment
 	counts     core.ReportCounts
 	cost       *jq.Obj
 	receipts   []any
+	mtd        *core.ReportMTD
 	entries    []any
 	ranked     []readcommon.Ranked
 	// view is the display-filtered ranked set the views render: the
@@ -155,6 +156,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if ref := loadGatePolicy(ctx, st); ref != nil {
 		return nil, ref
 	}
+	attachCostMTD(st)
 
 	evaluateCompliance(st)
 	st.specFailures = specFailuresWithExecution(st)
@@ -412,6 +414,52 @@ func loadStateCost(st *state) {
 	}
 	st.cost = res.Cost
 	st.receipts = res.Receipts
+}
+
+// attachCostMTD attaches the month-to-date block for --cost runs. The
+// ceiling is captured run policy: loadGatePolicy verifies the bundle and
+// fills st.policy, which attachMTD reads, so Run calls this only after
+// loadGatePolicy. A bundle without a verified run keeps st.policy nil and
+// the block stays absent, as before.
+func attachCostMTD(st *state) {
+	if !st.flags.Cost {
+		return
+	}
+	attachMTD(st)
+}
+
+func attachMTD(st *state) {
+	mtd := monthToDate(st)
+	if mtd == nil {
+		return
+	}
+	if st.cost == nil {
+		st.cost = jq.NewObj()
+	}
+	st.cost.Set("mtd", mtdWire(mtd))
+	st.mtd = mtd
+}
+
+func mtdWire(mtd *core.ReportMTD) *jq.Obj {
+	o := jq.NewObj("month", mtd.Month)
+	if mtd.KnownUSD != nil {
+		o.Set("known_usd", *mtd.KnownUSD)
+	}
+	o.Set("known_count", mtd.KnownCount)
+	o.Set("unknown_count", mtd.UnknownCount)
+	if mtd.MonthlyCapUSD != nil {
+		o.Set("monthly_cap_usd", *mtd.MonthlyCapUSD)
+	}
+	if mtd.RemainingUSD != nil {
+		o.Set("remaining_usd", *mtd.RemainingUSD)
+	}
+	if mtd.MonthlyRepoCap != nil {
+		o.Set("monthly_repo_cap", *mtd.MonthlyRepoCap)
+	}
+	if mtd.MonthlyPersonalCap != nil {
+		o.Set("monthly_personal_cap", *mtd.MonthlyPersonalCap)
+	}
+	return o
 }
 
 func loadStateCompleteness(ctx context.Context, st *state) {
