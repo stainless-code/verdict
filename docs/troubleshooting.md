@@ -1308,9 +1308,17 @@ Fix: pick another `--run <slug>`, or delete the existing run directory and mine 
 
 ## `sandbox-unavailable`
 
-Cause: the sandbox cannot be enforced — on Linux, no `bubblewrap` or no unprivileged user namespaces; on macOS, no working `sandbox-exec`; on any other host, no enforced mechanism at all.
+Cause: the sandbox cannot be enforced — on Linux, no `bubblewrap` or no unprivileged user namespaces; on macOS, no working `sandbox-exec`; on any other host, no enforced mechanism at all. The same code covers the inputs the sandbox must resolve before it can hide anything:
 
-Fix: install bubblewrap on Linux and allow unprivileged user namespaces, or fix `sandbox-exec` on macOS (`/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' true` must exit 0), or re-run without `--sandbox` on a command you trust.
+- `HOME is unset in the child environment` — the credential paths under `HOME` cannot be named. Keep `HOME` in the child environment (it is on the default allowlist; a `--env-allowlist` or `.verdict/verify-env` setup must not drop it).
+- `HOME "<value>" in the child environment is not an absolute path` — a relative `HOME` names no fixed location to hide. Export an absolute `HOME`.
+- `the reviewed root <root> is inside the credential path <path>` — hiding the path would hide the code under review, and allowing the root would expose the credential. Verify from a checkout outside your credential stores.
+- `the reviewed root <root> has no .git` (Linux) — `bwrap` can make `<root>/.git` read-only only by mounting over it, and creating the missing mount point would write an empty `.git` into your tree, so without one the command could create git hooks or config that run later. Verify from the top of a git checkout, or run the whole review in a throwaway VM or container.
+- `could not inspect <root>/.git (<error>)` (Linux) — `.git` exists but cannot be read (permissions, `ENOTDIR`, an I/O error); the error is quoted as reported. Fix the path or its permissions.
+- `<path> names the git directory <dir>, which does not exist as a directory` / `<path> has no readable git pointer line` / `<root>/.git is neither a directory nor a gitdir: file` / `the git location <dir> does not resolve (<error>)` / `the git location <dir> is the reviewed root itself` / `the git pointer <path> passes through the symlink <link> inside the reviewed root` / `the git pointer <path> walks through <dir>, which does not exist inside the reviewed root` / `could not read the git pointer <path> (<error>)` (Linux; the last also on macOS) — a `.git` file or a `commondir` points somewhere `bwrap` cannot make read-only, so the command could create or swap the git directory git later runs hooks from. Fix or remove the pointer (`git worktree repair`, or point `gitdir:` at the real directory), or verify a fresh clone.
+- `the reviewed root's <root>/.git is a symlink` (Linux) — `bwrap` can protect only the link's target, so the link could be replaced. Replace the link with the directory or a `gitdir:` file, or verify a fresh clone.
+
+Fix: install bubblewrap on Linux and allow unprivileged user namespaces (or, accepting network isolation alone, pass `--sandbox-network-only`, which needs `unshare`), or fix `sandbox-exec` on macOS (`/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' true` must exit 0), or re-run without `--sandbox` on a command you trust.
 
 `--sandbox` is the enforced half of the split: the static gate is a
 tripwire (see `verify-networked`), and this flag is the boundary. A host
@@ -1652,8 +1660,8 @@ Cause: `verifyCmd` fetches the network or pipes to a shell.
 The gate is a tripwire, not a boundary: it refuses the spellings it knows,
 and a shape it has not learned executes. For a boundary, run the step
 under `verify --sandbox`: `bubblewrap` on Linux removes the route out, and
-`sandbox-exec` on macOS denies the network; a host that can enforce
-neither refuses `sandbox-unavailable`.
+`sandbox-exec` on macOS denies the network and every Mach service; a host
+that can enforce neither refuses `sandbox-unavailable`.
 
 Fix: rewrite `verifyCmd` without network fetches or pipe-to-shell (fetch fixtures first, run offline), then re-run.
 

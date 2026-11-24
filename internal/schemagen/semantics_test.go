@@ -377,7 +377,12 @@ var publishedSemantics = map[string]string{
 	// $defs/postDiagram (status rendered|omitted plus the evidence.diagram
 	// fields); it was only ever null on main, so no published value breaks.
 	// diagram checking limit: the dropped descriptions name it.
-	"envelope.schema.json": "efd102c5ba229570a13b39a95a0e197b37e79741a3c4c1981efc40d31a669e52",
+	// Verify sandbox mechanism: additive optional verifyData.sandboxMechanism
+	// naming bwrap, sandbox-exec, or the network-only unshare-net, and the
+	// description now states that sandboxed means the full shape (the
+	// network-only mechanism never sets it). No existing property, required
+	// key, enum, or type changed; an unwrapped run omits both keys.
+	"envelope.schema.json": "451f8ccdfb7a207b39ae96859a33d0b8eb4c3b8e5ecd369b7972582fd01b7897",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

@@ -1355,13 +1355,15 @@ checked-out head, which must be that same commit (otherwise `head-mismatch`).
 
 The command runs once through the same allowlist and watchdog as patch
 verify, and every outcome leaves a receipt — a failure is never dropped.
-Add `--sandbox` to either form to run the command inside the enforced Linux
-`bwrap` sandbox; the receipt then records `"sandboxed": true`. The
+Add `--sandbox` (the full enforced shape) or `--sandbox-network-only` (the
+Linux `unshare --net` fallback, network isolation alone) to either form; the
+receipt then records its `sandbox_mechanism`, plus `"sandboxed": true` for the
+full shape only. The
 receipt is `<bundle>/validation-<group>.json` (group ids are lowercase
 `[a-z0-9-]`, at most 64 chars, so the path stays confined), read back through
 a 64 KiB cap and written atomically. It records the run name, `inputs_sha256`, group id,
 reviewed and execution heads, canonical repo root, command, timestamp, exit
-code, timeout and sandbox flags, `status` (`passed`, `failed`, `timeout`, `unavailable`,
+code, timeout and sandbox flags and mechanism, `status` (`passed`, `failed`, `timeout`, `unavailable`,
 `stale-head`), and a redacted output tail. Reads re-derive the verdict: a
 receipt claiming a pass while recording a nonzero exit, a timeout, or another
 status is contradictory evidence and never approves. A head that moves during
@@ -5078,9 +5080,11 @@ runs. The boundary is
 the enforced sandbox below, which runs after this gate — a refused spelling
 refuses with or without `--sandbox`: `verify --sandbox`
 runs the command under `bubblewrap` on Linux (the full mount and namespace
-shape) and under `sandbox-exec` on macOS (no network). A host that can
-enforce neither refuses `sandbox-unavailable` and runs nothing, so
-`--sandbox` never degrades to an unwrapped run.
+shape) and under `sandbox-exec` on macOS (no network, no Mach services,
+writes only to the reviewed root and a private `TMPDIR`, credential paths and
+the shared host temp roots denied). A host that can enforce
+neither refuses `sandbox-unavailable` and runs nothing, so `--sandbox` never
+degrades to an unwrapped run.
 
 ### Enforced sandbox: `verify --sandbox`
 
@@ -5109,33 +5113,261 @@ its own PID namespace, and no route out:
   `verdict` dies.
 
 Each credential path below, when it exists on the host, is replaced before
-the command runs:
-directories (`~/.aws`, `~/.ssh`, `~/.config/gh`, `~/.docker`, `~/.kube`,
-`~/.config/gcloud`, `~/.azure`, `~/.gnupg`) with an empty `--tmpfs`, and
-files (`~/.netrc`, `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`) with a
-read-only bind of `/dev/null`. A missing entry adds no mount. `/var/run` is
-shadowed too when the host ships it as a real directory; on the distros
-where it is a symlink to `/run`, the `/run` mount covers it.
+the command runs: a directory with an empty `--tmpfs`, a file with a
+read-only bind of `/dev/null`. One table serves both platforms:
 
-On macOS the whole enforced shape is the network half: `sandbox-exec`
-runs the command under `(version 1)(allow default)(deny network*)`, so every
-`bind()` and `connect()` is denied — loopback and unix sockets included —
-and a command that listens or connects fails. macOS has no
-filesystem namespace, so the mounts above, the private `/tmp`, the empty
-`/run`, and the credential hiding are Linux-only: on macOS the command still
-sees the host filesystem and your credential files. Filesystem isolation on a
-macOS host needs a Linux VM or container running the `bwrap` recipe below —
-there is no in-place macOS equivalent.
+- **Under every home** — the child's `HOME`, the `HOME` of the `verdict`
+  process when it differs, and the account home from the passwd database
+  (`os/user`), so pointing `HOME` elsewhere never leaves the real stores
+  readable: `~/.aws`, `~/.ssh`, `~/.config/gh`, `~/.docker`, `~/.kube`,
+  `~/.config/gcloud`, `~/.azure`, `~/.gnupg`, `~/.netrc`,
+  `~/.git-credentials`, `~/.npmrc`, `~/.pypirc`, `~/.terraform.d`,
+  `~/.cargo/credentials.toml`, `~/.cargo/credentials`, `~/.vault-token`, and
+  `~/Library/Keychains`.
+- **Where the environment moves a store** — read from both the child
+  environment and the `verdict` process environment, so a variable the
+  allowlist drops still names a store on disk: `$XDG_CONFIG_HOME/gh`,
+  `$GH_CONFIG_DIR`, `$AWS_SHARED_CREDENTIALS_FILE`, `$AWS_CONFIG_FILE`,
+  `$DOCKER_CONFIG`, every `:`-separated entry of `$KUBECONFIG`, and
+  `$CLOUDSDK_CONFIG`. A relative value names nothing.
+
+A missing entry adds no mount. A reviewed root inside one of these paths
+refuses `sandbox-unavailable`, because hiding the path would hide the code
+and allowing the root would expose the credential. `/var/run` is shadowed
+too when the host ships it as a real directory; on the distros where it is
+a symlink to `/run`, the `/run` mount covers it.
+
+On macOS `sandbox-exec` compiles a per-run Seatbelt profile. Seatbelt applies
+the last matching rule, so the profile opens with three denials and then
+re-allows only what the command needs:
+
+```text
+(version 1)(allow default)(deny network*)
+(deny mach-lookup)(allow mach-lookup (global-name "com.apple.system.opendirectoryd.libinfo"))
+(deny lsopen)(deny appleevent-send)(deny job-creation)(deny distributed-notification-post)
+(deny signal)(allow signal (target same-sandbox))
+(deny file-write* (subpath "/"))
+(deny file-read* file-write* (subpath "<each shared host temp root>"))
+(allow file-read* file-write* (subpath "<private TMPDIR>") (subpath "<reviewed root>"))
+(allow file-read-metadata (literal "<each ancestor of those two>"))
+(allow file-write* (literal "/dev/null") (literal "/dev/tty") (regex #"^/dev/fd/"))
+(deny file-read* file-write* (subpath "<each credential path>"))
+```
+
+- **No network.** Every `bind()` and `connect()` fails, loopback and unix
+  sockets included.
+- **No Mach services.** Every bootstrap lookup of a Mach service is denied
+  except one. A path policy alone leaves the channels where a system service
+  acts for the command open, and default-deny closes them as one class,
+  including services nobody has listed: the keychain broker
+  (`security find-generic-password -w` returns nothing, and
+  `~/Library/Keychains` is in the credential table besides), `cfprefsd`
+  (`defaults write` persists nothing), the pasteboard server (`pbcopy` and
+  `pbpaste` fail, so the operator's clipboard can be neither read nor
+  overwritten), LaunchServices (`open` and `osascript … launch` start no
+  app), AppleEvents (`osascript` to another app fails at once instead of
+  waiting on an Automation prompt), and launchd (`launchctl submit` and
+  `bootstrap` load no job).
+  The single allow is `com.apple.system.opendirectoryd.libinfo`, the
+  lookup-only endpoint behind `getpwuid`/`getgrgid`: without it `whoami`
+  prints the uid and Go's `os/user.Current` fails, which test suites call.
+  Directory writes go through a separate opendirectoryd service, which stays
+  denied. The list comes from running git, `go build`/`go test`, node and
+  npm, python3, make, `cc`, perl, ruby, and a shell under a blanket deny:
+  each works with nothing else. `cc` (through `xcrun`) prints two
+  `xcodebuild` warnings about FSEvents and `DARWIN_USER_CACHE_DIR` on stderr
+  and still compiles.
+- **No other channel `(allow default)` would leave open.** The profile also
+  denies the operations themselves: `lsopen` (LaunchServices; on its own it
+  stops `open` and `osascript … launch`), `appleevent-send`, `job-creation`
+  (launchd job submission, which launchd also refuses from any sandboxed
+  caller), and `distributed-notification-post`. Behind the Mach denial these
+  are a second layer. Only `lsopen` is proven on its own: a test drops the
+  Mach rule from the profile and `open` still fails. The other three are
+  pinned by the profile text, because isolating a delivered AppleEvent would
+  need a scriptable target app and an Automation consent prompt. `signal` is
+  denied for every process the command did not start — Seatbelt has no PID
+  namespace, so without it the command could kill your editor or shell —
+  while its own children stay signalable.
+  `user-preference-write` is not listed because denying it does not stop
+  `cfprefsd` from writing for the command; the Mach denial does. Reading
+  another process's environment needs no rule here: macOS 15 returns no
+  environment through `kern.procargs2` to a same-uid caller, and `ps` (setuid)
+  cannot run inside `sandbox-exec` at all.
+- **No writes outside the run.** Every write is denied except under the
+  reviewed root (as written and as its `realpath`), the private `TMPDIR`,
+  and `/dev/null`, `/dev/tty`, and `/dev/fd/*` (which `/dev/stdout` and
+  `/dev/stderr` resolve to). Together with the Mach denial, the command
+  cannot write outside the run directly or through a service acting for it:
+  no LaunchAgent, shell rc file, preference, or anything else that would
+  execute unsandboxed later.
+- **Credentials denied.** Every path in the credential table above is denied
+  for reads and writes under every home, each entry as written and as its
+  `realpath`, after every allow, so a checkout under `HOME` cannot re-expose
+  one. A quote or backslash is escaped into the profile; a path carrying a
+  control character (a newline included) refuses `sandbox-unavailable` rather
+  than build a profile it cannot represent.
+- **A private `TMPDIR`.** Each run gets a fresh `0700` directory (created with
+  `MkdirTemp`), exported as `TMPDIR`, `TMP`, `TEMP`, and `GOTMPDIR`, with
+  `GOCACHE` at `<TMPDIR>/go-build` and `XDG_CACHE_HOME` at `<TMPDIR>/cache`,
+  so `go build`/`go test` and XDG-aware tools keep a writable cache. The shared
+  host temp roots (`/tmp`, `/private/tmp`, `/var/tmp`, `/private/var/tmp`, and
+  the host `TMPDIR`) stay denied for reads and writes; only the bare `stat`
+  of the directories above the root and the private directory is allowed, so
+  `realpath` and git's repository discovery work for a checkout under `/tmp`
+  while listing it stays denied. When the run ends the directory is
+  re-permissioned (directories only, symlinks never followed) and removed; a
+  removal that fails surfaces as a `sandbox cleanup:` warning (and in
+  `warnings` under `--json`) instead of being dropped.
+
+A toolchain whose cache lives elsewhere under `HOME` (npm, pip, cargo,
+gradle) fails with `Operation not permitted` on its first write. Point it
+into the private directory from the command itself, for example
+`npm_config_cache="$TMPDIR/npm" npm test` or
+`PIP_CACHE_DIR="$TMPDIR/pip" pytest`, or keep the cache inside the reviewed
+root.
+
+**The reviewed root is writable, its git control files are not.** Every path
+in the checkout is already the PR's to write — a `Makefile`, a `package.json`
+script, a `core.hooksPath` directory such as `.husky/` — except `.git`, the
+one path component git refuses to check out. That is where git keeps what it
+executes later, outside any sandbox (`hooks/`, `config` with
+`core.fsmonitor`/`core.hooksPath`/filters, `info/`, `modules/*/hooks`), so
+both mechanisms deny writes there:
+
+- **The repository's git directories.** `<root>/.git` as found, the git
+  directory a `.git` file names (a linked worktree or a submodule checkout),
+  and the common directory a linked worktree's git directory names are
+  write-denied as whole trees, which covers hooks, config, info, and every
+  submodule git directory under `modules/`. On Linux each of these that sits
+  inside the root gets a `--ro-bind` over the writable root bind; one outside
+  the root is already read-only under `--ro-bind / /`. On macOS each is a
+  `(deny file-write* (subpath …))` after the root allow.
+- **A root without a `.git` (Linux refuses).** `bwrap` protects a path only
+  by mounting over it, and it creates a missing mount point inside the new
+  root — under the writable root bind, that is a write to your tree. With no
+  `<root>/.git` there is no clean read-only shape, so the command could
+  create `.git/hooks` or `.git/config` that git runs later; `--sandbox` on
+  Linux refuses `sandbox-unavailable` instead. That covers a subdirectory of
+  a checkout, an export or a tarball, and a bare clone alike: verify from the
+  top of a working checkout (group mode needs one anyway). The same holds for
+  every shape bwrap cannot pin. Pointers are read the way git reads them
+  (only trailing CR/LF stripped, so a name ending in a space is kept) and
+  walked the way git resolves them: `..` pops the directory reached so far,
+  and every other component is inspected before it is followed. `gitdir:
+a/../g` therefore visits `a`, though it cleans to `g` — and a command that
+  creates `a` as a link would send git wherever the link points. Refused: a
+  symlinked `.git` (only the link's target could be bound, and the link stays
+  replaceable); a `.git` that is neither a directory nor a `gitdir:` file; a
+  pointer file that is not regular (a FIFO is refused without waiting),
+  cannot be read, exceeds 4 KiB, or has no `gitdir: ` line; a `gitdir:` or
+  commondir target that is not an existing directory; a git directory that
+  is the root itself; and any pointer whose walk passes, inside the root,
+  through a symlink (it could be swapped) or a component that does not exist
+  yet (it could be created as a link). Each refuses with its own cause; none
+  is skipped. An error inspecting `.git` other than "does not exist" is
+  reported as itself. What passes is pinned at the top: every top-level entry
+  of the root that holds a path the walks visit gets the read-only bind (a
+  mount point cannot be renamed, and its subtree is read-only), so no
+  directory on the walk can be replaced later. macOS needs none of these
+  refusals, because its rules match by path: every in-root path the walks
+  visit — missing ones and links included — is write-denied under its
+  literal, resolved, and link-node spellings, so none of them can be
+  created, removed, or renamed, and the rule below covers any `.git`.
+- **Any new `.git` (macOS).** Seatbelt also denies writes to every path
+  component named `.git` below the root, in any letter case, whether or not it
+  exists yet: the command cannot create a nested repository, a `.git` file, or
+  a `.git` symlink that git or an editor would later honor. `.gitignore`,
+  `.github/`, and `.git-blame-ignore-revs` stay writable.
+
+`git status`, `git diff`, and `git log` keep working (a status that cannot
+refresh the index skips the write). Anything that writes the repository —
+`git commit`, `git stash`, `git checkout`, `git fetch`, `git submodule update`
+— fails inside the sandbox; run those outside it.
+
+What differs and what remains. macOS denies every `.git` below the root,
+existing or not. Linux protects exactly the root's own repository (and
+refuses a root whose repository it cannot pin): a command can still
+create a **new** nested `.git` in a subdirectory, or rewrite a nested
+repository's existing `.git` file, because `bwrap` can make only existing
+paths read-only and a mount point for a missing path would itself be a write
+to your tree. Git honors such a nested repository only when it runs inside
+that subdirectory. On both platforms, a repository nested in the checkout
+whose git directory sits under a non-`.git` name (`git init
+--separate-git-dir` inside the tree) is not followed.
+Do not run git inside a nested directory of a hostile checkout, and discard
+the checkout after verifying a hostile PR.
+
+Seatbelt is deprecated by Apple and has no mount or PID namespace. On macOS the
+child can still read the rest of the host filesystem outside the denied paths
+and see the host process tree; those denials are policy, not private mounts.
+Full mount and PID isolation on a macOS host needs a Linux VM or container
+running the `bwrap` recipe below.
+
+#### Network-only Linux fallback: `--sandbox-network-only`
+
+On Linux without `bwrap` (a minimal image, or unprivileged user namespaces
+restricted for `bwrap`), `--sandbox` still refuses; it never downgrades. When
+network isolation alone is the boundary you accept, say so explicitly:
+
+```bash
+verdict verify owner/repo 123 --sandbox-network-only
+```
+
+Linux runs the command under
+`unshare --user --map-root-user --net -- bash -c <cmd>` after probing the same
+argv with `true`. It creates a user namespace and a network namespace and
+nothing else: **no mount, filesystem, or PID isolation**. The whole host
+filesystem stays readable and writable as you (credential paths and the host
+`/tmp` included), the host `/proc` exposes every same-uid process's
+environment, and a filesystem unix socket — `/run/docker.sock`, the
+`ssh-agent` socket in `$SSH_AUTH_SOCK`, a session bus — bypasses the network
+namespace entirely, because `connect()` on a path is a filesystem operation.
+A network-only run is not the hostile-PR sandbox. Every such run warns
+`network-only … no mount, filesystem, or PID isolation` (naming the sockets
+and `/proc`) on the diagnostic stream (and in `warnings` under `--json`) and
+records `sandboxMechanism: "unshare-net"` without `sandboxed`, so a later
+reader never mistakes it for the full shape.
+
+`--sandbox` and `--sandbox-network-only` are mutually exclusive: passing both
+refuses `bad-flags` (exit 1) before anything runs, because the caller must
+state the boundary they accept. On macOS and Windows the flag refuses
+`sandbox-unavailable` naming it a Linux `unshare` opt-in; on macOS `--sandbox`
+is the stronger mechanism to use.
 
 Before anything executes it probes the same flags with a no-op; when the
 host is neither Linux nor macOS, `bwrap` or `sandbox-exec` is missing, the
-user-namespace restriction is on, or (on Linux) `HOME` is unset, `verify`
-refuses `sandbox-unavailable` naming the cause and runs nothing. It never
-silently falls back to an unsandboxed command.
-The patch record and the deep-group receipt carry `"sandboxed": true`, and
-the `--json` data adds `"sandboxed": true`; absent means the run was not
-sandboxed. The same opt-in reaches the MCP tool (`sandbox`), the Go facade
-(`Sandbox`), and the TypeScript client (raw `--sandbox` argv).
+user-namespace restriction is on, (on Linux or macOS) the child's `HOME` is
+unset or not an absolute path, the reviewed root sits inside a credential
+path, or (on Linux) the root's git shape cannot be pinned read-only (no
+`.git`, or any of the git-pointer shapes listed above), `verify`
+refuses `sandbox-unavailable`, names the cause, and runs nothing. A runner
+that cannot spawn names the tool its mechanism needs (`bwrap` with the
+`--sandbox-network-only` alternative, `unshare`, or `/usr/bin/sandbox-exec`).
+It never silently falls back to an unsandboxed command. On macOS the probe is a
+smoke script (`bash -c` with `mktemp` inside the private `TMPDIR` and a read
+of the working directory), so a profile that compiles but breaks `bash` is a
+refusal, not a broken run.
+
+The records name the wrapper and say whether it was the full shape.
+`"sandboxed": true` means exactly the full shape — `bwrap` or `sandbox-exec` —
+and nothing weaker; `sandboxMechanism` names the wrapper that ran
+(`"bwrap" | "sandbox-exec" | "unshare-net"`). A network-only run records the
+mechanism and never `sandboxed`. The patch record carries `sandboxed` and
+`sandboxMechanism`, the deep-group receipt `sandboxed` and `sandbox_mechanism`,
+and the `--json` data `sandboxed` and `sandboxMechanism`; absent means the run
+was not wrapped. Each run rewrites both keys of the patch record, so neither
+survives from an earlier run; a refusal leaves the record byte-identical, so
+the keys it holds still describe the run whose `verifyExit` sits beside them.
+The same opt-in reaches the MCP tool (`sandbox`, and the Linux
+`sandboxNetworkOnly`), the Go facade (`Sandbox` and `SandboxNetworkOnly` in,
+`SandboxMechanism` out), and the TypeScript client (raw `--sandbox` argv).
+
+A deep-group receipt that carries `sandbox_mechanism` is newer than the
+release that introduced the key: an older `verdict` decodes receipts strictly
+and refuses it as unreadable. `schema_version` stays `"1"` because the key is
+optional and additive; re-run the group validation with the binary that will
+read the receipt.
 
 ### Recipe for other OSes (and for wrapping the whole review)
 

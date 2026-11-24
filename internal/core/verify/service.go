@@ -46,6 +46,20 @@ func corruptStoreRefusal(dir string) *core.RefusalError {
 	}
 }
 
+// preflightRefusal rejects the request shapes that outrank every gate: a
+// canceled context and the mutually exclusive sandbox flags. Checking the
+// flags here keeps bad-flags dominant over a later verify-destructive or
+// bundle refusal.
+func preflightRefusal(ctx context.Context, req *Request) *core.RefusalError {
+	if ref := sandboxFlagsRefusal(req); ref != nil {
+		return ref
+	}
+	if err := ctx.Err(); err != nil {
+		return &core.RefusalError{Code: codeCanceled, Message: msgCanceled}
+	}
+	return nil
+}
+
 // deepGroup reports whether the request asks for deep group validation, which
 // takes the group path instead of the ordinary patch path.
 func deepGroup(req *Request) bool {
@@ -59,8 +73,8 @@ func deepGroup(req *Request) bool {
 // the response for the adapter to render.
 func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	st := &state{req: req, warnings: append([]string{}, req.Warnings...)}
-	if err := ctx.Err(); err != nil {
-		return nil, &core.RefusalError{Code: codeCanceled, Message: msgCanceled}
+	if ref := preflightRefusal(ctx, req); ref != nil {
+		return nil, st.withWarnings(ref)
 	}
 	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
 	if ref != nil {
@@ -137,13 +151,14 @@ func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int
 	outPath, timeoutPath := dir+"/.verify.out", dir+"/.verify.timeout"
 	st.human(fmt.Sprintf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
 	res, ref := runCommand(ctx, commander, vcmd, timeout, "", st.childEnv(), sb)
+	st.releaseSandbox(sb)
 	if ctx.Err() != nil {
 		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: msgCanceled})
 	}
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	return st.record(dir, now, outPath, timeoutPath, res)
+	return st.record(dir, now, outPath, timeoutPath, res, sb)
 }
 
 func (st *state) commander() core.Commander {
@@ -155,11 +170,57 @@ func (st *state) commander() core.Commander {
 }
 
 // sandboxed prepares the opt-in wrapper, or returns nil for an unwrapped run.
+// The full flag and the network-only opt-in are exclusive, and only the
+// network-only path carries the no-mount warning the caller must see.
 func (st *state) sandboxed(ctx context.Context, commander core.Commander, workDir, root string) (*sandbox, *core.RefusalError) {
-	if !st.req.Sandbox {
+	if ref := sandboxFlagsRefusal(st.req); ref != nil {
+		return nil, ref
+	}
+	if !st.req.Sandbox && !st.req.SandboxNetworkOnly {
 		return nil, nil
 	}
-	return prepareSandbox(ctx, commander, workDir, root, st.childEnv())
+	sb, ref := prepareSandbox(ctx, commander, workDir, root, st.sandboxInputs(), st.req.SandboxNetworkOnly)
+	if ref != nil {
+		st.releaseSandbox(sb)
+		return nil, ref
+	}
+	if sb.networkOnly {
+		st.human("» sandbox: network-only (unshare --net) — no mount, filesystem, or PID isolation")
+		st.warn(msgSandboxNetworkOnly)
+	}
+	return sb, nil
+}
+
+// sandboxInputs is what the credential table resolves against: the child
+// environment, the snapshotted verdict environment (a relocation variable the
+// allowlist drops still names a store on disk), and the account home.
+func (st *state) sandboxInputs() sandboxInputs {
+	account := st.req.accountHome
+	if account == "" {
+		account = sandboxAccountHome()
+	}
+	return sandboxInputs{childEnv: st.childEnv(), hostEnv: st.req.Environ, accountHome: account}
+}
+
+// releaseSandbox removes the mechanism's private state as soon as the command
+// is done, and warns when any of it survived, so a stranded directory is
+// visible in the same response instead of silently left behind.
+func (st *state) releaseSandbox(sb *sandbox) {
+	if err := sb.close(); err != nil {
+		st.warn("sandbox cleanup: the private directory could not be fully removed (" + err.Error() +
+			"); remove it by hand")
+	}
+}
+
+// sandboxFlagsRefusal keeps the two sandbox opt-ins mutually exclusive: the
+// caller states the exact boundary they accept instead of one flag silently
+// winning over the other.
+func sandboxFlagsRefusal(req *Request) *core.RefusalError {
+	if !req.Sandbox || !req.SandboxNetworkOnly {
+		return nil
+	}
+	return &core.RefusalError{Code: codeBadFlags, Message: "--sandbox and --sandbox-network-only are mutually exclusive: " +
+		"--sandbox enforces the full bwrap/sandbox-exec shape, --sandbox-network-only accepts network isolation alone; pass one"}
 }
 
 func runCommand(ctx context.Context, commander core.Commander, vcmd string, timeout int,
@@ -168,6 +229,7 @@ func runCommand(ctx context.Context, commander core.Commander, vcmd string, time
 	argv := []string{"bash", "-c", vcmd}
 	if sb != nil {
 		argv = sb.argv(vcmd)
+		env = sb.childEnv(env)
 	}
 	tctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
@@ -187,7 +249,7 @@ func failed(err error) *core.RefusalError {
 	return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(msgVerifyFailed, err)}
 }
 
-func (st *state) record(dir, now, outPath, timeoutPath string, res core.Result) (*Response, *core.RefusalError) {
+func (st *state) record(dir, now, outPath, timeoutPath string, res core.Result, sb *sandbox) (*Response, *core.RefusalError) {
 	combined := res.Stdout + res.Stderr
 	tail := sanitizeTail(coreexec.TrimTail(lastBytes(combined, tailCap)), st.req.Environ)
 	st.human(fmt.Sprintf("» exit=%d timed_out=%s", res.ExitCode, strconv.FormatBool(res.TimedOut)))
@@ -198,22 +260,26 @@ func (st *state) record(dir, now, outPath, timeoutPath string, res core.Result) 
 	if ref := recordTimeoutMarker(timeoutPath, timeoutMarker(st.req.TimeoutRaw, res.TimedOut, res.Decoy)); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	if ref := recordOutcome(dir, now, res.ExitCode, res.TimedOut, tail, st.req.Sandbox); ref != nil {
+	if ref := recordOutcome(dir, now, res.ExitCode, res.TimedOut, tail, sb); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	return st.response(dir, now, res.ExitCode, res.TimedOut, tail), nil
+	return st.response(dir, now, res.ExitCode, res.TimedOut, tail, sb), nil
 }
 
-func (st *state) response(dir, now string, exit int, timedOut bool, tail string) *Response {
+func (st *state) response(dir, now string, exit int, timedOut bool, tail string, sb *sandbox) *Response {
 	next := "proof failed — fix, do not claim"
 	if exit == 0 && !timedOut {
 		next = "proof holds — revalidator may VERIFY"
+	}
+	data := &core.VerifyData{
+		Exit: exit, TimedOut: timedOut, OutputTail: tail, Patch: dir,
+		Sandboxed: sb.full(), SandboxMechanism: sb.name(),
 	}
 	return &Response{
 		Repo:     st.req.Repo,
 		Pr:       st.req.Pr,
 		At:       now,
-		Data:     &core.VerifyData{Exit: exit, TimedOut: timedOut, OutputTail: tail, Patch: dir, Sandboxed: st.req.Sandbox},
+		Data:     data,
 		Warnings: st.warnings,
 		Next:     next,
 		Exit:     exit,
@@ -268,7 +334,7 @@ func parseTimeout(s string) (int, bool) {
 
 // recordOutcome merges the watchdog result into patch.json, preserving key
 // order (existing keys keep position, new keys append).
-func recordOutcome(dir, now string, exit int, timedOut bool, tail string, sandboxed bool) *core.RefusalError {
+func recordOutcome(dir, now string, exit int, timedOut bool, tail string, sb *sandbox) *core.RefusalError {
 	raw, err := os.ReadFile(patchPath(dir))
 	if err != nil {
 		return missingPatchRefusal(dir)
@@ -285,10 +351,17 @@ func recordOutcome(dir, now string, exit int, timedOut bool, tail string, sandbo
 	m.Set("verifiedAt", now)
 	m.Set("timedOut", timedOut)
 	m.Set("verifiedTail", tail)
-	if sandboxed {
+	// Both keys describe this run alone: `sandboxed` only for the full shape,
+	// the mechanism for any wrapper, and neither survives from an earlier run.
+	if sb.full() {
 		m.Set("sandboxed", true)
 	} else {
 		m.Delete("sandboxed")
+	}
+	if name := sb.name(); name != "" {
+		m.Set("sandboxMechanism", name)
+	} else {
+		m.Delete("sandboxMechanism")
 	}
 	if err := atomic.WriteFile(dir+"/"+patchFile, []byte(m.MarshalPretty()+"\n")); err != nil {
 		return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf("could not write %s/patch.json: %v", dir, err)}

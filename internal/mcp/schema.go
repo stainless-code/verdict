@@ -378,8 +378,17 @@ var fieldDocs = map[string]string{
 		"verb writes impact.json and a capped ## impact section on toc.txt; omitted means no " +
 		"impact section.",
 	"Sandbox": "Run under an enforced sandbox — bwrap on Linux (no network, hidden credential dirs, " +
-		"a writable repo, a private /tmp), sandbox-exec on macOS (no network, loopback included; " +
-		"credentials stay visible); refuses sandbox-unavailable when the host cannot enforce it.",
+		"a writable repo, a private /tmp), sandbox-exec on macOS (no network, loopback included; no Mach " +
+		"services; writes only to the repo and a private TMPDIR; credential paths and shared host temp roots " +
+		"denied); refuses sandbox-unavailable when the host cannot enforce it or the root's shape cannot be " +
+		"protected (Linux: no .git; a symlinked .git; a .git that is neither a directory nor a gitdir: file; " +
+		"a gitdir or commondir that does not resolve; a gitdir that is the root itself; an unreadable or " +
+		"non-regular pointer file; or a pointer whose walk passes through a symlink or a missing component inside " +
+		"the root).",
+	"SandboxNetworkOnly": "Linux-only fallback for hosts without bwrap: unshare --user --map-root-user --net, " +
+		"network isolation alone with no mount, filesystem, or PID isolation (credential paths, /tmp, the host " +
+		"/proc, and unix sockets stay reachable; never recorded as sandboxed); mutually exclusive with sandbox " +
+		"and refused as sandbox-unavailable on other hosts.",
 	"EnvAllowlist": "Additional parent environment variable names to pass through to the verification child process, " +
 		"overriding default-deny filtering and secret-name dropping.",
 }

@@ -503,6 +503,51 @@ func TestVerifySandboxReachesEveryTypedSurface(t *testing.T) {
 	}
 }
 
+// TestVerifySandboxNetworkOnlyReachesEveryTypedSurface pins the Linux
+// network-only opt-in and the mechanism it reports on the same typed
+// surfaces as the full flag, so neither can exist on the CLI alone.
+func TestVerifySandboxNetworkOnlyReachesEveryTypedSurface(t *testing.T) {
+	t.Parallel()
+	root := moduleRoot(t)
+	if !structHasBoolField(t, filepath.Join(root, "internal", "core", "verify", "api.go"), "Request", "SandboxNetworkOnly") {
+		t.Error("verifycore.Request lost its SandboxNetworkOnly field")
+	}
+	if !structHasBoolField(t, filepath.Join(root, "pkg", "verdict", "verbs.go"), "VerifyRequest", "SandboxNetworkOnly") {
+		t.Error("pkg/verdict.VerifyRequest lost its SandboxNetworkOnly field")
+	}
+	if !structHasStringField(t, filepath.Join(root, "pkg", "verdict", "verbs.go"), "VerifyResponse", "SandboxMechanism") {
+		t.Error("pkg/verdict.VerifyResponse lost its SandboxMechanism field")
+	}
+	cli := readSource(t, filepath.Join(root, "internal", "verify", "verify.go"))
+	if !strings.Contains(cli, `case "--sandbox-network-only":`) {
+		t.Error("the verify adapter no longer parses --sandbox-network-only")
+	}
+	mcp := readSource(t, filepath.Join(root, "internal", "mcp", "requests.go"))
+	if !strings.Contains(mcp, `a.boolean("sandboxNetworkOnly"`) {
+		t.Error("the MCP verify decoder no longer reads sandboxNetworkOnly")
+	}
+	if !mcpSchemaHasBoolean(t, filepath.Join(root, "internal", "mcp", "testdata", "tools_list_default.jsonl"), "verify", "sandboxNetworkOnly") {
+		t.Error("the published MCP verify schema lost its sandboxNetworkOnly boolean")
+	}
+}
+
+// structHasStringField reports whether path declares typeName with a string
+// field.
+func structHasStringField(t *testing.T, path, typeName, field string) bool {
+	t.Helper()
+	st := declaredStruct(t, path, typeName)
+	if st == nil {
+		return false
+	}
+	for _, f := range st.Fields.List {
+		ident, ok := f.Type.(*ast.Ident)
+		if ok && ident.Name == "string" && len(f.Names) == 1 && f.Names[0].Name == field {
+			return true
+		}
+	}
+	return false
+}
+
 // structHasBoolField reports whether path declares typeName with a bool field.
 func structHasBoolField(t *testing.T, path, typeName, field string) bool {
 	t.Helper()

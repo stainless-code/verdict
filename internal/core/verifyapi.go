@@ -28,6 +28,10 @@ type ValidationReceipt struct { //nolint:govet // field order is the published p
 	Status        string `json:"status"`
 	Failure       string `json:"failure,omitempty"`
 	Passed        bool   `json:"passed"`
+	// SandboxMechanism names the wrapper (bwrap, sandbox-exec, or the
+	// network-only unshare-net) so a receipt never reads network isolation as
+	// the full shape. Sandboxed is true only for bwrap and sandbox-exec.
+	SandboxMechanism string `json:"sandbox_mechanism,omitempty"`
 }
 
 // VerifyData is the verify verb's --json data profile. Field order is the
@@ -41,6 +45,10 @@ type VerifyData struct { //nolint:govet // field order is the published property
 	Head       string `json:"head,omitempty"`
 	Receipt    string `json:"receipt,omitempty"`
 	Sandboxed  bool   `json:"sandboxed,omitempty"`
+	// SandboxMechanism names the wrapper, so a --json reader can tell the full
+	// bwrap/sandbox-exec sandbox (Sandboxed true) from the network-only
+	// unshare-net opt-in (Sandboxed absent). Absent means no wrapper ran.
+	SandboxMechanism string `json:"sandboxMechanism,omitempty"`
 }
 
 // Wire renders the data object in wire order.
