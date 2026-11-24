@@ -203,16 +203,6 @@ func TestSandboxGitPointerRefusesAnOverCapPointer(t *testing.T) {
 	}
 }
 
-// TestSandboxHomeUsesTheLastHOME follows os/exec: the last of duplicate
-// entries is what the child sees, so it is the home whose credentials hide.
-func TestSandboxHomeUsesTheLastHOME(t *testing.T) {
-	in := sandboxInputs{childEnv: []string{"HOME=/h/first", "HOME=/h/last"}}
-	homes, ref := in.homes()
-	if ref != nil || !slices.Equal(homes, []string{"/h/last"}) {
-		t.Errorf("homes = %v, %v; want [/h/last]", homes, ref)
-	}
-}
-
 // requireGitRefusal asserts the Linux argv refuses sandbox-unavailable with
 // the literal cause as its message prefix.
 func requireGitRefusal(t *testing.T, root, cause string) {

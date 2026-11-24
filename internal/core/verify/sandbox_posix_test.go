@@ -201,3 +201,13 @@ func closeSandbox(t *testing.T, sb *sandbox) {
 		t.Errorf("close: %v", err)
 	}
 }
+
+// TestSandboxHomeUsesTheLastHOME follows os/exec: the last of duplicate
+// entries is what the child sees, so it is the home whose credentials hide.
+func TestSandboxHomeUsesTheLastHOME(t *testing.T) {
+	in := sandboxInputs{childEnv: []string{"HOME=/h/first", "HOME=/h/last"}}
+	homes, ref := in.homes()
+	if ref != nil || !slices.Equal(homes, []string{"/h/last"}) {
+		t.Errorf("homes = %v, %v; want [/h/last]", homes, ref)
+	}
+}
