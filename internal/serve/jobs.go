@@ -404,7 +404,9 @@ func (m *jobManager) runVerify(ctx context.Context, current *job) {
 
 // runPostPreview runs the dry-run post preview through the injected
 // runner. DryRun is hardcoded true here and again in the production
-// runner, so no host write can ship through this path.
+// runner, so no host write can ship through this path. A succeeded preview
+// mints the Tier C single-use nonce bound to its digest and the bundle
+// fingerprint, published beside the preview wire.
 func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 	runner := m.runnerPostPreview()
 	read := core.ReadRequest{
@@ -415,7 +417,7 @@ func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 	}
 	req := &postcore.Request{
 		ReadRequest: read,
-		Flags:       postcore.Flags{Approve: "false", ReviewFile: current.bundleDir + "/review.json", DryRun: true},
+		Flags:       postcore.Flags{Approve: approveFalse, ReviewFile: current.bundleDir + "/review.json", DryRun: true},
 	}
 	resp, ref := runner(ctx, req)
 	if ctx.Err() != nil {
@@ -428,6 +430,16 @@ func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 		return
 	}
 	result := resp.Data.Wire()
+	if m.server.previews != nil {
+		if m.server.previews.now == nil {
+			m.server.previews.now = m.server.now
+		}
+		fingerprint := bundleFingerprint(current.bundleDir)
+		digest := previewDigest(current.rootID, current.bundle, fingerprint, []byte(result.MarshalCompact()))
+		nonce := m.server.previews.mint(current.rootID, current.bundle, digest, fingerprint)
+		result.Set("preview_digest", digest)
+		result.Set("preview_nonce", nonce)
+	}
 	m.setStatus(current, jobStatusSucceeded, result, nil, resp.Warnings)
 }
 

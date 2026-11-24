@@ -496,6 +496,7 @@ func TestRouteTableInteractiveAddsPosts(t *testing.T) {
 	want := map[string]bool{
 		"/v1/triage":            true,
 		"/v1/kb/promote":        true,
+		"/v1/post/submit":       true,
 		"/v1/jobs/verify":       true,
 		"/v1/jobs/post-preview": true,
 		"/v1/jobs/{id}/cancel":  true,
@@ -510,6 +511,7 @@ func TestRouteTableInteractiveAddsPosts(t *testing.T) {
 	}
 	assertNoGetPlaceholder(t, server, "/v1/triage")
 	assertNoGetPlaceholder(t, server, "/v1/kb/promote")
+	assertNoGetPlaceholder(t, server, "/v1/post/submit")
 	assertNoGetPlaceholder(t, server, "/v1/jobs/verify")
 	assertNoGetPlaceholder(t, server, "/v1/jobs/post-preview")
 }

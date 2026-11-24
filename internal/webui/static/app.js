@@ -21,11 +21,13 @@
   // /v1/health; both stay unset in static mode and on a read-only server,
   // so no write control can render there.
   let interactive = false;
+  let allowPost = false;
   let csrfToken = "";
   // The Tier B job drawer shows the most recent job snapshot the SSE
   // stream published; null until one job has been started.
   let activeJob = null;
   let jobDrawer = null;
+  let submitOverlay = null;
   let diffMode = "unified";
   const triageStatuses = [
     "open",
@@ -549,6 +551,7 @@
 
   // jobActionsPanel is the detail view's Tier B panel: the bundle-level
   // sandbox reproduction and the dry-run post preview, plus the drawer.
+  // The Tier C submit control renders only when allow_post is advertised.
   function jobActionsPanel(root, bundle) {
     const wrapper = node("div", undefined, "job-actions");
     const verify = node("button", "Reproduce in sandbox");
@@ -562,11 +565,152 @@
       startJob("/v1/jobs/post-preview", { root, bundle }),
     );
     wrapper.append(verify, preview);
+    if (submitEnabled()) {
+      const submit = node("button", "Submit Review");
+      submit.type = "button";
+      submit.addEventListener("click", () => openSubmitModal(root, bundle));
+      wrapper.append(submit);
+    }
     jobDrawer = node("div", undefined, "job-drawer");
     jobDrawer.setAttribute("aria-live", "polite");
     renderActiveJob();
     wrapper.append(jobDrawer);
     return wrapper;
+  }
+
+  // submitEnabled gates the Tier C control on the allow_post advertisement.
+  function submitEnabled() {
+    return interactive && allowPost && mode !== "static";
+  }
+
+  // fetchPreview runs one dry-run preview and polls its job until settled,
+  // returning the snapshot whose result carries digest and nonce.
+  async function fetchPreview(root, bundle) {
+    const { response, body } = await writeJSON("/v1/jobs/post-preview", {
+      root,
+      bundle,
+    });
+    if (!response.ok) {
+      throw new Error(body?.message || `Request returned ${response.status}`);
+    }
+    if (body?.error) throw new Error(body.error.message || "Preview refused.");
+    let snap = body?.data || {};
+    if (snap.status === "succeeded" || snap.status === "failed") return snap;
+    for (let i = 0; i < 40 && snap?.id; i++) {
+      const got = await fetch(`/v1/jobs/${encodeURIComponent(snap.id)}`, {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (!got.ok) break;
+      const next = await got.json();
+      snap = next?.data || snap;
+      if (["succeeded", "failed", "cancelled"].includes(snap.status)) break;
+    }
+    return snap;
+  }
+
+  // closeSubmitModal removes the confirmation overlay.
+  function closeSubmitModal() {
+    submitOverlay?.remove();
+    submitOverlay = null;
+  }
+
+  // openSubmitModal previews the bundle, then waits for an explicit
+  // Confirm & Submit Review click before any host write.
+  async function openSubmitModal(root, bundle) {
+    closeSubmitModal();
+    const overlay = node("div", undefined, "submit-modal");
+    const dialog = node("div", undefined, "submit-dialog");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-label", "Submit Review");
+    dialog.append(node("h2", "Submit Review"));
+    const target = node(
+      "p",
+      `Bundle ${bundle} in root ${root} — previewing the PR post.`,
+      "submit-target",
+    );
+    const status = node("p", "Previewing post…", "submit-status");
+    status.setAttribute("aria-live", "polite");
+    const details = node("div", undefined, "submit-details");
+    const confirm = node("button", "Confirm & Submit Review");
+    confirm.type = "button";
+    confirm.disabled = true;
+    const cancel = node("button", "Cancel");
+    cancel.type = "button";
+    cancel.addEventListener("click", closeSubmitModal);
+    dialog.append(target, status, details, confirm, cancel);
+    overlay.append(dialog);
+    document.body.append(overlay);
+    submitOverlay = overlay;
+    let preview = null;
+    try {
+      preview = await fetchPreview(root, bundle);
+    } catch (error) {
+      status.textContent =
+        error instanceof Error ? error.message : String(error);
+      status.className = "error";
+      return;
+    }
+    if (!submitOverlay) return;
+    if (preview?.error) {
+      status.textContent = preview.error.message || "Preview refused.";
+      status.className = "error";
+      return;
+    }
+    const snap = preview || {};
+    const result = snap.result || {};
+    if (snap.status !== "succeeded" || !result.preview_digest) {
+      status.textContent = "Preview did not succeed; no digest to confirm.";
+      status.className = "error";
+      return;
+    }
+    const digest = result.preview_digest;
+    const nonce = result.preview_nonce || "";
+    const findings = result.findings || {};
+    const anchors = result.anchors || {};
+    details.append(
+      node(
+        "p",
+        `Event ${result.event || "COMMENT"} — ${findings.open ?? 0} open, ${findings.addressed ?? 0} addressed, ${anchors.kept ?? 0} anchors kept.`,
+      ),
+      node("p", `Preview digest ${digest}`),
+    );
+    status.textContent = "Review the preview, then confirm to submit.";
+    confirm.disabled = false;
+    confirm.addEventListener("click", async () => {
+      confirm.disabled = true;
+      try {
+        const { response, body } = await writeJSON("/v1/post/submit", {
+          root,
+          bundle,
+          preview_digest: digest,
+          preview_nonce: nonce,
+          confirm: true,
+        });
+        if (!response.ok) {
+          status.textContent =
+            body?.message || `Request returned ${response.status}`;
+          status.className = "error";
+          return;
+        }
+        if (body?.error) {
+          status.textContent = body.error.message || "Submit refused.";
+          status.className = "error";
+          return;
+        }
+        const data = body?.data || {};
+        const receipt = node("p", `Submitted review ${data.commit_id || ""}.`);
+        details.append(receipt);
+        status.textContent = "Submitted.";
+        status.className = "";
+        message.textContent = "Review submitted from the confirmation modal.";
+        message.className = "";
+      } catch (error) {
+        status.textContent =
+          error instanceof Error ? error.message : String(error);
+        status.className = "error";
+      }
+    });
   }
 
   function compareBuckets(root, bundle) {
@@ -1248,6 +1392,7 @@
       const health = await response.json();
       if (health.data?.interactive === true) {
         interactive = true;
+        allowPost = health.data?.allow_post === true;
         csrfToken =
           typeof health.data?.csrf === "string" ? health.data.csrf : "";
       }

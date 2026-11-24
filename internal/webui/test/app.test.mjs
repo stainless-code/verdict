@@ -254,6 +254,7 @@ async function createUI({
   mode = "live",
   watch = true,
   interactive = false,
+  allowPost = false,
   csrf = "",
   hash = "",
   baseURL = "https://example.test/",
@@ -324,6 +325,7 @@ async function createUI({
       const health = { watch };
       if (interactive) {
         health.interactive = true;
+        health.allow_post = allowPost === true;
         health.csrf = csrf;
       }
       return { ok: true, json: async () => ({ data: health }) };
@@ -374,6 +376,7 @@ async function createUI({
     timers,
     flush,
     navigate,
+    body: document.body,
   };
 }
 
@@ -1566,5 +1569,163 @@ test("diff side-by-side toggle switches the table", async () => {
     descendants(ui.elements.get("content")).some(
       (e) => e.className && e.className.includes("diff-unified"),
     ),
+  );
+});
+
+// submitButton names the rendered Tier C control in the detail view.
+function submitButton(root) {
+  return descendants(root).find(
+    (element) =>
+      element.tagName === "BUTTON" && element.textContent === "Submit Review",
+  );
+}
+
+test("a server without allow_post renders no Submit Review control", async () => {
+  // Interactive alone (allow_post false) and read-only both hide it.
+  for (const setup of [
+    { interactive: true, allowPost: false, csrf: "csrf-test-token" },
+    { interactive: false, allowPost: false },
+  ]) {
+    const ui = await createUI({
+      ...setup,
+      hash: "#/r/root-123/local-good",
+      respond: respondFrom(detailFixtures()),
+    });
+    assert.equal(
+      submitButton(ui.elements.get("content")),
+      undefined,
+      `setup ${JSON.stringify(setup)} must hide Submit Review`,
+    );
+  }
+});
+
+test("allow_post renders Submit Review and confirms with digest and nonce", async () => {
+  const digest = "a".repeat(64);
+  const nonce = "b".repeat(32);
+  const previewQueued = {
+    data: {
+      id: "job-preview",
+      kind: "post-preview",
+      root: "root-123",
+      bundle: "local-good",
+      status: "queued",
+    },
+    error: null,
+  };
+  const previewDone = {
+    data: {
+      id: "job-preview",
+      kind: "post-preview",
+      root: "root-123",
+      bundle: "local-good",
+      status: "succeeded",
+      result: {
+        dry_run: true,
+        event: "COMMENT",
+        anchors: { kept: 1, moved: 0 },
+        findings: { open: 1, deferred: 0, addressed: 0 },
+        preview_digest: digest,
+        preview_nonce: nonce,
+      },
+    },
+    error: null,
+  };
+  let previewReads = 0;
+  const ui = await createUI({
+    interactive: true,
+    allowPost: true,
+    csrf: "csrf-test-token",
+    respond: async (path) => {
+      if (path === "/v1/jobs/post-preview") return { body: previewQueued };
+      if (path === "/v1/jobs/job-preview") {
+        previewReads++;
+        return { body: previewReads === 1 ? previewQueued : previewDone };
+      }
+      if (path === "/v1/post/submit") {
+        return {
+          body: envelope({ commit_id: "a1b2c3d4", dry_run: false }),
+        };
+      }
+      return { body: detailFixtures().get(path) || envelope({}) };
+    },
+  });
+  await ui.navigate("#/r/root-123/local-good");
+  const content = ui.elements.get("content");
+  const trigger = submitButton(content);
+  assert.ok(trigger, "allow_post must show Submit Review");
+  await trigger.dispatch("click");
+  await ui.flush();
+  const dialog = descendants(ui.body).find(
+    (e) => e.attributes && e.attributes["aria-label"] === "Submit Review",
+  );
+  assert.ok(dialog, "click must open the confirmation modal");
+  assert.ok(dialog.textContent.includes(`Bundle local-good`));
+  assert.ok(dialog.textContent.includes(digest));
+  const confirm = firstButton(ui.body, "Confirm & Submit Review");
+  assert.ok(confirm, "modal must offer Confirm & Submit Review");
+  assert.equal(confirm.disabled, false);
+  await confirm.dispatch("click");
+  await ui.flush();
+  const sent = ui.fetches.find((item) => item.path === "/v1/post/submit");
+  assert.ok(sent, "confirm must post the submit");
+  assert.equal(sent.options.method, "POST");
+  assert.equal(sent.options.headers["X-Verdict-CSRF"], "csrf-test-token");
+  assert.deepEqual(JSON.parse(sent.options.body), {
+    root: "root-123",
+    bundle: "local-good",
+    preview_digest: digest,
+    preview_nonce: nonce,
+    confirm: true,
+  });
+  assert.ok(ui.body.textContent.includes("Submitted."));
+});
+
+test("Cancel on the Submit Review modal posts nothing", async () => {
+  const ui = await createUI({
+    interactive: true,
+    allowPost: true,
+    csrf: "csrf-test-token",
+    respond: async (path) => {
+      if (path === "/v1/jobs/post-preview") {
+        return {
+          body: {
+            data: {
+              id: "job-preview",
+              kind: "post-preview",
+              root: "root-123",
+              bundle: "local-good",
+              status: "succeeded",
+              result: {
+                dry_run: true,
+                event: "COMMENT",
+                anchors: { kept: 1, moved: 0 },
+                findings: { open: 1, deferred: 0, addressed: 0 },
+                preview_digest: "c".repeat(64),
+                preview_nonce: "d".repeat(32),
+              },
+            },
+            error: null,
+          },
+        };
+      }
+      return { body: detailFixtures().get(path) || envelope({}) };
+    },
+  });
+  await ui.navigate("#/r/root-123/local-good");
+  await submitButton(ui.elements.get("content")).dispatch("click");
+  await ui.flush();
+  const cancel = firstButton(ui.body, "Cancel");
+  assert.ok(cancel, "modal must offer Cancel");
+  await cancel.dispatch("click");
+  await ui.flush();
+  assert.equal(
+    ui.fetches.filter((item) => item.path === "/v1/post/submit").length,
+    0,
+  );
+  assert.equal(
+    descendants(ui.body).filter(
+      (e) => e.attributes && e.attributes["aria-label"] === "Submit Review",
+    ).length,
+    0,
   );
 });

@@ -55,6 +55,7 @@ const (
 	flagRediscover  = "--rediscover"
 	flagNoRegistry  = "--no-registry"
 	flagInteractive = "--interactive"
+	flagAllowPost   = "--allow-post"
 
 	codeBadRoot           = "bad-root"
 	codeServeListenFailed = "serve-listen-failed"
@@ -70,13 +71,14 @@ func (e startError) Error() string { return string(e) }
 
 // Start-up sentinels.
 var (
-	errNoRoot        error = startError("serve: no root to serve")
-	errNoListener    error = startError("serve: listener is not bound")
-	errRange         error = startError("value out of range")
-	errWatchInterval error = startError("serve: --interval must be at least 100ms")
-	errWatchSweep    error = startError("serve: --sweep must be at least 100ms")
-	errWatchOrder    error = startError("serve: --sweep must be at least --interval")
-	errNoChanges     error = startError("serve: layer has no change stream; disable watch to serve it")
+	errAllowPostNeedsInteractive error = startError("serve: --allow-post requires --interactive")
+	errNoRoot                    error = startError("serve: no root to serve")
+	errNoListener                error = startError("serve: listener is not bound")
+	errRange                     error = startError("value out of range")
+	errWatchInterval             error = startError("serve: --interval must be at least 100ms")
+	errWatchSweep                error = startError("serve: --sweep must be at least 100ms")
+	errWatchOrder                error = startError("serve: --sweep must be at least --interval")
+	errNoChanges                 error = startError("serve: layer has no change stream; disable watch to serve it")
 )
 
 // Layer is the read model the transport serves. The query package implements
@@ -118,8 +120,10 @@ type Config struct { //nolint:govet // start snapshot; field order mirrors the f
 	Now               func() time.Time
 	Layer             Layer
 	Interactive       bool
+	AllowPost         bool
 	VerifyRunner      VerifyRunner
 	PostPreviewRunner PostPreviewRunner
+	PostSubmitRunner  PostSubmitRunner
 	LockWait          time.Duration
 }
 
@@ -143,12 +147,17 @@ type Server struct { //nolint:govet // grouped by listener, allowlists, and inje
 	origins           map[string]bool
 	verifyRunner      VerifyRunner
 	postPreviewRunner PostPreviewRunner
+	postSubmitRunner  PostSubmitRunner
+	previews          *previewStore
 	jobs              *jobManager
 }
 
 // New builds a server over one root (or the injected layer) and mints its
 // token when none was supplied.
 func New(cfg *Config) (*Server, error) {
+	if err := validateStartConfig(cfg); err != nil {
+		return nil, err
+	}
 	applyServerDefaults(cfg)
 	layer, err := configuredLayer(cfg)
 	if err != nil {
@@ -175,6 +184,8 @@ func New(cfg *Config) (*Server, error) {
 		events:            newEventBroker(),
 		verifyRunner:      cfg.VerifyRunner,
 		postPreviewRunner: cfg.PostPreviewRunner,
+		postSubmitRunner:  cfg.PostSubmitRunner,
+		previews:          newPreviewStore(),
 	}
 	if server.verifyRunner == nil {
 		server.verifyRunner = prodVerifyRunner
@@ -182,9 +193,20 @@ func New(cfg *Config) (*Server, error) {
 	if server.postPreviewRunner == nil {
 		server.postPreviewRunner = prodPostPreviewRunner
 	}
+	if server.postSubmitRunner == nil {
+		server.postSubmitRunner = prodPostSubmitRunner
+	}
 	server.jobs = newJobManager(server)
 	server.refreshAllowlists()
 	return server, nil
+}
+
+// validateStartConfig checks the opt-in ladder before any layer exists.
+func validateStartConfig(cfg *Config) error {
+	if cfg.AllowPost && !cfg.Interactive {
+		return errAllowPostNeedsInteractive
+	}
+	return nil
 }
 
 func applyServerDefaults(cfg *Config) {
@@ -390,6 +412,7 @@ type serveOptions struct { //nolint:govet // field order mirrors the flag table
 	depth, maxVisits, maxRepos int
 	rediscover, noRegistry     bool
 	interactive                bool
+	allowPost                  bool
 	interval                   time.Duration
 	sweep                      time.Duration
 	noWatch                    bool
@@ -492,9 +515,12 @@ func start(
 		Root: root, Host: opts.host, Port: opts.port, Token: opts.token,
 		Check: opts.check, MaxBundles: opts.maxBundles, Interval: opts.interval,
 		Sweep: opts.sweep, NoWatch: opts.noWatch, Version: req.Version, Now: r.Now,
-		Layer: opts.layer, Interactive: opts.interactive,
+		Layer: opts.layer, Interactive: opts.interactive, AllowPost: opts.allowPost,
 	})
 	if err != nil {
+		if errors.Is(err, errAllowPostNeedsInteractive) {
+			return nil, r.Refuse(&cli.RefusalError{Code: "bad-flags", Message: err.Error()}), false
+		}
 		return nil, r.Refuse(&cli.RefusalError{Code: codeServeListenFailed, Message: err.Error()}), false
 	}
 	if err := server.Listen(ctx); err != nil {
@@ -521,7 +547,9 @@ func announce(r *cli.Runner, server *Server) {
 	}
 	fmt.Fprintln(r.Human, "serve: "+server.URL())
 	posture := "read-only; Ctrl-C stops"
-	if server.cfg.Interactive {
+	if server.cfg.Interactive && server.cfg.AllowPost {
+		posture = "interactive with host posting enabled; Ctrl-C stops"
+	} else if server.cfg.Interactive {
 		posture = "interactive (local triage & KB writes enabled); Ctrl-C stops"
 	}
 	fmt.Fprintln(r.Diag, "serve: listening on "+server.Addr()+" ("+posture+")")
@@ -606,6 +634,9 @@ func parseFlag(r *cli.Runner, opts *serveOptions, args []string, i int) (int, in
 	case flagInteractive:
 		opts.interactive = true
 		return i, 0, false
+	case flagAllowPost:
+		opts.allowPost = true
+		return i, 0, false
 	case flagRoot, flagHost, flagPort, flagToken, flagCheck, flagMaxBundles, flagInterval, flagSweep,
 		flagDepth, flagMaxVisits, flagMaxRepos:
 		value, next, uerr := cli.FlagValue(args, i, name, flagWants(name))
@@ -618,7 +649,7 @@ func parseFlag(r *cli.Runner, opts *serveOptions, args []string, i int) (int, in
 		return i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
 			"unknown flag '%s' for serve (want --root, --depth, --max-visits, --max-repos, "+
 				"--rediscover, --no-registry, --host, --port, --token, --check, --max-bundles, "+
-				"--interval, --sweep, --no-watch, --interactive, --json)", name)}), true
+				"--interval, --sweep, --no-watch, --interactive, --allow-post, --json)", name)}), true
 	}
 }
 

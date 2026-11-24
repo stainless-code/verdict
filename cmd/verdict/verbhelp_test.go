@@ -58,7 +58,9 @@ func TestServeUsageListsEventsRoute(t *testing.T) {
 		"    no writes unless --interactive adds POST /v1/triage and POST /v1/kb/promote (local\n" +
 		"    triage and KB promotion through the same services the CLI calls, gated by the\n" +
 		"    per-session X-Verdict-CSRF token /v1/health publishes, a present allowlisted Origin,\n" +
-		"    and strict application/json bodies); Ctrl-C exits 3.\n"
+		"    and strict application/json bodies); --allow-post (requiring --interactive) adds\n" +
+		"    POST /v1/post/submit, the confirmation-gated host posting route through core/post;\n" +
+		"    Ctrl-C exits 3.\n"
 	if !strings.Contains(usageText(), want) {
 		t.Fatalf("serve usage route line = %q, want %q", usageText(), want)
 	}

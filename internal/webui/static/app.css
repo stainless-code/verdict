@@ -204,6 +204,39 @@ noscript {
 .job-status {
   margin: 0 0 0.5rem;
 }
+.submit-modal {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+  padding: 1rem;
+}
+.submit-dialog {
+  max-width: 32rem;
+  width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  background: var(--panel);
+  padding: 1rem 1.2rem;
+}
+.submit-dialog h2 {
+  margin-top: 0;
+}
+.submit-dialog button {
+  margin: 0.4rem 0.4rem 0 0;
+}
+.submit-dialog button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+.submit-status {
+  color: var(--muted);
+}
+.submit-details {
+  margin: 0.6rem 0;
+}
 .triage input[type="text"],
 .triage input:not([type]),
 .kb-promote input {
