@@ -34,6 +34,7 @@ import (
 )
 
 type bindings struct { //nolint:govet // grouping documents the injection surface; alignment is irrelevant
+	version   string
 	env       map[string]string
 	now       func() time.Time
 	progress  core.Progress

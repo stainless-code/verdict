@@ -210,6 +210,12 @@ Cause: `adopt` got no (or a bad) `--from` local slug, or `ingest --from` named a
 
 Fix: for `adopt`, pass `--from <local-slug>` pointing at a `.verdict/state/local-*` directory carrying `findings.json`. For `ingest`, pass `--from sarif <file|->`; that is the one format it reads.
 
+## `bad-glob`
+
+Cause: a bundle-listing pattern is not a portable repository-relative glob — it is absolute, escapes with `..`, carries an empty segment, or carries a backslash.
+
+Fix: pass a portable `/`-separated glob (for example `local-*`), or omit the pattern to list every bundle.
+
 ## `bad-group-validation`
 
 Cause: `verify --group` is missing `--group` or `--command`, or the group id cannot name a confined receipt file.
@@ -1053,6 +1059,12 @@ Fix: add a `verifyCmd` to the patch claim, then re-run `verify`.
 Cause: the command needs a git worktree and this directory is not one.
 
 Fix: run inside a git worktree, then re-run.
+
+## `not-found`
+
+Cause: the MCP dashboard query named a bundle this served root does not hold.
+
+Fix: list bundles with `query-bundles` first, then re-issue the call with the right bundle name.
 
 ## `not-local`
 

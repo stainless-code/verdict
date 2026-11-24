@@ -21,12 +21,14 @@ func mcpUsageText() string {
 		"  Protocol: initialize, notifications/initialized, tools/list, tools/call, ping,\n" +
 		"  notifications/cancelled. The process exits when stdin closes: no daemon, no HTTP.\n" + //nolint:misspell // MCP method name
 		"  --read-only  expose read tools plus record dry_run (report, next, show, risk, handoff, journal,\n" +
-		"               trend, index, pr_wait, ready, doctor, check-tree, config, pack, record)\n" +
+		"               trend, index, pr_wait, ready, doctor, check-tree, config, pack, record, query-bundles,\n" +
+		"               query-copy, query-cost, query-finding, query-findings, query-health)\n" +
 		"  --operator   also expose the human-owned `triage` tool; mutually exclusive with --read-only\n" +
 		"\n" +
-		"  Default tools (26): adopt, calibrate, check-tree, config, doctor, fetch, fetch-local, fix,\n" +
-		"  handoff, index, ingest, init, journal, learn, next, pack, post, pr_wait, ready, record, report,\n" +
-		"  risk, show, threads, trend, verify.\n" +
+		"  Default tools (32): adopt, calibrate, check-tree, config, doctor, fetch, fetch-local, fix,\n" +
+		"  handoff, index, ingest, init, journal, learn, next, pack, post, pr_wait, query-bundles, query-copy,\n" +
+		"  query-cost, query-finding, query-findings, query-health, ready, record, report, risk, show, threads,\n" +
+		"  trend, verify.\n" +
 		"  `triage` joins\n" +
 		"  them only with --operator: status flips are human-owned, and agents propose `triage[]`\n" +
 		"  in review.json instead.\n" +
