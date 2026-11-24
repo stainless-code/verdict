@@ -86,6 +86,7 @@ type Layer interface {
 	Roots(ctx context.Context) *query.View
 	Bundles(ctx context.Context, pattern string) (*query.View, error)
 	Detail(ctx context.Context, rootID, bundle string) (*query.View, error)
+	Diff(ctx context.Context, rootID, bundle string) (*query.View, error)
 	Compare(ctx context.Context, rootID, bundle, baseline string) (*query.View, error)
 	Copy(ctx context.Context, rootID, bundle, sig string) (*query.View, error)
 	Show(ctx context.Context, rootID, bundle, sig string) (*query.View, error)

@@ -1440,3 +1440,8 @@ func getHealth(t *testing.T, addr, token string) {
 func (l *blockingLayer) Reproduction(context.Context, string, string, string) ([]byte, error) {
 	return nil, query.ErrNotFound
 }
+
+// Diff reports the bundle missing.
+func (l *blockingLayer) Diff(context.Context, string, string) (*query.View, error) {
+	return nil, query.ErrNotFound
+}

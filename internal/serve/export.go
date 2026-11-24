@@ -109,6 +109,9 @@ func snapshotData(ctx context.Context, layer Layer, now time.Time) ([]byte, erro
 	if err := data.details(ctx, layer, bundles); err != nil {
 		return nil, err
 	}
+	if err := data.diffs(ctx, layer, bundles); err != nil {
+		return nil, err
+	}
 	return data.bytes(), nil
 }
 
@@ -143,6 +146,29 @@ func (s htmlSnapshot) details(ctx context.Context, layer Layer, bundles *query.V
 		bundle := exportString(row, "bundle")
 		route := "/v1/roots/" + url.PathEscape(root) + "/bundles/" + url.PathEscape(bundle)
 		view, err := layer.Detail(ctx, root, bundle)
+		view = detailExportView(view, bundles.At, bundle)
+		if err := s.add(route, view, err); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s htmlSnapshot) diffs(ctx context.Context, layer Layer, bundles *query.View) error {
+	value, _ := bundles.Data.Get("rows")
+	rows, ok := value.([]any)
+	if !ok && value != nil {
+		return exportFailure(errors.New("unexpected bundle listing"))
+	}
+	for _, value := range rows {
+		row, ok := value.(*jq.Obj)
+		if !ok {
+			return exportFailure(errors.New("unexpected bundle row"))
+		}
+		root := exportString(row, "root")
+		bundle := exportString(row, "bundle")
+		route := "/v1/roots/" + url.PathEscape(root) + "/bundles/" + url.PathEscape(bundle) + "/diff"
+		view, err := layer.Diff(ctx, root, bundle)
 		view = detailExportView(view, bundles.At, bundle)
 		if err := s.add(route, view, err); err != nil {
 			return err
