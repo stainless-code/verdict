@@ -41,6 +41,45 @@ type Review struct { //nolint:govet // field order is the published property ord
 	Suppressed      []Suppression       `json:"suppressed,omitempty"`
 	Risk            *RiskClaim          `anyOf:"null"                      json:"risk,omitempty"      optional:"true"`
 	SecuritySummary *string             `json:"security_summary,omitempty"`
+	Diagram         *ReviewDiagram      `anyOf:"null"                      json:"diagram,omitempty"   optional:"true"`
+}
+
+// ReviewDiagram is the optional behavioral diagram a review supplies: nodes
+// and edges that each cite the NEW-side diff line (added or context) they
+// stand for. There is no raw mermaid input — verdict checks every quote
+// against the pinned diff and renders the block itself, dropping what does
+// not anchor. The check proves each cited line exists; the relation an edge
+// draws remains the agent's claim. `type` is the only supported vocabulary:
+// a sequence of steps, a state lifecycle, or a flow of control.
+//
+// The published schema fixes the shape — field types, required keys, closed
+// objects, and the spec_checks evidence — but not the values the runtime
+// tolerates: an out-of-scope type, an empty node list, or an over-long title,
+// label, or id is a diagram-invalid warning with a documented outcome (the
+// block omitted, the value truncated, the element dropped), never a refusal,
+// so a schema-validating client accepts every review the CLI accepts.
+type ReviewDiagram struct {
+	Type  string        `json:"type"`
+	Title string        `json:"title,omitempty"`
+	Nodes []DiagramNode `json:"nodes"`
+	Edges []DiagramEdge `json:"edges,omitempty"`
+}
+
+// DiagramNode is one actor, state, or step, anchored to the diff line it
+// stands for. Evidence is the spec_checks evidence shape, byte for byte, so
+// one quote vocabulary covers every element of review.json an agent anchors.
+type DiagramNode struct {
+	ID       string       `json:"id"`
+	Label    string       `json:"label"`
+	Evidence SpecEvidence `json:"evidence"`
+}
+
+// DiagramEdge is one transition between two nodes, anchored to its own line.
+type DiagramEdge struct {
+	From     string       `json:"from"`
+	To       string       `json:"to"`
+	Label    string       `json:"label,omitempty"`
+	Evidence SpecEvidence `json:"evidence"`
 }
 
 // Reproduction names a bundle-relative source and its rerun command.

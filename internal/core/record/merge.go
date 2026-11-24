@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/coverage"
+	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/evidence"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -31,6 +32,7 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	review          *jq.Obj
 	coverage        *coverage.Summary
 	evidence        *core.EvidenceReceipt
+	diagram         diagram.Result
 	controls        *controls.Snapshot
 	run             *config.RunState
 	kb              *kb.Ctx

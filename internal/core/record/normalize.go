@@ -621,7 +621,7 @@ var (
 
 	topOptionalKeys = map[string]bool{
 		fieldResolved: true, fieldTriage: true, fieldCoverage: true, suppressedKey: true,
-		"spec_checks": true, "receipts": true, problemSummary: true,
+		"spec_checks": true, "receipts": true, problemSummary: true, fieldDiagram: true,
 		fieldSecuritySummary: true, fieldRisk: true, fieldChunks: true,
 	}
 	commentOptionalKeys = map[string]bool{

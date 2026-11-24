@@ -148,7 +148,8 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	// each finding's quote standing, and the entries read that stamp, so the
 	// stored verification and the receipt are one calculation.
 	execution := panelcore.CheckExecution(st.dir, in.Review)
-	st.evidence = checkBundleEvidence(st.dir, in.Review)
+	evidence := checkBundleEvidence(st.dir, in.Review, st.effective.AnchoredDiagram())
+	st.evidence, st.diagram = evidence.receipt, evidence.diagram
 	if err := st.validateAndMerge(); err != nil {
 		return MergeResult{}, err
 	}
@@ -185,7 +186,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		Receipts:     reviewdoc.ReceiptsTyped(in.Review),
 		Verification: verification,
 		Validation:   st.validation,
-		Diagram:      diagram.Status{State: "absent"},
+		Diagram:      st.diagramStatus(),
 		Entries:      st.entries,
 		Kept:         st.kept,
 		KeptSigs:     st.keptSigs,
@@ -233,8 +234,24 @@ func (st *state) buildRenderInput(
 		Now:          st.now,
 		BundleMeta:   reviewdoc.LoadBundleMeta(st.dir, st.headFull),
 		Topology:     st.topologyBlock(),
+		Diagram:      st.diagramBlock(),
 		FixPrompt:    st.effective.PublishFixPrompt == core.FlagOn,
 	}
+}
+
+// diagramBlock renders the agent's evidence-checked behavioral diagram, or ""
+// when there is none — including with the knob off, where the evidence pass
+// never settled one. The block is settled bytes: Render never reads the disk
+// and never re-verifies a quote.
+func (st *state) diagramBlock() string {
+	return st.diagram.Block()
+}
+
+// diagramStatus is the disposition the body carries: absent whenever nothing
+// was settled, which the knob-off merge guarantees whatever the review
+// supplied.
+func (st *state) diagramStatus() diagram.Status {
+	return st.diagram.Status()
 }
 
 // topologyBlock renders the structural topology the body carries, or "" when

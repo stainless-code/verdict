@@ -62,13 +62,13 @@ func checkPhase(dir string, normalized []byte, repairs []Problem, discovery bool
 // checker's, and a stale-head or normalized-fence warning refusing under
 // --strict must not depend on how many quotes failed.
 func withPhaseEvidence(dir string, normalized []byte, res CheckResult, discovery bool) CheckResult {
-	receipt, problems := phaseEvidenceOf(dir, normalized, discovery)
-	if receipt == nil {
+	out := phaseEvidenceOf(dir, normalized, discovery)
+	if out.receipt == nil {
 		return res
 	}
-	check := &EvidenceCheck{Receipt: receipt, Problems: problems}
-	for i := range problems {
-		if problems[i].Level == core.ProblemLevelError {
+	check := &EvidenceCheck{Receipt: out.receipt, Problems: out.problems}
+	for i := range out.problems {
+		if out.problems[i].Level == core.ProblemLevelError {
 			check.Errors++
 		}
 	}

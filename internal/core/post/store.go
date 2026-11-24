@@ -68,26 +68,11 @@ func strOrNilPost(v any) *string {
 	return nil
 }
 
-func postDiagramValue(dstat *diagram.Status) any {
-	if dstat.State == "absent" {
-		return nil
-	}
-	var keyword, note any
-	if dstat.Keyword != "" {
-		keyword = dstat.Keyword
-	}
-	if dstat.Note != "" {
-		note = dstat.Note
-	}
-	return jq.NewObj(
-		"status", dstat.State,
-		"blocks", dstat.Blocks,
-		"keyword", keyword,
-		"wrapped", dstat.Wrapped,
-		"collapsed", dstat.Collapsed,
-		"detail", dstat.Detail,
-		"note", note,
-	)
+// postDiagramValue projects the settled behavioral diagram into the dry-run
+// receipt: null when no block is drawn, else the state plus the fields
+// evidence.diagram stores.
+func postDiagramValue(dstat *diagram.Status) *core.PostDiagram {
+	return dstat.Post()
 }
 
 func postCounts(entries []any) (open, deferred, addressed int) {

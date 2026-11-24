@@ -480,16 +480,31 @@ func TestJobSSEPublishesLifecycle(t *testing.T) {
 	ts, server := interactiveJobServer(t, testLayer(root, nil), runner, okPostPreviewRunner())
 	stream := openJobSSE(t, ts)
 	defer func() { _ = stream.Body.Close() }()
+	// A stalled read has no deadline of its own; closing the body turns a
+	// missing frame into a failed read instead of the suite's global timeout.
+	watchdog := time.AfterFunc(15*time.Second, func() { _ = stream.Body.Close() })
+	defer watchdog.Stop()
+	reader := bufio.NewReader(stream.Body)
 	rootID := rootIDOf(t, ts, bearer())
 	id := createVerifyJob(t, ts, server, rootID)
 	<-started
+	// The stream keeps only the newest frame per client, so a job released
+	// before its running frame is read can settle first and replace it.
+	// setStatus publishes running before the runner starts and nothing else
+	// publishes until release, so running is the frame waiting in the stream.
+	statuses := readJobEventsUntil(t, reader, id, nil, func(status string) bool { return status == jobStatusRunning })
 	close(release)
-	statuses := readJobEvents(t, stream, id)
-	for _, want := range []string{jobStatusQueued, jobStatusRunning, jobStatusSucceeded} {
-		found := slices.Contains(statuses, want)
-		if !found {
-			t.Errorf("SSE statuses = %v, missing %s", statuses, want)
-		}
+	statuses = readJobEventsUntil(t, reader, id, statuses, isTerminal)
+	// queued is best effort: a client that reads after running replaced it
+	// legitimately never sees it, so only the observed order is pinned.
+	if last := statuses[len(statuses)-1]; last != jobStatusSucceeded {
+		t.Errorf("SSE statuses = %v, want terminal %s", statuses, jobStatusSucceeded)
+	}
+	if !slices.Contains(statuses, jobStatusRunning) {
+		t.Errorf("SSE statuses = %v, missing %s", statuses, jobStatusRunning)
+	}
+	if i := slices.Index(statuses, jobStatusQueued); i > 0 {
+		t.Errorf("SSE statuses = %v, queued must come first", statuses)
 	}
 }
 
@@ -513,21 +528,23 @@ func openJobSSE(t *testing.T, ts *httptest.Server) *http.Response {
 	return resp
 }
 
-// readJobEvents drains the stream until one job reaches a terminal event.
-func readJobEvents(t *testing.T, resp *http.Response, id string) []string {
+// readJobEventsUntil appends the job's statuses to statuses until one
+// satisfies stop, failing when the stream ends or yields too many frames.
+func readJobEventsUntil(
+	t *testing.T, reader *bufio.Reader, id string, statuses []string, stop func(string) bool,
+) []string {
 	t.Helper()
-	reader := bufio.NewReader(resp.Body)
-	var statuses []string
 	for range 40 {
 		status := readOneJobStatus(t, reader, id, statuses)
-		if status != "" {
-			statuses = append(statuses, status)
-			if isTerminal(status) {
-				return statuses
-			}
+		if status == "" {
+			continue
+		}
+		statuses = append(statuses, status)
+		if stop(status) {
+			return statuses
 		}
 	}
-	t.Fatalf("job %s never reached a terminal SSE event (statuses %v)", id, statuses)
+	t.Fatalf("job %s never reached the awaited SSE event (statuses %v)", id, statuses)
 	return statuses
 }
 
