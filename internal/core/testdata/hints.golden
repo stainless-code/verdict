@@ -32,6 +32,7 @@ bad-config	try: re-run with one of the valid values named above
 bad-config-credentials	try: re-run with one of the valid values named above
 bad-flags	try: re-run with one of the valid values named above
 bad-from	try: name a supported source (ingest: sarif; adopt: a local bundle slug)
+bad-glob	try: pass a portable repository-relative glob (no .., no absolute path, no backslash)
 bad-group-validation	try: re-run with one of the valid values named above
 bad-id	try: re-run with one of the valid values named above
 bad-ignore	try: use one glob per line, # comments and ! to re-include, then re-fetch

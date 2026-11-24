@@ -59,6 +59,7 @@ var refusalCodes = []string{
 	"bad-config-credentials",
 	"bad-flags",
 	"bad-from",
+	"bad-glob",
 	"bad-group-validation",
 	"bad-id",
 	"bad-ignore",

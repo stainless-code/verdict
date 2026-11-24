@@ -43,15 +43,6 @@ var queryResourceTemplates = []resourceTemplateDescriptor{
 	{URITemplate: "verdict://precision/{by}", Name: "precision-by", MIMEType: mimeJSON},
 }
 
-// queryResourceURIs lists the static dashboard reads in served order.
-func queryResourceURIs() []string {
-	out := make([]string, 0, len(queryStaticResources))
-	for _, res := range queryStaticResources {
-		out = append(out, res.URI)
-	}
-	return out
-}
-
 func (s *Server) handleResourcesList(ctx context.Context, req *rpcRequest) {
 	if len(req.ID) == 0 {
 		return
@@ -146,8 +137,7 @@ func (s *Server) writeDashboardError(id json.RawMessage, uri string, err error) 
 		return
 	}
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
-		s.writeErrorData(id, codeInvalidParams, ref.Code+": "+ref.Message,
-			map[string]any{"code": ref.Code, "message": ref.Message})
+		s.writeErrorData(id, codeInvalidParams, ref.Code+": "+ref.Message, refusalData(ref))
 		return
 	}
 	s.logf("query resource: %v", err)

@@ -10,9 +10,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/core/query"
 )
 
 const (
@@ -183,6 +186,68 @@ func TestQueryToolsCostByModel(t *testing.T) {
 	}
 }
 
+// TestQueryVocabularyDrivesRouting pins that the by-vocabulary the query
+// layer owns is the vocabulary the MCP surface serves: every declared cost
+// and precision dimension is a valid resource URI, and the query-cost
+// schema enum is exactly the layer's cost vocabulary.
+//
+//nolint:gocognit,revive,cyclop // the vocabulary matrix reads as one assertion block
+func TestQueryVocabularyDrivesRouting(t *testing.T) {
+	t.Parallel()
+	for _, dim := range query.CostDimensions() {
+		q, ok := parseQueryURI("verdict://cost/" + dim)
+		if !ok || q.by != dim {
+			t.Errorf("cost URI for %q = %+v, %v; want the dimension %q", dim, q, ok, dim)
+		}
+	}
+	for _, dim := range query.PrecisionDimensions() {
+		q, ok := parseQueryURI("verdict://precision/" + dim)
+		if !ok || q.by != dim {
+			t.Errorf("precision URI for %q = %+v, %v; want the dimension %q", dim, q, ok, dim)
+		}
+	}
+	if q, ok := parseQueryURI("verdict://cost"); !ok || q.by != query.DefaultCostBy {
+		t.Errorf("bare cost URI = %+v, %v; want the default %q", q, ok, query.DefaultCostBy)
+	}
+	if got := query.CostDimensions(); !slices.Contains(got, query.DefaultCostBy) {
+		t.Errorf("cost vocabulary = %v, want it to contain the default %q", got, query.DefaultCostBy)
+	}
+	if _, ok := parseQueryURI("verdict://cost/bogus"); ok {
+		t.Error("cost URI for an undeclared dimension parsed; want resource-not-found")
+	}
+	if _, ok := parseQueryURI("verdict://precision/bogus"); ok {
+		t.Error("precision URI for an undeclared dimension parsed; want resource-not-found")
+	}
+	dims := query.CostDimensions()
+	dims[0] = "mutated"
+	if got := query.CostDimensions(); got[0] == "mutated" {
+		t.Errorf("cost vocabulary followed a mutated slice: %v", got)
+	}
+	props, ok := inputSchema(findTool(t, "query-cost"))[schemaProperties].(map[string]any)
+	if !ok {
+		t.Fatal("query-cost schema has no properties")
+	}
+	by, ok := props["by"].(map[string]any)
+	if !ok {
+		t.Fatalf("query-cost by property = %T, want an object", props["by"])
+	}
+	enum, ok := by[schemaEnum].([]any)
+	if !ok {
+		t.Fatalf("query-cost by enum = %T, want a list", by[schemaEnum])
+	}
+	got := make([]string, 0, len(enum))
+	for _, value := range enum {
+		text, ok := value.(string)
+		if !ok {
+			t.Fatalf("query-cost by enum value = %T, want a string", value)
+		}
+		got = append(got, text)
+	}
+	if want := query.CostDimensions(); !slices.Equal(got, want) {
+		t.Errorf("query-cost by enum = %v, want the layer vocabulary %v", got, want)
+	}
+}
+
 func TestQueryToolsFindingDetailAndCopy(t *testing.T) {
 	queryFixture(t)
 	cfg := testConfig()
@@ -215,6 +280,7 @@ func TestQueryToolsHealth(t *testing.T) {
 	}
 }
 
+//nolint:gocognit,revive,cyclop // the refusal matrix reads as one assertion block
 func TestQueryToolsRefusals(t *testing.T) {
 	queryFixture(t)
 	cfg := testConfig()
@@ -239,6 +305,28 @@ func TestQueryToolsRefusals(t *testing.T) {
 	}
 	if refusal["code"] != "unknown-sig" {
 		t.Errorf("unknown sig code = %v, want unknown-sig", refusal["code"])
+	}
+	for _, pattern := range []string{"../x", "/abs", "a//b"} {
+		bad := queryCall(t, &cfg, "query-bundles", fmt.Sprintf(`{"pattern":%q}`, pattern))
+		if !bad.IsError {
+			t.Fatalf("pattern %q did not set isError", pattern)
+		}
+		if err := json.Unmarshal(bad.StructuredContent, &refusal); err != nil {
+			t.Fatal(err)
+		}
+		if refusal["code"] != "bad-glob" {
+			t.Errorf("pattern %q code = %v, want bad-glob", pattern, refusal["code"])
+		}
+	}
+	// `[` is a valid literal glob (only `*` is special), so it lists zero
+	// bundles instead of refusing: no bundle is named `[`.
+	bracket := queryCall(t, &cfg, "query-bundles", `{"pattern":"["}`)
+	if bracket.IsError {
+		t.Fatalf("[ refused: %s", bracket.Content[0].Text)
+	}
+	data := queryData(t, bracket)
+	if rows, ok := data["rows"].([]any); !ok || len(rows) != 0 {
+		t.Errorf("[ rows = %v, want zero rows", data["rows"])
 	}
 }
 
@@ -381,6 +469,26 @@ func checkQueryRefusal(t *testing.T, uri string, got frame) {
 	if !strings.Contains(got.Error.Message, uri) && wantCode == codeResourceNotFound {
 		t.Errorf("resources/read %q message = %q, want the URI", uri, got.Error.Message)
 	}
+	if wantCode == codeInvalidParams {
+		checkRefusalHint(t, uri, got)
+	}
+}
+
+// checkRefusalHint pins that a -32602 resource refusal carries the refusal
+// payload's hint alongside its code, exactly as a tool refusal does.
+func checkRefusalHint(t *testing.T, uri string, got frame) {
+	t.Helper()
+	data, ok := got.Error.Data.(map[string]any)
+	if !ok {
+		t.Fatalf("resources/read %q error data = %T, want the refusal payload", uri, got.Error.Data)
+	}
+	hint, ok := data["hint"].(string)
+	if !ok || hint == "" {
+		t.Errorf("resources/read %q error data hint = %v, want a non-empty hint", uri, data["hint"])
+	}
+	if data["code"] != "unknown-sig" {
+		t.Errorf("resources/read %q error data code = %v, want unknown-sig", uri, data["code"])
+	}
 }
 
 // snapshotFiles records every file's size and mtime under dir, so a test
@@ -436,6 +544,28 @@ func TestQueryToolsAreReadOnly(t *testing.T) {
 		result := queryCall(t, &cfg, call[0], call[1])
 		if result.IsError {
 			t.Fatalf("%s refused: %s", call[0], result.Content[0].Text)
+		}
+	}
+	uris := []string{
+		"verdict://roots",
+		"verdict://bundles",
+		"verdict://health",
+		"verdict://cost",
+		"verdict://cost/repo",
+		"verdict://findings/1234",
+		"verdict://finding/1234/" + querySigOpen,
+		"verdict://compare/1234/local-1",
+		"verdict://precision/category",
+	}
+	lines := make([]string, 0, len(uris))
+	for i, uri := range uris {
+		lines = append(lines, fmt.Sprintf(
+			`{"jsonrpc":"2.0","id":%d,"method":"resources/read","params":{"uri":%q}}`, i+1, uri))
+	}
+	frames := serve(t, &cfg, lines...)
+	for i, uri := range uris {
+		if got := frames[strconv.Itoa(i+1)]; got.Error != nil {
+			t.Fatalf("resources/read %s error = %+v", uri, got.Error)
 		}
 	}
 	after := snapshotFiles(t, dir)

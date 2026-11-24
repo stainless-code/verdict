@@ -76,6 +76,7 @@ var hintRules = []HintRule{
 	{codes: []string{"missing-index"}, hint: "try: run 'verdict index build' first"},
 	{codes: []string{"missing-sarif"}, hint: "try: pass an existing SARIF 2.1.0 file with --from sarif <file|->"},
 	{codes: []string{"bad-from"}, hint: "try: name a supported source (ingest: sarif; adopt: a local bundle slug)"},
+	{codes: []string{"bad-glob"}, hint: "try: pass a portable repository-relative glob (no .., no absolute path, no backslash)"},
 	{codes: []string{"bad-sarif"}, hint: "try: pass a valid UTF-8 SARIF 2.1.0 JSON file with repository-relative URIs"},
 	{codes: []string{"sarif-too-large"}, hint: "try: split or trim the SARIF report under 8 MiB before ingesting"},
 	{codes: []string{"ingest-failed"}, hint: "try: confirm the bundle path and SARIF file readability, then re-run"},

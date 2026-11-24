@@ -2252,7 +2252,10 @@ offers `verdict://findings/{bundle}`, `verdict://finding/{bundle}/{sig}`,
 `application/json` content block. A URI outside the `verdict://` grammar and a
 bundle the root does not hold answer `-32002` (resource not found); an
 addressable but missing finding answers `-32602` with the refusal code in
-`error.data`.
+`error.data`. A non-lowercase or otherwise malformed sig in
+`verdict://finding/...` answers `-32002` (the URI grammar only admits
+addressable sigs), while the same sig passed to `query-finding` refuses
+`unknown-sig`.
 
 #### Host config
 

@@ -38,7 +38,7 @@ func TestProcedureSurfacesIgnoreModes(t *testing.T) {
 			cfg.ReadOnly = tc.readOnly
 			cfg.Operator = tc.operator
 			frames := procedureFrames(t, &cfg)
-			checkProcedureSurface(t, tc, frames, len(paths)+len(handoffRefPaths())+len(queryResourceURIs()), len(skillfs.Tasks()), wantPrompt, wantResource)
+			checkProcedureSurface(t, tc, frames, len(paths)+len(handoffRefPaths())+4, len(skillfs.Tasks()), wantPrompt, wantResource)
 			wire := procedureWireFrom(frames)
 			if i == 0 {
 				baseline = wire
@@ -75,6 +75,7 @@ func procedureFrames(t *testing.T, cfg *Config) map[string]frame {
 		`{"jsonrpc":"2.0","id":4,"method":"resources/list"}`,
 		fmt.Sprintf(`{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":%q}}`,
 			resourceURIPrefix+"PROCEDURE.md"),
+		`{"jsonrpc":"2.0","id":6,"method":"resources/templates/list"}`,
 	}
 	frames := serve(t, cfg, lines...)
 	for i := range lines {
@@ -147,6 +148,7 @@ type procedureWire struct {
 	promptGet     json.RawMessage
 	resourcesList json.RawMessage
 	resourceRead  json.RawMessage
+	templatesList json.RawMessage
 }
 
 func procedureWireFrom(frames map[string]frame) procedureWire {
@@ -155,6 +157,7 @@ func procedureWireFrom(frames map[string]frame) procedureWire {
 		promptGet:     frames["3"].Result,
 		resourcesList: frames["4"].Result,
 		resourceRead:  frames["5"].Result,
+		templatesList: frames["6"].Result,
 	}
 }
 
@@ -171,5 +174,8 @@ func checkProcedureWire(t *testing.T, name string, got, want *procedureWire) {
 	}
 	if !bytes.Equal(got.resourceRead, want.resourceRead) {
 		t.Errorf("%s resources/read differs from the default surface", name)
+	}
+	if !bytes.Equal(got.templatesList, want.templatesList) {
+		t.Errorf("%s resources/templates/list differs from the default surface", name)
 	}
 }

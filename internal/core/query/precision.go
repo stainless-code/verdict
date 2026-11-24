@@ -31,7 +31,7 @@ type precisionBucket struct {
 // open and resolved-unfixed outcomes, while fixed remains unmeasured without
 // changed-file evidence.
 func (l *Layer) Precision(ctx context.Context, by string) (*View, error) {
-	if !slices.Contains([]string{precisionCategory, precisionTier}, by) {
+	if !slices.Contains(precisionDimensions, by) {
 		return nil, &core.RefusalError{Code: "bad-by", Message: fmt.Sprintf(
 			"serve precision by %q is unsupported (want category or tier)", by)}
 	}

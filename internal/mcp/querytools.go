@@ -1,7 +1,7 @@
 package mcp
 
 // The dashboard query tools and resources share one read model with
-// `verdict serve`, `verdict query`, and `verdict acp`: every read below
+// `verdict serve` and `verdict acp`: every read below
 // composes through internal/core/query, root-confined and read-only. There
 // is no counting, finding, or cost aggregation logic in this package: the
 // tools and the verdict:// resources are thin renderings of query.View.
@@ -44,7 +44,7 @@ type queryFindingRequest struct {
 }
 
 type queryCostRequest struct {
-	By     string `enum:"repo|week|model" json:"by,omitempty"`
+	By     string `json:"by,omitempty"`
 	layer  *query.Layer
 	rootID string
 }
@@ -117,7 +117,19 @@ func queryLayerFor(root, version string, now func() time.Time) (*query.Layer, st
 	return layer, id
 }
 
+// badGlobRefusal refuses one non-portable bundles pattern with the same
+// code and wording the serve route answers.
+func badGlobRefusal() *core.RefusalError {
+	return &core.RefusalError{
+		Code:    "bad-glob",
+		Message: "pattern must be a portable repository-relative glob (no .., no absolute path, no backslash)",
+	}
+}
+
 func invokeQueryBundles(ctx context.Context, req *queryBundlesRequest) (*jq.Obj, *core.RefusalError) {
+	if req.Pattern != "" && !query.ValidBundleGlob(req.Pattern) {
+		return nil, badGlobRefusal()
+	}
 	view, err := req.layer.Bundles(ctx, req.Pattern)
 	if err != nil {
 		return nil, queryRefusal(err)
@@ -149,12 +161,12 @@ func invokeQueryCopy(ctx context.Context, req *queryFindingRequest) (*jq.Obj, *c
 	return mergeView(view), nil
 }
 
-// defaultCostBy groups spend by model unless the caller names a grouping;
-// it is the third `by` the cost view serves.
-const defaultCostBy = "model"
-
 // findingURIParts counts the segments of verdict://finding/{bundle}/{sig}.
 const findingURIParts = 3
+
+// bundleURIParts counts the segments of the two-segment dashboard kinds:
+// verdict://findings/{bundle}, verdict://cost/{by}, verdict://precision/{by}.
+const bundleURIParts = 2
 
 // compareURIParts counts the segments of verdict://compare/{bundle}/{baseline}.
 const compareURIParts = 3
@@ -162,7 +174,7 @@ const compareURIParts = 3
 func invokeQueryCost(ctx context.Context, req *queryCostRequest) (*jq.Obj, *core.RefusalError) {
 	by := req.By
 	if by == "" {
-		by = defaultCostBy
+		by = query.DefaultCostBy
 	}
 	view, err := req.layer.Cost(ctx, by)
 	if err != nil {
@@ -280,23 +292,23 @@ func fixedQueryURI(parts []string, kind string) (*queryURI, bool) {
 
 func costQueryURI(parts []string) (*queryURI, bool) {
 	if len(parts) == 1 {
-		return &queryURI{kind: kindCost, by: defaultCostBy}, true
+		return &queryURI{kind: kindCost, by: query.DefaultCostBy}, true
 	}
-	if len(parts) == 2 && slices.Contains([]string{"repo", "week", "model"}, parts[1]) {
+	if len(parts) == bundleURIParts && slices.Contains(query.CostDimensions(), parts[1]) {
 		return &queryURI{kind: kindCost, by: parts[1]}, true
 	}
 	return nil, false
 }
 
 func precisionQueryURI(parts []string) (*queryURI, bool) {
-	if len(parts) == 2 && slices.Contains([]string{"category", "tier"}, parts[1]) {
+	if len(parts) == bundleURIParts && slices.Contains(query.PrecisionDimensions(), parts[1]) {
 		return &queryURI{kind: kindPrecision, by: parts[1]}, true
 	}
 	return nil, false
 }
 
 func bundleQueryURI(parts []string, kind string) (*queryURI, bool) {
-	if len(parts) != 2 {
+	if len(parts) != bundleURIParts {
 		return nil, false
 	}
 	return &queryURI{kind: kind, bundle: parts[1]}, true

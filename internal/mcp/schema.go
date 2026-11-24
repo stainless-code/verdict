@@ -7,6 +7,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
+	"github.com/stainless-code/verdict/internal/core/query"
 )
 
 const (
@@ -159,7 +160,8 @@ func fieldSchema(toolName string, sf *reflect.StructField, omit map[string]bool)
 // fieldEnums publishes a tool-specific value list for a field whose Go type
 // carries none, so the transport advertises exactly what it serves.
 var fieldEnums = map[string][]string{
-	"index.Query": indexcore.MCPQueries,
+	"index.Query":   indexcore.MCPQueries,
+	"query-cost.By": query.CostDimensions(),
 }
 
 // applyFieldEnum overrides a struct-tag enum with the tool's own list.

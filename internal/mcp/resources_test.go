@@ -58,9 +58,9 @@ func TestResourcesListInventory(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := append(slices.Clone(paths), handoffRefPaths()...)
-	if len(result.Resources) != len(want)+len(queryResourceURIs()) {
-		t.Fatalf("resources = %d, want the %d served paths plus %d query resources",
-			len(result.Resources), len(want), len(queryResourceURIs()))
+	if len(result.Resources) != len(want)+4 {
+		t.Fatalf("resources = %d, want the %d served paths plus the 4 query resources",
+			len(result.Resources), len(want))
 	}
 	for i, path := range want {
 		checkResourceDescriptor(t, i, path, result.Resources[i])
@@ -70,15 +70,22 @@ func TestResourcesListInventory(t *testing.T) {
 }
 
 // checkQueryDescriptors pins the trailing dashboard reads resources/list
-// serves beside the skill payloads, in served order.
+// serves beside the skill payloads, in served order. The table is literal so
+// a dropped or added static resource fails the test instead of following it.
 func checkQueryDescriptors(t *testing.T, got []resourceDescriptorFrame) {
 	t.Helper()
-	if len(got) != len(queryStaticResources) {
-		t.Fatalf("query resources = %d, want %d", len(got), len(queryStaticResources))
+	want := []resourceDescriptorFrame{
+		{URI: "verdict://roots", Name: "roots", MIMEType: "application/json"},
+		{URI: "verdict://bundles", Name: "bundles", MIMEType: "application/json"},
+		{URI: "verdict://health", Name: "health", MIMEType: "application/json"},
+		{URI: "verdict://cost", Name: "cost", MIMEType: "application/json"},
 	}
-	for i, want := range queryStaticResources {
-		if got[i].URI != want.URI || got[i].Name != want.Name || got[i].MIMEType != want.MIMEType {
-			t.Errorf("query resource %d = %+v, want %+v", i, got[i], want)
+	if len(got) != len(want) {
+		t.Fatalf("query resources = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("query resource %d = %+v, want %+v", i, got[i], want[i])
 		}
 	}
 }
@@ -138,9 +145,9 @@ func TestResourcesListIncludesHandoffRefs(t *testing.T) {
 	}
 	refs := handoffRefPaths()
 	want := append(slices.Clone(paths), refs...)
-	if len(result.Resources) != len(want)+len(queryResourceURIs()) {
-		t.Fatalf("resources = %d, want %d payload and ref paths plus %d query resources",
-			len(result.Resources), len(want), len(queryResourceURIs()))
+	if len(result.Resources) != len(want)+4 {
+		t.Fatalf("resources = %d, want %d payload and ref paths plus the 4 query resources",
+			len(result.Resources), len(want))
 	}
 	for i, path := range want {
 		checkResourceDescriptor(t, i, path, result.Resources[i])
