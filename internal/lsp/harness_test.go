@@ -129,6 +129,9 @@ type session struct {
 	mu      sync.Mutex
 }
 
+// newConfig is a session config whose path walks never run out of budget:
+// a walk the test needs resolved resolves however slow the machine is, and
+// a test that needs a timeout makes one with a gatedEval.
 func newConfig(roots ...string) *Config {
 	return &Config{
 		Version: "1.2.3",
@@ -136,6 +139,7 @@ func newConfig(roots ...string) *Config {
 		Now:     func() time.Time { return fixedNow },
 		Stderr:  io.Discard,
 		NoWatch: true,
+		expire:  func(string) <-chan struct{} { return nil },
 	}
 }
 
