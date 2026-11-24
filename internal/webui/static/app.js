@@ -22,6 +22,10 @@
   // so no write control can render there.
   let interactive = false;
   let csrfToken = "";
+  // The Tier B job drawer shows the most recent job snapshot the SSE
+  // stream published; null until one job has been started.
+  let activeJob = null;
+  let jobDrawer = null;
   const triageStatuses = [
     "open",
     "addressed",
@@ -414,6 +418,155 @@
     return wrapper;
   }
 
+  // jobEnabled gates every Tier B control on the same advertisement the
+  // triage and KB controls read; static exports never start a job.
+  function jobEnabled() {
+    return interactive && mode !== "static";
+  }
+
+  // startJob posts one Tier B action and keeps its snapshot for the
+  // drawer. The response is rendered honestly: a refusal envelope and a
+  // transport failure both land in the status line.
+  async function startJob(path, payload) {
+    try {
+      const { response, body } = await writeJSON(path, payload);
+      if (!response.ok) {
+        message.textContent =
+          body?.message || `Request returned ${response.status}`;
+        message.className = "error";
+        return;
+      }
+      if (body?.error) {
+        message.textContent = body.error.message || "Job refused.";
+        message.className = "error";
+        return;
+      }
+      activeJob = body?.data || null;
+      renderActiveJob();
+      if (!eventSource && activeJob?.id) pollJob(activeJob.id);
+    } catch (error) {
+      message.textContent =
+        error instanceof Error ? error.message : String(error);
+      message.className = "error";
+    }
+  }
+
+  // pollJob is the no-stream fallback: without /v1/events the drawer
+  // reads the status until it settles.
+  async function pollJob(id) {
+    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+    while (
+      activeJob?.id === id &&
+      !["succeeded", "failed", "cancelled"].includes(activeJob.status)
+    ) {
+      await delay(500);
+      try {
+        const response = await fetch(`/v1/jobs/${encodeURIComponent(id)}`, {
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const body = await response.json();
+        if (body?.data?.id !== id) return;
+        activeJob = body.data;
+        renderActiveJob();
+      } catch (_) {
+        return;
+      }
+    }
+  }
+
+  // cancelActiveJob asks the server to stop the active job; the SSE
+  // stream carries the terminal cancelled state back.
+  async function cancelActiveJob() {
+    if (!activeJob?.id) return;
+    try {
+      const { response, body } = await writeJSON(
+        `/v1/jobs/${encodeURIComponent(activeJob.id)}/cancel`,
+        {},
+      );
+      if (!response.ok) {
+        message.textContent =
+          body?.message || `Request returned ${response.status}`;
+        message.className = "error";
+        return;
+      }
+      if (body?.data) {
+        activeJob = body.data;
+        renderActiveJob();
+      }
+    } catch (error) {
+      message.textContent =
+        error instanceof Error ? error.message : String(error);
+      message.className = "error";
+    }
+  }
+
+  // renderActiveJob paints the drawer from the active snapshot: status,
+  // a Cancel while queued or running, the result panel when succeeded,
+  // and the refusal honestly when failed or cancelled.
+  function renderActiveJob() {
+    if (!jobDrawer) return;
+    jobDrawer.replaceChildren();
+    if (!activeJob?.id) {
+      jobDrawer.append(node("p", "No job running."));
+      return;
+    }
+    const snap = activeJob;
+    jobDrawer.append(
+      node("p", `Job ${snap.id} (${snap.kind}) — ${snap.status}`, "job-status"),
+    );
+    if (snap.status === "queued" || snap.status === "running") {
+      const cancel = node("button", "Cancel");
+      cancel.type = "button";
+      cancel.addEventListener("click", () => cancelActiveJob());
+      jobDrawer.append(cancel);
+    }
+    if (snap.error) {
+      jobDrawer.append(
+        node("p", `${snap.error.code}: ${snap.error.message}`, "error"),
+      );
+    }
+    if (snap.result) {
+      jobDrawer.append(objectPanel("Result", snap.result));
+    }
+  }
+
+  // onJobEvent applies one jobs SSE frame to the drawer. A malformed
+  // frame is ignored instead of breaking the status line.
+  function onJobEvent(event) {
+    try {
+      const body = JSON.parse(event.data);
+      const data = envelopeData(body);
+      if (data?.id && (!activeJob || data.id === activeJob.id)) {
+        activeJob = data;
+        renderActiveJob();
+      }
+    } catch (_) {}
+  }
+
+  // jobActionsPanel is the detail view's Tier B panel: the bundle-level
+  // sandbox reproduction and the dry-run post preview, plus the drawer.
+  function jobActionsPanel(root, bundle) {
+    const wrapper = node("div", undefined, "job-actions");
+    const verify = node("button", "Reproduce in sandbox");
+    verify.type = "button";
+    verify.addEventListener("click", () =>
+      startJob("/v1/jobs/verify", { root, bundle }),
+    );
+    const preview = node("button", "Preview PR post");
+    preview.type = "button";
+    preview.addEventListener("click", () =>
+      startJob("/v1/jobs/post-preview", { root, bundle }),
+    );
+    wrapper.append(verify, preview);
+    jobDrawer = node("div", undefined, "job-drawer");
+    jobDrawer.setAttribute("aria-live", "polite");
+    renderActiveJob();
+    wrapper.append(jobDrawer);
+    return wrapper;
+  }
+
   function compareBuckets(root, bundle) {
     const columns = [
       { key: "sig", label: "Signature" },
@@ -620,15 +773,33 @@
         { key: "body", label: "Finding" },
         { key: "suggestion", label: "Suggestion" },
       ];
-      if (interactive && mode !== "static") {
+      if (jobEnabled()) {
         findingColumns.push({
           label: "Triage",
           action: (row, td) => {
             td.append(triageControl(root, bundle, row.sig));
           },
         });
+        findingColumns.push({
+          label: "Sandbox",
+          action: (row, td) => {
+            const button = node("button", "Reproduce");
+            button.type = "button";
+            button.setAttribute(
+              "aria-label",
+              `Reproduce ${row.sig} in sandbox`,
+            );
+            button.addEventListener("click", () =>
+              startJob("/v1/jobs/verify", { root, bundle, sig: row.sig }),
+            );
+            td.append(button);
+          },
+        });
       }
       content.append(table("Findings", findingColumns, items));
+      if (jobEnabled()) {
+        content.append(jobActionsPanel(root, bundle));
+      }
       if (interactive && mode !== "static") {
         content.append(node("h2", "Promote to KB rule"));
         content.append(kbPromoteForm(root));
@@ -912,6 +1083,7 @@
       reconnecting = true;
     });
     eventSource.addEventListener("bundles", () => fetchView());
+    eventSource.addEventListener("jobs", onJobEvent);
   }
 
   refresh.addEventListener("click", () => {

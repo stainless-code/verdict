@@ -1232,3 +1232,188 @@ test("interactive mode promotes a KB rule with the CSRF header", async () => {
     "Promoted rule never-log-secrets to KB.",
   );
 });
+
+// jobButtons names every rendered Tier B control by its button label.
+function jobButtons(root) {
+  return descendants(root).filter(
+    (element) =>
+      element.tagName === "BUTTON" &&
+      [
+        "Reproduce in sandbox",
+        "Preview PR post",
+        "Reproduce",
+        "Cancel",
+      ].includes(element.textContent),
+  );
+}
+
+test("a read-only server renders no job controls", async () => {
+  const ui = await createUI({
+    hash: "#/r/root-123/local-good",
+    respond: respondFrom(detailFixtures()),
+  });
+  assert.deepEqual(jobButtons(ui.elements.get("content")), []);
+  assert.equal(
+    findControl(ui.elements.get("content"), "Reproduce sig-123 in sandbox"),
+    undefined,
+  );
+});
+
+test("static mode never renders job controls, even when the server advertises them", async () => {
+  const ui = await createUI({
+    mode: "static",
+    interactive: true,
+    csrf: "csrf-test-token",
+    hash: "#/r/root-123/local-good",
+    respond: respondFrom(new Map([["/data.json", { [detailPath]: detail }]])),
+  });
+  assert.deepEqual(jobButtons(ui.elements.get("content")), []);
+  assert.equal(
+    findControl(ui.elements.get("content"), "Reproduce sig-123 in sandbox"),
+    undefined,
+  );
+});
+
+test("interactive mode posts a sandbox verify with CSRF and renders SSE status and result", async () => {
+  const queued = {
+    data: {
+      id: "job-1",
+      kind: "verify",
+      root: "root-123",
+      bundle: "local-good",
+      status: "queued",
+    },
+    error: null,
+  };
+  const ui = await createUI({
+    interactive: true,
+    csrf: "csrf-test-token",
+    respond: respondFrom(detailFixtures([["/v1/jobs/verify", queued]])),
+  });
+  await ui.navigate("#/r/root-123/local-good");
+  const content = ui.elements.get("content");
+  assert.ok(firstButton(content, "Reproduce in sandbox"));
+  assert.ok(firstButton(content, "Preview PR post"));
+  await firstButton(content, "Reproduce in sandbox").dispatch("click");
+  const sent = ui.fetches.find((item) => item.path === "/v1/jobs/verify");
+  assert.ok(sent, "verify job was not posted");
+  assert.equal(sent.options.method, "POST");
+  assert.equal(sent.options.headers["Content-Type"], "application/json");
+  assert.equal(sent.options.headers["X-Verdict-CSRF"], "csrf-test-token");
+  assert.deepEqual(JSON.parse(sent.options.body), {
+    root: "root-123",
+    bundle: "local-good",
+  });
+  assert.ok(content.textContent.includes("Job job-1 (verify) — queued"));
+  const source = ui.sources[0];
+  assert.equal(source.url, "/v1/events");
+  source.emit("jobs", {
+    data: JSON.stringify({
+      data: {
+        id: "job-1",
+        kind: "verify",
+        root: "root-123",
+        bundle: "local-good",
+        status: "running",
+      },
+      error: null,
+    }),
+  });
+  await ui.flush();
+  assert.ok(content.textContent.includes("Job job-1 (verify) — running"));
+  assert.ok(firstButton(content, "Cancel"));
+  source.emit("jobs", {
+    data: JSON.stringify({
+      data: {
+        id: "job-1",
+        kind: "verify",
+        root: "root-123",
+        bundle: "local-good",
+        status: "succeeded",
+        result: { exit: 0, sandboxed: true, outputTail: "proof holds" },
+      },
+      error: null,
+    }),
+  });
+  await ui.flush();
+  assert.ok(content.textContent.includes("Job job-1 (verify) — succeeded"));
+  assert.ok(content.textContent.includes("proof holds"));
+  assert.equal(firstButton(content, "Cancel"), undefined);
+});
+
+test("interactive preview posts dry-run and renders the refusal honestly", async () => {
+  const ui = await createUI({
+    interactive: true,
+    csrf: "csrf-test-token",
+    respond: respondFrom(
+      detailFixtures([
+        [
+          "/v1/jobs/post-preview",
+          {
+            data: null,
+            error: {
+              code: "missing-review-file",
+              message: "missing review.json",
+            },
+          },
+        ],
+      ]),
+    ),
+  });
+  await ui.navigate("#/r/root-123/local-good");
+  await firstButton(ui.elements.get("content"), "Preview PR post").dispatch(
+    "click",
+  );
+  const sent = ui.fetches.find((item) => item.path === "/v1/jobs/post-preview");
+  assert.ok(sent, "preview was not posted");
+  assert.equal(sent.options.headers["X-Verdict-CSRF"], "csrf-test-token");
+  assert.deepEqual(JSON.parse(sent.options.body), {
+    root: "root-123",
+    bundle: "local-good",
+  });
+  assert.equal(ui.elements.get("message").textContent, "missing review.json");
+  assert.equal(ui.elements.get("message").className, "error");
+});
+
+test("interactive job cancellation posts cancel with CSRF and renders cancelled", async () => {
+  const queued = {
+    data: {
+      id: "job-1",
+      kind: "post-preview",
+      root: "root-123",
+      bundle: "local-good",
+      status: "queued",
+    },
+    error: null,
+  };
+  const cancelled = {
+    data: {
+      id: "job-1",
+      kind: "post-preview",
+      root: "root-123",
+      bundle: "local-good",
+      status: "cancelled",
+    },
+    error: null,
+  };
+  const ui = await createUI({
+    interactive: true,
+    csrf: "csrf-test-token",
+    respond: async (path) => {
+      if (path === "/v1/jobs/post-preview") return { body: queued };
+      if (path === "/v1/jobs/job-1/cancel") return { body: cancelled };
+      return { body: detailFixtures().get(path) || envelope({}) };
+    },
+  });
+  await ui.navigate("#/r/root-123/local-good");
+  const content = ui.elements.get("content");
+  await firstButton(content, "Preview PR post").dispatch("click");
+  assert.ok(content.textContent.includes("queued"));
+  await firstButton(content, "Cancel").dispatch("click");
+  const sent = ui.fetches.find((item) => item.path === "/v1/jobs/job-1/cancel");
+  assert.ok(sent, "cancel was not posted");
+  assert.equal(sent.options.method, "POST");
+  assert.equal(sent.options.headers["X-Verdict-CSRF"], "csrf-test-token");
+  assert.deepEqual(JSON.parse(sent.options.body), {});
+  assert.ok(content.textContent.includes("cancelled"));
+});

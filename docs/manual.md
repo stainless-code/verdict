@@ -2571,20 +2571,24 @@ than from history.
 
 **Routes** (GET, plus HEAD from the mux):
 
-| Route                                                       | Envelope                                                                                                                                                             |
-| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /v1/health`                                            | `serve` — version, roots, watch state, interval, cache counters, `read_only: true` (`false` with `--interactive`, which also carries `interactive: true` and `csrf`) |
-| `GET /v1/roots`                                             | `serve` — the served roots with counts, `truncated`, `skipped`, `discovery`                                                                                          |
-| `GET /v1/bundles`                                           | `serve` — inbox rows, portfolio counts, `partial`, `sources[]`, `errors[]`                                                                                           |
-| `GET /v1/cost?by=repo\|week\|model`                         | `serve` — cost buckets and totals, with `partial`, `sources[]`, `errors[]`                                                                                           |
-| `GET /v1/precision?by=category\|tier`                       | `serve` — stored-join outcomes; `fixed` is `null` and no rate is printed                                                                                             |
-| `GET /v1/roots/{root}/bundles/{bundle}`                     | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                                                                                                      |
-| `GET /v1/roots/{root}/bundles/{bundle}/compare`             | `serve` — `data.compare` against `?baseline={bundle}`; `bad-baseline` refuses                                                                                        |
-| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}`      | `show` — byte-identical `data` to `show --json`                                                                                                                      |
-| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}/copy` | `serve` — `data.{prompt,triage}` copy payloads (read-only)                                                                                                           |
-| `GET /v1/events`                                            | SSE invalidations; absent with `--no-watch`                                                                                                                          |
-| `POST /v1/triage`                                           | `serve` — `data.{sig,status}`; interactive only (see below)                                                                                                          |
-| `POST /v1/kb/promote`                                       | `serve` — `data.rule` appends one learn rule; interactive only (see below)                                                                                           |
+| Route                                                       | Envelope                                                                                                                                                                                   |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `GET /v1/health`                                            | `serve` — version, roots, watch state, interval, cache counters, `read_only: true` (`false` with `--interactive`, which also carries `interactive: true`, `csrf`, `jobs: true`, `actions`) |
+| `GET /v1/roots`                                             | `serve` — the served roots with counts, `truncated`, `skipped`, `discovery`                                                                                                                |
+| `GET /v1/bundles`                                           | `serve` — inbox rows, portfolio counts, `partial`, `sources[]`, `errors[]`                                                                                                                 |
+| `GET /v1/cost?by=repo\|week\|model`                         | `serve` — cost buckets and totals, with `partial`, `sources[]`, `errors[]`                                                                                                                 |
+| `GET /v1/precision?by=category\|tier`                       | `serve` — stored-join outcomes; `fixed` is `null` and no rate is printed                                                                                                                   |
+| `GET /v1/roots/{root}/bundles/{bundle}`                     | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                                                                                                                            |
+| `GET /v1/roots/{root}/bundles/{bundle}/compare`             | `serve` — `data.compare` against `?baseline={bundle}`; `bad-baseline` refuses                                                                                                              |
+| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}`      | `show` — byte-identical `data` to `show --json`                                                                                                                                            |
+| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}/copy` | `serve` — `data.{prompt,triage}` copy payloads (read-only)                                                                                                                                 |
+| `GET /v1/events`                                            | SSE invalidations; absent with `--no-watch`                                                                                                                                                |
+| `POST /v1/triage`                                           | `serve` — `data.{sig,status}`; interactive only (see below)                                                                                                                                |
+| `POST /v1/kb/promote`                                       | `serve` — `data.rule` appends one learn rule; interactive only (see below)                                                                                                                 |
+| `POST /v1/jobs/verify`                                      | `serve` — queued sandbox verify snapshot; interactive only (see below)                                                                                                                     |
+| `POST /v1/jobs/post-preview`                                | `serve` — queued dry-run preview snapshot; interactive only (see below)                                                                                                                    |
+| `POST /v1/jobs/{id}/cancel`                                 | `serve` — cancelled job snapshot; interactive only (see below)                                                                                                                             |
+| `GET /v1/jobs/{id}`                                         | `serve` — job snapshot; interactive only (see below)                                                                                                                                       |
 
 The `bundles` SSE event carries one compact envelope with the root, detector
 (`tick` or `sweep`), changed and removed bundle names, and `truncated`. Events
@@ -2642,6 +2646,34 @@ envelope (`error.code`), never a `5xx`. The embedded UI shows triage controls
 on Detail and Compare findings and a KB promotion form only when `/v1/health`
 advertises `interactive: true` — never in `static` mode — and reads the
 operator's result or refusal back from the status line.
+
+**Interactive jobs (Tier B).** With `--interactive`, `GET /v1/health` also
+advertises `jobs: true` and `actions: ["verify", "post-preview"]`. Three
+`POST` job routes queue background work, and one `GET` route reads it back:
+`POST /v1/jobs/verify` accepts `root`, `bundle`, and an optional `sig`, then
+runs `verify --sandbox` strictly sandboxed (`Sandbox: true` is hardcoded, the
+CLI default 300-second watchdog, `patch.json` write, query-cache invalidation
+on completion); `POST /v1/jobs/post-preview` accepts `root` and `bundle`,
+then runs `post --dry-run` strictly `DryRun: true`, so no host write can ever
+ship; `POST /v1/jobs/{id}/cancel` cancels a queued or running job through its
+context and answers idempotently; `GET /v1/jobs/{id}` looks up one job under
+the session guard. A `POST` job route answers `202` with the queued snapshot
+(`id`, `kind`, `root`, `bundle`, `sig`, `status`, timestamps); `GET` and
+`cancel` answer `200` with the same snapshot shape. The optional `sig` is
+refused `400 bad-sig` when malformed, and `404 not-found` when it names a
+policy-withheld or absent finding, before any job is queued. Jobs run with
+bounded concurrency (4) and bounded retained history (64), each holding a
+bundle-scoped `storelock` on `findings.json` (distinct from the knowledge-base
+lock, so no lock nesting); a job that cannot take the lock fails as a typed
+`store-busy` refusal without running. Status flows `queued`, `running`, then
+`succeeded`, `failed`, or `cancelled`, streamed on the existing `/v1/events`
+channel as `jobs` SSE events and rendered in the Detail drawer with a `Cancel`
+while active and the result or refusal once settled. The Detail view shows
+`Reproduce in sandbox` (bundle-level, plus a per-finding `Reproduce` carrying
+`sig`) and `Preview PR post` buttons with the live drawer only when
+`interactive` is advertised and the page is not `static`. Every `POST` job
+route is gated exactly like the triage and KB writes (session, CSRF, Origin,
+JSON); without `--interactive` every job path fails closed as read-only.
 
 A path carrying a traversal segment, a backslash, or a line break — a control
 rune, U+2028, or U+2029 — is refused before routing with the `404` `no such

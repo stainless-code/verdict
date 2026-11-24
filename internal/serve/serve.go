@@ -103,40 +103,45 @@ type changeSource interface {
 
 // Config is one server's resolved start state.
 type Config struct { //nolint:govet // start snapshot; field order mirrors the flag table
-	Root        string
-	Host        string
-	Port        int
-	Token       string
-	Check       string
-	MaxBundles  int
-	Interval    time.Duration
-	Sweep       time.Duration
-	NoWatch     bool
-	Heartbeat   time.Duration
-	Version     string
-	Now         func() time.Time
-	Layer       Layer
-	Interactive bool
+	Root              string
+	Host              string
+	Port              int
+	Token             string
+	Check             string
+	MaxBundles        int
+	Interval          time.Duration
+	Sweep             time.Duration
+	NoWatch           bool
+	Heartbeat         time.Duration
+	Version           string
+	Now               func() time.Time
+	Layer             Layer
+	Interactive       bool
+	VerifyRunner      VerifyRunner
+	PostPreviewRunner PostPreviewRunner
 }
 
 // Server is one bound (or about-to-bind) listener. Its route table is the
 // only registration point: a handler outside it cannot exist.
 type Server struct { //nolint:govet // grouped by listener, allowlists, and injected seams
-	cfg          Config
-	token        string
-	csrf         string
-	now          func() time.Time
-	layer        Layer
-	mu           sync.RWMutex
-	listener     net.Listener
-	port         int
-	drainTimeout time.Duration
-	heartbeat    time.Duration
-	streamsDone  chan struct{}
-	streamsStop  sync.Once
-	events       *eventBroker
-	hosts        map[string]bool
-	origins      map[string]bool
+	cfg               Config
+	token             string
+	csrf              string
+	now               func() time.Time
+	layer             Layer
+	mu                sync.RWMutex
+	listener          net.Listener
+	port              int
+	drainTimeout      time.Duration
+	heartbeat         time.Duration
+	streamsDone       chan struct{}
+	streamsStop       sync.Once
+	events            *eventBroker
+	hosts             map[string]bool
+	origins           map[string]bool
+	verifyRunner      VerifyRunner
+	postPreviewRunner PostPreviewRunner
+	jobs              *jobManager
 }
 
 // New builds a server over one root (or the injected layer) and mints its
@@ -156,17 +161,26 @@ func New(cfg *Config) (*Server, error) {
 		csrf = newToken()
 	}
 	server := &Server{
-		cfg:          *cfg,
-		token:        token,
-		csrf:         csrf,
-		now:          cfg.Now,
-		layer:        layer,
-		port:         cfg.Port,
-		drainTimeout: shutdownTimeout,
-		heartbeat:    cfg.Heartbeat,
-		streamsDone:  make(chan struct{}),
-		events:       newEventBroker(),
+		cfg:               *cfg,
+		token:             token,
+		csrf:              csrf,
+		now:               cfg.Now,
+		layer:             layer,
+		port:              cfg.Port,
+		drainTimeout:      shutdownTimeout,
+		heartbeat:         cfg.Heartbeat,
+		streamsDone:       make(chan struct{}),
+		events:            newEventBroker(),
+		verifyRunner:      cfg.VerifyRunner,
+		postPreviewRunner: cfg.PostPreviewRunner,
 	}
+	if server.verifyRunner == nil {
+		server.verifyRunner = prodVerifyRunner
+	}
+	if server.postPreviewRunner == nil {
+		server.postPreviewRunner = prodPostPreviewRunner
+	}
+	server.jobs = newJobManager(server)
 	server.refreshAllowlists()
 	return server, nil
 }
@@ -309,6 +323,7 @@ func (s *Server) Serve(ctx context.Context) error {
 	defer func() {
 		cancelWatch()
 		<-watchDone
+		s.jobs.stop()
 	}()
 	serveErr := make(chan error, 1)
 	go func() { serveErr <- server.Serve(listener) }()
