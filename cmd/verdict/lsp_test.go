@@ -1,12 +1,14 @@
 package main
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/lsp"
 )
 
 // TestLSPDispatchShape pins the registries the transport needs: lsp is a
@@ -114,5 +116,25 @@ func TestLSPSymlinkedRootIsRefused(t *testing.T) {
 	code, out, derr := runCapture(t, []string{"lsp", "--root", link, "--json"})
 	if code != cli.ExitRefused || !strings.Contains(out, `"code": "not-a-repo"`) || !strings.Contains(out, "it resolves to") {
 		t.Fatalf("lsp --root <link out> = exit %d\nstdout: %s\nstderr: %s", code, out, derr)
+	}
+}
+
+// TestLSPExitCodeContract pins the session-to-exit mapping: only a real
+// cancel is 3.
+func TestLSPExitCodeContract(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		err      error
+		canceled bool
+		want     int
+	}{
+		{nil, false, cli.ExitOK},
+		{lsp.ErrExitWithoutShutdown, false, cli.ExitRefused},
+		{errors.New("read stdin: broken"), false, cli.ExitRefused},
+		{nil, true, cli.ExitBroke},
+	} {
+		if got := lspExitCode(tc.canceled, tc.err); got != tc.want {
+			t.Errorf("lspExitCode(%v, %v) = %d, want %d", tc.canceled, tc.err, got, tc.want)
+		}
 	}
 }

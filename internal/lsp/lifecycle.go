@@ -84,12 +84,17 @@ func decodeOption[T any](wire map[string]json.RawMessage, key string, into *T) {
 // handleInitialized composes every root, publishes every path that carries
 // a finding, and starts the watch pump.
 func (s *Server) handleInitialized(ctx context.Context) {
+	s.composeMu.Lock()
 	s.stateMu.Lock()
-	for i := range s.roots {
-		s.compose(ctx, &s.roots[i], true)
+	roots := s.rootsSnapshot()
+	s.stateMu.Unlock()
+	for i := range roots {
+		s.compose(ctx, &roots[i], true)
 	}
+	s.stateMu.Lock()
 	s.republishAll()
 	s.stateMu.Unlock()
+	s.composeMu.Unlock()
 	s.callMu.Lock()
 	defer s.callMu.Unlock()
 	s.startPump(ctx)

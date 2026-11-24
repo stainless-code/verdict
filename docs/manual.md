@@ -2513,7 +2513,9 @@ verdict lsp [--root <dir>]... [--bundle <name>] [--check <tier>] [--max-bundles 
 - `--max-bundles <n>` caps each root's bundle listing (default 500).
 - `--interval <duration>` and `--sweep <duration>` tune the bundle watcher
   (default `1s` and `30s`, each at least `100ms`, the sweep at least the
-  interval); `--no-watch` turns it off.
+  interval); `--no-watch` turns it off. Without the watcher a bundle recorded
+  after the server started is picked up by `verdict.refresh`: a save re-reads
+  only the bundle already selected.
 - `--json` is accepted for CLI-convention parity and changes nothing: stdout
   is LSP either way.
 
@@ -2531,6 +2533,9 @@ Diagnostics move on four triggers and never on a keystroke:
 1. `initialized` composes every root and publishes every path carrying a
    finding, so the editor's problem list fills before a file is opened.
 2. `textDocument/didOpen` publishes that document's set with its version.
+   Every open file document is tracked (text and version, bounded below),
+   under a served root or not, so a root a later workspace-folder change adds
+   publishes it with its version and tightened ranges.
 3. `textDocument/didSave` records the document's version when the client
    sends one and re-reads the selected bundle of every root that reaches the
    file; an unchanged bundle republishes only that document, and nothing at
@@ -2545,7 +2550,11 @@ Diagnostics move on four triggers and never on a keystroke:
 
 `textDocument/didChange` only keeps the buffer and its version current: it
 never reads a bundle and never publishes. A path that loses its last finding
-is published once with an empty set, which clears it.
+is published once with an empty set, which clears it. Bundle reads never
+stall the read loop: a composition reads without the session lock, and a
+`didOpen` or `didSave` that meets one in flight (a slow `verdict.refresh`)
+publishes from the current state and queues its own re-read, so
+`$/cancelRequest` and `exit` behind it are read at once.
 
 Publishing is per file, not per root. Nested roots (`--root /repo --root
 /repo/sub`) can both reach one file; its set is the union of what every root
@@ -2553,7 +2562,8 @@ says, each diagnostic keeping its own `data.root` (one finding both roots
 carry on the same range appears once), and it clears only when no root
 contributes any more. A document opened under a different URI spelling than
 the one already published (a `localhost` authority, an encoded drive colon)
-clears the old spelling and takes over.
+clears the old spelling and takes over, and the set is always published in
+the spelling the client used.
 
 A bundle read that fails keeps the last good diagnostics: a store caught
 mid-write (`corrupt-store`), an unreadable diff, or a failed listing logs a
@@ -2590,15 +2600,21 @@ anchor, its end tightens to the line's end, and any range is clamped to the
 document's last line. `data` carries `sig`, `bundle`, `root`, `status`, `severity`, `rigor`,
 `quote_status`, `lens`, `category`, `side`, `anchor` (`exact` for a NEW-side
 line of the reviewed diff, `hunk` for a deleted line mapped onto its hunk's
-NEW side, `unmapped` otherwise), `span`, `hunk_sha256` (the reviewed text),
+NEW side, or, for a hunk that only deletes, onto the line now standing where
+the deleted code was, `unmapped` otherwise), `span`, `hunk_sha256` (the reviewed text),
 `span_sha256` and `span_matches` (whether the editor's text still matches what
 was reviewed), `suggestion`, `deferred`, and `truncated` when a bound cut the
 set.
 
-Confinement is lexical and total: a document URI that is not an absolute
-`file://` URI strictly under a served root (after exactly one
-percent-decode, with Windows drive letters and UNC hosts compared
-case-insensitively) is never tracked, and a finding whose `path` is absolute,
+Confinement is total: a document URI that is not an absolute `file://` URI
+strictly under a served root (after exactly one percent-decode, with
+Windows paths and UNC hosts compared case-insensitively) receives no
+diagnostics. A document is matched against each root lexically first, then
+by the physical spellings of both, so a client that spells the same tree
+through another path (macOS `/private/var` for `/var`, a symlinked checkout,
+a Windows 8.3 short name such as `RUNNER~1`) still gets its findings: the
+document path is resolved once when it opens or saves (lstat only, never
+read), and a root's once when it is served. A finding whose `path` is absolute,
 drive-qualified, backslashed, or carries `..` is never published (one
 warning names the count). A `workspace/executeCommand` other than
 `verdict.refresh` answers `-32602` with `bad-params` in `error.data`; a request
@@ -2611,7 +2627,10 @@ meanwhile; what is still running then is canceled (`-32800`), and the
 `shutdown` answer follows the last of them. An `exit` read during that drain
 ends the session once the drain does. Exit 0 after `shutdown` then `exit` or
 on stdin EOF, 1 on `exit` without `shutdown` or a start refusal (`bad-root`,
-`not-a-repo`, `missing-bundle`), 2 on argv shape, 3 on a caught signal.
+`not-a-repo`, `missing-bundle`), 2 on argv shape, 3 on a caught signal that
+interrupted a running session (a signal after the session already ended keeps
+its own code). A frame body is read as it arrives, so a declared length
+costs only the bytes actually sent.
 
 #### Editor setup
 

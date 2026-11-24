@@ -34,6 +34,7 @@ type bundleState struct {
 	digest    string
 	items     []finding
 	truncated bool
+	absent    bool
 }
 
 // pathsOrNil is the state's root-relative paths with findings.
@@ -57,25 +58,91 @@ func (b *bundleState) findingsFor(key string) []finding {
 	return out
 }
 
+// job is one composition's inputs, snapshotted under stateMu so the slow
+// bundle reads run without it: the read model, the client's pinned bundle,
+// and the root.
+type job struct {
+	s      *Server
+	layer  ReadModel
+	pinned string
+	root   servedRoot
+}
+
+// newJob snapshots a composition's inputs. The caller holds stateMu.
+func (s *Server) newJob(root *servedRoot) *job {
+	return &job{s: s, layer: s.layer, pinned: s.initOpts.Bundle, root: *root}
+}
+
+// compose rebuilds one root's state. reselect re-runs bundle selection
+// (startup, refresh, and a watch change can all add or remove bundles); a
+// save keeps the selected bundle and only re-reads its cached detail. The
+// returned flag reports whether the state's content moved.
+//
+// The caller holds composeMu, never stateMu: the inputs are snapshotted and
+// the result committed under stateMu, but the reads in between run without
+// it, so a slow composition never stalls the read loop.
+//
+// A failure keeps the last good state: a canceled request, a listing that
+// failed, or a bundle that could not be read for a moment (a store mid-write,
+// a corrupt file, an unreadable diff) logs a warning and changes nothing, so
+// an unreadable bundle never reads as "no findings". The published set
+// clears only when the selection really changes or the bundle is gone.
+func (s *Server) compose(ctx context.Context, root *servedRoot, reselect bool) bool {
+	s.stateMu.Lock()
+	j := s.newJob(root)
+	prior := s.states[root.ID]
+	s.stateMu.Unlock()
+	name, ok := j.chosenBundle(ctx, &j.root, prior, reselect)
+	if !ok {
+		return false
+	}
+	next, ok := j.build(ctx, &j.root, name, prior)
+	if !ok || ctx.Err() != nil {
+		return false
+	}
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	if !s.serves(root.ID) {
+		return false
+	}
+	s.states[root.ID] = next
+	return prior == nil || prior.bundle != next.bundle || prior.digest != next.digest
+}
+
+// serves reports whether a root is still served. The caller holds stateMu.
+func (s *Server) serves(id string) bool {
+	for i := range s.roots {
+		if s.roots[i].ID == id {
+			return true
+		}
+	}
+	return false
+}
+
+// rootsSnapshot copies the served roots. The caller holds stateMu.
+func (s *Server) rootsSnapshot() []servedRoot {
+	return append([]servedRoot(nil), s.roots...)
+}
+
 // selectBundle picks the bundle one root publishes: the operator's --bundle,
 // then the client's initializationOptions.bundle, then the newest bundle
 // carrying a findings store — `local-` bundles before PR bundles, newest
 // findings.json first, name ascending to break ties. Corpus bundles are
 // never auto-selected. An empty name means the root has none.
-func (s *Server) selectBundle(ctx context.Context, root *servedRoot) (string, error) {
-	if s.cfg.Bundle != "" {
-		return s.cfg.Bundle, nil
+func (j *job) selectBundle(ctx context.Context, root *servedRoot) (string, error) {
+	if j.s.cfg.Bundle != "" {
+		return j.s.cfg.Bundle, nil
 	}
-	if s.initOpts.Bundle != "" {
-		return s.initOpts.Bundle, nil
+	if j.pinned != "" {
+		return j.pinned, nil
 	}
-	names, err := s.listedBundles(ctx, root)
+	names, err := j.listedBundles(ctx, root)
 	if err != nil {
 		return "", err
 	}
 	var candidates []candidate
 	for _, name := range names {
-		if c, ok := s.candidateFor(root, name); ok {
+		if c, ok := j.candidateFor(root, name); ok {
 			candidates = append(candidates, c)
 		}
 	}
@@ -87,8 +154,8 @@ func (s *Server) selectBundle(ctx context.Context, root *servedRoot) (string, er
 }
 
 // listedBundles names the root's non-corpus bundles the layer lists.
-func (s *Server) listedBundles(ctx context.Context, root *servedRoot) ([]string, error) {
-	view, err := s.layer.Bundles(ctx, "")
+func (j *job) listedBundles(ctx context.Context, root *servedRoot) ([]string, error) {
+	view, err := j.layer.Bundles(ctx, "")
 	if err != nil {
 		return nil, &ioError{op: "list bundles", err: err}
 	}
@@ -143,8 +210,8 @@ func compareCandidates(a, b candidate) int {
 
 // candidateFor resolves one listed bundle through the layer's confinement
 // and keeps it only when it carries a findings store.
-func (s *Server) candidateFor(root *servedRoot, name string) (candidate, bool) {
-	_, dir, err := s.layer.ResolveBundle(root.ID, name)
+func (j *job) candidateFor(root *servedRoot, name string) (candidate, bool) {
+	_, dir, err := j.layer.ResolveBundle(root.ID, name)
 	if err != nil {
 		return candidate{}, false
 	}
@@ -155,43 +222,19 @@ func (s *Server) candidateFor(root *servedRoot, name string) (candidate, bool) {
 	return candidate{name: name, mtime: info.ModTime(), local: strings.HasPrefix(name, localPrefix)}, true
 }
 
-// compose rebuilds one root's state. reselect re-runs bundle selection
-// (startup, refresh, and a watch change can all add or remove bundles); a
-// save keeps the selected bundle and only re-reads its cached detail. The
-// returned flag reports whether the state's content moved.
-//
-// A failure keeps the last good state: a canceled request, a listing that
-// failed, or a bundle that could not be read for a moment (a store mid-write,
-// a corrupt file, an unreadable diff) logs a warning and changes nothing, so
-// an unreadable bundle never reads as "no findings". The published set
-// clears only when the selection really changes or the bundle is gone.
-func (s *Server) compose(ctx context.Context, root *servedRoot, reselect bool) bool {
-	prior := s.states[root.ID]
-	name, ok := s.chosenBundle(ctx, root, prior, reselect)
-	if !ok {
-		return false
-	}
-	next, ok := s.build(ctx, root, name, prior)
-	if !ok || ctx.Err() != nil {
-		return false
-	}
-	s.states[root.ID] = next
-	return prior == nil || prior.bundle != next.bundle || prior.digest != next.digest
-}
-
 // chosenBundle keeps the prior selection on a plain save and reselects
 // otherwise. ok is false when nothing can be chosen: the request was
 // canceled, or the listing failed with no prior selection to keep.
-func (s *Server) chosenBundle(ctx context.Context, root *servedRoot, prior *bundleState, reselect bool) (string, bool) {
+func (j *job) chosenBundle(ctx context.Context, root *servedRoot, prior *bundleState, reselect bool) (string, bool) {
 	if prior != nil && !reselect {
 		return prior.bundle, true
 	}
-	name, err := s.selectBundle(ctx, root)
+	name, err := j.selectBundle(ctx, root)
 	if ctx.Err() != nil {
 		return "", false
 	}
 	if err != nil {
-		s.logf(msgWarning, "verdict: bundle selection under %s failed, keeping the current diagnostics: %v",
+		j.s.logf(msgWarning, "verdict: bundle selection under %s failed, keeping the current diagnostics: %v",
 			root.Path, err)
 		if prior == nil {
 			return "", false
@@ -204,30 +247,45 @@ func (s *Server) chosenBundle(ctx context.Context, root *servedRoot, prior *bund
 // build composes one bundle into a state, reusing prior when the bundle and
 // its artifact digest are unchanged. ok is false when the bundle could not
 // be read and the caller must keep prior.
-func (s *Server) build(ctx context.Context, root *servedRoot, name string, prior *bundleState) (*bundleState, bool) {
+func (j *job) build(ctx context.Context, root *servedRoot, name string, prior *bundleState) (*bundleState, bool) {
 	if name == "" {
-		return s.noBundle(root, prior), true
+		return j.noBundle(root, prior), true
 	}
-	detail, err := s.layer.Detail(ctx, root.ID, name)
+	detail, err := j.layer.Detail(ctx, root.ID, name)
 	if errors.Is(err, query.ErrNotFound) {
-		s.logf(msgWarning, "verdict: bundle %s is gone from %s; its diagnostics are cleared", name, root.Path)
-		return &bundleState{bundle: name}, true
+		return j.absent(root, name, prior), true
 	}
 	if err != nil {
-		return nil, s.keepGood(ctx, root, name, err)
+		return nil, j.keepGood(ctx, root, name, err)
 	}
 	digest := sourcesDigest(detail.Sources)
 	if prior != nil && prior.bundle == name && prior.digest == digest {
 		return prior, true
 	}
-	return s.joinDetail(ctx, root, name, digest, detail)
+	return j.joinDetail(ctx, root, name, digest, detail)
+}
+
+// absent is the state of a root where the chosen bundle does not exist. It
+// is said once per root, on the transition: "gone" when the root published
+// it before, "not under" when it never had it (a --bundle pinned to another
+// root), and silence while it stays absent.
+func (j *job) absent(root *servedRoot, name string, prior *bundleState) *bundleState {
+	if prior != nil && prior.bundle == name && prior.absent {
+		return prior
+	}
+	if prior != nil && prior.bundle == name {
+		j.s.logf(msgWarning, "verdict: bundle %s is gone from %s; its diagnostics are cleared", name, root.Path)
+	} else {
+		j.s.logf(msgInfo, "verdict: bundle %s is not under %s; nothing is published there", name, root.Path)
+	}
+	return &bundleState{bundle: name, absent: true}
 }
 
 // keepGood logs why a bundle read failed and that the last good diagnostics
 // stay; a canceled request logs nothing. It always reports false.
-func (s *Server) keepGood(ctx context.Context, root *servedRoot, name string, err error) bool {
+func (j *job) keepGood(ctx context.Context, root *servedRoot, name string, err error) bool {
 	if ctx.Err() == nil {
-		s.logf(msgWarning, "verdict: bundle %s under %s could not be read, keeping the last good diagnostics: %v",
+		j.s.logf(msgWarning, "verdict: bundle %s under %s could not be read, keeping the last good diagnostics: %v",
 			name, root.Path, err)
 	}
 	return false
@@ -235,9 +293,9 @@ func (s *Server) keepGood(ctx context.Context, root *servedRoot, name string, er
 
 // noBundle is the empty state of a root with no bundle. The remedy is
 // logged once, when the root first comes up empty.
-func (s *Server) noBundle(root *servedRoot, prior *bundleState) *bundleState {
+func (j *job) noBundle(root *servedRoot, prior *bundleState) *bundleState {
 	if prior == nil || prior.bundle != "" {
-		s.logf(msgInfo, "verdict: no review bundle under %s — run verdict fetch-local <owner/repo> "+
+		j.s.logf(msgInfo, "verdict: no review bundle under %s — run verdict fetch-local <owner/repo> "+
 			"<slug>, review it, record it, then run %s", root.Path, CommandRefresh)
 	}
 	return &bundleState{}
@@ -245,27 +303,27 @@ func (s *Server) noBundle(root *servedRoot, prior *bundleState) *bundleState {
 
 // joinDetail decodes a composed detail's report items and joins them
 // against the bundle's diff. ok is false when either could not be read.
-func (s *Server) joinDetail(ctx context.Context, root *servedRoot, name, digest string, detail *query.View) (*bundleState, bool) {
+func (j *job) joinDetail(ctx context.Context, root *servedRoot, name, digest string, detail *query.View) (*bundleState, bool) {
 	var wire struct {
 		Report struct {
 			Items []record `json:"items"`
 		} `json:"report"`
 	}
 	if err := decodeView(detail, &wire); err != nil {
-		return nil, s.keepGood(ctx, root, name, err)
+		return nil, j.keepGood(ctx, root, name, err)
 	}
-	files, err := s.diffFiles(ctx, root, name)
+	files, err := j.diffFiles(ctx, root, name)
 	if err != nil {
-		return nil, s.keepGood(ctx, root, name, err)
+		return nil, j.keepGood(ctx, root, name, err)
 	}
-	state, dropped := joinState(root, name, digest, wire.Report.Items, files, s.lim.findings)
+	state, dropped := joinState(root, name, digest, wire.Report.Items, files, j.s.lim.findings)
 	if dropped > 0 {
-		s.logf(msgWarning, "verdict: %d finding(s) in bundle %s name a path outside %s; never published",
+		j.s.logf(msgWarning, "verdict: %d finding(s) in bundle %s name a path outside %s; never published",
 			dropped, name, root.Path)
 	}
 	if state.truncated {
-		s.logf(msgWarning, "verdict: bundle %s under %s has %d findings; only the %d highest-ranked are published",
-			name, root.Path, len(wire.Report.Items), s.lim.findings)
+		j.s.logf(msgWarning, "verdict: bundle %s under %s has %d findings; only the %d highest-ranked are published",
+			name, root.Path, len(wire.Report.Items), j.s.lim.findings)
 	}
 	return state, true
 }
@@ -326,8 +384,8 @@ func rankOf(r *record) int {
 // once. A bundle without a full.diff still publishes (every finding falls
 // back to its stored line); a diff read that fails is an error the caller
 // answers by keeping its last good state.
-func (s *Server) diffFiles(ctx context.Context, root *servedRoot, name string) (map[string]diffFile, error) {
-	view, err := s.layer.Diff(ctx, root.ID, name)
+func (j *job) diffFiles(ctx context.Context, root *servedRoot, name string) (map[string]diffFile, error) {
+	view, err := j.layer.Diff(ctx, root.ID, name)
 	if err != nil {
 		return nil, &ioError{op: "read bundle diff", err: err}
 	}

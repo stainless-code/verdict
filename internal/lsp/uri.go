@@ -40,11 +40,16 @@ const (
 // servedRoot is one root the session serves: its query-layer identity, its
 // absolute OS path, and the slash spelling the URI mapping compares against.
 type servedRoot struct {
-	ID      string
-	Path    string
-	slash   string
-	host    string
-	windows bool
+	ID    string
+	Path  string
+	slash string
+	host  string
+	// physical is the root's resolved slash spelling (symlinks, and Windows
+	// 8.3 short names, expanded), or "" when it is not known. A client
+	// document spelled through another path to the same tree is matched
+	// against it (see Server.relOf).
+	physical string
+	windows  bool
 }
 
 // newServedRoot derives the URI-mapping form of one absolute root. windows
@@ -124,8 +129,13 @@ func (r *servedRoot) relFromPath(p string) (string, error) {
 	if !r.absolute(p) {
 		return "", errUnsupportedURI
 	}
-	p = path.Clean(p)
-	prefix := strings.TrimSuffix(r.slash, slash) + slash
+	return r.relUnder(r.slash, path.Clean(p))
+}
+
+// relUnder confines one cleaned absolute slash path under base, comparing
+// the prefix case-insensitively on Windows.
+func (r *servedRoot) relUnder(base, p string) (string, error) {
+	prefix := strings.TrimSuffix(base, slash) + slash
 	if len(p) <= len(prefix) || !r.samePrefix(p[:len(prefix)], prefix) {
 		return "", errOutsideRoot
 	}
@@ -134,6 +144,16 @@ func (r *servedRoot) relFromPath(p string) (string, error) {
 		return "", errOutsideRoot
 	}
 	return rel, nil
+}
+
+// relFromPhysical confines a resolved document path (see physicalPath)
+// under the root's resolved spelling. A root whose spelling is unknown, or
+// a UNC root, confines nothing this way.
+func (r *servedRoot) relFromPhysical(phys string) (string, error) {
+	if r.physical == "" || phys == "" || r.host != "" {
+		return "", errOutsideRoot
+	}
+	return r.relUnder(r.physical, phys)
 }
 
 // osForm rewrites a Windows URI path into drive form: backslashes become
@@ -269,15 +289,6 @@ func absFromURI(raw string, windows bool) (host, p string, err error) {
 	return host, path.Clean(p), nil
 }
 
-// fileKeyOfURI is fileKey for a client URI.
-func fileKeyOfURI(raw string, windows bool) (string, bool) {
-	host, p, err := absFromURI(raw, windows)
-	if err != nil {
-		return "", false
-	}
-	return pathIdentity(host, p, windows), true
-}
-
 // osPathFromURI maps a client workspace-folder URI onto an absolute OS path,
 // with the same decoding and refusals as a document URI.
 func osPathFromURI(raw string, windows bool) (string, error) {
@@ -289,4 +300,58 @@ func osPathFromURI(raw string, windows bool) (string, error) {
 		p = uncPrefix + host + p
 	}
 	return filepath.FromSlash(p), nil
+}
+
+// slashForm renders an absolute OS path in the slash convention the URI
+// mapping compares: separators normalized on Windows, cleaned, and the drive
+// letter upper-cased.
+func slashForm(p string, windows bool) string {
+	if windows {
+		p = strings.ReplaceAll(p, `\`, slash)
+	}
+	p = path.Clean(p)
+	if windows && hasDrive(p) {
+		p = strings.ToUpper(p[:1]) + p[1:]
+	}
+	return p
+}
+
+// physicalPath resolves an absolute slash path through eval (symlinks, and on
+// Windows 8.3 short names) to the slash form of its physical spelling. A path
+// that does not exist yet (a new, unsaved file) resolves through its deepest
+// existing ancestor with the rest appended. ok is false when nothing on the
+// path resolves. eval takes and returns OS-native spellings; it only ever
+// lstats, never opens a file.
+func physicalPath(p string, windows bool, eval func(string) (string, error)) (string, bool) {
+	cur, rest := slashForm(p, windows), ""
+	for {
+		if resolved, err := eval(evalProbe(cur, windows)); err == nil {
+			return slashForm(path.Join(slashForm(resolved, windows), rest), windows), true
+		}
+		parent := path.Dir(cur)
+		if parent == cur || parent == "." {
+			return "", false
+		}
+		rest = path.Join(path.Base(cur), rest)
+		cur = parent
+	}
+}
+
+// evalProbe is the spelling eval receives: `C:` alone is drive-relative on
+// Windows, so the drive root is probed as `C:/`.
+func evalProbe(cur string, windows bool) string {
+	if windows && len(cur) == 2 && hasDrive(cur) {
+		return cur + slash
+	}
+	return cur
+}
+
+// evalOS is the production resolver: [filepath.EvalSymlinks] over the OS form
+// of a slash path.
+func evalOS(p string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(filepath.FromSlash(p))
+	if err != nil {
+		return "", &ioError{op: "resolve path", err: err}
+	}
+	return resolved, nil
 }

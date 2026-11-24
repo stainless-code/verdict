@@ -69,14 +69,17 @@ func readFrame(r *bufio.Reader) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	body := make([]byte, length)
-	if _, err := io.ReadFull(r, body); err != nil {
-		if errors.Is(err, io.EOF) {
+	// The body grows as bytes arrive: a declared 16 MiB that never comes
+	// costs what was sent, not the declaration.
+	var body bytes.Buffer
+	n, err := io.CopyN(&body, r, int64(length))
+	if err != nil {
+		if errors.Is(err, io.EOF) && n < int64(length) {
 			return nil, io.ErrUnexpectedEOF
 		}
 		return nil, &ioError{op: "read frame body", err: err}
 	}
-	return body, nil
+	return body.Bytes(), nil
 }
 
 // headerBlock accumulates one header block's state.

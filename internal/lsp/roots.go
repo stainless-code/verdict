@@ -186,6 +186,7 @@ func (s *Server) handleDidChangeRoots(ctx context.Context, msg *rpcMessage) {
 		return
 	}
 	s.stopPump()
+	s.composeMu.Lock()
 	s.stateMu.Lock()
 	paths := s.nextRootPaths(&params)
 	before := map[string]bool{}
@@ -193,13 +194,21 @@ func (s *Server) handleDidChangeRoots(ctx context.Context, msg *rpcMessage) {
 		before[s.roots[i].ID] = true
 	}
 	s.installRoots(paths)
+	s.rekeyDocs()
+	var added []servedRoot
 	for i := range s.roots {
 		if !before[s.roots[i].ID] {
-			s.compose(ctx, &s.roots[i], true)
+			added = append(added, s.roots[i])
 		}
 	}
+	s.stateMu.Unlock()
+	for i := range added {
+		s.compose(ctx, &added[i], true)
+	}
+	s.stateMu.Lock()
 	s.republishAll()
 	s.stateMu.Unlock()
+	s.composeMu.Unlock()
 	s.flushLogs()
 	s.callMu.Lock()
 	defer s.callMu.Unlock()

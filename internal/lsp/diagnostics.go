@@ -64,11 +64,12 @@ func publishable(status, severity string, showDeferred bool) (int, bool) {
 // document is one client-tracked buffer. Its text arrives only from the
 // client: the server never reads a workspace file.
 type document struct {
-	uri     string
-	key     string
-	text    string
-	version int
-	hasText bool
+	uri      string
+	physical string
+	key      string
+	text     string
+	version  int
+	hasText  bool
 }
 
 // lines splits the tracked text into lines without their `\r\n` or `\n`.
@@ -105,10 +106,14 @@ func (s *Server) fileDiagnostics(uri string, doc *document) []Diagnostic {
 	if doc != nil && doc.hasText {
 		docLines = doc.lines()
 	}
+	physical := ""
+	if doc != nil {
+		physical = doc.physical
+	}
 	merged := diagnosticSet{seen: map[string]bool{}, out: []Diagnostic{}}
 	for i := range s.roots {
 		root := &s.roots[i]
-		if rel, err := root.relFromURI(uri); err == nil {
+		if rel, ok := s.relOf(root, uri, physical); ok {
 			merged.add(s.rootDiagnostics(root, root.pathKey(rel), docLines))
 		}
 	}
@@ -309,6 +314,7 @@ func (s *Server) publish(key, uri string, doc *document, diags []Diagnostic) int
 		v := doc.version
 		params.Version = &v
 	}
+	total := len(params.Diagnostics)
 	raw, ok := s.fitFrame(&params)
 	if !ok {
 		return frames
@@ -318,6 +324,7 @@ func (s *Server) publish(key, uri string, doc *document, diags []Diagnostic) int
 	if had && s.sent[key].digest == digest {
 		return frames
 	}
+	s.logCut(uri, total, len(params.Diagnostics))
 	s.writeFrame(raw)
 	if len(params.Diagnostics) == 0 {
 		delete(s.sent, key)
@@ -338,6 +345,15 @@ func (s *Server) clearMovedSpelling(key, uri string) (int, bool) {
 	s.notify(methodPublish, publishParams{URI: prior.uri, Diagnostics: []Diagnostic{}})
 	delete(s.sent, key)
 	return 1, false
+}
+
+// logCut warns that a set was cut to the frame cap. publish calls it only
+// when the cut set actually goes out: an unchanged cut republishes nothing
+// and says nothing.
+func (s *Server) logCut(uri string, total, kept int) {
+	if kept < total {
+		s.logf(msgWarning, "verdict: %d diagnostics for %s exceed the frame cap; %d are published", total, uri, kept)
+	}
 }
 
 // fitFrame marshals one publish notification, cutting the set to the longest
@@ -362,8 +378,6 @@ func (s *Server) fitFrame(params *publishParams) ([]byte, bool) {
 		return b, merr == nil && len(b) <= s.lim.frameBytes
 	}
 	raw, _ = fits(longestFit(len(all), func(n int) bool { _, ok := fits(n); return ok }))
-	s.logf(msgWarning, "verdict: %d diagnostics for %s exceed the frame cap; %d are published", len(all),
-		params.URI, len(params.Diagnostics))
 	return raw, true
 }
 

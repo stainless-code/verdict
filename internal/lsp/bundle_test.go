@@ -61,7 +61,7 @@ func TestSelectBundleRanking(t *testing.T) {
 		cfg.Bundle = tc.flag
 		s := New(cfg)
 		s.initOpts.Bundle = tc.initOpts
-		got, err := s.selectBundle(context.Background(), &s.roots[0])
+		got, err := s.newJob(&s.roots[0]).selectBundle(context.Background(), &s.roots[0])
 		if err != nil || got != tc.want {
 			t.Errorf("%s: selectBundle = %q, %v; want %q", tc.name, got, err, tc.want)
 		}
@@ -79,7 +79,7 @@ func TestSelectBundlePrefersPRWithoutLocal(t *testing.T) {
 	setFindingsMtime(t, root, "12", at.Add(time.Hour))
 	setFindingsMtime(t, root, "34", at)
 	s := New(newConfig(root))
-	if got, err := s.selectBundle(context.Background(), &s.roots[0]); err != nil || got != "12" {
+	if got, err := s.newJob(&s.roots[0]).selectBundle(context.Background(), &s.roots[0]); err != nil || got != "12" {
 		t.Fatalf("selectBundle = %q, %v; want 12", got, err)
 	}
 }

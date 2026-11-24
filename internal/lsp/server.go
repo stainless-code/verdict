@@ -83,6 +83,9 @@ type Config struct { //nolint:govet // the grouping documents the injection surf
 
 	// lim overrides the session bounds; tests shrink them.
 	lim limits
+	// eval resolves a path's physical spelling; tests fake it with
+	// Windows-shaped inputs. nil is filepath.EvalSymlinks.
+	eval func(string) (string, error)
 }
 
 // limits are the session bounds a Server enforces.
@@ -137,14 +140,22 @@ type Server struct { //nolint:govet // the grouping separates config, protocol s
 	initialized bool
 	shutdown    bool
 	exited      bool
+	ended       bool
+	sawCancel   bool
 
 	pumpCancel context.CancelFunc
 	pumpDone   chan struct{}
 
+	// composeMu serializes compositions (the slow bundle reads); a
+	// composition holds it but never stateMu while it reads.
+	composeMu sync.Mutex
+
 	// stateMu guards everything below: the read loop, the watch pump, and a
-	// refresh call all compose and publish under it, so frames for one
-	// trigger never interleave with another's.
+	// refresh call publish under it, so frames for one trigger never
+	// interleave with another's. It is only ever held briefly.
 	stateMu   sync.Mutex
+	pending   map[string]bool
+	uriKeys   map[string]string
 	layer     ReadModel
 	roots     []servedRoot
 	initOpts  initOptions
@@ -169,6 +180,9 @@ func New(cfg *Config) *Server {
 	if c.Stderr == nil {
 		c.Stderr = io.Discard
 	}
+	if c.eval == nil {
+		c.eval = evalOS
+	}
 	if c.MaxRoots <= 0 || c.MaxRoots > MaxRoots {
 		c.MaxRoots = DefaultMaxRoots
 	}
@@ -182,6 +196,8 @@ func New(cfg *Config) *Server {
 		queue:     jobQueue{limit: lim.inflight, capacity: lim.queued},
 		states:    map[string]*bundleState{},
 		docs:      map[string]*document{},
+		uriKeys:   map[string]string{},
+		pending:   map[string]bool{},
 		sent:      map[string]published{},
 		workspace: len(c.Roots) == 0,
 	}
@@ -198,6 +214,9 @@ func (s *Server) rootsOf(paths []string) []servedRoot {
 		root := newServedRoot(osRoot(p), s.windows)
 		if seen[root.ID] || len(roots) >= s.cfg.MaxRoots {
 			continue
+		}
+		if phys, ok := physicalPath(root.slash, s.windows, s.cfg.eval); ok && root.host == "" {
+			root.physical = phys
 		}
 		seen[root.ID] = true
 		roots = append(roots, root)
@@ -304,6 +323,7 @@ func (s *Server) serve(ctx context.Context, in io.Reader, out io.Writer, interru
 			_ = canceledReadErr
 		}
 	}
+	readErr = s.noteCancel(ctx, readErr)
 	if s.exitedClean() {
 		// `exit` after `shutdown`: the drain still answers what the client
 		// sent before shutdown, bounded by the grace period.
@@ -319,6 +339,39 @@ func (s *Server) serve(ctx context.Context, in io.Reader, out io.Writer, interru
 		return readErr
 	}
 	return writeErr
+}
+
+// noteCancel records a cancel seen either way (the select, or a read it
+// interrupted) and drops the cancel from the read result: Canceled reports
+// it, and still reports false when the session had ended first.
+func (s *Server) noteCancel(ctx context.Context, readErr error) error {
+	if ctx.Err() == nil {
+		return readErr
+	}
+	s.callMu.Lock()
+	s.sawCancel = true
+	s.callMu.Unlock()
+	if errors.Is(readErr, ctx.Err()) {
+		return nil
+	}
+	return readErr
+}
+
+// Canceled reports whether Serve ended because its context was canceled
+// before the session ended on its own (exit, stdin EOF, or a framing
+// failure). A cancel that lands after the session already ended is not a
+// cancellation of it: the CLI maps only a true one to exit 3.
+func (s *Server) Canceled() bool {
+	s.callMu.Lock()
+	defer s.callMu.Unlock()
+	return s.sawCancel && !s.ended
+}
+
+// markEnded records that the read loop ended for a reason of its own.
+func (s *Server) markEnded() {
+	s.callMu.Lock()
+	s.ended = true
+	s.callMu.Unlock()
 }
 
 // exitedClean reports an `exit` read after `shutdown`.
@@ -404,17 +457,71 @@ func (s *Server) stopPump() {
 // onChange recomposes the root a watch change names. A change for a bundle
 // other than the selected one still reselects: a new bundle may now win.
 func (s *Server) onChange(ctx context.Context, change *query.Change) {
-	s.stateMu.Lock()
-	defer s.stateMu.Unlock()
+	s.composeMu.Lock()
+	defer s.composeMu.Unlock()
 	if ctx.Err() != nil {
 		return
 	}
-	for i := range s.roots {
-		if s.roots[i].ID == change.Root {
-			s.compose(ctx, &s.roots[i], true)
+	s.stateMu.Lock()
+	roots := s.rootsSnapshot()
+	s.stateMu.Unlock()
+	for i := range roots {
+		if roots[i].ID == change.Root {
+			s.compose(ctx, &roots[i], true)
 		}
 	}
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
 	s.republishAll()
+}
+
+// deferCompose recomposes roots once the composition in flight finishes,
+// then republishes. A notification that met a busy composition uses it
+// instead of waiting on the read loop; a root already pending is not queued
+// twice.
+func (s *Server) deferCompose(ctx context.Context, roots []servedRoot) {
+	queued := s.claimPending(roots)
+	if len(queued) == 0 {
+		return
+	}
+	s.background.Go(func() {
+		s.composeMu.Lock()
+		defer s.composeMu.Unlock()
+		reselect := s.releasePending(queued)
+		for i := range queued {
+			s.compose(ctx, &queued[i], reselect[queued[i].ID])
+		}
+		s.stateMu.Lock()
+		defer s.stateMu.Unlock()
+		s.republishAll()
+	})
+}
+
+// claimPending marks roots pending and returns the ones not already queued.
+func (s *Server) claimPending(roots []servedRoot) []servedRoot {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	var queued []servedRoot
+	for i := range roots {
+		if !s.pending[roots[i].ID] {
+			s.pending[roots[i].ID] = true
+			queued = append(queued, roots[i])
+		}
+	}
+	return queued
+}
+
+// releasePending clears the pending marks and reports which roots were never
+// composed (they reselect).
+func (s *Server) releasePending(roots []servedRoot) map[string]bool {
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	reselect := map[string]bool{}
+	for i := range roots {
+		delete(s.pending, roots[i].ID)
+		reselect[roots[i].ID] = s.states[roots[i].ID] == nil
+	}
+	return reselect
 }
 
 // lockedWriter serializes one session's stderr: the read loop, the pump,

@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -349,8 +350,11 @@ func (s *session) wait() error {
 	return err
 }
 
+// fileURI is the one way a test spells a file URI: the server's own
+// rendering for this OS (`file:///C:/...` on Windows, forward slashes,
+// percent-escaped), so a test URI and a published one compare as strings.
 func fileURI(root, rel string) string {
-	r := newServedRoot(root, false)
+	r := newServedRoot(root, runtime.GOOS == "windows")
 	return r.uriFor(rel)
 }
 

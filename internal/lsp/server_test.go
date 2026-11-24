@@ -551,3 +551,41 @@ func deferredDiagnostic(t *testing.T, root string) Diagnostic {
 	}
 	return got[0].Diagnostics[0]
 }
+
+// TestCanceledOnlyForARealCancel pins the signal contract the CLI maps to
+// exit 3: a cancel that interrupts a running session reports Canceled, while
+// one that lands after the session ended on its own does not.
+func TestCanceledOnlyForARealCancel(t *testing.T) {
+	t.Parallel()
+	running := New(newConfig(fixtureRoot(t)))
+	ctx, cancel := context.WithCancel(context.Background())
+	inR, inW := io.Pipe()
+	done := make(chan error, 1)
+	go func() { done <- running.ServeInterruptible(ctx, inR, io.Discard) }()
+	cancel()
+	var serveErr error
+	testenv.Until(t, func() bool {
+		select {
+		case serveErr = <-done:
+			return true
+		default:
+			return false
+		}
+	})
+	_ = inW.Close()
+	if serveErr != nil || !running.Canceled() {
+		t.Fatal("a cancel that interrupted a running session did not report Canceled")
+	}
+
+	s := startSession(t, newConfig(fixtureRoot(t)))
+	s.initialize(1, nil)
+	if err := s.finish(2); err != nil {
+		t.Fatal(err)
+	}
+	s.server.callMu.Lock()
+	s.server.sawCancel = true // a signal that lands after the clean exit
+	s.server.callMu.Unlock()
+	if s.server.Canceled() {
+		t.Fatal("a cancel after a clean shutdown and exit reported Canceled")
+	}
+}

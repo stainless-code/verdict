@@ -27,13 +27,25 @@ func (s *Server) readLoop(ctx context.Context, in io.Reader) error {
 	for ctx.Err() == nil {
 		body, err := readFrame(r)
 		if err != nil {
-			return s.readFailure(err)
+			return s.readEnded(ctx, err)
 		}
 		if done, err := s.handleBody(ctx, body); done {
+			s.markEnded()
 			return err
 		}
 	}
 	return nil
+}
+
+// readEnded is the read loop's result when a read failed: none when the
+// cancel interrupted it (Serve reports the cancel), else the session ended
+// on its own and readFailure maps why.
+func (s *Server) readEnded(ctx context.Context, err error) error {
+	if ctx.Err() != nil {
+		return ctx.Err()
+	}
+	s.markEnded()
+	return s.readFailure(err)
 }
 
 // readFailure maps a framing failure: a clean EOF between frames ends the

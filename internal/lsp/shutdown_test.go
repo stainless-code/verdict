@@ -149,3 +149,31 @@ func TestShutdownDrainsInFlightRequests(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestSlowComposeNeverStallsTheReadLoop pins that a composition in flight
+// (a refresh blocked in the read model) does not stall the read loop: a
+// didOpen still publishes from the current state, a didSave queues its
+// recompose instead of waiting, and the $/cancelRequest behind them is read
+// and answered at once.
+func TestSlowComposeNeverStallsTheReadLoop(t *testing.T) {
+	t.Parallel()
+	s, _ := blockedRefresh(t, time.Hour)
+	uri := fileURI(s.server.cfg.Roots[0], "notes.txt")
+	openDoc(s, uri, 2, notesText)
+	s.notify(methodDidSave, map[string]any{"textDocument": map[string]any{"uri": uri}})
+	s.notify(methodCancel, map[string]any{"id": 3})
+	_, refresh := s.awaitResponse(3)
+	wantError(t, "the blocked refresh", &refresh, rpcRequestCancelled)
+	got := ""
+	for _, p := range publishes(t, s.snapshot()) {
+		if p.URI == uri && p.Version != nil {
+			got = summarize([]publishParams{p})
+		}
+	}
+	if got != uri+" v2 "+sigCrit {
+		t.Fatalf("the didOpen behind a blocked compose published %q", got)
+	}
+	if err := s.finish(4); err != nil {
+		t.Fatal(err)
+	}
+}

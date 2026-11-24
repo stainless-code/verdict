@@ -218,3 +218,31 @@ func TestFailedListingKeepsSelection(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+// TestPinnedBundleAbsentWarnsOnce pins that a --bundle present in only one
+// root is reported once for the other root, on the first compose, and never
+// again while it stays absent.
+func TestPinnedBundleAbsentWarnsOnce(t *testing.T) {
+	t.Parallel()
+	with, without := fixtureRoot(t), checkout(t)
+	cfg := newConfig(with, without)
+	cfg.Bundle = "local-1"
+	s := startSession(t, cfg)
+	s.initialize(1, nil)
+	s.notify(methodInitialized, map[string]any{})
+	first := strings.Join(logs(t, s.barrier(2, 0)), "\n")
+	if strings.Count(first, "bundle local-1 is not under "+without) != 1 {
+		t.Fatalf("initial logs = %q, want one not-under line for the second root", first)
+	}
+	mark := len(s.snapshot())
+	s.request(3, methodExecuteCommand, map[string]any{"command": CommandRefresh})
+	s.awaitResponse(3)
+	s.request(4, methodExecuteCommand, map[string]any{"command": CommandRefresh})
+	before, _ := s.awaitResponse(4)
+	if again := logs(t, before[mark:]); len(again) != 0 {
+		t.Fatalf("refreshes re-logged the absent bundle: %q", again)
+	}
+	if err := s.finish(5); err != nil {
+		t.Fatal(err)
+	}
+}

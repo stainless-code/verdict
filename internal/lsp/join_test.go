@@ -122,7 +122,7 @@ func TestDiffFilesIndexesNewSideOnce(t *testing.T) {
 	t.Parallel()
 	root := fixtureRoot(t)
 	s := New(newConfig(root))
-	files, err := s.diffFiles(t.Context(), &s.roots[0], "local-1")
+	files, err := s.newJob(&s.roots[0]).diffFiles(t.Context(), &s.roots[0], "local-1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -137,5 +137,32 @@ func TestDiffFilesIndexesNewSideOnce(t *testing.T) {
 	notes.newSide = nil
 	if f, _ := joinFinding(&rec, map[string]diffFile{"notes.txt": notes}); f.anchor != anchorUnmapped {
 		t.Fatalf("an unindexed file anchored %s; the join must not build its own index", f.anchor)
+	}
+}
+
+// TestPureDeletionAnchorsAfterTheDeletion pins the `+N,0` case: git's N is
+// the line before the deletion, so a LEFT finding anchors on line N+1 (the
+// line now standing where the deleted code was), marked hunk; a deletion at
+// the top of a file (`+0,0`) anchors on line 1.
+func TestPureDeletionAnchorsAfterTheDeletion(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name     string
+		newStart int
+		want     int
+	}{
+		{"mid-file", 4, 5},
+		{"top of file", 0, 1},
+	} {
+		file := diffFile{Path: "a.go", Hunks: []diffHunk{{NewStart: tc.newStart, NewCount: 0, Lines: []diffLine{
+			{Kind: kindDel, Text: "gone one", OldNo: 5},
+			{Kind: kindDel, Text: "gone two", OldNo: 6},
+		}}}}
+		file.indexNewSide()
+		f, _ := joinFinding(&record{Path: "a.go", Side: "LEFT", Line: 6}, map[string]diffFile{"a.go": file})
+		if f.anchor != anchorHunk || f.start != tc.want || f.line != tc.want || f.hunkSHA256 != "" {
+			t.Errorf("%s: anchor %s span %d..%d hash %q, want hunk %d..%d with no hash",
+				tc.name, f.anchor, f.start, f.line, f.hunkSHA256, tc.want, tc.want)
+		}
 	}
 }

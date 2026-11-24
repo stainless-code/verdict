@@ -3,6 +3,7 @@ package lsp
 import (
 	"cmp"
 	"encoding/json"
+	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -202,17 +203,50 @@ func sortedLines(s string) string {
 // are each dropped with a warning.
 func TestClientRootConfinement(t *testing.T) {
 	t.Parallel()
-	s, _ := workspaceSession(t, map[string]any{"workspaceFolders": []any{
+	folders := []any{
 		map[string]any{"uri": "https://example.com/repo", "name": "a"},
-		map[string]any{"uri": "file://server/share/repo", "name": "b"},
 		map[string]any{"uri": "file:///nonexistent/verdict-lsp-root", "name": "c"},
-	}})
+	}
+	if runtime.GOOS != "windows" {
+		// A remote authority is refused outright off Windows; on Windows it
+		// is a UNC path, and probing one would reach for the network.
+		folders = append(folders, map[string]any{"uri": "file://server/share/repo", "name": "b"})
+	}
+	s, _ := workspaceSession(t, map[string]any{"workspaceFolders": folders})
 	s.notify(methodInitialized, map[string]any{})
 	texts := logs(t, s.barrier(2, 0))
-	if len(texts) != 4 || !strings.Contains(texts[3], "no workspace root inside a git checkout") {
-		t.Fatalf("confinement logs = %q, want three drops and the empty-roots warning", texts)
+	if len(texts) != len(folders)+1 || !strings.Contains(texts[len(folders)], "no workspace root inside a git checkout") {
+		t.Fatalf("confinement logs = %q, want one drop per folder and the empty-roots warning", texts)
 	}
 	if err := s.finish(3); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// TestDocumentOpenedBeforeItsRoot pins that every open document is tracked,
+// served or not: a document opened outside every root, whose root a later
+// workspace-folder change adds, publishes with its version and its text's
+// tightened range instead of the untracked whole-line form.
+func TestDocumentOpenedBeforeItsRoot(t *testing.T) {
+	t.Parallel()
+	first, later := fixtureRoot(t), fixtureRoot(t)
+	s, _ := workspaceSession(t, map[string]any{"workspaceFolders": []any{folder(first)}})
+	s.notify(methodInitialized, map[string]any{})
+	uri := fileURI(later, "notes.txt")
+	openDoc(s, uri, 5, notesText)
+	mark := len(s.barrier(2, 0)) + 1
+	s.notify(methodDidChangeRoots, map[string]any{"event": map[string]any{"added": []any{folder(later)}}})
+	var got *publishParams
+	for _, p := range publishes(t, s.barrier(3, mark)) {
+		if p.URI == uri {
+			got = &p
+		}
+	}
+	if got == nil || got.Version == nil || *got.Version != 5 || sigsOf(got) != sigCrit ||
+		got.Diagnostics[0].Range.End != (position{Line: 1, Character: 8}) {
+		t.Fatalf("the earlier-opened document published %+v, want version 5 with a tightened range", got)
+	}
+	if err := s.finish(4); err != nil {
 		t.Fatal(err)
 	}
 }

@@ -58,7 +58,8 @@ func lspUsageText() string {
 		"                   folders (default 8, at most 16)\n" +
 		"  --interval <duration>  watch tick (default 1s, at least 100ms)\n" +
 		"  --sweep <duration>  watch content sweep (default 30s, at least --interval)\n" +
-		"  --no-watch  publish on open, save, and verdict.refresh only\n" +
+		"  --no-watch  publish on open, save, and verdict.refresh only; a bundle recorded\n" +
+		"              after start is then picked up by verdict.refresh\n" +
 		"  --json  accepted for CLI-convention parity; stdio is LSP either way\n" +
 		"  Exit 0 after shutdown+exit or on stdin EOF, 1 on exit without shutdown or a start\n" +
 		"  refusal, 2 on argv shape, 3 on a caught signal."
@@ -97,17 +98,25 @@ func runLSP(ctx context.Context, r *cli.Runner, args []string, version string) i
 		return r.Refuse(ref)
 	}
 	err := server.ServeInterruptible(ctx, closableReader(os.Stdin), os.Stdout)
-	if ctx.Err() != nil {
-		return cli.ExitBroke
-	}
-	if errors.Is(err, lsp.ErrExitWithoutShutdown) {
-		return cli.ExitRefused
-	}
-	if err != nil {
+	if err != nil && !errors.Is(err, lsp.ErrExitWithoutShutdown) && !server.Canceled() {
 		fmt.Fprintf(r.Diag, "lsp: %v\n", err)
-		return cli.ExitRefused
 	}
-	return cli.ExitOK
+	return lspExitCode(server.Canceled(), err)
+}
+
+// lspExitCode maps how a session ended onto the exit contract: 3 only when a
+// signal canceled a session still running (a signal after a clean shutdown
+// and exit, or after stdin closed, keeps that session's own code), 1 for
+// exit without shutdown or a transport failure, 0 otherwise.
+func lspExitCode(canceled bool, err error) int {
+	switch {
+	case canceled:
+		return cli.ExitBroke
+	case err != nil:
+		return cli.ExitRefused
+	default:
+		return cli.ExitOK
+	}
 }
 
 type lspOptions struct {

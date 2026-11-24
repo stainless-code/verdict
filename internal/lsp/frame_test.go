@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"errors"
 	"io"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -104,5 +105,24 @@ func TestEncodeFrameIsTheWireShape(t *testing.T) {
 	t.Parallel()
 	if got := string(encodeFrame([]byte(`{"a":"ü"}`))); got != "Content-Length: 10\r\n\r\n{\"a\":\"ü\"}" {
 		t.Fatalf("encodeFrame = %q", got)
+	}
+}
+
+// TestReadFrameAllocatesWhatArrives pins that a body is buffered as it
+// arrives: a header declaring the 16 MiB cap followed by two bytes and EOF
+// allocates far less than the declaration before failing. It runs without
+// t.Parallel so no other test's allocations land in the measurement.
+func TestReadFrameAllocatesWhatArrives(t *testing.T) {
+	input := "Content-Length: 16777216\r\n\r\n{}"
+	var before, after runtime.MemStats
+	runtime.GC()
+	runtime.ReadMemStats(&before)
+	_, err := readFrame(bufio.NewReader(strings.NewReader(input)))
+	runtime.ReadMemStats(&after)
+	if !errors.Is(err, io.ErrUnexpectedEOF) {
+		t.Fatalf("readFrame = %v, want unexpected EOF", err)
+	}
+	if grew := after.TotalAlloc - before.TotalAlloc; grew > 1<<20 {
+		t.Fatalf("a 2-byte body of a 16 MiB declaration allocated %d bytes", grew)
 	}
 }

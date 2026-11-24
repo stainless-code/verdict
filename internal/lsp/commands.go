@@ -33,19 +33,25 @@ func (s *Server) handleExecuteCommand(ctx context.Context, msg *rpcMessage) {
 // root, and republishes. It is the escape hatch for a filesystem whose
 // mtimes the watcher cannot see.
 func (s *Server) handleRefresh(ctx context.Context, msg *rpcMessage) {
+	s.composeMu.Lock()
+	defer s.composeMu.Unlock()
 	s.stateMu.Lock()
-	defer s.stateMu.Unlock()
 	s.layer.Invalidate()
-	result := refreshResult{At: core.NowUTC(s.cfg.Now()), Roots: []refreshRow{}}
-	for i := range s.roots {
-		root := &s.roots[i]
-		s.compose(ctx, root, true)
+	roots := s.rootsSnapshot()
+	s.stateMu.Unlock()
+	for i := range roots {
+		s.compose(ctx, &roots[i], true)
 		if ctx.Err() != nil {
 			s.writeError(msg.ID, rpcRequestCancelled, "request canceled", nil)
 			return
 		}
-		row := refreshRow{Root: root.ID}
-		if state := s.states[root.ID]; state != nil {
+	}
+	s.stateMu.Lock()
+	defer s.stateMu.Unlock()
+	result := refreshResult{At: core.NowUTC(s.cfg.Now()), Roots: []refreshRow{}}
+	for i := range roots {
+		row := refreshRow{Root: roots[i].ID}
+		if state := s.states[roots[i].ID]; state != nil {
 			row.Bundle, row.Findings, row.Truncated = state.bundle, len(state.items), state.truncated
 		}
 		result.Roots = append(result.Roots, row)

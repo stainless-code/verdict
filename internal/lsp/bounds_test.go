@@ -188,13 +188,7 @@ func TestFindingsCapTruncatesByRank(t *testing.T) {
 // diagnostic marked truncated, with one warning.
 func TestPublishFitsTheFrameCap(t *testing.T) {
 	t.Parallel()
-	root := checkout(t)
-	findings := make([]string, 0, 30)
-	for i := range 30 {
-		sig := strings.Repeat(strconv.Itoa(i%10), 40)
-		findings = append(findings, findingJSON(sig, "open", "important", "big.go", i+1))
-	}
-	writeBundle(t, root, "local-1", findings...)
+	root := bigBundle(t, 30)
 	cfg := newConfig(root)
 	cfg.lim = limits{frameBytes: 4096}
 	s := startSession(t, cfg)
@@ -211,9 +205,34 @@ func TestPublishFitsTheFrameCap(t *testing.T) {
 	if texts := logs(t, frames); len(texts) != 1 || !strings.Contains(texts[0], "exceed the frame cap") {
 		t.Fatalf("frame cap logs = %q", texts)
 	}
-	if err := s.finish(3); err != nil {
+	if n := refreshFrames(s, 3); n != 0 {
+		t.Fatalf("an unchanged cut set republished or re-logged: %d frames", n)
+	}
+	if err := s.finish(4); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// bigBundle is a checkout whose bundle carries n findings on one file.
+func bigBundle(t *testing.T, n int) string {
+	t.Helper()
+	root := checkout(t)
+	findings := make([]string, 0, n)
+	for i := range n {
+		findings = append(findings, findingJSON(strings.Repeat(strconv.Itoa(i%10), 40), "open", "important", "big.go", i+1))
+	}
+	writeBundle(t, root, "local-1", findings...)
+	return root
+}
+
+// refreshFrames runs verdict.refresh as request id and counts every frame it
+// wrote before its answer.
+func refreshFrames(s *session, id int) int {
+	s.t.Helper()
+	mark := len(s.snapshot())
+	s.request(id, methodExecuteCommand, map[string]any{"command": CommandRefresh})
+	before, _ := s.awaitResponse(id)
+	return len(before[mark:])
 }
 
 func largestPublish(frames []wireFrame) int {
