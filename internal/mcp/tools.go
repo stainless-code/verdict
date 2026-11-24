@@ -41,6 +41,8 @@ var fetchRunner = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingToo
 const (
 	argRepo            = "repo"
 	argPr              = "pr"
+	argBundle          = "bundle"
+	argSig             = "sig"
 	argFlags           = "flags"
 	argStatus          = "status"
 	argMinSeverity     = "minSeverity"
@@ -193,7 +195,7 @@ func allTools(readOnly, operator bool) []*tool {
 		dataTool(&toolSpec{
 			name: "fix",
 			description: "Run one bounded, verify-gated fix pass over an inline finding " +
-				"or a batch scope (all, or selected: the sigs a human reacted to). " +
+				"or a batch scope (all, selected, or recipe). " +
 				"It writes the fix ledger and hands the verify command to the agent, capped per sig. " +
 				"Set test to a reproduced sig to promote its artifact to .verdict/tests; " +
 				"commit commits only that file.",
@@ -289,6 +291,51 @@ func allTools(readOnly, operator bool) []*tool {
 			meta:     toolMeta{title: "Wait for PR", mutates: noLocalWrites, readOnly: true, idempotent: true, openWorld: true},
 		}, toolDeps{commander: coreexec.Runner{}}, decodePRWait, wirePRWait, readycore.Wait,
 			func(resp *readycore.WaitResponse) *jq.Obj { return wireData(resp.Data) }),
+		directTool(&toolSpec{
+			name: "query-bundles",
+			description: "List every bundle under the served root with its counts and head. " +
+				"Call to see which bundles exist before querying findings. " +
+				"Reads local bundles only; writes nothing.",
+			required: nil,
+			meta:     toolMeta{title: "List dashboard bundles", mutates: noLocalWrites, readOnly: true, idempotent: true},
+		}, toolDeps{}, decodeQueryBundles, wireQueryBundles, invokeQueryBundles),
+		directTool(&toolSpec{
+			name: "query-copy",
+			description: "Return one finding's copy prompt and its runnable triage command on the " +
+				"dashboard query layer. Call to copy a prompt for an agent. " +
+				"Reads local bundles only; writes nothing.",
+			required: []string{argBundle, argSig},
+			meta:     toolMeta{title: "Copy a finding prompt", mutates: noLocalWrites, readOnly: true, idempotent: true},
+		}, toolDeps{}, decodeQueryFinding, wireQueryFinding, invokeQueryCopy),
+		directTool(&toolSpec{
+			name: "query-cost",
+			description: "Roll up review spend cost by repo, week, or model on the dashboard query " +
+				"layer. Call for cost summaries and trends. Reads local bundles only; writes nothing.",
+			required: nil,
+			meta:     toolMeta{title: "Summarize review cost", mutates: noLocalWrites, readOnly: true, idempotent: true},
+		}, toolDeps{}, decodeQueryCost, wireQueryCost, invokeQueryCost),
+		directTool(&toolSpec{
+			name: "query-finding",
+			description: "Read one full finding with its fix by signature on the dashboard query " +
+				"layer. Call with a sig from query-findings. Reads local bundles only; writes nothing.",
+			required: []string{argBundle, argSig},
+			meta:     toolMeta{title: "Read one finding", mutates: noLocalWrites, readOnly: true, idempotent: true},
+		}, toolDeps{}, decodeQueryFinding, wireQueryFinding, invokeQueryFinding),
+		directTool(&toolSpec{
+			name: "query-findings",
+			description: "List one bundle's ranked findings with evidence rungs on the dashboard " +
+				"query layer. Call after listing bundles to inspect open findings. " +
+				"Reads local bundles only; writes nothing.",
+			required: []string{argBundle},
+			meta:     toolMeta{title: "List bundle findings", mutates: noLocalWrites, readOnly: true, idempotent: true},
+		}, toolDeps{}, decodeQueryFindings, wireQueryFindings, invokeQueryFindings),
+		directTool(&toolSpec{
+			name: "query-health",
+			description: "Report the dashboard query layer's version, served roots, and bundle " +
+				"counts. Call to check what this server serves. Reads local state only; writes nothing.",
+			required: nil,
+			meta:     toolMeta{title: "Dashboard health", mutates: noLocalWrites, readOnly: true, idempotent: true},
+		}, toolDeps{}, decodeQueryHealth, wireQueryHealth, invokeQueryHealth),
 		dataTool(&toolSpec{
 			name: "ready",
 			description: "Report merge readiness (checks, threads, draft, conflict) or gate on " +
@@ -328,7 +375,7 @@ func allTools(readOnly, operator bool) []*tool {
 			name: "show",
 			description: "Return one full finding by signature or unique prefix. Call to inspect " +
 				"a finding named by report or next. Reads the bundle; writes nothing.",
-			required: []string{argRepo, argPr, "sig"},
+			required: []string{argRepo, argPr, argSig},
 			meta:     toolMeta{title: "Show finding", mutates: noLocalWrites, readOnly: true, idempotent: true},
 		}, toolDeps{}, decodeShow, wireShow, invokeShow),
 		dataTool(&toolSpec{
@@ -356,7 +403,7 @@ func allTools(readOnly, operator bool) []*tool {
 			description: "Operator-only: flip one finding's status with a " +
 				"rationale. Never call while reviewing a PR; propose triage[] in review.json " +
 				"instead. Writes findings.json and stages KB credit.",
-			required: []string{argRepo, argPr, "sig", argStatus},
+			required: []string{argRepo, argPr, argSig, argStatus},
 			meta:     toolMeta{title: "Triage finding", mutates: localWrites, destructive: true},
 		}, toolDeps{}, decodeTriage, wireTriage, triagecore.Run,
 			func(resp *triagecore.Response) *jq.Obj { return wireData(resp.Data) })),

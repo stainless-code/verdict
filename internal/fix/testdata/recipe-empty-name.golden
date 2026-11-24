@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+fix --recipe needs a name (an empty value would run an ordinary pass): pass --recipe <name>
+--- files ---

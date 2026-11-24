@@ -627,7 +627,7 @@ var (
 	commentOptionalKeys = map[string]bool{
 		fieldLine: true, "start_line": true, fieldSide: true, "suggestion": true,
 		fieldBrief: true, fieldRigor: true, fieldSeverity: true,
-		"kb": true, fieldSources: true,
+		"kb": true, fieldSources: true, fieldLens: true,
 	}
 	commentNullAliases = map[string]bool{"rung": true}
 	briefOptionalKeys  = map[string]bool{

@@ -58,13 +58,36 @@ func TestResourcesListInventory(t *testing.T) {
 		t.Fatal(err)
 	}
 	want := append(slices.Clone(paths), handoffRefPaths()...)
-	if len(result.Resources) != len(want) {
-		t.Fatalf("resources = %d, want the %d served paths", len(result.Resources), len(want))
+	if len(result.Resources) != len(want)+4 {
+		t.Fatalf("resources = %d, want the %d served paths plus the 4 query resources",
+			len(result.Resources), len(want))
 	}
 	for i, path := range want {
 		checkResourceDescriptor(t, i, path, result.Resources[i])
 	}
+	checkQueryDescriptors(t, result.Resources[len(want):])
 	checkLiteralMIMEs(t, result.Resources)
+}
+
+// checkQueryDescriptors pins the trailing dashboard reads resources/list
+// serves beside the skill payloads, in served order. The table is literal so
+// a dropped or added static resource fails the test instead of following it.
+func checkQueryDescriptors(t *testing.T, got []resourceDescriptorFrame) {
+	t.Helper()
+	want := []resourceDescriptorFrame{
+		{URI: "verdict://roots", Name: "roots", MIMEType: "application/json"},
+		{URI: "verdict://bundles", Name: "bundles", MIMEType: "application/json"},
+		{URI: "verdict://health", Name: "health", MIMEType: "application/json"},
+		{URI: "verdict://cost", Name: "cost", MIMEType: "application/json"},
+	}
+	if len(got) != len(want) {
+		t.Fatalf("query resources = %d, want %d", len(got), len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("query resource %d = %+v, want %+v", i, got[i], want[i])
+		}
+	}
 }
 
 func checkResourceDescriptor(t *testing.T, i int, path string, got resourceDescriptorFrame) {
@@ -122,12 +145,14 @@ func TestResourcesListIncludesHandoffRefs(t *testing.T) {
 	}
 	refs := handoffRefPaths()
 	want := append(slices.Clone(paths), refs...)
-	if len(result.Resources) != len(want) {
-		t.Fatalf("resources = %d, want %d payload and ref paths", len(result.Resources), len(want))
+	if len(result.Resources) != len(want)+4 {
+		t.Fatalf("resources = %d, want %d payload and ref paths plus the 4 query resources",
+			len(result.Resources), len(want))
 	}
 	for i, path := range want {
 		checkResourceDescriptor(t, i, path, result.Resources[i])
 	}
+	checkQueryDescriptors(t, result.Resources[len(want):])
 }
 
 // TestResourcesReadServesHandoffRefBytes pins the same source and slicing as
