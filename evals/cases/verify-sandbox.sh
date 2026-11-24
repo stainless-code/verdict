@@ -59,16 +59,33 @@ printf 'sandbox-sentinel\n' > "$FAKEHOME/.vault-token"
 printf 'github.com:\n  oauth_token: sandbox-sentinel\n' > "$MOVEDGH/hosts.yml"
 
 # pasteboard_restore writes the saved host find pasteboard back, byte for
-# byte (from a file, so trailing newlines survive), once.
+# byte (from a file, so trailing newlines survive). The backup is forgotten
+# only once pbcopy succeeds; a failed restore keeps it for the next attempt.
 pasteboard_restore() {
   if [ -n "${PB_SAVED:-}" ]; then
-    pbcopy -pboard find < "$PB_SAVED" 2>/dev/null || true
-    PB_SAVED=""
+    if pbcopy -pboard find < "$PB_SAVED" 2>/dev/null; then
+      PB_SAVED=""
+    else
+      printf 'verify-sandbox: could not restore the host find pasteboard from %s\n' "$PB_SAVED" >&2
+    fi
+  fi
+}
+
+# pasteboard_keep runs at exit, after the last restore attempt: a backup that
+# still could not be restored is moved out of the temp tree the trap removes,
+# and its path is reported so the operator can restore it by hand.
+pasteboard_keep() {
+  if [ -n "${PB_SAVED:-}" ]; then
+    local keep
+    keep="$(mktemp "${TMPDIR:-/tmp}/verdict-eval-find-pasteboard.XXXXXX")"
+    cp "$PB_SAVED" "$keep"
+    printf 'verify-sandbox: the host find pasteboard was not restored; its saved text is in %s\n' "$keep" >&2
   fi
 }
 
 listener_stop() {
   pasteboard_restore
+  pasteboard_keep
   if [ -n "${LISTENER_PID:-}" ]; then
     kill "$LISTENER_PID" 2>/dev/null || true
   fi
@@ -585,6 +602,14 @@ credential_legs
 # hardlink would write the file past every path rule.
 git_legs() {
   rm -f "$EVAL_SANDBOX/.git/hooks/pre-commit" "$EVAL_SANDBOX/sandbox-git-link"
+  # Positive control: the same link succeeds outside the sandbox, so a denied
+  # one below proves the boundary, not a missing `ln` or `.git/config`. It is
+  # removed before the run, which would otherwise refuse the hard link.
+  if (cd "$EVAL_SANDBOX" && ln .git/config sandbox-git-link 2>/dev/null) && [ -f "$EVAL_SANDBOX/sandbox-git-link" ]; then
+    rm -f "$EVAL_SANDBOX/sandbox-git-link"
+  else
+    bad "the unsandboxed control could not hardlink .git/config"
+  fi
   mkpatch 'printf x > .git/hooks/pre-commit 2>/dev/null && printf leak > sandbox-git-hook.txt || printf denied > sandbox-git-hook.txt; ln .git/config sandbox-git-link 2>/dev/null && printf leak > sandbox-git-ln.txt || printf denied > sandbox-git-ln.txt; git status --short >/dev/null && printf ok > sandbox-git-status.txt'
   rm -f "$EVAL_SANDBOX/sandbox-git-hook.txt" "$EVAL_SANDBOX/sandbox-git-ln.txt" "$EVAL_SANDBOX/sandbox-git-status.txt"
   run_review verify acme/app 5201 --sandbox --json --timeout 10

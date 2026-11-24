@@ -5387,7 +5387,12 @@ script, a `core.hooksPath` directory such as `.husky/` — except `.git`, the
 one path component git refuses to check out. That is where git keeps what it
 executes later, outside any sandbox (`hooks/`, `config` with
 `core.fsmonitor`/`core.hooksPath`/filters, `info/`, `modules/*/hooks`), so
-both mechanisms deny writes there:
+both mechanisms deny writes there. Hook code or config the operator chose to
+keep in the tree stays tree content: a `core.hooksPath` directory, a hook in
+`.git/hooks/` that is a symlink into the tree (or a symlinked `hooks/`
+directory), and an `include.path` that names a file in the tree all run or
+read what the PR can write, so do not keep any of them in a checkout you
+verify a hostile PR in:
 
 - **The repository's git directories.** `<root>/.git` as found, the git
   directory a `.git` file names (a linked worktree or a submodule checkout),
@@ -5423,8 +5428,12 @@ a/../g` therefore visits `a`, though it cleans to `g` — and a command that
   volume, or the macOS firmlink spelling `/System/Volumes/Data/private/var/…`),
   because a rule or bind in that spelling would not protect it; a git
   control file with a second hard link (`cfg` linked to `.git/config` would
-  write it past every path rule — object files under `objects/`, which
-  `git clone --local` links by design, are exempt); and any pointer whose
+  write it past every path rule — only the object files in a git
+  directory's own top-level `objects/`, which `git clone --local` links by
+  design, are exempt); a file in a git location, outside `hooks/`, that is a
+  symlink into the root (`config -> ../cfg`; the refusal names the link and
+  its target, and a target outside the root or inside a git location is
+  fine); and any pointer whose
   walk passes, inside the root, through a symlink (it could be swapped) or a
   component that does not exist yet (it could be created as a link). Links
   are followed one hop at a time, so an in-root link reached only through a
@@ -5437,12 +5446,14 @@ a/../g` therefore visits `a`, though it cleans to `g` — and a command that
   directory on the walk can be replaced later. A hard link made at run time
   is not a gap: `link(2)` from the read-only bind into the writable root
   fails `EXDEV`. macOS refuses the same symlinked `.git` or pointer file,
-  git directory that is or holds the root, other-spelling walk, and
-  hard-linked control file (Seatbelt denies a new link at run time), but needs
+  git directory that is or holds the root, other-spelling walk,
+  hard-linked control file (Seatbelt denies a new link at run time), and
+  control-file symlink into the root, but needs
   none of the other refusals, because its rules
   match by path: every in-root path the walks visit — missing ones and links
   included, links behind other links too — is write-denied under its
-  literal, resolved, and link-node spellings, so none of them can be
+  literal and link-node spellings (a link is denied as itself, never as its
+  target, so a link to `..` cannot deny the root), so none of them can be
   created, removed, or renamed, and the rule below covers any `.git`.
 - **Any new `.git` (macOS).** Seatbelt also denies writes to every path
   component named `.git` below the root, in any letter case, whether or not it

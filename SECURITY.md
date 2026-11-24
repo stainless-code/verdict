@@ -67,16 +67,20 @@ In scope (highest priority first):
   platforms; on macOS so is creating any `.git` path below the root. On both
   platforms a symlinked `.git` or git pointer file, a git directory that is
   the reviewed root or holds it, a pointer that reaches inside the root
-  under another spelling (letter case, a macOS firmlink), and a git control
-  file with a second hard link refuse `sandbox-unavailable` ("inside the
-  root" is decided by file identity); on Linux
+  under another spelling (letter case, a macOS firmlink), a git control file
+  with a second hard link (object files in the git directory's own
+  `objects/` excepted), and a git control file outside `hooks/` that is a
+  symlink into the root refuse `sandbox-unavailable` ("inside the root" is
+  decided by file identity); on Linux
   so does a root whose repository cannot be pinned read-only (no `.git`, a
   git pointer that does not resolve, or a git location whose walk passes
   through a symlink or a missing component inside the root, a link reached
   through an outside-root link included). A sandboxed command that plants a hook or a
   `.git/config` key for the root's repository, or (on macOS) any nested
   `.git`, is a vulnerability. Out of scope: the rest of the working tree is
-  the PR's content and writable by design, and on Linux a new nested `.git`
+  the PR's content and writable by design, and so is hook code or config the
+  operator keeps in the tree (a `core.hooksPath` directory, a `.git/hooks/`
+  symlink into the tree, an `include.path` naming a tree file), and on Linux a new nested `.git`
   in a subdirectory is a documented residual of `bwrap`, which can only
   protect paths that already exist.
 - The `verify` gate's own contract: `verify` executes the agent's claimed

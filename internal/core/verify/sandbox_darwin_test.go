@@ -854,8 +854,10 @@ func TestSandboxExecDeniesGitWritesThroughACaseVariantPointer(t *testing.T) {
 	writeSandboxFile(t, filepath.Join(root, ".git"), "gitdir: meta/GIT\n")
 	sb, env := gitSandbox(t, root)
 	defer closeSandbox(t, sb)
-	requireDeniedWithErrno(t, sb, env, root, `printf '#!/bin/sh\n' > `+filepath.Join(root, "meta", "git", "hooks", "pre-commit"))
-	requireDeniedWithErrno(t, sb, env, root, `printf x >> `+filepath.Join(root, "meta", "git", "config"))
+	// Relative to the root (runWrapped starts there), so the directory's
+	// on-disk spelling is used and a TMPDIR with a space needs no quoting.
+	requireDeniedWithErrno(t, sb, env, root, `printf '#!/bin/sh\n' > meta/git/hooks/pre-commit`)
+	requireDeniedWithErrno(t, sb, env, root, `printf x >> meta/git/config`)
 	assertGitStillWorks(t, sb, env, root)
 }
 
@@ -885,4 +887,30 @@ func TestSandboxExecDeniesHardlinkingGitControlFiles(t *testing.T) {
 		!strings.Contains(ref.Message, "the git control file "+config+" has another hard link") {
 		t.Errorf("ref = %v, want the hardlink refusal for %s", ref, config)
 	}
+}
+
+// TestSandboxExecDoesNotDenyTheRootForALinkToItsParent pins how a walked
+// in-root link is denied: as the link itself, never as its target. `up`
+// links to the root's parent and the `.git` pointer walks through it, so
+// expanding the link to its realpath emitted a write denial on the parent,
+// which covered the whole reviewed root. The link stays undeletable, and
+// ordinary writes in the root keep working.
+func TestSandboxExecDoesNotDenyTheRootForALinkToItsParent(t *testing.T) {
+	requireSandboxExec(t)
+	root := t.TempDir()
+	mustSandboxFS(t, os.Mkdir(filepath.Join(root, "g"), 0o755))
+	mustSandboxFS(t, os.Symlink("..", filepath.Join(root, "up")))
+	writeSandboxFile(t, filepath.Join(root, ".git"), "gitdir: up/"+filepath.Base(root)+"/g\n")
+	sb, env := gitSandbox(t, root)
+	defer closeSandbox(t, sb)
+	parent, err := filepath.EvalSymlinks(filepath.Dir(root))
+	mustSandboxFS(t, err)
+	if profile := sb.prefix[2]; strings.Contains(profile, `(deny file-write* (subpath "`+parent+`"))`) {
+		t.Errorf("profile denies writes to the root's parent %s", parent)
+	}
+	if res := runWrapped(t, sb, env, root, `printf ok > new.txt && cat new.txt`); res.ExitCode != 0 || res.Stdout != "ok" {
+		t.Errorf("write in the root = exit %d %q, want ok", res.ExitCode, res.Stdout+res.Stderr)
+	}
+	requireDeniedWithErrno(t, sb, env, root, `rm up`)
+	requireDeniedWithErrno(t, sb, env, root, `mkdir -p g/hooks`)
 }

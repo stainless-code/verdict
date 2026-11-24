@@ -3,6 +3,7 @@
 package verifycore
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
 	"slices"
@@ -298,5 +299,143 @@ func TestSandboxAcceptsHardlinkedGitObjects(t *testing.T) {
 	}
 	if dirs := gitDirs(t, root); !slices.Equal(dirs, []string{filepath.Join(root, ".git")}) {
 		t.Errorf("macOS git dirs = %v, want only .git", dirs)
+	}
+}
+
+// TestSandboxGitScanContinuesPastAVanishedEntry pins the walk-error policy:
+// an entry that vanishes mid-walk has nothing left to alias, so the scan
+// goes on to the control files after it. It used to stop there, and the
+// caller read the error as "location absent", so a hard-linked `config`
+// later in the walk went unchecked.
+func TestSandboxGitScanContinuesPastAVanishedEntry(t *testing.T) {
+	root := gitRoot(t)
+	dotgit := filepath.Join(root, ".git")
+	writeGitPointer(t, filepath.Join(dotgit, "a-vanishes"), "x")
+	writeGitPointer(t, filepath.Join(dotgit, "config"), "[core]\n")
+	mustSandboxFS(t, os.Link(filepath.Join(dotgit, "config"), filepath.Join(root, "cfg")))
+	gitRootID, ref := newSandboxGitRoot(root)
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	scan := sandboxGitScanner{root: gitRootID, location: dotgit, info: func(d fs.DirEntry) (fs.FileInfo, error) {
+		if d.Name() == "a-vanishes" {
+			return nil, fs.ErrNotExist
+		}
+		return d.Info()
+	}}
+	want := "sandbox unavailable: the git control file " + filepath.Join(dotgit, "config") + " has another hard link"
+	if ref := scan.run(); ref == nil || !strings.HasPrefix(ref.Message, want) {
+		t.Errorf("ref = %v, want prefix %q", ref, want)
+	}
+}
+
+// TestSandboxGitScanRefusesAnUnreadableDirectory keeps every walk error
+// other than a vanished entry a refusal: a directory in the git location
+// that cannot be listed could hide a hard-linked control file.
+func TestSandboxGitScanRefusesAnUnreadableDirectory(t *testing.T) {
+	root := gitRoot(t)
+	locked := filepath.Join(root, ".git", "info")
+	mustSandboxFS(t, os.Mkdir(locked, 0o755))
+	mustSandboxFS(t, os.Chmod(locked, 0))
+	t.Cleanup(func() {
+		if err := os.Chmod(locked, 0o755); err != nil {
+			t.Errorf("restore %s: %v", locked, err)
+		}
+	})
+	if _, err := os.ReadDir(locked); err == nil {
+		t.Skip("running with privileges that read a mode-0 directory")
+	}
+	cause := "could not inspect " + locked
+	requireGitRefusal(t, root, cause)
+	requireGitDirsRefusal(t, root, cause)
+}
+
+// TestSandboxRefusesHardlinksInNestedObjectsDirs limits the clone --local
+// exemption to a git directory's own top-level `objects/`: a directory that
+// is merely named `objects` deeper in (under hooks, info, or a worktree's
+// git directory) holds control files like any other.
+func TestSandboxRefusesHardlinksInNestedObjectsDirs(t *testing.T) {
+	for _, rel := range []string{"hooks/objects/pre-commit", "info/objects/exclude", "worktrees/wt/objects/gitdir"} {
+		t.Run(rel, func(t *testing.T) {
+			root := gitRoot(t)
+			file := filepath.Join(root, ".git", filepath.FromSlash(rel))
+			mustSandboxFS(t, os.MkdirAll(filepath.Dir(file), 0o755))
+			writeGitPointer(t, file, "x")
+			mustSandboxFS(t, os.Link(file, filepath.Join(root, "alias")))
+			cause := "the git control file " + file + " has another hard link"
+			requireGitRefusal(t, root, cause)
+			requireGitDirsRefusal(t, root, cause)
+		})
+	}
+}
+
+// TestSandboxRefusesAControlFileSymlinkedIntoTheRoot pins the symlink half
+// of the location scan: `.git/config -> ../cfg` made git read config the
+// command writes (`core.fsmonitor` then runs on the operator's next git
+// command), and the same for anything under `info/`, or a link whose
+// target does not exist yet (the command could create it). The refusal
+// names the link and its target.
+func TestSandboxRefusesAControlFileSymlinkedIntoTheRoot(t *testing.T) {
+	for _, tc := range []struct{ link, target string }{
+		{"config", "../cfg"},
+		{"info/exclude", "../../excludes"},
+		{"config.worktree", "../not-yet-there"},
+	} {
+		t.Run(tc.link, func(t *testing.T) {
+			root := gitRoot(t)
+			writeGitPointer(t, filepath.Join(root, "cfg"), "[core]\n")
+			writeGitPointer(t, filepath.Join(root, "excludes"), "x\n")
+			link := filepath.Join(root, ".git", filepath.FromSlash(tc.link))
+			mustSandboxFS(t, os.MkdirAll(filepath.Dir(link), 0o755))
+			mustSandboxFS(t, os.Symlink(tc.target, link))
+			cause := "the git control file " + link + " is a symlink to " + tc.target +
+				", which the command could rewrite inside the reviewed root"
+			requireGitRefusal(t, root, cause)
+			requireGitDirsRefusal(t, root, cause)
+		})
+	}
+}
+
+// TestSandboxAcceptsControlFileSymlinksItCannotReach keeps the shapes the
+// scan allows: a hook (or the whole hooks directory) linked into the tree —
+// the operator's choice, like core.hooksPath — a config linked outside the
+// root, and a symbolic-link HEAD inside the git directory itself.
+func TestSandboxAcceptsControlFileSymlinksItCannotReach(t *testing.T) {
+	t.Run("hook into the tree", func(t *testing.T) {
+		root := gitRoot(t)
+		mustSandboxFS(t, os.MkdirAll(filepath.Join(root, ".git", "hooks"), 0o755))
+		mustSandboxFS(t, os.Symlink("../../scripts/pre-commit", filepath.Join(root, ".git", "hooks", "pre-commit")))
+		requireGitAccepted(t, root)
+	})
+	t.Run("hooks directory into the tree", func(t *testing.T) {
+		root := gitRoot(t)
+		mustSandboxFS(t, os.Mkdir(filepath.Join(root, ".husky"), 0o755))
+		mustSandboxFS(t, os.Symlink("../.husky", filepath.Join(root, ".git", "hooks")))
+		requireGitAccepted(t, root)
+	})
+	t.Run("config outside the root", func(t *testing.T) {
+		root := gitRoot(t)
+		outside := filepath.Join(t.TempDir(), "cfg")
+		writeGitPointer(t, outside, "[core]\n")
+		mustSandboxFS(t, os.Symlink(outside, filepath.Join(root, ".git", "config")))
+		requireGitAccepted(t, root)
+	})
+	t.Run("HEAD inside the git directory", func(t *testing.T) {
+		root := gitRoot(t)
+		mustSandboxFS(t, os.MkdirAll(filepath.Join(root, ".git", "refs", "heads"), 0o755))
+		writeGitPointer(t, filepath.Join(root, ".git", "refs", "heads", "main"), "x\n")
+		mustSandboxFS(t, os.Symlink("refs/heads/main", filepath.Join(root, ".git", "HEAD")))
+		requireGitAccepted(t, root)
+	})
+}
+
+// requireGitAccepted asserts both mechanisms accept the root's git layout.
+func requireGitAccepted(t *testing.T, root string) {
+	t.Helper()
+	if _, ref := bwrapArgv(root, homeInputs(t.TempDir())); ref != nil {
+		t.Errorf("linux ref = %v, want accepted", ref)
+	}
+	if _, ref := sandboxGitDirs(root); ref != nil {
+		t.Errorf("macOS ref = %v, want accepted", ref)
 	}
 }
