@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# eval: serial
 #
 # verify --sandbox: on a host that can enforce a mechanism the command runs
 # contained — bubblewrap on Linux (no network, hidden credentials, writable
@@ -144,9 +145,12 @@ macos_service_legs() {
   defaults delete -g "$domain" >/dev/null 2>&1 || true
   rm -f "$HOME/Library/Preferences/$domain.plist"
 
+  # The host find pasteboard is shared state: the case runs serially (see
+  # the header), and every path out of this leg restores it.
   saved="$(pbpaste -pboard find 2>/dev/null || true)"
   if ! printf 'verdict-eval-sentinel' | pbcopy -pboard find 2>/dev/null \
     || [ "$(pbpaste -pboard find 2>/dev/null)" != "verdict-eval-sentinel" ]; then
+    printf '%s' "$saved" | pbcopy -pboard find 2>/dev/null || true
     if [ "${EVAL_REQUIRE_SANDBOX:-0}" = "1" ]; then
       bad "EVAL_REQUIRE_SANDBOX=1 but the host pasteboard control failed"
     else

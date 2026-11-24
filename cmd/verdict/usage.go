@@ -308,7 +308,8 @@ func usageText() string {
 		"    A host that cannot enforce the chosen mechanism, or a reviewed root whose shape it\n" +
 		"    cannot protect (Linux: no .git, a symlinked .git, a .git that is neither a directory\n" +
 		"    nor a gitdir: file, an unresolvable gitdir or commondir, a gitdir that is the root,\n" +
-		"    or a git location reached through a symlink inside the root),\n" +
+		"    an unreadable pointer, or a pointer whose walk passes through a symlink or a\n" +
+		"    missing component inside the root),\n" +
 		"    refuses sandbox-unavailable and runs nothing; --json and patch.json name the\n" +
 		"    mechanism in sandboxMechanism.\n" +
 		"    Runs the agent's claimed proof — exit code becomes machine fact. No GitHub I/O.\n" +

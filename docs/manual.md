@@ -4950,9 +4950,10 @@ re-allows only what the command needs:
   are a second layer. Only `lsopen` is proven on its own: a test drops the
   Mach rule from the profile and `open` still fails. The other three are
   pinned by the profile text, because isolating a delivered AppleEvent would
-  need a scriptable target app and an Automation consent prompt. `signal` is denied for every process the command did
-  not start — Seatbelt has no PID namespace, so without it the command could
-  kill your editor or shell — while its own children stay signalable.
+  need a scriptable target app and an Automation consent prompt. `signal` is
+  denied for every process the command did not start — Seatbelt has no PID
+  namespace, so without it the command could kill your editor or shell —
+  while its own children stay signalable.
   `user-preference-write` is not listed because denying it does not stop
   `cfprefsd` from writing for the command; the Mach denial does. Reading
   another process's environment needs no rule here: macOS 15 returns no
@@ -5015,20 +5016,29 @@ both mechanisms deny writes there:
   Linux refuses `sandbox-unavailable` instead. That covers a subdirectory of
   a checkout, an export or a tarball, and a bare clone alike: verify from the
   top of a working checkout (group mode needs one anyway). The same holds for
-  every shape bwrap cannot pin: a symlinked `.git` (only the link's target
-  could be bound, and the link stays replaceable), a `.git` file whose
-  `gitdir:` line is missing or names a directory that does not exist, a
-  commondir that does not resolve, a `.git` that is neither a directory nor a
-  `gitdir:` file, a git directory that is the root itself, and any git
-  location whose path passes through a symlink inside the root — even a link
-  that points outside it, because the link itself sits in the writable root
-  and could be swapped for a directory with hooks. Each refuses with its own
-  cause; none is skipped. An error inspecting `.git` other than "does not
-  exist" is reported as itself. macOS needs none of these refusals, because
-  its rules match by path: a git directory that does not exist yet is denied
-  under its resolved spelling, a symlinked location under its link's own
-  spelling as well as its target's (so the link cannot be removed or
-  renamed), and the rule below covers any `.git`.
+  every shape bwrap cannot pin. Pointers are read the way git reads them
+  (only trailing CR/LF stripped, so a name ending in a space is kept) and
+  walked the way git resolves them: `..` pops the directory reached so far,
+  and every other component is inspected before it is followed. `gitdir:
+a/../g` therefore visits `a`, though it cleans to `g` — and a command that
+  creates `a` as a link would send git wherever the link points. Refused: a
+  symlinked `.git` (only the link's target could be bound, and the link stays
+  replaceable); a `.git` that is neither a directory nor a `gitdir:` file; a
+  pointer file that is not regular (a FIFO is refused without waiting),
+  cannot be read, exceeds 4 KiB, or has no `gitdir: ` line; a `gitdir:` or
+  commondir target that is not an existing directory; a git directory that
+  is the root itself; and any pointer whose walk passes, inside the root,
+  through a symlink (it could be swapped) or a component that does not exist
+  yet (it could be created as a link). Each refuses with its own cause; none
+  is skipped. An error inspecting `.git` other than "does not exist" is
+  reported as itself. What passes is pinned at the top: every top-level entry
+  of the root that holds a path the walks visit gets the read-only bind (a
+  mount point cannot be renamed, and its subtree is read-only), so no
+  directory on the walk can be replaced later. macOS needs none of these
+  refusals, because its rules match by path: every in-root path the walks
+  visit — missing ones and links included — is write-denied under its
+  literal, resolved, and link-node spellings, so none of them can be
+  created, removed, or renamed, and the rule below covers any `.git`.
 - **Any new `.git` (macOS).** Seatbelt also denies writes to every path
   component named `.git` below the root, in any letter case, whether or not it
   exists yet: the command cannot create a nested repository, a `.git` file, or

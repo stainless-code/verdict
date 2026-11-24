@@ -5,6 +5,8 @@ package verifycore
 import (
 	"os"
 	"path/filepath"
+	"strings"
+	"syscall"
 	"testing"
 )
 
@@ -34,7 +36,7 @@ func TestSandboxArgvRefusesAGitDirReachedThroughAnInRootSymlink(t *testing.T) {
 	mustSandboxFS(t, os.MkdirAll(filepath.Join(root, "real", "gitdir"), 0o755))
 	mustSandboxFS(t, os.Symlink(filepath.Join(root, "real"), filepath.Join(root, "link")))
 	mustSandboxFS(t, os.WriteFile(filepath.Join(root, ".git"), []byte("gitdir: link/gitdir\n"), 0o600))
-	requireGitRefusal(t, root, "the git location "+filepath.Join(root, "link", "gitdir")+
+	requireGitRefusal(t, root, "the git pointer "+filepath.Join(root, ".git")+
 		" passes through the symlink "+filepath.Join(root, "link")+" inside the reviewed root")
 }
 
@@ -46,7 +48,7 @@ func TestSandboxArgvRefusesAGitDirLinkedOutsideTheRoot(t *testing.T) {
 	root, outside := t.TempDir(), t.TempDir()
 	mustSandboxFS(t, os.Symlink(outside, filepath.Join(root, "link")))
 	mustSandboxFS(t, os.WriteFile(filepath.Join(root, ".git"), []byte("gitdir: link\n"), 0o600))
-	requireGitRefusal(t, root, "the git location "+filepath.Join(root, "link")+
+	requireGitRefusal(t, root, "the git pointer "+filepath.Join(root, ".git")+
 		" passes through the symlink "+filepath.Join(root, "link")+" inside the reviewed root")
 }
 
@@ -58,7 +60,7 @@ func TestSandboxArgvRefusesACommondirLinkedOutsideTheRoot(t *testing.T) {
 	mustSandboxFS(t, os.MkdirAll(filepath.Join(root, ".git"), 0o755))
 	mustSandboxFS(t, os.Symlink(outside, filepath.Join(root, "shared")))
 	mustSandboxFS(t, os.WriteFile(filepath.Join(root, ".git", "commondir"), []byte("../shared\n"), 0o600))
-	requireGitRefusal(t, root, "the git location "+filepath.Join(root, "shared")+
+	requireGitRefusal(t, root, "the git pointer "+filepath.Join(root, ".git", "commondir")+
 		" passes through the symlink "+filepath.Join(root, "shared")+" inside the reviewed root")
 }
 
@@ -76,5 +78,36 @@ func TestSandboxArgvNamesTheRealInspectError(t *testing.T) {
 		filepath.Join(root, ".git") + ": not a directory), so it cannot be protected"
 	if ref.Message != want {
 		t.Errorf("message = %q, want %q", ref.Message, want)
+	}
+}
+
+// TestSandboxRefusesARootThatResolvesToTheFilesystemRoot keeps a reviewed root
+// that is a symlink to `/` from making the whole host writable on either
+// platform.
+func TestSandboxRefusesARootThatResolvesToTheFilesystemRoot(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "slash")
+	mustSandboxFS(t, os.Symlink("/", root))
+	if _, ref := bwrapArgv(root, homeInputs(t.TempDir())); ref == nil ||
+		ref.Message != "sandbox unavailable: the reviewed root "+root+" is the filesystem root /; refusing to bind "+
+			"the whole host writable" {
+		t.Errorf("linux ref = %v, want the filesystem-root refusal", ref)
+	}
+	if _, ref := sandboxExecMechanism(root, homeInputs(t.TempDir()), t.TempDir()); ref == nil ||
+		ref.Message != "sandbox unavailable: the reviewed root "+root+" is the filesystem root /; refusing to allow "+
+			"the whole host writable" {
+		t.Errorf("macOS ref = %v, want the filesystem-root refusal", ref)
+	}
+}
+
+// TestSandboxGitPointerRefusesAFIFOWithoutBlocking keeps a named pipe at
+// commondir from hanging setup: it is refused as not a regular file, on both
+// platforms, instead of waiting for a writer.
+func TestSandboxGitPointerRefusesAFIFOWithoutBlocking(t *testing.T) {
+	root := t.TempDir()
+	mustSandboxFS(t, os.Mkdir(filepath.Join(root, ".git"), 0o755))
+	mustSandboxFS(t, syscall.Mkfifo(filepath.Join(root, ".git", "commondir"), 0o600))
+	requireGitRefusal(t, root, "could not read the git pointer "+filepath.Join(root, ".git", "commondir"))
+	if _, ref := sandboxGitDirs(root); ref == nil || !strings.Contains(ref.Message, "could not read the git pointer") {
+		t.Errorf("macOS ref = %v, want the same refusal", ref)
 	}
 }

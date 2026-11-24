@@ -60,7 +60,8 @@ In scope (highest priority first):
   platforms; on macOS so is creating any `.git` path below the root, and on
   Linux a root whose repository cannot be pinned read-only (no `.git`, a
   symlinked `.git`, a git pointer that does not resolve, or a git location
-  reached through an in-root symlink) refuses
+  whose walk passes through a symlink or a missing component inside the
+  root) refuses
   `sandbox-unavailable`. A sandboxed command that plants a hook or a
   `.git/config` key for the root's repository, or (on macOS) any nested
   `.git`, is a vulnerability. Out of scope: the rest of the working tree is

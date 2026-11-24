@@ -224,14 +224,14 @@ tree is the PR's own content, so writes there are by design. Writes to the
 repository's git directories (`.git`, a `.git` file's target, a linked
 worktree's common directory) are denied on both platforms, and macOS also
 denies creating any `.git` path below the root (`sandboxGitDirs`,
-`sandboxGitBindTargets`, `sandboxGitLocationsStrict`, `sandboxInRootSymlink`,
+`sandboxGitBindTargets`, `sandboxGitChainStrict`, `sandboxGitWalk`,
 `sandboxGitWriteDenials` in `internal/core/verify/sandbox.go`;
 `TestSandboxExecDeniesGitControlWrites`). On Linux a root whose repository
 cannot be pinned read-only refuses — no `.git`, a symlinked `.git`, a git
-pointer that does not resolve, or a git location whose path passes through an
-in-root symlink, even to outside the root — because `bwrap` could protect it
-only by writing a mount point into the host tree
-(`TestSandboxArgvRefusesARootWithoutGitDir`,
+pointer that does not resolve, or a pointer whose walk (git's own, `..`
+included) passes through a symlink or a missing component inside the root —
+because `bwrap` could protect it only by writing a mount point into the host
+tree (`TestSandboxArgvRefusesARootWithoutGitDir`,
 `TestSandboxArgvRefusesUnprotectableGitPointers`); a new nested `.git` in a
 subdirectory remains possible there, and `docs/manual.md` § Enforced sandbox
 says so.

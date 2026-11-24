@@ -298,7 +298,7 @@ func assertKeychainUnreachable(t *testing.T, sb *sandbox, env []string, root str
 	keychain := filepath.Join(root, "probe.keychain-db")
 	security := func(args ...string) string {
 		t.Helper()
-		out, err := exec.CommandContext(t.Context(), "/usr/bin/security", args...).CombinedOutput()
+		out, err := hostCmd(t.Context(), "/usr/bin/security", args...).CombinedOutput()
 		if err != nil {
 			t.Fatalf("security %v: %v: %s", args, err, out)
 		}
@@ -307,7 +307,7 @@ func assertKeychainUnreachable(t *testing.T, sb *sandbox, env []string, root str
 	security("create-keychain", "-p", "verdict-probe", keychain)
 	t.Cleanup(func() {
 		// The test context is already canceled when cleanup runs.
-		if out, err := exec.CommandContext(context.Background(), "/usr/bin/security", "delete-keychain", keychain).CombinedOutput(); err != nil {
+		if out, err := hostCmd(context.Background(), "/usr/bin/security", "delete-keychain", keychain).CombinedOutput(); err != nil {
 			t.Errorf("security delete-keychain: %v: %s", err, out)
 		}
 	})
@@ -373,7 +373,7 @@ func sandboxGitRepo(t *testing.T, root string, initArgs ...string) {
 	t.Helper()
 	git := func(args ...string) {
 		t.Helper()
-		cmd := exec.CommandContext(t.Context(), "git", args...)
+		cmd := hostCmd(t.Context(), "git", args...)
 		cmd.Dir = root
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v: %s", args, err, out)
@@ -516,6 +516,18 @@ func assertPasteboardUnreachable(t *testing.T, sb *sandbox, env []string, root s
 	}
 }
 
+// hostCmdWaitDelay bounds the wait for a captured command's pipes to close
+// after it exits or its context ends (GO-CONC-06).
+const hostCmdWaitDelay = 5 * time.Second
+
+// hostCmd builds one host command whose captured output cannot hold the test
+// past its context: WaitDelay is set on every one.
+func hostCmd(ctx context.Context, name string, args ...string) *exec.Cmd {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.WaitDelay = hostCmdWaitDelay
+	return cmd
+}
+
 // hostCommand runs one unsandboxed host command with stdin and returns its
 // combined output and exit code; a spawn failure fails the test.
 func hostCommand(t *testing.T, stdin, name string, args ...string) (string, int) {
@@ -524,7 +536,7 @@ func hostCommand(t *testing.T, stdin, name string, args ...string) (string, int)
 	// helper's own, like runWrapped's.
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, name, args...)
+	cmd := hostCmd(ctx, name, args...)
 	cmd.Stdin = strings.NewReader(stdin)
 	out, err := cmd.CombinedOutput()
 	var exitErr *exec.ExitError
@@ -577,10 +589,16 @@ func TestSandboxExecDeniesLaunchChannels(t *testing.T) {
 // over, so only this variant pins lsopen on its own.
 func assertLsopenAloneRefuses(t *testing.T, sb *sandbox, env []string, root, app string) {
 	t.Helper()
-	lsopenOnly := strings.Replace(sb.prefix[2], "(deny mach-lookup)", "", 1)
-	if lsopenOnly == sb.prefix[2] {
-		t.Fatal("the profile carries no (deny mach-lookup) to drop for the lsopen-only variant")
+	profile := ""
+	for _, arg := range sb.prefix {
+		if strings.Contains(arg, "(deny mach-lookup)") && strings.Contains(arg, "(deny lsopen)") {
+			profile = arg
+		}
 	}
+	if profile == "" {
+		t.Fatalf("no profile argument in %q carries both (deny mach-lookup) and (deny lsopen)", sb.prefix)
+	}
+	lsopenOnly := strings.Replace(profile, "(deny mach-lookup)", "", 1)
 	res := runProfile(t, lsopenOnly, sb.childEnv(env), root, `open -n -g "`+app+`" --args lsopen-only`)
 	if res.ExitCode == 0 {
 		t.Errorf("open under the lsopen-only variant exited 0, want lsopen to refuse it")
@@ -739,5 +757,27 @@ func TestSandboxExecDeniesSwappingAnInRootGitdirLink(t *testing.T) {
 	}
 	if entries, err := os.ReadDir(outside); err != nil || len(entries) != 0 {
 		t.Errorf("the link target gained %v (%v), want it untouched", entries, err)
+	}
+}
+
+// TestSandboxExecDeniesTheDotDotPointerEscape reproduces the `..` escape
+// against the real Seatbelt engine and real git: `.git` names `gitdir:
+// a/../g`, which cleans to `g` but resolves `a` first. The command must not
+// be able to create `a` — as a link to `x/evil` (sending git to `x/g`, where
+// it would plant hooks) or as anything else.
+func TestSandboxExecDeniesTheDotDotPointerEscape(t *testing.T) {
+	requireSandboxExec(t)
+	root := t.TempDir()
+	sandboxGitRepo(t, root, "--separate-git-dir="+filepath.Join(root, "g"))
+	writeSandboxFile(t, filepath.Join(root, ".git"), "gitdir: a/../g\n")
+	sb, env := gitSandbox(t, root)
+	defer closeSandbox(t, sb)
+	if res := runWrapped(t, sb, env, root, `mkdir -p x/evil x/g/hooks`); res.ExitCode != 0 {
+		t.Fatalf("setup inside the root = exit %d %q", res.ExitCode, res.Stdout+res.Stderr)
+	}
+	requireDeniedWithErrno(t, sb, env, root, `ln -s x/evil a`)
+	requireDeniedWithErrno(t, sb, env, root, `mkdir a`)
+	if _, err := os.Lstat(filepath.Join(root, "a")); !os.IsNotExist(err) {
+		t.Errorf("the walked component a exists after the denied writes (%v)", err)
 	}
 }

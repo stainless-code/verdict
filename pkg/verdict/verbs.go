@@ -380,9 +380,10 @@ type VerifyRequest struct {
 	// unwrapped, and never falls back to SandboxNetworkOnly. The Linux shapes:
 	// no .git; a symlinked .git; a .git that is neither a directory nor a
 	// gitdir: file; a gitdir or commondir that does not resolve to an existing
-	// directory; a gitdir that is the root itself; and a git location whose
-	// path passes through a symlink inside the root, even one pointing
-	// outside it.
+	// directory; a gitdir that is the root itself; a pointer file that is not
+	// regular, unreadable, or over its cap; and a pointer whose walk (git's
+	// own, `..` included) passes through a symlink or a missing component
+	// inside the root.
 	Sandbox bool
 	// SandboxNetworkOnly is the explicit Linux opt-in for hosts without
 	// bubblewrap: `unshare --user --map-root-user --net`, network isolation
