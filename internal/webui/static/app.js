@@ -21,11 +21,25 @@
   // /v1/health; both stay unset in static mode and on a read-only server,
   // so no write control can render there.
   let interactive = false;
+  let allowPost = false;
   let csrfToken = "";
   // The Tier B job drawer shows the most recent job snapshot the SSE
   // stream published; null until one job has been started.
   let activeJob = null;
   let jobDrawer = null;
+  let submitOverlay = null;
+  // submitReturnFocus is the Submit Review control that opened the dialog;
+  // closing the dialog hands focus back to it. submitKeydown is the document
+  // handler that traps Tab and closes on Escape while the dialog is open.
+  let submitReturnFocus = null;
+  // submitControl is the Submit Review button the current Detail view renders:
+  // a bundles event rebuilds the view under an open dialog, which detaches the
+  // button that opened it, so focus goes back to the one that replaced it.
+  let submitControl = null;
+  let submitKeydown = null;
+  // submitGeneration numbers each open of the confirmation modal; a preview
+  // acts only while its own generation is still the current one.
+  let submitGeneration = 0;
   let diffMode = "unified";
   const triageStatuses = [
     "open",
@@ -286,8 +300,9 @@
   // writeJSON posts one JSON body with the per-session CSRF header. The
   // response body is returned for the caller to render honestly: a refusal
   // envelope is not thrown.
-  async function writeJSON(path, payload) {
+  async function writeJSON(path, payload, signal) {
     const response = await fetch(path, {
+      signal,
       method: "POST",
       credentials: "same-origin",
       cache: "no-store",
@@ -426,6 +441,23 @@
     return interactive && mode !== "static";
   }
 
+  // afterDelay is the one timer seam: the no-stream job poll and the
+  // preview poll both wait through it, so a test can advance the clock
+  // without real time passing.
+  const afterDelay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // The confirmation modal waits for a preview job on a bounded backoff: it
+  // starts a quarter second apart and doubles to a two-second cap. A preview
+  // runs a whole dry-run post, host reads and gate checks included, so a
+  // healthy one can outlast a short window, while an unpaced burst of fetches
+  // measures only how fast a rejection is delivered. The whole preview, the
+  // start request and every status request included, has two minutes of
+  // elapsed time: the deadline is one abort signal that every preview request
+  // carries, so a response that arrives after it is never accepted.
+  const previewPollStartMs = 250;
+  const previewPollCapMs = 2000;
+  const previewDeadlineMs = 120000;
+
   // startJob posts one Tier B action and keeps its snapshot for the
   // drawer. The response is rendered honestly: a refusal envelope and a
   // transport failure both land in the status line.
@@ -456,12 +488,11 @@
   // pollJob is the no-stream fallback: without /v1/events the drawer
   // reads the status until it settles.
   async function pollJob(id) {
-    const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
     while (
       activeJob?.id === id &&
       !["succeeded", "failed", "cancelled"].includes(activeJob.status)
     ) {
-      await delay(500);
+      await afterDelay(500);
       try {
         const response = await fetch(`/v1/jobs/${encodeURIComponent(id)}`, {
           credentials: "same-origin",
@@ -549,6 +580,7 @@
 
   // jobActionsPanel is the detail view's Tier B panel: the bundle-level
   // sandbox reproduction and the dry-run post preview, plus the drawer.
+  // The Tier C submit control renders only when allow_post is advertised.
   function jobActionsPanel(root, bundle) {
     const wrapper = node("div", undefined, "job-actions");
     const verify = node("button", "Reproduce in sandbox");
@@ -562,11 +594,396 @@
       startJob("/v1/jobs/post-preview", { root, bundle }),
     );
     wrapper.append(verify, preview);
+    if (submitEnabled(bundle)) {
+      const submit = node("button", "Submit Review");
+      submit.type = "button";
+      submit.addEventListener("click", () =>
+        openSubmitModal(root, bundle, submit),
+      );
+      submitControl = submit;
+      wrapper.append(submit);
+    }
     jobDrawer = node("div", undefined, "job-drawer");
     jobDrawer.setAttribute("aria-live", "polite");
     renderActiveJob();
     wrapper.append(jobDrawer);
     return wrapper;
+  }
+
+  // submitEnabled gates the Tier C control on the allow_post advertisement.
+  // A local bundle (local-1, local-good) has no pull request on any host, so
+  // the host write stays hidden there whatever the server advertises.
+  function submitEnabled(bundle) {
+    if (mode === "static" || !interactive || !allowPost) return false;
+    return !String(bundle || "").startsWith("local-");
+  }
+
+  // fetchPreview runs one dry-run preview and polls its job with bounded
+  // backoff until it settles, returning the snapshot whose result carries the
+  // digest and nonce. A preview still unsettled at the deadline returns an
+  // "expired" snapshot, and the modal reports that instead of confirming
+  // nothing. live() says whether the dialog that asked for this preview is
+  // still the open one: once it is not, the poll stops at its next step and
+  // returns null, so a cancelled preview neither keeps fetching nor reaches a
+  // newer dialog. waiting() fires before each wait on an unsettled job.
+  async function fetchPreview(root, bundle, live, waiting) {
+    const deadline = AbortSignal.timeout(previewDeadlineMs);
+    try {
+      return await pollPreview(root, bundle, live, waiting, deadline);
+    } catch (error) {
+      if (deadline.aborted) return { status: "expired" };
+      throw error;
+    }
+  }
+
+  async function pollPreview(root, bundle, live, waiting, deadline) {
+    // expired throws at every step a late response could pass: fetchPreview
+    // turns it into the expired snapshot, never into an accepted preview.
+    const expired = () => {
+      if (deadline.aborted) throw new Error("The preview deadline passed.");
+    };
+    const { response, body } = await writeJSON(
+      "/v1/jobs/post-preview",
+      { root, bundle },
+      deadline,
+    );
+    if (!live()) return null;
+    expired();
+    if (!response.ok) {
+      throw new Error(body?.message || `Request returned ${response.status}`);
+    }
+    if (body?.error) throw new Error(body.error.message || "Preview refused.");
+    let snap = body?.data || {};
+    let delay = previewPollStartMs;
+    while (snap?.id) {
+      if (["succeeded", "failed", "cancelled"].includes(snap.status)) break;
+      waiting();
+      await afterDelay(delay);
+      delay = Math.min(delay * 2, previewPollCapMs);
+      if (!live()) return null;
+      expired();
+      const got = await fetch(`/v1/jobs/${encodeURIComponent(snap.id)}`, {
+        credentials: "same-origin",
+        cache: "no-store",
+        signal: deadline,
+      });
+      if (!live()) return null;
+      expired();
+      if (!got.ok) {
+        // A failed poll is a request error, not an unfinished preview: only
+        // an exhausted deadline earns the "did not finish" message.
+        throw new Error(`Preview status check returned ${got.status}.`);
+      }
+      const next = await got.json();
+      if (!live()) return null;
+      expired();
+      snap = next?.data || snap;
+    }
+    return snap;
+  }
+
+  // closeSubmitModal removes the confirmation overlay and retires its open:
+  // bumping the generation is what tells that open's in-flight preview poll to
+  // stop and keeps it from touching whatever dialog opens next.
+  function closeSubmitModal() {
+    submitGeneration++;
+    if (submitKeydown) document.removeEventListener("keydown", submitKeydown);
+    submitKeydown = null;
+    if (!submitOverlay) return;
+    submitOverlay.remove();
+    submitOverlay = null;
+    const returnTo = submitReturnFocus;
+    submitReturnFocus = null;
+    // A re-render can detach the button that opened the dialog; focusing it
+    // would do nothing and drop focus to the page, so the button that replaced
+    // it takes the focus.
+    if (returnTo?.isConnected) returnTo.focus();
+    else if (submitControl?.isConnected) submitControl.focus();
+  }
+
+  // trapSubmitKeys keeps focus inside the open dialog: Tab and Shift-Tab wrap
+  // over its enabled controls, in the order of the live `controls` array (the
+  // review text joins it once the preview settles), and
+  // Escape closes it like its Cancel/Close button. The handler lives on the
+  // document so it still hears keys when a click on the backdrop has dropped
+  // focus out of the dialog.
+  function trapSubmitKeys(controls) {
+    const handler = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault?.();
+        closeSubmitModal();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const enabled = controls.filter((control) => !control.disabled);
+      if (!enabled.length) return;
+      event.preventDefault?.();
+      const at = enabled.indexOf(document.activeElement);
+      const step = event.shiftKey ? -1 : 1;
+      const next = at < 0 ? (step > 0 ? 0 : enabled.length - 1) : at + step;
+      enabled[(next + enabled.length) % enabled.length].focus();
+    };
+    submitKeydown = handler;
+    document.addEventListener("keydown", handler);
+  }
+
+  // openSubmitModal previews the bundle, then waits for an explicit
+  // Confirm & Submit Review click before any host write.
+  async function openSubmitModal(root, bundle, trigger) {
+    closeSubmitModal();
+    const generation = submitGeneration;
+    const live = () => submitGeneration === generation;
+    const overlay = node("div", undefined, "submit-modal");
+    const dialog = node("div", undefined, "submit-dialog");
+    const heading = node("h2", "Submit Review");
+    heading.setAttribute("id", "submit-dialog-title");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "submit-dialog-title");
+    dialog.append(heading);
+    const target = node(
+      "p",
+      `Bundle ${bundle} in root ${root} — previewing the PR post.`,
+      "submit-target",
+    );
+    const status = node("p", "Previewing post…", "submit-status");
+    status.setAttribute("aria-live", "polite");
+    const details = node("div", undefined, "submit-details");
+    const confirm = node("button", "Confirm & Submit Review");
+    confirm.type = "button";
+    confirm.disabled = true;
+    const cancel = node("button", "Cancel");
+    cancel.type = "button";
+    cancel.addEventListener("click", closeSubmitModal);
+    dialog.append(target, status, details, confirm, cancel);
+    overlay.append(dialog);
+    document.body.append(overlay);
+    submitOverlay = overlay;
+    submitReturnFocus = trigger || null;
+    const focusOrder = [confirm, cancel];
+    trapSubmitKeys(focusOrder);
+    // Cancel is the only enabled control while the preview loads, so focus
+    // starts there and stays: Confirm is enabled without taking focus, so a
+    // keypress aimed at Cancel can never activate it (WAI-ARIA: don't steal
+    // focus). Tab still reaches it, because the trap includes it.
+    cancel.focus();
+    let preview = null;
+    try {
+      preview = await fetchPreview(root, bundle, live, () => {
+        status.textContent = "Still preparing preview…";
+      });
+    } catch (error) {
+      if (!live()) return;
+      status.textContent =
+        error instanceof Error ? error.message : String(error);
+      status.className = "error";
+      return;
+    }
+    if (!live() || !preview) return;
+    if (preview?.error) {
+      status.textContent = preview.error.message || "Preview refused.";
+      status.className = "error";
+      return;
+    }
+    const snap = preview || {};
+    const result = snap.result || {};
+    if (!["succeeded", "failed", "cancelled"].includes(snap.status)) {
+      status.textContent =
+        "The preview did not finish within two minutes; cancel and try again.";
+      status.className = "error";
+      return;
+    }
+    // A preview the server cut carries no digest or nonce by design: the dialog
+    // still shows the review text, but there is nothing to confirm.
+    const serverCut =
+      result.review_truncated && typeof result.review_truncated === "object"
+        ? result.review_truncated
+        : null;
+    if (snap.status !== "succeeded" || (!result.preview_digest && !serverCut)) {
+      status.textContent = "Preview did not succeed; no digest to confirm.";
+      status.className = "error";
+      return;
+    }
+    const digest = result.preview_digest || "";
+    const nonce = result.preview_nonce || "";
+    const comments = Array.isArray(result.review_comments)
+      ? result.review_comments.filter(
+          (entry) => entry && typeof entry.text === "string",
+        )
+      : [];
+    if (!comments.length) {
+      // The nonce authorizes posting these comments; with none listed there is
+      // nothing for the operator to confirm. (A comment whose text is empty is
+      // listed as such below, and stays confirmable.)
+      status.textContent =
+        "The preview carried no review text to show; cancel and try again.";
+      status.className = "error";
+      return;
+    }
+    const omitted = Array.isArray(result.review_omitted)
+      ? result.review_omitted.map(String)
+      : [];
+    const total = Number.isInteger(result.review_comment_count)
+      ? result.review_comment_count
+      : comments.length + omitted.length;
+    const findings = result.findings || {};
+    const anchors = result.anchors || {};
+    // Untrusted text only ever reaches the page through textContent (node()),
+    // never innerHTML: the review is model output. Every comment the post will
+    // send is listed in posting order, each under its own label, inside one
+    // scrollable region that is a Tab stop, so a keyboard operator can read
+    // all of it.
+    const reviewBox = node("div", undefined, "submit-review-list");
+    reviewBox.setAttribute("tabindex", "0");
+    reviewBox.setAttribute("role", "region");
+    reviewBox.setAttribute("aria-label", "Review text to be posted");
+    const cut = [];
+    let cutBytes = 0;
+    comments.forEach((entry, index) => {
+      const shown = Number.isInteger(entry.shown_bytes)
+        ? entry.shown_bytes
+        : null;
+      const size = Number.isInteger(entry.bytes) ? entry.bytes : null;
+      const isCut = shown !== null && size !== null && shown < size;
+      if (isCut) {
+        cut.push(`comment ${index + 1} (${shown} of ${size} bytes shown)`);
+        cutBytes += size - shown;
+      }
+      reviewBox.append(
+        node(
+          "p",
+          `Comment ${index + 1} of ${total} — ${entry.label || "review comment"}${isCut ? ` — cut after ${shown} of ${size} bytes` : ""}`,
+          "submit-review-label",
+        ),
+        node(
+          "pre",
+          entry.text === "" ? "(empty comment)" : entry.text,
+          "submit-review",
+        ),
+      );
+    });
+    details.append(
+      node(
+        "p",
+        `Event ${result.event || "COMMENT"} — ${findings.open ?? 0} open, ${findings.addressed ?? 0} addressed, ${anchors.kept ?? 0} anchors kept.`,
+      ),
+    );
+    if (typeof result.target_repo === "string" && result.target_repo) {
+      details.append(
+        node("p", `Posts to ${result.target_repo}, pull request ${bundle}.`),
+      );
+    }
+    const warnings = Array.isArray(snap.warnings) ? snap.warnings : [];
+    if (warnings.length) {
+      const list = node("ul", undefined, "submit-warnings");
+      for (const warning of warnings) list.append(node("li", warning));
+      details.append(node("p", "Preview warnings:"), list);
+    }
+    details.append(
+      node(
+        "p",
+        total === 1
+          ? "1 comment will be posted."
+          : `${total} comments will be posted, in this order.`,
+      ),
+      reviewBox,
+    );
+    const leftOut = `${cutBytes} bytes cut, ${omitted.length} ${omitted.length === 1 ? "comment" : "comments"} omitted`;
+    const unseen = [...cut];
+    if (omitted.length) unseen.push(`not shown at all: ${omitted.join("; ")}`);
+    // Posting text the operator never saw is never confirmable: the server mints
+    // no nonce for a cut preview, and here Confirm stays disabled with no
+    // acknowledgement to tick past it, pointing at the CLI, which prints the
+    // whole payload.
+    const blocked = unseen.length > 0 || serverCut !== null;
+    if (blocked) {
+      const serverMessage =
+        typeof serverCut?.message === "string" ? serverCut.message : "";
+      details.append(
+        node(
+          "p",
+          (serverMessage
+            ? `${serverMessage}${unseen.length ? ` Not shown: ${unseen.join("; ")}.` : ""}`
+            : null) ||
+            `Confirm is disabled: the preview did not show the whole review (${unseen.join("; ")}). Left out in total: ${leftOut}. ` +
+              `Inspect the full payload with \`verdict post ${result.target_repo || "<repo>"} ${bundle} --dry-run\` and post it from the CLI.`,
+          "submit-truncated",
+        ),
+      );
+    }
+    if (digest) details.append(node("p", `Preview digest ${digest}`));
+    focusOrder.unshift(reviewBox);
+    status.textContent = blocked
+      ? "The preview did not show the whole review, so it cannot be confirmed here."
+      : "Review the text above, then confirm to submit.";
+    confirm.disabled = blocked;
+    // The dialog is still the open one: a submit that settles after the
+    // operator closed it reports on the page instead of a detached element.
+    const open = () => submitOverlay === overlay;
+    const report = (text, failed) => {
+      status.textContent = text;
+      status.className = failed ? "error" : "";
+      if (!open()) {
+        message.textContent = `Submit review for bundle ${bundle} in root ${root}: ${text}`;
+        message.className = failed ? "error" : "";
+      }
+    };
+    let confirming = false;
+    confirm.addEventListener("click", async () => {
+      confirming = true;
+      confirm.disabled = true;
+      // The server keeps posting after the dialog goes away, so this button
+      // stops promising a cancel: it closes the dialog, nothing more.
+      cancel.textContent = "Close";
+      const pending = node(
+        "p",
+        "Posting continues on the server; closing this dialog does not cancel it.",
+        "submit-status",
+      );
+      details.append(pending);
+      cancel.focus();
+      try {
+        const { response, body } = await writeJSON("/v1/post/submit", {
+          root,
+          bundle,
+          preview_digest: digest,
+          preview_nonce: nonce,
+          confirm: true,
+        });
+        if (!response.ok) {
+          if (response.status === 503 && body?.reason === "store-busy") {
+            // The server refused before spending the nonce, so the same
+            // preview can go again: offer Retry instead of a dead end.
+            report(
+              `${body.message || "The bundle is busy."} Nothing was posted; retry with this preview.`,
+              true,
+            );
+            confirm.textContent = "Retry submit";
+            confirming = false;
+            confirm.disabled = false;
+            cancel.textContent = "Cancel";
+            return;
+          }
+          report(body?.message || `Request returned ${response.status}`, true);
+          return;
+        }
+        if (body?.error) {
+          report(body.error.message || "Submit refused.", true);
+          return;
+        }
+        const data = body?.data || {};
+        const receipt = node("p", `Submitted review ${data.commit_id || ""}.`);
+        details.append(receipt);
+        status.textContent = "Submitted.";
+        status.className = "";
+        message.textContent = `Review submitted for bundle ${bundle} in root ${root}.`;
+        message.className = "";
+      } catch (error) {
+        report(error instanceof Error ? error.message : String(error), true);
+      } finally {
+        pending.remove();
+      }
+    });
   }
 
   function compareBuckets(root, bundle) {
@@ -1248,6 +1665,7 @@
       const health = await response.json();
       if (health.data?.interactive === true) {
         interactive = true;
+        allowPost = health.data?.allow_post === true;
         csrfToken =
           typeof health.data?.csrf === "string" ? health.data.csrf : "";
       }

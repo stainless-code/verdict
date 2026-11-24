@@ -21,6 +21,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 // ChunkWarning is the one line a chunked bundle emits. It is not a blanket
@@ -385,7 +386,7 @@ type priorClaim struct {
 // record is trusted: an absent or undecodable file credits nothing (fail
 // closed), and every malformed entry is skipped with a warning.
 func loadPrior(dir string, files map[string][]Range) (map[string][]Range, []string, bool) {
-	raw, err := os.ReadFile(dir + priorFile)
+	raw, err := noblock.ReadFile(dir + priorFile)
 	if err != nil {
 		return nil, nil, false
 	}
@@ -511,7 +512,7 @@ func persistChunkedPrior(dir string) error {
 // An absent, unreadable, or malformed file reports false, so the caller drops
 // it instead of crediting a partial reading.
 func readPrior(dir string) (map[string][]Range, bool) {
-	raw, err := os.ReadFile(dir + priorFile)
+	raw, err := noblock.ReadFile(dir + priorFile)
 	if err != nil {
 		return nil, false
 	}
@@ -732,7 +733,7 @@ func loadRows(dir string) ([]hunks.Hunk, *core.RefusalError) {
 	if rows != nil {
 		return rows, nil
 	}
-	raw, rerr := os.ReadFile(dir + fullDiffFile)
+	raw, rerr := noblock.ReadFile(dir + fullDiffFile)
 	if rerr == nil {
 		return hunks.Parse(string(raw)), nil
 	}
@@ -746,7 +747,7 @@ func loadRows(dir string) ([]hunks.Hunk, *core.RefusalError) {
 // A manifest that will not parse still marks the bundle chunked with no count;
 // `record` refuses such a bundle, and the count never surfaces.
 func chunked(dir string, review *jq.Obj) (attested, total int, ok bool) {
-	raw, err := os.ReadFile(dir + chunksDir + manifestFile)
+	raw, err := noblock.ReadFile(dir + chunksDir + manifestFile)
 	if err != nil {
 		return 0, 0, false
 	}

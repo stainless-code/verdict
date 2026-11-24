@@ -7,6 +7,8 @@ import (
 	"os"
 
 	"github.com/stainless-code/verdict/internal/core"
+	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 // storedRecord is the part of record.json post reads: the decision record
@@ -27,7 +29,7 @@ const recordFile = "/record.json"
 // existed: an unrecorded review decides from post's own merge, and a record
 // with no decision is not a decision to republish.
 func loadStoredRecord(dir string) (storedRecord, bool) {
-	raw, err := os.ReadFile(dir + recordFile)
+	raw, err := noblock.ReadFile(dir + recordFile)
 	if err != nil {
 		return storedRecord{}, false
 	}
@@ -62,16 +64,31 @@ func (st *state) adoptStoredApproval() *core.RefusalError {
 		return nil
 	}
 	if record.Head != st.commitID || record.DiffSHA256 != fileSHA256(st.dir+"/full.diff") ||
-		record.ReviewSHA256 != fileSHA256(st.flags.ReviewFile) {
+		record.ReviewSHA256 != reviewSHA256(st.dir, st.flags.ReviewFile) {
 		return &core.RefusalError{Code: "record-stale", Message: msgRecordStale}
 	}
 	st.merged.Approval = record.Approval
 	return nil
 }
 
-// fileSHA256 hashes one artifact's bytes, the same way record stamps the
-// review and diff it read.
+// fileSHA256 hashes one bundle artifact's bytes, the same way record stamps the
+// diff it read. The open never waits for a writer.
 func fileSHA256(path string) string {
+	raw, err := noblock.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	sum := sha256.Sum256(raw)
+	return hex.EncodeToString(sum[:])
+}
+
+// reviewSHA256 hashes the review the post reads, the same way record stamps it.
+// The bundle's own review.json opens without waiting for a writer; a path the
+// operator named with --review-file reads like any file.
+func reviewSHA256(dir, path string) string {
+	if recordcore.IsBundleReview(dir, path) {
+		return fileSHA256(path)
+	}
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		return ""

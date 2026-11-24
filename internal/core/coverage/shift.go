@@ -12,12 +12,12 @@ package coverage
 
 import (
 	"math"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/hunks"
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 // Section and hunk markers the translation reads.
@@ -83,7 +83,7 @@ func (fs *fileShift) translateOne(r Range) []Range {
 // translation per file it names. ok is false when there is no marker at all:
 // the bundle is then a full round and prior credit stays out of grading.
 func loadIncrementalShifts(dir string) (map[string]*fileShift, bool) {
-	raw, err := os.ReadFile(dir + incrementalFile)
+	raw, err := noblock.ReadFile(dir + incrementalFile)
 	if err != nil {
 		return nil, false
 	}

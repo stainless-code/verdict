@@ -19,6 +19,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -445,7 +446,7 @@ func (c *coordinator) recordBytes(record string) ([]byte, *core.RefusalError) {
 			"the launcher record %s is %d bytes, over the %d-byte record cap; re-run without --resume",
 			record, info.Size(), maxResumeRecordBytes))
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, c.st.refuse(codeCannotResume, fmt.Sprintf(
 			"the launcher record %s cannot be read: %v; re-run without --resume", record, err))
@@ -1058,7 +1059,7 @@ func (c *coordinator) readArtifact(artifact string) ([]byte, *core.RefusalError)
 		return nil, c.driftRefusal(fmt.Sprintf("%s is %d bytes, over the %d-byte resume read cap",
 			artifact, info.Size(), resumeArtifactCap))
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, snapshotUnreadable(artifact)
 	}

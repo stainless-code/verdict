@@ -36,6 +36,10 @@ type Commander interface {
 // CodePostFailed is the typed refusal for every post-internal failure.
 const CodePostFailed = codePostFailed
 
+// CodePostContentChanged is the typed refusal for a real post whose settled
+// content is not the digest the caller pinned ([Request.PinnedContentHash]).
+const CodePostContentChanged = codePostContentChanged
+
 const codeCanceled = "canceled"
 
 const msgCanceledPost = "canceled before post completed"
@@ -126,6 +130,8 @@ type state struct { //nolint:govet // field grouping documents the post run stat
 	remoteInline      []map[string]any
 	previousHead      string
 	phash             string
+	postedHash        string
+	marked            string
 	dir               string
 	body              string
 	banners           []string
@@ -300,6 +306,9 @@ func (st *state) publish(ctx context.Context) (*Response, *core.RefusalError) {
 	st.finalizeBody()
 	st.preflight()
 	st.buildPayloads()
+	if ref := st.pinnedContentGate(); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	st.eventLine()
 	if st.flags.DryRun {
 		return st.dryRunResponse(ctx)
@@ -315,6 +324,19 @@ func (st *state) publish(ctx context.Context) (*Response, *core.RefusalError) {
 		return nil, st.withWarnings(ref)
 	}
 	return st.submit(ctx)
+}
+
+// pinnedContentGate refuses a real post whose settled content is not the one
+// the caller pinned. It runs on the payloads just built, the exact bytes a
+// post hands the host, and before any host write, so the digest it checks is
+// the digest of what is about to be sent, not of an earlier read. (It runs
+// after prepare's host reads, the auth and drift checks.)
+func (st *state) pinnedContentGate() *core.RefusalError {
+	pinned := st.req.PinnedContentHash
+	if st.flags.DryRun || pinned == "" || pinned == st.postedHash {
+		return nil
+	}
+	return &core.RefusalError{Code: codePostContentChanged, Message: fmt.Sprintf(msgPostContentChanged, pinned, st.postedHash)}
 }
 
 func (st *state) checkBundle() *core.RefusalError {
@@ -357,7 +379,11 @@ func (st *state) gateControls() *core.RefusalError {
 }
 
 func (st *state) loadReview() *core.RefusalError {
-	review, err := recordcore.LoadReview(st.flags.ReviewFile)
+	load := recordcore.LoadReview // an operator --review-file keeps normal read semantics
+	if recordcore.IsBundleReview(st.dir, st.flags.ReviewFile) {
+		load = recordcore.LoadBundleReview
+	}
+	review, err := load(st.flags.ReviewFile)
 	if err != nil {
 		return refusalOrFailed(err)
 	}
@@ -456,7 +482,7 @@ func (st *state) merge() *core.RefusalError {
 		Review:   st.review, ReviewFile: st.flags.ReviewFile,
 		Root: st.req.RootPath(), RepoRoot: st.req.RepoRootPath(),
 		Banners: st.banners,
-		DryRun:  st.flags.DryRun, FindingsFile: st.findingsFile,
+		DryRun:  st.flags.DryRun, FindingsFile: st.findingsFile, NoPersist: st.req.NoPersist,
 		Effective: st.req.Effective, Forces: st.req.Forces,
 		Repo: st.req.Repo, Pr: st.req.Pr, Cmd: "post", Controls: st.controls,
 		RequireCoverage: st.flags.RequireCoverage,

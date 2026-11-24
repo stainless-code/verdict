@@ -48,6 +48,23 @@ type PostData struct { //nolint:govet // field order is the published property o
 	ProvenanceEnabled   bool                     `json:"-"`
 	ProvenanceReceipt   *ProvenanceReceipt       `json:"-"`
 	ProvenanceTruncated []ProvenanceTruncatedRow `json:"-"`
+
+	// RenderedComments and RenderedHash are the dry-run's settled review text
+	// and the digest over the exact payloads a real post would hand the host:
+	// not wire fields, so the CLI envelope and the schema keep their bytes.
+	// RenderedComments lists every comment a real
+	// post would send, in posting order (the review body, each follow-up part a
+	// split adds, then each inline comment), so the serve confirm dialog shows
+	// all of what the digest covers; the confirmed post is bound to the hash.
+	RenderedComments []RenderedComment `json:"-"`
+	RenderedHash     string            `json:"-"`
+}
+
+// RenderedComment is one comment a real post sends: its place in the post and
+// its text exactly as the host receives it, hidden review marker included.
+type RenderedComment struct {
+	Label string
+	Text  string
 }
 
 // ValidationData is the applied validator pass a post reports: the exact-file

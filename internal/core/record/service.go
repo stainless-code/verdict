@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 
@@ -20,6 +19,7 @@ import (
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -262,7 +262,7 @@ func (st *svc) loadInputs(ctx context.Context, dir string) (*jq.Obj, *core.Refus
 	}
 
 	if st.req.DryRun {
-		raw, err := os.ReadFile(dir + diffSuffix)
+		raw, err := noblock.ReadFile(dir + diffSuffix)
 		if err != nil {
 			return nil, &core.RefusalError{Code: codeMissingDiff, Message: fmt.Sprintf(msgMissingDiff, dir)}
 		}
@@ -694,7 +694,7 @@ func resolveHead(dir string, store *readcommon.Bundle, prov string) string {
 }
 
 func sha256File(path string) string {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return ""
 	}

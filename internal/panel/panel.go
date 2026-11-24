@@ -58,7 +58,7 @@ func prepare(req readcommon.Request) (*planned, error) {
 	if ref != nil {
 		return nil, panelError(ref)
 	}
-	review, err := recordcore.LoadReview(filepath.Join(dir, "review.json"))
+	review, err := recordcore.LoadBundleReview(filepath.Join(dir, "review.json"))
 	if err != nil {
 		return nil, panelError(err)
 	}

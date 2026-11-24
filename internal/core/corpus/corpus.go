@@ -21,6 +21,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -91,7 +92,7 @@ func Load(dir string) (*core.CorpusCase, *core.RefusalError) {
 // LoadFile reads and validates one corpus case manifest at path. Every failure
 // is a typed corpus-invalid refusal naming the file and the reason.
 func LoadFile(path string) (*core.CorpusCase, *core.RefusalError) {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, invalid(path, "unreadable")
 	}
@@ -570,7 +571,7 @@ func usablePhrases(c *core.CorpusCase, diff []byte) [][]string {
 // phrases the diff spells.
 func bundleDiff(dir string, c *core.CorpusCase) ([]byte, *core.RefusalError) {
 	path := filepath.Join(dir, "full.diff")
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		if c.Provenance.Kind != kindReal {
 			return nil, nil
@@ -960,7 +961,7 @@ func ModelOf(dir string) string {
 // PanelOf reads the bundle's pinned panel (fetch's panel file format:
 // one slug per line, blank and #-comment lines skipped).
 func PanelOf(dir string) []string {
-	raw, err := os.ReadFile(dir + "/panel")
+	raw, err := noblock.ReadFile(dir + "/panel")
 	if err != nil {
 		return nil
 	}

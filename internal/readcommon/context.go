@@ -3,12 +3,12 @@ package readcommon
 import (
 	"encoding/json"
 	"io"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 const contextManifestCap = 2097152
@@ -21,7 +21,7 @@ type ContextEntry struct {
 
 // ContextEntries reads the source names and roles from context.json.
 func ContextEntries(dir string) []ContextEntry {
-	f, err := os.Open(filepath.Join(dir, "context.json"))
+	f, err := noblock.OpenRegular(filepath.Join(dir, "context.json"))
 	if err != nil {
 		return nil
 	}

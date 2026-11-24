@@ -1,7 +1,6 @@
 package reportcore
 
 import (
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -9,6 +8,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/overrides"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -86,7 +86,7 @@ func leadValues(rec string) (string, string) {
 }
 
 func jsonRaw(path, field string) string {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return ""
 	}
@@ -285,14 +285,14 @@ const checkedShown = 7
 
 func checkedFiles(dir string) string {
 	if isRegular(dir + prJSONSuffix) {
-		raw, err := os.ReadFile(dir + prJSONSuffix)
+		raw, err := noblock.ReadFile(dir + prJSONSuffix)
 		if err == nil {
 			if lines := prFileLines(raw); lines != nil {
 				return strings.Join(lines, newline)
 			}
 		}
 	}
-	raw, err := os.ReadFile(dir + fullDiffSuffix)
+	raw, err := noblock.ReadFile(dir + fullDiffSuffix)
 	if err != nil {
 		return ""
 	}
@@ -344,7 +344,7 @@ func preambleHeading(st *state) (string, bool) {
 	if !isRegular(overrides.Preamble) {
 		return "", false
 	}
-	raw, err := os.ReadFile(overrides.Preamble)
+	raw, err := noblock.ReadFile(overrides.Preamble)
 	if err != nil {
 		return "", true
 	}

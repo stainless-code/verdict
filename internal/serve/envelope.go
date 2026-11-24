@@ -33,7 +33,7 @@ func (s *Server) writeEnvelope(w http.ResponseWriter, env *jq.Obj) {
 func (s *Server) writeRefusal(w http.ResponseWriter, verb, pr string, ref *core.RefusalError) {
 	message := ref.Message + "\n" + core.HintFor(ref.Code)
 	errObj := jq.NewObj("code", ref.Code, "message", message)
-	env := core.RenderEnvelope(verb, "", pr, s.at(), "", nil, nil, errObj)
+	env := core.RenderEnvelope(verb, "", pr, s.at(), "", ref.Warnings, nil, errObj)
 	s.writeEnvelope(w, env)
 }
 

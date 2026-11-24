@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -91,7 +92,7 @@ func readChunkManifest(manifest, refetch string, allowEmpty bool) ([]chunk, []st
 // with no file section at all, so the empty chunk list a fetch wrote is the
 // whole truth. A missing or unreadable diff keeps the strict reading.
 func noRetainedSections(dir string, exclusions []string) bool {
-	raw, err := os.ReadFile(dir + "/full.diff")
+	raw, err := noblock.ReadFile(dir + "/full.diff")
 	if err != nil {
 		return false
 	}
@@ -197,7 +198,7 @@ func readChunkDiff(dir string, c chunk) ([]byte, bool) {
 	if path == "" {
 		return nil, false
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, false
 	}
@@ -206,7 +207,7 @@ func readChunkDiff(dir string, c chunk) ([]byte, bool) {
 
 func checkChunkCoverage(st *state, manifest string, chunks []chunk, names []string, refetch string) (string, error) {
 	chunkHunks := st.dir + chunkHunksSuffix
-	reviewRaw, err := os.ReadFile(st.reviewFile)
+	reviewRaw, err := ReadReview(st.dir, st.reviewFile)
 	if err != nil {
 		return "", &core.RefusalError{Code: codeMissingReviewFile, Message: fmt.Sprintf(msgReviewMissing, st.reviewFile)}
 	}
@@ -328,7 +329,7 @@ func fileNonEmpty(path string) bool {
 }
 
 func concatEquals(paths []string, target string, exclusions []string) bool {
-	want, err := os.ReadFile(target)
+	want, err := noblock.ReadFile(target)
 	if err != nil {
 		return false
 	}
@@ -403,7 +404,7 @@ func concatRead(paths []string, total int) (string, bool) {
 	var sb strings.Builder
 	sb.Grow(total)
 	for _, p := range paths {
-		raw, err := os.ReadFile(p)
+		raw, err := noblock.ReadFile(p)
 		if err != nil {
 			return "", false
 		}

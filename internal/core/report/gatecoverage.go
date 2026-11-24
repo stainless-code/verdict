@@ -1,7 +1,6 @@
 package reportcore
 
 import (
-	"os"
 	"strconv"
 	"strings"
 
@@ -9,6 +8,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core/coverage"
 	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -87,7 +87,7 @@ func mergeReceipt(kept, next storedCoverage, head string) storedCoverage {
 // document is no receipt at all: the dimension reads it as absent rather than
 // guessing at a partial summary.
 func receiptAt(path string) (storedCoverage, bool) {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return storedCoverage{}, false
 	}

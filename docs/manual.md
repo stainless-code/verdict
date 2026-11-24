@@ -2790,7 +2790,10 @@ from: `post` still runs the same guarded path — review-input checks
 suggestion rendering, stale-head and duplicate-payload guards, the typed
 policy gates, and the severity floors. A missing path refuses
 `missing-review-file`; `--dry-run` prints the validation and payload summary,
-writes `findings.dryrun.json`, and posts nothing.
+writes `findings.dryrun.json`, and posts nothing. The bundle's own files open
+without waiting for a writer, so a FIFO swapped in for `<bundle>/review.json`
+refuses instead of hanging; a path named with `--review-file` reads like any
+file, a pipe or `/dev/stdin` included.
 
 Approval is derived by verdict, not asked for by the agent. With no
 repository policy, `important_default` is the named threshold: any open,
@@ -2976,11 +2979,18 @@ Each `start` line records `repo` (the canonical repository root), `verb`, `chann
 bundles. With `--root`, it discovers every repository below that directory.
 With `--interactive`, it adds two local-only write endpoints — `POST
 /v1/triage` and `POST /v1/kb/promote` — through the same triage and learn
-services the CLI calls. The server binds `127.0.0.1` on a kernel-assigned
+services the CLI calls. `--interactive --allow-post` adds the one host-writing
+route, `POST /v1/post/submit`, which posts a review to the code host (see
+**Host posting (Tier C)** below). The server binds
+`127.0.0.1` on a kernel-assigned
 port by default. Pass `--port` to pin the port or `--host` to bind another
 interface. The server prints one tokenised start URL and stops on Ctrl-C
-(exit 3). It never fetches, posts, runs a model, or reaches the network;
-without `--interactive`, it writes no store at all.
+(exit 3). It never fetches or runs a model, and without `--allow-post` it never
+posts to the host; without `--interactive`, it writes no store at all. The
+post preview (`--interactive`) is not network-free: it runs `post`'s dry-run,
+which reads live host state through the host CLI (the pull request head, for
+the drift check) before anything is shown. It never posts. A served post does
+not enable `--summary=comment`, so the preview reads no summary comments.
 
 The browser UI has an inbox, review detail with its evidence ledger, a `Diff` tab, threads,
 cost, precision, and a gate panel. It reads the same `/v1` envelopes as other
@@ -3025,14 +3035,22 @@ start; the flag warns it is visible in `ps` and shell history), `--check
 <tier>` (the gate tier the bundle detail composes; default `critical`),
 `--max-bundles <n>` (default 500), `--interval <duration>` (default `1s`, minimum
 `100ms`), `--sweep <duration>` (default `30s`, at least `--interval`),
-`--no-watch` (disable polling and remove `/v1/events`), and `--interactive`
-(register the two local-only write endpoints; default off, and the default
-surface stays GET-only). Atomic writes are visible
+`--no-watch` (disable polling and remove `/v1/events`), `--interactive`
+(register the local write endpoints and the `verify`/preview job routes;
+default off, and the default surface stays GET-only), and `--allow-post`
+(enable host posting through the interactive Tier C endpoint,
+`POST /v1/post/submit`: with `--interactive` alone the endpoint answers
+`403 post-disabled` and posts nothing; requires `--interactive`, default off,
+and never implied by `--interactive` alone). Atomic writes are visible
 within one tick; non-atomic in-place edits are visible within one sweep. A tick
 checks the state directory, each bundle directory, existing `chunks/`
 directories, and `.verdict/overrides/`; a sweep fingerprints directory entries.
 `--interval` controls the network-filesystem polling cost. `--json` prints one start envelope whose
-`data.url` is the tokenised URL and `data.listen` is `host:port`; the envelope
+`data.url` is the tokenised URL and `data.listen` is `host:port`, with
+`data.read_only` reporting the posture and `data.allow_post` reporting whether
+host posting is enabled (`--allow-post`; the Tier C route itself answers on
+every interactive server and refuses `403 post-disabled` while this is
+`false`); the envelope
 is the only machine-readable place a script learns where to connect, and a log
 that captures it captures a capability that dies with the process.
 
@@ -3052,25 +3070,26 @@ than from history.
 
 **Routes** (GET, plus HEAD from the mux):
 
-| Route                                                       | Envelope                                                                                                                                                                                   |
-| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `GET /v1/health`                                            | `serve` — version, roots, watch state, interval, cache counters, `read_only: true` (`false` with `--interactive`, which also carries `interactive: true`, `csrf`, `jobs: true`, `actions`) |
-| `GET /v1/roots`                                             | `serve` — the served roots with counts, `truncated`, `skipped`, `discovery`                                                                                                                |
-| `GET /v1/bundles`                                           | `serve` — inbox rows, portfolio counts, `partial`, `sources[]`, `errors[]`                                                                                                                 |
-| `GET /v1/cost?by=repo\|week\|model`                         | `serve` — cost buckets and totals, with `partial`, `sources[]`, `errors[]`                                                                                                                 |
-| `GET /v1/precision?by=category\|tier`                       | `serve` — stored-join outcomes; `fixed` is `null` and no rate is printed                                                                                                                   |
-| `GET /v1/roots/{root}/bundles/{bundle}`                     | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                                                                                                                            |
-| `GET /v1/roots/{root}/bundles/{bundle}/diff`                | `serve` — `data.{lanes,files,sources,errors}` review diff grouped by change lane                                                                                                           |
-| `GET /v1/roots/{root}/bundles/{bundle}/compare`             | `serve` — `data.compare` against `?baseline={bundle}`; `bad-baseline` refuses                                                                                                              |
-| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}`      | `show` — byte-identical `data` to `show --json`                                                                                                                                            |
-| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}/copy` | `serve` — `data.{prompt,triage}` copy payloads (read-only)                                                                                                                                 |
-| `GET /v1/events`                                            | SSE invalidations; absent with `--no-watch`                                                                                                                                                |
-| `POST /v1/triage`                                           | `serve` — `data.{sig,status}`; interactive only (see below)                                                                                                                                |
-| `POST /v1/kb/promote`                                       | `serve` — `data.rule` appends one learn rule; interactive only (see below)                                                                                                                 |
-| `POST /v1/jobs/verify`                                      | `serve` — queued sandbox verify snapshot; interactive only (see below)                                                                                                                     |
-| `POST /v1/jobs/post-preview`                                | `serve` — queued dry-run preview snapshot; interactive only (see below)                                                                                                                    |
-| `POST /v1/jobs/{id}/cancel`                                 | `serve` — cancelled job snapshot; interactive only (see below)                                                                                                                             |
-| `GET /v1/jobs/{id}`                                         | `serve` — job snapshot; interactive only (see below)                                                                                                                                       |
+| Route                                                       | Envelope                                                                                                                                                                                                 |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /v1/health`                                            | `serve` — version, roots, watch state, interval, cache counters, `read_only: true` (`false` with `--interactive`, which also carries `interactive: true`, `allow_post`, `csrf`, `jobs: true`, `actions`) |
+| `GET /v1/roots`                                             | `serve` — the served roots with counts, `truncated`, `skipped`, `discovery`                                                                                                                              |
+| `GET /v1/bundles`                                           | `serve` — inbox rows, portfolio counts, `partial`, `sources[]`, `errors[]`                                                                                                                               |
+| `GET /v1/cost?by=repo\|week\|model`                         | `serve` — cost buckets and totals, with `partial`, `sources[]`, `errors[]`                                                                                                                               |
+| `GET /v1/precision?by=category\|tier`                       | `serve` — stored-join outcomes; `fixed` is `null` and no rate is printed                                                                                                                                 |
+| `GET /v1/roots/{root}/bundles/{bundle}`                     | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                                                                                                                                          |
+| `GET /v1/roots/{root}/bundles/{bundle}/diff`                | `serve` — `data.{lanes,files,sources,errors}` review diff grouped by change lane                                                                                                                         |
+| `GET /v1/roots/{root}/bundles/{bundle}/compare`             | `serve` — `data.compare` against `?baseline={bundle}`; `bad-baseline` refuses                                                                                                                            |
+| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}`      | `show` — byte-identical `data` to `show --json`                                                                                                                                                          |
+| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}/copy` | `serve` — `data.{prompt,triage}` copy payloads (read-only)                                                                                                                                               |
+| `GET /v1/events`                                            | SSE invalidations; absent with `--no-watch`                                                                                                                                                              |
+| `POST /v1/triage`                                           | `serve` — `data.{sig,status}`; interactive only (see below)                                                                                                                                              |
+| `POST /v1/kb/promote`                                       | `serve` — `data.rule` appends one learn rule; interactive only (see below)                                                                                                                               |
+| `POST /v1/post/submit`                                      | `serve` — `data` is the post receipt; interactive + `--allow-post` only (see below)                                                                                                                      |
+| `POST /v1/jobs/verify`                                      | `serve` — queued sandbox verify snapshot; interactive only (see below)                                                                                                                                   |
+| `POST /v1/jobs/post-preview`                                | `serve` — queued dry-run preview snapshot; interactive only (see below)                                                                                                                                  |
+| `POST /v1/jobs/{id}/cancel`                                 | `serve` — cancelled job snapshot; interactive only (see below)                                                                                                                                           |
+| `GET /v1/jobs/{id}`                                         | `serve` — job snapshot; interactive only (see below)                                                                                                                                                     |
 
 The `bundles` SSE event carries one compact envelope with the root, detector
 (`tick` or `sweep`), changed and removed bundle names, and `truncated`. Events
@@ -3090,9 +3109,15 @@ over it is `null` and `partial: true` — never `0`. A root whose `.verdict/stat
 is not a directory, or will not list, adds one `corrupt-store` row naming it
 rather than reading as a root with no bundles. Transport errors are a
 separate vocabulary: `400` (`token-in-query`, `bad-glob`, `bad-content-type`,
-`bad-body`), `401`, `403` (Host/Origin, and `bad-csrf` on a write with a
-missing, empty, or wrong `X-Verdict-CSRF` token), `404`, and `405`. Without
-`--interactive` the two write paths accept no method and answer `405` with
+`bad-body`, and `needs-confirm` on a Tier C submit that omits `confirm: true`),
+`401`, `403` (Host/Origin, `bad-csrf` on a write with a missing, empty, or wrong
+`X-Verdict-CSRF` token, and `post-disabled` on the Tier C submit when
+`--allow-post` is off), `404`, `405`, `409` (`stale-preview` on an unknown,
+mismatched, expired, replayed, or bundle-stale preview), `500` (`internal` on an
+unexpected store or read failure), and `503` (`store-busy` when a Tier C submit
+cannot take the bundle lock, and `job-capacity` when the job history is full of
+active jobs). Without
+`--interactive` the write paths accept no method and answer `405` with
 `Allow: GET, HEAD` (and `method-not-allowed` on the write paths' own GET);
 with `--interactive` they accept `POST` only, and every other method —
 including `GET` — answers `405` with `Allow: POST`. Every response carries
@@ -3152,7 +3177,12 @@ same snapshot shape. Jobs run with bounded concurrency (4) and bounded
 retained history (64), each holding a bundle-scoped `storelock` on
 `findings.json` (distinct from the knowledge-base lock, so no lock nesting);
 a job that cannot take the lock fails as a typed `store-busy` refusal without
-running. A running verify job holds that bundle lock for its whole run, so
+running. A succeeded `post-preview` additionally mints the Tier C nonce below;
+a preview whose bundle cannot be read back for its staleness fingerprint fails
+`bundle-unreadable`, one whose render carries no content digest fails
+`preview-unpinnable`, and one whose nonce the CSPRNG cannot mint fails
+`nonce-failed`, all without publishing a digest. A running verify job holds
+that bundle lock for its whole run, so
 concurrent triage or a second job on the same bundle also answers
 `store-busy` until the first job settles. Status flows `queued`, `running`,
 then `succeeded`, `failed`, or `cancelled`, streamed on the existing
@@ -3167,6 +3197,115 @@ Detail view shows the bundle-level `Reproduce in sandbox` and
 advertised and the page is not `static`. Every `POST` job route is gated
 exactly like the triage and KB writes (session, CSRF, Origin, JSON);
 without `--interactive` every job path fails closed as read-only.
+
+**Host posting (Tier C).** `POST /v1/post/submit` accepts `root`, `bundle`,
+`preview_digest`, `preview_nonce`, and `confirm`, and runs `post` with
+`DryRun: false` directly through `core/post`, so every stale-SHA,
+duplicate-post, anchor-validation, own-PR, and binding-approval guard the
+CLI `verdict post` inherits applies unchanged and the `post.json` and
+`findings.json` receipts are byte-identical. It is the only host write in
+serve, and it is doubly gated: without `--allow-post` posting is never enabled,
+and `--allow-post` without `--interactive` refuses at startup with `bad-flags`
+(`--allow-post requires --interactive`). With `--interactive` alone,
+`POST /v1/post/submit` answers `403 post-disabled` before any host client
+is touched; without `--interactive` the read-only server answers the `405`
+placeholder.
+With `--interactive --allow-post`, `GET /v1/health` advertises
+`allow_post: true` and the route is gated exactly like the Tier A/B writes
+(session, CSRF, Origin, JSON), plus a fresh preview and explicit
+confirmation. A succeeded `POST /v1/jobs/post-preview` on such a server
+publishes `result.preview_digest` (SHA-256 over the preview wire plus the
+bundle fingerprint, taken before the dry-run reads the bundle, so a write that
+lands during the preview refuses `409 stale-preview` at submit) and
+`result.preview_nonce` (CSPRNG, single-use, 10-minute TTL, bounded store that
+evicts the oldest) beside the preview wire, plus the review itself:
+`result.review_comments` lists every comment the post will send, in posting
+order (the review body with its hidden review marker, each follow-up comment a
+split over the host's 65,536-byte limit adds, then each inline comment), each
+as `{label, text, shown_bytes, bytes}`, with `result.review_comment_count`
+(all of them) and `result.target_repo` (the repository the post goes to). The
+digest covers that text. The text shown is bounded to 256 KiB in total, cut at a
+rune boundary: a comment the bound lands in carries `shown_bytes` below `bytes`,
+and every comment after it is named in `result.review_omitted`. The content pin
+below is over the full payloads, not the shown text, so a matching digest does
+not mean the whole review was on screen. The server therefore mints no
+`preview_digest` or `preview_nonce` for a preview that cut or omitted any of the
+text: its job still succeeds and carries the shown text plus
+`result.review_truncated` (`bytes_cut`, `comments_omitted`, and a `message`
+pointing at `verdict post <repo> <pr> --dry-run`, which prints the whole
+payload), and a submit for that bundle, with any nonce, refuses
+`409 stale-preview`. The dialog says exactly which comment was cut after how
+many bytes and which were not shown. A mint refuses (`preview-unpinnable`)
+a preview whose render carries no content digest, because an empty pin would
+pin nothing. A server without
+`--allow-post` mints none of these: its preview result is the bare dry-run wire. The submit requires
+`confirm: true` (missing or `false` refuses `400 needs-confirm`), then
+validates `(preview_nonce, root, bundle, preview_digest)` without spending it —
+unknown, mismatched, expired, or replayed nonces refuse `409 stale-preview` —
+takes the bundle's `storelock`, and re-hashes the bundle (every input is
+opened without waiting for a writer, so a FIFO swapped in for any of them
+refuses `bundle-unreadable` at `200` with the nonce unspent, as the preview
+does). It refuses
+`409 stale-preview` when any bundle file `core/post` decides from changed since
+the preview — `findings.json`, `PR.json`, `source.json`, `review.json`,
+`post.json` (the duplicate-post receipt), `controls.json`, `record.json`,
+`identity.json`, `provenance.json`, or `full.diff` (a symlink to a regular
+file is followed as every other bundle read follows it) — and spends the nonce
+there, because that preview is invalid anyway. It resolves the target
+repository again and refuses `409 stale-preview` when it is not the one the
+preview resolved, then posts to the previewed value. It then re-renders the
+review under the same lock, read-only (the submit stages nothing beyond the
+post and its receipts), and refuses `409 stale-preview` unless it renders to the
+digest the preview recorded, so the posted review is the text the operator saw
+even when `review.json` was swapped for the dry-run and restored. Otherwise it
+atomically spends the nonce and runs `core/post` with the previewed digest
+pinned: `core/post` digests the exact payloads it has just built to hand the
+host (every body, the review marker, each follow-up comment, the event, the
+head, and the inline comments) and refuses `post-content-changed` before any
+host write unless that is the pinned digest (prepare's host reads, the
+authentication and head checks, run first), which the server answers
+`409 post-content-changed`, distinct from `stale-preview`. So even a writer that
+ignores the advisory lock and changes `review.json` between the re-render and
+the post cannot make the host receive anything but the previewed review. Two submits racing on one nonce therefore post
+once. A failure before the spend leaves the nonce usable: a held lock answers
+`503 store-busy` ("retry in a moment" is true — retry with the same preview),
+and a submit whose five-minute bound or a shutdown ends the wait for the lock
+refuses `post-timeout` or `canceled` at `200` with nothing posted and this
+attempt's nonce unspent (the same preview may be retried only while it has not
+expired). The re-check
+holds the `findings.json` `storelock` only: a change to another bundle file
+between the re-check and the post is caught by the pinned digest when it alters
+the posted review; one that does not (the duplicate-post receipt, say) is
+narrowed by the fingerprint but not excluded. The submit keeps running if the tab closes, but is bounded to five
+minutes (lock wait included): a host call that outlives it is stopped and
+refuses `post-timeout` at `200`, releasing the lock. Shutting the server down
+(Ctrl-C) also stops an in-flight host call, which refuses `canceled`. A
+`post-failed` that lands once that bound or shutdown has ended the call reads as
+`post-timeout` or `canceled`, because `core/post` types no cause for it: a
+genuine host failure in that window is indistinguishable and reads the same. The
+host may or may not have recorded the review in any of these cases, so check
+the pull request before previewing again. The
+tool version in the footer and payload resolves from the install root, as in
+`verdict post`, never from the server's working directory. A refusal `core/post`
+raises stays the usual `200` envelope; the preview store is the only Tier C
+state and dies with the process. The Detail view renders the bundle-level
+`Submit Review` button only when `allow_post` is advertised and the bundle is a
+PR number — a `local-*` bundle has no pull request to post to, so the control
+never appears there. Clicking it
+previews (the whole preview, its requests included, has two minutes; a response
+after that is never accepted), opens a confirmation modal with the target
+repository, counts, any preview warnings, every comment the post will send (as
+text, in posting order, each under its label, in one scrolling region that is a
+Tab stop), and the digest, and enables `Confirm & Submit Review` only once that
+text is shown. When the preview cut any of it, the modal says exactly what was
+not shown (the comment cut and after how many bytes, the comments left out, and
+the total), keeps Confirm disabled with no acknowledgement to tick past it, and
+points at `verdict post <repo> <pr> --dry-run`, which prints the whole payload,
+to inspect it and post it from the CLI. Text the operator never saw is never
+confirmable: the server mints no nonce for it, whatever the client. It posts only on an explicit click, and focus
+never moves to Confirm on its own. A `503 store-busy` keeps the dialog open and offers
+`Retry submit` with the same preview; a refusal that lands after the dialog was
+closed is reported in the page status.
 
 A path carrying a traversal segment, a backslash, or a line break — a control
 rune, U+2028, or U+2029 — is refused before routing with the `404` `no such

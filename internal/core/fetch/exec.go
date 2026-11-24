@@ -2,10 +2,10 @@ package fetchcore
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 // writeErrFile plants an owner-only .err sidecar with the call's stderr,
@@ -55,7 +55,7 @@ func headBytes(s string, n int) string {
 
 // readOptional reads a file, returning "" when it is missing or unreadable.
 func readOptional(path string) string {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return ""
 	}

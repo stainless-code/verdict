@@ -127,6 +127,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/spend":          true,
 	"internal/jq":             true,
 	"internal/kb":             true,
+	"internal/noblock":        true,
 	"internal/overrides":      true,
 	"internal/provenance":     true,
 	"internal/readcommon":     true,
@@ -150,7 +151,7 @@ var facadeAllowedDeps = map[string]bool{
 // the facade allowlist would otherwise hide (a leaf that imports another
 // allowlisted package changes no facade dep).
 var leafHelpers = []string{
-	"internal/exclude", "internal/gitsource", "internal/shellquote", "internal/storelock", "internal/strictjson",
+	"internal/exclude", "internal/gitsource", "internal/noblock", "internal/shellquote", "internal/storelock", "internal/strictjson",
 }
 
 // coreSubpackages classifies every package under internal/core. A new package

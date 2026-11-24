@@ -10,6 +10,7 @@ import (
 	"os"
 	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
@@ -48,6 +49,14 @@ const (
 	jobIDFallbackLen = 16
 	// reasonNotFound is the transport reason for an absent job or finding.
 	reasonNotFound = "not-found"
+	// codeBundleUnreadable refuses a preview whose bundle cannot be read
+	// back for the staleness fingerprint.
+	codeBundleUnreadable = "bundle-unreadable"
+	// codePreviewUnpinnable refuses a preview whose rendered review carries no
+	// content digest, so no nonce is minted and no post could be pinned.
+	codePreviewUnpinnable = "preview-unpinnable"
+	// codeNonceFailed refuses a preview when the CSPRNG cannot mint a nonce.
+	codeNonceFailed = "nonce-failed"
 	// jobPathVerify is the POST verify job route.
 	jobPathVerify = "/v1/jobs/verify"
 	// jobPathPostPreview is the POST post-preview job route.
@@ -375,7 +384,7 @@ func (m *jobManager) execute(ctx context.Context, current *job) {
 func (m *jobManager) runVerify(ctx context.Context, current *job) {
 	runner := m.runnerVerify()
 	read := core.ReadRequest{
-		Runtime:  &core.Runtime{Now: m.server.now, Env: map[string]string{}},
+		Runtime:  m.server.runtime(),
 		Repo:     readcommon.BundleProject(current.bundleDir),
 		Pr:       current.bundle,
 		RepoRoot: current.rootPath,
@@ -404,20 +413,26 @@ func (m *jobManager) runVerify(ctx context.Context, current *job) {
 
 // runPostPreview runs the dry-run post preview through the injected
 // runner. DryRun is hardcoded true here and again in the production
-// runner, so no host write can ship through this path.
+// runner, so no host write can ship through this path. On an --allow-post
+// server a succeeded preview mints the Tier C single-use nonce bound to its
+// digest and the bundle fingerprint, published beside the preview wire; a
+// plain --interactive server mints nothing and its result is the bare wire.
 func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 	runner := m.runnerPostPreview()
-	read := core.ReadRequest{
-		Runtime:  &core.Runtime{Now: m.server.now, Env: map[string]string{}},
-		Repo:     readcommon.BundleProject(current.bundleDir),
-		Pr:       current.bundle,
-		RepoRoot: current.rootPath,
+	// The fingerprint is taken before the dry-run reads the bundle, under the
+	// findings-store lock this job already holds, so a write that lands during
+	// the preview moves the live fingerprint off this one and the submit
+	// refuses 409 stale-preview instead of baking the write into a "fresh" one.
+	fingerprint, failure := m.previewFingerprint(current)
+	if failure != nil {
+		m.setStatus(current, jobStatusFailed, nil, failure, nil)
+		return
 	}
-	req := &postcore.Request{
-		ReadRequest: read,
-		Flags:       postcore.Flags{Approve: "false", ReviewFile: current.bundleDir + "/review.json", DryRun: true},
-	}
-	resp, ref := runner(ctx, req)
+	// The target repository is resolved once, after the fingerprint has read
+	// source.json without blocking, and the dry-run and the minted entry both
+	// carry that value.
+	repo := bundleRepo(current.bundleDir)
+	resp, ref := runner(ctx, m.server.previewRequest(current.bundleDir, current.bundle, current.rootPath, repo))
 	if ctx.Err() != nil {
 		m.setStatus(current, jobStatusCancelled, nil, nil, nil)
 		return
@@ -428,7 +443,138 @@ func (m *jobManager) runPostPreview(ctx context.Context, current *job) {
 		return
 	}
 	result := resp.Data.Wire()
+	if m.server.previews != nil {
+		if failure := m.pinPreview(current, fingerprint, repo, resp, result); failure != nil {
+			m.setStatus(current, jobStatusFailed, nil, failure, nil)
+			return
+		}
+	}
 	m.setStatus(current, jobStatusSucceeded, result, nil, resp.Warnings)
+}
+
+// pinPreview publishes the review text on result and mints the confirmation
+// pin for it. The text goes onto the wire before the digest is taken, so the
+// digest binds exactly what the confirm dialog shows. A preview that omitted
+// any posted text mints no nonce or digest: the operator cannot confirm what
+// was not shown, so a submit can never spend a pin for it, whatever the client.
+func (m *jobManager) pinPreview(
+	current *job, fingerprint, repo string, resp *postcore.Response, result *jq.Obj,
+) *jobError {
+	result.Set("target_repo", repo)
+	if setReviewComments(result, resp.Data.RenderedComments, repo, current.bundle) {
+		return nil
+	}
+	return m.bindPreview(current, fingerprint, repo, resp.Data.RenderedHash, result)
+}
+
+// previewRequest is the dry-run request a preview job and a submit's re-render
+// share, so both render the review identically. DryRun is hardcoded true.
+func (s *Server) previewRequest(bundleDir, bundle, rootPath, repo string) *postcore.Request {
+	return &postcore.Request{
+		ReadRequest: s.postReadRequest(bundle, rootPath, repo),
+		Flags:       postcore.Flags{Approve: approveFalse, ReviewFile: bundleDir + "/review.json", DryRun: true},
+		Effective:   s.cfg.Effective,
+	}
+}
+
+// maxReviewPreviewBytes bounds the review text a preview publishes for the
+// confirm dialog, summed over every comment the post sends. A split review is
+// over the hosts' 64 KiB comment limit by definition, so the bound is four
+// such comments: a normal review, split or not, shows whole, and a larger one
+// is cut with the cut named on the wire.
+const maxReviewPreviewBytes = 256 << 10
+
+// setReviewComments publishes every comment the post will send beside the
+// preview wire, in posting order, so the dialog shows all of what the digest
+// pins. Each entry carries its label, its text (cut at a rune boundary when
+// the running total reaches [maxReviewPreviewBytes]), the bytes of it shown,
+// and its full byte size, so a cut is explicit per comment. Comments the
+// bound leaves out entirely are named in review_omitted;
+// review_comment_count is the full count. It reports whether any posted text
+// was left out; when it was, review_truncated carries the bytes cut, the
+// comments omitted, and the CLI command that prints the whole payload.
+func setReviewComments(result *jq.Obj, comments []core.RenderedComment, repo, bundle string) bool {
+	shown := make([]any, 0, len(comments))
+	omitted := make([]any, 0)
+	budget := maxReviewPreviewBytes
+	bytesCut := 0
+	for _, c := range comments {
+		if budget <= 0 {
+			omitted = append(omitted, c.Label)
+			bytesCut += len(c.Text)
+			continue
+		}
+		text := cutAtRune(c.Text, budget)
+		budget -= len(text)
+		bytesCut += len(c.Text) - len(text)
+		shown = append(shown, jq.NewObj("label", c.Label, "text", text, "shown_bytes", len(text), "bytes", len(c.Text)))
+	}
+	result.Set("review_comments", shown)
+	result.Set("review_comment_count", len(comments))
+	result.Set("review_omitted", omitted)
+	if bytesCut == 0 && len(omitted) == 0 {
+		return false
+	}
+	target := repo
+	if target == "" {
+		target = "<repo>"
+	}
+	result.Set("review_truncated", jq.NewObj(
+		"bytes_cut", bytesCut,
+		"comments_omitted", len(omitted),
+		"message", fmt.Sprintf("The preview did not show the whole review (%d bytes cut, %d comments omitted), "+
+			"so it cannot be confirmed here. Inspect the full payload with `verdict post %s %s --dry-run` "+
+			"and post it from the CLI.", bytesCut, len(omitted), target, bundle),
+	))
+	return true
+}
+
+// cutAtRune returns text cut to at most limit bytes, backed up to a rune start
+// so the cut never lands inside a character.
+func cutAtRune(text string, limit int) string {
+	if len(text) <= limit {
+		return text
+	}
+	cut := limit
+	for cut > 0 && !utf8.RuneStart(text[cut]) {
+		cut--
+	}
+	return text[:cut]
+}
+
+// previewFingerprint fingerprints the bundle before the dry-run when the
+// server can confirm a post; otherwise there is nothing to bind and it
+// returns the empty fingerprint. A bundle it cannot fingerprint refuses the
+// preview: there is nothing confirmable to hand the operator.
+func (m *jobManager) previewFingerprint(current *job) (string, *jobError) {
+	if m.server.previews == nil {
+		return "", nil
+	}
+	fingerprint, err := bundleFingerprint(current.bundleDir)
+	if err != nil {
+		return "", &jobError{
+			code:    codeBundleUnreadable,
+			message: "could not fingerprint the bundle for a preview: " + err.Error(),
+		}
+	}
+	return fingerprint, nil
+}
+
+// bindPreview mints the confirmation nonce for one succeeded preview and
+// publishes the digest and nonce on its wire. A nonce the CSPRNG cannot mint
+// refuses the preview: there is nothing confirmable to hand the operator.
+func (m *jobManager) bindPreview(current *job, fingerprint, repo, rendered string, result *jq.Obj) *jobError {
+	digest := previewDigest(current.rootID, current.bundle, fingerprint, []byte(result.MarshalCompact()))
+	nonce, err := m.server.previews.mint(current.rootID, current.bundle, digest, fingerprint, rendered, repo)
+	if errors.Is(err, errUnpinnable) {
+		return &jobError{code: codePreviewUnpinnable, message: err.Error()}
+	}
+	if err != nil {
+		return &jobError{code: codeNonceFailed, message: err.Error()}
+	}
+	result.Set("preview_digest", digest)
+	result.Set("preview_nonce", nonce)
+	return nil
 }
 
 // runnerVerify returns the injected verify runner, defaulting to production.
@@ -459,9 +605,11 @@ func prodVerifyRunner(
 		req.Environ = os.Environ()
 	}
 	if req.Runtime == nil {
-		req.Runtime = &core.Runtime{Env: map[string]string{}}
+		req.Runtime = &core.Runtime{}
 	}
 	if req.Env == nil {
+		// The server supplies the configured map; a hand-built request still
+		// gets a writable one.
 		req.Env = map[string]string{}
 	}
 	if req.Commander == nil {
@@ -479,9 +627,11 @@ func prodPostPreviewRunner(
 		req.Flags.Approve = "false"
 	}
 	if req.Runtime == nil {
-		req.Runtime = &core.Runtime{Env: map[string]string{}}
+		req.Runtime = &core.Runtime{}
 	}
 	if req.Env == nil {
+		// The server supplies the configured map; a hand-built request still
+		// gets a writable one.
 		req.Env = map[string]string{}
 	}
 	if req.Commander == nil {

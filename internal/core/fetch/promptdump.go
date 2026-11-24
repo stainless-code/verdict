@@ -18,6 +18,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -43,7 +44,7 @@ func fenceClose(nonce string) string {
 // missing-trailing-newline guard (a file without a trailing newline gains
 // one before the close marker).
 func fenceSection(nonce, source, path string) string {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return ""
 	}
@@ -79,7 +80,7 @@ func chunkDiffBodies(m map[string]any) ([]string, bool) {
 		if !ok || d == "" {
 			return nil, false
 		}
-		diffRaw, err := os.ReadFile(d)
+		diffRaw, err := noblock.ReadFile(d)
 		if err != nil {
 			return nil, false
 		}
@@ -89,7 +90,7 @@ func chunkDiffBodies(m map[string]any) ([]string, bool) {
 }
 
 func chunkManifest(dir string) (map[string]any, bool) {
-	raw, err := os.ReadFile(dir + suffixChunkManifest)
+	raw, err := noblock.ReadFile(dir + suffixChunkManifest)
 	if err != nil {
 		return nil, false
 	}
@@ -260,7 +261,7 @@ func writeChunkedDiffs(ctx *fetchRunCtx, sb *strings.Builder, nonce, dir, chunke
 	sb.WriteString(fenceOpen(nonce, fullDiffFile))
 	sb.Write(filtered)
 	if last := lastChunkDiff(dir); last != "" {
-		if raw, err := os.ReadFile(last); err == nil && len(raw) > 0 && raw[len(raw)-1] != '\n' {
+		if raw, err := noblock.ReadFile(last); err == nil && len(raw) > 0 && raw[len(raw)-1] != '\n' {
 			sb.WriteByte('\n')
 		}
 	}
@@ -279,7 +280,7 @@ func dumpFullDiffFallback(ctx *fetchRunCtx, sb *strings.Builder, nonce string) *
 			"(post/record still refuse the broken bundle; re-fetch with --chunk to restore the pinned snapshots)",
 			miss, ctx.dir))
 	}
-	raw, err := os.ReadFile(ctx.dir + suffixFullDiff)
+	raw, err := noblock.ReadFile(ctx.dir + suffixFullDiff)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}
@@ -587,7 +588,7 @@ func chunkRefBad(d string) bool {
 	if fi, err := os.Stat(d); err != nil || fi.IsDir() {
 		return true
 	}
-	if _, err := os.ReadFile(d); err != nil {
+	if _, err := noblock.ReadFile(d); err != nil {
 		return true
 	}
 	return false

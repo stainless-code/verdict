@@ -4,11 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/recipe"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -38,7 +38,7 @@ type selection struct {
 // finding instead of narrowing to none.
 func (st *state) readSelection(dir string) (*selection, *core.RefusalError) {
 	path := dir + suffixSelected
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, st.refuse(codeMissingSelection,

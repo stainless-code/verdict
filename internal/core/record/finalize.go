@@ -2,12 +2,12 @@ package recordcore
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/overrides"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -122,7 +122,7 @@ func envelopeItem(m *jq.Obj) *jq.Obj {
 }
 
 func hunkLines(path string) int {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return 0
 	}

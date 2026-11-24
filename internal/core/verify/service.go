@@ -3,7 +3,6 @@ package verifycore
 import (
 	"context"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -13,6 +12,7 @@ import (
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/envsecret"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -298,7 +298,7 @@ func (st *state) childEnv() []string {
 // fallback a corrupt store gets); any other
 // non-string renders the way jq -r would print it.
 func readVerifyCmd(dir string) (string, *core.RefusalError) {
-	raw, err := os.ReadFile(patchPath(dir))
+	raw, err := noblock.ReadFile(patchPath(dir))
 	if err != nil {
 		return "", missingPatchRefusal(dir)
 	}
@@ -335,7 +335,7 @@ func parseTimeout(s string) (int, bool) {
 // recordOutcome merges the watchdog result into patch.json, preserving key
 // order (existing keys keep position, new keys append).
 func recordOutcome(dir, now string, exit int, timedOut bool, tail string, sb *sandbox) *core.RefusalError {
-	raw, err := os.ReadFile(patchPath(dir))
+	raw, err := noblock.ReadFile(patchPath(dir))
 	if err != nil {
 		return missingPatchRefusal(dir)
 	}

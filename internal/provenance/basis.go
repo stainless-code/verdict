@@ -2,7 +2,6 @@ package provenance
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"slices"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -324,7 +324,7 @@ func EvidenceBaseURL(dir, repo string) string {
 }
 
 func providerRecord(dir string) map[string]any {
-	raw, err := os.ReadFile(filepath.Join(dir, prFile))
+	raw, err := noblock.ReadFile(filepath.Join(dir, prFile))
 	if err != nil {
 		return nil
 	}
@@ -345,7 +345,7 @@ func EvidenceLinkable(dir, sha string) string {
 	if sha == "" {
 		return validationFalse
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, prFile))
+	raw, err := noblock.ReadFile(filepath.Join(dir, prFile))
 	if err != nil {
 		return validationFalse
 	}

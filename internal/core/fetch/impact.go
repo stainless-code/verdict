@@ -14,6 +14,7 @@ import (
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
 	"github.com/stainless-code/verdict/internal/fence"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 // The impact hand-off's literals: the artifact name, the section cap, and the
@@ -81,7 +82,7 @@ func discardImpact(ctx2 *fetchRunCtx) error {
 // hand-off unanswered with one warning rather than a refusal: the bundle is
 // still reviewable, and the section is what is missing.
 func impactDiff(ctx2 *fetchRunCtx) (raw []byte, found bool, err error) {
-	raw, err = os.ReadFile(ctx2.dir + suffixFullDiff)
+	raw, err = noblock.ReadFile(ctx2.dir + suffixFullDiff)
 	if errors.Is(err, os.ErrNotExist) {
 		ctx2.runner.Warn(fmt.Sprintf(impactNoDiffWarn, fullDiffFile, ctx2.runner.display(ctx2.dir), suffixImpact))
 		return nil, false, nil
@@ -277,7 +278,7 @@ func impactSafe(s string) string {
 // file starts empty; any other read failure refuses before the write.
 func appendTOCSection(dir, section string) error {
 	path := dir + "/toc.txt"
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("could not read %s: %v", path, err)}
 	}

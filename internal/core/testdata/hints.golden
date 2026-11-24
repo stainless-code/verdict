@@ -78,6 +78,7 @@ bind-required	try: address the cause above, then re-run the same command
 budget-exceeded	try: re-run with --consent-over-budget once the spend is approved, or raise REVIEW_BUDGET_USD/the typed budget_usd default
 budget-unknown	try: address the cause above, then re-run the same command
 bundle-ambiguous	try: address the local bundle as local-<name>; the bare name resolves to a different directory than the discovered one
+bundle-unreadable	try: make every bundle file a regular, readable file (a FIFO or device cannot be fingerprinted), then re-run the preview
 calibrate-failed	try: address the cause above, then re-run the same command
 canceled	try: address the cause above, then re-run the same command
 cannot-resume	try: re-run without --resume with --finders 2 to start a two-finder execution (the interrupted one is retired to x-superseded/), then pass the same --finders 2 when you resume that
@@ -181,8 +182,10 @@ panel-empty	try: configure defaults.panel with a synthesizer and verifiers, re-f
 panel-stale	try: re-run verification/dispatch.md against the current bundle head and rewrite verification/verdicts.json
 panel-too-large	try: narrow the review or roster (100 findings, 4 verifiers maximum), then re-run panel
 partial-clone	try: re-clone without --filter=blob:none, then re-run
+post-content-changed	try: re-run the preview to see the review as it is now, then submit again
 post-failed	try: narrow anchor drift or body size (see above), then re-run
 post-secret-shaped	try: remove the value from the draft and re-run; post can pass --allow-secret-values to publish it anyway
+post-timeout	try: check the pull request for the review, then re-run the preview and submit again only if it is absent
 pr-not-open	try: re-fetch the PR (bundle may be stale)
 pr-read-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
 privacy-unavailable	try: address the cause above, then re-run the same command

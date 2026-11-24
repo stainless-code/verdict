@@ -10,6 +10,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -55,7 +56,7 @@ func pageFileList(ctx context.Context, ctx2 *fetchRunCtx, dir, repo, pr string) 
 }
 
 func prFilesOrdered(prJSON string) ([]any, *jq.Obj, bool) {
-	raw, err := os.ReadFile(prJSON)
+	raw, err := noblock.ReadFile(prJSON)
 	if err != nil {
 		return nil, nil, false
 	}

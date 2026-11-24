@@ -10,7 +10,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"unicode/utf8"
 
@@ -19,6 +18,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/storelock"
 )
@@ -258,7 +258,7 @@ func checkStatus(status string) *core.RefusalError {
 }
 
 func (st *state) readFindings(dir string) ([]any, *core.RefusalError) {
-	raw, err := os.ReadFile(dir + findingsSuffix)
+	raw, err := noblock.ReadFile(dir + findingsSuffix)
 	if err != nil {
 		return nil, corruptStore(dir)
 	}
@@ -373,7 +373,7 @@ func decodeEntries(raw []byte) ([]any, error) {
 }
 
 func mustRead(path string) []byte {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil
 	}

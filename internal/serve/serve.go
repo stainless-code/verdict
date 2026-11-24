@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/http"
 	"net/url"
@@ -55,6 +56,7 @@ const (
 	flagRediscover  = "--rediscover"
 	flagNoRegistry  = "--no-registry"
 	flagInteractive = "--interactive"
+	flagAllowPost   = "--allow-post"
 
 	codeBadRoot           = "bad-root"
 	codeServeListenFailed = "serve-listen-failed"
@@ -70,13 +72,14 @@ func (e startError) Error() string { return string(e) }
 
 // Start-up sentinels.
 var (
-	errNoRoot        error = startError("serve: no root to serve")
-	errNoListener    error = startError("serve: listener is not bound")
-	errRange         error = startError("value out of range")
-	errWatchInterval error = startError("serve: --interval must be at least 100ms")
-	errWatchSweep    error = startError("serve: --sweep must be at least 100ms")
-	errWatchOrder    error = startError("serve: --sweep must be at least --interval")
-	errNoChanges     error = startError("serve: layer has no change stream; disable watch to serve it")
+	errAllowPostNeedsInteractive error = startError("serve: --allow-post requires --interactive")
+	errNoRoot                    error = startError("serve: no root to serve")
+	errNoListener                error = startError("serve: listener is not bound")
+	errRange                     error = startError("value out of range")
+	errWatchInterval             error = startError("serve: --interval must be at least 100ms")
+	errWatchSweep                error = startError("serve: --sweep must be at least 100ms")
+	errWatchOrder                error = startError("serve: --sweep must be at least --interval")
+	errNoChanges                 error = startError("serve: layer has no change stream; disable watch to serve it")
 )
 
 // Layer is the read model the transport serves. The query package implements
@@ -104,7 +107,21 @@ type changeSource interface {
 
 // Config is one server's resolved start state.
 type Config struct { //nolint:govet // start snapshot; field order mirrors the flag table
-	Root              string
+	// Env is the environment every served service reads: the host
+	// credentials a post needs and the render preferences it resolves.
+	// The CLI adapter injects the same map it hands the CLI verbs, so a
+	// served post authenticates and renders exactly like `verdict post`.
+	Env map[string]string
+	// Effective is the resolved render configuration (footer, logo,
+	// attribution, fix prompt, diagrams). It travels with the preview and
+	// the confirmed post, so what the operator confirmed is what posts.
+	Effective core.Effective
+	Root      string
+	// InstallRoot is the verdict install root the tool version resolves
+	// from (the CLI's `package.json` beside the binary), threaded into every
+	// served post exactly as `verdict post` threads it, so the footer and
+	// payload version never come from the process working directory.
+	InstallRoot       string
 	Host              string
 	Port              int
 	Token             string
@@ -118,9 +135,14 @@ type Config struct { //nolint:govet // start snapshot; field order mirrors the f
 	Now               func() time.Time
 	Layer             Layer
 	Interactive       bool
+	AllowPost         bool
 	VerifyRunner      VerifyRunner
 	PostPreviewRunner PostPreviewRunner
+	PostSubmitRunner  PostSubmitRunner
 	LockWait          time.Duration
+	// PostTimeout bounds one confirmed host submit; zero means
+	// [postSubmitTimeout].
+	PostTimeout time.Duration
 }
 
 // Server is one bound (or about-to-bind) listener. Its route table is the
@@ -143,12 +165,26 @@ type Server struct { //nolint:govet // grouped by listener, allowlists, and inje
 	origins           map[string]bool
 	verifyRunner      VerifyRunner
 	postPreviewRunner PostPreviewRunner
-	jobs              *jobManager
+	postSubmitRunner  PostSubmitRunner
+	// submitDeadline, when set, replaces the submit's wall-clock bound so a
+	// test can end it at a moment it chooses (after the host stub is entered)
+	// instead of racing a timer against the machine. Nil in production.
+	submitDeadline func(context.Context) (context.Context, context.CancelFunc)
+	previews       *previewStore
+	jobs           *jobManager
+	// stopping closes when shutdown begins ([Server.Serve] on cancel, or
+	// [Server.Close]), so a confirmed host submit, detached from its request
+	// on purpose, still ends with the server instead of outliving it.
+	stopping     chan struct{}
+	stoppingOnce sync.Once
 }
 
 // New builds a server over one root (or the injected layer) and mints its
 // token when none was supplied.
 func New(cfg *Config) (*Server, error) {
+	if err := validateStartConfig(cfg); err != nil {
+		return nil, err
+	}
 	applyServerDefaults(cfg)
 	layer, err := configuredLayer(cfg)
 	if err != nil {
@@ -163,6 +199,7 @@ func New(cfg *Config) (*Server, error) {
 		csrf = newToken()
 	}
 	server := &Server{
+		stopping:          make(chan struct{}),
 		cfg:               *cfg,
 		token:             token,
 		csrf:              csrf,
@@ -175,16 +212,32 @@ func New(cfg *Config) (*Server, error) {
 		events:            newEventBroker(),
 		verifyRunner:      cfg.VerifyRunner,
 		postPreviewRunner: cfg.PostPreviewRunner,
+		postSubmitRunner:  cfg.PostSubmitRunner,
 	}
+	// The snapshot owns its environment: a caller that updates a credential
+	// later must not change what the next submit authenticates with.
+	server.cfg.Env = maps.Clone(cfg.Env)
+	server.previews = newPreviewStore(cfg)
 	if server.verifyRunner == nil {
 		server.verifyRunner = prodVerifyRunner
 	}
 	if server.postPreviewRunner == nil {
 		server.postPreviewRunner = prodPostPreviewRunner
 	}
+	if server.postSubmitRunner == nil {
+		server.postSubmitRunner = prodPostSubmitRunner
+	}
 	server.jobs = newJobManager(server)
 	server.refreshAllowlists()
 	return server, nil
+}
+
+// validateStartConfig checks the opt-in ladder before any layer exists.
+func validateStartConfig(cfg *Config) error {
+	if cfg.AllowPost && !cfg.Interactive {
+		return errAllowPostNeedsInteractive
+	}
+	return nil
 }
 
 func applyServerDefaults(cfg *Config) {
@@ -197,6 +250,7 @@ func applyServerDefaults(cfg *Config) {
 	if cfg.Now == nil {
 		cfg.Now = time.Now
 	}
+	applyCarriedDefaults(cfg)
 	if cfg.Heartbeat <= 0 {
 		cfg.Heartbeat = defaultHeartbeat
 	}
@@ -205,6 +259,18 @@ func applyServerDefaults(cfg *Config) {
 	}
 	if cfg.Sweep <= 0 {
 		cfg.Sweep = query.DefaultSweep
+	}
+}
+
+// applyCarriedDefaults fills the two values every served service reads: the
+// environment (host credentials and render preferences) and the resolved
+// render configuration.
+func applyCarriedDefaults(cfg *Config) {
+	if cfg.Env == nil {
+		cfg.Env = map[string]string{}
+	}
+	if cfg.Effective == (core.Effective{}) {
+		cfg.Effective = core.Defaults()
 	}
 }
 
@@ -281,6 +347,13 @@ func (s *Server) Addr() string {
 	return net.JoinHostPort(s.cfg.Host, strconv.Itoa(s.port))
 }
 
+// runtime builds the per-call runtime every served service shares: the process
+// clock and a copy of the environment the CLI adapter injected. The copy keeps
+// a service that writes its map from moving the server's.
+func (s *Server) runtime() *core.Runtime {
+	return &core.Runtime{Now: s.now, Env: maps.Clone(s.cfg.Env)}
+}
+
 // URL is the token-bearing start URL. It is the only place the capability is
 // printed.
 func (s *Server) URL() string {
@@ -289,6 +362,7 @@ func (s *Server) URL() string {
 
 // Close releases the listener; an already-closed listener is not an error.
 func (s *Server) Close() error {
+	s.beginStop()
 	s.mu.RLock()
 	listener := s.listener
 	s.mu.RUnlock()
@@ -323,6 +397,7 @@ func (s *Server) Serve(ctx context.Context) error {
 		}()
 	}
 	defer func() {
+		s.beginStop()
 		cancelWatch()
 		<-watchDone
 		s.jobs.stop()
@@ -331,6 +406,10 @@ func (s *Server) Serve(ctx context.Context) error {
 	go func() { serveErr <- server.Serve(listener) }()
 	select {
 	case <-ctx.Done():
+		// A detached host submit is bound to the server's lifetime, not the
+		// request's: cancel it first so its host process tree is killed
+		// while the drain waits, instead of outliving the listener.
+		s.beginStop()
 		return s.drain(ctx, server)
 	case err := <-serveErr:
 		s.stopEventStreams()
@@ -339,6 +418,11 @@ func (s *Server) Serve(ctx context.Context) error {
 		}
 		return jq.Sealed("serve: http listener", err)
 	}
+}
+
+// beginStop signals shutdown to every detached host submit.
+func (s *Server) beginStop() {
+	s.stoppingOnce.Do(func() { close(s.stopping) })
 }
 
 func (s *Server) stopEventStreams() {
@@ -372,10 +456,17 @@ func newHTTPServer(handler http.Handler) *http.Server {
 	}
 }
 
-// Request carries the CLI's resolved build version into the adapter; the
-// root comes from the parsed flags.
+// Request carries the CLI's resolved build version and environment into the
+// adapter; the root comes from the parsed flags.
 type Request struct {
+	// Env is the CLI's injected environment map, forwarded to every served
+	// service so a post or verify job sees the host credentials the CLI
+	// verb would.
+	Env     map[string]string
 	Version string
+	// InstallRoot is the CLI's install root, the same value `verdict post`
+	// resolves its tool version from.
+	InstallRoot string
 }
 
 // serveOptions contains the resolved server, discovery, and watch flags.
@@ -390,6 +481,7 @@ type serveOptions struct { //nolint:govet // field order mirrors the flag table
 	depth, maxVisits, maxRepos int
 	rediscover, noRegistry     bool
 	interactive                bool
+	allowPost                  bool
 	interval                   time.Duration
 	sweep                      time.Duration
 	noWatch                    bool
@@ -476,7 +568,10 @@ func warnExposure(r *cli.Runner, opts *serveOptions) {
 	}
 	if !isLoopback(opts.host) {
 		surface := "read-only"
-		if opts.interactive {
+		switch {
+		case opts.allowPost && opts.interactive:
+			surface = "interactive (local triage & KB writes) and host posting (--allow-post)"
+		case opts.interactive:
 			surface = "interactive (local triage & KB writes)"
 		}
 		r.Warn("serve: binding " + opts.host + " exposes the " + surface + " surface beyond loopback " +
@@ -492,9 +587,13 @@ func start(
 		Root: root, Host: opts.host, Port: opts.port, Token: opts.token,
 		Check: opts.check, MaxBundles: opts.maxBundles, Interval: opts.interval,
 		Sweep: opts.sweep, NoWatch: opts.noWatch, Version: req.Version, Now: r.Now,
-		Layer: opts.layer, Interactive: opts.interactive,
+		Layer: opts.layer, Interactive: opts.interactive, AllowPost: opts.allowPost,
+		Env: req.Env, Effective: r.Effective, InstallRoot: req.InstallRoot,
 	})
 	if err != nil {
+		if errors.Is(err, errAllowPostNeedsInteractive) {
+			return nil, r.Refuse(&cli.RefusalError{Code: "bad-flags", Message: err.Error()}), false
+		}
 		return nil, r.Refuse(&cli.RefusalError{Code: codeServeListenFailed, Message: err.Error()}), false
 	}
 	if err := server.Listen(ctx); err != nil {
@@ -511,6 +610,7 @@ func announce(r *cli.Runner, server *Server) {
 			"url", server.URL(),
 			"listen", server.Addr(),
 			"read_only", !server.cfg.Interactive,
+			"allow_post", server.cfg.AllowPost,
 			"partial", false,
 			"sources", []any{},
 			"errors", []any{},
@@ -521,7 +621,9 @@ func announce(r *cli.Runner, server *Server) {
 	}
 	fmt.Fprintln(r.Human, "serve: "+server.URL())
 	posture := "read-only; Ctrl-C stops"
-	if server.cfg.Interactive {
+	if server.cfg.Interactive && server.cfg.AllowPost {
+		posture = "interactive with host posting enabled; Ctrl-C stops"
+	} else if server.cfg.Interactive {
 		posture = "interactive (local triage & KB writes enabled); Ctrl-C stops"
 	}
 	fmt.Fprintln(r.Diag, "serve: listening on "+server.Addr()+" ("+posture+")")
@@ -606,6 +708,9 @@ func parseFlag(r *cli.Runner, opts *serveOptions, args []string, i int) (int, in
 	case flagInteractive:
 		opts.interactive = true
 		return i, 0, false
+	case flagAllowPost:
+		opts.allowPost = true
+		return i, 0, false
 	case flagRoot, flagHost, flagPort, flagToken, flagCheck, flagMaxBundles, flagInterval, flagSweep,
 		flagDepth, flagMaxVisits, flagMaxRepos:
 		value, next, uerr := cli.FlagValue(args, i, name, flagWants(name))
@@ -618,7 +723,7 @@ func parseFlag(r *cli.Runner, opts *serveOptions, args []string, i int) (int, in
 		return i, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
 			"unknown flag '%s' for serve (want --root, --depth, --max-visits, --max-repos, "+
 				"--rediscover, --no-registry, --host, --port, --token, --check, --max-bundles, "+
-				"--interval, --sweep, --no-watch, --interactive, --json)", name)}), true
+				"--interval, --sweep, --no-watch, --interactive, --allow-post, --json)", name)}), true
 	}
 }
 

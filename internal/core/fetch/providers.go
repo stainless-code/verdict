@@ -19,6 +19,7 @@ import (
 	"github.com/stainless-code/verdict/internal/curlauth"
 	"github.com/stainless-code/verdict/internal/forgejo"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -571,7 +572,7 @@ func cafeDiff(ctx context.Context, r *session, dir, repo, pr string) (core.Resul
 	if n := cafeUnhandledHunks(items); n != 0 {
 		r.Warn(fmt.Sprintf("%d cafe files carry structured hunks the builder does not render — anchors unchecked for those paths", n))
 	}
-	raw, rerr := os.ReadFile(dir + suffixFullDiff)
+	raw, rerr := noblock.ReadFile(dir + suffixFullDiff)
 	if rerr != nil {
 		raw = nil
 	}
@@ -1743,7 +1744,7 @@ func writeProviderTOC(ctx2 *fetchRunCtx) error {
 
 // providerName reads the bundle provider for the toc title.
 func providerName(dir string) string {
-	raw, err := os.ReadFile(dir + suffixPRJSON)
+	raw, err := noblock.ReadFile(dir + suffixPRJSON)
 	if err != nil {
 		return providerGitHub
 	}
@@ -1763,7 +1764,7 @@ func providerName(dir string) string {
 
 func providerStat(prJSON string) (string, []string) {
 	total := "?"
-	raw, err := os.ReadFile(prJSON)
+	raw, err := noblock.ReadFile(prJSON)
 	if err != nil {
 		return total, nil
 	}

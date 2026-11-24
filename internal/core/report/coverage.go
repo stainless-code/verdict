@@ -8,6 +8,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/coverage"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -62,7 +63,7 @@ func RunNextCoverage(req *core.NextRequest) (*core.NextResponse, *core.RefusalEr
 // loadCoverageReview reads review.json, treating an absent file as the normal
 // pre-review state and refusing a malformed one instead of guessing.
 func loadCoverageReview(dir string) (*jq.Obj, *core.RefusalError) {
-	raw, err := os.ReadFile(dir + reviewSuffix)
+	raw, err := noblock.ReadFile(dir + reviewSuffix)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil

@@ -8,6 +8,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -237,7 +238,7 @@ func buildSpecJudge(sig, verdict, helpful string) judge {
 }
 
 func priorJudgments(dir string) []judge {
-	raw, err := os.ReadFile(dir + "/kb-grades.jsonl")
+	raw, err := noblock.ReadFile(dir + "/kb-grades.jsonl")
 	if err != nil {
 		return nil
 	}

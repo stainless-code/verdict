@@ -1,11 +1,11 @@
 package readcommon
 
 import (
-	"os"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 const minSigPrefix = 8
@@ -117,7 +117,7 @@ func stringField(m *jq.Obj, key string) string {
 }
 
 func readOrderedStore(path string) (any, bool) {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, false
 	}

@@ -486,6 +486,12 @@ Cause: a served bundle name resolves to a different directory than the discovere
 
 Fix: address the local bundle explicitly as `local-<name>`, or restore the PR bundle's `PR.json` so the bare name resolves to it.
 
+## `bundle-unreadable`
+
+Cause: `verdict serve --allow-post` could not fingerprint the bundle for a preview or a confirmed submit, because a bundle file is unreadable or is not a regular file (a FIFO or device is refused without waiting for a writer). Nothing was posted, and a refused submit leaves its preview usable.
+
+Fix: make every bundle file a regular, readable file, then re-run the preview.
+
 ## `calibrate-failed`
 
 Cause: `calibrate --probe` could not write its grades file.
@@ -1165,6 +1171,12 @@ Cause: `backtest mine` ran in a partial clone (`git clone --filter=blob:none`). 
 
 Fix: re-clone without `--filter=blob:none`, or unset the remote's `promisor` and `partialclonefilter` settings and run `git fetch --refetch`, then re-run.
 
+## `post-content-changed`
+
+Cause: a confirmed `verdict serve --allow-post` submit built a review different from the one the preview pinned, because a bundle file changed after the verified re-render. The server answers `409 post-content-changed`. Nothing was posted: the check runs before any host write.
+
+Fix: re-run the preview to see the review as it is now, then submit again.
+
 ## `post-failed`
 
 Cause: the post submission failed (anchor drift or body size — the message says which).
@@ -1176,6 +1188,12 @@ Fix: narrow anchor drift or body size (see above), then re-run.
 Cause: a review draft carries a secret-shaped value — `review.json` for `post`, `drain.replies.json` for `drain --post`.
 
 Fix: remove the value from the draft and re-run. `post` can pass `--allow-secret-values` to publish it anyway; `drain --post` has no override, and `drain --post --dry-run` refuses the same way before any write.
+
+## `post-timeout`
+
+Cause: a confirmed `verdict serve --allow-post` submit did not finish within its five-minute bound, so the stalled host call was stopped and the bundle lock released. The host may or may not have recorded the review.
+
+Fix: check the pull request for the review. Re-run the preview and submit again only if it is absent.
 
 ## `pr-not-open`
 

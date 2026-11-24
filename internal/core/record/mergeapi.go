@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"regexp"
 
 	"github.com/stainless-code/verdict/internal/atomic"
@@ -23,6 +24,7 @@ import (
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/overrides"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -36,15 +38,17 @@ const recordCommand = "record"
 // hook), persisting to different findings files (dry runs stage to
 // findings.dryrun.json).
 type MergeParams struct { //nolint:govet // field grouping documents the merge contract
-	Dir          string
-	Prov         string
-	HeadFull     string
-	Review       *jq.Obj
-	ReviewFile   string
-	Root         string
-	RepoRoot     string
-	Banners      []string
-	DryRun       bool
+	Dir        string
+	Prov       string
+	HeadFull   string
+	Review     *jq.Obj
+	ReviewFile string
+	Root       string
+	RepoRoot   string
+	Banners    []string
+	DryRun     bool
+	// NoPersist writes nothing: no findings file, no knowledge-base stage.
+	NoPersist    bool
 	MinSeverity  string
 	FindingsFile string
 	Effective    core.Effective
@@ -131,6 +135,7 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		headShort:       readcommon.ShortSHA(in.HeadFull),
 		prov:            in.Prov,
 		dryRun:          in.DryRun,
+		noPersist:       in.NoPersist,
 		controls:        in.Controls,
 		run:             in.Run,
 		minSeverity:     in.MinSeverity,
@@ -341,12 +346,43 @@ func reportFindings(st *state) {
 	}
 }
 
-// LoadReview reads and gates a review.json file: the size cap and the JSON
-// object shape. It normalizes first, so post reads the same repaired object
-// record checks and stores; record's dry-run data.normalized is exactly what
-// post merges. record's checker owns content validity.
+// IsBundleReview reports whether path is the bundle's own review.json, the file
+// verdict derives inside dir, as opposed to a path the operator named with
+// --review-file. A bundle file is opened without waiting for a writer; an
+// operator path keeps normal read semantics, so a pipe or /dev/stdin works.
+func IsBundleReview(dir, path string) bool {
+	return filepath.Clean(path) == filepath.Clean(dir+reviewSuffix)
+}
+
+// ReadReview reads one review file under the agent-input cap, picking the open
+// by who named the path: [IsBundleReview] paths never wait for a writer, an
+// operator path reads like any file (pipes and /dev/stdin included).
+func ReadReview(dir, path string) ([]byte, error) {
+	if IsBundleReview(dir, path) {
+		return readAgentFile(path)
+	}
+	return readOperatorAgentFile(path)
+}
+
+// LoadReview reads and gates a review.json file the operator named (post
+// --review-file): the size cap and the JSON object shape, through a plain open
+// so a pipe or /dev/stdin works. A review verdict derives inside a bundle goes
+// through [LoadBundleReview]. It normalizes first, so post reads the same
+// repaired object record checks and stores; record's dry-run data.normalized
+// is exactly what post merges. record's checker owns content validity.
 func LoadReview(path string) (*jq.Obj, error) {
-	reviewRaw, err := readAgentFile(path)
+	return loadReview(path, readOperatorAgentFile)
+}
+
+// LoadBundleReview is [LoadReview] for the bundle's own review.json: the open
+// never waits for a writer and refuses a non-regular file, so a swapped-in
+// FIFO cannot block the verb or the store lock it holds.
+func LoadBundleReview(path string) (*jq.Obj, error) {
+	return loadReview(path, readAgentFile)
+}
+
+func loadReview(path string, read func(string) ([]byte, error)) (*jq.Obj, error) {
+	reviewRaw, err := read(path)
 	if err != nil {
 		if ref := agentRefusal(err); ref != nil {
 			return nil, ref
@@ -390,7 +426,7 @@ func EnsureHunksSnapshot(rt core.Runtime, dir string) error {
 		return nil
 	}
 	rt.Warn(fmt.Sprintf(msgHunksRebuild, dir))
-	raw, err := os.ReadFile(dir + "/full.diff")
+	raw, err := noblock.ReadFile(dir + "/full.diff")
 	if err != nil {
 		return &core.RefusalError{Code: "missing-diff", Message: fmt.Sprintf(msgMissingDiff, dir)}
 	}
@@ -413,7 +449,7 @@ func CountStatus(entries []any, status string) int {
 // ReadOptional reads an optional input file; ok is false when missing or
 // unreadable (absent inputs read as absent claims/priors, never failures).
 func ReadOptional(path string) ([]byte, bool) {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, false
 	}
@@ -422,11 +458,27 @@ func ReadOptional(path string) ([]byte, bool) {
 
 const maxAgentBytes = 32 << 20
 
+// readAgentFile reads a bundle-derived agent input without waiting for a
+// writer; a non-regular file is unreadable.
 func readAgentFile(path string) ([]byte, error) {
+	f, err := noblock.OpenRegular(path)
+	if err != nil {
+		return nil, jq.Sealed("read agent file", err)
+	}
+	return readAgentHandle(f, path)
+}
+
+// readOperatorAgentFile reads an agent input the operator named, through a
+// plain open so a pipe, a FIFO with a writer, or /dev/stdin reads.
+func readOperatorAgentFile(path string) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, jq.Sealed("read agent file", err)
 	}
+	return readAgentHandle(f, path)
+}
+
+func readAgentHandle(f *os.File, path string) ([]byte, error) {
 	defer func() { _ = f.Close() }() // read-only handle; the read error rules
 	if fi, statErr := f.Stat(); statErr == nil && fi.Size() > maxAgentBytes {
 		return nil, agentCapRefusal(path)
@@ -507,5 +559,5 @@ func (st *state) executionPanel(execution *panelcore.Execution, file *panelcore.
 }
 
 func (st *state) persistsFindings() bool {
-	return !st.dryRun || st.cmd != recordCommand
+	return !st.noPersist && (!st.dryRun || st.cmd != recordCommand)
 }

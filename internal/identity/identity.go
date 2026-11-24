@@ -25,6 +25,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 // Patch identity kinds: the git algorithm, the labeled local fallback, and
@@ -300,7 +301,7 @@ func VerifyBytes(ctx context.Context, cmdr core.Commander, dir string) (*Identit
 	if !ok {
 		return nil, false
 	}
-	full, err := os.ReadFile(dir + "/" + fullDiffFile)
+	full, err := noblock.ReadFile(dir + "/" + fullDiffFile)
 	if err != nil {
 		return nil, false
 	}
@@ -332,7 +333,7 @@ func ReadRawDiff(dir string, filtered []byte) ([]byte, error) {
 		}
 		return nil, jq.Sealed("inspect raw diff", err)
 	}
-	raw, err := os.ReadFile(name)
+	raw, err := noblock.ReadFile(name)
 	if err != nil {
 		return nil, jq.Sealed("read raw diff", err)
 	}

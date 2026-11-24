@@ -21,6 +21,7 @@ import (
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 // ReceiptFile is the per-bundle provenance receipt file name.
@@ -223,7 +224,7 @@ func ReadReceipt(dir string) (receipt *core.ProvenanceReceipt, exists bool, err 
 }
 
 func readCappedReceiptBytes(path string) ([]byte, bool, error) {
-	f, err := os.Open(path)
+	f, err := noblock.OpenRegular(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, false, nil
@@ -319,7 +320,7 @@ func bundleInputEntries(dir string) []core.ProvenanceInput {
 	rels := listBundleRelPaths(dir)
 	out := make([]core.ProvenanceInput, 0, len(rels))
 	for _, rel := range rels {
-		raw, err := os.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
+		raw, err := noblock.ReadFile(filepath.Join(dir, filepath.FromSlash(rel)))
 		if err != nil {
 			continue
 		}
@@ -437,7 +438,7 @@ func kbSummaryEntry(dir string, kbIn *KBRecallInput) core.ProvenanceInput {
 	if kbIn.Cap != nil {
 		summary.Cap = new(*kbIn.Cap)
 	}
-	if raw, err := os.ReadFile(filepath.Join(dir, "kb.txt")); err == nil {
+	if raw, err := noblock.ReadFile(filepath.Join(dir, "kb.txt")); err == nil {
 		summary.SHA256 = shaHex(raw)
 		summary.Bytes = new(int64(len(raw)))
 	}
@@ -741,7 +742,7 @@ func exclusionsInputEntries(dir string, ex *ExclusionsInput) []core.ProvenanceIn
 		ExcludedBytes: new(ex.ExcludedBytes),
 		KeptBytes:     new(ex.KeptBytes),
 	}
-	if raw, err := os.ReadFile(filepath.Join(dir, "excluded.json")); err == nil {
+	if raw, err := noblock.ReadFile(filepath.Join(dir, "excluded.json")); err == nil {
 		entry.SHA256 = shaHex(raw)
 		entry.Bytes = new(int64(len(raw)))
 	}
@@ -756,7 +757,7 @@ func computeRunID(in *ReceiptBuildInput, promptsHash string, learn *core.Provena
 	}
 	writeKV(h, "head_sha", in.HeadSHA)
 	writeKV(h, "base_sha", in.BaseSHA)
-	if raw, err := os.ReadFile(filepath.Join(in.Dir, "full.diff")); err == nil {
+	if raw, err := noblock.ReadFile(filepath.Join(in.Dir, "full.diff")); err == nil {
 		writeKV(h, "full_diff_sha256", shaHex(raw))
 	}
 	writeKV(h, "panel_source", in.PanelSource)

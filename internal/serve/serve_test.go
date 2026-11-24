@@ -404,7 +404,8 @@ func TestCanceledProbeExitsBroke(t *testing.T) {
 }
 
 // TestNonLoopbackWarningNamesPlainHTTP pins the exposure warning, including
-// the unencrypted token and cookie.
+// the unencrypted token and cookie, and that a read-only bind never claims a
+// write surface.
 func TestNonLoopbackWarningNamesPlainHTTP(t *testing.T) {
 	t.Parallel()
 	out := &syncBuffer{}
@@ -433,6 +434,79 @@ func TestNonLoopbackWarningNamesInteractive(t *testing.T) {
 		if strings.Contains(warning, "read-only surface") {
 			t.Errorf("interactive warnings name the read-only surface: %v", runner.Warnings)
 		}
+	}
+}
+
+// TestNonLoopbackWarningNamesHostPosting pins the allow-post exposure
+// warning: a bind that can write to a code host says so, instead of reading as
+// a local triage surface.
+func TestNonLoopbackWarningNamesHostPosting(t *testing.T) {
+	t.Parallel()
+	out := &syncBuffer{}
+	runner := &cli.Runner{Out: out, Human: out, Diag: out, Effective: cli.Defaults()}
+	warnExposure(runner, &serveOptions{host: "0.0.0.0", interactive: true, allowPost: true})
+	const want = "serve: binding 0.0.0.0 exposes the interactive (local triage & KB writes) and " +
+		"host posting (--allow-post) surface beyond loopback over plain HTTP; " +
+		"the token and session cookie are not encrypted"
+	if !slices.Contains(runner.Warnings, want) {
+		t.Errorf("warnings = %v, want %q", runner.Warnings, want)
+	}
+	for _, warning := range runner.Warnings {
+		if strings.Contains(warning, "read-only surface") || !strings.Contains(warning, "host posting") {
+			t.Errorf("allow-post warnings = %v, want the host posting surface named", runner.Warnings)
+		}
+	}
+}
+
+// startEnvelopeCase is one start-envelope posture: the flags, and the two
+// advertised values they must produce.
+type startEnvelopeCase struct {
+	name        string
+	interactive bool
+	allowPost   bool
+	readOnly    bool
+	allow       bool
+}
+
+// TestAnnounceStartEnvelopeCarriesAllowPost pins the machine-readable start
+// surface: a script learns host posting is on from the one envelope, never by
+// probing a write route.
+func TestAnnounceStartEnvelopeCarriesAllowPost(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []startEnvelopeCase{
+		{name: "read-only", readOnly: true},
+		{name: "interactive", interactive: true},
+		{name: "allow-post", interactive: true, allowPost: true, allow: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertStartEnvelope(t, tc)
+		})
+	}
+}
+
+// assertStartEnvelope reads the one JSON start envelope for tc's flags.
+func assertStartEnvelope(t *testing.T, tc startEnvelopeCase) {
+	t.Helper()
+	server, err := New(&Config{
+		Root: writeFixture(t, fixtureFiles()), Port: testPort, Token: testToken, Now: fixedNow,
+		Interactive: tc.interactive, AllowPost: tc.allowPost,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	out := &syncBuffer{}
+	runner := &cli.Runner{Out: out, Human: out, Diag: out, JSONMode: true, Now: fixedNow, Effective: cli.Defaults()}
+	announce(runner, server)
+	data := asMap(t, decode(t, []byte(out.String()))["data"])
+	if data["allow_post"] != tc.allow {
+		t.Errorf("data.allow_post = %v, want %v (%s)", data["allow_post"], tc.allow, out.String())
+	}
+	if data["read_only"] != tc.readOnly {
+		t.Errorf("data.read_only = %v, want %v (%s)", data["read_only"], tc.readOnly, out.String())
+	}
+	if got := asString(t, data["url"]); got != server.URL() {
+		t.Errorf("data.url = %q, want %q", got, server.URL())
 	}
 }
 
@@ -496,6 +570,7 @@ func TestRouteTableInteractiveAddsPosts(t *testing.T) {
 	want := map[string]bool{
 		"/v1/triage":            true,
 		"/v1/kb/promote":        true,
+		"/v1/post/submit":       true,
 		"/v1/jobs/verify":       true,
 		"/v1/jobs/post-preview": true,
 		"/v1/jobs/{id}/cancel":  true,
@@ -510,6 +585,7 @@ func TestRouteTableInteractiveAddsPosts(t *testing.T) {
 	}
 	assertNoGetPlaceholder(t, server, "/v1/triage")
 	assertNoGetPlaceholder(t, server, "/v1/kb/promote")
+	assertNoGetPlaceholder(t, server, "/v1/post/submit")
 	assertNoGetPlaceholder(t, server, "/v1/jobs/verify")
 	assertNoGetPlaceholder(t, server, "/v1/jobs/post-preview")
 }

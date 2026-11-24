@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 // salvageWarning names what the binary repaired, not what the agent claims.
@@ -59,7 +60,7 @@ func canReplaceReview(path string) bool {
 	case !info.Mode().IsRegular() || info.Size() > maxRoundReviewBytes:
 		return false
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	return err == nil && isPlaceholderReview(raw)
 }
 
