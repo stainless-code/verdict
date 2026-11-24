@@ -469,10 +469,21 @@ func assertNoGetPlaceholder(t *testing.T, server *Server, pattern string) {
 	}
 }
 
-// TestRouteTableInteractiveAddsTwoPosts pins the interactive table: the two
-// POST rows join the GET rows, no other POST row exists, and the write paths
-// carry no GET placeholder.
-func TestRouteTableInteractiveAddsTwoPosts(t *testing.T) {
+// interactivePostPatterns lists the POST patterns of one table.
+func interactivePostPatterns(server *Server) map[string]bool {
+	post := map[string]bool{}
+	for _, item := range server.routes() {
+		if item.Method == http.MethodPost {
+			post[item.Pattern] = true
+		}
+	}
+	return post
+}
+
+// TestRouteTableInteractiveAddsPosts pins the interactive table: the
+// Tier A write posts and the Tier B job posts join the GET rows, no
+// other POST row exists, and the write paths carry no GET placeholder.
+func TestRouteTableInteractiveAddsPosts(t *testing.T) {
 	t.Parallel()
 	root := writeFixture(t, fixtureFiles())
 	server, err := New(&Config{
@@ -481,17 +492,26 @@ func TestRouteTableInteractiveAddsTwoPosts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
-	post := map[string]bool{}
-	for _, item := range server.routes() {
-		if item.Method == http.MethodPost {
-			post[item.Pattern] = true
-		}
+	post := interactivePostPatterns(server)
+	want := map[string]bool{
+		"/v1/triage":            true,
+		"/v1/kb/promote":        true,
+		"/v1/jobs/verify":       true,
+		"/v1/jobs/post-preview": true,
+		"/v1/jobs/{id}/cancel":  true,
 	}
-	if len(post) != 2 || !post["/v1/triage"] || !post["/v1/kb/promote"] {
-		t.Errorf("POST rows = %v, want /v1/triage and /v1/kb/promote only", post)
+	if len(post) != len(want) {
+		t.Errorf("POST rows = %v, want %v", post, want)
+	}
+	for pattern := range want {
+		if !post[pattern] {
+			t.Errorf("POST rows = %v, missing %s", post, pattern)
+		}
 	}
 	assertNoGetPlaceholder(t, server, "/v1/triage")
 	assertNoGetPlaceholder(t, server, "/v1/kb/promote")
+	assertNoGetPlaceholder(t, server, "/v1/jobs/verify")
+	assertNoGetPlaceholder(t, server, "/v1/jobs/post-preview")
 }
 
 // TestConfigRejectsSubminimumWatchDurations covers the resolved Config bounds.

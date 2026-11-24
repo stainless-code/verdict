@@ -174,11 +174,25 @@ noscript {
   padding: 1rem;
 }
 .triage,
-.kb-promote {
+.kb-promote,
+.job-actions {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 0.4rem;
+}
+.job-actions {
+  margin: 1rem 0;
+}
+.job-drawer {
+  flex-basis: 100%;
+  border: 1px solid var(--line);
+  border-radius: 0.5rem;
+  padding: 0.8rem 1rem;
+  background: var(--panel);
+}
+.job-status {
+  margin: 0 0 0.5rem;
 }
 .triage input[type="text"],
 .triage input:not([type]),
