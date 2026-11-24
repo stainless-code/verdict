@@ -69,9 +69,12 @@ const (
 // against full.diff (A2), per-hunk read receipts (A3), and the spec checklist
 // when the bundle carries `role: spec` sources (A1). Record's check path and
 // the shared merge both call it, so `record --dry-run` and `record` cannot
-// disagree about what the bundle proves.
-func checkBundleEvidence(dir string, review *jq.Obj) evidenceOutcome {
-	return evidencePassOf(dir, review)
+// disagree about what the bundle proves. diagrams is the
+// publish.diagrams.anchored knob: with it off the behavioral diagram is never
+// settled, so no receipt, body, or dry run carries one and every output keeps
+// the bytes it had before the feature existed.
+func checkBundleEvidence(dir string, review *jq.Obj, diagrams bool) evidenceOutcome {
+	return evidencePhaseOf(dir, review, false, diagrams)
 }
 
 // evidenceOutcome is one evidence pass's whole answer: the receipt the bundle
@@ -84,12 +87,10 @@ type evidenceOutcome struct {
 	diagram  diagram.Result
 }
 
-// evidencePassOf runs the pass over one review document.
-func evidencePassOf(dir string, review *jq.Obj) evidenceOutcome {
-	return evidencePhaseOf(dir, review, false)
-}
-
-func evidencePhaseOf(dir string, review *jq.Obj, discovery bool) evidenceOutcome {
+// evidencePhaseOf runs the pass over one review document. The check phase
+// never settles the diagram: a diagram yields no problem for the repair loop,
+// and only the merge — which knows the knob — publishes one.
+func evidencePhaseOf(dir string, review *jq.Obj, discovery, diagrams bool) evidenceOutcome {
 	execution := &panelcore.Execution{}
 	if !discovery {
 		execution = panelcore.CheckExecution(dir, review)
@@ -99,7 +100,9 @@ func evidencePhaseOf(dir string, review *jq.Obj, discovery bool) evidenceOutcome
 	pass.checkQuotes()
 	pass.checkReceipts()
 	pass.checkSpec()
-	pass.checkDiagram()
+	if diagrams {
+		pass.checkDiagram()
+	}
 	receipt := pass.result()
 	execution.ApplyEvidence(receipt)
 	return evidenceOutcome{receipt: receipt, diagram: pass.diagram, problems: pass.problemList()}
@@ -117,7 +120,7 @@ func phaseEvidenceOf(dir string, normalized []byte, discovery bool) evidenceOutc
 	if !ok {
 		return evidenceOutcome{}
 	}
-	return evidencePhaseOf(dir, review, discovery)
+	return evidencePhaseOf(dir, review, discovery, false)
 }
 
 // problemList renders the pass's problems as the published shape: a stable

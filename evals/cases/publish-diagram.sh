@@ -218,6 +218,10 @@ anchored_review "$good_diagram"
 capture_body "$EVAL_SANDBOX/body-anchored-off.md" --force
 assert_exit "anchored default-off post exits 0" 0
 assert_file_nogrep "anchored default off draws no behavioral block" "$EVAL_SANDBOX/body-anchored-off.md" "Behavior flow"
+# Off means off: nothing is settled, so the stored receipt carries no diagram
+# either — no surface reports a picture the body does not draw.
+assert_eq "anchored default off stores no evidence.diagram" "false" \
+  "$(jq -r '.evidence | has("diagram")' <"$EVAL_SANDBOX/.verdict/state/$PR/post.json")"
 capture_body "$EVAL_SANDBOX/body-anchored.md" --force --diagram-anchored
 assert_exit "--diagram-anchored post exits 0" 0
 assert_file_grep "verified diagram renders its summary" "$EVAL_SANDBOX/body-anchored.md" \

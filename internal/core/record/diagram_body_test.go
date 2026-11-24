@@ -68,16 +68,24 @@ func TestRecordBodyCarriesTheVerifiedDiagram(t *testing.T) {
 		`"diagram":{"type":"sequence","title":"Record flow","supplied":3,"verified":3,"dropped":0}`)
 }
 
-// TestRecordBodyOmitsTheDiagramWithTheKnobOff proves the opt-in default: with
-// the knob off the body keeps the bytes it had before the block existed, while
-// the receipt still records what the diff proved.
+// TestRecordBodyOmitsTheDiagramWithTheKnobOff proves the opt-in default is
+// total: with the knob off nothing is settled, so the body draws nothing and
+// neither the response nor record.json carries a diagram receipt — the bytes
+// a review without the field would produce.
 func TestRecordBodyOmitsTheDiagramWithTheKnobOff(t *testing.T) {
 	resp := runDiagram(t, "knob off", "local-diagramoff", anchoredReview, core.FlagOff)
 	if strings.Contains(resp.Body, "Behavior flow") || strings.Contains(resp.Body, "```mermaid") {
 		t.Errorf("body carries a diagram with the knob off:\n%s", resp.Body)
 	}
-	if resp.Data.Evidence.Diagram == nil || resp.Data.Evidence.Diagram.Verified != 3 {
-		t.Errorf("evidence.diagram = %+v, want the verified counts even when not drawn", resp.Data.Evidence.Diagram)
+	if resp.Data.Evidence.Diagram != nil {
+		t.Errorf("evidence.diagram = %+v, want nil with the knob off", resp.Data.Evidence.Diagram)
+	}
+	raw, err := os.ReadFile(".verdict/state/local-diagramoff/record.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(raw), `"diagram"`) {
+		t.Errorf("record.json carries a diagram key with the knob off:\n%s", raw)
 	}
 }
 

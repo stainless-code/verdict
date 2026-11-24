@@ -376,7 +376,8 @@ var publishedSemantics = map[string]string{
 	// postData.body.diagram, previously untyped ({}), is now a nullable
 	// $defs/postDiagram (status rendered|omitted plus the evidence.diagram
 	// fields); it was only ever null on main, so no published value breaks.
-	"envelope.schema.json": "fa8f224420bff2f4edab55a9103b046ceb789e2339a8a9642d8a2e43615b8547",
+	// diagram checking limit: the dropped descriptions name it.
+	"envelope.schema.json": "efd102c5ba229570a13b39a95a0e197b37e79741a3c4c1981efc40d31a669e52",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -434,7 +435,8 @@ var publishedSemantics = map[string]string{
 	// existing property, required key, or type moved.
 	// diagram honesty round: descriptions now say each element cites a
 	// NEW-side hunk line and the relation stays the agent's claim.
-	"post.schema.json": "7f9e660c9b4fb24a7e39fb5ee8462480a0090c3aa0b9c19a121b20cbfd7fad15",
+	// diagram checking limit: the dropped descriptions name it.
+	"post.schema.json": "632bdc73212fd7fdf7830a4b31ad541c2f2a097add69375df4abf571d6d2408e",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	// fixtures.schema.json descriptions only: hallucination now names the pinned
@@ -567,7 +569,8 @@ var publishedSemantics = map[string]string{
 	// existing property, required key, or type moved.
 	// diagram honesty round: descriptions now say each element cites a
 	// NEW-side hunk line and the relation stays the agent's claim.
-	"record.schema.json": "d4a908b4dafc8c18dc14cc5f7a6489e1e24bb0a31d53e4c1959a7e6ffcef860a",
+	// diagram checking limit: the dropped descriptions name it.
+	"record.schema.json": "babbb9621d0000d93db47353ce4b3d9694c5ba88b61a5c79477883f6137f0f62",
 
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
@@ -612,7 +615,11 @@ var publishedSemantics = map[string]string{
 	// existing property, required key, or type moved.
 	// diagram honesty round: descriptions now say each element cites a
 	// NEW-side hunk line and the relation stays the agent's claim.
-	"review.schema.json": "19c067663b48dbda2601e66fb8f28f6f5de7287a371521e5c6898645b732f83b",
+	// diagram contract match: review.diagram drops the value bounds the
+	// runtime only warns on (type enum, nodes minItems, title/label/id
+	// lengths), so a schema-validating client accepts every review the CLI
+	// accepts. Loosening only: no accepted document is rejected now.
+	"review.schema.json": "cf7f785dd43f33798d20ae5b81aff4cf9165b95565941119f194042c71eb795d",
 	// additive selected.schema.json (new bundle document: the reaction-scoped
 	// fix selection fetch writes and fix --selected reads). A new document
 	// only: no existing schema property, required key, enum, or type changed.

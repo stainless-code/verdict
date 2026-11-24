@@ -326,22 +326,20 @@
       "type": "object",
       "properties": {
         "type": {
-          "description": "The diagram vocabulary. `sequence` draws steps over time, `state` a lifecycle, `flow` a control graph; anything else is out of scope and the block is omitted.",
-          "enum": ["sequence", "state", "flow"]
+          "description": "The diagram vocabulary: `sequence` draws steps over time, `state` a lifecycle, `flow` a control graph. Any other string is accepted and out of scope: a diagram-invalid warning, and the block is omitted with a one-line note.",
+          "type": "string"
         },
         "title": {
-          "description": "Optional short title, at most 120 characters; it renders as the accessible title.",
-          "type": "string",
-          "maxLength": 120
+          "description": "Optional short title; it renders as the accessible title. Past 120 characters it is a diagram-invalid warning and is truncated.",
+          "type": "string"
         },
         "nodes": {
-          "description": "The nodes the diagram draws, at least one and at most 24. A node whose quote does not verify is dropped.",
+          "description": "The nodes the diagram draws; at most 24 render. An empty list is accepted with a diagram-invalid warning and omits the block with a note. A node whose quote does not verify is dropped, and the quote matcher stops after 240 nodes.",
           "type": "array",
-          "items": { "$ref": "#/$defs/diagramNode" },
-          "minItems": 1
+          "items": { "$ref": "#/$defs/diagramNode" }
         },
         "edges": {
-          "description": "The transitions between nodes, at most 40. An edge whose own quote fails, or whose endpoint was dropped, is never drawn.",
+          "description": "The transitions between nodes; at most 40 render. An edge whose own quote fails, or whose endpoint was dropped or names no node, is never drawn, and the quote matcher stops after 400 edges.",
           "type": "array",
           "items": { "$ref": "#/$defs/diagramEdge" }
         }
@@ -354,16 +352,12 @@
       "type": "object",
       "properties": {
         "id": {
-          "description": "The lookup key edges name, 1–40 characters. It is never rendered: the block draws generated identifiers.",
-          "type": "string",
-          "maxLength": 40,
-          "minLength": 1
+          "description": "The lookup key edges name, up to 40 characters. It is never rendered: the block draws generated identifiers. An empty or repeated id drops the node with a diagram-invalid warning.",
+          "type": "string"
         },
         "label": {
-          "description": "The text the node shows, 1–120 characters. Only letters, digits, combining marks, spaces, and the punctuation .,:!?'()+_-/@ survive; a longer label ends in three dots.",
-          "type": "string",
-          "maxLength": 120,
-          "minLength": 1
+          "description": "The text the node shows. Only letters, digits, combining marks, spaces, and the punctuation .,:!?'()+_-/@ survive; past 120 characters it is truncated to end in three dots, and an empty label shows the generated id.",
+          "type": "string"
         },
         "evidence": {
           "description": "The diff line the node stands for, in the spec_checks evidence shape: a NEW-side path, line, and the exact quote of a line inside a hunk (added or context).",
@@ -379,20 +373,15 @@
       "properties": {
         "from": {
           "description": "The `id` of the node the transition starts at.",
-          "type": "string",
-          "maxLength": 40,
-          "minLength": 1
+          "type": "string"
         },
         "to": {
           "description": "The `id` of the node the transition ends at.",
-          "type": "string",
-          "maxLength": 40,
-          "minLength": 1
+          "type": "string"
         },
         "label": {
-          "description": "Optional transition text, at most 120 characters, sanitized like a node label.",
-          "type": "string",
-          "maxLength": 120
+          "description": "Optional transition text, sanitized and truncated like a node label. An unlabeled sequence message carries its target node's label, so the message text is never empty.",
+          "type": "string"
         },
         "evidence": {
           "description": "The diff line the transition cites, in the spec_checks evidence shape: a NEW-side path, line, and the exact quote of a line inside a hunk (added or context). Verification proves the line exists, not that it states the relation.",

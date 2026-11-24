@@ -112,7 +112,7 @@ func TestLegacyRunIDIsBitIdenticalWithoutAnOrgPack(t *testing.T) {
 	r := BuildReceipt(baseBuildInput(dir, ctrlV1))
 	// The digest folds prompts_hash, so a deliberate prompt edit moves this pin
 	// with it: the org binding still adds nothing when no pin is active.
-	if got, want := r.RunID, "9735c1eeb0d3f8bc50eee7d2e5a43fd51f2e2b028a434a4a035d2f86f4cd451f"; got != want {
+	if got, want := r.RunID, "21e954984f72e5c0d759f1f3e23dae596a0771a9e47dca62b642ea620b508549"; got != want {
 		t.Fatalf("run_id = %s, want the legacy digest %s", got, want)
 	}
 }

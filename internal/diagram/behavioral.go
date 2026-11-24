@@ -33,6 +33,11 @@ const (
 	MinVerifiedPercent = 50
 	// percentScale is the denominator MinVerifiedPercent is read against.
 	percentScale = 100
+	// checkFactor sets how far past the render caps verdict still runs the
+	// quote matcher: ten times the node and edge caps. Past that an element is
+	// counted as supplied and dropped without a match, so a review carrying
+	// thousands of elements costs a bounded amount of work.
+	checkFactor = 10
 
 	// maxDiagramBytes is the hard ceiling one rendered block may occupy. The
 	// topology block spends at most 12,000 of the same 65,536-byte body, so
@@ -55,9 +60,10 @@ const (
 	// diagramNotePrefix marks the cap-truncation note as a mermaid comment,
 	// legal inside the fence and invisible in the rendered picture.
 	diagramNotePrefix = "%% "
-	// diagramNoteSuffix names the order the caps kept, so a truncated block
-	// never reads as a complete picture.
-	diagramNoteSuffix = " omitted (input order)"
+	// diagramNoteSuffix closes the cap note, so a truncated block never reads
+	// as a complete picture. The caps keep whatever still fits, in input
+	// order, and skip only what does not, so the counts are exact.
+	diagramNoteSuffix = " omitted (caps)"
 	diagramNoteJoin   = " and "
 	diagramNodeMore   = " more nodes"
 	diagramEdgeMore   = " more edges"
@@ -90,9 +96,13 @@ var diagramTypes = []string{DiagramSequence, DiagramState, DiagramFlow}
 
 // Limits are the diagram caps the shape checker and the renderer share, so the
 // warning an agent reads and the truncation it will get can never disagree.
+// CheckNodes and CheckEdges bound the quote matching itself: elements past
+// them are dropped unmatched.
 type Limits struct {
 	Nodes      int
 	Edges      int
+	CheckNodes int
+	CheckEdges int
 	LabelRunes int
 	TitleRunes int
 	IDRunes    int
@@ -103,6 +113,8 @@ type Limits struct {
 var Caps = Limits{
 	Nodes:      24,
 	Edges:      40,
+	CheckNodes: checkFactor * 24,
+	CheckEdges: checkFactor * 40,
 	LabelRunes: 120,
 	TitleRunes: 120,
 	IDRunes:    maxDiagramIDRunes,
@@ -135,6 +147,10 @@ type Result struct {
 	Supplied int
 	Verified int
 	Dropped  int
+	// unchecked counts the elements past the checking limits: dropped
+	// without a match, and named in the omission reason when they cost the
+	// block its threshold.
+	unchecked int
 }
 
 // node is one node that survived verification: the generated identifier the
@@ -169,6 +185,10 @@ func Settle(idx *evidence.DiffIndex, req *core.ReviewDiagram) Result {
 	}
 	kept := settleNodes(idx, req, &res)
 	res.Edges = settleEdges(idx, req, kept)
+	res.unchecked = max(len(req.Nodes)-Caps.CheckNodes, 0) + max(len(req.Edges)-Caps.CheckEdges, 0)
+	if res.Type == DiagramSequence {
+		nameSilentMessages(&res)
+	}
 	res.Verified = len(res.Nodes) + len(res.Edges)
 	res.Dropped = res.Supplied - res.Verified
 	res.Omitted = omission(&res)
@@ -218,8 +238,8 @@ func knownDiagramType(t string) bool {
 // A label the sanitizer empties shows the generated identifier instead, so no
 // declaration is ever left without the text its syntax requires.
 func settleNodes(idx *evidence.DiffIndex, req *core.ReviewDiagram, res *Result) map[string]string {
-	ids := make(map[string]string, len(req.Nodes))
-	for i := range req.Nodes {
+	ids := make(map[string]string, min(len(req.Nodes), Caps.CheckNodes))
+	for i := range req.Nodes[:min(len(req.Nodes), Caps.CheckNodes)] {
 		supplied := &req.Nodes[i]
 		if supplied.ID == "" || ids[supplied.ID] != "" || !verifyAnchor(idx, supplied.Evidence) {
 			continue
@@ -240,7 +260,7 @@ func settleNodes(idx *evidence.DiffIndex, req *core.ReviewDiagram, res *Result) 
 // points at nothing it did not verify.
 func settleEdges(idx *evidence.DiffIndex, req *core.ReviewDiagram, ids map[string]string) []edge {
 	var edges []edge
-	for i := range req.Edges {
+	for i := range req.Edges[:min(len(req.Edges), Caps.CheckEdges)] {
 		supplied := &req.Edges[i]
 		from, to := ids[supplied.From], ids[supplied.To]
 		if !verifyAnchor(idx, supplied.Evidence) || from == "" || to == "" {
@@ -249,6 +269,23 @@ func settleEdges(idx *evidence.DiffIndex, req *core.ReviewDiagram, ids map[strin
 		edges = append(edges, edge{from: from, to: to, label: safeLabel(supplied.Label, Caps.LabelRunes)})
 	}
 	return edges
+}
+
+// nameSilentMessages gives every unlabeled sequence message its target's
+// label. A sequence message needs text after its colon — `A->>B:` with
+// nothing after it does not parse, and a lone trailing space does not survive
+// a pipeline that trims lines — so each one carries a non-empty, allowlisted
+// label instead of an empty one.
+func nameSilentMessages(res *Result) {
+	labels := make(map[string]string, len(res.Nodes))
+	for i := range res.Nodes {
+		labels[res.Nodes[i].id] = res.Nodes[i].label
+	}
+	for i := range res.Edges {
+		if res.Edges[i].label == "" {
+			res.Edges[i].label = labels[res.Edges[i].to]
+		}
+	}
 }
 
 // verifyAnchor runs one element's quote through the A2 matcher exactly as a
@@ -274,6 +311,11 @@ func omission(res *Result) string {
 	if res.Verified == 0 {
 		return fmt.Sprintf("none of the %d supplied elements anchored (each did not verify or was malformed)",
 			res.Supplied)
+	}
+	if !meetsVerifiedFraction(res.Verified, res.Supplied) && res.unchecked > 0 {
+		return fmt.Sprintf("%d of %d elements did not verify, were malformed, or were past the checking limit "+
+			"of %d nodes and %d edges (min %d%% anchored)",
+			res.Dropped, res.Supplied, Caps.CheckNodes, Caps.CheckEdges, MinVerifiedPercent)
 	}
 	if !meetsVerifiedFraction(res.Verified, res.Supplied) {
 		return fmt.Sprintf("%d of %d elements did not verify or were malformed (min %d%% anchored)",
@@ -359,25 +401,28 @@ func (r *Result) Summary() *core.EvidenceDiagram {
 	}
 }
 
-// fitDiagramNodes keeps the head of the node list the node cap and the byte
-// budget allow, reporting the bytes spent and how many nodes are left out.
-func fitDiagramNodes(kind string, nodes []node, budget, used int) ([]node, int, int) {
-	kept := 0
-	for kept < len(nodes) && kept < Caps.Nodes {
-		cost := len(newline + behavioralNodeLine(kind, &nodes[kept]))
-		if used+cost > budget {
-			break
+// fitDiagramNodes keeps every node, in input order, that the node cap and the
+// byte budget still allow, skipping only a node that does not fit, and
+// reports the bytes spent and how many nodes it left out.
+func fitDiagramNodes(kind string, nodes []node, budget, used int) (kept []node, spent, left int) {
+	kept = make([]node, 0, min(len(nodes), Caps.Nodes))
+	for i := range nodes {
+		cost := len(newline + behavioralNodeLine(kind, &nodes[i]))
+		if len(kept) == Caps.Nodes || used+cost > budget {
+			left++
+			continue
 		}
 		used += cost
-		kept++
+		kept = append(kept, nodes[i])
 	}
-	return nodes[:kept], used, len(nodes) - kept
+	return kept, used, left
 }
 
-// fitDiagramEdges keeps the head of the edge list the edge cap and the byte
-// budget allow. It returns the kept edges, how many drawable edges the caps
-// left out, and how many edges the node cap orphaned by dropping an endpoint:
-// both counts reach the note, so no supplied edge disappears unannounced.
+// fitDiagramEdges keeps every edge, in input order, that the edge cap and the
+// byte budget still allow, skipping only an edge that does not fit. It
+// returns the kept edges, how many drawable edges the caps left out, and how
+// many edges the node cap orphaned by dropping an endpoint: both counts reach
+// the note, so no supplied edge disappears unannounced.
 func fitDiagramEdges(kind string, nodes []node, edges []edge, budget, used int) (kept []edge, left, orphaned int) {
 	kept = make([]edge, 0, len(edges))
 	for i := range edges {
@@ -386,7 +431,7 @@ func fitDiagramEdges(kind string, nodes []node, edges []edge, budget, used int) 
 			continue
 		}
 		cost := len(newline + behavioralEdgeLine(kind, &edges[i]))
-		if left > 0 || len(kept) == Caps.Edges || used+cost > budget {
+		if len(kept) == Caps.Edges || used+cost > budget {
 			left++
 			continue
 		}
@@ -448,9 +493,7 @@ func behavioralNodeLine(kind string, n *node) string {
 func behavioralEdgeLine(kind string, e *edge) string {
 	switch kind {
 	case DiagramSequence:
-		if e.label == "" {
-			return mermaidIndent + e.from + "->>" + e.to + ": "
-		}
+		// Settle names every silent message, so the text is never empty.
 		return mermaidIndent + e.from + "->>" + e.to + ": " + e.label
 	case DiagramState:
 		if e.label == "" {

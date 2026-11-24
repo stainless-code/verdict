@@ -875,7 +875,7 @@ export interface EvidenceDiagram {
   supplied: number;
   /** Nodes and edges whose quotes matched a NEW-side diff line inside a hunk (added or context) and whose endpoints survived; an edge's relation is not checked. The node and edge caps may draw fewer, and an omitted block draws none. */
   verified: number;
-  /** Supplied elements that did not verify or were malformed: a quote the diff did not prove, a dangling endpoint, a missing or repeated id, or every element of an out-of-scope type. verified + dropped = supplied. */
+  /** Supplied elements that did not verify or were malformed: a quote the diff did not prove, a dangling endpoint, a missing or repeated id, an element past the checking limit (240 nodes, 400 edges), or every element of an out-of-scope type. verified + dropped = supplied. */
   dropped: number;
   /** One-line reason the whole block was left out; absent when it rendered. */
   omitted?: string;
@@ -893,7 +893,7 @@ export interface PostDiagram {
   supplied: number;
   /** Nodes and edges anchored to a NEW-side diff line inside a hunk; an edge's relation is not checked. */
   verified: number;
-  /** Supplied elements that did not verify or were malformed. verified + dropped = supplied. */
+  /** Supplied elements that did not verify, were malformed, or were past the checking limit. verified + dropped = supplied. */
   dropped: number;
   /** One-line reason the whole block was left out; absent when it rendered. */
   omitted?: string;

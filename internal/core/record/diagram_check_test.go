@@ -1,6 +1,7 @@
 package recordcore_test
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -91,6 +92,27 @@ func TestCheckReviewDiagramWarnings(t *testing.T) {
 			path:  "$.diagram.motto",
 		},
 		{
+			name: "repeated node id",
+			extra: `,"diagram":{"type":"flow","nodes":[` +
+				`{"id":"a","label":"A","evidence":{"path":"notes.txt","line":2,"quote":"new line"}},` +
+				`{"id":"a","label":"B","evidence":{"path":"notes.txt","line":2,"quote":"new line"}}]}`,
+			path: "$.diagram.nodes[1].id",
+		},
+		{
+			name: "edge from names no node",
+			extra: `,"diagram":{"type":"flow","nodes":[{"id":"a","label":"A",` +
+				`"evidence":{"path":"notes.txt","line":2,"quote":"new line"}}],` +
+				`"edges":[{"from":"ghost","to":"a","evidence":{"path":"notes.txt","line":2,"quote":"new line"}}]}`,
+			path: "$.diagram.edges[0].from",
+		},
+		{
+			name: "edge to names no node",
+			extra: `,"diagram":{"type":"flow","nodes":[{"id":"a","label":"A",` +
+				`"evidence":{"path":"notes.txt","line":2,"quote":"new line"}}],` +
+				`"edges":[{"from":"a","to":"ghost","evidence":{"path":"notes.txt","line":2,"quote":"new line"}}]}`,
+			path: "$.diagram.edges[0].to",
+		},
+		{
 			name:  "missing type",
 			extra: `,"diagram":{"nodes":[]}`,
 			path:  "$.diagram.type",
@@ -108,10 +130,14 @@ func TestCheckReviewDiagramWarnings(t *testing.T) {
 // problem at all, so the warning code tracks the defect and not the feature.
 func TestCheckReviewAcceptsAWellFormedDiagram(t *testing.T) {
 	t.Parallel()
-	res := recordcore.CheckReview([]byte(checkReview(diagramExtra)), checkDiff)
-	for _, p := range res.Problems {
-		if p.Code == core.ProblemCodeDiagramInvalid {
-			t.Fatalf("well-formed diagram reported %+v", p)
+	withEdge := `,"diagram":{"type":"flow","nodes":[` +
+		`{"id":"a","label":"A","evidence":{"path":"notes.txt","line":2,"quote":"new line"}},` +
+		`{"id":"b","label":"B","evidence":{"path":"notes.txt","line":2,"quote":"new line"}}],` +
+		`"edges":[{"from":"a","to":"b","evidence":{"path":"notes.txt","line":2,"quote":"new line"}}]}`
+	for _, extra := range []string{diagramExtra, withEdge} {
+		res := recordcore.CheckReview([]byte(checkReview(extra)), checkDiff)
+		if i := slices.IndexFunc(res.Problems, func(p core.Problem) bool { return p.Code == core.ProblemCodeDiagramInvalid }); i >= 0 {
+			t.Fatalf("well-formed diagram reported %+v", res.Problems[i])
 		}
 	}
 }

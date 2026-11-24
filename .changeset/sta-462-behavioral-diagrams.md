@@ -17,8 +17,11 @@ reduced to letters, digits, combining marks, spaces, and `.,:!?'()+_-/@` — no
 other rune — and node ids are generated, so no agent byte can spell mermaid
 syntax, a directive, an entity, or a fence; an out-of-scope type appears in the
 note inside a code span, so it never links. Caps: 24 nodes, 40 edges, 120 runes
-per label and title, 8,000 bytes per block, with a `%%` note that also counts
-edges the node cap orphaned. The block lands collapsed right after the computed
+per label and title, 8,000 bytes per block; elements are kept while they fit,
+with a `%%` note that counts exactly what was left out, orphaned edges
+included. The quote matcher stops after 240 nodes and 400 edges, so a huge
+diagram costs bounded work. An unlabeled sequence message carries its target's
+label, so no line ends in a bare colon. The block lands collapsed right after the computed
 topology as `Behavior flow (each element anchored to a diff line — N/M
 anchored)`, and the outcome is published as `evidence.diagram` (type, title,
 supplied/verified/dropped counts, omission reason) in `record.json` and
@@ -28,7 +31,12 @@ malformed block is the `diagram-invalid` warning: it drops the element or omits
 the picture, never the review.
 
 Opt in with `publish.diagrams.anchored`, `REVIEW_PUBLISH_DIAGRAMS_ANCHORED=true`,
-or `--diagram-anchored` (default off: the body keeps the bytes it had before).
+or `--diagram-anchored`. Default off, and off means off: nothing is settled, so
+the body, `record.json`, `post.json`, and the dry run keep the bytes they had
+before. The published schema fixes the field's shape but not the values the
+runtime only warns on, so a schema-validating client accepts every review the
+CLI does; a repeated node id and an edge end naming no node are now
+`diagram-invalid` warnings too.
 The retired `publish.diagrams.behavioral` and `publish.diagrams.expanded` keys
 stay unknown-key refusals, now naming `anchored, structural` as the accepted
 keys. `prompts/diagrams.md` documents the structured field instead of the

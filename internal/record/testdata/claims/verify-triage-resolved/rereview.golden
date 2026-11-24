@@ -155,7 +155,7 @@ reverts.jsonl.lock
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "58f46b57ffb4e2a3adf2b076f9ef0989a69a87fdf7ffe8f7a106ee0f45a4fb3d",
+  "prompts_hash": "afa41909afb8f579ae42b062a9c9235188bcc9431842ae4429fdfc8856cfe4e4",
   "model": null,
   "author": null,
   "review_models": [],

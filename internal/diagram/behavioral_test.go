@@ -432,7 +432,7 @@ func TestSummaryNeverExceedsSupplied(t *testing.T) {
 const safeText = `[\p{L}\p{N}\p{M} .,:!?'()+_/@-]*`
 
 // capNote is the cap-truncation comment in every type's grammar.
-const capNote = `^    %% (([0-9]+ more (nodes|edges)( and [0-9]+ more edges)? omitted \(input order\))` +
+const capNote = `^    %% (([0-9]+ more (nodes|edges)( and [0-9]+ more edges)? omitted \(caps\))` +
 	`(; [0-9]+ edges to omitted nodes not drawn)?|[0-9]+ edges to omitted nodes not drawn)$`
 
 // lineGrammar is every line shape each type's fence may hold, after the
@@ -466,6 +466,9 @@ var lineGrammar = map[string][]*regexp.Regexp{
 func assertBlockGrammar(t *testing.T, kind, block string) {
 	t.Helper()
 	for _, line := range blockBody(t, kind, block) {
+		if strings.HasSuffix(line, " ") {
+			t.Errorf("%s line ends in a space a trimming pipeline would strip: %q", kind, line)
+		}
 		if !slices.ContainsFunc(lineGrammar[kind], func(re *regexp.Regexp) bool { return re.MatchString(line) }) {
 			t.Errorf("%s line outside the grammar: %q", kind, line)
 		}
@@ -636,7 +639,7 @@ func TestOrphanedEdgesAreCounted(t *testing.T) {
 	block := res.Block()
 	assertBlockGrammar(t, DiagramFlow, block)
 	wantAll(t, "block", block,
-		"    n1 --> n2\n    n1 --> n3\n    %% 6 more nodes omitted (input order); 3 edges to omitted nodes not drawn\n```")
+		"    n1 --> n2\n    n1 --> n3\n    %% 6 more nodes omitted (caps); 3 edges to omitted nodes not drawn\n```")
 	wantCounts(t, &res, 35, 35, 0)
 }
 
@@ -725,7 +728,7 @@ func TestCapsDrawExactlyTheHead(t *testing.T) {
 	if got := strings.Count(block, " --> "); got != Caps.Edges {
 		t.Errorf("drew %d edges, want exactly the %d-edge cap", got, Caps.Edges)
 	}
-	if !strings.Contains(block, "\n    %% 6 more nodes and 10 more edges omitted (input order)\n") {
+	if !strings.Contains(block, "\n    %% 6 more nodes and 10 more edges omitted (caps)\n") {
 		t.Errorf("cap note does not count the truncation exactly:\n%s", block)
 	}
 }
@@ -740,23 +743,24 @@ func TestOversizedGraphNeverCrossesTheCeiling(t *testing.T) {
 	}
 }
 
-// checkOversized floods one diagram type with 500 nodes and 2,000 edges whose
-// every field is far past its rune cap. U+20000 is a four-byte letter, so the
-// sanitizer keeps every rune and each capped label still costs 480 bytes: the
-// node and edge caps alone would overrun the ceiling, and only the byte
-// budget keeps the block inside it. The emoji is a symbol the allowlist drops.
+// checkOversized floods one diagram type with 200 nodes and 400 edges — far
+// past the render caps, inside the checking limits — whose every field is
+// far past its rune cap. U+20000 is a four-byte letter, so the sanitizer keeps
+// every rune and each capped label still costs 480 bytes: the node and edge
+// caps alone would overrun the ceiling, and only the byte budget keeps the
+// block inside it. The emoji is a symbol the allowlist drops.
 func checkOversized(t *testing.T, kind string) {
 	t.Helper()
 	wide := strings.Repeat("\U00020000\U0001F600", 400)
 	req := &core.ReviewDiagram{Type: kind, Title: wide}
-	for i := range 500 {
+	for i := range 200 {
 		req.Nodes = append(req.Nodes, core.DiagramNode{
 			ID: strconv.Itoa(i) + wide, Label: wide, Evidence: verifiedAnchor(2, "func expired() bool {"),
 		})
 	}
-	for i := range 2000 {
+	for i := range 400 {
 		req.Edges = append(req.Edges, core.DiagramEdge{
-			From: strconv.Itoa(i%500) + wide, To: strconv.Itoa((i*7)%500) + wide,
+			From: strconv.Itoa(i%200) + wide, To: strconv.Itoa((i*7)%200) + wide,
 			Label: wide, Evidence: verifiedAnchor(3, "return true"),
 		})
 	}
@@ -765,7 +769,7 @@ func checkOversized(t *testing.T, kind string) {
 	wantAtMost(t, kind+" block bytes", len(block), Caps.Bytes)
 	assertBlockGrammar(t, kind, block)
 	// The caps truncate drawing, never verification.
-	wantCounts(t, &res, 2500, 2500, 0)
+	wantCounts(t, &res, 600, 600, 0)
 	wantAll(t, kind+" block", block, "more nodes")
 }
 
@@ -847,4 +851,94 @@ func checkLabelAlphabet(t *testing.T, in string, maxRunes int) {
 		t.Errorf("safeLabel(%q, %d) = %q carries %U outside the alphabet", in, maxRunes, got, r)
 	}
 	wantAtMost(t, "safeLabel runes", utf8.RuneCountInString(got), maxRunes)
+}
+
+// TestUnlabeledSequenceMessageNamesItsTarget proves a sequence message never
+// renders a bare colon: an edge with no label carries its target's label, so
+// the line parses even after a pipeline trims trailing spaces.
+func TestUnlabeledSequenceMessageNamesItsTarget(t *testing.T) {
+	t.Parallel()
+	req := &core.ReviewDiagram{
+		Type: DiagramSequence,
+		Nodes: []core.DiagramNode{
+			{ID: "a", Label: "Caller", Evidence: verifiedAnchor(2, "func expired() bool {")},
+			{ID: "b", Label: "<<>>", Evidence: verifiedAnchor(3, "return true")},
+		},
+		Edges: []core.DiagramEdge{
+			{From: "a", To: "b", Evidence: verifiedAnchor(3, "return true")},
+			{From: "b", To: "a", Label: "  ", Evidence: verifiedAnchor(3, "return true")},
+		},
+	}
+	block := settleBlock(settledIndex(t), req)
+	assertBlockGrammar(t, DiagramSequence, block)
+	// The emptied target label falls back to its generated id, so even that
+	// message is non-empty.
+	wantAll(t, "block", block, "\n    n1->>n2: n2\n    n2->>n1: Caller\n```")
+}
+
+// TestMatchingStopsAtTheCheckingLimit proves the quote matcher runs on at most
+// Caps.CheckNodes nodes and Caps.CheckEdges edges: every element past them is
+// counted as supplied and dropped unmatched, even when its quote would verify.
+func TestMatchingStopsAtTheCheckingLimit(t *testing.T) {
+	t.Parallel()
+	flood := func(nodes, edges int) *core.ReviewDiagram {
+		req := &core.ReviewDiagram{Type: DiagramFlow}
+		for i := range nodes {
+			req.Nodes = append(req.Nodes, core.DiagramNode{
+				ID: "k" + strconv.Itoa(i), Label: "N", Evidence: verifiedAnchor(2, "func expired() bool {"),
+			})
+		}
+		for range edges {
+			req.Edges = append(req.Edges, core.DiagramEdge{From: "k0", To: "k1", Evidence: verifiedAnchor(3, "return true")})
+		}
+		return req
+	}
+	// 300 nodes and 500 edges, all verifiable: 240 + 400 match, the rest drop,
+	// and 640 of 800 still clears the threshold, so the block renders.
+	res := Settle(settledIndex(t), flood(300, 500))
+	wantCounts(t, &res, 800, 640, 160)
+	if res.Omitted != "" {
+		t.Errorf("Omitted = %q, want the block drawn at 640/800", res.Omitted)
+	}
+	// 20,000 verifiable nodes: only the first 240 are matched, so the block is
+	// omitted with a reason that names the limit.
+	huge := Settle(settledIndex(t), flood(20000, 0))
+	wantCounts(t, &huge, 20000, 240, 19760)
+	const want = "19760 of 20000 elements did not verify, were malformed, or were past the checking limit " +
+		"of 240 nodes and 400 edges (min 50% anchored)"
+	if huge.Omitted != want {
+		t.Errorf("Omitted = %q, want %q", huge.Omitted, want)
+	}
+}
+
+// TestShortEdgesFillAfterALongOne proves the byte budget skips only what does
+// not fit: once a long message overflows it, the short ones after it still
+// render, and the note counts exactly the long ones left out.
+func TestShortEdgesFillAfterALongOne(t *testing.T) {
+	t.Parallel()
+	long := strings.Repeat("\U00020000", Caps.LabelRunes)
+	req := &core.ReviewDiagram{
+		Type: DiagramSequence,
+		Nodes: []core.DiagramNode{
+			{ID: "a", Label: "A", Evidence: verifiedAnchor(2, "func expired() bool {")},
+			{ID: "b", Label: "B", Evidence: verifiedAnchor(3, "return true")},
+		},
+	}
+	for range 20 {
+		req.Edges = append(req.Edges, core.DiagramEdge{From: "a", To: "b", Label: long, Evidence: verifiedAnchor(3, "return true")})
+	}
+	for range 3 {
+		req.Edges = append(req.Edges, core.DiagramEdge{From: "b", To: "a", Label: "ok", Evidence: verifiedAnchor(3, "return true")})
+	}
+	block := settleBlock(settledIndex(t), req)
+	assertBlockGrammar(t, DiagramSequence, block)
+	wantAtMost(t, "block bytes", len(block), Caps.Bytes)
+	if got := strings.Count(block, "    n2->>n1: ok\n"); got != 3 {
+		t.Errorf("drew %d short messages after the long one overflowed, want all 3:\n%s", got, block)
+	}
+	drawn := strings.Count(block, "    n1->>n2: ")
+	if drawn == 0 || drawn == 20 {
+		t.Fatalf("drew %d long messages, want the budget to cut some", drawn)
+	}
+	wantAll(t, "block", block, "    %% "+strconv.Itoa(20-drawn)+" more edges omitted (caps)\n")
 }

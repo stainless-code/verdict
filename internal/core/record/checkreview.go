@@ -615,6 +615,46 @@ func (c *checker) checkDiagram(v any) {
 			c.diagramProblem("$.diagram"+pathDot+key, prefixMissing+key, prefixWrite+key+` (the diagram is optional)`)
 		}
 	}
+	c.checkDiagramEdgeRefs(m, c.diagramNodeIDs(m))
+}
+
+// diagramNodeIDs collects the node ids edges may name, warning on every id an
+// earlier node already took: the renderer keeps the first node with an id and
+// drops the rest, so the author hears about the drop here.
+func (c *checker) diagramNodeIDs(m *jq.Obj) map[string]bool {
+	first := map[string]int{}
+	for i, item := range objArray(m, fieldNodes) {
+		id := objString(asObj(item), fieldID)
+		if id == "" {
+			continue
+		}
+		if at, seen := first[id]; seen {
+			c.diagramProblem(fmt.Sprintf("$.diagram.nodes[%d].id", i),
+				fmt.Sprintf("node id %q repeats nodes[%d]; this node is dropped", id, at), "give every node its own id")
+			continue
+		}
+		first[id] = i
+	}
+	ids := make(map[string]bool, len(first))
+	for id := range first {
+		ids[id] = true
+	}
+	return ids
+}
+
+// checkDiagramEdgeRefs warns on every edge end that names no node: the
+// renderer drops such an edge, so the author hears about the drop here.
+func (c *checker) checkDiagramEdgeRefs(m *jq.Obj, ids map[string]bool) {
+	for i, item := range objArray(m, fieldEdges) {
+		el := asObj(item)
+		for _, key := range []string{fieldFrom, fieldTo} {
+			if name := objString(el, key); name != "" && !ids[name] {
+				c.diagramProblem(fmt.Sprintf("$.diagram.edges[%d].%s", i, key),
+					fmt.Sprintf("edge %s %q names no node; this edge is dropped", key, name),
+					"use the id of a node in diagram.nodes")
+			}
+		}
+	}
 }
 
 // checkDiagramKey checks one root key of the diagram object.

@@ -4309,8 +4309,14 @@ verdict checks every element and draws the picture itself:
   An edge is dropped when its own quote fails or when either endpoint was
   dropped, so the block never points at a node that cites nothing.
 - A node with no `id`, or with an `id` an earlier node already took, is dropped;
-  so is an element whose fields have the wrong JSON type — it still counts as
-  supplied, so `verified + dropped = supplied` always holds.
+  so is an edge whose `from` or `to` names no node, and an element whose fields
+  have the wrong JSON type. Each drop still counts as supplied, so
+  `verified + dropped = supplied` always holds, and the shape checker names the
+  repeated id or the dangling end as a `diagram-invalid` warning.
+- The quote matcher runs on at most 240 nodes and 400 edges (ten times the
+  render caps), so a review carrying thousands of elements costs bounded work;
+  every element past that limit counts as supplied and dropped unmatched, and
+  an omission it causes names the limit.
 - The block renders only when at least **50%** of the supplied elements anchor
   (`diagram.MinVerifiedPercent`; exactly half renders). Below that it is omitted
   whole with one line, because a mostly-unanchored diagram is not a picture of
@@ -4320,10 +4326,15 @@ verdict checks every element and draws the picture itself:
   object, are omitted the same way with their own reason; an out-of-scope type
   appears in a code span, so a URL-shaped value never becomes a link.
 - Caps bound the block: at most 24 nodes, 40 edges, 120 characters per label,
-  120 for the title, and 8,000 bytes; whole nodes and edges are dropped before
-  the ceiling is crossed, and one legal `%%` comment inside the fence names what
-  the caps left out — including the edges the node cap left without an endpoint
-  (`%% 6 more nodes omitted (input order); 3 edges to omitted nodes not drawn`).
+  120 for the title, and 8,000 bytes. Nodes and edges are kept in input order
+  while they fit — one that would cross the ceiling is skipped, and a shorter
+  one after it can still be drawn — and one legal `%%` comment inside the fence
+  counts exactly what the caps left out, including the edges the node cap left
+  without an endpoint
+  (`%% 6 more nodes omitted (caps); 3 edges to omitted nodes not drawn`).
+- A sequence message always carries text: an unlabeled one shows its target
+  node's label, so no line ends in a bare colon that a whitespace-trimming
+  pipeline would leave unparseable.
 - Every label and title is reduced to letters, digits, combining marks, spaces,
   and the closed punctuation set `.,:!?'()+_-/@` — no other rune, zero-width
   ones included — and dash runs collapse, so no backtick, double quote,
@@ -4338,8 +4349,8 @@ verdict checks every element and draws the picture itself:
 - The block lands right after the computed topology, collapsed:
   `<summary>Behavior flow (each element anchored to a diff line — 3/3 anchored)</summary>`.
 
-A diagram never withholds approval and never fails a review. Its outcome is
-published: the `evidence.diagram` receipt in `record.json` (and in `post.json`
+A diagram never withholds approval and never fails a review. With the knob on,
+its outcome is published: the `evidence.diagram` receipt in `record.json` (and in `post.json`
 for a posted PR) carries the type, title, `supplied` / `verified` / `dropped`
 counts, and the omission reason when there is one. `post --dry-run` reports the
 same fields plus `status` (`rendered` or `omitted`) in `data.body.diagram`
@@ -4351,9 +4362,15 @@ missing field, a value past its cap) is a `diagram-invalid` warning — the
 element or value is dropped or truncated, never the review — and `--strict`
 promotes it like every other warning. Knobs: `publish.diagrams.anchored` (bool,
 default `false`), `REVIEW_PUBLISH_DIAGRAMS_ANCHORED` (`true`|`false`), and
-`--diagram-anchored` / `--no-diagram-anchored`; with the knob off the body
-keeps exactly the bytes it had before, though the receipt still records what
-anchored.
+`--diagram-anchored` / `--no-diagram-anchored`. With the knob off the diagram
+is never settled: the body, `record.json`, `post.json`, and the dry run carry
+exactly the bytes they had before the field existed — no block, no
+`evidence.diagram`, a `null` `body.diagram` — so no surface reports a picture
+the body does not draw. The shape checker still reads the field, so a
+malformed block warns either way. The published `review.schema.json` fixes the
+field's shape but not the values the runtime tolerates (an out-of-scope
+`type`, an empty `nodes`, an over-long string), so a schema-validating client
+accepts every review the CLI accepts.
 
 ## Section overrides (per-block template fragments)
 

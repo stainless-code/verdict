@@ -51,10 +51,17 @@ type Review struct { //nolint:govet // field order is the published property ord
 // not anchor. The check proves each cited line exists; the relation an edge
 // draws remains the agent's claim. `type` is the only supported vocabulary:
 // a sequence of steps, a state lifecycle, or a flow of control.
+//
+// The published schema fixes the shape — field types, required keys, closed
+// objects, and the spec_checks evidence — but not the values the runtime
+// tolerates: an out-of-scope type, an empty node list, or an over-long title,
+// label, or id is a diagram-invalid warning with a documented outcome (the
+// block omitted, the value truncated, the element dropped), never a refusal,
+// so a schema-validating client accepts every review the CLI accepts.
 type ReviewDiagram struct {
-	Type  string        `enum:"sequence|state|flow" json:"type"`
-	Title string        `json:"title,omitempty"     maxLength:"120"`
-	Nodes []DiagramNode `json:"nodes"               minItems:"1"`
+	Type  string        `json:"type"`
+	Title string        `json:"title,omitempty"`
+	Nodes []DiagramNode `json:"nodes"`
 	Edges []DiagramEdge `json:"edges,omitempty"`
 }
 
@@ -62,17 +69,16 @@ type ReviewDiagram struct {
 // stands for. Evidence is the spec_checks evidence shape, byte for byte, so
 // one quote vocabulary covers every element of review.json an agent anchors.
 type DiagramNode struct {
-	ID       string       `json:"id"       maxLength:"40"  minLength:"1"`
-	Label    string       `json:"label"    maxLength:"120" minLength:"1"`
+	ID       string       `json:"id"`
+	Label    string       `json:"label"`
 	Evidence SpecEvidence `json:"evidence"`
 }
 
-// DiagramEdge is one transition between two nodes, anchored to its own line
-// so a drawn relation is as checked as the nodes it joins.
+// DiagramEdge is one transition between two nodes, anchored to its own line.
 type DiagramEdge struct {
-	From     string       `json:"from"            maxLength:"40"  minLength:"1"`
-	To       string       `json:"to"              maxLength:"40"  minLength:"1"`
-	Label    string       `json:"label,omitempty" maxLength:"120"`
+	From     string       `json:"from"`
+	To       string       `json:"to"`
+	Label    string       `json:"label,omitempty"`
 	Evidence SpecEvidence `json:"evidence"`
 }
 

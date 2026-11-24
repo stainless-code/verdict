@@ -47,11 +47,13 @@ labeled as anchored, not verified.
   (a control graph). Any other type is out of scope and the block is omitted;
   there is no `gantt`, `classDiagram`, `erDiagram`, `mindmap`, or `gitGraph`.
 - `title` — optional, ≤120 characters. It renders as the accessible title.
-- `nodes` — 1 to 24 entries. `id` is your lookup key (≤40 characters, never
+- `nodes` — 1 to 24 entries (an empty list omits the block). `id` is your lookup key (≤40 characters, never
   rendered), `label` is what the picture shows (≤120 characters), and
   `evidence` is the diff line the node stands for.
-- `edges` — at most 40 entries. `from` and `to` are node ids, `label` is
-  optional (≤120), and `evidence` is the diff line that states the relation.
+- `edges` — at most 40 entries. `from` and `to` are node ids (an end that
+  names no node drops the edge), `label` is optional (≤120; an unlabeled
+  sequence message shows its target's label), and `evidence` is the diff line
+  that states the relation.
 - `evidence` — exactly `path`, `line`, and `quote`, as in a `spec_checks` row:
   a NEW-side line inside a hunk of `full.diff` (added or context), copied
   exactly. A paraphrase never verifies, and there is no `side` or `start_line`.
@@ -77,7 +79,8 @@ whole.
 - Caps: 24 nodes, 40 edges, 120 characters per label, 8,000 bytes. Whole nodes
   and edges are dropped before the ceiling is crossed, and one `%%` comment
   inside the fence names what the caps left out, including edges whose
-  endpoint the node cap removed.
+  endpoint the node cap removed. Past 240 nodes or 400 edges nothing is
+  checked at all: those elements count as dropped.
 - Labels and titles are reduced to letters, digits, spaces, and the
   punctuation `.,:!?'()+_-/@`, and node identifiers are generated (`n1`, `n2`, …). Write plain
   words; markup, arrows, and directives never survive.

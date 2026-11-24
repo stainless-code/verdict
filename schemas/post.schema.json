@@ -319,7 +319,7 @@
           "minimum": 0
         },
         "dropped": {
-          "description": "Supplied elements that did not verify or were malformed: a quote the diff did not prove, a dangling endpoint, a missing or repeated id, or every element of an out-of-scope type. verified + dropped = supplied.",
+          "description": "Supplied elements that did not verify or were malformed: a quote the diff did not prove, a dangling endpoint, a missing or repeated id, an element past the checking limit (240 nodes, 400 edges), or every element of an out-of-scope type. verified + dropped = supplied.",
           "type": "integer",
           "minimum": 0
         },
