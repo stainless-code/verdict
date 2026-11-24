@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 const chunkSchemaVersion = "1"
@@ -60,7 +61,7 @@ func maybeWriteChunks(
 // text, because the model-facing chunk payloads never carry withheld content.
 // full.diff itself keeps every file for patch identity.
 func chunkSourceDiff(fullDiff string, exclusions []string) (string, error) {
-	raw, err := os.ReadFile(fullDiff)
+	raw, err := noblock.ReadFile(fullDiff)
 	if err != nil && !errors.Is(err, fs.ErrNotExist) {
 		return "", internalErrorf("could not read %s: %v", fullDiff, err)
 	}
@@ -451,7 +452,7 @@ func writeChunkFiles(dir, cdir string, i, n int, ch chunkEntry) error {
 // chunkHeaderLines numbers the `diff --git` headers of a chunk diff, or
 // reports the fallback line.
 func chunkHeaderLines(path string) []string {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return []string{noChunkHeaders}
 	}

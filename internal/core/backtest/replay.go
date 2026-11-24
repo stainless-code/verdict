@@ -20,6 +20,7 @@ import (
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	runcore "github.com/stainless-code/verdict/internal/core/run"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -318,7 +319,7 @@ func replayAgent(agent string) *core.RefusalError {
 // positional, so the order must not depend on how mine.json was sorted.
 func (st *state) replayCandidates(run string) ([]Candidate, *core.RefusalError) {
 	path := filepath.Join(st.root, artifactDir, run, "mine.json")
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, st.refuse(codeMissingBundle, fmt.Sprintf(
 			"backtest run '%s' has no mine.json — mine it first (verdict backtest mine --since <span> --run %s)",
@@ -619,7 +620,7 @@ func (s *replaySession) settle(entry ReplayPR) ReplayPR {
 // another resolution refuses run-mismatch rather than silently rewriting it.
 func (s *replaySession) stored(n int, c *Candidate) (*ReplayPRDoc, bool, *core.RefusalError) {
 	var doc ReplayPRDoc
-	raw, err := os.ReadFile(s.st.prPath(s.run, n))
+	raw, err := noblock.ReadFile(s.st.prPath(s.run, n))
 	if errors.Is(err, fs.ErrNotExist) {
 		return &doc, false, nil
 	}

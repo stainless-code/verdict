@@ -10,6 +10,7 @@ import (
 	"strconv"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/storelock"
 )
 
@@ -361,7 +362,7 @@ func unionRules(live []map[string]any) []string {
 }
 
 func reviewIDOf(postPath string) any {
-	raw, err := os.ReadFile(postPath)
+	raw, err := noblock.ReadFile(postPath)
 	if err != nil {
 		return nil
 	}

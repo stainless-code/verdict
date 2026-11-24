@@ -3,7 +3,6 @@ package recordcore
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -19,6 +18,7 @@ import (
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/sig"
 	"github.com/stainless-code/verdict/internal/untrusted"
@@ -487,7 +487,7 @@ func jqLine(v any) string {
 }
 
 func loadHunkRows(path string) []hunks.Hunk {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil
 	}
@@ -999,7 +999,7 @@ func priorRigorSource(m *jq.Obj) string {
 }
 
 func (st *state) autoReopen() {
-	raw, err := os.ReadFile(st.dir + "/incremental.diff")
+	raw, err := noblock.ReadFile(st.dir + "/incremental.diff")
 	if err != nil {
 		return
 	}

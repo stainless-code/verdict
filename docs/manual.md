@@ -2987,9 +2987,10 @@ as `{label, text, shown_bytes, bytes}`, with `result.review_comment_count`
 digest covers that text. The text shown is bounded to 256 KiB in total, cut at a
 rune boundary: a comment the bound lands in carries `shown_bytes` below `bytes`,
 and every comment after it is named in `result.review_omitted`. The content pin
-below is over the full payloads, not the shown text, so a review the preview
-cut still posts whole, and the dialog says exactly which comment was cut after
-how many bytes and which were not shown. A mint refuses (`preview-unpinnable`)
+below is over the full payloads, not the shown text, so a matching digest does
+not mean the whole review was on screen: the web UI therefore never offers
+Confirm for a review the preview cut, and the dialog says exactly which comment
+was cut after how many bytes and which were not shown. A mint refuses (`preview-unpinnable`)
 a preview whose render carries no content digest, because an empty pin would
 pin nothing. A server without
 `--allow-post` mints none of these: its preview result is the bare dry-run wire. The submit requires
@@ -3052,9 +3053,11 @@ repository, counts, any preview warnings, every comment the post will send (as
 text, in posting order, each under its label, in one scrolling region that is a
 Tab stop), and the digest, and enables `Confirm & Submit Review` only once that
 text is shown. When the preview cut any of it, the modal says exactly what was
-not shown (the comment cut and after how many bytes, the comments left out) and
-that the digest pins the full content, and Confirm stays disabled until the
-operator ticks an acknowledgement. It posts only on an explicit click, and focus
+not shown (the comment cut and after how many bytes, the comments left out, and
+the total), keeps Confirm disabled with no acknowledgement to tick past it, and
+points at `verdict post <repo> <pr> --dry-run`, which prints the whole payload,
+to inspect it and post it from the CLI. Text the operator never saw is never
+confirmable here. It posts only on an explicit click, and focus
 never moves to Confirm on its own. A `503 store-busy` keeps the dialog open and offers
 `Retry submit` with the same preview; a refusal that lands after the dialog was
 closed is reported in the page status.

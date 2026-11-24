@@ -20,6 +20,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/core/repair"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -402,7 +403,7 @@ func shapeRefusal(attempt *core.RunAttempt, check recordcore.CheckResult, rounds
 // the 32 MiB agent-input cap record uses. A read failure after a passing
 // stat keeps the artifact family: the contract path did not deliver bytes.
 func readRoundReview(args *launchArgs, res *core.Result) ([]byte, *core.RefusalError) {
-	f, err := os.Open(args.abs)
+	f, err := noblock.OpenRegular(args.abs)
 	if err != nil {
 		return nil, &core.RefusalError{
 			Code:    codeNoArtifact,

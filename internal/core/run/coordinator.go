@@ -3,7 +3,6 @@ package run
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/core/repair"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -344,7 +344,7 @@ func (c *coordinator) resolveFailure(phase, code string) {
 // recorded cross checks against exactly the batch the run would ask about
 // before the record or the plan is published.
 func (c *coordinator) deriveUnion() *core.RefusalError {
-	diff, err := os.ReadFile(filepath.Join(c.dir, "full.diff"))
+	diff, err := noblock.ReadFile(filepath.Join(c.dir, "full.diff"))
 	if err != nil {
 		return c.st.refuse(codeMissingBundle, "diff missing")
 	}

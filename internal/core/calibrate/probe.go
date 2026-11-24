@@ -8,6 +8,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -86,7 +87,7 @@ func readJudgeDocs(path string) ([]any, error) {
 	if !isRegular(path) || !readable(path) {
 		return nil, judgeUnreadable(path)
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, judgeUnreadable(path)
 	}
@@ -116,7 +117,7 @@ func slurpJudgeDocs(path string, raw []byte) ([]any, error) {
 }
 
 func readable(path string) bool {
-	f, err := os.Open(path)
+	f, err := noblock.OpenRegular(path)
 	if err != nil {
 		return false
 	}
@@ -237,7 +238,7 @@ func buildSpecJudge(sig, verdict, helpful string) judge {
 }
 
 func priorJudgments(dir string) []judge {
-	raw, err := os.ReadFile(dir + "/kb-grades.jsonl")
+	raw, err := noblock.ReadFile(dir + "/kb-grades.jsonl")
 	if err != nil {
 		return nil
 	}

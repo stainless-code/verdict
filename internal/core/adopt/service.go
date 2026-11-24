@@ -19,6 +19,7 @@ import (
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -271,7 +272,7 @@ func (st *state) loadFromEntries(fromDir string) ([]any, *core.RefusalError) {
 	if !readcommon.IsFile(fromDir + findingsSuffix) {
 		return nil, st.refuse("missing-findings", fmt.Sprintf(msgMissingFindings, fromDir))
 	}
-	fromRaw, err := os.ReadFile(fromDir + findingsSuffix)
+	fromRaw, err := noblock.ReadFile(fromDir + findingsSuffix)
 	if err != nil {
 		return nil, st.refuse("missing-findings", fmt.Sprintf(msgMissingFindings, fromDir))
 	}
@@ -514,7 +515,7 @@ func (st *state) ensureHunks(dir string) *core.RefusalError {
 		return nil
 	}
 	st.warn(fmt.Sprintf(msgHunksRebuild, dir))
-	raw, err := os.ReadFile(dir + fullDiffSuffix)
+	raw, err := noblock.ReadFile(dir + fullDiffSuffix)
 	if err != nil {
 		return st.refuse("missing-diff", fmt.Sprintf(msgMissingDiff, dir))
 	}
@@ -525,7 +526,7 @@ func (st *state) ensureHunks(dir string) *core.RefusalError {
 }
 
 func readHunks(path string) []hunks.Hunk {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil
 	}

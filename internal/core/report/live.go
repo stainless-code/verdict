@@ -11,11 +11,12 @@ import (
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 func readFile(path string) ([]byte, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, jq.Sealed("read "+path, err)
 	}

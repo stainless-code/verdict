@@ -2,7 +2,6 @@ package reportcore
 
 import (
 	"context"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/approval"
 	"github.com/stainless-code/verdict/internal/evidence"
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 // PolicyReplay is one stored bundle decided twice: once under the policy the
@@ -203,7 +203,7 @@ func deriveDecision(st *state, resolved *config.Resolved, root *config.Requireme
 func resolveCandidatePolicy(
 	path string, captured *config.Resolved, baseSHA string,
 ) (*config.Resolved, config.RequirementSet, *core.RefusalError) {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, config.RequirementSet{}, replayRefusal("cannot read candidate policy " + path)
 	}

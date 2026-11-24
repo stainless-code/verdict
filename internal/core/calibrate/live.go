@@ -4,13 +4,13 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -83,7 +83,7 @@ func isLocalDir(dir string) bool {
 }
 
 func nestedReviewID(dir string) string {
-	raw, err := os.ReadFile(dir + postFileSuffix)
+	raw, err := noblock.ReadFile(dir + postFileSuffix)
 	if err != nil {
 		return ""
 	}
@@ -483,7 +483,7 @@ func kbRowText(o *outcome) string {
 }
 
 func provOrUnmarked(dir, key string) string {
-	raw, err := os.ReadFile(dir + postFileSuffix)
+	raw, err := noblock.ReadFile(dir + postFileSuffix)
 	if err != nil {
 		return unmarkedValue
 	}
@@ -517,7 +517,7 @@ func provHashPrefix(dir string) string {
 const provHashRunes = 12
 
 func provRaw(dir, key string) string {
-	raw, err := os.ReadFile(dir + postFileSuffix)
+	raw, err := noblock.ReadFile(dir + postFileSuffix)
 	if err != nil {
 		return ""
 	}
@@ -680,7 +680,7 @@ func reviewIDValue(rid string) any {
 }
 
 func provValue(dir, key string) any {
-	raw, err := os.ReadFile(dir + postFileSuffix)
+	raw, err := noblock.ReadFile(dir + postFileSuffix)
 	if err != nil {
 		return nil
 	}

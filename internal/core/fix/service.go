@@ -8,7 +8,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"slices"
 	"strings"
 
@@ -16,6 +15,7 @@ import (
 	"github.com/stainless-code/verdict/internal/brief"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -422,7 +422,7 @@ func (st *state) loadFindings(dir string) ([]any, *core.RefusalError) {
 		return nil, st.refuse("missing-findings", fmt.Sprintf(
 			"missing %s/findings.json (run record first, then fix)", dir))
 	}
-	raw, err := os.ReadFile(dir + suffixFindings)
+	raw, err := noblock.ReadFile(dir + suffixFindings)
 	if err != nil {
 		return nil, st.corruptStore(dir)
 	}
@@ -571,7 +571,7 @@ func prInfo(dir string) string {
 }
 
 func draftOf(dir string) bool {
-	raw, err := os.ReadFile(dir + suffixPRJSON)
+	raw, err := noblock.ReadFile(dir + suffixPRJSON)
 	if err != nil {
 		return false
 	}
@@ -619,7 +619,7 @@ func storedThreads(dir string) string {
 }
 
 func jsonLen(path string) int {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return 0
 	}
@@ -706,7 +706,7 @@ func (st *state) loadLedger(path string) *ledgerDoc {
 	if !readcommon.Exists(path) {
 		return freshLedger()
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err == nil {
 		if doc, ok := decodeLedgerDoc(raw); ok {
 			return st.ledgerWithSigs(path, doc)
@@ -1128,7 +1128,7 @@ func readKbValue(dir string) any {
 	if !readcommon.IsFile(dir + suffixKB) {
 		return nil
 	}
-	kbRaw, err := os.ReadFile(dir + suffixKB)
+	kbRaw, err := noblock.ReadFile(dir + suffixKB)
 	if err != nil {
 		kbRaw = nil
 	}
@@ -1140,7 +1140,7 @@ func (st *state) printKB(dir string) {
 	if !readcommon.IsFile(dir + suffixKB) {
 		return
 	}
-	kbRaw, err := os.ReadFile(dir + suffixKB)
+	kbRaw, err := noblock.ReadFile(dir + suffixKB)
 	if err != nil {
 		kbRaw = nil
 	}

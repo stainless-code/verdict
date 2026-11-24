@@ -2,12 +2,12 @@ package recordcore
 
 import (
 	"fmt"
-	"os"
 	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -262,7 +262,7 @@ func hasPrefix(s, prefix string) bool {
 }
 
 func patchField(dir, field string) any {
-	raw, err := os.ReadFile(dir + "/patch.json")
+	raw, err := noblock.ReadFile(dir + "/patch.json")
 	if err != nil {
 		return nil
 	}

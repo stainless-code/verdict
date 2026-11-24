@@ -1,16 +1,16 @@
 package trendcore
 
 import (
-	"os"
 	"slices"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 const unknownPair = "unknown"
 
 func bundlePair(bundle string) (string, []string) {
-	raw, err := os.ReadFile(bundle + "record.json")
+	raw, err := noblock.ReadFile(bundle + "record.json")
 	if err != nil {
 		return unknownPair, nil
 	}

@@ -2474,7 +2474,7 @@ async function truncatedDialog(submitResponse) {
   });
 }
 
-test("a review the preview cut says exactly what was not shown and needs an acknowledgement to confirm", async () => {
+test("a review the preview cut says what was left out and can never be confirmed", async () => {
   let posts = 0;
   const { ui } = await truncatedDialog(() => {
     posts++;
@@ -2489,52 +2489,38 @@ test("a review the preview cut says exactly what was not shown and needs an ackn
   assert.ok(text.includes("comment 2 (3 of 500 bytes shown)"));
   assert.ok(text.includes("not shown at all: Inline comment on a.go:3"));
   assert.ok(
+    text.includes("Left out in total: 497 bytes cut, 1 comment omitted."),
+  );
+  assert.ok(
     text.includes(
-      "The preview digest pins the full content, and all of it posts.",
+      "`verdict post acme/app 1234 --dry-run` and post it from the CLI",
     ),
   );
-  const confirm = firstButton(ui.body, "Confirm & Submit Review");
-  const ack = descendants(ui.body).find(
-    (e) => e.tagName === "INPUT" && e.type === "checkbox",
+  assert.ok(
+    !text.includes("all of it posts"),
+    "the dialog no longer promises to post unseen text",
   );
-  assert.ok(ack, "the cut review offers an acknowledgement");
-  assert.equal(confirm.disabled, true, "Confirm waits for the acknowledgement");
+  const confirm = firstButton(ui.body, "Confirm & Submit Review");
+  assert.equal(confirm.disabled, true, "Confirm is disabled");
+  assert.equal(
+    descendants(ui.body).find((e) => e.tagName === "INPUT"),
+    undefined,
+    "there is no acknowledgement control to tick past it",
+  );
   await confirm.dispatch("click");
   await ui.flush();
   assert.equal(posts, 0, "a disabled Confirm sends nothing");
-  ack.checked = true;
-  await ack.dispatch("change");
-  assert.equal(
-    confirm.disabled,
-    false,
-    "ticking the acknowledgement enables Confirm",
-  );
-  ack.checked = false;
-  await ack.dispatch("change");
-  assert.equal(confirm.disabled, true, "unticking it disables Confirm again");
-  ack.checked = true;
-  await ack.dispatch("change");
-  await ui.settle(confirm.dispatch("click"));
-  assert.equal(posts, 1);
-  assert.equal(
-    ack.disabled,
-    true,
-    "the acknowledgement locks once the post starts",
-  );
 });
 
-test("the acknowledgement sits in the dialog's Tab order between the review and Confirm", async () => {
+test("a cut review keeps only the review and Cancel in the dialog's Tab order", async () => {
   const { ui } = await truncatedDialog(() => ({ body: envelope({}) }));
   const review = descendants(ui.body).find(
     (e) => e.className === "submit-review-list",
   );
-  const ack = descendants(ui.body).find((e) => e.tagName === "INPUT");
   const cancel = firstButton(ui.body, "Cancel");
   cancel.focus();
   ui.press("Tab");
   assert.equal(ui.active(), review);
-  ui.press("Tab");
-  assert.equal(ui.active(), ack);
   ui.press("Tab");
   assert.equal(ui.active(), cancel, "the disabled Confirm is skipped");
 });

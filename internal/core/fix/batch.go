@@ -3,13 +3,13 @@ package fixcore
 import (
 	"context"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -458,7 +458,7 @@ func (st *state) batchVerifyCmd(dir string) string {
 	if st.req.VerifyCmd != "" {
 		return st.req.VerifyCmd
 	}
-	raw, err := os.ReadFile(dir + suffixPatchJSON)
+	raw, err := noblock.ReadFile(dir + suffixPatchJSON)
 	if err != nil {
 		return ""
 	}

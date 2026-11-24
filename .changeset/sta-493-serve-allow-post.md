@@ -41,7 +41,9 @@ review is the text the operator confirmed; a change after the re-render refuses
 256 KiB of text in total, cut at a rune boundary: the pin covers the full
 payloads, not the shown text, so a matching digest does not mean the whole
 review was on screen. When the preview cut any of it the modal names what was
-cut and what was left out, and Confirm needs an explicit acknowledgement. The
+cut and what was left out, keeps Confirm disabled (there is no acknowledgement),
+and points at `verdict post <repo> <pr> --dry-run` to inspect the full payload
+and post it from the CLI. The
 target repository is bound to the preview, a bundle input swapped for a FIFO
 refuses without blocking, and the preview deadline of two minutes covers its
 requests.

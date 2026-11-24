@@ -3,7 +3,6 @@ package trendcore
 import (
 	"encoding/json"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/schemacheck"
 )
@@ -92,7 +92,7 @@ func readResolution(dir string) (int, int, bool) {
 }
 
 func resolutionPanel(dir string) string {
-	raw, err := os.ReadFile(filepath.Join(dir, "panel"))
+	raw, err := noblock.ReadFile(filepath.Join(dir, "panel"))
 	if err != nil {
 		return "unpinned"
 	}

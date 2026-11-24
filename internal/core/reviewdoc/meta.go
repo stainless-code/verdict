@@ -9,6 +9,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/untrusted"
 )
@@ -215,7 +216,7 @@ func diffMetaFiles(dir string) []MetaFile {
 	if dir == "" {
 		return nil
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, "full.diff"))
+	raw, err := noblock.ReadFile(filepath.Join(dir, "full.diff"))
 	if err != nil {
 		return nil
 	}
@@ -327,7 +328,7 @@ func formatHeadRefSHA(ref, headShort string) string {
 }
 
 func readJSONMap(path string) map[string]any {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil
 	}

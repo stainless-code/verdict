@@ -23,6 +23,7 @@ import (
 	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/overrides"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -393,7 +394,7 @@ func EnsureHunksSnapshot(rt core.Runtime, dir string) error {
 		return nil
 	}
 	rt.Warn(fmt.Sprintf(msgHunksRebuild, dir))
-	raw, err := os.ReadFile(dir + "/full.diff")
+	raw, err := noblock.ReadFile(dir + "/full.diff")
 	if err != nil {
 		return &core.RefusalError{Code: "missing-diff", Message: fmt.Sprintf(msgMissingDiff, dir)}
 	}
@@ -416,7 +417,7 @@ func CountStatus(entries []any, status string) int {
 // ReadOptional reads an optional input file; ok is false when missing or
 // unreadable (absent inputs read as absent claims/priors, never failures).
 func ReadOptional(path string) ([]byte, bool) {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, false
 	}
@@ -426,7 +427,7 @@ func ReadOptional(path string) ([]byte, bool) {
 const maxAgentBytes = 32 << 20
 
 func readAgentFile(path string) ([]byte, error) {
-	f, err := os.Open(path)
+	f, err := noblock.OpenRegular(path)
 	if err != nil {
 		return nil, jq.Sealed("read agent file", err)
 	}

@@ -5,6 +5,8 @@ package readcommon
 import (
 	"os"
 	"syscall"
+
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 // OpenNoBlock opens path without waiting for a writer. A path the operator
@@ -13,7 +15,7 @@ import (
 // refuse anything that is not a regular file before reading.
 // Missing files preserve [fs.ErrNotExist].
 func OpenNoBlock(path string) (*os.File, error) {
-	f, err := os.OpenFile(path, os.O_RDONLY|syscall.O_NONBLOCK, 0)
+	f, err := noblock.Open(path)
 	if err != nil {
 		return nil, openError("open without blocking", err)
 	}

@@ -14,6 +14,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -146,7 +147,7 @@ func diffKeyedLocalKind(kind string) bool {
 }
 
 func fileSHA256Hex(path string) string {
-	file, err := os.Open(path)
+	file, err := noblock.OpenRegular(path)
 	if err != nil {
 		return ""
 	}
@@ -330,7 +331,7 @@ func isUnanchored(e any) bool {
 }
 
 func readReceiptMap(path string) (map[string]any, bool) {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, false
 	}

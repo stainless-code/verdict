@@ -11,6 +11,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -335,7 +336,7 @@ func writeGitHubTOC(ctx context.Context, ctx2 *fetchRunCtx) error {
 
 func githubStat(ctx context.Context, ctx2 *fetchRunCtx) (string, []string) {
 	total := "?"
-	if raw, err := os.ReadFile(ctx2.dir + suffixPRJSON); err == nil {
+	if raw, err := noblock.ReadFile(ctx2.dir + suffixPRJSON); err == nil {
 		if doc, derr := jq.Decode(raw); derr == nil {
 			if m, ok := jq.AsMap(doc); ok {
 				total = strconv.Itoa(len(jq.Elements(m[keyFiles])))
@@ -450,7 +451,7 @@ func phaseTwo(
 }
 
 func prExtraPaths(prJSON string) string {
-	raw, err := os.ReadFile(prJSON)
+	raw, err := noblock.ReadFile(prJSON)
 	if err != nil {
 		return ""
 	}

@@ -20,6 +20,7 @@ import (
 	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -61,7 +62,7 @@ func ToolVersion(root string) string {
 	if buildVersion != "" {
 		return buildVersion
 	}
-	raw, err := os.ReadFile(filepath.Join(root, "package.json"))
+	raw, err := noblock.ReadFile(filepath.Join(root, "package.json"))
 	if err != nil {
 		return core.VersionUnknown
 	}
@@ -195,7 +196,7 @@ func FileCount(dir string) string {
 }
 
 func prFileCount(dir string) (int, bool) {
-	raw, err := os.ReadFile(filepath.Join(dir, prFile))
+	raw, err := noblock.ReadFile(filepath.Join(dir, prFile))
 	if err != nil {
 		return 0, false
 	}
@@ -215,7 +216,7 @@ func prFileCount(dir string) (int, bool) {
 }
 
 func diffFileCount(dir string) (int, bool) {
-	raw, err := os.ReadFile(filepath.Join(dir, "full.diff"))
+	raw, err := noblock.ReadFile(filepath.Join(dir, "full.diff"))
 	if err != nil {
 		return 0, false
 	}
@@ -250,7 +251,7 @@ func HeadShort(dir string) string {
 }
 
 func sourceHeadShort(dir string) string {
-	raw, err := os.ReadFile(filepath.Join(dir, "source.json"))
+	raw, err := noblock.ReadFile(filepath.Join(dir, "source.json"))
 	if err != nil {
 		return unknown
 	}
@@ -276,7 +277,7 @@ func sourceHeadShort(dir string) string {
 
 // prHead reads the head SHA via the provider-aware field rules.
 func prHead(dir string) string {
-	raw, err := os.ReadFile(filepath.Join(dir, prFile))
+	raw, err := noblock.ReadFile(filepath.Join(dir, prFile))
 	if err != nil {
 		return ""
 	}
@@ -392,7 +393,7 @@ func bundleHead(dir string) string {
 	if _, err := os.Stat(filepath.Join(dir, prFile)); err == nil {
 		return prHead(dir)
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, "source.json"))
+	raw, err := noblock.ReadFile(filepath.Join(dir, "source.json"))
 	if err != nil {
 		return ""
 	}

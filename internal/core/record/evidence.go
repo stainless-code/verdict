@@ -2,7 +2,6 @@ package recordcore
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -14,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/evidence"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -160,7 +160,7 @@ type evidencePass struct {
 // line index, the hunks.tsv drift check, the reviewed head and diff digest, and
 // the captured run state that carries spec_coverage_min and the block clauses.
 func newEvidencePass(dir string, review *jq.Obj) *evidencePass {
-	diff, err := os.ReadFile(dir + diffSuffix)
+	diff, err := noblock.ReadFile(dir + diffSuffix)
 	pass := &evidencePass{
 		review: review,
 		dir:    dir,
@@ -664,7 +664,7 @@ func (p *evidencePass) coverageMin() int {
 // file order, indexed by their position in the file. A bundle with no spec
 // source yields no block and therefore no checklist.
 func specBlocks(dir string) []evidence.SpecBlock {
-	raw, err := os.ReadFile(dir + contextTextSuffix)
+	raw, err := noblock.ReadFile(dir + contextTextSuffix)
 	if err != nil {
 		return nil
 	}

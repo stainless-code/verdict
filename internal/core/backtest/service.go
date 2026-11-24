@@ -24,6 +24,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -671,7 +672,7 @@ func sinceSlug(since Resolution) string {
 // checkRunDir refuses an existing run whose stored resolution differs.
 func (st *state) checkRunDir(run string, since, until Resolution) *core.RefusalError {
 	path := filepath.Join(st.root, artifactDir, run, "run.json")
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil
 	}

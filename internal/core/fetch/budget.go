@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/spend"
 )
@@ -376,7 +377,7 @@ type costRec struct {
 }
 
 func readCostRecs(path string) ([]costRec, bool) {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, false
 	}
@@ -642,7 +643,7 @@ func writeBudgetReceipt(r *session, st *budgetState, dir, now string) {
 
 func budgetLedger(r *session, dir string, rc *jq.Obj) string {
 	merged := "[" + rc.MarshalPretty() + "]"
-	raw, err := os.ReadFile(dir + "/budget.json")
+	raw, err := noblock.ReadFile(dir + "/budget.json")
 	if err != nil {
 		return merged
 	}

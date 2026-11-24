@@ -703,7 +703,7 @@
 
   // trapSubmitKeys keeps focus inside the open dialog: Tab and Shift-Tab wrap
   // over its enabled controls, in the order of the live `controls` array (the
-  // review text and the acknowledgement join it once the preview settles), and
+  // review text joins it once the preview settles), and
   // Escape closes it like its Cancel/Close button. The handler lives on the
   // document so it still hears keys when a click on the backdrop has dropped
   // focus out of the dialog.
@@ -832,14 +832,17 @@
     reviewBox.setAttribute("role", "region");
     reviewBox.setAttribute("aria-label", "Review text to be posted");
     const cut = [];
+    let cutBytes = 0;
     comments.forEach((entry, index) => {
       const shown = Number.isInteger(entry.shown_bytes)
         ? entry.shown_bytes
         : null;
       const size = Number.isInteger(entry.bytes) ? entry.bytes : null;
       const isCut = shown !== null && size !== null && shown < size;
-      if (isCut)
+      if (isCut) {
         cut.push(`comment ${index + 1} (${shown} of ${size} bytes shown)`);
+        cutBytes += size - shown;
+      }
       reviewBox.append(
         node(
           "p",
@@ -879,38 +882,29 @@
       ),
       reviewBox,
     );
+    const leftOut = `${cutBytes} bytes cut, ${omitted.length} ${omitted.length === 1 ? "comment" : "comments"} omitted`;
     const unseen = [...cut];
     if (omitted.length) unseen.push(`not shown at all: ${omitted.join("; ")}`);
-    let ack = null;
-    if (unseen.length) {
+    // Posting text the operator never saw is never confirmable here: Confirm
+    // stays disabled, with no acknowledgement to tick past it, and the dialog
+    // points at the CLI, which prints the whole payload.
+    const blocked = unseen.length > 0;
+    if (blocked) {
       details.append(
         node(
           "p",
-          `Not all of the review is shown: ${unseen.join("; ")}. The preview digest pins the full content, and all of it posts.`,
+          `Confirm is disabled: the preview did not show the whole review (${unseen.join("; ")}). Left out in total: ${leftOut}. ` +
+            `Inspect the full payload with \`verdict post ${result.target_repo || "<repo>"} ${bundle} --dry-run\` and post it from the CLI.`,
           "submit-truncated",
         ),
       );
-      // Confirming text that was not shown takes an explicit acknowledgement.
-      ack = node("input");
-      ack.type = "checkbox";
-      ack.setAttribute("id", "submit-ack");
-      const ackLabel = node(
-        "label",
-        "I understand that part of the review was not shown here and will post anyway.",
-      );
-      ackLabel.setAttribute("for", "submit-ack");
-      ack.addEventListener("change", () => {
-        if (!confirming) confirm.disabled = !ack.checked;
-      });
-      details.append(ack, ackLabel);
     }
     details.append(node("p", `Preview digest ${digest}`));
     focusOrder.unshift(reviewBox);
-    if (ack) focusOrder.splice(1, 0, ack);
-    status.textContent = ack
-      ? "Review the text above, tick the acknowledgement, then confirm to submit."
+    status.textContent = blocked
+      ? "The preview did not show the whole review, so it cannot be confirmed here."
       : "Review the text above, then confirm to submit.";
-    confirm.disabled = ack !== null;
+    confirm.disabled = blocked;
     // The dialog is still the open one: a submit that settles after the
     // operator closed it reports on the page instead of a detached element.
     const open = () => submitOverlay === overlay;
@@ -926,7 +920,6 @@
     confirm.addEventListener("click", async () => {
       confirming = true;
       confirm.disabled = true;
-      if (ack) ack.disabled = true;
       // The server keeps posting after the dialog goes away, so this button
       // stops promising a cancel: it closes the dialog, nothing more.
       cancel.textContent = "Close";
@@ -956,7 +949,6 @@
             confirm.textContent = "Retry submit";
             confirming = false;
             confirm.disabled = false;
-            if (ack) ack.disabled = false;
             cancel.textContent = "Cancel";
             return;
           }

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 // TSV columns, in the order fetch writes them.
@@ -57,7 +58,7 @@ func parseRow(line string) (Hunk, bool) {
 // Load reads dir/hunks.tsv. A missing file is not an error: a bundle built by
 // hand may predate the snapshot, and the caller decides whether to rebuild it.
 func Load(dir string) ([]Hunk, error) {
-	raw, err := os.ReadFile(dir + "/hunks.tsv")
+	raw, err := noblock.ReadFile(dir + "/hunks.tsv")
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil

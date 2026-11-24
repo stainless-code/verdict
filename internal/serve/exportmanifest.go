@@ -8,6 +8,8 @@ import (
 	"io"
 	"io/fs"
 	"os"
+
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 const (
@@ -48,11 +50,14 @@ func exportDigest(root *os.Root, name string) (string, error) {
 	if !info.Mode().IsRegular() {
 		return "", notExport()
 	}
-	file, err := root.Open(name)
+	file, err := readcommon.OpenNoBlockIn(root, name)
 	if err != nil {
 		return "", exportFailure(err)
 	}
 	defer func() { _ = file.Close() }()
+	if opened, statErr := file.Stat(); statErr != nil || !opened.Mode().IsRegular() {
+		return "", notExport()
+	}
 	hash := sha256.New()
 	if _, err := io.Copy(hash, file); err != nil {
 		return "", exportFailure(err)
@@ -61,11 +66,14 @@ func exportDigest(root *os.Root, name string) (string, error) {
 }
 
 func readExportManifest(root *os.Root) (*exportManifest, error) {
-	file, err := root.Open(exportManifestName)
+	file, err := readcommon.OpenNoBlockIn(root, exportManifestName)
 	if err != nil {
 		return nil, notExport()
 	}
 	defer func() { _ = file.Close() }()
+	if opened, statErr := file.Stat(); statErr != nil || !opened.Mode().IsRegular() {
+		return nil, notExport()
+	}
 	decoder := json.NewDecoder(io.LimitReader(file, exportManifestLimit+1))
 	decoder.DisallowUnknownFields()
 	var manifest exportManifest
