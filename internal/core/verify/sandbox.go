@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/user"
@@ -90,6 +91,19 @@ const (
 		"the host /proc (other processes' environments), and filesystem unix sockets " +
 		"(docker.sock, the ssh-agent socket) stay reachable, and a unix socket bypasses the " +
 		"network namespace. Use --sandbox with bubblewrap for the full shape."
+
+	// sandboxGitName is the one path component git refuses to check out, so
+	// it is the only thing under the reviewed root the PR itself cannot plant.
+	sandboxGitName = ".git"
+
+	// sandboxGitPointerCap bounds a `.git` file or a commondir file read.
+	sandboxGitPointerCap = 4 << 10
+
+	// seatbeltGitComponent matches a `.git` path component in any letter
+	// case (APFS is case-insensitive by default, and git finds `.GIT` there),
+	// followed by a slash or the end of the path, so `.gitignore`, `.github`,
+	// and `.git-blame-ignore-revs` stay writable.
+	seatbeltGitComponent = `/(.*/)?\.[Gg][Ii][Tt](/|$)`
 
 	// envSeparator splits one environment entry into its name and value.
 	envSeparator = "="
@@ -504,10 +518,97 @@ func bwrapArgv(root string, in sandboxInputs) ([]string, *core.RefusalError) {
 	}
 	argv = append(argv, sandboxVarRunMount(lstatMode)...)
 	argv = append(argv, "--bind", repo, repo)
+	for _, dir := range sandboxGitBinds(repo) {
+		argv = append(argv, "--ro-bind", dir, dir)
+	}
 	for _, mount := range sandboxCredentialMounts(locations) {
 		argv = append(argv, mount.argv()...)
 	}
 	return append(argv, "--unshare-net", "--new-session", "--die-with-parent", "--"), nil
+}
+
+// sandboxGitBinds lists the reviewed root's git control directories that sit
+// inside the writable root bind, spelled under the root as bwrap mounts it,
+// so each gets a read-only bind over the writable one. A control directory
+// outside the root is already read-only under `--ro-bind / /`.
+func sandboxGitBinds(repo string) []string {
+	realRepo, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		realRepo = repo
+	}
+	var binds []string
+	for _, dir := range sandboxGitDirs(repo) {
+		resolved, err := filepath.EvalSymlinks(dir)
+		if err != nil {
+			continue
+		}
+		if rel, ok := sandboxRelInside(realRepo, resolved); ok {
+			binds = append(binds, filepath.Join(repo, rel))
+		}
+	}
+	return sandboxCleanUnique(binds)
+}
+
+// sandboxRelInside returns path relative to base when path is strictly below
+// base.
+func sandboxRelInside(base, path string) (string, bool) {
+	rel, err := filepath.Rel(base, path)
+	if err != nil || rel == "." || rel == ".." || filepath.IsAbs(rel) ||
+		strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", false
+	}
+	return rel, true
+}
+
+// sandboxGitDirs resolves the reviewed root's git control locations as the
+// host has them before the run: <root>/.git as found, the git directory a
+// `.git` file names (a linked worktree or a submodule checkout), and the
+// common directory a linked worktree's git directory points at. Hooks,
+// config, info, and the submodule git directories under modules/ all live in
+// these trees, so denying writes to the whole trees covers every one of them
+// at any depth.
+func sandboxGitDirs(root string) []string {
+	dotgit := filepath.Join(root, sandboxGitName)
+	info, err := os.Lstat(dotgit)
+	if err != nil {
+		return nil
+	}
+	dirs := []string{dotgit}
+	gitdir := dotgit
+	if info.Mode().IsRegular() {
+		target, ok := sandboxGitPointer(dotgit, "gitdir:", root)
+		if !ok {
+			return dirs
+		}
+		gitdir = target
+		dirs = append(dirs, gitdir)
+	}
+	if common, ok := sandboxGitPointer(filepath.Join(gitdir, "commondir"), "", gitdir); ok {
+		dirs = append(dirs, common)
+	}
+	return dirs
+}
+
+// sandboxGitPointer reads one git pointer file — `.git` (`gitdir: <path>`) or
+// `commondir` (`<path>`) — and resolves a relative target against base.
+func sandboxGitPointer(path, prefix, base string) (string, bool) {
+	f, err := os.Open(path)
+	if err != nil {
+		return "", false
+	}
+	defer f.Close()
+	raw := make([]byte, sandboxGitPointerCap)
+	n, _ := io.ReadFull(f, raw) //nolint:errcheck // a short file is the normal case; the content decides
+	line, _, _ := strings.Cut(string(raw[:n]), "\n")
+	target, ok := strings.CutPrefix(strings.TrimSpace(line), prefix)
+	target = strings.TrimSpace(target)
+	if !ok || target == "" {
+		return "", false
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(base, target)
+	}
+	return filepath.Clean(target), true
 }
 
 // sandboxCredentialMounts resolves the locations against the host, so a
@@ -609,7 +710,9 @@ func sandboxExecPrivateProfile(in sandboxInputs, repo, private, tmpBase string) 
 	if ref != nil {
 		return "", ref
 	}
-	return sandboxExecProfile(locations, repo, private, tmpBase)
+	return sandboxExecProfile(&sandboxProfileInputs{
+		credentials: locations, gitDirs: sandboxGitDirs(repo), root: repo, private: private, tmpBase: tmpBase,
+	})
 }
 
 // sandboxPrivateEnv is the child-environment override that keeps scratch and
@@ -661,16 +764,22 @@ func restoreOwnerDir(path string, d fs.DirEntry, walkErr error) error {
 //     ancestor directories alone, so realpath and git's repository discovery
 //     work for a root under a denied temp root while listing it stays denied;
 //  4. the device writes a shell needs re-allowed;
-//  5. the credential locations denied last, so a reviewed root under HOME
+//  5. writes denied to every `.git` path component under the reviewed root
+//     (the root's own git directory, a nested repository, a `.git` file, in
+//     any letter case, existing or not) and to the git directories a `.git`
+//     file or a commondir points at — the only paths under the root the PR
+//     cannot already control, and the ones git executes from later;
+//  6. the credential locations denied last, so a reviewed root under HOME
 //     cannot re-expose one.
-func sandboxExecProfile(credentials []string, root, private, tmpBase string) (string, *core.RefusalError) {
-	hostTemp := tmpBase
+func sandboxExecProfile(in *sandboxProfileInputs) (string, *core.RefusalError) {
+	hostTemp := in.tmpBase
 	if hostTemp == "" {
 		hostTemp = os.TempDir()
 	}
 	denyTemp := sandboxExpandRealpaths(append(slices.Clone(sandboxHostTempDirs), hostTemp))
-	allow := sandboxExpandRealpaths([]string{private, root})
-	denyCredential := sandboxExpandRealpaths(credentials)
+	roots := sandboxExpandRealpaths([]string{in.root})
+	allow := sandboxExpandRealpaths([]string{in.private, in.root})
+	denyCredential := sandboxExpandRealpaths(in.credentials)
 	var b strings.Builder
 	b.WriteString(seatbeltHeader)
 	if ref := sandboxWriteRules(&b, "deny", denyTemp); ref != nil {
@@ -683,10 +792,56 @@ func sandboxExecProfile(credentials []string, root, private, tmpBase string) (st
 		return "", ref
 	}
 	b.WriteString(seatbeltDeviceWrites)
+	if ref := sandboxGitWriteDenials(&b, roots, sandboxExpandRealpaths(in.gitDirs)); ref != nil {
+		return "", ref
+	}
 	if ref := sandboxWriteRules(&b, "deny", denyCredential); ref != nil {
 		return "", ref
 	}
 	return b.String(), nil
+}
+
+// sandboxProfileInputs is what one Seatbelt profile is built from.
+type sandboxProfileInputs struct {
+	root        string
+	private     string
+	tmpBase     string
+	credentials []string
+	gitDirs     []string
+}
+
+// sandboxGitWriteDenials renders the git control denials: one regex per root
+// spelling for any `.git` component below it, then one subpath per resolved
+// git directory (which may sit under the root without a `.git` name).
+func sandboxGitWriteDenials(b *strings.Builder, roots, gitDirs []string) *core.RefusalError {
+	for _, root := range roots {
+		literal, ref := seatbeltLiteral("^" + seatbeltRegexQuote(root) + seatbeltGitComponent)
+		if ref != nil {
+			return ref
+		}
+		fmt.Fprintf(b, "(deny file-write* (regex %s))", literal)
+	}
+	for _, dir := range gitDirs {
+		literal, ref := seatbeltLiteral(dir)
+		if ref != nil {
+			return ref
+		}
+		fmt.Fprintf(b, "(deny file-write* (subpath %s))", literal)
+	}
+	return nil
+}
+
+// seatbeltRegexQuote escapes every regex metacharacter in a path so the root
+// matches only itself.
+func seatbeltRegexQuote(path string) string {
+	var b strings.Builder
+	for _, r := range path {
+		if strings.ContainsRune(`\.^$|()[]{}*+?`, r) {
+			b.WriteByte('\\')
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // sandboxExpandRealpaths cleans every path, adds its resolved realpath when

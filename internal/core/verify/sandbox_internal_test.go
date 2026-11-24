@@ -254,8 +254,10 @@ func checkPrivateTempEnv(t *testing.T, mech *sandbox) string {
 // under HOME cannot re-expose a credential path: the deny rules come after
 // every allow, so the last matching rule wins.
 func TestSandboxExecProfileOrdersCredentialDenialsLast(t *testing.T) {
-	profile, ref := sandboxExecProfile([]string{"/nonexistent-home/.ssh"}, "/nonexistent-home/repo",
-		"/nonexistent-tmp/private", "/nonexistent-tmp")
+	profile, ref := sandboxExecProfile(&sandboxProfileInputs{
+		credentials: []string{"/nonexistent-home/.ssh"}, gitDirs: []string{"/nonexistent-home/repo/.git"},
+		root: "/nonexistent-home/repo", private: "/nonexistent-tmp/private", tmpBase: "/nonexistent-tmp",
+	})
 	if ref != nil {
 		t.Fatalf("sandboxExecProfile: %v", ref)
 	}
@@ -269,6 +271,8 @@ func TestSandboxExecProfileOrdersCredentialDenialsLast(t *testing.T) {
 		`(allow file-read* file-write* (subpath "/nonexistent-home/repo"))` +
 		`(allow file-read-metadata (literal "/nonexistent-tmp") (literal "/") (literal "/nonexistent-home"))` +
 		`(allow file-write* (literal "/dev/null") (literal "/dev/tty") (regex #"^/dev/fd/"))` +
+		`(deny file-write* (regex "^/nonexistent-home/repo/(.*/)?\\.[Gg][Ii][Tt](/|$)"))` +
+		`(deny file-write* (subpath "/nonexistent-home/repo/.git"))` +
 		`(deny file-read* file-write* (subpath "/nonexistent-home/.ssh"))`
 	if profile != want {
 		t.Errorf("profile =\n%s\nwant\n%s", profile, want)

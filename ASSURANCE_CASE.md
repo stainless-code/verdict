@@ -219,9 +219,15 @@ the route out and nothing else, so the host filesystem, the host `/proc`, and
 filesystem unix sockets stay reachable. It records `sandboxMechanism:
 "unshare-net"`, never `sandboxed`, and warns on every run.
 
-**The reviewed root is writable.** Under both mechanisms the command can
-write the checkout, `.git/` included, and what it leaves there runs later
-outside any sandbox. A hostile PR belongs in a throwaway checkout.
+**The reviewed root is writable; its git control files are not.** The
+working tree is the PR's own content, so writes there are by design. Writes
+to the repository's git directories (`.git`, a `.git` file's target, a
+linked worktree's common directory) are denied on both platforms, and macOS
+also denies creating any `.git` path below the root (`sandboxGitDirs`,
+`sandboxGitBinds`, `sandboxGitWriteDenials` in
+`internal/core/verify/sandbox.go`; `TestSandboxExecDeniesGitControlWrites`).
+On Linux a newly created nested `.git` remains possible, because `bwrap` can
+only protect existing paths; `docs/manual.md` § Enforced sandbox says so.
 
 **The review agent's egress is the operator's choice.** Verdict pins no models,
 proxies no key, and makes no network call of its own for a review. The agent CLI

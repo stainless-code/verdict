@@ -50,10 +50,15 @@ In scope (highest priority first):
   filesystem, the host `/proc`, or a filesystem unix socket (`docker.sock`,
   the `ssh-agent` socket) is the documented boundary of this mode, not a
   finding.
-- Out of scope for both modes: the reviewed root is writable by design, so
-  content the command leaves there (`.git/hooks`, `.git/config`, build
-  scripts) runs later wherever the operator acts on that checkout — verify a
-  hostile PR in a throwaway checkout.
+- Under `--sandbox`, the reviewed repository's git control files are part of
+  the boundary: writes to `<root>/.git`, the git directory a `.git` file
+  names, and a linked worktree's common directory are denied on both
+  platforms, and on macOS so is creating any `.git` path below the root. A
+  sandboxed command that plants a hook, a `.git/config` key, or (on macOS) a
+  nested `.git` is a vulnerability. Out of scope: the rest of the working tree
+  is the PR's content and writable by design, and on Linux a newly created
+  nested `.git` below the root is a documented residual of `bwrap`, which can
+  only protect paths that already exist.
 - The `verify` gate's own contract: `verify` executes the agent's claimed
   proof (`verifyCmd` via `bash -c`, 300s watchdog, tail recorded into the
   patch record). The pre-exec refusals are a **tripwire, not a boundary**: the

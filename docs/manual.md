@@ -4806,12 +4806,40 @@ into the private directory from the command itself, for example
 `PIP_CACHE_DIR="$TMPDIR/pip" pytest`, or keep the cache inside the reviewed
 root.
 
-**The reviewed root stays writable on both platforms.** Whatever the command
-writes there — `.git/hooks/*`, `.git/config` (`core.hooksPath`,
-`core.fsmonitor`), a `Makefile`, a `package.json` script — runs later, outside
-any sandbox, when you or your tools act on that checkout, and `git status`
-does not show changes under `.git/`. Verify a hostile PR in a throwaway
-checkout or worktree, and discard it afterwards instead of reusing it.
+**The reviewed root is writable, its git control files are not.** Every path
+in the checkout is already the PR's to write — a `Makefile`, a `package.json`
+script, a `core.hooksPath` directory such as `.husky/` — except `.git`, the
+one path component git refuses to check out. That is where git keeps what it
+executes later, outside any sandbox (`hooks/`, `config` with
+`core.fsmonitor`/`core.hooksPath`/filters, `info/`, `modules/*/hooks`), so
+both mechanisms deny writes there:
+
+- **The repository's git directories.** `<root>/.git` as found, the git
+  directory a `.git` file names (a linked worktree or a submodule checkout),
+  and the common directory a linked worktree's git directory names are
+  write-denied as whole trees, which covers hooks, config, info, and every
+  submodule git directory under `modules/`. On Linux each of these that sits
+  inside the root gets a `--ro-bind` over the writable root bind; one outside
+  the root is already read-only under `--ro-bind / /`. On macOS each is a
+  `(deny file-write* (subpath …))` after the root allow.
+- **Any new `.git` (macOS).** Seatbelt also denies writes to every path
+  component named `.git` below the root, in any letter case, whether or not it
+  exists yet: the command cannot create a nested repository, a `.git` file, or
+  a `.git` symlink that git or an editor would later honor. `.gitignore`,
+  `.github/`, and `.git-blame-ignore-revs` stay writable.
+
+`git status`, `git diff`, and `git log` keep working (a status that cannot
+refresh the index skips the write). Anything that writes the repository —
+`git commit`, `git stash`, `git checkout`, `git fetch`, `git submodule update`
+— fails inside the sandbox; run those outside it.
+
+What remains: on Linux, `bwrap` can make only existing paths read-only, so a
+command can still create a **new** nested `.git` below the root (or rewrite a
+nested repository's existing `.git` file), and a repository nested in the
+checkout whose git directory sits under a non-`.git` name (`git init
+--separate-git-dir` inside the tree) is not followed on either platform. Do
+not run git inside a nested directory of a hostile checkout, and discard the
+checkout after verifying a hostile PR.
 
 Seatbelt is deprecated by Apple and has no mount or PID namespace. On macOS the
 child can still read the rest of the host filesystem outside the denied paths

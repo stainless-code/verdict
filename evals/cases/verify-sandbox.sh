@@ -508,6 +508,30 @@ done < "$EVAL_ROOT/evals/fixtures/verify-fuzz-corpus.tsv"
 
 credential_legs
 
+# The reviewed root's git control files are the one part of the checkout the
+# PR cannot plant itself, and git runs them later outside any sandbox: a hook
+# write must fail under both mechanisms while `git status` keeps working.
+git_legs() {
+  (cd "$EVAL_SANDBOX" && { [ -d .git ] || git init -q; })
+  rm -f "$EVAL_SANDBOX/.git/hooks/pre-commit"
+  mkpatch 'printf x > .git/hooks/pre-commit 2>/dev/null && printf leak > sandbox-git-hook.txt || printf denied > sandbox-git-hook.txt; git status --short >/dev/null && printf ok > sandbox-git-status.txt'
+  rm -f "$EVAL_SANDBOX/sandbox-git-hook.txt" "$EVAL_SANDBOX/sandbox-git-status.txt"
+  run_review verify acme/app 5201 --sandbox --json --timeout 10
+  assert_exit "sandboxed git control run" 0
+  if [ "$(cat "$EVAL_SANDBOX/sandbox-git-hook.txt" 2>/dev/null)" = "denied" ] && [ ! -e "$EVAL_SANDBOX/.git/hooks/pre-commit" ]; then
+    good "a write to .git/hooks is denied inside the sandbox"
+  else
+    bad "a hook was planted inside the sandbox ($(cat "$EVAL_SANDBOX/sandbox-git-hook.txt" 2>/dev/null || echo missing))"
+  fi
+  if [ "$(cat "$EVAL_SANDBOX/sandbox-git-status.txt" 2>/dev/null)" = "ok" ]; then
+    good "git status still works inside the sandbox"
+  else
+    bad "git status broke inside the sandbox"
+  fi
+}
+
+git_legs
+
 if [ "$MECH" = "bwrap" ]; then
   bwrap_legs
 fi

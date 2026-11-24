@@ -49,10 +49,3 @@ func lockedPrivateTree(t *testing.T) (string, string) {
 	})
 	return private, outside
 }
-
-func mustSandboxFS(t *testing.T, err error) {
-	t.Helper()
-	if err != nil {
-		t.Fatal(err)
-	}
-}

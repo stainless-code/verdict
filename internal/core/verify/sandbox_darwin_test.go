@@ -326,3 +326,86 @@ func writeSandboxFile(t *testing.T, path, body string) {
 		t.Fatal(err)
 	}
 }
+
+// TestSandboxExecDeniesGitControlWrites proves the git control denials against
+// the real Seatbelt engine in a real repository: the hooks, config, and info
+// trees and a new nested `.git` refuse writes, while `git status`, `git
+// diff`, and an ordinary write in the working tree still work.
+func TestSandboxExecDeniesGitControlWrites(t *testing.T) {
+	requireSandboxExec(t)
+	root := t.TempDir()
+	sandboxGitRepo(t, root)
+	sb, env := gitSandbox(t, root)
+	defer closeSandbox(t, sb)
+	for _, cmd := range []string{
+		`printf '#!/bin/sh\n' > .git/hooks/pre-commit`,
+		`printf '[core]\n\tfsmonitor = x\n' >> .git/config`,
+		`printf x > .git/info/exclude`,
+		`mkdir -p nested/.git`,
+		`printf 'gitdir: /x\n' > nested.git-pointer && mv nested.git-pointer .GIT`,
+	} {
+		requireDeniedWithErrno(t, sb, env, root, cmd)
+	}
+	assertGitStillWorks(t, sb, env, root)
+}
+
+// TestSandboxExecDeniesSeparateGitDirWrites proves a `.git` file is followed:
+// the git directory it names sits under the root without a `.git` name, and
+// its hooks still refuse writes.
+func TestSandboxExecDeniesSeparateGitDirWrites(t *testing.T) {
+	requireSandboxExec(t)
+	root := t.TempDir()
+	sandboxGitRepo(t, root, "--separate-git-dir="+filepath.Join(root, "meta"))
+	sb, env := gitSandbox(t, root)
+	defer closeSandbox(t, sb)
+	requireDeniedWithErrno(t, sb, env, root, `printf '#!/bin/sh\n' > meta/hooks/pre-commit`)
+	requireDeniedWithErrno(t, sb, env, root, `printf x >> meta/config`)
+	assertGitStillWorks(t, sb, env, root)
+}
+
+// sandboxGitRepo initializes root as a repository with one committed file and
+// one unstaged change.
+func sandboxGitRepo(t *testing.T, root string, initArgs ...string) {
+	t.Helper()
+	git := func(args ...string) {
+		t.Helper()
+		cmd := exec.CommandContext(t.Context(), "git", args...)
+		cmd.Dir = root
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	git(append([]string{"init", "-q"}, initArgs...)...)
+	writeSandboxFile(t, filepath.Join(root, "f.txt"), "one\n")
+	git("add", "f.txt")
+	git("-c", "user.email=t@example.com", "-c", "user.name=t", "commit", "-q", "-m", "c")
+	writeSandboxFile(t, filepath.Join(root, "f.txt"), "two\n")
+}
+
+// gitSandbox prepares the shipped mechanism for a repository root, with the
+// host temp root moved aside so only the git rules can deny a write under it.
+func gitSandbox(t *testing.T, root string) (*sandbox, []string) {
+	t.Helper()
+	env := sandboxTestEnv(t.TempDir())
+	sb, ref := sandboxExecMechanism(root, sandboxInputs{childEnv: env}, t.TempDir())
+	if ref != nil {
+		t.Fatalf("sandboxExecMechanism: %v", ref)
+	}
+	return sb, env
+}
+
+// assertGitStillWorks keeps the denials from breaking the read side of git or
+// an ordinary write in the working tree.
+func assertGitStillWorks(t *testing.T, sb *sandbox, env []string, root string) {
+	t.Helper()
+	for _, tc := range []struct{ cmd, want string }{
+		{`git status --short`, "M f.txt"},
+		{`git diff --stat`, "1 file changed"},
+		{`printf ok > new.txt && cat new.txt`, "ok"},
+	} {
+		res := runWrapped(t, sb, env, root, tc.cmd)
+		if res.ExitCode != 0 || !strings.Contains(res.Stdout+res.Stderr, tc.want) {
+			t.Errorf("%q = exit %d %q, want %q", tc.cmd, res.ExitCode, res.Stdout+res.Stderr, tc.want)
+		}
+	}
+}
