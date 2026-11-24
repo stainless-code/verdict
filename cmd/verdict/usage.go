@@ -611,7 +611,7 @@ func usageText() string {
 		"    <skill>/bin/verdict, then verdict on PATH; otherwise run the\n" +
 		"    one-time verified\n" +
 		"    <skill>/scripts/verdict bootstrap (no review-time fetch).\n" +
-		"  pack <list|add|test> [--json]\n" +
+		"  pack <list|add|sync|test> [--json]\n" +
 		"    list: read-only lens-pack inventory in precedence order: built-in, org\n" +
 		"    (explicit packs[] paths in personal settings), and repo\n" +
 		"    (.verdict/packs/<name>/). Lists the packs in this checkout; a review\n" +
@@ -636,6 +636,17 @@ func usageText() string {
 		"    edited snapshot copy refuses controls-stale. Built-in packs are\n" +
 		"    pinned by the binary and org packs live in personal settings, so\n" +
 		"    neither is locked.\n" +
+		"    sync: vendor the base-owned org pin (packs.org_pack in\n" +
+		"    .verdict/config.json: repo, ref, path) the way add would, then\n" +
+		"    hash-lock it. ref is a 40-hex commit SHA or a semver tag like\n" +
+		"    v1.2.3 — a branch name is refused — and path is a confined\n" +
+		"    relative pack root inside that repository. This is the only\n" +
+		"    fetch: reviews never touch the network; they verify the vendored\n" +
+		"    tree against verdict.lock and refuse pack-lock-missing or\n" +
+		"    pack-lock-drift instead of falling back. The pin is read from\n" +
+		"    the trusted base, so a PR cannot change or drop it; the\n" +
+		"    governing pack version shows in report (org_pack) and in the\n" +
+		"    provenance receipt.\n" +
 		"    test <name> runs the pack's offline eval cases. Use --dir <path> for an\n" +
 		"    unpacked pack. Each evals/<case>/ directory has diff.patch,\n" +
 		"    findings.json (review comments[]), and expect.json with rules[] and\n" +

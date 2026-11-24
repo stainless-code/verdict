@@ -60,10 +60,13 @@ var publishedSemantics = map[string]string{
 	// packs: additive optional top-level object with a merge_builtin boolean
 	// and three >= 1 id arrays, closed shape; no existing property, required
 	// key, enum, or type changed.
+	// packs.org_pack: additive optional closed object (repo, ref required;
+	// path optional) pinning one org-wide central pack set. No existing
+	// property, required key, enum, or type changed.
 	// tests: additive optional top-level object with a draft enum
 	// (off|on-reproduce), closed shape; STA-346 regression-test drafting.
 	// No existing property, required key, enum, or type changed.
-	"config.schema.json": "4f518cdd09952f8f97c28ebde51bbf36a84ee3eb0ad5057427f63dfb23458a36",
+	"config.schema.json": "305ffe2c887c8033b6c3100548e5607cb3870e17bdf5b066692d206066dd7830",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -355,7 +358,11 @@ var publishedSemantics = map[string]string{
 	// report --compare: additive optional data.compare ($defs/reportCompare and
 	// its baseline/counts/finding definitions). No existing property, required
 	// key, enum, or type changed; only a --compare run carries the key.
-	"envelope.schema.json": "23667aae9840383a7347fd4992cf8bf906cef1558bac4a1858a3e6d8a925b6b7",
+	// org packs: additive optional data.org_pack ($defs/orgPackInfo) naming the
+	// governing central pack version on report, and additive $defs/packSyncData
+	// beside packAddData. No existing property, required key, enum, or type
+	// changed; only a pinned run and `pack sync` carry the keys.
+	"envelope.schema.json": "64e1fda246a48474474be34652697034952b2a69ea65c9be1d63997b02742da7",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -463,7 +470,11 @@ var publishedSemantics = map[string]string{
 	// (the maxHostLabel cap the loader enforces) and refuses a "://" inside an
 	// scp path (the loader's scheme guard). One pattern narrowed to the
 	// loader's own grammar; no property, required key, enum, or type changed.
-	"lock.schema.json": "da19e41786cc9ff295a88a68929a8c76b5fbd44a7cbd9c5579fd57b316b16db2",
+	// org pin rows: additive org_ref, plus descriptions and confined-path /
+	// immutable-ref patterns on the optional org_path and org_ref fields. No
+	// existing property, required key, enum, or type changed; the sig and root
+	// descriptions now state the org fields they cover.
+	"lock.schema.json": "3b2a1adc106af517eb2304a9dc7684bb715d2971be4645756b812970ba1dd810",
 	// findings cap: the lens max_findings description now says the built-in
 	// pack declares none, so a shipped lens states no return cap and returns
 	// what its evidence supports. Prose only; no property, required key, enum,

@@ -27,14 +27,16 @@ type Request = readcommon.Request
 const (
 	subList         = "list"
 	subAdd          = "add"
+	subSync         = "sync"
 	subTest         = "test"
 	subCheck        = "check"
 	testDirArgCount = 3
 	checkArgCount   = 2
 )
 
-const packUsage = "usage: verdict pack <list|add|test|check> [--json]\n" +
+const packUsage = "usage: verdict pack <list|add|sync|test|check> [--json]\n" +
 	"       verdict pack add <dir|git-url>[@ref] [--json]\n" +
+	"       verdict pack sync [--json]\n" +
 	"       verdict pack test <name> [--json]\n" +
 	"       verdict pack test --dir <path> [--json]\n" +
 	"       verdict pack check <path> [--json]\n" +
@@ -58,6 +60,9 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if inv.sub == subList {
 		return runList(ctx, r, read)
 	}
+	if inv.sub == subSync {
+		return runSync(ctx, r, read)
+	}
 	if inv.sub == subTest {
 		return runTest(ctx, r, read, inv.name, inv.dir)
 	}
@@ -79,9 +84,17 @@ type invocation struct {
 // runList executes the read-only inventory.
 func runList(ctx context.Context, r *cli.Runner, read Request) int {
 	read.PackFS = skillfs.FS
+	if read.Commander == nil {
+		read.Commander = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
+	}
+	pin, ref := orgPinFor(ctx, read)
+	if ref != nil {
+		return r.RefuseTyped(ref)
+	}
 	resp, ref := packcore.RunList(ctx, &packcore.Request{
 		ReadRequest:  read,
 		SettingsPath: settingsPath(read),
+		OrgPin:       pin,
 		List:         true,
 	})
 	if ref != nil {
@@ -96,6 +109,36 @@ func runList(ctx context.Context, r *cli.Runner, read Request) int {
 		fmt.Fprintln(r.Human, line)
 	}
 	return cli.ExitOK
+}
+
+// runSync executes the explicit org-pack sync: read the base-owned pin,
+// fetch that one repository, vendor it, and hash-lock it.
+func runSync(ctx context.Context, r *cli.Runner, read Request) int {
+	read.Commander = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
+	pin, _, ref := packcore.BaseOrgPin(ctx, read.Commander, read.RepoRootPath())
+	if ref != nil {
+		return r.RefuseTyped(ref)
+	}
+	resp, ref := packcore.RunSync(ctx, &packcore.SyncRequest{ReadRequest: read, OrgPin: pin})
+	if ref != nil {
+		return r.RefuseTyped(ref)
+	}
+	if r.JSONMode {
+		r.Emit(verbPack, "", "", read.TimeUTC(), resp.Next,
+			nil, resp.Data.Wire())
+		return cli.ExitOK
+	}
+	for _, line := range resp.Human {
+		fmt.Fprintln(r.Human, line)
+	}
+	return cli.ExitOK
+}
+
+// orgPinFor reads the base-owned org pin through the caller's commander, so
+// list/check/test verify exactly what a review will verify.
+func orgPinFor(ctx context.Context, read Request) (*packcore.OrgPin, *core.RefusalError) {
+	pin, _, ref := packcore.BaseOrgPin(ctx, read.Commander, read.RepoRootPath())
+	return pin, ref
 }
 
 // runAdd executes the vendoring and locking path.
@@ -125,13 +168,15 @@ func checkArgs(r *cli.Runner, args []string) (invocation, int, bool) {
 		return checkListArgs(r, args)
 	case subAdd:
 		return checkAddArgs(r, args)
+	case subSync:
+		return checkSyncArgs(r, args)
 	case subTest:
 		return checkTestArgs(r, args)
 	case subCheck:
 		return checkCheckArgs(r, args)
 	default:
 		return invocation{}, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
-			"unknown pack subcommand '%s' (want list, add, test, or check)", args[0])}), true
+			"unknown pack subcommand '%s' (want list, add, sync, test, or check)", args[0])}), true
 	}
 }
 
@@ -144,6 +189,13 @@ func checkListArgs(r *cli.Runner, args []string) (invocation, int, bool) {
 		return packUsageError(r)
 	}
 	return invocation{sub: subList}, 0, false
+}
+
+func checkSyncArgs(r *cli.Runner, args []string) (invocation, int, bool) {
+	if len(args) != 1 {
+		return packUsageError(r)
+	}
+	return invocation{sub: subSync}, 0, false
 }
 
 func checkAddArgs(r *cli.Runner, args []string) (invocation, int, bool) {
@@ -220,9 +272,17 @@ func resolveDirectoryPack(dir string) (*packcore.Pack, *packcore.Set, []string, 
 	return p, set, nil, ref
 }
 
+//nolint:revive // resolution error path is one cohesive block
 func resolveInstalledPack(ctx context.Context, read Request, name string) (*packcore.Pack, *packcore.Set, []string, *core.RefusalError) {
+	if read.Commander == nil {
+		read.Commander = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
+	}
+	pin, ref := orgPinFor(ctx, read)
+	if ref != nil {
+		return nil, nil, nil, ref
+	}
 	set, warnings, ref := packcore.Resolve(ctx, &packcore.Request{
-		ReadRequest: read, SettingsPath: settingsPath(read),
+		ReadRequest: read, SettingsPath: settingsPath(read), OrgPin: pin,
 	})
 	if ref != nil {
 		return nil, nil, nil, ref
