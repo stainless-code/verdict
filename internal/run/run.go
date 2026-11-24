@@ -383,6 +383,9 @@ func personalPolicy(settings config.PersonalSpend) *spend.Policy {
 	if settings.BudgetUSD != nil {
 		policy.Personal = strconv.FormatFloat(*settings.BudgetUSD, 'f', -1, personalFloatBits)
 	}
+	if settings.MonthlyBudgetUSD != nil {
+		policy.MonthlyCap = strconv.FormatFloat(*settings.MonthlyBudgetUSD, 'f', -1, personalFloatBits)
+	}
 	return policy
 }
 

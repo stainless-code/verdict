@@ -16,6 +16,7 @@ func TestBuiltinDefaultsMatchFloor(t *testing.T) {
 	want := map[string]any{
 		"panel":                 []string(nil),
 		"budget_usd":            nil,
+		"monthly_budget_usd":    nil,
 		"max_bytes":             int64(512000),
 		"chunk":                 false,
 		"effort":                "standard",

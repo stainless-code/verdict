@@ -59,6 +59,7 @@
           "minItems": 1
         },
         "budget_usd": { "type": "number", "exclusiveMinimum": 0 },
+        "monthly_budget_usd": { "type": "number", "exclusiveMinimum": 0 },
         "max_bytes": { "type": "integer", "minimum": 1 },
         "chunk": { "type": "boolean" },
         "kb_policy": { "$ref": "#/$defs/kbPolicy" },
@@ -294,6 +295,10 @@
           {
             "required": ["defaults"],
             "properties": { "defaults": { "required": ["finders"] } }
+          },
+          {
+            "required": ["defaults"],
+            "properties": { "defaults": { "required": ["monthly_budget_usd"] } }
           }
         ]
       }
