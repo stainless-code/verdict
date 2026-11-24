@@ -9,6 +9,8 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/reviewdoc"
+	"github.com/stainless-code/verdict/internal/diagram"
+	"github.com/stainless-code/verdict/internal/evidence"
 	"github.com/stainless-code/verdict/internal/golden"
 	"github.com/stainless-code/verdict/internal/jq"
 )
@@ -36,6 +38,10 @@ func TestRenderBodyGoldens(t *testing.T) {
 		{name: "fix-prompt", input: fixPromptRenderInput(true)},
 		{name: "fix-prompt-off", input: fixPromptRenderInput(false)},
 		{name: "topology-large", input: topologyLargeRenderInput()},
+		{name: "diagram-verified", input: diagramRenderInput(verifiedDiagramBlock())},
+		{name: "diagram-partial", input: diagramRenderInput(partialDiagramBlock())},
+		{name: "diagram-omitted", input: diagramRenderInput(omittedDiagramNote())},
+		{name: "diagram-after-topology", input: diagramAfterTopologyRenderInput()},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -593,6 +599,102 @@ const topologyLargeBlock = "<details>\n" +
 	"```\n" +
 	"\n" +
 	"</details>"
+
+// diagramDiff is the pinned diff the three diagram goldens settle against:
+// lines 2 and 3 of src/auth.go are added, so a quote of either verifies and
+// anything else is forged.
+const diagramDiff = "diff --git a/src/auth.go b/src/auth.go\n" +
+	"--- a/src/auth.go\n" +
+	"+++ b/src/auth.go\n" +
+	"@@ -1,1 +1,3 @@\n" +
+	" package auth\n" +
+	"+func Refresh(ctx context.Context) error {\n" +
+	"+\treturn s.store.Rotate(ctx, token)\n"
+
+// diagramQuote anchors one element in the spec_checks evidence shape.
+func diagramQuote(line int, quote string) core.SpecEvidence {
+	return core.SpecEvidence{Path: "src/auth.go", Line: line, Quote: quote}
+}
+
+var (
+	refreshQuote = diagramQuote(2, "func Refresh(ctx context.Context) error {")
+	rotateQuote  = diagramQuote(3, "return s.store.Rotate(ctx, token)")
+	forgedQuote  = diagramQuote(3, "return cache.Invalidate(token)")
+)
+
+// settledDiagram runs the real evidence check and renderer over diagramDiff,
+// so each golden pins what the diagram package draws, not a hand-typed copy
+// of it.
+func settledDiagram(req *core.ReviewDiagram) string {
+	res := diagram.Settle(evidence.IndexDiff([]byte(diagramDiff)), req)
+	return res.Block()
+}
+
+// verifiedDiagramBlock: every node and edge quotes a changed line (4/4).
+func verifiedDiagramBlock() string {
+	return settledDiagram(&core.ReviewDiagram{
+		Type: diagram.DiagramSequence, Title: "Token refresh",
+		Nodes: []core.DiagramNode{
+			{ID: "caller", Label: "Caller", Evidence: refreshQuote},
+			{ID: "service", Label: "Service", Evidence: rotateQuote},
+		},
+		Edges: []core.DiagramEdge{
+			{From: "caller", To: "service", Label: "refresh", Evidence: refreshQuote},
+			{From: "service", To: "caller", Label: "token", Evidence: rotateQuote},
+		},
+	})
+}
+
+// partialDiagramBlock: one forged node, the edge that dangles from it, and one
+// forged edge drop, and the three survivors sit exactly on the 50% line, so
+// the subset renders with 3/6 anchored.
+func partialDiagramBlock() string {
+	return settledDiagram(&core.ReviewDiagram{
+		Type: diagram.DiagramFlow,
+		Nodes: []core.DiagramNode{
+			{ID: "caller", Label: "Caller", Evidence: refreshQuote},
+			{ID: "service", Label: "Service", Evidence: rotateQuote},
+			{ID: "cache", Label: "Cache", Evidence: forgedQuote},
+		},
+		Edges: []core.DiagramEdge{
+			{From: "caller", To: "service", Label: "refresh", Evidence: refreshQuote},
+			{From: "service", To: "cache", Label: "invalidate", Evidence: rotateQuote},
+			{From: "service", To: "caller", Label: "token", Evidence: forgedQuote},
+		},
+	})
+}
+
+// omittedDiagramNote: one of four elements verifies, under the threshold, so
+// the body carries the one-line note and no fence.
+func omittedDiagramNote() string {
+	return settledDiagram(&core.ReviewDiagram{
+		Type: diagram.DiagramState,
+		Nodes: []core.DiagramNode{
+			{ID: "idle", Label: "Idle", Evidence: refreshQuote},
+			{ID: "stale", Label: "Stale", Evidence: forgedQuote},
+		},
+		Edges: []core.DiagramEdge{
+			{From: "idle", To: "stale", Label: "expire", Evidence: forgedQuote},
+			{From: "stale", To: "idle", Label: "rotate", Evidence: forgedQuote},
+		},
+	})
+}
+
+// diagramRenderInput is the clean input carrying one settled diagram block.
+func diagramRenderInput(block string) *reviewdoc.RenderInput {
+	in := cleanRenderInput()
+	in.Diagram = block
+	return in
+}
+
+// diagramAfterTopologyRenderInput proves the order the body publishes: the
+// computed topology first, then the verified behavioral diagram, then the
+// findings.
+func diagramAfterTopologyRenderInput() *reviewdoc.RenderInput {
+	in := topologyLargeRenderInput()
+	in.Diagram = verifiedDiagramBlock()
+	return in
+}
 
 // topologyLargeRenderInput is the clean input with a nine-file bundle's
 // metadata and that block, so the golden pins where the map lands: after the

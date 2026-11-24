@@ -50,6 +50,16 @@ const (
 	fieldLens            = "lens"
 	// fieldRigorSource is the provenance of the recorded rung.
 	fieldRigorSource = "rigor_source"
+	// The behavioral diagram's own keys: the optional block a review supplies
+	// instead of hand-drawn mermaid.
+	fieldDiagram = "diagram"
+	fieldType    = "type"
+	fieldTitle   = "title"
+	fieldNodes   = "nodes"
+	fieldEdges   = "edges"
+	fieldID      = "id"
+	fieldLabel   = "label"
+	fieldFrom    = "from"
 )
 
 const (

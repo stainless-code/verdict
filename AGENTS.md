@@ -45,7 +45,7 @@ skip-token ban and test determinism. Read both before writing or reviewing Go.
   for child processes; a hardcoded path leaks across parallel runs.
 - **Exactly six Procedure files are in `promptFiles`:** `procedure/PROCEDURE.md` and
   `procedure/prompts/{system,review,diagrams,verifier,validate}.md`; handoff core, sections
-  and ref sources join the hash through `skillfs.HandoffFiles()`. An edit moves only `prompts_hash`, `internal/provenance/prompts_test.go`'s pin, and `procedure.md` / `drain.procedure.md` receipt `sha256`/`bytes` lines.
+  and ref sources join the hash through `skillfs.HandoffFiles()`. An edit moves only `prompts_hash` and `run_id`, their pins in `internal/provenance/{prompts,provenance,org}_test.go`, and the edited file's receipt `sha256`/`bytes` lines.
 
 ## Git and commits
 

@@ -60,6 +60,7 @@ type Effective struct {
 	PublishLogoURL         string
 	PublishOverview        string
 	DiagramsStructural     string
+	DiagramsAnchored       string
 	PublishFixPrompt       string
 }
 
@@ -76,6 +77,7 @@ func Defaults() Effective {
 		PublishLogoURL:         "https://raw.githubusercontent.com/stainless-code/verdict/main/apps/docs/public/logo.svg",
 		PublishOverview:        FlagOn,
 		DiagramsStructural:     FlagOn,
+		DiagramsAnchored:       FlagOff,
 		PublishFixPrompt:       FlagOn,
 	}
 }
@@ -85,6 +87,13 @@ func Defaults() Effective {
 // draws a diagram the operator turned off.
 func (e *Effective) StructuralTopology() bool {
 	return e.PublishOverview == FlagOn && e.DiagramsStructural == FlagOn
+}
+
+// AnchoredDiagram reports whether a body carries the agent's behavioral
+// diagram: every node and edge has to quote a line the diff proves before
+// verdict draws it, so the switch stays off unless the operator asks for it.
+func (e *Effective) AnchoredDiagram() bool {
+	return e.DiagramsAnchored == FlagOn
 }
 
 // GlobalForces carries the flag-layer overrides from the global strip.
@@ -100,6 +109,7 @@ type GlobalForces struct {
 	OutputForce               string
 	PublishLogoForce          string
 	DiagramsStructuralForce   string
+	DiagramsAnchoredForce     string
 	PublishFixPromptForce     string
 	PublishLogoURLSet         bool
 	PublishCopyrightSet       bool

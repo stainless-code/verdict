@@ -203,6 +203,120 @@ assert_exit "overview=false post exits 0" 0
 assert_file_nogrep "overview=false removes the block from the body" "$EVAL_SANDBOX/body-noov.md" "Change topology"
 unset XDG_CONFIG_HOME || true
 
+# --- D6: the anchored behavioral diagram (structured field, never raw mermaid) ---
+# PR 4710's stub arms are reused from D5. The bundle's one changed line is
+# notes.txt:2 ("new line"), so a verified element quotes exactly that.
+PR=4710
+anchored_review() { # $1 = diagram object, $2.. reached through
+  printf '{"schema_version":"1","findings":[],"summary":"Anchored diagram probe.","diagram":%s}' "$1" | eval_write_review "$PR"
+}
+good_diagram='{"type":"sequence","title":"Record flow","nodes":[
+  {"id":"a","label":"Caller","evidence":{"path":"notes.txt","line":2,"quote":"new line"}},
+  {"id":"b","label":"Service","evidence":{"path":"notes.txt","line":2,"quote":"new line"}}],
+ "edges":[{"from":"a","to":"b","label":"refresh","evidence":{"path":"notes.txt","line":2,"quote":"new line"}}]}'
+anchored_review "$good_diagram"
+capture_body "$EVAL_SANDBOX/body-anchored-off.md" --force
+assert_exit "anchored default-off post exits 0" 0
+assert_file_nogrep "anchored default off draws no behavioral block" "$EVAL_SANDBOX/body-anchored-off.md" "Behavior flow"
+# Off means off: nothing is settled, so the stored receipt carries no diagram
+# either — no surface reports a picture the body does not draw.
+assert_eq "anchored default off stores no evidence.diagram" "false" \
+  "$(jq -r '.evidence | has("diagram")' <"$EVAL_SANDBOX/.verdict/state/$PR/post.json")"
+capture_body "$EVAL_SANDBOX/body-anchored.md" --force --diagram-anchored
+assert_exit "--diagram-anchored post exits 0" 0
+assert_file_grep "verified diagram renders its summary" "$EVAL_SANDBOX/body-anchored.md" \
+  '<summary>Behavior flow (each element anchored to a diff line — 3/3 anchored)</summary>' "-F"
+assert_file_grep "verified diagram renders the declared type" "$EVAL_SANDBOX/body-anchored.md" \
+  'sequenceDiagram' "-F"
+assert_file_grep "verified diagram draws the verified edge" "$EVAL_SANDBOX/body-anchored.md" \
+  '    n1->>n2: refresh' "-F"
+assert_file_nogrep "rendered block carries no agent-chosen id" "$EVAL_SANDBOX/body-anchored.md" 'Caller as' "-F"
+assert_file_nogrep "rendered block carries no raw fence marker" "$EVAL_SANDBOX/body-anchored.md" '<!-- verdict-diagram' "-F"
+# On/off env knobs take only true|false, like every REVIEW_PUBLISH_* switch.
+export REVIEW_PUBLISH_DIAGRAMS_ANCHORED=true
+capture_body "$EVAL_SANDBOX/body-anchored-env.md" --force
+assert_exit "REVIEW_PUBLISH_DIAGRAMS_ANCHORED post exits 0" 0
+assert_file_grep "the env knob turns the block on" "$EVAL_SANDBOX/body-anchored-env.md" 'Behavior flow' "-F"
+capture_body "$EVAL_SANDBOX/body-anchored-envflag.md" --force --no-diagram-anchored
+assert_exit "--no-diagram-anchored over the env post exits 0" 0
+assert_file_nogrep "the flag beats the env knob" "$EVAL_SANDBOX/body-anchored-envflag.md" 'Behavior flow' "-F"
+unset REVIEW_PUBLISH_DIAGRAMS_ANCHORED || true
+mkdir -p "$EVAL_SANDBOX/xdg-anchored/verdict"
+printf '{"publish":{"diagrams":{"anchored":true}}}' > "$EVAL_SANDBOX/xdg-anchored/verdict/settings.json"
+export XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-anchored"
+capture_body "$EVAL_SANDBOX/body-anchored-file.md" --force
+assert_exit "publish.diagrams.anchored post exits 0" 0
+assert_file_grep "the settings knob turns the block on" "$EVAL_SANDBOX/body-anchored-file.md" 'Behavior flow' "-F"
+unset XDG_CONFIG_HOME || true
+# The block sits beside the computed topology: topology first, then the
+# behavioral diagram, then the findings.
+topo_at="$(grep -n 'Change topology (computed from the diff)' "$EVAL_SANDBOX/body-anchored.md" | head -1 | cut -d: -f1)"
+behav_at="$(grep -n 'Behavior flow (each element anchored to a diff line' "$EVAL_SANDBOX/body-anchored.md" | head -1 | cut -d: -f1)"
+if [ -n "$topo_at" ] && [ -n "$behav_at" ] && [ "$topo_at" -lt "$behav_at" ]; then
+  good "the behavioral block lands right after the topology block"
+else
+  bad "block order: topology at '${topo_at}', behavioral at '${behav_at}'"
+fi
+# The persisted receipt and the dry run publish one disposition for the same
+# review: post.json stores the settled counts, and the dry run reports them.
+assert_eq "post.json persists the settled receipt" "sequence Record flow 3 3 0" \
+  "$(jq -r '.evidence.diagram | "\(.type) \(.title) \(.supplied) \(.verified) \(.dropped)"' <"$bundle_dir/post.json")"
+run_review post acme/app "$PR" --dry-run --json --force --diagram-anchored
+assert_exit "dry-run of an anchored diagram exits 0" 0
+# dry_run_matches_receipt <label> <status> — the dry run's typed body.diagram
+# is post.json's evidence.diagram plus the status, field for field.
+dry_run_matches_receipt() {
+  assert_eq "$1" \
+    "$(jq -cS --arg st "$2" '.evidence.diagram + {status: $st}' <"$bundle_dir/post.json")" \
+    "$(jq -cS '.data.body.diagram' <"$EVAL_OUT")"
+}
+dry_run_matches_receipt "dry-run body.diagram is the stored receipt plus status rendered" rendered
+assert_eq "dry-run body.diagram carries the title and counts" \
+  '{"dropped":0,"status":"rendered","supplied":3,"title":"Record flow","type":"sequence","verified":3}' \
+  "$(jq -cS '.data.body.diagram' <"$EVAL_OUT")"
+# A diagram the diff cannot prove is omitted whole, and the run still succeeds.
+anchored_review '{"type":"flow","nodes":[{"id":"a","label":"Caller","evidence":{"path":"notes.txt","line":2,"quote":"forged line"}}]}'
+capture_body "$EVAL_SANDBOX/body-forged.md" --force --diagram-anchored
+assert_exit "forged diagram post exits 0" 0
+assert_file_grep "forged diagram leaves one omission note" "$EVAL_SANDBOX/body-forged.md" \
+  '> Behavioral diagram omitted: none of the 1 supplied elements anchored (each did not verify or was malformed)' "-F"
+# The topology block keeps its own fence; the forged diagram adds none.
+assert_eq "forged diagram adds no fence beside the topology" 1 \
+  "$(grep -c '^```mermaid$' "$EVAL_SANDBOX/body-forged.md")"
+assert_file_nogrep "forged diagram draws no behavioral block" "$EVAL_SANDBOX/body-forged.md" 'Behavior flow' "-F"
+run_review post acme/app "$PR" --dry-run --json --force --diagram-anchored
+assert_exit "dry-run of a forged diagram exits 0" 0
+dry_run_matches_receipt "dry-run body.diagram is the stored receipt plus status omitted" omitted
+assert_eq "dry-run names the omission reason" \
+  "omitted none of the 1 supplied elements anchored (each did not verify or was malformed)" \
+  "$(jq -r '.data.body.diagram | "\(.status) \(.omitted)"' <"$EVAL_OUT")"
+# A hostile label cannot break out of its node, the fence, or the <details>
+# region: the posted body keeps exactly two fences and two regions.
+anchored_review '{"type":"flow","nodes":[
+  {"id":"a","label":"x\"]; click a evil\n```\n</details><script>alert(1)</script>","evidence":{"path":"notes.txt","line":2,"quote":"new line"}}]}'
+capture_body "$EVAL_SANDBOX/body-hostile.md" --force --diagram-anchored
+assert_exit "hostile-label diagram post exits 0" 0
+assert_file_grep "hostile label renders as inert text" "$EVAL_SANDBOX/body-hostile.md" \
+  '    n1["x click a evil /detailsscriptalert(1)/script"]' "-F"
+assert_file_nogrep "hostile label leaves no script tag" "$EVAL_SANDBOX/body-hostile.md" '<script>' "-F"
+assert_eq "hostile label adds no fence" 4 "$(grep -c '^```' "$EVAL_SANDBOX/body-hostile.md")"
+assert_eq "hostile label closes no extra region" 2 "$(grep -c '^</details>$' "$EVAL_SANDBOX/body-hostile.md")"
+# An out-of-scope type is omitted, never refused.
+anchored_review '{"type":"gantt","nodes":[{"id":"a","label":"Caller","evidence":{"path":"notes.txt","line":2,"quote":"new line"}}]}'
+capture_body "$EVAL_SANDBOX/body-gantt.md" --force --diagram-anchored
+assert_exit "out-of-scope diagram type exits 0" 0
+assert_file_grep "out-of-scope type names itself" "$EVAL_SANDBOX/body-gantt.md" \
+  '> Behavioral diagram omitted: type `gantt` is out of scope (want sequence, state, flow)' "-F"
+# A URL-shaped type is the one agent string outside the fence: it posts inside
+# a code span, so the public comment carries no autolink.
+anchored_review '{"type":"https://evil.example/x","nodes":[{"id":"a","label":"Caller","evidence":{"path":"notes.txt","line":2,"quote":"new line"}}]}'
+capture_body "$EVAL_SANDBOX/body-urltype.md" --force --diagram-anchored
+assert_exit "URL-shaped diagram type exits 0" 0
+assert_file_grep "URL-shaped type posts inside a code span" "$EVAL_SANDBOX/body-urltype.md" \
+  '> Behavioral diagram omitted: type `https://evil.example/x` is out of scope (want sequence, state, flow)' "-F"
+assert_eq "URL-shaped type appears nowhere outside the code span" 1 \
+  "$(grep -c 'evil.example' "$EVAL_SANDBOX/body-urltype.md")"
+
 # --- D7: unknown diagrams keys and bad values refuse typed bad-settings ---
 mkdir -p "$EVAL_SANDBOX/xdg-dbad/verdict"
 printf '{"publish":{"diagrams":{"motto":"ship it"}}}' > "$EVAL_SANDBOX/xdg-dbad/verdict/settings.json"
@@ -234,8 +348,10 @@ unset XDG_CONFIG_HOME || true
 
 # --- M1: manual documents structural diagrams and retirement of behavioral diagrams ---
 if grep -Fq 'publish.diagrams.structural' "$EVAL_ROOT/docs/manual.md" \
-  && grep -Fq 'retired from agent-authored' "$EVAL_ROOT/docs/manual.md"; then
-  good "manual documents structural diagrams and behavioral diagram retirement"
+  && grep -Fq 'retired from agent-authored' "$EVAL_ROOT/docs/manual.md" \
+  && grep -Fq 'publish.diagrams.anchored' "$EVAL_ROOT/docs/manual.md" \
+  && grep -Fq '"diagram"' "$EVAL_ROOT/docs/manual.md"; then
+  good "manual documents structural diagrams, behavioral retirement, and the anchored field"
 else
   bad "diagram documentation missing from docs/manual.md"
 fi
@@ -244,7 +360,8 @@ fi
 unset XDG_CONFIG_HOME || true
 unset REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL || true
 unset REVIEW_PUBLISH_OVERVIEW || true
+unset REVIEW_PUBLISH_DIAGRAMS_ANCHORED || true
 rm -rf "$EVAL_SANDBOX/xdg-nostruct" "$EVAL_SANDBOX/xdg-empty" "$EVAL_SANDBOX/xdg-dbad" \
-  "$EVAL_SANDBOX/xdg-nostruct-body" "$EVAL_SANDBOX/xdg-noov-body"
+  "$EVAL_SANDBOX/xdg-nostruct-body" "$EVAL_SANDBOX/xdg-noov-body" "$EVAL_SANDBOX/xdg-anchored"
 
 eval_end

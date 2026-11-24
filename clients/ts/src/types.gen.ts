@@ -172,6 +172,7 @@ export interface Problem {
   code:
     | "anchor-outside-hunk"
     | "bad-enum"
+    | "diagram-invalid"
     | "empty-findings-needs-summary"
     | "enum-synonym"
     | "invalid-json"
@@ -830,6 +831,8 @@ export interface EvidenceReceipt {
   gaps?: Array<string>;
   receipts: EvidenceReceipts;
   spec: EvidenceSpec;
+  /** Settled behavioral-diagram disposition. Every node and edge the block draws cites a real NEW-side diff line inside a hunk (added or context); the relation an edge draws is the agent's claim and is not checked. Counts how many supplied elements anchored, how many were dropped, and why the block was left out when it was. It never withholds approval. */
+  diagram?: EvidenceDiagram | null;
   insufficient: boolean;
   [key: string]: unknown;
 }
@@ -860,6 +863,40 @@ export interface EvidenceSpec {
   min: number;
   met: boolean;
   [key: string]: unknown;
+}
+
+/** Settled behavioral-diagram disposition. Every node and edge the block draws cites a real NEW-side diff line inside a hunk (added or context); the relation an edge draws is the agent's claim and is not checked. Counts how many supplied elements anchored, how many were dropped, and why the block was left out when it was. It never withholds approval. */
+export interface EvidenceDiagram {
+  /** The rendered diagram type, absent when the supplied type was out of scope. */
+  type?: "sequence" | "state" | "flow";
+  /** The sanitized title the block carries, when it had one. */
+  title?: string;
+  /** Nodes and edges the review supplied. */
+  supplied: number;
+  /** Nodes and edges whose quotes matched a NEW-side diff line inside a hunk (added or context) and whose endpoints survived; an edge's relation is not checked. The node and edge caps may draw fewer, and an omitted block draws none. */
+  verified: number;
+  /** Supplied elements that did not verify or were malformed: a quote the diff did not prove, a dangling endpoint, a missing or repeated id, an element past the checking limit (240 nodes, 400 edges), or every element of an out-of-scope type. verified + dropped = supplied. */
+  dropped: number;
+  /** One-line reason the whole block was left out; absent when it rendered. */
+  omitted?: string;
+}
+
+/** The dry run's behavioral-diagram disposition: the state the body drew plus exactly the fields evidence.diagram stores. data.body.diagram is null when no block is drawn (no diagram supplied, or publish.diagrams.anchored off). */
+export interface PostDiagram {
+  /** rendered: the block is in the body. omitted: one note stands in its place. */
+  status: "rendered" | "omitted";
+  /** The rendered diagram type, absent when the supplied type was out of scope. */
+  type?: "sequence" | "state" | "flow";
+  /** The sanitized title the block carries, when it had one. */
+  title?: string;
+  /** Nodes and edges the review supplied. */
+  supplied: number;
+  /** Nodes and edges anchored to a NEW-side diff line inside a hunk; an edge's relation is not checked. */
+  verified: number;
+  /** Supplied elements that did not verify, were malformed, or were past the checking limit. verified + dropped = supplied. */
+  dropped: number;
+  /** One-line reason the whole block was left out; absent when it rendered. */
+  omitted?: string;
 }
 
 export interface SpecCheck {
@@ -2444,7 +2481,7 @@ export interface ExcludedPath {
 export interface PostDataBody {
   marker: string;
   footer?: unknown;
-  diagram?: unknown;
+  diagram?: PostDiagram | null;
   [key: string]: unknown;
 }
 

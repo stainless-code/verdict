@@ -1,0 +1,49 @@
+> ✅ No new issues found.
+> Safety: No new attack surface; auth paths untouched.
+> Basis: 0 reproduced · 0 ran · 0 walked · 0 pointed · 0 said · 0 rules cited · 0 verified fixes
+
+Reviewed the token refresh refactor and its unit tests; expiration checks and error propagation match the existing contract.
+
+<!--
+Review metadata. Findings written against a1b2c3d;
+if commits landed on feat/token-refresh since, treat every bug/file/line as POTENTIALLY STALE.
+- Mode: Review (initial)
+- Files reviewed: 2
+- Commits reviewed: 1
+- Base: main (1122334)
+- Head: feat/token-refresh (a1b2c3d)
+- Reviewed commits:
+  - a1b2c3d — Refactor token refresh helper
+- Prior review: none
+-->
+
+<details>
+<summary>Behavior flow (each element anchored to a diff line — 3/6 anchored)</summary>
+
+```mermaid
+flowchart TD
+    n1["Caller"]
+    n2["Service"]
+    n1 -->|"refresh"| n2
+```
+
+</details>
+
+**What we checked**
+
+- `src/auth.go` (+14/-6, source)
+- `src/auth_test.go` (+32/-0, test)
+
+Hunk receipts: 2/2 changed hunks verified.
+
+**Spec checks** — 2 met · 0 violated · 0 unmet · 0 n/a (2/2 spec items covered, min 2)
+
+<details><summary>Spec checklist (2 items · https://github.com/acme/app/issues/12)</summary>
+
+- ✅ Refresh rejects expired tokens — [src/auth.go:42][ev-1]
+- ✅ Unit tests cover clock skew — [src/auth_test.go:18][ev-2]
+
+</details>
+
+[ev-1]: https://github.com/acme/app/blob/a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/src/auth.go#L42
+[ev-2]: https://github.com/acme/app/blob/a1b2c3d4e5f60718293a4b5c6d7e8f9012345678/src/auth_test.go#L18

@@ -187,6 +187,12 @@ type EvidenceQuote = core.EvidenceQuote
 // EvidenceReceipts is core's changed-hunk reading receipt coverage summary.
 type EvidenceReceipts = core.EvidenceReceipts
 
+// EvidenceDiagram is core's settled behavioral-diagram disposition.
+type EvidenceDiagram = core.EvidenceDiagram
+
+// ReviewDiagram is core's optional evidence-checked behavioral diagram input.
+type ReviewDiagram = core.ReviewDiagram
+
 // EvidenceSpec is core's specification checklist coverage summary.
 type EvidenceSpec = core.EvidenceSpec
 
@@ -428,6 +434,9 @@ type PostData = core.PostData
 
 // PostBody is the rendered post body summary.
 type PostBody = core.PostBody
+
+// PostDiagram is core's dry-run behavioral-diagram disposition.
+type PostDiagram = core.PostDiagram
 
 // Suggestions counts embedded review suggestions.
 type Suggestions = core.Suggestions

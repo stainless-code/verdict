@@ -366,7 +366,18 @@ var publishedSemantics = map[string]string{
 	// packAddData). No existing property, required key, enum, or type changed;
 	// the mtd and org-pack keys appear only on pinned runs, and pack sync
 	// carries the sync payload.
-	"envelope.schema.json": "d4e83e22c1024b78d0002042c65e88dcf0efaea063e7001195c2b1d240ab3831",
+	// behavioral diagram: additive optional review.diagram ($defs/diagram,
+	// diagramNode, diagramEdge, whose evidence reuses $defs/specEvidence), the
+	// settled $defs/evidenceDiagram on the evidence receipt, and the
+	// diagram-invalid warning joining the problem-code enum. Additions only: no
+	// existing property, required key, or type moved.
+	// diagram honesty round: descriptions now say each element cites a
+	// NEW-side hunk line and the relation stays the agent's claim.
+	// postData.body.diagram, previously untyped ({}), is now a nullable
+	// $defs/postDiagram (status rendered|omitted plus the evidence.diagram
+	// fields); it was only ever null on main, so no published value breaks.
+	// diagram checking limit: the dropped descriptions name it.
+	"envelope.schema.json": "efd102c5ba229570a13b39a95a0e197b37e79741a3c4c1981efc40d31a669e52",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -417,7 +428,15 @@ var publishedSemantics = map[string]string{
 	// with no diff line cites none; met/violated still require it in the checker).
 	// Three new problem codes join the published enum. No existing property,
 	// required key, or type moved.
-	"post.schema.json": "0e78e7558ddb8983133c2e7cfb9a96fa55a1cfa110247f7892254407e764f540",
+	// behavioral diagram: additive optional review.diagram ($defs/diagram,
+	// diagramNode, diagramEdge, whose evidence reuses $defs/specEvidence), the
+	// settled $defs/evidenceDiagram on the evidence receipt, and the
+	// diagram-invalid warning joining the problem-code enum. Additions only: no
+	// existing property, required key, or type moved.
+	// diagram honesty round: descriptions now say each element cites a
+	// NEW-side hunk line and the relation stays the agent's claim.
+	// diagram checking limit: the dropped descriptions name it.
+	"post.schema.json": "632bdc73212fd7fdf7830a4b31ad541c2f2a097add69375df4abf571d6d2408e",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	// fixtures.schema.json descriptions only: hallucination now names the pinned
@@ -543,7 +562,15 @@ var publishedSemantics = map[string]string{
 	// with no diff line cites none; met/violated still require it in the checker).
 	// Three new problem codes join the published enum. No existing property,
 	// required key, or type moved.
-	"record.schema.json": "8b3510c48c26f104ee3a26fc155ebed57549e14c4c8ff8a165a508109cc9ce6e",
+	// behavioral diagram: additive optional review.diagram ($defs/diagram,
+	// diagramNode, diagramEdge, whose evidence reuses $defs/specEvidence), the
+	// settled $defs/evidenceDiagram on the evidence receipt, and the
+	// diagram-invalid warning joining the problem-code enum. Additions only: no
+	// existing property, required key, or type moved.
+	// diagram honesty round: descriptions now say each element cites a
+	// NEW-side hunk line and the relation stays the agent's claim.
+	// diagram checking limit: the dropped descriptions name it.
+	"record.schema.json": "babbb9621d0000d93db47353ce4b3d9694c5ba88b61a5c79477883f6137f0f62",
 
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
@@ -581,7 +608,18 @@ var publishedSemantics = map[string]string{
 	// lens grammar: finding.lens carries the lowercase slug pattern a recipe
 	// selects by. Constraint on an existing property only: no property,
 	// required key, enum, or type changed.
-	"review.schema.json": "1b10d81a8679b4d2b58e63a991c42ff76cb3e07a87800e967100ee6385c742bf",
+	// behavioral diagram: additive optional review.diagram ($defs/diagram,
+	// diagramNode, diagramEdge, whose evidence reuses $defs/specEvidence), the
+	// settled $defs/evidenceDiagram on the evidence receipt, and the
+	// diagram-invalid warning joining the problem-code enum. Additions only: no
+	// existing property, required key, or type moved.
+	// diagram honesty round: descriptions now say each element cites a
+	// NEW-side hunk line and the relation stays the agent's claim.
+	// diagram contract match: review.diagram drops the value bounds the
+	// runtime only warns on (type enum, nodes minItems, title/label/id
+	// lengths), so a schema-validating client accepts every review the CLI
+	// accepts. Loosening only: no accepted document is rejected now.
+	"review.schema.json": "cf7f785dd43f33798d20ae5b81aff4cf9165b95565941119f194042c71eb795d",
 	// additive selected.schema.json (new bundle document: the reaction-scoped
 	// fix selection fetch writes and fix --selected reads). A new document
 	// only: no existing schema property, required key, enum, or type changed.
