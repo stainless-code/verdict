@@ -45,11 +45,12 @@ type Review struct { //nolint:govet // field order is the published property ord
 }
 
 // ReviewDiagram is the optional behavioral diagram a review supplies: nodes
-// and edges that each carry the changed diff line they stand for. There is no
-// raw mermaid input — verdict verifies every quote against the pinned diff and
-// renders the block itself, dropping what the diff does not prove. `type` is
-// the only supported vocabulary: a sequence of steps, a state lifecycle, or a
-// flow of control.
+// and edges that each cite the NEW-side diff line (added or context) they
+// stand for. There is no raw mermaid input — verdict checks every quote
+// against the pinned diff and renders the block itself, dropping what does
+// not anchor. The check proves each cited line exists; the relation an edge
+// draws remains the agent's claim. `type` is the only supported vocabulary:
+// a sequence of steps, a state lifecycle, or a flow of control.
 type ReviewDiagram struct {
 	Type  string        `enum:"sequence|state|flow" json:"type"`
 	Title string        `json:"title,omitempty"     maxLength:"120"`

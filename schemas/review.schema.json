@@ -61,7 +61,7 @@
       "type": ["string", "null"]
     },
     "diagram": {
-      "description": "The optional behavioral diagram: nodes and edges that each quote a changed diff line. verdict verifies every quote against full.diff, drops what the diff does not prove, and renders the mermaid block itself; raw mermaid is never an input. A diagram never withholds approval.",
+      "description": "The optional behavioral diagram: nodes and edges that each quote a NEW-side diff line inside a hunk (added or context). verdict verifies every quote against full.diff, drops what the diff does not prove, and renders the mermaid block itself; raw mermaid is never an input. A diagram never withholds approval.",
       "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/diagram" }]
     }
   },
@@ -322,7 +322,7 @@
       "additionalProperties": true
     },
     "diagram": {
-      "description": "One behavioral diagram: a supported type, an optional title, and the nodes and edges with their quoted diff lines. A shape defect is a `diagram-invalid` warning, never a refusal: an out-of-scope type omits the block, a malformed element counts as supplied and is dropped, and a value past its cap is truncated when drawn.",
+      "description": "One behavioral diagram: a supported type, an optional title, and the nodes and edges with their quoted diff lines. A verified quote proves the cited line exists; the relation an edge draws stays the agent's claim. A shape defect is a `diagram-invalid` warning, never a refusal: an out-of-scope type omits the block, a malformed element counts as supplied and is dropped, and a value past its cap is truncated when drawn.",
       "type": "object",
       "properties": {
         "type": {
@@ -360,13 +360,13 @@
           "minLength": 1
         },
         "label": {
-          "description": "The text the node shows, 1–120 characters. Only letters, digits, spaces, and safe punctuation survive.",
+          "description": "The text the node shows, 1–120 characters. Only letters, digits, combining marks, spaces, and the punctuation .,:!?'()+_-/@ survive; a longer label ends in three dots.",
           "type": "string",
           "maxLength": 120,
           "minLength": 1
         },
         "evidence": {
-          "description": "The changed diff line the node stands for, in the spec_checks evidence shape: a NEW-side path, line, and the exact quote.",
+          "description": "The diff line the node stands for, in the spec_checks evidence shape: a NEW-side path, line, and the exact quote of a line inside a hunk (added or context).",
           "$ref": "#/$defs/specEvidence"
         }
       },
@@ -395,7 +395,7 @@
           "maxLength": 120
         },
         "evidence": {
-          "description": "The changed diff line the transition stands for, in the spec_checks evidence shape: a NEW-side path, line, and the exact quote.",
+          "description": "The diff line the transition cites, in the spec_checks evidence shape: a NEW-side path, line, and the exact quote of a line inside a hunk (added or context). Verification proves the line exists, not that it states the relation.",
           "$ref": "#/$defs/specEvidence"
         }
       },

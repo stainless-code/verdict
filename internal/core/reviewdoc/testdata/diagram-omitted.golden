@@ -17,7 +17,7 @@ if commits landed on feat/token-refresh since, treat every bug/file/line as POTE
 - Prior review: none
 -->
 
-> Behavioral diagram omitted: 3 of 4 elements failed quote verification (min 50% anchored)
+> Behavioral diagram omitted: 3 of 4 elements did not verify or were malformed (min 50% anchored)
 
 **What we checked**
 

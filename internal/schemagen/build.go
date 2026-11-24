@@ -632,6 +632,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[EvidenceReceipts](), name: defsEvidenceReceipts},
 		{typ: reflect.TypeFor[EvidenceSpec](), name: defsEvidenceSpec},
 		{typ: reflect.TypeFor[EvidenceDiagram](), name: defsEvidenceDiagram, closed: true},
+		{typ: reflect.TypeFor[PostDiagram](), name: "postDiagram", closed: true},
 		{typ: reflect.TypeFor[SpecCheck](), name: defsSpecCheck},
 		{typ: reflect.TypeFor[SpecEvidence](), name: defsSpecEvidence},
 		{typ: reflect.TypeFor[Receipt](), name: defsReceipt},

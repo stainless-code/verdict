@@ -62,9 +62,23 @@ type ValidationData struct { //nolint:govet // field order is the published prop
 
 // PostBody is the rendered post body summary.
 type PostBody struct { //nolint:govet // field order is the published property order
-	Marker  string `json:"marker"`
-	Footer  any    `json:"footer,omitempty"`
-	Diagram any    `json:"diagram,omitempty"`
+	Marker  string       `json:"marker"`
+	Footer  any          `json:"footer,omitempty"`
+	Diagram *PostDiagram `anyOf:"null"            json:"diagram,omitempty" optional:"true"`
+}
+
+// PostDiagram is the dry run's behavioral-diagram disposition: the state the
+// body drew plus exactly the fields evidence.diagram stores, so the dry run
+// and the persisted receipt agree field by field. The dry run reports null
+// when no block is drawn — no diagram supplied, or the knob off.
+type PostDiagram struct { //nolint:govet // field order is the published property order
+	Status   string `enum:"rendered|omitted"    json:"status"`
+	Type     string `enum:"sequence|state|flow" json:"type,omitempty"`
+	Title    string `json:"title,omitempty"`
+	Supplied int    `json:"supplied"            min:"0"`
+	Verified int    `json:"verified"            min:"0"`
+	Dropped  int    `json:"dropped"             min:"0"`
+	Omitted  string `json:"omitted,omitempty"`
 }
 
 // Suggestions counts embedded review suggestions.

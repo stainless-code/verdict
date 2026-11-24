@@ -1,11 +1,13 @@
 package diagram
 
 import (
+	"math"
 	"regexp"
 	"slices"
 	"strconv"
 	"strings"
 	"testing"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/evidence"
@@ -60,7 +62,7 @@ func TestSettleRendersEachType(t *testing.T) {
 			},
 			want: strings.Join([]string{
 				"<details>",
-				"<summary>Behavior flow (verified against the diff — 3/3 elements anchored)</summary>",
+				"<summary>Behavior flow (each element anchored to a diff line — 3/3 anchored)</summary>",
 				"",
 				"```mermaid",
 				"sequenceDiagram",
@@ -80,7 +82,7 @@ func TestSettleRendersEachType(t *testing.T) {
 			},
 			want: strings.Join([]string{
 				"<details>",
-				"<summary>Behavior flow (verified against the diff — 3/3 elements anchored)</summary>",
+				"<summary>Behavior flow (each element anchored to a diff line — 3/3 anchored)</summary>",
 				"",
 				"```mermaid",
 				"stateDiagram-v2",
@@ -99,7 +101,7 @@ func TestSettleRendersEachType(t *testing.T) {
 			},
 			want: strings.Join([]string{
 				"<details>",
-				"<summary>Behavior flow (verified against the diff — 3/3 elements anchored)</summary>",
+				"<summary>Behavior flow (each element anchored to a diff line — 3/3 anchored)</summary>",
 				"",
 				"```mermaid",
 				"flowchart TD",
@@ -201,7 +203,7 @@ func TestUnverifiedElementsAreDropped(t *testing.T) {
 	wantNone(t, "block", got, "Forged", "dangling")
 	// One node and one self-edge survive out of two nodes and two edges: half
 	// the elements verified, which is exactly the threshold that still renders.
-	wantAll(t, "block", got, "2/4 elements anchored", `n1["Kept"]`, `n1 -->|"own"| n1`)
+	wantAll(t, "block", got, "2/4 anchored", `n1["Kept"]`, `n1 -->|"own"| n1`)
 	wantCounts(t, &res, 4, 2, 2)
 }
 
@@ -222,7 +224,7 @@ func TestBelowThresholdOmitsWholeDiagram(t *testing.T) {
 		},
 	}
 	res := Settle(settledIndex(t), req)
-	if want := "> Behavioral diagram omitted: 4 of 5 elements failed quote verification (min 50% anchored)"; res.Block() != want {
+	if want := "> Behavioral diagram omitted: 4 of 5 elements did not verify or were malformed (min 50% anchored)"; res.Block() != want {
 		t.Fatalf("Block() = %q, want %q", res.Block(), want)
 	}
 	if strings.Contains(res.Block(), "```") {
@@ -241,7 +243,7 @@ func TestWholeDiagramOmittedWhenNothingVerifies(t *testing.T) {
 		Nodes: []core.DiagramNode{{ID: "a", Label: "A", Evidence: verifiedAnchor(2, "nothing matches this")}},
 	}
 	res := Settle(settledIndex(t), req)
-	if want := "> Behavioral diagram omitted: none of the 1 supplied elements verified against the diff"; res.Block() != want {
+	if want := "> Behavioral diagram omitted: none of the 1 supplied elements anchored (each did not verify or was malformed)"; res.Block() != want {
 		t.Fatalf("Block() = %q, want %q", res.Block(), want)
 	}
 }
@@ -255,7 +257,7 @@ func TestOutOfScopeTypeIsOmitted(t *testing.T) {
 		Nodes: []core.DiagramNode{{ID: "a", Label: "A", Evidence: verifiedAnchor(2, "func expired() bool {")}},
 	}
 	res := Settle(settledIndex(t), req)
-	if want := `> Behavioral diagram omitted: type "gantt" is out of scope (want sequence, state, flow)`; res.Block() != want {
+	if want := "> Behavioral diagram omitted: type `gantt` is out of scope (want sequence, state, flow)"; res.Block() != want {
 		t.Fatalf("Block() = %q, want %q", res.Block(), want)
 	}
 	if res.Type != "" {
@@ -360,6 +362,42 @@ func TestStatusSettlesEachDisposition(t *testing.T) {
 	}
 }
 
+// TestStatusPostMatchesTheReceipt proves the dry-run projection carries
+// exactly the receipt's fields plus the state, for a drawn and an omitted
+// block: the omission reason and the title included.
+func TestStatusPostMatchesTheReceipt(t *testing.T) {
+	t.Parallel()
+	for _, req := range []*core.ReviewDiagram{
+		{Type: DiagramFlow, Title: "Refresh", Nodes: []core.DiagramNode{{ID: "a", Label: "A", Evidence: verifiedAnchor(2, "func expired() bool {")}}},
+		{Type: DiagramFlow, Title: "Refresh", Nodes: []core.DiagramNode{{ID: "a", Label: "A", Evidence: verifiedAnchor(2, "no such line")}}},
+	} {
+		res := Settle(settledIndex(t), req)
+		st := res.Status()
+		post, receipt := st.Post(), res.Summary()
+		if post == nil || receipt == nil {
+			t.Fatalf("Post() = %+v, Summary() = %+v, want both", post, receipt)
+		}
+		want := core.PostDiagram{
+			Status: st.State, Type: receipt.Type, Title: receipt.Title, Supplied: receipt.Supplied,
+			Verified: receipt.Verified, Dropped: receipt.Dropped, Omitted: receipt.Omitted,
+		}
+		if *post != want || post.Title != "Refresh" || (post.Status == StatusOmitted) == (post.Omitted == "") {
+			t.Errorf("Post() = %+v, want the receipt plus state %+v", *post, want)
+		}
+	}
+}
+
+// TestNoteReservationCoversTheWidestNote proves the bytes the block reserves
+// before it knows its counts cover the widest note any counts can produce:
+// all three counts at the widest int, nodes, edges, and orphaned edges.
+func TestNoteReservationCoversTheWidestNote(t *testing.T) {
+	t.Parallel()
+	widest := len(newline + mermaidIndent + diagramNote(math.MaxInt, math.MaxInt, math.MaxInt))
+	if widest > maxDiagramNoteBytes {
+		t.Errorf("widest note = %d bytes, reservation = %d", widest, maxDiagramNoteBytes)
+	}
+}
+
 // TestSummaryNeverExceedsSupplied proves the receipt's arithmetic is honest:
 // verified plus dropped is always what the review supplied.
 func TestSummaryNeverExceedsSupplied(t *testing.T) {
@@ -386,12 +424,16 @@ func TestSummaryNeverExceedsSupplied(t *testing.T) {
 	}
 }
 
-// safeText is the character class a rendered label or title may carry: no
-// byte that closes a quote, opens a directive or comment, spells an arrow or a
-// pipe, starts an entity, or breaks the line. The grammar below anchors it
-// between fixed syntax, so a line that matches can only be the statement the
-// renderer meant.
-const safeText = `[^"` + "`" + `%<>|;{}\[\]&#\\\n\r=~]*`
+// safeText is the exact label alphabet the docs promise: letters, digits,
+// combining marks, spaces, and labelPunctuation — an allowlist, not a deny
+// list, so a zero-width rune, an ellipsis, or any other stray character fails
+// the grammar. None of these closes a quote, opens a directive or comment,
+// spells an arrow or a pipe, starts an entity, or breaks the line.
+const safeText = `[\p{L}\p{N}\p{M} .,:!?'()+_/@-]*`
+
+// capNote is the cap-truncation comment in every type's grammar.
+const capNote = `^    %% (([0-9]+ more (nodes|edges)( and [0-9]+ more edges)? omitted \(input order\))` +
+	`(; [0-9]+ edges to omitted nodes not drawn)?|[0-9]+ edges to omitted nodes not drawn)$`
 
 // lineGrammar is every line shape each type's fence may hold, after the
 // declaration. Identifiers are generated (`n<digits>`), so none of them is an
@@ -401,19 +443,19 @@ var lineGrammar = map[string][]*regexp.Regexp{
 		regexp.MustCompile(`^    accTitle: ` + safeText + `$`),
 		regexp.MustCompile(`^    participant n[0-9]+ as ` + safeText + `$`),
 		regexp.MustCompile(`^    n[0-9]+->>n[0-9]+: ` + safeText + `$`),
-		regexp.MustCompile(`^    %% [0-9]+ more (nodes|edges)( and [0-9]+ more edges)? omitted \(input order\)$`),
+		regexp.MustCompile(capNote),
 	},
 	DiagramState: {
 		regexp.MustCompile(`^    accTitle: ` + safeText + `$`),
 		regexp.MustCompile(`^    state "` + safeText + `" as n[0-9]+$`),
 		regexp.MustCompile(`^    n[0-9]+ --> n[0-9]+( : ` + safeText + `)?$`),
-		regexp.MustCompile(`^    %% [0-9]+ more (nodes|edges)( and [0-9]+ more edges)? omitted \(input order\)$`),
+		regexp.MustCompile(capNote),
 	},
 	DiagramFlow: {
 		regexp.MustCompile(`^    accTitle: ` + safeText + `$`),
 		regexp.MustCompile(`^    n[0-9]+\["` + safeText + `"\]$`),
 		regexp.MustCompile(`^    n[0-9]+ -->(\|"` + safeText + `"\|)? n[0-9]+$`),
-		regexp.MustCompile(`^    %% [0-9]+ more (nodes|edges)( and [0-9]+ more edges)? omitted \(input order\)$`),
+		regexp.MustCompile(capNote),
 	},
 }
 
@@ -440,7 +482,7 @@ func blockBody(t *testing.T, kind, block string) []string {
 	if len(lines) < len(head)+1+len(tail) {
 		t.Fatalf("block is too short to be a rendered diagram:\n%s", block)
 	}
-	summary := strings.HasPrefix(lines[1], "<summary>Behavior flow (verified against the diff — ")
+	summary := strings.HasPrefix(lines[1], "<summary>Behavior flow (each element anchored to a diff line — ")
 	if lines[0] != head[0] || !summary || !slices.Equal(lines[2:5], head[1:]) {
 		t.Fatalf("block head is not the fixed preamble:\n%s", block)
 	}
@@ -515,14 +557,87 @@ func checkHostileGrammar(t *testing.T, kind, hostile string) {
 // an agent's type string reaches the body, stays one inert blockquote line.
 func TestHostileTypeNoteStaysOneLine(t *testing.T) {
 	t.Parallel()
-	for _, hostile := range hostileInputs {
+	for _, hostile := range append(slices.Clone(hostileInputs), "https://evil.example/x", "@alice", "www.evil.example") {
 		block := settleBlock(settledIndex(t), &core.ReviewDiagram{Type: hostile})
-		if strings.Count(block, "\n") != 0 || !strings.HasPrefix(block, omittedPrefix+"type ") {
+		if strings.Count(block, "\n") != 0 || !strings.HasPrefix(block, omittedPrefix) {
 			t.Errorf("type %q note = %q, want one omission line", hostile, block)
 		}
-		wantNone(t, "type note reason", strings.TrimPrefix(block, omittedPrefix),
-			"<", ">", "`", "[", "]", "|", "%", "&", "#", ";")
+		checkInertTypeNote(t, hostile, strings.TrimPrefix(block, omittedPrefix))
 	}
+}
+
+// checkInertTypeNote proves an out-of-scope type reaches the body only inside
+// one code span of allowlisted runes, where GitHub links no URL and pings no
+// mention.
+func checkInertTypeNote(t *testing.T, hostile, reason string) {
+	t.Helper()
+	const want = " is out of scope (want sequence, state, flow)"
+	if reason == "the supplied type"+want {
+		return // the alphabet emptied it: nothing of the agent's reaches the body
+	}
+	shown, ok := strings.CutPrefix(reason, "type `")
+	shown, closed := strings.CutSuffix(shown, "`"+want)
+	if !ok || !closed || shown == "" {
+		t.Fatalf("type %q reason = %q, want the value in one code span", hostile, reason)
+	}
+	if !regexp.MustCompile(`^` + safeText + `$`).MatchString(shown) {
+		t.Errorf("type %q shows runes outside the label alphabet: %q", hostile, shown)
+	}
+}
+
+// TestURLTypeRendersInert pins the exact note for a URL-shaped type: the URL
+// sits in a code span, so the public comment carries no link.
+func TestURLTypeRendersInert(t *testing.T) {
+	t.Parallel()
+	got := settleBlock(settledIndex(t), &core.ReviewDiagram{Type: "https://evil.example/x"})
+	const want = "> Behavioral diagram omitted: type `https://evil.example/x` is out of scope (want sequence, state, flow)"
+	if got != want {
+		t.Errorf("Block() = %q, want %q", got, want)
+	}
+}
+
+// TestLabelsStayInTheAlphabet proves the documented contract rune by rune:
+// whatever goes in, every rune safeLabel returns is a letter, digit,
+// combining mark, space, or labelPunctuation — a mention gains no U+200B and
+// a capped label ends in allowlisted dots, never U+2026.
+func TestLabelsStayInTheAlphabet(t *testing.T) {
+	t.Parallel()
+	inputs := append(slices.Clone(hostileInputs),
+		"@alice please look", "ping @org/team", strings.Repeat("word ", 60),
+		strings.Repeat("\U00020000", 200), "zero\u200bwidth\u2060joiner\ufeff", "tab\tsep")
+	for _, in := range inputs {
+		for _, maxRunes := range []int{Caps.LabelRunes, Caps.IDRunes, 5} {
+			checkLabelAlphabet(t, in, maxRunes)
+		}
+	}
+	if got := safeLabel("@alice", Caps.LabelRunes); got != "@alice" {
+		t.Errorf("safeLabel(@alice) = %q, want it unchanged: a fenced mention is inert", got)
+	}
+	if got := safeLabel(strings.Repeat("a", 130), Caps.LabelRunes); got != strings.Repeat("a", 117)+"..." {
+		t.Errorf("capped label = %q, want 117 runes and three dots", got)
+	}
+}
+
+// TestOrphanedEdgesAreCounted proves an edge whose endpoint the node cap
+// dropped is announced in the note instead of vanishing: 30 verified nodes
+// keep 24, and the three edges into node k27 are named as not drawn.
+func TestOrphanedEdgesAreCounted(t *testing.T) {
+	t.Parallel()
+	req := &core.ReviewDiagram{Type: DiagramFlow}
+	for i := range Caps.Nodes + 6 {
+		req.Nodes = append(req.Nodes, core.DiagramNode{
+			ID: "k" + strconv.Itoa(i), Label: "N" + strconv.Itoa(i), Evidence: verifiedAnchor(2, "func expired() bool {"),
+		})
+	}
+	for _, to := range []string{"k1", "k27", "k2", "k27", "k28"} {
+		req.Edges = append(req.Edges, core.DiagramEdge{From: "k0", To: to, Evidence: verifiedAnchor(3, "return true")})
+	}
+	res := Settle(settledIndex(t), req)
+	block := res.Block()
+	assertBlockGrammar(t, DiagramFlow, block)
+	wantAll(t, "block", block,
+		"    n1 --> n2\n    n1 --> n3\n    %% 6 more nodes omitted (input order); 3 edges to omitted nodes not drawn\n```")
+	wantCounts(t, &res, 35, 35, 0)
 }
 
 // TestEmptiedLabelShowsTheGeneratedID proves a label the sanitizer reduces to
@@ -580,7 +695,7 @@ func TestThresholdBoundary(t *testing.T) {
 	}
 	below := &core.ReviewDiagram{Type: DiagramFlow, Nodes: append(slices.Clone(at.Nodes),
 		core.DiagramNode{ID: "e", Label: "E", Evidence: bad})}
-	const want = "> Behavioral diagram omitted: 3 of 5 elements failed quote verification (min 50% anchored)"
+	const want = "> Behavioral diagram omitted: 3 of 5 elements did not verify or were malformed (min 50% anchored)"
 	if got := settleBlock(settledIndex(t), below); got != want {
 		t.Errorf("2/5 Block() = %q, want %q", got, want)
 	}
@@ -720,4 +835,16 @@ func wantCounts(t *testing.T, res *Result, supplied, verified, dropped int) {
 		t.Errorf("counts = supplied %d, verified %d, dropped %d; want %d, %d, %d",
 			res.Supplied, res.Verified, res.Dropped, supplied, verified, dropped)
 	}
+}
+
+// checkLabelAlphabet proves one safeLabel result holds only alphabet runes
+// and stays inside its rune cap.
+func checkLabelAlphabet(t *testing.T, in string, maxRunes int) {
+	t.Helper()
+	got := safeLabel(in, maxRunes)
+	if i := strings.IndexFunc(got, func(r rune) bool { return !labelRune(r) }); i >= 0 {
+		r, _ := utf8.DecodeRuneInString(got[i:])
+		t.Errorf("safeLabel(%q, %d) = %q carries %U outside the alphabet", in, maxRunes, got, r)
+	}
+	wantAtMost(t, "safeLabel runes", utf8.RuneCountInString(got), maxRunes)
 }

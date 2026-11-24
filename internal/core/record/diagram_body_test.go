@@ -49,7 +49,7 @@ func runDiagram(t *testing.T, name, slug, diagram, anchored string) *recordcore.
 func TestRecordBodyCarriesTheVerifiedDiagram(t *testing.T) {
 	resp := runDiagram(t, "anchored", "local-anchored", anchoredReview, core.FlagOn)
 	bodyContains(t, resp.Body,
-		"<summary>Behavior flow (verified against the diff — 3/3 elements anchored)</summary>\n\n"+
+		"<summary>Behavior flow (each element anchored to a diff line — 3/3 anchored)</summary>\n\n"+
 			"```mermaid\nsequenceDiagram\n    accTitle: Record flow\n"+
 			"    participant n1 as Caller\n"+
 			"    participant n2 as Service\n"+
@@ -86,7 +86,7 @@ func TestRecordBodyOmitsTheDiagramWithTheKnobOff(t *testing.T) {
 // fails a review.
 func TestRecordBodyOmitsAForgedDiagram(t *testing.T) {
 	resp := runDiagram(t, "forged", "local-forged", forgedReview, core.FlagOn)
-	const want = "> Behavioral diagram omitted: none of the 1 supplied elements verified against the diff"
+	const want = "> Behavioral diagram omitted: none of the 1 supplied elements anchored (each did not verify or was malformed)"
 	if !strings.Contains(resp.Body, want) {
 		t.Errorf("body is missing %q:\n%s", want, resp.Body)
 	}
@@ -105,7 +105,7 @@ func TestRecordBodyOmitsAnOutOfScopeType(t *testing.T) {
 	diagram := `,"diagram":{"type":"gantt","nodes":[{"id":"a","label":"A",` +
 		`"evidence":{"path":"notes.txt","line":2,"quote":"new line"}}]}`
 	resp := runDiagram(t, "out of scope", "local-gantt", diagram, core.FlagOn)
-	if !strings.Contains(resp.Body, `> Behavioral diagram omitted: type "gantt" is out of scope`) {
+	if !strings.Contains(resp.Body, "> Behavioral diagram omitted: type `gantt` is out of scope") {
 		t.Errorf("body is missing the out-of-scope note:\n%s", resp.Body)
 	}
 	got := resp.Data.Evidence.Diagram
@@ -124,7 +124,7 @@ func TestRecordBodyDropsOnlyTheMalformedElement(t *testing.T) {
 		`{"id":"c","label":"Broken","evidence":{"path":"notes.txt","line":"2","quote":"new line"}}]}`
 	resp := runDiagram(t, "malformed element", "local-malformed", diagram, core.FlagOn)
 	for _, want := range []string{
-		"<summary>Behavior flow (verified against the diff — 2/3 elements anchored)</summary>",
+		"<summary>Behavior flow (each element anchored to a diff line — 2/3 anchored)</summary>",
 		"    n1[\"Caller\"]\n    n2[\"Service\"]\n```",
 	} {
 		if !strings.Contains(resp.Body, want) {

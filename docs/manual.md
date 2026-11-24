@@ -129,8 +129,8 @@ non-string, empty, or malformed value refuses the review; absent reads as no
 provenance, never a refusal.
 `resolved` lists finding sigs (short ids from the prior `findings.json` table) the run addresses.
 `diagram` is the optional behavioral picture: nodes and edges that each quote a
-changed line, which verdict verifies and renders itself (see "Behavioral
-diagrams" below). A malformed block warns `diagram-invalid` and never refuses
+NEW-side diff line inside a hunk, which verdict checks and renders itself (see
+"Behavioral diagrams" below). A malformed block warns `diagram-invalid` and never refuses
 the review unless `--strict` promotes the warning.
 
 The commentable set is pinned at fetch time: `fetch`/`fetch-local` writes
@@ -4274,8 +4274,8 @@ the diff, the agent never does — and `publish.diagrams.structural` (bool,
 default `true`) still gates that block.
 
 What replaces the raw fence is structure, not freedom. A review may carry one
-optional `diagram` object whose every node and every edge quotes a changed diff
-line:
+optional `diagram` object whose every node and every edge quotes a NEW-side diff
+line inside a hunk (added or context):
 
 ```json
 "diagram": {
@@ -4293,53 +4293,67 @@ line:
 
 `type` is one of `sequence`, `state`, or `flow`; anything else is out of scope.
 `evidence` is exactly the `spec_checks` evidence shape — `path`, `line`, and the
-exact `quote` text, nothing else — and is verified the way a spec check's is: the
-A2 matcher on the NEW side of the pinned diff.
+exact `quote` text, nothing else — and is checked the way a spec check's is: the
+A2 matcher on the NEW side of the pinned diff, which accepts any line inside a
+hunk, added or context.
 
-verdict verifies every element and draws the picture itself:
+**What the check proves, and what it does not.** Every node and edge the block
+draws cites a real NEW-side diff line near the line it names. That is all
+verdict checks: it does not read whether an edge's line states the relation the
+edge draws. The relation — who calls whom, which state follows which — is the
+agent's claim, anchored to a line the reader can open, not proved by verdict.
 
-- A node whose quote does not verify against `full.diff` is dropped. An edge is
-  dropped when its own quote fails or when either endpoint was dropped, so the
-  block never points at a node it did not prove.
+verdict checks every element and draws the picture itself:
+
+- A node whose quote does not match a NEW-side line of `full.diff` is dropped.
+  An edge is dropped when its own quote fails or when either endpoint was
+  dropped, so the block never points at a node that cites nothing.
 - A node with no `id`, or with an `id` an earlier node already took, is dropped;
   so is an element whose fields have the wrong JSON type — it still counts as
   supplied, so `verified + dropped = supplied` always holds.
-- The block renders only when at least **50%** of the supplied elements verify
+- The block renders only when at least **50%** of the supplied elements anchor
   (`diagram.MinVerifiedPercent`; exactly half renders). Below that it is omitted
-  whole with one line, because a mostly-forged diagram is not a picture of this
-  change:
-  `> Behavioral diagram omitted: N of M elements failed quote verification (min 50% anchored)`.
+  whole with one line, because a mostly-unanchored diagram is not a picture of
+  this change:
+  `> Behavioral diagram omitted: N of M elements did not verify or were malformed (min 50% anchored)`.
   An out-of-scope or missing `type`, and a `diagram` value that is not an
-  object, are omitted the same way with their own reason.
+  object, are omitted the same way with their own reason; an out-of-scope type
+  appears in a code span, so a URL-shaped value never becomes a link.
 - Caps bound the block: at most 24 nodes, 40 edges, 120 characters per label,
   120 for the title, and 8,000 bytes; whole nodes and edges are dropped before
   the ceiling is crossed, and one legal `%%` comment inside the fence names what
-  the caps left out.
-- Every label and title is reduced to letters, digits, spaces, and the closed
-  punctuation set `.,:!?'()+_-/@`, and dash runs collapse, so no backtick,
-  double quote, bracket, brace, pipe, semicolon, percent sign, angle bracket,
-  ampersand, hash, equals sign, newline, or arrow survives. Node identifiers are
-  generated (`n1`, `n2`, …) and every label follows fixed syntax inside one line,
-  so a word like `click` or `style` stays text: no agent byte chooses the syntax
-  of a line, opens a directive, or leaves the fence. A label the sanitizer
-  empties shows its generated identifier.
+  the caps left out — including the edges the node cap left without an endpoint
+  (`%% 6 more nodes omitted (input order); 3 edges to omitted nodes not drawn`).
+- Every label and title is reduced to letters, digits, combining marks, spaces,
+  and the closed punctuation set `.,:!?'()+_-/@` — no other rune, zero-width
+  ones included — and dash runs collapse, so no backtick, double quote,
+  bracket, brace, pipe, semicolon, percent sign, angle bracket, ampersand,
+  hash, equals sign, newline, or arrow survives. A label past its cap ends in
+  three dots. Node identifiers are generated (`n1`, `n2`, …) and every label
+  follows fixed syntax inside one line, so a word like `click` or `style` stays
+  text: no agent byte chooses the syntax of a line, opens a directive, or
+  leaves the fence. A label the sanitizer empties shows its generated
+  identifier, and an `@handle` stays as written — a mention inside a mermaid
+  fence notifies no one.
 - The block lands right after the computed topology, collapsed:
-  `<summary>Behavior flow (verified against the diff — 3/3 elements anchored)</summary>`.
+  `<summary>Behavior flow (each element anchored to a diff line — 3/3 anchored)</summary>`.
 
 A diagram never withholds approval and never fails a review. Its outcome is
 published: the `evidence.diagram` receipt in `record.json` (and in `post.json`
 for a posted PR) carries the type, title, `supplied` / `verified` / `dropped`
-counts, and the omission reason when there is one, and `post --dry-run`
-reports the same disposition in `data.body.diagram`. `verified` counts what the
-diff proved; the caps may draw fewer. The body is a pure function of
-`review.json` and the pinned `full.diff`, so every render of the same bundle
-carries the same block. A malformed block (an unknown key, a missing field, a
-value past its cap) is a `diagram-invalid` warning — the element or value is
-dropped or truncated, never the review — and `--strict` promotes it like every
-other warning. Knobs: `publish.diagrams.anchored` (bool, default `false`),
-`REVIEW_PUBLISH_DIAGRAMS_ANCHORED` (`true`|`false`), and `--diagram-anchored` /
-`--no-diagram-anchored`; with the knob off the body keeps exactly the bytes it
-had before, though the receipt still records what the diff proved.
+counts, and the omission reason when there is one. `post --dry-run` reports the
+same fields plus `status` (`rendered` or `omitted`) in `data.body.diagram`
+(`$defs/postDiagram`), which is `null` when no block is drawn. `verified`
+counts the elements that anchored; the caps may draw fewer. The body is a pure
+function of `review.json` and the pinned `full.diff`, so every render of the
+same bundle carries the same block. A malformed block (an unknown key, a
+missing field, a value past its cap) is a `diagram-invalid` warning — the
+element or value is dropped or truncated, never the review — and `--strict`
+promotes it like every other warning. Knobs: `publish.diagrams.anchored` (bool,
+default `false`), `REVIEW_PUBLISH_DIAGRAMS_ANCHORED` (`true`|`false`), and
+`--diagram-anchored` / `--no-diagram-anchored`; with the knob off the body
+keeps exactly the bytes it had before, though the receipt still records what
+anchored.
 
 ## Section overrides (per-block template fragments)
 

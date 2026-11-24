@@ -18,7 +18,7 @@ if commits landed on feat/token-refresh since, treat every bug/file/line as POTE
 -->
 
 <details>
-<summary>Behavior flow (verified against the diff — 4/4 elements anchored)</summary>
+<summary>Behavior flow (each element anchored to a diff line — 4/4 anchored)</summary>
 
 ```mermaid
 sequenceDiagram

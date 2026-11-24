@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/evidence"
-	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // Behavioral diagram vocabulary, caps, and published wording.
@@ -43,11 +43,12 @@ const (
 	// map's memory is at stake.
 	maxDiagramIDRunes = 40
 
-	// diagramHeader names the diagram and states what the block proves: the
-	// verified fraction the caps and drops are counted against.
-	diagramHeader = "Behavior flow (verified against the diff — "
+	// diagramHeader names the diagram and states exactly what the block
+	// proves: each drawn node and edge cites a real NEW-side diff line. It
+	// does not claim the relation an edge draws — that stays the agent's.
+	diagramHeader = "Behavior flow (each element anchored to a diff line — "
 	// diagramHeaderTail closes the summary after the two counts.
-	diagramHeaderTail = " elements anchored)"
+	diagramHeaderTail = " anchored)"
 	// omittedPrefix opens the one-line note a whole-diagram omission leaves in
 	// the body. It is a blockquote, never a fence: nothing renders.
 	omittedPrefix = "> Behavioral diagram omitted: "
@@ -60,6 +61,10 @@ const (
 	diagramNoteJoin   = " and "
 	diagramNodeMore   = " more nodes"
 	diagramEdgeMore   = " more edges"
+	// diagramOrphanPrefix and diagramOrphanSuffix word the edges the node cap
+	// left without an endpoint, so they are counted instead of vanishing.
+	diagramOrphanPrefix = "; "
+	diagramOrphanSuffix = " edges to omitted nodes not drawn"
 	// accTitlePrefix is the accessible-title directive Mermaid supports in all
 	// three rendered types. The title is metadata: it never becomes a statement
 	// of its own, so a hostile title cannot change the diagram.
@@ -109,17 +114,18 @@ var Caps = Limits{
 func Types() []string { return slices.Clone(diagramTypes) }
 
 // maxDiagramNoteBytes is the room the block reserves for its widest cap note,
-// taken before the counts that fill it are known: two counts at countDigits
-// digits each, the wording, the indented comment prefix, and the suffix.
-const maxDiagramNoteBytes = len(newline+mermaidIndent+diagramNotePrefix) + 2*countDigits +
-	len(diagramNodeMore) + len(diagramNoteJoin) + len(diagramEdgeMore) + len(diagramNoteSuffix)
+// taken before the counts that fill it are known: three counts at countDigits
+// digits each, the wording, the indented comment prefix, and the suffixes.
+const maxDiagramNoteBytes = len(newline+mermaidIndent+diagramNotePrefix) + 3*countDigits +
+	len(diagramNodeMore) + len(diagramNoteJoin) + len(diagramEdgeMore) + len(diagramNoteSuffix) +
+	len(diagramOrphanPrefix) + len(diagramOrphanSuffix)
 
-// Result is one settled behavioral diagram: every element whose quote the
-// pinned diff proved (Block draws the cap-truncated head of them) and the
-// counts the receipt and the status publish. Omitted is set when the whole
-// diagram is left out; Type is empty when the supplied type was out of scope
-// or the value could not be read, so the receipt never publishes a type
-// outside the enum.
+// Result is one settled behavioral diagram: every element whose quote matched
+// a NEW-side line of the pinned diff (Block draws the cap-truncated head of
+// them) and the counts the receipt and the status publish. Omitted is set
+// when the whole diagram is left out; Type is empty when the supplied type was
+// out of scope or the value could not be read, so the receipt never publishes
+// a type outside the enum.
 type Result struct {
 	Title    string
 	Omitted  string
@@ -178,13 +184,20 @@ func Unreadable() Result {
 }
 
 // typeOmission names why a type outside the vocabulary draws nothing. The
-// agent's value is sanitized like a label before it reaches the note.
+// note is the one place an agent string reaches the body outside the fence,
+// so the value is reduced to the label alphabet and then set in a code span:
+// GitHub links no URL and pings no mention inside one, and the alphabet holds
+// no backtick that could close it.
 func typeOmission(kind string) string {
 	want := strings.Join(diagramTypes, typeSeparator)
 	if strings.TrimSpace(kind) == "" {
 		return "no type was supplied (want " + want + ")"
 	}
-	return fmt.Sprintf("type %q is out of scope (want %s)", safeLabel(kind, Caps.IDRunes), want)
+	shown := safeLabel(kind, Caps.IDRunes)
+	if shown == "" {
+		return "the supplied type is out of scope (want " + want + ")"
+	}
+	return "type `" + shown + "` is out of scope (want " + want + ")"
 }
 
 // suppliedCount is every element the agent supplied, drawn or not.
@@ -259,10 +272,11 @@ func omission(res *Result) string {
 		return "no nodes or edges were supplied"
 	}
 	if res.Verified == 0 {
-		return fmt.Sprintf("none of the %d supplied elements verified against the diff", res.Supplied)
+		return fmt.Sprintf("none of the %d supplied elements anchored (each did not verify or was malformed)",
+			res.Supplied)
 	}
 	if !meetsVerifiedFraction(res.Verified, res.Supplied) {
-		return fmt.Sprintf("%d of %d elements failed quote verification (min %d%% anchored)",
+		return fmt.Sprintf("%d of %d elements did not verify or were malformed (min %d%% anchored)",
 			res.Dropped, res.Supplied, MinVerifiedPercent)
 	}
 	return ""
@@ -297,14 +311,14 @@ func (r *Result) Block() string {
 	budget := maxDiagramBytes - len(diagramTail) - maxDiagramNoteBytes
 	used := len(strings.Join(lines, newline))
 	nodes, used, nodesLeft := fitDiagramNodes(r.Type, r.Nodes, budget, used)
-	edges, _, edgesLeft := fitDiagramEdges(r.Type, nodes, r.Edges, budget, used)
+	edges, edgesLeft, orphaned := fitDiagramEdges(r.Type, nodes, r.Edges, budget, used)
 	for i := range nodes {
 		lines = append(lines, behavioralNodeLine(r.Type, &nodes[i]))
 	}
 	for i := range edges {
 		lines = append(lines, behavioralEdgeLine(r.Type, &edges[i]))
 	}
-	if note := diagramNote(nodesLeft, edgesLeft); note != "" {
+	if note := diagramNote(nodesLeft, edgesLeft, orphaned); note != "" {
 		lines = append(lines, mermaidIndent+note)
 	}
 	return strings.Join(append(lines, "```", "", "</details>"), newline)
@@ -361,14 +375,14 @@ func fitDiagramNodes(kind string, nodes []node, budget, used int) ([]node, int, 
 }
 
 // fitDiagramEdges keeps the head of the edge list the edge cap and the byte
-// budget allow, and counts every drawable edge it had to leave out. An edge
-// whose endpoint the node cap dropped is skipped without a count of its own —
-// the node note already names that truncation.
-func fitDiagramEdges(kind string, nodes []node, edges []edge, budget, used int) ([]edge, int, int) {
-	kept := make([]edge, 0, len(edges))
-	left := 0
+// budget allow. It returns the kept edges, how many drawable edges the caps
+// left out, and how many edges the node cap orphaned by dropping an endpoint:
+// both counts reach the note, so no supplied edge disappears unannounced.
+func fitDiagramEdges(kind string, nodes []node, edges []edge, budget, used int) (kept []edge, left, orphaned int) {
+	kept = make([]edge, 0, len(edges))
 	for i := range edges {
 		if !bothEndpointsKept(nodes, &edges[i]) {
+			orphaned++
 			continue
 		}
 		cost := len(newline + behavioralEdgeLine(kind, &edges[i]))
@@ -379,7 +393,7 @@ func fitDiagramEdges(kind string, nodes []node, edges []edge, budget, used int) 
 		used += cost
 		kept = append(kept, edges[i])
 	}
-	return kept, used, left
+	return kept, left, orphaned
 }
 
 // bothEndpointsKept reports whether an edge joins two rendered nodes.
@@ -392,9 +406,10 @@ func bothEndpointsKept(nodes []node, e *edge) bool {
 	return from && to
 }
 
-// diagramNote names what the caps left out, so a truncated block never reads as
-// a complete picture.
-func diagramNote(nodes, edges int) string {
+// diagramNote names what the caps left out, so a truncated block never reads
+// as a complete picture: the nodes and edges past a cap, then the edges the
+// node cap left without an endpoint.
+func diagramNote(nodes, edges, orphaned int) string {
 	var parts []string
 	if nodes > 0 {
 		parts = append(parts, strconv.Itoa(nodes)+diagramNodeMore)
@@ -402,10 +417,17 @@ func diagramNote(nodes, edges int) string {
 	if edges > 0 {
 		parts = append(parts, strconv.Itoa(edges)+diagramEdgeMore)
 	}
-	if len(parts) == 0 {
+	note := ""
+	if len(parts) > 0 {
+		note = strings.Join(parts, diagramNoteJoin) + diagramNoteSuffix
+	}
+	if orphaned > 0 {
+		note += diagramOrphanPrefix + strconv.Itoa(orphaned) + diagramOrphanSuffix
+	}
+	if note == "" {
 		return ""
 	}
-	return diagramNotePrefix + strings.Join(parts, diagramNoteJoin) + diagramNoteSuffix
+	return diagramNotePrefix + strings.TrimPrefix(note, diagramOrphanPrefix)
 }
 
 // behavioralNodeLine renders one node declaration for the diagram type.
@@ -443,16 +465,29 @@ func behavioralEdgeLine(kind string, e *edge) string {
 	}
 }
 
-// safeLabel renders one agent-supplied title or label as Mermaid label text:
-// the closed punctuation allowlist runs first so no markup character survives,
-// [untrusted.InlineProse] then flattens controls and neutralizes comments,
-// fences, links, and mentions as it does for every other agent string, and the
-// rune cap bounds the result. Labels only ever appear after a fixed prefix
-// inside one line, so no label can start a Mermaid statement.
+// safeLabel renders one agent-supplied title or label as Mermaid label text.
+// The closed allowlist is the whole sanitizer, so every rune of the result is
+// a letter, digit, combining mark, space, or one of labelPunctuation — no
+// other rune, not even a zero-width one, can appear. The mention pass of
+// untrusted.InlineProse is deliberately not applied: on allowlisted text its
+// only effect is a U+200B inside an `@handle`, and a mention inside a mermaid
+// fence or a code span never notifies anyone. The rune cap closes with
+// labelEllipsis, also allowlisted. Labels only ever appear after a fixed
+// prefix inside one line, so no label can start a Mermaid statement.
 func safeLabel(s string, maxRunes int) string {
-	clean := allowLabelRunes(s)
-	clean = untrusted.InlineProse(clean)
-	return untrusted.CapRunes(strings.TrimSpace(clean), maxRunes)
+	return capLabel(strings.TrimSpace(allowLabelRunes(s)), maxRunes)
+}
+
+// capLabel bounds a sanitized label at maxRunes runes, ending a shortened one
+// with labelEllipsis — the topology's own marker, three allowlisted dots, so a
+// capped label stays inside the label alphabet.
+func capLabel(s string, maxRunes int) string {
+	if utf8.RuneCountInString(s) <= maxRunes {
+		return s
+	}
+	keep := maxRunes - utf8.RuneCountInString(labelEllipsis)
+	runes := []rune(s)
+	return strings.TrimSpace(string(runes[:max(keep, 0)])) + labelEllipsis
 }
 
 // allowLabelRunes keeps only letters, digits, spaces, and the closed
@@ -496,10 +531,26 @@ func labelRune(r rune) bool {
 type Status struct {
 	State    string
 	Type     string
+	Title    string
+	Omitted  string
 	Detail   string
 	Supplied int
 	Verified int
 	Dropped  int
+}
+
+// Post projects the status into the dry run's body.diagram: nil when no block
+// was drawn, else the same fields evidence.diagram carries plus the state, so
+// a dry run and the stored receipt can be read against each other field by
+// field.
+func (s *Status) Post() *core.PostDiagram {
+	if s.State == StatusAbsent || s.State == "" {
+		return nil
+	}
+	return &core.PostDiagram{
+		Status: s.State, Type: s.Type, Title: s.Title,
+		Supplied: s.Supplied, Verified: s.Verified, Dropped: s.Dropped, Omitted: s.Omitted,
+	}
 }
 
 // Diagram status states.
@@ -517,7 +568,7 @@ func (r *Result) Status() Status {
 	switch {
 	case r.Omitted != "":
 		return Status{
-			State: StatusOmitted, Type: r.Type, Detail: r.Omitted,
+			State: StatusOmitted, Type: r.Type, Title: r.Title, Omitted: r.Omitted, Detail: r.Omitted,
 			Supplied: r.Supplied, Verified: r.Verified, Dropped: r.Dropped,
 		}
 	case r.Type == "":
@@ -526,6 +577,7 @@ func (r *Result) Status() Status {
 		return Status{
 			State:    StatusRendered,
 			Type:     r.Type,
+			Title:    r.Title,
 			Detail:   strconv.Itoa(r.Verified) + "/" + strconv.Itoa(r.Supplied) + " elements anchored",
 			Supplied: r.Supplied, Verified: r.Verified, Dropped: r.Dropped,
 		}

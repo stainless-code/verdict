@@ -371,7 +371,12 @@ var publishedSemantics = map[string]string{
 	// settled $defs/evidenceDiagram on the evidence receipt, and the
 	// diagram-invalid warning joining the problem-code enum. Additions only: no
 	// existing property, required key, or type moved.
-	"envelope.schema.json": "9509b9614b3f71913e58f34c01521073d9dc4ae0604025f2089295886de50f74",
+	// diagram honesty round: descriptions now say each element cites a
+	// NEW-side hunk line and the relation stays the agent's claim.
+	// postData.body.diagram, previously untyped ({}), is now a nullable
+	// $defs/postDiagram (status rendered|omitted plus the evidence.diagram
+	// fields); it was only ever null on main, so no published value breaks.
+	"envelope.schema.json": "fa8f224420bff2f4edab55a9103b046ceb789e2339a8a9642d8a2e43615b8547",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -427,7 +432,9 @@ var publishedSemantics = map[string]string{
 	// settled $defs/evidenceDiagram on the evidence receipt, and the
 	// diagram-invalid warning joining the problem-code enum. Additions only: no
 	// existing property, required key, or type moved.
-	"post.schema.json": "66d7cad7e6a98e8ac113ff0155d3ab496ab7f3a02d0bc2b0e84d981e37a07fcb",
+	// diagram honesty round: descriptions now say each element cites a
+	// NEW-side hunk line and the relation stays the agent's claim.
+	"post.schema.json": "7f9e660c9b4fb24a7e39fb5ee8462480a0090c3aa0b9c19a121b20cbfd7fad15",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	// fixtures.schema.json descriptions only: hallucination now names the pinned
@@ -558,7 +565,9 @@ var publishedSemantics = map[string]string{
 	// settled $defs/evidenceDiagram on the evidence receipt, and the
 	// diagram-invalid warning joining the problem-code enum. Additions only: no
 	// existing property, required key, or type moved.
-	"record.schema.json": "fd5850b03ffbdd73abd1dd49d1c21881338f5fcadbab332058ab48efe878d31a",
+	// diagram honesty round: descriptions now say each element cites a
+	// NEW-side hunk line and the relation stays the agent's claim.
+	"record.schema.json": "d4a908b4dafc8c18dc14cc5f7a6489e1e24bb0a31d53e4c1959a7e6ffcef860a",
 
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
@@ -601,7 +610,9 @@ var publishedSemantics = map[string]string{
 	// settled $defs/evidenceDiagram on the evidence receipt, and the
 	// diagram-invalid warning joining the problem-code enum. Additions only: no
 	// existing property, required key, or type moved.
-	"review.schema.json": "870ac65da49518db06b5d8dfa873d9a19efa65594a34bd2efb8060166f2faf0b",
+	// diagram honesty round: descriptions now say each element cites a
+	// NEW-side hunk line and the relation stays the agent's claim.
+	"review.schema.json": "19c067663b48dbda2601e66fb8f28f6f5de7287a371521e5c6898645b732f83b",
 	// additive selected.schema.json (new bundle document: the reaction-scoped
 	// fix selection fetch writes and fix --selected reads). A new document
 	// only: no existing schema property, required key, enum, or type changed.
