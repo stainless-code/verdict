@@ -409,3 +409,96 @@ func assertConcurrentResult(t *testing.T, results []*core.RefusalError) {
 		}
 	}
 }
+
+// resumedClock is the clock of a resumed authorization: after the bundle's
+// 12:00 recorded cost, so its new projection is strictly later.
+func resumedClock() time.Time { return time.Date(2026, 5, 15, 12, 5, 0, 0, time.UTC) }
+
+// monthlyProjection is the $2 discovery projection one bundle authorizes.
+func monthlyProjection(t *testing.T, execID string) ([]spend.Phase, spend.Projection) {
+	t.Helper()
+	phases := []spend.Phase{{ExecutionID: execID, LaunchID: "finder-1-discovery-1", Finder: "finder-1", Phase: "discovery", USD: new(2.0)}}
+	proj, code := spend.Project(execID, phases)
+	if code != "" {
+		t.Fatalf("project %s: %s", execID, code)
+	}
+	return phases, proj
+}
+
+// resumedMonthlyFixture builds the resumed-bundle fixture: $6 already spent on
+// the month in bundle 42, bundle 43 already recording $1 under execution-A at
+// 12:00 (the part the interrupted run measured), and bundle 44 as the second
+// bundle authorizing at the same time. Both bundles carry the $10 ceiling.
+func resumedMonthlyFixture(t *testing.T) (root, dirA, dirB string) {
+	t.Helper()
+	root = fixtureRoot(t)
+	seedBundle(t, root, "42", `[{"at":"2026-05-01T12:00:00Z","projected_usd":6,"execution_id":"mtd-seed"}]`)
+	dirA = filepath.Join(root, ".verdict", "state", "43")
+	dirB = filepath.Join(root, ".verdict", "state", "44")
+	seedBundle(t, root, "43", "")
+	seedBundle(t, root, "44", "")
+	writeRunJSON(t, dirA, "execution-A", "10")
+	writeRunJSON(t, dirB, "execution-B", "10")
+	writeUnder(t, dirA, "cost.json", `[{"at":"2026-05-15T12:00:00Z","est_usd":1,"execution_id":"execution-A"}]`)
+	return root, dirA, dirB
+}
+
+// TestMonthlyResumedProjectionVisibleToSecondBundle proves a resumed
+// bundle's new projection — appended at 12:05, after the $1 it recorded under
+// the same execution_id at 12:00 — is counted by a second bundle's scan:
+// $6 seeded + $1 recorded + $2 resumed = $9, so the second bundle's $2
+// projection is over the $10 ceiling. Suppressing the resumed row would hide
+// pending spend from every scan and let the second bundle authorize at $9.
+func TestMonthlyResumedProjectionVisibleToSecondBundle(t *testing.T) {
+	root, dirA, dirB := resumedMonthlyFixture(t)
+	phasesA, projA := monthlyProjection(t, "execution-A")
+	stA := monthlyState(t, root, &scripted{}, false)
+	stA.req.Now = resumedClock
+	if ref := stA.authorizeProjection(t.Context(), dirA, mustCaptured(t, dirA), 1, phasesA, projA); ref != nil {
+		t.Fatalf("resumed authorize = %v, want nil ($6 seeded + $1 recorded + $2 pending = $9 <= $10)", ref)
+	}
+	raw, err := os.ReadFile(filepath.Join(dirA, "budget.json"))
+	if err != nil {
+		t.Fatalf("resumed bundle recorded no projection: %v", err)
+	}
+	if !strings.Contains(string(raw), `"at": "2026-05-15T12:05:00Z"`) {
+		t.Fatalf("budget.json = %s, want the resumed projection recorded at 12:05", raw)
+	}
+	phasesB, projB := monthlyProjection(t, "execution-B")
+	stB := monthlyState(t, root, &scripted{}, false)
+	stB.req.Now = resumedClock
+	if ref := stB.authorizeProjection(t.Context(), dirB, mustCaptured(t, dirB), 1, phasesB, projB); ref == nil || ref.Code != "spend-capped" {
+		t.Fatalf("second bundle = %v, want spend-capped (the resumed $2 receipt makes $9 + $2 > $10)", ref)
+	}
+}
+
+// TestMonthlyResumedConcurrentBundlesSerialize proves the repo-wide monthly
+// lock makes the resumed bundle's appended projection visible to the other
+// bundle's scan whichever authorizes first: both bundles spend $2 against $6
+// seeded plus the resumed bundle's $1 recorded, so the first authorizes at
+// $9 and the second must see that receipt and refuse at $11. One success and
+// one spend-capped refusal is the only outcome the lock allows.
+func TestMonthlyResumedConcurrentBundlesSerialize(t *testing.T) {
+	root, dirA, dirB := resumedMonthlyFixture(t)
+	phasesA, projA := monthlyProjection(t, "execution-A")
+	phasesB, projB := monthlyProjection(t, "execution-B")
+	stA := monthlyState(t, root, &scripted{}, false)
+	stA.req.Now = resumedClock
+	stB := monthlyState(t, root, &scripted{}, false)
+	stB.req.Now = resumedClock
+	capA := mustCaptured(t, dirA)
+	capB := mustCaptured(t, dirB)
+	results := make([]*core.RefusalError, 2)
+	var wg sync.WaitGroup
+	wg.Add(2)
+	go func() {
+		defer wg.Done()
+		results[0] = stA.authorizeProjection(t.Context(), dirA, capA, 1, phasesA, projA)
+	}()
+	go func() {
+		defer wg.Done()
+		results[1] = stB.authorizeProjection(t.Context(), dirB, capB, 1, phasesB, projB)
+	}()
+	wg.Wait()
+	assertConcurrentResult(t, results)
+}

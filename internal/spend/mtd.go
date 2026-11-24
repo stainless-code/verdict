@@ -110,17 +110,30 @@ func aggregateBundle(bundleDir, month string, sum *big.Rat, known, unknown *int)
 	aggregateLedger(bundleDir, month, sum, known, unknown, meta)
 }
 
+// unidentifiedExecID is the execution identity of a receipt that named no
+// execution. cost.json is agent-written and may omit the execution_id its
+// budget.json row carries, so an unidentified receipt and an identified row
+// can still be two halves of one authorization.
+const unidentifiedExecID = ""
+
 // recordedMeta carries the in-month recorded-cost identity that decides
-// which ledger rows are pre-run projections of already-counted spend:
-// execIDs and hasUnidentified cover the execution-level match, and maxAt is
-// the latest timestamp among in-month recorded receipts. Records from other
-// months are excluded from meta, so they cannot suppress the requested
-// month's ledger.
+// which ledger rows are pre-run projections of already-counted spend. The map
+// is keyed by execution identity and holds the latest in-month recorded
+// timestamp that identity carries: presence is the execution-level match,
+// and the timestamp is how far that identity's recorded cost already covers
+// the ledger. Records from other months are excluded from meta, so they
+// cannot suppress the requested month's ledger.
 type recordedMeta struct {
-	maxAt           time.Time
-	execIDs         map[string]bool
-	hasAny          bool
-	hasUnidentified bool
+	maxAt map[string]time.Time
+}
+
+// note records one in-month receipt's identity and timestamp, keeping the
+// latest timestamp each identity carries.
+func (m *recordedMeta) note(exec string, at time.Time) {
+	if prev, ok := m.maxAt[exec]; ok && !at.After(prev) {
+		return
+	}
+	m.maxAt[exec] = at
 }
 
 // aggregateRecorded counts the bundle's recorded cost files — cost.json
@@ -131,7 +144,7 @@ type recordedMeta struct {
 // recorded receipts; records outside month, and records without a parseable
 // timestamp, name no month's spend and never suppress the ledger.
 func aggregateRecorded(bundleDir, month string, sum *big.Rat, known, unknown *int) *recordedMeta {
-	meta := &recordedMeta{execIDs: map[string]bool{}}
+	meta := &recordedMeta{maxAt: map[string]time.Time{}}
 	for _, name := range recordedCostNames(bundleDir) {
 		countRecordedFile(bundleDir, name, month, sum, known, unknown, meta)
 	}
@@ -266,16 +279,8 @@ func processCostRecord(rec any, month string, sum *big.Rat, known, unknown *int,
 	if recordMonth != month {
 		return
 	}
-	meta.hasAny = true
 	atTime, _ := atTimeOf(at)
-	if atTime.After(meta.maxAt) {
-		meta.maxAt = atTime
-	}
-	if exec := stringFieldOf(obj, "execution_id"); exec != "" {
-		meta.execIDs[exec] = true
-	} else {
-		meta.hasUnidentified = true
-	}
+	meta.note(stringFieldOf(obj, "execution_id"), atTime)
 	est, _ := obj.Get("est_usd")
 	if rat, ok := ratOfJSONNumber(est); ok {
 		sum.Add(sum, rat)
@@ -315,7 +320,7 @@ func countLedgerReceipt(receipt any, month string, seen map[string]bool, sum *bi
 	if !isInMonth(at, month) {
 		return
 	}
-	if shouldSuppress(obj, at, meta) {
+	if isLedgerSuppressed(obj, at, meta) {
 		return
 	}
 	if isDuplicate(obj, seen) {
@@ -325,13 +330,6 @@ func countLedgerReceipt(receipt any, month string, seen map[string]bool, sum *bi
 }
 
 func isInMonth(at any, month string) bool { return sameMonth(at, month) }
-
-func shouldSuppress(obj *jq.Obj, at any, meta *recordedMeta) bool {
-	if meta == nil || !meta.hasAny {
-		return false
-	}
-	return isLedgerSuppressed(obj, at, meta)
-}
 
 func isDuplicate(obj *jq.Obj, seen map[string]bool) bool {
 	key := budgetDedupeKey(obj)
@@ -346,27 +344,26 @@ func isDuplicate(obj *jq.Obj, seen map[string]bool) bool {
 }
 
 // isLedgerSuppressed reports whether one in-month ledger row is the pre-run
-// projection of already-counted in-month recorded cost. A direct
-// execution_id match suppresses unconditionally; when a recorded receipt in
-// the month carries no execution_id, an unmatched row is suppressed only
-// when it is not strictly later than the latest recorded timestamp — so an
-// earlier projection never double-counts, and a later consented run after
-// the recorded timestamp is counted.
+// projection of already-counted in-month recorded cost: a row at or before
+// the latest recorded timestamp its own execution identity carries is
+// covered. A strictly later row is not, so a resumed run's new projection
+// after its earlier recorded cost stays visible to every concurrent scan.
+// Unidentified recorded cost covers any row, whichever identity the row
+// carries, because legacy cost.json omits the id its budget.json row holds.
+// A ledger timestamp that cannot be ordered against the recorded cost is
+// suppressed: never double-count what cannot be compared.
 func isLedgerSuppressed(obj *jq.Obj, at any, meta *recordedMeta) bool {
-	exec := stringFieldOf(obj, "execution_id")
-	if exec != "" && meta.execIDs[exec] {
+	ledgerAt, ok := atTimeOf(at)
+	if !ok {
 		return true
 	}
-	if meta.hasUnidentified {
-		ledgerAt, ok := atTimeOf(at)
-		if !ok {
-			return true
-		}
-		if !ledgerAt.After(meta.maxAt) {
+	if recMaxAt, ok := meta.maxAt[stringFieldOf(obj, "execution_id")]; ok {
+		if !ledgerAt.After(recMaxAt) {
 			return true
 		}
 	}
-	return false
+	unidentified, ok := meta.maxAt[unidentifiedExecID]
+	return ok && !ledgerAt.After(unidentified)
 }
 
 func countLedgerValue(obj *jq.Obj, sum *big.Rat, known, unknown *int) {

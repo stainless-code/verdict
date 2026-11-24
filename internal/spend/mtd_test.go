@@ -328,3 +328,81 @@ func TestMTDLegacyCostUsesTimestampGate(t *testing.T) {
 		t.Fatalf("legacy later-gate = %+v, want known 8 (earlier suppressed, later counted)", got)
 	}
 }
+
+// TestMTDIdentifiedCostDoesNotCoverUnidentifiedRow proves a later identified
+// recorded cost never moves the gate that an unidentified receipt sets: $5
+// unidentified at 12:00, a distinct consented $3 row at 14:00, and another
+// execution's identified $2 at 16:00 is $10 — the 16:00 receipt belongs to
+// exec-3, so it must not suppress the 14:00 row, while the 12:00 row stays
+// covered and is not double-counted.
+func TestMTDIdentifiedCostDoesNotCoverUnidentifiedRow(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	writeBundleFiles(t, root, map[string]string{
+		"cost.json": `[{"at":"2026-05-02T12:00:00Z","est_usd":5},` +
+			`{"at":"2026-05-02T16:00:00Z","est_usd":2,"execution_id":"exec-3"}]`,
+		"budget.json": `[{"at":"2026-05-02T12:00:00Z","projected_usd":5},` +
+			`{"at":"2026-05-02T14:00:00Z","projected_usd":3}]`,
+	})
+	got := spend.AggregateMTD(stateDirOf(root), now)
+	if got.KnownUSD != "10" || got.KnownCount != 3 {
+		t.Fatalf("mixed MTD = %+v, want known 10 count 3 (5 recorded + 3 consented + 2 recorded)", got)
+	}
+}
+
+// TestMTDResumedProjectionAfterRecordedCost proves a ledger row strictly
+// later than its own execution's recorded cost is counted: a resumed run
+// authorizes the remaining work after recording the earlier part, so a scan
+// that suppressed it would hide pending spend from every concurrent bundle.
+// The earlier row, at or before the recorded timestamp, stays its pre-run
+// projection and is not double-counted.
+func TestMTDResumedProjectionAfterRecordedCost(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	writeBundleFiles(t, root, map[string]string{
+		"cost.json": `[{"at":"2026-05-02T12:00:00Z","est_usd":2,"execution_id":"exec-1"}]`,
+		"budget.json": `[{"at":"2026-05-02T11:55:00Z","projected_usd":2,"execution_id":"exec-1"},` +
+			`{"at":"2026-05-02T12:05:00Z","projected_usd":2,"execution_id":"exec-1"}]`,
+	})
+	got := spend.AggregateMTD(stateDirOf(root), now)
+	if got.KnownUSD != "4" || got.KnownCount != 2 {
+		t.Fatalf("resumed MTD = %+v, want known 4 count 2 (recorded 2 + resumed projection 2)", got)
+	}
+}
+
+// TestMTDUnidentifiedCostCoversIdentifiedRow proves the unidentified gate
+// applies to identified ledger rows: cost.json is agent-written, so a legacy
+// record can omit the execution_id the budget.json row it projects carries.
+// The row at 11:55 under exec-1 is that projection of the 12:00 $5 record and
+// must not count again.
+func TestMTDUnidentifiedCostCoversIdentifiedRow(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	writeBundleFiles(t, root, map[string]string{
+		"cost.json":   `[{"at":"2026-05-02T12:00:00Z","est_usd":5}]`,
+		"budget.json": `[{"at":"2026-05-02T11:55:00Z","projected_usd":5,"execution_id":"exec-1"}]`,
+	})
+	got := spend.AggregateMTD(stateDirOf(root), now)
+	if got.KnownUSD != "5" || got.KnownCount != 1 {
+		t.Fatalf("identified-row gate = %+v, want known 5 count 1 (one authorization)", got)
+	}
+}
+
+// TestMTDRecordedCostAbsorbsEarlierProjections proves the resumed projection
+// is not a permanent second charge: once exec-1 measures the resumed work
+// again at 14:00, that receipt covers every earlier row of the execution, so
+// the bundle counts its two measured $2 records and neither projection.
+func TestMTDRecordedCostAbsorbsEarlierProjections(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	writeBundleFiles(t, root, map[string]string{
+		"cost.json": `[{"at":"2026-05-02T12:00:00Z","est_usd":2,"execution_id":"exec-1"},` +
+			`{"at":"2026-05-02T14:00:00Z","est_usd":2,"execution_id":"exec-1"}]`,
+		"budget.json": `[{"at":"2026-05-02T11:55:00Z","projected_usd":2,"execution_id":"exec-1"},` +
+			`{"at":"2026-05-02T12:05:00Z","projected_usd":2,"execution_id":"exec-1"}]`,
+	})
+	got := spend.AggregateMTD(stateDirOf(root), now)
+	if got.KnownUSD != "4" || got.KnownCount != 2 {
+		t.Fatalf("measured MTD = %+v, want known 4 count 2 (two measured $2 records, no projection)", got)
+	}
+}
