@@ -1536,6 +1536,45 @@ claimed, keyed to the same head. A claim the manifest cannot name never counts,
 and a review with no `chunks[]` key stores `0`, so the receipt never attests
 more than was written.
 
+An incremental (`fetch --base-sha`/`--since`) bundle grades the full hunk
+snapshot against the agent's current `coverage[]` unioned with the prior
+round's recorded attestation in `prior-coverage.json` (the same
+`file`/`ranges` shape). That file holds the previous head's line numbers, so
+the evaluator first translates it into current-head coordinates through
+`incremental.diff`'s own hunks: a context line maps to where the delta puts
+it, a deleted or re-modified line has no counterpart and loses its credit, an
+added line is new and unattested, and a file the delta never names keeps its
+numbers. A delta section that cannot be mapped — binary content, a rename, or
+a hunk whose body disagrees with its header — withholds that file's prior
+credit, with one warning, rather than guessing. One line inserted above a
+prior range therefore moves the credit with it: the range stays attested and
+the line the insertion covered is not.
+
+Ranges the recorded prior already covered stay credited, so the agent attests
+only the delta; ranges the prior never covered remain gaps unless the agent
+attests them now. Lines the delta re-modifies are the exception — their prior
+credit is invalidated, so they must be re-attested even within the delta.
+Credit comes only from the recorded file — an absent or unreadable one credits
+nothing, and grading fails closed against the full hunks.
+
+`record` persists the attested union as the next round's
+`prior-coverage.json` on every successful non-chunked run, which keeps
+unchanged lines credited and drops re-modified ones. A non-chunked run with no
+attested line removes the file: an empty union means nothing is validly
+attested for this head, and an earlier round's numbers would credit exactly
+the lines this one re-modified. A chunked run carries no line ranges, so it
+translates the recorded prior through its delta and writes back what survives
+(or removes the file when nothing does); a chunked run without a delta removes
+it, so an earlier head's credit cannot leak into the next grading. A
+`prior-coverage.json` write that fails after `record.json` is durable discards
+the stale prior and warns that the next incremental round grades without prior
+credit.
+
+Fetching without `--base-sha`/`--since` clears any leftover
+`incremental.diff` and its note, so the new full-diff round cannot credit
+stale prior lines; a delta the run cannot remove refuses the fetch instead of
+leaving the marker behind. Full-diff rounds ignore the file entirely.
+
 ## Bounded foreground waits
 
 ```sh
@@ -2239,6 +2278,87 @@ docs before trusting it.
 The server is experimental until 1.0: tool shapes may still move, while the
 envelope keeps its `schema_version` contract.
 
+### ACP server (stdio, experimental until 1.0)
+
+`verdict acp` serves read-only verdict queries as ACP v1 over stdio:
+newline-delimited JSON-RPC 2.0 on stdin/stdout, one frame per line, mirroring
+the MCP transport framing. There is no daemon, listener, HTTP mode, or remote
+auth: the process shares the host's credentials and exits when stdin closes.
+`verdict acp --help` documents it. Like `verdict mcp`, every answer is
+backed exclusively by the typed core query layer (`internal/core/query`): no
+duplicate counting or finding logic, no model calls, no disk writes, and no
+bundle history is touched beyond the composed reads.
+
+The handshake is the ACP v1 one: `initialize` carries `protocolVersion: 1`
+(only version 1 is spoken, so any requested integer answers 1), and the
+response advertises `capabilities` holding `loadSession: false` plus
+disabled `promptCapabilities` and `mcpCapabilities`, the identity under both
+`agentInfo` and `serverInfo` (`name: verdict`, `version: <build>`), and an
+empty `authMethods`. `ping` answers with an empty result, `$/cancel_request`
+and `notifications/cancelled` cancel an in-flight query by request id, and
+unknown methods answer `-32601`.
+
+Four `verdict/`-namespaced extension methods carry the reads, and each result
+is the query view's data fields plus `at`, `repo`, `pr`, `next`, and
+`warnings`:
+
+- `verdict/bundles/list` (`{pattern?}`) lists every bundle under the served
+  root (via `query.Layer.Bundles`), one row each with its counts and head.
+- `verdict/findings/list` (`{bundle}`) composes one bundle's detail (via
+  `query.Layer.Detail`): the ranked findings in `report.items[]` with their
+  evidence rungs (`rigor`), plus the gate, threads, and artifact ledger.
+  Policy-withheld findings never appear here.
+- `verdict/findings/get` (`{bundle, sig}`) reads one finding (via
+  `query.Layer.Show`), byte-identical to `show --json`'s data.
+- `verdict/findings/copy` (`{bundle, sig}`) returns the deterministic
+  `Prompt for AI agent` block and the runnable `verdict triage` command (via
+  `query.Layer.Copy`), reusing the hosted body's fenced prompt and stale
+  triage floor exactly. A policy-withheld finding has no copy — it answers
+  `not-found` and never renders its prompt.
+
+Malformed JSON answers `-32700` (`parse error`), a missing `jsonrpc` or
+`method` answers `-32600`, unknown methods answer `-32601`, and invalid
+params, missing bundles, unknown sigs, corrupt stores, and traversal bundle
+names answer `-32602` with the refusal `code` in `error.data` (for example
+`not-found`, `unknown-sig`, `bad-bundle`, `bundle-ambiguous`). A bundle name
+is always resolved inside the served root first, so a path that leaves the
+root is refused before anything reads there. `--root` picks the served root
+(default: the current repository, through the same probe the read verbs
+share); `--check` picks the gate tier a detail composes and `--max-bundles`
+the listing cap. `--json` is accepted for CLI-convention parity — stdio is
+JSON-RPC either way. Exit 0 on clean EOF, 3 on a caught signal, 1 on a start
+refusal.
+
+#### Editor setup
+
+Any ACP client launches the same argv. The generic stdio shape is one
+command with `--root` beside it:
+
+```json
+{
+  "agentServers": {
+    "verdict": {
+      "command": "verdict",
+      "args": ["acp", "--root", "/path/to/checkout"]
+    }
+  }
+}
+```
+
+Zed's ACP config is the same `command` + `args` pair under its agent server
+table — point `args[2]` at the checked-out repository and send `initialize`
+with `protocolVersion: 1` before any `verdict/` query. In Neovim, register a
+stdio client that spawns `verdict acp` with the same argv; the wire is
+newline-delimited JSON-RPC, so a manual smoke test is one line per request:
+
+```sh
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1}}' |
+  verdict acp --root /path/to/checkout
+```
+
+The server is experimental until 1.0: method names may still move, while the
+envelope keeps answering only the reads the query layer composes.
+
 ### Pre-push probe (local gate before CI burns)
 
 Drop the combined gate into `.git/hooks/pre-push` (executable) so a stale HEAD
@@ -2475,7 +2595,7 @@ static-page marker refuses `html-not-export`. Recovery and I/O failures use
 
 ## Journal
 
-Every bundle-writing CLI or MCP invocation (`fetch`, `fetch-local`, `run`, `record` including `--dry-run`, `post`, `verify`, `fix`, `triage`, `adopt`, `ingest`, `threads`, `calibrate`, `report`, `drain`) appends two compact JSON lines to an external, local-only journal file under `<state>/verdict/journal/<repo-key>/<pr>.jsonl` under `storelock` (`<pr>.jsonl.lock` beside the file, mode `0600`): a `start` line when the call begins and an `end` line when it returns, paired by `step` (`<started_at>-<pid>-<n>`, unique per invocation, so two overlapping calls never fold into one pair). Read-only verbs (`show`, `next`, `handoff`, `config`, `risk`, `pack`, `index`, `check-tree`, `doctor`, `pr-wait`, `ready`, `gate`, `journal`), multi-bundle verbs (`trend`, `panel`, `backtest`), non-bundle verbs (`init`, `learn`, `skill`, `upgrade`, `uninstall`, `serve`, `mcp`), and calls refused by a `--read-only` MCP server never write a journal line.
+Every bundle-writing CLI or MCP invocation (`fetch`, `fetch-local`, `run`, `record` including `--dry-run`, `post`, `verify`, `fix`, `triage`, `adopt`, `ingest`, `threads`, `calibrate`, `report`, `drain`) appends two compact JSON lines to an external, local-only journal file under `<state>/verdict/journal/<repo-key>/<pr>.jsonl` under `storelock` (`<pr>.jsonl.lock` beside the file, mode `0600`): a `start` line when the call begins and an `end` line when it returns, paired by `step` (`<started_at>-<pid>-<n>`, unique per invocation, so two overlapping calls never fold into one pair). Read-only verbs (`show`, `next`, `handoff`, `config`, `risk`, `pack`, `index`, `check-tree`, `doctor`, `pr-wait`, `ready`, `gate`, `journal`), multi-bundle verbs (`trend`, `panel`, `backtest`), non-bundle verbs (`init`, `learn`, `skill`, `upgrade`, `uninstall`, `serve`, `mcp`, `acp`), and calls refused by a `--read-only` MCP server never write a journal line.
 
 **Location, scope, and cleanup.** `<state>` is `$XDG_STATE_HOME` when set, else `~/.local/state` (on Windows, `%LOCALAPPDATA%` when `$XDG_STATE_HOME` is unset). `<repo-key>` is the first 16 hex characters of `sha256` of the canonical absolute repository root, and `<pr>` is the resolved bundle name (`5101`, `local-7`, `corpus-3`). Nothing journal-related is written inside the repository or `.verdict/` — unless `$XDG_STATE_HOME` (or `%LOCALAPPDATA%`) itself points inside the repository, in which case the journal lands wherever that variable points — so dry runs, refusals, and bundle receipts (`provenance.json`, `run.json`) stay completely untouched. The journal is local to your machine — never committed or uploaded. Delete one bundle's journal by removing `<state>/verdict/journal/<repo-key>/<pr>.jsonl` (and its `.lock` file), or wipe every journal for a repository with `rm -rf <state>/verdict/journal/<repo-key>`.
 
@@ -2493,10 +2613,13 @@ Each `start` line records `repo` (the canonical repository root), `verb`, `chann
 
 `verdict serve` starts one read-only HTTP surface over the current repository's
 bundles. With `--root`, it discovers every repository below that directory.
-The server binds `127.0.0.1` on a kernel-assigned port by default. Pass `--port`
-to pin the port or `--host` to bind another interface. The server prints one
-tokenised start URL and stops on Ctrl-C (exit 3). It never fetches, posts, runs
-a model, or writes a store.
+With `--interactive`, it adds two local-only write endpoints — `POST
+/v1/triage` and `POST /v1/kb/promote` — through the same triage and learn
+services the CLI calls. The server binds `127.0.0.1` on a kernel-assigned
+port by default. Pass `--port` to pin the port or `--host` to bind another
+interface. The server prints one tokenised start URL and stops on Ctrl-C
+(exit 3). It never fetches, posts, runs a model, or reaches the network;
+without `--interactive`, it writes no store at all.
 
 The browser UI has an inbox, review detail with its evidence ledger, threads,
 cost, precision, and a gate panel. It reads the same `/v1` envelopes as other
@@ -2540,8 +2663,10 @@ HTTP, with the token and session cookie unencrypted), `--port <n>` (default
 start; the flag warns it is visible in `ps` and shell history), `--check
 <tier>` (the gate tier the bundle detail composes; default `critical`),
 `--max-bundles <n>` (default 500), `--interval <duration>` (default `1s`, minimum
-`100ms`), `--sweep <duration>` (default `30s`, at least `--interval`), and
-`--no-watch` (disable polling and remove `/v1/events`). Atomic writes are visible
+`100ms`), `--sweep <duration>` (default `30s`, at least `--interval`),
+`--no-watch` (disable polling and remove `/v1/events`), and `--interactive`
+(register the two local-only write endpoints; default off, and the default
+surface stays GET-only). Atomic writes are visible
 within one tick; non-atomic in-place edits are visible within one sweep. A tick
 checks the state directory, each bundle directory, existing `chunks/`
 directories, and `.verdict/overrides/`; a sweep fingerprints directory entries.
@@ -2566,18 +2691,20 @@ than from history.
 
 **Routes** (GET, plus HEAD from the mux):
 
-| Route                                                       | Envelope                                                                           |
-| ----------------------------------------------------------- | ---------------------------------------------------------------------------------- |
-| `GET /v1/health`                                            | `serve` — version, roots, watch state, interval, cache counters, `read_only: true` |
-| `GET /v1/roots`                                             | `serve` — the served roots with counts, `truncated`, `skipped`, `discovery`        |
-| `GET /v1/bundles`                                           | `serve` — inbox rows, portfolio counts, `partial`, `sources[]`, `errors[]`         |
-| `GET /v1/cost?by=repo\|week\|model`                         | `serve` — cost buckets and totals, with `partial`, `sources[]`, `errors[]`         |
-| `GET /v1/precision?by=category\|tier`                       | `serve` — stored-join outcomes; `fixed` is `null` and no rate is printed           |
-| `GET /v1/roots/{root}/bundles/{bundle}`                     | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                    |
-| `GET /v1/roots/{root}/bundles/{bundle}/compare`             | `serve` — `data.compare` against `?baseline={bundle}`; `bad-baseline` refuses      |
-| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}`      | `show` — byte-identical `data` to `show --json`                                    |
-| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}/copy` | `serve` — `data.{prompt,triage}` copy payloads (read-only)                         |
-| `GET /v1/events`                                            | SSE invalidations; absent with `--no-watch`                                        |
+| Route                                                       | Envelope                                                                                                                                                             |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /v1/health`                                            | `serve` — version, roots, watch state, interval, cache counters, `read_only: true` (`false` with `--interactive`, which also carries `interactive: true` and `csrf`) |
+| `GET /v1/roots`                                             | `serve` — the served roots with counts, `truncated`, `skipped`, `discovery`                                                                                          |
+| `GET /v1/bundles`                                           | `serve` — inbox rows, portfolio counts, `partial`, `sources[]`, `errors[]`                                                                                           |
+| `GET /v1/cost?by=repo\|week\|model`                         | `serve` — cost buckets and totals, with `partial`, `sources[]`, `errors[]`                                                                                           |
+| `GET /v1/precision?by=category\|tier`                       | `serve` — stored-join outcomes; `fixed` is `null` and no rate is printed                                                                                             |
+| `GET /v1/roots/{root}/bundles/{bundle}`                     | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                                                                                                      |
+| `GET /v1/roots/{root}/bundles/{bundle}/compare`             | `serve` — `data.compare` against `?baseline={bundle}`; `bad-baseline` refuses                                                                                        |
+| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}`      | `show` — byte-identical `data` to `show --json`                                                                                                                      |
+| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}/copy` | `serve` — `data.{prompt,triage}` copy payloads (read-only)                                                                                                           |
+| `GET /v1/events`                                            | SSE invalidations; absent with `--no-watch`                                                                                                                          |
+| `POST /v1/triage`                                           | `serve` — `data.{sig,status}`; interactive only (see below)                                                                                                          |
+| `POST /v1/kb/promote`                                       | `serve` — `data.rule` appends one learn rule; interactive only (see below)                                                                                           |
 
 The `bundles` SSE event carries one compact envelope with the root, detector
 (`tick` or `sweep`), changed and removed bundle names, and `truncated`. Events
@@ -2596,8 +2723,13 @@ listing keeps its row with `null` counts and an `errors[]` entry, and any total
 over it is `null` and `partial: true` — never `0`. A root whose `.verdict/state`
 is not a directory, or will not list, adds one `corrupt-store` row naming it
 rather than reading as a root with no bundles. Transport errors are a
-separate vocabulary: `400` (`token-in-query`, `bad-glob`), `401`, `403`
-(Host/Origin), `404`, and `405` with `Allow: GET, HEAD`. Every response carries
+separate vocabulary: `400` (`token-in-query`, `bad-glob`, `bad-content-type`,
+`bad-body`), `401`, `403` (Host/Origin, and `bad-csrf` on a write with a
+missing, empty, or wrong `X-Verdict-CSRF` token), `404`, and `405`. Without
+`--interactive` the two write paths accept no method and answer `405` with
+`Allow: GET, HEAD` (and `method-not-allowed` on the write paths' own GET);
+with `--interactive` they accept `POST` only, and every other method —
+including `GET` — answers `405` with `Allow: POST`. Every response carries
 the strict CSP (`default-src 'self'`, no inline script or style), no referrer,
 `nosniff`, same-origin resource and opener policies, and `no-store`; no CORS
 header is ever emitted, and only loopback `Host`/`Origin` spellings are
@@ -2605,6 +2737,31 @@ accepted (the DNS-rebinding gate). A wildcard bind (`--host 0.0.0.0` or `::`)
 still allowlists only the loopback names, so a LAN client needs a concrete
 interface address such as `--host 192.168.1.10`. `/v1` is the only version: a
 breaking change becomes `/v2`.
+
+**Interactive writes.** With `--interactive`, the two write endpoints are
+exact local mirrors of the CLI: `POST /v1/triage` accepts `root`, `bundle`,
+`sig`, `status` (`open|addressed|wont-fix|false-positive|deferred`),
+`rationale`, and `force`, and runs the triage service over the bundle's
+`findings.json` (including its KB credit); `POST /v1/kb/promote` accepts
+`root`, `rule`, `scope`, `rigor` (default `pointed`), `provenance`, and
+`id`, and runs the learn service's append over the root's `.verdict/kb.jsonl`.
+Same validation, same atomic store locking, byte-identical files — the
+transport adds no business logic. Every write is gated, in order, by the
+session cookie or bearer token, a per-session `X-Verdict-CSRF` header
+(constant-time compared; minted per process start, published only in the
+`GET /v1/health` envelope under `csrf`, never in a URL and never in the static
+`data.json` export, which reads no health view), a present allowlisted
+`Origin` (an absent Origin is refused on writes, though reads accept it), and
+a strict `Content-Type: application/json` with a 64 KiB body cap and no unknown
+fields. Any failed gate is a transport refusal before any store is read or
+written, and a confined `root`/`bundle` is resolved through the same
+path-traversal, symlink, and served-set confinement as a read — an unserved
+root is `404 not-found`, a traversal bundle is the shared bundle-name refusal.
+A triage or promote refusal the service raises is the usual `200` typed
+envelope (`error.code`), never a `5xx`. The embedded UI shows triage controls
+on Detail and Compare findings and a KB promotion form only when `/v1/health`
+advertises `interactive: true` — never in `static` mode — and reads the
+operator's result or refusal back from the status line.
 
 A path carrying a traversal segment, a backslash, or a line break — a control
 rune, U+2028, or U+2029 — is refused before routing with the `404` `no such

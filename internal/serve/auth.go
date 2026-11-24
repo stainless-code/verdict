@@ -26,10 +26,16 @@ func newToken() string { return rand.Text() }
 // tokenEqual compares a candidate against the session token in constant time,
 // rejecting a length mismatch first.
 func (s *Server) tokenEqual(candidate string) bool {
-	if len(candidate) != len(s.token) {
+	return equalSecret(candidate, s.token)
+}
+
+// equalSecret compares two secrets in constant time, rejecting a length
+// mismatch first.
+func equalSecret(candidate, secret string) bool {
+	if len(candidate) != len(secret) {
 		return false
 	}
-	return subtle.ConstantTimeCompare([]byte(candidate), []byte(s.token)) == 1
+	return subtle.ConstantTimeCompare([]byte(candidate), []byte(secret)) == 1
 }
 
 // cookieName is the per-port session cookie name.

@@ -173,6 +173,21 @@ noscript {
   max-width: 76rem;
   padding: 1rem;
 }
+.triage,
+.kb-promote {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem;
+}
+.triage input[type="text"],
+.triage input:not([type]),
+.kb-promote input {
+  min-width: 10rem;
+}
+.kb-promote {
+  margin-bottom: 1rem;
+}
 @media (max-width: 38rem) {
   .topbar {
     flex-wrap: wrap;
