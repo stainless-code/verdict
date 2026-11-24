@@ -761,6 +761,35 @@ branch, never the working tree and never a branch commit, so a PR cannot
 disable the built-in rules that review it; an id no built-in pack declares is a
 warning, never a refusal. Absent keys merge every built-in pack.
 
+One central rules pack set can be pinned from the same base-owned file:
+
+```json
+{
+  "schema_version": "1",
+  "packs": {
+    "org_pack": {
+      "repo": "https://example.invalid/stainless/rules.git",
+      "ref": "v1.2.3",
+      "path": "packs/org"
+    }
+  }
+}
+```
+
+`repo` is the central repository — one of the allowlisted git remote forms
+`pack add` accepts, or a local directory for offline mirrors; `ref` is the
+immutable version, a 40-hex commit SHA or a semver tag such as `v1.2.3` (a
+branch name like `main` is refused `bad-config`, so the governed rule set can
+never float); `path` is the pack root inside that repository (default `.`),
+confined to a repository-relative slash path — an absolute spelling, a
+backslash, a colon, or any `..` segment is refused, the same grammar the
+vendoring step applies to a clone. `verdict pack sync` vendors that
+pack and hash-locks it (below), `report` names the governing `org_pack`
+version in its human line and `data.org_pack`, and the provenance receipt
+records it as an `org_pack` input beside the locked content hash. The pin is
+read from the trusted base exactly like `merge_builtin`, so a PR branch — and
+personal settings — can never change or drop it.
+
 `verdict pack list [--json]` reports every loaded pack (built-in, org, repo)
 in precedence order: `name`, `version`, `layer`, `source` (`builtin`,
 `dir:<path>`, or `.verdict/packs/<name>`), the canonical tree `hash`, the
@@ -869,6 +898,24 @@ backup is a warning that names the leftover path, not a refusal: the add has
 succeeded and the loader skips the dotted sibling. A source inside
 `.verdict/packs/` refuses `bad-pack`: it is already vendored.
 
+`verdict pack sync [--json]` wires the org pin into that same vendoring
+step: it reads `packs.org_pack` from the trusted base (never the worktree),
+fetches that one repository — a hermetic clone exactly like `add`'s, or a
+local directory read in place — loads the pack at `path`, and vendors and
+locks it the way `add` would. A git pin differs from `add`'s fetch in two
+ways, both because the pin is immutable: the fetch asks for the pin's exact
+Git ref — `refs/tags/<tag>` for a semver tag, never `clone --branch`, which
+resolves `refs/heads/<tag>` first and so lets a branch of the pin's name
+answer for it, or the 40-hex commit itself for a SHA pin — and a `path` below
+the root first narrows the working tree with `git sparse-checkout` in cone
+mode (git 2.26 or newer), so only the pinned subtree lands on disk. It is the
+only fetch: `pack list`, `pack check`, and every review path only ever
+re-verify the vendored tree against `verdict.lock` and never touch the
+network. With no pin the command refuses `bad-pack`; an unreachable source
+refuses `pack-git-failed` (git) or `bad-pack` (a local path that carries no
+pack), and a path that escapes the central repository refuses before any
+write.
+
 `verdict.lock` is strict JSON (unknown or differently-cased keys refuse,
 exactly as `pack.json`), with `schema_version: "1"` and `packs` sorted by
 name: `{name, source, version, hash, sig}`. `source` is `dir:<path>` or
@@ -880,11 +927,18 @@ one-slash scheme, or any userinfo password refuses `bad-lock-source`. A
 `dir:` label that looks
 like a URL is listed as `<invalid source>`. `hash` is the canonical tree hash
 `pack list` prints. `sig` is an integrity digest, not a signature: sha256
-over `name=`, `source=`, `version=`, and `hash=` lines in that order, so a
-hand-edited row is caught. The lock covers the repo layer only: the built-in
-pack is pinned by the binary, and org packs live in per-operator settings, so
-neither is locked. `pack add` writes the file atomically and keeps every
-other row.
+over `name=`, `source=`, `version=`, and `hash=` lines in that order, then
+`org_path=` and `org_ref=` on a row that records them, so a hand-edited row
+is caught. The lock covers the repo layer, the built-in pack is pinned by the
+binary, and personal-settings org packs live outside the lock — but a
+base-owned `org_pack` pin vendors its pack into the repo layer, and that pack
+locks like any repo pack: its row also carries `org_path` (the central path it
+came from, absent when the pin names the repository root) and `org_ref` (the
+immutable SHA or semver tag the pin read at sync time). Both are part of the
+`sig`, and `pack sync` is the only writer: moving the path or bumping the ref
+without re-syncing refuses `pack-lock-missing` and names `pack sync` as the
+fix, because the vendored tree belongs to the old pin. `pack add` (and `pack
+sync`) write the file atomically and keep every other row.
 
 `fetch`, `fetch-local`, `post`, and `record` run one shared check where packs
 are resolved. With no repo packs and no lock, nothing changes. A repo pack
@@ -895,7 +949,19 @@ not match its fields refuses `pack-lock-drift` naming the pack and both
 hashes. The check runs at fetch and again at post/record, with no bypass
 flag. `.verdict/verdict.lock` also joins the `controls` inventory, so it is
 read at the PR base: a PR cannot edit the lock that guards its own review,
-and editing the captured copy refuses `controls-stale` at post/record.
+and editing the captured copy refuses `controls-stale` at post/record. When
+a base-owned `org_pack` pin governs, the pack verbs additionally verify the
+vendored central pack against the pin and the lock on every resolution —
+with zero network access — and refuse `pack-lock-missing` (no row synced
+from the pinned repository, or a row synced at another `ref`) or
+`pack-lock-drift` (the vendored tree no longer hashes to the locked content)
+instead of falling back to a previous pack set; `run` and `record` inherit the
+same protection through the lock. The pin is read from the captured base
+configuration, so a captured `config.json` that cannot be read (deleted, or
+over the control size cap) refuses `controls-unavailable` rather than reading
+as no pin. `report` shows the governing version as `org_pack` (human line and
+`data.org_pack`; see the config example above), and the provenance receipt
+carries it as an `org_pack` input.
 
 ### Evidence ledger
 
@@ -2148,8 +2214,11 @@ exits when stdin closes. It is listed as experimental in the usage block, and
 
 Tools are named after the verbs and take the core request shape: `adopt`,
 `calibrate`, `check-tree`, `config`, `doctor`, `fetch`, `fetch-local`, `fix`, `index`, `ingest`, `init`,
-`learn`, `next`, `pack`, `post`, `pr_wait`, `ready`, `record`, `report`, `risk`, `show`,
-`threads`, `trend`, `verify`. That is 24 tools. `upgrade` and `skill` are distribution surfaces,
+`handoff`, `journal`, `learn`, `next`, `pack`, `post`, `pr_wait`, `query-bundles`, `query-copy`, `query-cost`,
+`query-finding`, `query-findings`, `query-health`, `ready`, `record`, `report`, `risk`, `show`,
+`threads`, `trend`, `verify`. That is 32 tools. The six `query-*` tools are the dashboard reads over the
+shared query layer (no CLI twin), not verbs — they compose through `internal/core/query`, the same layer
+`verdict serve` and `verdict acp` share, so there is no duplicate counting or finding logic. `upgrade` and `skill` are distribution surfaces,
 never tools; `triage` is human-owned and joins the surface only with
 `--operator`, so an agent proposes status changes through `triage[]` in
 `review.json` instead. Input schemas are generated from the Go request structs,
@@ -2161,8 +2230,9 @@ error the model sees before calling instead of a runtime refusal. `post` writes
 a review and sends it to the host (GitHub, GitLab, or Forgejo), so it is not
 exposed under `--read-only`.
 
-`--read-only` exposes the read tools (`report`, `next`, `show`, `risk`, `trend`,
-`ready`, `doctor`, `check-tree`, `config`, `index`, `pack`, `pr_wait`) plus `record` limited to its `dry_run: true`
+`--read-only` exposes the read tools (`report`, `next`, `show`, `risk`, `trend`, `query-bundles`, `query-copy`,
+`query-cost`, `query-finding`, `query-findings`, `query-health`,
+`ready`, `doctor`, `check-tree`, `config`, `index`, `pack`, `pr_wait`, `handoff`, `journal`) plus `record` limited to its `dry_run: true`
 form, and is mutually exclusive with `--operator`. A non-dry `record` call
 there is an `isError` `bad-flags` result naming `dry_run`; the tool keeps
 `readOnlyHint: false` because the same tool writes by default. `report` writes
@@ -2181,7 +2251,7 @@ with the constrained `record` and `report` forms above. A tool hidden by
 that exposes it (`triage` without `--operator`), so
 a hidden verb is never reported as an unknown one; a truly unknown name still
 answers `unknown tool`.
-`--operator` adds `triage` (20 tools) for an operator's own assistant that is
+`--operator` adds `triage` (33 tools) for an operator's own assistant that is
 allowed to flip statuses, and it unlocks the `threads` resolve mode; it is
 never the default. Each `tools/list` entry
 carries a short `title` plus the four MCP behavior hints (`readOnlyHint`,
@@ -2224,6 +2294,38 @@ Prompts and resources are read-only in every server mode, including
 `--read-only` and `--operator`, and `skill` remains a distribution surface,
 never a tool. `initialize` advertises both capabilities
 and points hosts at the `review` prompt or `verdict://skill/PROCEDURE.md`.
+
+**Dashboard query tools and resources.** Six read-only tools answer dashboard
+questions ("open findings in this repo", "list bundles", "cost this week by
+model", "get one finding plus its fix prompt") straight from `internal/core/query`,
+with the same envelope (`at`, `repo`, `pr`, `next`, `warnings` plus the view
+data) `verdict serve` renders:
+
+- `query-bundles` (`pattern?`) — every bundle under the served root with counts and head.
+- `query-findings` (`bundle`) — one bundle's ranked findings with evidence rungs.
+- `query-finding` (`bundle`, `sig`) — one finding with its fix, byte-identical to `show --json`'s data.
+- `query-copy` (`bundle`, `sig`) — the deterministic fix prompt plus the runnable `verdict triage` command.
+- `query-cost` (`by?`: `repo`, `week`, `model`; empty defaults to `model`) — spend rollup with totals.
+- `query-health` — version, served roots, and bundle counts.
+
+All six are strictly read-only (`readOnlyHint: true`, no local writes, no
+journal entries) and are served in every mode, including `--read-only`; like
+the ACP extension methods they never write the disk, spawn a process, or call
+the network. Bundle names resolve inside the served root through the same
+guard every verb shares, so a traversal name refuses `bad-flags` and a missing
+bundle refuses `not-found`. The same reads are addressable as resources:
+`resources/list` adds `verdict://roots`, `verdict://bundles`, `verdict://health`,
+and `verdict://cost` (model) beside the skill payloads, `resources/templates/list`
+offers `verdict://findings/{bundle}`, `verdict://finding/{bundle}/{sig}`,
+`verdict://compare/{bundle}/{baseline}`, `verdict://cost/{by}`, and
+`verdict://precision/{by}`, and `resources/read` returns each view as one
+`application/json` content block. A URI outside the `verdict://` grammar and a
+bundle the root does not hold answer `-32002` (resource not found); an
+addressable but missing finding answers `-32602` with the refusal code in
+`error.data`. A non-lowercase or otherwise malformed sig in
+`verdict://finding/...` answers `-32002` (the URI grammar only admits
+addressable sigs), while the same sig passed to `query-finding` refuses
+`unknown-sig`.
 
 #### Host config
 

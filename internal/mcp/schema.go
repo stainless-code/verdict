@@ -7,6 +7,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
+	"github.com/stainless-code/verdict/internal/core/query"
 )
 
 const (
@@ -162,7 +163,8 @@ func fieldSchema(toolName string, sf *reflect.StructField, omit map[string]bool)
 // fieldEnums publishes a tool-specific value list for a field whose Go type
 // carries none, so the transport advertises exactly what it serves.
 var fieldEnums = map[string][]string{
-	"index.Query": indexcore.MCPQueries,
+	"index.Query":   indexcore.MCPQueries,
+	"query-cost.By": query.CostDimensions(),
 }
 
 // applyFieldEnum overrides a struct-tag enum with the tool's own list.
@@ -294,20 +296,23 @@ var fieldDocs = map[string]string{
 	"ready.WaitFor":    "Wait for build completion before reporting readiness; timeout returns not-ready data.",
 	"ready.Timeout":    "Build wait duration, 1s–50s; defaults to 50s when wait_for is build.",
 
-	"Repo":       "Repository as owner/name.",
-	"Pr":         "Pull-request number or bundle slug (local-<name> for local bundles).",
-	"Sig":        "Finding signature or unique prefix.",
-	"All":        "Batch every open inline finding at or above the severity floor.",
-	"Test":       "Promote one reproduced finding's retained artifact to .verdict/tests/<sig>-<hash>.<ext>.",
-	"Commit":     "Commit the promoted regression test alone as test: regression for <sig>; requires test.",
-	"Selected":   "Batch only the sigs a GitHub fetch recorded in selected.json as reacted to by a human.",
-	"Recipe":     "Batch the open inline findings whose stored lens matches the named recipe's lens set.",
-	"Status":     "Status filter (all, open, addressed, wont-fix, false-positive, deferred).",
-	"Kind":       "Kind filter (inline, section, all).",
-	"Category":   "Finding category filter; empty disables the filter.",
-	"Expect":     "Comma-separated allowlist of paths that may be dirty.",
-	"adopt.From": "Local bundle slug to adopt findings from.",
-	"Check":      "Gate tier (critical, important, informational); empty disables the gate.",
+	"Repo":                  "Repository as owner/name.",
+	"Pr":                    "Pull-request number or bundle slug (local-<name> for local bundles).",
+	"Sig":                   "Finding signature or unique prefix.",
+	"Bundle":                "Bundle slug under the served root (local-<name> for local bundles).",
+	"query-bundles.Pattern": "Bundle glob filter (portable relative glob); empty lists every bundle.",
+	"query-cost.By":         "Spend grouping (repo, week, or model); empty defaults to model.",
+	"All":                   "Batch every open inline finding at or above the severity floor.",
+	"Test":                  "Promote one reproduced finding's retained artifact to .verdict/tests/<sig>-<hash>.<ext>.",
+	"Commit":                "Commit the promoted regression test alone as test: regression for <sig>; requires test.",
+	"Selected":              "Batch only the sigs a GitHub fetch recorded in selected.json as reacted to by a human.",
+	"Recipe":                "Batch the open inline findings whose stored lens matches the named recipe's lens set.",
+	"Status":                "Status filter (all, open, addressed, wont-fix, false-positive, deferred).",
+	"Kind":                  "Kind filter (inline, section, all).",
+	"Category":              "Finding category filter; empty disables the filter.",
+	"Expect":                "Comma-separated allowlist of paths that may be dirty.",
+	"adopt.From":            "Local bundle slug to adopt findings from.",
+	"Check":                 "Gate tier (critical, important, informational); empty disables the gate.",
 	"Compare": "Baseline bundle to compare against (a bundle directory, or a PR/local slug in the same " +
 		"state directory): groups signature-matched findings into new, persisting, resolved, not reviewed.",
 	"Live": "Live-thread posture (auto, strict, skip).",

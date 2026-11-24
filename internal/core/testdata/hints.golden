@@ -32,6 +32,7 @@ bad-config	try: re-run with one of the valid values named above
 bad-config-credentials	try: re-run with one of the valid values named above
 bad-flags	try: re-run with one of the valid values named above
 bad-from	try: name a supported source (ingest: sarif; adopt: a local bundle slug)
+bad-glob	try: pass a portable repository-relative glob (no .., no absolute path, no backslash)
 bad-group-validation	try: re-run with one of the valid values named above
 bad-id	try: re-run with one of the valid values named above
 bad-ignore	try: use one glob per line, # comments and ! to re-include, then re-fetch
@@ -163,6 +164,7 @@ no-selected-findings	try: re-fetch the PR for current reactions, widen --min-sev
 no-threads	try: run the fetch/record step named above first, then re-run
 no-verify-cmd	try: write verifyCmd in the bundle's patch.json (the command verify and fix --all hand back), or pass --verify-cmd <cmd> to a fix batch, then re-run
 not-a-repo	try: run the fetch/record step named above first, then re-run
+not-found	try: address the cause above, then re-run the same command
 not-local	try: run the fetch/record step named above first, then re-run
 not-retired	try: check the rule status with learn --status, then re-run
 not-verdict-authored	try: address the cause above, then re-run the same command

@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path"
 	"slices"
 	"strconv"
@@ -10,15 +11,37 @@ import (
 
 	skillfs "github.com/stainless-code/verdict"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/query"
 	"github.com/stainless-code/verdict/internal/core/skill"
 )
 
 const (
-	methodResourcesList  = "resources/list"
-	methodResourcesRead  = "resources/read"
-	resourceURIPrefix    = "verdict://skill/"
-	codeResourceNotFound = -32002
+	methodResourcesList          = "resources/list"
+	methodResourcesRead          = "resources/read"
+	methodResourcesTemplatesList = "resources/templates/list"
+	resourceURIPrefix            = "verdict://skill/"
+	codeResourceNotFound         = -32002
+	mimeJSON                     = "application/json"
 )
+
+// queryStaticResources are the dashboard reads resources/list serves
+// beside the skill payloads: the same query layer the query tools render.
+var queryStaticResources = []resourceDescriptor{
+	{URI: "verdict://roots", Name: "roots", MIMEType: mimeJSON},
+	{URI: "verdict://bundles", Name: "bundles", MIMEType: mimeJSON},
+	{URI: "verdict://health", Name: "health", MIMEType: mimeJSON},
+	{URI: "verdict://cost", Name: "cost", MIMEType: mimeJSON},
+}
+
+// queryResourceTemplates are the per-bundle dashboard reads served as
+// resource templates, one address per query layer view.
+var queryResourceTemplates = []resourceTemplateDescriptor{
+	{URITemplate: "verdict://findings/{bundle}", Name: "findings", MIMEType: mimeJSON},
+	{URITemplate: "verdict://finding/{bundle}/{sig}", Name: "finding", MIMEType: mimeJSON},
+	{URITemplate: "verdict://compare/{bundle}/{baseline}", Name: "compare", MIMEType: mimeJSON},
+	{URITemplate: "verdict://cost/{by}", Name: "cost-by", MIMEType: mimeJSON},
+	{URITemplate: "verdict://precision/{by}", Name: "precision-by", MIMEType: mimeJSON},
+}
 
 func (s *Server) handleResourcesList(ctx context.Context, req *rpcRequest) {
 	if len(req.ID) == 0 {
@@ -30,7 +53,7 @@ func (s *Server) handleResourcesList(ctx context.Context, req *rpcRequest) {
 		return
 	}
 	refs := handoffRefPaths()
-	resources := make([]resourceDescriptor, 0, len(inv.Files)+len(refs))
+	resources := make([]resourceDescriptor, 0, len(inv.Files)+len(refs)+len(queryStaticResources))
 	for _, name := range append(slices.Clone(inv.Files), refs...) {
 		resources = append(resources, resourceDescriptor{
 			URI:      resourceURIPrefix + name,
@@ -38,7 +61,17 @@ func (s *Server) handleResourcesList(ctx context.Context, req *rpcRequest) {
 			MIMEType: resourceMIMEType(name),
 		})
 	}
+	resources = append(resources, queryStaticResources...)
 	s.writeResult(req.ID, resourcesListResult{Resources: resources})
+}
+
+func (s *Server) handleResourcesTemplatesList(req *rpcRequest) {
+	if len(req.ID) == 0 {
+		return
+	}
+	templates := make([]resourceTemplateDescriptor, 0, len(queryResourceTemplates))
+	templates = append(templates, queryResourceTemplates...)
+	s.writeResult(req.ID, resourcesTemplatesListResult{ResourceTemplates: templates})
 }
 
 func (s *Server) handleResourcesRead(ctx context.Context, req *rpcRequest) {
@@ -48,6 +81,10 @@ func (s *Server) handleResourcesRead(ctx context.Context, req *rpcRequest) {
 	params, ok := decodeParams[resourceURIParams](req.Params)
 	if !ok {
 		s.writeResourceNotFound(req.ID, "")
+		return
+	}
+	if !strings.HasPrefix(params.URI, resourceURIPrefix) {
+		s.readDashboardResource(ctx, req, params.URI)
 		return
 	}
 	name, valid := payloadPath(params.URI)
@@ -69,6 +106,42 @@ func (s *Server) handleResourcesRead(ctx context.Context, req *rpcRequest) {
 		MIMEType: resourceMIMEType(name),
 		Text:     string(body),
 	}}})
+}
+
+// readDashboardResource composes one dashboard URI through the query layer.
+// The URI was validated before the layer runs; a miss is resource-not-found,
+// a layer refusal names its code as invalid params, and anything else is
+// internal. The read never writes, spawns, or reaches the network.
+func (s *Server) readDashboardResource(ctx context.Context, req *rpcRequest, uri string) {
+	q, ok := parseQueryURI(uri)
+	if !ok {
+		s.writeResourceNotFound(req.ID, uri)
+		return
+	}
+	layer, rootID := queryLayerFor(s.cfg.Root, s.cfg.Version, s.cfg.Now)
+	view, err := queryResourceView(ctx, layer, rootID, q)
+	if err != nil {
+		s.writeDashboardError(req.ID, uri, err)
+		return
+	}
+	s.writeResult(req.ID, readResourceResult{Contents: []resourceContent{{
+		URI:      uri,
+		MIMEType: mimeJSON,
+		Text:     mergeView(view).MarshalCompact(),
+	}}})
+}
+
+func (s *Server) writeDashboardError(id json.RawMessage, uri string, err error) {
+	if errors.Is(err, query.ErrNotFound) {
+		s.writeResourceNotFound(id, uri)
+		return
+	}
+	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
+		s.writeErrorData(id, codeInvalidParams, ref.Code+": "+ref.Message, refusalData(ref))
+		return
+	}
+	s.logf("query resource: %v", err)
+	s.writeError(id, codeInternalError, "internal error")
 }
 
 // handoffRefPaths publishes the same pull refs a fetched bundle writes, at
@@ -141,6 +214,18 @@ type resourceDescriptor struct {
 
 type resourcesListResult struct {
 	Resources []resourceDescriptor `json:"resources"`
+}
+
+// resourceTemplateDescriptor is one per-bundle dashboard read address, in
+// the MCP resourceTemplates shape the clients substitute before reading.
+type resourceTemplateDescriptor struct {
+	URITemplate string `json:"uriTemplate"`
+	Name        string `json:"name"`
+	MIMEType    string `json:"mimeType"`
+}
+
+type resourcesTemplatesListResult struct {
+	ResourceTemplates []resourceTemplateDescriptor `json:"resourceTemplates"`
 }
 
 type resourceContent struct {

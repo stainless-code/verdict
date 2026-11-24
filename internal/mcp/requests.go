@@ -34,6 +34,7 @@ import (
 )
 
 type bindings struct { //nolint:govet // grouping documents the injection surface; alignment is irrelevant
+	version   string
 	env       map[string]string
 	now       func() time.Time
 	progress  core.Progress
@@ -495,6 +496,12 @@ func wirePack(ctx context.Context, b *bindings, req *packcore.Request) error {
 		return err
 	}
 	req.SettingsPath = config.SettingsPath(b.env["HOME"], b.env["XDG_CONFIG_HOME"])
+	pin, _, ref := packcore.BaseOrgPin(ctx, fetchRunner, req.RepoRootPath())
+	//nolint:wrapcheck // BaseOrgPin refusal is already typed; callers map to jq sealed error
+	if ref != nil {
+		return ref
+	}
+	req.OrgPin = pin
 	return nil
 }
 

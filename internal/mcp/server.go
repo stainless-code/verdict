@@ -272,7 +272,7 @@ func (s *Server) dispatch(ctx context.Context, req *rpcRequest) {
 		s.writeResult(req.ID, s.listTools())
 	case methodToolsCall:
 		s.handleToolsCall(ctx, req)
-	case methodPromptsList, methodPromptsGet, methodResourcesList, methodResourcesRead:
+	case methodPromptsList, methodPromptsGet, methodResourcesList, methodResourcesRead, methodResourcesTemplatesList:
 		s.handleProcedure(ctx, req)
 	case methodCancelled:
 		s.handleCancelled(req)
@@ -294,6 +294,8 @@ func (s *Server) handleProcedure(ctx context.Context, req *rpcRequest) {
 		s.handleResourcesList(ctx, req)
 	case methodResourcesRead:
 		s.handleResourcesRead(ctx, req)
+	case methodResourcesTemplatesList:
+		s.handleResourcesTemplatesList(req)
 	}
 }
 
@@ -456,6 +458,7 @@ func (s *Server) writeHiddenToolError(id json.RawMessage, name string) {
 
 func (s *Server) bindings(t *tool) *bindings {
 	return &bindings{
+		version:   s.cfg.Version,
 		env:       s.cfg.Env,
 		now:       s.cfg.Now,
 		progress:  stderrProgress{w: s.cfg.Stderr},
@@ -630,11 +633,26 @@ func rootResolutionRefusal(err error) *core.RefusalError {
 	return &core.RefusalError{Code: "not-a-repo", Message: err.Error()}
 }
 
+// refusalData builds the refusal payload every surface renders: tools as
+// structuredContent, resources as error data. The hint is the remediation
+// for the code, so a -32602 resource refusal carries the same guidance a
+// tool refusal does.
+func refusalData(ref *core.RefusalError) refusalContent {
+	return refusalContent{
+		Code:     ref.Code,
+		Message:  ref.Message,
+		Hint:     core.HintFor(ref.Code),
+		RetryAt:  ref.RetryAt,
+		Warnings: ref.Warnings,
+		Problems: ref.Problems, ProblemsTruncated: ref.ProblemsTruncated,
+	}
+}
+
 func refusalResult(ref *core.RefusalError) callToolResult {
-	hint := core.HintFor(ref.Code)
+	payload := refusalData(ref)
 	// code, hint, and retry_at are joined beside one warn: line per warning.
 	lines := make([]string, 0, refusalTextLines+len(ref.Warnings))
-	lines = append(lines, ref.Code+": "+ref.Message, hint)
+	lines = append(lines, ref.Code+": "+ref.Message, payload.Hint)
 	for _, w := range ref.Warnings {
 		lines = append(lines, "warn: "+w)
 	}
@@ -642,11 +660,7 @@ func refusalResult(ref *core.RefusalError) callToolResult {
 		lines = append(lines, "retry_at: "+ref.RetryAt)
 	}
 	text := strings.Join(lines, lineBreak)
-	structured, err := json.Marshal(refusalContent{
-		Code: ref.Code, Message: ref.Message, Hint: hint, RetryAt: ref.RetryAt,
-		Warnings: ref.Warnings,
-		Problems: ref.Problems, ProblemsTruncated: ref.ProblemsTruncated,
-	})
+	structured, err := json.Marshal(payload)
 	if err != nil {
 		structured = []byte("{}")
 	}

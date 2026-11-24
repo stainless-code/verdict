@@ -33,7 +33,7 @@ _verdict_flags() { # $1 = verb
     fetch-local) printf '%s\n' --staged --range --base --stash --worktree --scan --context --spec --ignore --no-default-excludes --allow-head-controls --preview --index --consent-over-budget --show-prompts --chunk --json;;
     run) printf '%s\n' --agent --recipe --stage --timeout --finders --budget --rounds --print --resume --allow-shell --json --;;
     learn) printf '%s\n' --propose --from-bundle --accept --reject --dry-run --pack --incident --sha --path --note --url --at --rule --scope --id --provenance --rigor --status --retire --restore --reason --json;;
-    pack) printf '%s\n' list add test --dir --json;;
+    pack) printf '%s\n' list add sync test check --dir --json;;
     adopt) printf '%s\n' --from --json;;
     ingest) printf '%s\n' --from --sarif --json;;
     fix) printf '%s\n' --sig --all --selected --recipe --min-severity --verify-cmd --paths --test --commit --json;;
