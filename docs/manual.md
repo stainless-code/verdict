@@ -2239,6 +2239,87 @@ docs before trusting it.
 The server is experimental until 1.0: tool shapes may still move, while the
 envelope keeps its `schema_version` contract.
 
+### ACP server (stdio, experimental until 1.0)
+
+`verdict acp` serves read-only verdict queries as ACP v1 over stdio:
+newline-delimited JSON-RPC 2.0 on stdin/stdout, one frame per line, mirroring
+the MCP transport framing. There is no daemon, listener, HTTP mode, or remote
+auth: the process shares the host's credentials and exits when stdin closes.
+`verdict acp --help` documents it. Like `verdict mcp`, every answer is
+backed exclusively by the typed core query layer (`internal/core/query`): no
+duplicate counting or finding logic, no model calls, no disk writes, and no
+bundle history is touched beyond the composed reads.
+
+The handshake is the ACP v1 one: `initialize` carries `protocolVersion: 1`
+(only version 1 is spoken, so any requested integer answers 1), and the
+response advertises `capabilities` holding `loadSession: false` plus
+disabled `promptCapabilities` and `mcpCapabilities`, the identity under both
+`agentInfo` and `serverInfo` (`name: verdict`, `version: <build>`), and an
+empty `authMethods`. `ping` answers with an empty result, `$/cancel_request`
+and `notifications/cancelled` cancel an in-flight query by request id, and
+unknown methods answer `-32601`.
+
+Four `verdict/`-namespaced extension methods carry the reads, and each result
+is the query view's data fields plus `at`, `repo`, `pr`, `next`, and
+`warnings`:
+
+- `verdict/bundles/list` (`{pattern?}`) lists every bundle under the served
+  root (via `query.Layer.Bundles`), one row each with its counts and head.
+- `verdict/findings/list` (`{bundle}`) composes one bundle's detail (via
+  `query.Layer.Detail`): the ranked findings in `report.items[]` with their
+  evidence rungs (`rigor`), plus the gate, threads, and artifact ledger.
+  Policy-withheld findings never appear here.
+- `verdict/findings/get` (`{bundle, sig}`) reads one finding (via
+  `query.Layer.Show`), byte-identical to `show --json`'s data.
+- `verdict/findings/copy` (`{bundle, sig}`) returns the deterministic
+  `Prompt for AI agent` block and the runnable `verdict triage` command (via
+  `query.Layer.Copy`), reusing the hosted body's fenced prompt and stale
+  triage floor exactly. A policy-withheld finding has no copy — it answers
+  `not-found` and never renders its prompt.
+
+Malformed JSON answers `-32700` (`parse error`), a missing `jsonrpc` or
+`method` answers `-32600`, unknown methods answer `-32601`, and invalid
+params, missing bundles, unknown sigs, corrupt stores, and traversal bundle
+names answer `-32602` with the refusal `code` in `error.data` (for example
+`not-found`, `unknown-sig`, `bad-bundle`, `bundle-ambiguous`). A bundle name
+is always resolved inside the served root first, so a path that leaves the
+root is refused before anything reads there. `--root` picks the served root
+(default: the current repository, through the same probe the read verbs
+share); `--check` picks the gate tier a detail composes and `--max-bundles`
+the listing cap. `--json` is accepted for CLI-convention parity — stdio is
+JSON-RPC either way. Exit 0 on clean EOF, 3 on a caught signal, 1 on a start
+refusal.
+
+#### Editor setup
+
+Any ACP client launches the same argv. The generic stdio shape is one
+command with `--root` beside it:
+
+```json
+{
+  "agentServers": {
+    "verdict": {
+      "command": "verdict",
+      "args": ["acp", "--root", "/path/to/checkout"]
+    }
+  }
+}
+```
+
+Zed's ACP config is the same `command` + `args` pair under its agent server
+table — point `args[2]` at the checked-out repository and send `initialize`
+with `protocolVersion: 1` before any `verdict/` query. In Neovim, register a
+stdio client that spawns `verdict acp` with the same argv; the wire is
+newline-delimited JSON-RPC, so a manual smoke test is one line per request:
+
+```sh
+printf '%s\n' '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":1}}' |
+  verdict acp --root /path/to/checkout
+```
+
+The server is experimental until 1.0: method names may still move, while the
+envelope keeps answering only the reads the query layer composes.
+
 ### Pre-push probe (local gate before CI burns)
 
 Drop the combined gate into `.git/hooks/pre-push` (executable) so a stale HEAD
@@ -2475,7 +2556,7 @@ static-page marker refuses `html-not-export`. Recovery and I/O failures use
 
 ## Journal
 
-Every bundle-writing CLI or MCP invocation (`fetch`, `fetch-local`, `run`, `record` including `--dry-run`, `post`, `verify`, `fix`, `triage`, `adopt`, `ingest`, `threads`, `calibrate`, `report`, `drain`) appends two compact JSON lines to an external, local-only journal file under `<state>/verdict/journal/<repo-key>/<pr>.jsonl` under `storelock` (`<pr>.jsonl.lock` beside the file, mode `0600`): a `start` line when the call begins and an `end` line when it returns, paired by `step` (`<started_at>-<pid>-<n>`, unique per invocation, so two overlapping calls never fold into one pair). Read-only verbs (`show`, `next`, `handoff`, `config`, `risk`, `pack`, `index`, `check-tree`, `doctor`, `pr-wait`, `ready`, `gate`, `journal`), multi-bundle verbs (`trend`, `panel`, `backtest`), non-bundle verbs (`init`, `learn`, `skill`, `upgrade`, `uninstall`, `serve`, `mcp`), and calls refused by a `--read-only` MCP server never write a journal line.
+Every bundle-writing CLI or MCP invocation (`fetch`, `fetch-local`, `run`, `record` including `--dry-run`, `post`, `verify`, `fix`, `triage`, `adopt`, `ingest`, `threads`, `calibrate`, `report`, `drain`) appends two compact JSON lines to an external, local-only journal file under `<state>/verdict/journal/<repo-key>/<pr>.jsonl` under `storelock` (`<pr>.jsonl.lock` beside the file, mode `0600`): a `start` line when the call begins and an `end` line when it returns, paired by `step` (`<started_at>-<pid>-<n>`, unique per invocation, so two overlapping calls never fold into one pair). Read-only verbs (`show`, `next`, `handoff`, `config`, `risk`, `pack`, `index`, `check-tree`, `doctor`, `pr-wait`, `ready`, `gate`, `journal`), multi-bundle verbs (`trend`, `panel`, `backtest`), non-bundle verbs (`init`, `learn`, `skill`, `upgrade`, `uninstall`, `serve`, `mcp`, `acp`), and calls refused by a `--read-only` MCP server never write a journal line.
 
 **Location, scope, and cleanup.** `<state>` is `$XDG_STATE_HOME` when set, else `~/.local/state` (on Windows, `%LOCALAPPDATA%` when `$XDG_STATE_HOME` is unset). `<repo-key>` is the first 16 hex characters of `sha256` of the canonical absolute repository root, and `<pr>` is the resolved bundle name (`5101`, `local-7`, `corpus-3`). Nothing journal-related is written inside the repository or `.verdict/` — unless `$XDG_STATE_HOME` (or `%LOCALAPPDATA%`) itself points inside the repository, in which case the journal lands wherever that variable points — so dry runs, refusals, and bundle receipts (`provenance.json`, `run.json`) stay completely untouched. The journal is local to your machine — never committed or uploaded. Delete one bundle's journal by removing `<state>/verdict/journal/<repo-key>/<pr>.jsonl` (and its `.lock` file), or wipe every journal for a repository with `rm -rf <state>/verdict/journal/<repo-key>`.
 

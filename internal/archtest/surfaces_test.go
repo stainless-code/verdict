@@ -28,6 +28,7 @@ import (
 var mcpOmittedVerbs = map[string]string{
 	"panel":     "CLI-only invoker dispatch contract (STA-91)",
 	"mcp":       "the MCP transport entry point itself",
+	"acp":       "the ACP transport entry point itself, like mcp",
 	"skill":     "distribution surface (pkg/verdict/doc.go)",
 	"uninstall": "distribution surface (pkg/verdict/doc.go)",
 	"upgrade":   "distribution surface (pkg/verdict/doc.go)",
@@ -49,6 +50,7 @@ var mcpOmittedVerbs = map[string]string{
 var sdkOmittedVerbs = map[string]string{
 	"panel":     "CLI-only invoker dispatch contract (STA-91)",
 	"mcp":       "the MCP transport entry point itself",
+	"acp":       "the ACP transport entry point itself, like mcp",
 	"skill":     "distribution surface (pkg/verdict/doc.go)",
 	"uninstall": "distribution surface (pkg/verdict/doc.go)",
 	"upgrade":   "distribution surface (pkg/verdict/doc.go)",
