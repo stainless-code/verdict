@@ -26,17 +26,15 @@ exit: 0
     "capabilities": {
       "provider": "azure",
       "fetch": true,
-      "post": false,
-      "inline_anchors": false,
+      "post": true,
+      "inline_anchors": true,
       "approve": false,
       "request_changes": false,
       "thread_resolution": false,
       "review_verdicts": false,
       "unsupported": {
-        "post": "fetch-only",
-        "inline_anchors": "fetch-only",
-        "approve": "fetch-only",
-        "request_changes": "fetch-only",
+        "approve": "no-approve-verdict",
+        "request_changes": "no-request-changes-event",
         "thread_resolution": "no-resolve-mutation"
       }
     },

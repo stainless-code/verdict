@@ -29,7 +29,9 @@ func TestCapabilityTable(t *testing.T) {
 			Provider: "bitbucket", Fetch: true, Post: true, InlineAnchors: true,
 			Approve: true,
 		},
-		"azure": {Provider: "azure", Fetch: true},
+		"azure": {
+			Provider: "azure", Fetch: true, Post: true, InlineAnchors: true,
+		},
 	}
 	got := make([]string, 0, len(hostCapabilities))
 	for provider := range hostCapabilities {
