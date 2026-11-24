@@ -61,9 +61,7 @@ func AggregateMTD(stateDir string, now time.Time) MTD {
 	m := MTD{Month: month}
 	entries, err := os.ReadDir(stateDir)
 	if err != nil {
-		if !errors.Is(err, fs.ErrNotExist) {
-			m.Warning = "month-to-date scan unreadable — state directory: " + err.Error()
-		}
+		m.Warning = stateDirWarning(stateDir, err)
 		return m
 	}
 	sum := new(big.Rat)
@@ -81,6 +79,24 @@ func AggregateMTD(stateDir string, now time.Time) MTD {
 	}
 	m.UnknownCount = unknown
 	return m
+}
+
+// stateDirWarning reports the MTD warning for a failed state directory
+// scan — "" when the directory is genuinely absent. On Windows,
+// [os.ReadDir] on a regular file returns ERROR_PATH_NOT_FOUND, which Go
+// maps to [fs.ErrNotExist] — the same error a genuinely absent directory
+// produces. [os.Stat] distinguishes the two so a state dir that is a
+// regular file warns on every platform, not just non-Windows ones.
+func stateDirWarning(stateDir string, err error) string {
+	info, statErr := os.Stat(stateDir)
+	switch {
+	case statErr != nil && errors.Is(statErr, fs.ErrNotExist):
+		return ""
+	case statErr == nil && !info.IsDir():
+		return "month-to-date scan unreadable — state directory is not a directory"
+	default:
+		return "month-to-date scan unreadable — state directory: " + err.Error()
+	}
 }
 
 // aggregateBundle counts one bundle from a single authoritative source:

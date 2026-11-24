@@ -229,6 +229,15 @@ func TestMTDUnreadableStateDirWarns(t *testing.T) {
 	}
 }
 
+func TestMTDMissingStateDirIsSilent(t *testing.T) {
+	root := t.TempDir()
+	state := filepath.Join(root, "state")
+	got := spend.AggregateMTD(state, time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC))
+	if got.Warning != "" || got.KnownUSD != "" || got.KnownCount != 0 || got.UnknownCount != 0 {
+		t.Fatalf("missing state dir = %+v, want silent empty result (no warning)", got)
+	}
+}
+
 func TestMTDMonthBoundaryUTC(t *testing.T) {
 	// Just after UTC midnight at month boundary belongs to the new month.
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
