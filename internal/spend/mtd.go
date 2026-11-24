@@ -20,7 +20,7 @@ import (
 // never 0.
 type MTD struct {
 	Month    string
-	KnownUSD string // exact decimal, "" when no known receipts in month
+	KnownUSD string // exact decimal, "" when no receipt contributed a known amount
 	// Warning is non-empty when the state directory scan itself failed
 	// for a reason other than absence (unreadable directory). Callers
 	// surface it as a warning; an absent directory stays silent.
@@ -73,7 +73,10 @@ func AggregateMTD(stateDir string, now time.Time) MTD {
 		}
 		aggregateBundle(filepath.Join(stateDir, e.Name()), month, sum, &known, &unknown)
 	}
-	if known > 0 {
+	// A partially priced receipt contributes to the sum without being
+	// priced, so the exact amount is reported whenever any row contributed
+	// one, not only when a fully priced row did.
+	if known > 0 || sum.Sign() != 0 {
 		m.KnownUSD = FormatRat(sum)
 		m.KnownCount = known
 	}
@@ -366,6 +369,15 @@ func isLedgerSuppressed(obj *jq.Obj, at any, meta *recordedMeta) bool {
 	return ok && !ledgerAt.After(unidentified)
 }
 
+// countLedgerValue counts one in-month ledger row. A fully priced projection
+// writes projected_usd. A partially priced one writes projected_usd null and
+// keeps its known lower bound in projection.known_subtotal_usd — the priced
+// phases are committed spend, so that subtotal is summed, while the row still
+// counts as unknown because its unpriced phases leave the true cost unknown.
+// Dropping the subtotal would hide committed spend from the monthly ceiling:
+// a row carrying $2 known plus an unpriced phase let a second bundle
+// authorize against the same month-to-date. A row with neither adds nothing
+// and stays unknown.
 func countLedgerValue(obj *jq.Obj, sum *big.Rat, known, unknown *int) {
 	projected, _ := obj.Get("projected_usd")
 	if rat, ok := ratOfJSONNumber(projected); ok {
@@ -373,7 +385,24 @@ func countLedgerValue(obj *jq.Obj, sum *big.Rat, known, unknown *int) {
 		*known++
 		return
 	}
+	if rat, ok := knownSubtotalOf(obj); ok {
+		sum.Add(sum, rat)
+	}
 	*unknown++
+}
+
+// knownSubtotalOf reads the known lower bound a partially priced ledger row
+// keeps in its projection object. The projection is written by the run layer,
+// so a non-object or malformed subtotal reads as absent: unknown, never a
+// guessed amount.
+func knownSubtotalOf(obj *jq.Obj) (*big.Rat, bool) {
+	projection, _ := obj.Get("projection")
+	projObj, ok := projection.(*jq.Obj)
+	if !ok {
+		return nil, false
+	}
+	subtotal, _ := projObj.Get("known_subtotal_usd")
+	return ratOfJSONNumber(subtotal)
 }
 
 // budgetDedupeKey is the authorization identity one ledger row carries:

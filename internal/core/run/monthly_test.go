@@ -502,3 +502,79 @@ func TestMonthlyResumedConcurrentBundlesSerialize(t *testing.T) {
 	wg.Wait()
 	assertConcurrentResult(t, results)
 }
+
+// partialMonthlyProjection is a $2 discovery phase plus an unpriced second
+// phase: Project keeps $2 as the projection's known subtotal and leaves the
+// total unknown, which is what the run layer writes to budget.json as
+// projected_usd null plus projection.known_subtotal_usd.
+func partialMonthlyProjection(t *testing.T, execID string) ([]spend.Phase, spend.Projection) {
+	t.Helper()
+	phases := []spend.Phase{
+		{ExecutionID: execID, LaunchID: "finder-1-discovery-1", Finder: "finder-1", Phase: "discovery", USD: new(2.0)},
+		{ExecutionID: execID, LaunchID: "finder-2-discovery-1", Finder: "finder-2", Phase: "discovery"},
+	}
+	proj, code := spend.Project(execID, phases)
+	if code != "" {
+		t.Fatalf("project %s: %s", execID, code)
+	}
+	if proj.Total != nil || proj.KnownSubtotal == nil || *proj.KnownSubtotal != 2 {
+		t.Fatalf("projection %+v, want unknown total with a $2 known subtotal", proj)
+	}
+	return phases, proj
+}
+
+// partialMonthlyFixture builds the partial-receipt fixture: $8 seeded on the
+// month, bundle 43 as execution-A, bundle 44 as execution-B, and the $10
+// ceiling in both captured run states.
+func partialMonthlyFixture(t *testing.T) (root, dirA, dirB string) {
+	t.Helper()
+	root = seedMonthlyState(t)
+	dirA = filepath.Join(root, ".verdict", "state", "43")
+	dirB = filepath.Join(root, ".verdict", "state", "44")
+	seedBundle(t, root, "43", "")
+	seedBundle(t, root, "44", "")
+	writeRunJSON(t, dirA, "execution-A", "10")
+	writeRunJSON(t, dirB, "execution-B", "10")
+	return root, dirA, dirB
+}
+
+// assertPartialReceipt proves the authorized bundle wrote the two literals the
+// month-to-date scan reads. The recorded projection is compact inside the
+// pretty ledger, so both are asserted in their written shape.
+func assertPartialReceipt(t *testing.T, dir string) {
+	t.Helper()
+	raw, err := os.ReadFile(filepath.Join(dir, "budget.json"))
+	if err != nil {
+		t.Fatalf("partial bundle recorded no projection: %v", err)
+	}
+	for _, want := range []string{`"projected_usd": null`, `"known_subtotal_usd":2`} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("budget.json = %s, want it to carry %s", raw, want)
+		}
+	}
+}
+
+// TestMonthlyPartialProjectionVisibleToSecondBundle proves a partially priced
+// receipt's known subtotal reaches a second bundle's month-to-date scan: with
+// $8 seeded and a $10 ceiling, the first bundle authorizes its $2 known
+// subtotal plus an unpriced phase at $10, and the second bundle's $2
+// projection is then over the ceiling at $12. Dropping the subtotal left the
+// second scan at $8, so both bundles authorized $2 against the same month.
+func TestMonthlyPartialProjectionVisibleToSecondBundle(t *testing.T) {
+	root, dirA, dirB := partialMonthlyFixture(t)
+	phasesA, projA := partialMonthlyProjection(t, "execution-A")
+	stA := monthlyState(t, root, &scripted{}, false)
+	if ref := stA.authorizeProjection(t.Context(), dirA, mustCaptured(t, dirA), 1, phasesA, projA); ref != nil {
+		t.Fatalf("partial authorize = %v, want nil ($8 seeded + $2 known subtotal = $10 <= $10)", ref)
+	}
+	assertPartialReceipt(t, dirA)
+	phasesB, projB := monthlyProjection(t, "execution-B")
+	stB := monthlyState(t, root, &scripted{}, false)
+	ref := stB.authorizeProjection(t.Context(), dirB, mustCaptured(t, dirB), 1, phasesB, projB)
+	if ref == nil || ref.Code != "spend-capped" {
+		t.Fatalf("second bundle = %v, want spend-capped ($8 + $2 subtotal + $2 = $12 > $10)", ref)
+	}
+	if !strings.Contains(ref.Message, "month-to-date $10") {
+		t.Fatalf("refusal = %q, want month-to-date $10 (the recorded $2 known subtotal counted)", ref.Message)
+	}
+}

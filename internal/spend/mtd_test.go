@@ -406,3 +406,49 @@ func TestMTDRecordedCostAbsorbsEarlierProjections(t *testing.T) {
 		t.Fatalf("measured MTD = %+v, want known 4 count 2 (two measured $2 records, no projection)", got)
 	}
 }
+
+// TestMTDPartialProjectionCountsKnownSubtotal proves a partially priced
+// receipt — projected_usd null with the priced phases' lower bound in
+// projection.known_subtotal_usd — keeps that known spend. Dropping it let the
+// monthly ceiling read a stale lower month-to-date: $1 fully priced plus a $2
+// known subtotal is $3, not $1, and the partial row is still unknown.
+func TestMTDPartialProjectionCountsKnownSubtotal(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	writeReceipt(t, root, `[{"at":"2026-05-02T12:00:00Z","projected_usd":null,`+
+		`"projection":{"total_usd":null,"known_subtotal_usd":2,"unknown_phases":["finder-2-discovery-1"]}},`+
+		`{"at":"2026-05-03T12:00:00Z","projected_usd":1}]`)
+	got := spend.AggregateMTD(stateDirOf(root), now)
+	if got.KnownUSD != "3" || got.KnownCount != 1 || got.UnknownCount != 1 {
+		t.Fatalf("partial-projection MTD = %+v, want known 3, 1 priced, 1 unknown (2 + 1)", got)
+	}
+}
+
+// TestMTDPartialProjectionAloneReportsSubtotal proves one partially priced
+// receipt with no fully priced sibling still reports its known lower bound:
+// the amount is committed spend even though no row is fully priced.
+func TestMTDPartialProjectionAloneReportsSubtotal(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	writeReceipt(t, root, `[{"at":"2026-05-02T12:00:00Z","projected_usd":null,`+
+		`"projection":{"known_subtotal_usd":2,"unknown_phases":["finder-2-discovery-1"]}}]`)
+	got := spend.AggregateMTD(stateDirOf(root), now)
+	if got.KnownUSD != "2" || got.KnownCount != 0 || got.UnknownCount != 1 {
+		t.Fatalf("partial-only MTD = %+v, want known 2, 0 priced, 1 unknown", got)
+	}
+}
+
+// TestMTDNullProjectionWithoutSubtotalStaysUnknown proves a row with neither
+// projected_usd nor a projection subtotal contributes nothing and stays
+// unknown: no amount is invented for an unpriced authorization.
+func TestMTDNullProjectionWithoutSubtotalStaysUnknown(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	writeReceipt(t, root, `[{"at":"2026-05-02T12:00:00Z","projected_usd":null,`+
+		`"projection":{"total_usd":null,"known_subtotal_usd":null,"unknown_phases":["finder-1-discovery-1"]}},`+
+		`{"at":"2026-05-03T12:00:00Z","projected_usd":"7"}]`)
+	got := spend.AggregateMTD(stateDirOf(root), now)
+	if got.KnownUSD != "" || got.KnownCount != 0 || got.UnknownCount != 2 {
+		t.Fatalf("unpriced MTD = %+v, want no known amount and 2 unknown rows", got)
+	}
+}
