@@ -310,6 +310,18 @@ eval_fixture_rebase() {
   mv "$dir/PR.json.tmp" "$dir/PR.json"
 }
 
+# eval_pin_head <name> [sha] binds a PR bundle to the checkout it is run in:
+# the fixture head is a placeholder no checkout is on, while a verb that acts on
+# the checkout (fix) proves HEAD equals the bundle's reviewed head. Without a
+# sha it pins the sandbox's own HEAD; a sha pins that one instead.
+eval_pin_head() {
+  local dir="$EVAL_SANDBOX/.verdict/state/$1" head="${2:-}"
+  [ -f "$dir/PR.json" ] || return 0
+  [ -n "$head" ] || head="$(git -C "$EVAL_SANDBOX" rev-parse HEAD)"
+  jq --arg h "$head" '.headRefOid = $h' "$dir/PR.json" >"$dir/PR.json.tmp"
+  mv "$dir/PR.json.tmp" "$dir/PR.json"
+}
+
 # eval_hunk_receipts <bundle dir> prints the read receipts a review of that
 # bundle needs: one per changed hunk, quoting the first line the hunk carries on
 # its NEW side. Record approves only a review whose every non-exempt hunk is

@@ -186,16 +186,34 @@ fi
 
 PR=4291
 eval_mk_bundle "$PR"
+eval_pin_head "$PR"
 eval_write_findings "$PR" <<'EOF'
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"PR finding.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"0123456789abcdef0123456789abcdef01234567","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
 run_review fix acme/app "$PR" --json
-code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
-if [ "$EVAL_STATUS" -ne 0 ] && [ "$code" = "not-local" ] \
-  && jq -e '.error.message | contains("fetch-local first")' <"$EVAL_OUT" >/dev/null 2>&1; then
-  good "PR bundle refuses as not-local with the fetch-local pointer"
+if [ "$EVAL_STATUS" -eq 0 ] \
+  && jq -e '.data.pass == 1 and (.next | contains("run post to land it"))' <"$EVAL_OUT" >/dev/null 2>&1; then
+  good "a PR bundle runs a default fix pass without --selected, landing through post"
 else
-  bad "PR bundle gave exit $EVAL_STATUS code '$code'"
+  bad "PR bundle gave exit $EVAL_STATUS code '$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)'"
+fi
+# A checkout on any other commit would patch, diff, and commit against the
+# wrong tree, so the bundle's reviewed head binds every mode.
+eval_pin_head "$PR" "dddddddddddddddddddddddddddddddddddddddd"
+run_review fix acme/app "$PR" --json
+code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+if [ "$EVAL_STATUS" -ne 0 ] && [ "$code" = "head-mismatch" ] \
+  && jq -e '.error.message | contains("check out the PR head")' <"$EVAL_OUT" >/dev/null 2>&1; then
+  good "a PR bundle refuses head-mismatch when the checkout is not on its reviewed head"
+else
+  bad "PR bundle off its head gave exit $EVAL_STATUS code '$code'"
+fi
+run_review fix acme/app "$PR" --test "0123456789abcdef" --commit --json
+code="$(jq -r '.error.code // empty' <"$EVAL_OUT" 2>/dev/null || true)"
+if [ "$EVAL_STATUS" -ne 0 ] && [ "$code" = "head-mismatch" ]; then
+  good "--test --commit refuses head-mismatch before it writes or commits a test"
+else
+  bad "--test --commit off the PR head gave exit $EVAL_STATUS code '$code'"
 fi
 mk_local fixclosed
 mk_finding "$INFO" inline open informational notes.txt "Closed bundle nit." | jq -s '.' | fix_write_findings fixclosed
