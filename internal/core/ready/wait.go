@@ -19,7 +19,7 @@ type WaitRequest struct {
 	Until    string `enum:"merged|closed|checks-green|checks-done|review-changed"`
 	Timeout  string
 	Interval string
-	Provider string `enum:"github|gitlab|forgejo"`
+	Provider string `enum:"github|gitlab"`
 	Warnings []string
 	Once     bool
 }
@@ -134,6 +134,9 @@ func waitProvider(req *WaitRequest) (string, *core.RefusalError) {
 	}
 	if req.Provider != "" {
 		provider = req.Provider
+	}
+	if !core.CapabilitiesFor(provider).PRWait {
+		return "", waitUnsupported(provider)
 	}
 	return provider, nil
 }

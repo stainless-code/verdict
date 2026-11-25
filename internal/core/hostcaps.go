@@ -1,5 +1,7 @@
 package core
 
+import "slices"
+
 // HostCapabilities declares what verdict can do through one code host's own
 // CLI or API. It is the single source for the fetch envelope's
 // data.capabilities object and for the gates that depend on a host feature, so
@@ -23,6 +25,13 @@ type HostCapabilities struct {
 	// ThreadReply is drain's host reply call. It is internal to post mode in
 	// v1, so it is not published in data.capabilities and adds no fetch golden.
 	ThreadReply bool
+	// Ready and PRWait say the host has live reads behind `ready` and
+	// `pr-wait`. They are internal like ThreadReply, not published in
+	// data.capabilities. This row is the one source for the advertised
+	// providers of both verbs (CLI help, MCP schema, refusals); a test pins the
+	// implementations to it, so a host cannot be advertised before it is built.
+	Ready  bool
+	PRWait bool
 	// ReviewVerdicts is the compatibility sum of Approve and RequestChanges.
 	// CapabilitiesFor derives it, so no table row can claim a verdict pair it
 	// does not carry; new readers branch on the two split flags instead.
@@ -103,11 +112,11 @@ var hostCapabilities = map[string]HostCapabilities{
 	providerGitHub: {
 		Provider: providerGitHub, Fetch: true, Post: true,
 		InlineAnchors: true, Approve: true, RequestChanges: true,
-		ThreadResolution: true, ThreadReply: true,
+		ThreadResolution: true, ThreadReply: true, Ready: true, PRWait: true,
 	},
 	providerGitLab: {
 		Provider: providerGitLab, Fetch: true, Post: true, InlineAnchors: true,
-		Approve: true, ThreadResolution: true, ThreadReply: true,
+		Approve: true, ThreadResolution: true, ThreadReply: true, Ready: true, PRWait: true,
 	},
 	providerGitCafe: {Provider: providerGitCafe, Fetch: true},
 	providerForgejo: {
@@ -134,6 +143,28 @@ func CapabilitiesFor(provider string) HostCapabilities {
 	}
 	caps.ReviewVerdicts = caps.Approve && caps.RequestChanges
 	return caps
+}
+
+// ReadyProviders lists the hosts `ready` has live reads for, sorted.
+func ReadyProviders() []string {
+	return providersWith(func(c HostCapabilities) bool { return c.Ready })
+}
+
+// PRWaitProviders lists the hosts `pr-wait` has live reads for, sorted. Every
+// surface that advertises the verb's providers reads this list.
+func PRWaitProviders() []string {
+	return providersWith(func(c HostCapabilities) bool { return c.PRWait })
+}
+
+func providersWith(has func(HostCapabilities) bool) []string {
+	names := make([]string, 0, len(hostCapabilities))
+	for name, caps := range hostCapabilities {
+		if has(caps) {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	return names
 }
 
 // Unsupported lists every absent capability with its reason, in capability
