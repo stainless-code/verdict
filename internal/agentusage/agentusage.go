@@ -1,28 +1,32 @@
 // Package agentusage measures one agent spawn's spend from the agent CLI's own
 // structured output: the cost the CLI reports, or the token usage it reports
-// priced from the agent catalog's dated price table. It parses the captured
-// stdout only, bounded line by line, and trusts nothing that does not match the
-// documented shape — a parse that fails measures nothing, and the caller falls
-// back to the next source.
+// priced from the agent catalog's dated price table. A Tap reads the spawn's
+// stdout as it streams — never stderr, never the launcher's tail-capped
+// capture — keeping only the lines its format needs, bounded line by line and
+// in total. A parse that does not match the documented shape, an over-long
+// line, an overflowing stream, or a stream cut mid-object measures nothing,
+// and the caller falls back to the next source.
 package agentusage
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"math/big"
+	"sync"
 
 	"github.com/stainless-code/verdict/internal/agentcatalog"
 	"github.com/stainless-code/verdict/internal/spend"
 )
 
-// maxLineBytes bounds one structured-output line. A CLI's result object can
-// carry the whole final message, so the bound is generous; a longer line is
-// skipped rather than half-read.
-const maxLineBytes = 1 << 20
-
-// initialLineBytes is the scanner's starting buffer; it grows to the bound.
-const initialLineBytes = 64 << 10
+const (
+	// maxLineBytes bounds one structured-output line. A result object can
+	// carry the whole final message, so the bound is generous; a longer line
+	// marks the stream unmeasurable rather than half-read.
+	maxLineBytes = 4 << 20
+	// maxKeptBytes bounds every line one tap keeps; past it the stream is
+	// unmeasurable, never measured from the lines that fit.
+	maxKeptBytes = 32 << 20
+)
 
 // Measurement is one spawn's spend: the exact USD literal, how it was priced
 // (spend.PricedMeasured or spend.PricedTokens), and the model it was priced
@@ -33,33 +37,172 @@ type Measurement struct {
 	Model    string
 }
 
-// Measure reads one spawn's spend from its captured stdout in the named
-// format. model is the model the launch named (empty when the agent picked
-// its default); a token-only format can price only a model the CLI or the
-// launch names and the price table carries.
-func Measure(format string, out []byte, model string) (Measurement, bool) {
+// Tap collects one spawn's stdout for its format while the process runs. It
+// is an [io.Writer] that never fails, safe for the one writer goroutine a
+// process's stdout has.
+type Tap struct {
+	format   string
+	last     []byte
+	pending  []byte
+	lines    [][]byte
+	kept     int
+	mu       sync.Mutex
+	overflow bool
+	skipping bool
+	wrote    bool
+}
+
+// NewTap is a tap for one format.
+func NewTap(format string) *Tap {
+	return &Tap{format: format}
+}
+
+// Capture is a finished tap over one complete capture, for a caller that
+// already holds the stdout bytes.
+func Capture(format string, out []byte) *Tap {
+	t := NewTap(format)
+	t.Feed(out)
+	return t
+}
+
+// Feed is Write for a caller that holds the bytes: a tap never fails.
+func (t *Tap) Feed(p []byte) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	t.feed(p)
+}
+
+// Wrote reports whether the process wrote any stdout at all.
+func (t *Tap) Wrote() bool {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.wrote
+}
+
+// Write splits the stream into lines, keeping what the format reads.
+func (t *Tap) Write(p []byte) (int, error) {
+	t.Feed(p)
+	return len(p), nil
+}
+
+func (t *Tap) feed(p []byte) {
+	if len(p) > 0 {
+		t.wrote = true
+	}
+	rest := p
+	for len(rest) > 0 {
+		i := bytes.IndexByte(rest, '\n')
+		if i < 0 {
+			t.buffer(rest)
+			break
+		}
+		t.buffer(rest[:i])
+		t.endLine()
+		rest = rest[i+1:]
+	}
+}
+
+// buffer appends to the current line, giving up on a line past the bound.
+func (t *Tap) buffer(p []byte) {
+	if t.skipping {
+		return
+	}
+	if len(t.pending)+len(p) > maxLineBytes {
+		t.overflow, t.skipping, t.pending = true, true, nil
+		return
+	}
+	t.pending = append(t.pending, p...)
+}
+
+// endLine settles one complete line.
+func (t *Tap) endLine() {
+	line := bytes.TrimSpace(t.pending)
+	skipped := t.skipping
+	t.pending, t.skipping = nil, false
+	if skipped || len(line) == 0 {
+		return
+	}
+	t.last = append(t.last[:0], line...)
+	// A half-written object anywhere — not only at the end — means the
+	// stream lost bytes, so nothing read from it can be trusted.
+	if line[0] == '{' && !json.Valid(line) {
+		t.overflow = true
+		return
+	}
+	if !keeps(t.format, line) {
+		return
+	}
+	t.kept += len(line)
+	if t.kept > maxKeptBytes {
+		t.overflow = true
+		return
+	}
+	t.lines = append(t.lines, bytes.Clone(line))
+}
+
+// settled is the tap's view once the stream ended: the kept lines and the
+// final non-empty line, a trailing unterminated line included. ok is false
+// when the stream cannot be measured: an over-long line, an overflow, or an
+// object line anywhere that never finished.
+func (t *Tap) settled() (kept [][]byte, last []byte, ok bool) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if len(bytes.TrimSpace(t.pending)) > 0 || t.skipping {
+		t.endLine()
+	}
+	return t.lines, t.last, !t.overflow
+}
+
+// keeps reports whether one line is one the format reads. The check is a
+// cheap substring screen; the parser validates every kept line in full.
+func keeps(format string, line []byte) bool {
+	if line[0] != '{' {
+		return false
+	}
 	switch format {
-	case agentcatalog.UsageClaudeJSON:
-		return claudeCost(out)
 	case agentcatalog.UsageCodexJSONL:
-		return codexCost(out, model)
+		return bytes.Contains(line, []byte(codexTurnCompleted)) || bytes.Contains(line, []byte(codexAgentMessage))
 	case agentcatalog.UsageOpenCodeJSONL:
-		return openCodeCost(out)
+		return bytes.Contains(line, []byte(openCodeStepFinish)) || bytes.Contains(line, []byte(`"text"`))
+	}
+	// Claude's result is read from the final line alone.
+	return false
+}
+
+// Measure reads one spawn's spend from its tap. model is the model the launch
+// runs (empty when unknown); a token-only format prices only a model the
+// price table carries.
+func Measure(t *Tap, model string) (Measurement, bool) {
+	kept, last, ok := t.settled()
+	if !ok {
+		return Measurement{}, false
+	}
+	switch t.format {
+	case agentcatalog.UsageClaudeJSON:
+		return claudeCost(last)
+	case agentcatalog.UsageCodexJSONL:
+		return codexCost(kept, model)
+	case agentcatalog.UsageOpenCodeJSONL:
+		return openCodeCost(kept)
 	}
 	return Measurement{}, false
 }
 
-// Text is the agent's own final text out of its structured stdout, so a
-// review the agent printed instead of saving is still found. It reads false
-// when the stream holds no text in the documented shape.
-func Text(format string, out []byte) (string, bool) {
-	switch format {
+// Text is the agent's own text out of its structured stdout, so a review the
+// agent printed instead of saving is still found. It reads false when the
+// stream holds no text in the documented shape.
+func Text(t *Tap) (string, bool) {
+	kept, last, ok := t.settled()
+	if !ok {
+		return "", false
+	}
+	switch t.format {
 	case agentcatalog.UsageClaudeJSON:
-		return claudeText(out)
+		return claudeText(last)
 	case agentcatalog.UsageCodexJSONL:
-		return codexText(out)
+		return codexText(kept)
 	case agentcatalog.UsageOpenCodeJSONL:
-		return openCodeText(out)
+		return openCodeText(kept)
 	}
 	return "", false
 }
@@ -70,8 +213,8 @@ func Sum(parts []Measurement) (usd, pricedBy string, ok bool) {
 	total := new(big.Rat)
 	pricedBy = spend.PricedMeasured
 	for _, m := range parts {
-		rat, valid := new(big.Rat).SetString(m.USD)
-		if !valid || rat.Sign() < 0 {
+		rat, valid := spend.ParseAmount(m.USD)
+		if !valid {
 			return "", "", false
 		}
 		total.Add(total, rat)
@@ -82,47 +225,21 @@ func Sum(parts []Measurement) (usd, pricedBy string, ok bool) {
 	return spend.FormatRat(total), pricedBy, len(parts) > 0
 }
 
-// objects decodes every line of the stream that is one JSON object, in
-// order. Lines that are not — progress noise, a banner — are skipped, and an
-// over-long line is dropped whole. complete is false when the stream ends
-// mid-object (a watchdog kill or the capture cap cut it): a stream measured
-// from its running parts would then undercount, so its callers measure
-// nothing.
-func objects(out []byte) (objs []map[string]json.RawMessage, complete bool) {
-	complete = true
-	scan := bufio.NewScanner(bytes.NewReader(out))
-	scan.Buffer(make([]byte, 0, initialLineBytes), maxLineBytes)
-	for scan.Scan() {
-		line := bytes.TrimSpace(scan.Bytes())
-		if len(line) == 0 {
-			continue
-		}
-		obj, isObject, parsed := lineObject(line)
-		if parsed {
+// objects decodes kept lines that are each one JSON object, in order.
+func objects(lines [][]byte) []map[string]json.RawMessage {
+	objs := make([]map[string]json.RawMessage, 0, len(lines))
+	for _, line := range lines {
+		if obj, ok := object(line); ok {
 			objs = append(objs, obj)
 		}
-		// Only the last non-empty line decides: noise before it is fine, a
-		// half-written object at the end is not.
-		complete = parsed || !isObject
 	}
-	return objs, complete && scan.Err() == nil
+	return objs
 }
 
-// lineObject decodes one line: whether it starts an object, and whether it
-// decoded as one whole.
-func lineObject(line []byte) (map[string]json.RawMessage, bool, bool) {
-	if line[0] != '{' {
-		return nil, false, false
-	}
+// object decodes one line as a JSON object.
+func object(line []byte) (map[string]json.RawMessage, bool) {
 	var obj map[string]json.RawMessage
-	return obj, true, json.Unmarshal(line, &obj) == nil
-}
-
-// whole decodes the entire stream as one JSON object, for a CLI that prints
-// its result pretty-printed across lines.
-func whole(out []byte) (map[string]json.RawMessage, bool) {
-	var obj map[string]json.RawMessage
-	if json.Unmarshal(bytes.TrimSpace(out), &obj) != nil {
+	if json.Unmarshal(line, &obj) != nil || obj == nil {
 		return nil, false
 	}
 	return obj, true
@@ -147,33 +264,28 @@ func child(obj map[string]json.RawMessage, key string) (map[string]json.RawMessa
 	if !ok {
 		return nil, false
 	}
-	var out map[string]json.RawMessage
-	if json.Unmarshal(raw, &out) != nil || out == nil {
-		return nil, false
-	}
-	return out, true
+	return object(raw)
 }
 
-// amount reads one field as a finite, nonnegative JSON number, exactly.
+// amount reads one field as a JSON number — never a quoted string — under
+// the cost scan's own literal bounds: finite, nonnegative, at most 64
+// characters, an exponent of at most 12 in magnitude.
 func amount(obj map[string]json.RawMessage, key string) (*big.Rat, bool) {
 	raw, ok := obj[key]
-	// A JSON number only: json.Number would also take a quoted string, and a
-	// "0.42" string is not the documented shape.
-	raw = bytes.TrimSpace(raw)
-	if !ok || len(raw) == 0 || raw[0] == '"' {
+	if !ok {
 		return nil, false
 	}
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 || raw[0] == '"' {
+		return nil, false
+	}
+	var num json.Number
 	dec := json.NewDecoder(bytes.NewReader(raw))
 	dec.UseNumber()
-	var num json.Number
 	if dec.Decode(&num) != nil {
 		return nil, false
 	}
-	rat, ok := new(big.Rat).SetString(num.String())
-	if !ok || rat.Sign() < 0 {
-		return nil, false
-	}
-	return rat, true
+	return spend.ParseAmount(num.String())
 }
 
 // count reads one field as a nonnegative whole number of tokens.

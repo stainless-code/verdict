@@ -2,7 +2,6 @@ package agentusage
 
 import (
 	"encoding/json"
-	"slices"
 
 	"github.com/stainless-code/verdict/internal/spend"
 )
@@ -11,30 +10,24 @@ import (
 // --output-format json` prints when the run ends.
 const claudeResultType = "result"
 
-// claudeResult finds the result object: the whole stream as one object, else
-// the last line that is one. Only an object whose type is "result" counts.
-func claudeResult(out []byte) (map[string]json.RawMessage, bool) {
-	if obj, ok := whole(out); ok && isClaudeResult(obj) {
-		return obj, true
+// claudeResult is the result object, only as the stream's final line: an
+// earlier result-shaped line (an echoed tool output) never counts, and a
+// stream that ends on anything else carries no result.
+func claudeResult(last []byte) (map[string]json.RawMessage, bool) {
+	obj, ok := object(last)
+	if !ok {
+		return nil, false
 	}
-	objs, _ := objects(out)
-	for _, obj := range slices.Backward(objs) {
-		if isClaudeResult(obj) {
-			return obj, true
-		}
+	if kind, ok := str(obj, "type"); !ok || kind != claudeResultType {
+		return nil, false
 	}
-	return nil, false
-}
-
-func isClaudeResult(obj map[string]json.RawMessage) bool {
-	kind, ok := str(obj, "type")
-	return ok && kind == claudeResultType
+	return obj, true
 }
 
 // claudeCost is the result object's total_cost_usd: the CLI's own cost for
-// the whole session.
-func claudeCost(out []byte) (Measurement, bool) {
-	obj, ok := claudeResult(out)
+// the whole session, on the success and the error arm alike.
+func claudeCost(last []byte) (Measurement, bool) {
+	obj, ok := claudeResult(last)
 	if !ok {
 		return Measurement{}, false
 	}
@@ -45,9 +38,9 @@ func claudeCost(out []byte) (Measurement, bool) {
 	return Measurement{USD: spend.FormatRat(usd), PricedBy: spend.PricedMeasured}, true
 }
 
-// claudeText is the result object's final message.
-func claudeText(out []byte) (string, bool) {
-	obj, ok := claudeResult(out)
+// claudeText is the result object's final message; the error arm has none.
+func claudeText(last []byte) (string, bool) {
+	obj, ok := claudeResult(last)
 	if !ok {
 		return "", false
 	}

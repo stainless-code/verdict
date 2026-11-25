@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"time"
 
@@ -22,10 +21,8 @@ import (
 
 // Pricing sources a spawn's ledger row names.
 const (
-	// codeSpawnFailed is run's code for a process that never started.
-	codeSpawnFailed = "agent-spawn-failed"
-	costFile        = "cost.json"
-	zeroUSD         = "0"
+	costFile = "cost.json"
+	zeroUSD  = "0"
 )
 
 // phases is the loop's seam over the composed services. The production
@@ -46,6 +43,9 @@ type phases interface {
 // flowPhases runs every phase through the shipped services.
 type flowPhases struct {
 	req *Request
+	// noUsage records that the agent rejected the structured-output flag, so
+	// later spawns in this loop stop asking for it.
+	noUsage bool
 }
 
 // fetch re-reads the working tree into this round's fresh local bundle.
@@ -63,7 +63,15 @@ func (p *flowPhases) fetch(ctx context.Context, name string) ([]string, *core.Re
 func (p *flowPhases) authorize(
 	ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, dir, launchID string,
 ) ([]string, *core.RefusalError) {
-	return runcore.AuthorizeSpawn(ctx, p.req.Flow.RunRequest(b, launch, nil), dir, launchID)
+	req := p.req.Flow.RunRequest(b, launch, nil)
+	return runcore.AuthorizeSpawn(ctx, req, dir, launchID, runcore.SpawnModel(req, p.req.Flow.Agents))
+}
+
+// measuring prepares one launch request to measure its spend, unless the
+// agent already rejected the structured-output flag in this loop.
+func (p *flowPhases) measuring(req *core.RunRequest) {
+	req.MeasureSpend = !p.noUsage
+	req.OnUsageRejected = func() { p.noUsage = true }
 }
 
 // review launches the review-only agent run against the round's bundle. Run
@@ -78,7 +86,8 @@ func (p *flowPhases) review(
 	ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, dir, launchPrefix string,
 ) ([]string, *core.RefusalError) {
 	req := p.req.Flow.RunRequest(b, launch, nil)
-	req.MeasureSpend = true
+	p.measuring(req)
+	model := runcore.SpawnModel(req, p.req.Flow.Agents)
 	var attempts []*attemptCost
 	var warnings []string
 	req.OnSpend = func(attempt int, usd, pricedBy string) {
@@ -92,7 +101,7 @@ func (p *flowPhases) review(
 		// Wall time, not the injected clock: it is compared with the record's
 		// modification time on the filesystem.
 		admitted := time.Now()
-		w, ref := runcore.AuthorizeSpawn(ctx, req, dir, id)
+		w, ref := runcore.AuthorizeSpawn(ctx, req, dir, id, model)
 		warnings = append(warnings, w...)
 		if ref == nil {
 			attempts = append(attempts, &attemptCost{id: id, admitted: admitted})
@@ -101,7 +110,7 @@ func (p *flowPhases) review(
 	}
 	ran, ref := runcore.WithAgents(ctx, req, p.req.Flow.Agents)
 	captureLast(dir, attempts)
-	p.priceReview(ctx, req, dir, attempts, ref)
+	p.priceReview(ctx, req, dir, attempts, model)
 	if ref != nil {
 		return warnings, ref
 	}
@@ -139,58 +148,37 @@ func captureLast(dir string, attempts []*attemptCost) {
 }
 
 // priceReview prices each admitted attempt, in priority order: the agent
-// CLI's own measured cost, else the attempt's own self-reported record, else
-// the projected median of past measured spawns; with none of them the attempt
-// stays unknown, never free. An attempt whose process never started is zero.
-// The record still on disk — the last one written — is zero whenever the
-// month-to-date scan already counts it (every record dated in this month),
-// whatever else priced the attempt, so a self-report is never counted twice.
+// CLI's own measured cost (a launch whose process never started measures
+// zero), else the attempt's own self-reported record, else the projected
+// median of past measured spawns; with none of them the attempt stays
+// unknown, never free. A bundle receipted per spawn is counted from these
+// receipts alone, so a measured attempt never counts its self-report too.
 func (p *flowPhases) priceReview(
-	ctx context.Context, req *core.RunRequest, dir string, attempts []*attemptCost, ref *core.RefusalError,
+	ctx context.Context, req *core.RunRequest, dir string, attempts []*attemptCost, model string,
 ) {
-	if len(attempts) > 0 && ref != nil && ref.Code == codeSpawnFailed {
-		p.price(ctx, req, dir, attempts[len(attempts)-1].id, spawnPrice{usd: zeroUSD, by: spend.PricedNotStarted})
-		attempts = attempts[:len(attempts)-1]
-	}
-	onDisk := lastRecorded(attempts)
-	now := p.now()
-	for i, a := range attempts {
-		if price, ok := p.attemptPrice(a, i == onDisk, now); ok {
+	for _, a := range attempts {
+		if price, ok := p.attemptPrice(a, model); ok {
 			p.price(ctx, req, dir, a.id, price)
 		}
 	}
 }
 
 // attemptPrice is one review attempt's price by the priority order.
-func (p *flowPhases) attemptPrice(a *attemptCost, onDisk bool, now time.Time) (spawnPrice, bool) {
-	if onDisk && spend.CountedInMonth(a.record, now) {
-		return spawnPrice{usd: zeroUSD, by: spend.PricedAgent}, true
-	}
+func (p *flowPhases) attemptPrice(a *attemptCost, model string) (spawnPrice, bool) {
 	if a.measured != nil {
 		return *a.measured, true
 	}
 	if usd, ok := recordAmount(a.record); ok {
 		return spawnPrice{usd: usd, by: spend.PricedAgent}, true
 	}
-	return p.projected()
+	return p.projected(model)
 }
 
-// projected is the median of past measured spawns of this agent, the
-// fallback before unknown.
-func (p *flowPhases) projected() (spawnPrice, bool) {
-	usd, ok := spend.MedianMeasured(readcommon.StateDir(p.req.RepoRoot), p.req.Agent, "")
+// projected is the median of past measured spawns of this agent and model,
+// the fallback before unknown.
+func (p *flowPhases) projected(model string) (spawnPrice, bool) {
+	usd, ok := spend.MedianMeasured(readcommon.StateDir(p.req.RepoRoot), p.req.Agent, model)
 	return spawnPrice{usd: usd, by: spend.PricedProjected}, ok
-}
-
-// lastRecorded is the index of the attempt whose record is still on disk:
-// the last one that wrote one, -1 when none did.
-func lastRecorded(attempts []*attemptCost) int {
-	for i, a := range slices.Backward(attempts) {
-		if a.record != nil {
-			return i
-		}
-	}
-	return -1
 }
 
 // recordAmount is one self-reported cost record's root est_usd, when it is
@@ -205,14 +193,6 @@ func recordAmount(record []byte) (string, bool) {
 		return "", false
 	}
 	return knownAmount(obj)
-}
-
-// now is the loop's clock, the one its receipts are dated by.
-func (p *flowPhases) now() time.Time {
-	if p.req.Flow.Now != nil {
-		return p.req.Flow.Now()
-	}
-	return time.Now()
 }
 
 // price records one spawn's amount, warning rather than failing the round
@@ -257,28 +237,29 @@ func (p *flowPhases) fix(
 	ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, directive, dir, launchID string,
 ) *core.RefusalError {
 	req := p.req.Flow.RunRequest(b, launch, nil)
-	req.MeasureSpend = true
+	p.measuring(req)
 	out, ref := runcore.Dispatch(ctx, req, p.req.Flow.Agents, directive)
-	if price, ok := p.fixPrice(out, ref, dir); ok {
+	if price, ok := p.fixPrice(out, dir, runcore.SpawnModel(req, p.req.Flow.Agents)); ok {
 		p.price(ctx, req, dir, launchID, price)
 	}
 	return ref
 }
 
 // fixPrice is the fix spawn's price by the priority order.
-func (p *flowPhases) fixPrice(out runcore.Dispatched, ref *core.RefusalError, dir string) (spawnPrice, bool) {
+// A launch whose process provably never started is measured at zero; one
+// that started and failed — capped, killed, or exiting non-zero — still spent,
+// so it falls through the sources like any other.
+func (p *flowPhases) fixPrice(out runcore.Dispatched, dir, model string) (spawnPrice, bool) {
 	switch {
-	case !out.Ran && ref != nil && ref.Code == codeSpawnFailed:
-		return spawnPrice{usd: zeroUSD, by: spend.PricedNotStarted}, true
-	case !out.Ran:
-		return spawnPrice{}, false
 	case out.USD != "":
 		return spawnPrice{usd: out.USD, by: out.PricedBy}, true
+	case !out.Ran:
+		return spawnPrice{usd: zeroUSD, by: spend.PricedNotStarted}, true
 	}
 	if usd, ok := reportedSpend(dir); ok {
 		return spawnPrice{usd: usd, by: spend.PricedAgent}, true
 	}
-	return p.projected()
+	return p.projected(model)
 }
 
 // reportedSpend reads the fix agent's {"est_usd": n} report: a finite,

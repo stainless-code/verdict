@@ -4360,22 +4360,34 @@ attempts and fix, and each launch of a two-finder `run` execution — is priced
 from the agent CLI's own output first. The agent catalog declares, for each CLI
 whose docs state one, the structured output that carries a run's cost or usage;
 verdict requests it on those spawns only (a plain `run` and `demo` keep their
-argv) and reads it from the captured stdout, line-bounded, trusting nothing that
-does not match the documented shape: a capture cut mid-object, a mistyped or
-negative amount, or an unrecognized stream measures nothing. An operator's own
-spelling of the same output flag after `--` wins, and that spawn is not
-measured.
+argv) and reads it from the agent's stdout as it streams — stdout alone, never
+the merged stderr, and never the launcher's tail-capped capture — keeping only
+the lines the format needs, bounded per line and in total. It trusts nothing
+that does not match the documented shape: a half-written object anywhere in the
+stream, an over-long line, an overflowing stream, a quoted, negative, or
+out-of-bounds amount (more than 64 characters or an exponent past 12), or an
+unrecognized stream measures nothing, never a partial total. Claude's result is
+read only as the stream's final line. An operator's own spelling of the same
+output flag after `--` wins, and that spawn is not measured; an older CLI that
+rejects the flag (a non-zero exit naming it beside an unknown-option error) has
+that spawn retried once without it, and the run — and the rest of the loop —
+stops asking for it rather than failing.
 
-| Agent      | Requested output       | What is read                                                                                                                                                         | `priced_by` |
-| ---------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
-| `claude`   | `--output-format json` | the result object's `total_cost_usd` (the final text in `result` still feeds review salvage)                                                                         | `measured`  |
-| `codex`    | `--json`               | the last `turn.completed` event's `usage` (a running total for the thread), priced from the catalog's dated table for the model the launch names with `--model`/`-m` | `tokens`    |
-| `opencode` | `--format json`        | the sum of every `step_finish` event's `part.cost`                                                                                                                   | `measured`  |
+| Agent      | Requested output       | What is read                                                                                                                                    | `priced_by` |
+| ---------- | ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `claude`   | `--output-format json` | the result object's `total_cost_usd` (the final text in `result` still feeds review salvage)                                                    | `measured`  |
+| `codex`    | `--json`               | the last `turn.completed` event's `usage` (a running total for the thread), priced from the catalog's dated table for the model the launch runs | `tokens`    |
+| `opencode` | `--format json`        | the sum of every `step_finish` event's `part.cost`                                                                                              | `measured`  |
 
-Codex's stream names no model and its default model is not fixed, so a Codex
-spawn is token-priced only when the launch names a model the table carries;
-usage with prompt-cache writes (priced per retention tier) or an all-zero usage
-report is never priced. The table is standard-tier, short-context API pricing
+Codex's stream names no model, so verdict resolves the model the launch runs:
+`-m`/`--model` or a `-c model=…` override, else the selected profile's `model`
+(`-p`/`--profile`, else `profile` in `config.toml`), else `config.toml`'s
+top-level `model`, read from `$CODEX_HOME` (default `~/.codex`). A Codex spawn
+is token-priced only for a model the table carries; an open-source or local run
+(`--oss`, `--local-provider`) or a `model_provider` other than `openai` is never
+priced from it, and neither is usage with prompt-cache writes (priced per
+retention tier) or an all-zero usage report. The same resolved model is recorded
+on the spawn's receipt and keys its projection. The table is standard-tier, short-context API pricing
 read 2026-11-25 from OpenAI's pricing and model pages; the catalog cites each
 row.
 
@@ -4383,12 +4395,18 @@ A spawn the CLI did not price falls through, in order: the agent's own
 self-report (`cost.json` for a review, `fix-cost.json` for a fix) as `agent`;
 the median of past `measured` and `tokens` spawn receipts for the same agent
 and model in this repository as `projected`; and only then unknown, which a set
-cost ceiling stops on, fail-closed. A launch whose process never started is
-`not-started` at zero. Each receipt records its source in `priced_by`, with
-`agent` and `model`, so the month-to-date scan and the monthly ceiling count
-measured spend. A two-finder execution's spend receipt is settled to the
-measured total once every one of its spawns was measured; otherwise it keeps
-its projection.
+cost ceiling stops on, fail-closed. Only a launch whose process provably never
+existed — the launcher's start failure — is `not-started` at zero; a process
+that ran and then failed (killed, capped, or a non-zero exit) spent, so it
+falls through the sources like any other. Each receipt records its source in
+`priced_by`, with `agent` and `model`. A bundle receipted per spawn is counted
+from those receipts alone: the agent's bundle-level `cost.json` beside them is
+never counted a second time, so a measured spawn outranks the self-report
+outright. A two-finder execution's spend receipt is settled to the measured
+total once every one of its spawns was measured (to zero when none of them
+started); otherwise it keeps its projection. Settled receipts count per
+invocation, so a resumed execution's spend is counted for every invocation that
+spent.
 
 ## Onboarding (scaffolder + prefs file + skill installer)
 
@@ -7381,8 +7399,8 @@ every unpriced spawn, with or without a ceiling. The spawn's receipt is then
 appended to the round bundle's `budget.json` through the same ledger writer
 under the same lock (`scope` `spawn`, `execution_id` `loop-<id>-<n>-review-<k>`
 or `loop-<id>-<n>-fix`, `projected_usd` `null`), dated at its admission so it
-counts in that month. A spawn row is covered only by a recorded receipt naming
-its own launch, never by the bundle's unidentified `cost.json`.
+counts in that month. The round bundle is then counted from its spawn receipts
+alone; the agent's own `cost.json` there is read only as a spawn's self-report.
 
 The receipts are then priced by source, in order (see **Measured agent spend**
 under Cost control): the agent CLI's own cost from the structured output every
@@ -7392,9 +7410,7 @@ else the spawn's self-report; else the median of past measured spawns
 rewrites the bundle's `cost.json` for its own run, so the loop keeps each
 attempt's record before the next attempt can overwrite it, and the self-report
 of an attempt is its own record's root `est_usd` (the undated schema-2 shape the
-prompt asks for). The last record on disk is zero, whatever else priced the
-attempt, when every one of its entries carries an `at` that parses and falls in
-the scanned month — the month-to-date scan already counts that one. A fix's
+prompt asks for). A fix's
 self-report is the `{"est_usd": <dollars>}` it writes to `fix-cost.json`, read
 even when it exits non-zero — it ran, so it spent. A spawn whose process never
 started is zero. A spawn no source priced stays unknown spend, never free. Reports are read the way the cost

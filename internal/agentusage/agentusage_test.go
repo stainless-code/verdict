@@ -3,6 +3,7 @@ package agentusage
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/agentcatalog"
@@ -68,13 +69,17 @@ func TestMeasureReadsEachCLIsOwnShape(t *testing.T) {
 		},
 		{"opencode step without a cost", agentcatalog.UsageOpenCodeJSONL, "opencode-nocost.jsonl", "", Measurement{}, false},
 		{"opencode truncated", agentcatalog.UsageOpenCodeJSONL, "opencode-truncated.jsonl", "", Measurement{}, false},
+		{"claude result not the final line", agentcatalog.UsageClaudeJSON, "claude-result-not-last.out", "", Measurement{}, false},
+		{"claude literal past the bound", agentcatalog.UsageClaudeJSON, "claude-long-number.out", "", Measurement{}, false},
+		{"claude exponent past the bound", agentcatalog.UsageClaudeJSON, "claude-huge-exponent.out", "", Measurement{}, false},
+		{"codex cut mid-stream", agentcatalog.UsageCodexJSONL, "codex-mid-truncated.jsonl", "gpt-6.2-sol", Measurement{}, false},
 		{"claude output read as codex", agentcatalog.UsageCodexJSONL, "claude-success.out", "gpt-6.2-sol", Measurement{}, false},
 		{"unknown format", "pi-json", "claude-success.out", "", Measurement{}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
-			got, ok := Measure(tc.format, fixture(t, tc.file), tc.model)
+			got, ok := Measure(Capture(tc.format, fixture(t, tc.file)), tc.model)
 			if ok != tc.ok || got != tc.want {
 				t.Fatalf("Measure = %+v, %v; want %+v, %v", got, ok, tc.want, tc.ok)
 			}
@@ -93,10 +98,11 @@ func TestTextReadsTheAgentsFinalMessage(t *testing.T) {
 		{agentcatalog.UsageClaudeJSON, "claude-success.out", "Wrote .verdict/state/local-x/review.json.", true},
 		{agentcatalog.UsageClaudeJSON, "claude-error.out", "", false},
 		{agentcatalog.UsageCodexJSONL, "codex.jsonl", "Wrote review.json with one finding.", true},
+		{agentcatalog.UsageCodexJSONL, "codex-two-messages.jsonl", "Here is the review: {\"findings\": []}\nDone.", true},
 		{agentcatalog.UsageOpenCodeJSONL, "opencode.jsonl", "Reading the bundle now.\nWrote review.json.", true},
 	}
 	for _, tc := range cases {
-		got, ok := Text(tc.format, fixture(t, tc.file))
+		got, ok := Text(Capture(tc.format, fixture(t, tc.file)))
 		if ok != tc.ok || got != tc.want {
 			t.Errorf("Text(%s) = %q, %v; want %q, %v", tc.file, got, ok, tc.want, tc.ok)
 		}
@@ -115,5 +121,63 @@ func TestSumIsExactAndTokenPricedWhenAnyPartIs(t *testing.T) {
 	}
 	if _, _, ok := Sum(nil); ok {
 		t.Error("an empty sum measured something")
+	}
+}
+
+// TestTapReadsStdoutPastTheCaptureAndFlagsOverflow proves the tap's bounds:
+// a long stream is read whole as it arrives (no tail cap drops the early
+// steps), while an over-long line makes the stream unmeasurable rather than
+// half-read.
+func TestTapReadsStdoutPastTheCaptureAndFlagsOverflow(t *testing.T) {
+	t.Parallel()
+	tap := NewTap(agentcatalog.UsageOpenCodeJSONL)
+	step := []byte(`{"type":"step_finish","part":{"type":"step-finish","cost":0.001}}` + "\n")
+	noise := []byte(`{"type":"tool_use","part":{"state":{"output":"` + strings.Repeat("x", 4096) + `"}}}` + "\n")
+	for range 1000 {
+		tap.Feed(noise)
+		tap.Feed(step)
+	}
+	if got, ok := Measure(tap, ""); !ok || got.USD != "1" {
+		t.Fatalf("4 MiB stream = %+v %v, want every one of the 1000 steps (1)", got, ok)
+	}
+	long := NewTap(agentcatalog.UsageOpenCodeJSONL)
+	long.Feed(step)
+	long.Feed([]byte(`{"type":"text","part":{"id":"p","text":"` + strings.Repeat("y", maxLineBytes) + `"}}` + "\n"))
+	long.Feed(step)
+	if got, ok := Measure(long, ""); ok {
+		t.Fatalf("over-long line measured %+v, want nothing", got)
+	}
+}
+
+// TestCodexModelFollowsTheLaunchAndConfig proves the model a codex launch is
+// priced for: an explicit flag or override first, then the selected profile,
+// then config.toml's model; local and non-OpenAI providers are never priced.
+func TestCodexModelFollowsTheLaunchAndConfig(t *testing.T) {
+	t.Parallel()
+	home := t.TempDir()
+	config := "model = \"gpt-6.2-sol\"\nprofile = \"fast\"\n\n[profiles.fast]\nmodel = \"gpt-6-luna\"\n\n" +
+		"[profiles.local]\nmodel_provider = \"ollama\"\nmodel = \"llama\"\n"
+	if err := os.WriteFile(filepath.Join(home, "config.toml"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	cases := []struct {
+		name  string
+		model string
+		args  []string
+		ok    bool
+	}{
+		{name: "default profile", args: []string{"exec"}, model: "gpt-6-luna", ok: true},
+		{name: "named profile", args: []string{"exec", "-p", "local"}},
+		{name: "explicit model", args: []string{"exec", "--model=gpt-5"}, model: "gpt-5", ok: true},
+		{name: "config override", args: []string{"exec", "-c", `model="gpt-5-mini"`}, model: "gpt-5-mini", ok: true},
+		{name: "open-source run", args: []string{"exec", "--oss"}},
+	}
+	for _, tc := range cases {
+		if model, ok := CodexModel(home, tc.args); model != tc.model || ok != tc.ok {
+			t.Errorf("%s: CodexModel = %q %v, want %q %v", tc.name, model, ok, tc.model, tc.ok)
+		}
+	}
+	if model, ok := CodexModel(t.TempDir(), []string{"exec"}); model != "" || ok {
+		t.Errorf("no config = %q %v, want nothing", model, ok)
 	}
 }

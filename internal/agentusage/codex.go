@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"math/big"
 	"slices"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/agentcatalog"
 	"github.com/stainless-code/verdict/internal/spend"
@@ -24,10 +25,9 @@ const tokensPerPrice = 1_000_000
 // usage and summing turns would count earlier turns twice. The stream names
 // no model, so only a model the launch named and the price table carries can
 // be priced.
-func codexCost(out []byte, model string) (Measurement, bool) {
-	objs, complete := objects(out)
-	usage, ok := lastCodexUsage(objs)
-	if !ok || !complete || model == "" {
+func codexCost(kept [][]byte, model string) (Measurement, bool) {
+	usage, ok := lastCodexUsage(objects(kept))
+	if !ok || model == "" {
 		return Measurement{}, false
 	}
 	price, ok := agentcatalog.PriceFor(model)
@@ -89,15 +89,19 @@ func lastCodexUsage(objs []map[string]json.RawMessage) (map[string]json.RawMessa
 	return nil, false
 }
 
-// codexText is the last agent_message item's text.
-func codexText(out []byte) (string, bool) {
-	objs, _ := objects(out)
-	for _, obj := range slices.Backward(objs) {
+// codexText joins every agent_message item's text in order: a review the
+// agent printed in an earlier message than its last is still found.
+func codexText(kept [][]byte) (string, bool) {
+	var texts []string
+	for _, obj := range objects(kept) {
 		if text, ok := agentMessage(obj); ok {
-			return text, true
+			texts = append(texts, text)
 		}
 	}
-	return "", false
+	if len(texts) == 0 {
+		return "", false
+	}
+	return strings.Join(texts, "\n"), true
 }
 
 // agentMessage reads one item.completed event's agent_message text.

@@ -16,12 +16,9 @@ const (
 
 // openCodeCost sums every step_finish event's part.cost: OpenCode prices each
 // assistant step itself. A step that carries no cost leaves the run unpriced
-// rather than reading as free, and so does a stream cut mid-object.
-func openCodeCost(out []byte) (Measurement, bool) {
-	objs, complete := objects(out)
-	if !complete {
-		return Measurement{}, false
-	}
+// rather than reading as free.
+func openCodeCost(kept [][]byte) (Measurement, bool) {
+	objs := objects(kept)
 	total := new(big.Rat)
 	steps := 0
 	for _, obj := range objs {
@@ -57,11 +54,10 @@ func stepCost(obj map[string]json.RawMessage) (*big.Rat, bool, bool) {
 
 // openCodeText joins the text events' deltas — each text event carries the
 // part's new text only — in the order the parts first appeared.
-func openCodeText(out []byte) (string, bool) {
+func openCodeText(kept [][]byte) (string, bool) {
 	var order []string
 	parts := map[string]*strings.Builder{}
-	objs, _ := objects(out)
-	for _, obj := range objs {
+	for _, obj := range objects(kept) {
 		id, text, ok := textDelta(obj)
 		if !ok {
 			continue

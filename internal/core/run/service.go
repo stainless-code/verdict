@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/agentcatalog"
+	"github.com/stainless-code/verdict/internal/agentusage"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
@@ -127,6 +128,7 @@ func checkAgents(agents []config.PersonalAgent) *core.RefusalError {
 func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.RefusalError) {
 	defer func() { st.carry(resp, ref) }()
 	st.meter = &meter{}
+	st.usage = &usageGate{}
 	if err := ctx.Err(); err != nil {
 		return nil, st.refuse(codeCanceled, msgCanceled)
 	}
@@ -447,6 +449,7 @@ type state struct { //nolint:govet // request first: the service reads one invoc
 	defs        []config.PersonalAgent
 	budget      *core.ReviewBudget
 	meter       *meter
+	usage       *usageGate
 	receiptID   string
 	twoFinders  bool
 }
@@ -788,12 +791,13 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 	if ref := st.admit(ctx, 1); ref != nil {
 		return nil, ref
 	}
-	res, err := st.spawn(ctx, args.argv, args.timeout)
-	st.recordSpend(args, 1, res)
+	spawn, err := st.spawnAgent(ctx, args, args.prompt)
+	res := spawn.res
+	st.recordSpend(args, 1, spawn, err)
 	if ref := args.checkpoint(); ref != nil {
 		return nil, ref
 	}
-	if salvageAllowed(ctx, res, err) && st.salvageReview(args, st.agentText(args, res.Stdout)) {
+	if salvageAllowed(ctx, res, err) && st.salvageReview(args, st.agentText(spawn)) {
 		rec.Salvaged = true
 	}
 	return st.finish(ctx, args, rec, launched, started, res, err, nil, argSecrets)
@@ -826,20 +830,24 @@ func (st *state) resolve(def *agentcatalog.Launch) (string, *core.RefusalError) 
 // the run is machine-only. The commander records the watchdog's kill in
 // Result.TimedOut; this call never infers one from its own clock, so an agent
 // that exits non-zero just before the budget stays a failure.
-func (st *state) spawn(ctx context.Context, argv []string, timeout int) (*core.Result, error) {
+func (st *state) spawn(ctx context.Context, argv []string, timeout int, tap *agentusage.Tap) (*core.Result, error) {
 	commander := st.commander()
 	if commander == nil {
 		return nil, errNoCommander
 	}
 	tctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
-	res, err := commander.Run(tctx, &core.Command{
+	cmd := &core.Command{
 		Argv:        argv,
 		Env:         st.childEnv(),
 		Dir:         st.workDir(),
 		OutputCap:   coreexec.VerifyOutputCap,
 		GracePeriod: agentGracePeriod,
-	})
+	}
+	if tap != nil {
+		cmd.StdoutTap = tap
+	}
+	res, err := commander.Run(tctx, cmd)
 	if err != nil {
 		return nil, err //nolint:wrapcheck // spawn failures are mapped by the caller, never reworded
 	}

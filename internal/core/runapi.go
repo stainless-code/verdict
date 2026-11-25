@@ -91,6 +91,10 @@ type RunRequest struct { //nolint:govet // field grouping documents the request 
 	// price table). A spawn the CLI reported nothing usable for is not
 	// reported.
 	OnSpend func(attempt int, usd, pricedBy string) `json:"-"`
+	// OnUsageRejected, when set, is told that the agent CLI rejected the
+	// structured-output flag: the launch retried without it, and a caller
+	// that launches again should stop asking for it.
+	OnUsageRejected func() `json:"-"`
 }
 
 // RunResponse carries the run outcome: the envelope data, the warnings, the

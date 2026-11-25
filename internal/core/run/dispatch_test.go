@@ -99,7 +99,7 @@ func TestAuthorizeSpawnBindsTheMonthlyCeiling(t *testing.T) {
 	root, dir, _ := setupMonthlyBundle(t, "3", `[{"at":"2026-05-01T12:00:00Z","projected_usd":3.5,"execution_id":"mtd-1"}]`)
 	req := request(root, &scripted{})
 	req.Now = mayNow
-	if _, ref := AuthorizeSpawn(t.Context(), req, dir, "loop-a-review"); ref == nil || ref.Code != "spend-capped" {
+	if _, ref := AuthorizeSpawn(t.Context(), req, dir, "loop-a-review", ""); ref == nil || ref.Code != "spend-capped" {
 		t.Fatalf("captured ceiling = %v, want spend-capped", ref)
 	}
 
@@ -107,11 +107,11 @@ func TestAuthorizeSpawnBindsTheMonthlyCeiling(t *testing.T) {
 	personal := request(root, &scripted{})
 	personal.Now = mayNow
 	personal.SpendPolicy = &spend.Policy{MonthlyCap: "3"}
-	if _, ref := AuthorizeSpawn(t.Context(), personal, fresh, "loop-b-review"); ref == nil || ref.Code != "spend-capped" {
+	if _, ref := AuthorizeSpawn(t.Context(), personal, fresh, "loop-b-review", ""); ref == nil || ref.Code != "spend-capped" {
 		t.Fatalf("personal ceiling = %v, want spend-capped", ref)
 	}
 	personal.SpendPolicy = &spend.Policy{MonthlyCap: "10"}
-	if _, ref := AuthorizeSpawn(t.Context(), personal, fresh, "loop-b-fix"); ref != nil {
+	if _, ref := AuthorizeSpawn(t.Context(), personal, fresh, "loop-b-fix", ""); ref != nil {
 		t.Fatalf("under the ceiling = %v, want nil", ref)
 	}
 }
@@ -139,7 +139,7 @@ func TestAuthorizeSpawnCountsTheSpawnAsUnknownUntilPriced(t *testing.T) {
 	dir := spawnBundle(t, root)
 	req := request(root, &scripted{})
 	req.Now = mayNow
-	if _, ref := AuthorizeSpawn(t.Context(), req, dir, "loop-x-1-fix"); ref != nil {
+	if _, ref := AuthorizeSpawn(t.Context(), req, dir, "loop-x-1-fix", ""); ref != nil {
 		t.Fatalf("admit = %v", ref)
 	}
 	state := filepath.Join(root, ".verdict", "state")
@@ -154,11 +154,11 @@ func TestAuthorizeSpawnCountsTheSpawnAsUnknownUntilPriced(t *testing.T) {
 	}
 }
 
-// TestAuthorizeSpawnRowSurvivesTheRecordedCost proves a spawn after the
-// review stays visible without moving its timestamp: the review's
-// unidentified cost.json covers projection rows at or before its second, but
-// never a spawn row, which only a record naming its own launch can cover.
-func TestAuthorizeSpawnRowSurvivesTheRecordedCost(t *testing.T) {
+// TestSpawnReceiptsAloneCountTheirBundle proves a bundle receipted per spawn
+// is counted from its receipts: the agent's own cost.json beside a measured
+// spawn is not counted a second time, and an unpriced spawn stays unknown
+// rather than hidden behind it. The row keeps its admission time.
+func TestSpawnReceiptsAloneCountTheirBundle(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	dir := spawnBundle(t, root)
@@ -167,17 +167,29 @@ func TestAuthorizeSpawnRowSurvivesTheRecordedCost(t *testing.T) {
 		t.Fatal(err)
 	}
 	req := request(root, &scripted{})
-	req.Now = mayNow
-	if _, ref := AuthorizeSpawn(t.Context(), req, dir, "loop-x-1-fix"); ref != nil {
-		t.Fatalf("admit = %v", ref)
+	req.Now = func() time.Time { return mayNow().Add(500 * time.Millisecond) }
+	admitAll(t, req, dir, "opus", "loop-x-1-review-1", "loop-x-1-fix")
+	if ref := PriceSpawn(t.Context(), req, dir, "loop-x-1-review-1", "0.2", spend.PricedMeasured); ref != nil {
+		t.Fatal(ref)
 	}
-	mtd := spend.AggregateMTD(filepath.Join(root, ".verdict", "state"), mayNow())
-	if mtd.KnownUSD != "0.5" || mtd.UnknownCount != 1 {
-		t.Fatalf("MTD = %+v, want the review's 0.5 plus the unknown fix spawn", mtd)
+	state := filepath.Join(root, ".verdict", "state")
+	if mtd := spend.AggregateMTD(state, mayNow()); mtd.KnownUSD != "0.2" || mtd.UnknownCount != 1 {
+		t.Fatalf("MTD = %+v, want the measured 0.2 and the unknown fix, never the self-reported 0.5", mtd)
 	}
+	assertLedgerHas(t, dir, `"at": "2026-05-15T12:00:00Z"`, `"model": "opus"`)
+}
+
+// assertLedgerHas proves the bundle's ledger carries every fragment.
+func assertLedgerHas(t *testing.T, dir string, fragments ...string) {
+	t.Helper()
 	raw, err := os.ReadFile(filepath.Join(dir, "budget.json"))
-	if err != nil || !strings.Contains(string(raw), `"at": "2026-05-15T12:00:00Z"`) {
-		t.Errorf("budget.json = %s (err %v), want the row dated at its admission", raw, err)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range fragments {
+		if !strings.Contains(string(raw), f) {
+			t.Errorf("budget.json = %s, want %s", raw, f)
+		}
 	}
 }
 
@@ -191,7 +203,7 @@ func TestAuthorizeSpawnRequiresAKnownEstimateWithoutACeiling(t *testing.T) {
 	req := request(root, &scripted{})
 	req.Now = mayNow
 	req.SpendPolicy = &spend.Policy{RequireKnown: true}
-	if _, ref := AuthorizeSpawn(t.Context(), req, dir, "loop-x-1-review-1"); ref == nil || ref.Code != "budget-unknown" {
+	if _, ref := AuthorizeSpawn(t.Context(), req, dir, "loop-x-1-review-1", ""); ref == nil || ref.Code != "budget-unknown" {
 		t.Fatalf("admit = %v, want budget-unknown", ref)
 	}
 	if _, err := os.Stat(filepath.Join(dir, "budget.json")); err == nil {
@@ -209,7 +221,7 @@ func TestAuthorizeSpawnCancelIsCanceled(t *testing.T) {
 	req.Now = mayNow
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()
-	if _, ref := AuthorizeSpawn(ctx, req, dir, "loop-x-1-review-1"); ref == nil || ref.Code != codeCanceled {
+	if _, ref := AuthorizeSpawn(ctx, req, dir, "loop-x-1-review-1", ""); ref == nil || ref.Code != codeCanceled {
 		t.Fatalf("admit = %v, want canceled", ref)
 	}
 }
@@ -225,14 +237,24 @@ func TestMonthlyCeilingSeesLoopSpawns(t *testing.T) {
 	req.Now = mayNow
 	req.SpendPolicy = &spend.Policy{MonthlyCap: "1"}
 	for _, id := range []string{"loop-x-1-review", "loop-x-1-fix"} {
-		if _, ref := AuthorizeSpawn(t.Context(), req, dir, id); ref != nil {
+		if _, ref := AuthorizeSpawn(t.Context(), req, dir, id, ""); ref != nil {
 			t.Fatalf("admit %s = %v", id, ref)
 		}
 		if ref := PriceSpawn(t.Context(), req, dir, id, "0.6", "agent"); ref != nil {
 			t.Fatalf("price %s = %v", id, ref)
 		}
 	}
-	if _, ref := AuthorizeSpawn(t.Context(), req, dir, "loop-x-2-review"); ref == nil || ref.Code != "spend-capped" {
+	if _, ref := AuthorizeSpawn(t.Context(), req, dir, "loop-x-2-review", ""); ref == nil || ref.Code != "spend-capped" {
 		t.Fatalf("third spawn = %v, want spend-capped", ref)
+	}
+}
+
+// admitAll admits each launch id, failing on any refusal.
+func admitAll(t *testing.T, req *core.RunRequest, dir, model string, ids ...string) {
+	t.Helper()
+	for _, id := range ids {
+		if _, ref := AuthorizeSpawn(t.Context(), req, dir, id, model); ref != nil {
+			t.Fatalf("admit %s = %v", id, ref)
+		}
 	}
 }

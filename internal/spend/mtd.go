@@ -131,8 +131,32 @@ func stateDirWarning(stateDir string, err error) string {
 // recorded cost in the same month. A recorded file from another month never
 // suppresses the requested month's ledger rows.
 func aggregateBundle(bundleDir, month string, sum *big.Rat, known, unknown *int) {
-	meta := aggregateRecorded(bundleDir, month, sum, known, unknown)
+	// A bundle whose spawns are receipted one by one (the self-review loop's)
+	// is counted from those receipts alone: each carries its own source, and
+	// the agent's bundle-level cost record would count the same spend again.
+	meta := &recordedMeta{maxAt: map[string]time.Time{}}
+	if !receiptedPerSpawn(bundleDir) {
+		meta = aggregateRecorded(bundleDir, month, sum, known, unknown)
+	}
 	aggregateLedger(bundleDir, month, sum, known, unknown, meta)
+}
+
+// receiptedPerSpawn reports whether the bundle's ledger holds any spawn row.
+func receiptedPerSpawn(bundleDir string) bool {
+	raw := openBundleFile(bundleDir, "budget.json")
+	if raw == nil {
+		return false
+	}
+	doc, err := jq.DecodeOrdered(raw)
+	if err != nil {
+		return false
+	}
+	for _, row := range sliceDoc(doc) {
+		if obj, ok := row.(*jq.Obj); ok && stringFieldOf(obj, "scope") == ScopeSpawn {
+			return true
+		}
+	}
+	return false
 }
 
 // unidentifiedExecID is the execution identity of a receipt that named no
@@ -387,12 +411,6 @@ func isLedgerSuppressed(obj *jq.Obj, at any, meta *recordedMeta) bool {
 			return true
 		}
 	}
-	// A spawn row is the receipt of one launch, not a projection of the
-	// bundle's recorded cost: only a record naming its own launch covers it,
-	// so an unidentified cost.json can never hide a later spawn.
-	if stringFieldOf(obj, "scope") == ScopeSpawn {
-		return false
-	}
 	unidentified, ok := meta.maxAt[unidentifiedExecID]
 	return ok && !ledgerAt.After(unidentified)
 }
@@ -450,6 +468,11 @@ func knownSubtotalOf(obj *jq.Obj) (*big.Rat, bool) {
 // recorded no execution. Rows with neither have no identity and every
 // one of them counts.
 func budgetDedupeKey(obj *jq.Obj) string {
+	// A settled receipt is one invocation's measured spend: a resumed
+	// execution's invocations each spent, so each settled row counts.
+	if inv := stringFieldOf(obj, "invocation_id"); inv != "" && stringFieldOf(obj, "priced_by") != "" {
+		return "invocation:" + inv
+	}
 	if exec := stringFieldOf(obj, "execution_id"); exec != "" {
 		return exec
 	}
@@ -641,27 +664,16 @@ func decimalScale(den *big.Int) (int, bool) {
 	return fives, true
 }
 
-// CountedInMonth reports whether the month-to-date scan counts every record
-// of one recorded cost document in the month of now: each record carries an
-// `at` that parses and falls in that month. A record without one, or with a
-// malformed or other-month `at`, is not counted there — its amount must be
-// accounted some other way or it is lost.
-func CountedInMonth(raw []byte, now time.Time) bool {
-	doc, err := jq.DecodeOrdered(raw)
-	if err != nil {
-		return false
+// ParseAmount reads one USD literal under the cost scan's own bounds: a
+// finite, nonnegative decimal of at most 64 characters with an exponent of
+// at most 12 in magnitude. Anything else is no amount.
+func ParseAmount(lit string) (*big.Rat, bool) {
+	if !validNumberLiteral(lit) {
+		return nil, false
 	}
-	month := MonthFor(now)
-	recs := sliceDoc(doc)
-	for _, rec := range recs {
-		obj, ok := rec.(*jq.Obj)
-		if !ok {
-			return false
-		}
-		at, _ := obj.Get("at")
-		if recordMonth, ok := monthOf(at); !ok || recordMonth != month {
-			return false
-		}
+	rat, ok := new(big.Rat).SetString(lit)
+	if !ok || rat.Sign() < 0 {
+		return nil, false
 	}
-	return len(recs) > 0
+	return rat, true
 }
