@@ -90,7 +90,7 @@ func runMCPThenSignal(t *testing.T, sig syscall.Signal) mcpRun {
 	if out, err := gitInit.CombinedOutput(); err != nil {
 		t.Fatalf("git init: %v\n%s", err, out)
 	}
-	scratch, err := os.MkdirTemp("/tmp", "verdict-mcp-signal-")
+	scratch, err := os.MkdirTemp("/tmp", "verdict-mcp-signal-") //nolint:usetesting // must be under /tmp: t.TempDir is not on macOS
 	if err != nil {
 		t.Fatal(err)
 	}
