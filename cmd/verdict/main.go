@@ -662,8 +662,8 @@ func envMap(getenv func(string) string) map[string]string {
 		"CLAUDE_CONFIG_DIR", "CODEX_HOME",
 		"NPM_CONFIG_PREFIX", "HOMEBREW_PREFIX",
 	}
-	env := make(map[string]string, len(keys))
-	for _, k := range keys {
+	env := make(map[string]string, len(keys)+len(hostEnv))
+	for _, k := range slices.Concat(keys, hostEnv) {
 		if v := getenv(k); v != "" {
 			env[k] = v
 		}
@@ -738,17 +738,19 @@ func resolveSubverb(first string, rest []string, env map[string]string, getenv f
 	return got
 }
 
-// resolverEnv are the variables the resolver reads beside the environment map
-// (envMap does not carry them): GITLAB_HOST maps a self-hosted URL or remote
-// to GitLab, and the rest are where glab sends its API calls, which the host
-// check compares with the target's host.
-var resolverEnv = []string{"GITLAB_HOST", "GITLAB_API_HOST", "GLAB_ENABLE_CI_AUTOLOGIN", "GITLAB_CI", "CI_SERVER_FQDN"}
+// hostEnv are the variables that decide where glab sends a call, and which
+// host verdict maps a URL or remote to: GITLAB_HOST maps a self-hosted URL or
+// remote to GitLab and is glab's default host, the rest move or override the
+// server glab reaches. The target check and post's host gate compare them with
+// the target's host (core.GlabDefaultConflict), so envMap carries them to
+// every verb, writes included; glab itself inherits the process environment.
+var hostEnv = []string{"GITLAB_HOST", "GITLAB_API_HOST", "GITLAB_REPO", "GLAB_ENABLE_CI_AUTOLOGIN", "GITLAB_CI", "CI_SERVER_FQDN"}
 
-// runResolver reads resolverEnv beside the environment map and runs the shared
-// resolver.
+// runResolver reads hostEnv beside the environment map (a caller that built it
+// without envMap still resolves) and runs the shared resolver.
 func runResolver(verb, repo, pr string, rest []string, env map[string]string, getenv func(string) string) target.Resolved {
 	targetEnv := maps.Clone(env)
-	for _, name := range resolverEnv {
+	for _, name := range hostEnv {
 		if v := getenv(name); v != "" {
 			targetEnv[name] = v
 		}

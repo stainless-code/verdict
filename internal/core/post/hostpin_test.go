@@ -1,6 +1,7 @@
 package postcore
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,6 +17,7 @@ import (
 func TestPinBundleHost(t *testing.T) {
 	t.Parallel()
 	const ghPR = `{"url":"https://github.com/acme/app/pull/5"}`
+	const gitlabPorted = `{"provider":"gitlab","url":"https://git.corp.example:8443/g/app/-/merge_requests/5"}`
 	const forgePR = `{"provider":"forgejo","url":"https://forge.corp.example:3000/acme/app/pulls/5"}`
 	for _, tc := range []pinCase{
 		{name: "typed pair takes the bundle's host", record: ghPR, want: "github.com"},
@@ -40,8 +42,26 @@ func TestPinBundleHost(t *testing.T) {
 			refusal: []string{"ghe.corp.example:8443", "takes a port", "even for a typed pair"},
 		},
 		{
-			name: "gitlab bundle on a ported host", record: `{"provider":"gitlab","url":"https://git.corp.example:8443/g/app/-/merge_requests/5"}`,
-			refusal: []string{"git.corp.example:8443"},
+			name: "gitlab bundle on a ported host, GITLAB_HOST unset", record: gitlabPorted,
+			refusal: []string{"git.corp.example:8443", "GITLAB_HOST is unset"},
+		},
+		{
+			name: "gitlab bundle on a ported host, GITLAB_HOST on another port", record: gitlabPorted,
+			env:     map[string]string{"GITLAB_HOST": "https://git.corp.example:9443"},
+			refusal: []string{"git.corp.example:8443", "GITLAB_HOST is git.corp.example:9443"},
+		},
+		{
+			name: "gitlab bundle on a ported host, GITLAB_HOST is the host", record: gitlabPorted,
+			env: map[string]string{"GITLAB_HOST": "https://git.corp.example:8443"}, want: "git.corp.example:8443",
+		},
+		{
+			name: "gitlab bundle on a ported host, API host elsewhere", record: gitlabPorted,
+			env:     map[string]string{"GITLAB_HOST": "git.corp.example:8443", "GITLAB_API_HOST": "git.corp.example"},
+			refusal: []string{`GITLAB_API_HOST is "git.corp.example"`},
+		},
+		{
+			name: "gitlab bundle on a ported host, target names it too", record: gitlabPorted, target: "git.corp.example:8443",
+			env: map[string]string{"GITLAB_HOST": "git.corp.example:8443"}, want: "git.corp.example:8443",
 		},
 		{
 			name: "forgejo on FORGEJO_HOST", record: forgePR, forgejoHost: "https://forge.corp.example:3000",
@@ -61,6 +81,7 @@ func TestPinBundleHost(t *testing.T) {
 
 type pinCase struct {
 	name, record, target, forgejoHost string
+	env                               map[string]string
 	want                              string
 	refusal                           []string
 	dryRun                            bool
@@ -73,6 +94,7 @@ func checkPin(t *testing.T, tc *pinCase) {
 		t.Fatal(err)
 	}
 	env := map[string]string{}
+	maps.Copy(env, tc.env)
 	if tc.forgejoHost != "" {
 		env["FORGEJO_HOST"] = tc.forgejoHost
 	}
