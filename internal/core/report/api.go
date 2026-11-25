@@ -25,8 +25,8 @@ type Flags struct {
 	// so an explicit empty value refuses instead of silently disabling the
 	// comparison; it is transport bookkeeping and stays out of the tool schema.
 	Compare string
-	Live    string `enum:"auto|strict|skip"                    json:"-"`
-	MaxRisk string `enum:"low|medium|high|critical"            json:"-"`
+	Live    string `enum:"auto|strict|skip"         json:"-"`
+	MaxRisk string `enum:"low|medium|high|critical" json:"-"`
 	// Policy names a candidate policy file to replay the store under: the
 	// report derives its gate and approval twice, once under the captured
 	// policy and once under this one, and writes nothing. It stays out of the

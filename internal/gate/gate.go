@@ -356,8 +356,8 @@ func applyTier(r *cli.Runner, flags *reportcore.Flags, gated *bool, v string, co
 }
 
 // applyCategory narrows the findings dimension to one finding kind, the class
-// filter the removed `report --check <tier> --category <cat>` carried. It is a narrowing,
-// not a dimension: without --max-severity it would gate nothing, so
+// filter the removed `report --check <tier> --category <cat>` carried. It is a
+// narrowing, not a dimension: without --max-severity it would gate nothing, so
 // parseFlags refuses it there.
 func applyCategory(r *cli.Runner, flags *reportcore.Flags, v string, consumed int) (int, int, bool) {
 	if !core.ValidCategory(v) {

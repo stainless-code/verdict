@@ -14,10 +14,10 @@ const tierStore = `[{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,
 	`"sig":"1111111111111111111111111111111111111111","sig_version":"1",` +
 	`"firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]`
 
-// TestReportToolRefusesRemovedGateFlags proves the report tool is the advisory
-// read: gate is the only gating verb, so a client still sending a gating flag is
-// refused as an unknown argument rather than handed an ungated report it would
-// read as a pass.
+// TestReportToolRefusesRemovedGateFlags proves the report tool is the
+// advisory read: gate is the only gating verb, so a client still sending a
+// gating flag is refused as an unknown argument rather than handed an ungated
+// report it would read as a pass.
 func TestReportToolRefusesRemovedGateFlags(t *testing.T) {
 	fixture(t)
 	writeFile(t, ".verdict/state/5101/findings.json", tierStore)

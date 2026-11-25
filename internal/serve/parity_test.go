@@ -2,6 +2,7 @@ package serve
 
 import (
 	"encoding/json"
+	"maps"
 	"os"
 	"strings"
 	"testing"
@@ -127,15 +128,9 @@ func TestGateParity(t *testing.T) {
 func withoutServedGate(t *testing.T, raw any) map[string]any {
 	t.Helper()
 	data := asMap(t, raw)
-	out := make(map[string]any, len(data))
-	for k, v := range data {
-		out[k] = v
-	}
+	out := maps.Clone(data)
 	delete(out, "gate")
-	approval := make(map[string]any)
-	for k, v := range asMap(t, out["approval"]) {
-		approval[k] = v
-	}
+	approval := maps.Clone(asMap(t, out["approval"]))
 	delete(approval, "tier")
 	out["approval"] = approval
 	return out

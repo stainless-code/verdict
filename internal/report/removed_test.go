@@ -25,21 +25,24 @@ func TestGatingFlagsAreNotReportFlags(t *testing.T) {
 		{"--max-risk", "medium"},
 		{"--live", "strict"},
 	} {
-		t.Run(args[0], func(t *testing.T) {
-			t.Chdir(t.TempDir())
-			var out, diag bytes.Buffer
-			r := &cli.Runner{Out: &out, Human: &out, Diag: &diag, Cmd: "report"}
-			code := Run(context.Background(), r, args, Request{Repo: "acme/app", Pr: "7"})
-			if code != cli.ExitUsage {
-				t.Fatalf("exit = %d, want %d; stderr=%q", code, cli.ExitUsage, diag.String())
-			}
-			if out.Len() != 0 {
-				t.Errorf("a usage refusal printed on stdout: %q", out.String())
-			}
-			if want := "unknown flag '" + args[0] + "' for report"; !strings.Contains(diag.String(), want) {
-				t.Errorf("stderr = %q, want it to contain %q", diag.String(), want)
-			}
-		})
+		t.Run(args[0], func(t *testing.T) { assertUnknownReportFlag(t, args) })
+	}
+}
+
+func assertUnknownReportFlag(t *testing.T, args []string) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	var out, diag bytes.Buffer
+	r := &cli.Runner{Out: &out, Human: &out, Diag: &diag, Cmd: "report"}
+	code := Run(context.Background(), r, args, Request{Repo: "acme/app", Pr: "7"})
+	if code != cli.ExitUsage {
+		t.Fatalf("exit = %d, want %d; stderr=%q", code, cli.ExitUsage, diag.String())
+	}
+	if out.Len() != 0 {
+		t.Errorf("a usage refusal printed on stdout: %q", out.String())
+	}
+	if want := "unknown flag '" + args[0] + "' for report"; !strings.Contains(diag.String(), want) {
+		t.Errorf("stderr = %q, want it to contain %q", diag.String(), want)
 	}
 }
 
@@ -60,15 +63,7 @@ func TestRemovedFlagsGateEquivalents(t *testing.T) {
 	post := `{"head":"` + depHead + `","coverage":{"gaps":0},"risk":{"level":"low","rationale":"Isolated.","assessed_head":"` + depHead + `"}}`
 	postHigh := strings.Replace(post, `"level":"low"`, `"level":"high"`, 1)
 	critical := "[" + depFinding("critical", "security") + "]"
-	tests := []struct {
-		name       string
-		oldReport  string
-		findings   string
-		post       string
-		gateArgs   []string
-		wantExit   int
-		wantStatus map[string]string
-	}{
+	tests := []equivCase{
 		{
 			name: "check-fails-on-an-open-critical", oldReport: "report --check critical", findings: critical, post: post,
 			gateArgs: []string{"--max-severity", "critical", "--coverage", "warn", "--live", "skip"},
@@ -117,44 +112,72 @@ func TestRemovedFlagsGateEquivalents(t *testing.T) {
 			wantExit: cli.ExitRefused, wantStatus: map[string]string{"risk": "fail"},
 		},
 	}
+
 	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			setupRiskCLIBundle(t, tc.post)
-			findings := filepath.Join(".verdict", "state", "local-risk-cli", "findings.json")
-			if err := os.WriteFile(findings, []byte(tc.findings), 0o644); err != nil {
-				t.Fatal(err)
-			}
-			var out, diag bytes.Buffer
-			r := cli.NewRunner("gate", "acme/app", "local-risk-cli", &out, &diag, func(string) string { return "" })
-			r.Effective = cli.Defaults()
-			r.JSONMode = true
-			r.RouteHuman()
-			code := gate.Run(context.Background(), r, tc.gateArgs, Request{Repo: "acme/app", Pr: "local-risk-cli"})
-			if code != tc.wantExit {
-				t.Fatalf("%s as gate %v: exit = %d, want %d\nstdout: %s\nstderr: %s",
-					tc.oldReport, tc.gateArgs, code, tc.wantExit, out.String(), diag.String())
-			}
-			var env struct {
-				Data struct {
-					Dimensions []struct{ ID, Status string } `json:"dimensions"`
-					Passed     bool                          `json:"passed"`
-				} `json:"data"`
-			}
-			if err := json.Unmarshal(out.Bytes(), &env); err != nil {
-				t.Fatalf("gate stdout is not one envelope: %v\n%s", err, out.String())
-			}
-			if env.Data.Passed != (tc.wantExit == cli.ExitOK) {
-				t.Errorf("passed = %v for exit %d", env.Data.Passed, code)
-			}
-			got := map[string]string{}
-			for _, d := range env.Data.Dimensions {
-				got[d.ID] = d.Status
-			}
-			for id, want := range tc.wantStatus {
-				if got[id] != want {
-					t.Errorf("dimension %s = %q, want %q (all: %v)", id, got[id], want, got)
-				}
-			}
-		})
+		t.Run(tc.name, func(t *testing.T) { assertEquivalent(t, &tc) })
 	}
+}
+
+// equivCase is one pre-removal report invocation, the gate argv that replaces
+// it, and what the report produced over that fixture.
+type equivCase struct {
+	wantStatus map[string]string
+	name       string
+	oldReport  string
+	findings   string
+	post       string
+	gateArgs   []string
+	wantExit   int
+}
+
+// gateEnvelope is the slice of gate's --json data this test reads.
+type gateEnvelope struct {
+	Data struct {
+		Dimensions []struct {
+			ID     string `json:"id"`
+			Status string `json:"status"`
+		} `json:"dimensions"`
+		Passed bool `json:"passed"`
+	} `json:"data"`
+}
+
+func assertEquivalent(t *testing.T, tc *equivCase) {
+	t.Helper()
+	setupRiskCLIBundle(t, tc.post)
+	findings := filepath.Join(".verdict", "state", "local-risk-cli", "findings.json")
+	if err := os.WriteFile(findings, []byte(tc.findings), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var out, diag bytes.Buffer
+	r := cli.NewRunner("gate", "acme/app", "local-risk-cli", &out, &diag, func(string) string { return "" })
+	r.Effective = cli.Defaults()
+	r.JSONMode = true
+	r.RouteHuman()
+	code := gate.Run(context.Background(), r, tc.gateArgs, Request{Repo: "acme/app", Pr: "local-risk-cli"})
+	if code != tc.wantExit {
+		t.Fatalf("%s as gate %v: exit = %d, want %d\nstdout: %s\nstderr: %s",
+			tc.oldReport, tc.gateArgs, code, tc.wantExit, out.String(), diag.String())
+	}
+	env := decodeGate(t, out.Bytes())
+	if env.Data.Passed != (tc.wantExit == cli.ExitOK) {
+		t.Errorf("passed = %v for exit %d", env.Data.Passed, code)
+	}
+	got := map[string]string{}
+	for _, d := range env.Data.Dimensions {
+		got[d.ID] = d.Status
+	}
+	for id, want := range tc.wantStatus {
+		if got[id] != want {
+			t.Errorf("dimension %s = %q, want %q (all: %v)", id, got[id], want, got)
+		}
+	}
+}
+
+func decodeGate(t *testing.T, raw []byte) gateEnvelope {
+	t.Helper()
+	var env gateEnvelope
+	if err := json.Unmarshal(raw, &env); err != nil {
+		t.Fatalf("gate stdout is not one envelope: %v\n%s", err, raw)
+	}
+	return env
 }
