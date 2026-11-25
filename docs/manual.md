@@ -5056,19 +5056,25 @@ and remove it when done — the working tree stays untouched throughout.
 
 ### Fix loops (bounded, verify-gated)
 
-`fix owner/repo local-<name> [--sig <s> | --all|--selected|--recipe <name>
+`fix owner/repo local-<name>|<pr> [--sig <s> | --all|--selected|--recipe <name>
 [--min-severity <s>]
 [--verify-cmd <cmd>] [--paths <glob>]... | --test <sig> [--commit]] [--json]`
-runs one bounded pass over a local bundle: it
+runs one bounded pass over a bundle: it
 picks the top open inline sig (severity `critical` above
 `important` above `informational`, then path) or the `--sig` prefix (must be open
 and inline; non-open, section, and unknown sigs refuse), prints the finding
 (plus its stored `brief` block when one is present and the full `kb.txt` context
 when present) with patch → verify → land → re-run instructions, and records the
-pass in `.verdict/state/local-<name>/fix.json`. The agent patches the anchor file,
+pass in `.verdict/state/<bundle>/fix.json`. The agent patches the anchor file,
 runs the verify command itself, writes `verification.json`, lands via `record`,
 and re-runs `fix`; the loop ends when no open inline sigs remain (completion
-summary with fixed/open/stopped counts plus the ledger path). A ceiling-exhausted
+summary with fixed/open/stopped counts plus the ledger path). On a PR bundle
+the instructions say to push the fix, re-fetch, and land with `post`
+instead, since a PR bundle has no `record` path. A PR bundle also requires the
+checkout to be on the head the bundle reviewed (`git rev-parse HEAD` equal to
+the bundle's head); any other commit refuses `head-mismatch` before anything is
+written, so a pass, a patch, or `--test --commit` never lands on main or a stale
+branch. Local bundles review the working tree itself and skip the check. A ceiling-exhausted
 top sig keeps getting picked — pass `--sig` for another sig or triage the stuck
 one. Ceilings are
 hard-coded, not configurable: max 3 passes per sig (the 4th refuses with
@@ -5076,8 +5082,9 @@ hard-coded, not configurable: max 3 passes per sig (the 4th refuses with
 (`scope-escape`) — an effective files ceiling of 1. Pre-existing worktree dirt is
 grandfathered (only files changed since the first pass can trip the audit).
 `fix` never flips status or
-writes `findings.json` (credit still flows through the normal `record` flips);
-PR/provider bundles refuse with `not-local` unless the run is `--selected`. Cost
+writes `findings.json` (credit still flows through the normal `record`/`post`
+flips); corpus bundles refuse with `not-local`, because a fix ledger has no
+business inside a benchmark measurement input. Cost
 note: every pass is another
 agent run over the bundle — loops multiply agent spend, so set
 `REVIEW_BUDGET_USD` (or the typed `budget_usd` default) before looping a large backlog. Ceilings
@@ -5130,8 +5137,8 @@ narrows it again. It refuses instead of printing an empty batch: no
 `selected.json` is `missing-selection` (re-run the bundle's fetch; hosts other
 than GitHub never write one) and a selection whose sigs are no longer open inline
 is `no-selected-findings` (re-fetch for current reactions, or triage them). And
-it is the one batch that runs on a PR bundle — `.verdict/state/<pr>` as readily
-as `local-<name>` — because that is where `selected.json` comes from: the
+`selected.json` only comes from a GitHub `fetch`, so this batch always runs on
+a PR bundle — `.verdict/state/<pr>` as readily as `local-<name>`: the
 instructions then say to push the fix, re-fetch, and land with `post`, since a PR
 bundle has no `record` path.
 
