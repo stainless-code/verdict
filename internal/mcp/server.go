@@ -532,11 +532,11 @@ type stderrProgress struct {
 	w io.Writer
 }
 
-func (p stderrProgress) Human(line string) { fmt.Fprintln(p.w, line) }
+func (p stderrProgress) Human(line string) { fmt.Fprintln(p.w, untrusted.Line(line)) }
 
-func (p stderrProgress) Warn(msg string) { fmt.Fprintf(p.w, "warn: %s\n", msg) }
+func (p stderrProgress) Warn(msg string) { fmt.Fprintf(p.w, "warn: %s\n", untrusted.Line(msg)) }
 
-func (p stderrProgress) Diag(line string) { fmt.Fprintln(p.w, line) }
+func (p stderrProgress) Diag(line string) { fmt.Fprintln(p.w, untrusted.Line(line)) }
 
 func negotiate(requested string) string {
 	if slices.Contains(supportedProtocols, requested) {

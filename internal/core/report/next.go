@@ -7,6 +7,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // RunNext executes the next service: the top-ranked actionable finding plus
@@ -54,7 +55,7 @@ func RunNext(ctx context.Context, req *core.NextRequest) (*core.NextResponse, *c
 }
 
 func nextTopLine(top *core.FindingItem) string {
-	locator := top.Locator
+	locator := untrusted.Line(top.Locator)
 	if locator == "" {
 		locator = "?"
 	}
