@@ -12,6 +12,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/cli"
 	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 func setupCLIBundle(t *testing.T, pr string) string {
@@ -43,12 +44,11 @@ func TestRun_StdinAndJSONEnvelope(t *testing.T) {
 		Now:      func() time.Time { return time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC) },
 	}
 	sarif := `{"version":"2.1.0","runs":[{"tool":{"driver":{"name":"gosec"}},"results":[{"ruleId":"G101","level":"error","message":{"text":"Hardcoded secret"},"locations":[{"physicalLocation":{"artifactLocation":{"uri":"app.go"},"region":{"startLine":2}}}]}]}]}`
-	code := Run(context.Background(), r, []string{"--sarif", "-"}, &Request{
+	code := run(context.Background(), r, []string{"--sarif", "-"}, &readcommon.Request{
 		Repo:     "o/r",
 		Pr:       "12",
 		RepoRoot: repoRoot,
-		Stdin:    strings.NewReader(sarif),
-	})
+	}, strings.NewReader(sarif))
 	if code != cli.ExitOK {
 		t.Fatalf("exit = %d, want 0; diag=%s", code, diag.String())
 	}
@@ -80,12 +80,11 @@ func TestRun_StdinTooLargeRefused(t *testing.T) {
 		Now:      func() time.Time { return time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC) },
 	}
 	oversize := make([]byte, ingestcore.MaxSARIFBytes+5)
-	code := Run(context.Background(), r, []string{"--sarif", "-"}, &Request{
+	code := run(context.Background(), r, []string{"--sarif", "-"}, &readcommon.Request{
 		Repo:     "o/r",
 		Pr:       "13",
 		RepoRoot: repoRoot,
-		Stdin:    bytes.NewReader(oversize),
-	})
+	}, bytes.NewReader(oversize))
 	if code != cli.ExitRefused {
 		t.Fatalf("exit = %d, want %d", code, cli.ExitRefused)
 	}
@@ -128,12 +127,11 @@ func TestRun_FromSarifEqualsReadsStdin(t *testing.T) {
 func assertFromIngest(t *testing.T, repoRoot, pr string, args []string) {
 	t.Helper()
 	r, out, diag := newIngestRunner()
-	code := Run(context.Background(), r, args, &Request{
+	code := run(context.Background(), r, args, &readcommon.Request{
 		Repo:     "o/r",
 		Pr:       pr,
 		RepoRoot: repoRoot,
-		Stdin:    strings.NewReader(fromSARIFDoc),
-	})
+	}, strings.NewReader(fromSARIFDoc))
 	if code != cli.ExitOK {
 		t.Fatalf("exit = %d, want 0; diag=%s out=%s", code, diag.String(), out.String())
 	}
@@ -184,12 +182,11 @@ func TestRun_FromRefusals(t *testing.T) {
 func assertIngestRefusal(t *testing.T, args []string, code, diag string, exit int) {
 	t.Helper()
 	r, out, diagnostics := newIngestRunner()
-	got := Run(context.Background(), r, args, &Request{
+	got := run(context.Background(), r, args, &readcommon.Request{
 		Repo:     "o/r",
 		Pr:       "22",
 		RepoRoot: setupCLIBundle(t, "22"),
-		Stdin:    strings.NewReader(fromSARIFDoc),
-	})
+	}, strings.NewReader(fromSARIFDoc))
 	if got != exit {
 		t.Fatalf("exit = %d, want %d; out=%s diag=%s", got, exit, out.String(), diagnostics.String())
 	}
