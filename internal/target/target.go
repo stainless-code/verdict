@@ -293,6 +293,11 @@ func inferPr(ctx context.Context, d Deps, q *Request, out *Resolved, f *found) {
 // inferFromHost settles the pair from the host's own answer, echoing where it
 // came from.
 func inferFromHost(ctx context.Context, d Deps, q *Request, out *Resolved, f *found, branch, hint string) {
+	// A host no call can be pinned to refuses before the lookup asks it.
+	if ref := hostConflict(f.provider, f.host, q.Env); ref != nil {
+		out.Refusal = ref
+		return
+	}
 	pr, ref := hostPr(ctx, d, q, f, branch, hint)
 	if ref != nil {
 		out.Refusal = ref

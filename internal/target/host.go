@@ -17,13 +17,18 @@ const (
 
 // hostConflict refuses a target whose host no call could be pinned to. gh and
 // glab take the host on every call (core.PinHostArgv), so GH_HOST and a
-// GITLAB_HOST that names another host lose to it. Three cases cannot be made
-// unambiguous and refuse naming both hosts instead of picking one:
+// GITLAB_HOST that names another host lose to it. These cases cannot be made
+// unambiguous and refuse naming both hosts instead of picking one. A verb
+// that may ask the host for the branch's pull request runs this check before
+// that lookup, so a conflict makes no host call:
 //   - a gh or glab host with a port: neither CLI's --hostname takes one, so the
 //     calls would reach the CLI's own default host;
 //   - a GitLab target read from an ssh origin (which names no web port) whose
 //     host GITLAB_HOST serves on a non-default port: the pin would name the
 //     default port, another host, and glab cannot be given the configured one;
+//   - a GitLab target while GITLAB_API_HOST (or, under glab's CI auto-login,
+//     CI_SERVER_FQDN) names another server: glab sends its API calls there
+//     ahead of --hostname (core.GlabEndpointConflict);
 //   - a Forgejo target on another host than FORGEJO_HOST: Forgejo has no CLI,
 //     so every call goes to FORGEJO_HOST with FORGEJO_TOKEN, and the target
 //     would be read from, or written to, the wrong server with its token.
@@ -34,7 +39,8 @@ func hostConflict(provider, host string, env map[string]string) *core.RefusalErr
 	case (provider == providerGitHub || provider == providerGitLab) && strings.Contains(host, ":"):
 		return portConflict(provider, host, env)
 	case provider == providerGitLab:
-		return gitlabPortConflict(host, core.EnvHostAuthority(env[envGitLabHost]))
+		return cmp.Or(gitlabPortConflict(host, core.EnvHostAuthority(env[envGitLabHost])),
+			core.GlabEndpointConflict(host, func(name string) string { return env[name] }))
 	case provider == providerForgejo:
 		return forgejoConflict(host, core.EnvHostAuthority(env[envForgejoHost]))
 	}

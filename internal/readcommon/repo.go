@@ -48,7 +48,13 @@ func BundleProject(dir string) string {
 // when the bundle carries no review URL: a local bundle names no host, so two
 // local bundles never mismatch on it.
 func BundleHost(dir string) string {
-	rawURL := OpenBundle(dir).StrField("url")
+	return OpenBundle(dir).Host()
+}
+
+// Host is [BundleHost] read from this bundle's own snapshot of its record, so
+// a caller that reads other fields from b pins to the same record.
+func (b *Bundle) Host() string {
+	rawURL := b.StrField("url")
 	if rawURL == "" {
 		return ""
 	}

@@ -36,6 +36,14 @@ func TestPinBundleHost(t *testing.T) {
 		{name: "forgejo bundle with no URL pins nothing", record: `{"provider":"forgejo"}`, want: ""},
 		{name: "a dry run with no host writes nothing, so it reads unpinned", record: `{}`, dryRun: true, want: ""},
 		{
+			name: "github bundle on a ported host, typed pair", record: `{"url":"https://ghe.corp.example:8443/acme/app/pull/5"}`,
+			refusal: []string{"ghe.corp.example:8443", "takes a port", "even for a typed pair"},
+		},
+		{
+			name: "gitlab bundle on a ported host", record: `{"provider":"gitlab","url":"https://git.corp.example:8443/g/app/-/merge_requests/5"}`,
+			refusal: []string{"git.corp.example:8443"},
+		},
+		{
 			name: "forgejo on FORGEJO_HOST", record: forgePR, forgejoHost: "https://forge.corp.example:3000",
 			want: "forge.corp.example:3000",
 		},
@@ -88,5 +96,29 @@ func checkPinRefusal(t *testing.T, ref *core.RefusalError, names []string) {
 		if !strings.Contains(ref.Message, s) {
 			t.Errorf("refusal does not name %q: %s", s, ref.Message)
 		}
+	}
+}
+
+// TestPinBundleHostReadsThePostsOwnSnapshot pins that the host comes from the
+// record snapshot post already read its other fields from, so a PR.json
+// rewritten mid-post cannot move the pin.
+func TestPinBundleHostReadsThePostsOwnSnapshot(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	write := func(url string) {
+		t.Helper()
+		if err := os.WriteFile(filepath.Join(dir, "PR.json"), []byte(`{"url":"`+url+`"}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("https://github.com/acme/app/pull/5")
+	st := &state{dir: dir, req: &Request{Runtime: &core.Runtime{Env: map[string]string{}}}}
+	if got := st.provider(); got != providerGitHub {
+		t.Fatalf("provider = %q", got)
+	}
+	write("https://ghe.corp.example/acme/app/pull/5")
+	ctx, ref := st.pinBundleHost(t.Context())
+	if ref != nil || core.HostOf(ctx) != "github.com" {
+		t.Fatalf("pinned host = %q (refusal %v), want the snapshot's github.com", core.HostOf(ctx), ref)
 	}
 }

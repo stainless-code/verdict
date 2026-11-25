@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -221,4 +222,43 @@ func unpinnable(argv []string, host, why string) *RefusalError {
 	return &RefusalError{Code: CodeHostMismatch, Message: fmt.Sprintf(
 		"refusing `%s %s`: the target is on %s, but %s, so the call could reach the tool's default host instead",
 		argv[0], argv[1], host, why)}
+}
+
+// glab reads its API server from these variables ahead of --hostname: with CI
+// auto-login on, CI_SERVER_FQDN; otherwise GITLAB_API_HOST. Either applies to
+// every host, so a pinned call would carry the pinned host's token to it.
+const (
+	envGlabAPIHost   = "GITLAB_API_HOST"
+	envGlabCILogin   = "GLAB_ENABLE_CI_AUTOLOGIN"
+	envGitLabCI      = "GITLAB_CI"
+	envCIServerFQDN  = "CI_SERVER_FQDN"
+	glabEndpointNote = "glab sends API calls to that server instead of the pinned --hostname"
+)
+
+// GlabEndpointConflict refuses a glab call pinned to host when the environment
+// glab inherits (read through getenv) points its API at another server:
+// GITLAB_API_HOST, or CI_SERVER_FQDN when glab's CI auto-login is on. A
+// separate API hostname is a legitimate self-hosted setup, but then the call
+// cannot be pinned, so it refuses naming both instead of stripping either. An
+// unset variable, or one naming host itself, passes.
+func GlabEndpointConflict(host string, getenv func(string) string) *RefusalError {
+	if host == "" {
+		return nil
+	}
+	name := envGlabAPIHost
+	if truthy(getenv(envGlabCILogin)) && truthy(getenv(envGitLabCI)) {
+		name = envCIServerFQDN
+	}
+	configured := EnvHostAuthority(getenv(name))
+	if configured == "" || strings.EqualFold(configured, host) {
+		return nil
+	}
+	return &RefusalError{Code: CodeHostMismatch, Message: fmt.Sprintf(
+		"the target is on %s, but %s names %s and %s; unset %s, or set it to %s",
+		host, name, configured, glabEndpointNote, name, host)}
+}
+
+func truthy(v string) bool {
+	b, err := strconv.ParseBool(strings.TrimSpace(v))
+	return err == nil && b
 }

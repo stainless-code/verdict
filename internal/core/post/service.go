@@ -271,32 +271,56 @@ func refusalOrFailed(err error) *core.RefusalError {
 
 // pinBundleHost pins every host call of this post to the host the bundle was
 // fetched from: the review was written against that host's diff, so it may
-// only land on that host's pull request. A target that names a host (a URL, or
-// one inferred from origin) must be the bundle's, or the post refuses naming
-// both; a typed `<owner/repo>` names none and takes the bundle's. A GitHub or
-// GitLab bundle with no recorded URL under a typed pair names no host at all,
-// so a real post refuses rather than write to the CLI's default host (every
-// fetched bundle records one); a dry run writes nothing and reads like any
-// typed pair. Forgejo has no CLI to pin,
-// so its FORGEJO_HOST must name the same host.
+// only land on that host's pull request. The host comes from the same record
+// snapshot (st.store) every other bundle read of this post uses. A target
+// that names a host (a URL, or one inferred from origin) must be the
+// bundle's, or the post refuses naming both; a typed `<owner/repo>` names
+// none and takes the bundle's. hostRefusal holds the hosts no call can pin.
 func (st *state) pinBundleHost(ctx context.Context) (context.Context, *core.RefusalError) {
-	host, target := readcommon.BundleHost(st.dir), core.HostOf(ctx)
+	host, target := st.store().Host(), core.HostOf(ctx)
 	if host != "" && target != "" && target != host {
 		return ctx, hostMismatch("the target is on %s, but this bundle was fetched from %s, so its review belongs "+
 			"to that host's pull request; fetch the target again, or pass the target on %s", target, host, host)
 	}
 	host = cmp.Or(host, target)
-	if provider := st.provider(); host == "" && !st.flags.DryRun && (provider == providerGitHub || provider == providerGitLab) {
-		return ctx, hostMismatch("this bundle records no review URL and the target names no host, so post cannot tell " +
-			"which host the review belongs on and would write it to the CLI's default host; " +
-			"re-fetch the target, or pass it as a pull request URL")
-	}
-	if configured := core.EnvHostAuthority(st.env()[forgejo.EnvHost]); st.provider() == providerForgejo &&
-		host != "" && configured != "" && configured != host {
-		return ctx, hostMismatch("this bundle is on %s, but FORGEJO_HOST names %s and every Forgejo call goes there "+
-			"with FORGEJO_TOKEN; set FORGEJO_HOST and FORGEJO_TOKEN for %s", host, configured, host)
+	if ref := st.hostRefusal(host); ref != nil {
+		return ctx, ref
 	}
 	return core.WithHost(ctx, host), nil
+}
+
+// hostRefusal refuses a post host no call can be pinned to. A GitHub or GitLab
+// host on a non-default port refuses even under a typed pair: neither CLI's
+// --hostname takes a port. A GitHub or GitLab bundle with no recorded URL
+// under a typed pair names no host, so a real post refuses rather than write
+// to the CLI's default host (every fetched bundle records one); a dry run
+// writes nothing and reads like any typed pair. Forgejo has no CLI to pin, so
+// its FORGEJO_HOST must name the same host.
+func (st *state) hostRefusal(host string) *core.RefusalError {
+	provider := st.provider()
+	cliHost := provider == providerGitHub || provider == providerGitLab
+	switch {
+	case cliHost && strings.Contains(host, ":"):
+		return hostMismatch("this bundle is on %s, but neither gh's nor glab's --hostname takes a port, so no "+
+			"call can be pinned to that host and post refuses even for a typed pair; publish the review from the "+
+			"host's web interface, or serve the host on its default port and re-fetch", host)
+	case cliHost && host == "" && !st.flags.DryRun:
+		return hostMismatch("this bundle records no review URL and the target names no host, so post cannot tell " +
+			"which host the review belongs on and would write it to the CLI's default host; " +
+			"re-fetch the target, or pass it as a pull request URL")
+	case provider == providerForgejo:
+		return forgejoHostRefusal(host, core.EnvHostAuthority(st.env()[forgejo.EnvHost]))
+	}
+	return nil
+}
+
+// forgejoHostRefusal refuses a Forgejo bundle off FORGEJO_HOST.
+func forgejoHostRefusal(host, configured string) *core.RefusalError {
+	if host == "" || configured == "" || configured == host {
+		return nil
+	}
+	return hostMismatch("this bundle is on %s, but FORGEJO_HOST names %s and every Forgejo call goes there "+
+		"with FORGEJO_TOKEN; set FORGEJO_HOST and FORGEJO_TOKEN for %s", host, configured, host)
 }
 
 func hostMismatch(format string, a ...any) *core.RefusalError {

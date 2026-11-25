@@ -6,6 +6,9 @@ import (
 	"fmt"
 	"io"
 	osexec "os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
 	"sync/atomic"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -98,11 +101,45 @@ func (r Runner) argv(ctx context.Context, cmd *core.Command) ([]string, error) {
 	if err := r.precheck(cmd.Argv[0]); err != nil {
 		return nil, err
 	}
-	argv, ref := core.PinHostArgv(cmd.Argv, core.HostOf(ctx))
+	host := core.HostOf(ctx)
+	argv, ref := core.PinHostArgv(cmd.Argv, host)
+	if ref == nil && host != "" && filepath.Base(cmd.Argv[0]) == glabBin {
+		ref = core.GlabEndpointConflict(host, envLookup(childEnviron(cmd)))
+	}
 	if ref != nil {
 		return nil, ref //nolint:wrapcheck // the typed refusal reaches the verb as is, so its code renders
 	}
 	return argv, nil
+}
+
+// childEnviron is the environment the child is about to receive: the
+// command's own Env, else the one it inherits. exec.Cmd.Environ reports it,
+// so the glab endpoint check (core.GlabEndpointConflict) sees what glab will.
+func childEnviron(cmd *core.Command) []string {
+	return (&osexec.Cmd{Env: cmd.Env, Dir: cmd.Dir}).Environ()
+}
+
+// envLookup reads one variable out of an environment list; a later entry
+// wins, as it does for the child.
+func envLookup(env []string) func(string) string {
+	return func(name string) string {
+		value := ""
+		for _, kv := range env {
+			if k, v, ok := strings.Cut(kv, "="); ok && sameEnvName(k, name) {
+				value = v
+			}
+		}
+		return value
+	}
+}
+
+// sameEnvName compares variable names the way the OS does: Windows ignores
+// case.
+func sameEnvName(a, b string) bool {
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(a, b)
+	}
+	return a == b
 }
 
 // commandStdin is the command's own stdin when it sets one, else the
@@ -180,4 +217,7 @@ func Host(ctx context.Context, cmdr core.Commander, bin string, args ...string) 
 	return res.Stdout, res.Stderr, true
 }
 
-const ghBin = "gh"
+const (
+	ghBin   = "gh"
+	glabBin = "glab"
+)

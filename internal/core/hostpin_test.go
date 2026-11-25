@@ -218,3 +218,48 @@ func TestURLAndEnvAuthority(t *testing.T) {
 		}
 	}
 }
+
+// TestGlabEndpointConflict pins which environment redirects a pinned glab
+// call: GITLAB_API_HOST, or CI_SERVER_FQDN once glab's CI auto-login is on
+// (which then replaces GITLAB_API_HOST). An unset variable or one naming the
+// target passes; another server refuses naming both.
+func TestGlabEndpointConflict(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name  string
+		env   map[string]string
+		names []string
+	}{
+		{name: "unset", env: map[string]string{}},
+		{name: "same host as a URL", env: map[string]string{"GITLAB_API_HOST": "https://GitLab.com/"}},
+		{
+			name: "another API host", env: map[string]string{"GITLAB_API_HOST": "gitlab.corp.example"},
+			names: []string{"gitlab.com", "GITLAB_API_HOST names gitlab.corp.example"},
+		},
+		{
+			name: "CI auto-login server elsewhere", names: []string{"CI_SERVER_FQDN names gitlab.corp.example"},
+			env: map[string]string{"GLAB_ENABLE_CI_AUTOLOGIN": "1", "GITLAB_CI": "true", "CI_SERVER_FQDN": "gitlab.corp.example"},
+		},
+		{name: "CI auto-login replaces GITLAB_API_HOST", env: map[string]string{
+			"GLAB_ENABLE_CI_AUTOLOGIN": "true", "GITLAB_CI": "true", "CI_SERVER_FQDN": "gitlab.com",
+			"GITLAB_API_HOST": "gitlab.corp.example",
+		}},
+		{name: "CI server without auto-login", env: map[string]string{"GITLAB_CI": "true", "CI_SERVER_FQDN": "gitlab.corp.example"}},
+	} {
+		checkEndpointConflict(t, tc.name, tc.env, tc.names)
+	}
+}
+
+func checkEndpointConflict(t *testing.T, name string, env map[string]string, names []string) {
+	t.Helper()
+	ref := GlabEndpointConflict("gitlab.com", func(k string) string { return env[k] })
+	if (ref != nil) != (names != nil) {
+		t.Errorf("%s: refusal = %v, want refusal %v", name, ref, names != nil)
+		return
+	}
+	for _, s := range names {
+		if !strings.Contains(ref.Message, s) {
+			t.Errorf("%s: refusal does not name %q: %s", name, s, ref.Message)
+		}
+	}
+}

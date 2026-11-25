@@ -16,8 +16,8 @@ trap restore_stub EXIT
 cat > "$EVAL_STUBBIN/gh" <<'EOF'
 #!/usr/bin/env bash
 echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
-# post pins every call to its bundle's host; the routes below match the rest.
-if [ "${1:-}" = api ] && [ "${2:-}" = --hostname ]; then set -- api "${@:4}"; fi
+# post pins its calls to the bundle's host (github.com here); match the rest.
+if [ "${1:-}" = api ] && [ "${2:-}" = --hostname ] && [ "${3:-}" = github.com ]; then set -- api "${@:4}"; fi
 case "$*" in
   'api repos/acme/app/pulls/4522 --jq .head.sha') printf 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'; exit 0;;
   'api repos/acme/app/pulls/4522/reviews --paginate'|'api repos/acme/app/pulls/4522/comments --paginate'|'api repos/acme/app/issues/4522/comments --paginate') echo '[]'; exit 0;;

@@ -61,13 +61,13 @@ func TestHostCallsNameTheTargetsHostOverGHHost(t *testing.T) {
 	}
 	writeIn(t, filepath.Join(root, ".verdict", "state", "4701", "review.json"),
 		`{"schema_version":"1","findings":[],"spec_checks":[],"receipts":[],"summary":"clean review"}`+"\n")
-	before := len(hostCalls(t, logPath))
-	runCapture(t, []string{"post", "4701", "--dry-run", "--json"})
-	if len(hostCalls(t, logPath)) == before {
-		t.Fatal("post --dry-run made no gh call, so it proves nothing about post's host")
+	for _, args := range [][]string{
+		{"post", "4701", "--dry-run", "--json"},
+		{"ready", "4701", "--json"},
+		{"threads", "4701", "--json"},
+	} {
+		mustCallHost(t, logPath, args)
 	}
-	runCapture(t, []string{"ready", "4701", "--json"})
-	runCapture(t, []string{"threads", "4701", "--json"})
 	for _, call := range hostCalls(t, logPath) {
 		if host, argv, _ := strings.Cut(call, "\t"); host != "github.com" {
 			t.Errorf("gh %s went to %s, not the target's github.com", argv, host)
@@ -104,6 +104,17 @@ func pinnedHostCheckout(t *testing.T) (root, logPath string) {
 	t.Setenv("GH_STUB_LOG", logPath)
 	t.Setenv("GH_HOST", "ghe.corp.example")
 	return root, logPath
+}
+
+// mustCallHost runs one verb and requires that it made at least one gh call,
+// so "no call left the target's host" is never vacuously true for it.
+func mustCallHost(t *testing.T, logPath string, args []string) {
+	t.Helper()
+	before := len(hostCalls(t, logPath))
+	runCapture(t, args)
+	if len(hostCalls(t, logPath)) == before {
+		t.Fatalf("%v made no gh call, so it proves nothing about its host", args)
+	}
 }
 
 func hostCalls(t *testing.T, logPath string) []string {

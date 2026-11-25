@@ -738,13 +738,20 @@ func resolveSubverb(first string, rest []string, env map[string]string, getenv f
 	return got
 }
 
-// runResolver reads GITLAB_HOST beside the environment map (envMap does not
-// carry it; it only maps a self-hosted URL or remote to GitLab) and runs the
-// shared resolver.
+// resolverEnv are the variables the resolver reads beside the environment map
+// (envMap does not carry them): GITLAB_HOST maps a self-hosted URL or remote
+// to GitLab, and the rest are where glab sends its API calls, which the host
+// check compares with the target's host.
+var resolverEnv = []string{"GITLAB_HOST", "GITLAB_API_HOST", "GLAB_ENABLE_CI_AUTOLOGIN", "GITLAB_CI", "CI_SERVER_FQDN"}
+
+// runResolver reads resolverEnv beside the environment map and runs the shared
+// resolver.
 func runResolver(verb, repo, pr string, rest []string, env map[string]string, getenv func(string) string) target.Resolved {
 	targetEnv := maps.Clone(env)
-	if h := getenv("GITLAB_HOST"); h != "" {
-		targetEnv["GITLAB_HOST"] = h
+	for _, name := range resolverEnv {
+		if v := getenv(name); v != "" {
+			targetEnv[name] = v
+		}
 	}
 	ctx, stop := shutdownSignalContext()
 	defer stop()

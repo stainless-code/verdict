@@ -1,6 +1,7 @@
 package target
 
 import (
+	"encoding/json"
 	"slices"
 	"strings"
 	"testing"
@@ -76,6 +77,13 @@ func TestResolveRefusesAHostNoCallCanBePinnedTo(t *testing.T) {
 			q:     Request{Verb: "post", Repo: "4", Env: map[string]string{"GITLAB_HOST": "https://git.corp.example:8443"}},
 		},
 		{
+			name: "gitlab URL, GITLAB_API_HOST elsewhere", hosts: []string{"gitlab.com", "GITLAB_API_HOST names git.corp.example"},
+			q: Request{
+				Verb: "fetch", Repo: "https://gitlab.com/g/app/-/merge_requests/4",
+				Env: map[string]string{"GITLAB_API_HOST": "git.corp.example"},
+			},
+		},
+		{
 			name: "github origin with a port", hosts: []string{"the target is on github.com:8443", "gh's --hostname takes no port"},
 			g: fakeGit{origin: "https://github.com:8443/acme/app.git"}, q: Request{Verb: "post", Repo: "12"},
 		},
@@ -131,14 +139,22 @@ func TestBundleFromAnotherPortIsAnotherHost(t *testing.T) {
 }
 
 // TestHostLookupRejectsAnAnswerFromAnotherPort is the lookup's half: a listed
-// pull request on the origin's hostname but another port is not trusted.
+// pull request on the origin's hostname but another port is not trusted. A
+// ported origin already refuses before the lookup (hostConflict), so the
+// reply check is defense in depth and is exercised directly.
 func TestHostLookupRejectsAnAnswerFromAnotherPort(t *testing.T) {
 	env := map[string]string{"GITLAB_HOST": "git.corp.example"}
-	out := "[" + glEntry("https://git.corp.example/acme/sub/app/-/merge_requests/7") + "]"
-	g := &fakeGit{origin: "https://git.corp.example:8443/acme/sub/app.git", branch: "fix-x", hostOut: out}
-	got := lookup(t, g, &Request{Verb: "fetch", Env: env})
-	if got.Refusal == nil || !strings.Contains(got.Refusal.Message, "does not trust") {
-		t.Fatalf("an answer from another port is not the origin's PR: %+v", got)
+	f := &found{repo: "acme/sub/app", provider: providerGitLab, host: "git.corp.example:8443"}
+	e := map[string]any{
+		"iid": json.Number("7"), "source_branch": "fix-x",
+		"web_url": "https://git.corp.example/acme/sub/app/-/merge_requests/7",
+	}
+	if _, ok := validEntry(e, &gitlabFields, f, "fix-x", env); ok {
+		t.Fatal("an answer from another port is not the origin's PR")
+	}
+	f.host = "git.corp.example"
+	if _, ok := validEntry(e, &gitlabFields, f, "fix-x", env); !ok {
+		t.Fatal("the same entry on the origin's own host must validate")
 	}
 }
 
@@ -156,5 +172,30 @@ func TestHostLookupRunsPinnedToTheOriginsHost(t *testing.T) {
 	argv, ref := core.PinHostArgv(g.calls[len(g.calls)-1], "github.com")
 	if ref != nil || !slices.Equal(argv, g.calls[len(g.calls)-1]) {
 		t.Fatalf("the runner would not pass the lookup argv unchanged: %q, %v", argv, ref)
+	}
+}
+
+// TestHostConflictRefusesBeforeTheLookup pins the order: a host no call can be
+// pinned to refuses before the branch lookup asks it anything.
+func TestHostConflictRefusesBeforeTheLookup(t *testing.T) {
+	g := &fakeGit{origin: "https://github.com:8443/acme/app.git", branch: "fix-x", hostOut: oneOpenPR}
+	got := lookup(t, g, &Request{Verb: "fetch"})
+	if got.Refusal == nil || got.Refusal.Code != core.CodeHostMismatch {
+		t.Fatalf("want a host-mismatch refusal, got %+v", got)
+	}
+	if n := hostCalls(g); n != 0 {
+		t.Fatalf("the lookup made %d host call(s) before refusing", n)
+	}
+}
+
+// TestGitLabAPIHostOnTheTargetResolves keeps the legitimate setup working:
+// GITLAB_API_HOST naming the target's own host does not refuse.
+func TestGitLabAPIHostOnTheTargetResolves(t *testing.T) {
+	got := resolve(t, &fakeGit{}, checkout(t, nil), &Request{
+		Verb: "fetch", Repo: "https://gitlab.com/g/app/-/merge_requests/4",
+		Env: map[string]string{"GITLAB_API_HOST": "https://gitlab.com"},
+	})
+	if got.Refusal != nil || got.Host != "gitlab.com" {
+		t.Fatalf("GITLAB_API_HOST on the target's host must resolve: %+v", got)
 	}
 }
