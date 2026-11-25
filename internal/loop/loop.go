@@ -26,6 +26,7 @@ import (
 	loopcore "github.com/stainless-code/verdict/internal/core/loop"
 	"github.com/stainless-code/verdict/internal/core/reviewflow"
 	runcore "github.com/stainless-code/verdict/internal/core/run"
+	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/shellquote"
 	"github.com/stainless-code/verdict/internal/spend"
 )
@@ -62,15 +63,6 @@ const (
 	msgExtraArg = "loop takes one <owner/repo> positional; unexpected '%s'"
 )
 
-// Request carries the resolved loop invocation.
-type Request struct {
-	Env      map[string]string
-	Forces   *cli.GlobalForces
-	Repo     string
-	Root     string
-	RepoRoot string
-}
-
 // flags is the parsed loop surface.
 type flags struct {
 	agent      string
@@ -88,7 +80,7 @@ type flags struct {
 // [--max-cost-usd <usd>] [--budget <duration>] [--output <dir>]
 // [--fix-prompt <file>] [--sandbox | --sandbox-network-only] [--print]
 // [--json]`.
-func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
 	r.Repo, r.Pr = req.Repo, ""
 	// The summary owns stdout; every composed verb's progress goes to the
 	// diagnostic stream so a pipe reads the loop's own lines only.
@@ -101,7 +93,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if code, done := r.Canceled(ctx, verb); done {
 		return code
 	}
-	lreq, ref := loopRequest(r, req, &f)
+	lreq, ref := loopRequest(r, &req, &f)
 	if ref != nil {
 		return r.RefuseTyped(ref)
 	}
@@ -134,7 +126,7 @@ func exitFor(d *loopcore.Data) int {
 
 // loopRequest resolves the parsed flags into the service request: the limits,
 // the fix prompt's text, the receipts directory, and the prefs-defined agents.
-func loopRequest(r *cli.Runner, req Request, f *flags) (*loopcore.Request, *core.RefusalError) {
+func loopRequest(r *cli.Runner, req *readcommon.Request, f *flags) (*loopcore.Request, *core.RefusalError) {
 	rounds, ref := parseRounds(f.maxRounds)
 	if ref != nil {
 		return nil, ref
@@ -175,13 +167,10 @@ func loopRequest(r *cli.Runner, req Request, f *flags) (*loopcore.Request, *core
 // flow wires the shared pipeline: the runner's runtime, the fetch commander,
 // the agent watchdog, the process environment, and the prefs agents and
 // spend policy, read the way `run` reads them.
-func flow(r *cli.Runner, req Request, agents []config.PersonalAgent, policy *spend.Policy) *reviewflow.Flow {
+func flow(r *cli.Runner, req *readcommon.Request, agents []config.PersonalAgent, policy *spend.Policy) *reviewflow.Flow {
 	reads := coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
 	return &reviewflow.Flow{
-		ReadRequest: r.Read(core.ReadRequest{
-			Runtime: &core.Runtime{Env: req.Env},
-			Root:    &req.Root, Forces: req.Forces,
-		}, reads),
+		ReadRequest:    r.Read(*req, reads),
 		SettingsPath:   cli.SettingsPath(req.Env["HOME"], req.Env["XDG_CONFIG_HOME"]),
 		Effective:      r.Effective,
 		Commander:      reads,

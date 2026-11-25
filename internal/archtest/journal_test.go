@@ -11,9 +11,9 @@ import (
 )
 
 // TestJournalSingleHookInCLI enforces DESIGN §1.5 assertion 1: cmd/verdict has
-// exactly one call to journal.Guard inside dispatch, and every verb dispatcher
-// (readVerbs, dispatchMutating, dispatchStoreVerbs, dispatchLocal,
-// dispatchFetch) is reachable only through dispatchVerb inside Guard's closure.
+// exactly one call to journal.Guard inside dispatch, and the verb table (the
+// only place a handler is looked up) is reachable only through dispatchVerb
+// inside Guard's closure.
 func TestJournalSingleHookInCLI(t *testing.T) {
 	t.Parallel()
 	mainPath := filepath.Join(moduleRoot(t), "cmd", "verdict", "main.go")
@@ -60,11 +60,8 @@ func findGuardCalls(node ast.Node) []*ast.CallExpr {
 func assertDirectDispatchersNotInDispatch(t *testing.T, body *ast.BlockStmt) {
 	t.Helper()
 	forbidden := map[string]bool{
-		"readVerbs":          true,
-		"dispatchMutating":   true,
-		"dispatchStoreVerbs": true,
-		"dispatchLocal":      true,
-		"dispatchFetch":      true,
+		"verbTable": true,
+		"verbIndex": true,
 	}
 	ast.Inspect(body, func(n ast.Node) bool {
 		ident, ok := n.(*ast.Ident)

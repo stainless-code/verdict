@@ -779,44 +779,21 @@ func usageText() string {
 		"  Glossary: https://stainless-code.com/verdict/docs/glossary\n"
 }
 
-// optionals take at most one optional positional and no repo/pr pair, so the
-// split must not read the first token as a repository and the second as a PR.
-var optionals = map[string]bool{cmdDemo: true, verbDashboard: true}
-
-var bareVerbs = map[string]bool{
-	"check-tree": true,
-	verbDoctor:   true,
-	"learn":      true,
-	"init":       true,
-	verbSkill:    true,
-	"upgrade":    true,
-	"uninstall":  true,
-	"index":      true,
-	"pack":       true,
-	"serve":      true,
-	verbACP:      true,
-	verbLSP:      true,
-}
-
-// repoOnlyVerbs take one <owner/repo> and nothing else positional: every other
-// argument is one of their own flags, so the split must not read the second
-// token as a PR.
-var repoOnlyVerbs = map[string]bool{cmdTrend: true, cmdRisk: true, cmdLoop: true}
-
+// arityUsage reports whether the invocation lacks the positionals its verb
+// requires, so the front door prints the usage block before any settings,
+// store, or network read.
 func arityUsage(cmd, repo, pr string) bool {
 	if cmd == "" {
 		return true
 	}
-	if bareVerbs[cmd] || optionals[cmd] {
+	switch arityOf(cmd) {
+	case arityBare, arityOptional:
 		return false
-	}
-	if repoOnlyVerbs[cmd] {
+	case arityRepo:
 		return repo == ""
+	default:
+		return repo == "" || pr == ""
 	}
-	if cmd == cmdBacktest {
-		return false
-	}
-	return repo == "" || pr == ""
 }
 
 func unknownCmdMessage(cmd string) string {

@@ -11,6 +11,7 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 func readFile(t *testing.T, path string) []byte {
@@ -180,7 +181,7 @@ func TestParseFlagsRoundsMissingValue(t *testing.T) {
 // TestRentryKeepsRounds pins the re-run line: the round count it names is
 // the one the operator ran, dropped only at the default.
 func TestRentryKeepsRounds(t *testing.T) {
-	req := Request{Repo: "acme/app", Pr: "42"}
+	req := testReq()
 	got := rentry(req, &flags{agent: "claude", timeout: DefaultTimeoutS, rounds: "3"}, false)
 	want := "verdict run acme/app 42 --agent claude --rounds 3"
 	if got != want {
@@ -194,7 +195,7 @@ func TestRentryKeepsRounds(t *testing.T) {
 // TestRentryRebuildsTheCommand pins the re-run line: the identity it names
 // is the one the operator ran, minus the unquotable pass-through tail.
 func TestRentryRebuildsTheCommand(t *testing.T) {
-	req := Request{Repo: "acme/app", Pr: "42"}
+	req := testReq()
 	got := rentry(req, &flags{agent: "claude", timeout: "42", print: true}, true)
 	want := "verdict run acme/app 42 --agent claude --timeout 42 --print --json"
 	if got != want {
@@ -228,7 +229,7 @@ func TestParseFlagsRecipe(t *testing.T) {
 	if !slices.Equal(flags.pass, want) {
 		t.Fatalf("pass-through = %q, want %q", flags.pass, want)
 	}
-	if got := runRequest(r, Request{Repo: "acme/app", Pr: "42"}, &flags).Recipe; got != "quick" {
+	if got := runRequest(r, testReq(), &flags).Recipe; got != "quick" {
 		t.Errorf("request recipe = %q, want the parsed flag carried through", got)
 	}
 }
@@ -262,7 +263,7 @@ func TestUnknownFlagNamesRecipe(t *testing.T) {
 // TestRentryKeepsRecipe pins the re-run line: the pipeline it names is the one
 // the operator asked for, dropped only when unasked.
 func TestRentryKeepsRecipe(t *testing.T) {
-	req := Request{Repo: "acme/app", Pr: "42"}
+	req := testReq()
 	got := rentry(req, &flags{agent: "claude", timeout: DefaultTimeoutS, rounds: DefaultRounds, recipe: "quick"}, false)
 	want := "verdict run acme/app 42 --agent claude --recipe quick"
 	if got != want {
@@ -288,7 +289,7 @@ func TestParseFlagsStage(t *testing.T) {
 	if want := []string{"--stage", "9"}; !slices.Equal(flags.pass, want) {
 		t.Fatalf("pass-through = %q, want %q", flags.pass, want)
 	}
-	if got := runRequest(r, Request{Repo: "acme/app", Pr: "42"}, &flags).StageRaw; got != "2" {
+	if got := runRequest(r, testReq(), &flags).StageRaw; got != "2" {
 		t.Errorf("request stage = %q, want the parsed flag carried through", got)
 	}
 }
@@ -324,7 +325,7 @@ func TestParseFlagsStageEmptyValue(t *testing.T) {
 // this line as the operator typed it, refusals included, so a value carrying
 // shell metacharacters must not rewrite the command it is echoed in.
 func TestRentryQuotesTheStageOperand(t *testing.T) {
-	req := Request{Repo: "acme/app", Pr: "42"}
+	req := testReq()
 	got := rentry(req, &flags{agent: "claude", stage: "2; rm -rf /", timeout: DefaultTimeoutS, rounds: DefaultRounds, print: true}, false)
 	want := "verdict run acme/app 42 --agent claude --print --stage '2; rm -rf /'"
 	if got != want {
@@ -348,7 +349,7 @@ func TestUnknownFlagNamesStage(t *testing.T) {
 // TestRentryKeepsStage pins the re-run line: the stage it names is the one the
 // operator rendered, dropped only when unasked.
 func TestRentryKeepsStage(t *testing.T) {
-	req := Request{Repo: "acme/app", Pr: "42"}
+	req := testReq()
 	got := rentry(req, &flags{agent: "claude", recipe: "quick", stage: "2", timeout: DefaultTimeoutS, rounds: DefaultRounds, print: true}, false)
 	want := "verdict run acme/app 42 --agent claude --recipe quick --print --stage 2"
 	if got != want {
@@ -401,10 +402,10 @@ func TestFindersFlagAndReentry(t *testing.T) {
 	if done || parsed.finders != "1" {
 		t.Fatalf("parsed=%+v done=%v", parsed, done)
 	}
-	if got := rentry(Request{Repo: "acme/app", Pr: "42"}, &parsed, false); got != "verdict run acme/app 42 --finders 1 --agent claude" {
+	if got := rentry(testReq(), &parsed, false); got != "verdict run acme/app 42 --finders 1 --agent claude" {
 		t.Fatalf("re-entry = %s", got)
 	}
-	request := runRequest(r, Request{Repo: "acme/app", Pr: "42"}, &parsed)
+	request := runRequest(r, testReq(), &parsed)
 	if request.FindersRaw != "1" {
 		t.Fatalf("request finders = %q", request.FindersRaw)
 	}
@@ -420,10 +421,10 @@ func TestBudgetFlagAndReentry(t *testing.T) {
 		t.Fatalf("parsed=%+v code=%d done=%v", parsed, code, done)
 	}
 	want := "verdict run acme/app 42 --finders 2 --budget auto --agent claude"
-	if got := rentry(Request{Repo: "acme/app", Pr: "42"}, &parsed, false); got != want {
+	if got := rentry(testReq(), &parsed, false); got != want {
 		t.Fatalf("re-entry = %s; want %s", got, want)
 	}
-	request := runRequest(r, Request{Repo: "acme/app", Pr: "42"}, &parsed)
+	request := runRequest(r, testReq(), &parsed)
 	if request.BudgetRaw != "auto" {
 		t.Fatalf("request budget = %q", request.BudgetRaw)
 	}
@@ -457,10 +458,10 @@ func TestAllowShellFlagAndReentry(t *testing.T) {
 		t.Fatalf("parsed=%+v code=%d done=%v", parsed, code, done)
 	}
 	want := "verdict run acme/app 42 --allow-shell --agent claude"
-	if got := rentry(Request{Repo: "acme/app", Pr: "42"}, &parsed, false); got != want {
+	if got := rentry(testReq(), &parsed, false); got != want {
 		t.Fatalf("re-entry = %s; want %s", got, want)
 	}
-	if request := runRequest(r, Request{Repo: "acme/app", Pr: "42"}, &parsed); !request.AllowShell {
+	if request := runRequest(r, testReq(), &parsed); !request.AllowShell {
 		t.Fatal("run request did not carry --allow-shell")
 	}
 
@@ -468,10 +469,10 @@ func TestAllowShellFlagAndReentry(t *testing.T) {
 	if plain.allowShell {
 		t.Fatal("a run without --allow-shell allowed the agent's shell")
 	}
-	if got := rentry(Request{Repo: "acme/app", Pr: "42"}, &plain, false); got != "verdict run acme/app 42 --agent claude" {
+	if got := rentry(testReq(), &plain, false); got != "verdict run acme/app 42 --agent claude" {
 		t.Fatalf("re-entry = %s", got)
 	}
-	if request := runRequest(r, Request{Repo: "acme/app", Pr: "42"}, &plain); request.AllowShell {
+	if request := runRequest(r, testReq(), &plain); request.AllowShell {
 		t.Fatal("run request allowed the agent's shell without the flag")
 	}
 }
@@ -483,10 +484,10 @@ func TestResumeFlagAndReentry(t *testing.T) {
 		t.Fatalf("parsed=%+v code=%d done=%v", parsed, code, done)
 	}
 	want := "verdict run acme/app 42 --resume --agent claude"
-	if got := rentry(Request{Repo: "acme/app", Pr: "42"}, &parsed, false); got != want {
+	if got := rentry(testReq(), &parsed, false); got != want {
 		t.Fatalf("re-entry = %s; want %s", got, want)
 	}
-	if request := runRequest(r, Request{Repo: "acme/app", Pr: "42"}, &parsed); !request.Resume {
+	if request := runRequest(r, testReq(), &parsed); !request.Resume {
 		t.Fatal("run request did not carry --resume")
 	}
 
@@ -494,7 +495,7 @@ func TestResumeFlagAndReentry(t *testing.T) {
 	if plain.resume {
 		t.Fatal("a run without --resume set the resume request")
 	}
-	if got := rentry(Request{Repo: "acme/app", Pr: "42"}, &plain, false); got != "verdict run acme/app 42 --agent claude" {
+	if got := rentry(testReq(), &plain, false); got != "verdict run acme/app 42 --agent claude" {
 		t.Fatalf("re-entry = %s", got)
 	}
 }
@@ -514,4 +515,10 @@ func TestRefuseExitsWithTheAgentStatusOnlyForAgentFailed(t *testing.T) {
 			t.Errorf("refuse(%s) exit = %d, want %d", code, got, want)
 		}
 	}
+}
+
+// testReq is the acme/app PR 42 invocation with an empty runtime, the shape
+// the front door hands every verb.
+func testReq() *readcommon.Request {
+	return &readcommon.Request{Runtime: &core.Runtime{}, Repo: "acme/app", Pr: "42"}
 }

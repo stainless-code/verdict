@@ -12,12 +12,12 @@ import (
 )
 
 // TestLSPDispatchShape pins the registries the transport needs: lsp is a
-// bare verb whose flags pass through, owns its help, and is not a read verb
-// (a read row would die on not-a-repo before --root was read).
+// bare verb whose flags pass through, owns its help, and has no table handler
+// (a handler would die on not-a-repo before --root was read).
 func TestLSPDispatchShape(t *testing.T) {
 	t.Parallel()
-	if _, ok := readVerbs["lsp"]; ok {
-		t.Fatal("lsp is a readVerbs entry; the transport must dispatch before resolveRepoRoot")
+	if spec := verbIndex["lsp"]; spec == nil || spec.Run != nil {
+		t.Fatal("lsp has a table handler; the transport must dispatch before resolveRepoRoot")
 	}
 	if !bareVerbs["lsp"] || !ownHelpVerbs["lsp"] {
 		t.Fatalf("lsp bareVerbs=%v ownHelpVerbs=%v, want both", bareVerbs["lsp"], ownHelpVerbs["lsp"])

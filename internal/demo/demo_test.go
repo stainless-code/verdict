@@ -9,6 +9,7 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 // newRunner builds the runner a call renders through, with the JSON mode the
@@ -176,7 +177,7 @@ func assertUsageRefusal(t *testing.T, args []string, want string) {
 func TestRunRefusesBadTargetAsOneEnvelope(t *testing.T) {
 	t.Parallel()
 	r, out, _ := newRunner(t, true)
-	code := Run(t.Context(), r, []string{"https://gitlab.com/acme/app/pull/7"}, Request{Env: map[string]string{}})
+	code := Run(t.Context(), r, []string{"https://gitlab.com/acme/app/pull/7"}, readcommon.Request{Runtime: &core.Runtime{Env: map[string]string{}}})
 	if code != cli.ExitRefused {
 		t.Fatalf("exit = %d, want %d; stderr: %s", code, cli.ExitRefused, r.Diag)
 	}
@@ -198,7 +199,7 @@ func TestRunRefusesBadTargetAsOneEnvelope(t *testing.T) {
 func TestRunRefusesBadTargetHuman(t *testing.T) {
 	t.Parallel()
 	r, out, diag := newRunner(t, false)
-	code := Run(t.Context(), r, []string{"not-a-url"}, Request{Env: map[string]string{}})
+	code := Run(t.Context(), r, []string{"not-a-url"}, readcommon.Request{Runtime: &core.Runtime{Env: map[string]string{}}})
 	if code != cli.ExitRefused {
 		t.Fatalf("exit = %d, want %d", code, cli.ExitRefused)
 	}
@@ -289,7 +290,8 @@ func TestRentry(t *testing.T) {
 func TestDemoRequestCarriesTheTimeout(t *testing.T) {
 	t.Parallel()
 	r, _, _ := newRunner(t, false)
-	got := demoRequest(t.Context(), r, Request{Env: map[string]string{}, Root: t.TempDir()}, flags{timeout: "900"})
+	root := t.TempDir()
+	got := demoRequest(t.Context(), r, &readcommon.Request{Runtime: &core.Runtime{Env: map[string]string{}}, Root: &root}, flags{timeout: "900"})
 	if got.TimeoutRaw != "900" {
 		t.Fatalf("TimeoutRaw = %q; want 900", got.TimeoutRaw)
 	}

@@ -13,17 +13,9 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	fixcore "github.com/stainless-code/verdict/internal/core/fix"
+	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/shellquote"
 )
-
-// Request carries the resolved fix invocation.
-type Request struct {
-	Env      map[string]string
-	Repo     string
-	Pr       string
-	Root     string
-	RepoRoot string
-}
 
 const (
 	sigFlag         = "--sig"
@@ -37,7 +29,7 @@ const (
 )
 
 // Run executes the fix verb: argv parsing, one fixcore call, and exit mapping.
-func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	r.Rentry = "verdict fix " + req.Repo + " " + req.Pr
 	f, code, done := parseFlags(r, args)
@@ -51,7 +43,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if code, done := r.Canceled(ctx, "fix"); done {
 		return code
 	}
-	resp, ref := fixcore.Run(ctx, fixRequest(r, req, f))
+	resp, ref := fixcore.Run(ctx, fixRequest(r, &req, f))
 	if ref != nil {
 		if ref.Code == core.CodeBadFlags {
 			return r.ReportUsage(&cli.UsageError{Message: ref.Message})
@@ -64,18 +56,13 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	return cli.ExitOK
 }
 
-func fixRequest(r *cli.Runner, req Request, f *flags) *fixcore.Request {
+func fixRequest(r *cli.Runner, req *readcommon.Request, f *flags) *fixcore.Request {
 	out := &fixcore.Request{
 		Sig: f.sig, All: f.all, Selected: f.selected, MinSeverity: f.minSeverity,
 		VerifyCmd: f.verifyCmd, Paths: f.paths, Test: f.test, Commit: f.commit,
 		Recipe: f.recipe, TestSet: f.testSet, RecipeSet: f.recipeSet, Human: r.Human,
 	}
-	out.ReadRequest = r.Read(core.ReadRequest{
-		Runtime: &core.Runtime{
-			Env: req.Env,
-		},
-		Repo: req.Repo, Pr: req.Pr, RepoRoot: req.RepoRoot,
-	}, coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true})
+	out.ReadRequest = r.Read(*req, coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true})
 	return out
 }
 

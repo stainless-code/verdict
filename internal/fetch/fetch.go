@@ -17,16 +17,8 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
-
-// Request carries the resolved fetch invocation.
-type Request struct {
-	Env      map[string]string
-	Repo     string
-	Pr       string
-	Root     string
-	RepoRoot string
-}
 
 // Run executes `fetch <owner/repo> <pr> [--base-sha|--since <sha>]
 // [--provider <name>] [--index <ref|dir>] [--context <file|dir>]
@@ -35,7 +27,7 @@ type Request struct {
 // process exit code.
 // Human progress goes to the runner's human stream; --json mode prints
 // exactly one envelope to stdout.
-func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	f, code, done := parseFetchFlags(r, args)
 	if done {
@@ -48,7 +40,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 		// The dump owns stdout; progress moves to stderr.
 		r.Human = r.Diag
 	}
-	resp, err := fetchcore.Run(ctx, fetchRequest(r, req, &f))
+	resp, err := fetchcore.Run(ctx, fetchRequest(r, &req, &f))
 	if err != nil {
 		return refuseFetch(r, err)
 	}
@@ -60,7 +52,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 // [--index <ref|dir>] [--consent-over-budget] [--allow-head-controls]
 // [--show-prompts] [--chunk] [-- paths...] [--json]`, returning the process
 // exit code.
-func RunLocal(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+func RunLocal(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	f, code, done := parseLocalFlags(r, args)
 	if done {
@@ -73,7 +65,7 @@ func RunLocal(ctx context.Context, r *cli.Runner, args []string, req Request) in
 		// The dump owns stdout; progress moves to stderr, like fetch.
 		r.Human = r.Diag
 	}
-	resp, err := fetchcore.RunLocal(ctx, fetchLocalRequest(r, req, &f))
+	resp, err := fetchcore.RunLocal(ctx, fetchLocalRequest(r, &req, &f))
 	if err != nil {
 		return refuseFetch(r, err)
 	}
@@ -84,18 +76,9 @@ func RunLocal(ctx context.Context, r *cli.Runner, args []string, req Request) in
 // invocation: the injected runtime (environment, clock, progress, and the
 // production split-stream commander), the render configuration, and the
 // adapter-routed streams.
-func fetchRequest(r *cli.Runner, req Request, f *fetchcore.Flags) *fetchcore.Request {
-	root := req.Root
-	read := r.Read(core.ReadRequest{
-		Runtime: &core.Runtime{
-			Env: req.Env,
-
-			PackFS: skillfs.FS,
-		},
-		Repo: req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
-	}, coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true})
+func fetchRequest(r *cli.Runner, req *readcommon.Request, f *fetchcore.Flags) *fetchcore.Request {
 	return &fetchcore.Request{
-		ReadRequest:  read,
+		ReadRequest:  fetchRead(r, req),
 		Flags:        *f,
 		SettingsPath: cli.SettingsPath(req.Env["HOME"], req.Env["XDG_CONFIG_HOME"]),
 		Effective:    r.Effective,
@@ -106,19 +89,20 @@ func fetchRequest(r *cli.Runner, req Request, f *fetchcore.Flags) *fetchcore.Req
 	}
 }
 
-// fetchLocalRequest builds the core fetch-local request.
-func fetchLocalRequest(r *cli.Runner, req Request, f *fetchcore.LocalFlags) *fetchcore.LocalRequest {
-	root := req.Root
-	read := r.Read(core.ReadRequest{
-		Runtime: &core.Runtime{
-			Env: req.Env,
+// fetchRead is the invocation both fetch verbs share: the request's runtime
+// plus the embedded pack payload, over the production split-stream commander.
+func fetchRead(r *cli.Runner, req *readcommon.Request) core.ReadRequest {
+	rt := *req.Runtime
+	rt.PackFS = skillfs.FS
+	in := *req
+	in.Runtime = &rt
+	return r.Read(in, coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true})
+}
 
-			PackFS: skillfs.FS,
-		},
-		Repo: req.Repo, Pr: req.Pr, Root: &root, RepoRoot: req.RepoRoot,
-	}, coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true})
+// fetchLocalRequest builds the core fetch-local request.
+func fetchLocalRequest(r *cli.Runner, req *readcommon.Request, f *fetchcore.LocalFlags) *fetchcore.LocalRequest {
 	return &fetchcore.LocalRequest{
-		ReadRequest:  read,
+		ReadRequest:  fetchRead(r, req),
 		Flags:        *f,
 		SettingsPath: cli.SettingsPath(req.Env["HOME"], req.Env["XDG_CONFIG_HOME"]),
 		Effective:    r.Effective,

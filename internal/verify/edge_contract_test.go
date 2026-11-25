@@ -20,7 +20,9 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/testenv"
 	"github.com/stainless-code/verdict/internal/verify"
 )
@@ -48,8 +50,8 @@ func edgeRun(t *testing.T, dir, home string, env map[string]string, jsonMode boo
 	if jsonMode {
 		r.Human = &derr
 	}
-	code := verify.Run(context.Background(), r, withoutJSON(args), verify.Request{
-		Env: full, Repo: "acme/app", Pr: "5201", Root: dir,
+	code := verify.Run(context.Background(), r, withoutJSON(args), readcommon.Request{
+		Runtime: &core.Runtime{Env: full}, Repo: "acme/app", Pr: "5201", Root: &dir,
 	})
 	return code, out.String()
 }
@@ -476,8 +478,8 @@ func runVerifyCanceledOnceUp(t *testing.T, dir, pid string) (int, string) {
 		cancel()
 	}()
 	t.Setenv("EDGE_PID", pid)
-	code := verify.Run(ctx, r, []string{"--env-allowlist", "EDGE_PID"}, verify.Request{
-		Env: map[string]string{"HOME": home, "EDGE_PID": pid}, Repo: "acme/app", Pr: "5201", Root: dir,
+	code := verify.Run(ctx, r, []string{"--env-allowlist", "EDGE_PID"}, readcommon.Request{
+		Runtime: &core.Runtime{Env: map[string]string{"HOME": home, "EDGE_PID": pid}}, Repo: "acme/app", Pr: "5201", Root: &dir,
 	})
 	return code, out.String()
 }

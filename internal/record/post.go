@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/cli"
-	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -17,7 +16,7 @@ import (
 // [--force] [--review-file <path>] [--dry-run] [--json]`, returning the
 // process exit code. Human progress goes to the runner's human stream;
 // --json mode prints exactly one envelope to stdout.
-func RunPost(ctx context.Context, r *cli.Runner, args []string, req *Request) int {
+func RunPost(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	dir, ref := readcommon.ResolveBundleDir(req.RepoRoot, req.Pr)
 	if ref != nil {
@@ -31,7 +30,7 @@ func RunPost(ctx context.Context, r *cli.Runner, args []string, req *Request) in
 	if code, done := r.Canceled(ctx, "post"); done {
 		return code
 	}
-	resp, ref := postcore.Run(ctx, postRequest(r, req, inv))
+	resp, ref := postcore.Run(ctx, postRequest(r, &req, inv))
 	if ref != nil {
 		return r.RefuseTyped(ref)
 	}
@@ -46,16 +45,9 @@ func RunPost(ctx context.Context, r *cli.Runner, args []string, req *Request) in
 // the injected runtime (environment, clock, progress, and the production
 // split-stream commander), the render configuration, and the adapter-routed
 // flags.
-func postRequest(r *cli.Runner, req *Request, inv *postInvocation) *postcore.Request {
-	root := req.Root
-	read := r.Read(core.ReadRequest{
-		Runtime: &core.Runtime{
-			Env: req.Env,
-		},
-		Repo: req.Repo, Pr: req.Pr, Forces: req.Forces, Root: &root, RepoRoot: req.RepoRoot,
-	}, coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true})
+func postRequest(r *cli.Runner, req *readcommon.Request, inv *postInvocation) *postcore.Request {
 	return &postcore.Request{
-		ReadRequest:  read,
+		ReadRequest:  r.Read(*req, coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}),
 		Flags:        inv.flags,
 		RequireRigor: inv.requireRigor,
 		Effective:    r.Effective,

@@ -8,23 +8,14 @@ import (
 	"fmt"
 
 	"github.com/stainless-code/verdict/internal/cli"
-	"github.com/stainless-code/verdict/internal/core"
 	adoptcore "github.com/stainless-code/verdict/internal/core/adopt"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/readcommon"
 )
-
-// Request carries the resolved adopt invocation.
-type Request struct {
-	Env      map[string]string
-	Repo     string
-	Pr       string
-	Root     string
-	RepoRoot string
-}
 
 // Run executes `adopt <owner/repo> <pr> --from <local-slug> [--json]`,
 // returning the process exit code.
-func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
+func Run(ctx context.Context, r *cli.Runner, args []string, req readcommon.Request) int {
 	r.Repo, r.Pr = req.Repo, req.Pr
 	r.Rentry = ""
 	from, code, done := parseFlags(r, args)
@@ -34,7 +25,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if code, done := r.Canceled(ctx, "adopt"); done {
 		return code
 	}
-	resp, ref := adoptcore.Run(ctx, adoptRequest(r, req, from))
+	resp, ref := adoptcore.Run(ctx, adoptRequest(r, &req, from))
 	if ref != nil {
 		return r.RefuseTyped(ref)
 	}
@@ -47,16 +38,8 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 
 // adoptRequest injects the runner's clock and progress observer into the
 // typed service request.
-func adoptRequest(r *cli.Runner, req Request, from string) *adoptcore.Request {
-	read := r.Read(core.ReadRequest{
-		Runtime:  &core.Runtime{Env: req.Env},
-		Repo:     req.Repo,
-		Pr:       req.Pr,
-		RepoRoot: req.RepoRoot,
-	}, coreexec.Runner{})
-	out := &adoptcore.Request{From: from}
-	out.ReadRequest = read
-	return out
+func adoptRequest(r *cli.Runner, req *readcommon.Request, from string) *adoptcore.Request {
+	return &adoptcore.Request{ReadRequest: r.Read(*req, coreexec.Runner{}), From: from}
 }
 
 // parseFlags strips adopt's flags, reporting unknown ones.

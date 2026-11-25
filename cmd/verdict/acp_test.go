@@ -8,13 +8,13 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 )
 
-// TestACPDispatchShape pins the two registries the transport needs: acp is a
-// bare verb whose flags pass through, and it is not a read verb (a read row
+// TestACPDispatchShape pins the two facts the transport needs: acp is a bare
+// verb whose flags pass through, and its table row has no handler (a handler
 // would die on not-a-repo before --root was read).
 func TestACPDispatchShape(t *testing.T) {
 	t.Parallel()
-	if _, ok := readVerbs["acp"]; ok {
-		t.Fatal("acp is a readVerbs entry; the transport must dispatch before resolveRepoRoot")
+	if spec := verbIndex["acp"]; spec == nil || spec.Run != nil {
+		t.Fatal("acp has a table handler; the transport must dispatch before resolveRepoRoot")
 	}
 	if !bareVerbs["acp"] {
 		t.Fatal("acp is not a bareVerbs entry; splitCommand would read --root as a positional")
