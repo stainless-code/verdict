@@ -83,6 +83,9 @@ func (w *watchState) primeRoot(ctx context.Context, root Root) rootWatch {
 			state.bundles[name] = w.primeBundle(root, name)
 		}
 	}
+	if ctx.Err() != nil {
+		return state
+	}
 	overridesDir := filepath.Join(root.Path, filepath.FromSlash(overrides.Dir))
 	state.overrides = w.statMark(overridesDir)
 	state.contents = w.directoryFingerprint(overridesDir, false)

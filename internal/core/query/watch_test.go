@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/overrides"
+	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
 
@@ -245,5 +247,41 @@ func TestChangesBaselineHonorsCancellation(t *testing.T) {
 	// directory) makes well over this many calls.
 	if n := calls.Load(); n > 3 {
 		t.Fatalf("the baseline walk made %d stat calls after cancellation, want it to stop", n)
+	}
+}
+
+// TestChangesBaselineStopsBeforeTheOverridesWalk: a root with no bundles still
+// stops at cancellation instead of walking .verdict/overrides.
+func TestChangesBaselineStopsBeforeTheOverridesWalk(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(readcommon.StateDir(root), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ovr := filepath.Join(root, filepath.FromSlash(overrides.Dir))
+	if err := os.MkdirAll(ovr, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"a.json", "b.json", "c.json"} {
+		if err := os.WriteFile(filepath.Join(ovr, name), []byte("{}"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	var armed atomic.Bool
+	var calls atomic.Int64
+	stat := func(path string) (os.FileInfo, error) {
+		if armed.Load() && calls.Add(1) == 1 {
+			cancel()
+		}
+		return os.Stat(path)
+	}
+	layer := New(Snapshot{Roots: []Root{{Path: root}}}, Options{MaxBundles: 10, Stat: stat, ReadDir: os.ReadDir})
+	armed.Store(true)
+	if _, open := <-layer.Changes(ctx); open {
+		t.Fatal("a canceled subscription delivered a change or stayed open")
+	}
+	if n := calls.Load(); n > 1 {
+		t.Fatalf("the baseline walk made %d stat calls after cancellation, want only the state directory's", n)
 	}
 }
