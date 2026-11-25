@@ -169,6 +169,9 @@ var hintRules = []HintRule{
 	{codes: []string{"skill-not-installed"}, hint: "try: install first with " +
 		"'verdict skill install --dir <skills-dir>', or check the target"},
 	{codes: []string{"bad-timeout"}, hint: "try: pass --timeout <positive-seconds> (default 300)"},
+	{codes: []string{"bad-target-url"}, hint: "try: paste the plain pull request URL (https://github.com/<owner>/<repo>/pull/<number>), " +
+		"or pass <owner/repo> <pr> --provider <name>"},
+	{codes: []string{"target-unresolved"}, hint: "try: pass the target explicitly as <owner/repo> <pr>, or a pull request URL"},
 	{codes: []string{"bad-approve"}, hint: "try: pass --approve=true|false"},
 	{codes: []string{"bad-review-schema"}, hint: "try: set \"schema_version\": \"1\" in review.json"},
 	{codes: []string{"bad-rigor-policy"}, hint: "try: pass --require-rigor <tier>=<said|pointed|walked|ran|reproduced>, " +
