@@ -285,7 +285,7 @@ m0="$(mark)"
 run_review gate acme/app "$PR" --require-head --live skip --coverage warn --json
 assert_exit "gate on a stale head exits 1" 1
 if [ "$(jq -r '.data.dimensions[] | select(.id=="head") | .status' "$EVAL_OUT" 2>/dev/null)" = "fail" ] \
-  && [ "$(jq -r '.data.dimensions[] | select(.id=="head") | .detail' "$EVAL_OUT" 2>/dev/null)" = "posted HEAD ccccccc != fetched HEAD aaaaaaa" ] \
+  && jq -e '.data.dimensions[] | select(.id=="head") | .detail | startswith("posted HEAD ccccccc != fetched HEAD aaaaaaa (stale-head:")' "$EVAL_OUT" >/dev/null 2>&1 \
   && [ -n "$(jq -r '.next // empty' "$EVAL_OUT" 2>/dev/null)" ]; then
   good "stale head fails the head dimension naming both SHAs with a next step"
 else

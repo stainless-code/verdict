@@ -484,8 +484,34 @@ func TestClientGate(t *testing.T) {
 	}
 
 	assertDefaultCoveragePosture(t, c)
+	assertGateRiskAndCategory(t, c)
 
 	_, err = c.Gate(context.Background(), &verdict.GateRequest{Invocation: sdkInvocation("6101")})
+	requireRefusal(t, err, "bad-flags", "try: re-run with one of the valid values named above")
+}
+
+// assertGateRiskAndCategory pins the two dimensions gate took over from
+// report: --max-risk is a dimension of its own, and a category only narrows
+// the tier it rides with.
+func assertGateRiskAndCategory(t *testing.T, c *verdict.Client) {
+	t.Helper()
+	risk, err := c.Gate(context.Background(), &verdict.GateRequest{
+		Invocation: sdkInvocation("6101"), MaxRisk: "low", Live: "skip", Coverage: "warn",
+	})
+	requireNoError(t, err)
+	if risk.Passed {
+		t.Error("passed = true, want false: the open critical finding lifts the reported risk over low")
+	}
+	var found bool
+	for _, dim := range risk.Dimensions {
+		found = found || (dim.ID == "risk" && dim.Status == "fail")
+	}
+	if !found {
+		t.Errorf("dimensions = %+v, want a failing risk dimension", risk.Dimensions)
+	}
+	_, err = c.Gate(context.Background(), &verdict.GateRequest{
+		Invocation: sdkInvocation("6101"), RequireHead: true, Category: "security",
+	})
 	requireRefusal(t, err, "bad-flags", "try: re-run with one of the valid values named above")
 }
 
@@ -554,9 +580,8 @@ func matchesDimension(dim verdict.GateDimension, want wantDim) bool {
 	return dim.ID == want.id && dim.Status == want.status && dim.Detail != ""
 }
 
-// TestClientTierRefusals proves the Go SDK shares the core tier rule on both
-// verbs that carry one: Report.Check and Gate.MaxSeverity refuse an
-// unpublished tier, and every published tier still runs.
+// TestClientTierRefusals proves Gate.MaxSeverity refuses an unpublished tier,
+// and every published tier still runs.
 func TestClientTierRefusals(t *testing.T) {
 	t.Chdir(t.TempDir())
 	writePRBundle(t, "6101")
@@ -564,22 +589,12 @@ func TestClientTierRefusals(t *testing.T) {
 	c := newSDKClient(nil, nil)
 	defer c.Close()
 
-	_, err := c.Report(context.Background(), &verdict.ReportRequest{
-		Invocation: sdkInvocation("6101"), Check: "bogus",
-	})
-	requireRefusal(t, err, "bad-flags", "try: re-run with one of the valid values named above")
-
-	_, err = c.Gate(context.Background(), &verdict.GateRequest{
+	_, err := c.Gate(context.Background(), &verdict.GateRequest{
 		Invocation: sdkInvocation("6101"), MaxSeverity: "bogus", Live: "skip",
 	})
 	requireRefusal(t, err, "bad-flags", "try: re-run with one of the valid values named above")
 
 	for _, tier := range []string{"critical", "important", "informational"} {
-		if _, err := c.Report(context.Background(), &verdict.ReportRequest{
-			Invocation: sdkInvocation("6101"), Check: tier, Live: "skip",
-		}); err != nil {
-			t.Errorf("Report Check %s: %v", tier, err)
-		}
 		if _, err := c.Gate(context.Background(), &verdict.GateRequest{
 			Invocation: sdkInvocation("6101"), MaxSeverity: tier, Live: "skip", Coverage: "warn",
 		}); err != nil {

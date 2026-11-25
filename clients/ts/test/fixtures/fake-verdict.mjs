@@ -58,7 +58,7 @@ switch (mode) {
     break;
   }
   // A gate/check failure: exit 1 carrying the success shape (error null, a
-  // data object), which is what `report --check`, `gate`, `ready --check`,
+  // data object), which is what `gate`, `ready --check`,
   // and `check-tree` emit when the verdict is no. One envelope, never two.
   case "gate": {
     emit(

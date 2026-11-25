@@ -373,10 +373,10 @@ func (l *Layer) Detail(ctx context.Context, rootID, bundle string) (*View, error
 		errs = append(errs, *threadErr)
 	}
 	data := jq.NewObj(keyReport, normalizeReportData(root.Path, resp.Data))
-	if resp.Data.Gate == nil {
+	if resp.Gate == nil {
 		data.Set(keyGate, nil)
 	} else {
-		data.Set(keyGate, resp.Data.Gate.Wire())
+		data.Set(keyGate, resp.Gate.Wire())
 	}
 	data.Set(keyThreads, threadsData)
 	data.Set(keyArtifacts, artifacts(bundle, inv.sources))

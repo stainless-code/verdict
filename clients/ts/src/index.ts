@@ -67,7 +67,6 @@ export type {
   ReadyData,
   RecordData,
   RefusalErrorBody,
-  ReportCompleteness,
   ReportCost,
   ReportData,
   ReportGate,

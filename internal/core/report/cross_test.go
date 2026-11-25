@@ -24,7 +24,7 @@ func TestInformationalGateRequiresCrossEvidence(t *testing.T) {
 		evidence: &evidenceState{kind: evidencePresent, receipt: &core.EvidenceReceipt{}},
 	}
 	st.flags.Check = "informational"
-	if status := gateEvidenceCheck(st).dim.Status; status != "fail" {
+	if status := gateEvidenceCheck(st).Status; status != "fail" {
 		t.Fatalf("informational evidence gate = %q", status)
 	}
 }

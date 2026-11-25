@@ -1,4 +1,4 @@
-exit: 1
+exit: 0
 --- stdout ---
 {
   "schema_version": "1",
@@ -8,10 +8,9 @@ exit: 1
   "at": "0000-00-00T00:00:00Z",
   "next": "wrote out.md",
   "warnings": [
-    "patch identity unavailable — completeness compares heads",
     "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors",
-    "reproduced finding e555555555555555555555555555555555555555 has no runnable artifact: reproduction: reproduction missing",
-    "live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5101 -f query=       query($owne — gating on local dimensions only)"
+    "evidence: evidence receipt missing for head aaaaaaa [review-insufficient]",
+    "reproduced finding e555555555555555555555555555555555555555 has no runnable artifact: reproduction: reproduction missing"
   ],
   "data": {
     "generated_at": "0000-00-00T00:00:00Z",
@@ -233,67 +232,22 @@ exit: 1
         }
       ]
     },
-    "completeness": {
-      "reviewed": true,
-      "fetched_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "posted_head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-    },
     "approval": {
       "reason": "review-insufficient: evidence receipt missing for head aaaaaaa",
       "tier": "important",
       "gating_sigs": [],
       "approved": false,
       "insufficient": true
-    },
-    "gate": {
-      "passed": false,
-      "dimensions": [
-        {
-          "id": "findings",
-          "status": "fail",
-          "detail": "2 open finding(s) at-or-above important",
-          "count": 2
-        },
-        {
-          "id": "head",
-          "status": "pass",
-          "detail": "HEAD aaaaaaa reviewed (post matches fetch)",
-          "count": null
-        },
-        {
-          "id": "live_threads",
-          "status": "skip",
-          "detail": "live thread recheck unreachable — gating on local dimensions only",
-          "count": null
-        },
-        {
-          "id": "spec",
-          "status": "pass",
-          "detail": "no violated spec check",
-          "count": 0
-        },
-        {
-          "id": "evidence",
-          "status": "unknown",
-          "detail": "evidence receipt missing for head aaaaaaa [review-insufficient]",
-          "count": null
-        }
-      ]
     }
   },
   "error": null
 }
 --- stderr ---
-warn: patch identity unavailable — completeness compares heads
 warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
+warn: evidence: evidence receipt missing for head aaaaaaa [review-insufficient]
 warn: reproduced finding e555555555555555555555555555555555555555 has no runnable artifact: reproduction: reproduction missing
-warn: live thread recheck unreachable (evals-stub-gh: network disabled (api graphql --paginate -F owner=acme -F name=app -F pr=5101 -f query=       query($owne — gating on local dimensions only)
 wrote out.sarif
 wrote out.md
-check: 2 open finding(s) at-or-above important — gate fails
-check: HEAD aaaaaaa reviewed (post matches fetch) — completeness passes
-check: no violated spec check — gate passes
-check: evidence receipt missing for head aaaaaaa [review-insufficient] — gate fails
 --- files ---
 --- file C/out.md ---
 # Review report — acme/app#5101

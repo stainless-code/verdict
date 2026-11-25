@@ -23,7 +23,8 @@ func TestJSONVerbsWriteOneEnvelopeToStdout(t *testing.T) {
 	for _, args := range [][]string{
 		{"next", "acme/app", "local-stdout", "--coverage", "--json"},
 		{"record", "acme/app", "local-stdout", "--json"},
-		{"report", "acme/app", "local-stdout", "--check", "important", "--max-risk", "medium", "--json"},
+		{"report", "acme/app", "local-stdout", "--json"},
+		{"gate", "acme/app", "local-stdout", "--max-severity", "important", "--max-risk", "medium", "--coverage", "warn", "--live", "skip", "--json"},
 	} {
 		got := runOne(t, args...)
 		if got.code != 0 {

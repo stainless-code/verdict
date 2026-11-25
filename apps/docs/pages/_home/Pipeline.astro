@@ -32,7 +32,7 @@ const shipped: Row[] = [
   {
     stage: "Gate",
     commands: ["report", "triage", "next", "trend", "gate"],
-    body: "Rank the findings, fail a build on a severity with `--check`, compose the gate dimensions with `gate`, and write SARIF for your scanner.",
+    body: "Rank the findings, then fail a build on a severity, a stale head, or a risk band with `gate`, and write SARIF for your scanner.",
   },
   {
     stage: "Post",

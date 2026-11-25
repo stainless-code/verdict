@@ -45,7 +45,7 @@ class VerdictRefusal(VerdictError):
 
 
 class VerdictGateError(VerdictError):
-    """Exit 1 with a success-shaped envelope: a `report --check` gate failed."""
+    """Exit 1 with a success-shaped envelope: a `gate` failed."""
 
     def __init__(self, envelope: VerdictJsonEnvelope) -> None:
         self.envelope = envelope

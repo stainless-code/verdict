@@ -435,15 +435,11 @@ func decodeReport(req *reportcore.Request, a *args) {
 		f.str("category", &req.Flags.Category)
 		f.str("output", &req.Flags.Output)
 		f.str("sarif", &req.Flags.Sarif)
-		f.str("check", &req.Flags.Check)
 		req.Flags.CompareSet = f.strPresent("compare", &req.Flags.Compare)
-		f.str("live", &req.Flags.Live)
 		f.boolean("cost", &req.Flags.Cost)
 		f.boolean("includeWithheld", &req.Flags.IncludeWithheld)
-		f.boolean("completeness", &req.Flags.Completeness)
 		f.boolean("provenance", &req.Flags.Provenance)
 		f.boolean("risk", &req.Flags.Risk)
-		f.str("maxRisk", &req.Flags.MaxRisk)
 	})
 }
 

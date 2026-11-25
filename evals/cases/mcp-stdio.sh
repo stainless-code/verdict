@@ -90,7 +90,7 @@ if jq -e 'select(.id == 2).result.tools | (map(select(.name == "post"))[0].annot
 else
   bad "the post/report annotation contract drifted"
 fi
-if jq -e 'select(.id == 2).result.tools | (map(select(.name == "report"))[0].inputSchema.properties.flags.properties.status.enum == ["all","open","addressed","wont-fix","false-positive","deferred"]) and (map(select(.name == "report"))[0].inputSchema.properties.flags.properties.check.enum == ["critical","important","informational"]) and (map(select(.name == "init"))[0].inputSchema.properties.preset.enum == ["chill","standard","strict"]) and (map(select(.name == "post"))[0].inputSchema.properties.flags.properties.approve.enum == ["true","false"]) and (map(select(.name == "query-cost"))[0].inputSchema.properties.by.enum == ["repo","week","model"])' <"$MCP_OUT" >/dev/null; then
+if jq -e 'select(.id == 2).result.tools | (map(select(.name == "report"))[0].inputSchema.properties.flags.properties.status.enum == ["all","open","addressed","wont-fix","false-positive","deferred"]) and (map(select(.name == "report"))[0].inputSchema.properties.flags.properties | has("check") | not) and (map(select(.name == "init"))[0].inputSchema.properties.preset.enum == ["chill","standard","strict"]) and (map(select(.name == "post"))[0].inputSchema.properties.flags.properties.approve.enum == ["true","false"]) and (map(select(.name == "query-cost"))[0].inputSchema.properties.by.enum == ["repo","week","model"])' <"$MCP_OUT" >/dev/null; then
   good "inputSchema carries the closed vocabularies the structs declare"
 else
   bad "an inputSchema enum drifted or disappeared"

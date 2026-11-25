@@ -103,7 +103,7 @@ publication. A suppression that matches no finding only warns.
 
 Use `post --min-severity important` for a publication floor. `off` overrides a
 configured floor. `report --include-withheld` exposes withheld findings under
-`Quiet by policy`; `report --check` still ignores them.
+`Quiet by policy`; `gate --max-severity` still ignores them.
 
 `fetch` and `fetch-local` accept repeatable `--ignore <glob>` rules. They run
 last, above the base ignore file; `!` re-includes. `--no-default-excludes`
@@ -130,7 +130,7 @@ change-risk judgment for the reviewed head:
   during `record` and marks the stored claim `stale: true`.
 
 The score is advisory by default (`report --risk`) and enforced only when
-explicitly gated (`report --max-risk <level>`). `report` always computes a
+explicitly gated (`gate --max-risk <level>`). `report` always computes a
 deterministic floor from open findings, deferred/unanchored items, head
 freshness, and coverage receipts (`reported = max(claimed, floor)`), so
 never emit an optimistic `low` when coverage is incomplete or issues remain.

@@ -87,9 +87,9 @@ assert_exit "record --dry-run succeeds" 0
 run_in_repo record acme/app "$BUNDLE_NAME" --json
 assert_exit "record succeeds" 0
 
-# 5. report --check critical
-run_in_repo report acme/app "$BUNDLE_NAME" --check critical --json
-assert_exit "report --check critical succeeds" 0
+# 5. report (advisory: gating belongs to gate, which writes no journal line)
+run_in_repo report acme/app "$BUNDLE_NAME" --json
+assert_exit "report succeeds" 0
 REPORT_NEXT="$(jq -r '.next' "$EVAL_OUT")"
 
 # External location (J4): journal lives under XDG_STATE_HOME, never under the repo or .verdict/.

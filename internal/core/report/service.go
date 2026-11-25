@@ -18,7 +18,6 @@ import (
 	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/core/reviewdoc"
 	"github.com/stainless-code/verdict/internal/core/risk"
-	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -85,31 +84,30 @@ type state struct { // field grouping documents the loaded dimensions; alignment
 	// specFailures is every spec check the stored record judged failed —
 	// violated or unmet: the decision withholds on it, and the gate fails on
 	// it, so no gate passes while the derived decision withholds.
-	specFailures []core.SpecFailure
-	approval     *core.ApprovalReceipt
-	requiredGaps []string
-	panel        []any
-	patch        any
-	orgPack      *core.OrgPackInfo
-	comp         *core.ReportCompleteness
-	compare      *core.ReportCompare
-	risk         *core.ReportRisk
-	validation   *core.ValidationData
-	judgements   []core.ValidationResult
-	evidence     *evidenceState
-	dir          string
-	now          string
-	headSHA      string
-	baseSHA      string
-	panelSrc     string
-	compPosted   string
-	live         liveState
-	nOpen        int
-	nAllOpen     int
-	gate         bool
-	gatePassed   bool
-	liveGate     bool
-	compOK       bool
+	specFailures  []core.SpecFailure
+	approval      *core.ApprovalReceipt
+	requiredGaps  []string
+	panel         []any
+	patch         any
+	orgPack       *core.OrgPackInfo
+	compSamePatch *bool
+	compare       *core.ReportCompare
+	risk          *core.ReportRisk
+	validation    *core.ValidationData
+	judgements    []core.ValidationResult
+	evidence      *evidenceState
+	dir           string
+	now           string
+	headSHA       string
+	baseSHA       string
+	panelSrc      string
+	compPosted    string
+	live          liveState
+	nOpen         int
+	nAllOpen      int
+	gate          bool
+	liveGate      bool
+	compOK        bool
 }
 
 type liveState struct {
@@ -252,8 +250,8 @@ func validateCategory(category string) *core.RefusalError {
 	}
 }
 
-// validateTier refuses an unpublished gate tier in core, so the CLI, MCP, and
-// Go SDK share one rule: a tier is a published severity or the gate refuses to
+// validateTier refuses an unpublished gate tier in core, so the CLI and Go
+// SDK share one rule: a tier is a published severity or the gate refuses to
 // run, rather than ranking an unknown value past every finding.
 func validateTier(tier string) *core.RefusalError {
 	if tier == "" || core.ValidTier(tier) {
@@ -261,20 +259,20 @@ func validateTier(tier string) *core.RefusalError {
 	}
 	return &core.RefusalError{
 		Code: codeBadFlags,
-		Message: fmt.Sprintf("report: unknown gate tier '%s' (want %s)",
+		Message: fmt.Sprintf("gate: unknown gate tier '%s' (want %s)",
 			tier, strings.Join(core.TierValues, "|")),
 	}
 }
 
-// validateMaxRisk refuses an unpublished --max-risk level in core so CLI, MCP,
-// and Go SDK callers fail with bad-flags rather than comparing unknown values.
+// validateMaxRisk refuses an unpublished --max-risk level in core so CLI and
+// Go SDK callers fail with bad-flags rather than comparing unknown values.
 func validateMaxRisk(level string) *core.RefusalError {
 	if level == "" || risk.ValidLevel(level) {
 		return nil
 	}
 	return &core.RefusalError{
 		Code: codeBadFlags,
-		Message: fmt.Sprintf("report: unknown --max-risk level '%s' (want %s)",
+		Message: fmt.Sprintf("gate: unknown --max-risk level '%s' (want %s)",
 			level, strings.Join(risk.Levels(), "|")),
 	}
 }
@@ -466,8 +464,9 @@ func loadStateCompleteness(ctx context.Context, st *state) {
 	if !st.flags.Completeness {
 		return
 	}
-	st.comp, st.compOK, st.compPosted = completeness(ctx, st.commander(), st.dir, st.headSHA, st.baseSHA)
-	if _, ok := identity.Verify(ctx, st.commander(), st.dir, st.headSHA, st.baseSHA); !ok {
+	var patchVerified bool
+	st.compSamePatch, patchVerified, st.compOK, st.compPosted = completeness(ctx, st.commander(), st.dir, st.headSHA, st.baseSHA)
+	if !patchVerified {
 		st.warn("patch identity unavailable — completeness compares heads")
 	}
 }

@@ -67,25 +67,24 @@ author must parse `problems[]` — it is the machine-readable fix list.
 Exit codes are frozen in
 [`internal/cli/cli.go`](https://github.com/stainless-code/verdict/blob/main/internal/cli/cli.go).
 
-| Code | Name    | What the client sees                                                                                                                    |
-| ---- | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `0`  | success | One envelope, `error: null`, `data` object.                                                                                             |
-| `1`  | refused | One envelope. Usually a typed refusal: `data: null`, `error: {code, message}`. See the gate exception below.                            |
-| `2`  | usage   | No envelope; usage/flag block on stderr (an argv bug). Exception: `target-unresolved` carries a refusal envelope.                       |
-| `3`  | broke   | Cancellation (`canceled`) or a tool failure during a gated `report` run. May carry a typed refusal envelope; a crash or signal may not. |
+| Code | Name    | What the client sees                                                                                                            |
+| ---- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | success | One envelope, `error: null`, `data` object.                                                                                     |
+| `1`  | refused | One envelope. Usually a typed refusal: `data: null`, `error: {code, message}`. See the gate exception below.                    |
+| `2`  | usage   | No envelope; usage/flag block on stderr (an argv bug). Exception: `target-unresolved` carries a refusal envelope.               |
+| `3`  | broke   | Cancellation (`canceled`) or a tool failure during a `gate` run. May carry a typed refusal envelope; a crash or signal may not. |
 
 <Callout type="warning" title="Exit 1 is not always a refusal">
-  `report --check`, `report --completeness`, and `check-tree` exit `1` when the
-  gate **fails**, but keep the success-shaped envelope: `error: null` and the
-  full `data` object (`items`/`verdict` for `report`, `clean`/`files` for
-  `check-tree`). Do not assume every exit `1` has `data: null`: branch on the
-  envelope. The committed Python client raises `VerdictGateError` for that case.
+  `gate` and `check-tree` exit `1` when the gate **fails**, but keep the
+  success-shaped envelope: `error: null` and the full `data` object
+  (`passed`/`dimensions` for `gate`, `clean`/`files` for `check-tree`). Do not
+  assume every exit `1` has `data: null`: branch on the envelope. The committed
+  Python client raises `VerdictGateError` for that case.
 </Callout>
 
-Gate runs also use exit `3` for a tool failure (for example, a missing bundle
-store while `--check` is active), so hooks can tell “tool broke” apart from
-“gate failed”. A plain `report` with a missing store is an ordinary exit `1`
-typed refusal.
+`gate` also uses exit `3` for a tool failure (for example, a missing bundle
+store), so hooks can tell “tool broke” apart from “gate failed”. A plain
+`report` with a missing store is an ordinary exit `1` typed refusal.
 
 ### Refusals and hints
 
@@ -374,7 +373,7 @@ class VerdictRefusal(VerdictError):
 
 
 class VerdictGateError(VerdictError):
-    """Exit 1 with a success-shaped envelope: a `report --check` gate failed."""
+    """Exit 1 with a success-shaped envelope: a `gate` failed."""
 
     def __init__(self, envelope: VerdictJsonEnvelope) -> None:
         self.envelope = envelope
@@ -493,7 +492,7 @@ Checklist:
 4. Read stdout as one JSON document. Reject a missing key, a non-`"1"`
    `schema_version`, or a parse error instead of misreading it.
 5. Map exit `0` to success, `1` to refusal **or gate failure**
-   (`report --check`/`--completeness`, `check-tree`), `2` to a usage
+   (`gate`, `check-tree`), `2` to a usage
    error (or a `target-unresolved` refusal envelope), and `3`/signals to a
    process error.
 6. Split the trailing `try:` line from `error.message` for display; keep

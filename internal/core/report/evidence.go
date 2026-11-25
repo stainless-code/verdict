@@ -33,8 +33,6 @@ type evidenceState struct {
 const (
 	quoteStatusVerified   = "verified"
 	quoteStatusUnverified = "unverified"
-	gateFailSuffix        = " — gate fails"
-	gateOKSuffix          = " — gate passes"
 	evidenceWarnPrefix    = "evidence: "
 )
 
@@ -186,13 +184,10 @@ func warnEvidence(st *state) {
 // gateEvidenceCheck evaluates the evidence dimension every gate mode carries.
 // Pass requires a current-head receipt with insufficient=false; insufficient
 // fails; missing, stale, or unreadable reads unknown (which fails the gate).
-func gateEvidenceCheck(st *state) gateCheck {
+func gateEvidenceCheck(st *state) core.GateDimension {
 	if st.flags.Check != "" && st.execution != nil && st.execution.Active && gateHasPendingCross(st) {
 		detail := "a finding within the requested tier lacks a confirmed cross check"
-		return gateCheck{
-			dim:  core.GateDimension{ID: dimEvidence, Status: dimFail, Detail: detail},
-			line: checkPrefix + detail + gateFailSuffix,
-		}
+		return core.GateDimension{ID: dimEvidence, Status: dimFail, Detail: detail}
 	}
 	kind := evidenceMissing
 	if st.evidence != nil {
@@ -203,22 +198,13 @@ func gateEvidenceCheck(st *state) gateCheck {
 		return gatePresentEvidence(st.evidence.receipt)
 	case evidenceStale:
 		detail := evidenceStaleDetail(st.headSHA, st.evidence.recordedHead)
-		return gateCheck{
-			dim:  core.GateDimension{ID: dimEvidence, Status: dimUnknown, Detail: detail},
-			line: checkPrefix + detail + gateFailSuffix,
-		}
+		return core.GateDimension{ID: dimEvidence, Status: dimUnknown, Detail: detail}
 	case evidenceUnreadable:
 		detail := evidenceUnreadableDetail(st.headSHA)
-		return gateCheck{
-			dim:  core.GateDimension{ID: dimEvidence, Status: dimUnknown, Detail: detail},
-			line: checkPrefix + detail + gateFailSuffix,
-		}
+		return core.GateDimension{ID: dimEvidence, Status: dimUnknown, Detail: detail}
 	default:
 		detail := evidenceMissingDetail(st.headSHA)
-		return gateCheck{
-			dim:  core.GateDimension{ID: dimEvidence, Status: dimUnknown, Detail: detail},
-			line: checkPrefix + detail + gateFailSuffix,
-		}
+		return core.GateDimension{ID: dimEvidence, Status: dimUnknown, Detail: detail}
 	}
 }
 
@@ -235,20 +221,14 @@ func gateHasPendingCross(st *state) bool {
 	return false
 }
 
-func gatePresentEvidence(ev *core.EvidenceReceipt) gateCheck {
+func gatePresentEvidence(ev *core.EvidenceReceipt) core.GateDimension {
 	if ev.Insufficient {
 		detail := evidenceInsufficientDetail(ev)
 		count := max(len(ev.Gaps), 1)
-		return gateCheck{
-			dim:  core.GateDimension{ID: dimEvidence, Status: dimFail, Count: new(count), Detail: detail},
-			line: checkPrefix + detail + gateFailSuffix,
-		}
+		return core.GateDimension{ID: dimEvidence, Status: dimFail, Count: new(count), Detail: detail}
 	}
 	detail := evidenceSatisfiedDetail(ev)
-	return gateCheck{
-		dim:  core.GateDimension{ID: dimEvidence, Status: dimPass, Count: new(0), Detail: detail},
-		line: checkPrefix + detail + gateOKSuffix,
-	}
+	return core.GateDimension{ID: dimEvidence, Status: dimPass, Count: new(0), Detail: detail}
 }
 
 func evidenceSatisfiedDetail(ev *core.EvidenceReceipt) string {

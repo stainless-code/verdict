@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	reportcore "github.com/stainless-code/verdict/internal/core/report"
 )
 
 func TestPanelReceiptSchema(t *testing.T) {
@@ -30,7 +31,7 @@ func TestPanelReceiptSchema(t *testing.T) {
 
 func TestPanelReportSummarySchema(t *testing.T) {
 	schema := loadSchemaDocument(t, "envelope.schema.json")
-	response := runReportFixture(t)
+	response := runReportFixture(t, &reportcore.Flags{Cost: true})
 	response.Data.Verification = &core.PanelSummary{Verifiers: 2, Confirmed: 1, Contested: 1, Single: 0}
 	validateWire(t, schema, "$", defOf(t, schema, "reportData"), decodeWire(t, response.Data.Wire()))
 }

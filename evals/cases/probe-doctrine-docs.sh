@@ -21,7 +21,7 @@ fi
 if grep -q "Pre-push probe" "$EVAL_ROOT/docs/manual.md" \
   && grep -q "pre-push" "$EVAL_ROOT/docs/manual.md" \
   && grep -q "\.git/hooks/pre-push" "$EVAL_ROOT/docs/manual.md" \
-  && grep -q "report.*--check.*--completeness" "$EVAL_ROOT/docs/manual.md"; then
+  && grep -q "gate.*--max-severity.*--require-head" "$EVAL_ROOT/docs/manual.md"; then
   good "probe subsection present (pre-push + combined recipe + hook path)"
 else
   bad "probe subsection missing from docs/manual.md"
