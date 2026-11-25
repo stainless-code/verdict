@@ -53,10 +53,18 @@ func TestResolvedCarriesTheTargetsHost(t *testing.T) {
 	}
 }
 
-// TestResolveRefusesAHostNoCallCanBePinnedTo pins the two targets verdict
-// cannot make unambiguous: a Forgejo target on another host than FORGEJO_HOST
-// (port included), and a GitLab host with a port. Each refuses typed, naming
-// both hosts.
+// TestResolveRefusesAHostNoCallCanBePinnedTo pins the targets verdict cannot
+// make unambiguous: a Forgejo target on another host than FORGEJO_HOST (port
+// included), a GitLab host with a port whose environment does not make glab's
+// default host exactly that host, and an ssh GitLab origin whose host
+// GITLAB_HOST serves on a port. Each refuses typed, naming both hosts.
+//
+// The ssh origin stays refused even though GITLAB_HOST names a port, the one
+// thing that lets a ported target through: an ssh remote names no web port
+// (its port is the ssh daemon's), so the target's authority is the portless
+// `git.corp.example`, a different host than `git.corp.example:8443`. Running
+// glab unpinned would reach GITLAB_HOST's port, not provably the origin's
+// host, so only a target that itself names the port may take that path.
 func TestResolveRefusesAHostNoCallCanBePinnedTo(t *testing.T) {
 	for _, tc := range []hostRefusalCase{
 		{name: "codeberg URL, FORGEJO_HOST elsewhere", hosts: []string{"codeberg.org", "forge.corp.example"}, q: Request{
@@ -66,10 +74,30 @@ func TestResolveRefusesAHostNoCallCanBePinnedTo(t *testing.T) {
 			name: "forgejo origin on another port", hosts: []string{"forge.corp.example:3000", "names forge.corp.example "},
 			g: fakeGit{origin: forgeOrigin}, q: Request{Verb: "post", Repo: "5", Env: map[string]string{"FORGEJO_HOST": "forge.corp.example"}},
 		},
-		{name: "gitlab URL with a port", hosts: []string{"the target is on git.corp.example:8443", "GITLAB_HOST: git.corp.example:8443"}, q: Request{
-			Verb: "fetch", Repo: "https://git.corp.example:8443/g/app/-/merge_requests/4",
-			Env: map[string]string{"GITLAB_HOST": "https://git.corp.example:8443"},
-		}},
+		{
+			name: "gitlab URL with a port, GITLAB_API_HOST elsewhere", hosts: []string{"the target is on git.corp.example:8443", `GITLAB_API_HOST is "git.corp.example"`},
+			q: Request{
+				Verb: "fetch", Repo: "https://git.corp.example:8443/g/app/-/merge_requests/4",
+				Env: map[string]string{"GITLAB_HOST": "https://git.corp.example:8443", "GITLAB_API_HOST": "git.corp.example"},
+			},
+		},
+		{
+			name: "gitlab URL with a port, GITLAB_REPO set", hosts: []string{"the target is on git.corp.example:8443", "GITLAB_REPO"},
+			q: Request{
+				Verb: "fetch", Repo: "https://git.corp.example:8443/g/app/-/merge_requests/4",
+				Env: map[string]string{"GITLAB_HOST": "https://git.corp.example:8443", "GITLAB_REPO": "https://other.example/g/app"},
+			},
+		},
+		{
+			name: "gitlab URL with a port, CI auto-login server elsewhere", hosts: []string{"git.corp.example:8443", "CI_SERVER_FQDN"},
+			q: Request{
+				Verb: "fetch", Repo: "https://git.corp.example:8443/g/app/-/merge_requests/4",
+				Env: map[string]string{
+					"GITLAB_HOST": "https://git.corp.example:8443", "GLAB_ENABLE_CI_AUTOLOGIN": "true", "GITLAB_CI": "true",
+					"CI_SERVER_FQDN": "git.corp.example",
+				},
+			},
+		},
 		{
 			name:  "ssh gitlab origin, GITLAB_HOST on another port",
 			hosts: []string{"the target is on git.corp.example ", "GITLAB_HOST names git.corp.example:8443"},
@@ -109,6 +137,31 @@ func checkHostRefusal(t *testing.T, tc *hostRefusalCase) {
 	for _, h := range tc.hosts {
 		if !strings.Contains(got.Refusal.Message, h) {
 			t.Errorf("%s: refusal does not name %q: %s", tc.name, h, got.Refusal.Message)
+		}
+	}
+}
+
+// TestGitLabHostWithAPortRunsUnpinnedOnlyAsGlabsDefault pins the allowed half
+// of a ported GitLab target: a URL, or an https origin, whose authority
+// GITLAB_HOST names exactly resolves with its host kept (the runner then drops
+// the pin and glab's default host, which is that host, answers).
+func TestGitLabHostWithAPortRunsUnpinnedOnlyAsGlabsDefault(t *testing.T) {
+	env := map[string]string{"GITLAB_HOST": "https://git.corp.example:8443"}
+	for _, tc := range []struct {
+		name string
+		q    Request
+		g    fakeGit
+	}{
+		{name: "URL", q: Request{
+			Verb: "fetch", Repo: "https://git.corp.example:8443/g/app/-/merge_requests/4", Env: env,
+		}},
+		{name: "https origin", g: fakeGit{origin: "https://git.corp.example:8443/g/app.git"}, q: Request{
+			Verb: "post", Repo: "4", Env: env,
+		}},
+	} {
+		got := resolve(t, &tc.g, checkout(t, nil), &tc.q)
+		if got.Refusal != nil || got.Host != "git.corp.example:8443" {
+			t.Errorf("%s: Host = %q (refusal %v), want git.corp.example:8443 and no refusal", tc.name, got.Host, got.Refusal)
 		}
 	}
 }
