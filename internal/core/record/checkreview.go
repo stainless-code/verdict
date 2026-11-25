@@ -1262,19 +1262,19 @@ func (c *checker) checkTriageClaim(i int, item any) {
 		c.missing(base+".sig", "missing triage sig", "add the finding sig", "...")
 	}
 	if _, ok := m.Get(fieldStatus); !ok {
-		c.missing(base+".status", "missing triage status", "add open|addressed|wont-fix|false-positive|deferred", "wont-fix")
+		c.missing(base+".status", "missing triage status", "add open|wont-fix|false-positive|deferred", "wont-fix")
 	}
 }
 
 func (c *checker) checkTriageStatus(path string, v any) {
 	s, ok := v.(string)
 	if !ok {
-		c.wrongType(path, "triage status must be a string", "use open|addressed|wont-fix|false-positive|deferred", exampleWontFix)
+		c.wrongType(path, "triage status must be a string", "use open|wont-fix|false-positive|deferred", exampleWontFix)
 		return
 	}
 	if !slices.Contains(triageStatuses, s) {
 		c.badEnum(path, fmt.Sprintf("unknown triage status %q", s),
-			"use open|addressed|wont-fix|false-positive|deferred", exampleWontFix)
+			"use open|wont-fix|false-positive|deferred", exampleWontFix)
 	}
 }
 

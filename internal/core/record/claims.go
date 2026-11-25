@@ -5,9 +5,9 @@ import (
 	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/core"
+	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
-	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -80,6 +80,12 @@ func (st *state) applyVerdict(target *jq.Obj, full string, claim verifyClaim) {
 		(st.headFull == claim.vrh || hasPrefix(st.headFull, claim.vrh) || hasPrefix(claim.vrh, st.headFull))
 	switch {
 	case claim.verdict == "VERIFIED" && shaOK && claim.vcmd != "":
+		// The claim is attestation; only the receipt verify wrote is proof.
+		if gap := verifyReceiptGap(st.dir, st.headFull, full, claim.vcmd, st.entries); gap != "" {
+			st.warn(fmt.Sprintf(msgClaimUnbacked, readcommon.Prefix(full), gap, readcommon.ShortSHA(st.headFull)))
+			st.recordRevalidation(target, claim)
+			return
+		}
 		st.applyVerified(target, full, claim.vcmd)
 	case claim.verdict == "NOT VERIFIED":
 		st.applyNotVerified(target, claim.vcmd)
@@ -100,7 +106,6 @@ func (st *state) applyVerified(target *jq.Obj, full, vcmd string) {
 		st.kb.ApplyCredit(st.entries, full, outcomeAddressed, revalidatorForced, st.cmd, st.now, st.controls.Has(kb.File))
 		stampCredit(st, target)
 	}
-	st.checkVerifyContradiction(full)
 }
 
 func (st *state) applyNotVerified(target *jq.Obj, vcmd string) {
@@ -124,17 +129,6 @@ func (st *state) recordRevalidation(target *jq.Obj, claim verifyClaim) {
 		fieldAt, st.now, fieldEvent, "revalidation", fieldActor, revalidatorForced,
 		fieldNote, note, fieldSHA, st.headShort,
 	)))
-}
-
-func (st *state) checkVerifyContradiction(full string) {
-	vexit := jq.R(jq.Alt(patchField(st.dir, "verifyExit"), ""))
-	if vexit != "" && vexit != "0" && vexit != "null" {
-		st.warn(fmt.Sprintf(msgContradictExit, readcommon.Prefix(full), vexit))
-		return
-	}
-	if jq.R(jq.Alt(patchField(st.dir, "timedOut"), "")) == core.FlagOn {
-		st.warn(fmt.Sprintf(msgContradictTimeout, readcommon.Prefix(full), vexit))
-	}
 }
 
 func (st *state) applyTriage() error {
@@ -185,6 +179,12 @@ func (st *state) applyTriageClaim(v *jq.Obj) error {
 	if !isTriageStatus(claim.status) {
 		return &core.RefusalError{Code: codeBadTriageStatus, Message: fmt.Sprintf(msgBadTriage, claim.status)}
 	}
+	// addressed is the one status a rationale cannot buy: it comes only from a
+	// VERIFIED claim backed by the verify receipt (applyVerdict).
+	if claim.status == outcomeAddressed {
+		st.warn(fmt.Sprintf(msgTriageAddressed, readcommon.Prefix(claim.sig)))
+		return nil
+	}
 	full, code := resolveSig(st.entries, claim.sig)
 	switch code {
 	case sigNone:
@@ -221,11 +221,7 @@ func (st *state) applyTriageFlip(target *jq.Obj, full string, claim triageClaim)
 		fieldAt, st.now, fieldEvent, "triaged", fieldActor, "agent",
 		fieldNote, claim.reason, fieldSHA, st.headShort,
 	)))
-	switch claim.status {
-	case outcomeAddressed, "false-positive":
-		if st.dryRun {
-			return
-		}
+	if claim.status == exampleFalsePositive && !st.dryRun {
 		st.kb.ApplyCredit(st.entries, full, claim.status, "agent", st.cmd, st.now, st.controls.Has(kb.File))
 		stampCredit(st, target)
 	}
@@ -261,19 +257,64 @@ func hasPrefix(s, prefix string) bool {
 	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
 }
 
-func patchField(dir, field string) any {
-	raw, err := noblock.ReadFile(dir + "/patch.json")
-	if err != nil {
-		return nil
+// verifyReceiptGap names why the bundle's verify receipt does not prove this
+// claim, or returns "" when it does. It reads only verify-receipt.json, which
+// verify alone writes — never patch.json, the agent's own proposal. The
+// receipt must show a passing run of the claim's exact command, for the
+// claim's finding when it names one, on the clean gated head. The bundle owns
+// the receipt, so it was written for this bundle and its root; the head is the
+// binding it can go stale on.
+func verifyReceiptGap(dir, head, full, vcmd string, entries []any) string {
+	receipt, found, problem := verifycore.ReadVerifyReceipt(dir)
+	switch {
+	case problem != "":
+		return "the verify receipt is unreadable: " + problem
+	case !found:
+		return "no verify receipt: " + verifycore.ReceiptFile + " is missing"
+	case receipt.Exit != 0:
+		return fmt.Sprintf("the verify receipt failed with exit=%d", receipt.Exit)
+	case receipt.TimedOut:
+		return "the verify receipt timed out"
 	}
-	doc, err := jq.DecodeOrdered(raw)
-	if err != nil {
-		return nil
+	return receiptBindingGap(&receipt, head, full, vcmd, entries)
+}
+
+// receiptBindingGap checks what the passing run was bound to: the command,
+// the finding, and the head.
+func receiptBindingGap(receipt *core.VerifyReceipt, head, full, vcmd string, entries []any) string {
+	if receipt.Command != vcmd {
+		return fmt.Sprintf("the verify receipt ran %q, not the claim's %q", receipt.Command, vcmd)
 	}
-	m, ok := doc.(*jq.Obj)
-	if !ok {
-		return nil
+	if receipt.Sig != "" {
+		if gap := receiptSigGap(receipt.Sig, full, entries); gap != "" {
+			return gap
+		}
 	}
-	v, _ := m.Get(field)
-	return v
+	if receipt.Head == "" {
+		return "the verify receipt records no clean HEAD"
+	}
+	if receipt.Head != head {
+		return "the verify receipt covers HEAD " + readcommon.ShortSHA(receipt.Head)
+	}
+	return ""
+}
+
+// minSigPrefixLen is the shortest sig prefix a receipt may name a finding by.
+const minSigPrefixLen = 8
+
+// receiptSigGap resolves the receipt's sig the way every claim resolves a
+// sig — against the store, unique or nothing — and requires it to name the
+// claim's own finding. A prefix two findings share backs neither.
+func receiptSigGap(sig, full string, entries []any) string {
+	if len(sig) < minSigPrefixLen {
+		return "the verify receipt names finding " + sig + ", too short a sig to resolve"
+	}
+	resolved, code := resolveSig(entries, sig)
+	switch {
+	case code == sigMany:
+		return "the verify receipt's finding " + readcommon.Prefix(sig) + " is ambiguous in the store"
+	case code == sigNone || resolved != full:
+		return "the verify receipt is for finding " + readcommon.Prefix(sig)
+	}
+	return ""
 }

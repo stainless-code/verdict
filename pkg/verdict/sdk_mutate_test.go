@@ -214,7 +214,7 @@ func TestClientFix(t *testing.T) {
 	})
 	requireNoError(t, err)
 	if out.At != sdkAt ||
-		out.Next != "patch the anchor file, write verification.json, run record to land it, then re-run fix" {
+		out.Next != "patch the anchor file, commit it, re-run fetch-local, run verdict verify, write verification.json, run record to land it, then re-run fix" {
 		t.Errorf("envelope = at %q next %q", out.At, out.Next)
 	}
 	assertFixPass(t, decodeData(t, out.Data))
