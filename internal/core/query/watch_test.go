@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -117,4 +119,101 @@ func TestWatchShutdownBounded(t *testing.T) {
 			return false
 		}
 	})
+}
+
+// TestChangesSnapshotsBeforeReturning pins the arming order: the watcher's
+// baseline is taken before Changes returns, so a bundle written once it has
+// returned is reported (a caller that composed before the write would
+// otherwise never learn of it, the baseline on the goroutine absorbing it),
+// and reported once. The first stat, the baseline's, is held until the
+// test releases it: Changes returning while it is held means the baseline
+// is still to be taken.
+func TestChangesSnapshotsBeforeReturning(t *testing.T) {
+	root, _ := fixture(t)
+	synctest.Test(t, func(t *testing.T) {
+		g := newBaselineGate(filepath.Join(root, ".verdict", "state"))
+		defer g.open() // a failed run must not leave the baseline held
+		layer := New(Snapshot{Roots: []Root{{Path: root}}, Runtime: &core.Runtime{Now: fixedNow}}, Options{
+			MaxBundles: 10, Stat: g.stat, ReadDir: os.ReadDir, Clock: fixedNow,
+			Interval: time.Second, Sweep: time.Hour,
+		})
+		g.armed.Store(true)
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		var changes <-chan Change
+		returned := make(chan struct{})
+		go func() {
+			changes = layer.Changes(ctx)
+			close(returned)
+		}()
+		<-g.started
+		synctest.Wait()
+		if isClosed(returned) {
+			t.Fatal("Changes returned before the baseline snapshot was taken")
+		}
+		g.open()
+		<-returned
+		writeFiles(t, root, map[string]string{".verdict/state/9999/post.json": `{}`})
+		g.bumped.Store(true)
+		wantOneChange(t, changes)
+	})
+}
+
+func isClosed(ch <-chan struct{}) bool {
+	select {
+	case <-ch:
+		return true
+	default:
+		return false
+	}
+}
+
+// wantOneChange wants the next change to be the tick that names bundle 9999,
+// and no other for ten more ticks.
+func wantOneChange(t *testing.T, changes <-chan Change) {
+	t.Helper()
+	got := <-changes
+	if !slices.Equal(got.Changed, []string{"9999"}) || got.Via != "tick" {
+		t.Fatalf("change after Changes returned = %#v, want one tick invalidation for 9999", got)
+	}
+	select {
+	case extra := <-changes:
+		t.Fatalf("the write was reported twice: %#v", extra)
+	case <-time.After(10 * time.Second):
+	}
+}
+
+// baselineGate is a stat that holds the first call after arming (the
+// baseline's) until opened, and, once bumped, moves the state directory's
+// mtime an hour so a write registers whatever the filesystem's clock
+// resolution. Its channels belong to the bubble that makes it, so a held
+// stat counts as durably blocked.
+type baselineGate struct {
+	open     func()
+	started  chan struct{}
+	gate     chan struct{}
+	stateDir string
+	first    sync.Once
+	armed    atomic.Bool
+	bumped   atomic.Bool
+}
+
+func newBaselineGate(stateDir string) *baselineGate {
+	g := &baselineGate{stateDir: stateDir, started: make(chan struct{}), gate: make(chan struct{})}
+	g.open = sync.OnceFunc(func() { close(g.gate) })
+	return g
+}
+
+func (g *baselineGate) stat(path string) (os.FileInfo, error) {
+	if g.armed.Load() {
+		g.first.Do(func() {
+			close(g.started)
+			<-g.gate
+		})
+	}
+	info, err := os.Stat(path)
+	if err != nil || path != g.stateDir || !g.bumped.Load() {
+		return info, err
+	}
+	return watchFileInfo{FileInfo: info, modTime: info.ModTime().Add(time.Hour)}, nil
 }

@@ -33,15 +33,24 @@ func (s *Server) clientRootPlan(params *initializeParams) (rootPlan, bool) {
 }
 
 // acceptedRoots keeps the candidates that pass confinement and the checkout
-// guard, in order.
+// guard, in order. The checkout probes run concurrently under the resolver's
+// bounds (a hung volume costs about one budget however many roots sit on
+// it); the warnings are queued afterwards in candidate order.
 func (s *Server) acceptedRoots(candidates []rootCandidate) []string {
-	var paths []string
-	for _, c := range candidates {
-		if p, ok := s.acceptClientRoot(c); ok {
-			paths = append(paths, p)
+	paths := make([]string, len(candidates))
+	dropped := make([]string, len(candidates))
+	s.resolver.each(len(candidates), func(i int) {
+		paths[i], dropped[i] = s.vetClientRoot(candidates[i])
+	})
+	var accepted []string
+	for i := range candidates {
+		if dropped[i] != "" {
+			s.queueLogf(msgWarning, "verdict: workspace root %s dropped: %s", s.rootLabel(&candidates[i], paths[i]), dropped[i])
+			continue
 		}
+		accepted = append(accepted, paths[i])
 	}
-	return paths
+	return accepted
 }
 
 // warnRoots logs a root set that will publish nothing, and a pinned
@@ -88,19 +97,27 @@ func clientRootCandidates(params *initializeParams) []rootCandidate {
 	return out
 }
 
-// acceptClientRoot validates one client root: a clean absolute file URI (or
-// absolute path) naming an existing directory inside a git checkout.
-func (s *Server) acceptClientRoot(c rootCandidate) (string, bool) {
+// vetClientRoot validates one client root: a clean absolute file URI (or
+// absolute path) naming an existing directory inside a git checkout. It
+// returns the path, or the reason the root is dropped.
+func (s *Server) vetClientRoot(c rootCandidate) (path, dropped string) {
 	p, err := clientRootPath(c, s.windows)
 	if err != nil {
-		s.queueLogf(msgWarning, "verdict: workspace root %s dropped: %v", quoteLog(c.String()), err)
-		return "", false
+		return "", err.Error()
 	}
 	if reason := s.boundedCheckout(p); reason != "" {
-		s.queueLogf(msgWarning, "verdict: workspace root %s dropped: %s", p, reason)
-		return "", false
+		return p, reason
 	}
-	return p, true
+	return p, ""
+}
+
+// rootLabel names a dropped root in its warning: the path when the client's
+// spelling parsed, else the quoted raw text.
+func (s *Server) rootLabel(c *rootCandidate, path string) string {
+	if path == "" {
+		return quoteLog(c.String())
+	}
+	return path
 }
 
 func clientRootPath(c rootCandidate, windows bool) (string, error) {
@@ -117,11 +134,14 @@ func clientRootPath(c rootCandidate, windows bool) (string, error) {
 // root whose probe misses the budget (a hung volume) is dropped rather than
 // stalling the session.
 func (s *Server) boundedCheckout(dir string) string {
-	problem, _, timedOut := s.resolver.run("root\x00"+dir, func() (string, bool) {
-		return checkoutProblem(dir), true
+	problem, _, why := s.resolver.run("root\x00"+dir, func() (string, bool) {
+		return s.cfg.checkout(dir), true
 	})
-	if timedOut {
+	if why == missBudget {
 		return "its checkout could not be probed within " + s.lim.resolve.String()
+	}
+	if why == missNoSlot {
+		return fmt.Sprintf("its checkout was not probed: all %d filesystem walks are still outstanding", s.resolver.limit)
 	}
 	return problem
 }

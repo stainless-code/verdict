@@ -354,13 +354,19 @@ func (l *Layer) evictBundles(root string, names []string) {
 
 // Changes returns invalidations until ctx is canceled.
 // With watching disabled, the returned channel is already closed.
+//
+// The baseline snapshot is taken before Changes returns, so a caller that
+// reads the bundles after it returns sees every write the watcher will not
+// report, and a write after it returns is always reported: no write can land
+// between the caller's read and a baseline taken later on the goroutine.
+// The snapshot walks the state directories, so Changes does I/O.
 func (l *Layer) Changes(ctx context.Context) <-chan Change {
 	out := make(chan Change, changeBufferSize)
 	if l.noWatch {
 		close(out)
 		return out
 	}
-	go l.runChanges(ctx, out)
+	go l.runChanges(ctx, out, newWatchState(l))
 	return out
 }
 
@@ -401,9 +407,8 @@ func (b *changeBatch) stop() {
 	}
 }
 
-func (l *Layer) runChanges(ctx context.Context, out chan<- Change) {
+func (l *Layer) runChanges(ctx context.Context, out chan<- Change, state *watchState) {
 	defer close(out)
-	state := newWatchState(l)
 	interval := time.NewTicker(l.interval)
 	defer interval.Stop()
 	sweep := time.NewTicker(l.sweep)

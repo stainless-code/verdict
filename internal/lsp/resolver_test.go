@@ -68,10 +68,10 @@ func TestResolverBudgetRunsOut(t *testing.T) {
 	hung := func() (string, bool) { <-release; return "/never", true }
 	done := make(chan bool, 2)
 	go func() {
-		_, _, timedOut := r.run("hung", hung)
-		done <- timedOut
-		_, _, timedOut = r.run("other", hung)
-		done <- timedOut
+		_, _, why := r.run("hung", hung)
+		done <- why == missBudget
+		_, _, why = r.run("other", hung)
+		done <- why == missNoSlot
 	}()
 	for i, what := range []string{"a hung walk", "a walk past the slot cap"} {
 		var timedOut bool
