@@ -453,6 +453,23 @@ func TestVerifySnapshotCleanupWarningReachesTheResponse(t *testing.T) {
 	}
 }
 
+// TestVerifyRefusalCarriesCleanupWarning pins the patch path's refusals after
+// the snapshot exists: here the previous receipt cannot be cleared (a
+// directory sits at its path), and the snapshot's failed cleanup still
+// reaches the refusal's warnings.
+func TestVerifyRefusalCarriesCleanupWarning(t *testing.T) {
+	bundle(t, `{"verifyCmd":"printf ok"}`)
+	testkit.WriteFile(t, ".verdict/state/5201/verify-receipt.json/blocker", "x")
+	cmdr := &removeFailsCommander{scriptCommander{res: core.Result{Stdout: "ok"}}}
+	req := verifyRequest(&testkit.Collector{}, &cmdr.scriptCommander, "10", []string{"PATH=/bin"}, true)
+	req.Commander = cmdr
+	_, ref := verifycore.Run(context.Background(), req)
+	if ref == nil || !strings.Contains(ref.Message, "could not clear the previous") {
+		t.Fatalf("refusal = %v, want the receipt-clearing refusal", ref)
+	}
+	requireCleanupWarning(t, ref.Warnings)
+}
+
 // TestVerifySuccessClearsStaleMarker pins that a successful re-verify empties
 // the previous run's timeout marker.
 func TestVerifySuccessClearsStaleMarker(t *testing.T) {

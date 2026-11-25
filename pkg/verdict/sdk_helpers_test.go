@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -141,7 +142,7 @@ func (f *fakeCommander) Run(_ context.Context, cmd *verdict.Command) (verdict.Co
 		return res, nil
 	}
 	f.calls = append(f.calls, cmd.Argv)
-	joined := strings.Join(cmd.Argv, " ")
+	joined := strings.Join(liveDiffArgv(cmd.Argv), " ")
 	for _, rule := range f.rules {
 		if containsAll(joined, rule.tokens) {
 			return rule.result, nil
@@ -149,6 +150,24 @@ func (f *fakeCommander) Run(_ context.Context, cmd *verdict.Command) (verdict.Co
 	}
 	f.t.Fatalf("unexpected command: %q", joined)
 	return verdict.CommandResult{}, nil
+}
+
+// liveDiffArgv maps a named working-tree bundle's tree-to-tree read (`git
+// diff --no-ext-diff --no-textconv [flags] <base> <scriptTree> [-- paths]`)
+// onto the live `git diff [flags] HEAD [-- paths]` a test scripts: the named
+// tree stands for the working tree's content. Other argv pass unchanged.
+func liveDiffArgv(argv []string) []string {
+	tree := slices.Index(argv, scriptTree)
+	if len(argv) < 3 || argv[1] != "diff" || tree < 1 {
+		return argv
+	}
+	live := []string{"git", "diff"}
+	for _, a := range argv[2 : tree-1] {
+		if a != "--no-ext-diff" && a != "--no-textconv" {
+			live = append(live, a)
+		}
+	}
+	return slices.Concat(live, []string{"HEAD"}, argv[tree+1:])
 }
 
 // containsAll reports whether s contains every token.

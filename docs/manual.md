@@ -341,7 +341,8 @@ the checkout controls: every git call runs with hooks off (even with
 `core.hooksPath` pointing at `.husky/` or other tree content), fsmonitor off, and no
 filter — blobs are hashed and files copied byte for byte, so no clean or smudge filter
 (git-lfs included), line-ending conversion, or ident expansion runs or changes a byte.
-A checkout whose conversions change bytes (CRLF working files under `core.autocrlf`,
+File modes follow git's: only the executable bit survives, so a `0640` file arrives as
+`0644`. A checkout whose conversions change bytes (CRLF working files under `core.autocrlf`,
 smudged LFS objects) therefore names a different tree than its commit, and a PR
 bundle's claim or a group run there does not bind. Naming writes the index paths'
 blobs, a tree, and one unreferenced commit into the repository's object store (never
@@ -363,11 +364,10 @@ is written only into the bundle it validated, for the content it reviewed.
 `record`/`post` read only that file and grade it against the content they grade: the
 tree `fetch-local` captured (`source.json` `content_tree`) for a local bundle, the
 head commit's tree for a PR bundle (read from the local repository — fetch the commit
-if it is missing). `fetch-local` names a working-tree bundle's content before and
-after it reads the diff and records no tree when the two differ (the tree moved during
-the capture); a `--staged` bundle reviews the index, which `verify` never runs, so it
-records no tree either, and no claim can land on it — fetch without `--staged` to
-verify fixes. They flip a `VERIFIED` claim only when the receipt shows exit 0, no
+if it is missing). `fetch-local` names a working-tree bundle's content first and reads
+its diff, file list, and stats from that tree, so the bundle is exactly the content it
+names; a `--staged` bundle records no tree (`verify` never runs the index), so no claim
+lands on it. They flip a `VERIFIED` claim only when the receipt shows exit 0, no
 timeout, the claim's exact `verifyCmd`, the claim's finding when it names one (its
 `sig` must resolve to exactly that one finding in the store; a prefix two findings
 share backs neither), and a `tree` equal to the graded content's. A receipt with no

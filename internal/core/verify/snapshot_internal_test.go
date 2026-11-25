@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -63,7 +64,7 @@ func TestSweepRemovesOnlySnapshotsPastTheirDeadline(t *testing.T) {
 	mustMkdir(t, live)
 	lockedTree(t, filepath.Join(stale, "locked"))
 	cmdr := &pruneCommander{}
-	sweepSnapshots(context.Background(), contenttree.Git{Cmdr: cmdr, Root: t.TempDir()}, now)
+	sweepSnapshots(context.Background(), contenttree.Git{Cmdr: cmdr, Root: t.TempDir()}, resolved(tmp), now)
 	for _, gone := range []string{stale, staging} {
 		if _, err := os.Stat(gone); !os.IsNotExist(err) {
 			t.Errorf("%s survived the sweep (%v)", gone, err)
@@ -74,5 +75,73 @@ func TestSweepRemovesOnlySnapshotsPastTheirDeadline(t *testing.T) {
 	}
 	if len(cmdr.calls) != 1 || cmdr.calls[0][3] != "worktree" || cmdr.calls[0][4] != "prune" {
 		t.Errorf("git calls = %q, want one worktree prune", cmdr.calls)
+	}
+}
+
+// TestSweepNeverTouchesTheCheckout pins the sweep's candidate rule: a
+// directory named like a long-stranded snapshot is left alone when it sits
+// inside the checkout (TMPDIR pointing into the repository) or is a link,
+// so checkout content a PR names that way is never deleted.
+func TestSweepNeverTouchesTheCheckout(t *testing.T) {
+	root := t.TempDir()
+	tmp := filepath.Join(root, "tmpdir")
+	victim := filepath.Join(tmp, snapshotPrefix+"1-victim")
+	mustMkdir(t, victim)
+	if err := os.WriteFile(filepath.Join(victim, "keep.txt"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	outside := t.TempDir()
+	if err := os.Symlink(victim, filepath.Join(outside, snapshotPrefix+"1-link")); err != nil {
+		t.Fatal(err)
+	}
+	cmdr := &pruneCommander{}
+	now := time.Unix(2_000_000_000, 0)
+	sweepSnapshots(context.Background(), contenttree.Git{Cmdr: cmdr, Root: root}, resolved(tmp), now)
+	sweepSnapshots(context.Background(), contenttree.Git{Cmdr: cmdr, Root: root}, resolved(outside), now)
+	if _, err := os.Stat(filepath.Join(victim, "keep.txt")); err != nil {
+		t.Errorf("the sweep deleted checkout content: %v", err)
+	}
+	if len(cmdr.calls) != 0 {
+		t.Errorf("git calls = %q, want none: nothing was swept", cmdr.calls)
+	}
+}
+
+// TestTakeSnapshotRefusesATempRootInsideTheCheckout pins the guard order:
+// verify run from the toplevel (root ".") with TMPDIR inside the checkout —
+// a directory of it, or its .git — refuses before sweeping or making
+// anything there, and leaves a committed snapshot-named directory alone.
+func TestTakeSnapshotRefusesATempRootInsideTheCheckout(t *testing.T) {
+	for _, sub := range []string{"tmpdir", ".git"} {
+		t.Run(sub, func(t *testing.T) { requireTempRootRefused(t, sub) })
+	}
+}
+
+// requireTempRootRefused runs takeSnapshot from a checkout's toplevel with
+// TMPDIR at its sub directory holding a snapshot-named directory, and checks
+// it refuses, runs no git, and deletes nothing.
+func requireTempRootRefused(t *testing.T, sub string) {
+	t.Helper()
+	root := t.TempDir()
+	t.Chdir(root)
+	tmp := filepath.Join(root, sub)
+	keep := filepath.Join(tmp, snapshotPrefix+"1-victim", "keep.txt")
+	mustMkdir(t, filepath.Dir(keep))
+	if err := os.WriteFile(keep, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"TMPDIR", "TMP", "TEMP"} {
+		t.Setenv(name, tmp)
+	}
+	cmdr := &pruneCommander{}
+	st := &state{req: &Request{}}
+	snap, ref := st.takeSnapshot(context.Background(), cmdr, ".", 10)
+	if snap != nil || ref == nil || !strings.Contains(ref.Message, "inside the checkout") {
+		t.Fatalf("snapshot = %v, refusal = %v; want the inside-the-checkout refusal", snap, ref)
+	}
+	if _, err := os.Stat(keep); err != nil {
+		t.Errorf("checkout content under TMPDIR was deleted: %v", err)
+	}
+	if len(cmdr.calls) != 0 {
+		t.Errorf("git calls = %q, want none before the refusal", cmdr.calls)
 	}
 }

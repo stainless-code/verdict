@@ -154,7 +154,9 @@ func (st *state) prepareExecute(dir string) (core.Commander, *core.RefusalError)
 	return commander, nil
 }
 
-func (st *state) execute(ctx context.Context, bundle *bundleHandle, now, vcmd string, timeout int) (*Response, *core.RefusalError) {
+func (st *state) execute(
+	ctx context.Context, bundle *bundleHandle, now, vcmd string, timeout int,
+) (resp *Response, ref *core.RefusalError) {
 	commander, ref := st.prepareExecute(bundle.dir)
 	if ref != nil {
 		return nil, ref
@@ -168,7 +170,7 @@ func (st *state) execute(ctx context.Context, bundle *bundleHandle, now, vcmd st
 	}
 	// A backstop for the refusal paths; the run removes it as soon as the
 	// command ends, so a cleanup warning reaches the response.
-	defer func() { st.removeSnapshot(ctx, snap) }()
+	defer func() { st.finishSnapshot(ctx, snap, ref) }()
 	runRoot, tree := snap.dir, snap.content.Tree
 	sb, ref := st.sandboxed(ctx, commander, runRoot, runRoot)
 	if ref != nil {

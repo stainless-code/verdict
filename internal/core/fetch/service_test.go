@@ -29,11 +29,8 @@ type scriptCommander struct {
 	stdin []string
 	env   [][]string
 	// untreeable makes the content listing fail, as git does where it
-	// cannot read the checkout; moving makes each naming of the working tree
-	// return a new tree, as a tree edited during the capture does.
+	// cannot read the checkout.
 	untreeable bool
-	moving     bool
-	namings    int
 }
 
 // scriptResult is one canned spawn: the streams plus the failure flag.
@@ -67,7 +64,7 @@ func (s *scriptCommander) contentTreeAnswer(argv []string) (core.Result, bool) {
 	case "ls-files":
 		return s.listAnswer(argv)
 	case "write-tree":
-		return s.treeAnswer(), true
+		return core.Result{Stdout: testContentTree + "\n"}, true
 	case "rev-parse":
 		return core.Result{Stdout: testContentTree + "\n"}, true
 	case "read-tree":
@@ -88,16 +85,6 @@ func (s *scriptCommander) listAnswer(argv []string) (core.Result, bool) {
 	return core.Result{}, true
 }
 
-// treeAnswer names the content: one tree, or a new one on every naming
-// after the first when moving.
-func (s *scriptCommander) treeAnswer() core.Result {
-	s.namings++
-	if s.moving && s.namings > 1 {
-		return core.Result{Stdout: strings.Repeat("d", 40) + "\n"}
-	}
-	return core.Result{Stdout: testContentTree + "\n"}
-}
-
 // Run records argv/stdin/env and replays the canned result.
 func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	s.t.Helper()
@@ -107,7 +94,7 @@ func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result
 	s.calls = append(s.calls, append([]string{}, cmd.Argv...))
 	s.stdin = append(s.stdin, readTestStdin(s.t, cmd.Stdin))
 	s.env = append(s.env, cmd.Env)
-	key := strings.Join(cmd.Argv, "\x00")
+	key := strings.Join(liveDiffArgv(cmd.Argv), "\x00")
 	if key == patchIDKey {
 		if cmd.Stdin == nil {
 			s.t.Errorf("patch-id sent no stdin, want the diff on stdin")
@@ -125,6 +112,25 @@ func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result
 		out.ExitCode = 1
 	}
 	return out, nil
+}
+
+// liveDiffArgv maps a named working-tree bundle's tree-to-tree read (`git
+// diff --no-ext-diff --no-textconv [flags] <base> <tree> [-- paths]`) onto
+// the live `git diff [flags] HEAD [-- paths]` a test scripts: the named
+// tree stands for the working tree's content, so the scripted live output
+// is what the tree read returns. Every other argv is returned unchanged.
+func liveDiffArgv(argv []string) []string {
+	tree := slices.Index(argv, testContentTree)
+	if len(argv) < 3 || argv[1] != "diff" || tree < 1 {
+		return argv
+	}
+	live := []string{"git", "diff"}
+	for _, a := range argv[2 : tree-1] {
+		if a != "--no-ext-diff" && a != "--no-textconv" {
+			live = append(live, a)
+		}
+	}
+	return slices.Concat(live, []string{"HEAD"}, argv[tree+1:])
 }
 
 // readTestStdin drains one child's stdin, failing the test on a read error.

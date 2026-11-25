@@ -104,7 +104,13 @@ func (g Git) command(index string, args ...string) *core.Command {
 	if env == nil {
 		env = os.Environ()
 	}
-	env = withConfig(slices.Clone(env), safety...)
+	// GIT_CONFIG_PARAMETERS (what `git -c` exports to the hooks it runs)
+	// outranks GIT_CONFIG_COUNT, so an inherited one could turn hooks back
+	// on; it carries nothing a content read needs.
+	env = slices.DeleteFunc(slices.Clone(env), func(e string) bool {
+		return strings.HasPrefix(e, "GIT_CONFIG_PARAMETERS=")
+	})
+	env = withConfig(env, safety...)
 	if index != "" {
 		env = append(env, "GIT_INDEX_FILE="+index)
 	}

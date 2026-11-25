@@ -28,8 +28,9 @@ type groupCommander struct {
 	exit     int
 	timed    bool
 	// missing makes the reviewed commit unresolvable, as when it was never
-	// fetched.
+	// fetched; stuck makes `git worktree remove` fail, as on a locked tree.
 	missing bool
+	stuck   bool
 }
 
 func (c *groupCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
@@ -57,6 +58,8 @@ func (c *groupCommander) contentAnswer(a []string) (core.Result, bool) {
 		return core.Result{Stdout: c.worktree + "\n"}, true
 	case a[3] == "rev-parse" && c.missing && strings.HasPrefix(a[len(a)-1], groupHead):
 		return core.Result{ExitCode: 1}, true
+	case c.stuck && a[3] == "worktree" && len(a) > 4 && a[4] == "remove":
+		return core.Result{ExitCode: 1, Stderr: "fatal: cannot remove a locked working tree"}, true
 	}
 	return core.Result{}, false
 }

@@ -32,18 +32,35 @@ type snapshot struct {
 // instead would let the command change what it is credited with testing.
 func (st *state) takeSnapshot(ctx context.Context, commander core.Commander, root string, timeout int) (*snapshot, *core.RefusalError) {
 	g := contenttree.Git{Cmdr: commander, Root: root, Env: st.req.Environ}
-	sweepSnapshots(ctx, g, time.Now())
-	snap, err := newSnapshot(ctx, g, time.Now().Add(time.Duration(timeout)*time.Second+snapshotSlack))
-	switch {
-	case ctx.Err() != nil:
-		return nil, canceledRefusal()
-	case err != nil:
-		return nil, &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(
-			"verify failed: could not snapshot the content at %s (%v) — verify runs a command only in a "+
-				"snapshot of the content its receipt binds, never in your checkout; nothing ran", root, err)}
+	// The temp root is validated before anything under it is swept or made:
+	// one inside the checkout would make checkout content (a committed
+	// directory with a snapshot's name) look like a stranded snapshot.
+	tmp, err := tempRoot(root)
+	if err == nil {
+		sweepSnapshots(ctx, g, tmp, time.Now())
+		var snap *snapshot
+		if snap, err = newSnapshot(ctx, g, tmp, time.Now().Add(time.Duration(timeout)*time.Second+snapshotSlack)); err == nil {
+			st.warnLeftOut(&snap.content)
+			return snap, nil
+		}
 	}
-	st.warnLeftOut(&snap.content)
-	return snap, nil
+	if ctx.Err() != nil {
+		return nil, canceledRefusal()
+	}
+	return nil, &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(
+		"verify failed: could not snapshot the content at %s (%v) — verify runs a command only in a "+
+			"snapshot of the content its receipt binds, never in your checkout; nothing ran", root, err)}
+}
+
+// tempRoot is the host temp root a snapshot lives under, spelled physically,
+// refused when it sits inside the checkout at root (TMPDIR pointed into the
+// repository, its .git included).
+func tempRoot(root string) (string, error) {
+	tmp := resolved(os.TempDir())
+	if inside(root, tmp) {
+		return "", jq.NewErrf("the temp directory %s is inside the checkout — set TMPDIR outside it", tmp)
+	}
+	return tmp, nil
 }
 
 // snapshotPrefix names a snapshot directory, and with it the worktree's
@@ -62,8 +79,8 @@ const snapshotSlack = time.Hour
 // snapshot inside it would nest a second root in the first, which the
 // sandbox's root and git-directory rules cannot both hold, and would leave a
 // full copy of the tree in .verdict.
-func newSnapshot(ctx context.Context, g contenttree.Git, deadline time.Time) (*snapshot, error) {
-	dir, err := os.MkdirTemp("", snapshotPrefix+strconv.FormatInt(deadline.Unix(), decimal)+"-")
+func newSnapshot(ctx context.Context, g contenttree.Git, tmp string, deadline time.Time) (*snapshot, error) {
+	dir, err := os.MkdirTemp(tmp, snapshotPrefix+strconv.FormatInt(deadline.Unix(), decimal)+"-")
 	if err != nil {
 		return nil, jq.Sealed("create the snapshot directory", err)
 	}
@@ -86,17 +103,19 @@ func newSnapshot(ctx context.Context, g contenttree.Git, deadline time.Time) (*s
 	return &snapshot{git: g, content: content, dir: dir}, nil
 }
 
-// sweepSnapshots removes the snapshot and staging directories whose run's
-// deadline has passed — a run killed before its cleanup strands them — and
-// drops their worktree registrations. A live run's snapshot is never past
-// its deadline, so concurrent runs are safe. Best effort: a sweep failure
+// sweepSnapshots removes the snapshot and staging directories under the
+// validated temp root tmp whose run's deadline has passed — a run killed
+// before its cleanup strands them — and drops their worktree registrations.
+// A live run's snapshot is never past its deadline, so concurrent runs are
+// safe. Only a real directory directly under tmp, named like a snapshot and
+// outside the checkout, is ever a candidate. Best effort: a sweep failure
 // costs disk, never this run.
-func sweepSnapshots(ctx context.Context, g contenttree.Git, now time.Time) {
+func sweepSnapshots(ctx context.Context, g contenttree.Git, tmp string, now time.Time) {
 	// A glob error is a malformed pattern, and this one is constant.
-	candidates, _ := filepath.Glob(filepath.Join(os.TempDir(), snapshotPrefix+"*")) //nolint:errcheck // see above
+	candidates, _ := filepath.Glob(filepath.Join(tmp, snapshotPrefix+"*")) //nolint:errcheck // see above
 	swept := false
 	for _, dir := range candidates {
-		if pastDeadline(dir, now) && contenttree.RemoveTree(dir) == nil {
+		if strandedSnapshot(g.Root, dir, now) && contenttree.RemoveTree(dir) == nil {
 			swept = true
 		}
 	}
@@ -104,6 +123,14 @@ func sweepSnapshots(ctx context.Context, g contenttree.Git, now time.Time) {
 		// Best effort: a failed prune is retried by the next sweep.
 		_ = g.Prune(context.WithoutCancel(ctx)) //nolint:errcheck // see above
 	}
+}
+
+// strandedSnapshot reports whether dir may be swept: a real directory (not
+// a link to one), outside the checkout at root, whose name carries a
+// deadline that has passed.
+func strandedSnapshot(root, dir string, now time.Time) bool {
+	info, err := os.Lstat(dir)
+	return err == nil && info.IsDir() && !inside(root, dir) && pastDeadline(dir, now)
 }
 
 // pastDeadline reports whether a snapshot directory's name carries a
@@ -147,14 +174,35 @@ func shownList(items []string) string {
 	return strings.Join(items[:leftOutShown], ", ") + fmt.Sprintf(", and %d more", len(items)-leftOutShown)
 }
 
-// inside reports whether path is root or below it, both resolved.
+// inside reports whether path is root or below it, both made absolute and
+// resolved first — root is often "." (verify run from the toplevel), which
+// [filepath.Rel] cannot compare with an absolute path.
 func inside(root, path string) bool {
-	resolved, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		resolved = root
-	}
-	rel, err := filepath.Rel(resolved, path)
+	rel, err := filepath.Rel(resolved(root), resolved(path))
 	return err == nil && rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator))
+}
+
+// resolved is path made absolute with every link it holds followed, or as
+// absolute as it can be made when it does not exist.
+func resolved(path string) string {
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return path
+	}
+	if target, err := filepath.EvalSymlinks(abs); err == nil {
+		return target
+	}
+	return abs
+}
+
+// finishSnapshot is a run's deferred cleanup: it removes the snapshot (a
+// no-op once the run removed it) and re-reads the warnings into a refusal
+// built before the cleanup ran, so a cleanup warning reaches it too.
+func (st *state) finishSnapshot(ctx context.Context, snap *snapshot, ref *core.RefusalError) {
+	st.removeSnapshot(ctx, snap)
+	if ref != nil {
+		ref.Warnings = st.warnings
+	}
 }
 
 // removeSnapshot deletes the snapshot and its registration, warning when any

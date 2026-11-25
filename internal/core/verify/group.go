@@ -46,7 +46,7 @@ const (
 // never reads, writes, or fabricates patch.json, and every outcome of an
 // executed command leaves a receipt — a success is never left standing as
 // the latest completion after a later failure.
-func RunGroup(ctx context.Context, req *Request, dir, now string) (*Response, *core.RefusalError) {
+func RunGroup(ctx context.Context, req *Request, dir, now string) (resp *Response, ref *core.RefusalError) {
 	st := &state{req: req, warnings: append([]string{}, req.Warnings...)}
 	if ref := sandboxFlagsRefusal(req); ref != nil {
 		return nil, st.withWarnings(ref)
@@ -68,7 +68,7 @@ func RunGroup(ctx context.Context, req *Request, dir, now string) (*Response, *c
 	run.snap = snap
 	// A backstop for the refusal paths; the run removes it as soon as the
 	// command ends, so a cleanup warning reaches the response.
-	defer func() { st.removeSnapshot(ctx, run.snap) }()
+	defer func() { st.finishSnapshot(ctx, run.snap, ref) }()
 	if snap.content.Tree != run.tree {
 		return nil, st.withWarnings(otherContent(run))
 	}

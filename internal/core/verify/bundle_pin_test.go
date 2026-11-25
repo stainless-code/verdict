@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -256,6 +257,28 @@ func TestVerifyGroupRefusesOtherContent(t *testing.T) {
 		t.Errorf("a content mismatch ran %d commands", len(cmdr.runs))
 	}
 	requireNoGroupReceipt(t, filepath.Join(root, ".verdict", "state", "7"))
+}
+
+// TestVerifyGroupRefusalCarriesCleanupWarning pins that a refusal raised
+// after the snapshot exists still carries the warning its cleanup leaves:
+// the cleanup runs after the refusal is built, and its warning must reach it.
+func TestVerifyGroupRefusalCarriesCleanupWarning(t *testing.T) {
+	root := groupBundle(t)
+	cmdr := &groupCommander{out: "ok\n", worktree: strings.Repeat("0d1f", 10), stuck: true}
+	_, ref := verifycore.Run(context.Background(), groupRequest(root, "group-a1", "go test ./...", cmdr))
+	if ref == nil || ref.Code != "head-mismatch" {
+		t.Fatalf("refusal = %v, want head-mismatch", ref)
+	}
+	requireCleanupWarning(t, ref.Warnings)
+}
+
+// requireCleanupWarning checks a run's warnings name the failed snapshot
+// cleanup.
+func requireCleanupWarning(t *testing.T, warnings []string) {
+	t.Helper()
+	if !slices.ContainsFunc(warnings, func(w string) bool { return strings.Contains(w, "snapshot cleanup") }) {
+		t.Fatalf("warnings = %q, want the snapshot cleanup warning", warnings)
+	}
 }
 
 // TestReadValidationReceiptRejectsTrailingData pins the strict read: a

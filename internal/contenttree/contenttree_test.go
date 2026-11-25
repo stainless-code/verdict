@@ -362,3 +362,26 @@ func mustTree(t *testing.T, g contenttree.Git) string {
 	}
 	return tree
 }
+
+// TestSnapshotIgnoresInheritedConfigParameters pins that the hook-free
+// configuration holds against GIT_CONFIG_PARAMETERS, which outranks
+// GIT_CONFIG_COUNT and which git itself exports to the hooks it runs under
+// `git -c`: with it pointing core.hooksPath at a .husky directory holding
+// index and checkout hooks, naming and snapshotting run none of them.
+func TestSnapshotIgnoresInheritedConfigParameters(t *testing.T) {
+	root, g := repo(t)
+	markers := t.TempDir()
+	for _, hook := range []string{"post-index-change", "post-checkout"} {
+		write(t, root, ".husky/"+hook, "#!/bin/sh\ntouch "+filepath.ToSlash(filepath.Join(markers, hook))+"\n")
+		if err := os.Chmod(filepath.Join(root, ".husky", hook), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write(t, root, "app.go", "package app // edited\n")
+	t.Setenv("GIT_CONFIG_PARAMETERS", "'core.hooksPath'='.husky'")
+	mustTree(t, g)
+	snapshot(t, g)
+	if left, err := os.ReadDir(markers); err != nil || len(left) != 0 {
+		t.Errorf("hooks ran through GIT_CONFIG_PARAMETERS: %v (%v)", left, err)
+	}
+}
