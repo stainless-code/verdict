@@ -694,9 +694,9 @@ func TestLoopPrintPlansWithoutRunning(t *testing.T) {
 		5: {"verdict", "verify", "acme/app", local, "--timeout", "300"},
 	})
 	fix := resp.Data.Plan[4].Argv
-	if len(fix) != 3 || fix[0] != "claude" || fix[1] != "-p" ||
-		!strings.HasPrefix(fix[2], defaultFixPrompt+"\n\nRound 1 of at most 2.") {
-		t.Errorf("fix argv = %q, want the claude row with the fix directive last", fix)
+	if len(fix) != 5 || !slices.Equal(fix[:4], []string{"claude", "-p", "--output-format", "json"}) ||
+		!strings.HasPrefix(fix[4], defaultFixPrompt+"\n\nRound 1 of at most 2.") {
+		t.Errorf("fix argv = %q, want the claude row, its json output request, and the fix directive", fix)
 	}
 	if _, err := os.Stat(filepath.Join(h.req.RepoRoot, ".verdict")); err == nil {
 		t.Error("--print wrote under the checkout")

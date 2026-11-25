@@ -80,6 +80,21 @@ type RunRequest struct { //nolint:govet // field grouping documents the request 
 	// and a refusal stops the launch before that spawn. The self-review loop
 	// admits each spawn under its spend ceiling and receipts it there.
 	Admit func(ctx context.Context, attempt int) *RefusalError `json:"-"`
+	// MeasureSpend asks every launch to request the agent CLI's structured
+	// cost output (the catalog row's usage mode) and measure each spawn's
+	// spend from it. A two-finder execution measures without it; a plain
+	// launch leaves the agent's argv and output untouched.
+	MeasureSpend bool `json:"-"`
+	// OnSpend, when set, receives each spawn's measured spend — the attempt
+	// counting from 1 as for Admit, the exact USD literal, and how it was
+	// priced (measured from the CLI's own cost, or tokens from the catalog's
+	// price table). A spawn the CLI reported nothing usable for is not
+	// reported.
+	OnSpend func(attempt int, usd, pricedBy string) `json:"-"`
+	// OnUsageRejected, when set, is told that the agent CLI rejected the
+	// structured-output flag: the launch retried without it, and a caller
+	// that launches again should stop asking for it.
+	OnUsageRejected func() `json:"-"`
 }
 
 // RunResponse carries the run outcome: the envelope data, the warnings, the

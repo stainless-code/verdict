@@ -6,6 +6,7 @@ package run
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/agentcatalog"
+	"github.com/stainless-code/verdict/internal/agentusage"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
@@ -126,6 +128,8 @@ func checkAgents(agents []config.PersonalAgent) *core.RefusalError {
 
 func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.RefusalError) {
 	defer func() { st.carry(resp, ref) }()
+	st.meter = &meter{}
+	st.usage = &usageGate{}
 	if err := ctx.Err(); err != nil {
 		return nil, st.refuse(codeCanceled, msgCanceled)
 	}
@@ -189,13 +193,14 @@ func (st *state) argsForTarget(def *agentcatalog.Launch, timeout int, target lau
 	}
 	args.bin = bin
 	args.restriction = discoveryRestriction(def, st.req.PassThrough, st.req.AllowShell)
+	args.usage = st.usageArgs(def)
 	artifact := st.promptPath(args.abs, args.artifact)
 	st.compose(args, st.req, st.promptBundle(dir), artifact, readcommon.IsLocalBundleDir(dir))
 	if target.procedure != "" {
 		procedure := st.promptPath(target.procedure, readcommon.DisplayPath(st.req.RepoRootPath(), target.procedure))
 		args.prompt = strings.ReplaceAll(args.prompt, st.promptBundle(dir)+"/procedure.md", procedure)
 	}
-	args.argv = argvFor(&args.def, args.model(), args.restriction, st.req.PassThrough, args.prompt)
+	args.argv = argvFor(&args.def, args.model(), args.fixed(), st.req.PassThrough, args.prompt)
 	return args, nil
 }
 
@@ -216,7 +221,7 @@ func (st *state) compose(a *launchArgs, req *core.RunRequest, bundle, artifact s
 	default:
 		a.prompt = stageDirective(req.Repo, req.Pr, bundle, artifact, local, hasContext, a.plan, a.staged)
 	}
-	a.argv = argvFor(&a.def, a.model(), a.restriction, req.PassThrough, a.prompt)
+	a.argv = argvFor(&a.def, a.model(), a.fixed(), req.PassThrough, a.prompt)
 }
 
 // contextInBundle reports whether the bundle carries the handed context text.
@@ -444,6 +449,9 @@ type state struct { //nolint:govet // request first: the service reads one invoc
 	warnings    []string
 	defs        []config.PersonalAgent
 	budget      *core.ReviewBudget
+	meter       *meter
+	usage       *usageGate
+	receiptID   string
 	twoFinders  bool
 }
 
@@ -501,7 +509,10 @@ type launchArgs struct {
 	prompt      string
 	argv        []string
 	restriction []string
-	timeout     int
+	// usage is the structured-output request this launch carries, nil when
+	// it measures nothing.
+	usage   []string
+	timeout int
 }
 
 // carry replays the accumulated warnings onto the refusal or the response, so a
@@ -781,11 +792,13 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 	if ref := st.admit(ctx, 1); ref != nil {
 		return nil, ref
 	}
-	res, err := st.spawn(ctx, args.argv, args.timeout)
+	spawn, err := st.spawnAgent(ctx, args, args.prompt)
+	res := spawn.res
+	st.recordSpend(args, 1, spawn, err)
 	if ref := args.checkpoint(); ref != nil {
 		return nil, ref
 	}
-	if salvageAllowed(ctx, res, err) && st.salvageReview(args, res.Stdout) {
+	if salvageAllowed(ctx, res, err) && st.salvageReview(args, st.agentText(spawn)) {
 		rec.Salvaged = true
 	}
 	return st.finish(ctx, args, rec, launched, started, res, err, nil, argSecrets)
@@ -818,24 +831,30 @@ func (st *state) resolve(def *agentcatalog.Launch) (string, *core.RefusalError) 
 // the run is machine-only. The commander records the watchdog's kill in
 // Result.TimedOut; this call never infers one from its own clock, so an agent
 // that exits non-zero just before the budget stays a failure.
-func (st *state) spawn(ctx context.Context, argv []string, timeout int) (*core.Result, error) {
+func (st *state) spawn(ctx context.Context, argv []string, timeout int, tap *agentusage.Tap) (*core.Result, error) {
 	commander := st.commander()
 	if commander == nil {
 		return nil, errNoCommander
 	}
 	tctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
-	res, err := commander.Run(tctx, &core.Command{
+	cmd := &core.Command{
 		Argv:        argv,
 		Env:         st.childEnv(),
 		Dir:         st.workDir(),
 		OutputCap:   coreexec.VerifyOutputCap,
 		GracePeriod: agentGracePeriod,
-	})
-	if err != nil {
+	}
+	if tap != nil {
+		cmd.StdoutTap = tap
+	}
+	res, err := commander.Run(tctx, cmd)
+	// A process that never existed has no result; one that started and then
+	// failed keeps its capture, which its spend is still measured from.
+	if _, never := errors.AsType[*core.StartError](err); never {
 		return nil, err //nolint:wrapcheck // spawn failures are mapped by the caller, never reworded
 	}
-	return &res, nil
+	return &res, err //nolint:wrapcheck // as above
 }
 
 // agentGracePeriod is how long an agent's process group gets to finish after
