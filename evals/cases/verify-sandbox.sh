@@ -58,7 +58,34 @@ printf 'sandbox-sentinel\n' > "$FAKEHOME/.vault-token"
 # verdict process sees GH_CONFIG_DIR, and the sandbox must still hide it.
 printf 'github.com:\n  oauth_token: sandbox-sentinel\n' > "$MOVEDGH/hosts.yml"
 
+# pasteboard_restore writes the saved host find pasteboard back, byte for
+# byte (from a file, so trailing newlines survive). The backup is forgotten
+# only once pbcopy succeeds; a failed restore keeps it for the next attempt.
+pasteboard_restore() {
+  if [ -n "${PB_SAVED:-}" ]; then
+    if pbcopy -pboard find < "$PB_SAVED" 2>/dev/null; then
+      PB_SAVED=""
+    else
+      printf 'verify-sandbox: could not restore the host find pasteboard from %s\n' "$PB_SAVED" >&2
+    fi
+  fi
+}
+
+# pasteboard_keep runs at exit, after the last restore attempt: a backup that
+# still could not be restored is moved out of the temp tree the trap removes,
+# and its path is reported so the operator can restore it by hand.
+pasteboard_keep() {
+  if [ -n "${PB_SAVED:-}" ]; then
+    local keep
+    keep="$(mktemp "${TMPDIR:-/tmp}/verdict-eval-find-pasteboard.XXXXXX")"
+    cp "$PB_SAVED" "$keep"
+    printf 'verify-sandbox: the host find pasteboard was not restored; its saved text is in %s\n' "$keep" >&2
+  fi
+}
+
 listener_stop() {
+  pasteboard_restore
+  pasteboard_keep
   if [ -n "${LISTENER_PID:-}" ]; then
     kill "$LISTENER_PID" 2>/dev/null || true
   fi
@@ -129,7 +156,7 @@ hits() {
 # neither read nor written. The pasteboard leg uses the find pasteboard and
 # restores it, so the operator's clipboard is never touched.
 macos_service_legs() {
-  local domain="dev.verdict.eval.$UNIQ" saved
+  local domain="dev.verdict.eval.$UNIQ"
   export VERDICT_SANDBOX_DOMAIN="$domain"
   mkpatch 'defaults write "$VERDICT_SANDBOX_DOMAIN" k v; defaults write -g "$VERDICT_SANDBOX_DOMAIN" v; printf ran > sandbox-defaults.txt'
   rm -f "$EVAL_SANDBOX/sandbox-defaults.txt"
@@ -146,11 +173,16 @@ macos_service_legs() {
   rm -f "$HOME/Library/Preferences/$domain.plist"
 
   # The host find pasteboard is shared state: the case runs serially (see
-  # the header), and every path out of this leg restores it.
-  saved="$(pbpaste -pboard find 2>/dev/null || true)"
-  if ! printf 'verdict-eval-sentinel' | pbcopy -pboard find 2>/dev/null \
+  # the header). It is saved to a file under the host temp directory the
+  # sandbox cannot reach, and the EXIT trap restores it on every path out,
+  # a failing step under `set -e` included. A failed save changes nothing.
+  local saved_file="$HOSTTMPDIR/find-pasteboard.saved"
+  if pbpaste -pboard find > "$saved_file" 2>/dev/null; then
+    PB_SAVED="$saved_file"
+  fi
+  if [ -z "${PB_SAVED:-}" ] || ! printf 'verdict-eval-sentinel' | pbcopy -pboard find 2>/dev/null \
     || [ "$(pbpaste -pboard find 2>/dev/null)" != "verdict-eval-sentinel" ]; then
-    printf '%s' "$saved" | pbcopy -pboard find 2>/dev/null || true
+    pasteboard_restore
     if [ "${EVAL_REQUIRE_SANDBOX:-0}" = "1" ]; then
       bad "EVAL_REQUIRE_SANDBOX=1 but the host pasteboard control failed"
     else
@@ -169,7 +201,7 @@ macos_service_legs() {
   else
     bad "the sandbox reached the pasteboard ($(cat "$EVAL_SANDBOX/sandbox-pb.txt" 2>/dev/null || echo missing))"
   fi
-  printf '%s' "$saved" | pbcopy -pboard find 2>/dev/null || true
+  pasteboard_restore
 }
 
 # The refusal leg runs wherever the sandbox cannot be enforced. The sentinel
@@ -564,17 +596,33 @@ credential_legs
 
 # The reviewed root's git control files are the one part of the checkout the
 # PR cannot plant itself, and git runs them later outside any sandbox: a hook
-# write must fail under both mechanisms while `git status` keeps working.
+# write must fail under both mechanisms while `git status` keeps working, and
+# so must minting a second name for `.git/config` (Seatbelt denies the link;
+# under bwrap link(2) across the read-only `.git` bind fails EXDEV), since a
+# hardlink would write the file past every path rule.
 git_legs() {
-  rm -f "$EVAL_SANDBOX/.git/hooks/pre-commit"
-  mkpatch 'printf x > .git/hooks/pre-commit 2>/dev/null && printf leak > sandbox-git-hook.txt || printf denied > sandbox-git-hook.txt; git status --short >/dev/null && printf ok > sandbox-git-status.txt'
-  rm -f "$EVAL_SANDBOX/sandbox-git-hook.txt" "$EVAL_SANDBOX/sandbox-git-status.txt"
+  rm -f "$EVAL_SANDBOX/.git/hooks/pre-commit" "$EVAL_SANDBOX/sandbox-git-link"
+  # Positive control: the same link succeeds outside the sandbox, so a denied
+  # one below proves the boundary, not a missing `ln` or `.git/config`. It is
+  # removed before the run, which would otherwise refuse the hard link.
+  if (cd "$EVAL_SANDBOX" && ln .git/config sandbox-git-link 2>/dev/null) && [ -f "$EVAL_SANDBOX/sandbox-git-link" ]; then
+    rm -f "$EVAL_SANDBOX/sandbox-git-link"
+  else
+    bad "the unsandboxed control could not hardlink .git/config"
+  fi
+  mkpatch 'printf x > .git/hooks/pre-commit 2>/dev/null && printf leak > sandbox-git-hook.txt || printf denied > sandbox-git-hook.txt; ln .git/config sandbox-git-link 2>/dev/null && printf leak > sandbox-git-ln.txt || printf denied > sandbox-git-ln.txt; git status --short >/dev/null && printf ok > sandbox-git-status.txt'
+  rm -f "$EVAL_SANDBOX/sandbox-git-hook.txt" "$EVAL_SANDBOX/sandbox-git-ln.txt" "$EVAL_SANDBOX/sandbox-git-status.txt"
   run_review verify acme/app 5201 --sandbox --json --timeout 10
   assert_exit "sandboxed git control run" 0
   if [ "$(cat "$EVAL_SANDBOX/sandbox-git-hook.txt" 2>/dev/null)" = "denied" ] && [ ! -e "$EVAL_SANDBOX/.git/hooks/pre-commit" ]; then
     good "a write to .git/hooks is denied inside the sandbox"
   else
     bad "a hook was planted inside the sandbox ($(cat "$EVAL_SANDBOX/sandbox-git-hook.txt" 2>/dev/null || echo missing))"
+  fi
+  if [ "$(cat "$EVAL_SANDBOX/sandbox-git-ln.txt" 2>/dev/null)" = "denied" ] && [ ! -e "$EVAL_SANDBOX/sandbox-git-link" ]; then
+    good "hardlinking .git/config is denied inside the sandbox"
+  else
+    bad "the sandbox minted a second name for .git/config ($(cat "$EVAL_SANDBOX/sandbox-git-ln.txt" 2>/dev/null || echo missing))"
   fi
   if [ "$(cat "$EVAL_SANDBOX/sandbox-git-status.txt" 2>/dev/null)" = "ok" ]; then
     good "git status still works inside the sandbox"
