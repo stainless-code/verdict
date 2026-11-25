@@ -2,6 +2,8 @@ package run
 
 import (
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
@@ -324,7 +327,9 @@ func (st *state) spendReceipt(ctx context.Context, dir, execution string, rounds
 	projection spend.Projection, policy spend.Policy,
 ) *core.RefusalError {
 	topology := jq.NewObj("execution_id", execution, "finders", 2, "rounds", rounds, "recipe", st.req.Recipe, "phases", phases)
+	st.receiptID = execution + "@" + st.now().UTC().Format(time.RFC3339Nano) + "-" + receiptNonce()
 	record := jq.NewObj("at", core.NowUTC(st.now()), "execution_id", execution, "scope", "invocation",
+		"invocation_id", st.receiptID,
 		"projection_sha256", shaHex([]byte(topology.MarshalCompact())), "topology", topology,
 		"projected_usd", projection.Total, "projection", projection, "budget_usd", budgetNumber(policy.Budget),
 		"personal_limit_usd", budgetNumber(policy.Personal), "require_known_estimate", policy.RequireKnown,
@@ -333,6 +338,15 @@ func (st *state) spendReceipt(ctx context.Context, dir, execution string, rounds
 		record.Set("consent", "--consent-over-budget")
 	}
 	return st.updateLedger(ctx, dir, func(ledger []any) []any { return append(ledger, record) })
+}
+
+// receiptNonce makes one invocation's receipt id unique when two invocations
+// of an execution read the same clock: 8 hex characters from crypto/rand,
+// whose Read never fails.
+func receiptNonce() string {
+	var b [4]byte
+	_, _ = rand.Read(b[:])
+	return hex.EncodeToString(b[:])
 }
 
 // updateLedger rewrites the bundle's budget.json receipt ledger under its

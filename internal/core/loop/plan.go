@@ -74,8 +74,11 @@ func (lp *loop) fixArgv(ctx context.Context, n int, budget string) ([]string, *c
 	req := lp.req.Flow.RunRequest(b, reviewflow.Launch{Agent: lp.req.Agent, TimeoutRaw: budget}, nil)
 	req.Print = true
 	dir := filepath.Join(readcommon.StateDir(lp.req.RepoRoot), b.Pr)
-	argv, _, ref := runcore.Dispatch(ctx, req, lp.req.Flow.Agents, lp.fixDirective(n, dir))
-	return argv, ref
+	// The plan is the exact argv: the fix spawn requests the CLI's
+	// structured cost output, as the real launch does.
+	req.MeasureSpend = true
+	out, ref := runcore.Dispatch(ctx, req, lp.req.Flow.Agents, lp.fixDirective(n, dir))
+	return out.Argv, ref
 }
 
 // verifyArgv is the verify step's CLI equivalent, with the sandbox the

@@ -155,7 +155,7 @@ func TestRunPrintRendersThePlan(t *testing.T) {
 	for _, want := range []string{
 		"round 1:\n  fetch   verdict fetch-local acme/app loop-",
 		"  record  verdict record acme/app local-loop-",
-		"  fix     (when the gate fails) claude -p 'Only fix the security findings.\n\nRound 1 of at most 2.",
+		"  fix     (when the gate fails) claude -p --output-format json 'Only fix the security findings.\n\nRound 1 of at most 2.",
 		"  verify  (when the fix declares patch.json verifyCmd) verdict verify acme/app local-loop-",
 		"round 2:\n",
 	} {

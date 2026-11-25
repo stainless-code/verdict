@@ -17,11 +17,24 @@
 #   cost   like never, plus a priced cost.json beside the review, in the
 #          review prompt's own schema-2 shape (undated, total at the root)
 #
+# LOOP_MEASURED=1 makes every spawn print the json result object a measured
+# `claude -p --output-format json` run ends with, carrying its total_cost_usd.
+#
 # LOOP_LOG receives one "<name> review|fix" line per spawn.
 set -euo pipefail
 prompt="${!#}"
 name="$(basename "$0")"
 mode="${LOOP_MODE:-fix}"
+# measured prints the CLI's own result object when the loop asked for it.
+measured() {
+  case " $* " in
+    *" --output-format json "*)
+      [ "${LOOP_MEASURED:-}" = 1 ] &&
+        printf '{"type":"result","subtype":"success","is_error":false,"num_turns":2,"result":"done","session_id":"s","total_cost_usd":0.2}\n'
+      ;;
+  esac
+  return 0
+}
 
 case "$prompt" in
   *"Findings file: "*)
@@ -31,6 +44,7 @@ case "$prompt" in
       printf 'top\nfixed line\nbottom\n' >notes.txt
       printf '{"verifyCmd":"grep -q fixed notes.txt"}\n' >"$patch"
     fi
+    measured "$@"
     exit 0
     ;;
   *" FIRST with {"*)
@@ -43,6 +57,7 @@ case "$prompt" in
     ;;
 esac
 printf '%s review\n' "$name" >>"$LOOP_LOG"
+measured "$@"
 case "$mode" in
   fail) exit 7 ;;
   slow) sleep 5 ;;

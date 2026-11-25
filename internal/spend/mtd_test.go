@@ -3,6 +3,7 @@ package spend_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -472,21 +473,63 @@ func TestBundleTotalReadsOneBundleAcrossMonths(t *testing.T) {
 	}
 }
 
-// TestSpawnRowsAreNotCoveredByUnidentifiedCost proves the single-source rule
-// treats a loop spawn row as its own receipt: an unidentified recorded cost
-// in the same second still covers a projection row, but not a spawn row.
-func TestSpawnRowsAreNotCoveredByUnidentifiedCost(t *testing.T) {
+// TestSpawnReceiptedBundleIsCountedFromItsReceipts proves a bundle whose
+// spawns carry their own receipts is counted from those receipts alone: the
+// agent's bundle-level cost record (dated, in-month, priced) is not counted a
+// second time beside a measured spawn.
+func TestSpawnReceiptedBundleIsCountedFromItsReceipts(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
 	dir := writeCost(t, root, "local-loop-1", `{"at":"2026-05-15T12:00:00Z","est_usd":0.5}`)
-	ledger := `[{"at":"2026-05-15T12:00:00Z","execution_id":"proj","projected_usd":null},` +
-		`{"at":"2026-05-15T12:00:00Z","execution_id":"loop-x-1-fix","scope":"spawn","projected_usd":null}]`
+	ledger := `[{"at":"2026-05-15T12:00:00Z","execution_id":"loop-x-1-review-1","scope":"spawn",` +
+		`"projected_usd":0.2,"priced_by":"measured"}]`
 	if err := os.WriteFile(filepath.Join(dir, "budget.json"), []byte(ledger), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	got := spend.AggregateMTD(stateDirOf(root), now)
-	if got.KnownUSD != "0.5" || got.UnknownCount != 1 {
-		t.Fatalf("AggregateMTD = %+v, want 0.5 known and only the spawn row unknown", got)
+	if got := spend.AggregateMTD(stateDirOf(root), now); got.KnownUSD != "0.2" || got.UnknownCount != 0 {
+		t.Fatalf("AggregateMTD = %+v, want only the measured 0.2", got)
+	}
+	writeCost(t, root, "42", `{"at":"2026-05-15T12:00:00Z","est_usd":0.5}`)
+	if got := spend.AggregateMTD(stateDirOf(root), now); got.KnownUSD != "0.7" {
+		t.Fatalf("AggregateMTD = %+v, want a bundle without spawn receipts still counting its cost.json", got)
+	}
+}
+
+// TestSettledInvocationsOfOneExecutionEachCount proves a resumed execution's
+// receipts are each counted, settled or not: every invocation authorized and
+// spent on its own, so collapsing them under the execution would drop one.
+func TestSettledInvocationsOfOneExecutionEachCount(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	writeLedger(t, root, "42", `[`+
+		`{"at":"2026-05-15T10:00:00Z","execution_id":"e","invocation_id":"e@1","projected_usd":0.3,"priced_by":"measured"},`+
+		`{"at":"2026-05-15T11:00:00Z","execution_id":"e","invocation_id":"e@2","projected_usd":0.2,"priced_by":"measured"},`+
+		`{"at":"2026-05-15T11:30:00Z","execution_id":"f","invocation_id":"f@1","projected_usd":1},`+
+		`{"at":"2026-05-15T11:40:00Z","execution_id":"f","invocation_id":"f@2","projected_usd":1}]`)
+	if got := spend.AggregateMTD(stateDirOf(root), now); got.KnownUSD != "2.5" {
+		t.Fatalf("AggregateMTD = %+v, want both settled invocations (0.5) and both authorizations (2)", got)
+	}
+}
+
+// TestMeasuredInvocationOutranksTheSelfReport proves a two-finder receipt
+// settled from the agents' own output is never displaced by a later
+// self-report, while a self-report owned by a newer, unsettled invocation
+// still replaces that invocation's projection.
+func TestMeasuredInvocationOutranksTheSelfReport(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 15, 13, 0, 0, 0, time.UTC)
+	writeLedger(t, root, "42", `[{"at":"2026-05-15T12:00:00Z","execution_id":"e","scope":"invocation",`+
+		`"invocation_id":"e@1","projected_usd":2,"priced_by":"measured"}]`)
+	writeCost(t, root, "42", `{"at":"2026-05-15T12:00:05Z","est_usd":0.05}`)
+	if got := spend.AggregateMTD(stateDirOf(root), now); got.KnownUSD != "2" {
+		t.Fatalf("AggregateMTD = %+v, want the measured 2, never the self-reported 0.05", got)
+	}
+	writeLedger(t, root, "42", `[`+
+		`{"at":"2026-05-15T10:00:00Z","execution_id":"e","scope":"invocation","invocation_id":"e@1","projected_usd":0.3,"priced_by":"tokens"},`+
+		`{"at":"2026-05-15T11:00:00Z","execution_id":"e","scope":"invocation","invocation_id":"e@2","projected_usd":1}]`)
+	writeCost(t, root, "42", `{"at":"2026-05-15T11:30:00Z","est_usd":0.8}`)
+	if got := spend.AggregateMTD(stateDirOf(root), now); got.KnownUSD != "1.1" {
+		t.Fatalf("AggregateMTD = %+v, want the measured 0.3 plus the newer invocation's 0.8 self-report", got)
 	}
 }
 
@@ -503,22 +546,40 @@ func writeCost(t *testing.T, root, bundle, body string) string {
 	return dir
 }
 
-// TestCountedInMonth proves the already-counted test matches the scan: every
-// record dated in the month counts; a missing, malformed, or other-month
-// `at` does not.
-func TestCountedInMonth(t *testing.T) {
-	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
-	for raw, want := range map[string]bool{
-		`{"at":"2026-05-15T11:00:00Z","est_usd":0.1}`:         true,
-		`[{"at":"2026-05-01T00:00:00Z"},{"at":"2026-05-31"}]`: true,
-		`{"est_usd":0.1}`:                                               false,
-		`{"at":"yesterday","est_usd":0.1}`:                              false,
-		`{"at":"2026-04-30T23:59:59Z","est_usd":0.1}`:                   false,
-		`[{"at":"2026-05-01T00:00:00Z"},{"at":"2026-06-01T00:00:00Z"}]`: false,
-		`not json`: false,
-	} {
-		if got := spend.CountedInMonth([]byte(raw), now); got != want {
-			t.Errorf("CountedInMonth(%s) = %v, want %v", raw, got, want)
-		}
+// TestMedianMeasuredProjectsFromMeasuredSpawnsOnly proves the projected
+// source: the median of the same agent and model's spawns that the agent's own
+// output priced, ignoring self-reported, projected, other-agent, and
+// non-spawn rows.
+func TestMedianMeasuredProjectsFromMeasuredSpawnsOnly(t *testing.T) {
+	root := t.TempDir()
+	rows := func(rs ...string) string { return "[" + strings.Join(rs, ",") + "]" }
+	row := func(agent, model, by string, usd string) string {
+		return `{"at":"2026-05-01T00:00:00Z","execution_id":"x","scope":"spawn","agent":"` + agent +
+			`","model":"` + model + `","projected_usd":` + usd + `,"priced_by":"` + by + `"}`
+	}
+	writeLedger(t, root, "local-a", rows(row("claude", "", "measured", "0.1"), row("claude", "", "tokens", "0.5"),
+		row("claude", "", "agent", "9"), row("claude", "", "projected", "9"), row("codex", "", "measured", "9")))
+	writeLedger(t, root, "local-b", rows(row("claude", "", "measured", "0.3"), row("claude", "opus", "measured", "9"),
+		`{"at":"2026-05-01T00:00:00Z","execution_id":"y","scope":"invocation","projected_usd":9,"priced_by":"measured"}`))
+	if got, ok := spend.MedianMeasured(stateDirOf(root), "claude", ""); !ok || got != "0.3" {
+		t.Fatalf("odd median = %s %v, want 0.3", got, ok)
+	}
+	writeLedger(t, root, "local-c", rows(row("claude", "", "measured", "0.6")))
+	if got, ok := spend.MedianMeasured(stateDirOf(root), "claude", ""); !ok || got != "0.4" {
+		t.Fatalf("even median = %s %v, want 0.4", got, ok)
+	}
+	if _, ok := spend.MedianMeasured(stateDirOf(root), "opencode", ""); ok {
+		t.Error("an agent with no measured spawn projected a price")
+	}
+}
+
+func writeLedger(t *testing.T, root, bundle, body string) {
+	t.Helper()
+	dir := filepath.Join(stateDirOf(root), bundle)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "budget.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -223,13 +223,22 @@ func resolveSpec(req *Request, spec *agentcatalog.MCP) (host, *core.RefusalError
 }
 
 func codexBase(env map[string]string) (string, *core.RefusalError) {
-	if base := env["CODEX_HOME"]; base != "" {
+	if base := CodexHome(env); base != "" {
 		return base, nil
 	}
-	if home := env["HOME"]; home != "" {
-		return filepath.Join(home, ".codex"), nil
-	}
 	return "", refuse(CodeNoHome, "codex config needs HOME or CODEX_HOME; set one and re-run")
+}
+
+// CodexHome is Codex CLI's configuration directory: CODEX_HOME, else
+// ~/.codex; empty when neither variable is set.
+func CodexHome(env map[string]string) string {
+	if base := env["CODEX_HOME"]; base != "" {
+		return base
+	}
+	if home := env["HOME"]; home != "" {
+		return filepath.Join(home, ".codex")
+	}
+	return ""
 }
 
 func codexHost(env map[string]string) (host, *core.RefusalError) {
