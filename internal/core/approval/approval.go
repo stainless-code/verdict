@@ -75,7 +75,16 @@ func Verified(entry any) bool {
 	return CrossEligible(entry)
 }
 
-// CrossEligible preserves manual gates while enforcing automatic evidence.
+// CrossEligible reports whether one finding's cross standing lets it gate. A
+// manual capture carries no stamp and keeps quote-only eligibility; a stamp the
+// panel derived from a captured execution must be complete and confirmed.
+//
+// This predicate cannot see the capture mode, by design: the panel rewrites
+// verification.cross from the captured execution before any reader of the
+// store runs, so an absent stamp here means a manual capture and never a
+// stripped one. A two-finder capture always holds a present stamp —
+// confirmed, contested, or pending — which is why the panel is the one place
+// that decides eligibility.
 func CrossEligible(entry any) bool {
 	verification := readcommon.FieldOf(entry, "verification")
 	cross := readcommon.FieldOf(verification, "cross")
