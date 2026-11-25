@@ -145,8 +145,9 @@ In scope (highest priority first):
   The same holds for every other git call verdict makes on reviewed content
   (`fetch-local`, `fix --test --commit`, `backtest` replay): a hook, an
   fsmonitor, a textconv or external diff driver, or a smudge filter on a
-  checkout verdict writes is a vulnerability. Clean filters on the operator's
-  own working tree run by design. The receipt defends against claims nobody observed, not
+  checkout verdict writes is a vulnerability. Clean and process filters (a
+  driver's `clean` or `process` command) on the operator's own working tree
+  run by design. The receipt defends against claims nobody observed, not
   against a process with the operator's own file access: such a process
   can rewrite the receipt or `findings.json` directly, so forging the
   receipt that way is out of scope.
@@ -182,9 +183,11 @@ Do not "fix" the inherited side: it is the documented local posture.
   configuration, and shadowing either would break the command rather than
   harden it. A `gh` spawn passes no environment, so the child inherits the
   parent's (`internal/core/exec`). A `git` call inherits it minus git's
-  location variables and `GIT_CONFIG_PARAMETERS`, with hooks and fsmonitor
-  off (`internal/gitcmd`, enforced for every call site by
-  `internal/archtest`).
+  location variables, `GIT_EXEC_PATH`, and `GIT_CONFIG_PARAMETERS`, with
+  hooks and fsmonitor off (`internal/gitcmd`). A syntactic guard in
+  `internal/archtest` fails on a `git` argv spelled outside it — a `"git"`
+  literal, a constant concatenation, a `sh`/`bash` script naming git — but
+  not on a name computed at run time.
 - **Default-deny allowlist: the agent-written `bash -c` verify command.**
   `verify` runs the agent's claimed proof (or deep-group `--command`) with a
   default-deny filtered slice of the caller's environment

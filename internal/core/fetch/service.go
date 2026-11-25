@@ -445,11 +445,12 @@ func (s *session) run(ctx context.Context, args ...string) (core.Result, error) 
 
 // runIn is run against another repository: the isolated checkout or a
 // temporary clone. Every call is hook-free and fsmonitor-free, and a diff
-// runs no external diff or textconv driver ([gitcmd.Argv]). Clean filters
-// stay on: a working-tree status, diff, or stash create must hash a file as
-// git itself does, or an LFS-tracked file reads as changed. A clean filter
-// is a driver the operator configured, run on the operator's own checkout
-// (git-lfs's clean step stores the object locally and fetches nothing). The
+// runs no external diff or textconv driver ([gitcmd.Argv]). Clean and
+// process filters stay on: a working-tree status, diff, or stash create must
+// hash a file as git itself does, or an LFS-tracked file reads as changed.
+// Either is a driver the operator configured, run on the operator's own
+// checkout (git-lfs's clean step stores the object locally and fetches
+// nothing). The
 // one call that writes a working tree from reviewed content, the isolated
 // checkout, turns every filter off ([checkoutOptions]).
 func (s *session) runIn(ctx context.Context, root string, args ...string) (core.Result, error) {

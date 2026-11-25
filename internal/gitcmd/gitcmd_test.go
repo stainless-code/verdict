@@ -97,18 +97,21 @@ func TestSplitRejectsAnUnsafeArgv(t *testing.T) {
 }
 
 // TestEnvDropsRetargetingVariables pins the environment: the location
-// variables and GIT_CONFIG_PARAMETERS a parent git exports are gone, an
-// existing GIT_CONFIG_COUNT entry is kept, and the safety settings follow it.
+// variables, GIT_EXEC_PATH, and GIT_CONFIG_PARAMETERS a parent git exports
+// are gone, the operator's transport helper is kept, an existing
+// GIT_CONFIG_COUNT entry is kept, and the safety settings follow it.
 func TestEnvDropsRetargetingVariables(t *testing.T) {
 	t.Parallel()
 	base := []string{
 		"PATH=/bin", "GIT_INDEX_FILE=/repo/.git/index", "GIT_DIR=/elsewhere", "GIT_WORK_TREE=/elsewhere",
 		"GIT_COMMON_DIR=/elsewhere", "GIT_OBJECT_DIRECTORY=/elsewhere", "GIT_ALTERNATE_OBJECT_DIRECTORIES=/elsewhere",
-		"GIT_NAMESPACE=ns", "GIT_PREFIX=sub/", "GIT_CONFIG_PARAMETERS='core.hooksPath'='.husky'",
+		"GIT_NAMESPACE=ns", "GIT_PREFIX=sub/", "GIT_EXEC_PATH=/elsewhere/libexec",
+		"GIT_CONFIG_PARAMETERS='core.hooksPath'='.husky'", "GIT_SSH_COMMAND=ssh -i key",
 		"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=color.ui", "GIT_CONFIG_VALUE_0=always",
 	}
 	want := []string{
-		"PATH=/bin", "GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=color.ui", "GIT_CONFIG_VALUE_0=always",
+		"PATH=/bin", "GIT_SSH_COMMAND=ssh -i key",
+		"GIT_CONFIG_COUNT=1", "GIT_CONFIG_KEY_0=color.ui", "GIT_CONFIG_VALUE_0=always",
 		"GIT_CONFIG_KEY_1=core.hooksPath", "GIT_CONFIG_VALUE_1=" + os.DevNull,
 		"GIT_CONFIG_KEY_2=core.fsmonitor", "GIT_CONFIG_VALUE_2=false",
 		"GIT_CONFIG_COUNT=3",

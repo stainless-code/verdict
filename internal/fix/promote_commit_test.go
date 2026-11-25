@@ -115,8 +115,9 @@ func TestPromoteCommitFromSubdirectory(t *testing.T) {
 // program the checkout chose: with core.hooksPath on an in-tree .husky
 // holding every commit and index hook, an fsmonitor, a smudge filter, a
 // textconv driver, and an external diff armed, the commit lands and none of
-// them leaves a marker. The clean filter is the one program that runs by
-// design: add stores the file as git itself would.
+// them leaves a marker. A clean or process filter is the one program that
+// runs by design: add stores the file as git itself would. The armed driver
+// defines clean, so its marker is the one allowed.
 func TestPromoteCommitRunsNoRepoCode(t *testing.T) {
 	dir := t.TempDir()
 	setupTestPromote(t, dir, "")

@@ -184,8 +184,9 @@ func (st *state) gitPorcelain(ctx context.Context) (string, bool) {
 	if cmdr == nil {
 		return "", false
 	}
-	// Hook-free and fsmonitor-free; clean filters stay on, so a file reads
-	// as git itself sees it and an LFS-tracked file is not reported dirty.
+	// Hook-free and fsmonitor-free; clean and process filters stay on, so a
+	// file reads as git itself sees it and an LFS-tracked file is not reported
+	// dirty.
 	argv := gitcmd.Argv(st.req.RepoRootPath(), "status", "--porcelain", "--untracked-files=all")
 	res, err := cmdr.Run(ctx, &core.Command{Argv: argv, Env: gitcmd.Env(nil)})
 	if err != nil || res.ExitCode != 0 {

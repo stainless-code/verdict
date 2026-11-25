@@ -1069,8 +1069,8 @@ func (st *state) checkTree(ctx context.Context) (out string, clean bool, rest st
 }
 
 // gitStatus runs a hook-free, fsmonitor-free `git status --porcelain`
-// through the commander seam. Clean filters stay on, so a file reads as git
-// itself sees it.
+// through the commander seam. Clean and process filters stay on, so a file
+// reads as git itself sees it.
 func (st *state) gitStatus(ctx context.Context) (string, error) {
 	if st.req.Commander == nil {
 		return "", errNoCommander

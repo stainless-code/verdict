@@ -606,17 +606,17 @@ func gitEnv(base []string, tmp string) []string {
 }
 
 // scrubGitEnv reports whether one environment key could redirect a clone away
-// from the temporary tree.
+// from the temporary tree: the variables every git call drops
+// ([gitcmd.Inherited]), the operator's transport helpers
+// ([gitcmd.TransportHelper]), the home and config locations, and the
+// template directory.
 func scrubGitEnv(key string) bool {
 	switch key {
 	case "HOME", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
-		"GIT_TERMINAL_PROMPT", "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
-		"GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_ASKPASS",
-		"GIT_TEMPLATE_DIR", "GIT_SSH_COMMAND", "GIT_EXEC_PATH", "GIT_PROXY_COMMAND",
-		"SSH_ASKPASS":
+		"GIT_TERMINAL_PROMPT", "GIT_TEMPLATE_DIR":
 		return true
 	}
-	return strings.HasPrefix(key, "GIT_CONFIG_")
+	return gitcmd.Inherited(key) || gitcmd.TransportHelper(key) || strings.HasPrefix(key, "GIT_CONFIG_")
 }
 
 // runGitPack runs one git command with the shared hermetic prefix and returns

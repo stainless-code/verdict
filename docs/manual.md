@@ -5561,7 +5561,9 @@ the checkout. `--commit` commits that one file as `test: regression for <sig>`
 through a pathspec commit, so a file already staged in the index stays staged
 and out of the commit, and it needs `--test`. The commit runs no git hook —
 not `.git/hooks`, not a `core.hooksPath` the tree sets (husky, lefthook) —
-because it carries reviewed content; run your hooks yourself before you push. `tests.draft: off` in
+because it carries reviewed content; run your hooks yourself before you push.
+Your clean filters do run: under a git-lfs pattern the commit holds the LFS
+pointer, while the printed `run:` line names the file on disk. `tests.draft: off` in
 `.verdict/config.json` stops `record` from retaining the draft to begin with.
 
 Each pass also writes `fix.patch` beside the ledger: the worktree's unified
@@ -6105,7 +6107,9 @@ environment, and the split is deliberate (the security rationale is in
   diff or textconv driver. A checkout verdict writes from reviewed content
   (`fetch-local --worktree`, `backtest` replay) runs no filter, git-lfs
   included; status, diffs, and `add` on your working tree keep your clean
-  filters, so a file reads as git itself sees it.
+  and process filters (a driver's `clean` or `process` command), so a file
+  reads as git itself sees it. Inherited `GIT_EXEC_PATH` is dropped too, so
+  git runs its own helper programs.
 - The **agent-written `verifyCmd`** (and deep-group `--command`) runs under
   `bash -c` with a **default-deny allowlist** over the caller's environment —
   never an unfiltered inheritance. By default, only baseline locale, terminal,

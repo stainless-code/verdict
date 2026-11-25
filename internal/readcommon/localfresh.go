@@ -34,7 +34,8 @@ func localDiffMatches(ctx context.Context, runner core.Commander, root, expected
 		return false
 	}
 	// The same hook-free `git diff HEAD` fetch-local hashed: no external diff
-	// or textconv driver, clean filters on so a file reads as git sees it.
+	// or textconv driver, clean and process filters on so a file reads as git
+	// sees it.
 	result, err := runner.Run(ctx, &core.Command{Argv: gitcmd.Argv(root, "diff", "HEAD"), Env: gitcmd.Env(nil)})
 	if err != nil || result.ExitCode != 0 || result.StdoutTruncated {
 		return false

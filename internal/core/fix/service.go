@@ -634,9 +634,9 @@ func (st *state) gitLsFilesUnmerged(ctx context.Context) (string, error) {
 
 // runGit runs one git subcommand against the repository root, hook-free and
 // fsmonitor-free, with no external diff or textconv driver ([gitcmd.Argv]).
-// Clean filters stay on: status, the worktree diff, and add must hash a file
-// as git itself does, or an LFS-tracked file would read as changed and be
-// committed as its raw bytes. A clean filter is a driver the operator
+// Clean and process filters stay on: status, the worktree diff, and add must
+// hash a file as git itself does, or an LFS-tracked file would read as
+// changed and be committed as its raw bytes. Either is a driver the operator
 // configured, run locally on the operator's own checkout.
 func (st *state) runGit(ctx context.Context, args ...string) (core.Result, error) {
 	if st.req.Commander == nil {

@@ -11,11 +11,11 @@
 //
 // [Argv] and [Env] close all of that for every call: the repository is named
 // with -C, no hook and no fsmonitor program runs, a diff runs no external
-// diff or textconv driver, and the inherited location variables and
-// GIT_CONFIG_PARAMETERS are dropped. Clean filters still run where git needs
-// them to read a working tree as git itself sees it (status, a working-tree
-// diff, add); a call that writes a working tree passes [FilterOptions] so no
-// smudge or process filter runs either.
+// diff or textconv driver, and the inherited location variables,
+// GIT_EXEC_PATH, and GIT_CONFIG_PARAMETERS are dropped. Clean and process
+// filters still run where git needs them to read a working tree as git
+// itself sees it (status, a working-tree diff, add); a call that writes a
+// working tree passes [FilterOptions] so no filter runs at all.
 //
 // The package is a leaf: it imports no other repository package, so the
 // contract root and every service can build their git calls here.
@@ -63,13 +63,30 @@ var diffSafety = map[string][]string{
 // inherited are the variables a parent git exports that would retarget or
 // reconfigure a call: another repository, work tree, index, or object store
 // (an inherited GIT_INDEX_FILE once let a read-tree overwrite the user's own
-// index), and GIT_CONFIG_PARAMETERS, which outranks GIT_CONFIG_COUNT and
+// index); GIT_EXEC_PATH, where git finds its own helper programs, so one
+// pointed elsewhere swaps git-remote-https or git-upload-pack for another
+// program; and GIT_CONFIG_PARAMETERS, which outranks GIT_CONFIG_COUNT and
 // which git exports to the hooks it runs under `git -c`. Every call names its
-// repository with -C, so none of them is needed.
+// repository with -C and git knows its own exec path, so none is needed.
 var inherited = []string{
 	"GIT_INDEX_FILE", "GIT_DIR", "GIT_WORK_TREE", "GIT_COMMON_DIR", "GIT_OBJECT_DIRECTORY",
-	"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_PREFIX", "GIT_CONFIG_PARAMETERS",
+	"GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_NAMESPACE", "GIT_PREFIX", "GIT_EXEC_PATH",
+	"GIT_CONFIG_PARAMETERS",
 }
+
+// transportHelpers name the programs git runs to reach a remote: an askpass
+// prompt, an ssh command, a proxy command. They are the operator's own — no
+// git exports them — and a fetch that uses the operator's credentials needs
+// them, so [Env] keeps them; a hermetic clone of third-party content drops
+// them with [TransportHelper].
+var transportHelpers = []string{"GIT_ASKPASS", "SSH_ASKPASS", "GIT_SSH", "GIT_SSH_COMMAND", "GIT_PROXY_COMMAND"}
+
+// Inherited reports a variable [Env] drops from every call.
+func Inherited(name string) bool { return slices.Contains(inherited, name) }
+
+// TransportHelper reports a variable that names a transport helper program,
+// for a call that must not reach the network with the operator's own.
+func TransportHelper(name string) bool { return slices.Contains(transportHelpers, name) }
 
 // Argv returns `git -C <root> <options> -c core.hooksPath=… -c
 // core.fsmonitor=false <subcommand> [diff flags] <rest>` for args, which may
@@ -93,7 +110,7 @@ func Argv(root string, args ...string) []string {
 }
 
 // Env returns base — the process environment when base is nil — without the
-// inherited location variables and GIT_CONFIG_PARAMETERS, with the safety
+// [Inherited] variables, with the safety
 // settings appended through GIT_CONFIG_COUNT after any entries base already
 // carries. [Argv] sets them again as -c options, which outrank the
 // environment; both are set so neither alone is load-bearing.
@@ -103,7 +120,7 @@ func Env(base []string) []string {
 	}
 	env := slices.DeleteFunc(slices.Clone(base), func(e string) bool {
 		name, _, _ := strings.Cut(e, setTo)
-		return slices.Contains(inherited, name)
+		return Inherited(name)
 	})
 	return WithConfig(env, safety...)
 }

@@ -21,8 +21,9 @@ import (
 // naming), an isolated --worktree bundle (the stash snapshot and the
 // checkout, with every worktree armed as a snapshot carrying its own .husky
 // and .gitattributes would be), and an unborn-branch scan (the status read)
-// all build and leave no marker. The clean filter is the one program that
-// runs by design: a working-tree read must hash a file as git itself does.
+// all build and leave no marker. A clean or process filter is the one program
+// that runs by design: a working-tree read must hash a file as git itself
+// does. The armed driver defines clean, so its marker is the one allowed.
 func TestRunLocalRunsNoRepoCode(t *testing.T) {
 	for _, tc := range []struct {
 		name      string
