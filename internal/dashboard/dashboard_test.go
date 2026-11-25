@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -237,5 +238,41 @@ func TestLoadStopsAfterACancel(t *testing.T) {
 	snap, err := load(ctx, src)
 	if !errors.Is(err, context.Canceled) || snap != nil || src.roots != 0 {
 		t.Fatalf("load = %v, %v with %d Roots read; want context.Canceled, nil, 0", snap, err, src.roots)
+	}
+}
+
+// TestLiveViewGetsTheRawStdoutFile proves the runner's inert stdout does not
+// hide the terminal from the live view: the wrapper over the real stdout
+// yields the file (a wrapped writer alone yields none, which would refuse
+// every terminal as no-tty), and the bytes a painter writes to it keep their
+// own escape sequences while a write through the wrapper has them folded.
+func TestLiveViewGetsTheRawStdoutFile(t *testing.T) {
+	t.Parallel()
+	file, err := os.Create(filepath.Join(t.TempDir(), "stdout"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = file.Close() })
+	r := cli.NewRunner("dashboard", "", "", file, io.Discard, func(string) string { return "" })
+	if fileOf(r.Out) != nil {
+		t.Fatal("the wrapped writer is itself an *os.File; the unwrap would be unneeded")
+	}
+	out := stdoutFile(r)
+	if out != file {
+		t.Fatalf("stdoutFile = %v; want the underlying stdout file", out)
+	}
+	const paint = "\x1b[2J\x1b[1;1H"
+	if _, err := out.WriteString(paint); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := io.WriteString(r.Out, paint); err != nil {
+		t.Fatal(err)
+	}
+	raw, err := os.ReadFile(file.Name())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(raw), paint+" [2J [1;1H"; got != want {
+		t.Fatalf("file holds %q; want the raw paint then the folded write %q", got, want)
 	}
 }

@@ -142,3 +142,87 @@ func assertBidiFolded(t *testing.T, r rune) {
 		t.Errorf("InertWriter(%U) wrote %q, %v; want %q", r, buf.String(), err, "a b")
 	}
 }
+
+// TestInertWriterFoldsARuneSplitAcrossWrites proves a control cut in two by
+// the caller's write boundaries is still folded: U+202E as `E2 80` + `AE`,
+// the C1 CSI as `C2` + `9B`, and a rune split three ways. A printable rune cut
+// the same way arrives whole.
+func TestInertWriterFoldsARuneSplitAcrossWrites(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		name  string
+		want  string
+		parts []string
+	}{
+		{"bidi override 2+1", "a b", []string{"a\xe2\x80", "\xaeb"}},
+		{"bidi override 1+1+1", "a b", []string{"a\xe2", "\x80", "\xaeb"}},
+		{"C1 CSI 1+1", "a 2J", []string{"a\xc2", "\x9b2J"}},
+		{"arabic mark 1+1", "a b", []string{"a\xd8", "\x9cb"}},
+		{"separator", "a b", []string{"a\xe2\x80", "\xa8b"}},
+		{"split emoji joiner", "👩‍", []string{"\xf0\x9f\x91", "\xa9\xe2\x80", "\x8d"}},
+		{"split accent", "é", []string{"e\xcc", "\x81"}},
+	}
+	for _, c := range cases {
+		if got := writeParts(t, c.name, c.parts); got != c.want {
+			t.Errorf("%s: wrote %q, want %q", c.name, got, c.want)
+		}
+	}
+}
+
+// writeParts writes each part through one InertWriter and returns what
+// reached the destination, failing the test on a short or failed write.
+func writeParts(t *testing.T, name string, parts []string) string {
+	t.Helper()
+	var buf bytes.Buffer
+	w := NewInertWriter(&buf)
+	for _, part := range parts {
+		if n, err := w.Write([]byte(part)); err != nil || n != len(part) {
+			t.Fatalf("%s: Write(%q) = %d, %v; want %d, nil", name, part, n, err, len(part))
+		}
+	}
+	return buf.String()
+}
+
+// TestInertWriterFlushWritesAnIncompleteTail proves bytes of a rune that never
+// finished are not lost: Flush writes them, and a later write does not repeat
+// them.
+func TestInertWriterFlushWritesAnIncompleteTail(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	w := NewInertWriter(&buf)
+	if _, err := w.Write([]byte("ok\xe2\x80")); err != nil {
+		t.Fatal(err)
+	}
+	if buf.String() != "ok" {
+		t.Fatalf("before Flush wrote %q, want %q", buf.String(), "ok")
+	}
+	if err := w.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := w.Write([]byte("!")); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := buf.String(), "ok\xe2\x80!"; got != want {
+		t.Fatalf("wrote %q, want %q", got, want)
+	}
+}
+
+// TestInertWriterReleasesATailWhenOutputGoesMachine proves a held rune head
+// is written ahead of the next bytes when the gate opens, so a mode flip
+// cannot drop or reorder it.
+func TestInertWriterReleasesATailWhenOutputGoesMachine(t *testing.T) {
+	t.Parallel()
+	var buf bytes.Buffer
+	machine := false
+	w := NewInertWriterUnless(&buf, func() bool { return machine })
+	if _, err := w.Write([]byte("\xe2\x80")); err != nil {
+		t.Fatal(err)
+	}
+	machine = true
+	if _, err := w.Write([]byte("\xaex")); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := buf.String(), "\u202ex"; got != want {
+		t.Fatalf("wrote %q, want %q", got, want)
+	}
+}

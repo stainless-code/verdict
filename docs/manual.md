@@ -1837,7 +1837,12 @@ fold applies to the human surface only; a consumer that prints envelope strings
 to a terminal escapes them first. A warning is also one line: a newline inside
 an interpolated value (a path named `x⏎verdict: gate passes`) is folded to a
 space, so a stranger cannot forge a second `warn:`, `error:`, or `next:` line.
-Files verdict writes to disk are not folded.
+Files verdict writes to disk are not folded, and neither is a field of the
+`--json` envelope: gate `detail` and error `message` carry the stored value
+verbatim, and the human renderers fold it. `show`'s human form and `pr-wait`'s
+human-mode snapshots are JSON-shaped, so the fold touches only the raw C1,
+separator, and bidi runes Go's encoder leaves unescaped, replacing each with a
+space; use `--json` when a machine consumes them.
 
 `mcp config` also takes `--json`. Machine modes never prompt: under `--json` (and any future `--agent` plain-text mode) the script never blocks on interactive setup or confirm — it fails typed (exit 1 — or 2/3 on usage/gate-tool errors — with a `try:` hint) or degrades with a notice, so agents run it headless. `threads` refreshes only `.verdict/state/<pr>/threads.json` from the host (all six
 hosts; GitHub reads GraphQL `reviewThreads`) and returns the feed tally — it

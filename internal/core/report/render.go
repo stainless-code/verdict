@@ -370,7 +370,9 @@ func appendHumanTail(st *state, lines []string) []string {
 		lines = append(lines, riskHuman(st.risk)...)
 	}
 	lines = append(lines, validationHuman(st)...)
-	lines = append(lines, quietLines(st)...)
+	for _, line := range quietLines(st) {
+		lines = append(lines, untrusted.Line(line))
+	}
 	return append(lines, extraHuman(st)...)
 }
 
@@ -694,7 +696,7 @@ func gateSpecCheck(st *state) gateCheck {
 	if len(failures) > 1 {
 		detail = fmt.Sprintf("%d failed spec checks: %s", len(failures), detail)
 		if allViolatedSpecFailures(failures) {
-			detail = fmt.Sprintf("%d violated spec checks: %s", len(failures), untrusted.Line(failures[0].Item))
+			detail = fmt.Sprintf("%d violated spec checks: %s", len(failures), failures[0].Item)
 		}
 	}
 	return gateCheck{
@@ -708,9 +710,9 @@ func gateSpecCheck(st *state) gateCheck {
 // implements the requirement.
 func specFailureDetail(failure core.SpecFailure) string {
 	if failure.Status == "unmet" {
-		return "unmet spec check: " + untrusted.Line(failure.Item)
+		return "unmet spec check: " + failure.Item
 	}
-	return "violated spec check: " + untrusted.Line(failure.Item)
+	return "violated spec check: " + failure.Item
 }
 
 // allViolatedSpecFailures reports whether every failure is a violated row, so
@@ -770,16 +772,16 @@ func complianceVerdict(comp *config.ReadCompliance, gaps []string, head string) 
 	switch {
 	case len(comp.Blockers) > 0:
 		first := comp.Blockers[0]
-		detail := fmt.Sprintf("%d open finding(s) violate %q", len(comp.Blockers), untrusted.Line(first.Clause))
+		detail := fmt.Sprintf("%d open finding(s) violate %q", len(comp.Blockers), first.Clause)
 		if first.GroupKnown {
-			detail += " for group " + untrusted.Line(first.Group)
+			detail += " for group " + first.Group
 		}
 		return dimFail, detail, len(comp.Blockers)
 	case len(comp.Conflicts) > 0:
 		first := comp.Conflicts[0]
-		detail := fmt.Sprintf("required review withholds %s (rule %s)", untrusted.Line(first.Path), untrusted.Line(first.Rule))
+		detail := fmt.Sprintf("required review withholds %s (rule %s)", first.Path, first.Rule)
 		if first.Group != "" {
-			detail += " in group " + untrusted.Line(first.Group)
+			detail += " in group " + first.Group
 		}
 		return dimFail, detail + " — unmet, no disclosure", len(comp.Conflicts)
 	case comp.Unverified:

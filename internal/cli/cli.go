@@ -36,6 +36,7 @@ type Runner struct {
 	// written counts the warnings already on the diagnostic stream, by
 	// text, so a refusal's replayed list does not print a line twice.
 	written            map[string]int
+	inert              []*untrusted.InertWriter
 	Effective          Effective
 	Output             string
 	EnvReviewColorMode string
@@ -99,16 +100,26 @@ func (r *Runner) Warn(msg string) {
 // time from [Runner.JSONMode], so a mode that settles late still routes
 // right. verdict's own styling goes through [untrusted.Raw].
 func NewRunner(cmd, repo, pr string, out, diag io.Writer, getenv func(string) string) *Runner {
+	stderr := untrusted.NewInertWriter(diag)
 	r := &Runner{
 		Cmd: cmd, Repo: repo, Pr: pr,
-		Diag:               untrusted.NewInertWriter(diag),
+		Diag:               stderr,
 		Now:                time.Now,
 		EnvNoColor:         getenv("NO_COLOR") != "",
 		EnvReviewColorMode: getenv("REVIEW_COLOR_MODE"),
 	}
-	r.Out = untrusted.NewInertWriterUnless(out, func() bool { return r.JSONMode })
-	r.Human = r.Out
+	stdout := untrusted.NewInertWriterUnless(out, func() bool { return r.JSONMode })
+	r.Out, r.Human = stdout, stdout
+	r.inert = []*untrusted.InertWriter{stdout, stderr}
 	return r
+}
+
+// Flush writes what the inert writers still hold: the first bytes of a
+// multi-byte rune a write cut short. Call it once the invocation is over.
+func (r *Runner) Flush() {
+	for _, w := range r.inert {
+		_ = w.Flush()
+	}
 }
 
 // writeWarning writes one frozen `warn:` line to the diagnostic stream. A

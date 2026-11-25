@@ -65,7 +65,7 @@ func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	if done {
 		return code
 	}
-	out := fileOf(untrusted.Raw(r.Out))
+	out := stdoutFile(r)
 	if code, refused := preflight(r, &opts, isTerminal(req.In), isTerminal(out)); refused {
 		return code
 	}
@@ -96,6 +96,14 @@ func preflight(r *cli.Runner, opts *options, inTTY, outTTY bool) (int, bool) {
 
 // fileOf is the runner's stdout as a file, or nil when a test substituted a
 // buffer (which is never a terminal).
+// stdoutFile is the process stdout under the runner's inert wrapper. The live
+// view paints its own cursor and color sequences straight to that file, so it
+// must see past the fold; every stranger-written cell string is flattened
+// before it is drawn (grid.text), which is what keeps that raw path safe.
+func stdoutFile(r *cli.Runner) *os.File {
+	return fileOf(untrusted.Raw(r.Out))
+}
+
 func fileOf(w io.Writer) *os.File {
 	if f, ok := w.(*os.File); ok {
 		return f

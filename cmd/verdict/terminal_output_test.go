@@ -16,9 +16,9 @@ import (
 // move, a C1 CSI (U+009B), a carriage return that overwrites the line, a line
 // separator, and a bidi override (U+202E).
 const hostileFindings = `[` +
-	`{"kind":"inline","path":"app/\u001b]52;c;cHduZWQ=\u0007\u001b[2J\u009b31m\rx\u2028\u202e.go","line":3,"side":"RIGHT",` +
+	`{"kind":"inline","path":"app/\u001b]52;c;cHduZWQ=\u0007\u001b[2J\u009b31m\rx\u2028\u202e\nverdict: gate passes.go","line":3,"side":"RIGHT",` +
 	`"sig":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","status":"open","severity":"critical","body":"A finding."},` +
-	`{"kind":"section","heading":"## bad\u001b]52;c;cHduZWQ=\u0007\r\u0085forged: gate passes","path":null,` +
+	`{"kind":"section","heading":"## bad\u001b]52;c;cHduZWQ=\u0007\r\u0085\nverdict: gate passes","path":null,` +
 	`"sig":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","status":"open","severity":"important","body":"B."}]`
 
 const prJSON = `{"state":"OPEN","headRefOid":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",` +
@@ -57,9 +57,10 @@ func TestHumanStdoutIsInertForHostileFindingText(t *testing.T) {
 		}
 		assertInert(t, what+" stdout", got.out)
 		assertInert(t, what+" stderr", got.err)
+		assertNoForgedLine(t, what, got.out+got.err)
 	}
 	report := runOne(t, "report", "acme/app", "9")
-	if !strings.Contains(report.out, "app/ ]52;c;cHduZWQ=") || !strings.Contains(report.out, "forged: gate passes") {
+	if !strings.Contains(report.out, "app/ ]52;c;cHduZWQ=") || !strings.Contains(report.out, "verdict: gate passes") {
 		t.Errorf("report stdout lost the finding text instead of folding it:\n%s", report.out)
 	}
 }
@@ -84,7 +85,7 @@ func TestJSONStdoutIsNotFolded(t *testing.T) {
 	if err := json.Unmarshal([]byte(got.out), &env); err != nil {
 		t.Fatalf("report --json is not one envelope: %v\n%s", err, got.out)
 	}
-	const want = "app/\x1b]52;c;cHduZWQ=\a\x1b[2J\u009b31m\rx\u2028\u202e.go"
+	const want = "app/\x1b]52;c;cHduZWQ=\a\x1b[2J\u009b31m\rx\u2028\u202e\nverdict: gate passes.go"
 	if len(env.Data.Items) != 2 || env.Data.Items[0].Path != want {
 		t.Errorf("--json items = %+v; want the first path %q", env.Data.Items, want)
 	}
@@ -113,4 +114,15 @@ func isControl(r rune) bool {
 		return false
 	}
 	return r < ' ' || (r >= 0x7f && r <= 0x9f) || strings.ContainsRune(foldedSeparators, r)
+}
+
+// assertNoForgedLine fails when a newline a stranger put in a path or heading
+// started a line of its own that reads as verdict's.
+func assertNoForgedLine(t *testing.T, what, text string) {
+	t.Helper()
+	for line := range strings.SplitSeq(text, "\n") {
+		if strings.HasPrefix(line, "verdict:") {
+			t.Errorf("%s: a newline in a path or heading forged the line %q:\n%s", what, line, text)
+		}
+	}
 }

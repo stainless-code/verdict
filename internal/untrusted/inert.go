@@ -1,10 +1,20 @@
 package untrusted
 
 import (
+	"bytes"
 	"io"
+	"slices"
+	"sync"
 	"unicode/utf8"
 
 	"github.com/stainless-code/verdict/internal/core"
+)
+
+// Lead bytes of the multi-byte runes [folds] names.
+const (
+	c1Lead          = 0xc2
+	arabicLead      = 0xd8
+	punctuationLead = 0xe2
 )
 
 // folds is the one rule for what a terminal must never receive from a
@@ -41,6 +51,10 @@ type InertWriter struct {
 	// carries a machine document (a JSON envelope) instead of text a person
 	// reads, and JSON already escapes every control rune it holds.
 	passThrough func() bool
+	// tail holds the head of a multi-byte rune a write cut short, so the
+	// fold sees the whole rune once the next write finishes it.
+	tail []byte
+	mu   sync.Mutex
 }
 
 // NewInertWriter wraps w. Wrapping an InertWriter returns it unchanged.
@@ -62,19 +76,80 @@ func NewInertWriterUnless(w io.Writer, machine func() bool) *InertWriter {
 }
 
 // Write folds p and writes it, reporting len(p) on success: a fold only
-// shortens a multi-byte control to one space, and the caller wrote p.
+// shortens a multi-byte control to one space, and the caller wrote p. A rune
+// whose first bytes end p waits in the writer until the next write (or
+// [InertWriter.Flush]) completes it, because U+202E cut in two would pass
+// both halves unfolded.
 func (iw *InertWriter) Write(p []byte) (int, error) {
-	if iw.passThrough != nil && iw.passThrough() {
-		return iw.w.Write(p) //nolint:wrapcheck // a pass-through writer reports the destination's error as is
+	iw.mu.Lock()
+	defer iw.mu.Unlock()
+	data := p
+	if len(iw.tail) > 0 {
+		data = slices.Concat(iw.tail, p)
+		iw.tail = nil
 	}
-	out, changed := fold(p)
-	if !changed {
-		return iw.w.Write(p) //nolint:wrapcheck // a pass-through writer reports the destination's error as is
+	if iw.passThrough != nil && iw.passThrough() {
+		return iw.send(data, len(p))
+	}
+	if cut := incompleteTail(data); cut < len(data) {
+		iw.tail = bytes.Clone(data[cut:])
+		data = data[:cut]
+	}
+	out, _ := fold(data)
+	return iw.send(out, len(p))
+}
+
+// send writes out and reports n, the caller's byte count, on success.
+func (iw *InertWriter) send(out []byte, n int) (int, error) {
+	if len(out) == 0 {
+		return n, nil
 	}
 	if _, err := iw.w.Write(out); err != nil {
 		return 0, err //nolint:wrapcheck // a pass-through writer reports the destination's error as is
 	}
-	return len(p), nil
+	return n, nil
+}
+
+// Flush writes the bytes a cut-short rune left waiting. They are an
+// incomplete UTF-8 sequence, so no fold applies; call it when the stream ends.
+func (iw *InertWriter) Flush() error {
+	iw.mu.Lock()
+	defer iw.mu.Unlock()
+	tail := iw.tail
+	iw.tail = nil
+	if len(tail) == 0 {
+		return nil
+	}
+	_, err := iw.w.Write(tail)
+	return err //nolint:wrapcheck // a pass-through writer reports the destination's error as is
+}
+
+// incompleteTail is the index where a trailing partial rune starts, or
+// len(p) when p ends on a whole rune. Only a prefix of a rune the fold can
+// name is held: the C1 lead (0xC2), the Arabic letter mark (0xD8), and the
+// general-punctuation lead (0xE2) that U+2028 and the bidi controls share.
+func incompleteTail(p []byte) int {
+	i := lastRuneStart(p)
+	if i < len(p) && heldLead(p[i]) && !utf8.FullRune(p[i:]) {
+		return i
+	}
+	return len(p)
+}
+
+// lastRuneStart is the index of the last rune-start byte within the final
+// [utf8.UTFMax]-1 bytes of p, or len(p) when there is none.
+func lastRuneStart(p []byte) int {
+	for back := 1; back < utf8.UTFMax && back <= len(p); back++ {
+		if i := len(p) - back; utf8.RuneStart(p[i]) {
+			return i
+		}
+	}
+	return len(p)
+}
+
+// heldLead reports whether b starts a multi-byte rune the fold can name.
+func heldLead(b byte) bool {
+	return b == c1Lead || b == arabicLead || b == punctuationLead
 }
 
 // Raw is the writer under an InertWriter, for bytes verdict composed itself
@@ -87,8 +162,8 @@ func Raw(w io.Writer) io.Writer {
 	return w
 }
 
-// fold works on bytes, never decoding, so a multi-byte rune split across two
-// writes passes through intact; it copies only when something changes.
+// fold replaces every rune [folds] names with a space; it copies only when
+// something changes.
 func fold(p []byte) ([]byte, bool) {
 	i := firstControl(p)
 	if i < 0 {
@@ -134,8 +209,8 @@ func asciiControlWidth(b byte) int {
 }
 
 // multiByteControlWidth recognizes a C1 control, a separator, or a bidi
-// control at the head of p. A rune cut short at the end of one write is not
-// decoded, so it passes intact and a later write finishes it.
+// control at the head of p. A rune cut short is not decoded; the writer holds
+// it back until the next write, so it never reaches here in pieces.
 func multiByteControlWidth(p []byte) int {
 	r, size := utf8.DecodeRune(p)
 	if r == utf8.RuneError || !folds(r) {
