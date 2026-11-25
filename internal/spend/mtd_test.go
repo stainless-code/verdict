@@ -3,6 +3,7 @@ package spend_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -520,5 +521,43 @@ func TestCountedInMonth(t *testing.T) {
 		if got := spend.CountedInMonth([]byte(raw), now); got != want {
 			t.Errorf("CountedInMonth(%s) = %v, want %v", raw, got, want)
 		}
+	}
+}
+
+// TestMedianMeasuredProjectsFromMeasuredSpawnsOnly proves the projected
+// source: the median of the same agent and model's spawns that the agent's own
+// output priced, ignoring self-reported, projected, other-agent, and
+// non-spawn rows.
+func TestMedianMeasuredProjectsFromMeasuredSpawnsOnly(t *testing.T) {
+	root := t.TempDir()
+	rows := func(rs ...string) string { return "[" + strings.Join(rs, ",") + "]" }
+	row := func(agent, model, by string, usd string) string {
+		return `{"at":"2026-05-01T00:00:00Z","execution_id":"x","scope":"spawn","agent":"` + agent +
+			`","model":"` + model + `","projected_usd":` + usd + `,"priced_by":"` + by + `"}`
+	}
+	writeLedger(t, root, "local-a", rows(row("claude", "", "measured", "0.1"), row("claude", "", "tokens", "0.5"),
+		row("claude", "", "agent", "9"), row("claude", "", "projected", "9"), row("codex", "", "measured", "9")))
+	writeLedger(t, root, "local-b", rows(row("claude", "", "measured", "0.3"), row("claude", "opus", "measured", "9"),
+		`{"at":"2026-05-01T00:00:00Z","execution_id":"y","scope":"invocation","projected_usd":9,"priced_by":"measured"}`))
+	if got, ok := spend.MedianMeasured(stateDirOf(root), "claude", ""); !ok || got != "0.3" {
+		t.Fatalf("odd median = %s %v, want 0.3", got, ok)
+	}
+	writeLedger(t, root, "local-c", rows(row("claude", "", "measured", "0.6")))
+	if got, ok := spend.MedianMeasured(stateDirOf(root), "claude", ""); !ok || got != "0.4" {
+		t.Fatalf("even median = %s %v, want 0.4", got, ok)
+	}
+	if _, ok := spend.MedianMeasured(stateDirOf(root), "opencode", ""); ok {
+		t.Error("an agent with no measured spawn projected a price")
+	}
+}
+
+func writeLedger(t *testing.T, root, bundle, body string) {
+	t.Helper()
+	dir := filepath.Join(stateDirOf(root), bundle)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "budget.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

@@ -3831,7 +3831,9 @@ branches on none of it. With no prompt flag the argv is
 `<binary> <agent flags> [<your arguments>...] <directive>`; with one it is
 `<binary> <agent flags> [<your arguments>...] <prompt flag> <directive>`, so a
 pass-through flag can never be swallowed as the prompt flag's value.
-`--print` renders the same bytes a launch spawns.
+`--print` renders the same bytes a launch spawns. A spawn whose spend verdict
+measures also carries the row's structured-output request (see **Measured agent
+spend** under Cost control); a plain launch does not.
 
 | Name          | Binary and agent flags           | Prompt placement       | Official install                                                                                                                       | Flag that lets it write the artifact                                                             | Source                                                                                                                             |
 | ------------- | -------------------------------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -4337,8 +4339,8 @@ binary never opens those files itself.
 A record is joined to a `.verdict/state/*/cost.json` entry only when its window
 brackets that record's mtime, so an unrelated session never prices a review.
 The handed USD replaces the self-reported `est_usd` for that run; records
-without a handed twin keep their self-report. Records without a priced
-total are never converted to USD (the tool never prices tokens).
+without a handed twin keep their self-report. A handed record without a priced
+total is never converted to USD.
 
 The estimate names its basis whenever a handed record contributed:
 `data.estimate.basis` is `measured` (every priced sample in the projected
@@ -4350,6 +4352,43 @@ stays byte-identical — when nothing was handed over, so a
 self-reported estimate is never silently labeled as measured. A named path
 that is missing, oversized, or malformed refuses typed (`bad-usage`) before
 the bundle is written: an explicit handoff never silently degrades.
+
+#### Measured agent spend (spawn receipts)
+
+Every agent spawn that writes a ledger receipt — the self-review loop's review
+attempts and fix, and each launch of a two-finder `run` execution — is priced
+from the agent CLI's own output first. The agent catalog declares, for each CLI
+whose docs state one, the structured output that carries a run's cost or usage;
+verdict requests it on those spawns only (a plain `run` and `demo` keep their
+argv) and reads it from the captured stdout, line-bounded, trusting nothing that
+does not match the documented shape: a capture cut mid-object, a mistyped or
+negative amount, or an unrecognized stream measures nothing. An operator's own
+spelling of the same output flag after `--` wins, and that spawn is not
+measured.
+
+| Agent      | Requested output       | What is read                                                                                                                                                         | `priced_by` |
+| ---------- | ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------- |
+| `claude`   | `--output-format json` | the result object's `total_cost_usd` (the final text in `result` still feeds review salvage)                                                                         | `measured`  |
+| `codex`    | `--json`               | the last `turn.completed` event's `usage` (a running total for the thread), priced from the catalog's dated table for the model the launch names with `--model`/`-m` | `tokens`    |
+| `opencode` | `--format json`        | the sum of every `step_finish` event's `part.cost`                                                                                                                   | `measured`  |
+
+Codex's stream names no model and its default model is not fixed, so a Codex
+spawn is token-priced only when the launch names a model the table carries;
+usage with prompt-cache writes (priced per retention tier) or an all-zero usage
+report is never priced. The table is standard-tier, short-context API pricing
+read 2026-11-25 from OpenAI's pricing and model pages; the catalog cites each
+row.
+
+A spawn the CLI did not price falls through, in order: the agent's own
+self-report (`cost.json` for a review, `fix-cost.json` for a fix) as `agent`;
+the median of past `measured` and `tokens` spawn receipts for the same agent
+and model in this repository as `projected`; and only then unknown, which a set
+cost ceiling stops on, fail-closed. A launch whose process never started is
+`not-started` at zero. Each receipt records its source in `priced_by`, with
+`agent` and `model`, so the month-to-date scan and the monthly ceiling count
+measured spend. A two-finder execution's spend receipt is settled to the
+measured total once every one of its spawns was measured; otherwise it keeps
+its projection.
 
 ## Onboarding (scaffolder + prefs file + skill installer)
 
@@ -7332,17 +7371,20 @@ or `loop-<id>-<n>-fix`, `projected_usd` `null`), dated at its admission so it
 counts in that month. A spawn row is covered only by a recorded receipt naming
 its own launch, never by the bundle's unidentified `cost.json`.
 
-The receipts are then priced. Each review attempt is a fresh agent process
-that rewrites the bundle's `cost.json` for its own run, so the loop keeps each
-attempt's record before the next attempt can overwrite it and prices every
-attempt from its own: the record's root `est_usd` (the undated schema-2 shape
-the prompt asks for), or zero for the last record on disk when every one of its
-entries carries an `at` that parses and falls in the scanned month — the
-month-to-date scan already counts that one. An attempt that wrote no record of
-its own stays unknown. The fix is priced from the `{"est_usd": <dollars>}`
-it reports in `fix-cost.json`, even when it exits non-zero — it ran, so it
-spent. A spawn whose process never started is zero. A spawn that reports
-nothing stays unknown spend, never free. Reports are read the way the cost
+The receipts are then priced by source, in order (see **Measured agent spend**
+under Cost control): the agent CLI's own cost from the structured output every
+loop spawn requests (`measured`, or `tokens` from the catalog's price table);
+else the spawn's self-report; else the median of past measured spawns
+(`projected`); else unknown. Each review attempt is a fresh agent process that
+rewrites the bundle's `cost.json` for its own run, so the loop keeps each
+attempt's record before the next attempt can overwrite it, and the self-report
+of an attempt is its own record's root `est_usd` (the undated schema-2 shape the
+prompt asks for). The last record on disk is zero, whatever else priced the
+attempt, when every one of its entries carries an `at` that parses and falls in
+the scanned month — the month-to-date scan already counts that one. A fix's
+self-report is the `{"est_usd": <dollars>}` it writes to `fix-cost.json`, read
+even when it exits non-zero — it ran, so it spent. A spawn whose process never
+started is zero. A spawn no source priced stays unknown spend, never free. Reports are read the way the cost
 scan reads the bundle: confined to it, regular files only, never blocking.
 
 A round's `cost_usd` is the round bundle's known spend under that accounting —

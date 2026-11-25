@@ -85,6 +85,9 @@ func (st *state) coordinate(ctx context.Context, base *launchArgs, rounds int) (
 		reviews: make([]*jq.Obj, finderCount), failures: []any{},
 	}
 	ref := c.run(ctx)
+	// Every launch spent whether or not the execution completed, so the
+	// receipt settles either way. The settlement must outlive a cancel.
+	st.settleExecution(context.WithoutCancel(ctx), c.dir)
 	c.executionResponse()
 	if ref == nil {
 		ref = c.executionRefusal()

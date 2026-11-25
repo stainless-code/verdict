@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
@@ -324,7 +325,9 @@ func (st *state) spendReceipt(ctx context.Context, dir, execution string, rounds
 	projection spend.Projection, policy spend.Policy,
 ) *core.RefusalError {
 	topology := jq.NewObj("execution_id", execution, "finders", 2, "rounds", rounds, "recipe", st.req.Recipe, "phases", phases)
+	st.receiptID = execution + "@" + st.now().UTC().Format(time.RFC3339Nano)
 	record := jq.NewObj("at", core.NowUTC(st.now()), "execution_id", execution, "scope", "invocation",
+		"invocation_id", st.receiptID,
 		"projection_sha256", shaHex([]byte(topology.MarshalCompact())), "topology", topology,
 		"projected_usd", projection.Total, "projection", projection, "budget_usd", budgetNumber(policy.Budget),
 		"personal_limit_usd", budgetNumber(policy.Personal), "require_known_estimate", policy.RequireKnown,

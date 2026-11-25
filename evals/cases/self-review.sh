@@ -107,6 +107,15 @@ assert_eq "no fix past unmeasured spend" "claude review" "$(paste -sd, "$LOOP_LO
 assert_json_field "the review spawn left its receipt" spawn \
   '.[0].scope' "$(ls "$repo"/.verdict/state/local-loop-*-1/budget.json)"
 
+# The agent's own json result prices every spawn: a cost-ceilinged loop passes
+# on measured spend with no self-report at all.
+LOOP_MEASURED=1 loop_leg measured claude fix --max-cost-usd 5
+assert_exit "measured spend passes the ceiling" 0
+assert_json_field "measured loop passes" pass '.stop' "$output/summary.json"
+assert_json_field "round 1 measured review and fix" 0.4 '.rounds[0].cost_usd' "$output/summary.json"
+assert_json_field "the review receipt is measured" measured \
+  '.[0].priced_by' "$(ls "$repo"/.verdict/state/local-loop-*-1/budget.json)"
+
 # The spaced --fix-prompt <file> form reaches loop's own parser through the
 # binary's global flag stripping.
 printf 'Only fix the notes line.\n' >"$EVAL_SANDBOX/fix-prompt.md"

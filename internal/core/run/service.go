@@ -126,6 +126,7 @@ func checkAgents(agents []config.PersonalAgent) *core.RefusalError {
 
 func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.RefusalError) {
 	defer func() { st.carry(resp, ref) }()
+	st.meter = &meter{}
 	if err := ctx.Err(); err != nil {
 		return nil, st.refuse(codeCanceled, msgCanceled)
 	}
@@ -189,13 +190,14 @@ func (st *state) argsForTarget(def *agentcatalog.Launch, timeout int, target lau
 	}
 	args.bin = bin
 	args.restriction = discoveryRestriction(def, st.req.PassThrough, st.req.AllowShell)
+	args.usage = st.usageArgs(def)
 	artifact := st.promptPath(args.abs, args.artifact)
 	st.compose(args, st.req, st.promptBundle(dir), artifact, readcommon.IsLocalBundleDir(dir))
 	if target.procedure != "" {
 		procedure := st.promptPath(target.procedure, readcommon.DisplayPath(st.req.RepoRootPath(), target.procedure))
 		args.prompt = strings.ReplaceAll(args.prompt, st.promptBundle(dir)+"/procedure.md", procedure)
 	}
-	args.argv = argvFor(&args.def, args.model(), args.restriction, st.req.PassThrough, args.prompt)
+	args.argv = argvFor(&args.def, args.model(), args.fixed(), st.req.PassThrough, args.prompt)
 	return args, nil
 }
 
@@ -216,7 +218,7 @@ func (st *state) compose(a *launchArgs, req *core.RunRequest, bundle, artifact s
 	default:
 		a.prompt = stageDirective(req.Repo, req.Pr, bundle, artifact, local, hasContext, a.plan, a.staged)
 	}
-	a.argv = argvFor(&a.def, a.model(), a.restriction, req.PassThrough, a.prompt)
+	a.argv = argvFor(&a.def, a.model(), a.fixed(), req.PassThrough, a.prompt)
 }
 
 // contextInBundle reports whether the bundle carries the handed context text.
@@ -444,6 +446,8 @@ type state struct { //nolint:govet // request first: the service reads one invoc
 	warnings    []string
 	defs        []config.PersonalAgent
 	budget      *core.ReviewBudget
+	meter       *meter
+	receiptID   string
 	twoFinders  bool
 }
 
@@ -501,7 +505,10 @@ type launchArgs struct {
 	prompt      string
 	argv        []string
 	restriction []string
-	timeout     int
+	// usage is the structured-output request this launch carries, nil when
+	// it measures nothing.
+	usage   []string
+	timeout int
 }
 
 // carry replays the accumulated warnings onto the refusal or the response, so a
@@ -782,10 +789,11 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 		return nil, ref
 	}
 	res, err := st.spawn(ctx, args.argv, args.timeout)
+	st.recordSpend(args, 1, res)
 	if ref := args.checkpoint(); ref != nil {
 		return nil, ref
 	}
-	if salvageAllowed(ctx, res, err) && st.salvageReview(args, res.Stdout) {
+	if salvageAllowed(ctx, res, err) && st.salvageReview(args, st.agentText(args, res.Stdout)) {
 		rec.Salvaged = true
 	}
 	return st.finish(ctx, args, rec, launched, started, res, err, nil, argSecrets)

@@ -104,7 +104,7 @@ const defaultFixPrompt = "Self-review loop — fix phase. A review of this worki
 	"To prove a fix, write that patch.json as {\"verifyCmd\": \"<one command that exercises " +
 	"the fix>\"}: the loop runs `verdict verify` on it after you exit and keeps the receipt. " +
 	"Before you exit, report your own spend for this fix as {\"est_usd\": <dollars>} in the " +
-	"fix-cost.json named below; without it the loop counts this spend as unknown. " +
+	"fix-cost.json named below; the loop reads it when your CLI's own output carries no cost. " +
 	"The next round fetches the working tree again and reviews your fixes from scratch."
 
 // Request is one loop invocation, resolved by the adapter.

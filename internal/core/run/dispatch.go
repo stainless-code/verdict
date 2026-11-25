@@ -20,26 +20,36 @@ import (
 //
 // A refusal is the one a review launch would report for the same process
 // outcome (canceled, agent-spawn-failed, agent-timeout, agent-failed), so a
-// caller surfaces the run verb's wording unchanged. ran reports whether an
-// agent process started at all, so a caller can tell spend that happened
-// from a launch that never did. With req.Print set the argv is resolved and
-// returned without spawning anything.
+// caller surfaces the run verb's wording unchanged. With req.Print set the
+// argv is resolved and returned without spawning anything.
 func Dispatch(
 	ctx context.Context, req *core.RunRequest, agents []config.PersonalAgent, directive string,
-) (argv []string, ran bool, ref *core.RefusalError) {
+) (Dispatched, *core.RefusalError) {
 	if ref := checkAgents(agents); ref != nil {
-		return nil, false, ref
+		return Dispatched{}, ref
 	}
 	st := &state{req: req, warnings: append([]string{}, req.Warnings...), defs: agents}
 	args, ref := st.dispatchArgs(ctx, directive)
 	if ref != nil {
-		return nil, false, ref
+		return Dispatched{}, ref
 	}
 	if req.Print {
-		return args.argv, false, nil
+		return Dispatched{Argv: args.argv}, nil
 	}
-	ran, ref = st.dispatchSpawn(ctx, args)
-	return args.argv, ran, ref
+	out, ref := st.dispatchSpawn(ctx, args)
+	out.Argv = args.argv
+	return out, ref
+}
+
+// Dispatched is what one directive launch did: the argv, whether an agent
+// process started at all (spend happened, or the launch never did), and —
+// when the request measured spend and the CLI reported it — the spawn's
+// measured USD and how it was priced.
+type Dispatched struct {
+	USD      string
+	PricedBy string
+	Argv     []string
+	Ran      bool
 }
 
 // dispatchArgs resolves the agent, the watchdog budget, and the argv. The
@@ -62,17 +72,21 @@ func (st *state) dispatchArgs(ctx context.Context, directive string) (*launchArg
 			return nil, ref
 		}
 	}
-	args.argv = argvFor(&args.def, "", nil, st.req.PassThrough, directive)
+	args.usage = st.usageArgs(&args.def)
+	args.argv = argvFor(&args.def, "", args.fixed(), st.req.PassThrough, directive)
 	return args, nil
 }
 
-// dispatchSpawn runs the resolved argv under the watchdog. No artifact is
-// asserted: a present, regular, fresh state makes the shared verdict answer
-// for the process outcome alone.
-func (st *state) dispatchSpawn(ctx context.Context, args *launchArgs) (bool, *core.RefusalError) {
+// dispatchSpawn runs the resolved argv under the watchdog and measures it. No
+// artifact is asserted: a present, regular, fresh state makes the shared
+// verdict answer for the process outcome alone.
+func (st *state) dispatchSpawn(ctx context.Context, args *launchArgs) (Dispatched, *core.RefusalError) {
 	res, err := st.spawn(ctx, args.argv, args.timeout)
-	ran := err == nil && res != nil
-	return ran, st.verdict(ctx, args, res, err, artifactState{exists: true, regular: true, fresh: true})
+	out := Dispatched{Ran: err == nil && res != nil}
+	if measured, ok := st.recordSpend(args, 1, res); ok {
+		out.USD, out.PricedBy = measured.USD, measured.PricedBy
+	}
+	return out, st.verdict(ctx, args, res, err, artifactState{exists: true, regular: true, fresh: true})
 }
 
 // admit runs the request's admission hook before one spawn.
@@ -138,7 +152,7 @@ func (st *state) authorizeSpawn(ctx context.Context, dir, launchID string) ([]st
 		return st.warnings, ref
 	}
 	record := jq.NewObj("at", core.NowUTC(st.now()), "execution_id", launchID, "scope", spend.ScopeSpawn,
-		"projected_usd", nil, "budget_usd", budgetNumber(policy.Budget),
+		"agent", st.req.Agent, "model", modelArg(st.req.PassThrough), "projected_usd", nil, "budget_usd", budgetNumber(policy.Budget),
 		"personal_limit_usd", budgetNumber(policy.Personal), "require_known_estimate", policy.RequireKnown,
 		"budget_src", st.budgetSource())
 	return st.warnings, st.updateLedger(ctx, dir, func(ledger []any) []any { return append(ledger, record) })

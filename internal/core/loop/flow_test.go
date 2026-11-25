@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -34,13 +35,23 @@ type agentCommander struct {
 	t              *testing.T
 	costAt         string
 	spawns         []string
+	argvs          [][]string
 	fixExit        int
 	reviews        int
-	reportFixCost  bool
 	datedCost      bool
 	fixNeverStarts bool
 	repairFirst    bool
 	repairNoCost   bool
+	measured       bool
+	selfReportToo  bool
+	brokenOutput   bool
+	reportFixCost  bool
+}
+
+// measuredResult is the json result a measured spawn prints.
+func measuredResult(usd string) string {
+	return `{"type":"result","subtype":"success","is_error":false,"num_turns":4,"result":"done",` +
+		`"session_id":"s","total_cost_usd":` + usd + `}`
 }
 
 // flowNow is the integration clock: one fixed instant inside one month, so
@@ -59,18 +70,30 @@ func (a *agentCommander) Run(ctx context.Context, cmd *core.Command) (core.Resul
 	if len(cmd.Argv) == 0 || cmd.Argv[0] != agentBinary {
 		return coreexec.Watchdog{}.Run(ctx, cmd)
 	}
+	a.argvs = append(a.argvs, cmd.Argv)
 	directive := cmd.Argv[len(cmd.Argv)-1]
 	if m := reviewPath.FindStringSubmatch(directive); m != nil {
 		a.spawns = append(a.spawns, "review")
 		a.review(cmd.Dir, m[1]+m[2])
-		return core.Result{}, nil
+		return core.Result{Stdout: a.stdout("0.1")}, nil
 	}
 	if a.fixNeverStarts {
 		return core.Result{}, errNeverStarted
 	}
 	a.spawns = append(a.spawns, "fix")
 	a.fix(cmd.Dir, directive)
-	return core.Result{ExitCode: a.fixExit}, nil
+	return core.Result{ExitCode: a.fixExit, Stdout: a.stdout("0.3")}, nil
+}
+
+// stdout is a spawn's captured output: the measured json result, or nothing.
+func (a *agentCommander) stdout(usd string) string {
+	switch {
+	case a.brokenOutput:
+		return measuredResult(usd)[:40]
+	case !a.measured:
+		return ""
+	}
+	return measuredResult(usd)
 }
 
 func (a *agentCommander) LookPath(string) error { return nil }
@@ -91,7 +114,7 @@ func (a *agentCommander) review(checkout, artifact string) {
 	}
 	write(a.t, artifact, `{"schema_version":"1","summary":"Reviewed the notes change.","findings":`+findings+
 		`,"coverage":[{"file":"notes.txt","ranges":"1-3"}],"receipts":`+receipts+`}`)
-	if a.repairNoCost && a.reviews == 2 {
+	if (a.measured && !a.selfReportToo) || (a.repairNoCost && a.reviews == 2) {
 		return
 	}
 	write(a.t, filepath.Join(dir, "cost.json"), a.costRecord())
@@ -477,4 +500,109 @@ func TestLoopUncountedDatedCostIsPriced(t *testing.T) {
 	if mtd.KnownUSD != "0.5" || mtd.UnknownCount != 0 {
 		t.Errorf("month-to-date = %+v, want 0.5 known: two reviews and the fix", mtd)
 	}
+}
+
+// TestLoopMeasuresSpendFromTheCLIsOwnOutput proves the measured source: the
+// agent writes no cost record and no fix-cost.json, yet every spawn is priced
+// from the json result the CLI prints — requested on every loop spawn — so a
+// cost-ceilinged loop proceeds past round 1 and the monthly scan counts it.
+func TestLoopMeasuresSpendFromTheCLIsOwnOutput(t *testing.T) {
+	agent := &agentCommander{t: t, measured: true}
+	resp, repo := flowLoop(t, agent, "5")
+	if resp.Data.Stop != StopPass || len(resp.Data.Rounds) != 2 {
+		t.Fatalf("stop=%s refusal=%+v, want a pass in round 2", resp.Data.Stop, resp.Data.Refusal)
+	}
+	for _, argv := range agent.argvs {
+		if !slices.Equal(argv[1:4], []string{"-p", "--output-format", "json"}) {
+			t.Errorf("argv = %q, want the json output requested", argv)
+		}
+	}
+	mtd := spend.AggregateMTD(readcommon.StateDir(repo), flowNow())
+	if mtd.KnownUSD != "0.5" || mtd.UnknownCount != 0 {
+		t.Errorf("month-to-date = %+v, want 0.5 measured: two reviews and the fix", mtd)
+	}
+	assertPricedBy(t, repo, spend.PricedMeasured)
+}
+
+// assertPricedBy proves every spawn receipt in the repository names source.
+func assertPricedBy(t *testing.T, repo, source string) {
+	t.Helper()
+	ledgers, err := filepath.Glob(filepath.Join(readcommon.StateDir(repo), "*", "budget.json"))
+	if err != nil || len(ledgers) == 0 {
+		t.Fatalf("no spawn ledgers (err %v)", err)
+	}
+	for _, path := range ledgers {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if strings.Count(string(raw), `"priced_by": "`+source+`"`) != strings.Count(string(raw), `"scope": "spawn"`) {
+			t.Errorf("%s = %s, want every spawn priced_by %s", path, raw, source)
+		}
+	}
+}
+
+// TestLoopProjectsAnUnreportedSpawnFromPastMeasuredRuns proves the projected
+// source: the fix reports nothing and prints no cost, so it is priced at the
+// median of past measured spawns of the same agent — the loop proceeds under
+// its cost ceiling with the receipt labeled projected.
+func TestLoopProjectsAnUnreportedSpawnFromPastMeasuredRuns(t *testing.T) {
+	repo := flowRepo(t)
+	past := filepath.Join(readcommon.StateDir(repo), "local-loop-earlier-1")
+	if err := os.MkdirAll(past, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	ledger := `[{"at":"2026-05-01T09:00:00Z","execution_id":"a","scope":"spawn","agent":"claude","model":"",` +
+		`"projected_usd":0.2,"priced_by":"measured"},` +
+		`{"at":"2026-05-01T09:05:00Z","execution_id":"b","scope":"spawn","agent":"claude","model":"",` +
+		`"projected_usd":0.4,"priced_by":"tokens"},` +
+		`{"at":"2026-05-01T09:10:00Z","execution_id":"c","scope":"spawn","agent":"codex","model":"",` +
+		`"projected_usd":9,"priced_by":"measured"}]`
+	if err := os.WriteFile(filepath.Join(past, "budget.json"), []byte(ledger), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Chdir(repo)
+	agent := &agentCommander{t: t}
+	req := flowRequest(t, repo, agent)
+	req.MaxCostUSD = "5"
+	resp, ref := Run(t.Context(), req)
+	if ref != nil {
+		t.Fatalf("loop refused: %v", ref)
+	}
+	if resp.Data.Stop != StopPass {
+		t.Fatalf("stop=%s refusal=%+v, want a pass on the projected fix", resp.Data.Stop, resp.Data.Refusal)
+	}
+	raw, err := os.ReadFile(filepath.Join(readcommon.StateDir(repo), resp.Data.Rounds[0].Bundle, "budget.json"))
+	if err != nil || !strings.Contains(string(raw), `"projected_usd": 0.3,`) ||
+		!strings.Contains(string(raw), `"priced_by": "projected"`) {
+		t.Errorf("round 1 ledger = %s (err %v), want the fix projected at the claude median 0.3", raw, err)
+	}
+}
+
+// TestLoopMalformedOutputFallsToTheSelfReport proves a capture that does not
+// match the CLI's documented shape measures nothing: the spawns fall to the
+// next source, the agent's own cost record and fix-cost.json.
+func TestLoopMalformedOutputFallsToTheSelfReport(t *testing.T) {
+	agent := &agentCommander{t: t, brokenOutput: true, reportFixCost: true}
+	resp, repo := flowLoop(t, agent, "5")
+	if resp.Data.Stop != StopPass {
+		t.Fatalf("stop=%s refusal=%+v, want a pass", resp.Data.Stop, resp.Data.Refusal)
+	}
+	mtd := spend.AggregateMTD(readcommon.StateDir(repo), flowNow())
+	if mtd.KnownUSD != "0.5" || mtd.UnknownCount != 0 {
+		t.Errorf("month-to-date = %+v, want 0.5 from the self-reports", mtd)
+	}
+	assertPricedBy(t, repo, spend.PricedAgent)
+}
+
+// TestLoopMeasuredOutranksTheSelfReport proves the priority order: a spawn
+// with both the CLI's own cost and the agent's self-report is priced from the
+// measurement.
+func TestLoopMeasuredOutranksTheSelfReport(t *testing.T) {
+	agent := &agentCommander{t: t, measured: true, selfReportToo: true, reportFixCost: true}
+	resp, repo := flowLoop(t, agent, "5")
+	if resp.Data.Stop != StopPass {
+		t.Fatalf("stop=%s refusal=%+v, want a pass", resp.Data.Stop, resp.Data.Refusal)
+	}
+	assertPricedBy(t, repo, spend.PricedMeasured)
 }

@@ -22,7 +22,8 @@ func TestDispatchSpawnsTheDirectiveWithoutTheReviewRestriction(t *testing.T) {
 	t.Parallel()
 	root := t.TempDir()
 	cmdr := &scripted{}
-	argv, ran, ref := Dispatch(t.Context(), request(root, cmdr), nil, "fix the open findings")
+	out, ref := Dispatch(t.Context(), request(root, cmdr), nil, "fix the open findings")
+	argv, ran := out.Argv, out.Ran
 	if ref != nil || !ran {
 		t.Fatalf("dispatch ran=%v refused=%v, want a started process", ran, ref)
 	}
@@ -54,7 +55,8 @@ func TestDispatchReportsRunsOwnRefusals(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.code, func(t *testing.T) {
 			t.Parallel()
-			_, ran, ref := Dispatch(t.Context(), request(t.TempDir(), &scripted{res: tc.res}), nil, "fix")
+			out, ref := Dispatch(t.Context(), request(t.TempDir(), &scripted{res: tc.res}), nil, "fix")
+			ran := out.Ran
 			if ref == nil || ref.Code != tc.code || ref.Message != tc.msg || !ran {
 				t.Fatalf("ref = %v ran=%v, want %s %q from a process that started", ref, ran, tc.code, tc.msg)
 			}
@@ -72,7 +74,8 @@ func TestDispatchPrintResolvesAgentsWithoutSpawning(t *testing.T) {
 	req.Print = true
 	req.Agent = "mine"
 	agents := []config.PersonalAgent{{Name: "mine", Binary: "my-agent", Args: []string{"--yes"}}}
-	argv, _, ref := Dispatch(t.Context(), req, agents, "fix")
+	out, ref := Dispatch(t.Context(), req, agents, "fix")
+	argv := out.Argv
 	if ref != nil {
 		t.Fatalf("print refused: %v", ref)
 	}
@@ -83,7 +86,7 @@ func TestDispatchPrintResolvesAgentsWithoutSpawning(t *testing.T) {
 		t.Errorf("print spawned %d processes", cmdr.calls)
 	}
 	req.Agent = "nobody"
-	if _, _, ref := Dispatch(t.Context(), req, agents, "fix"); ref == nil || ref.Code != codeUnknownAgent {
+	if _, ref := Dispatch(t.Context(), req, agents, "fix"); ref == nil || ref.Code != codeUnknownAgent {
 		t.Fatalf("unknown agent = %v, want %s", ref, codeUnknownAgent)
 	}
 }

@@ -151,13 +151,14 @@ func (st *state) repairRound(ctx context.Context, args *launchArgs, rec *launche
 		return roundOutcome{stop: true, ref: ref}
 	}
 	prompt := st.roundPrompt(args, rep, in, k, n)
-	argv := argvFor(&args.def, args.model(), args.restriction, st.req.PassThrough, prompt)
+	argv := argvFor(&args.def, args.model(), args.fixed(), st.req.PassThrough, prompt)
 	st.human(fmt.Sprintf("» round %d/%d: %s (timeout %ds)", k, n, strings.Join(rec.Argv, " "), args.timeout))
 	if ref := st.admit(ctx, k); ref != nil {
 		return roundOutcome{stop: true, ref: ref}
 	}
 	roundStarted := st.now()
 	roundRes, spawnErr := st.spawn(ctx, argv, args.timeout)
+	st.recordSpend(args, k, roundRes)
 	if ref := args.checkpoint(); ref != nil {
 		return roundOutcome{stop: true, ref: ref}
 	}
@@ -312,7 +313,7 @@ func (st *state) maybeSalvage(ctx context.Context, args *launchArgs, rec *launch
 	if st.drainDigest != "" || !salvageAllowed(ctx, res, spawnErr) {
 		return
 	}
-	rec.Salvaged = st.salvageReview(args, res.Stdout)
+	rec.Salvaged = st.salvageReview(args, st.agentText(args, res.Stdout))
 }
 
 // roundSucceeded ends the loop on the first valid review: the outcome is
