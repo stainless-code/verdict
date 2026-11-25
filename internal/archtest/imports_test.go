@@ -29,6 +29,7 @@ var forbiddenDeps = []string{
 	"internal/cli",
 	"internal/acp",
 	"internal/lsp",
+	"internal/dashboard",
 	"internal/drain",
 	"internal/mcp",
 	"internal/schemagen",

@@ -60,6 +60,7 @@ body:
         - uninstall
         - mcp
         - serve
+        - dashboard
         - lsp
     validations:
       required: true

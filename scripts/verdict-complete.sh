@@ -3,7 +3,7 @@
 #
 
 _verdict_verbs() {
-  printf '%s\n' demo fetch post triage report next show verify doctor calibrate fetch-local run loop panel record adopt ingest fix check-tree ready pr-wait gate threads trend risk handoff index journal backtest learn pack init skill upgrade uninstall serve config drain acp lsp
+  printf '%s\n' demo fetch post triage report next show verify doctor calibrate fetch-local run loop panel record adopt ingest fix check-tree ready pr-wait gate threads trend risk handoff index journal backtest learn pack init skill upgrade uninstall serve dashboard config drain acp lsp
 }
 
 _verdict_flags() { # $1 = verb
@@ -43,6 +43,7 @@ _verdict_flags() { # $1 = verb
     gate) printf '%s\n' --max-severity --require-head --live --coverage --json;;
     mcp) printf '%s\n' --read-only --operator --agent --write --dry-run --json;;
     acp) printf '%s\n' --root --check --max-bundles --json;;
+    dashboard) printf '%s\n' --root --once --width --height --json;;
     lsp) printf '%s\n' --root --bundle --check --max-bundles --max-roots --interval --sweep --no-watch --json;;
     serve) printf '%s\n' --root --depth --max-visits --max-repos --rediscover --no-registry --host --port --token --check --max-bundles --interval --sweep --no-watch --interactive --allow-post --json;;
     init) printf '%s\n' --preset --yes --force --json --ci --agent --key-secret --print --comment-trigger;;
