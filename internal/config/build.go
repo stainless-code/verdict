@@ -66,6 +66,9 @@ func buildConfigViews(cfg *core.Config, root map[string]any) *core.RefusalError 
 	if cfg.Tests, ref = presentNested(root, "tests", rootLocation, buildTests); ref != nil {
 		return ref
 	}
+	if cfg.Verify, ref = presentNested(root, "verify", rootLocation, buildVerify); ref != nil {
+		return ref
+	}
 	return buildConfigTail(cfg, root)
 }
 

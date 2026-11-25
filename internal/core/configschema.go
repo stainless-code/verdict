@@ -27,6 +27,7 @@ type Config struct { //nolint:govet // field order is the published property ord
 	RigorPolicy     *ConfigRigorPolicy       `json:"rigor_policy,omitempty"     nonnull:"true"`
 	Packs           *ConfigPacks             `json:"packs,omitempty"            nonnull:"true"`
 	Tests           *ConfigTests             `json:"tests,omitempty"            nonnull:"true"`
+	Verify          *ConfigVerify            `json:"verify,omitempty"           nonnull:"true"`
 }
 
 // ConfigPacks is the repository's built-in pack composition: whether the
@@ -67,6 +68,16 @@ type ConfigOrgPack struct {
 // on-reproduce (the shipped behavior); off disables drafting.
 type ConfigTests struct {
 	Draft string `enum:"off|on-reproduce" json:"draft,omitempty"`
+}
+
+// ConfigVerify configures `verify`. Share lists gitignored dependency
+// directories (repository-relative slash paths) the command sees read-only
+// inside its clean snapshot, so a JavaScript or Python suite need not install
+// on every run. Empty or absent keeps the snapshot clean, like CI. It is read
+// at the PR base, never the head, so a branch cannot share a directory of its
+// own choosing; the receipt names every directory a run shared.
+type ConfigVerify struct {
+	Share []string `json:"share,omitempty" nonnull:"true"`
 }
 
 // ConfigRigorPolicy is the repository's publication floor: the mode and the

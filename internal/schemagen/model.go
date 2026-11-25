@@ -145,6 +145,9 @@ type ConfigRigorPolicy = core.ConfigRigorPolicy
 // ConfigTests is the regression-test drafting policy.
 type ConfigTests = core.ConfigTests
 
+// ConfigVerify is the verify section: the shared dependency directories.
+type ConfigVerify = core.ConfigVerify
+
 // ConfigRequirements is the configuration's conjunctive requirements.
 type ConfigRequirements = core.ConfigRequirements
 
