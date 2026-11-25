@@ -9,9 +9,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 	"time"
@@ -23,6 +25,7 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/configcmd"
 	"github.com/stainless-code/verdict/internal/core"
+	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 	"github.com/stainless-code/verdict/internal/core/upgrade"
 	demo "github.com/stainless-code/verdict/internal/demo"
@@ -49,6 +52,7 @@ import (
 	"github.com/stainless-code/verdict/internal/scaffold"
 	"github.com/stainless-code/verdict/internal/schemacheck"
 	"github.com/stainless-code/verdict/internal/serve"
+	"github.com/stainless-code/verdict/internal/target"
 	"github.com/stainless-code/verdict/internal/threads"
 	"github.com/stainless-code/verdict/internal/trend"
 	"github.com/stainless-code/verdict/internal/triage"
@@ -99,20 +103,20 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	stripped, forces, uerr, ref := cli.StripGlobal(args)
 	failed := uerr != nil || ref != nil
 	cmd, repo, pr, rest := splitCommand(stripped)
+	env := envMap(getenv)
+	var tgt target.Resolved
 	if failed {
 		cmd, repo, pr = envelopeTarget(args)
+	} else {
+		tgt = resolveTarget(cmd, repo, pr, rest, env, getenv)
+		repo, pr, rest = tgt.Repo, tgt.Pr, tgt.Rest
 	}
 	r := newRunner(cmd, repo, pr, stdout, stderr, getenv)
 	peekJSONMode(r, args)
-	env := envMap(getenv)
 	if failed {
 		return reportStripFailure(r, env, readFile, uerr, ref)
 	}
-	if invocationArityUsage(cmd, repo, pr, rest) {
-		fmt.Fprint(stderr, arityText(cmd))
-		return cli.ExitUsage
-	}
-	if code, done := resolveRunnerPrefs(r, env, readFile); done {
+	if code, done := gateInvocation(r, cmd, &tgt, env, readFile, stderr); done {
 		return code
 	}
 	if err := cli.ApplyGlobalForces(r, forces, noColorForFallback(r, env)); err != nil {
@@ -120,6 +124,31 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 		return r.Refuse(err)
 	}
 	return dispatch(cmd, r, repo, pr, root, env, forces, args, rest, stderr, readFile)
+}
+
+// gateInvocation runs the checks that stop an invocation before its verb: the
+// arity gate (skipped when target resolution already refused with a typed
+// reason), the preference read, that refusal, and the echo of a derived
+// target. done reports that code is the exit status.
+func gateInvocation(
+	r *cli.Runner, cmd string, tgt *target.Resolved, env map[string]string,
+	readFile func(string) ([]byte, error), stderr *os.File,
+) (code int, done bool) {
+	if tgt.Refusal == nil && invocationArityUsage(cmd, tgt.Repo, tgt.Pr, tgt.Rest) {
+		fmt.Fprint(stderr, arityText(cmd))
+		return cli.ExitUsage, true
+	}
+	if code, done := resolveRunnerPrefs(r, env, readFile); done {
+		return code, true
+	}
+	if tgt.Refusal != nil {
+		r.RouteHuman()
+		return r.Refuse(tgt.Refusal), true
+	}
+	if tgt.Note != "" && !r.JSONMode {
+		fmt.Fprintln(stderr, tgt.Note)
+	}
+	return 0, false
 }
 
 func handleMetaFlags(args []string, stdout *os.File, readFile func(string) ([]byte, error)) bool {
@@ -173,6 +202,11 @@ func dispatchHidden(args []string, stderr *os.File) (code int, ok bool) {
 type readHandler func(context.Context, *cli.Runner, []string, readcommon.Request) int
 
 const cmdTrend = "trend"
+
+const cmdFetchLocal = "fetch-local"
+
+// flagPrefix starts every flag token; a positional never does.
+const flagPrefix = "-"
 
 const cmdBacktest = "backtest"
 
@@ -415,9 +449,12 @@ func noPositionalPair(cmd string, args []string) bool {
 	return htmlInvocation(cmd, args) || bareVerbs[cmd] || optionals[cmd] || cmd == cmdBacktest
 }
 
+// splitPositionals reads the repo/pr pair from the leading non-flag tokens: a
+// flag before the pair ends it (the pair is then absent, and target inference
+// may supply it), and "--" ends everything.
 func splitPositionals(args []string) (repo, pr string, rest []string) {
 	for i, a := range args {
-		if a == flagSeparator {
+		if a == flagSeparator || (i < 2 && strings.HasPrefix(a, flagPrefix)) {
 			return repo, pr, append(rest, args[i:]...)
 		}
 		switch i {
@@ -469,13 +506,13 @@ func reportStripFailure(
 
 func envelopeTarget(args []string) (cmd, repo, pr string) {
 	cmd, repo, pr, _ = splitCommand(args)
-	if strings.HasPrefix(cmd, "-") {
+	if strings.HasPrefix(cmd, flagPrefix) {
 		return "", "", ""
 	}
-	if strings.HasPrefix(repo, "-") {
+	if strings.HasPrefix(repo, flagPrefix) {
 		return cmd, "", ""
 	}
-	if strings.HasPrefix(pr, "-") {
+	if strings.HasPrefix(pr, flagPrefix) {
 		return cmd, repo, ""
 	}
 	return cmd, repo, pr
@@ -576,4 +613,35 @@ func htmlInvocation(cmd string, args []string) bool {
 
 func invocationArityUsage(cmd, repo, pr string, args []string) bool {
 	return arityUsage(cmd, repo, pr) && !htmlInvocation(cmd, args)
+}
+
+// resolveTarget turns the split positionals into the verb's target: a pasted
+// pull request URL, or the pair inferred from the origin remote and a recorded
+// bundle. It runs only for the verbs that take a repo/pr pair and never for
+// fetch-local, whose second positional is a bundle name.
+func resolveTarget(cmd, repo, pr string, rest []string, env map[string]string, getenv func(string) string) target.Resolved {
+	same := target.Resolved{Repo: repo, Pr: pr, Rest: rest}
+	if !takesTarget(cmd, rest) {
+		return same
+	}
+	// GITLAB_HOST is read here, not through envMap: it only maps a
+	// self-hosted URL or remote to GitLab.
+	targetEnv := maps.Clone(env)
+	if h := getenv("GITLAB_HOST"); h != "" {
+		targetEnv["GITLAB_HOST"] = h
+	}
+	ctx, stop := shutdownSignalContext()
+	defer stop()
+	return target.Resolve(ctx, target.Deps{Commander: coreexec.Runner{}, RepoRoot: readcommon.RepoRoot}, &target.Request{
+		Verb: cmd, Repo: repo, Pr: pr, Rest: rest, RepoOnly: repoOnlyVerbs[cmd], Env: targetEnv,
+	})
+}
+
+// takesTarget reports the known verbs whose positionals are `<owner/repo> <pr>`
+// (or `<owner/repo>` alone for the repo-only verbs).
+func takesTarget(cmd string, rest []string) bool {
+	if cmd == "" || cmd == cmdFetchLocal || noPositionalPair(cmd, rest) {
+		return false
+	}
+	return slices.Contains(strings.Split(verbsHint, "|"), cmd)
 }
