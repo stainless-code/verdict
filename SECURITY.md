@@ -50,7 +50,10 @@ In scope (highest priority first):
   `kern.procargs2` sysctl, so a sandboxed command can read the environment
   of same-uid processes that are not restricted platform binaries — a
   third-party editor, an agent CLI, `node` (see the
-  [manual](docs/manual.md#hostile-pr-sandbox-recipe)). A route to another
+  [manual](docs/manual.md#hostile-pr-sandbox-recipe)); `verify --sandbox`
+  warns, naming the variables and never their values, when verdict's own
+  environment carries a secret-named variable a command could read that
+  way. A route to another
   process's environment that does not go through `kern.procargs2`, or a
   profile that could deny it and does not, is in scope.
 - `verify --sandbox-network-only`, the explicit Linux opt-in
