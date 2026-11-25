@@ -216,8 +216,8 @@ rather than becoming ground truth.
 --- file C/.verdict/state/local-demo/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "0ac740d113f48216d8cfdf2e8a11e2d842a72bdd1743efbf94fc233fc8b9ba24",
-  "prompts_hash": "937a465d454db3538788a18ff9148ee4115f23f31c39a4d26cc6fe9ced239d54",
+  "run_id": "1e77dca3453f7bd772a4aa760f8b0edbf5ebb61f1865842f25435a973ea4d925",
+  "prompts_hash": "f6e5ef704a6220be9e036dfa17e8d641ea6cd14019548f98c4411117b7a7a76d",
   "inputs": [
     {
       "kind": "prompt",
@@ -321,8 +321,8 @@ rather than becoming ground truth.
       "kind": "prompt",
       "name": "prompts/review.md",
       "status": "included",
-      "sha256": "95f6a855d9223ff997e80b228737d59ab60a05db6a91a96de8856fbabbfafde4",
-      "bytes": 20492
+      "sha256": "168b2792d0d366b950fd71a04575505c118d4214ebad9eadf5df060a49697924",
+      "bytes": 20517
     },
     {
       "kind": "prompt",
@@ -459,8 +459,8 @@ rather than becoming ground truth.
       "kind": "bundle",
       "name": "refs/review-checklist.md",
       "status": "included",
-      "sha256": "beaaaee7b3b89b6b7b0844bb5fcdd5c6fba9549c65881b48801eccbdd0f2096c",
-      "bytes": 19284
+      "sha256": "30201066cf4b60f5ef23c7a4fe320e1b779ec6788c6a705e92b5a38d4b10065a",
+      "bytes": 19309
     },
     {
       "kind": "bundle",
@@ -950,6 +950,7 @@ rather than becoming ground truth.
   "range": "HEAD:worktree",
   "dirty": true,
   "worktree_diff_sha256": "94d2a258c8308641db7b0ada6e81eda8fae398466cb7652b30a837ba95076caa",
+  "content_tree": "cdc85319769f77fede3d48aec54e0e0f7e02817b",
   "diff_sha256": "94d2a258c8308641db7b0ada6e81eda8fae398466cb7652b30a837ba95076caa",
   "patch_id": "a863c33cd4682ef075547bb98dc86ccb02717e33",
   "patch_id_kind": "git-patch-id",

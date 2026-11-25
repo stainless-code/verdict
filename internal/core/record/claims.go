@@ -1,9 +1,12 @@
 package recordcore
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"unicode/utf8"
 
+	"github.com/stainless-code/verdict/internal/contenttree"
 	"github.com/stainless-code/verdict/internal/core"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -76,13 +79,13 @@ type verifyClaim struct {
 }
 
 func (st *state) applyVerdict(target *jq.Obj, full string, claim verifyClaim) {
-	shaOK := len(claim.vrh) >= shortSHALen && len(st.headFull) >= shortSHALen &&
-		(st.headFull == claim.vrh || hasPrefix(st.headFull, claim.vrh) || hasPrefix(claim.vrh, st.headFull))
 	switch {
-	case claim.verdict == "VERIFIED" && shaOK && claim.vcmd != "":
-		// The claim is attestation; only the receipt verify wrote is proof.
-		if gap := verifyReceiptGap(st.dir, st.headFull, full, claim.vcmd, st.entries); gap != "" {
-			st.warn(fmt.Sprintf(msgClaimUnbacked, readcommon.Prefix(full), gap, readcommon.ShortSHA(st.headFull)))
+	case claim.verdict == "VERIFIED" && claim.vcmd != "":
+		// The claim is attestation; only the receipt verify wrote is proof,
+		// and it must cover the very content this run grades.
+		tree, treeGap := st.gradedTree()
+		if gap := verifyReceiptGap(st.dir, tree, treeGap, full, claim.vcmd, st.entries); gap != "" {
+			st.warn(fmt.Sprintf(msgClaimUnbacked, readcommon.Prefix(full), gap))
 			st.recordRevalidation(target, claim)
 			return
 		}
@@ -176,14 +179,13 @@ func (st *state) applyTriageClaim(v *jq.Obj) error {
 	if claim.sig == "" {
 		return nil
 	}
-	if !isTriageStatus(claim.status) {
-		return &core.RefusalError{Code: codeBadTriageStatus, Message: fmt.Sprintf(msgBadTriage, claim.status)}
-	}
 	// addressed is the one status a rationale cannot buy: it comes only from a
 	// VERIFIED claim backed by the verify receipt (applyVerdict).
 	if claim.status == outcomeAddressed {
-		st.warn(fmt.Sprintf(msgTriageAddressed, readcommon.Prefix(claim.sig)))
-		return nil
+		return &core.RefusalError{Code: codeBadTriageStatus, Message: fmt.Sprintf(msgTriageAddressed, readcommon.Prefix(claim.sig))}
+	}
+	if !isTriageStatus(claim.status) {
+		return &core.RefusalError{Code: codeBadTriageStatus, Message: fmt.Sprintf(msgBadTriage, claim.status)}
 	}
 	full, code := resolveSig(st.entries, claim.sig)
 	switch code {
@@ -204,7 +206,7 @@ func (st *state) applyTriageClaim(v *jq.Obj) error {
 
 func isTriageStatus(s string) bool {
 	switch s {
-	case statusOpen, outcomeAddressed, exampleWontFix, exampleFalsePositive, "deferred":
+	case statusOpen, exampleWontFix, exampleFalsePositive, "deferred":
 		return true
 	default:
 		return false
@@ -253,10 +255,6 @@ func stampCredit(st *state, target *jq.Obj) {
 	last.Set("kb_credit", credited)
 }
 
-func hasPrefix(s, prefix string) bool {
-	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
-}
-
 // verifyReceiptGap names why the bundle's verify receipt does not prove this
 // claim, or returns "" when it does. It reads only verify-receipt.json, which
 // verify alone writes — never patch.json, the agent's own proposal. The
@@ -264,7 +262,7 @@ func hasPrefix(s, prefix string) bool {
 // claim's finding when it names one, on the clean gated head. The bundle owns
 // the receipt, so it was written for this bundle and its root; the head is the
 // binding it can go stale on.
-func verifyReceiptGap(dir, head, full, vcmd string, entries []any) string {
+func verifyReceiptGap(dir, tree, treeGap, full, vcmd string, entries []any) string {
 	receipt, found, problem := verifycore.ReadVerifyReceipt(dir)
 	switch {
 	case problem != "":
@@ -276,12 +274,12 @@ func verifyReceiptGap(dir, head, full, vcmd string, entries []any) string {
 	case receipt.TimedOut:
 		return "the verify receipt timed out"
 	}
-	return receiptBindingGap(&receipt, head, full, vcmd, entries)
+	return receiptBindingGap(&receipt, tree, treeGap, full, vcmd, entries)
 }
 
 // receiptBindingGap checks what the passing run was bound to: the command,
 // the finding, and the head.
-func receiptBindingGap(receipt *core.VerifyReceipt, head, full, vcmd string, entries []any) string {
+func receiptBindingGap(receipt *core.VerifyReceipt, tree, treeGap, full, vcmd string, entries []any) string {
 	if receipt.Command != vcmd {
 		return fmt.Sprintf("the verify receipt ran %q, not the claim's %q", receipt.Command, vcmd)
 	}
@@ -290,13 +288,48 @@ func receiptBindingGap(receipt *core.VerifyReceipt, head, full, vcmd string, ent
 			return gap
 		}
 	}
-	if receipt.Head == "" {
-		return "the verify receipt records no clean HEAD"
+	if receipt.Tree == "" {
+		return "the verify receipt names no content tree"
 	}
-	if receipt.Head != head {
-		return "the verify receipt covers HEAD " + readcommon.ShortSHA(receipt.Head)
+	if treeGap != "" {
+		return treeGap
+	}
+	if receipt.Tree != tree {
+		return fmt.Sprintf("the verify receipt covers content tree %s, not the graded content's %s",
+			readcommon.ShortSHA(receipt.Tree), readcommon.ShortSHA(tree))
 	}
 	return ""
+}
+
+// gradedTree resolves, once per run, the tree id of the content this run
+// grades: the tree fetch-local captured for a local bundle, the head
+// commit's tree otherwise. gap names why it is unknown.
+func (st *state) gradedTree() (tree, gap string) {
+	if !st.treeRead {
+		st.treeRead = true
+		st.tree, st.treeGap = st.readTree()
+	}
+	return st.tree, st.treeGap
+}
+
+func gradedTree(ctx context.Context, cmdr core.Commander, root, dir, prov, head string) (tree, gap string) {
+	if prov == providerLocal {
+		if tree := readcommon.JSONStr(dir+sourceSuffix, fieldContentTree); tree != "" {
+			return tree, ""
+		}
+		return "", "the bundle records no content tree — re-run fetch-local; its warning names what git could not index"
+	}
+	if cmdr == nil || len(head) < shortSHALen {
+		return "", "the graded head is unknown, so its content tree cannot be read"
+	}
+	tree, err := contenttree.Git{Cmdr: cmdr, Root: root}.Commit(ctx, head)
+	switch {
+	case errors.Is(err, contenttree.ErrUnresolved):
+		return "", "the graded commit " + readcommon.ShortSHA(head) + " is not in the local repository — fetch it to compare content"
+	case err != nil:
+		return "", "the graded commit's content tree could not be read: " + err.Error()
+	}
+	return tree, ""
 }
 
 // minSigPrefixLen is the shortest sig prefix a receipt may name a finding by.

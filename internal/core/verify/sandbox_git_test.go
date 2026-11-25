@@ -37,8 +37,10 @@ func TestSandboxGitDirsFollowsPointers(t *testing.T) {
 
 // TestSandboxArgvMakesGitControlReadOnly pins the Linux shape: every git
 // control directory inside the reviewed root gets a read-only bind right
-// after the writable root bind (so it wins), and one outside the root adds
-// nothing because `--ro-bind / /` already covers it.
+// after the writable root bind (so it wins), and one outside the root is
+// bound read-only again after the private /tmp and /run mounts, which would
+// otherwise hide a checkout's git directory that lives under them (the
+// snapshot verify runs in keeps its git directory in the source checkout).
 func TestSandboxArgvMakesGitControlReadOnly(t *testing.T) {
 	root, outside := t.TempDir(), t.TempDir()
 	gitdir := filepath.Join(root, "meta", "worktrees", "wt")
@@ -49,6 +51,12 @@ func TestSandboxArgvMakesGitControlReadOnly(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("bwrapArgv: %v", ref)
 	}
+	// The pointer walk follows links, so the outside directory is bound by its
+	// physical spelling (/var is a link on macOS).
+	physical, err := filepath.EvalSymlinks(outside)
+	if err != nil {
+		t.Fatal(err)
+	}
 	// The git directory sits under the top-level `meta`, so `meta` is what
 	// gets pinned: a bind of the deep directory alone would leave `meta`
 	// renamable and replaceable by a link.
@@ -56,6 +64,7 @@ func TestSandboxArgvMakesGitControlReadOnly(t *testing.T) {
 		"--bind", root, root,
 		"--ro-bind", filepath.Join(root, ".git"), filepath.Join(root, ".git"),
 		"--ro-bind", filepath.Join(root, "meta"), filepath.Join(root, "meta"),
+		"--ro-bind", physical, physical,
 		"--unshare-net",
 	}
 	start := slices.Index(argv, "--bind")

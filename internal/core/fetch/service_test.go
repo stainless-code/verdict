@@ -28,6 +28,9 @@ type scriptCommander struct {
 	calls [][]string
 	stdin []string
 	env   [][]string
+	// untreeable makes the content-tree index step fail the way git does
+	// on content it cannot index (an untracked nested repo with no commit).
+	untreeable bool
 }
 
 // scriptResult is one canned spawn: the streams plus the failure flag.
@@ -45,9 +48,38 @@ const testPatchID = "9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d 000000000000000000
 // patchIDKey is the script map key for the identity spawn.
 const patchIDKey = "git\x00patch-id\x00--stable"
 
+// testContentTree is the tree id the script seam answers for the reviewed
+// content, so content_tree stays deterministic without scripting every
+// fetch-local test's git reads.
+const testContentTree = "c0ffee0000000000000000000000000000000000"
+
+// contentTreeAnswer answers the git reads that name the reviewed content
+// (contenttree.Git always passes -C <root>); they stay out of calls, so a
+// test pinning the fetch argv sequence keeps pinning just that.
+func (s *scriptCommander) contentTreeAnswer(argv []string) (core.Result, bool) {
+	if len(argv) < 4 || argv[0] != "git" || argv[1] != "-C" {
+		return core.Result{}, false
+	}
+	switch argv[3] {
+	case "add":
+		if s.untreeable {
+			return core.Result{ExitCode: 128, Stderr: "error: 'nested/' does not have a commit checked out\n"}, true
+		}
+		return core.Result{}, true
+	case "rev-parse", "write-tree":
+		return core.Result{Stdout: testContentTree + "\n"}, true
+	case "read-tree", "reset", "rm":
+		return core.Result{}, true
+	}
+	return core.Result{}, false
+}
+
 // Run records argv/stdin/env and replays the canned result.
 func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	s.t.Helper()
+	if res, ok := s.contentTreeAnswer(cmd.Argv); ok {
+		return res, nil
+	}
 	s.calls = append(s.calls, append([]string{}, cmd.Argv...))
 	s.stdin = append(s.stdin, readTestStdin(s.t, cmd.Stdin))
 	s.env = append(s.env, cmd.Env)

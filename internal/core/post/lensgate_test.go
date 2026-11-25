@@ -175,8 +175,8 @@ func jsonStr(s string) string {
 // gate must accept only the exact run/group/head/root it names.
 func deepReceipt(run, inputs, group, head, root string, passed bool, exit int) string {
 	return `{"schema_version":"1","run":` + jsonStr(run) + `,"inputs_sha256":` + jsonStr(inputs) +
-		`,"group":` + jsonStr(group) + `,"reviewed_head":` + jsonStr(head) + `,"execution_head":` +
-		jsonStr(head) + `,"repo_root":` + jsonStr(root) +
+		`,"group":` + jsonStr(group) + `,"reviewed_head":` + jsonStr(head) + `,"tree":` +
+		jsonStr(strings.Repeat("7", 40)) + `,"repo_root":` + jsonStr(root) +
 		`,"command":"go test ./...","at":"2026-11-06T00:00:00Z","output_tail":"ok","exit":` +
 		strconv.Itoa(exit) + `,"timed_out":false,"status":"` + receiptStatus(passed) + `","passed":` +
 		strconv.FormatBool(passed) + `}`
@@ -285,7 +285,7 @@ func contradictoryState(t *testing.T, head, facts string) *state {
 		t.Fatalf("CanonicalRoot: %v", ref)
 	}
 	body := `{"schema_version":"1","run":"7","inputs_sha256":"feedface","group":"group-a","reviewed_head":` +
-		jsonStr(head) + `,"execution_head":` + jsonStr(head) + `,"repo_root":` + jsonStr(root) +
+		jsonStr(head) + `,"tree":` + jsonStr(strings.Repeat("7", 40)) + `,"repo_root":` + jsonStr(root) +
 		`,"command":"true","at":"2026-11-06T00:00:00Z","output_tail":"","` + facts + `}`
 	if err := os.WriteFile(filepath.Join(st.dir, "validation-group-a.json"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)

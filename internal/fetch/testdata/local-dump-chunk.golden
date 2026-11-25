@@ -1,5 +1,5 @@
 exit: 0
---- stdout (size=1005426 sha256=344d44f79ab297fe21d695334b50a15100f6d2fd9e408a00e1648823d07e0081) ---
+--- stdout (size=1005488 sha256=8c54220f7d0bf0e60a99c1381176666768458733b4d3c7845e39975d5e011b44) ---
 --- stderr ---
 » estimate: no comparable past runs — cost unknown (no usable .verdict/state/*/cost.json records yet)
 » chunking opted in for group ec11a9b04f31a575e049e290eed08a392af88a7521e423b524bc85baea6f5220 — slicing that group's over-cap diff (999309 bytes, cap 512000)
@@ -310,8 +310,8 @@ rather than becoming ground truth.
 --- file C/.verdict/state/local-demo/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "07998983bb32abd51611405ada6c9f5b344c61d35352ddbd76162ed3d3c3d5f4",
-  "prompts_hash": "937a465d454db3538788a18ff9148ee4115f23f31c39a4d26cc6fe9ced239d54",
+  "run_id": "e44a0832d09a0a9fe169137978f83a133d4a5fa723de8a2cd737b06e4f1aa83f",
+  "prompts_hash": "f6e5ef704a6220be9e036dfa17e8d641ea6cd14019548f98c4411117b7a7a76d",
   "inputs": [
     {
       "kind": "prompt",
@@ -415,8 +415,8 @@ rather than becoming ground truth.
       "kind": "prompt",
       "name": "prompts/review.md",
       "status": "included",
-      "sha256": "95f6a855d9223ff997e80b228737d59ab60a05db6a91a96de8856fbabbfafde4",
-      "bytes": 20492
+      "sha256": "168b2792d0d366b950fd71a04575505c118d4214ebad9eadf5df060a49697924",
+      "bytes": 20517
     },
     {
       "kind": "prompt",
@@ -623,8 +623,8 @@ rather than becoming ground truth.
       "kind": "bundle",
       "name": "refs/review-checklist.md",
       "status": "included",
-      "sha256": "beaaaee7b3b89b6b7b0844bb5fcdd5c6fba9549c65881b48801eccbdd0f2096c",
-      "bytes": 19284
+      "sha256": "30201066cf4b60f5ef23c7a4fe320e1b779ec6788c6a705e92b5a38d4b10065a",
+      "bytes": 19309
     },
     {
       "kind": "bundle",
@@ -1323,6 +1323,7 @@ rather than becoming ground truth.
   "range": "HEAD:worktree",
   "dirty": true,
   "worktree_diff_sha256": "6be0f6ab7fddf8db183954a832e4fb33dd8e97290871780933018e373a1b4c0c",
+  "content_tree": "97f1098a60046e1762e5476bb5ee37e8fb7952d3",
   "diff_sha256": "6be0f6ab7fddf8db183954a832e4fb33dd8e97290871780933018e373a1b4c0c",
   "patch_id": "87f813ee7f72975271f7c5bea419fa5483ad836f",
   "patch_id_kind": "git-patch-id",

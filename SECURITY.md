@@ -37,7 +37,8 @@ In scope (highest priority first):
   channel acts for the command), the denial of the `lsopen`,
   `appleevent-send`, `job-creation`, `distributed-notification-post`, and
   cross-process `signal` operations, the denial of every write outside the
-  reviewed root and the per-run private `TMPDIR`, and the read denial of the
+  reviewed root (the snapshot `verify` runs in, or the checkout itself when
+  git cannot snapshot it) and the per-run private `TMPDIR`, and the read denial of the
   credential table and the shared host temp roots; the credential-path hiding
   on both; and the `sandbox-unavailable` refusal that never degrades to an
   unwrapped run or to the network-only mode. **`sandboxed` means exactly that
@@ -125,12 +126,15 @@ In scope (highest priority first):
 - The verification receipt: `record` and `post` flip a `VERIFIED` claim to
   `addressed` only on the bundle's `verify-receipt.json`, which
   `verdict verify` alone writes. It binds the command, the finding, and the
-  clean checked-out head, and verify writes it only through the bundle
-  directory it pinned before the command ran (a symlinked bundle refuses; a
-  bundle moved or replaced mid-run records nothing). A path where a claim flips without a passing receipt
-  for its command, finding, and the graded head — a pass read from
-  `patch.json`, a `triage[]` rationale, a dirty or moving tree — is a
-  vulnerability. The receipt defends against claims nobody observed, not
+  git tree of the content the command ran on — a snapshot checkout of that
+  content, so edits to the user's checkout during the run cannot change what
+  was tested — and verify writes it only through the bundle directory it
+  pinned before the command ran (a symlinked bundle refuses; a bundle moved
+  or replaced mid-run records nothing). A path where a claim flips without a
+  passing receipt for its command, finding, and the graded content's tree — a
+  pass read from `patch.json`, a `triage[]` rationale, content that changed
+  after verify, or a command that reaches the user's checkout from the
+  snapshot and changes what the receipt names — is a vulnerability. The receipt defends against claims nobody observed, not
   against a process with the operator's own file access: such a process
   can rewrite the receipt or `findings.json` directly, so forging the
   receipt that way is out of scope.

@@ -26,36 +26,42 @@ import (
 )
 
 type state struct { //nolint:govet // field grouping documents the merge dimensions; alignment is irrelevant here
-	confidence      any
-	security        any
-	risk            *core.RiskClaim
-	review          *jq.Obj
-	coverage        *coverage.Summary
-	evidence        *core.EvidenceReceipt
-	diagram         diagram.Result
-	controls        *controls.Snapshot
-	run             *config.RunState
-	kb              *kb.Ctx
-	forces          *core.GlobalForces
-	progress        core.Progress
-	effective       core.Effective
-	minSeverity     string
-	cmd             string
-	repo            string
-	pr              string
-	env             map[string]string
-	now             string
-	findingsFile    string
-	marker          string
-	dir             string
-	receipt         *core.ExcludedFile
-	reviewFile      string
-	root            string
-	repoRoot        string
-	anchorHunks     string
-	headShort       string
-	prov            string
-	headFull        string
+	confidence   any
+	security     any
+	risk         *core.RiskClaim
+	review       *jq.Obj
+	coverage     *coverage.Summary
+	evidence     *core.EvidenceReceipt
+	diagram      diagram.Result
+	controls     *controls.Snapshot
+	run          *config.RunState
+	kb           *kb.Ctx
+	forces       *core.GlobalForces
+	progress     core.Progress
+	effective    core.Effective
+	minSeverity  string
+	cmd          string
+	repo         string
+	pr           string
+	env          map[string]string
+	now          string
+	findingsFile string
+	marker       string
+	dir          string
+	receipt      *core.ExcludedFile
+	reviewFile   string
+	root         string
+	repoRoot     string
+	anchorHunks  string
+	headShort    string
+	prov         string
+	headFull     string
+	// readTree reads the graded content's tree; tree, treeGap, and treeRead
+	// memoize it for the run (see gradedTree).
+	readTree        func() (tree, gap string)
+	tree            string
+	treeGap         string
+	treeRead        bool
 	kept            []any
 	keptSigs        []string
 	movedSigs       []string

@@ -11,6 +11,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
+	"github.com/stainless-code/verdict/internal/contenttree"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/jq"
@@ -57,6 +58,14 @@ func RunGroup(ctx context.Context, req *Request, dir, now string) (*Response, *c
 	if ref := st.prepareEnv(dir, run.rs.BaseSHA); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
+	// The command runs in a snapshot checkout of the reviewed content, so
+	// nothing done to the user's checkout while it runs changes what it tested.
+	snap, err := checkoutTree(ctx, run.git, run.tree, dir)
+	if err != nil {
+		return nil, st.withWarnings(failed(fmt.Errorf("snapshot the reviewed content: %w", err)))
+	}
+	defer st.removeSnapshot(ctx, snap)
+	run.workDir = snap.dir
 	if ref := st.bindSandbox(ctx, run); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -66,7 +75,7 @@ func RunGroup(ctx context.Context, req *Request, dir, now string) (*Response, *c
 // bindSandbox prepares the opt-in wrapper before any receipt exists, so an
 // unenforceable sandbox refuses without inventing evidence.
 func (st *state) bindSandbox(ctx context.Context, run *validationRun) *core.RefusalError {
-	sb, ref := st.sandboxed(ctx, run.commander, run.root, run.root)
+	sb, ref := st.sandboxed(ctx, run.commander, run.workDir, run.workDir)
 	if ref != nil {
 		return ref
 	}
@@ -85,7 +94,12 @@ type validationRun struct {
 	receiptPath  string
 	root         string
 	reviewedHead string
-	timeout      int
+	// tree is the reviewed content's tree id, proven equal to the checkout's
+	// content before anything ran; workDir is its snapshot checkout.
+	tree    string
+	workDir string
+	git     contenttree.Git
+	timeout int
 }
 
 // prepareValidation performs every pre-execution check in the gate order the
@@ -97,6 +111,7 @@ func (st *state) prepareValidation(ctx context.Context, dir string, req *Request
 	if ref != nil {
 		return nil, ref
 	}
+	run.git = contenttree.Git{Cmdr: run.commander, Root: run.root, Env: req.Environ}
 	if ref := bindReviewedHead(ctx, run, dir); ref != nil {
 		return nil, ref
 	}
@@ -162,26 +177,27 @@ func bindReviewedHead(ctx context.Context, run *validationRun, dir string) *core
 		return &core.RefusalError{Code: codeHeadMismatch, Message: fmt.Sprintf(
 			"bundle %s carries no reviewed head to bind validation to (re-fetch it)", dir)}
 	}
-	before, ref := gitHead(ctx, run.commander, run.root)
-	if ref != nil {
-		return ref
-	}
-	if before != reviewedHead {
+	// The receipt certifies content, so the checkout's content — committed or
+	// not — must be the reviewed commit's tree; HEAD itself does not matter.
+	want, err := run.git.Commit(ctx, reviewedHead)
+	if errors.Is(err, contenttree.ErrUnresolved) {
 		return &core.RefusalError{Code: codeHeadMismatch, Message: fmt.Sprintf(
-			"checked-out head %s is not the reviewed head %s — validation runs on the reviewed commit only",
-			readcommon.ShortSHA(before), readcommon.ShortSHA(reviewedHead))}
+			"the reviewed head %s is not in the local repository — fetch it, then validate",
+			readcommon.ShortSHA(reviewedHead))}
 	}
-	// HEAD alone says nothing about uncommitted edits, so a receipt can only
-	// certify the reviewed commit when the tree it runs on is that commit.
-	dirty, ref := treeDirty(ctx, run.commander, run.root)
-	if ref != nil {
-		return ref
+	if err != nil {
+		return failed(err)
 	}
-	if dirty {
+	tree, err := run.git.Worktree(ctx)
+	if err != nil {
+		return failed(err)
+	}
+	if tree != want {
 		return &core.RefusalError{Code: codeHeadMismatch, Message: fmt.Sprintf(
-			"the working tree at %s has uncommitted changes — commit or stash them; "+
-				"validation certifies the reviewed commit only", run.root)}
+			"the content at %s is not the reviewed commit %s's — check out the reviewed head with no "+
+				"other changes; validation certifies the reviewed content only", run.root, readcommon.ShortSHA(reviewedHead))}
 	}
+	run.tree = tree
 	run.reviewedHead = reviewedHead
 	return nil
 }
@@ -195,7 +211,7 @@ func (st *state) executeValidation(ctx context.Context, dir, now string, req *Re
 	}
 	receipt := core.ValidationReceipt{
 		SchemaVersion: validationSchema, Run: run.rs.Name, InputsSHA256: run.rs.InputsSHA256,
-		Group: run.group.ID, ReviewedHead: run.reviewedHead, ExecutionHead: run.reviewedHead,
+		Group: run.group.ID, ReviewedHead: run.reviewedHead, Tree: run.tree,
 		RepoRoot: run.root, Command: req.Command, At: now, Sandboxed: run.sandbox.full(),
 		SandboxMechanism: run.sandbox.name(),
 	}
@@ -210,21 +226,20 @@ func (st *state) executeValidation(ctx context.Context, dir, now string, req *Re
 	defer bundle.close()
 	st.human(fmt.Sprintf("» group validation %s: %s in %s (timeout %ss)",
 		run.group.ID, req.Command, run.root, req.TimeoutRaw))
-	res, runRef := runCommand(ctx, run.commander, req.Command, run.timeout, run.root, st.childEnv(), run.sandbox)
+	res, runRef := runCommand(ctx, run.commander, req.Command, run.timeout, commandDir(run.workDir, run.sandbox),
+		st.childEnv(), run.sandbox)
 	st.releaseSandbox(run.sandbox)
 	if ref := bundle.unchanged(); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
 	st.applyExecution(ctx, req, &receipt, res, runRef)
-	after, headRef := gitHead(ctx, run.commander, run.root)
-	st.applyPostChecks(dir, run, &receipt, after, headRef)
-	applyTreeCheck(ctx, run, &receipt)
+	st.applyPostChecks(dir, run, &receipt)
 	if ref := bundle.writeValidationReceipt(filepath.Base(run.receiptPath), &receipt); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
 	st.human(fmt.Sprintf("» exit=%d timed_out=%t status=%s recorded into %s",
 		receipt.Exit, receipt.TimedOut, receipt.Status, run.receiptPath))
-	st.warnOutcomes(&receipt, runRef, headRef)
+	st.warnOutcomes(&receipt, runRef)
 	return st.groupResponse(dir, run.receiptPath, &receipt), nil
 }
 
@@ -262,48 +277,20 @@ func (st *state) applyExecution(ctx context.Context, req *Request,
 	}
 }
 
-// applyPostChecks re-reads the head and the capture after execution and
-// classifies the final status from those facts. A later failure always
-// replaces an earlier success, and the head is never fabricated.
-func (st *state) applyPostChecks(dir string, run *validationRun, receipt *core.ValidationReceipt,
-	after string, headRef *core.RefusalError,
-) {
-	if headRef != nil {
-		receipt.Status = statusUnavailable
-		receipt.Failure = headRef.Message
-	}
-	receipt.ExecutionHead = after
+// applyPostChecks re-reads the capture after execution and classifies the
+// final status from the recorded facts: a later failure always replaces an
+// earlier success. The command ran in a snapshot, so the checkout's head and
+// tree no longer bear on what it tested.
+func (st *state) applyPostChecks(dir string, run *validationRun, receipt *core.ValidationReceipt) {
 	if ref := st.recheckCapture(dir, run.rs); ref != nil {
 		receipt.Status = statusUnavailable
 		receipt.Failure = ref.Message
-	}
-	if after != "" && after != run.reviewedHead {
-		receipt.Status = statusStaleHead
-		receipt.Failure = fmt.Sprintf("checked-out head moved to %s during validation", readcommon.ShortSHA(after))
 	}
 	classifyReceipt(receipt)
 }
 
 // classifyReceipt derives the final status only from recorded facts: a clean
 // exit passes, and anything else fails with the real exit named.
-// applyTreeCheck re-reads the working tree after the command: a tree left
-// with uncommitted changes means the run certified no commit, so the receipt
-// fails and binds no execution head.
-func applyTreeCheck(ctx context.Context, run *validationRun, receipt *core.ValidationReceipt) {
-	dirty, ref := treeDirty(ctx, run.commander, run.root)
-	switch {
-	case ref != nil:
-		receipt.Status, receipt.Failure = statusUnavailable, ref.Message
-	case dirty:
-		receipt.Status = statusStaleHead
-		receipt.Failure = "the working tree had uncommitted changes after validation — it certifies no commit"
-	default:
-		return
-	}
-	receipt.ExecutionHead = ""
-	receipt.Passed = false
-}
-
 func classifyReceipt(receipt *core.ValidationReceipt) {
 	if receipt.Status == "" {
 		receipt.Status = statusFailed
@@ -512,33 +499,9 @@ func ReceiptCurrent(r *core.ValidationReceipt, run, inputsSHA, group, head strin
 	// while recording a nonzero exit, a timeout, or a non-passing status is
 	// contradictory evidence and never approves.
 	return r.Passed && r.Status == statusPassed && r.Exit == 0 && !r.TimedOut &&
-		r.ReviewedHead != "" && r.ExecutionHead != "" &&
+		r.ReviewedHead != "" && r.Tree != "" &&
 		r.Run == run && r.InputsSHA256 == inputsSHA &&
-		r.Group == group && r.ReviewedHead == head && r.ExecutionHead == head
-}
-
-// gitHead reads the checked-out commit at root through the injected
-// commander: the head the validation command would actually run on.
-func gitHead(ctx context.Context, commander core.Commander, root string) (string, *core.RefusalError) {
-	head, exit, err := readcommon.CheckoutHead(ctx, commander, root)
-	if err != nil {
-		return "", failed(err)
-	}
-	if exit != 0 {
-		return "", &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(
-			"could not read the checked-out head at %s (git exit %d)", root, exit)}
-	}
-	return head, nil
-}
-
-// firstLine trims the head read to its commit line.
-func firstLine(s string) string {
-	for i := range len(s) {
-		if s[i] == '\n' || s[i] == '\r' {
-			return s[:i]
-		}
-	}
-	return s
+		r.Group == group && r.ReviewedHead == head
 }
 
 // groupResponse renders the group-mode outcome; only a matching head and a
@@ -554,7 +517,7 @@ func (st *state) groupResponse(dir, receiptPath string, receipt *core.Validation
 		At:   receipt.At,
 		Data: &core.VerifyData{
 			Exit: receipt.Exit, TimedOut: receipt.TimedOut, OutputTail: receipt.OutputTail,
-			Group: receipt.Group, Head: receipt.ExecutionHead, Receipt: receiptPath,
+			Group: receipt.Group, Head: receipt.ReviewedHead, Tree: receipt.Tree, Receipt: receiptPath,
 			Sandboxed: receipt.Sandboxed, SandboxMechanism: receipt.SandboxMechanism,
 		},
 		Warnings: st.warnings,
@@ -621,7 +584,7 @@ func validationState(r *core.ValidationReceipt, found bool, ref *core.RefusalErr
 		return "pending"
 	case ReceiptCurrent(r, rs.Name, rs.InputsSHA256, group, head) && r.RepoRoot == root:
 		return statusPassed
-	case r.ExecutionHead != head || r.ReviewedHead != head:
+	case r.ReviewedHead != head:
 		return "stale"
 	case r.Run != rs.Name || r.InputsSHA256 != rs.InputsSHA256 || r.RepoRoot != root:
 		return "stale"
@@ -637,6 +600,6 @@ func validationGapDetail(state string, r *core.ValidationReceipt, ref *core.Refu
 	case "pending":
 		return "no validation receipt — run verify --group " + group + " --command <cmd> at the reviewed head"
 	}
-	return "receipt records " + r.Status + " for head " + readcommon.ShortSHA(r.ExecutionHead) +
+	return "receipt records " + r.Status + " for head " + readcommon.ShortSHA(r.ReviewedHead) +
 		"; not current evidence — re-run verify --group " + group + " --command <cmd>"
 }

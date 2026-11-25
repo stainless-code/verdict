@@ -73,7 +73,11 @@ type deadlineCommander struct {
 	has  bool
 }
 
-func (d *deadlineCommander) Run(ctx context.Context, _ *core.Command) (core.Result, error) {
+func (d *deadlineCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
+	// verify's own git reads are not the watchdog spawn.
+	if res, ok := gitAnswer(cmd, ""); ok {
+		return res, nil
+	}
 	var dl time.Time
 	dl, d.has = ctx.Deadline()
 	d.left = time.Until(dl)

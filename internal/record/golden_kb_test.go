@@ -12,7 +12,7 @@ import (
 func kbBundle(t *testing.T, dir, review string, kbLines []string) {
 	t.Helper()
 	files := map[string]string{
-		".verdict/state/local-kb/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
+		".verdict/state/local-kb/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work","content_tree":"7777777777777777777777777777777777777777"}`,
 		".verdict/state/local-kb/full.diff":   genDiff(4),
 		".verdict/state/local-kb/review.json": review,
 	}

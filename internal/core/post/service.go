@@ -296,7 +296,7 @@ func (st *state) prepare(ctx context.Context) *core.RefusalError {
 	if st.flags.DryRun {
 		st.findingsFile = st.dir + "/findings.dryrun.json"
 	}
-	if ref := st.merge(); ref != nil {
+	if ref := st.merge(ctx); ref != nil {
 		return ref
 	}
 	return st.settledSecretGate()
@@ -469,14 +469,14 @@ func (st *state) applyApprovedFlag() {
 	}
 }
 
-func (st *state) merge() *core.RefusalError {
+func (st *state) merge(ctx context.Context) *core.RefusalError {
 	caps := core.CapabilitiesFor(st.provider())
 	rt := st.mergeRuntime()
 	rs, ref := config.VerifyRunState(st.dir)
 	if ref != nil {
 		return ref
 	}
-	res, err := recordcore.Merge(&rt, &recordcore.MergeParams{
+	res, err := recordcore.Merge(ctx, &rt, &recordcore.MergeParams{
 		Dir: st.dir, Prov: st.provider(),
 		HeadFull: st.commitID,
 		Review:   st.review, ReviewFile: st.flags.ReviewFile,

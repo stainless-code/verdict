@@ -389,7 +389,7 @@ var publishedSemantics = map[string]string{
 	// Loop spend receipts: prose only. The loopData stop and cost_usd
 	// descriptions name the budget.json receipt every spawn leaves, the
 	// budget-unknown stop, and the resolved-sig plateau rule.
-	"envelope.schema.json": "f014c7d48dfd165e0d405eed92e259b4eb809af1c3d9da99f2aef9ecac62daf0",
+	"envelope.schema.json": "47c85f0fee5e0731b5d5eb912b3639d9de963494156c2a528f35d540bc9be4e0",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -631,7 +631,7 @@ var publishedSemantics = map[string]string{
 	// runtime only warns on (type enum, nodes minItems, title/label/id
 	// lengths), so a schema-validating client accepts every review the CLI
 	// accepts. Loosening only: no accepted document is rejected now.
-	"review.schema.json": "cf7f785dd43f33798d20ae5b81aff4cf9165b95565941119f194042c71eb795d",
+	"review.schema.json": "f678fe4490225175e3d31c2340aeb843ad0a06e618d69be528d870c4b58fdc95",
 	// additive selected.schema.json (new bundle document: the reaction-scoped
 	// fix selection fetch writes and fix --selected reads). A new document
 	// only: no existing schema property, required key, enum, or type changed.

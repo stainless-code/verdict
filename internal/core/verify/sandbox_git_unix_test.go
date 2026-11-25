@@ -550,6 +550,67 @@ func requireSubmoduleObjectsHardlinked(t *testing.T, gitdir string) {
 	}
 }
 
+// TestSandboxReexposesALinkedWorktreesGitDir pins both shapes for a real
+// linked worktree — the snapshot verify runs the command in — whose git
+// directory sits in the source checkout: bwrap binds the worktree's git
+// directory and the common directory read-only after the private /tmp, and
+// the Seatbelt profile re-allows reads of them and nothing else.
+func TestSandboxReexposesALinkedWorktreesGitDir(t *testing.T) {
+	repo := filepath.Join(t.TempDir(), "repo")
+	gitCommittedRepo(t, repo)
+	wt := filepath.Join(repo, "state", "snap")
+	runGit(t, repo, "worktree", "add", "--detach", "-q", wt)
+	// The pointer walk resolves links, so the dirs carry their physical
+	// spelling (/var is a link on macOS).
+	common, err := filepath.EvalSymlinks(filepath.Join(repo, ".git"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dirs := []string{filepath.Join(common, "worktrees", "snap"), common}
+	if got := sandboxGitOutsideDirs(wt); !slices.Equal(got, dirs) {
+		t.Fatalf("outside git dirs = %v, want %v", got, dirs)
+	}
+	requireReadOnlyBindsAfterTmp(t, wt, dirs)
+	requireReadOnlyProfileRules(t, wt, dirs)
+}
+
+// requireReadOnlyBindsAfterTmp checks each dir is bound read-only after the
+// private /tmp mount, which would otherwise hide it.
+func requireReadOnlyBindsAfterTmp(t *testing.T, root string, dirs []string) {
+	t.Helper()
+	argv, ref := bwrapArgv(root, homeInputs(t.TempDir()))
+	if ref != nil {
+		t.Fatalf("bwrapArgv: %v", ref)
+	}
+	joined := strings.Join(argv, "\x00")
+	tmpfs := strings.Index(joined, "--tmpfs\x00/tmp")
+	for _, dir := range dirs {
+		if bind := strings.Index(joined, "--ro-bind\x00"+dir+"\x00"+dir+"\x00"); bind < tmpfs {
+			t.Errorf("argv = %v, want %s bound read-only after the private /tmp", argv, dir)
+		}
+	}
+}
+
+// requireReadOnlyProfileRules checks the Seatbelt profile re-allows reads of
+// each dir and never writes.
+func requireReadOnlyProfileRules(t *testing.T, root string, dirs []string) {
+	t.Helper()
+	profile, ref := sandboxExecProfile(&sandboxProfileInputs{
+		root: root, private: t.TempDir(), gitReads: sandboxGitOutsideDirs(root),
+	})
+	if ref != nil {
+		t.Fatalf("sandboxExecProfile: %v", ref)
+	}
+	for _, dir := range dirs {
+		if !strings.Contains(profile, `(allow file-read* (subpath "`+dir+`"))`) {
+			t.Errorf("profile misses the read allow for %s", dir)
+		}
+		if strings.Contains(profile, `(allow file-read* file-write* (subpath "`+dir+`"))`) {
+			t.Errorf("profile allows writes to %s", dir)
+		}
+	}
+}
+
 // runGit runs git in dir with a pinned environment (testenv.Base: no
 // harness or secret leaks, the repo's fixed git config) plus identity,
 // signing off, and local-path submodules allowed.

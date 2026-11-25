@@ -301,9 +301,10 @@ func usageText() string {
 		"        [--sandbox | --sandbox-network-only] [--env-allowlist <name[,name...]>] [--json]\n" +
 		"    With neither --group nor --command, execute patch.json verifyCmd with a watchdog and\n" +
 		"    record exit + tail in the patch record, and write verify-receipt.json: the command,\n" +
-		"    the finding sig patch.json names, exit, timeout, and the checked-out head when the\n" +
-		"    tree is clean and unmoved — the receipt record/post need before a VERIFIED claim\n" +
-		"    flips a finding addressed. The command runs in the repo root.\n" +
+		"    the finding sig patch.json names, exit, timeout, and the tree id of the content it\n" +
+		"    ran on — the receipt record/post need before a VERIFIED claim flips a finding\n" +
+		"    addressed. The command runs in a snapshot checkout of that content (uncommitted\n" +
+		"    edits included), never in the user's checkout.\n" +
 		"    --group and --command are required together:\n" +
 		"    --command runs for the named deep plan group at the reviewed head and writes\n" +
 		"    validation-<group>.json (patch.json stays untouched).\n" +
@@ -312,10 +313,11 @@ func usageText() string {
 		"    Runs in its own process group (timeout kills the tree); known secret values\n" +
 		"    are redacted from the recorded tail.\n" +
 		"    --sandbox runs the command under an enforced sandbox: bwrap on Linux (no network,\n" +
-		"    empty ~/.aws and ~/.ssh, a writable reviewed root, a private /tmp), and\n" +
+		"    empty ~/.aws and ~/.ssh, a writable snapshot root, a private /tmp), and\n" +
 		"    sandbox-exec on macOS (no network, loopback included; no Mach services; writes\n" +
-		"    only to the reviewed root and a private TMPDIR; credential paths and host /tmp\n" +
-		"    denied; no mount or PID namespace).\n" +
+		"    only to the snapshot and a private TMPDIR; credential paths and host /tmp\n" +
+		"    denied; no mount or PID namespace). Your checkout is read-only unless git cannot\n" +
+		"    snapshot it, and then the command runs in it.\n" +
 		"    --sandbox-network-only is the Linux unshare --net opt-in for hosts without bwrap:\n" +
 		"    network isolation alone — no mount, filesystem, or PID isolation, so credential\n" +
 		"    paths, /tmp, the host /proc, and unix sockets (docker.sock, ssh-agent) stay\n" +

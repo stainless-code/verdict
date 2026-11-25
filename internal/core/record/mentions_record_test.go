@@ -66,7 +66,7 @@ func mergeMentionBody(t *testing.T, slug, body string) string {
 		t.Fatalf("controls gate: %v", ref)
 	}
 	c := &testkit.Collector{}
-	res, merr := recordcore.Merge(testRuntime(c), &recordcore.MergeParams{
+	res, merr := recordcore.Merge(t.Context(), testRuntime(c), &recordcore.MergeParams{
 		Dir:          dir,
 		Prov:         "local",
 		HeadFull:     mentionHead,
@@ -176,7 +176,7 @@ func mergeMentionEntry(t *testing.T, slug, commentBody string) string {
 	if ref != nil {
 		t.Fatalf("controls gate: %v", ref)
 	}
-	res, merr := recordcore.Merge(testRuntime(&testkit.Collector{}), &recordcore.MergeParams{
+	res, merr := recordcore.Merge(t.Context(), testRuntime(&testkit.Collector{}), &recordcore.MergeParams{
 		Dir: dir, Prov: "local", HeadFull: mentionHead, Review: review,
 		ReviewFile: dir + "/review.json", Root: ".", RepoRoot: ".",
 		FindingsFile: dir + "/findings.json", DryRun: true,

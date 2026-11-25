@@ -341,10 +341,11 @@ cat > "$EVAL_SANDBOX/.verdict/state/local-k6/verification.json" <<EOF
 [{"sig":"$sigA","verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"true"}]
 EOF
 # FIXTURE: the tool-only receipt `verdict verify` writes after a clean pass of
-# `true` at the bundle head. The fixture head is synthetic, so a real verify
-# could not bind it; gate.sh drives the real verify -> record path.
-jq -n --arg h "$EVAL_FIXTURE_HEAD" \
-  '{schema_version:"1",command:"true",head:$h,at:"2026-01-01T00:00:00Z",exit:0,timed_out:false}' \
+# `true` on the content the bundle captured (its source.json content_tree). The
+# fixture bundle was produced in another checkout, so a real verify here could
+# not name that content; gate.sh drives the real verify -> record path.
+jq -n --arg t "$(jq -r .content_tree "$EVAL_SANDBOX/.verdict/state/local-k6/source.json")" \
+  '{schema_version:"1",command:"true",tree:$t,at:"2026-01-01T00:00:00Z",exit:0,timed_out:false}' \
   > "$EVAL_SANDBOX/.verdict/state/local-k6/verify-receipt.json"
 run_review record acme/local-k6 local-k6 --json
 if [ "$EVAL_STATUS" -eq 0 ]; then

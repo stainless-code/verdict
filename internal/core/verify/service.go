@@ -150,10 +150,14 @@ func (st *state) execute(ctx context.Context, bundle *bundleHandle, now, vcmd st
 	if !coreexec.WatchdogEnforced() {
 		st.warn("no ps(1) — timeout unenforced for this run")
 	}
-	// The command runs where the tree is probed, the repo root, as the deep
-	// group path does: a receipt's head must describe the tree the command saw.
+	// The command runs in a snapshot checkout of the content, and the receipt
+	// names that content's tree: what record and post compare with the tree
+	// they grade, whatever happens to the user's checkout meanwhile.
 	root := st.req.RepoRootPath()
-	sb, ref := st.sandboxed(ctx, commander, root, root)
+	snap := st.takeSnapshot(ctx, commander, root, dir)
+	defer st.removeSnapshot(ctx, snap)
+	runRoot, tree := snap.runIn(root)
+	sb, ref := st.sandboxed(ctx, commander, runRoot, runRoot)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -164,10 +168,9 @@ func (st *state) execute(ctx context.Context, bundle *bundleHandle, now, vcmd st
 		st.releaseSandbox(sb)
 		return nil, st.withWarnings(ref)
 	}
-	receipt := &core.VerifyReceipt{SchemaVersion: receiptSchema, Command: vcmd, Sig: bundle.sig, At: now}
-	before := probeTree(ctx, commander, root)
+	receipt := &core.VerifyReceipt{SchemaVersion: receiptSchema, Command: vcmd, Sig: bundle.sig, Tree: tree, At: now}
 	st.human(fmt.Sprintf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
-	res, ref := runCommand(ctx, commander, vcmd, timeout, commandDir(root, sb), st.childEnv(), sb)
+	res, ref := runCommand(ctx, commander, vcmd, timeout, commandDir(runRoot, sb), st.childEnv(), sb)
 	st.releaseSandbox(sb)
 	if ctx.Err() != nil {
 		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: msgCanceled})
@@ -175,7 +178,6 @@ func (st *state) execute(ctx context.Context, bundle *bundleHandle, now, vcmd st
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	receipt.Head = st.boundHead(root, before, probeTree(ctx, commander, root))
 	receipt.Exit, receipt.TimedOut = res.ExitCode, res.TimedOut
 	return st.record(bundle, now, res, sb, receipt)
 }
@@ -320,7 +322,7 @@ func (st *state) record(bundle *bundleHandle, now string, res core.Result, sb *s
 	}
 	st.human(fmt.Sprintf("receipt: %s/%s", dir, ReceiptFile))
 	resp := st.response(dir, now, res.ExitCode, res.TimedOut, tail, sb)
-	resp.Data.Head, resp.Data.Receipt = receipt.Head, dir+"/"+ReceiptFile
+	resp.Data.Tree, resp.Data.Receipt = receipt.Tree, dir+"/"+ReceiptFile
 	return resp, nil
 }
 

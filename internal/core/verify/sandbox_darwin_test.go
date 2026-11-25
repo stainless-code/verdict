@@ -368,6 +368,45 @@ func TestSandboxExecDeniesSeparateGitDirWrites(t *testing.T) {
 	assertGitStillWorks(t, sb, env, root)
 }
 
+// TestSandboxExecReadsALinkedWorktreesGitDir proves the snapshot shape
+// against the real Seatbelt engine: verify runs the command in a linked
+// worktree whose git directory lives in the source checkout, here under a
+// denied host temp root. git must still read that directory, and every
+// write there, and to the source checkout, must still be denied.
+func TestSandboxExecReadsALinkedWorktreesGitDir(t *testing.T) {
+	requireSandboxExec(t)
+	hostTmp := t.TempDir()
+	repo := filepath.Join(hostTmp, "repo")
+	if err := os.Mkdir(repo, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	sandboxGitRepo(t, repo)
+	wt := filepath.Join(repo, "state", "snap")
+	cmd := hostCmd(t.Context(), "git", "worktree", "add", "--detach", "-q", wt)
+	cmd.Dir = repo
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("git worktree add: %v: %s", err, out)
+	}
+	env := sandboxTestEnv(t.TempDir())
+	sb, ref := sandboxExecMechanism(wt, sandboxInputs{childEnv: env}, hostTmp)
+	if ref != nil {
+		t.Fatalf("sandboxExecMechanism: %v", ref)
+	}
+	defer closeSandbox(t, sb)
+	res := runWrapped(t, sb, env, wt, `git status --short && git log -1 --format=%s`)
+	if res.ExitCode != 0 || strings.TrimSpace(res.Stdout) != "c" {
+		t.Errorf("git in the linked worktree = exit %d %q, want the source checkout's commit", res.ExitCode,
+			res.Stdout+res.Stderr)
+	}
+	for _, vcmd := range []string{
+		`printf x > "$(git rev-parse --git-common-dir)/hooks/pre-commit"`,
+		`printf x >> "$(git rev-parse --git-dir)/HEAD"`,
+		`printf x > ../../written.txt`,
+	} {
+		requireDeniedWithErrno(t, sb, env, wt, vcmd)
+	}
+}
+
 // sandboxGitRepo initializes root as a repository with one committed file and
 // one unstaged change.
 func sandboxGitRepo(t *testing.T, root string, initArgs ...string) {

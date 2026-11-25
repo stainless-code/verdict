@@ -362,6 +362,7 @@ func localDiff(ctx context.Context, r *session, dir string, mode *localMode, pat
 	if err := captureWorktreeIdentity(ctx, r, mode, paths, diffRes); err != nil {
 		return err
 	}
+	captureContentTree(ctx, r, mode)
 
 	if werr := atomic.WriteFile(dir+suffixFullDiff, []byte(diffRes.Stdout)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteFullDiff, dir, werr)}
@@ -532,7 +533,10 @@ type localMode struct {
 	headRef         string
 	rangeVal        string
 	worktreeDiffSHA string
-	dirty           bool
+	// contentTree is the reviewed content's git tree id (source.json
+	// content_tree), what a local bundle's VERIFIED claims are graded on.
+	contentTree string
+	dirty       bool
 }
 
 // diffArgs owns the per-kind diff argv (paths appended by the caller).
@@ -1021,6 +1025,7 @@ func writeSourceJSON(
 		modeRange, nullStr(mode.rangeVal),
 		"dirty", mode.dirty,
 		"worktree_diff_sha256", nullStr(mode.worktreeDiffSHA),
+		"content_tree", nullStr(mode.contentTree),
 		"diff_sha256", diffSHA,
 		"patch_id", core.Wire(ident.PatchID),
 		"patch_id_kind", ident.PatchIDKind,

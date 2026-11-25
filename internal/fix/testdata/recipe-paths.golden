@@ -6,7 +6,7 @@ exit: 0
   "repo": "acme/app",
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
-  "next": "patch each anchor, commit the fixes, re-run fetch-local so the bundle head is that commit, run the verify command through verdict verify, write one verification.json claim per sig, land with record, then re-run fix --recipe default",
+  "next": "patch each anchor, re-run fetch-local so the bundle captures the fixes (no commit needed), run the verify command through verdict verify, write one verification.json claim per sig, land with record, then re-run fix --recipe default",
   "warnings": [],
   "data": {
     "dir": ".verdict/state/local-recipe",
@@ -50,10 +50,10 @@ exit: 0
 fix: 61234567 [important] other.txt:2 (pass 1/3, ledger .verdict/state/local-recipe/fix.json)
 finding: Important perf bug here.
 anchors: other.txt:2-2 side=RIGHT anchored=true
-instructions: patch each anchor file (other.txt), record the verify command (go test ./...) as verifyCmd in .verdict/state/local-recipe/patch.json, commit the fixes and re-run fetch-local so the bundle's head is that commit, then run it through verdict verify acme/app local-recipe and write verification.json beside it [{sig, verdict, resultHead, verifyCmd}] with one claim per sig, verdict VERIFIED, that verifyCmd, and resultHead matching HEAD (a claim flips only on the verify-receipt.json verify writes — exit 0 for that command on the clean, committed HEAD); land it with record acme/app local-recipe; re-run fix acme/app local-recipe --recipe default for the next pass
+instructions: patch each anchor file (other.txt), record the verify command (go test ./...) as verifyCmd in .verdict/state/local-recipe/patch.json, re-run fetch-local so the bundle captures the patched content (no commit needed), then run it through verdict verify acme/app local-recipe and write verification.json beside it [{sig, verdict, verifyCmd}] with one claim per sig, verdict VERIFIED, and that verifyCmd (a claim flips only on the verify-receipt.json verify writes — exit 0 for that command on the content the bundle grades); land it with record acme/app local-recipe; re-run fix acme/app local-recipe --recipe default for the next pass
 gate: keep the verify command repo-scoped, non-destructive, and offline — the verify verb refuses destructive/networked/credential-reading/repo-escaping shapes before running anything (typed verify-* errors with a try: hint), so run anything stronger in your own shell — it writes no receipt, so settle that finding with verdict triage
 loops multiply agent spend — cap review spend with REVIEW_BUDGET_USD or the typed budget_usd default (see docs/manual.md)
-next: patch other.txt, commit, re-run fetch-local, run verify "go test ./..." through verdict verify, write verification.json, run record to land it, then re-run fix --recipe default
+next: patch other.txt, re-run fetch-local, run verify "go test ./..." through verdict verify, write verification.json, run record to land it, then re-run fix --recipe default
 --- files ---
 --- file C/.verdict/state/local-recipe/fix.json ---
 {"sigs":{"6123456789abcdef0123456789abcdef01234567":{"passes":1,"last_at":"0000-00-00T00:00:00Z","baseline":[".verdict/"]}}}

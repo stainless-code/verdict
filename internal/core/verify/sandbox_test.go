@@ -30,11 +30,8 @@ type sandboxCommander struct {
 }
 
 func (c *sandboxCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
-	if isHeadProbe(cmd) {
-		return core.Result{Stdout: patchHead + "\n"}, nil
-	}
-	if isStatusProbe(cmd) {
-		return core.Result{}, nil
+	if res, ok := gitAnswer(cmd, ""); ok {
+		return res, nil
 	}
 	c.calls = append(c.calls, cmd)
 	i := len(c.calls) - 1
@@ -337,11 +334,15 @@ func runSandboxedVerifyAt(t *testing.T, root, vcmd string, results []core.Result
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
-	// The sandbox is built on the physical root (/var -> /private/var on
-	// macOS), the spelling every mount and rule names.
-	physical, err := filepath.EvalSymlinks(root)
+	// The sandbox is built on the snapshot checkout the command runs in, under
+	// the bundle, spelled physically (/var -> /private/var on macOS) as every
+	// mount and rule names it; the last spawn ran there.
+	physical, err := filepath.EvalSymlinks(filepath.Join(root, ".verdict", "state", "5201"))
 	if err != nil {
 		t.Fatal(err)
+	}
+	if n := len(cmdr.calls); n > 0 && filepath.Dir(cmdr.calls[n-1].Dir) == physical {
+		return cmdr.calls[n-1].Dir, home, resp, cmdr
 	}
 	return physical, home, resp, cmdr
 }
@@ -357,10 +358,10 @@ func checkSandboxSpawn(t *testing.T, cmdr *sandboxCommander, root, home, vcmd st
 	} else {
 		checkBwrapSpawn(t, cmdr, root, home, vcmd)
 	}
-	// The probe and the command run in the repo root the tree probes read,
-	// as the deep-group path does, never the caller's inherited cwd.
-	if cmdr.calls[0].Dir != root || cmdr.calls[1].Dir != root {
-		t.Errorf("patch-mode dirs = %q, %q, want the repo root %q", cmdr.calls[0].Dir, cmdr.calls[1].Dir, root)
+	// The probe and the command run in the snapshot checkout the sandbox is
+	// built on, never the user's checkout or the caller's cwd.
+	if cmdr.calls[0].Dir != root || cmdr.calls[1].Dir != root || !strings.HasPrefix(filepath.Base(root), ".snapshot-") {
+		t.Errorf("patch-mode dirs = %q, %q, want the snapshot %q", cmdr.calls[0].Dir, cmdr.calls[1].Dir, root)
 	}
 }
 
@@ -639,8 +640,8 @@ type groupSandboxCommander struct {
 }
 
 func (c *groupSandboxCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
-	if isStatusProbe(cmd) {
-		return core.Result{}, nil
+	if res, ok := gitAnswer(cmd, groupTree); ok {
+		return res, nil
 	}
 	c.runs = append(c.runs, cmd)
 	if len(cmd.Argv) > 3 && cmd.Argv[0] == "git" {
@@ -675,23 +676,28 @@ func runSandboxedGroup(t *testing.T) (string, string, *verifycore.Response, *gro
 	return root, home, resp, cmdr
 }
 
-// checkGroupCommandArgv asserts the third spawn is the wrapped operator
-// command between the two git head probes.
+// checkGroupCommandArgv asserts the two spawns are the sandbox probe and the
+// wrapped operator command, both in the snapshot checkout of the reviewed
+// content under the bundle — the root the sandbox is built on.
 func checkGroupCommandArgv(t *testing.T, root, home string, cmdr *groupSandboxCommander) {
 	t.Helper()
-	if len(cmdr.runs) != 4 {
-		t.Fatalf("spawns = %d, want head, probe, command, head", len(cmdr.runs))
+	if len(cmdr.runs) != 2 {
+		t.Fatalf("spawns = %d, want probe and command", len(cmdr.runs))
 	}
-	canonical, err := filepath.EvalSymlinks(root)
+	snapshot := cmdr.runs[1].Dir
+	canonical, err := filepath.EvalSymlinks(filepath.Join(root, ".verdict", "state", "7"))
 	if err != nil {
 		t.Fatal(err)
 	}
+	if filepath.Dir(snapshot) != canonical || !strings.HasPrefix(filepath.Base(snapshot), ".snapshot-") {
+		t.Fatalf("command dir = %q, want a snapshot under %s", snapshot, canonical)
+	}
 	if runtime.GOOS == "darwin" {
-		checkSeatbeltPair(t, cmdr.runs[1], cmdr.runs[2], canonical, home, "go test ./...")
+		checkSeatbeltPair(t, cmdr.runs[0], cmdr.runs[1], snapshot, home, "go test ./...")
 		return
 	}
-	if got := cmdr.runs[2].Argv; !slices.Equal(got, wantRunArgv(canonical, home, "go test ./...")) {
-		t.Errorf("command argv = %v, want %v", got, wantRunArgv(canonical, home, "go test ./..."))
+	if got := cmdr.runs[1].Argv; !slices.Equal(got, wantRunArgv(snapshot, home, "go test ./...")) {
+		t.Errorf("command argv = %v, want %v", got, wantRunArgv(snapshot, home, "go test ./..."))
 	}
 }
 

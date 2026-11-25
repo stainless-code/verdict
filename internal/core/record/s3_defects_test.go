@@ -30,7 +30,7 @@ func mergeDefectBundle(t *testing.T, reviewJSON string) recordcore.MergeResult {
 	if ref != nil {
 		t.Fatalf("controls gate: %v", ref)
 	}
-	res, merr := recordcore.Merge(testRuntime(&testkit.Collector{}), &recordcore.MergeParams{
+	res, merr := recordcore.Merge(t.Context(), testRuntime(&testkit.Collector{}), &recordcore.MergeParams{
 		Dir:          dir,
 		Prov:         "local",
 		HeadFull:     mentionHead,

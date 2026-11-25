@@ -161,12 +161,12 @@ fix acme/app local-demo
   severity            important
   pass                1
   ledger              .verdict/state/local-demo/fix.json
-  next                patch the anchor file, commit it, re-run fetch-local, run verdict verify, write verification.json, run record to land it, then re-run fix
+  next                patch the anchor file, re-run fetch-local, run verdict verify, write verification.json, run record to land it, then re-run fix
 ok: fix prints one pass over the open finding and writes the ledger
 fix acme/app local-demo --all --verify-cmd true
   open_inline         1
   batch               [{"sig":"ecd88617e7f5f9b32a4681a395a813e9cff0f877","locator":"app/handler.go:5","severity":"important","pass":2,"outcome":"ready","reason":""}]
-  next                patch each anchor, commit the fixes, re-run fetch-local so the bundle head is that commit, run the verify command through verdict verify, write one verification.json claim per sig, land with record, then re-run fix --all
+  next                patch each anchor, re-run fetch-local so the bundle captures the fixes (no commit needed), run the verify command through verdict verify, write one verification.json claim per sig, land with record, then re-run fix --all
 ok: fix --all hands out one ready pass per open finding
 fix acme/app local-demo --all
   code                no-verify-cmd

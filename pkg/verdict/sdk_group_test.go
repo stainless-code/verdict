@@ -124,8 +124,8 @@ func TestSDKVerifyGroupBothOrNeither(t *testing.T) {
 
 // TestVerifyGroupForwardsDirToInjectedCommander proves the public Commander
 // seam keeps the working directory: a custom runner must see Dir set to the
-// canonical reviewed root, or a deep command would silently run in the
-// caller's directory while the receipt certifies the root.
+// canonical snapshot of the reviewed content, or a deep command would
+// silently run in the caller's directory while the receipt certifies it.
 func TestVerifyGroupForwardsDirToInjectedCommander(t *testing.T) {
 	root, head, _ := setupSDKGroupRepo(t)
 	cmdr := &dirCommander{head: head}
@@ -140,33 +140,31 @@ func TestVerifyGroupForwardsDirToInjectedCommander(t *testing.T) {
 	requireCommanderDir(t, root, cmdr)
 }
 
-// requireCommanderDir asserts a custom runner saw the canonical reviewed root,
-// not the caller's directory or an empty Dir.
+// requireCommanderDir asserts a custom runner saw the canonical snapshot of
+// the reviewed content under the bundle, not the caller's directory or an
+// empty Dir.
 func requireCommanderDir(t *testing.T, root string, cmdr *dirCommander) {
 	t.Helper()
 	if cmdr.commandDir == "" {
 		t.Fatalf("injected Commander saw an empty Dir; deep command would run in the caller's cwd")
 	}
-	want, err := filepath.EvalSymlinks(root)
+	bundle, err := filepath.EvalSymlinks(filepath.Join(root, ".verdict", "state", "5201"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cmdr.commandDir != want {
-		t.Fatalf("command Dir = %q, want canonical root %q", cmdr.commandDir, want)
+	if filepath.Dir(cmdr.commandDir) != bundle || !strings.HasPrefix(filepath.Base(cmdr.commandDir), ".snapshot-") {
+		t.Fatalf("command Dir = %q, want a canonical snapshot under %q", cmdr.commandDir, bundle)
 	}
 }
 
-// dirCommander answers the head and clean-tree probes and records the
-// command Dir.
+// dirCommander answers every git read with one id — so the checkout's content
+// tree equals the reviewed commit's — and records the command Dir.
 type dirCommander struct {
 	head       string
 	commandDir string
 }
 
 func (c *dirCommander) Run(_ context.Context, cmd *verdict.Command) (verdict.CommandResult, error) {
-	if a := cmd.Argv; len(a) > 4 && a[0] == "git" && a[1] == "--no-optional-locks" && a[4] == "status" {
-		return verdict.CommandResult{}, nil
-	}
 	if len(cmd.Argv) > 3 && cmd.Argv[0] == "git" {
 		return verdict.CommandResult{Stdout: c.head + "\n"}, nil
 	}

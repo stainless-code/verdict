@@ -121,7 +121,7 @@ func requireGroupReceipt(t *testing.T, root, dir, head string) {
 		t.Fatal(err)
 	}
 	if receipt.Status != "passed" || !receipt.Passed || receipt.Exit != 0 ||
-		receipt.ExecutionHead != head || receipt.ReviewedHead != head ||
+		receipt.Tree != gitOrFatal(t, root, "rev-parse", head+"^{tree}") || receipt.ReviewedHead != head ||
 		receipt.RepoRoot != want || receipt.Run != "5201" {
 		t.Fatalf("receipt = %+v", receipt)
 	}

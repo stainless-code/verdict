@@ -6,6 +6,7 @@
 package recordcore
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -112,7 +113,7 @@ func (in *MergeParams) repoRootPath() string {
 // record verb discards the curated body and finalizes the record artifact;
 // the post verb carries the body into the payload. Errors are typed
 // refusals matched with [errors.As] at the edge.
-func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
+func Merge(ctx context.Context, rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 	if in.Controls == nil {
 		return MergeResult{}, &core.RefusalError{Code: controls.CodeUnavailable, Message: "merge needs a controls snapshot"}
 	}
@@ -144,6 +145,9 @@ func Merge(rt *core.Runtime, in *MergeParams) (MergeResult, error) {
 		requireCoverage: in.RequireCoverage,
 		requireRigor:    in.RequireRigor,
 		bodyOnlyAnchors: in.BodyOnlyAnchors,
+	}
+	st.readTree = func() (string, string) {
+		return gradedTree(ctx, rt.Commander, st.repoRoot, st.dir, st.prov, st.headFull)
 	}
 	panel, err := st.loadPanel(in)
 	if err != nil {

@@ -96,6 +96,9 @@ type validationCommander struct {
 func (c *validationCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	c.t.Helper()
 	argv := strings.Join(cmd.Argv, " ")
+	if res, ok := validationReads(argv); ok {
+		return res, nil
+	}
 	switch {
 	case strings.Contains(argv, "--method POST") && strings.Contains(argv, "/reviews"):
 		raw, err := io.ReadAll(cmd.Stdin)
@@ -110,16 +113,27 @@ func (c *validationCommander) Run(_ context.Context, cmd *core.Command) (core.Re
 	case strings.Contains(argv, "/reviews"):
 		return core.Result{Stdout: `{"id":101,"state":"commented","html_url":"https://example.invalid/r/101",` +
 			`"submitted_at":"2026-01-01T00:00:00Z"}`}, nil
-	case strings.Contains(argv, "graphql"):
-		return core.Result{Stdout: `{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}`}, nil
-	case strings.Contains(argv, ".head.sha"):
-		return core.Result{Stdout: coverageHead + "\n"}, nil
-	case strings.Contains(argv, "user"):
-		return core.Result{Stdout: "someone-else\n"}, nil
 	default:
 		c.t.Errorf("unexpected argv: %q", cmd.Argv)
 		return core.Result{ExitCode: 1}, errors.New("unexpected argv")
 	}
+}
+
+// validationReads answers the fixed reads a post makes: the graded commit's
+// content tree a VERIFIED claim is compared to, the threads, the live head,
+// and the viewer.
+func validationReads(argv string) (core.Result, bool) {
+	switch {
+	case strings.HasSuffix(argv, coverageHead+"^{tree}"):
+		return core.Result{Stdout: coverageTree + "\n"}, true
+	case strings.Contains(argv, "graphql"):
+		return core.Result{Stdout: `{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}`}, true
+	case strings.Contains(argv, ".head.sha"):
+		return core.Result{Stdout: coverageHead + "\n"}, true
+	case strings.Contains(argv, "user"):
+		return core.Result{Stdout: "someone-else\n"}, true
+	}
+	return core.Result{}, false
 }
 
 func runValidationPost(t *testing.T, flags postcore.Flags, floors ...string) (*postcore.Response, *core.RefusalError, *validationCommander) {
@@ -459,7 +473,7 @@ func verifyClaim(t *testing.T, sig string) {
 	t.Helper()
 	testkit.WriteFile(t, ".verdict/state/7/verification.json", `[{"sig":"`+sig+
 		`","verdict":"VERIFIED","resultHead":"`+coverageHead+`","verifyCmd":"go test ./..."}]`)
-	writeVerifyReceipt(t, ".verdict/state/7", coverageHead)
+	writeVerifyReceipt(t, ".verdict/state/7", coverageTree)
 }
 
 // TestFloorsSkipSameRunAddressedFinding pins the closed-finding rule for the

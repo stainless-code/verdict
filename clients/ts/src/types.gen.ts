@@ -1796,7 +1796,7 @@ export interface ThreadsResolveSkip {
   [key: string]: unknown;
 }
 
-/** verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, the patch read back from the bundle, whether the run had the full sandbox shape (sandboxed: bwrap or sandbox-exec), and which wrapper it ran under (sandboxMechanism: bwrap, sandbox-exec, or the network-only unshare-net, which never sets sandboxed; absent means unwrapped). head is the checked-out commit the run is bound to: the deep group's execution head, or on the patch path the clean head written to verify-receipt.json, absent when the tree was dirty, the head moved during the run, or git could not read it. receipt is the tool-only receipt path: validation-<group>.json for a deep group, verify-receipt.json on the patch path. A timed-out run is never proof. */
+/** verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, the patch read back from the bundle, whether the run had the full sandbox shape (sandboxed: bwrap or sandbox-exec), and which wrapper it ran under (sandboxMechanism: bwrap, sandbox-exec, or the network-only unshare-net, which never sets sandboxed; absent means unwrapped). head is the reviewed head a deep-group receipt certifies. tree is the git tree id of the content the command ran on, in a snapshot checkout of it: the binding a receipt carries, absent when verify could not snapshot the content (not a git checkout). receipt is the tool-only receipt path: validation-<group>.json for a deep group, verify-receipt.json on the patch path. A timed-out run is never proof. */
 export interface VerifyData {
   exit: number;
   timedOut: boolean;
@@ -1804,6 +1804,7 @@ export interface VerifyData {
   patch: string;
   group?: string;
   head?: string;
+  tree?: string;
   receipt?: string;
   sandboxed?: boolean;
   sandboxMechanism?: string;

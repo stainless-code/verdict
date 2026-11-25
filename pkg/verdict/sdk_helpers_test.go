@@ -135,6 +135,11 @@ type fakeCommander struct {
 // Run implements verdict.Commander.
 func (f *fakeCommander) Run(_ context.Context, cmd *verdict.Command) (verdict.CommandResult, error) {
 	f.t.Helper()
+	// fetch-local's content-tree reads (`git -C <root> …`) are not what these
+	// tests script.
+	if res, ok := sdkGitAnswer(cmd); ok {
+		return res, nil
+	}
 	f.calls = append(f.calls, cmd.Argv)
 	joined := strings.Join(cmd.Argv, " ")
 	for _, rule := range f.rules {
