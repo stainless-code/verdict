@@ -240,13 +240,13 @@ func writeCorruptSettings(t *testing.T) {
 	}
 }
 
-// TestServeDispatchShape pins the two registries the transport needs: serve
-// is a bare verb whose flags pass through, and it is not a read verb (a read
-// row would die on not-a-repo before --root was read).
+// TestServeDispatchShape pins the two facts the transport needs: serve is a
+// bare verb whose flags pass through, and its table row has no handler (a
+// handler would die on not-a-repo before --root was read).
 func TestServeDispatchShape(t *testing.T) {
 	t.Parallel()
-	if _, ok := readVerbs["serve"]; ok {
-		t.Fatal("serve is a readVerbs entry; the transport must dispatch before resolveRepoRoot")
+	if spec := verbIndex["serve"]; spec == nil || spec.Run != nil {
+		t.Fatal("serve has a table handler; the transport must dispatch before resolveRepoRoot")
 	}
 	if !bareVerbs["serve"] {
 		t.Fatal("serve is not a bareVerbs entry; splitCommand would read --root as a positional")

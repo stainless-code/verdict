@@ -24,47 +24,22 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/stainless-code/verdict/internal/adopt"
-	backtestverb "github.com/stainless-code/verdict/internal/backtest"
-	"github.com/stainless-code/verdict/internal/calibrate"
-	"github.com/stainless-code/verdict/internal/checktree"
 	"github.com/stainless-code/verdict/internal/cli"
-	"github.com/stainless-code/verdict/internal/configcmd"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 	"github.com/stainless-code/verdict/internal/core/upgrade"
 	"github.com/stainless-code/verdict/internal/dashboard"
-	demo "github.com/stainless-code/verdict/internal/demo"
-	"github.com/stainless-code/verdict/internal/doctor"
 	drainverb "github.com/stainless-code/verdict/internal/drain"
 	"github.com/stainless-code/verdict/internal/fetch"
-	"github.com/stainless-code/verdict/internal/fix"
-	"github.com/stainless-code/verdict/internal/gate"
-	handoffverb "github.com/stainless-code/verdict/internal/handoff"
-	"github.com/stainless-code/verdict/internal/index"
-	"github.com/stainless-code/verdict/internal/ingest"
-	journalverb "github.com/stainless-code/verdict/internal/journal"
-	"github.com/stainless-code/verdict/internal/learn"
-	"github.com/stainless-code/verdict/internal/loop"
-	"github.com/stainless-code/verdict/internal/pack"
-	"github.com/stainless-code/verdict/internal/panel"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/prwait"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/ready"
-	"github.com/stainless-code/verdict/internal/record"
-	"github.com/stainless-code/verdict/internal/report"
-	"github.com/stainless-code/verdict/internal/risk"
-	runverb "github.com/stainless-code/verdict/internal/run"
-	"github.com/stainless-code/verdict/internal/scaffold"
 	"github.com/stainless-code/verdict/internal/schemacheck"
 	"github.com/stainless-code/verdict/internal/serve"
 	"github.com/stainless-code/verdict/internal/target"
 	"github.com/stainless-code/verdict/internal/threads"
-	"github.com/stainless-code/verdict/internal/trend"
-	"github.com/stainless-code/verdict/internal/triage"
-	"github.com/stainless-code/verdict/internal/verify"
 )
 
 // version is the release version injected at link time by GoReleaser
@@ -79,13 +54,11 @@ const (
 	verbDoctor = "doctor"
 	verbACP    = "acp"
 	verbLSP    = "lsp"
+	// verbMCP is the stdio tool transport, served before argument parsing.
+	verbMCP = "mcp"
 	// verbDashboard is the terminal dashboard transport.
 	verbDashboard = "dashboard"
 )
-
-const verbsHint = "demo|fetch|fetch-local|run|loop|panel|record|adopt|ingest|fix|post|triage|report|next|show|" +
-	"check-tree|verify|doctor|calibrate|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|backtest|" +
-	"learn|pack|init|skill|upgrade|uninstall|mcp|serve|dashboard|config|drain|acp|lsp"
 
 func main() {
 	//nolint:forbidigo // GO-LAYOUT-02: main is the only os.Exit caller by design
@@ -99,7 +72,7 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 		return code
 	}
 	provenance.SetBuildVersion(strings.TrimPrefix(version, "v"))
-	if len(args) > 0 && args[0] == "mcp" {
+	if len(args) > 0 && args[0] == verbMCP {
 		return runMCP(args[1:], stdout, stderr, getenv, readFile)
 	}
 	if done := handleMetaFlags(args, stdout, readFile); done {
@@ -270,8 +243,6 @@ func dispatchHidden(args []string, stderr *os.File) (code int, ok bool) {
 
 type readHandler func(context.Context, *cli.Runner, []string, readcommon.Request) int
 
-const cmdTrend = "trend"
-
 const cmdFetchLocal = "fetch-local"
 
 // The host-talking verbs, named once for the tables and the target gate.
@@ -292,35 +263,7 @@ const (
 // flagPrefix starts every flag token; a positional never does.
 const flagPrefix = "-"
 
-const cmdBacktest = "backtest"
-
 const cmdDemo = "demo"
-
-const cmdRisk = "risk"
-
-const cmdLoop = "loop"
-
-var readVerbs = map[string]readHandler{
-	"config":     configcmd.Run,
-	"panel":      panel.Run,
-	"report":     report.Run,
-	"next":       report.RunNext,
-	cmdShow:      report.RunShow,
-	cmdReady:     ready.Run,
-	cmdPRWait:    prwait.Run,
-	"gate":       gate.Run,
-	"threads":    threads.Run,
-	cmdDrain:     drainverb.Run,
-	cmdTrend:     trend.Run,
-	cmdRisk:      risk.Run,
-	"calibrate":  calibrate.Run,
-	verbDoctor:   doctor.Run,
-	"check-tree": checktree.Run,
-	"index":      index.Run,
-	"journal":    journalverb.Run,
-	"pack":       pack.Run,
-	"handoff":    handoffverb.Run,
-}
 
 // repoFreeVerbs run without a resolvable repository root: doctor exists to
 // report why the probe cannot answer (a missing git is a warning row), skill
@@ -398,19 +341,16 @@ func dispatchVerb(
 	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root, repoRoot string,
 	env map[string]string, forces *cli.GlobalForces, rest []string, stderr *os.File,
 ) int {
-	req := readcommon.Request{
+	spec, ok := verbIndex[cmd]
+	if !ok || spec.Run == nil {
+		fmt.Fprintf(stderr, "%s\n", unknownCmdMessage(cmd))
+		return cli.ExitUsage
+	}
+	return spec.Run(ctx, r, rest, readcommon.Request{
 		Runtime: &core.Runtime{Env: env, Now: r.Now},
 		Repo:    repo, Pr: pr, Forces: forces, Root: &root,
 		RepoRoot: repoRoot,
-	}
-	if h, ok := readVerbs[cmd]; ok {
-		return h(ctx, r, rest, req)
-	}
-	if code, ok := dispatchMutating(ctx, cmd, r, repo, pr, root, repoRoot, env, forces, rest, req); ok {
-		return code
-	}
-	fmt.Fprintf(stderr, "%s\n", unknownCmdMessage(cmd))
-	return cli.ExitUsage
+	})
 }
 
 // resolveRepoRoot resolves the reviewed repository root for one verb. A probe
@@ -430,91 +370,6 @@ func resolveRepoRoot(ctx context.Context, r *cli.Runner, cmd string) (root strin
 	return ".", 0, true
 }
 
-func dispatchMutating(
-	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root, repoRoot string,
-	env map[string]string, forces *cli.GlobalForces, rest []string, req readcommon.Request,
-) (code int, ok bool) {
-	if code, ok := dispatchFetch(ctx, cmd, r, rest, req); ok {
-		return code, true
-	}
-	if code, ok := dispatchLocal(ctx, cmd, r, env, root, repoRoot, rest, req); ok {
-		return code, true
-	}
-	switch cmd {
-	case "run":
-		// The verb name matches main's own run() entry point, so the adapter import
-		// is aliased rather than renaming either one.
-		return runverb.Run(ctx, r, rest, req), true
-	case cmdLoop:
-		return loop.Run(ctx, r, rest, req), true
-	case "record":
-		return record.Run(ctx, r, rest, req), true
-	case "post":
-		return record.RunPost(ctx, r, rest, req), true
-	default:
-		return dispatchStoreVerbs(ctx, cmd, r, repo, pr, root, repoRoot, env, rest, req)
-	}
-}
-
-func dispatchStoreVerbs(
-	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root, repoRoot string,
-	env map[string]string, rest []string, req readcommon.Request,
-) (int, bool) {
-	switch cmd {
-	case "triage":
-		return triage.Run(ctx, r, rest, req), true
-	case "adopt":
-		return adopt.Run(ctx, r, rest, req), true
-	case "ingest":
-		return ingest.Run(ctx, r, rest, req), true
-	case "fix":
-		return fix.Run(ctx, r, rest, req), true
-	case "learn":
-		return learn.Run(ctx, r, rest, req), true
-	case "verify":
-		return verify.Run(ctx, r, rest, req), true
-	default:
-		return 0, false
-	}
-}
-
-// dispatchLocal serves the verbs that need no repository or pull request:
-// the scaffold writer, the local backtest miner, and the skill distributor.
-// They share dispatchMutating's "handled" contract so one switch can stay
-// small enough to read.
-func dispatchLocal(
-	ctx context.Context, cmd string, r *cli.Runner, env map[string]string, root, repoRoot string, rest []string,
-	req readcommon.Request,
-) (int, bool) {
-	switch cmd {
-	case "init":
-		return scaffold.Run(ctx, r, rest, req), true
-	case cmdBacktest:
-		return backtestverb.Run(ctx, r, rest, req), true
-	case cmdDemo:
-		// demo owns its own positionals (an optional public PR URL), so it
-		// reads neither the repo nor the pr split above.
-		return demo.Run(ctx, r, rest, req), true
-	case verbSkill:
-		return runSkill(ctx, r, rest, env, root), true
-	default:
-		return 0, false
-	}
-}
-
-func dispatchFetch(
-	ctx context.Context, cmd string, r *cli.Runner, rest []string, req readcommon.Request,
-) (code int, ok bool) {
-	switch cmd {
-	case cmdFetch:
-		return fetch.Run(ctx, r, rest, req), true
-	case "fetch-local":
-		return fetch.RunLocal(ctx, r, rest, req), true
-	default:
-		return 0, false
-	}
-}
-
 func splitCommand(args []string) (cmd, repo, pr string, rest []string) {
 	if len(args) == 0 {
 		return "", "", "", args
@@ -523,7 +378,7 @@ func splitCommand(args []string) (cmd, repo, pr string, rest []string) {
 	if noPositionalPair(cmd, args) {
 		return cmd, "", "", args
 	}
-	if repoOnlyVerbs[cmd] {
+	if arityOf(cmd) == arityRepo {
 		// A flag first means the repo is absent, exactly as for the pair verbs.
 		if len(args) > 0 && !strings.HasPrefix(args[0], flagPrefix) {
 			repo, args = args[0], args[1:]
@@ -538,7 +393,7 @@ func splitCommand(args []string) (cmd, repo, pr string, rest []string) {
 // pair: the HTML surface, the bare verbs, the verbs with one optional
 // positional, and the local backtest miner.
 func noPositionalPair(cmd string, args []string) bool {
-	return htmlInvocation(cmd, args) || bareVerbs[cmd] || optionals[cmd] || cmd == cmdBacktest
+	return htmlInvocation(cmd, args) || arityOf(cmd) == arityBare || arityOf(cmd) == arityOptional
 }
 
 // splitPositionals reads the repo/pr pair from the leading non-flag tokens: a
@@ -750,7 +605,7 @@ func runResolver(verb, repo, pr string, rest []string, env map[string]string, ge
 	ctx, stop := shutdownSignalContext()
 	defer stop()
 	return target.Resolve(ctx, target.Deps{Commander: coreexec.Runner{}, RepoRoot: readcommon.RepoRoot}, &target.Request{
-		Verb: verb, Repo: repo, Pr: pr, Rest: rest, RepoOnly: repoOnlyVerbs[verb], Env: targetEnv,
+		Verb: verb, Repo: repo, Pr: pr, Rest: rest, RepoOnly: arityOf(verb) == arityRepo, Env: targetEnv,
 		HostLookup: talksToHost(verb, rest), PrArg: prArgFor(verb),
 	})
 }
@@ -878,5 +733,6 @@ func takesTarget(cmd string, rest []string) bool {
 	if cmd == "" || cmd == cmdFetchLocal || noPositionalPair(cmd, rest) {
 		return false
 	}
-	return slices.Contains(strings.Split(verbsHint, "|"), cmd)
+	_, known := verbIndex[cmd]
+	return known
 }
