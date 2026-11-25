@@ -15,10 +15,10 @@ import (
 )
 
 // Interactive write endpoints: local-only triage and KB promotion over the
-// verb services the CLI calls, gated by the interactive flag, a per-session
-// CSRF token, and the existing Host/Origin allowlists. Registered only when
-// the server runs --interactive; without it the mux answers 405 and nothing
-// is written.
+// verb services the CLI calls, gated by the shared write posture (--read-only
+// is the one knob), a per-session CSRF token, and the existing Host/Origin
+// allowlists. Registered unless the server runs --read-only, where the mux
+// answers 405 and nothing is written.
 const (
 	csrfHeader  = "X-Verdict-CSRF"
 	csrfBodyCap = 64 * 1024

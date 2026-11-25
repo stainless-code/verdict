@@ -45,12 +45,12 @@ func TestMCPHelp(t *testing.T) {
 		t.Fatalf("exit = %d, stderr = %s", code, readOutput(t, errOut))
 	}
 	help := readOutput(t, out)
-	for _, want := range []string{"verdict mcp", "stdio", "--read-only", "--operator", "tools/call"} {
+	for _, want := range []string{"verdict mcp", "stdio", "--read-only", "--operator   deprecated", "tools/call"} {
 		if !strings.Contains(help, want) {
 			t.Errorf("help misses %q:\n%s", want, help)
 		}
 	}
-	if !strings.Contains(usageText(), "mcp [--read-only | --operator] (experimental)") {
+	if !strings.Contains(usageText(), "mcp [--read-only] (experimental)") {
 		t.Error("review usage block misses the experimental mcp line")
 	}
 	if !strings.Contains(usageText(), "mcp config --agent") ||
@@ -75,19 +75,39 @@ func TestMCPUsageError(t *testing.T) {
 	}
 }
 
-// TestMCPOperatorConflict proves --operator and --read-only cannot combine:
-// the flag pair is a usage error before the server starts.
-func TestMCPOperatorConflict(t *testing.T) {
-	out, errOut := mcpTempFiles(t)
-	code := run([]string{"mcp", "--operator", "--read-only"}, out, errOut, os.Getenv, os.ReadFile)
-	if code != 2 {
-		t.Fatalf("exit = %d, want 2", code)
+// emptyStdin points [os.Stdin] at an empty file so a served session ends at
+// once, like a closed pipe.
+func emptyStdin(t *testing.T) {
+	t.Helper()
+	f, err := os.CreateTemp(t.TempDir(), "stdin-*")
+	if err != nil {
+		t.Fatal(err)
 	}
-	if got := readOutput(t, out); got != "" {
-		t.Errorf("stdout = %q, want empty", got)
-	}
-	if got := readOutput(t, errOut); !strings.Contains(got, "mutually exclusive") {
-		t.Errorf("stderr = %q", got)
+	old := os.Stdin
+	os.Stdin = f
+	t.Cleanup(func() {
+		os.Stdin = old
+		_ = f.Close()
+	})
+}
+
+// TestMCPOperatorRetired proves --operator is a deprecated no-op alias: it
+// still starts the server (with or without --read-only, which used to be a
+// usage error), names the one rule on stderr, and keeps stdout protocol-only.
+func TestMCPOperatorRetired(t *testing.T) {
+	for _, argv := range [][]string{{"mcp", "--operator"}, {"mcp", "--operator", "--read-only"}} {
+		emptyStdin(t)
+		out, errOut := mcpTempFiles(t)
+		if code := run(argv, out, errOut, os.Getenv, os.ReadFile); code != 0 {
+			t.Fatalf("%v exit = %d, want 0; stderr = %s", argv, code, readOutput(t, errOut))
+		}
+		if got := readOutput(t, out); got != "" {
+			t.Errorf("%v stdout = %q, want empty", argv, got)
+		}
+		want := "mcp: --operator is deprecated and ignored: local writes are allowed unless --read-only"
+		if got := readOutput(t, errOut); !strings.Contains(got, want) {
+			t.Errorf("%v stderr = %q, want the deprecation notice %q", argv, got, want)
+		}
 	}
 }
 
@@ -96,7 +116,7 @@ func TestMCPOperatorConflict(t *testing.T) {
 // cannot ship with a stale help count.
 func TestMCPHelpListsTheRegistry(t *testing.T) {
 	help := mcpUsageText()
-	def := mcp.ToolNames(false, false)
+	def := mcp.ToolNames(false)
 	if want := fmt.Sprintf("Default tools (%d): ", len(def)); !strings.Contains(help, want) {
 		t.Errorf("help misses %q", want)
 	}
@@ -104,9 +124,9 @@ func TestMCPHelpListsTheRegistry(t *testing.T) {
 	if !strings.Contains(flat, strings.Join(def, ", ")+".") {
 		t.Errorf("help default list != registry %v", def)
 	}
-	ro := mcp.ToolNames(true, false)
+	ro := mcp.ToolNames(true)
 	slices.Sort(ro)
-	_, rest, found := strings.Cut(flat, "--read-only expose read tools plus record dry_run (")
+	_, rest, found := strings.Cut(flat, "--read-only the one write-posture flag (shared with serve and lsp): expose read tools plus record dry_run (")
 	list, _, closed := strings.Cut(rest, ")")
 	if !found || !closed {
 		t.Fatal("help misses the --read-only tool list")

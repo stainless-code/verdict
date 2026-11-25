@@ -13,23 +13,20 @@ type snippetCase struct {
 	name     string
 	agent    string
 	readOnly bool
-	operator bool
 }
 
 var snippetGoldenCases = []snippetCase{
-	{"claude", AgentClaude, false, false},
-	{"cursor", AgentCursor, false, false},
-	{"codex", AgentCodex, false, false},
-	{"gemini", AgentGemini, false, false},
-	{"qwen", AgentQwen, false, false},
-	{"windsurf", AgentWindsurf, false, false},
-	{"opencode", AgentOpencode, false, false},
-	{"goose", AgentGoose, false, false},
-	{"copilot", AgentCopilot, false, false},
-	{"claude-read-only", AgentClaude, true, false},
-	{"claude-operator", AgentClaude, false, true},
-	{"codex-read-only", AgentCodex, true, false},
-	{"codex-operator", AgentCodex, false, true},
+	{"claude", AgentClaude, false},
+	{"cursor", AgentCursor, false},
+	{"codex", AgentCodex, false},
+	{"gemini", AgentGemini, false},
+	{"qwen", AgentQwen, false},
+	{"windsurf", AgentWindsurf, false},
+	{"opencode", AgentOpencode, false},
+	{"goose", AgentGoose, false},
+	{"copilot", AgentCopilot, false},
+	{"claude-read-only", AgentClaude, true},
+	{"codex-read-only", AgentCodex, true},
 }
 
 // TestSnippetGoldens pins every host's printed entry plus the posture variants.
@@ -48,7 +45,7 @@ func pinSnippetGolden(t *testing.T, tc snippetCase) {
 	req := &Request{
 		Agent: tc.agent, Cwd: t.TempDir(),
 		Env:      map[string]string{"HOME": t.TempDir()},
-		ReadOnly: tc.readOnly, Operator: tc.operator,
+		ReadOnly: tc.readOnly,
 	}
 	res, ref := Run(req)
 	if ref != nil {

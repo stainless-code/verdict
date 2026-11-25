@@ -27,7 +27,7 @@ const interactiveRationale = "This finding is a false alarm, verified against th
 // interactiveServer binds an interactive test server over layer.
 func interactiveServer(t *testing.T, layer Layer) (*httptest.Server, *Server) {
 	t.Helper()
-	server, err := New(&Config{Port: testPort, Token: testToken, Now: fixedNow, Layer: layer, Interactive: true})
+	server, err := New(&Config{Port: testPort, Token: testToken, Now: fixedNow, Layer: layer})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}

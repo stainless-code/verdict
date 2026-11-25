@@ -139,7 +139,7 @@ func mustAbs(t *testing.T, dir string) string {
 // testServer builds the handler over a layer.
 func testServer(t *testing.T, layer Layer) *httptest.Server {
 	t.Helper()
-	server, err := New(&Config{Port: testPort, Token: testToken, Now: fixedNow, Layer: layer})
+	server, err := New(&Config{Port: testPort, Token: testToken, Now: fixedNow, Layer: layer, ReadOnly: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -410,7 +410,7 @@ func TestNonLoopbackWarningNamesPlainHTTP(t *testing.T) {
 	t.Parallel()
 	out := &syncBuffer{}
 	runner := &cli.Runner{Out: out, Human: out, Diag: out, Effective: cli.Defaults()}
-	warnExposure(runner, &serveOptions{host: "0.0.0.0"})
+	warnExposure(runner, &serveOptions{host: "0.0.0.0", readOnly: true})
 	const want = "serve: binding 0.0.0.0 exposes the read-only surface beyond loopback " +
 		"over plain HTTP; the token and session cookie are not encrypted"
 	if !slices.Contains(runner.Warnings, want) {
@@ -424,7 +424,7 @@ func TestNonLoopbackWarningNamesInteractive(t *testing.T) {
 	t.Parallel()
 	out := &syncBuffer{}
 	runner := &cli.Runner{Out: out, Human: out, Diag: out, Effective: cli.Defaults()}
-	warnExposure(runner, &serveOptions{host: "0.0.0.0", interactive: true})
+	warnExposure(runner, &serveOptions{host: "0.0.0.0"})
 	const want = "serve: binding 0.0.0.0 exposes the interactive (local triage & KB writes) surface " +
 		"beyond loopback over plain HTTP; the token and session cookie are not encrypted"
 	if !slices.Contains(runner.Warnings, want) {
@@ -444,7 +444,7 @@ func TestNonLoopbackWarningNamesHostPosting(t *testing.T) {
 	t.Parallel()
 	out := &syncBuffer{}
 	runner := &cli.Runner{Out: out, Human: out, Diag: out, Effective: cli.Defaults()}
-	warnExposure(runner, &serveOptions{host: "0.0.0.0", interactive: true, allowPost: true})
+	warnExposure(runner, &serveOptions{host: "0.0.0.0", allowPost: true})
 	const want = "serve: binding 0.0.0.0 exposes the interactive (local triage & KB writes) and " +
 		"host posting (--allow-post) surface beyond loopback over plain HTTP; " +
 		"the token and session cookie are not encrypted"
@@ -461,11 +461,10 @@ func TestNonLoopbackWarningNamesHostPosting(t *testing.T) {
 // startEnvelopeCase is one start-envelope posture: the flags, and the two
 // advertised values they must produce.
 type startEnvelopeCase struct {
-	name        string
-	interactive bool
-	allowPost   bool
-	readOnly    bool
-	allow       bool
+	name      string
+	allowPost bool
+	readOnly  bool
+	allow     bool
 }
 
 // TestAnnounceStartEnvelopeCarriesAllowPost pins the machine-readable start
@@ -475,8 +474,8 @@ func TestAnnounceStartEnvelopeCarriesAllowPost(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []startEnvelopeCase{
 		{name: "read-only", readOnly: true},
-		{name: "interactive", interactive: true},
-		{name: "allow-post", interactive: true, allowPost: true, allow: true},
+		{name: "default-writes"},
+		{name: "allow-post", allowPost: true, allow: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -490,7 +489,7 @@ func assertStartEnvelope(t *testing.T, tc startEnvelopeCase) {
 	t.Helper()
 	server, err := New(&Config{
 		Root: writeFixture(t, fixtureFiles()), Port: testPort, Token: testToken, Now: fixedNow,
-		Interactive: tc.interactive, AllowPost: tc.allowPost,
+		ReadOnly: tc.readOnly, AllowPost: tc.allowPost,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
@@ -511,12 +510,12 @@ func assertStartEnvelope(t *testing.T, tc startEnvelopeCase) {
 }
 
 // TestRouteTableIsGetOnlyByDefault walks the one registration point: the
-// default table is GET only, and only an interactive server adds the two
+// --read-only table is GET only, and only a writable server adds the two
 // POST rows (and drops the GET placeholders).
 func TestRouteTableIsGetOnly(t *testing.T) {
 	t.Parallel()
 	root := writeFixture(t, fixtureFiles())
-	server, err := New(&Config{Root: root, Port: testPort, Token: testToken, Now: fixedNow})
+	server, err := New(&Config{Root: root, Port: testPort, Token: testToken, Now: fixedNow, ReadOnly: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -561,7 +560,7 @@ func TestRouteTableInteractiveAddsPosts(t *testing.T) {
 	t.Parallel()
 	root := writeFixture(t, fixtureFiles())
 	server, err := New(&Config{
-		Root: root, Port: testPort, Token: testToken, Now: fixedNow, Interactive: true,
+		Root: root, Port: testPort, Token: testToken, Now: fixedNow,
 	})
 	if err != nil {
 		t.Fatalf("New: %v", err)

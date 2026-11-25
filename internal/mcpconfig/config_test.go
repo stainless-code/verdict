@@ -675,68 +675,44 @@ func TestTOMLMultiLineStringAfterTheTable(t *testing.T) {
 	}
 }
 
-// TestFlagSnippets proves each posture combination lands in the JSON snippet.
+// TestFlagSnippets proves --read-only lands in the JSON snippet and nothing
+// else does: the retired --operator is never written.
+//
+//nolint:revive // the posture matrix reads as one assertion block
 func TestFlagSnippets(t *testing.T) {
 	t.Parallel()
-	for _, tc := range []struct {
-		name     string
-		readOnly bool
-		operator bool
-	}{
-		{"plain", false, false},
-		{"read-only", true, false},
-		{"operator", false, true},
-	} {
-		checkFlagSnippet(t, tc.name, tc.readOnly, tc.operator)
+	for _, readOnly := range []bool{false, true} {
+		req := testRequest(t, AgentClaude, false)
+		req.ReadOnly = readOnly
+		res, ref := Run(req)
+		if ref != nil {
+			t.Fatalf("readOnly=%v: %v", readOnly, ref)
+		}
+		if !strings.Contains(res.Snippet, `"mcp"`) {
+			t.Errorf("readOnly=%v snippet misses \"mcp\":\n%s", readOnly, res.Snippet)
+		}
+		if got := strings.Contains(res.Snippet, `"--read-only"`); got != readOnly {
+			t.Errorf("readOnly=%v snippet carries --read-only = %v:\n%s", readOnly, got, res.Snippet)
+		}
+		if strings.Contains(res.Snippet, "--operator") {
+			t.Errorf("readOnly=%v snippet carries the retired --operator:\n%s", readOnly, res.Snippet)
+		}
 	}
 }
 
-//nolint:revive // the presence/absence checks read as one assertion block
-func checkFlagSnippet(t *testing.T, name string, readOnly, operator bool) {
-	t.Helper()
-	req := testRequest(t, AgentClaude, false)
-	req.ReadOnly = readOnly
-	req.Operator = operator
-	res, ref := Run(req)
-	if ref != nil {
-		t.Fatalf("%s: %v", name, ref)
-	}
-	mcp := strings.Index(res.Snippet, `"mcp"`)
-	ro := strings.Index(res.Snippet, `"--read-only"`)
-	op := strings.Index(res.Snippet, `"--operator"`)
-	if mcp < 0 {
-		t.Errorf("%s snippet misses \"mcp\":\n%s", name, res.Snippet)
-	}
-	if readOnly && ro < 0 {
-		t.Errorf("%s snippet misses --read-only:\n%s", name, res.Snippet)
-	}
-	if operator && op < 0 {
-		t.Errorf("%s snippet misses --operator:\n%s", name, res.Snippet)
-	}
-	if !readOnly && ro >= 0 {
-		t.Errorf("%s snippet carries --read-only:\n%s", name, res.Snippet)
-	}
-	if !operator && op >= 0 {
-		t.Errorf("%s snippet carries --operator:\n%s", name, res.Snippet)
-	}
-}
-
-// TestFlagSnippetsTOML proves each posture combination lands in the TOML table.
+// TestFlagSnippetsTOML proves each posture lands in the TOML table.
 func TestFlagSnippetsTOML(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
 		name     string
 		want     string
 		readOnly bool
-		operator bool
 	}{
-		{"plain", `args = ["mcp"]`, false, false},
-		{"read-only", `args = ["mcp", "--read-only"]`, true, false},
-		{"operator", `args = ["mcp", "--operator"]`, false, true},
+		{"plain", `args = ["mcp"]`, false},
+		{"read-only", `args = ["mcp", "--read-only"]`, true},
 	} {
 		req := testRequest(t, AgentCodex, false)
 		req.ReadOnly = tc.readOnly
-		req.Operator = tc.operator
 		res, ref := Run(req)
 		if ref != nil {
 			t.Fatalf("%s: %v", tc.name, ref)
@@ -979,31 +955,6 @@ func TestTOMLOwnedArgsWithoutCommand(t *testing.T) {
 	}
 	if again, ref := Run(req); ref != nil || again.Status != StatusKeep {
 		t.Fatalf("second run = %+v %v, want keep", again, ref)
-	}
-}
-
-// TestRunRefusesPosturePair proves the exported API refuses the pair before
-// writing argv that `verdict mcp` itself rejects.
-func TestRunRefusesPosturePair(t *testing.T) {
-	t.Parallel()
-	req := testRequest(t, AgentClaude, true)
-	path := filepath.Join(req.Cwd, ".mcp.json")
-	seed := `{"mcpServers":{}}` + "\n"
-	if err := os.WriteFile(path, []byte(seed), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	req.ReadOnly = true
-	req.Operator = true
-	res, ref := Run(req)
-	if ref == nil || ref.Code != "bad-flags" {
-		t.Fatalf("refusal = %v, want bad-flags", ref)
-	}
-	if res != (Result{}) {
-		t.Fatalf("refusal returned result %+v", res)
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil || string(raw) != seed {
-		t.Fatalf("refusal wrote %q, %v", raw, err)
 	}
 }
 

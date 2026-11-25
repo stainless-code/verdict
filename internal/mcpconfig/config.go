@@ -51,7 +51,6 @@ const (
 	CodeRead         = "mcp-config-read-failed"
 	CodeWrite        = "mcp-config-write-failed"
 	CodeBackup       = "mcp-config-backup-failed"
-	CodeBadFlags     = "bad-flags"
 
 	// BackupSuffix names the copy taken before a changing write.
 	BackupSuffix = ".verdict.bak"
@@ -60,7 +59,7 @@ const (
 	command        = "verdict"
 	mcpArg         = "mcp"
 	readOnlyFlag   = "--read-only"
-	operatorFlag   = "--operator"
+	operatorFlag   = "--operator" // retired: still recognized as verdict-owned on disk, never written
 	maxOwnedArgs   = 3
 	configPerm     = 0o600
 	dirPerm        = 0o755
@@ -89,7 +88,6 @@ type Request struct {
 	Cwd      string
 	Env      map[string]string
 	ReadOnly bool
-	Operator bool
 }
 
 // Result is the snippet to print plus the merge outcome.
@@ -112,9 +110,6 @@ type host struct {
 // Run resolves the host, renders its snippet, and (unless this is a preview)
 // merges and writes the config.
 func Run(req *Request) (Result, *core.RefusalError) {
-	if req != nil && req.ReadOnly && req.Operator {
-		return Result{}, refuse(CodeBadFlags, "--read-only and --operator are mutually exclusive")
-	}
 	where, ref := resolve(req)
 	if ref != nil {
 		return Result{}, ref
@@ -182,9 +177,6 @@ func wantArgsList(req *Request) []string {
 	}
 	if req.ReadOnly {
 		out = append(out, readOnlyFlag)
-	}
-	if req.Operator {
-		out = append(out, operatorFlag)
 	}
 	return out
 }

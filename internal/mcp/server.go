@@ -21,6 +21,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/posture"
 )
 
 const (
@@ -67,7 +68,6 @@ type Config struct { //nolint:govet // the grouping documents the injection surf
 	Warnings   []string
 	Root       string
 	ReadOnly   bool
-	Operator   bool
 	Stderr     io.Writer
 	Commanders map[string]core.Commander
 }
@@ -110,7 +110,8 @@ func New(cfg *Config) *Server {
 		cfg.Stderr = io.Discard
 	}
 	cfg.Stderr = &diagWriter{dst: cfg.Stderr}
-	tools := allTools(cfg.ReadOnly, cfg.Operator)
+	rule := Posture(cfg.ReadOnly)
+	tools := allTools(rule)
 	applyCommanderOverrides(tools, cfg.Commanders)
 	byName := make(map[string]*tool, len(tools))
 	for _, t := range tools {
@@ -120,7 +121,7 @@ func New(cfg *Config) *Server {
 		cfg:    *cfg,
 		tools:  tools,
 		byName: byName,
-		hidden: hiddenTools(cfg.ReadOnly, cfg.Operator),
+		hidden: hiddenTools(rule),
 		calls:  map[string]context.CancelFunc{},
 	}
 }
@@ -130,13 +131,13 @@ type hiddenTool struct {
 	cliOnly  bool
 }
 
-func hiddenTools(readOnly, operator bool) map[string]hiddenTool {
+func hiddenTools(rule posture.Rule) map[string]hiddenTool {
 	out := map[string]hiddenTool{}
-	for _, t := range allTools(false, true) {
-		if exposed(t, readOnly, operator) {
+	for _, t := range allTools(Posture(false)) {
+		if exposed(t, rule) {
 			continue
 		}
-		out[t.name] = hiddenTool{requires: toolRequires(t, readOnly)}
+		out[t.name] = hiddenTool{requires: "a server started without " + posture.FlagReadOnly}
 	}
 	for name, requires := range cliOnlyVerbs {
 		out[name] = hiddenTool{requires: requires, cliOnly: true}
@@ -144,15 +145,12 @@ func hiddenTools(readOnly, operator bool) map[string]hiddenTool {
 	return out
 }
 
-func toolRequires(t *tool, readOnly bool) string {
-	switch {
-	case t.operatorOnly && readOnly:
-		return "a server started with --operator and without --read-only"
-	case t.operatorOnly:
-		return "a server started with --operator"
-	default:
-		return "a server started without --read-only"
-	}
+// Posture is this surface's resolved write posture. The tools the registry
+// exposes are the only host-post path (post, threads resolve), so exposing
+// them is the surface's whole opt-in: read-only is the one thing that
+// withholds them.
+func Posture(readOnly bool) posture.Rule {
+	return posture.Rule{ReadOnly: readOnly, HostPostOptIn: true}
 }
 
 func applyCommanderOverrides(tools []*tool, overrides map[string]core.Commander) {
@@ -332,12 +330,11 @@ func (s *Server) instructions() string {
 		"post is the only terminal write and never writes a review note; dryRun previews it.",
 		"Never call triage while reviewing a PR: propose status changes through triage[] in review.json.",
 	}
-	if s.cfg.Operator {
+	if s.cfg.ReadOnly {
 		return strings.Join(append(lines,
-			"This server runs with --operator, so triage is available for human-owned status flips."), lineBreak)
+			"This server runs with --read-only: triage and every other local write are not on this surface."), lineBreak)
 	}
-	return strings.Join(append(lines,
-		"triage is not on this surface; it is available only when the server starts with --operator."), lineBreak)
+	return strings.Join(lines, lineBreak)
 }
 
 func (s *Server) handleToolsCall(ctx context.Context, req *rpcRequest) {
@@ -395,12 +392,6 @@ type jqObjResult struct {
 }
 
 func (s *Server) modeRefusal(t *tool, request any) *core.RefusalError {
-	if t.operatorWrite != nil && t.operatorWrite(request) && !s.cfg.Operator {
-		return &core.RefusalError{
-			Code:    codeBadFlags,
-			Message: "threads resolve requires a server started with --operator",
-		}
-	}
 	if t.requireDryRun && !requestDryRun(request) {
 		return &core.RefusalError{
 			Code:    codeBadFlags,

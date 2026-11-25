@@ -92,47 +92,27 @@ else
   bad "gemini --write merge failed (exit $st)"
 fi
 
-if "$EVAL_CLI" mcp config --agent claude --read-only 2>/dev/null | matches -- "--read-only" \
-  && "$EVAL_CLI" mcp config --agent claude --operator 2>/dev/null | matches -- "--operator"; then
-  good "print snippets carry the posture argv"
+if "$EVAL_CLI" mcp config --agent claude --read-only 2>/dev/null | matches -- "--read-only"; then
+  good "print snippets carry the --read-only argv"
 else
-  bad "print snippets miss the posture argv"
+  bad "print snippets miss the --read-only argv"
 fi
 
-set +e
-"$EVAL_CLI" mcp config --agent claude --read-only --operator >"$EVAL_SANDBOX/p-out.txt" 2>"$EVAL_SANDBOX/p-err.txt"
-st=$?
-set -e
-if [ "$st" -eq 2 ] && grep -q -- "--read-only and --operator are mutually exclusive" "$EVAL_SANDBOX/p-err.txt" \
-  && [ ! -s "$EVAL_SANDBOX/p-out.txt" ]; then
-  good "the --read-only --operator pair refuses with the mcp wording"
-else
-  bad "pair refusal exit $st (want 2 with the mcp wording)"
-fi
-
-if [ -e "$EVAL_SANDBOX/.mcp.json" ]; then
-  cp "$EVAL_SANDBOX/.mcp.json" "$EVAL_SANDBOX/pre-pair.json"
-else
-  rm -f "$EVAL_SANDBOX/pre-pair.json"
-fi
-set +e
-"$EVAL_CLI" mcp config --agent claude --read-only --operator --write >"$EVAL_SANDBOX/pw-out.txt" 2>"$EVAL_SANDBOX/pw-err.txt"
-st=$?
-set -e
-if [ "$st" -eq 2 ] && grep -q -- "--read-only and --operator are mutually exclusive" "$EVAL_SANDBOX/pw-err.txt"; then
-  if [ -e "$EVAL_SANDBOX/pre-pair.json" ]; then
-    if cmp -s "$EVAL_SANDBOX/.mcp.json" "$EVAL_SANDBOX/pre-pair.json"; then
-      good "pair refusal under --write leaves the file byte-identical"
-    else
-      bad "pair refusal under --write rewrote the file"
-    fi
-  elif [ ! -e "$EVAL_SANDBOX/.mcp.json" ]; then
-    good "pair refusal under --write writes nothing"
+# --operator is retired: accepted for one release, ignored, never written, and
+# the old --read-only --operator conflict is gone.
+for combo in "--operator" "--read-only --operator"; do
+  set +e
+  # shellcheck disable=SC2086
+  "$EVAL_CLI" mcp config --agent claude $combo >"$EVAL_SANDBOX/p-out.txt" 2>"$EVAL_SANDBOX/p-err.txt"
+  st=$?
+  set -e
+  if [ "$st" -eq 0 ] && grep -q -- "--operator is deprecated and ignored" "$EVAL_SANDBOX/p-err.txt"; then
+    good "mcp config $combo is a deprecated no-op: exit 0 with the notice on stderr"
   else
-    bad "pair refusal under --write wrote .mcp.json"
+    bad "mcp config $combo exit $st (want 0 and the deprecation notice)"
   fi
-else
-  bad "pair --write exit $st (want 2 with the mcp wording)"
-fi
+  assert_file_nogrep "mcp config $combo never writes --operator into the snippet" \
+    "$EVAL_SANDBOX/p-out.txt" '"--operator"'
+done
 
 eval_end

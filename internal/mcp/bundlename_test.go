@@ -53,7 +53,6 @@ func TestToolPrGuard(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fixture(t)
 			cfg := testConfig()
-			cfg.Operator = true
 			cfg.Commanders = map[string]core.Commander{tc.name: spawnlessCommander{}}
 			line := fmt.Sprintf(
 				`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":%q,"arguments":{%s}}}`,

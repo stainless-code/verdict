@@ -2,7 +2,7 @@
 
 Verdict splits code review into steps your agent runs on your machine: fetch,
 review, gate, post. The agent reviews; `gh` does GitHub I/O. No remote servers, no external
-services; `verdict serve` is a local, read-only surface.
+services; `verdict serve` is a local surface that writes locally unless `--read-only`.
 
 ## Quickstart
 
@@ -2224,6 +2224,49 @@ verdict), and the flagless form remains advisory `report`.
 
 Runnable examples: [ExampleClient_Gate](../pkg/verdict/example_test.go) — and [gate.ts](../examples/typescript-client/gate.ts).
 
+### Write posture (mcp, serve, lsp)
+
+The three long-running local surfaces — `verdict mcp`, `verdict serve`, and
+`verdict lsp` — answer one question the same way: may this process write? The
+rule is shared code (`internal/posture`), not three copies of a convention.
+
+- **Local writes are on by default; `--read-only` is the only knob.** Local
+  writes are everything that rewrites `.verdict/` state: `triage`, KB
+  promotion (`learn`), `record`, `adopt`, `fix`, `verify`, `fetch`, `ingest`,
+  `calibrate`, and the other bundle-writing verbs. There is no second flag that
+  turns them on: `mcp --operator` and `serve --interactive` are retired.
+- **`--read-only` refuses every write path on every surface.** It also forbids
+  host posting outright. On `mcp` the write tools leave `tools/list` (only the
+  read tools plus `record` with `dry_run` remain); on `serve` every write and
+  job route answers `405` and the server never mints a CSRF token; `lsp` has
+  no write path to refuse.
+- **Host posting is a separate, stronger decision, gated per surface exactly as
+  before.** It needs the local-writes answer _plus_ the surface's own consent:
+  `serve` posts to a code host only with `--allow-post` (the confirmation-gated
+  preview, nonce, and digest flow is unchanged), and `--allow-post` beside
+  `--read-only` refuses at startup with `bad-flags`. `mcp` exposes `post` (and
+  the `threads` resolve mode, which closes verdict-authored host threads) on a
+  server that is not `--read-only`, because the host already authorizes the
+  binary and its credentials. `lsp` never posts.
+
+| Surface | Flag                                | Default | Local writes (triage, KB, record, adopt, fix, verify)               | Host post                                                                  |
+| ------- | ----------------------------------- | ------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------- |
+| `mcp`   | `--read-only`                       | off     | tools exposed; off removes them                                     | `post`, `threads` resolve exposed; off removes them                        |
+| `serve` | `--read-only`                       | off     | `POST /v1/triage`, `/v1/kb/promote`, `/v1/jobs/*`; on answers `405` | `POST /v1/post/submit` only with `--allow-post`; on refuses `--allow-post` |
+| `lsp`   | `--read-only` (accepted, no effect) | off     | none exist                                                          | none exists                                                                |
+
+**Deprecated flags.** `verdict mcp --operator` (and `mcp config --operator`) and
+`verdict serve --interactive` are still accepted for one release as no-ops that
+print a one-line deprecation notice on stderr; `mcp config` no longer writes
+`--operator` into a host snippet, and `--write` rewrites an existing
+`["mcp", "--operator"]` entry in place. `--operator` with `--read-only` is no
+longer a usage error: read-only wins.
+
+The MCP server's `triage` tool is human-owned doctrine, not an access gate:
+the shipped instructions still tell an agent to propose status changes through
+`triage[]` in `review.json` instead of calling it. Start an agent's server with
+`--read-only` when it must not be able to.
+
 ### MCP server (stdio, experimental until 1.0)
 
 `verdict mcp` serves the review verbs as MCP tools over stdio: newline-delimited
@@ -2236,12 +2279,11 @@ Tools are named after the verbs and take the core request shape: `adopt`,
 `calibrate`, `check-tree`, `config`, `doctor`, `fetch`, `fetch-local`, `fix`, `index`, `ingest`, `init`,
 `handoff`, `journal`, `learn`, `next`, `pack`, `post`, `pr_wait`, `query-bundles`, `query-copy`, `query-cost`,
 `query-finding`, `query-findings`, `query-health`, `ready`, `record`, `report`, `risk`, `show`,
-`threads`, `trend`, `verify`. That is 32 tools. The six `query-*` tools are the dashboard reads over the
+`threads`, `trend`, `triage`, `verify`. That is 33 tools. The six `query-*` tools are the dashboard reads over the
 shared query layer (no CLI twin), not verbs — they compose through `internal/core/query`, the same layer
 `verdict serve` and `verdict acp` share, so there is no duplicate counting or finding logic. `upgrade` and `skill` are distribution surfaces,
-never tools; `triage` is human-owned and joins the surface only with
-`--operator`, so an agent proposes status changes through `triage[]` in
-`review.json` instead. Input schemas are generated from the Go request structs,
+never tools; `triage` is human-owned, so an agent proposes status changes through `triage[]` in
+`review.json` instead of calling it (see [Write posture](#write-posture-mcp-serve-lsp)). Input schemas are generated from the Go request structs,
 so they cannot drift from the core contract; `repo`/`pr` plus verb fields are
 the arguments. Closed vocabularies and numeric bounds the structs declare
 (`status`, `kind`, check tier, `preset`, `rigor`, `approve`, provider names)
@@ -2253,27 +2295,26 @@ exposed under `--read-only`.
 `--read-only` exposes the read tools (`report`, `next`, `show`, `risk`, `trend`, `query-bundles`, `query-copy`,
 `query-cost`, `query-finding`, `query-findings`, `query-health`,
 `ready`, `doctor`, `check-tree`, `config`, `index`, `pack`, `pr_wait`, `handoff`, `journal`) plus `record` limited to its `dry_run: true`
-form, and is mutually exclusive with `--operator`. A non-dry `record` call
+form; it is the one write-posture flag shared with `serve` and `lsp`
+([Write posture](#write-posture-mcp-serve-lsp)). A non-dry `record` call
 there is an `isError` `bad-flags` result naming `dry_run`; the tool keeps
 `readOnlyHint: false` because the same tool writes by default. `report` writes
 nothing there either: the surface drops its `output` and `sarif` arguments and
 refuses them as unknown. `threads` is not exposed at all, because it rewrites
-`.verdict/state/<pr>/threads.json` from the host; its `resolve` mode is
-operator-only, because it closes host threads, and a server started without
-`--operator` refuses that call naming the flag. Every review verb except the
-human-owned `triage` is exposed by default because the host already authorizes
-the binary and its credentials. The registry explicitly declares each tool’s local-write mutation class,
+`.verdict/state/<pr>/threads.json` from the host, and its `resolve` mode closes
+verdict-authored host threads, so a `--read-only` server refuses both. Every
+review verb is exposed by default because the host already authorizes the
+binary and its credentials. The registry explicitly declares each tool’s local-write mutation class,
 separately from MCP behavior hints. Read-only exposure derives from that class,
 with the constrained `record` and `report` forms above. A tool hidden by
 `--read-only` returns an `isError: true` tool result with
-`{code:"read-only-tool", message, hint}`. A call hidden only by the operator flag is a JSON-RPC
-`-32602` error whose message and `data` name the tool and the flag combination
-that exposes it (`triage` without `--operator`), so
+`{code:"read-only-tool", message, hint}`. A call to a CLI-only verb (`drain`) is a JSON-RPC
+`-32602` error whose message and `data` name the tool and where it runs, so
 a hidden verb is never reported as an unknown one; a truly unknown name still
 answers `unknown tool`.
-`--operator` adds `triage` (33 tools) for an operator's own assistant that is
-allowed to flip statuses, and it unlocks the `threads` resolve mode; it is
-never the default. Each `tools/list` entry
+`--operator` is retired: it is accepted for one release as a deprecated no-op
+that prints a notice, because `triage` and the `threads` resolve mode now follow
+`--read-only` like every other write. Each `tools/list` entry
 carries a short `title` plus the four MCP behavior hints (`readOnlyHint`,
 `destructiveHint`, `idempotentHint`, `openWorldHint`) derived from the verb's
 real behavior: `post` is destructive and open-world, `fetch` is open-world,
@@ -2283,7 +2324,7 @@ can resolve host threads.
 Descriptions state what the tool does,
 when to call it, and what it writes or sends. `initialize` returns an
 `instructions` string with the same doctrine (fetch, review, post; one review;
-refusals carry a `hint`; never `triage` without `--operator`), so an MCP-only
+refusals carry a `hint`; never `triage` while reviewing a PR), so an MCP-only
 agent sees it before its first call. Each
 `tools/call` returns the CLI `--json` envelope's `data` as one text block plus
 `structuredContent`; a typed refusal sets `isError: true` with
@@ -2311,7 +2352,7 @@ same surface. `resources/list` serves every payload file at
 `refs/` writer. `resources/read` returns payload text byte-identical to `verdict skill show`,
 and ref text byte-identical to that writer.
 Prompts and resources are read-only in every server mode, including
-`--read-only` and `--operator`, and `skill` remains a distribution surface,
+`--read-only`, and `skill` remains a distribution surface,
 never a tool. `initialize` advertises both capabilities
 and points hosts at the `review` prompt or `verdict://skill/PROCEDURE.md`.
 
@@ -2351,8 +2392,8 @@ addressable sigs), while the same sig passed to `query-finding` refuses
 
 `verdict mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>`
 prints the exact entry (the default is print-only, like `--dry-run`). Add
-`--read-only` or `--operator` (mutually exclusive, like `verdict mcp`) to put
-the matching argv after `mcp` in the snippet. Add `--write` to merge it into the host's documented config, or
+`--read-only` to put it after `mcp` in the snippet (`--operator` is retired:
+accepted, ignored, never written). Add `--write` to merge it into the host's documented config, or
 `--json` for one envelope with the path, format, snippet, and merge status. It
 never prompts and never starts the server.
 
@@ -2381,7 +2422,7 @@ args = ["mcp"]
 `--write` is idempotent: an existing matching entry is `keep` and nothing is
 written; an absent one is `create`/`update`. An existing `verdict` entry whose
 argv is one of verdict's own shapes (`["mcp"]` plus any combination of
-`--read-only`/`--operator`) is updated in place to the requested argv; any
+`--read-only`/the retired `--operator`) is updated in place to the requested argv; any
 other command/argv refuses typed (`mcp-config-foreign`) instead of being
 rewritten. The previous file is copied to `<path>.verdict.bak` before the
 first changing write. Unknown keys and other servers are preserved. A file that
@@ -2498,8 +2539,12 @@ diagnostic says exactly what `report`, `serve`, and `acp` say. `verdict lsp
 
 ```text
 verdict lsp [--root <dir>]... [--bundle <name>] [--check <tier>] [--max-bundles <n>]
-            [--max-roots <n>] [--interval <duration>] [--sweep <duration>] [--no-watch] [--json]
+            [--max-roots <n>] [--interval <duration>] [--sweep <duration>] [--no-watch] [--read-only] [--json]
 ```
+
+- `--read-only` is accepted so one flag set configures all three long-running
+  surfaces ([Write posture](#write-posture-mcp-serve-lsp)); `lsp` has no write
+  path, so it behaves the same with or without it.
 
 - `--root <dir>` serves the bundles under one directory, which must sit inside
   a git checkout (a `.git` entry in it or an ancestor), or the start refuses
@@ -2977,17 +3022,17 @@ Each `start` line records `repo` (the canonical repository root), `verb`, `chann
 
 `verdict serve` starts one read-only HTTP surface over the current repository's
 bundles. With `--root`, it discovers every repository below that directory.
-With `--interactive`, it adds two local-only write endpoints — `POST
+Unless `--read-only`, it also serves two local-only write endpoints — `POST
 /v1/triage` and `POST /v1/kb/promote` — through the same triage and learn
-services the CLI calls. `--interactive --allow-post` adds the one host-writing
-route, `POST /v1/post/submit`, which posts a review to the code host (see
-**Host posting (Tier C)** below). The server binds
+services the CLI calls ([Write posture](#write-posture-mcp-serve-lsp));
+`--allow-post` adds the one host-writing route, `POST /v1/post/submit`, which
+posts a review to the code host (see **Host posting (Tier C)** below). The server binds
 `127.0.0.1` on a kernel-assigned
 port by default. Pass `--port` to pin the port or `--host` to bind another
 interface. The server prints one tokenised start URL and stops on Ctrl-C
 (exit 3). It never fetches or runs a model, and without `--allow-post` it never
-posts to the host; without `--interactive`, it writes no store at all. The
-post preview (`--interactive`) is not network-free: it runs `post`'s dry-run,
+posts to the host; with `--read-only`, it writes no store at all. The
+post preview (any server not `--read-only`) is not network-free: it runs `post`'s dry-run,
 which reads live host state through the host CLI (the pull request head, for
 the drift check) before anything is shown. It never posts. A served post does
 not enable `--summary=comment`, so the preview reads no summary comments.
@@ -3035,13 +3080,14 @@ start; the flag warns it is visible in `ps` and shell history), `--check
 <tier>` (the gate tier the bundle detail composes; default `critical`),
 `--max-bundles <n>` (default 500), `--interval <duration>` (default `1s`, minimum
 `100ms`), `--sweep <duration>` (default `30s`, at least `--interval`),
-`--no-watch` (disable polling and remove `/v1/events`), `--interactive`
-(register the local write endpoints and the `verify`/preview job routes;
-default off, and the default surface stays GET-only), and `--allow-post`
-(enable host posting through the interactive Tier C endpoint,
-`POST /v1/post/submit`: with `--interactive` alone the endpoint answers
-`403 post-disabled` and posts nothing; requires `--interactive`, default off,
-and never implied by `--interactive` alone). Atomic writes are visible
+`--no-watch` (disable polling and remove `/v1/events`), `--read-only`
+(the shared write-posture flag: drop the local write endpoints and the
+`verify`/preview job routes, leaving a GET-only surface; the default registers
+them), `--interactive` (deprecated, ignored: it printed a notice and changes
+nothing, because local writes are now the default), and `--allow-post`
+(enable host posting through the Tier C endpoint, `POST /v1/post/submit`: without
+it the endpoint answers `403 post-disabled` and posts nothing; refused with
+`--read-only`, default off, and never implied by the local-writes default). Atomic writes are visible
 within one tick; non-atomic in-place edits are visible within one sweep. A tick
 checks the state directory, each bundle directory, existing `chunks/`
 directories, and `.verdict/overrides/`; a sweep fingerprints directory entries.
@@ -3049,7 +3095,7 @@ directories, and `.verdict/overrides/`; a sweep fingerprints directory entries.
 `data.url` is the tokenised URL and `data.listen` is `host:port`, with
 `data.read_only` reporting the posture and `data.allow_post` reporting whether
 host posting is enabled (`--allow-post`; the Tier C route itself answers on
-every interactive server and refuses `403 post-disabled` while this is
+every writable server and refuses `403 post-disabled` while this is
 `false`); the envelope
 is the only machine-readable place a script learns where to connect, and a log
 that captures it captures a capability that dies with the process.
@@ -3070,26 +3116,26 @@ than from history.
 
 **Routes** (GET, plus HEAD from the mux):
 
-| Route                                                       | Envelope                                                                                                                                                                                                 |
-| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `GET /v1/health`                                            | `serve` — version, roots, watch state, interval, cache counters, `read_only: true` (`false` with `--interactive`, which also carries `interactive: true`, `allow_post`, `csrf`, `jobs: true`, `actions`) |
-| `GET /v1/roots`                                             | `serve` — the served roots with counts, `truncated`, `skipped`, `discovery`                                                                                                                              |
-| `GET /v1/bundles`                                           | `serve` — inbox rows, portfolio counts, `partial`, `sources[]`, `errors[]`                                                                                                                               |
-| `GET /v1/cost?by=repo\|week\|model`                         | `serve` — cost buckets and totals, with `partial`, `sources[]`, `errors[]`                                                                                                                               |
-| `GET /v1/precision?by=category\|tier`                       | `serve` — stored-join outcomes; `fixed` is `null` and no rate is printed                                                                                                                                 |
-| `GET /v1/roots/{root}/bundles/{bundle}`                     | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                                                                                                                                          |
-| `GET /v1/roots/{root}/bundles/{bundle}/diff`                | `serve` — `data.{lanes,files,sources,errors}` review diff grouped by change lane                                                                                                                         |
-| `GET /v1/roots/{root}/bundles/{bundle}/compare`             | `serve` — `data.compare` against `?baseline={bundle}`; `bad-baseline` refuses                                                                                                                            |
-| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}`      | `show` — byte-identical `data` to `show --json`                                                                                                                                                          |
-| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}/copy` | `serve` — `data.{prompt,triage}` copy payloads (read-only)                                                                                                                                               |
-| `GET /v1/events`                                            | SSE invalidations; absent with `--no-watch`                                                                                                                                                              |
-| `POST /v1/triage`                                           | `serve` — `data.{sig,status}`; interactive only (see below)                                                                                                                                              |
-| `POST /v1/kb/promote`                                       | `serve` — `data.rule` appends one learn rule; interactive only (see below)                                                                                                                               |
-| `POST /v1/post/submit`                                      | `serve` — `data` is the post receipt; interactive + `--allow-post` only (see below)                                                                                                                      |
-| `POST /v1/jobs/verify`                                      | `serve` — queued sandbox verify snapshot; interactive only (see below)                                                                                                                                   |
-| `POST /v1/jobs/post-preview`                                | `serve` — queued dry-run preview snapshot; interactive only (see below)                                                                                                                                  |
-| `POST /v1/jobs/{id}/cancel`                                 | `serve` — cancelled job snapshot; interactive only (see below)                                                                                                                                           |
-| `GET /v1/jobs/{id}`                                         | `serve` — job snapshot; interactive only (see below)                                                                                                                                                     |
+| Route                                                       | Envelope                                                                                                                                                                                                       |
+| ----------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET /v1/health`                                            | `serve` — version, roots, watch state, interval, cache counters, `read_only` (`false` unless `--read-only`; a writable server also carries `interactive: true`, `allow_post`, `csrf`, `jobs: true`, `actions`) |
+| `GET /v1/roots`                                             | `serve` — the served roots with counts, `truncated`, `skipped`, `discovery`                                                                                                                                    |
+| `GET /v1/bundles`                                           | `serve` — inbox rows, portfolio counts, `partial`, `sources[]`, `errors[]`                                                                                                                                     |
+| `GET /v1/cost?by=repo\|week\|model`                         | `serve` — cost buckets and totals, with `partial`, `sources[]`, `errors[]`                                                                                                                                     |
+| `GET /v1/precision?by=category\|tier`                       | `serve` — stored-join outcomes; `fixed` is `null` and no rate is printed                                                                                                                                       |
+| `GET /v1/roots/{root}/bundles/{bundle}`                     | `serve` — `data.{report,gate,threads,artifacts,sources,errors}`                                                                                                                                                |
+| `GET /v1/roots/{root}/bundles/{bundle}/diff`                | `serve` — `data.{lanes,files,sources,errors}` review diff grouped by change lane                                                                                                                               |
+| `GET /v1/roots/{root}/bundles/{bundle}/compare`             | `serve` — `data.compare` against `?baseline={bundle}`; `bad-baseline` refuses                                                                                                                                  |
+| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}`      | `show` — byte-identical `data` to `show --json`                                                                                                                                                                |
+| `GET /v1/roots/{root}/bundles/{bundle}/findings/{sig}/copy` | `serve` — `data.{prompt,triage}` copy payloads (read-only)                                                                                                                                                     |
+| `GET /v1/events`                                            | SSE invalidations; absent with `--no-watch`                                                                                                                                                                    |
+| `POST /v1/triage`                                           | `serve` — `data.{sig,status}`; not `--read-only` (see below)                                                                                                                                                   |
+| `POST /v1/kb/promote`                                       | `serve` — `data.rule` appends one learn rule; not `--read-only` (see below)                                                                                                                                    |
+| `POST /v1/post/submit`                                      | `serve` — `data` is the post receipt; `--allow-post` and not `--read-only` (see below)                                                                                                                         |
+| `POST /v1/jobs/verify`                                      | `serve` — queued sandbox verify snapshot; not `--read-only` (see below)                                                                                                                                        |
+| `POST /v1/jobs/post-preview`                                | `serve` — queued dry-run preview snapshot; not `--read-only` (see below)                                                                                                                                       |
+| `POST /v1/jobs/{id}/cancel`                                 | `serve` — cancelled job snapshot; not `--read-only` (see below)                                                                                                                                                |
+| `GET /v1/jobs/{id}`                                         | `serve` — job snapshot; not `--read-only` (see below)                                                                                                                                                          |
 
 The `bundles` SSE event carries one compact envelope with the root, detector
 (`tick` or `sweep`), changed and removed bundle names, and `truncated`. Events
@@ -3117,9 +3163,9 @@ mismatched, expired, replayed, or bundle-stale preview), `500` (`internal` on an
 unexpected store or read failure), and `503` (`store-busy` when a Tier C submit
 cannot take the bundle lock, and `job-capacity` when the job history is full of
 active jobs). Without
-`--interactive` the write paths accept no method and answer `405` with
+`--read-only` the write paths accept no method and answer `405` with
 `Allow: GET, HEAD` (and `method-not-allowed` on the write paths' own GET);
-with `--interactive` they accept `POST` only, and every other method —
+by default they accept `POST` only, and every other method —
 including `GET` — answers `405` with `Allow: POST`. Every response carries
 the strict CSP (`default-src 'self'`, no inline script or style), no referrer,
 `nosniff`, same-origin resource and opener policies, and `no-store`; no CORS
@@ -3131,7 +3177,7 @@ breaking change becomes `/v2`.
 
 **Review diff.** `GET /v1/roots/{root}/bundles/{bundle}/diff` renders the bundle `full.diff` the way a dashboard does: files grouped by change lane in risk order (`schema`, `source`, `config`, `tests`, `docs`, `generated`, `lockfiles`, `renamed`, `whitespace`), each lane reporting file count, `+add / -del`, and finding counts by lens. Files show side-by-side and unified views with a toggle, changed words highlighted from server-computed spans, collapsed `… N unchanged lines` gaps between hunks, and findings anchored on their exact `path` + `line` + `side`. The diff is parsed from the confined bundle only; the view carries `data.sources[]` (`full.diff` plus blob/head SHAs from `PR.json`/`source.json`/index lines), while files carry anchored findings (`path` + `line` + `side`) and each lane carries lane-level `by_lens` counts. File-scoped (line-less) findings are excluded from both lane counts and row anchors: only line-bound findings increment lane counts, and inline rows anchor them. The line engine is a pure-Go histogram diff with Myers fallback and an indent heuristic; the word pass pairs adjacent lines and marks changed tokens without JavaScript diff math. Both are pinned by literal fixtures and mutation proofs (dropping the indent slide or the word pass fails a test). The static `report --html` export snapshots the diff route as `data.json` alongside the detail routes.
 
-**Interactive writes.** With `--interactive`, the two write endpoints are
+**Interactive writes.** Unless `--read-only`, the two write endpoints are
 exact local mirrors of the CLI: `POST /v1/triage` accepts `root`, `bundle`,
 `sig`, `status` (`open|addressed|wont-fix|false-positive|deferred`),
 `rationale`, and `force`, and runs the triage service over the bundle's
@@ -3156,7 +3202,7 @@ on Detail and Compare findings and a KB promotion form only when `/v1/health`
 advertises `interactive: true` — never in `static` mode — and reads the
 operator's result or refusal back from the status line.
 
-**Interactive jobs (Tier B).** With `--interactive`, `GET /v1/health` also
+**Interactive jobs (Tier B).** Unless `--read-only`, `GET /v1/health` also
 advertises `jobs: true` and `actions: ["verify", "post-preview"]`. Three
 `POST` job routes queue background work, and one `GET` route reads it back:
 `POST /v1/jobs/verify` accepts `root` and `bundle` only, then runs
@@ -3196,7 +3242,7 @@ Detail view shows the bundle-level `Reproduce in sandbox` and
 `Preview PR post` buttons with the live drawer only when `interactive` is
 advertised and the page is not `static`. Every `POST` job route is gated
 exactly like the triage and KB writes (session, CSRF, Origin, JSON);
-without `--interactive` every job path fails closed as read-only.
+with `--read-only` every job path fails closed.
 
 **Host posting (Tier C).** `POST /v1/post/submit` accepts `root`, `bundle`,
 `preview_digest`, `preview_nonce`, and `confirm`, and runs `post` with
@@ -3205,12 +3251,11 @@ duplicate-post, anchor-validation, own-PR, and binding-approval guard the
 CLI `verdict post` inherits applies unchanged and the `post.json` and
 `findings.json` receipts are byte-identical. It is the only host write in
 serve, and it is doubly gated: without `--allow-post` posting is never enabled,
-and `--allow-post` without `--interactive` refuses at startup with `bad-flags`
-(`--allow-post requires --interactive`). With `--interactive` alone,
+and `--allow-post` beside `--read-only` refuses at startup with `bad-flags`
+(`--allow-post and --read-only are mutually exclusive`). Without `--allow-post`,
 `POST /v1/post/submit` answers `403 post-disabled` before any host client
-is touched; without `--interactive` the read-only server answers the `405`
-placeholder.
-With `--interactive --allow-post`, `GET /v1/health` advertises
+is touched; under `--read-only` the server answers the `405` placeholder.
+With `--allow-post`, `GET /v1/health` advertises
 `allow_post: true` and the route is gated exactly like the Tier A/B writes
 (session, CSRF, Origin, JSON), plus a fresh preview and explicit
 confirmation. A succeeded `POST /v1/jobs/post-preview` on such a server

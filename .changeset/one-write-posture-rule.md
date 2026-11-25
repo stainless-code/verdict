@@ -1,0 +1,5 @@
+---
+"@stainless-code/verdict": minor
+---
+
+`verdict mcp`, `verdict serve`, and `verdict lsp` now share one write-posture rule: local writes (triage, KB promotion, record, adopt, fix, verify) are allowed unless the surface starts with `--read-only`, the only knob for them, and `--read-only` also forbids host posting. `mcp` exposes `triage` and the `threads` resolve mode on the default surface (33 tools), `serve` serves its local write and job routes by default, and `lsp` accepts `--read-only` for parity (it has no write path). Host posting stays separately gated: `serve --allow-post` keeps its preview, nonce, and digest flow, and `--allow-post` with `--read-only` refuses `bad-flags`. **Deprecated:** `mcp --operator`, `mcp config --operator`, and `serve --interactive` are still accepted for one release as no-ops that print a one-line notice, and `mcp config` no longer writes `--operator` into a host snippet. The `--read-only --operator` pair is no longer a usage error: read-only wins. Start an agent's MCP server with `--read-only` when it must not be able to call `triage`.
