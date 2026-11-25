@@ -147,6 +147,7 @@ var refusalCodes = []string{
 	"fixtures-invalid",
 	"fixtures-recording-invalid",
 	"head-mismatch",
+	"host-mismatch",
 	"html-not-export",
 	"html-symlink",
 	"id-taken",

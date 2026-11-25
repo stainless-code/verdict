@@ -120,6 +120,7 @@ fixtures-failed	try: make .verdict writable, then re-run backtest fixtures
 fixtures-invalid	try: check the --fixture id against the catalog, or repair bench/quality/fixtures.json, then re-run
 fixtures-recording-invalid	try: fix the named recording, then re-run backtest fixtures
 head-mismatch	try: address the cause above, then re-run the same command
+host-mismatch	try: point the target, the bundle, and the host variable named above at one host, then re-run
 html-not-export	try: choose a new, empty, or previous HTML export directory
 html-symlink	try: choose an HTML export directory that is not a symlink
 id-taken	try: pass a different --id

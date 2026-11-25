@@ -82,7 +82,9 @@ func hostPr(ctx context.Context, d Deps, q *Request, f *found, branch, hint stri
 	}
 	ctx, cancel := context.WithTimeout(ctx, lookupTimeout)
 	defer cancel()
-	res, err := d.Commander.Run(ctx, &core.Command{Argv: argv, OutputCap: lookupCap})
+	// The argv already names the origin's host; pinning it too has the runner
+	// verify that no spelling of the call can reach another one.
+	res, err := d.Commander.Run(core.WithHost(ctx, f.host), &core.Command{Argv: argv, OutputCap: lookupCap})
 	if err != nil || res.ExitCode != 0 || res.StdoutTruncated || ctx.Err() != nil {
 		return "", noHostMatch(f, branch, hint, fmt.Sprintf("could not be asked (%s failed)", argv[0]))
 	}
@@ -154,7 +156,7 @@ func validEntry(e map[string]any, keys *lookupFields, f *found, branch string, e
 	if ref != nil || t.Provider != f.provider || !strings.EqualFold(t.Repo, f.repo) || t.Pr != n.String() {
 		return "", false
 	}
-	if u, err := url.Parse(raw); err != nil || strings.ToLower(u.Hostname()) != f.host {
+	if u, err := url.Parse(raw); err != nil || core.URLAuthority(u) != f.host {
 		return "", false
 	}
 	return n.String(), true
