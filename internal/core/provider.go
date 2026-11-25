@@ -61,20 +61,15 @@ func providerFromRemote(raw string, env map[string]string) string {
 	if host == "" {
 		return ""
 	}
-	providers := map[string]string{
-		"github.com": providerGitHub, "gitlab.com": providerGitLab, "gitcafe.com": providerGitCafe,
-		"codeberg.org": providerForgejo, "bitbucket.org": providerBitbucket,
-		"dev.azure.com": providerAzure, "ssh.dev.azure.com": providerAzure,
-	}
-	chosen := providers[host]
-	for key, provider := range map[string]string{"GITLAB_HOST": providerGitLab, "FORGEJO_HOST": providerForgejo} {
-		if configuredHost(env[key]) != host {
+	chosen := publicHosts[host]
+	for _, c := range configuredHosts {
+		if configuredHost(env[c.key]) != host {
 			continue
 		}
-		if chosen != "" && chosen != provider {
+		if chosen != "" && chosen != c.provider {
 			return ""
 		}
-		chosen = provider
+		chosen = c.provider
 	}
 	return chosen
 }

@@ -1,17 +1,24 @@
 // Command verdict is the only front door: it owns every verb, every usage
-// error, and the arity matrix. A missing verb or
-// positional fails with the full usage block on stderr and exit 2 before
-// any settings, store, or network read. main is thin: it parses, builds
-// the runner, delegates to run(), and exits once — only main calls [os.Exit].
+// error, and the arity matrix. A missing verb fails with the full usage block
+// on stderr and exit 2 before any settings, store, or network read. A missing
+// repo/pr pair first goes through target resolution (internal/target), which
+// reads only local git state and the recorded bundles: a pasted URL or an
+// inferable branch fills it in, a checkout that cannot name one refuses
+// target-unresolved, and only an invocation with nothing to read (no checkout,
+// no origin) prints the usage block, still before any settings read. main is
+// thin: it parses, builds the runner, delegates to run(), and exits once —
+// only main calls [os.Exit].
 package main
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"os/signal"
 	"path/filepath"
+	"slices"
 	"strings"
 	"syscall"
 
@@ -22,6 +29,7 @@ import (
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/configcmd"
 	"github.com/stainless-code/verdict/internal/core"
+	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 	"github.com/stainless-code/verdict/internal/core/upgrade"
 	"github.com/stainless-code/verdict/internal/dashboard"
@@ -49,6 +57,7 @@ import (
 	"github.com/stainless-code/verdict/internal/scaffold"
 	"github.com/stainless-code/verdict/internal/schemacheck"
 	"github.com/stainless-code/verdict/internal/serve"
+	"github.com/stainless-code/verdict/internal/target"
 	"github.com/stainless-code/verdict/internal/threads"
 	"github.com/stainless-code/verdict/internal/trend"
 	"github.com/stainless-code/verdict/internal/triage"
@@ -101,27 +110,53 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	stripped, forces, uerr, ref := cli.StripGlobal(args)
 	failed := uerr != nil || ref != nil
 	cmd, repo, pr, rest := splitCommand(stripped)
+	env := envMap(getenv)
+	var tgt target.Resolved
 	if failed {
 		cmd, repo, pr = envelopeTarget(args)
+	} else {
+		tgt = resolveTarget(cmd, repo, pr, rest, env, getenv)
+		repo, pr, rest = tgt.Repo, tgt.Pr, tgt.Rest
 	}
 	r := newRunner(cmd, repo, pr, stdout, stderr, getenv)
 	peekJSONMode(r, args)
-	env := envMap(getenv)
 	if failed {
 		return reportStripFailure(r, env, readFile, uerr, ref)
 	}
-	if invocationArityUsage(cmd, repo, pr, rest) {
+	if code, done := gateInvocation(r, cmd, &tgt, forces, env, readFile, stderr); done {
+		return code
+	}
+	return dispatch(cmd, r, repo, pr, root, env, forces, args, rest, stderr, readFile)
+}
+
+// gateInvocation runs the checks that stop an invocation before its verb: the
+// arity gate (skipped when target resolution already refused with a typed
+// reason), the preference read, the global forces (so --no-json and --color
+// shape every message below), that refusal, and the echo of a derived target.
+// done reports that code is the exit status.
+func gateInvocation(
+	r *cli.Runner, cmd string, tgt *target.Resolved, forces *cli.GlobalForces, env map[string]string,
+	readFile func(string) ([]byte, error), stderr *os.File,
+) (code int, done bool) {
+	if tgt.Refusal == nil && invocationArityUsage(cmd, tgt.Repo, tgt.Pr, tgt.Rest) {
 		fmt.Fprint(stderr, arityText(cmd))
-		return cli.ExitUsage
+		return cli.ExitUsage, true
 	}
 	if code, done := resolveRunnerPrefs(r, env, readFile); done {
-		return code
+		return code, true
 	}
 	if err := cli.ApplyGlobalForces(r, forces, noColorForFallback(r, env)); err != nil {
 		r.RouteHuman()
-		return r.Refuse(err)
+		return r.Refuse(err), true
 	}
-	return dispatch(cmd, r, repo, pr, root, env, forces, args, rest, stderr, readFile)
+	if tgt.Refusal != nil {
+		r.RouteHuman()
+		return r.Refuse(tgt.Refusal), true
+	}
+	if tgt.Note != "" && !r.JSONMode {
+		fmt.Fprintln(stderr, tgt.Note)
+	}
+	return 0, false
 }
 
 func handleMetaFlags(args []string, stdout *os.File, readFile func(string) ([]byte, error)) bool {
@@ -175,6 +210,16 @@ func dispatchHidden(args []string, stderr *os.File) (code int, ok bool) {
 type readHandler func(context.Context, *cli.Runner, []string, readcommon.Request) int
 
 const cmdTrend = "trend"
+
+const cmdFetchLocal = "fetch-local"
+
+const (
+	cmdThreads     = "threads"
+	subverbResolve = "resolve"
+)
+
+// flagPrefix starts every flag token; a positional never does.
+const flagPrefix = "-"
 
 const cmdBacktest = "backtest"
 
@@ -405,10 +450,11 @@ func splitCommand(args []string) (cmd, repo, pr string, rest []string) {
 		return cmd, "", "", args
 	}
 	if repoOnlyVerbs[cmd] {
-		if len(args) > 0 {
-			repo, rest = args[0], args[1:]
+		// A flag first means the repo is absent, exactly as for the pair verbs.
+		if len(args) > 0 && !strings.HasPrefix(args[0], flagPrefix) {
+			repo, args = args[0], args[1:]
 		}
-		return cmd, repo, "", rest
+		return cmd, repo, "", args
 	}
 	repo, pr, rest = splitPositionals(args)
 	return cmd, repo, pr, rest
@@ -421,9 +467,12 @@ func noPositionalPair(cmd string, args []string) bool {
 	return htmlInvocation(cmd, args) || bareVerbs[cmd] || optionals[cmd] || cmd == cmdBacktest
 }
 
+// splitPositionals reads the repo/pr pair from the leading non-flag tokens: a
+// flag before the pair ends it (the pair is then absent, and target inference
+// may supply it), and "--" ends everything.
 func splitPositionals(args []string) (repo, pr string, rest []string) {
 	for i, a := range args {
-		if a == flagSeparator {
+		if a == flagSeparator || (i < 2 && strings.HasPrefix(a, flagPrefix)) {
 			return repo, pr, append(rest, args[i:]...)
 		}
 		switch i {
@@ -469,13 +518,13 @@ func reportStripFailure(
 
 func envelopeTarget(args []string) (cmd, repo, pr string) {
 	cmd, repo, pr, _ = splitCommand(args)
-	if strings.HasPrefix(cmd, "-") {
+	if strings.HasPrefix(cmd, flagPrefix) {
 		return "", "", ""
 	}
-	if strings.HasPrefix(repo, "-") {
+	if strings.HasPrefix(repo, flagPrefix) {
 		return cmd, "", ""
 	}
-	if strings.HasPrefix(pr, "-") {
+	if strings.HasPrefix(pr, flagPrefix) {
 		return cmd, repo, ""
 	}
 	return cmd, repo, pr
@@ -576,4 +625,68 @@ func htmlInvocation(cmd string, args []string) bool {
 
 func invocationArityUsage(cmd, repo, pr string, args []string) bool {
 	return arityUsage(cmd, repo, pr) && !htmlInvocation(cmd, args)
+}
+
+// resolveTarget turns the split positionals into the verb's target: a pasted
+// pull request URL, or the pair inferred from the origin remote and a recorded
+// bundle. It runs only for the verbs that take a repo/pr pair and never for
+// fetch-local, whose second positional is a bundle name.
+func resolveTarget(cmd, repo, pr string, rest []string, env map[string]string, getenv func(string) string) target.Resolved {
+	if !takesTarget(cmd, rest) {
+		return target.Resolved{Repo: repo, Pr: pr, Rest: rest}
+	}
+	if cmd == cmdThreads && repo == subverbResolve {
+		return resolveSubverb(pr, rest, env, getenv)
+	}
+	return runResolver(cmd, repo, pr, rest, env, getenv)
+}
+
+// resolveSubverb resolves `threads resolve <owner/repo> <pr>`: the subverb sits
+// where the repo would, so the pair behind it is resolved and the subverb is
+// put back in the shifted shape the verb reads (subverb, repo, then the pr
+// first in rest). Threads resolve takes no --provider, so the verb name carries
+// the subverb to keep the flag from being injected.
+func resolveSubverb(first string, rest []string, env map[string]string, getenv func(string) string) target.Resolved {
+	same := target.Resolved{Repo: subverbResolve, Pr: first, Rest: rest}
+	repo, pr, tail := splitPositionals(append(nonEmpty(first), rest...))
+	got := runResolver(cmdThreads+" "+subverbResolve, repo, pr, tail, env, getenv)
+	switch {
+	case got.Refusal != nil:
+		return got
+	case got.Repo == "":
+		return same // nothing to infer from: the verb's own usage error stands
+	}
+	got.Repo, got.Pr, got.Rest = subverbResolve, got.Repo, append([]string{got.Pr}, got.Rest...)
+	return got
+}
+
+// runResolver reads GITLAB_HOST beside the environment map (envMap does not
+// carry it; it only maps a self-hosted URL or remote to GitLab) and runs the
+// shared resolver.
+func runResolver(verb, repo, pr string, rest []string, env map[string]string, getenv func(string) string) target.Resolved {
+	targetEnv := maps.Clone(env)
+	if h := getenv("GITLAB_HOST"); h != "" {
+		targetEnv["GITLAB_HOST"] = h
+	}
+	ctx, stop := shutdownSignalContext()
+	defer stop()
+	return target.Resolve(ctx, target.Deps{Commander: coreexec.Runner{}, RepoRoot: readcommon.RepoRoot}, &target.Request{
+		Verb: verb, Repo: repo, Pr: pr, Rest: rest, RepoOnly: repoOnlyVerbs[verb], Env: targetEnv,
+	})
+}
+
+func nonEmpty(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return []string{s}
+}
+
+// takesTarget reports the known verbs whose positionals are `<owner/repo> <pr>`
+// (or `<owner/repo>` alone for the repo-only verbs).
+func takesTarget(cmd string, rest []string) bool {
+	if cmd == "" || cmd == cmdFetchLocal || noPositionalPair(cmd, rest) {
+		return false
+	}
+	return slices.Contains(strings.Split(verbsHint, "|"), cmd)
 }
