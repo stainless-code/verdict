@@ -40,41 +40,46 @@ type entry struct {
 }
 
 // name builds the content tree in a throwaway index from the listed entries.
-// With copyTo set, each file is copied there first and the copy is what gets
-// hashed, and the kept entries' index bytes are written there too.
-func (g Git) name(ctx context.Context, entries, kept []entry, copyTo string) (string, error) {
+// With copyTo set, each file is copied there first and the copy is made to
+// hold exactly the blob its path is named by, and the kept entries' index
+// bytes are written there too; the paths a filter driver would have handled
+// are reported then.
+func (g Git) name(ctx context.Context, entries, kept []entry, copyTo string) (string, staged, error) {
 	index, cleanup, err := tempIndex()
 	if err != nil {
-		return "", err
+		return "", staged{}, err
 	}
 	defer cleanup()
 	var records bytes.Buffer
-	if err := g.records(ctx, &records, entries, kept, copyTo); err != nil {
-		return "", err
+	st, err := g.records(ctx, &records, entries, kept, copyTo)
+	if err != nil {
+		return "", staged{}, err
 	}
 	if err := g.writeIndex(ctx, index, records.Bytes()); err != nil {
-		return "", err
+		return "", staged{}, err
 	}
 	res, err := g.run(ctx, index, "write-tree")
 	if err != nil {
-		return "", err
+		return "", staged{}, err
 	}
-	return objectID("write-tree", res.Stdout)
+	tree, err := objectID("write-tree", res.Stdout)
+	return tree, st, err
 }
 
 // records renders every entry's index record, copying as it goes when
 // copyTo is set.
-func (g Git) records(ctx context.Context, records *bytes.Buffer, entries, kept []entry, copyTo string) error {
+func (g Git) records(ctx context.Context, records *bytes.Buffer, entries, kept []entry, copyTo string) (staged, error) {
 	if err := g.restore(ctx, kept, copyTo); err != nil {
-		return err
+		return staged{}, err
 	}
-	if err := g.stage(ctx, records, entries, copyTo); err != nil {
-		return err
+	st, err := g.stage(ctx, records, entries, copyTo)
+	if err != nil {
+		return staged{}, err
 	}
 	for _, e := range kept {
 		fmt.Fprintf(records, recordFmt, e.mode, e.id, e.path)
 	}
-	return nil
+	return st, nil
 }
 
 // writeIndex loads the records into the throwaway index.
@@ -180,28 +185,32 @@ func isExcluded(path string) bool {
 	})
 }
 
-// hashBatch collects the files one `hash-object --stdin-paths` run hashes,
-// with each one's index mode and path.
+// hashBatch collects the files the batch hashes, with each one's index mode
+// and path, and its entry in the user's index; index is every entry listed,
+// files or not, which the clean step's throwaway index is seeded with.
 type hashBatch struct {
-	modes map[string][2]string
-	files []string
+	modes   map[string][2]string
+	files   []string
+	entries []entry
+	index   []entry
 }
 
-func (b *hashBatch) add(file, mode, path string) {
+func (b *hashBatch) add(file, mode string, e entry) {
 	b.files = append(b.files, file)
-	b.modes[file] = [2]string{mode, path}
+	b.entries = append(b.entries, e)
+	b.modes[file] = [2]string{mode, e.path}
 }
 
 // stage renders the index records for the working tree's state of each
 // entry, copying each file to copyTo first when it is set.
-func (g Git) stage(ctx context.Context, records *bytes.Buffer, entries []entry, copyTo string) error {
-	batch := hashBatch{modes: map[string][2]string{}}
+func (g Git) stage(ctx context.Context, records *bytes.Buffer, entries []entry, copyTo string) (staged, error) {
+	batch := hashBatch{modes: map[string][2]string{}, index: entries}
 	for _, e := range entries {
 		if err := g.stageEntry(ctx, records, &batch, e, copyTo); err != nil {
-			return err
+			return staged{}, err
 		}
 	}
-	return g.hashFiles(ctx, records, &batch)
+	return g.hashFiles(ctx, records, &batch, copyTo)
 }
 
 // stageEntry handles one entry: a submodule keeps its recorded commit (its
@@ -227,7 +236,7 @@ func (g Git) stageEntry(ctx context.Context, records *bytes.Buffer, batch *hashB
 		return g.stageLink(ctx, records, e.path)
 	}
 	if src != "" {
-		batch.add(src, mode, e.path)
+		batch.add(src, mode, e)
 	}
 	return nil
 }
@@ -306,22 +315,43 @@ func (g Git) restoreEntry(ctx context.Context, e entry, copyTo string) error {
 	return writeFile(filepath.Join(copyTo, filepath.FromSlash(e.path)), []byte(res.Stdout), e.mode == execMode)
 }
 
-// hashFiles writes each batched file's bytes as a blob, unfiltered, and
-// appends the index records. --stdin-paths reads lines (a trailing CR
+// hashFiles names each batched file ([Git.batchIDs]) and appends its index
+// record.
+func (g Git) hashFiles(ctx context.Context, records *bytes.Buffer, b *hashBatch, copyTo string) (staged, error) {
+	if len(b.files) == 0 {
+		return staged{}, nil
+	}
+	ids, st, err := g.batchIDs(ctx, b, copyTo)
+	if err != nil {
+		return staged{}, err
+	}
+	for _, file := range b.files {
+		id, err := objectID(cmdHashObject, ids[file])
+		if err != nil {
+			return staged{}, err
+		}
+		fmt.Fprintf(records, recordFmt, b.modes[file][0], id, b.modes[file][1])
+	}
+	return st, nil
+}
+
+// rawIDs writes each batched file's bytes as a blob, unfiltered, and
+// returns the ids by file. --stdin-paths reads lines (a trailing CR
 // stripped), so a path holding either is hashed on its own.
-func (g Git) hashFiles(ctx context.Context, records *bytes.Buffer, b *hashBatch) error {
+func (g Git) rawIDs(ctx context.Context, b *hashBatch) (map[string]string, error) {
+	ids := make(map[string]string, len(b.files))
 	lines := slices.DeleteFunc(slices.Clone(b.files), func(f string) bool { return strings.ContainsAny(f, "\n\r") })
 	for _, file := range b.files {
 		if strings.ContainsAny(file, "\n\r") {
-			if err := g.hashOne(ctx, records, b, file); err != nil {
-				return err
+			if err := g.hashOne(ctx, ids, file); err != nil {
+				return nil, err
 			}
 		}
 	}
-	return g.hashLines(ctx, records, b, lines)
+	return ids, g.hashLines(ctx, ids, lines)
 }
 
-func (g Git) hashOne(ctx context.Context, records *bytes.Buffer, b *hashBatch, file string) error {
+func (g Git) hashOne(ctx context.Context, ids map[string]string, file string) error {
 	f, err := os.Open(file)
 	if err != nil {
 		return jq.Sealed("open "+file, err)
@@ -331,11 +361,11 @@ func (g Git) hashOne(ctx context.Context, records *bytes.Buffer, b *hashBatch, f
 	if err != nil {
 		return err
 	}
-	fmt.Fprintf(records, recordFmt, b.modes[file][0], id, b.modes[file][1])
+	ids[file] = id
 	return nil
 }
 
-func (g Git) hashLines(ctx context.Context, records *bytes.Buffer, b *hashBatch, files []string) error {
+func (g Git) hashLines(ctx context.Context, ids map[string]string, files []string) error {
 	if len(files) == 0 {
 		return nil
 	}
@@ -350,16 +380,16 @@ func (g Git) hashLines(ctx context.Context, records *bytes.Buffer, b *hashBatch,
 	if err != nil {
 		return err
 	}
-	ids := strings.Fields(res.Stdout)
-	if len(ids) != len(files) {
-		return jq.NewErrf("git hash-object printed %d ids for %d files", len(ids), len(files))
+	out := strings.Fields(res.Stdout)
+	if len(out) != len(files) {
+		return jq.NewErrf("git hash-object printed %d ids for %d files", len(out), len(files))
 	}
 	for i, file := range files {
-		id, err := objectID(cmdHashObject, ids[i])
+		id, err := objectID(cmdHashObject, out[i])
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(records, recordFmt, b.modes[file][0], id, b.modes[file][1])
+		ids[file] = id
 	}
 	return nil
 }

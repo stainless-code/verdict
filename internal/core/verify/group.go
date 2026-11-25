@@ -70,7 +70,7 @@ func RunGroup(ctx context.Context, req *Request, dir, now string) (resp *Respons
 	// command ends, so a cleanup warning reaches the response.
 	defer func() { st.finishSnapshot(ctx, run.snap, ref) }()
 	if snap.content.Tree != run.tree {
-		return nil, st.withWarnings(otherContent(run))
+		return nil, st.withWarnings(otherContent(run, snap.content.Filtered))
 	}
 	run.workDir = snap.dir
 	if ref := st.bindSandbox(ctx, run); ref != nil {
@@ -204,7 +204,14 @@ func bindReviewedHead(ctx context.Context, run *validationRun, dir string) *core
 }
 
 // otherContent refuses a snapshot whose content is not the reviewed commit's.
-func otherContent(run *validationRun) *core.RefusalError {
+// Content a filter driver handles never is, however clean the checkout, so
+// that refusal names the driver (git-lfs) instead of asking for a checkout.
+func otherContent(run *validationRun, filtered []contenttree.Filtered) *core.RefusalError {
+	if len(filtered) > 0 {
+		return &core.RefusalError{Code: codeHeadMismatch, Message: fmt.Sprintf(
+			"the content at %s is not the reviewed commit %s's: %s — validation certifies the reviewed "+
+				"content only", run.root, readcommon.ShortSHA(run.reviewedHead), filteredNote(filtered[0]))}
+	}
 	return &core.RefusalError{Code: codeHeadMismatch, Message: fmt.Sprintf(
 		"the content at %s is not the reviewed commit %s's — check out the reviewed head with no "+
 			"other changes; validation certifies the reviewed content only", run.root, readcommon.ShortSHA(run.reviewedHead))}

@@ -318,16 +318,16 @@ and `patch.json` too — both are proposals. Only `verdict verify` writes
 
 `verify` binds the receipt to content, not to HEAD. The content is the paths in your
 index — exactly what a working-tree bundle's diff covers: tracked files and
-intent-to-add (`git add -N`) files — each with its working-tree bytes as they are on
-disk, uncommitted edits included. Untracked files are outside it, as they are outside
+intent-to-add (`git add -N`) files — each with its working-tree bytes, uncommitted
+edits included, cleaned the way `git add` would commit them. Untracked files are outside it, as they are outside
 the bundle; `git add -N <path>` brings one in. Verdict's own state stays at its index
 version (`.verdict/state/`, `verdict loop`'s `.verdict/loop/`, and the generated
 `.verdict/.gitignore`); everything else under `.verdict/` that is in the index
 (config, KB, packs, regression tests, `verify-env`) is content. Before the command
-runs, `verify` copies those bytes into a snapshot — a private directory under the
-host temp root, outside your checkout, that git sees as a detached linked worktree —
-names exactly what it copied as a git tree, re-reads the snapshot to prove it still
-holds that tree, and runs the command there, never in your checkout; it removes the
+runs, `verify` copies them into a snapshot — a private directory under the host
+temp root, outside your checkout, that git sees as a detached linked worktree —
+names exactly what it copied as a git tree, re-reads the snapshot (byte for byte, but
+for the expanded paths below) to prove it still holds that tree, and runs the command there, never in your checkout; it removes the
 snapshot afterwards, and a later run sweeps any a killed run stranded. Reads that
 resolve inside the snapshot see the snapshot, so an edit or a checkout and restore in
 your checkout while it runs does not change them. A path that resolves outside it — an
@@ -335,19 +335,35 @@ absolute path, or a symlink the tree carries — reaches the real filesystem, yo
 checkout and its edits included: under `--sandbox` read-only, and possibly hidden by
 the sandbox's rules.
 
-The snapshot is a clean checkout of that content, like CI: ignored files — installed
+The snapshot holds only that content: ignored files — installed
 dependencies (`node_modules/`), build output, local config such as `.env.local` — are
 not in it, and submodules are empty directories. Install dependencies in the command
 itself (`npm ci && npm test`); `verify` warns naming the untracked files, the ignored
-top-level entries, and the submodules it left out. Making the snapshot runs no code
-the checkout controls: every git call runs with hooks off (even with
-`core.hooksPath` pointing at `.husky/` or other tree content), fsmonitor off, and no
-filter — blobs are hashed and files copied byte for byte, so no clean or smudge filter
-(git-lfs included), line-ending conversion, or ident expansion runs or changes a byte.
-File modes follow git's: only the executable bit survives, so a `0640` file arrives as
-`0644`. A checkout whose conversions change bytes (CRLF working files under `core.autocrlf`,
-smudged LFS objects) therefore names a different tree than its commit, and a PR
-bundle's claim or a group run there does not bind. Naming writes the index paths'
+top-level entries, and the submodules it left out.
+
+Cleaning is git's own built-in conversion, as `git add` applies it: `core.autocrlf`,
+`core.eol`, and the `text`/`eol`/`binary` attributes (plus `ident` and
+`working-tree-encoding`). A CRLF checkout of an LF commit — Git for Windows' default
+`core.autocrlf=true`, or a `text eol=crlf` attribute — therefore names that commit's
+tree, so a PR bundle's VERIFIED claim and a group run bind there. The snapshot holds
+the committed form, the blobs the tree names: the command runs on LF line endings
+wherever the commit has them, whatever `core.autocrlf` or an `eol` attribute would
+write, and a `binary` or `-text` file keeps its bytes exactly. The exception is a path
+whose checkout expands its blob — `ident` (`$Id: <blob> $`) or `working-tree-encoding`
+— which the snapshot writes as git's built-in checkout writes it (line endings
+included), with every filter driver still off, so a command reads there what any
+checkout holds; the snapshot's re-check cleans those paths back to their blobs. Making
+the snapshot runs no code the checkout controls: every git call runs
+with hooks off (even with `core.hooksPath` pointing at `.husky/` or other tree
+content), fsmonitor off, and every configured filter driver switched off, so no clean,
+smudge, or process filter runs — git-lfs included. A path whose attributes select one
+is named by its working-tree content, so a smudged Git LFS file names a different
+tree than the commit that stores its pointer: `verify` warns naming LFS and the paths
+whose content is neither the index's nor HEAD's,
+a PR bundle's claim does not bind to that run, and a group run refuses
+`head-mismatch` naming LFS (a fetch-local bundle of the same checkout names the same
+content, so its claims still bind). File modes follow git's: only the executable bit
+survives, so a `0640` file arrives as `0644`. Naming writes the index paths'
 blobs, a tree, and one unreferenced commit into the repository's object store (never
 an untracked or ignored file's bytes); git's normal gc collects them. A checkout
 `verify` cannot snapshot — not a git repository, an unreadable file — refuses
@@ -397,8 +413,8 @@ restores the clean snapshot.
 `record`/`post` read only that file and grade it against the content they grade: the
 tree `fetch-local` captured (`source.json` `content_tree`) for a local bundle, the
 head commit's tree for a PR bundle (read from the local repository — fetch the commit
-if it is missing). `fetch-local` names a working-tree bundle's content first and reads
-its diff, file list, and stats from that tree, so the bundle is exactly the content it
+if it is missing). `fetch-local` names a working-tree bundle's content first — cleaned
+exactly as `verify` cleans it, so the two name the same tree — and reads its diff, file list, and stats from that tree, so the bundle is exactly the content it
 names; a `--staged` bundle records no tree (`verify` never runs the index), so no claim
 lands on it. They flip a `VERIFIED` claim only when the receipt shows exit 0, no
 timeout, the claim's exact `verifyCmd`, the claim's finding when it names one (its
