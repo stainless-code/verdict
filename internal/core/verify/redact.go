@@ -12,8 +12,11 @@ import (
 // would hide.
 func SanitizeTail(tail string, environ []string) string { return sanitizeTail(tail, environ) }
 
+// Control sequences are stripped first: an escape placed inside a credential
+// (`sk-\x1b[0mant-…`) would otherwise hide it from the redactors, and stripping
+// it afterwards would rejoin the credential in the clean output.
 func sanitizeTail(tail string, environ []string) string {
-	return stripControlChars(redactShapes(redactSecrets(tail, environ)))
+	return redactShapes(redactSecrets(stripControlChars(tail), environ))
 }
 
 const tokenShapes = `(?:gh[pousr]_[A-Za-z0-9]{16,}` +

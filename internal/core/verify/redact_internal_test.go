@@ -153,8 +153,8 @@ func TestStripControlChars(t *testing.T) {
 	}
 }
 
-// TestSanitizeTail pins the composition order: environment values, then
-// shapes, then control characters.
+// TestSanitizeTail pins the composition order: control characters first, then
+// environment values, then shapes.
 func TestSanitizeTail(t *testing.T) {
 	environ := []string{"PATH=/bin", "EVAL_PROBE_TOKEN=supersecretvalue123"}
 	in := "\x1b[1mlogin\x1b[0m supersecretvalue123 Authorization: Bearer abcdefgh12345678\r\n"
@@ -242,6 +242,28 @@ func TestAdjOfReportsDeepNesting(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, deep := adjOf(tc.in); deep != tc.wantDeep {
 				t.Fatalf("adjOf deep = %v, want %v", deep, tc.wantDeep)
+			}
+		})
+	}
+}
+
+// TestSanitizeTailRedactsCredentialsSplitByEscapes: an escape sequence inside a
+// credential must not hide it from the redactors and then rejoin it when the
+// escape is stripped.
+func TestSanitizeTailRedactsCredentialsSplitByEscapes(t *testing.T) {
+	environ := []string{"EVAL_PROBE_TOKEN=supersecretvalue123"}
+	for name, in := range map[string]string{
+		"shape":  "key=sk-\x1b[0mant-api03-12345678901234567890 done",
+		"bearer": "Authorization: Be\x1b[31marer abcdefgh12345678",
+		"env":    "env=supersecret\x1b[0mvalue123 done",
+		"osc":    "ghp_\x1b]0;title\x07abcdefghijklmnop1234 done",
+	} {
+		t.Run(name, func(t *testing.T) {
+			got := sanitizeTail(in, environ)
+			for _, leak := range []string{"api03-1234", "abcdefgh12345678", "supersecretvalue123", "abcdefghijklmnop1234"} {
+				if strings.Contains(got, leak) {
+					t.Fatalf("sanitizeTail(%q) = %q leaks %q", in, got, leak)
+				}
 			}
 		})
 	}
