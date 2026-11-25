@@ -3,12 +3,13 @@
 #
 
 _verdict_verbs() {
-  printf '%s\n' demo fetch post triage report next show verify doctor calibrate fetch-local run panel record adopt ingest fix check-tree ready pr-wait gate threads trend risk handoff index journal backtest learn pack init skill upgrade uninstall serve config drain acp lsp
+  printf '%s\n' demo fetch post triage report next show verify doctor calibrate fetch-local run loop panel record adopt ingest fix check-tree ready pr-wait gate threads trend risk handoff index journal backtest learn pack init skill upgrade uninstall serve dashboard config drain acp lsp
 }
 
 _verdict_flags() { # $1 = verb
   case "$1" in
     demo) printf '%s\n' --agent --keep --timeout --json;;
+    loop) printf '%s\n' --agent --max-rounds --max-cost-usd --budget --output --fix-prompt --sandbox --sandbox-network-only --print --json;;
     fetch) printf '%s\n' --base-sha --since --provider --context --spec --issue --ignore --no-default-excludes --preview --index --consent-over-budget --show-prompts --chunk --json;;
     post) printf '%s\n' --approve --request-changes --bind --force --review-file --summary --dry-run --require-coverage --min-severity --allow-secret-values --json;;
     triage) printf '%s\n' --sig --status --rationale --force --dry-run --json;;
@@ -42,6 +43,7 @@ _verdict_flags() { # $1 = verb
     gate) printf '%s\n' --max-severity --require-head --live --coverage --json;;
     mcp) printf '%s\n' --read-only --agent --write --dry-run --json;;
     acp) printf '%s\n' --root --check --max-bundles --json;;
+    dashboard) printf '%s\n' --root --once --tab --width --height --check --interval --sweep --no-watch --json;;
     lsp) printf '%s\n' --root --bundle --check --max-bundles --max-roots --interval --sweep --no-watch --read-only --json;;
     serve) printf '%s\n' --root --depth --max-visits --max-repos --rediscover --no-registry --host --port --token --check --max-bundles --interval --sweep --no-watch --read-only --allow-post --json;;
     init) printf '%s\n' --preset --yes --force --json --ci --agent --key-secret --print --comment-trigger;;
@@ -57,10 +59,11 @@ _verdict_values() { # $1 = verb, $2 = flag
     --provider) printf '%s\n' github gitlab gitcafe forgejo bitbucket azure;;
     --check)
       case "$1" in
-        report) printf '%s\n' critical important informational;;
+        report | dashboard) printf '%s\n' critical important informational;;
         *) return 0;;
       esac;;
     --kind) printf '%s\n' inline section all;;
+    --tab) printf '%s\n' overview queue detail diff compare cost precision;;
     --agent)
       case "$1" in
         run | backtest) printf '%s\n' claude codex cursor opencode;;

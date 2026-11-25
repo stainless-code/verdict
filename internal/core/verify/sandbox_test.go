@@ -30,6 +30,12 @@ type sandboxCommander struct {
 }
 
 func (c *sandboxCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
+	if isHeadProbe(cmd) {
+		return core.Result{Stdout: patchHead + "\n"}, nil
+	}
+	if isStatusProbe(cmd) {
+		return core.Result{}, nil
+	}
 	c.calls = append(c.calls, cmd)
 	i := len(c.calls) - 1
 	if i < len(c.errs) && c.errs[i] != nil {
@@ -272,10 +278,47 @@ func TestSandboxWrapsVerifyCommand(t *testing.T) {
 	assertPrivateGone(t, cmdr)
 }
 
+// TestSandboxPatchModeUsesThePhysicalRoot pins patch mode to group mode's
+// root handling: a checkout reached through a symlink (`current ->
+// checkouts/app`, the repo root arriving as the literal spelling) is
+// canonicalized once, so every mount and rule names the physical root and
+// none names the link, whose own node the command could not swap but whose
+// spelling would split the walks from the binds.
+func TestSandboxPatchModeUsesThePhysicalRoot(t *testing.T) {
+	requireSandboxHost(t)
+	base := t.TempDir()
+	app := filepath.Join(base, "checkouts", "app")
+	if err := os.MkdirAll(app, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(base, "current")
+	if err := os.Symlink(app, link); err != nil {
+		t.Fatal(err)
+	}
+	physical, err := filepath.EvalSymlinks(app)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, _, _, cmdr := runSandboxedVerifyAt(t, link, "printf ok", nil)
+	probe := strings.Join(cmdr.calls[0].Argv, "\x00")
+	if !strings.Contains(probe, physical) {
+		t.Errorf("probe argv never names the physical root %s", physical)
+	}
+	if strings.Contains(probe, link) || strings.Contains(probe, string(filepath.Separator)+"current") {
+		t.Errorf("probe argv names the symlinked root spelling %s:\n%s", link, probe)
+	}
+}
+
 // runSandboxedVerify drives one sandboxed patch run in a fresh bundle.
 func runSandboxedVerify(t *testing.T, vcmd string, results []core.Result) (string, string, *verifycore.Response, *sandboxCommander) {
 	t.Helper()
-	root := t.TempDir()
+	return runSandboxedVerifyAt(t, t.TempDir(), vcmd, results)
+}
+
+// runSandboxedVerifyAt drives one sandboxed patch run in a fresh bundle at
+// root, which may be a symlink to the checkout.
+func runSandboxedVerifyAt(t *testing.T, root, vcmd string, results []core.Result) (string, string, *verifycore.Response, *sandboxCommander) {
+	t.Helper()
 	t.Chdir(root)
 	testkit.WriteFile(t, ".git/HEAD", "ref: refs/heads/main\n")
 	raw, err := json.Marshal(map[string]string{"verifyCmd": vcmd})
@@ -294,7 +337,13 @@ func runSandboxedVerify(t *testing.T, vcmd string, results []core.Result) (strin
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
-	return root, home, resp, cmdr
+	// The sandbox is built on the physical root (/var -> /private/var on
+	// macOS), the spelling every mount and rule names.
+	physical, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return physical, home, resp, cmdr
 }
 
 // checkSandboxSpawn compares both spawns with the literal argv shapes.
@@ -308,8 +357,10 @@ func checkSandboxSpawn(t *testing.T, cmdr *sandboxCommander, root, home, vcmd st
 	} else {
 		checkBwrapSpawn(t, cmdr, root, home, vcmd)
 	}
-	if cmdr.calls[0].Dir != "" || cmdr.calls[1].Dir != "" {
-		t.Errorf("patch-mode dirs = %q, %q, want inherited cwd", cmdr.calls[0].Dir, cmdr.calls[1].Dir)
+	// The probe and the command run in the repo root the tree probes read,
+	// as the deep-group path does, never the caller's inherited cwd.
+	if cmdr.calls[0].Dir != root || cmdr.calls[1].Dir != root {
+		t.Errorf("patch-mode dirs = %q, %q, want the repo root %q", cmdr.calls[0].Dir, cmdr.calls[1].Dir, root)
 	}
 }
 
@@ -588,6 +639,9 @@ type groupSandboxCommander struct {
 }
 
 func (c *groupSandboxCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
+	if isStatusProbe(cmd) {
+		return core.Result{}, nil
+	}
 	c.runs = append(c.runs, cmd)
 	if len(cmd.Argv) > 3 && cmd.Argv[0] == "git" {
 		return core.Result{Stdout: groupHead + "\n"}, nil

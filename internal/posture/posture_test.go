@@ -31,13 +31,3 @@ func TestRule(t *testing.T) {
 		})
 	}
 }
-
-// TestRetiredFlagNotice pins the one deprecation line operators read.
-func TestRetiredFlagNotice(t *testing.T) {
-	t.Parallel()
-	const want = "mcp: --operator is deprecated and ignored: local writes are allowed unless --read-only " +
-		"(host posting stays separately gated); the flag goes away in the next release"
-	if got := RetiredFlagNotice("mcp", "--operator"); got != want {
-		t.Errorf("notice = %q, want %q", got, want)
-	}
-}

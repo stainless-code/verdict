@@ -177,25 +177,20 @@ cat >"$FRAMES" <<'EOF'
 {"jsonrpc":"2.0","id":2,"method":"tools/list"}
 {"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"triage","arguments":{"repo":"acme/app","pr":"5101","sig":"deadbeef","status":"wont-fix","rationale":"eval write posture rationale","dryRun":true}}}
 EOF
-# --operator is retired: a deprecated no-op that names the one rule on stderr.
-# With --read-only it no longer conflicts; the read-only surface wins.
-run_mcp_input "$FRAMES" --operator --read-only
-if [ "$EVAL_STATUS" -eq 0 ] && grep -q -- "--operator is deprecated and ignored" "$MCP_ERR"; then
-  good "--operator with --read-only is a deprecated no-op, not a usage error"
+# --operator is gone: the one write-posture flag is --read-only, so the old
+# spelling is a usage error with nothing served.
+run_mcp_input "$FRAMES" --operator
+if [ "$EVAL_STATUS" -eq 2 ] && [ ! -s "$MCP_OUT" ] && grep -q -- "unknown flag '--operator' for mcp" "$MCP_ERR"; then
+  good "--operator is an unknown flag (exit 2, nothing served)"
 else
-  bad "--operator --read-only exit $EVAL_STATUS (want 0 with the deprecation notice)"
+  bad "--operator exit $EVAL_STATUS (want 2, empty stdout, the unknown-flag message)"
 fi
+run_mcp_input "$FRAMES" --read-only
 if jq -e 'select(.id == 2).result.tools | (length == 21) and (map(.name) | index("triage") == null)' <"$MCP_OUT" >/dev/null \
   && jq -e 'select(.id == 3).result | (.isError == true) and (.structuredContent.code == "read-only-tool")' <"$MCP_OUT" >/dev/null; then
-  good "--read-only wins over the retired --operator: no triage, typed read-only-tool refusal"
+  good "--read-only removes triage and answers a typed read-only-tool refusal"
 else
-  bad "--operator --read-only did not stay read-only"
-fi
-run_mcp_input "$FRAMES" --operator
-if [ "$EVAL_STATUS" -eq 0 ] && grep -q -- "--operator is deprecated and ignored" "$MCP_ERR"; then
-  good "--operator session exits 0 with the deprecation notice"
-else
-  bad "--operator exit $EVAL_STATUS (want 0 with the notice)"
+  bad "--read-only did not remove triage"
 fi
 run_mcp_input "$FRAMES"
 if jq -e 'select(.id == 2).result.tools | (length == 33) and (map(.name) | (index("triage") != null) and (index("ingest") != null) and (index("journal") != null)) and (map(select(.name == "triage"))[0].inputSchema.properties.status.enum == ["open","addressed","wont-fix","false-positive","deferred"])' <"$MCP_OUT" >/dev/null; then

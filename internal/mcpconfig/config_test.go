@@ -958,39 +958,37 @@ func TestTOMLOwnedArgsWithoutCommand(t *testing.T) {
 	}
 }
 
-// TestLegacyPairArgsStayOwned proves an on-disk argv carrying both posture
-// flags is still verdict's own entry and is updated, not refused as foreign.
+// TestRetiredOperatorArgvIsForeign proves an on-disk argv carrying the retired
+// --operator flag is no longer verdict's own shape: --write refuses it as
+// foreign and leaves the file byte-identical, instead of rewriting it.
 //
 //nolint:revive // the two-format subtests read as one block
-func TestLegacyPairArgsStayOwned(t *testing.T) {
+func TestRetiredOperatorArgvIsForeign(t *testing.T) {
 	t.Parallel()
 	t.Run("json", func(t *testing.T) {
 		t.Parallel()
 		req := testRequest(t, AgentClaude, true)
 		path := filepath.Join(req.Cwd, ".mcp.json")
-		seed := `{"mcpServers":{"verdict":{"command":"verdict","args":["mcp","--read-only","--operator"]}}}` + "\n"
+		seed := `{"mcpServers":{"verdict":{"command":"verdict","args":["mcp","--operator"]}}}` + "\n"
 		if err := os.WriteFile(path, []byte(seed), 0o600); err != nil {
 			t.Fatal(err)
 		}
-		res, ref := Run(req)
-		if ref != nil || res.Status != StatusUpdate {
-			t.Fatalf("legacy pair = %+v %v, want update", res, ref)
+		if _, ref := Run(req); ref == nil || ref.Code != CodeForeign {
+			t.Fatalf("retired argv = %v, want %s", ref, CodeForeign)
 		}
-		raw, err := os.ReadFile(path)
-		if err != nil || strings.Contains(string(raw), "--read-only") {
-			t.Fatalf("legacy pair not downgraded: %q, %v", raw, err)
+		if raw, err := os.ReadFile(path); err != nil || string(raw) != seed {
+			t.Fatalf("refusal changed the file: %q, %v", raw, err)
 		}
 	})
 	t.Run("toml", func(t *testing.T) {
 		t.Parallel()
-		req, path := seedCodex(t, "[mcp_servers.verdict]\ncommand = \"verdict\"\nargs = [\"mcp\", \"--operator\", \"--read-only\"]\n")
-		res, ref := Run(req)
-		if ref != nil || res.Status != StatusUpdate {
-			t.Fatalf("legacy pair = %+v %v, want update", res, ref)
+		seed := "[mcp_servers.verdict]\ncommand = \"verdict\"\nargs = [\"mcp\", \"--operator\"]\n"
+		req, path := seedCodex(t, seed)
+		if _, ref := Run(req); ref == nil || ref.Code != CodeForeign {
+			t.Fatalf("retired argv = %v, want %s", ref, CodeForeign)
 		}
-		raw, err := os.ReadFile(path)
-		if err != nil || strings.Contains(string(raw), "--operator") {
-			t.Fatalf("legacy pair not downgraded: %q, %v", raw, err)
+		if raw, err := os.ReadFile(path); err != nil || string(raw) != seed {
+			t.Fatalf("refusal changed the file: %q, %v", raw, err)
 		}
 	})
 }

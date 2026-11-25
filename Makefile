@@ -67,6 +67,10 @@ FUZZ_TARGETS := \
 	./internal/core/record:FuzzNormalizeReview \
 	./internal/core/threads:FuzzProviderMappers \
 	./internal/core/verify:FuzzGate \
+	./internal/core/verify:FuzzGitIndex \
+	./internal/dashboard:FuzzDecode \
+	./internal/dashboard:FuzzDecoder \
+	./internal/dashboard:FuzzTruncate \
 	./internal/evidence:FuzzMatchQuote \
 	./internal/hunks:FuzzFiles \
 	./internal/hunks:FuzzHeaderPaths \
@@ -77,7 +81,8 @@ FUZZ_TARGETS := \
 	./internal/mcpconfig:FuzzMergeJSON \
 	./internal/mcpconfig:FuzzMergeTOML \
 	./internal/release:FuzzExtractTarGz \
-	./internal/release:FuzzExtractZip
+	./internal/release:FuzzExtractZip \
+	./internal/untrusted:FuzzFlatten
 
 .PHONY: fuzz
 fuzz:

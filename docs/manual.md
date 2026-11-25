@@ -309,15 +309,63 @@ cannot reach the network warns and proceeds — the nudge never refuses.
 Authority rule: **the script disposes, the agent proposes, the human vetoes.**
 Bare `resolved[]` sigs record a claim but never flip status. `addressed` requires
 a `.verdict/state/N/verification.json` claim (`{sig, verdict: VERIFIED, verifyCmd, resultHead}`
-with `resultHead` matching HEAD). The operator or agent writes that claim —
-`verify` writes `patch.json`, not `verification.json`; a claim is attestation,
-not tool proof. `record`/`post` cross-check the bundle's `patch.json` when
-present and warn on a nonzero exit or timeout, but the flip stands; inspect
-`patch.json` for the tool's machine result. `NOT VERIFIED` reopens,
-`INCONCLUSIVE` only logs. `triage[]` claims other states with rationale (unknown enum or
-unknown sig refused/ignored; short rationale keeps prior status). The operator mutates the
-store directly between runs with `verdict triage … --sig … --status … --rationale …`
-(human supremacy, every override history-logged).
+with `resultHead` matching HEAD) **and** the bundle's `verify-receipt.json`. The
+operator or agent writes the claim, and `patch.json` too — both are proposals.
+Only `verdict verify` writes `verify-receipt.json`, and only it is the tool's
+observation: the command it ran (`command`, the bundle's `patch.json` `verifyCmd`),
+the finding `patch.json` named (`sig`, from `findingSig` or `sig`), the exit,
+whether the watchdog fired, and `head` — the commit checked out at the repo root,
+recorded only when `git status` (with untracked files and submodules always
+counted, whatever the checkout's status config) showed a clean tree and the same
+commit both before and after the command. The status read skips only verdict's own bundle
+state (`.verdict/state/`), `verdict loop`'s round receipts (`.verdict/loop/`), and
+the generated `.verdict/.gitignore`; everything else
+under `.verdict/` (config, KB, packs, regression tests, `verify-env`) is reviewed
+input and counts. `verify` resolves the bundle like every writing verb (a
+symlinked `.verdict/state/<pr>` refuses), pins the bundle directory before the
+command runs, reads the finding sig then, and deletes the previous receipt then,
+so a run that cannot start, is canceled, or cannot be recorded leaves no receipt at all; a run that completes with a nonzero exit or times out writes a receipt recording that exit or timeout, which never reads as a pass. Every write
+goes through that pinned directory, and a command that moves or replaces the
+bundle directory makes verify refuse with nothing recorded. `verify --group`
+pins the bundle the same way before its command runs, so a group receipt is
+written only into the bundle it validated, and applies the same clean-tree rule: a
+dirty tree refuses before the command runs (`head-mismatch`), and a tree left dirty
+fails the receipt with no execution head. `record`/`post`
+read only that file. They flip a `VERIFIED` claim only when it shows exit 0, no
+timeout, the claim's exact `verifyCmd`, the claim's finding when it names one (its
+`sig` must resolve to exactly that one finding in the store; a prefix two findings
+share backs neither), and a `head` equal to the HEAD they grade. A receipt with no
+`sig` — `patch.json` named no finding — backs every claim that cites its command at
+that head: when one command proves several findings, the command and head are the
+whole binding. Anything else does not flip: no receipt (a pass
+written into `patch.json` is not one), a failed or timed-out run, another command,
+another finding, a run on a dirty tree or a moving head, or a receipt for another
+HEAD (stale). The finding keeps its status, the claim is logged as a `revalidation`
+history event, and the run warns `VERIFIED claim for <sig> not applied (<reason>)`,
+naming the HEAD a stale receipt covered and the HEAD to re-run `verdict verify` on.
+So a fix is proven by committing it first: fix → commit (and for a PR, push and
+re-fetch; for a local bundle, re-run `fetch-local` so its head is that commit) →
+`verdict verify` → `record`/`post`. The receipt lives in the bundle, so it is bound
+to that bundle and its root by location; the head is the binding it can go stale on.
+`NOT VERIFIED` reopens without a receipt (a self-reported failure only tightens the
+gate), `INCONCLUSIVE` only logs. `triage[]` claims the other states with rationale —
+`open`, `wont-fix`, `false-positive`, `deferred` (unknown enum or unknown sig
+refused/ignored; short rationale keeps prior status). A `triage[]` claim for
+`addressed` is ignored with a warning: no rationale buys it. Every grade of a
+finding's status — `gate`, `report --check`/`--completeness`, `post --approve`, and
+the MCP and `serve` routes over them — reads the status this merge settled, so all
+of them agree. The operator mutates the store directly between runs with
+`verdict triage … --sig … --status … --rationale …` (human supremacy, every override
+history-logged).
+
+**What the receipt defends against.** It stops a claim nobody observed: an agent
+that is sloppy, hallucinates a pass, or writes the outcome it expects instead of
+running the proof. It is not a signature. A process running as the operator, with
+the operator's file access, can write `verify-receipt.json` itself, edit
+`findings.json` directly, or simply run `verdict verify`, so no key verdict could
+hold would make the file unforgeable to it. Treat a deliberately forging agent as
+having the operator's own authority over the bundle, and keep such agents out of
+checkouts whose gate you rely on.
 
 Malformed agent input refuses typed (exit 1, machine envelope with `error.code`,
 nothing written — no `findings.json`/`record.json`, no KB credit). `record`
@@ -982,13 +1030,14 @@ carries it as an `org_pack` input.
 
 ### Evidence ledger
 
-Nine artifacts explain what a run knew and what it proved. Each row states
+Ten artifacts explain what a run knew and what it proved. Each row states
 the artifact, who writes it, and whether a verb gates on it.
 
 | Artifact                                  | What it is                                                                                                                                                                                                                                                                                                                              | Who writes it                                                                                                                 | Gates?                                                                                                                                                                                                                                                                                                                                 |
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `run.json`                                | The typed per-run capture: resolved defaults, per-file resolutions, plan, spend and privacy views, trusted-base inventory hashes, base SHA, the `inputs_sha256` digest, appended check observations, and the `trigger` decision from `ready --filter`.                                                                                  | `fetch`/`fetch-local`; `post` appends observations, `ready --filter` records the trigger decision                             | Yes, except `config --preview` (see below). `post`, `record`, `triage`, `report`, `ready`, `config --explain`, and `verify --group` verify it; a run bundle deleted while its controls snapshot remains, or an edited captured input, refuses `controls-stale`; a bare bundle dir reads with a warning and no repository requirements. |
 | `validation-<group>.json`                 | The deep-validation receipt for one plan group: run, inputs digest, group, reviewed and execution heads, canonical root, command, exit, timeout and sandbox flags, status, and a redacted output tail.                                                                                                                                  | `verify --group <id> --command <cmd>`                                                                                         | Yes. `post` refuses a binding approval while any `depth: "deep"` group lacks a current receipt; `ready` reports the gap as `profile-work`.                                                                                                                                                                                             |
+| `verify-receipt.json`                     | The patch-path receipt `verify` writes (record and post validate its contents; authorship is not checked against a process with bundle write access, per SECURITY.md): the command `verify` ran, the finding sig `patch.json` named, exit, timeout, and the clean checked-out head (absent on a dirty tree or a moving head).           | `verify` (patch path); `verify` (authorship not enforced)                                                                     | Yes. `record`/`post` flip a `VERIFIED` claim only on a passing receipt for its command, finding, and the graded head.                                                                                                                                                                                                                  |
 | `filesource.json`                         | Provenance for the PR file list: `source` (`paged` or `cli`), `cli_cap` (100), `provider_ceiling` (3000), `count`, and `truncated` or `paging_error`.                                                                                                                                                                                   | GitHub `fetch`, when the CLI list arrives at its 100-file cap                                                                 | No. It is an advisory coverage note: a paging failure warns and the run proceeds with the CLI's first 100 files.                                                                                                                                                                                                                       |
 | `full.raw.diff`                           | The raw pre-exclusion diff, kept as the patch-identity input when a filtered diff would otherwise replace it. No shipped verb writes it today: `fetch` writes the host diff to `full.diff` and records the filtered hash in `run.json` without writing filtered bytes.                                                                  | Nothing today (a future exclusion pass)                                                                                       | Partly. When present it feeds the identity, and `identity.json`'s `raw_diff_sha256` must reproduce it; a present-but-unreadable file refuses instead of falling back to `full.diff`. Absence is normal.                                                                                                                                |
 | `sensitive.txt`                           | The advisory manifest of secret-adjacent paths: filename, extension, and added-line content hits, one path and reason per line, behind a comment header.                                                                                                                                                                                | `fetch`/`fetch-local` (and every provider fetch)                                                                              | No. It is advisory, not a gate: flagged paths stay reviewable evidence, the file is removed when nothing is flagged, and its header asks reviewers to name the path, never the value.                                                                                                                                                  |
@@ -1232,6 +1281,8 @@ the behavior stays off until a layer above turns it on.
 | fetch, fetch-local    | defaults.panel                 | unset            |
 | gate                  | --coverage                     | require          |
 | gate                  | --live                         | auto             |
+| loop                  | --budget                       | 600s             |
+| loop                  | --max-rounds                   | 3                |
 | post                  | --bind                         | off              |
 | post                  | defaults.post_min_severity     | unset            |
 | record                | defaults.spec_coverage_min     | 80               |
@@ -1698,8 +1749,9 @@ bounded wait: it counts as an inconsistent observation, the wait sleeps one
 interval and reads again, because those reads stay inconsistent for a few
 seconds after a push. `--once`, and a wait still inconsistent when its timeout
 arrives, refuses `pr-read-failed` instead of claiming an unchanged or finished
-review. A hard failure refuses at once at any point: `gh` missing or failing to
-execute, an auth or 404 exit, or a non-GitHub provider. Incomplete review data
+review. A hard failure refuses at once at any point: the host CLI (`gh`, or
+`glab` for GitLab) missing or failing to execute, an auth or 404 exit, or a
+provider `pr-wait` has no live reads for. Incomplete GitHub review data
 is also hard: the GitHub view's 100-review window and thread comment pages are
 checked, and 100 or more reviews, truncated comments, or excessive/repeated
 thread pages refuse rather than silently dropping history.
@@ -1729,11 +1781,16 @@ read-only with mutation class `noLocalWrites` and is available in read-only
 mode. `ready` accepts `wait_for: "build"` and `timeout` through MCP with the
 same 50-second cap.
 
-| Host    | `pr-wait` and `ready --wait-for build`                                                                                                         |
-| ------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
-| GitHub  | Supported through `gh`; PR REST reads send `If-None-Match` when an ETag is returned. GraphQL view/thread reads do not support conditional GET. |
-| GitLab  | Explicit `provider-unimplemented` refusal; ordinary `ready` remains supported.                                                                 |
-| Forgejo | Explicit `provider-unimplemented` refusal.                                                                                                     |
+| Host   | `pr-wait` and `ready --wait-for build`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 |
+| ------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GitHub | Supported through `gh`; PR REST reads send `If-None-Match` when an ETag is returned. GraphQL view/thread reads do not support conditional GET.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| GitLab | Supported through `glab`, on the same reads `ready` uses. The check rollup is the merge request's head pipeline, counted only when it ran for the current source head: a branch or detached pipeline must be on that head, and a merged-results or merge-train pipeline (a synthetic merge commit) must list it as a parent, so one for an older push reads as no check yet. The parent test does not check the target side: after the target branch moves, a green merged-results pipeline for the same head still reads as current until GitLab publishes the next one (GitLab itself re-gates the merge on that new pipeline). A `locked` MR (merge in progress) reads as open, never closed. `review-changed` compares approvals and each discussion's resolution and note count, ignoring the API's order. A refusal carries the start of `glab`'s own error. Other hosts refuse. |
+
+One per-host capability table drives `ready` and `pr-wait` alike: it is the
+single source of the providers `--provider` accepts, the MCP `pr_wait` schema
+enum, and the refusal, so no host is advertised before its live reads exist. A
+host outside it — Forgejo, Bitbucket, Azure — refuses `provider-unimplemented`
+before any host command runs, listing the supported hosts.
 
 The saved bundle's provider is used when present; otherwise `pr-wait` defaults
 to GitHub. `--provider` selects a host explicitly. A build wait in `ready`
@@ -1749,7 +1806,7 @@ webhook, listener, or MCP subscription. Killing a wait leaves no background work
 
 ## Machine surface
 
-`demo`/`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`record`/`adopt`/`ingest`/`fix`/`handoff`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`risk`/`index`/`journal`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
+`demo`/`fetch`/`post`/`triage`/`report`/`gate`/`next`/`show`/`verify`/`doctor`/`calibrate`/`fetch-local`/`run`/`loop`/`record`/`adopt`/`ingest`/`fix`/`handoff`/`check-tree`/`ready`/`pr-wait`/`threads`/`trend`/`risk`/`index`/`journal`/`backtest`/`learn`/`pack`/`init`/`skill`/`upgrade`/`uninstall` take `--json`: stdout is exactly one JSON envelope
 (`schema_version`, `verb`, `repo`, `pr`, `at`, `next`, `warnings`, `data`, `error`),
 all human progress goes to stderr, failures emit `{data: null, error: {code, message}}`
 non-zero. Bounded CLI `data` envelopes (`fetch`, `report`, `next`, `show`,
@@ -2226,46 +2283,41 @@ Runnable examples: [ExampleClient_Gate](../pkg/verdict/example_test.go) — and 
 
 ### Write posture (mcp, serve, lsp)
 
-The three long-running local surfaces — `verdict mcp`, `verdict serve`, and
-`verdict lsp` — answer one question the same way: may this process write? The
-rule is shared code (`internal/posture`), not three copies of a convention.
+The long-running local surfaces — `verdict mcp`, `verdict lsp`, and
+`verdict serve` — answer one question the same way: may this process write? The
+rule is shared code (`internal/posture`), and the line it draws is the
+**transport**:
 
-- **Local writes are on by default; `--read-only` is the only knob.** Local
-  writes are everything that rewrites `.verdict/` state: `triage`, KB
-  promotion (`learn`), `record`, `adopt`, `fix`, `verify`, `fetch`, `ingest`,
-  `calibrate`, and the other bundle-writing verbs. There is no second flag that
-  turns them on: `mcp --operator` and `serve --interactive` are retired.
-- **`--read-only` refuses every write path on every surface.** It also forbids
-  host posting outright. On `mcp` the write tools leave `tools/list` (only the
-  read tools plus `record` with `dry_run` remain); on `serve` every write and
-  job route answers `405` and the server never mints a CSRF token; `lsp` has
-  no write path to refuse.
-- **Host posting is a separate, stronger decision, gated per surface exactly as
-  before.** It needs the local-writes answer _plus_ the surface's own consent:
-  `serve` posts to a code host only with `--allow-post` (the confirmation-gated
-  preview, nonce, and digest flow is unchanged), and `--allow-post` beside
-  `--read-only` refuses at startup with `bad-flags`. `mcp` exposes `post` (and
-  the `threads` resolve mode, which closes verdict-authored host threads) on a
-  server that is not `--read-only`, because the host already authorizes the
-  binary and its credentials. `lsp` never posts.
+- **stdio surfaces (`mcp`, `lsp`) get CLI parity.** Only the process that
+  spawned them can talk to them, so they carry the same authority as the CLI:
+  reads always; local writes (`triage`, KB promotion, `record`, `adopt`, `fix`,
+  sandboxed `verify`, and the other bundle-writing verbs) on by default; host
+  writes (`post`, the `threads` resolve mode) on, because posting is verdict's
+  core action and carries its own guards (stale-SHA, duplicate-post, anchor,
+  secret, and binding-approval checks). `lsp` has no write path at all.
+- **`serve` (HTTP on loopback) is ambient-reachable, so host posting stays
+  opt-in.** Reads always; local writes on by default behind its token, session
+  cookie, CSRF, Host, and Origin guards; host posting only with `--allow-post`,
+  through the unchanged confirmation-gated preview, nonce, and digest flow.
+- **`--read-only` removes every write, on every surface.** It is the only knob
+  for local writes. On `mcp` the write tools leave `tools/list` (only the read
+  tools plus `record` with `dry_run` remain); on `serve` every write and job
+  route answers `405` and the server never mints a CSRF token; `lsp` accepts the
+  flag and behaves the same with or without it. `serve --allow-post` beside
+  `--read-only` refuses at startup with `bad-flags`.
 
-| Surface | Flag                                | Default | Local writes (triage, KB, record, adopt, fix, verify)               | Host post                                                                  |
-| ------- | ----------------------------------- | ------- | ------------------------------------------------------------------- | -------------------------------------------------------------------------- |
-| `mcp`   | `--read-only`                       | off     | tools exposed; off removes them                                     | `post`, `threads` resolve exposed; off removes them                        |
-| `serve` | `--read-only`                       | off     | `POST /v1/triage`, `/v1/kb/promote`, `/v1/jobs/*`; on answers `405` | `POST /v1/post/submit` only with `--allow-post`; on refuses `--allow-post` |
-| `lsp`   | `--read-only` (accepted, no effect) | off     | none exist                                                          | none exists                                                                |
+| Surface | Transport | Local writes (triage, KB, record, adopt, fix, verify) | Host post                                                                   |
+| ------- | --------- | ----------------------------------------------------- | --------------------------------------------------------------------------- |
+| `mcp`   | stdio     | on; `--read-only` removes the tools                   | `post`, `threads` resolve on; `--read-only` removes them                    |
+| `lsp`   | stdio     | none exist                                            | none exists                                                                 |
+| `serve` | HTTP      | on behind the guards; `--read-only` answers `405`     | `POST /v1/post/submit` only with `--allow-post`; refused with `--read-only` |
 
-**Deprecated flags.** `verdict mcp --operator` (and `mcp config --operator`) and
-`verdict serve --interactive` are still accepted for one release as no-ops that
-print a one-line deprecation notice on stderr; `mcp config` no longer writes
-`--operator` into a host snippet, and `--write` rewrites an existing
-`["mcp", "--operator"]` entry in place. `--operator` with `--read-only` is no
-longer a usage error: read-only wins.
-
-The MCP server's `triage` tool is human-owned doctrine, not an access gate:
-the shipped instructions still tell an agent to propose status changes through
-`triage[]` in `review.json` instead of calling it. Start an agent's server with
-`--read-only` when it must not be able to.
+There is no second flag that turns local writes on: `mcp --operator` and
+`serve --interactive` no longer exist, and passing either is an unknown-flag
+usage error. The MCP server's `triage` tool is human-owned doctrine, not an
+access gate: the shipped instructions still tell an agent to propose status
+changes through `triage[]` in `review.json` instead of calling it. Start an
+agent's server with `--read-only` when it must not be able to.
 
 ### MCP server (stdio, experimental until 1.0)
 
@@ -2312,9 +2364,8 @@ with the constrained `record` and `report` forms above. A tool hidden by
 `-32602` error whose message and `data` name the tool and where it runs, so
 a hidden verb is never reported as an unknown one; a truly unknown name still
 answers `unknown tool`.
-`--operator` is retired: it is accepted for one release as a deprecated no-op
-that prints a notice, because `triage` and the `threads` resolve mode now follow
-`--read-only` like every other write. Each `tools/list` entry
+`triage` and the `threads` resolve mode follow `--read-only` like every other
+write; there is no separate operator flag. Each `tools/list` entry
 carries a short `title` plus the four MCP behavior hints (`readOnlyHint`,
 `destructiveHint`, `idempotentHint`, `openWorldHint`) derived from the verb's
 real behavior: `post` is destructive and open-world, `fetch` is open-world,
@@ -2392,8 +2443,7 @@ addressable sigs), while the same sig passed to `query-finding` refuses
 
 `verdict mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>`
 prints the exact entry (the default is print-only, like `--dry-run`). Add
-`--read-only` to put it after `mcp` in the snippet (`--operator` is retired:
-accepted, ignored, never written). Add `--write` to merge it into the host's documented config, or
+`--read-only` to put it after `mcp` in the snippet. Add `--write` to merge it into the host's documented config, or
 `--json` for one envelope with the path, format, snippet, and merge status. It
 never prompts and never starts the server.
 
@@ -2421,8 +2471,7 @@ args = ["mcp"]
 
 `--write` is idempotent: an existing matching entry is `keep` and nothing is
 written; an absent one is `create`/`update`. An existing `verdict` entry whose
-argv is one of verdict's own shapes (`["mcp"]` plus any combination of
-`--read-only`/the retired `--operator`) is updated in place to the requested argv; any
+argv is one of verdict's own shapes (`["mcp"]` or `["mcp", "--read-only"]`) is updated in place to the requested argv; any
 other command/argv refuses typed (`mcp-config-foreign`) instead of being
 rewritten. The previous file is copied to `<path>.verdict.bak` before the
 first changing write. Unknown keys and other servers are preserved. A file that
@@ -2692,9 +2741,13 @@ disk) delays the one `didOpen`, `didSave`, or `initialize` that touches it
 and never stalls `didChange`, `$/cancelRequest`, `exit`, or anything else.
 A walk that misses the budget is logged once per path, the document is
 matched by the spelling the client gave, and a later save resolves it again;
-a root whose checkout probe misses the budget is dropped with a warning. A
-walk stuck in the kernel cannot be canceled and lingers until the volume
-answers. One file open under two spellings stays tracked until both close,
+a root whose checkout probe misses the budget is dropped with a warning. When
+all eight slots are held by walks still stuck, a new walk is not started and
+its line says so instead of blaming the budget. The roots of one `initialize`
+or folder change resolve concurrently within the same bounds, so a hung
+volume costs one budget however many roots sit on it. A walk stuck in the
+kernel cannot be canceled and lingers until the volume answers, but ending
+the session stops waiting for it. One file open under two spellings stays tracked until both close,
 each with its own version: publishes use the spelling changed most
 recently. A finding whose `path` is absolute,
 drive-qualified, backslashed, or carries `..` is never published (one
@@ -3004,7 +3057,7 @@ static-page marker refuses `html-not-export`. Recovery and I/O failures use
 
 ## Journal
 
-Every bundle-writing CLI or MCP invocation (`fetch`, `fetch-local`, `run`, `record` including `--dry-run`, `post`, `verify`, `fix`, `triage`, `adopt`, `ingest`, `threads`, `calibrate`, `report`, `drain`) appends two compact JSON lines to an external, local-only journal file under `<state>/verdict/journal/<repo-key>/<pr>.jsonl` under `storelock` (`<pr>.jsonl.lock` beside the file, mode `0600`): a `start` line when the call begins and an `end` line when it returns, paired by `step` (`<started_at>-<pid>-<n>`, unique per invocation, so two overlapping calls never fold into one pair). Read-only verbs (`show`, `next`, `handoff`, `config`, `risk`, `pack`, `index`, `check-tree`, `doctor`, `pr-wait`, `ready`, `gate`, `journal`), multi-bundle verbs (`trend`, `panel`, `backtest`), non-bundle verbs (`init`, `learn`, `skill`, `upgrade`, `uninstall`, `serve`, `mcp`, `acp`, `lsp`), and calls refused by a `--read-only` MCP server never write a journal line.
+Every bundle-writing CLI or MCP invocation (`fetch`, `fetch-local`, `run`, `record` including `--dry-run`, `post`, `verify`, `fix`, `triage`, `adopt`, `ingest`, `threads`, `calibrate`, `report`, `drain`) appends two compact JSON lines to an external, local-only journal file under `<state>/verdict/journal/<repo-key>/<pr>.jsonl` under `storelock` (`<pr>.jsonl.lock` beside the file, mode `0600`): a `start` line when the call begins and an `end` line when it returns, paired by `step` (`<started_at>-<pid>-<n>`, unique per invocation, so two overlapping calls never fold into one pair). Read-only verbs (`show`, `next`, `handoff`, `config`, `risk`, `pack`, `index`, `check-tree`, `doctor`, `pr-wait`, `ready`, `gate`, `journal`), multi-bundle verbs (`trend`, `panel`, `backtest`), non-bundle verbs (`init`, `learn`, `skill`, `upgrade`, `uninstall`, `serve`, `dashboard`, `mcp`, `acp`, `lsp`), and calls refused by a `--read-only` MCP server never write a journal line.
 
 **Location, scope, and cleanup.** `<state>` is `$XDG_STATE_HOME` when set, else `~/.local/state` (on Windows, `%LOCALAPPDATA%` when `$XDG_STATE_HOME` is unset). `<repo-key>` is the first 16 hex characters of `sha256` of the canonical absolute repository root, and `<pr>` is the resolved bundle name (`5101`, `local-7`, `corpus-3`). Nothing journal-related is written inside the repository or `.verdict/` — unless `$XDG_STATE_HOME` (or `%LOCALAPPDATA%`) itself points inside the repository, in which case the journal lands wherever that variable points — so dry runs, refusals, and bundle receipts (`provenance.json`, `run.json`) stay completely untouched. The journal is local to your machine — never committed or uploaded. Delete one bundle's journal by removing `<state>/verdict/journal/<repo-key>/<pr>.jsonl` (and its `.lock` file), or wipe every journal for a repository with `rm -rf <state>/verdict/journal/<repo-key>`.
 
@@ -3083,8 +3136,7 @@ start; the flag warns it is visible in `ps` and shell history), `--check
 `--no-watch` (disable polling and remove `/v1/events`), `--read-only`
 (the shared write-posture flag: drop the local write endpoints and the
 `verify`/preview job routes, leaving a GET-only surface; the default registers
-them), `--interactive` (deprecated, ignored: it printed a notice and changes
-nothing, because local writes are now the default), and `--allow-post`
+them), and `--allow-post`
 (enable host posting through the Tier C endpoint, `POST /v1/post/submit`: without
 it the endpoint answers `403 post-disabled` and posts nothing; refused with
 `--read-only`, default off, and never implied by the local-writes default). Atomic writes are visible
@@ -3389,6 +3441,122 @@ refusal shows. Content hashing shares a 16 MiB budget across the bundle,
 its `chunks` directory, and override fragments — the same byte budget as the
 inventory. If another input exceeds the remaining budget, hashing stops and
 the request bypasses the cache. Refusals are never cached.
+
+## Dashboard (terminal)
+
+`verdict dashboard` draws the review portfolio in a terminal, from the same
+query layer `serve` renders as HTTP: the same rows, the same counts, the same
+refusals, live while the stores change. It is one binary with no
+dependencies and no browser.
+
+```text
+verdict dashboard [<owner/repo>] [--root <dir>] [--once] [--tab <name>]
+                  [--width <cols>] [--height <rows>] [--check <tier>]
+                  [--interval <duration>] [--sweep <duration>] [--no-watch]
+```
+
+- Without `--root`, it reads the current repository, found by the same probe
+  every verb uses: a directory that looks like a checkout git cannot read
+  refuses `not-a-repo`, and a directory with no checkout at all is read as is
+  (an empty portfolio, as `serve` shows). With `--root`, it reads every
+  repository discovery finds below that directory, with `serve`'s defaults
+  (depth 6, 20000 directory visits, 500 repositories) and its 24-hour
+  registry cache.
+- `<owner/repo>` narrows the Overview, the Queue, and the default bundle to
+  that repository's bundles. The totals are summed over them, and withheld
+  (`—`) when one of them refused, when a listing was cut, or when a refused
+  bundle's repository is unknown (it might be this one).
+- `--check <tier>` is the gate tier the Detail and Compare tabs grade
+  against (default `critical`), as for `report --check`.
+
+**Tabs.** Each tab is one read from the layer; a tab whose read refuses shows
+the refusal in its body (`77: bundle-unreadable: …`) and the rest of the
+dashboard keeps working.
+
+| Key | Tab       | What it shows                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| --- | --------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `1` | Overview  | The portfolio totals (bundles, open, deferred, addressed, terminal), the served roots, and every bundle the layer refused. Totals the layer withholds show `—`, never a smaller number; a failure with no bundle is named `store <root id>` and counted as a store error.                                                                                                                                                                                  |
+| `2` | Queue     | One row per bundle: bundle, repo, the four counts, model, and the head SHA's first 8 characters. A refused bundle keeps its row, marked `!`, with every count `—`.                                                                                                                                                                                                                                                                                         |
+| `3` | Detail    | One bundle (Enter on a Queue row, else the first readable one): repo, head, the gate's verdict and dimensions, the verdict counts, and every finding with its severity (`!!!` critical, `!!` important, `!` informational, `-` untagged), status, and two evidence axes: the rigor rung as a five-cell bar (`said` to `reproduced`) and the quote check (`✓` verified, `?` unverified, blank unchecked). The selected finding's body shows under the list. |
+| `4` | Diff      | The bundle's diff: lanes in risk order with file counts and `+add/-del`, then every file and hunk with old and new line numbers and a `▸` on each line a finding is anchored to. Unified by default; `u` switches to side by side from 100 columns (narrower frames say so instead).                                                                                                                                                                       |
+| `5` | Compare   | The bundle against a baseline you pick with `b` from the bundles under the same root: the new, persisting, resolved, and not-reviewed buckets with their findings.                                                                                                                                                                                                                                                                                         |
+| `6` | Cost      | Spend by repo, week, or model (`Tab` cycles); an `unattributed` row is a real bucket.                                                                                                                                                                                                                                                                                                                                                                      |
+| `7` | Precision | Outcomes by category or tier (`Tab` cycles): open, resolved-unfixed, unknown; fixed is `—` until `calibrate` measures it.                                                                                                                                                                                                                                                                                                                                  |
+
+**Keys.** `j`/`k` or the arrows move; `g`/`G` or Home/End jump to the first
+and last row; Ctrl-D/Ctrl-U or PgDn/PgUp move half a page. `Enter` opens
+(a Queue row's Detail, the Detail's Diff). `/` filters the current list as
+you type (`Enter` keeps the filter, `Esc` clears it). `Tab` jumps to the next
+file on the Diff and cycles the grouping on Cost and Precision. `u` toggles
+the split diff, `b` opens the Compare baseline picker, `r` drops the layer's
+cache and composes again, `y` copies the selected finding's fix prompt (or,
+when the bundle has none, its `verdict triage` command), `?` shows every key.
+`Esc` closes help, the picker, or a search, steps back from a bundle tab to
+the Queue, and quits from the Overview or Queue one read tick (0.1 s) later,
+so an arrow key a terminal splits after its ESC never quits. `q` quits with
+exit 0; Ctrl-C cancels with exit 3.
+
+**The live view.** It needs a terminal on both stdin and stdout. It switches
+to the alternate screen, puts the terminal in raw mode, and redraws only the
+cells that change: an idle frame writes nothing. Composition runs beside the
+loop, one view at a time, so keys never wait on a slow compose (a
+`composing…` marker shows while one runs), and a key that changes the view
+while a compose runs drops that compose's result. The layer watches every
+served bundle (`--interval`, default `2s`; `--sweep`, default `60s`, never
+shorter than the interval; both at least `100ms`) and the dashboard
+recomposes the visible view when one changes; a burst of changes costs one
+compose. `--no-watch` turns the watcher off: the view then changes only on
+`r` or a key. On macOS and Linux, Ctrl-Z suspends as usual: the shell gets
+its screen and cooked mode back while the job is stopped, and `fg` redraws
+the frame. Every handled exit — `q`, Ctrl-C, SIGTERM, a terminal error, a
+crash in the loop or in a compose — restores the screen and the terminal
+mode. A SIGKILL (or a power cut) runs no cleanup at all; if a killed
+dashboard leaves the terminal blank or not echoing, run `reset` (or
+`stty sane`). A terminal smaller than 80×24 shows one resize notice instead of
+a squeezed frame; one that reports no size at all is drawn at 80×24 until it
+reports one. `--width` and `--height` (80–1000 columns, 24–500 rows) can only
+narrow the live frame: a frame larger than the terminal would wrap.
+
+Without a terminal it refuses `dashboard-no-tty` (exit 1; an envelope under
+`--json`) rather than waiting for keys that never come; in a terminal,
+`--json` is a usage error (exit 2), since the live view has no JSON form. A
+Windows console that refuses virtual-terminal sequences refuses
+`dashboard-no-vt`; a console mode that cannot be put back on exit is reported
+as an error naming `reset`.
+
+**`--once`.** One plain-text frame of `--tab` (`overview`, `queue`, `detail`,
+`diff`, `compare`, `cost`, `precision`; default `overview`) to stdout, then
+exit 0 — even when bundles refused, totals were withheld, or the tab's read
+refused, because those are rows and messages in the frame, not failures. The
+frame is the terminal's size when stdout is a terminal, and 80×24 otherwise;
+`--width`/`--height` override both. It never carries an escape sequence,
+color or otherwise, never starts the watcher, and the layer's warnings go to
+stderr as `warn:` lines. `--once` has no `--json` form (usage error, exit 2):
+read the same views as JSON through `verdict serve` or the MCP query tools.
+
+**Look.** Color uses the 16 ANSI colors only, so the terminal's own theme
+decides how they read. `NO_COLOR` or `--color never` keeps attributes (bold,
+dim, reverse) and drops color; `TERM=dumb` also switches the box, rung,
+quote, and marker glyphs to ASCII. Every state has a text shape as well — the
+active tab is bracketed, the cursor row is marked `▸`, a refused row is `!`,
+an unknown count is `—`, a diff line is `+` or `-` — so nothing depends on
+color. Text a stranger wrote (a repository name, a finding body, a diff line,
+a refusal message) has every control character folded to a space before it
+reaches the screen, so it cannot move the cursor, clear the screen, or write
+the clipboard. The same holds for every verb's `warn:` and `error:` lines on
+stderr. Combining marks stay on their letter (`e` + U+0301 is `é`), and wide
+characters follow the Unicode 17.0 East Asian Width table.
+
+**Read-only.** The dashboard never writes a review store, posts, fetches, or
+runs a model or any command a bundle names. `y` writes the prompt to the
+terminal as an OSC 52 clipboard sequence (base64, so the text cannot inject
+a sequence of its own) and never starts a subprocess such as `pbcopy`; a
+terminal with OSC 52 disabled simply copies nothing. Text over 100 KiB is not
+sent at all: terminals cap OSC 52 and drop a longer one silently, so the
+status row says it is too large instead of claiming a copy. The status row
+names what was copied: the fix prompt, or the triage command. Its one write is
+`--root`'s discovery registry cache (`projects.json` beside the settings
+file), the same cache `serve --root` keeps. It writes no journal line.
 
 ## Your agent, launched (`run --agent`)
 
@@ -4023,8 +4191,19 @@ agent's own failure visible to CI:
 
 An agent exiting `1`, `2`, or `3` is indistinguishable on the exit code alone
 from verdict's own refusal, usage, and canceled codes; `--json` disambiguates
-them through `error.code`, and the envelope's `data.exit` records what the agent
-itself returned.
+them through `error.code`, and an `agent-failed` message names the status the
+agent itself returned (`<agent> exited <n>`). Only `agent-failed` passes that
+status through; every other refusal exits with verdict's own code.
+
+`agent-failed` and `no-review-artifact` carry the tail of what the agent printed
+(a provider's `402`, a refused write), scrubbed of your credentials, token shapes, authorization headers, and terminal
+escapes, and capped at 600 bytes; `.run.out` keeps the full stream. When every finder of a two-finder
+launch fails, the run refuses with the agent's own code (`agent-failed` leads a
+missing artifact) and exit status, naming every failed finder, not
+`review-insufficient`; when only one finder fails, the survivor's evidence is
+still judged and the refusal names the failed finder's cause beside the gap.
+`no-review-artifact` prints the agent's permission flag from the table above as
+a re-run line; verdict never adds it to the argv itself.
 
 Plus the shared codes: `missing-bundle` (fetch first), `bad-flags` (no
 `--agent`, a `--rounds` outside 1–5, `--print` with `--rounds` greater than 1, or
@@ -5101,19 +5280,27 @@ and remove it when done — the working tree stays untouched throughout.
 
 ### Fix loops (bounded, verify-gated)
 
-`fix owner/repo local-<name> [--sig <s> | --all|--selected|--recipe <name>
+`fix owner/repo local-<name>|<pr> [--sig <s> | --all|--selected|--recipe <name>
 [--min-severity <s>]
 [--verify-cmd <cmd>] [--paths <glob>]... | --test <sig> [--commit]] [--json]`
-runs one bounded pass over a local bundle: it
+runs one bounded pass over a bundle: it
 picks the top open inline sig (severity `critical` above
 `important` above `informational`, then path) or the `--sig` prefix (must be open
 and inline; non-open, section, and unknown sigs refuse), prints the finding
 (plus its stored `brief` block when one is present and the full `kb.txt` context
 when present) with patch → verify → land → re-run instructions, and records the
-pass in `.verdict/state/local-<name>/fix.json`. The agent patches the anchor file,
-runs the verify command itself, writes `verification.json`, lands via `record`,
+pass in `.verdict/state/<bundle>/fix.json`. The agent patches the anchor file,
+commits it and re-runs `fetch-local` (so the bundle's head is the fix commit), runs
+the verify command through `verdict verify` (the receipt a VERIFIED claim needs),
+writes `verification.json`, lands via `record`,
 and re-runs `fix`; the loop ends when no open inline sigs remain (completion
-summary with fixed/open/stopped counts plus the ledger path). A ceiling-exhausted
+summary with fixed/open/stopped counts plus the ledger path). On a PR bundle
+the instructions say to commit and push the fix, re-fetch, run `verdict verify` on
+the fetched head, and land with `post` instead, since a PR bundle has no `record` path. A PR bundle also requires the
+checkout to be on the head the bundle reviewed (`git rev-parse HEAD` equal to
+the bundle's head); any other commit refuses `head-mismatch` before anything is
+written, so a pass, a patch, or `--test --commit` never lands on main or a stale
+branch. Local bundles review the working tree itself and skip the check. A ceiling-exhausted
 top sig keeps getting picked — pass `--sig` for another sig or triage the stuck
 one. Ceilings are
 hard-coded, not configurable: max 3 passes per sig (the 4th refuses with
@@ -5121,8 +5308,9 @@ hard-coded, not configurable: max 3 passes per sig (the 4th refuses with
 (`scope-escape`) — an effective files ceiling of 1. Pre-existing worktree dirt is
 grandfathered (only files changed since the first pass can trip the audit).
 `fix` never flips status or
-writes `findings.json` (credit still flows through the normal `record` flips);
-PR/provider bundles refuse with `not-local` unless the run is `--selected`. Cost
+writes `findings.json` (credit still flows through the normal `record`/`post`
+flips); corpus bundles refuse with `not-local`, because a fix ledger has no
+business inside a benchmark measurement input. Cost
 note: every pass is another
 agent run over the bundle — loops multiply agent spend, so set
 `REVIEW_BUDGET_USD` (or the typed `budget_usd` default) before looping a large backlog. Ceilings
@@ -5175,8 +5363,8 @@ narrows it again. It refuses instead of printing an empty batch: no
 `selected.json` is `missing-selection` (re-run the bundle's fetch; hosts other
 than GitHub never write one) and a selection whose sigs are no longer open inline
 is `no-selected-findings` (re-fetch for current reactions, or triage them). And
-it is the one batch that runs on a PR bundle — `.verdict/state/<pr>` as readily
-as `local-<name>` — because that is where `selected.json` comes from: the
+`selected.json` only comes from a GitHub `fetch`, so this batch always runs on
+a PR bundle — `.verdict/state/<pr>` as readily as `local-<name>`: the
 instructions then say to push the fix, re-fetch, and land with `post`, since a PR
 bundle has no `record` path.
 
@@ -5379,10 +5567,25 @@ re-allows only what the command needs:
   namespace, so without it the command could kill your editor or shell —
   while its own children stay signalable.
   `user-preference-write` is not listed because denying it does not stop
-  `cfprefsd` from writing for the command; the Mach denial does. Reading
-  another process's environment needs no rule here: macOS 15 returns no
-  environment through `kern.procargs2` to a same-uid caller, and `ps` (setuid)
-  cannot run inside `sandbox-exec` at all.
+  `cfprefsd` from writing for the command; the Mach denial does.
+- **Other processes' environments stay readable (macOS residual).** The
+  `kern.procargs2` sysctl returns the arguments and the environment of any
+  same-uid process that is not hardened (`CS_RESTRICT`), and no Seatbelt
+  operation gates it: on macOS 15 a command under a `(deny default)` profile,
+  or one that denies `sysctl-read`, still reads it by MIB. `ps` (setuid) cannot run inside
+  `sandbox-exec`, but a direct `sysctl(3)` call needs no `ps`. Apple's
+  platform binaries (`/bin/zsh`, `/bin/bash`) run restricted, so the kernel
+  returns only their arguments; everything else is readable: a third-party
+  editor or IDE, an agent CLI, `node` or `python` processes, and a shell
+  installed outside the system (Homebrew `bash` or `zsh`). A sandboxed
+  command can therefore read a token exported into one of those
+  (`GH_TOKEN`, `AWS_SECRET_ACCESS_KEY`). It cannot send it out
+  over the network, but it can print it into the verify output or write it
+  into the reviewed root. Before verifying a hostile PR on macOS, keep
+  credentials out of the environment of your long-lived processes (use the
+  credential stores the table above hides), or run the `bwrap` recipe in a
+  Linux VM, where `--unshare-pid` and a fresh `/proc` hide every host
+  process.
 - **No writes outside the run.** Every write is denied except under the
   reviewed root (as written and as its `realpath`), the private `TMPDIR`,
   and `/dev/null`, `/dev/tty`, and `/dev/fd/*` (which `/dev/stdout` and
@@ -5422,7 +5625,12 @@ script, a `core.hooksPath` directory such as `.husky/` — except `.git`, the
 one path component git refuses to check out. That is where git keeps what it
 executes later, outside any sandbox (`hooks/`, `config` with
 `core.fsmonitor`/`core.hooksPath`/filters, `info/`, `modules/*/hooks`), so
-both mechanisms deny writes there:
+both mechanisms deny writes there. Hook code or config the operator chose to
+keep in the tree stays tree content: a `core.hooksPath` directory, a hook in
+`.git/hooks/` that is a symlink into the tree (or a symlinked `hooks/`
+directory), and an `include.path` that names a file in the tree all run or
+read what the PR can write, so do not keep any of them in a checkout you
+verify a hostile PR in:
 
 - **The repository's git directories.** `<root>/.git` as found, the git
   directory a `.git` file names (a linked worktree or a submodule checkout),
@@ -5448,20 +5656,45 @@ a/../g` therefore visits `a`, though it cleans to `g` — and a command that
   creates `a` as a link would send git wherever the link points. Refused: a
   symlinked `.git` (only the link's target could be bound, and the link stays
   replaceable); a `.git` that is neither a directory nor a `gitdir:` file; a
-  pointer file that is not regular (a FIFO is refused without waiting),
+  pointer file that is a symlink (its bytes come from a file the command
+  could rewrite), is not regular (a FIFO is refused without waiting),
   cannot be read, exceeds 4 KiB, or has no `gitdir: ` line; a `gitdir:` or
   commondir target that is not an existing directory; a git directory that
-  is the root itself; and any pointer whose walk passes, inside the root,
-  through a symlink (it could be swapped) or a component that does not exist
-  yet (it could be created as a link). Each refuses with its own cause; none
+  is the root itself or holds it (a checkout inside its own git directory);
+  a walk that reaches inside the root under another spelling (`gitdir:
+../proberoot/meta/git` for a root named `ProbeRoot` on a case-insensitive
+  volume, or the macOS firmlink spelling `/System/Volumes/Data/private/var/…`),
+  because a rule or bind in that spelling would not protect it; a git
+  control file with a second hard link (`cfg` linked to `.git/config` would
+  write it past every path rule — only object payload, which `git clone
+--local` links by design, is exempt: `objects/<2 hex>/…`, `objects/pack/…`,
+  and the `objects/info/commit-graph`, `commit-graphs/`, and `packs` caches
+  of each git directory, a submodule's `.git/modules/<name>` included;
+  `objects/info/alternates`, which redirects object lookup, is checked like
+  any control file); a file in a git directory, outside its `hooks/`, that is
+  a symlink into the root (`config -> ../cfg`; the refusal names the link and
+  its target, and a target outside the root, or inside a git location
+  reached through real directories rather than an in-root link, is fine); and any pointer whose
+  walk passes, inside the root, through a symlink (it could be swapped) or a
+  component that does not exist yet (it could be created as a link). Links
+  are followed one hop at a time, so an in-root link reached only through a
+  link outside the root counts too, and whether a path is inside the root is
+  decided by file identity, not by its spelling. Each refuses with its own cause; none
   is skipped. An error inspecting `.git` other than "does not exist" is
   reported as itself. What passes is pinned at the top: every top-level entry
   of the root that holds a path the walks visit gets the read-only bind (a
   mount point cannot be renamed, and its subtree is read-only), so no
-  directory on the walk can be replaced later. macOS needs none of these
-  refusals, because its rules match by path: every in-root path the walks
-  visit — missing ones and links included — is write-denied under its
-  literal, resolved, and link-node spellings, so none of them can be
+  directory on the walk can be replaced later. A hard link made at run time
+  is not a gap: `link(2)` from the read-only bind into the writable root
+  fails `EXDEV`. macOS refuses the same symlinked `.git` or pointer file,
+  git directory that is or holds the root, other-spelling walk,
+  hard-linked control file (Seatbelt denies a new link at run time), and
+  control-file symlink into the root, but needs
+  none of the other refusals, because its rules
+  match by path: every in-root path the walks visit — missing ones and links
+  included, links behind other links too — is write-denied under its
+  literal and link-node spellings (a link is denied as itself, never as its
+  target, so a link to `..` cannot deny the root), so none of them can be
   created, removed, or renamed, and the rule below covers any `.git`.
 - **Any new `.git` (macOS).** Seatbelt also denies writes to every path
   component named `.git` below the root, in any letter case, whether or not it
@@ -5474,18 +5707,48 @@ refresh the index skips the write). Anything that writes the repository —
 `git commit`, `git stash`, `git checkout`, `git fetch`, `git submodule update`
 — fails inside the sandbox; run those outside it.
 
+**Nested repositories.** Before the command runs, both mechanisms walk the
+physical root (a checkout reached through a symlink is resolved first, in
+patch and group mode alike) for every nested `.git` — a submodule checked
+out with its own git directory, a nested clone, a vendored repository —
+without descending into any git directory. On Linux the root's index is
+also read for its submodule paths (gitlink entries; `.gitmodules` adds
+nothing, since git enters a submodule by its gitlink). Each nested `.git` goes through the same rules as the
+root's: a symlinked one refuses, a `gitdir:` file is walked and its git
+directory protected, and the location scans run on it. On Linux each
+nested `.git`, and each submodule path that is not checked out yet (an
+empty directory: a `.git` created there would make `git status` in the
+superproject enter it), is bound read-only, after a read-write self-bind of
+every directory between the root and it — a bind mount cannot be renamed
+or removed, so no ancestor can be moved aside to recreate the path. A
+submodule path that is missing or a symlink refuses, and so does a tree of
+more than 200,000 directories, which the walk does not search partway; so
+does an index it cannot read (a split index, an unknown version, over
+64 MiB). On macOS the `.git` component rule denies writes to every path
+component named `.git` below the root, existing or not, which covers every
+nested `.git` and any `.git` a command could create at a submodule path,
+so no index is read there; the walk, which runs whether or not the root
+has a `.git` of its own, adds what that rule cannot see — the git directory
+a nested `gitdir:` file names under an ordinary in-root name — and the
+same refusals for a symlinked nested `.git` and the location scans. Inside
+a Linux sandbox, removing or renaming a directory above a nested
+repository fails with `EBUSY`: it is a bind mount now.
+
 What differs and what remains. macOS denies every `.git` below the root,
-existing or not. Linux protects exactly the root's own repository (and
-refuses a root whose repository it cannot pin): a command can still
-create a **new** nested `.git` in a subdirectory, or rewrite a nested
-repository's existing `.git` file, because `bwrap` can make only existing
-paths read-only and a mount point for a missing path would itself be a write
-to your tree. Git honors such a nested repository only when it runs inside
-that subdirectory. On both platforms, a repository nested in the checkout
-whose git directory sits under a non-`.git` name (`git init
---separate-git-dir` inside the tree) is not followed.
-Do not run git inside a nested directory of a hostile checkout, and discard
-the checkout after verifying a hostile PR.
+existing or not. Linux protects every nested `.git` that exists when the
+sandbox starts and every submodule path, but a command can still create a
+**new** nested `.git` in some other subdirectory, because `bwrap` can make
+only existing paths read-only and a mount point for a missing path would
+itself be a write to your tree. Git honors such a repository only when it
+runs inside that subdirectory; `git status` in the superproject does not
+enter it, since it is no submodule — but editors, IDEs, and repository
+scanners discover nested repositories on their own and may run git in
+them. On both platforms, a repository nested in the checkout whose git
+directory sits under a non-`.git` name and is named by no `gitdir:` file
+(`git init --separate-git-dir` with the pointer removed) is not followed.
+Do not run git inside a nested directory of a hostile checkout, do not open
+it in a tool that scans for nested repositories, and discard the checkout
+after verifying a hostile PR.
 
 Seatbelt is deprecated by Apple and has no mount or PID namespace. On macOS the
 child can still read the rest of the host filesystem outside the denied paths
@@ -5697,7 +5960,9 @@ repeatable `--ignore <glob>`, or a `.verdict/ignore` pattern committed on the
 base revision, because the ignore file is read from the base snapshot and a rule
 added on the head never governs its own review. The cap is measured after those
 exclusions. Nothing auto-narrows, and paths after `--` on `fetch-local` are git
-pathspecs that select the files to review: they narrow, they never exclude.
+pathspecs that select the files to review: they narrow, they never exclude. A
+bare word before `--` is a usage error (exit 2), so an unquoted glob or variable
+the shell expanded cannot narrow a review silently.
 Deliberate exceptions only: `REVIEW_MAX_BYTES=<n>` env
 or the typed `max_bytes` default in `.verdict/config.json` (env wins, then the
 typed default, then 512000; either override disables chunking outright and the
@@ -5768,6 +6033,18 @@ verdict fetch-local owner/repo slice-b -- <paths...>           # narrow to a fil
 
 Runnable examples: [ExampleClient_Fetch](../pkg/verdict/example_test.go) — no TypeScript example; fetch needs a live PR.
 
+## Targets
+
+Every verb that takes `<owner/repo> <pr>` accepts three spellings of the same target, resolved once at the front door before the verb runs. The spelling you type never changes what the verb does, only where the pair comes from.
+
+- **Explicit pair** — `verdict fetch acme/app 12`. Used as typed.
+- **A pull or merge request URL** in place of the pair — `verdict fetch https://github.com/acme/app/pull/12/files`. The URL names the repository and the number, and the host picks the provider, so it stands in for `--provider` too (`fetch`, `threads`, `drain`, and `pr-wait` receive it as that flag; the other verbs read the provider from the bundle). An explicit `--provider` that names a different provider refuses with `bad-target-url`, and so does a second positional after the URL (every `--provider` before `--` is checked, and `--provider=<name>` is rewritten to the spaced form the verbs take). The recognized routes are `/pull/<n>` on `github.com`, `/-/merge_requests/<n>` on `gitlab.com` (nested groups included, and the dashless `/merge_requests/<n>` spelling), `/pulls/<n>` on `codeberg.org`, `/pull-requests/<n>` on `bitbucket.org`, and `/<org>/<project>/_git/<repo>/pullrequest/<n>` on `dev.azure.com`. At most one view segment may follow the number (`/files`, `/commits`, `/diffs`, …), and a query string or fragment is ignored. Anything else refuses instead of being guessed: a different route, extra path segments, a non-numeric or zero-padded number, a `.`/`..`/empty/percent-encoded segment, credentials in the URL, or a host not in the table. A self-hosted GitLab or Forgejo is recognized only when `GITLAB_HOST` or `FORGEJO_HOST` already maps it (host and port must match); an Azure URL needs `AZURE_DEVOPS_ORG` to name the same organization. `gitcafe.com` has no verified URL shape, so pass `<owner/repo> <pr> --provider gitcafe`.
+- **Nothing, or a number** — `verdict report`, `verdict report 12`, `verdict report acme/app`. The repository comes from `git config --get remote.origin.url` (SSH, scp-style, and HTTPS remotes, with or without `.git` or a port; no network, and the remote is never printed). The number comes from the one bundle under `.verdict/state/<pr>/` whose recorded head ref (`headRefName`, or `head_ref` on the normalized hosts) equals the checked-out branch and whose recorded repository, when it names one, is that repository, on the origin's own host (Azure compares `<project>/<repo>`, the pair its remote names). verdict never asks the host which pull request a branch belongs to. Two matching bundles (an old merged pull request and its successor), no match, a detached HEAD, an unmappable origin, or an oversized state directory refuses with `target-unresolved`, naming the exact arguments to pass. Outside a git checkout, or in one with no `origin`, there is nothing to read and the usage block prints as before.
+
+Whenever the pair was derived rather than typed, the human surface prints one line on stderr first, so inference is never silent: `target: acme/app#12 (github, inferred from branch "fix-x" recorded in .verdict/state/12)`. `--json` prints no such line; the envelope's `repo` and `pr` already carry the resolved target. `trend` and `risk` take only `<owner/repo>`, which a URL or `origin` supplies the same way. `threads resolve` resolves the pair behind its subverb the same way (it takes no `--provider`; the bundle names the host). A flag in the first position always means the pair is absent.
+
+`fetch-local` is outside all of this: its second positional is a bundle name, so it keeps `<owner/repo> <name>` and never reads a URL or `origin`. The MCP tools take `repo` and `pr` as separate arguments and are unchanged.
+
 ## Providers (non-GitHub hosts)
 
 `fetch --provider gitlab|gitcafe|forgejo|bitbucket|azure` builds the same bundle
@@ -5778,7 +6055,7 @@ shape from another host (`PR.json` normalized to one schema: `provider`,
 validate against `full.diff` hunks regardless of host. `record`, `report`,
 `triage`, `show`, `next` work on provider bundles as-is. `post` submits to
 GitHub, GitLab, Forgejo, Bitbucket, and Azure DevOps; `ready` advises on GitHub
-and GitLab, plain
+and GitLab (the same capability table that gates `pr-wait`), plain
 `calibrate` joins live threads on both, and `adopt` merges into any bundle
 verdict can post to (its re-anchor reads the stored hunks and never shells a
 host CLI). `post` on `gitcafe`, and `ready` and plain
@@ -7033,60 +7310,117 @@ still report `corrupt-store`.
 
 ## Agent self-review loop
 
-Before opening a PR, run the checkout recipe from the repository being reviewed
-(Python 3.9+, POSIX, `verdict` and your agent on `PATH`):
+Before opening a PR, run the loop from the repository being reviewed:
 
 ```sh
-python3 /path/to/verdict/docs/recipes/self-review.py owner/repo \
-  --agent codex --max-rounds 3 --budget 600 --output /outside/repo/review-001
+verdict loop owner/repo --agent codex --max-rounds 3 --budget 600s
 ```
 
-`--agent` accepts `claude`, `codex`, or `opencode`. The recipe uses the shipped
-`run --print` agent table — no duplicated launch flags. Use a new output directory
-outside the reviewed repository for each invocation. Only tracked working-tree
-changes are reviewed, matching plain `fetch-local`; stage new files first.
+`--agent` takes any row of `run`'s agent table or an operator-defined agent from
+`settings.json` (see the `agents` key above), resolved exactly as `run` resolves
+it. Only tracked working-tree changes are reviewed, matching plain `fetch-local`;
+stage new files first.
 
-Each round fetches a fresh local bundle, spawns one non-interactive agent, records
-its review, and gates all finding severities with live host checks skipped. The
-agent writes its review of the fetched snapshot first, then fixes reported
-findings in the working tree. The next round fetches and reviews those fixes.
-The prior record is passed by path to the next agent. Verdict never edits code,
-posts, pushes, or opens a PR. The recipe launches the printed argv itself so it
-can append the fix instructions; it does not produce `launcher.json`.
+Each round runs four phases in-process, with the same services and options as
+the CLI verbs: `fetch-local` into a fresh local bundle (`local-loop-<id>-<n>`),
+`run --finders 1` (the review only — the agent writes `review.json` and leaves
+the working tree alone), `record --require-coverage`, and `gate --max-severity
+informational --coverage require --live skip`. A passing gate ends the loop.
+A failed gate starts the fix phase: the agent is spawned again with the fix
+directive — the built-in instructions, or the text of `--fix-prompt <file>`
+followed by the round's context (the findings file, the bundle, and its
+`fix-cost.json` and `patch.json` paths) — and fixes the open findings in the
+working tree. When the fix declares a command in the bundle's `patch.json`
+(`{"verifyCmd": "..."}`), the loop runs `verdict verify` on it, so the fix
+carries the tool's receipt rather than the agent's word; the receipt is
+recorded, never a stop, except a cancel, which stops the loop in that round.
+The command is the agent's own proposal: `--sandbox` or
+`--sandbox-network-only` runs that verify step under `verify`'s enforced
+sandbox (off by default, as for `verify` itself; the two are mutually
+exclusive). Every phase runs under the wall deadline, and the review's two
+launch-to-check attempts each get half the budget that remains. The next
+round fetches the working tree again and reviews the fixes from scratch, so a
+review never grades a tree that changed under it. The last round has no fix
+phase: nothing would review it. The loop never commits, stages, pushes, posts,
+or opens a PR.
 
-Each round records with `--require-coverage` and gates with `--coverage require`.
-Dirty local coverage receipts are bound to `source.json.diff_sha256`, verified
-against the bundle's `full.diff`, and must name that same diff hash. A missing,
-partial, or empty attestation cannot pass for a measurable change. A changed diff
-or mismatched receipt fails closed. `record` and coverage gates also compare the
-live tracked-tree fingerprint with `source.json.worktree_diff_sha256`; a change
-refuses with `coverage-stale` and asks for `fetch-local` again. This fingerprint
-covers all tracked changes, including paths outside a filtered review. Older
-dirty bundles without this fingerprint must be fetched again. This local gate is not merge authorization.
+The loop stops on the first of:
 
-`round-N.json` holds the round number, open findings count, gate boolean, and
-`cost: null` (cost is not measured). Missing observations remain null.
-`round-N.record.json` and `round-N.gate.json` retain the record and gate data.
-`summary.json` and stdout report the stop reason and all receipts. Exit 0 means
-the last gate passed; exit 1 means maximum rounds, wall budget, or a typed
-refusal stopped the loop. The wall budget covers all subprocesses and kills the
-POSIX process group on expiration. It is not a token or dollar budget. A refusal
-stops the loop, except `coverage-stale` on a review reporting findings: fixes
-make that round stale, so the loop retains the review, writes a stale receipt,
-and fetches again within the round and wall budgets. A stale clean review
-always stops failing. The loop does not invoke `run`'s structured-output repair loop.
+| Stop           | When                                                                                                                                                                                       |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `pass`         | the round's gate passed                                                                                                                                                                    |
+| `max-rounds`   | the last round's gate failed (`--max-rounds` 1–20, default 3)                                                                                                                              |
+| `wall-budget`  | the `--budget` deadline (default `600s`; `600`, `600s`, `10m`) passed — a phase or a spawn's watchdog ran out of the budget that remained                                                  |
+| `cost-budget`  | the summed round `cost_usd` reached `--max-cost-usd`, a round's spend could not be measured while `--max-cost-usd` is set (`budget-unknown`), or the monthly spend ceiling refused a spawn |
+| `no-progress`  | no finding open after the previous round was resolved — every previous open sig is still open                                                                                              |
+| `agent-failed` | the agent process failed; the refusal is `run`'s own, carried as-is                                                                                                                        |
+| `refused`      | any other typed refusal (`coverage-stale`, `review-insufficient`, `agent-missing`, …), carried in `refusal`                                                                                |
+
+Every spawn the loop makes — each review attempt (the first launch and the
+repair round `run` may add) and the fix — is admitted right before it starts:
+the repository's monthly ceiling (`monthly_budget_usd`, the stricter of the
+repository and personal values) is checked against month-to-date known spend,
+exactly as `run` does for a priced execution; `require_known_estimate` refuses
+every unpriced spawn, with or without a ceiling. The spawn's receipt is then
+appended to the round bundle's `budget.json` through the same ledger writer
+under the same lock (`scope` `spawn`, `execution_id` `loop-<id>-<n>-review-<k>`
+or `loop-<id>-<n>-fix`, `projected_usd` `null`), dated at its admission so it
+counts in that month. A spawn row is covered only by a recorded receipt naming
+its own launch, never by the bundle's unidentified `cost.json`.
+
+The receipts are then priced. Each review attempt is a fresh agent process
+that rewrites the bundle's `cost.json` for its own run, so the loop keeps each
+attempt's record before the next attempt can overwrite it and prices every
+attempt from its own: the record's root `est_usd` (the undated schema-2 shape
+the prompt asks for), or zero for the last record on disk when every one of its
+entries carries an `at` that parses and falls in the scanned month — the
+month-to-date scan already counts that one. An attempt that wrote no record of
+its own stays unknown. The fix is priced from the `{"est_usd": <dollars>}`
+it reports in `fix-cost.json`, even when it exits non-zero — it ran, so it
+spent. A spawn whose process never started is zero. A spawn that reports
+nothing stays unknown spend, never free. Reports are read the way the cost
+scan reads the bundle: confined to it, regular files only, never blocking.
+
+A round's `cost_usd` is the round bundle's known spend under that accounting —
+the same one `report --cost` and the monthly ceiling use, over every receipt in
+the bundle whatever its month, so a round that crosses a UTC month boundary is
+not understated — `null` when nothing priced it; the summary sums the known
+amounts. With `--max-cost-usd` set, a
+round whose spend could not be measured stops the loop before its next spawn
+(`cost-budget`, refusal `budget-unknown`) rather than spending blind; without
+it, the loop warns and continues.
+
+Receipts go to `--output <dir>`, a new directory (an existing one refuses
+`bad-flags`; default `.verdict/loop/<stamp>` in the checkout): `round-N.json`
+per round — the bundle, timestamps, `open` and `open_sigs`, `gate`, `cost_usd`,
+`fix` (`null` when no fix ran; `fix.verify` is the verify receipt, `null` when
+the fix declared no command) and `refusal` — and `summary.json` with the stop
+reason, `passed`, the limits, the summed cost, the plan, and every round. A
+phase that never ran leaves its observation `null`. `--json` prints the same
+summary as the envelope's `data` (`$defs/loopData`). Exit 0 means the last gate
+passed (or a `--print` render); 1 any other stop, a `wall-budget` stop whose
+deadline canceled a phase included; 2 usage; 3 an operator cancel — a `^C`
+reported as `refused` with the `canceled` refusal, even when it lands after a
+gate passed. `--fix-prompt <file>` works spaced or as `--fix-prompt=<file>`:
+after `loop`, the spelling is the loop's flag, not the global publish toggle.
+
+`--print` renders every command the loop can run, round by round, as its CLI
+equivalent, with the fix phase as the exact agent argv (prompt included), and
+runs nothing — no bundle, no receipts, no spawn. A rendered `--timeout` is the
+most that spawn can get: the whole budget, split across the review's two
+attempts.
 
 For a before/after benchmark, use two isolated copies of the same benchmark
 input and pinned agent/model: run the baseline coding task in one, then the
-same task followed by this recipe in the other. Grade both resulting diffs with
-the same benchmark command and retain task output, recipes, model settings,
+same task followed by `verdict loop` in the other. Grade both resulting diffs
+with the same benchmark command and retain task output, model settings,
 receipts, elapsed time, and measured agent cost. Repeat across seeds/tasks and
 report failures as well as passes. No benchmark numbers are claimed here.
 
-Verify the recipe with `./evals/one.sh self-review`; it runs stub binaries for
-all three agents, fixing on round 2, exhausting the round limit, and refusing an empty review, offline.
-The eval requires `python3` (Python 3.9+).
-Unit checks run with `python3 -B -m unittest discover -s docs/recipes`.
+Verify the loop with `./evals/one.sh self-review`; it runs stub binaries for
+three shipped agents and one `settings.json` agent, fixing on round 2, the
+plateau, the round limit, the wall and cost budgets, an agent failure, a stale
+and an empty review, and `--print`, offline.
 
 ### Import a rule object
 

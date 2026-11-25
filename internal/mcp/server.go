@@ -22,6 +22,7 @@ import (
 	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/posture"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 const (
@@ -109,7 +110,10 @@ func New(cfg *Config) *Server {
 	if cfg.Stderr == nil {
 		cfg.Stderr = io.Discard
 	}
-	cfg.Stderr = &diagWriter{dst: cfg.Stderr}
+	// Every tool's progress, warning, and log line shares this stream, and a
+	// tool reports paths and spec items a stranger chose: the fold keeps
+	// their control characters off the operator's terminal.
+	cfg.Stderr = &diagWriter{dst: untrusted.NewInertWriter(cfg.Stderr)}
 	rule := Posture(cfg.ReadOnly)
 	tools := allTools(rule)
 	applyCommanderOverrides(tools, cfg.Commanders)

@@ -1,9 +1,15 @@
 package main
 
+import (
+	"strings"
+
+	"github.com/stainless-code/verdict/internal/core"
+)
+
 func usageText() string {
 	return "usage: verdict demo|fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|run|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|" +
-		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain|acp|lsp [opts]\n" +
+		"fetch-local|run|loop|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|" +
+		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|dashboard|config|drain|acp|lsp [opts]\n" +
 		"  demo [<public-github-pr-url>] [--agent <name>] [--keep] [--timeout <secs>] [--json]\n" +
 		"    one review, zero setup: a public GitHub pull request by URL (gh when signed in for\n" +
 		"    github.com, the anonymous API otherwise) or your own working tree when the argument\n" +
@@ -15,6 +21,8 @@ func usageText() string {
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--index <ref|dir>] [--context <file|dir>] [--spec <file>] [--issue <ref>] [--ignore <glob>] [--no-default-excludes] " +
 		"[--preview] [--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
+		"    <owner/repo> <pr> may be one pull/merge request URL (it implies --provider), or omitted: the pair is then read\n" +
+		"    offline from the origin remote and the bundle recorded for the current branch (docs/manual.md § Targets).\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
 		"    --index <ref|dir> hands one index the operator built to the bundle: impact.json plus a\n" +
@@ -163,10 +171,12 @@ func usageText() string {
 		"    --sarif <file|-> is the same source under its older spelling.\n" +
 		"  fix <owner/repo> <local-slug|pr> [--sig <s> | --all|--selected|--recipe <name> [--min-severity <s>]\n" +
 		"        [--verify-cmd <cmd>] [--paths <glob>]... | --test <sig> [--commit]] [--json]\n" +
-		"    one bounded pass over a local bundle: picks the top open inline sig\n" +
+		"    one bounded pass over a bundle: picks the top open inline sig\n" +
 		"    (or --sig), prints finding + kb.txt context with verify/land/re-run\n" +
-		"    instructions. Max 3 passes per sig (ledger .verdict/state/<bundle>/fix.json);\n" +
-		"    touching files outside the anchor stops the loop (scope-escape).\n" +
+		"    instructions (on a PR bundle the landing is push, re-fetch, then post;\n" +
+		"    corpus bundles refuse not-local). Max 3 passes per sig\n" +
+		"    (ledger .verdict/state/<bundle>/fix.json); touching files outside the\n" +
+		"    anchor stops the loop (scope-escape).\n" +
 		"    --all takes one pass on every open inline finding at or above --min-severity\n" +
 		"    (default important; off reads no floor) and names each sig's outcome: ready,\n" +
 		"    ceiling, scope-escape, or no-anchor. It needs the command that proves the\n" +
@@ -174,7 +184,7 @@ func usageText() string {
 		"    --paths <glob> (repeatable) scopes the batch to matching finding paths.\n" +
 		"    --selected takes the same batch shape over the sigs a github fetch recorded in\n" +
 		"    the bundle's selected.json — the root review comments a human reacted 👍 to —\n" +
-		"    and prints the selection it read. It is the one batch that runs on a PR bundle:\n" +
+		"    and prints the selection it read, which only a github fetch writes:\n" +
 		"    absent selected.json refuses missing-selection, and a selection that names no\n" +
 		"    open inline finding refuses no-selected-findings. Its default floor is off, so\n" +
 		"    the reaction, not the severity, decides; --min-severity narrows it.\n" +
@@ -206,7 +216,9 @@ func usageText() string {
 		"    Binding APPROVE/REQUEST_CHANGES needs --bind (else downgraded to COMMENT);\n" +
 		"    APPROVE is refused with open or deferred findings unless --force.\n" +
 		"    Agent status claims (resolved[]/triage[]) are proposals: addressed flips only on\n" +
-		"    verification.json evidence (VERIFIED + resultHead matching HEAD).\n" +
+		"    verification.json evidence (VERIFIED + resultHead matching HEAD) backed by the\n" +
+		"    tool-only verify-receipt.json (exit 0 for that verifyCmd on the clean graded HEAD);\n" +
+		"    a triage[] claim for addressed is ignored.\n" +
 		"    --dry-run prints validation + payload summary, writes findings.dryrun.json, posts nothing.\n" +
 		"    A secret-shaped value in the review text refuses post-secret-shaped before any host\n" +
 		"    call (--dry-run warns instead); --allow-secret-values publishes it and post.json\n" +
@@ -288,7 +300,11 @@ func usageText() string {
 		"  verify <owner/repo> <pr> [--timeout <secs, default 300>] [--group <stableID> --command <cmd>]\n" +
 		"        [--sandbox | --sandbox-network-only] [--env-allowlist <name[,name...]>] [--json]\n" +
 		"    With neither --group nor --command, execute patch.json verifyCmd with a watchdog and\n" +
-		"    record exit + tail in the patch record. --group and --command are required together:\n" +
+		"    record exit + tail in the patch record, and write verify-receipt.json: the command,\n" +
+		"    the finding sig patch.json names, exit, timeout, and the checked-out head when the\n" +
+		"    tree is clean and unmoved — the receipt record/post need before a VERIFIED claim\n" +
+		"    flips a finding addressed. The command runs in the repo root.\n" +
+		"    --group and --command are required together:\n" +
 		"    --command runs for the named deep plan group at the reviewed head and writes\n" +
 		"    validation-<group>.json (patch.json stays untouched).\n" +
 		"    Child env is default-deny (allowlist + LC_*; secret-named vars dropped unless opted in\n" +
@@ -341,7 +357,7 @@ func usageText() string {
 		"    agreement columns that may diverge from the baseline — the agreement rate\n" +
 		"    over judged rows is the evidence number.\n" +
 		"  pr-wait <owner/repo> <N> --until merged|closed|checks-green|checks-done|review-changed --timeout D\n" +
-		"    [--once] [--interval D] [--json] [--provider github|gitlab|forgejo]\n" +
+		"    [--once] [--interval D] [--json] [--provider " + strings.Join(core.PRWaitProviders(), "|") + "]\n" +
 		"    Foreground wait: timeout 1s–30m; interval >=1s. Exit 0 on condition,\n" +
 		"    exit 1 with wait-timeout or condition-unmet data; no local writes.\n" +
 		"\n" +
@@ -377,6 +393,25 @@ func usageText() string {
 		"    approves, merges, or writes a store: the exit code is the whole integration,\n" +
 		"    and the merge stays the human's. Use report for the ranked items, cost, and\n" +
 		"    artifacts.\n" +
+		"  loop <owner/repo> --agent <name> [--max-rounds <1-20, default 3>] [--max-cost-usd <usd>]\n" +
+		"        [--budget <duration, default 600s>] [--output <dir>] [--fix-prompt <file>]\n" +
+		"        [--sandbox | --sandbox-network-only] [--print] [--json]\n" +
+		"    the agent self-review loop over your working tree: each round runs fetch-local into a\n" +
+		"    fresh local bundle, run (review only, one finder), record --require-coverage, and gate\n" +
+		"    (every open finding, coverage required, live checks skipped). A failed gate starts the fix\n" +
+		"    phase: the agent fixes the open findings in the working tree (the built-in instructions, or\n" +
+		"    --fix-prompt's text), then verify runs the command it declared in the bundle's patch.json\n" +
+		"    (--sandbox / --sandbox-network-only pass verify's own sandbox; off by default, as for verify).\n" +
+		"    The next round re-fetches and re-reviews the fixes. --agent takes any agent table row or\n" +
+		"    settings.json agent. Stops: pass, max-rounds, wall-budget (--budget bounds every phase and\n" +
+		"    spawn; exit 1), cost-budget (--max-cost-usd over the summed round cost_usd receipts, a round\n" +
+		"    whose spend could not be measured while --max-cost-usd is set, or the monthly spend ceiling\n" +
+		"    refusing a spawn — every review attempt and fix leaves a budget.json receipt), no-progress (no\n" +
+		"    finding open after the previous round was resolved), agent-failed, refused. Receipts:\n" +
+		"    round-N.json and summary.json under --output (a new directory; default\n" +
+		"    .verdict/loop/<stamp>). --print renders every planned command and the fix prompt without\n" +
+		"    running anything. Never commits, pushes, or posts. Exits 0 pass or --print, 1 any other stop\n" +
+		"    or refusal, 2 usage, 3 an operator cancel.\n" +
 		"  threads <owner/repo> <pr> [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--json]\n" +
 		"    refresh .verdict/state/<pr>/threads.json from the host (no diff refetch): host-resolved\n" +
 		"    thread state, anchors, authors, bodies, and finding links for every review\n" +
@@ -703,10 +738,19 @@ func usageText() string {
 		"    same services the CLI calls, gated by the per-session X-Verdict-CSRF token\n" +
 		"    /v1/health publishes, a present allowlisted Origin, and strict application/json\n" +
 		"    bodies); --allow-post (refused with --read-only) adds POST /v1/post/submit, the\n" +
-		"    confirmation-gated host posting route through core/post; --interactive is deprecated\n" +
-		"    and ignored. Ctrl-C exits 3.\n" +
+		"    confirmation-gated host posting route through core/post;\n" +
+		"    Ctrl-C exits 3.\n" +
 		"    Discovery defaults to depth 6, 20000 directory visits, 500 repositories;\n" +
 		"    --rediscover forces a walk, --no-registry skips the 24-hour local cache.\n" +
+		"  dashboard [<owner/repo>] [--root <dir>] [--once] [--tab <name>] [--width <cols>] [--height <rows>]\n" +
+		"      [--check <tier>] [--interval <duration>] [--sweep <duration>] [--no-watch]\n" +
+		"    read-only terminal view over the query layer serve renders, live while the stores\n" +
+		"    change: 1 Overview, 2 Queue, 3 Detail, 4 Diff, 5 Compare, 6 Cost, 7 Precision; ? lists\n" +
+		"    every key. Needs a terminal on stdin and stdout, else refuses dashboard-no-tty;\n" +
+		"    --once prints one plain-text frame of --tab (default overview) and exits 0. q quits;\n" +
+		"    Ctrl-C exits 3. <owner/repo> narrows the portfolio to one repository; --root reads every\n" +
+		"    repository below <dir> through serve's discovery and its 24-hour registry cache.\n" +
+		"    Watch defaults: --interval 2s, --sweep 60s; y copies through OSC 52, never a subprocess.\n" +
 		"  mcp [--read-only] (experimental)\n" +
 		"    serve the review verbs as MCP tools over stdio (JSON-RPC 2.0, one frame per line).\n" +
 		"    stdout is the protocol channel; progress and warnings go to stderr.\n" +
@@ -724,6 +768,11 @@ func usageText() string {
 		"    publish a review bundle's findings as LSP 3.17 diagnostics over stdio (Content-Length\n" +
 		"    framed JSON-RPC 2.0). Diagnostics move on didOpen, didSave, a bundle watch change, and\n" +
 		"    the verdict.refresh command, never on didChange. No model calls, no writes.\n" +
+		"  Targets: every verb that takes <owner/repo> <pr> also takes one pull/merge request URL in their place\n" +
+		"  (github, gitlab, forgejo, bitbucket, azure; a self-hosted host only when GITLAB_HOST or FORGEJO_HOST maps it),\n" +
+		"  and with no positionals infers the pair from the origin remote and the recorded bundle whose head ref is the\n" +
+		"  current branch. A derived target is echoed on stderr; an ambiguous one refuses with the args to pass.\n" +
+		"  fetch-local keeps <owner/repo> <name>.\n" +
 		"  Global presentation flags (any verb, before or after the verb, repo, and pr;\n" +
 		"  global flags are stripped before the positionals are read):\n" +
 		"  --color <auto|always|never>, --compact / --no-compact, --no-json.\n" +
@@ -745,7 +794,7 @@ func usageText() string {
 		"  overview + diagrams + fix prompt) namespaces\n" +
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on demo/fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
-		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/index/journal/backtest/learn/pack/init/" +
+		"fetch-local/run/loop/record/adopt/fix/check-tree/ready/gate/trend/index/journal/backtest/learn/pack/init/" +
 		"skill/upgrade/uninstall/serve/config/acp/lsp: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
@@ -754,7 +803,7 @@ func usageText() string {
 
 // optionals take at most one optional positional and no repo/pr pair, so the
 // split must not read the first token as a repository and the second as a PR.
-var optionals = map[string]bool{cmdDemo: true}
+var optionals = map[string]bool{cmdDemo: true, verbDashboard: true}
 
 var bareVerbs = map[string]bool{
 	"check-tree": true,
@@ -774,7 +823,7 @@ var bareVerbs = map[string]bool{
 // repoOnlyVerbs take one <owner/repo> and nothing else positional: every other
 // argument is one of their own flags, so the split must not read the second
 // token as a PR.
-var repoOnlyVerbs = map[string]bool{cmdTrend: true, cmdRisk: true}
+var repoOnlyVerbs = map[string]bool{cmdTrend: true, cmdRisk: true, cmdLoop: true}
 
 func arityUsage(cmd, repo, pr string) bool {
 	if cmd == "" {

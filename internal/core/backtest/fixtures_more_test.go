@@ -92,7 +92,12 @@ func newUnalignedRepo(t *testing.T) (r *repo, base, feature, fix string) {
 // twoCandidateRepo builds two merged-and-fixed PRs on different days.
 func twoCandidateRepo(t *testing.T) (*repo, string) {
 	t.Helper()
-	r := newRepo(t)
+	return buildTwoCandidateRepo(newRepo(t))
+}
+
+// buildTwoCandidateRepo lands twoCandidateRepo's history in the empty r.
+func buildTwoCandidateRepo(r *repo) (*repo, string) {
+	r.t.Helper()
 	r.write("a.txt", "one\n")
 	r.write("b.txt", "one\n")
 	base := r.commit("feat: base")

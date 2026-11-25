@@ -50,8 +50,10 @@ var VerbTable = map[string]VerbPolicy{
 
 	// Multi-bundle verbs (no single bundle home, Q4).
 	"backtest": {Journals: false, Reason: "multi-bundle replay under .verdict/backtest/ (Q4)"},
-	"panel":    {Journals: false, Reason: "multi-bundle orchestration with no single bundle home (Q4)"},
-	"trend":    {Journals: false, Reason: "noLocalWrites and multi-bundle portfolio rollup (Q4)"},
+	"loop": {Journals: false, Reason: "multi-bundle self-review rounds: one fresh local bundle per round " +
+		"plus receipts outside the store, with no single bundle home (Q4)"},
+	"panel": {Journals: false, Reason: "multi-bundle orchestration with no single bundle home (Q4)"},
+	"trend": {Journals: false, Reason: "noLocalWrites and multi-bundle portfolio rollup (Q4)"},
 
 	// Non-bundle verbs (config, learnings, distribution, transport, listener).
 	"init":      {Journals: false, Reason: "scaffolds repo-level .verdict/ controls; owns no bundle"},
@@ -60,6 +62,7 @@ var VerbTable = map[string]VerbPolicy{
 	"acp":       {Journals: false, Reason: "stdio ACP transport; read-only queries journal nothing"},
 	"lsp":       {Journals: false, Reason: "stdio LSP transport; publishes diagnostics and writes nothing"},
 	"serve":     {Journals: false, Reason: "local HTTP listener; owns no bundle"},
+	"dashboard": {Journals: false, Reason: "read-only terminal view; owns no bundle"},
 	"skill":     {Journals: false, Reason: reasonDistribution},
 	"uninstall": {Journals: false, Reason: reasonDistribution},
 	"upgrade":   {Journals: false, Reason: reasonDistribution},

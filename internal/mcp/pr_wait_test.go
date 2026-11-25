@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -88,5 +89,33 @@ func assertToolRefusalCode(t *testing.T, id string, f frame, wantCode string) {
 	}
 	if !res.IsError || got["code"] != wantCode {
 		t.Fatalf("id %s got isError=%v code=%v body=%s; want %s", id, res.IsError, got["code"], res.StructuredContent, wantCode)
+	}
+}
+
+// TestPRWaitProviderEnumMatchesTable fails when the advertised provider enum
+// and the hosts pr-wait has live reads for diverge.
+func TestPRWaitProviderEnumMatchesTable(t *testing.T) {
+	props, ok := inputSchema(findTool(t, "pr_wait"))[schemaProperties].(map[string]any)
+	if !ok {
+		t.Fatal("pr_wait schema has no properties")
+	}
+	provider, ok := props["provider"].(map[string]any)
+	if !ok {
+		t.Fatal("pr_wait schema has no provider")
+	}
+	values, ok := provider[schemaEnum].([]any)
+	if !ok {
+		t.Fatal("pr_wait provider has no enum")
+	}
+	got := make([]string, 0, len(values))
+	for _, v := range values {
+		name, ok := v.(string)
+		if !ok {
+			t.Fatalf("enum value %v is not a string", v)
+		}
+		got = append(got, name)
+	}
+	if !slices.Equal(got, core.PRWaitProviders()) {
+		t.Fatalf("advertised enum %v != table %v", got, core.PRWaitProviders())
 	}
 }

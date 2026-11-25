@@ -214,7 +214,7 @@ func TestClientFix(t *testing.T) {
 	})
 	requireNoError(t, err)
 	if out.At != sdkAt ||
-		out.Next != "patch the anchor file, write verification.json, run record to land it, then re-run fix" {
+		out.Next != "patch the anchor file, commit it, re-run fetch-local, run verdict verify, write verification.json, run record to land it, then re-run fix" {
 		t.Errorf("envelope = at %q next %q", out.At, out.Next)
 	}
 	assertFixPass(t, decodeData(t, out.Data))
@@ -232,8 +232,27 @@ func TestClientFix(t *testing.T) {
 
 	writeFindings(t, "4291", "["+
 		sdkFinding("1123456789abcdef0123456789abcdef01234567", "open", "informational", "pointed")+"]")
+	// A PR bundle runs a pass too, landing through post, once the checkout is
+	// on the head it reviewed; a corpus bundle is a benchmark input and still
+	// refuses.
+	writeFile(".verdict/state/4291/PR.json", `{"state":"OPEN","headRefOid":"`+strings.Repeat("d", 40)+`"}`)
 	_, err = c.Fix(context.Background(), &verdict.FixRequest{
 		Invocation: sdkInvocation("4291"),
+	})
+	requireRefusal(t, err, "head-mismatch", "try: address the cause above, then re-run the same command")
+	writeFile(".verdict/state/4291/PR.json", `{"state":"OPEN","headRefOid":"`+gitHead(t, dir)+`"}`)
+	pr, err := c.Fix(context.Background(), &verdict.FixRequest{
+		Invocation: sdkInvocation("4291"),
+	})
+	requireNoError(t, err)
+	if !strings.Contains(pr.Next, "run post to land it") {
+		t.Errorf("PR bundle next = %q, want the post landing", pr.Next)
+	}
+
+	writeFindings(t, "corpus-x", "["+
+		sdkFinding("1123456789abcdef0123456789abcdef01234567", "open", "informational", "pointed")+"]")
+	_, err = c.Fix(context.Background(), &verdict.FixRequest{
+		Invocation: sdkInvocation("corpus-x"),
 	})
 	requireRefusal(t, err, "not-local", "try: run the fetch/record step named above first, then re-run")
 }

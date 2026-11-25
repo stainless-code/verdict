@@ -16,6 +16,7 @@ import (
 // opens the artifact: a read on a FIFO blocks until a writer appears, so the
 // round stops with its own refusal and no evidence copy, promptly.
 func TestRepairCrashRoundSkipsFIFOReview(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	review := filepath.Join(dir, reviewFile)
@@ -48,6 +49,7 @@ func TestRepairCrashRoundSkipsFIFOReview(t *testing.T) {
 // regular file swapped for a FIFO after any stat is opened non-blocking, so
 // the mode check rejects it without waiting for a writer that never comes.
 func TestCrashReviewBytesNeverBlocksOnAFIFO(t *testing.T) {
+	t.Parallel()
 	path := filepath.Join(t.TempDir(), reviewFile)
 	if err := syscall.Mkfifo(path, 0o600); err != nil {
 		t.Fatal(err)

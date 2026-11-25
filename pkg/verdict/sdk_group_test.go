@@ -156,13 +156,17 @@ func requireCommanderDir(t *testing.T, root string, cmdr *dirCommander) {
 	}
 }
 
-// dirCommander answers the head probe and records the command Dir.
+// dirCommander answers the head and clean-tree probes and records the
+// command Dir.
 type dirCommander struct {
 	head       string
 	commandDir string
 }
 
 func (c *dirCommander) Run(_ context.Context, cmd *verdict.Command) (verdict.CommandResult, error) {
+	if a := cmd.Argv; len(a) > 4 && a[0] == "git" && a[1] == "--no-optional-locks" && a[4] == "status" {
+		return verdict.CommandResult{}, nil
+	}
 	if len(cmd.Argv) > 3 && cmd.Argv[0] == "git" {
 		return verdict.CommandResult{Stdout: c.head + "\n"}, nil
 	}

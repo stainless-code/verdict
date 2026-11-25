@@ -54,6 +54,7 @@ const (
 // truth: every finding its fixtures and seeds blame is checked against the
 // impact section the same diff produces, per language.
 func TestImpactProxy(t *testing.T) {
+	t.Parallel()
 	rows := measureImpactProxy(t)
 	tally := tallyImpactProxy(rows)
 	assertImpactProxyDocs(t, tally)
@@ -114,6 +115,7 @@ func assertSeedCandidate(t *testing.T, cand *Candidate, seed proxySeed) {
 // call, which is the corpus's method-caller gap showing up as lost reach rather
 // than as a missed ground-truth path.
 func TestImpactProxyCallerReach(t *testing.T) {
+	t.Parallel()
 	for _, c := range []struct {
 		name  string
 		kind  crossPackageKind

@@ -42,6 +42,7 @@ func colonPathRepo(t *testing.T) (r *repo, base string) {
 // TestMineLiteralGlobPaths proves blame and grep read a glob-shaped path as a
 // file name, not as a glob: the deleted line anchors at the PR head.
 func TestMineLiteralGlobPaths(t *testing.T) {
+	t.Parallel()
 	r, base := globPathRepo(t)
 	data := runMine(t, r, base)
 	if len(data.Mine.Candidates) != 1 {
@@ -66,6 +67,7 @@ func TestMineLiteralGlobPaths(t *testing.T) {
 // TestMineLiteralColonPath proves blame and grep read a colon-leading path as
 // a file name, not as pathspec magic.
 func TestMineLiteralColonPath(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("NTFS forbids ':' in file names; the pathspec-magic case is proven on POSIX")
 	}

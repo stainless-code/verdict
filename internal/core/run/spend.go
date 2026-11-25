@@ -332,6 +332,13 @@ func (st *state) spendReceipt(ctx context.Context, dir, execution string, rounds
 	if st.req.ConsentOverBudget {
 		record.Set("consent", "--consent-over-budget")
 	}
+	return st.updateLedger(ctx, dir, func(ledger []any) []any { return append(ledger, record) })
+}
+
+// updateLedger rewrites the bundle's budget.json receipt ledger under its
+// lock: the one writer run's spend receipt and the loop's spawn receipts
+// share, so both obey the same cap, lock, and atomic write.
+func (st *state) updateLedger(ctx context.Context, dir string, change func([]any) []any) *core.RefusalError {
 	path := filepath.Join(dir, "budget.json")
 	unlock, err := storelock.AcquireContext(ctx, path, storelock.DefaultWait)
 	if err != nil {
@@ -342,8 +349,7 @@ func (st *state) spendReceipt(ctx context.Context, dir, execution string, rounds
 	if message != "" {
 		return st.refuse(codeRecordFailed, message)
 	}
-
-	ledger = append(ledger, record)
+	ledger = change(ledger)
 	raw := []byte(jq.PrettyOrdered(ledger) + "\n")
 	if len(raw) > maxSpendReceiptBytes {
 		return st.refuse(codeRecordFailed, "budget.json receipt ledger is full; re-fetch into a fresh bundle")

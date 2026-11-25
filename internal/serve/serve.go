@@ -42,24 +42,23 @@ const (
 	shutdownTimeout  = 5 * time.Second
 	minWatchInterval = 100 * time.Millisecond
 
-	flagRoot        = "--root"
-	flagHost        = "--host"
-	flagPort        = "--port"
-	flagToken       = "--token"
-	flagCheck       = "--check"
-	flagMaxBundles  = "--max-bundles"
-	flagInterval    = "--interval"
-	flagSweep       = "--sweep"
-	flagNoWatch     = "--no-watch"
-	flagJSON        = "--json"
-	flagDepth       = "--depth"
-	flagMaxVisits   = "--max-visits"
-	flagMaxRepos    = "--max-repos"
-	flagRediscover  = "--rediscover"
-	flagNoRegistry  = "--no-registry"
-	flagInteractive = "--interactive"
-	flagAllowPost   = "--allow-post"
-	flagReadOnly    = posture.FlagReadOnly
+	flagRoot       = "--root"
+	flagHost       = "--host"
+	flagPort       = "--port"
+	flagToken      = "--token"
+	flagCheck      = "--check"
+	flagMaxBundles = "--max-bundles"
+	flagInterval   = "--interval"
+	flagSweep      = "--sweep"
+	flagNoWatch    = "--no-watch"
+	flagJSON       = "--json"
+	flagDepth      = "--depth"
+	flagMaxVisits  = "--max-visits"
+	flagMaxRepos   = "--max-repos"
+	flagRediscover = "--rediscover"
+	flagNoRegistry = "--no-registry"
+	flagAllowPost  = "--allow-post"
+	flagReadOnly   = posture.FlagReadOnly
 
 	codeBadRoot           = "bad-root"
 	codeServeListenFailed = "serve-listen-failed"
@@ -721,9 +720,6 @@ func parseFlag(r *cli.Runner, opts *serveOptions, args []string, i int) (int, in
 		return i, 0, false
 	case flagNoRegistry:
 		opts.noRegistry = true
-		return i, 0, false
-	case flagInteractive:
-		r.Warn(posture.RetiredFlagNotice("serve", flagInteractive))
 		return i, 0, false
 	case flagReadOnly:
 		opts.readOnly = true

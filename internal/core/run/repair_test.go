@@ -212,6 +212,7 @@ func (c *probeRecordingRepair) Run(_ context.Context, cmd *core.Command) (core.R
 // each round's launcher.json carries the passing identity check, like the
 // one-shot record does.
 func TestRepairRecordsProbeInEveryRound(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	var lines collector
@@ -260,6 +261,7 @@ func lastPrompt(cmdr *sequenced, call int) string {
 // TestRepairValidFirstRoundStopsAtOne proves a valid round 1 ends the loop:
 // one spawn, a success, and a repair profile recording one of one.
 func TestRepairValidFirstRoundStopsAtOne(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	var lines collector
@@ -284,6 +286,7 @@ func TestRepairValidFirstRoundStopsAtOne(t *testing.T) {
 // TestRepairInvalidThenValid proves the loop re-prompts: two spawns, the
 // second round's bytes in place, and rounds_to_valid 2.
 func TestRepairInvalidThenValid(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	var lines collector
@@ -366,6 +369,7 @@ func assertExhausted(t *testing.T, ref *core.RefusalError, cmdr *sequenced, spaw
 // TestRepairCrashInRoundTwoKeepsAgentFailed proves a launch failure in a later
 // round reports the existing code and spends no further round.
 func TestRepairCrashInRoundTwoKeepsAgentFailed(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	var lines collector
 	cmdr := &sequenced{
@@ -406,6 +410,7 @@ func assertAgentExit(t *testing.T, resp *core.RunResponse, cmdr *sequenced, exit
 // TestRepairIdenticalRetryStopsEarly proves a round that repeats the prior
 // bytes ends the run with the no-progress cause instead of spending the cap.
 func TestRepairIdenticalRetryStopsEarly(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	var lines collector
 	cmdr := &sequenced{write: func(int) { writeDoc(t, root, invalidDoc) }}
@@ -427,6 +432,7 @@ func TestRepairIdenticalRetryStopsEarly(t *testing.T) {
 // TestRepairExhaustedCarriesProblems proves the capped run refuses typed with
 // the final round's problems for the operator to fix.
 func TestRepairExhaustedCarriesProblems(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	var lines collector
 	cmdr := &sequenced{write: func(call int) {
@@ -440,6 +446,7 @@ func TestRepairExhaustedCarriesProblems(t *testing.T) {
 // review is valid and never triggers another round, whatever the cap, and the
 // recorded profile echoes the cap asked for rather than the rounds run.
 func TestRepairWarningsOnlyNeedsNoExtraRound(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	var lines collector
 	cmdr := &sequenced{write: func(int) { writeDoc(t, root, warningsDoc) }}
@@ -456,6 +463,7 @@ func TestRepairWarningsOnlyNeedsNoExtraRound(t *testing.T) {
 // TestRoundsValidation pins the --rounds range: 1-5 parses, and an absent
 // value is the two rounds the evidence contract's one repair round needs.
 func TestRoundsValidation(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		raw  string
 		want int
@@ -477,6 +485,7 @@ func TestRoundsValidation(t *testing.T) {
 // TestRoundsRejects pins the --rounds refusals: anything outside 1-5, or not
 // a number, is bad-flags.
 func TestRoundsRejects(t *testing.T) {
+	t.Parallel()
 	for _, raw := range []string{"0", "6", "x", "-1", " 2", "+2", "10"} {
 		st := &state{req: &core.RunRequest{RoundsRaw: raw}}
 		if _, ref := st.rounds(); ref == nil || ref.Code != codeBadFlags {
@@ -489,6 +498,7 @@ func TestRoundsRejects(t *testing.T) {
 // escape hatch: pairing it with --rounds refuses bad-flags and spawns
 // nothing.
 func TestRepairPrintWithRoundsRefuses(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	var lines collector
 	cmdr := &sequenced{}
@@ -506,6 +516,7 @@ func TestRepairPrintWithRoundsRefuses(t *testing.T) {
 // TestRepairOneShotLeavesNoRepairProfile proves the default path is
 // untouched: no repair object in the response or the record.
 func TestRepairOneShotLeavesNoRepairProfile(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	var lines collector
@@ -538,6 +549,7 @@ func TestRepairOneShotLeavesNoRepairProfile(t *testing.T) {
 // exits 0 without writing leaves the prior file, which predates that round's
 // launch and refuses stale-review-artifact instead of no-progress.
 func TestRepairSilentSecondRoundIsStale(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	var lines collector
 	cmdr := &sequenced{write: func(call int) {
@@ -568,6 +580,7 @@ func TestRepairSilentSecondRoundIsStale(t *testing.T) {
 // whole-second filesystem records for both - reads as fresh, so the loop
 // re-prompts instead of refusing stale-review-artifact.
 func TestRepairRoundStampsFromLaunchRecord(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	var lines collector
@@ -600,6 +613,7 @@ func TestRepairRoundStampsFromLaunchRecord(t *testing.T) {
 // hour ahead of the filesystem would read a review the agent just wrote as
 // stale, and the round would refuse instead of re-prompting.
 func TestRepairStampIgnoresTheProcessClock(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	var lines collector
 	cmdr := &sequenced{write: func(call int) {
@@ -646,6 +660,7 @@ func ageReview(t *testing.T, root string, by time.Duration) {
 // TestRepairMissingDiffStopsWithMissingDiff proves the loop uses the bundle
 // check: a missing full.diff refuses missing-diff instead of checking empty.
 func TestRepairMissingDiffStopsWithMissingDiff(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	if err := os.Remove(filepath.Join(dir, "full.diff")); err != nil {
@@ -665,6 +680,7 @@ func TestRepairMissingDiffStopsWithMissingDiff(t *testing.T) {
 // TestRepairTimeoutInRoundTwoKeepsTimeout proves a watchdog kill in a later
 // round keeps the timeout code and spends no further round.
 func TestRepairTimeoutInRoundTwoKeepsTimeout(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	var lines collector
 	cmdr := &sequenced{
@@ -692,6 +708,7 @@ func TestRepairTimeoutInRoundTwoKeepsTimeout(t *testing.T) {
 // TestRepairPassThroughReachesRoundTwo proves -- args reach every round's
 // argv, not just round 1.
 func TestRepairPassThroughReachesRoundTwo(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	var lines collector
 	cmdr := &sequenced{write: func(call int) {
@@ -726,6 +743,7 @@ func assertPassThrough(t *testing.T, cmdr *sequenced, call int) {
 // not stick when round 2 writes the artifact itself: launcher.json describes
 // the round that produced the accepted file.
 func TestRepairLauncherReportsTheFinalRoundSalvage(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	roundOne := `{"schema_version":"1","findings":[{"path":"notes.txt","line":2,` +
@@ -776,6 +794,7 @@ func assertLauncherNotSalvaged(t *testing.T, dir string) {
 // TestRepairRoundNeverSalvagesFailedAgent pins F1 in the repair path: a
 // non-zero round exit refuses on its own and leaves no recordable artifact.
 func TestRepairRoundNeverSalvagesFailedAgent(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	cmdr := &sequenced{result: func(int) core.Result {
 		return core.Result{ExitCode: 1, Stdout: fenced(salvagedFinding)}
@@ -792,6 +811,7 @@ func TestRepairRoundNeverSalvagesFailedAgent(t *testing.T) {
 // TestRepairRoundNeverSalvagesTimeout pins the watchdog branch of the same
 // gate: stdout findings from a killed process stay evidence only.
 func TestRepairRoundNeverSalvagesTimeout(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	cmdr := &sequenced{result: func(int) core.Result {
 		return core.Result{TimedOut: true, Stdout: fenced(salvagedFinding)}
@@ -808,6 +828,7 @@ func TestRepairRoundNeverSalvagesTimeout(t *testing.T) {
 // TestRepairFreshNoncePerRound proves each round-k prompt mints its own
 // nonce: round 2 and round 3 fences carry different nonces.
 func TestRepairFreshNoncePerRound(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	var lines collector
 	cmdr := &sequenced{write: func(call int) {
@@ -845,6 +866,7 @@ func roundNonce(t *testing.T, cmdr *sequenced, call int) string {
 // the repair counters once: repair holds rounds/rounds_to_valid/final_valid
 // with no attempts key, and the attempts list rides top-level.
 func TestRepairLauncherRepairHasNoAttempts(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	var lines collector
@@ -894,6 +916,7 @@ func assertTopLevelAttempts(t *testing.T, rec map[string]any, want int) {
 // TestRepairKeepsPerRoundOut proves each round's child output lands in
 // .run.rounds/NN.out while .run.out stays the last round.
 func TestRepairKeepsPerRoundOut(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	var lines collector
@@ -939,6 +962,7 @@ func assertFileContent(t *testing.T, path, want string) {
 // TestRepairCrashRoundKeepsFiles proves a crash round still keeps NN.out and
 // NN.review.json before the loop stops.
 func TestRepairCrashRoundKeepsFiles(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	var lines collector
@@ -1019,6 +1043,7 @@ func crashRoundStatus(call int) core.Result {
 // from .run.rounds/ before round 1, so a shorter run never inherits a longer
 // run's files, and leaves a name it never wrote alone.
 func TestRepairClearsStaleRoundFiles(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	rounded := filepath.Join(dir, roundsDir)
@@ -1053,6 +1078,7 @@ func TestRepairClearsStaleRoundFiles(t *testing.T) {
 // .run.rounds out of the bundle: it refuses before round 1 and the file the
 // link points at survives the stale-file sweep.
 func TestRepairRefusesSymlinkedRoundsDir(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	outside := t.TempDir()
@@ -1085,6 +1111,7 @@ func TestRepairRefusesSymlinkedRoundsDir(t *testing.T) {
 // on every platform, not only the symlink case: the loop cannot clear or write
 // round evidence through it.
 func TestRepairRefusesFileAtRoundsDir(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	rounded := filepath.Join(dir, roundsDir)
@@ -1107,6 +1134,7 @@ func TestRepairRefusesFileAtRoundsDir(t *testing.T) {
 // bytes past the 32 MiB review cap: the round's own refusal stands unchanged
 // and only its output is kept.
 func TestRepairCrashRoundSkipsOversizedReview(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	var lines collector
@@ -1125,6 +1153,7 @@ func TestRepairCrashRoundSkipsOversizedReview(t *testing.T) {
 // bundle the loop creates is 0700 and every file in it 0600, so the agent's raw
 // bytes are not world-readable beside the 0644 store files.
 func TestRepairRoundEvidenceModes(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "windows" {
 		t.Skip("NTFS carries no POSIX mode bits")
 	}
@@ -1310,6 +1339,7 @@ func asMap(t *testing.T, value any) map[string]any {
 // re-prompt and the run publishes once the agent pays it: the round that fixed
 // it is the reported round, and each round keeps its own receipt.
 func TestRepairMissingReceiptFixedInRoundTwo(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	var lines collector
@@ -1335,6 +1365,7 @@ func TestRepairMissingReceiptFixedInRoundTwo(t *testing.T) {
 // TestRepairQuoteFixedInRoundTwo proves the quote gap is what the re-prompt
 // names, and the published receipt records the quote as verified.
 func TestRepairQuoteFixedInRoundTwo(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	var lines collector
@@ -1363,6 +1394,7 @@ func TestRepairQuoteFixedInRoundTwo(t *testing.T) {
 // rounds remain, and the settled finding makes the run refuse
 // review-insufficient rather than publish an unbacked approval.
 func TestRepairSettledQuoteRefusesInsufficient(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	var lines collector
 	cmdr := perCall(t, root, wrongQuoteDoc, repeatedQuoteDoc)
@@ -1403,6 +1435,7 @@ func assertSettled(t *testing.T, dir string) {
 // byte-identical review keeping its wrong quote is review-insufficient, not
 // repair-exhausted: the gap, not the repetition, refuses.
 func TestRepairSettledQuoteStaysInsufficientAfterNoProgress(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	var lines collector
 	cmdr := perCall(t, root, wrongQuoteDoc, wrongQuoteDoc, wrongQuoteDoc)
@@ -1421,6 +1454,7 @@ func TestRepairSettledQuoteStaysInsufficientAfterNoProgress(t *testing.T) {
 // TestRepairReceiptGapNeverFixedRefusesInsufficient proves receipt gaps keep
 // re-prompting until the round cap, then refuse with the final problem list.
 func TestRepairReceiptGapNeverFixedRefusesInsufficient(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	var lines collector
 	cmdr := perCall(t, root, unreceiptedDoc, strings.Replace(unreceiptedDoc, "receipt gap", "second look", 1))
@@ -1442,6 +1476,7 @@ func TestRepairReceiptGapNeverFixedRefusesInsufficient(t *testing.T) {
 // TestRepairOneShotRoundPerformsNoRepair proves an explicit --rounds 1 spends
 // no repair round: the gap refuses on the artifact the agent wrote.
 func TestRepairOneShotRoundPerformsNoRepair(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	var lines collector
 	cmdr := perCall(t, root, unreceiptedDoc)
@@ -1461,6 +1496,7 @@ func TestRepairOneShotRoundPerformsNoRepair(t *testing.T) {
 // approval tier is a warning: the run publishes the finding and the receipt
 // records the unverified quote, which is the standing post's lead reads.
 func TestRepairNonGatingQuoteIsPublishedUnverified(t *testing.T) {
+	t.Parallel()
 	root := repairFixture(t)
 	dir := bundleDir(root)
 	var lines collector

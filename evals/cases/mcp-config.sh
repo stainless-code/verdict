@@ -98,21 +98,16 @@ else
   bad "print snippets miss the --read-only argv"
 fi
 
-# --operator is retired: accepted for one release, ignored, never written, and
-# the old --read-only --operator conflict is gone.
-for combo in "--operator" "--read-only --operator"; do
-  set +e
-  # shellcheck disable=SC2086
-  "$EVAL_CLI" mcp config --agent claude $combo >"$EVAL_SANDBOX/p-out.txt" 2>"$EVAL_SANDBOX/p-err.txt"
-  st=$?
-  set -e
-  if [ "$st" -eq 0 ] && grep -q -- "--operator is deprecated and ignored" "$EVAL_SANDBOX/p-err.txt"; then
-    good "mcp config $combo is a deprecated no-op: exit 0 with the notice on stderr"
-  else
-    bad "mcp config $combo exit $st (want 0 and the deprecation notice)"
-  fi
-  assert_file_nogrep "mcp config $combo never writes --operator into the snippet" \
-    "$EVAL_SANDBOX/p-out.txt" '"--operator"'
-done
+# --operator is gone: an unknown flag, nothing printed, nothing written.
+set +e
+"$EVAL_CLI" mcp config --agent claude --operator >"$EVAL_SANDBOX/p-out.txt" 2>"$EVAL_SANDBOX/p-err.txt"
+st=$?
+set -e
+if [ "$st" -eq 2 ] && grep -q -- "unknown flag '--operator' for mcp config" "$EVAL_SANDBOX/p-err.txt" \
+  && [ ! -s "$EVAL_SANDBOX/p-out.txt" ]; then
+  good "mcp config --operator is an unknown flag (exit 2, nothing printed)"
+else
+  bad "mcp config --operator exit $st (want 2 with the unknown-flag message)"
+fi
 
 eval_end

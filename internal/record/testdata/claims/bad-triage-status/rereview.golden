@@ -18,7 +18,7 @@ exit: 1
   "error": {
     "code": "bad-review-input",
     "message": "review.json has 1 problem(s); fix every one, then re-run\ntry: fix the malformed agent input named above (review.json wants findings[]; each finding wants path, line, severity, claim, quote and confidence), then re-run",
-    "problems": [{"path":"$.triage[0].status","code":"bad-enum","level":"error","message":"unknown triage status \"bogus\"","fix":"use open|addressed|wont-fix|false-positive|deferred","example":"wont-fix"}],
+    "problems": [{"path":"$.triage[0].status","code":"bad-enum","level":"error","message":"unknown triage status \"bogus\"","fix":"use open|wont-fix|false-positive|deferred","example":"wont-fix"}],
     "problems_truncated": 0
   }
 }

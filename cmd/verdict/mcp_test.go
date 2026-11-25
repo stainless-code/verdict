@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/mcp"
 )
 
@@ -45,7 +46,7 @@ func TestMCPHelp(t *testing.T) {
 		t.Fatalf("exit = %d, stderr = %s", code, readOutput(t, errOut))
 	}
 	help := readOutput(t, out)
-	for _, want := range []string{"verdict mcp", "stdio", "--read-only", "--operator   deprecated", "tools/call"} {
+	for _, want := range []string{"verdict mcp", "stdio", "--read-only", "tools/call"} {
 		if !strings.Contains(help, want) {
 			t.Errorf("help misses %q:\n%s", want, help)
 		}
@@ -75,38 +76,20 @@ func TestMCPUsageError(t *testing.T) {
 	}
 }
 
-// emptyStdin points [os.Stdin] at an empty file so a served session ends at
-// once, like a closed pipe.
-func emptyStdin(t *testing.T) {
-	t.Helper()
-	f, err := os.CreateTemp(t.TempDir(), "stdin-*")
-	if err != nil {
-		t.Fatal(err)
-	}
-	old := os.Stdin
-	os.Stdin = f
-	t.Cleanup(func() {
-		os.Stdin = old
-		_ = f.Close()
-	})
-}
-
-// TestMCPOperatorRetired proves --operator is a deprecated no-op alias: it
-// still starts the server (with or without --read-only, which used to be a
-// usage error), names the one rule on stderr, and keeps stdout protocol-only.
-func TestMCPOperatorRetired(t *testing.T) {
+// TestMCPRetiredFlagsAreUnknown proves --operator is gone, not aliased: the
+// one write-posture flag is --read-only, and a script still passing the old
+// spelling gets a usage error with nothing served.
+func TestMCPRetiredFlagsAreUnknown(t *testing.T) {
 	for _, argv := range [][]string{{"mcp", "--operator"}, {"mcp", "--operator", "--read-only"}} {
-		emptyStdin(t)
 		out, errOut := mcpTempFiles(t)
-		if code := run(argv, out, errOut, os.Getenv, os.ReadFile); code != 0 {
-			t.Fatalf("%v exit = %d, want 0; stderr = %s", argv, code, readOutput(t, errOut))
+		if code := run(argv, out, errOut, os.Getenv, os.ReadFile); code != 2 {
+			t.Fatalf("%v exit = %d, want 2", argv, code)
 		}
 		if got := readOutput(t, out); got != "" {
 			t.Errorf("%v stdout = %q, want empty", argv, got)
 		}
-		want := "mcp: --operator is deprecated and ignored: local writes are allowed unless --read-only"
-		if got := readOutput(t, errOut); !strings.Contains(got, want) {
-			t.Errorf("%v stderr = %q, want the deprecation notice %q", argv, got, want)
+		if got := readOutput(t, errOut); !strings.Contains(got, "unknown flag '--operator' for mcp (want --read-only)") {
+			t.Errorf("%v stderr = %q", argv, got)
 		}
 	}
 }
@@ -135,5 +118,14 @@ func TestMCPHelpListsTheRegistry(t *testing.T) {
 	slices.Sort(got)
 	if !slices.Equal(got, ro) {
 		t.Errorf("help read-only list = %v, registry = %v", got, ro)
+	}
+}
+
+// TestUsageAdvertisesTablePRWaitProviders pins the help line to the provider
+// table, so a host cannot be listed before pr-wait can read it.
+func TestUsageAdvertisesTablePRWaitProviders(t *testing.T) {
+	want := "[--provider " + strings.Join(core.PRWaitProviders(), "|") + "]"
+	if !strings.Contains(usageText(), want) || strings.Contains(usageText(), "github|gitlab|forgejo]") {
+		t.Fatalf("usage lacks %q", want)
 	}
 }

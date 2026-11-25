@@ -44,7 +44,14 @@ In scope (highest priority first):
   full shape** — `"sandboxed": true` in the patch record, the deep-group
   receipt, or `--json` data asserts `bwrap` or `sandbox-exec` enforced it. An
   escape from that sandbox, or a run that records `"sandboxed": true` without
-  the enforcement (or for the network-only mode), is a vulnerability.
+  the enforcement (or for the network-only mode), is a vulnerability. One
+  macOS residual is documented, not a finding: Seatbelt cannot gate the
+  `kern.procargs2` sysctl, so a sandboxed command can read the environment
+  of same-uid processes that are not restricted platform binaries — a
+  third-party editor, an agent CLI, `node` (see the
+  [manual](docs/manual.md#hostile-pr-sandbox-recipe)). A route to another
+  process's environment that does not go through `kern.procargs2`, or a
+  profile that could deny it and does not, is in scope.
 - `verify --sandbox-network-only`, the explicit Linux opt-in
   (`unshare --user --map-root-user --net`): the promise is network isolation
   alone, a `sandboxMechanism: "unshare-net"` record that never claims
@@ -57,17 +64,30 @@ In scope (highest priority first):
 - Under `--sandbox`, the reviewed repository's git control files are part of
   the boundary: writes to `<root>/.git`, the git directory a `.git` file
   names, and a linked worktree's common directory are denied on both
-  platforms; on macOS so is creating any `.git` path below the root, and on
-  Linux a root whose repository cannot be pinned read-only (no `.git`, a
-  symlinked `.git`, a git pointer that does not resolve, or a git location
-  whose walk passes through a symlink or a missing component inside the
-  root) refuses
-  `sandbox-unavailable`. A sandboxed command that plants a hook or a
-  `.git/config` key for the root's repository, or (on macOS) any nested
+  platforms; on macOS so is creating any `.git` path below the root. On both
+  platforms a symlinked `.git` or git pointer file, a git directory that is
+  the reviewed root or holds it, a pointer that reaches inside the root
+  under another spelling (letter case, a macOS firmlink), a git control file
+  with a second hard link (object payload — loose objects, packs, and the
+  commit-graph and pack-list caches of each git directory, submodules'
+  included — excepted; `objects/info/alternates` is not payload), and a git
+  control file outside `hooks/` that is a symlink into the root refuse `sandbox-unavailable` ("inside the root" is
+  decided by file identity); on Linux
+  so does a root whose repository cannot be pinned read-only (no `.git`, a
+  git pointer that does not resolve, or a git location whose walk passes
+  through a symlink or a missing component inside the root, a link reached
+  through an outside-root link included). A sandboxed command that plants a hook or a
+  `.git/config` key for the root's repository, for a nested repository or
+  submodule whose `.git` existed when the sandbox started, through any
+  submodule path in the root's index, or (on macOS) through any new nested
   `.git`, is a vulnerability. Out of scope: the rest of the working tree is
-  the PR's content and writable by design, and on Linux a new nested `.git`
-  in a subdirectory is a documented residual of `bwrap`, which can only
-  protect paths that already exist.
+  the PR's content and writable by design, and so is hook code or config the
+  operator keeps in the tree (a `core.hooksPath` directory, a `.git/hooks/`
+  symlink into the tree, an `include.path` naming a tree file), and on Linux a new nested `.git`
+  in a subdirectory that is no submodule path is a documented residual of
+  `bwrap`, which can only protect paths that already exist (git honors it
+  only when it runs in that subdirectory, as an editor or repository
+  scanner that discovers nested repositories may).
 - The `verify` gate's own contract: `verify` executes the agent's claimed
   proof (`verifyCmd` via `bash -c`, 300s watchdog, tail recorded into the
   patch record). The pre-exec refusals are a **tripwire, not a boundary**: the
@@ -102,6 +122,18 @@ In scope (highest priority first):
   snapshot (`controls-unavailable`, `controls-stale`). Any path where
   head bytes steer a review without the recorded
   `--allow-head-controls` opt-out is a vulnerability.
+- The verification receipt: `record` and `post` flip a `VERIFIED` claim to
+  `addressed` only on the bundle's `verify-receipt.json`, which
+  `verdict verify` alone writes. It binds the command, the finding, and the
+  clean checked-out head, and verify writes it only through the bundle
+  directory it pinned before the command ran (a symlinked bundle refuses; a
+  bundle moved or replaced mid-run records nothing). A path where a claim flips without a passing receipt
+  for its command, finding, and the graded head — a pass read from
+  `patch.json`, a `triage[]` rationale, a dirty or moving tree — is a
+  vulnerability. The receipt defends against claims nobody observed, not
+  against a process with the operator's own file access: such a process
+  can rewrite the receipt or `findings.json` directly, so forging the
+  receipt that way is out of scope.
 
 Out of scope: a `verifyCmd` spelling the string gate does not know (the
 documented tripwire ceiling above — send it, it gets armed and added to

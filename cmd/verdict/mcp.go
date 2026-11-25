@@ -11,11 +11,6 @@ import (
 	"github.com/stainless-code/verdict/internal/posture"
 )
 
-// flagOperator is the retired local-triage flag: the shared write-posture rule
-// (internal/posture) made it redundant, so it is accepted and ignored for one
-// release.
-const flagOperator = "--operator"
-
 func mcpUsageText() string {
 	return "usage: verdict mcp [--read-only]\n" +
 		"       verdict mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>\n" +
@@ -29,7 +24,6 @@ func mcpUsageText() string {
 		"               ready, doctor, check-tree, config, pack, record, query-bundles, query-copy,\n" +
 		"               query-cost, query-finding, query-findings, query-health); every local write and\n" +
 		"               post is refused\n" +
-		"  --operator   deprecated, ignored (prints a notice): local writes are on unless --read-only\n" +
 		"\n" +
 		"  Default tools (33): adopt, calibrate, check-tree, config, doctor, fetch, fetch-local, fix,\n" +
 		"  handoff, index, ingest, init, journal, learn, next, pack, post, pr_wait, query-bundles, query-copy,\n" +
@@ -67,8 +61,6 @@ func runMCP(
 			return cli.ExitOK
 		case posture.FlagReadOnly:
 			readOnly = true
-		case flagOperator:
-			fmt.Fprintln(stderr, posture.RetiredFlagNotice("mcp", flagOperator))
 		default:
 			fmt.Fprintf(stderr, "unknown flag '%s' for mcp (want --read-only)\n", arg)
 			return cli.ExitUsage

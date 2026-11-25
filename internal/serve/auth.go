@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"net"
 	"net/http"
+	"net/netip"
 	"strconv"
 	"strings"
 )
@@ -104,6 +105,14 @@ func isLoopback(host string) bool {
 	}
 }
 
+// isWildcard reports a bind-all address (0.0.0.0, ::). It names no host a
+// client can call by, yet a browser will still reach http://0.0.0.0:<port>, so
+// allowlisting it would hand a hostile page a name that passes the Host gate.
+func isWildcard(host string) bool {
+	addr, err := netip.ParseAddr(strings.Trim(host, "[]"))
+	return err == nil && addr.IsUnspecified()
+}
+
 // hostAllowed accepts only Host spellings that name the listen address. A
 // DNS-rebinding page arrives with its own name and is refused here.
 func (s *Server) hostAllowed(host string) bool {
@@ -137,7 +146,7 @@ func (s *Server) refreshAllowlists() {
 		originScheme + net.JoinHostPort(loopbackName, port): true,
 		originScheme + net.JoinHostPort(loopbackV6, port):   true,
 	}
-	if !isLoopback(s.cfg.Host) {
+	if !isLoopback(s.cfg.Host) && !isWildcard(s.cfg.Host) {
 		host := net.JoinHostPort(s.cfg.Host, port)
 		hosts[host] = true
 		origins[originScheme+host] = true

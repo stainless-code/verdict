@@ -83,6 +83,7 @@ func monthlyCapState(t *testing.T, monthlyCap, mtdUSD string) *state {
 }
 
 func TestMonthlyCapRefusesBeforeLaunch(t *testing.T) {
+	t.Parallel()
 	root, dir, proj := setupMonthlyBundle(t, "3", `[{"at":"2026-05-01T12:00:00Z","projected_usd":1.5,"execution_id":"mtd-1"}]`)
 	// MTD 1.5 + projected 2 = 3.5 > cap 3 => refuse.
 	st := monthlyState(t, root, &scripted{}, false)
@@ -102,6 +103,7 @@ func TestMonthlyCapRefusesBeforeLaunch(t *testing.T) {
 }
 
 func TestMonthlyCapUnderStays(t *testing.T) {
+	t.Parallel()
 	root, _, proj := setupMonthlyBundle(t, "", `[{"at":"2026-05-01T12:00:00Z","projected_usd":1,"execution_id":"mtd-1"}]`)
 	// MTD 1 + projected 2 = 3 <= 10 => passes.
 	st := monthlyState(t, root, &scripted{}, false)
@@ -111,6 +113,7 @@ func TestMonthlyCapUnderStays(t *testing.T) {
 }
 
 func TestMonthlyUnknownStrict(t *testing.T) {
+	t.Parallel()
 	root, _, _ := setupMonthlyBundle(t, "", `[{"at":"2026-05-01T12:00:00Z","projected_usd":null,"execution_id":"mtd-1"}]`)
 	st := monthlyState(t, root, &scripted{}, true)
 	p := spend.Projection{Unknown: []string{"x"}}
@@ -129,6 +132,7 @@ func TestMonthlyUnknownStrict(t *testing.T) {
 // with only an unknown pending projection is refused as projection
 // unknown, not as month-to-date unknown.
 func TestMonthlyUnknownStrictNamesOnlyProjection(t *testing.T) {
+	t.Parallel()
 	root, _, _ := setupMonthlyBundle(t, "", `[{"at":"2026-05-01T12:00:00Z","projected_usd":1,"execution_id":"mtd-1"}]`)
 	st := monthlyState(t, root, &scripted{}, true)
 	p := spend.Projection{Unknown: []string{"x"}}
@@ -142,6 +146,7 @@ func TestMonthlyUnknownStrictNamesOnlyProjection(t *testing.T) {
 }
 
 func TestMonthlyUnknownLenientWarns(t *testing.T) {
+	t.Parallel()
 	root, _, _ := setupMonthlyBundle(t, "", `[{"at":"2026-05-01T12:00:00Z","projected_usd":null,"execution_id":"mtd-1"}]`)
 	st := monthlyState(t, root, &scripted{}, false)
 	p := spend.Projection{Unknown: []string{"x"}}
@@ -158,6 +163,7 @@ func TestMonthlyUnknownLenientWarns(t *testing.T) {
 // amount) refuses when month-to-date known spend alone already exceeds
 // the monthly ceiling.
 func TestMonthlyUnknownProjectionRefusesOnKnownMTD(t *testing.T) {
+	t.Parallel()
 	st := monthlyCapState(t, "3", "200")
 	unpriced := spend.Projection{}
 	ref := st.authorizeMonthlyCap(unpriced, spend.Policy{MonthlyCap: "3"})
@@ -179,6 +185,7 @@ func TestMonthlyUnknownProjectionRefusesOnKnownMTD(t *testing.T) {
 // projection under the ceiling passes with a warning that names the
 // unknown pending projection.
 func TestMonthlyUnknownProjectionWarnsUnderCap(t *testing.T) {
+	t.Parallel()
 	st := monthlyCapState(t, "3", "1")
 	unpriced := spend.Projection{}
 	if ref := st.authorizeMonthlyCap(unpriced, spend.Policy{MonthlyCap: "3"}); ref != nil {
@@ -196,6 +203,7 @@ func TestMonthlyUnknownProjectionWarnsUnderCap(t *testing.T) {
 // with no SpendPlan (an unpriced projection) still refuses when
 // month-to-date known spend alone exceeds the ceiling.
 func TestAuthorizeSpendSpendPlanNilStillEnforces(t *testing.T) {
+	t.Parallel()
 	root, dir, _ := setupMonthlyBundle(t, "3", `[{"at":"2026-05-01T12:00:00Z","projected_usd":200,"execution_id":"mtd-1"}]`)
 	req := request(root, &scripted{})
 	req.Now = func() time.Time { return time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC) }
@@ -208,6 +216,7 @@ func TestAuthorizeSpendSpendPlanNilStillEnforces(t *testing.T) {
 }
 
 func TestMonthlyUnpricedProjectionStrict(t *testing.T) {
+	t.Parallel()
 	root, _, _ := setupMonthlyBundle(t, "", "")
 	st := monthlyState(t, root, &scripted{}, true)
 	// Both knowns empty, projection fully unknown.
@@ -222,6 +231,7 @@ func TestMonthlyUnpricedProjectionStrict(t *testing.T) {
 // setting) never wipes the captured monthly ceiling: the preserved cap
 // still enforces.
 func TestSpendPolicyPreservesCapturedMonthlyCap(t *testing.T) {
+	t.Parallel()
 	root, _, proj := setupMonthlyBundle(t, "", `[{"at":"2026-05-01T12:00:00Z","projected_usd":10,"execution_id":"mtd-1"}]`)
 	ceiling := 3.0
 	captured := &config.RunState{Resolved: &config.Resolved{
@@ -250,6 +260,7 @@ func TestSpendPolicyPreservesCapturedMonthlyCap(t *testing.T) {
 // the repository display literal, and the repository literal serves
 // when the repository cap is effective.
 func TestMonthlyCapStringUsesEffective(t *testing.T) {
+	t.Parallel()
 	f := func(v float64) *float64 { return &v }
 	// Repo 50 + personal 10: effective 10, not the repo display 50.
 	strict := &config.Resolved{
@@ -284,6 +295,7 @@ func TestMonthlyCapStringUsesEffective(t *testing.T) {
 // literal refuses known spend over it even though the repository layer
 // allows 50: MTD 12, cap 10, priced projection $0 refuses spend-capped.
 func TestMonthlyCapEffectiveRefusesAtTwelve(t *testing.T) {
+	t.Parallel()
 	root, _, _ := setupMonthlyBundle(t, "", `[{"at":"2026-05-01T12:00:00Z","projected_usd":12,"execution_id":"mtd-1"}]`)
 	st := monthlyState(t, root, &scripted{}, false)
 	zero := 0.0
@@ -303,6 +315,7 @@ func mustCaptured(t *testing.T, dir string) *config.RunState {
 }
 
 func TestAuthorizeSpendMonthlyRefusal(t *testing.T) {
+	t.Parallel()
 	// authorizeSpend refuses an over-cap run before any launch: with no
 	// CLI policy, the captured resolved ceiling enforces.
 	root, dir, _ := setupMonthlyBundle(t, "3", `[{"at":"2026-05-01T12:00:00Z","projected_usd":10,"execution_id":"mtd-1"}]`)
@@ -319,6 +332,7 @@ func TestAuthorizeSpendMonthlyRefusal(t *testing.T) {
 }
 
 func TestPerInvocationConsentNotPersisted(t *testing.T) {
+	t.Parallel()
 	root, _, proj := setupMonthlyBundle(t, "", `[{"at":"2026-05-01T12:00:00Z","projected_usd":10,"execution_id":"mtd-1"}]`)
 	// First invocation with consent passes monthly gate.
 	st1 := monthlyState(t, root, &scripted{}, false)
@@ -377,6 +391,7 @@ func concurrentArgs(t *testing.T, root string) (string, string, spend.Projection
 }
 
 func TestMonthlyConcurrentBundlesSerialize(t *testing.T) {
+	t.Parallel()
 	root := seedMonthlyState(t)
 	dirA, dirB, projA, projB := concurrentArgs(t, root)
 	stA := monthlyState(t, root, &scripted{}, false)
@@ -450,6 +465,7 @@ func resumedMonthlyFixture(t *testing.T) (root, dirA, dirB string) {
 // projection is over the $10 ceiling. Suppressing the resumed row would hide
 // pending spend from every scan and let the second bundle authorize at $9.
 func TestMonthlyResumedProjectionVisibleToSecondBundle(t *testing.T) {
+	t.Parallel()
 	root, dirA, dirB := resumedMonthlyFixture(t)
 	phasesA, projA := monthlyProjection(t, "execution-A")
 	stA := monthlyState(t, root, &scripted{}, false)
@@ -479,6 +495,7 @@ func TestMonthlyResumedProjectionVisibleToSecondBundle(t *testing.T) {
 // $9 and the second must see that receipt and refuse at $11. One success and
 // one spend-capped refusal is the only outcome the lock allows.
 func TestMonthlyResumedConcurrentBundlesSerialize(t *testing.T) {
+	t.Parallel()
 	root, dirA, dirB := resumedMonthlyFixture(t)
 	phasesA, projA := monthlyProjection(t, "execution-A")
 	phasesB, projB := monthlyProjection(t, "execution-B")
@@ -561,6 +578,7 @@ func assertPartialReceipt(t *testing.T, dir string) {
 // projection is then over the ceiling at $12. Dropping the subtotal left the
 // second scan at $8, so both bundles authorized $2 against the same month.
 func TestMonthlyPartialProjectionVisibleToSecondBundle(t *testing.T) {
+	t.Parallel()
 	root, dirA, dirB := partialMonthlyFixture(t)
 	phasesA, projA := partialMonthlyProjection(t, "execution-A")
 	stA := monthlyState(t, root, &scripted{}, false)

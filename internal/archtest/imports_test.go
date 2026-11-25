@@ -29,6 +29,7 @@ var forbiddenDeps = []string{
 	"internal/cli",
 	"internal/acp",
 	"internal/lsp",
+	"internal/dashboard",
 	"internal/drain",
 	"internal/mcp",
 	"internal/schemagen",
@@ -61,6 +62,7 @@ var forbiddenDeps = []string{
 	"internal/scaffold",
 	"internal/run",
 	"internal/demo",
+	"internal/loop",
 	"internal/backtest",
 	"internal/serve",
 }
@@ -159,8 +161,8 @@ var leafHelpers = []string{
 // unnoticed.
 var coreSubpackages = []string{
 	"adopt", "approval", "backtest", "budget", "calibrate", "checktree", "corpus", "corpus/corpustest", "coverage", "demo", "doctor", "drain", "exec",
-	"fetch", "fix", "handoff", "index", "ingest", "init", "journal", "learn", "pack", "panel", "post", "quality", "query", "ready", "recipe",
-	"record", "repair", "report", "reviewdoc", "risk", "run", "skill", "threads", "trend", "triage", "upgrade", "verify",
+	"fetch", "fix", "handoff", "index", "ingest", "init", "journal", "learn", "loop", "pack", "panel", "post", "quality", "query", "ready", "recipe",
+	"record", "repair", "report", "reviewdoc", "reviewflow", "risk", "run", "skill", "threads", "trend", "triage", "upgrade", "verify",
 }
 
 // readcommonDeniedCoreDeps names every core service package the shared store

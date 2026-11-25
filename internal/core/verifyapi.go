@@ -34,6 +34,23 @@ type ValidationReceipt struct { //nolint:govet // field order is the published p
 	SandboxMechanism string `json:"sandbox_mechanism,omitempty"`
 }
 
+// VerifyReceipt is the tool-only record of one patch-path verify run: the
+// command verify executed, the finding sig patch.json named, its real exit
+// and timeout, and the clean checked-out head it ran on. Only verify writes it
+// (verify-receipt.json beside patch.json); record and post read it, and never
+// patch.json, to decide whether a VERIFIED claim was observed. Head is absent
+// when the run cannot vouch for one commit: a dirty tree, a head that moved,
+// or one git could not read.
+type VerifyReceipt struct {
+	SchemaVersion string `json:"schema_version"`
+	Command       string `json:"command"`
+	Sig           string `json:"sig,omitempty"`
+	Head          string `json:"head,omitempty"`
+	At            string `json:"at"`
+	Exit          int    `json:"exit"`
+	TimedOut      bool   `json:"timed_out"`
+}
+
 // VerifyData is the verify verb's --json data profile. Field order is the
 // published order.
 type VerifyData struct { //nolint:govet // field order is the published property order

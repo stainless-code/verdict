@@ -1,0 +1,11 @@
+{
+  "iid": 7,
+  "state": "merged",
+  "sha": "cccccccccccccccccccccccccccccccccccccccc",
+  "merged_at": "2026-11-24T10:00:00Z",
+  "head_pipeline": {
+    "id": 21,
+    "status": "success",
+    "sha": "cccccccccccccccccccccccccccccccccccccccc"
+  }
+}

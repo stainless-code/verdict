@@ -96,6 +96,7 @@ func scoreReportPath(root, run string) string {
 // checked-in fixture, and proves the envelope data is the artifact's own
 // object.
 func TestScoreGoldenRun(t *testing.T) {
+	t.Parallel()
 	root := scoreFixture(t)
 	rec := &recorder{}
 	resp := runScoreOK(t, root, rec)
@@ -122,6 +123,7 @@ type scoreRefusalCase struct {
 // TestScoreRefusesBadRuns proves each unscoreable run refuses with the code an
 // operator can act on.
 func TestScoreRefusesBadRuns(t *testing.T) {
+	t.Parallel()
 	tests := []scoreRefusalCase{
 		{name: "no run id", run: "", code: "bad-flags", part: "--run <id>"},
 		{name: "bad slug", run: "../s1", code: "bad-slug", part: "lowercase letters"},
@@ -180,6 +182,7 @@ func removeScoreRows(t *testing.T, root string) {
 // not borrow the shared run-mismatch/corrupt-store hints: each printed step
 // rebuilds a backtest artifact and never deletes the run's replay bundles.
 func TestScoreRefusalHintsNameTheBacktestStep(t *testing.T) {
+	t.Parallel()
 	tests := []struct{ code, hint string }{
 		{
 			code: "backtest-row-stale",
@@ -266,6 +269,7 @@ const scoreMarker = `{
 `
 
 func TestScoreNamesReplayForABrokenReplayBundle(t *testing.T) {
+	t.Parallel()
 	root := scoreFixture(t)
 	writeTestFile(t, filepath.Join(root, ".verdict", "state", "local-bt-1-s1", readcommon.BacktestMarkerFile), scoreMarker)
 	removeScoreDiff(t, root)
@@ -322,6 +326,7 @@ func foreignScoreRow(t *testing.T, root string) {
 // positive. The fixture already carries one at b.go:9, so the probe adds the
 // one finding that would match it.
 func TestScoreUnclassifiedBugIsNotMatchable(t *testing.T) {
+	t.Parallel()
 	root := scoreFixture(t)
 	addUnclassifiedFinding(t, root)
 	data := runScoreOK(t, root, &recorder{}).Data
@@ -362,6 +367,7 @@ func addUnclassifiedFinding(t *testing.T, root string) {
 // as a zero report instead of refusing: replay writes no prs directory for an
 // empty candidate list, so "never replayed" would misread a completed run.
 func TestScoreEmptyMineReportsZero(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	runDir := filepath.Join(root, ".verdict", "backtest", "empty")
 	if err := os.MkdirAll(runDir, 0o755); err != nil {
@@ -392,6 +398,7 @@ func TestScoreEmptyMineReportsZero(t *testing.T) {
 // TestScoreNoReviewsReportsUnmeasured proves a run whose every row failed
 // writes a report of nulls and counts the candidates it could not score.
 func TestScoreNoReviewsReportsUnmeasured(t *testing.T) {
+	t.Parallel()
 	root := scoreFixture(t)
 	failAllRows(t, root)
 	rec := &recorder{}
@@ -432,6 +439,7 @@ func checkUnmeasured(t *testing.T, data *ScoreReport) {
 // an unknown cost per review and a null spend total, with the unpriced count
 // left as the mark that a later partial sum is a lower bound.
 func TestScoreUnpricedReviewsNullTheCost(t *testing.T) {
+	t.Parallel()
 	root := scoreFixture(t)
 	path := filepath.Join(root, ".verdict", "backtest", scoreRun, "prs", "001", "replay.json")
 	body := strings.Replace(readScoreFile(t, path), `"cost_usd": 0.5`, `"cost_usd": null`, 1)
@@ -452,6 +460,7 @@ func TestScoreUnpricedReviewsNullTheCost(t *testing.T) {
 // TestScoreIsAPureReadOfTheRun proves scoring writes report.json and nothing
 // else: no bundle, no corpus-* store, no fixture byte touched.
 func TestScoreIsAPureReadOfTheRun(t *testing.T) {
+	t.Parallel()
 	root := scoreFixture(t)
 	before := scoreTree(t, root)
 	runScoreOK(t, root, &recorder{})
@@ -537,6 +546,7 @@ func failAllRows(t *testing.T, root string) {
 // carries a missing findings file, so grading it would refuse with
 // backtest-row-stale unless the per-row cancel check fires first.
 func TestScoreHonorsCancellationDuringThePass(t *testing.T) {
+	t.Parallel()
 	t.Run("between reviews", func(t *testing.T) { checkScoreCanceled(t, 2, removeScoreFindings) })
 	t.Run("before the report", func(t *testing.T) { checkScoreCanceled(t, 4, nil) })
 }
@@ -590,6 +600,7 @@ func (c *cancelAfterContext) Err() error {
 // TestScoreCancelReportsTheScoreVerb proves an interrupted pass reports the
 // score's own cancel text and writes no report.
 func TestScoreCancelReportsTheScoreVerb(t *testing.T) {
+	t.Parallel()
 	root := scoreFixture(t)
 	ctx, cancel := context.WithCancel(t.Context())
 	cancel()

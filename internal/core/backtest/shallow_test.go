@@ -33,6 +33,7 @@ func shallowClone(t *testing.T, src string) string {
 // envelope and through the progress observer, because its boundary introducers
 // read as no-pr.
 func TestMineShallowCloneWarns(t *testing.T) {
+	t.Parallel()
 	b, _ := newMergedFixRepo(t)
 	rec := &recorder{}
 	resp, ref := Run(t.Context(), &Request{

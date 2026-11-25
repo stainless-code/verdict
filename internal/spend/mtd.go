@@ -29,6 +29,9 @@ type MTD struct {
 	UnknownCount int
 }
 
+// allMonths is the month filter that keeps every dated receipt.
+const allMonths = "*"
+
 const (
 	mtdDecimalBase = 10
 	mtdFallbackDP  = 6
@@ -73,15 +76,34 @@ func AggregateMTD(stateDir string, now time.Time) MTD {
 		}
 		aggregateBundle(filepath.Join(stateDir, e.Name()), month, sum, &known, &unknown)
 	}
-	// A partially priced receipt contributes to the sum without being
-	// priced, so the exact amount is reported whenever any row contributed
-	// one, not only when a fully priced row did.
+	m.settle(sum, known, unknown)
+	return m
+}
+
+// BundleTotal sums every cost receipt one bundle holds, whatever its month,
+// under the same single-source rule [AggregateMTD] applies. The monthly
+// ceiling stays month-scoped; a caller budgeting one bundle — the
+// self-review loop's per-round cost — needs all of it, so a round that
+// crosses a UTC month boundary is not understated. Month is left empty.
+func BundleTotal(bundleDir string) MTD {
+	m := MTD{}
+	sum := new(big.Rat)
+	known := 0
+	unknown := 0
+	aggregateBundle(bundleDir, allMonths, sum, &known, &unknown)
+	m.settle(sum, known, unknown)
+	return m
+}
+
+// settle fills the aggregate's totals. A partially priced receipt contributes
+// to the sum without being priced, so the exact amount is reported whenever
+// any row contributed one, not only when a fully priced row did.
+func (m *MTD) settle(sum *big.Rat, known, unknown int) {
 	if known > 0 || sum.Sign() != 0 {
 		m.KnownUSD = FormatRat(sum)
 		m.KnownCount = known
 	}
 	m.UnknownCount = unknown
-	return m
 }
 
 // stateDirWarning reports the MTD warning for a failed state directory
@@ -279,7 +301,7 @@ func processCostRecord(rec any, month string, sum *big.Rat, known, unknown *int,
 	if !ok {
 		return
 	}
-	if recordMonth != month {
+	if month != allMonths && recordMonth != month {
 		return
 	}
 	atTime, _ := atTimeOf(at)
@@ -365,8 +387,26 @@ func isLedgerSuppressed(obj *jq.Obj, at any, meta *recordedMeta) bool {
 			return true
 		}
 	}
+	// A spawn row is the receipt of one launch, not a projection of the
+	// bundle's recorded cost: only a record naming its own launch covers it,
+	// so an unidentified cost.json can never hide a later spawn.
+	if stringFieldOf(obj, "scope") == ScopeSpawn {
+		return false
+	}
 	unidentified, ok := meta.maxAt[unidentifiedExecID]
 	return ok && !ledgerAt.After(unidentified)
+}
+
+// ScopeSpawn marks a ledger row that receipts one agent launch the
+// self-review loop admitted.
+const ScopeSpawn = "spawn"
+
+// ReadBundleFile reads one bundle file the way the cost scan does: a
+// non-blocking open confined to the bundle, a regular file only, bounded by
+// the cost-record cap. Anything else reads nil, so an agent-written path can
+// neither hang the reader nor point it outside the bundle.
+func ReadBundleFile(bundleDir, name string) []byte {
+	return openBundleFile(bundleDir, name)
 }
 
 // countLedgerValue counts one in-month ledger row. A fully priced projection
@@ -507,7 +547,7 @@ func atTimeOf(at any) (time.Time, bool) {
 // sameMonth reports whether the timestamp's UTC calendar month is month.
 func sameMonth(at any, month string) bool {
 	recordMonth, ok := monthOf(at)
-	return ok && month != "" && recordMonth == month
+	return ok && month != "" && (month == allMonths || recordMonth == month)
 }
 
 // ratOfJSONNumber reads an exact nonnegative JSON number. String-encoded
@@ -599,4 +639,29 @@ func decimalScale(den *big.Int) (int, bool) {
 		return twos, true
 	}
 	return fives, true
+}
+
+// CountedInMonth reports whether the month-to-date scan counts every record
+// of one recorded cost document in the month of now: each record carries an
+// `at` that parses and falls in that month. A record without one, or with a
+// malformed or other-month `at`, is not counted there — its amount must be
+// accounted some other way or it is lost.
+func CountedInMonth(raw []byte, now time.Time) bool {
+	doc, err := jq.DecodeOrdered(raw)
+	if err != nil {
+		return false
+	}
+	month := MonthFor(now)
+	recs := sliceDoc(doc)
+	for _, rec := range recs {
+		obj, ok := rec.(*jq.Obj)
+		if !ok {
+			return false
+		}
+		at, _ := obj.Get("at")
+		if recordMonth, ok := monthOf(at); !ok || recordMonth != month {
+			return false
+		}
+	}
+	return len(recs) > 0
 }

@@ -23,6 +23,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core/recipe"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/core/repair"
+	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -34,6 +35,7 @@ const (
 	DefaultTimeoutS = "300"
 	// The launcher's own refusal family. Each names its remedy in the hint table.
 	codeAgentMissing     = "agent-missing"
+	codeAgentMismatch    = "agent-mismatch"
 	codeAgentSpawnFailed = "agent-spawn-failed"
 	codeAgentTimeout     = "agent-timeout"
 	codeAgentFailed      = "agent-failed"
@@ -91,26 +93,35 @@ func Run(ctx context.Context, req *core.RunRequest) (resp *core.RunResponse, ref
 func WithAgents(
 	ctx context.Context, req *core.RunRequest, agents []config.PersonalAgent,
 ) (resp *core.RunResponse, ref *core.RefusalError) {
+	if ref := checkAgents(agents); ref != nil {
+		return nil, ref
+	}
+	st := &state{req: req, warnings: append([]string{}, req.Warnings...), defs: agents}
+	return execute(ctx, st)
+}
+
+// checkAgents refuses an operator definition that shadows a shipped row or
+// repeats a name, so one --agent value always resolves to one definition.
+func checkAgents(agents []config.PersonalAgent) *core.RefusalError {
 	seen := make(map[string]bool, len(agents))
 	for i := range agents {
 		def := &agents[i]
 		path := "$.agents." + def.Name
 		if _, ok := lookupAgent(def.Name); ok {
-			return nil, &core.RefusalError{
+			return &core.RefusalError{
 				Code:    codeBadSettings,
 				Message: path + ": collides with a built-in agent; pick another name",
 			}
 		}
 		if seen[def.Name] {
-			return nil, &core.RefusalError{
+			return &core.RefusalError{
 				Code:    codeBadSettings,
 				Message: path + ": defined twice; use one agent per name",
 			}
 		}
 		seen[def.Name] = true
 	}
-	st := &state{req: req, warnings: append([]string{}, req.Warnings...), defs: agents}
-	return execute(ctx, st)
+	return nil
 }
 
 func execute(ctx context.Context, st *state) (resp *core.RunResponse, ref *core.RefusalError) {
@@ -373,7 +384,7 @@ func (st *state) probe(ctx context.Context, args *launchArgs) *core.RefusalError
 	}
 	commander := st.commander()
 	if commander == nil {
-		return st.refuse("agent-mismatch", fmt.Sprintf(
+		return st.refuse(codeAgentMismatch, fmt.Sprintf(
 			"agent '%s' at %s could not be probed: no commander in runtime", args.def.Name, args.bin))
 	}
 	pctx, cancel := context.WithTimeout(ctx, st.probeBudget())
@@ -393,7 +404,7 @@ func (st *state) probe(ctx context.Context, args *launchArgs) *core.RefusalError
 		out = out[:probeOutputCap]
 	}
 	if result := probeFailure(pctx, out, res, err, args.def.ProbeMatch); result != "" {
-		return st.refuse("agent-mismatch", fmt.Sprintf(
+		return st.refuse(codeAgentMismatch, fmt.Sprintf(
 			"agent '%s' at %s failed its identity probe: %s", args.def.Name, args.bin, result))
 	}
 	args.probe = &launcherProbe{Args: slices.Clone(args.def.ProbeArgs), OK: true}
@@ -767,6 +778,9 @@ func (st *state) launch(ctx context.Context, args *launchArgs) (*core.RunRespons
 	}
 	st.human(fmt.Sprintf("» recipe: %s@%s (%s)", args.plan.Name, args.plan.Version, args.plan.Source))
 	st.human(fmt.Sprintf("» run: %s (timeout %ds)", strings.Join(rec.Argv, " "), args.timeout))
+	if ref := st.admit(ctx, 1); ref != nil {
+		return nil, ref
+	}
 	res, err := st.spawn(ctx, args.argv, args.timeout)
 	if ref := args.checkpoint(); ref != nil {
 		return nil, ref
@@ -940,18 +954,45 @@ func (st *state) verdict(ctx context.Context, args *launchArgs, res *core.Result
 			"%s ran past the %ds watchdog and was killed (raise --timeout, or pass its fast flags after '--')",
 			args.def.Name, args.timeout))
 	case res.ExitCode != 0:
-		return st.refuse(codeAgentFailed, fmt.Sprintf("%s exited %d", args.def.Name, res.ExitCode))
+		return st.refuse(codeAgentFailed, fmt.Sprintf("%s exited %d", args.def.Name, res.ExitCode)+st.agentOutput(args, res))
 	}
-	return st.artifactRefusal(args, art)
+	return st.artifactRefusal(args, art, res)
+}
+
+// messageTailCap bounds the agent output a refusal message carries. The full
+// stream stays in .run.out and the recorded tail in launcher.json; the message
+// only has to name the cause (an HTTP 402, a refused write) at a glance.
+const messageTailCap = 600
+
+// agentOutput is the tail of what the agent printed, formatted to append to a
+// refusal message. The agent's own error — a provider's out-of-credit reply, a
+// refused write — is printed there, and without it every failure reads as the
+// same bare exit code. It is empty when the agent printed nothing. The whole
+// capture (the watchdog caps it at 1 MiB) runs through verify's sanitizer
+// (escapes stripped first, then environment values, token shapes, bearer and
+// authorization headers, userinfo URLs), the argv secrets are scrubbed from
+// the escape-free text, and only then is it cut. Cutting first would let a
+// credential split by the cut keep a recognizable half, and a bounded window
+// is no safer: sanitizing the rest of it can shrink the text until a token at
+// the window's left edge lands in the tail.
+func (st *state) agentOutput(args *launchArgs, res *core.Result) string {
+	_, argSecrets := st.displayArgv(args)
+	clean := scrubSecrets(verifycore.SanitizeTail(res.Stdout+res.Stderr, st.req.Environ),
+		st.req.Environ, verifycore.StripControlledSecrets(argSecrets))
+	tail := strings.TrimSpace(strings.ToValidUTF8(tailOf(clean, messageTailCap), ""))
+	if tail == "" {
+		return ""
+	}
+	return "\nagent output (tail, redacted):\n" + tail
 }
 
 // artifactRefusal is the artifact contract: exactly one fresh review file,
 // at the bundle's review path, written after the launch record.
-func (st *state) artifactRefusal(args *launchArgs, art artifactState) *core.RefusalError {
+func (st *state) artifactRefusal(args *launchArgs, art artifactState, res *core.Result) *core.RefusalError {
 	switch {
 	case !art.exists:
 		return st.refuse(codeNoArtifact, fmt.Sprintf(
-			"%s exited 0 but wrote no %s", args.def.Name, args.artifact))
+			"%s exited 0 but wrote no %s", args.def.Name, args.artifact)+st.agentOutput(args, res))
 	case !art.regular:
 		return st.refuse(codeNoArtifact, args.artifact+" is not a regular file — the artifact must be one JSON file")
 	case !art.fresh:

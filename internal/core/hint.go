@@ -44,8 +44,14 @@ var hintRules = []HintRule{
 		"then re-run"},
 	{codes: []string{"spec-too-large"}, hint: "try: narrow the --spec file under 150 checklist items or split the PR, then re-fetch"},
 	{
-		codes: []string{"fetch-failed", "pr-read-failed", "threads-failed"},
+		codes: []string{"fetch-failed"},
 		hint:  "try: run 'gh auth status', confirm the repo/PR spelling, then re-run",
+	},
+	{
+		// pr-read-failed and threads-failed also come from GitLab reads
+		// (the wait, ready's discussions, threads --resolve).
+		codes: []string{"pr-read-failed", "threads-failed"},
+		hint:  "try: run 'gh auth status' (GitHub) or 'glab auth status' (GitLab), confirm the repo/PR spelling, then re-run",
 	},
 	{codes: []string{"drafts-invalid"}, hint: "try: fix the named site in drain.replies.json, then re-run drain --agent"},
 	{codes: []string{"drafts-stale"}, hint: "try: re-run drain for a fresh plan, then draft against its new plan_digest"},
@@ -132,6 +138,14 @@ var hintRules = []HintRule{
 		hint:  "try: send one of the commands initialize advertised in executeCommandProvider.commands (this build: verdict.refresh)",
 	},
 	{
+		codes: []string{"dashboard-no-tty"},
+		hint:  "try: run verdict dashboard in a terminal, or pass --once for a single plain-text frame",
+	},
+	{
+		codes: []string{"dashboard-no-vt"},
+		hint:  "try: run verdict dashboard in Windows Terminal or Windows 10+ conhost, or pass --once for a single plain-text frame",
+	},
+	{
 		codes: []string{"bad-root"},
 		hint:  "try: pass --root <existing-directory>, or run serve inside a checkout",
 	},
@@ -155,6 +169,9 @@ var hintRules = []HintRule{
 	{codes: []string{"skill-not-installed"}, hint: "try: install first with " +
 		"'verdict skill install --dir <skills-dir>', or check the target"},
 	{codes: []string{"bad-timeout"}, hint: "try: pass --timeout <positive-seconds> (default 300)"},
+	{codes: []string{"bad-target-url"}, hint: "try: paste the plain pull request URL (https://github.com/<owner>/<repo>/pull/<number>), " +
+		"or pass <owner/repo> <pr> --provider <name>"},
+	{codes: []string{"target-unresolved"}, hint: "try: pass the target explicitly as <owner/repo> <pr>, or a pull request URL"},
 	{codes: []string{"bad-approve"}, hint: "try: pass --approve=true|false"},
 	{codes: []string{"bad-review-schema"}, hint: "try: set \"schema_version\": \"1\" in review.json"},
 	{codes: []string{"bad-rigor-policy"}, hint: "try: pass --require-rigor <tier>=<said|pointed|walked|ran|reproduced>, " +

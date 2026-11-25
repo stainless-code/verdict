@@ -78,7 +78,7 @@ func TestReadOnlyRefusesEveryWriteRoute(t *testing.T) {
 }
 
 // TestPostureFlags pins the argv: --read-only sets the one knob, and the
-// retired --interactive parses, changes nothing, and names the rule.
+// retired --interactive is an unknown flag (a usage error), not an alias.
 //
 //nolint:revive // the flag matrix reads as one assertion block
 func TestPostureFlags(t *testing.T) {
@@ -87,12 +87,9 @@ func TestPostureFlags(t *testing.T) {
 		name         string
 		args         []string
 		wantReadOnly bool
-		wantNotice   bool
 	}{
 		{name: "default"},
 		{name: "read-only", args: []string{"--read-only"}, wantReadOnly: true},
-		{name: "retired interactive", args: []string{"--interactive"}, wantNotice: true},
-		{name: "interactive then read-only", args: []string{"--interactive", "--read-only"}, wantReadOnly: true, wantNotice: true},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
@@ -105,11 +102,11 @@ func TestPostureFlags(t *testing.T) {
 			if opts.readOnly != tc.wantReadOnly {
 				t.Errorf("readOnly = %v, want %v", opts.readOnly, tc.wantReadOnly)
 			}
-			const notice = "serve: --interactive is deprecated and ignored: local writes are allowed unless --read-only"
-			got := slices.ContainsFunc(runner.Warnings, func(w string) bool { return strings.HasPrefix(w, notice) })
-			if got != tc.wantNotice {
-				t.Errorf("deprecation notice present = %v, want %v (warnings %v)", got, tc.wantNotice, runner.Warnings)
-			}
 		})
+	}
+	out := &syncBuffer{}
+	runner := &cli.Runner{Out: out, Human: out, Diag: out, Effective: cli.Defaults()}
+	if _, code, done := parseFlags(runner, []string{"--interactive"}); !done || code != cli.ExitUsage {
+		t.Errorf("--interactive = done %v code %d, want a usage refusal", done, code)
 	}
 }

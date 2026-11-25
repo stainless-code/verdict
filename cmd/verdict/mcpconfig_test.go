@@ -168,40 +168,29 @@ func TestMCPConfigWriteUpdatesOwned(t *testing.T) {
 	}
 }
 
-// TestMCPConfigOperatorRetired proves --operator is a deprecated no-op on
-// `mcp config` too: it prints the notice on stderr and never reaches the
-// snippet, with or without --read-only (the pair used to be a usage error).
+// TestMCPConfigRetiredFlagIsUnknown proves --operator is gone from `mcp config`
+// too: a usage error, nothing printed, nothing written.
 //
 //nolint:revive // the two-argv matrix reads as one assertion block
-func TestMCPConfigOperatorRetired(t *testing.T) {
+func TestMCPConfigRetiredFlagIsUnknown(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	env := testEnv(map[string]string{"HOME": t.TempDir()})
-	for _, tc := range []struct {
-		argv         []string
-		wantReadOnly bool
-	}{
-		{[]string{"mcp", "config", "--agent", "claude", "--operator"}, false},
-		{[]string{"mcp", "config", "--agent", "claude", "--read-only", "--operator"}, true},
-	} {
+	for _, extra := range [][]string{{}, {"--write"}} {
+		argv := append([]string{"mcp", "config", "--agent", "claude", "--operator"}, extra...)
 		out, errOut := mcpTempFiles(t)
-		if code := run(tc.argv, out, errOut, env, os.ReadFile); code != 0 {
-			t.Fatalf("%v exit = %d, stderr = %s", tc.argv, code, readOutput(t, errOut))
+		if code := run(argv, out, errOut, env, os.ReadFile); code != 2 {
+			t.Fatalf("%v exit = %d, want 2", argv, code)
 		}
-		snippet := readOutput(t, out)
-		if strings.Contains(snippet, "--operator") {
-			t.Errorf("%v snippet carries the retired flag:\n%s", tc.argv, snippet)
+		if got := readOutput(t, out); got != "" {
+			t.Errorf("%v stdout = %q, want empty", argv, got)
 		}
-		if got := strings.Contains(snippet, "--read-only"); got != tc.wantReadOnly {
-			t.Errorf("%v snippet --read-only = %v, want %v:\n%s", tc.argv, got, tc.wantReadOnly, snippet)
-		}
-		want := "mcp config: --operator is deprecated and ignored: local writes are allowed unless --read-only"
-		if got := readOutput(t, errOut); !strings.Contains(got, want) {
-			t.Errorf("%v stderr = %q, want %q", tc.argv, got, want)
+		if got := readOutput(t, errOut); !strings.Contains(got, "unknown flag '--operator' for mcp config") {
+			t.Errorf("%v stderr = %q", argv, got)
 		}
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".mcp.json")); !os.IsNotExist(err) {
-		t.Error("a preview wrote .mcp.json")
+		t.Error("a refused invocation wrote .mcp.json")
 	}
 }
 

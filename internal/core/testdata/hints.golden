@@ -69,6 +69,7 @@ bad-slug	try: re-run with one of the valid values named above
 bad-stash	try: re-run with one of the valid values named above
 bad-suppression	try: give each suppression a path, source, reason (30+ characters for agent) and matching exclusion_id
 bad-target	try: re-run with one of the valid values named above
+bad-target-url	try: paste the plain pull request URL (https://github.com/<owner>/<repo>/pull/<number>), or pass <owner/repo> <pr> --provider <name>
 bad-timeout	try: pass --timeout <positive-seconds> (default 300)
 bad-triage-status	try: re-run with one of the valid values named above
 bad-until	try: pass --until <ref> that is an ancestor of HEAD
@@ -100,6 +101,8 @@ cost-panel-unresolved	try: pass the panel that ran, in order: --cost-names=<lead
 cost-unreadable	try: fix or delete the cost record named above, then re-run
 coverage-incomplete	try: stamp review.json "coverage": [{"file": "...", "ranges": "1-240"}] for every changed file, or re-run next --coverage to see the gaps, then post again
 coverage-stale	try: re-run fetch-local, review the new bundle, then record again
+dashboard-no-tty	try: run verdict dashboard in a terminal, or pass --once for a single plain-text frame
+dashboard-no-vt	try: run verdict dashboard in Windows Terminal or Windows 10+ conhost, or pass --once for a single plain-text frame
 diff-failed	try: address the cause above, then re-run the same command
 diff-too-large	try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch
 download-failed	try: address the cause above, then re-run the same command
@@ -187,7 +190,7 @@ post-failed	try: narrow anchor drift or body size (see above), then re-run
 post-secret-shaped	try: remove the value from the draft and re-run; post can pass --allow-secret-values to publish it anyway
 post-timeout	try: check the pull request for the review, then re-run the preview and submit again only if it is absent
 pr-not-open	try: re-fetch the PR (bundle may be stale)
-pr-read-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
+pr-read-failed	try: run 'gh auth status' (GitHub) or 'glab auth status' (GitLab), confirm the repo/PR spelling, then re-run
 privacy-unavailable	try: address the cause above, then re-run the same command
 prompt-dump-failed	try: reinstall verdict; an embedded Procedure file is missing
 provider-unimplemented	try: use the verb named above for this bundle kind
@@ -224,8 +227,9 @@ spec-too-large	try: narrow the --spec file under 150 checklist items or split th
 spend-capped	try: re-run with --consent-over-budget once the spend is approved, or raise the personal spend ceiling (spend.budget_usd) in the operator settings, then re-run
 stale-review-artifact	try: delete the stale review.json (or let the agent overwrite it), then re-run
 store-busy	try: wait for the write holding the store's lock (the OS drops the lock when its holder exits, so a retry after a crash succeeds), then re-run
+target-unresolved	try: pass the target explicitly as <owner/repo> <pr>, or a pull request URL
 test-conflict	try: resolve the named target or symlink by hand, then re-run fix --test
-threads-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
+threads-failed	try: run 'gh auth status' (GitHub) or 'glab auth status' (GitLab), confirm the repo/PR spelling, then re-run
 triage-failed	try: address the cause above, then re-run the same command
 trigger-failed	try: re-fetch the bundle so its base-snapshot policy is complete, then re-run
 uninstall-foreign	try: address the cause above, then re-run the same command

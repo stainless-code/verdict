@@ -3,6 +3,7 @@ package lsp
 import (
 	"context"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -27,7 +28,12 @@ type resolver struct {
 	// walk runs out when the returned channel closes, and a nil channel never
 	// runs out. Tests set it so a walk times out because it is hung, never
 	// because the machine is slow.
-	expire  func(key string) <-chan struct{}
+	expire func(key string) <-chan struct{}
+	// stop, when it closes, ends every wait for a walk: the session is over
+	// and nobody should wait out a budget. The walk itself, stuck in the
+	// kernel, cannot be canceled and runs on. Serve sets it before any
+	// walk can start; nil never fires.
+	stop    <-chan struct{}
 	budget  time.Duration
 	limit   int
 	running int
@@ -45,22 +51,62 @@ func newResolver(budget time.Duration, limit int) *resolver {
 	return &resolver{inflight: map[string]*walk{}, budget: budget, limit: limit}
 }
 
-// run returns fn's result for key if it finishes within the budget. timedOut
-// reports that it did not (or that no walk slot was free): the caller falls
-// back and retries later, while the walk, if started, runs on and frees its
-// slot when the filesystem answers.
-func (r *resolver) run(key string, fn func() (string, bool)) (result string, ok, timedOut bool) {
+// miss says why a walk gave no answer: the callers' log lines differ, since
+// a full slot table is not a slow volume.
+type miss int
+
+const (
+	missNone     miss = iota
+	missBudget        // the walk ran past the budget
+	missNoSlot        // every walk slot was held, so no walk was started
+	missCanceled      // the session ended; the caller is going away
+)
+
+// run returns fn's result for key if it finishes within the budget. A miss
+// says it did not, or that no walk slot was free: the caller falls back and
+// retries later, while the walk, if started, runs on and frees its slot when
+// the filesystem answers.
+func (r *resolver) run(key string, fn func() (string, bool)) (result string, ok bool, why miss) {
+	select {
+	case <-r.stop:
+		return "", false, missCanceled
+	default:
+	}
 	w, started := r.start(key, fn)
 	if !started {
-		return "", false, true
+		return "", false, missNoSlot
 	}
 	expired, stop := r.deadline(key)
 	defer stop()
 	select {
 	case <-w.done:
-		return w.result, w.ok, false
+		return w.result, w.ok, missNone
 	case <-expired:
-		return "", false, true
+		return "", false, missBudget
+	case <-r.stop:
+		return "", false, missCanceled
+	}
+}
+
+// each calls fn(0) .. fn(n-1), at most limit at a time, and returns when all
+// have returned. fn writes its own index's result, so the outputs keep input
+// order whatever order the walks finish in. Capping the callers at the slot
+// count means a batch of N hung walks costs about ceil(N/limit) budgets and
+// never starves itself of slots; a walk still holding a slot from an earlier
+// hang is the only way a caller sees missNoSlot.
+func (r *resolver) each(n int, fn func(i int)) {
+	var next atomic.Int64
+	var wg sync.WaitGroup
+	for range min(n, r.limit) {
+		wg.Go(func() { drainIndexes(&next, n, fn) })
+	}
+	wg.Wait()
+}
+
+// drainIndexes claims indexes from next until n and calls fn on each.
+func drainIndexes(next *atomic.Int64, n int, fn func(i int)) {
+	for i := int(next.Add(1)) - 1; i < n; i = int(next.Add(1)) - 1 {
+		fn(i)
 	}
 }
 

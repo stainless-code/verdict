@@ -59,8 +59,7 @@ const (
 	command        = "verdict"
 	mcpArg         = "mcp"
 	readOnlyFlag   = "--read-only"
-	operatorFlag   = "--operator" // retired: still recognized as verdict-owned on disk, never written
-	maxOwnedArgs   = 3
+	maxOwnedArgs   = 2
 	configPerm     = 0o600
 	dirPerm        = 0o755
 	tomlName       = "mcp_servers.verdict"
@@ -405,7 +404,7 @@ func isOwnedArgs(args []any) bool {
 
 func ownedFlag(item any, seen map[string]bool) bool {
 	flag, ok := item.(string)
-	if !ok || (flag != readOnlyFlag && flag != operatorFlag) || seen[flag] {
+	if !ok || flag != readOnlyFlag || seen[flag] {
 		return false
 	}
 	seen[flag] = true
@@ -589,14 +588,11 @@ func (l *tomlLine) keyRefusal(path string) *core.RefusalError {
 	return nil
 }
 
-// ownedTOMLArgs holds every compacted argv verdict itself emits: ["mcp"] plus
-// any combination of the posture flags, in either order for the pair.
+// ownedTOMLArgs holds every compacted argv verdict itself emits: ["mcp"] with
+// or without the one posture flag.
 var ownedTOMLArgs = map[string]bool{
-	`["mcp"]`:                            true,
-	`["mcp","--read-only"]`:              true,
-	`["mcp","--operator"]`:               true,
-	`["mcp","--read-only","--operator"]`: true,
-	`["mcp","--operator","--read-only"]`: true,
+	`["mcp"]`:               true,
+	`["mcp","--read-only"]`: true,
 }
 
 func renderTOMLArgs(want []string) string {

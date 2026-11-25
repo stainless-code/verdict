@@ -9,7 +9,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/mcpconfig"
-	"github.com/stainless-code/verdict/internal/posture"
 )
 
 type mcpConfigFlags struct {
@@ -75,8 +74,6 @@ func parseMCPConfigFlags(args []string, stdout, stderr *os.File) (mcpConfigFlags
 			f.write = true
 		case arg == "--read-only":
 			f.readOnly = true
-		case arg == flagOperator:
-			fmt.Fprintln(stderr, posture.RetiredFlagNotice("mcp config", flagOperator))
 		case arg == flagDryRun:
 			f.dry = true
 		case arg == flagJSON:
@@ -119,8 +116,7 @@ func mcpConfigUsageText() string {
 	return "usage: verdict mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>\n" +
 		"  [--write] [--dry-run] [--json] [--read-only]\n" +
 		"  Print the exact MCP server entry for the host (the default; --dry-run too).\n" +
-		"  --read-only puts it after mcp in the snippet; --operator is deprecated, ignored, and\n" +
-		"  never written. --write merges it idempotently into the host's config,\n" +
+		"  --read-only puts it after mcp in the snippet. --write merges it idempotently into the host's config,\n" +
 		"  updating a verdict-owned entry in place and backing the old file up\n" +
 		"  first; an unparseable or foreign entry refuses typed instead of rewriting it.\n" +
 		"  Paths: claude .mcp.json, cursor .cursor/mcp.json, codex\n" +

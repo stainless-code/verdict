@@ -452,3 +452,73 @@ func TestMTDNullProjectionWithoutSubtotalStaysUnknown(t *testing.T) {
 		t.Fatalf("unpriced MTD = %+v, want no known amount and 2 unknown rows", got)
 	}
 }
+
+// TestBundleTotalReadsOneBundleAcrossMonths proves the per-bundle sum: the
+// bundle's own records count whatever their month (a round that crosses a
+// UTC month boundary is not cut in two), a neighbor bundle's do not, and an
+// unpriced record stays unknown rather than free.
+func TestBundleTotalReadsOneBundleAcrossMonths(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 6, 1, 0, 0, 5, 0, time.UTC)
+	mine := writeCost(t, root, "local-loop-1",
+		`[{"at":"2026-05-31T23:59:59Z","est_usd":0.25},{"at":"2026-06-01T00:00:02Z","est_usd":0.5},{"at":"2026-06-01T00:00:03Z"}]`)
+	writeCost(t, root, "local-loop-2", `{"at":"2026-06-01T00:00:01Z","est_usd":9}`)
+	got := spend.BundleTotal(mine)
+	if got.KnownUSD != "0.75" || got.KnownCount != 2 || got.UnknownCount != 1 {
+		t.Fatalf("BundleTotal = %+v, want 0.75 known across the boundary and one unknown", got)
+	}
+	if all := spend.AggregateMTD(stateDirOf(root), now); all.KnownUSD != "9.5" {
+		t.Fatalf("AggregateMTD = %+v, want June only (9.5)", all)
+	}
+}
+
+// TestSpawnRowsAreNotCoveredByUnidentifiedCost proves the single-source rule
+// treats a loop spawn row as its own receipt: an unidentified recorded cost
+// in the same second still covers a projection row, but not a spawn row.
+func TestSpawnRowsAreNotCoveredByUnidentifiedCost(t *testing.T) {
+	root := t.TempDir()
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	dir := writeCost(t, root, "local-loop-1", `{"at":"2026-05-15T12:00:00Z","est_usd":0.5}`)
+	ledger := `[{"at":"2026-05-15T12:00:00Z","execution_id":"proj","projected_usd":null},` +
+		`{"at":"2026-05-15T12:00:00Z","execution_id":"loop-x-1-fix","scope":"spawn","projected_usd":null}]`
+	if err := os.WriteFile(filepath.Join(dir, "budget.json"), []byte(ledger), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	got := spend.AggregateMTD(stateDirOf(root), now)
+	if got.KnownUSD != "0.5" || got.UnknownCount != 1 {
+		t.Fatalf("AggregateMTD = %+v, want 0.5 known and only the spawn row unknown", got)
+	}
+}
+
+// writeCost plants one bundle's cost.json and returns the bundle directory.
+func writeCost(t *testing.T, root, bundle, body string) string {
+	t.Helper()
+	dir := filepath.Join(stateDirOf(root), bundle)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "cost.json"), []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// TestCountedInMonth proves the already-counted test matches the scan: every
+// record dated in the month counts; a missing, malformed, or other-month
+// `at` does not.
+func TestCountedInMonth(t *testing.T) {
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	for raw, want := range map[string]bool{
+		`{"at":"2026-05-15T11:00:00Z","est_usd":0.1}`:         true,
+		`[{"at":"2026-05-01T00:00:00Z"},{"at":"2026-05-31"}]`: true,
+		`{"est_usd":0.1}`:                                               false,
+		`{"at":"yesterday","est_usd":0.1}`:                              false,
+		`{"at":"2026-04-30T23:59:59Z","est_usd":0.1}`:                   false,
+		`[{"at":"2026-05-01T00:00:00Z"},{"at":"2026-06-01T00:00:00Z"}]`: false,
+		`not json`: false,
+	} {
+		if got := spend.CountedInMonth([]byte(raw), now); got != want {
+			t.Errorf("CountedInMonth(%s) = %v, want %v", raw, got, want)
+		}
+	}
+}

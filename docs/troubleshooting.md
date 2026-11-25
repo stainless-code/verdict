@@ -356,7 +356,7 @@ Fix: pass `--require-rigor critical=walked` (repeatable, one tier per flag), or 
 
 ## `bad-root`
 
-Cause: `serve --root`, `acp --root`, or `lsp --root` names a path that is missing, not a directory, or unreadable. (An `lsp --root` that exists but sits outside any git checkout refuses `not-a-repo` instead.)
+Cause: `serve --root`, `dashboard --root`, `acp --root`, or `lsp --root` names a path that is missing, not a directory, or unreadable. (An `lsp --root` that exists but sits outside any git checkout refuses `not-a-repo` instead.)
 
 Fix: pass `--root <existing-directory>`, or start `verdict serve` inside a checkout with no `--root`.
 
@@ -431,6 +431,12 @@ Fix: use source `agent` with a 30-character reason, or `exclusion` with the path
 Cause: `adopt --from` points at a PR bundle instead of a local one.
 
 Fix: point `--from` at a `.verdict/state/local-*` directory.
+
+## `bad-target-url`
+
+Cause: the pull or merge request URL could not become a target: it carries credentials, whitespace, a dot-relative or encoded path segment, a route other than the host's pull request route, a non-numeric number, a host verdict does not know (a self-hosted GitLab or Forgejo needs `GITLAB_HOST` / `FORGEJO_HOST`), or a provider that conflicts with an explicit `--provider`.
+
+Fix: paste the plain URL (`https://github.com/<owner>/<repo>/pull/<number>`, `https://gitlab.com/<group>/<project>/-/merge_requests/<number>`), or pass `<owner/repo> <pr> --provider <name>`. See `docs/manual.md` § Targets.
 
 ## `bad-timeout`
 
@@ -626,6 +632,18 @@ Fix: re-run `fetch-local` to refresh `.verdict/state/local-<name>/`, review the
 new bundle, then record again. Coverage from the previous snapshot cannot
 certify the current tree.
 
+## `dashboard-no-tty`
+
+Cause: `verdict dashboard` was started without a terminal on both stdin and stdout (a pipe, a redirect, CI, or an agent's shell), or the terminal refused raw mode. The live view waits for keystrokes, so it refuses instead of hanging.
+
+Fix: run it in a terminal, or pass `--once` for one plain-text frame on stdout (exit 0). For data rather than a picture, read the same views through `verdict serve` or the MCP query tools.
+
+## `dashboard-no-vt`
+
+Cause: a Windows console refused virtual-terminal processing (`SetConsoleMode` rejected `ENABLE_VIRTUAL_TERMINAL_PROCESSING` or `ENABLE_VIRTUAL_TERMINAL_INPUT`): a console older than Windows 10, or a legacy conhost.
+
+Fix: run `verdict dashboard` in Windows Terminal or a Windows 10+ console, or pass `--once` for one plain-text frame.
+
 ## `diff-failed`
 
 Cause: `git diff` failed for the requested range.
@@ -750,7 +768,8 @@ outcome, not a pass.
 
 Cause: the bundle carries no reviewed head, or the checked-out head is not the reviewed head.
 
-Fix: check out the reviewed commit (or re-fetch the bundle), then re-run validation.
+Fix: check out the reviewed commit (or re-fetch the bundle), then re-run validation or
+`fix` — on a PR bundle `fix` refuses until the checkout is on the bundle's head.
 
 ## `html-not-export`
 
@@ -1080,12 +1099,11 @@ Fix: list bundles with `query-bundles` first, then re-issue the call with the ri
 
 ## `not-local`
 
-Cause: the verb got the wrong bundle kind (`record` on a GitHub PR, or `fix` on a PR bundle
-without `--selected`).
+Cause: the verb got the wrong bundle kind (`record` on a GitHub PR, or `fix` on a corpus bundle).
 
 Fix: `fetch-local` for local work first; GitHub PRs use `post`, and local bundles use `record` and `report`.
-`fix --selected` is the one batch that reads a PR bundle, because that is where
-`selected.json` comes from.
+`fix` runs on PR bundles too — the instructions name the `post` landing there — but
+never on a `corpus-*` bundle, which is a benchmark input, not review work.
 
 ## `not-retired`
 
@@ -1207,7 +1225,9 @@ Cause: the PR could not be read from the host, or a host read kept disagreeing
 with itself (a GraphQL head that is not yet the REST head, a torn view
 document) for the whole bounded wait.
 
-Fix: run `gh auth status`, confirm the repo/PR spelling, then re-run. A bounded
+Fix: run `gh auth status` (GitHub) or `glab auth status` (GitLab), confirm the
+repo/PR spelling, then re-run. A GitLab refusal carries the start of
+`glab`'s own error, so a 403 or a missing token shows there. A bounded
 `pr-wait` retries an inconsistent observation on its next interval and names the
 retried count in this refusal, so a wait right after a push usually recovers by
 itself; rerun once the push settles. `--once` never retries.
@@ -1249,7 +1269,7 @@ Fix: add `--rationale` with 30+ chars, or `--force`.
 
 Cause: an MCP call names a tool hidden by `--read-only` because it writes local state.
 
-Fix: restart the server without `--read-only`; operator-only tools also require `--operator`.
+Fix: restart the server without `--read-only`.
 
 ## `record-failed`
 
@@ -1333,8 +1353,14 @@ Cause: the sandbox cannot be enforced — on Linux, no `bubblewrap` or no unpriv
 - `the reviewed root <root> is inside the credential path <path>` — hiding the path would hide the code under review, and allowing the root would expose the credential. Verify from a checkout outside your credential stores.
 - `the reviewed root <root> has no .git` (Linux) — `bwrap` can make `<root>/.git` read-only only by mounting over it, and creating the missing mount point would write an empty `.git` into your tree, so without one the command could create git hooks or config that run later. Verify from the top of a git checkout, or run the whole review in a throwaway VM or container.
 - `could not inspect <root>/.git (<error>)` (Linux) — `.git` exists but cannot be read (permissions, `ENOTDIR`, an I/O error); the error is quoted as reported. Fix the path or its permissions.
-- `<path> names the git directory <dir>, which does not exist as a directory` / `<path> has no readable git pointer line` / `<root>/.git is neither a directory nor a gitdir: file` / `the git location <dir> does not resolve (<error>)` / `the git location <dir> is the reviewed root itself` / `the git pointer <path> passes through the symlink <link> inside the reviewed root` / `the git pointer <path> walks through <dir>, which does not exist inside the reviewed root` / `could not read the git pointer <path> (<error>)` (Linux; the last also on macOS) — a `.git` file or a `commondir` points somewhere `bwrap` cannot make read-only, so the command could create or swap the git directory git later runs hooks from. Fix or remove the pointer (`git worktree repair`, or point `gitdir:` at the real directory), or verify a fresh clone.
-- `the reviewed root's <root>/.git is a symlink` (Linux) — `bwrap` can protect only the link's target, so the link could be replaced. Replace the link with the directory or a `gitdir:` file, or verify a fresh clone.
+- `<path> names the git directory <dir>, which does not exist as a directory` / `<path> has no readable git pointer line` / `<root>/.git is neither a directory nor a gitdir: file` / `the git location <dir> does not resolve (<error>)` / `the git pointer <path> passes through the symlink <link> inside the reviewed root` (also when `<link>` is reached through a link outside the root) / `the git pointer <path> walks through <dir>, which does not exist inside the reviewed root` (Linux) — a `.git` file or a `commondir` points somewhere `bwrap` cannot make read-only, so the command could create or swap the git directory git later runs hooks from. Fix or remove the pointer (`git worktree repair`, or point `gitdir:` at the real directory), or verify a fresh clone.
+- `could not read the git pointer <path> (<error>)` / `the git pointer <path> is a symlink` / `the git location <dir> is the reviewed root or holds it` (Linux and macOS) — the pointer cannot be read the way git reads it, its bytes come through a link from a file the command could rewrite, or the git directory is the reviewed root or one of its ancestors, so the writable root would make hooks or config writable. Replace a linked `commondir` with the file itself, verify from a checkout outside its git directory, or verify a fresh clone.
+- `the git pointer <path> reaches <dir>, which is inside the reviewed root <root> under another spelling` (Linux and macOS) — the pointer names a path inside the root through a letter-case variant of the root's name or, on macOS, the `/System/Volumes/Data/…` firmlink spelling; a rule or bind in that spelling would not protect it. Rewrite the pointer with the root's own spelling (`git worktree repair`), or verify a fresh clone.
+- `the git control file <path> is a symlink to <target>, which the command could rewrite inside the reviewed root` (Linux and macOS) — a file in a protected git directory (its `config`, something under `info/`, a pointer file) is a link into the writable tree, so the command could change what git reads. Replace the link with the file itself, or verify a fresh clone. Links under `hooks/` are allowed: hook code in the tree is your choice, like `core.hooksPath`.
+- `the git control file <path> has another hard link` (Linux and macOS) — a file in a protected git directory (its config, a hook, a pointer file) has a second name, which the command could write past every path rule. Remove the extra name, or copy the file and move the copy over the original so it stands alone, or verify a clone made with `--no-hardlinks` (a `--local` clone links only object payload, which is fine: loose objects, packs, and the commit-graph and pack-list caches, in `.git` and in each `.git/modules/<name>`; `objects/info/alternates` is not payload).
+- `the submodule path <path> is missing or not a directory` / `could not read the git index <index> (<reason>), so its submodule paths cannot be protected` / `the reviewed root <root> holds more than 200000 directories, too many to search for nested git repositories` (Linux only: macOS reads no index, since its `.git` component rule already covers every submodule path; the directory cap applies on both) — `--sandbox` protects every nested repository and every submodule path in the root's index, so a submodule path it cannot hold read-only, an index it cannot read (a split index, an unknown version), or a tree too large to search refuses instead of leaving part of it unprotected. Check the submodule out (`git submodule update --init`) or remove it, run `git update-index --no-split-index`, or verify a smaller checkout.
+- On Linux, a sandboxed command that removes or renames a directory above a nested repository or submodule (`rm -rf third_party/foo`, `mv vendor vendor.old`) fails with `Device or resource busy` (`EBUSY`). `--sandbox` holds each nested `.git` read-only with a bind mount and self-binds every directory between the root and it, so none can be moved aside to recreate the path with a git directory of the command's own; a mount point cannot be renamed or removed. Do the move outside the sandbox, or verify a checkout without the nested repository.
+- `the reviewed root's <root>/.git is a symlink` (Linux and macOS) — only the link's target can be protected, so the link, or a `gitdir:` file it reaches, could send git to a git directory that runs later. Replace the link with the directory or a `gitdir:` file, or verify a fresh clone.
 
 Fix: install bubblewrap on Linux and allow unprivileged user namespaces (or, accepting network isolation alone, pass `--sandbox-network-only`, which needs `unshare`), or fix `sandbox-exec` on macOS (`/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' true` must exit 0), or re-run without `--sandbox` on a command you trust.
 
@@ -1457,6 +1483,12 @@ Fix: delete the stale `review.json` (or let the agent overwrite it), then re-run
 Cause: another write held the store's lock — `.verdict/incidents.jsonl.lock` for `--incident`, `.verdict/kb.jsonl.lock` for `--rule`, `--pack`, `--retire`, and `--restore`, the same `kb.jsonl.lock` for the credit rewrite a `record` or `triage` flip performs, and `.verdict/reverts.jsonl.lock` for `backtest reverts` — for the whole five-second wait, so this write did nothing. The lock is the operating system's and its holder is alive, so nothing is stale to clear.
 
 Fix: re-run the write once the other one finishes; a holder that crashed or was killed already released the lock, so a retry succeeds at once. Deleting the lock file never helps — it carries no state, and the next write creates it again.
+
+## `target-unresolved`
+
+Cause: the verb was given no `<owner/repo> <pr>` and verdict could not infer one offline: `origin` names a host or path verdict cannot map, HEAD is detached, no bundle under `.verdict/state` records the current branch as a pull request head, or more than one does.
+
+Fix: pass the target the message names (`verdict <verb> <owner/repo> <pr>`) or a pull request URL. See `docs/manual.md` § Targets.
 
 ## `test-conflict`
 
@@ -1723,9 +1755,10 @@ exiting 0 unless `--check` requests exit 1.
 
 Fix: inspect the last snapshot and CI state, then make another bounded call if
 needed. Use MCP `pr_wait` instead of an agent sleep loop. A missing or unreadable
-check rollup never counts as complete. GitLab and Forgejo waits refuse
-`provider-unimplemented`; GitHub hard read failures, and a state still
-inconsistent when the budget expires, refuse `pr-read-failed`. CLI timeouts
+check rollup never counts as complete. Hosts other than GitHub and GitLab
+(Forgejo, Bitbucket, Azure) refuse `provider-unimplemented` before any host
+command; hard read failures, and a state still inconsistent when the budget
+expires, refuse `pr-read-failed`. CLI timeouts
 accept 1s–30m; MCP timeouts cannot exceed 50s.
 
 ## `condition-unmet` (data outcome)

@@ -17,6 +17,9 @@ pack.log
 # case invokes. Never commit binaries.
 # Never commit binaries.
 bin/
+# `go test -c` and `-cpuprofile` drop the test binary (and profiles) in the package dir.
+*.test
+*.prof
 
 # Python bytecode from examples/python-client.
 __pycache__/

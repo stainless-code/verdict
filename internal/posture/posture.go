@@ -31,11 +31,3 @@ func (r Rule) LocalWrites() bool { return !r.ReadOnly }
 // HostPost reports whether the surface may post to a code host: local writes
 // allowed and the surface's own opt-in given. Read-only always wins.
 func (r Rule) HostPost() bool { return !r.ReadOnly && r.HostPostOptIn }
-
-// RetiredFlagNotice is the one-line stderr notice for a flag the shared rule
-// retired but a script may still pass: it is accepted for one release and
-// ignored.
-func RetiredFlagNotice(surface, flag string) string {
-	return surface + ": " + flag + " is deprecated and ignored: local writes are allowed unless " +
-		FlagReadOnly + " (host posting stays separately gated); the flag goes away in the next release"
-}

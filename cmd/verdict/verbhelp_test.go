@@ -60,8 +60,8 @@ func TestServeUsageListsEventsRoute(t *testing.T) {
 		"    same services the CLI calls, gated by the per-session X-Verdict-CSRF token\n" +
 		"    /v1/health publishes, a present allowlisted Origin, and strict application/json\n" +
 		"    bodies); --allow-post (refused with --read-only) adds POST /v1/post/submit, the\n" +
-		"    confirmation-gated host posting route through core/post; --interactive is deprecated\n" +
-		"    and ignored. Ctrl-C exits 3.\n"
+		"    confirmation-gated host posting route through core/post;\n" +
+		"    Ctrl-C exits 3.\n"
 	if !strings.Contains(usageText(), want) {
 		t.Fatalf("serve usage route line = %q, want %q", usageText(), want)
 	}
