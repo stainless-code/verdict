@@ -212,8 +212,9 @@ func assertCostNames(t *testing.T, raw string) {
 const sdkWorktreeStash = "cccccccccccccccccccccccccccccccccccccccc"
 
 // worktreeCommander scripts fetch-local --worktree in the default dirty
-// mode: the isolation stash and checkout, every bundle read through the
-// checkout, and the teardown.
+// mode: the isolation stash and checkout, the bundle's diff and stats read
+// tree to tree from the named content (scripted as the live diff), and the
+// teardown.
 func worktreeCommander(t *testing.T, wt string) *fakeCommander {
 	t.Helper()
 	return &fakeCommander{t: t, rules: []cannedRule{
@@ -226,6 +227,8 @@ func worktreeCommander(t *testing.T, wt string) *fakeCommander {
 		{tokens: []string{"-C", wt, "diff", "--no-renames"}, result: verdict.CommandResult{Stdout: "notes.txt\n"}},
 		{tokens: []string{"-C", wt, "diff", "--numstat"}, result: verdict.CommandResult{Stdout: "1\t1\tnotes.txt\n"}},
 		{tokens: []string{"-C", wt, "diff", sdkHeadA, sdkWorktreeStash}, result: verdict.CommandResult{Stdout: sdkDiff}},
+		{tokens: []string{"diff", "--no-renames", "HEAD"}, result: verdict.CommandResult{Stdout: "notes.txt\n"}},
+		{tokens: []string{"diff", "--numstat", "HEAD"}, result: verdict.CommandResult{Stdout: "1\t1\tnotes.txt\n"}},
 		{tokens: []string{"diff", "HEAD"}, result: verdict.CommandResult{Stdout: sdkDiff}},
 		{tokens: []string{"ls-files", "--others"}, result: verdict.CommandResult{}},
 		{tokens: []string{"worktree", "remove"}, result: verdict.CommandResult{}},
@@ -286,7 +289,7 @@ func TestClientFetchLocalWorktreeHeadControls(t *testing.T) {
 	})
 	assertFields(t, asMap(t, doc["controls"], "controls"), map[string]any{"policy": "head", "sha": ""})
 	assertNumbers(t, doc, map[string]float64{"files": 1, "additions": 1, "deletions": 1})
-	assertArgvSpawned(t, cmdr, "git -C "+wt+" diff "+sdkHeadA+" "+sdkWorktreeStash)
+	assertArgvSpawned(t, cmdr, "git diff --no-ext-diff --no-textconv "+sdkHeadA+" "+scriptTree)
 	assertArgvSpawned(t, cmdr, "git worktree remove --force "+wt)
 	if got := readText(t, ".verdict/state/local-probe/controls/config.json"); got != headControlsConfig {
 		t.Errorf("head controls came from the caller checkout, not the isolated worktree: %q", got)

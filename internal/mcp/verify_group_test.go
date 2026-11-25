@@ -129,7 +129,7 @@ func requireMCPReceipt(t *testing.T, head string) {
 	if err := json.Unmarshal(raw, &receipt); err != nil {
 		t.Fatal(err)
 	}
-	if !receipt.Passed || receipt.Status != "passed" || receipt.ExecutionHead != head || receipt.Group != "group-a1" {
+	if !receipt.Passed || receipt.Status != "passed" || receipt.Tree == "" || receipt.ReviewedHead != head || receipt.Group != "group-a1" {
 		t.Fatalf("receipt = %+v", receipt)
 	}
 }

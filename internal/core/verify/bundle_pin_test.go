@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
@@ -169,7 +170,7 @@ func TestVerifyGroupBundleSwappedMidRun(t *testing.T) {
 	dir := filepath.Join(root, ".verdict", "state", "7")
 	outside := t.TempDir()
 	blocked := false
-	cmdr := &groupCommander{head: groupHead, out: "ok\n", onRun: func() {
+	cmdr := &groupCommander{out: "ok\n", onRun: func() {
 		if blocked = trySwap(t, dir); !blocked {
 			replaceWith(t, outside, dir)
 		}
@@ -217,8 +218,8 @@ func TestVerifyRefusesEscapingPatchSymlink(t *testing.T) {
 	if ref == nil || ref.Code != "corrupt-store" {
 		t.Fatalf("refusal = %v, want corrupt-store", ref)
 	}
-	if len(cmdr.got) != 0 || cmdr.probes != 0 {
-		t.Errorf("an escaping patch.json ran %d commands and %d probes, want none", len(cmdr.got), cmdr.probes)
+	if len(cmdr.got) != 0 || cmdr.gits != 0 {
+		t.Errorf("an escaping patch.json ran %d commands and %d git reads, want none", len(cmdr.got), cmdr.gits)
 	}
 }
 
@@ -229,7 +230,7 @@ func TestVerifyGroupTailSanitizesBeforeTheCut(t *testing.T) {
 	root := groupBundle(t)
 	const suffix = "secretsuffix1234567890"
 	out := strings.Repeat("x", 100) + " sk-ant-api03-ZZ" + suffix + " " + strings.Repeat(".", 4000-len(suffix)-1)
-	cmdr := &groupCommander{head: groupHead, out: out}
+	cmdr := &groupCommander{out: out}
 	if _, ref := verifycore.Run(context.Background(), groupRequest(root, "group-a1", "go test ./...", cmdr)); ref != nil {
 		t.Fatalf("Run: %v", ref)
 	}
@@ -242,34 +243,41 @@ func TestVerifyGroupTailSanitizesBeforeTheCut(t *testing.T) {
 	}
 }
 
-// TestVerifyGroupRefusesDirtyTree pins deep-group validation to the patch
-// path's clean-tree rule: HEAD alone says nothing about uncommitted edits, so
-// a dirty tree refuses before the command runs and writes no receipt.
-func TestVerifyGroupRefusesDirtyTree(t *testing.T) {
+// TestVerifyGroupRefusesOtherContent pins deep-group validation to content:
+// a checkout whose tree is not the reviewed commit's — uncommitted edits
+// included — refuses before the command runs and writes no receipt.
+func TestVerifyGroupRefusesOtherContent(t *testing.T) {
 	root := groupBundle(t)
-	cmdr := &groupCommander{head: groupHead, out: "ok\n", status: []string{" M app.go\n"}}
+	cmdr := &groupCommander{out: "ok\n", worktree: strings.Repeat("0d1f", 10)}
 	_, ref := verifycore.Run(context.Background(), groupRequest(root, "group-a1", "go test ./...", cmdr))
-	if ref == nil || ref.Code != "head-mismatch" || !strings.Contains(ref.Message, "uncommitted changes") {
-		t.Fatalf("refusal = %v, want head-mismatch naming the uncommitted changes", ref)
+	if ref == nil || ref.Code != "head-mismatch" || !strings.Contains(ref.Message, "is not the reviewed commit") {
+		t.Fatalf("refusal = %v, want head-mismatch naming the reviewed commit", ref)
+	}
+	if len(cmdr.runs) != 0 {
+		t.Errorf("a content mismatch ran %d commands", len(cmdr.runs))
 	}
 	requireNoGroupReceipt(t, filepath.Join(root, ".verdict", "state", "7"))
 }
 
-// TestVerifyGroupFailsTreeLeftDirty pins the other half: a command that
-// leaves the tree dirty fails the receipt, which then binds no execution head.
-func TestVerifyGroupFailsTreeLeftDirty(t *testing.T) {
+// TestVerifyGroupRefusalCarriesCleanupWarning pins that a refusal raised
+// after the snapshot exists still carries the warning its cleanup leaves:
+// the cleanup runs after the refusal is built, and its warning must reach it.
+func TestVerifyGroupRefusalCarriesCleanupWarning(t *testing.T) {
 	root := groupBundle(t)
-	cmdr := &groupCommander{head: groupHead, out: "ok\n", status: []string{"", "?? scratch.go\n"}}
-	resp, ref := verifycore.Run(context.Background(), groupRequest(root, "group-a1", "go test ./...", cmdr))
-	if ref != nil {
-		t.Fatalf("Run: %v", ref)
+	cmdr := &groupCommander{out: "ok\n", worktree: strings.Repeat("0d1f", 10), stuck: true}
+	_, ref := verifycore.Run(context.Background(), groupRequest(root, "group-a1", "go test ./...", cmdr))
+	if ref == nil || ref.Code != "head-mismatch" {
+		t.Fatalf("refusal = %v, want head-mismatch", ref)
 	}
-	receipt, found, rref := verifycore.ReadValidationReceipt(filepath.Join(root, ".verdict", "state", "7"), "group-a1")
-	if rref != nil || !found {
-		t.Fatalf("receipt found=%v ref=%v", found, rref)
-	}
-	if receipt.Passed || receipt.Status != "stale-head" || receipt.ExecutionHead != "" || resp.Data.Head != "" {
-		t.Fatalf("receipt = %+v, data head %q; want a failed receipt binding no head", receipt, resp.Data.Head)
+	requireCleanupWarning(t, ref.Warnings)
+}
+
+// requireCleanupWarning checks a run's warnings name the failed snapshot
+// cleanup.
+func requireCleanupWarning(t *testing.T, warnings []string) {
+	t.Helper()
+	if !slices.ContainsFunc(warnings, func(w string) bool { return strings.Contains(w, "snapshot cleanup") }) {
+		t.Fatalf("warnings = %q, want the snapshot cleanup warning", warnings)
 	}
 }
 
@@ -279,7 +287,7 @@ func TestVerifyGroupFailsTreeLeftDirty(t *testing.T) {
 func TestReadValidationReceiptRejectsTrailingData(t *testing.T) {
 	root := groupBundle(t)
 	if _, ref := verifycore.Run(context.Background(), groupRequest(root, "group-a1", "go test ./...",
-		&groupCommander{head: groupHead, out: "ok\n"})); ref != nil {
+		&groupCommander{out: "ok\n"})); ref != nil {
 		t.Fatalf("Run: %v", ref)
 	}
 	path := filepath.Join(root, ".verdict", "state", "7", "validation-group-a1.json")

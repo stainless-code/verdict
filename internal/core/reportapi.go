@@ -92,11 +92,11 @@ type ShowFix struct { //nolint:govet // field order is the published property or
 	Caution    string      `json:"caution"`
 }
 
-// VerifyHint is the exact rerun command plus the head bracket recorded for
-// this finding by verification.json or patch.json, when either carries one.
-type VerifyHint struct { //nolint:govet // field order is the published property order
-	VerifyCmd  string  `json:"verifyCmd"`
-	ResultHead *string `json:"resultHead"`
+// VerifyHint is the exact rerun command recorded for this finding by
+// verification.json or patch.json, when either carries one. A receipt binds
+// content, not a head, so the hint carries no head.
+type VerifyHint struct {
+	VerifyCmd string `json:"verifyCmd"`
 }
 
 // Wire renders the fix block in the published key order (sig, status,
@@ -126,7 +126,7 @@ func (f *ShowFix) Wire() *jq.Obj {
 
 // Wire renders the rerun hint in the published key order.
 func (h *VerifyHint) Wire() *jq.Obj {
-	return jq.NewObj("verifyCmd", h.VerifyCmd, "resultHead", nullableString(h.ResultHead))
+	return jq.NewObj("verifyCmd", h.VerifyCmd)
 }
 
 // nullableString renders a nullable string field.

@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -49,9 +50,11 @@ func worktreeReq(cmdr *scriptCommander, human, diag *bytes.Buffer, streamed *[]s
 }
 
 // TestRunLocalWorktreeDirty proves the default dirty mode isolates through
-// the Commander seam: stash-create snapshots the tree, the worktree checks
-// out the snapshot, and every bundle read runs git -C against the checkout
-// while the untracked advisory stays live. Cleanup removes the checkout.
+// the Commander seam: stash-create snapshots the tree and the worktree checks
+// out the snapshot, while the bundle's diff, file list, and stats are read
+// tree to tree from the content the bundle names — never from the live tree
+// or the checkout — and the untracked advisory stays live. Cleanup removes
+// the checkout.
 func TestRunLocalWorktreeDirty(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
@@ -72,6 +75,8 @@ func TestRunLocalWorktreeDirty(t *testing.T) {
 		},
 	}
 	cmdr.out["git\x00diff\x00HEAD"] = scriptResult{stdout: worktreeTestDiff}
+	cmdr.out["git\x00diff\x00--no-renames\x00--name-only\x00HEAD"] = scriptResult{stdout: "a.txt\n"}
+	cmdr.out["git\x00diff\x00--numstat\x00HEAD"] = scriptResult{stdout: "1\t1\ta.txt\n"}
 	scriptEmptyBasePolicy(cmdr, worktreeTestHead)
 	var human, diag bytes.Buffer
 	var streamed []string
@@ -92,7 +97,7 @@ func TestRunLocalWorktreeDirty(t *testing.T) {
 	assertWorktreeLifecycle(t, cmdr, wt, worktreeTestStash)
 	assertArgvContains(t, cmdr, []string{
 		"git stash create",
-		"git -C " + wt + " diff " + worktreeTestHead + " " + worktreeTestStash,
+		"git diff --no-ext-diff --no-textconv " + worktreeTestHead + " " + testContentTree,
 	})
 }
 
@@ -125,6 +130,47 @@ func TestRunLocalWorktreeSkipClean(t *testing.T) {
 		t.Errorf("clean tree prints a worktree line:\n%s", got)
 	}
 	assertNoWorktreeArgv(t, cmdr)
+}
+
+// TestRunLocalUnnameableContentStillBundles proves naming the reviewed
+// content is best effort: when git cannot list the checkout, fetch-local
+// still bundles from the live diff, warns why, and records no content_tree,
+// so only the bundle's VERIFIED claims are lost, never the review.
+func TestRunLocalUnnameableContentStillBundles(t *testing.T) {
+	t.Chdir(t.TempDir())
+	cmdr := scriptCommander{t: t, untreeable: true, out: map[string]scriptResult{
+		"git\x00rev-parse\x00--is-inside-work-tree":          {stdout: "true\n"},
+		"git\x00branch\x00--show-current":                    {stdout: "main\n"},
+		"git\x00rev-parse\x00HEAD":                           {stdout: worktreeTestHead + "\n"},
+		"git\x00stash\x00create":                             {stdout: ""},
+		"git\x00diff\x00HEAD":                                {stdout: ""},
+		"git\x00diff\x00--no-renames\x00--name-only\x00HEAD": {stdout: ""},
+		"git\x00diff\x00--numstat\x00HEAD":                   {stdout: ""},
+		"git\x00ls-files\x00--others\x00--exclude-standard":  {stdout: ""},
+	}}
+	scriptEmptyBasePolicy(&cmdr, worktreeTestHead)
+	requireNoContentTree(t, &cmdr, "could not name the reviewed content (git ls-files exited 128: fatal: unable to read nested/data")
+}
+
+// requireNoContentTree runs a worktree fetch-local and checks it bundles,
+// warns with want, and records a null content_tree.
+func requireNoContentTree(t *testing.T, cmdr *scriptCommander, want string) {
+	t.Helper()
+	var human, diag bytes.Buffer
+	var streamed []string
+	if _, err := RunLocal(context.Background(), worktreeReq(cmdr, &human, &diag, &streamed)); err != nil {
+		t.Fatalf("RunLocal: %v", err)
+	}
+	if !slices.ContainsFunc(streamed, func(w string) bool { return strings.Contains(w, want) }) {
+		t.Errorf("warnings = %q, want one containing %q", streamed, want)
+	}
+	raw, err := os.ReadFile(".verdict/state/local-mine/source.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(raw), `"content_tree": null`) {
+		t.Errorf("source.json records a content tree it cannot vouch for:\n%s", raw)
+	}
 }
 
 // TestRunLocalWorktreeRange proves a committed range checks out its head
@@ -348,9 +394,8 @@ func TestRunLocalWorktreeDiffFailsCleansUp(t *testing.T) {
 			"git\x00rev-parse\x00HEAD":                                                 {stdout: worktreeTestHead + "\n"},
 			"git\x00stash\x00create":                                                   {stdout: worktreeTestStash + "\n"},
 			"git\x00worktree\x00add\x00--detach\x00" + wt + "\x00" + worktreeTestStash: {stdout: ""},
-			"git\x00-C\x00" + wt + "\x00diff\x00" + worktreeTestHead + "\x00" + worktreeTestStash: {
-				stdout: "", stderr: "fatal: bad object\n", fail: true,
-			},
+			// The tree-to-tree read stands in for `git diff HEAD` here.
+			"git\x00diff\x00HEAD":                           {stdout: "", stderr: "fatal: bad object\n", fail: true},
 			"git\x00worktree\x00remove\x00--force\x00" + wt: {stdout: ""},
 		},
 	}

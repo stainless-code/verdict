@@ -28,6 +28,9 @@ type scriptCommander struct {
 	calls [][]string
 	stdin []string
 	env   [][]string
+	// untreeable makes the content listing fail, as git does where it
+	// cannot read the checkout.
+	untreeable bool
 }
 
 // scriptResult is one canned spawn: the streams plus the failure flag.
@@ -45,13 +48,53 @@ const testPatchID = "9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d 000000000000000000
 // patchIDKey is the script map key for the identity spawn.
 const patchIDKey = "git\x00patch-id\x00--stable"
 
+// testContentTree is the tree id the script seam answers for the reviewed
+// content, so content_tree stays deterministic without scripting every
+// fetch-local test's git reads.
+const testContentTree = "c0ffee0000000000000000000000000000000000"
+
+// contentTreeAnswer answers the git reads that name the reviewed content
+// (contenttree.Git always passes -C <root>); they stay out of calls, so a
+// test pinning the fetch argv sequence keeps pinning just that.
+func (s *scriptCommander) contentTreeAnswer(argv []string) (core.Result, bool) {
+	if len(argv) < 4 || argv[0] != "git" || argv[1] != "-C" {
+		return core.Result{}, false
+	}
+	switch argv[3] {
+	case "ls-files":
+		return s.listAnswer(argv)
+	case "write-tree":
+		return core.Result{Stdout: testContentTree + "\n"}, true
+	case "rev-parse":
+		return core.Result{Stdout: testContentTree + "\n"}, true
+	case "read-tree":
+		return core.Result{}, true
+	}
+	return core.Result{}, false
+}
+
+// listAnswer answers contenttree's own listing (`ls-files -z …`), failing it
+// when untreeable; fetch's own ls-files calls stay scripted.
+func (s *scriptCommander) listAnswer(argv []string) (core.Result, bool) {
+	switch {
+	case len(argv) < 5 || argv[4] != "-z":
+		return core.Result{}, false
+	case s.untreeable:
+		return core.Result{ExitCode: 128, Stderr: "fatal: unable to read nested/data: Permission denied\n"}, true
+	}
+	return core.Result{}, true
+}
+
 // Run records argv/stdin/env and replays the canned result.
 func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	s.t.Helper()
+	if res, ok := s.contentTreeAnswer(cmd.Argv); ok {
+		return res, nil
+	}
 	s.calls = append(s.calls, append([]string{}, cmd.Argv...))
 	s.stdin = append(s.stdin, readTestStdin(s.t, cmd.Stdin))
 	s.env = append(s.env, cmd.Env)
-	key := strings.Join(cmd.Argv, "\x00")
+	key := strings.Join(liveDiffArgv(cmd.Argv), "\x00")
 	if key == patchIDKey {
 		if cmd.Stdin == nil {
 			s.t.Errorf("patch-id sent no stdin, want the diff on stdin")
@@ -69,6 +112,25 @@ func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result
 		out.ExitCode = 1
 	}
 	return out, nil
+}
+
+// liveDiffArgv maps a named working-tree bundle's tree-to-tree read (`git
+// diff --no-ext-diff --no-textconv [flags] <base> <tree> [-- paths]`) onto
+// the live `git diff [flags] HEAD [-- paths]` a test scripts: the named
+// tree stands for the working tree's content, so the scripted live output
+// is what the tree read returns. Every other argv is returned unchanged.
+func liveDiffArgv(argv []string) []string {
+	tree := slices.Index(argv, testContentTree)
+	if len(argv) < 3 || argv[1] != "diff" || tree < 1 {
+		return argv
+	}
+	live := []string{"git", "diff"}
+	for _, a := range argv[2 : tree-1] {
+		if a != "--no-ext-diff" && a != "--no-textconv" {
+			live = append(live, a)
+		}
+	}
+	return slices.Concat(live, []string{"HEAD"}, argv[tree+1:])
 }
 
 // readTestStdin drains one child's stdin, failing the test on a read error.

@@ -68,7 +68,7 @@ mk_local proj
   mk_finding "$IMP" open important other.txt "Important scoping bug here."
   mk_finding "$INFO" open informational notes.txt "Minor wording nit here."
 } | jq -s '.' | write_findings proj
-printf '[{"sig":"%s","verdict":"VERIFIED","verifyCmd":"go test ./...","resultHead":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}]' \
+printf '[{"sig":"%s","verdict":"VERIFIED","verifyCmd":"go test ./..."}]' \
   "$CRIT" >"$EVAL_SANDBOX/.verdict/state/local-proj/verification.json"
 before_findings="$(cat "$EVAL_SANDBOX/.verdict/state/local-proj/findings.json")"
 

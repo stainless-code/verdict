@@ -12,7 +12,7 @@ import (
 func kbBundle(t *testing.T, dir, review string, kbLines []string) {
 	t.Helper()
 	files := map[string]string{
-		".verdict/state/local-kb/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work"}`,
+		".verdict/state/local-kb/source.json": `{"head_sha":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","head_ref":"work","content_tree":"7777777777777777777777777777777777777777"}`,
 		".verdict/state/local-kb/full.diff":   genDiff(4),
 		".verdict/state/local-kb/review.json": review,
 	}
@@ -212,16 +212,16 @@ func TestGoldenClaimsSequence(t *testing.T) {
 			},
 		}
 		_ = doc
-		// The bogus triage status refuses the run; drop it for the passing leg.
+		// The bogus triage status and a triage claim for addressed each refuse
+		// the run; drop both for the passing leg.
 		doc["triage"] = []any{
-			map[string]any{"sig": sigs[0], "status": "addressed", "rationale": "agent triage with a long enough rationale here for sure"},
 			map[string]any{"sig": "deadbeef", "status": "open", "rationale": "unknown sig triage with a long enough rationale here ok"},
 			map[string]any{"sig": sigs[0], "status": "open", "rationale": "short"},
 		}
 		writeFiles(t, dir, map[string]string{
 			".verdict/state/local-kb/review.json": marshalJSON(t, doc),
 			".verdict/state/local-kb/verification.json": fmt.Sprintf(
-				`[{"sig":"%s","verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"true"},{"sig":"deadbeef","verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"true"},{"sig":"%s","verdict":"NOT VERIFIED","resultHead":"aaaaaaa","verifyCmd":"make check"}]`,
+				`[{"sig":"%s","verdict":"VERIFIED","verifyCmd":"true"},{"sig":"deadbeef","verdict":"VERIFIED","verifyCmd":"true"},{"sig":"%s","verdict":"NOT VERIFIED","verifyCmd":"make check"}]`,
 				sigs[0], sigs[0]),
 			receiptPath: kbReceipt("true"),
 		})

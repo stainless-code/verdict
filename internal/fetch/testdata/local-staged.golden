@@ -7,7 +7,9 @@ exit: 0
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
   "next": "feed .verdict/state/local-demo/procedure.md + .verdict/state/local-demo/source.json + full.diff to any agent; ask it to write .verdict/state/local-demo/review.json",
-  "warnings": [],
+  "warnings": [
+    "a --staged bundle reviews the index, which verdict verify does not run — source.json records no content_tree, so no VERIFIED claim can land on this bundle; fetch-local without --staged to verify fixes"
+  ],
   "data": {
     "dir": ".verdict/state/local-demo",
     "kind": "staged",
@@ -49,6 +51,7 @@ exit: 0
   "error": null
 }
 --- stderr ---
+warn: a --staged bundle reviews the index, which verdict verify does not run — source.json records no content_tree, so no VERIFIED claim can land on this bundle; fetch-local without --staged to verify fixes
 » estimate: no comparable past runs — cost unknown (no usable .verdict/state/*/cost.json records yet)
 » roles -> .verdict/state/local-demo/roles.txt (heuristic file roles for triage)
 » panel: none pinned (set REVIEW_PANEL or the typed defaults.panel for comparable, cost-capped runs)
@@ -263,8 +266,8 @@ rather than becoming ground truth.
 --- file C/.verdict/state/local-demo/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "8eba91578ce1d3fefc9584e00bd72313da253dbb87996429fc494b917614a997",
-  "prompts_hash": "d90bc6b2583ee2ec9e08fd7ee36a6129b291adb7231e35551601de33e330e6a4",
+  "run_id": "dd19d17c39a38112a0eb27815cc1cba92f99ce11a5f0156d423d825b6b65c582",
+  "prompts_hash": "49e642c8e1e6e18635dd843199db2b027d2c27c042b2ad2cd15ac9468cfd9c12",
   "inputs": [
     {
       "kind": "prompt",
@@ -368,8 +371,8 @@ rather than becoming ground truth.
       "kind": "prompt",
       "name": "prompts/review.md",
       "status": "included",
-      "sha256": "95f6a855d9223ff997e80b228737d59ab60a05db6a91a96de8856fbabbfafde4",
-      "bytes": 20492
+      "sha256": "168b2792d0d366b950fd71a04575505c118d4214ebad9eadf5df060a49697924",
+      "bytes": 20517
     },
     {
       "kind": "prompt",
@@ -506,8 +509,8 @@ rather than becoming ground truth.
       "kind": "bundle",
       "name": "refs/review-checklist.md",
       "status": "included",
-      "sha256": "beaaaee7b3b89b6b7b0844bb5fcdd5c6fba9549c65881b48801eccbdd0f2096c",
-      "bytes": 19284
+      "sha256": "30201066cf4b60f5ef23c7a4fe320e1b779ec6788c6a705e92b5a38d4b10065a",
+      "bytes": 19309
     },
     {
       "kind": "bundle",
@@ -997,6 +1000,7 @@ rather than becoming ground truth.
   "range": "HEAD:index",
   "dirty": false,
   "worktree_diff_sha256": null,
+  "content_tree": null,
   "diff_sha256": "94d2a258c8308641db7b0ada6e81eda8fae398466cb7652b30a837ba95076caa",
   "patch_id": "a863c33cd4682ef075547bb98dc86ccb02717e33",
   "patch_id_kind": "git-patch-id",

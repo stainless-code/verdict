@@ -69,7 +69,7 @@ cat > "$LB/review.json" <<EOF
 "triage":[{"sig":"$SIG","status":"wont-fix","rationale":"By design: the wording matches the pinned style guide verbatim"}]}
 EOF
 cat > "$LB/verification.json" <<EOF
-[{"sig":"$SIG","verdict":"VERIFIED","verifyCmd":"true","resultHead":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]
+[{"sig":"$SIG","verdict":"VERIFIED","verifyCmd":"true"}]
 EOF
 run_review record acme/app local-schematest --json
 if [ "$EVAL_STATUS" -eq 0 ] \

@@ -72,7 +72,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	res, names, ref := st.mergeAndName(dir, prov, headFull, review)
+	res, names, ref := st.mergeAndName(ctx, dir, prov, headFull, review)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -304,12 +304,14 @@ func (st *svc) checkLocalFresh(ctx context.Context, dir string) *core.RefusalErr
 // leaves no findings behind for a later `fix` to consume. Applying writes
 // nothing on a dry run. The returned pass is what the warning scan skips: a
 // planned file's nameless entries are the repair message's, in both modes.
-func (st *svc) mergeAndName(dir, prov, headFull string, review *jq.Obj) (MergeResult, *costNamePass, *core.RefusalError) {
+func (st *svc) mergeAndName(
+	ctx context.Context, dir, prov, headFull string, review *jq.Obj,
+) (MergeResult, *costNamePass, *core.RefusalError) {
 	names, ref := st.planCostNames(dir)
 	if ref != nil {
 		return MergeResult{}, nil, ref
 	}
-	res, ref := st.merge(dir, prov, headFull, review)
+	res, ref := st.merge(ctx, dir, prov, headFull, review)
 	if ref != nil {
 		return MergeResult{}, nil, ref
 	}
@@ -319,10 +321,10 @@ func (st *svc) mergeAndName(dir, prov, headFull string, review *jq.Obj) (MergeRe
 	return res, names, nil
 }
 
-func (st *svc) merge(dir, prov, headFull string, review *jq.Obj) (MergeResult, *core.RefusalError) {
+func (st *svc) merge(ctx context.Context, dir, prov, headFull string, review *jq.Obj) (MergeResult, *core.RefusalError) {
 	req := st.req
 	rt := st.runtime()
-	res, err := Merge(&rt, &MergeParams{
+	res, err := Merge(ctx, &rt, &MergeParams{
 		Dir:             dir,
 		Prov:            prov,
 		HeadFull:        headFull,

@@ -6,7 +6,7 @@ exit: 0
   "repo": "acme/app",
   "pr": null,
   "at": "0000-00-00T00:00:00Z",
-  "next": "patch the anchor file, commit it, re-run fetch-local, run verdict verify, write verification.json, run record to land it, then re-run fix",
+  "next": "patch the anchor file, re-run fetch-local, run verdict verify, write verification.json, run record to land it, then re-run fix",
   "warnings": [],
   "data": {
     "dir": ".verdict/state/local-brief",
@@ -61,10 +61,10 @@ brief:
   approach: Track delivery ids in a bounded LRU checked at the top of the handler.
   questions:
     - Should the dedupe window be 24 hours or 7 days?
-instructions: patch the anchor file (app.txt), commit the fix and re-run fetch-local so the bundle's head is that commit, then run its verify command (verifyCmd in .verdict/state/local-brief/patch.json) through verdict verify acme/app local-brief and write verification.json beside it [{sig, verdict, resultHead, verifyCmd}] with verdict VERIFIED, that verifyCmd, and resultHead matching HEAD (fix itself runs nothing — a claim flips only on the verify-receipt.json verify writes: exit 0 for that command on the clean, committed HEAD); land it with record acme/app local-brief; re-run fix acme/app local-brief for the next pass
+instructions: patch the anchor file (app.txt) — git add -N any file the fix creates — and re-run fetch-local so the bundle captures the patched content (no commit needed), then run its verify command (verifyCmd in .verdict/state/local-brief/patch.json) through verdict verify acme/app local-brief and write verification.json beside it [{sig, verdict, verifyCmd}] with verdict VERIFIED and that verifyCmd (fix itself runs nothing — a claim flips only on the verify-receipt.json verify writes: exit 0 for that command on the content the bundle grades); land it with record acme/app local-brief; re-run fix acme/app local-brief for the next pass
 gate: keep the verify command repo-scoped, non-destructive, and offline — the verify verb refuses destructive/networked/credential-reading/repo-escaping shapes before running anything (typed verify-* errors with a try: hint), so run anything stronger in your own shell — it writes no receipt, so settle that finding with verdict triage
 loops multiply agent spend — cap review spend with REVIEW_BUDGET_USD or the typed budget_usd default (see docs/manual.md)
-next: patch app.txt, commit it, re-run fetch-local, run verdict verify, write verification.json, run record to land it, then re-run fix
+next: patch app.txt, re-run fetch-local, run verdict verify, write verification.json, run record to land it, then re-run fix
 --- files ---
 --- file C/.verdict/state/local-brief/fix.json ---
 {"sigs":{"c123456789abcdef0123456789abcdef01234567":{"passes":1,"last_at":"0000-00-00T00:00:00Z","baseline":[".verdict/"]}}}

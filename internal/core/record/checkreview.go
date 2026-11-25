@@ -130,7 +130,7 @@ var (
 	specStatuses       = []string{"met", "violated", "unmet", "n/a"}
 	riskLevels         = []string{"low", "medium", "high", "critical"}
 	rigorKeys          = []string{rungSaid, rungPointed, rungWalked, rungRan, rungReproduced}
-	triageStatuses     = []string{"open", "addressed", exampleWontFix, exampleFalsePositive, "deferred"}
+	triageStatuses     = []string{"open", exampleWontFix, exampleFalsePositive, "deferred"}
 )
 
 // CheckReview validates a review.json against a unified diff. It is pure: it
@@ -1107,13 +1107,13 @@ func (c *checker) checkVerification() {
 	items, ok := doc.([]any)
 	if !ok {
 		c.wrongType("verification.json", msgMalformedVerifyClaims,
-			"write an array of {sig, verdict, verifyCmd, resultHead}")
+			"write an array of {sig, verdict, verifyCmd}")
 		return
 	}
 	for i, item := range items {
 		if _, ok := item.(*jq.Obj); !ok {
 			c.wrongType(fmt.Sprintf("verification.json[%d]", i), msgNonObjectVerifyClaim,
-				"use {sig, verdict, verifyCmd, resultHead}")
+				"use {sig, verdict, verifyCmd}")
 		}
 	}
 }
@@ -1272,7 +1272,11 @@ func (c *checker) checkTriageStatus(path string, v any) {
 		c.wrongType(path, "triage status must be a string", "use open|wont-fix|false-positive|deferred", exampleWontFix)
 		return
 	}
-	if !slices.Contains(triageStatuses, s) {
+	switch {
+	case s == "addressed":
+		c.badEnum(path, "triage cannot claim addressed: it comes only from a VERIFIED claim backed by a verdict verify receipt",
+			"claim it in verification.json, or use open|wont-fix|false-positive|deferred", exampleWontFix)
+	case !slices.Contains(triageStatuses, s):
 		c.badEnum(path, fmt.Sprintf("unknown triage status %q", s),
 			"use open|wont-fix|false-positive|deferred", exampleWontFix)
 	}

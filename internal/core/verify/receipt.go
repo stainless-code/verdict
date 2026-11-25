@@ -2,18 +2,14 @@ package verifycore
 
 import (
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"io/fs"
 	"os"
-	"strings"
-	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
-	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -26,107 +22,10 @@ const (
 	verifyTimeoutName = ".verify.timeout"
 	// ReceiptFile is the tool-only patch-path receipt beside patch.json.
 	ReceiptFile   = "verify-receipt.json"
-	receiptSchema = "1"
-	// cannotBack ends every warning for a run whose receipt carries no head.
-	cannotBack = " — " + ReceiptFile + " records no head, so this run cannot back a VERIFIED claim"
-	// statusProbeTimeout and statusProbeCap bound the status read: only
-	// emptiness matters, so a capped listing still reads dirty.
-	statusProbeTimeout = 30 * time.Second
-	statusProbeCap     = 4 << 10
+	receiptSchema = "2"
 	// bundleReadCap bounds a bundle file read through the pinned root.
 	bundleReadCap = 1 << 20
 )
-
-// treeProbe is one read of the checkout verify runs in: the commit and
-// whether anything outside verdict's own .verdict/ state differs from it.
-type treeProbe struct {
-	ref   *core.RefusalError
-	head  string
-	dirty bool
-}
-
-// stateDirRel is verdict's own bundle state, the one part of the tree verify
-// writes; everything else under .verdict/ (config, kb, packs, tests,
-// verify-env) is reviewed input and counts toward a dirty tree.
-var stateDirRel = config.VerdictDir + "/" + config.StateDirName
-
-// loopDirRel is where `verdict loop` writes its round receipts while it runs
-// verify, so it is verdict's own state too, never reviewed input.
-var loopDirRel = config.VerdictDir + "/loop"
-
-// probeTree reads the checked-out head and the working-tree status at root
-// through the injected commander. --no-optional-locks keeps the status read
-// from rewriting the index of the tree it is vouching for. Besides the state
-// directory it skips only the generated .verdict/.gitignore, untracked on a
-// checkout's first run, which keeps verdict's other runtime files ignored.
-func probeTree(ctx context.Context, commander core.Commander, root string) treeProbe {
-	head, ref := gitHead(ctx, commander, root)
-	if ref != nil {
-		return treeProbe{ref: ref}
-	}
-	dirty, ref := treeDirty(ctx, commander, root)
-	if ref != nil {
-		return treeProbe{ref: ref}
-	}
-	return treeProbe{head: head, dirty: dirty}
-}
-
-// treeDirty reports whether anything outside verdict's bundle state differs
-// from HEAD. The flags pin what counts regardless of the checkout's config:
-// status.showUntrackedFiles=no would otherwise hide an untracked input, and
-// diff.ignoreSubmodules would hide a modified submodule.
-func treeDirty(ctx context.Context, commander core.Commander, root string) (bool, *core.RefusalError) {
-	tctx, cancel := context.WithTimeout(ctx, statusProbeTimeout)
-	defer cancel()
-	res, err := commander.Run(tctx, &core.Command{
-		Argv: []string{
-			"git", "--no-optional-locks", "-C", root, "status", "--porcelain",
-			"--untracked-files=all", "--ignore-submodules=none",
-			"--", ".", ":(exclude)" + stateDirRel, ":(exclude)" + loopDirRel, ":(exclude)" + config.GitignorePath,
-		},
-		OutputCap: statusProbeCap,
-	})
-	if err != nil {
-		return false, failed(err)
-	}
-	if res.ExitCode != 0 {
-		return false, &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(
-			"could not read the working tree status at %s (git exit %d)", root, res.ExitCode)}
-	}
-	return strings.TrimSpace(res.Stdout) != "", nil
-}
-
-// boundHead is the commit the receipt vouches for: both probes must read the
-// same head over a clean tree. HEAD alone says nothing about uncommitted
-// edits, so a dirty tree binds no head. Anything else warns and returns "".
-func (st *state) boundHead(root string, before, after treeProbe) string {
-	gap := probeGap(root, before)
-	if gap == "" {
-		gap = probeGap(root, after)
-	}
-	if gap == "" && before.head != after.head {
-		gap = fmt.Sprintf("checked-out HEAD moved from %s to %s during verify",
-			readcommon.ShortSHA(before.head), readcommon.ShortSHA(after.head))
-	}
-	if gap != "" {
-		st.warn(gap + cannotBack)
-		return ""
-	}
-	return before.head
-}
-
-// probeGap names why one probe cannot vouch for a commit, or "".
-func probeGap(root string, p treeProbe) string {
-	switch {
-	case p.ref != nil:
-		return fmt.Sprintf("could not read the checked-out tree at %s (%s)", root, p.ref.Message)
-	case p.head == "":
-		return fmt.Sprintf("could not read the checked-out HEAD at %s (git printed none)", root)
-	case p.dirty:
-		return fmt.Sprintf("the working tree at %s has uncommitted changes — commit the fix, then run verdict verify", root)
-	}
-	return ""
-}
 
 // bundleHandle pins the bundle directory verify writes into. It is opened
 // before the command runs, every write goes through root, and identity is
