@@ -122,6 +122,23 @@ const (
 	// it is the only thing under the reviewed root the PR itself cannot plant.
 	sandboxGitName = ".git"
 
+	// sandboxGitObjectsDir is a git directory's object store; its payload
+	// (loose objects, packs, the commit-graph and pack-list caches) is what
+	// `git clone --local` hardlinks, and the hardlink check skips only that.
+	sandboxGitObjectsDir = "objects"
+
+	// sandboxGitPayloadDepth is the fewest components a payload file has
+	// below its git directory: `objects/<fan-out|pack|info>/<file>`.
+	sandboxGitPayloadDepth = 3
+
+	// sandboxGitHooksDir is a git location's hook directory; links in it may
+	// point into the tree (the operator's choice, like core.hooksPath).
+	sandboxGitHooksDir = "hooks"
+
+	// sandboxGitModulesDir holds a git directory's submodule git
+	// directories, each scanned with the same rules.
+	sandboxGitModulesDir = "modules"
+
 	// sandboxGitdirPrefix is the exact prefix git requires on a `.git` file.
 	sandboxGitdirPrefix = "gitdir: "
 
@@ -574,21 +591,101 @@ func sandboxGitBindTargets(repo string) ([]string, *core.RefusalError) {
 	if ref := sandboxGitRootRefusal(repo); ref != nil {
 		return nil, ref
 	}
-	realRepo, err := filepath.EvalSymlinks(repo)
-	if err != nil {
-		return nil, sandboxUnavailable(fmt.Sprintf("could not resolve the reviewed root %s: %v", repo, err))
+	root, ref := newSandboxGitRoot(repo)
+	if ref != nil {
+		return nil, ref
 	}
-	paths, ref := sandboxGitChainStrict(repo, realRepo)
+	paths, ref := sandboxGitChainStrict(root)
 	if ref != nil {
 		return nil, ref
 	}
 	pins := make([]string, 0, len(paths))
 	for _, path := range paths {
-		if pin, ok := sandboxTopLevel(path, repo, realRepo); ok {
+		if pin, ok := sandboxTopLevel(path, root.repo, root.real); ok {
 			pins = append(pins, pin)
 		}
 	}
 	return sandboxCleanUnique(pins), nil
+}
+
+// sandboxGitRoot is the reviewed root the git walks classify paths against:
+// its literal and resolved spellings, and its file identity. Spelling alone
+// cannot decide whether a path is inside the root: on a case-insensitive
+// volume `../proberoot` names `ProbeRoot`, and on macOS the firmlink
+// spelling `/System/Volumes/Data/private/var/…` names `/private/var/…`.
+// Identity ([os.SameFile]) decides, and a path inside the root by identity
+// but under neither spelling refuses: skipping it as outside would leave it
+// writable, and a rule in the alias spelling would not hold (Seatbelt
+// matches the firmlink-resolved path).
+type sandboxGitRoot struct {
+	id   os.FileInfo
+	repo string
+	real string
+}
+
+func newSandboxGitRoot(repo string) (sandboxGitRoot, *core.RefusalError) {
+	realRepo, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		return sandboxGitRoot{}, sandboxUnavailable(fmt.Sprintf("could not resolve the reviewed root %s: %v", repo, err))
+	}
+	id, err := os.Stat(realRepo)
+	if err != nil {
+		return sandboxGitRoot{}, sandboxGitInspectRefusal(realRepo, err)
+	}
+	return sandboxGitRoot{id: id, repo: repo, real: realRepo}, nil
+}
+
+// inside reports whether path sits strictly below the root under one of its
+// spellings, and refuses a path that sits below it by identity alone.
+func (r sandboxGitRoot) inside(pointer, path string) (bool, *core.RefusalError) {
+	if _, ok := sandboxTopLevel(path, r.repo, r.real); ok {
+		return true, nil
+	}
+	if r.below(path) {
+		return false, sandboxUnavailable(fmt.Sprintf("the git pointer %s reaches %s, which is inside the reviewed "+
+			"root %s under another spelling (letter case or a firmlink), so no rule or bind in that spelling would "+
+			"protect it — point it at the path as the root is spelled, or verify a fresh clone", pointer, path, r.repo))
+	}
+	return false, nil
+}
+
+// below reports whether one of path's proper ancestors is the root, by
+// identity. The walks hand it physical paths (every link already followed),
+// so its ancestors are the directories the kernel would traverse.
+func (r sandboxGitRoot) below(path string) bool {
+	return sandboxAncestorIs(filepath.Dir(path), r.id)
+}
+
+// heldRefusal refuses, on both platforms, a git directory that is the
+// reviewed root or one of its ancestors, by identity: the root is writable,
+// so its hooks, config, or refs would be too, and no rule below the root can
+// take that back. A target that does not exist is left to the caller.
+func (r sandboxGitRoot) heldRefusal(final string) *core.RefusalError {
+	if target, err := os.Stat(final); err == nil && sandboxAncestorIs(r.real, target) {
+		return sandboxUnavailable(fmt.Sprintf("the git location %s is the reviewed root or holds it, so the "+
+			"writable root would make the git directory writable — verify from a checkout outside its git "+
+			"directory", final))
+	}
+	return nil
+}
+
+// sandboxAncestorIs reports whether path, or one of its ancestors, is the
+// file want.
+func sandboxAncestorIs(path string, want os.FileInfo) bool {
+	for dir := path; ; dir = filepath.Dir(dir) {
+		if sandboxSameFile(dir, want) {
+			return true
+		}
+		if filepath.Dir(dir) == dir {
+			return false
+		}
+	}
+}
+
+// sandboxSameFile reports whether path exists and is the file want.
+func sandboxSameFile(path string, want os.FileInfo) bool {
+	info, err := os.Stat(path)
+	return err == nil && os.SameFile(info, want)
 }
 
 // sandboxTopLevel returns the root's top-level entry that holds path, spelled
@@ -606,9 +703,10 @@ func sandboxTopLevel(path, repo, realRepo string) (string, bool) {
 
 // sandboxGitChainStrict follows the root's `.git` and, when present, the
 // commondir its git directory names, and returns every in-root path the
-// walks visit. Each pointer must parse and name an existing directory.
-func sandboxGitChainStrict(repo, realRepo string) ([]string, *core.RefusalError) {
-	dotgit := filepath.Join(repo, sandboxGitName)
+// walks visit. Each pointer must parse and name an existing directory, and
+// no control file in the git locations may have a second name.
+func sandboxGitChainStrict(root sandboxGitRoot) ([]string, *core.RefusalError) {
+	dotgit := filepath.Join(root.repo, sandboxGitName)
 	info, err := os.Lstat(dotgit)
 	if err != nil {
 		return nil, sandboxGitInspectRefusal(dotgit, err)
@@ -617,7 +715,7 @@ func sandboxGitChainStrict(repo, realRepo string) ([]string, *core.RefusalError)
 	gitdir := dotgit
 	switch {
 	case info.Mode().IsRegular():
-		walked, final, ref := sandboxGitFollowStrict(dotgit, sandboxGitdirPrefix, repo, repo, realRepo)
+		walked, final, ref := sandboxGitFollowStrict(dotgit, sandboxGitdirPrefix, root.repo, root)
 		if ref != nil {
 			return nil, ref
 		}
@@ -626,25 +724,27 @@ func sandboxGitChainStrict(repo, realRepo string) ([]string, *core.RefusalError)
 	case !info.IsDir():
 		return nil, sandboxUnavailable(dotgit + " is neither a directory nor a `gitdir:` file")
 	}
-	walked, ref := sandboxGitCommondirStrict(gitdir, repo, realRepo)
+	walked, common, ref := sandboxGitCommondirStrict(gitdir, root)
 	if ref != nil {
+		return nil, ref
+	}
+	if ref := sandboxGitLocationsRefusal(root, dotgit, gitdir, common); ref != nil {
 		return nil, ref
 	}
 	return append(paths, walked...), nil
 }
 
 // sandboxGitCommondirStrict follows the commondir a git directory names, if
-// it has one.
-func sandboxGitCommondirStrict(gitdir, repo, realRepo string) ([]string, *core.RefusalError) {
+// it has one, and returns the walk and the common directory ("" for none).
+func sandboxGitCommondirStrict(gitdir string, root sandboxGitRoot) ([]string, string, *core.RefusalError) {
 	commondir := filepath.Join(gitdir, "commondir")
 	if _, err := os.Lstat(commondir); err != nil {
 		if os.IsNotExist(err) {
-			return nil, nil
+			return nil, "", nil
 		}
-		return nil, sandboxGitInspectRefusal(commondir, err)
+		return nil, "", sandboxGitInspectRefusal(commondir, err)
 	}
-	walked, _, ref := sandboxGitFollowStrict(commondir, "", gitdir, repo, realRepo)
-	return walked, ref
+	return sandboxGitFollowStrict(commondir, "", gitdir, root)
 }
 
 // sandboxGitFollowStrict walks one pointer's raw target and refuses every
@@ -653,41 +753,49 @@ func sandboxGitCommondirStrict(gitdir, repo, realRepo string) ([]string, *core.R
 // symlink (it could be replaced) or does not exist yet (it could be created
 // as a symlink, which is how `a/../g` escapes once `a` appears). It returns
 // the in-root paths visited, the target included, and the target.
-func sandboxGitFollowStrict(pointer, prefix, base, repo, realRepo string) ([]string, string, *core.RefusalError) {
+func sandboxGitFollowStrict(pointer, prefix, base string, root sandboxGitRoot) ([]string, string, *core.RefusalError) {
 	raw, _, ref := sandboxGitPointerRaw(pointer, prefix)
 	if ref != nil {
 		return nil, "", ref
 	}
 	steps, final := sandboxGitWalk(base, raw)
-	if ref := sandboxGitTargetRefusal(pointer, final, realRepo); ref != nil {
+	if ref := sandboxGitTargetRefusal(pointer, final, root); ref != nil {
 		return nil, "", ref
 	}
 	walked := make([]string, 0, len(steps)+1)
 	for _, step := range steps {
-		if _, inside := sandboxTopLevel(step.path, repo, realRepo); !inside {
-			continue
-		}
-		if ref := sandboxGitStepRefusal(pointer, step); ref != nil {
+		inside, ref := sandboxGitStrictStep(pointer, step, root)
+		if ref != nil {
 			return nil, "", ref
 		}
-		walked = append(walked, step.path)
+		if inside {
+			walked = append(walked, step.path)
+		}
 	}
 	return append(walked, final), final, nil
 }
 
+// sandboxGitStrictStep classifies one walked component and, when it sits
+// inside the root, refuses the shapes bwrap cannot pin.
+func sandboxGitStrictStep(pointer string, step sandboxGitStep, root sandboxGitRoot) (bool, *core.RefusalError) {
+	inside, ref := root.inside(pointer, step.path)
+	if ref != nil || !inside {
+		return false, ref
+	}
+	return true, sandboxGitStepRefusal(pointer, step)
+}
+
 // sandboxGitTargetRefusal refuses a walk's target that is not an existing
-// directory, or that is the root itself.
-func sandboxGitTargetRefusal(pointer, final, realRepo string) *core.RefusalError {
+// directory, or that is or holds the root. A target inside the root under
+// another spelling needs no check here: it is a walked component, or an
+// ancestor of one, and that component refuses first.
+func sandboxGitTargetRefusal(pointer, final string, root sandboxGitRoot) *core.RefusalError {
 	if info, err := os.Stat(final); err != nil || !info.IsDir() {
 		return sandboxUnavailable(fmt.Sprintf("%s names the git directory %s, which does not exist as a "+
 			"directory, so the command could create it and git would run its hooks later — fix or remove the "+
 			"pointer, or verify a fresh clone", pointer, final))
 	}
-	if resolved, err := filepath.EvalSymlinks(final); err == nil && resolved == realRepo {
-		return sandboxUnavailable(fmt.Sprintf(
-			"the git location %s is the reviewed root itself, so bwrap cannot make it read-only", final))
-	}
-	return nil
+	return root.heldRefusal(final)
 }
 
 // sandboxGitStepRefusal refuses one in-root component of a pointer walk that
@@ -721,41 +829,65 @@ type sandboxGitStep struct {
 // `g` and never looks at `a`, while git resolves `a` and goes wherever it
 // points.
 func sandboxGitWalk(base, raw string) ([]sandboxGitStep, string) {
+	var w sandboxGitWalker
+	final := w.walk(base, raw)
+	return w.steps, final
+}
+
+// sandboxGitMaxHops bounds the links one pointer walk follows, as the
+// kernel's own limit does; past it the walk stops at the link and the target
+// fails to resolve.
+const sandboxGitMaxHops = 40
+
+// sandboxGitWalker records every component one pointer walk visits,
+// including each one inside a symlink's target: links are resolved one hop
+// at a time, never with EvalSymlinks, so a link reached only through another
+// link (an in-root link behind an outside-root one) is still a recorded step
+// the caller refuses or write-denies.
+type sandboxGitWalker struct {
+	steps []sandboxGitStep
+	hops  int
+}
+
+func (w *sandboxGitWalker) walk(base, raw string) string {
 	current, rest := base, raw
 	if filepath.IsAbs(raw) {
 		volume := filepath.VolumeName(raw)
 		current, rest = volume+string(filepath.Separator), raw[len(volume):]
 	}
-	var steps []sandboxGitStep
 	for _, part := range strings.FieldsFunc(rest, sandboxIsSeparator) {
 		switch part {
 		case ".":
 		case "..":
 			current = filepath.Dir(current)
 		default:
-			var step sandboxGitStep
-			step, current = sandboxGitVisit(filepath.Join(current, part))
-			steps = append(steps, step)
+			current = w.visit(filepath.Join(current, part))
 		}
 	}
-	return steps, current
+	return current
 }
 
-// sandboxGitVisit inspects one component and returns where the walk stands
-// after it: the component itself, or a symlink's resolved target.
-func sandboxGitVisit(path string) (sandboxGitStep, string) {
+// visit inspects one component and returns where the walk stands after it:
+// the component itself, or, for a symlink, wherever walking its target from
+// the link's directory leads.
+func (w *sandboxGitWalker) visit(path string) string {
 	info, err := os.Lstat(path)
 	if err != nil {
-		return sandboxGitStep{path: path, missing: true}, path
+		w.steps = append(w.steps, sandboxGitStep{path: path, missing: true})
+		return path
 	}
 	if info.Mode()&os.ModeSymlink == 0 {
-		return sandboxGitStep{path: path}, path
+		w.steps = append(w.steps, sandboxGitStep{path: path})
+		return path
 	}
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return sandboxGitStep{path: path, symlink: true, missing: true}, path
+	target, err := os.Readlink(path)
+	if err != nil || target == "" || w.hops >= sandboxGitMaxHops {
+		w.steps = append(w.steps, sandboxGitStep{path: path, symlink: true, missing: true})
+		return path
 	}
-	return sandboxGitStep{path: path, symlink: true}, resolved
+	w.hops++
+	w.steps = append(w.steps, sandboxGitStep{path: path, symlink: true})
+	return w.walk(filepath.Dir(path), target)
 }
 
 // sandboxIsSeparator splits a pointer on `/` (git writes it) and on the
@@ -778,8 +910,9 @@ func sandboxGitInspectRefusal(path string, err error) *core.RefusalError {
 // config that git runs later outside any sandbox. A symlinked `.git` is the
 // same gap, because only the link's target can be bound read-only and the
 // link itself stays replaceable. An error other than "does not exist" is
-// named as itself. macOS needs none of this: its profile denies writes to
-// every `.git` path below the root, existing or not.
+// named as itself. macOS needs no `.git` to exist — its profile denies writes
+// to every `.git` path below the root, existing or not — but refuses a
+// symlinked one the same way ([sandboxGitDirs]).
 func sandboxGitRootRefusal(repo string) *core.RefusalError {
 	dotgit := filepath.Join(repo, sandboxGitName)
 	info, err := os.Lstat(dotgit)
@@ -792,11 +925,21 @@ func sandboxGitRootRefusal(repo string) *core.RefusalError {
 			"outside the sandbox — verify from the top of a git checkout, or run the whole review in a "+
 			"throwaway VM or container", repo, sandboxGitName))
 	case info.Mode()&os.ModeSymlink != 0:
-		return sandboxUnavailable(fmt.Sprintf("the reviewed root's %s is a symlink, and bwrap can protect only its "+
-			"target, so the link could be replaced with a git directory that runs later — replace the link with the "+
-			"directory or a `gitdir:` file, or verify a fresh clone", dotgit))
+		return sandboxGitSymlinkedDotRefusal(dotgit)
 	}
 	return nil
+}
+
+// sandboxGitSymlinkedDotRefusal refuses a symlinked `.git` on both
+// platforms. bwrap can protect only the link's target, so the link itself
+// stays replaceable; Seatbelt denies the link and its target by path, but
+// when the target is a `gitdir:` file git reads it through the link, and the
+// walk, which reads only a regular `.git`, would leave the git directory it
+// names unprotected.
+func sandboxGitSymlinkedDotRefusal(dotgit string) *core.RefusalError {
+	return sandboxUnavailable(fmt.Sprintf("the reviewed root's %s is a symlink, and only its target can be "+
+		"protected, so the link or the pointer it reaches could send git to a git directory that runs later — "+
+		"replace the link with the directory or a `gitdir:` file, or verify a fresh clone", dotgit))
 }
 
 // sandboxRelInside returns path relative to base when path is strictly below
@@ -812,64 +955,307 @@ func sandboxRelInside(base, path string) (string, bool) {
 
 // sandboxGitDirs lists, for the macOS profile, every in-root path a git
 // pointer walk visits — `<root>/.git`, each component of the `gitdir:` and
-// commondir walks (missing ones and symlinks included), and the git
-// directories they reach — so each is write-denied by path. A component that
+// commondir walks (missing ones and symlinks included, links behind other
+// links too), and the git directories they reach — so each is write-denied
+// by path. It refuses first what Linux refuses on the same grounds: a
+// symlinked `.git` or pointer file, a git directory that is or holds the
+// root, a walk that reaches inside the root under another spelling, and a
+// git control file with a second hard link. A component that
 // does not exist yet is denied too, so it cannot be created as a link; one
 // that is a symlink keeps its own spelling denied, so it cannot be replaced.
 // Paths outside the root are left out: every write there is denied already,
 // and a subpath rule on an ancestor of the root would deny the root itself.
-func sandboxGitDirs(root string) ([]string, *core.RefusalError) {
-	dotgit := filepath.Join(root, sandboxGitName)
+func sandboxGitDirs(repo string) ([]string, *core.RefusalError) {
+	dotgit := filepath.Join(repo, sandboxGitName)
 	info, err := os.Lstat(dotgit)
-	if errors.Is(err, fs.ErrNotExist) {
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
 		return nil, nil
-	}
-	if err != nil {
+	case err != nil:
 		return nil, sandboxGitInspectRefusal(dotgit, err)
+	case info.Mode()&os.ModeSymlink != 0:
+		return nil, sandboxGitSymlinkedDotRefusal(dotgit)
 	}
-	realRoot, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		realRoot = root
+	root, ref := newSandboxGitRoot(repo)
+	if ref != nil {
+		return nil, ref
 	}
-	dirs := []string{dotgit}
-	gitdir := dotgit
+	dirs, gitdir := []string{dotgit}, dotgit
 	if info.Mode().IsRegular() {
-		raw, _, ref := sandboxGitPointerRaw(dotgit, sandboxGitdirPrefix)
-		if ref != nil {
+		var walked []string
+		if walked, gitdir, ref = sandboxGitdirDirs(dotgit, root); ref != nil {
 			return nil, ref
 		}
-		var steps []sandboxGitStep
-		steps, gitdir = sandboxGitWalk(root, raw)
-		dirs = append(dirs, sandboxGitInRoot(steps, gitdir, root, realRoot)...)
+		dirs = append(dirs, walked...)
 	}
-	common, ref := sandboxGitCommondirDirs(gitdir, root, realRoot)
+	common, commonDir, ref := sandboxGitCommondirDirs(gitdir, root)
+	if ref == nil {
+		ref = sandboxGitLocationsRefusal(root, dotgit, gitdir, commonDir)
+	}
 	if ref != nil {
 		return nil, ref
 	}
 	return sandboxCleanUnique(append(dirs, common...)), nil
 }
 
+// sandboxGitdirDirs lists the in-root paths of the `gitdir:` walk a `.git`
+// file names, and the git directory it reaches.
+func sandboxGitdirDirs(dotgit string, root sandboxGitRoot) ([]string, string, *core.RefusalError) {
+	raw, _, ref := sandboxGitPointerRaw(dotgit, sandboxGitdirPrefix)
+	if ref != nil {
+		return nil, "", ref
+	}
+	steps, gitdir := sandboxGitWalk(root.repo, raw)
+	if ref := root.heldRefusal(gitdir); ref != nil {
+		return nil, "", ref
+	}
+	walked, ref := sandboxGitInRoot(dotgit, steps, gitdir, root)
+	return walked, gitdir, ref
+}
+
 // sandboxGitCommondirDirs lists the in-root paths of the commondir walk, if
-// the git directory names one.
-func sandboxGitCommondirDirs(gitdir, root, realRoot string) ([]string, *core.RefusalError) {
-	raw, present, ref := sandboxGitPointerRaw(filepath.Join(gitdir, "commondir"), "")
+// the git directory names one, and the common directory ("" for none).
+func sandboxGitCommondirDirs(gitdir string, root sandboxGitRoot) ([]string, string, *core.RefusalError) {
+	pointer := filepath.Join(gitdir, "commondir")
+	raw, present, ref := sandboxGitPointerRaw(pointer, "")
 	if ref != nil || !present {
-		return nil, ref
+		return nil, "", ref
 	}
 	steps, common := sandboxGitWalk(gitdir, raw)
-	return sandboxGitInRoot(steps, common, root, realRoot), nil
+	if ref := root.heldRefusal(common); ref != nil {
+		return nil, "", ref
+	}
+	walked, ref := sandboxGitInRoot(pointer, steps, common, root)
+	return walked, common, ref
 }
 
 // sandboxGitInRoot keeps the walk's paths, and its target, that sit strictly
-// below the root.
-func sandboxGitInRoot(steps []sandboxGitStep, final, root, realRoot string) []string {
+// below the root, refusing one that does under another spelling.
+func sandboxGitInRoot(pointer string, steps []sandboxGitStep, final string, root sandboxGitRoot) ([]string, *core.RefusalError) {
 	var paths []string
 	for _, path := range append(sandboxGitStepPaths(steps), final) {
-		if _, inside := sandboxTopLevel(path, root, realRoot); inside {
+		inside, ref := root.inside(pointer, path)
+		if ref != nil {
+			return nil, ref
+		}
+		if inside {
 			paths = append(paths, path)
 		}
 	}
-	return paths
+	return paths, nil
+}
+
+// sandboxGitLocationsRefusal scans every git location — the `.git` entry,
+// the git directory, and the common directory, inside the root or not — for
+// a control file the path rules cannot hold. Seatbelt denies writes by path
+// and bwrap by mount, so two shapes would reach a protected file from the
+// writable root:
+//
+//   - a second hard link: `cfg` linked to `.git/config` would let the
+//     command append `core.fsmonitor` through `cfg`, and a link to the
+//     `.git` pointer would let it repoint git. A link made at run time is
+//     not the gap (Seatbelt denies it; link(2) across the bwrap mounts fails
+//     EXDEV), so the check runs once, at setup. Only object payload is
+//     exempt, in each git directory the scan finds (the location itself and
+//     every submodule git directory under `modules/`): loose objects, packs,
+//     and the commit-graph and pack-list caches, which `git clone --local`
+//     hardlinks by design. Everything else, `objects/info/alternates`
+//     included (it redirects object lookup), is a control file.
+//   - a symlink whose target the command could rewrite: `config -> ../cfg`
+//     makes git read config from the tree. A target outside the root, or
+//     inside one of the protected git locations — reached through real
+//     directories, never an in-root link the command could swap — is
+//     allowed. So is any link under a git directory's `hooks/`: hook code
+//     in the tree is the operator's choice, the same concession as
+//     `core.hooksPath` pointing at `.husky/`.
+//
+// A location that does not exist, or an entry that vanishes mid-walk, has
+// nothing left to alias; every other walk error refuses.
+func sandboxGitLocationsRefusal(root sandboxGitRoot, locations ...string) *core.RefusalError {
+	locations = sandboxCleanUnique(locations)
+	var protected []os.FileInfo
+	for _, location := range locations {
+		if info, err := os.Lstat(location); err == nil {
+			protected = append(protected, info)
+		}
+	}
+	for _, location := range locations {
+		scan := &sandboxGitScanner{
+			root: root, location: location, protected: protected, info: fs.DirEntry.Info, gitdirs: []string{location},
+		}
+		if ref := scan.run(); ref != nil {
+			return ref
+		}
+	}
+	return nil
+}
+
+// sandboxGitScanner walks one git location. info reads an entry's
+// metadata; it is a field so a test can make an entry vanish mid-walk.
+// gitdirs holds the git directories found so far: the location, then each
+// submodule git directory below a `modules/` (WalkDir visits a directory
+// before its contents, so a git directory is known before its files).
+type sandboxGitScanner struct {
+	info      func(fs.DirEntry) (fs.FileInfo, error)
+	root      sandboxGitRoot
+	location  string
+	protected []os.FileInfo
+	gitdirs   []string
+}
+
+// run walks the location; the first refusal stops the walk and is
+// returned.
+func (s *sandboxGitScanner) run() *core.RefusalError {
+	err := filepath.WalkDir(s.location, func(path string, d fs.DirEntry, err error) error {
+		if ref := s.visit(path, d, err); ref != nil {
+			return ref
+		}
+		return nil
+	})
+	var ref *core.RefusalError
+	if err != nil && !errors.As(err, &ref) {
+		ref = sandboxGitInspectRefusal(s.location, err)
+	}
+	return ref
+}
+
+// visit checks one walked entry.
+func (s *sandboxGitScanner) visit(path string, d fs.DirEntry, err error) *core.RefusalError {
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	case err != nil:
+		return sandboxGitInspectRefusal(path, err)
+	case d.Type()&fs.ModeSymlink != 0:
+		return s.symlinkRefusal(path)
+	case d.IsDir():
+		s.noteSubmoduleGitdir(path)
+		return nil
+	case !d.Type().IsRegular() || s.objectPayload(path):
+		return nil
+	}
+	return s.hardlinkRefusal(path, d)
+}
+
+// noteSubmoduleGitdir records a directory below a git directory's
+// `modules/` that is itself a git directory (it holds a `HEAD`). A
+// submodule's name may contain slashes, so any depth below `modules/`
+// qualifies, and its own `modules/` nests further.
+func (s *sandboxGitScanner) noteSubmoduleGitdir(path string) {
+	first, rest, _ := strings.Cut(s.relToGitdir(path), string(filepath.Separator))
+	if first != sandboxGitModulesDir || rest == "" {
+		return
+	}
+	if _, err := os.Lstat(filepath.Join(path, "HEAD")); err == nil {
+		s.gitdirs = append(s.gitdirs, path)
+	}
+}
+
+// relToGitdir is path relative to the deepest known git directory that
+// holds it.
+func (s *sandboxGitScanner) relToGitdir(path string) string {
+	owner := s.location
+	for _, dir := range s.gitdirs {
+		if len(dir) > len(owner) && strings.HasPrefix(path, dir+string(filepath.Separator)) {
+			owner = dir
+		}
+	}
+	rel, err := filepath.Rel(owner, path)
+	if err != nil {
+		return ""
+	}
+	return rel
+}
+
+// objectPayload reports whether path is object payload of its git
+// directory: `objects/<2 hex>/…`, `objects/pack/…`, or the commit-graph and
+// pack-list caches under `objects/info/`.
+func (s *sandboxGitScanner) objectPayload(path string) bool {
+	parts := strings.Split(s.relToGitdir(path), string(filepath.Separator))
+	if len(parts) < sandboxGitPayloadDepth || parts[0] != sandboxGitObjectsDir {
+		return false
+	}
+	switch {
+	case parts[1] == "pack" || sandboxIsHexByte(parts[1]):
+		return true
+	case parts[1] == "info":
+		return parts[2] == "commit-graph" || parts[2] == "commit-graphs" || parts[2] == "packs"
+	}
+	return false
+}
+
+// sandboxIsHexByte reports whether name is a loose-object fan-out
+// directory: two lowercase hex digits.
+func sandboxIsHexByte(name string) bool {
+	return len(name) == 2 && strings.Trim(name, "0123456789abcdef") == ""
+}
+
+// hardlinkRefusal refuses a regular file with more than one name.
+func (s *sandboxGitScanner) hardlinkRefusal(path string, d fs.DirEntry) *core.RefusalError {
+	info, err := s.info(d)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return nil
+	case err != nil:
+		return sandboxGitInspectRefusal(path, err)
+	case sandboxHasLinks(info):
+		return sandboxUnavailable(fmt.Sprintf("the git control file %s has another hard link, so a name for it "+
+			"in the writable root would write it past every path rule — remove the extra name, or verify a "+
+			"clone made with --no-hardlinks", path))
+	}
+	return nil
+}
+
+// symlinkRefusal refuses a link, outside `hooks/`, whose target — or any
+// component on the way to it — sits inside the root outside the protected
+// git locations, where the command could rewrite or swap it. The target is
+// walked hop by hop like a pointer, from the link's directory.
+func (s *sandboxGitScanner) symlinkRefusal(path string) *core.RefusalError {
+	if first, _, _ := strings.Cut(s.relToGitdir(path), string(filepath.Separator)); first == sandboxGitHooksDir {
+		return nil
+	}
+	target, err := os.Readlink(path)
+	if err != nil {
+		return sandboxGitInspectRefusal(path, err)
+	}
+	steps, final := sandboxGitWalk(filepath.Dir(path), target)
+	if !sandboxSameFile(final, s.root.id) && !slices.ContainsFunc(append(sandboxGitStepPaths(steps), final), s.writable) {
+		return nil
+	}
+	return sandboxUnavailable(fmt.Sprintf("the git control file %s is a symlink to %s, which the command could "+
+		"rewrite inside the reviewed root — replace the link with the file itself (only hooks may link into the "+
+		"tree), or verify a fresh clone", path, target))
+}
+
+// writable reports whether path sits strictly inside the root, by spelling
+// or by identity, and outside every protected git location. Protection is
+// decided without following links: an in-root link (`configs -> .git`)
+// resolves into a git location, but the link itself is the command's to
+// swap, so a walked step that is such a link counts as writable.
+func (s *sandboxGitScanner) writable(path string) bool {
+	if _, inside := sandboxTopLevel(path, s.root.repo, s.root.real); !inside && !s.root.below(path) {
+		return false
+	}
+	for _, location := range s.protected {
+		if sandboxAncestorIsNode(path, location) {
+			return false
+		}
+	}
+	return true
+}
+
+// sandboxAncestorIsNode reports whether path, or one of its ancestors, is
+// the file want, comparing each node itself (Lstat): a symlink is its own
+// file, never its target.
+func sandboxAncestorIsNode(path string, want os.FileInfo) bool {
+	for dir := path; ; dir = filepath.Dir(dir) {
+		if info, err := os.Lstat(dir); err == nil && os.SameFile(info, want) {
+			return true
+		}
+		if filepath.Dir(dir) == dir {
+			return false
+		}
+	}
 }
 
 func sandboxGitStepPaths(steps []sandboxGitStep) []string {
@@ -885,9 +1271,17 @@ func sandboxGitStepPaths(steps []sandboxGitStep) []string {
 // path) and, for `.git`, the exact `gitdir: ` prefix — so the target is the
 // one git will use. The open never blocks (a FIFO is refused, not waited
 // on), and a non-regular file, a read error, or a file past the cap refuses
-// instead of yielding a prefix. present is false only when the file does not
-// exist.
+// instead of yielding a prefix. A pointer that is a symlink refuses before
+// it is read, on every platform: only the link would be protected, and the
+// file it names could sit in the writable root, where the command could
+// rewrite it and send git to a git directory nobody protected. present is
+// false only when the file does not exist.
 func sandboxGitPointerRaw(path, prefix string) (target string, present bool, ref *core.RefusalError) {
+	if info, err := os.Lstat(path); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return "", true, sandboxUnavailable(fmt.Sprintf("the git pointer %s is a symlink, and the file it names "+
+			"could be rewritten inside the reviewed root to send git elsewhere — replace the link with the file "+
+			"itself, or verify a fresh clone", path))
+	}
 	raw, err := readcommon.ReadRegularCapped(path, sandboxGitPointerCap)
 	if err != nil {
 		if errors.Is(err, fs.ErrNotExist) {
@@ -1017,14 +1411,16 @@ func sandboxExecPrivate(in sandboxInputs, repo, tmpBase string) (private, profil
 	if err != nil {
 		return "", "", sandboxUnavailable(fmt.Sprintf("could not create the private temporary directory: %v", err))
 	}
-	defer func() {
+	// The acquired path is bound now: the failure returns below clear the
+	// named result before this runs.
+	defer func(acquired string) {
 		if ref == nil {
 			return
 		}
-		if err := removePrivateDir(private); err != nil {
-			ref.Message += fmt.Sprintf(" (the private directory %s could not be removed: %v)", private, err)
+		if err := removePrivateDir(acquired); err != nil {
+			ref.Message += fmt.Sprintf(" (the private directory %s could not be removed: %v)", acquired, err)
 		}
-	}()
+	}(private)
 	profile, ref = sandboxExecPrivateProfile(in, repo, private, tmpBase)
 	if ref != nil {
 		return "", "", ref
@@ -1129,7 +1525,7 @@ func sandboxExecProfile(in *sandboxProfileInputs) (string, *core.RefusalError) {
 		return "", ref
 	}
 	b.WriteString(seatbeltDeviceWrites)
-	if ref := sandboxGitWriteDenials(&b, roots, sandboxExpandRealpaths(in.gitDirs)); ref != nil {
+	if ref := sandboxGitWriteDenials(&b, roots, sandboxNodePaths(in.gitDirs)); ref != nil {
 		return "", ref
 	}
 	if ref := sandboxWriteRules(&b, "deny", denyCredential); ref != nil {
@@ -1206,6 +1602,27 @@ func sandboxExpandRealpaths(paths []string) []string {
 		}
 	}
 	return sandboxCleanUnique(expanded)
+}
+
+// sandboxNodePaths cleans every path and adds the spelling of its own node —
+// its resolved parent plus its name — without ever following the path
+// itself. The git denials use it instead of [sandboxExpandRealpaths]: every
+// git path is strictly below the root, and a walked in-root link must be
+// denied as the link (so it cannot be replaced), never as its target — a
+// link to `..` would otherwise deny the root's parent and with it every
+// write to the root. A link's in-root target is a walked path of its own.
+func sandboxNodePaths(paths []string) []string {
+	nodes := make([]string, 0, 2*len(paths))
+	for _, path := range paths {
+		if path == "" {
+			continue
+		}
+		nodes = append(nodes, path)
+		if parent, ok := sandboxRealpath(filepath.Dir(path)); ok {
+			nodes = append(nodes, filepath.Join(parent, filepath.Base(path)))
+		}
+	}
+	return sandboxCleanUnique(nodes)
 }
 
 // sandboxRealpath resolves path, or the deepest existing ancestor of it with
