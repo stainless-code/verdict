@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
 
@@ -60,6 +61,32 @@ func TestEnvMapUsesInjectedGetenvOverHostEnv(t *testing.T) {
 	}
 	if v, ok := got["FORGEJO_TOKEN"]; ok {
 		t.Errorf("FORGEJO_TOKEN leaked from host env: %q", v)
+	}
+}
+
+// TestEnvMapCarriesTheGlabHostVariables pins that the map every verb receives
+// holds the variables post's host gate reads (GITLAB_HOST and the ones that
+// redirect glab). They were missing from it, so a write saw GITLAB_HOST unset
+// and refused a ported host the read side had accepted.
+func TestEnvMapCarriesTheGlabHostVariables(t *testing.T) {
+	want := map[string]string{
+		"GITLAB_HOST": "https://git.corp.example:8443", "GITLAB_API_HOST": "git.corp.example:8443", "GITLAB_REPO": "g/app",
+		"CI_SERVER_FQDN": "git.corp.example:8443", "GLAB_ENABLE_CI_AUTOLOGIN": "true", "GITLAB_CI": "true",
+	}
+	got := envMap(func(k string) string { return want[k] })
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("envMap()[%q] = %q, want %q", k, got[k], v)
+		}
+	}
+	only := envMap(func(k string) string {
+		if k == "GITLAB_HOST" {
+			return "https://git.corp.example:8443"
+		}
+		return ""
+	})
+	if ref := core.GlabDefaultConflict("git.corp.example:8443", func(k string) string { return only[k] }); ref != nil {
+		t.Errorf("a post on a ported host with GITLAB_HOST set must pass the host gate: %v", ref)
 	}
 }
 

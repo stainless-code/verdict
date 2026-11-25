@@ -289,9 +289,12 @@ func (st *state) pinBundleHost(ctx context.Context) (context.Context, *core.Refu
 	return core.WithHost(ctx, host), nil
 }
 
-// hostRefusal refuses a post host no call can be pinned to. A GitHub or GitLab
-// host on a non-default port refuses even under a typed pair: neither CLI's
-// --hostname takes a port. A GitHub or GitLab bundle with no recorded URL
+// hostRefusal refuses a post host no call can be pinned to. A GitHub host on a
+// non-default port refuses even under a typed pair: gh's --hostname takes no
+// port. A GitLab one does too, unless the environment already makes glab's
+// default host exactly that host (core.GlabDefaultConflict): then every glab
+// call of this post runs unpinned, and the runner re-checks the environment it
+// spawns glab with. A GitHub or GitLab bundle with no recorded URL
 // under a typed pair names no host, so a real post refuses rather than write
 // to the CLI's default host (every fetched bundle records one); a dry run
 // writes nothing and reads like any typed pair. Forgejo has no CLI to pin, so
@@ -300,10 +303,12 @@ func (st *state) hostRefusal(host string) *core.RefusalError {
 	provider := st.provider()
 	cliHost := provider == providerGitHub || provider == providerGitLab
 	switch {
+	case provider == providerGitLab && strings.Contains(host, ":"):
+		return core.GlabDefaultConflict(host, func(name string) string { return st.env()[name] })
 	case cliHost && strings.Contains(host, ":"):
-		return hostMismatch("this bundle is on %s, but neither gh's nor glab's --hostname takes a port, so no "+
-			"call can be pinned to that host and post refuses even for a typed pair; publish the review from the "+
-			"host's web interface, or serve the host on its default port and re-fetch", host)
+		return hostMismatch("this bundle is on %s, but gh's --hostname never takes a port, so no call can be pinned "+
+			"to that host and post refuses even for a typed pair; publish the review from the host's web "+
+			"interface, or serve the host on its default port and re-fetch", host)
 	case cliHost && host == "" && !st.flags.DryRun:
 		return hostMismatch("this bundle records no review URL and the target names no host, so post cannot tell " +
 			"which host the review belongs on and would write it to the CLI's default host; " +
