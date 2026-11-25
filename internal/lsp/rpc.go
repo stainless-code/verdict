@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"io"
 	"strings"
+
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 const (
@@ -284,7 +286,7 @@ func marshalMessage(v any) ([]byte, error) {
 	if err := enc.Encode(v); err != nil {
 		return nil, &ioError{op: "marshal message", err: err}
 	}
-	return bytes.TrimSuffix(buf.Bytes(), []byte("\n")), nil
+	return bytes.TrimSuffix(jq.EscapeControls(buf.Bytes()), []byte("\n")), nil
 }
 
 // marshalNotification renders one notification body.

@@ -1,12 +1,12 @@
 package serve
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 // contentTypeJSON is the one body shape a data or problem response carries.
@@ -95,7 +95,7 @@ func badPath(p string) bool {
 
 // problem writes one transport error: status, reason, message.
 func (s *Server) problem(w http.ResponseWriter, status int, reason, message string) {
-	body, err := json.Marshal(problemBody{Status: status, Reason: reason, Message: message})
+	body, err := jq.Marshal(problemBody{Status: status, Reason: reason, Message: message})
 	if err != nil {
 		http.Error(w, message, status)
 		return

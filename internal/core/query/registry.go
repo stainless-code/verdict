@@ -192,7 +192,7 @@ func persistRegistry(root string, opts DiscoveryOptions, path string, saved regi
 	item := registryEntry(root, opts, result, scanWarnings)
 	saved.Version = registrySchemaVer
 	saved.Roots = replaceRegistryRoot(saved.Roots, &item)
-	raw, err := json.Marshal(saved)
+	raw, err := jq.Marshal(saved)
 	if err == nil {
 		err = os.MkdirAll(filepath.Dir(path), registryDirMode)
 	}

@@ -137,7 +137,7 @@ func (b *bundleHandle) writeReceipt(receipt *core.VerifyReceipt) *core.RefusalEr
 	if ref := b.unchanged(); ref != nil {
 		return ref
 	}
-	raw, err := json.MarshalIndent(receipt, "", "  ")
+	raw, err := jq.MarshalIndent(receipt, "", "  ")
 	if err != nil {
 		return failed(err)
 	}

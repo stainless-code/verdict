@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -20,6 +19,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/core/repair"
+	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -590,7 +590,7 @@ func (st *state) writeRoundFiles(args *launchArgs, k int, review []byte, check r
 	if err := atomic.WriteFileMode(base+".review.json", review, roundEvidenceMode); err != nil {
 		st.warn(fmt.Sprintf("could not keep round-%d review bytes: %v", k, err))
 	}
-	raw, err := json.MarshalIndent(check, "", "  ")
+	raw, err := jq.MarshalIndent(check, "", "  ")
 	if err != nil {
 		st.warn(fmt.Sprintf("could not render the round-%d check: %v", k, err))
 		return
@@ -617,7 +617,7 @@ func (st *state) writeRoundEvidence(base string, receipt *core.EvidenceReceipt, 
 	if receipt == nil {
 		return
 	}
-	raw, err := json.MarshalIndent(receipt, "", "  ")
+	raw, err := jq.MarshalIndent(receipt, "", "  ")
 	if err != nil {
 		st.warn(fmt.Sprintf("could not render the round-%d evidence: %v", k, err))
 		return

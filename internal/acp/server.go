@@ -20,6 +20,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/query"
+	"github.com/stainless-code/verdict/internal/jq"
 )
 
 const (
@@ -308,7 +309,7 @@ func (s *Server) writeFrame(resp rpcResponse) {
 		s.logf("marshal response: %v", err)
 		return
 	}
-	raw := bytes.TrimSuffix(buf.Bytes(), []byte(lineBreak))
+	raw := bytes.TrimSuffix(jq.EscapeControls(buf.Bytes()), []byte(lineBreak))
 	raw = append(raw, '\n')
 	s.writeMu.Lock()
 	defer s.writeMu.Unlock()

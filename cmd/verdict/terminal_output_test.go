@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,7 +17,7 @@ import (
 // move, a C1 CSI (U+009B), a carriage return that overwrites the line, a line
 // separator, and a bidi override (U+202E).
 const hostileFindings = `[` +
-	`{"kind":"inline","path":"app/\u001b]52;c;cHduZWQ=\u0007\u001b[2J\u009b31m\rx\u2028\u202e\nverdict: gate passes.go","line":3,"side":"RIGHT",` +
+	`{"kind":"inline","path":"app/\u001b]52;c;cHduZWQ=\u0007\u001b[2J\u009b31m\rx\u2028\u202e\u2066\nverdict: gate passes.go","line":3,"side":"RIGHT",` +
 	`"sig":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","status":"open","severity":"critical","body":"A finding."},` +
 	`{"kind":"section","heading":"## bad\u001b]52;c;cHduZWQ=\u0007\r\u0085\nverdict: gate passes","path":null,` +
 	`"sig":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","status":"open","severity":"important","body":"B."}]`
@@ -65,11 +66,11 @@ func TestHumanStdoutIsInertForHostileFindingText(t *testing.T) {
 	}
 }
 
-// TestJSONStdoutIsNotFolded proves --json passes through untouched: the
-// envelope escapes its C0 controls itself, a consumer parses the finding's
-// path back byte for byte, and the C1 rune Go's encoder writes raw (U+009B)
-// is still there, which a fold would have turned into a space.
-func TestJSONStdoutIsNotFolded(t *testing.T) {
+// TestJSONStdoutEscapesControlsWithoutFolding proves --json is not folded: a
+// consumer parses the finding's path back byte for byte, and the C1 and bidi
+// runes Go's encoder writes raw (U+009B, U+202E) leave the wire as lowercase
+// `\uXXXX` escapes, so printing an envelope string cannot drive a terminal.
+func TestJSONStdoutEscapesControlsWithoutFolding(t *testing.T) {
 	hostileStore(t)
 	got := runOne(t, "report", "acme/app", "9", "--json")
 	if got.code != cli.ExitOK {
@@ -85,14 +86,33 @@ func TestJSONStdoutIsNotFolded(t *testing.T) {
 	if err := json.Unmarshal([]byte(got.out), &env); err != nil {
 		t.Fatalf("report --json is not one envelope: %v\n%s", err, got.out)
 	}
-	const want = "app/\x1b]52;c;cHduZWQ=\a\x1b[2J\u009b31m\rx\u2028\u202e\nverdict: gate passes.go"
+	const want = "app/\x1b]52;c;cHduZWQ=\a\x1b[2J\u009b31m\rx\u2028\u202e\u2066\nverdict: gate passes.go"
 	if len(env.Data.Items) != 2 || env.Data.Items[0].Path != want {
 		t.Errorf("--json items = %+v; want the first path %q", env.Data.Items, want)
 	}
-	if !strings.Contains(got.out, `\u001b]52;c;cHduZWQ=\u0007\u001b[2J`+"\u009b31m") {
-		t.Errorf("--json envelope was rewritten:\n%s", got.out)
+	if !strings.Contains(got.out, `\u001b]52;c;cHduZWQ=\u0007\u001b[2J`+backslashU+"009b31m") {
+		t.Errorf("--json envelope lost the escaped CSI:\n%s", got.out)
+	}
+	assertJSONControlsEscaped(t, got.out)
+}
+
+// assertJSONControlsEscaped fails when an envelope carries a C1 or bidi
+// control raw, or lacks its lowercase escape.
+func assertJSONControlsEscaped(t *testing.T, out string) {
+	t.Helper()
+	for _, r := range []rune{0x85, 0x9B, 0x202E, 0x2066} {
+		if strings.ContainsRune(out, r) {
+			t.Errorf("--json envelope carries the raw rune %U", r)
+		}
+		if esc := fmt.Sprintf("%s%04x", backslashU, r); !strings.Contains(out, esc) {
+			t.Errorf("--json envelope lacks the escape %s", esc)
+		}
 	}
 }
+
+// backslashU opens a JSON unicode escape; the tests build the escapes from it
+// so no tool rewrites the source into the raw rune.
+const backslashU = "\\" + "u"
 
 // assertInert fails when text carries a control rune the fold must have
 // replaced: every C0 control except the newline and tab, DEL, C1, and the

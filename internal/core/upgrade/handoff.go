@@ -2,7 +2,6 @@ package upgrade
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -95,7 +94,7 @@ func (h *Handoff) finish(err error) error {
 	if err != nil {
 		doc.Error = err.Error()
 	}
-	raw, marshalErr := json.Marshal(doc)
+	raw, marshalErr := jq.Marshal(doc)
 	if marshalErr != nil {
 		return err
 	}

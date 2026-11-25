@@ -22,7 +22,7 @@ func AppendLedger(path string, entry *LedgerEntry) error {
 		return err
 	}
 	entries = append(entries, *entry)
-	raw, err := json.MarshalIndent(entries, "", "  ")
+	raw, err := jq.MarshalIndent(entries, "", "  ")
 	if err != nil {
 		return jq.NewErrf("could not encode %s: %v", path, err)
 	}
