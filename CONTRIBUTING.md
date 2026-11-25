@@ -217,6 +217,16 @@ shipping. Then `scripts/publish-npm.mjs` publishes six
 postinstall, so `--ignore-scripts` installs work). The same run renders
 `dist/verdict.rb` for the `stainless-code/tap` Homebrew tap.
 
+Before merging the Version PR, write `docs/releases/<version>.md`: six to eight
+`- **Title.** what it does for you` highlight bullets, then a
+`### Breaking changes` list with one migration line per item, and add its line
+to `docs/README.md` (the docs index check wants one line per page under
+`docs/`). The body then opens with `**v<version>** · N changes`, those
+highlights, and `### Plus M more fixes and improvements.`, and folds the full
+section into a `Full changelog` `<details>` block. Without the file the body is
+the section alone and the render warns. It lives outside `.changeset/` because
+changesets parses every `.changeset/*.md` as a changeset.
+
 The wrapper also carries the TypeScript client as its `./client` subpath
 export, so one install brings both. `scripts/release.sh` builds and checks
 that client before it tags (a published version cannot gain it later) and
