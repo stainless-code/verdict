@@ -3480,7 +3480,7 @@ verdict dashboard [<owner/repo>] [--root <dir>] [--once] [--tab <name>]
   (`—`) when one of them refused, when a listing was cut, or when a refused
   bundle's repository is unknown (it might be this one).
 - `--check <tier>` is the gate tier the Detail and Compare tabs grade
-  against (default `critical`), as for `report --check`.
+  against (default `critical`), as for `gate --max-severity`.
 
 **Tabs.** Each tab is one read from the layer; a tab whose read refuses shows
 the refusal in its body (`77: bundle-unreadable: …`) and the rest of the
