@@ -5513,7 +5513,14 @@ re-allows only what the command needs:
   credentials out of the environment of your long-lived processes (use the
   credential stores the table above hides), or run the `bwrap` recipe in a
   Linux VM, where `--unshare-pid` and a fresh `/proc` hide every host
-  process.
+  process. verdict's own process is one of the readable ones, so a
+  `verify --sandbox` run on macOS (including `verify --group … --sandbox`
+  and `verdict loop --sandbox`, which passes it through) warns when
+  verdict's own environment carries a secret: a variable the tail redactor
+  treats as one (a secret-shaped name such as `GH_TOKEN` with a value of at
+  least 8 bytes). The warning names the variables, never their values, and
+  points at the Linux-VM recipe; it goes to the diagnostic stream and to
+  `warnings` under `--json`. Linux `bwrap` runs never carry it.
 - **No writes outside the run.** Every write is denied except under the
   reviewed root (as written and as its `realpath`), the private `TMPDIR`,
   and `/dev/null`, `/dev/tty`, and `/dev/fd/*` (which `/dev/stdout` and
@@ -5707,7 +5714,9 @@ A network-only run is not the hostile-PR sandbox. Every such run warns
 `network-only … no mount, filesystem, or PID isolation` (naming the sockets
 and `/proc`) on the diagnostic stream (and in `warnings` under `--json`) and
 records `sandboxMechanism: "unshare-net"` without `sandboxed`, so a later
-reader never mistakes it for the full shape.
+reader never mistakes it for the full shape. Because the host `/proc` includes
+verdict's own process, a network-only run also carries the macOS warning
+above, naming the secret variables in verdict's environment.
 
 `--sandbox` and `--sandbox-network-only` are mutually exclusive: passing both
 refuses `bad-flags` (exit 1) before anything runs, because the caller must
