@@ -309,15 +309,63 @@ cannot reach the network warns and proceeds — the nudge never refuses.
 Authority rule: **the script disposes, the agent proposes, the human vetoes.**
 Bare `resolved[]` sigs record a claim but never flip status. `addressed` requires
 a `.verdict/state/N/verification.json` claim (`{sig, verdict: VERIFIED, verifyCmd, resultHead}`
-with `resultHead` matching HEAD). The operator or agent writes that claim —
-`verify` writes `patch.json`, not `verification.json`; a claim is attestation,
-not tool proof. `record`/`post` cross-check the bundle's `patch.json` when
-present and warn on a nonzero exit or timeout, but the flip stands; inspect
-`patch.json` for the tool's machine result. `NOT VERIFIED` reopens,
-`INCONCLUSIVE` only logs. `triage[]` claims other states with rationale (unknown enum or
-unknown sig refused/ignored; short rationale keeps prior status). The operator mutates the
-store directly between runs with `verdict triage … --sig … --status … --rationale …`
-(human supremacy, every override history-logged).
+with `resultHead` matching HEAD) **and** the bundle's `verify-receipt.json`. The
+operator or agent writes the claim, and `patch.json` too — both are proposals.
+Only `verdict verify` writes `verify-receipt.json`, and only it is the tool's
+observation: the command it ran (`command`, the bundle's `patch.json` `verifyCmd`),
+the finding `patch.json` named (`sig`, from `findingSig` or `sig`), the exit,
+whether the watchdog fired, and `head` — the commit checked out at the repo root,
+recorded only when `git status` (with untracked files and submodules always
+counted, whatever the checkout's status config) showed a clean tree and the same
+commit both before and after the command. The status read skips only verdict's own bundle
+state (`.verdict/state/`), `verdict loop`'s round receipts (`.verdict/loop/`), and
+the generated `.verdict/.gitignore`; everything else
+under `.verdict/` (config, KB, packs, regression tests, `verify-env`) is reviewed
+input and counts. `verify` resolves the bundle like every writing verb (a
+symlinked `.verdict/state/<pr>` refuses), pins the bundle directory before the
+command runs, reads the finding sig then, and deletes the previous receipt then,
+so a run that cannot start, is canceled, or cannot be recorded leaves no receipt at all; a run that completes with a nonzero exit or times out writes a receipt recording that exit or timeout, which never reads as a pass. Every write
+goes through that pinned directory, and a command that moves or replaces the
+bundle directory makes verify refuse with nothing recorded. `verify --group`
+pins the bundle the same way before its command runs, so a group receipt is
+written only into the bundle it validated, and applies the same clean-tree rule: a
+dirty tree refuses before the command runs (`head-mismatch`), and a tree left dirty
+fails the receipt with no execution head. `record`/`post`
+read only that file. They flip a `VERIFIED` claim only when it shows exit 0, no
+timeout, the claim's exact `verifyCmd`, the claim's finding when it names one (its
+`sig` must resolve to exactly that one finding in the store; a prefix two findings
+share backs neither), and a `head` equal to the HEAD they grade. A receipt with no
+`sig` — `patch.json` named no finding — backs every claim that cites its command at
+that head: when one command proves several findings, the command and head are the
+whole binding. Anything else does not flip: no receipt (a pass
+written into `patch.json` is not one), a failed or timed-out run, another command,
+another finding, a run on a dirty tree or a moving head, or a receipt for another
+HEAD (stale). The finding keeps its status, the claim is logged as a `revalidation`
+history event, and the run warns `VERIFIED claim for <sig> not applied (<reason>)`,
+naming the HEAD a stale receipt covered and the HEAD to re-run `verdict verify` on.
+So a fix is proven by committing it first: fix → commit (and for a PR, push and
+re-fetch; for a local bundle, re-run `fetch-local` so its head is that commit) →
+`verdict verify` → `record`/`post`. The receipt lives in the bundle, so it is bound
+to that bundle and its root by location; the head is the binding it can go stale on.
+`NOT VERIFIED` reopens without a receipt (a self-reported failure only tightens the
+gate), `INCONCLUSIVE` only logs. `triage[]` claims the other states with rationale —
+`open`, `wont-fix`, `false-positive`, `deferred` (unknown enum or unknown sig
+refused/ignored; short rationale keeps prior status). A `triage[]` claim for
+`addressed` is ignored with a warning: no rationale buys it. Every grade of a
+finding's status — `gate`, `report --check`/`--completeness`, `post --approve`, and
+the MCP and `serve` routes over them — reads the status this merge settled, so all
+of them agree. The operator mutates the store directly between runs with
+`verdict triage … --sig … --status … --rationale …` (human supremacy, every override
+history-logged).
+
+**What the receipt defends against.** It stops a claim nobody observed: an agent
+that is sloppy, hallucinates a pass, or writes the outcome it expects instead of
+running the proof. It is not a signature. A process running as the operator, with
+the operator's file access, can write `verify-receipt.json` itself, edit
+`findings.json` directly, or simply run `verdict verify`, so no key verdict could
+hold would make the file unforgeable to it. Treat a deliberately forging agent as
+having the operator's own authority over the bundle, and keep such agents out of
+checkouts whose gate you rely on.
 
 Malformed agent input refuses typed (exit 1, machine envelope with `error.code`,
 nothing written — no `findings.json`/`record.json`, no KB credit). `record`
@@ -982,13 +1030,14 @@ carries it as an `org_pack` input.
 
 ### Evidence ledger
 
-Nine artifacts explain what a run knew and what it proved. Each row states
+Ten artifacts explain what a run knew and what it proved. Each row states
 the artifact, who writes it, and whether a verb gates on it.
 
 | Artifact                                  | What it is                                                                                                                                                                                                                                                                                                                              | Who writes it                                                                                                                 | Gates?                                                                                                                                                                                                                                                                                                                                 |
 | ----------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `run.json`                                | The typed per-run capture: resolved defaults, per-file resolutions, plan, spend and privacy views, trusted-base inventory hashes, base SHA, the `inputs_sha256` digest, appended check observations, and the `trigger` decision from `ready --filter`.                                                                                  | `fetch`/`fetch-local`; `post` appends observations, `ready --filter` records the trigger decision                             | Yes, except `config --preview` (see below). `post`, `record`, `triage`, `report`, `ready`, `config --explain`, and `verify --group` verify it; a run bundle deleted while its controls snapshot remains, or an edited captured input, refuses `controls-stale`; a bare bundle dir reads with a warning and no repository requirements. |
 | `validation-<group>.json`                 | The deep-validation receipt for one plan group: run, inputs digest, group, reviewed and execution heads, canonical root, command, exit, timeout and sandbox flags, status, and a redacted output tail.                                                                                                                                  | `verify --group <id> --command <cmd>`                                                                                         | Yes. `post` refuses a binding approval while any `depth: "deep"` group lacks a current receipt; `ready` reports the gap as `profile-work`.                                                                                                                                                                                             |
+| `verify-receipt.json`                     | The patch-path receipt `verify` writes (record and post validate its contents; authorship is not checked against a process with bundle write access, per SECURITY.md): the command `verify` ran, the finding sig `patch.json` named, exit, timeout, and the clean checked-out head (absent on a dirty tree or a moving head).           | `verify` (patch path); `verify` (authorship not enforced)                                                                     | Yes. `record`/`post` flip a `VERIFIED` claim only on a passing receipt for its command, finding, and the graded head.                                                                                                                                                                                                                  |
 | `filesource.json`                         | Provenance for the PR file list: `source` (`paged` or `cli`), `cli_cap` (100), `provider_ceiling` (3000), `count`, and `truncated` or `paging_error`.                                                                                                                                                                                   | GitHub `fetch`, when the CLI list arrives at its 100-file cap                                                                 | No. It is an advisory coverage note: a paging failure warns and the run proceeds with the CLI's first 100 files.                                                                                                                                                                                                                       |
 | `full.raw.diff`                           | The raw pre-exclusion diff, kept as the patch-identity input when a filtered diff would otherwise replace it. No shipped verb writes it today: `fetch` writes the host diff to `full.diff` and records the filtered hash in `run.json` without writing filtered bytes.                                                                  | Nothing today (a future exclusion pass)                                                                                       | Partly. When present it feeds the identity, and `identity.json`'s `raw_diff_sha256` must reproduce it; a present-but-unreadable file refuses instead of falling back to `full.diff`. Absence is normal.                                                                                                                                |
 | `sensitive.txt`                           | The advisory manifest of secret-adjacent paths: filename, extension, and added-line content hits, one path and reason per line, behind a comment header.                                                                                                                                                                                | `fetch`/`fetch-local` (and every provider fetch)                                                                              | No. It is advisory, not a gate: flagged paths stay reviewable evidence, the file is removed when nothing is flagged, and its header asks reviewers to name the path, never the value.                                                                                                                                                  |
@@ -5188,11 +5237,13 @@ and inline; non-open, section, and unknown sigs refuse), prints the finding
 (plus its stored `brief` block when one is present and the full `kb.txt` context
 when present) with patch → verify → land → re-run instructions, and records the
 pass in `.verdict/state/<bundle>/fix.json`. The agent patches the anchor file,
-runs the verify command itself, writes `verification.json`, lands via `record`,
+commits it and re-runs `fetch-local` (so the bundle's head is the fix commit), runs
+the verify command through `verdict verify` (the receipt a VERIFIED claim needs),
+writes `verification.json`, lands via `record`,
 and re-runs `fix`; the loop ends when no open inline sigs remain (completion
 summary with fixed/open/stopped counts plus the ledger path). On a PR bundle
-the instructions say to push the fix, re-fetch, and land with `post`
-instead, since a PR bundle has no `record` path. A PR bundle also requires the
+the instructions say to commit and push the fix, re-fetch, run `verdict verify` on
+the fetched head, and land with `post` instead, since a PR bundle has no `record` path. A PR bundle also requires the
 checkout to be on the head the bundle reviewed (`git rev-parse HEAD` equal to
 the bundle's head); any other commit refuses `head-mismatch` before anything is
 written, so a pass, a patch, or `--test --commit` never lands on main or a stale

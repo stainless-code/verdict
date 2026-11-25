@@ -389,7 +389,7 @@ var publishedSemantics = map[string]string{
 	// Loop spend receipts: prose only. The loopData stop and cost_usd
 	// descriptions name the budget.json receipt every spawn leaves, the
 	// budget-unknown stop, and the resolved-sig plateau rule.
-	"envelope.schema.json": "0c204df8820fd3e236516a292f4afe1d429b874e50a81d0b5ca777d83137095e",
+	"envelope.schema.json": "f014c7d48dfd165e0d405eed92e259b4eb809af1c3d9da99f2aef9ecac62daf0",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

@@ -2,7 +2,9 @@ package verifycore
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"strconv"
 	"strings"
 	"time"
@@ -12,7 +14,6 @@ import (
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/envsecret"
 	"github.com/stainless-code/verdict/internal/jq"
-	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -27,10 +28,6 @@ const (
 	noVerifyCmdMsg   = "patch.json carries no verifyCmd to execute"
 	msgVerifyFailed  = "verify failed: %v"
 )
-
-func patchPath(dir string) string {
-	return dir + "/" + patchFile
-}
 
 func missingPatchRefusal(dir string) *core.RefusalError {
 	return &core.RefusalError{
@@ -76,18 +73,26 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if ref := preflightRefusal(ctx, req); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	// verify writes into the bundle, so it resolves it like every other
+	// writing verb: a symlinked bundle directory refuses instead of steering
+	// the receipt outside the repository.
+	dir, ref := readcommon.ResolveWritableBundleDir(req.RepoRootPath(), req.Pr)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
 	if deepGroup(req) {
 		return RunGroup(ctx, req, dir, req.TimeUTC())
 	}
-	if !readcommon.IsFile(patchPath(dir)) {
-		return nil, st.withWarnings(missingPatchRefusal(dir))
+	// Pin the bundle before reading anything from it: patch.json is read
+	// through the root, so a symlink escaping the bundle refuses here, before
+	// any command runs, and every later write lands in this same directory.
+	bundle, ref := openPatchBundle(dir)
+	if ref != nil {
+		return nil, st.withWarnings(ref)
 	}
+	defer bundle.close()
 	now := req.TimeUTC()
-	vcmd, ref := readVerifyCmd(dir)
+	vcmd, ref := readVerifyCmd(bundle)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -99,7 +104,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if ref := Check(vcmd); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	return st.execute(ctx, dir, now, vcmd, timeout)
+	return st.execute(ctx, bundle, now, vcmd, timeout)
 }
 
 type state struct {
@@ -130,7 +135,8 @@ func (st *state) runtime() *core.Runtime {
 	return st.req.Runtime
 }
 
-func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int) (*Response, *core.RefusalError) {
+func (st *state) execute(ctx context.Context, bundle *bundleHandle, now, vcmd string, timeout int) (*Response, *core.RefusalError) {
+	dir := bundle.dir
 	commander := st.commander()
 	if commander == nil {
 		return nil, st.withWarnings(&core.RefusalError{
@@ -144,13 +150,24 @@ func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int
 	if !coreexec.WatchdogEnforced() {
 		st.warn("no ps(1) — timeout unenforced for this run")
 	}
-	sb, ref := st.sandboxed(ctx, commander, "", st.req.RepoRootPath())
+	// The command runs where the tree is probed, the repo root, as the deep
+	// group path does: a receipt's head must describe the tree the command saw.
+	root := st.req.RepoRootPath()
+	sb, ref := st.sandboxed(ctx, commander, root, root)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	outPath, timeoutPath := dir+"/.verify.out", dir+"/.verify.timeout"
+	// The previous receipt goes before the command starts, so a run that
+	// fails, aborts, or cannot record never leaves an earlier pass; the sig
+	// was read when the bundle was pinned, before the command could edit it.
+	if ref := bundle.dropReceipt(); ref != nil {
+		st.releaseSandbox(sb)
+		return nil, st.withWarnings(ref)
+	}
+	receipt := &core.VerifyReceipt{SchemaVersion: receiptSchema, Command: vcmd, Sig: bundle.sig, At: now}
+	before := probeTree(ctx, commander, root)
 	st.human(fmt.Sprintf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
-	res, ref := runCommand(ctx, commander, vcmd, timeout, "", st.childEnv(), sb)
+	res, ref := runCommand(ctx, commander, vcmd, timeout, commandDir(root, sb), st.childEnv(), sb)
 	st.releaseSandbox(sb)
 	if ctx.Err() != nil {
 		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: msgCanceled})
@@ -158,7 +175,9 @@ func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	return st.record(dir, now, outPath, timeoutPath, res, sb)
+	receipt.Head = st.boundHead(root, before, probeTree(ctx, commander, root))
+	receipt.Exit, receipt.TimedOut = res.ExitCode, res.TimedOut
+	return st.record(bundle, now, res, sb, receipt)
 }
 
 func (st *state) commander() core.Commander {
@@ -182,9 +201,15 @@ func (st *state) sandboxed(ctx context.Context, commander core.Commander, workDi
 	// The physical root, as group mode already passes: patch mode reaches
 	// here with the literal repo root (often "."), which may be a symlink,
 	// and every mount and rule below is decided against one spelling.
+	literal := root
 	root, ref := canonicalRoot(root)
 	if ref != nil {
 		return nil, ref
+	}
+	if workDir == literal {
+		// The command runs at the root; give it the same physical spelling
+		// the mounts and rules use.
+		workDir = root
 	}
 	sb, ref := prepareSandbox(ctx, commander, workDir, root, st.sandboxInputs(), st.req.SandboxNetworkOnly)
 	if ref != nil {
@@ -230,6 +255,18 @@ func sandboxFlagsRefusal(req *Request) *core.RefusalError {
 		"--sandbox enforces the full bwrap/sandbox-exec shape, --sandbox-network-only accepts network isolation alone; pass one"}
 }
 
+// commandDir is where the verify command runs: the repo root, spelled
+// physically for a wrapped run so it matches the mounts and the probe.
+func commandDir(root string, sb *sandbox) string {
+	if sb == nil {
+		return root
+	}
+	if physical, ref := canonicalRoot(root); ref == nil {
+		return physical
+	}
+	return root
+}
+
 func runCommand(ctx context.Context, commander core.Commander, vcmd string, timeout int,
 	dir string, env []string, sb *sandbox,
 ) (core.Result, *core.RefusalError) {
@@ -256,23 +293,35 @@ func failed(err error) *core.RefusalError {
 	return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(msgVerifyFailed, err)}
 }
 
-func (st *state) record(dir, now, outPath, timeoutPath string, res core.Result, sb *sandbox) (*Response, *core.RefusalError) {
+func (st *state) record(bundle *bundleHandle, now string, res core.Result, sb *sandbox,
+	receipt *core.VerifyReceipt,
+) (*Response, *core.RefusalError) {
+	dir := bundle.dir
 	combined := res.Stdout + res.Stderr
 	// Sanitize the whole capture before cutting: a cut first could leave the
 	// unrecognizable second half of a credential at the tail's left edge.
 	tail := coreexec.TrimTail(lastBytes(sanitizeTail(combined, st.req.Environ), tailCap))
 	st.human(fmt.Sprintf("» exit=%d timed_out=%s", res.ExitCode, strconv.FormatBool(res.TimedOut)))
+	if ref := bundle.unchanged(); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	st.human(fmt.Sprintf("recorded into %s/patch.json", dir))
-	if err := writeOutputs(outPath, combined); err != nil {
+	if err := atomic.WriteFileModeIn(bundle.root, verifyOutName, []byte(combined), verifyOutputMode); err != nil {
 		return nil, st.withWarnings(failed(err))
 	}
-	if ref := recordTimeoutMarker(timeoutPath, timeoutMarker(st.req.TimeoutRaw, res.TimedOut, res.Decoy)); ref != nil {
+	if ref := recordTimeoutMarker(bundle, timeoutMarker(st.req.TimeoutRaw, res.TimedOut, res.Decoy)); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	if ref := recordOutcome(dir, now, res.ExitCode, res.TimedOut, tail, sb); ref != nil {
+	if ref := recordOutcome(bundle, now, res.ExitCode, res.TimedOut, tail, sb); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	return st.response(dir, now, res.ExitCode, res.TimedOut, tail, sb), nil
+	if ref := bundle.writeReceipt(receipt); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
+	st.human(fmt.Sprintf("receipt: %s/%s", dir, ReceiptFile))
+	resp := st.response(dir, now, res.ExitCode, res.TimedOut, tail, sb)
+	resp.Data.Head, resp.Data.Receipt = receipt.Head, dir+"/"+ReceiptFile
+	return resp, nil
 }
 
 func (st *state) response(dir, now string, exit int, timedOut bool, tail string, sb *sandbox) *Response {
@@ -306,10 +355,15 @@ func (st *state) childEnv() []string {
 // missing or null verifyCmd reads empty (refusing no-verify-cmd, the
 // fallback a corrupt store gets); any other
 // non-string renders the way jq -r would print it.
-func readVerifyCmd(dir string) (string, *core.RefusalError) {
-	raw, err := noblock.ReadFile(patchPath(dir))
-	if err != nil {
-		return "", missingPatchRefusal(dir)
+func readVerifyCmd(bundle *bundleHandle) (string, *core.RefusalError) {
+	raw, err := bundle.read(patchFile)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return "", missingPatchRefusal(bundle.dir)
+	case err != nil:
+		// A patch.json the pinned root will not open (a symlink out of the
+		// bundle, a directory, a FIFO) is a damaged store, never a command.
+		return "", corruptStoreRefusal(bundle.dir)
 	}
 	doc, err := jq.Decode(raw)
 	if err != nil {
@@ -343,8 +397,9 @@ func parseTimeout(s string) (int, bool) {
 
 // recordOutcome merges the watchdog result into patch.json, preserving key
 // order (existing keys keep position, new keys append).
-func recordOutcome(dir, now string, exit int, timedOut bool, tail string, sb *sandbox) *core.RefusalError {
-	raw, err := noblock.ReadFile(patchPath(dir))
+func recordOutcome(bundle *bundleHandle, now string, exit int, timedOut bool, tail string, sb *sandbox) *core.RefusalError {
+	dir := bundle.dir
+	raw, err := bundle.read(patchFile)
 	if err != nil {
 		return missingPatchRefusal(dir)
 	}
@@ -372,7 +427,7 @@ func recordOutcome(dir, now string, exit int, timedOut bool, tail string, sb *sa
 	} else {
 		m.Delete("sandboxMechanism")
 	}
-	if err := atomic.WriteFile(dir+"/"+patchFile, []byte(m.MarshalPretty()+"\n")); err != nil {
+	if err := atomic.WriteFileIn(bundle.root, patchFile, []byte(m.MarshalPretty()+"\n")); err != nil {
 		return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf("could not write %s/patch.json: %v", dir, err)}
 	}
 	return nil
@@ -381,13 +436,11 @@ func recordOutcome(dir, now string, exit int, timedOut bool, tail string, sb *sa
 // raw output can carry a printed credential, so it is owner-only like .run.out.
 const verifyOutputMode = 0o600
 
-func writeOutputs(outPath, combined string) error {
-	return atomic.WriteFileMode(outPath, []byte(combined), verifyOutputMode)
-}
-
-func recordTimeoutMarker(timeoutPath, marker string) *core.RefusalError {
-	if err := atomic.WriteFile(timeoutPath, []byte(marker)); err != nil {
-		return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(msgVerifyFailed, err)}
+// recordTimeoutMarker writes the run's timeout marker, emptying it after a
+// run that did not time out.
+func recordTimeoutMarker(bundle *bundleHandle, marker string) *core.RefusalError {
+	if err := atomic.WriteFileIn(bundle.root, verifyTimeoutName, []byte(marker)); err != nil {
+		return failed(err)
 	}
 	return nil
 }

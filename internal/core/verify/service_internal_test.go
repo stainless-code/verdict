@@ -13,12 +13,24 @@ func TestRecordTimeoutMarkerClearsAndReportsFailure(t *testing.T) {
 	dir := t.TempDir()
 	timeout := filepath.Join(dir, ".verify.timeout")
 	writeStale(t, timeout)
-	if ref := recordTimeoutMarker(timeout, ""); ref != nil {
+	bundle, ref := openBundle(dir)
+	if ref != nil {
+		t.Fatalf("openBundle: %v", ref)
+	}
+	defer bundle.close()
+	if ref := recordTimeoutMarker(bundle, ""); ref != nil {
 		t.Fatalf("recordTimeoutMarker: %v", ref)
 	}
 	assertEmpty(t, timeout)
-	if ref := recordTimeoutMarker(filepath.Join(dir, "missing", "x"), ""); ref == nil {
-		t.Fatal("recordTimeoutMarker with an unwritable path = nil, want the write error")
+	// A directory in the marker's place cannot be replaced by the atomic write.
+	if err := os.Remove(timeout); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(timeout, "x"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if ref := recordTimeoutMarker(bundle, ""); ref == nil {
+		t.Fatal("recordTimeoutMarker over a directory = nil, want the write error")
 	}
 }
 

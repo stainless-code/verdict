@@ -287,7 +287,7 @@ func ExampleClient_Fix() {
 	// Output:
 	// 2026-11-02T12:00:00Z
 	// selected: c123456789abcdef0123456789abcdef01234567
-	// patch the anchor file, write verification.json, run record to land it, then re-run fix
+	// patch the anchor file, commit it, re-run fetch-local, run verdict verify, write verification.json, run record to land it, then re-run fix
 }
 
 // fixFinding renders one inline findings entry for the fix example.
@@ -424,13 +424,25 @@ func seedExampleControls(pr string) {
 }
 
 // scriptCommander is the injected command seam: every spawn is scripted.
+// verify's checked-out-HEAD and tree-status probes answer scriptHead and a
+// clean tree and stay out of got, so got holds the spawns the test scripted.
 type scriptCommander struct {
 	got []*verdict.Command
 	res verdict.CommandResult
 }
 
+// scriptHead is the commit a scriptCommander reports as checked out.
+var scriptHead = strings.Repeat("a", 40)
+
 // Run implements verdict.Commander.
 func (s *scriptCommander) Run(_ context.Context, cmd *verdict.Command) (verdict.CommandResult, error) {
+	if a := cmd.Argv; len(a) == 5 && a[0] == "git" && a[1] == "-C" && a[3] == "rev-parse" && a[4] == "HEAD" {
+		return verdict.CommandResult{Stdout: scriptHead + "\n"}, nil
+	}
+	// verify's working-tree status probe reads clean.
+	if a := cmd.Argv; len(a) > 4 && a[0] == "git" && a[1] == "--no-optional-locks" && a[4] == "status" {
+		return verdict.CommandResult{}, nil
+	}
 	s.got = append(s.got, cmd)
 	return s.res, nil
 }
@@ -458,6 +470,9 @@ func TestClientVerifyFakeCommander(t *testing.T) {
 	}
 	if resp.TimedOut {
 		t.Error("outcome timed out, want a completed run")
+	}
+	if resp.Head != scriptHead {
+		t.Errorf("head = %q, want the checked-out head the receipt binds", resp.Head)
 	}
 	if resp.Next != "proof failed — fix, do not claim" {
 		t.Errorf("next = %q, want the failed-proof guidance", resp.Next)

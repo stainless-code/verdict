@@ -335,18 +335,24 @@ fi
 sigA="$(jq -r '.[0].sig' "$EVAL_SANDBOX/.verdict/state/local-k6/findings.json")"
 sigB="$(jq -r '.[1].sig' "$EVAL_SANDBOX/.verdict/state/local-k6/findings.json")"
 eval_write_review_at "$EVAL_SANDBOX/.verdict/state/local-k6/review.json" <<EOF
-{"schema_version":"1","body":"> [!IMPORTANT]\n> Second pass with evidence.","approved":false,"comments":[],"triage":[{"sig":"$sigB","status":"addressed","rationale":"agent triage with a long enough rationale here for sure"}]}
+{"schema_version":"1","body":"> [!IMPORTANT]\n> Second pass with evidence.","approved":false,"comments":[],"triage":[{"sig":"$sigB","status":"false-positive","rationale":"agent triage with a long enough rationale here for sure"}]}
 EOF
 cat > "$EVAL_SANDBOX/.verdict/state/local-k6/verification.json" <<EOF
 [{"sig":"$sigA","verdict":"VERIFIED","resultHead":"aaaaaaa","verifyCmd":"true"}]
 EOF
+# FIXTURE: the tool-only receipt `verdict verify` writes after a clean pass of
+# `true` at the bundle head. The fixture head is synthetic, so a real verify
+# could not bind it; gate.sh drives the real verify -> record path.
+jq -n --arg h "$EVAL_FIXTURE_HEAD" \
+  '{schema_version:"1",command:"true",head:$h,at:"2026-01-01T00:00:00Z",exit:0,timed_out:false}' \
+  > "$EVAL_SANDBOX/.verdict/state/local-k6/verify-receipt.json"
 run_review record acme/local-k6 local-k6 --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "second record with verification + triage exits 0"
 else
   bad "second record exits $EVAL_STATUS"
 fi
-if [ "$(jq -s -r '.[] | select(.id == "rec-rule") | "\(.hits)/\(.false_hits)/\(.judged)"' "$EVAL_SANDBOX/.verdict/kb.jsonl")" = "2/0/2" ]; then
+if [ "$(jq -s -r '.[] | select(.id == "rec-rule") | "\(.hits)/\(.false_hits)/\(.judged)"' "$EVAL_SANDBOX/.verdict/kb.jsonl")" = "1/1/2" ]; then
   good "verification-gated + agent-triage flips both credit in one commit"
 else
   bad "record-path counters: $(jq -s -r '.[] | select(.id == "rec-rule") | "\(.hits)/\(.false_hits)/\(.judged)"' "$EVAL_SANDBOX/.verdict/kb.jsonl")"

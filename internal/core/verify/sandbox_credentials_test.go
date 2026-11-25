@@ -73,10 +73,15 @@ func TestSandboxArgvMasksAccountHomeAndRelocations(t *testing.T) {
 // full run overwrites the mechanism rather than keeping the older one.
 func TestRecordOutcomeNetworkOnlyIsNotSandboxed(t *testing.T) {
 	dir := t.TempDir()
-	if err := os.WriteFile(patchPath(dir), []byte(`{"verifyCmd":"true","sandboxed":true,"sandboxMechanism":"bwrap"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, patchFile), []byte(`{"verifyCmd":"true","sandboxed":true,"sandboxMechanism":"bwrap"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if ref := recordOutcome(dir, "2026-01-01T00:00:00Z", 0, false, "", unshareNetMechanism()); ref != nil {
+	bundle, ref := openBundle(dir)
+	if ref != nil {
+		t.Fatalf("openBundle: %v", ref)
+	}
+	defer bundle.close()
+	if ref := recordOutcome(bundle, "2026-01-01T00:00:00Z", 0, false, "", unshareNetMechanism()); ref != nil {
 		t.Fatalf("recordOutcome: %v", ref)
 	}
 	const wantNetworkOnly = `{
@@ -92,7 +97,7 @@ func TestRecordOutcomeNetworkOnlyIsNotSandboxed(t *testing.T) {
 		t.Errorf("network-only record =\n%s\nwant\n%s", got, wantNetworkOnly)
 	}
 	full := &sandbox{tool: sandboxExecTool, mechanism: sandboxMechanismSandboxExec}
-	if ref := recordOutcome(dir, "2026-01-01T00:00:01Z", 0, false, "", full); ref != nil {
+	if ref := recordOutcome(bundle, "2026-01-01T00:00:01Z", 0, false, "", full); ref != nil {
 		t.Fatalf("recordOutcome: %v", ref)
 	}
 	if got := readPatchRecord(t, dir); !strings.Contains(got, `"sandboxMechanism": "sandbox-exec"`) || !strings.Contains(got, `"sandboxed": true`) {
@@ -102,7 +107,7 @@ func TestRecordOutcomeNetworkOnlyIsNotSandboxed(t *testing.T) {
 
 func readPatchRecord(t *testing.T, dir string) string {
 	t.Helper()
-	raw, err := os.ReadFile(patchPath(dir))
+	raw, err := os.ReadFile(filepath.Join(dir, patchFile))
 	if err != nil {
 		t.Fatal(err)
 	}
