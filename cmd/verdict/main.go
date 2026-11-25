@@ -474,7 +474,7 @@ func dispatchStoreVerbs(
 	case "ingest":
 		return ingest.Run(ctx, r, rest, &ingest.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
 	case "fix":
-		return fix.Run(ctx, r, rest, fix.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
+		return fix.Run(ctx, r, rest, req), true
 	case "learn":
 		return learn.Run(ctx, r, rest, repoRoot), true
 	case "verify":
