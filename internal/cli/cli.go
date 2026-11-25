@@ -12,6 +12,7 @@ import (
 	"io"
 	"maps"
 	"slices"
+	"strings"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
@@ -84,8 +85,23 @@ func (r *Runner) Warn(msg string) {
 	r.markWarningWritten(msg)
 }
 
-// writeWarning writes one frozen `warn:` line to the diagnostic stream.
+// inert folds every control and line-separator rune to a space, except the
+// newline and tab a message lays itself out with: an ESC, BEL, CR, or C1
+// byte a stranger put in a path cannot start a terminal sequence on stderr.
+func inert(s string) string {
+	return strings.Map(func(r rune) rune {
+		if r == '\n' || r == '\t' || !core.IsLineBreak(r) {
+			return r
+		}
+		return ' '
+	}, s)
+}
+
+// writeWarning writes one frozen `warn:` line to the diagnostic stream. A
+// warning often quotes a path or a host message a stranger chose, so its
+// controls are folded first: stderr is a terminal more often than not.
 func (r *Runner) writeWarning(msg string) {
+	msg = inert(msg)
 	if r.Effective.Color == colorAlways {
 		fmt.Fprintf(r.Diag, "\033[33mwarn: %s\033[0m\n", msg)
 	} else {
@@ -169,7 +185,10 @@ func (r *Runner) WriteRentry() {
 	}
 }
 
+// writeErrorLine writes the `error:` line, its controls folded like a
+// warning's; the line breaks the message means to carry survive.
 func (r *Runner) writeErrorLine(msg string) {
+	msg = inert(msg)
 	if r.Effective.Color == colorAlways {
 		fmt.Fprintf(r.Diag, "\033[31merror: %s\033[0m\n", msg)
 		return
@@ -181,8 +200,8 @@ func (r *Runner) writeErrorLine(msg string) {
 // one block per problem in document order, then the truncation note.
 func writeProblems(w io.Writer, ref *RefusalError) {
 	for _, p := range ref.Problems {
-		fmt.Fprintf(w, "%s  %s  %s\n", p.Path, p.Code, p.Message)
-		fmt.Fprintf(w, "  fix: %s\n", p.Fix)
+		fmt.Fprintf(w, "%s  %s  %s\n", inert(p.Path), p.Code, inert(p.Message))
+		fmt.Fprintf(w, "  fix: %s\n", inert(p.Fix))
 		if p.Example != nil {
 			if example, err := json.Marshal(p.Example); err == nil {
 				fmt.Fprintf(w, "  example: %s\n", example)
