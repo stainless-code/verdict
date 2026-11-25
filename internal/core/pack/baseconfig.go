@@ -7,6 +7,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
 // BaseConfigPrefix labels a check row whose toggles came from the trusted base
@@ -218,8 +219,8 @@ func gitLine(ctx context.Context, cmdr core.Commander, root string, args ...stri
 	if ctx.Err() != nil {
 		return "", false, baseRefusal(ctx)
 	}
-	argv := append([]string{"git"}, args...)
-	res, err := cmdr.Run(ctx, &core.Command{Dir: root, Argv: argv, OutputCap: baseCommandCap})
+	argv := gitcmd.Argv(root, args...)
+	res, err := cmdr.Run(ctx, &core.Command{Argv: argv, Env: gitcmd.Env(nil), OutputCap: baseCommandCap})
 	if err != nil {
 		return "", false, baseGitFailed()
 	}

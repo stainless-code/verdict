@@ -11,10 +11,13 @@ import (
 	fixcore "github.com/stainless-code/verdict/internal/core/fix"
 	initcore "github.com/stainless-code/verdict/internal/core/init"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
 // fixedCommander replays canned stdout per exact argv and fails the test on
 // any unscripted spawn, so the mutating-verb conformance runs stay hermetic.
+// A git call is keyed on the caller's own args ([gitcmd.Split]); one that
+// skipped the hook-free helper stays unscripted.
 type fixedCommander struct {
 	out map[string]string
 	t   *testing.T
@@ -23,8 +26,11 @@ type fixedCommander struct {
 // Run replays the scripted stdout for argv.
 func (c fixedCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	c.t.Helper()
-	key := strings.Join(cmd.Argv, "\x00")
-	out, ok := c.out[key]
+	argv := cmd.Argv
+	if _, args, ok := gitcmd.Split(argv); ok {
+		argv = append([]string{"git"}, args...)
+	}
+	out, ok := c.out[strings.Join(argv, "\x00")]
 	if !ok {
 		c.t.Errorf("unexpected argv: %q", cmd.Argv)
 		return core.Result{}, fmt.Errorf("unexpected argv: %q", cmd.Argv)
@@ -38,9 +44,9 @@ func fixRuntime(t *testing.T) *core.Runtime {
 	return &core.Runtime{
 		Now: fixedNow,
 		Commander: fixedCommander{t: t, out: map[string]string{
-			"git\x00ls-files\x00-u":                              "",
-			"git\x00status\x00--porcelain\x00-z":                 "",
-			"git\x00diff\x00HEAD\x00--no-color\x00--no-ext-diff": "",
+			"git\x00ls-files\x00-u":              "",
+			"git\x00status\x00--porcelain\x00-z": "",
+			"git\x00diff\x00HEAD\x00--no-color":  "",
 		}},
 	}
 }
@@ -119,7 +125,7 @@ func TestRuntimeInitEnvelopeValidates(t *testing.T) {
 	}
 	runtime := fixedRuntime()
 	runtime.Commander = fixedCommander{t: t, out: map[string]string{
-		"git\x00-C\x00.\x00status\x00--porcelain\x00--untracked-files=all": "",
+		"git\x00status\x00--porcelain\x00--untracked-files=all": "",
 	}}
 	req.ReadRequest = core.ReadRequest{Runtime: runtime}
 	resp, ref := initcore.Run(context.Background(), req)

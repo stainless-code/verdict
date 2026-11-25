@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/testenv"
+	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 // promotedTestPath is the artifact seedReproBundle retains for sigBatch: the
@@ -107,5 +108,64 @@ func TestPromoteCommitFromSubdirectory(t *testing.T) {
 	}
 	if got := gitIn(t, dir, "show", "--name-only", "--format=", "HEAD"); got != promotedTestPath+"\n" {
 		t.Errorf("new commit touches %q, want only %q", got, promotedTestPath)
+	}
+}
+
+// TestPromoteCommitRunsNoRepoCode pins that `fix --test --commit` runs no
+// program the checkout chose: with core.hooksPath on an in-tree .husky
+// holding every commit and index hook, an fsmonitor, a smudge filter, a
+// textconv driver, and an external diff armed, the commit lands and none of
+// them leaves a marker. The clean filter is the one program that runs by
+// design: add stores the file as git itself would.
+func TestPromoteCommitRunsNoRepoCode(t *testing.T) {
+	dir := t.TempDir()
+	setupTestPromote(t, dir, "")
+	code := testkit.ArmRepoCode(t, dir)
+
+	out := harness.Run(t, dir, testHome(t), nil,
+		"fix", "acme/app", "local-test", "--test", sigBatch, "--commit", "--json")
+	if ran := code.Ran(t, "clean"); len(ran) > 0 {
+		t.Errorf("fix --test --commit ran repository-controlled code: %q", ran)
+	}
+	if out.Status != 0 {
+		t.Fatalf("fix --test --commit = exit %d\nstdout:\n%s\nstderr:\n%s",
+			out.Status, out.Stdout, out.Stderr)
+	}
+	if got := gitIn(t, dir, "show", "--name-only", "--format=", "HEAD"); got != promotedTestPath+"\n" {
+		t.Errorf("new commit touches %q, want only %q", got, promotedTestPath)
+	}
+}
+
+// TestPromoteCommitIgnoresInheritedGitEnv pins that variables a parent git
+// exports cannot steer `fix --test --commit`: GIT_CONFIG_PARAMETERS turning
+// an in-tree hooks path on runs no hook, and GIT_INDEX_FILE naming another
+// index leaves it unwritten, so the checkout's own index records the commit.
+func TestPromoteCommitIgnoresInheritedGitEnv(t *testing.T) {
+	dir := t.TempDir()
+	setupTestPromote(t, dir, "")
+	markers := t.TempDir()
+	hook := filepath.Join(dir, ".lefthook", "pre-commit")
+	testkit.WriteFile(t, hook, "#!/bin/sh\ntouch '"+filepath.ToSlash(filepath.Join(markers, "pre-commit"))+"'\n")
+	if err := os.Chmod(hook, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	stray := filepath.Join(dir, ".git", "stray-index")
+
+	out := harness.Run(t, dir, testHome(t), map[string]string{
+		"GIT_CONFIG_PARAMETERS": "'core.hooksPath'='.lefthook'",
+		"GIT_INDEX_FILE":        stray,
+	}, "fix", "acme/app", "local-test", "--test", sigBatch, "--commit", "--json")
+	if out.Status != 0 {
+		t.Fatalf("fix --test --commit = exit %d\nstdout:\n%s\nstderr:\n%s",
+			out.Status, out.Stdout, out.Stderr)
+	}
+	if left, err := os.ReadDir(markers); err != nil || len(left) != 0 {
+		t.Errorf("a hook ran through GIT_CONFIG_PARAMETERS: %v (%v)", left, err)
+	}
+	if _, err := os.Stat(stray); !os.IsNotExist(err) {
+		t.Errorf("the inherited GIT_INDEX_FILE was written (%v)", err)
+	}
+	if got := gitIn(t, dir, "status", "--porcelain", "--", promotedTestPath); got != "" {
+		t.Errorf("the checkout's index does not record the commit: status %q", got)
 	}
 }

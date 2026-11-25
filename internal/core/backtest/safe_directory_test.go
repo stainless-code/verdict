@@ -104,7 +104,7 @@ func TestMineForwardsSafeDirectoryArgv(t *testing.T) {
 	t.Parallel()
 	b, _ := newMergedFixRepo(t)
 	global := writeGitConfig(t, "[safe]\n\tdirectory = /trusted/one\n\tdirectory = *\n"+hostileGlobalConfig)
-	rec := &pinRecorder{inner: coreexec.Runner{MissingTool: true}}
+	rec := &pinRecorder{t: t, inner: coreexec.Runner{MissingTool: true}}
 	_, ref := Run(t.Context(), &Request{
 		Runtime: &core.Runtime{
 			Commander: rec,

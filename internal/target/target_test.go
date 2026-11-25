@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
 // fakeGit answers the two offline probes inference may run and records every
@@ -38,7 +39,11 @@ func (f *fakeGit) Run(_ context.Context, c *core.Command) (core.Result, error) {
 	if f.noRepo {
 		return core.Result{ExitCode: 128}, nil
 	}
-	switch strings.Join(c.Argv, " ") {
+	_, args, ok := gitcmd.Split(c.Argv)
+	if !ok {
+		return core.Result{ExitCode: 129}, errors.New("git call is not hook-free: " + strings.Join(c.Argv, " "))
+	}
+	switch "git " + strings.Join(args, " ") {
 	case "git config --get remote.origin.url":
 		if f.noOrigin {
 			return core.Result{ExitCode: 1}, nil
@@ -217,7 +222,7 @@ func TestResolveInfersFromOriginAndRecordedBundle(t *testing.T) {
 func assertOnlyLocalGit(t *testing.T, g *fakeGit) {
 	t.Helper()
 	for _, c := range g.calls {
-		if c[0] != "git" || (c[1] != "config" && c[1] != "branch") {
+		if sub := gitcmd.Subcommand(c); sub != "config" && sub != "branch" {
 			t.Errorf("inference ran %v; only local git reads are allowed", c)
 		}
 	}

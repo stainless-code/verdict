@@ -97,7 +97,7 @@ func TestRunLocalWorktreeDirty(t *testing.T) {
 	assertWorktreeLifecycle(t, cmdr, wt, worktreeTestStash)
 	assertArgvContains(t, cmdr, []string{
 		"git stash create",
-		"git diff --no-ext-diff --no-textconv " + worktreeTestHead + " " + testContentTree,
+		"git diff " + worktreeTestHead + " " + testContentTree,
 	})
 }
 

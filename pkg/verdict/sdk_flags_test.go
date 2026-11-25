@@ -289,7 +289,7 @@ func TestClientFetchLocalWorktreeHeadControls(t *testing.T) {
 	})
 	assertFields(t, asMap(t, doc["controls"], "controls"), map[string]any{"policy": "head", "sha": ""})
 	assertNumbers(t, doc, map[string]float64{"files": 1, "additions": 1, "deletions": 1})
-	assertArgvSpawned(t, cmdr, "git diff --no-ext-diff --no-textconv "+sdkHeadA+" "+scriptTree)
+	assertArgvSpawned(t, cmdr, "git diff "+sdkHeadA+" "+scriptTree)
 	assertArgvSpawned(t, cmdr, "git worktree remove --force "+wt)
 	if got := readText(t, ".verdict/state/local-probe/controls/config.json"); got != headControlsConfig {
 		t.Errorf("head controls came from the caller checkout, not the isolated worktree: %q", got)

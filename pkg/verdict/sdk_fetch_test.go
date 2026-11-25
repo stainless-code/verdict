@@ -370,7 +370,7 @@ case "$*" in
 *) printf '{}' ;;
 esac
 `, 0o755)
-	write("git", "#!/bin/sh\ncase \"$*\" in \"remote get-url origin\") echo https://github.com/acme/app.git ;; esac\nexit 0\n", 0o755)
+	write("git", "#!/bin/sh\ncase \"$*\" in *\" remote get-url origin\") echo https://github.com/acme/app.git ;; esac\nexit 0\n", 0o755)
 	// The stubs shadow the host tools; the host PATH stays behind them so the
 	// scripts keep their own plumbing (cat, printf).
 	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))

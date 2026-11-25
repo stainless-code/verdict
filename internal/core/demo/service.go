@@ -28,6 +28,7 @@ import (
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/core/reviewflow"
 	runcore "github.com/stainless-code/verdict/internal/core/run"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
 const (
@@ -607,11 +608,11 @@ func twoSegments(path string, ok bool) (string, bool) {
 	return parts[0] + slugSep + parts[1], true
 }
 
-// runGit runs one git subcommand from the process working directory:
-// fetch-local reads the same tree the same way, so the demo's probes cannot
-// disagree with the diff it asks for.
+// runGit runs one hook-free git subcommand ([gitcmd.Argv]) from the process
+// working directory: fetch-local reads the same tree the same way, so the
+// demo's probes cannot disagree with the diff it asks for.
 func runGit(ctx context.Context, req *Request, args ...string) (core.Result, error) {
-	res, err := req.Commander.Run(ctx, &core.Command{Argv: append([]string{"git"}, args...)})
+	res, err := req.Commander.Run(ctx, &core.Command{Argv: gitcmd.Argv("", args...), Env: gitcmd.Env(nil)})
 	if err != nil {
 		return res, err //nolint:wrapcheck // the seam error is mapped at the caller
 	}

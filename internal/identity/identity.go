@@ -24,6 +24,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/noblock"
 )
@@ -107,7 +108,9 @@ func gitPatchID(ctx context.Context, cmdr core.Commander, diff []byte) (string, 
 	if cmdr == nil || ctx.Err() != nil {
 		return "", false
 	}
-	res, err := cmdr.Run(ctx, &core.Command{Argv: []string{"git", "patch-id", "--stable"}, Stdin: bytes.NewReader(diff)})
+	res, err := cmdr.Run(ctx, &core.Command{
+		Argv: gitcmd.Argv("", "patch-id", "--stable"), Env: gitcmd.Env(nil), Stdin: bytes.NewReader(diff),
+	})
 	if err != nil || res.ExitCode != 0 {
 		return "", false
 	}

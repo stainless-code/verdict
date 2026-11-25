@@ -5450,7 +5450,8 @@ or tear the read. The run prints the checkout path (`worktree: ...`) and always
 removes it before exiting, on success and on every refusal or cancel; a removal
 that fails warns with the manual `git worktree remove --force` recovery. When
 no checkout can be created the verb refuses typed `worktree-failed` and writes
-nothing. Re-materialize the same tree later for caller tracing or `verify`
+nothing. The checkout runs no hook, fsmonitor, or filter: each file lands as its
+blob bytes, so an LFS-tracked file is its pointer. Re-materialize the same tree later for caller tracing or `verify`
 runs with `git worktree add --detach /tmp/<name> <head-sha from source.json>`
 and remove it when done — the working tree stays untouched throughout.
 
@@ -5558,7 +5559,9 @@ worktree-confined, exactly as `record` confines its own writes: a `.verdict` or
 `.verdict/tests` that is a symlink refuses instead of landing the test outside
 the checkout. `--commit` commits that one file as `test: regression for <sig>`
 through a pathspec commit, so a file already staged in the index stays staged
-and out of the commit, and it needs `--test`. `tests.draft: off` in
+and out of the commit, and it needs `--test`. The commit runs no git hook —
+not `.git/hooks`, not a `core.hooksPath` the tree sets (husky, lefthook) —
+because it carries reviewed content; run your hooks yourself before you push. `tests.draft: off` in
 `.verdict/config.json` stops `record` from retaining the draft to begin with.
 
 Each pass also writes `fix.patch` beside the ledger: the worktree's unified
@@ -6093,6 +6096,16 @@ environment, and the split is deliberate (the security rationale is in
   `doctor`, and the base-owned control reads) **inherit your environment**.
   That is the point: they must use your `gh` auth and your git config,
   because verdict is a local CLI working on your behalf.
+- Every `git` call verdict issues also runs **no code the checkout
+  chooses**: it names the repository with `-C`, drops inherited
+  `GIT_INDEX_FILE`, `GIT_DIR`, and git's other location variables plus
+  `GIT_CONFIG_PARAMETERS`, and sets `core.hooksPath` to a path with no hooks
+  and `core.fsmonitor=false`, so no hook runs (not `.git/hooks`, not a
+  `.husky/` the tree points `core.hooksPath` at). A diff runs no external
+  diff or textconv driver. A checkout verdict writes from reviewed content
+  (`fetch-local --worktree`, `backtest` replay) runs no filter, git-lfs
+  included; status, diffs, and `add` on your working tree keep your clean
+  filters, so a file reads as git itself sees it.
 - The **agent-written `verifyCmd`** (and deep-group `--command`) runs under
   `bash -c` with a **default-deny allowlist** over the caller's environment —
   never an unfiltered inheritance. By default, only baseline locale, terminal,

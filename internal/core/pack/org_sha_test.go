@@ -2,13 +2,14 @@ package pack
 
 import (
 	"context"
+	"os"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
 // shaCommander scripts the pinned fetch clone sequence and plants the fixture
@@ -31,7 +32,7 @@ type shaCommander struct {
 func (c *shaCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
 	_, deadline := ctx.Deadline()
 	c.calls = append(c.calls, gitCall{
-		argv: slices.Clone(cmd.Argv), dir: cmd.Dir, env: slices.Clone(cmd.Env), deadline: deadline,
+		argv: slices.Clone(cmd.Argv), dir: gitDir(c.t, cmd), env: slices.Clone(cmd.Env), deadline: deadline,
 	})
 	switch gitSub(cmd.Argv) {
 	case "init":
@@ -49,18 +50,22 @@ func (c *shaCommander) Run(ctx context.Context, cmd *core.Command) (core.Result,
 	return core.Result{}, nil
 }
 
-// gitSub reports the git subcommand one scripted call carries: the first
-// argument past the shared `git -c <key>=<value>` prefix, so the
+// gitSub reports the git subcommand one scripted call carries, so the
 // `sparse-checkout init` step never reads as the clone's own `init`.
-func gitSub(argv []string) string {
-	for i := 1; i < len(argv); i++ {
-		if argv[i] == "-c" {
-			i++
-			continue
-		}
-		return argv[i]
+func gitSub(argv []string) string { return gitcmd.Subcommand(argv) }
+
+// gitDir is the repository one scripted call names with -C, empty for the
+// work dir itself; a git call the shared helper did not build fails.
+func gitDir(t *testing.T, cmd *core.Command) string {
+	t.Helper()
+	root, _, ok := gitcmd.Split(cmd.Argv)
+	if !ok {
+		t.Errorf("git call %q is not hook-free", cmd.Argv)
 	}
-	return ""
+	if root == "." {
+		return ""
+	}
+	return root
 }
 
 // argvStrings renders every scripted argv for the no-`--branch` assertion.
@@ -76,7 +81,7 @@ func (c *shaCommander) argvStrings() [][]string {
 // the exact hermetic argv sequence, no `--branch <sha>`, the scrubbed
 // environment, and the vendored pack plus its lock row carrying the pin ref.
 //
-//nolint:cyclop,gocognit,revive // argv, env, and lock assertions read as one contract block
+//nolint:cyclop,revive // argv, env, and lock assertions read as one contract block
 func TestSyncSHAFetchesBySHA(t *testing.T) {
 	repo := t.TempDir()
 	t.Chdir(repo)
@@ -106,20 +111,21 @@ func TestSyncSHAFetchesBySHA(t *testing.T) {
 
 	clone := cmdr.calls[0].argv[len(cmdr.calls[0].argv)-1]
 	tmp := filepath.Dir(clone)
-	hooks := "/dev/null"
-	if runtime.GOOS == "windows" {
-		hooks = filepath.Join(tmp, "hooks")
+	in := func(dir string, args ...string) []string {
+		return slices.Concat([]string{
+			"git", "-C", dir, "-c", "protocol.file.allow=never",
+			"-c", "core.hooksPath=" + os.DevNull, "-c", "core.fsmonitor=false",
+		}, args)
 	}
-	prefix := []string{"git", "-c", "core.hooksPath=" + hooks, "-c", "protocol.file.allow=never"}
 	wantCalls := [][]string{
-		append(slices.Clone(prefix), "init", clone),
-		append(slices.Clone(prefix), "remote", "add", "origin", url),
-		append(slices.Clone(prefix), "fetch", "--depth=1", "--no-tags", "--no-recurse-submodules", "origin", sha),
-		append(slices.Clone(prefix), "sparse-checkout", "init", "--cone"),
-		append(slices.Clone(prefix), "sparse-checkout", "set", "packs/org"),
-		append(slices.Clone(prefix), "checkout", "--detach", "FETCH_HEAD"),
-		append(slices.Clone(prefix), "rev-parse", "HEAD"),
-		append(slices.Clone(prefix), "checkout", "--detach", sha),
+		in(".", "init", clone),
+		in(clone, "remote", "add", "origin", url),
+		in(clone, "fetch", "--depth=1", "--no-tags", "--no-recurse-submodules", "origin", sha),
+		in(clone, "sparse-checkout", "init", "--cone"),
+		in(clone, "sparse-checkout", "set", "packs/org"),
+		in(clone, "checkout", "--detach", "FETCH_HEAD"),
+		in(clone, "rev-parse", "HEAD"),
+		in(clone, "checkout", "--detach", sha),
 	}
 	if got := cmdr.argvStrings(); !slices.EqualFunc(got, wantCalls, slices.Equal[[]string]) {
 		t.Fatalf("git argv = %q\nwant %q", got, wantCalls)
@@ -298,7 +304,7 @@ func assertFailedFetch(t *testing.T, ref string) {
 	t.Helper()
 	tmp := t.TempDir()
 	cmdr := &shaCommander{t: t, fetchExit: gitFatalExit}
-	got := gitClonePinned(context.Background(), cmdr, nil, tmp, "https://host/x.git", ref,
+	got := gitClonePinned(context.Background(), cmdr, nil, "https://host/x.git", ref,
 		rootSelf, tmp+"/repo")
 	if got == nil || got.Code != CodePackGitFailed {
 		t.Fatalf("gitClonePinned(%q) = %v, want %s", ref, got, CodePackGitFailed)

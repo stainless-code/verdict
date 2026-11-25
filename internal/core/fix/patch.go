@@ -24,7 +24,7 @@ const (
 
 func (st *state) writePatch(ctx context.Context, dir string) (*string, *core.RefusalError) {
 	path := dir + suffixFixPatch
-	res, err := st.runGit(ctx, "git", "diff", "HEAD", "--no-color", "--no-ext-diff")
+	res, err := st.runGit(ctx, "diff", "HEAD", "--no-color")
 	if err != nil {
 		return nil, st.refuse(codeFixFailed, fmt.Sprintf(msgPatchDiff, err))
 	}

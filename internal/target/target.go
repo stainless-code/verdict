@@ -20,6 +20,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -416,7 +417,7 @@ func currentBranch(ctx context.Context, d Deps) (name string, ok bool) {
 func git(ctx context.Context, d Deps, args ...string) (string, bool) {
 	ctx, cancel := context.WithTimeout(ctx, gitTimeout)
 	defer cancel()
-	res, err := d.Commander.Run(ctx, &core.Command{Argv: slices.Concat([]string{"git"}, args), OutputCap: gitCap})
+	res, err := d.Commander.Run(ctx, &core.Command{Argv: gitcmd.Argv("", args...), Env: gitcmd.Env(nil), OutputCap: gitCap})
 	if err != nil || res.ExitCode != 0 || res.StdoutTruncated || ctx.Err() != nil {
 		return "", false
 	}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -25,7 +26,7 @@ type editAfterNaming struct {
 
 func (c *editAfterNaming) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
 	res, err := coreexec.Runner{}.Run(ctx, cmd)
-	if !c.edited && len(cmd.Argv) > 3 && cmd.Argv[3] == "write-tree" {
+	if !c.edited && gitcmd.Subcommand(cmd.Argv) == "write-tree" {
 		c.edited = true
 		if werr := os.WriteFile(c.path, []byte(c.body), 0o600); werr != nil {
 			return res, werr
@@ -116,11 +117,12 @@ type commitAfterHeadRead struct {
 
 func (c *commitAfterHeadRead) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
 	res, err := coreexec.Runner{}.Run(ctx, cmd)
-	joined := strings.Join(cmd.Argv, " ")
+	_, args, _ := gitcmd.Split(cmd.Argv)
+	joined := strings.Join(args, " ")
 	switch {
-	case strings.HasPrefix(joined, "git merge-base"):
+	case strings.HasPrefix(joined, "merge-base"):
 		c.sawBase = true
-	case c.sawBase && !c.committed && joined == "git rev-parse HEAD":
+	case c.sawBase && !c.committed && joined == "rev-parse HEAD":
 		c.committed = true
 		c.commit()
 	}

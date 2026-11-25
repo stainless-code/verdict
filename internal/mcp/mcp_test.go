@@ -24,6 +24,7 @@ import (
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
@@ -913,7 +914,7 @@ type threadsCommander struct {
 }
 
 func (c *threadsCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
-	if strings.Join(cmd.Argv, " ") == "git remote get-url origin" {
+	if _, args, ok := gitcmd.Split(cmd.Argv); ok && strings.Join(args, " ") == "remote get-url origin" {
 		return core.Result{Stdout: "https://github.com/acme/app.git"}, nil
 	}
 	if strings.Contains(strings.Join(cmd.Argv, " "), "api graphql") {

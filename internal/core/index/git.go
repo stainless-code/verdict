@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
 // gitPins are the command-scope values every index git call carries. They
@@ -96,8 +97,8 @@ func (st *state) gitCapped(
 	if cmdr == nil {
 		return "", 0, "", &core.RefusalError{Code: codeIndexFailed, Message: "index needs a command runner"}
 	}
-	argv := slices.Concat([]string{gitBin, "-C", dir}, st.trustArgs(), gitPins, args)
-	res, err := cmdr.Run(ctx, &core.Command{Argv: argv, Env: st.gitEnv(false), OutputCap: limit})
+	argv := gitcmd.Argv(dir, slices.Concat(st.trustArgs(), gitPins, args)...)
+	res, err := cmdr.Run(ctx, &core.Command{Argv: argv, Env: gitcmd.Env(st.gitEnv(false)), OutputCap: limit})
 	if err != nil {
 		if _, ok := errors.AsType[*core.MissingToolError](err); ok {
 			return "", 0, "", &core.RefusalError{Code: "missing-tool", Message: "git is not on PATH"}
@@ -131,9 +132,10 @@ func (st *state) gitBatch(ctx context.Context, dir string, blobs []string) (map[
 	if cmdr == nil {
 		return nil, &core.RefusalError{Code: codeIndexFailed, Message: "index needs a command runner"}
 	}
-	argv := slices.Concat([]string{gitBin, "-C", dir}, st.trustArgs(), gitPins, []string{"cat-file", "--batch"})
+	argv := gitcmd.Argv(dir, slices.Concat(st.trustArgs(), gitPins, []string{"cat-file", "--batch"})...)
 	stdin := strings.NewReader(strings.Join(blobs, newline) + newline)
-	res, err := cmdr.Run(ctx, &core.Command{Argv: argv, Env: st.gitEnv(false), OutputCap: gitOutputCap, Stdin: stdin})
+	env := gitcmd.Env(st.gitEnv(false))
+	res, err := cmdr.Run(ctx, &core.Command{Argv: argv, Env: env, OutputCap: gitOutputCap, Stdin: stdin})
 	if err != nil {
 		return nil, batchRefusal(err)
 	}
@@ -255,8 +257,8 @@ func (st *state) readTrust(ctx context.Context, dir string) []string {
 	}
 	var dirs []string
 	for _, scope := range trustScopes {
-		argv := []string{"git", "-C", dir, "config", scope, "--null", "--get-all", "safe.directory"}
-		res, err := cmdr.Run(ctx, &core.Command{Argv: argv, Env: st.gitEnv(true), OutputCap: trustOutputCap})
+		argv := gitcmd.Argv(dir, "config", scope, "--null", "--get-all", "safe.directory")
+		res, err := cmdr.Run(ctx, &core.Command{Argv: argv, Env: gitcmd.Env(st.gitEnv(true)), OutputCap: trustOutputCap})
 		if err != nil || res.ExitCode != 0 || res.Stdout == "" {
 			continue
 		}

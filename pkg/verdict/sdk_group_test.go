@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/config"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/pkg/verdict"
 )
 
@@ -170,8 +171,8 @@ type dirCommander struct {
 }
 
 func (c *dirCommander) Run(_ context.Context, cmd *verdict.Command) (verdict.CommandResult, error) {
-	if a := cmd.Argv; len(a) > 3 && a[0] == "git" {
-		switch a[3] {
+	if _, a, ok := gitcmd.Split(cmd.Argv); ok && len(a) > 0 {
+		switch a[0] {
 		case "worktree":
 			fakeWorktreeAdd(a)
 			return verdict.CommandResult{}, nil

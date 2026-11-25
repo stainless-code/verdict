@@ -18,6 +18,7 @@ import (
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/curlauth"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/retry"
 )
@@ -430,22 +431,45 @@ func (s *session) needTool(tool string) error {
 	return s.commander.LookPath(tool)
 }
 
-// run spawns one git command with the runner's stdin default, capturing both
-// streams. A missing binary or a spawn failure returns the seam error with
-// streams attached; a completed process with a non-zero wait code returns the
-// same shell-visible failure text, and callers map both to the fetch
+// run spawns one git command in the process working directory with the
+// runner's stdin default, capturing both streams. It names the working
+// directory, not repoRoot: repoRoot is where the bundle lands, which verdict
+// demo points at a temp dir while git reads the operator's checkout. A
+// missing binary or a spawn failure returns the seam error with streams
+// attached; a completed process with a non-zero wait code returns the same
+// shell-visible failure text, and callers map both to the fetch
 // warn-or-refuse posture.
 func (s *session) run(ctx context.Context, args ...string) (core.Result, error) {
-	return s.runStdin(ctx, binGit, "", args...)
+	return s.runIn(ctx, "", args...)
 }
 
-// runStdin is run with an explicit child stdin: a non-empty document replaces
-// the runner's default, and every retry gets a fresh reader over it.
+// runIn is run against another repository: the isolated checkout or a
+// temporary clone. Every call is hook-free and fsmonitor-free, and a diff
+// runs no external diff or textconv driver ([gitcmd.Argv]). Clean filters
+// stay on: a working-tree status, diff, or stash create must hash a file as
+// git itself does, or an LFS-tracked file reads as changed. A clean filter
+// is a driver the operator configured, run on the operator's own checkout
+// (git-lfs's clean step stores the object locally and fetches nothing). The
+// one call that writes a working tree from reviewed content, the isolated
+// checkout, turns every filter off ([checkoutOptions]).
+func (s *session) runIn(ctx context.Context, root string, args ...string) (core.Result, error) {
+	return s.spawn(ctx, &core.Command{Argv: gitcmd.Argv(root, args...), Env: gitcmd.Env(nil)})
+}
+
+// runStdin runs a host tool with an explicit child stdin: a non-empty
+// document replaces the runner's default, and every retry gets a fresh
+// reader over it.
 func (s *session) runStdin(ctx context.Context, bin, stdin string, args ...string) (core.Result, error) {
 	cmd := &core.Command{Argv: append([]string{bin}, args...)}
 	if stdin != "" {
 		cmd.Stdin = strings.NewReader(stdin)
 	}
+	return s.spawn(ctx, cmd)
+}
+
+// spawn runs cmd, turning a non-zero exit into the shell-visible failure.
+func (s *session) spawn(ctx context.Context, cmd *core.Command) (core.Result, error) {
+	bin := cmd.Argv[0]
 	res, err := s.commander.Run(ctx, cmd)
 	if err != nil {
 		return res, err //nolint:wrapcheck // the seam error passes through by design; callers map it per site

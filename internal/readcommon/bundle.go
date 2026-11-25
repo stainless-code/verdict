@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -227,7 +228,7 @@ func gitTopLevel(ctx context.Context, budget time.Duration) (string, error) {
 	probe, stop := context.WithTimeout(ctx, budget)
 	defer stop()
 	res, err := (coreexec.Runner{OutputCap: repoRootOutputCap}).Run(probe, &core.Command{
-		Argv: []string{"git", "rev-parse", "--show-toplevel"}, OutputCap: repoRootOutputCap,
+		Argv: gitcmd.Argv("", "rev-parse", "--show-toplevel"), Env: gitcmd.Env(nil), OutputCap: repoRootOutputCap,
 	})
 	if perr := probe.Err(); perr != nil {
 		return "", probeFailure("probe git rev-parse --show-toplevel", perr)
@@ -688,7 +689,6 @@ func IsFile(path string) bool {
 const (
 	checkoutHeadTimeout = 30 * time.Second
 	checkoutHeadCap     = 4 << 10
-	gitBin              = "git"
 )
 
 // CheckoutHead reads the commit checked out at root through the injected
@@ -699,7 +699,8 @@ func CheckoutHead(ctx context.Context, commander core.Commander, root string) (h
 	tctx, cancel := context.WithTimeout(ctx, checkoutHeadTimeout)
 	defer cancel()
 	res, err := commander.Run(tctx, &core.Command{
-		Argv:      []string{gitBin, "-C", root, "rev-parse", "HEAD"},
+		Argv:      gitcmd.Argv(root, "rev-parse", "HEAD"),
+		Env:       gitcmd.Env(nil),
 		OutputCap: checkoutHeadCap,
 	})
 	if err != nil {

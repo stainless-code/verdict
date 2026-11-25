@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/testenv"
 	"github.com/stainless-code/verdict/pkg/verdict"
 )
@@ -136,13 +137,18 @@ type fakeCommander struct {
 // Run implements verdict.Commander.
 func (f *fakeCommander) Run(_ context.Context, cmd *verdict.Command) (verdict.CommandResult, error) {
 	f.t.Helper()
-	// fetch-local's content-tree reads (`git -C <root> …`) are not what these
-	// tests script.
-	if res, ok := sdkGitAnswer(cmd); ok {
-		return res, nil
+	// fetch-local's content-tree reads are not what these tests script.
+	if isContentRead(cmd) {
+		if res, ok := sdkGitAnswer(cmd); ok {
+			return res, nil
+		}
 	}
-	f.calls = append(f.calls, cmd.Argv)
-	joined := strings.Join(liveDiffArgv(cmd.Argv), " ")
+	argv := sdkArgv(cmd.Argv)
+	if slices.Equal(argv, append([]string{"git"}, gitcmd.ListFilters...)) {
+		return verdict.CommandResult{ExitCode: 1}, nil
+	}
+	f.calls = append(f.calls, argv)
+	joined := strings.Join(liveDiffArgv(argv), " ")
 	for _, rule := range f.rules {
 		if containsAll(joined, rule.tokens) {
 			return rule.result, nil
@@ -153,21 +159,15 @@ func (f *fakeCommander) Run(_ context.Context, cmd *verdict.Command) (verdict.Co
 }
 
 // liveDiffArgv maps a named working-tree bundle's tree-to-tree read (`git
-// diff --no-ext-diff --no-textconv [flags] <base> <scriptTree> [-- paths]`)
-// onto the live `git diff [flags] HEAD [-- paths]` a test scripts: the named
-// tree stands for the working tree's content. Other argv pass unchanged.
+// diff [flags] <base> <scriptTree> [-- paths]`) onto the live `git diff
+// [flags] HEAD [-- paths]` a test scripts: the named tree stands for the
+// working tree's content. Other argv pass unchanged.
 func liveDiffArgv(argv []string) []string {
 	tree := slices.Index(argv, scriptTree)
 	if len(argv) < 3 || argv[1] != "diff" || tree < 1 {
 		return argv
 	}
-	live := []string{"git", "diff"}
-	for _, a := range argv[2 : tree-1] {
-		if a != "--no-ext-diff" && a != "--no-textconv" {
-			live = append(live, a)
-		}
-	}
-	return slices.Concat(live, []string{"HEAD"}, argv[tree+1:])
+	return slices.Concat(argv[:tree-1], []string{"HEAD"}, argv[tree+1:])
 }
 
 // containsAll reports whether s contains every token.

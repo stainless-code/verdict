@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/brief"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -624,18 +625,25 @@ func draftOf(dir string) bool {
 }
 
 func (st *state) gitLsFilesUnmerged(ctx context.Context) (string, error) {
-	res, err := st.runGit(ctx, "git", "ls-files", "-u")
+	res, err := st.runGit(ctx, "ls-files", "-u")
 	if err != nil {
 		return "", err
 	}
 	return res.Stdout, nil
 }
 
-func (st *state) runGit(ctx context.Context, argv ...string) (core.Result, error) {
+// runGit runs one git subcommand against the repository root, hook-free and
+// fsmonitor-free, with no external diff or textconv driver ([gitcmd.Argv]).
+// Clean filters stay on: status, the worktree diff, and add must hash a file
+// as git itself does, or an LFS-tracked file would read as changed and be
+// committed as its raw bytes. A clean filter is a driver the operator
+// configured, run locally on the operator's own checkout.
+func (st *state) runGit(ctx context.Context, args ...string) (core.Result, error) {
 	if st.req.Commander == nil {
 		return core.Result{}, errNoCommander
 	}
-	res, err := st.req.Commander.Run(ctx, &core.Command{Argv: argv})
+	argv := gitcmd.Argv(st.req.RepoRootPath(), args...)
+	res, err := st.req.Commander.Run(ctx, &core.Command{Argv: argv, Env: gitcmd.Env(nil)})
 	if err != nil {
 		//nolint:wrapcheck // the commander error is only a non-zero signal; the refusal carries the contract
 		return core.Result{}, err
@@ -1018,7 +1026,7 @@ func stringsOf(in []string) []any {
 }
 
 func (st *state) worktreeFiles(ctx context.Context) []string {
-	res, err := st.runGit(ctx, "git", "status", "--porcelain", "-z")
+	res, err := st.runGit(ctx, "status", "--porcelain", "-z")
 	if err != nil {
 		return nil
 	}

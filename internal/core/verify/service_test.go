@@ -12,6 +12,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/testkit"
 )
 
@@ -42,21 +43,21 @@ const (
 // snapshot's tree and commit, and a `worktree add` that leaves a checkout
 // with a .git (the sandbox inspects it), so a test scripts only the command.
 func gitAnswer(cmd *core.Command, tree string) (core.Result, bool) {
-	a := cmd.Argv
-	if len(a) < 4 || a[0] != "git" {
+	_, a, ok := gitcmd.Split(cmd.Argv)
+	if !ok || len(a) == 0 {
 		return core.Result{}, false
 	}
 	if tree == "" {
 		tree = patchTree
 	}
 	switch {
-	case slices.Equal(a[3:], []string{"rev-parse", "HEAD"}):
+	case slices.Equal(a, []string{"rev-parse", "HEAD"}):
 		return core.Result{Stdout: patchHead + "\n"}, true
-	case a[3] == "rev-parse" || a[3] == "write-tree":
+	case a[0] == "rev-parse" || a[0] == "write-tree":
 		return core.Result{Stdout: tree + "\n"}, true
-	case a[3] == "commit-tree":
+	case a[0] == "commit-tree":
 		return core.Result{Stdout: snapshotCommit + "\n"}, true
-	case a[3] == "worktree" && len(a) > 4 && a[4] == "add":
+	case a[0] == "worktree" && len(a) > 1 && a[1] == "add":
 		fakeCheckout(a[len(a)-2])
 	}
 	return core.Result{}, true
@@ -430,7 +431,7 @@ func requireSnapshotDir(t *testing.T, dir, root string) {
 type removeFailsCommander struct{ scriptCommander }
 
 func (c *removeFailsCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
-	if a := cmd.Argv; len(a) > 4 && a[0] == "git" && a[3] == "worktree" && a[4] == "remove" {
+	if _, a, ok := gitcmd.Split(cmd.Argv); ok && len(a) > 1 && a[0] == "worktree" && a[1] == "remove" {
 		return core.Result{ExitCode: 1, Stderr: "fatal: cannot remove a locked working tree"}, nil
 	}
 	return c.scriptCommander.Run(ctx, cmd)

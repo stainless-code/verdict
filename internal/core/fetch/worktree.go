@@ -6,9 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -46,18 +48,53 @@ func setupIsolation(ctx context.Context, s *session, slug string, mode *localMod
 	if ref != nil {
 		return nil, false, ref
 	}
-	if res, err := s.run(ctx, gitCmdWorktree, gitWorktreeAdd, flagDetach, dir, target); err != nil {
-		if mt, ok := errors.AsType[*core.MissingToolError](err); ok {
-			return nil, false, mt
+	if err := addIsolation(ctx, s, dir, target); err != nil {
+		return nil, false, err
+	}
+	return &isolation{dir: dir, base: isolationBase(mode), head: target}, true, nil
+}
+
+// addIsolation checks target out at dir with every filter driver off
+// ([checkoutOptions]). A missing git passes through; any other failure
+// scrubs the half-made checkout and refuses typed worktree-failed.
+func addIsolation(ctx context.Context, s *session, dir, target string) error {
+	opts, err := checkoutOptions(ctx, s)
+	if mt, ok := errors.AsType[*core.MissingToolError](err); ok {
+		return mt
+	}
+	if err != nil {
+		return &core.RefusalError{
+			Code:    codeWorktreeFailed,
+			Message: fmt.Sprintf("could not read the filter configuration an isolated worktree must switch off: %v", err),
 		}
+	}
+	res, err := s.run(ctx, slices.Concat(opts, []string{gitCmdWorktree, gitWorktreeAdd, flagDetach, dir, target})...)
+	if mt, ok := errors.AsType[*core.MissingToolError](err); ok {
+		return mt
+	}
+	if err != nil {
 		scrubIsolation(ctx, s, dir)
-		return nil, false, &core.RefusalError{
+		return &core.RefusalError{
 			Code: codeWorktreeFailed,
 			Message: fmt.Sprintf("could not check out isolated worktree at %s: %s",
 				readcommon.ShortSHA(strings.TrimSpace(target)), headBytes(res.Stderr, numExcerpt)),
 		}
 	}
-	return &isolation{dir: dir, base: isolationBase(mode), head: target}, true, nil
+	return nil
+}
+
+// checkoutOptions switches off, for the isolated checkout, every filter
+// driver the repository's configuration names: the checkout writes reviewed
+// content, whose attributes could otherwise route a file through any smudge
+// or process filter the operator configured — git-lfs among them, fetching
+// from a URL the content's .lfsconfig picks. Files land as their blob bytes
+// (an LFS file as its pointer). git exits 1 when no driver is configured.
+func checkoutOptions(ctx context.Context, s *session) ([]string, error) {
+	res, err := s.run(ctx, gitcmd.ListFilters...)
+	if err != nil && (res.ExitCode != 1 || res.Stdout != "") {
+		return nil, err
+	}
+	return gitcmd.FilterOptions(res.Stdout), nil
 }
 
 // isolationBase is the explicit diff base for the checkout reads: the
@@ -199,13 +236,13 @@ func (iso *isolation) cleanup(ctx context.Context, s *session) {
 	_ = os.RemoveAll(iso.dir)
 }
 
-// git runs git against the isolated checkout when one is active, prefixing
-// -C, and against the live tree otherwise. Only the bundle's diff and
-// file-list reads go through it; mode resolution, the untracked-files
-// advisory, and teardown stay live by calling run directly.
+// git runs git against the isolated checkout when one is active and against
+// the live tree otherwise. Only the bundle's diff and file-list reads go
+// through it; mode resolution, the untracked-files advisory, and teardown
+// stay live by calling run directly.
 func (s *session) git(ctx context.Context, args ...string) (core.Result, error) {
 	if s.iso != nil {
-		args = append([]string{gitDashC, s.iso.dir}, args...)
+		return s.runIn(ctx, s.iso.dir, args...)
 	}
 	return s.run(ctx, args...)
 }

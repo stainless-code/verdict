@@ -96,7 +96,7 @@ func TestPostDryRunWritesPreviewWithoutHostOrStoreWrites(t *testing.T) {
 	}
 	assertFilesUnchanged(t, dir, before)
 	calls := cmdr.callLog()
-	if len(calls) != 3 || !strings.Contains(calls[0], "git remote get-url origin") ||
+	if len(calls) != 3 || !isOriginProbe(calls[0]) ||
 		!strings.Contains(calls[1], "api graphql") ||
 		!strings.Contains(calls[2], "api user --jq .login") {
 		t.Errorf("host calls = %v, want one origin probe, one live refresh, one login read", calls)
@@ -261,4 +261,11 @@ func TestDryRunWithAgentLeavesBundleProcedureAbsent(t *testing.T) {
 	if _, err := os.Stat(path); !errors.Is(err, fs.ErrNotExist) {
 		t.Errorf("dry run wrote %s: %v", filepath.ToSlash(path), err)
 	}
+}
+
+// isOriginProbe reports the hook-free `git remote get-url origin` read, as the
+// call log joins it.
+func isOriginProbe(call string) bool {
+	return strings.HasPrefix(call, "git -C ") && strings.Contains(call, " -c core.hooksPath=") &&
+		strings.HasSuffix(call, " remote get-url origin")
 }

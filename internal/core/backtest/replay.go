@@ -19,6 +19,7 @@ import (
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	runcore "github.com/stainless-code/verdict/internal/core/run"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -994,7 +995,7 @@ func (st *state) worktreeAdd(
 	}
 	dir := filepath.ToSlash(filepath.Join(state, worktreePrefix+run+"-"+strconv.Itoa(n)))
 	st.worktreeDrop(ctx, dir)
-	detail, err := st.worktreeRun(ctx, gitWorktreeAdd, flagDetach, dir, head)
+	detail, err := st.checkout(ctx, dir, head)
 	if ctx.Err() != nil {
 		st.worktreeDrop(ctx, dir)
 		return "", "", "", st.refuse(codeCanceled, st.cancelText())
@@ -1012,10 +1013,35 @@ func (st *state) worktreeAdd(
 	return "", codeBacktestFail, "git " + gitWorktree + " " + gitWorktreeAdd + " failed for " + short(head) + labelSep + detail, nil
 }
 
+// checkout adds the candidate's detached checkout with every filter driver
+// the repository's configuration names switched off ([gitcmd.FilterOptions]):
+// the candidate head is reviewed content, whose attributes could otherwise
+// route a file through a smudge or process filter — git-lfs fetching from a
+// URL the content's .lfsconfig picks. The mining environment reads no user or
+// system config, so the listing and the checkout see the same drivers; git
+// exits 1 when there are none. Files land as their blob bytes.
+func (st *state) checkout(ctx context.Context, dir, head string) (string, error) {
+	listing, exit, stderr, err := st.git(ctx, st.root, gitcmd.ListFilters...)
+	switch {
+	case err != nil:
+		return "", err
+	case exit != 0 && (exit != 1 || listing != ""):
+		return "git config exited " + strconv.Itoa(exit) + labelSep + firstLine(stderr), nil
+	}
+	add := []string{gitWorktree, gitWorktreeAdd, flagDetach, dir, head}
+	return st.gitDetail(ctx, slices.Concat(gitcmd.FilterOptions(listing), add)...)
+}
+
 // worktreeRun runs one `git worktree` subcommand in the repository root,
 // returning git's one-line failure detail beside the spawn error.
 func (st *state) worktreeRun(ctx context.Context, args ...string) (string, error) {
-	_, exit, stderr, err := st.git(ctx, st.root, append([]string{gitWorktree}, args...)...)
+	return st.gitDetail(ctx, append([]string{gitWorktree}, args...)...)
+}
+
+// gitDetail runs one git command in the repository root, returning git's
+// one-line failure detail beside the spawn error.
+func (st *state) gitDetail(ctx context.Context, args ...string) (string, error) {
+	_, exit, stderr, err := st.git(ctx, st.root, args...)
 	if err != nil {
 		return "", err
 	}

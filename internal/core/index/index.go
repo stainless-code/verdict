@@ -69,7 +69,6 @@ const (
 	codeIndexCorrupt     = "index-corrupt"
 	codeIndexFailed      = "index-failed"
 	codeMissingIndex     = "missing-index"
-	gitBin               = "git"
 	resolutionExact      = "exact"
 	resolutionLexical    = "lexical"
 	resolutionUnresolved = "unresolved"

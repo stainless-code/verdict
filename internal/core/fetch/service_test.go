@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/untrusted"
@@ -56,10 +57,12 @@ const testContentTree = "c0ffee0000000000000000000000000000000000"
 // contentTreeAnswer answers the git reads that name the reviewed content
 // (contenttree.Git always passes -C <root>); they stay out of calls, so a
 // test pinning the fetch argv sequence keeps pinning just that.
-func (s *scriptCommander) contentTreeAnswer(argv []string) (core.Result, bool) {
-	if len(argv) < 4 || argv[0] != "git" || argv[1] != "-C" {
+func (s *scriptCommander) contentTreeAnswer(cmd *core.Command) (core.Result, bool) {
+	_, args, ok := gitcmd.Split(cmd.Argv)
+	if !ok || !slices.ContainsFunc(cmd.Env, func(e string) bool { return strings.HasSuffix(e, "=core.safecrlf") }) {
 		return core.Result{}, false
 	}
+	argv := append([]string{"git", "-C", "."}, args...)
 	switch argv[3] {
 	case "ls-files":
 		return s.listAnswer(argv)
@@ -88,13 +91,17 @@ func (s *scriptCommander) listAnswer(argv []string) (core.Result, bool) {
 // Run records argv/stdin/env and replays the canned result.
 func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	s.t.Helper()
-	if res, ok := s.contentTreeAnswer(cmd.Argv); ok {
+	if res, ok := s.contentTreeAnswer(cmd); ok {
 		return res, nil
 	}
-	s.calls = append(s.calls, append([]string{}, cmd.Argv...))
+	argv := s.scriptArgv(cmd)
+	if res, ok := s.filterAnswer(argv); ok {
+		return res, nil
+	}
+	s.calls = append(s.calls, argv)
 	s.stdin = append(s.stdin, readTestStdin(s.t, cmd.Stdin))
 	s.env = append(s.env, cmd.Env)
-	key := strings.Join(liveDiffArgv(cmd.Argv), "\x00")
+	key := strings.Join(liveDiffArgv(argv), "\x00")
 	if key == patchIDKey {
 		if cmd.Stdin == nil {
 			s.t.Errorf("patch-id sent no stdin, want the diff on stdin")
@@ -114,8 +121,44 @@ func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result
 	return out, nil
 }
 
+// filterAnswer answers the isolated checkout's filter-driver listing: the
+// scripted drivers, or none (git's exit 1) when a test scripts none. It
+// stays out of calls, so a test pinning the fetch argv sequence keeps
+// pinning just that.
+func (s *scriptCommander) filterAnswer(argv []string) (core.Result, bool) {
+	if !slices.Equal(argv, slices.Concat([]string{"git"}, gitcmd.ListFilters)) {
+		return core.Result{}, false
+	}
+	if res, ok := s.out[strings.Join(argv, "\x00")]; ok {
+		return core.Result{Stdout: res.stdout}, true
+	}
+	return core.Result{ExitCode: 1}, true
+}
+
+// scriptArgv maps a git argv back onto the argv a test scripts: the
+// caller's own args ([gitcmd.Split]), with `-C <root>` kept only for a call
+// aimed elsewhere than the session's repository (the isolated checkout, a
+// temporary clone). A git argv that does not carry the hook-free settings
+// and environment fails the test, so every scripted call proves them.
+func (s *scriptCommander) scriptArgv(cmd *core.Command) []string {
+	if len(cmd.Argv) == 0 || cmd.Argv[0] != "git" {
+		return slices.Clone(cmd.Argv)
+	}
+	root, args, ok := gitcmd.Split(cmd.Argv)
+	if !ok || cmd.Env == nil || slices.ContainsFunc(cmd.Env, func(e string) bool {
+		return strings.HasPrefix(e, "GIT_CONFIG_PARAMETERS=") || strings.HasPrefix(e, "GIT_INDEX_FILE=")
+	}) {
+		s.t.Errorf("git call %q is not hook-free", cmd.Argv)
+		return slices.Clone(cmd.Argv)
+	}
+	if root == "." {
+		return slices.Concat([]string{"git"}, args)
+	}
+	return slices.Concat([]string{"git", "-C", root}, args)
+}
+
 // liveDiffArgv maps a named working-tree bundle's tree-to-tree read (`git
-// diff --no-ext-diff --no-textconv [flags] <base> <tree> [-- paths]`) onto
+// diff [flags] <base> <tree> [-- paths]`) onto
 // the live `git diff [flags] HEAD [-- paths]` a test scripts: the named
 // tree stands for the working tree's content, so the scripted live output
 // is what the tree read returns. Every other argv is returned unchanged.
@@ -124,13 +167,7 @@ func liveDiffArgv(argv []string) []string {
 	if len(argv) < 3 || argv[1] != "diff" || tree < 1 {
 		return argv
 	}
-	live := []string{"git", "diff"}
-	for _, a := range argv[2 : tree-1] {
-		if a != "--no-ext-diff" && a != "--no-textconv" {
-			live = append(live, a)
-		}
-	}
-	return slices.Concat(live, []string{"HEAD"}, argv[tree+1:])
+	return slices.Concat(argv[:tree-1], []string{"HEAD"}, argv[tree+1:])
 }
 
 // readTestStdin drains one child's stdin, failing the test on a read error.
@@ -182,8 +219,8 @@ func assertOneCall(t *testing.T, cmdr *scriptCommander, i int, want []string) {
 	if !wantsStdin && cmdr.stdin[i] != "" {
 		t.Errorf("argv %d sent stdin, want none", i)
 	}
-	if cmdr.env[i] != nil {
-		t.Errorf("argv %d set env, want inherit", i)
+	if hookFree := want[0] == "git"; (cmdr.env[i] != nil) != hookFree {
+		t.Errorf("argv %d env set = %t, want %t (only git runs on the hook-free environment)", i, cmdr.env[i] != nil, hookFree)
 	}
 }
 

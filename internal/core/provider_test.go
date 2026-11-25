@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
 type originCommander struct {
@@ -14,7 +16,7 @@ type originCommander struct {
 
 func (c *originCommander) Run(_ context.Context, cmd *Command) (Result, error) {
 	c.calls++
-	if strings.Join(cmd.Argv, " ") != "git remote get-url origin" {
+	if _, args, ok := gitcmd.Split(cmd.Argv); !ok || strings.Join(args, " ") != "remote get-url origin" {
 		panic("wrong origin command")
 	}
 	return Result{Stdout: c.remote, ExitCode: c.exit}, nil
