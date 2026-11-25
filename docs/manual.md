@@ -5487,16 +5487,36 @@ refresh the index skips the write). Anything that writes the repository —
 `git commit`, `git stash`, `git checkout`, `git fetch`, `git submodule update`
 — fails inside the sandbox; run those outside it.
 
+**Nested repositories.** Before the command runs, both mechanisms walk the
+root for every nested `.git` — a submodule checked out with its own git
+directory, a nested clone, a vendored repository — without descending into
+any git directory, and read the root's index for its submodule paths
+(gitlink entries; `.gitmodules` adds nothing, since git enters a submodule
+by its gitlink). Each nested `.git` goes through the same rules as the
+root's: a symlinked one refuses, a `gitdir:` file is walked and its git
+directory protected, and the location scans run on it. On Linux each
+nested `.git`, and each submodule path that is not checked out yet (an
+empty directory: a `.git` created there would make `git status` in the
+superproject enter it), is bound read-only, after a read-write self-bind of
+every directory between the root and it — a bind mount cannot be renamed
+or removed, so no ancestor can be moved aside to recreate the path. A
+submodule path that is missing or a symlink refuses, and so does a tree of
+more than 200,000 directories, which the walk does not search partway. On
+macOS the `.git` component rule already denies writes to every nested
+`.git`; the walk adds the git directory a nested `gitdir:` file names
+under an ordinary name.
+
 What differs and what remains. macOS denies every `.git` below the root,
-existing or not. Linux protects exactly the root's own repository (and
-refuses a root whose repository it cannot pin): a command can still
-create a **new** nested `.git` in a subdirectory, or rewrite a nested
-repository's existing `.git` file, because `bwrap` can make only existing
-paths read-only and a mount point for a missing path would itself be a write
-to your tree. Git honors such a nested repository only when it runs inside
-that subdirectory. On both platforms, a repository nested in the checkout
-whose git directory sits under a non-`.git` name (`git init
---separate-git-dir` inside the tree) is not followed.
+existing or not. Linux protects every nested `.git` that exists when the
+sandbox starts and every submodule path, but a command can still create a
+**new** nested `.git` in some other subdirectory, because `bwrap` can make
+only existing paths read-only and a mount point for a missing path would
+itself be a write to your tree. Git honors such a repository only when it
+runs inside that subdirectory; `git status` in the superproject does not
+enter it, since it is no submodule. On both platforms, a repository nested
+in the checkout whose git directory sits under a non-`.git` name and is
+named by no `gitdir:` file (`git init --separate-git-dir` with the
+pointer removed) is not followed.
 Do not run git inside a nested directory of a hostile checkout, and discard
 the checkout after verifying a hostile PR.
 

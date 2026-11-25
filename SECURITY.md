@@ -77,13 +77,15 @@ In scope (highest priority first):
   git pointer that does not resolve, or a git location whose walk passes
   through a symlink or a missing component inside the root, a link reached
   through an outside-root link included). A sandboxed command that plants a hook or a
-  `.git/config` key for the root's repository, or (on macOS) any nested
+  `.git/config` key for the root's repository, for a nested repository or
+  submodule whose `.git` existed when the sandbox started, through any
+  submodule path in the root's index, or (on macOS) through any new nested
   `.git`, is a vulnerability. Out of scope: the rest of the working tree is
   the PR's content and writable by design, and so is hook code or config the
   operator keeps in the tree (a `core.hooksPath` directory, a `.git/hooks/`
   symlink into the tree, an `include.path` naming a tree file), and on Linux a new nested `.git`
-  in a subdirectory is a documented residual of `bwrap`, which can only
-  protect paths that already exist.
+  in a subdirectory that is no submodule path is a documented residual of
+  `bwrap`, which can only protect paths that already exist.
 - The `verify` gate's own contract: `verify` executes the agent's claimed
   proof (`verifyCmd` via `bash -c`, 300s watchdog, tail recorded into the
   patch record). The pre-exec refusals are a **tripwire, not a boundary**: the

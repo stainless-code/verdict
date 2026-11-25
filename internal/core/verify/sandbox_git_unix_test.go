@@ -322,12 +322,13 @@ func TestSandboxGitScanContinuesPastAVanishedEntry(t *testing.T) {
 	if ref != nil {
 		t.Fatal(ref)
 	}
-	scan := sandboxGitScanner{root: gitRootID, location: dotgit, info: func(d fs.DirEntry) (fs.FileInfo, error) {
+	scan := newSandboxGitScanner(gitRootID, dotgit, nil)
+	scan.info = func(d fs.DirEntry) (fs.FileInfo, error) {
 		if d.Name() == "a-vanishes" {
 			return nil, fs.ErrNotExist
 		}
 		return d.Info()
-	}}
+	}
 	want := "sandbox unavailable: the git control file " + filepath.Join(dotgit, "config") + " has another hard link"
 	if ref := scan.run(); ref == nil || !strings.HasPrefix(ref.Message, want) {
 		t.Errorf("ref = %v, want prefix %q", ref, want)
@@ -450,7 +451,7 @@ func requireGitAccepted(t *testing.T, root string) {
 // an entry that vanished) is nothing to alias, and any other walk error
 // refuses, naming the path.
 func TestSandboxGitScanVisitWalkErrors(t *testing.T) {
-	scan := &sandboxGitScanner{location: "/loc", gitdirs: []string{"/loc"}}
+	scan := newSandboxGitScanner(sandboxGitRoot{}, "/loc", nil)
 	if ref := scan.visit("/loc/gone", nil, fs.ErrNotExist); ref != nil {
 		t.Errorf("vanished entry ref = %v, want nil", ref)
 	}
@@ -503,32 +504,14 @@ func TestSandboxRefusesAControlFileReachingAGitDirThroughAnInRootLink(t *testing
 // exempt, `hooks/` links allowed — while its control files stay checked.
 func TestSandboxAcceptsALocalCloneWithASubmodule(t *testing.T) {
 	base := t.TempDir()
-	git := func(dir string, args ...string) {
-		t.Helper()
-		argv := append([]string{
-			"-c", "user.email=t@example.com", "-c", "user.name=t", "-c", "commit.gpgsign=false",
-			"-c", "protocol.file.allow=always", "-c", "init.defaultBranch=main",
-		}, args...)
-		cmd := exec.CommandContext(t.Context(), "git", argv...)
-		cmd.Dir = dir
-		cmd.Env = testenv.Base(nil) // pinned git config, no harness or secret leaks
-		if out, err := cmd.CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v: %s", args, err, out)
-		}
-	}
 	sub, super, clone := filepath.Join(base, "sub"), filepath.Join(base, "super"), filepath.Join(base, "clone")
-	for _, repo := range []string{sub, super} {
-		mustSandboxFS(t, os.Mkdir(repo, 0o755))
-		git(repo, "init", "-q")
-		writeGitPointer(t, filepath.Join(repo, "f"), repo+"\n")
-		git(repo, "add", "f")
-		git(repo, "commit", "-q", "-m", "c")
-	}
-	git(super, "submodule", "add", "-q", sub, "sub")
-	git(super, "commit", "-q", "-m", "sm")
-	git(super, "commit-graph", "write", "--reachable")
-	git(base, "clone", "-q", "--local", super, clone)
-	git(clone, "submodule", "update", "-q", "--init")
+	gitCommittedRepo(t, sub)
+	gitCommittedRepo(t, super)
+	runGit(t, super, "submodule", "add", "-q", sub, "sub")
+	runGit(t, super, "commit", "-q", "-m", "sm")
+	runGit(t, super, "commit-graph", "write", "--reachable")
+	runGit(t, base, "clone", "-q", "--local", super, clone)
+	runGit(t, clone, "submodule", "update", "-q", "--init")
 	modules := filepath.Join(clone, ".git", "modules", "sub")
 	requireSubmoduleObjectsHardlinked(t, modules)
 	requireGitAccepted(t, clone)
@@ -565,4 +548,33 @@ func requireSubmoduleObjectsHardlinked(t *testing.T, gitdir string) {
 	if err != nil || !linked {
 		t.Fatalf("no hard-linked object under %s (%v); the fixture no longer reproduces clone --local", gitdir, err)
 	}
+}
+
+// runGit runs git in dir with a pinned environment (testenv.Base: no
+// harness or secret leaks, the repo's fixed git config) plus identity,
+// signing off, and local-path submodules allowed.
+func runGit(t *testing.T, dir string, args ...string) string {
+	t.Helper()
+	argv := append([]string{
+		"-c", "user.email=t@example.com", "-c", "user.name=t", "-c", "commit.gpgsign=false",
+		"-c", "protocol.file.allow=always", "-c", "init.defaultBranch=main",
+	}, args...)
+	cmd := exec.CommandContext(t.Context(), "git", argv...)
+	cmd.Dir = dir
+	cmd.Env = testenv.Base(nil)
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git %v: %v: %s", args, err, out)
+	}
+	return string(out)
+}
+
+// gitCommittedRepo initializes repo (created if missing) with one commit.
+func gitCommittedRepo(t *testing.T, repo string, initArgs ...string) {
+	t.Helper()
+	mustSandboxFS(t, os.MkdirAll(repo, 0o755))
+	runGit(t, repo, append([]string{"init", "-q"}, initArgs...)...)
+	writeGitPointer(t, filepath.Join(repo, "f"), repo+"\n")
+	runGit(t, repo, "add", "f")
+	runGit(t, repo, "commit", "-q", "-m", "c")
 }
