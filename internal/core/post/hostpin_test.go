@@ -26,6 +26,16 @@ func TestPinBundleHost(t *testing.T) {
 		},
 		{name: "no recorded URL keeps the target", record: `{}`, target: "github.com", want: "github.com"},
 		{
+			name: "github bundle with no URL under a typed pair", record: `{}`,
+			refusal: []string{"records no review URL", "names no host"},
+		},
+		{
+			name: "gitlab bundle with no URL under a typed pair", record: `{"provider":"gitlab"}`,
+			refusal: []string{"records no review URL"},
+		},
+		{name: "forgejo bundle with no URL pins nothing", record: `{"provider":"forgejo"}`, want: ""},
+		{name: "a dry run with no host writes nothing, so it reads unpinned", record: `{}`, dryRun: true, want: ""},
+		{
 			name: "forgejo on FORGEJO_HOST", record: forgePR, forgejoHost: "https://forge.corp.example:3000",
 			want: "forge.corp.example:3000",
 		},
@@ -45,6 +55,7 @@ type pinCase struct {
 	name, record, target, forgejoHost string
 	want                              string
 	refusal                           []string
+	dryRun                            bool
 }
 
 func checkPin(t *testing.T, tc *pinCase) {
@@ -57,7 +68,7 @@ func checkPin(t *testing.T, tc *pinCase) {
 	if tc.forgejoHost != "" {
 		env["FORGEJO_HOST"] = tc.forgejoHost
 	}
-	st := &state{dir: dir, req: &Request{Runtime: &core.Runtime{Env: env}}}
+	st := &state{dir: dir, flags: Flags{DryRun: tc.dryRun}, req: &Request{Runtime: &core.Runtime{Env: env}}}
 	ctx, ref := st.pinBundleHost(core.WithHost(t.Context(), tc.target))
 	if tc.refusal != nil {
 		checkPinRefusal(t, ref, tc.refusal)

@@ -55,6 +55,8 @@ write_validation() { # $1 = pr, $2 = results array
 install_canned_stub() {
   cat >"$EVAL_STUBBIN/gh" <<'EOF'
 #!/usr/bin/env bash
+# post pins its calls to the bundle's host (github.com here); match the rest.
+if [ "${1:-}" = api ] && [ "${2:-}" = --hostname ] && [ "${3:-}" = github.com ]; then set -- api "${@:4}"; fi
 case "$*" in
   'api repos/'*'/reviews --paginate'|'api repos/'*'/comments --paginate') echo '[]'; exit 0;;
   *reviews*) cat > "${EVAL_SAVE_PAYLOAD:-/dev/null}"; printf '%s' '{"id":101,"state":"commented","html_url":"https://example.invalid/r/101","submitted_at":"2026-01-01T00:00:00Z"}'; exit 0;;

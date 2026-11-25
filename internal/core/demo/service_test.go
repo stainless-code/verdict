@@ -31,6 +31,8 @@ type scriptCmd struct {
 	results map[string]core.Result
 	look    func(string) (string, error)
 	calls   [][]string
+	// pinned is the host each call ran pinned to (core.HostOf).
+	pinned []string
 }
 
 // Run records the argv and replays the registered result.
@@ -40,6 +42,7 @@ func (s *scriptCmd) Run(ctx context.Context, cmd *core.Command) (core.Result, er
 		return core.Result{}, err
 	}
 	s.calls = append(s.calls, slices.Clone(cmd.Argv))
+	s.pinned = append(s.pinned, core.HostOf(ctx))
 	res, ok := s.results[strings.Join(cmd.Argv, "\x00")]
 	if !ok {
 		return core.Result{}, errUnexpectedArgv
@@ -178,6 +181,29 @@ func TestRunUsesGhWhenSignedIn(t *testing.T) {
 		[]string{"gh", "pr", "view"})
 	if slices.Contains(env.collect.Warnings, msgGhAnon) {
 		t.Errorf("warnings = %q, want no anonymous-transport warning", env.collect.Warnings)
+	}
+}
+
+// TestRunPinsHostCallsToGitHub proves a URL demo's gh calls run pinned to
+// github.com, so the production runner names it on every one and GH_HOST
+// cannot send the read elsewhere; the login ladder already names the host.
+func TestRunPinsHostCallsToGitHub(t *testing.T) {
+	t.Parallel()
+	env := newDemoEnv(t, "https://github.com/acme/app/pull/7", "claude", "claude", "gh")
+	env.cmdr.results["gh\x00auth\x00status\x00--hostname\x00github.com\x00--active\x00--no-refresh"] = core.Result{}
+	if _, ref := Run(t.Context(), env.req); ref == nil {
+		t.Fatal("run succeeded against an unscripted fetch")
+	}
+	if len(env.cmdr.pinned) < 2 {
+		t.Fatalf("calls = %q, want the login probe and the fetch", env.cmdr.calls)
+	}
+	for i, host := range env.cmdr.pinned {
+		if host != "github.com" {
+			t.Errorf("%q ran pinned to %q, want github.com", env.cmdr.calls[i], host)
+		}
+		if _, ref := core.PinHostArgv(env.cmdr.calls[i], host); ref != nil {
+			t.Errorf("the runner would refuse %q: %v", env.cmdr.calls[i], ref)
+		}
 	}
 }
 

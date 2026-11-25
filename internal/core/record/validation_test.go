@@ -72,7 +72,8 @@ func validationBundleWithReview(t *testing.T, config, review string) {
 	t.Chdir(t.TempDir())
 	dir := ".verdict/state/7"
 	testkit.WriteFile(t, dir+"/PR.json", `{"state":"OPEN","headRefOid":"`+coverageHead+
-		`","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"someone-else"}}`)
+		`","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"someone-else"},`+
+		`"url":"https://github.com/acme/app/pull/7"}`)
 	testkit.WriteFile(t, dir+"/full.diff", coverageDiff)
 	testkit.WriteFile(t, dir+"/review.json", review)
 	if config != "" {

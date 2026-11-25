@@ -17,6 +17,8 @@ trap restore_stub EXIT
 
 cat > "$EVAL_STUBBIN/gh" <<EOF
 #!/usr/bin/env bash
+# post pins its calls to the bundle's host (github.com here); match the rest.
+if [ "\${1:-}" = api ] && [ "\${2:-}" = --hostname ] && [ "\${3:-}" = github.com ]; then set -- api "\${@:4}"; fi
 set -euo pipefail
 echo "stub-gh \$*" >> "\${EVAL_STUBLOG:-/dev/null}"
 if [ "\${1:-}" = "api" ] && [ "\${2:-}" = "graphql" ]; then

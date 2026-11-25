@@ -122,6 +122,8 @@ restore_stub() { cp "$STUB_SAVED" "$EVAL_STUBBIN/gh"; }
 install_canned_stub() {
   cat > "$EVAL_STUBBIN/gh" <<'EOF'
 #!/usr/bin/env bash
+# post pins its calls to the bundle's host (github.com here); match the rest.
+if [ "${1:-}" = api ] && [ "${2:-}" = --hostname ] && [ "${3:-}" = github.com ]; then set -- api "${@:4}"; fi
 echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
 case "$*" in
   'api repos/'*'/reviews --paginate'|'api repos/'*'/comments --paginate')

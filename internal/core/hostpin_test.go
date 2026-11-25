@@ -72,9 +72,9 @@ func TestPinHostArgvQualifiesEveryShippedShape(t *testing.T) {
 			[]string{"gh", "pr", "list", "--repo", "ghe.corp.example/acme/app"},
 		},
 		{
-			"gh host with a port", "ghe.corp.example:8443",
-			[]string{"gh", "pr", "view", "5", "--repo", "acme/app"},
-			[]string{"gh", "pr", "view", "5", "--repo", "ghe.corp.example:8443/acme/app"},
+			"demo's login ladder already on the host", "github.com",
+			[]string{"gh", "auth", "status", "--hostname", "github.com", "--active", "--no-refresh"},
+			[]string{"gh", "auth", "status", "--hostname", "github.com", "--active", "--no-refresh"},
 		},
 		// fetch: internal/core/fetch/providers.go mr view, mr diff, api reads;
 		// post: internal/core/post/submit_gitlab.go writes.
@@ -124,9 +124,10 @@ func TestPinHostArgvQualifiesEveryShippedShape(t *testing.T) {
 }
 
 // TestPinHostArgvRefusesWhatItCannotPin pins the fail-closed half: a shape with
-// no host-qualified form, a repository already on another host, and a glab
-// host with a port refuse typed, naming the target host, instead of running
-// against the tool's default host.
+// no host-qualified form, a repository already on another host, a host with a
+// port, a host or repository flag in another spelling or twice, and an
+// absolute-URL endpoint refuse typed, naming the target host, instead of
+// running against a host the pin does not control.
 func TestPinHostArgvRefusesWhatItCannotPin(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -140,6 +141,24 @@ func TestPinHostArgvRefusesWhatItCannotPin(t *testing.T) {
 		{"glab host with a port", "gitlab.corp.example:8443", []string{"glab", "api", "user"}},
 		{"glab repo URL on another host", "gitlab.com", []string{"glab", "mr", "view", "7", "-R", "https://gitlab.corp.example/g/app"}},
 		{"glab unknown subcommand", "gitlab.com", []string{"glab", "issue", "list"}},
+		{"gh host with a port, pr", "ghe.corp.example:8443", []string{"gh", "pr", "view", "5", "--repo", "acme/app"}},
+		{"gh host with a port, api", "github.com:8443", []string{"gh", "api", "user"}},
+		{"gh host with a port, auth", "github.com:8443", []string{"gh", "auth", "status"}},
+		{"glab host with a port, mr", "gitlab.corp.example:8443", []string{"glab", "mr", "view", "7", "-R", "g/app"}},
+		{"gh api --hostname=", "github.com", []string{"gh", "api", "--hostname=ghe.corp.example", "user"}},
+		{"glab api --hostname=", "gitlab.com", []string{"glab", "api", "user", "--hostname=gitlab.corp.example"}},
+		{"gh pr --hostname=", "github.com", []string{"gh", "pr", "view", "5", "--repo", "acme/app", "--hostname=x.example"}},
+		{"gh pr --repo=", "github.com", []string{"gh", "pr", "view", "5", "--repo=acme/app"}},
+		{"gh pr two --repo", "github.com", []string{"gh", "pr", "view", "5", "--repo", "acme/app", "--repo", "ghe.corp.example/acme/app"}},
+		{"gh pr --repo then -R", "github.com", []string{"gh", "pr", "view", "5", "--repo", "acme/app", "-R", "evil/app"}},
+		{"glab mr -R=", "gitlab.com", []string{"glab", "mr", "view", "7", "-R=g/app"}},
+		{"glab mr attached -R", "gitlab.com", []string{"glab", "mr", "view", "7", "-Rg/app"}},
+		{"gh api with a repo flag", "github.com", []string{"gh", "api", "user", "--repo", "acme/app"}},
+		{"gh api absolute URL", "github.com", []string{"gh", "api", "https://ghe.corp.example/api/v3/user"}},
+		{"glab api absolute URL", "gitlab.com", []string{"glab", "api", "--method", "GET", "HTTP://gitlab.corp.example/api/v4/user"}},
+		{"auth status on another host", "github.com", []string{"gh", "auth", "status", "--hostname", "ghe.corp.example"}},
+		{"auth status short -h", "github.com", []string{"gh", "auth", "status", "-h", "ghe.corp.example"}},
+		{"auth status twice", "github.com", []string{"gh", "auth", "status", "--hostname", "github.com", "--hostname=ghe.corp.example"}},
 	} {
 		got, ref := PinHostArgv(tc.argv, tc.host)
 		if ref == nil || ref.Code != CodeHostMismatch || !strings.Contains(ref.Message, tc.host) {

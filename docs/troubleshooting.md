@@ -773,9 +773,9 @@ Fix: check out the reviewed commit (or re-fetch the bundle), then re-run validat
 
 ## `host-mismatch`
 
-Cause: a host call could not be pinned to the target's host. The target (a URL or the `origin` remote) is on one host and `FORGEJO_HOST` names another, the target is a GitLab host on a non-default port (glab's `--hostname` takes none), or the bundle `post` would publish was fetched from another host than the target names. The message names both hosts.
+Cause: a host call could not be pinned to the target's host, and the message names the hosts involved. The target is a GitHub or GitLab host on a non-default port; an SSH GitLab origin's host is one `GITLAB_HOST` serves on another port; `FORGEJO_HOST` names another host than the target; the bundle `post` would publish was fetched from another host than the target, or records no review URL when a real post names only a typed `<owner/repo> <pr>`; or a `gh`/`glab` argv names a host or repository in a spelling the pin cannot control.
 
-Fix: point the target, the bundle, and the host variable at one host: set `FORGEJO_HOST` and `FORGEJO_TOKEN` for the target's host, re-fetch the target before posting, or pass a target on the bundle's host.
+Fix: point the target, the bundle, and the host variable at one host: set `FORGEJO_HOST` and `FORGEJO_TOKEN` (or `GITLAB_HOST`) for the target's host, re-fetch the target before posting, or pass a target on the bundle's host. For a GitLab or GitHub host on a non-default port, pass `<owner/repo> <pr> --provider <name>` to let the host CLI's own default decide.
 
 ## `html-not-export`
 

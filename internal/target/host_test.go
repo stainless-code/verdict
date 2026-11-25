@@ -1,6 +1,7 @@
 package target
 
 import (
+	"slices"
 	"strings"
 	"testing"
 
@@ -33,6 +34,11 @@ func TestResolvedCarriesTheTargetsHost(t *testing.T) {
 			name: "inferred from a recorded bundle", want: "github.com", g: fakeGit{origin: ghOrigin, branch: "fix-x"},
 			bundles: map[string]string{"12": ghBundle12}, q: Request{Verb: "post"},
 		},
+		{
+			name: "ssh gitlab origin, GITLAB_HOST on the same host", want: "git.corp.example",
+			g: fakeGit{origin: "git@git.corp.example:g/app.git"},
+			q: Request{Verb: "post", Repo: "4", Env: map[string]string{"GITLAB_HOST": "https://git.corp.example"}},
+		},
 		{name: "typed pair", want: "", q: Request{Verb: "post", Repo: "acme/app", Pr: "12"}},
 		{
 			name: "typed repo, pr from a bundle", want: "", g: fakeGit{branch: "fix-x"},
@@ -63,6 +69,16 @@ func TestResolveRefusesAHostNoCallCanBePinnedTo(t *testing.T) {
 			Verb: "fetch", Repo: "https://git.corp.example:8443/g/app/-/merge_requests/4",
 			Env: map[string]string{"GITLAB_HOST": "https://git.corp.example:8443"},
 		}},
+		{
+			name:  "ssh gitlab origin, GITLAB_HOST on another port",
+			hosts: []string{"the target is on git.corp.example ", "GITLAB_HOST names git.corp.example:8443"},
+			g:     fakeGit{origin: "git@git.corp.example:g/app.git"},
+			q:     Request{Verb: "post", Repo: "4", Env: map[string]string{"GITLAB_HOST": "https://git.corp.example:8443"}},
+		},
+		{
+			name: "github origin with a port", hosts: []string{"the target is on github.com:8443", "gh's --hostname takes no port"},
+			g: fakeGit{origin: "https://github.com:8443/acme/app.git"}, q: Request{Verb: "post", Repo: "12"},
+		},
 	} {
 		checkHostRefusal(t, &tc)
 	}
@@ -123,5 +139,22 @@ func TestHostLookupRejectsAnAnswerFromAnotherPort(t *testing.T) {
 	got := lookup(t, g, &Request{Verb: "fetch", Env: env})
 	if got.Refusal == nil || !strings.Contains(got.Refusal.Message, "does not trust") {
 		t.Fatalf("an answer from another port is not the origin's PR: %+v", got)
+	}
+}
+
+// TestHostLookupRunsPinnedToTheOriginsHost pins that the resolver's own host
+// lookup runs with the origin's host on its context, so the production runner
+// verifies the lookup argv like every other host call.
+func TestHostLookupRunsPinnedToTheOriginsHost(t *testing.T) {
+	g := &fakeGit{origin: ghOrigin, branch: "fix-x", hostOut: oneOpenPR}
+	if got := lookup(t, g, &Request{Verb: "fetch"}); got.Refusal != nil || got.Pr != "12" {
+		t.Fatalf("lookup: %+v", got)
+	}
+	if len(g.pinned) != 1 || g.pinned[0] != "github.com" {
+		t.Fatalf("lookup ran pinned to %q, want one call pinned to github.com", g.pinned)
+	}
+	argv, ref := core.PinHostArgv(g.calls[len(g.calls)-1], "github.com")
+	if ref != nil || !slices.Equal(argv, g.calls[len(g.calls)-1]) {
+		t.Fatalf("the runner would not pass the lookup argv unchanged: %q, %v", argv, ref)
 	}
 }

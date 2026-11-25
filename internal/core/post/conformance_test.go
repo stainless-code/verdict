@@ -466,11 +466,15 @@ func conformanceBundle(t *testing.T, provider string) string {
 	root := t.TempDir()
 	dir := conformanceBundleDir(root)
 	head, base := conformanceHead, conformanceBase
-	pr := `{"state":"OPEN","headRefOid":"` + head + `","baseRefOid":"` + base + `","author":{"login":"alice"}}`
+	pr := `{"state":"OPEN","headRefOid":"` + head + `","baseRefOid":"` + base + `","author":{"login":"alice"},"url":"https://github.com/acme/app/pull/7"}`
 	if provider != providerGitHub {
 		head, base = gitlabHead, gitlabBase
+		web := map[string]string{
+			providerGitLab:  "https://gitlab.com/acme/app/-/merge_requests/7",
+			providerForgejo: "https://forgejo.invalid/acme/app/pulls/7",
+		}[provider]
 		pr = `{"provider":"` + provider + `","number":7,"state":"open","author":"alice","head_sha":"` + head +
-			`","base_sha":"` + base + `"}`
+			`","base_sha":"` + base + `","url":"` + web + `"}`
 	}
 	for name, body := range map[string]string{
 		"PR.json": pr, "full.diff": gitlabTestDiff, "review.json": conformanceReview,
