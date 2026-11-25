@@ -127,3 +127,17 @@ func TestOverviewLabelsStoreErrors(t *testing.T) {
 		}
 	}
 }
+
+// TestTextCapsCombiningMarksAtTwo pins the per-cell bound: two marks on one
+// base are kept, a third is dropped, so a stacked "Zalgo" string cannot grow a
+// cell (or a repaint) without limit.
+func TestTextCapsCombiningMarksAtTwo(t *testing.T) {
+	t.Parallel()
+	g := newGrid(minCols, minRows)
+	g.text(2, 1, 20, "á̂ two", rolePlain, charsetUnicode)
+	g.text(2, 2, 20, "á̂̃ three", rolePlain, charsetUnicode)
+	got := strings.Split(g.lines(), "\n")[1:3]
+	if got[0] != "  á̂ two" || got[1] != "  á̂ three" {
+		t.Fatalf("rows = %q, want both marks kept and the third dropped", got)
+	}
+}
