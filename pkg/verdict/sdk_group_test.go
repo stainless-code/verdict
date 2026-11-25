@@ -20,6 +20,8 @@ func sdkGit(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
+	// A descendant holding the output pipe cannot hang the read (GO-CONC-06).
+	cmd.WaitDelay = 10 * time.Second
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
@@ -124,8 +126,8 @@ func TestSDKVerifyGroupBothOrNeither(t *testing.T) {
 
 // TestVerifyGroupForwardsDirToInjectedCommander proves the public Commander
 // seam keeps the working directory: a custom runner must see Dir set to the
-// canonical reviewed root, or a deep command would silently run in the
-// caller's directory while the receipt certifies the root.
+// canonical snapshot of the reviewed content, or a deep command would
+// silently run in the caller's directory while the receipt certifies it.
 func TestVerifyGroupForwardsDirToInjectedCommander(t *testing.T) {
 	root, head, _ := setupSDKGroupRepo(t)
 	cmdr := &dirCommander{head: head}
@@ -140,34 +142,42 @@ func TestVerifyGroupForwardsDirToInjectedCommander(t *testing.T) {
 	requireCommanderDir(t, root, cmdr)
 }
 
-// requireCommanderDir asserts a custom runner saw the canonical reviewed root,
-// not the caller's directory or an empty Dir.
+// requireCommanderDir asserts a custom runner saw the canonical snapshot of
+// the reviewed content — a private directory under the physical temp root,
+// outside the checkout — not the caller's directory or an empty Dir.
 func requireCommanderDir(t *testing.T, root string, cmdr *dirCommander) {
 	t.Helper()
 	if cmdr.commandDir == "" {
 		t.Fatalf("injected Commander saw an empty Dir; deep command would run in the caller's cwd")
 	}
-	want, err := filepath.EvalSymlinks(root)
+	tmp, err := filepath.EvalSymlinks(os.TempDir())
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cmdr.commandDir != want {
-		t.Fatalf("command Dir = %q, want canonical root %q", cmdr.commandDir, want)
+	if filepath.Dir(cmdr.commandDir) != tmp || !strings.HasPrefix(filepath.Base(cmdr.commandDir), "verdict-snapshot-") {
+		t.Fatalf("command Dir = %q, want a canonical snapshot under %q", cmdr.commandDir, tmp)
+	}
+	if strings.HasPrefix(cmdr.commandDir, root+string(filepath.Separator)) {
+		t.Fatalf("command Dir %q sits inside the checkout %q", cmdr.commandDir, root)
 	}
 }
 
-// dirCommander answers the head and clean-tree probes and records the
-// command Dir.
+// dirCommander answers every git read with one id — so the checkout's content
+// tree equals the reviewed commit's — and records the command Dir.
 type dirCommander struct {
 	head       string
 	commandDir string
 }
 
 func (c *dirCommander) Run(_ context.Context, cmd *verdict.Command) (verdict.CommandResult, error) {
-	if a := cmd.Argv; len(a) > 4 && a[0] == "git" && a[1] == "--no-optional-locks" && a[4] == "status" {
-		return verdict.CommandResult{}, nil
-	}
-	if len(cmd.Argv) > 3 && cmd.Argv[0] == "git" {
+	if a := cmd.Argv; len(a) > 3 && a[0] == "git" {
+		switch a[3] {
+		case "worktree":
+			fakeWorktreeAdd(a)
+			return verdict.CommandResult{}, nil
+		case "ls-files", "read-tree":
+			return verdict.CommandResult{}, nil
+		}
 		return verdict.CommandResult{Stdout: c.head + "\n"}, nil
 	}
 	c.commandDir = cmd.Dir

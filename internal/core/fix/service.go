@@ -1204,7 +1204,7 @@ func (st *state) printInstructions(dir, anchor string) {
 			"run post to land it, then re-run fix\n", anchor)
 		return
 	}
-	st.humanf("next: patch %s, commit it, re-run fetch-local, run verdict verify, write verification.json, "+
+	st.humanf("next: patch %s, re-run fetch-local, run verdict verify, write verification.json, "+
 		"run record to land it, then re-run fix\n", anchor)
 }
 
@@ -1382,7 +1382,7 @@ const (
 	// stoppedCeiling tombstones ceiling stops.
 	stoppedCeiling = "ceiling"
 	// nextPass is the envelope next hint for passes.
-	nextPass = "patch the anchor file, commit it, re-run fetch-local, run verdict verify, write verification.json, " +
+	nextPass = "patch the anchor file, re-run fetch-local, run verdict verify, write verification.json, " +
 		"run record to land it, then re-run fix"
 	// nextPassPR is nextPass for a PR bundle, which lands through post.
 	nextPassPR = "patch the anchor file, commit and push the fix, re-fetch, run verdict verify, " +
@@ -1407,26 +1407,25 @@ const (
 
 const (
 	// instructionsFmt guides the next manual pass.
-	instructionsFmt = "instructions: patch the anchor file (%s), commit " +
-		"the fix and re-run fetch-local so the bundle's head is that commit, " +
-		"then run its verify command (verifyCmd in %s/patch.json) through " +
-		"verdict verify %s %s and write verification.json beside it " +
-		"[{sig, verdict, resultHead, verifyCmd}] with verdict VERIFIED, that " +
-		"verifyCmd, and resultHead matching HEAD (fix itself runs nothing — a " +
-		"claim flips only on the verify-receipt.json verify writes: exit 0 for " +
-		"that command on the clean, committed HEAD); land it with record %s %s; " +
-		"re-run fix %s %s for the next pass\n"
+	instructionsFmt = "instructions: patch the anchor file (%s) — git add -N " +
+		"any file the fix creates — and re-run fetch-local so the bundle " +
+		"captures the patched content (no commit needed), then run its verify command (verifyCmd in %s/patch.json) " +
+		"through verdict verify %s %s and write verification.json beside it " +
+		"[{sig, verdict, verifyCmd}] with verdict VERIFIED and that verifyCmd " +
+		"(fix itself runs nothing — a claim flips only on the verify-receipt.json " +
+		"verify writes: exit 0 for that command on the content the bundle " +
+		"grades); land it with record %s %s; re-run fix %s %s for the next pass\n"
 	// instructionsPRFmt is instructionsFmt for a PR bundle, whose landing path
 	// is a push and a re-fetch followed by post — record refuses a PR bundle.
 	// verify runs after the re-fetch, so its receipt covers the head post grades.
 	instructionsPRFmt = "instructions: patch the anchor file (%s), commit and " +
 		"push the fix, re-fetch with fetch %s %s, then run its verify command " +
 		"(verifyCmd in %s/patch.json) through verdict verify %s %s and write " +
-		"verification.json beside it [{sig, verdict, resultHead, verifyCmd}] with " +
-		"verdict VERIFIED, that verifyCmd, and resultHead matching HEAD (fix itself " +
-		"runs nothing — a claim flips only on the verify-receipt.json verify writes: " +
-		"exit 0 for that command on the clean, committed HEAD); land it with post " +
-		"%s %s; re-run fix %s %s for the next pass\n"
+		"verification.json beside it [{sig, verdict, verifyCmd}] with verdict " +
+		"VERIFIED and that verifyCmd (fix itself runs nothing — a claim flips only " +
+		"on the verify-receipt.json verify writes: exit 0 for that command on the " +
+		"pushed head's content); land it with post %s %s; re-run fix %s %s for the " +
+		"next pass\n"
 	// gateMsg constrains verify commands to safe shapes.
 	gateMsg = "gate: keep the verify command repo-scoped, non-destructive, " +
 		"and offline — the verify verb refuses " +

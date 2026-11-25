@@ -15,7 +15,6 @@ exit: 0
     "evidence: hunk other.txt\tNEW\t1\t3 has no matched receipt",
     "resolved claim deadbeef ignored (not in store)",
     "verification claim deadbeef ignored (not in store)",
-    "triage claim bfd750df ignored: addressed needs a VERIFIED claim in verification.json backed by a verdict verify receipt, never a triage rationale",
     "triage claim deadbeef ignored (not in store)",
     "triage claim without rationale, kept prior status: bfd750df"
   ],
@@ -54,7 +53,6 @@ warn: evidence: hunk other.txt	NEW	1	3 has no matched receipt
 » anchors: 0 inline, 0 moved to body
 warn: resolved claim deadbeef ignored (not in store)
 warn: verification claim deadbeef ignored (not in store)
-warn: triage claim bfd750df ignored: addressed needs a VERIFIED claim in verification.json backed by a verdict verify receipt, never a triage rationale
 warn: triage claim deadbeef ignored (not in store)
 warn: triage claim without rationale, kept prior status: bfd750df
 » findings: 1 sigs -> .verdict/state/local-kb/findings.json
@@ -141,14 +139,14 @@ reverts.jsonl.lock
   "status": "local",
   "head": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
   "diff_sha256": "a9823d4d377b7fd0c9dc0d92370323d29898489f9de88b6c3d32296dab229282",
-  "review_sha256": "723c1a14cac1eca94b391a4a51c47c386a63aa434cce860a3fd390e9a0a3c5e1",
+  "review_sha256": "63b1abafd7e06026547f7f057300825a727fe2f725d008b058bc20ef55301169",
   "recorded_at": "0000-00-00T00:00:00Z",
   "findings": 1,
   "open": 1,
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "d90bc6b2583ee2ec9e08fd7ee36a6129b291adb7231e35551601de33e330e6a4",
+  "prompts_hash": "49e642c8e1e6e18635dd843199db2b027d2c27c042b2ad2cd15ac9468cfd9c12",
   "model": null,
   "author": null,
   "review_models": [],

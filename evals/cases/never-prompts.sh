@@ -156,6 +156,8 @@ else
 fi
 
 PR=6101
+# verify runs a command only in a snapshot of a git checkout's content.
+(cd "$EVAL_SANDBOX" && { [ -d .git ] || git init -q; })
 mkdir -p "$EVAL_SANDBOX/.verdict/state/$PR"
 jq -n '{"verifyCmd":"read -r line || true"}' > "$EVAL_SANDBOX/.verdict/state/$PR/patch.json"
 WD_DIR="$EVAL_SANDBOX"

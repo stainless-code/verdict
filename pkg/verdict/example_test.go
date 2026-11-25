@@ -287,7 +287,7 @@ func ExampleClient_Fix() {
 	// Output:
 	// 2026-11-02T12:00:00Z
 	// selected: c123456789abcdef0123456789abcdef01234567
-	// patch the anchor file, commit it, re-run fetch-local, run verdict verify, write verification.json, run record to land it, then re-run fix
+	// patch the anchor file, re-run fetch-local, run verdict verify, write verification.json, run record to land it, then re-run fix
 }
 
 // fixFinding renders one inline findings entry for the fix example.
@@ -424,24 +424,71 @@ func seedExampleControls(pr string) {
 }
 
 // scriptCommander is the injected command seam: every spawn is scripted.
-// verify's checked-out-HEAD and tree-status probes answer scriptHead and a
-// clean tree and stay out of got, so got holds the spawns the test scripted.
+// verify's own git reads are answered by sdkGitAnswer and stay out of got, so
+// got holds the spawns the test scripted.
 type scriptCommander struct {
 	got []*verdict.Command
 	res verdict.CommandResult
 }
 
-// scriptHead is the commit a scriptCommander reports as checked out.
-var scriptHead = strings.Repeat("a", 40)
+// scriptHead is the commit a scriptCommander reports as checked out, and
+// scriptTree the content tree its snapshot reads name.
+var (
+	scriptHead = strings.Repeat("a", 40)
+	scriptTree = strings.Repeat("7", 40)
+)
+
+// sdkGitAnswer plays git for verify's own reads (`git -C <root> …`): the
+// checked-out head, the snapshot's content tree and commit, and the snapshot
+// checkout itself, so a test scripts only the command it cares about.
+func sdkGitAnswer(cmd *verdict.Command) (verdict.CommandResult, bool) {
+	a := cmd.Argv
+	if len(a) < 4 || a[0] != "git" || a[1] != "-C" {
+		return verdict.CommandResult{}, false
+	}
+	switch a[3] {
+	case "rev-parse":
+		if len(a) == 5 && a[4] == "HEAD" {
+			return verdict.CommandResult{Stdout: scriptHead + "\n"}, true
+		}
+		return verdict.CommandResult{Stdout: scriptTree + "\n"}, true
+	case "write-tree":
+		return verdict.CommandResult{Stdout: scriptTree + "\n"}, true
+	case "commit-tree":
+		return verdict.CommandResult{Stdout: scriptHead + "\n"}, true
+	case "worktree":
+		fakeWorktreeAdd(a)
+		return verdict.CommandResult{}, true
+	case "read-tree", "ls-files", "update-index", "hash-object":
+		return verdict.CommandResult{}, true
+	}
+	return verdict.CommandResult{}, false
+}
+
+// fakeWorktreeAdd leaves what `git worktree add` would: a `gitdir:` file
+// naming an admin directory (kept inside the checkout, so removing the
+// snapshot removes it). verify checks for it, and the sandbox follows it.
+func fakeWorktreeAdd(argv []string) {
+	if len(argv) < 5 || argv[4] != "add" {
+		return
+	}
+	dest := argv[len(argv)-2]
+	admin := filepath.Join(dest, ".gitadmin")
+	if err := os.MkdirAll(admin, 0o755); err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile(filepath.Join(admin, "HEAD"), []byte(scriptHead+"\n"), 0o600); err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, ".git"), []byte("gitdir: "+admin+"\n"), 0o600); err != nil {
+		panic(err)
+	}
+}
 
 // Run implements verdict.Commander.
 func (s *scriptCommander) Run(_ context.Context, cmd *verdict.Command) (verdict.CommandResult, error) {
-	if a := cmd.Argv; len(a) == 5 && a[0] == "git" && a[1] == "-C" && a[3] == "rev-parse" && a[4] == "HEAD" {
-		return verdict.CommandResult{Stdout: scriptHead + "\n"}, nil
-	}
-	// verify's working-tree status probe reads clean.
-	if a := cmd.Argv; len(a) > 4 && a[0] == "git" && a[1] == "--no-optional-locks" && a[4] == "status" {
-		return verdict.CommandResult{}, nil
+	if res, ok := sdkGitAnswer(cmd); ok {
+		return res, nil
 	}
 	s.got = append(s.got, cmd)
 	return s.res, nil
@@ -471,8 +518,8 @@ func TestClientVerifyFakeCommander(t *testing.T) {
 	if resp.TimedOut {
 		t.Error("outcome timed out, want a completed run")
 	}
-	if resp.Head != scriptHead {
-		t.Errorf("head = %q, want the checked-out head the receipt binds", resp.Head)
+	if resp.Tree != scriptTree {
+		t.Errorf("tree = %q, want the content tree the receipt binds", resp.Tree)
 	}
 	if resp.Next != "proof failed — fix, do not claim" {
 		t.Errorf("next = %q, want the failed-proof guidance", resp.Next)

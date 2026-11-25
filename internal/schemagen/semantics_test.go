@@ -393,7 +393,7 @@ var publishedSemantics = map[string]string{
 	// reportData drops its optional completeness and gate properties and the
 	// $defs/reportCompleteness entry; $defs/reportGate stays as the gate verb's
 	// data profile. gateDimension prose no longer names the removed flags.
-	"envelope.schema.json": "dad91a0adeb148ac40c4ab119a0a14f511a12c57743dae52a3436501c0192d3b",
+	"envelope.schema.json": "9a0e7c36be23648cc90f17cfa8d5d1b1d27cc79785bd5ff8649104f8e0e94db5",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -635,7 +635,7 @@ var publishedSemantics = map[string]string{
 	// runtime only warns on (type enum, nodes minItems, title/label/id
 	// lengths), so a schema-validating client accepts every review the CLI
 	// accepts. Loosening only: no accepted document is rejected now.
-	"review.schema.json": "cf7f785dd43f33798d20ae5b81aff4cf9165b95565941119f194042c71eb795d",
+	"review.schema.json": "f678fe4490225175e3d31c2340aeb843ad0a06e618d69be528d870c4b58fdc95",
 	// additive selected.schema.json (new bundle document: the reaction-scoped
 	// fix selection fetch writes and fix --selected reads). A new document
 	// only: no existing schema property, required key, enum, or type changed.

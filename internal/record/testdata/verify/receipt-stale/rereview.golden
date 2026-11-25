@@ -13,7 +13,7 @@ exit: 0
     "evidence: hunk notes.txt\tNEW\t21\t27 has no matched receipt",
     "evidence: hunk notes.txt\tNEW\t31\t37 has no matched receipt",
     "evidence: hunk other.txt\tNEW\t1\t3 has no matched receipt",
-    "VERIFIED claim for bfd750df not applied (the verify receipt covers HEAD ccccccc) — run verdict verify on HEAD aaaaaaa, then land the claim again"
+    "VERIFIED claim for bfd750df not applied (the verify receipt covers content tree ccccccc, not the graded content's 7777777) — run verdict verify on the content this run grades, then land the claim again"
   ],
   "data": {
     "dir": ".verdict/state/local-kb",
@@ -48,7 +48,7 @@ warn: evidence: hunk notes.txt	NEW	21	27 has no matched receipt
 warn: evidence: hunk notes.txt	NEW	31	37 has no matched receipt
 warn: evidence: hunk other.txt	NEW	1	3 has no matched receipt
 » anchors: 0 inline, 0 moved to body
-warn: VERIFIED claim for bfd750df not applied (the verify receipt covers HEAD ccccccc) — run verdict verify on HEAD aaaaaaa, then land the claim again
+warn: VERIFIED claim for bfd750df not applied (the verify receipt covers content tree ccccccc, not the graded content's 7777777) — run verdict verify on the content this run grades, then land the claim again
 » findings: 1 sigs -> .verdict/state/local-kb/findings.json
   bfd750df  open  true  notes.txt
 recorded: .verdict/state/local-kb/findings.json (1 open) + .verdict/state/local-kb/record.json — report/triage read it; post stays refused (no PR target)
@@ -107,7 +107,7 @@ recorded: .verdict/state/local-kb/findings.json (1 open) + .verdict/state/local-
   "confidence": null,
   "security_summary": null,
   "tool_version": "VERSION",
-  "prompts_hash": "d90bc6b2583ee2ec9e08fd7ee36a6129b291adb7231e35551601de33e330e6a4",
+  "prompts_hash": "49e642c8e1e6e18635dd843199db2b027d2c27c042b2ad2cd15ac9468cfd9c12",
   "model": null,
   "author": null,
   "review_models": [],

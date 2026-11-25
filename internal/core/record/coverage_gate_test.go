@@ -23,6 +23,9 @@ const coverageSlug = "local-cov"
 // coverageHead is the head SHA the fixture bundle was fetched at.
 const coverageHead = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
+// coverageTree is the content tree of coverageHead the post tests' git answers.
+const coverageTree = "8888888888888888888888888888888888888888"
+
 // coverageLinePrefix is the one body line a partial attestation adds.
 const coverageLinePrefix = "> ⚠️ coverage:"
 
@@ -88,7 +91,7 @@ func mergeCoverage(t *testing.T, require bool) (string, []string, error) {
 		t.Fatalf("controls gate: %v", ref)
 	}
 	c := &testkit.Collector{}
-	res, merr := recordcore.Merge(testRuntime(c), &recordcore.MergeParams{
+	res, merr := recordcore.Merge(t.Context(), testRuntime(c), &recordcore.MergeParams{
 		Dir:             dir,
 		Prov:            "local",
 		HeadFull:        coverageHead,

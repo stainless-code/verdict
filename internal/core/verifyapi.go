@@ -17,17 +17,19 @@ type ValidationReceipt struct { //nolint:govet // field order is the published p
 	InputsSHA256  string `json:"inputs_sha256"`
 	Group         string `json:"group"`
 	ReviewedHead  string `json:"reviewed_head"`
-	ExecutionHead string `json:"execution_head"`
-	RepoRoot      string `json:"repo_root"`
-	Command       string `json:"command"`
-	At            string `json:"at"`
-	OutputTail    string `json:"output_tail"`
-	Exit          int    `json:"exit"`
-	TimedOut      bool   `json:"timed_out"`
-	Sandboxed     bool   `json:"sandboxed,omitempty"`
-	Status        string `json:"status"`
-	Failure       string `json:"failure,omitempty"`
-	Passed        bool   `json:"passed"`
+	// Tree is the tree id of the content the command ran on, proven equal to
+	// the reviewed commit's tree before it ran.
+	Tree       string `json:"tree"`
+	RepoRoot   string `json:"repo_root"`
+	Command    string `json:"command"`
+	At         string `json:"at"`
+	OutputTail string `json:"output_tail"`
+	Exit       int    `json:"exit"`
+	TimedOut   bool   `json:"timed_out"`
+	Sandboxed  bool   `json:"sandboxed,omitempty"`
+	Status     string `json:"status"`
+	Failure    string `json:"failure,omitempty"`
+	Passed     bool   `json:"passed"`
 	// SandboxMechanism names the wrapper (bwrap, sandbox-exec, or the
 	// network-only unshare-net) so a receipt never reads network isolation as
 	// the full shape. Sandboxed is true only for bwrap and sandbox-exec.
@@ -36,16 +38,15 @@ type ValidationReceipt struct { //nolint:govet // field order is the published p
 
 // VerifyReceipt is the tool-only record of one patch-path verify run: the
 // command verify executed, the finding sig patch.json named, its real exit
-// and timeout, and the clean checked-out head it ran on. Only verify writes it
+// and timeout, and the tree id of the content it ran on. Only verify writes it
 // (verify-receipt.json beside patch.json); record and post read it, and never
-// patch.json, to decide whether a VERIFIED claim was observed. Head is absent
-// when the run cannot vouch for one commit: a dirty tree, a head that moved,
-// or one git could not read.
+// patch.json, to decide whether a VERIFIED claim was observed. Tree is absent
+// when verify could not snapshot the content (not a git checkout).
 type VerifyReceipt struct {
 	SchemaVersion string `json:"schema_version"`
 	Command       string `json:"command"`
 	Sig           string `json:"sig,omitempty"`
-	Head          string `json:"head,omitempty"`
+	Tree          string `json:"tree,omitempty"`
 	At            string `json:"at"`
 	Exit          int    `json:"exit"`
 	TimedOut      bool   `json:"timed_out"`
@@ -60,8 +61,11 @@ type VerifyData struct { //nolint:govet // field order is the published property
 	Patch      string `json:"patch"`
 	Group      string `json:"group,omitempty"`
 	Head       string `json:"head,omitempty"`
-	Receipt    string `json:"receipt,omitempty"`
-	Sandboxed  bool   `json:"sandboxed,omitempty"`
+	// Tree is the tree id of the content the command ran on, the binding a
+	// receipt carries; absent when verify could not snapshot it.
+	Tree      string `json:"tree,omitempty"`
+	Receipt   string `json:"receipt,omitempty"`
+	Sandboxed bool   `json:"sandboxed,omitempty"`
 	// SandboxMechanism names the wrapper, so a --json reader can tell the full
 	// bwrap/sandbox-exec sandbox (Sandboxed true) from the network-only
 	// unshare-net opt-in (Sandboxed absent). Absent means no wrapper ran.

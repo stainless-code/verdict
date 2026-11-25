@@ -568,6 +568,9 @@ func bwrapArgv(root string, in sandboxInputs) ([]string, *core.RefusalError) {
 	argv = append(argv, sandboxVarRunMount(lstatMode)...)
 	argv = append(argv, bwrapBind, repo, repo)
 	argv = append(argv, gitBinds.argv()...)
+	for _, dir := range sandboxGitOutsideDirs(repo) {
+		argv = append(argv, bwrapROBind, dir, dir)
+	}
 	for _, mount := range sandboxCredentialMounts(locations) {
 		argv = append(argv, mount.argv()...)
 	}
@@ -1011,6 +1014,51 @@ func sandboxRelInside(base, path string) (string, bool) {
 		return "", false
 	}
 	return rel, true
+}
+
+// sandboxGitOutsideDirs lists the root's git directory and common directory
+// when they sit outside the root, as a linked worktree's do — the snapshot
+// verify runs the command in keeps its git directory in the checkout it was
+// made from. Git inside the root needs to read them, and both mechanisms
+// hide the host temp roots a checkout may live under, so each is
+// re-exposed read-only; every write there stays denied. The strict walks
+// refuse a malformed pointer first, so a pointer that does not resolve here
+// adds nothing.
+func sandboxGitOutsideDirs(repo string) []string {
+	root, ref := newSandboxGitRoot(repo)
+	if ref != nil {
+		return nil
+	}
+	dotgit := filepath.Join(repo, sandboxGitName)
+	var outside []string
+	for _, dir := range sandboxPointedGitDirs(dotgit, repo) {
+		if inside, ref := root.inside(dotgit, dir); ref == nil && !inside {
+			outside = append(outside, filepath.Clean(dir))
+		}
+	}
+	// A parent sorts before its children, so a bwrap bind of the common
+	// directory never lands over the admin directory bound inside it.
+	slices.Sort(outside)
+	return slices.Compact(outside)
+}
+
+// sandboxPointedGitDirs is the git directory a `.git` file names and the
+// common directory that one names, if any; nothing for a `.git` directory.
+func sandboxPointedGitDirs(dotgit, base string) []string {
+	if info, err := os.Lstat(dotgit); err != nil || !info.Mode().IsRegular() {
+		return nil
+	}
+	raw, _, ref := sandboxGitPointerRaw(dotgit, sandboxGitdirPrefix)
+	if ref != nil {
+		return nil
+	}
+	_, gitdir := sandboxGitWalk(base, raw)
+	raw, present, ref := sandboxGitPointerRaw(filepath.Join(gitdir, "commondir"), "")
+	if ref != nil || !present {
+		return []string{gitdir}
+	}
+	_, common := sandboxGitWalk(gitdir, raw)
+	return []string{gitdir, common}
 }
 
 // sandboxGitDirs lists, for the macOS profile, every in-root path a git
@@ -1560,7 +1608,8 @@ func sandboxExecPrivateProfile(in sandboxInputs, repo, private, tmpBase string) 
 		return "", ref
 	}
 	return sandboxExecProfile(&sandboxProfileInputs{
-		credentials: locations, gitDirs: gitDirs, root: repo, private: private, tmpBase: tmpBase,
+		credentials: locations, gitDirs: gitDirs, gitReads: sandboxGitOutsideDirs(repo),
+		root: repo, private: private, tmpBase: tmpBase,
 	})
 }
 
@@ -1638,7 +1687,11 @@ func sandboxExecProfile(in *sandboxProfileInputs) (string, *core.RefusalError) {
 	if ref := sandboxWriteRules(&b, "allow", allow); ref != nil {
 		return "", ref
 	}
-	if ref := sandboxAncestorMetadata(&b, allow); ref != nil {
+	reads := sandboxExpandRealpaths(in.gitReads)
+	if ref := sandboxReadRules(&b, reads); ref != nil {
+		return "", ref
+	}
+	if ref := sandboxAncestorMetadata(&b, append(allow, reads...)); ref != nil {
 		return "", ref
 	}
 	b.WriteString(seatbeltDeviceWrites)
@@ -1658,6 +1711,9 @@ type sandboxProfileInputs struct {
 	tmpBase     string
 	credentials []string
 	gitDirs     []string
+	// gitReads are the root's git directories outside it, re-allowed for
+	// reads only ([sandboxGitOutsideDirs]).
+	gitReads []string
 }
 
 // sandboxGitWriteDenials renders the git control denials: one regex per root
@@ -1755,6 +1811,19 @@ func sandboxRealpath(path string) (string, bool) {
 		}
 		tail = filepath.Join(filepath.Base(current), tail)
 	}
+}
+
+// sandboxReadRules renders one read-only allow per path; the header's write
+// denial still covers it.
+func sandboxReadRules(b *strings.Builder, paths []string) *core.RefusalError {
+	for _, path := range paths {
+		literal, ref := seatbeltLiteral(path)
+		if ref != nil {
+			return ref
+		}
+		fmt.Fprintf(b, "(allow file-read* (subpath %s))", literal)
+	}
+	return nil
 }
 
 // sandboxWriteRules renders one subpath rule per path, refusing a path whose
@@ -1890,4 +1959,14 @@ func canceledRefusal() *core.RefusalError {
 
 func sandboxUnavailable(message string) *core.RefusalError {
 	return &core.RefusalError{Code: codeSandboxUnavailable, Message: "sandbox unavailable: " + message}
+}
+
+// firstLine trims s to its first line.
+func firstLine(s string) string {
+	for i := range len(s) {
+		if s[i] == '\n' || s[i] == '\r' {
+			return s[:i]
+		}
+	}
+	return s
 }

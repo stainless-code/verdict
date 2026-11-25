@@ -30,11 +30,8 @@ type sandboxCommander struct {
 }
 
 func (c *sandboxCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
-	if isHeadProbe(cmd) {
-		return core.Result{Stdout: patchHead + "\n"}, nil
-	}
-	if isStatusProbe(cmd) {
-		return core.Result{}, nil
+	if res, ok := gitAnswer(cmd, ""); ok {
+		return res, nil
 	}
 	c.calls = append(c.calls, cmd)
 	i := len(c.calls) - 1
@@ -114,8 +111,10 @@ func requireSandboxHost(t *testing.T) {
 	}
 }
 
-// wantProbeArgv is the exact Linux bwrap probe; Darwin builds its profile from
-// the host paths and is checked structurally instead.
+// wantProbeArgv is the exact Linux bwrap probe on a snapshot root; Darwin
+// builds its profile from the host paths and is checked structurally instead.
+// The test seam's snapshot (fakeCheckout) is a `.git` file naming an in-root
+// `.gitadmin` git directory, so both are pinned read-only over the root bind.
 func wantProbeArgv(root, home string) []string {
 	argv := []string{
 		"bwrap",
@@ -130,6 +129,7 @@ func wantProbeArgv(root, home string) []string {
 	return append(argv,
 		"--bind", root, root,
 		"--ro-bind", filepath.Join(root, ".git"), filepath.Join(root, ".git"),
+		"--ro-bind", filepath.Join(root, ".gitadmin"), filepath.Join(root, ".gitadmin"),
 		"--tmpfs", filepath.Join(home, ".aws"),
 		"--tmpfs", filepath.Join(home, ".ssh"),
 		"--tmpfs", filepath.Join(home, ".config", "gh"),
@@ -279,11 +279,11 @@ func TestSandboxWrapsVerifyCommand(t *testing.T) {
 }
 
 // TestSandboxPatchModeUsesThePhysicalRoot pins patch mode to group mode's
-// root handling: a checkout reached through a symlink (`current ->
-// checkouts/app`, the repo root arriving as the literal spelling) is
-// canonicalized once, so every mount and rule names the physical root and
-// none names the link, whose own node the command could not swap but whose
-// spelling would split the walks from the binds.
+// root handling: for a checkout reached through a symlink (`current ->
+// checkouts/app`, the repo root arriving as the literal spelling), the
+// sandbox is built on the snapshot, spelled physically, so every mount and
+// rule names one spelling and none names the link, whose spelling would
+// split the walks from the binds.
 func TestSandboxPatchModeUsesThePhysicalRoot(t *testing.T) {
 	requireSandboxHost(t)
 	base := t.TempDir()
@@ -295,14 +295,11 @@ func TestSandboxPatchModeUsesThePhysicalRoot(t *testing.T) {
 	if err := os.Symlink(app, link); err != nil {
 		t.Fatal(err)
 	}
-	physical, err := filepath.EvalSymlinks(app)
-	if err != nil {
-		t.Fatal(err)
-	}
-	_, _, _, cmdr := runSandboxedVerifyAt(t, link, "printf ok", nil)
+	snapshot, _, _, cmdr := runSandboxedVerifyAt(t, link, "printf ok", nil)
+	requireSnapshotDir(t, snapshot, link)
 	probe := strings.Join(cmdr.calls[0].Argv, "\x00")
-	if !strings.Contains(probe, physical) {
-		t.Errorf("probe argv never names the physical root %s", physical)
+	if !strings.Contains(probe, snapshot) {
+		t.Errorf("probe argv never names the physical snapshot %s", snapshot)
 	}
 	if strings.Contains(probe, link) || strings.Contains(probe, string(filepath.Separator)+"current") {
 		t.Errorf("probe argv names the symlinked root spelling %s:\n%s", link, probe)
@@ -337,13 +334,13 @@ func runSandboxedVerifyAt(t *testing.T, root, vcmd string, results []core.Result
 	if ref != nil {
 		t.Fatalf("Run refusal: %v", ref)
 	}
-	// The sandbox is built on the physical root (/var -> /private/var on
-	// macOS), the spelling every mount and rule names.
-	physical, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		t.Fatal(err)
+	// The sandbox is built on the snapshot the command runs in, spelled
+	// physically (/var -> /private/var on macOS) as every mount and rule
+	// names it; the last spawn ran there.
+	if n := len(cmdr.calls); n > 0 {
+		return cmdr.calls[n-1].Dir, home, resp, cmdr
 	}
-	return physical, home, resp, cmdr
+	return "", home, resp, cmdr
 }
 
 // checkSandboxSpawn compares both spawns with the literal argv shapes.
@@ -357,11 +354,12 @@ func checkSandboxSpawn(t *testing.T, cmdr *sandboxCommander, root, home, vcmd st
 	} else {
 		checkBwrapSpawn(t, cmdr, root, home, vcmd)
 	}
-	// The probe and the command run in the repo root the tree probes read,
-	// as the deep-group path does, never the caller's inherited cwd.
+	// The probe and the command run in the snapshot checkout the sandbox is
+	// built on, never the user's checkout or the caller's cwd.
 	if cmdr.calls[0].Dir != root || cmdr.calls[1].Dir != root {
-		t.Errorf("patch-mode dirs = %q, %q, want the repo root %q", cmdr.calls[0].Dir, cmdr.calls[1].Dir, root)
+		t.Errorf("patch-mode dirs = %q, %q, want the snapshot %q", cmdr.calls[0].Dir, cmdr.calls[1].Dir, root)
 	}
+	requireSnapshotDir(t, root, ".")
 }
 
 // checkBwrapSpawn pins the exact Linux bwrap probe and command argv.
@@ -639,8 +637,8 @@ type groupSandboxCommander struct {
 }
 
 func (c *groupSandboxCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
-	if isStatusProbe(cmd) {
-		return core.Result{}, nil
+	if res, ok := gitAnswer(cmd, groupTree); ok {
+		return res, nil
 	}
 	c.runs = append(c.runs, cmd)
 	if len(cmd.Argv) > 3 && cmd.Argv[0] == "git" {
@@ -675,23 +673,22 @@ func runSandboxedGroup(t *testing.T) (string, string, *verifycore.Response, *gro
 	return root, home, resp, cmdr
 }
 
-// checkGroupCommandArgv asserts the third spawn is the wrapped operator
-// command between the two git head probes.
+// checkGroupCommandArgv asserts the two spawns are the sandbox probe and the
+// wrapped operator command, both in the snapshot of the reviewed content
+// outside the checkout — the root the sandbox is built on.
 func checkGroupCommandArgv(t *testing.T, root, home string, cmdr *groupSandboxCommander) {
 	t.Helper()
-	if len(cmdr.runs) != 4 {
-		t.Fatalf("spawns = %d, want head, probe, command, head", len(cmdr.runs))
+	if len(cmdr.runs) != 2 {
+		t.Fatalf("spawns = %d, want probe and command", len(cmdr.runs))
 	}
-	canonical, err := filepath.EvalSymlinks(root)
-	if err != nil {
-		t.Fatal(err)
-	}
+	snapshot := cmdr.runs[1].Dir
+	requireSnapshotDir(t, snapshot, root)
 	if runtime.GOOS == "darwin" {
-		checkSeatbeltPair(t, cmdr.runs[1], cmdr.runs[2], canonical, home, "go test ./...")
+		checkSeatbeltPair(t, cmdr.runs[0], cmdr.runs[1], snapshot, home, "go test ./...")
 		return
 	}
-	if got := cmdr.runs[2].Argv; !slices.Equal(got, wantRunArgv(canonical, home, "go test ./...")) {
-		t.Errorf("command argv = %v, want %v", got, wantRunArgv(canonical, home, "go test ./..."))
+	if got := cmdr.runs[1].Argv; !slices.Equal(got, wantRunArgv(snapshot, home, "go test ./...")) {
+		t.Errorf("command argv = %v, want %v", got, wantRunArgv(snapshot, home, "go test ./..."))
 	}
 }
 

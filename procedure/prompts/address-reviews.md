@@ -39,17 +39,18 @@
    verified-fixed. The revalidator reports one verdict per thread — VERIFIED (with command +
    output) / NOT VERIFIED / INCONCLUSIVE. INCONCLUSIVE never resolves — it replies without
    resolving. Hand it `patch.json`'s `verifyCmd` + `filesChanged` as the lead; VERIFIED still
-   requires its own independent re-run. It appends one `{sig, verdict, verifyCmd, resultHead}`
-   entry per thread to `.verdict/state/N/verification.json` (creating it); only `VERIFIED` with a
-   matching HEAD flips `addressed`, and only beside a passing `verify-receipt.json` that
-   `verdict verify owner/repo N` alone writes: run it on the committed, pushed, re-fetched
-   HEAD with a clean tree, and cite its `verifyCmd` in the entry — a claim without that
-   receipt only logs, and `patch.json` is never one. One `verdict verify` run writes one
-   receipt, bound to `patch.json`'s `findingSig` when set: for a pass that fixes one
-   thread, set `findingSig` to that finding's full sig; when one `verifyCmd` proves several
-   threads, leave `findingSig` out, so the receipt backs every `VERIFIED` entry citing that
-   exact `verifyCmd` at that HEAD — the command and head are then the whole binding. A
-   receipt naming one finding never backs another's entry. Otherwise reply without resolving.
+   requires its own independent re-run. It appends one `{sig, verdict, verifyCmd}`
+   entry per thread to `.verdict/state/N/verification.json` (creating it); only `VERIFIED`
+   flips `addressed`, and only beside a passing `verify-receipt.json` that
+   `verdict verify owner/repo N` alone writes for the content `post` grades — the pushed,
+   re-fetched head: run it on a checkout whose content is that commit's, and cite its
+   `verifyCmd` in the entry — a claim without that receipt only logs, and `patch.json` is
+   never one. One `verdict verify` run writes one receipt, bound to `patch.json`'s
+   `findingSig` when set: for a pass that fixes one thread, set `findingSig` to that
+   finding's full sig; when one `verifyCmd` proves several threads, leave `findingSig` out,
+   so the receipt backs every `VERIFIED` entry citing that exact `verifyCmd` on that
+   content — the command and the content are then the whole binding. A receipt naming one
+   finding never backs another's entry. Otherwise reply without resolving.
 7. Finalize ONLY if code changed → land it as a single commit (amend as you iterate, push
    once at the end); on push failure report exact error and STOP (don't
    claim fix or resolve threads). Reply ONCE per relevant thread: on GitHub the reply takes

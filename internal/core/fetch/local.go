@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -344,15 +345,14 @@ func localBudgetGates(ctx2 *fetchRunCtx, f *LocalFlags, root, dir string) (budge
 }
 
 // localDiff owns the fetch-local diff read: the mode diff runs with its
-// stderr sidecar, and full.diff lands (empty on failure, like `>`). Under
-// an isolated checkout the explicit commit pair replaces the mode's
-// live-tree refs, so the bytes come from the checkout, not the worktree.
+// stderr sidecar, and full.diff lands (empty on failure, like `>`). A
+// working-tree bundle is named first and read tree to tree from that name,
+// so its diff is exactly the content it records. Otherwise, under an
+// isolated checkout the explicit commit pair replaces the mode's live-tree
+// refs, so the bytes come from the checkout, not the worktree.
 func localDiff(ctx context.Context, r *session, dir string, mode *localMode, paths []string) error {
-	diffArgs := append(mode.diffArgs(), paths...)
-	if r.iso != nil {
-		diffArgs = append([]string{gitCmdDiff, r.iso.base, r.iso.head}, paths...)
-	}
-	diffRes, err := r.git(ctx, diffArgs...)
+	nameWorktree(ctx, r, mode)
+	diffRes, err := readLocalDiff(ctx, r, mode, paths)
 	if werr := writeErrFile(dir+suffixDiffErr, diffRes.Stderr); werr != nil {
 		return werr
 	}
@@ -362,6 +362,7 @@ func localDiff(ctx context.Context, r *session, dir string, mode *localMode, pat
 	if err := captureWorktreeIdentity(ctx, r, mode, paths, diffRes); err != nil {
 		return err
 	}
+	captureContentTree(ctx, r, mode)
 
 	if werr := atomic.WriteFile(dir+suffixFullDiff, []byte(diffRes.Stdout)); werr != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgWriteFullDiff, dir, werr)}
@@ -369,11 +370,28 @@ func localDiff(ctx context.Context, r *session, dir string, mode *localMode, pat
 	return nil
 }
 
+// readLocalDiff reads the bundle's diff: tree to tree for a named
+// working-tree bundle, else the mode's (or the isolated checkout's) refs.
+func readLocalDiff(ctx context.Context, r *session, mode *localMode, paths []string) (core.Result, error) {
+	if refs := mode.contentRefs(); refs != nil {
+		return r.run(ctx, slices.Concat([]string{gitCmdDiff}, treeDiffFlags, refs, paths)...)
+	}
+	diffArgs := append(mode.diffArgs(), paths...)
+	if r.iso != nil {
+		diffArgs = append([]string{gitCmdDiff, r.iso.base, r.iso.head}, paths...)
+	}
+	return r.git(ctx, diffArgs...)
+}
+
+// captureWorktreeIdentity records worktree_diff_sha256, the live `git diff
+// HEAD` record's freshness check compares later. It is the working tree's
+// identity, not the content binding, so a bundle whose diff was read some
+// other way (a path filter, a checkout, a named tree) reads it on its own.
 func captureWorktreeIdentity(ctx context.Context, r *session, mode *localMode, paths []string, live core.Result) error {
 	if !mode.dirty {
 		return nil
 	}
-	if len(paths) > 0 || r.iso != nil {
+	if len(paths) > 0 || r.iso != nil || mode.contentRefs() != nil {
 		result, err := r.run(ctx, gitCmdDiff, gitHeadRef)
 		if err != nil {
 			return jq.Sealed("read tracked working tree", err)
@@ -532,7 +550,10 @@ type localMode struct {
 	headRef         string
 	rangeVal        string
 	worktreeDiffSHA string
-	dirty           bool
+	// contentTree is the reviewed content's git tree id (source.json
+	// content_tree), what a local bundle's VERIFIED claims are graded on.
+	contentTree string
+	dirty       bool
 }
 
 // diffArgs owns the per-kind diff argv (paths appended by the caller).
@@ -543,9 +564,9 @@ func (m *localMode) diffArgs() []string {
 	case modeRange:
 		return []string{gitCmdDiff, m.baseSHA, m.headSHA}
 	case modeBranch:
-		// `git diff <base> HEAD` — HEAD resolves at run time; the stored
-		// head SHA equals it, so the bytes match.
-		return []string{gitCmdDiff, m.baseSHA, gitHeadRef}
+		// The stored head SHA, never a HEAD resolved again at read time: the
+		// diff and content_tree name the same commit even if HEAD moves.
+		return []string{gitCmdDiff, m.baseSHA, m.headSHA}
 	case modeStaged:
 		return []string{gitCmdDiff, flagCached}
 	default:
@@ -676,7 +697,7 @@ func resolveWorktreeMode(ctx context.Context, s *session, branch string) localMo
 	if headRef == "" {
 		headRef = "worktree"
 	}
-	return localMode{kind: "worktree", baseSHA: base, headRef: headRef, rangeVal: "HEAD:worktree", dirty: true}
+	return localMode{kind: modeWorktree, baseSHA: base, headRef: headRef, rangeVal: "HEAD:worktree", dirty: true}
 }
 
 // resolveRangeMode owns the range split: three-dot wins when present,
@@ -758,51 +779,60 @@ func truncateEmpty(path string) *core.RefusalError {
 	return nil
 }
 
-// localFileStats owns the file-list and numstat reads for the mode. Under
-// an isolated checkout the explicit commit pair replaces every mode's
-// live-tree refs (a three-dot A...B list is its merge-base-to-head pair,
-// so the file sets match the classic refs exactly).
+// The diff flags and separator the file-list reads share.
+const (
+	flagNameOnly  = "--name-only"
+	flagNoRenames = "--no-renames"
+	pathspecSep   = "--"
+)
+
+// localFileStats owns the file-list and numstat reads for the mode. A named
+// working-tree bundle reads them tree to tree, from the same refs as its
+// diff. Otherwise, under an isolated checkout the explicit commit pair
+// replaces every mode's live-tree refs (a three-dot A...B list is its
+// merge-base-to-head pair, so the file sets match the classic refs exactly).
 func localFileStats(ctx context.Context, s *session, mode *localMode, paths []string) (string, string) {
-	var listRef, statRef []string
-	if s.iso != nil {
-		listRef = []string{s.iso.base, s.iso.head}
-		statRef = []string{s.iso.base, s.iso.head}
-	} else {
-		switch mode.kind {
-		case modeStaged:
-			listRef = []string{flagCached}
-			statRef = []string{flagCached}
-		case modeRange:
-			listRef = []string{mode.rangeVal}
-			statRef = []string{mode.rangeVal}
-		case modeBranch:
-			listRef = []string{mode.rangeBaseRef() + "...HEAD"}
-			statRef = []string{mode.rangeBaseRef() + "...HEAD"}
-		case modeStash:
-			listRef = []string{mode.baseSHA, mode.headSHA}
-			statRef = []string{mode.baseSHA, mode.headSHA}
-		default:
-			listRef = []string{gitHeadRef}
-			statRef = []string{gitHeadRef}
-		}
+	read, flags, refs := s.git, []string(nil), statRefs(s, mode)
+	if named := mode.contentRefs(); named != nil {
+		read, flags, refs = s.run, treeDiffFlags, named
 	}
 	if len(paths) > 0 {
-		listRef = append(listRef, "--")
-		listRef = append(listRef, paths...)
-		statRef = append(statRef, "--")
-		statRef = append(statRef, paths...)
+		refs = slices.Concat(refs, []string{pathspecSep}, paths)
 	}
-	fileList := ""
-	if res, err := s.git(ctx, append([]string{gitCmdDiff, "--no-renames", "--name-only"}, listRef...)...); err == nil {
-		fileList = strings.TrimRight(res.Stdout, newline)
-	} else if res, err := s.git(ctx, append([]string{gitCmdDiff, "--name-only"}, listRef...)...); err == nil {
-		fileList = strings.TrimRight(res.Stdout, newline)
+	diff := func(opts ...string) (string, bool) {
+		res, err := read(ctx, slices.Concat([]string{gitCmdDiff}, flags, opts, refs)...)
+		return strings.TrimRight(res.Stdout, newline), err == nil
 	}
-	numstat := ""
-	if res, err := s.git(ctx, append([]string{gitCmdDiff, "--numstat"}, statRef...)...); err == nil {
-		numstat = strings.TrimRight(res.Stdout, newline)
+	fileList, ok := diff(flagNoRenames, flagNameOnly)
+	if !ok {
+		if fileList, ok = diff(flagNameOnly); !ok {
+			fileList = ""
+		}
+	}
+	numstat, ok := diff("--numstat")
+	if !ok {
+		numstat = ""
 	}
 	return fileList, numstat
+}
+
+// statRefs is the diff range a mode's file-list reads use: the isolated
+// checkout's commit pair, or the mode's own refs.
+func statRefs(s *session, mode *localMode) []string {
+	if s.iso != nil {
+		return []string{s.iso.base, s.iso.head}
+	}
+	switch mode.kind {
+	case modeStaged:
+		return []string{flagCached}
+	case modeRange:
+		return []string{mode.rangeVal}
+	case modeBranch, modeStash:
+		// For a branch, baseSHA is already the merge-base the three-dot
+		// form would resolve, and headSHA the commit content_tree names.
+		return []string{mode.baseSHA, mode.headSHA}
+	}
+	return []string{gitHeadRef}
 }
 
 // rangeBaseRef recovers the --base ref from the stored range spec.
@@ -863,7 +893,7 @@ func hasNonEmptyLine(s string) bool {
 func writeLocalUntrackedWarns(ctx context.Context, r *session, paths []string) {
 	args := []string{"ls-files", "--others", "--exclude-standard"}
 	if len(paths) > 0 {
-		args = append(args, "--")
+		args = append(args, pathspecSep)
 		args = append(args, paths...)
 	}
 	res, err := r.run(ctx, args...)
@@ -1021,6 +1051,7 @@ func writeSourceJSON(
 		modeRange, nullStr(mode.rangeVal),
 		"dirty", mode.dirty,
 		"worktree_diff_sha256", nullStr(mode.worktreeDiffSHA),
+		"content_tree", nullStr(mode.contentTree),
 		"diff_sha256", diffSHA,
 		"patch_id", core.Wire(ident.PatchID),
 		"patch_id_kind", ident.PatchIDKind,

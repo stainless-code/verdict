@@ -612,7 +612,7 @@ func TestRuntimeHandoffEnvelopeValidates(t *testing.T) {
 	writeFixture(t, ".verdict/state/local-42/findings.json", "["+fixtureFindingWithBrief()+"]")
 	writeFixture(t, ".verdict/state/local-42/verification.json",
 		`[{"sig":"c111111111111111111111111111111111111111","verdict":"VERIFIED",`+
-			`"verifyCmd":"go test ./...","resultHead":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]`)
+			`"verifyCmd":"go test ./..."}]`)
 	req := &handoffcore.Request{}
 	req.ReadRequest = core.ReadRequest{Runtime: fixedRuntime(), Repo: "acme/app", Pr: "42"}
 	resp, ref := handoffcore.Run(context.Background(), req)

@@ -286,16 +286,15 @@ assert_exit "corrupt store is a tool error" 3
 assert_eq "corrupt store carries a typed refusal" "corrupt-store" "$(jq -r .error.code <"$EVAL_OUT")"
 assert_eq "refusal envelope carries no data" "null" "$(jq -r .data <"$EVAL_OUT")"
 
-# --- a VERIFIED claim reaches the gate only when verify-receipt.json (which
-# `verdict verify` writes; the gate validates its contents, not its author)
-# records a passing run of the claim's
-# own command on the clean HEAD being graded. A hand-written claim, a pass
-# forged into patch.json, a triage rationale, a dirty tree, a moved HEAD, or a
-# receipt for another command all leave the finding open, failing the
-# findings dimension.
+# --- a VERIFIED claim reaches the gate only through the tool-only receipt
+# `verdict verify` writes (verify-receipt.json), bound to the content the
+# command ran on: its git tree. A hand-written claim, a pass forged into
+# patch.json, a receipt for content that changed afterwards, or one for
+# another command leaves the finding open; a triage rationale asking for
+# addressed refuses the review. Uncommitted content verifies as it is.
 eval_seed_base
 # The harness's own scratch (stub logs, captured streams, XDG state) is not
-# part of the reviewed tree; exclude it so the clean-tree probe sees the repo.
+# part of the reviewed content; exclude it so the snapshot sees the repo.
 (
   cd "$EVAL_SANDBOX" || exit 99
   git ls-files --others --exclude-standard --directory >>.git/info/exclude
@@ -305,87 +304,99 @@ eval_seed_base
   eval_fixture_commit receipt-base
 )
 VH="$(git -C "$EVAL_SANDBOX" rev-parse HEAD)"
+# content_tree names the checkout's content with plain git, independently of
+# verdict: the index paths with their working-tree bytes (`add -u` on a copy
+# of the index), verdict's own state left at HEAD's. Untracked files are
+# outside it, as they are outside the bundle.
+content_tree() {
+  local idx="$EVAL_SANDBOX/.git/eval-content-index"
+  cp "$EVAL_SANDBOX/.git/index" "$idx"
+  (
+    cd "$EVAL_SANDBOX" || exit 99
+    GIT_INDEX_FILE="$idx" git add -u -- . &&
+      GIT_INDEX_FILE="$idx" git reset -q HEAD -- .verdict/state .verdict/loop .verdict/.gitignore &&
+      GIT_INDEX_FILE="$idx" git write-tree
+  )
+}
 B=local-vreceipt
 BD="$EVAL_SANDBOX/.verdict/state/$B"
 eval_mk_bundle "$B"
-jq --arg h "$VH" '.head_sha = $h' "$BD/source.json" >"$BD/source.json.tmp"
-mv "$BD/source.json.tmp" "$BD/source.json"
-eval_write_review_at "$BD/review.json" <<'EOF'
-{"schema_version":"1","body":"> [!IMPORTANT]\n> One finding to settle.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Receipt-gated finding body.","rigor":"walked","severity":"important"}]}
-EOF
+# capture stands in for re-running fetch-local: the bundle grades the content
+# the checkout holds now.
+capture() {
+  jq --arg h "$VH" --arg t "$(content_tree)" '.head_sha = $h | .content_tree = $t' "$BD/source.json" >"$BD/source.json.tmp"
+  mv "$BD/source.json.tmp" "$BD/source.json"
+}
+capture
+REVIEW='{"schema_version":"1","body":"> [!IMPORTANT]\n> One finding to settle.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Receipt-gated finding body.","rigor":"walked","severity":"important"}]}'
+printf '%s\n' "$REVIEW" | eval_write_review_at "$BD/review.json"
 run_review record acme/app "$B" --json
 assert_exit "receipt fixture records" 0
 VSIG="$(jq -r '.[0].sig' "$BD/findings.json")"
 claim() {
-  jq -n --arg s "$VSIG" --arg h "$VH" --arg c "$1" '[{sig:$s,verdict:"VERIFIED",verifyCmd:$c,resultHead:$h}]' >"$BD/verification.json"
+  jq -n --arg s "$VSIG" --arg c "$1" '[{sig:$s,verdict:"VERIFIED",verifyCmd:$c}]' >"$BD/verification.json"
 }
-claim true
-eval_mk_patch "$B" true
+VCMD='git checkout -- tracked.txt && grep -q edited tracked.txt'
+claim "$VCMD"
+jq -n --arg c "$VCMD" '{verifyCmd:$c}' >"$BD/patch.json"
 findings_dim() {
   run_review gate acme/app "$B" --max-severity informational --live skip --coverage warn --json
   jq -r '.data.dimensions[] | select(.id == "findings") | .status' <"$EVAL_OUT"
 }
 status() { jq -r '.[0].status' "$BD/findings.json"; }
-unapplied() { printf 'VERIFIED claim for %s not applied (%s) — run verdict verify on HEAD %s' "${VSIG:0:8}" "$1" "${VH:0:7}"; }
+unapplied() { printf 'VERIFIED claim for %s not applied (%s)' "${VSIG:0:8}" "$1"; }
 
-# A hand-written claim plus a triage rationale asking for addressed.
-eval_write_review_at "$BD/review.json" <<EOF
-{"schema_version":"1","body":"> [!IMPORTANT]\n> One finding to settle.","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Receipt-gated finding body.","rigor":"walked","severity":"important"}],"triage":[{"sig":"$VSIG","status":"addressed","rationale":"Fixed in the follow-up commit, trust me on this one."}]}
-EOF
+# A hand-written claim alone.
 run_review record acme/app "$B" --json
-assert_eq "hand-written claim and triage rationale keep the finding open" "open" "$(status)"
+assert_eq "hand-written claim keeps the finding open" "open" "$(status)"
 assert_file_grep "hand-written claim names the missing receipt" "$EVAL_ERR" \
   "$(unapplied 'no verify receipt: verify-receipt.json is missing')"
-assert_file_grep "triage addressed is ignored with the reason" "$EVAL_ERR" \
-  "triage claim ${VSIG:0:8} ignored: addressed needs a VERIFIED claim"
 assert_eq "hand-written claim fails the findings dimension" "fail" "$(findings_dim)"
 
+# A triage rationale asking for addressed refuses the whole review.
+jq --arg s "$VSIG" '. + {triage:[{sig:$s,status:"addressed",rationale:"Fixed in the follow-up commit, trust me on this one."}]}' \
+  <<<"$REVIEW" | eval_write_review_at "$BD/review.json"
+run_review record acme/app "$B" --json
+assert_exit "triage addressed refuses the review" 1
+assert_eq "triage addressed refuses as bad-review-input" "bad-review-input" "$(jq -r .error.code <"$EVAL_OUT")"
+printf '%s\n' "$REVIEW" | eval_write_review_at "$BD/review.json"
+
 # A pass forged into patch.json, the file the agent is told to write.
-jq --arg h "$VH" '. + {verifyExit:0,timedOut:false,verifiedHead:$h}' "$BD/patch.json" >"$BD/patch.json.tmp"
+jq '. + {verifyExit:0,timedOut:false,tree:"forged"}' "$BD/patch.json" >"$BD/patch.json.tmp"
 mv "$BD/patch.json.tmp" "$BD/patch.json"
 run_review record acme/app "$B" --json
 assert_eq "a pass forged into patch.json keeps the finding open" "open" "$(status)"
-assert_file_grep "a forged patch.json is still no receipt" "$EVAL_ERR" \
-  "$(unapplied 'no verify receipt: verify-receipt.json is missing')"
-eval_mk_patch "$B" true
+jq -n --arg c "$VCMD" '{verifyCmd:$c}' >"$BD/patch.json"
 
-# An uncommitted edit: HEAD says nothing about it, so the receipt binds no head.
-printf 'uncommitted\n' >>"$EVAL_SANDBOX/tracked.txt"
+# Verify uncommitted content, then change it: the receipt names the old tree.
+printf 'edited once\n' >"$EVAL_SANDBOX/tracked.txt"
 run_review verify acme/app "$B" --json --timeout 30
-assert_eq "verify on a dirty tree binds no head" "null" "$(jq -r .data.head <"$EVAL_OUT")"
-assert_file_grep "verify on a dirty tree says to commit first" "$EVAL_ERR" \
-  "has uncommitted changes — commit the fix, then run verdict verify"
+assert_exit "verify runs on uncommitted content" 0
+FIRST="$(jq -r .tree "$BD/verify-receipt.json")"
+assert_eq "verify names the uncommitted content's tree" "$(content_tree)" "$FIRST"
+printf 'edited twice\n' >"$EVAL_SANDBOX/tracked.txt"
+capture
 run_review record acme/app "$B" --json
-assert_eq "a dirty-tree receipt keeps the finding open" "open" "$(status)"
-assert_file_grep "a dirty-tree receipt names the missing clean head" "$EVAL_ERR" \
-  "$(unapplied 'the verify receipt records no clean HEAD')"
-git -C "$EVAL_SANDBOX" checkout -q -- tracked.txt
-
-# A receipt for another HEAD.
-( cd "$EVAL_SANDBOX" && eval_fixture_commit moved --allow-empty )
-MOVED="$(git -C "$EVAL_SANDBOX" rev-parse HEAD)"
-run_review verify acme/app "$B" --json --timeout 30
-assert_eq "verify reports the clean head it ran on" "$MOVED" "$(jq -r .data.head <"$EVAL_OUT")"
-run_review record acme/app "$B" --json
-assert_eq "stale receipt keeps the finding open" "open" "$(status)"
-assert_file_grep "stale receipt names the HEAD it covered" "$EVAL_ERR" \
-  "$(unapplied "the verify receipt covers HEAD ${MOVED:0:7}")"
-assert_eq "stale receipt fails the findings dimension" "fail" "$(findings_dim)"
-git -C "$EVAL_SANDBOX" reset -q --soft "$VH"
+assert_eq "content changed after verify keeps the finding open" "open" "$(status)"
+assert_file_grep "a stale receipt names both trees" "$EVAL_ERR" \
+  "$(unapplied "the verify receipt covers content tree ${FIRST:0:7}, not the graded content's $(content_tree | cut -c1-7)")"
+assert_eq "a stale receipt fails the findings dimension" "fail" "$(findings_dim)"
 
 # A passing receipt for another command than the claim names.
 run_review verify acme/app "$B" --json --timeout 30
-assert_eq "verify binds the receipt to the graded HEAD" "$VH" "$(jq -r .head "$BD/verify-receipt.json")"
 claim "go test ./..."
 run_review record acme/app "$B" --json
 assert_eq "a receipt for another command keeps the finding open" "open" "$(status)"
 assert_file_grep "a command mismatch names both commands" "$EVAL_ERR" \
-  "$(unapplied 'the verify receipt ran "true", not the claim'"'"'s "go test ./..."')"
+  "the verify receipt ran \"$VCMD\", not the claim's \"go test ./...\""
 
-# The receipt verify observed: the claim's command, clean, at the graded HEAD.
-claim true
+# The receipt verify observed for this content, uncommitted: no commit needed.
+# The command checked out and restored tracked.txt in its snapshot and still
+# saw the edit, and the user's checkout kept it.
+claim "$VCMD"
 run_review record acme/app "$B" --json
-assert_eq "receipt at the graded HEAD flips addressed" "addressed" "$(status)"
-assert_eq "receipt at the graded HEAD passes the findings dimension" "pass" "$(findings_dim)"
+assert_eq "a receipt for the graded uncommitted content flips addressed" "addressed" "$(status)"
+assert_eq "the user's checkout keeps the uncommitted edit" "edited twice" "$(cat "$EVAL_SANDBOX/tracked.txt")"
+assert_eq "the flip passes the findings dimension" "pass" "$(findings_dim)"
 
 eval_end

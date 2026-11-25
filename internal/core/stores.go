@@ -166,7 +166,7 @@ type CoverageClaim struct {
 // TriageClaim is one status claim in review.json input.
 type TriageClaim struct {
 	Sig       string `json:"sig"`
-	Status    string `enum:"open|addressed|wont-fix|false-positive|deferred" json:"status"`
+	Status    string `enum:"open|wont-fix|false-positive|deferred" json:"status"`
 	Rationale string `json:"rationale"`
 }
 

@@ -420,7 +420,8 @@ type VerifyResponse struct { //nolint:govet // field order is the public API sur
 	TimedOut bool
 	Tail     string
 	Group    string // deep validation: the group the receipt certifies
-	Head     string // the clean checked-out head the run is bound to; empty when it could not bind one
+	Head     string // deep validation: the reviewed head the receipt certifies
+	Tree     string // the content tree the command ran on, what a receipt binds; empty when verify could not snapshot it
 	Receipt  string // the tool-only receipt path (verify-receipt.json, or validation-<group>.json)
 	// SandboxMechanism names the wrapper the command ran under: "bwrap" or
 	// "sandbox-exec" (the full shape), "unshare-net" (network-only), or empty
@@ -456,6 +457,7 @@ func (c *Client) Verify(ctx context.Context, req *VerifyRequest) (*VerifyRespons
 		Tail:     resp.Tail,
 		Group:    data.Group,
 		Head:     data.Head,
+		Tree:     data.Tree,
 		Receipt:  data.Receipt,
 		// The mechanism rides beside the deep-validation fields because a
 		// patch run and a group run both carry it.

@@ -1075,7 +1075,10 @@ describe("integration: real binary", () => {
       assert.equal(receipt.group, group);
       assert.equal(receipt.inputs_sha256, run.inputs_sha256);
       assert.equal(receipt.reviewed_head, head);
-      assert.equal(receipt.execution_head, head);
+      // The receipt certifies content: the tree the command ran on, which is
+      // the reviewed commit's tree.
+      assert.equal(receipt.tree, git("rev-parse", `${head}^{tree}`));
+      assert.equal(env.data.tree, receipt.tree);
       assert.equal(receipt.repo_root, realpathSync(dir));
       assert.equal(receipt.command, "cat rootmarker");
       assert.equal(receipt.exit, 0);

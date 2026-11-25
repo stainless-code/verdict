@@ -76,14 +76,16 @@ var facadeAllowedDeps = map[string]bool{
 	"": true, // the payload root (skillfs) embeds the shipped lens pack
 	// init renders the CI workflow from the catalog row's documented key and
 	// permission facts, so the facade now reaches the catalog itself.
-	"internal/agentcatalog":   true,
-	"internal/argvshape":      true,
-	"internal/atomic":         true,
-	"internal/azure":          true,
-	"internal/bitbucket":      true,
-	"internal/brief":          true,
-	"internal/config":         true,
-	"internal/controls":       true,
+	"internal/agentcatalog": true,
+	"internal/argvshape":    true,
+	"internal/atomic":       true,
+	"internal/azure":        true,
+	"internal/bitbucket":    true,
+	"internal/brief":        true,
+	"internal/config":       true,
+	"internal/controls":     true,
+	// verify, fetch, and record name reviewed content by its git tree id.
+	"internal/contenttree":    true,
 	"internal/exclude":        true,
 	"internal/core":           true,
 	"internal/core/adopt":     true,

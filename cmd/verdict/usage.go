@@ -216,10 +216,10 @@ func usageText() string {
 		"    --summary comment maintains one separate PR-level summary comment (updated in place).\n" +
 		"    Binding APPROVE/REQUEST_CHANGES needs --bind (else downgraded to COMMENT);\n" +
 		"    APPROVE is refused with open or deferred findings unless --force.\n" +
-		"    Agent status claims (resolved[]/triage[]) are proposals: addressed flips only on\n" +
-		"    verification.json evidence (VERIFIED + resultHead matching HEAD) backed by the\n" +
-		"    tool-only verify-receipt.json (exit 0 for that verifyCmd on the clean graded HEAD);\n" +
-		"    a triage[] claim for addressed is ignored.\n" +
+		"    Agent status claims (resolved[]/triage[]) are proposals: addressed flips only on a\n" +
+		"    verification.json claim {sig, verdict: VERIFIED, verifyCmd} backed by the tool-only\n" +
+		"    verify-receipt.json (exit 0 for that verifyCmd, its tree equal to the graded\n" +
+		"    content's); a triage[] claim for addressed refuses the review.\n" +
 		"    --dry-run prints validation + payload summary, writes findings.dryrun.json, posts nothing.\n" +
 		"    A secret-shaped value in the review text refuses post-secret-shaped before any host\n" +
 		"    call (--dry-run warns instead); --allow-secret-values publishes it and post.json\n" +
@@ -271,9 +271,12 @@ func usageText() string {
 		"        [--sandbox | --sandbox-network-only] [--env-allowlist <name[,name...]>] [--json]\n" +
 		"    With neither --group nor --command, execute patch.json verifyCmd with a watchdog and\n" +
 		"    record exit + tail in the patch record, and write verify-receipt.json: the command,\n" +
-		"    the finding sig patch.json names, exit, timeout, and the checked-out head when the\n" +
-		"    tree is clean and unmoved — the receipt record/post need before a VERIFIED claim\n" +
-		"    flips a finding addressed. The command runs in the repo root.\n" +
+		"    the finding sig patch.json names, exit, timeout, and the tree id of the content it\n" +
+		"    ran on — the receipt record/post need before a VERIFIED claim flips a finding\n" +
+		"    addressed. The content is the index paths' working-tree bytes (uncommitted edits\n" +
+		"    included; untracked and ignored files are not). The command runs in a clean snapshot\n" +
+		"    of it outside the user's checkout, made with no git hook, filter, or fsmonitor; a\n" +
+		"    checkout verify cannot snapshot refuses verify-failed and nothing runs.\n" +
 		"    --group and --command are required together:\n" +
 		"    --command runs for the named deep plan group at the reviewed head and writes\n" +
 		"    validation-<group>.json (patch.json stays untouched).\n" +
@@ -282,10 +285,10 @@ func usageText() string {
 		"    Runs in its own process group (timeout kills the tree); known secret values\n" +
 		"    are redacted from the recorded tail.\n" +
 		"    --sandbox runs the command under an enforced sandbox: bwrap on Linux (no network,\n" +
-		"    empty ~/.aws and ~/.ssh, a writable reviewed root, a private /tmp), and\n" +
+		"    empty ~/.aws and ~/.ssh, a writable snapshot root, a private /tmp), and\n" +
 		"    sandbox-exec on macOS (no network, loopback included; no Mach services; writes\n" +
-		"    only to the reviewed root and a private TMPDIR; credential paths and host /tmp\n" +
-		"    denied; no mount or PID namespace).\n" +
+		"    only to the snapshot and a private TMPDIR; credential paths and host /tmp\n" +
+		"    denied; no mount or PID namespace). Your checkout is read-only.\n" +
 		"    --sandbox-network-only is the Linux unshare --net opt-in for hosts without bwrap:\n" +
 		"    network isolation alone — no mount, filesystem, or PID isolation, so credential\n" +
 		"    paths, /tmp, the host /proc, and unix sockets (docker.sock, ssh-agent) stay\n" +

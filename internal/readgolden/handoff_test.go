@@ -18,8 +18,7 @@ func handoffBriefed() string {
 }
 
 func handoffVerification() string {
-	return `[{"sig":"` + sigCrit + `","verdict":"VERIFIED","verifyCmd":"go test ./...",` +
-		`"resultHead":"` + headA + `"}]`
+	return `[{"sig":"` + sigCrit + `","verdict":"VERIFIED","verifyCmd":"go test ./..."}]`
 }
 
 func handoffMixed(t *testing.T, dir, _ string) {
