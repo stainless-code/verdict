@@ -31,17 +31,16 @@ const agentBinary = "claude"
 // agent for the review and fix spawns and hands every other process (the
 // verify command, git) to the production watchdog.
 type agentCommander struct {
-	t      *testing.T
-	spawns []string
-	// fixExit is the fix process's exit code.
-	fixExit int
-	// reportFixCost makes the fix agent report its spend in fix-cost.json.
-	reportFixCost bool
-	// datedCost writes the legacy dated cost record instead of the
-	// undated schema-2 record the review prompt asks for.
-	datedCost bool
-	// fixNeverStarts fails the fix spawn before any process starts.
+	t              *testing.T
+	costAt         string
+	spawns         []string
+	fixExit        int
+	reviews        int
+	reportFixCost  bool
+	datedCost      bool
 	fixNeverStarts bool
+	repairFirst    bool
+	repairNoCost   bool
 }
 
 // flowNow is the integration clock: one fixed instant inside one month, so
@@ -52,7 +51,7 @@ func flowNow() time.Time { return time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC) 
 var errNeverStarted = errors.New("exec: no such file")
 
 var (
-	reviewPath = regexp.MustCompile(`Write (\S+review\.json) FIRST with \{`)
+	reviewPath = regexp.MustCompile(`(?:Write (\S+review\.json) FIRST with \{|Update (\S+review\.json) in place:)`)
 	hunkHeader = regexp.MustCompile(`^@@ [^+]*\+(\d+)(?:,(\d+))? @@`)
 )
 
@@ -63,7 +62,7 @@ func (a *agentCommander) Run(ctx context.Context, cmd *core.Command) (core.Resul
 	directive := cmd.Argv[len(cmd.Argv)-1]
 	if m := reviewPath.FindStringSubmatch(directive); m != nil {
 		a.spawns = append(a.spawns, "review")
-		a.review(cmd.Dir, m[1])
+		a.review(cmd.Dir, m[1]+m[2])
 		return core.Result{}, nil
 	}
 	if a.fixNeverStarts {
@@ -85,24 +84,49 @@ func (a *agentCommander) review(checkout, artifact string) {
 		artifact = filepath.Join(checkout, artifact)
 	}
 	dir := filepath.Dir(artifact)
-	notes, err := os.ReadFile(filepath.Join(checkout, "notes.txt"))
-	if err != nil {
-		a.t.Errorf("read notes: %v", err)
-	}
-	findings, receipts := "[]", hunkReceipts(a.t, dir)
-	if strings.Contains(string(notes), "new line") {
-		findings = `[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"Incorrect line.","quote":"new line",` +
-			`"confidence":"high","severity":"important","rigor":"walked"}]`
+	a.reviews++
+	findings, receipts := a.findings(checkout), hunkReceipts(a.t, dir)
+	if findings != "[]" {
 		receipts = "[]"
 	}
 	write(a.t, artifact, `{"schema_version":"1","summary":"Reviewed the notes change.","findings":`+findings+
 		`,"coverage":[{"file":"notes.txt","ranges":"1-3"}],"receipts":`+receipts+`}`)
-	cost := `{"schema_version":"2","effort":"standard","run":"loop","models":[{"name":"m","input_tokens":1,` +
-		`"output_tokens":1}],"lenses":[],"group_costs":[],"est_usd":0.1}`
-	if a.datedCost {
-		cost = `{"at":"` + core.NowUTC(flowNow()) + `","est_usd":0.1}`
+	if a.repairNoCost && a.reviews == 2 {
+		return
 	}
-	write(a.t, filepath.Join(dir, "cost.json"), cost)
+	write(a.t, filepath.Join(dir, "cost.json"), a.costRecord())
+}
+
+// findings is the review's finding list: the changed line until it is
+// fixed, quoting a line the diff lacks on a first attempt the leg repairs.
+func (a *agentCommander) findings(checkout string) string {
+	notes, err := os.ReadFile(filepath.Join(checkout, "notes.txt"))
+	if err != nil {
+		a.t.Errorf("read notes: %v", err)
+	}
+	if !strings.Contains(string(notes), "new line") {
+		return "[]"
+	}
+	quote := "new line"
+	if a.repairFirst && a.reviews == 1 {
+		quote = "a line the diff never had"
+	}
+	return `[{"path":"notes.txt","line":2,"side":"RIGHT","claim":"Incorrect line.","quote":"` + quote + `",` +
+		`"confidence":"high","severity":"important","rigor":"walked"}]`
+}
+
+// costRecord is the review's cost.json: the prompt's undated schema-2
+// record, or the dated record the leg asks for.
+func (a *agentCommander) costRecord() string {
+	if !a.datedCost {
+		return `{"schema_version":"2","effort":"standard","run":"loop","models":[{"name":"m","input_tokens":1,` +
+			`"output_tokens":1}],"lenses":[],"group_costs":[],"est_usd":0.1}`
+	}
+	at := core.NowUTC(flowNow())
+	if a.costAt != "" {
+		at = a.costAt
+	}
+	return `{"at":"` + at + `","est_usd":0.1}`
 }
 
 // fix rewrites the line, declares the verify command, and optionally reports
@@ -402,5 +426,55 @@ func TestLoopFailedFixKeepsItsReportedSpend(t *testing.T) {
 	mtd := spend.AggregateMTD(readcommon.StateDir(repo), flowNow())
 	if mtd.KnownUSD != "0.4" || mtd.UnknownCount != 0 {
 		t.Errorf("month-to-date = %+v, want the review's 0.1 plus the failed fix's reported 0.3", mtd)
+	}
+}
+
+// TestLoopPricesEachReviewAttemptFromItsOwnRecord proves a repaired review
+// counts both attempts: each is a fresh process that rewrites cost.json for
+// its own run, so the first attempt's record is captured before the repair
+// overwrites it. Two $0.1 attempts, the $0.3 fix, and round 2's $0.1 review
+// make $0.6.
+func TestLoopPricesEachReviewAttemptFromItsOwnRecord(t *testing.T) {
+	agent := &agentCommander{t: t, reportFixCost: true, repairFirst: true}
+	resp, repo := flowLoop(t, agent, "5")
+	if resp.Data.Stop != StopPass {
+		t.Fatalf("stop=%s refusal=%+v, want a pass", resp.Data.Stop, resp.Data.Refusal)
+	}
+	if got := strings.Join(agent.spawns, ","); got != "review,review,fix,review" {
+		t.Fatalf("spawns = %s, want a repaired round-1 review", got)
+	}
+	mtd := spend.AggregateMTD(readcommon.StateDir(repo), flowNow())
+	if mtd.KnownUSD != "0.6" || mtd.UnknownCount != 0 {
+		t.Errorf("month-to-date = %+v, want 0.6 known: both review attempts, the fix, and round 2", mtd)
+	}
+}
+
+// TestLoopAttemptWithoutItsOwnRecordStaysUnknown proves a repair attempt that
+// wrote no cost record is unknown, never priced from the earlier attempt's
+// file and never free, so a cost-ceilinged loop stops on it.
+func TestLoopAttemptWithoutItsOwnRecordStaysUnknown(t *testing.T) {
+	agent := &agentCommander{t: t, reportFixCost: true, repairFirst: true, repairNoCost: true}
+	resp, repo := flowLoop(t, agent, "5")
+	if resp.Data.Stop != StopCostBudget || resp.Data.Refusal == nil || resp.Data.Refusal.Code != codeBudgetUnknown {
+		t.Fatalf("stop=%s refusal=%+v, want budget-unknown", resp.Data.Stop, resp.Data.Refusal)
+	}
+	mtd := spend.AggregateMTD(readcommon.StateDir(repo), flowNow())
+	if mtd.KnownUSD != "0.1" || mtd.UnknownCount != 1 {
+		t.Errorf("month-to-date = %+v, want attempt 1's 0.1 known and attempt 2 unknown", mtd)
+	}
+}
+
+// TestLoopUncountedDatedCostIsPriced proves a record whose `at` the monthly
+// scan cannot count (here malformed) prices the review from its est_usd
+// instead of vanishing from every total.
+func TestLoopUncountedDatedCostIsPriced(t *testing.T) {
+	agent := &agentCommander{t: t, reportFixCost: true, datedCost: true, costAt: "yesterday"}
+	resp, repo := flowLoop(t, agent, "5")
+	if resp.Data.Stop != StopPass {
+		t.Fatalf("stop=%s refusal=%+v, want a pass", resp.Data.Stop, resp.Data.Refusal)
+	}
+	mtd := spend.AggregateMTD(readcommon.StateDir(repo), flowNow())
+	if mtd.KnownUSD != "0.5" || mtd.UnknownCount != 0 {
+		t.Errorf("month-to-date = %+v, want 0.5 known: two reviews and the fix", mtd)
 	}
 }

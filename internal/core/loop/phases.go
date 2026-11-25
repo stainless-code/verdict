@@ -3,8 +3,11 @@ package loopcore
 import (
 	"context"
 	"encoding/json"
+	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
+	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
@@ -69,59 +72,121 @@ func (p *flowPhases) authorize(
 // review launches the review-only agent run against the round's bundle. Run
 // calls the admission hook before every attempt it spawns — the first launch
 // and each repair round — so every attempt is admitted and receipted as
-// <launchPrefix>-<attempt>. Afterwards the receipts are priced from what the
-// review recorded.
+// <launchPrefix>-<attempt>. Each attempt is a fresh agent process that
+// rewrites the bundle's cost.json for its own run, so the hook snapshots the
+// previous attempt's record before the next one can overwrite it, and every
+// attempt is priced from its own record afterwards.
 func (p *flowPhases) review(
 	ctx context.Context, b *reviewflow.Bundle, launch reviewflow.Launch, dir, launchPrefix string,
 ) ([]string, *core.RefusalError) {
 	req := p.req.Flow.RunRequest(b, launch, nil)
-	var admitted []string
+	var attempts []*attemptCost
 	var warnings []string
 	req.Admit = func(ctx context.Context, attempt int) *core.RefusalError {
+		captureLast(dir, attempts)
 		id := launchPrefix + "-" + strconv.Itoa(attempt)
+		// Wall time, not the injected clock: it is compared with the record's
+		// modification time on the filesystem.
+		admitted := time.Now()
 		w, ref := runcore.AuthorizeSpawn(ctx, req, dir, id)
 		warnings = append(warnings, w...)
 		if ref == nil {
-			admitted = append(admitted, id)
+			attempts = append(attempts, &attemptCost{id: id, admitted: admitted})
 		}
 		return ref
 	}
 	ran, ref := runcore.WithAgents(ctx, req, p.req.Flow.Agents)
-	p.priceReview(ctx, req, dir, admitted, ref)
+	captureLast(dir, attempts)
+	p.priceReview(ctx, req, dir, attempts, ref)
 	if ref != nil {
 		return warnings, ref
 	}
 	return append(warnings, ran.Warnings...), nil
 }
 
-// priceReview prices the review's admitted attempts. An attempt whose
-// process never started is zero. The rest are priced from the review's own
-// cost.json: a dated record is already counted by the month-to-date scan, so
-// the attempts are zero beside it; an undated schema-2 record (the shape the
-// review prompt asks for) is the run's total, so it prices the first attempt
-// and the later ones are zero inside it; without a known amount they stay
-// unknown, never free.
+// attemptCost is one review attempt's admitted receipt and its own cost
+// record, nil when the attempt wrote none.
+type attemptCost struct {
+	admitted time.Time
+	id       string
+	record   []byte
+}
+
+// captureLast snapshots the bundle's cost.json for the latest attempt, when
+// that attempt wrote it: a file older than the attempt's admission is an
+// earlier attempt's record and leaves this one without a record of its own.
+func captureLast(dir string, attempts []*attemptCost) {
+	if len(attempts) == 0 {
+		return
+	}
+	last := attempts[len(attempts)-1]
+	info, err := os.Lstat(filepath.Join(dir, costFile))
+	if err != nil || !info.Mode().IsRegular() || info.ModTime().Before(last.admitted) {
+		return
+	}
+	last.record = spend.ReadBundleFile(dir, costFile)
+}
+
+// priceReview prices each admitted attempt from its own record. An attempt
+// whose process never started is zero. The record still on disk — the last
+// one written — is zero when the month-to-date scan already counts it (every
+// record dated in this month); any other record is priced from its root
+// est_usd, since the scan never sees an overwritten or undated record. An
+// attempt with no record, or no known amount, stays unknown, never free.
 func (p *flowPhases) priceReview(
-	ctx context.Context, req *core.RunRequest, dir string, admitted []string, ref *core.RefusalError,
+	ctx context.Context, req *core.RunRequest, dir string, attempts []*attemptCost, ref *core.RefusalError,
 ) {
-	if len(admitted) > 0 && ref != nil && ref.Code == codeSpawnFailed {
-		p.price(ctx, req, dir, admitted[len(admitted)-1], zeroUSD, pricedByNoLaunch)
-		admitted = admitted[:len(admitted)-1]
+	if len(attempts) > 0 && ref != nil && ref.Code == codeSpawnFailed {
+		p.price(ctx, req, dir, attempts[len(attempts)-1].id, zeroUSD, pricedByNoLaunch)
+		attempts = attempts[:len(attempts)-1]
 	}
-	if len(admitted) == 0 {
-		return
+	onDisk := lastRecorded(attempts)
+	now := p.now()
+	for i, a := range attempts {
+		if usd, ok := attemptAmount(a.record, i == onDisk, now); ok {
+			p.price(ctx, req, dir, a.id, usd, pricedByCostRecord)
+		}
 	}
-	dated, total, ok := reviewCost(dir)
-	switch {
-	case dated:
-		total = zeroUSD
-	case !ok:
-		return
+}
+
+// lastRecorded is the index of the attempt whose record is still on disk:
+// the last one that wrote one, -1 when none did.
+func lastRecorded(attempts []*attemptCost) int {
+	for i, a := range slices.Backward(attempts) {
+		if a.record != nil {
+			return i
+		}
 	}
-	p.price(ctx, req, dir, admitted[0], total, pricedByCostRecord)
-	for _, id := range admitted[1:] {
-		p.price(ctx, req, dir, id, zeroUSD, pricedByCostRecord)
+	return -1
+}
+
+// attemptAmount is one attempt's price from its own record: zero beside a
+// record the month-to-date scan counts itself, else the record's root
+// est_usd when it is a known amount.
+func attemptAmount(record []byte, onDisk bool, now time.Time) (string, bool) {
+	if record == nil {
+		return "", false
 	}
+	if onDisk && spend.CountedInMonth(record, now) {
+		return zeroUSD, true
+	}
+	doc, ok := decodeReport(record)
+	if !ok {
+		return "", false
+	}
+	obj, ok := doc.(*jq.Obj)
+	if !ok {
+		return "", false
+	}
+	return knownAmount(obj)
+}
+
+// now is the loop's clock, the one its receipts are dated by.
+func (p *flowPhases) now() time.Time {
+	if p.req.Flow.Now != nil {
+		return p.req.Flow.Now()
+	}
+	return time.Now()
 }
 
 // price records one spawn's amount, warning rather than failing the round
@@ -130,42 +195,6 @@ func (p *flowPhases) price(ctx context.Context, req *core.RunRequest, dir, id, u
 	if ref := runcore.PriceSpawn(ctx, req, dir, id, usd, source); ref != nil {
 		p.req.Flow.Warn("could not price spawn " + id + ": " + ref.Message)
 	}
-}
-
-// reviewCost reads the review's cost.json: dated reports a record the
-// month-to-date scan already counts; otherwise total is a schema-2 record's
-// root est_usd when it is a known amount.
-func reviewCost(dir string) (dated bool, total string, ok bool) {
-	doc, ok := decodeReport(spend.ReadBundleFile(dir, costFile))
-	if !ok {
-		return false, "", false
-	}
-	for _, rec := range records(doc) {
-		if at, _ := rec.Get("at"); at != nil {
-			return true, "", false
-		}
-	}
-	obj, isObj := doc.(*jq.Obj)
-	if !isObj {
-		return false, "", false
-	}
-	total, ok = knownAmount(obj)
-	return false, total, ok
-}
-
-// records lists a cost document's record objects: one object, or an array.
-func records(doc any) []*jq.Obj {
-	var out []*jq.Obj
-	items, isList := doc.([]any)
-	if !isList {
-		items = []any{doc}
-	}
-	for _, item := range items {
-		if obj, ok := item.(*jq.Obj); ok {
-			out = append(out, obj)
-		}
-	}
-	return out
 }
 
 // record records the round with the coverage attestation required.

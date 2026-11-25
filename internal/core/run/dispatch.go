@@ -121,7 +121,9 @@ func (st *state) authorizeSpawn(ctx context.Context, dir, launchID string) ([]st
 	if !spend.ValidLimit(policy.MonthlyCap) {
 		return nil, st.refuse(codeBadFlags, "monthly spend ceiling must be a finite nonnegative USD amount")
 	}
-	if policy.RequireKnown && policy.MonthlyCap == "" && !st.req.ConsentOverBudget {
+	// No consent flag reaches a loop spawn: require_known_estimate is absolute
+	// here, the way a priced run without --consent-over-budget treats it.
+	if policy.RequireKnown && policy.MonthlyCap == "" {
 		return nil, st.refuse("budget-unknown", "an agent spawn has no known price — the operator settings "+
 			"require a known estimate, so the loop cannot launch it")
 	}

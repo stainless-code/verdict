@@ -640,3 +640,28 @@ func decimalScale(den *big.Int) (int, bool) {
 	}
 	return fives, true
 }
+
+// CountedInMonth reports whether the month-to-date scan counts every record
+// of one recorded cost document in the month of now: each record carries an
+// `at` that parses and falls in that month. A record without one, or with a
+// malformed or other-month `at`, is not counted there — its amount must be
+// accounted some other way or it is lost.
+func CountedInMonth(raw []byte, now time.Time) bool {
+	doc, err := jq.DecodeOrdered(raw)
+	if err != nil {
+		return false
+	}
+	month := MonthFor(now)
+	recs := sliceDoc(doc)
+	for _, rec := range recs {
+		obj, ok := rec.(*jq.Obj)
+		if !ok {
+			return false
+		}
+		at, _ := obj.Get("at")
+		if recordMonth, ok := monthOf(at); !ok || recordMonth != month {
+			return false
+		}
+	}
+	return len(recs) > 0
+}

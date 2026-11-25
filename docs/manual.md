@@ -7233,11 +7233,14 @@ or `loop-<id>-<n>-fix`, `projected_usd` `null`), dated at its admission so it
 counts in that month. A spawn row is covered only by a recorded receipt naming
 its own launch, never by the bundle's unidentified `cost.json`.
 
-The receipts are then priced. The review's are priced from its `cost.json`:
-the undated schema-2 record its prompt asks for is the run's total, so its root
-`est_usd` prices the first attempt and the later attempts are zero inside it;
-a record carrying its own `at` is already counted by the month-to-date scan,
-so the attempts are zero beside it. The fix is priced from the `{"est_usd": <dollars>}`
+The receipts are then priced. Each review attempt is a fresh agent process
+that rewrites the bundle's `cost.json` for its own run, so the loop keeps each
+attempt's record before the next attempt can overwrite it and prices every
+attempt from its own: the record's root `est_usd` (the undated schema-2 shape
+the prompt asks for), or zero for the last record on disk when every one of its
+entries carries an `at` that parses and falls in the scanned month — the
+month-to-date scan already counts that one. An attempt that wrote no record of
+its own stays unknown. The fix is priced from the `{"est_usd": <dollars>}`
 it reports in `fix-cost.json`, even when it exits non-zero — it ran, so it
 spent. A spawn whose process never started is zero. A spawn that reports
 nothing stays unknown spend, never free. Reports are read the way the cost

@@ -502,3 +502,23 @@ func writeCost(t *testing.T, root, bundle, body string) string {
 	}
 	return dir
 }
+
+// TestCountedInMonth proves the already-counted test matches the scan: every
+// record dated in the month counts; a missing, malformed, or other-month
+// `at` does not.
+func TestCountedInMonth(t *testing.T) {
+	now := time.Date(2026, 5, 15, 12, 0, 0, 0, time.UTC)
+	for raw, want := range map[string]bool{
+		`{"at":"2026-05-15T11:00:00Z","est_usd":0.1}`:         true,
+		`[{"at":"2026-05-01T00:00:00Z"},{"at":"2026-05-31"}]`: true,
+		`{"est_usd":0.1}`:                                               false,
+		`{"at":"yesterday","est_usd":0.1}`:                              false,
+		`{"at":"2026-04-30T23:59:59Z","est_usd":0.1}`:                   false,
+		`[{"at":"2026-05-01T00:00:00Z"},{"at":"2026-06-01T00:00:00Z"}]`: false,
+		`not json`: false,
+	} {
+		if got := spend.CountedInMonth([]byte(raw), now); got != want {
+			t.Errorf("CountedInMonth(%s) = %v, want %v", raw, got, want)
+		}
+	}
+}
