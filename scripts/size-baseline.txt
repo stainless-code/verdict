@@ -4,4 +4,4 @@ darwin/arm64 19910000
 linux/amd64 21580000
 linux/arm64 19540000
 windows/amd64 22050000
-windows/arm64 19630000
+windows/arm64 19640000
