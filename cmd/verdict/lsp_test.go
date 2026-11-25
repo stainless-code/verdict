@@ -60,7 +60,8 @@ func TestLSPArgvRefusals(t *testing.T) {
 	}{
 		{"unknown flag '--bogus' for lsp", []string{"lsp", "--bogus"}},
 		{"unknown flag '--allow-run' for lsp", []string{"lsp", "--allow-run"}},
-		{"unknown flag '--read-only' for lsp", []string{"lsp", "--read-only"}},
+		{"unknown flag '--interactive' for lsp", []string{"lsp", "--interactive"}},
+		{"unknown flag '--operator' for lsp", []string{"lsp", "--operator"}},
 		{"--check severe wants", []string{"lsp", "--check", "severe"}},
 		{"--max-roots 17 is not a count from 1 to 16", []string{"lsp", "--max-roots", "17"}},
 		{"--max-bundles 0 is not a positive count", []string{"lsp", "--max-bundles", "0"}},
@@ -73,6 +74,25 @@ func TestLSPArgvRefusals(t *testing.T) {
 		if code != cli.ExitUsage || !strings.Contains(derr, tc.want) {
 			t.Errorf("%v = exit %d stderr %q, want exit %d and %q", tc.args, code, derr, cli.ExitUsage, tc.want)
 		}
+	}
+}
+
+// TestLSPAcceptsReadOnly proves --read-only is accepted on lsp, the one
+// write-posture flag every long-running surface takes. lsp has no write path,
+// so the flag moves nothing; accepting it keeps one flag set valid on all three
+// surfaces, while the retired spellings stay unknown there.
+func TestLSPAcceptsReadOnly(t *testing.T) {
+	out, errOut := mcpTempFiles(t)
+	r := newRunner("lsp", "", "", out, errOut, os.Getenv)
+	opts, code, done := parseLSPFlags(r, []string{"--read-only", "--no-watch"})
+	if done || code != 0 {
+		t.Fatalf("parseLSPFlags(--read-only) = done %v code %d, stderr %q", done, code, readOutput(t, errOut))
+	}
+	if !opts.noWatch {
+		t.Error("--read-only swallowed the flag after it")
+	}
+	if got := readOutput(t, errOut); got != "" {
+		t.Errorf("--read-only wrote to stderr: %q", got)
 	}
 }
 

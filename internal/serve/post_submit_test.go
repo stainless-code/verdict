@@ -61,7 +61,7 @@ func postSubmitServer(t *testing.T, layer Layer, allowPost bool) (*httptest.Serv
 	})
 	server, err := New(&Config{
 		Port: testPort, Token: testToken, Now: fixedNow, Layer: layer,
-		Interactive: true, AllowPost: allowPost,
+		AllowPost:    allowPost,
 		VerifyRunner: okVerifyRunner(), PostPreviewRunner: preview, PostSubmitRunner: submit,
 	})
 	if err != nil {
@@ -204,19 +204,20 @@ func assertBareTierBPreview(t *testing.T, server *Server, result map[string]any)
 	}
 }
 
-// TestAllowPostRequiresInteractive pins the startup ladder: --allow-post
-// without --interactive is bad-flags both at New and at Run.
-func TestAllowPostRequiresInteractive(t *testing.T) {
+// TestAllowPostRefusesReadOnly pins the startup ladder: --allow-post beside
+// --read-only is bad-flags both at New and at Run, because read-only forbids
+// host posting outright.
+func TestAllowPostRefusesReadOnly(t *testing.T) {
 	t.Parallel()
-	if _, err := New(&Config{Port: testPort, Token: testToken, Now: fixedNow, Layer: testLayer(t.TempDir(), nil), AllowPost: true}); err == nil {
-		t.Fatal("New with AllowPost but no Interactive succeeded, want refusal")
-	} else if !strings.Contains(err.Error(), "--allow-post requires --interactive") {
-		t.Errorf("New error = %v, want --allow-post requires --interactive", err)
+	if _, err := New(&Config{Port: testPort, Token: testToken, Now: fixedNow, Layer: testLayer(t.TempDir(), nil), ReadOnly: true, AllowPost: true}); err == nil {
+		t.Fatal("New with AllowPost and ReadOnly succeeded, want refusal")
+	} else if !strings.Contains(err.Error(), "--allow-post and --read-only are mutually exclusive") {
+		t.Errorf("New error = %v, want the mutual-exclusion refusal", err)
 	}
 	root := t.TempDir()
 	out := &syncBuffer{}
 	runner := &cli.Runner{Cmd: "serve", Out: out, Human: out, Diag: out, JSONMode: true, Now: fixedNow, Effective: cli.Defaults()}
-	if code := Run(t.Context(), runner, []string{"--root", root, "--allow-post"}, Request{}); code != cli.ExitRefused {
+	if code := Run(t.Context(), runner, []string{"--root", root, "--read-only", "--allow-post"}, Request{}); code != cli.ExitRefused {
 		t.Fatalf("Run exit = %d, want %d", code, cli.ExitRefused)
 	}
 	if got := asMap(t, decode(t, []byte(out.String()))["error"])["code"]; got != "bad-flags" {
@@ -349,7 +350,7 @@ func TestPostSubmitExpiredNonce(t *testing.T) {
 	})
 	server, err := New(&Config{
 		Port: testPort, Token: testToken, Now: clock, Layer: testLayer(root, nil),
-		Interactive: true, AllowPost: true,
+		AllowPost:    true,
 		VerifyRunner: okVerifyRunner(), PostPreviewRunner: preview, PostSubmitRunner: submit,
 	})
 	if err != nil {
@@ -625,7 +626,7 @@ func TestPostSubmitRealPostcoreParity(t *testing.T) { //nolint:gocognit,revive,c
 	install := installRootAt(t, installVersion)
 	server, err := New(&Config{
 		Port: testPort, Token: testToken, Now: fixedNow, Layer: testLayer(root, nil),
-		Interactive: true, AllowPost: true, InstallRoot: install,
+		AllowPost: true, InstallRoot: install,
 		VerifyRunner: okVerifyRunner(), PostPreviewRunner: preview, PostSubmitRunner: submit,
 	})
 	if err != nil {
@@ -798,7 +799,7 @@ func realPostServer(t *testing.T, cmdr *stubPostCommander, cfg *Config) (ts *htt
 	seedPostBundle(t, root)
 	preview, submit := realPostRunners(cmdr)
 	cfg.Port, cfg.Token, cfg.Now, cfg.Layer = testPort, testToken, fixedNow, testLayer(root, nil)
-	cfg.Interactive, cfg.AllowPost = true, true
+	cfg.AllowPost = true
 	cfg.VerifyRunner, cfg.PostPreviewRunner, cfg.PostSubmitRunner = okVerifyRunner(), preview, submit
 	server, err := New(cfg)
 	if err != nil {

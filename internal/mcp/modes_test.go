@@ -16,18 +16,16 @@ type procedureModeCase struct {
 	name     string
 	tools    int
 	readOnly bool
-	operator bool
 }
 
 // TestProcedureSurfacesIgnoreModes proves prompts and resources are
 // byte-for-byte the same on every tool surface. The tool counts pin that the
-// three configs really are different surfaces.
+// two configs really are different surfaces.
 func TestProcedureSurfacesIgnoreModes(t *testing.T) {
 	t.Parallel()
 	cases := []procedureModeCase{
-		{name: "default", tools: 32},
+		{name: "default", tools: 33},
 		{name: "read-only", tools: 21, readOnly: true},
-		{name: "operator", tools: 33, operator: true},
 	}
 	paths, wantPrompt, wantResource := procedureFixtures(t)
 
@@ -36,7 +34,6 @@ func TestProcedureSurfacesIgnoreModes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := testConfig()
 			cfg.ReadOnly = tc.readOnly
-			cfg.Operator = tc.operator
 			frames := procedureFrames(t, &cfg)
 			checkProcedureSurface(t, tc, frames, len(paths)+len(handoffRefPaths())+4, len(skillfs.Tasks()), wantPrompt, wantResource)
 			wire := procedureWireFrom(frames)

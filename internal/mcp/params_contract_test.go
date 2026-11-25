@@ -185,8 +185,8 @@ func TestHiddenToolErrorContract(t *testing.T) {
 	t.Parallel()
 	cases := []hiddenCase{
 		{
-			call:     "triage",
-			requires: "a server started with --operator",
+			call:     "drain",
+			requires: "the verdict CLI (verdict drain)",
 		},
 		{
 			readOnly: true,
@@ -196,7 +196,7 @@ func TestHiddenToolErrorContract(t *testing.T) {
 		{
 			readOnly: true,
 			call:     "triage",
-			requires: "a server started with --operator and without --read-only",
+			requires: "a server started without --read-only",
 		},
 	}
 	for _, tc := range cases {
@@ -204,7 +204,6 @@ func TestHiddenToolErrorContract(t *testing.T) {
 			t.Parallel()
 			cfg := testConfig()
 			cfg.ReadOnly = tc.readOnly
-			cfg.Operator = tc.operator
 			frames := serve(t, &cfg,
 				`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"`+tc.call+`","arguments":{}}}`)
 			if !tc.readOnly {
@@ -234,7 +233,6 @@ func TestUnknownToolErrorUnchanged(t *testing.T) {
 
 type hiddenCase struct { //nolint:govet // three small cases read clearer than a packed struct
 	readOnly bool
-	operator bool
 	call     string
 	requires string
 }
@@ -276,7 +274,7 @@ func assertReadOnlyToolRefusal(t *testing.T, got frame, call, requires string) {
 	}
 	wantMessage := "tool \"" + call + "\" writes local state; it requires " + requires
 	if !result.IsError || content.Code != "read-only-tool" || content.Message != wantMessage ||
-		content.Hint != "try: restart the MCP server without --read-only; use --operator for operator-only tools" {
+		content.Hint != "try: restart the MCP server without --read-only" {
 		t.Fatalf("hidden tool refusal = %+v, isError=%v", content, result.IsError)
 	}
 }

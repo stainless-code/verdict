@@ -15,8 +15,8 @@ const (
 	verbShow  = "show"
 )
 
-// route is one table row. The table registers GET only by default; an
-// interactive server adds POST rows. ServeMux adds HEAD and answers
+// route is one table row. The table registers GET only under --read-only; a
+// writable server adds POST rows. ServeMux adds HEAD and answers
 // every other method with 405 and an Allow header.
 type route struct { //nolint:govet // method/pattern/handler reads as the table row
 	Method  string
@@ -72,12 +72,12 @@ func (s *Server) routes() []route {
 	}
 	// The write and job paths exist as GET placeholders so the mux
 	// answers a non-GET method with 405 and an Allow header instead of
-	// a port-scan 404: without --interactive the writes are refused,
-	// never silently absent. Interactive registers POST only, so the
+	// a port-scan 404: under --read-only the writes are refused,
+	// never silently absent. A writable server registers POST only, so the
 	// mux answers every other method with 405 and Allow: POST. The
-	// job status read is GET in interactive mode under the session
-	// guard; without --interactive it too fails closed as read-only.
-	if !s.cfg.Interactive {
+	// job status read is GET on a writable server under the session
+	// guard; under --read-only it too fails closed.
+	if !s.rule.LocalWrites() {
 		routes = append(routes,
 			route{Method: http.MethodGet, Pattern: "/v1/triage", Handler: http.HandlerFunc(s.handleWriteGone)},
 			route{Method: http.MethodGet, Pattern: "/v1/kb/promote", Handler: http.HandlerFunc(s.handleWriteGone)},
@@ -88,7 +88,7 @@ func (s *Server) routes() []route {
 			route{Method: http.MethodGet, Pattern: "/v1/jobs/{id}", Handler: http.HandlerFunc(s.handleWriteGone)},
 		)
 	}
-	if s.cfg.Interactive {
+	if s.rule.LocalWrites() {
 		routes = append(routes,
 			route{Method: http.MethodPost, Pattern: "/v1/triage", Handler: s.guardWrite(s.handleTriage)},
 			route{Method: http.MethodPost, Pattern: "/v1/kb/promote", Handler: s.guardWrite(s.handleKBPromote)},
@@ -103,14 +103,14 @@ func (s *Server) routes() []route {
 }
 
 // handleWriteGone is the placeholder behind the write paths on a
-// non-interactive server: the writes stay refused with the default 405 and
-// an Allow header, and a GET there gets the same refusal. The copy names the
-// flag that enables a local write; it never promises that --interactive
-// alone enables host posting, which also needs --allow-post.
+// --read-only server: the writes stay refused with the default 405 and an
+// Allow header, and a GET there gets the same refusal. The copy names the
+// flag to drop; it never promises that dropping it enables host posting,
+// which also needs --allow-post.
 func (s *Server) handleWriteGone(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Allow", "GET, HEAD")
 	s.problem(w, http.StatusMethodNotAllowed, "method-not-allowed",
-		"this server is read-only; restart with --interactive for local writes "+
+		"this server is read-only (--read-only); restart without it for local writes "+
 			"(host posting also needs --allow-post)")
 }
 
@@ -166,7 +166,7 @@ func (s *Server) Handler() http.Handler {
 // and PUT would advertise GET beside POST in Allow.
 func (s *Server) jobPostOnly(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if s.cfg.Interactive && r.Method != http.MethodPost &&
+		if s.rule.LocalWrites() && r.Method != http.MethodPost &&
 			(r.URL.Path == jobPathVerify || r.URL.Path == jobPathPostPreview) {
 			w.Header().Set("Allow", http.MethodPost)
 			s.problem(w, http.StatusMethodNotAllowed, "method-not-allowed",
@@ -210,17 +210,17 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 	s.serveIndex(w)
 }
 
-// handleHealth publishes the process posture. In interactive mode it also
+// handleHealth publishes the process posture. On a writable server it also
 // advertises the mode, the per-session CSRF token the UI writes with,
 // and the Tier B job actions the running server can start. The token
 // never rides a URL or the static data.json export, which reads no
 // health view.
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	view := s.layer.Health(r.Context())
-	view.Data.Set("read_only", !s.cfg.Interactive)
-	if s.cfg.Interactive {
+	view.Data.Set("read_only", !s.rule.LocalWrites())
+	if s.rule.LocalWrites() {
 		view.Data.Set("interactive", true)
-		view.Data.Set("allow_post", s.cfg.AllowPost)
+		view.Data.Set("allow_post", s.rule.HostPost())
 		view.Data.Set("csrf", s.csrf)
 		view.Data.Set("jobs", true)
 		view.Data.Set("actions", []any{jobKindVerify, jobKindPostPreview})
@@ -317,7 +317,7 @@ func (s *Server) handleDetail(w http.ResponseWriter, r *http.Request) {
 
 // handleDiff publishes one bundle's review diff: parsed hunks with
 // word-level spans, collapsed gaps, anchored findings, and lanes grouped
-// in risk order. Read-only GET, available without --interactive.
+// in risk order. Read-only GET, available under --read-only.
 func (s *Server) handleDiff(w http.ResponseWriter, r *http.Request) {
 	bundle := r.PathValue(bundlePathKey)
 	view, err := s.layer.Diff(r.Context(), r.PathValue(rootPathKey), bundle)

@@ -61,7 +61,6 @@ func TestToolFixCombos(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			fixture(t)
 			cfg := testConfig()
-			cfg.Operator = true
 			cfg.Commanders = map[string]core.Commander{"fix": spawnlessCommander{}}
 			line := fmt.Sprintf(
 				`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"fix","arguments":{%s}}}`,
@@ -80,7 +79,6 @@ func TestToolFixCombos(t *testing.T) {
 func TestToolFixRecipeAccepted(t *testing.T) {
 	fixture(t)
 	cfg := testConfig()
-	cfg.Operator = true
 	cfg.Commanders = map[string]core.Commander{"fix": spawnlessCommander{}}
 	line := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"fix","arguments":{"repo":"acme/app","pr":"1","recipe":"default"}}}`
 	refusal := toolRefusal(t, serve(t, &cfg, line)["1"])

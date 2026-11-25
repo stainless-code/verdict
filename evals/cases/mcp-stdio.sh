@@ -60,13 +60,13 @@ if jq -e 'select(.id == 1).result.instructions | (type == "string") and (contain
 else
   bad "initialize instructions are missing or thin"
 fi
-if jq -e 'select(.id == 2).result.tools | length == 32' <"$MCP_OUT" >/dev/null; then
-  good "tools/list carries 32 core tools (triage is operator-only)"
+if jq -e 'select(.id == 2).result.tools | length == 33' <"$MCP_OUT" >/dev/null; then
+  good "tools/list carries 33 core tools (triage rides the default surface)"
 else
-  bad "tools/list count is not 32"
+  bad "tools/list count is not 33"
 fi
-if jq -e 'select(.id == 2).result.tools | map(.name) | (index("report") != null) and (index("post") != null) and (index("ingest") != null) and (index("journal") != null) and (index("risk") != null) and (index("install") == null) and (index("triage") == null)' <"$MCP_OUT" >/dev/null; then
-  good "tool names follow the core surface (risk joins; install and triage are never tools)"
+if jq -e 'select(.id == 2).result.tools | map(.name) | (index("report") != null) and (index("post") != null) and (index("ingest") != null) and (index("journal") != null) and (index("risk") != null) and (index("install") == null) and (index("triage") != null)' <"$MCP_OUT" >/dev/null; then
+  good "tool names follow the core surface (risk and triage join; install is never a tool)"
 else
   bad "tool names drifted"
 fi
@@ -142,10 +142,10 @@ if jq -e 'select(.id == 5).error.code == -32602' <"$MCP_OUT" >/dev/null; then
 else
   bad "missing required argument did not return -32602"
 fi
-if jq -e 'select(.id == 6).error | (.code == -32602) and (.message | contains("is hidden") and contains("--operator")) and (.data.tool == "triage") and (.data.hidden == true) and (.data.requires | contains("--operator"))' <"$MCP_OUT" >/dev/null; then
-  good "hidden triage is -32602 naming --operator, not an unknown tool"
+if jq -e 'select(.id == 6) | (has("result") and (.error == null))' <"$MCP_OUT" >/dev/null; then
+  good "triage on the default surface reaches the service, not a hidden-tool error"
 else
-  bad "hidden triage did not name --operator"
+  bad "default triage did not reach the service"
 fi
 
 cat >"$FRAMES" <<'EOF'
@@ -175,25 +175,33 @@ fi
 cat >"$FRAMES" <<'EOF'
 {"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}
 {"jsonrpc":"2.0","id":2,"method":"tools/list"}
-{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"triage","arguments":{"repo":"acme/app","pr":"5101","sig":"deadbeef","status":"wont-fix","rationale":"eval operator surface rationale","dryRun":true}}}
+{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"triage","arguments":{"repo":"acme/app","pr":"5101","sig":"deadbeef","status":"wont-fix","rationale":"eval write posture rationale","dryRun":true}}}
 EOF
-run_mcp_input "$FRAMES" --operator --read-only
-if [ "$EVAL_STATUS" -eq 2 ] && [ ! -s "$MCP_OUT" ]; then
-  good "--operator with --read-only is a usage error before serving"
-else
-  bad "--operator --read-only exit $EVAL_STATUS (want 2, empty stdout)"
-fi
+# --operator is gone: the one write-posture flag is --read-only, so the old
+# spelling is a usage error with nothing served.
 run_mcp_input "$FRAMES" --operator
-if [ "$EVAL_STATUS" -eq 0 ]; then good "--operator session exits 0"; else bad "--operator exit $EVAL_STATUS"; fi
-if jq -e 'select(.id == 2).result.tools | (length == 33) and (map(.name) | (index("triage") != null) and (index("ingest") != null) and (index("journal") != null)) and (map(select(.name == "triage"))[0].inputSchema.properties.status.enum == ["open","addressed","wont-fix","false-positive","deferred"])' <"$MCP_OUT" >/dev/null; then
-  good "--operator exposes 33 tools including ingest, journal, and triage with its status enum"
+if [ "$EVAL_STATUS" -eq 2 ] && [ ! -s "$MCP_OUT" ] && grep -q -- "unknown flag '--operator' for mcp" "$MCP_ERR"; then
+  good "--operator is an unknown flag (exit 2, nothing served)"
 else
-  bad "--operator tool list drifted"
+  bad "--operator exit $EVAL_STATUS (want 2, empty stdout, the unknown-flag message)"
+fi
+run_mcp_input "$FRAMES" --read-only
+if jq -e 'select(.id == 2).result.tools | (length == 21) and (map(.name) | index("triage") == null)' <"$MCP_OUT" >/dev/null \
+  && jq -e 'select(.id == 3).result | (.isError == true) and (.structuredContent.code == "read-only-tool")' <"$MCP_OUT" >/dev/null; then
+  good "--read-only removes triage and answers a typed read-only-tool refusal"
+else
+  bad "--read-only did not remove triage"
+fi
+run_mcp_input "$FRAMES"
+if jq -e 'select(.id == 2).result.tools | (length == 33) and (map(.name) | (index("triage") != null) and (index("ingest") != null) and (index("journal") != null)) and (map(select(.name == "triage"))[0].inputSchema.properties.status.enum == ["open","addressed","wont-fix","false-positive","deferred"])' <"$MCP_OUT" >/dev/null; then
+  good "the default surface exposes 33 tools including ingest, journal, and triage with its status enum"
+else
+  bad "default tool list drifted"
 fi
 if jq -e 'select(.id == 3) | (has("result") and (.error == null))' <"$MCP_OUT" >/dev/null; then
-  good "--operator triage reaches the service"
+  good "default triage reaches the service"
 else
-  bad "--operator triage did not reach the service"
+  bad "default triage did not reach the service"
 fi
 
 STUB_SAVED="$EVAL_SANDBOX/gh-stub-orig"
