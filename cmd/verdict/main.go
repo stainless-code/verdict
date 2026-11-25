@@ -434,7 +434,7 @@ func dispatchMutating(
 	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root, repoRoot string,
 	env map[string]string, forces *cli.GlobalForces, rest []string, req readcommon.Request,
 ) (code int, ok bool) {
-	if code, ok := dispatchFetch(ctx, cmd, r, repo, pr, root, repoRoot, env, rest); ok {
+	if code, ok := dispatchFetch(ctx, cmd, r, rest, req); ok {
 		return code, true
 	}
 	if code, ok := dispatchLocal(ctx, cmd, r, env, root, repoRoot, rest); ok {
@@ -510,10 +510,8 @@ func dispatchLocal(
 }
 
 func dispatchFetch(
-	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root, repoRoot string,
-	env map[string]string, rest []string,
+	ctx context.Context, cmd string, r *cli.Runner, rest []string, req readcommon.Request,
 ) (code int, ok bool) {
-	req := fetch.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}
 	switch cmd {
 	case cmdFetch:
 		return fetch.Run(ctx, r, rest, req), true
