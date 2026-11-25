@@ -12,6 +12,43 @@
   let reconnecting = false;
   let costBy = "repo";
   let precisionBy = "category";
+  // The compare baseline belongs to one root and one bundle: a selection made
+  // on one review must never be spent on another root's comparison.
+  let compareBaseline = "";
+  let compareScope = "";
+  let inboxRows = [];
+  // The server advertises interactive mode and its per-session CSRF token on
+  // /v1/health; both stay unset in static mode and on a read-only server,
+  // so no write control can render there.
+  let interactive = false;
+  let allowPost = false;
+  let csrfToken = "";
+  // The Tier B job drawer shows the most recent job snapshot the SSE
+  // stream published; null until one job has been started.
+  let activeJob = null;
+  let jobDrawer = null;
+  let submitOverlay = null;
+  // submitReturnFocus is the Submit Review control that opened the dialog;
+  // closing the dialog hands focus back to it. submitKeydown is the document
+  // handler that traps Tab and closes on Escape while the dialog is open.
+  let submitReturnFocus = null;
+  // submitControl is the Submit Review button the current Detail view renders:
+  // a bundles event rebuilds the view under an open dialog, which detaches the
+  // button that opened it, so focus goes back to the one that replaced it.
+  let submitControl = null;
+  let submitKeydown = null;
+  // submitGeneration numbers each open of the confirmation modal; a preview
+  // acts only while its own generation is still the current one.
+  let submitGeneration = 0;
+  let diffMode = "unified";
+  const triageStatuses = [
+    "open",
+    "addressed",
+    "wont-fix",
+    "false-positive",
+    "deferred",
+  ];
+  const kbRigors = ["said", "pointed", "walked", "ran", "reproduced"];
 
   function node(tag, text, className) {
     const element = document.createElement(tag);
@@ -57,13 +94,18 @@
       const tr = node("tr");
       for (const column of columns) {
         const td = node("td");
-        const value = row?.[column.key];
-        if (column.link && typeof value === "string" && row.root) {
-          const link = node("a", value);
-          link.href = `#/r/${encodeURIComponent(row.root)}/${encodeURIComponent(value)}`;
+        if (column.action) {
+          column.action(row, td);
+        } else if (
+          column.link &&
+          typeof row?.[column.key] === "string" &&
+          row.root
+        ) {
+          const link = node("a", row[column.key]);
+          link.href = `#/r/${encodeURIComponent(row.root)}/${encodeURIComponent(row[column.key])}`;
           td.append(link);
         } else {
-          td.append(cell(value));
+          td.append(cell(row?.[column.key]));
         }
         tr.append(td);
       }
@@ -164,11 +206,14 @@
     const base = `#/r/${encodeHashSegment(parts[1])}/${encodeHashSegment(parts[2])}`;
     const nav = node("nav", undefined, "section-nav");
     nav.setAttribute("aria-label", "Review sections");
-    for (const [suffix, label] of [
+    const links = [
       ["", "Detail"],
+      ["/diff", "Diff"],
       ["/threads", "Threads"],
       ["/gate", "Gate"],
-    ]) {
+    ];
+    if (mode !== "static") links.push(["/compare", "Compare"]);
+    for (const [suffix, label] of links) {
       const link = node("a", label);
       link.href = `${base}${suffix}`;
       const page = suffix.slice(1) || "detail";
@@ -176,6 +221,883 @@
       nav.append(link);
     }
     return nav;
+  }
+
+  // writeClipboard reports whether the text really reached the clipboard. The
+  // selection fallback is the only path left when the async clipboard API is
+  // absent, and document.execCommand answers false (or throws) when the copy
+  // did not happen — a caller that ignored the answer would claim "Copied" for
+  // a no-op.
+  async function writeClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+    if (typeof document.execCommand !== "function") return false;
+    const area = node("textarea");
+    area.value = text;
+    document.body.append(area);
+    area.select();
+    let copied = false;
+    try {
+      copied = document.execCommand("copy") === true;
+    } catch (_) {
+      copied = false;
+    }
+    area.remove();
+    return copied;
+  }
+
+  async function copyPayload(button, root, bundle, sig, kind) {
+    const path =
+      `/v1/roots/${encodeURIComponent(root)}/bundles/` +
+      `${encodeURIComponent(bundle)}/findings/${encodeURIComponent(sig)}/copy`;
+    try {
+      const response = await fetch(path, {
+        credentials: "same-origin",
+        cache: "no-store",
+      });
+      if (response.status === 404) {
+        // No payload exists for this finding: the store does not hold it, or
+        // policy withheld it from every published body.
+        button.textContent = "No copy for this finding";
+        return;
+      }
+      if (!response.ok) throw new Error(`Request returned ${response.status}`);
+      const body = await response.json();
+      const payload = envelopeData(body);
+      const text = payload?.[kind];
+      if (!text) {
+        button.textContent = "No prompt for this finding";
+        return;
+      }
+      if (!(await writeClipboard(text))) {
+        button.textContent = "Not copied — clipboard unavailable";
+        return;
+      }
+      const idle = kind === "prompt" ? "Copy prompt" : "Copy triage";
+      button.textContent =
+        kind === "prompt" ? "Prompt copied" : "Command copied";
+      setTimeout(() => {
+        button.textContent = idle;
+      }, 2000);
+    } catch (error) {
+      message.textContent =
+        error instanceof Error ? error.message : String(error);
+      message.className = "error";
+    }
+  }
+
+  function copyButton(label, root, bundle, sig, kind) {
+    const button = node("button", label);
+    button.type = "button";
+    button.addEventListener("click", () =>
+      copyPayload(button, root, bundle, sig, kind),
+    );
+    return button;
+  }
+
+  // writeJSON posts one JSON body with the per-session CSRF header. The
+  // response body is returned for the caller to render honestly: a refusal
+  // envelope is not thrown.
+  async function writeJSON(path, payload, signal) {
+    const response = await fetch(path, {
+      signal,
+      method: "POST",
+      credentials: "same-origin",
+      cache: "no-store",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Verdict-CSRF": csrfToken,
+      },
+      body: JSON.stringify(payload),
+    });
+    return { response, body: await response.json() };
+  }
+
+  // submitTriage writes one finding's status and renders the server's
+  // answer in the status line. It never refetches: the operator reads the
+  // result, then refreshes to see the updated store.
+  async function submitTriage(payload) {
+    try {
+      const { response, body } = await writeJSON("/v1/triage", payload);
+      if (!response.ok) {
+        message.textContent =
+          body?.message || `Request returned ${response.status}`;
+        message.className = "error";
+        return;
+      }
+      if (body?.error) {
+        message.textContent = body.error.message || "Triage refused.";
+        message.className = "error";
+        return;
+      }
+      const data = body?.data || {};
+      message.textContent = `Triaged ${data.sig || payload.sig} -> ${
+        data.status || payload.status
+      }.`;
+      message.className = "";
+    } catch (error) {
+      message.textContent =
+        error instanceof Error ? error.message : String(error);
+      message.className = "error";
+    }
+  }
+
+  // submitKBPromote appends one KB rule and renders the server's answer.
+  async function submitKBPromote(payload) {
+    try {
+      const { response, body } = await writeJSON("/v1/kb/promote", payload);
+      if (!response.ok) {
+        message.textContent =
+          body?.message || `Request returned ${response.status}`;
+        message.className = "error";
+        return;
+      }
+      if (body?.error) {
+        message.textContent = body.error.message || "Promotion refused.";
+        message.className = "error";
+        return;
+      }
+      const rule = body?.data?.rule || {};
+      message.textContent = `Promoted rule ${rule.id || payload.rule} to KB.`;
+      message.className = "";
+    } catch (error) {
+      message.textContent =
+        error instanceof Error ? error.message : String(error);
+      message.className = "error";
+    }
+  }
+
+  // triageControl is one finding's inline write control: the triage
+  // service's status vocabulary, a rationale field, and the CLI's force
+  // escape. It renders only in interactive live mode.
+  function triageControl(root, bundle, sig) {
+    const wrapper = node("div", undefined, "triage");
+    const status = node("select");
+    status.setAttribute("aria-label", "Triage status");
+    for (const value of triageStatuses) {
+      const option = node("option", value);
+      option.value = value;
+      status.append(option);
+    }
+    const rationale = node("input");
+    rationale.placeholder = "Rationale (30+ characters, or check Force)";
+    rationale.setAttribute("aria-label", "Rationale");
+    const force = node("input");
+    force.type = "checkbox";
+    force.setAttribute("aria-label", "Force");
+    const button = node("button", "Triage");
+    button.type = "button";
+    button.addEventListener("click", () =>
+      submitTriage({
+        root,
+        bundle,
+        sig,
+        status: status.value,
+        rationale: rationale.value,
+        force: force.checked === true,
+      }),
+    );
+    wrapper.append(status, rationale, force, button);
+    return wrapper;
+  }
+
+  // kbPromoteForm is the detail view's KB promotion control: one appended
+  // learn rule with the CLI's rigor vocabulary (pointed is its default).
+  function kbPromoteForm(root) {
+    const wrapper = node("div", undefined, "kb-promote");
+    const rule = node("input");
+    rule.placeholder = "New KB rule text";
+    rule.setAttribute("aria-label", "KB rule text");
+    const scope = node("input");
+    scope.placeholder = "Scope, e.g. src/*.go";
+    scope.setAttribute("aria-label", "KB scope");
+    const rigor = node("select");
+    rigor.setAttribute("aria-label", "KB rigor");
+    for (const value of kbRigors) {
+      const option = node("option", value);
+      option.value = value;
+      option.selected = value === "pointed";
+      rigor.append(option);
+    }
+    const button = node("button", "Promote to KB");
+    button.type = "button";
+    button.addEventListener("click", () =>
+      submitKBPromote({
+        root,
+        rule: rule.value,
+        scope: scope.value,
+        rigor: rigor.value,
+      }),
+    );
+    wrapper.append(rule, scope, rigor, button);
+    return wrapper;
+  }
+
+  // jobEnabled gates every Tier B control on the same advertisement the
+  // triage and KB controls read; static exports never start a job.
+  function jobEnabled() {
+    return interactive && mode !== "static";
+  }
+
+  // afterDelay is the one timer seam: the no-stream job poll and the
+  // preview poll both wait through it, so a test can advance the clock
+  // without real time passing.
+  const afterDelay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  // The confirmation modal waits for a preview job on a bounded backoff: it
+  // starts a quarter second apart and doubles to a two-second cap. A preview
+  // runs a whole dry-run post, host reads and gate checks included, so a
+  // healthy one can outlast a short window, while an unpaced burst of fetches
+  // measures only how fast a rejection is delivered. The whole preview, the
+  // start request and every status request included, has two minutes of
+  // elapsed time: the deadline is one abort signal that every preview request
+  // carries, so a response that arrives after it is never accepted.
+  const previewPollStartMs = 250;
+  const previewPollCapMs = 2000;
+  const previewDeadlineMs = 120000;
+
+  // startJob posts one Tier B action and keeps its snapshot for the
+  // drawer. The response is rendered honestly: a refusal envelope and a
+  // transport failure both land in the status line.
+  async function startJob(path, payload) {
+    try {
+      const { response, body } = await writeJSON(path, payload);
+      if (!response.ok) {
+        message.textContent =
+          body?.message || `Request returned ${response.status}`;
+        message.className = "error";
+        return;
+      }
+      if (body?.error) {
+        message.textContent = body.error.message || "Job refused.";
+        message.className = "error";
+        return;
+      }
+      activeJob = body?.data || null;
+      renderActiveJob();
+      if (!eventSource && activeJob?.id) pollJob(activeJob.id);
+    } catch (error) {
+      message.textContent =
+        error instanceof Error ? error.message : String(error);
+      message.className = "error";
+    }
+  }
+
+  // pollJob is the no-stream fallback: without /v1/events the drawer
+  // reads the status until it settles.
+  async function pollJob(id) {
+    while (
+      activeJob?.id === id &&
+      !["succeeded", "failed", "cancelled"].includes(activeJob.status)
+    ) {
+      await afterDelay(500);
+      try {
+        const response = await fetch(`/v1/jobs/${encodeURIComponent(id)}`, {
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+        if (!response.ok) return;
+        const body = await response.json();
+        if (body?.data?.id !== id) return;
+        activeJob = body.data;
+        renderActiveJob();
+      } catch (_) {
+        return;
+      }
+    }
+  }
+
+  // cancelActiveJob asks the server to stop the active job; the SSE
+  // stream carries the terminal cancelled state back.
+  async function cancelActiveJob() {
+    if (!activeJob?.id) return;
+    try {
+      const { response, body } = await writeJSON(
+        `/v1/jobs/${encodeURIComponent(activeJob.id)}/cancel`,
+        {},
+      );
+      if (!response.ok) {
+        message.textContent =
+          body?.message || `Request returned ${response.status}`;
+        message.className = "error";
+        return;
+      }
+      if (body?.data) {
+        activeJob = body.data;
+        renderActiveJob();
+      }
+    } catch (error) {
+      message.textContent =
+        error instanceof Error ? error.message : String(error);
+      message.className = "error";
+    }
+  }
+
+  // renderActiveJob paints the drawer from the active snapshot: status,
+  // a Cancel while queued or running, the result panel when succeeded,
+  // and the refusal honestly when failed or cancelled.
+  function renderActiveJob() {
+    if (!jobDrawer) return;
+    jobDrawer.replaceChildren();
+    if (!activeJob?.id) {
+      jobDrawer.append(node("p", "No job running."));
+      return;
+    }
+    const snap = activeJob;
+    jobDrawer.append(
+      node("p", `Job ${snap.id} (${snap.kind}) — ${snap.status}`, "job-status"),
+    );
+    if (snap.status === "queued" || snap.status === "running") {
+      const cancel = node("button", "Cancel");
+      cancel.type = "button";
+      cancel.addEventListener("click", () => cancelActiveJob());
+      jobDrawer.append(cancel);
+    }
+    if (snap.error) {
+      jobDrawer.append(
+        node("p", `${snap.error.code}: ${snap.error.message}`, "error"),
+      );
+    }
+    if (snap.result) {
+      jobDrawer.append(objectPanel("Result", snap.result));
+    }
+  }
+
+  // onJobEvent applies one jobs SSE frame to the drawer. A malformed
+  // frame is ignored instead of breaking the status line.
+  function onJobEvent(event) {
+    try {
+      const body = JSON.parse(event.data);
+      const data = envelopeData(body);
+      if (data?.id && (!activeJob || data.id === activeJob.id)) {
+        activeJob = data;
+        renderActiveJob();
+      }
+    } catch (_) {}
+  }
+
+  // jobActionsPanel is the detail view's Tier B panel: the bundle-level
+  // sandbox reproduction and the dry-run post preview, plus the drawer.
+  // The Tier C submit control renders only when allow_post is advertised.
+  function jobActionsPanel(root, bundle) {
+    const wrapper = node("div", undefined, "job-actions");
+    const verify = node("button", "Reproduce in sandbox");
+    verify.type = "button";
+    verify.addEventListener("click", () =>
+      startJob("/v1/jobs/verify", { root, bundle }),
+    );
+    const preview = node("button", "Preview PR post");
+    preview.type = "button";
+    preview.addEventListener("click", () =>
+      startJob("/v1/jobs/post-preview", { root, bundle }),
+    );
+    wrapper.append(verify, preview);
+    if (submitEnabled(bundle)) {
+      const submit = node("button", "Submit Review");
+      submit.type = "button";
+      submit.addEventListener("click", () =>
+        openSubmitModal(root, bundle, submit),
+      );
+      submitControl = submit;
+      wrapper.append(submit);
+    }
+    jobDrawer = node("div", undefined, "job-drawer");
+    jobDrawer.setAttribute("aria-live", "polite");
+    renderActiveJob();
+    wrapper.append(jobDrawer);
+    return wrapper;
+  }
+
+  // submitEnabled gates the Tier C control on the allow_post advertisement.
+  // A local bundle (local-1, local-good) has no pull request on any host, so
+  // the host write stays hidden there whatever the server advertises.
+  function submitEnabled(bundle) {
+    if (mode === "static" || !interactive || !allowPost) return false;
+    return !String(bundle || "").startsWith("local-");
+  }
+
+  // fetchPreview runs one dry-run preview and polls its job with bounded
+  // backoff until it settles, returning the snapshot whose result carries the
+  // digest and nonce. A preview still unsettled at the deadline returns an
+  // "expired" snapshot, and the modal reports that instead of confirming
+  // nothing. live() says whether the dialog that asked for this preview is
+  // still the open one: once it is not, the poll stops at its next step and
+  // returns null, so a cancelled preview neither keeps fetching nor reaches a
+  // newer dialog. waiting() fires before each wait on an unsettled job.
+  async function fetchPreview(root, bundle, live, waiting) {
+    const deadline = AbortSignal.timeout(previewDeadlineMs);
+    try {
+      return await pollPreview(root, bundle, live, waiting, deadline);
+    } catch (error) {
+      if (deadline.aborted) return { status: "expired" };
+      throw error;
+    }
+  }
+
+  async function pollPreview(root, bundle, live, waiting, deadline) {
+    // expired throws at every step a late response could pass: fetchPreview
+    // turns it into the expired snapshot, never into an accepted preview.
+    const expired = () => {
+      if (deadline.aborted) throw new Error("The preview deadline passed.");
+    };
+    const { response, body } = await writeJSON(
+      "/v1/jobs/post-preview",
+      { root, bundle },
+      deadline,
+    );
+    if (!live()) return null;
+    expired();
+    if (!response.ok) {
+      throw new Error(body?.message || `Request returned ${response.status}`);
+    }
+    if (body?.error) throw new Error(body.error.message || "Preview refused.");
+    let snap = body?.data || {};
+    let delay = previewPollStartMs;
+    while (snap?.id) {
+      if (["succeeded", "failed", "cancelled"].includes(snap.status)) break;
+      waiting();
+      await afterDelay(delay);
+      delay = Math.min(delay * 2, previewPollCapMs);
+      if (!live()) return null;
+      expired();
+      const got = await fetch(`/v1/jobs/${encodeURIComponent(snap.id)}`, {
+        credentials: "same-origin",
+        cache: "no-store",
+        signal: deadline,
+      });
+      if (!live()) return null;
+      expired();
+      if (!got.ok) {
+        // A failed poll is a request error, not an unfinished preview: only
+        // an exhausted deadline earns the "did not finish" message.
+        throw new Error(`Preview status check returned ${got.status}.`);
+      }
+      const next = await got.json();
+      if (!live()) return null;
+      expired();
+      snap = next?.data || snap;
+    }
+    return snap;
+  }
+
+  // closeSubmitModal removes the confirmation overlay and retires its open:
+  // bumping the generation is what tells that open's in-flight preview poll to
+  // stop and keeps it from touching whatever dialog opens next.
+  function closeSubmitModal() {
+    submitGeneration++;
+    if (submitKeydown) document.removeEventListener("keydown", submitKeydown);
+    submitKeydown = null;
+    if (!submitOverlay) return;
+    submitOverlay.remove();
+    submitOverlay = null;
+    const returnTo = submitReturnFocus;
+    submitReturnFocus = null;
+    // A re-render can detach the button that opened the dialog; focusing it
+    // would do nothing and drop focus to the page, so the button that replaced
+    // it takes the focus.
+    if (returnTo?.isConnected) returnTo.focus();
+    else if (submitControl?.isConnected) submitControl.focus();
+  }
+
+  // trapSubmitKeys keeps focus inside the open dialog: Tab and Shift-Tab wrap
+  // over its enabled controls, in the order of the live `controls` array (the
+  // review text joins it once the preview settles), and
+  // Escape closes it like its Cancel/Close button. The handler lives on the
+  // document so it still hears keys when a click on the backdrop has dropped
+  // focus out of the dialog.
+  function trapSubmitKeys(controls) {
+    const handler = (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault?.();
+        closeSubmitModal();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const enabled = controls.filter((control) => !control.disabled);
+      if (!enabled.length) return;
+      event.preventDefault?.();
+      const at = enabled.indexOf(document.activeElement);
+      const step = event.shiftKey ? -1 : 1;
+      const next = at < 0 ? (step > 0 ? 0 : enabled.length - 1) : at + step;
+      enabled[(next + enabled.length) % enabled.length].focus();
+    };
+    submitKeydown = handler;
+    document.addEventListener("keydown", handler);
+  }
+
+  // openSubmitModal previews the bundle, then waits for an explicit
+  // Confirm & Submit Review click before any host write.
+  async function openSubmitModal(root, bundle, trigger) {
+    closeSubmitModal();
+    const generation = submitGeneration;
+    const live = () => submitGeneration === generation;
+    const overlay = node("div", undefined, "submit-modal");
+    const dialog = node("div", undefined, "submit-dialog");
+    const heading = node("h2", "Submit Review");
+    heading.setAttribute("id", "submit-dialog-title");
+    dialog.setAttribute("role", "dialog");
+    dialog.setAttribute("aria-modal", "true");
+    dialog.setAttribute("aria-labelledby", "submit-dialog-title");
+    dialog.append(heading);
+    const target = node(
+      "p",
+      `Bundle ${bundle} in root ${root} — previewing the PR post.`,
+      "submit-target",
+    );
+    const status = node("p", "Previewing post…", "submit-status");
+    status.setAttribute("aria-live", "polite");
+    const details = node("div", undefined, "submit-details");
+    const confirm = node("button", "Confirm & Submit Review");
+    confirm.type = "button";
+    confirm.disabled = true;
+    const cancel = node("button", "Cancel");
+    cancel.type = "button";
+    cancel.addEventListener("click", closeSubmitModal);
+    dialog.append(target, status, details, confirm, cancel);
+    overlay.append(dialog);
+    document.body.append(overlay);
+    submitOverlay = overlay;
+    submitReturnFocus = trigger || null;
+    const focusOrder = [confirm, cancel];
+    trapSubmitKeys(focusOrder);
+    // Cancel is the only enabled control while the preview loads, so focus
+    // starts there and stays: Confirm is enabled without taking focus, so a
+    // keypress aimed at Cancel can never activate it (WAI-ARIA: don't steal
+    // focus). Tab still reaches it, because the trap includes it.
+    cancel.focus();
+    let preview = null;
+    try {
+      preview = await fetchPreview(root, bundle, live, () => {
+        status.textContent = "Still preparing preview…";
+      });
+    } catch (error) {
+      if (!live()) return;
+      status.textContent =
+        error instanceof Error ? error.message : String(error);
+      status.className = "error";
+      return;
+    }
+    if (!live() || !preview) return;
+    if (preview?.error) {
+      status.textContent = preview.error.message || "Preview refused.";
+      status.className = "error";
+      return;
+    }
+    const snap = preview || {};
+    const result = snap.result || {};
+    if (!["succeeded", "failed", "cancelled"].includes(snap.status)) {
+      status.textContent =
+        "The preview did not finish within two minutes; cancel and try again.";
+      status.className = "error";
+      return;
+    }
+    // A preview the server cut carries no digest or nonce by design: the dialog
+    // still shows the review text, but there is nothing to confirm.
+    const serverCut =
+      result.review_truncated && typeof result.review_truncated === "object"
+        ? result.review_truncated
+        : null;
+    if (snap.status !== "succeeded" || (!result.preview_digest && !serverCut)) {
+      status.textContent = "Preview did not succeed; no digest to confirm.";
+      status.className = "error";
+      return;
+    }
+    const digest = result.preview_digest || "";
+    const nonce = result.preview_nonce || "";
+    const comments = Array.isArray(result.review_comments)
+      ? result.review_comments.filter(
+          (entry) => entry && typeof entry.text === "string",
+        )
+      : [];
+    if (!comments.length) {
+      // The nonce authorizes posting these comments; with none listed there is
+      // nothing for the operator to confirm. (A comment whose text is empty is
+      // listed as such below, and stays confirmable.)
+      status.textContent =
+        "The preview carried no review text to show; cancel and try again.";
+      status.className = "error";
+      return;
+    }
+    const omitted = Array.isArray(result.review_omitted)
+      ? result.review_omitted.map(String)
+      : [];
+    const total = Number.isInteger(result.review_comment_count)
+      ? result.review_comment_count
+      : comments.length + omitted.length;
+    const findings = result.findings || {};
+    const anchors = result.anchors || {};
+    // Untrusted text only ever reaches the page through textContent (node()),
+    // never innerHTML: the review is model output. Every comment the post will
+    // send is listed in posting order, each under its own label, inside one
+    // scrollable region that is a Tab stop, so a keyboard operator can read
+    // all of it.
+    const reviewBox = node("div", undefined, "submit-review-list");
+    reviewBox.setAttribute("tabindex", "0");
+    reviewBox.setAttribute("role", "region");
+    reviewBox.setAttribute("aria-label", "Review text to be posted");
+    const cut = [];
+    let cutBytes = 0;
+    comments.forEach((entry, index) => {
+      const shown = Number.isInteger(entry.shown_bytes)
+        ? entry.shown_bytes
+        : null;
+      const size = Number.isInteger(entry.bytes) ? entry.bytes : null;
+      const isCut = shown !== null && size !== null && shown < size;
+      if (isCut) {
+        cut.push(`comment ${index + 1} (${shown} of ${size} bytes shown)`);
+        cutBytes += size - shown;
+      }
+      reviewBox.append(
+        node(
+          "p",
+          `Comment ${index + 1} of ${total} — ${entry.label || "review comment"}${isCut ? ` — cut after ${shown} of ${size} bytes` : ""}`,
+          "submit-review-label",
+        ),
+        node(
+          "pre",
+          entry.text === "" ? "(empty comment)" : entry.text,
+          "submit-review",
+        ),
+      );
+    });
+    details.append(
+      node(
+        "p",
+        `Event ${result.event || "COMMENT"} — ${findings.open ?? 0} open, ${findings.addressed ?? 0} addressed, ${anchors.kept ?? 0} anchors kept.`,
+      ),
+    );
+    if (typeof result.target_repo === "string" && result.target_repo) {
+      details.append(
+        node("p", `Posts to ${result.target_repo}, pull request ${bundle}.`),
+      );
+    }
+    const warnings = Array.isArray(snap.warnings) ? snap.warnings : [];
+    if (warnings.length) {
+      const list = node("ul", undefined, "submit-warnings");
+      for (const warning of warnings) list.append(node("li", warning));
+      details.append(node("p", "Preview warnings:"), list);
+    }
+    details.append(
+      node(
+        "p",
+        total === 1
+          ? "1 comment will be posted."
+          : `${total} comments will be posted, in this order.`,
+      ),
+      reviewBox,
+    );
+    const leftOut = `${cutBytes} bytes cut, ${omitted.length} ${omitted.length === 1 ? "comment" : "comments"} omitted`;
+    const unseen = [...cut];
+    if (omitted.length) unseen.push(`not shown at all: ${omitted.join("; ")}`);
+    // Posting text the operator never saw is never confirmable: the server mints
+    // no nonce for a cut preview, and here Confirm stays disabled with no
+    // acknowledgement to tick past it, pointing at the CLI, which prints the
+    // whole payload.
+    const blocked = unseen.length > 0 || serverCut !== null;
+    if (blocked) {
+      const serverMessage =
+        typeof serverCut?.message === "string" ? serverCut.message : "";
+      details.append(
+        node(
+          "p",
+          (serverMessage
+            ? `${serverMessage}${unseen.length ? ` Not shown: ${unseen.join("; ")}.` : ""}`
+            : null) ||
+            `Confirm is disabled: the preview did not show the whole review (${unseen.join("; ")}). Left out in total: ${leftOut}. ` +
+              `Inspect the full payload with \`verdict post ${result.target_repo || "<repo>"} ${bundle} --dry-run\` and post it from the CLI.`,
+          "submit-truncated",
+        ),
+      );
+    }
+    if (digest) details.append(node("p", `Preview digest ${digest}`));
+    focusOrder.unshift(reviewBox);
+    status.textContent = blocked
+      ? "The preview did not show the whole review, so it cannot be confirmed here."
+      : "Review the text above, then confirm to submit.";
+    confirm.disabled = blocked;
+    // The dialog is still the open one: a submit that settles after the
+    // operator closed it reports on the page instead of a detached element.
+    const open = () => submitOverlay === overlay;
+    const report = (text, failed) => {
+      status.textContent = text;
+      status.className = failed ? "error" : "";
+      if (!open()) {
+        message.textContent = `Submit review for bundle ${bundle} in root ${root}: ${text}`;
+        message.className = failed ? "error" : "";
+      }
+    };
+    let confirming = false;
+    confirm.addEventListener("click", async () => {
+      confirming = true;
+      confirm.disabled = true;
+      // The server keeps posting after the dialog goes away, so this button
+      // stops promising a cancel: it closes the dialog, nothing more.
+      cancel.textContent = "Close";
+      const pending = node(
+        "p",
+        "Posting continues on the server; closing this dialog does not cancel it.",
+        "submit-status",
+      );
+      details.append(pending);
+      cancel.focus();
+      try {
+        const { response, body } = await writeJSON("/v1/post/submit", {
+          root,
+          bundle,
+          preview_digest: digest,
+          preview_nonce: nonce,
+          confirm: true,
+        });
+        if (!response.ok) {
+          if (response.status === 503 && body?.reason === "store-busy") {
+            // The server refused before spending the nonce, so the same
+            // preview can go again: offer Retry instead of a dead end.
+            report(
+              `${body.message || "The bundle is busy."} Nothing was posted; retry with this preview.`,
+              true,
+            );
+            confirm.textContent = "Retry submit";
+            confirming = false;
+            confirm.disabled = false;
+            cancel.textContent = "Cancel";
+            return;
+          }
+          report(body?.message || `Request returned ${response.status}`, true);
+          return;
+        }
+        if (body?.error) {
+          report(body.error.message || "Submit refused.", true);
+          return;
+        }
+        const data = body?.data || {};
+        const receipt = node("p", `Submitted review ${data.commit_id || ""}.`);
+        details.append(receipt);
+        status.textContent = "Submitted.";
+        status.className = "";
+        message.textContent = `Review submitted for bundle ${bundle} in root ${root}.`;
+        message.className = "";
+      } catch (error) {
+        report(error instanceof Error ? error.message : String(error), true);
+      } finally {
+        pending.remove();
+      }
+    });
+  }
+
+  function compareBuckets(root, bundle) {
+    const columns = [
+      { key: "sig", label: "Signature" },
+      { key: "status", label: "Status" },
+      { key: "severity", label: "Severity" },
+      { key: "path", label: "Path" },
+      { key: "line", label: "Line" },
+      { key: "claim", label: "Claim" },
+      { key: "reason", label: "Reason" },
+    ];
+    const actionable = [
+      ...columns,
+      {
+        label: "Copy",
+        action: (row, td) => {
+          td.append(
+            copyButton("Copy prompt", root, bundle, row.sig, "prompt"),
+            " ",
+            copyButton("Copy triage", root, bundle, row.sig, "triage"),
+          );
+        },
+      },
+    ];
+    if (interactive && mode !== "static") {
+      actionable.push({
+        label: "Triage",
+        action: (row, td) => {
+          td.append(triageControl(root, bundle, row.sig));
+        },
+      });
+    }
+    return { columns, actionable };
+  }
+
+  // compareChoices names the baselines one comparison may name: the inbox rows
+  // of the same served root, minus the bundle being compared. A cross-root row
+  // is another repository's review, and the compare route refuses it.
+  function compareChoices(root, bundle) {
+    return inboxRows
+      .filter((row) => row.root === root && row.bundle !== bundle)
+      .map((row) => row.bundle);
+  }
+
+  async function renderComparePicker(container, root, bundle) {
+    if (!inboxRows.length) {
+      try {
+        const response = await fetch("/v1/bundles", {
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+        if (!response.ok)
+          throw new Error(`Request returned ${response.status}`);
+        const data = envelopeData(await response.json());
+        inboxRows = Array.isArray(data.rows) ? data.rows : [];
+      } catch (error) {
+        message.textContent =
+          error instanceof Error ? error.message : String(error);
+        message.className = "error";
+        return;
+      }
+    }
+    const choices = compareChoices(root, bundle);
+    if (!choices.length) return;
+    if (!compareBaseline || !choices.includes(compareBaseline))
+      compareBaseline = choices[0];
+    container.append(
+      dimensionPicker(
+        "Compare against",
+        "compare-by",
+        choices,
+        compareBaseline,
+        (value) => {
+          compareBaseline = value;
+          fetchView();
+        },
+      ),
+    );
+  }
+
+  function renderCompare(data, root, bundle) {
+    const compare = data.compare || {};
+    const counts = compare.counts || {};
+    const buckets = compareBuckets(root, bundle);
+    content.append(
+      objectPanel("Baseline", {
+        bundle: compare.baseline?.name,
+        dir: compare.baseline?.dir,
+        head_sha: compare.baseline?.head_sha,
+        recorded_at: compare.baseline?.recorded_at,
+        findings: compare.baseline?.findings,
+      }),
+    );
+    content.append(
+      objectPanel("Counts", {
+        new: counts.new,
+        persisting: counts.persisting,
+        resolved: counts.resolved,
+        not_reviewed: counts.not_reviewed,
+      }),
+    );
+    const pickerHost = node("div");
+    content.append(pickerHost);
+    renderComparePicker(pickerHost, root, bundle);
+    const sections = [
+      ["New", compare.new, buckets.actionable],
+      ["Persisting", compare.persisting, buckets.actionable],
+      ["Resolved", compare.resolved, buckets.columns],
+      ["Not reviewed", compare.not_reviewed, buckets.columns],
+    ];
+    for (const [caption, rows, columns] of sections) {
+      content.append(table(caption, columns, Array.isArray(rows) ? rows : []));
+    }
   }
 
   function dimensionPicker(label, id, values, selected, update) {
@@ -240,10 +1162,12 @@
     );
   }
 
-  function renderDetail(data, gateOnly) {
+  function renderDetail(data, gateOnly, routeInfo) {
     const report = data.report || {};
     const gate = data.gate;
     const items = Array.isArray(report.items) ? report.items : [];
+    const root = routeInfo?.root || "";
+    const bundle = routeInfo?.bundle || "";
     if (!gateOnly) {
       content.append(objectPanel("Review summary", reviewSummary(report)));
       for (const item of items) {
@@ -258,22 +1182,35 @@
         link.download = "reproduction.txt";
         content.append(link);
       }
-      content.append(
-        table(
-          "Findings",
-          [
-            { key: "sig", label: "Signature" },
-            { key: "status", label: "Status" },
-            { key: "severity", label: "Severity" },
-            { key: "rigor", label: "Evidence" },
-            { key: "path", label: "Path" },
-            { key: "line", label: "Line" },
-            { key: "body", label: "Finding" },
-            { key: "suggestion", label: "Suggestion" },
-          ],
-          items,
-        ),
-      );
+      const findingColumns = [
+        { key: "sig", label: "Signature" },
+        { key: "status", label: "Status" },
+        { key: "severity", label: "Severity" },
+        { key: "rigor", label: "Evidence" },
+        { key: "path", label: "Path" },
+        { key: "line", label: "Line" },
+        { key: "body", label: "Finding" },
+        { key: "suggestion", label: "Suggestion" },
+      ];
+      // Verify is bundle-scoped: the Detail view carries one bundle-level
+      // reproduction button in the job-actions panel, never a per-finding
+      // filter that claims a single finding was isolated.
+      if (jobEnabled()) {
+        findingColumns.push({
+          label: "Triage",
+          action: (row, td) => {
+            td.append(triageControl(root, bundle, row.sig));
+          },
+        });
+      }
+      content.append(table("Findings", findingColumns, items));
+      if (jobEnabled()) {
+        content.append(jobActionsPanel(root, bundle));
+      }
+      if (interactive && mode !== "static") {
+        content.append(node("h2", "Promote to KB rule"));
+        content.append(kbPromoteForm(root));
+      }
       content.append(
         table(
           "Evidence ledger",
@@ -293,25 +1230,253 @@
       message.textContent = "Gate status is unknown.";
   }
 
-  function render(view, data) {
+  function diffCodeCell(line) {
+    const td = node("td", undefined, "diff-code");
+    const spans = Array.isArray(line.spans) ? line.spans : [];
+    if (!spans.length) {
+      td.textContent = line.text;
+      return td;
+    }
+    const cls = line.kind === "add" ? "diff-word-add" : "diff-word-del";
+    for (const span of spans) {
+      if (span.changed) {
+        const mark = node("span", span.text, cls);
+        td.append(mark);
+      } else {
+        td.append(span.text);
+      }
+    }
+    return td;
+  }
+
+  function diffFindingRow(finding, span) {
+    const tr = node("tr", undefined, "diff-finding-row");
+    const td = node("td", undefined, "diff-finding");
+    td.colSpan = span;
+    const head = node(
+      "strong",
+      `${finding.severity} ${finding.status} ${finding.category} ${finding.sig || ""}`.trim(),
+    );
+    td.append(head);
+    td.append(` ${finding.body || ""}`);
+    tr.append(td);
+    return tr;
+  }
+
+  function diffGapRow(count, span) {
+    const div = node("div", `… ${count} unchanged lines`, "diff-gap");
+    div.setAttribute("data-gap", String(count));
+    return div;
+  }
+
+  function renderDiffFile(file) {
+    const section = node("section", undefined, "diff-file");
+    section.setAttribute("data-path", file.path || "");
+    const head = node(
+      "h3",
+      `${file.path} ${file.lane} +${file.additions} -${file.deletions}`,
+    );
+    section.append(head);
+    const hunks = Array.isArray(file.hunks) ? file.hunks : [];
+    for (const hunk of hunks) {
+      if (hunk.gap_before) section.append(diffGapRow(hunk.gap_before, 3));
+      const tableEl = node("table");
+      tableEl.className =
+        diffMode === "split"
+          ? "diff-table diff-split"
+          : "diff-table diff-unified";
+      const tbody = node("tbody");
+      const lines = Array.isArray(hunk.lines) ? hunk.lines : [];
+      if (diffMode === "split") {
+        let i = 0;
+        while (i < lines.length) {
+          const line = lines[i];
+          if (line.kind === "context") {
+            const tr = node("tr", undefined, "diff-line-context");
+            tr.append(node("td", String(line.old_no ?? ""), "diff-no"));
+            tr.append(node("td", String(line.new_no ?? ""), "diff-no"));
+            tr.append(diffCodeCell(line));
+            tr.append(node("td", line.text, "diff-code"));
+            tbody.append(tr);
+            i++;
+          } else if (
+            line.kind === "del" &&
+            i + 1 < lines.length &&
+            lines[i + 1].kind === "add"
+          ) {
+            const next = lines[i + 1];
+            const tr = node("tr", undefined, "diff-line-change");
+            tr.append(node("td", String(line.old_no ?? ""), "diff-no"));
+            tr.append(node("td", String(next.new_no ?? ""), "diff-no"));
+            tr.append(diffCodeCell(line));
+            tr.append(diffCodeCell(next));
+            tbody.append(tr);
+            if (Array.isArray(line.findings))
+              for (const f of line.findings) tbody.append(diffFindingRow(f, 4));
+            if (Array.isArray(next.findings))
+              for (const f of next.findings) tbody.append(diffFindingRow(f, 4));
+            i += 2;
+          } else {
+            const tr = node("tr", undefined, "diff-line-single");
+            tr.append(
+              node("td", String(line.old_no ?? line.new_no ?? ""), "diff-no"),
+            );
+            tr.append(
+              node("td", String(line.new_no ?? line.old_no ?? ""), "diff-no"),
+            );
+            tr.append(diffCodeCell(line));
+            tr.append(
+              node("td", line.kind === "add" ? line.text : "", "diff-code"),
+            );
+            tbody.append(tr);
+            if (Array.isArray(line.findings))
+              for (const f of line.findings) tbody.append(diffFindingRow(f, 4));
+            i++;
+          }
+        }
+      } else {
+        for (const line of lines) {
+          const tr = node("tr", undefined, `diff-line-${line.kind}`);
+          tr.append(node("td", String(line.old_no ?? ""), "diff-no"));
+          tr.append(node("td", String(line.new_no ?? ""), "diff-no"));
+          const sign = node(
+            "td",
+            line.kind === "add" ? "+" : line.kind === "del" ? "−" : " ",
+            "diff-sign",
+          );
+          tr.append(sign);
+          tr.append(diffCodeCell(line));
+          tbody.append(tr);
+          if (Array.isArray(line.findings))
+            for (const f of line.findings) tbody.append(diffFindingRow(f, 4));
+        }
+      }
+      tableEl.append(tbody);
+      section.append(tableEl);
+    }
+    return section;
+  }
+
+  function renderDiff(data) {
+    const wrap = node("div", undefined, "diff-view");
+    const controls = node("div", undefined, "diff-controls");
+    const unifiedBtn = node("button", "Unified");
+    unifiedBtn.type = "button";
+    unifiedBtn.setAttribute("aria-pressed", String(diffMode === "unified"));
+    unifiedBtn.addEventListener("click", () => {
+      diffMode = "unified";
+      toggleDiff(data);
+    });
+    const splitBtn = node("button", "Side by side");
+    splitBtn.type = "button";
+    splitBtn.setAttribute("aria-pressed", String(diffMode === "split"));
+    splitBtn.addEventListener("click", () => {
+      diffMode = "split";
+      toggleDiff(data);
+    });
+    controls.append(unifiedBtn);
+    controls.append(splitBtn);
+    wrap.append(controls);
+    const lanes = Array.isArray(data.lanes) ? data.lanes : [];
+    const laneBox = node("div", undefined, "diff-lanes");
+    laneBox.append(node("h2", "Change lanes"));
+    const laneTable = node("table");
+    laneTable.append(node("caption", "Lanes"));
+    const head = node("thead");
+    const headerRow = node("tr");
+    for (const label of [
+      "Lane",
+      "Files",
+      "Additions",
+      "Deletions",
+      "Findings",
+    ]) {
+      headerRow.append(node("th", label));
+    }
+    head.append(headerRow);
+    laneTable.append(head);
+    const laneBody = node("tbody");
+    for (const lane of lanes) {
+      const row = node("tr", undefined, "diff-lane");
+      row.setAttribute("data-lane", lane.lane || "");
+      row.append(node("td", lane.lane || ""));
+      row.append(node("td", String(lane.file_count ?? 0)));
+      row.append(node("td", `+${lane.additions ?? 0}`));
+      row.append(node("td", `-${lane.deletions ?? 0}`));
+      row.append(node("td", String(lane.findings ?? 0)));
+      laneBody.append(row);
+    }
+    laneTable.append(laneBody);
+    laneBox.append(laneTable);
+    wrap.append(laneBox);
+    const files = Array.isArray(data.files) ? data.files : [];
+    for (const file of files) wrap.append(renderDiffFile(file));
+    content.append(wrap);
+  }
+
+  function toggleDiff(data) {
+    for (const child of [...content.children]) {
+      if ((child.className || "").includes("diff-view")) child.remove();
+    }
+    renderDiff(data);
+  }
+
+  function decodeHashSegment(segment) {
+    try {
+      return decodeURIComponent(segment || "");
+    } catch (_) {
+      return segment || "";
+    }
+  }
+
+  function render(view, data, routeInfo) {
     content.replaceChildren();
     message.textContent = "";
     message.className = "";
     if (view === "inbox") {
       title.textContent = "Inbox";
       renderInbox(data);
-    } else if (view === "detail" || view === "gate" || view === "threads") {
+    } else if (
+      view === "detail" ||
+      view === "gate" ||
+      view === "threads" ||
+      view === "compare" ||
+      view === "compare-pick" ||
+      view === "diff"
+    ) {
       title.textContent =
         view === "gate"
           ? "Gate"
           : view === "threads"
             ? "Threads"
-            : "Review detail";
+            : view === "diff"
+              ? "Diff"
+              : view === "compare" || view === "compare-pick"
+                ? "Compare"
+                : "Review detail";
       content.append(detailNavigation(view));
-      if (view === "threads") {
+      if (view === "diff") {
+        renderDiff(data);
+      } else if (view === "threads") {
         content.append(threadTable("Review threads", data.threads));
+      } else if (view === "compare-pick") {
+        inboxRows = Array.isArray(data.rows) ? data.rows : [];
+        const choices = compareChoices(
+          routeInfo?.root || "",
+          routeInfo?.bundle || "",
+        );
+        if (!choices.length) {
+          message.textContent =
+            "No other bundle in this root to compare against.";
+        } else {
+          if (!compareBaseline || !choices.includes(compareBaseline))
+            compareBaseline = choices[0];
+          fetchView();
+        }
+      } else if (view === "compare") {
+        renderCompare(data, routeInfo?.root || "", routeInfo?.bundle || "");
       } else {
-        renderDetail(data, view === "gate");
+        renderDetail(data, view === "gate", routeInfo);
       }
     } else if (view === "cost" || view === "precision") {
       title.textContent = view === "cost" ? "Cost" : "Precision";
@@ -380,6 +1545,20 @@
       message.textContent = "Partial view: some values are unknown.";
   }
 
+  // selectBaseline keeps the compare selection inside the review it was made
+  // for: a hash that names a bundle and no baseline starts from nothing when the
+  // active comparison moved to another root or bundle, so one root's baseline is
+  // never requested from another root. An explicit hash segment always wins.
+  function selectBaseline(root, bundle, explicit) {
+    const scope = `${root}\u0000${bundle}`;
+    if (scope !== compareScope) {
+      compareBaseline = "";
+      compareScope = scope;
+    }
+    if (explicit) compareBaseline = explicit;
+    return compareBaseline;
+  }
+
   function route() {
     const parts = location.hash.slice(1).split("/").filter(Boolean);
     if (!parts.length || parts[0] === "bundles")
@@ -395,6 +1574,33 @@
         path: `/v1/precision?by=${encodeURIComponent(precisionBy)}`,
       };
     if (parts[0] === "r" && parts.length >= 3) {
+      const root = encodeHashSegment(parts[1]);
+      const bundle = encodeHashSegment(parts[2]);
+      const decoded = {
+        root: decodeHashSegment(parts[1]),
+        bundle: decodeHashSegment(parts[2]),
+      };
+      if (parts[3] === "compare") {
+        const baseline = selectBaseline(
+          decoded.root,
+          decoded.bundle,
+          parts[4] ? decodeHashSegment(parts[4]) : "",
+        );
+        if (!baseline)
+          return { view: "compare-pick", path: "/v1/bundles", ...decoded };
+        return {
+          view: "compare",
+          path: `/v1/roots/${root}/bundles/${bundle}/compare?baseline=${encodeURIComponent(baseline)}`,
+          ...decoded,
+        };
+      }
+      if (parts[3] === "diff") {
+        return {
+          view: "diff",
+          path: `/v1/roots/${root}/bundles/${bundle}/diff`,
+          ...decoded,
+        };
+      }
       const view =
         parts[3] === "threads"
           ? "threads"
@@ -403,7 +1609,8 @@
             : "detail";
       return {
         view,
-        path: `/v1/roots/${encodeHashSegment(parts[1])}/bundles/${encodeHashSegment(parts[2])}`,
+        path: `/v1/roots/${root}/bundles/${bundle}`,
+        ...decoded,
       };
     }
     return { view: "inbox", path: "/v1/bundles" };
@@ -434,7 +1641,7 @@
         body = await response.json();
       }
       const data = envelopeData(body);
-      if (data) render(current.view, data);
+      if (data) render(current.view, data, current);
     } catch (error) {
       content.replaceChildren();
       title.textContent = "Unable to load view";
@@ -456,6 +1663,12 @@
         cache: "no-store",
       });
       const health = await response.json();
+      if (health.data?.interactive === true) {
+        interactive = true;
+        allowPost = health.data?.allow_post === true;
+        csrfToken =
+          typeof health.data?.csrf === "string" ? health.data.csrf : "";
+      }
       if (health.data?.watch === false) {
         live.hidden = true;
         refresh.hidden = false;
@@ -481,6 +1694,7 @@
       reconnecting = true;
     });
     eventSource.addEventListener("bundles", () => fetchView());
+    eventSource.addEventListener("jobs", onJobEvent);
   }
 
   refresh.addEventListener("click", () => {
@@ -489,6 +1703,10 @@
   });
   window.addEventListener("hashchange", fetchView);
   window.addEventListener("beforeunload", () => eventSource?.close());
-  fetchView();
-  startLive();
+  // Health arrives first so the interactive advertisement lands before the
+  // first render: a write control can never flash on a read-only server.
+  (async () => {
+    await startLive();
+    fetchView();
+  })();
 })();

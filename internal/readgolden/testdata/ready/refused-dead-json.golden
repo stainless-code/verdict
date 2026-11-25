@@ -11,7 +11,7 @@ exit: 1
   "data": null,
   "error": {
     "code": "pr-read-failed",
-    "message": "could not read live PR state for acme/app#5101: evals-stub-gh: network disabled (pr view 5101 --repo acme/app --json isDraft,mergeable,mergeStateStatus,body,state,headRefOid) \ntry: run 'gh auth status', confirm the repo/PR spelling, then re-run"
+    "message": "could not read live PR state for acme/app#5101: evals-stub-gh: network disabled (pr view 5101 --repo acme/app --json isDraft,mergeable,mergeStateStatus,body,state,headRefOid) \ntry: run 'gh auth status' (GitHub) or 'glab auth status' (GitLab), confirm the repo/PR spelling, then re-run"
   }
 }
 --- stderr ---

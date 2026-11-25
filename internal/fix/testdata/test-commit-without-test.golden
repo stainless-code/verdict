@@ -1,0 +1,6 @@
+exit: 2
+--- stdout ---
+
+--- stderr ---
+--commit commits the promoted regression test: pass it with --test
+--- files ---

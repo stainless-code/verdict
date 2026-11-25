@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/journal"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/storelock"
 )
@@ -177,7 +178,7 @@ func snapshotBytes(dir, name string) ([]byte, *core.RefusalError) {
 	if err != nil || !info.Mode().IsRegular() {
 		return nil, snapshotUnsafe(name)
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, snapshotUnreadable(name)
 	}

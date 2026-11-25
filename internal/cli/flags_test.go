@@ -12,7 +12,7 @@ import (
 func TestStripGlobalToggles(t *testing.T) {
 	rest, g := mustStrip(t, []string{
 		"--compact", "--no-footer", "--overview",
-		"--no-diagram-structural", "--logo", "--no-json",
+		"--no-diagram-structural", "--diagram-anchored", "--logo", "--no-json",
 		"--no-attribution", "--fix-prompt", "record", "acme/app", "local-x",
 	})
 	if len(rest) != 3 || rest[0] != "record" {
@@ -22,10 +22,29 @@ func TestStripGlobalToggles(t *testing.T) {
 	checkForce(t, "footer", g.PublishFooterForce, cli.FlagOff)
 	checkForce(t, "overview", g.PublishOverviewForce, cli.FlagOn)
 	checkForce(t, "structural", g.DiagramsStructuralForce, cli.FlagOff)
+	checkForce(t, "anchored", g.DiagramsAnchoredForce, cli.FlagOn)
 	checkForce(t, "logo", g.PublishLogoForce, cli.FlagOn)
 	checkForce(t, "output", g.OutputForce, "text")
 	checkForce(t, "attribution", g.PublishAttributionForce, "off")
 	checkForce(t, "fix prompt", g.PublishFixPromptForce, cli.FlagOn)
+}
+
+// TestStripGlobalLeavesLoopsFixPrompt proves `loop --fix-prompt <file>` reaches
+// the loop's own parser with its operand, while the same spelling on any
+// other verb stays the publish toggle.
+func TestStripGlobalLeavesLoopsFixPrompt(t *testing.T) {
+	rest, g := mustStrip(t, []string{"--compact", "loop", "acme/app", "--agent", "claude", "--fix-prompt", "fix.md"})
+	want := []string{"loop", "acme/app", "--agent", "claude", "--fix-prompt", "fix.md"}
+	if strings.Join(rest, " ") != strings.Join(want, " ") {
+		t.Fatalf("rest = %q, want %q", rest, want)
+	}
+	checkForce(t, "fix prompt", g.PublishFixPromptForce, "")
+	checkForce(t, "compact", g.CompactForce, cli.FlagOn)
+	rest, g = mustStrip(t, []string{"record", "acme/app", "local-x", "--fix-prompt"})
+	if len(rest) != 3 {
+		t.Fatalf("record rest = %q, want the toggle stripped", rest)
+	}
+	checkForce(t, "record fix prompt", g.PublishFixPromptForce, cli.FlagOn)
 }
 
 func checkForce(t *testing.T, name, got, want string) {
@@ -257,6 +276,7 @@ func TestApplyGlobalForcesKitchenSink(t *testing.T) {
 		PublishLogoURLSet:         true,
 		PublishOverviewForce:      cli.FlagOff,
 		DiagramsStructuralForce:   cli.FlagOff,
+		DiagramsAnchoredForce:     cli.FlagOn,
 		PublishFixPromptForce:     cli.FlagOff,
 	}
 	if err := cli.ApplyGlobalForces(r, g, false); err != nil {
@@ -274,6 +294,7 @@ func TestApplyGlobalForcesKitchenSink(t *testing.T) {
 		{"logo url", eff.PublishLogoURL, "https://x/y.png"},
 		{"overview", eff.PublishOverview, cli.FlagOff},
 		{"structural", eff.DiagramsStructural, cli.FlagOff},
+		{"anchored", eff.DiagramsAnchored, cli.FlagOn},
 		{"fix prompt", eff.PublishFixPrompt, cli.FlagOff},
 		{"output", r.Output, "json"},
 	} {
@@ -389,6 +410,7 @@ func TestBoolFlagTableUncoveredHalf(t *testing.T) {
 		{func(g *cli.GlobalForces) string { return g.PublishOverviewForce }, "--no-overview", cli.FlagOff},
 		{func(g *cli.GlobalForces) string { return g.PublishFixPromptForce }, "--no-fix-prompt", cli.FlagOff},
 		{func(g *cli.GlobalForces) string { return g.DiagramsStructuralForce }, "--diagram-structural", cli.FlagOn},
+		{func(g *cli.GlobalForces) string { return g.DiagramsAnchoredForce }, "--no-diagram-anchored", cli.FlagOff},
 		{func(g *cli.GlobalForces) string { return g.PublishLogoForce }, "--no-logo", cli.FlagOff},
 	} {
 		t.Run(tc.flag, func(t *testing.T) { checkBoolFlag(t, tc) })

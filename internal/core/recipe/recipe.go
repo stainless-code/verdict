@@ -66,6 +66,14 @@ var (
 	modelRE  = regexp.MustCompile(modelPattern)
 )
 
+// ValidLensID reports whether id matches the canonical lens-id grammar every
+// surface shares: a lowercase slug of 1..64 characters. Record validates a
+// finding's `lens` provenance with it, so the store and this package accept
+// exactly the same ids.
+func ValidLensID(id string) bool {
+	return lensIDRE.MatchString(id)
+}
+
 // rootKeys, entryKeys, lensKeys, and synthesizeKeys are the closed key sets the
 // published schema documents.
 var (

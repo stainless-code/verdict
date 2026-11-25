@@ -3,6 +3,7 @@ package verifycore_test
 import (
 	"context"
 	"encoding/json"
+	"maps"
 	"os"
 	"path/filepath"
 	"strings"
@@ -11,33 +12,64 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
 // groupCommander answers the two argv shapes group validation issues: the
 // fixed git head probe and the operator's bash -c command. Each result is
 // scripted per test so a nonzero exit and a moved head are distinguishable.
 type groupCommander struct {
-	head    string
-	out     string
-	runs    []*core.Command
-	exit    int
-	headErr bool
-	timed   bool
+	// onRun acts for the operator's command while it "runs".
+	onRun func()
+	out   string
+	// worktree is the checkout's content tree; empty reads groupTree, the
+	// reviewed commit's, so the content matches unless a test says otherwise.
+	worktree string
+	runs     []*core.Command
+	exit     int
+	timed    bool
+	// missing makes the reviewed commit unresolvable, as when it was never
+	// fetched; stuck makes `git worktree remove` fail, as on a locked tree.
+	missing bool
+	stuck   bool
 }
 
 func (c *groupCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
+	if res, ok := c.contentAnswer(cmd.Argv); ok {
+		return res, nil
+	}
+	if res, ok := gitAnswer(cmd, groupTree); ok {
+		return res, nil
+	}
 	c.runs = append(c.runs, cmd)
-	if len(cmd.Argv) > 2 && cmd.Argv[0] == "git" && cmd.Argv[3] == "rev-parse" {
-		if c.headErr {
-			return core.Result{Stderr: "fatal: not a git repository", ExitCode: 128}, nil
-		}
-		return core.Result{Stdout: c.head + "\n"}, nil
+	if c.onRun != nil {
+		c.onRun()
 	}
 	return core.Result{Stdout: c.out, ExitCode: c.exit, TimedOut: c.timed}, nil
 }
 
+// contentAnswer is the scripted deviation from gitAnswer: a checkout whose
+// content is another tree, or a reviewed commit the repository lacks.
+func (c *groupCommander) contentAnswer(argv []string) (core.Result, bool) {
+	_, a, ok := gitcmd.Split(argv)
+	if !ok || len(a) == 0 {
+		return core.Result{}, false
+	}
+	switch {
+	case a[0] == "write-tree" && c.worktree != "":
+		return core.Result{Stdout: c.worktree + "\n"}, true
+	case a[0] == "rev-parse" && c.missing && strings.HasPrefix(a[len(a)-1], groupHead):
+		return core.Result{ExitCode: 1}, true
+	case c.stuck && a[0] == "worktree" && len(a) > 1 && a[1] == "remove":
+		return core.Result{ExitCode: 1, Stderr: "fatal: cannot remove a locked working tree"}, true
+	}
+	return core.Result{}, false
+}
+
 const (
 	groupHead = "1234567890abcdef1234567890abcdef12345678"
+	// groupTree is the reviewed commit's content tree.
+	groupTree = "6a0a6a0a6a0a6a0a6a0a6a0a6a0a6a0a6a0a6a0a"
 	groupBase = "abcdef1234567890abcdef1234567890abcdef12"
 )
 
@@ -85,7 +117,7 @@ func groupRequest(root, group, command string, cmdr core.Commander) *verifycore.
 // a receipt bound to the run capture and renders the success next step.
 func TestGroupValidationRecordsMatchingReceipt(t *testing.T) {
 	root := groupBundle(t)
-	cmdr := &groupCommander{head: groupHead, out: "ok\n"}
+	cmdr := &groupCommander{out: "ok\n"}
 	resp, ref := verifycore.Run(context.Background(), groupRequest(root, "group-a1", "go test ./...", cmdr))
 	if ref != nil {
 		t.Fatalf("Run: %v", ref)
@@ -95,15 +127,24 @@ func TestGroupValidationRecordsMatchingReceipt(t *testing.T) {
 	}
 	dir := filepath.Join(root, ".verdict", "state", "7")
 	requireBoundReceipt(t, dir, "go test ./...")
-	// Two head probes bracket one command: the receipt binds both the head
-	// the command started on and the head it finished on.
-	if len(cmdr.runs) != 3 {
-		t.Fatalf("command runs = %d, want two head probes and one command", len(cmdr.runs))
+	// The one spawn is the command, run in a snapshot outside the checkout —
+	// never the user's checkout.
+	if len(cmdr.runs) != 1 {
+		t.Fatalf("command runs = %d (dir %q), want one", len(cmdr.runs), firstDir(cmdr.runs))
 	}
+	requireSnapshotDir(t, cmdr.runs[0].Dir, root)
+}
+
+func firstDir(runs []*core.Command) string {
+	if len(runs) == 0 {
+		return ""
+	}
+	return runs[0].Dir
 }
 
 // requireBoundReceipt asserts no patch was fabricated and the receipt binds
-// the group, both heads, the run capture, and the command.
+// the group, the reviewed head and its content tree, the run capture, and
+// the command.
 func requireBoundReceipt(t *testing.T, dir, command string) {
 	t.Helper()
 	if _, err := os.Stat(filepath.Join(dir, "patch.json")); !os.IsNotExist(err) {
@@ -114,7 +155,7 @@ func requireBoundReceipt(t *testing.T, dir, command string) {
 		t.Fatalf("receipt found=%v ref=%v", found, ref)
 	}
 	if !receipt.Passed || receipt.Exit != 0 || receipt.Group != "group-a1" ||
-		receipt.ReviewedHead != groupHead || receipt.ExecutionHead != groupHead ||
+		receipt.ReviewedHead != groupHead || receipt.Tree != groupTree ||
 		receipt.Command != command || receipt.Run != "7" || receipt.InputsSHA256 == "" {
 		t.Fatalf("receipt = %+v", receipt)
 	}
@@ -168,31 +209,31 @@ func TestGroupValidationFailuresStayVisible(t *testing.T) {
 	}{
 		{
 			name: "nonzero exit records a failed receipt", group: "group-a1", command: "go test ./...",
-			cmdr: &groupCommander{head: groupHead, out: "FAIL", exit: 1},
+			cmdr: &groupCommander{out: "FAIL", exit: 1},
 		},
 		{
 			name: "timed out records a failed receipt", group: "group-a1", command: "go test ./...",
-			cmdr: &groupCommander{head: groupHead, out: "partial", exit: 137, timed: true},
+			cmdr: &groupCommander{out: "partial", exit: 137, timed: true},
 		},
 		{
-			name: "unreadable head refuses", group: "group-a1", command: "true",
-			cmdr: &groupCommander{headErr: true}, wantCode: "verify-failed",
+			name: "reviewed head not in the local repository refuses", group: "group-a1", command: "true",
+			cmdr: &groupCommander{missing: true}, wantCode: "head-mismatch",
 		},
 		{
-			name: "checked-out head is not the reviewed head", group: "group-a1", command: "true",
-			cmdr: &groupCommander{head: strings.Repeat("9", 40)}, wantCode: "head-mismatch",
+			name: "checked-out content is not the reviewed commit's", group: "group-a1", command: "true",
+			cmdr: &groupCommander{worktree: strings.Repeat("9", 40)}, wantCode: "head-mismatch",
 		},
 		{
 			name: "unknown group refuses", group: "group-zzz", command: "true",
-			cmdr: &groupCommander{head: groupHead}, wantCode: "unknown-group",
+			cmdr: &groupCommander{}, wantCode: "unknown-group",
 		},
 		{
 			name: "command without group refuses", group: "", command: "true",
-			cmdr: &groupCommander{head: groupHead}, wantCode: "bad-group-validation",
+			cmdr: &groupCommander{}, wantCode: "bad-group-validation",
 		},
 		{
 			name: "group without command refuses", group: "group-a1", command: "",
-			cmdr: &groupCommander{head: groupHead}, wantCode: "bad-group-validation",
+			cmdr: &groupCommander{}, wantCode: "bad-group-validation",
 		},
 	}
 	for _, tt := range tests {
@@ -221,7 +262,7 @@ func TestGroupValidationRejectsStaleCapture(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, "run.json"), tampered, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	cmdr := &groupCommander{head: groupHead}
+	cmdr := &groupCommander{}
 	_, ref := verifycore.Run(context.Background(), groupRequest(root, "group-a1", "true", cmdr))
 	if ref == nil || ref.Code != "controls-stale" {
 		t.Fatalf("ref = %v, want controls-stale", ref)
@@ -274,7 +315,7 @@ func rewriteCapture(dir string) error {
 func TestGroupValidationRejectsCaptureMovedDuringCommand(t *testing.T) {
 	root := groupBundle(t)
 	dir := filepath.Join(root, ".verdict", "state", "7")
-	cmdr := &mutatingCommander{head: groupHead, out: "ok\n", dir: dir}
+	cmdr := &mutatingCommander{out: "ok\n", dir: dir}
 	resp, ref := verifycore.Run(context.Background(), groupRequest(root, "group-a1", "true", cmdr))
 	if ref != nil {
 		t.Fatalf("capture move should be recorded evidence, not a pre-execution refusal: %v", ref)
@@ -303,7 +344,7 @@ func TestDeepGapsReadsReceiptsWithoutExecuting(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("VerifyRunState: %v", ref)
 	}
-	cmdr := &groupCommander{head: groupHead, out: "ok\n"}
+	cmdr := &groupCommander{out: "ok\n"}
 	requireSingleGap(t, verifycore.DeepGaps(rs, dir, groupHead, root), "deep validation pending")
 	if _, r2 := verifycore.Run(context.Background(), groupRequest(root, "group-a1", "true", cmdr)); r2 != nil {
 		t.Fatalf("Run: %v", r2)
@@ -312,6 +353,40 @@ func TestDeepGapsReadsReceiptsWithoutExecuting(t *testing.T) {
 		t.Fatalf("current receipt still reported: %v", gaps)
 	}
 	requireSingleGap(t, verifycore.DeepGaps(rs, dir, strings.Repeat("9", 40), root), "deep validation stale")
+
+	// A receipt that still says passed after its evidence stopped saying so
+	// is a gap, never a pass.
+	path := filepath.Join(dir, "validation-group-a1.json")
+	current, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{`"timed_out": true`, `"exit": 1`, `"passed": false`, `"tree": ""`} {
+		rewriteReceipt(t, path, current, field)
+		requireSingleGap(t, verifycore.DeepGaps(rs, dir, groupHead, root), "deep validation contradictory")
+	}
+}
+
+// rewriteReceipt writes raw back to path with the one field the setting
+// names replaced.
+func rewriteReceipt(t *testing.T, path string, raw []byte, setting string) {
+	t.Helper()
+	var doc map[string]any
+	if err := json.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	var one map[string]any
+	if err := json.Unmarshal([]byte("{"+setting+"}"), &one); err != nil {
+		t.Fatal(err)
+	}
+	maps.Copy(doc, one)
+	next, err := json.MarshalIndent(doc, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, next, 0o600); err != nil {
+		t.Fatal(err)
+	}
 }
 
 // requireSingleGap asserts exactly one gap line carrying the state token.

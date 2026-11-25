@@ -69,7 +69,7 @@ cat > "$LB/review.json" <<EOF
 "triage":[{"sig":"$SIG","status":"wont-fix","rationale":"By design: the wording matches the pinned style guide verbatim"}]}
 EOF
 cat > "$LB/verification.json" <<EOF
-[{"sig":"$SIG","verdict":"VERIFIED","verifyCmd":"true","resultHead":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]
+[{"sig":"$SIG","verdict":"VERIFIED","verifyCmd":"true"}]
 EOF
 run_review record acme/app local-schematest --json
 if [ "$EVAL_STATUS" -eq 0 ] \
@@ -130,14 +130,6 @@ fi
 check "S3b gate envelope" "$ENV" "$EVAL_OUT"
 jq '.data' <"$EVAL_OUT" > "$DATA" 2>/dev/null || echo "null" > "$DATA"
 check "S3b gate data profile" "$ENV#/\$defs/reportGate" "$DATA"
-run_review report acme/app "$PR" --check critical --live skip --json
-jq '.data' <"$EVAL_OUT" > "$EVAL_SANDBOX/s3b-gaterpt.json" 2>/dev/null || echo "null" > "$EVAL_SANDBOX/s3b-gaterpt.json"
-if [ "$(jq -r '.gate.dimensions[0].id' <"$EVAL_SANDBOX/s3b-gaterpt.json" 2>/dev/null)" = "findings" ]; then
-  good "S3b report --check data carries the gate block"
-else
-  bad "S3b report --check data.gate: $(jq -c '.gate // "absent"' <"$EVAL_SANDBOX/s3b-gaterpt.json" 2>/dev/null)"
-fi
-check "S3b report gating profile with data.gate" "$ENV#/\$defs/reportData" "$EVAL_SANDBOX/s3b-gaterpt.json"
 jq -n '{"passed": true, "dimensions": [{"id": "findings", "status": "clean", "detail": "d", "count": 0}]}' \
   > "$EVAL_SANDBOX/s3b-badstatus.json"
 must_fail "S3b gate off-enum status" "$ENV#/\$defs/reportGate" "$EVAL_SANDBOX/s3b-badstatus.json" "not one of"
@@ -150,14 +142,11 @@ if [ "$EVAL_STATUS" -eq 0 ] && [ "$(jq -r 'has("gate")' <<<"$(jq -c '.data' <"$E
 else
   bad "S3b default report data keys: $(jq -c '.data | keys' <"$EVAL_OUT" 2>/dev/null)"
 fi
-run_review report acme/app "$PR" --check critical --live skip --json
-if [ "$EVAL_STATUS" -eq 1 ] \
-  && jq -e '.data.gate.passed == false' <"$EVAL_OUT" >/dev/null 2>&1 \
-  && jq '.data' <"$EVAL_OUT" > "$DATA"; then
-  good "S3b report --check carries data.gate with passed false"
-  check "S3b report gating data profile" "$ENV#/\$defs/reportData" "$DATA"
+run_review report acme/app "$PR" --check critical --json
+if [ "$EVAL_STATUS" -eq 2 ] && [ -z "$(cat "$EVAL_OUT")" ]; then
+  good "S3b report --check is a usage error with no envelope (gate is the only gating verb)"
 else
-  bad "S3b report --check exits $EVAL_STATUS: $(jq -c '.data.gate // "absent"' <"$EVAL_OUT" 2>/dev/null)"
+  bad "S3b report --check exits $EVAL_STATUS: $(head -c 200 "$EVAL_OUT")"
 fi
 
 PR=4951

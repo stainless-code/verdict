@@ -90,7 +90,7 @@ func recordReproductionPhase(t *testing.T, req *Request, bundle string) {
 	if ref != nil {
 		t.Fatal(ref)
 	}
-	_, err = recordcore.Merge(req.Runtime, &recordcore.MergeParams{
+	_, err = recordcore.Merge(t.Context(), req.Runtime, &recordcore.MergeParams{
 		Dir: bundle, Prov: "github", HeadFull: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Review: review,
 		ReviewFile: filepath.Join(bundle, "review.json"), FindingsFile: filepath.Join(bundle, "findings.json"), Root: ".", RepoRoot: ".", Repo: "acme/app", Pr: "7", Cmd: "record", Effective: core.Defaults(), Controls: snap,
 	})

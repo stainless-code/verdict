@@ -4,7 +4,7 @@
   <img src="apps/docs/public/logo.svg" alt="Verdict" height="48" />
 </p>
 
-Verdict splits code review into steps your agent runs on your machine: fetch, review, gate, post. It fetches the change, your agent writes the findings, and `verdict post` submits exactly one review. No remote servers, no accounts, no daemon; `verdict serve` is an opt-in, read-only surface, loopback by default.
+Verdict splits code review into steps your agent runs on your machine: fetch, review, gate, post. It fetches the change, your agent writes the findings, and `verdict post` submits exactly one review. No remote servers, no accounts, no daemon; `verdict serve` is an opt-in surface, loopback by default, that writes locally unless `--read-only`.
 
 - **Evidence-graded findings.** Every finding carries an evidence rung, from `said` to `reproduced`, plus a severity. Unproven claims are labeled, never posted as fact.
 - **A fix prompt, not just a complaint.** Every open, verified, unrefuted `critical` or `important` finding with a structured brief renders a collapsed `Prompt for AI agent` block in the posted body, computed from settled finding data — no extra model call.
@@ -20,7 +20,7 @@ Verdict splits code review into steps your agent runs on your machine: fetch, re
 
 - **Solo developer** — Run `fetch-local` on your working tree or branch for an evidence-graded pre-PR pass with no remote account or subscription.
 - **OSS maintainer** — Triage outside pull requests with `fetch` and `verify --sandbox` so untrusted diffs stay contained while review controls remain base-owned.
-- **Startup team** — Add a deterministic `report --check` merge gate on your own CI runner with no per-seat or per-review meter.
+- **Startup team** — Add a deterministic `gate` check on your own CI runner with no per-seat or per-review meter.
 - **Agent-heavy workflow** — Put a bounded self-review loop and `--json` envelopes between fast agent edits and `post` so unproven findings never ship as fact.
 - **Regulated environment** — Keep tokens, diffs, and receipts local on your machine or runner, run a local model when code cannot leave the host, and keep append-only findings history.
 - **DevEx / platform team** — Standardize review policy with pinned lens packs, typed `.verdict/config.json`, SARIF exports, and `report --cost` rollups across repositories.
@@ -171,7 +171,7 @@ On the other three hosts, `record`, `report`, `show`, `next`, `triage`, and `thr
 
 ## Security
 
-- **The skill runs with your privileges.** `verify` runs the agent's `verifyCmd` through `bash -c` with a 300 second limit. A pre-exec gate refuses destructive, networked, credential-reading, and repo-escaping commands before anything spawns, and refuses a command word built from a variable (`E=curl; $E -o ./f http://host/x`) as `verify-indirection`. The gate is a tripwire, not a sandbox. For a hostile PR, `verify --sandbox` enforces the sandbox: `bubblewrap` on Linux (mounts, own PID namespace, no network) and `sandbox-exec` on macOS (no network); elsewhere follow the [recipe](docs/manual.md#hostile-pr-sandbox-recipe).
+- **The skill runs with your privileges.** `verify` runs the agent's `verifyCmd` through `bash -c` with a 300 second limit. A pre-exec gate refuses destructive, networked, credential-reading, and repo-escaping commands before anything spawns, and refuses a command word built from a variable (`E=curl; $E -o ./f http://host/x`) as `verify-indirection`. The gate is a tripwire, not a sandbox. For a hostile PR, `verify --sandbox` enforces the sandbox: `bubblewrap` on Linux (mounts, own PID namespace, no network) and `sandbox-exec` on macOS (no network or keychain, writes only to the checkout and a private temp dir, credential paths denied); elsewhere follow the [recipe](docs/manual.md#hostile-pr-sandbox-recipe).
 - **Review controls come from the base commit.** A PR cannot edit the panel, budget, or knowledge-base rules it is judged by. See [Review controls are base-owned](docs/manual.md#review-controls-are-base-owned).
 - **Diffs and comments are untrusted input.** The prompts treat them as evidence, never as instructions.
 - **Secrets stay local.** `GH_TOKEN` never leaves your machine, and provider tokens go only to their own hosts. Nothing phones home: no telemetry, no background updater.

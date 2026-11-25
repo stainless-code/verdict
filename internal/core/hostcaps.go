@@ -1,5 +1,7 @@
 package core
 
+import "slices"
+
 // HostCapabilities declares what verdict can do through one code host's own
 // CLI or API. It is the single source for the fetch envelope's
 // data.capabilities object and for the gates that depend on a host feature, so
@@ -23,6 +25,18 @@ type HostCapabilities struct {
 	// ThreadReply is drain's host reply call. It is internal to post mode in
 	// v1, so it is not published in data.capabilities and adds no fetch golden.
 	ThreadReply bool
+	// Ready and PRWait say the host has live reads behind `ready` and
+	// `pr-wait`. They are internal like ThreadReply, not published in
+	// data.capabilities. This row is the one source for the advertised
+	// providers of both verbs (CLI help, MCP schema, refusals); a test pins the
+	// implementations to it, so a host cannot be advertised before it is built.
+	Ready  bool
+	PRWait bool
+	// BranchLookup says the host CLI can list the open pull request whose head
+	// is a branch (`gh pr list --head`, `glab mr list --source-branch`), which
+	// target inference asks only for verbs that already talk to the host.
+	// Internal like Ready and PRWait; a test pins the lookup argv to it.
+	BranchLookup bool
 	// ReviewVerdicts is the compatibility sum of Approve and RequestChanges.
 	// CapabilitiesFor derives it, so no table row can claim a verdict pair it
 	// does not carry; new readers branch on the two split flags instead.
@@ -83,33 +97,44 @@ type CapabilityGap struct {
 // hostCapabilities lists every supported host. Reading threads is part of
 // fetch, so fetch is true everywhere; posting — and with it inline anchors —
 // lands on GitHub (one atomic review), GitLab (one discussion per finding, then
-// the summary note, then the approval last), and Forgejo (one atomic review
-// over its REST API, because it ships no CLI). GitHub and Forgejo carry both
-// binding verdicts; GitLab carries the approval only, because it has no
-// request-changes review event, so request_changes reads false there and the
-// submit path posts the findings plus a warning instead of inventing a verdict
-// the host cannot record. review_verdicts is derived from that pair by
+// the summary note, then the approval last), Forgejo (one atomic review
+// over its REST API, because it ships no CLI), Bitbucket Cloud (one
+// comment per finding, the summary comment, then the approval last, over
+// its REST API for the same reason), and Azure DevOps (one anchored thread per
+// finding, then the general thread carrying the body, over `az rest`).
+// GitHub and Forgejo carry both binding verdicts; GitLab and Bitbucket carry
+// the approval only, because they have no request-changes review event, so
+// request_changes reads false there and the submit path posts the findings plus
+// a warning instead of inventing a verdict the host cannot record. Azure posts
+// neither: it records a verdict as a reviewer vote keyed by an identity verdict
+// does not resolve, so approve and request_changes both read false and the
+// submit path comments instead. review_verdicts is derived from that pair by
 // CapabilitiesFor, never declared here. Thread resolution reads true on GitHub
-// (resolveReviewThread) and GitLab (the discussion resolved flag); Forgejo has
-// no documented resolve endpoint, so it reads false there and on every
-// fetch-only host.
+// (resolveReviewThread) and GitLab (the discussion resolved flag); Forgejo,
+// Bitbucket, and Azure have no wired resolve endpoint, so it reads false there
+// and on every fetch-only host.
 var hostCapabilities = map[string]HostCapabilities{
 	providerGitHub: {
 		Provider: providerGitHub, Fetch: true, Post: true,
 		InlineAnchors: true, Approve: true, RequestChanges: true,
-		ThreadResolution: true, ThreadReply: true,
+		ThreadResolution: true, ThreadReply: true, Ready: true, PRWait: true, BranchLookup: true,
 	},
 	providerGitLab: {
 		Provider: providerGitLab, Fetch: true, Post: true, InlineAnchors: true,
-		Approve: true, ThreadResolution: true, ThreadReply: true,
+		Approve: true, ThreadResolution: true, ThreadReply: true, Ready: true, PRWait: true, BranchLookup: true,
 	},
 	providerGitCafe: {Provider: providerGitCafe, Fetch: true},
 	providerForgejo: {
 		Provider: providerForgejo, Fetch: true, Post: true,
 		InlineAnchors: true, Approve: true, RequestChanges: true,
 	},
-	providerBitbucket: {Provider: providerBitbucket, Fetch: true},
-	providerAzure:     {Provider: providerAzure, Fetch: true},
+	providerBitbucket: {
+		Provider: providerBitbucket, Fetch: true, Post: true, InlineAnchors: true,
+		Approve: true,
+	},
+	providerAzure: {
+		Provider: providerAzure, Fetch: true, Post: true, InlineAnchors: true,
+	},
 }
 
 // CapabilitiesFor returns the declared capabilities for provider. Unknown
@@ -123,6 +148,34 @@ func CapabilitiesFor(provider string) HostCapabilities {
 	}
 	caps.ReviewVerdicts = caps.Approve && caps.RequestChanges
 	return caps
+}
+
+// ReadyProviders lists the hosts `ready` has live reads for, sorted.
+func ReadyProviders() []string {
+	return providersWith(func(c HostCapabilities) bool { return c.Ready })
+}
+
+// PRWaitProviders lists the hosts `pr-wait` has live reads for, sorted. Every
+// surface that advertises the verb's providers reads this list.
+func PRWaitProviders() []string {
+	return providersWith(func(c HostCapabilities) bool { return c.PRWait })
+}
+
+// BranchLookupProviders lists the hosts whose CLI can name the open pull
+// request for a branch, sorted.
+func BranchLookupProviders() []string {
+	return providersWith(func(c HostCapabilities) bool { return c.BranchLookup })
+}
+
+func providersWith(has func(HostCapabilities) bool) []string {
+	names := make([]string, 0, len(hostCapabilities))
+	for name, caps := range hostCapabilities {
+		if has(caps) {
+			names = append(names, name)
+		}
+	}
+	slices.Sort(names)
+	return names
 }
 
 // Unsupported lists every absent capability with its reason, in capability

@@ -29,6 +29,7 @@ type scriptCommander struct {
 	calls   [][]string
 	stdin   []string
 	configs []string
+	bodies  []string
 }
 
 type scriptResult struct {
@@ -38,16 +39,24 @@ type scriptResult struct {
 }
 
 // configPlaceholder stands in for the one curl config path a write stages under
-// a fresh private temp dir, whose name changes every call.
-const configPlaceholder = "CONFIG"
+// a fresh private temp dir, whose name changes every call. bodyPlaceholder does
+// the same for the request body file an `az rest` write stages.
+const (
+	configPlaceholder = "CONFIG"
+	bodyPlaceholder   = "BODY"
+)
 
 // routeKey renders one argv for the canned lookup, replacing a `--config`
-// file operand with [configPlaceholder].
+// credential file operand with [configPlaceholder] and a `--body @file` operand
+// with [bodyPlaceholder].
 func routeKey(argv []string) string {
 	out := append([]string{}, argv...)
 	for i := 0; i+1 < len(out); i++ {
-		if out[i] == "--config" && out[i+1] != "-" {
+		switch {
+		case out[i] == "--config" && out[i+1] != "-":
 			out[i+1] = configPlaceholder
+		case out[i] == "--body" && strings.HasPrefix(out[i+1], "@") && out[i+1] != "@-":
+			out[i+1] = "@" + bodyPlaceholder
 		}
 	}
 	return strings.Join(out, "\x00")
@@ -65,6 +74,7 @@ func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result
 	}
 	s.stdin = append(s.stdin, stdin)
 	s.configs = append(s.configs, s.readConfig(cmd.Argv))
+	s.bodies = append(s.bodies, s.readBody(cmd.Argv))
 	key := routeKey(cmd.Argv)
 	res, ok := s.result(key)
 	if !ok {
@@ -89,6 +99,24 @@ func (s *scriptCommander) readConfig(argv []string) string {
 		raw, err := os.ReadFile(argv[i+1])
 		if err != nil {
 			s.t.Errorf("read curl config: %v", err)
+			return ""
+		}
+		return string(raw)
+	}
+	return ""
+}
+
+// readBody reads the request body file a call names, so a test can assert its
+// content while the call is still running.
+func (s *scriptCommander) readBody(argv []string) string {
+	s.t.Helper()
+	for i := 0; i+1 < len(argv); i++ {
+		if argv[i] != "--body" || !strings.HasPrefix(argv[i+1], "@") {
+			continue
+		}
+		raw, err := os.ReadFile(strings.TrimPrefix(argv[i+1], "@"))
+		if err != nil {
+			s.t.Errorf("read request body: %v", err)
 			return ""
 		}
 		return string(raw)
@@ -576,7 +604,7 @@ func postBundle(t *testing.T, review string) {
 	dir := ".verdict/state/7"
 	if err := writeTestFile(dir+"/PR.json",
 		`{"state":"OPEN","headRefOid":"`+head+`","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",`+
-			`"author":{"login":"someone-else"}}`); err != nil {
+			`"author":{"login":"someone-else"}`+`,"url":"https://github.com/acme/app/pull/7"}`); err != nil {
 		t.Fatal(err)
 	}
 	if err := writeTestFile(dir+"/full.diff",
@@ -822,6 +850,102 @@ func TestRunSubmit(t *testing.T) {
 	}
 	if resp.Data.Review == nil {
 		t.Errorf("data misses the accepted review")
+	}
+}
+
+// postedReviews counts the review POSTs the commander saw.
+func postedReviews(cmdr *scriptCommander) int {
+	n := 0
+	for _, c := range cmdr.calls {
+		if strings.Contains(strings.Join(c, " "), "--method POST") {
+			n++
+		}
+	}
+	return n
+}
+
+// pinnedPost runs one real post of the postReview bundle, with review text
+// optionally edited, pinned to hash, and counts the host POSTs it made.
+func pinnedPost(t *testing.T, review, hash string) (*core.RefusalError, int) {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	postBundle(t, review)
+	cmdr := postCommander(t)
+	var warnings, human []string
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	req.PinnedContentHash = hash
+	_, ref := Run(context.Background(), req)
+	return ref, postedReviews(cmdr)
+}
+
+// previewedHash is the dry-run content digest of the postReview bundle.
+func previewedHash(t *testing.T) string {
+	t.Helper()
+	t.Chdir(t.TempDir())
+	postBundle(t, postReview)
+	var warnings, human []string
+	dry := postTestReq(postCommander(t), Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true}, &warnings, &human)
+	preview, ref := Run(context.Background(), dry)
+	if ref != nil || preview.Data.RenderedHash == "" {
+		t.Fatalf("dry-run = %+v, %v", preview, ref)
+	}
+	return preview.Data.RenderedHash
+}
+
+// TestPinnedDigestIsTheDigestOfTheBytesTheHostReceived proves the preview pins
+// what the host is handed: the digest the dry run reports equals the digest of
+// the exact review POST body the commander received, marker and all.
+func TestPinnedDigestIsTheDigestOfTheBytesTheHostReceived(t *testing.T) {
+	t.Chdir(t.TempDir())
+	postBundle(t, postReview)
+	var warnings, human []string
+	dry := postTestReq(postCommander(t), Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json", DryRun: true}, &warnings, &human)
+	preview, ref := Run(context.Background(), dry)
+	if ref != nil {
+		t.Fatalf("dry-run = %v", ref)
+	}
+	cmdr := postCommander(t)
+	req := postTestReq(cmdr, Flags{Approve: "false", ReviewFile: ".verdict/state/7/review.json"}, &warnings, &human)
+	if _, ref := Run(context.Background(), req); ref != nil {
+		t.Fatalf("post = %v", ref)
+	}
+	var posted []string
+	for _, in := range cmdr.stdin {
+		if strings.Contains(in, `"event"`) {
+			posted = append(posted, strings.TrimSuffix(in, "\n"))
+		}
+	}
+	if len(posted) != 1 {
+		t.Fatalf("the host received %d review bodies, want 1", len(posted))
+	}
+	if got := payloadsDigest(posted); got != preview.Data.RenderedHash {
+		t.Errorf("digest of the bytes the host received = %q, preview pinned %q", got, preview.Data.RenderedHash)
+	}
+}
+
+// TestRunSubmitPostsThePinnedContent proves a real post renders to the same
+// digest the dry-run did, so pinning the preview's hash does not refuse it.
+func TestRunSubmitPostsThePinnedContent(t *testing.T) {
+	ref, posted := pinnedPost(t, postReview, previewedHash(t))
+	if ref != nil || posted != 1 {
+		t.Fatalf("pinned post = %v, host reviews = %d, want a post of 1", ref, posted)
+	}
+}
+
+// TestRunSubmitRefusesChangedContent proves the pin binds the post: the review
+// text changed after the preview read it, so the post refuses
+// post-content-changed before any host call and leaves no receipt.
+func TestRunSubmitRefusesChangedContent(t *testing.T) {
+	hash := previewedHash(t)
+	ref, posted := pinnedPost(t, strings.Replace(postReview, "Looks good", "Looks bad", 1), hash)
+	if ref == nil || ref.Code != CodePostContentChanged {
+		t.Fatalf("a post of changed content = %v, want %s", ref, CodePostContentChanged)
+	}
+	if posted != 0 {
+		t.Errorf("changed-content reviews posted = %d, want 0", posted)
+	}
+	if _, err := os.Stat(".verdict/state/7/post.json"); err == nil {
+		t.Error("a refused post wrote a post receipt")
 	}
 }
 

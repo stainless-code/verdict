@@ -21,7 +21,7 @@ func TestArityMatrix(t *testing.T) {
 		"triage", "report", "next", "show", "verify", "calibrate",
 		"ready", "pr-wait", "gate",
 	})
-	checkBareVerbs(t, []string{"check-tree", "doctor", "learn", "init", "skill", "upgrade", "uninstall", "serve"})
+	checkBareVerbs(t, []string{"check-tree", "doctor", "learn", "init", "skill", "upgrade", "uninstall", "serve", "acp", "lsp"})
 	checkTrendArity(t)
 	checkUnknownArity(t)
 }
@@ -87,9 +87,10 @@ func TestSplitCommandRest(t *testing.T) {
 	checkSplit(t, nil, "", "", "", 0)
 }
 
-// TestSplitCommandOptionalVerb pins the one verb with an optional positional:
-// `demo [<url>]` carries its URL as a rest argument, never as the repo/pr pair,
-// so an absent URL stays distinguishable from a present one.
+// TestSplitCommandOptionalVerb pins the verbs with one optional positional:
+// `demo [<url>]` and `dashboard [<owner/repo>]` carry it as a rest argument,
+// never as the repo/pr pair, so an absent one stays distinguishable from a
+// present one and the verb parses its own flags around it.
 func TestSplitCommandOptionalVerb(t *testing.T) {
 	t.Parallel()
 	for _, tc := range []struct {
@@ -101,11 +102,14 @@ func TestSplitCommandOptionalVerb(t *testing.T) {
 			rest: []string{"https://github.com/acme/app/pull/7", "--json"},
 		},
 		{args: []string{"demo"}, rest: []string{}},
+		{args: []string{"dashboard", "acme/app", "--once"}, rest: []string{"acme/app", "--once"}},
+		{args: []string{"dashboard", "--root", "x"}, rest: []string{"--root", "x"}},
+		{args: []string{"dashboard"}, rest: []string{}},
 	} {
 		cmd, repo, pr, rest := splitCommand(tc.args)
-		if cmd != "demo" || repo != "" || pr != "" || !slices.Equal(rest, tc.rest) {
-			t.Errorf("split %v = %q %q %q %q, want demo with rest %q",
-				tc.args, cmd, repo, pr, rest, tc.rest)
+		if cmd != tc.args[0] || repo != "" || pr != "" || !slices.Equal(rest, tc.rest) {
+			t.Errorf("split %v = %q %q %q %q, want %s with rest %q",
+				tc.args, cmd, repo, pr, rest, tc.args[0], tc.rest)
 		}
 	}
 }
@@ -182,8 +186,8 @@ func hermeticEnv(t *testing.T) {
 	t.Setenv("XDG_CONFIG_HOME", t.TempDir())
 	t.Setenv("HOME", t.TempDir())
 	for _, k := range []string{
-		"CODEX_HOME", "VERDICT_INSTALL", "NO_COLOR", "REVIEW_OUTPUT_FORMAT", "REVIEW_LAYOUT_COMPACT", "REVIEW_COLOR_MODE",
-		"REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL",
+		"CODEX_HOME", "CLAUDE_CONFIG_DIR", "VERDICT_INSTALL", "NO_COLOR", "REVIEW_OUTPUT_FORMAT", "REVIEW_LAYOUT_COMPACT", "REVIEW_COLOR_MODE",
+		"REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL", "REVIEW_PUBLISH_DIAGRAMS_ANCHORED",
 		"REVIEW_PUBLISH_FOOTER",
 		"REVIEW_PUBLISH_ATTRIBUTION", "REVIEW_PUBLISH_ATTRIBUTION_TEXT",
 		"REVIEW_PUBLISH_COPYRIGHT", "REVIEW_PUBLISH_LOGO", "REVIEW_PUBLISH_LOGO_URL",
@@ -199,19 +203,21 @@ func hermeticEnv(t *testing.T) {
 	}
 }
 
-// TestUsageWinsOverCorruptSettings pins the F11 compound-fault rule: a
-// missing positional prints the full usage block with exit 2 without
-// reading the (corrupt) settings file first, while a complete invocation
-// still fails typed bad-settings.
+// TestUsageWinsOverCorruptSettings pins the F11 compound-fault rule: a missing
+// target is refused as a usage-class failure (exit 2, the target refusal plus
+// the verb's usage line) without a corrupt settings file replacing it, while a
+// complete invocation still fails typed bad-settings.
 func TestUsageWinsOverCorruptSettings(t *testing.T) {
 	hermeticEnv(t)
+	t.Chdir(t.TempDir())
 	writeCorruptSettings(t)
 	code, out, derr := runCapture(t, []string{"report"})
-	if code != cli.ExitUsage {
+	if code != cli.ExitUsage || out != "" {
 		t.Fatalf("missing pr exit = %d, want %d\nstdout: %s\nstderr: %s", code, cli.ExitUsage, out, derr)
 	}
-	if derr != usageText() {
-		t.Fatalf("missing pr stderr is not the usage block:\n%s", derr)
+	assertTargetRefusal(t, derr, "report")
+	if strings.Contains(derr, "settings") {
+		t.Fatalf("a corrupt settings file replaced the target refusal:\n%s", derr)
 	}
 	code, _, derr = runCapture(t, nil)
 	if code != cli.ExitUsage || derr != usageText() {
@@ -250,17 +256,20 @@ func TestServeDispatchShape(t *testing.T) {
 // TestNextCoverageMissingPositionals pins the leading missing-argument error.
 func TestNextCoverageMissingPositionals(t *testing.T) {
 	hermeticEnv(t)
+	t.Chdir(t.TempDir())
 	code, out, derr := runCapture(t, []string{"next", "--coverage"})
-	if code != 2 || out != "" || !strings.HasPrefix(derr, "error: next requires <owner/repo> and <pr|local-name>\n") {
+	if code != 2 || out != "" {
 		t.Fatalf("next missing positionals: exit %d stdout %q stderr %q", code, out, derr)
 	}
+	assertTargetRefusal(t, derr, "next")
 }
 
 func TestHermeticEnvClearsHostInstallPaths(t *testing.T) {
 	t.Setenv("CODEX_HOME", "host-codex")
+	t.Setenv("CLAUDE_CONFIG_DIR", "host-claude")
 	t.Setenv("VERDICT_INSTALL", "host-install")
 	hermeticEnv(t)
-	for _, key := range []string{"CODEX_HOME", "VERDICT_INSTALL"} {
+	for _, key := range []string{"CODEX_HOME", "CLAUDE_CONFIG_DIR", "VERDICT_INSTALL"} {
 		if got := os.Getenv(key); got != "" {
 			t.Errorf("%s = %q, want empty", key, got)
 		}

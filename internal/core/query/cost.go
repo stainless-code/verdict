@@ -35,7 +35,7 @@ type costBucket struct {
 // or model. A bad store invalidates aggregate numbers instead of making a
 // smaller sum look complete.
 func (l *Layer) Cost(ctx context.Context, by string) (*View, error) {
-	if !slices.Contains([]string{"repo", "week", keyModel}, by) {
+	if !slices.Contains(costDimensions, by) {
 		return nil, &core.RefusalError{Code: "bad-by", Message: fmt.Sprintf(
 			"serve cost by %q is unsupported (want repo, week, or model)", by)}
 	}

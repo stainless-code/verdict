@@ -4,10 +4,10 @@ package reviewdoc
 
 import (
 	"encoding/json"
-	"os"
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 // Prepare rewrites one checked review document into the internal merge shape:
@@ -117,7 +117,7 @@ func rawJSON(item any) ([]byte, bool) {
 // returns every check that withholds approval, in stored order. A missing or
 // unreadable record has no new evidence to judge.
 func SpecFailuresOfBundle(dir string) []core.SpecFailure {
-	raw, err := os.ReadFile(dir + readcommonRecordSuffix)
+	raw, err := noblock.ReadFile(dir + readcommonRecordSuffix)
 	if err != nil {
 		return nil
 	}

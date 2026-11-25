@@ -47,10 +47,9 @@ func FuzzServeFrames(f *testing.F) {
 		t.Setenv("PATH", "")
 		cfg := testConfig()
 		cfg.Commanders = map[string]core.Commander{}
-		for _, tl := range allTools(true, true) {
+		for _, tl := range allTools(Posture(true)) {
 			cfg.Commanders[tl.name] = inertCommander{}
 		}
-		cfg.Operator = true
 		var out bytes.Buffer
 		if err := New(&cfg).Serve(context.Background(), bytes.NewReader(append(input, '\n')), &out); err != nil {
 			t.Fatalf("Serve: %v", err)

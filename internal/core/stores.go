@@ -41,6 +41,45 @@ type Review struct { //nolint:govet // field order is the published property ord
 	Suppressed      []Suppression       `json:"suppressed,omitempty"`
 	Risk            *RiskClaim          `anyOf:"null"                      json:"risk,omitempty"      optional:"true"`
 	SecuritySummary *string             `json:"security_summary,omitempty"`
+	Diagram         *ReviewDiagram      `anyOf:"null"                      json:"diagram,omitempty"   optional:"true"`
+}
+
+// ReviewDiagram is the optional behavioral diagram a review supplies: nodes
+// and edges that each cite the NEW-side diff line (added or context) they
+// stand for. There is no raw mermaid input — verdict checks every quote
+// against the pinned diff and renders the block itself, dropping what does
+// not anchor. The check proves each cited line exists; the relation an edge
+// draws remains the agent's claim. `type` is the only supported vocabulary:
+// a sequence of steps, a state lifecycle, or a flow of control.
+//
+// The published schema fixes the shape — field types, required keys, closed
+// objects, and the spec_checks evidence — but not the values the runtime
+// tolerates: an out-of-scope type, an empty node list, or an over-long title,
+// label, or id is a diagram-invalid warning with a documented outcome (the
+// block omitted, the value truncated, the element dropped), never a refusal,
+// so a schema-validating client accepts every review the CLI accepts.
+type ReviewDiagram struct {
+	Type  string        `json:"type"`
+	Title string        `json:"title,omitempty"`
+	Nodes []DiagramNode `json:"nodes"`
+	Edges []DiagramEdge `json:"edges,omitempty"`
+}
+
+// DiagramNode is one actor, state, or step, anchored to the diff line it
+// stands for. Evidence is the spec_checks evidence shape, byte for byte, so
+// one quote vocabulary covers every element of review.json an agent anchors.
+type DiagramNode struct {
+	ID       string       `json:"id"`
+	Label    string       `json:"label"`
+	Evidence SpecEvidence `json:"evidence"`
+}
+
+// DiagramEdge is one transition between two nodes, anchored to its own line.
+type DiagramEdge struct {
+	From     string       `json:"from"`
+	To       string       `json:"to"`
+	Label    string       `json:"label,omitempty"`
+	Evidence SpecEvidence `json:"evidence"`
 }
 
 // Reproduction names a bundle-relative source and its rerun command.
@@ -58,6 +97,7 @@ type Finding struct {
 	Path       string    `json:"path"`
 	StartLine  *int      `json:"start_line,omitempty"`
 	Suggestion *string   `json:"suggestion,omitempty"`
+	Lens       string    `json:"lens,omitempty"                                                          maxLength:"64"            pattern:"^[a-z0-9][a-z0-9-]{0,63}$"` //nolint:revive // the wire contract needs the full lens grammar on one tag line
 	Brief      *Brief    `anyOf:"null"                                                                   json:"brief,omitempty"`
 	Sources    *[]string `json:"sources,omitempty"`
 	KB         *[]string `json:"kb,omitempty"`
@@ -126,7 +166,7 @@ type CoverageClaim struct {
 // TriageClaim is one status claim in review.json input.
 type TriageClaim struct {
 	Sig       string `json:"sig"`
-	Status    string `enum:"open|addressed|wont-fix|false-positive|deferred" json:"status"`
+	Status    string `enum:"open|wont-fix|false-positive|deferred" json:"status"`
 	Rationale string `json:"rationale"`
 }
 
@@ -148,6 +188,7 @@ type FindingEntry struct { //nolint:govet // field order is the published proper
 	Anchored         any            `json:"anchored,omitempty"                      type:"boolean|string|null"`
 	Body             string         `json:"body,omitempty"`
 	Suggestion       *string        `json:"suggestion,omitempty"`
+	Lens             string         `json:"lens,omitempty"                          maxLength:"64"                     pattern:"^[a-z0-9][a-z0-9-]{0,63}$"` //nolint:revive // the wire contract needs the full lens grammar on one tag line
 	Brief            *Brief         `anyOf:"null"                                   json:"brief,omitempty"`
 	Sources          *[]string      `json:"sources,omitempty"`
 	KB               *[]string      `json:"kb,omitempty"`
@@ -356,9 +397,15 @@ func (e *FindingEntry) Wire() *jq.Obj {
 	return o
 }
 
-// wireTail appends the lifecycle stamps, history, and unknown keys: the
-// section kb rides here (after rationale), then triage attribution,
-// history, then Extra in file order.
+// wireLens writes the optional lens provenance: absent reads as no key at
+// all, never a null, so a store written before lens provenance existed keeps
+// its bytes.
+func wireLens(e *FindingEntry, o *jq.Obj) {
+	if e.Lens != "" {
+		o.Set("lens", e.Lens)
+	}
+}
+
 // verificationWire renders the panel verification block as jq values, the shape
 // every stored entry and every panel merge already use: approval reads the
 // quote standing off this object, and a panel merge keeps the standing it
@@ -390,9 +437,13 @@ func panelEntryWire(v *Verification) *jq.Obj {
 	return o
 }
 
+// wireTail appends the lifecycle stamps, history, and unknown keys: the
+// section kb rides here (after rationale), then triage attribution,
+// history, then Extra in file order.
 func wireTail(e *FindingEntry, o *jq.Obj) {
 	wireVerificationAndTriage(e, o)
 	wireProvenance(e, o)
+	wireLens(e, o)
 	o.Set("history", historyWire(e.History))
 	wireExtra(e, o)
 }
@@ -757,7 +808,7 @@ var findingKeys = map[string]bool{
 	"sig": true, "sig_version": true, "kind": true, "path": true,
 	"heading": true, "line": true, "side": true, keyAnchored: true,
 	keyBody: true, "suggestion": true, "kb": true, "sources": true, "inBounds": true,
-	"quote": true, "finder_confidence": true, "verification": true,
+	"lens": true, "quote": true, "finder_confidence": true, "verification": true,
 	"rigor": true, "rigor_source": true, "severity": true, keyCategory: true, keyStatus: true, "firstSeen": true,
 	"lastSeen": true, "rationale": true, "triagedAt": true, "triagedBy": true,
 	"source": true, "tool": true, "rule_id": true, "fingerprint": true,
@@ -805,6 +856,7 @@ func entryOptions(e *FindingEntry, obj *jq.Obj) {
 	e.Severity, _ = obj.Get("severity")
 	e.Category, _ = obj.Get(keyCategory)
 	e.CategorySet = obj.Has(keyCategory)
+	e.Lens, _ = fieldString(obj, "lens")
 	e.Quote, _ = fieldString(obj, "quote")
 	e.FinderConfidence, _ = fieldString(obj, "finder_confidence")
 	e.Verification = verifyOf(obj)

@@ -14,19 +14,24 @@ func TestCapabilityTable(t *testing.T) {
 		"github": {
 			Provider: "github", Fetch: true, Post: true, InlineAnchors: true,
 			Approve: true, RequestChanges: true, ReviewVerdicts: true,
-			ThreadResolution: true, ThreadReply: true,
+			ThreadResolution: true, ThreadReply: true, Ready: true, PRWait: true, BranchLookup: true,
 		},
 		"gitlab": {
 			Provider: "gitlab", Fetch: true, Post: true, InlineAnchors: true,
-			Approve: true, ThreadResolution: true, ThreadReply: true,
+			Approve: true, ThreadResolution: true, ThreadReply: true, Ready: true, PRWait: true, BranchLookup: true,
 		},
 		"gitcafe": {Provider: "gitcafe", Fetch: true},
 		"forgejo": {
 			Provider: "forgejo", Fetch: true, Post: true, InlineAnchors: true,
 			Approve: true, RequestChanges: true, ReviewVerdicts: true,
 		},
-		"bitbucket": {Provider: "bitbucket", Fetch: true},
-		"azure":     {Provider: "azure", Fetch: true},
+		"bitbucket": {
+			Provider: "bitbucket", Fetch: true, Post: true, InlineAnchors: true,
+			Approve: true,
+		},
+		"azure": {
+			Provider: "azure", Fetch: true, Post: true, InlineAnchors: true,
+		},
 	}
 	got := make([]string, 0, len(hostCapabilities))
 	for provider := range hostCapabilities {
@@ -152,5 +157,27 @@ func capabilityFlags(caps HostCapabilities) []struct {
 		{name: CapabilityApprove, on: caps.Approve},
 		{name: CapabilityRequestChanges, on: caps.RequestChanges},
 		{name: CapabilityThreadResolution, on: caps.ThreadResolution},
+	}
+}
+
+// TestBranchLookupProviders pins the hosts whose CLI can name a branch's open
+// pull request: a host joins only by flipping its row (and the target package
+// pins an argv to every listed host).
+func TestBranchLookupProviders(t *testing.T) {
+	t.Parallel()
+	if got := BranchLookupProviders(); !slices.Equal(got, []string{"github", "gitlab"}) {
+		t.Errorf("branch lookup providers = %v, want [github gitlab]", got)
+	}
+}
+
+// TestLiveReadProviders pins the advertised provider lists as literals: a host
+// joins `ready` or `pr-wait` only by flipping its row, and forgejo stays out
+// of both until its live reads exist.
+func TestLiveReadProviders(t *testing.T) {
+	t.Parallel()
+	for name, got := range map[string][]string{"ready": ReadyProviders(), "pr-wait": PRWaitProviders()} {
+		if !slices.Equal(got, []string{"github", "gitlab"}) {
+			t.Errorf("%s providers = %v, want [github gitlab]", name, got)
+		}
 	}
 }

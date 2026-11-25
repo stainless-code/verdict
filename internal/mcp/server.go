@@ -21,6 +21,8 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	journalcore "github.com/stainless-code/verdict/internal/core/journal"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/posture"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 const (
@@ -67,7 +69,6 @@ type Config struct { //nolint:govet // the grouping documents the injection surf
 	Warnings   []string
 	Root       string
 	ReadOnly   bool
-	Operator   bool
 	Stderr     io.Writer
 	Commanders map[string]core.Commander
 }
@@ -109,8 +110,12 @@ func New(cfg *Config) *Server {
 	if cfg.Stderr == nil {
 		cfg.Stderr = io.Discard
 	}
-	cfg.Stderr = &diagWriter{dst: cfg.Stderr}
-	tools := allTools(cfg.ReadOnly, cfg.Operator)
+	// Every tool's progress, warning, and log line shares this stream, and a
+	// tool reports paths and spec items a stranger chose: the fold keeps
+	// their control characters off the operator's terminal.
+	cfg.Stderr = &diagWriter{dst: untrusted.NewInertWriter(cfg.Stderr)}
+	rule := Posture(cfg.ReadOnly)
+	tools := allTools(rule)
 	applyCommanderOverrides(tools, cfg.Commanders)
 	byName := make(map[string]*tool, len(tools))
 	for _, t := range tools {
@@ -120,7 +125,7 @@ func New(cfg *Config) *Server {
 		cfg:    *cfg,
 		tools:  tools,
 		byName: byName,
-		hidden: hiddenTools(cfg.ReadOnly, cfg.Operator),
+		hidden: hiddenTools(rule),
 		calls:  map[string]context.CancelFunc{},
 	}
 }
@@ -130,13 +135,13 @@ type hiddenTool struct {
 	cliOnly  bool
 }
 
-func hiddenTools(readOnly, operator bool) map[string]hiddenTool {
+func hiddenTools(rule posture.Rule) map[string]hiddenTool {
 	out := map[string]hiddenTool{}
-	for _, t := range allTools(false, true) {
-		if exposed(t, readOnly, operator) {
+	for _, t := range allTools(Posture(false)) {
+		if exposed(t, rule) {
 			continue
 		}
-		out[t.name] = hiddenTool{requires: toolRequires(t, readOnly)}
+		out[t.name] = hiddenTool{requires: "a server started without " + posture.FlagReadOnly}
 	}
 	for name, requires := range cliOnlyVerbs {
 		out[name] = hiddenTool{requires: requires, cliOnly: true}
@@ -144,15 +149,12 @@ func hiddenTools(readOnly, operator bool) map[string]hiddenTool {
 	return out
 }
 
-func toolRequires(t *tool, readOnly bool) string {
-	switch {
-	case t.operatorOnly && readOnly:
-		return "a server started with --operator and without --read-only"
-	case t.operatorOnly:
-		return "a server started with --operator"
-	default:
-		return "a server started without --read-only"
-	}
+// Posture is this surface's resolved write posture. The tools the registry
+// exposes are the only host-post path (post, threads resolve), so exposing
+// them is the surface's whole opt-in: read-only is the one thing that
+// withholds them.
+func Posture(readOnly bool) posture.Rule {
+	return posture.Rule{ReadOnly: readOnly, HostPostOptIn: true}
 }
 
 func applyCommanderOverrides(tools []*tool, overrides map[string]core.Commander) {
@@ -272,7 +274,7 @@ func (s *Server) dispatch(ctx context.Context, req *rpcRequest) {
 		s.writeResult(req.ID, s.listTools())
 	case methodToolsCall:
 		s.handleToolsCall(ctx, req)
-	case methodPromptsList, methodPromptsGet, methodResourcesList, methodResourcesRead:
+	case methodPromptsList, methodPromptsGet, methodResourcesList, methodResourcesRead, methodResourcesTemplatesList:
 		s.handleProcedure(ctx, req)
 	case methodCancelled:
 		s.handleCancelled(req)
@@ -294,6 +296,8 @@ func (s *Server) handleProcedure(ctx context.Context, req *rpcRequest) {
 		s.handleResourcesList(ctx, req)
 	case methodResourcesRead:
 		s.handleResourcesRead(ctx, req)
+	case methodResourcesTemplatesList:
+		s.handleResourcesTemplatesList(req)
 	}
 }
 
@@ -330,12 +334,11 @@ func (s *Server) instructions() string {
 		"post is the only terminal write and never writes a review note; dryRun previews it.",
 		"Never call triage while reviewing a PR: propose status changes through triage[] in review.json.",
 	}
-	if s.cfg.Operator {
+	if s.cfg.ReadOnly {
 		return strings.Join(append(lines,
-			"This server runs with --operator, so triage is available for human-owned status flips."), lineBreak)
+			"This server runs with --read-only: triage and every other local write are not on this surface."), lineBreak)
 	}
-	return strings.Join(append(lines,
-		"triage is not on this surface; it is available only when the server starts with --operator."), lineBreak)
+	return strings.Join(lines, lineBreak)
 }
 
 func (s *Server) handleToolsCall(ctx context.Context, req *rpcRequest) {
@@ -393,12 +396,6 @@ type jqObjResult struct {
 }
 
 func (s *Server) modeRefusal(t *tool, request any) *core.RefusalError {
-	if t.operatorWrite != nil && t.operatorWrite(request) && !s.cfg.Operator {
-		return &core.RefusalError{
-			Code:    codeBadFlags,
-			Message: "threads resolve requires a server started with --operator",
-		}
-	}
 	if t.requireDryRun && !requestDryRun(request) {
 		return &core.RefusalError{
 			Code:    codeBadFlags,
@@ -456,6 +453,7 @@ func (s *Server) writeHiddenToolError(id json.RawMessage, name string) {
 
 func (s *Server) bindings(t *tool) *bindings {
 	return &bindings{
+		version:   s.cfg.Version,
 		env:       s.cfg.Env,
 		now:       s.cfg.Now,
 		progress:  stderrProgress{w: s.cfg.Stderr},
@@ -534,11 +532,11 @@ type stderrProgress struct {
 	w io.Writer
 }
 
-func (p stderrProgress) Human(line string) { fmt.Fprintln(p.w, line) }
+func (p stderrProgress) Human(line string) { fmt.Fprintln(p.w, untrusted.Line(line)) }
 
-func (p stderrProgress) Warn(msg string) { fmt.Fprintf(p.w, "warn: %s\n", msg) }
+func (p stderrProgress) Warn(msg string) { fmt.Fprintf(p.w, "warn: %s\n", untrusted.Line(msg)) }
 
-func (p stderrProgress) Diag(line string) { fmt.Fprintln(p.w, line) }
+func (p stderrProgress) Diag(line string) { fmt.Fprintln(p.w, untrusted.Line(line)) }
 
 func negotiate(requested string) string {
 	if slices.Contains(supportedProtocols, requested) {
@@ -603,7 +601,7 @@ func truncationSummary(tool string, data *jq.Obj, size int) string {
 	if ok && path != "" {
 		pairs = append(pairs, "artifact", path, "next",
 			"structuredContent carries the full result; read it from the bundle at "+path+
-				" on disk, or narrow the call (for example report --check/--status or "+
+				" on disk, or narrow the call (for example report --status or "+
 				"show --sig) for a smaller text block")
 	} else {
 		pairs = append(pairs, "next", "structuredContent carries the full result; "+
@@ -630,11 +628,26 @@ func rootResolutionRefusal(err error) *core.RefusalError {
 	return &core.RefusalError{Code: "not-a-repo", Message: err.Error()}
 }
 
+// refusalData builds the refusal payload every surface renders: tools as
+// structuredContent, resources as error data. The hint is the remediation
+// for the code, so a -32602 resource refusal carries the same guidance a
+// tool refusal does.
+func refusalData(ref *core.RefusalError) refusalContent {
+	return refusalContent{
+		Code:     ref.Code,
+		Message:  ref.Message,
+		Hint:     core.HintFor(ref.Code),
+		RetryAt:  ref.RetryAt,
+		Warnings: ref.Warnings,
+		Problems: ref.Problems, ProblemsTruncated: ref.ProblemsTruncated,
+	}
+}
+
 func refusalResult(ref *core.RefusalError) callToolResult {
-	hint := core.HintFor(ref.Code)
+	payload := refusalData(ref)
 	// code, hint, and retry_at are joined beside one warn: line per warning.
 	lines := make([]string, 0, refusalTextLines+len(ref.Warnings))
-	lines = append(lines, ref.Code+": "+ref.Message, hint)
+	lines = append(lines, ref.Code+": "+ref.Message, payload.Hint)
 	for _, w := range ref.Warnings {
 		lines = append(lines, "warn: "+w)
 	}
@@ -642,11 +655,7 @@ func refusalResult(ref *core.RefusalError) callToolResult {
 		lines = append(lines, "retry_at: "+ref.RetryAt)
 	}
 	text := strings.Join(lines, lineBreak)
-	structured, err := json.Marshal(refusalContent{
-		Code: ref.Code, Message: ref.Message, Hint: hint, RetryAt: ref.RetryAt,
-		Warnings: ref.Warnings,
-		Problems: ref.Problems, ProblemsTruncated: ref.ProblemsTruncated,
-	})
+	structured, err := json.Marshal(payload)
 	if err != nil {
 		structured = []byte("{}")
 	}

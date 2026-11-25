@@ -26,6 +26,7 @@ type Config struct { //nolint:govet // field order is the published property ord
 	Index           *ConfigIndex             `json:"index,omitempty"            nonnull:"true"`
 	RigorPolicy     *ConfigRigorPolicy       `json:"rigor_policy,omitempty"     nonnull:"true"`
 	Packs           *ConfigPacks             `json:"packs,omitempty"            nonnull:"true"`
+	Tests           *ConfigTests             `json:"tests,omitempty"            nonnull:"true"`
 }
 
 // ConfigPacks is the repository's built-in pack composition: whether the
@@ -33,12 +34,39 @@ type Config struct { //nolint:govet // field order is the published property ord
 // turned off. It is read from the trusted base configuration, never the PR
 // head, so a branch cannot disable the built-in rules that review it. Org and
 // repo packs are the operator's and the repository's own choice and are not
-// reachable from here.
+// reachable from here — except one org pin: an optional central rules pack
+// pinned once here (repo, ref, path), vendored into the repo layer by the
+// explicit `pack sync` command and verified against `verdict.lock` without
+// any network fetch during review.
+//
+//nolint:govet // field order is the published property order
 type ConfigPacks struct {
-	MergeBuiltin  *bool    `json:"merge_builtin,omitempty"  nonnull:"true"`
-	DisablePacks  []string `json:"disable_packs,omitempty"  minItems:"1"   nonnull:"true"`
-	DisableLenses []string `json:"disable_lenses,omitempty" minItems:"1"   nonnull:"true"`
-	DisableRules  []string `json:"disable_rules,omitempty"  minItems:"1"   nonnull:"true"`
+	MergeBuiltin  *bool          `json:"merge_builtin,omitempty"  nonnull:"true"`
+	DisablePacks  []string       `json:"disable_packs,omitempty"  minItems:"1"   nonnull:"true"`
+	DisableLenses []string       `json:"disable_lenses,omitempty" minItems:"1"   nonnull:"true"`
+	DisableRules  []string       `json:"disable_rules,omitempty"  minItems:"1"   nonnull:"true"`
+	OrgPack       *ConfigOrgPack `json:"org_pack,omitempty"       nonnull:"true"`
+}
+
+// ConfigOrgPack pins one central rules repository the whole organization
+// shares: every repository inherits it from the base-owned configuration,
+// hash-locked into its vendored pack tree. Repo is the central repository
+// (an allowlisted git remote or a local path for offline mirrors); ref is
+// the immutable version — a 40-hex commit SHA or a semver tag such as
+// `v1.2.3`; a mutable branch name is refused. Path is the pack root inside
+// that repository (default `.`), confined to a relative slash path with no
+// `..` segment or absolute spelling.
+type ConfigOrgPack struct {
+	Repo string `json:"repo"`
+	Ref  string `json:"ref"`
+	Path string `json:"path,omitempty" nonnull:"true"`
+}
+
+// ConfigTests controls regression-test drafting: whether a reproduced
+// finding's artifact is retained as draft evidence. Empty defaults to
+// on-reproduce (the shipped behavior); off disables drafting.
+type ConfigTests struct {
+	Draft string `enum:"off|on-reproduce" json:"draft,omitempty"`
 }
 
 // ConfigRigorPolicy is the repository's publication floor: the mode and the
@@ -73,8 +101,13 @@ type ConfigDefaults struct { //nolint:govet // field order is the published prop
 	// remove one.
 	SensitivePaths []string `json:"sensitive_paths,omitempty" minItems:"1" nonnull:"true"`
 
-	Panel              []string        `json:"panel,omitempty"                  minItems:"1"                          nonnull:"true"`
-	BudgetUSD          *float64        `exclusiveMin:"0"                        json:"budget_usd,omitempty"           nonnull:"true"`
+	Panel     []string `json:"panel,omitempty" minItems:"1"                nonnull:"true"`
+	BudgetUSD *float64 `exclusiveMin:"0"       json:"budget_usd,omitempty" nonnull:"true"`
+	// MonthlyBudgetUSD is the per-repo monthly spend ceiling: month-to-date
+	// recorded spend plus the pending run's projected cost is refused
+	// before launch when it exceeds the cap. The personal spend section
+	// carries a second ceiling; the stricter (smaller) wins.
+	MonthlyBudgetUSD   *float64        `exclusiveMin:"0"                        json:"monthly_budget_usd,omitempty"   nonnull:"true"`
 	MaxBytes           *int64          `json:"max_bytes,omitempty"              min:"1"                               nonnull:"true"`
 	Chunk              *bool           `json:"chunk,omitempty"                  nonnull:"true"`
 	KBPolicy           *ConfigKBPolicy `json:"kb_policy,omitempty"              nonnull:"true"`

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://github.com/stainless-code/verdict/blob/main/schemas/envelope.schema.json",
   "title": "verdict --json envelope",
-  "description": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, cost, completeness ride inside data, never as new top-level keys), so data objects allow additional properties; every verb publishes its data profile here as a single <verb>Data $defs entry (reportData, postData, validationData, recordData, showData, fetchData, fetchLocalData, threadsData, verifyData, triageData, readyData, adoptData, ingestData, nextData, fixData, handoffData, journalData, learnData, packData, packTestData, initData, doctorData, checkTreeData, trendData, calibrateData, configData), each validated against the runtime writer and the committed goldens.",
+  "description": "Every --json stdout is exactly one envelope with these nine keys (schema_version \"1\"): error null on success with a data object, data null with a typed error object on refusal. Derived from the Go envelope renderer (RenderEnvelope) in the verdict CLI. data is additive per verb (chunk summaries, prompt_dump, and cost ride inside data, never as new top-level keys), so data objects allow additional properties; every verb publishes its data profile here as a single <verb>Data $defs entry (reportData, postData, validationData, recordData, showData, fetchData, fetchLocalData, threadsData, verifyData, triageData, readyData, adoptData, ingestData, nextData, fixData, handoffData, journalData, learnData, packData, packTestData, initData, doctorData, checkTreeData, trendData, calibrateData, configData), each validated against the runtime writer and the committed goldens.",
   "type": "object",
   "properties": {
     "schema_version": { "const": "1" },
@@ -414,6 +414,7 @@
           "enum": [
             "anchor-outside-hunk",
             "bad-enum",
+            "diagram-invalid",
             "empty-findings-needs-summary",
             "enum-synonym",
             "invalid-json",
@@ -656,7 +657,7 @@
       "additionalProperties": true
     },
     "reportData": {
-      "description": "report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, gate only when a gating flag (--max-severity, --require-head, --live) is set (gate itself always carries the coverage dimension), receipt keys only when budget.json parses.",
+      "description": "report --json data: ranked read over the store. cost appears only with --cost and receipt keys only when budget.json parses. report is advisory and carries no gate verdict: gate publishes it.",
       "type": "object",
       "properties": {
         "verification": {
@@ -678,11 +679,13 @@
           "type": "array",
           "items": { "$ref": "#/$defs/findingItem" }
         },
+        "org_pack": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/orgPackInfo" }]
+        },
         "cost": { "$ref": "#/$defs/reportCost" },
         "compare": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportCompare" }]
         },
-        "completeness": { "$ref": "#/$defs/reportCompleteness" },
         "compliance": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportCompliance" }]
         },
@@ -692,8 +695,8 @@
         "validation": {
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/validationData" }]
         },
-        "gate": {
-          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportGate" }]
+        "replay": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportReplay" }]
         },
         "receipt": { "$ref": "#/$defs/provenanceReceipt" },
         "truncated": {
@@ -713,6 +716,20 @@
         "filters",
         "items"
       ],
+      "additionalProperties": true
+    },
+    "orgPackInfo": {
+      "type": "object",
+      "properties": {
+        "repo": { "type": "string" },
+        "ref": { "type": "string" },
+        "path": { "type": "string" },
+        "sha": { "type": "string" },
+        "hash": { "type": "string" },
+        "name": { "type": "string" },
+        "version": { "type": "string" }
+      },
+      "required": ["repo", "ref", "path"],
       "additionalProperties": true
     },
     "reportHead": {
@@ -814,6 +831,9 @@
         "by_tier": { "$ref": "#/$defs/costTiers" },
         "receipts": {
           "type": "array"
+        },
+        "mtd": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/reportMTD" }]
         }
       },
       "required": [
@@ -958,26 +978,19 @@
       "required": ["input_tokens", "output_tokens", "total_tokens", "runs"],
       "additionalProperties": true
     },
-    "reportCompleteness": {
+    "reportMTD": {
       "type": "object",
       "properties": {
-        "reviewed": { "type": "boolean" },
-        "fetched_head": { "type": ["string", "null"] },
-        "posted_head": { "type": ["string", "null"] },
-        "same_patch": {
-          "description": "True when the reviewed bundle identity and the posted post.json patch id share id and kind (rebase/amend with the same change); absent when either side has no patch id.",
-          "type": ["boolean", "null"]
-        },
-        "reviewed_patch_id": {
-          "description": "Patch id the bundle identity carried at review time; absent when the bundle had no identity.",
-          "type": ["string", "null"]
-        },
-        "posted_patch_id": {
-          "description": "Patch id the completed post receipt carried; absent when the post predates patch identity.",
-          "type": ["string", "null"]
-        }
+        "known_usd": { "type": ["number", "null"] },
+        "monthly_cap_usd": { "type": ["number", "null"] },
+        "remaining_usd": { "type": ["number", "null"] },
+        "monthly_repo_cap": { "type": ["number", "null"] },
+        "monthly_personal_cap": { "type": ["number", "null"] },
+        "month": { "type": "string" },
+        "known_count": { "type": "integer" },
+        "unknown_count": { "type": "integer" }
       },
-      "required": ["reviewed", "fetched_head", "posted_head"],
+      "required": ["month", "known_count", "unknown_count"],
       "additionalProperties": true
     },
     "reportCompliance": {
@@ -1017,6 +1030,40 @@
         "gaps",
         "satisfied"
       ],
+      "additionalProperties": true
+    },
+    "reportReplay": {
+      "type": "object",
+      "properties": {
+        "policy_path": { "type": "string" },
+        "captured": { "$ref": "#/$defs/reportReplaySide" },
+        "candidate": { "$ref": "#/$defs/reportReplaySide" },
+        "changed": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/reportReplayMove" }
+        }
+      },
+      "required": ["policy_path", "captured", "candidate", "changed"],
+      "additionalProperties": true
+    },
+    "reportReplaySide": {
+      "type": "object",
+      "properties": {
+        "reason": { "type": "string" },
+        "gate_passed": { "type": "boolean" },
+        "approved": { "type": "boolean" }
+      },
+      "required": ["gate_passed", "approved"],
+      "additionalProperties": true
+    },
+    "reportReplayMove": {
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "before": { "type": "string" },
+        "after": { "type": "string" }
+      },
+      "required": ["id", "before", "after"],
       "additionalProperties": true
     },
     "reportRisk": {
@@ -1151,6 +1198,151 @@
       "required": ["measured", "open", "points", "weight"],
       "additionalProperties": true
     },
+    "loopData": {
+      "description": "loop --json data and the body of summary.json: the self-review loop's outcome, the limits it held, the planned commands, and every round's receipt. CLI-only; passed is true only when stop is pass, and a --print render carries stop planned, the plan, and no rounds.",
+      "type": "object",
+      "properties": {
+        "passed": { "type": "boolean" },
+        "stop": {
+          "description": "Why the loop ended: pass (the last gate passed), max-rounds, wall-budget (the --budget deadline, or a spawn's watchdog, which is the budget that remained), cost-budget (--max-cost-usd over the summed round cost_usd, a round whose spend could not be measured while --max-cost-usd is set, or the monthly spend ceiling refusing a spawn), no-progress (no finding open after the previous round was resolved), agent-failed (the agent process failed, refusal carried as run reported it), refused (any other typed refusal), or planned (--print).",
+          "enum": [
+            "pass",
+            "max-rounds",
+            "wall-budget",
+            "cost-budget",
+            "no-progress",
+            "agent-failed",
+            "refused",
+            "planned"
+          ]
+        },
+        "agent": { "type": "string" },
+        "max_rounds": { "type": "integer", "minimum": 1 },
+        "budget_s": { "type": "integer", "minimum": 1 },
+        "max_cost_usd": { "type": ["number", "null"], "minimum": 0 },
+        "cost_usd": {
+          "description": "The summed known round costs; null when no round's receipts priced it. Every spawn leaves a budget.json receipt, so an unpriced one counts as unknown spend; with --max-cost-usd set, unmeasured spend stops the loop (budget-unknown).",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "elapsed_ms": { "type": "integer", "minimum": 0 },
+        "output": { "type": ["string", "null"] },
+        "refusal": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/loopRefusal" }]
+        },
+        "plan": {
+          "description": "Every command the loop can run, round by round, as its CLI equivalent; the fix step is the agent argv itself, prompt included.",
+          "type": "array",
+          "items": { "$ref": "#/$defs/loopPlanStep" }
+        },
+        "rounds": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/loopRound" }
+        }
+      },
+      "required": [
+        "passed",
+        "stop",
+        "agent",
+        "max_rounds",
+        "budget_s",
+        "max_cost_usd",
+        "cost_usd",
+        "elapsed_ms",
+        "output",
+        "refusal",
+        "plan",
+        "rounds"
+      ],
+      "additionalProperties": true
+    },
+    "loopRound": {
+      "description": "One round's receipt (round-N.json). A phase that never ran leaves its observation null: open and gate when record or gate did not run, fix on a passing, final, or stopped round.",
+      "type": "object",
+      "properties": {
+        "round": { "type": "integer", "minimum": 1 },
+        "bundle": { "type": "string" },
+        "started_at": { "type": "string" },
+        "ended_at": { "type": "string" },
+        "open": { "type": ["integer", "null"], "minimum": 0 },
+        "open_sigs": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "gate": { "type": ["boolean", "null"] },
+        "cost_usd": {
+          "description": "The round bundle's own known cost receipts (cost.json, chunk costs, or the budget ledger); null when none priced it.",
+          "type": ["number", "null"],
+          "minimum": 0
+        },
+        "fix": { "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/loopFix" }] },
+        "refusal": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/loopRefusal" }]
+        }
+      },
+      "required": [
+        "round",
+        "bundle",
+        "started_at",
+        "ended_at",
+        "open",
+        "open_sigs",
+        "gate",
+        "cost_usd",
+        "fix",
+        "refusal"
+      ],
+      "additionalProperties": true
+    },
+    "loopFix": {
+      "description": "The fix phase ran: the agent was spawned with the fix directive in the working tree.",
+      "type": "object",
+      "properties": {
+        "verify": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/loopVerify" }]
+        }
+      },
+      "required": ["verify"],
+      "additionalProperties": true
+    },
+    "loopVerify": {
+      "description": "The verdict verify receipt for the command the fix agent declared in the bundle's patch.json, or the refusal that stopped it.",
+      "type": "object",
+      "properties": {
+        "exit": { "type": ["integer", "null"] },
+        "timed_out": { "type": "boolean" },
+        "refusal": {
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/loopRefusal" }]
+        }
+      },
+      "required": ["exit", "timed_out", "refusal"],
+      "additionalProperties": true
+    },
+    "loopRefusal": {
+      "type": "object",
+      "properties": {
+        "code": { "type": "string" },
+        "message": { "type": "string" }
+      },
+      "required": ["code", "message"],
+      "additionalProperties": true
+    },
+    "loopPlanStep": {
+      "type": "object",
+      "properties": {
+        "round": { "type": "integer", "minimum": 1 },
+        "phase": {
+          "enum": ["fetch", "review", "record", "gate", "fix", "verify"]
+        },
+        "when": { "enum": ["always", "gate-failed", "verify-cmd-declared"] },
+        "argv": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "required": ["round", "phase", "when", "argv"],
+      "additionalProperties": true
+    },
     "riskData": {
       "description": "risk --json data: the advisory triage queue over the bundles under .verdict/state. bundles counts the queued bundles (by_band sums to it) and rows are ranked by band, then score, then bundle name; a hidden row adds the response_cap receipt.",
       "type": "object",
@@ -1258,7 +1450,7 @@
       "type": "object",
       "properties": {
         "id": {
-          "description": "Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), live_threads (unresolved threads on the PR under --live), compliance, risk, spec (the spec checks the stored record graded, always on: a violated check withholds the derived approval, so no gate passes over it), or evidence (the stored evidence receipt for that HEAD, always on under --check).",
+          "description": "Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), live_threads (unresolved threads on the PR under --live), compliance, risk, spec (the spec checks the stored record graded, always on: a violated check withholds the derived approval, so no gate passes over it), or evidence (the stored evidence receipt for that HEAD, always on).",
           "enum": [
             "findings",
             "head",
@@ -1315,7 +1507,9 @@
           "properties": {
             "marker": { "type": "string" },
             "footer": {},
-            "diagram": {}
+            "diagram": {
+              "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/postDiagram" }]
+            }
           },
           "required": ["marker"],
           "additionalProperties": true
@@ -1563,6 +1757,10 @@
         },
         "receipts": { "$ref": "#/$defs/evidenceReceipts" },
         "spec": { "$ref": "#/$defs/evidenceSpec" },
+        "diagram": {
+          "description": "Settled behavioral-diagram disposition. Every node and edge the block draws cites a real NEW-side diff line inside a hunk (added or context); the relation an edge draws is the agent's claim and is not checked. Counts how many supplied elements anchored, how many were dropped, and why the block was left out when it was. It never withholds approval.",
+          "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/evidenceDiagram" }]
+        },
         "insufficient": { "type": "boolean" }
       },
       "required": ["head", "diff_sha256", "receipts", "spec", "insufficient"],
@@ -1604,6 +1802,80 @@
       },
       "required": ["total", "covered", "min", "met"],
       "additionalProperties": true
+    },
+    "evidenceDiagram": {
+      "description": "Settled behavioral-diagram disposition. Every node and edge the block draws cites a real NEW-side diff line inside a hunk (added or context); the relation an edge draws is the agent's claim and is not checked. Counts how many supplied elements anchored, how many were dropped, and why the block was left out when it was. It never withholds approval.",
+      "type": "object",
+      "properties": {
+        "type": {
+          "description": "The rendered diagram type, absent when the supplied type was out of scope.",
+          "enum": ["sequence", "state", "flow"]
+        },
+        "title": {
+          "description": "The sanitized title the block carries, when it had one.",
+          "type": "string"
+        },
+        "supplied": {
+          "description": "Nodes and edges the review supplied.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "verified": {
+          "description": "Nodes and edges whose quotes matched a NEW-side diff line inside a hunk (added or context) and whose endpoints survived; an edge's relation is not checked. The node and edge caps may draw fewer, and an omitted block draws none.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "dropped": {
+          "description": "Supplied elements that did not verify or were malformed: a quote the diff did not prove, a dangling endpoint, a missing or repeated id, an element past the checking limit (240 nodes, 400 edges), or every element of an out-of-scope type. verified + dropped = supplied.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "omitted": {
+          "description": "One-line reason the whole block was left out; absent when it rendered.",
+          "type": "string"
+        }
+      },
+      "required": ["supplied", "verified", "dropped"],
+      "additionalProperties": false
+    },
+    "postDiagram": {
+      "description": "The dry run's behavioral-diagram disposition: the state the body drew plus exactly the fields evidence.diagram stores. data.body.diagram is null when no block is drawn (no diagram supplied, or publish.diagrams.anchored off).",
+      "type": "object",
+      "properties": {
+        "status": {
+          "description": "rendered: the block is in the body. omitted: one note stands in its place.",
+          "enum": ["rendered", "omitted"]
+        },
+        "type": {
+          "description": "The rendered diagram type, absent when the supplied type was out of scope.",
+          "enum": ["sequence", "state", "flow"]
+        },
+        "title": {
+          "description": "The sanitized title the block carries, when it had one.",
+          "type": "string"
+        },
+        "supplied": {
+          "description": "Nodes and edges the review supplied.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "verified": {
+          "description": "Nodes and edges anchored to a NEW-side diff line inside a hunk; an edge's relation is not checked.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "dropped": {
+          "description": "Supplied elements that did not verify, were malformed, or were past the checking limit. verified + dropped = supplied.",
+          "type": "integer",
+          "minimum": 0
+        },
+        "omitted": {
+          "description": "One-line reason the whole block was left out; absent when it rendered.",
+          "type": "string"
+        }
+      },
+      "required": ["status", "supplied", "verified", "dropped"],
+      "additionalProperties": false
     },
     "specCheck": {
       "type": "object",
@@ -2271,6 +2543,9 @@
       "properties": {
         "guard_usd": { "type": ["number", "null"] },
         "personal_limit_usd": { "type": ["number", "null"] },
+        "monthly_budget_usd": { "type": ["number", "null"] },
+        "monthly_repo_cap": { "type": ["number", "null"] },
+        "monthly_personal_cap": { "type": ["number", "null"] },
         "require_known_estimate": { "type": "boolean" },
         "enforce_cap": { "type": "boolean" }
       },
@@ -2320,7 +2595,7 @@
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/brief" }]
         },
         "verify_hint": {
-          "description": "The exact rerun command plus resultHead from verification.json for this sig, else a matching (or unnamed) patch.json; null when no history exists. Never executed.",
+          "description": "The exact rerun command from verification.json for this sig, else a matching (or unnamed) patch.json; null when no history exists. Never executed.",
           "anyOf": [{ "type": "null" }, { "$ref": "#/$defs/verifyHint" }]
         },
         "caution": {
@@ -2383,10 +2658,9 @@
       "description": "A recorded rerun command and its nullable head bracket.",
       "type": "object",
       "properties": {
-        "verifyCmd": { "type": "string" },
-        "resultHead": { "type": ["string", "null"] }
+        "verifyCmd": { "type": "string" }
       },
-      "required": ["verifyCmd", "resultHead"],
+      "required": ["verifyCmd"],
       "additionalProperties": true
     },
     "fetchEstimate": {
@@ -3197,7 +3471,7 @@
       "additionalProperties": true
     },
     "verifyData": {
-      "description": "verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, the patch read back from the bundle, and whether the run was sandboxed (absent means unsandboxed). A timed-out run is never proof.",
+      "description": "verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, the patch read back from the bundle, whether the run had the full sandbox shape (sandboxed: bwrap or sandbox-exec), and which wrapper it ran under (sandboxMechanism: bwrap, sandbox-exec, or the network-only unshare-net, which never sets sandboxed; absent means unwrapped). head is the reviewed head a deep-group receipt certifies. tree is the git tree id of the content the command ran on, in a snapshot of it outside the checkout: the binding a receipt carries. A checkout verify cannot snapshot refuses verify-failed and runs nothing, so a successful run always names its tree. receipt is the tool-only receipt path: validation-<group>.json for a deep group, verify-receipt.json on the patch path. A timed-out run is never proof.",
       "type": "object",
       "properties": {
         "exit": { "type": "integer" },
@@ -3206,8 +3480,10 @@
         "patch": { "type": "string" },
         "group": { "type": "string" },
         "head": { "type": "string" },
+        "tree": { "type": "string" },
         "receipt": { "type": "string" },
-        "sandboxed": { "type": "boolean" }
+        "sandboxed": { "type": "boolean" },
+        "sandboxMechanism": { "type": "string" }
       },
       "required": ["exit", "timedOut", "outputTail", "patch"],
       "additionalProperties": true
@@ -3641,6 +3917,20 @@
         "replaced": { "type": "boolean" }
       },
       "required": ["pack", "previous_hash", "replaced"],
+      "additionalProperties": true
+    },
+    "packSyncData": {
+      "type": "object",
+      "properties": {
+        "pack": { "$ref": "#/$defs/packEntry" },
+        "repo": { "type": "string" },
+        "ref": { "type": "string" },
+        "path": { "type": "string" },
+        "sha": { "type": ["string", "null"] },
+        "hash": { "type": "string" },
+        "version": { "type": "string" }
+      },
+      "required": ["pack", "repo", "ref", "path", "sha", "hash", "version"],
       "additionalProperties": true
     },
     "packTestData": {

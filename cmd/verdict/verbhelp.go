@@ -2,7 +2,7 @@ package main
 
 import "strings"
 
-var ownHelpVerbs = map[string]bool{verbSkill: true, "mcp": true}
+var ownHelpVerbs = map[string]bool{verbSkill: true, "mcp": true, verbACP: true, verbLSP: true}
 
 func verbUsage(verb string) string {
 	var out strings.Builder

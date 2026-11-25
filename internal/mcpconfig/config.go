@@ -51,7 +51,6 @@ const (
 	CodeRead         = "mcp-config-read-failed"
 	CodeWrite        = "mcp-config-write-failed"
 	CodeBackup       = "mcp-config-backup-failed"
-	CodeBadFlags     = "bad-flags"
 
 	// BackupSuffix names the copy taken before a changing write.
 	BackupSuffix = ".verdict.bak"
@@ -60,8 +59,7 @@ const (
 	command        = "verdict"
 	mcpArg         = "mcp"
 	readOnlyFlag   = "--read-only"
-	operatorFlag   = "--operator"
-	maxOwnedArgs   = 3
+	maxOwnedArgs   = 2
 	configPerm     = 0o600
 	dirPerm        = 0o755
 	tomlName       = "mcp_servers.verdict"
@@ -89,7 +87,6 @@ type Request struct {
 	Cwd      string
 	Env      map[string]string
 	ReadOnly bool
-	Operator bool
 }
 
 // Result is the snippet to print plus the merge outcome.
@@ -112,9 +109,6 @@ type host struct {
 // Run resolves the host, renders its snippet, and (unless this is a preview)
 // merges and writes the config.
 func Run(req *Request) (Result, *core.RefusalError) {
-	if req != nil && req.ReadOnly && req.Operator {
-		return Result{}, refuse(CodeBadFlags, "--read-only and --operator are mutually exclusive")
-	}
 	where, ref := resolve(req)
 	if ref != nil {
 		return Result{}, ref
@@ -183,9 +177,6 @@ func wantArgsList(req *Request) []string {
 	if req.ReadOnly {
 		out = append(out, readOnlyFlag)
 	}
-	if req.Operator {
-		out = append(out, operatorFlag)
-	}
 	return out
 }
 
@@ -232,13 +223,22 @@ func resolveSpec(req *Request, spec *agentcatalog.MCP) (host, *core.RefusalError
 }
 
 func codexBase(env map[string]string) (string, *core.RefusalError) {
-	if base := env["CODEX_HOME"]; base != "" {
+	if base := CodexHome(env); base != "" {
 		return base, nil
 	}
-	if home := env["HOME"]; home != "" {
-		return filepath.Join(home, ".codex"), nil
-	}
 	return "", refuse(CodeNoHome, "codex config needs HOME or CODEX_HOME; set one and re-run")
+}
+
+// CodexHome is Codex CLI's configuration directory: CODEX_HOME, else
+// ~/.codex; empty when neither variable is set.
+func CodexHome(env map[string]string) string {
+	if base := env["CODEX_HOME"]; base != "" {
+		return base
+	}
+	if home := env["HOME"]; home != "" {
+		return filepath.Join(home, ".codex")
+	}
+	return ""
 }
 
 func codexHost(env map[string]string) (host, *core.RefusalError) {
@@ -413,7 +413,7 @@ func isOwnedArgs(args []any) bool {
 
 func ownedFlag(item any, seen map[string]bool) bool {
 	flag, ok := item.(string)
-	if !ok || (flag != readOnlyFlag && flag != operatorFlag) || seen[flag] {
+	if !ok || flag != readOnlyFlag || seen[flag] {
 		return false
 	}
 	seen[flag] = true
@@ -597,14 +597,11 @@ func (l *tomlLine) keyRefusal(path string) *core.RefusalError {
 	return nil
 }
 
-// ownedTOMLArgs holds every compacted argv verdict itself emits: ["mcp"] plus
-// any combination of the posture flags, in either order for the pair.
+// ownedTOMLArgs holds every compacted argv verdict itself emits: ["mcp"] with
+// or without the one posture flag.
 var ownedTOMLArgs = map[string]bool{
-	`["mcp"]`:                            true,
-	`["mcp","--read-only"]`:              true,
-	`["mcp","--operator"]`:               true,
-	`["mcp","--read-only","--operator"]`: true,
-	`["mcp","--operator","--read-only"]`: true,
+	`["mcp"]`:               true,
+	`["mcp","--read-only"]`: true,
 }
 
 func renderTOMLArgs(want []string) string {

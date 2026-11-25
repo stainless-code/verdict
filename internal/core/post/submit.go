@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"time"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/retry"
 )
@@ -327,6 +327,10 @@ func hostLabel(provider string) string {
 		return "GitLab"
 	case providerForgejo:
 		return "Forgejo"
+	case providerBitbucket:
+		return "Bitbucket"
+	case providerAzure:
+		return "Azure DevOps"
 	default:
 		return provider
 	}
@@ -674,7 +678,7 @@ func reviewMap(obj *jq.Obj) (map[string]any, error) {
 }
 
 func readOptionalPost(path string) ([]byte, error) {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, jq.Sealed("read post err", err)
 	}

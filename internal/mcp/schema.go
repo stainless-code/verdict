@@ -7,6 +7,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	indexcore "github.com/stainless-code/verdict/internal/core/index"
+	"github.com/stainless-code/verdict/internal/core/query"
 )
 
 const (
@@ -46,6 +47,21 @@ var internalFieldNames = map[string]bool{
 	"JSONMode":    true,
 	"Interactive": true,
 	"Machine":     true,
+	// TestSet is the adapter's present-versus-empty witness for --test, never
+	// an argument: a caller sets test, and an empty value refuses.
+	"TestSet": true,
+	// RecipeSet is the adapter's present-versus-empty witness for --recipe,
+	// never an argument: a caller sets recipe, and an empty value refuses.
+	"RecipeSet": true,
+	// RefuseWithheld is the interactive surface's withholding posture, never
+	// an argument: the serve transport sets it, MCP/CLI callers leave it false.
+	"RefuseWithheld": true,
+	// PinnedContentHash is the serve transport's pin of a confirmed post to its
+	// previewed digest, never an argument: MCP/CLI callers leave it empty.
+	"PinnedContentHash": true,
+	// NoPersist makes the confirmed submit's re-render stage nothing, never an
+	// argument: the serve transport sets it.
+	"NoPersist": true,
 }
 
 type schemaSource = reflect.Type
@@ -153,7 +169,11 @@ func fieldSchema(toolName string, sf *reflect.StructField, omit map[string]bool)
 // fieldEnums publishes a tool-specific value list for a field whose Go type
 // carries none, so the transport advertises exactly what it serves.
 var fieldEnums = map[string][]string{
-	"index.Query": indexcore.MCPQueries,
+	"index.Query":   indexcore.MCPQueries,
+	"query-cost.By": query.CostDimensions(),
+	// One list with the CLI help and pr-wait's own refusal, so the schema
+	// advertises only hosts the verb has live reads for.
+	"pr_wait.Provider": core.PRWaitProviders(),
 }
 
 // applyFieldEnum overrides a struct-tag enum with the tool's own list.
@@ -281,21 +301,27 @@ var fieldDocs = map[string]string{
 	"pr_wait.Timeout":  "Foreground wait duration, 1s–50s; defaults to 50s.",
 	"pr_wait.Interval": "Initial poll interval, at least 1s and at most timeout; defaults to 1s.",
 	"pr_wait.Once":     "Observe once without sleeping; an unmet condition returns condition-unmet data.",
-	"pr_wait.Provider": "Host override; defaults to saved provider or github. GitLab and Forgejo refuse explicitly.",
+	"pr_wait.Provider": "Host override; defaults to saved provider or github. A host outside the enum refuses explicitly.",
 	"ready.WaitFor":    "Wait for build completion before reporting readiness; timeout returns not-ready data.",
 	"ready.Timeout":    "Build wait duration, 1s–50s; defaults to 50s when wait_for is build.",
 
-	"Repo":       "Repository as owner/name.",
-	"Pr":         "Pull-request number or bundle slug (local-<name> for local bundles).",
-	"Sig":        "Finding signature or unique prefix.",
-	"All":        "Batch every open inline finding at or above the severity floor.",
-	"Selected":   "Batch only the sigs a GitHub fetch recorded in selected.json as reacted to by a human.",
-	"Status":     "Status filter (all, open, addressed, wont-fix, false-positive, deferred).",
-	"Kind":       "Kind filter (inline, section, all).",
-	"Category":   "Finding category filter; empty disables the filter.",
-	"Expect":     "Comma-separated allowlist of paths that may be dirty.",
-	"adopt.From": "Local bundle slug to adopt findings from.",
-	"Check":      "Gate tier (critical, important, informational); empty disables the gate.",
+	"Repo":                  "Repository as owner/name.",
+	"Pr":                    "Pull-request number or bundle slug (local-<name> for local bundles).",
+	"Sig":                   "Finding signature or unique prefix.",
+	"Bundle":                "Bundle slug under the served root (local-<name> for local bundles).",
+	"query-bundles.Pattern": "Bundle glob filter (portable relative glob); empty lists every bundle.",
+	"query-cost.By":         "Spend grouping (repo, week, or model); empty defaults to model.",
+	"All":                   "Batch every open inline finding at or above the severity floor.",
+	"Test":                  "Promote one reproduced finding's retained artifact to .verdict/tests/<sig>-<hash>.<ext>.",
+	"Commit":                "Commit the promoted regression test alone as test: regression for <sig>; requires test.",
+	"Selected":              "Batch only the sigs a GitHub fetch recorded in selected.json as reacted to by a human.",
+	"Recipe":                "Batch the open inline findings whose stored lens matches the named recipe's lens set.",
+	"Status":                "Status filter (all, open, addressed, wont-fix, false-positive, deferred).",
+	"Kind":                  "Kind filter (inline, section, all).",
+	"Category":              "Finding category filter; empty disables the filter.",
+	"Expect":                "Comma-separated allowlist of paths that may be dirty.",
+	"adopt.From":            "Local bundle slug to adopt findings from.",
+	"Check":                 "Gate tier (critical, important, informational); empty disables the gate.",
 	"Compare": "Baseline bundle to compare against (a bundle directory, or a PR/local slug in the same " +
 		"state directory): groups signature-matched findings into new, persisting, resolved, not reviewed.",
 	"Live": "Live-thread posture (auto, strict, skip).",
@@ -361,8 +387,17 @@ var fieldDocs = map[string]string{
 		"verb writes impact.json and a capped ## impact section on toc.txt; omitted means no " +
 		"impact section.",
 	"Sandbox": "Run under an enforced sandbox — bwrap on Linux (no network, hidden credential dirs, " +
-		"a writable repo, a private /tmp), sandbox-exec on macOS (no network, loopback included; " +
-		"credentials stay visible); refuses sandbox-unavailable when the host cannot enforce it.",
+		"a writable repo, a private /tmp), sandbox-exec on macOS (no network, loopback included; no Mach " +
+		"services; writes only to the repo and a private TMPDIR; credential paths and shared host temp roots " +
+		"denied); refuses sandbox-unavailable when the host cannot enforce it or the root's shape cannot be " +
+		"protected (Linux: no .git; a symlinked .git; a .git that is neither a directory nor a gitdir: file; " +
+		"a gitdir or commondir that does not resolve; a gitdir that is the root itself; an unreadable or " +
+		"non-regular pointer file; or a pointer whose walk passes through a symlink or a missing component inside " +
+		"the root).",
+	"SandboxNetworkOnly": "Linux-only fallback for hosts without bwrap: unshare --user --map-root-user --net, " +
+		"network isolation alone with no mount, filesystem, or PID isolation (credential paths, /tmp, the host " +
+		"/proc, and unix sockets stay reachable; never recorded as sandboxed); mutually exclusive with sandbox " +
+		"and refused as sandbox-unavailable on other hosts.",
 	"EnvAllowlist": "Additional parent environment variable names to pass through to the verification child process, " +
 		"overriding default-deny filtering and secret-name dropping.",
 }

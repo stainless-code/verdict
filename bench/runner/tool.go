@@ -10,6 +10,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -142,12 +143,11 @@ const (
 func gitIn(dir string) func(context.Context, ...string) error {
 	return func(ctx context.Context, argv ...string) error {
 		full := append([]string{
-			"-C", dir,
 			"-c", "user.email=" + gitEmailName,
 			"-c", "user.name=" + gitDisplayName,
 			"-c", "commit.gpgsign=false",
 		}, argv...)
-		res, err := coreexec.Runner{}.Run(ctx, &core.Command{Argv: append([]string{"git"}, full...), Env: toolEnv()})
+		res, err := coreexec.Runner{}.Run(ctx, &core.Command{Argv: gitcmd.Argv(dir, full...), Env: gitcmd.Env(toolEnv())})
 		if err != nil {
 			return jq.NewErrf("git %s: %s", argv[0], err)
 		}

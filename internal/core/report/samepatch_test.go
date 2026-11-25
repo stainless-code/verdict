@@ -13,6 +13,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
 const samePatchHead = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -31,7 +32,7 @@ const samePatchDiff = "diff --git a/notes.txt b/notes.txt\nindex 1111111..222222
 type samePatchStubCommander struct{}
 
 func (c *samePatchStubCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
-	if len(cmd.Argv) == 3 && cmd.Argv[0] == "git" && cmd.Stdin != nil {
+	if _, args, ok := gitcmd.Split(cmd.Argv); ok && slices.Equal(args, []string{"patch-id", "--stable"}) && cmd.Stdin != nil {
 		raw, err := io.ReadAll(cmd.Stdin)
 		if err == nil && string(raw) == samePatchDiff {
 			return core.Result{Stdout: samePatchID + " 0000000000000000000000000000000000000000\n"}, nil
@@ -64,8 +65,8 @@ func samePatchBundle(t *testing.T, postedPatch string) {
 }
 
 // TestRunReportCompletenessSamePatch proves the rebase pass: posted and
-// fetched heads differ but the patch ids agree, so the gate passes with
-// the rebase line and the data carries the patch comparison.
+// fetched heads differ but the patch ids agree, so the head dimension passes
+// naming both heads as a rebase.
 func TestRunReportCompletenessSamePatch(t *testing.T) {
 	req := withIdentityCommander(fixture(t, "[]"))
 	samePatchBundle(t, samePatchID)
@@ -77,40 +78,9 @@ func TestRunReportCompletenessSamePatch(t *testing.T) {
 		t.Fatalf("Run refusal: %v", ref)
 	}
 	if resp.GateFailed {
-		t.Fatalf("GateFailed = true; same patch should pass: %q", resp.CheckLines)
+		t.Fatalf("GateFailed = true; same patch should pass\n%s", dimSummary(resp))
 	}
-	joined := strings.Join(resp.CheckLines, "\n")
-	if !strings.Contains(joined, "check: same patch reviewed at aaaaaaa (posted bbbbbbb) — completeness passes (rebase/amend)") {
-		t.Errorf("CheckLines = %q, want the rebase pass line", joined)
-	}
-	assertSamePatchData(t, resp.Data.Completeness)
-}
-
-// assertSamePatchData proves the data carries the patch comparison: a
-// differing-head reviewed=false with the matching reviewed/posted ids.
-func assertSamePatchData(t *testing.T, comp *core.ReportCompleteness) {
-	t.Helper()
-	if comp == nil {
-		t.Fatal("data.completeness is nil under --completeness")
-	}
-	if comp.Reviewed {
-		t.Errorf("reviewed = true; heads differ")
-	}
-	if comp.SamePatch == nil || !*comp.SamePatch {
-		t.Errorf("same_patch = %v, want true", comp.SamePatch)
-	}
-	assertSamePatchIDs(t, comp)
-}
-
-// assertSamePatchIDs proves the reviewed and posted patch ids agree.
-func assertSamePatchIDs(t *testing.T, comp *core.ReportCompleteness) {
-	t.Helper()
-	if comp.ReviewedPatchID == nil || *comp.ReviewedPatchID != samePatchID {
-		t.Errorf("reviewed_patch_id = %v", comp.ReviewedPatchID)
-	}
-	if comp.PostedPatchID == nil || *comp.PostedPatchID != samePatchID {
-		t.Errorf("posted_patch_id = %v", comp.PostedPatchID)
-	}
+	requireDims(t, resp, wantDim{"head", "pass", "same patch reviewed at aaaaaaa (posted bbbbbbb)"})
 }
 
 // TestRunReportCompletenessDifferentPatch proves a changed patch still
@@ -128,13 +98,8 @@ func TestRunReportCompletenessDifferentPatch(t *testing.T) {
 	if !resp.GateFailed {
 		t.Fatal("GateFailed = false; a different patch must fail")
 	}
-	joined := strings.Join(resp.CheckLines, "\n")
-	if !strings.Contains(joined, "stale-head") {
-		t.Errorf("CheckLines = %q, want the stale-head failure", joined)
-	}
-	if comp := resp.Data.Completeness; comp == nil || comp.SamePatch == nil || *comp.SamePatch {
-		t.Errorf("same_patch = %v, want false", comp)
-	}
+	requireDims(t, resp, wantDim{id: "head", status: "fail"})
+	requireDimDetail(t, resp, "head", "stale-head", "posted HEAD bbbbbbb != fetched HEAD aaaaaaa")
 }
 
 // TestRunReportCompletenessLegacyWarns proves a bundle without identity
@@ -151,33 +116,26 @@ func TestRunReportCompletenessLegacyWarns(t *testing.T) {
 		t.Fatalf("Run refusal: %v", ref)
 	}
 	if resp.GateFailed {
-		t.Errorf("GateFailed = true; matching heads should pass: %q", resp.CheckLines)
+		t.Errorf("GateFailed = true; matching heads should pass\n%s", dimSummary(resp))
 	}
+	requireDims(t, resp, wantDim{"head", "pass", "HEAD aaaaaaa reviewed (post matches fetch)"})
 	if !slices.Contains(resp.Warnings, "patch identity unavailable — completeness compares heads") {
 		t.Errorf("warnings = %q, want the legacy fallback warning", resp.Warnings)
-	}
-	if comp := resp.Data.Completeness; comp == nil || comp.SamePatch != nil {
-		t.Errorf("same_patch = %v, want absent on legacy bundles", comp)
 	}
 }
 
 // assertStaleCompleteness proves the gate fails stale with no same-patch
-// relaxation: SamePatch is absent and the stale-head failure stands.
+// relaxation: the head dimension fails stale-head.
 func assertStaleCompleteness(t *testing.T, resp *reportcore.Response, warn string) {
 	t.Helper()
 	if resp == nil {
 		t.Fatal("missing response")
 	}
 	if !resp.GateFailed {
-		t.Fatalf("GateFailed = false, want the stale-head failure: %q", resp.CheckLines)
+		t.Fatalf("GateFailed = false, want the stale-head failure\n%s", dimSummary(resp))
 	}
-	joined := strings.Join(resp.CheckLines, "\n")
-	if !strings.Contains(joined, "stale-head") {
-		t.Errorf("CheckLines = %q, want the stale-head failure", joined)
-	}
-	if comp := resp.Data.Completeness; comp == nil || comp.SamePatch != nil {
-		t.Errorf("same_patch = %v, want absent", comp)
-	}
+	requireDims(t, resp, wantDim{id: "head", status: "fail"})
+	requireDimDetail(t, resp, "head", "stale-head")
 	if warn != "" && !slices.Contains(resp.Warnings, warn) {
 		t.Errorf("warnings = %q, want %q", resp.Warnings, warn)
 	}
@@ -219,9 +177,8 @@ func TestRunReportCompletenessStaleHead(t *testing.T) {
 }
 
 // TestRunReportCompletenessIncompleteReceipt proves a two-field post stub
-// proves no publication: same_patch stays absent and the pre-existing
-// incomplete-post gate stands (no head recorded), with the verified
-// reviewed id still reported.
+// proves no publication: the same-patch relaxation never applies and the
+// pre-existing incomplete-post gate stands (no head recorded).
 func TestRunReportCompletenessIncompleteReceipt(t *testing.T) {
 	req := withIdentityCommander(fixture(t, "[]"))
 	samePatchBundle(t, samePatchID)
@@ -235,30 +192,18 @@ func TestRunReportCompletenessIncompleteReceipt(t *testing.T) {
 		t.Fatalf("Run refusal: %v", ref)
 	}
 	if !resp.GateFailed {
-		t.Fatalf("GateFailed = false, want the incomplete-post failure: %q", resp.CheckLines)
+		t.Fatalf("GateFailed = false, want the incomplete-post failure\n%s", dimSummary(resp))
 	}
 	assertIncompletePostGate(t, resp)
 }
 
 // assertIncompletePostGate proves the pre-existing incomplete-post gate
-// stands with no same-patch relaxation: same_patch and posted_patch_id
-// absent, the verified reviewed id still reported.
+// stands with no same-patch relaxation: the head dimension reads unknown and
+// names the corrupt post.
 func assertIncompletePostGate(t *testing.T, resp *reportcore.Response) {
 	t.Helper()
-	joined := strings.Join(resp.CheckLines, "\n")
-	if !strings.Contains(joined, "check: incomplete — post record carries no head SHA") {
-		t.Errorf("CheckLines = %q, want the incomplete-post failure", joined)
-	}
-	comp := resp.Data.Completeness
-	if comp == nil || comp.SamePatch != nil {
-		t.Errorf("same_patch = %v, want absent", comp)
-	}
-	if comp == nil || comp.ReviewedPatchID == nil || *comp.ReviewedPatchID != samePatchID {
-		t.Errorf("reviewed_patch_id = %v, want the verified reviewed id", comp)
-	}
-	if comp == nil || comp.PostedPatchID != nil {
-		t.Errorf("posted_patch_id = %v, want absent", comp)
-	}
+	requireDims(t, resp, wantDim{id: "head", status: "unknown"})
+	requireDimDetail(t, resp, "head", "post record carries no head SHA", "corrupt-post")
 }
 
 // TestRunReportCompletenessPendingReceipt proves a pending or dry-run post

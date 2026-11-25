@@ -18,6 +18,16 @@ const providerGitLab = "gitlab"
 // the REST API, because Forgejo ships no CLI.
 const providerForgejo = "forgejo"
 
+// providerBitbucket is the fourth host with a submit path: inline comments,
+// the summary comment, then the approval last, because Bitbucket Cloud
+// takes no atomic review.
+const providerBitbucket = "bitbucket"
+
+// providerAzure is the fifth host with a submit path: one anchored thread per
+// finding, then the general thread carrying the body, over `az rest`. Azure
+// takes no review event, so it carries no verdict write.
+const providerAzure = "azure"
+
 func typedPostItems(entries []any) []core.FindingItem {
 	items := make([]core.FindingItem, 0, len(entries))
 	for _, e := range entries {
@@ -58,26 +68,11 @@ func strOrNilPost(v any) *string {
 	return nil
 }
 
-func postDiagramValue(dstat *diagram.Status) any {
-	if dstat.State == "absent" {
-		return nil
-	}
-	var keyword, note any
-	if dstat.Keyword != "" {
-		keyword = dstat.Keyword
-	}
-	if dstat.Note != "" {
-		note = dstat.Note
-	}
-	return jq.NewObj(
-		"status", dstat.State,
-		"blocks", dstat.Blocks,
-		"keyword", keyword,
-		"wrapped", dstat.Wrapped,
-		"collapsed", dstat.Collapsed,
-		"detail", dstat.Detail,
-		"note", note,
-	)
+// postDiagramValue projects the settled behavioral diagram into the dry-run
+// receipt: null when no block is drawn, else the state plus the fields
+// evidence.diagram stores.
+func postDiagramValue(dstat *diagram.Status) *core.PostDiagram {
+	return dstat.Post()
 }
 
 func postCounts(entries []any) (open, deferred, addressed int) {

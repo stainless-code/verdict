@@ -3,7 +3,6 @@ package run
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/core/repair"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -34,6 +34,7 @@ type coordinator struct {
 	plan        *jq.Obj
 	binding     *jq.Obj
 	response    *core.RunResponse
+	causes      map[string]*core.RefusalError
 	dir         string
 	source      string
 	id          string
@@ -84,8 +85,25 @@ func (st *state) coordinate(ctx context.Context, base *launchArgs, rounds int) (
 		reviews: make([]*jq.Obj, finderCount), failures: []any{},
 	}
 	ref := c.run(ctx)
+	// Every launch spent whether or not the execution completed, so the
+	// receipt settles either way. The settlement must outlive a cancel.
+	st.settleExecution(context.WithoutCancel(ctx), c.dir)
 	c.executionResponse()
+	if ref == nil {
+		ref = c.executionRefusal()
+	}
+	c.settleExit(ref)
 	return c.response, ref
+}
+
+// settleExit keeps the agent's exit status on the response only when the run's
+// own refusal is the agent's failure. The response is whichever phase reported
+// last, so a finished sibling or a later phase's failure must not turn an
+// evidence refusal into the agent's exit code.
+func (c *coordinator) settleExit(ref *core.RefusalError) {
+	if c.response != nil && (ref == nil || ref.Code != codeAgentFailed) {
+		c.response.Exit = 0
+	}
 }
 
 func (c *coordinator) run(ctx context.Context) *core.RefusalError {
@@ -249,6 +267,7 @@ func (c *coordinator) reuseDiscovery(index int) *core.RefusalError {
 // only its own outcome, so no two goroutines share a field.
 type discoveryOutcome struct {
 	ref      *core.RefusalError
+	cause    *core.RefusalError
 	response *core.RunResponse
 	review   *jq.Obj
 	worker   *state
@@ -272,7 +291,7 @@ func (c *coordinator) discoverPhase(ctx context.Context, index int, args *launch
 		return out
 	}
 	if out.ref != nil {
-		out.failure, out.ref = out.ref.Code, nil
+		out.failure, out.cause, out.ref = out.ref.Code, out.ref, nil
 	}
 	out.review = readDiscovery(args.abs)
 	if out.review == nil && out.failure == "" {
@@ -316,17 +335,24 @@ func (c *coordinator) phaseEnded(ctx context.Context) *core.RefusalError {
 }
 
 func (c *coordinator) failed(phase, code string) {
-	c.failures = append(c.failures, jq.NewObj("phase", phase, "code", code))
+	c.failures = append(c.failures, jq.NewObj(keyPhase, phase, "code", code))
 }
 
 // resolveFailure records what this attempt saw of one phase: a phase that
 // failed replaces the interruption's row for it, and a phase that succeeded
 // clears that row, so the record names each failing phase once and never keeps
 // a failure this attempt has already repaired.
-func (c *coordinator) resolveFailure(phase, code string) {
+func (c *coordinator) resolveFailure(phase, code string, cause *core.RefusalError) {
+	delete(c.causes, phase)
+	if cause != nil {
+		if c.causes == nil {
+			c.causes = map[string]*core.RefusalError{}
+		}
+		c.causes[phase] = cause
+	}
 	kept := make([]any, 0, len(c.failures)+1)
 	for _, row := range c.failures {
-		if jq.StrOf(readcommon.FieldOf(row, "phase")) != phase {
+		if jq.StrOf(readcommon.FieldOf(row, keyPhase)) != phase {
 			kept = append(kept, row)
 		}
 	}
@@ -341,7 +367,7 @@ func (c *coordinator) resolveFailure(phase, code string) {
 // recorded cross checks against exactly the batch the run would ask about
 // before the record or the plan is published.
 func (c *coordinator) deriveUnion() *core.RefusalError {
-	diff, err := os.ReadFile(filepath.Join(c.dir, "full.diff"))
+	diff, err := noblock.ReadFile(filepath.Join(c.dir, "full.diff"))
 	if err != nil {
 		return c.st.refuse(codeMissingBundle, "diff missing")
 	}
@@ -396,9 +422,9 @@ func (c *coordinator) finish() *core.RefusalError {
 		jq.NewObj("finder", "finder-1", "profile", "contract-first"),
 		jq.NewObj("finder", "finder-2", "profile", "behavior-first"),
 	})
-	status := "complete"
+	status := statusComplete
 	if len(c.failures) > 0 {
-		status = "partial"
+		status = statusPartial
 	}
 	manifest.Set(keyStatus, status)
 	if ref := c.check(); ref != nil {
@@ -421,10 +447,24 @@ func setManifestBudget(manifest *jq.Obj, recorded *core.ReviewBudget) {
 	manifest.Set("budget", core.Wire(recorded))
 }
 
+// causeLines names why each failed phase failed, in phase order, so a partial
+// execution's refusal carries the agent's own error beside the evidence gap it
+// left behind.
+func (c *coordinator) causeLines() string {
+	var sb strings.Builder
+	for _, row := range c.failures {
+		phase := jq.StrOf(readcommon.FieldOf(row, keyPhase))
+		if cause := c.causes[phase]; cause != nil {
+			sb.WriteString("\n" + phase + " " + cause.Code + ": " + cause.Message)
+		}
+	}
+	return sb.String()
+}
+
 func (c *coordinator) validateAggregate() *core.RefusalError {
 	execution := panelcore.CheckExecution(c.dir, nil)
 	if execution.Problem() != "" {
-		return c.st.refuse("review-insufficient", execution.Problem())
+		return c.st.refuse("review-insufficient", execution.Problem()+c.causeLines())
 	}
 	check, ref := repair.Check(c.dir, coordinatorBytes(c.review))
 	if ref != nil {
@@ -501,7 +541,7 @@ func (c *coordinator) recordDiscoveries(outcomes []discoveryOutcome, skipped []b
 		}
 		fatal = mergeFatal(fatal, outcomes[i].ref)
 		c.reviews[i] = outcomes[i].review
-		c.resolveFailure(finderPhase(i), outcomes[i].failure)
+		c.resolveFailure(finderPhase(i), outcomes[i].failure, outcomes[i].cause)
 		if outcomes[i].response != nil {
 			c.response = outcomes[i].response
 		}
@@ -509,7 +549,77 @@ func (c *coordinator) recordDiscoveries(outcomes []discoveryOutcome, skipped []b
 	if ref := c.persistProgress(); ref != nil {
 		return ref
 	}
+	if fatal == nil {
+		fatal = c.allFindersFailed(outcomes, skipped)
+	}
 	return fatal
+}
+
+// allFindersFailed reports the agent's own refusal when every launched finder
+// failed. A partial execution still has evidence to judge, so it keeps its
+// review-insufficient verdict; an execution with nothing to judge is not an
+// evidence gap, it is the agent failing, and the operator needs the failure's
+// code, message, and exit status to act on it. The decision rests on the
+// invoke outcomes, never on what a failed phase left behind: the directive
+// tells an agent to write a placeholder review first, so a dead finder's
+// artifact can still decode.
+func (c *coordinator) allFindersFailed(outcomes []discoveryOutcome, skipped []bool) *core.RefusalError {
+	var failed []int
+	for i := range outcomes {
+		if skipped[i] || !agentFailure(outcomes[i].failure) {
+			return nil
+		}
+		failed = append(failed, i)
+	}
+	if len(failed) == 0 {
+		return nil
+	}
+	lead := leadFailure(outcomes, failed)
+	lines := make([]string, 0, len(failed))
+	for _, i := range failed {
+		cause := finderCause(&outcomes[i])
+		lines = append(lines, finderPhase(i)+" "+cause.Code+": "+cause.Message)
+	}
+	c.response = outcomes[lead].response
+	return &core.RefusalError{
+		Code:    finderCause(&outcomes[lead]).Code,
+		Message: "every finder failed:\n" + strings.Join(lines, "\n"),
+	}
+}
+
+// agentFailure reports whether a phase's failure code is the agent itself
+// failing: it was not the agent asked for or is not installed, never ran, died,
+// ran out of time, or wrote nothing. A review that
+// exists but fails its check (stale, malformed) is evidence for the union and
+// keeps flowing through it.
+func agentFailure(code string) bool {
+	switch code {
+	case codeAgentFailed, codeAgentTimeout, codeAgentSpawnFailed, codeAgentMissing, codeAgentMismatch, codeNoArtifact:
+		return true
+	}
+	return false
+}
+
+// leadFailure picks the finder whose code names the refusal: the first one
+// that failed by process, since a process failure outranks a missing artifact
+// (the agent never got to write one, and its code is what the operator fixes).
+func leadFailure(outcomes []discoveryOutcome, failed []int) int {
+	for _, i := range failed {
+		if outcomes[i].failure != codeNoArtifact {
+			return i
+		}
+	}
+	return failed[0]
+}
+
+// finderCause is the refusal one failed finder earned. A finder whose invoke
+// succeeded but left an unreadable review has only its failure code, so the
+// refusal is built from that.
+func finderCause(out *discoveryOutcome) *core.RefusalError {
+	if out.cause != nil {
+		return out.cause
+	}
+	return &core.RefusalError{Code: out.failure, Message: "the finder left no readable review"}
 }
 
 // canceledRefusal reports the operator's cancel, which outranks every phase's
@@ -661,18 +771,47 @@ func (c *coordinator) executionResponse() {
 			Budget: c.st.budget,
 		}
 	}
-	execution := panelcore.CheckExecution(c.dir, nil)
-	counts := execution.Attach(nil).Finders
+	counts, status := c.executionCounts()
 	failures := make([]core.RunPhaseFailure, 0, len(c.failures))
 	for _, row := range c.failures {
 		failures = append(failures, core.RunPhaseFailure{
-			Phase: jq.StrOf(readcommon.FieldOf(row, "phase")), Code: jq.StrOf(readcommon.FieldOf(row, "code")),
+			Phase: jq.StrOf(readcommon.FieldOf(row, keyPhase)), Code: jq.StrOf(readcommon.FieldOf(row, "code")),
 		})
 	}
 	c.response.Data.Execution = &core.RunExecution{
-		ID: c.id, Status: readcommon.JSONStr(filepath.Join(c.dir, launcherFile), keyStatus),
+		ID: c.id, Status: status,
 		Counts: counts, Failures: failures,
 	}
 	c.response.Data.Resume = c.resumeData()
 	c.aggregateResponse()
+}
+
+// executionCounts publishes the finder summary and status the bundle supports.
+// Attach returns its nil summary unchanged when the execution is not Active, so
+// a launch that died before writing its marker must not read .Finders off that
+// nil. The schema already allows null counts, and "partial" is the honest
+// status for a bundle with no execution to call complete.
+func (c *coordinator) executionCounts() (*core.FinderSummary, string) {
+	summary := panelcore.CheckExecution(c.dir, nil).Attach(nil)
+	if summary == nil {
+		c.failed("execution", codeRecordFailed)
+		return nil, statusPartial
+	}
+	status := readcommon.JSONStr(filepath.Join(c.dir, launcherFile), keyStatus)
+	if status == "" {
+		return summary.Finders, statusPartial
+	}
+	return summary.Finders, status
+}
+
+// executionRefusal reports the refusal a response owes when the bundle records
+// no execution: every phase may still look valid, but there is no captured
+// execution to report, so the launch must not read as success.
+func (c *coordinator) executionRefusal() *core.RefusalError {
+	if c.response == nil || c.response.Data == nil || c.response.Data.Execution == nil ||
+		c.response.Data.Execution.Counts != nil {
+		return nil
+	}
+	return c.st.refuse(codeRecordFailed, "the bundle recorded no execution: launcher.json carries no execution id "+
+		"and run.json names no execution — the launch died before it recorded one; re-run the launch")
 }

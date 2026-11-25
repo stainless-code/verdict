@@ -26,7 +26,9 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/core/reviewflow"
 	runcore "github.com/stainless-code/verdict/internal/core/run"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
 const (
@@ -52,9 +54,6 @@ const (
 	// findersOne is the hard-locked finder topology: a demo is one fast pass,
 	// and there is no flag to widen it.
 	findersOne = "1"
-	// launchTimeoutS is the launcher's watchdog budget, the same 300 s the run
-	// verb gives a launch by default. A demo never waits longer than that.
-	launchTimeoutS = "300"
 	// ghHostname is the host whose login the demo probes.
 	ghHostname = "github.com"
 	// ghNoRefresh keeps the login probe from refreshing stored credentials, so
@@ -113,6 +112,10 @@ type Request struct { //nolint:govet // field grouping documents the request sur
 	Target string
 	// Agent is the operator's --agent override; empty auto-detects.
 	Agent string
+	// TimeoutRaw is --timeout: the launcher's watchdog budget in seconds. Empty
+	// keeps the run verb's default; the run service refuses a value that is not
+	// a positive number.
+	TimeoutRaw string
 	// Checkout is the reviewed checkout: the caller's git top level for the
 	// local form, "" for a URL review.
 	Checkout string `json:"-"`
@@ -174,6 +177,11 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	target, agent, ref := prepare(req)
 	if ref != nil {
 		return nil, ref
+	}
+	if target != nil {
+		// A demo target is always on github.com (ParseTarget refuses any other
+		// host), so every gh call names it and GH_HOST cannot redirect one.
+		ctx = core.WithHost(ctx, ghHostname)
 	}
 	dir, ref := tempRoot(req)
 	if ref != nil {
@@ -440,18 +448,10 @@ func fetchRemote(
 	if !signedIn && present(req.LookPath, binGh) {
 		req.Warn(msgGhAnon)
 	}
-	resp, err := fetchcore.Run(ctx, &fetchcore.Request{
-		ReadRequest:  readRequest(req, target.Slug(), target.Pr, dir),
-		Flags:        fetchcore.Flags{Provider: providerGitHub, PublicRead: !signedIn, NoRepoLayer: true},
-		SettingsPath: req.SettingsPath,
-		Effective:    req.Effective,
-		JSONMode:     req.JSONMode,
-		Warnings:     req.Warnings,
-		Human:        req.Human,
-		Diag:         req.Diag,
-	})
-	if err != nil {
-		return bundle{}, nil, fetchRefusal(err)
+	resp, ref := flowOf(req).FetchPR(ctx, &reviewflow.Bundle{Dir: dir, Repo: target.Slug(), Pr: target.Pr},
+		&fetchcore.Flags{Provider: providerGitHub, PublicRead: !signedIn, NoRepoLayer: true}, req.Warnings)
+	if ref != nil {
+		return bundle{}, nil, ref
 	}
 	via := binGh
 	if !signedIn {
@@ -474,18 +474,9 @@ func fetchLocal(ctx context.Context, req *Request, dir string) (bundle, *fetchco
 	}
 	flags.RepoLayerRoot = req.Checkout
 	slug := originSlug(ctx, req)
-	resp, err := fetchcore.RunLocal(ctx, &fetchcore.LocalRequest{
-		ReadRequest:  readRequest(req, slug, localName, dir),
-		Flags:        flags,
-		SettingsPath: req.SettingsPath,
-		Effective:    req.Effective,
-		JSONMode:     req.JSONMode,
-		Warnings:     req.Warnings,
-		Human:        req.Human,
-		Diag:         req.Diag,
-	})
-	if err != nil {
-		return bundle{}, nil, fetchRefusal(err)
+	resp, ref := flowOf(req).FetchLocal(ctx, &reviewflow.Bundle{Dir: dir, Repo: slug, Pr: localName}, &flags, req.Warnings)
+	if ref != nil {
+		return bundle{}, nil, ref
 	}
 	return bundle{
 		dir: dir, repo: slug, pr: localName, fetchedVia: fetchedViaGit,
@@ -622,11 +613,11 @@ func twoSegments(path string, ok bool) (string, bool) {
 	return parts[0] + slugSep + parts[1], true
 }
 
-// runGit runs one git subcommand from the process working directory:
-// fetch-local reads the same tree the same way, so the demo's probes cannot
-// disagree with the diff it asks for.
+// runGit runs one hook-free git subcommand ([gitcmd.Argv]) from the process
+// working directory: fetch-local reads the same tree the same way, so the
+// demo's probes cannot disagree with the diff it asks for.
 func runGit(ctx context.Context, req *Request, args ...string) (core.Result, error) {
-	res, err := req.Commander.Run(ctx, &core.Command{Argv: append([]string{"git"}, args...)})
+	res, err := req.Commander.Run(ctx, &core.Command{Argv: gitcmd.Argv("", args...), Env: gitcmd.Env(nil)})
 	if err != nil {
 		return res, err //nolint:wrapcheck // the seam error is mapped at the caller
 	}
@@ -679,40 +670,30 @@ func present(look func(string) (string, error), tool string) bool {
 	return err == nil
 }
 
+// watchdogBudget is the launcher's budget: the seconds --timeout named, else
+// the run verb's default. The raw value rides to the run service, which refuses
+// a non-positive or non-numeric value as bad-timeout.
+func watchdogBudget(raw string) string {
+	if raw == "" {
+		return runcore.DefaultTimeoutS
+	}
+	return raw
+}
+
 // launch runs the operator's agent against the bundle with a single finder.
 func launch(
 	ctx context.Context, req *Request, b *bundle, agent string, warnings []string,
 ) (*core.RunResponse, *core.RefusalError) {
-	root := req.RootPath()
-	rt := &core.Runtime{Env: req.Env, Now: req.Now, Progress: req.Progress, Commander: req.AgentCommander}
-	read := core.ReadRequest{
-		Runtime: rt,
-		Repo:    b.repo, Pr: b.pr, Forces: req.Forces, Root: &root, RepoRoot: b.dir,
-	}
-	return runcore.Run(ctx, &core.RunRequest{
-		ReadRequest: read,
-		Agent:       agent,
-		FindersRaw:  findersOne,
-		TimeoutRaw:  launchTimeoutS,
-		Checkout:    b.checkout,
-		LookPath:    req.LookPath,
-		Environ:     req.Environ,
-		JSONMode:    req.JSONMode,
-		Warnings:    warnings,
-	})
+	return flowOf(req).Run(ctx, b.flow(), reviewflow.Launch{
+		Agent: agent, FindersRaw: findersOne, TimeoutRaw: watchdogBudget(req.TimeoutRaw),
+	}, warnings)
 }
 
 // recordBundle records the launched review and hands back the rendered body.
 func recordBundle(
 	ctx context.Context, req *Request, b *bundle, warnings []string,
 ) (*recordcore.Response, *core.RefusalError) {
-	return recordcore.Run(ctx, &recordcore.Request{
-		ReadRequest:   readRequest(req, b.repo, b.pr, b.dir),
-		Effective:     req.Effective,
-		Warnings:      warnings,
-		RepoLayerRoot: b.checkout,
-		DryRun:        b.dryRun(),
-	})
+	return flowOf(req).Record(ctx, b.flow(), reviewflow.RecordOptions{DryRun: b.dryRun()}, warnings)
 }
 
 // stageWarnings folds one composed service's warnings into the run's list.
@@ -729,26 +710,29 @@ func union(acc, next []string) []string {
 	return append(append([]string{}, acc...), next...)
 }
 
-// readRequest builds the transport-neutral request the composed read services
-// take: the demo's runtime, the positionals, the caller's checkout as the tool
-// root, and the temp directory as the reviewed root.
-func readRequest(req *Request, repo, pr, dir string) core.ReadRequest {
-	root := req.RootPath()
-	rt := &core.Runtime{Env: req.Env, Now: req.Now, Progress: req.Progress, Commander: req.Commander}
-	return core.ReadRequest{
-		Runtime: rt,
-		Repo:    repo, Pr: pr, Forces: req.Forces,
-		Root: &root, RepoRoot: dir,
+// flowOf is the shared fetch → run → record wiring for this invocation: the
+// demo's runtime, both commanders, and the caller's checkout as the tool root.
+// A demo launches from the shipped agent table only and carries no personal
+// spend policy, so those two fields stay empty.
+func flowOf(req *Request) *reviewflow.Flow {
+	return &reviewflow.Flow{
+		ReadRequest:    req.ReadRequest,
+		SettingsPath:   req.SettingsPath,
+		Effective:      req.Effective,
+		Commander:      req.Commander,
+		AgentCommander: req.AgentCommander,
+		LookPath:       req.LookPath,
+		Environ:        req.Environ,
+		Human:          req.Human,
+		Diag:           req.Diag,
+		JSONMode:       req.JSONMode,
 	}
 }
 
-// fetchRefusal maps a fetch failure: a typed refusal passes through unchanged,
-// and anything else becomes fetch-failed.
-func fetchRefusal(err error) *core.RefusalError {
-	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
-		return ref
-	}
-	return &core.RefusalError{Code: codeFetchFailed, Message: fmt.Sprintf("fetch failed: %v", err)}
+// flow is the bundle as the shared pipeline names it: the temp root every
+// composed service anchors to and the agent's checkout.
+func (b *bundle) flow() *reviewflow.Bundle {
+	return &reviewflow.Bundle{Dir: b.dir, Repo: b.repo, Pr: b.pr, Checkout: b.checkout}
 }
 
 // canceled is the shared cancel refusal (the adapter exits 3 on it).

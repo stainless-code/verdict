@@ -28,17 +28,12 @@ fi
 usage_gate() { # $1 = label, rest after -- = cli args
   local label="$1"; shift
   [ "${1:-}" = "--" ] && shift
-  local expected="$USAGE"
-  if [ "${1:-}" = next ]; then
-    expected="$EVAL_SANDBOX/next-usage-block.txt"
-    { printf '%s\n' 'error: next requires <owner/repo> and <pr|local-name>'; cat "$USAGE"; } >"$expected"
-  fi
   set +e
   ( cd "$EVAL_SANDBOX" && "$EVAL_CLI" "$@" >"$EVAL_SANDBOX/u-out.txt" 2>"$EVAL_SANDBOX/u-err.txt" )
   st=$?
   set -e
   if [ "$st" -eq 2 ] \
-    && cmp -s "$EVAL_SANDBOX/u-err.txt" "$expected" \
+    && cmp -s "$EVAL_SANDBOX/u-err.txt" "$USAGE" \
     && [ ! -s "$EVAL_SANDBOX/u-out.txt" ]; then
     good "$label: usage block on stderr, exit 2"
   else
@@ -46,13 +41,34 @@ usage_gate() { # $1 = label, rest after -- = cli args
   fi
 }
 
+# target_gate: a pair verb with no resolvable target exits 2 with the typed
+# refusal, then the verb's own usage line (never the full block), and under
+# --json carries the target-unresolved envelope (U6).
+target_gate() { # $1 = label, $2 = verb, rest = cli args
+  local label="$1" verb="$2"; shift 2
+  set +e
+  ( cd "$EVAL_SANDBOX" && "$EVAL_CLI" "$@" >"$EVAL_SANDBOX/u-out.txt" 2>"$EVAL_SANDBOX/u-err.txt" )
+  st=$?
+  set -e
+  if [ "$st" -eq 2 ] && [ ! -s "$EVAL_SANDBOX/u-out.txt" ] \
+    && head -n 1 "$EVAL_SANDBOX/u-err.txt" | matches '^error: .*verdict '"$verb"' ' \
+    && tail -n 1 "$EVAL_SANDBOX/u-err.txt" | matches '^usage: verdict '"$verb"' <owner/repo>' \
+    && ! cmp -s "$EVAL_SANDBOX/u-err.txt" "$USAGE"; then
+    good "$label: typed refusal plus the verb's usage line, exit 2"
+  else
+    bad "$label: exit $st (want 2, the refusal, then the $verb usage line)"
+  fi
+}
+
 usage_gate "U1 no verb" --
 
-for verb in fetch fetch-local record adopt fix post triage report next show verify calibrate ready; do
-  usage_gate "U2 $verb (no positionals)" -- "$verb"
-  usage_gate "U2 $verb (repo only)" -- "$verb" acme/app
+usage_gate "U2 fetch-local (no positionals)" -- fetch-local
+usage_gate "U2 fetch-local (repo only)" -- fetch-local acme/app
+for verb in fetch record adopt fix post triage report next show verify calibrate ready; do
+  target_gate "U2 $verb (no positionals)" "$verb" "$verb"
+  target_gate "U2 $verb (repo only)" "$verb" "$verb" acme/app
 done
-usage_gate "U2 trend (no repo)" -- trend
+target_gate "U2 trend (no repo)" trend trend
 for verb in check-tree doctor learn init skill; do
   set +e
   ( cd "$EVAL_SANDBOX" && XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-empty" "$EVAL_CLI" "$verb" </dev/null >"$EVAL_SANDBOX/u-out.txt" 2>"$EVAL_SANDBOX/u-err.txt" )
@@ -71,8 +87,9 @@ set +e
 ( cd "$EVAL_SANDBOX" && XDG_CONFIG_HOME="$EVAL_SANDBOX/xdg-bad" "$EVAL_CLI" report >"$EVAL_SANDBOX/u-out.txt" 2>"$EVAL_SANDBOX/u-err.txt" )
 st=$?
 set -e
-if [ "$st" -eq 2 ] && cmp -s "$EVAL_SANDBOX/u-err.txt" "$USAGE"; then
-  good "U3 corrupt settings + missing pr still usage-errors (exit 2)"
+if [ "$st" -eq 2 ] && head -n 1 "$EVAL_SANDBOX/u-err.txt" | matches '^error: no target given' \
+  && [ "$(grep -c settings "$EVAL_SANDBOX/u-err.txt" || true)" = 0 ]; then
+  good "U3 corrupt settings + missing target still refuses target-unresolved (exit 2)"
 else
   bad "U3 corrupt-settings gate exits $st"
 fi
@@ -97,6 +114,16 @@ else
   bad "U4 unknown verb with positionals exits $st"
 fi
 
+set +e
+( cd "$EVAL_SANDBOX" && "$EVAL_CLI" report --json >"$EVAL_SANDBOX/u-out.txt" 2>"$EVAL_SANDBOX/u-err.txt" )
+st=$?
+set -e
+if [ "$st" -eq 2 ] && [ "$(jq -r '.error.code // empty' <"$EVAL_SANDBOX/u-out.txt" 2>/dev/null)" = "target-unresolved" ]; then
+  good "U6 --json carries the target-unresolved envelope, exit 2"
+else
+  bad "U6 --json missing target exits $st (want 2 with a target-unresolved envelope)"
+fi
+
 assert_file_grep "U5 block names verdict" "$USAGE" "usage: verdict "
 assert_stream_nogrep "U5 block never names review.sh" "$USAGE" "review\.sh"
 anchors_ok="true"
@@ -104,7 +131,7 @@ for anchor in --json verify-destructive verify-networked verify-credential-read 
   grep -q -F -- "$anchor" "$USAGE" || { anchors_ok="false"; bad "U5 block misses $anchor"; }
 done
 [ "$anchors_ok" = "true" ] && good "U5 block keeps --json, the verify codes, and token-scopes-excess"
-if grep -q -F -- "mcp [--read-only | --operator] (experimental)" "$USAGE" \
+if grep -q -F -- "mcp [--read-only] (experimental)" "$USAGE" \
   && grep -q -F -- "mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>" "$USAGE" \
   && grep -q -F -- "(experimental)" "$USAGE"; then
   good "U5 block lists mcp and mcp config tagged experimental"

@@ -28,6 +28,7 @@ import (
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -225,10 +226,13 @@ type presetVals struct {
 	panel  string
 }
 
+// presets pin a panel roster `verdict panel` accepts (a synthesizer plus at
+// least one verifier) and a budget guard that grows with strictness: a deeper
+// panel runs more models per review, so a tighter guard would refuse it.
 var presets = map[string]presetVals{
-	"chill":    {budget: "2.00", kbMin: "10", kbRate: "0.7", panel: ""},
-	"standard": {budget: "0.50", kbMin: "5", kbRate: "0.5", panel: "main"},
-	"strict":   {budget: "0.10", kbMin: "3", kbRate: "0.3", panel: "lead\nlens-1\nlens-2"},
+	"chill":    {budget: "0.10", kbMin: "10", kbRate: "0.7", panel: ""},
+	"standard": {budget: "0.50", kbMin: "5", kbRate: "0.5", panel: "lead\nlens-1"},
+	"strict":   {budget: "2.00", kbMin: "3", kbRate: "0.3", panel: "lead\nlens-1\nlens-2"},
 }
 
 // PresetValues lists every --preset value in the order the hints print them,
@@ -782,7 +786,7 @@ func (st *state) collectStatuses(wants map[string]string) ([]string, bool) {
 
 func (st *state) previewScaffold(wants map[string]string, workflow []byte, wfStatus string) {
 	st.humanf("init: preset %s (chill: unpinned/10/0.7, standard: "+
-		"1 member/5/0.5, strict: lead+2 lenses/3/0.3)\n", st.req.Preset)
+		"lead+1 lens/5/0.5, strict: lead+2 lenses/3/0.3)\n", st.req.Preset)
 	for _, t := range targets {
 		st.humanf("--- .verdict/%s (%s) ---\n", t, st.targetStatus(t, wants[t]))
 		st.humanf("%s\n", wants[t])
@@ -1064,13 +1068,16 @@ func (st *state) checkTree(ctx context.Context) (out string, clean bool, rest st
 	return "check-tree: dirty worktree — commit or stash first:", false, strings.Join(restLines, newlineStr)
 }
 
-// gitStatus runs `git status --porcelain` through the commander seam.
+// gitStatus runs a hook-free, fsmonitor-free `git status --porcelain`
+// through the commander seam. Clean and process filters stay on, so a file
+// reads as git itself sees it.
 func (st *state) gitStatus(ctx context.Context) (string, error) {
 	if st.req.Commander == nil {
 		return "", errNoCommander
 	}
 	res, err := st.req.Commander.Run(ctx, &core.Command{
-		Argv: []string{"git", "-C", st.req.RepoRootPath(), "status", "--porcelain", "--untracked-files=all"},
+		Argv: gitcmd.Argv(st.req.RepoRootPath(), "status", "--porcelain", "--untracked-files=all"),
+		Env:  gitcmd.Env(nil),
 	})
 	if err != nil {
 		//nolint:wrapcheck // the commander error is only a non-zero signal; check-tree reads "not a git repo"

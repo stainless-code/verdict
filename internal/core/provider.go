@@ -6,6 +6,8 @@ import (
 	"slices"
 	"strings"
 	"time"
+
+	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
 // ResolveProvider chooses an explicit provider or infers it from origin. An
@@ -19,7 +21,7 @@ func ResolveProvider(ctx context.Context, cmdr Commander, root, explicit string,
 	}
 	ctx, cancel := context.WithTimeout(ctx, providerTimeout)
 	defer cancel()
-	res, err := cmdr.Run(ctx, &Command{Dir: root, Argv: []string{"git", "remote", "get-url", "origin"}})
+	res, err := cmdr.Run(ctx, &Command{Argv: gitcmd.Argv(root, "remote", "get-url", "origin"), Env: gitcmd.Env(nil)})
 	if ctx.Err() != nil {
 		return "", "", &RefusalError{Code: "canceled", Message: "provider lookup canceled or timed out"}
 	}
@@ -61,20 +63,15 @@ func providerFromRemote(raw string, env map[string]string) string {
 	if host == "" {
 		return ""
 	}
-	providers := map[string]string{
-		"github.com": providerGitHub, "gitlab.com": providerGitLab, "gitcafe.com": providerGitCafe,
-		"codeberg.org": providerForgejo, "bitbucket.org": providerBitbucket,
-		"dev.azure.com": providerAzure, "ssh.dev.azure.com": providerAzure,
-	}
-	chosen := providers[host]
-	for key, provider := range map[string]string{"GITLAB_HOST": providerGitLab, "FORGEJO_HOST": providerForgejo} {
-		if configuredHost(env[key]) != host {
+	chosen := publicHosts[host]
+	for _, c := range configuredHosts {
+		if configuredHost(env[c.key]) != host {
 			continue
 		}
-		if chosen != "" && chosen != provider {
+		if chosen != "" && chosen != c.provider {
 			return ""
 		}
-		chosen = provider
+		chosen = c.provider
 	}
 	return chosen
 }

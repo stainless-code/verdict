@@ -16,18 +16,16 @@ type procedureModeCase struct {
 	name     string
 	tools    int
 	readOnly bool
-	operator bool
 }
 
 // TestProcedureSurfacesIgnoreModes proves prompts and resources are
 // byte-for-byte the same on every tool surface. The tool counts pin that the
-// three configs really are different surfaces.
+// two configs really are different surfaces.
 func TestProcedureSurfacesIgnoreModes(t *testing.T) {
 	t.Parallel()
 	cases := []procedureModeCase{
-		{name: "default", tools: 26},
-		{name: "read-only", tools: 15, readOnly: true},
-		{name: "operator", tools: 27, operator: true},
+		{name: "default", tools: 33},
+		{name: "read-only", tools: 21, readOnly: true},
 	}
 	paths, wantPrompt, wantResource := procedureFixtures(t)
 
@@ -36,9 +34,8 @@ func TestProcedureSurfacesIgnoreModes(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := testConfig()
 			cfg.ReadOnly = tc.readOnly
-			cfg.Operator = tc.operator
 			frames := procedureFrames(t, &cfg)
-			checkProcedureSurface(t, tc, frames, len(paths)+len(handoffRefPaths()), len(skillfs.Tasks()), wantPrompt, wantResource)
+			checkProcedureSurface(t, tc, frames, len(paths)+len(handoffRefPaths())+4, len(skillfs.Tasks()), wantPrompt, wantResource)
 			wire := procedureWireFrom(frames)
 			if i == 0 {
 				baseline = wire
@@ -75,6 +72,7 @@ func procedureFrames(t *testing.T, cfg *Config) map[string]frame {
 		`{"jsonrpc":"2.0","id":4,"method":"resources/list"}`,
 		fmt.Sprintf(`{"jsonrpc":"2.0","id":5,"method":"resources/read","params":{"uri":%q}}`,
 			resourceURIPrefix+"PROCEDURE.md"),
+		`{"jsonrpc":"2.0","id":6,"method":"resources/templates/list"}`,
 	}
 	frames := serve(t, cfg, lines...)
 	for i := range lines {
@@ -147,6 +145,7 @@ type procedureWire struct {
 	promptGet     json.RawMessage
 	resourcesList json.RawMessage
 	resourceRead  json.RawMessage
+	templatesList json.RawMessage
 }
 
 func procedureWireFrom(frames map[string]frame) procedureWire {
@@ -155,6 +154,7 @@ func procedureWireFrom(frames map[string]frame) procedureWire {
 		promptGet:     frames["3"].Result,
 		resourcesList: frames["4"].Result,
 		resourceRead:  frames["5"].Result,
+		templatesList: frames["6"].Result,
 	}
 }
 
@@ -171,5 +171,8 @@ func checkProcedureWire(t *testing.T, name string, got, want *procedureWire) {
 	}
 	if !bytes.Equal(got.resourceRead, want.resourceRead) {
 		t.Errorf("%s resources/read differs from the default surface", name)
+	}
+	if !bytes.Equal(got.templatesList, want.templatesList) {
+		t.Errorf("%s resources/templates/list differs from the default surface", name)
 	}
 }

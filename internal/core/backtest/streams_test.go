@@ -13,6 +13,7 @@ import (
 // branch resolves. git prints an ambiguity warning on stderr beside the sha on
 // stdout; the miner must read the sha, not the warning.
 func TestMineResolvesAmbiguousRef(t *testing.T) {
+	t.Parallel()
 	b, _ := newMergedFixRepo(t)
 	b.r.git("branch", "amb", b.base)
 	b.r.git("tag", "amb", b.base)
@@ -39,6 +40,7 @@ func (c noisyCommander) Run(ctx context.Context, cmd *core.Command) (core.Result
 // TestMineStderrNoiseDoesNotCorruptParses proves warnings on stderr leave the
 // parsed shas, blame lines, and therefore mine.json untouched.
 func TestMineStderrNoiseDoesNotCorruptParses(t *testing.T) {
+	t.Parallel()
 	b, _ := newMergedFixRepo(t)
 	_, clean := mineRun(t, b.r, b.base, nil)
 	resp, ref := Run(t.Context(), &Request{

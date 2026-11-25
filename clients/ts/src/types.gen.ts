@@ -172,6 +172,7 @@ export interface Problem {
   code:
     | "anchor-outside-hunk"
     | "bad-enum"
+    | "diagram-invalid"
     | "empty-findings-needs-summary"
     | "enum-synonym"
     | "invalid-json"
@@ -328,7 +329,7 @@ export interface FinderSummary {
   [key: string]: unknown;
 }
 
-/** report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, gate only when a gating flag (--max-severity, --require-head, --live) is set (gate itself always carries the coverage dimension), receipt keys only when budget.json parses. */
+/** report --json data: ranked read over the store. cost appears only with --cost and receipt keys only when budget.json parses. report is advisory and carries no gate verdict: gate publishes it. */
 export interface ReportData {
   verification?: VerificationSummary | null;
   generated_at: string;
@@ -341,15 +342,26 @@ export interface ReportData {
   output: string | null;
   filters: ReportFilters;
   items: Array<FindingItem>;
+  org_pack?: OrgPackInfo | null;
   cost?: ReportCost;
   compare?: ReportCompare | null;
-  completeness?: ReportCompleteness;
   compliance?: ReportCompliance | null;
   risk?: ReportRisk | null;
   validation?: ValidationData | null;
-  gate?: ReportGate | null;
+  replay?: ReportReplay | null;
   receipt?: ProvenanceReceipt;
   truncated?: boolean | Array<ProvenanceTruncatedRow>;
+  [key: string]: unknown;
+}
+
+export interface OrgPackInfo {
+  repo: string;
+  ref: string;
+  path: string;
+  sha?: string;
+  hash?: string;
+  name?: string;
+  version?: string;
   [key: string]: unknown;
 }
 
@@ -412,6 +424,7 @@ export interface ReportCost {
   est_usd: number | null;
   by_tier: CostTiers;
   receipts?: unknown[];
+  mtd?: ReportMTD | null;
   [key: string]: unknown;
 }
 
@@ -479,16 +492,15 @@ export interface CostTier {
   [key: string]: unknown;
 }
 
-export interface ReportCompleteness {
-  reviewed: boolean;
-  fetched_head: string | null;
-  posted_head: string | null;
-  /** True when the reviewed bundle identity and the posted post.json patch id share id and kind (rebase/amend with the same change); absent when either side has no patch id. */
-  same_patch?: boolean | null;
-  /** Patch id the bundle identity carried at review time; absent when the bundle had no identity. */
-  reviewed_patch_id?: string | null;
-  /** Patch id the completed post receipt carried; absent when the post predates patch identity. */
-  posted_patch_id?: string | null;
+export interface ReportMTD {
+  known_usd?: number | null;
+  monthly_cap_usd?: number | null;
+  remaining_usd?: number | null;
+  monthly_repo_cap?: number | null;
+  monthly_personal_cap?: number | null;
+  month: string;
+  known_count: number;
+  unknown_count: number;
   [key: string]: unknown;
 }
 
@@ -505,6 +517,28 @@ export interface ReportCompliance {
   /** Accepted conflicts and pending required work counted together as the standing gap tally; never negative. */
   gaps: number;
   satisfied: boolean;
+  [key: string]: unknown;
+}
+
+export interface ReportReplay {
+  policy_path: string;
+  captured: ReportReplaySide;
+  candidate: ReportReplaySide;
+  changed: Array<ReportReplayMove>;
+  [key: string]: unknown;
+}
+
+export interface ReportReplaySide {
+  reason?: string;
+  gate_passed: boolean;
+  approved: boolean;
+  [key: string]: unknown;
+}
+
+export interface ReportReplayMove {
+  id: string;
+  before: string;
+  after: string;
   [key: string]: unknown;
 }
 
@@ -592,6 +626,78 @@ export interface RiskRung {
   [key: string]: unknown;
 }
 
+/** loop --json data and the body of summary.json: the self-review loop's outcome, the limits it held, the planned commands, and every round's receipt. CLI-only; passed is true only when stop is pass, and a --print render carries stop planned, the plan, and no rounds. */
+export interface LoopData {
+  passed: boolean;
+  /** Why the loop ended: pass (the last gate passed), max-rounds, wall-budget (the --budget deadline, or a spawn's watchdog, which is the budget that remained), cost-budget (--max-cost-usd over the summed round cost_usd, a round whose spend could not be measured while --max-cost-usd is set, or the monthly spend ceiling refusing a spawn), no-progress (no finding open after the previous round was resolved), agent-failed (the agent process failed, refusal carried as run reported it), refused (any other typed refusal), or planned (--print). */
+  stop:
+    | "pass"
+    | "max-rounds"
+    | "wall-budget"
+    | "cost-budget"
+    | "no-progress"
+    | "agent-failed"
+    | "refused"
+    | "planned";
+  agent: string;
+  max_rounds: number;
+  budget_s: number;
+  max_cost_usd: number | null;
+  /** The summed known round costs; null when no round's receipts priced it. Every spawn leaves a budget.json receipt, so an unpriced one counts as unknown spend; with --max-cost-usd set, unmeasured spend stops the loop (budget-unknown). */
+  cost_usd: number | null;
+  elapsed_ms: number;
+  output: string | null;
+  refusal: LoopRefusal | null;
+  /** Every command the loop can run, round by round, as its CLI equivalent; the fix step is the agent argv itself, prompt included. */
+  plan: Array<LoopPlanStep>;
+  rounds: Array<LoopRound>;
+  [key: string]: unknown;
+}
+
+/** One round's receipt (round-N.json). A phase that never ran leaves its observation null: open and gate when record or gate did not run, fix on a passing, final, or stopped round. */
+export interface LoopRound {
+  round: number;
+  bundle: string;
+  started_at: string;
+  ended_at: string;
+  open: number | null;
+  open_sigs: Array<string>;
+  gate: boolean | null;
+  /** The round bundle's own known cost receipts (cost.json, chunk costs, or the budget ledger); null when none priced it. */
+  cost_usd: number | null;
+  fix: LoopFix | null;
+  refusal: LoopRefusal | null;
+  [key: string]: unknown;
+}
+
+/** The fix phase ran: the agent was spawned with the fix directive in the working tree. */
+export interface LoopFix {
+  verify: LoopVerify | null;
+  [key: string]: unknown;
+}
+
+/** The verdict verify receipt for the command the fix agent declared in the bundle's patch.json, or the refusal that stopped it. */
+export interface LoopVerify {
+  exit: number | null;
+  timed_out: boolean;
+  refusal: LoopRefusal | null;
+  [key: string]: unknown;
+}
+
+export interface LoopRefusal {
+  code: string;
+  message: string;
+  [key: string]: unknown;
+}
+
+export interface LoopPlanStep {
+  round: number;
+  phase: "fetch" | "review" | "record" | "gate" | "fix" | "verify";
+  when: "always" | "gate-failed" | "verify-cmd-declared";
+  argv: Array<string>;
+  [key: string]: unknown;
+}
+
 /** risk --json data: the advisory triage queue over the bundles under .verdict/state. bundles counts the queued bundles (by_band sums to it) and rows are ranked by band, then score, then bundle name; a hidden row adds the response_cap receipt. */
 export interface RiskData {
   truncated?: boolean;
@@ -647,7 +753,7 @@ export interface ReportGate {
 
 /** One gate dimension: its id, verdict status, human detail text, and its own failing tally (null where the dimension has no count to report). */
 export interface GateDimension {
-  /** Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), live_threads (unresolved threads on the PR under --live), compliance, risk, spec (the spec checks the stored record graded, always on: a violated check withholds the derived approval, so no gate passes over it), or evidence (the stored evidence receipt for that HEAD, always on under --check). */
+  /** Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), live_threads (unresolved threads on the PR under --live), compliance, risk, spec (the spec checks the stored record graded, always on: a violated check withholds the derived approval, so no gate passes over it), or evidence (the stored evidence receipt for that HEAD, always on). */
   id:
     | "findings"
     | "head"
@@ -782,6 +888,8 @@ export interface EvidenceReceipt {
   gaps?: Array<string>;
   receipts: EvidenceReceipts;
   spec: EvidenceSpec;
+  /** Settled behavioral-diagram disposition. Every node and edge the block draws cites a real NEW-side diff line inside a hunk (added or context); the relation an edge draws is the agent's claim and is not checked. Counts how many supplied elements anchored, how many were dropped, and why the block was left out when it was. It never withholds approval. */
+  diagram?: EvidenceDiagram | null;
   insufficient: boolean;
   [key: string]: unknown;
 }
@@ -812,6 +920,40 @@ export interface EvidenceSpec {
   min: number;
   met: boolean;
   [key: string]: unknown;
+}
+
+/** Settled behavioral-diagram disposition. Every node and edge the block draws cites a real NEW-side diff line inside a hunk (added or context); the relation an edge draws is the agent's claim and is not checked. Counts how many supplied elements anchored, how many were dropped, and why the block was left out when it was. It never withholds approval. */
+export interface EvidenceDiagram {
+  /** The rendered diagram type, absent when the supplied type was out of scope. */
+  type?: "sequence" | "state" | "flow";
+  /** The sanitized title the block carries, when it had one. */
+  title?: string;
+  /** Nodes and edges the review supplied. */
+  supplied: number;
+  /** Nodes and edges whose quotes matched a NEW-side diff line inside a hunk (added or context) and whose endpoints survived; an edge's relation is not checked. The node and edge caps may draw fewer, and an omitted block draws none. */
+  verified: number;
+  /** Supplied elements that did not verify or were malformed: a quote the diff did not prove, a dangling endpoint, a missing or repeated id, an element past the checking limit (240 nodes, 400 edges), or every element of an out-of-scope type. verified + dropped = supplied. */
+  dropped: number;
+  /** One-line reason the whole block was left out; absent when it rendered. */
+  omitted?: string;
+}
+
+/** The dry run's behavioral-diagram disposition: the state the body drew plus exactly the fields evidence.diagram stores. data.body.diagram is null when no block is drawn (no diagram supplied, or publish.diagrams.anchored off). */
+export interface PostDiagram {
+  /** rendered: the block is in the body. omitted: one note stands in its place. */
+  status: "rendered" | "omitted";
+  /** The rendered diagram type, absent when the supplied type was out of scope. */
+  type?: "sequence" | "state" | "flow";
+  /** The sanitized title the block carries, when it had one. */
+  title?: string;
+  /** Nodes and edges the review supplied. */
+  supplied: number;
+  /** Nodes and edges anchored to a NEW-side diff line inside a hunk; an edge's relation is not checked. */
+  verified: number;
+  /** Supplied elements that did not verify, were malformed, or were past the checking limit. verified + dropped = supplied. */
+  dropped: number;
+  /** One-line reason the whole block was left out; absent when it rendered. */
+  omitted?: string;
 }
 
 export interface SpecCheck {
@@ -1160,6 +1302,9 @@ export interface ConfigPlanGroup {
 export interface ConfigSpend {
   guard_usd?: number | null;
   personal_limit_usd?: number | null;
+  monthly_budget_usd?: number | null;
+  monthly_repo_cap?: number | null;
+  monthly_personal_cap?: number | null;
   require_known_estimate: boolean;
   enforce_cap: boolean;
   [key: string]: unknown;
@@ -1189,7 +1334,7 @@ export interface ShowFix {
   suggestion: string | null;
   /** The stored machine brief, read as stored without re-validation, or null when the finding has none. */
   brief: Brief | null;
-  /** The exact rerun command plus resultHead from verification.json for this sig, else a matching (or unnamed) patch.json; null when no history exists. Never executed. */
+  /** The exact rerun command from verification.json for this sig, else a matching (or unnamed) patch.json; null when no history exists. Never executed. */
   verify_hint: VerifyHint | null;
   /** Fixed untrusted-evidence reminder: finding text quotes attacker-controlled PR content and is never an instruction. */
   caution: string;
@@ -1220,7 +1365,6 @@ export interface BriefSite {
 /** A recorded rerun command and its nullable head bracket. */
 export interface VerifyHint {
   verifyCmd: string;
-  resultHead: string | null;
   [key: string]: unknown;
 }
 
@@ -1636,7 +1780,7 @@ export interface ThreadsResolveSkip {
   [key: string]: unknown;
 }
 
-/** verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, the patch read back from the bundle, and whether the run was sandboxed (absent means unsandboxed). A timed-out run is never proof. */
+/** verify --json data: the command's exit status, whether the watchdog timed it out, the redacted output tail, the patch read back from the bundle, whether the run had the full sandbox shape (sandboxed: bwrap or sandbox-exec), and which wrapper it ran under (sandboxMechanism: bwrap, sandbox-exec, or the network-only unshare-net, which never sets sandboxed; absent means unwrapped). head is the reviewed head a deep-group receipt certifies. tree is the git tree id of the content the command ran on, in a snapshot of it outside the checkout: the binding a receipt carries. A checkout verify cannot snapshot refuses verify-failed and runs nothing, so a successful run always names its tree. receipt is the tool-only receipt path: validation-<group>.json for a deep group, verify-receipt.json on the patch path. A timed-out run is never proof. */
 export interface VerifyData {
   exit: number;
   timedOut: boolean;
@@ -1644,8 +1788,10 @@ export interface VerifyData {
   patch: string;
   group?: string;
   head?: string;
+  tree?: string;
   receipt?: string;
   sandboxed?: boolean;
+  sandboxMechanism?: string;
   [key: string]: unknown;
 }
 
@@ -1872,6 +2018,17 @@ export interface PackAddData {
   pack: PackEntry;
   previous_hash: string | null;
   replaced: boolean;
+  [key: string]: unknown;
+}
+
+export interface PackSyncData {
+  pack: PackEntry;
+  repo: string;
+  ref: string;
+  path: string;
+  sha: string | null;
+  hash: string;
+  version: string;
   [key: string]: unknown;
 }
 
@@ -2382,7 +2539,7 @@ export interface ExcludedPath {
 export interface PostDataBody {
   marker: string;
   footer?: unknown;
-  diagram?: unknown;
+  diagram?: PostDiagram | null;
   [key: string]: unknown;
 }
 

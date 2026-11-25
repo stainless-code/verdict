@@ -1,6 +1,7 @@
 package postcore
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -14,6 +15,7 @@ import (
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/diagram"
+	"github.com/stainless-code/verdict/internal/forgejo"
 	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
@@ -36,6 +38,10 @@ type Commander interface {
 // CodePostFailed is the typed refusal for every post-internal failure.
 const CodePostFailed = codePostFailed
 
+// CodePostContentChanged is the typed refusal for a real post whose settled
+// content is not the digest the caller pinned ([Request.PinnedContentHash]).
+const CodePostContentChanged = codePostContentChanged
+
 const codeCanceled = "canceled"
 
 const msgCanceledPost = "canceled before post completed"
@@ -55,6 +61,13 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 		return nil, st.withWarnings(ref)
 	}
 	if ref := st.checkSummaryFlag(); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
+	if ref := st.openBundle(); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
+	ctx, ref := st.pinBundleHost(ctx)
+	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
 	if ref := st.prepare(ctx); ref != nil {
@@ -126,6 +139,8 @@ type state struct { //nolint:govet // field grouping documents the post run stat
 	remoteInline      []map[string]any
 	previousHead      string
 	phash             string
+	postedHash        string
+	marked            string
 	dir               string
 	body              string
 	banners           []string
@@ -254,6 +269,64 @@ func refusalOrFailed(err error) *core.RefusalError {
 	return &core.RefusalError{Code: codePostFailed, Message: fmt.Sprintf("post failed: %v", err)}
 }
 
+// pinBundleHost pins every host call of this post to the host the bundle was
+// fetched from: the review was written against that host's diff, so it may
+// only land on that host's pull request. The host comes from the same record
+// snapshot (st.store) every other bundle read of this post uses. A target
+// that names a host (a URL, or one inferred from origin) must be the
+// bundle's, or the post refuses naming both; a typed `<owner/repo>` names
+// none and takes the bundle's. hostRefusal holds the hosts no call can pin.
+func (st *state) pinBundleHost(ctx context.Context) (context.Context, *core.RefusalError) {
+	host, target := st.store().Host(), core.HostOf(ctx)
+	if host != "" && target != "" && target != host {
+		return ctx, hostMismatch("the target is on %s, but this bundle was fetched from %s, so its review belongs "+
+			"to that host's pull request; fetch the target again, or pass the target on %s", target, host, host)
+	}
+	host = cmp.Or(host, target)
+	if ref := st.hostRefusal(host); ref != nil {
+		return ctx, ref
+	}
+	return core.WithHost(ctx, host), nil
+}
+
+// hostRefusal refuses a post host no call can be pinned to. A GitHub or GitLab
+// host on a non-default port refuses even under a typed pair: neither CLI's
+// --hostname takes a port. A GitHub or GitLab bundle with no recorded URL
+// under a typed pair names no host, so a real post refuses rather than write
+// to the CLI's default host (every fetched bundle records one); a dry run
+// writes nothing and reads like any typed pair. Forgejo has no CLI to pin, so
+// its FORGEJO_HOST must name the same host.
+func (st *state) hostRefusal(host string) *core.RefusalError {
+	provider := st.provider()
+	cliHost := provider == providerGitHub || provider == providerGitLab
+	switch {
+	case cliHost && strings.Contains(host, ":"):
+		return hostMismatch("this bundle is on %s, but neither gh's nor glab's --hostname takes a port, so no "+
+			"call can be pinned to that host and post refuses even for a typed pair; publish the review from the "+
+			"host's web interface, or serve the host on its default port and re-fetch", host)
+	case cliHost && host == "" && !st.flags.DryRun:
+		return hostMismatch("this bundle records no review URL and the target names no host, so post cannot tell " +
+			"which host the review belongs on and would write it to the CLI's default host; " +
+			"re-fetch the target, or pass it as a pull request URL")
+	case provider == providerForgejo:
+		return forgejoHostRefusal(host, core.EnvHostAuthority(st.env()[forgejo.EnvHost]))
+	}
+	return nil
+}
+
+// forgejoHostRefusal refuses a Forgejo bundle off FORGEJO_HOST.
+func forgejoHostRefusal(host, configured string) *core.RefusalError {
+	if host == "" || configured == "" || configured == host {
+		return nil
+	}
+	return hostMismatch("this bundle is on %s, but FORGEJO_HOST names %s and every Forgejo call goes there "+
+		"with FORGEJO_TOKEN; set FORGEJO_HOST and FORGEJO_TOKEN for %s", host, configured, host)
+}
+
+func hostMismatch(format string, a ...any) *core.RefusalError {
+	return &core.RefusalError{Code: core.CodeHostMismatch, Message: fmt.Sprintf(format, a...)}
+}
+
 // openBundle resolves the request's bundle under the shared name guard and
 // proves its store complete before any other gate reads it.
 func (st *state) openBundle() *core.RefusalError {
@@ -266,9 +339,6 @@ func (st *state) openBundle() *core.RefusalError {
 }
 
 func (st *state) prepare(ctx context.Context) *core.RefusalError {
-	if ref := st.openBundle(); ref != nil {
-		return ref
-	}
 	st.event = eventComment
 	if ref := st.hostAuthGate(); ref != nil {
 		return ref
@@ -290,7 +360,7 @@ func (st *state) prepare(ctx context.Context) *core.RefusalError {
 	if st.flags.DryRun {
 		st.findingsFile = st.dir + "/findings.dryrun.json"
 	}
-	if ref := st.merge(); ref != nil {
+	if ref := st.merge(ctx); ref != nil {
 		return ref
 	}
 	return st.settledSecretGate()
@@ -300,6 +370,9 @@ func (st *state) publish(ctx context.Context) (*Response, *core.RefusalError) {
 	st.finalizeBody()
 	st.preflight()
 	st.buildPayloads()
+	if ref := st.pinnedContentGate(); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	st.eventLine()
 	if st.flags.DryRun {
 		return st.dryRunResponse(ctx)
@@ -315,6 +388,19 @@ func (st *state) publish(ctx context.Context) (*Response, *core.RefusalError) {
 		return nil, st.withWarnings(ref)
 	}
 	return st.submit(ctx)
+}
+
+// pinnedContentGate refuses a real post whose settled content is not the one
+// the caller pinned. It runs on the payloads just built, the exact bytes a
+// post hands the host, and before any host write, so the digest it checks is
+// the digest of what is about to be sent, not of an earlier read. (It runs
+// after prepare's host reads, the auth and drift checks.)
+func (st *state) pinnedContentGate() *core.RefusalError {
+	pinned := st.req.PinnedContentHash
+	if st.flags.DryRun || pinned == "" || pinned == st.postedHash {
+		return nil
+	}
+	return &core.RefusalError{Code: codePostContentChanged, Message: fmt.Sprintf(msgPostContentChanged, pinned, st.postedHash)}
 }
 
 func (st *state) checkBundle() *core.RefusalError {
@@ -357,7 +443,11 @@ func (st *state) gateControls() *core.RefusalError {
 }
 
 func (st *state) loadReview() *core.RefusalError {
-	review, err := recordcore.LoadReview(st.flags.ReviewFile)
+	load := recordcore.LoadReview // an operator --review-file keeps normal read semantics
+	if recordcore.IsBundleReview(st.dir, st.flags.ReviewFile) {
+		load = recordcore.LoadBundleReview
+	}
+	review, err := load(st.flags.ReviewFile)
 	if err != nil {
 		return refusalOrFailed(err)
 	}
@@ -443,20 +533,20 @@ func (st *state) applyApprovedFlag() {
 	}
 }
 
-func (st *state) merge() *core.RefusalError {
+func (st *state) merge(ctx context.Context) *core.RefusalError {
 	caps := core.CapabilitiesFor(st.provider())
 	rt := st.mergeRuntime()
 	rs, ref := config.VerifyRunState(st.dir)
 	if ref != nil {
 		return ref
 	}
-	res, err := recordcore.Merge(&rt, &recordcore.MergeParams{
+	res, err := recordcore.Merge(ctx, &rt, &recordcore.MergeParams{
 		Dir: st.dir, Prov: st.provider(),
 		HeadFull: st.commitID,
 		Review:   st.review, ReviewFile: st.flags.ReviewFile,
 		Root: st.req.RootPath(), RepoRoot: st.req.RepoRootPath(),
 		Banners: st.banners,
-		DryRun:  st.flags.DryRun, FindingsFile: st.findingsFile,
+		DryRun:  st.flags.DryRun, FindingsFile: st.findingsFile, NoPersist: st.req.NoPersist,
 		Effective: st.req.Effective, Forces: st.req.Forces,
 		Repo: st.req.Repo, Pr: st.req.Pr, Cmd: "post", Controls: st.controls,
 		RequireCoverage: st.flags.RequireCoverage,

@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"os"
 	"slices"
 	"strings"
 
@@ -14,11 +13,13 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/core/coverage"
 	packcore "github.com/stainless-code/verdict/internal/core/pack"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -71,7 +72,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	res, names, ref := st.mergeAndName(dir, prov, headFull, review)
+	res, names, ref := st.mergeAndName(ctx, dir, prov, headFull, review)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -261,7 +262,7 @@ func (st *svc) loadInputs(ctx context.Context, dir string) (*jq.Obj, *core.Refus
 	}
 
 	if st.req.DryRun {
-		raw, err := os.ReadFile(dir + diffSuffix)
+		raw, err := noblock.ReadFile(dir + diffSuffix)
 		if err != nil {
 			return nil, &core.RefusalError{Code: codeMissingDiff, Message: fmt.Sprintf(msgMissingDiff, dir)}
 		}
@@ -303,12 +304,14 @@ func (st *svc) checkLocalFresh(ctx context.Context, dir string) *core.RefusalErr
 // leaves no findings behind for a later `fix` to consume. Applying writes
 // nothing on a dry run. The returned pass is what the warning scan skips: a
 // planned file's nameless entries are the repair message's, in both modes.
-func (st *svc) mergeAndName(dir, prov, headFull string, review *jq.Obj) (MergeResult, *costNamePass, *core.RefusalError) {
+func (st *svc) mergeAndName(
+	ctx context.Context, dir, prov, headFull string, review *jq.Obj,
+) (MergeResult, *costNamePass, *core.RefusalError) {
 	names, ref := st.planCostNames(dir)
 	if ref != nil {
 		return MergeResult{}, nil, ref
 	}
-	res, ref := st.merge(dir, prov, headFull, review)
+	res, ref := st.merge(ctx, dir, prov, headFull, review)
 	if ref != nil {
 		return MergeResult{}, nil, ref
 	}
@@ -318,10 +321,10 @@ func (st *svc) mergeAndName(dir, prov, headFull string, review *jq.Obj) (MergeRe
 	return res, names, nil
 }
 
-func (st *svc) merge(dir, prov, headFull string, review *jq.Obj) (MergeResult, *core.RefusalError) {
+func (st *svc) merge(ctx context.Context, dir, prov, headFull string, review *jq.Obj) (MergeResult, *core.RefusalError) {
 	req := st.req
 	rt := st.runtime()
-	res, err := Merge(&rt, &MergeParams{
+	res, err := Merge(ctx, &rt, &MergeParams{
 		Dir:             dir,
 		Prov:            prov,
 		HeadFull:        headFull,
@@ -468,6 +471,14 @@ func (st *svc) finalize(ctx context.Context, dir, prov, headFull, now string, re
 			Code: codeRecordFailed, Message: fmt.Sprintf("could not write %s/record.json: %v", dir, err),
 		})
 	}
+	// The receipt above is already durable: a prior-coverage.json write
+	// failure must not fail a committed record, so it warns instead of
+	// refusing. The stale prior is then discarded, because the next
+	// incremental round must grade against the full hunks rather than credit
+	// ranges this record could not save.
+	if err := coverage.PersistPrior(dir, res.Coverage); err != nil {
+		st.addWarning(discardPriorWarning(dir, err))
+	}
 	if st.req.Runtime != nil {
 		st.req.Human(strings.TrimSuffix(fmt.Sprintf(msgRecorded, dir, nOpen, dir), "\n"))
 	}
@@ -542,6 +553,18 @@ func normalizedObject(raw []byte) any {
 		return nil
 	}
 	return doc
+}
+
+// discardPriorWarning describes a failed prior write and the discard that
+// follows it: the record stands, and the next incremental round grades against
+// the full hunks with no prior credit. A prior the discard could not remove is
+// named too, since that stale file is what the next round would trust.
+func discardPriorWarning(dir string, err error) string {
+	msg := fmt.Sprintf(msgPriorDiscarded, dir, err)
+	if cerr := coverage.ClearPrior(dir); cerr != nil {
+		msg += fmt.Sprintf("; the stale prior could not be discarded: %v", cerr)
+	}
+	return msg
 }
 
 func repairList(problems []Problem) []core.Repair {
@@ -673,7 +696,7 @@ func resolveHead(dir string, store *readcommon.Bundle, prov string) string {
 }
 
 func sha256File(path string) string {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return ""
 	}

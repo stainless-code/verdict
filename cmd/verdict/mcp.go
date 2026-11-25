@@ -8,34 +8,34 @@ import (
 
 	"github.com/stainless-code/verdict/internal/cli"
 	"github.com/stainless-code/verdict/internal/mcp"
+	"github.com/stainless-code/verdict/internal/posture"
 )
 
-const mcpPostureConflict = "--read-only and --operator are mutually exclusive"
-
 func mcpUsageText() string {
-	return "usage: verdict mcp [--read-only | --operator]\n" +
+	return "usage: verdict mcp [--read-only]\n" +
 		"       verdict mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>\n" +
-		"       [--write] [--dry-run] [--json] [--read-only | --operator]\n" +
+		"       [--write] [--dry-run] [--json] [--read-only]\n" +
 		"  Serve the review verbs as MCP tools over stdio (JSON-RPC 2.0, one frame per line).\n" +
 		"  stdout is the protocol channel; progress and warnings go to stderr.\n" +
 		"  Protocol: initialize, notifications/initialized, tools/list, tools/call, ping,\n" +
 		"  notifications/cancelled. The process exits when stdin closes: no daemon, no HTTP.\n" + //nolint:misspell // MCP method name
-		"  --read-only  expose read tools plus record dry_run (report, next, show, risk, handoff, journal,\n" +
-		"               trend, index, pr_wait, ready, doctor, check-tree, config, pack, record)\n" +
-		"  --operator   also expose the human-owned `triage` tool; mutually exclusive with --read-only\n" +
+		"  --read-only  the one write-posture flag (shared with serve and lsp): expose read tools plus\n" +
+		"               record dry_run (report, next, show, risk, handoff, journal, trend, index, pr_wait,\n" +
+		"               ready, doctor, check-tree, config, pack, record, query-bundles, query-copy,\n" +
+		"               query-cost, query-finding, query-findings, query-health); every local write and\n" +
+		"               post is refused\n" +
 		"\n" +
-		"  Default tools (26): adopt, calibrate, check-tree, config, doctor, fetch, fetch-local, fix,\n" +
-		"  handoff, index, ingest, init, journal, learn, next, pack, post, pr_wait, ready, record, report,\n" +
-		"  risk, show, threads, trend, verify.\n" +
-		"  `triage` joins\n" +
-		"  them only with --operator: status flips are human-owned, and agents propose `triage[]`\n" +
-		"  in review.json instead.\n" +
+		"  Default tools (33): adopt, calibrate, check-tree, config, doctor, fetch, fetch-local, fix,\n" +
+		"  handoff, index, ingest, init, journal, learn, next, pack, post, pr_wait, query-bundles, query-copy,\n" +
+		"  query-cost, query-finding, query-findings, query-health, ready, record, report, risk, show, threads,\n" +
+		"  trend, triage, verify.\n" +
+		"  `triage` is human-owned: agents propose `triage[]` in review.json instead of calling it.\n" +
 		"  Each tool takes the core request shape: repo/pr plus verb fields; schemas are generated\n" +
 		"  from those structs. tools/list adds a title and the four MCP behavior hints; initialize\n" +
 		"  returns the review doctrine in `instructions`. Success data matches the CLI --json\n" +
 		"  envelope's data; typed refusals return isError=true with code/message/hint.\n" +
 		"\n" +
-		"  mcp config prints the exact host snippet for --read-only/--operator too; --write merges it idempotently into\n" +
+		"  mcp config prints the exact host snippet for --read-only too; --write merges it idempotently into\n" +
 		"  .mcp.json (claude), .cursor/mcp.json (cursor), $CODEX_HOME/config.toml (codex),\n" +
 		"  ~/.gemini/settings.json (gemini), ~/.qwen/settings.json (qwen),\n" +
 		"  ~/.codeium/windsurf/mcp_config.json (windsurf), backing up the old file\n" +
@@ -45,7 +45,7 @@ func mcpUsageText() string {
 }
 
 //
-//nolint:revive,cyclop // the hidden transport dispatch and its flag loop read as one entry point
+//nolint:revive // the hidden transport dispatch and its flag loop read as one entry point
 func runMCP(
 	args []string, stdout, stderr *os.File,
 	getenv func(string) string, readFile func(string) ([]byte, error),
@@ -54,28 +54,22 @@ func runMCP(
 		return runMCPConfig(args[1:], stdout, stderr, getenv)
 	}
 	readOnly := false
-	operator := false
 	for _, arg := range args {
 		switch arg {
 		case "-h", "--help":
 			fmt.Fprint(stdout, mcpUsageText())
 			return cli.ExitOK
-		case "--read-only":
+		case posture.FlagReadOnly:
 			readOnly = true
-		case "--operator":
-			operator = true
 		default:
-			fmt.Fprintf(stderr, "unknown flag '%s' for mcp (want --read-only or --operator)\n", arg)
+			fmt.Fprintf(stderr, "unknown flag '%s' for mcp (want --read-only)\n", arg)
 			return cli.ExitUsage
 		}
-	}
-	if readOnly && operator {
-		fmt.Fprintln(stderr, mcpPostureConflict)
-		return cli.ExitUsage
 	}
 	root := exeRoot()
 	env := envMap(getenv)
 	runner := newRunner("mcp", "", "", stdout, stderr, getenv)
+	defer runner.Flush()
 	if code, done := resolveRunnerPrefs(runner, env, readFile); done {
 		return code
 	}
@@ -92,7 +86,6 @@ func runMCP(
 		Warnings:  append([]string{}, runner.Warnings...),
 		Root:      root,
 		ReadOnly:  readOnly,
-		Operator:  operator,
 		Stderr:    stderr,
 	})
 	ctx, stop := shutdownSignalContext()

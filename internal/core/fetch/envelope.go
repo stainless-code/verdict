@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -172,7 +173,7 @@ type fetchStats struct {
 func readFetchStats(ctx2 *fetchRunCtx) (fetchStats, error) {
 	dir := ctx2.dir
 	var st fetchStats
-	raw, err := os.ReadFile(dir + suffixPRJSON)
+	raw, err := noblock.ReadFile(dir + suffixPRJSON)
 	if err != nil {
 		return st, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf("missing %s/PR.json (fetch the PR first)", dir)}
 	}
@@ -324,7 +325,7 @@ func incrementalVal(dir, incBase string) any {
 	if incBase == nullStr {
 		return nil
 	}
-	return dir + "/incremental.diff"
+	return dir + suffixIncremental
 }
 
 // statFiles owns the file-count read: an array counts, a missing or
@@ -546,7 +547,7 @@ func rawDiffSize(dir string) *int64 {
 }
 
 func writeProviderSource(dir, source string) error {
-	raw, err := os.ReadFile(dir + suffixPRJSON)
+	raw, err := noblock.ReadFile(dir + suffixPRJSON)
 	if err != nil {
 		return internalErrorf("read provider source: %v", err)
 	}

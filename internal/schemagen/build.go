@@ -6,6 +6,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	ingestcore "github.com/stainless-code/verdict/internal/core/ingest"
+	loopcore "github.com/stainless-code/verdict/internal/core/loop"
 	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/core/threads"
 	"github.com/stainless-code/verdict/internal/repro"
@@ -200,6 +201,8 @@ func documents() []document {
 				{typ: reflect.TypeFor[ConfigTrigger](), name: "trigger", closed: true},
 				{typ: reflect.TypeFor[ConfigRigorPolicy](), name: "rigorPolicy", closed: true},
 				{typ: reflect.TypeFor[ConfigPacks](), name: "configPacks", closed: true},
+				{typ: reflect.TypeFor[ConfigOrgPack](), name: "configOrgPack", closed: true},
+				{typ: reflect.TypeFor[ConfigTests](), name: "tests", closed: true},
 				{typ: reflect.TypeFor[BlockClause](), name: "blockClause", closed: true},
 				{typ: reflect.TypeFor[ConfigScope](), name: "scope", closed: true, constraints: []member{
 					{keyAnyOf, array(
@@ -227,6 +230,10 @@ func documents() []document {
 							member{keyRequired, array(stringNode(keyScopeDefaults))},
 							member{keyProperties, object(false, member{keyScopeDefaults, object(false,
 								member{keyRequired, array(stringNode("finders"))})})}),
+						object(false,
+							member{keyRequired, array(stringNode(keyScopeDefaults))},
+							member{keyProperties, object(false, member{keyScopeDefaults, object(false,
+								member{keyRequired, array(stringNode("monthly_budget_usd"))})})}),
 					)})},
 				}},
 				{typ: reflect.TypeFor[ConfigProfile](), name: "profile", closed: true},
@@ -436,6 +443,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[EvidenceQuote](), name: defsEvidenceQuote},
 				{typ: reflect.TypeFor[EvidenceReceipts](), name: defsEvidenceReceipts},
 				{typ: reflect.TypeFor[EvidenceSpec](), name: defsEvidenceSpec},
+				{typ: reflect.TypeFor[EvidenceDiagram](), name: defsEvidenceDiagram, closed: true},
 				{typ: reflect.TypeFor[SpecCheck](), name: defsSpecCheck},
 				{typ: reflect.TypeFor[SpecEvidence](), name: defsSpecEvidence},
 				{typ: reflect.TypeFor[Receipt](), name: defsReceipt},
@@ -471,6 +479,7 @@ func documents() []document {
 				{typ: reflect.TypeFor[EvidenceQuote](), name: defsEvidenceQuote},
 				{typ: reflect.TypeFor[EvidenceReceipts](), name: defsEvidenceReceipts},
 				{typ: reflect.TypeFor[EvidenceSpec](), name: defsEvidenceSpec},
+				{typ: reflect.TypeFor[EvidenceDiagram](), name: defsEvidenceDiagram, closed: true},
 				{typ: reflect.TypeFor[SpecCheck](), name: defsSpecCheck},
 				{typ: reflect.TypeFor[SpecEvidence](), name: defsSpecEvidence},
 				{typ: reflect.TypeFor[Receipt](), name: defsReceipt},
@@ -580,6 +589,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[core.PanelSummary](), name: verificationSummaryType},
 		{typ: reflect.TypeFor[core.FinderSummary](), name: finderSummaryType},
 		{typ: reflect.TypeFor[ReportData](), name: "reportData"},
+		{typ: reflect.TypeFor[OrgPackInfo](), name: "orgPackInfo"},
 		{typ: reflect.TypeFor[ReportHead](), name: "reportHead"},
 		{typ: reflect.TypeFor[ReportVerdict](), name: "reportVerdict"},
 		{typ: reflect.TypeFor[ReportCounts](), name: "reportCounts"},
@@ -592,8 +602,11 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[CompareFinding](), name: "compareFinding"},
 		{typ: reflect.TypeFor[CostTiers](), name: "costTiers"},
 		{typ: reflect.TypeFor[CostTier](), name: "costTier"},
-		{typ: reflect.TypeFor[ReportCompleteness](), name: "reportCompleteness"},
+		{typ: reflect.TypeFor[ReportMTD](), name: "reportMTD"},
 		{typ: reflect.TypeFor[ReportCompliance](), name: "reportCompliance"},
+		{typ: reflect.TypeFor[ReportReplay](), name: "reportReplay"},
+		{typ: reflect.TypeFor[ReportReplaySide](), name: "reportReplaySide"},
+		{typ: reflect.TypeFor[ReportReplayMove](), name: "reportReplayMove"},
 		{typ: reflect.TypeFor[ReportRisk](), name: "reportRisk"},
 		{typ: reflect.TypeFor[RiskInputs](), name: "riskInputs"},
 		{typ: reflect.TypeFor[RiskScore](), name: "riskScore"},
@@ -601,6 +614,12 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[RiskChurn](), name: "riskChurn"},
 		{typ: reflect.TypeFor[RiskCategory](), name: "riskCategory"},
 		{typ: reflect.TypeFor[RiskRung](), name: "riskRung"},
+		{typ: reflect.TypeFor[loopcore.Data](), name: "loopData"},
+		{typ: reflect.TypeFor[loopcore.Round](), name: "loopRound"},
+		{typ: reflect.TypeFor[loopcore.Fix](), name: "loopFix"},
+		{typ: reflect.TypeFor[loopcore.Verify](), name: "loopVerify"},
+		{typ: reflect.TypeFor[loopcore.Refusal](), name: "loopRefusal"},
+		{typ: reflect.TypeFor[loopcore.PlanStep](), name: "loopPlanStep"},
 		{typ: reflect.TypeFor[RiskData](), name: "riskData"},
 		{typ: reflect.TypeFor[RiskBands](), name: "riskBands"},
 		{typ: reflect.TypeFor[RiskRow](), name: "riskRow"},
@@ -618,6 +637,8 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[EvidenceQuote](), name: defsEvidenceQuote},
 		{typ: reflect.TypeFor[EvidenceReceipts](), name: defsEvidenceReceipts},
 		{typ: reflect.TypeFor[EvidenceSpec](), name: defsEvidenceSpec},
+		{typ: reflect.TypeFor[EvidenceDiagram](), name: defsEvidenceDiagram, closed: true},
+		{typ: reflect.TypeFor[PostDiagram](), name: "postDiagram", closed: true},
 		{typ: reflect.TypeFor[SpecCheck](), name: defsSpecCheck},
 		{typ: reflect.TypeFor[SpecEvidence](), name: defsSpecEvidence},
 		{typ: reflect.TypeFor[Receipt](), name: defsReceipt},
@@ -712,6 +733,7 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[PackCheckLens](), name: "packCheckLens"},
 		{typ: reflect.TypeFor[PackCheckRule](), name: "packCheckRule"},
 		{typ: reflect.TypeFor[PackAddData](), name: "packAddData"},
+		{typ: reflect.TypeFor[PackSyncData](), name: "packSyncData"},
 		{typ: reflect.TypeFor[PackTestData](), name: "packTestData"},
 		{typ: reflect.TypeFor[PackTestCase](), name: "packTestCase"},
 		{typ: reflect.TypeFor[PackTestSummary](), name: "packTestSummary"},
@@ -764,6 +786,7 @@ const (
 	defsEvidenceQuote    = "evidenceQuote"
 	defsEvidenceReceipts = "evidenceReceipts"
 	defsEvidenceSpec     = "evidenceSpec"
+	defsEvidenceDiagram  = "evidenceDiagram"
 	defsSpecCheck        = "specCheck"
 	defsSpecEvidence     = "specEvidence"
 	defsReceipt          = "receipt"
@@ -785,6 +808,9 @@ func reviewDefs() []definition {
 		{typ: reflect.TypeFor[TriageClaim](), name: "triageClaim"},
 		{typ: reflect.TypeFor[CoverageClaim](), name: "coverageClaim"},
 		{typ: reflect.TypeFor[core.RiskClaim](), name: defsRiskClaim},
+		{typ: reflect.TypeFor[ReviewDiagram](), name: "diagram", closed: true},
+		{typ: reflect.TypeFor[core.DiagramNode](), name: "diagramNode", closed: true},
+		{typ: reflect.TypeFor[core.DiagramEdge](), name: "diagramEdge", closed: true},
 	}
 }
 
@@ -1431,6 +1457,9 @@ func appendKeywords(schema *node, tag reflect.StructTag) {
 	}
 	if value := tag.Get(keyFormat); value != "" {
 		schema.members = append(schema.members, member{keyFormat, stringNode(value)})
+	}
+	if value := tag.Get(keyPattern); value != "" {
+		schema.members = append(schema.members, member{keyPattern, stringNode(value)})
 	}
 }
 

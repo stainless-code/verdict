@@ -2,7 +2,6 @@ package recordcore
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
@@ -10,9 +9,11 @@ import (
 	"github.com/stainless-code/verdict/internal/core/approval"
 	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/core/reviewdoc"
+	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/evidence"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -68,19 +69,28 @@ const (
 // against full.diff (A2), per-hunk read receipts (A3), and the spec checklist
 // when the bundle carries `role: spec` sources (A1). Record's check path and
 // the shared merge both call it, so `record --dry-run` and `record` cannot
-// disagree about what the bundle proves.
-func checkBundleEvidence(dir string, review *jq.Obj) *core.EvidenceReceipt {
-	receipt, _ := evidencePassOf(dir, review)
-	return receipt
+// disagree about what the bundle proves. diagrams is the
+// publish.diagrams.anchored knob: with it off the behavioral diagram is never
+// settled, so no receipt, body, or dry run carries one and every output keeps
+// the bytes it had before the feature existed.
+func checkBundleEvidence(dir string, review *jq.Obj, diagrams bool) evidenceOutcome {
+	return evidencePhaseOf(dir, review, false, diagrams)
 }
 
-// evidencePassOf runs the pass and returns both halves of its answer: the
-// receipt the bundle stores and the problems the repair loop re-prompts with.
-func evidencePassOf(dir string, review *jq.Obj) (*core.EvidenceReceipt, []Problem) {
-	return evidencePhaseOf(dir, review, false)
+// evidenceOutcome is one evidence pass's whole answer: the receipt the bundle
+// stores, the settled behavioral diagram the body renders, and the problems the
+// repair loop re-prompts with. One pass produces all three, so the counts in
+// the receipt and the picture in the body cannot disagree.
+type evidenceOutcome struct {
+	receipt  *core.EvidenceReceipt
+	problems []Problem
+	diagram  diagram.Result
 }
 
-func evidencePhaseOf(dir string, review *jq.Obj, discovery bool) (*core.EvidenceReceipt, []Problem) {
+// evidencePhaseOf runs the pass over one review document. The check phase
+// never settles the diagram: a diagram yields no problem for the repair loop,
+// and only the merge — which knows the knob — publishes one.
+func evidencePhaseOf(dir string, review *jq.Obj, discovery, diagrams bool) evidenceOutcome {
 	execution := &panelcore.Execution{}
 	if !discovery {
 		execution = panelcore.CheckExecution(dir, review)
@@ -90,24 +100,27 @@ func evidencePhaseOf(dir string, review *jq.Obj, discovery bool) (*core.Evidence
 	pass.checkQuotes()
 	pass.checkReceipts()
 	pass.checkSpec()
+	if diagrams {
+		pass.checkDiagram()
+	}
 	receipt := pass.result()
 	execution.ApplyEvidence(receipt)
-	return receipt, pass.problemList()
+	return evidenceOutcome{receipt: receipt, diagram: pass.diagram, problems: pass.problemList()}
 }
 
 // phaseEvidenceOf runs the evidence pass over normalized review bytes. Bytes
 // that do not decode carry no findings to verify, so the checker's own
 // invalid-json problem stands alone and the evidence half is empty.
-func phaseEvidenceOf(dir string, normalized []byte, discovery bool) (*core.EvidenceReceipt, []Problem) {
+func phaseEvidenceOf(dir string, normalized []byte, discovery bool) evidenceOutcome {
 	doc, err := jq.DecodeOrdered(normalized)
 	if err != nil {
-		return nil, nil
+		return evidenceOutcome{}
 	}
 	review, ok := doc.(*jq.Obj)
 	if !ok {
-		return nil, nil
+		return evidenceOutcome{}
 	}
-	return evidencePhaseOf(dir, review, discovery)
+	return evidencePhaseOf(dir, review, discovery, false)
 }
 
 // problemList renders the pass's problems as the published shape: a stable
@@ -137,6 +150,7 @@ type evidencePass struct {
 	dir       string
 	head      string
 	sha       string
+	diagram   diagram.Result
 	receipts  evidence.ReceiptCoverage
 	drift     bool
 	unkeyable bool
@@ -146,7 +160,7 @@ type evidencePass struct {
 // line index, the hunks.tsv drift check, the reviewed head and diff digest, and
 // the captured run state that carries spec_coverage_min and the block clauses.
 func newEvidencePass(dir string, review *jq.Obj) *evidencePass {
-	diff, err := os.ReadFile(dir + diffSuffix)
+	diff, err := noblock.ReadFile(dir + diffSuffix)
 	pass := &evidencePass{
 		review: review,
 		dir:    dir,
@@ -437,6 +451,96 @@ func (p *evidencePass) receiptProblem(check *evidence.ReceiptCheck) {
 	}
 }
 
+// checkDiagram settles the review's optional behavioral diagram against the
+// pinned diff: every node and edge quote runs through the same A2 matcher the
+// spec checks answer to, an unverified element is dropped, and a diagram whose
+// verified fraction falls under [diagram.MinVerifiedPercent] is omitted whole.
+// Nothing here withholds approval — a diagram is decoration, and its outcome is
+// the receipt's counts plus at most one block or one line in the body.
+func (p *evidencePass) checkDiagram() {
+	if p.review == nil {
+		return
+	}
+	raw, has := p.review.Get(fieldDiagram)
+	if !has || raw == nil {
+		return
+	}
+	m, ok := raw.(*jq.Obj)
+	if !ok {
+		p.diagram = diagram.Unreadable()
+		return
+	}
+	p.diagram = diagram.Settle(p.idx, diagramRequest(m))
+}
+
+// diagramRequest decodes the diagram object field by field. A value of the
+// wrong JSON type reads as its zero value rather than discarding the block:
+// a malformed node or edge still counts as supplied and then fails
+// verification, so the receipt's arithmetic stays honest and one bad field
+// costs one element, never the picture. The shape checker has already warned
+// about every such field.
+func diagramRequest(m *jq.Obj) *core.ReviewDiagram {
+	req := &core.ReviewDiagram{Type: objString(m, fieldType), Title: objString(m, fieldTitle)}
+	for _, item := range objArray(m, fieldNodes) {
+		el := asObj(item)
+		req.Nodes = append(req.Nodes, core.DiagramNode{
+			ID: objString(el, fieldID), Label: objString(el, fieldLabel), Evidence: diagramEvidence(el),
+		})
+	}
+	for _, item := range objArray(m, fieldEdges) {
+		el := asObj(item)
+		req.Edges = append(req.Edges, core.DiagramEdge{
+			From: objString(el, fieldFrom), To: objString(el, fieldTo),
+			Label: objString(el, fieldLabel), Evidence: diagramEvidence(el),
+		})
+	}
+	return req
+}
+
+// diagramEvidence decodes one element's quote in the spec_checks shape. A
+// line that is not an integer reads as 0, which no quote verifies against.
+func diagramEvidence(el *jq.Obj) core.SpecEvidence {
+	anchor := asObj(objGet(el, fieldEvidence))
+	ev := core.SpecEvidence{Path: objString(anchor, fieldPath), Quote: objString(anchor, fieldQuote)}
+	if line, ok := jq.IntOf(objGet(anchor, fieldLine)); ok {
+		ev.Line = line
+	}
+	return ev
+}
+
+// asObj returns v as an object, or nil when it is anything else.
+func asObj(v any) *jq.Obj {
+	if m, ok := v.(*jq.Obj); ok {
+		return m
+	}
+	return nil
+}
+
+// objGet reads one key from an object that may be nil.
+func objGet(m *jq.Obj, key string) any {
+	if m == nil {
+		return nil
+	}
+	v, _ := m.Get(key)
+	return v
+}
+
+// objString reads one string field, or "" when it is absent or not a string.
+func objString(m *jq.Obj, key string) string {
+	if s, ok := objGet(m, key).(string); ok {
+		return s
+	}
+	return ""
+}
+
+// objArray reads one array field, or nil when it is absent or not an array.
+func objArray(m *jq.Obj, key string) []any {
+	if items, ok := objGet(m, key).([]any); ok {
+		return items
+	}
+	return nil
+}
+
 // checkSpec verifies the checklist when the bundle carries spec sources. A
 // bundle without a spec role has no checklist, so nothing is required of it.
 func (p *evidencePass) checkSpec() {
@@ -560,7 +664,7 @@ func (p *evidencePass) coverageMin() int {
 // file order, indexed by their position in the file. A bundle with no spec
 // source yields no block and therefore no checklist.
 func specBlocks(dir string) []evidence.SpecBlock {
-	raw, err := os.ReadFile(dir + contextTextSuffix)
+	raw, err := noblock.ReadFile(dir + contextTextSuffix)
 	if err != nil {
 		return nil
 	}
@@ -654,6 +758,7 @@ func (p *evidencePass) result() *core.EvidenceReceipt {
 		Gaps:         p.gapList(),
 		Receipts:     p.receiptSummary(),
 		Spec:         p.specSummary(),
+		Diagram:      p.diagram.Summary(),
 		Insufficient: p.insufficient(),
 	}
 }

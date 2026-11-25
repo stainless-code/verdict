@@ -47,8 +47,19 @@ const (
 	fieldRisk            = "risk"
 	fieldLevel           = "level"
 	fieldAssessedHead    = "assessed_head"
+	fieldLens            = "lens"
 	// fieldRigorSource is the provenance of the recorded rung.
 	fieldRigorSource = "rigor_source"
+	// The behavioral diagram's own keys: the optional block a review supplies
+	// instead of hand-drawn mermaid.
+	fieldDiagram = "diagram"
+	fieldType    = "type"
+	fieldTitle   = "title"
+	fieldNodes   = "nodes"
+	fieldEdges   = "edges"
+	fieldID      = "id"
+	fieldLabel   = "label"
+	fieldFrom    = "from"
 )
 
 const (
@@ -63,13 +74,16 @@ const (
 )
 
 const (
-	schemaVersion1        = "1"
-	schemaVersion2        = "2"
-	sigVersion1           = "1"
-	newline               = "\n"
-	prSuffix              = "/PR.json"
-	reviewSuffix          = "/review.json"
-	sourceSuffix          = "/source.json"
+	schemaVersion1 = "1"
+	schemaVersion2 = "2"
+	sigVersion1    = "1"
+	newline        = "\n"
+	prSuffix       = "/PR.json"
+	reviewSuffix   = "/review.json"
+	sourceSuffix   = "/source.json"
+	// fieldContentTree is source.json's tree id of the content fetch-local
+	// captured, the content a local bundle's VERIFIED claims are graded on.
+	fieldContentTree      = "content_tree"
 	diffSuffix            = "/full.diff"
 	providerLocal         = "local"
 	localPrefix           = "local-"

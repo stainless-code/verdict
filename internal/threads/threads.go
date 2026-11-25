@@ -142,3 +142,17 @@ func parseFlags(r *cli.Runner, args []string) (provider string, code int, done b
 	}
 	return provider, 0, false
 }
+
+// CheckFlags validates the refresh flags alone, reporting a usage error
+// exactly as Run would, so the front door rejects a mistyped flag before any
+// host lookup.
+func CheckFlags(r *cli.Runner, args []string) (code int, bad bool) {
+	_, code, bad = parseFlags(r, args)
+	return code, bad
+}
+
+// CheckResolveFlags is CheckFlags for `threads resolve`.
+func CheckResolveFlags(r *cli.Runner, args []string) (code int, bad bool) {
+	_, _, code, bad = parseResolveFlags(r, args)
+	return code, bad
+}

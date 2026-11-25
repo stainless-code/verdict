@@ -200,6 +200,18 @@ function isGateEnvelope(value: unknown): value is Record<string, unknown> {
   );
 }
 
+/** The refusal envelope on stdout, or undefined when stdout holds none. */
+function tryRefusalEnvelope(stdout: string) {
+  if (stdout.trim() === "") return undefined;
+  try {
+    const parsed = parseSingleEnvelope(stdout);
+    assertRefusalEnvelope(parsed, stdout);
+    return parsed;
+  } catch {
+    return undefined;
+  }
+}
+
 function throwForExit<T>(
   verb: string,
   result: ChildResult,
@@ -245,9 +257,22 @@ function throwForExit<T>(
       parsed.error.code,
       parsed.error.message,
       parsed.warnings,
+      parsed.error,
     );
   }
   if (result.code === 2) {
+    // Exit 2 is the usage class. An argv mistake prints no envelope, but a
+    // pair verb with no resolvable target exits 2 with a typed refusal
+    // envelope (`target-unresolved`) under --json: surface that code.
+    const refusal = tryRefusalEnvelope(stdout);
+    if (refusal !== undefined) {
+      throw new VerdictRefusalError(
+        refusal.error.code,
+        refusal.error.message,
+        refusal.warnings,
+        refusal.error,
+      );
+    }
     throw new VerdictUsageError(
       result.stderr || `verdict ${verb}: usage error`,
     );
@@ -274,6 +299,12 @@ export interface VerdictClient {
     args?: string[],
     opts?: RunOptions,
   ): Promise<Envelope<DataFor["report"]>>;
+  /**
+   * The only gating verb: `--max-severity` (and `--category` with a tier),
+   * `--require-head`, and `--max-risk`, with `--live` and `--coverage` as
+   * postures. A failed gate throws {@link VerdictGateError}; `report` is the
+   * advisory read and never does.
+   */
   gate(args?: string[], opts?: RunOptions): Promise<Envelope<DataFor["gate"]>>;
   post(args?: string[], opts?: RunOptions): Promise<Envelope<DataFor["post"]>>;
   record(

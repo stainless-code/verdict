@@ -111,8 +111,8 @@ func TestReportCheckCategoryGate(t *testing.T) {
 	}
 }
 
-// runCategoryGate runs one --check critical gate inside a category and proves
-// the verdict plus the named check line.
+// runCategoryGate runs one critical-tier gate inside a category and proves the
+// verdict plus the category the findings dimension names.
 func runCategoryGate(t *testing.T, category string, failed bool) {
 	t.Helper()
 	req := fixture(t, categoryStore())
@@ -126,19 +126,9 @@ func runCategoryGate(t *testing.T, category string, failed bool) {
 	if resp.GateFailed != failed {
 		t.Errorf("GateFailed = %v, want %v", resp.GateFailed, failed)
 	}
-	if !checkLineNames(resp.CheckLines, category) {
-		t.Errorf("check lines = %v, want the category named", resp.CheckLines)
+	if detail := dimOf(t, resp, "findings").Detail; !strings.HasSuffix(detail, " in "+category) {
+		t.Errorf("findings detail = %q, want the category %q named", detail, category)
 	}
-}
-
-// checkLineNames reports whether any check line names the gated category.
-func checkLineNames(lines []string, category string) bool {
-	for _, line := range lines {
-		if strings.Contains(line, " in "+category+" ") || strings.Contains(line, " in "+category+" —") {
-			return true
-		}
-	}
-	return false
 }
 
 // TestReportBadCategoryRefusal proves the service refuses an unknown
@@ -169,7 +159,7 @@ func eligibilityFinding(sig, anchored, rigor string) string {
 		`"rationale":"","history":[]}`
 }
 
-// runEligibilityGate runs one --check important --category security gate over
+// runEligibilityGate runs one important-tier security-category gate over
 // a single-finding store and returns whether the gate failed.
 func runEligibilityGate(t *testing.T, store string) bool {
 	t.Helper()

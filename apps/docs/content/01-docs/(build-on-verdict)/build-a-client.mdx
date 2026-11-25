@@ -54,10 +54,10 @@ is generated from the Go shape and is the machine-readable source of truth.
 | `data`           | object or null            | The verb's payload on success; null on a typed refusal.                 |
 | `error`          | null or `{code, message}` | null on success; the typed refusal otherwise.                           |
 
-The nine top-level keys are fixed: the envelope schema sets
-`additionalProperties: false`. New information is added **inside `data`**, never
-as a new top-level key. `data` objects allow additional properties, so a client
-must ignore keys it does not know. `error` also allows additive keys: `candidates` on the oversize-fetch
+The nine top-level keys are fixed (`additionalProperties: false`). New
+information goes **inside `data`**, never in a new top-level key; `data` allows
+additional properties, so a client must ignore keys it does not know. `error`
+also allows additive keys: `candidates` on the oversize-fetch
 refusal, `problems` with `problems_truncated` on fixable refusals such as
 `bad-review-input`, and `retry_at` where a retry time applies. A client
 author must parse `problems[]` — it is the machine-readable fix list.
@@ -67,27 +67,24 @@ author must parse `problems[]` — it is the machine-readable fix list.
 Exit codes are frozen in
 [`internal/cli/cli.go`](https://github.com/stainless-code/verdict/blob/main/internal/cli/cli.go).
 
-| Code | Name    | What the client sees                                                                                                                    |
-| ---- | ------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| `0`  | success | One envelope, `error: null`, `data` object.                                                                                             |
-| `1`  | refused | One envelope. Usually a typed refusal: `data: null`, `error: {code, message}`. See the gate exception below.                            |
-| `2`  | usage   | No envelope. stdout is empty; stderr carries the usage/flag block. This is an argv bug, not a refusal.                                  |
-| `3`  | broke   | Cancellation (`canceled`) or a tool failure during a gated `report` run. May carry a typed refusal envelope; a crash or signal may not. |
+| Code | Name    | What the client sees                                                                                                            |
+| ---- | ------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `0`  | success | One envelope, `error: null`, `data` object.                                                                                     |
+| `1`  | refused | One envelope. Usually a typed refusal: `data: null`, `error: {code, message}`. See the gate exception below.                    |
+| `2`  | usage   | No envelope; usage/flag block on stderr (an argv bug). Exception: `target-unresolved` carries a refusal envelope.               |
+| `3`  | broke   | Cancellation (`canceled`) or a tool failure during a `gate` run. May carry a typed refusal envelope; a crash or signal may not. |
 
 <Callout type="warning" title="Exit 1 is not always a refusal">
-  `report --check`, `report --completeness`, and `check-tree` exit `1` when the
-  gate **fails**, but keep the success-shaped envelope: `error: null` and the
-  full `data` object (`items`/`verdict` for `report`, `clean`/`files` for
-  `check-tree`). Do not assume every exit `1` has `data: null`. Branch on the
-  envelope: a typed refusal has `data: null` and `error` set; a gate failure has
-  data and `error: null`. The committed Python client raises `VerdictGateError`
-  for that case.
+  `gate` and `check-tree` exit `1` when the gate **fails**, but keep the
+  success-shaped envelope: `error: null` and the full `data` object
+  (`passed`/`dimensions` for `gate`, `clean`/`files` for `check-tree`). Do not
+  assume every exit `1` has `data: null`: branch on the envelope. The committed
+  Python client raises `VerdictGateError` for that case.
 </Callout>
 
-Gate runs also use exit `3` for a tool failure (for example, a missing bundle
-store while `--check` is active), so hooks can tell “tool broke” apart from
-“gate failed”. A plain `report` with a missing store is an ordinary exit `1`
-typed refusal.
+`gate` also uses exit `3` for a tool failure (for example, a missing bundle
+store), so hooks can tell “tool broke” apart from “gate failed”. A plain
+`report` with a missing store is an ordinary exit `1` typed refusal.
 
 ### Refusals and hints
 
@@ -110,11 +107,10 @@ A refusal is one envelope:
 }
 ```
 
-`error.code` is stable and machine-readable. `error.message` is human text and
-ends with a `try:` line. The hint is **not** a separate key: split the trailing
-`\ntry: ` line if you want to display it separately, exactly as the TS client
-does. Codes are open-ended; treat unknown codes as refusals with a generic hint,
-not as crashes.
+`error.code` is stable and machine-readable. `error.message` is human text
+ending in a `try:` line, not a separate key: split the trailing `\ntry: ` line
+to show it, as the TS client does. Codes are open-ended; treat unknown codes as
+refusals with a generic hint, not crashes.
 
 Representative families, with the canonical table in
 [`internal/core/hint.go`](https://github.com/stainless-code/verdict/blob/main/internal/core/hint.go):
@@ -133,7 +129,8 @@ Representative families, with the canonical table in
 Flag grammar errors are different: unknown flags, bad arity, and some verbs'
 invalid enum values are exit `2` with no envelope. Other verbs validate a
 value as a typed `bad-*` refusal at exit `1` (for example `verify --timeout`).
-Let the envelope decide: empty stdout means exit `2`, not a refusal.
+`target-unresolved` is the one typed refusal that exits `2`; its envelope names
+the arguments to pass. Empty stdout at exit `2` is a flag error.
 
 ### Warnings
 
@@ -361,24 +358,50 @@ class VerdictError(Exception):
 
 
 class VerdictRefusal(VerdictError):
-    """Exit 1: `data` is null and `error` carries code and message."""
+    """Exit 1 (or 2 for `target-unresolved`): `data` is null and `error` carries
+    code and message."""
 
-    def __init__(self, code: str, message: str, warnings: list[str]) -> None:
+    def __init__(self, code: str, message: str, warnings: list[str],
+                 exit_code: int = 1) -> None:
         marker = "\ntry: "
         at = message.rfind(marker)
         self.code = code
         self.message = message[:at] if at >= 0 else message
         self.hint = message[at + 1 :] if at >= 0 else ""
         self.warnings = warnings
-        super().__init__(f"{code}: {self.message}", 1)
+        super().__init__(f"{code}: {self.message}", exit_code)
 
 
 class VerdictGateError(VerdictError):
-    """Exit 1 with a success-shaped envelope: a `report --check` gate failed."""
+    """Exit 1 with a success-shaped envelope: a `gate` failed."""
 
     def __init__(self, envelope: VerdictJsonEnvelope) -> None:
         self.envelope = envelope
         super().__init__("gate failed", 1)
+
+
+def _envelope(stdout: str) -> dict:
+    """The one documented envelope on stdout, or VerdictError."""
+    try:
+        doc = json.loads(stdout.strip())
+    except json.JSONDecodeError as exc:
+        raise VerdictError(f"stdout is not one envelope: {exc}") from exc
+    if not isinstance(doc, dict) or any(key not in doc for key in KEYS):
+        raise VerdictError("stdout is not the documented envelope")
+    if doc["schema_version"] != SCHEMA_VERSION:
+        raise VerdictError(f"unsupported schema_version {doc['schema_version']!r}")
+    return doc
+
+
+def _refusal(doc: dict, exit_code: int) -> VerdictRefusal:
+    """The typed refusal an envelope carries, or VerdictError when it has none."""
+    error = doc["error"]
+    if (doc["data"] is not None or not isinstance(error, dict)
+            or not isinstance(error.get("code"), str)
+            or not isinstance(error.get("message"), str)
+            or not isinstance(doc["warnings"], list)):
+        raise VerdictError("refusal envelope has no typed error")
+    return VerdictRefusal(error["code"], error["message"], doc["warnings"], exit_code)
 
 
 def run(verb: str, args: list[str], *, cwd: str | None = None,
@@ -399,26 +422,22 @@ def run(verb: str, args: list[str], *, cwd: str | None = None,
     if len(proc.stdout.encode()) > MAX_STDOUT:
         raise VerdictError(f"stdout exceeded {MAX_STDOUT} bytes")
     if proc.returncode == 2:
-        raise VerdictError(proc.stderr.strip(), 2)
+        # Usually an argv bug with no envelope; a pair verb with no resolvable
+        # target exits 2 with a typed `target-unresolved` refusal instead.
+        try:
+            refusal = _refusal(_envelope(proc.stdout), 2)
+        except VerdictError:
+            raise VerdictError(proc.stderr.strip(), 2) from None
+        raise refusal
     if proc.returncode not in (0, 1):
         raise VerdictError(f"verdict {verb}: exit {proc.returncode}\n{proc.stderr.strip()}")
-    try:
-        doc = json.loads(proc.stdout.strip())
-    except json.JSONDecodeError as exc:
-        raise VerdictError(f"stdout is not one envelope: {exc}") from exc
-    if not isinstance(doc, dict) or any(key not in doc for key in KEYS):
-        raise VerdictError("stdout is not the documented envelope")
-    if doc["schema_version"] != SCHEMA_VERSION:
-        raise VerdictError(f"unsupported schema_version {doc['schema_version']!r}")
+    doc = _envelope(proc.stdout)
     if proc.returncode == 1:
-        error = doc["error"]
-        if error is None and doc["data"] is not None:
+        if doc["error"] is None and doc["data"] is not None:
             raise VerdictGateError(
                 VerdictJsonEnvelope(**{key: doc[key] for key in KEYS})
             )
-        if doc["data"] is not None or not isinstance(error, dict):
-            raise VerdictError("refusal envelope has no typed error")
-        raise VerdictRefusal(error["code"], error["message"], doc["warnings"])
+        raise _refusal(doc, 1)
     if doc["error"] is not None:
         raise VerdictError("exit 0 envelope carries an error")
     return VerdictJsonEnvelope(**{key: doc[key] for key in KEYS})
@@ -473,8 +492,9 @@ Checklist:
 4. Read stdout as one JSON document. Reject a missing key, a non-`"1"`
    `schema_version`, or a parse error instead of misreading it.
 5. Map exit `0` to success, `1` to refusal **or gate failure**
-   (`report --check`/`--completeness`, `check-tree`), `2` to a usage
-   error with no envelope, and `3`/signals to a process error.
+   (`gate`, `check-tree`), `2` to a usage
+   error (or a `target-unresolved` refusal envelope), and `3`/signals to a
+   process error.
 6. Split the trailing `try:` line from `error.message` for display; keep
    `error.code` for branching.
 7. Ignore unknown `data` keys. Do not reject additive data.
@@ -486,5 +506,9 @@ Checklist:
     a usage error, and a timeout.
 
 The official TS client and its generated types live in
-[`clients/ts/`](https://github.com/stainless-code/verdict/tree/main/clients/ts).
-The MCP transport is optional and not required for a language client.
+[`clients/ts/`](https://github.com/stainless-code/verdict/tree/main/clients/ts), and
+[`examples/typescript-client/`](https://github.com/stainless-code/verdict/tree/main/examples/typescript-client)
+is the runnable version of this checklist for the mutating verbs: `record`
+(including `--dry-run`), `post --dry-run`, and `config` validation, each run
+end to end against a stubbed host. The MCP transport is optional and not
+required for a language client.

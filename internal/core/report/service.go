@@ -18,7 +18,6 @@ import (
 	panelcore "github.com/stainless-code/verdict/internal/core/panel"
 	"github.com/stainless-code/verdict/internal/core/reviewdoc"
 	"github.com/stainless-code/verdict/internal/core/risk"
-	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -68,6 +67,7 @@ type state struct { // field grouping documents the loaded dimensions; alignment
 	counts     core.ReportCounts
 	cost       *jq.Obj
 	receipts   []any
+	mtd        *core.ReportMTD
 	entries    []any
 	ranked     []readcommon.Ranked
 	// view is the display-filtered ranked set the views render: the
@@ -84,30 +84,30 @@ type state struct { // field grouping documents the loaded dimensions; alignment
 	// specFailures is every spec check the stored record judged failed —
 	// violated or unmet: the decision withholds on it, and the gate fails on
 	// it, so no gate passes while the derived decision withholds.
-	specFailures []core.SpecFailure
-	approval     *core.ApprovalReceipt
-	requiredGaps []string
-	panel        []any
-	patch        any
-	comp         *core.ReportCompleteness
-	compare      *core.ReportCompare
-	risk         *core.ReportRisk
-	validation   *core.ValidationData
-	judgements   []core.ValidationResult
-	evidence     *evidenceState
-	dir          string
-	now          string
-	headSHA      string
-	baseSHA      string
-	panelSrc     string
-	compPosted   string
-	live         liveState
-	nOpen        int
-	nAllOpen     int
-	gate         bool
-	gatePassed   bool
-	liveGate     bool
-	compOK       bool
+	specFailures  []core.SpecFailure
+	approval      *core.ApprovalReceipt
+	requiredGaps  []string
+	panel         []any
+	patch         any
+	orgPack       *core.OrgPackInfo
+	compSamePatch *bool
+	compare       *core.ReportCompare
+	risk          *core.ReportRisk
+	validation    *core.ValidationData
+	judgements    []core.ValidationResult
+	evidence      *evidenceState
+	dir           string
+	now           string
+	headSHA       string
+	baseSHA       string
+	panelSrc      string
+	compPosted    string
+	live          liveState
+	nOpen         int
+	nAllOpen      int
+	gate          bool
+	liveGate      bool
+	compOK        bool
 }
 
 type liveState struct {
@@ -154,6 +154,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if ref := loadGatePolicy(ctx, st); ref != nil {
 		return nil, ref
 	}
+	attachCostMTD(st)
 
 	evaluateCompliance(st)
 	st.specFailures = specFailuresWithExecution(st)
@@ -249,8 +250,8 @@ func validateCategory(category string) *core.RefusalError {
 	}
 }
 
-// validateTier refuses an unpublished gate tier in core, so the CLI, MCP, and
-// Go SDK share one rule: a tier is a published severity or the gate refuses to
+// validateTier refuses an unpublished gate tier in core, so the CLI and Go
+// SDK share one rule: a tier is a published severity or the gate refuses to
 // run, rather than ranking an unknown value past every finding.
 func validateTier(tier string) *core.RefusalError {
 	if tier == "" || core.ValidTier(tier) {
@@ -258,20 +259,20 @@ func validateTier(tier string) *core.RefusalError {
 	}
 	return &core.RefusalError{
 		Code: codeBadFlags,
-		Message: fmt.Sprintf("report: unknown gate tier '%s' (want %s)",
+		Message: fmt.Sprintf("gate: unknown gate tier '%s' (want %s)",
 			tier, strings.Join(core.TierValues, "|")),
 	}
 }
 
-// validateMaxRisk refuses an unpublished --max-risk level in core so CLI, MCP,
-// and Go SDK callers fail with bad-flags rather than comparing unknown values.
+// validateMaxRisk refuses an unpublished --max-risk level in core so CLI and
+// Go SDK callers fail with bad-flags rather than comparing unknown values.
 func validateMaxRisk(level string) *core.RefusalError {
 	if level == "" || risk.ValidLevel(level) {
 		return nil
 	}
 	return &core.RefusalError{
 		Code: codeBadFlags,
-		Message: fmt.Sprintf("report: unknown --max-risk level '%s' (want %s)",
+		Message: fmt.Sprintf("gate: unknown --max-risk level '%s' (want %s)",
 			level, strings.Join(risk.Levels(), "|")),
 	}
 }
@@ -326,6 +327,7 @@ func loadState(ctx context.Context, st *state) *core.RefusalError {
 	st.counts.CheckedFiles = countNonEmpty(strings.Split(checkedFiles(st.dir), newline))
 	loadStateCost(st)
 	loadStateCompleteness(ctx, st)
+	loadStateOrgPack(st)
 	loadStateProvenance(st)
 	loadStateRisk(st)
 	loadStateValidation(st)
@@ -412,13 +414,78 @@ func loadStateCost(st *state) {
 	st.receipts = res.Receipts
 }
 
+// attachCostMTD attaches the month-to-date block for --cost runs. The
+// ceiling is captured run policy: loadGatePolicy verifies the bundle and
+// fills st.policy, which attachMTD reads, so Run calls this only after
+// loadGatePolicy. A bundle without a verified run keeps st.policy nil and
+// the block stays absent, as before.
+func attachCostMTD(st *state) {
+	if !st.flags.Cost {
+		return
+	}
+	attachMTD(st)
+}
+
+func attachMTD(st *state) {
+	mtd := monthToDate(st)
+	if mtd == nil {
+		return
+	}
+	if st.cost == nil {
+		st.cost = jq.NewObj()
+	}
+	st.cost.Set("mtd", mtdWire(mtd))
+	st.mtd = mtd
+}
+
+func mtdWire(mtd *core.ReportMTD) *jq.Obj {
+	o := jq.NewObj("month", mtd.Month)
+	if mtd.KnownUSD != nil {
+		o.Set("known_usd", *mtd.KnownUSD)
+	}
+	o.Set("known_count", mtd.KnownCount)
+	o.Set("unknown_count", mtd.UnknownCount)
+	if mtd.MonthlyCapUSD != nil {
+		o.Set("monthly_cap_usd", *mtd.MonthlyCapUSD)
+	}
+	if mtd.RemainingUSD != nil {
+		o.Set("remaining_usd", *mtd.RemainingUSD)
+	}
+	if mtd.MonthlyRepoCap != nil {
+		o.Set("monthly_repo_cap", *mtd.MonthlyRepoCap)
+	}
+	if mtd.MonthlyPersonalCap != nil {
+		o.Set("monthly_personal_cap", *mtd.MonthlyPersonalCap)
+	}
+	return o
+}
+
 func loadStateCompleteness(ctx context.Context, st *state) {
 	if !st.flags.Completeness {
 		return
 	}
-	st.comp, st.compOK, st.compPosted = completeness(ctx, st.commander(), st.dir, st.headSHA, st.baseSHA)
-	if _, ok := identity.Verify(ctx, st.commander(), st.dir, st.headSHA, st.baseSHA); !ok {
+	var patchVerified bool
+	st.compSamePatch, patchVerified, st.compOK, st.compPosted = completeness(ctx, st.commander(), st.dir, st.headSHA, st.baseSHA)
+	if !patchVerified {
 		st.warn("patch identity unavailable — completeness compares heads")
+	}
+}
+
+// loadStateOrgPack reads the governing central pack out of the bundle's
+// controls snapshot — the base config pin beside its locked row — so every
+// report names the pack version that governed the run. No pin reads nil.
+func loadStateOrgPack(st *state) {
+	pin := provenance.OrgPackFromBundle(st.dir)
+	if pin.Repo == "" {
+		return
+	}
+	path := pin.Path
+	if path == "" {
+		path = "."
+	}
+	st.orgPack = &core.OrgPackInfo{
+		Repo: pin.Repo, Ref: pin.Ref, Path: path,
+		SHA: pin.SHA, Hash: pin.Hash, Name: pin.Name, Version: pin.Version,
 	}
 }
 

@@ -1,6 +1,7 @@
 package run
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -51,6 +52,7 @@ func completedExecution(t *testing.T) (*core.RunRequest, *phaseCommander) {
 }
 
 func TestSingleFinderSupersedesPreviousExecution(t *testing.T) {
+	t.Parallel()
 	req, previous := completedExecution(t)
 	before := recordSuperseded(t, req)
 	if before.Verification == nil || before.Verification.Finders == nil {
@@ -142,6 +144,7 @@ func assertSupersededArtifacts(t *testing.T, dir string) {
 }
 
 func TestTwoFinderRerunSupersedesPreviousExecution(t *testing.T) {
+	t.Parallel()
 	req, commander := completedExecution(t)
 	commander.reset()
 	if _, ref := Run(t.Context(), req); ref != nil {
@@ -160,6 +163,7 @@ func TestTwoFinderRerunSupersedesPreviousExecution(t *testing.T) {
 }
 
 func TestRetirementFailureRefusesBeforeLaunch(t *testing.T) {
+	t.Parallel()
 	req, previous := completedExecution(t)
 	writeUnder(t, previous.dir, "x-superseded", "blocked")
 	commander := &scripted{}
@@ -210,6 +214,7 @@ func retiredFixture(t *testing.T, dir string, retired bool) {
 }
 
 func TestCoordinatorRefusesResumeBeforeRetirement(t *testing.T) {
+	t.Parallel()
 	req, commander := completedExecution(t)
 	commander.reset()
 	req.PassThrough = []string{"--resume"}
@@ -232,6 +237,7 @@ func TestCoordinatorRefusesResumeBeforeRetirement(t *testing.T) {
 }
 
 func TestCoordinatorRecoversARetiredCapture(t *testing.T) {
+	t.Parallel()
 	req, commander := completedExecution(t)
 	retiredFixture(t, commander.dir, true)
 	commander.reset()
@@ -247,6 +253,7 @@ func TestCoordinatorRecoversARetiredCapture(t *testing.T) {
 // - here every artifact path resolves inside a plain file - the capture stays
 // damaged instead of reading as retired and starting over on top of evidence.
 func TestRetiredCaptureFailsClosedOnAnUninspectablePath(t *testing.T) {
+	t.Parallel()
 	bundle := filepath.Join(t.TempDir(), "local-damaged")
 	if err := os.WriteFile(bundle, []byte("not a bundle"), 0o600); err != nil {
 		t.Fatal(err)
@@ -257,6 +264,7 @@ func TestRetiredCaptureFailsClosedOnAnUninspectablePath(t *testing.T) {
 }
 
 func TestCoordinatorRefusesADamagedCapture(t *testing.T) {
+	t.Parallel()
 	req, commander := completedExecution(t)
 	retiredFixture(t, commander.dir, false)
 	commander.reset()
@@ -274,6 +282,7 @@ func TestCoordinatorRefusesADamagedCapture(t *testing.T) {
 // code let phaseDirectory fail with "cannot create fresh phase directory",
 // which names the symptom and leaves the operator to delete artifacts by hand.
 func TestSupersedeRetiresOrphanedPhaseWithNoActiveExecution(t *testing.T) {
+	t.Parallel()
 	req, commander := coordinatorFixture(t)
 	req.FindersRaw = "2"
 	// A partial run nothing marks: no launcher record, and a capture that names
@@ -300,6 +309,7 @@ func TestSupersedeRetiresOrphanedPhaseWithNoActiveExecution(t *testing.T) {
 // no finders and no execution reference. The artifacts themselves record the
 // execution, so they are retired and the replacement run proceeds.
 func TestSupersedeRetiresAnInterruptedPriorRunAfterRefetch(t *testing.T) {
+	t.Parallel()
 	req, commander := completedExecution(t)
 	commander.reset()
 	writeUnder(t, commander.dir, "launcher.json",
@@ -364,4 +374,94 @@ func readPhaseBytes(t *testing.T, path string) []byte {
 		t.Fatalf("read %s: %v", path, err)
 	}
 	return raw
+}
+
+// TestNextHeadReviewIgnoresEarlierTwoFinderPost is the stale-receipt false
+// fail end to end: a two-finder review posted at the first head, a retirement
+// and a re-fetch for the next commit, then a review of the new head. The
+// earlier post.json still carries its finder summary, but it is bound to the
+// earlier head, so neither a hand-recorded review nor a `run --finders 1`
+// review of the new head inherits a cross requirement from it.
+func TestNextHeadReviewIgnoresEarlierTwoFinderPost(t *testing.T) {
+	t.Parallel()
+	for _, launch := range []bool{false, true} {
+		name := map[bool]string{false: "manual", true: "one-finder"}[launch]
+		t.Run(name, func(t *testing.T) {
+			t.Parallel()
+			reviewNextHead(t, launch)
+		})
+	}
+}
+
+// reviewNextHead reviews the new head by hand or through `run --finders 1`,
+// records it, and requires a sufficient review whose evidence passes.
+func reviewNextHead(t *testing.T, launch bool) {
+	t.Helper()
+	req, dir := nextHeadBundle(t)
+	if launch {
+		singleFinderRun(t, req, dir)
+		requireOneFinderCapture(t, dir)
+	} else {
+		writeUnder(t, dir, "review.json", coordinatorReview)
+	}
+	recordSuperseded(t, req)
+	response, ref := reportcore.Run(t.Context(), &reportcore.Request{
+		ReadRequest: req.ReadRequest, Effective: core.Defaults(),
+		Flags: reportcore.Flags{Check: "important", Live: "skip"},
+	})
+	if ref != nil {
+		t.Fatal(ref)
+	}
+	if approval := response.Data.Approval; approval == nil || approval.Insufficient {
+		t.Fatalf("earlier head's post made this review insufficient: %+v", approval)
+	}
+	if dim := gateDimension(response.Gate, "evidence"); dim.Status != "pass" {
+		t.Fatalf("evidence = %s %q, want pass", dim.Status, dim.Detail)
+	}
+}
+
+func requireOneFinderCapture(t *testing.T, dir string) {
+	t.Helper()
+	if capture := readPhaseObject(t, filepath.Join(dir, "run.json")); jq.R(readcommon.FieldOf(capture, "finders")) != "1" {
+		t.Fatalf("one-finder launch left run.json %s, want finders: 1", jq.Compact(capture))
+	}
+}
+
+func gateDimension(gate *core.ReportGate, id string) core.GateDimension {
+	for _, dim := range gate.Dimensions {
+		if dim.ID == id {
+			return dim
+		}
+	}
+	return core.GateDimension{ID: id, Status: "absent"}
+}
+
+// nextHeadBundle leaves a bundle at a new head whose only record of the
+// earlier two-finder review is the post.json receipt bound to the earlier one.
+func nextHeadBundle(t *testing.T) (*core.RunRequest, string) {
+	t.Helper()
+	req, previous := completedExecution(t)
+	dir := previous.dir
+	raw, err := json.Marshal(&core.Post{
+		SchemaVersion: "1", Review: map[string]any{}, PostedAt: "2026-11-02T12:00:00Z",
+		Head:         "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		Verification: &core.PanelSummary{Finders: &core.FinderSummary{Completed: 2, Confirmed: 1}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	writeUnder(t, dir, "post.json", string(raw))
+	singleFinderRun(t, req, dir) // the next commit's review retires the execution
+	writeUnder(t, dir, "source.json", `{"head_sha":"cccccccccccccccccccccccccccccccccccccccc","base_sha":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"}`)
+	refetchedCapture(t, dir)
+	return req, dir
+}
+
+func singleFinderRun(t *testing.T, req *core.RunRequest, dir string) {
+	t.Helper()
+	req.Commander = &scripted{write: func() { writeUnder(t, dir, "review.json", coordinatorReview) }}
+	req.FindersRaw = "1"
+	if _, ref := Run(t.Context(), req); ref != nil {
+		t.Fatal(ref)
+	}
 }

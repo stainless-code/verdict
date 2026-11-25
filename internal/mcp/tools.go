@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"maps"
 	"slices"
+	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/config"
@@ -34,6 +35,7 @@ import (
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/posture"
 )
 
 var fetchRunner = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingTool: true}
@@ -41,6 +43,8 @@ var fetchRunner = coreexec.Runner{OutputCap: coreexec.FetchOutputCap, MissingToo
 const (
 	argRepo            = "repo"
 	argPr              = "pr"
+	argBundle          = "bundle"
+	argSig             = "sig"
 	argFlags           = "flags"
 	argStatus          = "status"
 	argMinSeverity     = "minSeverity"
@@ -119,8 +123,6 @@ type tool struct { //nolint:govet // the grouping documents the descriptor; alig
 	destructive        bool
 	idempotent         bool
 	openWorld          bool
-	operatorOnly       bool
-	operatorWrite      func(any) bool
 	writeArgs          map[string]string
 	refusedArgs        map[string]bool
 	decode             func(json.RawMessage) (any, error)
@@ -129,7 +131,7 @@ type tool struct { //nolint:govet // the grouping documents the descriptor; alig
 }
 
 //nolint:revive // the registry reads as one block
-func allTools(readOnly, operator bool) []*tool {
+func allTools(rule posture.Rule) []*tool {
 	tools := []*tool{
 		dataTool(&toolSpec{
 			name: "adopt",
@@ -193,9 +195,10 @@ func allTools(readOnly, operator bool) []*tool {
 		dataTool(&toolSpec{
 			name: "fix",
 			description: "Run one bounded, verify-gated fix pass over an inline finding " +
-				"or a batch scope (all, or selected: the sigs a human reacted to). " +
-				"The ledger caps passes per sig. Writes the fix ledger and runs the " +
-				"recorded verify command.",
+				"or a batch scope (all, selected, or recipe). " +
+				"It writes the fix ledger and hands the verify command to the agent, capped per sig. " +
+				"Set test to a reproduced sig to promote its artifact to .verdict/tests; " +
+				"commit commits only that file.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Prepare a fix", mutates: localWrites},
 		}, toolDeps{commander: fetchRunner}, decodeFix, wireFix, fixcore.Run,
@@ -283,15 +286,60 @@ func allTools(readOnly, operator bool) []*tool {
 		}, toolDeps{commander: fetchRunner}, decodePost, wirePost, postcore.Run,
 			func(resp *postcore.Response) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
-			name: "pr_wait", description: "Bounded foreground GitHub PR wait. No local writes. Timeout defaults to 50s and cannot exceed 50s. Use instead of sleep loops.",
+			name: "pr_wait", description: "Bounded foreground PR wait. No local writes. Timeout defaults to 50s and cannot exceed 50s. Use instead of sleep loops.",
 			required: []string{argRepo, argPr, "until"},
 			meta:     toolMeta{title: "Wait for PR", mutates: noLocalWrites, readOnly: true, idempotent: true, openWorld: true},
 		}, toolDeps{commander: coreexec.Runner{}}, decodePRWait, wirePRWait, readycore.Wait,
 			func(resp *readycore.WaitResponse) *jq.Obj { return wireData(resp.Data) }),
+		directTool(&toolSpec{
+			name: "query-bundles",
+			description: "List every bundle under the served root with its counts and head. " +
+				"Call to see which bundles exist before querying findings. " +
+				"Reads local bundles only; writes nothing.",
+			required: nil,
+			meta:     toolMeta{title: "List dashboard bundles", mutates: noLocalWrites, readOnly: true, idempotent: true},
+		}, toolDeps{}, decodeQueryBundles, wireQueryBundles, invokeQueryBundles),
+		directTool(&toolSpec{
+			name: "query-copy",
+			description: "Return one finding's copy prompt and its runnable triage command on the " +
+				"dashboard query layer. Call to copy a prompt for an agent. " +
+				"Reads local bundles only; writes nothing.",
+			required: []string{argBundle, argSig},
+			meta:     toolMeta{title: "Copy a finding prompt", mutates: noLocalWrites, readOnly: true, idempotent: true},
+		}, toolDeps{}, decodeQueryFinding, wireQueryFinding, invokeQueryCopy),
+		directTool(&toolSpec{
+			name: "query-cost",
+			description: "Roll up review spend cost by repo, week, or model on the dashboard query " +
+				"layer. Call for cost summaries and trends. Reads local bundles only; writes nothing.",
+			required: nil,
+			meta:     toolMeta{title: "Summarize review cost", mutates: noLocalWrites, readOnly: true, idempotent: true},
+		}, toolDeps{}, decodeQueryCost, wireQueryCost, invokeQueryCost),
+		directTool(&toolSpec{
+			name: "query-finding",
+			description: "Read one full finding with its fix by signature on the dashboard query " +
+				"layer. Call with a sig from query-findings. Reads local bundles only; writes nothing.",
+			required: []string{argBundle, argSig},
+			meta:     toolMeta{title: "Read one finding", mutates: noLocalWrites, readOnly: true, idempotent: true},
+		}, toolDeps{}, decodeQueryFinding, wireQueryFinding, invokeQueryFinding),
+		directTool(&toolSpec{
+			name: "query-findings",
+			description: "List one bundle's ranked findings with evidence rungs on the dashboard " +
+				"query layer. Call after listing bundles to inspect open findings. " +
+				"Reads local bundles only; writes nothing.",
+			required: []string{argBundle},
+			meta:     toolMeta{title: "List bundle findings", mutates: noLocalWrites, readOnly: true, idempotent: true},
+		}, toolDeps{}, decodeQueryFindings, wireQueryFindings, invokeQueryFindings),
+		directTool(&toolSpec{
+			name: "query-health",
+			description: "Report the dashboard query layer's version, served roots, and bundle " +
+				"counts. Call to check what this server serves. Reads local state only; writes nothing.",
+			required: nil,
+			meta:     toolMeta{title: "Dashboard health", mutates: noLocalWrites, readOnly: true, idempotent: true},
+		}, toolDeps{}, decodeQueryHealth, wireQueryHealth, invokeQueryHealth),
 		dataTool(&toolSpec{
 			name: "ready",
 			description: "Report merge readiness (checks, threads, draft, conflict) or gate on " +
-				"it. Call before merging. Reads GitHub; writes nothing.",
+				"it. Call before merging. Reads " + strings.Join(core.ReadyProviders(), " and ") + " live; writes nothing.",
 			required: requiredRepoPr,
 			meta:     toolMeta{title: "Merge readiness", mutates: noLocalWrites, readOnly: true, idempotent: true, openWorld: true},
 		}, toolDeps{commander: coreexec.Runner{}}, decodeReady, wireReady, readycore.Run,
@@ -317,7 +365,7 @@ func allTools(readOnly, operator bool) []*tool {
 		dataTool(&toolSpec{
 			name: "risk",
 			description: "Rank the bundles under .verdict/state into an advisory triage queue. " +
-				"Reads local bundles only and writes nothing. Follow with report --max-risk to gate one bundle.",
+				"Reads local bundles only and writes nothing. Follow with gate --max-risk to gate one bundle.",
 			omit:     map[string]bool{fieldPr: true},
 			required: []string{argRepo},
 			meta:     toolMeta{title: "Triage risk queue", mutates: noLocalWrites, readOnly: true, idempotent: true},
@@ -327,7 +375,7 @@ func allTools(readOnly, operator bool) []*tool {
 			name: "show",
 			description: "Return one full finding by signature or unique prefix. Call to inspect " +
 				"a finding named by report or next. Reads the bundle; writes nothing.",
-			required: []string{argRepo, argPr, "sig"},
+			required: []string{argRepo, argPr, argSig},
 			meta:     toolMeta{title: "Show finding", mutates: noLocalWrites, readOnly: true, idempotent: true},
 		}, toolDeps{}, decodeShow, wireShow, invokeShow),
 		dataTool(&toolSpec{
@@ -350,15 +398,15 @@ func allTools(readOnly, operator bool) []*tool {
 			meta:     toolMeta{title: "Review trend", mutates: noLocalWrites, readOnly: true, idempotent: true},
 		}, toolDeps{}, decodeTrend, wireTrend, trendcore.Run,
 			func(resp *trendcore.Response) *jq.Obj { return wireData(resp.Data) }),
-		operatorTool(dataTool(&toolSpec{
+		dataTool(&toolSpec{
 			name: "triage",
-			description: "Operator-only: flip one finding's status with a " +
-				"rationale. Never call while reviewing a PR; propose triage[] in review.json " +
+			description: "Flip one finding's status with a rationale. Human-owned: " +
+				"never call while reviewing a PR; propose triage[] in review.json " +
 				"instead. Writes findings.json and stages KB credit.",
-			required: []string{argRepo, argPr, "sig", argStatus},
+			required: []string{argRepo, argPr, argSig, argStatus},
 			meta:     toolMeta{title: "Triage finding", mutates: localWrites, destructive: true},
 		}, toolDeps{}, decodeTriage, wireTriage, triagecore.Run,
-			func(resp *triagecore.Response) *jq.Obj { return wireData(resp.Data) })),
+			func(resp *triagecore.Response) *jq.Obj { return wireData(resp.Data) }),
 		dataTool(&toolSpec{
 			name: "verify",
 			description: "Run the recorded verifyCmd under the watchdog and record the proof. " +
@@ -371,20 +419,15 @@ func allTools(readOnly, operator bool) []*tool {
 		}, toolDeps{commander: coreexec.Watchdog{}}, decodeVerify, wireVerify, verifycore.Run,
 			func(resp *verifycore.Response) *jq.Obj { return wireData(resp.Data) }),
 	}
-	for _, t := range tools {
-		if t.name == "threads" {
-			t.operatorWrite = threadsResolveWrite
-		}
-	}
 	kept := make([]*tool, 0, len(tools))
 	for _, t := range tools {
-		if readOnly {
+		if !rule.LocalWrites() {
 			t.narrowReadOnly()
 			if t.readOnlyDryRun {
 				t.requireDryRun = true
 			}
 		}
-		if !exposed(t, readOnly, operator) {
+		if !exposed(t, rule) {
 			continue
 		}
 		kept = append(kept, t)
@@ -405,16 +448,13 @@ func (t *tool) narrowReadOnly() {
 	t.omit = omit
 }
 
-func exposed(t *tool, readOnly, operator bool) bool {
-	if readOnly && t.mutates != noLocalWrites && !t.servedWhenReadOnly {
-		return false
-	}
-	return !t.operatorOnly || (!readOnly && operator)
-}
-
-func operatorTool(t *tool) *tool {
-	t.operatorOnly = true
-	return t
+// exposed is the shared write-posture rule applied to the registry: a tool
+// that writes local state (post and the threads resolve mode included, since
+// this surface's host-post consent is the tool being exposed at all) is
+// served only when the rule allows local writes, plus the constrained forms
+// servedWhenReadOnly names.
+func exposed(t *tool, rule posture.Rule) bool {
+	return rule.LocalWrites() || t.mutates == noLocalWrites || t.servedWhenReadOnly
 }
 
 func dataTool[Req, S any](
@@ -457,7 +497,6 @@ func newTool[Req any](
 		destructive:        spec.meta.destructive,
 		idempotent:         spec.meta.idempotent,
 		openWorld:          spec.meta.openWorld,
-		operatorOnly:       false,
 		refusedArgs:        map[string]bool{},
 	}
 	t.decode = func(raw json.RawMessage) (any, error) {
@@ -486,13 +525,6 @@ func wireThreadsData(resp *fetchcore.ThreadsResponse) *jq.Obj {
 		return resp.Resolve.Wire()
 	}
 	return wireData(resp.Data)
-}
-
-// threadsResolveWrite reports whether one threads request is the operator-only
-// resolve mode, so the server can refuse it without --operator.
-func threadsResolveWrite(raw any) bool {
-	req, ok := raw.(*fetchcore.ThreadsRequest)
-	return ok && req.Resolve
 }
 
 func invokeService[R, S any](
@@ -682,8 +714,8 @@ func rawMarshal(o *jq.Obj) json.RawMessage { return json.RawMessage(o.MarshalCom
 
 // ToolNames lists the tool names a server with this surface exposes, in
 // registry order. `verdict mcp --help` is checked against it.
-func ToolNames(readOnly, operator bool) []string {
-	tools := allTools(readOnly, operator)
+func ToolNames(readOnly bool) []string {
+	tools := allTools(Posture(readOnly))
 	out := make([]string, 0, len(tools))
 	for _, t := range tools {
 		out = append(out, t.name)

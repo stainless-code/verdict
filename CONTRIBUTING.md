@@ -25,6 +25,18 @@ files — check-only, never rewrites. `hooks/pre-push` runs the Go bar CI runs
 range and skips it for a docs-only range; `SKIP_PRE_PUSH=1 git push` is the
 escape hatch.
 
+The hook also skips that suite for a commit you already verified in full.
+`make verify-stamp` runs the same bar (`scripts/prepush-checks.sh`) and, on
+success, records `<sha> <tree> <epoch>` in `<git-dir>/verdict-verified` (inside
+`.git`, never committed, per worktree). A push skips only when every pushed sha
+has a stamp whose tree matches **and** the working tree is clean; anything else,
+including a stamp in another format, runs everything. The hook prints
+`pre-push: <sha> already verified by `make verify-stamp` at <time>; skipping
+the full suite` when it skips, and `VERDICT_PREPUSH_FULL=1 git push` forces the
+full run. A tool that ran its own full verification stamps with one line, right
+after the green run and before anything moves HEAD:
+`sh scripts/verify-stamp.sh write` (it refuses a dirty tree).
+
 Run `verdict doctor` to preflight the harness.
 
 ### Run your build as the skill
@@ -292,9 +304,9 @@ layout, the eval-case contract, and the verification checklist for each.
 
 Verbs are: `demo`, `fetch`, `post`, `triage`,
 `report`, `next`, `show`, `verify`, `doctor`, `calibrate`,
-`fetch-local`, `run`, `record`, `panel`, `adopt`, `ingest`, `fix`, `handoff`, `check-tree`, `ready`, `pr-wait`,
+`fetch-local`, `run`, `loop`, `record`, `panel`, `adopt`, `ingest`, `fix`, `handoff`, `check-tree`, `ready`, `pr-wait`,
 `trend`, `risk`, `index`, `journal`, `backtest`, `learn`, `pack`, `init`, `threads`, `skill`, `upgrade`, `uninstall`,
-`serve`
+`serve`, `dashboard`, `lsp`
 — plus the hidden `mcp` stdio transport. If your change adds or
 renames one, the templates, the manual, and `cmd/verdict/usage.go`
 must agree; [`docs/adding-a-verb.md`](docs/adding-a-verb.md) is the

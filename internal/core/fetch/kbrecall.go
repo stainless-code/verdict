@@ -16,6 +16,7 @@ import (
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/provenance"
 )
 
@@ -264,7 +265,7 @@ func recallFiles(dir, extra string) []string {
 // recallDiffFiles owns the diff scan for usable b-side paths: the shared
 // section index, empty and /dev/null headers dropped.
 func recallDiffFiles(dir string) []string {
-	raw, err := os.ReadFile(dir + suffixFullDiff)
+	raw, err := noblock.ReadFile(dir + suffixFullDiff)
 	if err != nil {
 		return nil
 	}

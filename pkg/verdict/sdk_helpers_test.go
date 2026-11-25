@@ -7,10 +7,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/testenv"
 	"github.com/stainless-code/verdict/pkg/verdict"
 )
@@ -135,8 +137,18 @@ type fakeCommander struct {
 // Run implements verdict.Commander.
 func (f *fakeCommander) Run(_ context.Context, cmd *verdict.Command) (verdict.CommandResult, error) {
 	f.t.Helper()
-	f.calls = append(f.calls, cmd.Argv)
-	joined := strings.Join(cmd.Argv, " ")
+	// fetch-local's content-tree reads are not what these tests script.
+	if isContentRead(cmd) {
+		if res, ok := sdkGitAnswer(cmd); ok {
+			return res, nil
+		}
+	}
+	argv := sdkArgv(cmd.Argv)
+	if slices.Equal(argv, append([]string{"git"}, gitcmd.ListFilters...)) {
+		return verdict.CommandResult{ExitCode: 1}, nil
+	}
+	f.calls = append(f.calls, argv)
+	joined := strings.Join(liveDiffArgv(argv), " ")
 	for _, rule := range f.rules {
 		if containsAll(joined, rule.tokens) {
 			return rule.result, nil
@@ -144,6 +156,18 @@ func (f *fakeCommander) Run(_ context.Context, cmd *verdict.Command) (verdict.Co
 	}
 	f.t.Fatalf("unexpected command: %q", joined)
 	return verdict.CommandResult{}, nil
+}
+
+// liveDiffArgv maps a named working-tree bundle's tree-to-tree read (`git
+// diff [flags] <base> <scriptTree> [-- paths]`) onto the live `git diff
+// [flags] HEAD [-- paths]` a test scripts: the named tree stands for the
+// working tree's content. Other argv pass unchanged.
+func liveDiffArgv(argv []string) []string {
+	tree := slices.Index(argv, scriptTree)
+	if len(argv) < 3 || argv[1] != "diff" || tree < 1 {
+		return argv
+	}
+	return slices.Concat(argv[:tree-1], []string{"HEAD"}, argv[tree+1:])
 }
 
 // containsAll reports whether s contains every token.
@@ -266,10 +290,15 @@ func splitLines(s string) []string {
 	return out
 }
 
-// gitRun runs one git command in dir with the harness's pinned config.
+// gitRun runs one git command in dir with the harness's pinned config. The
+// subprocess carries a finite timeout and a WaitDelay (GO-CONC-06), mirroring
+// the git example bound in example_test.go.
 func gitRun(t *testing.T, dir string, args ...string) {
 	t.Helper()
-	cmd := exec.CommandContext(t.Context(), "git", args...)
+	ctx, cancel := context.WithTimeout(t.Context(), time.Minute)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.WaitDelay = time.Minute
 	cmd.Dir = dir
 	cmd.Env = testenv.Base(map[string]string{
 		"GIT_AUTHOR_NAME":     "sdk",
@@ -280,6 +309,19 @@ func gitRun(t *testing.T, dir string, args ...string) {
 	if out, err := cmd.CombinedOutput(); err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
+}
+
+// gitHead reads dir's checked-out commit.
+func gitHead(t *testing.T, dir string) string {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", "rev-parse", "HEAD")
+	cmd.Dir = dir
+	cmd.Env = testenv.Base(nil)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
 }
 
 // sdkGitRepo initializes dir as a git checkout holding the named files in

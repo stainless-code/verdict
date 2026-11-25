@@ -1,4 +1,4 @@
-import { describe, it } from "node:test";
+import { describe, it, after } from "node:test";
 import assert from "node:assert/strict";
 import {
   mkdtempSync,
@@ -6,9 +6,11 @@ import {
   writeFileSync,
   readFileSync,
   accessSync,
+  chmodSync,
   constants,
   existsSync,
   realpathSync,
+  rmSync,
 } from "node:fs";
 import { execFileSync } from "node:child_process";
 import { tmpdir } from "node:os";
@@ -47,15 +49,6 @@ const GATE_PATHS = [
     call: (bin, env) => run("gate", [], { bin, stderr: "pipe", env }),
   },
   {
-    label: "report(... --check)",
-    verb: "report",
-    call: (bin, env) =>
-      createClient({ bin, stderr: "pipe" }).report(
-        ["acme/app", "4243", "--check"],
-        { env },
-      ),
-  },
-  {
     label: "gate(...)",
     verb: "gate",
     call: (bin, env) =>
@@ -87,6 +80,42 @@ function runFake(mode, verb = "report", args = [], opts = {}, env = {}) {
     ...opts,
     env: { ...process.env, FAKE_MODE: mode, ...env },
   });
+}
+
+// One-off refusal fakes live in a temp dir each; collect them and remove
+// them once the file's tests have run.
+const refusalDirs = [];
+after(() => {
+  for (const dir of refusalDirs) {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// Spawns a one-off fake binary emitting a refusal envelope whose `error`
+// body is exactly `errorBody`, so the throw/envelope boundary is exercised
+// with payloads the shared fake-verdict.mjs does not know.
+function runInlineRefusal(errorBody) {
+  const dir = mkdtempSync(join(tmpdir(), "verdict-refusal-"));
+  refusalDirs.push(dir);
+  const fake = join(dir, "fake-verdict.mjs");
+  const envelope = {
+    schema_version: "1",
+    verb: "report",
+    repo: "acme/app",
+    pr: 4243,
+    at: "2026-01-01T00:00:00Z",
+    next: "address open threads",
+    warnings: [],
+    data: null,
+    error: errorBody,
+  };
+  writeFileSync(
+    fake,
+    `#!/usr/bin/env node\nprocess.stdout.write(${JSON.stringify(JSON.stringify(envelope))} + "\\n");\nprocess.exit(1);\n`,
+  );
+  chmodSync(fake, 0o755);
+  const client = createClient({ bin: fake, stderr: "pipe" });
+  return client.run("report", []);
 }
 
 describe("unit: fake binary exit paths", () => {
@@ -280,14 +309,231 @@ describe("unit: fake binary exit paths", () => {
         "try: run the fetch/record step named above first, then re-run",
       );
       assert.ok(Array.isArray(error.warnings));
+      // No optional fields: the getters fall back to empty/zero.
+      assert.deepEqual(error.problems, []);
+      assert.deepEqual(error.candidates, []);
+      assert.equal(error.problems_truncated, 0);
+      assert.equal(error.retry_at, undefined);
+      assert.equal(error.body.code, "missing-findings");
       return true;
     });
+  });
+
+  it("refusal carries problems, truncated count, candidates and retry_at", async () => {
+    await assert.rejects(
+      runInlineRefusal({
+        code: "bad-review-input",
+        message: "review.json has 1 problem(s); fix every one, then re-run",
+        problems: [
+          {
+            path: "$.findings[0].anchor",
+            code: "bad-enum",
+            level: "error",
+            message: "anchor is outside its hunk",
+            fix: "move the anchor inside the hunk",
+          },
+        ],
+        problems_truncated: 7,
+        candidates: [{ kind: "oversize-fetch", suggestion: "app/handler.go" }],
+        retry_at: "2026-01-02T00:00:00Z",
+      }),
+      (error) => {
+        assert.ok(error instanceof VerdictRefusalError);
+        assert.equal(error.body.code, "bad-review-input");
+        assert.equal(error.problems.length, 1);
+        assert.equal(error.problems[0].path, "$.findings[0].anchor");
+        assert.equal(error.problems_truncated, 7);
+        assert.equal(error.candidates[0].suggestion, "app/handler.go");
+        assert.equal(error.retry_at, "2026-01-02T00:00:00Z");
+        return true;
+      },
+    );
+  });
+
+  it("malformed problems item throws VerdictSchemaError", async () => {
+    await assert.rejects(
+      runInlineRefusal({
+        code: "bad-review-input",
+        message: "review.json has 1 problem(s)",
+        problems: [{ path: "$.findings[0].path", code: "wrong-type" }],
+      }),
+      (error) => {
+        assert.ok(error instanceof VerdictSchemaError);
+        assert.ok(!(error instanceof VerdictRefusalError));
+        assert.ok(
+          error.message.includes(
+            "refusal envelope error problems must be an array of { path, code, level, message, fix } objects",
+          ),
+        );
+        return true;
+      },
+    );
+  });
+
+  it("problems item missing code throws VerdictSchemaError", async () => {
+    await assert.rejects(
+      runInlineRefusal({
+        code: "bad-review-input",
+        message: "review.json has 1 problem(s)",
+        problems: [
+          {
+            path: "$.findings[0].path",
+            level: "error",
+            message: "wrong type",
+            fix: "use a string",
+          },
+        ],
+      }),
+      (error) => {
+        assert.ok(error instanceof VerdictSchemaError);
+        assert.ok(!(error instanceof VerdictRefusalError));
+        assert.ok(
+          error.message.includes(
+            "refusal envelope error problems must be an array of { path, code, level, message, fix } objects",
+          ),
+        );
+        return true;
+      },
+    );
+  });
+
+  it("problems item missing level or message throws VerdictSchemaError", async () => {
+    const base = {
+      path: "$.findings[0].path",
+      code: "wrong-type",
+      fix: "use a string",
+    };
+    for (const bad of [
+      { ...base, level: "error" },
+      { ...base, message: "wrong type" },
+      { ...base, level: "error", message: "wrong type", code: 5 },
+    ]) {
+      await assert.rejects(
+        runInlineRefusal({
+          code: "bad-review-input",
+          message: "review.json has 1 problem(s)",
+          problems: [bad],
+        }),
+        (error) => {
+          assert.ok(error instanceof VerdictSchemaError);
+          assert.ok(!(error instanceof VerdictRefusalError));
+          assert.ok(
+            error.message.includes(
+              "refusal envelope error problems must be an array of { path, code, level, message, fix } objects",
+            ),
+          );
+          return true;
+        },
+      );
+    }
+  });
+
+  it("non-array problems throws VerdictSchemaError", async () => {
+    await assert.rejects(
+      runInlineRefusal({
+        code: "bad-review-input",
+        message: "review.json has 1 problem(s)",
+        problems: "x",
+      }),
+      (error) => {
+        assert.ok(error instanceof VerdictSchemaError);
+        assert.ok(
+          error.message.includes(
+            "refusal envelope error problems must be an array of { path, code, level, message, fix } objects",
+          ),
+        );
+        return true;
+      },
+    );
+  });
+
+  it("negative problems_truncated throws VerdictSchemaError", async () => {
+    await assert.rejects(
+      runInlineRefusal({
+        code: "bad-review-input",
+        message: "review.json has 1 problem(s)",
+        problems_truncated: -1,
+      }),
+      (error) => {
+        assert.ok(error instanceof VerdictSchemaError);
+        assert.ok(
+          error.message.includes(
+            "refusal envelope error problems_truncated must be a non-negative integer",
+          ),
+        );
+        return true;
+      },
+    );
+  });
+
+  it("malformed candidates throws VerdictSchemaError", async () => {
+    await assert.rejects(
+      runInlineRefusal({
+        code: "oversize-fetch",
+        message: "bundle too large",
+        candidates: [{ kind: "oversize-fetch" }],
+      }),
+      (error) => {
+        assert.ok(error instanceof VerdictSchemaError);
+        assert.ok(
+          error.message.includes(
+            "refusal envelope error candidates must be an array of { kind, suggestion } objects",
+          ),
+        );
+        return true;
+      },
+    );
+  });
+
+  it("non-string retry_at throws VerdictSchemaError", async () => {
+    await assert.rejects(
+      runInlineRefusal({
+        code: "oversize-fetch",
+        message: "bundle too large",
+        retry_at: 5,
+      }),
+      (error) => {
+        assert.ok(error instanceof VerdictSchemaError);
+        assert.ok(
+          error.message.includes(
+            "refusal envelope error retry_at must be a string",
+          ),
+        );
+        return true;
+      },
+    );
   });
 
   it("usage error throws VerdictUsageError with stderr", async () => {
     await assert.rejects(runFake("usage", "bogus"), (error) => {
       assert.ok(error instanceof VerdictUsageError);
       assert.ok(error.stderr.includes("usage: verdict"));
+      return true;
+    });
+  });
+
+  it("exit 2 with a refusal envelope throws the typed refusal", async () => {
+    await assert.rejects(runFake("target-unresolved"), (error) => {
+      assert.ok(error instanceof VerdictRefusalError);
+      assert.ok(!(error instanceof VerdictUsageError));
+      assert.equal(error.code, "target-unresolved");
+      assert.ok(error.hint.includes("pass the target explicitly"));
+      return true;
+    });
+  });
+
+  it("exit 2 with stdout that is no refusal envelope stays a usage error", async () => {
+    await assert.rejects(runFake("usage-noise"), (error) => {
+      assert.ok(error instanceof VerdictUsageError);
+      assert.ok(error.stderr.includes("usage: verdict report"));
+      return true;
+    });
+  });
+
+  it("exit 2 with an unsupported-schema envelope stays a usage error", async () => {
+    await assert.rejects(runFake("usage-bad-schema"), (error) => {
+      assert.ok(error instanceof VerdictUsageError);
+      assert.ok(error.stderr.includes("usage: verdict report"));
       return true;
     });
   });
@@ -829,7 +1075,10 @@ describe("integration: real binary", () => {
       assert.equal(receipt.group, group);
       assert.equal(receipt.inputs_sha256, run.inputs_sha256);
       assert.equal(receipt.reviewed_head, head);
-      assert.equal(receipt.execution_head, head);
+      // The receipt certifies content: the tree the command ran on, which is
+      // the reviewed commit's tree.
+      assert.equal(receipt.tree, git("rev-parse", `${head}^{tree}`));
+      assert.equal(env.data.tree, receipt.tree);
       assert.equal(receipt.repo_root, realpathSync(dir));
       assert.equal(receipt.command, "cat rootmarker");
       assert.equal(receipt.exit, 0);
@@ -935,7 +1184,7 @@ describe("integration: real binary", () => {
         ".gitignore:create",
       ]);
       const cfg = readFileSync(join(dir, ".verdict", "config.json"), "utf8");
-      assert.ok(cfg.includes("2.00"));
+      assert.ok(cfg.includes("0.10"));
     },
   );
 
@@ -955,26 +1204,28 @@ describe("integration: real binary", () => {
   );
 
   it(
-    "report --check gate failure carries the success-shaped envelope",
+    "gate failure carries the success-shaped envelope",
     { skip: !haveBinary },
     async () => {
       const dir = mkBundle(4243);
       writeFindings(dir, 4243);
       const client = createClient({ bin: REAL_BIN, cwd: dir, stderr: "pipe" });
       await assert.rejects(
-        client.report([
+        client.gate([
           "acme/app",
           "4243",
-          "--check",
+          "--max-severity",
           "informational",
           "--live",
           "skip",
+          "--coverage",
+          "warn",
         ]),
         (error) => {
           assert.ok(error instanceof VerdictGateError, error.name);
-          assert.equal(error.envelope.verb, "report");
+          assert.equal(error.envelope.verb, "gate");
           assert.equal(error.envelope.error, null);
-          assert.equal(error.data.gate?.passed, false);
+          assert.equal(error.data.passed, false);
           assert.equal(typeof error.next, "string");
           assert.ok(Array.isArray(error.warnings));
           return true;
@@ -984,13 +1235,14 @@ describe("integration: real binary", () => {
   );
 
   it(
-    "report with no args is a usage error",
+    "report with no args refuses target-unresolved at exit 2",
     { skip: !haveBinary },
     async () => {
       const dir = mkBundle(4243);
       const client = createClient({ bin: REAL_BIN, cwd: dir, stderr: "pipe" });
       await assert.rejects(client.report([]), (error) => {
-        assert.ok(error instanceof VerdictUsageError);
+        assert.ok(error instanceof VerdictRefusalError);
+        assert.equal(error.code, "target-unresolved");
         return true;
       });
     },

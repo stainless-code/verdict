@@ -8,13 +8,14 @@ import (
 	"os"
 	"path"
 	"path/filepath"
-	"regexp"
 	"slices"
 	"strings"
 	"time"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
+	"github.com/stainless-code/verdict/internal/gitsource"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -22,26 +23,17 @@ const (
 	sourceDirPrefix = "dir:"
 	sourceGitPrefix = "git:"
 	refSep          = "@"
-	schemeSep       = "://"
-	schemeSlash     = ":/"
 	invalidSource   = "<invalid source>"
 	packDirPerm     = 0o755
 	shaHexLen       = 40
 	stagingDot      = "."
 	revParseArgs    = 3
 	revParseIndex   = 1
-	maxSourceUser   = 64
-	maxHostLen      = 253
-	maxHostLabel    = 63
-	maxPortLen      = 5
 )
 
 // packCloneTimeout bounds the clone, rev-parse, and checkout group so a slow
 // remote cannot hold pack add open indefinitely.
 const packCloneTimeout = 5 * time.Minute
-
-// gitRef gates the optional @ref before it reaches a git argv.
-var gitRef = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9._/+-]*$`)
 
 // CodeBadPackSource is the refusal for a remote-shaped source the git
 // allowlist rejects.
@@ -279,7 +271,7 @@ type packSource struct {
 func addSource(ctx context.Context, req *AddRequest) (*packSource, *core.RefusalError) {
 	source := strings.TrimSpace(req.Source)
 	if src, ok := parseGitSource(source); ok {
-		return cloneSource(ctx, req, src.url, src.ref)
+		return cloneSource(ctx, req, src.url, src.ref, refByName, rootSelf)
 	}
 	if strings.HasPrefix(source, "-") {
 		return nil, badPack(fmt.Sprintf("pack source %q starts with '-'", displaySource(source)))
@@ -309,313 +301,33 @@ func badPackSource(reason string) *core.RefusalError {
 	return &core.RefusalError{Code: CodeBadPackSource, Message: reason}
 }
 
-// gitSource is one allowlisted git remote and its optional @ref.
+// gitSource is one allowlisted git remote and its optional @ref, in the shape
+// the pack layer reads: the canonical URL a lock row records plus the @ref the
+// source carried.
 type gitSource struct {
 	url string
 	ref string
 }
 
-// parseGitSource accepts exactly the published git sources: https://host/path
-// with no userinfo, ssh://user@host/path, and user@host:path, each with an
-// optional @ref. The scheme is matched case-insensitively and stored
-// lower-case. A query or fragment refuses: a source is recorded in the
-// committed lock, so nothing after the path may carry a token.
+// parseGitSource parses one source through the shared git-remote allowlist.
+// The grammar itself lives in internal/gitsource, so pack add, pack sync, and
+// the base-owned org pin cannot drift from the config parser.
 func parseGitSource(s string) (gitSource, bool) {
-	if strings.ContainsAny(s, "?#") {
-		return gitSource{}, false
-	}
-	if base, ref, ok := splitSourceRef(s); ok {
-		url, ok := parseSourceURL(base)
-		if !ok {
-			return gitSource{}, false
-		}
-		return gitSource{url: url, ref: ref}, true
-	}
-	url, ok := parseSourceURL(s)
+	src, ok := gitsource.Parse(s)
 	if !ok {
 		return gitSource{}, false
 	}
-	return gitSource{url: url}, true
+	return gitSource{url: src.URL, ref: src.Ref}, true
 }
 
-// splitSourceRef cuts the optional @ref at the first @ after a URL authority,
-// or at the last @ of a possible scp source. The suffix must match the ref
-// grammar, so a bare git@host:path stays one source.
-func splitSourceRef(s string) (string, string, bool) {
-	if schemeEnd := strings.Index(s, schemeSep); schemeEnd > 0 {
-		return splitURLRef(s, schemeEnd)
-	}
-	at := strings.LastIndexByte(s, '@')
-	if at <= 0 || !gitRef.MatchString(s[at+1:]) {
-		return s, "", false
-	}
-	return s[:at], s[at+1:], true
-}
-
-// splitURLRef cuts a URL source at the first @ after its authority.
-func splitURLRef(s string, schemeEnd int) (string, string, bool) {
-	rest := schemeEnd + len(schemeSep)
-	slash := strings.IndexByte(s[rest:], '/')
-	if slash < 0 {
-		return s, "", false
-	}
-	rest += slash
-	at := strings.IndexByte(s[rest:], '@')
-	if at < 0 {
-		return s, "", false
-	}
-	at += rest
-	if !gitRef.MatchString(s[at+1:]) {
-		return s, "", false
-	}
-	return s[:at], s[at+1:], true
-}
-
-// parseSourceURL parses one allowlisted git URL without its @ref.
-func parseSourceURL(s string) (string, bool) {
-	if scheme, rest, ok := sourceScheme(s); ok {
-		switch strings.ToLower(scheme) {
-		case "https":
-			return parseHTTPSource(rest)
-		case "ssh":
-			return parseSSHSource(rest)
-		}
-		return "", false
-	}
-	return parseSCPSource(s)
-}
-
-// sourceScheme splits one scheme:// prefix.
-func sourceScheme(s string) (string, string, bool) {
-	i := strings.Index(s, schemeSep)
-	if i <= 0 {
-		return "", "", false
-	}
-	scheme := s[:i]
-	if !validScheme(scheme) {
-		return "", "", false
-	}
-	return scheme, s[i+len(schemeSep):], true
-}
-
-// parseHTTPSource accepts https://HOST[:PORT]/PATH with no userinfo.
-func parseHTTPSource(rest string) (string, bool) {
-	authority, rel, ok := splitAuthorityPath(rest)
-	if !ok || strings.Contains(authority, refSep) || !validHostPort(authority) || !validPath(rel) {
-		return "", false
-	}
-	return "https://" + authority + "/" + rel, true
-}
-
-// parseSSHSource accepts ssh://USER@HOST[:PORT]/PATH.
-func parseSSHSource(rest string) (string, bool) {
-	authority, rel, ok := splitAuthorityPath(rest)
-	if !ok {
-		return "", false
-	}
-	user, hostPort, ok := splitSourceUser(authority)
-	if !ok || !validSourceUser(user) || !validHostPort(hostPort) || !validPath(rel) {
-		return "", false
-	}
-	return "ssh://" + user + "@" + hostPort + "/" + rel, true
-}
-
-// splitAuthorityPath cuts a URL authority at its first slash; both sides must
-// be non-empty.
-func splitAuthorityPath(rest string) (string, string, bool) {
-	slash := strings.IndexByte(rest, '/')
-	if slash <= 0 || slash == len(rest)-1 {
-		return "", "", false
-	}
-	return rest[:slash], rest[slash+1:], true
-}
-
-// splitSourceUser splits one user@host authority at its single @.
-func splitSourceUser(authority string) (string, string, bool) {
-	at := strings.IndexByte(authority, '@')
-	if at <= 0 || at == len(authority)-1 || strings.Contains(authority[at+1:], refSep) {
-		return "", "", false
-	}
-	return authority[:at], authority[at+1:], true
-}
-
-// parseSCPSource accepts the scp form USER@HOST:PATH.
-func parseSCPSource(s string) (string, bool) {
-	if strings.Contains(s, schemeSep) {
-		return "", false
-	}
-	at := strings.IndexByte(s, '@')
-	if at <= 0 {
-		return "", false
-	}
-	user, rest := s[:at], s[at+1:]
-	host, rel, ok := splitSCPHost(rest)
-	if !ok || !validSourceUser(user) || !validHost(host) || !validPath(rel) {
-		return "", false
-	}
-	return user + "@" + host + ":" + rel, true
-}
-
-// splitSCPHost cuts one scp destination at the colon after its host, or after
-// a bracketed IPv6 literal.
-func splitSCPHost(rest string) (string, string, bool) {
-	if strings.HasPrefix(rest, "[") {
-		end := strings.IndexByte(rest, ']')
-		if end < 0 || end+1 >= len(rest) || rest[end+1] != ':' {
-			return "", "", false
-		}
-		return rest[:end+1], rest[end+2:], true
-	}
-	colon := strings.IndexByte(rest, ':')
-	if colon <= 0 {
-		return "", "", false
-	}
-	return rest[:colon], rest[colon+1:], true
-}
-
-// validHostPort validates HOST or HOST:PORT, with a bracketed IPv6 host.
-func validHostPort(s string) bool {
-	if strings.HasPrefix(s, "[") {
-		return validBracketedHostPort(s)
-	}
-	host, port, hasPort := strings.Cut(s, ":")
-	return (!hasPort || validPort(port)) && validHost(host)
-}
-
-// validBracketedHostPort validates [ipv6] with its optional :port.
-func validBracketedHostPort(s string) bool {
-	end := strings.IndexByte(s, ']')
-	if end < 0 || !validHost(s[:end+1]) {
-		return false
-	}
-	rest := s[end+1:]
-	return rest == "" || (strings.HasPrefix(rest, ":") && validPort(rest[1:]))
-}
-
-// validHost accepts a DNS name, an IPv4 address, or a bracketed IPv6 literal.
-func validHost(host string) bool {
-	if strings.HasPrefix(host, "[") {
-		return strings.HasSuffix(host, "]") && validIPv6(host[1:len(host)-1])
-	}
-	if host == "" || len(host) > maxHostLen {
-		return false
-	}
-	for label := range strings.SplitSeq(host, ".") {
-		if !validHostLabel(label) {
-			return false
-		}
-	}
-	return true
-}
-
-// validHostLabel accepts one DNS label: 1..63 bytes, alphanumeric at both
-// ends, hyphen inside.
-func validHostLabel(label string) bool {
-	if label == "" || len(label) > maxHostLabel {
-		return false
-	}
-	for i := range len(label) {
-		c := label[i]
-		if !isAlnum(c) && (c != '-' || i == 0 || i == len(label)-1) {
-			return false
-		}
-	}
-	return true
-}
-
-// validIPv6 accepts the inside of a bracketed IPv6 literal: hex digits,
-// colons, and dots, with at least one colon.
-func validIPv6(inner string) bool {
-	if inner == "" || !strings.ContainsRune(inner, ':') {
-		return false
-	}
-	for i := range len(inner) {
-		c := inner[i]
-		if !isHex(c) && c != ':' && c != '.' {
-			return false
-		}
-	}
-	return true
-}
-
-// validSourceUser accepts the bare ssh user grammar: 1..64 of [A-Za-z0-9._-].
-func validSourceUser(user string) bool {
-	if user == "" || len(user) > maxSourceUser {
-		return false
-	}
-	for i := range len(user) {
-		c := user[i]
-		if !isAlnum(c) && c != '.' && c != '_' && c != '-' {
-			return false
-		}
-	}
-	return true
-}
-
-// validPath accepts a source path with no whitespace, control character, @,
-// or leading '-'.
-func validPath(rel string) bool {
-	if rel == "" || rel[0] == '-' {
-		return false
-	}
-	for i := range len(rel) {
-		c := rel[i]
-		if c <= ' ' || c == controlDEL || c == '@' {
-			return false
-		}
-	}
-	return true
-}
-
-// validPort accepts 1..5 decimal digits.
-func validPort(port string) bool {
-	if port == "" || len(port) > maxPortLen {
-		return false
-	}
-	for i := range len(port) {
-		if port[i] < '0' || port[i] > '9' {
-			return false
-		}
-	}
-	return true
-}
-
-func isAlnum(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
-}
-
-func isHex(c byte) bool {
-	return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F'
-}
-
-// looksLikeGitSource reports whether s asks to be a git remote. Anything that
-// does refuses when the allowlist rejects it, instead of falling through to a
-// directory label.
-func looksLikeGitSource(s string) bool {
-	if strings.Contains(s, schemeSep) || schemeColonSlash(s) {
-		return true
-	}
-	at := strings.IndexByte(s, '@')
-	if at <= 0 || strings.ContainsAny(s[:at], `/\`) {
-		return false
-	}
-	return strings.IndexByte(s[at+1:], ':') > 0
-}
-
-// schemeColonSlash matches a scheme and a single slash, the mangled URL shape
-// that would otherwise read as a directory path. Two-letter-plus schemes keep
-// a Windows drive prefix ("C:/packs") a path.
-func schemeColonSlash(s string) bool {
-	i := strings.Index(s, schemeSlash)
-	return i >= 2 && validScheme(s[:i])
-}
+// looksLikeGitSource reports whether a source asks to be a git remote, so a
+// rejected remote shape refuses instead of falling through to a directory
+// label.
+func looksLikeGitSource(s string) bool { return gitsource.LooksLike(s) }
 
 // secretShaped reports whether a label carries a URL or userinfo shape that
 // must never be echoed, including inside a dir: label.
-func secretShaped(s string) bool {
-	return strings.Contains(s, schemeSep) || schemeColonSlash(s) ||
-		(strings.Contains(s, refSep) && strings.ContainsRune(s, ':'))
-}
+func secretShaped(s string) bool { return gitsource.SecretShaped(s) }
 
 // displaySource renders one source for output. It prints only a source the
 // grammar accepts, canonicalising a git URL; anything else becomes a fixed
@@ -663,26 +375,7 @@ func displayGitSource(raw string) string {
 	return raw
 }
 
-// validScheme reports whether s is an RFC 3986 URL scheme.
-func validScheme(s string) bool {
-	if s == "" || !isSchemeLetter(s[0]) {
-		return false
-	}
-	for i := 1; i < len(s); i++ {
-		if !isSchemeByte(s[i]) {
-			return false
-		}
-	}
-	return true
-}
-
-func isSchemeLetter(c byte) bool {
-	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
-}
-
-func isSchemeByte(c byte) bool {
-	return isSchemeLetter(c) || c >= '0' && c <= '9' || c == '+' || c == '-' || c == '.'
-}
+const checkoutSub = "checkout"
 
 // gitFatalExit is git's generic fatal exit status: a clone that reaches the
 // remote and fails there (not found, auth, network) exits with it.
@@ -700,16 +393,32 @@ func gitFailure(sub string, exit int) string {
 		return fmt.Sprintf("the clone exited %d — check the source and your access", exit)
 	case sub == "rev-parse":
 		return "the clone carries no resolvable HEAD commit"
-	case sub == "checkout":
+	case sub == checkoutSub:
 		return "the resolved commit could not be checked out"
 	}
 	return fmt.Sprintf("exit %d", exit)
 }
 
+// refMode says how a clone resolves the requested ref. An ordinary `pack add`
+// source keeps `git clone --branch`, which resolves a branch before a tag of
+// the same name and is what an operator expects from a mutable source ref. An
+// org pin is immutable, so it is fetched by its full Git ref instead.
+type refMode int
+
+const (
+	// refByName clones with `git clone --branch <ref>`.
+	refByName refMode = iota
+	// refByGitRef fetches the exact Git ref a pin names: refs/tags/<tag> for a
+	// semver tag, the object id for a 40-hex commit.
+	refByGitRef
+)
+
 // cloneSource fetches one git URL hermetically into a temp directory and
-// checks out the resolved HEAD commit before loading the pack.
+// checks out the resolved HEAD commit before loading the pack. bound is the
+// pin path the caller vendors out of that clone: "." caps the whole tree,
+// a subdirectory caps only the pack it will actually load.
 func cloneSource(
-	ctx context.Context, req *AddRequest, url, refName string,
+	ctx context.Context, req *AddRequest, url, refName string, mode refMode, bound string,
 ) (*packSource, *core.RefusalError) {
 	cmdr := req.Commander
 	if cmdr == nil {
@@ -725,14 +434,14 @@ func cloneSource(
 		return nil, ref
 	}
 	env := gitEnv(runtimeEnv(req), tmp)
-	clone := filepath.Join(tmp, "repo")
+	clone := cloneDir(tmp)
 	gctx, cancel := context.WithTimeout(ctx, packCloneTimeout)
 	defer cancel()
-	if ref := gitClone(gctx, cmdr, env, tmp, url, refName, clone); ref != nil {
+	if ref := gitClone(gctx, cmdr, env, tmp, url, refName, bound, mode); ref != nil {
 		cleanup()
 		return nil, ref
 	}
-	sha, ref := resolveClone(gctx, cmdr, env, clone, tmp, url)
+	sha, ref := resolveClone(gctx, cmdr, env, clone, url, bound)
 	if ref != nil {
 		cleanup()
 		return nil, ref
@@ -745,9 +454,9 @@ func cloneSource(
 // resolveClone pins the clone to its resolved HEAD and checks the working tree
 // before the loader walks it.
 func resolveClone(
-	ctx context.Context, cmdr core.Commander, env []string, clone, tmp, url string,
+	ctx context.Context, cmdr core.Commander, env []string, clone, url, bound string,
 ) (string, *core.RefusalError) {
-	sha, ref := runGitPack(ctx, cmdr, env, clone, tmp, "rev-parse", "HEAD")
+	sha, ref := runGitPack(ctx, cmdr, env, clone, "rev-parse", "HEAD")
 	if ref != nil {
 		return "", ref
 	}
@@ -755,19 +464,19 @@ func resolveClone(
 		return "", badPack(fmt.Sprintf("git remote %q resolved HEAD to %q, not a 40-hex commit",
 			displaySource(url), sha))
 	}
-	if ref := runGitPackOK(ctx, cmdr, env, clone, tmp, "checkout", "--detach", sha); ref != nil {
+	if ref := runGitPackOK(ctx, cmdr, env, clone, checkoutSub, "--detach", sha); ref != nil {
 		return "", ref
 	}
 	if err := os.RemoveAll(filepath.Join(clone, ".git")); err != nil {
 		return "", badPack(fmt.Sprintf("clean the pack clone metadata: %v", err))
 	}
-	return sha, checkCloneBounds(clone)
+	return sha, checkCloneBounds(clone, bound)
 }
 
 // prepareGitEnv creates the scrubbed HOME/XDG tree and the hooks directory a
 // Windows clone uses in place of /dev/null.
 func prepareGitEnv(tmp string) *core.RefusalError {
-	for _, dir := range []string{"home", "cache", "config", "data", "state", "hooks"} {
+	for _, dir := range []string{"home", "cache", "config", "data", "state"} {
 		if err := os.MkdirAll(filepath.Join(tmp, dir), packDirPerm); err != nil {
 			return badPack(fmt.Sprintf("could not create the pack work dir: %v", err))
 		}
@@ -775,27 +484,89 @@ func prepareGitEnv(tmp string) *core.RefusalError {
 	return nil
 }
 
-// gitClone runs the hermetic clone with the resolved hooks path.
+// gitClone runs the hermetic, hook-free clone. A pinned
+// source — an org pin's semver tag or SHA — and a 40-hex commit, which is not a
+// branch or tag name `--branch` could take, go through the fetch path.
 func gitClone(
-	ctx context.Context, cmdr core.Commander, env []string, tmp, url, refName, clone string,
+	ctx context.Context, cmdr core.Commander, env []string, tmp, url, refName, bound string, mode refMode,
 ) *core.RefusalError {
+	clone := cloneDir(tmp)
+	if mode == refByGitRef || hex40(refName) {
+		return gitClonePinned(ctx, cmdr, env, url, refName, bound, clone)
+	}
 	args := []string{"--depth=1", "--no-tags", "--no-recurse-submodules"}
 	if refName != "" {
 		args = append(args, "--branch", refName)
 	}
 	args = append(args, url, clone)
-	_, ref := runGitPack(ctx, cmdr, env, "", tmp, "clone", args...)
+	_, ref := runGitPack(ctx, cmdr, env, "", "clone", args...)
 	return ref
 }
 
-// gitPrefix is the one argv prefix every pack-add git call carries, so no
-// inherited hook can run.
-func gitPrefix(tmp string) []string {
-	return []string{
-		"git", "-c", "core.hooksPath=" + hooksPath(tmp),
-		"-c", "protocol.file.allow=never",
+// gitClonePinned fetches one immutable ref by its exact Git ref: a hermetic
+// init, remote registration, a shallow fetch of that one ref, an optional
+// sparse checkout of the pin's own subtree, and a detached checkout of
+// FETCH_HEAD.
+//
+// The full ref matters: `git clone --branch v1.2.3` resolves refs/heads/v1.2.3
+// before refs/tags/v1.2.3, so a branch named after the pin hijacks it. A tag
+// pin is fetched as refs/tags/<tag> and cannot.
+func gitClonePinned(
+	ctx context.Context, cmdr core.Commander, env []string, url, ref, bound, clone string,
+) *core.RefusalError {
+	if _, got := runGitPack(ctx, cmdr, env, "", "init", clone); got != nil {
+		return got
 	}
+	if got := runGitPackOK(ctx, cmdr, env, clone, "remote", "add", "origin", url); got != nil {
+		return got
+	}
+	if _, got := runGitPack(ctx, cmdr, env, clone, "fetch",
+		"--depth=1", "--no-tags", "--no-recurse-submodules", "origin", pinRefspec(ref)); got != nil {
+		return got
+	}
+	if got := sparseCheckoutBound(ctx, cmdr, env, clone, bound); got != nil {
+		return got
+	}
+	return runGitPackOK(ctx, cmdr, env, clone, checkoutSub, "--detach", "FETCH_HEAD")
 }
+
+// cloneDir is the one clone directory under the pack work dir.
+func cloneDir(tmp string) string { return filepath.Join(tmp, "repo") }
+
+// tagsPrefix is the Git ref namespace a tag pin resolves under.
+const tagsPrefix = "refs/tags/"
+
+// pinRefspec renders the exact Git ref a pinned fetch asks for: a 40-hex commit
+// by its object id, and the pin's semver tag under refs/tags/ so a branch of
+// the same name can never answer for it.
+func pinRefspec(ref string) string {
+	if hex40(ref) {
+		return ref
+	}
+	return tagsPrefix + ref
+}
+
+// sparseCheckoutBound narrows the working tree to the pin's own subtree before
+// the checkout materializes it, so a large central repository's unrelated packs
+// never land on disk. A root pin, and an ordinary `pack add`, check out the
+// whole tree. Cone mode needs git 2.26; every other step here needs less.
+func sparseCheckoutBound(
+	ctx context.Context, cmdr core.Commander, env []string, clone, bound string,
+) *core.RefusalError {
+	if bound == "" || bound == rootSelf {
+		return nil
+	}
+	if _, ref := runGitPack(ctx, cmdr, env, clone, "sparse-checkout", "init", "--cone"); ref != nil {
+		return ref
+	}
+	return runGitPackOK(ctx, cmdr, env, clone, "sparse-checkout", "set", bound)
+}
+
+// gitOptions are the options every pack-add git call carries ahead of the
+// shared hook-free settings ([gitcmd.Argv]): no transport over the file
+// protocol. The scrubbed environment ([gitEnv]) reads no user or system
+// config, so the fresh clone names no filter driver for a checkout to run.
+var gitOptions = []string{"-c", "protocol.file.allow=never"}
 
 // runtimeEnv renders the injected environment as the KEY=value pairs a clone
 // inherits before scrubbing; PATH must survive so git can reach ssh.
@@ -808,15 +579,6 @@ func runtimeEnv(req *AddRequest) []string {
 		out = append(out, key+"="+value)
 	}
 	return out
-}
-
-// hooksPath is /dev/null everywhere git reads one; on Windows an empty temp
-// directory is the equivalent.
-func hooksPath(tmp string) string {
-	if filepath.Separator == '\\' {
-		return filepath.Join(tmp, "hooks")
-	}
-	return "/dev/null"
 }
 
 // gitEnv builds the scrubbed clone environment: the caller's entries minus
@@ -844,27 +606,26 @@ func gitEnv(base []string, tmp string) []string {
 }
 
 // scrubGitEnv reports whether one environment key could redirect a clone away
-// from the temporary tree.
+// from the temporary tree: the variables every git call drops
+// ([gitcmd.Inherited]), the operator's transport helpers
+// ([gitcmd.TransportHelper]), the home and config locations, and the
+// template directory.
 func scrubGitEnv(key string) bool {
 	switch key {
 	case "HOME", "XDG_CACHE_HOME", "XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_STATE_HOME",
-		"GIT_TERMINAL_PROMPT", "GIT_DIR", "GIT_WORK_TREE", "GIT_INDEX_FILE",
-		"GIT_OBJECT_DIRECTORY", "GIT_ALTERNATE_OBJECT_DIRECTORIES", "GIT_ASKPASS",
-		"GIT_TEMPLATE_DIR", "GIT_SSH_COMMAND", "GIT_EXEC_PATH", "GIT_PROXY_COMMAND",
-		"SSH_ASKPASS":
+		"GIT_TERMINAL_PROMPT", "GIT_TEMPLATE_DIR":
 		return true
 	}
-	return strings.HasPrefix(key, "GIT_CONFIG_")
+	return gitcmd.Inherited(key) || gitcmd.TransportHelper(key) || strings.HasPrefix(key, "GIT_CONFIG_")
 }
 
 // runGitPack runs one git command with the shared hermetic prefix and returns
 // its trimmed stdout.
 func runGitPack(
-	ctx context.Context, cmdr core.Commander, env []string, dir, tmp, sub string, args ...string,
+	ctx context.Context, cmdr core.Commander, env []string, dir, sub string, args ...string,
 ) (string, *core.RefusalError) {
-	argv := append(gitPrefix(tmp), sub)
-	argv = append(argv, args...)
-	res, err := cmdr.Run(ctx, &core.Command{Argv: argv, Env: env, Dir: dir, OutputCap: MaxPackBytes})
+	argv := gitcmd.Argv(dir, slices.Concat(gitOptions, []string{sub}, args)...)
+	res, err := cmdr.Run(ctx, &core.Command{Argv: argv, Env: gitcmd.Env(env), OutputCap: MaxPackBytes})
 	if err != nil {
 		if _, ok := errors.AsType[*core.MissingToolError](err); ok {
 			return "", &core.RefusalError{Code: "missing-tool", Message: "git is not on PATH"}
@@ -887,19 +648,32 @@ func runGitPack(
 
 // runGitPackOK is runGitPack for a call whose stdout carries nothing.
 func runGitPackOK(
-	ctx context.Context, cmdr core.Commander, env []string, dir, tmp, sub string, args ...string,
+	ctx context.Context, cmdr core.Commander, env []string, dir, sub string, args ...string,
 ) *core.RefusalError {
-	_, ref := runGitPack(ctx, cmdr, env, dir, tmp, sub, args...)
+	_, ref := runGitPack(ctx, cmdr, env, dir, sub, args...)
 	return ref
 }
 
 // checkCloneBounds refuses a clone that already exceeds the pack caps before
 // the loader walks it: the clone is on disk by then, but a hostile tree should
-// not reach the parse path at all.
-func checkCloneBounds(dir string) *core.RefusalError {
+// not reach the parse path at all. A subdirectory pin caps only the subtree it
+// vendors, so a large central repository's unrelated sibling packs do not
+// refuse the sync; the loader caps that pack again on the way in.
+func checkCloneBounds(dir, bound string) *core.RefusalError {
+	if ref := checkBoundComponents(dir, bound); ref != nil {
+		return ref
+	}
+	root, ok, ref := cloneBoundRoot(dir, bound)
+	if ref != nil {
+		return ref
+	}
+	if !ok {
+		// A missing bound is the loader's missing-pack refusal, not a cap one.
+		return nil
+	}
 	count := 0
 	var total int64
-	err := filepath.WalkDir(dir, func(_ string, entry fs.DirEntry, walkErr error) error {
+	err := filepath.WalkDir(root, func(_ string, entry fs.DirEntry, walkErr error) error {
 		return chargeCloneEntry(entry, walkErr, &count, &total)
 	})
 	if err == nil {
@@ -909,6 +683,61 @@ func checkCloneBounds(dir string) *core.RefusalError {
 		return ref
 	}
 	return badPack(fmt.Sprintf("inspect the git clone: %v", err))
+}
+
+// cloneBoundRoot resolves the subtree the clone caps apply to: the whole
+// clone for a root pin, or the pin's own directory. A bound that is absent
+// answers ok=false: the loader reports the missing pack, not the cap.
+func cloneBoundRoot(dir, bound string) (string, bool, *core.RefusalError) {
+	root := dir
+	if bound != "" && bound != rootSelf {
+		root = filepath.Join(dir, filepath.FromSlash(bound))
+	}
+	if _, err := os.Lstat(root); err != nil {
+		if errors.Is(err, fs.ErrNotExist) {
+			return "", false, nil
+		}
+		return "", false, badPack(fmt.Sprintf("inspect the git clone: %v", err))
+	}
+	return root, true, nil
+}
+
+// checkBoundComponents proves every component of the bound is a real directory
+// inside the clone before the cap walk resolves it: the walk descends whatever
+// directory it is handed, so a symlinked intermediate component would let a
+// hostile clone point its pack root outside the clone and read a size refusal
+// for a tree the caps were never meant to describe. An absent component stays
+// the loader's missing-pack refusal, not a cap one.
+func checkBoundComponents(dir, bound string) *core.RefusalError {
+	if bound == "" || bound == rootSelf {
+		return nil
+	}
+	cur := dir
+	for seg := range strings.SplitSeq(bound, "/") {
+		cur = filepath.Join(cur, seg)
+		if ref, stop := checkBoundComponent(cur, bound); stop {
+			return ref
+		}
+	}
+	return nil
+}
+
+// checkBoundComponent proves one bound component is a real directory. stop
+// reports that the walk ends here: with a refusal, or with none because the
+// component is absent and the loader names the missing pack.
+func checkBoundComponent(component, bound string) (*core.RefusalError, bool) {
+	info, err := os.Lstat(component)
+	switch {
+	case err != nil && errors.Is(err, fs.ErrNotExist):
+		return nil, true
+	case err != nil:
+		return badPack(fmt.Sprintf("inspect the git clone: %v", err)), true
+	case !info.IsDir():
+		return &core.RefusalError{Code: CodePackUnsafePath, Message: fmt.Sprintf(
+			"the git clone's %q is not a real directory under the clone root — "+
+				"symlinked and special pack roots are refused", filepath.ToSlash(bound))}, true
+	}
+	return nil, false
 }
 
 // chargeCloneEntry spends one walked clone entry against the pack caps.

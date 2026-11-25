@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/mcp"
 )
 
@@ -45,12 +46,12 @@ func TestMCPHelp(t *testing.T) {
 		t.Fatalf("exit = %d, stderr = %s", code, readOutput(t, errOut))
 	}
 	help := readOutput(t, out)
-	for _, want := range []string{"verdict mcp", "stdio", "--read-only", "--operator", "tools/call"} {
+	for _, want := range []string{"verdict mcp", "stdio", "--read-only", "tools/call"} {
 		if !strings.Contains(help, want) {
 			t.Errorf("help misses %q:\n%s", want, help)
 		}
 	}
-	if !strings.Contains(usageText(), "mcp [--read-only | --operator] (experimental)") {
+	if !strings.Contains(usageText(), "mcp [--read-only] (experimental)") {
 		t.Error("review usage block misses the experimental mcp line")
 	}
 	if !strings.Contains(usageText(), "mcp config --agent") ||
@@ -75,19 +76,21 @@ func TestMCPUsageError(t *testing.T) {
 	}
 }
 
-// TestMCPOperatorConflict proves --operator and --read-only cannot combine:
-// the flag pair is a usage error before the server starts.
-func TestMCPOperatorConflict(t *testing.T) {
-	out, errOut := mcpTempFiles(t)
-	code := run([]string{"mcp", "--operator", "--read-only"}, out, errOut, os.Getenv, os.ReadFile)
-	if code != 2 {
-		t.Fatalf("exit = %d, want 2", code)
-	}
-	if got := readOutput(t, out); got != "" {
-		t.Errorf("stdout = %q, want empty", got)
-	}
-	if got := readOutput(t, errOut); !strings.Contains(got, "mutually exclusive") {
-		t.Errorf("stderr = %q", got)
+// TestMCPRetiredFlagsAreUnknown proves --operator is gone, not aliased: the
+// one write-posture flag is --read-only, and a script still passing the old
+// spelling gets a usage error with nothing served.
+func TestMCPRetiredFlagsAreUnknown(t *testing.T) {
+	for _, argv := range [][]string{{"mcp", "--operator"}, {"mcp", "--operator", "--read-only"}} {
+		out, errOut := mcpTempFiles(t)
+		if code := run(argv, out, errOut, os.Getenv, os.ReadFile); code != 2 {
+			t.Fatalf("%v exit = %d, want 2", argv, code)
+		}
+		if got := readOutput(t, out); got != "" {
+			t.Errorf("%v stdout = %q, want empty", argv, got)
+		}
+		if got := readOutput(t, errOut); !strings.Contains(got, "unknown flag '--operator' for mcp (want --read-only)") {
+			t.Errorf("%v stderr = %q", argv, got)
+		}
 	}
 }
 
@@ -96,7 +99,7 @@ func TestMCPOperatorConflict(t *testing.T) {
 // cannot ship with a stale help count.
 func TestMCPHelpListsTheRegistry(t *testing.T) {
 	help := mcpUsageText()
-	def := mcp.ToolNames(false, false)
+	def := mcp.ToolNames(false)
 	if want := fmt.Sprintf("Default tools (%d): ", len(def)); !strings.Contains(help, want) {
 		t.Errorf("help misses %q", want)
 	}
@@ -104,9 +107,9 @@ func TestMCPHelpListsTheRegistry(t *testing.T) {
 	if !strings.Contains(flat, strings.Join(def, ", ")+".") {
 		t.Errorf("help default list != registry %v", def)
 	}
-	ro := mcp.ToolNames(true, false)
+	ro := mcp.ToolNames(true)
 	slices.Sort(ro)
-	_, rest, found := strings.Cut(flat, "--read-only expose read tools plus record dry_run (")
+	_, rest, found := strings.Cut(flat, "--read-only the one write-posture flag (shared with serve and lsp): expose read tools plus record dry_run (")
 	list, _, closed := strings.Cut(rest, ")")
 	if !found || !closed {
 		t.Fatal("help misses the --read-only tool list")
@@ -115,5 +118,14 @@ func TestMCPHelpListsTheRegistry(t *testing.T) {
 	slices.Sort(got)
 	if !slices.Equal(got, ro) {
 		t.Errorf("help read-only list = %v, registry = %v", got, ro)
+	}
+}
+
+// TestUsageAdvertisesTablePRWaitProviders pins the help line to the provider
+// table, so a host cannot be listed before pr-wait can read it.
+func TestUsageAdvertisesTablePRWaitProviders(t *testing.T) {
+	want := "[--provider " + strings.Join(core.PRWaitProviders(), "|") + "]"
+	if !strings.Contains(usageText(), want) || strings.Contains(usageText(), "github|gitlab|forgejo]") {
+		t.Fatalf("usage lacks %q", want)
 	}
 }

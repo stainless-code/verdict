@@ -1,6 +1,6 @@
 ---
 title: JSON envelope and exit codes
-description: "Every verdict verb answers in one --json envelope: the nine fields it always carries, the four exit codes and what each means, and the schemas to pin."
+description: "Every verdict verb answers in one --json envelope: its nine fields, the four exit codes, and the schemas to pin."
 sidebar:
   label: JSON envelope
 search:
@@ -25,22 +25,22 @@ Every machine-readable answer from Verdict has the same shape: parse the envelop
 | `data`           | the verb's result object, or `null` on failure               |
 | `error`          | `null` on success, else `{code, message}` with a `try:` hint |
 
-A failure keeps `data` null and names a typed `error.code` with its cause and fix in [Refusal codes](/docs/troubleshooting) — except a failed `report --check` or `gate`, which exits `1` with the success-shaped envelope (`error: null`, full `data`); branch on the envelope, not the exit code alone. A usage error (exit 2) prints no envelope at all: usage text goes to stderr.
+A failure keeps `data` null and names a typed `error.code` with its cause and fix in [Refusal codes](/docs/troubleshooting) — except a failed `gate`, which exits `1` with the success-shaped envelope (`error: null`, full `data`); branch on the envelope, not the exit code alone. A usage error (exit 2) prints no envelope (usage goes to stderr), except `target-unresolved`, whose envelope names the arguments to pass.
 
 ## Exit codes
 
-| Code | Meaning                                                                                                                                                          |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `0`  | success; `error` is null                                                                                                                                         |
-| `1`  | typed refusal (`data` null; read `error.code` and its `try:` hint), or a failed `report --check` / `gate` (`error` null, `data` present; branch on the envelope) |
-| `2`  | usage error; check the flags (nothing on stdout)                                                                                                                 |
-| `3`  | canceled run or tool failure                                                                                                                                     |
+| Code | Meaning                                                                                                     |
+| ---- | ----------------------------------------------------------------------------------------------------------- |
+| `0`  | success; `error` is null                                                                                    |
+| `1`  | typed refusal (`data` null; read `error.code`), or a failed `gate` (`error` null, `data` present)           |
+| `2`  | usage error; check the flags (nothing on stdout), or `target-unresolved` (an envelope naming the arguments) |
+| `3`  | canceled run or tool failure                                                                                |
 
-`report --check` and `gate` compose these for CI: `0` shippable, `1` a named dimension failed, `2` bad flags, `3` the gate itself broke. `run --agent` is the exception: when the agent exits non-zero, the process exit code is the agent's own, and `--json` disambiguates through `error.code`.
+`gate` uses them for CI: `0` shippable, `1` a dimension failed, `2` bad flags, `3` the gate broke. `run --agent` is the exception: when the agent exits non-zero, the process exit code is the agent's own, and `--json` disambiguates through `error.code`.
 
 ## Schemas
 
-The shapes live in `schemas/`, generated from `internal/schemagen/model.go` and shipped in the npm tarball. `envelope.schema.json` covers the envelope plus the 21 pinned `<verb>Data` profiles (including `report`, `post`, and `record`). Pin one by vendoring the file at a release tag and generating types from it — the Python client example checks in `models.py` generated exactly this way — and refuse at runtime when `schema_version` is not `"1"`.
+The shapes live in `schemas/`, generated from `internal/schemagen/model.go` and shipped in the npm tarball. `envelope.schema.json` covers the envelope plus the 21 pinned `<verb>Data` profiles (including `report`, `post`, and `record`). Pin one by vendoring the file at a release tag and generating types from it (the Python client example's `models.py` is generated this way), and refuse at runtime when `schema_version` is not `"1"`.
 
 ## Worked example
 
@@ -60,18 +60,11 @@ prints (abridged) with exit `0`:
   "at": "2026-11-10T17:16:36Z",
   "next": "harness healthy",
   "warnings": [
-    "token-scopes-excess: token grants more than runs need: gist, workflow — try: re-mint with only the repo scope (least privilege) and re-run"
+    "token-scopes-excess: token grants more than runs need: gist, workflow"
   ],
   "data": {
     "healthy": true,
-    "checks": [
-      {
-        "name": "gh-cli",
-        "severity": "fail",
-        "ok": true,
-        "detail": "gh version 2.103.2 (2026-10-23)"
-      }
-    ]
+    "checks": [{ "name": "gh-cli", "severity": "fail", "ok": true }]
   },
   "error": null
 }

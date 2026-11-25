@@ -87,8 +87,8 @@ travels; `said`-only findings ship labeled `unproven` or die in triage. Nothing
 posts as fact that was never shown.
 
 **Severity tier.** A finding's next-action rank — `critical`, `important`, or
-`informational` — stored at write time, never parsed from prose. `report
---check <tier>` gates on open findings at or above that tier; untagged findings
+`informational` — stored at write time, never parsed from prose. `gate
+--max-severity <tier>` gates on open findings at or above that tier; untagged findings
 never meet a tier.
 
 **Stored precision.** The `serve` view that joins findings to `threads.json`.
@@ -138,7 +138,8 @@ evidence does not support is not reported.
 
 ## Self-review loop
 
-A bounded local fetch → agent review and fix → record → gate recipe run before
-opening a PR. Each round retains a receipt; only a passing last gate produces a
-passing summary. See the manual's **Agent self-review loop** for its required
-coverage posture and wall budget.
+`verdict loop`: bounded local rounds of fetch → agent review → record → gate,
+with an agent fix phase between a failed gate and the next round's fresh
+review, run before opening a PR. Each round retains a receipt; only a passing
+last gate produces a passing summary. See the manual's **Agent self-review
+loop** for its stop conditions, coverage posture, and budgets.

@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"io"
 	"os"
+
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 // ErrTooLarge reports input that exceeded the caller's size cap. The cap is
@@ -61,8 +63,30 @@ func Capped(r io.Reader, maxBytes int64) ([]byte, error) {
 
 // CappedFile opens path and reads it through [Capped], closing the handle
 // before returning. Missing or unreadable files report the read error (never
-// [ErrTooLarge]), so callers keep their existing missing-store posture.
+// [ErrTooLarge]), so callers keep their existing missing-store posture. The
+// open never waits for a writer and refuses a non-regular descriptor, so a
+// bundle file swapped for a FIFO reads as unreadable instead of blocking the
+// store lock; a symlink to a regular file is followed.
 func CappedFile(path string, maxBytes int64) ([]byte, error) {
+	f, err := noblock.OpenRegular(path)
+	if errors.Is(err, noblock.ErrNotRegular) {
+		return nil, Sealed("read capped input", err)
+	}
+	if err != nil {
+		//nolint:wrapcheck // %w keeps os.IsNotExist/fs.ErrNotExist visible to callers.
+		return nil, fmt.Errorf("open capped input: %w", err)
+	}
+	defer func() { _ = f.Close() }() // read-only handle; the read error rules
+	return Capped(f, maxBytes)
+}
+
+// CappedOperatorFile is [CappedFile] for a path the operator named on the
+// command line (a flag or argument, never one verdict derived inside a bundle
+// or state directory): it opens with a plain [os.Open], so a pipe, a FIFO with
+// a writer, or /dev/stdin reads like any file, still bounded by maxBytes. Use
+// [CappedFile] for every path under a bundle or store, where a swapped-in FIFO
+// is the threat.
+func CappedOperatorFile(path string, maxBytes int64) ([]byte, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		//nolint:wrapcheck // %w keeps os.IsNotExist/fs.ErrNotExist visible to callers.

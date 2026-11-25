@@ -25,7 +25,8 @@ hoststub_route glab "api projects/4242/merge_requests/$PR/diffs --paginate" "$FI
 hoststub_route glab "mr diff $PR -R acme/app --raw" "$FIX/full.diff"
 hoststub_route glab "api projects/4242/merge_requests/$PR/notes?per_page=100&page=1" "$FIX/notes.json"
 hoststub_route glab "api projects/4242/merge_requests/$PR/discussions?per_page=100&page=1" "$FIX/discussions.json"
-hoststub_route glab "api projects/acme%2Fapp/merge_requests/$PR" "$FIX/MR.json"
+# post pins every call to the host its bundle was fetched from (gitlab.example).
+hoststub_route glab "api --hostname gitlab.example projects/acme%2Fapp/merge_requests/$PR" "$FIX/MR.json"
 
 run_review fetch acme/app "$PR" --provider gitlab --json
 assert_exit "gitlab fetch" 0
@@ -92,7 +93,7 @@ cat >"$EVAL_STUBBIN/glab" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
 case "$*" in
-  'api projects/acme%2Fapp/merge_requests/7/discussions?per_page=100 --paginate')
+  'api --hostname gitlab.example projects/acme%2Fapp/merge_requests/7/discussions?per_page=100 --paginate')
     printf 'stub-glab %s\n' "$*" >>"$HOSTSTUB_LOG"
     if [ -f "$RECOVERY_STATE/accepted.jsonl" ]; then
       jq -s '[{notes:.}]' "$RECOVERY_STATE/accepted.jsonl"
@@ -100,11 +101,11 @@ case "$*" in
       echo '[]'
     fi
     ;;
-  'api projects/4242/merge_requests/7/notes?per_page=100&page=1')
+  'api --hostname gitlab.example projects/4242/merge_requests/7/notes?per_page=100&page=1')
     printf 'stub-glab %s\n' "$*" >>"$HOSTSTUB_LOG"
     jq -s 'map(. + {type:"DiffNote"})' "$RECOVERY_STATE/accepted.jsonl"
     ;;
-  'api projects/acme%2Fapp/merge_requests/7/discussions --method POST --header Content-Type: application/json --input -')
+  'api --hostname gitlab.example projects/acme%2Fapp/merge_requests/7/discussions --method POST --header Content-Type: application/json --input -')
     printf 'stub-glab %s\n' "$*" >>"$HOSTSTUB_LOG"
     n=0
     if [ -f "$RECOVERY_STATE/count" ]; then n=$(cat "$RECOVERY_STATE/count"); fi
@@ -118,7 +119,7 @@ case "$*" in
     jq -c . >>"$RECOVERY_STATE/accepted.jsonl"
     echo '{"id":99}'
     ;;
-  'api projects/acme%2Fapp/merge_requests/7/notes --method POST --header Content-Type: application/json --input -')
+  'api --hostname gitlab.example projects/acme%2Fapp/merge_requests/7/notes --method POST --header Content-Type: application/json --input -')
     printf 'stub-glab %s\n' "$*" >>"$HOSTSTUB_LOG"
     cat >"$RECOVERY_STATE/summary.json"
     echo '{"id":100,"created_at":"2026-01-01T00:00:00Z"}'

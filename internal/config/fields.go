@@ -16,31 +16,36 @@ const defaultsKey = "defaults"
 // requirementsKey addresses the shared requirements object.
 const requirementsKey = "requirements"
 
+// scopeOnlyNote is the shared tail of the global-only scope refusals.
+const scopeOnlyNote = "not inside a scope"
+
 var (
 	topFields = []string{
 		"$schema", "schema_version", "defaults", "requirements", "trigger", "scopes", "profiles", "default_profile",
-		"index", "severity_weights", "rigor_policy", "packs",
+		"index", "severity_weights", "rigor_policy", "packs", "tests",
 	}
 	defaultsFields = []string{
-		keyPanel, keyBudgetUSD, keyMaxBytes, keyChunk, keyKBPolicy, keyEffort,
+		keyPanel, keyBudgetUSD, keyMonthlyBudgetUSD, keyMaxBytes, keyChunk, keyKBPolicy, keyEffort,
 		keyDisplayFloor, keyPostFloor, keySpecCoverageMin, keyFinders, keyBudget,
 		keySensitivePaths,
 	}
 	kbPolicyFields     = []string{"min_judged", "max_fp_rate", "max_chars"}
 	rigorPolicyFields  = append([]string{"mode"}, severityEnum...)
+	testsFields        = []string{"draft"}
 	requirementsFields = []string{"block_clauses", "require_checks", "require_bind"}
 	triggerFields      = []string{"authors", "paths_include", "paths_exclude", "labels", "title_matches", "base_branches", "draft"}
 	clauseFields       = []string{"name", "threshold", "categories", "paths"}
 	scopeFields        = []string{"name", "include", "exclude", "profile", "defaults", "requirements"}
 	profileFields      = []string{"depth", "checks", "max_lenses"}
 	indexFields        = []string{"files", "file_bytes", "tree_bytes", "shards_bytes", "keep_trees", "refs_per_file"}
-	packsFields        = []string{"merge_builtin", "disable_packs", "disable_lenses", "disable_rules"}
+	packsFields        = []string{"merge_builtin", "disable_packs", "disable_lenses", "disable_rules", "org_pack"}
+	orgPackFields      = []string{"repo", "ref", "path"}
 	// personalTopFields lists the recognized operator-settings keys: the
 	// typed personal sections plus the CLI prefs keys the prefs layer
 	// owns (output, layout, color, publish), which parse but never feed
 	// the resolver.
 	personalTopFields     = core.SettingsTopKeys()
-	personalSpendFields   = []string{"budget_usd", "require_known_estimate", "enforce_cap"}
+	personalSpendFields   = []string{"budget_usd", "monthly_budget_usd", "require_known_estimate", "enforce_cap"}
 	personalPrivacyFields = []string{"exclusions"}
 	personalAgentFields   = []string{"binary", "args", "prompt_flag", "model_flag", "install", "probe_args", "probe_match"}
 )
@@ -79,7 +84,8 @@ func checkUnknownFields(root map[string]any) *core.RefusalError {
 		{key: "severity_weights", check: checkKeysSection(severityEnum)},
 		{key: "index", check: checkKeysSection(indexFields)},
 		{key: "rigor_policy", check: checkKeysSection(rigorPolicyFields)},
-		{key: "packs", check: checkKeysSection(packsFields)},
+		{key: "packs", check: checkPacksKeys},
+		{key: "tests", check: checkKeysSection(testsFields)},
 	} {
 		if ref := checkSectionUnknown(root, section.key, section.check); ref != nil {
 			return ref
@@ -97,6 +103,26 @@ func checkSectionUnknown(root map[string]any, key string, check func(any, string
 		return nil
 	}
 	return check(raw, "$."+key)
+}
+
+// checkPacksKeys walks the packs object and its nested org_pack pin.
+func checkPacksKeys(raw any, path string) *core.RefusalError {
+	obj, ok := raw.(map[string]any)
+	if !ok {
+		return nil
+	}
+	if ref := checkKeys(path, obj, packsFields); ref != nil {
+		return ref
+	}
+	pin, ok := obj["org_pack"]
+	if !ok {
+		return nil
+	}
+	pinObj, ok := pin.(map[string]any)
+	if !ok {
+		return nil // semantic pass names the misplaced null or wrong type
+	}
+	return checkKeys(path+".org_pack", pinObj, orgPackFields)
 }
 
 // checkKeysSection returns a section walker over a fixed field list.
@@ -189,6 +215,50 @@ func checkScopeUnknown(raw any, path string) *core.RefusalError {
 	return checkPresentSection(scope, requirementsKey, path, checkRequirementsKeys)
 }
 
+// scopeGlobalOnly pairs one global-only default key with its refusal:
+// the message carries the scope defaults path and the refusal code.
+type scopeGlobalOnly struct {
+	key  string
+	code string
+	msg  string
+}
+
+var scopeGlobalOnlyKeys = []scopeGlobalOnly{
+	{
+		key:  keyKBPolicy,
+		code: CodeBadScope,
+		msg:  "%s.kb_policy: kb_policy is global-only — set it in root defaults or personal settings, " + scopeOnlyNote,
+	},
+	{
+		key:  keyFinders,
+		code: CodeBadScope,
+		msg:  "%s.finders: finders is global-only — set root defaults or personal settings",
+	},
+	{
+		key:  keyBudget,
+		code: CodeBadScope,
+		msg:  "%s.budget: budget is global-only — set root defaults or personal settings",
+	},
+	{
+		key:  keySensitivePaths,
+		code: CodeBadScope,
+		msg: "%s.sensitive_paths: sensitive_paths is global-only — set it in root defaults or personal settings, " +
+			scopeOnlyNote,
+	},
+	{
+		key:  keySpecCoverageMin,
+		code: CodeBadScope,
+		msg: "%s.spec_coverage_min: spec_coverage_min is global-only — set it in root defaults or personal settings, " +
+			scopeOnlyNote,
+	},
+	{
+		key:  keyMonthlyBudgetUSD,
+		code: CodeBadConfig,
+		msg: "%s.monthly_budget_usd: monthly_budget_usd is a repo-wide default only — set it in root defaults or personal settings, " +
+			scopeOnlyNote,
+	},
+}
+
 // checkScopeDefaults walks one scope's inline defaults and refuses the KB
 // policy there: knowledge-base thresholds are global-only, so a scope may carry
 // a budget, a chunk size or an effort tier but never its own kb_policy.
@@ -198,28 +268,12 @@ func checkScopeDefaults(raw any, path string) *core.RefusalError {
 	}
 	obj, ok := raw.(map[string]any)
 	if !ok {
-		return nil // semantic pass names the misplaced null or wrong type
+		return nil
 	}
-	if _, present := obj[keyKBPolicy]; present {
-		return refuse(CodeBadScope,
-			"%s.kb_policy: kb_policy is global-only — set it in root defaults or personal settings, "+
-				"not inside a scope", path)
-	}
-	if _, present := obj[keyFinders]; present {
-		return refuse(CodeBadScope, "%s.finders: finders is global-only — set root defaults or personal settings", path)
-	}
-	if _, present := obj[keyBudget]; present {
-		return refuse(CodeBadScope, "%s.budget: budget is global-only — set root defaults or personal settings", path)
-	}
-	if _, present := obj[keySensitivePaths]; present {
-		return refuse(CodeBadScope,
-			"%s.sensitive_paths: sensitive_paths is global-only — set it in root defaults or personal settings, "+
-				"not inside a scope", path)
-	}
-	if _, present := obj[keySpecCoverageMin]; present {
-		return refuse(CodeBadScope,
-			"%s.spec_coverage_min: spec_coverage_min is global-only — set it in root defaults or personal settings, "+
-				"not inside a scope", path)
+	for _, entry := range scopeGlobalOnlyKeys {
+		if _, present := obj[entry.key]; present {
+			return refuse(entry.code, entry.msg, path)
+		}
 	}
 	return checkDefaultsKeys(raw, path)
 }

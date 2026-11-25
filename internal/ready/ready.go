@@ -97,3 +97,12 @@ func valueFlag(args []string, flag string, q *readycore.Request) ([]string, *cli
 	}
 	return args[2:], nil
 }
+
+// CheckFlags validates ready's flags alone, reporting a usage error exactly as
+// Run would, so the front door rejects a mistyped flag before any host lookup.
+func CheckFlags(r *cli.Runner, args []string) (code int, bad bool) {
+	if err := parseFlags(args, &readycore.Request{}); err != nil {
+		return r.ReportUsage(err), true
+	}
+	return 0, false
+}

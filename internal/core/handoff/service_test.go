@@ -52,8 +52,7 @@ func handoffFindings() string {
 }
 
 func handoffVerification() string {
-	return `[{"sig":"` + handoffSig + `","verdict":"VERIFIED","verifyCmd":"go test ./...",` +
-		`"resultHead":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]`
+	return `[{"sig":"` + handoffSig + `","verdict":"VERIFIED","verifyCmd":"go test ./..."}]`
 }
 
 func handoffBundle(t *testing.T, name string, files map[string]string) {

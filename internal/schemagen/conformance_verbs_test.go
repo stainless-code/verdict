@@ -28,6 +28,7 @@ import (
 	riskcore "github.com/stainless-code/verdict/internal/core/risk"
 	trendcore "github.com/stainless-code/verdict/internal/core/trend"
 	triagecore "github.com/stainless-code/verdict/internal/core/triage"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/packtest"
 	"github.com/stainless-code/verdict/internal/readcommon"
@@ -612,7 +613,7 @@ func TestRuntimeHandoffEnvelopeValidates(t *testing.T) {
 	writeFixture(t, ".verdict/state/local-42/findings.json", "["+fixtureFindingWithBrief()+"]")
 	writeFixture(t, ".verdict/state/local-42/verification.json",
 		`[{"sig":"c111111111111111111111111111111111111111","verdict":"VERIFIED",`+
-			`"verifyCmd":"go test ./...","resultHead":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}]`)
+			`"verifyCmd":"go test ./..."}]`)
 	req := &handoffcore.Request{}
 	req.ReadRequest = core.ReadRequest{Runtime: fixedRuntime(), Repo: "acme/app", Pr: "42"}
 	resp, ref := handoffcore.Run(context.Background(), req)
@@ -846,16 +847,10 @@ func cleanTreeStub(cmd *core.Command) (core.Result, error) {
 }
 
 // isStatusProbe reports the exact tracked-plus-untracked status argv the clean
-// gate runs: git [-C root] status --porcelain --untracked-files=all.
+// gate runs, hook-free: git -C root … status --porcelain --untracked-files=all.
 func isStatusProbe(argv []string) bool {
-	if len(argv) < 5 || argv[0] != "git" {
-		return false
-	}
-	rest := argv[1:]
-	if len(rest) >= 2 && rest[0] == "-C" {
-		rest = rest[2:]
-	}
-	return len(rest) == 3 && rest[0] == "status" && rest[1] == "--porcelain" && rest[2] == "--untracked-files=all"
+	_, rest, ok := gitcmd.Split(argv)
+	return ok && len(rest) == 3 && rest[0] == "status" && rest[1] == "--porcelain" && rest[2] == "--untracked-files=all"
 }
 
 // TestRuntimeCheckTreeEnvelopeValidates proves the check-tree response

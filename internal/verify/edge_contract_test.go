@@ -10,6 +10,7 @@ import (
 	"context"
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strconv"
@@ -64,9 +65,17 @@ func withoutJSON(args []string) []string {
 	return out
 }
 
-// edgePatch writes patch.json carrying the verifyCmd.
+// edgePatch makes dir a git checkout — verify runs a command only in a
+// snapshot of one — and writes patch.json carrying the verifyCmd.
 func edgePatch(t *testing.T, dir, cmd string) {
 	t.Helper()
+	if _, err := os.Stat(filepath.Join(dir, ".git")); os.IsNotExist(err) {
+		git := exec.CommandContext(t.Context(), "git", "init", "-q", dir)
+		git.WaitDelay = 10 * time.Second
+		if out, err := git.CombinedOutput(); err != nil {
+			t.Fatalf("git init: %v\n%s", err, out)
+		}
+	}
 	bdir := filepath.Join(dir, ".verdict", "state", "5201")
 	if err := os.MkdirAll(bdir, 0o755); err != nil {
 		t.Fatal(err)
@@ -143,8 +152,10 @@ func verifyMarker(t *testing.T, dir string) string {
 // it with the group, record timed_out, and name the seconds.
 func TestVerifyContractTimeoutTreeKill(t *testing.T) {
 	dir := t.TempDir()
-	edgePatch(t, dir, `trap '' TERM; (trap '' TERM; sleep 30 & echo $! > gc.pid; wait) & sleep 30`)
-	code, _ := edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", "2")
+	pid := pidFile(t)
+	edgePatch(t, dir, `trap '' TERM; (trap '' TERM; sleep 30 & echo $! > "$EDGE_PID"; wait) & sleep 30`)
+	code, _ := edgeRun(t, dir, t.TempDir(), map[string]string{"EDGE_PID": pid}, true, "--json", "--timeout", "2",
+		"--env-allowlist", "EDGE_PID")
 	rec := edgeRecord(t, dir)
 	if rec["timedOut"] != true {
 		t.Fatalf("timedOut = %v exit = %d, want true\n%v", rec["timedOut"], code, rec)
@@ -152,7 +163,15 @@ func TestVerifyContractTimeoutTreeKill(t *testing.T) {
 	if got := verifyMarker(t, dir); got != "timeout after 2s\n" {
 		t.Errorf(".verify.timeout = %q, want the 2s timeout line", got)
 	}
-	requireProcessGone(t, readPID(t, filepath.Join(dir, "gc.pid")))
+	requireProcessGone(t, readPID(t, pid))
+}
+
+// pidFile is where a contract command reports a grandchild's pid. The
+// command runs in a snapshot that is gone once verify returns, so the path is
+// outside it and reaches the command through the environment.
+func pidFile(t *testing.T) string {
+	t.Helper()
+	return filepath.Join(t.TempDir(), "child.pid")
 }
 
 // TestVerifyContractOrphanSweep pins the decoy-exit sweep: the parent
@@ -160,8 +179,10 @@ func TestVerifyContractTimeoutTreeKill(t *testing.T) {
 // timedOut true, the orphan marker, and the grandchild dead.
 func TestVerifyContractOrphanSweep(t *testing.T) {
 	dir := t.TempDir()
-	edgePatch(t, dir, `(sleep 30 & echo $! > orphan.pid)`)
-	code, _ := edgeRun(t, dir, t.TempDir(), nil, true, "--json", "--timeout", "3")
+	pid := pidFile(t)
+	edgePatch(t, dir, `(sleep 30 & echo $! > "$EDGE_PID")`)
+	code, _ := edgeRun(t, dir, t.TempDir(), map[string]string{"EDGE_PID": pid}, true, "--json", "--timeout", "3",
+		"--env-allowlist", "EDGE_PID")
 	if code != 0 {
 		t.Fatalf("exit = %d, want 0 (decoy exit)", code)
 	}
@@ -172,7 +193,7 @@ func TestVerifyContractOrphanSweep(t *testing.T) {
 	if got := verifyMarker(t, dir); got != "orphaned command tree killed after exit\n" {
 		t.Errorf(".verify.timeout = %q, want the orphan marker", got)
 	}
-	requireProcessGone(t, readPID(t, filepath.Join(dir, "orphan.pid")))
+	requireProcessGone(t, readPID(t, pid))
 }
 
 // TestVerifyContractTruncatedOutput pins the capture cap: a noisy but
@@ -409,8 +430,9 @@ func edgeCode(stdout string) string {
 // failed run — exit 137, timedOut true, "timeout after 300s" — and exit 0.
 func TestVerifyContractCancelIsNotATimeout(t *testing.T) {
 	dir := t.TempDir()
-	edgePatch(t, dir, `sleep 30 & echo $! > gc.pid; wait`)
-	code, stdout := runVerifyCanceledOnceUp(t, dir)
+	pid := pidFile(t)
+	edgePatch(t, dir, `sleep 30 & echo $! > "$EDGE_PID"; wait`)
+	code, stdout := runVerifyCanceledOnceUp(t, dir, pid)
 	if code != cli.ExitBroke {
 		t.Fatalf("exit = %d, want %d (canceled)\nstdout: %s", code, cli.ExitBroke, stdout)
 	}
@@ -425,12 +447,12 @@ func TestVerifyContractCancelIsNotATimeout(t *testing.T) {
 	if strings.Contains(patch, "timedOut") || strings.Contains(patch, `"exit"`) {
 		t.Errorf("patch.json recorded a verify outcome for a canceled run: %s", patch)
 	}
-	requireProcessGone(t, readPID(t, filepath.Join(dir, "gc.pid")))
+	requireProcessGone(t, readPID(t, pid))
 }
 
 // runVerifyCanceledOnceUp runs verify in dir and cancels its context once the
 // command has reported its grandchild pid, so a live tree is what dies.
-func runVerifyCanceledOnceUp(t *testing.T, dir string) (int, string) {
+func runVerifyCanceledOnceUp(t *testing.T, dir, pid string) (int, string) {
 	t.Helper()
 	home := t.TempDir()
 	t.Chdir(dir)
@@ -446,15 +468,16 @@ func runVerifyCanceledOnceUp(t *testing.T, dir string) (int, string) {
 	defer cancel()
 	go func() {
 		for range 400 {
-			if raw, err := os.ReadFile(filepath.Join(dir, "gc.pid")); err == nil && strings.HasSuffix(string(raw), "\n") {
+			if raw, err := os.ReadFile(pid); err == nil && strings.HasSuffix(string(raw), "\n") {
 				break
 			}
 			time.Sleep(10 * time.Millisecond)
 		}
 		cancel()
 	}()
-	code := verify.Run(ctx, r, nil, verify.Request{
-		Env: map[string]string{"HOME": home}, Repo: "acme/app", Pr: "5201", Root: dir,
+	t.Setenv("EDGE_PID", pid)
+	code := verify.Run(ctx, r, []string{"--env-allowlist", "EDGE_PID"}, verify.Request{
+		Env: map[string]string{"HOME": home, "EDGE_PID": pid}, Repo: "acme/app", Pr: "5201", Root: dir,
 	})
 	return code, out.String()
 }

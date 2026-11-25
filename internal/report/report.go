@@ -16,7 +16,6 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
-	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/shellquote"
 )
@@ -31,8 +30,9 @@ const (
 	statusOpen     = "open"
 	kindInline     = "inline"
 	kindSection    = "section"
-	liveAuto       = "auto"
 	reportFilePerm = 0o600
+	cmdReport      = "report"
+	pathOperand    = "<path>"
 )
 
 // Run executes `report <owner/repo> <pr> [flags]`, returning the exit code.
@@ -40,29 +40,130 @@ const (
 // exactly one envelope to stdout.
 func Run(ctx context.Context, r *cli.Runner, args []string, req Request) int {
 	setupRunner(r, req)
-	setRentry(r, "report", req, args)
+	setRentry(r, cmdReport, req, args)
 	flags, code, done := parseFlags(r, args)
 	if done {
 		return code
 	}
-	if code, done := r.Canceled(ctx, "report"); done {
+	if code, done := r.Canceled(ctx, cmdReport); done {
 		return code
 	}
-	gate := flags.Check != "" || flags.Completeness || flags.Coverage != "" || flags.MaxRisk != ""
+	if flags.Policy != "" {
+		return runReplay(ctx, r, req, &flags)
+	}
 	resp, ref := reportcore.Run(ctx, reportRequest(r, req, &flags))
 	if ref != nil {
-		return refuseGate(r, ref, gate)
+		return refuse(r, ref)
 	}
 	r.Warnings = resp.Warnings
 	if ref := writeOutputs(resp); ref != nil {
-		return refuseGate(r, ref, gate)
+		return refuse(r, ref)
 	}
 	emitReport(r, req, resp)
-	emitChecks(r, resp)
-	if resp.GateFailed {
-		return cli.ExitRefused
-	}
 	return cli.ExitOK
+}
+
+// replayFlagRefusal explains why a replay refuses --compare: it prints its own
+// two-sided comparison, so a second baseline would be ignored.
+const replayFlagRefusal = "--policy reports a comparison and exits 0; --compare would be ignored, " +
+	"so drop it"
+
+// runReplay answers `report --policy`: it prints the decision the captured
+// policy derives and the one the candidate file derives over the same stored
+// findings. A replay writes nothing, so it refuses the artifact paths rather
+// than silently ignore them; it exits 0 whatever the candidate decides, because
+// it reports a comparison and does not gate this run.
+func runReplay(ctx context.Context, r *cli.Runner, req Request, flags *reportcore.Flags) int {
+	if flags.Output != "" || flags.Sarif != "" {
+		return r.ReportUsage(&cli.UsageError{Message: "--policy is read-only; it writes no --output or --sarif"})
+	}
+	if flags.CompareSet {
+		return r.ReportUsage(&cli.UsageError{Message: replayFlagRefusal})
+	}
+	replay, ref := reportcore.Replay(ctx, reportRequest(r, req, flags))
+	if ref != nil {
+		return refuse(r, ref)
+	}
+	if r.JSONMode {
+		return emitReplayEnvelope(ctx, r, req, flags, replay)
+	}
+	renderReplay(r, flags.Policy, replay)
+	return cli.ExitOK
+}
+
+// emitReplayEnvelope prints the ordinary report envelope for the captured
+// policy with the comparison attached under `replay`, so a replay stays a
+// schema-valid report and can never be mistaken for it: the key is absent
+// unless --policy named a file.
+//
+// The envelope re-reads the bundle where Replay already did. That is a second
+// read, not a second decision: the store has no snapshot handle to share, and a
+// re-fetch landing between the two reads can only make the envelope's rows
+// newer than the decisions beside them, never the reverse. A caller that needs
+// both from one revision replays after the fetch settles.
+func emitReplayEnvelope(ctx context.Context, r *cli.Runner, req Request, flags *reportcore.Flags, replay *reportcore.PolicyReplay) int {
+	resp, ref := reportcore.Run(ctx, reportRequest(r, req, flags))
+	if ref != nil {
+		return refuse(r, ref)
+	}
+	if resp.Data == nil {
+		return refuse(r, &core.RefusalError{Code: "internal", Message: "report built no data to carry the replay"})
+	}
+	r.Warnings = resp.Warnings
+	resp.Data.Replay = replayWire(flags.Policy, replay)
+	r.Emit(cmdReport, req.Repo, req.Pr, resp.At, resp.Next, resp.Warnings, resp.Data.Wire())
+	return cli.ExitOK
+}
+
+// replayWire maps the replay onto the published envelope shape, keeping the
+// captured-side dimension order so the `changed` list reads in gate order.
+func replayWire(path string, replay *reportcore.PolicyReplay) *core.ReportReplay {
+	moves := make([]core.ReportReplayMove, 0, len(replay.Captured.Dimensions))
+	for _, move := range replay.Moves() {
+		moves = append(moves, core.ReportReplayMove{ID: move.ID, Before: move.Before, After: move.After})
+	}
+	return &core.ReportReplay{
+		PolicyPath: path,
+		Captured:   replaySide(replay.Captured),
+		Candidate:  replaySide(replay.Candidate),
+		Changed:    moves,
+	}
+}
+
+// replaySide maps one decision onto its wire side.
+func replaySide(d reportcore.Decision) core.ReportReplaySide {
+	return core.ReportReplaySide{Reason: d.Reason, GatePassed: d.GatePassed, Approved: d.Approved}
+}
+
+// renderReplay prints the two decisions and the dimensions whose status moved.
+func renderReplay(r *cli.Runner, path string, replay *reportcore.PolicyReplay) {
+	fmt.Fprintf(r.Human, "policy replay (read-only): captured policy vs %s\n", path)
+	fmt.Fprintf(r.Human, "  gate      %s -> %s\n",
+		passLabel(replay.Captured.GatePassed), passLabel(replay.Candidate.GatePassed))
+	fmt.Fprintf(r.Human, "  approval  %s -> %s\n",
+		approvalLabel(replay.Captured), approvalLabel(replay.Candidate))
+	if replay.Candidate.Reason != "" {
+		fmt.Fprintf(r.Human, "  reason    %s\n", replay.Candidate.Reason)
+	}
+	for _, move := range replay.Moves() {
+		fmt.Fprintf(r.Human, "  changed   %s %s -> %s\n", move.ID, move.Before, move.After)
+	}
+}
+
+// passLabel names a gate decision.
+func passLabel(passed bool) string {
+	if passed {
+		return "pass"
+	}
+	return "fail"
+}
+
+// approvalLabel names an approval decision.
+func approvalLabel(decision reportcore.Decision) string {
+	if decision.Approved {
+		return "approved"
+	}
+	return "withheld"
 }
 
 // writeOutputs writes the requested artifacts in shell order: --output
@@ -84,19 +185,12 @@ func emitReport(r *cli.Runner, req Request, resp *reportcore.Response) {
 		if resp.Output != nil {
 			fmt.Fprintf(r.Human, "wrote %s\n", resp.Output.Path)
 		}
-		r.Emit("report", req.Repo, req.Pr, resp.At, resp.Next,
+		r.Emit(cmdReport, req.Repo, req.Pr, resp.At, resp.Next,
 			resp.Warnings, resp.Data.Wire())
 		return
 	}
 	for _, line := range resp.Human {
 		fmt.Fprintln(r.Human, line)
-	}
-}
-
-// emitChecks writes the gate diagnostics after output.
-func emitChecks(r *cli.Runner, resp *reportcore.Response) {
-	for _, line := range resp.CheckLines {
-		fmt.Fprintln(r.Diag, line)
 	}
 }
 
@@ -165,14 +259,10 @@ func shellArg(arg string) string {
 	return shellquote.Arg(arg)
 }
 
-// refuseGate renders a typed refusal, exiting 3 on gate runs so hooks can
-// tell tool failure apart from a failed gate (exit 1).
-func refuseGate(r *cli.Runner, err error, gate bool) int {
+// refuse renders a typed refusal, keeping the warnings it carries.
+func refuse(r *cli.Runner, err error) int {
 	if ref, ok := errors.AsType[*cli.RefusalError](err); ok && ref.Warnings != nil {
 		r.Warnings = ref.Warnings
-	}
-	if gate {
-		return r.RefuseExit(err, cli.ExitBroke)
 	}
 	return r.Refuse(err)
 }
@@ -180,7 +270,7 @@ func refuseGate(r *cli.Runner, err error, gate bool) int {
 // parseFlags parses the report flags left to right. A value flag with no
 // operand is a usage error (exit 2, no envelope); an invalid value is too.
 func parseFlags(r *cli.Runner, args []string) (reportcore.Flags, int, bool) {
-	flags := reportcore.Flags{Status: statusAll, Kind: statusAll, Live: liveAuto}
+	flags := reportcore.Flags{Status: statusAll, Kind: statusAll}
 	i := 0
 	for i < len(args) {
 		consumed, code, done := parseFlag(r, &flags, args, i)
@@ -204,19 +294,16 @@ const (
 var reportValueWants = map[string]string{
 	flagStatus:   "all|open|addressed|deferred|wont-fix|false-positive",
 	"--kind":     "all|inline|section",
-	"--output":   "<path>",
-	"--sarif":    "<path>",
-	"--check":    "critical|important|informational",
-	"--live":     "auto|strict|skip",
+	"--output":   pathOperand,
+	"--sarif":    pathOperand,
 	"--category": "logic|edge-case|security|performance|accidental-commit|style|docs|other",
-	"--max-risk": "low|medium|high|critical",
 	"--compare":  "<bundle-dir|pr|slug>",
+	"--policy":   pathOperand,
 }
 
 var reportBoolSetters = map[string]func(*reportcore.Flags){
 	"--include-withheld": func(f *reportcore.Flags) { f.IncludeWithheld = true },
 	"--cost":             func(f *reportcore.Flags) { f.Cost = true },
-	"--completeness":     func(f *reportcore.Flags) { f.Completeness = true },
 	"--provenance":       func(f *reportcore.Flags) { f.Provenance = true },
 	"--risk":             func(f *reportcore.Flags) { f.Risk = true },
 	"--validation":       func(f *reportcore.Flags) { f.Validation = true },
@@ -263,14 +350,16 @@ func parseReportValue(r *cli.Runner, flags *reportcore.Flags, args []string, i i
 		return parseKindFlag(r, flags, v)
 	case "--category":
 		return parseCategoryFlag(r, flags, v)
-	case "--check":
-		return parseCheckFlag(r, flags, v)
-	case "--live":
-		return parseLiveFlag(r, flags, v)
-	case "--max-risk":
-		return parseMaxRiskFlag(r, flags, v)
 	case "--compare":
 		flags.Compare, flags.CompareSet = v, true
+		return next - i + 1, 0, false
+	case "--policy":
+		if v == "" {
+			return 0, r.ReportUsage(&cli.UsageError{
+				Message: "--policy needs a policy file path (an empty value would run an ordinary report)",
+			}), true
+		}
+		flags.Policy = v
 		return next - i + 1, 0, false
 	default: // --output, --sarif
 		setReportPath(flags, args[i], v)
@@ -323,39 +412,6 @@ func parseCategoryFlag(r *cli.Runner, flags *reportcore.Flags, next string) (int
 	return 2, 0, false
 }
 
-// parseCheckFlag consumes --check, validating the gate tier.
-func parseCheckFlag(r *cli.Runner, flags *reportcore.Flags, next string) (int, int, bool) {
-	flags.Check = next
-	if !core.ValidTier(flags.Check) {
-		return 0, r.ReportUsage(usageErr(
-			"unknown --check tier '%s' for report (want critical|important|informational)",
-			flags.Check)), true
-	}
-	return 2, 0, false
-}
-
-// parseLiveFlag consumes --live, validating the live posture.
-func parseLiveFlag(r *cli.Runner, flags *reportcore.Flags, next string) (int, int, bool) {
-	flags.Live = orDefault(next, "")
-	if !validLive(flags.Live) {
-		return 0, r.ReportUsage(usageErr(
-			"unknown --live posture '%s' for report (want auto|strict|skip)",
-			flags.Live)), true
-	}
-	return 2, 0, false
-}
-
-// parseMaxRiskFlag consumes --max-risk, validating the risk threshold level.
-func parseMaxRiskFlag(r *cli.Runner, flags *reportcore.Flags, next string) (int, int, bool) {
-	flags.MaxRisk = next
-	if !risk.ValidLevel(flags.MaxRisk) {
-		return 0, r.ReportUsage(usageErr(
-			"unknown --max-risk level '%s' for report (want low|medium|high|critical)",
-			flags.MaxRisk)), true
-	}
-	return 2, 0, false
-}
-
 // orDefault reads a missing or empty value as the default (the flag is
 // consumed either way).
 func orDefault(v, dflt string) string {
@@ -384,16 +440,6 @@ func validStatus(s string) bool {
 func validKind(s string) bool {
 	switch s {
 	case statusAll, kindInline, kindSection:
-		return true
-	default:
-		return false
-	}
-}
-
-// validLive reports whether s is a known live posture.
-func validLive(s string) bool {
-	switch s {
-	case liveAuto, "strict", "skip":
 		return true
 	default:
 		return false

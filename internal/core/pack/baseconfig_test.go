@@ -2,12 +2,14 @@ package pack
 
 import (
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
+	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
@@ -243,6 +245,33 @@ func TestBaseTogglesWithoutACommanderOrBase(t *testing.T) {
 	}
 }
 
+// failingCommander is a runner that cannot execute anything: every call
+// reports an error, as a missing git binary would.
+type failingCommander struct{}
+
+// Run always fails.
+func (failingCommander) Run(context.Context, *core.Command) (core.Result, error) {
+	return core.Result{}, errors.New("git is not on PATH")
+}
+
+// TestBaseRefusesWhenGitCannotRun proves the read fails closed: a runner that
+// cannot execute at all refuses pack-git-failed instead of degrading to no
+// base configuration, which would drop every base-owned pin. A runnable
+// checkout with no default branch still degrades (see
+// TestBaseTogglesWithoutACommanderOrBase).
+func TestBaseRefusesWhenGitCannotRun(t *testing.T) {
+	pin, source, ref := BaseOrgPin(t.Context(), failingCommander{}, t.TempDir())
+	if ref == nil || ref.Code != CodePackGitFailed {
+		t.Fatalf("BaseOrgPin = %+v / %q / %v, want %s", pin, source, ref, CodePackGitFailed)
+	}
+	if source != "" {
+		t.Errorf("source = %q, want no source label beside a refusal", source)
+	}
+	if pin != nil {
+		t.Errorf("pin = %+v, want nil beside a refusal", pin)
+	}
+}
+
 // equalStrings compares two id lists.
 func equalStrings(a, b []string) bool {
 	if len(a) != len(b) {
@@ -254,4 +283,27 @@ func equalStrings(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// TestBaseTogglesRefusesAMissingMergeBase proves the read fails closed: a
+// default branch that resolves but shares no merge base with HEAD (an orphan
+// branch, an unrelated history) refuses instead of reading as "no base
+// configuration", which would drop every base-owned pack toggle and pin.
+func TestBaseTogglesRefusesAMissingMergeBase(t *testing.T) {
+	t.Chdir(t.TempDir())
+	baseGit(t, "init", "-q", "-b", "main")
+	commitConfig(t, `{"schema_version":"1","packs":{"disable_packs":["verdict/shell"]}}`, "base")
+	baseGit(t, "checkout", "-q", "--orphan", "unrelated")
+	commitConfig(t, `{"schema_version":"1"}`, "unrelated head")
+
+	toggles, source, ref := BaseToggles(t.Context(), coreexec.Runner{}, ".")
+	if ref == nil || ref.Code != CodePackGitFailed {
+		t.Fatalf("BaseToggles = %+v / %q / %v, want %s", toggles, source, ref, CodePackGitFailed)
+	}
+	if want := "git merge-base failed"; !strings.Contains(ref.Message, want) {
+		t.Errorf("message = %q, want it to contain %q", ref.Message, want)
+	}
+	if source != "" {
+		t.Errorf("source = %q, want no source label beside a refusal", source)
+	}
 }

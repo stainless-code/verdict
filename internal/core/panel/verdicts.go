@@ -61,7 +61,7 @@ func Load(dir, head string, findings []any) (*File, []string, error) {
 		return nil, nil, bad(fmt.Sprintf("cannot open bundle for verification/verdicts.json: %v", err))
 	}
 	defer func() { _ = root.Close() }()
-	f, err := root.Open(filepath.Join("verification", "verdicts.json"))
+	f, err := readcommon.OpenNoBlockIn(root, filepath.Join("verification", "verdicts.json"))
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, nil, nil
 	}
@@ -69,6 +69,9 @@ func Load(dir, head string, findings []any) (*File, []string, error) {
 		return nil, nil, bad(fmt.Sprintf("cannot read verification/verdicts.json: %v", err))
 	}
 	defer func() { _ = f.Close() }()
+	if info, statErr := f.Stat(); statErr != nil || !info.Mode().IsRegular() {
+		return nil, nil, bad("verification/verdicts.json unreadable or exceeds 32 MiB")
+	}
 	raw, err := io.ReadAll(io.LimitReader(f, maxReceiptBytes+1))
 	if err != nil || len(raw) > maxReceiptBytes {
 		return nil, nil, bad("verification/verdicts.json unreadable or exceeds 32 MiB")

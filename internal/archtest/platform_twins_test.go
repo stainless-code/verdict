@@ -17,6 +17,8 @@ import (
 // an unpaired function fails, so the allowlist cannot rot.
 var windowsOnlyFuncs = map[string]string{
 	"internal/core/exec:closeHandle":     "closes a Win32 handle whose outcome is already decided",
+	"internal/dashboard:consoleSize":     "reads a console window size through GetConsoleScreenBufferInfo; unix reads TIOCGWINSZ",
+	"internal/dashboard:setConsoleMode":  "sets a console mode through kernel32; unix sets termios",
 	"internal/core/exec:pid32":           "narrows a pid to the DWORD a Win32 call takes",
 	"internal/core/exec:resumeOK":        "reads ResumeThread's DWORD result word",
 	"internal/core/exec:resumeProcess":   "resumes a suspended Windows process",

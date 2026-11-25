@@ -74,18 +74,19 @@ Building a client in another language? The [Build a client guide](https://stainl
 
 ## Error handling
 
-| Outcome             | Class                 | Notes                                                |
-| ------------------- | --------------------- | ---------------------------------------------------- |
-| Exit 0              | returns `Envelope<T>` | `schema_version` must be `"1"`                       |
-| Exit 1 (refusal)    | `VerdictRefusalError` | `code`, `message`, `hint`, `warnings`                |
-| Exit 1 (gate/check) | `VerdictGateError`    | `envelope` carries the failing `data` and `warnings` |
-| Exit 2 (usage)      | `VerdictUsageError`   | no envelope; `stderr` carries usage                  |
-| Exit 3 / crash      | `VerdictProcessError` | `exitCode`, `signal`, `stdout`, `stderr`             |
-| Timeout             | `VerdictTimeoutError` | extends `VerdictProcessError`; the child is killed   |
-| Missing binary      | `VerdictSpawnError`   | `repair` is the reinstall command                    |
-| Wrong envelope      | `VerdictSchemaError`  | version drift fails loud, never misreads             |
+| Outcome             | Class                 | Notes                                                                                                     |
+| ------------------- | --------------------- | --------------------------------------------------------------------------------------------------------- |
+| Exit 0              | returns `Envelope<T>` | `schema_version` must be `"1"`                                                                            |
+| Exit 1 (refusal)    | `VerdictRefusalError` | `code`, `message`, `hint`, `warnings`, `body`, `problems`, `problems_truncated`, `candidates`, `retry_at` |
+| Exit 1 (gate/check) | `VerdictGateError`    | `envelope` carries the failing `data` and `warnings`                                                      |
+| Exit 2 (usage)      | `VerdictUsageError`   | an argv mistake: no envelope; `stderr` carries usage                                                      |
+| Exit 2 (no target)  | `VerdictRefusalError` | `code` is `target-unresolved`: a pair verb with no resolvable target, carried as an envelope              |
+| Exit 3 / crash      | `VerdictProcessError` | `exitCode`, `signal`, `stdout`, `stderr`                                                                  |
+| Timeout             | `VerdictTimeoutError` | extends `VerdictProcessError`; the child is killed                                                        |
+| Missing binary      | `VerdictSpawnError`   | `repair` is the reinstall command                                                                         |
+| Wrong envelope      | `VerdictSchemaError`  | version drift fails loud, never misreads                                                                  |
 
-`VerdictGateError` covers the success-shaped exit 1 a gate or `--check` run
+`VerdictGateError` covers the success-shaped exit 1 a `gate` run
 returns when the verdict is no; read `error.envelope.data` for the failing
 dimensions. `VerdictRefusal` and `VerdictCrash` are aliases for
 `VerdictRefusalError` and `VerdictProcessError`. `RefusalCode` is the generated union of exact
@@ -104,6 +105,22 @@ createClient({
   maxStdoutBytes: 8 * 1024 * 1024, // stdout bound; over it the child dies
 });
 ```
+
+## Runnable examples
+
+The mutating verbs have runnable examples in
+[`examples/typescript-client/`](../../examples/typescript-client): `record`
+(including `--dry-run`), `post --dry-run`, and `config` validation, each run
+end to end against the built binary, a bundle the real `fetch-local` producer
+wrote, and a network-dead `gh` stub on `PATH`.
+
+```sh
+make build && make clients-ts
+node examples/typescript-client/record.ts
+```
+
+`make clients-ts` executes all three through `test/examples.test.mjs` and
+checks the `ok:` checkpoints they print, so a stale example fails this gate.
 
 ## Regenerating the generated sources
 

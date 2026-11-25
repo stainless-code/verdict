@@ -19,6 +19,7 @@ import (
 	"github.com/stainless-code/verdict/internal/curlauth"
 	"github.com/stainless-code/verdict/internal/forgejo"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -78,9 +79,13 @@ func providerTail(
 }
 
 // providerIncrementalNote writes the unsupported-host note when a provider
-// that did not own the compare still received --base-sha/--since.
+// that did not own the compare still received --base-sha/--since. A
+// non-delta fetch clears any leftover delta and note instead.
 func providerIncrementalNote(r *session, dir string, f *Flags, incremental bool) *core.RefusalError {
-	if !f.HasBase || f.BaseSHA == "" || incremental {
+	if !f.HasBase || f.BaseSHA == "" {
+		return clearNonDeltaDelta(dir, f)
+	}
+	if incremental {
 		return nil
 	}
 	return writeIncrementalNote(r, dir, "--base-sha/--since is not supported for provider "+f.Provider)
@@ -260,6 +265,9 @@ func gitlabDiffFail(dir, stderr string) error {
 // continues with the unavailability note GitHub writes.
 func gitlabIncremental(ctx context.Context, r *session, dir, pid string, f *Flags) (string, error) {
 	if !f.HasBase || f.BaseSHA == "" {
+		if ref := clearStaleIncremental(dir); ref != nil {
+			return nullStr, ref
+		}
 		return nullStr, nil
 	}
 	headSHA := readcommon.PrField(dir, keyHeadSHA)
@@ -296,10 +304,10 @@ func gitlabIncrementalWrite(r *session, dir, base, payload string) (string, erro
 		}
 		return nullStr, nil
 	}
-	if werr := atomic.WriteFile(dir+"/incremental.diff", []byte(gitlabCompareDiff(entries))); werr != nil {
+	if werr := atomic.WriteFile(dir+suffixIncremental, []byte(gitlabCompareDiff(entries))); werr != nil {
 		return nullStr, &core.RefusalError{
 			Code:    CodeFetchFailed,
-			Message: fmt.Sprintf("could not write %s/incremental.diff: %v", dir, werr),
+			Message: fmt.Sprintf("could not write %s%s: %v", dir, suffixIncremental, werr),
 		}
 	}
 	return base, nil
@@ -564,7 +572,7 @@ func cafeDiff(ctx context.Context, r *session, dir, repo, pr string) (core.Resul
 	if n := cafeUnhandledHunks(items); n != 0 {
 		r.Warn(fmt.Sprintf("%d cafe files carry structured hunks the builder does not render — anchors unchecked for those paths", n))
 	}
-	raw, rerr := os.ReadFile(dir + suffixFullDiff)
+	raw, rerr := noblock.ReadFile(dir + suffixFullDiff)
 	if rerr != nil {
 		raw = nil
 	}
@@ -1166,7 +1174,7 @@ func fetchBitbucket(ctx context.Context, ctx2 *fetchRunCtx, req *Request) error 
 	if ref != nil {
 		return ref
 	}
-	base := "https://api.bitbucket.org/2.0/repos/" + repo + "/pullrequests/" + pr
+	base := "https://api.bitbucket.org/2.0/repositories/" + repo + "/pullrequests/" + pr
 	meta, ref := bitbucketMeta(ctx, r, dir, auth, base)
 	if ref != nil {
 		return ref
@@ -1521,14 +1529,14 @@ func azureCloneDiff(ctx context.Context, r *session, dir, tmp string, conn *azur
 		return err
 	}
 	remote, hs, bs := azureMergeRef(conn.meta)
-	fetchRes, err := r.run(ctx, "-C", tmp, "fetch", "-q", remote, hs, bs)
+	fetchRes, err := r.runIn(ctx, tmp, "fetch", "-q", remote, hs, bs)
 	if werr := writeErrFile(dir+suffixDiffErr, fetchRes.Stderr); werr != nil {
 		return werr
 	}
 	if err != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: "azure git fetch failed: " + headBytes(fetchRes.Stderr, numExcerpt)}
 	}
-	diffRes, err := r.run(ctx, "-C", tmp, gitCmdDiff, bs, hs)
+	diffRes, err := r.runIn(ctx, tmp, gitCmdDiff, bs, hs)
 	if err != nil {
 		return azureDiffFail(dir, diffRes.Stderr)
 	}
@@ -1547,9 +1555,15 @@ func azureDiffFail(dir, stderr string) error {
 	return &core.RefusalError{Code: CodeFetchFailed, Message: "azure diff failed: " + headBytes(stderr, numExcerpt)}
 }
 
+// azureResource is the Azure DevOps Entra application id `az rest` buys its
+// token for: `dev.azure.com` is not an Azure cloud endpoint, so `az` cannot
+// derive a resource from the URL and refuses to run without one stated.
+const azureResource = "499b84ac-1321-427f-aa17-267ca6975798"
+
+// azureAPI is one authenticated `az rest` read.
 func azureAPI(org, project, rname, pr, path, query, format string) []string {
 	return []string{
-		"rest", "--method", "get",
+		"rest", "--method", "get", flagResource, azureResource,
 		"--url", org + pathSep + project + "/_apis/git/repositories/" + rname + "/pullRequests/" + pr + path,
 		flagQuery, query, flagOut, format,
 	}
@@ -1730,7 +1744,7 @@ func writeProviderTOC(ctx2 *fetchRunCtx) error {
 
 // providerName reads the bundle provider for the toc title.
 func providerName(dir string) string {
-	raw, err := os.ReadFile(dir + suffixPRJSON)
+	raw, err := noblock.ReadFile(dir + suffixPRJSON)
 	if err != nil {
 		return providerGitHub
 	}
@@ -1750,7 +1764,7 @@ func providerName(dir string) string {
 
 func providerStat(prJSON string) (string, []string) {
 	total := "?"
-	raw, err := os.ReadFile(prJSON)
+	raw, err := noblock.ReadFile(prJSON)
 	if err != nil {
 		return total, nil
 	}

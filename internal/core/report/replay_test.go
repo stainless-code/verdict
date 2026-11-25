@@ -1,0 +1,316 @@
+package reportcore_test
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"slices"
+	"testing"
+
+	"github.com/stainless-code/verdict/internal/config"
+	"github.com/stainless-code/verdict/internal/controls"
+	"github.com/stainless-code/verdict/internal/core"
+	reportcore "github.com/stainless-code/verdict/internal/core/report"
+)
+
+// writeCapturedPolicy persists a run capture resolved from cfg, so the replay
+// reads a real typed policy instead of a hand-built one.
+func writeCapturedPolicy(t *testing.T, cfg *core.Config) {
+	t.Helper()
+	captureRun(t, cfg, nil)
+}
+
+// captureRun persists a run capture resolved from cfg and one personal layer,
+// so a replay sees the layers a real fetch recorded.
+func captureRun(t *testing.T, cfg *core.Config, personal *config.PersonalSettings) {
+	t.Helper()
+	resolved, ref := config.Resolve(&config.Inputs{
+		Repo:     cfg,
+		Personal: personal,
+		Files:    []config.FileInput{{Path: "notes.txt"}},
+	})
+	if ref != nil {
+		t.Fatalf("Resolve: %v", ref)
+	}
+	rs := &config.RunState{
+		BaseSHA:  "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		Trusted:  true,
+		Resolved: resolved,
+		// A real capture carries the root requirement set beside the
+		// resolution (fetch/runconfig.go), so a replay has to replace it.
+		Root: config.RootSet(cfg, "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"),
+	}
+	dir := filepath.Join(".", ".verdict", "state", "5101")
+	if serr := config.WriteRunState(dir, rs); serr != nil {
+		t.Fatalf("WriteRunState: %v", serr)
+	}
+	if _, cref := controls.Resolve(t.Context(), nil, &controls.Request{
+		BundleDir: dir, Root: ".", BaseSHA: rs.BaseSHA, AllowHead: true,
+	}); cref != nil {
+		t.Fatalf("controls.Resolve: %v", cref)
+	}
+}
+
+// replayOver stores one verified critical security finding, captures cfg, and
+// replays candidate over it. The candidate is written after fixture changes
+// directory, so it lands beside the bundle rather than in the caller's cwd.
+func replayOver(t *testing.T, cfg *core.Config, candidate string) *reportcore.PolicyReplay {
+	t.Helper()
+	req := fixture(t, "["+securityFinding+"]")
+	writeCapturedPolicy(t, cfg)
+	writeFile(t, "candidate.json", candidate)
+	replay, ref := reportcore.Replay(context.Background(), &reportcore.Request{ReadRequest: req, Flags: reportcore.Flags{Policy: "candidate.json"}})
+	if ref != nil {
+		t.Fatalf("Replay refusal: %v", ref)
+	}
+	return replay
+}
+
+// complianceDimension finds the compliance dimension of one decision.
+func complianceDimension(t *testing.T, decision reportcore.Decision) core.GateDimension {
+	t.Helper()
+	for _, dim := range decision.Dimensions {
+		if dim.ID == "compliance" {
+			return dim
+		}
+	}
+	t.Fatalf("decision has no compliance dimension: %+v", decision.Dimensions)
+	return core.GateDimension{}
+}
+
+const strictPolicy = `{"schema_version":"1","requirements":{"block_clauses":[` +
+	`{"name":"security-critical","threshold":"critical","categories":["security"]}]}}`
+
+// TestReplayStricterPolicyFailsTheGate proves a candidate policy that adds a
+// block clause flips the gate the captured policy passed, and names the
+// dimension that changed.
+func TestReplayStricterPolicyFailsTheGate(t *testing.T) {
+	replay := replayOver(t, &core.Config{SchemaVersion: "1"}, strictPolicy)
+
+	if !replay.Captured.GatePassed {
+		t.Fatalf("captured policy fails the gate on an empty policy: %+v", replay.Captured)
+	}
+	if replay.Candidate.GatePassed {
+		t.Fatalf("candidate block clause passed the gate over an open critical security finding: %+v", replay.Candidate)
+	}
+	if got := complianceDimension(t, replay.Candidate); got.Status != "fail" {
+		t.Fatalf("candidate compliance status = %q; want fail (dimension %+v)", got.Status, got)
+	}
+}
+
+// TestReplayLooserPolicyPassesTheGate proves the reverse direction: dropping
+// the captured block clause clears the gate that withheld on it.
+func TestReplayLooserPolicyPassesTheGate(t *testing.T) {
+	strict := &core.Config{
+		SchemaVersion: "1",
+		Requirements: &core.ConfigRequirements{BlockClauses: []core.BlockClause{
+			{Name: "security-critical", Threshold: "critical", Categories: []string{"security"}},
+		}},
+	}
+	replay := replayOver(t, strict, `{"schema_version":"1"}`)
+
+	if replay.Captured.GatePassed {
+		t.Fatalf("captured block clause passed over an open critical security finding: %+v", replay.Captured)
+	}
+	if !replay.Candidate.GatePassed {
+		t.Fatalf("candidate without the clause still failed the gate: %+v", replay.Candidate)
+	}
+}
+
+// TestReplayIdenticalPolicyKeepsDecision proves the derivation is stable: a
+// candidate that resolves to the captured policy changes nothing, so any
+// difference in the other cases comes from the policy rather than from noise
+// in the loader or the gate.
+func TestReplayIdenticalPolicyKeepsDecision(t *testing.T) {
+	replay := replayOver(t, &core.Config{SchemaVersion: "1"}, `{"schema_version":"1"}`)
+
+	if !replay.Captured.GatePassed || !replay.Candidate.GatePassed {
+		t.Fatalf("identical policies disagree on the gate: captured=%+v candidate=%+v",
+			replay.Captured, replay.Candidate)
+	}
+	if len(replay.Captured.Dimensions) != len(replay.Candidate.Dimensions) {
+		t.Fatalf("identical policies produced %d and %d dimensions",
+			len(replay.Captured.Dimensions), len(replay.Candidate.Dimensions))
+	}
+	if replay.Captured.Approved != replay.Candidate.Approved {
+		t.Fatalf("identical policies disagree on approval: captured=%v candidate=%v",
+			replay.Captured.Approved, replay.Candidate.Approved)
+	}
+}
+
+// TestReplayMovesIncludesAddedAndRemovedDimensions pins the two directions the
+// captured-side-only walk used to hide: a policy that adds a compliance
+// requirement, and one that removes it. Both flip the gate while the shared
+// dimension still reads pass, so an empty change list would contradict the
+// decisions printed beside it.
+func TestReplayMovesIncludesAddedAndRemovedDimensions(t *testing.T) {
+	added := (&reportcore.PolicyReplay{
+		Captured:  reportcore.Decision{GatePassed: true, Approved: true, Dimensions: []core.GateDimension{{ID: "spec", Status: "pass"}}},
+		Candidate: reportcore.Decision{GatePassed: false, Dimensions: []core.GateDimension{{ID: "spec", Status: "pass"}, {ID: "compliance", Status: "fail"}}},
+	}).Moves()
+	if want := []reportcore.DimensionMove{{ID: "compliance", Before: reportcore.AbsentDimension, After: "fail"}}; !slices.Equal(added, want) {
+		t.Fatalf("added-dimension moves = %#v; want %#v", added, want)
+	}
+	removed := (&reportcore.PolicyReplay{
+		Captured:  reportcore.Decision{GatePassed: false, Dimensions: []core.GateDimension{{ID: "spec", Status: "pass"}, {ID: "compliance", Status: "fail"}}},
+		Candidate: reportcore.Decision{GatePassed: true, Dimensions: []core.GateDimension{{ID: "spec", Status: "pass"}}},
+	}).Moves()
+	if want := []reportcore.DimensionMove{{ID: "compliance", Before: "fail", After: reportcore.AbsentDimension}}; !slices.Equal(removed, want) {
+		t.Fatalf("removed-dimension moves = %#v; want %#v", removed, want)
+	}
+}
+
+// TestReplayDropsCapturedRootChecksTheCandidateRemoved proves the candidate's
+// own root requirement set decides: the compliance dimension reads root checks
+// from RunState.Root, so leaving the captured set in place would keep failing a
+// candidate on a check it dropped.
+func TestReplayDropsCapturedRootChecksTheCandidateRemoved(t *testing.T) {
+	captured := &core.Config{SchemaVersion: "1", Requirements: &core.ConfigRequirements{
+		RequireChecks: []string{"head-current"},
+	}}
+	replay := replayOver(t, captured, `{"schema_version":"1"}`)
+
+	if got := complianceDimension(t, replay.Captured); got.Status != "unknown" {
+		t.Fatalf("captured compliance status = %q; want unknown on a pending head-current check", got.Status)
+	}
+	if !replay.Candidate.GatePassed {
+		t.Fatalf("candidate that dropped the required check still fails the gate: %+v", replay.Candidate)
+	}
+	for _, dim := range replay.Candidate.Dimensions {
+		if dim.ID == "compliance" {
+			t.Fatalf("candidate carries a compliance dimension with no policy in force: %+v", dim)
+		}
+	}
+	want := []reportcore.DimensionMove{{ID: "compliance", Before: "unknown", After: reportcore.AbsentDimension}}
+	if got := replay.Moves(); !slices.Equal(got, want) {
+		t.Fatalf("moves = %+v; want %+v (the removed requirement must read as a change)", got, want)
+	}
+}
+
+// refusedReplay requires a replay over a minimal bundle to refuse and returns
+// the refusal.
+func refusedReplay(t *testing.T, flags *reportcore.Flags) *core.RefusalError {
+	t.Helper()
+	req := fixture(t, "["+securityFinding+"]")
+	writeCapturedPolicy(t, &core.Config{})
+	flags.Policy = "candidate.json"
+	writeFile(t, "candidate.json", `{"schema_version":"1"}`)
+	_, ref := reportcore.Replay(context.Background(), &reportcore.Request{ReadRequest: req, Flags: *flags})
+	if ref == nil {
+		t.Fatalf("replay accepted flags it must refuse: %+v", *flags)
+	}
+	return ref
+}
+
+// TestReplayRefusesGateFlagsAtTheCore pins the core boundary the adapter also
+// enforces: a Go caller naming a gate flag or a baseline gets a typed refusal,
+// never a silently gated comparison.
+func TestReplayRefusesGateFlagsAtTheCore(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		flags reportcore.Flags
+	}{
+		{name: "check", flags: reportcore.Flags{Check: "critical"}},
+		{name: "completeness", flags: reportcore.Flags{Completeness: true}},
+		{name: "coverage", flags: reportcore.Flags{Coverage: "require"}},
+		{name: "max-risk", flags: reportcore.Flags{MaxRisk: "high"}},
+		{name: "compare", flags: reportcore.Flags{CompareSet: true}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ref := refusedReplay(t, &tc.flags)
+			if ref.Code != "bad-flags" {
+				t.Fatalf("code = %q; want bad-flags (%s)", ref.Code, ref.Message)
+			}
+		})
+	}
+}
+
+// TestReplayRefusesACandidateItCannotUse pins the three ways a candidate can be
+// unusable. Each must refuse rather than fall back to the captured policy: a
+// replay that quietly answers for the wrong file is worse than no answer, and a
+// strict parse is what keeps a typo'd key from being ignored.
+func TestReplayRefusesACandidateItCannotUse(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		path      string
+		candidate string
+		wantCode  string
+	}{
+		{name: "malformed", path: "candidate.json", candidate: "{not json", wantCode: config.CodeBadConfig},
+		{name: "unknown-key", path: "candidate.json", candidate: `{"typo":true}`, wantCode: config.CodeBadConfig},
+		{name: "unreadable", path: "missing.json", wantCode: "bad-flags"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ref := refusedCandidate(t, tc.path, tc.candidate)
+			if ref.Code != tc.wantCode {
+				t.Fatalf("code = %q; want %q (%s)", ref.Code, tc.wantCode, ref.Message)
+			}
+		})
+	}
+}
+
+// refusedCandidate requires a replay over the named candidate file to refuse,
+// and returns the refusal. When it is accepted the diagnostic dumps what the
+// path actually held, so a path or permission mistake in the test reads as one.
+func refusedCandidate(t *testing.T, path, candidate string) *core.RefusalError {
+	t.Helper()
+	// The path is absolute on purpose: fixture() chdirs, and a parallel test in
+	// this package resuming mid-test must not be able to shadow a relative name
+	// with a valid file of its own.
+	policy := filepath.Join(t.TempDir(), path)
+	req := fixture(t, "["+securityFinding+"]")
+	writeCapturedPolicy(t, &core.Config{})
+	if candidate != "" {
+		if err := os.WriteFile(policy, []byte(candidate), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	replay, ref := reportcore.Replay(context.Background(), &reportcore.Request{
+		ReadRequest: req, Flags: reportcore.Flags{Policy: policy},
+	})
+	if ref != nil {
+		return ref
+	}
+	b, rerr := os.ReadFile(policy)
+	cfg, pref := config.Parse(b)
+	_, serr := os.Stat(policy)
+	t.Fatalf("accepted: policy=%q readerr=%v bytes=%q parseerr=%v cfg=%v staterr=%v replay=%+v",
+		policy, rerr, string(b), pref, cfg, serr, replay)
+	return nil
+}
+
+// TestReplayKeepsTheCapturedPrivacyConflict proves the candidate inherits the
+// personal privacy exclusions the capture recorded: they are personal-only, so
+// resolving the candidate without them erased a conflict that still holds. The
+// captured clause decides whether the conflict applies, so a candidate that
+// drops the clause still clears it.
+func TestReplayKeepsTheCapturedPrivacyConflict(t *testing.T) {
+	// The clause names a category no stored finding carries, so the only way it
+	// can fail compliance is the withheld file: a clause firing on the finding
+	// itself would make this test pass without the exclusions.
+	clause := `"requirements":{"block_clauses":[` +
+		`{"name":"docs-block","threshold":"critical","categories":["docs"]}]}`
+	req := fixture(t, "["+securityFinding+"]")
+	captureRun(t, &core.Config{SchemaVersion: "1", Requirements: &core.ConfigRequirements{
+		BlockClauses: []core.BlockClause{{
+			Name: "docs-block", Threshold: "critical", Categories: []string{"docs"},
+		}},
+	}}, &config.PersonalSettings{
+		Privacy: config.PersonalPrivacy{Exclusions: []string{"notes.txt"}},
+	})
+	writeFile(t, "candidate.json", `{"schema_version":"1",`+clause+`}`)
+	replay, ref := reportcore.Replay(context.Background(), &reportcore.Request{
+		ReadRequest: req, Flags: reportcore.Flags{Policy: "candidate.json"},
+	})
+	if ref != nil {
+		t.Fatalf("Replay refusal: %v", ref)
+	}
+	captured := complianceDimension(t, replay.Captured)
+	if captured.Status != "fail" {
+		t.Fatalf("captured compliance status = %q; want fail on the withheld notes.txt (%+v)", captured.Status, captured)
+	}
+	candidate := complianceDimension(t, replay.Candidate)
+	if candidate.Status != captured.Status {
+		t.Fatalf("candidate compliance status = %q; want %q — the personal exclusion withheld the same file", candidate.Status, captured.Status)
+	}
+}

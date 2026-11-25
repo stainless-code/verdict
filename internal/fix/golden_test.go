@@ -5,6 +5,7 @@
 package fix_test
 
 import (
+	"encoding/json"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +13,7 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/golden"
+	"github.com/stainless-code/verdict/internal/repro"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
 
@@ -55,6 +57,8 @@ func mkRepo(t *testing.T, dir string) {
 			"GIT_AUTHOR_EMAIL":    "fix@eval",
 			"GIT_COMMITTER_NAME":  "fix",
 			"GIT_COMMITTER_EMAIL": "fix@eval",
+			"GIT_AUTHOR_DATE":     "2026-01-01T00:00:00Z",
+			"GIT_COMMITTER_DATE":  "2026-01-01T00:00:00Z",
 		})
 		if out, err := cmd.CombinedOutput(); err != nil {
 			t.Fatalf("git %v: %v\n%s", args, err, out)
@@ -208,6 +212,64 @@ func setupBatchBelowFloor(t *testing.T, dir, _ string) {
 		findingJSON(sigInfo2, "open", "informational", "app.txt", "Another nit here.")+"]")
 }
 
+// findingLensJSON renders one valid store entry carrying lens provenance.
+func findingLensJSON(sig, severity, path, body, lens string) string {
+	return `{"kind":"inline","path":"` + path + `",` +
+		`"heading":null,"side":"RIGHT","line":2,"anchored":true,` +
+		`"body":"` + body + `","suggestion":null,"inBounds":true,` +
+		`"rigor":"pointed","severity":"` + severity + `","kb":[],` +
+		`"lens":"` + lens + `",` +
+		`"sig":"` + sig + `","sig_version":"1",` +
+		`"firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open",` +
+		`"rationale":"","history":[]}`
+}
+
+// setupRecipe is the lens-provocation fixture: the bundle loads two lenses
+// and three findings carry one each — one perf, one security, one without.
+func setupRecipe(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	lenses := "# lens perf — sha256:abc\nperf body\n# end lens perf\n" +
+		"# lens security — sha256:def\nsecurity body\n# end lens security\n"
+	bdir := filepath.Join(dir, ".verdict", "state", "local-recipe")
+	if err := os.MkdirAll(bdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bdir, "lenses.txt"), []byte(lenses), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mkLocal(t, dir, "recipe", "["+
+		findingLensJSON(sigBatch, "important", "other.txt", "Important perf bug here.", "perf")+","+
+		findingLensJSON(sigInfo, "important", "app.txt", "Important security bug here.", "security")+","+
+		findingJSON(sigCritical, "open", "critical", "notes.txt", "Critical unprovenanced bug.")+"]")
+}
+
+// setupRecipeEmpty is the zero-lens fixture: no bundle lenses and no
+// committed recipes anywhere, so the built-in default resolves lens-less.
+func setupRecipeEmpty(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	mkLocal(t, dir, "emptylens", "["+
+		findingLensJSON(sigBatch, "important", "other.txt", "Important perf bug here.", "perf")+"]")
+}
+
+// setupRecipeSelected is the composite fixture: the reaction selection
+// names two sigs, one inside the recipe lens set and one outside it.
+func setupRecipeSelected(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupRecipe(t, dir, "")
+	seedSelected(t, dir, "local-recipe", sigBatch, sigCritical)
+}
+
+// setupRecipeSelectedEmpty is the composite empty-intersection fixture: the
+// selection names only the unprovenanced finding, which sits outside every
+// lens the bundle loads.
+func setupRecipeSelectedEmpty(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupRecipe(t, dir, "")
+	seedSelected(t, dir, "local-recipe", sigCritical)
+}
+
 const patchedAnchorContent = "alpha\nbeta fixed\ngamma\n"
 
 func setupPatch(t *testing.T, dir, _ string) {
@@ -289,11 +351,11 @@ func setupSelectedEmpty(t *testing.T, dir, _ string) {
 	writeSelected(t, dir, "local-snone", `{"sigs":[]}`)
 }
 
-// setupSelectedPR is the PR-bundle fixture: --selected is the one batch that
+// setupSelectedPR is the PR-bundle fixture: --selected is the batch that
 // reads a bundle fetch wrote, so it runs here and lands through post.
 func setupSelectedPR(t *testing.T, dir, _ string) {
 	t.Helper()
-	setupNotLocal(t, dir, "")
+	setupPRBundle(t, dir, "")
 	seedSelected(t, dir, "4291", sigInfo)
 }
 
@@ -320,16 +382,97 @@ func writeSelected(t *testing.T, dir, bundle, doc string) {
 	}
 }
 
-// setupNotLocal is the PR-bundle refusal fixture.
-func setupNotLocal(t *testing.T, dir, _ string) {
+// otherHead is a commit the fixture checkout is never on.
+const otherHead = "dddddddddddddddddddddddddddddddddddddddd"
+
+// checkoutHead reads the fixture checkout's HEAD, which the scratch repo's
+// pinned dates make the same commit every run.
+func checkoutHead(t *testing.T, dir string) string {
+	t.Helper()
+	cmd := exec.CommandContext(t.Context(), "git", "rev-parse", "HEAD")
+	cmd.Dir = dir
+	cmd.Env = testenv.Base(nil)
+	out, err := cmd.Output()
+	if err != nil {
+		t.Fatal(err)
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// asPRBundle turns the local-<slug> fixture into the PR bundle 4291 a fetch
+// wrote: the same files under the PR name plus the PR.json that names the
+// reviewed head. head "" reviews the checkout's own HEAD.
+func asPRBundle(t *testing.T, dir, slug, head string) {
+	t.Helper()
+	if head == "" {
+		head = checkoutHead(t, dir)
+	}
+	state := filepath.Join(dir, ".verdict", "state")
+	if err := os.Rename(filepath.Join(state, "local-"+slug), filepath.Join(state, "4291")); err != nil {
+		t.Fatal(err)
+	}
+	record := `{"state":"OPEN","headRefOid":"` + head + `"}`
+	if err := os.WriteFile(filepath.Join(state, "4291", "PR.json"), []byte(record), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// setupPRBundle is the PR-bundle fixture: a bundle fetch wrote, reviewing the
+// checkout's own head, so a default fix pass runs on it and lands through post.
+func setupPRBundle(t *testing.T, dir, _ string) {
 	t.Helper()
 	mkRepo(t, dir)
-	bdir := filepath.Join(dir, ".verdict", "state", "4291")
+	mkLocal(t, dir, "pr", "["+
+		findingJSON(sigInfo, "open", "informational", "notes.txt", "PR finding.")+"]")
+	asPRBundle(t, dir, "pr", "")
+}
+
+// setupPRMismatch is the PR bundle whose reviewed head is not the checkout's.
+func setupPRMismatch(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	mkLocal(t, dir, "pr", "["+
+		findingJSON(sigInfo, "open", "informational", "notes.txt", "PR finding.")+"]")
+	asPRBundle(t, dir, "pr", otherHead)
+}
+
+// setupPRBatch is the --all/--recipe fixtures on a PR bundle.
+func setupPRBatch(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupBatch(t, dir, "")
+	asPRBundle(t, dir, "batch", "")
+}
+
+func setupPRRecipe(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupRecipe(t, dir, "")
+	asPRBundle(t, dir, "recipe", "")
+}
+
+// setupPRTest is the --test promotion fixture on a PR bundle.
+func setupPRTest(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupTestPromote(t, dir, "")
+	asPRBundle(t, dir, "test", "")
+}
+
+// setupPRTestMismatch is setupPRTest reviewing a head the checkout is not on.
+func setupPRTestMismatch(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupTestPromote(t, dir, "")
+	asPRBundle(t, dir, "test", otherHead)
+}
+
+// setupCorpus is the corpus-bundle fixture: fix refuses benchmark bundles.
+func setupCorpus(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	bdir := filepath.Join(dir, ".verdict", "state", "corpus-x")
 	if err := os.MkdirAll(bdir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(bdir, "findings.json"), []byte("["+
-		findingJSON(sigInfo, "open", "informational", "notes.txt", "PR finding.")+"]"), 0o644); err != nil {
+		findingJSON(sigInfo, "open", "informational", "notes.txt", "Corpus finding.")+"]"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -343,6 +486,141 @@ func setupMissing(t *testing.T, dir, _ string) {
 	}
 }
 
+// seedReproBundle captures a real artifact for sig in the local-<slug> bundle
+// and stores a reproduced finding whose receipt names it.
+func seedReproBundle(t *testing.T, dir, slug, sig string, artifact []byte) {
+	t.Helper()
+	seedReproBundleCmd(t, dir, slug, sig, artifact, "python3 {artifact}")
+}
+
+// seedReproBundleCmd is seedReproBundle with the capture command spelled by the
+// fixture, so the receipt-rewrite legs can vary the reference.
+func seedReproBundleCmd(t *testing.T, dir, slug, sig string, artifact []byte, command string) {
+	t.Helper()
+	bdir := localBundleDir(dir, slug)
+	if err := os.MkdirAll(bdir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(bdir, "probe.py"), artifact, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	receipt, err := repro.Capture(bdir, sig, "probe.py", command, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	receiptJSON, err := json.Marshal(receiptDoc{
+		Path: receipt.Path, Command: receipt.Command, Redacted: receipt.Redacted,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	entry := strings.Replace(findingJSON(sig, "open", "important", "app.txt", "Reproduced bug here."),
+		`"rigor":"pointed"`, `"rigor":"reproduced"`, 1)
+	entry = entry[:len(entry)-1] + `,"reproduction":` + string(receiptJSON) + `}`
+	if err := os.WriteFile(filepath.Join(bdir, "findings.json"), []byte("["+entry+"]"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// receiptDoc is the reproduction receipt as the store spells it, marshaled
+// rather than concatenated so a Windows bundle path escapes its backslashes
+// instead of breaking the JSON.
+type receiptDoc struct {
+	Path     string `json:"path"`
+	Command  string `json:"command"`
+	Redacted bool   `json:"redacted"`
+}
+
+// setupTestPromote is the promotion fixture: one reproduced inline finding
+// with a retained artifact.
+func setupTestPromote(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	seedReproBundle(t, dir, "test", sigBatch, []byte("assert False\n"))
+}
+
+// setupTestCommit dirties an unrelated tracked file so the commit fixture
+// proves only the promoted file is staged and committed.
+func setupTestCommit(t *testing.T, dir, _ string) {
+	t.Helper()
+	setupTestPromote(t, dir, "")
+	if err := os.WriteFile(filepath.Join(dir, "other.txt"), []byte("other1\ndirty\nother2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// setupTestDotSlash spells the receipt reference with a leading ./ so the
+// promotion golden proves that spelling rewrites to the promoted path.
+func setupTestDotSlash(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	seedReproBundleCmd(t, dir, "test", sigBatch, []byte("assert False\n"), "sh ./{artifact}")
+}
+
+// localBundleDir is the bundle seedReproBundle captures into.
+func localBundleDir(dir, slug string) string {
+	return filepath.Join(dir, ".verdict", "state", "local-"+slug)
+}
+
+// setupTestAbsoluteCmd spells the receipt reference as an absolute path into
+// the bundle, which promotion leaves alone: only the relative spelling moves.
+func setupTestAbsoluteCmd(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	const slug = "test"
+	seedReproBundleCmd(t, dir, slug, sigBatch, []byte("assert False\n"),
+		"sh "+filepath.ToSlash(localBundleDir(dir, slug))+"/{artifact}")
+}
+
+// setupTestConflict pre-places different bytes at the promoted destination.
+func setupTestConflict(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	seedReproBundle(t, dir, "test", sigBatch, []byte("assert False\n"))
+	// The artifact hash names the destination; pre-place different bytes there.
+	preplaceConflict(t, dir)
+}
+
+// preplaceConflict copies each retained artifact name to the promoted
+// directory with different bytes, skipping command receipts.
+func preplaceConflict(t *testing.T, dir string) {
+	t.Helper()
+	seeded := filepath.Join(dir, ".verdict", "state", "local-test", "tests")
+	entries, err := os.ReadDir(seeded)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasSuffix(e.Name(), ".command.json") {
+			continue
+		}
+		preplaceEntry(t, dir, e.Name())
+	}
+}
+
+// preplaceEntry writes one artifact name with different bytes at the
+// promoted destination.
+func preplaceEntry(t *testing.T, dir, name string) {
+	t.Helper()
+	destDir := filepath.Join(dir, ".verdict", "tests")
+	if err := os.MkdirAll(destDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(destDir, name), []byte("different bytes\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// setupTestUnreproduced stores an open inline finding at rigor=ran with no
+// reproduction receipt.
+func setupTestUnreproduced(t *testing.T, dir, _ string) {
+	t.Helper()
+	mkRepo(t, dir)
+	entry := strings.Replace(findingJSON(sigInfo, "open", "important", "app.txt", "Unreproduced bug here."),
+		`"rigor":"pointed"`, `"rigor":"ran"`, 1)
+	mkLocal(t, dir, "test", "["+entry+"]")
+}
+
 // TestFixGolden proves byte parity across the default pick, explicit sigs,
 // the completion and ledger gate exits, and every typed refusal.
 func TestFixGolden(t *testing.T) {
@@ -353,6 +631,69 @@ func TestFixGolden(t *testing.T) {
 	t.Run("batch", testFixBatch)
 	t.Run("patch", testFixPatch)
 	t.Run("selected", testFixSelected)
+	t.Run("promotion", testFixPromotion)
+	t.Run("recipe", testFixRecipe)
+}
+
+// testFixRecipe pins the --recipe batch surface: selection by stored lens,
+// the empty-scope report for a lens-less recipe, and the flag refusals.
+func testFixRecipe(t *testing.T) {
+	t.Helper()
+	golden.Pin(t, harness, "recipe-json", setupRecipe, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "recipe-human", setupRecipe, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--verify-cmd", batchVerifyCmd)
+	golden.Pin(t, harness, "recipe-paths", setupRecipe, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--verify-cmd", batchVerifyCmd,
+		"--paths", "other.txt", "--json")
+	golden.Pin(t, harness, "recipe-empty", setupRecipeEmpty, nil,
+		"fix", "acme/app", "local-emptylens", "--recipe", "default", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "recipe-paths-empty", setupRecipe, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--verify-cmd", batchVerifyCmd,
+		"--paths", "docs/**", "--json")
+	golden.Pin(t, harness, "recipe-selected-json", setupRecipeSelected, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--selected", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "recipe-selected-human", setupRecipeSelected, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--selected", "--verify-cmd", batchVerifyCmd)
+	golden.Pin(t, harness, "recipe-selected-empty-json", setupRecipeSelectedEmpty, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--selected", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "recipe-selected-empty-human", setupRecipeSelectedEmpty, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--selected", "--verify-cmd", batchVerifyCmd)
+	golden.Pin(t, harness, "recipe-unknown", setupRecipe, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "nope", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "recipe-with-sig", setupRecipe, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--sig", sigInfo, "--json")
+	golden.Pin(t, harness, "recipe-with-test", setupRecipe, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "default", "--test", sigInfo, "--json")
+	golden.Pin(t, harness, "recipe-empty-name", setupRecipe, nil,
+		"fix", "acme/app", "local-recipe", "--recipe", "", "--json")
+}
+
+// testFixPromotion pins the --test promotion surface: the promote and commit
+// writes, the different-bytes refusal, the unreproduced refusal, and the
+// flag-combination refusals.
+func testFixPromotion(t *testing.T) {
+	t.Helper()
+	golden.Pin(t, harness, "test-json", setupTestPromote, nil,
+		"fix", "acme/app", "local-test", "--test", sigBatch, "--json")
+	golden.Pin(t, harness, "test-human", setupTestPromote, nil,
+		"fix", "acme/app", "local-test", "--test", sigBatch)
+	golden.Pin(t, harness, "test-commit", setupTestCommit, nil,
+		"fix", "acme/app", "local-test", "--test", sigBatch, "--commit", "--json")
+	golden.Pin(t, harness, "test-conflict", setupTestConflict, nil,
+		"fix", "acme/app", "local-test", "--test", sigBatch, "--json")
+	golden.Pin(t, harness, "test-unreproduced", setupTestUnreproduced, nil,
+		"fix", "acme/app", "local-test", "--test", sigInfo, "--json")
+	golden.Pin(t, harness, "test-all-conflict", setupTestPromote, nil,
+		"fix", "acme/app", "local-test", "--test", sigBatch, "--all", "--json")
+	golden.Pin(t, harness, "test-commit-without-test", setupTestPromote, nil,
+		"fix", "acme/app", "local-test", "--commit", "--json")
+	golden.Pin(t, harness, "test-empty", setupTestPromote, nil,
+		"fix", "acme/app", "local-test", "--test", "", "--json")
+	golden.Pin(t, harness, "test-dot-slash", setupTestDotSlash, nil,
+		"fix", "acme/app", "local-test", "--test", sigBatch, "--json")
+	golden.Pin(t, harness, "test-absolute", setupTestAbsoluteCmd, nil,
+		"fix", "acme/app", "local-test", "--test", sigBatch)
 }
 
 func testFixPatch(t *testing.T) {
@@ -444,8 +785,24 @@ func testFixRefusals(t *testing.T) {
 		"fix", "acme/app", "local-bad", "--sig", sigDone, "--json")
 	golden.Pin(t, harness, "bad-sig-unknown", setupBadSig, nil,
 		"fix", "acme/app", "local-bad", "--sig", "deadbeef", "--json")
-	golden.Pin(t, harness, "not-local", setupNotLocal, nil,
+	golden.Pin(t, harness, "pr-bundle-json", setupPRBundle, nil,
 		"fix", "acme/app", "4291", "--json")
+	golden.Pin(t, harness, "pr-bundle-human", setupPRBundle, nil,
+		"fix", "acme/app", "4291")
+	golden.Pin(t, harness, "pr-bundle-head-mismatch", setupPRMismatch, nil,
+		"fix", "acme/app", "4291", "--json")
+	golden.Pin(t, harness, "pr-bundle-batch", setupPRBatch, nil,
+		"fix", "acme/app", "4291", "--all", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "pr-bundle-recipe", setupPRRecipe, nil,
+		"fix", "acme/app", "4291", "--recipe", "default", "--verify-cmd", batchVerifyCmd, "--json")
+	golden.Pin(t, harness, "pr-bundle-test", setupPRTest, nil,
+		"fix", "acme/app", "4291", "--test", sigBatch, "--json")
+	golden.Pin(t, harness, "pr-bundle-test-commit", setupPRTest, nil,
+		"fix", "acme/app", "4291", "--test", sigBatch, "--commit", "--json")
+	golden.Pin(t, harness, "pr-bundle-test-commit-mismatch", setupPRTestMismatch, nil,
+		"fix", "acme/app", "4291", "--test", sigBatch, "--commit", "--json")
+	golden.Pin(t, harness, "corpus-bundle", setupCorpus, nil,
+		"fix", "acme/app", "corpus-x", "--json")
 	golden.Pin(t, harness, "missing-findings", setupMissing, nil,
 		"fix", "acme/app", "local-empty", "--json")
 	golden.Pin(t, harness, "unknown-flag", setupPass, nil,

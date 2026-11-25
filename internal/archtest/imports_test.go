@@ -27,6 +27,9 @@ const modulePath = "github.com/stainless-code/verdict/"
 // subpackage prefix.
 var forbiddenDeps = []string{
 	"internal/cli",
+	"internal/acp",
+	"internal/lsp",
+	"internal/dashboard",
 	"internal/drain",
 	"internal/mcp",
 	"internal/schemagen",
@@ -59,6 +62,7 @@ var forbiddenDeps = []string{
 	"internal/scaffold",
 	"internal/run",
 	"internal/demo",
+	"internal/loop",
 	"internal/backtest",
 	"internal/serve",
 }
@@ -72,12 +76,16 @@ var facadeAllowedDeps = map[string]bool{
 	"": true, // the payload root (skillfs) embeds the shipped lens pack
 	// init renders the CI workflow from the catalog row's documented key and
 	// permission facts, so the facade now reaches the catalog itself.
-	"internal/agentcatalog":   true,
-	"internal/argvshape":      true,
-	"internal/atomic":         true,
-	"internal/brief":          true,
-	"internal/config":         true,
-	"internal/controls":       true,
+	"internal/agentcatalog": true,
+	"internal/argvshape":    true,
+	"internal/atomic":       true,
+	"internal/azure":        true,
+	"internal/bitbucket":    true,
+	"internal/brief":        true,
+	"internal/config":       true,
+	"internal/controls":     true,
+	// verify, fetch, and record name reviewed content by its git tree id.
+	"internal/contenttree":    true,
 	"internal/exclude":        true,
 	"internal/core":           true,
 	"internal/core/adopt":     true,
@@ -101,6 +109,7 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/core/panel":     true,
 	"internal/core/post":      true,
 	"internal/core/ready":     true,
+	"internal/core/recipe":    true,
 	"internal/core/record":    true,
 	"internal/core/report":    true,
 	"internal/core/reviewdoc": true,
@@ -115,12 +124,15 @@ var facadeAllowedDeps = map[string]bool{
 	"internal/evidence":       true,
 	"internal/fence":          true,
 	"internal/forgejo":        true,
+	"internal/gitcmd":         true,
+	"internal/gitsource":      true,
 	"internal/hunks":          true,
 	"internal/identity":       true,
 	"internal/incident":       true,
 	"internal/spend":          true,
 	"internal/jq":             true,
 	"internal/kb":             true,
+	"internal/noblock":        true,
 	"internal/overrides":      true,
 	"internal/provenance":     true,
 	"internal/readcommon":     true,
@@ -143,15 +155,17 @@ var facadeAllowedDeps = map[string]bool{
 // stay a leaf, so a new internal dependency is a deliberate boundary change
 // the facade allowlist would otherwise hide (a leaf that imports another
 // allowlisted package changes no facade dep).
-var leafHelpers = []string{"internal/exclude", "internal/shellquote", "internal/storelock", "internal/strictjson"}
+var leafHelpers = []string{
+	"internal/exclude", "internal/gitcmd", "internal/gitsource", "internal/noblock", "internal/shellquote", "internal/storelock", "internal/strictjson",
+}
 
 // coreSubpackages classifies every package under internal/core. A new package
 // must be added here deliberately, so the core boundary is never widened
 // unnoticed.
 var coreSubpackages = []string{
 	"adopt", "approval", "backtest", "budget", "calibrate", "checktree", "corpus", "corpus/corpustest", "coverage", "demo", "doctor", "drain", "exec",
-	"fetch", "fix", "handoff", "index", "ingest", "init", "journal", "learn", "pack", "panel", "post", "quality", "query", "ready", "recipe",
-	"record", "repair", "report", "reviewdoc", "risk", "run", "skill", "threads", "trend", "triage", "upgrade", "verify",
+	"fetch", "fix", "handoff", "index", "ingest", "init", "journal", "learn", "loop", "pack", "panel", "post", "quality", "query", "ready", "recipe",
+	"record", "repair", "report", "reviewdoc", "reviewflow", "risk", "run", "skill", "threads", "trend", "triage", "upgrade", "verify",
 }
 
 // readcommonDeniedCoreDeps names every core service package the shared store
@@ -188,6 +202,16 @@ var boundaries = []boundary{
 	{
 		name:    "mcp",
 		pattern: "./internal/mcp",
+		deny:    forbiddenDeps,
+	},
+	{
+		name:    "acp",
+		pattern: "./internal/acp",
+		deny:    forbiddenDeps,
+	},
+	{
+		name:    "lsp",
+		pattern: "./internal/lsp",
 		deny:    forbiddenDeps,
 	},
 	{

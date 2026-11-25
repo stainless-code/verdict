@@ -13,6 +13,7 @@ import (
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -227,7 +228,7 @@ func gitTopLevel(ctx context.Context, budget time.Duration) (string, error) {
 	probe, stop := context.WithTimeout(ctx, budget)
 	defer stop()
 	res, err := (coreexec.Runner{OutputCap: repoRootOutputCap}).Run(probe, &core.Command{
-		Argv: []string{"git", "rev-parse", "--show-toplevel"}, OutputCap: repoRootOutputCap,
+		Argv: gitcmd.Argv("", "rev-parse", "--show-toplevel"), Env: gitcmd.Env(nil), OutputCap: repoRootOutputCap,
 	})
 	if perr := probe.Err(); perr != nil {
 		return "", probeFailure("probe git rev-parse --show-toplevel", perr)
@@ -261,6 +262,17 @@ func checkoutEvidence() (bool, error) {
 	if err != nil {
 		return false, probeFailure("read working directory", err)
 	}
+	return gitEntryAbove(dir)
+}
+
+// InsideCheckout reports whether dir or one of its ancestors carries a .git
+// entry (a directory for a normal checkout, a file for a linked worktree).
+// It runs no git and walks dir's lexical ancestors as given: it does not
+// resolve symlinks, so a caller validating an operator- or client-supplied
+// root resolves it (filepath.EvalSymlinks) first, or a link inside a
+// checkout that points outside it would pass. An unreadable entry is an
+// error, never absence.
+func InsideCheckout(dir string) (bool, error) {
 	return gitEntryAbove(dir)
 }
 
@@ -672,4 +684,34 @@ func IsDir(path string) bool {
 func IsFile(path string) bool {
 	fi, err := os.Stat(path)
 	return err == nil && fi.Mode().IsRegular()
+}
+
+const (
+	checkoutHeadTimeout = 30 * time.Second
+	checkoutHeadCap     = 4 << 10
+)
+
+// CheckoutHead reads the commit checked out at root through the injected
+// commander, so a verb that acts on the checkout (validation, fix) can prove
+// it is on the head a bundle reviewed. exit is git's status when it ran and
+// failed; err is a spawn failure. Callers own the refusal wording.
+func CheckoutHead(ctx context.Context, commander core.Commander, root string) (head string, exit int, err error) {
+	tctx, cancel := context.WithTimeout(ctx, checkoutHeadTimeout)
+	defer cancel()
+	res, err := commander.Run(tctx, &core.Command{
+		Argv:      gitcmd.Argv(root, "rev-parse", "HEAD"),
+		Env:       gitcmd.Env(nil),
+		OutputCap: checkoutHeadCap,
+	})
+	if err != nil {
+		//nolint:wrapcheck // callers render the spawn error in their own refusal
+		return "", 0, err
+	}
+	if res.ExitCode != 0 {
+		return "", res.ExitCode, nil
+	}
+	if i := strings.IndexAny(res.Stdout, "\r\n"); i >= 0 {
+		return res.Stdout[:i], 0, nil
+	}
+	return res.Stdout, 0, nil
 }

@@ -35,8 +35,9 @@ one-shot call only returns that baseline. No state is saved between calls.
 to finish, including failure, then reports readiness. Timeout returns not-ready
 with a `wait-timeout` blocker and `data.wait.outcome`; advisory exit 0 becomes
 exit 1 with `--check`. MCP `ready` accepts `wait_for: "build"` and a timeout
-up to 50s. GitHub waits are supported; GitLab and Forgejo refuse explicitly
-with `provider-unimplemented`. Saved provider metadata is honored, or select
+up to 50s. GitHub and GitLab waits are supported; other hosts (Forgejo,
+Bitbucket, Azure) refuse with `provider-unimplemented` before any host command.
+Saved provider metadata is honored, or select
 `pr-wait --provider` explicitly; the default without a bundle is GitHub.
 
 These are bounded foreground reads — no watch feed, daemon, persisted cursor,
@@ -102,7 +103,7 @@ publication. A suppression that matches no finding only warns.
 
 Use `post --min-severity important` for a publication floor. `off` overrides a
 configured floor. `report --include-withheld` exposes withheld findings under
-`Quiet by policy`; `report --check` still ignores them.
+`Quiet by policy`; `gate --max-severity` still ignores them.
 
 `fetch` and `fetch-local` accept repeatable `--ignore <glob>` rules. They run
 last, above the base ignore file; `!` re-includes. `--no-default-excludes`
@@ -129,7 +130,7 @@ change-risk judgment for the reviewed head:
   during `record` and marks the stored claim `stale: true`.
 
 The score is advisory by default (`report --risk`) and enforced only when
-explicitly gated (`report --max-risk <level>`). `report` always computes a
+explicitly gated (`gate --max-risk <level>`). `report` always computes a
 deterministic floor from open findings, deferred/unanchored items, head
 freshness, and coverage receipts (`reported = max(claimed, floor)`), so
 never emit an optimistic `low` when coverage is incomplete or issues remain.

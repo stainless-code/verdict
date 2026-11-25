@@ -5,8 +5,18 @@ import (
 	"strings"
 )
 
+// SanitizeTail is the one output scrub every recorded tail shares: the secret
+// environment values, credential shapes (tokens, bearer and authorization
+// headers, userinfo URLs), and terminal control sequences. The launcher's
+// failure messages call it so a refusal never prints what verify's own tail
+// would hide.
+func SanitizeTail(tail string, environ []string) string { return sanitizeTail(tail, environ) }
+
+// Control sequences are stripped first: an escape placed inside a credential
+// (`sk-\x1b[0mant-…`) would otherwise hide it from the redactors, and stripping
+// it afterwards would rejoin the credential in the clean output.
 func sanitizeTail(tail string, environ []string) string {
-	return stripControlChars(redactShapes(redactSecrets(tail, environ)))
+	return redactShapes(redactSecrets(stripControlChars(tail), environ))
 }
 
 const tokenShapes = `(?:gh[pousr]_[A-Za-z0-9]{16,}` +
@@ -126,7 +136,8 @@ func skipCSI(s string, from int) int {
 }
 
 // skipOSC returns the index of the byte closing an OSC string (BEL or the
-// two-byte ST), or the last byte of s when it never closes.
+// two-byte ST), the line break that ends it when it never closes on its
+// line, or the last byte of s.
 func skipOSC(s string, from int) int {
 	for j := from; j < len(s); j++ {
 		switch {
@@ -134,6 +145,12 @@ func skipOSC(s string, from int) int {
 			return j
 		case strings.HasPrefix(s[j:], "\x1b\\"):
 			return j + 1
+		case s[j] == '\n':
+			// An OSC that never closes ends at the line break, so one
+			// stray introducer cannot blank the rest of the capture. The
+			// break goes with it: keeping it would split a credential the
+			// escape was planted in, and the redactors match one line.
+			return j
 		}
 	}
 	return len(s) - 1

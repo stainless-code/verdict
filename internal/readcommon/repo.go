@@ -3,8 +3,11 @@ package readcommon
 import (
 	urlpkg "net/url"
 	"path"
+	"slices"
 	"strconv"
 	"strings"
+
+	"github.com/stainless-code/verdict/internal/core"
 )
 
 // slashSep is the URL path separator the project-path walk splits on.
@@ -31,17 +34,27 @@ func BundleProject(dir string) string {
 	if len(parts) < 2 {
 		return ""
 	}
+	if project, ok := azureProject(parts); ok {
+		return project
+	}
 	if end := projectPathEnd(parts); end > 0 {
 		return path.Join(parts[:end]...)
 	}
 	return path.Join(parts[:2]...)
 }
 
-// BundleHost names the review URL's host (lowercased, port stripped), or ""
+// BundleHost names the review URL's authority ([core.URLAuthority]: a
+// non-default port kept, so two hosts that differ by port never match), or ""
 // when the bundle carries no review URL: a local bundle names no host, so two
 // local bundles never mismatch on it.
 func BundleHost(dir string) string {
-	rawURL := OpenBundle(dir).StrField("url")
+	return OpenBundle(dir).Host()
+}
+
+// Host is [BundleHost] read from this bundle's own snapshot of its record, so
+// a caller that reads other fields from b pins to the same record.
+func (b *Bundle) Host() string {
+	rawURL := b.StrField("url")
 	if rawURL == "" {
 		return ""
 	}
@@ -49,7 +62,18 @@ func BundleHost(dir string) string {
 	if err != nil || parsed.Host == "" {
 		return ""
 	}
-	return strings.ToLower(parsed.Hostname())
+	return core.URLAuthority(parsed)
+}
+
+// azureProject reads Azure DevOps' <project>/<repo> out of
+// .../<project>/_git/<repo>/pullrequest/<n>: the organization sits above the
+// project there, so the first-two-segments fallback would name the wrong pair.
+func azureProject(parts []string) (string, bool) {
+	at := slices.Index(parts, "_git")
+	if at < 1 || at+1 >= len(parts) {
+		return "", false
+	}
+	return parts[at-1] + slashSep + parts[at+1], true
 }
 
 // projectPathEnd finds the segment that ends the project path: GitLab's /-/

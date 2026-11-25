@@ -452,3 +452,10 @@ func draft(ctx context.Context, r *cli.Runner, req Request, fl *flags, dir strin
 	}
 	return 0, false
 }
+
+// CheckFlags validates drain's flags alone, reporting a usage error exactly as
+// Run would, so the front door rejects a mistyped flag before any host lookup.
+func CheckFlags(r *cli.Runner, args []string) (code int, bad bool) {
+	_, code, bad = parseFlags(r, args)
+	return code, bad
+}

@@ -48,6 +48,23 @@ type PostData struct { //nolint:govet // field order is the published property o
 	ProvenanceEnabled   bool                     `json:"-"`
 	ProvenanceReceipt   *ProvenanceReceipt       `json:"-"`
 	ProvenanceTruncated []ProvenanceTruncatedRow `json:"-"`
+
+	// RenderedComments and RenderedHash are the dry-run's settled review text
+	// and the digest over the exact payloads a real post would hand the host:
+	// not wire fields, so the CLI envelope and the schema keep their bytes.
+	// RenderedComments lists every comment a real
+	// post would send, in posting order (the review body, each follow-up part a
+	// split adds, then each inline comment), so the serve confirm dialog shows
+	// all of what the digest covers; the confirmed post is bound to the hash.
+	RenderedComments []RenderedComment `json:"-"`
+	RenderedHash     string            `json:"-"`
+}
+
+// RenderedComment is one comment a real post sends: its place in the post and
+// its text exactly as the host receives it, hidden review marker included.
+type RenderedComment struct {
+	Label string
+	Text  string
 }
 
 // ValidationData is the applied validator pass a post reports: the exact-file
@@ -62,9 +79,23 @@ type ValidationData struct { //nolint:govet // field order is the published prop
 
 // PostBody is the rendered post body summary.
 type PostBody struct { //nolint:govet // field order is the published property order
-	Marker  string `json:"marker"`
-	Footer  any    `json:"footer,omitempty"`
-	Diagram any    `json:"diagram,omitempty"`
+	Marker  string       `json:"marker"`
+	Footer  any          `json:"footer,omitempty"`
+	Diagram *PostDiagram `anyOf:"null"            json:"diagram,omitempty" optional:"true"`
+}
+
+// PostDiagram is the dry run's behavioral-diagram disposition: the state the
+// body drew plus exactly the fields evidence.diagram stores, so the dry run
+// and the persisted receipt agree field by field. The dry run reports null
+// when no block is drawn — no diagram supplied, or the knob off.
+type PostDiagram struct { //nolint:govet // field order is the published property order
+	Status   string `enum:"rendered|omitted"    json:"status"`
+	Type     string `enum:"sequence|state|flow" json:"type,omitempty"`
+	Title    string `json:"title,omitempty"`
+	Supplied int    `json:"supplied"            min:"0"`
+	Verified int    `json:"verified"            min:"0"`
+	Dropped  int    `json:"dropped"             min:"0"`
+	Omitted  string `json:"omitted,omitempty"`
 }
 
 // Suggestions counts embedded review suggestions.
@@ -127,7 +158,7 @@ type Post struct { //nolint:govet // field order is the published property order
 	Coverage         *CoverageSummary `anyOf:"null"             json:"coverage,omitempty"       optional:"true"`
 	ChunkCoverage    *ChunkCoverage   `anyOf:"null"             json:"chunk_coverage,omitempty" optional:"true"`
 	// Evidence is the deterministic evidence receipt this post's merge
-	// computed, stored beside the head it was made at so report --check grades
+	// computed, stored beside the head it was made at so gate grades
 	// the same quote, receipt, and spec checks the publication did.
 	Evidence  *EvidenceReceipt `anyOf:"null" json:"evidence,omitempty" optional:"true"`
 	Summary   *PostSummary     `anyOf:"null" json:"summary,omitempty"  optional:"true"`

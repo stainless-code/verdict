@@ -133,15 +133,30 @@ type ReportFilters struct { //nolint:govet // field order is the published prope
 
 // ReportCost is the summed cost rollup carried by report --cost.
 type ReportCost struct { //nolint:govet // field order is the published property order
-	Runs              int       `json:"runs"                min:"0"`
-	RunsWithCost      int       `json:"runs_with_cost"      min:"0"`
-	InputTokens       *int      `json:"input_tokens"        min:"0"`
-	OutputTokens      *int      `json:"output_tokens"       min:"0"`
-	TotalTokens       *int      `json:"total_tokens"        min:"0"`
-	CachedInputTokens *int      `json:"cached_input_tokens" min:"0"`
-	EstUSD            *float64  `json:"est_usd"`
-	ByTier            CostTiers `json:"by_tier"`
-	Receipts          []any     `json:"receipts,omitempty"`
+	Runs              int        `json:"runs"                min:"0"`
+	RunsWithCost      int        `json:"runs_with_cost"      min:"0"`
+	InputTokens       *int       `json:"input_tokens"        min:"0"`
+	OutputTokens      *int       `json:"output_tokens"       min:"0"`
+	TotalTokens       *int       `json:"total_tokens"        min:"0"`
+	CachedInputTokens *int       `json:"cached_input_tokens" min:"0"`
+	EstUSD            *float64   `json:"est_usd"`
+	ByTier            CostTiers  `json:"by_tier"`
+	Receipts          []any      `json:"receipts,omitempty"`
+	Mtd               *ReportMTD `anyOf:"null"               json:"mtd,omitempty"`
+}
+
+// ReportMTD is the month-to-date spend aggregate carried by report --cost
+// when a monthly ceiling is configured. It keeps existing cost fields
+// backwards-compatible: the object appears only when Flags.Cost is set.
+type ReportMTD struct {
+	KnownUSD           *float64 `json:"known_usd,omitempty"`
+	MonthlyCapUSD      *float64 `json:"monthly_cap_usd,omitempty"`
+	RemainingUSD       *float64 `json:"remaining_usd,omitempty"`
+	MonthlyRepoCap     *float64 `json:"monthly_repo_cap,omitempty"`
+	MonthlyPersonalCap *float64 `json:"monthly_personal_cap,omitempty"`
+	Month              string   `json:"month"`
+	KnownCount         int      `json:"known_count"`
+	UnknownCount       int      `json:"unknown_count"`
 }
 
 // CostTiers carries the three named effort-tier rollups.
@@ -157,18 +172,6 @@ type CostTier struct {
 	OutputTokens *int `json:"output_tokens" min:"0"`
 	TotalTokens  *int `json:"total_tokens"  min:"0"`
 	Runs         int  `json:"runs"          min:"0"`
-}
-
-// ReportCompleteness compares fetched, posted and reviewed heads, plus the
-// patch identities both sides stamped: same_patch is true when the reviewed
-// bundle identity and the posted post.json patch id share id and kind.
-type ReportCompleteness struct { //nolint:govet // field order is the published property order
-	Reviewed        bool    `json:"reviewed"`
-	FetchedHead     *string `json:"fetched_head"`
-	PostedHead      *string `json:"posted_head"`
-	SamePatch       *bool   `json:"same_patch,omitempty"`
-	ReviewedPatchID *string `json:"reviewed_patch_id,omitempty"`
-	PostedPatchID   *string `json:"posted_patch_id,omitempty"`
 }
 
 // ReportCompliance is the captured-policy compliance view: the unfiltered
@@ -197,7 +200,8 @@ type RiskInputs struct { //nolint:govet // field order is the published property
 	MissingCoverage bool `json:"missing_coverage"`
 }
 
-// ReportRisk is the advisory risk block rendered by report --risk / --max-risk.
+// ReportRisk is the advisory risk block rendered by report --risk and read
+// by the gate --max-risk dimension.
 type ReportRisk struct { //nolint:govet // field order is the published property order
 	Claimed        string     `enum:"unknown|low|medium|high|critical" json:"claimed"`
 	Floor          string     `enum:"low|medium|high|critical"         json:"floor"`
@@ -320,18 +324,57 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Output              *string                  `json:"output"`
 	Filters             ReportFilters            `json:"filters"`
 	Items               []FindingItem            `json:"items"`
+	OrgPack             *OrgPackInfo             `json:"org_pack,omitempty"`
 	Cost                *ReportCost              `json:"cost,omitempty"`
 	Compare             *ReportCompare           `anyOf:"null"                     json:"compare,omitempty"      optional:"true"`
-	Completeness        *ReportCompleteness      `json:"completeness,omitempty"`
 	Compliance          *ReportCompliance        `json:"compliance,omitempty"`
 	Validation          *ValidationData          `json:"validation,omitempty"      optional:"true"`
 	Approval            *ApprovalReceipt         `anyOf:"null"                     json:"approval,omitempty"     optional:"true"`
 	Risk                *ReportRisk              `json:"risk,omitempty"`
-	Gate                *ReportGate              `json:"gate,omitempty"`
+	Replay              *ReportReplay            `anyOf:"null"                     json:"replay,omitempty"       optional:"true"`
 	CostRaw             *jq.Obj                  `json:"-"`
 	ProvenanceEnabled   bool                     `json:"-"`
 	ProvenanceReceipt   *ProvenanceReceipt       `json:"-"`
 	ProvenanceTruncated []ProvenanceTruncatedRow `json:"-"`
+}
+
+// OrgPackInfo names the central rules pack version that governed one run:
+// the base-owned pin beside the locked content hash it resolved to. Empty
+// fields name what the bundle snapshot could not prove; a nil pointer means
+// no org pin governed the run at all.
+type OrgPackInfo struct {
+	Repo    string `json:"repo"`
+	Ref     string `json:"ref"`
+	Path    string `json:"path"`
+	SHA     string `json:"sha,omitempty"`
+	Hash    string `json:"hash,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Version string `json:"version,omitempty"`
+}
+
+// ReportReplay is the `report --policy` comparison: the decision the captured
+// policy derives and the one the candidate file derives over the same stored
+// findings. It is present only on a replay, so an ordinary report carries
+// neither the key nor an empty object.
+type ReportReplay struct {
+	PolicyPath string             `json:"policy_path"`
+	Captured   ReportReplaySide   `json:"captured"`
+	Candidate  ReportReplaySide   `json:"candidate"`
+	Changed    []ReportReplayMove `json:"changed"`
+}
+
+// ReportReplaySide is one policy's gate and approval over the stored bundle.
+type ReportReplaySide struct {
+	Reason     string `json:"reason,omitempty"`
+	GatePassed bool   `json:"gate_passed"`
+	Approved   bool   `json:"approved"`
+}
+
+// ReportReplayMove is one gate dimension whose status the candidate moved.
+type ReportReplayMove struct {
+	ID     string `json:"id"`
+	Before string `json:"before"`
+	After  string `json:"after"`
 }
 
 // Wire renders the data object in wire order. CostRaw wins over the typed

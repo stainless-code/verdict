@@ -36,28 +36,28 @@ import (
 const (
 	coverageRequire = "require"
 	coverageWarn    = "warn"
+	codeBadFlags    = "bad-flags"
 )
 
 // ReportRequest carries the report options. Output/Sarif name files whose
-// bytes return in the response instead of being written.
+// bytes return in the response instead of being written. Report is the
+// advisory read: gating belongs to [Client.Gate], the only gating verb.
 type ReportRequest struct {
 	Invocation
-	Status, Kind, Output, Sarif, Check, Live, MaxRisk string
+	Status, Kind, Output, Sarif string
 	// Compare names a baseline bundle (a directory, or a PR/local slug in the
 	// same state directory) to compare signature-matched findings against.
-	Compare                                   string
-	Cost, Completeness, IncludeWithheld, Risk bool
+	Compare                     string
+	Cost, IncludeWithheld, Risk bool
 }
 
 // ReportResponse is the offline review report with render inputs and the
 // requested file bytes.
 type ReportResponse struct { //nolint:govet // field order is the public API surface
 	Result
-	Human      []string
-	CheckLines []string
-	GateFailed bool
-	Output     *Artifact
-	Sarif      *Artifact
+	Human  []string
+	Output *Artifact
+	Sarif  *Artifact
 }
 
 // Report renders the offline review report for the bundle.
@@ -70,10 +70,8 @@ func (c *Client) Report(ctx context.Context, req *ReportRequest) (*ReportRespons
 		ReadRequest: rr,
 		Flags: reportcore.Flags{
 			Status: req.Status, Kind: req.Kind, Output: req.Output, Sarif: req.Sarif,
-			Check: req.Check, Live: req.Live, MaxRisk: req.MaxRisk,
 			Compare: req.Compare,
-			Cost:    req.Cost, Completeness: req.Completeness,
-			IncludeWithheld: req.IncludeWithheld, Risk: req.Risk,
+			Cost:    req.Cost, IncludeWithheld: req.IncludeWithheld, Risk: req.Risk,
 		},
 		Effective: core.Defaults(),
 	})
@@ -81,12 +79,10 @@ func (c *Client) Report(ctx context.Context, req *ReportRequest) (*ReportRespons
 		return nil, refusalErr(ref)
 	}
 	return &ReportResponse{
-		Result:     resultOf(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data),
-		Human:      resp.Human,
-		CheckLines: resp.CheckLines,
-		GateFailed: resp.GateFailed,
-		Output:     artifactOf(resp.Output),
-		Sarif:      artifactOf(resp.Sarif),
+		Result: resultOf(resp.Repo, resp.Pr, resp.At, resp.Next, resp.Warnings, resp.Data),
+		Human:  resp.Human,
+		Output: artifactOf(resp.Output),
+		Sarif:  artifactOf(resp.Sarif),
 	}, nil
 }
 
@@ -139,6 +135,11 @@ func (c *Client) Config(ctx context.Context, req *ConfigRequest) (*ConfigRespons
 type GateRequest struct {
 	Invocation
 	MaxSeverity string
+	// MaxRisk gates on the reported change-risk band (low|medium|high|critical).
+	MaxRisk string
+	// Category narrows the MaxSeverity dimension to one finding kind; it gates
+	// nothing alone, so it needs MaxSeverity.
+	Category    string
 	Live        string
 	Coverage    string
 	RequireHead bool
@@ -162,17 +163,14 @@ type GateResponse struct {
 
 // Gate runs the composed CI gate: findings at-or-above MaxSeverity, a
 // completed post for the fetched HEAD (RequireHead), the stored diff-coverage
-// receipt for that HEAD (Coverage, default require), and live unresolved
-// threads (Live, default auto). At least one dimension is required: Live and
+// receipt for that HEAD (Coverage, default require), the reported risk band
+// (MaxRisk), and live unresolved threads (Live, default auto). At least one
+// dimension is required: Live and
 // Coverage alone only set postures, so an empty request is a refusal. It never
 // posts, merges, or writes a store.
 func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, error) {
-	if req.MaxSeverity == "" && !req.RequireHead {
-		return nil, refusalErr(&core.RefusalError{
-			Code: "bad-flags",
-			Message: "gate needs at least one dimension: set MaxSeverity or RequireHead " +
-				"(Live and Coverage alone only set postures)",
-		})
+	if err := gateDimensionRefusal(req); err != nil {
+		return nil, err
 	}
 	coverage, err := gateCoveragePosture(req.Coverage)
 	if err != nil {
@@ -186,6 +184,7 @@ func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, err
 		ReadRequest: rr,
 		Flags: reportcore.Flags{
 			Check: req.MaxSeverity, Completeness: req.RequireHead, Live: req.Live, Coverage: coverage,
+			MaxRisk: req.MaxRisk, Category: req.Category,
 		},
 		Effective: core.Defaults(),
 	})
@@ -194,7 +193,7 @@ func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, err
 	}
 	// Gate is always populated here: the guard above rejects the request that
 	// sets no dimension, and every gating flag fills the block.
-	gate := resp.Data.Gate
+	gate := resp.Gate
 	dims := make([]GateDimension, 0, len(gate.Dimensions))
 	for _, dim := range gate.Dimensions {
 		dims = append(dims, GateDimension{ID: dim.ID, Status: dim.Status, Detail: dim.Detail, Count: dim.Count})
@@ -204,6 +203,25 @@ func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, err
 		Passed:     gate.Passed,
 		Dimensions: dims,
 	}, nil
+}
+
+// gateDimensionRefusal refuses a request that gates nothing: no dimension, or
+// a Category with no tier to narrow.
+func gateDimensionRefusal(req *GateRequest) error {
+	if req.MaxSeverity == "" && !req.RequireHead && req.MaxRisk == "" {
+		return refusalErr(&core.RefusalError{
+			Code: codeBadFlags,
+			Message: "gate needs at least one dimension: set MaxSeverity, RequireHead, or MaxRisk " +
+				"(Live and Coverage alone only set postures)",
+		})
+	}
+	if req.Category != "" && req.MaxSeverity == "" {
+		return refusalErr(&core.RefusalError{
+			Code:    codeBadFlags,
+			Message: "gate Category narrows MaxSeverity: set a tier with it (a category alone gates nothing)",
+		})
+	}
+	return nil
 }
 
 // gateCoveragePosture resolves the coverage posture the way the CLI parser
@@ -217,7 +235,7 @@ func gateCoveragePosture(posture string) (string, error) {
 		return posture, nil
 	default:
 		return "", refusalErr(&core.RefusalError{
-			Code:    "bad-flags",
+			Code:    codeBadFlags,
 			Message: "unknown coverage posture '" + posture + "' for gate (want require|warn)",
 		})
 	}
@@ -372,10 +390,26 @@ type VerifyRequest struct {
 	EnvAllowlist []string
 	// Sandbox wraps the command in the host's enforced sandbox: bwrap on
 	// Linux (no network, empty credential dirs, a writable reviewed root, a
-	// private /tmp), sandbox-exec on macOS (no network, loopback included;
-	// credentials stay visible). The call refuses with sandbox-unavailable
-	// when the host cannot enforce it instead of running unwrapped.
+	// private /tmp), sandbox-exec on macOS (no network, loopback included; no
+	// Mach services; writes only to the reviewed root and a private TMPDIR;
+	// credential paths and the shared host temp roots denied). The call
+	// refuses with sandbox-unavailable when the host cannot enforce it, or when
+	// the reviewed root's shape cannot be protected, instead of running
+	// unwrapped, and never falls back to SandboxNetworkOnly. The Linux shapes:
+	// no .git; a symlinked .git; a .git that is neither a directory nor a
+	// gitdir: file; a gitdir or commondir that does not resolve to an existing
+	// directory; a gitdir that is the root itself; a pointer file that is not
+	// regular, unreadable, or over its cap; and a pointer whose walk (git's
+	// own, `..` included) passes through a symlink or a missing component
+	// inside the root.
 	Sandbox bool
+	// SandboxNetworkOnly is the explicit Linux opt-in for hosts without
+	// bubblewrap: `unshare --user --map-root-user --net`, network isolation
+	// alone. The host filesystem, the host /proc, and filesystem unix sockets
+	// stay reachable, so the run is never reported Sandboxed; its
+	// SandboxMechanism is "unshare-net". It refuses sandbox-unavailable on
+	// every other host and bad-flags together with Sandbox.
+	SandboxNetworkOnly bool
 }
 
 // VerifyResponse carries the verify outcome and the recorded proof.
@@ -386,8 +420,13 @@ type VerifyResponse struct { //nolint:govet // field order is the public API sur
 	TimedOut bool
 	Tail     string
 	Group    string // deep validation: the group the receipt certifies
-	Head     string // deep validation: the head the command ran on
-	Receipt  string // deep validation: the recorded receipt path
+	Head     string // deep validation: the reviewed head the receipt certifies
+	Tree     string // the content tree the command ran on, what a receipt binds; empty when verify could not snapshot it
+	Receipt  string // the tool-only receipt path (verify-receipt.json, or validation-<group>.json)
+	// SandboxMechanism names the wrapper the command ran under: "bwrap" or
+	// "sandbox-exec" (the full shape), "unshare-net" (network-only), or empty
+	// when the run was not wrapped.
+	SandboxMechanism string
 }
 
 // Verify runs the recorded verifyCmd with the watchdog and records proof.
@@ -397,13 +436,14 @@ func (c *Client) Verify(ctx context.Context, req *VerifyRequest) (*VerifyRespons
 		return nil, err
 	}
 	resp, ref := verifycore.Run(ctx, &verifycore.Request{
-		ReadRequest:  rr,
-		TimeoutRaw:   req.Timeout,
-		Group:        req.Group,
-		Command:      req.Command,
-		Sandbox:      req.Sandbox,
-		EnvAllowlist: req.EnvAllowlist,
-		Environ:      req.Env,
+		ReadRequest:        rr,
+		TimeoutRaw:         req.Timeout,
+		Group:              req.Group,
+		Command:            req.Command,
+		Sandbox:            req.Sandbox,
+		SandboxNetworkOnly: req.SandboxNetworkOnly,
+		EnvAllowlist:       req.EnvAllowlist,
+		Environ:            req.Env,
 	})
 	if ref != nil {
 		return nil, refusalErr(ref)
@@ -417,7 +457,11 @@ func (c *Client) Verify(ctx context.Context, req *VerifyRequest) (*VerifyRespons
 		Tail:     resp.Tail,
 		Group:    data.Group,
 		Head:     data.Head,
+		Tree:     data.Tree,
 		Receipt:  data.Receipt,
+		// The mechanism rides beside the deep-validation fields because a
+		// patch run and a group run both carry it.
+		SandboxMechanism: data.SandboxMechanism,
 	}, nil
 }
 

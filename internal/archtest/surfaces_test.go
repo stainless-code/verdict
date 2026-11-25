@@ -28,12 +28,16 @@ import (
 var mcpOmittedVerbs = map[string]string{
 	"panel":     "CLI-only invoker dispatch contract (STA-91)",
 	"mcp":       "the MCP transport entry point itself",
+	"acp":       "the ACP transport entry point itself, like mcp",
+	"lsp":       "the LSP transport entry point itself, like acp",
+	"dashboard": "its product is a terminal session; the MCP query tools already expose the same reads",
 	"skill":     "distribution surface (pkg/verdict/doc.go)",
 	"uninstall": "distribution surface (pkg/verdict/doc.go)",
 	"upgrade":   "distribution surface (pkg/verdict/doc.go)",
 	"gate":      "a CI exit code, not a tool an agent should act on",
 	"run":       "launches the operator's finder topology; MCP consumes evidence only",
 	"demo":      "spawns the operator's own agent CLI for a first-run impression: a tool call would launch unpriced local work",
+	"loop":      "spawns the operator's agent for review and fix rounds in the working tree: a tool call would launch unpriced local work",
 	"drain":     "writes a local plan and may launch the operator's agent, so a tool call would start unpriced local work",
 	"backtest":  "mining is free, but replay will spend on model runs: the CLI owns both",
 	"serve":     "the MCP surface already exposes the same reads as tools; a tool that binds a listener starts a transport from a transport",
@@ -49,11 +53,15 @@ var mcpOmittedVerbs = map[string]string{
 var sdkOmittedVerbs = map[string]string{
 	"panel":     "CLI-only invoker dispatch contract (STA-91)",
 	"mcp":       "the MCP transport entry point itself",
+	"acp":       "the ACP transport entry point itself, like mcp",
+	"lsp":       "its product is a stdio session an editor drives, not review data",
+	"dashboard": "its product is a terminal session a person drives, not review data",
 	"skill":     "distribution surface (pkg/verdict/doc.go)",
 	"uninstall": "distribution surface (pkg/verdict/doc.go)",
 	"upgrade":   "distribution surface (pkg/verdict/doc.go)",
 	"run":       "a process launcher, not review data: the CLI owns it (see --print)",
 	"demo":      "a process launcher with a temp-directory lifecycle, not review data: the CLI owns it",
+	"loop":      "an agent launcher that edits the working tree, not review data: the CLI owns it (see --print)",
 	"drain":     "a local plan and agent launcher, not review data: the CLI owns it",
 	"backtest":  "replay will spend on model runs; the CLI owns the spend boundary",
 	"serve":     "its product is HTTP; a method that blocks on a listener is not a client call",
@@ -96,6 +104,19 @@ func readSurfaceVerbs(t *testing.T) surfaceVerbs {
 	}
 }
 
+// mcpQuerySurface are the MCP tools with no CLI twin: read-only queries
+// over the shared dashboard query layer (internal/core/query), the same
+// reads `verdict serve` and `verdict acp` serve. They are the one MCP
+// surface deliberately outside the CLI-verb parity below.
+var mcpQuerySurface = map[string]string{
+	"query-bundles":  "dashboard bundle listing over the shared query layer (no CLI verb)",
+	"query-findings": "dashboard finding listing over the shared query layer (no CLI verb)",
+	"query-finding":  "dashboard single-finding read over the shared query layer (no CLI verb)",
+	"query-copy":     "dashboard copy prompt over the shared query layer (no CLI verb)",
+	"query-cost":     "dashboard cost rollup over the shared query layer (no CLI verb)",
+	"query-health":   "dashboard health over the shared query layer (no CLI verb)",
+}
+
 // TestSurfaceParityCLI proves the CLI synopsis is well formed and that every
 // verb it offers reaches MCP or is omitted from that surface.
 func TestSurfaceParityCLI(t *testing.T) {
@@ -105,7 +126,7 @@ func TestSurfaceParityCLI(t *testing.T) {
 	if len(verbs.cli) < 10 {
 		t.Errorf("cli synopsis lists %d verbs; the usage line did not parse", len(verbs.cli))
 	}
-	checkSubset(t, "mcp tool", verbs.mcp, "cli verb", verbs.cli)
+	checkSubset(t, "mcp tool", without(verbs.mcp, names(mcpQuerySurface)), "cli verb", verbs.cli)
 	checkIncludes(t, "mcp surface", verbs.mcp, "cli verb", without(verbs.cli, names(mcpOmittedVerbs)))
 }
 
@@ -139,6 +160,12 @@ func TestSurfaceParityAllowlistsStayHonest(t *testing.T) {
 	t.Parallel()
 	verbs := readSurfaceVerbs(t)
 	checkSubset(t, "mcp-omitted verb", names(mcpOmittedVerbs), "cli verb", verbs.cli)
+	checkSubset(t, "mcp query tool", names(mcpQuerySurface), "mcp tool", verbs.mcp)
+	for _, verb := range names(mcpQuerySurface) {
+		if slices.Contains(verbs.cli, verb) {
+			t.Errorf("mcp query tool %q has a CLI twin; it should leave the query surface", verb)
+		}
+	}
 	checkSubset(t, "sdk-omitted verb", names(sdkOmittedVerbs), "cli verb", verbs.cli)
 	checkSubset(t, "sdk gap", names(sdkGaps), "cli verb", verbs.cli)
 	checkMcpOmissions(t, &verbs)
@@ -478,6 +505,51 @@ func TestVerifySandboxReachesEveryTypedSurface(t *testing.T) {
 	if !mcpSchemaHasBoolean(t, filepath.Join(root, "internal", "mcp", "testdata", "tools_list_default.jsonl"), "verify", "sandbox") {
 		t.Error("the published MCP verify schema lost its sandbox boolean")
 	}
+}
+
+// TestVerifySandboxNetworkOnlyReachesEveryTypedSurface pins the Linux
+// network-only opt-in and the mechanism it reports on the same typed
+// surfaces as the full flag, so neither can exist on the CLI alone.
+func TestVerifySandboxNetworkOnlyReachesEveryTypedSurface(t *testing.T) {
+	t.Parallel()
+	root := moduleRoot(t)
+	if !structHasBoolField(t, filepath.Join(root, "internal", "core", "verify", "api.go"), "Request", "SandboxNetworkOnly") {
+		t.Error("verifycore.Request lost its SandboxNetworkOnly field")
+	}
+	if !structHasBoolField(t, filepath.Join(root, "pkg", "verdict", "verbs.go"), "VerifyRequest", "SandboxNetworkOnly") {
+		t.Error("pkg/verdict.VerifyRequest lost its SandboxNetworkOnly field")
+	}
+	if !structHasStringField(t, filepath.Join(root, "pkg", "verdict", "verbs.go"), "VerifyResponse", "SandboxMechanism") {
+		t.Error("pkg/verdict.VerifyResponse lost its SandboxMechanism field")
+	}
+	cli := readSource(t, filepath.Join(root, "internal", "verify", "verify.go"))
+	if !strings.Contains(cli, `case "--sandbox-network-only":`) {
+		t.Error("the verify adapter no longer parses --sandbox-network-only")
+	}
+	mcp := readSource(t, filepath.Join(root, "internal", "mcp", "requests.go"))
+	if !strings.Contains(mcp, `a.boolean("sandboxNetworkOnly"`) {
+		t.Error("the MCP verify decoder no longer reads sandboxNetworkOnly")
+	}
+	if !mcpSchemaHasBoolean(t, filepath.Join(root, "internal", "mcp", "testdata", "tools_list_default.jsonl"), "verify", "sandboxNetworkOnly") {
+		t.Error("the published MCP verify schema lost its sandboxNetworkOnly boolean")
+	}
+}
+
+// structHasStringField reports whether path declares typeName with a string
+// field.
+func structHasStringField(t *testing.T, path, typeName, field string) bool {
+	t.Helper()
+	st := declaredStruct(t, path, typeName)
+	if st == nil {
+		return false
+	}
+	for _, f := range st.Fields.List {
+		ident, ok := f.Type.(*ast.Ident)
+		if ok && ident.Name == "string" && len(f.Names) == 1 && f.Names[0].Name == field {
+			return true
+		}
+	}
+	return false
 }
 
 // structHasBoolField reports whether path declares typeName with a bool field.

@@ -9,10 +9,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -24,7 +26,7 @@ type scriptCommander struct {
 
 func (c *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	c.calls++
-	if len(cmd.Argv) != 3 || cmd.Argv[0] != "git" || cmd.Argv[1] != "patch-id" || cmd.Argv[2] != "--stable" {
+	if _, args, ok := gitcmd.Split(cmd.Argv); !ok || !slices.Equal(args, []string{"patch-id", "--stable"}) {
 		return core.Result{}, errors.New("unexpected argv")
 	}
 	if cmd.Stdin == nil {
@@ -413,7 +415,7 @@ type mapCommander struct {
 }
 
 func (c *mapCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
-	if len(cmd.Argv) == 3 && cmd.Argv[0] == "git" && cmd.Stdin != nil {
+	if _, _, ok := gitcmd.Split(cmd.Argv); ok && cmd.Stdin != nil {
 		raw, err := io.ReadAll(cmd.Stdin)
 		if err == nil {
 			if id, ok := c.ids[string(raw)]; ok {

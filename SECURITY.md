@@ -31,10 +31,64 @@ before reporting: many findings are already fixed on the latest tag.
 In scope (highest priority first):
 
 - `verify --sandbox`, the enforced boundary: mount and namespace isolation
-  under `bubblewrap` on Linux, network denial under `sandbox-exec` on macOS,
-  the credential-path hiding, and the `sandbox-unavailable` refusal that never
-  degrades to an unwrapped run. An escape from that sandbox, or a run that
-  records `"sandboxed": true` without the enforcement, is a vulnerability.
+  under `bubblewrap` on Linux; under `sandbox-exec` on macOS, the network and
+  Mach service denial (default-deny with one lookup-only allow, so no
+  keychain, preference, pasteboard, LaunchServices, AppleEvents, or launchd
+  channel acts for the command), the denial of the `lsopen`,
+  `appleevent-send`, `job-creation`, `distributed-notification-post`, and
+  cross-process `signal` operations, the denial of every write outside the
+  reviewed root (the snapshot `verify` runs in) and the per-run private
+  `TMPDIR`, and the read denial of the
+  credential table and the shared host temp roots; the credential-path hiding
+  on both; and the `sandbox-unavailable` refusal that never degrades to an
+  unwrapped run or to the network-only mode. **`sandboxed` means exactly that
+  full shape** — `"sandboxed": true` in the patch record, the deep-group
+  receipt, or `--json` data asserts `bwrap` or `sandbox-exec` enforced it. An
+  escape from that sandbox, or a run that records `"sandboxed": true` without
+  the enforcement (or for the network-only mode), is a vulnerability. One
+  macOS residual is documented, not a finding: Seatbelt cannot gate the
+  `kern.procargs2` sysctl, so a sandboxed command can read the environment
+  of same-uid processes that are not restricted platform binaries — a
+  third-party editor, an agent CLI, `node` (see the
+  [manual](docs/manual.md#hostile-pr-sandbox-recipe)). A route to another
+  process's environment that does not go through `kern.procargs2`, or a
+  profile that could deny it and does not, is in scope.
+- `verify --sandbox-network-only`, the explicit Linux opt-in
+  (`unshare --user --map-root-user --net`): the promise is network isolation
+  alone, a `sandboxMechanism: "unshare-net"` record that never claims
+  `sandboxed`, the warning on every run, and the `sandbox-unavailable`
+  refusal on every other host. A route to the network that does not go
+  through a filesystem path is a vulnerability. Reaching the host
+  filesystem, the host `/proc`, or a filesystem unix socket (`docker.sock`,
+  the `ssh-agent` socket) is the documented boundary of this mode, not a
+  finding.
+- Under `--sandbox`, the reviewed repository's git control files are part of
+  the boundary: writes to `<root>/.git`, the git directory a `.git` file
+  names, and a linked worktree's common directory are denied on both
+  platforms; on macOS so is creating any `.git` path below the root. On both
+  platforms a symlinked `.git` or git pointer file, a git directory that is
+  the reviewed root or holds it, a pointer that reaches inside the root
+  under another spelling (letter case, a macOS firmlink), a git control file
+  with a second hard link (object payload — loose objects, packs, and the
+  commit-graph and pack-list caches of each git directory, submodules'
+  included — excepted; `objects/info/alternates` is not payload), and a git
+  control file outside `hooks/` that is a symlink into the root refuse `sandbox-unavailable` ("inside the root" is
+  decided by file identity); on Linux
+  so does a root whose repository cannot be pinned read-only (no `.git`, a
+  git pointer that does not resolve, or a git location whose walk passes
+  through a symlink or a missing component inside the root, a link reached
+  through an outside-root link included). A sandboxed command that plants a hook or a
+  `.git/config` key for the root's repository, for a nested repository or
+  submodule whose `.git` existed when the sandbox started, through any
+  submodule path in the root's index, or (on macOS) through any new nested
+  `.git`, is a vulnerability. Out of scope: the rest of the working tree is
+  the PR's content and writable by design, and so is hook code or config the
+  operator keeps in the tree (a `core.hooksPath` directory, a `.git/hooks/`
+  symlink into the tree, an `include.path` naming a tree file), and on Linux a new nested `.git`
+  in a subdirectory that is no submodule path is a documented residual of
+  `bwrap`, which can only protect paths that already exist (git honors it
+  only when it runs in that subdirectory, as an editor or repository
+  scanner that discovers nested repositories may).
 - The `verify` gate's own contract: `verify` executes the agent's claimed
   proof (`verifyCmd` via `bash -c`, 300s watchdog, tail recorded into the
   patch record). The pre-exec refusals are a **tripwire, not a boundary**: the
@@ -69,6 +123,34 @@ In scope (highest priority first):
   snapshot (`controls-unavailable`, `controls-stale`). Any path where
   head bytes steer a review without the recorded
   `--allow-head-controls` opt-out is a vulnerability.
+- The verification receipt: `record` and `post` flip a `VERIFIED` claim to
+  `addressed` only on the bundle's `verify-receipt.json`, which
+  `verdict verify` alone writes. It binds the command, the finding, and the
+  git tree of the content the command ran on — a snapshot of that content
+  outside the user's checkout: reads that resolve inside the snapshot see the
+  snapshot, while a path resolving outside it (an absolute path, or a symlink
+  the tree carries) reaches the real filesystem, read-only under `--sandbox`
+  and possibly hidden by its rules — and verify writes it only through the bundle directory it
+  pinned before the command ran (a symlinked bundle refuses; a bundle moved
+  or replaced mid-run records nothing). A path where a claim flips without a
+  passing receipt for its command, finding, and the graded content's tree — a
+  pass read from `patch.json`, a `triage[]` rationale, content that changed
+  after verify, content outside the reviewed bundle (an untracked file), or a
+  command that reaches the user's checkout from the snapshot and changes what
+  the receipt names — is a vulnerability. So is any code the checkout controls
+  running while `verify` makes the snapshot, before the sandbox exists: a git
+  hook (including through a `core.hooksPath` that names tree content), a clean
+  or smudge filter (git-lfs included), or an fsmonitor program; and so is a
+  run that falls back to the user's checkout when the snapshot cannot be made.
+  The same holds for every other git call verdict makes on reviewed content
+  (`fetch-local`, `fix --test --commit`, `backtest` replay): a hook, an
+  fsmonitor, a textconv or external diff driver, or a smudge filter on a
+  checkout verdict writes is a vulnerability. Clean and process filters (a
+  driver's `clean` or `process` command) on the operator's own working tree
+  run by design. The receipt defends against claims nobody observed, not
+  against a process with the operator's own file access: such a process
+  can rewrite the receipt or `findings.json` directly, so forging the
+  receipt that way is out of scope.
 
 Out of scope: a `verifyCmd` spelling the string gate does not know (the
 documented tripwire ceiling above — send it, it gets armed and added to
@@ -99,8 +181,18 @@ Do not "fix" the inherited side: it is the documented local posture.
   the developer's environment because verdict is a local CLI acting for the
   operator: the calls must use the operator's existing `gh` auth and git
   configuration, and shadowing either would break the command rather than
-  harden it. The spawn site passes no environment, so the child inherits the
-  parent's (`internal/core/exec`).
+  harden it. A `gh` spawn passes no environment, so the child inherits the
+  parent's (`internal/core/exec`). The host choice is not inherited: when the
+  target names a host (a URL or `origin` target, `demo <url>`, and every
+  `post`, which pins to its bundle's host), every `gh` and `glab` argv names it
+  explicitly (`core.PinHostArgv`), so `GH_HOST` or `GITLAB_HOST` cannot redirect
+  a call to another host's pull request. A typed `<owner/repo> <pr>` read names
+  no host and follows the CLI's default (`docs/manual.md` § Targets). A `git`
+  call inherits the environment minus git's location variables,
+  `GIT_EXEC_PATH`, and `GIT_CONFIG_PARAMETERS`, with hooks and fsmonitor off
+  (`internal/gitcmd`). A syntactic guard in `internal/archtest` fails on a
+  `git` argv spelled outside it — a `"git"` literal, a constant concatenation,
+  a `sh`/`bash` script naming git — but not on a name computed at run time.
 - **Default-deny allowlist: the agent-written `bash -c` verify command.**
   `verify` runs the agent's claimed proof (or deep-group `--command`) with a
   default-deny filtered slice of the caller's environment

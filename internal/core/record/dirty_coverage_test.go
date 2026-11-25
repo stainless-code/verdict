@@ -9,6 +9,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/testkit"
 )
 
@@ -70,14 +71,14 @@ func assertDirtyCoverageGate(t *testing.T, wantFail bool) {
 		t.Fatalf("gate refusal: %v", refusal)
 	}
 	if resp.GateFailed != wantFail {
-		t.Fatalf("GateFailed = %v, want %v: %v", resp.GateFailed, wantFail, resp.CheckLines)
+		t.Fatalf("GateFailed = %v, want %v: %+v", resp.GateFailed, wantFail, resp.Gate)
 	}
 }
 
 type dirtyDiffCommander struct{ diff string }
 
 func (c *dirtyDiffCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
-	if !slices.Equal(cmd.Argv, []string{"git", "diff", "HEAD"}) {
+	if _, args, ok := gitcmd.Split(cmd.Argv); !ok || !slices.Equal(args, []string{"diff", "HEAD"}) {
 		return core.Result{ExitCode: 1}, nil
 	}
 	return core.Result{Stdout: c.diff}, nil

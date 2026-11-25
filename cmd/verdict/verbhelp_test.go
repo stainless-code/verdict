@@ -54,7 +54,15 @@ func TestVerifyHelpNamesGroupValidationFlags(t *testing.T) {
 
 // TestServeUsageListsEventsRoute pins the route in the usage text.
 func TestServeUsageListsEventsRoute(t *testing.T) {
-	const want = "    .../findings/{sig}, /v1/events (--no-watch removes it). GET only, no CORS, no writes; Ctrl-C exits 3.\n"
+	const want = "    .../findings/{sig}, /v1/events (--no-watch removes it). GET plus HEAD only, no CORS,\n" +
+		"    local writes on a loopback bind unless --read-only (the one write-posture flag, shared with\n" +
+		"    mcp and lsp; any other --host serves read-only and refuses --allow-post):\n" +
+		"    POST /v1/triage and POST /v1/kb/promote (local triage and KB promotion through the\n" +
+		"    same services the CLI calls, gated by the per-session X-Verdict-CSRF token\n" +
+		"    /v1/health publishes, a present allowlisted Origin, and strict application/json\n" +
+		"    bodies); --allow-post (refused with --read-only) adds POST /v1/post/submit, the\n" +
+		"    confirmation-gated host posting route through core/post;\n" +
+		"    Ctrl-C exits 3.\n"
 	if !strings.Contains(usageText(), want) {
 		t.Fatalf("serve usage route line = %q, want %q", usageText(), want)
 	}
@@ -70,5 +78,46 @@ func TestFetchUsageNamesAllThreeOverCapExits(t *testing.T) {
 		"    select, they never exclude.\n"
 	if !strings.Contains(usageText(), want) {
 		t.Fatalf("fetch usage over-cap hint = %q, want %q", usageText(), want)
+	}
+}
+
+// TestFixUsageNamesPromotion proves `fix --help` documents the promotion pair
+// the adapter parses: a caller reading help never has to learn --test or
+// --commit from the source.
+func TestFixUsageNamesPromotion(t *testing.T) {
+	hermeticEnv(t)
+	code, out, derr := runCapture(t, []string{"fix", "--help"})
+	if code != 0 || derr != "" {
+		t.Fatalf("fix --help = exit %d stderr %q", code, derr)
+	}
+	for _, want := range []string{"--test <sig> [--commit]", "writes no ledger", "test: regression for <sig>"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("fix --help misses %q:\n%s", want, out)
+		}
+	}
+}
+
+// TestVerifyHelpNamesTheNetworkOnlyOptIn proves the weaker Linux boundary is
+// visible in help next to the full sandbox, including what it does not
+// isolate and the mutual-exclusion refusal.
+func TestVerifyHelpNamesTheNetworkOnlyOptIn(t *testing.T) {
+	hermeticEnv(t)
+	code, out, derr := runCapture(t, []string{"verify", "--help"})
+	if code != 0 || derr != "" {
+		t.Fatalf("verify --help = exit %d stderr %q", code, derr)
+	}
+	for _, want := range []string{
+		"--sandbox | --sandbox-network-only",
+		"--sandbox-network-only is the Linux unshare --net opt-in",
+		"no mount, filesystem, or PID isolation",
+		"unix sockets (docker.sock, ssh-agent) stay",
+		"it is never recorded as sandboxed",
+		"no Mach services; writes",
+		"refuses bad-flags",
+		"sandboxMechanism",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("verify --help misses %q:\n%s", want, out)
+		}
 	}
 }

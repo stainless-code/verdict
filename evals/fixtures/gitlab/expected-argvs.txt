@@ -4,4 +4,4 @@ api projects/4242/merge_requests/7/diffs --paginate
 mr diff 7 -R acme/app --raw
 api projects/4242/merge_requests/7/notes?per_page=100&page=1
 api projects/4242/merge_requests/7/discussions?per_page=100&page=1
-api projects/acme%2Fapp/merge_requests/7
+api --hostname gitlab.example projects/acme%2Fapp/merge_requests/7

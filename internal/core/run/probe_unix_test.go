@@ -3,10 +3,12 @@
 package run
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -63,10 +65,17 @@ var probeIdentityCases = []probeIdentityCase{
 // probe: a same-named tool that prints its own help, even with the subcommand
 // the probe asks for, refuses before launch, and the documented flag passes.
 func TestClashingBinaryNeedsDocumentedFlag(t *testing.T) {
+	t.Parallel()
 	for i := range probeIdentityCases {
 		tc := &probeIdentityCases[i]
-		t.Run(tc.name+"/clash", func(t *testing.T) { assertClashRefused(t, tc) })
-		t.Run(tc.name+"/own-help", func(t *testing.T) { assertDocumentedFlagPasses(t, tc) })
+		t.Run(tc.name+"/clash", func(t *testing.T) {
+			t.Parallel()
+			assertClashRefused(t, tc)
+		})
+		t.Run(tc.name+"/own-help", func(t *testing.T) {
+			t.Parallel()
+			assertDocumentedFlagPasses(t, tc)
+		})
 	}
 }
 
@@ -114,15 +123,48 @@ func assertDocumentedFlagPasses(t *testing.T, tc *probeIdentityCase) {
 }
 
 // plantStub writes an executable shell stand-in under a fresh temporary dir.
+// It leaves the process PATH alone, so the tests that plant one run in
+// parallel; [stubCommander] is what makes the launcher spawn it.
 func plantStub(t *testing.T, name, script string) string {
 	t.Helper()
-	dir := t.TempDir()
-	path := filepath.Join(dir, name)
+	path := filepath.Join(t.TempDir(), name)
 	if err := os.WriteFile(path, []byte(script), 0o700); err != nil {
 		t.Fatal(err)
 	}
-	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	settleForks()
 	return path
+}
+
+// settleForks makes a just-written script safe to exec while other tests run
+// in parallel. A fork that began while the file was still open for writing
+// holds a copy of that descriptor until its exec, and executing the file in
+// that window fails with ETXTBSY ("text file busy") on Linux. The runtime
+// holds [syscall.ForkLock] across a spawn until the child has exec'd, so taking
+// it once after the close waits out every such child; a fork that starts later
+// never saw the descriptor.
+func settleForks() {
+	syscall.ForkLock.Lock()
+	defer syscall.ForkLock.Unlock()
+}
+
+// stubCommander spawns the stand-in where the launcher asks for the agent by
+// bare name. The launcher resolves the agent through its LookPath seam but
+// spawns the bare name, which only the process PATH could resolve: and the
+// process PATH is shared by every parallel test.
+type stubCommander struct {
+	inner core.Commander
+	name  string
+	bin   string
+}
+
+// Run swaps the planted agent's bare name for its path, then delegates.
+func (s stubCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
+	if len(cmd.Argv) > 0 && cmd.Argv[0] == s.name {
+		planted := *cmd
+		planted.Argv = append([]string{s.bin}, cmd.Argv[1:]...)
+		cmd = &planted
+	}
+	return s.inner.Run(ctx, cmd)
 }
 
 // fixtureProbeBudget keeps process fixtures clear of the shipped five-second
@@ -138,7 +180,7 @@ func runWithStub(t *testing.T, root, name, bin string) (*core.RunResponse, *core
 
 func runWithProbeBudget(t *testing.T, root, name, bin string, budget time.Duration) (*core.RunResponse, *core.RefusalError) {
 	t.Helper()
-	req := request(root, coreexec.Watchdog{})
+	req := request(root, stubCommander{inner: coreexec.Watchdog{}, name: name, bin: bin})
 	req.Agent = name
 	req.LookPath = func(string) (string, error) { return bin, nil }
 	req.ProbeTimeout = budget
@@ -160,6 +202,7 @@ func shellLiteral(value string) string {
 // TestProbeBudgetIsInjectable proves the probe's own deadline is the one that
 // produces the timeout classification, and that a test can shorten it.
 func TestProbeBudgetIsInjectable(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	bin := plantStub(t, "fx", "#!/bin/sh\n"+
 		"case \" $* \" in\n"+
@@ -189,13 +232,17 @@ type probeCaptureCase struct {
 }
 
 func TestProbeSearchesHeadOfCombinedOutput(t *testing.T) {
+	t.Parallel()
 	tests := []probeCaptureCase{
 		{name: "match leads a flood", flood: probeOutputCap + 4096, matchLeads: true},
 		{name: "match fits after 60 KiB", flood: 60 * 1024},
 		{name: "match trails a flood", flood: probeOutputCap + 4096, wantRefuse: true},
 	}
 	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) { assertProbeCaptureCase(t, tc) })
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertProbeCaptureCase(t, tc)
+		})
 	}
 }
 

@@ -1,0 +1,62 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "gate",
+  "repo": "acme/app",
+  "pr": null,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "record an evidence receipt for the fetched HEAD (verdict record)",
+  "warnings": [
+    "run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors",
+    "coverage: stored coverage absent for HEAD aaaaaaa — no completed post or record — coverage is advisory (--coverage warn)"
+  ],
+  "data": {
+    "passed": false,
+    "dimensions": [
+      {
+        "id": "findings",
+        "status": "pass",
+        "detail": "no open findings at-or-above critical",
+        "count": 0
+      },
+      {
+        "id": "coverage",
+        "status": "skip",
+        "detail": "stored coverage absent for HEAD aaaaaaa — no completed post or record — coverage is advisory (--coverage warn)",
+        "count": null
+      },
+      {
+        "id": "live_threads",
+        "status": "skip",
+        "detail": "live recheck skipped: local bundle threads unreadable here",
+        "count": null
+      },
+      {
+        "id": "spec",
+        "status": "pass",
+        "detail": "no violated spec check",
+        "count": 0
+      },
+      {
+        "id": "evidence",
+        "status": "unknown",
+        "detail": "evidence receipt missing for head aaaaaaa [review-insufficient]",
+        "count": null
+      }
+    ]
+  },
+  "error": null
+}
+--- stderr ---
+warn: run bundle has no typed evidence (pre-typed bundle?) — rendering without policy floors
+info: live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)
+warn: coverage: stored coverage absent for HEAD aaaaaaa — no completed post or record — coverage is advisory (--coverage warn)
+gate: findings     pass  no open findings at-or-above critical
+gate: coverage     skip  stored coverage absent for HEAD aaaaaaa — no completed post or record — coverage is advisory (--coverage warn)
+gate: live_threads skip  live recheck skipped: local bundle threads unreadable here
+gate: spec         pass  no violated spec check
+gate: evidence     unknown  evidence receipt missing for head aaaaaaa [review-insufficient]
+gate: FAIL (1 unknown, 2 pass, 2 skip)
+gate: skipped coverage, live_threads
+--- files ---

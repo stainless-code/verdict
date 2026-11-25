@@ -293,8 +293,10 @@ eval_mk_bundle() {
       ;;
     *)
       rm -f "$dst/source.json"
-      printf '{"state":"OPEN","headRefOid":"%s","baseRefOid":"%s","author":{"login":"teammate"}}\n' \
-        "$EVAL_FIXTURE_HEAD" "$base" >"$dst/PR.json"
+      # The review URL names the host a real fetch records; post pins its host
+      # calls to it.
+      printf '{"state":"OPEN","headRefOid":"%s","baseRefOid":"%s","author":{"login":"teammate"},"url":"https://github.com/acme/app/pull/%s"}\n' \
+        "$EVAL_FIXTURE_HEAD" "$base" "$name" >"$dst/PR.json"
       ;;
   esac
 }
@@ -307,6 +309,18 @@ eval_fixture_rebase() {
   [ -f "$dir/PR.json" ] || return 0
   jq --arg b "$EVAL_FIXTURE_BASE" --arg h "$EVAL_FIXTURE_HEAD" \
     '.baseRefOid = $b | .headRefOid = $h' "$dir/PR.json" >"$dir/PR.json.tmp"
+  mv "$dir/PR.json.tmp" "$dir/PR.json"
+}
+
+# eval_pin_head <name> [sha] binds a PR bundle to the checkout it is run in:
+# the fixture head is a placeholder no checkout is on, while a verb that acts on
+# the checkout (fix) proves HEAD equals the bundle's reviewed head. Without a
+# sha it pins the sandbox's own HEAD; a sha pins that one instead.
+eval_pin_head() {
+  local dir="$EVAL_SANDBOX/.verdict/state/$1" head="${2:-}"
+  [ -f "$dir/PR.json" ] || return 0
+  [ -n "$head" ] || head="$(git -C "$EVAL_SANDBOX" rev-parse HEAD)"
+  jq --arg h "$head" '.headRefOid = $h' "$dir/PR.json" >"$dir/PR.json.tmp"
   mv "$dir/PR.json.tmp" "$dir/PR.json"
 }
 

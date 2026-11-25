@@ -103,6 +103,7 @@ func phaseList(t *testing.T, block *jq.Obj, key string) []string {
 // both cross-checks run, the union is re-derived, and the bundle records,
 // gates, and reports cleanly.
 func TestResumeRerunsOnlyTheFailedFinder(t *testing.T) {
+	t.Parallel()
 	req, commander := resumeFixture(t, "local-resume-finder")
 	interruptRun(t, req, commander, "x-finder-2")
 
@@ -180,14 +181,14 @@ func assertResumedBundleRecords(t *testing.T, req *core.RunRequest) {
 func assertResumedGates(t *testing.T, req *core.RunRequest) {
 	t.Helper()
 	critical := runResumedGate(t, req, "critical")
-	if critical.Data.Gate == nil || !critical.Data.Gate.Passed {
-		t.Fatalf("gate at critical failed on the resumed bundle: %+v", critical.Data.Gate)
+	if critical.Gate == nil || !critical.Gate.Passed {
+		t.Fatalf("gate at critical failed on the resumed bundle: %+v", critical.Gate)
 	}
 	important := runResumedGate(t, req, "important")
-	if important.Data.Gate == nil {
+	if important.Gate == nil {
 		t.Fatalf("gate at important returned no gate: %+v", important.Data)
 	}
-	if detail := gateDetail(important.Data.Gate, "findings"); !strings.Contains(detail, "1 open finding") {
+	if detail := gateDetail(important.Gate, "findings"); !strings.Contains(detail, "1 open finding") {
 		t.Fatalf("findings dimension = %q, want the recorded finding", detail)
 	}
 	if !important.GateFailed {
@@ -227,6 +228,7 @@ func gateDetail(gate *core.ReportGate, id string) string {
 // validated is not asked again: only the failed check launches, and the reused
 // one is named in the record.
 func TestResumeReusesCompletedCrossChecks(t *testing.T) {
+	t.Parallel()
 	req, commander := resumeFixture(t, "local-resume-cross")
 	interruptRun(t, req, commander, "x-cross-2")
 
@@ -248,6 +250,7 @@ func TestResumeReusesCompletedCrossChecks(t *testing.T) {
 // execution verifies the fingerprint and launches nothing: the bundle answers
 // the same handoff without spending another agent call.
 func TestResumeOfCompleteExecutionIsIdempotent(t *testing.T) {
+	t.Parallel()
 	req, commander := resumeFixture(t, "local-resume-complete")
 	if _, ref := Run(t.Context(), req); ref != nil {
 		t.Fatalf("first run refused: %v", ref)
@@ -278,6 +281,7 @@ func TestResumeOfCompleteExecutionIsIdempotent(t *testing.T) {
 // closed before a single agent starts: the mutated diff, the mutated run state,
 // and a recorded prompts_hash that no longer matches the binary.
 func TestResumeRefusesDriftedInputs(t *testing.T) {
+	t.Parallel()
 	cases := []resumeDriftCase{
 		{
 			name: "mutated full.diff", adjust: mutateFixtureDiff,
@@ -414,6 +418,7 @@ type resumeDamageCase struct {
 // artifact disappeared or changed refuses the resume instead of silently
 // dropping that finder's coverage or reusing bytes nobody can vouch for.
 func TestResumeRefusesDamagedBoundArtifact(t *testing.T) {
+	t.Parallel()
 	cases := []resumeDamageCase{
 		{damage: removeBoundReview, name: "missing", want: "is missing"},
 		{damage: corruptBoundReview, name: "corrupt", want: "changed since the interrupted execution"},
@@ -464,6 +469,7 @@ func corruptBoundReview(t *testing.T, path string) {
 // is a typed refusal that launches nothing, so a wrapper's retry cannot start
 // an execution it did not mean to.
 func TestResumeWithoutPriorExecutionRefuses(t *testing.T) {
+	t.Parallel()
 	req, commander := resumeFixture(t, "local-resume-fresh")
 	req.Resume = true
 	_, ref := Run(t.Context(), req)
@@ -482,6 +488,7 @@ func TestResumeWithoutPriorExecutionRefuses(t *testing.T) {
 // single-finder launch, which has no phases to continue: the one process is the
 // whole run.
 func TestResumeRefusesOneFinderShape(t *testing.T) {
+	t.Parallel()
 	req, commander := resumeFixture(t, "local-resume-single")
 	req.Resume = true
 	req.FindersRaw = "1"
@@ -498,6 +505,7 @@ func TestResumeRefusesOneFinderShape(t *testing.T) {
 // --print render or one stage would leave the recorded execution half finished
 // while appearing to continue it.
 func TestResumeRefusesRenderShapes(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		apply func(*core.RunRequest)
 		name  string
@@ -588,6 +596,7 @@ func assertResumeRefused(t *testing.T, req *core.RunRequest, commander *phaseCom
 // record the next attempt reads still names the same execution, attempt, bound
 // artifacts, and failures, and no agent started.
 func TestResumeSpendRefusalLeavesTheRecordUntouched(t *testing.T) {
+	t.Parallel()
 	req, commander := resumeFixture(t, "local-resume-spend")
 	interruptRun(t, req, commander, "x-finder-2")
 	path := filepath.Join(commander.dir, launcherFile)
@@ -606,6 +615,7 @@ func TestResumeSpendRefusalLeavesTheRecordUntouched(t *testing.T) {
 // rewritten, so a second --resume meets the same intact record and refuses the
 // same way instead of resuming on a half-repaired bundle.
 func TestResumeRefusesDamagedBoundCrossCheck(t *testing.T) {
+	t.Parallel()
 	cases := []resumeDamageCase{
 		{damage: removeBoundReview, name: "missing", want: "is missing"},
 		{damage: corruptBoundReview, name: "corrupt", want: "changed since the interrupted execution"},
@@ -637,6 +647,7 @@ func assertDamagedCrossRefusal(t *testing.T, tc resumeDamageCase) {
 // publishes the bindings it earned and the failures it has not resolved, which
 // is what the next attempt reads.
 func TestResumeContinuesAcrossInterruptedAttempts(t *testing.T) {
+	t.Parallel()
 	req, commander := resumeFixture(t, "local-resume-chain")
 	interruptRun(t, req, commander, "x-finder-2")
 	assertResumeAttempt(t, commander.dir, resumeAttempt{
@@ -732,6 +743,7 @@ func assertResumeAttempt(t *testing.T, dir string, want resumeAttempt) {
 // never spawned again, only the cross checks launch, and the response names the
 // interrupted status the operator's retry continued.
 func TestResumeInProgressRunKeepsItsFinders(t *testing.T) {
+	t.Parallel()
 	req, commander := resumeFixture(t, "local-resume-killed")
 	killAttempt(t, req, commander, "x-cross-1")
 	assertInProgressBindings(t, commander.dir, 1)
@@ -795,6 +807,7 @@ func assertInProgressBindings(t *testing.T, dir string, attempts int) {
 // binding to reuse, and the finder beside it is still sealed, so the third
 // attempt does not pay for work the first one already finished.
 func TestResumeKilledMidFinderKeepsThePriorRecord(t *testing.T) {
+	t.Parallel()
 	req, commander := resumeFixture(t, "local-resume-killed-finder")
 	interruptRun(t, req, commander, "x-finder-2")
 	req.Resume = true
@@ -829,6 +842,7 @@ func TestResumeKilledMidFinderKeepsThePriorRecord(t *testing.T) {
 // it: the artifacts beside the link stay where they are, nothing starts, and
 // the record the next attempt reads is the one the interrupted run left.
 func TestResumeRefusesSymlinkedPhasePath(t *testing.T) {
+	t.Parallel()
 	for _, name := range []string{"x-finder-1", "x-cross-2"} {
 		t.Run(name, func(t *testing.T) { assertSymlinkedPhaseRefusal(t, name) })
 	}
@@ -894,6 +908,7 @@ func rebindArtifact(t *testing.T, dir, name string) {
 // adding a context.txt after the interruption, or dropping the one the bundle
 // carried, refuses instead of reviewing a spec the first attempt never read.
 func TestResumeRefusesRecoveredContextDrift(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		prepare func(t *testing.T, dir string)
 		adjust  func(t *testing.T, dir string)
@@ -941,6 +956,7 @@ func TestResumeRefusesRecoveredContextDrift(t *testing.T) {
 // definition is sealed: the same agent name pointed at another argument shape
 // is a different reviewer, so the resume refuses before spending it.
 func TestResumeRefusesChangedLaunchDefinition(t *testing.T) {
+	t.Parallel()
 	req, commander := resumeFixture(t, "local-resume-launch-def")
 	req.Agent = "local"
 	defs := []config.PersonalAgent{{
@@ -971,6 +987,7 @@ func TestResumeRefusesChangedLaunchDefinition(t *testing.T) {
 // the restriction one attempt actually applied: a row or an attempt that
 // differs in any of them is a different launch definition.
 func TestLaunchDefDigestTracksEveryField(t *testing.T) {
+	t.Parallel()
 	base := agentcatalog.Launch{
 		Binary: "agent", Args: []string{"exec"}, ProbeArgs: []string{"--version"},
 		DiscoveryArgs: []string{"--exclude-tools", "bash"},
@@ -1002,6 +1019,7 @@ func TestLaunchDefDigestTracksEveryField(t *testing.T) {
 // the remaining phases would spend a tool set the record never sealed, fails
 // closed before any agent starts.
 func TestResumeDetectsDiscoveryRestrictionDrift(t *testing.T) {
+	t.Parallel()
 	req, commander := resumeFixture(t, "local-resume-discovery")
 	interruptRun(t, req, commander, "x-finder-2")
 	path := filepath.Join(commander.dir, launcherFile)
@@ -1029,6 +1047,7 @@ func interruptWith(t *testing.T, req *core.RunRequest, commander *phaseCommander
 // no execution could have written (zero, negative, fractional, or non-numeric)
 // refuses rather than being truncated or incremented.
 func TestResumeRefusesInvalidRecordedAttempts(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		value any
 		name  string
@@ -1067,6 +1086,7 @@ func assertInvalidAttempts(t *testing.T, attempts any) {
 // past the record cap refuses before it is parsed, and a sealed artifact past
 // the artifact cap refuses instead of being loaded whole.
 func TestResumeRefusesOversizedReads(t *testing.T) {
+	t.Parallel()
 	t.Run("record", func(t *testing.T) {
 		req, commander := resumeFixture(t, "local-resume-big-record")
 		interruptRun(t, req, commander, "x-finder-2")
@@ -1101,6 +1121,7 @@ func TestResumeRefusesOversizedReads(t *testing.T) {
 // compared as a decision, not as JSON text: reordered keys are the same depth,
 // and a different tier is a different one.
 func TestResumeComparesRecordedBudgetByValue(t *testing.T) {
+	t.Parallel()
 	req, commander := resumeFixture(t, "local-resume-budget")
 	req.BudgetRaw = "standard"
 	interruptRun(t, req, commander, "x-finder-2")
@@ -1135,6 +1156,7 @@ func TestResumeComparesRecordedBudgetByValue(t *testing.T) {
 // barrier: the record keeps publishing its binding, so the next attempt reuses
 // it instead of spending that check again.
 func TestResumeKeepsSealedCrossCheckAcrossKills(t *testing.T) {
+	t.Parallel()
 	req, commander := resumeFixture(t, "local-resume-cross-sealed")
 	interruptRun(t, req, commander, "x-cross-2")
 	if boundDigest(resumeManifest(t, commander.dir), "x-cross-1/verdicts.json") == "" {
@@ -1163,6 +1185,7 @@ func TestResumeKeepsSealedCrossCheckAcrossKills(t *testing.T) {
 // launch, while a resume that still has a phase to run refuses and leaves the
 // record alone.
 func TestResumeSkipsSpendWhenNothingLaunches(t *testing.T) {
+	t.Parallel()
 	t.Run("complete", assertCompleteResumeSkipsSpend)
 	t.Run("partial", assertPartialResumeAsksSpend)
 }
@@ -1219,6 +1242,7 @@ func tightBudget(t *testing.T, req *core.RunRequest, dir string) {
 // agent starts, and neither the record nor the plan the run would publish is
 // written.
 func TestResumeValidatesCrossRowsBeforePublishing(t *testing.T) {
+	t.Parallel()
 	req, commander := resumeFixture(t, "local-resume-cross-rows")
 	if _, ref := Run(t.Context(), req); ref != nil {
 		t.Fatalf("initial run refused: %v", ref)
@@ -1239,6 +1263,7 @@ func TestResumeValidatesCrossRowsBeforePublishing(t *testing.T) {
 // again before a phase is consumed: bytes that differ from the ones the plan
 // verified refuse instead of being read a second time.
 func TestResumeSealedBytesRejectsChangedArtifact(t *testing.T) {
+	t.Parallel()
 	req, commander := resumeFixture(t, "local-resume-seal")
 	interruptRun(t, req, commander, "x-finder-2")
 	artifact := filepath.Join("x-finder-1", reviewFile)
@@ -1259,6 +1284,7 @@ func TestResumeSealedBytesRejectsChangedArtifact(t *testing.T) {
 // paths the way every reader spells them: with forward slashes, whatever the
 // platform's separators are, so a Windows bundle's lookup finds its artifact.
 func TestSnapshotArtifactKeysArePortable(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeUnder(t, dir, filepath.Join("x-finder-1", reviewFile), "{}")
 	snapshot := executionSnapshot{}
@@ -1283,6 +1309,7 @@ func TestSnapshotArtifactKeysArePortable(t *testing.T) {
 // relaunched: if the relaunched process exits without writing, the old finding
 // must never enter the union.
 func TestResumeRelaunchedFinderDoesNotReuseStaleReview(t *testing.T) {
+	t.Parallel()
 	req, commander := resumeFixture(t, "local-resume-stale-finder")
 	interruptRun(t, req, commander, "x-finder-2")
 	stalePath := filepath.Join("x-finder-2", reviewFile)
@@ -1307,6 +1334,7 @@ func TestResumeRelaunchedFinderDoesNotReuseStaleReview(t *testing.T) {
 // TestResumeSeedSealedRejectsChangedCrossVerdicts proves seedSealed checks
 // each reused cross check against the bytes planResume sealed before binding.
 func TestResumeSeedSealedRejectsChangedCrossVerdicts(t *testing.T) {
+	t.Parallel()
 	req, commander := resumeFixture(t, "local-resume-seed-sealed")
 	interruptRun(t, req, commander, "x-cross-2")
 	artifact := filepath.Join("x-cross-1", "verdicts.json")
@@ -1334,6 +1362,7 @@ func TestResumeSeedSealedRejectsChangedCrossVerdicts(t *testing.T) {
 // fingerprint: unchanged feeds reuse finders, while adding, editing, or
 // removing threads.json refuses resume-drift before launching.
 func TestResumeDetectsThreadsFeedDrift(t *testing.T) {
+	t.Parallel()
 	t.Run("added", func(t *testing.T) {
 		req, commander := resumeFixture(t, "local-resume-threads-added")
 		interruptRun(t, req, commander, "x-finder-2")
@@ -1372,6 +1401,7 @@ func TestResumeDetectsThreadsFeedDrift(t *testing.T) {
 // are sealed by digest in the resume fingerprint without writing raw values to
 // launcher.json.
 func TestResumeDetectsPassThroughDrift(t *testing.T) {
+	t.Parallel()
 	req, commander := resumeFixture(t, "local-resume-passthrough")
 	req.PassThrough = []string{"--model", "alpha-secret-token"}
 	interruptRun(t, req, commander, "x-finder-2")

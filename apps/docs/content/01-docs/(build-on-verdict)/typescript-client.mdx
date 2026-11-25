@@ -3,6 +3,8 @@ title: TypeScript client
 description: "Call Verdict from Node or Bun: the npm wrapper spawns the binary, reads one --json envelope, and maps refusals to typed errors."
 search:
   tags: ["typescript", "client", "node", "bun", "npm"]
+ai:
+  exclude: true
 ---
 
 Call one verb per function from Node or Bun without writing a wrapper: one
@@ -25,4 +27,34 @@ const report = await verdict.report(["acme/app", "123"]);
 console.log(report.data.verdict.open, "open findings");
 ```
 
-The binary resolves through `VERDICT_BIN`, then the platform package beside the wrapper, then `PATH`. A refusal throws `VerdictRefusalError` with `code` and `hint`; a failed gate throws `VerdictGateError` carrying the envelope. The shape is pinned in [JSON envelope and exit codes](/docs/json-envelope), and [Build a client](/docs/build-a-client) is the protocol for any other language. Experimental until 1.0.
+The binary resolves through `VERDICT_BIN`, then the platform package beside
+the wrapper, then `PATH`. A refusal throws `VerdictRefusalError` with `code`,
+`hint`, the full refusal `body`, and the review-input detail — `problems`,
+`problems_truncated`, `candidates`, `retry_at` — so a caller can fix one
+without re-parsing stdout; a failed gate throws `VerdictGateError` carrying
+the envelope. The shape is pinned in
+[JSON envelope and exit codes](/docs/json-envelope), and
+[Build a client](/docs/build-a-client) is the protocol for any other language.
+Experimental until 1.0.
+
+## Runnable examples
+
+[`examples/typescript-client/`](https://github.com/stainless-code/verdict/tree/main/examples/typescript-client)
+runs three verbs end to end — offline, against the binary this repository
+builds, and a stubbed `gh` on `PATH`:
+
+- `record.ts`: `--dry-run` runs every check and writes nothing; a real `record`
+  writes `findings.json` and `record.json`; a provider PR bundle refuses
+  `not-local`, because `post` owns that target; a malformed review refuses
+  `bad-review-input` with the broken JSONPath in `error.problems[]`.
+- `post-dry-run.ts`: previews one payload, makes exactly one host call (the
+  live head read behind the stale-head guard), and writes `findings.dryrun.json`
+  but never `post.json`; a local bundle refuses `no-pr-target` before any host
+  call.
+- `config.ts`: `--explain`, `--preview --file` for a proposed
+  `.verdict/config.json`, the `bad-config` refusal naming the JSONPath, and the
+  exit-2 usage error for no mode at all.
+
+`clients/ts/test/examples.test.mjs` runs all three inside the TS client gate and
+compares the checkpoints they print, so a stale example fails CI instead of
+waiting to be noticed.

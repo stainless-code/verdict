@@ -2,5 +2,5 @@ exit: 2
 --- stdout ---
 
 --- stderr ---
---paths scopes a batch: pass it with --all or --selected
+--paths scopes a batch: pass it with --all, --selected, or --recipe
 --- files ---

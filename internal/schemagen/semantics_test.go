@@ -60,7 +60,16 @@ var publishedSemantics = map[string]string{
 	// packs: additive optional top-level object with a merge_builtin boolean
 	// and three >= 1 id arrays, closed shape; no existing property, required
 	// key, enum, or type changed.
-	"config.schema.json": "472a44a23a9e9fa8aba885a6892b76e7eeca56f9cc876dd3210e794105d3cad5",
+	// packs.org_pack: additive optional closed object (repo, ref required;
+	// path optional) pinning one org-wide central pack set. No existing
+	// property, required key, enum, or type changed.
+	// tests: additive optional top-level object with a draft enum
+	// (off|on-reproduce), closed shape; STA-346 regression-test drafting.
+	// No existing property, required key, enum, or type changed.
+	// additive monthly_budget_usd and packs.org_pack (optional
+	// defaults.monthly_budget_usd, spend.mtd reporting, and packs.org_pack
+	// pin). No existing property, required key, enum, or type changed.
+	"config.schema.json": "13ea823560ba7dcff37241b3eb28d5590693bcbfa81ef351cc07b38e1959a1a6",
 	// additive controls.schema.json (new bundle document; no existing schema
 	// property, required key, or type changed).
 	// strict_input: an optional controls.json field (default off) that lets
@@ -352,7 +361,39 @@ var publishedSemantics = map[string]string{
 	// report --compare: additive optional data.compare ($defs/reportCompare and
 	// its baseline/counts/finding definitions). No existing property, required
 	// key, enum, or type changed; only a --compare run carries the key.
-	"envelope.schema.json": "1614f7bebe3d93fd3a5677c5ea3ece5c7050a1e3e212ae3d2e987e07f4ffe4f7",
+	// monthly mtd block and org packs (additive optional reportData.mtd,
+	// data.org_pack ($defs/orgPackInfo), and $defs/packSyncData beside
+	// packAddData). No existing property, required key, enum, or type changed;
+	// the mtd and org-pack keys appear only on pinned runs, and pack sync
+	// carries the sync payload.
+	// behavioral diagram: additive optional review.diagram ($defs/diagram,
+	// diagramNode, diagramEdge, whose evidence reuses $defs/specEvidence), the
+	// settled $defs/evidenceDiagram on the evidence receipt, and the
+	// diagram-invalid warning joining the problem-code enum. Additions only: no
+	// existing property, required key, or type moved.
+	// diagram honesty round: descriptions now say each element cites a
+	// NEW-side hunk line and the relation stays the agent's claim.
+	// postData.body.diagram, previously untyped ({}), is now a nullable
+	// $defs/postDiagram (status rendered|omitted plus the evidence.diagram
+	// fields); it was only ever null on main, so no published value breaks.
+	// diagram checking limit: the dropped descriptions name it.
+	// Verify sandbox mechanism: additive optional verifyData.sandboxMechanism
+	// naming bwrap, sandbox-exec, or the network-only unshare-net, and the
+	// description now states that sandboxed means the full shape (the
+	// network-only mechanism never sets it). No existing property, required
+	// key, enum, or type changed; an unwrapped run omits both keys.
+	// Self-review loop: additive $defs/loopData with its loopRound, loopFix,
+	// loopVerify, loopRefusal, and loopPlanStep entries (the loop --json data
+	// profile and summary.json). Additions only; no existing property,
+	// required key, enum, or type changed.
+	// Loop spend receipts: prose only. The loopData stop and cost_usd
+	// descriptions name the budget.json receipt every spawn leaves, the
+	// budget-unknown stop, and the resolved-sig plateau rule.
+	// gate becomes the only gating verb (a breaking removal, pre-1.0):
+	// reportData drops its optional completeness and gate properties and the
+	// $defs/reportCompleteness entry; $defs/reportGate stays as the gate verb's
+	// data profile. gateDimension prose no longer names the removed flags.
+	"envelope.schema.json": "9a0e7c36be23648cc90f17cfa8d5d1b1d27cc79785bd5ff8649104f8e0e94db5",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).
@@ -369,7 +410,10 @@ var publishedSemantics = map[string]string{
 	// additions: an optional panelVerification checker, crossVerification
 	// origins with the contested status, and an optional crossCheck quote
 	// with its $defs/crossQuote.
-	"findings.schema.json": "ea97f241b1f5087fe262b43ca363700df26c9513cfffa5e73f4463631f4b8476",
+	// lens grammar: entry.lens carries the lowercase slug pattern a recipe
+	// selects by. Constraint on an existing property only: no property,
+	// required key, enum, or type changed.
+	"findings.schema.json": "29522c0d3191772e370a6effabeb925ae8643de74bbde70fd2f0c7bb486d0a8a",
 	// post_floor_scoped: additive optional per-path posting floor list with its
 	// $defs/floorScope entry (required path, enum floor). No existing
 	// property, required key, or type changed.
@@ -400,7 +444,15 @@ var publishedSemantics = map[string]string{
 	// with no diff line cites none; met/violated still require it in the checker).
 	// Three new problem codes join the published enum. No existing property,
 	// required key, or type moved.
-	"post.schema.json": "0e78e7558ddb8983133c2e7cfb9a96fa55a1cfa110247f7892254407e764f540",
+	// behavioral diagram: additive optional review.diagram ($defs/diagram,
+	// diagramNode, diagramEdge, whose evidence reuses $defs/specEvidence), the
+	// settled $defs/evidenceDiagram on the evidence receipt, and the
+	// diagram-invalid warning joining the problem-code enum. Additions only: no
+	// existing property, required key, or type moved.
+	// diagram honesty round: descriptions now say each element cites a
+	// NEW-side hunk line and the relation stays the agent's claim.
+	// diagram checking limit: the dropped descriptions name it.
+	"post.schema.json": "632bdc73212fd7fdf7830a4b31ad541c2f2a097add69375df4abf571d6d2408e",
 	// patch identity: additive $defs/identity root (new bundle document) —
 	// no existing property, required key, or type changed.
 	// fixtures.schema.json descriptions only: hallucination now names the pinned
@@ -460,7 +512,11 @@ var publishedSemantics = map[string]string{
 	// (the maxHostLabel cap the loader enforces) and refuses a "://" inside an
 	// scp path (the loader's scheme guard). One pattern narrowed to the
 	// loader's own grammar; no property, required key, enum, or type changed.
-	"lock.schema.json": "da19e41786cc9ff295a88a68929a8c76b5fbd44a7cbd9c5579fd57b316b16db2",
+	// org pin rows: additive org_ref, plus descriptions and confined-path /
+	// immutable-ref patterns on the optional org_path and org_ref fields. No
+	// existing property, required key, enum, or type changed; the sig and root
+	// descriptions now state the org fields they cover.
+	"lock.schema.json": "3b2a1adc106af517eb2304a9dc7684bb715d2971be4645756b812970ba1dd810",
 	// findings cap: the lens max_findings description now says the built-in
 	// pack declares none, so a shipped lens states no return cap and returns
 	// what its evidence supports. Prose only; no property, required key, enum,
@@ -522,7 +578,15 @@ var publishedSemantics = map[string]string{
 	// with no diff line cites none; met/violated still require it in the checker).
 	// Three new problem codes join the published enum. No existing property,
 	// required key, or type moved.
-	"record.schema.json": "8b3510c48c26f104ee3a26fc155ebed57549e14c4c8ff8a165a508109cc9ce6e",
+	// behavioral diagram: additive optional review.diagram ($defs/diagram,
+	// diagramNode, diagramEdge, whose evidence reuses $defs/specEvidence), the
+	// settled $defs/evidenceDiagram on the evidence receipt, and the
+	// diagram-invalid warning joining the problem-code enum. Additions only: no
+	// existing property, required key, or type moved.
+	// diagram honesty round: descriptions now say each element cites a
+	// NEW-side hunk line and the relation stays the agent's claim.
+	// diagram checking limit: the dropped descriptions name it.
+	"record.schema.json": "babbb9621d0000d93db47353ce4b3d9694c5ba88b61a5c79477883f6137f0f62",
 
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable comment.brief
 	// (optional; no existing property, required key, or type changed). The
@@ -557,7 +621,21 @@ var publishedSemantics = map[string]string{
 	// with no diff line cites none; met/violated still require it in the checker).
 	// Three new problem codes join the published enum. No existing property,
 	// required key, or type moved.
-	"review.schema.json": "a2172a2c8318c9dd3a699c20f2e8d0e44bec77ca2812d6c21b5be97346699bbd",
+	// lens grammar: finding.lens carries the lowercase slug pattern a recipe
+	// selects by. Constraint on an existing property only: no property,
+	// required key, enum, or type changed.
+	// behavioral diagram: additive optional review.diagram ($defs/diagram,
+	// diagramNode, diagramEdge, whose evidence reuses $defs/specEvidence), the
+	// settled $defs/evidenceDiagram on the evidence receipt, and the
+	// diagram-invalid warning joining the problem-code enum. Additions only: no
+	// existing property, required key, or type moved.
+	// diagram honesty round: descriptions now say each element cites a
+	// NEW-side hunk line and the relation stays the agent's claim.
+	// diagram contract match: review.diagram drops the value bounds the
+	// runtime only warns on (type enum, nodes minItems, title/label/id
+	// lengths), so a schema-validating client accepts every review the CLI
+	// accepts. Loosening only: no accepted document is rejected now.
+	"review.schema.json": "f678fe4490225175e3d31c2340aeb843ad0a06e618d69be528d870c4b58fdc95",
 	// additive selected.schema.json (new bundle document: the reaction-scoped
 	// fix selection fetch writes and fix --selected reads). A new document
 	// only: no existing schema property, required key, enum, or type changed.

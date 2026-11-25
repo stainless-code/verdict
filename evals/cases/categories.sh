@@ -11,6 +11,9 @@ restore_stub() { cp "$STUB_SAVED" "$EVAL_STUBBIN/gh"; }
 trap restore_stub EXIT
 cat > "$EVAL_STUBBIN/gh" <<'EOF'
 #!/usr/bin/env bash
+# post pins its calls to the bundle's host: github.com here, and only it.
+if [ "${1:-}" = api ] && [ "${2:-}" = --hostname ] && [ "${3:-}" = github.com ]; then set -- api "${@:4}"; fi
+case " $* " in *" --hostname"*) echo "evals-stub-gh: call pinned to another host ($*)" >&2; exit 64;; esac
 echo "stub-gh $(printf '%s' "$*" | tr '\n' '~')" >> "${EVAL_STUBLOG:-/dev/null}"
 if [ "${1:-}" = "api" ] && [ "${2:-}" = "graphql" ]; then
   cat "${EVAL_SANDBOX:-/tmp}/cat-threads.json"
@@ -117,10 +120,10 @@ if [ "$(jq -r '.data.items | length' <"$EVAL_OUT")" = "1" ] \
 else
   bad "report --category security items: $(jq -c '.data.items | map(.sig)' <"$EVAL_OUT")"
 fi
-run_review report acme/app "$PR" --check critical --category security --live skip --json
+run_review gate acme/app "$PR" --max-severity critical --category security --coverage warn --live skip --json
 assert_exit "gate on the security critical exits 1" 1
 assert_file_grep "gate failure names the category" "$EVAL_ERR" "in security"
-run_review report acme/app "$PR" --check critical --category style --live skip --json
+run_review gate acme/app "$PR" --max-severity critical --category style --coverage warn --live skip --json
 assert_exit "gate on style passes (no critical style finding)" 0
 run_review report acme/app "$PR" --category nope --json
 assert_exit "report --category nope exits 2" 2

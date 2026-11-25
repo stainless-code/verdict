@@ -269,15 +269,15 @@ rather than becoming ground truth.
 --- file C/.verdict/state/4701/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "f1cddee336a2a45d347c81b9cd273bb2922a31367844c68dd143f07111890d6c",
-  "prompts_hash": "050a1937402e34fa9c0af2d443b26cb4961474d333a46e2bb22540681b74e02f",
+  "run_id": "08c1566a9cd0f4c89d208c8a1b0f3e750543cc1bbeac65b3e79edcad1ecd5545",
+  "prompts_hash": "49e642c8e1e6e18635dd843199db2b027d2c27c042b2ad2cd15ac9468cfd9c12",
   "inputs": [
     {
       "kind": "prompt",
       "name": "PROCEDURE.md",
       "status": "included",
-      "sha256": "529138b404d6783cb02abee32e57e2ed96a98a2273fa602a5034a8e7dc3d103d",
-      "bytes": 13400
+      "sha256": "a73a4602c858f7071e5df4aaf5a2982ff267206d21b393cc661b8b64db2846d5",
+      "bytes": 13394
     },
     {
       "kind": "prompt",
@@ -290,8 +290,8 @@ rather than becoming ground truth.
       "kind": "prompt",
       "name": "prompts/diagrams.md",
       "status": "included",
-      "sha256": "d19183a969b0e131d7520f0d2fa82889b903c4878e5fcea5ca9f2f0901eacd2d",
-      "bytes": 3780
+      "sha256": "f27a0634929deeb9043b2912f7f6b84014119207646c3a68cac30a992300d763",
+      "bytes": 4624
     },
     {
       "kind": "prompt",
@@ -374,8 +374,8 @@ rather than becoming ground truth.
       "kind": "prompt",
       "name": "prompts/review.md",
       "status": "included",
-      "sha256": "e44879c33621f808e6a7763d124d9eccc666a6b1d014a2ba3604504dbb7a6d96",
-      "bytes": 20274
+      "sha256": "168b2792d0d366b950fd71a04575505c118d4214ebad9eadf5df060a49697924",
+      "bytes": 20517
     },
     {
       "kind": "prompt",
@@ -409,8 +409,8 @@ rather than becoming ground truth.
       "kind": "prompt",
       "name": "references/commands.md",
       "status": "included",
-      "sha256": "4962622ce502f51407f7f0dcbab5220163b12796bbcd7a78d4e523f0664e6bf4",
-      "bytes": 7654
+      "sha256": "9afe21fef9e966e02cc85a9ec222ece16f686fbff05d12de5b9a7e018be53b11",
+      "bytes": 7702
     },
     {
       "kind": "prompt",
@@ -498,8 +498,8 @@ rather than becoming ground truth.
       "kind": "bundle",
       "name": "refs/commands.md",
       "status": "included",
-      "sha256": "4962622ce502f51407f7f0dcbab5220163b12796bbcd7a78d4e523f0664e6bf4",
-      "bytes": 7654
+      "sha256": "9afe21fef9e966e02cc85a9ec222ece16f686fbff05d12de5b9a7e018be53b11",
+      "bytes": 7702
     },
     {
       "kind": "bundle",
@@ -526,8 +526,8 @@ rather than becoming ground truth.
       "kind": "bundle",
       "name": "refs/review-checklist.md",
       "status": "included",
-      "sha256": "652cb21617864e44548a0fae226b48852c6f83cc43b29e121fe3146434fe8017",
-      "bytes": 19066
+      "sha256": "30201066cf4b60f5ef23c7a4fe320e1b779ec6788c6a705e92b5a38d4b10065a",
+      "bytes": 19309
     },
     {
       "kind": "bundle",
@@ -562,7 +562,7 @@ rather than becoming ground truth.
       "name": "run.json",
       "status": "included",
       "sha256": "RUNTIME_SHA256",
-      "bytes": 7228
+      "bytes": 7454
     },
     {
       "kind": "bundle",
@@ -777,6 +777,10 @@ rather than becoming ground truth.
               "layer": "built-in",
               "source": "built-in"
             },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "panel": {
               "layer": "built-in",
               "source": "built-in"
@@ -844,6 +848,10 @@ rather than becoming ground truth.
           "layer": "built-in",
           "source": "built-in"
         },
+        "monthly_budget_usd": {
+          "layer": "built-in",
+          "source": "built-in"
+        },
         "panel": {
           "layer": "built-in",
           "source": "built-in"
@@ -874,7 +882,7 @@ rather than becoming ground truth.
   "base_sha": "488310afbc29fb48fbd84cf16c89d3726158a444",
   "captured_at": "0000-00-00T00:00:00Z",
   "config_sha256": "",
-  "inputs_sha256": "97c7cf33d30bd4d7927b334eb4eb26718634c337eb4be52b352b6a21c1013174",
+  "inputs_sha256": "39793521c5f4e4d8eeaa104999cab4e35ec33038a1ef299e402fea59ad01f47b",
   "evidence": {
     "plan": {
       "effort_tier": "standard",

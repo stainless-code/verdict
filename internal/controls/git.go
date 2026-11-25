@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 )
 
@@ -188,14 +189,11 @@ func parseEntry(entry string) (string, int, *core.RefusalError) {
 	return path, size, nil
 }
 
-// runGit runs one git subcommand through the seam. A failure carries the
-// first 300 bytes of stderr, never a bare exit status.
+// runGit runs one hook-free git subcommand through the seam (it reads
+// committed objects only, so no filter or hook has anything to do). A
+// failure carries the first 300 bytes of stderr, never a bare exit status.
 func runGit(ctx context.Context, cmd core.Commander, outputCap int, root string, args ...string) (string, error) {
-	argv := append([]string{"git"}, args...)
-	if root != "" && root != "." {
-		argv = append([]string{"git", "-C", root}, args...)
-	}
-	res, err := cmd.Run(ctx, &core.Command{Argv: argv, OutputCap: outputCap})
+	res, err := cmd.Run(ctx, &core.Command{Argv: gitcmd.Argv(root, args...), Env: gitcmd.Env(nil), OutputCap: outputCap})
 	if err == nil && res.ExitCode != 0 {
 		err = res.ExitFailure("git")
 	}

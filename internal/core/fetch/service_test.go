@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // scriptCommander is a hermetic Commander: canned stdout/stderr per exact
@@ -27,6 +29,9 @@ type scriptCommander struct {
 	calls [][]string
 	stdin []string
 	env   [][]string
+	// untreeable makes the content listing fail, as git does where it
+	// cannot read the checkout.
+	untreeable bool
 }
 
 // scriptResult is one canned spawn: the streams plus the failure flag.
@@ -44,13 +49,59 @@ const testPatchID = "9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d9f3c2a1b7d 000000000000000000
 // patchIDKey is the script map key for the identity spawn.
 const patchIDKey = "git\x00patch-id\x00--stable"
 
+// testContentTree is the tree id the script seam answers for the reviewed
+// content, so content_tree stays deterministic without scripting every
+// fetch-local test's git reads.
+const testContentTree = "c0ffee0000000000000000000000000000000000"
+
+// contentTreeAnswer answers the git reads that name the reviewed content
+// (contenttree.Git always passes -C <root>); they stay out of calls, so a
+// test pinning the fetch argv sequence keeps pinning just that.
+func (s *scriptCommander) contentTreeAnswer(cmd *core.Command) (core.Result, bool) {
+	_, args, ok := gitcmd.Split(cmd.Argv)
+	if !ok || !slices.ContainsFunc(cmd.Env, func(e string) bool { return strings.HasSuffix(e, "=core.safecrlf") }) {
+		return core.Result{}, false
+	}
+	argv := append([]string{"git", "-C", "."}, args...)
+	switch argv[3] {
+	case "ls-files":
+		return s.listAnswer(argv)
+	case "write-tree":
+		return core.Result{Stdout: testContentTree + "\n"}, true
+	case "rev-parse":
+		return core.Result{Stdout: testContentTree + "\n"}, true
+	case "read-tree":
+		return core.Result{}, true
+	}
+	return core.Result{}, false
+}
+
+// listAnswer answers contenttree's own listing (`ls-files -z …`), failing it
+// when untreeable; fetch's own ls-files calls stay scripted.
+func (s *scriptCommander) listAnswer(argv []string) (core.Result, bool) {
+	switch {
+	case len(argv) < 5 || argv[4] != "-z":
+		return core.Result{}, false
+	case s.untreeable:
+		return core.Result{ExitCode: 128, Stderr: "fatal: unable to read nested/data: Permission denied\n"}, true
+	}
+	return core.Result{}, true
+}
+
 // Run records argv/stdin/env and replays the canned result.
 func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
 	s.t.Helper()
-	s.calls = append(s.calls, append([]string{}, cmd.Argv...))
+	if res, ok := s.contentTreeAnswer(cmd); ok {
+		return res, nil
+	}
+	argv := s.scriptArgv(cmd)
+	if res, ok := s.filterAnswer(argv); ok {
+		return res, nil
+	}
+	s.calls = append(s.calls, argv)
 	s.stdin = append(s.stdin, readTestStdin(s.t, cmd.Stdin))
 	s.env = append(s.env, cmd.Env)
-	key := strings.Join(cmd.Argv, "\x00")
+	key := strings.Join(liveDiffArgv(argv), "\x00")
 	if key == patchIDKey {
 		if cmd.Stdin == nil {
 			s.t.Errorf("patch-id sent no stdin, want the diff on stdin")
@@ -68,6 +119,55 @@ func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result
 		out.ExitCode = 1
 	}
 	return out, nil
+}
+
+// filterAnswer answers the isolated checkout's filter-driver listing: the
+// scripted drivers, or none (git's exit 1) when a test scripts none. It
+// stays out of calls, so a test pinning the fetch argv sequence keeps
+// pinning just that.
+func (s *scriptCommander) filterAnswer(argv []string) (core.Result, bool) {
+	if !slices.Equal(argv, slices.Concat([]string{"git"}, gitcmd.ListFilters)) {
+		return core.Result{}, false
+	}
+	if res, ok := s.out[strings.Join(argv, "\x00")]; ok {
+		return core.Result{Stdout: res.stdout}, true
+	}
+	return core.Result{ExitCode: 1}, true
+}
+
+// scriptArgv maps a git argv back onto the argv a test scripts: the
+// caller's own args ([gitcmd.Split]), with `-C <root>` kept only for a call
+// aimed elsewhere than the session's repository (the isolated checkout, a
+// temporary clone). A git argv that does not carry the hook-free settings
+// and environment fails the test, so every scripted call proves them.
+func (s *scriptCommander) scriptArgv(cmd *core.Command) []string {
+	if len(cmd.Argv) == 0 || cmd.Argv[0] != "git" {
+		return slices.Clone(cmd.Argv)
+	}
+	root, args, ok := gitcmd.Split(cmd.Argv)
+	if !ok || cmd.Env == nil || slices.ContainsFunc(cmd.Env, func(e string) bool {
+		return strings.HasPrefix(e, "GIT_CONFIG_PARAMETERS=") || strings.HasPrefix(e, "GIT_INDEX_FILE=")
+	}) {
+		s.t.Errorf("git call %q is not hook-free", cmd.Argv)
+		return slices.Clone(cmd.Argv)
+	}
+	if root == "." {
+		return slices.Concat([]string{"git"}, args)
+	}
+	return slices.Concat([]string{"git", "-C", root}, args)
+}
+
+// liveDiffArgv maps a named working-tree bundle's tree-to-tree read (`git
+// diff [flags] <base> <tree> [-- paths]`) onto
+// the live `git diff [flags] HEAD [-- paths]` a test scripts: the named
+// tree stands for the working tree's content, so the scripted live output
+// is what the tree read returns. Every other argv is returned unchanged.
+func liveDiffArgv(argv []string) []string {
+	tree := slices.Index(argv, testContentTree)
+	if len(argv) < 3 || argv[1] != "diff" || tree < 1 {
+		return argv
+	}
+	return slices.Concat(argv[:tree-1], []string{"HEAD"}, argv[tree+1:])
 }
 
 // readTestStdin drains one child's stdin, failing the test on a read error.
@@ -119,8 +219,8 @@ func assertOneCall(t *testing.T, cmdr *scriptCommander, i int, want []string) {
 	if !wantsStdin && cmdr.stdin[i] != "" {
 		t.Errorf("argv %d sent stdin, want none", i)
 	}
-	if cmdr.env[i] != nil {
-		t.Errorf("argv %d set env, want inherit", i)
+	if hookFree := want[0] == "git"; (cmdr.env[i] != nil) != hookFree {
+		t.Errorf("argv %d env set = %t, want %t (only git runs on the hook-free environment)", i, cmdr.env[i] != nil, hookFree)
 	}
 }
 
@@ -459,6 +559,42 @@ func TestRunDiffTooLarge(t *testing.T) {
 	}
 	if got := diag.String(); !strings.Contains(got, "candidates (suggested scopes") {
 		t.Errorf("diag missing candidates block:\n%s", got)
+	}
+}
+
+// TestRunDiffTooLargeCandidatesAreInert gives the over-cap diff a path a
+// stranger named with an OSC 52 clipboard write and a C1 CSI. The split
+// candidates quote that path on the diagnostic stream; written through the
+// writer the production runner installs (untrusted.InertWriter), it arrives
+// as plain text.
+func TestRunDiffTooLargeCandidatesAreInert(t *testing.T) {
+	dir := t.TempDir()
+	t.Chdir(dir)
+	cmdr := fetchHappyCommander(t)
+	const evil = "evil\x1b]52;c;cGF5bG9hZA==\x07\u009b2J.txt"
+	big := "diff --git a/" + evil + " b/" + evil + "\n--- a/" + evil + "\n+++ b/" + evil + "\n@@ -1 +1 @@\n" +
+		strings.Repeat(" context line padding the diff past the cap\n", 20000)
+	view := "pr\x00view\x007\x00--repo\x00o/r\x00--json\x00" +
+		"number,title,body,baseRefName,headRefName,headRefOid,baseRefOid,author,labels,url,commits," +
+		"files,additions,deletions,isDraft,reviewDecision,state"
+	pr := strings.Replace(fetchTestPR(), `"files":[{"path":"a.txt","additions":1,"deletions":1}]`,
+		`"files":[{"path":"evil.txt","additions":1,"deletions":1},{"path":"b.txt","additions":1,"deletions":1}]`, 1)
+	cmdr.out["gh\x00"+view] = scriptResult{stdout: pr}
+	cmdr.out["gh\x00pr\x00diff\x007\x00--repo\x00o/r"] = scriptResult{
+		stdout: big + "diff --git a/b.txt b/b.txt\n--- a/b.txt\n+++ b/b.txt\n@@ -1 +1 @@\n-a\n+b\n",
+	}
+	var human, diag bytes.Buffer
+	var streamed []string
+	req := fetchTestReq(cmdr, &human, &diag, &streamed)
+	req.Diag = untrusted.NewInertWriter(&diag)
+	_, err := Run(context.Background(), req)
+	var ref *core.RefusalError
+	if !errors.As(err, &ref) || ref.Code != "diff-too-large" {
+		t.Fatalf("err = %v, want diff-too-large", err)
+	}
+	got := diag.String()
+	if !strings.Contains(got, "evil ]52;c;cGF5bG9hZA==  2J.txt") || strings.ContainsAny(got, "\x1b\x07\u009b") {
+		t.Fatalf("candidates on stderr = %q, want the path folded to plain text", got)
 	}
 }
 

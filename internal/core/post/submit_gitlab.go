@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
-	"os"
 	"strconv"
 	"strings"
 
@@ -13,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 // GitLab carries a review as its own primitives: one MR discussion per
@@ -440,7 +440,7 @@ func gitlabPosition(mr *gitlabMR, file gitlabDiff, c gitlabPostComment) *jq.Obj 
 // gitlabDiffIndex scans the bundle diff once into the position facts every
 // finding needs.
 func gitlabDiffIndex(dir string) map[string]gitlabDiff {
-	raw, err := os.ReadFile(dir + "/full.diff")
+	raw, err := noblock.ReadFile(dir + "/full.diff")
 	if err != nil {
 		return nil
 	}

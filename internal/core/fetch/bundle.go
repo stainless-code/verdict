@@ -14,12 +14,13 @@ import (
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/identity"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
 func buildHunksTSV(fullDiff, out string) error {
-	raw, err := os.ReadFile(fullDiff)
+	raw, err := noblock.ReadFile(fullDiff)
 	if err != nil {
 		return &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, fullDiff, err)}
 	}
@@ -30,7 +31,7 @@ func buildHunksTSV(fullDiff, out string) error {
 }
 
 func diffFiles(fullDiff, dir string) ([]string, error) {
-	raw, err := os.ReadFile(fullDiff)
+	raw, err := noblock.ReadFile(fullDiff)
 	if err != nil {
 		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, fullDiff, err)}
 	}
@@ -122,7 +123,7 @@ func writeTocRolesGitHub(ctx *fetchRunCtx, total string, statLines []string, wit
 // prFilePaths reads the PR.json file paths (nil on any failure; the stat
 // total above already degraded the same way).
 func prFilePaths(prJSON string) []string {
-	raw, err := os.ReadFile(prJSON)
+	raw, err := noblock.ReadFile(prJSON)
 	if err != nil {
 		return nil
 	}
@@ -148,7 +149,7 @@ func prFilePaths(prJSON string) []string {
 // diffHeaderIndex numbers the `diff --git` headers of file, or reports
 // headers — empty diff?)"`: numbered header lines or the fallback sentence.
 func diffHeaderIndex(fullDiff string) string {
-	raw, err := os.ReadFile(fullDiff)
+	raw, err := noblock.ReadFile(fullDiff)
 	if err != nil {
 		return noDiffHeaders
 	}
@@ -349,7 +350,7 @@ func countNewlines(s string) int {
 // record. A write failure refuses fetch-failed: the identity is part of
 // the bundle contract, not an advisory receipt.
 func writeIdentityFile(ctx context.Context, cmdr Commander, dir, head, base string) (*identity.Identity, error) {
-	filtered, err := os.ReadFile(dir + suffixFullDiff)
+	filtered, err := noblock.ReadFile(dir + suffixFullDiff)
 	if err != nil {
 		return nil, &core.RefusalError{Code: CodeFetchFailed, Message: fmt.Sprintf(msgReadFailed, dir+suffixFullDiff, err)}
 	}

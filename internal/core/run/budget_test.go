@@ -142,6 +142,7 @@ func assertBudgetScalar(t *testing.T, key string, got, want any) {
 // records the light decision beside the launch, and names the rule that decided
 // it.
 func TestBudgetAutoLightensDocsOnly(t *testing.T) {
+	t.Parallel()
 	root, dir := docsOnlyBundle(t)
 	commander := &scripted{write: func() { writeReview(t, dir) }}
 	req := request(root, commander)
@@ -207,6 +208,7 @@ const renameSection = "diff --git a/auth/token.go b/lib/token.go\n" +
 // `full.diff` that names the rename source, and preferring the PR rows must not
 // discard the path the diff measured.
 func TestBudgetRenameCombinesPRJSONAndDiff(t *testing.T) {
+	t.Parallel()
 	req, commander := sizedCoordinatorFixture(t)
 	writeUnder(t, commander.dir, "PR.json", combinedHead)
 	writeUnder(t, commander.dir, "full.diff", fixtureDiff+renameSection)
@@ -228,6 +230,7 @@ func TestBudgetRenameCombinesPRJSONAndDiff(t *testing.T) {
 // deep: the row's own path is harmless, and only its previous path matches the
 // built-in auth glob.
 func TestBudgetRenameFromPRJSON(t *testing.T) {
+	t.Parallel()
 	req, commander := sizedCoordinatorFixture(t)
 	writeUnder(t, commander.dir, "PR.json", renamedHead)
 	req.FindersRaw = ""
@@ -248,6 +251,7 @@ func TestBudgetRenameFromPRJSON(t *testing.T) {
 // when PR.json is absent: a `rename from` section renames the file out of the
 // auth tree, and the classifier still sees the path it came from.
 func TestBudgetRenameFromDiff(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	writeUnder(t, dir, "full.diff", renamedDiff)
 	st := &state{req: &core.RunRequest{BudgetRaw: "auto"}}
@@ -280,6 +284,7 @@ func intOf(v any) (int, bool) {
 // the coordinator's two-finder pass and records both the escalation and the
 // finder budget as the source of the count.
 func TestBudgetAutoEscalatesSensitivePath(t *testing.T) {
+	t.Parallel()
 	req, commander := sizedCoordinatorFixture(t)
 	writeUnder(t, commander.dir, "run.json", sensitiveCapture)
 	req.FindersRaw = ""
@@ -306,6 +311,7 @@ func TestBudgetAutoEscalatesSensitivePath(t *testing.T) {
 // TestBudgetConfigDefault proves a captured defaults.budget decides with
 // source config when no flag asked for a depth.
 func TestBudgetConfigDefault(t *testing.T) {
+	t.Parallel()
 	root, dir := docsOnlyBundle(t)
 	writeUnder(t, dir, "run.json", budgetCapture)
 	commander := &scripted{write: func() { writeReview(t, dir) }}
@@ -328,6 +334,7 @@ func TestBudgetConfigDefault(t *testing.T) {
 // TestFinderFlagOutranksBudgetFlag proves the precedence chain's first rank:
 // --finders wins, and the record says which lever won and what it launched.
 func TestFinderFlagOutranksBudgetFlag(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	commander := &scripted{write: func() { writeReview(t, dir) }}
@@ -350,6 +357,7 @@ func TestFinderFlagOutranksBudgetFlag(t *testing.T) {
 // classifying at all: an explicit --finders never consults the captured
 // defaults.budget, so the run records no budget object to override.
 func TestFinderFlagSkipsCapturedBudget(t *testing.T) {
+	t.Parallel()
 	req, commander := sizedCoordinatorFixture(t)
 	writeUnder(t, commander.dir, "run.json", budgetCapture)
 	req.FindersRaw = "2"
@@ -372,6 +380,7 @@ func TestFinderFlagSkipsCapturedBudget(t *testing.T) {
 // captured finder count: a repository-wide finders: 1 speed setting can never
 // single-finder a diff the classifier escalated.
 func TestBudgetFlagOutranksCapturedFinders(t *testing.T) {
+	t.Parallel()
 	req, commander := sizedCoordinatorFixture(t)
 	writeUnder(t, commander.dir, "run.json",
 		`{"schema_version":"1","resolved":{"defaults":{"values":{"finders":1},"origins":{"finders":{"layer":"repo","source":"base"}}}}}`)
@@ -392,6 +401,7 @@ func TestBudgetFlagOutranksCapturedFinders(t *testing.T) {
 // tier trips the existing --print/--stage refusal instead of inventing a second
 // one, and does it before anything reaches disk.
 func TestBudgetRenderingRefusesTwoFinders(t *testing.T) {
+	t.Parallel()
 	req, commander := sizedCoordinatorFixture(t)
 	writeUnder(t, commander.dir, "run.json", sensitiveCapture)
 	req.BudgetRaw = "auto"
@@ -412,6 +422,7 @@ func TestBudgetRenderingRefusesTwoFinders(t *testing.T) {
 // TestBudgetInvalidValuesRefuse proves both the flag value and a captured value
 // refuse typed before any launch, naming the whole vocabulary.
 func TestBudgetInvalidValuesRefuse(t *testing.T) {
+	t.Parallel()
 	t.Run("flag", assertInvalidBudgetFlag)
 	t.Run("captured", assertInvalidCapturedBudget)
 }
@@ -457,6 +468,7 @@ func assertInvalidCapturedBudget(t *testing.T) {
 // even when a depth is requested: a drain never classifies, so it records no
 // budget at all.
 func TestDrainNeverReachesTheClassifier(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	commander := &scripted{write: func() {
@@ -482,6 +494,7 @@ func TestDrainNeverReachesTheClassifier(t *testing.T) {
 // key and carries no budget in --json, the byte-identical claim the omitempty
 // fields exist for.
 func TestNoBudgetKeepsArtifactsUnchanged(t *testing.T) {
+	t.Parallel()
 	root := fixtureRoot(t)
 	dir := bundleDir(root)
 	commander := &scripted{write: func() { writeReview(t, dir) }}

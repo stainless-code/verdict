@@ -8,8 +8,8 @@ package triagecore
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os"
 	"path/filepath"
 	"unicode/utf8"
 
@@ -18,7 +18,9 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/storelock"
 )
 
 // Request carries the resolved triage invocation.
@@ -29,6 +31,11 @@ type Request struct {
 	Rationale string
 	Force     bool
 	DryRun    bool
+	// RefuseWithheld, when true, refuses a policy-withheld finding with the
+	// unknown-sig refusal, so a withheld finding reads as absent — the read
+	// surface's 404. The interactive transport sets it; the CLI leaves it
+	// false and keeps flipping withheld findings as before.
+	RefuseWithheld bool
 }
 
 // Response carries the flip summary: the envelope fields, the human line,
@@ -73,7 +80,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if err := ctx.Err(); err != nil {
 		return nil, st.refuse("canceled", "canceled before triage completed")
 	}
-	if ref := st.runTriage(); ref != nil {
+	if ref := st.runTriage(ctx); ref != nil {
 		return nil, ref
 	}
 	return st.response(), nil
@@ -108,7 +115,7 @@ func (st *state) openBundle() (string, *core.RefusalError) {
 	return dir, requireFindingsFile(dir)
 }
 
-func (st *state) runTriage() *core.RefusalError {
+func (st *state) runTriage(ctx context.Context) *core.RefusalError {
 	dir, ref := st.openBundle()
 	if ref != nil {
 		return ref
@@ -121,15 +128,8 @@ func (st *state) runTriage() *core.RefusalError {
 	if ref := checkStatus(st.req.Status); ref != nil {
 		return ref
 	}
-	entries, ref := st.readFindings(dir)
+	full, ref := st.preflight(dir)
 	if ref != nil {
-		return ref
-	}
-	full, ref := resolveSig(entries, st.req.Sig)
-	if ref != nil {
-		return ref
-	}
-	if ref := st.requireRationale(); ref != nil {
 		return ref
 	}
 	now := st.req.TimeUTC()
@@ -137,7 +137,101 @@ func (st *state) runTriage() *core.RefusalError {
 		st.dryRun(full)
 		return nil
 	}
+	unlock, ref := st.lockBundle(ctx, dir)
+	if ref != nil {
+		return ref
+	}
+	defer unlock()
+	return st.applyLocked(dir, now)
+}
+
+// preflight runs the lock-free checks: one findings read, sig resolution,
+// the withholding posture, and the rationale floor. A refusal here writes
+// nothing, lock file included, and a dry run answers from it too. The checks
+// are snapshot-independent (sig identity and withheld receipts do not move
+// under a triage); every mutation re-runs resolve and withholding on the
+// locked snapshot, which is the one the flip mutates.
+func (st *state) preflight(dir string) (string, *core.RefusalError) {
+	entries, ref := st.readFindings(dir)
+	if ref != nil {
+		return "", ref
+	}
+	full, ref := st.checkEntries(entries)
+	if ref != nil {
+		return "", ref
+	}
+	if ref := st.requireRationale(); ref != nil {
+		return "", ref
+	}
+	return full, nil
+}
+
+// applyLocked re-reads and re-validates a mutation under the bundle lock:
+// the snapshot the flip stages and writes is the one it validated there.
+func (st *state) applyLocked(dir, now string) *core.RefusalError {
+	entries, ref := st.readFindings(dir)
+	if ref != nil {
+		return ref
+	}
+	full, ref := st.checkEntries(entries)
+	if ref != nil {
+		return ref
+	}
 	return st.applyFlip(dir, entries, full, now)
+}
+
+// checkEntries resolves the request's sig against one snapshot and, when
+// asked, refuses a policy-withheld entry. It runs before the lock (so a
+// refusal writes nothing, lock file included) and again under it (on the
+// exact snapshot the flip mutates).
+func (st *state) checkEntries(entries []any) (string, *core.RefusalError) {
+	full, ref := resolveSig(entries, st.req.Sig)
+	if ref != nil {
+		return "", ref
+	}
+	if st.req.RefuseWithheld && isWithheld(entries, full) {
+		return "", &core.RefusalError{
+			Code:    "unknown-sig",
+			Message: "refusing triage: finding not in store",
+		}
+	}
+	return full, nil
+}
+
+// lockBundle takes the findings store's OS advisory lock, so the whole
+// read-modify-write below — findings read, credit staging, findings write,
+// KB commit — is one writer at a time however the invocations arrive
+// (concurrent HTTP triage, CLI beside server). It is a different lock file
+// from the knowledge-base store's, so holding it across CommitStaged never
+// nests the KB lock inside itself; the ordering is always bundle then KB,
+// and no path takes them the other way. A busy store is retryable; any
+// other lock failure fails the flip rather than writing unlocked.
+func (st *state) lockBundle(ctx context.Context, dir string) (func(), *core.RefusalError) {
+	unlock, err := storelock.AcquireContext(ctx, dir+findingsSuffix, storelock.DefaultWait)
+	if err == nil {
+		return unlock, nil
+	}
+	if ctx.Err() != nil {
+		return nil, st.refuse("canceled", "canceled before triage completed")
+	}
+	if errors.Is(err, storelock.ErrBusy) {
+		return nil, st.refuse("store-busy",
+			"another write holds the store lock on "+dir+findingsSuffix+" (retry in a moment)")
+	}
+	return nil, st.refuse("triage-failed",
+		fmt.Sprintf("could not lock %s%s: %v", dir, findingsSuffix, err))
+}
+
+// isWithheld reports whether this snapshot's resolved entry is a
+// policy-withheld finding. It reads the same entries the flip mutates, so
+// no sweep between the check and the write can slip a withheld flip past it.
+func isWithheld(entries []any, full string) bool {
+	for _, entry := range entries {
+		if jq.StrOf(readcommon.FieldOf(entry, "sig")) == full {
+			return readcommon.WithheldSource(entry) != ""
+		}
+	}
+	return false
 }
 
 func requireFindingsFile(dir string) *core.RefusalError {
@@ -164,7 +258,7 @@ func checkStatus(status string) *core.RefusalError {
 }
 
 func (st *state) readFindings(dir string) ([]any, *core.RefusalError) {
-	raw, err := os.ReadFile(dir + findingsSuffix)
+	raw, err := noblock.ReadFile(dir + findingsSuffix)
 	if err != nil {
 		return nil, corruptStore(dir)
 	}
@@ -279,7 +373,7 @@ func decodeEntries(raw []byte) ([]any, error) {
 }
 
 func mustRead(path string) []byte {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil
 	}

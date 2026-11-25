@@ -67,6 +67,10 @@ FUZZ_TARGETS := \
 	./internal/core/record:FuzzNormalizeReview \
 	./internal/core/threads:FuzzProviderMappers \
 	./internal/core/verify:FuzzGate \
+	./internal/core/verify:FuzzGitIndex \
+	./internal/dashboard:FuzzDecode \
+	./internal/dashboard:FuzzDecoder \
+	./internal/dashboard:FuzzTruncate \
 	./internal/evidence:FuzzMatchQuote \
 	./internal/hunks:FuzzFiles \
 	./internal/hunks:FuzzHeaderPaths \
@@ -77,7 +81,8 @@ FUZZ_TARGETS := \
 	./internal/mcpconfig:FuzzMergeJSON \
 	./internal/mcpconfig:FuzzMergeTOML \
 	./internal/release:FuzzExtractTarGz \
-	./internal/release:FuzzExtractZip
+	./internal/release:FuzzExtractZip \
+	./internal/untrusted:FuzzFlatten
 
 .PHONY: fuzz
 fuzz:
@@ -108,6 +113,15 @@ vuln:
 .PHONY: deadcode
 deadcode:
 	sh scripts/deadcode.sh $(DEADCODE_VERSION)
+
+# verify-stamp runs the full bar hooks/pre-push runs, then records HEAD in
+# <git-dir>/verdict-verified so a push of that exact clean commit skips the
+# repeat. A dirty tree is refused before the run, and HEAD moving during it
+# refuses the stamp.
+.PHONY: verify-stamp
+verify-stamp:
+	sh scripts/verify-stamp.sh clean
+	head=$$(git rev-parse HEAD) && sh scripts/prepush-checks.sh && sh scripts/verify-stamp.sh write "$$head"
 
 .PHONY: ci-go
 ci-go: gofmt-check schemas-check ts-types-check vet deadcode test-race vuln
@@ -184,6 +198,10 @@ release-dry-run:
 # Two gates: gen-ts-types.mjs --check covers the schema/codegen sources (Go
 # free, Node only), `go run ./cmd/tsgen` covers the refusal codes rendered
 # from the Go refusal-code registry (internal/core/refusalcodes.go).
+#
+# The runnable examples (examples/typescript-client) run here too: they import
+# clients/ts/dist, so the tsc build above must land first, and
+# clients/ts/test/examples.test.mjs executes all three against this binary.
 .PHONY: clients-ts
 clients-ts: build
 	go run ./cmd/tsgen
@@ -192,6 +210,7 @@ clients-ts: build
 	node --test internal/webui/test/*.test.mjs
 	VERDICT_BIN="$(CURDIR)/$(BIN)" node --test clients/ts/test/*.test.mjs
 	node_modules/.bin/tsc --noEmit -p clients/ts/tsconfig.types.json
+	node_modules/.bin/tsc --noEmit -p examples/typescript-client
 
 # clients-python runs the dependency-free Python example against the built
 # binary: one success, one typed refusal, one exit-2 usage error, and the demo

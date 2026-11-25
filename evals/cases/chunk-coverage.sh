@@ -23,7 +23,7 @@ mkcovbundle() { # $1 = pr number
   BASEB="$EVAL_FIXTURE_BASE"
   mkdir -p "$dir/chunks"
   cat > "$dir/PR.json" <<EOF
-{"state":"OPEN","headRefOid":"$HEADA","baseRefOid":"$BASEB","author":{"login":"teammate"},"files":[{"path":"a.txt","additions":1,"deletions":0},{"path":"b.txt","additions":1,"deletions":0}]}
+{"state":"OPEN","headRefOid":"$HEADA","baseRefOid":"$BASEB","author":{"login":"teammate"},"url":"https://github.com/acme/app/pull/$pr","files":[{"path":"a.txt","additions":1,"deletions":0},{"path":"b.txt","additions":1,"deletions":0}]}
 EOF
   cat > "$dir/full.diff" <<'EOF'
 diff --git a/a.txt b/a.txt
@@ -240,6 +240,9 @@ restore_stub() { cp "$STUB_SAVED" "$EVAL_STUBBIN/gh"; }
 trap restore_stub EXIT
 cat > "$EVAL_STUBBIN/gh" <<EOF
 #!/usr/bin/env bash
+# post pins its calls to the bundle's host: github.com here, and only it.
+if [ "\${1:-}" = api ] && [ "\${2:-}" = --hostname ] && [ "\${3:-}" = github.com ]; then set -- api "\${@:4}"; fi
+case " \$* " in *" --hostname"*) echo "evals-stub-gh: call pinned to another host (\$*)" >&2; exit 64;; esac
 echo "stub-gh \$*" >> "\${EVAL_STUBLOG:-/dev/null}"
 case "\$*" in
   'api repos/'*'/reviews --paginate'|'api repos/'*'/comments --paginate')

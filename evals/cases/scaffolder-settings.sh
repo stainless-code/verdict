@@ -47,7 +47,7 @@ else
 fi
 CFG="$EVAL_SANDBOX/initrepo/.verdict/config.json"
 if [ "$(jq -r '.defaults.budget_usd == 0.5' "$CFG")" = "true" ] \
-  && [ "$(jq -r '.defaults.panel | join(",")' "$CFG")" = "main" ] \
+  && [ "$(jq -r '.defaults.panel | join(",")' "$CFG")" = "lead,lens-1" ] \
   && [ "$(jq -r '.defaults.kb_policy.min_judged' "$CFG")" = "5" ] \
   && [ "$(jq -r '.defaults.kb_policy.max_fp_rate' "$CFG")" = "0.5" ] \
   && [ "$(wc -l <"$EVAL_SANDBOX/initrepo/.verdict/kb.jsonl" | tr -d ' ')" = "2" ]; then
@@ -69,8 +69,8 @@ if [ "$st" -eq 0 ] \
   && [ "$(jq -r '.defaults.panel // [] | length' "$CFG")" = "0" ] \
   && [ "$(jq -r '.defaults.kb_policy.min_judged' "$CFG")" = "10" ] \
   && [ "$(jq -r '.defaults.kb_policy.max_fp_rate' "$CFG")" = "0.7" ] \
-  && [ "$(jq -r '.defaults.budget_usd == 2' "$CFG")" = "true" ]; then
-  good "chill maps to unpinned panel + 10/0.7 + lenient budget"
+  && [ "$(jq -r '.defaults.budget_usd == 0.1' "$CFG")" = "true" ]; then
+  good "chill maps to unpinned panel + 10/0.7 + smallest budget"
 else
   bad "chill mapping drifted (exit $st)"
 fi
@@ -80,8 +80,8 @@ if [ "$st" -eq 0 ] \
   && [ "$(jq -r '.defaults.panel | length' "$CFG")" = "3" ] \
   && [ "$(jq -r '.defaults.kb_policy.min_judged' "$CFG")" = "3" ] \
   && [ "$(jq -r '.defaults.kb_policy.max_fp_rate' "$CFG")" = "0.3" ] \
-  && [ "$(jq -r '.defaults.budget_usd == 0.1' "$CFG")" = "true" ]; then
-  good "strict maps to lead+2 lenses + 3/0.3 + tight budget"
+  && [ "$(jq -r '.defaults.budget_usd == 2' "$CFG")" = "true" ]; then
+  good "strict maps to lead+2 lenses + 3/0.3 + largest budget"
 else
   bad "strict mapping drifted (exit $st)"
 fi

@@ -32,7 +32,8 @@
     "severity_weights": { "$ref": "#/$defs/configSeverityWeights" },
     "index": { "$ref": "#/$defs/configIndex" },
     "rigor_policy": { "$ref": "#/$defs/rigorPolicy" },
-    "packs": { "$ref": "#/$defs/configPacks" }
+    "packs": { "$ref": "#/$defs/configPacks" },
+    "tests": { "$ref": "#/$defs/tests" }
   },
   "required": ["schema_version"],
   "additionalProperties": false,
@@ -58,6 +59,7 @@
           "minItems": 1
         },
         "budget_usd": { "type": "number", "exclusiveMinimum": 0 },
+        "monthly_budget_usd": { "type": "number", "exclusiveMinimum": 0 },
         "max_bytes": { "type": "integer", "minimum": 1 },
         "chunk": { "type": "boolean" },
         "kb_policy": { "$ref": "#/$defs/kbPolicy" },
@@ -199,7 +201,26 @@
           "type": "array",
           "items": { "type": "string" },
           "minItems": 1
-        }
+        },
+        "org_pack": { "$ref": "#/$defs/configOrgPack" }
+      },
+      "required": [],
+      "additionalProperties": false
+    },
+    "configOrgPack": {
+      "type": "object",
+      "properties": {
+        "repo": { "type": "string" },
+        "ref": { "type": "string" },
+        "path": { "type": "string" }
+      },
+      "required": ["repo", "ref"],
+      "additionalProperties": false
+    },
+    "tests": {
+      "type": "object",
+      "properties": {
+        "draft": { "enum": ["off", "on-reproduce"] }
       },
       "required": [],
       "additionalProperties": false
@@ -274,6 +295,10 @@
           {
             "required": ["defaults"],
             "properties": { "defaults": { "required": ["finders"] } }
+          },
+          {
+            "required": ["defaults"],
+            "properties": { "defaults": { "required": ["monthly_budget_usd"] } }
           }
         ]
       }

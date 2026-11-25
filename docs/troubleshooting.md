@@ -150,6 +150,12 @@ Cause: the checkout shares no merge-base with `--base`.
 
 Fix: pass a `--base` reachable from this checkout, or run in the right repository.
 
+## `bad-baseline`
+
+Cause: `GET /v1/roots/{root}/bundles/{bundle}/compare` received no `baseline` query parameter, a second query parameter beside it, or a baseline that cannot name a bundle inside the route's own served root — an absolute path, a `..` segment, a path separator, or a path that resolves outside the root.
+
+Fix: pass exactly one `baseline` query parameter naming another bundle in the same root, as a bare bundle name (`?baseline=local-previous`, `?baseline=1234`). A name this root does not hold refuses `missing-compare-bundle` instead.
+
 ## `bad-budget`
 
 Cause: `REVIEW_BUDGET_USD` (or the typed `budget_usd` default) is not above 0, or the scaffolded config fails validation.
@@ -203,6 +209,12 @@ Fix: re-run with a valid combination — the message names the clash.
 Cause: `adopt` got no (or a bad) `--from` local slug, or `ingest --from` named a source format this build cannot read.
 
 Fix: for `adopt`, pass `--from <local-slug>` pointing at a `.verdict/state/local-*` directory carrying `findings.json`. For `ingest`, pass `--from sarif <file|->`; that is the one format it reads.
+
+## `bad-glob`
+
+Cause: a bundle-listing pattern is not a portable repository-relative glob — it is absolute, escapes with `..`, carries an empty segment, or carries a backslash.
+
+Fix: pass a portable `/`-separated glob (for example `local-*`), or omit the pattern to list every bundle.
 
 ## `bad-group-validation`
 
@@ -269,6 +281,12 @@ Fix: use one of the three forms with a bare ssh user and a public https URL, and
 Cause: `verification/verdicts.json` has malformed results, duplicate `(sig, model)` pairs, unknown or ambiguous sigs, or evidence outside 10–500 characters.
 
 Fix: use schema version `1`, unique full signatures, named models, and verdicts `confirmed`, `refuted`, or `insufficient` with evidence. Correct `verification/verdicts.json` and retry.
+
+## `bad-params`
+
+Cause: an editor sent `verdict lsp` a `workspace/executeCommand` it does not advertise, or params it cannot read. This build advertises `verdict.refresh` alone; the JSON-RPC error is `-32602` with this code in `error.data`.
+
+Fix: send only a command `initialize` listed in `executeCommandProvider.commands` (this build: `verdict.refresh`), then retry. An editor extension built for a newer `verdict lsp` needs that newer binary.
 
 ## `bad-path`
 
@@ -338,7 +356,7 @@ Fix: pass `--require-rigor critical=walked` (repeatable, one tier per flag), or 
 
 ## `bad-root`
 
-Cause: `serve --root` names a path that is missing, not a directory, or unreadable.
+Cause: `serve --root`, `dashboard --root`, `acp --root`, or `lsp --root` names a path that is missing, not a directory, or unreadable. (An `lsp --root` that exists but sits outside any git checkout refuses `not-a-repo` instead.)
 
 Fix: pass `--root <existing-directory>`, or start `verdict serve` inside a checkout with no `--root`.
 
@@ -414,6 +432,12 @@ Cause: `adopt --from` points at a PR bundle instead of a local one.
 
 Fix: point `--from` at a `.verdict/state/local-*` directory.
 
+## `bad-target-url`
+
+Cause: a pull or merge request URL could not become a target: credentials, a dot-relative, encoded, or extra path segment, another route, a non-numeric number, an unmapped host (self-hosted GitLab or Forgejo needs `GITLAB_HOST` / `FORGEJO_HOST`), or a `--provider` that conflicts with the URL.
+
+Fix: paste the plain URL (`https://github.com/<owner>/<repo>/pull/<number>`), or pass `<owner/repo> <pr> --provider <name>`.
+
 ## `bad-timeout`
 
 Cause: `--timeout` is not a positive number of seconds.
@@ -467,6 +491,12 @@ Fix: re-run with `--consent-over-budget` to consent to the blind run (or relax `
 Cause: a served bundle name resolves to a different directory than the discovered one — the bare name shadows an existing `local-<name>` bundle with no `PR.json`.
 
 Fix: address the local bundle explicitly as `local-<name>`, or restore the PR bundle's `PR.json` so the bare name resolves to it.
+
+## `bundle-unreadable`
+
+Cause: `verdict serve --allow-post` could not fingerprint the bundle for a preview or a confirmed submit, because a bundle file is unreadable or is not a regular file (a FIFO or device is refused without waiting for a writer). Nothing was posted, and a refused submit leaves its preview usable.
+
+Fix: make every bundle file a regular, readable file, then re-run the preview.
 
 ## `calibrate-failed`
 
@@ -602,6 +632,18 @@ Fix: re-run `fetch-local` to refresh `.verdict/state/local-<name>/`, review the
 new bundle, then record again. Coverage from the previous snapshot cannot
 certify the current tree.
 
+## `dashboard-no-tty`
+
+Cause: `verdict dashboard` was started without a terminal on both stdin and stdout (a pipe, a redirect, CI, or an agent's shell), or the terminal refused raw mode. The live view waits for keystrokes, so it refuses instead of hanging.
+
+Fix: run it in a terminal, or pass `--once` for one plain-text frame on stdout (exit 0). For data rather than a picture, read the same views through `verdict serve` or the MCP query tools.
+
+## `dashboard-no-vt`
+
+Cause: a Windows console refused virtual-terminal processing (`SetConsoleMode` rejected `ENABLE_VIRTUAL_TERMINAL_PROCESSING` or `ENABLE_VIRTUAL_TERMINAL_INPUT`): a console older than Windows 10, or a legacy conhost.
+
+Fix: run `verdict dashboard` in Windows Terminal or a Windows 10+ console, or pass `--once` for one plain-text frame.
+
 ## `diff-failed`
 
 Cause: `git diff` failed for the requested range.
@@ -726,7 +768,14 @@ outcome, not a pass.
 
 Cause: the bundle carries no reviewed head, or the checked-out head is not the reviewed head.
 
-Fix: check out the reviewed commit (or re-fetch the bundle), then re-run validation.
+Fix: check out the reviewed commit (or re-fetch the bundle), then re-run validation or
+`fix` — on a PR bundle `fix` refuses until the checkout is on the bundle's head.
+
+## `host-mismatch`
+
+Cause: a host call could not be pinned to the target's host, and the message names the hosts involved. The target is a GitHub or GitLab host on a non-default port; `GITLAB_API_HOST` (or `CI_SERVER_FQDN` under glab's CI auto-login) names another server than a GitLab target, which glab would send its API calls to instead; an SSH GitLab origin's host is one `GITLAB_HOST` serves on another port; `FORGEJO_HOST` names another host than the target; the bundle `post` would publish was fetched from another host than the target, or records no review URL when a real post names only a typed `<owner/repo> <pr>`; or a `gh`/`glab` argv names a host or repository in a spelling the pin cannot control.
+
+Fix: point the target, the bundle, and the host variable at one host: set `FORGEJO_HOST` and `FORGEJO_TOKEN` (or `GITLAB_HOST`) for the target's host, re-fetch the target before posting, or pass a target on the bundle's host. For a GitLab or GitHub host on a non-default port, pass `<owner/repo> <pr> --provider <name>` to let the host CLI's own default decide the reads. `post` refuses a bundle recorded on such a host even under a typed pair, because neither CLI's `--hostname` takes a port and post never writes to an unpinned host: publish that review from the host's web interface, or serve the host on its default port and re-fetch. For `GITLAB_API_HOST`, unset it or set it to the target's host.
 
 ## `html-not-export`
 
@@ -1001,6 +1050,12 @@ Cause: the verb needs a PR bundle (local bundles never post).
 
 Fix: `fetch` the PR first; local bundles use `record` and `report`.
 
+## `no-reproduction`
+
+Cause: `fix --test` needs a reproduced finding's retained artifact, and the sig carries no reproduction receipt or the retained file cannot be read.
+
+Fix: re-run `record` with a reproduction block so the bundle retains the artifact, then re-run `verdict fix <owner/repo> <local-slug|pr> --test <sig>`.
+
 ## `no-review-artifact`
 
 Cause: the agent exited `0` but wrote no `review.json` (or a non-file).
@@ -1042,14 +1097,19 @@ Cause: the command needs a git worktree and this directory is not one.
 
 Fix: run inside a git worktree, then re-run.
 
+## `not-found`
+
+Cause: the MCP dashboard query named a bundle this served root does not hold.
+
+Fix: list bundles with `query-bundles` first, then re-issue the call with the right bundle name.
+
 ## `not-local`
 
-Cause: the verb got the wrong bundle kind (`record` on a GitHub PR, or `fix` on a PR bundle
-without `--selected`).
+Cause: the verb got the wrong bundle kind (`record` on a GitHub PR, or `fix` on a corpus bundle).
 
 Fix: `fetch-local` for local work first; GitHub PRs use `post`, and local bundles use `record` and `report`.
-`fix --selected` is the one batch that reads a PR bundle, because that is where
-`selected.json` comes from.
+`fix` runs on PR bundles too — the instructions name the `post` landing there — but
+never on a `corpus-*` bundle, which is a benchmark input, not review work.
 
 ## `not-retired`
 
@@ -1071,21 +1131,21 @@ Fix: add `"replace": ["<lower pack name>"]` to the higher pack's manifest (repla
 
 ## `pack-git-failed`
 
-Cause: the hermetic `git clone`, the HEAD resolution, or the detached checkout `pack add` runs could not complete: the remote or the ref was not found, the credential was refused, the network is down, or the five-minute clone budget ran out. git's own error text is never printed, because it can carry the source URL, its query, or the ref.
+Cause: the hermetic `git clone`, the HEAD resolution, the detached checkout `pack add` runs, the pinned `refs/tags/<tag>` or commit `pack sync` fetches, or the `git merge-base` the trusted-base read runs on a default branch that resolves, could not complete: the remote or the ref was not found, the credential was refused, the network is down, the five-minute clone budget ran out, or the default branch shares no merge base with `HEAD` (a shallow or partial clone). git's own error text is never printed, because it can carry the source URL, its query, or the ref.
 
-Fix: check the source spelling, the `@ref`, your access (an ssh key for an ssh source), and the network, then re-run. For a private remote, use ssh with a key rather than a token in the URL.
+Fix: check the source spelling, the `@ref`, your access (an ssh key for an ssh source), and the network, then re-run. For a private remote, use ssh with a key rather than a token in the URL. A merge-base refusal names the branch: fetch the default branch and its history (`git fetch origin <branch>`) so `HEAD` and the branch meet, then re-run.
 
 ## `pack-lock-drift`
 
-Cause: `.verdict/verdict.lock` no longer matches the vendored repo pack: its tree hash differs, its pack directory is gone, or its `sig` does not match the entry's name, source, version, and hash.
+Cause: `.verdict/verdict.lock` no longer matches the vendored repo pack: its tree hash differs, its pack directory is gone, or its `sig` does not match the entry's name, source, version, and hash (plus `org_path` and `org_ref` on a row `pack sync` wrote). When a base-owned `org_pack` pin governs, the vendored central pack was edited (or deleted) after `pack sync`.
 
-Fix: re-add the pack with `verdict pack add <dir|git-url>[@ref]` so the lock records the current tree, or restore the pack the lock pins, then re-run. A bundle keeps the lock controls captured at fetch, so repair the trusted base and fetch a fresh bundle before repeating `post` or `record`.
+Fix: re-add the pack with `verdict pack add <dir|git-url>[@ref]` so the lock records the current tree, or restore the pack the lock pins, then re-run. For a central pack, re-sync it with `verdict pack sync` instead. A bundle keeps the lock controls captured at fetch, so repair the trusted base and fetch a fresh bundle before repeating `post` or `record`.
 
 ## `pack-lock-missing`
 
-Cause: a repo pack under `.verdict/packs/` has no `.verdict/verdict.lock` entry, or the lock file is absent while repo packs exist.
+Cause: a repo pack under `.verdict/packs/` has no `.verdict/verdict.lock` entry, or the lock file is absent while repo packs exist. When a base-owned `org_pack` pin governs, no row synced from the pinned repository exists yet, or the row that exists was synced at another `ref` — a bumped tag such as `v1.0.0` to `v1.1.0` repins the pack, and the vendored tree is still the old ref's.
 
-Fix: run `verdict pack add <dir|git-url>[@ref]` to vendor the pack and write its lock entry, commit both, then re-run. A bundle keeps the lock controls captured at fetch, so repair the trusted base and fetch a fresh bundle before repeating `post` or `record`.
+Fix: run `verdict pack add <dir|git-url>[@ref]` to vendor the pack and write its lock entry, commit both, then re-run. For a central pack, run `verdict pack sync` to vendor the pinned `repo@ref` and lock it. A bundle keeps the lock controls captured at fetch, so repair the trusted base and fetch a fresh bundle before repeating `post` or `record`.
 
 ## `pack-staging-stale`
 
@@ -1135,6 +1195,12 @@ Cause: `backtest mine` ran in a partial clone (`git clone --filter=blob:none`). 
 
 Fix: re-clone without `--filter=blob:none`, or unset the remote's `promisor` and `partialclonefilter` settings and run `git fetch --refetch`, then re-run.
 
+## `post-content-changed`
+
+Cause: a confirmed `verdict serve --allow-post` submit built a review different from the one the preview pinned, because a bundle file changed after the verified re-render. The server answers `409 post-content-changed`. Nothing was posted: the check runs before any host write.
+
+Fix: re-run the preview to see the review as it is now, then submit again.
+
 ## `post-failed`
 
 Cause: the post submission failed (anchor drift or body size — the message says which).
@@ -1146,6 +1212,12 @@ Fix: narrow anchor drift or body size (see above), then re-run.
 Cause: a review draft carries a secret-shaped value — `review.json` for `post`, `drain.replies.json` for `drain --post`.
 
 Fix: remove the value from the draft and re-run. `post` can pass `--allow-secret-values` to publish it anyway; `drain --post` has no override, and `drain --post --dry-run` refuses the same way before any write.
+
+## `post-timeout`
+
+Cause: a confirmed `verdict serve --allow-post` submit did not finish within its five-minute bound, so the stalled host call was stopped and the bundle lock released. The host may or may not have recorded the review.
+
+Fix: check the pull request for the review. Re-run the preview and submit again only if it is absent.
 
 ## `pr-not-open`
 
@@ -1159,7 +1231,9 @@ Cause: the PR could not be read from the host, or a host read kept disagreeing
 with itself (a GraphQL head that is not yet the REST head, a torn view
 document) for the whole bounded wait.
 
-Fix: run `gh auth status`, confirm the repo/PR spelling, then re-run. A bounded
+Fix: run `gh auth status` (GitHub) or `glab auth status` (GitLab), confirm the
+repo/PR spelling, then re-run. A GitLab refusal carries the start of
+`glab`'s own error, so a 403 or a missing token shows there. A bounded
 `pr-wait` retries an inconsistent observation on its next interval and names the
 retried count in this refusal, so a wait right after a push usually recovers by
 itself; rerun once the push settles. `--once` never retries.
@@ -1183,7 +1257,7 @@ Fix: reinstall verdict from a signed release, then re-run.
 
 Cause: the provider documents no path for this verb.
 
-Fix: use the verb named above for this bundle kind (`post` reaches GitHub, GitLab, and Forgejo; the other hosts use `record` and `report`).
+Fix: use the verb named above for this bundle kind (`post` reaches GitHub, GitLab, Forgejo, Bitbucket, and Azure DevOps; the other hosts use `record` and `report`).
 
 ## `provider-unknown`
 
@@ -1201,7 +1275,7 @@ Fix: add `--rationale` with 30+ chars, or `--force`.
 
 Cause: an MCP call names a tool hidden by `--read-only` because it writes local state.
 
-Fix: restart the server without `--read-only`; operator-only tools also require `--operator`.
+Fix: restart the server without `--read-only`.
 
 ## `record-failed`
 
@@ -1252,7 +1326,7 @@ stale, or unreadable evidence receipt for the decided head, a gating finding
 whose quote is unverified (including a block clause naming one), a missing or
 mismatched changed-hunk receipt, or an unknown, uncovered, or non-code
 specification check. `record` writes the receipt without approval; `run`
-refuses once its repair rounds finish; `report --check` and `gate` fail the
+refuses once its repair rounds finish; `gate` fails the
 `evidence` dimension; `report` withholds `data.approval`; and `post` refuses a
 binding approval with it, even under `--force`.
 
@@ -1278,9 +1352,23 @@ Fix: pick another `--run <slug>`, or delete the existing run directory and mine 
 
 ## `sandbox-unavailable`
 
-Cause: the sandbox cannot be enforced — on Linux, no `bubblewrap` or no unprivileged user namespaces; on macOS, no working `sandbox-exec`; on any other host, no enforced mechanism at all.
+Cause: the sandbox cannot be enforced — on Linux, no `bubblewrap` or no unprivileged user namespaces; on macOS, no working `sandbox-exec`; on any other host, no enforced mechanism at all. The same code covers the inputs the sandbox must resolve before it can hide anything:
 
-Fix: install bubblewrap on Linux and allow unprivileged user namespaces, or fix `sandbox-exec` on macOS (`/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' true` must exit 0), or re-run without `--sandbox` on a command you trust.
+- `HOME is unset in the child environment` — the credential paths under `HOME` cannot be named. Keep `HOME` in the child environment (it is on the default allowlist; a `--env-allowlist` or `.verdict/verify-env` setup must not drop it).
+- `HOME "<value>" in the child environment is not an absolute path` — a relative `HOME` names no fixed location to hide. Export an absolute `HOME`.
+- `the reviewed root <root> is inside the credential path <path>` — hiding the path would hide the code under review, and allowing the root would expose the credential. Verify from a checkout outside your credential stores.
+- `the reviewed root <root> has no .git` (Linux) — `bwrap` can make `<root>/.git` read-only only by mounting over it, and creating the missing mount point would write an empty `.git` into your tree, so without one the command could create git hooks or config that run later. Verify from the top of a git checkout, or run the whole review in a throwaway VM or container.
+- `could not inspect <root>/.git (<error>)` (Linux) — `.git` exists but cannot be read (permissions, `ENOTDIR`, an I/O error); the error is quoted as reported. Fix the path or its permissions.
+- `<path> names the git directory <dir>, which does not exist as a directory` / `<path> has no readable git pointer line` / `<root>/.git is neither a directory nor a gitdir: file` / `the git location <dir> does not resolve (<error>)` / `the git pointer <path> passes through the symlink <link> inside the reviewed root` (also when `<link>` is reached through a link outside the root) / `the git pointer <path> walks through <dir>, which does not exist inside the reviewed root` (Linux) — a `.git` file or a `commondir` points somewhere `bwrap` cannot make read-only, so the command could create or swap the git directory git later runs hooks from. Fix or remove the pointer (`git worktree repair`, or point `gitdir:` at the real directory), or verify a fresh clone.
+- `could not read the git pointer <path> (<error>)` / `the git pointer <path> is a symlink` / `the git location <dir> is the reviewed root or holds it` (Linux and macOS) — the pointer cannot be read the way git reads it, its bytes come through a link from a file the command could rewrite, or the git directory is the reviewed root or one of its ancestors, so the writable root would make hooks or config writable. Replace a linked `commondir` with the file itself, verify from a checkout outside its git directory, or verify a fresh clone.
+- `the git pointer <path> reaches <dir>, which is inside the reviewed root <root> under another spelling` (Linux and macOS) — the pointer names a path inside the root through a letter-case variant of the root's name or, on macOS, the `/System/Volumes/Data/…` firmlink spelling; a rule or bind in that spelling would not protect it. Rewrite the pointer with the root's own spelling (`git worktree repair`), or verify a fresh clone.
+- `the git control file <path> is a symlink to <target>, which the command could rewrite inside the reviewed root` (Linux and macOS) — a file in a protected git directory (its `config`, something under `info/`, a pointer file) is a link into the writable tree, so the command could change what git reads. Replace the link with the file itself, or verify a fresh clone. Links under `hooks/` are allowed: hook code in the tree is your choice, like `core.hooksPath`.
+- `the git control file <path> has another hard link` (Linux and macOS) — a file in a protected git directory (its config, a hook, a pointer file) has a second name, which the command could write past every path rule. Remove the extra name, or copy the file and move the copy over the original so it stands alone, or verify a clone made with `--no-hardlinks` (a `--local` clone links only object payload, which is fine: loose objects, packs, and the commit-graph and pack-list caches, in `.git` and in each `.git/modules/<name>`; `objects/info/alternates` is not payload).
+- `the submodule path <path> is missing or not a directory` / `could not read the git index <index> (<reason>), so its submodule paths cannot be protected` / `the reviewed root <root> holds more than 200000 directories, too many to search for nested git repositories` (Linux only: macOS reads no index, since its `.git` component rule already covers every submodule path; the directory cap applies on both) — `--sandbox` protects every nested repository and every submodule path in the root's index, so a submodule path it cannot hold read-only, an index it cannot read (a split index, an unknown version), or a tree too large to search refuses instead of leaving part of it unprotected. Check the submodule out (`git submodule update --init`) or remove it, run `git update-index --no-split-index`, or verify a smaller checkout.
+- On Linux, a sandboxed command that removes or renames a directory above a nested repository or submodule (`rm -rf third_party/foo`, `mv vendor vendor.old`) fails with `Device or resource busy` (`EBUSY`). `--sandbox` holds each nested `.git` read-only with a bind mount and self-binds every directory between the root and it, so none can be moved aside to recreate the path with a git directory of the command's own; a mount point cannot be renamed or removed. Do the move outside the sandbox, or verify a checkout without the nested repository.
+- `the reviewed root's <root>/.git is a symlink` (Linux and macOS) — only the link's target can be protected, so the link, or a `gitdir:` file it reaches, could send git to a git directory that runs later. Replace the link with the directory or a `gitdir:` file, or verify a fresh clone.
+
+Fix: install bubblewrap on Linux and allow unprivileged user namespaces (or, accepting network isolation alone, pass `--sandbox-network-only`, which needs `unshare`), or fix `sandbox-exec` on macOS (`/usr/bin/sandbox-exec -p '(version 1)(allow default)(deny network*)' true` must exit 0), or re-run without `--sandbox` on a command you trust.
 
 `--sandbox` is the enforced half of the split: the static gate is a
 tripwire (see `verify-networked`), and this flag is the boundary. A host
@@ -1401,6 +1489,18 @@ Fix: delete the stale `review.json` (or let the agent overwrite it), then re-run
 Cause: another write held the store's lock — `.verdict/incidents.jsonl.lock` for `--incident`, `.verdict/kb.jsonl.lock` for `--rule`, `--pack`, `--retire`, and `--restore`, the same `kb.jsonl.lock` for the credit rewrite a `record` or `triage` flip performs, and `.verdict/reverts.jsonl.lock` for `backtest reverts` — for the whole five-second wait, so this write did nothing. The lock is the operating system's and its holder is alive, so nothing is stale to clear.
 
 Fix: re-run the write once the other one finishes; a holder that crashed or was killed already released the lock, so a retry succeeds at once. Deleting the lock file never helps — it carries no state, and the next write creates it again.
+
+## `target-unresolved`
+
+Cause: no `<owner/repo> <pr>` was given and none could be settled: no checkout or `origin`, a detached HEAD, no or several bundles recording the branch, or a host lookup that found none, several, or failed. Exits 2.
+
+Fix: pass the target the message names (`verdict <verb> <owner/repo> <pr>`) or a pull request URL.
+
+## `test-conflict`
+
+Cause: `fix --test` would overwrite a promoted target at `.verdict/tests/` that already holds different bytes (or is not a regular file), or `.verdict` / `.verdict/tests` is a symlink — the refusal names the target.
+
+Fix: resolve the named target or symlink by hand (promote the retained bytes, or remove the divergent file or link), then re-run `verdict fix <owner/repo> <local-slug|pr> --test <sig>`.
 
 ## `threads-failed`
 
@@ -1616,8 +1716,8 @@ Cause: `verifyCmd` fetches the network or pipes to a shell.
 The gate is a tripwire, not a boundary: it refuses the spellings it knows,
 and a shape it has not learned executes. For a boundary, run the step
 under `verify --sandbox`: `bubblewrap` on Linux removes the route out, and
-`sandbox-exec` on macOS denies the network; a host that can enforce
-neither refuses `sandbox-unavailable`.
+`sandbox-exec` on macOS denies the network and every Mach service; a host
+that can enforce neither refuses `sandbox-unavailable`.
 
 Fix: rewrite `verifyCmd` without network fetches or pipe-to-shell (fetch fixtures first, run offline), then re-run.
 
@@ -1661,9 +1761,10 @@ exiting 0 unless `--check` requests exit 1.
 
 Fix: inspect the last snapshot and CI state, then make another bounded call if
 needed. Use MCP `pr_wait` instead of an agent sleep loop. A missing or unreadable
-check rollup never counts as complete. GitLab and Forgejo waits refuse
-`provider-unimplemented`; GitHub hard read failures, and a state still
-inconsistent when the budget expires, refuse `pr-read-failed`. CLI timeouts
+check rollup never counts as complete. Hosts other than GitHub and GitLab
+(Forgejo, Bitbucket, Azure) refuse `provider-unimplemented` before any host
+command; hard read failures, and a state still inconsistent when the budget
+expires, refuse `pr-read-failed`. CLI timeouts
 accept 1s–30m; MCP timeouts cannot exceed 50s.
 
 ## `condition-unmet` (data outcome)

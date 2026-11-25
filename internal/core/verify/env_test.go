@@ -342,7 +342,7 @@ func TestVerifyInvalidVerifyEnvFileRefusesWithoutLeakingLine(t *testing.T) {
 
 func TestGroupValidationFiltersChildEnv(t *testing.T) {
 	root := groupBundle(t)
-	cmdr := &groupCommander{head: groupHead, out: "ok\n"}
+	cmdr := &groupCommander{out: "ok\n"}
 	req := groupRequest(root, "group-a1", "go test ./...", cmdr)
 	req.Environ = []string{
 		"PATH=/usr/bin",
@@ -355,11 +355,11 @@ func TestGroupValidationFiltersChildEnv(t *testing.T) {
 	if ref != nil {
 		t.Fatalf("Run: %v", ref)
 	}
-	if len(cmdr.runs) != 3 {
-		t.Fatalf("runs = %d, want 3", len(cmdr.runs))
+	if len(cmdr.runs) != 1 {
+		t.Fatalf("runs = %d, want the one command", len(cmdr.runs))
 	}
 	wantEnv := []string{"PATH=/usr/bin", "GROUP_OPT_IN=group_opted_in_456"}
-	if got := cmdr.runs[1].Env; !slices.Equal(got, wantEnv) {
+	if got := cmdr.runs[0].Env; !slices.Equal(got, wantEnv) {
 		t.Errorf("group command Env = %v, want %v", got, wantEnv)
 	}
 	if len(resp.Warnings) != 1 || !strings.Contains(resp.Warnings[0], "FOO_TOKEN") {

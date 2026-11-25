@@ -2,8 +2,9 @@ package verifycore
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"os"
+	"io/fs"
 	"strconv"
 	"strings"
 	"time"
@@ -28,10 +29,6 @@ const (
 	msgVerifyFailed  = "verify failed: %v"
 )
 
-func patchPath(dir string) string {
-	return dir + "/" + patchFile
-}
-
 func missingPatchRefusal(dir string) *core.RefusalError {
 	return &core.RefusalError{
 		Code:    codeMissingPatch,
@@ -44,6 +41,20 @@ func corruptStoreRefusal(dir string) *core.RefusalError {
 		Code:    "corrupt-store",
 		Message: fmt.Sprintf("patch store %s/patch.json is unreadable (restore it from backup, then re-run)", dir),
 	}
+}
+
+// preflightRefusal rejects the request shapes that outrank every gate: a
+// canceled context and the mutually exclusive sandbox flags. Checking the
+// flags here keeps bad-flags dominant over a later verify-destructive or
+// bundle refusal.
+func preflightRefusal(ctx context.Context, req *Request) *core.RefusalError {
+	if ref := sandboxFlagsRefusal(req); ref != nil {
+		return ref
+	}
+	if err := ctx.Err(); err != nil {
+		return &core.RefusalError{Code: codeCanceled, Message: msgCanceled}
+	}
+	return nil
 }
 
 // deepGroup reports whether the request asks for deep group validation, which
@@ -59,21 +70,29 @@ func deepGroup(req *Request) bool {
 // the response for the adapter to render.
 func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	st := &state{req: req, warnings: append([]string{}, req.Warnings...)}
-	if err := ctx.Err(); err != nil {
-		return nil, &core.RefusalError{Code: codeCanceled, Message: msgCanceled}
+	if ref := preflightRefusal(ctx, req); ref != nil {
+		return nil, st.withWarnings(ref)
 	}
-	dir, ref := readcommon.ResolveBundleDir(req.RepoRootPath(), req.Pr)
+	// verify writes into the bundle, so it resolves it like every other
+	// writing verb: a symlinked bundle directory refuses instead of steering
+	// the receipt outside the repository.
+	dir, ref := readcommon.ResolveWritableBundleDir(req.RepoRootPath(), req.Pr)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
 	if deepGroup(req) {
 		return RunGroup(ctx, req, dir, req.TimeUTC())
 	}
-	if !readcommon.IsFile(patchPath(dir)) {
-		return nil, st.withWarnings(missingPatchRefusal(dir))
+	// Pin the bundle before reading anything from it: patch.json is read
+	// through the root, so a symlink escaping the bundle refuses here, before
+	// any command runs, and every later write lands in this same directory.
+	bundle, ref := openPatchBundle(dir)
+	if ref != nil {
+		return nil, st.withWarnings(ref)
 	}
+	defer bundle.close()
 	now := req.TimeUTC()
-	vcmd, ref := readVerifyCmd(dir)
+	vcmd, ref := readVerifyCmd(bundle)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
@@ -85,7 +104,7 @@ func Run(ctx context.Context, req *Request) (*Response, *core.RefusalError) {
 	if ref := Check(vcmd); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	return st.execute(ctx, dir, now, vcmd, timeout)
+	return st.execute(ctx, bundle, now, vcmd, timeout)
 }
 
 type state struct {
@@ -116,7 +135,9 @@ func (st *state) runtime() *core.Runtime {
 	return st.req.Runtime
 }
 
-func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int) (*Response, *core.RefusalError) {
+// prepareExecute checks the runtime can run the command and resolves the
+// child environment from the bundle's base.
+func (st *state) prepareExecute(dir string) (core.Commander, *core.RefusalError) {
 	commander := st.commander()
 	if commander == nil {
 		return nil, st.withWarnings(&core.RefusalError{
@@ -130,20 +151,52 @@ func (st *state) execute(ctx context.Context, dir, now, vcmd string, timeout int
 	if !coreexec.WatchdogEnforced() {
 		st.warn("no ps(1) — timeout unenforced for this run")
 	}
-	sb, ref := st.sandboxed(ctx, commander, "", st.req.RepoRootPath())
+	return commander, nil
+}
+
+func (st *state) execute(
+	ctx context.Context, bundle *bundleHandle, now, vcmd string, timeout int,
+) (resp *Response, ref *core.RefusalError) {
+	commander, ref := st.prepareExecute(bundle.dir)
+	if ref != nil {
+		return nil, ref
+	}
+	// The command runs in a snapshot of the content, and the receipt names
+	// that content's tree: what record and post compare with the tree they
+	// grade, whatever happens to the user's checkout meanwhile.
+	snap, ref := st.takeSnapshot(ctx, commander, st.req.RepoRootPath(), timeout)
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	outPath, timeoutPath := dir+"/.verify.out", dir+"/.verify.timeout"
+	// A backstop for the refusal paths; the run removes it as soon as the
+	// command ends, so a cleanup warning reaches the response.
+	defer func() { st.finishSnapshot(ctx, snap, ref) }()
+	runRoot, tree := snap.dir, snap.content.Tree
+	sb, ref := st.sandboxed(ctx, commander, runRoot, runRoot)
+	if ref != nil {
+		return nil, st.withWarnings(ref)
+	}
+	// The previous receipt goes before the command starts, so a run that
+	// fails, aborts, or cannot record never leaves an earlier pass; the sig
+	// was read when the bundle was pinned, before the command could edit it.
+	if ref := bundle.dropReceipt(); ref != nil {
+		st.releaseSandbox(sb)
+		return nil, st.withWarnings(ref)
+	}
+	receipt := &core.VerifyReceipt{SchemaVersion: receiptSchema, Command: vcmd, Sig: bundle.sig, Tree: tree, At: now}
 	st.human(fmt.Sprintf("» verify: %s (timeout %ss)", vcmd, st.req.TimeoutRaw))
-	res, ref := runCommand(ctx, commander, vcmd, timeout, "", st.childEnv(), sb)
+	res, ref := runCommand(ctx, commander, vcmd, timeout, commandDir(runRoot, sb), st.childEnv(), sb)
+	st.releaseSandbox(sb)
+	st.removeSnapshot(ctx, snap)
+	snap = nil
 	if ctx.Err() != nil {
 		return nil, st.withWarnings(&core.RefusalError{Code: codeCanceled, Message: msgCanceled})
 	}
 	if ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	return st.record(dir, now, outPath, timeoutPath, res)
+	receipt.Exit, receipt.TimedOut = res.ExitCode, res.TimedOut
+	return st.record(bundle, now, res, sb, receipt)
 }
 
 func (st *state) commander() core.Commander {
@@ -155,11 +208,82 @@ func (st *state) commander() core.Commander {
 }
 
 // sandboxed prepares the opt-in wrapper, or returns nil for an unwrapped run.
+// The full flag and the network-only opt-in are exclusive, and only the
+// network-only path carries the no-mount warning the caller must see.
 func (st *state) sandboxed(ctx context.Context, commander core.Commander, workDir, root string) (*sandbox, *core.RefusalError) {
-	if !st.req.Sandbox {
+	if ref := sandboxFlagsRefusal(st.req); ref != nil {
+		return nil, ref
+	}
+	if !st.req.Sandbox && !st.req.SandboxNetworkOnly {
 		return nil, nil
 	}
-	return prepareSandbox(ctx, commander, workDir, root, st.childEnv())
+	// The physical root, as group mode already passes: patch mode reaches
+	// here with the literal repo root (often "."), which may be a symlink,
+	// and every mount and rule below is decided against one spelling.
+	literal := root
+	root, ref := canonicalRoot(root)
+	if ref != nil {
+		return nil, ref
+	}
+	if workDir == literal {
+		// The command runs at the root; give it the same physical spelling
+		// the mounts and rules use.
+		workDir = root
+	}
+	sb, ref := prepareSandbox(ctx, commander, workDir, root, st.sandboxInputs(), st.req.SandboxNetworkOnly)
+	if ref != nil {
+		st.releaseSandbox(sb)
+		return nil, ref
+	}
+	if sb.networkOnly {
+		st.human("» sandbox: network-only (unshare --net) — no mount, filesystem, or PID isolation")
+		st.warn(msgSandboxNetworkOnly)
+	}
+	return sb, nil
+}
+
+// sandboxInputs is what the credential table resolves against: the child
+// environment, the snapshotted verdict environment (a relocation variable the
+// allowlist drops still names a store on disk), and the account home.
+func (st *state) sandboxInputs() sandboxInputs {
+	account := st.req.accountHome
+	if account == "" {
+		account = sandboxAccountHome()
+	}
+	return sandboxInputs{childEnv: st.childEnv(), hostEnv: st.req.Environ, accountHome: account}
+}
+
+// releaseSandbox removes the mechanism's private state as soon as the command
+// is done, and warns when any of it survived, so a stranded directory is
+// visible in the same response instead of silently left behind.
+func (st *state) releaseSandbox(sb *sandbox) {
+	if err := sb.close(); err != nil {
+		st.warn("sandbox cleanup: the private directory could not be fully removed (" + err.Error() +
+			"); remove it by hand")
+	}
+}
+
+// sandboxFlagsRefusal keeps the two sandbox opt-ins mutually exclusive: the
+// caller states the exact boundary they accept instead of one flag silently
+// winning over the other.
+func sandboxFlagsRefusal(req *Request) *core.RefusalError {
+	if !req.Sandbox || !req.SandboxNetworkOnly {
+		return nil
+	}
+	return &core.RefusalError{Code: codeBadFlags, Message: "--sandbox and --sandbox-network-only are mutually exclusive: " +
+		"--sandbox enforces the full bwrap/sandbox-exec shape, --sandbox-network-only accepts network isolation alone; pass one"}
+}
+
+// commandDir is where the verify command runs: the repo root, spelled
+// physically for a wrapped run so it matches the mounts and the probe.
+func commandDir(root string, sb *sandbox) string {
+	if sb == nil {
+		return root
+	}
+	if physical, ref := canonicalRoot(root); ref == nil {
+		return physical
+	}
+	return root
 }
 
 func runCommand(ctx context.Context, commander core.Commander, vcmd string, timeout int,
@@ -168,6 +292,7 @@ func runCommand(ctx context.Context, commander core.Commander, vcmd string, time
 	argv := []string{"bash", "-c", vcmd}
 	if sb != nil {
 		argv = sb.argv(vcmd)
+		env = sb.childEnv(env)
 	}
 	tctx, cancel := context.WithTimeout(ctx, time.Duration(timeout)*time.Second)
 	defer cancel()
@@ -187,33 +312,51 @@ func failed(err error) *core.RefusalError {
 	return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(msgVerifyFailed, err)}
 }
 
-func (st *state) record(dir, now, outPath, timeoutPath string, res core.Result) (*Response, *core.RefusalError) {
+func (st *state) record(bundle *bundleHandle, now string, res core.Result, sb *sandbox,
+	receipt *core.VerifyReceipt,
+) (*Response, *core.RefusalError) {
+	dir := bundle.dir
 	combined := res.Stdout + res.Stderr
-	tail := sanitizeTail(coreexec.TrimTail(lastBytes(combined, tailCap)), st.req.Environ)
+	// Sanitize the whole capture before cutting: a cut first could leave the
+	// unrecognizable second half of a credential at the tail's left edge.
+	tail := coreexec.TrimTail(lastBytes(sanitizeTail(combined, st.req.Environ), tailCap))
 	st.human(fmt.Sprintf("» exit=%d timed_out=%s", res.ExitCode, strconv.FormatBool(res.TimedOut)))
+	if ref := bundle.unchanged(); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
 	st.human(fmt.Sprintf("recorded into %s/patch.json", dir))
-	if err := writeOutputs(outPath, combined); err != nil {
+	if err := atomic.WriteFileModeIn(bundle.root, verifyOutName, []byte(combined), verifyOutputMode); err != nil {
 		return nil, st.withWarnings(failed(err))
 	}
-	if ref := recordTimeoutMarker(timeoutPath, timeoutMarker(st.req.TimeoutRaw, res.TimedOut, res.Decoy)); ref != nil {
+	if ref := recordTimeoutMarker(bundle, timeoutMarker(st.req.TimeoutRaw, res.TimedOut, res.Decoy)); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	if ref := recordOutcome(dir, now, res.ExitCode, res.TimedOut, tail, st.req.Sandbox); ref != nil {
+	if ref := recordOutcome(bundle, now, res.ExitCode, res.TimedOut, tail, sb); ref != nil {
 		return nil, st.withWarnings(ref)
 	}
-	return st.response(dir, now, res.ExitCode, res.TimedOut, tail), nil
+	if ref := bundle.writeReceipt(receipt); ref != nil {
+		return nil, st.withWarnings(ref)
+	}
+	st.human(fmt.Sprintf("receipt: %s/%s", dir, ReceiptFile))
+	resp := st.response(dir, now, res.ExitCode, res.TimedOut, tail, sb)
+	resp.Data.Tree, resp.Data.Receipt = receipt.Tree, dir+"/"+ReceiptFile
+	return resp, nil
 }
 
-func (st *state) response(dir, now string, exit int, timedOut bool, tail string) *Response {
+func (st *state) response(dir, now string, exit int, timedOut bool, tail string, sb *sandbox) *Response {
 	next := "proof failed — fix, do not claim"
 	if exit == 0 && !timedOut {
 		next = "proof holds — revalidator may VERIFY"
+	}
+	data := &core.VerifyData{
+		Exit: exit, TimedOut: timedOut, OutputTail: tail, Patch: dir,
+		Sandboxed: sb.full(), SandboxMechanism: sb.name(),
 	}
 	return &Response{
 		Repo:     st.req.Repo,
 		Pr:       st.req.Pr,
 		At:       now,
-		Data:     &core.VerifyData{Exit: exit, TimedOut: timedOut, OutputTail: tail, Patch: dir, Sandboxed: st.req.Sandbox},
+		Data:     data,
 		Warnings: st.warnings,
 		Next:     next,
 		Exit:     exit,
@@ -231,10 +374,15 @@ func (st *state) childEnv() []string {
 // missing or null verifyCmd reads empty (refusing no-verify-cmd, the
 // fallback a corrupt store gets); any other
 // non-string renders the way jq -r would print it.
-func readVerifyCmd(dir string) (string, *core.RefusalError) {
-	raw, err := os.ReadFile(patchPath(dir))
-	if err != nil {
-		return "", missingPatchRefusal(dir)
+func readVerifyCmd(bundle *bundleHandle) (string, *core.RefusalError) {
+	raw, err := bundle.read(patchFile)
+	switch {
+	case errors.Is(err, fs.ErrNotExist):
+		return "", missingPatchRefusal(bundle.dir)
+	case err != nil:
+		// A patch.json the pinned root will not open (a symlink out of the
+		// bundle, a directory, a FIFO) is a damaged store, never a command.
+		return "", corruptStoreRefusal(bundle.dir)
 	}
 	doc, err := jq.Decode(raw)
 	if err != nil {
@@ -268,8 +416,9 @@ func parseTimeout(s string) (int, bool) {
 
 // recordOutcome merges the watchdog result into patch.json, preserving key
 // order (existing keys keep position, new keys append).
-func recordOutcome(dir, now string, exit int, timedOut bool, tail string, sandboxed bool) *core.RefusalError {
-	raw, err := os.ReadFile(patchPath(dir))
+func recordOutcome(bundle *bundleHandle, now string, exit int, timedOut bool, tail string, sb *sandbox) *core.RefusalError {
+	dir := bundle.dir
+	raw, err := bundle.read(patchFile)
 	if err != nil {
 		return missingPatchRefusal(dir)
 	}
@@ -285,12 +434,19 @@ func recordOutcome(dir, now string, exit int, timedOut bool, tail string, sandbo
 	m.Set("verifiedAt", now)
 	m.Set("timedOut", timedOut)
 	m.Set("verifiedTail", tail)
-	if sandboxed {
+	// Both keys describe this run alone: `sandboxed` only for the full shape,
+	// the mechanism for any wrapper, and neither survives from an earlier run.
+	if sb.full() {
 		m.Set("sandboxed", true)
 	} else {
 		m.Delete("sandboxed")
 	}
-	if err := atomic.WriteFile(dir+"/"+patchFile, []byte(m.MarshalPretty()+"\n")); err != nil {
+	if name := sb.name(); name != "" {
+		m.Set("sandboxMechanism", name)
+	} else {
+		m.Delete("sandboxMechanism")
+	}
+	if err := atomic.WriteFileIn(bundle.root, patchFile, []byte(m.MarshalPretty()+"\n")); err != nil {
 		return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf("could not write %s/patch.json: %v", dir, err)}
 	}
 	return nil
@@ -299,13 +455,11 @@ func recordOutcome(dir, now string, exit int, timedOut bool, tail string, sandbo
 // raw output can carry a printed credential, so it is owner-only like .run.out.
 const verifyOutputMode = 0o600
 
-func writeOutputs(outPath, combined string) error {
-	return atomic.WriteFileMode(outPath, []byte(combined), verifyOutputMode)
-}
-
-func recordTimeoutMarker(timeoutPath, marker string) *core.RefusalError {
-	if err := atomic.WriteFile(timeoutPath, []byte(marker)); err != nil {
-		return &core.RefusalError{Code: codeVerifyFailed, Message: fmt.Sprintf(msgVerifyFailed, err)}
+// recordTimeoutMarker writes the run's timeout marker, emptying it after a
+// run that did not time out.
+func recordTimeoutMarker(bundle *bundleHandle, marker string) *core.RefusalError {
+	if err := atomic.WriteFileIn(bundle.root, verifyTimeoutName, []byte(marker)); err != nil {
+		return failed(err)
 	}
 	return nil
 }
@@ -347,7 +501,10 @@ func redactSecrets(tail string, environ []string) string {
 }
 
 // secretValues collects the environment values the redactor hides: the value
-// of every secret-shaped variable that is long enough to be a credential.
+// of every secret-shaped variable that is long enough to be a credential. The
+// tail is matched after its control characters are stripped, so a value that
+// itself carries one (a token read from a CRLF file keeps its \r) is listed in
+// its stripped form too.
 func secretValues(environ []string) []string {
 	var values []string
 	for _, kv := range environ {
@@ -355,9 +512,30 @@ func secretValues(environ []string) []string {
 		if !ok || len(value) < secretMinLen || !envsecret.IsSecret(name) {
 			continue
 		}
-		values = append(values, value)
+		values = withStripped(values, value)
 	}
 	return values
+}
+
+// withStripped appends value and, when stripping control characters changes
+// it and leaves a credential-length remainder, the stripped form as well.
+func withStripped(values []string, value string) []string {
+	values = append(values, value)
+	if clean := stripControlChars(value); clean != value && len(clean) >= secretMinLen {
+		values = append(values, clean)
+	}
+	return values
+}
+
+// StripControlledSecrets returns secrets plus the control-stripped form of
+// each one that a control character changes, for matching text that already
+// went through [SanitizeTail].
+func StripControlledSecrets(secrets []string) []string {
+	var out []string
+	for _, v := range secrets {
+		out = withStripped(out, v)
+	}
+	return out
 }
 
 const secretMinLen = 8

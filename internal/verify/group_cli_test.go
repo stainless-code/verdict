@@ -30,6 +30,8 @@ func gitOrFatal(t *testing.T, dir string, args ...string) string {
 	t.Helper()
 	cmd := exec.CommandContext(t.Context(), "git", args...)
 	cmd.Dir = dir
+	// A descendant holding the output pipe cannot hang the read (GO-CONC-06).
+	cmd.WaitDelay = 10 * time.Second
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
@@ -121,7 +123,7 @@ func requireGroupReceipt(t *testing.T, root, dir, head string) {
 		t.Fatal(err)
 	}
 	if receipt.Status != "passed" || !receipt.Passed || receipt.Exit != 0 ||
-		receipt.ExecutionHead != head || receipt.ReviewedHead != head ||
+		receipt.Tree != gitOrFatal(t, root, "rev-parse", head+"^{tree}") || receipt.ReviewedHead != head ||
 		receipt.RepoRoot != want || receipt.Run != "5201" {
 		t.Fatalf("receipt = %+v", receipt)
 	}

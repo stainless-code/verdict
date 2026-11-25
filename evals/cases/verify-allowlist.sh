@@ -5,6 +5,9 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=../lib/common.sh
 . "$HERE/../lib/common.sh"
+# verify runs a command only in a snapshot of a git checkout's content, so
+# the sandbox is one (an unborn branch is enough).
+(cd "$EVAL_SANDBOX" && { [ -d .git ] || git init -q; })
 
 ROWS="$EVAL_ROOT/evals/fixtures/verify-allowlist.tsv"
 
@@ -141,8 +144,14 @@ else
   bad "V6 first record exits $EVAL_STATUS"
 fi
 sig="$(jq -r '.[0].sig' "$EVAL_SANDBOX/.verdict/state/local-vallow/findings.json" 2>/dev/null || true)"
-jq -n --arg s "$sig" '[{sig:$s,verdict:"VERIFIED",resultHead:"aaaaaaa",verifyCmd:"rm -rf ./record-probe"}]' \
+jq -n --arg s "$sig" '[{sig:$s,verdict:"VERIFIED",verifyCmd:"rm -rf ./record-probe"}]' \
   > "$EVAL_SANDBOX/.verdict/state/local-vallow/verification.json"
+# FIXTURE: the tool-only receipt a passing verify would leave on the content
+# the bundle captured. verify itself refuses this command, so no real run can write it; the
+# leg proves record never re-gates the command shape a receipt names.
+jq -n --arg t "$(jq -r .content_tree "$EVAL_SANDBOX/.verdict/state/local-vallow/source.json")" \
+  '{schema_version:"2",command:"rm -rf ./record-probe",tree:$t,at:"2026-01-01T00:00:00Z",exit:0,timed_out:false}' \
+  > "$EVAL_SANDBOX/.verdict/state/local-vallow/verify-receipt.json"
 run_review record acme/app local-vallow --json
 if [ "$EVAL_STATUS" -eq 0 ] \
   && [ "$(jq -r '.[0].status' "$EVAL_SANDBOX/.verdict/state/local-vallow/findings.json")" = "addressed" ] \

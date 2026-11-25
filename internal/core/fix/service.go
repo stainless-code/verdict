@@ -1,6 +1,6 @@
 // Package fixcore is the fix verb's domain service: the bounded, verify-gated
-// fix loop over a local bundle. It writes the ledger and the patch output and
-// never writes findings.json; internal/fix owns argv parsing, re-entry,
+// fix loop over a local or PR bundle. It writes the ledger and the patch output
+// and never writes findings.json; internal/fix owns argv parsing, re-entry,
 // envelope rendering, and exit mapping.
 package fixcore
 
@@ -8,14 +8,15 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"os"
 	"slices"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/atomic"
 	"github.com/stainless-code/verdict/internal/brief"
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -28,7 +29,16 @@ type Request struct { //nolint:govet // the transport contract keeps its field o
 	MinSeverity string
 	VerifyCmd   string
 	Paths       []string
-	Human       io.Writer
+	Test        string
+	Commit      bool
+	Recipe      string
+	// TestSet records that --test was passed, so an empty value refuses
+	// instead of silently running an ordinary fix pass.
+	TestSet bool
+	// RecipeSet records that --recipe was passed, so an empty value refuses
+	// instead of silently running an ordinary fix pass.
+	RecipeSet bool
+	Human     io.Writer
 }
 
 // Response carries the completed pass, batch, or completion summary.
@@ -64,6 +74,9 @@ type Data struct { //nolint:govet // field order is the published property order
 	Paths       []string
 	Selection   *string
 	Batch       []BatchRow
+	TestPath    *string
+	Committed   bool
+	Recipe      *string
 }
 
 // BatchRow is one sig's outcome in a fix batch.
@@ -162,6 +175,11 @@ func (d *Data) wireCounts(o *jq.Obj) {
 		o.Set("paths", core.WireStrings(d.Paths))
 	}
 	setString(o, "selection", d.Selection)
+	if d.TestPath != nil {
+		o.Set("test_path", *d.TestPath)
+		o.Set("committed", d.Committed)
+	}
+	setString(o, "recipe", d.Recipe)
 }
 
 // setString publishes an optional string key; absence is the contract for a
@@ -179,7 +197,7 @@ func (d *Data) wireBatch(o *jq.Obj) {
 	}
 }
 
-type state struct { //nolint:govet // fix service state is allocated once per invocation
+type state struct { // fix service state is allocated once per invocation
 	req       *Request
 	warnings  []string
 	at        string
@@ -188,6 +206,11 @@ type state struct { //nolint:govet // fix service state is allocated once per in
 	patch     *string
 	selection *selection
 	dir       string
+	// recipeLenses is the lens set --recipe resolved from the bundle's base
+	// snapshot; recipeEmpty marks a recipe that owns no lens, so the batch
+	// reports the empty scope instead of widening to every open finding.
+	recipeLenses []string
+	recipeEmpty  bool
 }
 
 // Run executes one fix pass, one batch pass, or reports completion.
@@ -210,22 +233,34 @@ func (r *Request) comboFault() string {
 	if msg := r.modeFault(); msg != "" {
 		return msg
 	}
-	if r.All || r.Selected {
+	if r.Commit && r.Test == "" {
+		return "--commit commits the promoted regression test: pass it with --test"
+	}
+	if r.All || r.Selected || r.Recipe != "" {
 		return ""
 	}
 	switch {
 	case r.MinSeverity != "":
-		return "--min-severity narrows a batch: pass it with --all or --selected"
+		return "--min-severity narrows a batch: pass it with --all, --selected, or --recipe"
 	case r.VerifyCmd != "":
-		return "--verify-cmd proves a batch: pass it with --all or --selected"
+		return "--verify-cmd proves a batch: pass it with --all, --selected, or --recipe"
 	case len(r.Paths) > 0:
-		return "--paths scopes a batch: pass it with --all or --selected"
+		return "--paths scopes a batch: pass it with --all, --selected, or --recipe"
 	}
 	return ""
 }
 
-// modeFault refuses a pick that names two scopes at once.
+// modeFault refuses a pick that names two scopes at once, and an explicitly
+// empty --test or --recipe, which would otherwise fall through to an
+// ordinary fix pass.
 func (r *Request) modeFault() string {
+	if r.TestSet && r.Test == "" {
+		return "fix --test needs a sig (an empty value would run an ordinary pass): " +
+			"pass --test <sig>"
+	}
+	if msg := r.recipeModeFault(); msg != "" {
+		return msg
+	}
 	switch {
 	case r.All && r.Sig != "":
 		return "fix takes --sig or --all, not both (--all selects every open inline finding)"
@@ -233,6 +268,34 @@ func (r *Request) modeFault() string {
 		return "fix takes --sig or --selected, not both (--selected addresses the sigs a human reacted 👍 to)"
 	case r.All && r.Selected:
 		return "fix takes --all or --selected, not both (--selected is a batch scoped by fetch's selected.json)"
+	}
+	return r.testModeFault()
+}
+
+// recipeModeFault refuses a --recipe pick that is empty or names another scope.
+func (r *Request) recipeModeFault() string {
+	if r.RecipeSet && r.Recipe == "" {
+		return "fix --recipe needs a name (an empty value would run an ordinary pass): " +
+			"pass --recipe <name>"
+	}
+	switch {
+	case r.Recipe != "" && r.Sig != "":
+		return "fix takes --sig or --recipe, not both (--recipe selects the findings a named recipe owns)"
+	case r.Recipe != "" && r.Test != "":
+		return "fix takes --test or --recipe, not both (--recipe selects the findings a named recipe owns)"
+	}
+	return ""
+}
+
+// testModeFault refuses a --test pick that names another scope.
+func (r *Request) testModeFault() string {
+	switch {
+	case r.Test != "" && r.All:
+		return "fix takes --test or --all, not both (--test promotes one reproduced finding's artifact)"
+	case r.Test != "" && r.Selected:
+		return "fix takes --test or --selected, not both (--test promotes one reproduced finding's artifact)"
+	case r.Test != "" && r.Sig != "":
+		return "fix takes --sig or --test, not both (--test promotes one reproduced finding's artifact)"
 	}
 	return ""
 }
@@ -281,7 +344,24 @@ func (st *state) runFix(ctx context.Context) *core.RefusalError {
 	now, fixOpen, fixOpenInline := st.printReadiness(dir, entries)
 	ledgerPath := dir + suffixFixJSON
 	store := st.loadLedger(ledgerPath)
-	if st.req.All || st.req.Selected {
+	return st.runDispatch(ctx, dir, ledgerPath, store, entries,
+		fixOpen, fixOpenInline, now)
+}
+
+// runDispatch routes a loaded bundle to promotion, batch, or single pass.
+func (st *state) runDispatch(
+	ctx context.Context,
+	dir, ledgerPath string,
+	store *ledgerDoc,
+	entries []any,
+	fixOpen, fixOpenInline int,
+	now string,
+) *core.RefusalError {
+	if st.req.Test != "" {
+		return st.runPromotion(ctx, dir, ledgerPath, store, entries,
+			fixOpen, fixOpenInline)
+	}
+	if st.req.All || st.req.Selected || st.req.Recipe != "" {
 		return st.runBatch(ctx, dir, ledgerPath, store, entries,
 			fixOpen, fixOpenInline, now)
 	}
@@ -296,13 +376,17 @@ func (st *state) runFix(ctx context.Context) *core.RefusalError {
 		fixOpen, fixOpenInline, now)
 }
 
+// fixBundleDir resolves the bundle dir. Local and PR bundles both run: fix
+// only writes its ledger and patch beside the bundle and issues read-only git
+// commands, and the instructions name the landing verb each bundle owns. Corpus
+// bundles refuse: they are benchmark measurement inputs, not review worktrees.
 func (st *state) fixBundleDir() (string, *core.RefusalError) {
 	dir, ref := readcommon.ResolveBundleDir(st.req.RepoRootPath(), st.req.Pr)
 	if ref != nil {
 		return "", st.refuse(ref.Code, ref.Message)
 	}
-	if !readcommon.IsLocalBundleDir(dir) && !st.req.Selected {
-		return "", st.refuse("not-local", "fix works on local bundles; fetch-local first")
+	if readcommon.IsCorpusBundleDir(dir) {
+		return "", st.refuse("not-local", "fix does not run on corpus bundles (benchmark inputs)")
 	}
 	return dir, nil
 }
@@ -311,7 +395,40 @@ func (st *state) bundleGates(ctx context.Context, dir string) *core.RefusalError
 	if ref := st.checkPrGate(dir); ref != nil {
 		return ref
 	}
-	return st.checkTreeGate(ctx)
+	if ref := st.checkTreeGate(ctx); ref != nil {
+		return ref
+	}
+	return st.checkHeadGate(ctx, dir)
+}
+
+// checkHeadGate binds a PR bundle's fix to its reviewed head. The anchors, the
+// patch diff, the ledger baseline, and `--test --commit` all act on the
+// operator's checkout, so a checkout on another commit (main, a stale branch)
+// would diff, record, and commit against the wrong tree. Local bundles review
+// the working tree itself and the loop may commit between passes, so they skip.
+func (st *state) checkHeadGate(ctx context.Context, dir string) *core.RefusalError {
+	if !st.providerBundle() {
+		return nil
+	}
+	reviewed := readcommon.OpenBundle(dir).Head()
+	if reviewed == "" {
+		return st.refuse(codeHeadMismatch, fmt.Sprintf(
+			"bundle %s carries no reviewed head to bind fix to (re-fetch it)", dir))
+	}
+	if st.req.Commander == nil {
+		return st.refuse("not-a-repo", "fix runs inside a git worktree (audits files vs anchor)")
+	}
+	head, exit, err := readcommon.CheckoutHead(ctx, st.req.Commander, st.req.RepoRootPath())
+	if err != nil || exit != 0 {
+		return st.refuse("not-a-repo", "fix runs inside a git worktree (audits files vs anchor)")
+	}
+	if head != reviewed {
+		return st.refuse(codeHeadMismatch, fmt.Sprintf(
+			"checked-out head %s is not the head %s this bundle reviewed — fix patches the "+
+				"checkout, so check out the PR head (git checkout %s) and re-run",
+			readcommon.ShortSHA(head), readcommon.ShortSHA(reviewed), reviewed))
+	}
+	return nil
 }
 
 func (st *state) checkPrGate(dir string) *core.RefusalError {
@@ -341,9 +458,9 @@ func (st *state) checkTreeGate(ctx context.Context) *core.RefusalError {
 func (st *state) loadFindings(dir string) ([]any, *core.RefusalError) {
 	if !readcommon.IsFile(dir + suffixFindings) {
 		return nil, st.refuse("missing-findings", fmt.Sprintf(
-			"missing %s/findings.json (run record first, then fix)", dir))
+			"missing %s/findings.json (run %s first, then fix)", dir, st.landVerb()))
 	}
-	raw, err := os.ReadFile(dir + suffixFindings)
+	raw, err := noblock.ReadFile(dir + suffixFindings)
 	if err != nil {
 		return nil, st.corruptStore(dir)
 	}
@@ -409,13 +526,13 @@ func (st *state) resolveTop(entries []any, dir string) (string, *jq.Obj, *core.R
 	if full == "" {
 		return "", nil, st.refuse("report-failed", fmt.Sprintf(
 			"fix: open-inline count disagrees with the store "+
-				"(re-run record to rebuild %s/findings.json)", dir))
+				"(re-run %s to rebuild %s/findings.json)", st.landVerb(), dir))
 	}
 	rec, ok := picked.(*jq.Obj)
 	if !ok || rec == nil {
 		return "", nil, st.refuse("report-failed", fmt.Sprintf(
 			"fix: open-inline pick is not a finding object "+
-				"(re-run record to rebuild %s/findings.json)", dir))
+				"(re-run %s to rebuild %s/findings.json)", st.landVerb(), dir))
 	}
 	return full, rec, nil
 }
@@ -464,8 +581,8 @@ func (st *state) runPass(
 func (st *state) corruptStore(dir string) *core.RefusalError {
 	return st.refuse("corrupt-store", fmt.Sprintf(
 		"findings store %s/findings.json is unreadable or not a "+
-			"findings array (re-run record to rebuild, or restore the file)",
-		dir))
+			"findings array (re-run %s to rebuild, or restore the file)",
+		dir, st.landVerb()))
 }
 
 func decodeEntries(raw []byte) ([]any, error) {
@@ -492,7 +609,7 @@ func prInfo(dir string) string {
 }
 
 func draftOf(dir string) bool {
-	raw, err := os.ReadFile(dir + suffixPRJSON)
+	raw, err := noblock.ReadFile(dir + suffixPRJSON)
 	if err != nil {
 		return false
 	}
@@ -508,18 +625,25 @@ func draftOf(dir string) bool {
 }
 
 func (st *state) gitLsFilesUnmerged(ctx context.Context) (string, error) {
-	res, err := st.runGit(ctx, "git", "ls-files", "-u")
+	res, err := st.runGit(ctx, "ls-files", "-u")
 	if err != nil {
 		return "", err
 	}
 	return res.Stdout, nil
 }
 
-func (st *state) runGit(ctx context.Context, argv ...string) (core.Result, error) {
+// runGit runs one git subcommand against the repository root, hook-free and
+// fsmonitor-free, with no external diff or textconv driver ([gitcmd.Argv]).
+// Clean and process filters stay on: status, the worktree diff, and add must
+// hash a file as git itself does, or an LFS-tracked file would read as
+// changed and be committed as its raw bytes. Either is a driver the operator
+// configured, run locally on the operator's own checkout.
+func (st *state) runGit(ctx context.Context, args ...string) (core.Result, error) {
 	if st.req.Commander == nil {
 		return core.Result{}, errNoCommander
 	}
-	res, err := st.req.Commander.Run(ctx, &core.Command{Argv: argv})
+	argv := gitcmd.Argv(st.req.RepoRootPath(), args...)
+	res, err := st.req.Commander.Run(ctx, &core.Command{Argv: argv, Env: gitcmd.Env(nil)})
 	if err != nil {
 		//nolint:wrapcheck // the commander error is only a non-zero signal; the refusal carries the contract
 		return core.Result{}, err
@@ -540,7 +664,7 @@ func storedThreads(dir string) string {
 }
 
 func jsonLen(path string) int {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return 0
 	}
@@ -627,7 +751,7 @@ func (st *state) loadLedger(path string) *ledgerDoc {
 	if !readcommon.Exists(path) {
 		return freshLedger()
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err == nil {
 		if doc, ok := decodeLedgerDoc(raw); ok {
 			return st.ledgerWithSigs(path, doc)
@@ -902,7 +1026,7 @@ func stringsOf(in []string) []any {
 }
 
 func (st *state) worktreeFiles(ctx context.Context) []string {
-	res, err := st.runGit(ctx, "git", "status", "--porcelain", "-z")
+	res, err := st.runGit(ctx, "status", "--porcelain", "-z")
 	if err != nil {
 		return nil
 	}
@@ -977,6 +1101,9 @@ func (st *state) passOutput(
 	st.printKB(dir)
 	st.printInstructions(dir, anchor)
 	st.next = nextPass
+	if st.providerBundle() {
+		st.next = nextPassPR
+	}
 	st.data = &Data{
 		Dir:        dir,
 		Ledger:     ledgerPath,
@@ -1049,7 +1176,7 @@ func readKbValue(dir string) any {
 	if !readcommon.IsFile(dir + suffixKB) {
 		return nil
 	}
-	kbRaw, err := os.ReadFile(dir + suffixKB)
+	kbRaw, err := noblock.ReadFile(dir + suffixKB)
 	if err != nil {
 		kbRaw = nil
 	}
@@ -1061,7 +1188,7 @@ func (st *state) printKB(dir string) {
 	if !readcommon.IsFile(dir + suffixKB) {
 		return
 	}
-	kbRaw, err := os.ReadFile(dir + suffixKB)
+	kbRaw, err := noblock.ReadFile(dir + suffixKB)
 	if err != nil {
 		kbRaw = nil
 	}
@@ -1071,11 +1198,21 @@ func (st *state) printKB(dir string) {
 }
 
 func (st *state) printInstructions(dir, anchor string) {
-	st.humanf(instructionsFmt,
-		anchor, dir, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr)
+	if st.providerBundle() {
+		st.humanf(instructionsPRFmt, anchor, st.req.Repo, st.req.Pr, dir,
+			st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr)
+	} else {
+		st.humanf(instructionsFmt,
+			anchor, dir, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr)
+	}
 	st.humanRaw(gateMsg)
 	st.humanRaw(budgetMsg)
-	st.humanf("next: patch %s, write verification.json, "+
+	if st.providerBundle() {
+		st.humanf("next: patch %s, commit and push the fix, re-fetch, run verdict verify, write verification.json, "+
+			"run post to land it, then re-run fix\n", anchor)
+		return
+	}
+	st.humanf("next: patch %s, re-run fetch-local, run verdict verify, write verification.json, "+
 		"run record to land it, then re-run fix\n", anchor)
 }
 
@@ -1114,10 +1251,10 @@ func (st *state) completeRun(
 	if fixOpen > 0 {
 		next = fmt.Sprintf(
 			"next: %d open finding(s) left are non-inline or "+
-				"dispositioned — triage or record to settle them", fixOpen)
+				"dispositioned — triage or %s to settle them", fixOpen, st.landVerb())
 	}
 	st.humanf("%s\n", next)
-	st.next = nextTriage
+	st.next = strings.ReplaceAll(nextTriage, "record", st.landVerb())
 	if fixOpen == 0 {
 		st.next = nextDoneShort
 	}
@@ -1253,8 +1390,11 @@ const (
 	// stoppedCeiling tombstones ceiling stops.
 	stoppedCeiling = "ceiling"
 	// nextPass is the envelope next hint for passes.
-	nextPass = "patch the anchor file, write verification.json, " +
+	nextPass = "patch the anchor file, re-run fetch-local, run verdict verify, write verification.json, " +
 		"run record to land it, then re-run fix"
+	// nextPassPR is nextPass for a PR bundle, which lands through post.
+	nextPassPR = "patch the anchor file, commit and push the fix, re-fetch, run verdict verify, " +
+		"write verification.json, and run post to land it, then re-run fix"
 	// nextDone is the human next hint when done.
 	nextDone = "next: done — no open findings"
 	// nextTriage is the envelope next hint when open remains.
@@ -1275,19 +1415,32 @@ const (
 
 const (
 	// instructionsFmt guides the next manual pass.
-	instructionsFmt = "instructions: patch the anchor file (%s), " +
-		"then run its verify command yourself and write %s/verification.json " +
-		"[{sig, verdict, resultHead, verifyCmd}] with verdict VERIFIED and " +
-		"resultHead matching HEAD (this script never runs it — the " +
-		"resultHead==HEAD match in the record/post verification gate is the " +
-		"freshness proof); land it with record %s %s; re-run fix %s %s " +
-		"for the next pass\n"
+	instructionsFmt = "instructions: patch the anchor file (%s) — git add -N " +
+		"any file the fix creates — and re-run fetch-local so the bundle " +
+		"captures the patched content (no commit needed), then run its verify command (verifyCmd in %s/patch.json) " +
+		"through verdict verify %s %s and write verification.json beside it " +
+		"[{sig, verdict, verifyCmd}] with verdict VERIFIED and that verifyCmd " +
+		"(fix itself runs nothing — a claim flips only on the verify-receipt.json " +
+		"verify writes: exit 0 for that command on the content the bundle " +
+		"grades); land it with record %s %s; re-run fix %s %s for the next pass\n"
+	// instructionsPRFmt is instructionsFmt for a PR bundle, whose landing path
+	// is a push and a re-fetch followed by post — record refuses a PR bundle.
+	// verify runs after the re-fetch, so its receipt covers the head post grades.
+	instructionsPRFmt = "instructions: patch the anchor file (%s), commit and " +
+		"push the fix, re-fetch with fetch %s %s, then run its verify command " +
+		"(verifyCmd in %s/patch.json) through verdict verify %s %s and write " +
+		"verification.json beside it [{sig, verdict, verifyCmd}] with verdict " +
+		"VERIFIED and that verifyCmd (fix itself runs nothing — a claim flips only " +
+		"on the verify-receipt.json verify writes: exit 0 for that command on the " +
+		"pushed head's content); land it with post %s %s; re-run fix %s %s for the " +
+		"next pass\n"
 	// gateMsg constrains verify commands to safe shapes.
 	gateMsg = "gate: keep the verify command repo-scoped, non-destructive, " +
 		"and offline — the verify verb refuses " +
 		"destructive/networked/credential-reading/repo-escaping shapes " +
 		"before running anything (typed verify-* errors with a try: hint), " +
-		"so run anything stronger in your own shell instead\n"
+		"so run anything stronger in your own shell — it writes no receipt, " +
+		"so settle that finding with verdict triage\n"
 	// budgetMsg caps review spend.
 	budgetMsg = "loops multiply agent spend — cap review spend with " +
 		"REVIEW_BUDGET_USD or the typed budget_usd default (see docs/manual.md)\n"

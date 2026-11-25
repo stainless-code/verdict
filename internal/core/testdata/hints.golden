@@ -22,6 +22,7 @@ bad-approve	try: pass --approve=true|false
 bad-at	try: re-run with one of the valid values named above
 bad-attribution	try: re-run with one of the valid values named above
 bad-base	try: re-run with one of the valid values named above
+bad-baseline	try: pass exactly one baseline query parameter naming a bundle in the same root
 bad-budget	try: re-run with one of the valid values named above
 bad-by	try: use one of the dimensions named in the message
 bad-category	try: re-run with one of the valid values named above
@@ -31,6 +32,7 @@ bad-config	try: re-run with one of the valid values named above
 bad-config-credentials	try: re-run with one of the valid values named above
 bad-flags	try: re-run with one of the valid values named above
 bad-from	try: name a supported source (ingest: sarif; adopt: a local bundle slug)
+bad-glob	try: pass a portable repository-relative glob (no .., no absolute path, no backslash)
 bad-group-validation	try: re-run with one of the valid values named above
 bad-id	try: re-run with one of the valid values named above
 bad-ignore	try: use one glob per line, # comments and ! to re-include, then re-fetch
@@ -42,6 +44,7 @@ bad-override	try: re-run with one of the valid values named above
 bad-pack	try: fix pack.json against schemas/pack.schema.json (exact lowercase keys, every id paired with its markdown file), then re-run
 bad-pack-source	try: use https://host/path with no userinfo, ssh://user@host/path, or user@host:path — a token in the URL, ref, or path is recorded in the committed lock; use an ssh key or a public https URL
 bad-panel	try: fix verification/verdicts.json: one result per (sig, model), a known verdict, evidence 10–500 characters
+bad-params	try: send one of the commands initialize advertised in executeCommandProvider.commands (this build: verdict.refresh)
 bad-path	try: pass the path as Git spells it — repository-relative, forward slashes, no '..' segment
 bad-preset	try: re-run with one of the valid values named above
 bad-provider	try: re-run with one of the valid values named above
@@ -66,6 +69,7 @@ bad-slug	try: re-run with one of the valid values named above
 bad-stash	try: re-run with one of the valid values named above
 bad-suppression	try: give each suppression a path, source, reason (30+ characters for agent) and matching exclusion_id
 bad-target	try: re-run with one of the valid values named above
+bad-target-url	try: paste the plain pull request URL (https://github.com/<owner>/<repo>/pull/<number>), or pass <owner/repo> <pr> --provider <name>
 bad-timeout	try: pass --timeout <positive-seconds> (default 300)
 bad-triage-status	try: re-run with one of the valid values named above
 bad-until	try: pass --until <ref> that is an ancestor of HEAD
@@ -75,6 +79,7 @@ bind-required	try: address the cause above, then re-run the same command
 budget-exceeded	try: re-run with --consent-over-budget once the spend is approved, or raise REVIEW_BUDGET_USD/the typed budget_usd default
 budget-unknown	try: address the cause above, then re-run the same command
 bundle-ambiguous	try: address the local bundle as local-<name>; the bare name resolves to a different directory than the discovered one
+bundle-unreadable	try: make every bundle file a regular, readable file (a FIFO or device cannot be fingerprinted), then re-run the preview
 calibrate-failed	try: address the cause above, then re-run the same command
 canceled	try: address the cause above, then re-run the same command
 cannot-resume	try: re-run without --resume with --finders 2 to start a two-finder execution (the interrupted one is retired to x-superseded/), then pass the same --finders 2 when you resume that
@@ -96,6 +101,8 @@ cost-panel-unresolved	try: pass the panel that ran, in order: --cost-names=<lead
 cost-unreadable	try: fix or delete the cost record named above, then re-run
 coverage-incomplete	try: stamp review.json "coverage": [{"file": "...", "ranges": "1-240"}] for every changed file, or re-run next --coverage to see the gaps, then post again
 coverage-stale	try: re-run fetch-local, review the new bundle, then record again
+dashboard-no-tty	try: run verdict dashboard in a terminal, or pass --once for a single plain-text frame
+dashboard-no-vt	try: run verdict dashboard in Windows Terminal or Windows 10+ conhost, or pass --once for a single plain-text frame
 diff-failed	try: address the cause above, then re-run the same command
 diff-too-large	try: split the range (--range/--base/--base-sha) or narrow with a paths filter, then re-fetch
 download-failed	try: address the cause above, then re-run the same command
@@ -113,6 +120,7 @@ fixtures-failed	try: make .verdict writable, then re-run backtest fixtures
 fixtures-invalid	try: check the --fixture id against the catalog, or repair bench/quality/fixtures.json, then re-run
 fixtures-recording-invalid	try: fix the named recording, then re-run backtest fixtures
 head-mismatch	try: address the cause above, then re-run the same command
+host-mismatch	try: point the target, the bundle, and the host variable named above at one host, then re-run
 html-not-export	try: choose a new, empty, or previous HTML export directory
 html-symlink	try: choose an HTML export directory that is not a symlink
 id-taken	try: pass a different --id
@@ -155,12 +163,14 @@ needs-confirm	try: re-run with --yes after reviewing the preview, then re-run
 no-open-findings	try: lower --min-severity, widen --paths, or read the bundle with report
 no-patch-match	try: pass --from <local-slug>, or re-fetch the target bundle so identity.json exists
 no-pr-target	try: run the fetch/record step named above first, then re-run
+no-reproduction	try: re-run record with a reproduction block, then re-run fix --test
 no-review-artifact	try: run the printed command yourself (--print) to see why no review.json appeared, then re-run
 no-run-bundle	try: address the cause above, then re-run the same command
 no-selected-findings	try: re-fetch the PR for current reactions, widen --min-severity/--paths, or triage the selected sigs, then re-run
 no-threads	try: run the fetch/record step named above first, then re-run
 no-verify-cmd	try: write verifyCmd in the bundle's patch.json (the command verify and fix --all hand back), or pass --verify-cmd <cmd> to a fix batch, then re-run
 not-a-repo	try: run the fetch/record step named above first, then re-run
+not-found	try: address the cause above, then re-run the same command
 not-local	try: run the fetch/record step named above first, then re-run
 not-retired	try: check the rule status with learn --status, then re-run
 not-verdict-authored	try: address the cause above, then re-run the same command
@@ -176,16 +186,18 @@ panel-empty	try: configure defaults.panel with a synthesizer and verifiers, re-f
 panel-stale	try: re-run verification/dispatch.md against the current bundle head and rewrite verification/verdicts.json
 panel-too-large	try: narrow the review or roster (100 findings, 4 verifiers maximum), then re-run panel
 partial-clone	try: re-clone without --filter=blob:none, then re-run
+post-content-changed	try: re-run the preview to see the review as it is now, then submit again
 post-failed	try: narrow anchor drift or body size (see above), then re-run
 post-secret-shaped	try: remove the value from the draft and re-run; post can pass --allow-secret-values to publish it anyway
+post-timeout	try: check the pull request for the review, then re-run the preview and submit again only if it is absent
 pr-not-open	try: re-fetch the PR (bundle may be stale)
-pr-read-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
+pr-read-failed	try: run 'gh auth status' (GitHub) or 'glab auth status' (GitLab), confirm the repo/PR spelling, then re-run
 privacy-unavailable	try: address the cause above, then re-run the same command
 prompt-dump-failed	try: reinstall verdict; an embedded Procedure file is missing
 provider-unimplemented	try: use the verb named above for this bundle kind
 provider-unknown	try: pass --provider github|gitlab|gitcafe|forgejo|bitbucket|azure
 rationale-required	try: add --rationale with 30+ chars, or --force
-read-only-tool	try: restart the MCP server without --read-only; use --operator for operator-only tools
+read-only-tool	try: restart the MCP server without --read-only
 record-failed	try: address the cause above, then re-run the same command
 record-stale	try: run 'verdict record <repo> <slug>' again on the current review, then post — record.json's decision predates the review or the bundle
 repair-exhausted	try: fix every error named in error.problems, then re-run (when the cap was hit, raise --rounds up to 5; for no progress check the round files)
@@ -216,7 +228,9 @@ spec-too-large	try: narrow the --spec file under 150 checklist items or split th
 spend-capped	try: re-run with --consent-over-budget once the spend is approved, or raise the personal spend ceiling (spend.budget_usd) in the operator settings, then re-run
 stale-review-artifact	try: delete the stale review.json (or let the agent overwrite it), then re-run
 store-busy	try: wait for the write holding the store's lock (the OS drops the lock when its holder exits, so a retry after a crash succeeds), then re-run
-threads-failed	try: run 'gh auth status', confirm the repo/PR spelling, then re-run
+target-unresolved	try: pass the target explicitly as <owner/repo> <pr>, or a pull request URL
+test-conflict	try: resolve the named target or symlink by hand, then re-run fix --test
+threads-failed	try: run 'gh auth status' (GitHub) or 'glab auth status' (GitLab), confirm the repo/PR spelling, then re-run
 triage-failed	try: address the cause above, then re-run the same command
 trigger-failed	try: re-fetch the bundle so its base-snapshot policy is complete, then re-run
 uninstall-foreign	try: address the cause above, then re-run the same command

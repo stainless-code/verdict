@@ -20,6 +20,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/core/repair"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -150,16 +151,20 @@ func (st *state) repairRound(ctx context.Context, args *launchArgs, rec *launche
 		return roundOutcome{stop: true, ref: ref}
 	}
 	prompt := st.roundPrompt(args, rep, in, k, n)
-	argv := argvFor(&args.def, args.model(), args.restriction, st.req.PassThrough, prompt)
 	st.human(fmt.Sprintf("» round %d/%d: %s (timeout %ds)", k, n, strings.Join(rec.Argv, " "), args.timeout))
+	if ref := st.admit(ctx, k); ref != nil {
+		return roundOutcome{stop: true, ref: ref}
+	}
 	roundStarted := st.now()
-	roundRes, spawnErr := st.spawn(ctx, argv, args.timeout)
+	spawn, spawnErr := st.spawnAgent(ctx, args, prompt)
+	roundRes := spawn.res
+	st.recordSpend(args, k, spawn, spawnErr)
 	if ref := args.checkpoint(); ref != nil {
 		return roundOutcome{stop: true, ref: ref}
 	}
 	wallS := st.now().Sub(roundStarted).Seconds()
 	st.writeRoundOut(args, k, roundRes)
-	st.maybeSalvage(ctx, args, rec, roundRes, spawnErr)
+	st.maybeSalvage(ctx, args, rec, spawn, spawnErr)
 	roundArt := inspectArtifact(args.abs, launched)
 	if ref := st.verdict(ctx, args, roundRes, spawnErr, roundArt); ref != nil {
 		st.writeCrashRoundReview(args, k)
@@ -301,14 +306,14 @@ func unverifiedQuotes(quotes []core.EvidenceQuote) int {
 
 // maybeSalvage fills an absent review from the round's stdout and records
 // the repair on the same launcher the round outcome writes.
-func (st *state) maybeSalvage(ctx context.Context, args *launchArgs, rec *launcher, res *core.Result, spawnErr error) {
+func (st *state) maybeSalvage(ctx context.Context, args *launchArgs, rec *launcher, out spawned, spawnErr error) {
 	// The launcher describes the round that produced the final artifact, so
 	// last round's salvage must never survive into this one.
 	rec.Salvaged = false
-	if st.drainDigest != "" || !salvageAllowed(ctx, res, spawnErr) {
+	if st.drainDigest != "" || !salvageAllowed(ctx, out.res, spawnErr) {
 		return
 	}
-	rec.Salvaged = st.salvageReview(args, res.Stdout)
+	rec.Salvaged = st.salvageReview(args, st.agentText(out))
 }
 
 // roundSucceeded ends the loop on the first valid review: the outcome is
@@ -402,7 +407,7 @@ func shapeRefusal(attempt *core.RunAttempt, check recordcore.CheckResult, rounds
 // the 32 MiB agent-input cap record uses. A read failure after a passing
 // stat keeps the artifact family: the contract path did not deliver bytes.
 func readRoundReview(args *launchArgs, res *core.Result) ([]byte, *core.RefusalError) {
-	f, err := os.Open(args.abs)
+	f, err := noblock.OpenRegular(args.abs)
 	if err != nil {
 		return nil, &core.RefusalError{
 			Code:    codeNoArtifact,

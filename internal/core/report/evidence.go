@@ -33,8 +33,6 @@ type evidenceState struct {
 const (
 	quoteStatusVerified   = "verified"
 	quoteStatusUnverified = "unverified"
-	gateFailSuffix        = " — gate fails"
-	gateOKSuffix          = " — gate passes"
 	evidenceWarnPrefix    = "evidence: "
 )
 
@@ -186,12 +184,13 @@ func warnEvidence(st *state) {
 // gateEvidenceCheck evaluates the evidence dimension every gate mode carries.
 // Pass requires a current-head receipt with insufficient=false; insufficient
 // fails; missing, stale, or unreadable reads unknown (which fails the gate).
-func gateEvidenceCheck(st *state) gateCheck {
-	if st.flags.Check != "" && st.execution != nil && st.execution.Active && gateHasPendingCross(st) {
-		detail := "a finding within the requested tier lacks a confirmed cross check"
-		return gateCheck{
-			dim:  core.GateDimension{ID: dimEvidence, Status: dimFail, Detail: detail},
-			line: checkPrefix + detail + gateFailSuffix,
+// A finding the captured execution left cross-ineligible fails first: the
+// findings dimension excludes it as unconfirmed, so this is the one place it
+// can stop the gate.
+func gateEvidenceCheck(st *state) core.GateDimension {
+	if st.flags.Check != "" {
+		if pending := gatePendingCross(st); pending > 0 {
+			return core.GateDimension{ID: dimEvidence, Status: dimFail, Count: new(pending), Detail: pendingCrossDetail(pending)}
 		}
 	}
 	kind := evidenceMissing
@@ -203,52 +202,52 @@ func gateEvidenceCheck(st *state) gateCheck {
 		return gatePresentEvidence(st.evidence.receipt)
 	case evidenceStale:
 		detail := evidenceStaleDetail(st.headSHA, st.evidence.recordedHead)
-		return gateCheck{
-			dim:  core.GateDimension{ID: dimEvidence, Status: dimUnknown, Detail: detail},
-			line: checkPrefix + detail + gateFailSuffix,
-		}
+		return core.GateDimension{ID: dimEvidence, Status: dimUnknown, Detail: detail}
 	case evidenceUnreadable:
 		detail := evidenceUnreadableDetail(st.headSHA)
-		return gateCheck{
-			dim:  core.GateDimension{ID: dimEvidence, Status: dimUnknown, Detail: detail},
-			line: checkPrefix + detail + gateFailSuffix,
-		}
+		return core.GateDimension{ID: dimEvidence, Status: dimUnknown, Detail: detail}
 	default:
 		detail := evidenceMissingDetail(st.headSHA)
-		return gateCheck{
-			dim:  core.GateDimension{ID: dimEvidence, Status: dimUnknown, Detail: detail},
-			line: checkPrefix + detail + gateFailSuffix,
-		}
+		return core.GateDimension{ID: dimEvidence, Status: dimUnknown, Detail: detail}
 	}
 }
 
-func gateHasPendingCross(st *state) bool {
+// gatePendingCross counts the visible, open findings inside the gated tier
+// that still owe a cross check. It reads the findings alone: the panel stamped
+// their standing from the captured execution before the report read them, so
+// a nil, finished, or retired execution object must not hide the ones it left
+// unresolved. The quote status does not exempt a finding: an assigned check
+// the execution never confirmed is unresolved whatever the quote says.
+func gatePendingCross(st *state) int {
 	threshold := core.TierRank(st.flags.Check)
+	pending := 0
 	for _, entry := range readcommon.VisibleFindings(st.entries) {
 		if readcommon.StatusOf(entry) == statusOpen &&
 			(st.flags.Category == "" || core.CategoryOf(entry) == st.flags.Category) &&
 			core.TierRank(readcommon.FieldOf(entry, "severity")) <= threshold &&
-			approval.QuoteStatus(entry) == "verified" && !approval.CrossEligible(entry) {
-			return true
+			!approval.CrossEligible(entry) {
+			pending++
 		}
 	}
-	return false
+	return pending
 }
 
-func gatePresentEvidence(ev *core.EvidenceReceipt) gateCheck {
+// pendingCrossDetail keeps the one-finding sentence and names a tally.
+func pendingCrossDetail(pending int) string {
+	if pending == 1 {
+		return "a finding within the requested tier lacks a confirmed cross check"
+	}
+	return fmt.Sprintf("%d findings within the requested tier lack a confirmed cross check", pending)
+}
+
+func gatePresentEvidence(ev *core.EvidenceReceipt) core.GateDimension {
 	if ev.Insufficient {
 		detail := evidenceInsufficientDetail(ev)
 		count := max(len(ev.Gaps), 1)
-		return gateCheck{
-			dim:  core.GateDimension{ID: dimEvidence, Status: dimFail, Count: new(count), Detail: detail},
-			line: checkPrefix + detail + gateFailSuffix,
-		}
+		return core.GateDimension{ID: dimEvidence, Status: dimFail, Count: new(count), Detail: detail}
 	}
 	detail := evidenceSatisfiedDetail(ev)
-	return gateCheck{
-		dim:  core.GateDimension{ID: dimEvidence, Status: dimPass, Count: new(0), Detail: detail},
-		line: checkPrefix + detail + gateOKSuffix,
-	}
+	return core.GateDimension{ID: dimEvidence, Status: dimPass, Count: new(0), Detail: detail}
 }
 
 func evidenceSatisfiedDetail(ev *core.EvidenceReceipt) string {

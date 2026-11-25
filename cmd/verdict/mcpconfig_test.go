@@ -168,60 +168,29 @@ func TestMCPConfigWriteUpdatesOwned(t *testing.T) {
 	}
 }
 
-// TestMCPConfigPostureConflict proves --read-only with --operator is a usage
-// error with the verdict mcp wording, writing nothing even under --write.
-func TestMCPConfigPostureConflict(t *testing.T) {
+// TestMCPConfigRetiredFlagIsUnknown proves --operator is gone from `mcp config`
+// too: a usage error, nothing printed, nothing written.
+//
+//nolint:revive // the two-argv matrix reads as one assertion block
+func TestMCPConfigRetiredFlagIsUnknown(t *testing.T) {
 	dir := t.TempDir()
 	t.Chdir(dir)
 	env := testEnv(map[string]string{"HOME": t.TempDir()})
-	for _, extra := range [][]string{{}, {"--write"}, {"--dry-run"}, {"--write", "--dry-run"}} {
-		checkPostureConflict(t, dir, env, extra)
-	}
-}
-
-func checkPostureConflict(t *testing.T, dir string, env func(string) string, extra []string) {
-	t.Helper()
-	argv := append([]string{"mcp", "config", "--agent", "claude", "--read-only", "--operator"}, extra...)
-	out, errOut := mcpTempFiles(t)
-	if code := run(argv, out, errOut, env, os.ReadFile); code != 2 {
-		t.Fatalf("%v exit = %d, want 2", extra, code)
-	}
-	if got := readOutput(t, out); got != "" {
-		t.Errorf("%v stdout = %q, want empty", extra, got)
-	}
-	if got := readOutput(t, errOut); !strings.Contains(got, "--read-only and --operator are mutually exclusive") {
-		t.Errorf("%v stderr = %q", extra, got)
+	for _, extra := range [][]string{{}, {"--write"}} {
+		argv := append([]string{"mcp", "config", "--agent", "claude", "--operator"}, extra...)
+		out, errOut := mcpTempFiles(t)
+		if code := run(argv, out, errOut, env, os.ReadFile); code != 2 {
+			t.Fatalf("%v exit = %d, want 2", argv, code)
+		}
+		if got := readOutput(t, out); got != "" {
+			t.Errorf("%v stdout = %q, want empty", argv, got)
+		}
+		if got := readOutput(t, errOut); !strings.Contains(got, "unknown flag '--operator' for mcp config") {
+			t.Errorf("%v stderr = %q", argv, got)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(dir, ".mcp.json")); !os.IsNotExist(err) {
-		t.Errorf("%v wrote .mcp.json", extra)
-	}
-}
-
-// TestMCPConfigPostureConflictKeepsFile proves the pair refusal under --write
-// leaves an existing config byte-identical.
-func TestMCPConfigPostureConflictKeepsFile(t *testing.T) {
-	dir := t.TempDir()
-	t.Chdir(dir)
-	env := testEnv(map[string]string{"HOME": t.TempDir()})
-	seed := `{"mcpServers":{"verdict":{"command":"verdict","args":["mcp"]}}}` + "\n"
-	path := filepath.Join(dir, ".mcp.json")
-	if err := os.WriteFile(path, []byte(seed), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	out, errOut := mcpTempFiles(t)
-	argv := []string{"mcp", "config", "--agent", "claude", "--read-only", "--operator", "--write"}
-	if code := run(argv, out, errOut, env, os.ReadFile); code != 2 {
-		t.Fatalf("exit = %d, want 2", code)
-	}
-	if got := readOutput(t, errOut); !strings.Contains(got, "--read-only and --operator are mutually exclusive") {
-		t.Errorf("stderr = %q", got)
-	}
-	raw, err := os.ReadFile(path)
-	if err != nil || string(raw) != seed {
-		t.Errorf("file changed to %q", raw)
-	}
-	if _, err := os.Stat(path + ".verdict.bak"); !os.IsNotExist(err) {
-		t.Error("refusal wrote a backup")
+		t.Error("a refused invocation wrote .mcp.json")
 	}
 }
 

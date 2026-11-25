@@ -2,9 +2,9 @@ package recordcore
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -39,7 +39,7 @@ func checkPhase(dir string, normalized []byte, repairs []Problem, discovery bool
 			return CheckResult{}, ref
 		}
 	}
-	diff, err := os.ReadFile(dir + diffSuffix)
+	diff, err := noblock.ReadFile(dir + diffSuffix)
 	if err != nil {
 		return CheckResult{}, &core.RefusalError{Code: codeMissingDiff, Message: fmt.Sprintf(msgMissingDiff, dir)}
 	}
@@ -62,13 +62,13 @@ func checkPhase(dir string, normalized []byte, repairs []Problem, discovery bool
 // checker's, and a stale-head or normalized-fence warning refusing under
 // --strict must not depend on how many quotes failed.
 func withPhaseEvidence(dir string, normalized []byte, res CheckResult, discovery bool) CheckResult {
-	receipt, problems := phaseEvidenceOf(dir, normalized, discovery)
-	if receipt == nil {
+	out := phaseEvidenceOf(dir, normalized, discovery)
+	if out.receipt == nil {
 		return res
 	}
-	check := &EvidenceCheck{Receipt: receipt, Problems: problems}
-	for i := range problems {
-		if problems[i].Level == core.ProblemLevelError {
+	check := &EvidenceCheck{Receipt: out.receipt, Problems: out.problems}
+	for i := range out.problems {
+		if out.problems[i].Level == core.ProblemLevelError {
 			check.Errors++
 		}
 	}

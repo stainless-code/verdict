@@ -8,6 +8,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/coverage"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -62,7 +63,7 @@ func RunNextCoverage(req *core.NextRequest) (*core.NextResponse, *core.RefusalEr
 // loadCoverageReview reads review.json, treating an absent file as the normal
 // pre-review state and refusing a malformed one instead of guessing.
 func loadCoverageReview(dir string) (*jq.Obj, *core.RefusalError) {
-	raw, err := os.ReadFile(dir + reviewSuffix)
+	raw, err := noblock.ReadFile(dir + reviewSuffix)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -99,6 +100,15 @@ func coverageReport(sum *coverage.Summary) *core.CoverageReport {
 	return out
 }
 
+// incrementalHumanSuffix names a delta round whose percent credits carried
+// prior lines, mirroring the record surface's body-line suffix.
+func incrementalHumanSuffix(sum *coverage.Summary) string {
+	if sum.Incremental && sum.PriorLines > 0 {
+		return " (incremental)"
+	}
+	return ""
+}
+
 // coverageHuman renders the two blocks: the summary line, then the gaps. A
 // chunked bundle names its chunk count and stops — chunks[] is its attestation.
 func coverageHuman(sum *coverage.Summary, noReview bool) string {
@@ -116,6 +126,7 @@ func coverageHuman(sum *coverage.Summary, noReview bool) string {
 			exempt = fmt.Sprintf(msgCoverageExempt, sum.Exempt)
 		}
 		fmt.Fprintf(&b, msgCoverageHuman, *sum.Percent, sum.Attested, sum.Total, sum.Files, exempt)
+		b.WriteString(incrementalHumanSuffix(sum))
 	}
 	if len(sum.Unattested) == 0 {
 		b.WriteString("\n" + msgCoverageNone)

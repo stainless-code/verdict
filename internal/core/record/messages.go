@@ -27,14 +27,15 @@ const (
 		"missing %s — re-fetch with '%s', re-synthesize across all chunks, then re-run " +
 		"(partial coverage never posts as complete)"
 
-	msgContradictExit = "VERIFIED claim for %s contradicts machine verify exit=%s — " +
-		"flip stands, contradiction recorded"
+	msgTriageAddressed = "refusing: triage claim %s asks for addressed, which comes only from a VERIFIED " +
+		"claim in verification.json backed by a verdict verify receipt — claim it there, or triage " +
+		"open|wont-fix|false-positive|deferred"
 
-	msgContradictTimeout = "VERIFIED claim for %s contradicts machine verify timedOut=true (exit=%s) — " +
-		"flip stands, contradiction recorded"
+	msgClaimUnbacked = "VERIFIED claim for %s not applied (%s) — run verdict verify on the content " +
+		"this run grades, then land the claim again"
 
 	msgBadTriage = "refusing post: unknown triage status '%s' " +
-		"(want open|addressed|wont-fix|false-positive|deferred)"
+		"(want open|wont-fix|false-positive|deferred)"
 
 	msgRecorded = "recorded: %s/findings.json (%d open) + %s/record.json — " +
 		"report/triage read it; post stays refused (no PR target)\n"
@@ -55,9 +56,12 @@ const (
 
 	msgReviewNotObject = "review.json must hold a JSON object (agent must write " + msgReviewShape + ")"
 
-	msgMalformedVerifyClaims = "verification.json carries malformed claims (want an array of {sig, verdict, verifyCmd, resultHead})"
+	msgMalformedVerifyClaims = "verification.json carries malformed claims (want an array of {sig, verdict, verifyCmd})"
 
-	msgNonObjectVerifyClaim = "verification.json carries a non-object claim (want {sig, verdict, verifyCmd, resultHead})"
+	msgNonObjectVerifyClaim = "verification.json carries a non-object claim (want {sig, verdict, verifyCmd})"
 
 	msgCorruptPrior = "%s is corrupt or not a JSON list (refusing to start fresh — restore it from backup, then re-run)"
+
+	msgPriorDiscarded = "could not write %s/prior-coverage.json (record already written): %v — " +
+		"the recorded prior was discarded, so the next round grades without prior credit"
 )

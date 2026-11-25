@@ -1,5 +1,6 @@
 import type { RefusalCode } from "./refusal-codes.gen.js";
 import type { Envelope } from "./envelope.js";
+import type { Candidate, Problem, RefusalErrorBody } from "./types.gen.js";
 
 export const VERDICT_REPAIR = "npm i -g @stainless-code/verdict@latest";
 
@@ -7,14 +8,37 @@ export class VerdictRefusalError extends Error {
   readonly code: RefusalCode | (string & {});
   readonly hint: string;
   readonly warnings: string[];
+  readonly body: RefusalErrorBody;
 
-  constructor(code: string, message: string, warnings: string[] = []) {
+  constructor(
+    code: string,
+    message: string,
+    warnings: string[] = [],
+    body?: RefusalErrorBody,
+  ) {
     const { cause, hint } = splitHint(message);
     super(cause);
     this.name = "VerdictRefusalError";
     this.code = code;
     this.hint = hint;
     this.warnings = warnings;
+    this.body = body ?? { code, message };
+  }
+
+  get problems(): Problem[] {
+    return this.body.problems ?? [];
+  }
+
+  get problems_truncated(): number {
+    return this.body.problems_truncated ?? 0;
+  }
+
+  get candidates(): Candidate[] {
+    return this.body.candidates ?? [];
+  }
+
+  get retry_at(): string | undefined {
+    return this.body.retry_at;
   }
 }
 

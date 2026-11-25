@@ -10,6 +10,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/overrides"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -53,6 +54,8 @@ const (
 	// blockTail closes the mermaid fence and the <details> region. No node or
 	// edge may ever spend it, so the byte budget reserves it up front.
 	blockTail = newline + "```" + newline + newline + "</details>"
+	// newline joins every rendered line, in this file and the behavioral block.
+	newline = "\n"
 )
 
 // maxNoteBytes is the room the block reserves for its widest omission note,
@@ -123,7 +126,7 @@ func LoadBundle(dir string) Bundle {
 
 // readDiff returns the bundle's full diff, or "" when the fetch left none.
 func readDiff(dir string) string {
-	raw, err := os.ReadFile(dir + fullDiffFile)
+	raw, err := noblock.ReadFile(dir + fullDiffFile)
 	if err != nil {
 		return ""
 	}
@@ -411,7 +414,7 @@ func prFilesLength(path string) (int, bool) {
 }
 
 func prFilesMap(path string) (map[string]any, bool) {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, false
 	}
@@ -576,7 +579,7 @@ func digitsOrZero(s string) int {
 func bundleRoles(dir string, paths []pathRow) map[string]string {
 	roles := map[string]string{}
 	if regularFile(dir + rolesTxtFile) {
-		raw, err := os.ReadFile(dir + rolesTxtFile)
+		raw, err := noblock.ReadFile(dir + rolesTxtFile)
 		if err == nil {
 			parseRolesMap(string(raw), roles)
 		}
@@ -612,7 +615,7 @@ func readHunkCounts(path string) (map[string]int, bool) {
 	if !regularFile(path) {
 		return nil, false
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return map[string]int{}, true
 	}

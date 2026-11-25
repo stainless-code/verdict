@@ -30,7 +30,7 @@ var hintRules = []HintRule{
 	{codes: []string{"bad-ignore"}, hint: "try: use one glob per line, # comments and ! to re-include, then re-fetch"},
 	{codes: []string{"bad-suppression"}, hint: "try: give each suppression a path, source, " +
 		"reason (30+ characters for agent) and matching exclusion_id"},
-	{codes: []string{"read-only-tool"}, hint: "try: restart the MCP server without --read-only; use --operator for operator-only tools"},
+	{codes: []string{"read-only-tool"}, hint: "try: restart the MCP server without --read-only"},
 	{codes: []string{"panel-empty"}, hint: "try: configure defaults.panel with a synthesizer and verifiers, re-fetch, then re-run panel"},
 	{codes: []string{"panel-too-large"}, hint: "try: narrow the review or roster (100 findings, 4 verifiers maximum), then re-run panel"},
 	{codes: []string{"bad-panel"}, hint: "try: fix verification/verdicts.json: " +
@@ -44,15 +44,24 @@ var hintRules = []HintRule{
 		"then re-run"},
 	{codes: []string{"spec-too-large"}, hint: "try: narrow the --spec file under 150 checklist items or split the PR, then re-fetch"},
 	{
-		codes: []string{"fetch-failed", "pr-read-failed", "threads-failed"},
+		codes: []string{"fetch-failed"},
 		hint:  "try: run 'gh auth status', confirm the repo/PR spelling, then re-run",
+	},
+	{
+		// pr-read-failed and threads-failed also come from GitLab reads
+		// (the wait, ready's discussions, threads --resolve).
+		codes: []string{"pr-read-failed", "threads-failed"},
+		hint:  "try: run 'gh auth status' (GitHub) or 'glab auth status' (GitLab), confirm the repo/PR spelling, then re-run",
 	},
 	{codes: []string{"drafts-invalid"}, hint: "try: fix the named site in drain.replies.json, then re-run drain --agent"},
 	{codes: []string{"drafts-stale"}, hint: "try: re-run drain for a fresh plan, then draft against its new plan_digest"},
 	{codes: []string{"drain-failed"}, hint: "try: refresh threads, confirm host auth, then re-run drain"},
 	{codes: []string{"drain-incomplete"}, hint: "try: re-run the same drain --post command; the ledger skips replies already posted"},
 	{codes: []string{"prompt-dump-failed"}, hint: "try: reinstall verdict; an embedded Procedure file is missing"},
+	{codes: []string{"post-content-changed"}, hint: "try: re-run the preview to see the review as it is now, then submit again"},
 	{codes: []string{"post-failed"}, hint: "try: narrow anchor drift or body size (see above), then re-run"},
+	{codes: []string{"post-timeout"}, hint: "try: check the pull request for the review, " +
+		"then re-run the preview and submit again only if it is absent"},
 	{codes: []string{"post-secret-shaped"}, hint: "try: remove the value from the draft and re-run; " +
 		"post can pass --allow-secret-values to publish it anyway"},
 	{codes: []string{"fix-patch-secret"}, hint: "try: remove the value from the worktree (rotate it " +
@@ -76,6 +85,7 @@ var hintRules = []HintRule{
 	{codes: []string{"missing-index"}, hint: "try: run 'verdict index build' first"},
 	{codes: []string{"missing-sarif"}, hint: "try: pass an existing SARIF 2.1.0 file with --from sarif <file|->"},
 	{codes: []string{"bad-from"}, hint: "try: name a supported source (ingest: sarif; adopt: a local bundle slug)"},
+	{codes: []string{"bad-glob"}, hint: "try: pass a portable repository-relative glob (no .., no absolute path, no backslash)"},
 	{codes: []string{"bad-sarif"}, hint: "try: pass a valid UTF-8 SARIF 2.1.0 JSON file with repository-relative URIs"},
 	{codes: []string{"sarif-too-large"}, hint: "try: split or trim the SARIF report under 8 MiB before ingesting"},
 	{codes: []string{"ingest-failed"}, hint: "try: confirm the bundle path and SARIF file readability, then re-run"},
@@ -124,6 +134,18 @@ var hintRules = []HintRule{
 			"or move it aside and rebuild the store, then re-run",
 	},
 	{
+		codes: []string{"bad-params"},
+		hint:  "try: send one of the commands initialize advertised in executeCommandProvider.commands (this build: verdict.refresh)",
+	},
+	{
+		codes: []string{"dashboard-no-tty"},
+		hint:  "try: run verdict dashboard in a terminal, or pass --once for a single plain-text frame",
+	},
+	{
+		codes: []string{"dashboard-no-vt"},
+		hint:  "try: run verdict dashboard in Windows Terminal or Windows 10+ conhost, or pass --once for a single plain-text frame",
+	},
+	{
 		codes: []string{"bad-root"},
 		hint:  "try: pass --root <existing-directory>, or run serve inside a checkout",
 	},
@@ -131,6 +153,11 @@ var hintRules = []HintRule{
 		codes: []string{"bundle-ambiguous"},
 		hint: "try: address the local bundle as local-<name>; the bare name resolves to a different " +
 			"directory than the discovered one",
+	},
+	{
+		codes: []string{"bundle-unreadable"},
+		hint: "try: make every bundle file a regular, readable file (a FIFO or device cannot be " +
+			"fingerprinted), then re-run the preview",
 	},
 	{
 		codes: []string{"serve-listen-failed"},
@@ -142,6 +169,11 @@ var hintRules = []HintRule{
 	{codes: []string{"skill-not-installed"}, hint: "try: install first with " +
 		"'verdict skill install --dir <skills-dir>', or check the target"},
 	{codes: []string{"bad-timeout"}, hint: "try: pass --timeout <positive-seconds> (default 300)"},
+	{codes: []string{"bad-target-url"}, hint: "try: paste the plain pull request URL (https://github.com/<owner>/<repo>/pull/<number>), " +
+		"or pass <owner/repo> <pr> --provider <name>"},
+	{codes: []string{"target-unresolved"}, hint: "try: pass the target explicitly as <owner/repo> <pr>, or a pull request URL"},
+	{codes: []string{"host-mismatch"}, hint: "try: point the target, the bundle, and the host variable named above " +
+		"at one host, then re-run"},
 	{codes: []string{"bad-approve"}, hint: "try: pass --approve=true|false"},
 	{codes: []string{"bad-review-schema"}, hint: "try: set \"schema_version\": \"1\" in review.json"},
 	{codes: []string{"bad-rigor-policy"}, hint: "try: pass --require-rigor <tier>=<said|pointed|walked|ran|reproduced>, " +
@@ -178,6 +210,8 @@ var hintRules = []HintRule{
 		hint:  "try: list open inline sigs with report --status open --kind inline, then re-run with the full prefix",
 	},
 	{codes: []string{"conflicted-tree"}, hint: "try: resolve the conflicts (or abort the merge), then re-run"},
+	{codes: []string{"no-reproduction"}, hint: "try: re-run record with a reproduction block, then re-run fix --test"},
+	{codes: []string{"test-conflict"}, hint: "try: resolve the named target or symlink by hand, then re-run fix --test"},
 	{codes: []string{"fix-ceiling"}, hint: "try: triage the sig or split the fix — the 3-pass ceiling is hard-coded"},
 	{codes: []string{"scope-escape"}, hint: "try: revert or stash files outside the anchor path, then re-run fix"},
 	{codes: []string{"rationale-required"}, hint: "try: add --rationale with 30+ chars, or --force"},
@@ -236,6 +270,7 @@ var hintRules = []HintRule{
 	{codes: []string{"bad-recipe"}, hint: "try: fix the key named above in " +
 		".verdict/recipes.json, commit it at the base, then re-fetch"},
 	{codes: []string{"bad-by"}, hint: "try: use one of the dimensions named in the message"},
+	{codes: []string{"bad-baseline"}, hint: "try: pass exactly one baseline query parameter naming a bundle in the same root"},
 	{codes: []string{"bad-adjudication"}, hint: "try: fix the record entry named above, then re-run " +
 		"bench/runner -render <report> -adjudication <record>"},
 	{prefix: "bad-", hint: "try: re-run with one of the valid values named above"},

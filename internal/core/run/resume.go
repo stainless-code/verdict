@@ -19,6 +19,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
@@ -44,6 +45,8 @@ const (
 	resumeRecordKey   = "resume"
 	unionPhase        = "union"
 	statusInProgress  = "in-progress"
+	statusComplete    = "complete"
+	statusPartial     = "partial"
 	keyFullDiffSHA256 = "full_diff_sha256"
 	keyRunJSONSHA256  = "run_json_sha256"
 	keyInputsSHA256   = "inputs_sha256"
@@ -77,6 +80,7 @@ const (
 	keyExecutionID = "execution_id"
 	keyFailures    = "failures"
 	keyStatus      = "status"
+	keyPhase       = "phase"
 )
 
 // resumeFingerprint is the deterministic identity of one two-finder
@@ -443,7 +447,7 @@ func (c *coordinator) recordBytes(record string) ([]byte, *core.RefusalError) {
 			"the launcher record %s is %d bytes, over the %d-byte record cap; re-run without --resume",
 			record, info.Size(), maxResumeRecordBytes))
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, c.st.refuse(codeCannotResume, fmt.Sprintf(
 			"the launcher record %s cannot be read: %v; re-run without --resume", record, err))
@@ -720,7 +724,7 @@ func (c *coordinator) checkResumeRecord(manifest *jq.Obj, record *launcherResume
 		return c.st.refuse(codeCannotResume,
 			"the launcher record names no status, so there is no execution to continue — "+
 				"re-run without --resume")
-	case status != statusInProgress && status != "complete" && status != "partial":
+	case status != statusInProgress && status != statusComplete && status != statusPartial:
 		return c.st.refuse(codeCannotResume, fmt.Sprintf(
 			"the launcher record status %q is not a resumable execution — re-run without --resume", status))
 	case record.ExecutionID != jq.StrOf(readcommon.FieldOf(manifest, keyExecutionID)):
@@ -868,7 +872,7 @@ func (c *coordinator) fingerprintNow(captured *config.RunState, source string) (
 func failedPhases(manifest *jq.Obj) map[string]bool {
 	failed := map[string]bool{}
 	for _, row := range jq.Elements(readcommon.FieldOf(manifest, keyFailures)) {
-		if phase := jq.StrOf(readcommon.FieldOf(row, "phase")); phase != "" {
+		if phase := jq.StrOf(readcommon.FieldOf(row, keyPhase)); phase != "" {
 			failed[phase] = true
 		}
 	}
@@ -1056,7 +1060,7 @@ func (c *coordinator) readArtifact(artifact string) ([]byte, *core.RefusalError)
 		return nil, c.driftRefusal(fmt.Sprintf("%s is %d bytes, over the %d-byte resume read cap",
 			artifact, info.Size(), resumeArtifactCap))
 	}
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, snapshotUnreadable(artifact)
 	}

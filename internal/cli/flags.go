@@ -41,6 +41,7 @@ func applyStringForces(r *Runner, eff *Effective, g *GlobalForces) {
 		{dst: &eff.PublishLogo, force: g.PublishLogoForce},
 		{dst: &eff.PublishOverview, force: g.PublishOverviewForce},
 		{dst: &eff.DiagramsStructural, force: g.DiagramsStructuralForce},
+		{dst: &eff.DiagramsAnchored, force: g.DiagramsAnchoredForce},
 		{dst: &eff.PublishFixPrompt, force: g.PublishFixPromptForce},
 	}
 	for _, o := range overlay {
@@ -95,9 +96,18 @@ func StripGlobal(args []string) (rest []string, g *GlobalForces, uerr *UsageErro
 
 type stripState struct {
 	g    *GlobalForces
+	verb string
 	args []string
 	i    int
 	seen bool
+}
+
+// verbOwnedFlags are global toggle spellings a verb takes as its own value
+// flag. After that verb, the token and its operand pass through to the
+// verb's parser: `loop --fix-prompt <file>` names a prompt file, never the
+// publish fix-prompt toggle (loop publishes nothing).
+var verbOwnedFlags = map[string]map[string]bool{
+	"loop": {"--fix-prompt": true},
 }
 
 func (st *stripState) step() ([]string, *UsageError, bool, error) {
@@ -112,13 +122,25 @@ func (st *stripState) step() ([]string, *UsageError, bool, error) {
 	}
 	st.i += max(consumed, 1)
 	if consumed == 0 {
-		if set, ok := matchToggle(a); ok {
-			set(st.g)
-			return nil, nil, true, nil
-		}
-		return []string{a}, nil, false, nil
+		return st.plain(a)
 	}
 	return r, nil, false, nil
+}
+
+// plain handles one token no value flag consumed: the verb (the first
+// positional), a toggle the verb owns, a global toggle, or a pass-through.
+func (st *stripState) plain(a string) ([]string, *UsageError, bool, error) {
+	if st.verb == "" && !strings.HasPrefix(a, "-") {
+		st.verb = a
+	}
+	if verbOwnedFlags[st.verb][a] {
+		return []string{a}, nil, false, nil
+	}
+	if set, ok := matchToggle(a); ok {
+		set(st.g)
+		return nil, nil, true, nil
+	}
+	return []string{a}, nil, false, nil
 }
 
 var boolFlags = map[string]func(*GlobalForces){
@@ -130,6 +152,8 @@ var boolFlags = map[string]func(*GlobalForces){
 	"--no-overview":           func(g *GlobalForces) { g.PublishOverviewForce = FlagOff },
 	"--diagram-structural":    func(g *GlobalForces) { g.DiagramsStructuralForce = FlagOn },
 	"--no-diagram-structural": func(g *GlobalForces) { g.DiagramsStructuralForce = FlagOff },
+	"--diagram-anchored":      func(g *GlobalForces) { g.DiagramsAnchoredForce = FlagOn },
+	"--no-diagram-anchored":   func(g *GlobalForces) { g.DiagramsAnchoredForce = FlagOff },
 	"--logo":                  func(g *GlobalForces) { g.PublishLogoForce = FlagOn },
 	"--no-logo":               func(g *GlobalForces) { g.PublishLogoForce = FlagOff },
 	"--fix-prompt":            func(g *GlobalForces) { g.PublishFixPromptForce = FlagOn },

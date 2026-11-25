@@ -34,6 +34,7 @@ import (
 )
 
 type bindings struct { //nolint:govet // grouping documents the injection surface; alignment is irrelevant
+	version   string
 	env       map[string]string
 	now       func() time.Time
 	progress  core.Progress
@@ -228,6 +229,9 @@ func decodeFix(req *fixcore.Request, a *args) {
 	a.str(argMinSeverity, &req.MinSeverity)
 	a.str("verifyCmd", &req.VerifyCmd)
 	a.strings(argPaths, &req.Paths)
+	req.TestSet = a.strPresent("test", &req.Test)
+	req.RecipeSet = a.strPresent("recipe", &req.Recipe)
+	a.boolean("commit", &req.Commit)
 }
 
 func decodeHandoff(req *handoffcore.Request, a *args) {
@@ -431,15 +435,11 @@ func decodeReport(req *reportcore.Request, a *args) {
 		f.str("category", &req.Flags.Category)
 		f.str("output", &req.Flags.Output)
 		f.str("sarif", &req.Flags.Sarif)
-		f.str("check", &req.Flags.Check)
 		req.Flags.CompareSet = f.strPresent("compare", &req.Flags.Compare)
-		f.str("live", &req.Flags.Live)
 		f.boolean("cost", &req.Flags.Cost)
 		f.boolean("includeWithheld", &req.Flags.IncludeWithheld)
-		f.boolean("completeness", &req.Flags.Completeness)
 		f.boolean("provenance", &req.Flags.Provenance)
 		f.boolean("risk", &req.Flags.Risk)
-		f.str("maxRisk", &req.Flags.MaxRisk)
 	})
 }
 
@@ -492,6 +492,12 @@ func wirePack(ctx context.Context, b *bindings, req *packcore.Request) error {
 		return err
 	}
 	req.SettingsPath = config.SettingsPath(b.env["HOME"], b.env["XDG_CONFIG_HOME"])
+	pin, _, ref := packcore.BaseOrgPin(ctx, fetchRunner, req.RepoRootPath())
+	//nolint:wrapcheck // BaseOrgPin refusal is already typed; callers map to jq sealed error
+	if ref != nil {
+		return ref
+	}
+	req.OrgPin = pin
 	return nil
 }
 
@@ -546,6 +552,7 @@ func decodeVerify(req *verifycore.Request, a *args) {
 	a.str("group", &req.Group)
 	a.str("command", &req.Command)
 	a.boolean("sandbox", &req.Sandbox)
+	a.boolean("sandboxNetworkOnly", &req.SandboxNetworkOnly)
 	a.strings("envAllowlist", &req.EnvAllowlist)
 }
 

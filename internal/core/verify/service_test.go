@@ -4,23 +4,90 @@ import (
 	"bytes"
 	"context"
 	"os"
+	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
 	verifycore "github.com/stainless-code/verdict/internal/core/verify"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/testkit"
 )
 
 type scriptCommander struct {
 	got []*core.Command
 	err error
-	res core.Result
+	// onRun acts for the verify command while it "runs": a swapped bundle, an
+	// edited patch.json.
+	onRun func()
+	// tree is the content tree the snapshot reads answer; empty answers
+	// patchTree. git calls never land in got, which keeps the spawned verify
+	// command at got[0].
+	tree string
+	res  core.Result
+	gits int
+}
+
+const (
+	// patchHead is the commit a fake reports as checked out.
+	patchHead = "fedcba9876543210fedcba9876543210fedcba98"
+	// patchTree is the content tree a fake's snapshot reads name.
+	patchTree = "7ee7ee7ee7ee7ee7ee7ee7ee7ee7ee7ee7ee7ee7"
+	// snapshotCommit is the commit-tree id a fake answers.
+	snapshotCommit = "5aa95aa95aa95aa95aa95aa95aa95aa95aa95aa9"
+)
+
+// gitAnswer plays git for verify's own reads: the checked-out head, the
+// snapshot's tree and commit, and a `worktree add` that leaves a checkout
+// with a .git (the sandbox inspects it), so a test scripts only the command.
+func gitAnswer(cmd *core.Command, tree string) (core.Result, bool) {
+	_, a, ok := gitcmd.Split(cmd.Argv)
+	if !ok || len(a) == 0 {
+		return core.Result{}, false
+	}
+	if tree == "" {
+		tree = patchTree
+	}
+	switch {
+	case slices.Equal(a, []string{"rev-parse", "HEAD"}):
+		return core.Result{Stdout: patchHead + "\n"}, true
+	case a[0] == "rev-parse" || a[0] == "write-tree":
+		return core.Result{Stdout: tree + "\n"}, true
+	case a[0] == "commit-tree":
+		return core.Result{Stdout: snapshotCommit + "\n"}, true
+	case a[0] == "worktree" && len(a) > 1 && a[1] == "add":
+		fakeCheckout(a[len(a)-2])
+	}
+	return core.Result{}, true
+}
+
+// fakeCheckout leaves what `worktree add` would: a `gitdir:` file naming an
+// admin directory, which verify checks and the sandbox follows. The admin
+// directory sits inside the checkout so removing the snapshot removes it.
+func fakeCheckout(dest string) {
+	admin := filepath.Join(dest, ".gitadmin")
+	if err := os.MkdirAll(admin, 0o755); err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile(filepath.Join(admin, "HEAD"), []byte(snapshotCommit+"\n"), 0o600); err != nil {
+		panic(err)
+	}
+	if err := os.WriteFile(filepath.Join(dest, ".git"), []byte("gitdir: "+admin+"\n"), 0o600); err != nil {
+		panic(err)
+	}
 }
 
 func (s *scriptCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
+	if res, ok := gitAnswer(cmd, s.tree); ok {
+		s.gits++
+		return res, nil
+	}
 	s.got = append(s.got, cmd)
+	if s.onRun != nil {
+		s.onRun()
+	}
 	if s.err != nil {
 		return core.Result{}, s.err
 	}
@@ -81,7 +148,8 @@ func checkVerifyResponse(t *testing.T, c *testkit.Collector, resp *verifycore.Re
 	if resp.Exit != 0 || resp.TimedOut || resp.Tail != "ok" {
 		t.Errorf("response = %+v", resp)
 	}
-	if resp.Data.Exit != 0 || resp.Data.TimedOut || resp.Data.OutputTail != "ok" || resp.Data.Patch != ".verdict/state/5201" {
+	if resp.Data.Exit != 0 || resp.Data.TimedOut || resp.Data.OutputTail != "ok" || resp.Data.Patch != ".verdict/state/5201" ||
+		resp.Data.Tree != "7ee7ee7ee7ee7ee7ee7ee7ee7ee7ee7ee7ee7ee7" {
 		t.Errorf("data = %+v", resp.Data)
 	}
 	joined := strings.Join(c.HumanLines, "\n")
@@ -108,9 +176,32 @@ func checkVerifyStores(t *testing.T) {
 	if strings.Join(order, ",") != strings.Join(wantOrder, ",") {
 		t.Errorf("patch keys = %v, want %v", order, wantOrder)
 	}
+	checkReceiptFile(t, "")
 	out, err := os.ReadFile(".verdict/state/5201/.verify.out")
 	if err != nil || string(out) != "ok" {
 		t.Errorf(".verify.out = %q, %v", out, err)
+	}
+}
+
+// receiptAt is the receipt a run of `printf ok` on the patchTree content
+// leaves, naming sig when patch.json named one.
+func receiptAt(sig string) string {
+	sigLine := ""
+	if sig != "" {
+		sigLine = "\n  \"sig\": \"" + sig + "\","
+	}
+	return "{\n  \"schema_version\": \"2\",\n  \"command\": \"printf ok\"," + sigLine +
+		"\n  \"tree\": \"7ee7ee7ee7ee7ee7ee7ee7ee7ee7ee7ee7ee7ee7\",\n  \"at\": \"2026-11-02T12:00:00Z\"," +
+		"\n  \"exit\": 0,\n  \"timed_out\": false\n}\n"
+}
+
+// checkReceiptFile proves verify wrote its tool-only receipt beside
+// patch.json: the command it ran, the sig patch.json named, and the content
+// tree it ran on.
+func checkReceiptFile(t *testing.T, sig string) {
+	t.Helper()
+	if got, want := string(readProofFile(t, ".verdict/state/5201/verify-receipt.json")), receiptAt(sig); got != want {
+		t.Errorf("verify-receipt.json =\n%s\nwant\n%s", got, want)
 	}
 }
 
@@ -254,6 +345,130 @@ func TestVerifyCancelKeepsPriorProof(t *testing.T) {
 		t.Errorf("a canceled run mutated the proof: out %q -> %q, marker %q -> %q, patch changed %t",
 			before.out, after.out, before.marker, after.marker, !bytes.Equal(after.patch, before.patch))
 	}
+}
+
+// TestVerifyWithoutSnapshot pins a checkout git cannot snapshot (not a
+// repository): verify refuses and runs nothing. It never falls back to the
+// checkout itself, where the command could change what it is credited with
+// testing, so a PR that breaks the snapshot cannot force a degraded run.
+func TestVerifyWithoutSnapshot(t *testing.T) {
+	bundle(t, `{"verifyCmd":"printf ok"}`)
+	cmdr := &notRepoCommander{res: core.Result{Stdout: "ok"}}
+	req := verifyRequest(&testkit.Collector{}, &scriptCommander{}, "10", []string{"PATH=/bin"}, true)
+	req.Commander = cmdr
+	_, ref := verifycore.Run(context.Background(), req)
+	if ref == nil || ref.Code != "verify-failed" || !strings.Contains(ref.Message, "could not snapshot the content") ||
+		!strings.Contains(ref.Message, "nothing ran") {
+		t.Fatalf("refusal = %v, want verify-failed naming the snapshot", ref)
+	}
+	if len(cmdr.got) != 0 {
+		t.Errorf("the command ran %d time(s) without a snapshot", len(cmdr.got))
+	}
+	if _, err := os.Stat(".verdict/state/5201/verify-receipt.json"); !os.IsNotExist(err) {
+		t.Errorf("a refused run wrote a receipt (%v)", err)
+	}
+}
+
+// notRepoCommander answers every git read the way git does outside a
+// repository and scripts the command.
+type notRepoCommander struct {
+	got []*core.Command
+	res core.Result
+}
+
+func (c *notRepoCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
+	if cmd.Argv[0] == "git" {
+		return core.Result{ExitCode: 128, Stderr: "fatal: not a git repository"}, nil
+	}
+	c.got = append(c.got, cmd)
+	return c.res, nil
+}
+
+// TestVerifyRunsInSnapshot pins where the command runs and what the receipt
+// binds: a snapshot of the content in a private directory outside the
+// checkout — never the user's checkout, so nothing done there while it runs
+// changes what it tested — with the content tree and the finding sig
+// patch.json names.
+func TestVerifyRunsInSnapshot(t *testing.T) {
+	bundle(t, `{"verifyCmd":"printf ok","findingSig":"c123456789abcdef"}`)
+	cmdr := &scriptCommander{res: core.Result{Stdout: "ok"}}
+	if _, ref := verifycore.Run(context.Background(), verifyRequest(&testkit.Collector{}, cmdr, "10", []string{"PATH=/bin"}, true)); ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if len(cmdr.got) != 1 {
+		t.Fatalf("command runs = %d, want one", len(cmdr.got))
+	}
+	requireSnapshotDir(t, cmdr.got[0].Dir, ".")
+	if _, err := os.Stat(cmdr.got[0].Dir); !os.IsNotExist(err) {
+		t.Errorf("snapshot %s survived the run (%v)", cmdr.got[0].Dir, err)
+	}
+	checkReceiptFile(t, "c123456789abcdef")
+}
+
+// requireSnapshotDir checks dir is a verify snapshot: a private
+// verdict-snapshot-* directory under the physical host temp root, outside
+// the checkout at root.
+func requireSnapshotDir(t *testing.T, dir, root string) {
+	t.Helper()
+	tmp, err := filepath.EvalSymlinks(os.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(dir) != tmp || !strings.HasPrefix(filepath.Base(dir), "verdict-snapshot-") {
+		t.Fatalf("command dir = %q, want a verdict-snapshot-* directory under %s", dir, tmp)
+	}
+	checkout, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rel, err := filepath.Rel(checkout, dir); err == nil && !strings.HasPrefix(rel, "..") {
+		t.Fatalf("snapshot %s sits inside the checkout %s", dir, checkout)
+	}
+}
+
+// removeFailsCommander is a scriptCommander whose `git worktree remove`
+// fails, as it does on a locked or busy checkout.
+type removeFailsCommander struct{ scriptCommander }
+
+func (c *removeFailsCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
+	if _, a, ok := gitcmd.Split(cmd.Argv); ok && len(a) > 1 && a[0] == "worktree" && a[1] == "remove" {
+		return core.Result{ExitCode: 1, Stderr: "fatal: cannot remove a locked working tree"}, nil
+	}
+	return c.scriptCommander.Run(ctx, cmd)
+}
+
+// TestVerifySnapshotCleanupWarningReachesTheResponse pins that the snapshot
+// is removed before the response is built: a cleanup failure is a warning
+// on the returned response, not one emitted after it was assembled.
+func TestVerifySnapshotCleanupWarningReachesTheResponse(t *testing.T) {
+	bundle(t, `{"verifyCmd":"printf ok"}`)
+	cmdr := &removeFailsCommander{scriptCommander{res: core.Result{Stdout: "ok"}}}
+	req := verifyRequest(&testkit.Collector{}, &cmdr.scriptCommander, "10", []string{"PATH=/bin"}, true)
+	req.Commander = cmdr
+	resp, ref := verifycore.Run(context.Background(), req)
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if !slices.ContainsFunc(resp.Warnings, func(w string) bool { return strings.Contains(w, "snapshot cleanup") }) {
+		t.Fatalf("warnings = %q, want the snapshot cleanup warning", resp.Warnings)
+	}
+}
+
+// TestVerifyRefusalCarriesCleanupWarning pins the patch path's refusals after
+// the snapshot exists: here the previous receipt cannot be cleared (a
+// directory sits at its path), and the snapshot's failed cleanup still
+// reaches the refusal's warnings.
+func TestVerifyRefusalCarriesCleanupWarning(t *testing.T) {
+	bundle(t, `{"verifyCmd":"printf ok"}`)
+	testkit.WriteFile(t, ".verdict/state/5201/verify-receipt.json/blocker", "x")
+	cmdr := &removeFailsCommander{scriptCommander{res: core.Result{Stdout: "ok"}}}
+	req := verifyRequest(&testkit.Collector{}, &cmdr.scriptCommander, "10", []string{"PATH=/bin"}, true)
+	req.Commander = cmdr
+	_, ref := verifycore.Run(context.Background(), req)
+	if ref == nil || !strings.Contains(ref.Message, "could not clear the previous") {
+		t.Fatalf("refusal = %v, want the receipt-clearing refusal", ref)
+	}
+	requireCleanupWarning(t, ref.Warnings)
 }
 
 // TestVerifySuccessClearsStaleMarker pins that a successful re-verify empties

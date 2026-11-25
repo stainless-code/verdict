@@ -57,14 +57,14 @@ printf '[]' | eval_write_findings "$PR"
 live_mk_post "$PR" "$HEAD_A"
 set_mode clear
 m="$(mark)"
-run_review report acme/app "$PR" --check critical --completeness
+run_review gate acme/app "$PR" --max-severity critical --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "clear gate exits 0"
 else
   bad "clear gate exits $EVAL_STATUS, want 0"
 fi
-if grep -q "no open findings at-or-above critical — gate passes" "$EVAL_ERR" \
-  && grep -q "completeness passes" "$EVAL_ERR" \
+if grep -qE "^gate: findings +pass" "$EVAL_ERR" \
+  && grep -qE "^gate: head +pass" "$EVAL_ERR" \
   && grep -q "0 live open" "$EVAL_ERR" \
   && grep -q "0 local open" "$EVAL_ERR"; then
   good "clear gate prints all three pass lines with both live counts"
@@ -76,11 +76,11 @@ if [ "$(graphql_since "$m")" -ge 1 ]; then
 else
   bad "gate run made no live recheck call"
 fi
-run_review report acme/app "$PR" --check critical --completeness --json
+run_review gate acme/app "$PR" --max-severity critical --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && jq -e '.error == null and .warnings == ["patch identity unavailable — completeness compares heads"]' <"$EVAL_OUT" >/dev/null 2>&1 \
+  && jq -e '.error == null and (.warnings | map(select(startswith("coverage: ") | not))) == ["patch identity unavailable — completeness compares heads"]' <"$EVAL_OUT" >/dev/null 2>&1 \
   && [ "$(jq -r '[keys_unsorted[]] | sort | join(" ")' <"$EVAL_OUT" 2>/dev/null)" = "at data error next pr repo schema_version verb warnings" ]; then
-  good "clear --json keeps the envelope shape with null error and no warnings"
+  good "clear --json keeps the envelope shape with null error and no warnings beyond the advisory coverage one"
 else
   bad "clear --json exits $EVAL_STATUS: $(jq -c '{error:.error,warnings:.warnings}' <"$EVAL_OUT" 2>/dev/null)"
 fi
@@ -90,7 +90,7 @@ eval_mk_bundle "$PR"
 printf '%s' "$INFO_FINDING" | eval_write_findings "$PR"
 live_mk_post "$PR" "$HEAD_A"
 set_mode one
-run_review report acme/app "$PR" --check critical --completeness
+run_review gate acme/app "$PR" --max-severity critical --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "below-tier finding with matching live count exits 0"
 else
@@ -108,23 +108,22 @@ printf '[]' | eval_write_findings "$PR"
 live_mk_post "$PR" "$HEAD_A"
 before_hash="$(shasum "$EVAL_SANDBOX/.verdict/state/$PR/findings.json" "$EVAL_SANDBOX/.verdict/state/$PR/post.json" | shasum | cut -d' ' -f1)"
 set_mode open
-run_review report acme/app "$PR" --check critical --completeness
+run_review gate acme/app "$PR" --max-severity critical --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 1 ]; then
   good "unknown-live exits 1"
 else
   bad "unknown-live exits $EVAL_STATUS, want 1"
 fi
-if grep -q "^check:" "$EVAL_ERR" \
+if grep -qE "^gate: live_threads +fail" "$EVAL_ERR" \
   && grep -q "2 live open" "$EVAL_ERR" \
   && grep -q "0 local open" "$EVAL_ERR" \
-  && grep -q "fetch + triage" "$EVAL_ERR" \
-  && grep -q "re-check" "$EVAL_ERR"; then
-  good "fail line names both counts plus the fetch-and-triage path"
+  && jq -e '.next | contains("resolve or reply to the live threads")' <"$EVAL_OUT" >/dev/null 2>&1; then
+  good "fail line names both counts plus the resolve-the-threads recovery"
 else
   bad "fail stderr: $(head -c 300 "$EVAL_ERR")"
 fi
-if grep -q "no open findings at-or-above critical — gate passes" "$EVAL_ERR" \
-  && grep -q "completeness passes" "$EVAL_ERR"; then
+if grep -qE "^gate: findings +pass" "$EVAL_ERR" \
+  && grep -qE "^gate: head +pass" "$EVAL_ERR"; then
   good "local dimensions still print their own pass lines"
 else
   bad "local pass lines missing: $(head -c 300 "$EVAL_ERR")"
@@ -135,15 +134,15 @@ if [ "$before_hash" = "$after_hash" ]; then
 else
   bad "failed gate moved store bytes"
 fi
-run_review report acme/app "$PR" --check critical --completeness --json
+run_review gate acme/app "$PR" --max-severity critical --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 1 ] && jq -e '.error == null' <"$EVAL_OUT" >/dev/null 2>&1; then
   good "failed gate --json keeps the success-shaped envelope (exit carries the failure)"
 else
   bad "failed gate --json exits $EVAL_STATUS: $(jq -c '.error' <"$EVAL_OUT" 2>/dev/null)"
 fi
-run_review report acme/app "$PR" --check critical --force
+run_review gate acme/app "$PR" --max-severity critical --force
 if [ "$EVAL_STATUS" -eq 2 ] && grep -q "unknown flag '--force'" "$EVAL_ERR"; then
-  good "report has no --force escape (usage exit 2)"
+  good "gate has no --force escape (usage exit 2)"
 else
   bad "--force gave exit $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
 fi
@@ -153,7 +152,7 @@ eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
 live_mk_post "$PR" "$HEAD_A"
 set_mode unreachable
-run_review report acme/app "$PR" --check critical --completeness --json
+run_review gate acme/app "$PR" --max-severity critical --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "unreachable on a clean bundle stays exit 0 (never exit 3)"
 else
@@ -171,13 +170,13 @@ PR=4288
 eval_mk_bundle "$PR"
 printf '%s' "$CRIT_FINDING" | eval_write_findings "$PR"
 set_mode unreachable
-run_review report acme/app "$PR" --check critical --json
+run_review gate acme/app "$PR" --max-severity critical --coverage warn --json
 if [ "$EVAL_STATUS" -eq 1 ]; then
   good "unreachable on a tier-dirty bundle still exits 1 on the tier"
 else
   bad "unreachable dirty exits $EVAL_STATUS, want 1"
 fi
-assert_file_grep "tier fail line names the failing rung" "$EVAL_ERR" "at-or-above critical — gate fails"
+assert_file_grep "tier fail line names the failing rung" "$EVAL_ERR" "^gate: findings *fail"
 assert_file_grep "dirty bundle warns unreachable" "$EVAL_ERR" "live thread recheck unreachable"
 assert_stream_nogrep "dirty bundle prints no live verdict" "$EVAL_ERR" "live open"
 if jq -e '.warnings | join(" ") | contains("live thread recheck unreachable")' <"$EVAL_OUT" >/dev/null 2>&1; then
@@ -235,7 +234,7 @@ EOF
 chmod +x "$EVAL_STUBBIN/glab"
 set_mode clear
 m="$(mark)"
-run_review report acme/app "$PR" --completeness --json
+run_review gate acme/app "$PR" --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "provider bundle with reviewed HEAD exits 0 (an unread host stays fail-open)"
 else
@@ -252,7 +251,7 @@ else
 fi
 live_mk_post "$PR" "$HEAD_C"
 m="$(mark)"
-run_review report acme/app "$PR" --completeness
+run_review gate acme/app "$PR" --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 1 ] \
   && grep -q "stale-head" "$EVAL_ERR" && [ "$(graphql_since "$m")" -eq 0 ]; then
   good "stale provider bundle still fails on the local dimension with zero GitHub calls"
@@ -270,22 +269,22 @@ jq -n --arg h "$HEAD_D" --argjson e "$(eval_evidence_receipt "$EVAL_SANDBOX/.ver
   > "$EVAL_SANDBOX/.verdict/state/local-liverep/post.json"
 set_mode clear
 m="$(mark)"
-run_review report acme/app liverep --check critical --completeness
+run_review gate acme/app liverep --max-severity critical --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "local bundle with reviewed HEAD exits 0"
 else
   bad "local skip exits $EVAL_STATUS, want 0"
 fi
-assert_file_grep "local run notes the skip on the human stream" "$EVAL_OUT" "info: live recheck skipped"
-assert_stream_nogrep "local run adds no skip warning" "$EVAL_ERR" "live recheck skipped"
+assert_file_grep "local run notes the skip on the human stream" "$EVAL_ERR" "^gate: live_threads *skip"
+assert_stream_nogrep "local run adds no skip warning" "$EVAL_ERR" "warn: live recheck skipped"
 assert_stream_nogrep "local run prints no fetch-local noise" "$EVAL_ERR" "fetch-local" "-i"
 assert_stream_nogrep "local run prints no live open line" "$EVAL_ERR" "live open"
 assert_eq "local run makes zero recheck calls" "0" "$(graphql_since "$m")"
 printf '%s' "$CRIT_FINDING" > "$EVAL_SANDBOX/.verdict/state/local-liverep/findings.json"
 m="$(mark)"
-run_review report acme/app liverep --check critical
+run_review gate acme/app liverep --max-severity critical --coverage warn --json
 if [ "$EVAL_STATUS" -eq 1 ] \
-  && grep -q "at-or-above critical — gate fails" "$EVAL_ERR" && [ "$(graphql_since "$m")" -eq 0 ]; then
+  && grep -qE "^gate: findings +fail" "$EVAL_ERR" && [ "$(graphql_since "$m")" -eq 0 ]; then
   good "tier-dirty local bundle still fails on the local dimension with zero calls"
 else
   bad "dirty local exits $EVAL_STATUS with $(graphql_since "$m") call(s)"
@@ -307,7 +306,7 @@ echo "evals-stub-gh: network disabled ($*)" >&2
 exit 1
 EOF
 chmod +x "$EVAL_STUBBIN/gh"
-run_review report acme/app "$PR" --check critical --completeness --json
+run_review gate acme/app "$PR" --max-severity critical --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 0 ]; then
   good "stdout-error gh on a clean bundle stays exit 0 (neutral)"
 else

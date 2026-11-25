@@ -3,12 +3,13 @@ package fixcore
 import (
 	"context"
 	"fmt"
-	"os"
+	"strconv"
 	"strings"
 
 	"github.com/stainless-code/verdict/internal/config"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -26,32 +27,55 @@ const (
 		"lower --min-severity or fix one sig with --sig"
 	msgBatchEmptyPaths = "fix --all: no open inline finding at or above %s under %s — " +
 		"widen --paths, lower --min-severity, or fix one sig with --sig"
-	nextBatchEmpty      = "lower --min-severity or fix one sig with --sig"
-	nextBatchEmptyPaths = "widen --paths, lower --min-severity, or fix one sig with --sig"
-	nextBatchPasses     = "patch each anchor, run the verify command yourself, write one " +
-		"verification.json claim per sig, land with record, then re-run fix --all"
+	msgBatchRecipeEmpty = "fix --recipe %s: no open inline finding at or above %s under " +
+		"lenses %s — findings need a matching lens value, or lower --min-severity, " +
+		"widen --paths, or pick another recipe"
+	msgBatchRecipeEmptyPaths = "fix --recipe %s: no open inline finding at or above %s under " +
+		"lenses %s under %s — findings need a matching lens value, or lower --min-severity, " +
+		"widen --paths, or pick another recipe"
+	msgBatchRecipeNoLenses = "fix --recipe %s: the recipe declares no lenses, so it owns " +
+		"no findings — pick a recipe that declares lenses or a different batch scope"
+	nextBatchEmpty          = "lower --min-severity or fix one sig with --sig"
+	nextBatchEmptyPaths     = "widen --paths, lower --min-severity, or fix one sig with --sig"
+	nextBatchRecipe         = "lower --min-severity, widen --paths, pick another recipe, or fix one sig with --sig"
+	nextBatchRecipeNoLenses = "pick a recipe that declares lenses or a different batch scope"
+	nextBatchPasses         = "patch each anchor, " + refreshLocal + ", run the verify command " +
+		"through verdict verify, write one verification.json claim per sig, land with record, then re-run fix --all"
+	// refreshLocal and refreshPR bring the fixes into the content the bundle
+	// grades, which a receipt's tree must equal before record or post applies
+	// a claim. A local bundle captures uncommitted content; a PR bundle grades
+	// the pushed head.
+	refreshLocal      = "re-run fetch-local so the bundle captures the fixes (no commit needed)"
+	refreshPR         = "commit, push, and re-fetch so the bundle head carries the fixes"
 	nextBatchStopped  = "triage the stopped sigs, or re-run fix --all with another floor"
 	defaultBatchFloor = "important"
 	floorOff          = "off"
 )
 
-const batchInstructionsFmt = "instructions: patch each anchor file (%s), run the " +
-	"verify command yourself (%s), then write %s/verification.json " +
-	"[{sig, verdict, resultHead, verifyCmd}] with one claim per sig, verdict " +
-	"VERIFIED and resultHead matching HEAD (this script never runs it — the " +
-	"resultHead==HEAD match in the record/post verification gate is the " +
-	"freshness proof); land it with record %s %s; re-run fix %s %s %s for the " +
-	"next pass\n"
+// commaSpace joins the sigs or lens ids a message names.
+const commaSpace = ", "
+
+const batchInstructionsFmt = "instructions: patch each anchor file (%s), record the " +
+	"verify command (%s) as verifyCmd in %s/patch.json, git add -N any file the " +
+	"fixes create, re-run fetch-local so the bundle captures the patched content " +
+	"(no commit needed), then run it through " +
+	"verdict verify %s %s and write verification.json beside it [{sig, verdict, " +
+	"verifyCmd}] with one claim per sig, verdict VERIFIED, and that verifyCmd (a " +
+	"claim flips only on the verify-receipt.json verify writes — exit 0 for that " +
+	"command on the content the bundle grades); land it with record %s %s; re-run " +
+	"fix %s %s %s for the next pass\n"
 
 // batchInstructionsPRFmt is the same block for a PR bundle, whose landing path
-// is a push and a re-fetch followed by post — record refuses a PR bundle.
-const batchInstructionsPRFmt = "instructions: patch each anchor file (%s), run the " +
-	"verify command yourself (%s), then write %s/verification.json " +
-	"[{sig, verdict, resultHead, verifyCmd}] with one claim per sig, verdict " +
-	"VERIFIED and resultHead matching HEAD (this script never runs it — the " +
-	"resultHead==HEAD match in the record/post verification gate is the " +
-	"freshness proof); push the fix, re-fetch with fetch %s %s, then land it with " +
-	"post %s %s; re-run fix %s %s %s for the next pass\n"
+// is a push and a re-fetch followed by post — record refuses a PR bundle. The
+// verify run follows the re-fetch, so its receipt covers the content post
+// grades: the pushed head's tree.
+const batchInstructionsPRFmt = "instructions: patch each anchor file (%s), record the " +
+	"verify command (%s) as verifyCmd in %s/patch.json, commit and push the fix, " +
+	"re-fetch with fetch %s %s, then run it through verdict verify %s %s and write " +
+	"verification.json beside it [{sig, verdict, verifyCmd}] with one claim per " +
+	"sig, verdict VERIFIED, and that verifyCmd (a claim flips only on the " +
+	"verify-receipt.json verify writes — exit 0 for that command on the pushed " +
+	"head's content); land it with post %s %s; re-run fix %s %s %s for the next pass\n"
 
 type batchRow struct { //nolint:govet // the row reads in ledger order
 	pick     readcommon.Ranked
@@ -79,6 +103,9 @@ func (st *state) runBatch(
 	sel, ref := st.batchSelector(dir, floor)
 	if ref != nil {
 		return ref
+	}
+	if st.recipeEmpty {
+		return st.recipeNothing(dir, ledgerPath, store, entries, fixOpen, fixOpenInline, now)
 	}
 	picks := readcommon.Select(entries, sel)
 	if len(picks) == 0 {
@@ -147,7 +174,9 @@ func (st *state) batchEnv(ctx context.Context, dir string) (string, *core.Refusa
 // batchNothing explains a batch that selected no sig: --all over an empty store
 // completes, --all over a floor that withheld everything names the scope, and
 // --selected refuses, because a selection that names no open finding is a stale
-// claim rather than an empty store.
+// claim rather than an empty store. A --recipe scope is checked first so a
+// composite --selected --recipe empty intersection names both scopes and
+// preserves data.recipe instead of pinning a bare no-selected refusal.
 func (st *state) batchNothing(
 	dir, ledgerPath string,
 	store *ledgerDoc,
@@ -155,6 +184,9 @@ func (st *state) batchNothing(
 	fixOpen, fixOpenInline int,
 	now string,
 ) *core.RefusalError {
+	if st.req.Recipe != "" {
+		return st.recipeNothing(dir, ledgerPath, store, entries, fixOpen, fixOpenInline, now)
+	}
 	if st.req.Selected {
 		return st.noSelected()
 	}
@@ -162,6 +194,102 @@ func (st *state) batchNothing(
 		return st.completeRun(dir, ledgerPath, store, entries, fixOpen)
 	}
 	return st.emptyBatch(dir, ledgerPath, store, entries, fixOpen, fixOpenInline, now)
+}
+
+// recipeNothing explains a recipe-scoped batch that selected no sig. A recipe
+// that resolves to no lenses owns nothing, so the run reports the empty scope
+// instead of widening to every open inline finding. Otherwise the message
+// names the recipe and its lens set and says findings need that provenance.
+func (st *state) recipeNothing(
+	dir, ledgerPath string,
+	store *ledgerDoc,
+	entries []any,
+	fixOpen, fixOpenInline int,
+	now string,
+) *core.RefusalError {
+	st.at = now
+	st.humanf("%s\n", st.recipeEmptyMsg())
+	st.next = st.batchNext(st.recipeEmptyNext())
+	st.data = &Data{
+		Dir:         dir,
+		Ledger:      ledgerPath,
+		MaxPasses:   maxPasses,
+		OpenInline:  fixOpenInline,
+		Fixed:       fixedCount(entries),
+		Open:        fixOpen,
+		Stopped:     stoppedCount(store),
+		Batch:       []BatchRow{},
+		MinSeverity: &st.req.MinSeverity,
+		Paths:       st.req.Paths,
+		Selection:   st.selectionPath(),
+		Recipe:      recipePtr(st.req.Recipe),
+	}
+	return nil
+}
+
+func (st *state) recipeEmptyNext() string {
+	if len(st.recipeLenses) == 0 {
+		return nextBatchRecipeNoLenses
+	}
+	return nextBatchRecipe
+}
+
+// recipePrefix names the scope the re-run text carries: a composite
+// --selected --recipe run reads "fix --selected --recipe <name>", so the
+// empty-scope message never widens the next pass by dropping either flag.
+func (st *state) recipePrefix() string {
+	if st.req.Selected {
+		return "fix --selected --recipe " + st.req.Recipe
+	}
+	return "fix --recipe " + st.req.Recipe
+}
+
+func (st *state) recipeEmptyMsg() string {
+	if len(st.recipeLenses) == 0 {
+		return st.recipeZeroLensMsg()
+	}
+	return st.recipeLensMismatchMsg()
+}
+
+func (st *state) recipeZeroLensMsg() string {
+	msg := st.recipePrefix() + ": the recipe declares no lenses, so it owns " +
+		"no findings — pick a recipe that declares lenses or a different batch scope"
+	if st.req.Selected && st.selection != nil {
+		msg = st.recipePrefix() + ": the recipe declares no lenses, so it owns " +
+			"no findings (selection " + st.selection.path + " names " +
+			strconv.Itoa(len(st.selection.sigs)) + " reacted sig(s)) — " +
+			"pick a recipe that declares lenses or a different batch scope"
+	}
+	return msg
+}
+
+func (st *state) recipeLensMismatchMsg() string {
+	lenses := strings.Join(st.recipeLenses, commaSpace)
+	if st.req.Selected && st.selection != nil {
+		selected := fmt.Sprintf("%s names %d reacted sig(s) and none is open inline under lenses %s",
+			st.selection.path, len(st.selection.sigs), lenses)
+		if len(st.req.Paths) > 0 {
+			return st.recipePrefix() + ": " + selected + " under " +
+				strings.Join(st.req.Paths, commaSpace) + " in the store — " +
+				"findings need a matching lens value, or lower --min-severity, " +
+				"widen --paths, or pick another recipe"
+		}
+		return st.recipePrefix() + ": " + selected + " in the store — " +
+			"findings need a matching lens value, or lower --min-severity, " +
+			"widen --paths, or pick another recipe"
+	}
+	if len(st.req.Paths) > 0 {
+		return fmt.Sprintf(msgBatchRecipeEmptyPaths, st.req.Recipe, st.req.MinSeverity,
+			lenses, strings.Join(st.req.Paths, commaSpace))
+	}
+	return fmt.Sprintf(msgBatchRecipeEmpty, st.req.Recipe, st.req.MinSeverity, lenses)
+}
+
+func recipePtr(name string) *string {
+	if name == "" {
+		return nil
+	}
+	return &name
 }
 
 func (st *state) batchPick(
@@ -226,8 +354,12 @@ func (st *state) printBatch(dir, ledgerPath string, rows []batchRow, verify stri
 	st.printBatchInstructions(dir, verify, joinAnchors(anchors))
 	st.humanRaw(gateMsg)
 	st.humanRaw(budgetMsg)
-	st.humanf("next: patch %s with verify %q, write verification.json, "+
-		"run %s to land it, then re-run fix %s\n", joinAnchors(anchors), verify,
+	refresh := "re-run fetch-local"
+	if st.providerBundle() {
+		refresh = "commit, push, re-fetch"
+	}
+	st.humanf("next: patch %s, %s, run verify %q through verdict verify, write verification.json, "+
+		"run %s to land it, then re-run fix %s\n", joinAnchors(anchors), refresh, verify,
 		st.landVerb(), st.batchMode())
 	return ready
 }
@@ -241,12 +373,24 @@ func (st *state) printSelection() {
 	st.humanf("» selection: %s — %d reacted sig(s)\n", st.selection.path, len(st.selection.sigs))
 }
 
-// batchMode renders the flag that re-runs this batch.
+// batchMode renders the flag that re-runs this batch. A composite
+// scope re-runs with every flag it was run with: --selected --recipe <name>
+// keeps the next pass narrowed to both scopes instead of widening it.
 func (st *state) batchMode() string {
-	if st.req.Selected {
-		return "--selected"
+	var flags []string
+	if st.req.All {
+		flags = append(flags, "--all")
 	}
-	return "--all"
+	if st.req.Selected {
+		flags = append(flags, "--selected")
+	}
+	if st.req.Recipe != "" {
+		flags = append(flags, "--recipe "+st.req.Recipe)
+	}
+	if len(flags) == 0 {
+		return "--all"
+	}
+	return strings.Join(flags, " ")
 }
 
 // landVerb names the command that lands a pass in this bundle: a local bundle
@@ -262,11 +406,11 @@ func (st *state) landVerb() string {
 // lands through a re-fetch and post, a local bundle through record.
 func (st *state) printBatchInstructions(dir, verify, anchors string) {
 	if st.providerBundle() {
-		st.humanf(batchInstructionsPRFmt, anchors, verify, dir,
+		st.humanf(batchInstructionsPRFmt, anchors, verify, dir, st.req.Repo, st.req.Pr,
 			st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr, st.batchMode())
 		return
 	}
-	st.humanf(batchInstructionsFmt, anchors, verify, dir,
+	st.humanf(batchInstructionsFmt, anchors, verify, dir, st.req.Repo, st.req.Pr,
 		st.req.Repo, st.req.Pr, st.req.Repo, st.req.Pr, st.batchMode())
 }
 
@@ -328,7 +472,7 @@ func (st *state) batchVerifyCmd(dir string) string {
 	if st.req.VerifyCmd != "" {
 		return st.req.VerifyCmd
 	}
-	raw, err := os.ReadFile(dir + suffixPatchJSON)
+	raw, err := noblock.ReadFile(dir + suffixPatchJSON)
 	if err != nil {
 		return ""
 	}
@@ -381,6 +525,7 @@ func (st *state) fillBatchData(
 		Patch:       st.patch,
 		Paths:       st.req.Paths,
 		Selection:   st.selectionPath(),
+		Recipe:      recipePtr(st.req.Recipe),
 	}
 }
 
@@ -405,6 +550,7 @@ func (st *state) emptyBatch(
 		Batch:       []BatchRow{},
 		MinSeverity: &st.req.MinSeverity,
 		Paths:       st.req.Paths,
+		Recipe:      recipePtr(st.req.Recipe),
 	}
 	return nil
 }
@@ -418,7 +564,11 @@ func (st *state) batchMsg(msg string) string {
 
 func (st *state) batchNext(next string) string {
 	out := st.batchMsg(next)
-	return strings.ReplaceAll(out, "land with record", "land with "+st.landVerb())
+	if st.providerBundle() {
+		out = strings.ReplaceAll(out, refreshLocal, refreshPR)
+		return strings.ReplaceAll(out, "land with record", "land with post")
+	}
+	return out
 }
 
 func batchEmptyMsg(floor string, paths []string) string {

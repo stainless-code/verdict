@@ -1,0 +1,24 @@
+ verdict dashboard · /work/acme/api                                  read-only
+  1 Overview   2 Queue  [3 Detail]  4 Diff   5 Compare   6 Cost   7 Precision
+────────────────────────────────────────────────────────────────────────────────
+ 4232 · acme/api · head 9f8e7d6c · gate FAIL
+   open 2   deferred 0   addressed 1   terminal 0
+   findings fail · spec pass · evidence pass
+   SEV STATUS     RIGOR   LOCATION                FINDING
+   !!! open       ▮▮▮▮▮✓  src/auth.go:42          Token compared with == leaks…
+   !!  addressed  ▮▮▮▯▯?  src/db.go:7             Query built by concatenation…
+   !   open       ▮▯▯▯▯   README.md:3             Typo in the install line.
+
+
+
+
+
+
+
+────────────────────────────────────────────────────────────────────────────────
+ src/auth.go:42 Token compared with == leaks timing.
+ Use subtle.ConstantTimeCompare.
+
+────────────────────────────────────────────────────────────────────────────────
+ partial: totals withheld  1 refused bundle  1 warning at 2026-11-25T10:00:00Z
+ --once snapshot; run verdict dashboard in a terminal for the live view

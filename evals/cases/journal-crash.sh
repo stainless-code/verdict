@@ -29,9 +29,11 @@ mkdir -p "$BLOCKBIN"
 cat >"$BLOCKBIN/git" <<EOF
 #!/usr/bin/env bash
 set -euo pipefail
-if [ "\${1:-}" = "rev-parse" ] && [ "\${2:-}" = "--show-toplevel" ]; then
-  exec "$REAL_GIT" "\$@"
-fi
+# verdict's git argv opens with -C and its hook-free -c options, so the
+# root probe is recognized by its tail.
+case " \$* " in
+*" rev-parse --show-toplevel ") exec "$REAL_GIT" "\$@" ;;
+esac
 if [ -n "\${VERDICT_TEST_READY:-}" ]; then
   : >"\$VERDICT_TEST_READY"
 fi

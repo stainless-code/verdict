@@ -29,10 +29,16 @@ var wantAnnotations = map[string]toolAnnotations{
 	"init": {
 		Title: "Scaffold controls", DestructiveHint: true, IdempotentHint: true,
 	},
-	"journal": {Title: "Read bundle journal", ReadOnlyHint: true, IdempotentHint: true},
-	"learn":   {Title: "Manage knowledge base", IdempotentHint: true},
-	"next":    {Title: "Next finding", ReadOnlyHint: true, IdempotentHint: true},
-	"pack":    {Title: "List lens packs", ReadOnlyHint: true, IdempotentHint: true},
+	"journal":        {Title: "Read bundle journal", ReadOnlyHint: true, IdempotentHint: true},
+	"learn":          {Title: "Manage knowledge base", IdempotentHint: true},
+	"next":           {Title: "Next finding", ReadOnlyHint: true, IdempotentHint: true},
+	"pack":           {Title: "List lens packs", ReadOnlyHint: true, IdempotentHint: true},
+	"query-bundles":  {Title: "List dashboard bundles", ReadOnlyHint: true, IdempotentHint: true},
+	"query-findings": {Title: "List bundle findings", ReadOnlyHint: true, IdempotentHint: true},
+	"query-finding":  {Title: "Read one finding", ReadOnlyHint: true, IdempotentHint: true},
+	"query-copy":     {Title: "Copy a finding prompt", ReadOnlyHint: true, IdempotentHint: true},
+	"query-cost":     {Title: "Summarize review cost", ReadOnlyHint: true, IdempotentHint: true},
+	"query-health":   {Title: "Dashboard health", ReadOnlyHint: true, IdempotentHint: true},
 	"post": {
 		Title: "Post review", DestructiveHint: true, IdempotentHint: true, OpenWorldHint: true,
 	},
@@ -60,7 +66,7 @@ var wantAnnotations = map[string]toolAnnotations{
 //nolint:revive // the snapshot matrix reads as one block
 func TestToolsListSnapshot(t *testing.T) {
 	t.Parallel()
-	tools := allTools(false, true)
+	tools := allTools(Posture(false))
 	if len(tools) != len(wantAnnotations) {
 		t.Fatalf("tools = %d, want %d", len(tools), len(wantAnnotations))
 	}
@@ -92,7 +98,8 @@ func TestToolsListSnapshot(t *testing.T) {
 	}
 }
 
-// TestSurfaceSets pins the default, read-only, and operator tool sets.
+// TestSurfaceSets pins the default and read-only tool sets: --read-only is the
+// only knob, so triage is on the default surface.
 func TestSurfaceSets(t *testing.T) {
 	t.Parallel()
 	names := func(tools []*tool) []string {
@@ -102,24 +109,20 @@ func TestSurfaceSets(t *testing.T) {
 		}
 		return out
 	}
-	defaults := names(allTools(false, false))
+	defaults := names(allTools(Posture(false)))
 	wantDefaults := []string{
 		"adopt", "calibrate", "check-tree", "config", "doctor", "fetch", "fetch-local", "fix",
-		"handoff", "index", "ingest", "init", "journal", "learn", "next", "pack", "post", "pr_wait", "ready", "record", "report", "risk", "show",
-		"threads", "trend", "verify",
+		"handoff", "index", "ingest", "init", "journal", "learn", "next", "pack", "post", "pr_wait",
+		"query-bundles", "query-copy", "query-cost", "query-finding", "query-findings", "query-health",
+		"ready", "record", "report", "risk", "show", "threads", "trend", "triage", "verify",
 	}
 	if !reflect.DeepEqual(defaults, wantDefaults) {
 		t.Errorf("default tools = %v, want %v", defaults, wantDefaults)
 	}
-	readOnly := names(allTools(true, false))
-	wantReadOnly := []string{"check-tree", "config", "doctor", "handoff", "index", "journal", "next", "pack", "pr_wait", "ready", "record", "report", "risk", "show", "trend"}
+	readOnly := names(allTools(Posture(true)))
+	wantReadOnly := []string{"check-tree", "config", "doctor", "handoff", "index", "journal", "next", "pack", "pr_wait", "query-bundles", "query-copy", "query-cost", "query-finding", "query-findings", "query-health", "ready", "record", "report", "risk", "show", "trend"}
 	if !reflect.DeepEqual(readOnly, wantReadOnly) {
 		t.Errorf("read-only tools = %v, want %v", readOnly, wantReadOnly)
-	}
-	operator := names(allTools(false, true))
-	wantOperator := append(append([]string{}, wantDefaults[:len(wantDefaults)-1]...), "triage", "verify")
-	if !reflect.DeepEqual(operator, wantOperator) {
-		t.Errorf("operator tools = %v, want %v", operator, wantOperator)
 	}
 }
 
@@ -154,26 +157,26 @@ func TestInitializeInstructions(t *testing.T) {
 	//nolint:govet // the case fields read in name/flag order
 	cases := []struct {
 		name     string
-		operator bool
+		readOnly bool
 		want     []string
 		absent   []string
 	}{
 		{
-			name: "agent",
-			want: []string{"fetch", "review.json", "post", "triage[]", "hint", "not on this surface", procedureInstruction},
+			name:   "default",
+			want:   []string{"fetch", "review.json", "post", "triage[]", "hint", procedureInstruction},
+			absent: []string{"--read-only"},
 		},
 		{
-			name:     "operator",
-			operator: true,
-			want:     []string{"fetch", "post", "triage", "runs with --operator", procedureInstruction},
-			absent:   []string{"not on this surface"},
+			name:     "read-only",
+			readOnly: true,
+			want:     []string{"fetch", "post", "triage[]", "runs with --read-only", "every other local write", procedureInstruction},
 		},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
 			cfg := testConfig()
-			cfg.Operator = tc.operator
+			cfg.ReadOnly = tc.readOnly
 			frames := serve(t, &cfg,
 				`{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-06-18"}}`)
 			var init initializeResult
@@ -200,8 +203,10 @@ func TestInitializeInstructions(t *testing.T) {
 func TestMutationDeclarations(t *testing.T) {
 	t.Parallel()
 	want := map[string]mutationClass{
-		"pr_wait": noLocalWrites,
-		"adopt":   localWrites, "calibrate": localWrites, "check-tree": noLocalWrites,
+		"pr_wait":       noLocalWrites,
+		"query-bundles": noLocalWrites, "query-findings": noLocalWrites, "query-finding": noLocalWrites,
+		"query-copy": noLocalWrites, "query-cost": noLocalWrites, "query-health": noLocalWrites,
+		"adopt": localWrites, "calibrate": localWrites, "check-tree": noLocalWrites,
 		"config": noLocalWrites, "doctor": noLocalWrites, "fetch": localWrites,
 		"fetch-local": localWrites, "fix": localWrites, "handoff": noLocalWrites,
 		"index":  noLocalWrites,
@@ -211,7 +216,7 @@ func TestMutationDeclarations(t *testing.T) {
 		"threads": localWrites, "trend": noLocalWrites, "triage": localWrites,
 		"verify": localWrites,
 	}
-	for _, tool := range allTools(false, true) {
+	for _, tool := range allTools(Posture(false)) {
 		t.Run(tool.name, func(t *testing.T) {
 			assertMutationDeclaration(t, tool, want[tool.name])
 		})
@@ -232,7 +237,7 @@ func TestReadOnlyUsesMutationClass(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := exposed(&tool{mutates: tc.mutates, readOnly: tc.readOnly}, true, false); got != tc.want {
+			if got := exposed(&tool{mutates: tc.mutates, readOnly: tc.readOnly}, Posture(true)); got != tc.want {
 				t.Fatalf("exposed = %v, want %v", got, tc.want)
 			}
 		})
@@ -252,10 +257,10 @@ func assertMutationDeclaration(t *testing.T, tool *tool, want mutationClass) {
 
 func TestDrainIsHiddenFromMCP(t *testing.T) {
 	t.Parallel()
-	for _, cfg := range []struct{ readOnly, operator bool }{{}, {true, false}, {false, true}, {true, true}} {
-		checkHiddenDrain(t, cfg.readOnly, cfg.operator)
+	for _, readOnly := range []bool{false, true} {
+		checkHiddenDrain(t, readOnly)
 	}
-	for _, tools := range [][]*tool{allTools(false, false), allTools(true, false), allTools(false, true)} {
+	for _, tools := range [][]*tool{allTools(Posture(false)), allTools(Posture(true))} {
 		for _, tool := range tools {
 			if tool.name == "drain" {
 				t.Error("drain is exposed as an MCP tool")
@@ -264,11 +269,10 @@ func TestDrainIsHiddenFromMCP(t *testing.T) {
 	}
 }
 
-func checkHiddenDrain(t *testing.T, readOnly, operator bool) {
+func checkHiddenDrain(t *testing.T, readOnly bool) {
 	t.Helper()
-	got, ok := hiddenTools(readOnly, operator)["drain"]
+	got, ok := hiddenTools(Posture(readOnly))["drain"]
 	if !ok || !got.cliOnly || got.requires != "the verdict CLI (verdict drain)" {
-		t.Errorf("hidden drain (readOnly=%v operator=%v) = %+v, want a CLI-only declaration",
-			readOnly, operator, got)
+		t.Errorf("hidden drain (readOnly=%v) = %+v, want a CLI-only declaration", readOnly, got)
 	}
 }

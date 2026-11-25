@@ -1,10 +1,16 @@
 package main
 
+import (
+	"strings"
+
+	"github.com/stainless-code/verdict/internal/core"
+)
+
 func usageText() string {
 	return "usage: verdict demo|fetch|post|triage|report|next|show|verify|doctor|calibrate|" +
-		"fetch-local|run|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|" +
-		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|config|drain [opts]\n" +
-		"  demo [<public-github-pr-url>] [--agent <name>] [--keep] [--json]\n" +
+		"fetch-local|run|loop|panel|record|adopt|ingest|fix|check-tree|ready|pr-wait|gate|threads|trend|risk|handoff|index|journal|" +
+		"backtest|learn|pack|init|skill|upgrade|uninstall|mcp|serve|dashboard|config|drain|acp|lsp [opts]\n" +
+		"  demo [<public-github-pr-url>] [--agent <name>] [--keep] [--timeout <secs>] [--json]\n" +
 		"    one review, zero setup: a public GitHub pull request by URL (gh when signed in for\n" +
 		"    github.com, the anonymous API otherwise) or your own working tree when the argument\n" +
 		"    is omitted. Every artifact lands in one disposable temp directory, removed on exit\n" +
@@ -15,6 +21,9 @@ func usageText() string {
 		"  fetch <owner/repo> <pr> [--base-sha|--since <sha>] [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] " +
 		"[--index <ref|dir>] [--context <file|dir>] [--spec <file>] [--issue <ref>] [--ignore <glob>] [--no-default-excludes] " +
 		"[--preview] [--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
+		"    <owner/repo> <pr> may be one pull/merge request URL (it implies --provider), or omitted: the pair is then read\n" +
+		"    from the origin remote and the bundle recorded for the current branch, or, when none records it, the\n" +
+		"    host CLI's open PR for that branch (docs/manual.md § Targets).\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
 		"    --index <ref|dir> hands one index the operator built to the bundle: impact.json plus a\n" +
@@ -161,12 +170,14 @@ func usageText() string {
 		"    with a typed reason instead of being dropped or stored at line 0; an anchored\n" +
 		"    finding grades pointed against the verified diff line, never verified.\n" +
 		"    --sarif <file|-> is the same source under its older spelling.\n" +
-		"  fix <owner/repo> <local-slug|pr> [--sig <s> | --all|--selected [--min-severity <s>]\n" +
-		"        [--verify-cmd <cmd>] [--paths <glob>]...] [--json]\n" +
-		"    one bounded pass over a local bundle: picks the top open inline sig\n" +
+		"  fix <owner/repo> <local-slug|pr> [--sig <s> | --all|--selected|--recipe <name> [--min-severity <s>]\n" +
+		"        [--verify-cmd <cmd>] [--paths <glob>]... | --test <sig> [--commit]] [--json]\n" +
+		"    one bounded pass over a bundle: picks the top open inline sig\n" +
 		"    (or --sig), prints finding + kb.txt context with verify/land/re-run\n" +
-		"    instructions. Max 3 passes per sig (ledger .verdict/state/<bundle>/fix.json);\n" +
-		"    touching files outside the anchor stops the loop (scope-escape).\n" +
+		"    instructions (on a PR bundle the landing is push, re-fetch, then post;\n" +
+		"    corpus bundles refuse not-local). Max 3 passes per sig\n" +
+		"    (ledger .verdict/state/<bundle>/fix.json); touching files outside the\n" +
+		"    anchor stops the loop (scope-escape).\n" +
 		"    --all takes one pass on every open inline finding at or above --min-severity\n" +
 		"    (default important; off reads no floor) and names each sig's outcome: ready,\n" +
 		"    ceiling, scope-escape, or no-anchor. It needs the command that proves the\n" +
@@ -174,10 +185,25 @@ func usageText() string {
 		"    --paths <glob> (repeatable) scopes the batch to matching finding paths.\n" +
 		"    --selected takes the same batch shape over the sigs a github fetch recorded in\n" +
 		"    the bundle's selected.json — the root review comments a human reacted 👍 to —\n" +
-		"    and prints the selection it read. It is the one batch that runs on a PR bundle:\n" +
+		"    and prints the selection it read, which only a github fetch writes:\n" +
 		"    absent selected.json refuses missing-selection, and a selection that names no\n" +
 		"    open inline finding refuses no-selected-findings. Its default floor is off, so\n" +
 		"    the reaction, not the severity, decides; --min-severity narrows it.\n" +
+		"    --recipe <name> takes the same batch shape over the findings a named recipe\n" +
+		"    owns: the recipe resolves from the bundle's base snapshot and selects the\n" +
+		"    findings whose stored `lens` matches the recipe's lens set. A recipe that\n" +
+		"    declares no lenses owns nothing, so the run reports the empty scope\n" +
+		"    instead of widening to every finding. Findings carry `lens` from record;\n" +
+		"    a finding without one never matches. --recipe composes with --selected,\n" +
+		"    --paths, and --min-severity, but not --sig or --test (bad-flags).\n" +
+		"    --test <sig> promotes instead of passing: it copies one reproduced inline\n" +
+		"    finding's retained artifact into the worktree at\n" +
+		"    .verdict/tests/<sig>-<hash>.<ext> with the receipt command rewritten, and\n" +
+		"    writes no ledger. --commit stages that one file and commits it as\n" +
+		"    'test: regression for <sig>' through a pathspec commit, so work already\n" +
+		"    staged in the index stays staged and out of the commit. It needs --test.\n" +
+		"    An existing target holding different bytes refuses (test-conflict), and so\n" +
+		"    does a .verdict or .verdict/tests that is a symlink.\n" +
 		"    Every pass writes fix.patch beside the ledger — the worktree's diff against HEAD,\n" +
 		"    never applied and never pushed — and refuses (fix-patch-secret) rather than write\n" +
 		"    a secret-shaped value into the bundle.\n" +
@@ -190,8 +216,10 @@ func usageText() string {
 		"    --summary comment maintains one separate PR-level summary comment (updated in place).\n" +
 		"    Binding APPROVE/REQUEST_CHANGES needs --bind (else downgraded to COMMENT);\n" +
 		"    APPROVE is refused with open or deferred findings unless --force.\n" +
-		"    Agent status claims (resolved[]/triage[]) are proposals: addressed flips only on\n" +
-		"    verification.json evidence (VERIFIED + resultHead matching HEAD).\n" +
+		"    Agent status claims (resolved[]/triage[]) are proposals: addressed flips only on a\n" +
+		"    verification.json claim {sig, verdict: VERIFIED, verifyCmd} backed by the tool-only\n" +
+		"    verify-receipt.json (exit 0 for that verifyCmd, its tree equal to the graded\n" +
+		"    content's); a triage[] claim for addressed refuses the review.\n" +
 		"    --dry-run prints validation + payload summary, writes findings.dryrun.json, posts nothing.\n" +
 		"    A secret-shaped value in the review text refuses post-secret-shaped before any host\n" +
 		"    call (--dry-run warns instead); --allow-secret-values publishes it and post.json\n" +
@@ -207,31 +235,23 @@ func usageText() string {
 		"[--kind inline|section|all]\n" +
 		"[--category logic|edge-case|security|performance|accidental-commit|style|docs|other]\n" +
 		"        [--output <path>] [--sarif <path>] [--include-withheld] [--cost] [--risk] " +
-		"[--check <critical|important|informational>] [--compare <bundle-dir|pr|slug>] [--completeness] " +
-		"[--max-risk <low|medium|high|critical>] " +
-		"[--live auto|strict|skip] [--json]\n" +
-		"    pure read over the store: ranked findings + verdict + counts. Advisory runs\n" +
-		"    touch no network; gate runs (--check/--completeness) end with one live-thread recheck read.\n" +
+		"[--compare <bundle-dir|pr|slug>] [--policy <path>] [--json]\n" +
+		"    pure read over the store: ranked findings + verdict + counts. Advisory only — it touches no\n" +
+		"    network and always exits 0 on a readable store; `gate` is the only verb that gates an exit code.\n" +
 		"    --sarif writes a SARIF 2.1.0 file (severity→level, category in properties, sig as\n" +
 		"    fingerprint) for scanners/CI.\n" +
+		"    --policy replays the store under an alternative policy file: the same findings, recorded\n" +
+		"    checks, and receipts, so only the policy differs. Prints the gate and approval under the\n" +
+		"    captured policy and under the candidate, plus every dimension the candidate added,\n" +
+		"    removed, or moved. Writes no artifact, contacts no host, and exits 0 whatever the\n" +
+		"    candidate decides — so --compare is refused rather than silently swallowed.\n" +
 		"    --cost adds spend by effort tier. Captured two-finder runs sum bound phase usage;\n" +
 		"    missing phase tokens or USD stay null (unknown), never zero.\n" +
 		"    Consented over-budget receipts from .verdict/state/<pr>/budget.json surface here when present.\n" +
 		"    --risk prints the advisory risk assessment (claimed risk or unknown, deterministic store floor\n" +
-		"    inputs, and reported = max(claimed, floor)).\n" +
-		"    --max-risk <level> gates on reported risk (exits 1 when exceeded or unknown; exit 0 pass,\n" +
-		"    exit 2 usage, exit 3 tool error).\n" +
-		"    Every gate run also carries the evidence dimension: pass needs the receipt\n" +
-		"    recorded for the fetched HEAD, an insufficient receipt fails, and a\n" +
-		"    missing or stale one reads unknown and fails the gate.\n" +
-		"    --check <tier> opts into gating (same output, machine exits): 0 no open\n" +
-		"    findings at-or-above tier, 1 findings at-or-above tier, 2 usage, 3 tool\n" +
-		"    error (missing/corrupt store). `--category <cat>` filters the ranked\n" +
-		"    findings; `--check <tier> --category <cat>` gates only that class (an unknown\n" +
-		"    category is a usage error). Untagged findings never meet a tier; the\n" +
-		"    gate counts open findings only, whatever --status/--kind show. Without\n" +
-		"    --check the run stays advisory: exit 0 with findings listed (typed\n" +
-		"    errors exit 1, usage exits 2).\n" +
+		"    inputs, and reported = max(claimed, floor)). Gate on it with `gate --max-risk <level>`.\n" +
+		"    `--category <cat>` filters the ranked findings (an unknown category is a usage error);\n" +
+		"    the gate counts open findings only, whatever --status/--kind show.\n" +
 		"    --compare groups the same stable finding signatures against a prior bundle (a directory, or\n" +
 		"    a PR/local-<name> in the same state directory) into new, persisting, resolved, and not\n" +
 		"    reviewed. A missing finding reads resolved only when the current bundle proves the reviewer\n" +
@@ -241,23 +261,6 @@ func usageText() string {
 		"    A baseline that is missing, symlinked, corrupt, unrecorded, the same bundle, or from another\n" +
 		"    repository refuses typed (bad-compare, missing/unsafe/corrupt/unrecorded-compare-bundle).\n" +
 		"    Advisory only: it never changes the gate or the exit code.\n" +
-		"    --completeness opts into a second gate dimension answering \"is HEAD\n" +
-		"    reviewed?\" from the local completed-post record (local post-record\n" +
-		"    read): pass iff post.json exists, parses, and carries a non-empty\n" +
-		"    head equal to the bundle's fetched HEAD (PR.json head SHA, else\n" +
-		"    source.json head_sha for local bundles). Alone it gates on HEAD-reviewed\n" +
-		"    only; combined with --check the run fails if tier-hits OR stale/missing\n" +
-		"    post. Every gate run (--check and/or --completeness) ends with a third,\n" +
-		"    network-backed live-thread dimension: more live opens than local opens\n" +
-		"    fails the gate (unreachable lookups warn and stay neutral under auto;\n" +
-		"    local bundles warn-skip with zero network, and strict fails closed). --live selects the\n" +
-		"    offline posture for that dimension: auto (default) keeps today's\n" +
-		"    fail-open behavior; strict fails the gate when the lookup is\n" +
-		"    unreachable; skip pays zero network and gates on local dimensions\n" +
-		"    only, saying so loudly. Gate failure exits 1\n" +
-		"    with a check: line naming the re-fetch command; tool errors keep exit 3.\n" +
-		"    Without a gate flag output and exits are byte-identical to today\n" +
-		"    (--live is only consulted on gate runs).\n" +
 		"  next <owner/repo> <pr> [--status open|--coverage] [--json]\n" +
 		"    top-ranked actionable finding + the command to act on it. Pure read.\n" +
 		"  show <owner/repo> <pr> --sig <sig> [--json]\n" +
@@ -265,9 +268,16 @@ func usageText() string {
 		"  check-tree [--expect <prefix,...>] [--json]\n" +
 		"    refuse on unexpected dirt (own .verdict/state/ scratch ignored). No network. Machine clean-tree gate for mutating modes.\n" +
 		"  verify <owner/repo> <pr> [--timeout <secs, default 300>] [--group <stableID> --command <cmd>]\n" +
-		"        [--sandbox] [--env-allowlist <name[,name...]>] [--json]\n" +
+		"        [--sandbox | --sandbox-network-only] [--env-allowlist <name[,name...]>] [--json]\n" +
 		"    With neither --group nor --command, execute patch.json verifyCmd with a watchdog and\n" +
-		"    record exit + tail in the patch record. --group and --command are required together:\n" +
+		"    record exit + tail in the patch record, and write verify-receipt.json: the command,\n" +
+		"    the finding sig patch.json names, exit, timeout, and the tree id of the content it\n" +
+		"    ran on — the receipt record/post need before a VERIFIED claim flips a finding\n" +
+		"    addressed. The content is the index paths' working-tree bytes (uncommitted edits\n" +
+		"    included; untracked and ignored files are not). The command runs in a clean snapshot\n" +
+		"    of it outside the user's checkout, made with no git hook, filter, or fsmonitor; a\n" +
+		"    checkout verify cannot snapshot refuses verify-failed and nothing runs.\n" +
+		"    --group and --command are required together:\n" +
 		"    --command runs for the named deep plan group at the reviewed head and writes\n" +
 		"    validation-<group>.json (patch.json stays untouched).\n" +
 		"    Child env is default-deny (allowlist + LC_*; secret-named vars dropped unless opted in\n" +
@@ -275,9 +285,22 @@ func usageText() string {
 		"    Runs in its own process group (timeout kills the tree); known secret values\n" +
 		"    are redacted from the recorded tail.\n" +
 		"    --sandbox runs the command under an enforced sandbox: bwrap on Linux (no network,\n" +
-		"    empty ~/.aws and ~/.ssh, a writable reviewed root, a private /tmp), and\n" +
-		"    sandbox-exec on macOS (no network, loopback included; credentials stay visible).\n" +
-		"    A host that cannot enforce it refuses sandbox-unavailable and runs nothing.\n" +
+		"    empty ~/.aws and ~/.ssh, a writable snapshot root, a private /tmp), and\n" +
+		"    sandbox-exec on macOS (no network, loopback included; no Mach services; writes\n" +
+		"    only to the snapshot and a private TMPDIR; credential paths and host /tmp\n" +
+		"    denied; no mount or PID namespace). Your checkout is read-only.\n" +
+		"    --sandbox-network-only is the Linux unshare --net opt-in for hosts without bwrap:\n" +
+		"    network isolation alone — no mount, filesystem, or PID isolation, so credential\n" +
+		"    paths, /tmp, the host /proc, and unix sockets (docker.sock, ssh-agent) stay\n" +
+		"    reachable; it is never recorded as sandboxed. It refuses sandbox-unavailable on\n" +
+		"    every other host, and --sandbox plus --sandbox-network-only refuses bad-flags.\n" +
+		"    A host that cannot enforce the chosen mechanism, or a reviewed root whose shape it\n" +
+		"    cannot protect (Linux: no .git, a symlinked .git, a .git that is neither a directory\n" +
+		"    nor a gitdir: file, an unresolvable gitdir or commondir, a gitdir that is the root,\n" +
+		"    an unreadable pointer, or a pointer whose walk passes through a symlink or a\n" +
+		"    missing component inside the root),\n" +
+		"    refuses sandbox-unavailable and runs nothing; --json and patch.json name the\n" +
+		"    mechanism in sandboxMechanism.\n" +
 		"    Runs the agent's claimed proof — exit code becomes machine fact. No GitHub I/O.\n" +
 		"    Destructive, networked, credential-reading, and repo-escaping commands\n" +
 		"    refuse before execution as verify-destructive, verify-networked,\n" +
@@ -307,7 +330,7 @@ func usageText() string {
 		"    agreement columns that may diverge from the baseline — the agreement rate\n" +
 		"    over judged rows is the evidence number.\n" +
 		"  pr-wait <owner/repo> <N> --until merged|closed|checks-green|checks-done|review-changed --timeout D\n" +
-		"    [--once] [--interval D] [--json] [--provider github|gitlab|forgejo]\n" +
+		"    [--once] [--interval D] [--json] [--provider " + strings.Join(core.PRWaitProviders(), "|") + "]\n" +
 		"    Foreground wait: timeout 1s–30m; interval >=1s. Exit 0 on condition,\n" +
 		"    exit 1 with wait-timeout or condition-unmet data; no local writes.\n" +
 		"\n" +
@@ -322,17 +345,19 @@ func usageText() string {
 		"    --filter applies the closed trigger in .verdict/config.json at the PR base\n" +
 		"    before any live read: a non-matching PR refuses filtered-out naming the\n" +
 		"    predicate; both outcomes are recorded in the bundle's run.json.\n" +
-		"  gate <owner/repo> <pr> [--max-severity critical|important|informational] [--require-head]\n" +
+		"  gate <owner/repo> <pr> [--max-severity critical|important|informational [--category <cat>]]\n" +
+		"        [--require-head] [--max-risk low|medium|high|critical]\n" +
 		"        [--live auto|strict|skip] [--coverage require|warn] [--json]\n" +
-		"    one composed local gate over the dimensions report already computes: open\n" +
-		"    findings at-or-above a tier (--max-severity), a completed post for the fetched\n" +
-		"    HEAD (--require-head), the stored diff-coverage receipt for that HEAD\n" +
+		"    the one gating verb: a composed local gate over the dimensions report computes. Open\n" +
+		"    findings at-or-above a tier (--max-severity, narrowed to one finding kind by --category),\n" +
+		"    a completed post for the fetched HEAD (--require-head), the reported change-risk band\n" +
+		"    (--max-risk), the stored diff-coverage receipt for that HEAD\n" +
 		"    (--coverage, default require), live unresolved threads (--live, default auto),\n" +
 		"    the captured compliance verdict when the bundle carries a typed policy, the\n" +
 		"    spec checks the stored record graded (always on: a violated check withholds\n" +
 		"    the derived approval, so the gate fails on it), and\n" +
 		"    the evidence receipt for the gated HEAD (always on: no gate passes without it).\n" +
-		"    At least one dimension is required; --live and --coverage alone are not.\n" +
+		"    At least one dimension is required; --live, --coverage, and --category alone are not.\n" +
 		"    Exits 0 pass, 1 gate failed or unknown, 2 usage, 3 tool error; a gate failure\n" +
 		"    carries data.passed false with error null. data.dimensions[] lists findings,\n" +
 		"    head, coverage, live_threads, compliance, risk, spec, evidence with id, status,\n" +
@@ -342,7 +367,26 @@ func usageText() string {
 		"    makes zero network calls; auto keeps the fail-open skip. Never posts,\n" +
 		"    approves, merges, or writes a store: the exit code is the whole integration,\n" +
 		"    and the merge stays the human's. Use report for the ranked items, cost, and\n" +
-		"    artifacts.\n" +
+		"    artifacts; report never gates.\n" +
+		"  loop <owner/repo> --agent <name> [--max-rounds <1-20, default 3>] [--max-cost-usd <usd>]\n" +
+		"        [--budget <duration, default 600s>] [--output <dir>] [--fix-prompt <file>]\n" +
+		"        [--sandbox | --sandbox-network-only] [--print] [--json]\n" +
+		"    the agent self-review loop over your working tree: each round runs fetch-local into a\n" +
+		"    fresh local bundle, run (review only, one finder), record --require-coverage, and gate\n" +
+		"    (every open finding, coverage required, live checks skipped). A failed gate starts the fix\n" +
+		"    phase: the agent fixes the open findings in the working tree (the built-in instructions, or\n" +
+		"    --fix-prompt's text), then verify runs the command it declared in the bundle's patch.json\n" +
+		"    (--sandbox / --sandbox-network-only pass verify's own sandbox; off by default, as for verify).\n" +
+		"    The next round re-fetches and re-reviews the fixes. --agent takes any agent table row or\n" +
+		"    settings.json agent. Stops: pass, max-rounds, wall-budget (--budget bounds every phase and\n" +
+		"    spawn; exit 1), cost-budget (--max-cost-usd over the summed round cost_usd receipts, a round\n" +
+		"    whose spend could not be measured while --max-cost-usd is set, or the monthly spend ceiling\n" +
+		"    refusing a spawn — every review attempt and fix leaves a budget.json receipt), no-progress (no\n" +
+		"    finding open after the previous round was resolved), agent-failed, refused. Receipts:\n" +
+		"    round-N.json and summary.json under --output (a new directory; default\n" +
+		"    .verdict/loop/<stamp>). --print renders every planned command and the fix prompt without\n" +
+		"    running anything. Never commits, pushes, or posts. Exits 0 pass or --print, 1 any other stop\n" +
+		"    or refusal, 2 usage, 3 an operator cancel.\n" +
 		"  threads <owner/repo> <pr> [--provider github|gitlab|gitcafe|forgejo|bitbucket|azure] [--json]\n" +
 		"    refresh .verdict/state/<pr>/threads.json from the host (no diff refetch): host-resolved\n" +
 		"    thread state, anchors, authors, bodies, and finding links for every review\n" +
@@ -400,7 +444,7 @@ func usageText() string {
 		"    names the merged/closed ones it skipped, --status all keeps everything. A\n" +
 		"    bundle with no findings.json is queued, never dropped; a missing or unusable\n" +
 		"    impact.json reads reach unmeasured with a counted warning. Gating one bundle\n" +
-		"    stays report --max-risk.\n" +
+		"    stays gate --max-risk.\n" +
 		"  handoff <owner/repo> <pr> [--min-severity <s, default important>] [--paths <glob>]...\n" +
 		"        [--format md] [--json]\n" +
 		"    one markdown projection of the open inline findings fix would take (no host\n" +
@@ -548,7 +592,7 @@ func usageText() string {
 		"    non-interactive.\n" +
 		"    Presets map to panel strictness + KB retirement thresholds:\n" +
 		"    chill (no pinned panel, MIN_JUDGED=10 MAX_FP_RATE=0.7),\n" +
-		"    standard (one pinned member, 5 / 0.5), strict (lead + 2 lenses, 3 / 0.3).\n" +
+		"    standard (lead + 1 lens, 5 / 0.5), strict (lead + 2 lenses, 3 / 0.3).\n" +
 		"    Never touches network. Existing files print a preview and need\n" +
 		"    --yes/--force (or an interactive confirm) before overwrite.\n" +
 		"    --ci github also writes .github/workflows/verdict-review.yml and\n" +
@@ -597,7 +641,7 @@ func usageText() string {
 		"    <skill>/bin/verdict, then verdict on PATH; otherwise run the\n" +
 		"    one-time verified\n" +
 		"    <skill>/scripts/verdict bootstrap (no review-time fetch).\n" +
-		"  pack <list|add|test> [--json]\n" +
+		"  pack <list|add|sync|test> [--json]\n" +
 		"    list: read-only lens-pack inventory in precedence order: built-in, org\n" +
 		"    (explicit packs[] paths in personal settings), and repo\n" +
 		"    (.verdict/packs/<name>/). Lists the packs in this checkout; a review\n" +
@@ -622,6 +666,17 @@ func usageText() string {
 		"    edited snapshot copy refuses controls-stale. Built-in packs are\n" +
 		"    pinned by the binary and org packs live in personal settings, so\n" +
 		"    neither is locked.\n" +
+		"    sync: vendor the base-owned org pin (packs.org_pack in\n" +
+		"    .verdict/config.json: repo, ref, path) the way add would, then\n" +
+		"    hash-lock it. ref is a 40-hex commit SHA or a semver tag like\n" +
+		"    v1.2.3 — a branch name is refused — and path is a confined\n" +
+		"    relative pack root inside that repository. This is the only\n" +
+		"    fetch: reviews never touch the network; they verify the vendored\n" +
+		"    tree against verdict.lock and refuse pack-lock-missing or\n" +
+		"    pack-lock-drift instead of falling back. The pin is read from\n" +
+		"    the trusted base, so a PR cannot change or drop it; the\n" +
+		"    governing pack version shows in report (org_pack) and in the\n" +
+		"    provenance receipt.\n" +
 		"    test <name> runs the pack's offline eval cases. Use --dir <path> for an\n" +
 		"    unpacked pack. Each evals/<case>/ directory has diff.patch,\n" +
 		"    findings.json (review comments[]), and expect.json with rules[] and\n" +
@@ -646,21 +701,56 @@ func usageText() string {
 		"    an absent journal on an existing bundle exits 0 with zero steps.\n" +
 		"  serve [--root <dir>] [--depth <n>] [--max-visits <n>] [--max-repos <n>]\n" +
 		"      [--rediscover | --no-registry] [--host <addr>] [--port <n>] [--token <s>] [--check <tier>]\n" +
-		"      [--max-bundles <n>] [--interval <duration>] [--sweep <duration>] [--no-watch] [--json]\n" +
-		"    read-only loopback HTTP surface over the current repository, or every repository below --root.\n" +
+		"      [--max-bundles <n>] [--interval <duration>] [--sweep <duration>] [--no-watch] [--read-only] [--allow-post] [--json]\n" +
+		"    loopback HTTP surface over the current repository, or every repository below --root.\n" +
 		"    Binds 127.0.0.1 on a kernel-assigned port and prints one tokenised start URL.\n" +
 		"    GET /?token=<t> sets verdict_session_<port> (HttpOnly, SameSite=Strict, Path=/v1)\n" +
 		"    and 303s to /; /v1 refuses ?token= and requires that cookie or Authorization: Bearer.\n" +
 		"    Routes: /v1/health, /v1/roots, /v1/bundles, /v1/roots/{root}/bundles/{bundle},\n" +
-		"    .../findings/{sig}, /v1/events (--no-watch removes it). GET only, no CORS, no writes; Ctrl-C exits 3.\n" +
+		"    .../findings/{sig}, /v1/events (--no-watch removes it). GET plus HEAD only, no CORS,\n" +
+		"    local writes on a loopback bind unless --read-only (the one write-posture flag, shared with\n" +
+		"    mcp and lsp; any other --host serves read-only and refuses --allow-post):\n" +
+		"    POST /v1/triage and POST /v1/kb/promote (local triage and KB promotion through the\n" +
+		"    same services the CLI calls, gated by the per-session X-Verdict-CSRF token\n" +
+		"    /v1/health publishes, a present allowlisted Origin, and strict application/json\n" +
+		"    bodies); --allow-post (refused with --read-only) adds POST /v1/post/submit, the\n" +
+		"    confirmation-gated host posting route through core/post;\n" +
+		"    Ctrl-C exits 3.\n" +
 		"    Discovery defaults to depth 6, 20000 directory visits, 500 repositories;\n" +
 		"    --rediscover forces a walk, --no-registry skips the 24-hour local cache.\n" +
-		"  mcp [--read-only | --operator] (experimental)\n" +
+		"  dashboard [<owner/repo>] [--root <dir>] [--once] [--tab <name>] [--width <cols>] [--height <rows>]\n" +
+		"      [--check <tier>] [--interval <duration>] [--sweep <duration>] [--no-watch]\n" +
+		"    read-only terminal view over the query layer serve renders, live while the stores\n" +
+		"    change: 1 Overview, 2 Queue, 3 Detail, 4 Diff, 5 Compare, 6 Cost, 7 Precision; ? lists\n" +
+		"    every key. Needs a terminal on stdin and stdout, else refuses dashboard-no-tty;\n" +
+		"    --once prints one plain-text frame of --tab (default overview) and exits 0. q quits;\n" +
+		"    Ctrl-C exits 3. <owner/repo> narrows the portfolio to one repository; --root reads every\n" +
+		"    repository below <dir> through serve's discovery and its 24-hour registry cache.\n" +
+		"    Watch defaults: --interval 2s, --sweep 60s; y copies through OSC 52, never a subprocess.\n" +
+		"  mcp [--read-only] (experimental)\n" +
 		"    serve the review verbs as MCP tools over stdio (JSON-RPC 2.0, one frame per line).\n" +
 		"    stdout is the protocol channel; progress and warnings go to stderr.\n" +
 		"  mcp config --agent <claude|cursor|codex|gemini|qwen|windsurf|opencode|goose|copilot>\n" +
-		"       [--write] [--dry-run] [--json] [--read-only] [--operator] (experimental)\n" +
+		"       [--write] [--dry-run] [--json] [--read-only] (experimental)\n" +
 		"    print or idempotently merge the exact host config snippet; never prompts.\n" +
+		"  acp [--root <dir>] [--check <tier>] [--max-bundles <n>] [--json]\n" +
+		"    serve read-only queries as ACP v1 over stdio (JSON-RPC 2.0, one frame per line).\n" +
+		"    stdout is the protocol channel; progress and warnings go to stderr.\n" +
+		"    Protocol: initialize, ping, verdict/bundles/list, verdict/findings/list,\n" +
+		"    verdict/findings/get, verdict/findings/copy, $/cancel_request.\n" +
+		"    No daemon, no HTTP, no model calls, no writes; exits when stdin closes.\n" +
+		"  lsp [--root <dir>]... [--bundle <name>] [--check <tier>] [--max-bundles <n>] [--max-roots <n>]\n" +
+		"      [--interval <duration>] [--sweep <duration>] [--no-watch] [--read-only] [--json] (experimental)\n" +
+		"    publish a review bundle's findings as LSP 3.17 diagnostics over stdio (Content-Length\n" +
+		"    framed JSON-RPC 2.0). Diagnostics move on didOpen, didSave, a bundle watch change, and\n" +
+		"    the verdict.refresh command, never on didChange. No model calls, no writes.\n" +
+		"  Targets: every verb that takes <owner/repo> <pr> also takes one pull/merge request URL in their place\n" +
+		"  (github, gitlab, forgejo, bitbucket, azure; a self-hosted host only when GITLAB_HOST or FORGEJO_HOST maps it),\n" +
+		"  and with no positionals infers the pair from the origin remote and the recorded bundle whose head ref is the\n" +
+		"  current branch (fetch, pr-wait, ready, threads, and drain --post also ask the host's CLI for the branch's open PR\n" +
+		"  when no bundle records it). A derived target is echoed on stderr; no resolvable target exits 2 with the refusal and\n" +
+		"  the verb's usage line.\n" +
+		"  fetch-local keeps <owner/repo> <name>.\n" +
 		"  Global presentation flags (any verb, before or after the verb, repo, and pr;\n" +
 		"  global flags are stripped before the positionals are read):\n" +
 		"  --color <auto|always|never>, --compact / --no-compact, --no-json.\n" +
@@ -668,20 +758,22 @@ func usageText() string {
 		"  --footer / --no-footer, --attribution [off|product|full] / --no-attribution,\n" +
 		"  --attribution-text <text>, --copyright <text>, --logo / --no-logo,\n" +
 		"  --logo-url <url>, --overview / --no-overview,\n" +
-		"  --diagram-structural / --no-diagram-structural, --fix-prompt / --no-fix-prompt.\n" +
+		"  --diagram-structural / --no-diagram-structural,\n" +
+		"  --diagram-anchored / --no-diagram-anchored, --fix-prompt / --no-fix-prompt.\n" +
 		"  Flags win over the settings file, which wins over env\n" +
 		"  (REVIEW_OUTPUT_FORMAT, REVIEW_LAYOUT_COMPACT, REVIEW_COLOR_MODE,\n" +
 		"  REVIEW_PUBLISH_FOOTER, REVIEW_PUBLISH_ATTRIBUTION,\n" +
 		"  REVIEW_PUBLISH_ATTRIBUTION_TEXT, REVIEW_PUBLISH_COPYRIGHT,\n" +
 		"  REVIEW_PUBLISH_LOGO, REVIEW_PUBLISH_LOGO_URL, REVIEW_PUBLISH_OVERVIEW,\n" +
-		"  REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL, REVIEW_PUBLISH_FIX_PROMPT),\n" +
+		"  REVIEW_PUBLISH_DIAGRAMS_STRUCTURAL, REVIEW_PUBLISH_DIAGRAMS_ANCHORED,\n" +
+		"  REVIEW_PUBLISH_FIX_PROMPT),\n" +
 		"  which wins over defaults. The settings file holds presentation (output,\n" +
 		"  layout, color) plus publish (footer receipt + leveled attribution + logo +\n" +
 		"  overview + diagrams + fix prompt) namespaces\n" +
 		"  (~/.config/verdict/settings.json, $XDG_CONFIG_HOME respected).\n" +
 		"  --json on demo/fetch/post/triage/report/next/show/verify/doctor/calibrate/" +
-		"fetch-local/run/record/adopt/fix/check-tree/ready/gate/trend/index/journal/backtest/learn/pack/init/" +
-		"skill/upgrade/uninstall/serve/config: " +
+		"fetch-local/run/loop/record/adopt/fix/check-tree/ready/gate/trend/index/journal/backtest/learn/pack/init/" +
+		"skill/upgrade/uninstall/serve/config/acp/lsp: " +
 		"stdout is exactly one JSON envelope (schema_version 1);\n" +
 		"  all human progress goes to stderr. Errors emit {data:null,error:{code,message}} non-zero.\n" +
 		"  Glossary: https://stainless-code.com/verdict/docs/glossary\n"
@@ -689,7 +781,7 @@ func usageText() string {
 
 // optionals take at most one optional positional and no repo/pr pair, so the
 // split must not read the first token as a repository and the second as a PR.
-var optionals = map[string]bool{cmdDemo: true}
+var optionals = map[string]bool{cmdDemo: true, verbDashboard: true}
 
 var bareVerbs = map[string]bool{
 	"check-tree": true,
@@ -702,12 +794,14 @@ var bareVerbs = map[string]bool{
 	"index":      true,
 	"pack":       true,
 	"serve":      true,
+	verbACP:      true,
+	verbLSP:      true,
 }
 
 // repoOnlyVerbs take one <owner/repo> and nothing else positional: every other
 // argument is one of their own flags, so the split must not read the second
 // token as a PR.
-var repoOnlyVerbs = map[string]bool{cmdTrend: true, cmdRisk: true}
+var repoOnlyVerbs = map[string]bool{cmdTrend: true, cmdRisk: true, cmdLoop: true}
 
 func arityUsage(cmd, repo, pr string) bool {
 	if cmd == "" {
@@ -727,11 +821,4 @@ func arityUsage(cmd, repo, pr string) bool {
 
 func unknownCmdMessage(cmd string) string {
 	return "unknown cmd '" + cmd + "' (want " + verbsHint + ")"
-}
-
-func arityText(cmd string) string {
-	if cmd == "next" {
-		return "error: next requires <owner/repo> and <pr|local-name>\n" + usageText()
-	}
-	return usageText()
 }

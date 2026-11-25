@@ -12,6 +12,7 @@ import (
 	"github.com/stainless-code/verdict/internal/exclude"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/shellquote"
 )
 
@@ -171,7 +172,7 @@ type fileSlice struct {
 
 // chunkFileTable reads one diff file into its slice table.
 func chunkFileTable(fullDiff string) []fileSlice {
-	raw, err := os.ReadFile(fullDiff)
+	raw, err := noblock.ReadFile(fullDiff)
 	if err != nil {
 		return nil
 	}

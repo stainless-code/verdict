@@ -30,10 +30,10 @@ func (s *Server) writeEnvelope(w http.ResponseWriter, env *jq.Obj) {
 
 // writeRefusal writes a product refusal as a 200 envelope: data null, the
 // typed error object, and the hint the CLI's own refusal carries.
-func (s *Server) writeRefusal(w http.ResponseWriter, verb, repo, pr string, ref *core.RefusalError) {
+func (s *Server) writeRefusal(w http.ResponseWriter, verb, pr string, ref *core.RefusalError) {
 	message := ref.Message + "\n" + core.HintFor(ref.Code)
 	errObj := jq.NewObj("code", ref.Code, "message", message)
-	env := core.RenderEnvelope(verb, repo, pr, s.at(), "", nil, nil, errObj)
+	env := core.RenderEnvelope(verb, "", pr, s.at(), "", ref.Warnings, nil, errObj)
 	s.writeEnvelope(w, env)
 }
 
@@ -41,7 +41,7 @@ func (s *Server) writeRefusal(w http.ResponseWriter, verb, repo, pr string, ref 
 // missing root or bundle is 404, and anything else is a 500 problem.
 func (s *Server) writeViewError(w http.ResponseWriter, verb, pr string, err error) {
 	if ref, ok := errors.AsType[*core.RefusalError](err); ok {
-		s.writeRefusal(w, verb, "", pr, ref)
+		s.writeRefusal(w, verb, pr, ref)
 		return
 	}
 	if errors.Is(err, query.ErrNotFound) {

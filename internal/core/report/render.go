@@ -17,15 +17,17 @@ import (
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/provenance"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
+
+// strZero renders a zero count so every cost line spells it identically.
+const strZero = "0"
 
 func buildResponse(st *state) *Response {
 	var gateFailed bool
-	var checkLines []string
 	var gate *core.ReportGate
 	if st.gate {
-		gateFailed, checkLines, gate = gateTail(st)
-		st.gatePassed = !gateFailed
+		gateFailed, gate = gateTail(st)
 	}
 	resp := &Response{
 		Repo:     st.req.Repo,
@@ -42,16 +44,30 @@ func buildResponse(st *state) *Response {
 	if st.flags.Provenance {
 		resp.Data.ProvenanceTruncated = provenance.MergeTruncated(st.provenance, readcommon.BundleTruncation(st.dir))
 	}
-	if st.gate {
-		resp.GateFailed, resp.CheckLines, resp.Data.Gate = gateFailed, checkLines, gate
-	}
+	resp.GateFailed, resp.Gate = gateFailed, gate
 	return resp
 }
 
-func nextStep(st *state, open int) string {
-	if st.flags.Check != "" && st.gatePassed {
-		return "merge — gate passes"
+// orgPackHuman renders the governing central pack version, empty when no
+// org pin governed the run.
+func orgPackHuman(org *core.OrgPackInfo) string {
+	if org == nil {
+		return ""
 	}
+	line := fmt.Sprintf("org pack: %s@%s path=%s", org.Repo, org.Ref, org.Path)
+	if org.Name != "" {
+		line += fmt.Sprintf(" pack=%s@%s", org.Name, org.Version)
+	}
+	if org.Hash != "" {
+		line += " sha256:" + org.Hash
+	}
+	if org.SHA != "" {
+		line += " commit:" + org.SHA
+	}
+	return line
+}
+
+func nextStep(open int) string {
 	if open > 0 {
 		return "address open threads"
 	}
@@ -62,7 +78,7 @@ func reportNext(st *state) string {
 	if st.flags.Output != "" {
 		return "wrote " + st.flags.Output
 	}
-	return nextStep(st, viewOpen(viewRanked(st)))
+	return nextStep(viewOpen(viewRanked(st)))
 }
 
 func buildData(st *state) *core.ReportData {
@@ -93,15 +109,10 @@ func buildData(st *state) *core.ReportData {
 		},
 		QuietByPolicy: quietEntries(st),
 		Items:         envelopeItems(viewRanked(st)),
+		OrgPack:       st.orgPack,
 		Compare:       st.compare,
 	}
-	if st.cost != nil {
-		data.Cost = costFromObj(st.cost)
-		data.CostRaw = st.cost
-	}
-	if st.comp != nil {
-		data.Completeness = st.comp
-	}
+	applyCostToData(st, data)
 	if st.risk != nil {
 		data.Risk = st.risk
 	}
@@ -121,6 +132,17 @@ func buildData(st *state) *core.ReportData {
 		data.ProvenanceReceipt = st.provenance
 	}
 	return data
+}
+
+func applyCostToData(st *state, data *core.ReportData) {
+	if st.cost == nil {
+		return
+	}
+	data.Cost = costFromObj(st.cost)
+	if st.mtd != nil {
+		data.Cost.Mtd = st.mtd
+	}
+	data.CostRaw = st.cost
 }
 
 func outputVal(output string) *string {
@@ -289,6 +311,9 @@ func buildHuman(st *state) []string {
 	view := viewRanked(st)
 	lines := []string{fmt.Sprintf("report: %s (%d shown) open=%d head=%s",
 		st.dir, len(view), viewOpen(view), readcommon.ShortSHA(st.headSHA))}
+	if line := orgPackHuman(st.orgPack); line != "" {
+		lines = append(lines, line)
+	}
 	lines = append(lines, readcommon.ContextLine(st.dir)...)
 	lines = append(lines, cleanHeadline(st)...)
 	lines = append(lines, verificationHuman(st.entries)...)
@@ -300,7 +325,7 @@ func buildHuman(st *state) []string {
 		lines = append(lines, readcommon.CitationLines(item.Entry)...)
 		lines = append(lines, fmt.Sprintf("%d. [%s] %s (%s)",
 			item.Rank, jq.Str(readcommon.FieldOf(item.Entry, "status")),
-			readcommon.Locator(item.Entry), sigHuman(item.Entry))+reproductionOutput(item.Entry))
+			untrusted.Line(readcommon.Locator(item.Entry)), sigHuman(item.Entry))+reproductionOutput(item.Entry))
 	}
 	lines = appendHumanTail(st, lines)
 	if st.flags.Provenance {
@@ -316,7 +341,7 @@ func finalizeHuman(st *state, view []readcommon.Ranked, lines []string) []string
 	// The footer follows the view the header reports: with a display floor the
 	// rendered list can be empty while the store still holds open findings, and
 	// "address open threads" beside "(0 shown) open=0" read as a contradiction.
-	return append(lines, "next: "+nextStep(st, viewOpen(view)))
+	return append(lines, "next: "+nextStep(viewOpen(view)))
 }
 
 func appendHumanTail(st *state, lines []string) []string {
@@ -335,7 +360,9 @@ func appendHumanTail(st *state, lines []string) []string {
 		lines = append(lines, riskHuman(st.risk)...)
 	}
 	lines = append(lines, validationHuman(st)...)
-	lines = append(lines, quietLines(st)...)
+	for _, line := range quietLines(st) {
+		lines = append(lines, untrusted.Line(line))
+	}
 	return append(lines, extraHuman(st)...)
 }
 
@@ -360,7 +387,8 @@ func complianceHuman(st *state) string {
 		return fmt.Sprintf("compliance: unmet — %d blocking finding(s)", len(st.compliance.Blockers))
 	case len(st.compliance.Conflicts) > 0:
 		first := st.compliance.Conflicts[0]
-		return fmt.Sprintf("compliance: unmet — required review withholds %s (rule %s)", first.Path, first.Rule)
+		return fmt.Sprintf("compliance: unmet — required review withholds %s (rule %s)",
+			untrusted.Line(first.Path), untrusted.Line(first.Rule))
 	case st.compliance.Unverified:
 		return "compliance: unknown — captured provenance unavailable"
 	case len(st.compliance.Pending) > 0:
@@ -450,9 +478,13 @@ func costHuman(st *state) []string {
 		return nil
 	}
 	runs := jqStr(cost, keyRuns)
-	if runs == "0" {
-		return []string{fmt.Sprintf("cost: unrecorded (no usable %s/%s — the agent writes one per prompts/review.md)",
+	if runs == strZero {
+		lines := []string{fmt.Sprintf("cost: unrecorded (no usable %s/%s — the agent writes one per prompts/review.md)",
 			st.dir, readcommon.CostFile)}
+		if st.mtd != nil {
+			lines = append(lines, mtdHuman(st.mtd))
+		}
+		return lines
 	}
 	lines := []string{fmt.Sprintf("cost: %s run(s), %s with records — in=%s out=%s total=%s est_usd=%s cached=%s",
 		runs, jqStr(cost, "runs_with_cost"), jqStr(cost, "input_tokens"),
@@ -471,7 +503,39 @@ func costHuman(st *state) []string {
 			len(st.receipts), receiptField(latest, "projected_usd"),
 			receiptField(latest, "projected_tier"), receiptField(latest, "budget_usd"), receiptField(latest, "at")))
 	}
+	if st.mtd != nil {
+		lines = append(lines, mtdHuman(st.mtd))
+	}
 	return lines
+}
+
+func mtdHuman(mtd *core.ReportMTD) string {
+	spend := mtdSpend(mtd)
+	counts := fmt.Sprintf("(%d priced, %d unknown)", mtd.KnownCount, mtd.UnknownCount)
+	if mtd.MonthlyCapUSD == nil {
+		return fmt.Sprintf("mtd: %s %s %s — no ceiling", mtd.Month, spend, counts)
+	}
+	ceiling := strconv.FormatFloat(*mtd.MonthlyCapUSD, 'f', -1, mtdFloatBits)
+	if mtd.RemainingUSD != nil {
+		rem := strconv.FormatFloat(*mtd.RemainingUSD, 'f', -1, mtdFloatBits)
+		return fmt.Sprintf(
+			"mtd: %s %s of $%s ceiling, remaining $%s %s",
+			mtd.Month, spend, ceiling, rem, counts)
+	}
+	return fmt.Sprintf("mtd: %s %s of $%s ceiling %s", mtd.Month, spend, ceiling, counts)
+}
+
+// mtdSpend renders the month's known leg: a dollar amount when spend is
+// known, "unknown" when unpriced receipts exist, and $0 when nothing was
+// recorded.
+func mtdSpend(mtd *core.ReportMTD) string {
+	if mtd.KnownUSD != nil {
+		return "known $" + strconv.FormatFloat(*mtd.KnownUSD, 'f', -1, mtdFloatBits)
+	}
+	if mtd.UnknownCount > 0 {
+		return "known unknown"
+	}
+	return "known $" + strZero
 }
 
 func jqStr(obj *jq.Obj, key string) string {
@@ -487,7 +551,7 @@ func orNA(v any) string {
 
 func tierRuns(byTier *jq.Obj, tier string) string {
 	if byTier == nil {
-		return "0"
+		return strZero
 	}
 	raw, _ := byTier.Get(tier)
 	obj, ok := raw.(*jq.Obj)
@@ -495,7 +559,7 @@ func tierRuns(byTier *jq.Obj, tier string) string {
 		obj = nil
 	}
 	if obj == nil {
-		return "0"
+		return strZero
 	}
 	return jqStr(obj, keyRuns)
 }
@@ -527,8 +591,7 @@ func receiptFieldFromObj(latest any, key string) string {
 	return jq.Str(v)
 }
 
-// Dimension ids, statuses, and the gate vocabulary shared by the report check
-// lines and the gate verb's envelope.
+// Dimension ids and statuses of the gate verb's envelope.
 const (
 	dimFindings   = "findings"
 	dimHead       = "head"
@@ -542,34 +605,19 @@ const (
 	dimRisk       = "risk"
 	dimSpec       = "spec"
 	dimEvidence   = "evidence"
-	checkPrefix   = "check: "
 )
 
-// gateCheck is one dimension with the report check line it prints; line is
-// empty for a dimension the report surface stays quiet about.
-type gateCheck struct {
-	dim  core.GateDimension
-	line string
-}
-
-// gateTail composes the requested dimensions once and derives both surfaces
-// from them: the report's check lines and the typed result the gate verb and
-// report --json publish. A skip stays neutral; fail and unknown fail.
-func gateTail(st *state) (bool, []string, *core.ReportGate) {
-	checks := gateChecks(st)
-	lines := make([]string, 0, len(checks))
-	dims := make([]core.GateDimension, 0, len(checks))
+// gateTail composes the requested dimensions once into the typed result the
+// gate verb publishes. A skip stays neutral; fail and unknown fail.
+func gateTail(st *state) (bool, *core.ReportGate) {
+	dims := gateChecks(st)
 	failed := false
-	for _, c := range checks {
-		if c.line != "" {
-			lines = append(lines, c.line)
-		}
-		dims = append(dims, c.dim)
-		if c.dim.Status == dimFail || c.dim.Status == dimUnknown {
+	for _, dim := range dims {
+		if dim.Status == dimFail || dim.Status == dimUnknown {
 			failed = true
 		}
 	}
-	return failed, lines, &core.ReportGate{Passed: !failed, Dimensions: dims}
+	return failed, &core.ReportGate{Passed: !failed, Dimensions: dims}
 }
 
 // gateDimensions is the ceiling on one run's gate checks: findings, head,
@@ -581,9 +629,9 @@ const gateDimensions = 8
 // a violated spec check, so a gate that passed over one would certify a review
 // the decision refuses, and a gate that passed without a receipt for the gated
 // head would certify a review nothing checked.
-func gateChecks(st *state) []gateCheck {
+func gateChecks(st *state) []core.GateDimension {
 	specs := []struct {
-		build   func(*state) gateCheck
+		build   func(*state) core.GateDimension
 		enabled bool
 	}{
 		{gateTierCheck, st.flags.Check != ""},
@@ -595,7 +643,7 @@ func gateChecks(st *state) []gateCheck {
 		{gateSpecCheck, true},
 		{gateEvidenceCheck, true},
 	}
-	checks := make([]gateCheck, 0, gateDimensions)
+	checks := make([]core.GateDimension, 0, gateDimensions)
 	for _, spec := range specs {
 		if spec.enabled {
 			checks = append(checks, spec.build(st))
@@ -609,14 +657,11 @@ func gateChecks(st *state) []gateCheck {
 // itself and the count tallies them all. A failed check is one the code
 // violates or one nothing implements; the detail says which, because the two
 // are different work for the author.
-func gateSpecCheck(st *state) gateCheck {
+func gateSpecCheck(st *state) core.GateDimension {
 	failures := st.specFailures
 	if len(failures) == 0 {
 		const detail = "no violated spec check"
-		return gateCheck{
-			dim:  core.GateDimension{ID: dimSpec, Status: dimPass, Count: new(0), Detail: detail},
-			line: checkPrefix + detail + " — gate passes",
-		}
+		return core.GateDimension{ID: dimSpec, Status: dimPass, Count: new(0), Detail: detail}
 	}
 	detail := specFailureDetail(failures[0])
 	if len(failures) > 1 {
@@ -625,10 +670,7 @@ func gateSpecCheck(st *state) gateCheck {
 			detail = fmt.Sprintf("%d violated spec checks: %s", len(failures), failures[0].Item)
 		}
 	}
-	return gateCheck{
-		dim:  core.GateDimension{ID: dimSpec, Status: dimFail, Count: new(len(failures)), Detail: detail},
-		line: checkPrefix + detail + " — gate fails",
-	}
+	return core.GateDimension{ID: dimSpec, Status: dimFail, Count: new(len(failures)), Detail: detail}
 }
 
 // specFailureDetail words one failing spec check for the gate line: a violated
@@ -652,43 +694,31 @@ func allViolatedSpecFailures(failures []core.SpecFailure) bool {
 	return true
 }
 
-func gateRiskCheck(st *state) gateCheck {
+func gateRiskCheck(st *state) core.GateDimension {
 	r := st.risk
 	if !r.Exceeded {
 		detail := fmt.Sprintf("reported risk %s <= max-risk %s", r.Reported, *r.MaxRisk)
-		return gateCheck{
-			dim:  core.GateDimension{ID: dimRisk, Status: dimPass, Detail: detail},
-			line: checkPrefix + detail + " — risk passes",
-		}
+		return core.GateDimension{ID: dimRisk, Status: dimPass, Detail: detail}
 	}
 	if r.Reported == risk.LevelUnknown {
 		detail := fmt.Sprintf("reported risk unknown > max-risk %s (%s)", *r.MaxRisk, risk.GateReasonUnknown)
-		return gateCheck{
-			dim:  core.GateDimension{ID: dimRisk, Status: dimUnknown, Detail: detail},
-			line: checkPrefix + detail + " — risk fails",
-		}
+		return core.GateDimension{ID: dimRisk, Status: dimUnknown, Detail: detail}
 	}
 	detail := fmt.Sprintf("reported risk %s exceeds max-risk %s (%s)", r.Reported, *r.MaxRisk, risk.GateReasonExceeded)
-	return gateCheck{
-		dim:  core.GateDimension{ID: dimRisk, Status: dimFail, Detail: detail},
-		line: checkPrefix + detail + " — risk fails",
-	}
+	return core.GateDimension{ID: dimRisk, Status: dimFail, Detail: detail}
 }
 
 // gateComplianceCheck evaluates captured requirements: a blocking finding
 // fails, unverified provenance or a pending required check is unknown, and
 // only a fully satisfied capture passes. An absent policy adds no dimension,
 // so legacy bundles keep their exact gate.
-func gateComplianceCheck(st *state) gateCheck {
+func gateComplianceCheck(st *state) core.GateDimension {
 	comp := st.compliance
 	if comp == nil {
-		return gateCheck{}
+		return core.GateDimension{}
 	}
 	status, detail, count := complianceVerdict(comp, st.requiredGaps, st.headSHA)
-	return gateCheck{
-		dim:  core.GateDimension{ID: dimCompliance, Status: status, Count: new(count), Detail: detail},
-		line: checkPrefix + detail + complianceLineSuffix(status),
-	}
+	return core.GateDimension{ID: dimCompliance, Status: status, Count: new(count), Detail: detail}
 }
 
 // complianceVerdict maps the captured compliance state to one gate verdict:
@@ -731,36 +761,22 @@ func pendingDetail(comp *config.ReadCompliance, head string) string {
 	return detail + " — unknown, never a pass"
 }
 
-// complianceLineSuffix names the verdict outcome in the check line.
-func complianceLineSuffix(status string) string {
-	if status == dimPass {
-		return " — gate passes"
-	}
-	return " — gate fails"
-}
-
-func gateTierCheck(st *state) gateCheck {
+func gateTierCheck(st *state) core.GateDimension {
 	n := tierHits(readcommon.VisibleFindings(st.entries), st.flags.Check, st.flags.Category)
 	if n > 0 {
-		return gateCheck{
-			dim: core.GateDimension{
-				ID: dimFindings, Status: dimFail, Count: new(n),
-				Detail: fmt.Sprintf("%d open finding(s) at-or-above %s%s", n, st.flags.Check, inCategory(st)),
-			},
-			line: fmt.Sprintf("check: %d open finding(s) at-or-above %s%s — gate fails", n, st.flags.Check, inCategory(st)),
+		return core.GateDimension{
+			ID: dimFindings, Status: dimFail, Count: new(n),
+			Detail: fmt.Sprintf("%d open finding(s) at-or-above %s%s", n, st.flags.Check, inCategory(st)),
 		}
 	}
-	return gateCheck{
-		dim: core.GateDimension{
-			ID: dimFindings, Status: dimPass, Count: new(n),
-			Detail: "no open findings at-or-above " + st.flags.Check + inCategory(st),
-		},
-		line: "check: no open findings at-or-above " + st.flags.Check + inCategory(st) + " — gate passes",
+	return core.GateDimension{
+		ID: dimFindings, Status: dimPass, Count: new(n),
+		Detail: "no open findings at-or-above " + st.flags.Check + inCategory(st),
 	}
 }
 
-// inCategory names the gated category for check lines, empty when the gate
-// spans every category.
+// inCategory names the gated category in a dimension detail, empty when the
+// gate spans every category.
 func inCategory(st *state) string {
 	if st.flags.Category == "" {
 		return ""
@@ -768,25 +784,16 @@ func inCategory(st *state) string {
 	return " in " + st.flags.Category
 }
 
-func gateCompletenessCheck(st *state) gateCheck {
+func gateCompletenessCheck(st *state) core.GateDimension {
 	short := readcommon.ShortSHA(st.headSHA)
 	if st.compOK {
-		return gateCheck{
-			dim:  core.GateDimension{ID: dimHead, Status: dimPass, Detail: "HEAD " + short + " reviewed (post matches fetch)"},
-			line: fmt.Sprintf("check: HEAD %s reviewed (post matches fetch) — completeness passes", short),
-		}
+		return core.GateDimension{ID: dimHead, Status: dimPass, Detail: "HEAD " + short + " reviewed (post matches fetch)"}
 	}
-	if st.comp != nil && st.comp.SamePatch != nil && *st.comp.SamePatch {
+	if st.compSamePatch != nil && *st.compSamePatch {
 		posted := readcommon.ShortSHA(st.compPosted)
-		return gateCheck{
-			dim:  core.GateDimension{ID: dimHead, Status: dimPass, Detail: "same patch reviewed at " + short + " (posted " + posted + ")"},
-			line: fmt.Sprintf("check: same patch reviewed at %s (posted %s) — completeness passes (rebase/amend)", short, posted),
-		}
+		return core.GateDimension{ID: dimHead, Status: dimPass, Detail: "same patch reviewed at " + short + " (posted " + posted + ")"}
 	}
-	return gateCheck{
-		dim:  core.GateDimension{ID: dimHead, Status: completenessStatus(st), Detail: completenessDetail(st, short)},
-		line: completenessFailLines(st)[0],
-	}
+	return core.GateDimension{ID: dimHead, Status: completenessStatus(st), Detail: completenessDetail(st, short)}
 }
 
 // completenessStatus separates a stale post (a definite fail) from a missing
@@ -798,58 +805,45 @@ func completenessStatus(st *state) string {
 	return dimUnknown
 }
 
+// completenessDetail words the head dimension for the gate's line: the typed
+// cause and the re-fetch command that advances it, so the recovery survives
+// without the report check line that used to carry it.
 func completenessDetail(st *state, short string) string {
+	refetch := refetchCommand(st.dir, st.req.ReadRequest, st.compPosted)
 	switch {
 	case !isRegular(st.dir + "/post.json"):
-		return "no completed post record for HEAD " + short
+		return fmt.Sprintf("no completed post record for HEAD %s (missing-post: run %s, then review + post)", short, refetch)
 	case st.compPosted == "":
-		return "post record carries no head SHA (fetched HEAD " + short + ")"
+		return fmt.Sprintf("post record carries no head SHA (fetched HEAD %s; corrupt-post: re-run %s, then review + post)", short, refetch)
 	default:
-		return "posted HEAD " + readcommon.ShortSHA(st.compPosted) + " != fetched HEAD " + short
+		return fmt.Sprintf("posted HEAD %s != fetched HEAD %s (stale-head: re-run %s, then review + post)",
+			readcommon.ShortSHA(st.compPosted), short, refetch)
 	}
 }
 
-func gateLiveCheck(st *state) gateCheck {
+func gateLiveCheck(st *state) core.GateDimension {
 	switch st.live.status {
 	case liveFail:
-		return gateCheck{
-			dim: liveDimension(st, dimFail),
-			line: fmt.Sprintf("check: %d live open thread(s) vs %d local open finding(s) — gate fails "+
-				"(fetch + triage them, then re-check)", st.live.open, st.nAllOpen),
-		}
+		return liveDimension(st, dimFail)
 	case livePass:
-		return gateCheck{
-			dim: liveDimension(st, dimPass),
-			line: fmt.Sprintf("check: %d live open thread(s) vs %d local open finding(s) — live recheck passes",
-				st.live.open, st.nAllOpen),
-		}
+		return liveDimension(st, dimPass)
 	case liveUnknownStrict:
-		return gateCheck{
-			dim: core.GateDimension{
-				ID: dimLive, Status: dimUnknown,
-				Detail: "live thread recheck unreachable (" + liveErrDetail(st) + ") — offline posture is strict",
-			},
-			line: fmt.Sprintf("check: live thread recheck unreachable (%s — gate fails: offline posture is strict; "+
-				"restore the network or re-run with --live skip, then re-check)", liveErrDetail(st)),
+		return core.GateDimension{
+			ID: dimLive, Status: dimUnknown,
+			Detail: "live thread recheck unreachable (" + liveErrDetail(st) + ") — offline posture is strict",
 		}
 	case liveUnknown:
-		return gateCheck{
-			dim: core.GateDimension{
-				ID: dimLive, Status: dimSkip,
-				Detail: "live thread recheck unreachable — gating on local dimensions only",
-			},
-			line: "",
+		return core.GateDimension{
+			ID: dimLive, Status: dimSkip,
+			Detail: "live thread recheck unreachable — gating on local dimensions only",
 		}
 	case liveSkipExplicit:
-		return gateCheck{
-			dim:  core.GateDimension{ID: dimLive, Status: dimSkip, Detail: "live recheck skipped (--live skip)"},
-			line: "check: live recheck skipped (--live skip) — gating on local dimensions only",
-		}
+		return core.GateDimension{ID: dimLive, Status: dimSkip, Detail: "live recheck skipped (--live skip)"}
 	default:
-		return gateCheck{dim: core.GateDimension{
+		return core.GateDimension{
 			ID: dimLive, Status: dimSkip,
 			Detail: "live recheck skipped: local bundle threads unreadable here",
-		}}
+		}
 	}
 }
 
@@ -909,23 +903,6 @@ func gateEligible(e any) bool {
 	}
 	rigor, ok := readcommon.FieldOf(e, "rigor").(string)
 	return ok && slices.Contains(core.RungValues, rigor)
-}
-
-func completenessFailLines(st *state) []string {
-	refetch := refetchCommand(st.dir, st.req.ReadRequest, st.compPosted)
-	short := readcommon.ShortSHA(st.headSHA)
-	switch {
-	case !isRegular(st.dir + "/post.json"):
-		return []string{fmt.Sprintf("check: incomplete — no completed post for HEAD %s "+
-			"(missing-post: run %s, then review + post, then re-check)", short, refetch)}
-	case st.compPosted == "":
-		return []string{fmt.Sprintf("check: incomplete — post record carries no head SHA "+
-			"(corrupt-post: re-run %s, then review + post, then re-check)", refetch)}
-	default:
-		return []string{fmt.Sprintf("check: incomplete — HEAD %s != posted %s "+
-			"(stale-head: re-run %s, then review + post, then re-check)",
-			short, readcommon.ShortSHA(st.compPosted), refetch)}
-	}
 }
 
 func cleanHeadline(st *state) []string {

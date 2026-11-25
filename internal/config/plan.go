@@ -28,22 +28,33 @@ type Inputs struct {
 }
 
 // Resolved is the effective configuration: merged defaults, per-file
-// resolutions with clause provenance, the combined plan, and the spend
-// and privacy constraints.
+// resolutions with clause provenance, the combined plan, the spend
+// and privacy constraints, and the regression-test drafting policy.
 type Resolved struct {
-	Spend    SpendView        `json:"spend"`
-	Plan     Plan             `json:"plan"`
-	Files    []FileResolution `json:"files"`
-	Privacy  PrivacyView      `json:"privacy"`
-	Defaults ResolvedDefaults `json:"defaults"`
+	// Tests carries the repository's regression-test drafting policy:
+	// nil or empty draft means on-reproduce (the shipped behavior).
+	Tests    *core.ConfigTests `json:"tests,omitempty"`
+	Spend    SpendView         `json:"spend"`
+	Plan     Plan              `json:"plan"`
+	Files    []FileResolution  `json:"files"`
+	Privacy  PrivacyView       `json:"privacy"`
+	Defaults ResolvedDefaults  `json:"defaults"`
 }
 
 // SpendView separates the two evaluations: the ordinary estimate guard
 // against the resolved budget_usd default, and the personal authorization
-// limit the repository can never raise.
+// limit the repository can never raise. The monthly ceiling follows the
+// same split: MonthlyBudgetUSD is the effective ceiling after precedence
+// (the stricter of the repo and personal caps wins); MonthlyRepoCap and
+// MonthlyPersonalCap show each layer's own cap for transparency.
+// The personal layer can never raise the repo ceiling: when both are
+// set, the effective monthly ceiling is the smaller value.
 type SpendView struct {
 	GuardUSD             *float64 `json:"guard_usd,omitempty"`
 	PersonalLimit        *float64 `json:"personal_limit,omitempty"`
+	MonthlyBudgetUSD     *float64 `json:"monthly_budget_usd,omitempty"`
+	MonthlyRepoCap       *float64 `json:"monthly_repo_cap,omitempty"`
+	MonthlyPersonalCap   *float64 `json:"monthly_personal_cap,omitempty"`
 	RequireKnownEstimate bool     `json:"require_known_estimate"`
 	EnforceCap           bool     `json:"enforce_cap"`
 }
@@ -129,9 +140,40 @@ func Resolve(in *Inputs) (*Resolved, *core.RefusalError) {
 		PersonalLimit:        personal.Spend.BudgetUSD,
 		RequireKnownEstimate: personal.Spend.RequireKnownEstimate,
 		EnforceCap:           personal.Spend.EnforceCap,
+		MonthlyBudgetUSD:     stricterMonthlyCap(global.Values.MonthlyBudgetUSD, personal.Spend.MonthlyBudgetUSD),
+		MonthlyRepoCap:       global.Values.MonthlyBudgetUSD,
+		MonthlyPersonalCap:   personal.Spend.MonthlyBudgetUSD,
 	}
 	out.Privacy = PrivacyView{Exclusions: slices.Clone(personal.Privacy.Exclusions)}
+	out.Tests = testsOf(in.Repo)
 	return out, nil
+}
+
+// stricterMonthlyCap picks the stricter (smaller) ceiling when both the
+// repository and personal layers set one; either alone is effective; neither
+// reads nil. The personal ceiling is a constraint, never a default: it can
+// only tighten the repo ceiling, never raise it.
+func stricterMonthlyCap(repo, personal *float64) *float64 {
+	if repo == nil {
+		return personal
+	}
+	if personal == nil {
+		return repo
+	}
+	if *repo <= *personal {
+		return repo
+	}
+	return personal
+}
+
+// testsOf lifts the repository's regression-test drafting policy out of the
+// trusted configuration. The policy is repository-only: flags, environment,
+// and personal layers never override it.
+func testsOf(cfg *core.Config) *core.ConfigTests {
+	if cfg == nil {
+		return nil
+	}
+	return cfg.Tests
 }
 
 // globalLayers orders the invocation and shared layers: flags, then each

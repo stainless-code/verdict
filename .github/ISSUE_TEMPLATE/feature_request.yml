@@ -20,6 +20,7 @@ body:
         - calibrate
         - fetch-local
         - run
+        - loop
         - panel
         - record
         - adopt
@@ -43,6 +44,8 @@ body:
         - uninstall
         - mcp
         - serve
+        - dashboard
+        - lsp
         - TS client
         - installer / upgrade channel
         - docs site

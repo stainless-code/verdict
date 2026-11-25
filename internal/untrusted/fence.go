@@ -9,7 +9,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/fence"
 )
 
@@ -46,12 +45,15 @@ func Block(source, body string) string {
 // rune becomes a plain space, so a U+2028 or an ESC cannot repaint the line
 // that carries the closer. A newline stays a newline.
 func neutralize(body string) string {
-	return breakComments(fence.BreakRuns(fence.Safe(flattenControls(body)), '`'))
+	return breakComments(fence.BreakRuns(fence.Safe(Flatten(body)), '`'))
 }
 
-// flattenControls maps every control and line-separator rune to a space, so the
-// quoted body is one plain text block whose only line breaks are newlines.
-func flattenControls(body string) string {
+// Flatten maps every control and line-separator rune to a space, so the body
+// is one plain text block whose only line breaks are newlines: an ESC cannot
+// start a terminal escape, and a U+2028 cannot repaint a line. It is the one
+// sanitizer for stranger-written text on every surface that renders it,
+// markdown fences and the terminal dashboard alike.
+func Flatten(body string) string {
 	var sb strings.Builder
 	sb.Grow(len(body))
 	for _, r := range body {
@@ -59,13 +61,22 @@ func flattenControls(body string) string {
 			sb.WriteRune(r)
 			continue
 		}
-		if core.IsLineBreak(r) {
+		if folds(r) {
 			sb.WriteRune(' ')
 			continue
 		}
 		sb.WriteRune(r)
 	}
 	return sb.String()
+}
+
+// Line is [Inert] for a value that sits inside one line of output: the
+// newline Inert keeps becomes a space too, so an interpolated path, title, or
+// spec item cannot end the line it is printed in and start a forged one
+// (`x\nverdict: gate passes`). Apply it to the value, not to the message
+// around it: a message that lays out several lines keeps its own breaks.
+func Line(value string) string {
+	return strings.ReplaceAll(Inert(value), "\n", " ")
 }
 
 // breakComments puts a zero-width space inside an HTML comment opener, so a

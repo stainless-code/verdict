@@ -135,9 +135,15 @@ type ConfigIndex = core.ConfigIndex
 // ConfigPacks is the configuration's built-in pack composition.
 type ConfigPacks = core.ConfigPacks
 
+// ConfigOrgPack is the configuration's central-pack pin.
+type ConfigOrgPack = core.ConfigOrgPack
+
 // ConfigRigorPolicy is the configuration's validator mode and per-tier
 // evidence floors.
 type ConfigRigorPolicy = core.ConfigRigorPolicy
+
+// ConfigTests is the regression-test drafting policy.
+type ConfigTests = core.ConfigTests
 
 // ConfigRequirements is the configuration's conjunctive requirements.
 type ConfigRequirements = core.ConfigRequirements
@@ -180,6 +186,12 @@ type EvidenceQuote = core.EvidenceQuote
 
 // EvidenceReceipts is core's changed-hunk reading receipt coverage summary.
 type EvidenceReceipts = core.EvidenceReceipts
+
+// EvidenceDiagram is core's settled behavioral-diagram disposition.
+type EvidenceDiagram = core.EvidenceDiagram
+
+// ReviewDiagram is core's optional evidence-checked behavioral diagram input.
+type ReviewDiagram = core.ReviewDiagram
 
 // EvidenceSpec is core's specification checklist coverage summary.
 type EvidenceSpec = core.EvidenceSpec
@@ -262,8 +274,8 @@ type Provenance = core.Provenance
 
 // ReportData is the report verb's --json data profile.
 type ReportData struct { //nolint:govet // field order is the published property order
-	Verification *core.PanelSummary `anyOf:"null"        json:"verification,omitempty" optional:"true"`
-	GeneratedAt  string             `format:"date-time"  json:"generated_at"`
+	Verification *core.PanelSummary `anyOf:"null"       json:"verification,omitempty" optional:"true"`
+	GeneratedAt  string             `format:"date-time" json:"generated_at"`
 	Dir          string             `json:"dir"`
 	Head         ReportHead         `json:"head"`
 	Verdict      ReportVerdict      `json:"verdict"`
@@ -273,14 +285,17 @@ type ReportData struct { //nolint:govet // field order is the published property
 	Output       *string            `json:"output"`
 	Filters      ReportFilters      `json:"filters"`
 	Items        []FindingItem      `json:"items"`
-	Cost         ReportCost         `json:"cost"         optional:"true"`
-	Compare      *ReportCompare     `anyOf:"null"        json:"compare"                optional:"true"`
-	Completeness ReportCompleteness `json:"completeness" optional:"true"`
-	Compliance   *ReportCompliance  `anyOf:"null"        json:"compliance"             optional:"true"`
-	Risk         *ReportRisk        `anyOf:"null"        json:"risk"                   optional:"true"`
-	Validation   *ValidationData    `anyOf:"null"        json:"validation"             optional:"true"`
-	Gate         *ReportGate        `anyOf:"null"        json:"gate"                   optional:"true"`
+	OrgPack      *OrgPackInfo       `anyOf:"null"       json:"org_pack,omitempty"     optional:"true"`
+	Cost         ReportCost         `json:"cost"        optional:"true"`
+	Compare      *ReportCompare     `anyOf:"null"       json:"compare"                optional:"true"`
+	Compliance   *ReportCompliance  `anyOf:"null"       json:"compliance"             optional:"true"`
+	Risk         *ReportRisk        `anyOf:"null"       json:"risk"                   optional:"true"`
+	Validation   *ValidationData    `anyOf:"null"       json:"validation"             optional:"true"`
+	Replay       *ReportReplay      `anyOf:"null"       json:"replay"                 optional:"true"`
 }
+
+// OrgPackInfo is the governing central pack version on a report.
+type OrgPackInfo = core.OrgPackInfo
 
 // ReportHead is core's fetched/base/live head triple.
 type ReportHead = core.ReportHead
@@ -299,6 +314,9 @@ type ReportFilters = core.ReportFilters
 
 // ReportCost is core's cost rollup.
 type ReportCost = core.ReportCost
+
+// ReportMTD is core's month-to-date spend block.
+type ReportMTD = core.ReportMTD
 
 // CostTiers is core's three tier rollups.
 type CostTiers = core.CostTiers
@@ -346,9 +364,6 @@ type CompareFinding struct {
 	Changes  []string `json:"changes,omitempty" optional:"true"`
 }
 
-// ReportCompleteness is core's head comparison.
-type ReportCompleteness = core.ReportCompleteness
-
 // ReportCompliance is the captured-policy compliance view. It mirrors
 // core.ReportCompliance with the count bounds the parser enforces; the
 // field-set test keeps the mirror identical to the source DTO.
@@ -362,13 +377,24 @@ type ReportCompliance struct { //nolint:govet // field order is the published pr
 	Satisfied  bool `json:"satisfied"`
 }
 
-// ReportGate is core's composed gate result on a gating report run.
+// ReportGate is core's composed gate result: the gate verb's data profile.
 type ReportGate = core.ReportGate
 
 // GateDimension is core's one gate dimension verdict.
 type GateDimension = core.GateDimension
 
-// ReportRisk is core's advisory risk block on report --risk / --max-risk.
+// ReportReplay is `report --policy`'s comparison profile: the decision each
+// policy derives over one stored bundle.
+type ReportReplay = core.ReportReplay
+
+// ReportReplaySide is one policy's gate and approval.
+type ReportReplaySide = core.ReportReplaySide
+
+// ReportReplayMove is one gate dimension the candidate moved.
+type ReportReplayMove = core.ReportReplayMove
+
+// ReportRisk is core's advisory risk block on report --risk and the gate
+// --max-risk dimension.
 type ReportRisk = core.ReportRisk
 
 // RiskInputs is core's deterministic store inputs for the risk floor.
@@ -404,6 +430,9 @@ type PostData = core.PostData
 
 // PostBody is the rendered post body summary.
 type PostBody = core.PostBody
+
+// PostDiagram is core's dry-run behavioral-diagram disposition.
+type PostDiagram = core.PostDiagram
 
 // Suggestions counts embedded review suggestions.
 type Suggestions = core.Suggestions
@@ -477,6 +506,9 @@ type PackCheckRule = pack.CheckRule
 
 // PackAddData is the pack add --json data profile.
 type PackAddData = pack.AddData
+
+// PackSyncData is the pack sync --json data profile.
+type PackSyncData = pack.SyncData
 
 // PackTestData is the pack test --json data profile.
 type PackTestData struct {
@@ -733,7 +765,9 @@ type ThreadsData = fetchcore.ThreadsData
 
 // VerifyData is core's verify --json data profile: the command's exit status,
 // whether the watchdog timed it out, the redacted tail, the patch read back
-// from the bundle, and whether the run was sandboxed.
+// from the bundle, whether the run had the full sandbox shape, and which
+// wrapper it ran under (bwrap, sandbox-exec, or the network-only
+// unshare-net, which is never sandboxed).
 type VerifyData = core.VerifyData
 
 // TrendData is the trend verb's --json data profile: the portfolio rollup,

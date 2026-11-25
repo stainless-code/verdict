@@ -11,6 +11,9 @@ restore_stub() { cp "$STUB_SAVED" "$EVAL_STUBBIN/gh"; }
 trap restore_stub EXIT
 cat > "$EVAL_STUBBIN/gh" <<'EOF'
 #!/usr/bin/env bash
+# post pins its calls to the bundle's host: github.com here, and only it.
+if [ "${1:-}" = api ] && [ "${2:-}" = --hostname ] && [ "${3:-}" = github.com ]; then set -- api "${@:4}"; fi
+case " $* " in *" --hostname"*) echo "evals-stub-gh: call pinned to another host ($*)" >&2; exit 64;; esac
 echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
 if [ "${1:-}" = "api" ] && [ "${2:-}" = "graphql" ]; then
   printf '%s' '{"data":{"repository":{"pullRequest":{"reviewThreads":{"nodes":[]}}}}}'; exit 0
@@ -285,7 +288,7 @@ m0="$(mark)"
 run_review gate acme/app "$PR" --require-head --live skip --coverage warn --json
 assert_exit "gate on a stale head exits 1" 1
 if [ "$(jq -r '.data.dimensions[] | select(.id=="head") | .status' "$EVAL_OUT" 2>/dev/null)" = "fail" ] \
-  && [ "$(jq -r '.data.dimensions[] | select(.id=="head") | .detail' "$EVAL_OUT" 2>/dev/null)" = "posted HEAD ccccccc != fetched HEAD aaaaaaa" ] \
+  && jq -e '.data.dimensions[] | select(.id=="head") | .detail | startswith("posted HEAD ccccccc != fetched HEAD aaaaaaa (stale-head:")' "$EVAL_OUT" >/dev/null 2>&1 \
   && [ -n "$(jq -r '.next // empty' "$EVAL_OUT" 2>/dev/null)" ]; then
   good "stale head fails the head dimension naming both SHAs with a next step"
 else

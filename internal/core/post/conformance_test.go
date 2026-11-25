@@ -114,7 +114,7 @@ type hostConformance struct {
 	lineField string
 }
 
-// conformanceRows is the matrix: the three hosts with a submit path, and one
+// conformanceRows is the matrix: the four hosts with a submit path, and one
 // fetch-only host whose whole row must refuse.
 func conformanceRows() []*hostConformance {
 	return []*hostConformance{
@@ -139,8 +139,26 @@ func conformanceRows() []*hostConformance {
 			partial:   map[string]string{conformanceInlineAnchors: "multi-line"},
 		},
 		{
-			provider:    "bitbucket",
-			noSubmitDoc: "no grouped submit",
+			provider:    providerBitbucket,
+			bodyArgv:    conformanceBitbucketWrite,
+			approveArgv: conformanceBitbucketApprove,
+			env:         conformanceBitbucketEnv(),
+			gaps:        map[string]string{conformanceRequestChanges: "no request-changes review event"},
+			partial:     map[string]string{conformanceInlineAnchors: "multi-line"},
+		},
+		{
+			provider: providerAzure,
+			bodyArgv: conformanceAzureWrite,
+			env:      conformanceAzureEnv(),
+			gaps: map[string]string{
+				conformanceApprove:        "no approve review event",
+				conformanceRequestChanges: "no request-changes review event",
+			},
+			partial: map[string]string{conformanceInlineAnchors: "multi-line"},
+		},
+		{
+			provider:    "gitcafe",
+			noSubmitDoc: "no submit path",
 		},
 	}
 }
@@ -164,6 +182,55 @@ const (
 // conformanceForgejoEnv is the environment the Forgejo auth gate reads.
 func conformanceForgejoEnv() map[string]string {
 	return map[string]string{"FORGEJO_HOST": "https://forgejo.invalid", "FORGEJO_TOKEN": "conformance-token"}
+}
+
+// The exact argv a Bitbucket post reads and writes with: `curl` against
+// the Cloud API, with the credential on stdin for reads and in a private
+// file (the CONFIG placeholder) for the writes. One endpoint carries
+// both the inline anchors and the summary, so the row classifies by
+// stdin, not by argv.
+const (
+	conformanceBitbucketBase   = "https://api.bitbucket.org/2.0/repositories/acme/app/pullrequests/7"
+	conformanceBitbucketRead   = "curl\x00--config\x00-\x00-sf\x00"
+	conformanceBitbucketFollow = "curl\x00--config\x00-\x00-sfL\x00"
+
+	conformanceBitbucketPull  = conformanceBitbucketRead + conformanceBitbucketBase
+	conformanceBitbucketUser  = conformanceBitbucketRead + "https://api.bitbucket.org/2.0/user"
+	conformanceBitbucketList  = conformanceBitbucketFollow + conformanceBitbucketBase + "/comments?pagelen=100"
+	conformanceBitbucketWrite = "curl\x00--config\x00" + configPlaceholder + "\x00-sS\x00-i\x00" +
+		"-H\x00Content-Type: application/json\x00-X\x00POST\x00--data-binary\x00@-\x00" +
+		conformanceBitbucketBase + "/comments"
+	conformanceBitbucketApprove = "curl\x00--config\x00" + configPlaceholder + "\x00-sS\x00-i\x00" +
+		"-H\x00Content-Type: application/json\x00-X\x00POST\x00--data-binary\x00@-\x00" +
+		conformanceBitbucketBase + "/approve"
+)
+
+// conformanceBitbucketEnv is the environment the Bitbucket auth gate reads.
+func conformanceBitbucketEnv() map[string]string {
+	return map[string]string{"BITBUCKET_TOKEN": "conformance-token"}
+}
+
+// The exact argv an Azure DevOps post reads and writes with: `az rest`
+// against the organization URL, with the token bought for the Azure DevOps
+// resource (`--resource`) and the request body staged in a private file (the
+// BODY placeholder) that `az` reads through its `@file` convention. One
+// endpoint — the pull request's threads — carries both the anchored threads and
+// the summary thread, so the row classifies a write by its body, not its argv.
+const (
+	conformanceAzureOrg  = "https://dev.azure.com/acme"
+	conformanceAzureBase = conformanceAzureOrg + "/acme/_apis/git/repositories/app/pullRequests/7"
+	conformanceAzureRead = "az\x00rest\x00--method\x00get\x00--resource\x00499b84ac-1321-427f-aa17-267ca6975798\x00--url\x00"
+
+	conformanceAzurePull     = conformanceAzureRead + conformanceAzureBase + "?api-version=7.1"
+	conformanceAzureThreads  = conformanceAzureRead + conformanceAzureBase + "/threads?api-version=7.1"
+	conformanceAzureIdentity = conformanceAzureRead + conformanceAzureOrg + "/_apis/connectionData?api-version=7.1-preview.1"
+	conformanceAzureWrite    = "az\x00rest\x00--method\x00post\x00--resource\x00499b84ac-1321-427f-aa17-267ca6975798\x00--url\x00" + conformanceAzureBase +
+		"/threads?api-version=7.1\x00--headers\x00Content-Type=application/json\x00--body\x00@" + bodyPlaceholder
+)
+
+// conformanceAzureEnv is the environment the Azure organization gate reads.
+func conformanceAzureEnv() map[string]string {
+	return map[string]string{"AZURE_DEVOPS_ORG": conformanceAzureOrg}
 }
 
 // TestProviderConformance is the suite: every host answers the three
@@ -350,6 +417,7 @@ type conformanceRun struct {
 	root     string
 	calls    [][]string
 	stdin    []string
+	bodies   []string
 }
 
 // conformanceEnvelopeWarnings returns the warnings the envelope carries, which
@@ -383,7 +451,7 @@ func runConformance(t *testing.T, row *hostConformance, scn conformanceScenario)
 		req.Env = maps.Clone(row.env)
 	}
 	resp, ref := Run(context.Background(), req)
-	return &conformanceRun{calls: cmdr.calls, stdin: cmdr.stdin, root: root, response: resp, refusal: ref}
+	return &conformanceRun{calls: cmdr.calls, stdin: cmdr.stdin, bodies: cmdr.bodies, root: root, response: resp, refusal: ref}
 }
 
 // conformanceBundleDir is the bundle a conformance root holds.
@@ -398,11 +466,15 @@ func conformanceBundle(t *testing.T, provider string) string {
 	root := t.TempDir()
 	dir := conformanceBundleDir(root)
 	head, base := conformanceHead, conformanceBase
-	pr := `{"state":"OPEN","headRefOid":"` + head + `","baseRefOid":"` + base + `","author":{"login":"alice"}}`
+	pr := `{"state":"OPEN","headRefOid":"` + head + `","baseRefOid":"` + base + `","author":{"login":"alice"},"url":"https://github.com/acme/app/pull/7"}`
 	if provider != providerGitHub {
 		head, base = gitlabHead, gitlabBase
+		web := map[string]string{
+			providerGitLab:  "https://gitlab.com/acme/app/-/merge_requests/7",
+			providerForgejo: "https://forgejo.invalid/acme/app/pulls/7",
+		}[provider]
 		pr = `{"provider":"` + provider + `","number":7,"state":"open","author":"alice","head_sha":"` + head +
-			`","base_sha":"` + base + `"}`
+			`","base_sha":"` + base + `","url":"` + web + `"}`
 	}
 	for name, body := range map[string]string{
 		"PR.json": pr, "full.diff": gitlabTestDiff, "review.json": conformanceReview,
@@ -429,6 +501,10 @@ func conformanceCommander(t *testing.T, row *hostConformance, scn conformanceSce
 		return gitlabCommander(t)
 	case providerForgejo:
 		return conformanceForgejoCommander(t, row, scn)
+	case providerBitbucket:
+		return conformanceBitbucketCommander(t, row, scn)
+	case providerAzure:
+		return conformanceAzureCommander(t)
 	default:
 		return &scriptCommander{t: t, out: map[string]scriptResult{}}
 	}
@@ -456,6 +532,42 @@ func conformanceForgejoAnswer(state string) string {
 		`{"id":901,"state":"` + state + `","commit_id":"` + gitlabHead + `",` +
 		`"submitted_at":"2026-11-02T12:00:00Z","html_url":"https://forgejo.invalid/acme/app/pulls/7#issuecomment-901"}` +
 		"\n"
+}
+
+// conformanceBitbucketCommander scripts one Bitbucket post: the PR head, the
+// token user, an empty comment list, one created-comment answer shared by the
+// inline and summary writes, and a 204 approval.
+func conformanceBitbucketCommander(t *testing.T, _ *hostConformance, _ conformanceScenario) *scriptCommander {
+	t.Helper()
+	return &scriptCommander{t: t, out: map[string]scriptResult{
+		conformanceBitbucketPull: {stdout: `{"source":{"commit":{"hash":"` + gitlabHead + `"}},` +
+			`"links":{"html":{"href":"https://bitbucket.org/acme/app/pullrequests/7"}}}`},
+		conformanceBitbucketUser: {stdout: `{"nickname":"teammate"}`},
+		conformanceBitbucketList: {stdout: `{"values":[],"next":null}`},
+		conformanceBitbucketWrite: {stdout: "HTTP/1.1 201 Created\r\nContent-Type: application/json\r\n\r\n" +
+			`{"id":501,"content":{"raw":"x"},` +
+			`"links":{"html":{"href":"https://bitbucket.org/acme/app/pullrequests/7/comments/501"}}}` + "\n"},
+		conformanceBitbucketApprove: {stdout: "HTTP/1.1 204 No Content\r\n\r\n"},
+	}}
+}
+
+// conformanceAzureCommander scripts one Azure post: the pull head (read by the
+// drift check, the publication read, and the pre-write guard), the
+// authenticated identity the authorship gate compares, an empty thread list,
+// and one created-thread answer shared by the anchored and summary writes.
+func conformanceAzureCommander(t *testing.T) *scriptCommander {
+	t.Helper()
+	return &scriptCommander{t: t, out: map[string]scriptResult{
+		conformanceAzurePull: {stdout: `{"pullRequestId":7,` +
+			`"lastMergeSourceCommit":{"commitId":"` + gitlabHead + `"}}`},
+		conformanceAzureIdentity: {stdout: `{"authenticatedUser":{"id":"guid-teammate",` +
+			`"providerDisplayName":"teammate"}}`},
+		conformanceAzureThreads: {stdout: `{"count":0,"value":[]}`},
+		conformanceAzureWrite: {stdout: `{"id":501,"publishedDate":"2026-11-02T12:00:00Z",` +
+			`"lastUpdatedDate":"2026-11-02T12:00:00Z","comments":[{"id":1,"parentCommentId":0,` +
+			`"content":"x","commentType":"text","author":{"id":"guid-teammate",` +
+			`"displayName":"teammate","uniqueName":"teammate"}}]}`},
+	}}
 }
 
 // conformanceTool is the CLI a host's submit path spawns; every other argv on
@@ -502,15 +614,61 @@ func (row *hostConformance) writeCount(t *testing.T, run *conformanceRun, i int,
 		return writeCounts{post: 1}
 	}
 	key := routeKey(call)
+	if key == row.approveArgv {
+		return writeCounts{approve: 1}
+	}
+	if counts, shared := row.sharedEndpointWrite(t, run, i, key); shared {
+		return counts
+	}
 	switch {
 	case key == row.bodyArgv:
 		return row.bodyWrite(t, run.stdin[i])
 	case row.anchorArgv != "" && key == row.anchorArgv:
 		return writeCounts{anchors: 1}
-	case row.approveArgv != "" && key == row.approveArgv:
-		return writeCounts{approve: 1}
 	}
 	return writeCounts{}
+}
+
+// sharedEndpointWrite counts a write on a host whose one endpoint carries both
+// the anchors and the body: the payload decides which, never the table.
+func (row *hostConformance) sharedEndpointWrite(t *testing.T, run *conformanceRun, i int, key string) (writeCounts, bool) {
+	t.Helper()
+	if key != row.bodyArgv {
+		return writeCounts{}, false
+	}
+	switch row.provider {
+	case providerBitbucket:
+		return row.bitbucketWrite(t, run.stdin[i]), true
+	case providerAzure:
+		return row.azureThreadWrite(t, run.bodies[i]), true
+	default:
+		return writeCounts{}, false
+	}
+}
+
+// bitbucketWrite counts one comments write: an inline anchor is the
+// finding write, a general comment is the summary-body write. The row
+// shares one argv for both, so the stdin decides, never the table.
+func (row *hostConformance) bitbucketWrite(t *testing.T, stdin string) writeCounts {
+	t.Helper()
+	payload := conformancePayload(t, stdin)
+	if _, inline := payload["inline"].(map[string]any); inline {
+		return writeCounts{anchors: 1}
+	}
+	return writeCounts{post: 1}
+}
+
+// azureThreadWrite counts one threads write: a thread carrying a
+// threadContext is the finding write, a general thread is the summary-body
+// write. Azure shares one endpoint and one argv for both, so the body decides,
+// never the table.
+func (row *hostConformance) azureThreadWrite(t *testing.T, body string) writeCounts {
+	t.Helper()
+	payload := conformancePayload(t, body)
+	if _, inline := payload["threadContext"].(map[string]any); inline {
+		return writeCounts{anchors: 1}
+	}
+	return writeCounts{post: 1}
 }
 
 // bodyWrite counts what the summary-body payload carried. A verdict counts as
@@ -810,6 +968,12 @@ func conformanceCheckBody(t *testing.T, row *hostConformance, caps core.HostCapa
 // bodyPayloads decodes the summary-body writes one run sent.
 func (row *hostConformance) bodyPayloads(t *testing.T, run *conformanceRun) []map[string]any {
 	t.Helper()
+	if row.provider == providerBitbucket {
+		return row.bitbucketBodyPayloads(t, run)
+	}
+	if row.provider == providerAzure {
+		return row.azureBodyPayloads(t, run)
+	}
 	var out []map[string]any
 	for i, call := range run.calls {
 		if row.bodyArgv != "" && routeKey(call) == row.bodyArgv {
@@ -819,10 +983,72 @@ func (row *hostConformance) bodyPayloads(t *testing.T, run *conformanceRun) []ma
 	return out
 }
 
+// bitbucketBodyPayloads decodes the summary writes: one endpoint carries
+// both the inline anchors and the body, so only the general comments count.
+func (row *hostConformance) bitbucketBodyPayloads(t *testing.T, run *conformanceRun) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	for i, call := range run.calls {
+		if routeKey(call) != row.bodyArgv {
+			continue
+		}
+		if body, isBody := conformanceBitbucketBody(t, run.stdin[i]); isBody {
+			out = append(out, body)
+		}
+	}
+	return out
+}
+
+// conformanceBitbucketBody reads the summary comment's raw body into the
+// payload shape the body check reads, reporting whether the write was
+// the summary rather than an inline anchor.
+func conformanceBitbucketBody(t *testing.T, stdin string) (map[string]any, bool) {
+	t.Helper()
+	payload := conformancePayload(t, stdin)
+	if _, inline := payload["inline"].(map[string]any); inline {
+		return nil, false
+	}
+	content, ok := payload["content"].(map[string]any)
+	if !ok || content == nil {
+		return map[string]any{fieldBody: ""}, true
+	}
+	return map[string]any{fieldBody: jq.StrOf(content["raw"])}, true
+}
+
+// azureBodyPayloads decodes the summary writes: one endpoint carries both
+// the anchored threads and the body, so only the general threads count.
+func (row *hostConformance) azureBodyPayloads(t *testing.T, run *conformanceRun) []map[string]any {
+	t.Helper()
+	var out []map[string]any
+	for i, call := range run.calls {
+		if routeKey(call) != row.bodyArgv {
+			continue
+		}
+		payload := conformancePayload(t, run.bodies[i])
+		if _, inline := payload["threadContext"].(map[string]any); inline {
+			continue
+		}
+		out = append(out, map[string]any{fieldBody: conformanceAzureThreadContent(payload)})
+	}
+	return out
+}
+
+// conformanceAzureThreadContent reads the opening comment's content, which is
+// where an Azure thread carries its body.
+func conformanceAzureThreadContent(payload map[string]any) string {
+	comments := jq.Elements(payload[fieldComments])
+	if len(comments) == 0 {
+		return ""
+	}
+	return jq.StrOf(conformanceMap(comments[0])["content"])
+}
+
 // verbInPayload reports whether the host takes its verdicts in the body
-// payload's own event field, which is what an atomic review does.
+// payload's own event field, which is what an atomic review does. Azure takes
+// no verdict at all, and a thread carries no commit pin, so neither the event
+// nor the reviewed commit rides its payload.
 func (row *hostConformance) verbInPayload() bool {
-	return row.approveArgv == ""
+	return row.approveArgv == "" && row.provider != providerAzure
 }
 
 // head is the commit the row reviews.
@@ -889,11 +1115,55 @@ func (row *hostConformance) anchoredFindings(t *testing.T, run *conformanceRun) 
 		switch {
 		case row.verbInPayload() && row.bodyArgv != "" && key == row.bodyArgv:
 			out = append(out, conformanceReviewComments(t, run.stdin[i], row.lineField)...)
+		case row.provider == providerBitbucket && key == row.bodyArgv:
+			out = append(out, conformanceBitbucketAnchor(t, run.stdin[i])...)
+		case row.provider == providerAzure && key == row.bodyArgv:
+			out = append(out, conformanceAzureAnchor(t, run.bodies[i])...)
 		case row.anchorArgv != "" && key == row.anchorArgv:
 			out = append(out, conformanceDiscussionAnchor(t, run.stdin[i]))
 		}
 	}
 	return out
+}
+
+// conformanceBitbucketAnchor reads the one anchor an inline comment
+// carries, reporting nothing for a summary write.
+func conformanceBitbucketAnchor(t *testing.T, stdin string) []anchoredFinding {
+	t.Helper()
+	payload := conformancePayload(t, stdin)
+	inline, ok := payload["inline"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	line := conformanceInt(inline["to"])
+	if line == 0 {
+		line = conformanceInt(inline["from"])
+	}
+	return []anchoredFinding{{
+		path: jq.StrOf(inline["path"]), head: "",
+		line: line, start: 0,
+	}}
+}
+
+// conformanceAzureAnchor reads the one anchor a thread's threadContext
+// carries, reporting nothing for the general summary thread. Azure's path
+// carries the leading slash the API requires, so the check reads the tree
+// path back out of it.
+func conformanceAzureAnchor(t *testing.T, body string) []anchoredFinding {
+	t.Helper()
+	payload := conformancePayload(t, body)
+	ctx, ok := payload["threadContext"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	start, ok := ctx["rightFileStart"].(map[string]any)
+	if !ok {
+		start = conformanceMap(ctx["leftFileStart"])
+	}
+	return []anchoredFinding{{
+		path: strings.TrimPrefix(jq.StrOf(ctx["filePath"]), "/"), head: "",
+		line: conformanceInt(start["line"]), start: 0,
+	}}
 }
 
 // conformanceReviewComments reads the comments one atomic review carried. A
@@ -1089,13 +1359,10 @@ type reservedCode struct {
 }
 
 // reservedReasons names the codes no shipped host emits: every posting host
-// carries an approval write and inline anchors today. A code here is reserved,
-// not dead — the first body-only host emits it through submitReason.
+// carries inline anchors today, and every posting host but Azure carries an
+// approval write. A code here is reserved, not dead — the first body-only host
+// emits `no-inline-anchors` through submitReason.
 var reservedReasons = map[string]reservedCode{
-	"no-approve-verdict": {
-		caps:       core.HostCapabilities{Provider: "body-only", Fetch: true, Post: true, InlineAnchors: true},
-		capability: conformanceApprove,
-	},
 	"no-inline-anchors": {
 		caps:       core.HostCapabilities{Provider: "anchors-only", Fetch: true, Post: true, Approve: true, RequestChanges: true},
 		capability: conformanceInlineAnchors,

@@ -6,7 +6,6 @@ package overrides
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"regexp"
 	"strconv"
@@ -14,6 +13,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 // Dir and fragment paths for the overrides namespace.
@@ -86,7 +86,7 @@ func FooterOrder() ([]string, error) { return At("").FooterOrder() }
 // FooterOrder reads the footer-order fragment from this set.
 func (s Set) FooterOrder() ([]string, error) {
 	def := []string{"tier", "cost", "files", "link"}
-	if raw, err := os.ReadFile(s.path("footer-order.md")); err == nil {
+	if raw, err := noblock.ReadFile(s.path("footer-order.md")); err == nil {
 		return parseOrderOrDef(raw)
 	}
 	// A missing fragment file reads as the default order.
@@ -159,7 +159,7 @@ func DefaultThresholds() (files, bytes int) { return defaultMaxFiles, defaultMax
 // Thresholds reads the walkthrough-threshold fragment from this set.
 func (s Set) Thresholds() (files, bytes int, ref error) {
 	files, bytes = defaultMaxFiles, defaultMaxBytes
-	raw, err := os.ReadFile(s.path("walkthrough-threshold.md"))
+	raw, err := noblock.ReadFile(s.path("walkthrough-threshold.md"))
 	if err != nil {
 		return files, bytes, nil
 	}
@@ -261,7 +261,7 @@ func removeSpaces(s string) string {
 // newlines before the line count, so interior newlines refuse but a single
 // trailing newline reads as the one line.
 func (s Set) AttributionText() (string, error) {
-	raw, err := os.ReadFile(s.path("attribution.md"))
+	raw, err := noblock.ReadFile(s.path("attribution.md"))
 	if err != nil {
 		//nolint:nilerr // an absent override file means "no override", not a failure
 		return "", nil

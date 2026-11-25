@@ -7,11 +7,13 @@ import (
 	"errors"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/testkit"
 )
 
@@ -37,7 +39,7 @@ func stampIdentity(t *testing.T, slug string) {
 type recordStubCommander struct{}
 
 func (c *recordStubCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
-	if len(cmd.Argv) == 3 && cmd.Argv[0] == "git" && cmd.Stdin != nil {
+	if _, args, ok := gitcmd.Split(cmd.Argv); ok && slices.Equal(args, []string{"patch-id", "--stable"}) && cmd.Stdin != nil {
 		raw, err := io.ReadAll(cmd.Stdin)
 		if err == nil && string(raw) == recordTestDiff {
 			return core.Result{Stdout: recordTestPatch + " 0000000000000000000000000000000000000000\n"}, nil

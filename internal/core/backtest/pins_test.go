@@ -4,15 +4,18 @@ import (
 	"context"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 )
 
 // pinRecorder records every command the miner spawns.
 type pinRecorder struct {
+	t     *testing.T
 	inner core.Commander
 	calls []recordedCall
 }
@@ -23,17 +26,68 @@ type recordedCall struct {
 	argv []string
 }
 
-// Run records the command and delegates.
+// Run records the command as the miner built it and delegates: the shared
+// hook-free settings ([gitcmd.Argv], [gitcmd.Env]) are required and then
+// taken off, so the pins below stay the miner's own.
 func (r *pinRecorder) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
-	env := make(map[string]string, len(cmd.Env))
-	for _, pair := range cmd.Env {
+	argv, pairs := hookFreeCall(r.t, cmd)
+	env := make(map[string]string, len(pairs))
+	for _, pair := range pairs {
 		name, value, ok := strings.Cut(pair, "=")
 		if ok {
 			env[name] = value
 		}
 	}
-	r.calls = append(r.calls, recordedCall{env: env, argv: slices.Clone(cmd.Argv)})
+	r.calls = append(r.calls, recordedCall{env: env, argv: argv})
 	return r.inner.Run(ctx, cmd)
+}
+
+// hookFreeCall requires one git call to carry the shared hook-free argv and
+// environment tail, and returns both without them: `git <args>` for a call
+// in the working directory, `git -C <dir> <args>` otherwise.
+func hookFreeCall(t *testing.T, cmd *core.Command) ([]string, []string) {
+	t.Helper()
+	root, args, ok := gitcmd.Split(cmd.Argv)
+	if !ok {
+		t.Errorf("git call %q is not hook-free", cmd.Argv)
+		return slices.Clone(cmd.Argv), cmd.Env
+	}
+	argv := slices.Concat([]string{"git", "-C", root}, args)
+	if root == "." {
+		argv = slices.Concat([]string{"git"}, args)
+	}
+	env, ok := withoutHookFreeEnv(cmd.Env)
+	if !ok {
+		t.Errorf("git call %q: env does not end with the hook-free settings", cmd.Argv)
+	}
+	return argv, env
+}
+
+// lastConfigCount is the GIT_CONFIG_COUNT env ends on: the last one wins.
+func lastConfigCount(env []string) int {
+	n := 0
+	for _, pair := range env {
+		v, found := strings.CutPrefix(pair, "GIT_CONFIG_COUNT=")
+		if count, err := strconv.Atoi(v); found && err == nil {
+			n = count
+		}
+	}
+	return n
+}
+
+// withoutHookFreeEnv takes the shared hook-free settings off the end of env,
+// where gitcmd.Env appends them; ok is false when they are not there.
+func withoutHookFreeEnv(env []string) ([]string, bool) {
+	n := lastConfigCount(env)
+	tail := []string{
+		"GIT_CONFIG_KEY_" + strconv.Itoa(n-2) + "=core.hooksPath", "GIT_CONFIG_VALUE_" + strconv.Itoa(n-2) + "=" + os.DevNull,
+		"GIT_CONFIG_KEY_" + strconv.Itoa(n-1) + "=core.fsmonitor", "GIT_CONFIG_VALUE_" + strconv.Itoa(n-1) + "=false",
+		"GIT_CONFIG_COUNT=" + strconv.Itoa(n),
+	}
+	if len(env) < len(tail) || !slices.Equal(env[len(env)-len(tail):], tail) {
+		return env, false
+	}
+	return env[:len(env)-len(tail)], true
 }
 
 // trustReadArgvs are the two protected-scope safe.directory reads, in order.
@@ -50,10 +104,11 @@ var trustReadArgvs = [][]string{
 // safe.directory reads run first, with the user's config scopes still live.
 // A dropped pin fails here even where an explicit flag would mask its effect.
 func TestMinePinsEveryGitCall(t *testing.T) {
+	t.Parallel()
 	b, _ := newMergedFixRepo(t)
 	home := t.TempDir()
 	global := writeGitConfig(t, "")
-	rec := &pinRecorder{inner: coreexec.Runner{MissingTool: true}}
+	rec := &pinRecorder{t: t, inner: coreexec.Runner{MissingTool: true}}
 	_, ref := Run(t.Context(), &Request{
 		Runtime: &core.Runtime{
 			Commander: rec,

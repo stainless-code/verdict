@@ -13,7 +13,9 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	coreexec "github.com/stainless-code/verdict/internal/core/exec"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
+	"github.com/stainless-code/verdict/internal/core/risk"
 	"github.com/stainless-code/verdict/internal/readcommon"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // Request wires a gate run.
@@ -31,10 +33,13 @@ const (
 	idCompliance    = "compliance"
 	idSpec          = "spec"
 	idEvidence      = "evidence"
+	idRisk          = "risk"
 	flagMaxSeverity = "--max-severity"
 	flagRequireHE   = "--require-head"
 	flagLive        = "--live"
 	flagCoverage    = "--coverage"
+	flagMaxRisk     = "--max-risk"
+	flagCategory    = "--category"
 	coverageWarn    = "warn"
 	idCoverage      = "coverage"
 	idWidth         = 12 // longest dimension id: live_threads
@@ -46,11 +51,16 @@ const (
 		"chunk in chunks[] when the bundle is chunked), then re-record or re-post"
 	// actionSpec names the document the spec checks came from, because the gate
 	// reads them from the record and cannot fix the review it graded.
-	actionSpec = "satisfy or correct the violated spec check in review.json, then re-record"
+	actionRisk        = "resolve the open findings that raise the reported risk, or re-record a lower risk claim"
+	actionRiskUnknown = "record a risk claim in review.json (risk: low|medium|high|critical), then re-record"
+	actionSpec        = "satisfy or correct the violated spec check in review.json, then re-record"
 )
 
 // DefaultLive is the --live posture a gate run starts from.
 const DefaultLive = "auto"
+
+// categoryWant names the --category operand for usage errors.
+const categoryWant = "logic|edge-case|security|performance|accidental-commit|style|docs|other"
 
 // DefaultCoverage is the --coverage posture a gate run starts from.
 const DefaultCoverage = "require"
@@ -96,7 +106,7 @@ func gateRequest(r *cli.Runner, req Request, flags *reportcore.Flags) *reportcor
 
 // emit writes the per-dimension lines, then the envelope or the verdict.
 func emit(r *cli.Runner, req Request, resp *reportcore.Response) {
-	gate := resp.Data.Gate
+	gate := resp.Gate
 	for _, line := range gateLines(gate) {
 		fmt.Fprintln(r.Human, line)
 	}
@@ -106,7 +116,7 @@ func emit(r *cli.Runner, req Request, resp *reportcore.Response) {
 		return
 	}
 	if hint := gateHint(gate); hint != "" {
-		fmt.Fprintln(r.Human, "try: "+hint)
+		fmt.Fprintln(r.Human, "try: "+untrusted.Line(hint))
 	}
 }
 
@@ -114,7 +124,7 @@ func emit(r *cli.Runner, req Request, resp *reportcore.Response) {
 func gateLines(gate *core.ReportGate) []string {
 	lines := make([]string, 0, len(gate.Dimensions)+2)
 	for _, dim := range gate.Dimensions {
-		lines = append(lines, fmt.Sprintf("gate: %-*s %s  %s", idWidth, dim.ID, dim.Status, dim.Detail))
+		lines = append(lines, fmt.Sprintf("gate: %-*s %s  %s", idWidth, dim.ID, dim.Status, untrusted.Line(dim.Detail)))
 	}
 	verdict := "gate: PASS"
 	if !gate.Passed {
@@ -243,6 +253,15 @@ var gateActionsByID = map[string]func(status string) string{
 		}
 		return actionSpec
 	},
+	idRisk: func(status string) string {
+		switch status {
+		case statusFail:
+			return actionRisk
+		case statusUnknown:
+			return actionRiskUnknown
+		}
+		return ""
+	},
 	idEvidence: func(status string) string {
 		switch status {
 		case statusFail:
@@ -271,8 +290,12 @@ func parseFlags(r *cli.Runner, args []string) (reportcore.Flags, int, bool) {
 	}
 	if !gated {
 		return flags, r.ReportUsage(&cli.UsageError{Message: "gate needs at least one dimension " +
-			"(want --max-severity critical|important|informational or --require-head; " +
+			"(want --max-severity critical|important|informational, --require-head, or --max-risk low|medium|high|critical; " +
 			"--live only sets the offline posture)"}), true
+	}
+	if flags.Category != "" && flags.Check == "" {
+		return flags, r.ReportUsage(&cli.UsageError{Message: "--category narrows --max-severity; " +
+			"pass a tier with it (a category alone gates nothing)"}), true
 	}
 	r.RouteHuman()
 	return flags, 0, false
@@ -284,11 +307,12 @@ func parseFlag(r *cli.Runner, flags *reportcore.Flags, gated *bool, args []strin
 		flags.Completeness = true
 		*gated = true
 		return 1, 0, false
-	case flagMaxSeverity, flagLive, flagCoverage:
+	case flagMaxSeverity, flagLive, flagCoverage, flagMaxRisk, flagCategory:
 		return parseValueFlag(r, flags, gated, args, i)
 	default:
 		return 0, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
-			"unknown flag '%s' for gate (want --max-severity, --require-head, --live, --coverage, --json)", args[i])}), true
+			"unknown flag '%s' for gate (want --max-severity, --require-head, --max-risk, "+
+				"--category, --live, --coverage, --json)", args[i])}), true
 	}
 }
 
@@ -300,6 +324,10 @@ func parseValueFlag(r *cli.Runner, flags *reportcore.Flags, gated *bool, args []
 		want = "critical|important|informational"
 	case flagCoverage:
 		want = "require|warn"
+	case flagMaxRisk:
+		want = "low|medium|high|critical"
+	case flagCategory:
+		want = categoryWant
 	}
 	v, next, u := cli.FlagValue(args, i, name, want)
 	if u != nil {
@@ -310,6 +338,10 @@ func parseValueFlag(r *cli.Runner, flags *reportcore.Flags, gated *bool, args []
 		return applyTier(r, flags, gated, v, next-i+1)
 	case flagCoverage:
 		return applyCoverage(r, flags, v, next-i+1)
+	case flagMaxRisk:
+		return applyMaxRisk(r, flags, gated, v, next-i+1)
+	case flagCategory:
+		return applyCategory(r, flags, v, next-i+1)
 	}
 	return applyLive(r, flags, v, next-i+1)
 }
@@ -320,6 +352,31 @@ func applyTier(r *cli.Runner, flags *reportcore.Flags, gated *bool, v string, co
 			"unknown --max-severity tier '%s' for gate (want critical|important|informational)", v)}), true
 	}
 	flags.Check = v
+	*gated = true
+	return consumed, 0, false
+}
+
+// applyCategory narrows the findings dimension to one finding kind, the class
+// filter the removed `report --check <tier> --category <cat>` carried. It is a
+// narrowing, not a dimension: without --max-severity it would gate nothing, so
+// parseFlags refuses it there.
+func applyCategory(r *cli.Runner, flags *reportcore.Flags, v string, consumed int) (int, int, bool) {
+	if !core.ValidCategory(v) {
+		return 0, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+			"unknown --category '%s' for gate (want %s)", v, categoryWant)}), true
+	}
+	flags.Category = v
+	return consumed, 0, false
+}
+
+// applyMaxRisk gates on the reported risk band, the dimension `report
+// --max-risk` used to carry alone.
+func applyMaxRisk(r *cli.Runner, flags *reportcore.Flags, gated *bool, v string, consumed int) (int, int, bool) {
+	if !risk.ValidLevel(v) {
+		return 0, r.ReportUsage(&cli.UsageError{Message: fmt.Sprintf(
+			"unknown --max-risk level '%s' for gate (want low|medium|high|critical)", v)}), true
+	}
+	flags.MaxRisk = v
 	*gated = true
 	return consumed, 0, false
 }

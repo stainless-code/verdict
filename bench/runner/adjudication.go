@@ -117,7 +117,7 @@ type calibrateOutcome struct {
 // loadAdjudication reads one versioned record and reclassifies the run's
 // unmatched findings against it. Strict figures are read, never rewritten.
 func loadAdjudication(path string, rep *Report) (*Adjudication, error) {
-	raw, err := jq.CappedFile(path, maxPublicationBytes)
+	raw, err := jq.CappedOperatorFile(path, maxPublicationBytes)
 	if err != nil {
 		return nil, adjudicationRefusal("record %s: %s", path, err)
 	}

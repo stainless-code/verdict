@@ -16,6 +16,7 @@ import (
 
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/untrusted"
 )
 
 // Exit codes for the machine contract.
@@ -35,6 +36,7 @@ type Runner struct {
 	// written counts the warnings already on the diagnostic stream, by
 	// text, so a refusal's replayed list does not print a line twice.
 	written            map[string]int
+	inert              []*untrusted.InertWriter
 	Effective          Effective
 	Output             string
 	EnvReviewColorMode string
@@ -84,10 +86,53 @@ func (r *Runner) Warn(msg string) {
 	r.markWarningWritten(msg)
 }
 
-// writeWarning writes one frozen `warn:` line to the diagnostic stream.
+// NewRunner builds one invocation's runner over the process streams. The
+// diagnostic stream is wrapped in an untrusted.InertWriter, so every write to
+// it — a warning, a refusal, a gate check line quoting a spec item, a split
+// candidate naming a diff path, any line a future caller adds — has its
+// control characters folded before it reaches a terminal. Under --json,
+// RouteHuman points Human at the same wrapped stream.
+//
+// Stdout gets the same fold for the same reason — a finding title or path a
+// PR author wrote reaches it through report, show, next, threads, and drain —
+// except under --json, where it carries one envelope that already escapes
+// every control and must stay byte-identical. The fold is decided at write
+// time from [Runner.JSONMode], so a mode that settles late still routes
+// right. verdict's own styling goes through [untrusted.Raw].
+func NewRunner(cmd, repo, pr string, out, diag io.Writer, getenv func(string) string) *Runner {
+	stderr := untrusted.NewInertWriter(diag)
+	r := &Runner{
+		Cmd: cmd, Repo: repo, Pr: pr,
+		Diag:               stderr,
+		Now:                time.Now,
+		EnvNoColor:         getenv("NO_COLOR") != "",
+		EnvReviewColorMode: getenv("REVIEW_COLOR_MODE"),
+	}
+	stdout := untrusted.NewInertWriterUnless(out, func() bool { return r.JSONMode })
+	r.Out, r.Human = stdout, stdout
+	r.inert = []*untrusted.InertWriter{stdout, stderr}
+	return r
+}
+
+// Flush writes what the inert writers still hold: the first bytes of a
+// multi-byte rune a write cut short. Call it once the invocation is over.
+func (r *Runner) Flush() {
+	for _, w := range r.inert {
+		_ = w.Flush()
+	}
+}
+
+// writeWarning writes one frozen `warn:` line to the diagnostic stream. A
+// warning often quotes a path or a host message a stranger chose, so its
+// controls are folded first: stderr is a terminal more often than not.
 func (r *Runner) writeWarning(msg string) {
+	// A warning is one line: no message of verdict's keeps a break of its own,
+	// so a newline here came from an interpolated value (a path, a title) and
+	// would forge a second `warn:` or `error:` line.
+	msg = untrusted.Line(msg)
 	if r.Effective.Color == colorAlways {
-		fmt.Fprintf(r.Diag, "\033[33mwarn: %s\033[0m\n", msg)
+		// The color codes are verdict's own, so they bypass the fold.
+		fmt.Fprintf(untrusted.Raw(r.Diag), "\033[33mwarn: %s\033[0m\n", msg)
 	} else {
 		fmt.Fprintf(r.Diag, "warn: %s\n", msg)
 	}
@@ -169,9 +214,14 @@ func (r *Runner) WriteRentry() {
 	}
 }
 
+// writeErrorLine writes the `error:` line, its controls folded like a
+// warning's; the line breaks the message means to carry survive. A caller that
+// interpolates a stranger's value into msg folds its newlines with
+// [untrusted.Line] first.
 func (r *Runner) writeErrorLine(msg string) {
+	msg = untrusted.Inert(msg)
 	if r.Effective.Color == colorAlways {
-		fmt.Fprintf(r.Diag, "\033[31merror: %s\033[0m\n", msg)
+		fmt.Fprintf(untrusted.Raw(r.Diag), "\033[31merror: %s\033[0m\n", msg)
 		return
 	}
 	fmt.Fprintf(r.Diag, "error: %s\n", msg)
@@ -181,8 +231,8 @@ func (r *Runner) writeErrorLine(msg string) {
 // one block per problem in document order, then the truncation note.
 func writeProblems(w io.Writer, ref *RefusalError) {
 	for _, p := range ref.Problems {
-		fmt.Fprintf(w, "%s  %s  %s\n", p.Path, p.Code, p.Message)
-		fmt.Fprintf(w, "  fix: %s\n", p.Fix)
+		fmt.Fprintf(w, "%s  %s  %s\n", untrusted.Line(p.Path), p.Code, untrusted.Line(p.Message))
+		fmt.Fprintf(w, "  fix: %s\n", untrusted.Line(p.Fix))
 		if p.Example != nil {
 			if example, err := json.Marshal(p.Example); err == nil {
 				fmt.Fprintf(w, "  example: %s\n", example)

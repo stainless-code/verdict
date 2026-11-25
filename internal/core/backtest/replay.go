@@ -19,7 +19,9 @@ import (
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	recordcore "github.com/stainless-code/verdict/internal/core/record"
 	runcore "github.com/stainless-code/verdict/internal/core/run"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -318,7 +320,7 @@ func replayAgent(agent string) *core.RefusalError {
 // positional, so the order must not depend on how mine.json was sorted.
 func (st *state) replayCandidates(run string) ([]Candidate, *core.RefusalError) {
 	path := filepath.Join(st.root, artifactDir, run, "mine.json")
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, st.refuse(codeMissingBundle, fmt.Sprintf(
 			"backtest run '%s' has no mine.json — mine it first (verdict backtest mine --since <span> --run %s)",
@@ -619,7 +621,7 @@ func (s *replaySession) settle(entry ReplayPR) ReplayPR {
 // another resolution refuses run-mismatch rather than silently rewriting it.
 func (s *replaySession) stored(n int, c *Candidate) (*ReplayPRDoc, bool, *core.RefusalError) {
 	var doc ReplayPRDoc
-	raw, err := os.ReadFile(s.st.prPath(s.run, n))
+	raw, err := noblock.ReadFile(s.st.prPath(s.run, n))
 	if errors.Is(err, fs.ErrNotExist) {
 		return &doc, false, nil
 	}
@@ -993,7 +995,7 @@ func (st *state) worktreeAdd(
 	}
 	dir := filepath.ToSlash(filepath.Join(state, worktreePrefix+run+"-"+strconv.Itoa(n)))
 	st.worktreeDrop(ctx, dir)
-	detail, err := st.worktreeRun(ctx, gitWorktreeAdd, flagDetach, dir, head)
+	detail, err := st.checkout(ctx, dir, head)
 	if ctx.Err() != nil {
 		st.worktreeDrop(ctx, dir)
 		return "", "", "", st.refuse(codeCanceled, st.cancelText())
@@ -1011,10 +1013,35 @@ func (st *state) worktreeAdd(
 	return "", codeBacktestFail, "git " + gitWorktree + " " + gitWorktreeAdd + " failed for " + short(head) + labelSep + detail, nil
 }
 
+// checkout adds the candidate's detached checkout with every filter driver
+// the repository's configuration names switched off ([gitcmd.FilterOptions]):
+// the candidate head is reviewed content, whose attributes could otherwise
+// route a file through a smudge or process filter — git-lfs fetching from a
+// URL the content's .lfsconfig picks. The mining environment reads no user or
+// system config, so the listing and the checkout see the same drivers; git
+// exits 1 when there are none. Files land as their blob bytes.
+func (st *state) checkout(ctx context.Context, dir, head string) (string, error) {
+	listing, exit, stderr, err := st.git(ctx, st.root, gitcmd.ListFilters...)
+	switch {
+	case err != nil:
+		return "", err
+	case exit != 0 && (exit != 1 || listing != ""):
+		return "git config exited " + strconv.Itoa(exit) + labelSep + firstLine(stderr), nil
+	}
+	add := []string{gitWorktree, gitWorktreeAdd, flagDetach, dir, head}
+	return st.gitDetail(ctx, slices.Concat(gitcmd.FilterOptions(listing), add)...)
+}
+
 // worktreeRun runs one `git worktree` subcommand in the repository root,
 // returning git's one-line failure detail beside the spawn error.
 func (st *state) worktreeRun(ctx context.Context, args ...string) (string, error) {
-	_, exit, stderr, err := st.git(ctx, st.root, append([]string{gitWorktree}, args...)...)
+	return st.gitDetail(ctx, append([]string{gitWorktree}, args...)...)
+}
+
+// gitDetail runs one git command in the repository root, returning git's
+// one-line failure detail beside the spawn error.
+func (st *state) gitDetail(ctx context.Context, args ...string) (string, error) {
+	_, exit, stderr, err := st.git(ctx, st.root, args...)
 	if err != nil {
 		return "", err
 	}

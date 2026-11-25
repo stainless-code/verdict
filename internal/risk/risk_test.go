@@ -125,7 +125,7 @@ func TestRunRefusesUnknownFlagAndSecondPositional(t *testing.T) {
 		{name: "unknown flag", args: []string{"--bogus"}, contains: "unknown flag '--bogus' for risk"},
 		{
 			name: "second positional", args: []string{"42"},
-			contains: "gating one bundle is verdict report acme/app 42 --max-risk <band>",
+			contains: "gating one bundle is verdict gate acme/app 42 --max-risk <band>",
 		},
 	}
 	for _, tc := range cases {

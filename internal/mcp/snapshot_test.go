@@ -23,11 +23,9 @@ func TestToolsListWireSnapshot(t *testing.T) {
 	cases := []struct {
 		name     string
 		readOnly bool
-		operator bool
 	}{
 		{name: "default"},
 		{name: "read-only", readOnly: true},
-		{name: "operator", operator: true},
 	}
 	line := `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`
 	for _, tc := range cases {
@@ -35,7 +33,6 @@ func TestToolsListWireSnapshot(t *testing.T) {
 			t.Parallel()
 			cfg := testConfig()
 			cfg.ReadOnly = tc.readOnly
-			cfg.Operator = tc.operator
 			var out bytes.Buffer
 			if err := New(&cfg).Serve(context.Background(), strings.NewReader(line+"\n"), &out); err != nil {
 				t.Fatalf("Serve: %v", err)

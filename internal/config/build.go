@@ -63,6 +63,9 @@ func buildConfigViews(cfg *core.Config, root map[string]any) *core.RefusalError 
 	if cfg.Packs, ref = presentNested(root, "packs", rootLocation, buildPacks); ref != nil {
 		return ref
 	}
+	if cfg.Tests, ref = presentNested(root, "tests", rootLocation, buildTests); ref != nil {
+		return ref
+	}
 	return buildConfigTail(cfg, root)
 }
 
@@ -196,6 +199,22 @@ func buildRigorPolicy(raw any, path string) (*core.ConfigRigorPolicy, *core.Refu
 	return out, nil
 }
 
+var testsDraftEnum = []string{"off", "on-reproduce"}
+
+func buildTests(raw any, path string) (*core.ConfigTests, *core.RefusalError) {
+	obj, ref := asObject(raw, path)
+	if ref != nil {
+		return nil, ref
+	}
+	out := &core.ConfigTests{}
+	draft, ref := readEnumString(obj, "draft", path, testsDraftEnum)
+	if ref != nil {
+		return nil, ref
+	}
+	out.Draft = draft
+	return out, nil
+}
+
 func readEnumString(obj map[string]any, key, path string, vocab []string) (string, *core.RefusalError) {
 	value, ref := presentEnum(obj, key, path, vocab)
 	if ref != nil || value == nil {
@@ -259,6 +278,9 @@ func buildDefaultsHead(obj map[string]any, path string, out *core.ConfigDefaults
 		return ref
 	}
 	if out.BudgetUSD, err = presentValue(obj, keyBudgetUSD, path, positiveFloat); err != nil {
+		return err
+	}
+	if out.MonthlyBudgetUSD, err = presentValue(obj, keyMonthlyBudgetUSD, path, positiveFloat); err != nil {
 		return err
 	}
 	if out.MaxBytes, err = presentValue(obj, "max_bytes", path, positiveInt); err != nil {

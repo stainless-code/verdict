@@ -326,7 +326,7 @@ func (l *Layer) row(
 		return nil, nil, nil, inventoryReport{}
 	}
 	flags := inboxFlags()
-	resp, refusal, inv := l.cached(ctx, root, bundle, dir, &flags)
+	resp, refusal, inv := l.cached(ctx, root, bundle, dir, "", &flags)
 	row := jq.NewObj(
 		keyRoot, root.ID, keyBundle, bundle, keyDir, bundleDir(bundle),
 		keyRepo, bundleRepo(dir), keyPr, numericPr(bundle), keyModel, postModel(dir),
@@ -363,7 +363,7 @@ func (l *Layer) Detail(ctx context.Context, rootID, bundle string) (*View, error
 		return nil, ErrNotFound
 	}
 	flags := l.detailFlags()
-	resp, refusal, inv := l.cached(ctx, root, bundle, dir, &flags)
+	resp, refusal, inv := l.cached(ctx, root, bundle, dir, "", &flags)
 	if refusal != nil {
 		return nil, refusal
 	}
@@ -373,10 +373,10 @@ func (l *Layer) Detail(ctx context.Context, rootID, bundle string) (*View, error
 		errs = append(errs, *threadErr)
 	}
 	data := jq.NewObj(keyReport, normalizeReportData(root.Path, resp.Data))
-	if resp.Data.Gate == nil {
+	if resp.Gate == nil {
 		data.Set(keyGate, nil)
 	} else {
-		data.Set(keyGate, resp.Data.Gate.Wire())
+		data.Set(keyGate, resp.Gate.Wire())
 	}
 	data.Set(keyThreads, threadsData)
 	data.Set(keyArtifacts, artifacts(bundle, inv.sources))

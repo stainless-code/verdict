@@ -212,8 +212,9 @@ func assertCostNames(t *testing.T, raw string) {
 const sdkWorktreeStash = "cccccccccccccccccccccccccccccccccccccccc"
 
 // worktreeCommander scripts fetch-local --worktree in the default dirty
-// mode: the isolation stash and checkout, every bundle read through the
-// checkout, and the teardown.
+// mode: the isolation stash and checkout, the bundle's diff and stats read
+// tree to tree from the named content (scripted as the live diff), and the
+// teardown.
 func worktreeCommander(t *testing.T, wt string) *fakeCommander {
 	t.Helper()
 	return &fakeCommander{t: t, rules: []cannedRule{
@@ -226,12 +227,19 @@ func worktreeCommander(t *testing.T, wt string) *fakeCommander {
 		{tokens: []string{"-C", wt, "diff", "--no-renames"}, result: verdict.CommandResult{Stdout: "notes.txt\n"}},
 		{tokens: []string{"-C", wt, "diff", "--numstat"}, result: verdict.CommandResult{Stdout: "1\t1\tnotes.txt\n"}},
 		{tokens: []string{"-C", wt, "diff", sdkHeadA, sdkWorktreeStash}, result: verdict.CommandResult{Stdout: sdkDiff}},
+		{tokens: []string{"diff", "--no-renames", "HEAD"}, result: verdict.CommandResult{Stdout: "notes.txt\n"}},
+		{tokens: []string{"diff", "--numstat", "HEAD"}, result: verdict.CommandResult{Stdout: "1\t1\tnotes.txt\n"}},
 		{tokens: []string{"diff", "HEAD"}, result: verdict.CommandResult{Stdout: sdkDiff}},
 		{tokens: []string{"ls-files", "--others"}, result: verdict.CommandResult{}},
 		{tokens: []string{"worktree", "remove"}, result: verdict.CommandResult{}},
 		{tokens: []string{"patch-id"}, result: verdict.CommandResult{Stdout: sdkPatchID}},
 	}}
 }
+
+// headControlsConfig is the caller checkout's trusted-base config the head
+// controls snapshot captures: the minimal valid document, so the capture proves
+// the worktree bytes landed without also carrying a configuration change.
+const headControlsConfig = "{\"schema_version\":\"1\"}\n"
 
 // worktreeAddCommander adds the fake worktree's filesystem side effect that
 // the canned commander cannot express: the checkout exists before controls
@@ -246,7 +254,9 @@ func (c *worktreeAddCommander) Run(ctx context.Context, cmd *verdict.Command) (v
 		if err := os.MkdirAll(c.dir+"/.verdict", 0o755); err != nil {
 			c.t.Fatal(err)
 		}
-		if err := os.WriteFile(c.dir+"/.verdict/config.json", []byte("{\"version\":1}\n"), 0o644); err != nil {
+		// The trusted-base config must parse: a head controls snapshot is
+		// validated, so a junk sentinel would refuse the fetch outright.
+		if err := os.WriteFile(c.dir+"/.verdict/config.json", []byte(headControlsConfig), 0o644); err != nil {
 			c.t.Fatal(err)
 		}
 	}
@@ -279,9 +289,9 @@ func TestClientFetchLocalWorktreeHeadControls(t *testing.T) {
 	})
 	assertFields(t, asMap(t, doc["controls"], "controls"), map[string]any{"policy": "head", "sha": ""})
 	assertNumbers(t, doc, map[string]float64{"files": 1, "additions": 1, "deletions": 1})
-	assertArgvSpawned(t, cmdr, "git -C "+wt+" diff "+sdkHeadA+" "+sdkWorktreeStash)
+	assertArgvSpawned(t, cmdr, "git diff "+sdkHeadA+" "+scriptTree)
 	assertArgvSpawned(t, cmdr, "git worktree remove --force "+wt)
-	if got := readText(t, ".verdict/state/local-probe/controls/config.json"); got != "{\"version\":1}\n" {
+	if got := readText(t, ".verdict/state/local-probe/controls/config.json"); got != headControlsConfig {
 		t.Errorf("head controls came from the caller checkout, not the isolated worktree: %q", got)
 	}
 	// The trusted configuration read still comes from the base commit; only

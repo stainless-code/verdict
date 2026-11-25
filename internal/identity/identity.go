@@ -24,7 +24,9 @@ import (
 	"time"
 
 	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 )
 
 // Patch identity kinds: the git algorithm, the labeled local fallback, and
@@ -106,7 +108,9 @@ func gitPatchID(ctx context.Context, cmdr core.Commander, diff []byte) (string, 
 	if cmdr == nil || ctx.Err() != nil {
 		return "", false
 	}
-	res, err := cmdr.Run(ctx, &core.Command{Argv: []string{"git", "patch-id", "--stable"}, Stdin: bytes.NewReader(diff)})
+	res, err := cmdr.Run(ctx, &core.Command{
+		Argv: gitcmd.Argv("", "patch-id", "--stable"), Env: gitcmd.Env(nil), Stdin: bytes.NewReader(diff),
+	})
 	if err != nil || res.ExitCode != 0 {
 		return "", false
 	}
@@ -300,7 +304,7 @@ func VerifyBytes(ctx context.Context, cmdr core.Commander, dir string) (*Identit
 	if !ok {
 		return nil, false
 	}
-	full, err := os.ReadFile(dir + "/" + fullDiffFile)
+	full, err := noblock.ReadFile(dir + "/" + fullDiffFile)
 	if err != nil {
 		return nil, false
 	}
@@ -332,7 +336,7 @@ func ReadRawDiff(dir string, filtered []byte) ([]byte, error) {
 		}
 		return nil, jq.Sealed("inspect raw diff", err)
 	}
-	raw, err := os.ReadFile(name)
+	raw, err := noblock.ReadFile(name)
 	if err != nil {
 		return nil, jq.Sealed("read raw diff", err)
 	}

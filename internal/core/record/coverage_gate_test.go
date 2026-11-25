@@ -23,6 +23,9 @@ const coverageSlug = "local-cov"
 // coverageHead is the head SHA the fixture bundle was fetched at.
 const coverageHead = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
+// coverageTree is the content tree of coverageHead the post tests' git answers.
+const coverageTree = "8888888888888888888888888888888888888888"
+
 // coverageLinePrefix is the one body line a partial attestation adds.
 const coverageLinePrefix = "> ⚠️ coverage:"
 
@@ -88,7 +91,7 @@ func mergeCoverage(t *testing.T, require bool) (string, []string, error) {
 		t.Fatalf("controls gate: %v", ref)
 	}
 	c := &testkit.Collector{}
-	res, merr := recordcore.Merge(testRuntime(c), &recordcore.MergeParams{
+	res, merr := recordcore.Merge(t.Context(), testRuntime(c), &recordcore.MergeParams{
 		Dir:             dir,
 		Prov:            "local",
 		HeadFull:        coverageHead,
@@ -335,7 +338,7 @@ func postCoverageBundle(t *testing.T, review string) {
 	t.Chdir(t.TempDir())
 	dir := ".verdict/state/7"
 	testkit.WriteFile(t, dir+"/PR.json", `{"state":"OPEN","headRefOid":"`+coverageHead+
-		`","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"someone-else"}}`)
+		`","baseRefOid":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","author":{"login":"someone-else"},"url":"https://github.com/acme/app/pull/7"}`)
 	testkit.WriteFile(t, dir+"/full.diff", coverageDiff)
 	testkit.WriteFile(t, dir+"/review.json", review)
 	seedControls(t, dir)

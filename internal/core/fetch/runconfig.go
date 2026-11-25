@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io/fs"
-	"os"
 	"path/filepath"
 	"slices"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -226,7 +226,7 @@ func diffInputs(dir string) []config.FileInput {
 // inputs. Rename old paths ride beside the new ones when the bundle
 // records them, so a rename can never evade a clause.
 func fileInputs(dir string) []config.FileInput {
-	raw, err := os.ReadFile(dir + "/.difffiles")
+	raw, err := noblock.ReadFile(dir + "/.difffiles")
 	if err != nil {
 		return nil
 	}
@@ -261,7 +261,7 @@ func withRenames(dir string, files []config.FileInput) []config.FileInput {
 // when the provider recorded them (GitHub's previous_filename).
 func renameMap(dir string) map[string]string {
 	renames := map[string]string{}
-	raw, err := os.ReadFile(dir + suffixPRJSON)
+	raw, err := noblock.ReadFile(dir + suffixPRJSON)
 	if err != nil {
 		return renames
 	}
@@ -341,7 +341,7 @@ func (rc *runConfig) persistRunBundle(snap *controls.Snapshot, dir, name, captur
 // roles stay labeled in the evidence; excluded content never leaves the
 // bundle. A missing diff reads both hashes empty.
 func diffHashes(dir string, exclusions []string) (raw, filtered string, ref *core.RefusalError) {
-	body, err := os.ReadFile(dir + suffixFullDiff)
+	body, err := noblock.ReadFile(dir + suffixFullDiff)
 	if errors.Is(err, fs.ErrNotExist) {
 		return "", "", nil
 	}

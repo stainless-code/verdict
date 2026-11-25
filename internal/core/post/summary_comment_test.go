@@ -25,9 +25,9 @@ func seedSummaryBundle(t *testing.T, provider string) {
 	var prJSON string
 	switch provider {
 	case providerGitHub:
-		prJSON = `{"state":"OPEN","headRefOid":"` + summaryTestHead + `","baseRefOid":"` + summaryTestBase + `","author":{"login":"other-author"}}`
+		prJSON = `{"state":"OPEN","headRefOid":"` + summaryTestHead + `","baseRefOid":"` + summaryTestBase + `","author":{"login":"other-author"},"url":"https://github.com/acme/app/pull/7"}`
 	case providerGitLab:
-		prJSON = `{"provider":"gitlab","state":"open","head_sha":"` + summaryTestHead + `","base_sha":"` + summaryTestBase + `","author":"other-author"}`
+		prJSON = `{"provider":"gitlab","state":"open","head_sha":"` + summaryTestHead + `","base_sha":"` + summaryTestBase + `","author":"other-author","url":"https://gitlab.com/acme/app/-/merge_requests/7"}`
 	case providerForgejo:
 		prJSON = `{"provider":"forgejo","number":7,"state":"open","head_sha":"` + summaryTestHead + `","base_sha":"` + summaryTestBase + `","author":"other-author"}`
 	default:

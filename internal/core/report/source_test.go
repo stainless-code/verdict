@@ -32,8 +32,8 @@ func TestReportCountsBySourceAndGateIncludesToolFindings(t *testing.T) {
 	if !strings.Contains(strings.Join(resp.Human, "\n"), "by source: model 1, tool 1") {
 		t.Fatalf("expected human by source line in %v", resp.Human)
 	}
-	if !resp.GateFailed || resp.Data.Gate == nil || resp.Data.Gate.Passed {
-		t.Fatalf("expected report --check important to fail on tool finding: gateFailed=%v gate=%+v", resp.GateFailed, resp.Data.Gate)
+	if !resp.GateFailed || resp.Gate == nil || resp.Gate.Passed {
+		t.Fatalf("expected the important-tier gate to fail on the tool finding: gateFailed=%v gate=%+v", resp.GateFailed, resp.Gate)
 	}
 }
 

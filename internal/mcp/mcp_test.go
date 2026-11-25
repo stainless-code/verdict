@@ -24,6 +24,7 @@ import (
 	fetchcore "github.com/stainless-code/verdict/internal/core/fetch"
 	learncore "github.com/stainless-code/verdict/internal/core/learn"
 	reportcore "github.com/stainless-code/verdict/internal/core/report"
+	"github.com/stainless-code/verdict/internal/gitcmd"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/testenv"
 )
@@ -106,14 +107,15 @@ func decodeFrames(t *testing.T, raw []byte) map[string]frame {
 //nolint:revive,gocognit,cyclop // the matrix reads as one assertion block
 func TestToolSchemas(t *testing.T) {
 	t.Parallel()
-	tools := allTools(false, false)
-	if len(tools) != 26 {
-		t.Fatalf("tools = %d, want 26", len(tools))
+	tools := allTools(Posture(false))
+	if len(tools) != 33 {
+		t.Fatalf("tools = %d, want 33", len(tools))
 	}
 	wantNames := []string{
 		"adopt", "calibrate", "check-tree", "config", "doctor", "fetch", "fetch-local", "fix",
-		"handoff", "index", "ingest", "init", "journal", "learn", "next", "pack", "post", "pr_wait", "ready", "record", "report", "risk", "show",
-		"threads", "trend", "verify",
+		"handoff", "index", "ingest", "init", "journal", "learn", "next", "pack", "post", "pr_wait",
+		"query-bundles", "query-copy", "query-cost", "query-finding", "query-findings", "query-health",
+		"ready", "record", "report", "risk", "show", "threads", "trend", "triage", "verify",
 	}
 	names := make([]string, 0, len(tools))
 	for _, tool := range tools {
@@ -350,7 +352,7 @@ func TestReadOnlyPolicy(t *testing.T) {
 	t.Parallel()
 	cfg := testConfig()
 	cfg.ReadOnly = true
-	readOnly := allTools(true, false)
+	readOnly := allTools(Posture(true))
 	if len(readOnly) == 0 {
 		t.Fatal("no read-only tools")
 	}
@@ -396,7 +398,7 @@ func TestReadOnlyPolicy(t *testing.T) {
 // the refusal that follows names the bundle, not the read-only server.
 func TestReadOnlyRecordDryRun(t *testing.T) {
 	t.Parallel()
-	readOnly := allTools(true, false)
+	readOnly := allTools(Posture(true))
 	var record *tool
 	for _, tool := range readOnly {
 		if tool.name == "record" {
@@ -544,7 +546,7 @@ func TestServeLifecycle(t *testing.T) {
 	if err := json.Unmarshal(frames["2"].Result, &list); err != nil {
 		t.Fatal(err)
 	}
-	if len(list.Tools) != 26 {
+	if len(list.Tools) != 33 {
 		t.Errorf("tools = %d", len(list.Tools))
 	}
 	var ok callToolResult
@@ -676,7 +678,7 @@ func TestArgsDecode(t *testing.T) {
 
 func findTool(t *testing.T, name string) *tool {
 	t.Helper()
-	for _, tool := range allTools(false, true) {
+	for _, tool := range allTools(Posture(false)) {
 		if tool.name == name {
 			return tool
 		}
@@ -685,56 +687,40 @@ func findTool(t *testing.T, name string) *tool {
 	return nil
 }
 
-// TestOperatorSurface proves the human-owned triage verb stays off the
-// default and read-only surfaces and appears only with --operator. A call
-// without the flag is a hidden-tool error naming --operator; with it, the
-// call reaches the service (a typed refusal here is still a tool result, not
-// -32602).
-//
-//nolint:revive // the surface matrix reads as one assertion block
-func TestOperatorSurface(t *testing.T) {
+// TestTriageFollowsReadOnly proves the human-owned triage verb rides the one
+// write-posture rule: on by default, absent under --read-only (where a call is
+// the typed read-only-tool refusal naming the one flag), and never behind a
+// second flag.
+func TestTriageFollowsReadOnly(t *testing.T) {
 	t.Parallel()
-	if hasTriage(allTools(false, false)) {
-		t.Fatal("triage leaked onto the default surface")
+	if !hasTriage(allTools(Posture(false))) {
+		t.Fatal("triage is missing from the default surface")
 	}
-	if hasTriage(allTools(true, false)) {
+	if hasTriage(allTools(Posture(true))) {
 		t.Fatal("triage leaked onto the --read-only surface")
 	}
-	if hasTriage(allTools(true, true)) {
-		t.Fatal("triage leaked when --read-only and --operator are combined")
-	}
-	if !hasTriage(allTools(false, true)) {
-		t.Fatal("--operator does not expose triage")
-	}
+	const triageCall = `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"triage","arguments":{"repo":"a/b","pr":"1","sig":"deadbeef","status":"wont-fix","rationale":"write-posture test rationale here","dryRun":true}}}`
 	cfg := testConfig()
-	frames := serve(t, &cfg,
-		`{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"triage","arguments":{"repo":"a/b","pr":"1","sig":"deadbeef","status":"wont-fix","rationale":"operator-only test rationale here","dryRun":true}}}`)
-	if frames["1"].Error == nil || frames["1"].Error.Code != codeInvalidParams {
-		t.Fatalf("triage call without --operator = %+v, want -32602", frames["1"].Error)
-	}
-	if msg := frames["1"].Error.Message; !strings.Contains(msg, "is hidden") || !strings.Contains(msg, "--operator") {
-		t.Errorf("triage call without --operator = %q, want a hidden-tool error naming --operator", msg)
-	}
-	cfg.Operator = true
-	frames = serve(t, &cfg,
-		`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`,
-		`{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"triage","arguments":{"repo":"a/b","pr":"1","sig":"deadbeef","status":"wont-fix","rationale":"operator-only test rationale here","dryRun":true}}}`)
+	frames := serve(t, &cfg, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`, triageCall)
 	var list toolsListResult
 	if err := json.Unmarshal(frames["1"].Result, &list); err != nil {
 		t.Fatal(err)
 	}
 	if !listHasTriage(list.Tools) {
-		t.Fatal("--operator tools/list misses triage")
+		t.Fatal("default tools/list misses triage")
 	}
 	if frames["2"].Error != nil {
-		t.Fatalf("triage call with --operator = %+v, want a tool result", frames["2"].Error)
+		t.Fatalf("default triage call = %+v, want a tool result", frames["2"].Error)
 	}
+	cfg.ReadOnly = true
+	frames = serve(t, &cfg, triageCall)
+	assertReadOnlyToolRefusal(t, frames["2"], "triage", "a server started without --read-only")
 }
 
-// TestThreadsResolveNeedsOperator proves the resolve mode is operator-only:
-// the same call refuses with bad-flags naming --operator on a default server,
-// and reaches the service (a bundle refusal, not the gate) with --operator.
-func TestThreadsResolveNeedsOperator(t *testing.T) {
+// TestThreadsResolveFollowsReadOnly proves the resolve mode needs no flag of
+// its own: a default server reaches the service (a bundle refusal, never a
+// flag gate), and --read-only hides the whole threads tool.
+func TestThreadsResolveFollowsReadOnly(t *testing.T) {
 	t.Chdir(t.TempDir())
 	cfg := testConfig()
 	call := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"threads","arguments":{"repo":"a/b","pr":"1","resolve":true,"dryRun":true}}}`
@@ -743,18 +729,12 @@ func TestThreadsResolveNeedsOperator(t *testing.T) {
 	if err := json.Unmarshal(frames["1"].Result, &result); err != nil {
 		t.Fatal(err)
 	}
-	if !result.IsError || !strings.Contains(string(result.StructuredContent), "bad-flags") ||
-		!strings.Contains(string(result.StructuredContent), "--operator") {
-		t.Fatalf("resolve without --operator = %s, want a bad-flags refusal naming --operator", result.StructuredContent)
+	if strings.Contains(string(result.StructuredContent), "--operator") {
+		t.Fatalf("resolve on a default server still names --operator: %s", result.StructuredContent)
 	}
-	cfg.Operator = true
+	cfg.ReadOnly = true
 	frames = serve(t, &cfg, call)
-	if err := json.Unmarshal(frames["1"].Result, &result); err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(result.StructuredContent), "requires a server started with --operator") {
-		t.Fatal("resolve with --operator still hit the operator gate")
-	}
+	assertReadOnlyToolRefusal(t, frames["1"], "threads", "a server started without --read-only")
 }
 
 func hasTriage(tools []*tool) bool {
@@ -890,7 +870,7 @@ func waitForFile(t *testing.T, path string) {
 func TestSchemaNamesSorted(t *testing.T) {
 	t.Parallel()
 	names := make([]string, 0)
-	for _, tool := range allTools(false, false) {
+	for _, tool := range allTools(Posture(false)) {
 		names = append(names, tool.name)
 	}
 	if !sort.StringsAreSorted(names) {
@@ -934,7 +914,7 @@ type threadsCommander struct {
 }
 
 func (c *threadsCommander) Run(_ context.Context, cmd *core.Command) (core.Result, error) {
-	if strings.Join(cmd.Argv, " ") == "git remote get-url origin" {
+	if _, args, ok := gitcmd.Split(cmd.Argv); ok && strings.Join(args, " ") == "remote get-url origin" {
 		return core.Result{Stdout: "https://github.com/acme/app.git"}, nil
 	}
 	if strings.Contains(strings.Join(cmd.Argv, " "), "api graphql") {
@@ -955,7 +935,7 @@ func TestThreadsTool(t *testing.T) {
 	writeFile(t, ".verdict/state/7/PR.json",
 		`{"state":"OPEN","headRefOid":"`+strings.Repeat("a", 40)+`"}`)
 	var registered *tool
-	for _, candidate := range allTools(false, false) {
+	for _, candidate := range allTools(Posture(false)) {
 		if candidate.name == "threads" {
 			registered = candidate
 			break

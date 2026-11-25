@@ -3,6 +3,7 @@ package verifycore_test
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -72,7 +73,11 @@ type deadlineCommander struct {
 	has  bool
 }
 
-func (d *deadlineCommander) Run(ctx context.Context, _ *core.Command) (core.Result, error) {
+func (d *deadlineCommander) Run(ctx context.Context, cmd *core.Command) (core.Result, error) {
+	// verify's own git reads are not the watchdog spawn.
+	if res, ok := gitAnswer(cmd, ""); ok {
+		return res, nil
+	}
 	var dl time.Time
 	dl, d.has = ctx.Deadline()
 	d.left = time.Until(dl)
@@ -121,5 +126,23 @@ func TestVerifyCancelDuringStartRefusesCanceled(t *testing.T) {
 	_, ref := verifycore.Run(ctx, req)
 	if ref == nil || ref.Code != "canceled" {
 		t.Fatalf("refusal = %v, want code canceled", ref)
+	}
+}
+
+// TestVerifyTailSanitizesBeforeTheCut pins that the recorded tail is cut from
+// the sanitized capture: a credential the 4,000-byte cut would split leaves no
+// unrecognizable second half at the tail's left edge.
+func TestVerifyTailSanitizesBeforeTheCut(t *testing.T) {
+	bundle(t, `{"verifyCmd":"printf tail"}`)
+	const suffix = "secretsuffix1234567890"
+	out := strings.Repeat("x", 100) + " sk-ant-api03-ZZ" + suffix + " " + strings.Repeat(".", 4000-len(suffix)-1)
+	cmdr := &scriptCommander{res: core.Result{Stdout: out}}
+	resp, ref := verifycore.Run(context.Background(), verifyRequest(&testkit.Collector{}, cmdr, "10",
+		[]string{"PATH=/bin"}, true))
+	if ref != nil {
+		t.Fatalf("Run refusal: %v", ref)
+	}
+	if strings.Contains(resp.Tail, suffix) {
+		t.Fatalf("tail keeps the cut credential's second half: %q", resp.Tail[:64])
 	}
 }

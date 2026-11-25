@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -173,5 +174,113 @@ func TestUnsupportedIncrementalNote(t *testing.T) {
 	}
 	if _, statErr := os.Stat(filepath.Join(dir, "incremental.diff")); !os.IsNotExist(statErr) {
 		t.Errorf("the note left a stale incremental.diff (err=%v)", statErr)
+	}
+}
+
+// seedStaleDelta plants a stale delta and note for the non-delta clears.
+func seedStaleDelta(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "incremental.diff"), []byte("stale delta\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "incremental.diff.note"), []byte("stale note\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// assertStaleCleared fails if a non-delta fetch left either stale file.
+func assertStaleCleared(t *testing.T, dir string) {
+	t.Helper()
+	if _, err := os.Stat(filepath.Join(dir, "incremental.diff")); !os.IsNotExist(err) {
+		t.Errorf("non-delta fetch left incremental.diff (err=%v)", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "incremental.diff.note")); !os.IsNotExist(err) {
+		t.Errorf("non-delta fetch left incremental.diff.note (err=%v)", err)
+	}
+}
+
+// TestGitHubNonDeltaClearsStaleIncremental proves a GitHub compare without
+// --base-sha removes a stale delta and note from the bundle directory.
+func TestGitHubNonDeltaClearsStaleIncremental(t *testing.T) {
+	t.Parallel()
+	dir := seedStaleDelta(t)
+	s, _ := newTestSession(&scriptCommander{t: t})
+	got, err := githubIncremental(context.Background(), s, dir, "acme/app", &Flags{HasBase: false})
+	if err != nil {
+		t.Fatalf("githubIncremental: %v", err)
+	}
+	if got != nullStr {
+		t.Errorf("incremental base = %q, want null", got)
+	}
+	assertStaleCleared(t, dir)
+}
+
+// TestGitLabNonDeltaClearsStaleIncremental proves a GitLab compare without
+// --base-sha removes a stale delta and note from the bundle directory.
+func TestGitLabNonDeltaClearsStaleIncremental(t *testing.T) {
+	t.Parallel()
+	dir := seedStaleDelta(t)
+	s, _ := newTestSession(&scriptCommander{t: t})
+	got, err := gitlabIncremental(context.Background(), s, dir, "11", &Flags{HasBase: false, BaseSHA: ""})
+	if err != nil {
+		t.Fatalf("gitlabIncremental: %v", err)
+	}
+	if got != nullStr {
+		t.Errorf("incremental base = %q, want null", got)
+	}
+	assertStaleCleared(t, dir)
+}
+
+// TestProviderNoteNonDeltaClearsStaleIncremental proves the shared
+// unsupported-host path without --base-sha removes a stale delta and note.
+func TestProviderNoteNonDeltaClearsStaleIncremental(t *testing.T) {
+	t.Parallel()
+	dir := seedStaleDelta(t)
+	s, _ := newTestSession(&scriptCommander{t: t})
+	if ref := providerIncrementalNote(s, dir, &Flags{HasBase: false, Provider: "forgejo"}, false); ref != nil {
+		t.Fatalf("providerIncrementalNote: %v", ref)
+	}
+	assertStaleCleared(t, dir)
+}
+
+// seedUnremovableDelta plants a delta path that is a non-empty directory, so
+// the removal fails with something other than not-exist.
+func seedUnremovableDelta(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	path := filepath.Join(dir, "incremental.diff")
+	if err := os.MkdirAll(path, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(path, "keep"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+// TestClearStaleIncrementalRefuses proves a delta the run cannot remove refuses
+// the fetch instead of leaving the marker behind: a stale delta makes
+// the next full round grade as incremental, crediting prior lines against
+// hunks that moved. The refusal is refused-fetch-failed, never a silent skip,
+// and it propagates out of the caller.
+func TestClearStaleIncrementalRefuses(t *testing.T) {
+	t.Parallel()
+	dir := seedUnremovableDelta(t)
+	ref := clearStaleIncremental(dir)
+	if ref == nil {
+		t.Fatal("clearStaleIncremental = nil, want a fetch-failed refusal")
+	}
+	if ref.Code != CodeFetchFailed {
+		t.Errorf("code = %q, want %q", ref.Code, CodeFetchFailed)
+	}
+	want := "could not clear " + dir + "/incremental.diff"
+	if !strings.Contains(ref.Message, want) {
+		t.Errorf("message = %q, want it to name %q", ref.Message, want)
+	}
+	s, _ := newTestSession(&scriptCommander{t: t})
+	if _, err := githubIncremental(context.Background(), s, dir, "acme/app", &Flags{HasBase: false}); err == nil {
+		t.Fatal("githubIncremental = nil, want the clear refusal propagated")
 	}
 }

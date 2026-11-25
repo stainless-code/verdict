@@ -26,7 +26,6 @@ func TestPanelArtifacts(t *testing.T) {
 	} {
 		writeFixture(t, filepath.Join(dir, name), body)
 	}
-	writeFixture(t, filepath.Join(root, "prompts/verifier.md"), "trusted verifier prompt")
 	var out bytes.Buffer
 	r := &cli.Runner{Out: &out, Human: &out, Diag: &out, JSONMode: true, Effective: core.Defaults()}
 	req := readcommon.Request{Root: &root, RepoRoot: root, Repo: "acme/app", Pr: "local-test", Runtime: &core.Runtime{Now: func() time.Time { return time.Unix(0, 0) }}}
@@ -37,8 +36,8 @@ func TestPanelArtifacts(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.HasPrefix(string(first), "trusted verifier prompt\n") {
-		t.Fatalf("missing trusted prompt: %s", first)
+	if !strings.HasPrefix(string(first), "# Independent verifier\n") {
+		t.Fatalf("missing embedded verifier prompt: %.80s", first)
 	}
 	out.Reset()
 	if code := Run(t.Context(), r, nil, req); code != 0 {
@@ -54,6 +53,35 @@ func TestPanelArtifacts(t *testing.T) {
 	assertFile(t, filepath.Join(dir, "panel"), "synth\na\nb\n")
 	assertFile(t, filepath.Join(dir, "findings.json"), "[]\n")
 	assertFile(t, filepath.Join(dir, "post.json"), "untouched receipt\n")
+}
+
+// TestPanelNeedsNoCheckout pins the installed-binary case: neither the tool
+// root nor the working directory holds a procedure/ folder, so the verifier
+// prompt can only come from the embedded Procedure.
+func TestPanelNeedsNoCheckout(t *testing.T) {
+	empty := t.TempDir()
+	t.Chdir(empty)
+	repo := filepath.Join(t.TempDir(), "review repo")
+	dir := filepath.Join(repo, ".verdict/state/local-test")
+	for name, body := range map[string]string{
+		"panel": "synth\na\n", "source.json": `{"head_sha":"head"}`,
+		"review.json": `{"schema_version":"1","body":"review","comments":[]}`,
+	} {
+		writeFixture(t, filepath.Join(dir, name), body)
+	}
+	var out bytes.Buffer
+	r := &cli.Runner{Out: &out, Human: &out, Diag: &out, JSONMode: true, Effective: core.Defaults(), Now: func() time.Time { return time.Unix(0, 0) }}
+	req := readcommon.Request{Root: &empty, RepoRoot: repo, Repo: "acme/app", Pr: "local-test", Runtime: &core.Runtime{Now: func() time.Time { return time.Unix(0, 0) }}}
+	if code := Run(t.Context(), r, nil, req); code != 0 {
+		t.Fatalf("exit=%d: %s", code, out.String())
+	}
+	dispatch, err := os.ReadFile(filepath.Join(dir, "verification/dispatch.md"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.HasPrefix(string(dispatch), "# Independent verifier\n") {
+		t.Fatalf("dispatch lacks the embedded verifier prompt: %.80s", dispatch)
+	}
 }
 
 func TestPanelRefusesSymlink(t *testing.T) {

@@ -122,6 +122,9 @@ restore_stub() { cp "$STUB_SAVED" "$EVAL_STUBBIN/gh"; }
 install_canned_stub() {
   cat > "$EVAL_STUBBIN/gh" <<'EOF'
 #!/usr/bin/env bash
+# post pins its calls to the bundle's host: github.com here, and only it.
+if [ "${1:-}" = api ] && [ "${2:-}" = --hostname ] && [ "${3:-}" = github.com ]; then set -- api "${@:4}"; fi
+case " $* " in *" --hostname"*) echo "evals-stub-gh: call pinned to another host ($*)" >&2; exit 64;; esac
 echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
 case "$*" in
   'api repos/'*'/reviews --paginate'|'api repos/'*'/comments --paginate')
@@ -286,6 +289,7 @@ fi
 
 run_review next --coverage
 assert_exit "next --coverage requires positionals" 2
-assert_file_grep "missing positionals lead with an error" "$EVAL_ERR" '^error: next requires <owner/repo> and <pr\|local-name>$'
+assert_file_grep "missing positionals lead with the target refusal" "$EVAL_ERR" '^error: no target given .*verdict next <owner/repo> <pr>' "-E"
+assert_file_grep "the refusal ends with next's usage line" "$EVAL_ERR" '^usage: verdict next <owner/repo> <pr> '
 
 eval_end

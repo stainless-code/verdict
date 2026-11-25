@@ -81,7 +81,4 @@ func assertModeledFixHint(t *testing.T, fix *ShowFix) {
 	if fix.VerifyHint == nil || fix.VerifyHint.VerifyCmd != "go test ./..." {
 		t.Fatalf("fix verify hint = %+v", fix.VerifyHint)
 	}
-	if fix.VerifyHint.ResultHead == nil || *fix.VerifyHint.ResultHead != "aaaaaaa" {
-		t.Errorf("fix result head = %v", fix.VerifyHint.ResultHead)
-	}
 }

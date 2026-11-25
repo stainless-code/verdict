@@ -3,7 +3,6 @@ package recordcore
 import (
 	"bytes"
 	"fmt"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -14,10 +13,12 @@ import (
 	"github.com/stainless-code/verdict/internal/controls"
 	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/core/coverage"
+	"github.com/stainless-code/verdict/internal/diagram"
 	"github.com/stainless-code/verdict/internal/evidence"
 	"github.com/stainless-code/verdict/internal/hunks"
 	"github.com/stainless-code/verdict/internal/jq"
 	"github.com/stainless-code/verdict/internal/kb"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 	"github.com/stainless-code/verdict/internal/sig"
 	"github.com/stainless-code/verdict/internal/untrusted"
@@ -25,35 +26,43 @@ import (
 )
 
 type state struct { //nolint:govet // field grouping documents the merge dimensions; alignment is irrelevant here
-	confidence      any
-	security        any
-	risk            *core.RiskClaim
-	review          *jq.Obj
-	coverage        *coverage.Summary
-	evidence        *core.EvidenceReceipt
-	controls        *controls.Snapshot
-	run             *config.RunState
-	kb              *kb.Ctx
-	forces          *core.GlobalForces
-	progress        core.Progress
-	effective       core.Effective
-	minSeverity     string
-	cmd             string
-	repo            string
-	pr              string
-	env             map[string]string
-	now             string
-	findingsFile    string
-	marker          string
-	dir             string
-	receipt         *core.ExcludedFile
-	reviewFile      string
-	root            string
-	repoRoot        string
-	anchorHunks     string
-	headShort       string
-	prov            string
-	headFull        string
+	confidence   any
+	security     any
+	risk         *core.RiskClaim
+	review       *jq.Obj
+	coverage     *coverage.Summary
+	evidence     *core.EvidenceReceipt
+	diagram      diagram.Result
+	controls     *controls.Snapshot
+	run          *config.RunState
+	kb           *kb.Ctx
+	forces       *core.GlobalForces
+	progress     core.Progress
+	effective    core.Effective
+	minSeverity  string
+	cmd          string
+	repo         string
+	pr           string
+	env          map[string]string
+	now          string
+	findingsFile string
+	marker       string
+	dir          string
+	receipt      *core.ExcludedFile
+	reviewFile   string
+	root         string
+	repoRoot     string
+	anchorHunks  string
+	headShort    string
+	prov         string
+	headFull     string
+	// readTree reads the graded content's tree; tree, treeGap, and treeRead
+	// memoize it for the run (see gradedTree).
+	readTree        func() (tree, gap string, err error)
+	tree            string
+	treeGap         string
+	treeErr         error
+	treeRead        bool
 	kept            []any
 	keptSigs        []string
 	movedSigs       []string
@@ -64,6 +73,7 @@ type state struct { //nolint:govet // field grouping documents the merge dimensi
 	nKept           int
 	nMoved          int
 	dryRun          bool
+	noPersist       bool
 	inputChecked    bool
 	requireCoverage bool
 	requireRigor    []string
@@ -484,7 +494,7 @@ func jqLine(v any) string {
 }
 
 func loadHunkRows(path string) []hunks.Hunk {
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil
 	}
@@ -619,6 +629,7 @@ func buildInline(st *state, m *jq.Obj) freshEntry {
 		FinderConfidence: jq.R(finderConfidence),
 		Verification:     &core.Verify{Quote: entryQuoteStatus(m)},
 		Suggestion:       optString(jq.Alt(sugg, nil)),
+		Lens:             lensOf(m),
 		InBounds:         drop == nil,
 		Rigor:            rigorValue,
 		RigorSource:      rigorSource,
@@ -697,6 +708,20 @@ func optString(v any) *string {
 		return &s
 	}
 	return nil
+}
+
+// lensOf reads one comment's optional lens provenance, or "" when the
+// comment spells none. The checker has already refused a malformed value, so
+// a non-string here reads as absent, never as provenance.
+func lensOf(m *jq.Obj) string {
+	v, ok := m.Get(fieldLens)
+	if !ok {
+		return ""
+	}
+	if s, isStr := v.(string); isStr {
+		return s
+	}
+	return ""
 }
 
 func stampEntry(st *state, e *core.FindingEntry, kbRaw any, kbExists bool) *core.FindingEntry {
@@ -876,6 +901,7 @@ func mergeFields(st *state, pm, n *jq.Obj) *jq.Obj {
 	overlayAlt(m, n, pm, "reproduction")
 	overlayAlt(m, n, pm, fieldSeverity)
 	mergeCategory(m, n)
+	mergeLens(m, n)
 	overlayAlt(m, n, pm, fieldSuggestion)
 	if v, ok := n.Get(fieldSources); ok {
 		m.Set(fieldSources, v)
@@ -914,6 +940,14 @@ func mergeCategory(m, n *jq.Obj) {
 	if n.Has(fieldCategory) {
 		nv, _ := n.Get(fieldCategory)
 		m.Set(fieldCategory, nv)
+	}
+}
+
+// mergeLens carries the fresh lens onto the merged entry: a spelled fresh
+// lens wins, an absent one preserves the prior provenance.
+func mergeLens(m, n *jq.Obj) {
+	if nv, ok := n.Get(fieldLens); ok && nv != nil {
+		m.Set(fieldLens, nv)
 	}
 }
 
@@ -972,7 +1006,7 @@ func priorRigorSource(m *jq.Obj) string {
 }
 
 func (st *state) autoReopen() {
-	raw, err := os.ReadFile(st.dir + "/incremental.diff")
+	raw, err := noblock.ReadFile(st.dir + "/incremental.diff")
 	if err != nil {
 		return
 	}

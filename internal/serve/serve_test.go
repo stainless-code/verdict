@@ -139,7 +139,7 @@ func mustAbs(t *testing.T, dir string) string {
 // testServer builds the handler over a layer.
 func testServer(t *testing.T, layer Layer) *httptest.Server {
 	t.Helper()
-	server, err := New(&Config{Port: testPort, Token: testToken, Now: fixedNow, Layer: layer})
+	server, err := New(&Config{Port: testPort, Token: testToken, Now: fixedNow, Layer: layer, ReadOnly: true})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
@@ -404,12 +404,13 @@ func TestCanceledProbeExitsBroke(t *testing.T) {
 }
 
 // TestNonLoopbackWarningNamesPlainHTTP pins the exposure warning, including
-// the unencrypted token and cookie.
+// the unencrypted token and cookie, and that a read-only bind never claims a
+// write surface.
 func TestNonLoopbackWarningNamesPlainHTTP(t *testing.T) {
 	t.Parallel()
 	out := &syncBuffer{}
 	runner := &cli.Runner{Out: out, Human: out, Diag: out, Effective: cli.Defaults()}
-	warnExposure(runner, &serveOptions{host: "0.0.0.0"})
+	warnExposure(runner, &serveOptions{host: "0.0.0.0", readOnly: true})
 	const want = "serve: binding 0.0.0.0 exposes the read-only surface beyond loopback " +
 		"over plain HTTP; the token and session cookie are not encrypted"
 	if !slices.Contains(runner.Warnings, want) {
@@ -417,20 +418,168 @@ func TestNonLoopbackWarningNamesPlainHTTP(t *testing.T) {
 	}
 }
 
-// TestRouteTableIsGetOnly walks the one registration point: a non-GET row
-// must fail the table's contract.
-func TestRouteTableIsGetOnly(t *testing.T) {
+// TestNonLoopbackWarningNamesReadOnlyReason pins the two start warnings a bind
+// beyond loopback earns: the plain-HTTP exposure of the read-only surface it
+// serves, and why its writes are off (unless --read-only already said so).
+func TestNonLoopbackWarningNamesReadOnlyReason(t *testing.T) {
 	t.Parallel()
-	root := writeFixture(t, fixtureFiles())
-	server, err := New(&Config{Root: root, Port: testPort, Token: testToken, Now: fixedNow})
+	const exposure = "serve: binding 0.0.0.0 exposes the read-only surface beyond loopback " +
+		"over plain HTTP; the token and session cookie are not encrypted"
+	const reason = "serve: 0.0.0.0 is not loopback, so this server runs read-only: " +
+		"writes would cross plain HTTP, where the token and CSRF token can be sniffed; " +
+		"bind 127.0.0.1 for local triage"
+	for _, tc := range []struct {
+		name string
+		opts serveOptions
+		want []string
+	}{
+		{"default", serveOptions{host: "0.0.0.0"}, []string{exposure, reason}},
+		{"explicit read-only", serveOptions{host: "0.0.0.0", readOnly: true}, []string{exposure}},
+	} {
+		out := &syncBuffer{}
+		runner := &cli.Runner{Out: out, Human: out, Diag: out, Effective: cli.Defaults()}
+		warnExposure(runner, &tc.opts)
+		if !slices.Equal(runner.Warnings, tc.want) {
+			t.Errorf("%s warnings = %q, want %q", tc.name, runner.Warnings, tc.want)
+		}
+	}
+	out := &syncBuffer{}
+	runner := &cli.Runner{Out: out, Human: out, Diag: out, Effective: cli.Defaults()}
+	warnExposure(runner, &serveOptions{host: "127.0.0.1"})
+	if len(runner.Warnings) != 0 {
+		t.Errorf("loopback warnings = %q, want none", runner.Warnings)
+	}
+}
+
+// startEnvelopeCase is one start-envelope posture: the flags, and the two
+// advertised values they must produce.
+type startEnvelopeCase struct {
+	name      string
+	allowPost bool
+	readOnly  bool
+	allow     bool
+}
+
+// TestAnnounceStartEnvelopeCarriesAllowPost pins the machine-readable start
+// surface: a script learns host posting is on from the one envelope, never by
+// probing a write route.
+func TestAnnounceStartEnvelopeCarriesAllowPost(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []startEnvelopeCase{
+		{name: "read-only", readOnly: true},
+		{name: "default-writes"},
+		{name: "allow-post", allowPost: true, allow: true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			assertStartEnvelope(t, tc)
+		})
+	}
+}
+
+// assertStartEnvelope reads the one JSON start envelope for tc's flags.
+func assertStartEnvelope(t *testing.T, tc startEnvelopeCase) {
+	t.Helper()
+	server, err := New(&Config{
+		Root: writeFixture(t, fixtureFiles()), Port: testPort, Token: testToken, Now: fixedNow,
+		ReadOnly: tc.readOnly, AllowPost: tc.allowPost,
+	})
 	if err != nil {
 		t.Fatalf("New: %v", err)
 	}
+	out := &syncBuffer{}
+	runner := &cli.Runner{Out: out, Human: out, Diag: out, JSONMode: true, Now: fixedNow, Effective: cli.Defaults()}
+	announce(runner, server)
+	data := asMap(t, decode(t, []byte(out.String()))["data"])
+	if data["allow_post"] != tc.allow {
+		t.Errorf("data.allow_post = %v, want %v (%s)", data["allow_post"], tc.allow, out.String())
+	}
+	if data["read_only"] != tc.readOnly {
+		t.Errorf("data.read_only = %v, want %v (%s)", data["read_only"], tc.readOnly, out.String())
+	}
+	if got := asString(t, data["url"]); got != server.URL() {
+		t.Errorf("data.url = %q, want %q", got, server.URL())
+	}
+}
+
+// TestRouteTableIsGetOnlyByDefault walks the one registration point: the
+// --read-only table is GET only, and only a writable server adds the two
+// POST rows (and drops the GET placeholders).
+func TestRouteTableIsGetOnly(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	server, err := New(&Config{Root: root, Port: testPort, Token: testToken, Now: fixedNow, ReadOnly: true})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	get := map[string]bool{}
 	for _, item := range server.routes() {
 		if item.Method != http.MethodGet {
 			t.Errorf("route %s %s is not GET", item.Method, item.Pattern)
 		}
+		get[item.Pattern] = true
 	}
+	if !get["/v1/triage"] || !get["/v1/kb/promote"] {
+		t.Errorf("default GET placeholders = %v, want /v1/triage and /v1/kb/promote", get)
+	}
+}
+
+// assertNoGetPlaceholder proves one write path carries no GET row on an
+// interactive server.
+func assertNoGetPlaceholder(t *testing.T, server *Server, pattern string) {
+	t.Helper()
+	for _, item := range server.routes() {
+		if item.Method == http.MethodGet && item.Pattern == pattern {
+			t.Errorf("interactive GET placeholder on %s", pattern)
+		}
+	}
+}
+
+// interactivePostPatterns lists the POST patterns of one table.
+func interactivePostPatterns(server *Server) map[string]bool {
+	post := map[string]bool{}
+	for _, item := range server.routes() {
+		if item.Method == http.MethodPost {
+			post[item.Pattern] = true
+		}
+	}
+	return post
+}
+
+// TestRouteTableInteractiveAddsPosts pins the interactive table: the
+// Tier A write posts and the Tier B job posts join the GET rows, no
+// other POST row exists, and the write paths carry no GET placeholder.
+func TestRouteTableInteractiveAddsPosts(t *testing.T) {
+	t.Parallel()
+	root := writeFixture(t, fixtureFiles())
+	server, err := New(&Config{
+		Root: root, Port: testPort, Token: testToken, Now: fixedNow,
+	})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	post := interactivePostPatterns(server)
+	want := map[string]bool{
+		"/v1/triage":            true,
+		"/v1/kb/promote":        true,
+		"/v1/post/submit":       true,
+		"/v1/jobs/verify":       true,
+		"/v1/jobs/post-preview": true,
+		"/v1/jobs/{id}/cancel":  true,
+	}
+	if len(post) != len(want) {
+		t.Errorf("POST rows = %v, want %v", post, want)
+	}
+	for pattern := range want {
+		if !post[pattern] {
+			t.Errorf("POST rows = %v, missing %s", post, pattern)
+		}
+	}
+	assertNoGetPlaceholder(t, server, "/v1/triage")
+	assertNoGetPlaceholder(t, server, "/v1/kb/promote")
+	assertNoGetPlaceholder(t, server, "/v1/post/submit")
+	assertNoGetPlaceholder(t, server, "/v1/jobs/verify")
+	assertNoGetPlaceholder(t, server, "/v1/jobs/post-preview")
 }
 
 // TestConfigRejectsSubminimumWatchDurations covers the resolved Config bounds.
@@ -1273,6 +1422,16 @@ func (l *blockingLayer) Detail(context.Context, string, string) (*query.View, er
 	return nil, query.ErrNotFound
 }
 
+// Compare reports the bundle missing.
+func (l *blockingLayer) Compare(context.Context, string, string, string) (*query.View, error) {
+	return nil, query.ErrNotFound
+}
+
+// Copy reports the finding missing.
+func (l *blockingLayer) Copy(context.Context, string, string, string) (*query.View, error) {
+	return nil, query.ErrNotFound
+}
+
 // Show reports the finding missing.
 func (l *blockingLayer) Show(context.Context, string, string, string) (*query.View, error) {
 	return nil, query.ErrNotFound
@@ -1285,6 +1444,17 @@ func (l *blockingLayer) Cost(context.Context, string) (*query.View, error) {
 func (l *blockingLayer) Precision(context.Context, string) (*query.View, error) {
 	return nil, query.ErrNotFound
 }
+
+// RootByID refuses every id.
+func (l *blockingLayer) RootByID(string) (string, bool) { return "", false }
+
+// ResolveBundle reports the bundle missing.
+func (l *blockingLayer) ResolveBundle(string, string) (string, string, error) {
+	return "", "", query.ErrNotFound
+}
+
+// Invalidate is a no-op: the stub holds no cache.
+func (l *blockingLayer) Invalidate() {}
 
 // TestShutdownExpiryClosesActiveConnections proves a drain that outlasts its
 // bound terminates the in-flight request, so Serve returns instead of leaving
@@ -1336,5 +1506,10 @@ func getHealth(t *testing.T, addr, token string) {
 }
 
 func (l *blockingLayer) Reproduction(context.Context, string, string, string) ([]byte, error) {
+	return nil, query.ErrNotFound
+}
+
+// Diff reports the bundle missing.
+func (l *blockingLayer) Diff(context.Context, string, string) (*query.View, error) {
 	return nil, query.ErrNotFound
 }

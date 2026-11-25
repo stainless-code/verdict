@@ -33,11 +33,18 @@ const (
 )
 
 // Request wires one pack list read. List is the only served mode.
+//
+//nolint:govet // the embedded runtime groups one call
 type Request struct {
 	core.ReadRequest
+	// OrgPin is the base-owned central-pack pin, when one governs. A
+	// non-nil pin makes every resolution re-verify the vendored central
+	// pack against verdict.lock without any fetch; nil keeps the legacy
+	// no-pin behavior for direct callers.
+	OrgPin       *OrgPin `json:"-"`
+	Toggles      Toggles `json:"-"`
 	SettingsPath string  `json:"-"`
 	ConfigSource string  `json:"-"`
-	Toggles      Toggles `json:"-"`
 	List         bool
 }
 
@@ -164,6 +171,9 @@ func loadLayers(ctx context.Context, req *Request) (*loadedLayers, *core.Refusal
 	}
 	repo, warnings, ref := repoOrigins(ctx, req.RepoRootPath())
 	if ref != nil {
+		return nil, ref
+	}
+	if ref := VerifyOrgPin(req.RepoRootPath(), req.OrgPin); ref != nil {
 		return nil, ref
 	}
 	out := &loadedLayers{Applied: toggled.Applied}

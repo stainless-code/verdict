@@ -352,8 +352,8 @@ api-base-panel
 --- file C/.verdict/state/4701/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "09e84e7ab40026f63264c2c24598d836ab143075067f260fc0a78d3c060379fb",
-  "prompts_hash": "050a1937402e34fa9c0af2d443b26cb4961474d333a46e2bb22540681b74e02f",
+  "run_id": "954f238a4e1c12c0259be23ae7ec0b14efd9e780731d0d9b6fd007da81e88a85",
+  "prompts_hash": "49e642c8e1e6e18635dd843199db2b027d2c27c042b2ad2cd15ac9468cfd9c12",
   "panel": [
     "api-base-panel"
   ],
@@ -362,8 +362,8 @@ api-base-panel
       "kind": "prompt",
       "name": "PROCEDURE.md",
       "status": "included",
-      "sha256": "529138b404d6783cb02abee32e57e2ed96a98a2273fa602a5034a8e7dc3d103d",
-      "bytes": 13400
+      "sha256": "a73a4602c858f7071e5df4aaf5a2982ff267206d21b393cc661b8b64db2846d5",
+      "bytes": 13394
     },
     {
       "kind": "prompt",
@@ -376,8 +376,8 @@ api-base-panel
       "kind": "prompt",
       "name": "prompts/diagrams.md",
       "status": "included",
-      "sha256": "d19183a969b0e131d7520f0d2fa82889b903c4878e5fcea5ca9f2f0901eacd2d",
-      "bytes": 3780
+      "sha256": "f27a0634929deeb9043b2912f7f6b84014119207646c3a68cac30a992300d763",
+      "bytes": 4624
     },
     {
       "kind": "prompt",
@@ -460,8 +460,8 @@ api-base-panel
       "kind": "prompt",
       "name": "prompts/review.md",
       "status": "included",
-      "sha256": "e44879c33621f808e6a7763d124d9eccc666a6b1d014a2ba3604504dbb7a6d96",
-      "bytes": 20274
+      "sha256": "168b2792d0d366b950fd71a04575505c118d4214ebad9eadf5df060a49697924",
+      "bytes": 20517
     },
     {
       "kind": "prompt",
@@ -495,8 +495,8 @@ api-base-panel
       "kind": "prompt",
       "name": "references/commands.md",
       "status": "included",
-      "sha256": "4962622ce502f51407f7f0dcbab5220163b12796bbcd7a78d4e523f0664e6bf4",
-      "bytes": 7654
+      "sha256": "9afe21fef9e966e02cc85a9ec222ece16f686fbff05d12de5b9a7e018be53b11",
+      "bytes": 7702
     },
     {
       "kind": "prompt",
@@ -595,8 +595,8 @@ api-base-panel
       "kind": "bundle",
       "name": "refs/commands.md",
       "status": "included",
-      "sha256": "4962622ce502f51407f7f0dcbab5220163b12796bbcd7a78d4e523f0664e6bf4",
-      "bytes": 7654
+      "sha256": "9afe21fef9e966e02cc85a9ec222ece16f686fbff05d12de5b9a7e018be53b11",
+      "bytes": 7702
     },
     {
       "kind": "bundle",
@@ -623,8 +623,8 @@ api-base-panel
       "kind": "bundle",
       "name": "refs/review-checklist.md",
       "status": "included",
-      "sha256": "652cb21617864e44548a0fae226b48852c6f83cc43b29e121fe3146434fe8017",
-      "bytes": 19066
+      "sha256": "30201066cf4b60f5ef23c7a4fe320e1b779ec6788c6a705e92b5a38d4b10065a",
+      "bytes": 19309
     },
     {
       "kind": "bundle",
@@ -659,7 +659,7 @@ api-base-panel
       "name": "run.json",
       "status": "included",
       "sha256": "RUNTIME_SHA256",
-      "bytes": 7677
+      "bytes": 7903
     },
     {
       "kind": "bundle",
@@ -877,6 +877,10 @@ api-base-panel
               "layer": "built-in",
               "source": "built-in"
             },
+            "monthly_budget_usd": {
+              "layer": "built-in",
+              "source": "built-in"
+            },
             "panel": {
               "layer": "repo",
               "source": ".verdict/config.json"
@@ -947,6 +951,10 @@ api-base-panel
           "layer": "built-in",
           "source": "built-in"
         },
+        "monthly_budget_usd": {
+          "layer": "built-in",
+          "source": "built-in"
+        },
         "panel": {
           "layer": "repo",
           "source": ".verdict/config.json"
@@ -980,7 +988,7 @@ api-base-panel
   "base_sha": "cccccccccccccccccccccccccccccccccccccccc",
   "captured_at": "0000-00-00T00:00:00Z",
   "config_sha256": "58e27b3168ec974a8b85e537eb76211975aee57cb18183d8b9ee42bc7b28b874",
-  "inputs_sha256": "a72297d1ccc956948b1457d1eb9b1f6ffc1472648c2a75c3a44f3fb00d991d10",
+  "inputs_sha256": "e105777e821ee89af4cdff9cb0229771ae8034e177ae9a81cd54add3a1ff0e56",
   "inventory": {
     "config.json": "58e27b3168ec974a8b85e537eb76211975aee57cb18183d8b9ee42bc7b28b874"
   },

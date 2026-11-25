@@ -12,7 +12,9 @@ import (
 
 	"github.com/stainless-code/verdict/internal/config"
 	postcore "github.com/stainless-code/verdict/internal/core/post"
+	runcore "github.com/stainless-code/verdict/internal/core/run"
 	"github.com/stainless-code/verdict/internal/gate"
+	"github.com/stainless-code/verdict/internal/loop"
 	"github.com/stainless-code/verdict/internal/run"
 )
 
@@ -77,8 +79,11 @@ func defaultsRows() [][]string {
 		[]string{"post", "--bind", defaultsCell(postcore.Flags{}.Bind)},
 		[]string{"gate", "--live", gate.DefaultLive},
 		[]string{"gate", "--coverage", gate.DefaultCoverage},
+		[]string{"demo", "--timeout", runcore.DefaultTimeoutS},
 		[]string{"run", "--timeout", run.DefaultTimeoutS},
 		[]string{"run", "--rounds", run.DefaultRounds},
+		[]string{"loop", "--max-rounds", loop.DefaultMaxRounds},
+		[]string{"loop", "--budget", loop.DefaultBudget},
 	)
 	sort.SliceStable(rows, func(i, j int) bool {
 		if rows[i][0] != rows[j][0] {

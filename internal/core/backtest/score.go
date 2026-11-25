@@ -14,6 +14,7 @@ import (
 	"github.com/stainless-code/verdict/internal/core"
 	corpuscore "github.com/stainless-code/verdict/internal/core/corpus"
 	"github.com/stainless-code/verdict/internal/jq"
+	"github.com/stainless-code/verdict/internal/noblock"
 	"github.com/stainless-code/verdict/internal/readcommon"
 )
 
@@ -189,7 +190,7 @@ func scoreRunID(run string) (string, *core.RefusalError) {
 // scoreCandidates reads the mined candidates the replay walked.
 func (st *state) scoreCandidates(run string) ([]Candidate, *core.RefusalError) {
 	path := filepath.Join(st.root, artifactDir, run, "mine.json")
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if errors.Is(err, fs.ErrNotExist) {
 		return nil, st.refuse(codeMissingBundle, fmt.Sprintf(
 			"backtest run '%s' has no mine.json — mine it first (verdict backtest mine --since <span> --run %s)",
@@ -246,7 +247,7 @@ func (st *state) noRows(run string, mined int) ([]ReplayPRDoc, *core.RefusalErro
 // scoreRow reads one candidate's resume record.
 func (st *state) scoreRow(run, dir string) (*ReplayPRDoc, *core.RefusalError) {
 	path := filepath.Join(dir, replayFile)
-	raw, err := os.ReadFile(path)
+	raw, err := noblock.ReadFile(path)
 	if err != nil {
 		return nil, st.refuse(codeBacktestRowStale, "unreadable "+display(st.root, path)+"; delete its directory to replay this PR again")
 	}

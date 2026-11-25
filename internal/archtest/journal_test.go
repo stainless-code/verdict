@@ -197,10 +197,25 @@ func TestJournalMCPRegistryParity(t *testing.T) {
 	}
 }
 
+// checkQueryToolJournalParity pins the dashboard query tools' journal
+// posture: they are noLocalWrites tools with no VerbTable row, so
+// journal.Guard never writes for them. A row that appears must keep the
+// non-journaling posture.
+func checkQueryToolJournalParity(t *testing.T, tool parsedMCPTool, pol journalcore.VerbPolicy, ok bool) {
+	t.Helper()
+	if ok && pol.Journals {
+		t.Errorf("MCP query tool %q (noLocalWrites) has VerbTable.Journals=true, want false", tool.name)
+	}
+}
+
 func assertMCPToolJournalParity(t *testing.T, tool parsedMCPTool) {
 	t.Helper()
 	verb := journalcore.CanonicalVerb(tool.name)
 	pol, ok := journalcore.VerbTable[verb]
+	if _, queryTool := mcpQuerySurface[tool.name]; queryTool {
+		checkQueryToolJournalParity(t, tool, pol, ok)
+		return
+	}
 	if !ok {
 		t.Errorf("MCP tool %q (verb %q) missing from journal.VerbTable", tool.name, verb)
 		return

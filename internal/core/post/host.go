@@ -57,6 +57,10 @@ func hostFor(provider string) (hostWriter, hostReader, hostResolver) {
 		return gitlabHost{}, gitlabHost{}, gitlabHost{}
 	case providerForgejo:
 		return forgejoHost{}, forgejoHost{}, nil
+	case providerBitbucket:
+		return bitbucketHost{}, bitbucketHost{}, nil
+	case providerAzure:
+		return azureHost{}, azureHost{}, nil
 	default:
 		return githubHost{}, githubHost{}, nil
 	}
