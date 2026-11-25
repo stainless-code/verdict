@@ -1,28 +1,28 @@
 package untrusted
 
-import "io"
+import (
+	"io"
+	"unicode/utf8"
 
-// UTF-8 encodings of the control runes beyond ASCII that core.IsLineBreak
-// names: C1 (U+0080..U+009F, lead byte 0xC2) and the two separators U+2028
-// and U+2029 (0xE2 0x80 0xA8/0xA9).
-const (
-	asciiDel     = 0x7f
-	utf8RuneSelf = 0x80
-	c1Lead       = 0xc2
-	c1First      = 0x80
-	c1Last       = 0x9f
-	sepLead      = 0xe2
-	sepMid       = 0x80
-	sepLine      = 0xa8
-	sepParagraph = 0xa9
-	sepLen       = 3
+	"github.com/stainless-code/verdict/internal/core"
 )
 
-// Inert folds every control and line-separator rune to a space, except the
-// newline and tab a message lays itself out with: an ESC, BEL, CR, or C1
-// byte a stranger put in a path or a spec item cannot start a terminal
-// sequence. It is Flatten's rule (core.IsLineBreak) for a stream a person
-// reads, where a tab still separates columns.
+// folds is the one rule for what a terminal must never receive from a
+// stranger: every control rune (C0, DEL, C1), the line and paragraph
+// separators (core.IsLineBreak), and the bidirectional formatting controls
+// (Trojan Source: U+202E reorders the text after it on a bidi-capable
+// terminal, so a diff line reads as another). Inert and Flatten both ask it,
+// so the two cannot drift. Other format characters stay: a zero-width joiner
+// holds an emoji sequence together.
+func folds(r rune) bool {
+	return core.IsLineBreak(r) || isBidiControl(r)
+}
+
+// Inert folds every rune [folds] names to a space, except the newline and
+// tab a message lays itself out with: an ESC, BEL, CR, C1, or bidi byte a
+// stranger put in a path or a spec item cannot start a terminal sequence or
+// reorder a line. It is Flatten's rule for a stream a person reads, where a
+// tab still separates columns.
 func Inert(s string) string {
 	out, changed := fold([]byte(s))
 	if !changed {
@@ -120,28 +120,26 @@ func firstControl(p []byte) int {
 // controlWidth is the byte length of the control rune starting at p[i], or 0
 // when p[i] starts printable text (or is the newline or tab a message keeps).
 func controlWidth(p []byte, i int) int {
-	if b := p[i]; b < utf8RuneSelf {
+	if b := p[i]; b < utf8.RuneSelf {
 		return asciiControlWidth(b)
 	}
 	return multiByteControlWidth(p[i:])
 }
 
 func asciiControlWidth(b byte) int {
-	if b != '\n' && b != '\t' && (b < ' ' || b == asciiDel) {
+	if b != '\n' && b != '\t' && folds(rune(b)) {
 		return 1
 	}
 	return 0
 }
 
-// multiByteControlWidth recognizes a C1 control or a line or paragraph
-// separator at the head of p.
+// multiByteControlWidth recognizes a C1 control, a separator, or a bidi
+// control at the head of p. A rune cut short at the end of one write is not
+// decoded, so it passes intact and a later write finishes it.
 func multiByteControlWidth(p []byte) int {
-	switch {
-	case len(p) >= 2 && p[0] == c1Lead && p[1] >= c1First && p[1] <= c1Last:
-		return 2
-	case len(p) >= sepLen && p[0] == sepLead && p[1] == sepMid && (p[2] == sepLine || p[2] == sepParagraph):
-		return sepLen
-	default:
+	r, size := utf8.DecodeRune(p)
+	if r == utf8.RuneError || !folds(r) {
 		return 0
 	}
+	return size
 }

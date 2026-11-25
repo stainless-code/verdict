@@ -9,7 +9,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/stainless-code/verdict/internal/core"
 	"github.com/stainless-code/verdict/internal/fence"
 )
 
@@ -62,7 +61,7 @@ func Flatten(body string) string {
 			sb.WriteRune(r)
 			continue
 		}
-		if core.IsLineBreak(r) {
+		if folds(r) {
 			sb.WriteRune(' ')
 			continue
 		}

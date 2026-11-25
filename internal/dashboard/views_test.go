@@ -141,3 +141,16 @@ func TestTextCapsCombiningMarksAtTwo(t *testing.T) {
 		t.Fatalf("rows = %q, want both marks kept and the third dropped", got)
 	}
 }
+
+// TestFrameTextFoldsBidiControls proves a diff line or title carrying a bidi
+// override cannot reach the frame: U+202E would reorder the text after it on
+// a bidi-capable terminal (Trojan Source), so every directional control
+// becomes a space, in the painted frame and the plain --once text alike.
+func TestFrameTextFoldsBidiControls(t *testing.T) {
+	t.Parallel()
+	g := newGrid(minCols, 2)
+	g.text(0, 0, minCols, "a\u202eb\u202cc\u2066d\u2069e\u200ef\u061cg", rolePlain, charsetUnicode)
+	if got := g.lines(); !strings.Contains(got, "a b c d e f g") || strings.ContainsAny(got, "\u202e\u202c\u2066\u2069\u200e\u061c") {
+		t.Fatalf("frame = %q; want the bidi controls folded to spaces", got)
+	}
+}

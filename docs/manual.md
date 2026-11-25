@@ -1775,8 +1775,11 @@ claiming absence. Complete results omit the receipt.
 **Terminal output is inert.** Text a stranger wrote — a finding's path or
 heading, a spec item, a host message, a directory name — reaches a terminal
 with every control character folded to a space: C0 (ESC, BEL, CR, and the
-rest), DEL, C1 (U+0080–U+009F), and the U+2028/U+2029 separators, so it cannot
-write the clipboard (OSC 52), move the cursor, or clear the screen. Newline and
+rest), DEL, C1 (U+0080–U+009F), the U+2028/U+2029 separators, and the bidi
+controls (U+061C, U+200E/U+200F, U+202A–U+202E, U+2066–U+2069), so it cannot
+write the clipboard (OSC 52), move the cursor, clear the screen, or reorder a
+line the way a U+202E override does. Other format characters stay, so an emoji
+joined with U+200D still renders. Newline and
 tab survive, since a message lays itself out with them. This holds for every
 human line on stdout (`report`, `next`, `show`, `threads`, `drain`, `gate`) and
 every `warn:` and `error:` line on stderr. Under `--json` stdout is the
@@ -3441,8 +3444,9 @@ dim, reverse) and drops color; `TERM=dumb` also switches the box and ellipsis
 glyphs to ASCII. Every state has a text shape as well — the active tab is
 bracketed, a refused row is `!`, an unknown count is `—` — so nothing depends
 on color. Text a stranger wrote (a repository name, a refusal message) has
-every control character folded to a space before it reaches the screen, so it
-cannot move the cursor, clear the screen, or write the clipboard. The same
+every control and bidi-control character folded to a space before it reaches
+the screen, so it cannot move the cursor, clear the screen, write the
+clipboard, or reorder a diff line. The same
 holds for every verb's `warn:` and `error:` lines on stderr. Combining marks
 stay on their letter (`e` + U+0301 is `é`), and wide characters follow the
 Unicode 17.0 East Asian Width table.

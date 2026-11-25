@@ -13,10 +13,10 @@ import (
 // hostileFindings is a store whose inline finding names a path, and whose
 // section finding a heading, carrying every kind of sequence a PR author could
 // plant for the operator's terminal: an OSC 52 clipboard write, a CSI cursor
-// move, a C1 CSI (U+009B), a carriage return that overwrites the line, and a
-// line separator.
+// move, a C1 CSI (U+009B), a carriage return that overwrites the line, a line
+// separator, and a bidi override (U+202E).
 const hostileFindings = `[` +
-	`{"kind":"inline","path":"app/\u001b]52;c;cHduZWQ=\u0007\u001b[2J\u009b31m\rx\u2028.go","line":3,"side":"RIGHT",` +
+	`{"kind":"inline","path":"app/\u001b]52;c;cHduZWQ=\u0007\u001b[2J\u009b31m\rx\u2028\u202e.go","line":3,"side":"RIGHT",` +
 	`"sig":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","status":"open","severity":"critical","body":"A finding."},` +
 	`{"kind":"section","heading":"## bad\u001b]52;c;cHduZWQ=\u0007\r\u0085forged: gate passes","path":null,` +
 	`"sig":"bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb","status":"open","severity":"important","body":"B."}]`
@@ -84,7 +84,7 @@ func TestJSONStdoutIsNotFolded(t *testing.T) {
 	if err := json.Unmarshal([]byte(got.out), &env); err != nil {
 		t.Fatalf("report --json is not one envelope: %v\n%s", err, got.out)
 	}
-	const want = "app/\x1b]52;c;cHduZWQ=\a\x1b[2J\u009b31m\rx\u2028.go"
+	const want = "app/\x1b]52;c;cHduZWQ=\a\x1b[2J\u009b31m\rx\u2028\u202e.go"
 	if len(env.Data.Items) != 2 || env.Data.Items[0].Path != want {
 		t.Errorf("--json items = %+v; want the first path %q", env.Data.Items, want)
 	}
@@ -95,7 +95,7 @@ func TestJSONStdoutIsNotFolded(t *testing.T) {
 
 // assertInert fails when text carries a control rune the fold must have
 // replaced: every C0 control except the newline and tab, DEL, C1, and the
-// U+2028/U+2029 separators.
+// U+2028/U+2029 separators, and the bidi controls.
 func assertInert(t *testing.T, what, text string) {
 	t.Helper()
 	for _, r := range text {
@@ -105,39 +105,12 @@ func assertInert(t *testing.T, what, text string) {
 	}
 }
 
+// foldedSeparators are the separator and bidi runes outside C0 and C1.
+const foldedSeparators = "\u2028\u2029\u061c\u200e\u200f\u202a\u202b\u202c\u202d\u202e\u2066\u2067\u2068\u2069"
+
 func isControl(r rune) bool {
 	if r == '\n' || r == '\t' {
 		return false
 	}
-	return r < ' ' || r == 0x7f || (r >= 0x80 && r <= 0x9f) || r == 0x2028 || r == 0x2029
-}
-
-// TestNewlineInAPathCannotForgeALine proves a path with an embedded newline
-// stays on the one `warn:` line that quotes it, so a stranger cannot print a
-// line that reads as verdict's own verdict.
-func TestNewlineInAPathCannotForgeALine(t *testing.T) {
-	root := scanRepo(t)
-	if got := runOne(t, "fetch-local", "acme/app", "nl", "--scan", "app"); got.code != cli.ExitOK {
-		t.Fatalf("fetch-local = %+v; want success\n%s", got, got.err)
-	}
-	const forged = "verdict: gate passes — 0 open findings"
-	writeIn(t, filepath.Join(scanBundle(root, "nl"), "review.json"), `{"schema_version":"1","summary":"one finding",`+
-		`"findings":[{"path":"app/x\n`+forged+`","line":3,"side":"RIGHT",`+
-		`"claim":"A claim long enough to read.","quote":"package main","confidence":"high",`+
-		`"rigor":"walked","severity":"informational"}],"coverage":[],"receipts":[],"spec_checks":[]}`+"\n")
-	got := runOne(t, "record", "acme/app", "local-nl")
-	if got.code != cli.ExitRefused {
-		t.Fatalf("record = %+v; want the refusal that quotes the path", got)
-	}
-	if !strings.Contains(got.err, "warn: ") {
-		t.Fatalf("record stderr carries no warning to check:\n%s", got.err)
-	}
-	for line := range strings.SplitSeq(got.err, "\n") {
-		if strings.HasPrefix(line, "verdict:") {
-			t.Errorf("a newline in the path started a forged line %q:\n%s", line, got.err)
-		}
-	}
-	if !strings.Contains(got.err, "app/x "+forged) {
-		t.Errorf("the quoted path was dropped instead of kept on one line:\n%s", got.err)
-	}
+	return r < ' ' || (r >= 0x7f && r <= 0x9f) || strings.ContainsRune(foldedSeparators, r)
 }

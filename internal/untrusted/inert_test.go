@@ -104,3 +104,41 @@ func TestInertWriterUnlessPassesMachineOutput(t *testing.T) {
 		t.Fatal("Raw did not return the destination")
 	}
 }
+
+// bidiControls is every directional control the fold names, by code point.
+var bidiControls = []rune{
+	'\u061c', '\u200e', '\u200f',
+	'\u202a', '\u202b', '\u202c', '\u202d', '\u202e',
+	'\u2066', '\u2067', '\u2068', '\u2069',
+}
+
+// TestBidiControlsFoldEverywhere proves Flatten, Inert, Line, and the writer
+// each turn every bidi control into one space (Trojan Source: U+202E reorders
+// what follows it), while a zero-width joiner and the other format
+// characters an emoji or an accent needs pass through.
+func TestBidiControlsFoldEverywhere(t *testing.T) {
+	t.Parallel()
+	for _, r := range bidiControls {
+		assertBidiFolded(t, r)
+	}
+	const keep = "👩\u200d💻 e\u0301 \u200b\u2060 日本 \ufe0f"
+	for name, fn := range map[string]func(string) string{"Flatten": Flatten, "Inert": Inert} {
+		if got := fn(keep); got != keep {
+			t.Errorf("%s(%q) = %q; want the emoji and format characters intact", name, keep, got)
+		}
+	}
+}
+
+func assertBidiFolded(t *testing.T, r rune) {
+	t.Helper()
+	in := "a" + string(r) + "b"
+	for name, fn := range map[string]func(string) string{"Flatten": Flatten, "Inert": Inert, "Line": Line} {
+		if got := fn(in); got != "a b" {
+			t.Errorf("%s(%U) = %q, want %q", name, r, got, "a b")
+		}
+	}
+	var buf bytes.Buffer
+	if _, err := NewInertWriter(&buf).Write([]byte(in)); err != nil || buf.String() != "a b" {
+		t.Errorf("InertWriter(%U) wrote %q, %v; want %q", r, buf.String(), err, "a b")
+	}
+}
