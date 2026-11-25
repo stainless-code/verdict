@@ -46,7 +46,7 @@ build_client() {
 
 stage_tag() {
   # The tag is the point of no return: render the release body first, so a
-  # CHANGELOG section GitHub would refuse (scripts/release-notes.mjs checks the
+  # body GitHub would refuse (scripts/release-notes.mjs checks the
   # size limit) stops the run before a tag exists that no release can follow.
   prepare_notes
   [ -x node_modules/.bin/changeset ] ||
@@ -183,9 +183,10 @@ build_release() {
   stage_release_commit
 }
 
-# prepare_notes renders CHANGELOG.md's section for this version into a file
-# outside dist/ (GoReleaser's --clean empties dist). The release body is that
-# section verbatim, so the body is derived from the changelog, never summarized.
+# prepare_notes renders the release body into a file outside dist/
+# (GoReleaser's --clean empties dist): CHANGELOG.md's section for this version,
+# led by the hand-written docs/releases/<version>.md highlights when that file
+# exists (scripts/release-notes.mjs composes both).
 prepare_notes() {
   if [ -z "$NOTES_FILE" ]; then NOTES_FILE="$(mktemp)"; fi
   node scripts/release-notes.mjs "$VERSION" > "$NOTES_FILE"
@@ -209,7 +210,7 @@ live_body() {
   die "gh api release $TAG failed: $out"
 }
 
-# stage_release_body makes the published body the CHANGELOG section and proves
+# stage_release_body makes the published body the rendered notes and proves
 # it by reading the release back. GoReleaser publishes the assets, but its body
 # path is not dependable: release 0.5.0 went out with a one-byte body while the
 # notes file held 15.9 kB and every step reported success, so the publisher
@@ -225,26 +226,26 @@ stage_release_body() {
   want="$(<"$NOTES_FILE")"
   if same_body "$live" "$want"; then
     if [ "$live" = "$want" ]; then
-      echo "release: GitHub Release $TAG already carries the $VERSION changelog section"
+      echo "release: GitHub Release $TAG already carries the $VERSION release notes"
     else
-      echo "release: GitHub Release $TAG already carries the $VERSION changelog section (whitespace normalised by GitHub)"
+      echo "release: GitHub Release $TAG already carries the $VERSION release notes (whitespace normalised by GitHub)"
     fi
     return 0
   fi
-  echo "release: GitHub Release $TAG body does not match CHANGELOG.md's $VERSION section ($(printf '%s' "$live" | wc -c | tr -d '[:space:]') bytes published, $(wc -c <"$NOTES_FILE" | tr -d '[:space:]') expected); rewriting it"
+  echo "release: GitHub Release $TAG body does not match the rendered $VERSION release notes ($(printf '%s' "$live" | wc -c | tr -d '[:space:]') bytes published, $(wc -c <"$NOTES_FILE" | tr -d '[:space:]') expected); rewriting it"
   gh release edit "$TAG" --repo "$REPO" --notes-file "$NOTES_FILE"
   live="$(live_body)"
   same_body "$live" "$want" \
-    || die "GitHub Release $TAG body still does not match CHANGELOG.md's $VERSION section after gh release edit"
-  echo "release: GitHub Release $TAG body set from CHANGELOG.md's $VERSION section"
+    || die "GitHub Release $TAG body still does not match the rendered $VERSION release notes after gh release edit"
+  echo "release: GitHub Release $TAG body set to the rendered $VERSION release notes"
 }
 
-# same_body reports whether the published body carries the changelog section's
+# same_body reports whether the published body carries the rendered notes'
 # text. GitHub may hand a body back with CRLF line endings or trailing blanks
 # it did not store, so the comparison ignores exactly that and nothing else: a
 # correct release must never fail because of whitespace, and a wrong one must
 # never pass because of it.
-same_body() { # $1 = published body, $2 = changelog section
+same_body() { # $1 = published body, $2 = rendered notes
   [ "$(normalized_body "$1")" = "$(normalized_body "$2")" ]
 }
 

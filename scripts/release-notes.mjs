@@ -1,10 +1,24 @@
-// The GitHub Release body: the CHANGELOG.md section for one version, with the
-// changeset commit ids (`- 1a2b3c4: note`) removed so a reader sees the note
-// and not a hash. `scripts/release.sh` pipes it into `goreleaser release
+// The GitHub Release body. Its source is the CHANGELOG.md section for one
+// version, with the changeset commit ids (`- 1a2b3c4: note`) removed so a
+// reader sees the note and not a hash. When `docs/releases/<version>.md` exists,
+// the body leads with it:
+//
+//   **v<version>** · <N> changes
+//   <highlights and `### Breaking changes`, from docs/releases/<version>.md>
+//   ### Plus <M> more fixes and improvements.
+//   <details><summary>Full changelog</summary> <the section> </details>
+//
+// N counts the section's top-level entries (one per changeset); M is N less
+// the highlight bullets. Without a highlights file the body is the section
+// alone, with a warning on stderr. The file lives outside `.changeset/`
+// because changesets parses every top-level `.changeset/*.md` as a changeset
+// and throws on one with no frontmatter.
+//
+// `scripts/release.sh` pipes the body into `goreleaser release
 // --release-notes`, and `make release-dry-run` runs it on the current version,
 // so a CHANGELOG the extractor cannot read fails CI instead of the release.
 // GitHub refuses a release body over 125,000 characters, and release.sh pushes
-// the tag before it creates the release, so an oversized section fails here,
+// the tag before it creates the release, so an oversized body fails here,
 // before the tag, instead of stranding a tag with no release behind it.
 import { readFile } from "node:fs/promises";
 
@@ -24,10 +38,8 @@ if (!version) {
   process.exit(2);
 }
 
-const source = await readFile(
-  new URL("../CHANGELOG.md", import.meta.url),
-  "utf8",
-);
+const root = new URL("../", import.meta.url);
+const source = await readFile(new URL("CHANGELOG.md", root), "utf8");
 const lines = source.split("\n");
 const start = lines.findIndex((line) => line.trim() === `## ${version}`);
 if (start === -1) {
@@ -37,7 +49,8 @@ if (start === -1) {
 
 const rest = lines.slice(start + 1);
 const end = rest.findIndex((line) => /^##\s/u.test(line));
-const notes = (end === -1 ? rest : rest.slice(0, end))
+const section = end === -1 ? rest : rest.slice(0, end);
+const notes = section
   .join("\n")
   .replaceAll(/^([*-])\s+[0-9a-f]{7,40}:\s+/gmu, "$1 ")
   .trim();
@@ -47,14 +60,62 @@ if (notes === "") {
   process.exit(1);
 }
 
-if (notes.length > BODY_LIMIT) {
+const highlightsPath = `docs/releases/${version}.md`;
+let highlights = null;
+try {
+  highlights = (await readFile(new URL(highlightsPath, root), "utf8")).trim();
+} catch (err) {
+  if (err.code !== "ENOENT") throw err;
+}
+
+let body = notes;
+if (highlights === null) {
+  console.error(
+    `release-notes: warning: no ${highlightsPath}; the ${version} body is the CHANGELOG.md section alone, with no highlights.`,
+  );
+} else {
+  // A changeset renders as one column-0 bullet; its continuation lines are
+  // indented, so they never count.
+  const changes = section.filter((line) => /^[*-]\s/u.test(line)).length;
+  const firstHeading = highlights.search(/^#{1,6}\s/mu);
+  const lead =
+    firstHeading === -1 ? highlights : highlights.slice(0, firstHeading);
+  const picked = lead
+    .split("\n")
+    .filter((line) => /^[*-]\s/u.test(line)).length;
+  if (picked === 0) {
+    console.error(
+      `release-notes: ${highlightsPath} has no highlight bullets before its first heading; lead it with \`- **Title.** what it does for you\` lines.`,
+    );
+    process.exit(1);
+  }
+  const { tagPrefix } = JSON.parse(
+    await readFile(new URL("release/contract.json", root), "utf8"),
+  );
+  const more = changes - picked;
+  const parts = [
+    `**${tagPrefix}${version}** · ${changes} ${changes === 1 ? "change" : "changes"}`,
+    highlights,
+  ];
+  if (more > 0) {
+    parts.push(
+      `### Plus ${more} more ${more === 1 ? "fix or improvement" : "fixes and improvements"}.`,
+    );
+  }
+  parts.push(
+    `<details>\n<summary>Full changelog</summary>\n\n${notes}\n\n</details>`,
+  );
+  body = parts.join("\n\n");
+}
+
+if (body.length > BODY_LIMIT) {
   console.error(
     [
-      `release-notes: the ${version} section renders to ${notes.length} characters; GitHub refuses a release body over ${BODY_LIMIT}.`,
-      "Trim the .changeset entries the Version PR builds it from, then let the Version PR regenerate.",
+      `release-notes: the ${version} release body renders to ${body.length} characters; GitHub refuses a release body over ${BODY_LIMIT}.`,
+      `Trim ${highlights === null ? "" : `${highlightsPath} or `}the .changeset entries the Version PR builds the section from, then let the Version PR regenerate.`,
     ].join("\n"),
   );
   process.exit(1);
 }
 
-console.log(notes);
+console.log(body);
