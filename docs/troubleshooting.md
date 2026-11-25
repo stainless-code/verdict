@@ -434,9 +434,9 @@ Fix: point `--from` at a `.verdict/state/local-*` directory.
 
 ## `bad-target-url`
 
-Cause: the pull or merge request URL could not become a target: it carries credentials, whitespace, a dot-relative or encoded path segment, a route other than the host's pull request route, a non-numeric number, a host verdict does not know (a self-hosted GitLab or Forgejo needs `GITLAB_HOST` / `FORGEJO_HOST`), or a provider that conflicts with an explicit `--provider`.
+Cause: a pull or merge request URL could not become a target: credentials, a dot-relative, encoded, or extra path segment, another route, a non-numeric number, an unmapped host (self-hosted GitLab or Forgejo needs `GITLAB_HOST` / `FORGEJO_HOST`), or a `--provider` that conflicts with the URL.
 
-Fix: paste the plain URL (`https://github.com/<owner>/<repo>/pull/<number>`, `https://gitlab.com/<group>/<project>/-/merge_requests/<number>`), or pass `<owner/repo> <pr> --provider <name>`. See `docs/manual.md` § Targets.
+Fix: paste the plain URL (`https://github.com/<owner>/<repo>/pull/<number>`), or pass `<owner/repo> <pr> --provider <name>`.
 
 ## `bad-timeout`
 
@@ -1486,9 +1486,9 @@ Fix: re-run the write once the other one finishes; a holder that crashed or was 
 
 ## `target-unresolved`
 
-Cause: the verb was given no `<owner/repo> <pr>` and verdict could not settle one: no git checkout or `origin` to read, `origin` names a host or path verdict cannot map, HEAD is detached, no bundle under `.verdict/state` records the current branch as a pull request head, or more than one does. A verb that already reads the host also asks it for the branch's open pull request, and this code covers that lookup finding none, finding several, failing, or answering something that does not validate. It exits 2, the usage-error class.
+Cause: no `<owner/repo> <pr>` was given and none could be settled: no checkout or `origin`, a detached HEAD, no or several bundles recording the branch, or a host lookup that found none, several, or failed. Exits 2.
 
-Fix: pass the target the message names (`verdict <verb> <owner/repo> <pr>`) or a pull request URL. See `docs/manual.md` § Targets.
+Fix: pass the target the message names (`verdict <verb> <owner/repo> <pr>`) or a pull request URL.
 
 ## `test-conflict`
 

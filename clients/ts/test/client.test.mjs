@@ -539,6 +539,14 @@ describe("unit: fake binary exit paths", () => {
     });
   });
 
+  it("exit 2 with an unsupported-schema envelope stays a usage error", async () => {
+    await assert.rejects(runFake("usage-bad-schema"), (error) => {
+      assert.ok(error instanceof VerdictUsageError);
+      assert.ok(error.stderr.includes("usage: verdict report"));
+      return true;
+    });
+  });
+
   it("exit 3 throws VerdictProcessError with the code", async () => {
     await assert.rejects(runFake("broke"), (error) => {
       assert.ok(error instanceof VerdictProcessError);

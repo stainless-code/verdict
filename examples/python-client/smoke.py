@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import shutil
 import subprocess
 import sys
@@ -9,7 +10,7 @@ import tempfile
 from pathlib import Path
 
 from typed import report
-from verdict_client import VerdictError, VerdictRefusal, run
+from verdict_client import VerdictError, VerdictRefusal, _envelope, _refusal, run
 
 
 def main(binary: str) -> int:
@@ -39,6 +40,26 @@ def main(binary: str) -> int:
             assert exc.exit_code == 2, exc.exit_code
         else:
             raise AssertionError("a missing target did not refuse")
+        keys = {"verb": "report", "repo": "", "pr": 0, "at": "", "next": "", "warnings": []}
+        bad_docs = [
+            '{"schema_version":"2","data":null,"error":{"code":"x","message":"m"},' + json.dumps(keys)[1:],
+            '{"data":null,"error":{"code":"x","message":"m"},"warnings":[]}',
+        ]
+        for text in bad_docs:
+            try:
+                _envelope(text)
+            except VerdictError:
+                pass
+            else:
+                raise AssertionError(f"malformed envelope accepted: {text}")
+        for error in ({"code": "x", "message": None}, {"code": 1, "message": "m"}, None):
+            doc = {"data": None, "error": error, "warnings": []}
+            try:
+                _refusal(doc, 2)
+            except VerdictError:
+                pass
+            else:
+                raise AssertionError(f"untyped refusal accepted: {error!r}")
         demo = subprocess.run(
             [sys.executable, str(root / "example.py"), "acme/app", "123", tmp, binary],
             capture_output=True, text=True, check=False,

@@ -27,8 +27,8 @@ func ghFork(num, head, url string) string {
 }
 
 // glEntry is a same-project MR as `glab mr list -F json` answers it.
-func glEntry(num, head, url string) string {
-	return `{"iid":` + num + `,"source_branch":"` + head + `","web_url":"` + url + `","title":"t",` +
+func glEntry(url string) string {
+	return `{"iid":7,"source_branch":"fix-x","web_url":"` + url + `","title":"t",` +
 		`"source_project_id":42,"target_project_id":42}`
 }
 
@@ -55,16 +55,16 @@ type settleCase struct {
 // literals, and the echo naming the host and branch.
 func TestHostLookupSettlesOneOpenPR(t *testing.T) {
 	ghOne := "[" + ghEntry("12", "fix-x", "https://github.com/acme/app/pull/12") + "]"
-	glOne := "[" + glEntry("7", "fix-x", "https://gitlab.com/acme/sub/app/-/merge_requests/7") + "]"
+	glOne := "[" + glEntry("https://gitlab.com/acme/sub/app/-/merge_requests/7") + "]"
 	for _, tc := range []settleCase{
 		{
 			name: "github", g: fakeGit{origin: ghOrigin, branch: "fix-x", hostOut: ghOne},
-			argv: "gh pr list --repo acme/app --head=fix-x --state open --json number,headRefName,url,isCrossRepository,headRepositoryOwner,headRepository --limit 100",
+			argv: "gh pr list --repo github.com/acme/app --head=fix-x --state open --json number,headRefName,url,isCrossRepository,headRepositoryOwner,headRepository --limit 100",
 			repo: "acme/app", note: `target: acme/app#12 (github, from github.com for branch "fix-x")`,
 		},
 		{
 			name: "gitlab nested", g: fakeGit{origin: glOrigin, branch: "fix-x", hostOut: glOne},
-			argv: "glab mr list -R acme/sub/app --source-branch=fix-x -F json --per-page 100",
+			argv: "glab mr list -R https://gitlab.com/acme/sub/app --source-branch=fix-x -F json --per-page 100",
 			repo: "acme/sub/app", note: `target: acme/sub/app#7 (gitlab, from gitlab.com for branch "fix-x")`,
 		},
 	} {
@@ -104,6 +104,9 @@ func TestHostLookupRefusals(t *testing.T) {
 		{"host error", "", "could not be asked (gh failed)", 1},
 		{"not json", "no pull requests found", "something verdict does not trust", 0},
 		{"trailing data", "[]{}", "something verdict does not trust", 0},
+		{"stray closing bracket", "[]]", "something verdict does not trust", 0},
+		{"stray closing brace", "[]}", "something verdict does not trust", 0},
+		{"trailing text", "[] x", "something verdict does not trust", 0},
 		{"object not list", good, "something verdict does not trust", 0},
 		{"wrong head", "[" + ghEntry("12", "other", "https://github.com/acme/app/pull/12") + "]", "something verdict does not trust", 0},
 		{"url of another repo", "[" + ghEntry("12", "fix-x", "https://github.com/evil/app/pull/12") + "]", "something verdict does not trust", 0},
@@ -186,7 +189,7 @@ func TestHostLookupUnsupportedHost(t *testing.T) {
 func TestBranchLookupArgvCoversTheHostTable(t *testing.T) {
 	for _, provider := range []string{"github", "gitlab", "forgejo", "gitcafe", "bitbucket", "azure"} {
 		want := slices.Contains(core.BranchLookupProviders(), provider)
-		if got := branchLookupArgv(provider, "o/r", "b") != nil; got != want {
+		if got := branchLookupArgv(provider, "h.example", "o/r", "b") != nil; got != want {
 			t.Errorf("%s: lookup argv present = %v, host table says %v", provider, got, want)
 		}
 	}
@@ -194,7 +197,7 @@ func TestBranchLookupArgvCoversTheHostTable(t *testing.T) {
 
 func TestBranchLookupArgvKeepsABranchOutOfFlagPosition(t *testing.T) {
 	for _, provider := range core.BranchLookupProviders() {
-		for _, arg := range branchLookupArgv(provider, "o/r", "--exec=evil") {
+		for _, arg := range branchLookupArgv(provider, "h.example", "o/r", "--exec=evil") {
 			if arg == "--exec=evil" {
 				t.Errorf("%s: the branch is a standalone argument", provider)
 			}
@@ -222,7 +225,7 @@ func TestHostLookupGitlabForkAndProjectIDs(t *testing.T) {
 		name, out, want string
 	}{
 		{"fork only", "[" + glFork("8", "fix-x", url+"8") + "]", "has no open pull request for it"},
-		{"fork beside the project's own", "[" + glFork("8", "fix-x", url+"8") + "," + glEntry("7", "fix-x", url+"7") + "]", ""},
+		{"fork beside the project's own", "[" + glFork("8", "fix-x", url+"8") + "," + glEntry(url+"7") + "]", ""},
 		{"project ids missing", `[{"iid":7,"source_branch":"fix-x","web_url":"` + url + `7"}]`, "does not trust"},
 	} {
 		got := lookup(t, &fakeGit{origin: glOrigin, branch: "fix-x", hostOut: tc.out}, &Request{Verb: "fetch"})
@@ -250,10 +253,65 @@ func TestHostLookupRejectsAnAnswerFromAnotherHost(t *testing.T) {
 	// Same provider, same repository, different host: GITLAB_HOST maps the
 	// self-hosted URL to gitlab, but origin is gitlab.com.
 	env := map[string]string{"GITLAB_HOST": "git.corp.example"}
-	out := "[" + glEntry("7", "fix-x", "https://git.corp.example/acme/sub/app/-/merge_requests/7") + "]"
+	out := "[" + glEntry("https://git.corp.example/acme/sub/app/-/merge_requests/7") + "]"
 	got := lookup(t, &fakeGit{origin: glOrigin, branch: "fix-x", hostOut: out}, &Request{Verb: "fetch", Env: env})
 	if got.Refusal == nil || !strings.Contains(got.Refusal.Message, "does not trust") {
 		t.Fatalf("an answer from another host is not the origin's PR: %+v", got)
+	}
+}
+
+func TestHostLookupAcceptsTrailingWhitespace(t *testing.T) {
+	g := &fakeGit{origin: ghOrigin, branch: "fix-x", hostOut: oneOpenPR + " \n\n"}
+	if got := lookup(t, g, &Request{Verb: "fetch"}); got.Refusal != nil || got.Pr != "12" {
+		t.Fatalf("whitespace after the array is not trailing data: %+v", got)
+	}
+}
+
+// TestHostLookupAsksTheOriginsHost pins that the lookup names the origin's own
+// host, so a machine whose default gh or glab host differs cannot answer for
+// another host.
+func TestHostLookupAsksTheOriginsHost(t *testing.T) {
+	env := map[string]string{"GITLAB_HOST": "git.corp.example"}
+	out := "[" + glEntry("https://git.corp.example/acme/sub/app/-/merge_requests/7") + "]"
+	g := &fakeGit{origin: "git@git.corp.example:acme/sub/app.git", branch: "fix-x", hostOut: out}
+	got := lookup(t, g, &Request{Verb: "fetch", Env: env})
+	if got.Refusal != nil || got.Pr != "7" {
+		t.Fatalf("self-hosted gitlab: %+v", got)
+	}
+	want := "glab mr list -R https://git.corp.example/acme/sub/app --source-branch=fix-x -F json --per-page 100"
+	if last := strings.Join(g.calls[len(g.calls)-1], " "); last != want {
+		t.Fatalf("host argv = %q, want %q", last, want)
+	}
+}
+
+func TestHostLookupCarriesTheOriginProviderToVerbsWithTheFlag(t *testing.T) {
+	g := &fakeGit{origin: glOrigin, branch: "fix-x", hostOut: "[" + glEntry("https://gitlab.com/acme/sub/app/-/merge_requests/7") + "]"}
+	got := lookup(t, g, &Request{Verb: "pr-wait", Rest: []string{"--until", "merged"}})
+	if want := []string{"--provider", "gitlab", "--until", "merged"}; got.Refusal != nil || !slices.Equal(got.Rest, want) {
+		t.Fatalf("a lookup-resolved PR must reach pr-wait with its provider: %+v", got)
+	}
+	g = &fakeGit{origin: glOrigin, branch: "fix-x", hostOut: "[" + glEntry("https://gitlab.com/acme/sub/app/-/merge_requests/7") + "]"}
+	got = lookup(t, g, &Request{Verb: "pr-wait", Rest: []string{"--provider=github"}})
+	if !slices.Equal(got.Rest, []string{"--provider=github"}) {
+		t.Fatalf("an operator's own --provider stands: %+v", got.Rest)
+	}
+	g = &fakeGit{origin: glOrigin, branch: "fix-x", hostOut: "[" + glEntry("https://gitlab.com/acme/sub/app/-/merge_requests/7") + "]"}
+	got = lookup(t, g, &Request{Verb: "ready", Rest: []string{"--check"}})
+	if !slices.Equal(got.Rest, []string{"--check"}) {
+		t.Fatalf("ready takes no --provider flag: %+v", got.Rest)
+	}
+}
+
+func TestSpaceProviderFlag(t *testing.T) {
+	for in, want := range map[string]string{
+		"--provider=gitlab --json":        "--provider gitlab --json",
+		"--provider gitlab":               "--provider gitlab",
+		"--json -- --provider=x":          "--json -- --provider=x",
+		"--provider=a --provider=b --one": "--provider a --provider b --one",
+	} {
+		if got := strings.Join(SpaceProviderFlag(strings.Fields(in)), " "); got != want {
+			t.Errorf("SpaceProviderFlag(%q) = %q, want %q", in, got, want)
+		}
 	}
 }
 

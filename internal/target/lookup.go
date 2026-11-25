@@ -4,7 +4,9 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/url"
 	"slices"
 	"strings"
@@ -41,20 +43,21 @@ const githubJSON = "number,headRefName,url,isCrossRepository,headRepositoryOwner
 
 // branchLookupArgv is the host CLI call that lists the open pull requests
 // whose head branch is named branch (in any repository: the answer is
-// filtered to this one afterwards). The branch rides in the same argument as
-// its flag, so a name can never be read as a flag of its own. It is nil for a
-// host with no lookup; core.BranchLookupProviders is the table a test pins it
-// to.
-func branchLookupArgv(provider, repo, branch string) []string {
+// filtered to this one afterwards). The repository is qualified with the
+// origin's host, so a machine whose default host differs still asks the
+// origin's. The branch rides in the same argument as its flag, so a name can
+// never be read as a flag of its own. It is nil for a host with no lookup;
+// core.BranchLookupProviders is the table a test pins it to.
+func branchLookupArgv(provider, host, repo, branch string) []string {
 	switch provider {
-	case "github":
+	case providerGitHub:
 		return []string{
-			"gh", "pr", "list", "--repo", repo, "--head=" + branch, "--state", "open",
+			"gh", "pr", "list", "--repo", host + "/" + repo, "--head=" + branch, "--state", "open",
 			"--json", githubJSON, "--limit", lookupLimit,
 		}
-	case "gitlab":
+	case providerGitLab:
 		return []string{
-			"glab", "mr", "list", "-R", repo, "--source-branch=" + branch,
+			"glab", "mr", "list", "-R", "https://" + host + "/" + repo, "--source-branch=" + branch,
 			"-F", "json", "--per-page", lookupLimit,
 		}
 	default:
@@ -73,7 +76,7 @@ func lookupFieldsFor(provider string) lookupFields {
 // head. Exactly one validated match settles the target; none, several, a host
 // error, and an answer that fails validation each refuse naming the args.
 func hostPr(ctx context.Context, d Deps, q *Request, f *found, branch, hint string) (string, *core.RefusalError) {
-	argv := branchLookupArgv(f.provider, f.repo, branch)
+	argv := branchLookupArgv(f.provider, f.host, f.repo, branch)
 	if argv == nil {
 		return "", noHostMatch(f, branch, hint, "has no branch lookup")
 	}
@@ -111,7 +114,7 @@ func validatedNumbers(stdout string, f *found, branch string, env map[string]str
 	dec := json.NewDecoder(bytes.NewReader([]byte(stdout)))
 	dec.UseNumber()
 	var entries []map[string]any
-	if err := dec.Decode(&entries); err != nil || dec.More() || len(entries) >= lookupMax {
+	if err := dec.Decode(&entries); err != nil || len(entries) >= lookupMax || !atEOF(dec) {
 		return nil, false
 	}
 	keys := lookupFieldsFor(f.provider)
@@ -189,4 +192,11 @@ func nested(e map[string]any, field, key string) string {
 		}
 	}
 	return ""
+}
+
+// atEOF reports that nothing but whitespace follows the decoded value: More
+// alone passes a stray closing delimiter, so the next token must be the end.
+func atEOF(dec *json.Decoder) bool {
+	_, err := dec.Token()
+	return errors.Is(err, io.EOF)
 }

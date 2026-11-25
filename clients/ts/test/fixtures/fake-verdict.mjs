@@ -114,6 +114,14 @@ switch (mode) {
     process.exitCode = 2;
     break;
   }
+  // Exit 2 with a refusal-shaped envelope of an unsupported schema stays a
+  // usage error: the client never trusts an envelope it would reject at exit 1.
+  case "usage-bad-schema": {
+    emit({ ...refusal("target-unresolved", "no target"), schema_version: "2" });
+    process.stderr.write("usage: verdict report <owner/repo> <pr>\n");
+    process.exitCode = 2;
+    break;
+  }
   case "broke": {
     process.stderr.write("verdict: internal failure\n");
     process.exitCode = 3;

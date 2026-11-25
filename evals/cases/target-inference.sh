@@ -46,7 +46,7 @@ cat >"$EVAL_SANDBOX/fakebin/gh" <<'STUB'
 echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
 case "$*" in
   *--jq*) echo "a/save.go (+1/-1)" ;;
-  "pr list --repo acme/app --head="*" --state open --json number,headRefName,url,isCrossRepository,headRepositoryOwner,headRepository --limit 100")
+  "pr list --repo github.com/acme/app --head="*" --state open --json number,headRefName,url,isCrossRepository,headRepositoryOwner,headRepository --limit 100")
     cat "$EVAL_SANDBOX/lookup-out.json"; exit "$(cat "$EVAL_SANDBOX/lookup-exit")" ;;
   "pr view 4701 "*) cat "$EVAL_SANDBOX/canned-PR.json" ;;
   "pr diff 4701 "*) cat "$EVAL_SANDBOX/canned.diff" ;;
@@ -97,7 +97,7 @@ run_review fetch
 assert_file_grep "T3 the host lookup is echoed" "$EVAL_ERR" \
   '^target: acme/app#4701 \(github, from github.com for branch "from-host"\)$' "-E"
 assert_file_grep "T3 the lookup asked for open PRs of that head only" "$EVAL_STUBLOG" \
-  'stub-gh pr list --repo acme/app --head=from-host --state open --json number,headRefName,url,isCrossRepository,headRepositoryOwner,headRepository --limit 100'
+  'stub-gh pr list --repo github.com/acme/app --head=from-host --state open --json number,headRefName,url,isCrossRepository,headRepositoryOwner,headRepository --limit 100'
 
 printf '[]' >"$EVAL_SANDBOX/lookup-out.json"
 run_review fetch --json

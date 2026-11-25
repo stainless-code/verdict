@@ -290,6 +290,43 @@ func inferFromHost(ctx context.Context, d Deps, q *Request, out *Resolved, f *fo
 	}
 	out.Repo, out.Pr = f.repo, pr
 	out.Note = describe(f.repo, pr, f.provider, fmt.Sprintf("from %s for branch %q", f.host, branch))
+	if providerFlagVerbs[q.Verb] {
+		// No bundle names this pull request yet, so the verb would otherwise
+		// guess the provider; hand it the origin's unless the operator chose.
+		out.Rest = defaultProvider(q.Rest, f.provider)
+	}
+}
+
+// defaultProvider prepends --provider unless the operator already passed one.
+func defaultProvider(rest []string, provider string) []string {
+	head := rest
+	if at := slices.Index(rest, sentinel); at >= 0 {
+		head = rest[:at]
+	}
+	for i := range head {
+		if _, _, ok := providerOperand(head, i); ok {
+			return rest
+		}
+	}
+	return slices.Concat([]string{flagProvider, provider}, rest)
+}
+
+// SpaceProviderFlag rewrites a "--provider=x" before the sentinel to the
+// spaced form every verb's flag parser takes, so a verb's own flag check can
+// run on a URL invocation before the URL's provider has been resolved.
+func SpaceProviderFlag(rest []string) []string {
+	out := make([]string, 0, len(rest)+1)
+	for i, a := range rest {
+		if a == sentinel {
+			return append(out, rest[i:]...)
+		}
+		if v, ok := strings.CutPrefix(a, flagProvider+"="); ok {
+			out = append(out, flagProvider, v)
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
 }
 
 type branchHit struct {

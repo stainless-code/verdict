@@ -15,6 +15,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"maps"
 	"os"
 	"os/signal"
@@ -123,7 +124,7 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	if failed {
 		return reportStripFailure(r, env, readFile, uerr, ref)
 	}
-	if code, bad := checkHostFlags(r, cmd, repo, pr, rest); bad {
+	if code, bad := checkHostFlags(r, forces, env, readFile, cmd, repo, pr, rest); bad {
 		return code
 	}
 	tgt := resolveTarget(cmd, repo, pr, rest, env, getenv)
@@ -147,8 +148,8 @@ func gateInvocation(
 	r *cli.Runner, verb string, tgt *target.Resolved, forces *cli.GlobalForces, env map[string]string,
 	readFile func(string) ([]byte, error), stderr *os.File,
 ) (code int, done bool) {
-	if tgt.Refusal != nil && tgt.Refusal.Code == core.CodeTargetUnresolved {
-		return refuseUnresolved(r, verb, tgt.Refusal, forces, env, readFile, stderr), true
+	if ref := tgt.Refusal; ref != nil && (ref.Code == core.CodeTargetUnresolved || ref.Code == cli.CodeCanceled) {
+		return refuseEarly(r, verb, ref, forces, env, readFile, stderr), true
 	}
 	if tgt.Refusal == nil && invocationArityUsage(r.Cmd, tgt.Repo, tgt.Pr, tgt.Rest) {
 		fmt.Fprint(stderr, usageText())
@@ -180,26 +181,20 @@ func settleInvocation(
 	return 0, false
 }
 
-// refuseUnresolved renders the target-unresolved refusal as the usage-class
-// failure it is: exit 2, the typed envelope under --json, and in human mode
-// the refusal followed by the verb's usage line. Unreadable settings never
-// replace it (defaults apply), so the missing argument is always what a
-// corrupt settings file cannot hide.
-func refuseUnresolved(
+// refuseEarly renders a target refusal that must not be replaced by a
+// settings failure: target-unresolved as the usage-class failure it is (exit
+// 2, the typed envelope under --json, the verb's usage line in human mode) and
+// a cancel as exit 3. Unreadable settings fall back to the defaults.
+func refuseEarly(
 	r *cli.Runner, verb string, ref *core.RefusalError, forces *cli.GlobalForces,
 	env map[string]string, readFile func(string) ([]byte, error), stderr *os.File,
 ) int {
-	r.Effective = cli.Defaults()
-	if prefs, perr := cli.ResolvePrefs(r, env, readFile); perr == nil {
-		r.Effective = prefs.Effective
-	}
-	if err := cli.ApplyGlobalForces(r, forces, noColorForFallback(r, env)); err != nil {
-		r.RouteHuman()
-		return r.Refuse(err)
+	if code, failed := prepareRender(r, forces, env, readFile); failed {
+		return code
 	}
 	r.RouteHuman()
 	code := r.RefuseExit(ref, cli.ExitUsage)
-	if !r.JSONMode {
+	if !r.JSONMode && ref.Code == core.CodeTargetUnresolved {
 		fmt.Fprintln(stderr, usageLine(verb))
 	}
 	return code
@@ -774,22 +769,64 @@ func splitSubverb(first string, rest []string) (repo, pr string, tail []string) 
 
 // checkHostFlags validates the flags of a verb that may ask the host for its
 // target, before any git or host call, so a mistyped flag is a plain usage
-// error and never a lookup followed by one. It reports the verb's own error
-// through r exactly as the verb would.
-func checkHostFlags(r *cli.Runner, cmd, repo, pr string, rest []string) (code int, bad bool) {
-	if !takesTarget(cmd, rest) {
+// error and never a lookup followed by one. The check first runs silently; only
+// a failure renders, through the same output mode the verb would have used (the
+// readable settings, else the defaults, then the global flags), and reports
+// the verb's own error exactly as the verb would.
+func checkHostFlags(
+	r *cli.Runner, forces *cli.GlobalForces, env map[string]string, readFile func(string) ([]byte, error),
+	cmd, repo, pr string, rest []string,
+) (code int, bad bool) {
+	check, args, ok := hostFlagCheck(cmd, repo, pr, rest)
+	if !ok {
 		return 0, false
+	}
+	silent := &cli.Runner{Out: io.Discard, Human: io.Discard, Diag: io.Discard, Now: r.Now}
+	if _, bad := check(silent, args); !bad {
+		return 0, false
+	}
+	if code, failed := prepareRender(r, forces, env, readFile); failed {
+		return code, true
+	}
+	return check(r, args)
+}
+
+// hostFlagCheck picks the flag checker and the flag arguments of a verb that
+// may ask the host; ok is false for any other invocation. A URL invocation's
+// "--provider=x" is spaced first, because the URL's provider is resolved only
+// after the check.
+func hostFlagCheck(cmd, repo, pr string, rest []string) (check func(*cli.Runner, []string) (int, bool), args []string, ok bool) {
+	if !takesTarget(cmd, rest) {
+		return nil, nil, false
 	}
 	verb, args := cmd, rest
 	if cmd == cmdThreads && repo == subverbResolve {
 		_, _, args = splitSubverb(pr, rest)
 		verb = threadsResolve
 	}
-	check, ok := hostFlagCheckers[verb]
-	if !ok || !talksToHost(verb, args) {
-		return 0, false
+	if core.IsTargetURL(repo) {
+		args = target.SpaceProviderFlag(args)
 	}
-	return check(r, args)
+	check, ok = hostFlagCheckers[verb]
+	return check, args, ok && talksToHost(verb, args)
+}
+
+// prepareRender settles how an early refusal renders: the readable settings,
+// else the defaults (a corrupt file never replaces the refusal), then the
+// global flags, so the last of --json and --no-json decides the output mode.
+// failed reports a global flag that itself refused, with its exit code.
+func prepareRender(
+	r *cli.Runner, forces *cli.GlobalForces, env map[string]string, readFile func(string) ([]byte, error),
+) (code int, failed bool) {
+	r.Effective = cli.Defaults()
+	if prefs, perr := cli.ResolvePrefs(r, env, readFile); perr == nil {
+		r.Effective = prefs.Effective
+	}
+	if err := cli.ApplyGlobalForces(r, forces, noColorForFallback(r, env)); err != nil {
+		r.RouteHuman()
+		return r.Refuse(err), true
+	}
+	return 0, false
 }
 
 // hostFlagCheckers is each host-talking verb's own flag validation. A test

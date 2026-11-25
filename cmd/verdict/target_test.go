@@ -9,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/stainless-code/verdict/internal/cli"
+	"github.com/stainless-code/verdict/internal/core"
+	"github.com/stainless-code/verdict/internal/target"
 )
 
 // TestSplitCommandPairEndsAtFlag pins that a flag before the pair means the
@@ -359,5 +361,58 @@ func TestMissingTargetNamesTheVerbsOwnNumberArgument(t *testing.T) {
 		if !strings.Contains(derr, "verdict "+verb+" <owner/repo> "+want) {
 			t.Errorf("%s: stderr lacks %q:\n%s", verb, want, derr)
 		}
+	}
+}
+
+// TestURLProviderEqualsFlagPassesTheFlagCheck pins the documented URL spelling
+// `--provider=<name>`: the verb's own flag check runs before the URL's
+// provider is resolved, so it must see the spaced form every verb accepts.
+func TestURLProviderEqualsFlagPassesTheFlagCheck(t *testing.T) {
+	hermeticEnv(t)
+	t.Setenv("PATH", t.TempDir())
+	t.Chdir(t.TempDir())
+	_, _, derr := runCapture(t, []string{"fetch", "https://github.com/acme/app/pull/12", "--provider=github"})
+	if strings.Contains(derr, "unknown flag") {
+		t.Fatalf("the documented --provider=github spelling was refused as a flag error:\n%s", derr)
+	}
+}
+
+// TestFlagRefusalFollowsTheFinalOutputMode pins that a host verb's flag
+// refusal renders after the global flags apply: the last of --json and
+// --no-json decides, so no envelope reaches stdout here.
+func TestFlagRefusalFollowsTheFinalOutputMode(t *testing.T) {
+	targetCheckout(t, false)
+	code, out, derr := runCapture(t, []string{"pr-wait", "acme/app", "12", "--json", "--no-json", "--frobnicate"})
+	if code == 0 || out != "" || !strings.Contains(derr, "frobnicate") {
+		t.Fatalf("exit %d\nstdout: %q\nstderr: %s", code, out, derr)
+	}
+	code, out, _ = runCapture(t, []string{"pr-wait", "acme/app", "12", "--no-json", "--json", "--frobnicate"})
+	if code == 0 || !strings.Contains(out, `"code": "bad-flags"`) {
+		t.Fatalf("a later --json wins and gets the envelope: exit %d stdout %q", code, out)
+	}
+}
+
+// TestCancelSurvivesUnreadableSettings pins that a canceled target resolution
+// exits 3 with the cancel refusal even when the settings file is corrupt.
+func TestCancelSurvivesUnreadableSettings(t *testing.T) {
+	hermeticEnv(t)
+	writeCorruptSettings(t)
+	outFile, err := os.CreateTemp(t.TempDir(), "out")
+	if err != nil {
+		t.Fatal(err)
+	}
+	errFile, err := os.CreateTemp(t.TempDir(), "err")
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := newRunner("fetch", "", "", outFile, errFile, os.Getenv)
+	tgt := &target.Resolved{Refusal: &core.RefusalError{Code: "canceled", Message: "canceled before target resolution completed"}}
+	code, done := gateInvocation(r, "fetch", tgt, &cli.GlobalForces{}, envMap(os.Getenv), os.ReadFile, errFile)
+	raw, rerr := os.ReadFile(errFile.Name())
+	if rerr != nil {
+		t.Fatal(rerr)
+	}
+	if !done || code != cli.ExitBroke || strings.Contains(string(raw), "settings") || !strings.Contains(string(raw), "canceled") {
+		t.Fatalf("code %d done %v stderr %q; want exit 3 naming the cancel, not the settings", code, done, raw)
 	}
 }

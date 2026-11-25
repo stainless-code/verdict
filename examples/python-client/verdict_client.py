@@ -52,6 +52,30 @@ class VerdictGateError(VerdictError):
         super().__init__("gate failed", 1)
 
 
+def _envelope(stdout: str) -> dict:
+    """The one documented envelope on stdout, or VerdictError."""
+    try:
+        doc = json.loads(stdout.strip())
+    except json.JSONDecodeError as exc:
+        raise VerdictError(f"stdout is not one envelope: {exc}") from exc
+    if not isinstance(doc, dict) or any(key not in doc for key in KEYS):
+        raise VerdictError("stdout is not the documented envelope")
+    if doc["schema_version"] != SCHEMA_VERSION:
+        raise VerdictError(f"unsupported schema_version {doc['schema_version']!r}")
+    return doc
+
+
+def _refusal(doc: dict, exit_code: int) -> VerdictRefusal:
+    """The typed refusal an envelope carries, or VerdictError when it has none."""
+    error = doc["error"]
+    if (doc["data"] is not None or not isinstance(error, dict)
+            or not isinstance(error.get("code"), str)
+            or not isinstance(error.get("message"), str)
+            or not isinstance(doc["warnings"], list)):
+        raise VerdictError("refusal envelope has no typed error")
+    return VerdictRefusal(error["code"], error["message"], doc["warnings"], exit_code)
+
+
 def run(verb: str, args: list[str], *, cwd: str | None = None,
         timeout: float = DEFAULT_TIMEOUT, binary: str | None = None,
         ) -> VerdictJsonEnvelope:
@@ -70,35 +94,22 @@ def run(verb: str, args: list[str], *, cwd: str | None = None,
     if len(proc.stdout.encode()) > MAX_STDOUT:
         raise VerdictError(f"stdout exceeded {MAX_STDOUT} bytes")
     if proc.returncode == 2:
-        # Usage class: an argv bug prints no envelope, but a pair verb with no
-        # resolvable target exits 2 with a typed `target-unresolved` refusal.
+        # Usually an argv bug with no envelope; a pair verb with no resolvable
+        # target exits 2 with a typed `target-unresolved` refusal instead.
         try:
-            doc = json.loads(proc.stdout.strip())
-            error = doc["error"]
-            if doc["data"] is None and isinstance(error, dict):
-                raise VerdictRefusal(error["code"], error["message"], doc["warnings"], 2)
-        except (json.JSONDecodeError, KeyError, TypeError):
-            pass
-        raise VerdictError(proc.stderr.strip(), 2)
+            refusal = _refusal(_envelope(proc.stdout), 2)
+        except VerdictError:
+            raise VerdictError(proc.stderr.strip(), 2) from None
+        raise refusal
     if proc.returncode not in (0, 1):
         raise VerdictError(f"verdict {verb}: exit {proc.returncode}\n{proc.stderr.strip()}")
-    try:
-        doc = json.loads(proc.stdout.strip())
-    except json.JSONDecodeError as exc:
-        raise VerdictError(f"stdout is not one envelope: {exc}") from exc
-    if not isinstance(doc, dict) or any(key not in doc for key in KEYS):
-        raise VerdictError("stdout is not the documented envelope")
-    if doc["schema_version"] != SCHEMA_VERSION:
-        raise VerdictError(f"unsupported schema_version {doc['schema_version']!r}")
+    doc = _envelope(proc.stdout)
     if proc.returncode == 1:
-        error = doc["error"]
-        if error is None and doc["data"] is not None:
+        if doc["error"] is None and doc["data"] is not None:
             raise VerdictGateError(
                 VerdictJsonEnvelope(**{key: doc[key] for key in KEYS})
             )
-        if doc["data"] is not None or not isinstance(error, dict):
-            raise VerdictError("refusal envelope has no typed error")
-        raise VerdictRefusal(error["code"], error["message"], doc["warnings"])
+        raise _refusal(doc, 1)
     if doc["error"] is not None:
         raise VerdictError("exit 0 envelope carries an error")
     return VerdictJsonEnvelope(**{key: doc[key] for key in KEYS})
