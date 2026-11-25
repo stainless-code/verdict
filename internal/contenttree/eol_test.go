@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -197,6 +198,28 @@ func TestIdentPathIsSnapshottedAsCheckoutWritesIt(t *testing.T) {
 		t.Fatalf("ident snapshot named %s, want the commit's tree %s", snap.content.Tree, head)
 	}
 	requireBytes(t, filepath.Join(snap.dir, "id.txt"), checkedOut)
+}
+
+// TestDeletedAttributesFileExpandsNoIdent pins the other side of a tracked
+// .gitattributes deleted from disk: the deletion is content, so the named
+// tree holds no .gitattributes and a checkout of it expands nothing. The
+// snapshot must hold that checkout — `$Id$` unexpanded — not expand from
+// the stale indexed copy, which its own re-check (against the named tree)
+// could never clean back.
+func TestDeletedAttributesFileExpandsNoIdent(t *testing.T) {
+	root, g := repo(t)
+	write(t, root, ".gitattributes", "id.txt ident\n")
+	write(t, root, "id.txt", "hello $Id$ world\n")
+	git(t, root, "add", "-A")
+	git(t, root, "commit", "-q", "-m", "ident")
+	if err := os.Remove(filepath.Join(root, ".gitattributes")); err != nil {
+		t.Fatal(err)
+	}
+	snap := snapshot(t, g)
+	if files := git(t, root, "ls-tree", "--name-only", snap.content.Tree); strings.Contains(files, ".gitattributes") {
+		t.Fatalf("named tree holds %q, want the deleted .gitattributes left out", files)
+	}
+	requireBytes(t, filepath.Join(snap.dir, "id.txt"), "hello $Id$ world\n")
 }
 
 // TestMissingAttributesFileIsReadFromItsIndexedCopy pins the attribute
