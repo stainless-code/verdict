@@ -398,14 +398,15 @@ func dispatchVerb(
 	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root, repoRoot string,
 	env map[string]string, forces *cli.GlobalForces, rest []string, stderr *os.File,
 ) int {
-	if h, ok := readVerbs[cmd]; ok {
-		return h(ctx, r, rest, readcommon.Request{
-			Runtime: &core.Runtime{Env: env, Now: r.Now},
-			Repo:    repo, Pr: pr, Forces: forces, Root: &root,
-			RepoRoot: repoRoot,
-		})
+	req := readcommon.Request{
+		Runtime: &core.Runtime{Env: env, Now: r.Now},
+		Repo:    repo, Pr: pr, Forces: forces, Root: &root,
+		RepoRoot: repoRoot,
 	}
-	if code, ok := dispatchMutating(ctx, cmd, r, repo, pr, root, repoRoot, env, forces, rest); ok {
+	if h, ok := readVerbs[cmd]; ok {
+		return h(ctx, r, rest, req)
+	}
+	if code, ok := dispatchMutating(ctx, cmd, r, repo, pr, root, repoRoot, env, forces, rest, req); ok {
 		return code
 	}
 	fmt.Fprintf(stderr, "%s\n", unknownCmdMessage(cmd))
@@ -431,7 +432,7 @@ func resolveRepoRoot(ctx context.Context, r *cli.Runner, cmd string) (root strin
 
 func dispatchMutating(
 	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root, repoRoot string,
-	env map[string]string, forces *cli.GlobalForces, rest []string,
+	env map[string]string, forces *cli.GlobalForces, rest []string, req readcommon.Request,
 ) (code int, ok bool) {
 	if code, ok := dispatchFetch(ctx, cmd, r, repo, pr, root, repoRoot, env, rest); ok {
 		return code, true
@@ -457,19 +458,19 @@ func dispatchMutating(
 			Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env, Forces: forces,
 		}), true
 	default:
-		return dispatchStoreVerbs(ctx, cmd, r, repo, pr, root, repoRoot, env, rest)
+		return dispatchStoreVerbs(ctx, cmd, r, repo, pr, root, repoRoot, env, rest, req)
 	}
 }
 
 func dispatchStoreVerbs(
 	ctx context.Context, cmd string, r *cli.Runner, repo, pr, root, repoRoot string,
-	env map[string]string, rest []string,
+	env map[string]string, rest []string, req readcommon.Request,
 ) (int, bool) {
 	switch cmd {
 	case "triage":
 		return triage.Run(ctx, r, rest, triage.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
 	case "adopt":
-		return adopt.Run(ctx, r, rest, adopt.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
+		return adopt.Run(ctx, r, rest, req), true
 	case "ingest":
 		return ingest.Run(ctx, r, rest, &ingest.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}), true
 	case "fix":
