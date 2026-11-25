@@ -398,12 +398,20 @@ eval_mk_bundle "$PR"
 eval_write_findings "$PR" <<'EOF'
 [{"kind":"inline","path":"notes.txt","side":"RIGHT","line":2,"anchored":true,"body":"Fresh finding to flip.","suggestion":null,"inBounds":true,"rigor":"pointed","severity":"informational","kb":[],"sig":"cccccccccccccccccccccccccccccccccccccccc","sig_version":"1","firstSeen":"aaaaaaa","lastSeen":"aaaaaaa","status":"open","rationale":"","history":[]}]
 EOF
+# A triage[] claim cannot buy addressed: only a VERIFIED claim backed by a
+# verify receipt flips a finding, so the review refuses before any count.
 eval_write_review "$PR" <<'EOF'
 {"schema_version":"1","body":"> ✅ Looks fine.\n> Basis: 0 reproduced · 0 ran · 0 walked · 0 pointed · 1 said · 1 rules cited · 1 verified fixes","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Recheck cite.","kb":["b4-rule"]}],"triage":[{"sig":"cccccccccccccccccccccccccccccccccccccccc","status":"addressed","rationale":"verified the fix path end to end with evidence"}]}
 EOF
 run_review post acme/app "$PR" --dry-run --json
-assert_exit "triage-addressed flip succeeds" 0
-assert_stream_nogrep "triage-addressed + cited rule count exactly, no warn" "$EVAL_ERR" "basis line counts"
+assert_exit "triage-addressed refuses" 1
+assert_refusal "triage-addressed refuses" bad-triage-status
+eval_write_review "$PR" <<'EOF'
+{"schema_version":"1","body":"> ✅ Looks fine.\n> Basis: 0 reproduced · 0 ran · 0 walked · 0 pointed · 1 said · 1 rules cited · 0 verified fixes","approved":false,"comments":[{"path":"notes.txt","line":2,"side":"RIGHT","body":"Recheck cite.","kb":["b4-rule"]}]}
+EOF
+run_review post acme/app "$PR" --dry-run --json
+assert_exit "cited-rule review succeeds" 0
+assert_stream_nogrep "cited rule count exactly, no warn" "$EVAL_ERR" "basis line counts"
 rm -f "$EVAL_SANDBOX/.verdict/kb.jsonl"
 
 if grep -Fq 'Confidence is the agent'"'"'s "would I merge on this review" judgment, informed by evidence depth, coverage, and rule support.' "$EVAL_ROOT/docs/manual.md"; then
