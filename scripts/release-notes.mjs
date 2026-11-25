@@ -3,6 +3,9 @@
 // and not a hash. `scripts/release.sh` pipes it into `goreleaser release
 // --release-notes`, and `make release-dry-run` runs it on the current version,
 // so a CHANGELOG the extractor cannot read fails CI instead of the release.
+// GitHub refuses a release body over 125,000 characters, and release.sh pushes
+// the tag before it creates the release, so an oversized section fails here,
+// before the tag, instead of stranding a tag with no release behind it.
 import { readFile } from "node:fs/promises";
 
 const FAILURE = [
@@ -10,6 +13,10 @@ const FAILURE = [
   "The Version PR writes it; tag only a commit whose CHANGELOG.md carries the",
   "bumped version as a `## <version>` heading.",
 ];
+
+// GitHub's release-body ceiling. `length` counts UTF-16 code units, which is
+// never fewer than the characters GitHub counts, so the check errs strict.
+const BODY_LIMIT = 125_000;
 
 const version = process.argv[2];
 if (!version) {
@@ -37,6 +44,16 @@ const notes = (end === -1 ? rest : rest.slice(0, end))
 
 if (notes === "") {
   console.error(FAILURE.join("\n"));
+  process.exit(1);
+}
+
+if (notes.length > BODY_LIMIT) {
+  console.error(
+    [
+      `release-notes: the ${version} section renders to ${notes.length} characters; GitHub refuses a release body over ${BODY_LIMIT}.`,
+      "Trim the .changeset entries the Version PR builds it from, then let the Version PR regenerate.",
+    ].join("\n"),
+  );
   process.exit(1);
 }
 

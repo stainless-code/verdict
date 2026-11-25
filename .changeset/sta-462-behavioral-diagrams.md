@@ -2,42 +2,6 @@
 "@stainless-code/verdict": minor
 ---
 
-A review may now carry one structured behavioral diagram — `review.json`'s
-optional `diagram` object with `type` (`sequence`|`state`|`flow`), an optional
-`title`, and `nodes`/`edges` whose `evidence` is exactly the `spec_checks`
-evidence shape (`path`, `line`, `quote`). Raw mermaid stays retired: `verdict`
-checks every quote against the pinned `full.diff` and renders the picture
-itself. What the check proves is narrow and stated as such: every drawn node
-and edge cites a real NEW-side diff line inside a hunk (added or context); the
-relation an edge draws stays the agent's claim. A node whose quote does not
-match is dropped, an edge drops with a failed quote or a dropped endpoint, and
-the block is omitted whole with one note when fewer than half the elements
-anchor (`MinVerifiedPercent = 50`; exactly half renders). Labels and titles are
-reduced to letters, digits, combining marks, spaces, and `.,:!?'()+_-/@` — no
-other rune — and node ids are generated, so no agent byte can spell mermaid
-syntax, a directive, an entity, or a fence; an out-of-scope type appears in the
-note inside a code span, so it never links. Caps: 24 nodes, 40 edges, 120 runes
-per label and title, 8,000 bytes per block; elements are kept while they fit,
-with a `%%` note that counts exactly what was left out, orphaned edges
-included. The quote matcher stops after 240 nodes and 400 edges, so a huge
-diagram costs bounded work. An unlabeled sequence message carries its target's
-label, so no line ends in a bare colon. The block lands collapsed right after the computed
-topology as `Behavior flow (each element anchored to a diff line — N/M
-anchored)`, and the outcome is published as `evidence.diagram` (type, title,
-supplied/verified/dropped counts, omission reason) in `record.json` and
-`post.json`; `post --dry-run` reports the same fields plus `status` in
-`data.body.diagram` (`$defs/postDiagram`, `null` when nothing is drawn). A
-malformed block is the `diagram-invalid` warning: it drops the element or omits
-the picture, never the review.
+A review may carry one structured behavioral diagram: `review.json`'s optional `diagram`, with `type` (`sequence`, `state` or `flow`), an optional `title`, and `nodes` and `edges` whose `evidence` quotes a diff line the way a spec check does. verdict checks every quote against the diff and draws the picture itself; raw mermaid stays retired. The check proves only that each node and edge cites a real new-side diff line. The relation an edge draws is still the agent's claim. Unanchored elements are dropped, and the block is omitted with a note when fewer than half anchor. Labels keep only letters, digits and simple punctuation, and node ids are generated, so an agent cannot inject mermaid syntax. Caps: 24 nodes, 40 edges, 8,000 bytes per block. The block renders collapsed after the change topology, and its outcome is reported as `evidence.diagram` in `record.json` and `post.json` and as `data.body.diagram` in `post --dry-run`. A malformed diagram is a `diagram-invalid` warning, never a refused review.
 
-Opt in with `publish.diagrams.anchored`, `REVIEW_PUBLISH_DIAGRAMS_ANCHORED=true`,
-or `--diagram-anchored`. Default off, and off means off: nothing is settled, so
-the body, `record.json`, `post.json`, and the dry run keep the bytes they had
-before. The published schema fixes the field's shape but not the values the
-runtime only warns on, so a schema-validating client accepts every review the
-CLI does; a repeated node id and an edge end naming no node are now
-`diagram-invalid` warnings too.
-The retired `publish.diagrams.behavioral` and `publish.diagrams.expanded` keys
-stay unknown-key refusals, now naming `anchored, structural` as the accepted
-keys. `prompts/diagrams.md` documents the structured field instead of the
-raw-mermaid wrapper, which moves `prompts_hash`.
+Opt in with `publish.diagrams.anchored`, `REVIEW_PUBLISH_DIAGRAMS_ANCHORED=true` or `--diagram-anchored`. It is off by default, and off changes nothing.

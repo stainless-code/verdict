@@ -34,6 +34,16 @@ func FuzzMatchQuote(f *testing.F) {
 		0,
 		"new",
 	)
+	// A start_line past the line it bounds is range-invalid; nightly fuzzing
+	// found that reason missing from the vocabulary below.
+	f.Add(
+		"diff --git a/a.go b/a.go\n--- a/a.go\n+++ b/a.go\n@@ -1,3 +1,3 @@\n ctx\n-old\n+newLineWithLongText\n end\n",
+		"a.go",
+		"RIGHT",
+		2,
+		31,
+		"newLineWithLongText",
+	)
 
 	f.Fuzz(func(t *testing.T, diff, path, side string, line, startLine int, quote string) {
 		idx := evidence.IndexDiff([]byte(diff))
@@ -79,7 +89,8 @@ func isKnownQuoteReason(reason string) bool {
 		"range-crosses-hunks",
 		"deleted-line",
 		"quote-too-large",
-		"text-differs":
+		"text-differs",
+		"range-invalid":
 		return true
 	default:
 		return false

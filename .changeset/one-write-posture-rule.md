@@ -2,18 +2,20 @@
 "@stainless-code/verdict": minor
 ---
 
-`verdict mcp`, `verdict serve`, and `verdict lsp` now share one write-posture rule, and `--read-only` is its only knob. The line is the transport. The stdio surfaces (`mcp`, `lsp`) get CLI parity: local writes (triage, KB promotion, sandboxed `verify`, `record`, `adopt`, `fix`) and host writes (`post`, the `threads` resolve mode) are on by default, and `--read-only` removes every write. `serve` is reachable by any local process, so on a loopback bind it serves local writes by default behind its token, session-cookie, CSRF, Host, and Origin guards, while host posting stays opt-in through `--allow-post` (the preview, nonce, and digest flow is unchanged); `--read-only` removes every write and refuses with `--allow-post`. Writes are a loopback-only default: any non-loopback `--host` serves read-only (a write there would cross plain HTTP, where the token and CSRF token can be sniffed), warns why, and refuses `--allow-post`, with no flag to turn remote writes back on. `lsp` accepts `--read-only` and has no write path. `serve` no longer allowlists a wildcard bind's own spelling (`0.0.0.0`, `::`, `::ffff:0.0.0.0`) as a Host or Origin, as the manual already promised, and a wildcard bind now prints a start URL on `127.0.0.1` (or `::1`) that the Host gate accepts.
+**Breaking:** `verdict mcp`, `verdict serve` and `verdict lsp` share one write-posture rule, and `--read-only` is the only switch.
 
-**Breaking, pre-1.0, no aliases.** The retired flags are now unknown-flag usage errors, and `mcp config` no longer recognizes a `["mcp", "--operator"]` entry as its own (it refuses `mcp-config-foreign`; edit the entry or delete it, then re-run `--write`).
+- **stdio (`mcp`, `lsp`) has CLI parity.** Local writes (triage, KB promotion, sandboxed `verify`, `record`, `adopt`, `fix`) and host writes (`post`, resolving threads) are on by default. `--read-only` removes every write. `lsp` has no write path.
+- **`serve` writes only on loopback.** Local writes are on by default behind its token, session-cookie, CSRF, Host and Origin checks. Host posting needs `--allow-post`, with its preview, nonce and digest flow. `--read-only` removes every write and refuses `--allow-post`.
+- **A non-loopback `--host` serves read-only,** warns why, and refuses `--allow-post`. No flag turns remote writes on, because the token would cross plain HTTP.
+- A wildcard bind no longer allowlists its own spelling (`0.0.0.0`, `::`) as a Host or Origin, and prints a start URL on `127.0.0.1` or `::1`.
 
-| Before                                                                                    | Now                                                                                    |
-| ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------- |
-| `mcp --operator` (to get `triage` or `threads` resolve)                                   | `mcp` — both are on by default; add `--read-only` to remove them and every other write |
-| `mcp config --operator`                                                                   | `mcp config`                                                                           |
-| `serve --interactive` (to get triage, KB promotion, and the verify and post-preview jobs) | `serve` — on by default; `--read-only` gives the old GET-only surface                  |
-| `serve --interactive --allow-post`                                                        | `serve --allow-post`                                                                   |
-| `serve` (read-only by default)                                                            | `serve --read-only`                                                                    |
-| `serve --interactive --host 192.168.1.10` (writes over a network bind)                    | read-only, no replacement flag; bind loopback for local triage                         |
-| `mcp --read-only --operator` (usage error)                                                | `mcp --read-only`                                                                      |
+The removed flags are unknown-flag usage errors. `mcp config` no longer treats a `["mcp", "--operator"]` entry as its own (`mcp-config-foreign`): edit or delete it, then re-run `--write`. An agent's MCP server that must not call `triage` should start with `--read-only`.
 
-An agent's MCP server that must not call `triage` should start with `--read-only`.
+| Before                                | Now                                                |
+| ------------------------------------- | -------------------------------------------------- |
+| `mcp --operator`                      | `mcp` (add `--read-only` to remove every write)    |
+| `mcp config --operator`               | `mcp config`                                       |
+| `serve --interactive`                 | `serve`                                            |
+| `serve --interactive --allow-post`    | `serve --allow-post`                               |
+| `serve` (read-only)                   | `serve --read-only`                                |
+| `serve --interactive --host <lan-ip>` | read-only, no replacement; bind loopback to triage |

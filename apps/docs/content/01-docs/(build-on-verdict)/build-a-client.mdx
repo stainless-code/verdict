@@ -267,9 +267,8 @@ structured results without writing a wrapper.
   `tools/list` schemas, or wants `--read-only` to hide writing verbs.
 - Use **spawning** for a library, a script, a CI step, or any program that
   needs one call and no protocol session. A JSON client does not need MCP.
-- `verdict mcp --read-only` exposes only `report`, `next`, `show`, `risk`,
-  `trend`, `ready`, `doctor`, `check-tree`, `config`, `index`, `pack`, and
-  `pr_wait`, plus `record` limited to its `dry_run: true` form. `threads` never
+- `verdict mcp --read-only` exposes only the reading tools (the manual lists
+  them), plus `record` limited to its `dry_run: true` form. `threads` never
   joins that set: it rewrites `.verdict/state/<pr>/threads.json` from the host.
 - Success results are the CLI envelope's `data`; typed refusals return
   `isError: true` with `{code, message, hint}` intact. Malformed calls are
