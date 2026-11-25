@@ -372,7 +372,7 @@ func (m sandboxMount) argv() []string {
 	if m.dir {
 		return []string{sandboxTmpfs, m.dest}
 	}
-	return []string{"--ro-bind", "/dev/null", m.dest}
+	return []string{bwrapROBind, "/dev/null", m.dest}
 }
 
 // sandbox is one prepared mechanism: the argv prefix that wraps the command,
@@ -558,7 +558,7 @@ func bwrapArgv(root string, in sandboxInputs) ([]string, *core.RefusalError) {
 	}
 	argv := []string{
 		bwrapTool,
-		"--ro-bind", "/", "/",
+		bwrapROBind, "/", "/",
 		"--dev", "/dev",
 		"--proc", "/proc",
 		"--unshare-pid",
@@ -566,10 +566,8 @@ func bwrapArgv(root string, in sandboxInputs) ([]string, *core.RefusalError) {
 		sandboxTmpfs, sandboxRuntimeDir,
 	}
 	argv = append(argv, sandboxVarRunMount(lstatMode)...)
-	argv = append(argv, "--bind", repo, repo)
-	for _, dir := range gitBinds {
-		argv = append(argv, "--ro-bind", dir, dir)
-	}
+	argv = append(argv, bwrapBind, repo, repo)
+	argv = append(argv, gitBinds.argv()...)
 	for _, mount := range sandboxCredentialMounts(locations) {
 		argv = append(argv, mount.argv()...)
 	}
@@ -587,25 +585,86 @@ func bwrapArgv(root string, in sandboxInputs) ([]string, *core.RefusalError) {
 // directory; a missing one or a symlink refuses. A location outside the root
 // is already read-only under `--ro-bind / /` (or private under the /tmp and
 // /run tmpfs mounts).
-func sandboxGitBindTargets(repo string) ([]string, *core.RefusalError) {
+func sandboxGitBindTargets(repo string) (sandboxGitBinds, *core.RefusalError) {
 	if ref := sandboxGitRootRefusal(repo); ref != nil {
-		return nil, ref
+		return sandboxGitBinds{}, ref
 	}
 	root, ref := newSandboxGitRoot(repo)
 	if ref != nil {
-		return nil, ref
+		return sandboxGitBinds{}, ref
 	}
-	paths, ref := sandboxGitChainStrict(root)
+	walked, gitdir, ref := sandboxGitChainStrict(filepath.Join(repo, sandboxGitName), repo, root)
 	if ref != nil {
-		return nil, ref
+		return sandboxGitBinds{}, ref
 	}
-	pins := make([]string, 0, len(paths))
-	for _, path := range paths {
+	nested, ref := sandboxFindNested(root, filepath.Join(gitdir, "index"), sandboxNestedMaxDirs)
+	if ref != nil {
+		return sandboxGitBinds{}, ref
+	}
+	held := nested.gitlinks
+	for _, dotgit := range nested.dotgits {
+		paths, _, ref := sandboxGitChainStrict(dotgit, filepath.Dir(dotgit), root)
+		if ref != nil {
+			return sandboxGitBinds{}, ref
+		}
+		held, walked = append(held, paths[0]), append(walked, paths[1:]...)
+	}
+	return sandboxGitBindPlan(root, walked, held), nil
+}
+
+// bwrapBind and bwrapROBind are bwrap's read-write and read-only bind
+// options; each binds a host path onto the same path in the sandbox.
+const (
+	bwrapBind   = "--bind"
+	bwrapROBind = "--ro-bind"
+)
+
+// argv renders the plan in mount order: pins, then anchors, then the held
+// paths, so each read-only hold lands on an anchored, unrenamable parent.
+func (b sandboxGitBinds) argv() []string {
+	var argv []string
+	for _, dir := range b.pins {
+		argv = append(argv, bwrapROBind, dir, dir)
+	}
+	for _, dir := range b.anchors {
+		argv = append(argv, bwrapBind, dir, dir)
+	}
+	for _, path := range b.held {
+		argv = append(argv, bwrapROBind, path, path)
+	}
+	return argv
+}
+
+// sandboxGitBinds is the bwrap mount plan for the git control paths: the
+// top-level entries holding the root's own git walks, bound read-only;
+// then the directories above each nested git path, self-bound read-write
+// so none can be renamed; then those nested paths, bound read-only.
+type sandboxGitBinds struct {
+	pins    []string
+	anchors []string
+	held    []string
+}
+
+// sandboxGitBindPlan pins every walked in-root path at its top-level entry
+// and holds each nested path exactly ([sandboxNestedPins]).
+func sandboxGitBindPlan(root sandboxGitRoot, walked, held []string) sandboxGitBinds {
+	var plan sandboxGitBinds
+	pinned := map[string]bool{}
+	for _, path := range walked {
 		if pin, ok := sandboxTopLevel(path, root.repo, root.real); ok {
-			pins = append(pins, pin)
+			plan.pins = append(plan.pins, pin)
+			pinned[pin] = true
 		}
 	}
-	return sandboxCleanUnique(pins), nil
+	for _, path := range held {
+		if anchors, ok := sandboxNestedPins(path, root, pinned); ok {
+			plan.anchors = append(plan.anchors, anchors...)
+			plan.held = append(plan.held, path)
+		}
+	}
+	plan.pins, plan.anchors, plan.held = sandboxCleanUnique(plan.pins), sandboxCleanUnique(plan.anchors),
+		sandboxCleanUnique(plan.held)
+	return plan
 }
 
 // sandboxGitRoot is the reviewed root the git walks classify paths against:
@@ -701,37 +760,38 @@ func sandboxTopLevel(path, repo, realRepo string) (string, bool) {
 	return "", false
 }
 
-// sandboxGitChainStrict follows the root's `.git` and, when present, the
-// commondir its git directory names, and returns every in-root path the
-// walks visit. Each pointer must parse and name an existing directory, and
-// no control file in the git locations may have a second name.
-func sandboxGitChainStrict(root sandboxGitRoot) ([]string, *core.RefusalError) {
-	dotgit := filepath.Join(root.repo, sandboxGitName)
+// sandboxGitChainStrict follows one `.git` (the root's, or a nested one,
+// whose relative `gitdir:` resolves from base) and, when present, the
+// commondir its git directory names. It returns the `.git` itself first,
+// then every in-root path the walks visit, and the git directory. Each
+// pointer must parse and name an existing directory, and no control file in
+// the git locations may have a second name.
+func sandboxGitChainStrict(dotgit, base string, root sandboxGitRoot) ([]string, string, *core.RefusalError) {
 	info, err := os.Lstat(dotgit)
 	if err != nil {
-		return nil, sandboxGitInspectRefusal(dotgit, err)
+		return nil, "", sandboxGitInspectRefusal(dotgit, err)
 	}
 	paths := []string{dotgit}
 	gitdir := dotgit
 	switch {
 	case info.Mode().IsRegular():
-		walked, final, ref := sandboxGitFollowStrict(dotgit, sandboxGitdirPrefix, root.repo, root)
+		walked, final, ref := sandboxGitFollowStrict(dotgit, sandboxGitdirPrefix, base, root)
 		if ref != nil {
-			return nil, ref
+			return nil, "", ref
 		}
 		paths = append(paths, walked...)
 		gitdir = final
 	case !info.IsDir():
-		return nil, sandboxUnavailable(dotgit + " is neither a directory nor a `gitdir:` file")
+		return nil, "", sandboxUnavailable(dotgit + " is neither a directory nor a `gitdir:` file")
 	}
 	walked, common, ref := sandboxGitCommondirStrict(gitdir, root)
 	if ref != nil {
-		return nil, ref
+		return nil, "", ref
 	}
 	if ref := sandboxGitLocationsRefusal(root, dotgit, gitdir, common); ref != nil {
-		return nil, ref
+		return nil, "", ref
 	}
-	return append(paths, walked...), nil
+	return append(paths, walked...), gitdir, nil
 }
 
 // sandboxGitCommondirStrict follows the commondir a git directory names, if
@@ -966,7 +1026,39 @@ func sandboxRelInside(base, path string) (string, bool) {
 // Paths outside the root are left out: every write there is denied already,
 // and a subpath rule on an ancestor of the root would deny the root itself.
 func sandboxGitDirs(repo string) ([]string, *core.RefusalError) {
-	dotgit := filepath.Join(repo, sandboxGitName)
+	root, ref := newSandboxGitRoot(repo)
+	if ref != nil {
+		return nil, ref
+	}
+	dirs, ref := sandboxRootGitDirs(root)
+	if ref != nil {
+		return nil, ref
+	}
+	// The nested scan runs whether or not the root has a `.git`: a nested
+	// `gitdir:` file can name an ordinary in-root directory either way. No
+	// index is read — the `.git` component rule already denies creating a
+	// `.git` at any submodule path, so its refusals would protect nothing.
+	nested, ref := sandboxFindNested(root, "", sandboxNestedMaxDirs)
+	if ref != nil {
+		return nil, ref
+	}
+	for _, path := range nested.dotgits {
+		more, ref := sandboxNestedGitDirs(path, root)
+		if ref != nil {
+			return nil, ref
+		}
+		dirs = append(dirs, more...)
+	}
+	if len(dirs) == 0 {
+		return nil, nil
+	}
+	return sandboxCleanUnique(dirs), nil
+}
+
+// sandboxRootGitDirs lists the in-root paths the root's own `.git` walks
+// visit, or none when the root has no `.git`.
+func sandboxRootGitDirs(root sandboxGitRoot) ([]string, *core.RefusalError) {
+	dotgit := filepath.Join(root.repo, sandboxGitName)
 	info, err := os.Lstat(dotgit)
 	switch {
 	case errors.Is(err, fs.ErrNotExist):
@@ -976,36 +1068,48 @@ func sandboxGitDirs(repo string) ([]string, *core.RefusalError) {
 	case info.Mode()&os.ModeSymlink != 0:
 		return nil, sandboxGitSymlinkedDotRefusal(dotgit)
 	}
-	root, ref := newSandboxGitRoot(repo)
-	if ref != nil {
-		return nil, ref
+	return sandboxGitDirsAt(dotgit, root.repo, info, root)
+}
+
+// sandboxNestedGitDirs runs one nested `.git` through the same walks and
+// scans as the root's. Its writes are already denied by the `.git`
+// component rule; what this adds is the git directory a nested `gitdir:`
+// file names under an ordinary in-root name, and the refusals.
+func sandboxNestedGitDirs(dotgit string, root sandboxGitRoot) ([]string, *core.RefusalError) {
+	info, err := os.Lstat(dotgit)
+	if err != nil {
+		return nil, sandboxGitInspectRefusal(dotgit, err)
 	}
+	return sandboxGitDirsAt(dotgit, filepath.Dir(dotgit), info, root)
+}
+
+// sandboxGitDirsAt lists the in-root paths one `.git` (resolving a relative
+// `gitdir:` from base) and its commondir walk visit, after the location
+// scans.
+func sandboxGitDirsAt(dotgit, base string, info os.FileInfo, root sandboxGitRoot) ([]string, *core.RefusalError) {
 	dirs, gitdir := []string{dotgit}, dotgit
 	if info.Mode().IsRegular() {
-		var walked []string
-		if walked, gitdir, ref = sandboxGitdirDirs(dotgit, root); ref != nil {
+		walked, final, ref := sandboxGitdirDirs(dotgit, base, root)
+		if ref != nil {
 			return nil, ref
 		}
-		dirs = append(dirs, walked...)
+		dirs, gitdir = append(dirs, walked...), final
 	}
 	common, commonDir, ref := sandboxGitCommondirDirs(gitdir, root)
 	if ref == nil {
 		ref = sandboxGitLocationsRefusal(root, dotgit, gitdir, commonDir)
 	}
-	if ref != nil {
-		return nil, ref
-	}
-	return sandboxCleanUnique(append(dirs, common...)), nil
+	return append(dirs, common...), ref
 }
 
 // sandboxGitdirDirs lists the in-root paths of the `gitdir:` walk a `.git`
 // file names, and the git directory it reaches.
-func sandboxGitdirDirs(dotgit string, root sandboxGitRoot) ([]string, string, *core.RefusalError) {
+func sandboxGitdirDirs(dotgit, base string, root sandboxGitRoot) ([]string, string, *core.RefusalError) {
 	raw, _, ref := sandboxGitPointerRaw(dotgit, sandboxGitdirPrefix)
 	if ref != nil {
 		return nil, "", ref
 	}
-	steps, gitdir := sandboxGitWalk(root.repo, raw)
+	steps, gitdir := sandboxGitWalk(base, raw)
 	if ref := root.heldRefusal(gitdir); ref != nil {
 		return nil, "", ref
 	}
@@ -1080,10 +1184,7 @@ func sandboxGitLocationsRefusal(root sandboxGitRoot, locations ...string) *core.
 		}
 	}
 	for _, location := range locations {
-		scan := &sandboxGitScanner{
-			root: root, location: location, protected: protected, info: fs.DirEntry.Info, gitdirs: []string{location},
-		}
-		if ref := scan.run(); ref != nil {
+		if ref := newSandboxGitScanner(root, location, protected).run(); ref != nil {
 			return ref
 		}
 	}
@@ -1092,19 +1193,32 @@ func sandboxGitLocationsRefusal(root sandboxGitRoot, locations ...string) *core.
 
 // sandboxGitScanner walks one git location. info reads an entry's
 // metadata; it is a field so a test can make an entry vanish mid-walk.
-// gitdirs holds the git directories found so far: the location, then each
-// submodule git directory below a `modules/` (WalkDir visits a directory
-// before its contents, so a git directory is known before its files).
+// gitdirs is the stack of git directories enclosing the current entry: the
+// location at the bottom, then each submodule git directory below a
+// `modules/`. WalkDir visits in depth-first pre-order, so a git directory
+// is pushed before its contents and popped once the walk leaves it; each
+// entry costs amortized constant work however many submodules there are.
+// checks, pushes, and depth (the deepest the stack got) are for the
+// scaling test.
 type sandboxGitScanner struct {
 	info      func(fs.DirEntry) (fs.FileInfo, error)
 	root      sandboxGitRoot
 	location  string
 	protected []os.FileInfo
 	gitdirs   []string
+	checks    int
+	pushes    int
+	depth     int
 }
 
 // run walks the location; the first refusal stops the walk and is
 // returned.
+func newSandboxGitScanner(root sandboxGitRoot, location string, protected []os.FileInfo) *sandboxGitScanner {
+	return &sandboxGitScanner{
+		root: root, location: location, protected: protected, info: fs.DirEntry.Info, gitdirs: []string{location},
+	}
+}
+
 func (s *sandboxGitScanner) run() *core.RefusalError {
 	err := filepath.WalkDir(s.location, func(path string, d fs.DirEntry, err error) error {
 		if ref := s.visit(path, d, err); ref != nil {
@@ -1148,19 +1262,22 @@ func (s *sandboxGitScanner) noteSubmoduleGitdir(path string) {
 	}
 	if _, err := os.Lstat(filepath.Join(path, "HEAD")); err == nil {
 		s.gitdirs = append(s.gitdirs, path)
+		s.pushes++
+		s.depth = max(s.depth, len(s.gitdirs))
 	}
 }
 
-// relToGitdir is path relative to the deepest known git directory that
-// holds it.
+// relToGitdir is path relative to the innermost git directory that holds
+// it, popping the git directories the walk has left.
 func (s *sandboxGitScanner) relToGitdir(path string) string {
-	owner := s.location
-	for _, dir := range s.gitdirs {
-		if len(dir) > len(owner) && strings.HasPrefix(path, dir+string(filepath.Separator)) {
-			owner = dir
+	for len(s.gitdirs) > 1 {
+		s.checks++
+		if strings.HasPrefix(path, s.gitdirs[len(s.gitdirs)-1]+string(filepath.Separator)) {
+			break
 		}
+		s.gitdirs = s.gitdirs[:len(s.gitdirs)-1]
 	}
-	rel, err := filepath.Rel(owner, path)
+	rel, err := filepath.Rel(s.gitdirs[len(s.gitdirs)-1], path)
 	if err != nil {
 		return ""
 	}

@@ -125,6 +125,7 @@ var boundArtifacts = []string{
 }
 
 func TestCoordinatorRunsFindersAndCrossConcurrently(t *testing.T) {
+	t.Parallel()
 	var first concurrentArtifacts
 	for i, order := range []struct {
 		delay map[string]string

@@ -30,6 +30,15 @@ means a human reviewer is the only gate.
   driver goroutine that must act on either outcome keeps its own bounded loop,
   because `t.Fatalf` cannot run there. — review-only: a raw `time.Sleep` poll
   compiles and passes.
+- **A test that spawns its own `-race` binary starts it under
+  `GORACE=atexit_sleep_ms=0`.** The race runtime sleeps a full second before
+  every process exits, so each fake-agent launch cost one idle second whatever
+  it did (`internal/core/backtest`'s replay suite went from about 175 s to
+  about 90 s on that alone). A test that mutates the process environment or
+  measures process-wide state (allocations) stays serial; the rest run
+  `t.Parallel()`, so a fixture carries its environment and PATH on the request
+  instead of `t.Setenv`. — review-only: a missing setting still passes, one
+  second slower per spawn.
 - **A wait that races a shipped deadline measures the machine.** A fixture whose
   child must start inside a product timeout fails under load while the code is
   right; `internal/readcommon`'s root-probe fixture runs through

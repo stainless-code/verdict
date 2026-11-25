@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -106,7 +107,12 @@ func fakeArgvTail() string {
 	if len(os.Args) < 2 {
 		return ""
 	}
-	return strings.Join(os.Args[:len(os.Args)-1], " ")
+	args := slices.Clone(os.Args[:len(os.Args)-1])
+	// The test resolves the agent to its planted path before spawning, so the
+	// child reports the name the launcher asked for, as a real agent's argv[0]
+	// would read when the shell resolved it.
+	args[0] = filepath.Base(args[0])
+	return strings.Join(args, " ")
 }
 
 // fakeAppendLog appends one line to the planted log, returning how many

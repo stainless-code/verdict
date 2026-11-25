@@ -7,6 +7,7 @@ import (
 
 // TestParseFixHunks pins the old-side line numbers and the header/body split.
 func TestParseFixHunks(t *testing.T) {
+	t.Parallel()
 	diff := `diff --git a/a.go b/a.go
 index 1111111..2222222 100644
 --- a/a.go
@@ -53,6 +54,7 @@ diff --git a/"odd name.go" b/"odd name.go"
 // TestParseFixHunksMultiHunk pins old-side numbering across hunks, the CRLF
 // byte a Windows file keeps, and the no-newline marker that carries no line.
 func TestParseFixHunksMultiHunk(t *testing.T) {
+	t.Parallel()
 	diff := "diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n" +
 		"@@ -2 +2 @@\n-old one\n+new one\n" +
 		"@@ -9,2 +9,2 @@\n-old two\r\n-old three\n\\ No newline at end of file\n+new two\n+new three\n"
@@ -69,6 +71,7 @@ func TestParseFixHunksMultiHunk(t *testing.T) {
 
 // TestParseFixHunksBinary pins the binary marker.
 func TestParseFixHunksBinary(t *testing.T) {
+	t.Parallel()
 	got := parseFixHunks("diff --git a/x.bin b/x.bin\nBinary files a/x.bin and b/x.bin differ\n")
 	if !got.Binary {
 		t.Error("binary = false; want true")
@@ -80,6 +83,7 @@ func TestParseFixHunksBinary(t *testing.T) {
 
 // TestClassifyKind pins every subject word and every diff rule.
 func TestClassifyKind(t *testing.T) {
+	t.Parallel()
 	tests := []struct { //nolint:govet // test table readability
 		name    string
 		subject string
@@ -117,6 +121,7 @@ func TestClassifyKind(t *testing.T) {
 
 // TestPathClass pins the vendored/generated path rules.
 func TestPathClass(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		path string
 		want string
@@ -141,6 +146,7 @@ func TestPathClass(t *testing.T) {
 
 // TestDocsTestOnly pins the whole-fix documentation/test rule.
 func TestDocsTestOnly(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		paths []string
 		want  bool
