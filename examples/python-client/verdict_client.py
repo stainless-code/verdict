@@ -30,16 +30,18 @@ class VerdictError(Exception):
 
 
 class VerdictRefusal(VerdictError):
-    """Exit 1: `data` is null and `error` carries code and message."""
+    """Exit 1 (or 2 for `target-unresolved`): `data` is null and `error` carries
+    code and message."""
 
-    def __init__(self, code: str, message: str, warnings: list[str]) -> None:
+    def __init__(self, code: str, message: str, warnings: list[str],
+                 exit_code: int = 1) -> None:
         marker = "\ntry: "
         at = message.rfind(marker)
         self.code = code
         self.message = message[:at] if at >= 0 else message
         self.hint = message[at + 1 :] if at >= 0 else ""
         self.warnings = warnings
-        super().__init__(f"{code}: {self.message}", 1)
+        super().__init__(f"{code}: {self.message}", exit_code)
 
 
 class VerdictGateError(VerdictError):
@@ -68,6 +70,15 @@ def run(verb: str, args: list[str], *, cwd: str | None = None,
     if len(proc.stdout.encode()) > MAX_STDOUT:
         raise VerdictError(f"stdout exceeded {MAX_STDOUT} bytes")
     if proc.returncode == 2:
+        # Usage class: an argv bug prints no envelope, but a pair verb with no
+        # resolvable target exits 2 with a typed `target-unresolved` refusal.
+        try:
+            doc = json.loads(proc.stdout.strip())
+            error = doc["error"]
+            if doc["data"] is None and isinstance(error, dict):
+                raise VerdictRefusal(error["code"], error["message"], doc["warnings"], 2)
+        except (json.JSONDecodeError, KeyError, TypeError):
+            pass
         raise VerdictError(proc.stderr.strip(), 2)
     if proc.returncode not in (0, 1):
         raise VerdictError(f"verdict {verb}: exit {proc.returncode}\n{proc.stderr.strip()}")

@@ -435,3 +435,11 @@ const (
 	flagIndex      = "--index"
 	flagPreview    = "--preview"
 )
+
+// CheckFlags validates fetch's flags alone, reporting a usage error on r
+// exactly as Run would. The front door calls it ahead of any host lookup, so a
+// mistyped flag is refused before verdict spends a host call on its target.
+func CheckFlags(r *cli.Runner, args []string) (code int, bad bool) {
+	_, code, bad = parseFetchFlags(r, args)
+	return code, bad
+}

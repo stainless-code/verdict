@@ -521,6 +521,24 @@ describe("unit: fake binary exit paths", () => {
     });
   });
 
+  it("exit 2 with a refusal envelope throws the typed refusal", async () => {
+    await assert.rejects(runFake("target-unresolved"), (error) => {
+      assert.ok(error instanceof VerdictRefusalError);
+      assert.ok(!(error instanceof VerdictUsageError));
+      assert.equal(error.code, "target-unresolved");
+      assert.ok(error.hint.includes("pass the target explicitly"));
+      return true;
+    });
+  });
+
+  it("exit 2 with stdout that is no refusal envelope stays a usage error", async () => {
+    await assert.rejects(runFake("usage-noise"), (error) => {
+      assert.ok(error instanceof VerdictUsageError);
+      assert.ok(error.stderr.includes("usage: verdict report"));
+      return true;
+    });
+  });
+
   it("exit 3 throws VerdictProcessError with the code", async () => {
     await assert.rejects(runFake("broke"), (error) => {
       assert.ok(error instanceof VerdictProcessError);
@@ -1213,13 +1231,14 @@ describe("integration: real binary", () => {
   );
 
   it(
-    "report with no args is a usage error",
+    "report with no args refuses target-unresolved at exit 2",
     { skip: !haveBinary },
     async () => {
       const dir = mkBundle(4243);
       const client = createClient({ bin: REAL_BIN, cwd: dir, stderr: "pipe" });
       await assert.rejects(client.report([]), (error) => {
-        assert.ok(error instanceof VerdictUsageError);
+        assert.ok(error instanceof VerdictRefusalError);
+        assert.equal(error.code, "target-unresolved");
         return true;
       });
     },

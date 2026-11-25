@@ -46,7 +46,7 @@ cat >"$EVAL_SANDBOX/fakebin/gh" <<'STUB'
 echo "stub-gh $*" >> "${EVAL_STUBLOG:-/dev/null}"
 case "$*" in
   *--jq*) echo "a/save.go (+1/-1)" ;;
-  "pr list --repo acme/app --head="*" --state open --json number,headRefName,url --limit 2")
+  "pr list --repo acme/app --head="*" --state open --json number,headRefName,url,isCrossRepository,headRepositoryOwner,headRepository --limit 100")
     cat "$EVAL_SANDBOX/lookup-out.json"; exit "$(cat "$EVAL_SANDBOX/lookup-exit")" ;;
   "pr view 4701 "*) cat "$EVAL_SANDBOX/canned-PR.json" ;;
   "pr diff 4701 "*) cat "$EVAL_SANDBOX/canned.diff" ;;
@@ -85,7 +85,11 @@ assert_file_grep "T2 the inference is echoed, never silent" "$EVAL_ERR" \
 git -C "$EVAL_SANDBOX" checkout -q -b from-host
 printf '0' >"$EVAL_SANDBOX/lookup-exit"
 lookups() { grep -c 'stub-gh pr list ' "$EVAL_STUBLOG" || true; }
-printf '[{"number":4701,"headRefName":"from-host","url":"https://github.com/acme/app/pull/4701"}]' >"$EVAL_SANDBOX/lookup-out.json"
+# One listed PR as `gh pr list --json` answers it: same-repo, or a fork's.
+gh_pr() { # $1 number, $2 head, $3 owner of the head repo, $4 isCrossRepository
+  printf '{"number":%s,"headRefName":"%s","url":"https://github.com/acme/app/pull/%s","isCrossRepository":%s,"headRepositoryOwner":{"login":"%s"},"headRepository":{"name":"app"}}' "$1" "$2" "$1" "$4" "$3"
+}
+printf '[%s]' "$(gh_pr 4701 from-host acme false)" >"$EVAL_SANDBOX/lookup-out.json"
 run_review fetch --json
 assert_exit "T3 one open PR for the branch is fetched" 0
 assert_json_field "T3 the host's answer is the target" 4701 '.pr'
@@ -93,7 +97,7 @@ run_review fetch
 assert_file_grep "T3 the host lookup is echoed" "$EVAL_ERR" \
   '^target: acme/app#4701 \(github, from github.com for branch "from-host"\)$' "-E"
 assert_file_grep "T3 the lookup asked for open PRs of that head only" "$EVAL_STUBLOG" \
-  'stub-gh pr list --repo acme/app --head=from-host --state open --json number,headRefName,url --limit 2'
+  'stub-gh pr list --repo acme/app --head=from-host --state open --json number,headRefName,url,isCrossRepository,headRepositoryOwner,headRepository --limit 100'
 
 printf '[]' >"$EVAL_SANDBOX/lookup-out.json"
 run_review fetch --json
@@ -101,15 +105,25 @@ assert_exit "T3 no open PR refuses as usage class" 2
 assert_json_field "T3 typed refusal" target-unresolved '.error.code'
 assert_file_grep "T3 the refusal names the args to pass" "$EVAL_OUT" 'verdict fetch acme/app <pr>'
 
-printf '[{"number":4701,"headRefName":"from-host","url":"https://github.com/acme/app/pull/4701"},{"number":4702,"headRefName":"from-host","url":"https://github.com/acme/app/pull/4702"}]' >"$EVAL_SANDBOX/lookup-out.json"
+printf '[%s,%s]' "$(gh_pr 4701 from-host acme false)" "$(gh_pr 4702 from-host acme false)" >"$EVAL_SANDBOX/lookup-out.json"
 run_review fetch --json
 assert_exit "T3 two open PRs refuse" 2
 assert_file_grep "T3 the refusal lists both" "$EVAL_OUT" 'more than one open pull request for it (4701, 4702)'
 
-printf '[{"number":4701,"headRefName":"from-host","url":"https://github.com/evil/app/pull/4701"}]' >"$EVAL_SANDBOX/lookup-out.json"
+printf '[%s]' "$(gh_pr 4701 from-host acme false | sed 's|acme/app/pull|evil/app/pull|')" >"$EVAL_SANDBOX/lookup-out.json"
 run_review fetch --json
 assert_exit "T3 an answer for another repo is not trusted" 2
 assert_file_grep "T3 the distrust is stated" "$EVAL_OUT" 'does not trust'
+
+# A fork's PR that merely shares the branch name is never the target.
+printf '[%s]' "$(gh_pr 4800 from-host stranger true)" >"$EVAL_SANDBOX/lookup-out.json"
+run_review fetch --json
+assert_exit "T3 a fork's PR with the same branch name refuses" 2
+assert_file_grep "T3 the fork's PR was ignored, not adopted" "$EVAL_OUT" 'has no open pull request for it'
+printf '[%s,%s]' "$(gh_pr 4800 from-host stranger true)" "$(gh_pr 4701 from-host acme false)" >"$EVAL_SANDBOX/lookup-out.json"
+run_review fetch --json
+assert_exit "T3 the same-repo PR beside a fork's is the target" 0
+assert_json_field "T3 only the same-repo PR counts" 4701 '.pr'
 
 printf 'not json' >"$EVAL_SANDBOX/lookup-out.json"
 run_review fetch --json
@@ -120,8 +134,16 @@ assert_exit "T3 a host error refuses" 2
 assert_file_grep "T3 the failure is stated" "$EVAL_OUT" 'could not be asked (gh failed)'
 printf '0' >"$EVAL_SANDBOX/lookup-exit"
 
+# A mistyped flag is refused before any host call.
+printf '[%s]' "$(gh_pr 4701 from-host acme false)" >"$EVAL_SANDBOX/lookup-out.json"
+flags_before="$(lookups)"
+run_review fetch --frobnicate
+assert_exit "T3 a mistyped flag is a usage error" 2
+assert_file_grep "T3 the flag is named" "$EVAL_ERR" 'frobnicate'
+assert_stream_nogrep "T3 no target is echoed before the flag error" "$EVAL_ERR" '^target:'
+assert_eq "T3 a mistyped flag made no host call" "$flags_before" "$(lookups)"
+
 # An offline verb never reaches the host, however the answer is scripted.
-printf '[{"number":4701,"headRefName":"from-host","url":"https://github.com/acme/app/pull/4701"}]' >"$EVAL_SANDBOX/lookup-out.json"
 git -C "$EVAL_SANDBOX" checkout -q -b offline-only
 lookups_before="$(lookups)"
 run_review report --json

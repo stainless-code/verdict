@@ -1,9 +1,11 @@
 // Package target is the one resolver every pull-request verb shares for its
 // `<owner/repo> <pr>` positionals. A pasted pull or merge request URL stands
 // for the pair (and implies the provider); an omitted pair is inferred from
-// local state only: the `origin` remote for the repository, and a bundle
+// local state first: the `origin` remote for the repository, and a bundle
 // already recorded under .verdict/state for the current branch's pull
-// request. Nothing here touches the network, and nothing is guessed: an
+// request. Only a verb that already talks to the host (Request.HostLookup) may
+// then ask the host CLI for the branch's open pull request, and its answer is
+// trusted only after the strict checks in lookup.go. Nothing is guessed: an
 // unmapped host, an ambiguous branch, or an unreadable checkout refuses with
 // the exact arguments to pass.
 package target
@@ -43,13 +45,24 @@ type Request struct {
 	// URL in Repo, a bare number in Repo, or empty.
 	Repo, Pr string
 	Verb     string
-	Rest     []string
+	// PrArg is how the verb's usage entry spells the number (`<pr>`,
+	// `<pr|local-name>`), so a refusal names the arguments the way the verb's
+	// own usage line does. Empty reads `<pr>`.
+	PrArg string
+	Rest  []string
 	// RepoOnly marks the verbs that take `<owner/repo>` and no number.
 	RepoOnly bool
 	// HostLookup lets inference ask the host CLI for the branch's open pull
 	// request when no recorded bundle names it. Only a verb that already talks
 	// to the host sets it; an offline verb never reaches the host.
 	HostLookup bool
+}
+
+func (q *Request) prArg() string {
+	if q.PrArg == "" {
+		return "<pr>"
+	}
+	return q.PrArg
 }
 
 // Deps carries the two seams inference reads through, so tests script git and
@@ -61,9 +74,9 @@ type Deps struct {
 
 // Resolved is the target the verb runs against. Note is non-empty exactly when
 // the target was derived rather than typed, so the front door can echo it.
-// Refusal is set when the invocation named or implied a target that cannot be
-// resolved; an empty Repo with no Refusal is an invocation inference could not
-// even attempt (no checkout, no origin), which stays the usage error.
+// Refusal is set whenever the target could not be settled, so a resolved
+// invocation always carries a complete pair (or, for a repo-only verb, a repo)
+// or a refusal, never an empty one.
 type Resolved struct {
 	Refusal  *core.RefusalError
 	Repo, Pr string
@@ -74,6 +87,18 @@ type Resolved struct {
 // Resolve applies the target rules to one invocation.
 func Resolve(ctx context.Context, d Deps, q *Request) Resolved {
 	out := &Resolved{Repo: q.Repo, Pr: q.Pr, Rest: q.Rest}
+	route(ctx, d, q, out)
+	switch {
+	case ctx.Err() != nil:
+		out.Refusal = &core.RefusalError{Code: "canceled", Message: "canceled before target resolution completed"}
+	case out.Refusal == nil && incomplete(q, out):
+		out.Refusal = missingTarget(q, out)
+	}
+	return *out
+}
+
+// route picks the source of the target by what was typed.
+func route(ctx context.Context, d Deps, q *Request, out *Resolved) {
 	switch {
 	case core.IsTargetURL(q.Repo):
 		fromURL(q, out)
@@ -84,14 +109,12 @@ func Resolve(ctx context.Context, d Deps, q *Request) Resolved {
 	case q.Repo == "" && q.Pr == "":
 		inferBoth(ctx, d, q, out)
 	case q.Pr == "" && core.ValidPrNumber(q.Repo):
+		// A bare number is the pr; its repository must come from origin.
+		out.Repo, out.Pr = "", q.Repo
 		fromOrigin(ctx, d, q, out, q.Repo)
 	case q.Pr == "":
 		inferPr(ctx, d, q, out, &found{repo: q.Repo})
 	}
-	if out.Refusal == nil && incomplete(q, out) {
-		out.Refusal = missingTarget(q, out)
-	}
-	return *out
 }
 
 // incomplete reports a pair verb still short of its target once every source
@@ -100,19 +123,22 @@ func incomplete(q *Request, out *Resolved) bool {
 	return out.Repo == "" || (!q.RepoOnly && out.Pr == "")
 }
 
-// missingTarget is the refusal for a target nothing could supply: no
-// positionals and nothing local to read them from.
+// missingTarget is the refusal for a target nothing could supply: nothing
+// typed and nothing local to read it from.
 func missingTarget(q *Request, out *Resolved) *core.RefusalError {
 	switch {
 	case q.RepoOnly:
 		return core.TargetUnresolved("no <owner/repo> given and none could be read from a git checkout's origin remote; "+
 			"pass the target: verdict %s <owner/repo>", q.Verb)
+	case out.Repo == "" && out.Pr != "":
+		return core.TargetUnresolved("pull request %s has no <owner/repo> and none could be read from a git checkout's origin remote; "+
+			"pass the target: verdict %s <owner/repo> %s", out.Pr, q.Verb, out.Pr)
 	case out.Repo != "":
 		return core.TargetUnresolved("no pull request number given for %s and none could be inferred without a checkout on a branch; "+
-			"pass the target: verdict %s %s <pr>", out.Repo, q.Verb, out.Repo)
+			"pass the target: verdict %s %s %s", out.Repo, q.Verb, out.Repo, q.prArg())
 	}
 	return core.TargetUnresolved("no target given and none could be inferred (that needs a git checkout with an origin remote); "+
-		"pass the target: verdict %s <owner/repo> <pr>, or a pull request URL", q.Verb)
+		"pass the target: verdict %s <owner/repo> %s, or a pull request URL", q.Verb, q.prArg())
 }
 
 func fromURL(q *Request, out *Resolved) {
@@ -225,7 +251,7 @@ func inferPr(ctx context.Context, d Deps, q *Request, out *Resolved, f *found) {
 	if !ok {
 		return
 	}
-	hint := fmt.Sprintf("verdict %s %s <pr>", q.Verb, f.repo)
+	hint := fmt.Sprintf("verdict %s %s %s", q.Verb, f.repo, q.prArg())
 	if branch == "" {
 		out.Refusal = core.TargetUnresolved("HEAD is detached, so no branch names a pull request; pass the target: %s", hint)
 		return
@@ -328,8 +354,8 @@ func bundleHit(dir, num string, f *found, branch string) (branchHit, bool) {
 
 // originRepo reads provider and repository from the origin remote. ok is
 // false when git cannot answer (no checkout, no origin), which leaves the
-// invocation to the usage error, or when the origin cannot be mapped, which
-// sets the refusal.
+// pair for the caller's generic refusal, or when the origin cannot be mapped,
+// which sets the refusal itself.
 func originRepo(ctx context.Context, d Deps, q *Request, out *Resolved) (f *found, ok bool) {
 	raw, ok := git(ctx, d, "config", "--get", "remote.origin.url")
 	if !ok || raw == "" {
@@ -338,7 +364,7 @@ func originRepo(ctx context.Context, d Deps, q *Request, out *Resolved) (f *foun
 	provider, repo, rerr := core.RemoteTarget(raw, q.Env)
 	if rerr != nil {
 		out.Refusal = core.TargetUnresolved(
-			"%s; or pass the target: verdict %s <owner/repo> <pr> [--provider <name>]", rerr.Message, q.Verb)
+			"%s; or pass the target: verdict %s <owner/repo> %s [--provider <name>]", rerr.Message, q.Verb, q.prArg())
 		return nil, false
 	}
 	return &found{repo: repo, provider: provider, host: core.RemoteHost(raw)}, true

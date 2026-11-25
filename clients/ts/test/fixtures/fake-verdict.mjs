@@ -95,6 +95,25 @@ switch (mode) {
     process.exitCode = 2;
     break;
   }
+  // A pair verb with no resolvable target: exit 2 (usage class) carrying the
+  // typed refusal envelope under --json.
+  case "target-unresolved": {
+    emit(
+      refusal(
+        "target-unresolved",
+        "no target given and none could be inferred\ntry: pass the target explicitly as <owner/repo> <pr>, or a pull request URL",
+      ),
+    );
+    process.exitCode = 2;
+    break;
+  }
+  // Exit 2 with stdout that is not a refusal envelope stays a usage error.
+  case "usage-noise": {
+    process.stdout.write("not json\n");
+    process.stderr.write("usage: verdict report <owner/repo> <pr>\n");
+    process.exitCode = 2;
+    break;
+  }
   case "broke": {
     process.stderr.write("verdict: internal failure\n");
     process.exitCode = 3;

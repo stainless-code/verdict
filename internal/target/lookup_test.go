@@ -1,6 +1,7 @@
 package target
 
 import (
+	"context"
 	"slices"
 	"strings"
 	"testing"
@@ -13,12 +14,27 @@ const (
 	glOrigin = "https://gitlab.com/acme/sub/app.git"
 )
 
+// ghEntry is a same-repository PR as `gh pr list --json` answers it.
 func ghEntry(num, head, url string) string {
-	return `{"number":` + num + `,"headRefName":"` + head + `","url":"` + url + `"}`
+	return `{"number":` + num + `,"headRefName":"` + head + `","url":"` + url + `",` +
+		`"isCrossRepository":false,"headRepositoryOwner":{"login":"acme"},"headRepository":{"name":"app"}}`
 }
 
+// ghFork is a PR from another owner's fork that shares the branch name.
+func ghFork(num, head, url string) string {
+	return `{"number":` + num + `,"headRefName":"` + head + `","url":"` + url + `",` +
+		`"isCrossRepository":true,"headRepositoryOwner":{"login":"stranger"},"headRepository":{"name":"app"}}`
+}
+
+// glEntry is a same-project MR as `glab mr list -F json` answers it.
 func glEntry(num, head, url string) string {
-	return `{"iid":` + num + `,"source_branch":"` + head + `","web_url":"` + url + `","title":"t"}`
+	return `{"iid":` + num + `,"source_branch":"` + head + `","web_url":"` + url + `","title":"t",` +
+		`"source_project_id":42,"target_project_id":42}`
+}
+
+// glFork is an MR whose source project is a fork of the target project.
+func glFork(num, head, url string) string {
+	return `{"iid":` + num + `,"source_branch":"` + head + `","web_url":"` + url + `","source_project_id":99,"target_project_id":42}`
 }
 
 func lookup(t *testing.T, g *fakeGit, q *Request) Resolved {
@@ -43,12 +59,12 @@ func TestHostLookupSettlesOneOpenPR(t *testing.T) {
 	for _, tc := range []settleCase{
 		{
 			name: "github", g: fakeGit{origin: ghOrigin, branch: "fix-x", hostOut: ghOne},
-			argv: "gh pr list --repo acme/app --head=fix-x --state open --json number,headRefName,url --limit 2",
+			argv: "gh pr list --repo acme/app --head=fix-x --state open --json number,headRefName,url,isCrossRepository,headRepositoryOwner,headRepository --limit 100",
 			repo: "acme/app", note: `target: acme/app#12 (github, from github.com for branch "fix-x")`,
 		},
 		{
 			name: "gitlab nested", g: fakeGit{origin: glOrigin, branch: "fix-x", hostOut: glOne},
-			argv: "glab mr list -R acme/sub/app --source-branch=fix-x -F json --per-page 2",
+			argv: "glab mr list -R acme/sub/app --source-branch=fix-x -F json --per-page 100",
 			repo: "acme/sub/app", note: `target: acme/sub/app#7 (gitlab, from gitlab.com for branch "fix-x")`,
 		},
 	} {
@@ -79,6 +95,12 @@ func TestHostLookupRefusals(t *testing.T) {
 	for _, tc := range []lookupRefusal{
 		{"none", "[]", "has no open pull request for it", 0},
 		{"two", "[" + good + "," + ghEntry("13", "fix-x", "https://github.com/acme/app/pull/13") + "]", "more than one open pull request for it (12, 13)", 0},
+		{"only a fork's", "[" + ghFork("40", "fix-x", "https://github.com/acme/app/pull/40") + "]", "has no open pull request for it", 0},
+		{"two same-repo beside a fork", "[" + good + "," + ghFork("40", "fix-x", "https://github.com/acme/app/pull/40") + "," +
+			ghEntry("13", "fix-x", "https://github.com/acme/app/pull/13") + "]", "more than one open pull request for it (12, 13)", 0},
+		{"cross flag missing", `[{"number":12,"headRefName":"fix-x","url":"https://github.com/acme/app/pull/12"}]`, "does not trust", 0},
+		{"cross flag not a bool", `[{"number":12,"headRefName":"fix-x","url":"https://github.com/acme/app/pull/12","isCrossRepository":"false"}]`, "does not trust", 0},
+		{"head repository missing", `[{"number":12,"headRefName":"fix-x","url":"https://github.com/acme/app/pull/12","isCrossRepository":false}]`, "does not trust", 0},
 		{"host error", "", "could not be asked (gh failed)", 1},
 		{"not json", "no pull requests found", "something verdict does not trust", 0},
 		{"trailing data", "[]{}", "something verdict does not trust", 0},
@@ -177,5 +199,86 @@ func TestBranchLookupArgvKeepsABranchOutOfFlagPosition(t *testing.T) {
 				t.Errorf("%s: the branch is a standalone argument", provider)
 			}
 		}
+	}
+}
+
+func TestHostLookupIgnoresForkPRsWithTheSameBranchName(t *testing.T) {
+	// A fresh clone on main must not adopt a stranger's fork:main PR.
+	fork := ghFork("1610", "main", "https://github.com/acme/app/pull/1610")
+	got := lookup(t, &fakeGit{origin: ghOrigin, branch: "main", hostOut: "[" + fork + "]"}, &Request{Verb: "fetch"})
+	if got.Refusal == nil || got.Pr != "" || !strings.Contains(got.Refusal.Message, "has no open pull request for it") {
+		t.Fatalf("a fork's PR must not become the target: %+v", got)
+	}
+	mixed := "[" + fork + "," + ghEntry("12", "main", "https://github.com/acme/app/pull/12") + "]"
+	got = lookup(t, &fakeGit{origin: ghOrigin, branch: "main", hostOut: mixed}, &Request{Verb: "fetch"})
+	if got.Refusal != nil || got.Pr != "12" {
+		t.Fatalf("only the same-repo PR counts: %+v", got)
+	}
+}
+
+func TestHostLookupGitlabForkAndProjectIDs(t *testing.T) {
+	url := "https://gitlab.com/acme/sub/app/-/merge_requests/"
+	for _, tc := range []struct {
+		name, out, want string
+	}{
+		{"fork only", "[" + glFork("8", "fix-x", url+"8") + "]", "has no open pull request for it"},
+		{"fork beside the project's own", "[" + glFork("8", "fix-x", url+"8") + "," + glEntry("7", "fix-x", url+"7") + "]", ""},
+		{"project ids missing", `[{"iid":7,"source_branch":"fix-x","web_url":"` + url + `7"}]`, "does not trust"},
+	} {
+		got := lookup(t, &fakeGit{origin: glOrigin, branch: "fix-x", hostOut: tc.out}, &Request{Verb: "fetch"})
+		switch {
+		case tc.want == "" && (got.Refusal != nil || got.Pr != "7"):
+			t.Errorf("%s: %+v", tc.name, got)
+		case tc.want != "" && (got.Refusal == nil || !strings.Contains(got.Refusal.Message, tc.want)):
+			t.Errorf("%s: %+v, want %q", tc.name, got, tc.want)
+		}
+	}
+}
+
+func TestHostLookupRejectsAFullPage(t *testing.T) {
+	entries := make([]string, lookupMax)
+	for i := range entries {
+		entries[i] = ghFork("500", "fix-x", "https://github.com/acme/app/pull/500")
+	}
+	got := lookup(t, &fakeGit{origin: ghOrigin, branch: "fix-x", hostOut: "[" + strings.Join(entries, ",") + "]"}, &Request{Verb: "fetch"})
+	if got.Refusal == nil || !strings.Contains(got.Refusal.Message, "does not trust") {
+		t.Fatalf("a page that fills may hide the real PR and is not trusted: %+v", got)
+	}
+}
+
+func TestHostLookupRejectsAnAnswerFromAnotherHost(t *testing.T) {
+	// Same provider, same repository, different host: GITLAB_HOST maps the
+	// self-hosted URL to gitlab, but origin is gitlab.com.
+	env := map[string]string{"GITLAB_HOST": "git.corp.example"}
+	out := "[" + glEntry("7", "fix-x", "https://git.corp.example/acme/sub/app/-/merge_requests/7") + "]"
+	got := lookup(t, &fakeGit{origin: glOrigin, branch: "fix-x", hostOut: out}, &Request{Verb: "fetch", Env: env})
+	if got.Refusal == nil || !strings.Contains(got.Refusal.Message, "does not trust") {
+		t.Fatalf("an answer from another host is not the origin's PR: %+v", got)
+	}
+}
+
+func TestHostLookupRejectsATruncatedAnswer(t *testing.T) {
+	g := &fakeGit{origin: ghOrigin, branch: "fix-x", hostOut: oneOpenPR, hostTruncated: true}
+	got := lookup(t, g, &Request{Verb: "fetch"})
+	if got.Refusal == nil || !strings.Contains(got.Refusal.Message, "could not be asked") {
+		t.Fatalf("a capped answer is never parsed: %+v", got)
+	}
+}
+
+func TestHostLookupComparesTheRepoCaseInsensitively(t *testing.T) {
+	g := &fakeGit{origin: "git@github.com:Acme/App.git", branch: "fix-x", hostOut: oneOpenPR}
+	got := lookup(t, g, &Request{Verb: "fetch"})
+	if got.Refusal != nil || got.Repo != "Acme/App" || got.Pr != "12" {
+		t.Fatalf("origin spelling Acme/App against an acme/app answer: %+v", got)
+	}
+}
+
+func TestHostLookupCanceledIsNotUnresolved(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	g := &fakeGit{origin: ghOrigin, branch: "fix-x", hostOut: oneOpenPR, onHost: cancel}
+	got := Resolve(ctx, Deps{Commander: g, RepoRoot: checkout(t, nil).RepoRoot}, &Request{Verb: "fetch", HostLookup: true})
+	if got.Refusal == nil || got.Refusal.Code != "canceled" {
+		t.Fatalf("a cancel during the lookup must read canceled: %+v", got)
 	}
 }

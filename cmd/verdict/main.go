@@ -5,9 +5,10 @@
 // (internal/target): a pasted URL, the origin remote and a recorded bundle, or
 // (for a verb that already talks to the host) the host's own answer fill it
 // in; when nothing can, the typed target-unresolved refusal exits 2 with the
-// verb's usage line, ahead of any settings read. main is thin: it parses,
-// builds the runner, delegates to run(), and exits once — only main calls
-// [os.Exit].
+// verb's usage line. That refusal reads the settings file only to choose its
+// rendering (an unreadable file falls back to defaults), and it never costs a
+// host call for a verb with mistyped flags. main is thin: it parses, builds
+// the runner, delegates to run(), and exits once — only main calls [os.Exit].
 package main
 
 import (
@@ -112,13 +113,9 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	failed := uerr != nil || ref != nil
 	cmd, repo, pr, rest := splitCommand(stripped)
 	env := envMap(getenv)
-	var tgt target.Resolved
 	uverb := usageVerbFor(cmd, repo)
 	if failed {
 		cmd, repo, pr = envelopeTarget(args)
-	} else {
-		tgt = resolveTarget(cmd, repo, pr, rest, env, getenv)
-		repo, pr, rest = tgt.Repo, tgt.Pr, tgt.Rest
 	}
 	r := newRunner(cmd, repo, pr, stdout, stderr, getenv)
 	defer r.Flush()
@@ -126,6 +123,12 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 	if failed {
 		return reportStripFailure(r, env, readFile, uerr, ref)
 	}
+	if code, bad := checkHostFlags(r, cmd, repo, pr, rest); bad {
+		return code
+	}
+	tgt := resolveTarget(cmd, repo, pr, rest, env, getenv)
+	r.Repo, r.Pr = tgt.Repo, tgt.Pr
+	repo, pr, rest = tgt.Repo, tgt.Pr, tgt.Rest
 	if code, done := gateInvocation(r, uverb, &tgt, forces, env, readFile, stderr); done {
 		return code
 	}
@@ -134,11 +137,12 @@ func run(args []string, stdout, stderr *os.File, getenv func(string) string, rea
 
 // gateInvocation runs the checks that stop an invocation before its verb: the
 // target refusal of a pair verb that names no resolvable target (a usage-class
-// failure, rendered ahead of the settings read like the usage block it
-// replaces), the arity gate for every other verb, the preference read, the
-// global forces (so --no-json and --color shape every message below), any
-// other target refusal, and the echo of a derived target. verb is the name the
-// usage line is looked up under. done reports that code is the exit status.
+// failure, rendered with the settings applied when they read and the
+// defaults when they do not), the arity gate for every other verb, the
+// preference read, the global forces (so --no-json and --color shape every
+// message below), any other target refusal, and the echo of a derived target.
+// verb is the name the usage line is looked up under. done reports that code
+// is the exit status.
 func gateInvocation(
 	r *cli.Runner, verb string, tgt *target.Resolved, forces *cli.GlobalForces, env map[string]string,
 	readFile func(string) ([]byte, error), stderr *os.File,
@@ -205,7 +209,7 @@ func refuseUnresolved(
 // the threads subverb has its own line.
 func usageVerbFor(cmd, repo string) string {
 	if cmd == cmdThreads && repo == subverbResolve {
-		return cmdThreads + " " + subverbResolve
+		return threadsResolve
 	}
 	return cmd
 }
@@ -276,9 +280,19 @@ const cmdTrend = "trend"
 
 const cmdFetchLocal = "fetch-local"
 
+// The host-talking verbs, named once for the tables and the target gate.
+const (
+	cmdFetch  = "fetch"
+	cmdReady  = "ready"
+	cmdPRWait = "pr-wait"
+	cmdDrain  = "drain"
+)
+
 const (
 	cmdThreads     = "threads"
 	subverbResolve = "resolve"
+	// threadsResolve names the subverb the way hosts tables and usage do.
+	threadsResolve = cmdThreads + " " + subverbResolve
 )
 
 // flagPrefix starts every flag token; a positional never does.
@@ -298,11 +312,11 @@ var readVerbs = map[string]readHandler{
 	"report":     report.Run,
 	"next":       report.RunNext,
 	cmdShow:      report.RunShow,
-	"ready":      ready.Run,
-	"pr-wait":    prwait.Run,
+	cmdReady:     ready.Run,
+	cmdPRWait:    prwait.Run,
 	"gate":       gate.Run,
 	"threads":    threads.Run,
-	"drain":      drainverb.Run,
+	cmdDrain:     drainverb.Run,
 	cmdTrend:     trend.Run,
 	cmdRisk:      risk.Run,
 	"calibrate":  calibrate.Run,
@@ -501,7 +515,7 @@ func dispatchFetch(
 ) (code int, ok bool) {
 	req := fetch.Request{Repo: repo, Pr: pr, Root: root, RepoRoot: repoRoot, Env: env}
 	switch cmd {
-	case "fetch":
+	case cmdFetch:
 		return fetch.Run(ctx, r, rest, req), true
 	case "fetch-local":
 		return fetch.RunLocal(ctx, r, rest, req), true
@@ -716,8 +730,8 @@ func resolveTarget(cmd, repo, pr string, rest []string, env map[string]string, g
 // first in rest). Threads resolve takes no --provider, so the verb name carries
 // the subverb to keep the flag from being injected.
 func resolveSubverb(first string, rest []string, env map[string]string, getenv func(string) string) target.Resolved {
-	repo, pr, tail := splitPositionals(append(nonEmpty(first), rest...))
-	got := runResolver(cmdThreads+" "+subverbResolve, repo, pr, tail, env, getenv)
+	repo, pr, tail := splitSubverb(first, rest)
+	got := runResolver(threadsResolve, repo, pr, tail, env, getenv)
 	if got.Refusal != nil {
 		return got
 	}
@@ -737,8 +751,57 @@ func runResolver(verb, repo, pr string, rest []string, env map[string]string, ge
 	defer stop()
 	return target.Resolve(ctx, target.Deps{Commander: coreexec.Runner{}, RepoRoot: readcommon.RepoRoot}, &target.Request{
 		Verb: verb, Repo: repo, Pr: pr, Rest: rest, RepoOnly: repoOnlyVerbs[verb], Env: targetEnv,
-		HostLookup: talksToHost(verb, rest),
+		HostLookup: talksToHost(verb, rest), PrArg: prArgFor(verb),
 	})
+}
+
+// prArgFor is how the verb's own usage line spells its number argument
+// (`<pr>`, `<pr|local-name>`, `<local-slug|pr>`), so a refusal names the
+// arguments the way the usage line does.
+func prArgFor(verb string) string {
+	fields := strings.Fields(usageLine(verb))
+	if at := slices.Index(fields, "<owner/repo>"); at >= 0 && at+1 < len(fields) && strings.HasPrefix(fields[at+1], "<") {
+		return fields[at+1]
+	}
+	return "<pr>"
+}
+
+// splitSubverb reads the pair and flags behind the threads subverb, which the
+// front door's own split saw as (subverb, first, rest).
+func splitSubverb(first string, rest []string) (repo, pr string, tail []string) {
+	return splitPositionals(append(nonEmpty(first), rest...))
+}
+
+// checkHostFlags validates the flags of a verb that may ask the host for its
+// target, before any git or host call, so a mistyped flag is a plain usage
+// error and never a lookup followed by one. It reports the verb's own error
+// through r exactly as the verb would.
+func checkHostFlags(r *cli.Runner, cmd, repo, pr string, rest []string) (code int, bad bool) {
+	if !takesTarget(cmd, rest) {
+		return 0, false
+	}
+	verb, args := cmd, rest
+	if cmd == cmdThreads && repo == subverbResolve {
+		_, _, args = splitSubverb(pr, rest)
+		verb = threadsResolve
+	}
+	check, ok := hostFlagCheckers[verb]
+	if !ok || !talksToHost(verb, args) {
+		return 0, false
+	}
+	return check(r, args)
+}
+
+// hostFlagCheckers is each host-talking verb's own flag validation. A test
+// pins it to hostVerbs and drain, so a verb cannot start asking the host
+// without one.
+var hostFlagCheckers = map[string]func(*cli.Runner, []string) (int, bool){
+	cmdFetch:       fetch.CheckFlags,
+	cmdPRWait:      prwait.CheckFlags,
+	cmdReady:       ready.CheckFlags,
+	cmdThreads:     threads.CheckFlags,
+	threadsResolve: threads.CheckResolveFlags,
+	cmdDrain:       drainverb.CheckFlags,
 }
 
 func nonEmpty(s string) []string {
@@ -752,12 +815,12 @@ func nonEmpty(s string) []string {
 // pull request a branch heads costs them nothing new. Every other pair verb
 // is offline, and drain only reaches the host with --post.
 var hostVerbs = map[string]bool{
-	"fetch": true, "pr-wait": true, "ready": true, cmdThreads: true, cmdThreads + " " + subverbResolve: true,
+	cmdFetch: true, cmdPRWait: true, cmdReady: true, cmdThreads: true, threadsResolve: true,
 }
 
 // talksToHost reports whether verb, with these flags, reads the host anyway.
 func talksToHost(verb string, rest []string) bool {
-	if verb == "drain" {
+	if verb == cmdDrain {
 		at := slices.Index(rest, flagSeparator)
 		if at < 0 {
 			at = len(rest)

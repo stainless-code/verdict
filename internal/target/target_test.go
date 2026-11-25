@@ -15,12 +15,16 @@ import (
 // fakeGit answers the two offline probes inference may run and records every
 // argv, so a test proves nothing else (no network verb) was asked.
 type fakeGit struct {
-	origin string
-	branch string
-	// hostOut and hostExit script the host CLI (gh, glab) a lookup shells.
-	hostOut  string
-	calls    [][]string
+	// onHost runs when a host CLI is invoked (a test cancels its context there).
+	onHost  func()
+	origin  string
+	branch  string
+	hostOut string
+	calls   [][]string
+	// hostExit scripts the host CLI's exit status.
 	hostExit int
+	// hostTruncated scripts an answer that hit the output cap.
+	hostTruncated bool
 	// noRepo and noOrigin script the two ways git cannot answer.
 	noOrigin bool
 	noRepo   bool
@@ -28,8 +32,8 @@ type fakeGit struct {
 
 func (f *fakeGit) Run(_ context.Context, c *core.Command) (core.Result, error) {
 	f.calls = append(f.calls, c.Argv)
-	if c.Argv[0] == "gh" || c.Argv[0] == "glab" {
-		return core.Result{Stdout: f.hostOut, ExitCode: f.hostExit}, nil
+	if c.Argv[0] != "git" {
+		return f.host(), nil
 	}
 	if f.noRepo {
 		return core.Result{ExitCode: 128}, nil
@@ -44,6 +48,14 @@ func (f *fakeGit) Run(_ context.Context, c *core.Command) (core.Result, error) {
 		return core.Result{Stdout: f.branch + "\n"}, nil
 	}
 	return core.Result{ExitCode: 129}, errors.New("unexpected git call: " + strings.Join(c.Argv, " "))
+}
+
+// host answers a gh or glab call from the scripted fields.
+func (f *fakeGit) host() core.Result {
+	if f.onHost != nil {
+		f.onHost()
+	}
+	return core.Result{Stdout: f.hostOut, ExitCode: f.hostExit, StdoutTruncated: f.hostTruncated}
 }
 
 // checkout seeds .verdict/state bundles: pr number -> PR.json body.
@@ -294,5 +306,36 @@ func TestResolveRepoOnlyInfersPrFromBundle(t *testing.T) {
 		if c[1] == "config" {
 			t.Errorf("an explicit repo must not read origin: %v", c)
 		}
+	}
+}
+
+func TestResolveNumberOutsideACheckoutAsksForTheRepo(t *testing.T) {
+	got := resolve(t, &fakeGit{noRepo: true}, Deps{}, &Request{Verb: "report", Repo: "12"})
+	if got.Refusal == nil || !strings.Contains(got.Refusal.Message, "pull request 12 has no <owner/repo>") ||
+		!strings.Contains(got.Refusal.Message, "verdict report <owner/repo> 12") {
+		t.Fatalf("a bare number must ask for the repository, not the number: %+v", got)
+	}
+}
+
+func TestResolveRefusalsSpellTheVerbsOwnNumberArgument(t *testing.T) {
+	q := &Request{Verb: "run", PrArg: "<pr|local-name>"}
+	for name, g := range map[string]*fakeGit{
+		"no git":         {noRepo: true},
+		"unrecorded":     {origin: ghOrigin, branch: "fix-x"},
+		"unmappable url": {origin: "https://ghe.corp.example/a/b.git", branch: "fix-x"},
+	} {
+		got := resolve(t, g, checkout(t, nil), q)
+		if got.Refusal == nil || !strings.Contains(got.Refusal.Message, "<pr|local-name>") {
+			t.Errorf("%s: %+v", name, got)
+		}
+	}
+}
+
+func TestResolveCanceledContextIsCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	got := Resolve(ctx, Deps{Commander: &fakeGit{origin: ghOrigin, branch: "x"}, RepoRoot: checkout(t, nil).RepoRoot}, &Request{Verb: "fetch"})
+	if got.Refusal == nil || got.Refusal.Code != "canceled" {
+		t.Fatalf("a canceled context must not read as an unresolved target: %+v", got)
 	}
 }

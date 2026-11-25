@@ -1,4 +1,4 @@
-"""Offline smoke test: success, typed refusal, exit 2, and the demo script."""
+"""Offline smoke test: success, typed refusal, exit 2 (flag and target), and the demo script."""
 
 from __future__ import annotations
 
@@ -32,6 +32,13 @@ def main(binary: str) -> int:
             assert exc.exit_code == 2, exc.exit_code
         else:
             raise AssertionError("bad flag did not exit 2")
+        try:
+            run("report", [], cwd=tmp, binary=binary)
+        except VerdictRefusal as exc:
+            assert exc.code == "target-unresolved", exc.code
+            assert exc.exit_code == 2, exc.exit_code
+        else:
+            raise AssertionError("a missing target did not refuse")
         demo = subprocess.run(
             [sys.executable, str(root / "example.py"), "acme/app", "123", tmp, binary],
             capture_output=True, text=True, check=False,

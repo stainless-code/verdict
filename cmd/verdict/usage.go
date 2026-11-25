@@ -22,7 +22,8 @@ func usageText() string {
 		"[--index <ref|dir>] [--context <file|dir>] [--spec <file>] [--issue <ref>] [--ignore <glob>] [--no-default-excludes] " +
 		"[--preview] [--consent-over-budget] [--show-prompts] [--chunk] [--json]\n" +
 		"    <owner/repo> <pr> may be one pull/merge request URL (it implies --provider), or omitted: the pair is then read\n" +
-		"    offline from the origin remote and the bundle recorded for the current branch (docs/manual.md § Targets).\n" +
+		"    from the origin remote and the bundle recorded for the current branch, or, when none records it, the\n" +
+		"    host CLI's open PR for that branch (docs/manual.md § Targets).\n" +
 		"    write .verdict/state/<pr>/{PR.json,full.diff,toc.txt,roles.txt,reviews.json,inline.json[,incremental.diff]} " +
 		"(PR.json normalized for non-github providers)\n" +
 		"    --index <ref|dir> hands one index the operator built to the bundle: impact.json plus a\n" +

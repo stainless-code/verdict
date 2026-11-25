@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -15,9 +16,11 @@ import (
 const (
 	lookupTimeout = 20 * time.Second
 	lookupCap     = 64 << 10
-	// lookupLimit asks for one more entry than a unique match, which is all
-	// "ambiguous" needs to be proven.
-	lookupLimit = "2"
+	// lookupLimit is how many same-named branches one page may hold. Forks
+	// share branch names, so a stranger's `main` can sit beside the real PR; a
+	// page that fills is not trusted to be the whole list.
+	lookupLimit = "100"
+	lookupMax   = 100
 )
 
 // lookupFields names, per host CLI, the JSON keys of one listed pull request:
@@ -29,16 +32,25 @@ var (
 	gitlabFields = lookupFields{"iid", "source_branch", "web_url"}
 )
 
+const (
+	providerGitLab = "gitlab"
+	providerGitHub = "github"
+)
+
+const githubJSON = "number,headRefName,url,isCrossRepository,headRepositoryOwner,headRepository"
+
 // branchLookupArgv is the host CLI call that lists the open pull requests
-// whose head is branch. The branch rides in the same argument as its flag, so
-// a name can never be read as a flag of its own. It is nil for a host with no
-// lookup; core.BranchLookupProviders is the table a test pins it to.
+// whose head branch is named branch (in any repository: the answer is
+// filtered to this one afterwards). The branch rides in the same argument as
+// its flag, so a name can never be read as a flag of its own. It is nil for a
+// host with no lookup; core.BranchLookupProviders is the table a test pins it
+// to.
 func branchLookupArgv(provider, repo, branch string) []string {
 	switch provider {
 	case "github":
 		return []string{
 			"gh", "pr", "list", "--repo", repo, "--head=" + branch, "--state", "open",
-			"--json", "number,headRefName,url", "--limit", lookupLimit,
+			"--json", githubJSON, "--limit", lookupLimit,
 		}
 	case "gitlab":
 		return []string{
@@ -51,7 +63,7 @@ func branchLookupArgv(provider, repo, branch string) []string {
 }
 
 func lookupFieldsFor(provider string) lookupFields {
-	if provider == "gitlab" {
+	if provider == providerGitLab {
 		return gitlabFields
 	}
 	return githubFields
@@ -88,29 +100,44 @@ func noHostMatch(f *found, branch, hint, why string) *core.RefusalError {
 		branch, f.repo, f.host, why, hint)
 }
 
-// validatedNumbers parses the CLI's JSON list and returns every entry's number
-// once each passes the same strict checks a pasted URL would: a decimal number
-// in range, the asked-for head branch, and a web URL the shared parser reads
-// as this provider, repository and number. One entry failing any check
-// rejects the whole answer.
+// validatedNumbers parses the CLI's JSON list and returns the number of every
+// entry whose head lives in this repository. Each entry first passes the same
+// strict checks a pasted URL would (a decimal number in range, the asked-for
+// head branch, and a web URL that parses as this provider, host, repository
+// and number); one entry failing any of them rejects the whole answer. An
+// entry from a fork is well-formed but is someone else's pull request that
+// merely shares the branch name, so it is left out rather than refused.
 func validatedNumbers(stdout string, f *found, branch string, env map[string]string) ([]string, bool) {
 	dec := json.NewDecoder(bytes.NewReader([]byte(stdout)))
 	dec.UseNumber()
 	var entries []map[string]any
-	if err := dec.Decode(&entries); err != nil || dec.More() {
+	if err := dec.Decode(&entries); err != nil || dec.More() || len(entries) >= lookupMax {
 		return nil, false
 	}
 	keys := lookupFieldsFor(f.provider)
 	var nums []string
 	for _, e := range entries {
-		num, ok := validEntry(e, &keys, f, branch, env)
+		num, same, ok := checkEntry(e, &keys, f, branch, env)
 		if !ok {
 			return nil, false
 		}
-		nums = append(nums, num)
+		if same {
+			nums = append(nums, num)
+		}
 	}
 	slices.Sort(nums)
 	return nums, true
+}
+
+// checkEntry validates one listed pull request and reports whether its head
+// lives in the origin's own repository.
+func checkEntry(e map[string]any, keys *lookupFields, f *found, branch string, env map[string]string) (num string, same, ok bool) {
+	num, ok = validEntry(e, keys, f, branch, env)
+	if !ok {
+		return "", false, false
+	}
+	same, ok = sameRepoHead(e, f)
+	return num, same, ok
 }
 
 func validEntry(e map[string]any, keys *lookupFields, f *found, branch string, env map[string]string) (string, bool) {
@@ -124,5 +151,42 @@ func validEntry(e map[string]any, keys *lookupFields, f *found, branch string, e
 	if ref != nil || t.Provider != f.provider || !strings.EqualFold(t.Repo, f.repo) || t.Pr != n.String() {
 		return "", false
 	}
+	if u, err := url.Parse(raw); err != nil || strings.ToLower(u.Hostname()) != f.host {
+		return "", false
+	}
 	return n.String(), true
+}
+
+// sameRepoHead reports whether the entry's head branch lives in the origin's
+// own repository rather than a fork; ok is false when the entry does not say.
+// GitHub names the head repository outright. GitLab's list is scoped to the
+// target project, so a merge request is same-project when its source project
+// is that target project.
+func sameRepoHead(e map[string]any, f *found) (same, ok bool) {
+	if f.provider == providerGitLab {
+		src, srcOK := e["source_project_id"].(json.Number)
+		dst, dstOK := e["target_project_id"].(json.Number)
+		return srcOK && dstOK && src == dst, srcOK && dstOK
+	}
+	cross, isBool := e["isCrossRepository"].(bool)
+	if !isBool {
+		return false, false
+	}
+	if cross {
+		return false, true
+	}
+	login := nested(e, "headRepositoryOwner", "login")
+	name := nested(e, "headRepository", "name")
+	return login != "" && name != "" && strings.EqualFold(login+"/"+name, f.repo), login != "" && name != ""
+}
+
+// nested reads one string out of an object-valued field, "" when absent or of
+// another type.
+func nested(e map[string]any, field, key string) string {
+	if obj, ok := e[field].(map[string]any); ok {
+		if v, ok := obj[key].(string); ok {
+			return v
+		}
+	}
+	return ""
 }

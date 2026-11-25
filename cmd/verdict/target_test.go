@@ -315,3 +315,49 @@ func TestTalksToHost(t *testing.T) {
 		}
 	}
 }
+
+// TestHostFlagCheckersCoverEveryHostVerb pins the flag checkers to the verbs
+// that may ask the host, so none starts asking without a pre-lookup check.
+func TestHostFlagCheckersCoverEveryHostVerb(t *testing.T) {
+	t.Parallel()
+	want := []string{"drain"}
+	for verb := range hostVerbs {
+		want = append(want, verb)
+	}
+	got := make([]string, 0, len(hostFlagCheckers))
+	for verb := range hostFlagCheckers {
+		got = append(got, verb)
+	}
+	slices.Sort(want)
+	slices.Sort(got)
+	if !slices.Equal(got, want) {
+		t.Fatalf("hostFlagCheckers verbs = %v, host-talking verbs = %v", got, want)
+	}
+}
+
+// TestPrArgFollowsTheVerbsUsageLine pins the number placeholder a refusal
+// names to the one the verb's own usage entry spells.
+func TestPrArgFollowsTheVerbsUsageLine(t *testing.T) {
+	t.Parallel()
+	for verb, want := range map[string]string{
+		"fetch":      "<pr>",
+		"run":        "<pr|local-name>",
+		"fix":        "<local-slug|pr>",
+		"journal":    "<pr|local-name>",
+		"nosuchverb": "<pr>",
+	} {
+		if got := prArgFor(verb); got != want {
+			t.Errorf("prArgFor(%q) = %q, want %q", verb, got, want)
+		}
+	}
+}
+
+func TestMissingTargetNamesTheVerbsOwnNumberArgument(t *testing.T) {
+	outsideACheckout(t)
+	for verb, want := range map[string]string{"run": "<pr|local-name>", "fix": "<local-slug|pr>", "report": "<pr>"} {
+		_, _, derr := runCapture(t, []string{verb})
+		if !strings.Contains(derr, "verdict "+verb+" <owner/repo> "+want) {
+			t.Errorf("%s: stderr lacks %q:\n%s", verb, want, derr)
+		}
+	}
+}
