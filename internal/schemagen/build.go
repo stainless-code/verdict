@@ -603,7 +603,6 @@ func envelopeDefs() []definition {
 		{typ: reflect.TypeFor[CostTiers](), name: "costTiers"},
 		{typ: reflect.TypeFor[CostTier](), name: "costTier"},
 		{typ: reflect.TypeFor[ReportMTD](), name: "reportMTD"},
-		{typ: reflect.TypeFor[ReportCompleteness](), name: "reportCompleteness"},
 		{typ: reflect.TypeFor[ReportCompliance](), name: "reportCompliance"},
 		{typ: reflect.TypeFor[ReportReplay](), name: "reportReplay"},
 		{typ: reflect.TypeFor[ReportReplaySide](), name: "reportReplaySide"},

@@ -103,8 +103,10 @@ run_review record acme/app local-silence --json
 assert_exit 'record suppression receipts' 0
 if [ "$EVAL_STATUS" -ne 0 ]; then jq '.error' < "$EVAL_OUT"; fi
 assert_eq 'both findings kept open and withheld' 2 "$(jq '[.[]|select(.status=="open" and .withheld.source!=null)]|length' "$BUNDLE/findings.json")"
-run_review report acme/app local-silence --check critical --live skip --sarif quiet.sarif --json
+run_review gate acme/app local-silence --max-severity critical --coverage warn --live skip --json
 assert_exit 'withheld critical finding does not fail tier gate' 0
+run_review report acme/app local-silence --sarif quiet.sarif --json
+assert_exit 'report writes the SARIF' 0
 assert_json_field 'hidden default list' 0 '.data.items|length'
 assert_eq 'SARIF has no withheld results' 0 "$(jq '.runs[0].results|length' quiet.sarif)"
 assert_eq 'SARIF source count' 1 "$(jq '.runs[0].properties.withheld.exclusion' quiet.sarif)"

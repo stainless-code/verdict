@@ -601,7 +601,7 @@ func truncationSummary(tool string, data *jq.Obj, size int) string {
 	if ok && path != "" {
 		pairs = append(pairs, "artifact", path, "next",
 			"structuredContent carries the full result; read it from the bundle at "+path+
-				" on disk, or narrow the call (for example report --check/--status or "+
+				" on disk, or narrow the call (for example report --status or "+
 				"show --sig) for a smaller text block")
 	} else {
 		pairs = append(pairs, "next", "structuredContent carries the full result; "+

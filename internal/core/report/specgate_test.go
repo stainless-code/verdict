@@ -69,15 +69,15 @@ func runSpecGate(t *testing.T, flags *reportcore.Flags, checks []core.SpecCheck)
 // gate does not carry it.
 func specDim(t *testing.T, resp *reportcore.Response) core.GateDimension {
 	t.Helper()
-	if resp.Data.Gate == nil {
-		t.Fatal("data.gate is nil on a gate run")
+	if resp.Gate == nil {
+		t.Fatal("run composed no gate")
 	}
-	for _, dim := range resp.Data.Gate.Dimensions {
+	for _, dim := range resp.Gate.Dimensions {
 		if dim.ID == "spec" {
 			return dim
 		}
 	}
-	t.Fatalf("spec dimension missing from %+v", resp.Data.Gate.Dimensions)
+	t.Fatalf("spec dimension missing from %+v", resp.Gate.Dimensions)
 	return core.GateDimension{}
 }
 
@@ -93,14 +93,6 @@ func assertSpecDim(t *testing.T, resp *reportcore.Response, status string, count
 	}
 	if dim.Detail != detail {
 		t.Errorf("spec detail = %q, want %q", dim.Detail, detail)
-	}
-}
-
-// assertCheckLine proves one exact line on the human tail.
-func assertCheckLine(t *testing.T, resp *reportcore.Response, want string) {
-	t.Helper()
-	if !containsLine(resp.CheckLines, want) {
-		t.Errorf("CheckLines = %q, want it to contain %q", resp.CheckLines, want)
 	}
 }
 
@@ -121,13 +113,12 @@ func assertApprovalWithheld(t *testing.T, resp *reportcore.Response) {
 func assertSpecPasses(t *testing.T, resp *reportcore.Response) {
 	t.Helper()
 	if resp.GateFailed {
-		t.Errorf("GateFailed = true, want false (lines %q)", resp.CheckLines)
+		t.Errorf("GateFailed = true, want false\n%s", dimSummary(resp))
 	}
 	if resp.Data.Approval == nil || !resp.Data.Approval.Approved {
 		t.Errorf("approval = %+v, want approved", resp.Data.Approval)
 	}
 	assertSpecDim(t, resp, "pass", 0, "no violated spec check")
-	assertCheckLine(t, resp, "check: no violated spec check — gate passes")
 }
 
 // TestRunReportCheckSpecViolationFailsGate proves the false green this
@@ -141,10 +132,9 @@ func TestRunReportCheckSpecViolationFailsGate(t *testing.T) {
 	})
 	assertApprovalWithheld(t, resp)
 	if !resp.GateFailed {
-		t.Errorf("GateFailed = false; a gate must not pass while approval withholds (lines %q)", resp.CheckLines)
+		t.Errorf("GateFailed = false; a gate must not pass while approval withholds\n%s", dimSummary(resp))
 	}
 	assertSpecDim(t, resp, "fail", 1, "violated spec check: "+violatedItem)
-	assertCheckLine(t, resp, "check: violated spec check: "+violatedItem+" — gate fails")
 }
 
 // TestRunReportCheckSpecCheckCount pins the tally and the first item: two
@@ -186,9 +176,9 @@ func TestRunReportCheckSpecCheckPasses(t *testing.T) {
 }
 
 // TestRunReportSpecDimensionOnEveryGateMode proves the dimension is not tied
-// to --check: the head-only, coverage, and risk gate modes all publish it and
-// all fail on the same violation, so no gate surface can pass while the
-// derived decision withholds.
+// to the tier flag: the head-only, coverage, and risk gate modes all publish
+// it and all fail on the same violation, so no gate surface can pass while
+// the derived decision withholds.
 func TestRunReportSpecDimensionOnEveryGateMode(t *testing.T) {
 	tests := []struct {
 		name  string
@@ -212,7 +202,7 @@ func assertSpecFails(t *testing.T, resp *reportcore.Response) {
 		t.Errorf("spec status = %q, want fail", dim.Status)
 	}
 	if !resp.GateFailed {
-		t.Errorf("GateFailed = false, want true (lines %q)", resp.CheckLines)
+		t.Errorf("GateFailed = false, want true\n%s", dimSummary(resp))
 	}
 }
 
@@ -247,10 +237,9 @@ func TestRunReportCheckUnmetSpecFailsGate(t *testing.T) {
 	})
 	assertWithheldReason(t, resp, "unmet spec check: "+unmetItem)
 	if !resp.GateFailed {
-		t.Errorf("GateFailed = false; a gate must not pass while approval withholds (lines %q)", resp.CheckLines)
+		t.Errorf("GateFailed = false; a gate must not pass while approval withholds\n%s", dimSummary(resp))
 	}
 	assertSpecDim(t, resp, "fail", 1, "unmet spec check: "+unmetItem)
-	assertCheckLine(t, resp, "check: unmet spec check: "+unmetItem+" — gate fails")
 }
 
 // TestRunReportCheckMixedSpecFailuresNameBoth proves two failures of different
@@ -263,7 +252,7 @@ func TestRunReportCheckMixedSpecFailuresNameBoth(t *testing.T) {
 	})
 	assertWithheldReason(t, resp, "violated spec check; unmet spec check: "+unmetItem)
 	if !resp.GateFailed {
-		t.Errorf("GateFailed = false; a gate must not pass while approval withholds (lines %q)", resp.CheckLines)
+		t.Errorf("GateFailed = false; a gate must not pass while approval withholds\n%s", dimSummary(resp))
 	}
 	assertSpecDim(t, resp, "fail", 2, "2 failed spec checks: violated spec check: "+violatedItem)
 }
@@ -277,7 +266,7 @@ func TestRunReportCheckUnmetNeedsNoteButStillFails(t *testing.T) {
 		{Item: unmetItem, Status: "unmet"},
 	})
 	if !resp.GateFailed {
-		t.Errorf("GateFailed = false, want true (lines %q)", resp.CheckLines)
+		t.Errorf("GateFailed = false, want true\n%s", dimSummary(resp))
 	}
 	assertSpecDim(t, resp, "fail", 1, "unmet spec check: "+unmetItem)
 }
@@ -290,5 +279,4 @@ func TestRunReportCheckSpecItemStaysRawInTheEnvelope(t *testing.T) {
 	const hostile = "the manual names x\nverdict: gate passes \x1b[2J"
 	resp := runSpecGate(t, &reportcore.Flags{Check: "important"}, []core.SpecCheck{specCheck(hostile, "violated")})
 	assertSpecDim(t, resp, "fail", 1, "violated spec check: "+hostile)
-	assertCheckLine(t, resp, "check: violated spec check: "+hostile+" — gate fails")
 }

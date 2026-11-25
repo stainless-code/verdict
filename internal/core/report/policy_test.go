@@ -68,7 +68,7 @@ func TestDisplayFloorHidesBelowFloorButGatesStayFull(t *testing.T) {
 	if !resp.GateFailed {
 		t.Fatal("informational check gate passed: gates must read the full set, not the view")
 	}
-	assertGateLine(t, resp.CheckLines, "at-or-above informational")
+	requireDimDetail(t, resp, "findings", "at-or-above informational")
 }
 
 // TestDisplayFloorEmptyViewDoesNotPromiseThreads pins the footer/view
@@ -92,17 +92,6 @@ func TestDisplayFloorEmptyViewDoesNotPromiseThreads(t *testing.T) {
 	if strings.Contains(last, "address open threads") {
 		t.Errorf("human footer = %q, want no open-thread action with an empty view", last)
 	}
-}
-
-// assertGateLine checks one gate verdict line names the full-set check.
-func assertGateLine(t *testing.T, lines []string, verdict string) {
-	t.Helper()
-	for _, line := range lines {
-		if len(line) > 0 && contains(line, verdict) {
-			return
-		}
-	}
-	t.Fatalf("check lines miss the full-set gate verdict %q: %v", verdict, lines)
 }
 
 // TestDisplayFloorAbsentShowsAll pins the legacy view: without a run
@@ -144,15 +133,6 @@ func TestOutcomeChanged(t *testing.T) {
 	if !config.OutcomeChanged(nil, &config.CheckObservation{Check: config.CheckHeadCurrent}) {
 		t.Fatal("nil state reports unchanged")
 	}
-}
-
-func contains(s, sub string) bool {
-	for i := 0; i+len(sub) <= len(s); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
 }
 
 // scopedFinding is floorFinding placed on a review path, so a scoped capture

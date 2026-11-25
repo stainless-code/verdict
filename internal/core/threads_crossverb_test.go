@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -102,24 +101,21 @@ func writeThreadCrossFile(t *testing.T, path, content string) {
 	}
 }
 
-// reportLiveCount extracts the live-thread count from report's gate line.
-func reportLiveCount(t *testing.T, lines []string) int {
+// reportLiveCount reads the live-thread tally off the gate's live dimension.
+func reportLiveCount(t *testing.T, gate *core.ReportGate) int {
 	t.Helper()
-	for _, line := range lines {
-		if !strings.Contains(line, "live open thread(s)") {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			t.Fatalf("malformed live gate line %q", line)
-		}
-		n, err := strconv.Atoi(fields[1])
-		if err != nil {
-			t.Fatalf("malformed live gate count in %q: %v", line, err)
-		}
-		return n
+	if gate == nil {
+		t.Fatal("run composed no gate")
 	}
-	t.Fatalf("no live-thread gate line in %v", lines)
+	for _, dim := range gate.Dimensions {
+		if dim.ID == "live_threads" {
+			if dim.Count == nil {
+				t.Fatalf("live dimension carries no count: %+v", dim)
+			}
+			return *dim.Count
+		}
+	}
+	t.Fatalf("no live_threads dimension in %+v", gate.Dimensions)
 	return 0
 }
 
@@ -186,7 +182,7 @@ func reportThreadCount(t *testing.T, req core.ReadRequest) int {
 	if ref != nil {
 		t.Fatalf("report refusal: %v", ref)
 	}
-	return reportLiveCount(t, resp.CheckLines)
+	return reportLiveCount(t, resp.Gate)
 }
 
 // calibrateThreadOutcome runs the live join and returns its open count and

@@ -89,13 +89,10 @@ func dimensionStatus(dims []core.GateDimension, id string) (string, bool) {
 	return "", false
 }
 
-// GateFlagsNamed reports whether the invocation names a flag a replay refuses:
-// a gate flag would have its exit code swallowed, and --compare would be
-// dropped. The adapter refuses this combination as a usage error and Replay
-// refuses it as a typed one, so they share the predicate rather than the list —
-// a gate flag added later cannot be honored on one boundary and refused on
-// the other.
-func GateFlagsNamed(f *Flags) bool {
+// gateFlagsNamed reports whether the invocation names a flag a replay refuses:
+// a gate dimension would have its exit code swallowed, and --compare would be
+// dropped. Replay refuses it as a typed refusal.
+func gateFlagsNamed(f *Flags) bool {
 	return f.Check != "" || f.Completeness || f.Coverage != "" || f.MaxRisk != "" || f.CompareSet
 }
 
@@ -113,7 +110,7 @@ func validateReplayRequest(req *Request) *core.RefusalError {
 	if req.Flags.Policy == "" {
 		return replayRefusal("--policy needs a policy file to replay")
 	}
-	if GateFlagsNamed(&req.Flags) {
+	if gateFlagsNamed(&req.Flags) {
 		return replayRefusal(replayGateRefusal)
 	}
 	return nil
@@ -188,7 +185,7 @@ func deriveDecision(st *state, resolved *config.Resolved, root *config.Requireme
 	evaluateCompliance(&derived)
 	derived.approval = approval.Evaluate(derived.entries, st.flags.Check, st.flags.Category,
 		derived.decisionCompliance, st.specFailures, candidateCoverage(st.evidenceInput(), resolved))
-	failed, _, gate := gateTail(&derived)
+	failed, gate := gateTail(&derived)
 	return Decision{
 		Dimensions: gate.Dimensions,
 		Reason:     derived.approval.Reason,

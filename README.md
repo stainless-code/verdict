@@ -20,7 +20,7 @@ Verdict splits code review into steps your agent runs on your machine: fetch, re
 
 - **Solo developer** — Run `fetch-local` on your working tree or branch for an evidence-graded pre-PR pass with no remote account or subscription.
 - **OSS maintainer** — Triage outside pull requests with `fetch` and `verify --sandbox` so untrusted diffs stay contained while review controls remain base-owned.
-- **Startup team** — Add a deterministic `report --check` merge gate on your own CI runner with no per-seat or per-review meter.
+- **Startup team** — Add a deterministic `gate` check on your own CI runner with no per-seat or per-review meter.
 - **Agent-heavy workflow** — Put a bounded self-review loop and `--json` envelopes between fast agent edits and `post` so unproven findings never ship as fact.
 - **Regulated environment** — Keep tokens, diffs, and receipts local on your machine or runner, run a local model when code cannot leave the host, and keep append-only findings history.
 - **DevEx / platform team** — Standardize review policy with pinned lens packs, typed `.verdict/config.json`, SARIF exports, and `report --cost` rollups across repositories.

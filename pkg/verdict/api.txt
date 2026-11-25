@@ -123,12 +123,12 @@ func (c *Client) Fix(ctx context.Context, req *FixRequest) (*Outcome, error)
     when nothing is actionable).
 
 func (c *Client) Gate(ctx context.Context, req *GateRequest) (*GateResponse, error)
-    Gate runs the composed CI gate: findings at-or-above MaxSeverity,
-    a completed post for the fetched HEAD (RequireHead), the stored
-    diff-coverage receipt for that HEAD (Coverage, default require), and live
-    unresolved threads (Live, default auto). At least one dimension is required:
-    Live and Coverage alone only set postures, so an empty request is a refusal.
-    It never posts, merges, or writes a store.
+    Gate runs the composed CI gate: findings at-or-above MaxSeverity, a
+    completed post for the fetched HEAD (RequireHead), the stored diff-coverage
+    receipt for that HEAD (Coverage, default require), the reported risk band
+    (MaxRisk), and live unresolved threads (Live, default auto). At least
+    one dimension is required: Live and Coverage alone only set postures,
+    so an empty request is a refusal. It never posts, merges, or writes a store.
 
 func (c *Client) Handoff(ctx context.Context, req *HandoffRequest) (*HandoffResponse, error)
     Handoff hands one bundle's open findings to a human or another agent.
@@ -316,6 +316,11 @@ type GateDimension struct {
 type GateRequest struct {
 	Invocation
 	MaxSeverity string
+	// MaxRisk gates on the reported change-risk band (low|medium|high|critical).
+	MaxRisk string
+	// Category narrows the MaxSeverity dimension to one finding kind; it gates
+	// nothing alone, so it needs MaxSeverity.
+	Category    string
 	Live        string
 	Coverage    string
 	RequireHead bool
@@ -595,22 +600,21 @@ func (e *RefusalError) Error() string
 
 type ReportRequest struct {
 	Invocation
-	Status, Kind, Output, Sarif, Check, Live, MaxRisk string
+	Status, Kind, Output, Sarif string
 	// Compare names a baseline bundle (a directory, or a PR/local slug in the
 	// same state directory) to compare signature-matched findings against.
-	Compare                                   string
-	Cost, Completeness, IncludeWithheld, Risk bool
+	Compare                     string
+	Cost, IncludeWithheld, Risk bool
 }
     ReportRequest carries the report options. Output/Sarif name files whose
-    bytes return in the response instead of being written.
+    bytes return in the response instead of being written. Report is the
+    advisory read: gating belongs to Client.Gate, the only gating verb.
 
 type ReportResponse struct {
 	Result
-	Human      []string
-	CheckLines []string
-	GateFailed bool
-	Output     *Artifact
-	Sarif      *Artifact
+	Human  []string
+	Output *Artifact
+	Sarif  *Artifact
 }
     ReportResponse is the offline review report with render inputs and the
     requested file bytes.

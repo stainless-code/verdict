@@ -19,8 +19,9 @@ npm i -g @stainless-code/verdict
 2. Your agent reviews the bundle and writes `.verdict/state/123/review.json`.
 3. `verdict record owner/repo 123` validates the findings and grades each one
    by how it was checked.
-4. `verdict report owner/repo 123` renders the review offline, and gates on
-   severity with `--check`.
+4. `verdict report owner/repo 123` renders the review offline, and
+   `verdict gate owner/repo 123 --max-severity critical` gates the merge on
+   severity.
 5. `verdict post owner/repo 123` files exactly one review, once the anchor and
    duplicate guards pass.
 

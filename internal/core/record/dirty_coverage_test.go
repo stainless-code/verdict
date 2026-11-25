@@ -70,7 +70,7 @@ func assertDirtyCoverageGate(t *testing.T, wantFail bool) {
 		t.Fatalf("gate refusal: %v", refusal)
 	}
 	if resp.GateFailed != wantFail {
-		t.Fatalf("GateFailed = %v, want %v: %v", resp.GateFailed, wantFail, resp.CheckLines)
+		t.Fatalf("GateFailed = %v, want %v: %+v", resp.GateFailed, wantFail, resp.Gate)
 	}
 }
 

@@ -53,7 +53,7 @@ func (l *Layer) Compare(ctx context.Context, rootID, bundle, baseline string) (*
 	}
 	view := &View{
 		At:       resp.At,
-		Next:     reportCommand(bundleRepo(dir), bundle, filepath.Base(baseDir), l.check),
+		Next:     reportCommand(bundleRepo(dir), bundle, filepath.Base(baseDir)),
 		Repo:     bundleRepo(dir),
 		Pr:       bundle,
 		Warnings: detailWarnings(resp.Warnings, bundle, inv),
@@ -121,15 +121,15 @@ func insideRoot(root, dir string) bool {
 }
 
 // reportCommand renders the one pastable invocation whose data the served
-// comparison mirrors: the reported bundle, the baseline bundle, and the flags
-// the layer composes with (`--cost`, the gate tier, the offline live posture).
+// comparison mirrors: the reported bundle, the baseline bundle, and `--cost`.
+// The gate tier the layer also composes has no report spelling (gate is the
+// only gating verb), so the command reproduces the read, not the gate.
 // Every positional is shell-quoted, so a bundle name carrying a space still
 // pastes back as one word.
-func reportCommand(repo, bundle, baseline, check string) string {
+func reportCommand(repo, bundle, baseline string) string {
 	words := []string{
 		"verdict", "report", repoArg(repo), shellquote.Arg(bundle),
-		"--compare", shellquote.Arg(baseline), "--cost",
-		"--check", shellquote.Arg(check), "--live", "skip", "--json",
+		"--compare", shellquote.Arg(baseline), "--cost", "--json",
 	}
 	return strings.Join(words, " ")
 }

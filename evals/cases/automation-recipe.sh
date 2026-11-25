@@ -367,12 +367,12 @@ if [ "$EVAL_STATUS" -ne 0 ]; then
 else
   good "record merges the critical review"
 fi
-run_review report acme/app local-gatecrit --check critical
+run_review gate acme/app local-gatecrit --max-severity critical --coverage warn
 if [ "$EVAL_STATUS" -eq 1 ] \
-  && grep -q "gate fails" "$EVAL_ERR"; then
-  good "report --check critical fails the gate on the open critical (exit 1)"
+  && grep -q "gate: FAIL" "$EVAL_OUT"; then
+  good "gate --max-severity critical fails the gate on the open critical (exit 1)"
 else
-  bad "red gate exits $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
+  bad "red gate exits $EVAL_STATUS: $(head -c 200 "$EVAL_OUT")"
 fi
 (
   cd "$EVAL_SANDBOX" || exit 99
@@ -388,12 +388,12 @@ if [ "$EVAL_STATUS" -ne 0 ]; then
 else
   good "record merges the informational review"
 fi
-run_review report acme/app local-gateok --check critical
+run_review gate acme/app local-gateok --max-severity critical --coverage warn
 if [ "$EVAL_STATUS" -eq 0 ] \
-  && grep -q "gate passes" "$EVAL_ERR"; then
-  good "report --check critical passes the gate with no critical findings (exit 0)"
+  && grep -q "gate: PASS" "$EVAL_OUT"; then
+  good "gate --max-severity critical passes the gate with no critical findings (exit 0)"
 else
-  bad "green gate exits $EVAL_STATUS: $(head -c 200 "$EVAL_ERR")"
+  bad "green gate exits $EVAL_STATUS: $(head -c 200 "$EVAL_OUT")"
 fi
 
 (

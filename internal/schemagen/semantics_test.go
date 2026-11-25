@@ -389,7 +389,11 @@ var publishedSemantics = map[string]string{
 	// Loop spend receipts: prose only. The loopData stop and cost_usd
 	// descriptions name the budget.json receipt every spawn leaves, the
 	// budget-unknown stop, and the resolved-sig plateau rule.
-	"envelope.schema.json": "27203d25c994a8f61798213001400ef40965688b447806ea16840c40c7168c2a",
+	// gate becomes the only gating verb (a breaking removal, pre-1.0):
+	// reportData drops its optional completeness and gate properties and the
+	// $defs/reportCompleteness entry; $defs/reportGate stays as the gate verb's
+	// data profile. gateDimension prose no longer names the removed flags.
+	"envelope.schema.json": "4aee949306009d2b19957a8657d4ec85c828b6f9f450ccd9af857c9b0312f504",
 	// Repair brief: additive $defs/brief + $defs/briefSite and a nullable
 	// entry.brief (optional; no existing property, required key, or type
 	// changed).

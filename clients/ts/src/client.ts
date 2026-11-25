@@ -275,6 +275,12 @@ export interface VerdictClient {
     args?: string[],
     opts?: RunOptions,
   ): Promise<Envelope<DataFor["report"]>>;
+  /**
+   * The only gating verb: `--max-severity` (and `--category` with a tier),
+   * `--require-head`, and `--max-risk`, with `--live` and `--coverage` as
+   * postures. A failed gate throws {@link VerdictGateError}; `report` is the
+   * advisory read and never does.
+   */
   gate(args?: string[], opts?: RunOptions): Promise<Envelope<DataFor["gate"]>>;
   post(args?: string[], opts?: RunOptions): Promise<Envelope<DataFor["post"]>>;
   record(

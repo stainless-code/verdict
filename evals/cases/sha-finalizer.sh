@@ -157,7 +157,7 @@ printf '[]' | eval_write_findings "$PR"
 jq -n --arg h "$HEADB" \
   '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
   > "$EVAL_SANDBOX/.verdict/state/$PR/post.json"
-run_review report acme/app "$PR" --completeness
+run_review gate acme/app "$PR" --require-head --coverage warn --json
 if [ "$EVAL_STATUS" -eq 1 ] \
   && grep -q "stale-head" "$EVAL_ERR" \
   && grep -q "fetch acme/app $PR --base-sha ${HEADB:0:7}" "$EVAL_ERR"; then
@@ -168,7 +168,7 @@ fi
 PR=4299
 eval_mk_bundle "$PR"
 printf '[]' | eval_write_findings "$PR"
-run_review report acme/app "$PR" --completeness
+run_review gate acme/app "$PR" --require-head --coverage warn --json
 assert_exit "missing-post (no head) fails the gate" 1
 assert_file_grep "missing-post names the typed code" "$EVAL_ERR" "missing-post"
 assert_file_grep "missing-post names the plain fetch" "$EVAL_ERR" "fetch acme/app $PR"
@@ -183,7 +183,7 @@ printf '[]' | eval_write_findings "$PR"
 jq -n --arg h "$HEADB" \
   '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
   > "$EVAL_SANDBOX/.verdict/state/$PR/post.json"
-run_review report acme/app "$PR" --completeness
+run_review gate acme/app "$PR" --require-head --coverage warn --json
 assert_exit "provider stale-head fails the gate" 1
 assert_file_grep "provider stale-head names the typed code" "$EVAL_ERR" "stale-head"
 assert_file_grep "provider stale-head names the provider and --base-sha advance" "$EVAL_ERR" "fetch acme/app $PR --provider gitlab --base-sha ${HEADB:0:7}"
@@ -198,7 +198,7 @@ printf '[]' | eval_write_findings "$PR"
 jq -n --arg h "$HEADB" \
   '{schema_version:"1",review:{id:99},head:$h,posted_at:"2026-01-01T00:00:00Z",confidence:null,security_summary:null}' \
   > "$EVAL_SANDBOX/.verdict/state/$PR/post.json"
-run_review report acme/app "$PR" --completeness
+run_review gate acme/app "$PR" --require-head --coverage warn --json
 assert_exit "github stale-head fails the gate" 1
 assert_file_grep "github stale-head keeps the plain --base-sha advance" "$EVAL_ERR" "fetch acme/app $PR --base-sha ${HEADB:0:7}"
 assert_stream_nogrep "github stale-head names no provider flag" "$EVAL_ERR" "--provider"
@@ -209,7 +209,7 @@ cat > "$EVAL_SANDBOX/.verdict/state/$PR/PR.json" <<EOF
 {"schema_version":"1","provider":"gitlab","number":$PR,"title":"t","body":"","base_ref":"main","head_ref":"feat","base_sha":"$HEADB","head_sha":"$HEADA","author":"mate","url":"https://gitlab.example/acme/app/-/merge_requests/$PR","state":"open","draft":false,"files":[],"additions":0,"deletions":0}
 EOF
 printf '[]' | eval_write_findings "$PR"
-run_review report acme/app "$PR" --completeness
+run_review gate acme/app "$PR" --require-head --coverage warn --json
 assert_exit "provider missing-post fails the gate" 1
 assert_file_grep "provider missing-post names the typed code" "$EVAL_ERR" "missing-post"
 assert_file_grep "provider missing-post names the plain provider fetch" "$EVAL_ERR" "fetch acme/app $PR --provider gitlab"

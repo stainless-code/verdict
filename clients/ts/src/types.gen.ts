@@ -329,7 +329,7 @@ export interface FinderSummary {
   [key: string]: unknown;
 }
 
-/** report --json data: ranked read over the store. cost appears only with --cost, completeness only with --completeness, gate only when a gating flag (--max-severity, --require-head, --live) is set (gate itself always carries the coverage dimension), receipt keys only when budget.json parses. */
+/** report --json data: ranked read over the store. cost appears only with --cost and receipt keys only when budget.json parses. report is advisory and carries no gate verdict: gate publishes it. */
 export interface ReportData {
   verification?: VerificationSummary | null;
   generated_at: string;
@@ -345,11 +345,9 @@ export interface ReportData {
   org_pack?: OrgPackInfo | null;
   cost?: ReportCost;
   compare?: ReportCompare | null;
-  completeness?: ReportCompleteness;
   compliance?: ReportCompliance | null;
   risk?: ReportRisk | null;
   validation?: ValidationData | null;
-  gate?: ReportGate | null;
   replay?: ReportReplay | null;
   receipt?: ProvenanceReceipt;
   truncated?: boolean | Array<ProvenanceTruncatedRow>;
@@ -503,19 +501,6 @@ export interface ReportMTD {
   month: string;
   known_count: number;
   unknown_count: number;
-  [key: string]: unknown;
-}
-
-export interface ReportCompleteness {
-  reviewed: boolean;
-  fetched_head: string | null;
-  posted_head: string | null;
-  /** True when the reviewed bundle identity and the posted post.json patch id share id and kind (rebase/amend with the same change); absent when either side has no patch id. */
-  same_patch?: boolean | null;
-  /** Patch id the bundle identity carried at review time; absent when the bundle had no identity. */
-  reviewed_patch_id?: string | null;
-  /** Patch id the completed post receipt carried; absent when the post predates patch identity. */
-  posted_patch_id?: string | null;
   [key: string]: unknown;
 }
 
@@ -768,7 +753,7 @@ export interface ReportGate {
 
 /** One gate dimension: its id, verdict status, human detail text, and its own failing tally (null where the dimension has no count to report). */
 export interface GateDimension {
-  /** Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), live_threads (unresolved threads on the PR under --live), compliance, risk, spec (the spec checks the stored record graded, always on: a violated check withholds the derived approval, so no gate passes over it), or evidence (the stored evidence receipt for that HEAD, always on under --check). */
+  /** Which dimension read: findings (open findings at-or-above the --max-severity tier), head (a completed post for the fetched HEAD under --require-head), coverage (the stored diff-coverage receipt for that HEAD under --coverage, default require; a chunked bundle is graded on the chunk attestation its receipt stores), live_threads (unresolved threads on the PR under --live), compliance, risk, spec (the spec checks the stored record graded, always on: a violated check withholds the derived approval, so no gate passes over it), or evidence (the stored evidence receipt for that HEAD, always on). */
   id:
     | "findings"
     | "head"

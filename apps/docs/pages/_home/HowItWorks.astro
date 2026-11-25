@@ -21,19 +21,33 @@ const sample = [
     kind: "out",
     text: "» findings: 1 sigs -> .verdict/state/local-work/findings.json",
   },
-  { kind: "out", text: "  878a93e0  open  true  src/retry.ts" },
-  { kind: "cmd", text: "verdict report acme/app local-work --check important" },
+  { kind: "out", text: "  16e7c491  open  true  src/retry.ts" },
+  {
+    kind: "cmd",
+    text: "verdict gate acme/app local-work --max-severity important",
+  },
   {
     kind: "out",
     text: "info: live recheck skipped: local bundle threads unreadable here (gating on local dimensions only)",
   },
-  { kind: "out", text: "report: .verdict/state/local-work (1 shown) open=1 head=" },
-  { kind: "out", text: "1. [open] src/retry.ts:3 (878a93e0)" },
-  { kind: "out", text: "next: address open threads" },
   {
     kind: "fail",
-    text: "check: 1 open finding(s) at-or-above important — gate fails",
+    text: "gate: findings     fail  1 open finding(s) at-or-above important",
   },
+  {
+    kind: "out",
+    text: "gate: coverage     pass  100% of full hunk spans, both sides and context attested (5/5 lines)",
+  },
+  {
+    kind: "out",
+    text: "gate: live_threads skip  live recheck skipped: local bundle threads unreadable here",
+  },
+  { kind: "out", text: "gate: spec         pass  no violated spec check" },
+  {
+    kind: "out",
+    text: "gate: evidence     pass  evidence checks satisfied (1 quotes verified, 1/1 hunks receipted, 0/0 spec items checked)",
+  },
+  { kind: "fail", text: "gate: FAIL (1 fail, 3 pass, 1 skip)" },
 ] as const;
 
 const steps = [
@@ -49,7 +63,7 @@ const steps = [
   },
   {
     title: "Review and post",
-    body: "Your agent reads the bundle and writes `.verdict/state/123/review.json`. `post` checks every anchor and submits exactly one review. `report --check` gates the same findings in CI.",
+    body: "Your agent reads the bundle and writes `.verdict/state/123/review.json`. `post` checks every anchor and submits exactly one review. `gate` gates the same findings in CI.",
     commands: ["verdict post owner/repo 123"],
   },
 ] as const;

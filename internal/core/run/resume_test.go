@@ -181,14 +181,14 @@ func assertResumedBundleRecords(t *testing.T, req *core.RunRequest) {
 func assertResumedGates(t *testing.T, req *core.RunRequest) {
 	t.Helper()
 	critical := runResumedGate(t, req, "critical")
-	if critical.Data.Gate == nil || !critical.Data.Gate.Passed {
-		t.Fatalf("gate at critical failed on the resumed bundle: %+v", critical.Data.Gate)
+	if critical.Gate == nil || !critical.Gate.Passed {
+		t.Fatalf("gate at critical failed on the resumed bundle: %+v", critical.Gate)
 	}
 	important := runResumedGate(t, req, "important")
-	if important.Data.Gate == nil {
+	if important.Gate == nil {
 		t.Fatalf("gate at important returned no gate: %+v", important.Data)
 	}
-	if detail := gateDetail(important.Data.Gate, "findings"); !strings.Contains(detail, "1 open finding") {
+	if detail := gateDetail(important.Gate, "findings"); !strings.Contains(detail, "1 open finding") {
 		t.Fatalf("findings dimension = %q, want the recorded finding", detail)
 	}
 	if !important.GateFailed {
