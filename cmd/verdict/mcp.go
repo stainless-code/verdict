@@ -78,6 +78,7 @@ func runMCP(
 	root := exeRoot()
 	env := envMap(getenv)
 	runner := newRunner("mcp", "", "", stdout, stderr, getenv)
+	defer runner.Flush()
 	if code, done := resolveRunnerPrefs(runner, env, readFile); done {
 		return code
 	}

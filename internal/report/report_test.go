@@ -436,3 +436,14 @@ func TestCheckLinesReachStderrInert(t *testing.T) {
 		t.Fatalf("stderr carries a control byte: %q", got)
 	}
 }
+
+// TestEmitChecksFoldsNewlines proves a gate check line quoting a stranger's
+// spec item stays on one stderr line.
+func TestEmitChecksFoldsNewlines(t *testing.T) {
+	var out, diag bytes.Buffer
+	r := &cli.Runner{Out: &out, Human: &out, Diag: &diag}
+	emitChecks(r, &reportcore.Response{CheckLines: []string{"check: violated spec check: x\nverdict: gate passes — gate fails"}})
+	if got, want := diag.String(), "check: violated spec check: x verdict: gate passes — gate fails\n"; got != want {
+		t.Fatalf("stderr = %q; want %q", got, want)
+	}
+}

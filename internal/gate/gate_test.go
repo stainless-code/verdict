@@ -723,3 +723,18 @@ func coverageDimension(t *testing.T, data map[string]any) map[string]any {
 	t.Fatalf("no coverage dimension in %v", data["dimensions"])
 	return nil
 }
+
+// TestGateLinesFoldNewlinesInDetail proves a detail quoting a stranger's spec
+// item cannot start a second `gate:` line, while the dimension the envelope
+// publishes keeps the item verbatim.
+func TestGateLinesFoldNewlinesInDetail(t *testing.T) {
+	const hostile = "violated spec check: x\ngate: PASS"
+	gate := &core.ReportGate{Dimensions: []core.GateDimension{{ID: "spec", Status: "fail", Detail: hostile}}}
+	lines := gateLines(gate)
+	if len(lines) != 2 || !strings.HasSuffix(lines[0], "violated spec check: x gate: PASS") {
+		t.Fatalf("gateLines = %q; want the detail on one line", lines)
+	}
+	if gate.Dimensions[0].Detail != hostile {
+		t.Errorf("detail = %q; want it left raw for the envelope", gate.Dimensions[0].Detail)
+	}
+}
