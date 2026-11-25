@@ -1,0 +1,19 @@
+exit: 1
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fix",
+  "repo": "acme/app",
+  "pr": 4291,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "",
+  "warnings": [],
+  "data": null,
+  "error": {
+    "code": "head-mismatch",
+    "message": "checked-out head c2f66e4 is not the head ddddddd this bundle reviewed — fix patches the checkout, so check out the PR head (git checkout dddddddddddddddddddddddddddddddddddddddd) and re-run\ntry: address the cause above, then re-run the same command"
+  }
+}
+--- stderr ---
+re-enter: verdict fix acme/app 4291 --json
+--- files ---

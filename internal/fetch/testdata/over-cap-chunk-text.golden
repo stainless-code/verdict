@@ -414,15 +414,15 @@ rather than becoming ground truth.
 --- file C/.verdict/state/4703/provenance.json ---
 {
   "schema_version": "1",
-  "run_id": "354574694f05c0318b2e088cc22813921e499a0564f163928e3cb5312501ed86",
-  "prompts_hash": "352aa4e9aadfcf0030f7c3d3aa44aa77ba27b20612e3045be3dbf58aa8fb0266",
+  "run_id": "a31f09581ab5fe9d8856297073b295f08f78540d22a5df3cb76b2a7dad630e60",
+  "prompts_hash": "0813a5e717726639e1315391e0b263b2dfb31f23f2f3c584ecc84f39c1016d9c",
   "inputs": [
     {
       "kind": "prompt",
       "name": "PROCEDURE.md",
       "status": "included",
-      "sha256": "529138b404d6783cb02abee32e57e2ed96a98a2273fa602a5034a8e7dc3d103d",
-      "bytes": 13400
+      "sha256": "a73a4602c858f7071e5df4aaf5a2982ff267206d21b393cc661b8b64db2846d5",
+      "bytes": 13394
     },
     {
       "kind": "prompt",

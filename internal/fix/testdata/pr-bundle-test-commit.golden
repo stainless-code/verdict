@@ -1,0 +1,39 @@
+exit: 0
+--- stdout ---
+{
+  "schema_version": "1",
+  "verb": "fix",
+  "repo": "acme/app",
+  "pr": 4291,
+  "at": "0000-00-00T00:00:00Z",
+  "next": "promoted regression test at .verdict/tests/6123456789abcdef0123456789abcdef01234567-161139e764cc.py — run python3 .verdict/tests/6123456789abcdef0123456789abcdef01234567-161139e764cc.py",
+  "warnings": [],
+  "data": {
+    "dir": ".verdict/state/4291",
+    "ledger": ".verdict/state/4291/fix.json",
+    "sig": "6123456789abcdef0123456789abcdef01234567",
+    "locator": null,
+    "severity": null,
+    "body": null,
+    "brief": null,
+    "anchors": null,
+    "pass": null,
+    "max_passes": 3,
+    "kb": null,
+    "open_inline": 1,
+    "fixed": 0,
+    "open": 1,
+    "stopped": 0,
+    "complete": false,
+    "test_path": ".verdict/tests/6123456789abcdef0123456789abcdef01234567-161139e764cc.py",
+    "committed": true
+  },
+  "error": null
+}
+--- stderr ---
+» readiness: .verdict/state/4291 — findings 1 open (1 inline open); threads (stored): none stored; PR state open
+» test: .verdict/tests/6123456789abcdef0123456789abcdef01234567-161139e764cc.py (13 bytes)
+run: python3 .verdict/tests/6123456789abcdef0123456789abcdef01234567-161139e764cc.py
+--- files ---
+--- file C/.verdict/tests/6123456789abcdef0123456789abcdef01234567-161139e764cc.py ---
+assert False
